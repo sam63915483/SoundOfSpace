@@ -181,19 +181,25 @@ public class BloodFX : MonoBehaviour
             col.enabled = false;
     }
 
-    // Nearest transform (bone) within root's hierarchy to a world point — used
-    // to attach the spray to the body part it hit so it follows animation and
-    // ragdoll. Cheap enough for a per-shot event (rig is a few dozen bones).
+    // Nearest CHILD bone within root's hierarchy to a world point — used to
+    // attach blood to the body part so it follows animation and ragdoll. The
+    // root itself is excluded on purpose: it's the kinematic container that
+    // stays put on death (only the bones ragdoll), and for a centre hit it sits
+    // exactly at the spawn point, so including it would attach blood to the root
+    // and leave it behind when the body falls. Falls back to root only if there
+    // are no child transforms (e.g. an unrigged target). Cheap for a per-hit
+    // event (rig is a few dozen bones).
     static Transform FindNearestDescendant(Transform root, Vector3 worldPoint)
     {
-        Transform best = root;
-        float bestSqr = (root.position - worldPoint).sqrMagnitude;
+        Transform best = null;
+        float bestSqr = float.PositiveInfinity;
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
         {
+            if (t == root) continue;
             float d = (t.position - worldPoint).sqrMagnitude;
             if (d < bestSqr) { bestSqr = d; best = t; }
         }
-        return best;
+        return best != null ? best : root;
     }
 
     static void ForceLocalSimulationSpace(GameObject go)
