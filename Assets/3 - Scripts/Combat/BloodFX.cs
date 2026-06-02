@@ -56,6 +56,10 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Seconds before the damage splash is destroyed.")]
     [SerializeField] float damageSplashLifetime = 2f;
 
+    [Header("Death Pool / Decal")]
+    [Tooltip("If the pool prefab is a blood-decal Projector, this is the height (m) above the ground it's placed so its frustum projects DOWN onto the curved terrain (conforms to the curve). Keep small so only the ground right below gets the decal.")]
+    [SerializeField] float poolProjectorHeight = 0.5f;
+
     Camera _depthCam;
 
     void Awake()
@@ -151,8 +155,23 @@ public class BloodFX : MonoBehaviour
         if (poolPrefab == null) return;
 
         Vector3 u = up.sqrMagnitude > 0.0001f ? up.normalized : Vector3.up;
-        // Lie the splat flat on the local surface tangent (orient its up to the
-        // ground normal) and lift it a hair off the ground to avoid z-fighting.
+
+        // Projector path: a blood-decal Projector conforms to curved terrain.
+        // Place it above the ground looking straight down (-up) so it projects
+        // the decal onto whatever ground is below, following the curve.
+        if (poolPrefab.GetComponent<Projector>() != null)
+        {
+            Vector3 projPos = groundPoint + u * poolProjectorHeight;
+            var projFx = Instantiate(poolPrefab, projPos, Quaternion.LookRotation(-u));
+            if (planet != null) projFx.transform.SetParent(planet, worldPositionStays: true);
+            var fader = projFx.GetComponent<BloodDecalFader>();
+            if (fader == null) fader = projFx.AddComponent<BloodDecalFader>();
+            fader.Init(poolLingerSeconds, poolFadeSeconds, poolScale);
+            return;
+        }
+
+        // Legacy particle-splat path: lie the splat flat on the local surface
+        // tangent and lift it a hair off the ground to avoid z-fighting.
         Quaternion rot = Quaternion.FromToRotation(Vector3.up, u);
         Vector3 pos = groundPoint + u * 0.03f;
 
@@ -175,14 +194,17 @@ public class BloodFX : MonoBehaviour
     /// Play a random blood splash at an enemy's body centre on any player hit.
     /// Attaches to the nearest bone so it rides the body.
     /// </summary>
-    public void SpawnDamageSplash(Vector3 center, Transform attachTo)
+    public void SpawnDamageSplash(Vector3 center, Transform attachTo, float bodyScale = 1f)
     {
         if (damageSplashPrefabs == null || damageSplashPrefabs.Length == 0) return;
         var prefab = damageSplashPrefabs[Random.Range(0, damageSplashPrefabs.Length)];
         if (prefab == null) return;
 
         var fx = Instantiate(prefab, center, Quaternion.identity);
-        if (!Mathf.Approximately(damageSplashScale, 1f)) fx.transform.localScale *= damageSplashScale;
+        // Scale by the enemy's body size so the centre splash reaches outside a
+        // big enemy (the ~3x elite) instead of being swallowed inside it.
+        float s = damageSplashScale * Mathf.Max(0.01f, bodyScale);
+        if (!Mathf.Approximately(s, 1f)) fx.transform.localScale *= s;
 
         ForceLocalSimulationSpace(fx);
 

@@ -824,7 +824,7 @@ public class EnemyController : MonoBehaviour, IDamageable
         // Random blood splash at the body centre on any PLAYER hit (gun / axe /
         // fishing rod all route through here). creditPlayer == false is
         // environmental damage (torch, Lebron) and is excluded.
-        if (creditPlayer) BloodFX.Instance?.SpawnDamageSplash(rb.position, transform);
+        if (creditPlayer) BloodFX.Instance?.SpawnDamageSplash(rb.position, transform, transform.localScale.x);
 
         currentHealth -= amount;
         if (healthBar != null)
