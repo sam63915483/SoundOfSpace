@@ -2,8 +2,8 @@ using UnityEngine;
 
 /// <summary>
 /// Scene-placed singleton that spawns blood VFX from the Piloto Blood VFX
-/// Essentials pack. Combat scripts call BloodFX.Instance?.SpawnSpray / SpawnPool
-/// — absent manager = silent no-op. Lives under the gameplay scene's managers
+/// Essentials pack. Combat scripts call BloodFX.Instance?.SpawnSpray /
+/// SpawnDamageSplash — absent manager = silent no-op. Lives under the managers
 /// organizer; scene-placed so it exists on both editor-play and build-load (no
 /// EnsureGameplaySingletons seeding needed).
 /// </summary>
@@ -14,8 +14,6 @@ public class BloodFX : MonoBehaviour
     [Header("Prefabs")]
     [Tooltip("Burst spawned at the bullet hit point (a Blood Splash / Fountain). Non-looping; auto-destroyed after sprayLifetime.")]
     [SerializeField] GameObject sprayPrefab;
-    [Tooltip("Pool spawned on the ground when an enemy dies (a Sticky_Splat_*).")]
-    [SerializeField] GameObject poolPrefab;
 
     [Header("Spray (on hit)")]
     [Tooltip("Uniform scale applied to the spawned spray FX.")]
@@ -24,14 +22,6 @@ public class BloodFX : MonoBehaviour
     [SerializeField] float sprayLifetime = 3f;
     [Tooltip("Euler offset applied AFTER aiming the spray along the surface normal. Correct for the chosen prefab's emission axis here (e.g. if it emits along +Y rather than +Z). Tune in Play mode.")]
     [SerializeField] Vector3 sprayRotationOffset = Vector3.zero;
-
-    [Header("Pool (on death)")]
-    [Tooltip("Uniform scale applied to the spawned pool FX.")]
-    [SerializeField] float poolScale = 1f;
-    [Tooltip("Seconds the pool stays at full opacity before it begins fading.")]
-    [SerializeField] float poolLingerSeconds = 20f;
-    [Tooltip("Seconds the pool takes to fade out before it is destroyed.")]
-    [SerializeField] float poolFadeSeconds = 3f;
 
     // New serialized fields are appended at the END so existing scene/prefab
     // serialization of the fields above is never reordered.
@@ -55,10 +45,6 @@ public class BloodFX : MonoBehaviour
     [SerializeField] float damageSplashScale = 0.5f;
     [Tooltip("Seconds before the damage splash is destroyed.")]
     [SerializeField] float damageSplashLifetime = 2f;
-
-    [Header("Death Pool / Decal")]
-    [Tooltip("If the pool prefab is a blood-decal Projector, this is the height (m) above the ground it's placed so its frustum projects DOWN onto the curved terrain (conforms to the curve). Keep small so only the ground right below gets the decal.")]
-    [SerializeField] float poolProjectorHeight = 0.5f;
 
     Camera _depthCam;
 
@@ -145,49 +131,6 @@ public class BloodFX : MonoBehaviour
         var anim = fx.GetComponent<BloodSpray>();
         if (anim == null) anim = fx.AddComponent<BloodSpray>();
         anim.Init(sprayLifetime, sprayGrowSeconds, sprayShrinkSeconds, targetScale);
-    }
-
-    /// <summary>
-    /// Spawn a blood pool lying flat on the surface at an enemy's feet on death.
-    /// </summary>
-    public void SpawnPool(Vector3 groundPoint, Vector3 up, Transform planet)
-    {
-        if (poolPrefab == null) return;
-
-        Vector3 u = up.sqrMagnitude > 0.0001f ? up.normalized : Vector3.up;
-
-        // Projector path: a blood-decal Projector conforms to curved terrain.
-        // Place it above the ground looking straight down (-up) so it projects
-        // the decal onto whatever ground is below, following the curve.
-        if (poolPrefab.GetComponent<Projector>() != null)
-        {
-            Vector3 projPos = groundPoint + u * poolProjectorHeight;
-            var projFx = Instantiate(poolPrefab, projPos, Quaternion.LookRotation(-u));
-            if (planet != null) projFx.transform.SetParent(planet, worldPositionStays: true);
-            var fader = projFx.GetComponent<BloodDecalFader>();
-            if (fader == null) fader = projFx.AddComponent<BloodDecalFader>();
-            fader.Init(poolLingerSeconds, poolFadeSeconds, poolScale);
-            return;
-        }
-
-        // Legacy particle-splat path: lie the splat flat on the local surface
-        // tangent and lift it a hair off the ground to avoid z-fighting.
-        Quaternion rot = Quaternion.FromToRotation(Vector3.up, u);
-        Vector3 pos = groundPoint + u * 0.03f;
-
-        var fx = Instantiate(poolPrefab, pos, rot);
-        if (!Mathf.Approximately(poolScale, 1f)) fx.transform.localScale *= poolScale;
-
-        // Local sim space + planet parenting so the splat's particles stay put
-        // on the ground as the planet orbits (World space would streak them off).
-        ForceLocalSimulationSpace(fx);
-        if (planet != null) fx.transform.SetParent(planet, worldPositionStays: true);
-
-        DisableColliders(fx);
-
-        var pool = fx.GetComponent<BloodPool>();
-        if (pool == null) pool = fx.AddComponent<BloodPool>();
-        pool.Init(poolLingerSeconds, poolFadeSeconds);
     }
 
     /// <summary>
