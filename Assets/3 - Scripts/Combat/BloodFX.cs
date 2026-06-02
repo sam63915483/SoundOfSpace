@@ -98,6 +98,14 @@ public class BloodFX : MonoBehaviour
         var fx = Instantiate(sprayPrefab, point, rot);
         if (!Mathf.Approximately(sprayScale, 1f)) fx.transform.localScale *= sprayScale;
 
+        // Simulate every particle layer in LOCAL space so the blood rides with
+        // the enemy. The enemy is parented to a planet orbiting at high world
+        // velocity; in World space the emitter races away from its just-emitted
+        // particles, so they streak off into space and vanish (this is why the
+        // droplets showed in the editor — sim paused — but not in play). Local
+        // space pins them to the moving body.
+        ForceLocalSimulationSpace(fx);
+
         // Attach to the hit enemy so the blood moves with it; otherwise parent
         // under the nearest planet so floating-origin shifts don't teleport it.
         Transform parent = attachTo != null ? attachTo : ResolveNearestPlanet(point);
@@ -154,5 +162,14 @@ public class BloodFX : MonoBehaviour
     {
         foreach (var col in go.GetComponentsInChildren<Collider>(true))
             col.enabled = false;
+    }
+
+    static void ForceLocalSimulationSpace(GameObject go)
+    {
+        foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
+        {
+            var main = ps.main;
+            main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        }
     }
 }
