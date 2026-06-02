@@ -54,7 +54,10 @@ public class BloodFX : MonoBehaviour
 
         Vector3 dir = normal.sqrMagnitude > 0.0001f ? normal.normalized
                     : (shotDir.sqrMagnitude > 0.0001f ? -shotDir.normalized : Vector3.up);
-        Quaternion rot = Quaternion.LookRotation(dir) * Quaternion.Euler(sprayRotationOffset);
+        // The Piloto blood fountains emit along their local +Y ("up"), so align
+        // +Y with the surface normal to spurt the blood out of the wound toward
+        // the shooter. sprayRotationOffset stays available for per-prefab tweaks.
+        Quaternion rot = Quaternion.FromToRotation(Vector3.up, dir) * Quaternion.Euler(sprayRotationOffset);
 
         var fx = Instantiate(sprayPrefab, point, rot);
         if (!Mathf.Approximately(sprayScale, 1f)) fx.transform.localScale *= sprayScale;
