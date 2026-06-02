@@ -71,6 +71,13 @@ public class TevDialogue : MonoBehaviour
     [SerializeField, Range(0, 1)] private float typewriterVolume = 0.3f;
     private AudioSource typewriterSource;
 
+    [Header("Whistle — draws the player to Tev once they've secured water or food")]
+    [Tooltip("Looping whistle. Plays from Tev in 3D after the player completes the water OR food task, and stops once they reach Tev and collect the axe. Drop your mp3 here.")]
+    [SerializeField] private AudioClip whistleClip;
+    [SerializeField, Range(0f, 1f)] private float whistleVolume = 0.6f;
+    [SerializeField] private float whistleMaxDistance = 120f;
+    private AudioSource whistleSource;
+
     bool _playerInRange;
     bool _conversationActive;
     bool _isTyping;
@@ -86,6 +93,18 @@ public class TevDialogue : MonoBehaviour
         typewriterSource.playOnAwake = false;
         typewriterSource.loop = true;
         typewriterSource.volume = typewriterVolume;
+
+        // Dedicated 3D source for the draw-the-player whistle (separate from the 2D
+        // typewriter source so the two never fight over clip/volume).
+        whistleSource = gameObject.AddComponent<AudioSource>();
+        whistleSource.playOnAwake = false;
+        whistleSource.loop = true;
+        whistleSource.clip = whistleClip;
+        whistleSource.volume = whistleVolume;
+        whistleSource.spatialBlend = 1f;                 // 3D — gives the player a direction to walk
+        whistleSource.rolloffMode = AudioRolloffMode.Linear;
+        whistleSource.minDistance = 5f;
+        whistleSource.maxDistance = whistleMaxDistance;
 
         // Auto-borrow dialogue UI from any NPCDialogue if our inspector
         // refs are empty — same trick BonfireNPCDialogue uses.
@@ -149,6 +168,7 @@ public class TevDialogue : MonoBehaviour
     void Update()
     {
         UpdateInteractability();
+        UpdateWhistle();
 
         if (_playerInRange && !_conversationActive)
         {
@@ -181,10 +201,41 @@ public class TevDialogue : MonoBehaviour
         InteractPromptUI.Clear(this);
     }
 
+    // Tev whistles to draw the player in once they've secured water or food, and stops
+    // once they reach him and collect the axe (TevReturnedDialogueDone). Derived entirely
+    // from persisted flags, so it re-evaluates correctly after a save/reload. Purely an
+    // audio cue — gates nothing.
+    void UpdateWhistle()
+    {
+        if (whistleSource == null) return;
+        // Key off the StoryDirector task flags, NOT EarlyGameProgress.WaterBottleDrunk/
+        // FirstMealEaten — those are only set by the (now-disabled) forced tutorial, so they
+        // never flip on the free-spawn opening. hasWater/hasFood are what the new path sets.
+        var sd = StoryDirector.Instance;
+        bool waterOrFood = sd != null && (sd.GetFlag("hasWater") || sd.GetFlag("hasFood"));
+        bool shouldWhistle =
+            whistleClip != null
+            && !_conversationActive
+            && !EarlyGameProgress.TevReturnedDialogueDone
+            && waterOrFood;
+
+        if (shouldWhistle && !whistleSource.isPlaying)
+        {
+            if (whistleSource.clip == null) whistleSource.clip = whistleClip;
+            whistleSource.volume = whistleVolume;
+            whistleSource.Play();
+        }
+        else if (!shouldWhistle && whistleSource.isPlaying)
+        {
+            whistleSource.Stop();
+        }
+    }
+
     void StartConversation()
     {
         if (_conversationActive) return;
         _conversationActive = true;
+        if (whistleSource != null && whistleSource.isPlaying) whistleSource.Stop();
         HidePrompt();
         if (dialogueText != null) dialogueText.gameObject.SetActive(true);
         PlayerController.isInDialogue = true;

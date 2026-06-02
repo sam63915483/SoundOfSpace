@@ -56,6 +56,10 @@ public class PlayerFlashlight : MonoBehaviour
     // minBrightness, Full = 100%. enabled/disabled mirrors the mode.
     public enum Mode { Off = 0, Half = 1, Full = 2 }
 
+    /// Fired once per user toggle (each E press), AFTER the mode changes. The optional
+    /// on-ask flashlight hint track advances its tips on this.
+    public static event System.Action OnToggled;
+
     // --- runtime state ---
     Ship _ship;
     float _baseIntensity;            // fixed at minBrightness; multipliers ride on top
@@ -207,6 +211,7 @@ public class PlayerFlashlight : MonoBehaviour
             _         => Mode.Off,
         };
         ApplyMode(next);
+        OnToggled?.Invoke();
     }
 
     // Builds a square RGBA cookie texture with FOUR concentric zones, radially

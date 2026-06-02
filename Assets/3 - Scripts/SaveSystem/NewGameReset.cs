@@ -18,9 +18,11 @@ using UnityEngine.SceneManagement;
 // Single source of truth: mirror the SaveData schema. Every system the save
 // system captures/applies should also be reset here.
 //
-// NOT reset here (separate subsystem, no clean reset API yet): the phone AI's
-// conversation memory + story phase (AIMemoryStore, HALVolunteeredLog,
-// AIStoryController / GameKnowledgeBase one-way knowledge merge).
+// The phone AI's conversation memory + volunteered-line transcript (AIMemoryStore,
+// HALVolunteeredLog) ARE reset below — otherwise a previous run's chat (e.g.
+// "Fishing rod acquired.") bleeds into the new game. Still NOT reset (separate
+// subsystem, intentionally-persistent knowledge merge): AIStoryController /
+// GameKnowledgeBase story phase.
 public static class NewGameReset
 {
     static bool _subscribed;
@@ -77,6 +79,11 @@ public static class NewGameReset
         BuildMenuLock.ApplySaveState(false, null);
 
         if (StoryDirector.Instance != null) StoryDirector.Instance.ResetForNewGame();
+
+        // Phone AI: wipe conversation memory + the volunteered-line transcript so a
+        // previous in-process run's chat history doesn't replay in the new game's AI app.
+        if (AIMemoryStore.Instance != null) AIMemoryStore.Instance.Restore(null);
+        if (HALVolunteeredLog.Instance != null) HALVolunteeredLog.Instance.Clear();
 
         if (CompassHUD.Instance != null) CompassHUD.Instance.ClearAll();
         // idx = -1 → NotStarted, so the map tutorial fires again on first open.

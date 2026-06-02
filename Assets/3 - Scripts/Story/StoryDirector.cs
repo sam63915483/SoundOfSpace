@@ -37,6 +37,8 @@ public class StoryDirector : MonoBehaviour
     bool _firstContactQueued;
     float _coldOpenTimer;
     const float FirstContactDelay = 45f;   // ~30–60s window (GDD discoverability cue)
+    float _gateCheckTimer;
+    const float GateCheckInterval = 0.5f;  // catch-up cadence for out-of-order gate progression
 
     /// <summary>Raised whenever step/trust/flags/objectives/questions change, so UI can refresh.</summary>
     public event Action OnStoryStateChanged;
@@ -137,6 +139,10 @@ public class StoryDirector : MonoBehaviour
         if (s.unlockedQuestions != null) _unlockedQuestions.AddRange(s.unlockedQuestions);
         _pendingConversationId = string.IsNullOrEmpty(s.pendingConversationId) ? null : s.pendingConversationId;
         _pendingNodeId = string.IsNullOrEmpty(s.pendingNodeId) ? null : s.pendingNodeId;
+        // Resume the cold-open timer only if we loaded into ColdOpen; otherwise suppress first
+        // contact so a later-step save can't re-queue it on an in-process load.
+        _firstContactQueued = _step != StoryStep.ColdOpen;
+        _coldOpenTimer = 0f;
         Changed();
     }
 
@@ -151,6 +157,11 @@ public class StoryDirector : MonoBehaviour
         _unlockedQuestions.Clear();
         _pendingConversationId = null;
         _pendingNodeId = null;
+        // Non-serialized runtime gate: must reset too, or a second New Game in the same process
+        // keeps _firstContactQueued=true from the prior run and first contact never re-fires.
+        _firstContactQueued = false;
+        _coldOpenTimer = 0f;
+        _gateCheckTimer = 0f;
         Changed();
     }
 
@@ -191,22 +202,45 @@ public class StoryDirector : MonoBehaviour
 
     void Update()
     {
-        if (_firstContactQueued) return;
-        if (_step != StoryStep.ColdOpen) { _firstContactQueued = true; return; }
         if (SceneManager.GetActiveScene().name == "MainMenu") return;
-        _coldOpenTimer += Time.deltaTime;
-        if (_coldOpenTimer >= FirstContactDelay)
+
+        // First-contact discoverability timer — ColdOpen only, fires once (GDD cue).
+        if (!_firstContactQueued)
         {
-            _firstContactQueued = true;
-            SetStoryStep(StoryStep.FirstContact);
-            QueueConversation("conv_first_contact");
-            var phone = PlayerPhoneUI.Instance;
-            if (phone != null) phone.FlashNotification("Incoming transmission");
-            // Surface an on-screen cue too, so the player notices with the phone CLOSED — the
-            // in-phone notification alone is invisible until they happen to open it. Reuses the
-            // existing HAL HUD strip.
-            if (HALCommentator.Instance != null)
-                HALCommentator.Instance.VolunteerExternal("Incoming transmission. Open your phone.");
+            if (_step != StoryStep.ColdOpen)
+            {
+                _firstContactQueued = true;
+            }
+            else
+            {
+                _coldOpenTimer += Time.deltaTime;
+                if (_coldOpenTimer >= FirstContactDelay)
+                {
+                    _firstContactQueued = true;
+                    SetStoryStep(StoryStep.FirstContact);
+                    QueueConversation("conv_first_contact");
+                    var phone = PlayerPhoneUI.Instance;
+                    if (phone != null) phone.FlashNotification("Incoming transmission");
+                    // Surface an on-screen cue too, so the player notices with the phone CLOSED — the
+                    // in-phone notification alone is invisible until they happen to open it. Reuses the
+                    // existing HAL HUD strip.
+                    if (HALCommentator.Instance != null)
+                        HALCommentator.Instance.VolunteerExternal("Incoming transmission. Open your phone.");
+                }
+            }
+        }
+
+        // Catch-up gate reconciliation. Order-independent safety net: covers players who
+        // complete gates out of order, before first contact, or who load mid-progress —
+        // anything that left _step behind its flags. Throttled; idle at the terminal seam.
+        if (_step >= StoryStep.FirstContact && _step < StoryStep.VillageSeam)
+        {
+            _gateCheckTimer += Time.deltaTime;
+            if (_gateCheckTimer >= GateCheckInterval)
+            {
+                _gateCheckTimer = 0f;
+                CheckGates();
+            }
         }
     }
 
@@ -245,35 +279,55 @@ public class StoryDirector : MonoBehaviour
         CheckGates();
     }
 
-    // Advance the opening's soft gates as their flags fill in. Each transition queues a short
-    // authored AI acknowledgement (shown next time the player opens the phone). Guidance stays
-    // optional — these fire whether the player asked the AI or just did it themselves.
+    // Advance the opening's soft gates as their flags fill in. Idempotent and
+    // order-independent: re-evaluates from the current flags and CASCADES through every
+    // already-satisfied gate in one call, so a player who does several things at once (or
+    // before being prompted) is never left a step behind. Safe to call from any gameplay
+    // event or on the catch-up timer. Each transition queues the next authored beat
+    // (shown the next time the player opens the phone), whether they asked the AI or not.
     void CheckGates()
     {
-        switch (_step)
+        // Never skip the AI's first-contact intro: let the player see it before the gates
+        // cascade (a prepared player still gets the briefing, which has its own "already
+        // handled the basics" branch). Gate prompts, by contrast, may be overwritten freely —
+        // an overwrite only happens when the newer gate is ALSO satisfied, i.e. the older
+        // prompt is already obsolete.
+        if (_pendingConversationId == "conv_first_contact") return;
+
+        bool advanced;
+        do
         {
-            case StoryStep.FirstContact:
-            case StoryStep.NeedsWaterFood:
-                if (GetFlag("hasWater") && GetFlag("hasFood"))
-                {
-                    SetStoryStep(StoryStep.NeedsShelter);
-                    StartObjective("obj_shelter");
-                    QueueConversation("conv_gates", "gate_shelter");
-                }
-                break;
-            case StoryStep.NeedsShelter:
-                if (GetFlag("hasShelter"))
-                {
-                    SetStoryStep(StoryStep.Explore);
-                    StartObjective("obj_village");
-                    QueueConversation("conv_gates", "gate_explore");
-                }
-                break;
-            case StoryStep.Explore:
-                if (GetFlag("villageReached"))
-                    SetStoryStep(StoryStep.VillageSeam);   // seam: Tev's thread bolts on here later
-                break;
-        }
+            advanced = false;
+            switch (_step)
+            {
+                case StoryStep.FirstContact:
+                case StoryStep.NeedsWaterFood:
+                    if (GetFlag("hasWater") && GetFlag("hasFood"))
+                    {
+                        SetStoryStep(StoryStep.NeedsShelter);
+                        StartObjective("obj_shelter");
+                        QueueConversation("conv_gates", "gate_shelter");
+                        advanced = true;
+                    }
+                    break;
+                case StoryStep.NeedsShelter:
+                    if (GetFlag("hasShelter"))
+                    {
+                        SetStoryStep(StoryStep.Explore);
+                        StartObjective("obj_village");
+                        QueueConversation("conv_gates", "gate_explore");
+                        advanced = true;
+                    }
+                    break;
+                case StoryStep.Explore:
+                    if (GetFlag("villageReached"))
+                    {
+                        SetStoryStep(StoryStep.VillageSeam);   // seam: Tev's thread bolts on here later
+                        advanced = true;
+                    }
+                    break;
+            }
+        } while (advanced);
     }
 
     void CompleteByEvent(string eventName)

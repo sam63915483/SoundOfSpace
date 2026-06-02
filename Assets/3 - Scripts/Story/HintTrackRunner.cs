@@ -57,17 +57,40 @@ public class HintTrackRunner : MonoBehaviour
     {
         if (_track == null || _entryIndex < 0 || _entryIndex >= _track.entries.Length) return;
         var e = _track.entries[_entryIndex];
+        // A wood-gather gate the player has already satisfied is skipped on sight — e.g. asking
+        // how to build a shelter while already holding enough wood jumps straight to "place it".
+        if (e.gatherWoodTarget > 0 && WoodInventory.Instance != null
+            && WoodInventory.Instance.Wood >= e.gatherWoodTarget)
+        {
+            AdvanceEntry();
+            return;
+        }
         if (TutorialUI.Instance != null)
             TutorialUI.Instance.ShowStep(e.tipText, _entryIndex + 1, _track.entries.Length);
+    }
+
+    void AdvanceEntry()
+    {
+        _entryIndex++;
+        if (_entryIndex >= _track.entries.Length) { StopTrack(_activeTrackId); return; }
+        ShowCurrent();
     }
 
     void Advance(string firedEvent)
     {
         if (_track == null) return;
         if (_track.entries[_entryIndex].advanceEvent != firedEvent) return;
-        _entryIndex++;
-        if (_entryIndex >= _track.entries.Length) { StopTrack(_activeTrackId); return; }
-        ShowCurrent();
+        AdvanceEntry();
+    }
+
+    // Wood-gather gates advance by reaching a wood total rather than a named event.
+    void OnWoodChanged()
+    {
+        if (_track == null) return;
+        var e = _track.entries[_entryIndex];
+        if (e.gatherWoodTarget > 0 && WoodInventory.Instance != null
+            && WoodInventory.Instance.Wood >= e.gatherWoodTarget)
+            AdvanceEntry();
     }
 
     void WireAdvance(bool on)
@@ -81,6 +104,9 @@ public class HintTrackRunner : MonoBehaviour
             GhostPlacement.OnPlaced           += A_Build;
             FishingRodController.OnBobberCast += A_Cast;
             FishingRodController.OnFishCaught += A_Catch;
+            PlayerFlashlight.OnToggled        += A_Flashlight;
+            MapTutorial.OnOpened              += A_MapOpened;
+            if (WoodInventory.Instance != null) WoodInventory.Instance.OnChanged += OnWoodChanged;
         }
         else
         {
@@ -91,6 +117,9 @@ public class HintTrackRunner : MonoBehaviour
             GhostPlacement.OnPlaced           -= A_Build;
             FishingRodController.OnBobberCast -= A_Cast;
             FishingRodController.OnFishCaught -= A_Catch;
+            PlayerFlashlight.OnToggled        -= A_Flashlight;
+            MapTutorial.OnOpened              -= A_MapOpened;
+            if (WoodInventory.Instance != null) WoodInventory.Instance.OnChanged -= OnWoodChanged;
         }
     }
 
@@ -101,4 +130,6 @@ public class HintTrackRunner : MonoBehaviour
     void A_Build(BuildableEntry e) => Advance("OnShelterBuilt");
     void A_Cast()  => Advance("OnBobberCast");
     void A_Catch(float spin) => Advance("OnFishCaught");
+    void A_Flashlight() => Advance("OnFlashlightToggled");
+    void A_MapOpened()  => Advance("OnMapOpened");
 }

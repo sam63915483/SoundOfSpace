@@ -60,4 +60,8 @@ public class HALVolunteeredLog : MonoBehaviour
         if (_lines.Count > MaxLines) _lines.RemoveAt(0);
         OnLineAdded?.Invoke(line);
     }
+
+    /// Wipes the transcript. Called by NewGameReset so a previous run's volunteered
+    /// lines don't bleed into a fresh game. Does not raise OnLineAdded.
+    public void Clear() => _lines.Clear();
 }

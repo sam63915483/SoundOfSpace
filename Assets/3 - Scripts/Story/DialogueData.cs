@@ -41,7 +41,10 @@ public class Objective
 [Serializable] public class ObjectiveFile { public Objective[] objectives; }
 
 // ---- hint tracks ----
-[Serializable] public class HintEntry { public string tipText = ""; public string advanceEvent = ""; }
+// advanceEvent advances the entry on a named gameplay event; gatherWoodTarget (>0) instead
+// makes the entry a wood-gather gate that advances once WoodInventory.Wood reaches it (and is
+// skipped on sight if the player already holds that much). Leave one of the two empty/0.
+[Serializable] public class HintEntry { public string tipText = ""; public string advanceEvent = ""; public int gatherWoodTarget = 0; }
 [Serializable] public class HintTrack { public string id = ""; public string objectiveId = ""; public HintEntry[] entries; }
 [Serializable] public class HintTrackFile { public HintTrack[] tracks; }
 

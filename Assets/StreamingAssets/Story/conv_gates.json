@@ -18,7 +18,7 @@
     {
       "id": "gs_help",
       "speaker": "AI",
-      "lines": [ "Open the build menu and place a Cabin. Tips are on your HUD." ],
+      "lines": [ "You'll need wood first - chop trees with your axe, then place a Cabin from the build menu. Tips are on your HUD." ],
       "responses": [ { "buttonText": "Got it.", "nextNodeId": "end" } ]
     },
     {

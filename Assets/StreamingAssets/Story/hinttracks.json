@@ -11,7 +11,16 @@
       { "tipText": "Cook your fish at a fire, then eat it.", "advanceEvent": "OnCookedFoodEaten" }
     ] },
     { "id": "shelter", "objectiveId": "obj_shelter", "entries": [
+      { "tipText": "Chop trees with your axe to gather 50 wood.", "gatherWoodTarget": 50 },
       { "tipText": "Open the build menu and place a Cabin to make a shelter.", "advanceEvent": "OnShelterBuilt" }
+    ] },
+    { "id": "flashlight", "entries": [
+      { "tipText": "Press E to switch on your flashlight - it starts at half brightness.", "advanceEvent": "OnFlashlightToggled" },
+      { "tipText": "Press E again for full brightness.", "advanceEvent": "OnFlashlightToggled" },
+      { "tipText": "Press E once more to switch it off. That's the full cycle.", "advanceEvent": "OnFlashlightToggled" }
+    ] },
+    { "id": "map", "entries": [
+      { "tipText": "Open your phone and launch the Map app.", "advanceEvent": "OnMapOpened" }
     ] }
   ]
 }

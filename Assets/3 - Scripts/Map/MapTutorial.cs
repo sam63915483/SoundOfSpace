@@ -44,10 +44,15 @@ public class MapTutorial : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
+    /// Fired every time the player opens the map (before any state gating), so the optional
+    /// on-ask map hint tip can dismiss itself once they've actually opened it.
+    public static event System.Action OnOpened;
+
     // Called by SolarSystemMapController.OpenMap. First call kicks off the
     // tutorial; subsequent calls resume after a Pause (map close).
     public void OnMapOpened()
     {
+        OnOpened?.Invoke();
         if (state == State.Finished) return;
         // Pill moves to the LEFT for the duration of map mode so it doesn't
         // collide with the right-anchored legend.
