@@ -338,6 +338,9 @@ public class PistolController : MonoBehaviour
                 damageable.ApplyKnockback(forward, knockbackDistance, knockbackDuration);
                 damageable.TakeDamage(damagePerShot);
 
+                // Blood burst out of the entry wound, back toward the shooter.
+                BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward);
+
                 var mgr = CameraEffectsManager.Instance;
                 if (mgr != null && mgr.MasterEnabled && mgr.Input != null && mgr.Input.fxEnemyHitMicroShake
                     && CameraShake.Instance != null)
