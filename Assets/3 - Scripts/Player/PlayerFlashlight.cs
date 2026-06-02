@@ -52,9 +52,11 @@ public class PlayerFlashlight : MonoBehaviour
     [Tooltip("Speed at which walk factor reaches 1.0 (m/s).")]
     public float walkingTopSpeed = 4f;
 
-    // 3-mode toggle (E cycles Off → Half → Full → Off). Half = 50% of
-    // minBrightness, Full = 100%. enabled/disabled mirrors the mode.
-    public enum Mode { Off = 0, Half = 1, Full = 2 }
+    // 4-mode toggle (E cycles Off → Quarter → Half → Full → Off). Quarter = 25%,
+    // Half = 50%, Full = 100% of minBrightness. enabled/disabled mirrors the mode.
+    // Quarter is appended at the END (=3, not inserted between Off and Half) so
+    // existing saves that stored Half=1 / Full=2 still map to the right mode.
+    public enum Mode { Off = 0, Half = 1, Full = 2, Quarter = 3 }
 
     /// Fired once per user toggle (each E press), AFTER the mode changes. The optional
     /// on-ask flashlight hint track advances its tips on this.
@@ -138,7 +140,7 @@ public class PlayerFlashlight : MonoBehaviour
         }
 
         // Configurable keyboard key OR controller Y button. Cycles
-        // Off → Half (50%) → Full (100%) → Off.
+        // Off → Quarter (25%) → Half (50%) → Full (100%) → Off.
         if (TutorialGate.GetKeyDown(toggleKey, TutorialAbility.Flashlight) ||
             TutorialGate.FlashlightPressed(TutorialAbility.Flashlight))
         {
@@ -156,7 +158,12 @@ public class PlayerFlashlight : MonoBehaviour
             ? 1f - microDriftAmount * (Mathf.PerlinNoise(Time.time * 3f, 0f) - 0.5f)
             : 1f;
 
-        float modeMultiplier = (_mode == Mode.Half) ? 0.5f : 1f;
+        float modeMultiplier = _mode switch
+        {
+            Mode.Quarter => 0.25f,
+            Mode.Half    => 0.5f,
+            _            => 1f,
+        };
         float finalIntensity = _baseIntensity * micro * modeMultiplier * _stutterMultiplier * _dyingMultiplier;
         flashlight.intensity = finalIntensity;
         if (halo != null) halo.brightness = finalIntensity * haloIntensityMultiplier;
@@ -206,9 +213,10 @@ public class PlayerFlashlight : MonoBehaviour
     {
         Mode next = _mode switch
         {
-            Mode.Off  => Mode.Half,
-            Mode.Half => Mode.Full,
-            _         => Mode.Off,
+            Mode.Off     => Mode.Quarter,
+            Mode.Quarter => Mode.Half,
+            Mode.Half    => Mode.Full,
+            _            => Mode.Off,
         };
         ApplyMode(next);
         OnToggled?.Invoke();

@@ -56,7 +56,7 @@
     {
       "id": "m_flashlight",
       "speaker": "AI",
-      "lines": [ "Your flashlight cycles with E: once for half brightness, again for full, once more to switch it off. I'll put the steps on your HUD." ],
+      "lines": [ "Your flashlight cycles through four settings with E: first quarter brightness, then half, then full, then off again. I'll put the steps on your HUD." ],
       "responses": [
         { "buttonText": "Got it.", "nextNodeId": "m0", "startHintTrack": "flashlight" }
       ]
