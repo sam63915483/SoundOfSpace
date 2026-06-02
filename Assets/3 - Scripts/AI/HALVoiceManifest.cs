@@ -14,10 +14,12 @@ using System.Text.RegularExpressions;
 /// clip). Authoring discipline: change the line in one place, then
 /// regenerate the clip via the Coplay TTS tool.
 ///
-/// Voice ID used at generation time: pNInz6obpgDQGcFmaJgB (ElevenLabs
-/// "Adam" — deep male narrator). If we ever re-generate the bank with
-/// a different voice, leave the filenames the same so the manifest
-/// doesn't need to change.
+/// Voice ID used at generation time: JBFqnCBsd6RMkjVDRZzb (ElevenLabs
+/// "George" — British male). The whole bank was regenerated with this one
+/// voice for consistency, including the per-planet atmosphere clips and the
+/// vitals/ship/orbit/concert pattern-family clips (previously silent). If we
+/// ever re-generate again with a different voice, leave the filenames the
+/// same so the manifest doesn't need to change.
 /// </summary>
 public static class HALVoiceManifest
 {
