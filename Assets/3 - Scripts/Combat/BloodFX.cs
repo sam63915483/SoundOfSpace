@@ -113,9 +113,15 @@ public class BloodFX : MonoBehaviour
         // space pins them to the moving body.
         ForceLocalSimulationSpace(fx);
 
-        // Attach to the hit enemy so the blood moves with it; otherwise parent
-        // under the nearest planet so floating-origin shifts don't teleport it.
-        Transform parent = attachTo != null ? attachTo : ResolveNearestPlanet(point);
+        // Attach to the nearest BONE of the hit enemy (not just the root) so the
+        // blood rides the body through animation AND ragdoll: on death that bone
+        // becomes a ragdoll bone, so the fountain falls and tumbles with the
+        // corpse, still bleeding, instead of being left behind at the standing
+        // spot. Falls back to the nearest planet for non-enemy hits so
+        // floating-origin shifts don't teleport it.
+        Transform parent = attachTo != null
+            ? FindNearestDescendant(attachTo, spawnPos)
+            : ResolveNearestPlanet(point);
         if (parent != null) fx.transform.SetParent(parent, worldPositionStays: true);
 
         DisableColliders(fx);
@@ -169,6 +175,21 @@ public class BloodFX : MonoBehaviour
     {
         foreach (var col in go.GetComponentsInChildren<Collider>(true))
             col.enabled = false;
+    }
+
+    // Nearest transform (bone) within root's hierarchy to a world point — used
+    // to attach the spray to the body part it hit so it follows animation and
+    // ragdoll. Cheap enough for a per-shot event (rig is a few dozen bones).
+    static Transform FindNearestDescendant(Transform root, Vector3 worldPoint)
+    {
+        Transform best = root;
+        float bestSqr = (root.position - worldPoint).sqrMagnitude;
+        foreach (var t in root.GetComponentsInChildren<Transform>(true))
+        {
+            float d = (t.position - worldPoint).sqrMagnitude;
+            if (d < bestSqr) { bestSqr = d; best = t; }
+        }
+        return best;
     }
 
     static void ForceLocalSimulationSpace(GameObject go)
