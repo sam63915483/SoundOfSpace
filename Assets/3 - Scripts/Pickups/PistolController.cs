@@ -339,7 +339,9 @@ public class PistolController : MonoBehaviour
                 damageable.TakeDamage(damagePerShot);
 
                 // Blood burst out of the entry wound, back toward the shooter.
-                BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward);
+                // Parent it to the hit collider so it rides with a moving enemy.
+                BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward,
+                    hit.collider != null ? hit.collider.transform : null);
 
                 var mgr = CameraEffectsManager.Instance;
                 if (mgr != null && mgr.MasterEnabled && mgr.Input != null && mgr.Input.fxEnemyHitMicroShake

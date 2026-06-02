@@ -33,6 +33,20 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Seconds the pool takes to fade out before it is destroyed.")]
     [SerializeField] float poolFadeSeconds = 3f;
 
+    // New serialized fields are appended at the END so existing scene/prefab
+    // serialization of the fields above is never reordered.
+    [Header("Spray Animation")]
+    [Tooltip("Seconds for the spray to grow from zero to its full size when it spawns.")]
+    [SerializeField] float sprayGrowSeconds = 0.5f;
+    [Tooltip("Seconds for the spray to shrink back to zero at the end of its life.")]
+    [SerializeField] float sprayShrinkSeconds = 0.5f;
+
+    [Header("Rendering")]
+    [Tooltip("Built-in RP has no camera depth texture by default, so some Piloto particle layers (e.g. the depth-based blood droplets) render invisible in the Game view even though they show in the editor. Leaving this on enables DepthTextureMode.Depth on the main camera so the spray renders the same in game as in the editor.")]
+    [SerializeField] bool ensureCameraDepth = true;
+
+    Camera _depthCam;
+
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -44,11 +58,33 @@ public class BloodFX : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
+    void Start() { ApplyCameraDepth(); }
+
+    void Update()
+    {
+        // Lazily (re)apply if the main camera wasn't ready at Start or got
+        // swapped. Camera.main is only queried while _depthCam is null.
+        if (ensureCameraDepth && _depthCam == null) ApplyCameraDepth();
+    }
+
+    void ApplyCameraDepth()
+    {
+        if (!ensureCameraDepth) return;
+        var cam = Camera.main;
+        if (cam != null)
+        {
+            cam.depthTextureMode |= DepthTextureMode.Depth;
+            _depthCam = cam;
+        }
+    }
+
     /// <summary>
     /// Spawn a blood burst at a bullet hit point, aimed back along the surface
-    /// normal (toward the shooter).
+    /// normal (toward the shooter). When attachTo is supplied (the hit object),
+    /// the spray is parented to it so it rides with a moving enemy; otherwise it
+    /// parents under the nearest planet to survive floating-origin shifts.
     /// </summary>
-    public void SpawnSpray(Vector3 point, Vector3 normal, Vector3 shotDir)
+    public void SpawnSpray(Vector3 point, Vector3 normal, Vector3 shotDir, Transform attachTo = null)
     {
         if (sprayPrefab == null) return;
 
@@ -62,13 +98,20 @@ public class BloodFX : MonoBehaviour
         var fx = Instantiate(sprayPrefab, point, rot);
         if (!Mathf.Approximately(sprayScale, 1f)) fx.transform.localScale *= sprayScale;
 
-        // Parent under the nearest planet so floating-origin shifts don't
-        // teleport the FX during its short life.
-        Transform planet = ResolveNearestPlanet(point);
-        if (planet != null) fx.transform.SetParent(planet, worldPositionStays: true);
+        // Attach to the hit enemy so the blood moves with it; otherwise parent
+        // under the nearest planet so floating-origin shifts don't teleport it.
+        Transform parent = attachTo != null ? attachTo : ResolveNearestPlanet(point);
+        if (parent != null) fx.transform.SetParent(parent, worldPositionStays: true);
 
         DisableColliders(fx);
-        Destroy(fx, sprayLifetime);
+
+        // Capture the target scale AFTER parenting — SetParent rescales
+        // localScale to preserve world size, so this is the correct local target
+        // for the grow/shrink animation (handles non-uniformly scaled enemies).
+        Vector3 targetScale = fx.transform.localScale;
+        var anim = fx.GetComponent<BloodSpray>();
+        if (anim == null) anim = fx.AddComponent<BloodSpray>();
+        anim.Init(sprayLifetime, sprayGrowSeconds, sprayShrinkSeconds, targetScale);
     }
 
     /// <summary>
