@@ -45,6 +45,9 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Built-in RP has no camera depth texture by default, so some Piloto particle layers (e.g. the depth-based blood droplets) render invisible in the Game view even though they show in the editor. Leaving this on enables DepthTextureMode.Depth on the main camera so the spray renders the same in game as in the editor.")]
     [SerializeField] bool ensureCameraDepth = true;
 
+    [Tooltip("Metres the spray spawn point is pushed back along the surface normal, INTO the body, so the blood reads as coming from inside the enemy instead of floating a few cm off the collider surface. Keep small so it doesn't sink too deep.")]
+    [SerializeField] float sprayDepthInset = 0.15f;
+
     Camera _depthCam;
 
     void Awake()
@@ -95,7 +98,11 @@ public class BloodFX : MonoBehaviour
         // the shooter. sprayRotationOffset stays available for per-prefab tweaks.
         Quaternion rot = Quaternion.FromToRotation(Vector3.up, dir) * Quaternion.Euler(sprayRotationOffset);
 
-        var fx = Instantiate(sprayPrefab, point, rot);
+        // Push the spawn slightly back along the normal, into the body, so the
+        // blood looks like it erupts from inside the enemy rather than off the
+        // capsule collider's surface (which sits a few cm proud of the mesh).
+        Vector3 spawnPos = point - dir * sprayDepthInset;
+        var fx = Instantiate(sprayPrefab, spawnPos, rot);
         if (!Mathf.Approximately(sprayScale, 1f)) fx.transform.localScale *= sprayScale;
 
         // Simulate every particle layer in LOCAL space so the blood rides with

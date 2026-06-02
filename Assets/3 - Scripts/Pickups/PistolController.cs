@@ -336,12 +336,15 @@ public class PistolController : MonoBehaviour
                 // captured (TakeDamage may trigger Die which reads the cached
                 // direction for the ragdoll's backwards momentum).
                 damageable.ApplyKnockback(forward, knockbackDistance, knockbackDuration);
-                damageable.TakeDamage(damagePerShot);
 
                 // Blood burst out of the entry wound, back toward the shooter.
-                // Parent it to the hit collider so it rides with a moving enemy.
+                // Spawn BEFORE TakeDamage: a kill shot triggers death (ragdoll +
+                // collider disable) which otherwise suppresses the spray. Parent
+                // it to the hit collider so it rides with a moving enemy.
                 BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward,
                     hit.collider != null ? hit.collider.transform : null);
+
+                damageable.TakeDamage(damagePerShot);
 
                 var mgr = CameraEffectsManager.Instance;
                 if (mgr != null && mgr.MasterEnabled && mgr.Input != null && mgr.Input.fxEnemyHitMicroShake
