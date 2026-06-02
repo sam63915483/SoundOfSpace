@@ -854,11 +854,6 @@ public class EnemyController : MonoBehaviour, IDamageable
             ? (rb.position - parentPlanet.Position).normalized
             : Vector3.up;
 
-        // Blood pool on the ground at the enemy's feet, oriented to the surface.
-        Vector3 bloodFootPoint = rb.position - up * _scaledGroundedOffset;
-        BloodFX.Instance?.SpawnPool(bloodFootPoint, up,
-            parentPlanet != null ? parentPlanet.transform : null);
-
         // The outer body becomes a stationary script container; the ragdoll
         // bones drive all visible motion now. Disable the outer collider so
         // the player can walk through the corpse without bumping a phantom
