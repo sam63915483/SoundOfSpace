@@ -1,0 +1,1101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Water Fill UI — Design Options</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-deep: #06101c;
+    --pill-bg-top: #08122080;
+    --pill-bg-bot: #0A1828F0;
+    --pill-border: #78C8FF73;
+    --accent: #5CC8FF;
+    --accent-dim: #5CC8FFB3;
+    --accent-glow: #60C8FF4D;
+    --label: #EAF6FF;
+    --header-tag: #5CC8FFD9;
+    --water-a: #7BE2FF;
+    --water-b: #4A8BFF;
+    --amber-a: #FFC477;
+    --amber-b: #FF8A4C;
+    --money-gold: #FFC24A;
+    --wood-brown: #D4A06B;
+    --health-a: #FF6B9F;
+    --hunger-a: #FFC477;
+    --thirst-a: #7BE2FF;
+    --power-a: #B88CFF;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 32px;
+    font-family: 'Share Tech Mono', 'Consolas', monospace;
+    background: radial-gradient(ellipse at top, #0e1a30 0%, #04080f 70%);
+    color: var(--label);
+    min-height: 100vh;
+  }
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-transform: uppercase;
+    font-size: 22px;
+    margin: 0 0 4px 0;
+  }
+  .subtitle { color: var(--label); opacity: 0.6; margin: 0 0 32px 0; font-size: 13px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(640px, 1fr));
+    gap: 24px;
+    max-width: 1700px;
+    margin: 0 auto;
+  }
+
+  .option {
+    background: linear-gradient(180deg, #0c1828, #060d18);
+    border: 1px solid #1a3050;
+    border-radius: 4px;
+    padding: 16px;
+  }
+  .option-header {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: var(--accent);
+    font-size: 14px;
+    text-transform: uppercase;
+    margin: 0 0 4px 0;
+  }
+  .option-desc {
+    opacity: 0.6;
+    font-size: 12px;
+    margin: 0 0 16px 0;
+    min-height: 32px;
+  }
+
+  /* Simulated game screen */
+  .screen {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background:
+      radial-gradient(ellipse at 30% 40%, #1a2440 0%, transparent 60%),
+      radial-gradient(ellipse at 70% 60%, #2a1840 0%, transparent 60%),
+      radial-gradient(circle at 80% 20%, #ffffff15 0%, transparent 2%),
+      radial-gradient(circle at 20% 80%, #ffffff10 0%, transparent 1.5%),
+      radial-gradient(circle at 50% 30%, #ffffff10 0%, transparent 1%),
+      #04080f;
+    overflow: hidden;
+    border: 1px solid #1a3050;
+    border-radius: 2px;
+  }
+
+  /* Star sprinkle */
+  .screen::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 12% 22%, #fff 100%, transparent),
+      radial-gradient(1px 1px at 88% 70%, #fff8 100%, transparent),
+      radial-gradient(1px 1px at 65% 15%, #fff8 100%, transparent),
+      radial-gradient(1px 1px at 35% 85%, #fff 100%, transparent),
+      radial-gradient(1px 1px at 50% 50%, #fff5 100%, transparent),
+      radial-gradient(1px 1px at 75% 35%, #fff8 100%, transparent),
+      radial-gradient(1px 1px at 22% 60%, #fff 100%, transparent);
+    pointer-events: none;
+  }
+
+  /* Beveled panel — top-left + bottom-right corners cut */
+  .beveled {
+    background: linear-gradient(180deg, var(--pill-bg-top), var(--pill-bg-bot));
+    border: 1px solid var(--pill-border);
+    clip-path: polygon(
+      10px 0,
+      100% 0,
+      100% calc(100% - 10px),
+      calc(100% - 10px) 100%,
+      0 100%,
+      0 10px
+    );
+  }
+  .beveled-inner {
+    position: relative;
+    padding: 10px 14px;
+  }
+  .beveled-inner::before {
+    content: '';
+    position: absolute;
+    left: 6px;
+    top: 8px;
+    bottom: 8px;
+    width: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent-glow);
+    animation: led-pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes led-pulse {
+    0%, 100% { background: var(--accent-dim); }
+    50% { background: var(--accent); }
+  }
+
+  /* Vitals card placeholder (top-left) */
+  .vitals {
+    position: absolute;
+    top: 12px; left: 12px;
+    width: 200px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    z-index: 2;
+  }
+  .vitals .header-tag {
+    color: var(--header-tag); letter-spacing: 3px; font-weight: bold; margin-bottom: 6px;
+  }
+  .stat-row {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 3px;
+    font-size: 7px;
+  }
+  .stat-row .lbl { width: 62px; color: var(--label); letter-spacing: 1px; font-weight: bold; }
+  .stat-row .bar { flex: 1; height: 5px; background: #0F192A; border-radius: 1px; overflow: hidden; }
+  .stat-row .fill { height: 100%; }
+  .stat-row .pct { width: 26px; text-align: right; }
+
+  .fill-health { background: linear-gradient(90deg, var(--health-a), #E63952); }
+  .fill-hunger { background: linear-gradient(90deg, var(--hunger-a), var(--amber-b)); }
+  .fill-thirst { background: linear-gradient(90deg, var(--thirst-a), var(--water-b)); }
+  .fill-power  { background: linear-gradient(90deg, var(--power-a), #C94FFF); }
+  .fill-water  { background: linear-gradient(90deg, var(--water-a), var(--water-b)); }
+
+  /* Hotbar placeholder (bottom-center) */
+  .hotbar {
+    position: absolute;
+    left: 50%; bottom: 14px;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 6px;
+    z-index: 2;
+  }
+  .slot {
+    width: 36px; height: 36px;
+    background: #0a1828dd;
+    border: 1px solid #5CC8FF55;
+    border-radius: 2px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 8px;
+    color: var(--header-tag);
+    position: relative;
+  }
+  .slot::before {
+    content: attr(data-key);
+    position: absolute; top: 2px; left: 3px;
+    font-size: 6px; opacity: 0.7;
+  }
+  .slot.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 8px var(--accent-glow), inset 0 0 6px var(--accent-glow);
+  }
+
+  /* Wallet chips (bottom-right) */
+  .wallet {
+    position: absolute;
+    right: 12px; bottom: 14px;
+    display: flex; flex-direction: column; gap: 4px;
+    align-items: flex-end;
+    z-index: 2;
+  }
+  .chip {
+    display: flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    min-width: 110px;
+    background: linear-gradient(180deg, #142C48F2, #0E1E34F2);
+    border: 1px solid #78C8FF8C;
+    border-radius: 18px;
+    font-size: 7px;
+    letter-spacing: 1px;
+  }
+  .chip .chip-label { color: #A8D2EBCC; font-weight: bold; flex: 1; }
+  .chip .chip-val { font-weight: bold; }
+  .chip-money .chip-val { color: var(--money-gold); }
+  .chip-wood .chip-val { color: var(--wood-brown); }
+
+  /* ──────────────────────────────────────────────────────────────── */
+  /* OPTION 1 — Bottom-left chip                                       */
+  /* ──────────────────────────────────────────────────────────────── */
+  .water-bottom-left {
+    position: absolute;
+    left: 12px; bottom: 14px;
+    z-index: 3;
+  }
+  .water-bottom-left .chip {
+    background: linear-gradient(180deg, #142C48F2, #0E1E34F2);
+    border-color: #78C8FF8C;
+    min-width: 150px;
+    padding: 6px 10px;
+    gap: 8px;
+    font-size: 8px;
+  }
+  .water-bottom-left .chip-bar {
+    flex: 1; height: 5px; background: #0F192A; border-radius: 1px; overflow: hidden;
+  }
+  .water-bottom-left .chip-fill {
+    height: 100%; width: 84%;
+    background: linear-gradient(90deg, var(--water-a), var(--water-b));
+  }
+  .water-bottom-left .drop {
+    width: 8px; height: 10px;
+    background: linear-gradient(180deg, var(--water-a), var(--water-b));
+    border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+    transform: rotate(-15deg);
+  }
+  .water-bottom-left .pct { color: var(--water-a); font-weight: bold; }
+
+  /* ──────────────────────────────────────────────────────────────── */
+  /* OPTION 2 — Integrated as 5th vitals row                           */
+  /* ──────────────────────────────────────────────────────────────── */
+  .vitals-with-water .water-row {
+    margin-top: 2px;
+    padding-top: 3px;
+    border-top: 1px dashed #5CC8FF40;
+    animation: fade-in 0.4s ease-out;
+  }
+  @keyframes fade-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ──────────────────────────────────────────────────────────────── */
+  /* OPTION 3 — Above-hotbar pill with live bottle silhouette         */
+  /* ──────────────────────────────────────────────────────────────── */
+  .water-above-hotbar {
+    position: absolute;
+    left: 50%; bottom: 70px;
+    transform: translateX(-50%);
+    z-index: 3;
+    width: 200px;
+  }
+  .water-above-hotbar .row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .bottle-icon {
+    position: relative;
+    width: 18px; height: 28px;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .bottle-neck {
+    width: 6px; height: 4px;
+    border: 1.4px solid var(--accent);
+    border-bottom: none;
+    border-radius: 1px;
+    background: #04080f;
+  }
+  .bottle-body {
+    width: 16px; height: 22px;
+    border: 1.4px solid var(--accent);
+    border-radius: 0 0 3px 3px;
+    position: relative;
+    overflow: hidden;
+    background: #04080f;
+    margin-top: -1px;
+  }
+  .bottle-fill {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    background: linear-gradient(180deg, var(--water-a), var(--water-b));
+    box-shadow: 0 -2px 4px var(--water-a)80;
+    transition: height 0.3s ease-out;
+  }
+  .bottle-fill::after {
+    /* surface wobble line */
+    content: '';
+    position: absolute;
+    top: -1px; left: 0; right: 0;
+    height: 2px;
+    background: var(--water-a);
+    border-radius: 50%;
+    opacity: 0.8;
+  }
+  .water-above-hotbar .lbl {
+    color: var(--header-tag); letter-spacing: 3px;
+    font-size: 8px; font-weight: bold;
+  }
+  .water-above-hotbar .pct {
+    margin-left: auto;
+    color: var(--water-a);
+    font-weight: bold;
+    font-size: 11px;
+  }
+  /* Low-water amber pulse demo */
+  .low-water .bottle-fill {
+    background: linear-gradient(180deg, var(--amber-a), var(--amber-b));
+    animation: amber-pulse 1s ease-in-out infinite;
+  }
+  .low-water .pct {
+    color: var(--amber-a);
+    animation: amber-pulse 1s ease-in-out infinite;
+  }
+  @keyframes amber-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+
+  /* ──────────────────────────────────────────────────────────────── */
+  /* OPTION 4 — Floating bottle icon (no pill)                         */
+  /* ──────────────────────────────────────────────────────────────── */
+  .water-floating {
+    position: absolute;
+    left: 60px; bottom: 90px;
+    z-index: 3;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .water-floating .bottle-icon {
+    width: 30px; height: 50px;
+    filter: drop-shadow(0 0 8px #5CC8FF80);
+  }
+  .water-floating .bottle-neck {
+    width: 10px; height: 6px;
+    border-width: 2px;
+  }
+  .water-floating .bottle-body {
+    width: 26px; height: 42px;
+    border-width: 2px;
+    border-radius: 0 0 5px 5px;
+  }
+  .water-floating .pct {
+    font-size: 14px;
+    color: var(--water-a);
+    font-weight: bold;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 1px;
+  }
+
+  /* Variant labels */
+  .variant-strip {
+    display: flex; gap: 16px; justify-content: center; align-items: center;
+    margin-top: 10px;
+    font-size: 11px;
+    opacity: 0.6;
+  }
+  .variant-strip span { padding: 2px 8px; background: #0a1828; border-radius: 2px; }
+
+  /* ───────────────────────────────────────────────────────────────── */
+  /* Above-hotbar shared positioning                                    */
+  /* ───────────────────────────────────────────────────────────────── */
+  .above-hotbar {
+    position: absolute;
+    left: 50%; bottom: 70px;
+    transform: translateX(-50%);
+    z-index: 3;
+  }
+
+  /* Horizontal fill bar (used by several variants) */
+  .h-bar {
+    flex: 1;
+    height: 8px;
+    background: #0F192A;
+    border-radius: 1px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid #5CC8FF35;
+  }
+  .h-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--water-a), var(--water-b));
+    box-shadow: 0 0 6px var(--water-a)90, inset 0 0 4px #ffffff20;
+  }
+
+  /* Segmented battery cells */
+  .segments {
+    flex: 1;
+    display: flex;
+    gap: 2px;
+    height: 10px;
+  }
+  .segments .cell {
+    flex: 1;
+    background: #0F192A;
+    border: 1px solid #5CC8FF25;
+    border-radius: 1px;
+  }
+  .segments .cell.lit {
+    background: linear-gradient(180deg, var(--water-a), var(--water-b));
+    border-color: var(--water-a);
+    box-shadow: 0 0 4px var(--water-a)80;
+  }
+
+  /* Water drop icon */
+  .drop-icon {
+    width: 14px; height: 18px;
+    background: linear-gradient(180deg, var(--water-a), var(--water-b));
+    border-radius: 50% 50% 50% 50% / 65% 65% 35% 35%;
+    box-shadow: 0 0 6px var(--water-a)60, inset -1px -2px 2px #00000040;
+    flex-shrink: 0;
+  }
+
+  /* Wide horizontal bottle (V5) */
+  .wide-bottle {
+    width: 60px; height: 18px;
+    border: 1.5px solid var(--accent);
+    border-radius: 2px 8px 8px 2px;
+    background: #04080f;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+  .wide-bottle-fill {
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--water-a), var(--water-b));
+    box-shadow: inset 0 0 4px #ffffff20;
+  }
+  .wide-bottle-neck {
+    position: absolute;
+    left: -3px; top: 4px;
+    width: 4px; height: 8px;
+    border: 1.5px solid var(--accent);
+    border-right: none;
+    border-radius: 2px 0 0 2px;
+    background: #04080f;
+  }
+
+  /* Pill-as-bar (V6 — entire pill is the fill) */
+  .pill-bar-bg {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    clip-path: polygon(
+      10px 0, 100% 0, 100% calc(100% - 10px),
+      calc(100% - 10px) 100%, 0 100%, 0 10px
+    );
+  }
+  .pill-bar-fill {
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    background: linear-gradient(90deg, var(--water-a)90, var(--water-b)50);
+    box-shadow: 2px 0 8px var(--water-a)60;
+  }
+
+  /* Circular ring */
+  .ring-wrap {
+    width: 32px; height: 32px;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .ring-svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring-track { fill: none; stroke: #0F192A; stroke-width: 3; }
+  .ring-fill { fill: none; stroke: var(--water-a); stroke-width: 3; stroke-linecap: round;
+               filter: drop-shadow(0 0 3px var(--water-a)); }
+  .ring-center {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 9px; color: var(--water-a); font-weight: bold;
+  }
+
+  .new-pill .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 2px 8px 2px 14px;
+    width: 210px;
+  }
+  .new-pill .row .lbl {
+    color: var(--header-tag); letter-spacing: 3px;
+    font-size: 8px; font-weight: bold;
+  }
+  .new-pill .row .pct {
+    color: var(--water-a);
+    font-weight: bold;
+    font-size: 11px;
+    min-width: 32px;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+
+<h1>Water Fill UI — Design Options</h1>
+<p class="subtitle">Live mockups. Each option shown in-context with the vitals card, hotbar, and wallet chips. Bottle fill levels: 84% (left screen), 12% (right screen, shows low-water amber pulse).</p>
+
+<div class="grid">
+
+  <!-- ─── OPTION 1: Bottom-left chip ─────────────────────────────── -->
+  <div class="option">
+    <div class="option-header">Option 1 · Bottom-left chip</div>
+    <div class="option-desc">Mirrors the wallet chip family in the opposite corner. Pill shape, label + bar + percent. Most consistent with the existing bottom-right chips.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot active" data-key="1">🪓</div>
+        <div class="slot" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="water-bottom-left">
+        <div class="chip">
+          <span class="drop"></span>
+          <span class="chip-label">WATER</span>
+          <div class="chip-bar"><div class="chip-fill"></div></div>
+          <span class="pct">84%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── OPTION 2: 5th vitals row ───────────────────────────────── -->
+  <div class="option">
+    <div class="option-header">Option 2 · 5th vitals row</div>
+    <div class="option-desc">Adds a WATER row to the existing vitals card at top-left. Same bar styling. Slides in when bottle equipped, away when unequipped.</div>
+    <div class="screen">
+      <div class="vitals vitals-with-water">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+        <div class="stat-row water-row"><span class="lbl">WATER</span><div class="bar"><div class="fill fill-water" style="width:84%"></div></div><span class="pct">84%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── OPTION 3: Above-hotbar pill with live bottle ───────────── -->
+  <div class="option">
+    <div class="option-header">Option 3 · Above-hotbar pill (live bottle)</div>
+    <div class="option-desc">Beveled pill above the hotbar. Left edge is a live bottle outline that fills bottom→top. Cyan glow when full, amber pulse when &lt; 20%.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="water-above-hotbar">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row" style="padding-left: 8px;">
+              <div class="bottle-icon">
+                <div class="bottle-neck"></div>
+                <div class="bottle-body">
+                  <div class="bottle-fill" style="height: 84%"></div>
+                </div>
+              </div>
+              <span class="lbl">WATER</span>
+              <span class="pct">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="variant-strip">
+      <span>full glow</span>
+      <span>→ amber pulse below 20%</span>
+    </div>
+  </div>
+
+  <!-- ─── OPTION 4: Floating bottle icon ─────────────────────────── -->
+  <div class="option">
+    <div class="option-header">Option 4 · Floating bottle (no pill)</div>
+    <div class="option-desc">Minimal — just the bottle silhouette with translucent fill, percent floating to the right. No surrounding panel. Cleanest look, least real estate.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="water-floating">
+        <div class="bottle-icon">
+          <div class="bottle-neck"></div>
+          <div class="bottle-body">
+            <div class="bottle-fill" style="height: 84%"></div>
+          </div>
+        </div>
+        <span class="pct">84%</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BONUS: Option 3 at low water (amber pulse demo) ──────── -->
+  <div class="option">
+    <div class="option-header">Option 3 — low-water state (12%)</div>
+    <div class="option-desc">Same as Option 3 but showing the amber-pulse warning state. Fill turns amber, pct text pulses, drawing the eye when the player is about to run out.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:18%"></div></div><span class="pct">18%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="water-above-hotbar low-water">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row" style="padding-left: 8px;">
+              <div class="bottle-icon">
+                <div class="bottle-neck"></div>
+                <div class="bottle-body">
+                  <div class="bottle-fill" style="height: 12%"></div>
+                </div>
+              </div>
+              <span class="lbl">WATER</span>
+              <span class="pct">12%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── BONUS: Option 1 alt — larger pill ───────────────────── -->
+  <div class="option">
+    <div class="option-header">Option 1 alt · Bottom-left larger card</div>
+    <div class="option-desc">Same bottom-left position as Option 1, but full beveled card matching the vitals palette instead of a thin chip. More visual weight.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div style="position:absolute; left:12px; bottom:14px; z-index:3; width:200px;">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div style="display:flex; align-items:center; gap:10px; padding-left:8px;">
+              <div class="bottle-icon">
+                <div class="bottle-neck"></div>
+                <div class="bottle-body">
+                  <div class="bottle-fill" style="height: 84%"></div>
+                </div>
+              </div>
+              <span class="lbl" style="color:var(--header-tag); letter-spacing:3px; font-size:8px; font-weight:bold;">WATER</span>
+              <span style="margin-left:auto; color:var(--water-a); font-weight:bold; font-size:11px;">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</div>
+
+<h1 style="margin-top:48px;">Above-hotbar variants</h1>
+<p class="subtitle">All in the Option 3 position, all match the existing pill style. First three use a horizontal fill bar; last three use bottle / icon-based fills. Pick a letter (A–F) or mix-and-match elements.</p>
+
+<div class="grid">
+
+  <!-- ─── A: Bottle + horizontal bar ─────────────────────────────── -->
+  <div class="option">
+    <div class="option-header">A · Bottle + horizontal bar</div>
+    <div class="option-desc">Live bottle silhouette on the left AND a horizontal gradient bar in the middle. Two redundant readouts — the bottle for character, the bar for instant scan.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row">
+              <div class="bottle-icon">
+                <div class="bottle-neck"></div>
+                <div class="bottle-body">
+                  <div class="bottle-fill" style="height: 84%"></div>
+                </div>
+              </div>
+              <span class="lbl">WATER</span>
+              <div class="h-bar"><div class="h-bar-fill" style="width: 84%"></div></div>
+              <span class="pct">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── B: Horizontal bar only (clean) ─────────────────────────── -->
+  <div class="option">
+    <div class="option-header">B · Horizontal bar only</div>
+    <div class="option-desc">No bottle, no icon. Just label, a fat gradient fill bar, and the percent. Matches the vitals card's bar styling exactly — most consistent with the existing HUD.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row">
+              <span class="lbl">WATER</span>
+              <div class="h-bar" style="height:10px;"><div class="h-bar-fill" style="width: 84%"></div></div>
+              <span class="pct">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── C: Segmented battery bar ───────────────────────────────── -->
+  <div class="option">
+    <div class="option-header">C · Segmented battery</div>
+    <div class="option-desc">10 cells light up bottom-to-top. Reads at a glance like a battery — each segment is 10%. Very legible at small sizes.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row">
+              <span class="lbl">WATER</span>
+              <div class="segments">
+                <div class="cell lit"></div><div class="cell lit"></div><div class="cell lit"></div>
+                <div class="cell lit"></div><div class="cell lit"></div><div class="cell lit"></div>
+                <div class="cell lit"></div><div class="cell lit"></div><div class="cell"></div><div class="cell"></div>
+              </div>
+              <span class="pct">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── D: Drop icon + bar ─────────────────────────────────────── -->
+  <div class="option">
+    <div class="option-header">D · Water drop + bar</div>
+    <div class="option-desc">Stylized water-drop icon instead of a bottle. Simpler silhouette, plus the horizontal bar for fill. Less literal than the bottle.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row">
+              <div class="drop-icon"></div>
+              <span class="lbl">WATER</span>
+              <div class="h-bar"><div class="h-bar-fill" style="width: 84%"></div></div>
+              <span class="pct">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── E: Wide horizontal bottle ──────────────────────────────── -->
+  <div class="option">
+    <div class="option-header">E · Wide horizontal bottle</div>
+    <div class="option-desc">A flat horizontal bottle that fills left → right. The bottle itself IS the fill bar. Single, unified visual — no separate label/bar split.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row">
+              <span class="lbl">WATER</span>
+              <div class="wide-bottle">
+                <div class="wide-bottle-neck"></div>
+                <div class="wide-bottle-fill" style="width: 84%"></div>
+              </div>
+              <span class="pct">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── F: Pill IS the bar (background fill) ───────────────────── -->
+  <div class="option">
+    <div class="option-header">F · Pill background fill</div>
+    <div class="option-desc">No separate bar. The entire pill background fills left → right with the water level. Label + percent overlay on top. Very clean, almost a "drink-meter".</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled" style="position:relative;">
+          <div class="pill-bar-bg"><div class="pill-bar-fill" style="width: 84%"></div></div>
+          <div class="beveled-inner" style="position:relative; z-index:2;">
+            <div class="row">
+              <div class="bottle-icon">
+                <div class="bottle-neck"></div>
+                <div class="bottle-body">
+                  <div class="bottle-fill" style="height: 84%"></div>
+                </div>
+              </div>
+              <span class="lbl" style="color: #ffffffee; text-shadow: 0 1px 2px #000c;">WATER</span>
+              <span class="pct" style="color: #ffffff; text-shadow: 0 1px 2px #000c;">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── G: Ring + drop ─────────────────────────────────────────── -->
+  <div class="option">
+    <div class="option-header">G · Circular ring</div>
+    <div class="option-desc">Circular ring fills clockwise around the percent. More "instrument panel" feel, less "stat bar". Pairs well with the rest of the sci-fi UI.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled">
+          <div class="beveled-inner">
+            <div class="row" style="gap: 8px; width: auto; padding: 4px 14px 4px 18px;">
+              <div class="ring-wrap">
+                <svg class="ring-svg" viewBox="0 0 36 36">
+                  <circle class="ring-track" cx="18" cy="18" r="15" />
+                  <circle class="ring-fill" cx="18" cy="18" r="15"
+                          stroke-dasharray="79.17" stroke-dashoffset="12.67" />
+                </svg>
+                <div class="ring-center">💧</div>
+              </div>
+              <span class="lbl">WATER</span>
+              <span class="pct" style="margin-left: 12px;">84%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─── H: Tall vertical bar + bottle ──────────────────────────── -->
+  <div class="option">
+    <div class="option-header">H · Bottle + vertical bar</div>
+    <div class="option-desc">Bottle silhouette plus a tall thin vertical bar on the right that also fills bottom-to-top. Two vertical readouts — the bottle as character, the bar as precise readout. The pill is a hair taller to accommodate.</div>
+    <div class="screen">
+      <div class="vitals">
+        <div class="header-tag">// VITALS</div>
+        <div class="stat-row"><span class="lbl">HEALTH</span><div class="bar"><div class="fill fill-health" style="width:92%"></div></div><span class="pct">92%</span></div>
+        <div class="stat-row"><span class="lbl">HUNGER</span><div class="bar"><div class="fill fill-hunger" style="width:80%"></div></div><span class="pct">80%</span></div>
+        <div class="stat-row"><span class="lbl">THIRST</span><div class="bar"><div class="fill fill-thirst" style="width:78%"></div></div><span class="pct">78%</span></div>
+        <div class="stat-row"><span class="lbl">SHIP PWR</span><div class="bar"><div class="fill fill-power" style="width:60%"></div></div><span class="pct">60%</span></div>
+      </div>
+      <div class="hotbar">
+        <div class="slot" data-key="1">🪓</div>
+        <div class="slot active" data-key="2">💧</div>
+        <div class="slot" data-key="3">🎣</div>
+        <div class="slot" data-key="4">🎸</div>
+        <div class="slot" data-key="5">🔫</div>
+      </div>
+      <div class="wallet">
+        <div class="chip chip-money"><span class="chip-label">MONEY</span><span class="chip-val">$1,234</span></div>
+        <div class="chip chip-wood"><span class="chip-label">WOOD</span><span class="chip-val">42</span></div>
+      </div>
+      <div class="above-hotbar new-pill">
+        <div class="beveled">
+          <div class="beveled-inner" style="padding: 14px 18px;">
+            <div class="row" style="align-items: flex-end; gap: 12px;">
+              <div class="bottle-icon">
+                <div class="bottle-neck"></div>
+                <div class="bottle-body">
+                  <div class="bottle-fill" style="height: 84%"></div>
+                </div>
+              </div>
+              <span class="lbl" style="margin-bottom: 4px;">WATER</span>
+              <div style="flex:1;"></div>
+              <span class="pct" style="margin-bottom: 4px;">84%</span>
+              <div style="width: 6px; height: 32px; background:#0F192A; border:1px solid #5CC8FF35; border-radius:1px; overflow:hidden; position:relative;">
+                <div style="position:absolute; left:0; right:0; bottom:0; height:84%;
+                            background: linear-gradient(180deg, var(--water-a), var(--water-b));
+                            box-shadow: 0 0 6px var(--water-a)90;"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p style="text-align:center; margin-top:32px; opacity:0.5; font-size:11px;">
+  Tell me which letter (A–H) — or which elements you want mixed — and I'll build it in Unity.
+</p>
+
+</body>
+</html>

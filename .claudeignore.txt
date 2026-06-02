@@ -1,0 +1,31 @@
+# Unity auto-generated stuff
+Library/
+Temp/
+Logs/
+obj/
+Build/
+Builds/
+
+# Package cache
+Packages/
+PackageManager/
+
+# Unity meta files (usually not needed)
+*.meta
+
+# Asset store stuff you didn't write
+Assets/TextMeshPro/
+Assets/Plugins/
+
+# Large binary assets
+Assets/**/*.png
+Assets/**/*.jpg
+Assets/**/*.fbx
+Assets/**/*.wav
+Assets/**/*.mp3
+Assets/**/*.mp4
+
+# VS project files
+*.csproj
+*.sln
+.vs/

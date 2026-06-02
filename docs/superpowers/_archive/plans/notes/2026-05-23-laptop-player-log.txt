@@ -1,0 +1,500 @@
+Mono path[0] = 'C:/1 - Game 1.1/retepbuild/Solar System 2_Data/Managed'
+Mono config path = 'C:/1 - Game 1.1/retepbuild/MonoBleedingEdge/etc'
+Input System module state changed to: Initialized.
+[PhysX] Initialized MultithreadedTaskDispatcher with 16 workers.
+Initialize engine version: 2022.3.62f3 (96770f904ca7)
+[Subsystems] Discovering subsystems at path C:/1 - Game 1.1/retepbuild/Solar System 2_Data/UnitySubsystems
+GfxDevice: creating device client; threaded=1; jobified=1
+Direct3D:
+    Version:  Direct3D 11.0 [level 11.1]
+    Renderer: NVIDIA GeForce RTX 4060 Laptop GPU (ID=0x28a0)
+    Vendor:   NVIDIA
+    VRAM:     7956 MB
+    Driver:   32.0.15.9144
+Begin MonoManager ReloadAssembly
+- Loaded All Assemblies, in  2.936 seconds
+- Finished resetting the current domain, in  0.001 seconds
+<RI> Initializing input.
+Using Windows.Gaming.Input
+<RI> Input initialized.
+<RI> Initialized touch support.
+[PhysX] Initialized MultithreadedTaskDispatcher with 16 workers.
+UnloadTime: 4.239300 ms
+[ConcertStageHub] Awake — singleton created
+[ControllerUINavigator] Spawned.
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[ConcertAudioDirector] Resolved source='<null>' IsPlaying=False EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertLightProgram] tier=Medium family=MidEnergy choreo=Normal energy=0.000 beats+1 lasers=0 cones=0 strobes=0 fadeMul=0.50 subscribed=True palette=[(0.70,0.00,1.00),(1.00,0.00,0.70),(0.40,0.00,1.00)]
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[ControllerUINavigator] Selection -> PlayButton
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[ConcertAudioDirector] Resolved source='<null>' IsPlaying=False EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Normal energy=0.000 beats+0 lasers=0 cones=0 strobes=0 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[SaveLoadUI] Built Load panel under 'MenuRoot'.
+[SaveSystem] ListSaves looking in: C:/Users/Sammc/AppData/LocalLow/DefaultCompany/Solar System 2\saves
+[SaveSystem] Found 10 JSON file(s) in saves directory.
+[SaveSystem]   • 10 diggg  (2026-05-03 23:40:59)
+[SaveSystem]   • 10 mins  (2026-05-03 23:38:26)
+[SaveSystem]   • 1111111111111111 f  (2026-05-14 01:55:40)
+[SaveSystem]   • autosave  (2026-05-23 01:19:31)
+[SaveSystem]   • blahhhhhhhhh  (2026-05-12 13:02:28)
+[SaveSystem]   • dsadasdasdae33333  (2026-05-13 23:21:05)
+[SaveSystem]   • goodtest  (2026-05-13 23:11:08)
+[SaveSystem]   • sadas  (2026-05-11 11:41:51)
+[SaveSystem]   • sat  (2026-05-13 01:53:11)
+[SaveSystem]   • sateee  (2026-05-13 02:37:12)
+[SaveLoadUI] Rebuilding row list: 10 entry(ies).
+[SaveLoadUI] BuildRow: 'autosave' at y=-8
+[SaveLoadUI] BuildRow: '1111111111111111 f' at y=-82
+[SaveLoadUI] BuildRow: 'dsadasdasdae33333' at y=-156
+[SaveLoadUI] BuildRow: 'goodtest' at y=-230
+[SaveLoadUI] BuildRow: 'sateee' at y=-304
+[SaveLoadUI] BuildRow: 'sat' at y=-378
+[SaveLoadUI] BuildRow: 'blahhhhhhhhh' at y=-452
+[SaveLoadUI] BuildRow: 'sadas' at y=-526
+[SaveLoadUI] BuildRow: '10 diggg' at y=-600
+[SaveLoadUI] BuildRow: '10 mins' at y=-674
+[ControllerUINavigator] Selection -> Pick
+[ConcertAudioDirector] Resolved source='<null>' IsPlaying=False EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Normal energy=0.000 beats+0 lasers=0 cones=0 strobes=0 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ConcertStageHub] BuildStages: no SpeakerSource components in scene — nothing to do
+[JitterDiag] window=120f  camWorldMag=0.0  playerWorldMag=-1.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.00000  shifts=0  playerInterpFlip=0 playerInterp=?  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=-1.00000
+[ControllerUINavigator] Selection -> Btn_NEW GAME
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+Upgrading sprite asset [TutorialKeycapAtlas] to version 1.1.0.
+[TutorialUI] Keycap atlas build failed; falling back to bold text. Object reference not set to an instance of an object
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+[Autosave] Manager created. Interval = 4 min.
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+Motion vectors require depth texture for camera with name 'Main Camera'. Adding this flag to depthTextureMode.
+[CameraEffectsManager] Attached RadialMotionBlurEffect to camera: Main Camera
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+[LLMService] === BACKEND PROBE START === platform=WindowsPlayer, streamingAssetsPath=C:/1 - Game 1.1/retepbuild/Solar System 2_Data/StreamingAssets, sysGPU=NVIDIA GeForce RTX 4060 Laptop GPU (Direct3D11), sysVRAM=7956MB
+[LLMService] libraryExclusion set to: tinyblas, noavx, avx
+Trying C:/1 - Game 1.1/retepbuild/Solar System 2_Data/StreamingAssets/LlamaLib-v2.0.5\win-x64\native\llamalib_win-x64_vulkan.dll
+Successfully loaded: C:/1 - Game 1.1/retepbuild/Solar System 2_Data/StreamingAssets/LlamaLib-v2.0.5\win-x64\native\llamalib_win-x64_vulkan.dll
+system info: n_threads = 16, n_threads_batch = 16, total_threads = 16
+[GameKnowledgeBase] Loaded 59 entries, 3 personas from C:/1 - Game 1.1/retepbuild/Solar System 2_Data/StreamingAssets\AI/game_knowledge.md.
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The referenced script on this Behaviour (Game Object 'SolarSystemMap') is missing!
+Unloading 6 Unused Serialized files (Serialized files now loaded: 0)
+[PhysX] Initialized MultithreadedTaskDispatcher with 16 workers.
+UnloadTime: 3.022100 ms
+Generation time: 0 ms.
+Setting fixedDeltaTime to: 0.004166667
+[EndlessManager] Registered physics object: Player
+[EndlessManager] Registered physics object: Sun
+[EndlessManager] Registered physics object: Fiery Twin
+[EndlessManager] Registered physics object: Cyclops
+[EndlessManager] Registered physics object: Constant Companion
+[EndlessManager] Registered physics object: Humble Abode
+[EndlessManager] Registered physics object: Icey Twin
+[EndlessManager] Registered physics object: Tumbling Bean
+[EndlessManager] Registered physics object: Watchful Eye
+[ConcertStageHub] Scene loaded: 1.6.7.7.7 — clearing 0 stage(s) and rebuilding
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub]   speaker 'speaker.005' → zone 'AudienceZone'
+[ConcertStageHub]   snapped zone 'AudienceZone' rotation to planet up
+[ConcertStageHub]   speaker 'speaker.005' → zone 'AudienceZone 2'
+[ConcertStageHub]   snapped zone 'AudienceZone 2' rotation to planet up
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertStageHub] Stage 'speaker.005' → INACTIVE (day) (zone=AudienceZone, spawner=yes, stageRoot=STAGEGOOD)
+[ConcertStageHub]   SetStageLightingActive(False) on 'STAGEGOOD': 5 Light(s), 12 concert-light script(s), 9 beam/cone renderer(s), 3 particle system(s)
+[ConcertStageHub] Stage 'speaker.005' → ACTIVE (night) (zone=AudienceZone 2, spawner=yes, stageRoot=STAGEGOOD2)
+[ConcertStageHub]   SetStageLightingActive(True) on 'STAGEGOOD2': 5 Light(s), 12 concert-light script(s), 9 beam/cone renderer(s), 3 particle system(s)
+[CameraEffectsManager] Attached RadialMotionBlurEffect to camera: Camera
+Unloading 50 unused Assets to reduce memory usage. Loaded Objects now: 21076.
+Total: 12.612400 ms (FindLiveObjects: 1.144800 ms CreateObjectMapping: 0.355500 ms MarkObjects: 8.509700 ms  DeleteObjects: 2.601800 ms)
+
+[ConcertLaser] Beam shader resolved via Resources: Concert/Additive
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[LensFlareRegistry] Shader 'UI/LensFlareAdditive' not found. If running a build, add LensFlareAdditive.shader to Project Settings > Graphics > Always Included Shaders.
+[LensFlareRegistry] Setup complete — sun=Sun additiveMat=<missing>
+[EndlessManager] Origin shift firing. playerPhysicsPos=(-24290.09, -2.70, -43.00)  magnitude=24290.1  frame=1602  time=11.286
+[EndlessManager] Origin shift complete. Shifted 9 objects by (-24290.09, -2.70, -43.00). 0 bones pending kinematic restore.
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=129.9  playerWorldMag=130.1  camLocalRange=(0.00000, 0.67000, 0.27600)  camWorldJerk=24290.14000  shifts=2  playerInterpFlip=3 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.16998
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[TutorialUI] PlayCompleteSound firing: clip=YAY, vol=0.7, loadState=Loaded
+[ControllerUINavigator] Selection -> ContinueBtn
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=275.6  playerWorldMag=275.8  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=2.75654  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.10072
+model loaded
+Deploy server command: llamalib_win-x64_server.exe -m C:/1 - Game 1.1/retepbuild/Solar System 2_Data/StreamingAssets/AI/Hermes-3-Llama-3.1-8B-Q4_K_M.gguf -t -1 -np 1 -c 8192 -b 512 -ngl 99 --context-shift -fa off
+starting service
+[LLMService] === BACKEND PROBE END === arch=llamalib_win-x64_vulkan.dll (GPU). All good.
+LLM service created successfully, using llamalib_win-x64_vulkan.dll
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ControllerUINavigator] Selection -> <none>
+[JitterDiag] window=120f  camWorldMag=380.4  playerWorldMag=380.8  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.38881  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.26108
+[JitterDiag] window=120f  camWorldMag=472.4  playerWorldMag=472.2  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.07216  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.00488
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=560.8  playerWorldMag=561.3  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.56817  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.13845
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=639.0  playerWorldMag=639.4  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.42819  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.01515
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=715.9  playerWorldMag=716.5  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.44922  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.26822
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=794.5  playerWorldMag=794.8  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.36453  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.00373
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=892.2  playerWorldMag=892.7  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.49352  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.26486
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=972.1  playerWorldMag=972.7  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.47334  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.27024
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[EndlessManager] Origin shift firing. playerPhysicsPos=(10.21, 999.99, -2.11)  magnitude=1000.0  frame=2796  time=26.101
+[EndlessManager] Origin shift complete. Shifted 9 objects by (10.21, 999.99, -2.11). 0 bones pending kinematic restore.
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[JitterDiag] window=120f  camWorldMag=63.9  playerWorldMag=64.3  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=999.67500  shifts=1  playerInterpFlip=2 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.21379
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=153.6  playerWorldMag=154.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.43345  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.27262
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=234.6  playerWorldMag=234.9  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.35101  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.14156
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=318.0  playerWorldMag=318.2  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.35445  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.00664
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=407.7  playerWorldMag=407.9  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.38898  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.01212
+[JitterDiag] window=120f  camWorldMag=497.1  playerWorldMag=497.5  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.42905  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.15569
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=586.2  playerWorldMag=586.7  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.40344  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.26346
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=673.1  playerWorldMag=673.4  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.43619  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.19873
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=765.1  playerWorldMag=764.9  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.47712  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.01683
+[ControllerUINavigator] Selection -> App_Fishingdex
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=859.5  playerWorldMag=859.6  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.16794  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.28430
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=953.1  playerWorldMag=953.2  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.41045  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.27538
+[ControllerUINavigator] Selection -> NextPage
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[EndlessManager] Origin shift firing. playerPhysicsPos=(71.37, 997.61, 14.47)  magnitude=1000.3  frame=4140  time=40.174
+[EndlessManager] Origin shift complete. Shifted 9 objects by (71.37, 997.61, 14.47). 0 bones pending kinematic restore.
+[ControllerUINavigator] Selection -> App_AI
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+[ControllerUINavigator] Selection -> PrevPage
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=49.6  playerWorldMag=49.4  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1001.22900  shifts=1  playerInterpFlip=2 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.03887
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ControllerUINavigator] Selection -> Input
+[JitterDiag] window=120f  camWorldMag=147.0  playerWorldMag=147.1  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.14525  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.23105
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=240.5  playerWorldMag=240.6  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.04934  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.28921
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=335.5  playerWorldMag=335.4  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.59350  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.02471
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=428.2  playerWorldMag=428.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.40063  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.01589
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+The character used for Underline is not available in font asset [].
+The character used for Underline is not available in font asset [].
+[LLMService] Chat called: 'hello who are you'
+[LLMService] Awaiting model load…
+[LLMService] Model ready (llm=ok, agent=ok).
+[LLMService] Seeded agent chat history: 0 messages from AIMemoryStore.
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=549.0  playerWorldMag=549.1  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=15.63450  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.20008
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=654.8  playerWorldMag=654.9  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.54421  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.27730
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=754.9  playerWorldMag=754.8  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.50718  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.06991
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=858.9  playerWorldMag=858.9  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.77191  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.08955
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=965.2  playerWorldMag=965.2  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.17330  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.15982
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[EndlessManager] Origin shift firing. playerPhysicsPos=(103.29, 995.51, 0.00)  magnitude=1000.9  frame=5320  time=54.442
+[EndlessManager] Origin shift complete. Shifted 9 objects by (103.29, 995.51, 0.00). 0 bones pending kinematic restore.
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=68.0  playerWorldMag=68.1  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1001.05000  shifts=1  playerInterpFlip=2 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.26106
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[JitterDiag] window=120f  camWorldMag=166.7  playerWorldMag=166.5  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.44699  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.05297
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=269.2  playerWorldMag=269.1  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.27050  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.05331
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=373.6  playerWorldMag=373.4  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.57753  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.01485
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=477.2  playerWorldMag=477.1  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.17160  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.07184
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=595.6  playerWorldMag=595.6  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.54621  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.26176
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=733.5  playerWorldMag=733.5  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=2.11168  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.19510
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=862.5  playerWorldMag=862.5  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.55182  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.23407
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[EndlessManager] Origin shift firing. playerPhysicsPos=(143.60, 991.11, 0.00)  magnitude=1001.5  frame=6357  time=68.727
+[EndlessManager] Origin shift complete. Shifted 9 objects by (143.60, 991.11, 0.00). 0 bones pending kinematic restore.
+[JitterDiag] window=120f  camWorldMag=3.8  playerWorldMag=3.8  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1002.08800  shifts=1  playerInterpFlip=2 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.23459
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=134.2  playerWorldMag=134.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.50292  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.04787
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[LLMService] Chat returned. tokens streamed=129, full.Length=604, full='I am an awareness inhabiting a salvaged smartphone. My funct…'
+[JitterDiag] window=120f  camWorldMag=254.5  playerWorldMag=254.5  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.55491  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.27433
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=352.1  playerWorldMag=352.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.48777  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.16924
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertLightProgram] tier=Light family=LowEnergy choreo=Silence energy=0.000 beats+0 lasers=8 cones=4 strobes=4 fadeMul=0.40 subscribed=True palette=[(0.10,0.50,1.00),(0.40,0.00,1.00),(0.00,1.00,0.70)]
+[JitterDiag] window=120f  camWorldMag=451.7  playerWorldMag=451.5  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=0.57229  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.02113
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[ConcertAudioDirector] Resolved source='speaker.005' IsPlaying=True EnergyLong=0.000 BeatCount=0 HihatCount=0
+[JitterDiag] window=120f  camWorldMag=551.5  playerWorldMag=551.6  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.07767  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.25011
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=654.1  playerWorldMag=654.0  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.65228  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.09025
+[ConcertStageHub] BuildStages: found 2 speaker(s), 2 zone(s), template = AudienceZone
+[ConcertStageHub] BuildStages complete — 2 stage(s) total
+[JitterDiag] window=120f  camWorldMag=754.6  playerWorldMag=754.6  camLocalRange=(0.00000, 0.00000, 0.00000)  camWorldJerk=1.13081  shifts=0  playerInterpFlip=0 playerInterp=Interpolate  shipInterpFlip=0 shipInterp=?  playerTransformVsRbLag=0.22499

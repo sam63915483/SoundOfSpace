@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1045 &1
+EditorBuildSettings:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Scenes:
+  - enabled: 1
+    path: Assets/MainMenu.unity
+    guid: 35b52c74c3cb93948854f785c3e69dd7
+  - enabled: 1
+    path: Assets/1.6.7.7.7.unity
+    guid: 3251a5cbe93507a408f4a8e8097259d6
+  - enabled: 0
+    path: Assets/4 - Scenes/Cutscene.unity
+    guid: 4ac8349387cb4a14d9ad7e8e70164613
+  - enabled: 0
+    path: Assets/4 - Scenes/Flashback.unity
+    guid: a07fced75fb5da54085832435a6ef403
+  - enabled: 0
+    path: Assets/4 - Scenes/Flashback1.unity
+    guid: 28b4ced65bd2a6d41a721b9f4ed4efb3
+  - enabled: 0
+    path: Assets/1.8.unity
+    guid: 91438ed4ccd05f245b58d9f488d4638c
+  - enabled: 1
+    path: Assets/Backrooms/Scenes/R1_Backrooms.unity
+    guid: 12e3b8fe29d4a3548b04eabde5be7ce2
+  - enabled: 1
+    path: Assets/Poolrooms_Lvl37/Scenes/PoolroomsDemo.unity
+    guid: 9c539d17946e0254c930c97dafe24608
+  m_configObjects: {}

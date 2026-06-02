@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>1AUGHHH1 — Architecture Diagram</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #08101a;
+    --panel: #0f1a2b;
+    --border: #1e3a5f;
+    --text: #d8e6ff;
+    --muted: #6e8aab;
+    --accent: #5cd0ff;
+    --warm: #ffae5c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+  }
+  header {
+    position: sticky;
+    top: 0;
+    background: linear-gradient(180deg, #0f1a2b 0%, rgba(15,26,43,0.95) 100%);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 28px;
+    z-index: 10;
+  }
+  header h1 {
+    margin: 0 0 4px 0;
+    color: var(--accent);
+    font-size: 22px;
+    letter-spacing: 0.05em;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  nav {
+    display: flex;
+    gap: 12px;
+    margin-top: 14px;
+    flex-wrap: wrap;
+  }
+  nav a {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 12px;
+    padding: 4px 10px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+  }
+  nav a:hover { background: var(--border); }
+  main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 28px;
+  }
+  section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 28px;
+  }
+  section h2 {
+    margin: 0 0 6px 0;
+    color: var(--accent);
+    font-size: 18px;
+    letter-spacing: 0.04em;
+  }
+  section .sub {
+    color: var(--muted);
+    font-size: 13px;
+    margin-bottom: 18px;
+  }
+  .mermaid {
+    background: #0a121e;
+    padding: 18px;
+    border-radius: 6px;
+    border: 1px solid #1a2a44;
+    overflow-x: auto;
+  }
+  .legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    margin-top: 14px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .swatch {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.15);
+  }
+  footer {
+    color: var(--muted);
+    text-align: center;
+    padding: 24px;
+    font-size: 12px;
+  }
+  code {
+    background: #142035;
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--warm);
+    font-size: 12.5px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>1AUGHHH1 — SYSTEM ARCHITECTURE</h1>
+  <p>Live visual reference for the gameplay scene. Open this file directly in a browser — no server needed.</p>
+  <nav>
+    <a href="#high-level">High-level map</a>
+    <a href="#save-flow">Save / load flow</a>
+    <a href="#player-equip">Player &amp; equippables</a>
+    <a href="#combat-concert">Combat / Concert / Spawners</a>
+    <a href="#early-game">Early-game story flow</a>
+    <a href="#singletons">Auto-singletons</a>
+  </nav>
+</header>
+
+<main>
+
+<section id="high-level">
+  <h2>1. High-level system map</h2>
+  <div class="sub">How the major subsystems connect. Solid arrows = direct method/event calls; dashed = via singletons or scene lookup.</div>
+  <div class="mermaid">
+flowchart TB
+  classDef physics fill:#1a2f4a,stroke:#5cd0ff,color:#d8e6ff
+  classDef gameplay fill:#1f2d1a,stroke:#9dd95c,color:#d8e6ff
+  classDef ui fill:#2a1f3a,stroke:#c47bff,color:#d8e6ff
+  classDef save fill:#3a2d1a,stroke:#ffae5c,color:#d8e6ff
+  classDef npc fill:#1a3a2e,stroke:#5cffae,color:#d8e6ff
+  classDef enemy fill:#3a1a1f,stroke:#ff5c7b,color:#d8e6ff
+  classDef world fill:#1f2f3a,stroke:#7bb8ff,color:#d8e6ff
+
+  subgraph PHYS["Physics &amp; world"]
+    NBody[NBodySimulation<br/>100 Hz N-body gravity]
+    Endless[EndlessManager<br/>Floating-origin shifts]
+    Universe[Universe<br/>static constants]
+    CelBody[CelestialBody x8<br/>Sun · Twins · Humble · Moon · ...]
+  end
+  class NBody,Endless,Universe,CelBody physics
+
+  subgraph PLAYER["Player &amp; Ship"]
+    Player[PlayerController]
+    Ship[Ship]
+    Hotbar[Hotbar<br/>5-slot registry]
+    Resources[ResourceManager<br/>hunger/thirst/health/power]
+    Wallet[PlayerWallet]
+    Wood[WoodInventory]
+    Dust[SpaceDustInventory]
+  end
+  class Player,Ship,Hotbar,Resources,Wallet,Wood,Dust gameplay
+
+  subgraph EQUIP["Equippables on Player"]
+    Rod[FishingRod]
+    Axe[Axe]
+    Pistol[Pistol]
+    Bottle[WaterBottle]
+    Guitar[Guitar]
+  end
+  class Rod,Axe,Pistol,Bottle,Guitar gameplay
+
+  subgraph WORLD["Streamed world content"]
+    Trees[TreeSpawner]
+    Mush[MushroomSpawner]
+    Aliens[AlienNPCSpawner]
+    Build[BuildMenuUI + GhostPlacement]
+    Notes[NoteCollection]
+  end
+  class Trees,Mush,Aliens,Build,Notes world
+
+  subgraph NPC["NPCs &amp; vendors"]
+    Alien3[Alien3<br/>Cassette to Rod trade]
+    FishMkt[FishMarketNPC<br/>Common/Uncommon/Rare sell]
+    Bonfire[BonfireInteraction<br/>Cook panel]
+    Tev[TevDialogue<br/>Axe + Pistol + Village]
+    Alien7[Alien7Vendor<br/>Goods]
+    ShipMkt[ShipMarketNPC<br/>Ships + parts + nets]
+  end
+  class Alien3,FishMkt,Bonfire,Tev,Alien7,ShipMkt npc
+
+  subgraph COMBAT["Combat"]
+    EnemyCtrl[EnemyController + EnemySpawner]
+    Ragdoll[Ragdoll builders]
+    Killstreak[KillstreakManager]
+    Torch[TorchAura]
+    TreeTracker[PlayerTreeContactTracker]
+  end
+  class EnemyCtrl,Ragdoll,Killstreak,Torch,TreeTracker enemy
+
+  subgraph CONCERT["Concert"]
+    StageHub[ConcertStageHub<br/>night-gated, per-stage]
+    Speakers[SpeakerSource ·<br/>Lights · Lasers · Audience]
+  end
+  class StageHub,Speakers gameplay
+
+  subgraph UI["UI &amp; HUD"]
+    PauseMenu[TabbedPauseMenu]
+    Compass[CompassHUD]
+    Dex[FishingdexManager]
+    Map[SolarSystemMapController]
+    CamFX[CameraEffectsManager]
+    Trip[RawFishTripController]
+  end
+  class PauseMenu,Compass,Dex,Map,CamFX,Trip ui
+
+  subgraph SAVE["Save system"]
+    SaveSys[SaveSystem static]
+    Collector[SaveCollector]
+    Autosave[AutosaveManager]
+    EarlyGame[EarlyGameProgress<br/>static flags]
+  end
+  class SaveSys,Collector,Autosave,EarlyGame save
+
+  %% physics core
+  NBody --> CelBody
+  Player --> NBody
+  Ship --> NBody
+  Player -.->|register| Endless
+  Ship -.->|register| Endless
+
+  %% player <-> equippables
+  Hotbar --> Rod & Axe & Pistol & Bottle & Guitar
+  Pistol --> EnemyCtrl
+  Axe --> EnemyCtrl
+  Bottle --> Resources
+
+  %% world content
+  Trees --> Wood
+  Mush --> Trip
+  Aliens --> Player
+  Build --> CelBody
+  Notes --> EarlyGame
+
+  %% npc grants
+  Alien3 -->|grants| Rod
+  Tev -->|unlocks| Axe & Pistol
+  Tev -->|adds waypoint| Compass
+  Alien7 -->|sells| Hotbar
+  ShipMkt -->|spawns BoughtShip| Ship
+  ShipMkt -->|spawns parts| Player
+  Bonfire --> Resources
+
+  %% combat
+  EnemyCtrl --> Killstreak
+  EnemyCtrl --> Ragdoll
+  Torch -->|damage| EnemyCtrl
+  StageHub -->|IsBlockedForEnemy| EnemyCtrl
+  StageHub -->|sun + LebronLight| Ship
+  TreeTracker --> EnemyCtrl
+
+  %% ui hookups
+  Killstreak --> CamFX
+  Resources --> CamFX
+  Trip --> CamFX
+  PauseMenu --> CamFX
+  PauseMenu --> Resources
+  Dex --> Trip
+  Map --> CelBody
+
+  %% saves
+  Collector -.->|writes| SaveSys
+  Collector --> CelBody & Player & Ship & Resources & Wallet & Wood & Dust & Hotbar & EnemyCtrl & EarlyGame & Compass & Notes
+  Autosave --> SaveSys
+  EarlyGame --> Tev
+  EarlyGame --> Build
+  </div>
+  <div class="legend">
+    <span><span class="swatch" style="background:#1a2f4a;border-color:#5cd0ff"></span>Physics / world</span>
+    <span><span class="swatch" style="background:#1f2d1a;border-color:#9dd95c"></span>Gameplay singletons</span>
+    <span><span class="swatch" style="background:#1a3a2e;border-color:#5cffae"></span>NPCs / vendors</span>
+    <span><span class="swatch" style="background:#3a1a1f;border-color:#ff5c7b"></span>Combat</span>
+    <span><span class="swatch" style="background:#2a1f3a;border-color:#c47bff"></span>UI / HUD / FX</span>
+    <span><span class="swatch" style="background:#3a2d1a;border-color:#ffae5c"></span>Save system</span>
+    <span><span class="swatch" style="background:#1f2f3a;border-color:#7bb8ff"></span>Streamed world</span>
+  </div>
+</section>
+
+<section id="save-flow">
+  <h2>2. Save / load flow</h2>
+  <div class="sub">From "click slot" to "world fully restored." The 1-frame + 1-FixedUpdate defer is what makes load not get clobbered by <code>Start()</code> / <code>FixedUpdate()</code> resets.</div>
+  <div class="mermaid">
+sequenceDiagram
+  participant U as User
+  participant MM as MainMenuController
+  participant Sys as SaveSystem
+  participant PL as PendingLoad
+  participant SM as SceneManager
+  participant Runner as SaveLoadRunner
+  participant Col as SaveCollector
+  participant World as World objects
+
+  U->>MM: Click load slot
+  MM->>Sys: LoadFromDisk(name)
+  Sys-->>MM: SaveData
+  MM->>PL: ScheduleLoad(data)
+  MM->>MM: EnsureGameplaySingletons()<br/>(Wallet/Hotbar/Dust/...)
+  MM->>SM: LoadScene("1.6.7.7.7")
+  SM-->>PL: sceneLoaded event
+  PL->>Runner: spawn (defers Apply)
+  Runner->>Runner: yield 1 frame
+  Runner->>Runner: yield WaitForFixedUpdate
+  Note over Runner: Now all Start() and 1st<br/>FixedUpdate have run.
+  Runner->>Col: SaveSystem.Apply(data)
+  Col->>World: ApplyCelestialBodies
+  Col->>World: ApplyTutorial / NPCs
+  Col->>World: ApplyEarlyGame (static flags)
+  Col->>World: Resources / Wallet / Wood / Fish / Equipment
+  Col->>World: ApplyShipDamage (may swap ship prefab)
+  Col->>World: ApplyShipTransform + Sync rotation
+  Col->>World: ApplyExtraShips (spawn BoughtShips)
+  Col->>World: ApplySpaceDust (per-ship nets)
+  Col->>World: ApplyPlayerTransform
+  Col->>World: ApplyBuildings (destroy _Placed, respawn)
+  Col->>World: ApplyLooseParts (thrusters)
+  Col->>World: ApplyEnemies (snapshot/destroy/respawn)
+  Col->>World: ApplyHeldItem / Cassette / Flashlight
+  Col->>World: ApplyBonusTutorial / MapTutorial
+  Col->>World: ApplyAlienKills (destroy story NPCs)
+  Note over Col,World: Order matters —<br/>see SaveCollector.cs:601-643
+  </div>
+</section>
+
+<section id="player-equip">
+  <h2>3. Player &amp; equippable flow</h2>
+  <div class="sub">All five equippables live as sibling MonoBehaviours on the Player root. The Hotbar is a table-driven registry — adding a new item = one enum + one row.</div>
+  <div class="mermaid">
+flowchart LR
+  classDef ctrl fill:#1f2d1a,stroke:#9dd95c,color:#d8e6ff
+  classDef anchor fill:#1a2f4a,stroke:#5cd0ff,color:#d8e6ff
+  classDef ui fill:#2a1f3a,stroke:#c47bff,color:#d8e6ff
+
+  Player([Player root])
+  Cam([Camera])
+  Hand([Hand.R bone])
+
+  subgraph Anchors
+    CamHold[CameraHoldPos<br/>scale 1,1,1]
+    HoldAll[HoldPosAll<br/>scale 0.01³]
+    BottleHold[BottleHoldPos<br/>scale ~0.001³]
+  end
+  class CamHold,HoldAll,BottleHold anchor
+
+  Player --> Cam --> CamHold
+  Player --> Hand --> HoldAll
+  Player --> BottleHold
+
+  subgraph Controllers
+    Rod[FishingRodController]
+    Axe[AxeController]
+    Pistol[PistolController]
+    Bottle[WaterBottleController]
+    Guitar[GuitarController]
+  end
+  class Rod,Axe,Pistol,Bottle,Guitar ctrl
+
+  Player --> Rod & Axe & Pistol & Bottle & Guitar
+
+  CamHold -.->|host| Rod & Axe & Pistol
+  HoldAll -.->|host| Guitar
+  BottleHold -.->|host| Bottle
+
+  HB[Hotbar<br/>BuildRegistry table]
+  class HB ui
+  HB --> Rod & Axe & Pistol & Bottle & Guitar
+
+  Equipment[EquipmentSave<br/>per-item Equipped + Unlocked + pistolAmmo]
+  class Equipment ui
+  HB -.->|round-trips via| Equipment
+
+  Pistol -.->|+AMMO row| PW[PlayerWallet HUD card]
+  class PW ui
+  </div>
+</section>
+
+<section id="combat-concert">
+  <h2>4. Combat, concert, and streaming spawners</h2>
+  <div class="sub">Three streaming systems share the same per-cell deterministic pattern. Concert and torches feed exclusion zones back to the enemy spawner.</div>
+  <div class="mermaid">
+flowchart TB
+  classDef enemy fill:#3a1a1f,stroke:#ff5c7b,color:#d8e6ff
+  classDef defense fill:#1f2d1a,stroke:#9dd95c,color:#d8e6ff
+  classDef stream fill:#1f2f3a,stroke:#7bb8ff,color:#d8e6ff
+  classDef ui fill:#2a1f3a,stroke:#c47bff,color:#d8e6ff
+
+  subgraph STREAM["Streamed-per-cell content"]
+    Tree[TreeSpawner<br/>Wood drops]
+    Mush[MushroomSpawner<br/>Eat -> Trip]
+    Alien[AlienNPCSpawner<br/>SpawnedAlienNPC]
+  end
+  class Tree,Mush,Alien stream
+
+  subgraph DEF["Defenses / exclusion zones"]
+    Torches[TorchAura ×N<br/>15 m radius]
+    Stage[ConcertStageHub<br/>per-speaker zone]
+    Lebron[LebronLight<br/>artificial sun]
+  end
+  class Torches,Stage,Lebron defense
+
+  subgraph COMBAT["Combat loop"]
+    Spawner[EnemySpawner<br/>cooldown + elite counter]
+    EC[EnemyController]
+    AlienDam[AlienNPCDamageable<br/>isStoryImpactful]
+    Spit[SpitProjectile]
+    TT[PlayerTreeContactTracker<br/>10 s spit-arm delay]
+    Rag[Ragdoll builders]
+    KS[KillstreakManager]
+    HUD[KillstreakHUD]
+    Slow[SlowmoOnKill]
+  end
+  class Spawner,EC,AlienDam,Spit,TT,Rag,KS,HUD,Slow enemy
+
+  Spawner -->|IsBlockedForEnemy?| Stage
+  Spawner -->|inside torch radius?| Torches
+  Spawner --> EC
+  Stage -->|damage per second| EC
+  Torches -->|damage per second| EC
+  Lebron -.->|forces day| Stage
+
+  EC --> Spit
+  EC --> AlienDam
+  EC --> Rag
+  EC -->|OnAnyEnemyDeath static| KS
+  EC -->|OnAnyEnemyDeath static| Slow
+  KS --> HUD
+
+  TT -->|player on tree 10s?| EC
+
+  Mush -->|eat| TripCtrl[RawFishTripController]
+  Dex[FishingdexManager] -->|eat raw| TripCtrl
+  class TripCtrl,Dex,Slow,HUD ui
+  </div>
+</section>
+
+<section id="early-game">
+  <h2>5. Early-game story flow (EarlyGameProgress flags)</h2>
+  <div class="sub">Tev's dialogue state, build-menu unlocks, and a chunk of the tutorial are all derived from one static flag block.</div>
+  <div class="mermaid">
+flowchart LR
+  classDef phase fill:#1f2d1a,stroke:#9dd95c,color:#d8e6ff
+  classDef gate fill:#3a2d1a,stroke:#ffae5c,color:#d8e6ff
+
+  P1[NoteRead<br/>read starting note]
+  P2[RodPickedUp<br/>FirstFishCaught<br/>OneOfEachCaught]
+  P3[FirstMealEaten<br/>cook a fish]
+  P4[WaterBottleDrunk]
+  G1[Tev collider enabled]:::gate
+  P5[ReturnedHome<br/>TevReturnedDialogueDone]
+  R1[Tev grants Axe + Pistol]:::gate
+  P6[CabinBuilt<br/>via BuildMenuUI]
+  R2[Tev gives Village coords<br/>compass waypoint added]:::gate
+  P7[VillageCoordsGiven]
+  P8[FishVendorVisited<br/>GoodsVendorVisited]
+
+  class P1,P2,P3,P4,P5,P6,P7,P8 phase
+
+  P1 --> P2 --> P3 --> P4 --> G1 --> P5 --> R1 --> P6 --> R2 --> P7 --> P8
+  </div>
+</section>
+
+<section id="singletons">
+  <h2>6. Auto-created singletons</h2>
+  <div class="sub">Everything below auto-spawns via <code>RuntimeInitializeOnLoadMethod(AfterSceneLoad)</code>, lives as <code>DontDestroyOnLoad</code>, and skips creation in the <code>MainMenu</code> scene. No scene wiring required.</div>
+  <div class="mermaid">
+flowchart TB
+  classDef s fill:#1f2d1a,stroke:#9dd95c,color:#d8e6ff
+  classDef ui fill:#2a1f3a,stroke:#c47bff,color:#d8e6ff
+  classDef fx fill:#3a2d1a,stroke:#ffae5c,color:#d8e6ff
+
+  Wallet[PlayerWallet]
+  Wood[WoodInventory]
+  Dust[SpaceDustInventory]
+  Notes[NoteCollection]
+  Res[ResourceManager]
+  HB[Hotbar]
+  TUI[TutorialUI]
+  BT[BonusTutorial]
+  CP[CompassHUD]
+  CFX[CameraEffectsManager]
+  KS[KillstreakManager]
+  TC[PlayerTreeContactTracker]
+  CSH[ConcertStageHub]
+  RFT[RawFishTripController]
+  AS[AutosaveManager]
+
+  class Wallet,Wood,Dust,Notes,Res,HB s
+  class TUI,BT,CP ui
+  class CFX,KS,TC,CSH,RFT,AS fx
+
+  MM[MainMenuController<br/>EnsureGameplaySingletons]:::ui
+  MM -.->|seeds before scene load| Wallet & Wood & Dust & HB & TUI & BT & Res
+
+  Scene{{Scene loads gameplay scene}}:::ui
+  Scene --> Wallet & Wood & Dust & Notes & Res & HB & TUI & BT & CP & CFX & KS & TC & CSH & RFT & AS
+  </div>
+</section>
+
+<footer>
+  Generated from a code walk of <code>Assets/3 - Scripts/</code> and the live scene hierarchy. Re-run when the architecture shifts.
+</footer>
+</main>
+
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'dark',
+  themeVariables: {
+    fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+    primaryColor: '#0f1a2b',
+    primaryTextColor: '#d8e6ff',
+    primaryBorderColor: '#5cd0ff',
+    lineColor: '#5cd0ff',
+    background: '#0a121e',
+  },
+  flowchart: { curve: 'basis', useMaxWidth: true },
+  sequence: { useMaxWidth: true },
+});
+</script>
+</body>
+</html>

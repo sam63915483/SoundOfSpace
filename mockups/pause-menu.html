@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pause Menu Redesign</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --pill-bg-top: #08122080;
+    --pill-bg-bot: #0A1828F0;
+    --pill-border: #78C8FF73;
+    --accent: #5CC8FF;
+    --accent-dim: #5CC8FFB3;
+    --accent-glow: #60C8FF4D;
+    --hot: #FF6BC8;
+    --label: #EAF6FF;
+    --header-tag: #5CC8FFD9;
+    --water-a: #7BE2FF;
+    --water-b: #4A8BFF;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 32px;
+    font-family: 'Share Tech Mono', 'Consolas', monospace;
+    background: radial-gradient(ellipse at top, #0e1a30 0%, #04080f 70%);
+    color: var(--label);
+    min-height: 100vh;
+  }
+  h1 {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    letter-spacing: 4px;
+    color: var(--accent);
+    text-transform: uppercase;
+    font-size: 22px;
+    margin: 0 0 4px 0;
+  }
+  h2.mockup-header {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 500;
+    letter-spacing: 2px;
+    color: var(--accent);
+    font-size: 14px;
+    text-transform: uppercase;
+    margin: 0 0 4px 0;
+  }
+  .subtitle { color: var(--label); opacity: 0.6; margin: 0 0 32px 0; font-size: 13px; }
+  .desc { opacity: 0.6; font-size: 12px; margin: 0 0 16px 0; min-height: 32px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(680px, 1fr));
+    gap: 24px;
+    max-width: 1700px;
+    margin: 0 auto;
+  }
+  .option {
+    background: linear-gradient(180deg, #0c1828, #060d18);
+    border: 1px solid #1a3050;
+    border-radius: 4px;
+    padding: 16px;
+  }
+
+  /* Fake game screen background */
+  .screen {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background:
+      radial-gradient(ellipse at 30% 40%, #1a2440 0%, transparent 60%),
+      radial-gradient(ellipse at 70% 60%, #2a1840 0%, transparent 60%),
+      #04080f;
+    overflow: hidden;
+    border: 1px solid #1a3050;
+    border-radius: 2px;
+  }
+  .screen::after {
+    content: '';
+    position: absolute; inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 12% 22%, #fff 100%, transparent),
+      radial-gradient(1px 1px at 88% 70%, #fff8 100%, transparent),
+      radial-gradient(1px 1px at 65% 15%, #fff8 100%, transparent),
+      radial-gradient(1px 1px at 35% 85%, #fff 100%, transparent);
+    pointer-events: none;
+  }
+  .dim {
+    position: absolute; inset: 0;
+    background: #05021ee0;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  /* Pause card */
+  .card {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    background: linear-gradient(180deg, #0A1430F2, #050A1AF2);
+    border: 1px solid var(--pill-border);
+    clip-path: polygon(
+      14px 0, 100% 0, 100% calc(100% - 14px),
+      calc(100% - 14px) 100%, 0 100%, 0 14px
+    );
+    padding: 26px 36px;
+  }
+  /* Pulsing outer border via a duplicate element */
+  .card::before {
+    content: '';
+    position: absolute; inset: -3px;
+    border: 1.5px solid var(--accent);
+    clip-path: polygon(
+      14px 0, 100% 0, 100% calc(100% - 14px),
+      calc(100% - 14px) 100%, 0 100%, 0 14px
+    );
+    opacity: 0.6;
+    animation: border-pulse 2.5s ease-in-out infinite;
+    z-index: -1;
+  }
+  @keyframes border-pulse {
+    0%, 100% { border-color: var(--accent); opacity: 0.55; }
+    50% { border-color: var(--hot); opacity: 0.85; }
+  }
+
+  /* Title (PAUSED / SETTINGS) */
+  .title {
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 900;
+    letter-spacing: 12px;
+    font-size: 38px;
+    text-align: center;
+    background: linear-gradient(135deg, var(--accent), var(--hot));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    margin-bottom: 18px;
+    filter: drop-shadow(0 0 6px var(--accent-glow));
+  }
+
+  /* Menu buttons */
+  .menu-btn {
+    display: block;
+    width: 280px;
+    padding: 11px 18px;
+    margin: 6px 0;
+    background: linear-gradient(180deg, #14304880, #0A1A2880);
+    border: 1px solid var(--pill-border);
+    clip-path: polygon(
+      8px 0, 100% 0, 100% calc(100% - 8px),
+      calc(100% - 8px) 100%, 0 100%, 0 8px
+    );
+    color: var(--label);
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 4px;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+  }
+  .menu-btn:hover, .menu-btn.hover {
+    background: linear-gradient(180deg, #1c4060cc, #0E2034cc);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .menu-btn.primary {
+    background: linear-gradient(180deg, #1c5078cc, #0E2845cc);
+    border-color: var(--accent);
+  }
+
+  /* Sub-page settings */
+  .settings-card {
+    width: 600px;
+    padding: 22px 28px 18px 28px;
+  }
+  .settings-card .title { font-size: 30px; margin-bottom: 14px; letter-spacing: 10px; }
+
+  /* Setting row (slider + label + value) */
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 7px 0;
+    border-bottom: 1px dashed #5CC8FF22;
+  }
+  .row:last-child { border-bottom: none; }
+  .row .lbl {
+    width: 165px;
+    color: var(--header-tag);
+    letter-spacing: 2px;
+    font-size: 10px;
+    font-weight: bold;
+  }
+  .row .slider {
+    flex: 1;
+    height: 6px;
+    background: #0F192A;
+    border-radius: 1px;
+    overflow: hidden;
+    position: relative;
+    border: 1px solid #5CC8FF35;
+  }
+  .row .slider-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--water-a), var(--water-b));
+  }
+  .row .slider-thumb {
+    position: absolute;
+    width: 10px; height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    top: 50%;
+    transform: translate(-5px, -50%);
+    box-shadow: 0 0 6px var(--accent);
+  }
+  .row .val {
+    width: 50px;
+    text-align: right;
+    color: var(--water-a);
+    font-weight: bold;
+    font-size: 11px;
+  }
+
+  /* Back button */
+  .back-row {
+    display: flex; justify-content: flex-end;
+    margin-top: 16px;
+    gap: 10px;
+  }
+  .back-btn {
+    padding: 9px 16px;
+    background: linear-gradient(180deg, #14304880, #0A1A2880);
+    border: 1px solid var(--pill-border);
+    clip-path: polygon(
+      6px 0, 100% 0, 100% calc(100% - 6px),
+      calc(100% - 6px) 100%, 0 100%, 0 6px
+    );
+    color: var(--label);
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 2px;
+    font-size: 10px;
+    cursor: pointer;
+  }
+  .back-btn:hover { color: var(--accent); border-color: var(--accent); }
+
+  /* ─────────────────────────── TAB STYLES ─────────────────────────── */
+  /* Style A — Horizontal tabs at top */
+  .tabs-horizontal {
+    display: flex;
+    gap: 0;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--pill-border);
+  }
+  .tab-h {
+    padding: 8px 22px;
+    color: var(--label);
+    opacity: 0.55;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab-h.active {
+    opacity: 1;
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: linear-gradient(180deg, transparent, #5CC8FF18);
+    text-shadow: 0 0 8px var(--accent-glow);
+  }
+
+  /* Style B — Vertical tabs (sidebar) */
+  .settings-card.with-sidebar {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 20px;
+    width: 700px;
+  }
+  .settings-card.with-sidebar .title { grid-column: 1 / -1; }
+  .settings-card.with-sidebar .back-row { grid-column: 1 / -1; }
+  .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-right: 1px solid var(--pill-border);
+    padding-right: 12px;
+  }
+  .tab-v {
+    padding: 10px 12px;
+    color: var(--label);
+    opacity: 0.55;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+    text-align: left;
+  }
+  .tab-v.active {
+    opacity: 1;
+    color: var(--accent);
+    border-left-color: var(--accent);
+    background: linear-gradient(90deg, #5CC8FF18, transparent);
+    text-shadow: 0 0 8px var(--accent-glow);
+  }
+
+  /* Style C — Pill-style tab toggle */
+  .tabs-pills {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding: 4px;
+    background: #04080faa;
+    border: 1px solid var(--pill-border);
+    border-radius: 999px;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .tab-p {
+    padding: 8px 22px;
+    color: var(--label);
+    opacity: 0.55;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    border-radius: 999px;
+  }
+  .tab-p.active {
+    opacity: 1;
+    color: #04080f;
+    background: linear-gradient(135deg, var(--accent), var(--hot));
+    box-shadow: 0 0 8px var(--accent-glow);
+  }
+
+  /* Style D — Segmented bracket tabs */
+  .tabs-bracket {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 14px;
+    justify-content: center;
+  }
+  .tab-b {
+    padding: 6px 18px;
+    color: var(--label);
+    opacity: 0.55;
+    font-family: 'Orbitron', sans-serif;
+    letter-spacing: 3px;
+    font-size: 10px;
+    cursor: pointer;
+    background: #04080faa;
+    border: 1px solid var(--pill-border);
+    clip-path: polygon(
+      6px 0, 100% 0, 100% calc(100% - 6px),
+      calc(100% - 6px) 100%, 0 100%, 0 6px
+    );
+  }
+  .tab-b.active {
+    opacity: 1;
+    color: var(--accent);
+    border-color: var(--accent);
+    background: linear-gradient(180deg, #1c4060cc, #0E2034cc);
+    text-shadow: 0 0 8px var(--accent-glow);
+  }
+
+</style>
+</head>
+<body>
+
+<h1>Pause Menu Redesign — split into Pause + Settings sub-page</h1>
+<p class="subtitle">
+  Pause menu becomes simpler: just RESUME / SAVE / SETTINGS / MAIN MENU.
+  Clicking SETTINGS opens a sub-page with two tabs:
+  <b style="color: var(--accent)">Controls</b> (Mouse Sensitivity, Mouse Smoothing, Master Volume) and
+  <b style="color: var(--accent)">Graphics</b> (View Distance, Max Trees, Max Alien NPCs, Max Mushrooms, Max Audience).
+  Pick which tab style you prefer below — the pause menu layout is the same across all options.
+</p>
+
+<div class="grid">
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Mockup 0: The new pause menu (same for all options)             -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="option">
+    <h2 class="mockup-header">New pause menu (same for all options)</h2>
+    <p class="desc">Simpler: 4 buttons instead of every setting in one screen. SETTINGS opens the sub-page below.</p>
+    <div class="screen">
+      <div class="dim"></div>
+      <div class="card">
+        <div class="title">PAUSED</div>
+        <button class="menu-btn primary">RESUME</button>
+        <button class="menu-btn">SAVE GAME</button>
+        <button class="menu-btn">SETTINGS</button>
+        <button class="menu-btn">MAIN MENU</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Style A — Horizontal tabs at top                                -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="option">
+    <h2 class="mockup-header">A · Horizontal tabs</h2>
+    <p class="desc">Classic. Tabs above the content area, underlined when active. Most familiar layout — looks like browser tabs.</p>
+    <div class="screen">
+      <div class="dim"></div>
+      <div class="card settings-card">
+        <div class="title">SETTINGS</div>
+        <div class="tabs-horizontal">
+          <div class="tab-h active">CONTROLS</div>
+          <div class="tab-h">GRAPHICS</div>
+        </div>
+        <div class="row"><span class="lbl">MOUSE SENSITIVITY</span><div class="slider"><div class="slider-fill" style="width:55%"></div><div class="slider-thumb" style="left:55%"></div></div><span class="val">55</span></div>
+        <div class="row"><span class="lbl">MOUSE SMOOTHING</span><div class="slider"><div class="slider-fill" style="width:30%"></div><div class="slider-thumb" style="left:30%"></div></div><span class="val">0.30</span></div>
+        <div class="row"><span class="lbl">MASTER VOLUME</span><div class="slider"><div class="slider-fill" style="width:80%"></div><div class="slider-thumb" style="left:80%"></div></div><span class="val">0.80</span></div>
+        <div class="back-row">
+          <button class="back-btn">◂ BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Style B — Vertical sidebar                                      -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="option">
+    <h2 class="mockup-header">B · Vertical sidebar</h2>
+    <p class="desc">Tabs on the left, content to the right. Scales better if more tabs get added later (Audio, Gameplay, Accessibility, etc.).</p>
+    <div class="screen">
+      <div class="dim"></div>
+      <div class="card settings-card with-sidebar">
+        <div class="title">SETTINGS</div>
+        <div class="sidebar">
+          <div class="tab-v active">CONTROLS</div>
+          <div class="tab-v">GRAPHICS</div>
+        </div>
+        <div>
+          <div class="row"><span class="lbl">MOUSE SENS</span><div class="slider"><div class="slider-fill" style="width:55%"></div><div class="slider-thumb" style="left:55%"></div></div><span class="val">55</span></div>
+          <div class="row"><span class="lbl">MOUSE SMOOTH</span><div class="slider"><div class="slider-fill" style="width:30%"></div><div class="slider-thumb" style="left:30%"></div></div><span class="val">0.30</span></div>
+          <div class="row"><span class="lbl">MASTER VOLUME</span><div class="slider"><div class="slider-fill" style="width:80%"></div><div class="slider-thumb" style="left:80%"></div></div><span class="val">0.80</span></div>
+        </div>
+        <div class="back-row">
+          <button class="back-btn">◂ BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Style C — Pill toggle (segmented)                               -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="option">
+    <h2 class="mockup-header">C · Pill toggle (centered)</h2>
+    <p class="desc">Compact, modern look. Rounded pill at the top center; active tab fills with the cyan→magenta gradient. Reads as "this is a binary toggle" — perfect for 2 tabs.</p>
+    <div class="screen">
+      <div class="dim"></div>
+      <div class="card settings-card">
+        <div class="title">SETTINGS</div>
+        <div class="tabs-pills">
+          <div class="tab-p active">CONTROLS</div>
+          <div class="tab-p">GRAPHICS</div>
+        </div>
+        <div class="row"><span class="lbl">MOUSE SENSITIVITY</span><div class="slider"><div class="slider-fill" style="width:55%"></div><div class="slider-thumb" style="left:55%"></div></div><span class="val">55</span></div>
+        <div class="row"><span class="lbl">MOUSE SMOOTHING</span><div class="slider"><div class="slider-fill" style="width:30%"></div><div class="slider-thumb" style="left:30%"></div></div><span class="val">0.30</span></div>
+        <div class="row"><span class="lbl">MASTER VOLUME</span><div class="slider"><div class="slider-fill" style="width:80%"></div><div class="slider-thumb" style="left:80%"></div></div><span class="val">0.80</span></div>
+        <div class="back-row">
+          <button class="back-btn">◂ BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Style D — Beveled bracket tabs                                  -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="option">
+    <h2 class="mockup-header">D · Beveled bracket tabs</h2>
+    <p class="desc">Each tab is its own beveled card matching the rest of the UI language (same corner cuts as the menu buttons and HUD pills). Most consistent with the existing visual style.</p>
+    <div class="screen">
+      <div class="dim"></div>
+      <div class="card settings-card">
+        <div class="title">SETTINGS</div>
+        <div class="tabs-bracket">
+          <div class="tab-b active">CONTROLS</div>
+          <div class="tab-b">GRAPHICS</div>
+        </div>
+        <div class="row"><span class="lbl">MOUSE SENSITIVITY</span><div class="slider"><div class="slider-fill" style="width:55%"></div><div class="slider-thumb" style="left:55%"></div></div><span class="val">55</span></div>
+        <div class="row"><span class="lbl">MOUSE SMOOTHING</span><div class="slider"><div class="slider-fill" style="width:30%"></div><div class="slider-thumb" style="left:30%"></div></div><span class="val">0.30</span></div>
+        <div class="row"><span class="lbl">MASTER VOLUME</span><div class="slider"><div class="slider-fill" style="width:80%"></div><div class="slider-thumb" style="left:80%"></div></div><span class="val">0.80</span></div>
+        <div class="back-row">
+          <button class="back-btn">◂ BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <!-- Graphics tab preview (using Style D since it matches the UI)    -->
+  <!-- ═══════════════════════════════════════════════════════════════ -->
+  <div class="option">
+    <h2 class="mockup-header">Graphics tab content preview (Style D shown)</h2>
+    <p class="desc">For reference — same settings page but with the GRAPHICS tab active. Shows what all 5 graphics sliders look like in one tab.</p>
+    <div class="screen">
+      <div class="dim"></div>
+      <div class="card settings-card">
+        <div class="title">SETTINGS</div>
+        <div class="tabs-bracket">
+          <div class="tab-b">CONTROLS</div>
+          <div class="tab-b active">GRAPHICS</div>
+        </div>
+        <div class="row"><span class="lbl">VIEW DISTANCE</span><div class="slider"><div class="slider-fill" style="width:25%"></div><div class="slider-thumb" style="left:25%"></div></div><span class="val">350m</span></div>
+        <div class="row"><span class="lbl">MAX TREES</span><div class="slider"><div class="slider-fill" style="width:50%"></div><div class="slider-thumb" style="left:50%"></div></div><span class="val">200</span></div>
+        <div class="row"><span class="lbl">MAX ALIEN NPCS</span><div class="slider"><div class="slider-fill" style="width:40%"></div><div class="slider-thumb" style="left:40%"></div></div><span class="val">12</span></div>
+        <div class="row"><span class="lbl">MAX MUSHROOMS</span><div class="slider"><div class="slider-fill" style="width:60%"></div><div class="slider-thumb" style="left:60%"></div></div><span class="val">60</span></div>
+        <div class="row"><span class="lbl">MAX AUDIENCE</span><div class="slider"><div class="slider-fill" style="width:35%"></div><div class="slider-thumb" style="left:35%"></div></div><span class="val">35</span></div>
+        <div class="back-row">
+          <button class="back-btn">◂ BACK</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p style="text-align:center; margin-top:32px; opacity:0.5; font-size:11px;">
+  Tell me which tab style (A / B / C / D) — or say "I want X with Y's tabs". I'll also adjust the Controls/Graphics split if you want anything moved (e.g. Master Volume to its own audio tab, or moved to graphics).
+</p>
+
+</body>
+</html>

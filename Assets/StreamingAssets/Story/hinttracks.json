@@ -1,0 +1,17 @@
+{
+  "tracks": [
+    { "id": "water", "objectiveId": "obj_water", "entries": [
+      { "tipText": "There's a water bottle near the fire. Press F to pick it up.", "advanceEvent": "OnBottlePickedUp" },
+      { "tipText": "Stand in the water and hold right-click to fill your bottle.", "advanceEvent": "OnBottleFilled" },
+      { "tipText": "Hold left-click to drink from the bottle.", "advanceEvent": "OnCleanWaterDrunk" }
+    ] },
+    { "id": "food", "objectiveId": "obj_food", "entries": [
+      { "tipText": "Pick up the fishing rod, then cast at the bank.", "advanceEvent": "OnBobberCast" },
+      { "tipText": "Reel in a fish when the bobber wiggles.", "advanceEvent": "OnFishCaught" },
+      { "tipText": "Cook your fish at a fire, then eat it.", "advanceEvent": "OnCookedFoodEaten" }
+    ] },
+    { "id": "shelter", "objectiveId": "obj_shelter", "entries": [
+      { "tipText": "Open the build menu and place a Cabin to make a shelter.", "advanceEvent": "OnShelterBuilt" }
+    ] }
+  ]
+}

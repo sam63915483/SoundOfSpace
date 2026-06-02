@@ -1,0 +1,25 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 626ad2e498e927648bd5f4ca0b8f7d0d, type: 3}
+  m_Name: Axe
+  m_EditorClassIdentifier: 
+  displayName: Axe
+  price: 150
+  description: "A basic chopping axe. Use it to fell trees and harvest wood. Doubles
+    as a melee weapon \u2014 three solid hits drop most enemies."
+  previewPrefab: {fileID: 7347783834704582515, guid: 03acb52f6075d2b45b955434b94a0501,
+    type: 3}
+  previewRotationEuler: {x: 0, y: 0, z: 90}
+  previewCameraDistance: 1.2
+  previewCameraFov: 35
+  kind: 2
+  oneTimePurchase: 1

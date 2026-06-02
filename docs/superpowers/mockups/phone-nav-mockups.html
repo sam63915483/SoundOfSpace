@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Phone Page-Nav Mockups</title>
+<style>
+  :root {
+    --bg:#05080d;
+    --chassis:#0A1828;
+    --chassis-border:rgba(120,200,255,0.45);
+    --screen:#060F1A;
+    --cyan:#5CC8FF;
+    --cyan-dim:rgba(92,200,255,0.4);
+    --cyan-faint:rgba(92,200,255,0.10);
+    --label:#EAF6FF;
+    --tile:#0F192A;
+    --grey:#3a4a5e;
+    --grey-dim:#283344;
+  }
+  * { box-sizing:border-box; }
+  html, body { margin:0; padding:0; background:var(--bg); color:var(--label); font-family:-apple-system,Segoe UI,Inter,system-ui,sans-serif; }
+  body { padding:28px 20px 80px; min-height:100vh; }
+
+  h1 { font-size:18px; font-weight:600; letter-spacing:2px; color:var(--cyan); margin:0 0 4px; text-transform:uppercase; }
+  .sub { color:#8aa7c4; font-size:13px; margin-bottom:28px; }
+
+  .stage {
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:24px;
+    max-width:1280px;
+    margin:0 auto;
+  }
+  .card {
+    background:#0c1420;
+    border:1px solid #1c2a3d;
+    border-radius:16px;
+    padding:20px 16px 16px;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+  }
+  .card h2 {
+    font-size:11px;
+    letter-spacing:3px;
+    color:var(--cyan);
+    margin:0 0 4px;
+    text-transform:uppercase;
+  }
+  .card .tag {
+    color:#7d99b8;
+    font-size:12px;
+    margin-bottom:18px;
+    text-align:center;
+    min-height:30px;
+  }
+
+  /* --- Phone frame (matches PlayerPhoneUI proportions 220x440, scaled up 1.6x) --- */
+  .phone {
+    width:264px;
+    height:528px;
+    background:var(--chassis);
+    border:1.5px solid var(--chassis-border);
+    border-radius:32px;
+    position:relative;
+    padding:50px 14px;
+    flex:0 0 auto;
+  }
+  .bezel-top { position:absolute; top:0; left:0; right:0; height:50px; display:flex; align-items:center; justify-content:center; gap:7px; }
+  .speaker { width:68px; height:5px; border-radius:3px; background:rgba(20,32,50,0.85); }
+  .lens { width:12px; height:12px; border-radius:50%; background:#0a141d; display:flex; align-items:center; justify-content:center; }
+  .lens::after { content:""; width:6px; height:6px; border-radius:50%; background:var(--cyan); }
+  .side-btn { position:absolute; background:#2A4060; width:4px; border-radius:2px; }
+  .side-btn.l1 { left:-3px; top:74px; height:14px; }
+  .side-btn.l2 { left:-3px; top:118px; height:28px; }
+  .side-btn.l3 { left:-3px; top:162px; height:40px; }
+  .side-btn.r1 { right:-3px; top:132px; height:48px; }
+
+  .screen {
+    background:var(--screen);
+    border-radius:10px;
+    width:100%;
+    height:100%;
+    padding:8px;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+    overflow:hidden;
+  }
+  .status {
+    display:flex; justify-content:space-between; align-items:center;
+    font-size:9px; letter-spacing:1px; color:var(--cyan); padding:0 4px;
+    min-height:14px;
+  }
+  .status .bat {
+    width:22px; height:9px; border:1px solid var(--cyan-dim); border-radius:2px;
+    position:relative; padding:1px;
+  }
+  .status .bat::after { content:""; position:absolute; right:-3px; top:2px; width:1.5px; height:5px; background:var(--cyan-dim); border-radius:0 1px 1px 0; }
+  .status .bat span { display:block; height:100%; width:62%; background:var(--cyan); border-radius:1px; }
+  .notif {
+    background:rgba(92,200,255,0.04);
+    border:1px solid rgba(92,200,255,0.18);
+    border-radius:6px;
+    padding:5px 8px;
+    font-size:9px;
+    color:#9fc6eb;
+    min-height:24px;
+    display:flex; align-items:center;
+  }
+  .pages {
+    flex:1;
+    position:relative;
+    overflow:hidden;
+  }
+  .page {
+    position:absolute; inset:0;
+    display:none;
+    flex-direction:column;
+    gap:8px;
+  }
+  .page.active { display:flex; }
+
+  /* page 1 — app grid */
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:4px; }
+  .tile {
+    background:var(--tile);
+    border-radius:8px;
+    aspect-ratio:1/1;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    position:relative;
+    color:var(--cyan);
+    font-weight:700;
+    font-size:24px;
+  }
+  .tile span { color:var(--label); font-size:8px; font-weight:500; letter-spacing:1px; margin-top:3px; }
+  .tile::before, .tile::after {
+    content:""; position:absolute; width:9px; height:1.5px; background:var(--cyan);
+  }
+  .tile::before { top:3px; left:3px; box-shadow:0 0 0 0 var(--cyan); }
+  .tile::after  { bottom:3px; right:3px; }
+  .tile i.bv {
+    position:absolute; width:1.5px; height:9px; background:var(--cyan); top:3px; left:3px;
+  }
+  .tile i.bv2 {
+    position:absolute; width:1.5px; height:9px; background:var(--cyan); bottom:3px; right:3px;
+  }
+
+  /* page 2 — vitals widget placeholder */
+  .vitals { padding:6px; display:flex; flex-direction:column; gap:8px; }
+  .stat-row { display:flex; align-items:center; gap:6px; font-size:9px; color:#9fc6eb; }
+  .stat-row .lbl { width:54px; letter-spacing:1px; }
+  .stat-row .bar { flex:1; height:7px; background:rgba(92,200,255,0.10); border-radius:3px; overflow:hidden; }
+  .stat-row .bar span { display:block; height:100%; background:var(--cyan); }
+  .pet { background:rgba(92,200,255,0.04); border:1px solid rgba(92,200,255,0.16); border-radius:6px; padding:6px; text-align:center; font-size:9px; color:#9fc6eb; }
+
+  /* page 3 — quests widget placeholder */
+  .quest { background:var(--tile); border-radius:6px; padding:6px 8px; font-size:9px; color:#9fc6eb; display:flex; gap:6px; align-items:center; }
+  .quest .dot { width:6px; height:6px; border-radius:50%; background:var(--cyan); flex:0 0 auto; }
+  .quest.done .dot { background:var(--grey); }
+  .quest.done { color:var(--grey); text-decoration:line-through; }
+
+  /* page label - shown at top of every page */
+  .page-title {
+    font-size:8px; letter-spacing:3px; color:var(--cyan); padding:0 4px;
+  }
+
+  /* --- The four nav-strip styles --- */
+  .nav-zone { padding:0 4px; min-height:30px; display:flex; align-items:center; }
+
+  /* 1. iOS minimal */
+  .nav-ios {
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:14px;
+  }
+  .nav-ios .arrow {
+    color:rgba(92,200,255,0.65); font-size:18px; font-weight:300; background:transparent; border:none; cursor:pointer; padding:2px 4px; line-height:1;
+  }
+  .nav-ios .arrow:hover { color:var(--cyan); }
+  .nav-ios .dots { display:flex; gap:6px; align-items:center; }
+  .nav-ios .dot { width:5px; height:5px; border-radius:50%; background:rgba(255,255,255,0.25); transition:all .15s; }
+  .nav-ios .dot.active { background:#fff; }
+
+  /* 2. Scanner brackets */
+  .nav-scanner {
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 4px;
+  }
+  .nav-scanner .bbtn {
+    position:relative; width:28px; height:24px; background:transparent; border:none; cursor:pointer; color:var(--cyan); font-size:16px; line-height:1; display:flex; align-items:center; justify-content:center;
+  }
+  .nav-scanner .bbtn::before, .nav-scanner .bbtn::after {
+    content:""; position:absolute; background:var(--cyan);
+  }
+  .nav-scanner .bbtn::before {
+    top:0; left:0; width:7px; height:1.5px;
+    box-shadow:0 22.5px 0 0 var(--cyan), 22.5px 0 0 0 var(--cyan), 22.5px 22.5px 0 0 var(--cyan);
+  }
+  .nav-scanner .bbtn::after {
+    top:0; left:0; width:1.5px; height:7px;
+    box-shadow:0 17px 0 0 var(--cyan), 26.5px 0 0 0 var(--cyan), 26.5px 17px 0 0 var(--cyan);
+  }
+  .nav-scanner .bbtn:hover { color:#fff; }
+  .nav-scanner .dots { display:flex; gap:9px; align-items:center; }
+  .nav-scanner .dot {
+    width:7px; height:7px; border-radius:50%; background:var(--grey-dim);
+    transition:all .2s;
+  }
+  .nav-scanner .dot.active {
+    background:var(--cyan);
+    box-shadow:0 0 8px var(--cyan), 0 0 2px var(--cyan);
+  }
+
+  /* 3. Pill bar */
+  .nav-pill {
+    width:100%; height:28px;
+    background:rgba(92,200,255,0.05);
+    border:1px solid rgba(92,200,255,0.32);
+    border-radius:14px;
+    display:grid;
+    grid-template-columns:1fr 1px 1fr 1px 1fr;
+    align-items:center;
+  }
+  .nav-pill .div { width:1px; height:14px; background:rgba(92,200,255,0.18); }
+  .nav-pill button { background:transparent; border:none; cursor:pointer; color:var(--cyan); font-size:14px; padding:0; height:100%; }
+  .nav-pill button:hover { color:#fff; }
+  .nav-pill .dots { display:flex; gap:7px; align-items:center; justify-content:center; }
+  .nav-pill .dot { width:5px; height:5px; border-radius:50%; background:var(--grey); }
+  .nav-pill .dot.active { background:var(--cyan); }
+
+  /* 4. Bold tactile */
+  .nav-bold {
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding:0 2px;
+  }
+  .nav-bold .btn {
+    width:32px; height:24px;
+    background:var(--tile);
+    border:1px solid rgba(92,200,255,0.32);
+    border-radius:6px;
+    color:var(--cyan);
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    padding:0;
+    transition:all .12s;
+  }
+  .nav-bold .btn:hover {
+    background:rgba(92,200,255,0.16);
+    border-color:var(--cyan);
+    color:#fff;
+  }
+  .nav-bold .btn svg { width:10px; height:10px; }
+  .nav-bold .dots { display:flex; gap:11px; align-items:center; }
+  .nav-bold .dot {
+    width:9px; height:9px; border-radius:50%; background:var(--grey);
+    transition:all .2s;
+  }
+  .nav-bold .dot.active {
+    background:var(--cyan);
+    transform:scale(1.25);
+    box-shadow:0 0 6px rgba(92,200,255,0.7);
+  }
+
+  /* CAMERA button — unchanged across all 4 */
+  .cam-btn {
+    width:100%;
+    min-height:26px;
+    background:rgba(92,200,255,0.08);
+    border:1px solid rgba(92,200,255,0.32);
+    border-radius:6px;
+    color:var(--cyan);
+    font-size:9px; letter-spacing:3px; font-weight:600;
+    display:flex; align-items:center; justify-content:center;
+    cursor:default;
+  }
+
+  .legend {
+    margin-top:14px; font-size:11px; color:#7d99b8; text-align:center; line-height:1.55;
+    min-height:48px;
+  }
+  .legend strong { color:#bcd6ef; }
+
+  .instructions {
+    max-width:880px;
+    margin:0 auto 36px;
+    background:#0c1420;
+    border:1px solid #1c2a3d;
+    border-radius:10px;
+    padding:14px 18px;
+    color:#9fc6eb;
+    font-size:13px;
+    line-height:1.6;
+  }
+  .instructions code { background:#0a1827; padding:1px 6px; border-radius:3px; color:var(--cyan); font-size:12px; }
+</style>
+</head>
+<body>
+
+  <h1>Phone Page-Nav · 4 Mockups</h1>
+  <p class="sub">Click the ‹ / › arrows on any phone to flip through the 3 home pages. Tell me which style wins.</p>
+
+  <div class="instructions">
+    <strong>Pages.</strong> Each mockup is the same 3-page home screen. Page 1 is the existing 2×2 apps. Page 2 + 3 are placeholder widgets (vitals card, quest list) just to show the nav works — you'll decide the real contents later.<br>
+    <strong>Camera</strong> button stays exactly where it is, separate from the page nav, as you specified.
+  </div>
+
+  <div class="stage">
+
+    <!-- ============ 1. iOS MINIMAL ============ -->
+    <div class="card">
+      <h2>1 · iOS Minimal</h2>
+      <div class="tag">Tiny chevrons, flat dots.<br>Lowest visual weight.</div>
+      <div class="phone">
+        <div class="bezel-top">
+          <div class="speaker"></div><div class="lens"></div>
+        </div>
+        <div class="side-btn l1"></div><div class="side-btn l2"></div><div class="side-btn l3"></div><div class="side-btn r1"></div>
+        <div class="screen">
+          <div class="status"><span>14:32</span><span style="display:flex;gap:4px;align-items:center;">62%<span class="bat"><span></span></span></span></div>
+          <div class="notif">No new alerts</div>
+          <div class="pages" data-mockup="1">
+            <div class="page active" data-page="1">
+              <div class="page-title">— APPS —</div>
+              <div class="grid">
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>F<span>FISHINGDEX</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>B<span>BUILD</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>S<span>SETTINGS</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>M<span>MAP</span></div>
+              </div>
+            </div>
+            <div class="page" data-page="2">
+              <div class="page-title">— VITALS —</div>
+              <div class="vitals">
+                <div class="stat-row"><span class="lbl">HUNGER</span><span class="bar"><span style="width:72%"></span></span></div>
+                <div class="stat-row"><span class="lbl">THIRST</span><span class="bar"><span style="width:54%"></span></span></div>
+                <div class="stat-row"><span class="lbl">HEALTH</span><span class="bar"><span style="width:88%"></span></span></div>
+                <div class="stat-row"><span class="lbl">SHIP PWR</span><span class="bar"><span style="width:41%"></span></span></div>
+                <div class="pet">— widget area —</div>
+              </div>
+            </div>
+            <div class="page" data-page="3">
+              <div class="page-title">— QUESTS —</div>
+              <div class="vitals">
+                <div class="quest done"><span class="dot"></span>Read the note</div>
+                <div class="quest done"><span class="dot"></span>Catch a fish</div>
+                <div class="quest"><span class="dot"></span>Eat a cooked meal</div>
+                <div class="quest"><span class="dot"></span>Drink from bottle</div>
+                <div class="quest"><span class="dot"></span>Return to Tev</div>
+              </div>
+            </div>
+          </div>
+          <div class="nav-zone">
+            <div class="nav-ios">
+              <button class="arrow prev">‹</button>
+              <div class="dots">
+                <div class="dot active"></div><div class="dot"></div><div class="dot"></div>
+              </div>
+              <button class="arrow next">›</button>
+            </div>
+          </div>
+          <div class="cam-btn">CAMERA</div>
+        </div>
+      </div>
+      <div class="legend">Lightest weight. Reads as <strong>page indicator</strong> first, not "buttons". Best if you want the phone to feel iOS-clean.</div>
+    </div>
+
+    <!-- ============ 2. SCANNER BRACKETS ============ -->
+    <div class="card">
+      <h2>2 · Scanner Brackets</h2>
+      <div class="tag">L-bracket arrow buttons,<br>glowing active dot. On-brand.</div>
+      <div class="phone">
+        <div class="bezel-top">
+          <div class="speaker"></div><div class="lens"></div>
+        </div>
+        <div class="side-btn l1"></div><div class="side-btn l2"></div><div class="side-btn l3"></div><div class="side-btn r1"></div>
+        <div class="screen">
+          <div class="status"><span>14:32</span><span style="display:flex;gap:4px;align-items:center;">62%<span class="bat"><span></span></span></span></div>
+          <div class="notif">No new alerts</div>
+          <div class="pages" data-mockup="2">
+            <div class="page active" data-page="1">
+              <div class="page-title">— APPS —</div>
+              <div class="grid">
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>F<span>FISHINGDEX</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>B<span>BUILD</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>S<span>SETTINGS</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>M<span>MAP</span></div>
+              </div>
+            </div>
+            <div class="page" data-page="2">
+              <div class="page-title">— VITALS —</div>
+              <div class="vitals">
+                <div class="stat-row"><span class="lbl">HUNGER</span><span class="bar"><span style="width:72%"></span></span></div>
+                <div class="stat-row"><span class="lbl">THIRST</span><span class="bar"><span style="width:54%"></span></span></div>
+                <div class="stat-row"><span class="lbl">HEALTH</span><span class="bar"><span style="width:88%"></span></span></div>
+                <div class="stat-row"><span class="lbl">SHIP PWR</span><span class="bar"><span style="width:41%"></span></span></div>
+                <div class="pet">— widget area —</div>
+              </div>
+            </div>
+            <div class="page" data-page="3">
+              <div class="page-title">— QUESTS —</div>
+              <div class="vitals">
+                <div class="quest done"><span class="dot"></span>Read the note</div>
+                <div class="quest done"><span class="dot"></span>Catch a fish</div>
+                <div class="quest"><span class="dot"></span>Eat a cooked meal</div>
+                <div class="quest"><span class="dot"></span>Drink from bottle</div>
+                <div class="quest"><span class="dot"></span>Return to Tev</div>
+              </div>
+            </div>
+          </div>
+          <div class="nav-zone">
+            <div class="nav-scanner">
+              <button class="bbtn prev">‹</button>
+              <div class="dots">
+                <div class="dot active"></div><div class="dot"></div><div class="dot"></div>
+              </div>
+              <button class="bbtn next">›</button>
+            </div>
+          </div>
+          <div class="cam-btn">CAMERA</div>
+        </div>
+      </div>
+      <div class="legend">Matches the <strong>scanner-bracket</strong> language used on the app tiles and FishingDex. Active dot glows. Most on-brand.</div>
+    </div>
+
+    <!-- ============ 3. PILL BAR ============ -->
+    <div class="card">
+      <h2>3 · Pill Bar</h2>
+      <div class="tag">One unified capsule with<br>arrows + dots inside.</div>
+      <div class="phone">
+        <div class="bezel-top">
+          <div class="speaker"></div><div class="lens"></div>
+        </div>
+        <div class="side-btn l1"></div><div class="side-btn l2"></div><div class="side-btn l3"></div><div class="side-btn r1"></div>
+        <div class="screen">
+          <div class="status"><span>14:32</span><span style="display:flex;gap:4px;align-items:center;">62%<span class="bat"><span></span></span></span></div>
+          <div class="notif">No new alerts</div>
+          <div class="pages" data-mockup="3">
+            <div class="page active" data-page="1">
+              <div class="page-title">— APPS —</div>
+              <div class="grid">
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>F<span>FISHINGDEX</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>B<span>BUILD</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>S<span>SETTINGS</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>M<span>MAP</span></div>
+              </div>
+            </div>
+            <div class="page" data-page="2">
+              <div class="page-title">— VITALS —</div>
+              <div class="vitals">
+                <div class="stat-row"><span class="lbl">HUNGER</span><span class="bar"><span style="width:72%"></span></span></div>
+                <div class="stat-row"><span class="lbl">THIRST</span><span class="bar"><span style="width:54%"></span></span></div>
+                <div class="stat-row"><span class="lbl">HEALTH</span><span class="bar"><span style="width:88%"></span></span></div>
+                <div class="stat-row"><span class="lbl">SHIP PWR</span><span class="bar"><span style="width:41%"></span></span></div>
+                <div class="pet">— widget area —</div>
+              </div>
+            </div>
+            <div class="page" data-page="3">
+              <div class="page-title">— QUESTS —</div>
+              <div class="vitals">
+                <div class="quest done"><span class="dot"></span>Read the note</div>
+                <div class="quest done"><span class="dot"></span>Catch a fish</div>
+                <div class="quest"><span class="dot"></span>Eat a cooked meal</div>
+                <div class="quest"><span class="dot"></span>Drink from bottle</div>
+                <div class="quest"><span class="dot"></span>Return to Tev</div>
+              </div>
+            </div>
+          </div>
+          <div class="nav-zone">
+            <div class="nav-pill">
+              <button class="prev">‹</button>
+              <div class="div"></div>
+              <div class="dots">
+                <div class="dot active"></div><div class="dot"></div><div class="dot"></div>
+              </div>
+              <div class="div"></div>
+              <button class="next">›</button>
+            </div>
+          </div>
+          <div class="cam-btn">CAMERA</div>
+        </div>
+      </div>
+      <div class="legend">One <strong>unified widget</strong> — reads as a single nav control. Feels like a media player. More UI weight than 1/2.</div>
+    </div>
+
+    <!-- ============ 4. BOLD TACTILE ============ -->
+    <div class="card">
+      <h2>4 · Bold Tactile</h2>
+      <div class="tag">Square buttons, fat triangles,<br>glowing scaled-up active dot.</div>
+      <div class="phone">
+        <div class="bezel-top">
+          <div class="speaker"></div><div class="lens"></div>
+        </div>
+        <div class="side-btn l1"></div><div class="side-btn l2"></div><div class="side-btn l3"></div><div class="side-btn r1"></div>
+        <div class="screen">
+          <div class="status"><span>14:32</span><span style="display:flex;gap:4px;align-items:center;">62%<span class="bat"><span></span></span></span></div>
+          <div class="notif">No new alerts</div>
+          <div class="pages" data-mockup="4">
+            <div class="page active" data-page="1">
+              <div class="page-title">— APPS —</div>
+              <div class="grid">
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>F<span>FISHINGDEX</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>B<span>BUILD</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>S<span>SETTINGS</span></div>
+                <div class="tile"><i class="bv"></i><i class="bv2"></i>M<span>MAP</span></div>
+              </div>
+            </div>
+            <div class="page" data-page="2">
+              <div class="page-title">— VITALS —</div>
+              <div class="vitals">
+                <div class="stat-row"><span class="lbl">HUNGER</span><span class="bar"><span style="width:72%"></span></span></div>
+                <div class="stat-row"><span class="lbl">THIRST</span><span class="bar"><span style="width:54%"></span></span></div>
+                <div class="stat-row"><span class="lbl">HEALTH</span><span class="bar"><span style="width:88%"></span></span></div>
+                <div class="stat-row"><span class="lbl">SHIP PWR</span><span class="bar"><span style="width:41%"></span></span></div>
+                <div class="pet">— widget area —</div>
+              </div>
+            </div>
+            <div class="page" data-page="3">
+              <div class="page-title">— QUESTS —</div>
+              <div class="vitals">
+                <div class="quest done"><span class="dot"></span>Read the note</div>
+                <div class="quest done"><span class="dot"></span>Catch a fish</div>
+                <div class="quest"><span class="dot"></span>Eat a cooked meal</div>
+                <div class="quest"><span class="dot"></span>Drink from bottle</div>
+                <div class="quest"><span class="dot"></span>Return to Tev</div>
+              </div>
+            </div>
+          </div>
+          <div class="nav-zone">
+            <div class="nav-bold">
+              <button class="btn prev"><svg viewBox="0 0 10 10"><polygon points="7,1 7,9 2,5" fill="currentColor"/></svg></button>
+              <div class="dots">
+                <div class="dot active"></div><div class="dot"></div><div class="dot"></div>
+              </div>
+              <button class="btn next"><svg viewBox="0 0 10 10"><polygon points="3,1 3,9 8,5" fill="currentColor"/></svg></button>
+            </div>
+          </div>
+          <div class="cam-btn">CAMERA</div>
+        </div>
+      </div>
+      <div class="legend">Biggest tap targets. Active dot <strong>scales up + glows</strong>. Reads as "console-friendly" — most discoverable.</div>
+    </div>
+
+  </div>
+
+<script>
+  document.querySelectorAll(".pages").forEach(pagesEl => {
+    const card = pagesEl.closest(".card");
+    const nav = card.querySelector(".nav-zone");
+    const dots = nav.querySelectorAll(".dot");
+    const prev = nav.querySelector(".prev");
+    const next = nav.querySelector(".next");
+    let idx = 0;
+    const pages = pagesEl.querySelectorAll(".page");
+
+    function show(n) {
+      idx = (n + pages.length) % pages.length;
+      pages.forEach((p,i) => p.classList.toggle("active", i === idx));
+      dots.forEach((d,i) => d.classList.toggle("active", i === idx));
+    }
+    prev.addEventListener("click", () => show(idx - 1));
+    next.addEventListener("click", () => show(idx + 1));
+  });
+</script>
+</body>
+</html>

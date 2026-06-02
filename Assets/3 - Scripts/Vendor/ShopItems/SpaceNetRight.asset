@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 626ad2e498e927648bd5f4ca0b8f7d0d, type: 3}
+  m_Name: SpaceNetRight
+  m_EditorClassIdentifier: 
+  displayName: Space Net (Right)
+  price: 200
+  description: A square dust-gathering net that mounts on top of a ship's right side.
+    Walk up to a SHIP44 with this in hand and press F at the matching mount point
+    to install it. Once installed, the net passively gathers space dust whenever
+    the ship is parked in orbit.
+  previewPrefab: {fileID: 0}
+  previewRotationEuler: {x: 0, y: 90, z: 0}
+  previewCameraDistance: 1.2
+  previewCameraFov: 35
+  kind: 32
+  oneTimePurchase: 0

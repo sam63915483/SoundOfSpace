@@ -1,0 +1,17 @@
+<linker>
+  <!--
+    Prevent the IL2CPP / managed-code stripper from removing classes that are
+    only reachable via Unity's RuntimeInitializeOnLoadMethod attribute or
+    EventSystem reflection. Without this, controller UI navigation works in
+    the editor but breaks in built games because the stripper drops the
+    auto-create entry points.
+
+    "preserve=all" keeps every type in Assembly-CSharp; this is the project's
+    main script assembly and isn't large enough for the size hit to matter.
+  -->
+  <assembly fullname="Assembly-CSharp" preserve="all"/>
+
+  <!-- Ensure Unity's UI EventSystem types stay reachable in builds. -->
+  <assembly fullname="UnityEngine.UI" preserve="all"/>
+  <assembly fullname="UnityEngine.UIModule" preserve="all"/>
+</linker>

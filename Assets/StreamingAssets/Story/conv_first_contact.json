@@ -1,0 +1,44 @@
+{
+  "id": "conv_first_contact",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "AI",
+      "lines": [
+        "You're awake. Good.",
+        "I'm the assistant bonded to your helmet. You won't last long out here without the basics - clean water and food. Let's fix that first."
+      ],
+      "responses": [
+        { "buttonText": "How do I get clean water?", "nextNodeId": "water_help",
+          "hiddenIfFlag": "hasWater",
+          "effects": [ { "kind": "StartObjective", "strArg": "obj_water" } ],
+          "startHintTrack": "water" },
+        { "buttonText": "How do I find food?", "nextNodeId": "food_help",
+          "hiddenIfFlag": "hasFood",
+          "effects": [ { "kind": "StartObjective", "strArg": "obj_food" } ],
+          "startHintTrack": "food" },
+        { "buttonText": "I've already handled the basics.", "nextNodeId": "grace",
+          "requiresFlag": "hasWater" },
+        { "buttonText": "I'll figure it out myself.", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "water_help",
+      "speaker": "AI",
+      "lines": [ "Sure - sending tips to your helmet HUD. Grab a bottle, fill it at the bank, and drink." ],
+      "responses": [ { "buttonText": "Got it.", "nextNodeId": "end" } ]
+    },
+    {
+      "id": "food_help",
+      "speaker": "AI",
+      "lines": [ "On it - tips are on your HUD. Catch a fish, cook it at a fire, then eat." ],
+      "responses": [ { "buttonText": "Got it.", "nextNodeId": "end" } ]
+    },
+    {
+      "id": "grace",
+      "speaker": "AI",
+      "lines": [ "I see you've already secured food and water. Good. That makes this easier." ],
+      "responses": [ { "buttonText": "What's next?", "nextNodeId": "end" } ]
+    }
+  ]
+}

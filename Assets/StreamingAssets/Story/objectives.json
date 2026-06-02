@@ -1,0 +1,8 @@
+{
+  "objectives": [
+    { "id": "obj_water", "description": "Drink clean water", "completionEvent": "OnCleanWaterDrunk", "hintTrackId": "water", "onComplete": [] },
+    { "id": "obj_food", "description": "Cook and eat food", "completionEvent": "OnCookedFoodEaten", "hintTrackId": "food", "onComplete": [] },
+    { "id": "obj_shelter", "description": "Build a shelter", "completionEvent": "OnShelterBuilt", "hintTrackId": "shelter", "onComplete": [] },
+    { "id": "obj_village", "description": "Reach the village", "completionEvent": "OnVillageReached", "hintTrackId": "", "onComplete": [] }
+  ]
+}
