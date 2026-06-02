@@ -820,6 +820,12 @@ public class EnemyController : MonoBehaviour, IDamageable
     public void TakeDamage(float amount, bool creditPlayer)
     {
         if (amount <= 0f || _dying) return;
+
+        // Random blood splash at the body centre on any PLAYER hit (gun / axe /
+        // fishing rod all route through here). creditPlayer == false is
+        // environmental damage (torch, Lebron) and is excluded.
+        if (creditPlayer) BloodFX.Instance?.SpawnDamageSplash(rb.position, transform);
+
         currentHealth -= amount;
         if (healthBar != null)
         {
@@ -853,6 +859,11 @@ public class EnemyController : MonoBehaviour, IDamageable
         Vector3 up         = parentPlanet != null
             ? (rb.position - parentPlanet.Position).normalized
             : Vector3.up;
+
+        // Blood splat on the ground directly below where the enemy dies.
+        Vector3 bloodFootPoint = rb.position - up * _scaledGroundedOffset;
+        BloodFX.Instance?.SpawnPool(bloodFootPoint, up,
+            parentPlanet != null ? parentPlanet.transform : null);
 
         // The outer body becomes a stationary script container; the ragdoll
         // bones drive all visible motion now. Disable the outer collider so

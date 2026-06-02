@@ -48,6 +48,14 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Metres the spray spawn point is pushed back along the surface normal, INTO the body, so the blood reads as coming from inside the enemy instead of floating a few cm off the collider surface. Keep small so it doesn't sink too deep.")]
     [SerializeField] float sprayDepthInset = 0.15f;
 
+    [Header("Damage Splash (any player hit)")]
+    [Tooltip("A random one of these plays at the enemy's body centre on EVERY player hit (gun / axe / fishing rod). Assign all the Blood Splashes prefabs.")]
+    [SerializeField] GameObject[] damageSplashPrefabs;
+    [Tooltip("Uniform scale applied to the spawned damage splash.")]
+    [SerializeField] float damageSplashScale = 0.5f;
+    [Tooltip("Seconds before the damage splash is destroyed.")]
+    [SerializeField] float damageSplashLifetime = 2f;
+
     Camera _depthCam;
 
     void Awake()
@@ -143,10 +151,17 @@ public class BloodFX : MonoBehaviour
         if (poolPrefab == null) return;
 
         Vector3 u = up.sqrMagnitude > 0.0001f ? up.normalized : Vector3.up;
+        // Lie the splat flat on the local surface tangent (orient its up to the
+        // ground normal) and lift it a hair off the ground to avoid z-fighting.
         Quaternion rot = Quaternion.FromToRotation(Vector3.up, u);
+        Vector3 pos = groundPoint + u * 0.03f;
 
-        var fx = Instantiate(poolPrefab, groundPoint, rot);
+        var fx = Instantiate(poolPrefab, pos, rot);
         if (!Mathf.Approximately(poolScale, 1f)) fx.transform.localScale *= poolScale;
+
+        // Local sim space + planet parenting so the splat's particles stay put
+        // on the ground as the planet orbits (World space would streak them off).
+        ForceLocalSimulationSpace(fx);
         if (planet != null) fx.transform.SetParent(planet, worldPositionStays: true);
 
         DisableColliders(fx);
@@ -154,6 +169,30 @@ public class BloodFX : MonoBehaviour
         var pool = fx.GetComponent<BloodPool>();
         if (pool == null) pool = fx.AddComponent<BloodPool>();
         pool.Init(poolLingerSeconds, poolFadeSeconds);
+    }
+
+    /// <summary>
+    /// Play a random blood splash at an enemy's body centre on any player hit.
+    /// Attaches to the nearest bone so it rides the body.
+    /// </summary>
+    public void SpawnDamageSplash(Vector3 center, Transform attachTo)
+    {
+        if (damageSplashPrefabs == null || damageSplashPrefabs.Length == 0) return;
+        var prefab = damageSplashPrefabs[Random.Range(0, damageSplashPrefabs.Length)];
+        if (prefab == null) return;
+
+        var fx = Instantiate(prefab, center, Quaternion.identity);
+        if (!Mathf.Approximately(damageSplashScale, 1f)) fx.transform.localScale *= damageSplashScale;
+
+        ForceLocalSimulationSpace(fx);
+
+        Transform parent = attachTo != null
+            ? FindNearestDescendant(attachTo, center)
+            : ResolveNearestPlanet(center);
+        if (parent != null) fx.transform.SetParent(parent, worldPositionStays: true);
+
+        DisableColliders(fx);
+        Destroy(fx, damageSplashLifetime);
     }
 
     static Transform ResolveNearestPlanet(Vector3 point)
