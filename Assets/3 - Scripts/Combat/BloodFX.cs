@@ -46,11 +46,15 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Seconds before the damage splash is destroyed.")]
     [SerializeField] float damageSplashLifetime = 2f;
 
-    [Header("Spray Pulse")]
-    [Tooltip("Lowest scale the spray dips to while pulsing (fraction of full). 0.5 = pulses between 100% and 50%.")]
-    [Range(0f, 1f)] [SerializeField] float sprayPulseMinScale = 0.5f;
-    [Tooltip("Pulse speed in cycles per second during the spray's middle life. ~0.8 gives a steady throb over a 5s spray.")]
-    [SerializeField] float sprayPulseHz = 0.8f;
+    [Header("Spray Beats")]
+    [Tooltip("Resting scale the spray settles to between beats (fraction of full). Blood spurts UP from here. 0.5 = rests at half size.")]
+    [Range(0f, 1f)] [SerializeField] float sprayRestScale = 0.5f;
+    [Tooltip("Min seconds between blood beats (spurts) — randomised per beat for an irregular, organic rhythm.")]
+    [SerializeField] float sprayBeatIntervalMin = 0.15f;
+    [Tooltip("Max seconds between blood beats.")]
+    [SerializeField] float sprayBeatIntervalMax = 0.55f;
+    [Tooltip("Seconds each beat takes to decay back down to the resting scale.")]
+    [SerializeField] float sprayBeatFallSeconds = 0.3f;
 
     Camera _depthCam;
 
@@ -137,7 +141,7 @@ public class BloodFX : MonoBehaviour
         var anim = fx.GetComponent<BloodSpray>();
         if (anim == null) anim = fx.AddComponent<BloodSpray>();
         anim.Init(sprayLifetime, sprayGrowSeconds, sprayShrinkSeconds, targetScale,
-                  sprayPulseMinScale, sprayPulseHz);
+                  sprayRestScale, sprayBeatIntervalMin, sprayBeatIntervalMax, sprayBeatFallSeconds);
     }
 
     /// <summary>

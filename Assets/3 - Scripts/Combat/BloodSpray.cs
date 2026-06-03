@@ -3,30 +3,31 @@ using UnityEngine;
 
 /// <summary>
 /// Attached to a spawned blood-spray FX by BloodFX. Drives the effect by scale:
-/// grows from zero to its full (target) scale over growSeconds, then PULSES for
-/// the middle of its life — dipping to pulseMinScale and back to full, over and
-/// over (cosine, pulseHz cycles/sec) for a throbbing "still bleeding" feel — then
-/// shrinks back to zero over shrinkSeconds before destroying itself. The target
-/// scale is captured AFTER parenting so the world-space size is correct even when
-/// parented under a non-uniformly scaled enemy.
+/// grows from zero to full over growSeconds (the initial impact spurt), then
+/// settles to a RESTING scale (baseScale, e.g. 50%) and spurts back up toward
+/// full in irregular little beats — quick rise, decay back to rest — like real
+/// arterial bleeding (irregular intervals + varied beat strength). Finally
+/// shrinks to zero over shrinkSeconds and destroys itself. Target scale is
+/// captured AFTER parenting so world size is correct under a scaled enemy.
 /// </summary>
 public class BloodSpray : MonoBehaviour
 {
     public void Init(float lifetime, float growSeconds, float shrinkSeconds, Vector3 targetScale,
-                     float pulseMinScale, float pulseHz)
+                     float baseScale, float beatIntervalMin, float beatIntervalMax, float beatFallSeconds)
     {
         StartCoroutine(Run(Mathf.Max(0.02f, lifetime),
                            Mathf.Max(0f, growSeconds),
                            Mathf.Max(0f, shrinkSeconds),
                            targetScale,
-                           Mathf.Clamp01(pulseMinScale),
-                           Mathf.Max(0f, pulseHz)));
+                           Mathf.Clamp01(baseScale),
+                           Mathf.Max(0.02f, beatIntervalMin),
+                           Mathf.Max(beatIntervalMin, beatIntervalMax),
+                           Mathf.Max(0.02f, beatFallSeconds)));
     }
 
-    IEnumerator Run(float lifetime, float grow, float shrink, Vector3 target, float pulseMin, float pulseHz)
+    IEnumerator Run(float lifetime, float grow, float shrink, Vector3 target,
+                    float baseScale, float beatMin, float beatMax, float beatFall)
     {
-        // If grow + shrink overruns the lifetime, scale them down proportionally
-        // so they still fit (and leave no pulse time).
         if (grow + shrink > lifetime)
         {
             float sum = grow + shrink;
@@ -35,8 +36,7 @@ public class BloodSpray : MonoBehaviour
         }
         float pulseDuration = Mathf.Max(0f, lifetime - grow - shrink);
 
-        // Grow 0 -> target. Set to zero first so there's no full-size pop on the
-        // first rendered frame.
+        // Grow 0 -> full (initial impact spurt). Zero first so no first-frame pop.
         transform.localScale = Vector3.zero;
         float t = 0f;
         while (t < grow)
@@ -45,24 +45,34 @@ public class BloodSpray : MonoBehaviour
             t += Time.deltaTime;
             yield return null;
         }
-        transform.localScale = target;
 
-        // Pulse between full (1.0) and pulseMin. Cosine starts at +1 so the
-        // effect is at full when the pulse begins, then dips first — "shrink,
-        // shoot back up, dip again..." for the whole middle of the life.
-        float mid = (1f + pulseMin) * 0.5f;
-        float amp = (1f - pulseMin) * 0.5f;
+        // Beat phase: rest at baseScale, spurt up toward full in irregular beats.
+        // 'beat' is the spurt envelope (0 = rest, 1 = full); it decays toward 0
+        // and is re-triggered at random intervals with a varied strength. Starts
+        // at 1 so the grow flows straight into the first spurt's decay.
+        float beat = 1f;
         float lastFactor = 1f;
+        float sinceBeat = 0f;
+        float nextBeat = Random.Range(beatMin, beatMax);
         t = 0f;
         while (t < pulseDuration)
         {
-            lastFactor = mid + amp * Mathf.Cos(2f * Mathf.PI * pulseHz * t);
+            float dt = Time.deltaTime;
+            t += dt;
+            sinceBeat += dt;
+            if (sinceBeat >= nextBeat)
+            {
+                beat = Mathf.Max(beat, Random.Range(0.65f, 1f)); // new spurt, varied height
+                sinceBeat = 0f;
+                nextBeat = Random.Range(beatMin, beatMax);
+            }
+            beat = Mathf.MoveTowards(beat, 0f, dt / beatFall);
+            lastFactor = baseScale + (1f - baseScale) * beat;
             transform.localScale = target * lastFactor;
-            t += Time.deltaTime;
             yield return null;
         }
 
-        // Shrink from wherever the pulse left off -> 0, so there's no jump.
+        // Shrink from wherever the last beat left off -> 0, so there's no jump.
         t = 0f;
         while (t < shrink)
         {
