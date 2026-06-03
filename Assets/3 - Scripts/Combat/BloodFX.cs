@@ -57,8 +57,8 @@ public class BloodFX : MonoBehaviour
     [Header("Spray Die-Out (after the gush)")]
     [Tooltip("Seconds the fountain takes to shrink away to nothing AFTER the gush, while still beating up and down.")]
     [SerializeField] float sprayDieSeconds = 15f;
-    [Tooltip("Scale the fountain drops to right when the gush ends ('much less'), then shrinks from here to zero over sprayDieSeconds. 0.5 = half the gush size.")]
-    [Range(0f, 1f)] [SerializeField] float sprayDieStartScale = 0.5f;
+    [Tooltip("Scale the die-out starts from when the gush ends, then shrinks to zero over sprayDieSeconds. 1.0 = no drop (continues from the full gush and gradually fades); lower = a visible step down first.")]
+    [Range(0f, 1f)] [SerializeField] float sprayDieStartScale = 1f;
 
     Camera _depthCam;
 
