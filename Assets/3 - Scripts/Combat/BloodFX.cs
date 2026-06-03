@@ -45,8 +45,8 @@ public class BloodFX : MonoBehaviour
     [SerializeField] float damageSplashLifetime = 2f;
 
     [Header("Spray Beats")]
-    [Tooltip("Resting scale the spray settles to between beats (fraction of full). Blood spurts UP from here. 0.5 = rests at half size.")]
-    [Range(0f, 1f)] [SerializeField] float sprayRestScale = 0.5f;
+    [Tooltip("Low scale the spray drops to between beats (fraction of full). Blood spurts UP to full from here, then shrinks back down. 0.1 = shrinks down small (10%) then spurts to 100%.")]
+    [Range(0f, 1f)] [SerializeField] float sprayRestScale = 0.1f;
     [Tooltip("Min seconds between blood beats (spurts) — randomised per beat for an irregular, organic rhythm.")]
     [SerializeField] float sprayBeatIntervalMin = 0.15f;
     [Tooltip("Max seconds between blood beats.")]
