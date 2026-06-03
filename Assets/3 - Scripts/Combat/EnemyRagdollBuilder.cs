@@ -191,6 +191,28 @@ public static class EnemyRagdollBuilder
         return result;
     }
 
+    /// One bone's capsule geometry for gizmo drawing (no colliders created).
+    public struct BoneCapsule { public Transform bone; public Transform tip; public float radius; }
+
+    /// Returns the per-bone capsule geometry (bone, tip joint, local radius) so a
+    /// gizmo can draw the hitbox without instantiating colliders. Mirrors what
+    /// BuildHitColliders / BuildAndActivate create, scaled by radiusScale.
+    public static List<BoneCapsule> GetBoneCapsules(Transform rigRoot, float radiusScale = 1f)
+    {
+        var result = new List<BoneCapsule>();
+        if (rigRoot == null) return result;
+        string prefix = DetectRigPrefix(rigRoot);
+        if (prefix == null) return result;
+        foreach (var spec in Bones)
+        {
+            var bone = FindDeep(rigRoot, prefix + spec.suffix);
+            if (bone == null) continue;
+            var tip = spec.tipSuffix != null ? FindDeep(rigRoot, prefix + spec.tipSuffix) : null;
+            result.Add(new BoneCapsule { bone = bone, tip = tip, radius = spec.radius * radiusScale });
+        }
+        return result;
+    }
+
     static string DetectRigPrefix(Transform root)
     {
         const string HipsSuffix = "_Hips";

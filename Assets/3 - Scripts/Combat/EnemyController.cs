@@ -126,8 +126,10 @@ public class EnemyController : MonoBehaviour, IDamageable
     [SerializeField] float despawnDistance = 80f;
 
     [Header("Hitbox")]
-    [Tooltip("Global multiplier on the per-bone hit / ragdoll capsule radii. 1 = the measured-from-mesh defaults. Bump up/down and replay (watch it with Window > Analysis > Physics Debugger) to fatten/thin the hitbox. Applies to both the live shooting colliders and the death ragdoll.")]
+    [Tooltip("Global multiplier on the per-bone hit / ragdoll capsule radii. 1 = the measured-from-mesh defaults. Bump up/down to fatten/thin the whole hitbox; the Scene-view gizmo (below) updates live as you change it.")]
     [SerializeField] float hitboxRadiusScale = 1f;
+    [Tooltip("Draw the hit/ragdoll capsules as red wireframes in the Scene view (editor only — never shows in the game/build). Open the enemy prefab or select an enemy in the scene to see and tune the hitbox.")]
+    [SerializeField] bool drawHitboxGizmos = true;
 
     public float MinSpawnDistance => minSpawnDistance;
     public float MaxSpawnDistance => maxSpawnDistance;
@@ -1071,6 +1073,35 @@ public class EnemyController : MonoBehaviour, IDamageable
     void OnDestroy()
     {
         if (EnemySpawner.Instance != null) EnemySpawner.Instance.OnEnemyDestroyed(this);
+    }
+
+    // Scene-view visualization of the bone hit/ragdoll capsules so the hitbox
+    // can be seen and tuned (hitboxRadiusScale) without the Physics Debugger.
+    // Editor-only; gizmos never render in the game/build. Capsules are drawn as
+    // a wire sphere at each end of the bone segment + a connecting line.
+    void OnDrawGizmos()
+    {
+        if (!drawHitboxGizmos) return;
+        Transform rig = null;
+        for (int i = 0; i < transform.childCount; i++)
+        {
+            var c = transform.GetChild(i);
+            if (c.name.StartsWith("Visual_")) { rig = c; break; }
+        }
+        if (rig == null) return;
+
+        Gizmos.color = new Color(1f, 0.25f, 0.25f, 0.9f);
+        foreach (var bc in EnemyRagdollBuilder.GetBoneCapsules(rig, hitboxRadiusScale))
+        {
+            if (bc.bone == null) continue;
+            float wr = bc.radius * bc.bone.lossyScale.x;
+            Gizmos.DrawWireSphere(bc.bone.position, wr);
+            if (bc.tip != null)
+            {
+                Gizmos.DrawWireSphere(bc.tip.position, wr);
+                Gizmos.DrawLine(bc.bone.position, bc.tip.position);
+            }
+        }
     }
 
     CelestialBody GetNearestPlanet()
