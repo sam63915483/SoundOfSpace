@@ -190,9 +190,9 @@ public class EnemyController : MonoBehaviour, IDamageable
     // orbiting planet) or MaxFreeTumbleSeconds elapses, it's frozen + locked to
     // the planet for the REST of RagdollDuration, so it rides the orbit rigidly
     // instead of free-drifting out of frame / grinding the terrain for 30s.
-    const float MinFreeTumbleSeconds = 1.5f;
-    const float MaxFreeTumbleSeconds = 6f;
-    const float SettleSpeedThreshold = 1.0f;  // m/s relative to the planet
+    const float MinFreeTumbleSeconds = 10f;   // always ragdoll at least this long before any freeze
+    const float MaxFreeTumbleSeconds = 25f;   // safety cap: freeze by here even if never fully settles (leaves time to shrink at RagdollDuration)
+    const float SettleSpeedThreshold = 0.4f;  // m/s relative to the planet — must be nearly stopped, not "moving a teeny bit"
 
     static readonly RaycastHit[] s_hitBuffer = new RaycastHit[8];
     static readonly System.Collections.Generic.List<EnemyController> s_active =
