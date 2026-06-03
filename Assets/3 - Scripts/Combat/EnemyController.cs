@@ -290,6 +290,19 @@ public class EnemyController : MonoBehaviour, IDamageable
 
         if (spawnLoopClip != null && _oneShotSource != null)
             StartCoroutine(SpawnLoopRoutine());
+
+        // Animation-following hit colliders on the rig bones so shots register on
+        // the actual limbs (arms / head / legs), not just the static torso
+        // capsule. They attach to the kinematic root as a moving compound
+        // collider and are torn down in BeginDeath before the ragdoll builds its
+        // own. No-op on the unrigged capsule placeholder.
+        Transform hitRig = null;
+        for (int i = 0; i < transform.childCount; i++)
+        {
+            var child = transform.GetChild(i);
+            if (child.name.StartsWith("Visual_")) { hitRig = child; break; }
+        }
+        if (hitRig != null) _hitColliders = EnemyRagdollBuilder.BuildHitColliders(hitRig);
     }
 
     System.Collections.IEnumerator SpawnLoopRoutine()
@@ -837,6 +850,7 @@ public class EnemyController : MonoBehaviour, IDamageable
     }
 
     System.Collections.Generic.List<Rigidbody> _registeredBones;
+    System.Collections.Generic.List<Collider> _hitColliders; // live per-bone hit colliders (removed on death)
 
     void BeginDeath(bool creditPlayer)
     {
@@ -876,6 +890,15 @@ public class EnemyController : MonoBehaviour, IDamageable
         // ragdoll bones twice as hard as a regular Toy10. The kick should feel
         // the same regardless of which mob died or what phase it was in.
         Vector3 baseVel = planetVel + forwardDir * moveSpeed + up * 1f;
+
+        // Tear down the live hit colliders before the ragdoll injects its own
+        // per-bone colliders, so each bone doesn't end up with two.
+        if (_hitColliders != null)
+        {
+            for (int i = 0; i < _hitColliders.Count; i++)
+                if (_hitColliders[i] != null) Destroy(_hitColliders[i]);
+            _hitColliders = null;
+        }
 
         // Match any visual child by prefix instead of hard-coding "Visual_Toy10",
         // so future variants (Toy3, Toy7, …) all wire up their ragdolls. Build-

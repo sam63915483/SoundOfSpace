@@ -130,6 +130,35 @@ public static class EnemyRagdollBuilder
         return list;
     }
 
+    /// <summary>
+    /// Adds bare SphereColliders (NO Rigidbody / joint) to the rig bones so the
+    /// enemy has an animation-following hitbox WHILE ALIVE — shots register on
+    /// the actual limbs, not just the static torso capsule. Bones stay
+    /// Rigidbody-free during life (a Rigidbody there causes the mesh tearing
+    /// described in the class summary), so these colliders attach to the enemy
+    /// ROOT's kinematic Rigidbody as a moving compound collider: they follow the
+    /// animation, are hit by weapon raycasts, and add no static-collider rebuild
+    /// cost. Reuses the exact bones + radii the ragdoll uses. Returns the created
+    /// colliders so the caller can destroy them on death, just before
+    /// BuildAndActivate injects the ragdoll's own colliders.
+    /// </summary>
+    public static List<Collider> BuildHitColliders(Transform rigRoot)
+    {
+        var result = new List<Collider>();
+        if (rigRoot == null) return result;
+        string prefix = DetectRigPrefix(rigRoot);
+        if (prefix == null) return result; // capsule placeholder / non-humanoid rig
+        foreach (var spec in Bones)
+        {
+            var bone = FindDeep(rigRoot, prefix + spec.suffix);
+            if (bone == null) continue;
+            var col = bone.gameObject.AddComponent<SphereCollider>();
+            col.radius = spec.radius;
+            result.Add(col);
+        }
+        return result;
+    }
+
     static string DetectRigPrefix(Transform root)
     {
         const string HipsSuffix = "_Hips";
