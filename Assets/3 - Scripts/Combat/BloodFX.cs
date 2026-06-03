@@ -212,6 +212,21 @@ public class BloodFX : MonoBehaviour
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
         {
             if (t == root) continue;
+
+            // Only attach blood to real skeletal bones. The enemy rig also contains
+            // the world-space HealthBar canvas (a RectTransform scaled to 0.01) and
+            // its children. When the body-centre point happens to land nearest one of
+            // those — pose-dependent, so it only bites now and then — parenting the FX
+            // under it (worldPositionStays) produced a sheared, inflated lossyScale,
+            // and the splash's scalingMode=Hierarchy then rendered it several times
+            // oversized: the "one splash comes in 4x" bug. Skip UI nodes and any
+            // node whose world scale is tiny or non-uniform (a shear/scale hack).
+            if (t is RectTransform) continue;
+            Vector3 ls = t.lossyScale;
+            float mn = Mathf.Min(ls.x, Mathf.Min(ls.y, ls.z));
+            float mx = Mathf.Max(ls.x, Mathf.Max(ls.y, ls.z));
+            if (mn <= 0.05f || mx > mn * 4f) continue;
+
             float d = (t.position - worldPoint).sqrMagnitude;
             if (d < bestSqr) { bestSqr = d; best = t; }
         }
