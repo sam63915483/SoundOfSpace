@@ -1074,6 +1074,15 @@ public class EnemyController : MonoBehaviour, IDamageable
             Physics.SyncTransforms();
         }
 
+        // Keep tracking the planet's orbit while frozen — the SAME manual
+        // planetVel step the live enemy uses in its locomotion. A frozen
+        // kinematic corpse that stops doing this is stationary in world space,
+        // so the orbiting planet flies out from under it (the "flies off the
+        // planet" bug — it wasn't the freeze flinging it, it was the freeze
+        // stopping the orbit tracking). Bones follow via the hierarchy.
+        if (rb != null && rb.isKinematic && parentPlanet != null)
+            rb.MovePosition(rb.position + parentPlanet.velocity * Time.fixedDeltaTime);
+
         // Frozen and riding the planet — hold full-size until the corpse's full
         // lifetime, then shrink it away. (Freeze happens early, well before
         // RagdollDuration, so this gate keeps it whole during the frozen hold.)
