@@ -21,27 +21,54 @@ public static class EnemyRagdollBuilder
     {
         public string suffix;       // bone name without the rig prefix (e.g. "Hips")
         public string parentSuffix; // null → ragdoll root (Hips)
+        public string tipSuffix;    // child joint the limb capsule extends toward; null → SphereCollider (head)
         public float  mass;
         public float  radius;
     }
 
     // Eleven-bone ragdoll: hips → spine2/chest → head + 2 arms (upper+fore) + 2 legs (upper+lower).
-    // Suffix-only so we can reuse the same spec for any Cursed_Toys_II rig
-    // (Toy10_*, Toy3_*, …) — see DetectRigPrefix.
+    // Each limb bone gets a CAPSULE spanning toward its tip joint (the next bone
+    // down the chain) so the segment between joints has real length + thickness —
+    // limbs rest on the ground instead of clipping through, and shots between
+    // joints register. tipSuffix bones (Hand/Foot) need not be ragdoll bones; they
+    // only supply the capsule's far end. Head has no tip → a SphereCollider.
+    // Suffix-only so one spec serves any Cursed_Toys_II rig (Toy10_*, Toy3_*, …).
     static readonly BoneSpec[] Bones =
     {
-        new BoneSpec{ suffix="Hips",         parentSuffix=null,        mass=3.0f, radius=0.15f },
-        new BoneSpec{ suffix="Spine2",       parentSuffix="Hips",      mass=2.0f, radius=0.15f },
-        new BoneSpec{ suffix="Head",         parentSuffix="Spine2",    mass=1.0f, radius=0.13f },
-        new BoneSpec{ suffix="LeftArm",      parentSuffix="Spine2",    mass=0.8f, radius=0.07f },
-        new BoneSpec{ suffix="LeftForeArm",  parentSuffix="LeftArm",   mass=0.6f, radius=0.06f },
-        new BoneSpec{ suffix="RightArm",     parentSuffix="Spine2",    mass=0.8f, radius=0.07f },
-        new BoneSpec{ suffix="RightForeArm", parentSuffix="RightArm",  mass=0.6f, radius=0.06f },
-        new BoneSpec{ suffix="LeftUpLeg",    parentSuffix="Hips",      mass=1.0f, radius=0.10f },
-        new BoneSpec{ suffix="LeftLeg",      parentSuffix="LeftUpLeg", mass=0.8f, radius=0.08f },
-        new BoneSpec{ suffix="RightUpLeg",   parentSuffix="Hips",      mass=1.0f, radius=0.10f },
-        new BoneSpec{ suffix="RightLeg",     parentSuffix="RightUpLeg",mass=0.8f, radius=0.08f },
+        new BoneSpec{ suffix="Hips",         parentSuffix=null,        tipSuffix="Spine2",       mass=3.0f, radius=0.13f },
+        new BoneSpec{ suffix="Spine2",       parentSuffix="Hips",      tipSuffix="Head",         mass=2.0f, radius=0.13f },
+        new BoneSpec{ suffix="Head",         parentSuffix="Spine2",    tipSuffix=null,           mass=1.0f, radius=0.13f },
+        new BoneSpec{ suffix="LeftArm",      parentSuffix="Spine2",    tipSuffix="LeftForeArm",  mass=0.8f, radius=0.06f },
+        new BoneSpec{ suffix="LeftForeArm",  parentSuffix="LeftArm",   tipSuffix="LeftHand",     mass=0.6f, radius=0.05f },
+        new BoneSpec{ suffix="RightArm",     parentSuffix="Spine2",    tipSuffix="RightForeArm", mass=0.8f, radius=0.06f },
+        new BoneSpec{ suffix="RightForeArm", parentSuffix="RightArm",  tipSuffix="RightHand",    mass=0.6f, radius=0.05f },
+        new BoneSpec{ suffix="LeftUpLeg",    parentSuffix="Hips",      tipSuffix="LeftLeg",      mass=1.0f, radius=0.08f },
+        new BoneSpec{ suffix="LeftLeg",      parentSuffix="LeftUpLeg", tipSuffix="LeftFoot",     mass=0.8f, radius=0.07f },
+        new BoneSpec{ suffix="RightUpLeg",   parentSuffix="Hips",      tipSuffix="RightLeg",     mass=1.0f, radius=0.08f },
+        new BoneSpec{ suffix="RightLeg",     parentSuffix="RightUpLeg",tipSuffix="RightFoot",    mass=0.8f, radius=0.07f },
     };
+
+    // Adds the right collider to a bone: a CapsuleCollider spanning bone→tip (the
+    // limb segment) when a tip joint exists, else a SphereCollider (head). The
+    // capsule's length axis is the dominant local-space axis of the bone→tip
+    // vector, so it adapts to whatever bone-roll convention the rig uses.
+    static Collider AddBoneCollider(Transform bone, Transform tip, float radius)
+    {
+        if (tip == null)
+        {
+            var s = bone.gameObject.AddComponent<SphereCollider>();
+            s.radius = radius;
+            return s;
+        }
+        var cap = bone.gameObject.AddComponent<CapsuleCollider>();
+        cap.radius = radius;
+        Vector3 local = bone.InverseTransformPoint(tip.position);
+        cap.center = local * 0.5f;
+        cap.height = Mathf.Max(local.magnitude, radius * 2f);
+        Vector3 a = new Vector3(Mathf.Abs(local.x), Mathf.Abs(local.y), Mathf.Abs(local.z));
+        cap.direction = (a.x >= a.y && a.x >= a.z) ? 0 : (a.y >= a.z ? 1 : 2);
+        return cap;
+    }
 
     /// <summary>
     /// Attach RB + collider + joint to every bone listed in Bones[], starting
@@ -106,8 +133,8 @@ public static class EnemyRagdollBuilder
             RagdollBoneRegistry.Register(rb);
             rbs[spec.suffix] = rb;
 
-            var col = bone.gameObject.AddComponent<SphereCollider>();
-            col.radius = spec.radius;
+            Transform tip = spec.tipSuffix != null ? FindDeep(rigRoot, prefix + spec.tipSuffix) : null;
+            AddBoneCollider(bone, tip, spec.radius);
         }
 
         // Pass 2: CharacterJoint chains. Connected bodies must already exist
@@ -152,9 +179,8 @@ public static class EnemyRagdollBuilder
         {
             var bone = FindDeep(rigRoot, prefix + spec.suffix);
             if (bone == null) continue;
-            var col = bone.gameObject.AddComponent<SphereCollider>();
-            col.radius = spec.radius;
-            result.Add(col);
+            Transform tip = spec.tipSuffix != null ? FindDeep(rigRoot, prefix + spec.tipSuffix) : null;
+            result.Add(AddBoneCollider(bone, tip, spec.radius));
         }
         return result;
     }
