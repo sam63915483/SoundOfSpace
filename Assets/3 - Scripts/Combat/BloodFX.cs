@@ -218,12 +218,19 @@ public class BloodFX : MonoBehaviour
         return best != null ? best : root;
     }
 
+    // Make the blood ignore the emitter's own motion: simulate in LOCAL space
+    // (so particles aren't left behind as the orbiting/self-propelled enemy
+    // moves) AND disable Inherit Velocity (so they don't get launched/stretched
+    // along the emitter's fast orbital velocity — the "smeared" look that only
+    // showed in-game, never in the stationary asset-pack preview).
     static void ForceLocalSimulationSpace(GameObject go)
     {
         foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
         {
             var main = ps.main;
             main.simulationSpace = ParticleSystemSimulationSpace.Local;
+            var inherit = ps.inheritVelocity;
+            inherit.enabled = false;
         }
     }
 }
