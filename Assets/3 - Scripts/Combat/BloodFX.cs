@@ -18,7 +18,7 @@ public class BloodFX : MonoBehaviour
     [Header("Spray (on hit)")]
     [Tooltip("Uniform scale applied to the spawned spray FX.")]
     [SerializeField] float sprayScale = 1f;
-    [Tooltip("Seconds the active GUSH lasts. After this the fountain cone stops and only the thinned droplet trickle keeps weeping from the wound (see Spray Trickle).")]
+    [Tooltip("Seconds the strong GUSH lasts (full size, beating). After this the fountain drops to 'much less' and shrinks away while still beating (see Spray Die-Out).")]
     [SerializeField] float sprayLifetime = 3f;
     [Tooltip("Euler offset applied AFTER aiming the spray along the surface normal. Correct for the chosen prefab's emission axis here (e.g. if it emits along +Y rather than +Z). Tune in Play mode.")]
     [SerializeField] Vector3 sprayRotationOffset = Vector3.zero;
@@ -54,11 +54,11 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Seconds each beat takes to decay back down to the resting scale.")]
     [SerializeField] float sprayBeatFallSeconds = 0.3f;
 
-    [Header("Spray Trickle (after the gush)")]
-    [Tooltip("Seconds the wound keeps weeping droplets AFTER the gush ends. The mesh fountain cone stops; only the billboard droplet particles continue, thinned. ~29 to keep bleeding for the corpse's lifetime.")]
-    [SerializeField] float sprayTrickleSeconds = 29f;
-    [Tooltip("Fraction of the droplet emission rate kept during the trickle. 0.2 = a gentle 20% weep vs the full gush.")]
-    [Range(0f, 1f)] [SerializeField] float sprayTrickleEmissionScale = 0.2f;
+    [Header("Spray Die-Out (after the gush)")]
+    [Tooltip("Seconds the fountain takes to shrink away to nothing AFTER the gush, while still beating up and down.")]
+    [SerializeField] float sprayDieSeconds = 15f;
+    [Tooltip("Scale the fountain drops to right when the gush ends ('much less'), then shrinks from here to zero over sprayDieSeconds. 0.5 = half the gush size.")]
+    [Range(0f, 1f)] [SerializeField] float sprayDieStartScale = 0.5f;
 
     Camera _depthCam;
 
@@ -146,7 +146,7 @@ public class BloodFX : MonoBehaviour
         if (anim == null) anim = fx.AddComponent<BloodSpray>();
         anim.Init(sprayLifetime, sprayGrowSeconds, targetScale,
                   sprayRestScale, sprayBeatIntervalMin, sprayBeatIntervalMax, sprayBeatFallSeconds,
-                  sprayTrickleSeconds, sprayTrickleEmissionScale);
+                  sprayDieSeconds, sprayDieStartScale);
     }
 
     /// <summary>

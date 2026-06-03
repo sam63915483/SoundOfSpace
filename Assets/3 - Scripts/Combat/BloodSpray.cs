@@ -2,23 +2,19 @@ using System.Collections;
 using UnityEngine;
 
 /// <summary>
-/// Attached to a spawned blood-spray FX by BloodFX. Two stages:
-///  1. GUSH (gushSeconds): grows from zero to full, then spurts up from a shrunk
-///     resting scale in irregular beats — the active bleeding.
-///  2. At the end of the gush the mesh "cone" sub-systems are stopped (the gush
-///     goes away) while the billboard droplet sub-systems keep emitting, thinned
-///     to a trickle, for trickleSeconds — the wound keeps weeping after the
-///     gush. A short tail stops emission so the last droplets fade, then the FX
-///     destroys itself. Target scale is captured AFTER parenting so world size
-///     is right under a scaled enemy.
+/// Attached to a spawned blood-spray FX by BloodFX. Two stages, both beating:
+///  1. GUSH (gushSeconds): grows to full, then spurts up from a shrunk resting
+///     scale in irregular beats — the strong initial bleeding.
+///  2. DIE-OUT (dieSeconds): drops to "much less" (dieStartScale) and shrinks
+///     steadily to zero while STILL beating up and down, then destroys itself.
+/// Target scale is captured AFTER parenting so world size is right under a
+/// scaled enemy.
 /// </summary>
 public class BloodSpray : MonoBehaviour
 {
-    const float TailSeconds = 2f; // stop emission this long before destroy so droplets fade out
-
     public void Init(float gushSeconds, float growSeconds, Vector3 targetScale,
                      float restScale, float beatIntervalMin, float beatIntervalMax, float beatFallSeconds,
-                     float trickleSeconds, float trickleEmissionScale)
+                     float dieSeconds, float dieStartScale)
     {
         StartCoroutine(Run(Mathf.Max(0.1f, gushSeconds),
                            Mathf.Max(0f, growSeconds),
@@ -27,13 +23,19 @@ public class BloodSpray : MonoBehaviour
                            Mathf.Max(0.02f, beatIntervalMin),
                            Mathf.Max(beatIntervalMin, beatIntervalMax),
                            Mathf.Max(0.02f, beatFallSeconds),
-                           Mathf.Max(0f, trickleSeconds),
-                           Mathf.Clamp01(trickleEmissionScale)));
+                           Mathf.Max(0.1f, dieSeconds),
+                           Mathf.Clamp01(dieStartScale)));
     }
 
+    // Beat state, shared across both stages so the pulse is continuous.
+    float _beat = 1f, _sinceBeat = 0f, _nextBeat = 0.3f;
+    float _beatMin, _beatMax, _beatFall, _restScale;
+
     IEnumerator Run(float gush, float grow, Vector3 target, float restScale,
-                    float beatMin, float beatMax, float beatFall, float trickle, float trickleScale)
+                    float beatMin, float beatMax, float beatFall, float dieSeconds, float dieStartScale)
     {
+        _beatMin = beatMin; _beatMax = beatMax; _beatFall = beatFall; _restScale = restScale;
+        _nextBeat = Random.Range(beatMin, beatMax);
         grow = Mathf.Min(grow, gush);
 
         // Grow 0 -> full (initial impact spurt). Zero first so no first-frame pop.
@@ -47,54 +49,45 @@ public class BloodSpray : MonoBehaviour
         }
         transform.localScale = target;
 
-        // Beat phase for the rest of the gush: rest at restScale, spurt up in
-        // irregular beats. 'beat' decays toward rest and is re-triggered at
-        // random intervals with varied strength.
-        float beat = 1f, sinceBeat = 0f, nextBeat = Random.Range(beatMin, beatMax);
+        // Stage 1 — GUSH: full size, beating, for the rest of gushSeconds.
         t = grow;
         while (t < gush)
         {
             float dt = Time.deltaTime;
-            t += dt; sinceBeat += dt;
-            if (sinceBeat >= nextBeat)
-            {
-                beat = Mathf.Max(beat, Random.Range(0.65f, 1f));
-                sinceBeat = 0f;
-                nextBeat = Random.Range(beatMin, beatMax);
-            }
-            beat = Mathf.MoveTowards(beat, 0f, dt / beatFall);
-            transform.localScale = target * (restScale + (1f - restScale) * beat);
+            t += dt;
+            transform.localScale = target * StepBeat(dt);
             yield return null;
         }
 
-        // End of gush: settle to full, stop the mesh "cone" gush, and thin the
-        // billboard droplet emission to a trickle (the wound keeps weeping).
-        transform.localScale = target;
-        var systems = GetComponentsInChildren<ParticleSystem>(true);
-        foreach (var ps in systems)
+        // Stage 2 — DIE-OUT: drop to dieStartScale and shrink to zero over
+        // dieSeconds while still beating up and down.
+        float t2 = 0f;
+        while (t2 < dieSeconds)
         {
-            if (ps == null) continue;
-            var r = ps.GetComponent<ParticleSystemRenderer>();
-            bool isMeshGush = r != null && r.renderMode == ParticleSystemRenderMode.Mesh;
-            if (isMeshGush)
-            {
-                ps.Stop(false, ParticleSystemStopBehavior.StopEmitting); // gush tapers off and goes away
-            }
-            else
-            {
-                var em = ps.emission;
-                em.rateOverTimeMultiplier     *= trickleScale;
-                em.rateOverDistanceMultiplier *= trickleScale;
-            }
+            float dt = Time.deltaTime;
+            t2 += dt;
+            float envelope = Mathf.Lerp(dieStartScale, 0f, t2 / dieSeconds);
+            transform.localScale = target * (envelope * StepBeat(dt));
+            yield return null;
         }
-
-        // Trickle, then a tail: stop all emission so the last droplets fade.
-        float tail = Mathf.Min(TailSeconds, trickle);
-        if (trickle - tail > 0f) yield return new WaitForSeconds(trickle - tail);
-        foreach (var ps in systems)
-            if (ps != null) ps.Stop(true, ParticleSystemStopBehavior.StopEmitting);
-        if (tail > 0f) yield return new WaitForSeconds(tail);
+        transform.localScale = Vector3.zero;
 
         Destroy(gameObject);
+    }
+
+    // Advances the beat envelope one frame and returns the current pulse factor
+    // (restScale at rest, up toward 1 on a beat). Beats fire at random intervals
+    // with varied strength, decaying back to rest — irregular, like bleeding.
+    float StepBeat(float dt)
+    {
+        _sinceBeat += dt;
+        if (_sinceBeat >= _nextBeat)
+        {
+            _beat = Mathf.Max(_beat, Random.Range(0.65f, 1f));
+            _sinceBeat = 0f;
+            _nextBeat = Random.Range(_beatMin, _beatMax);
+        }
+        _beat = Mathf.MoveTowards(_beat, 0f, dt / _beatFall);
+        return _restScale + (1f - _restScale) * _beat;
     }
 }
