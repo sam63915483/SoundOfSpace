@@ -184,8 +184,15 @@ public class EnemyController : MonoBehaviour, IDamageable
     float _deathTimer;
     Vector3 _deathStartScale;
     bool _frozenForShrink;
-    const float RagdollDuration     = 30f;   // free physics-tumble before shrink
+    const float RagdollDuration     = 30f;   // total corpse lifetime before shrink
     const float DeathShrinkDuration = 1.5f;  // shrink-to-zero after ragdoll (long enough to actually read on screen — 0.4s was perceived as instant disappear)
+    // Free physics tumble is capped: once the corpse settles (relative to the
+    // orbiting planet) or MaxFreeTumbleSeconds elapses, it's frozen + locked to
+    // the planet for the REST of RagdollDuration, so it rides the orbit rigidly
+    // instead of free-drifting out of frame / grinding the terrain for 30s.
+    const float MinFreeTumbleSeconds = 1.5f;
+    const float MaxFreeTumbleSeconds = 6f;
+    const float SettleSpeedThreshold = 1.0f;  // m/s relative to the planet
 
     static readonly RaycastHit[] s_hitBuffer = new RaycastHit[8];
     static readonly System.Collections.Generic.List<EnemyController> s_active =
@@ -939,9 +946,17 @@ public class EnemyController : MonoBehaviour, IDamageable
     {
         _deathTimer += Time.fixedDeltaTime;
 
-        // Phase 1: free physics tumble. GravityObjectSimple + the
-        // CapsuleCollider handle everything — we do nothing.
-        if (_deathTimer < RagdollDuration) return;
+        // Phase 1: free physics tumble — but only until the corpse settles
+        // (relative to the orbiting planet) or MaxFreeTumbleSeconds elapses; then
+        // fall through and freeze it. Free-simulating world-space bones for the
+        // full 30s drifts them out of the planet's orbital frame and grinds the
+        // (fat) capsules against the curved terrain — the "not moving relative to
+        // the planet / flies off at despawn" weirdness. Freezing early and
+        // locking to the planet avoids both.
+        if (!_frozenForShrink
+            && _deathTimer < MaxFreeTumbleSeconds
+            && !(_deathTimer >= MinFreeTumbleSeconds && BonesSettledRelativeToPlanet()))
+            return;
 
         // Phase 2: freeze the corpse, re-anchor it where the bones came to
         // rest, then collapse uniformly to nothing.
@@ -1059,6 +1074,10 @@ public class EnemyController : MonoBehaviour, IDamageable
             Physics.SyncTransforms();
         }
 
+        // Frozen and riding the planet — hold full-size until the corpse's full
+        // lifetime, then shrink it away. (Freeze happens early, well before
+        // RagdollDuration, so this gate keeps it whole during the frozen hold.)
+        if (_deathTimer < RagdollDuration) return;
         float shrinkU = (_deathTimer - RagdollDuration) / DeathShrinkDuration;
         if (shrinkU >= 1f)
         {
@@ -1066,6 +1085,24 @@ public class EnemyController : MonoBehaviour, IDamageable
             return;
         }
         transform.localScale = _deathStartScale * (1f - shrinkU);
+    }
+
+    // True once every ragdoll bone is moving slowly RELATIVE TO THE PLANET (not
+    // world space — the planet orbits fast, so a settled corpse still has a big
+    // world velocity equal to the planet's). Used to freeze the corpse as soon
+    // as it comes to rest instead of free-simulating it for the full 30s.
+    bool BonesSettledRelativeToPlanet()
+    {
+        if (_registeredBones == null || _registeredBones.Count == 0) return true;
+        Vector3 planetVel = parentPlanet != null ? parentPlanet.velocity : Vector3.zero;
+        float thrSqr = SettleSpeedThreshold * SettleSpeedThreshold;
+        for (int i = 0; i < _registeredBones.Count; i++)
+        {
+            var b = _registeredBones[i];
+            if (b == null || b.isKinematic) continue;
+            if ((b.velocity - planetVel).sqrMagnitude > thrSqr) return false;
+        }
+        return true;
     }
 
     public static System.Collections.Generic.IReadOnlyList<EnemyController> ActiveEnemies => s_active;
