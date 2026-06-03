@@ -18,7 +18,7 @@ public class BloodFX : MonoBehaviour
     [Header("Spray (on hit)")]
     [Tooltip("Uniform scale applied to the spawned spray FX.")]
     [SerializeField] float sprayScale = 1f;
-    [Tooltip("Seconds before the spray FX is destroyed.")]
+    [Tooltip("Seconds the active GUSH lasts. After this the fountain cone stops and only the thinned droplet trickle keeps weeping from the wound (see Spray Trickle).")]
     [SerializeField] float sprayLifetime = 3f;
     [Tooltip("Euler offset applied AFTER aiming the spray along the surface normal. Correct for the chosen prefab's emission axis here (e.g. if it emits along +Y rather than +Z). Tune in Play mode.")]
     [SerializeField] Vector3 sprayRotationOffset = Vector3.zero;
@@ -28,8 +28,6 @@ public class BloodFX : MonoBehaviour
     [Header("Spray Animation")]
     [Tooltip("Seconds for the spray to grow from zero to its full size when it spawns.")]
     [SerializeField] float sprayGrowSeconds = 0.5f;
-    [Tooltip("Seconds for the spray to shrink back to zero at the end of its life.")]
-    [SerializeField] float sprayShrinkSeconds = 0.5f;
 
     [Header("Rendering")]
     [Tooltip("Built-in RP has no camera depth texture by default, so some Piloto particle layers (e.g. the depth-based blood droplets) render invisible in the Game view even though they show in the editor. Leaving this on enables DepthTextureMode.Depth on the main camera so the spray renders the same in game as in the editor.")]
@@ -55,6 +53,12 @@ public class BloodFX : MonoBehaviour
     [SerializeField] float sprayBeatIntervalMax = 0.55f;
     [Tooltip("Seconds each beat takes to decay back down to the resting scale.")]
     [SerializeField] float sprayBeatFallSeconds = 0.3f;
+
+    [Header("Spray Trickle (after the gush)")]
+    [Tooltip("Seconds the wound keeps weeping droplets AFTER the gush ends. The mesh fountain cone stops; only the billboard droplet particles continue, thinned. ~29 to keep bleeding for the corpse's lifetime.")]
+    [SerializeField] float sprayTrickleSeconds = 29f;
+    [Tooltip("Fraction of the droplet emission rate kept during the trickle. 0.2 = a gentle 20% weep vs the full gush.")]
+    [Range(0f, 1f)] [SerializeField] float sprayTrickleEmissionScale = 0.2f;
 
     Camera _depthCam;
 
@@ -140,8 +144,9 @@ public class BloodFX : MonoBehaviour
         Vector3 targetScale = fx.transform.localScale;
         var anim = fx.GetComponent<BloodSpray>();
         if (anim == null) anim = fx.AddComponent<BloodSpray>();
-        anim.Init(sprayLifetime, sprayGrowSeconds, sprayShrinkSeconds, targetScale,
-                  sprayRestScale, sprayBeatIntervalMin, sprayBeatIntervalMax, sprayBeatFallSeconds);
+        anim.Init(sprayLifetime, sprayGrowSeconds, targetScale,
+                  sprayRestScale, sprayBeatIntervalMin, sprayBeatIntervalMax, sprayBeatFallSeconds,
+                  sprayTrickleSeconds, sprayTrickleEmissionScale);
     }
 
     /// <summary>
