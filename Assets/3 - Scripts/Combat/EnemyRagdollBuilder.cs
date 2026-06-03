@@ -35,17 +35,23 @@ public static class EnemyRagdollBuilder
     // Suffix-only so one spec serves any Cursed_Toys_II rig (Toy10_*, Toy3_*, …).
     static readonly BoneSpec[] Bones =
     {
-        new BoneSpec{ suffix="Hips",         parentSuffix=null,        tipSuffix="Spine2",       mass=3.0f, radius=0.13f },
-        new BoneSpec{ suffix="Spine2",       parentSuffix="Hips",      tipSuffix="Head",         mass=2.0f, radius=0.13f },
-        new BoneSpec{ suffix="Head",         parentSuffix="Spine2",    tipSuffix=null,           mass=1.0f, radius=0.13f },
-        new BoneSpec{ suffix="LeftArm",      parentSuffix="Spine2",    tipSuffix="LeftForeArm",  mass=0.8f, radius=0.06f },
-        new BoneSpec{ suffix="LeftForeArm",  parentSuffix="LeftArm",   tipSuffix="LeftHand",     mass=0.6f, radius=0.05f },
-        new BoneSpec{ suffix="RightArm",     parentSuffix="Spine2",    tipSuffix="RightForeArm", mass=0.8f, radius=0.06f },
-        new BoneSpec{ suffix="RightForeArm", parentSuffix="RightArm",  tipSuffix="RightHand",    mass=0.6f, radius=0.05f },
-        new BoneSpec{ suffix="LeftUpLeg",    parentSuffix="Hips",      tipSuffix="LeftLeg",      mass=1.0f, radius=0.08f },
-        new BoneSpec{ suffix="LeftLeg",      parentSuffix="LeftUpLeg", tipSuffix="LeftFoot",     mass=0.8f, radius=0.07f },
-        new BoneSpec{ suffix="RightUpLeg",   parentSuffix="Hips",      tipSuffix="RightLeg",     mass=1.0f, radius=0.08f },
-        new BoneSpec{ suffix="RightLeg",     parentSuffix="RightUpLeg",tipSuffix="RightFoot",    mass=0.8f, radius=0.07f },
+        // Radii measured from the actual skinned mesh (90th-percentile vertex
+        // distance perpendicular to each bone) so the capsules wrap the visible
+        // chunky-toy limbs — thin radii left the limb mesh hanging outside the
+        // collider (ragdoll limbs clipped the ground, shots missed the visible
+        // arm). Torso/head trimmed slightly under the measured value to limit
+        // ragdoll self-overlap. Scales with the rig, so the 3x elite gets 3x.
+        new BoneSpec{ suffix="Hips",         parentSuffix=null,        tipSuffix="Spine2",       mass=3.0f, radius=0.22f },
+        new BoneSpec{ suffix="Spine2",       parentSuffix="Hips",      tipSuffix="Head",         mass=2.0f, radius=0.22f },
+        new BoneSpec{ suffix="Head",         parentSuffix="Spine2",    tipSuffix=null,           mass=1.0f, radius=0.30f },
+        new BoneSpec{ suffix="LeftArm",      parentSuffix="Spine2",    tipSuffix="LeftForeArm",  mass=0.8f, radius=0.15f },
+        new BoneSpec{ suffix="LeftForeArm",  parentSuffix="LeftArm",   tipSuffix="LeftHand",     mass=0.6f, radius=0.18f },
+        new BoneSpec{ suffix="RightArm",     parentSuffix="Spine2",    tipSuffix="RightForeArm", mass=0.8f, radius=0.15f },
+        new BoneSpec{ suffix="RightForeArm", parentSuffix="RightArm",  tipSuffix="RightHand",    mass=0.6f, radius=0.18f },
+        new BoneSpec{ suffix="LeftUpLeg",    parentSuffix="Hips",      tipSuffix="LeftLeg",      mass=1.0f, radius=0.17f },
+        new BoneSpec{ suffix="LeftLeg",      parentSuffix="LeftUpLeg", tipSuffix="LeftFoot",     mass=0.8f, radius=0.14f },
+        new BoneSpec{ suffix="RightUpLeg",   parentSuffix="Hips",      tipSuffix="RightLeg",     mass=1.0f, radius=0.17f },
+        new BoneSpec{ suffix="RightLeg",     parentSuffix="RightUpLeg",tipSuffix="RightFoot",    mass=0.8f, radius=0.14f },
     };
 
     // Adds the right collider to a bone: a CapsuleCollider spanning bone→tip (the
