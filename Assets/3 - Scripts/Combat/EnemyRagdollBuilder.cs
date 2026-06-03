@@ -82,7 +82,7 @@ public static class EnemyRagdollBuilder
     /// scatter so limbs don't launch identical). Returns the list of created
     /// Rigidbodies for caller bookkeeping (RagdollGravity).
     /// </summary>
-    public static List<Rigidbody> BuildAndActivate(Transform rigRoot, Vector3 initialVelocity)
+    public static List<Rigidbody> BuildAndActivate(Transform rigRoot, Vector3 initialVelocity, float radiusScale = 1f)
     {
         // Auto-detect the rig's bone-name prefix from its Hips bone — e.g.
         // a "Toy10_Hips" yields "Toy10_", a "Toy3_Hips" yields "Toy3_".
@@ -140,7 +140,7 @@ public static class EnemyRagdollBuilder
             rbs[spec.suffix] = rb;
 
             Transform tip = spec.tipSuffix != null ? FindDeep(rigRoot, prefix + spec.tipSuffix) : null;
-            AddBoneCollider(bone, tip, spec.radius);
+            AddBoneCollider(bone, tip, spec.radius * radiusScale);
         }
 
         // Pass 2: CharacterJoint chains. Connected bodies must already exist
@@ -175,7 +175,7 @@ public static class EnemyRagdollBuilder
     /// colliders so the caller can destroy them on death, just before
     /// BuildAndActivate injects the ragdoll's own colliders.
     /// </summary>
-    public static List<Collider> BuildHitColliders(Transform rigRoot)
+    public static List<Collider> BuildHitColliders(Transform rigRoot, float radiusScale = 1f)
     {
         var result = new List<Collider>();
         if (rigRoot == null) return result;
@@ -186,7 +186,7 @@ public static class EnemyRagdollBuilder
             var bone = FindDeep(rigRoot, prefix + spec.suffix);
             if (bone == null) continue;
             Transform tip = spec.tipSuffix != null ? FindDeep(rigRoot, prefix + spec.tipSuffix) : null;
-            result.Add(AddBoneCollider(bone, tip, spec.radius));
+            result.Add(AddBoneCollider(bone, tip, spec.radius * radiusScale));
         }
         return result;
     }

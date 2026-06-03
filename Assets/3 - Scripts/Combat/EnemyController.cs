@@ -125,6 +125,10 @@ public class EnemyController : MonoBehaviour, IDamageable
     [SerializeField] int spawnAttemptsPerTick = 12;
     [SerializeField] float despawnDistance = 80f;
 
+    [Header("Hitbox")]
+    [Tooltip("Global multiplier on the per-bone hit / ragdoll capsule radii. 1 = the measured-from-mesh defaults. Bump up/down and replay (watch it with Window > Analysis > Physics Debugger) to fatten/thin the hitbox. Applies to both the live shooting colliders and the death ragdoll.")]
+    [SerializeField] float hitboxRadiusScale = 1f;
+
     public float MinSpawnDistance => minSpawnDistance;
     public float MaxSpawnDistance => maxSpawnDistance;
     public int MaxConcurrent => maxConcurrent;
@@ -302,7 +306,7 @@ public class EnemyController : MonoBehaviour, IDamageable
             var child = transform.GetChild(i);
             if (child.name.StartsWith("Visual_")) { hitRig = child; break; }
         }
-        if (hitRig != null) _hitColliders = EnemyRagdollBuilder.BuildHitColliders(hitRig);
+        if (hitRig != null) _hitColliders = EnemyRagdollBuilder.BuildHitColliders(hitRig, hitboxRadiusScale);
     }
 
     System.Collections.IEnumerator SpawnLoopRoutine()
@@ -911,7 +915,7 @@ public class EnemyController : MonoBehaviour, IDamageable
             if (child.name.StartsWith("Visual_")) { visualRoot = child; break; }
         }
         _registeredBones = visualRoot != null
-            ? EnemyRagdollBuilder.BuildAndActivate(visualRoot, baseVel)
+            ? EnemyRagdollBuilder.BuildAndActivate(visualRoot, baseVel, hitboxRadiusScale)
             : new System.Collections.Generic.List<Rigidbody>();
 
         // Keep the corpse parented to its planet. Origin shifts move the
@@ -963,6 +967,22 @@ public class EnemyController : MonoBehaviour, IDamageable
         {
             _frozenForShrink = true;
             int n = _registeredBones.Count;
+
+            // Freeze every bone FIRST — kinematic + zero velocity — BEFORE the
+            // root re-anchor teleport below. A still-dynamic bone moved by the
+            // root teleport gets a depenetration impulse from the physics engine
+            // (Destroy on the bone RBs is deferred to end-of-frame, so they're
+            // still live when the teleport happens). That impulse is the "sudden
+            // burst of velocity / fling right as they despawn." Kinematic bodies
+            // ignore teleports, so freezing them first kills the fling.
+            for (int i = 0; i < n; i++)
+            {
+                var b = _registeredBones[i];
+                if (b == null) continue;
+                b.velocity        = Vector3.zero;
+                b.angularVelocity = Vector3.zero;
+                b.isKinematic     = true;
+            }
 
             // Cache transforms BEFORE we destroy any Rigidbodies — once a
             // Rigidbody is destroyed, the b reference is dead and we'd lose
@@ -1017,7 +1037,9 @@ public class EnemyController : MonoBehaviour, IDamageable
                 // connectedBody warning on a still-live joint.
                 var joint  = go.GetComponent<CharacterJoint>();
                 if (joint  != null) Destroy(joint);
-                var col    = go.GetComponent<SphereCollider>();
+                // Collider, not SphereCollider — the ragdoll uses CapsuleColliders
+                // now (head is a sphere); GetComponent<Collider> removes either.
+                var col    = go.GetComponent<Collider>();
                 if (col    != null) Destroy(col);
                 var marker = go.GetComponent<RagdollBoneMarker>();
                 if (marker != null) Destroy(marker);
