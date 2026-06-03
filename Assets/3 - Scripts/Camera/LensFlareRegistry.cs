@@ -580,7 +580,13 @@ public class LensFlareRegistry : MonoBehaviour
     void UpdateSun(Camera cam)
     {
         if (_sunBody == null) { FindSun(); EnsureFlareLayers(); }
-        if (_sunImage == null || _sunBody == null) return;
+        // No valid sun this frame → clear the flare instead of bailing with it
+        // still on screen. Entering an interior (backrooms/poolrooms) unloads the
+        // gameplay scene, destroying the sun: _sunBody becomes a destroyed-object
+        // null and FindSun finds nothing (NBodySimulation.Bodies is empty there),
+        // so without HideFlare the last-rendered halo froze on screen for the
+        // whole visit. Hiding here also covers the sun simply being unavailable.
+        if (_sunImage == null || _sunBody == null) { HideFlare(); return; }
 
         Vector3 sunPos = _sunBody.Position;
         Vector3 toSun = sunPos - cam.transform.position;

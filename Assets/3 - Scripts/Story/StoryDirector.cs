@@ -110,6 +110,11 @@ public class StoryDirector : MonoBehaviour
 
     void Changed() => OnStoryStateChanged?.Invoke();
 
+    /// <summary>Force an immediate gate reconciliation — e.g. the moment an authored
+    /// conversation ends — instead of waiting up to GateCheckInterval for the catch-up
+    /// timer. Lets a finished beat advance + queue the next one this frame.</summary>
+    public void ReconcileGatesNow() => CheckGates();
+
     public void SaveTo(StoryDirectorSave s)
     {
         s.currentStoryStep = (int)_step;

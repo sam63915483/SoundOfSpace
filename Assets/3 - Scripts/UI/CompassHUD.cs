@@ -68,6 +68,20 @@ public class CompassHUD : MonoBehaviour
     PlayerController _playerCached;
     Camera _cameraCached;
 
+    // Per-frame cached "north" reference + the body it's derived from. The
+    // cardinals/ticks/degree-numbers (≈48 waypoints) and the heading badge all
+    // need the SAME surface-north, which comes from the closest celestial body.
+    // Deriving it per-waypoint meant ≈49 calls/frame to FindClosestBody →
+    // NBodySimulation.Bodies; in scenes with no N-body sim (the backrooms /
+    // poolrooms interiors) NBodySimulation.Instance is always null, so each of
+    // those calls re-runs a full-scene FindObjectOfType — which dominated the
+    // frame and is why the small interiors ran WORSE than the solar system.
+    // Pick the body on a throttle, derive north once, reuse for every waypoint.
+    CelestialBody _northBody;
+    float _nextBodyRefind;
+    Vector3 _cachedNorth = Vector3.forward;
+    const float BodyRefindInterval = 0.5f;
+
     // ── Palette ────────────────────────────────────────────────────────────
     static readonly Color StripBgColor      = new Color32(0x0A, 0x18, 0x28, 0xC8); // dark navy, ~78%
     static readonly Color StripSheenColor   = new Color32(0x5C, 0xC8, 0xFF, 0x8C); // 1px cyan edge
@@ -242,6 +256,20 @@ public class CompassHUD : MonoBehaviour
         if (forwardOnPlane.sqrMagnitude < 0.0001f) return;
         forwardOnPlane.Normalize();
 
+        // Refresh the closest-body pick on a throttle (it only changes when you
+        // travel between bodies), then derive surface-north from it ONCE for the
+        // whole frame. Throttling on time alone — not on "is null" — keeps the
+        // re-find rate low even in interiors where no body will ever be found.
+        if (Time.unscaledTime >= _nextBodyRefind)
+        {
+            _northBody = FindClosestBody(playerPos);
+            _nextBodyRefind = Time.unscaledTime + BodyRefindInterval;
+        }
+        // north is recomputed every frame from the cached body's CURRENT forward
+        // and the player's CURRENT up, so it stays live as the planet rotates and
+        // the player turns — only the (expensive) body lookup is throttled.
+        _cachedNorth = ComputeNorthFromBody(_northBody, surfaceUp);
+
         // Heading badge — same bearing math the waypoints use, but reduced
         // to a single 0..360 degree number plus a cardinal short-code.
         UpdateHeadingBadge(playerPos, surfaceUp, forwardOnPlane);
@@ -316,7 +344,7 @@ public class CompassHUD : MonoBehaviour
     void UpdateHeadingBadge(Vector3 playerPos, Vector3 surfaceUp, Vector3 forwardOnPlane)
     {
         if (_badgeText == null) return;
-        Vector3 northDir = ComputeSurfaceNorth(playerPos, surfaceUp);
+        Vector3 northDir = _cachedNorth;   // computed once per frame in LateUpdate
         if (northDir.sqrMagnitude < 0.0001f) return;
 
         float heading = Vector3.SignedAngle(northDir, forwardOnPlane, surfaceUp);
@@ -538,7 +566,10 @@ public class CompassHUD : MonoBehaviour
             ? _playerCached.Rigidbody.position
             : _playerCached.transform.position;
         Vector3 surfaceUp = _playerCached.transform.up;
-        Vector3 northDir = ComputeSurfaceNorth(origin, surfaceUp);
+        // Reuse the per-frame cached north (computed in LateUpdate) — every
+        // bearing waypoint shares the same closest-body north reference, so the
+        // body scan must NOT run once per waypoint. See _cachedNorth.
+        Vector3 northDir = _cachedNorth;
         if (northDir.sqrMagnitude < 0.0001f) return Vector3.zero;
         Quaternion rot = Quaternion.AngleAxis(bearingDegrees, surfaceUp);
         Vector3 dir = rot * northDir;
@@ -546,13 +577,13 @@ public class CompassHUD : MonoBehaviour
     }
 
     // Returns a unit vector pointing along "world North" projected onto the
-    // surface-tangent plane at the given position. Uses the closest celestial
-    // body's forward axis as the world North reference (every body in the
-    // scene has a fixed forward — provides a stable rotation anchor as the
-    // body orbits and rotates).
-    static Vector3 ComputeSurfaceNorth(Vector3 worldPos, Vector3 surfaceUp)
+    // surface-tangent plane, given the already-picked closest body. Uses the
+    // body's forward axis as the world North reference (every body has a fixed
+    // forward — a stable rotation anchor as the body orbits and rotates). Split
+    // out of the old per-call ComputeSurfaceNorth so the (expensive) closest-body
+    // scan can be throttled/cached separately from this cheap projection.
+    static Vector3 ComputeNorthFromBody(CelestialBody body, Vector3 surfaceUp)
     {
-        var body = FindClosestBody(worldPos);
         Vector3 worldNorthRef = (body != null) ? body.transform.forward : Vector3.forward;
         Vector3 northOnPlane = Vector3.ProjectOnPlane(worldNorthRef, surfaceUp);
         if (northOnPlane.sqrMagnitude < 0.0001f)
