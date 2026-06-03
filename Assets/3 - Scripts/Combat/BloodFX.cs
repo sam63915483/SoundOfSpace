@@ -46,6 +46,12 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Seconds before the damage splash is destroyed.")]
     [SerializeField] float damageSplashLifetime = 2f;
 
+    [Header("Spray Pulse")]
+    [Tooltip("Lowest scale the spray dips to while pulsing (fraction of full). 0.5 = pulses between 100% and 50%.")]
+    [Range(0f, 1f)] [SerializeField] float sprayPulseMinScale = 0.5f;
+    [Tooltip("Pulse speed in cycles per second during the spray's middle life. ~0.8 gives a steady throb over a 5s spray.")]
+    [SerializeField] float sprayPulseHz = 0.8f;
+
     Camera _depthCam;
 
     void Awake()
@@ -130,7 +136,8 @@ public class BloodFX : MonoBehaviour
         Vector3 targetScale = fx.transform.localScale;
         var anim = fx.GetComponent<BloodSpray>();
         if (anim == null) anim = fx.AddComponent<BloodSpray>();
-        anim.Init(sprayLifetime, sprayGrowSeconds, sprayShrinkSeconds, targetScale);
+        anim.Init(sprayLifetime, sprayGrowSeconds, sprayShrinkSeconds, targetScale,
+                  sprayPulseMinScale, sprayPulseHz);
     }
 
     /// <summary>
