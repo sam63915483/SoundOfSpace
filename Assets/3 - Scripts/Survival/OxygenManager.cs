@@ -48,6 +48,12 @@ public class OxygenManager : MonoBehaviour
     bool suitDepletedHandled;
     float refindTimer;
 
+    // Per-ship derived data, recomputed only when the active ship changes.
+    Ship derivedShip;
+    Bounds shipLocalBounds;       // ship-local AABB for "inside the ship"
+    bool shipLocalBoundsValid;
+    Transform ejectPoint;         // child the hatch suction pulls the player toward
+
     const string VO_REOXY = "Re-oxygenating the hull";
     const string VO_AJAR  = "Hull is ajar";
 
@@ -114,10 +120,13 @@ public class OxygenManager : MonoBehaviour
         Vector3 shipPos = ship != null ? ship.Rigidbody.position : playerPos;
 
         // While piloting the player GameObject is disabled (its rb.position goes
-        // stale), so piloting alone counts as "inside". Otherwise a distance
-        // check against the cockpit view-point decides it.
-        bool insideVolume = ship != null &&
-            Vector3.Distance(playerPos, InteriorAnchor(ship)) <= interiorRadius;
+        // stale), so piloting alone counts as "inside". Otherwise test the player
+        // against the ship's actual bounding box — a small sphere around the
+        // cockpit was wrong for a ~20m-long ship (it cut suction off at mid-ship
+        // and wouldn't let you breathe hull air standing at the back).
+        EnsureShipDerived(ship);
+        bool insideVolume = ship != null && shipLocalBoundsValid && derivedShip == ship
+            && shipLocalBounds.Contains(ship.transform.InverseTransformPoint(playerPos));
         bool insideShip = piloting || insideVolume;
         bool onFoot = !insideShip;
         bool hatchOpen = ship != null && ship.HatchOpen;
@@ -265,8 +274,64 @@ public class OxygenManager : MonoBehaviour
     Vector3 InteriorAnchor(Ship ship)
         => ship.camViewPoint != null ? ship.camViewPoint.position : ship.transform.position;
 
+    // Where the hatch suction pulls the player: the dedicated HatchEjectPoint
+    // child (out the back of the hull) if present, else the hatch transform.
     Vector3 HatchPoint(Ship ship)
-        => ship.hatch != null ? ship.hatch.position : InteriorAnchor(ship);
+        => ejectPoint != null ? ejectPoint.position
+           : (ship.hatch != null ? ship.hatch.position : InteriorAnchor(ship));
+
+    // Recompute per-ship derived data when the active ship changes: the
+    // ship-local AABB (rotation-invariant, built from mesh bounds) used for the
+    // "inside the ship" test, and the suction eject point child.
+    void EnsureShipDerived(Ship ship)
+    {
+        if (ship == null || derivedShip == ship) return;
+        derivedShip = ship;
+        shipLocalBoundsValid = false;
+        ejectPoint = FindDeepChild(ship.transform, ejectPointName);
+
+        var filters = ship.GetComponentsInChildren<MeshFilter>();
+        var w2l = ship.transform.worldToLocalMatrix;
+        bool has = false;
+        Bounds b = new Bounds();
+        for (int fi = 0; fi < filters.Length; fi++)
+        {
+            var mf = filters[fi];
+            if (mf == null || mf.sharedMesh == null) continue;
+            Bounds mb = mf.sharedMesh.bounds;          // mesh-local
+            var l2w = mf.transform.localToWorldMatrix;
+            Vector3 c = mb.center, e = mb.extents;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = c + new Vector3(
+                    (i & 1) == 0 ? -e.x : e.x,
+                    (i & 2) == 0 ? -e.y : e.y,
+                    (i & 4) == 0 ? -e.z : e.z);
+                Vector3 localP = w2l.MultiplyPoint3x4(l2w.MultiplyPoint3x4(corner));
+                if (!has) { b = new Bounds(localP, Vector3.zero); has = true; }
+                else b.Encapsulate(localP);
+            }
+        }
+        if (has)
+        {
+            b.Expand(interiorMargin * 2f);   // small slack so the boundary sits just outside the hull
+            shipLocalBounds = b;
+            shipLocalBoundsValid = true;
+        }
+    }
+
+    static Transform FindDeepChild(Transform root, string name)
+    {
+        if (root == null) return null;
+        for (int i = 0; i < root.childCount; i++)
+        {
+            var c = root.GetChild(i);
+            if (c.name == name) return c;
+            var found = FindDeepChild(c, name);
+            if (found != null) return found;
+        }
+        return null;
+    }
 
     void KillPlayer()
     {
@@ -320,8 +385,10 @@ public class OxygenManager : MonoBehaviour
     [SerializeField] float suctionForceMax = 60f;
 
     [Header("Ship interior")]
-    [Tooltip("Radius (m) around the ship's cockpit view-point counted as 'inside the ship'. Tune to the interior size.")]
-    [SerializeField] float interiorRadius = 4f;
+    [Tooltip("Extra metres added around the ship's bounding box when deciding 'inside the ship' (small slack so the boundary sits just outside the hull).")]
+    [SerializeField] float interiorMargin = 0.5f;
+    [Tooltip("Name of the child transform the hatch suction pulls the player toward (out the back). Move that GameObject in the SHIP44 prefab to tune the eject point.")]
+    [SerializeField] string ejectPointName = "HatchEjectPoint";
 
     [Header("VO")]
     [Tooltip("Seconds between repeats of 'Hull is ajar' while still breaching.")]
