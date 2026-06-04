@@ -1002,7 +1002,12 @@ public class Ship : GravityObject
         pilot.Camera.transform.localPosition = Vector3.zero;
         pilot.Camera.transform.localRotation = Quaternion.identity;
         pilot.gameObject.SetActive(false);
-        hatchOpen = false;
+        // The hatch is intentionally NOT forced closed here. The oxygen system
+        // (OxygenManager) makes hatch state meaningful — flying with it open
+        // bleeds the hull, sealing it before launch is the "do it right" path.
+        // Slamming it shut on pilot-enter made that mechanic unreachable and
+        // wiped the player's deliberate hatch state. Hatch is now fully
+        // player-controlled (HatchButton inside / OutsideHatchTrigger outside).
         window.SetActive(false);
         if (boostMeterUI) boostMeterUI.SetActive(false);
 
@@ -1072,11 +1077,15 @@ public class Ship : GravityObject
         pilot.Rigidbody.velocity = rb.velocity;
         pilot.gameObject.SetActive(true);
         window.SetActive(true);
-        // Open the hatch so the player isn't sealed inside the closed canopy
-        // at pilotSeatPoint — that was the "can't move" symptom: collider
-        // trapped at the seat point with no exit path. With the hatch open
-        // the player can walk out, or float out in zero-g.
-        hatchOpen = true;
+        // The hatch is intentionally LEFT AS-IS on exit (was force-opened here).
+        // Force-opening wiped the player's sealed-hull state every time they
+        // stood up — breaking the oxygen sanctuary (e.g. EVAing on a vacuum moon
+        // while keeping the hull pressurised). If the player sealed the hatch for
+        // flight they now exit into a sealed cockpit and re-open it with the
+        // interior HatchButton (TutorialGate is unlocked post-tutorial, so it
+        // always works) — you open the door to step out, like an airlock. The
+        // common case (entered through an open hatch, never closed it) exits with
+        // the hatch already open, so there's no trap.
         pilot.ExitFromSpaceship();
         // Snap orientation smoothing so the player doesn't see a 1-second
         // tilt animation as smoothed_gravity_up catches up after re-entry.
