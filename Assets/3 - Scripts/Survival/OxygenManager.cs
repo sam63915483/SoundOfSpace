@@ -46,7 +46,7 @@ public class OxygenManager : MonoBehaviour
     Ship mainShip;
     float ajarTimer;
     bool suitDepletedHandled;
-    float playerRefindTimer;
+    float refindTimer;
 
     const string VO_REOXY = "Re-oxygenating the hull";
     const string VO_AJAR  = "Hull is ajar";
@@ -218,17 +218,18 @@ public class OxygenManager : MonoBehaviour
     // ── Helpers ──────────────────────────────────────────────────────────
     void EnsureRefs()
     {
-        // Cache once; lazy-refind only when null, throttled (never hammer
-        // FindObjectOfType every frame — CLAUDE.md convention).
-        if (player == null)
-        {
-            playerRefindTimer -= Time.fixedDeltaTime;
-            if (playerRefindTimer <= 0f)
-            {
-                player = FindObjectOfType<PlayerController>();
-                playerRefindTimer = 0.5f;
-            }
-        }
+        // Cache once; lazy-refind only when null, THROTTLED. Critical: the ship
+        // doesn't exist until the player BUYS one, so FindObjectOfType<Ship>()
+        // returns null for the whole early game — left per-frame it becomes the
+        // interior-perf trap (per-frame FindObjectOfType on an absent target).
+        // Throttle both lookups to ~2/sec instead of 50/sec (FixedUpdate rate).
+        if (player != null && mainShip != null) return;
+
+        refindTimer -= Time.fixedDeltaTime;
+        if (refindTimer > 0f) return;
+        refindTimer = 0.5f;
+
+        if (player == null) player = FindObjectOfType<PlayerController>();
         if (mainShip == null) mainShip = FindObjectOfType<Ship>();
     }
 
@@ -303,10 +304,16 @@ public class OxygenManager : MonoBehaviour
     [SerializeField] float hullDrainMax   = 60.0f;
 
     [Header("Atmosphere (metres above surface)")]
+    // Humble Abode radius = 200, atmosphereScale ~0.32-0.49 → visible atmosphere
+    // ends ~65-98 m up. Top = 120 m (midpoint 60 m breathable) tracks the haze so
+    // the refill cutoff lines up with what the player sees climbing out of it.
     [Tooltip("Height above Humble Abode's surface where the atmosphere ends. The lower half (<= half this) is breathable. Tune per level.")]
-    [SerializeField] float atmosphereTopAltitude = 600f;
-    [Tooltip("Altitude (m) under which Cyclops counts as breathable everywhere. Generous by design.")]
-    [SerializeField] float cyclopsBreathableCeiling = 100000f;
+    [SerializeField] float atmosphereTopAltitude = 120f;
+    // Cyclops radius = 500, atmosphereScale ~0.59 → atmosphere ~294 m. 600 m keeps
+    // the whole Cyclops surface + atmosphere breathable (it's a checkpoint planet)
+    // without making deep space near it a free breathing zone.
+    [Tooltip("Altitude (m) under which Cyclops counts as breathable everywhere. Covers the surface zone, not orbit.")]
+    [SerializeField] float cyclopsBreathableCeiling = 600f;
 
     [Header("Hatch suction (always-tug: MIN > 0)")]
     [SerializeField] float suctionForceMin = 12f;
