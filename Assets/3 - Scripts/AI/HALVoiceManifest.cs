@@ -79,6 +79,10 @@ public static class HALVoiceManifest
         { "Leaving atmosphere, Astronaut. Vacuum confirmed.",     "atmo_leave.mp3" },
         { "Entering atmosphere, Astronaut. Descent in progress.", "atmo_enter.mp3" },
 
+        // ── Oxygen / hull pressurization ───────────────────────────────
+        { "Re-oxygenating the hull",                              "hull_reoxygenating.mp3" },
+        { "Hull is ajar",                                         "hull_ajar.mp3" },
+
         // ── Orbit-match transitions ────────────────────────────────────
         { "Orbit matched.",                                       "orbit_matched.mp3" },
         { "Orbit unmatched.",                                     "orbit_unmatched.mp3" },
