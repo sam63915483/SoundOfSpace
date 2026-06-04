@@ -71,6 +71,7 @@ public static class NewGameReset
             ResourceManager.Instance.ApplyState(100f, 100f, 100f); // full hunger/thirst/health
             ResourceManager.Instance.SetTotalDeaths(0);
         }
+        if (OxygenManager.Instance != null) OxygenManager.Instance.ResetForNewGame();
 
         EarlyGameProgress.ResetAll();
         NoteCollection.ApplySaveState(System.Array.Empty<string>());

@@ -12,6 +12,7 @@ public class SaveData
     public PlayerSave player = new PlayerSave();
     public ShipSave ship = new ShipSave();
     public ResourcesSave resources = new ResourcesSave();
+    public O2Save oxygen = new O2Save();
     public WalletSave wallet = new WalletSave();
     public WoodSave wood = new WoodSave();
     public CrystalSave crystal = new CrystalSave();
@@ -207,6 +208,16 @@ public class ResourcesSave
     public float health = 100f;
     public float shipPower = 100f;
     public int   totalDeaths = 0;
+}
+
+[Serializable]
+public class O2Save
+{
+    // Defaults = full tanks so pre-feature saves (missing this object) load
+    // breathing-safe rather than suffocating on load.
+    public float suitO2 = 120f;
+    public float hullO2 = 300f;
+    public bool cyclopsCheckpointReached;
 }
 
 [Serializable]
