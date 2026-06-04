@@ -535,6 +535,10 @@ public class MainMenuController : MonoBehaviour
         tick("interact prompt");  yield return null;
         if (VitalsHUD.Instance == null) { var go = new GameObject("VitalsHUD"); DontDestroyOnLoad(go); go.AddComponent<VitalsHUD>(); }
         tick("vitals HUD");       yield return null;
+        if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
+        tick("oxygen system");    yield return null;
+        if (OxygenHUD.Instance == null) { var go = new GameObject("OxygenHUD"); DontDestroyOnLoad(go); go.AddComponent<OxygenHUD>(); }
+        tick("oxygen HUD");       yield return null;
         if (WaterFillHUD.Instance == null) { var go = new GameObject("WaterFillHUD"); DontDestroyOnLoad(go); go.AddComponent<WaterFillHUD>(); }
         tick("water HUD");        yield return null;
         if (TabbedPauseMenu.Instance == null) { var go = new GameObject("TabbedPauseMenu"); DontDestroyOnLoad(go); go.AddComponent<TabbedPauseMenu>(); }
@@ -706,6 +710,18 @@ public class MainMenuController : MonoBehaviour
             var go = new GameObject("VitalsHUD");
             DontDestroyOnLoad(go);
             go.AddComponent<VitalsHUD>();
+        }
+        if (OxygenManager.Instance == null)
+        {
+            var go = new GameObject("OxygenManager");
+            DontDestroyOnLoad(go);
+            go.AddComponent<OxygenManager>();
+        }
+        if (OxygenHUD.Instance == null)
+        {
+            var go = new GameObject("OxygenHUD");
+            DontDestroyOnLoad(go);
+            go.AddComponent<OxygenHUD>();
         }
         if (WaterFillHUD.Instance == null)
         {
