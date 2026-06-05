@@ -329,10 +329,20 @@ public class HALCommentator : MonoBehaviour
     void Volunteer(string line, bool bypassRateLimit = false)
     {
         if (string.IsNullOrEmpty(line)) return;
-        if (!bypassRateLimit && Time.unscaledTime < _nextAllowedTime) return;
-        _nextAllowedTime   = Time.unscaledTime + MinSecondsBetweenLines;
-        _lastVolunteerTime = Time.unscaledTime;
-        // HUD: transient red-eye notification at the top of the screen.
+
+        // §7: a rate-limited line used to be silently DROPPED here (early return),
+        // which is exactly why a second tip fired inside the 8s window vanished.
+        // Now we still hand it to the HUD — HALLineHUD owns pacing AND a bounded
+        // queue (3 items, drop-oldest), so the line is queued instead of lost.
+        // The cadence stamp only advances for non-rate-limited lines so a burst
+        // doesn't push the next "fresh" line further out than intended.
+        bool rateLimited = !bypassRateLimit && Time.unscaledTime < _nextAllowedTime;
+        if (!rateLimited)
+        {
+            _nextAllowedTime   = Time.unscaledTime + MinSecondsBetweenLines;
+            _lastVolunteerTime = Time.unscaledTime;
+        }
+        // HUD: red-eye notification (queues if one is already showing).
         if (HALLineHUD.Instance != null) HALLineHUD.Instance.Show(line);
         // Log: persistent record so the chat panel can show a transcript.
         // AIChatScreen subscribes to OnLineAdded to surface live bubbles
