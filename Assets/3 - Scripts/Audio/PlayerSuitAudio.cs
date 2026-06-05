@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // All player-body ("space suit") sounds, assigned in the Inspector on the
@@ -50,6 +51,12 @@ public class PlayerSuitAudio : MonoBehaviour
     PlayerController _player;
     float _nextBreathTime;
 
+    // Extra breathing variety loaded from StreamingAssets, mixed into the random
+    // pool alongside the Inspector-assigned breathingClips.
+    static readonly string[] ExtraBreathFiles =
+        { "SuitBreath1.wav", "SuitBreath2.wav", "SuitBreath3.wav", "SuitBreath4.wav" };
+    readonly List<AudioClip> _loadedBreaths = new List<AudioClip>();
+
     void Awake()
     {
         Instance = this;
@@ -60,6 +67,11 @@ public class PlayerSuitAudio : MonoBehaviour
 
         _player = GetComponent<PlayerController>();
         if (_player == null) _player = FindObjectOfType<PlayerController>();
+
+        for (int i = 0; i < ExtraBreathFiles.Length; i++)
+            StartCoroutine(StreamingAudio.Load("Audio/" + ExtraBreathFiles[i], AudioType.WAV,
+                c => { if (c != null) _loadedBreaths.Add(c); }));
+
         ScheduleNextBreath();
     }
 
@@ -91,13 +103,18 @@ public class PlayerSuitAudio : MonoBehaviour
 
     void Update()
     {
-        // Breathing.
-        if (_breathSrc != null && breathingClips != null && breathingClips.Length > 0
-            && Time.time >= _nextBreathTime)
+        // Breathing — random pick from Inspector clips + the StreamingAssets extras.
+        if (_breathSrc != null && Time.time >= _nextBreathTime)
         {
-            var clip = breathingClips[Random.Range(0, breathingClips.Length)];
-            if (clip != null) _breathSrc.PlayOneShot(clip, breathingVolume);
-            ScheduleNextBreath();
+            int serialized = breathingClips != null ? breathingClips.Length : 0;
+            int total = serialized + _loadedBreaths.Count;
+            if (total > 0)
+            {
+                int idx = Random.Range(0, total);
+                var clip = idx < serialized ? breathingClips[idx] : _loadedBreaths[idx - serialized];
+                if (clip != null) _breathSrc.PlayOneShot(clip, breathingVolume);
+                ScheduleNextBreath();
+            }
         }
 
         // Atmosphere wind: speed (relative to the planet) × atmosphere density.

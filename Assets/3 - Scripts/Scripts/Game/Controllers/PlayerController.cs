@@ -187,6 +187,7 @@ public class PlayerController : GravityObject
 	AudioSource downBoostSource;
 	AudioSource dirBoostSource;
 	AudioSource waterSource;
+	AudioClip _splashClip;   // one-shot splash on first water entry (StreamingAssets)
 	float airborneTime = 0f;
 	bool wasAirborne = false;
 	int currentFootstepClipIndex = 0;
@@ -278,12 +279,19 @@ public class PlayerController : GravityObject
 		downBoostSource = CreateLoopAudioSource("PlayerDownBoost", downBoostVolume);
 		dirBoostSource  = CreateLoopAudioSource("PlayerDirBoost",  dirBoostVolume);
 		waterSource     = CreateLoopAudioSource("PlayerWater",     waterMoveVolume);
+		// Splash one-shot for the first jump into water (loaded from StreamingAssets).
+		StartCoroutine(StreamingAudio.Load("Audio/WaterSplash.wav", AudioType.WAV, c => _splashClip = c));
 	}
 
 	void OnTriggerEnter(Collider other)
 	{
 		if (other.CompareTag("Water"))
 		{
+			// Splash on the FIRST contact (0 → 1). It re-arms only once the player
+			// has fully left the water (waterTouches back to 0), so wading at a
+			// shoreline doesn't re-trigger it every step.
+			if (waterTouches == 0 && _splashClip != null && waterSource != null)
+				waterSource.PlayOneShot(_splashClip, 0.9f);
 			waterTouches++;
 			var sc = other as SphereCollider;
 			if (sc != null) { waterCollider = sc; waterTransform = other.transform; }

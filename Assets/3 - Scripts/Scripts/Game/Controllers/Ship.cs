@@ -199,6 +199,10 @@ public class Ship : GravityObject
     AudioSource thrustSource;
     AudioSource crashSource;
 
+    // Pilot start-up / shut-down SFX (loaded from StreamingAssets).
+    AudioSource _pilotSfxSource;
+    AudioClip _startupClip, _shutdownClip;
+
     Rigidbody rb;
     Quaternion targetRot;
     Quaternion smoothedRot;
@@ -238,6 +242,13 @@ public class Ship : GravityObject
         targetRot = transform.rotation;
         smoothedRot = transform.rotation;
         inputSettings.Begin();
+
+        // Pilot start-up / shut-down SFX. 2D — you're inside the cockpit.
+        _pilotSfxSource = gameObject.AddComponent<AudioSource>();
+        _pilotSfxSource.playOnAwake = false;
+        _pilotSfxSource.spatialBlend = 0f;
+        StartCoroutine(StreamingAudio.Load("Audio/ShipStartup.wav",  AudioType.WAV, c => _startupClip = c));
+        StartCoroutine(StreamingAudio.Load("Audio/ShipShutdown.wav", AudioType.WAV, c => _shutdownClip = c));
 
         // Window glass casts shadows by default, which blocks the Sun's
         // shadow rays from passing through the cockpit — interior turns
@@ -998,6 +1009,10 @@ public class Ship : GravityObject
         if (pilot == null) return; // truly no player in scene — bail
         shipIsPiloted = true;
         s_pilotedInstance = this;
+        // Power-up SFX. Gated past the first 2s so the load-time auto-pilot during
+        // scene/save setup doesn't fire a spurious start-up sound.
+        if (_startupClip != null && _pilotSfxSource != null && Time.timeSinceLevelLoad > 2f)
+            _pilotSfxSource.PlayOneShot(_startupClip, 0.8f);
         pilot.Camera.transform.parent = camViewPoint;
         pilot.Camera.transform.localPosition = Vector3.zero;
         pilot.Camera.transform.localRotation = Quaternion.identity;
@@ -1068,6 +1083,10 @@ public class Ship : GravityObject
     {
         shipIsPiloted = false;
         if (s_pilotedInstance == this) s_pilotedInstance = null;
+        // Power-down SFX (reverse-feel shutdown). Same 2s gate as start-up so
+        // the load-time force-exit during setup stays silent.
+        if (_shutdownClip != null && _pilotSfxSource != null && Time.timeSinceLevelLoad > 2f)
+            _pilotSfxSource.PlayOneShot(_shutdownClip, 0.8f);
         // Always drop the player at the ship's own pilotSeatPoint. (We used to
         // fall back to pilot.spawnPoint = the starting cabin; removed because
         // it teleported players away from any ship bought far from the cabin.)

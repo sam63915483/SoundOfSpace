@@ -79,16 +79,14 @@ public class ReactorGlow : MonoBehaviour
     public float lightRange = 3f;
 
     [Header("Reactor audio")]
-    [Tooltip("Looping reactor-core hum. Volume scales with fuel/glow.")]
+    [Tooltip("Looping reactor-core hum. Volume scales with fuel/glow; speeds up + wobbles during red unstable events.")]
     [Range(0f, 1f)] public float reactorBuzzVolume = 0.75f;
-    [Tooltip("Harsher electric surge played on each red 'unstable' event.")]
-    [Range(0f, 1f)] public float reactorSurgeVolume = 0.6f;
 
     Material _instMat;
     Light _light;
     float _flashRemaining;
-    AudioSource _buzzSource, _surgeSource;
-    AudioClip _buzzClip, _surgeClip;
+    AudioSource _buzzSource;
+    AudioClip _buzzClip;
 
     // Red-event scheduling state
     float _nextRedTime = -1f;
@@ -144,18 +142,11 @@ public class ReactorGlow : MonoBehaviour
         _buzzSource.minDistance = 3f;    // full volume throughout the cabin
         _buzzSource.maxDistance = 22f;   // audible across the ship + just outside
         _buzzSource.volume = 0f;
-        _surgeSource = gameObject.AddComponent<AudioSource>();
-        _surgeSource.playOnAwake = false;
-        _surgeSource.loop = false;
-        _surgeSource.spatialBlend = 1f;
-        _surgeSource.minDistance = 1.5f;
-        _surgeSource.maxDistance = 16f;
         StartCoroutine(StreamingAudio.Load("Audio/ReactorBuzz.wav", AudioType.WAV, c =>
         {
             _buzzClip = c;
             if (_buzzSource != null) { _buzzSource.clip = c; _buzzSource.Play(); }
         }));
-        StartCoroutine(StreamingAudio.Load("Audio/ReactorSurge.wav", AudioType.WAV, c => _surgeClip = c));
     }
 
     void Update()
@@ -163,9 +154,6 @@ public class ReactorGlow : MonoBehaviour
         if (ship == null) return;
 
         float fuel = Mathf.Clamp01(ship.FuelPercent);
-
-        // Reactor buzz tracks the glow: louder with fuel, silent when dead.
-        if (_buzzSource != null) _buzzSource.volume = reactorBuzzVolume * fuel;
 
         // ── Red event scheduling ────────────────────────────────────────
         if (_nextRedTime < 0f) ScheduleNextRedEvent(fuel);
@@ -184,9 +172,6 @@ public class ReactorGlow : MonoBehaviour
             _redElapsed = 0f;
             float planned = redTransitionDuration * 2f + Mathf.Max(redHoldDuration, 0f);
             _redEventTotalDuration = Mathf.Min(planned, redMaxTotalDuration);
-            // Harsher electric surge for the unstable moment.
-            if (_surgeSource != null && _surgeClip != null)
-                _surgeSource.PlayOneShot(_surgeClip, reactorSurgeVolume);
         }
 
         // Red event redPhase: 0 = pure blue, 1 = peak red.
@@ -256,6 +241,27 @@ public class ReactorGlow : MonoBehaviour
             float headroom = Mathf.Max(maxIntensity + flashBoost, 0.001f);
             _light.intensity = (intensity / headroom) * lightMaxIntensity;
             _light.color = currentColor;
+        }
+
+        // ── Reactor buzz audio ──────────────────────────────────────────
+        // Base hum tracks the glow (louder with fuel). During a red unstable
+        // event the buzz speeds up, gets louder, and wobbles — a sped-up,
+        // unsteady version of itself so the core really feels like it's
+        // destabilizing, instead of a separate canned "surge" clip.
+        if (_buzzSource != null)
+        {
+            float baseVol = reactorBuzzVolume * fuel;
+            if (_inRedEvent && redPhase > 0f)
+            {
+                float wob = Mathf.PerlinNoise(Time.time * 11f, _flickerSeed + 50f) - 0.5f; // -0.5..0.5
+                _buzzSource.pitch  = 1f + redPhase * (0.45f + 0.4f * wob);                 // ~1.0 → ~1.45 + jitter
+                _buzzSource.volume = baseVol * (1f + redPhase * (0.7f + 0.6f * wob));
+            }
+            else
+            {
+                _buzzSource.pitch = 1f;
+                _buzzSource.volume = baseVol;
+            }
         }
     }
 

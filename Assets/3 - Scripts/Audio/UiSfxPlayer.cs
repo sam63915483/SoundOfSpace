@@ -19,7 +19,7 @@ public class UiSfxPlayer : MonoBehaviour
 
     AudioSource _sfx;        // 2D one-shots (hover/click)
     AudioSource _ambience;   // 2D looping pause ambience
-    AudioClip _hover, _click, _menuAmbience;
+    AudioClip _hover, _click, _pauseAmbience;
 
     const float HoverVolume    = 0.6f;
     const float ClickVolume    = 0.75f;
@@ -53,9 +53,11 @@ public class UiSfxPlayer : MonoBehaviour
         _ambience.ignoreListenerPause = true;
         _ambience.volume = AmbienceVolume;
 
-        StartCoroutine(StreamingAudio.Load("Audio/UIHover.wav",      AudioType.WAV,  c => _hover = c));
-        StartCoroutine(StreamingAudio.Load("Audio/UIClick.wav",      AudioType.WAV,  c => _click = c));
-        StartCoroutine(StreamingAudio.Load("Audio/MenuAmbience.mp3", AudioType.MPEG, c => _menuAmbience = c));
+        StartCoroutine(StreamingAudio.Load("Audio/UIHover.wav",       AudioType.WAV,  c => _hover = c));
+        StartCoroutine(StreamingAudio.Load("Audio/UIClick.wav",       AudioType.WAV,  c => _click = c));
+        // Pause menu gets its own faster / spacier track, distinct from the slow
+        // cinematic main-menu ambience.
+        StartCoroutine(StreamingAudio.Load("Audio/PauseAmbience.mp3", AudioType.MPEG, c => _pauseAmbience = c));
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
@@ -88,9 +90,9 @@ public class UiSfxPlayer : MonoBehaviour
     public static void StartPauseAmbience()
     {
         var p = Ensure();
-        if (p._ambience == null || p._menuAmbience == null) return;
+        if (p._ambience == null || p._pauseAmbience == null) return;
         if (p._ambience.isPlaying) return;
-        p._ambience.clip = p._menuAmbience;
+        p._ambience.clip = p._pauseAmbience;
         p._ambience.Play();
     }
 
