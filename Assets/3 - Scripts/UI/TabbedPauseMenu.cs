@@ -275,6 +275,7 @@ public class TabbedPauseMenu : MonoBehaviour
         Time.timeScale = 0f;
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
+        UiSfxPlayer.StartPauseAmbience();   // menu ambience while paused / in settings
         // Always return to the main panel when re-opening; never re-open
         // straight into the settings sub-page or save dialog.
         ShowMainPanel();
@@ -299,6 +300,7 @@ public class TabbedPauseMenu : MonoBehaviour
         _isPaused = false;
         Time.timeScale = 1f;
         SetMenuVisible(false, immediate: false);
+        UiSfxPlayer.StopPauseAmbience();
 
         if (_input != null)
         {
@@ -470,6 +472,7 @@ public class TabbedPauseMenu : MonoBehaviour
         btn.colors = colors;
         btn.targetGraphic = bg;
         btn.onClick.AddListener(() => onClick?.Invoke());
+        UiSfxPlayer.Attach(btn);
 
         // Hover: also tint the border + label cyan.
         var hover = btnRT.gameObject.AddComponent<ButtonHoverTint>();
@@ -1322,6 +1325,7 @@ public class TabbedPauseMenu : MonoBehaviour
         img.raycastTarget = true;
         btn.targetGraphic = img;
         btn.onClick.AddListener(() => onClick?.Invoke());
+        UiSfxPlayer.Attach(btn);
 
         _tabButtons.Add(btn);
         _tabButtonLabels.Add(lbl);
@@ -1389,6 +1393,7 @@ public class TabbedPauseMenu : MonoBehaviour
         btn.colors = colors;
         btn.targetGraphic = bg;
         btn.onClick.AddListener(() => onClick?.Invoke());
+        UiSfxPlayer.Attach(btn);
 
         var hover = btnRT.gameObject.AddComponent<ButtonHoverTint>();
         hover.Init(borderImg, lbl, primary ? ButtonBorderHi : ButtonBorder, CardBorderCool, LabelColor, CardBorderCool);
@@ -1609,6 +1614,7 @@ public class TabbedPauseMenu : MonoBehaviour
         btn.targetGraphic = bg;
         var refs = new SettingRowRefs_Toggle { bg = bg, valueText = stateText, def = def };
         _toggleRows.Add(refs);
+        UiSfxPlayer.Attach(btn);
 
         btn.onClick.AddListener(() =>
         {

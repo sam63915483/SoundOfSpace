@@ -1,7 +1,6 @@
 using System.Collections;
 using TMPro;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -48,13 +47,9 @@ public class MainMenuController : MonoBehaviour
     [Header("Audio")]
     [SerializeField] AudioClip menuAmbience;
     [SerializeField, Range(0f, 1f)] float menuAmbienceVolume = 0.5f;
-    [Tooltip("Short UI blip played when the cursor first hovers over a menu button.")]
-    [SerializeField] AudioClip buttonHoverClip;
-    [Tooltip("Short UI confirm played when a menu button is clicked.")]
-    [SerializeField] AudioClip buttonClickClip;
-    [SerializeField, Range(0f, 1f)] float buttonSfxVolume = 0.6f;
     AudioSource _ambienceSource;
-    AudioSource _uiSfxSource;
+    // Button hover/click SFX are handled by the shared UiSfxPlayer (used by the
+    // save/load UI and the in-game pause menu too) — see UiSfxPlayer.Attach.
 
     void Awake()
     {
@@ -63,20 +58,8 @@ public class MainMenuController : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         AudioListener.volume = 1f;
 
-        SetupAudio();
         BuildCanvas();
         StartMenuAmbience();
-    }
-
-    void SetupAudio()
-    {
-        // Dedicated 2D one-shot source for button hover/click SFX (kept separate
-        // from the looping ambience so PlayOneShot doesn't fight the loop).
-        _uiSfxSource = gameObject.AddComponent<AudioSource>();
-        _uiSfxSource.playOnAwake = false;
-        _uiSfxSource.loop = false;
-        _uiSfxSource.spatialBlend = 0f;
-        _uiSfxSource.ignoreListenerPause = true;
     }
 
     void StartMenuAmbience()
@@ -90,20 +73,6 @@ public class MainMenuController : MonoBehaviour
         _ambienceSource.spatialBlend = 0f;  // 2D
         _ambienceSource.ignoreListenerPause = true;
         _ambienceSource.Play();
-    }
-
-    // Plays the hover blip — wired to each button's PointerEnter so it fires
-    // once each time the cursor moves onto the button.
-    void PlayButtonHover()
-    {
-        if (buttonHoverClip != null && _uiSfxSource != null)
-            _uiSfxSource.PlayOneShot(buttonHoverClip, buttonSfxVolume);
-    }
-
-    void PlayButtonClick()
-    {
-        if (buttonClickClip != null && _uiSfxSource != null)
-            _uiSfxSource.PlayOneShot(buttonClickClip, buttonSfxVolume);
     }
 
     void Start()
@@ -367,13 +336,8 @@ public class MainMenuController : MonoBehaviour
         colors.colorMultiplier = 1f;
         colors.fadeDuration = 0.12f;
         btn.colors = colors;
-        btn.onClick.AddListener(() => { PlayButtonClick(); onClick(); });
-
-        // Hover blip — fires once each time the cursor enters the button.
-        var trigger = btnRT.gameObject.AddComponent<EventTrigger>();
-        var enter = new EventTrigger.Entry { eventID = EventTriggerType.PointerEnter };
-        enter.callback.AddListener(_ => PlayButtonHover());
-        trigger.triggers.Add(enter);
+        btn.onClick.AddListener(() => onClick());
+        UiSfxPlayer.Attach(btn);   // shared hover + click SFX
 
         // Inner accent strip (top)
         var topStrip = NewUI("Accent", btnRT);
