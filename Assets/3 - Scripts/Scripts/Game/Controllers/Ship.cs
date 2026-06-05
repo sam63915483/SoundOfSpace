@@ -972,8 +972,8 @@ public class Ship : GravityObject
     void SetupPressurizers()
     {
         var list = new List<Transform>(2);
-        var p1 = FindChildByName(transform, "Pressurizer1");
-        var p2 = FindChildByName(transform, "Pressurizer2");
+        var p1 = FindChildByName(transform, "EMIT1");
+        var p2 = FindChildByName(transform, "EMIT2");
         if (p1 != null) list.Add(p1);
         if (p2 != null) list.Add(p2);
         _pressurizers = list.ToArray();
@@ -1011,11 +1011,16 @@ public class Ship : GravityObject
         var go = new GameObject("PressurizerPuff");
         go.transform.SetParent(parent, false);
         go.transform.localPosition = Vector3.zero;
-        // Align the puff to the SHIP's axes (NOT the rotated pressurizer's). The
-        // smoke vents along local -Y = ship-down = toward the floor (the direction
-        // that lowering the pressurizer's Y position moves it). The pressurizers'
-        // own local -Y pointed inward, so the two puffs were converging BETWEEN
-        // them instead of venting out of each one.
+        // Neutralise the inherited parent-chain scale so velocity + size values are
+        // in REAL WORLD UNITS. The emit point sits under non-unit-scaled parents,
+        // which amplified velocityOverLifetime (in local space) and flung the smoke
+        // several units down into the cabin no matter how low I set it.
+        Vector3 ls = parent.lossyScale;
+        go.transform.localScale = new Vector3(
+            Mathf.Abs(ls.x) > 1e-4f ? 1f / ls.x : 1f,
+            Mathf.Abs(ls.y) > 1e-4f ? 1f / ls.y : 1f,
+            Mathf.Abs(ls.z) > 1e-4f ? 1f / ls.z : 1f);
+        // Align to the SHIP's axes so the vent goes ship-down (toward the floor).
         go.transform.rotation = transform.rotation;
 
         var ps = go.AddComponent<ParticleSystem>();
@@ -1027,7 +1032,7 @@ public class Ship : GravityObject
         main.playOnAwake = false;
         main.startLifetime = 1.2f;     // lingers; with sustained emission the vent reads ~2s+
         main.startSpeed = 0f;          // direction comes from velocityOverLifetime (-Y)
-        main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.35f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.5f, 1.1f);   // world units (scale neutralised)
         main.startColor = new Color(0.95f, 0.95f, 1f, 0.55f);
         main.maxParticles = 300;
         main.simulationSpace = ParticleSystemSimulationSpace.Local;  // rides with the ship
@@ -1046,10 +1051,10 @@ public class Ship : GravityObject
         // several units down into the cabin. Tune here if it should travel more/less.
         var vel = ps.velocityOverLifetime;
         vel.enabled = true;
-        vel.space = ParticleSystemSimulationSpace.Local;
-        vel.x = new ParticleSystem.MinMaxCurve(-0.4f, 0.4f);
-        vel.z = new ParticleSystem.MinMaxCurve(-0.4f, 0.4f);
-        vel.y = new ParticleSystem.MinMaxCurve(-1.2f, -0.5f);
+        vel.space = ParticleSystemSimulationSpace.Local;   // now in real world units (scale neutralised)
+        vel.x = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
+        vel.z = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
+        vel.y = new ParticleSystem.MinMaxCurve(-2f, -1f);
 
         var col = ps.colorOverLifetime;
         col.enabled = true;
