@@ -38,6 +38,7 @@ public class HALLineHUD : MonoBehaviour
         public System.Func<string> live;  // optional per-frame text source (primary only)
         public string voiceKey;           // optional TTS key (defaults to text/live())
         public bool shipScoped;           // §5: purged from the queue if the player leaves the ship radius
+        public string key;                // stable identity for dedup (so the same tip can't stack)
     }
 
     Canvas         _canvas;
@@ -72,6 +73,7 @@ public class HALLineHUD : MonoBehaviour
     readonly Queue<Line> _queue = new Queue<Line>();
     Coroutine _processRoutine;
     System.Func<string> _activeLive;      // non-null while the primary is a live line
+    string _activeKey;                    // dedup key of the line currently showing
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -99,7 +101,7 @@ public class HALLineHUD : MonoBehaviour
     public void Show(string text, bool shipScoped = false)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        Enqueue(new Line { text = text, shipScoped = shipScoped });
+        Enqueue(new Line { text = text, shipScoped = shipScoped, key = text });
     }
 
     /// <summary>
@@ -107,12 +109,16 @@ public class HALLineHUD : MonoBehaviour
     /// primary (e.g. a live countdown). <paramref name="voiceKey"/> is the TTS
     /// key; if null the initial text value is used. Previews show the snapshot.
     /// </summary>
-    public void ShowLive(System.Func<string> textSource, string voiceKey = null, bool shipScoped = false)
+    public void ShowLive(System.Func<string> textSource, string voiceKey = null, bool shipScoped = false, string dedupKey = null)
     {
         if (textSource == null) return;
         string snapshot = SafeEval(textSource);
         if (string.IsNullOrWhiteSpace(snapshot)) return;
-        Enqueue(new Line { text = snapshot, live = textSource, voiceKey = voiceKey, shipScoped = shipScoped });
+        // Live tips need a STABLE dedup key — the snapshot text changes every frame
+        // (e.g. a countdown), so fall back to dedupKey/voiceKey before the snapshot.
+        string key = !string.IsNullOrEmpty(dedupKey) ? dedupKey
+                   : (!string.IsNullOrEmpty(voiceKey) ? voiceKey : snapshot);
+        Enqueue(new Line { text = snapshot, live = textSource, voiceKey = voiceKey, shipScoped = shipScoped, key = key });
     }
 
     /// <summary>
@@ -133,13 +139,25 @@ public class HALLineHUD : MonoBehaviour
 
     void Enqueue(Line line)
     {
-        // Only ONE tip at a time: if a tip is currently showing (or queued), drop
-        // the incoming request. Prevents spam — e.g. mashing the hatch — from
-        // piling up duplicate "Re-oxygenating the hull" / "Hull sealed …" tips.
-        if (_processRoutine != null || _queue.Count > 0) return;
+        // No STACKING the same tip: if this exact tip is already showing or waiting
+        // in the queue, ignore the new one. Prevents hatch-spam from piling up
+        // duplicate "Hull exposed to the vacuum of space." / re-oxy / hull-sealed
+        // tips. DIFFERENT tips still queue normally.
+        if (!string.IsNullOrEmpty(line.key))
+        {
+            if (line.key == _activeKey) return;
+            foreach (var q in _queue) if (q.key == line.key) return;
+        }
+
+        // Bounded queue: if full, drop the OLDEST waiting line (never the incoming).
+        if (_queue.Count >= MaxQueued)
+        {
+            var dropped = _queue.Dequeue();
+            Debug.LogWarning($"[HALLineHUD] tip queue full ({MaxQueued}); dropped oldest: \"{dropped.text}\"");
+        }
         _queue.Enqueue(line);
         RefreshPreviews();
-        _processRoutine = StartCoroutine(ProcessQueue());
+        if (_processRoutine == null) _processRoutine = StartCoroutine(ProcessQueue());
     }
 
     IEnumerator ProcessQueue()
@@ -148,6 +166,7 @@ public class HALLineHUD : MonoBehaviour
         while (_queue.Count > 0)
         {
             Line line = _queue.Dequeue();
+            _activeKey = line.key;      // blocks duplicates of the showing line
             RefreshPreviews();          // remaining previews shift up immediately
 
             SetPrimaryText(line);
@@ -180,6 +199,7 @@ public class HALLineHUD : MonoBehaviour
             while (t < GapBetweenLines) { t += Time.unscaledDeltaTime; yield return null; }
         }
         _activeLive = null;
+        _activeKey = null;
         _processRoutine = null;
     }
 

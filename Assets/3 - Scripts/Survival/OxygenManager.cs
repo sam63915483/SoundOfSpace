@@ -231,7 +231,9 @@ public class OxygenManager : MonoBehaviour
         else if (ship != null && hatchOpen && !shipInRefill)
         {
             hullState = HullState.Draining;
-            float rate = Mathf.Lerp(hullDrainMin, hullDrainMax, altT);
+            // 3x faster vent when the hatch is open in vacuum — opening the hatch
+            // in space dumps the hull air quickly.
+            float rate = Mathf.Lerp(hullDrainMin, hullDrainMax, altT) * 3f;
             hullO2 = Mathf.Max(0f, hullO2 - rate * dt);
         }
         else
@@ -278,7 +280,7 @@ public class OxygenManager : MonoBehaviour
         if (hullState == HullState.Sealed && prev != HullState.Sealed
             && hullWasFilledOnGround && shipPromptsAudible && HALLineHUD.Instance != null)
         {
-            HALLineHUD.Instance.ShowLive(HullSealedCountdownText, voiceKey: null, shipScoped: true);
+            HALLineHUD.Instance.ShowLive(HullSealedCountdownText, voiceKey: null, shipScoped: true, dedupKey: "hull_sealed");
         }
 
         // §4 milestone warnings — fire once each as the sealed reserve drains past
