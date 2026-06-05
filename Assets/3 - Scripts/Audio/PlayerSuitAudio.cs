@@ -56,8 +56,12 @@ public class PlayerSuitAudio : MonoBehaviour
 
     // Extra breathing variety loaded from StreamingAssets, mixed into the random
     // pool alongside the Inspector-assigned breathingClips.
+    // SuitBreath1 was removed (came out badly). Any of these the user deletes
+    // from StreamingAssets just won't load (StreamingAudio logs a warning and
+    // skips it) — safe to prune the .wav files to taste without touching code.
     static readonly string[] ExtraBreathFiles =
-        { "SuitBreath1.wav", "SuitBreath2.wav", "SuitBreath3.wav", "SuitBreath4.wav" };
+        { "SuitBreath2.wav", "SuitBreath3.wav", "SuitBreath4.wav",
+          "SuitBreath5.wav", "SuitBreath6.wav", "SuitBreath7.wav", "SuitBreath8.wav" };
     readonly List<AudioClip> _loadedBreaths = new List<AudioClip>();
 
     void Awake()
