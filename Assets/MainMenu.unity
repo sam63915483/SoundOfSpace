@@ -221,6 +221,9 @@ MonoBehaviour:
   m_EditorClassIdentifier:
   menuAmbience: {fileID: 8300000, guid: a922a324dc601474294fbcecc54aa8de, type: 3}
   menuAmbienceVolume: 0.5
+  buttonHoverClip: {fileID: 8300000, guid: df6258d83ca551149b7cc022ef6ba13f, type: 3}
+  buttonClickClip: {fileID: 8300000, guid: 781cad4b3de7c5c4ea96f3eeffd1144a, type: 3}
+  buttonSfxVolume: 0.6
 --- !u!4 &822996122
 Transform:
   m_ObjectHideFlags: 0
