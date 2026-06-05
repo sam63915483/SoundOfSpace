@@ -1052,9 +1052,9 @@ public class Ship : GravityObject
         var vel = ps.velocityOverLifetime;
         vel.enabled = true;
         vel.space = ParticleSystemSimulationSpace.Local;   // now in real world units (scale neutralised)
-        vel.x = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
+        vel.x = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);    // width unchanged
         vel.z = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
-        vel.y = new ParticleSystem.MinMaxCurve(-2f, -1f);
+        vel.y = new ParticleSystem.MinMaxCurve(-3.6f, -1.8f);   // 1.8x downward → ~1.8x longer plume
 
         var col = ps.colorOverLifetime;
         col.enabled = true;

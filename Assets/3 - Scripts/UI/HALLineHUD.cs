@@ -133,15 +133,13 @@ public class HALLineHUD : MonoBehaviour
 
     void Enqueue(Line line)
     {
-        // Bounded queue: drop the OLDEST waiting line, never the incoming one.
-        if (_queue.Count >= MaxQueued)
-        {
-            var dropped = _queue.Dequeue();
-            Debug.LogWarning($"[HALLineHUD] tip queue full ({MaxQueued}); dropped oldest waiting line: \"{dropped.text}\"");
-        }
+        // Only ONE tip at a time: if a tip is currently showing (or queued), drop
+        // the incoming request. Prevents spam — e.g. mashing the hatch — from
+        // piling up duplicate "Re-oxygenating the hull" / "Hull sealed …" tips.
+        if (_processRoutine != null || _queue.Count > 0) return;
         _queue.Enqueue(line);
         RefreshPreviews();
-        if (_processRoutine == null) _processRoutine = StartCoroutine(ProcessQueue());
+        _processRoutine = StartCoroutine(ProcessQueue());
     }
 
     IEnumerator ProcessQueue()
