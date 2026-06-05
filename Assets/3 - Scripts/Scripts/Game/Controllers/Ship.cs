@@ -1011,7 +1011,12 @@ public class Ship : GravityObject
         var go = new GameObject("PressurizerPuff");
         go.transform.SetParent(parent, false);
         go.transform.localPosition = Vector3.zero;
-        go.transform.localRotation = Quaternion.identity;   // aligned with the pressurizer
+        // Align the puff to the SHIP's axes (NOT the rotated pressurizer's). The
+        // smoke vents along local -Y = ship-down = toward the floor (the direction
+        // that lowering the pressurizer's Y position moves it). The pressurizers'
+        // own local -Y pointed inward, so the two puffs were converging BETWEEN
+        // them instead of venting out of each one.
+        go.transform.rotation = transform.rotation;
 
         var ps = go.AddComponent<ParticleSystem>();
         if (Application.isPlaying) ps.Stop(true, ParticleSystemStopBehavior.StopEmitting);
@@ -1020,7 +1025,7 @@ public class Ship : GravityObject
         main.duration = 1f;
         main.loop = false;
         main.playOnAwake = false;
-        main.startLifetime = 0.5f;     // dissipates very fast
+        main.startLifetime = 1.2f;     // lingers; with sustained emission the vent reads ~2s+
         main.startSpeed = 0f;          // direction comes from velocityOverLifetime (-Y)
         main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.35f);
         main.startColor = new Color(0.95f, 0.95f, 1f, 0.55f);
@@ -1075,9 +1080,24 @@ public class Ship : GravityObject
         if (_pressurizers == null) return;
         for (int i = 0; i < _pressurizers.Length; i++)
         {
-            if (_pressPuff[i] != null) _pressPuff[i].Emit(45);
+            if (_pressPuff[i] != null) StartCoroutine(EmitPuffOverTime(_pressPuff[i]));
             if (_pressAudio[i] != null && _pressurizerClip != null)
                 _pressAudio[i].PlayOneShot(_pressurizerClip, 0.7f);
+        }
+    }
+
+    // Sustained ~1.5s vent (plus the ~1.2s particle-lifetime tail) so the puff
+    // reads as 2s+ of escaping air, not a single instantaneous burst.
+    static IEnumerator EmitPuffOverTime(ParticleSystem ps)
+    {
+        const float dur = 1.5f, step = 0.1f;
+        float t = 0f;
+        while (t < dur)
+        {
+            if (ps == null) yield break;
+            ps.Emit(8);
+            t += step;
+            yield return new WaitForSeconds(step);
         }
     }
 
