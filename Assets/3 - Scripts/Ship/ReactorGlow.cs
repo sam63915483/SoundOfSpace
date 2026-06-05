@@ -79,8 +79,8 @@ public class ReactorGlow : MonoBehaviour
     public float lightRange = 3f;
 
     [Header("Reactor audio")]
-    [Tooltip("Looping electric buzz from the reactor. Volume scales with fuel/glow.")]
-    [Range(0f, 1f)] public float reactorBuzzVolume = 0.35f;
+    [Tooltip("Looping reactor-core hum. Volume scales with fuel/glow.")]
+    [Range(0f, 1f)] public float reactorBuzzVolume = 0.75f;
     [Tooltip("Harsher electric surge played on each red 'unstable' event.")]
     [Range(0f, 1f)] public float reactorSurgeVolume = 0.6f;
 
@@ -141,8 +141,8 @@ public class ReactorGlow : MonoBehaviour
         _buzzSource.playOnAwake = false;
         _buzzSource.loop = true;
         _buzzSource.spatialBlend = 1f;
-        _buzzSource.minDistance = 1.5f;
-        _buzzSource.maxDistance = 14f;
+        _buzzSource.minDistance = 3f;    // full volume throughout the cabin
+        _buzzSource.maxDistance = 22f;   // audible across the ship + just outside
         _buzzSource.volume = 0f;
         _surgeSource = gameObject.AddComponent<AudioSource>();
         _surgeSource.playOnAwake = false;

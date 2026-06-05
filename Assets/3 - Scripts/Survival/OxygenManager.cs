@@ -45,11 +45,9 @@ public class OxygenManager : MonoBehaviour
     // ── Runtime caches ───────────────────────────────────────────────────
     PlayerController player;
     Ship mainShip;
-    float vacuumTipTimer;     // §6 countdown between repeats of the vacuum-exposure tip
     bool suitDepletedHandled;
     float refindTimer;
     bool _prevShipPromptsAudible;   // §5 edge-detect for purging queued ship tips
-    const float VacuumRepeatSeconds = 10f;
 
     // True while the player is within the ship's prompt radius (25 m) or piloting
     // it — drives ship-scoped HUD visibility (e.g. OxygenHUD's hull bar). §5.
@@ -286,26 +284,19 @@ public class OxygenManager : MonoBehaviour
             }
         }
 
-        // §6 vacuum exposure: while the hatch is open in vacuum (Draining — above
+        // §6 vacuum exposure: when the hatch OPENS into vacuum (Draining — above
         // the midpoint / off-world / above the Cyclops ceiling), show "Hull exposed
-        // to the vacuum of space." on entry and repeat it every 10 s while still
-        // exposed. This is the ONLY draining message (it replaces the old per-frame
-        // milestone spam + the "Hull is ajar" line). Also drives the suction loop.
+        // to the vacuum of space." ONCE per exposure (no repeat). It re-arms when
+        // the exposure clears (hatch closed / back in atmosphere), so the next
+        // hatch-open announces again. The suction burst plays only when the cabin
+        // still has pressurized air to vent (hullO2 > 0) — opening an already-empty
+        // hull makes no whoosh.
         bool inVacuumExposure = hullState == HullState.Draining;
-        if (inVacuumExposure)
+        if (inVacuumExposure && prev != HullState.Draining)
         {
-            if (prev != HullState.Draining)
-            {
-                vacuumTipTimer = 0f;                               // fire the tip immediately on entry
-                if (shipPromptsAudible) PlaySuctionBurst();        // 3s "sucked out" suction burst
-            }
-            vacuumTipTimer -= dt;
-            if (vacuumTipTimer <= 0f)
-            {
-                if (shipPromptsAudible && HALLineHUD.Instance != null)
-                    HALLineHUD.Instance.Show("Hull exposed to the vacuum of space.", shipScoped: true);
-                vacuumTipTimer = VacuumRepeatSeconds;
-            }
+            if (shipPromptsAudible && HALLineHUD.Instance != null)
+                HALLineHUD.Instance.Show("Hull exposed to the vacuum of space.", shipScoped: true);
+            if (shipPromptsAudible && hullO2 > 0f) PlaySuctionBurst();   // air rushing out
         }
 
         // ── 2) Breathing → 3) Suit oxygen ────────────────────────────────
