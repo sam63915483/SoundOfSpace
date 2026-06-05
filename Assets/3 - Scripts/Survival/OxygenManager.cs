@@ -1,4 +1,7 @@
+using System.Collections;
+using System.IO;
 using UnityEngine;
+using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 
 /// <summary>
@@ -44,9 +47,15 @@ public class OxygenManager : MonoBehaviour
     // ── Runtime caches ───────────────────────────────────────────────────
     PlayerController player;
     Ship mainShip;
-    float ajarTimer;
+    float vacuumTipTimer;     // §6 countdown between repeats of the vacuum-exposure tip
     bool suitDepletedHandled;
     float refindTimer;
+    bool _prevShipPromptsAudible;   // §5 edge-detect for purging queued ship tips
+    const float VacuumRepeatSeconds = 10f;
+
+    // True while the player is within the ship's prompt radius (25 m) or piloting
+    // it — drives ship-scoped HUD visibility (e.g. OxygenHUD's hull bar). §5.
+    public bool ShipPromptsAudible { get; private set; }
 
     // Per-ship derived data, recomputed only when the active ship changes.
     Ship derivedShip;
@@ -55,13 +64,11 @@ public class OxygenManager : MonoBehaviour
     Transform ejectPoint;         // child the hatch suction pulls the player toward
 
     const string VO_REOXY = "Re-oxygenating the hull";
-    const string VO_AJAR  = "Hull is ajar";
 
     // §4 sealed-hull air tracking. hullWasFilledOnGround is true once the hull
     // has been topped up in a breathable zone; it gates the "hull sealed" prompt
     // + milestone warnings and clears when the sealed reserve is fully spent.
     bool hullWasFilledOnGround;
-    bool hullVacuumTipFired;                            // §6 one-shot per exposure
     readonly bool[] hullMilestoneFired = new bool[4];   // 4m, 2m, 1m, 30s
     static readonly float[] HullMilestones = { 240f, 120f, 60f, 30f };
     static readonly string[] HullMilestoneMsgs =
@@ -88,9 +95,56 @@ public class OxygenManager : MonoBehaviour
         Instance = this;
         suitO2 = suitMax;
         hullO2 = hullMax;
+
+        // Hatch-suction loop (§ play-test request). 2D looping source; the clip
+        // loads lazily from StreamingAssets (mirrors HALVoicePlayer's pattern).
+        _suctionSource = gameObject.AddComponent<AudioSource>();
+        _suctionSource.playOnAwake = false;
+        _suctionSource.loop = true;
+        _suctionSource.spatialBlend = 0f;
+        _suctionSource.volume = suctionVolume;
+        StartCoroutine(LoadSuctionClip());
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
+
+    // ── Hatch-suction audio ───────────────────────────────────────────────
+    AudioSource _suctionSource;
+    AudioClip   _suctionClip;
+
+    IEnumerator LoadSuctionClip()
+    {
+        string path = Path.Combine(Application.streamingAssetsPath, "Audio", "HatchSuction.wav");
+        string url  = "file://" + path.Replace('\\', '/');
+        using (var req = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.WAV))
+        {
+            yield return req.SendWebRequest();
+            if (req.result == UnityWebRequest.Result.Success)
+                _suctionClip = DownloadHandlerAudioClip.GetContent(req);
+            else
+                Debug.LogWarning($"[OxygenManager] hatch-suction clip failed to load: {req.error}");
+        }
+    }
+
+    // Start/stop the looping suction roar. Called every FixedUpdate with
+    // (hatch draining in vacuum AND player near/inside the ship).
+    void SetSuctionAudio(bool on)
+    {
+        if (_suctionSource == null) return;
+        if (on && _suctionClip != null)
+        {
+            if (!_suctionSource.isPlaying)
+            {
+                _suctionSource.clip = _suctionClip;
+                _suctionSource.volume = suctionVolume;
+                _suctionSource.Play();
+            }
+        }
+        else if (_suctionSource.isPlaying)
+        {
+            _suctionSource.Stop();
+        }
+    }
 
     // ── Save hooks ───────────────────────────────────────────────────────
     public void ApplyState(float suit, float hull, bool cyclopsReached)
@@ -182,55 +236,52 @@ public class OxygenManager : MonoBehaviour
         }
 
         // §5 proximity gate: ship-specific hull prompts only play when the player
-        // is near or piloting THIS ship — otherwise "Hull is ajar" nags from
-        // across the map (and would cross-talk once multiple ships exist).
+        // is near or piloting THIS ship — otherwise they'd nag from across the
+        // map (and cross-talk once multiple ships exist).
         bool shipPromptsAudible = ship != null && ship.PlayerIsNearOrPiloting();
+        ShipPromptsAudible = shipPromptsAudible;
 
-        // Edge-triggered VO on hull-state ENTRY (never per-frame).
+        // When the player LEAVES the ship's 25 m radius (and isn't piloting),
+        // purge any queued ship-specific tips — they're about a ship the player
+        // can no longer see, so they shouldn't pop up later.
+        if (_prevShipPromptsAudible && !shipPromptsAudible && HALLineHUD.Instance != null)
+            HALLineHUD.Instance.ClearShipScoped();
+        _prevShipPromptsAudible = shipPromptsAudible;
+
+        // Re-oxygenating edge — keep its VO. Also arms the §4 sealed-air tracking
+        // + re-arms the milestone warnings (entering Refilling = hatch open in a
+        // breathable zone, so this air WAS filled on the ground).
         if (hullState == HullState.Refilling && prev != HullState.Refilling)
         {
             if (shipPromptsAudible) PlayVO(VO_REOXY);
-            // A fresh fill arms the "sealed ground air" tracking (§4) and re-arms
-            // the milestone warnings. Entering Refilling means the hatch is open
-            // in a breathable zone, so this air WAS filled on the ground.
             hullWasFilledOnGround = true;
             for (int i = 0; i < hullMilestoneFired.Length; i++) hullMilestoneFired[i] = false;
         }
-        if (hullState == HullState.Draining && prev != HullState.Draining)
-        {
-            if (shipPromptsAudible) PlayVO(VO_AJAR);
-            ajarTimer = hullAjarRepeat;
-        }
-        if (hullState == HullState.Draining)
-        {
-            ajarTimer -= dt;
-            if (ajarTimer <= 0f) { if (shipPromptsAudible) PlayVO(VO_AJAR); ajarTimer = hullAjarRepeat; }
-        }
 
-        // §4 sealed-hull reserve: air sealed inside is FINITE. While the player is
-        // inside breathing it (sealed, and not also standing in free atmosphere)
-        // it depletes — this is what makes the "hull sealed" countdown live and
-        // caps sealed air at ~hullMax seconds. Sealed in breathable atmosphere
-        // does NOT deplete (you're breathing the air outside the hull then).
-        if (hullState == HullState.Sealed && insideShip && !playerInRefill && hullO2 > 0f)
+        // §4 sealed-hull reserve: once the hatch is sealed, that's all the air the
+        // player has. It depletes whenever they're inside breathing it, so the
+        // countdown is LIVE from the moment of sealing — regardless of standing in
+        // breathable atmosphere (a sealed cabin is cut off from the air outside).
+        // Caps the reserve at ~hullMax seconds.
+        if (hullState == HullState.Sealed && insideShip && hullO2 > 0f)
             hullO2 = Mathf.Max(0f, hullO2 - hullBreathConsumeRate * dt);
 
         // Sealed air fully spent → disarm tracking (a future fill re-arms it).
         if (hullO2 <= 0f) hullWasFilledOnGround = false;
 
-        // §4 "Hull sealed — m s of air remaining" with a LIVE countdown, fired on
-        // the hatch-close (→ Sealed) edge, only when the hull holds ground-filled
-        // air and the player is near/piloting THIS ship.
+        // §4 "Hull sealed — m s of air remaining" LIVE countdown, fired on the
+        // hatch-close (→ Sealed) edge when the hull holds ground-filled air.
         if (hullState == HullState.Sealed && prev != HullState.Sealed
             && hullWasFilledOnGround && shipPromptsAudible && HALLineHUD.Instance != null)
         {
-            HALLineHUD.Instance.ShowLive(HullSealedCountdownText);
+            HALLineHUD.Instance.ShowLive(HullSealedCountdownText, voiceKey: null, shipScoped: true);
         }
 
         // §4 milestone warnings — fire once each as the sealed reserve drains past
-        // 4m / 2m / 1m / 30s. Skipped while Refilling (air rising), gated on
-        // proximity, re-armed on a fresh fill (above).
-        if (hullWasFilledOnGround && hullState != HullState.Refilling && shipPromptsAudible)
+        // 4m / 2m / 1m / 30s. ONLY while the hatch is CLOSED (Sealed): if the hatch
+        // is open and venting (Draining), the hull dumps in seconds and all four
+        // would queue up at once — that case shows the vacuum warning instead.
+        if (hullWasFilledOnGround && hullState == HullState.Sealed && shipPromptsAudible)
         {
             for (int i = 0; i < HullMilestones.Length; i++)
             {
@@ -242,20 +293,24 @@ public class OxygenManager : MonoBehaviour
             }
         }
 
-        // §6 one-shot "hull exposed to the vacuum of space" tip. Draining is
-        // exactly "hatch open and not in a breathable zone" (above the midpoint /
-        // off-world / above the Cyclops ceiling). Fires once per exposure when the
-        // player is near/piloting; re-arms when the exposure clears.
+        // §6 vacuum exposure: while the hatch is open in vacuum (Draining — above
+        // the midpoint / off-world / above the Cyclops ceiling), show "Hull exposed
+        // to the vacuum of space." on entry and repeat it every 10 s while still
+        // exposed. This is the ONLY draining message (it replaces the old per-frame
+        // milestone spam + the "Hull is ajar" line). Also drives the suction loop.
         bool inVacuumExposure = hullState == HullState.Draining;
-        if (!inVacuumExposure)
+        if (inVacuumExposure)
         {
-            hullVacuumTipFired = false;
+            if (prev != HullState.Draining) vacuumTipTimer = 0f; // fire immediately on entry
+            vacuumTipTimer -= dt;
+            if (vacuumTipTimer <= 0f)
+            {
+                if (shipPromptsAudible && HALLineHUD.Instance != null)
+                    HALLineHUD.Instance.Show("Hull exposed to the vacuum of space.", shipScoped: true);
+                vacuumTipTimer = VacuumRepeatSeconds;
+            }
         }
-        else if (!hullVacuumTipFired && shipPromptsAudible)
-        {
-            if (HALLineHUD.Instance != null) HALLineHUD.Instance.Show("Hull exposed to the vacuum of space.");
-            hullVacuumTipFired = true;
-        }
+        SetSuctionAudio(inVacuumExposure && shipPromptsAudible);
 
         // ── 2) Breathing → 3) Suit oxygen ────────────────────────────────
         // Breathing if standing in breathable air OR inside a hull with air.
@@ -429,9 +484,10 @@ public class OxygenManager : MonoBehaviour
 
     void PlayVO(string line)
     {
-        // HALLineHUD.Show shows the strip AND plays the canned clip via
-        // HALVoicePlayer.TryPlay (manifest lookup added in a later task).
-        if (HALLineHUD.Instance != null) HALLineHUD.Instance.Show(line);
+        // Ship-scoped hull VO — shows the strip AND plays the canned clip via
+        // HALVoicePlayer.TryPlay. shipScoped so it's purged if the player leaves
+        // the ship's radius before it surfaces.
+        if (HALLineHUD.Instance != null) HALLineHUD.Instance.Show(line, shipScoped: true);
         else if (HALVoicePlayer.Instance != null) HALVoicePlayer.Instance.TryPlay(line);
     }
 
@@ -478,9 +534,10 @@ public class OxygenManager : MonoBehaviour
     [Tooltip("Name of the child transform the hatch suction pulls the player toward (out the back). Move that GameObject in the SHIP44 prefab to tune the eject point.")]
     [SerializeField] string ejectPointName = "HatchEjectPoint";
 
-    [Header("VO")]
-    [Tooltip("Seconds between repeats of 'Hull is ajar' while still breaching.")]
-    [SerializeField] float hullAjarRepeat = 8f;
+    [Header("Hatch suction audio")]
+    [Tooltip("Volume of the looping windy-suction roar while the hatch is open in vacuum.")]
+    [Range(0f, 1f)]
+    [SerializeField] float suctionVolume = 0.8f;
 
     [Header("Planet names (must match CelestialBody.bodyName)")]
     [SerializeField] string humbleAbodeName = "Humble Abode";

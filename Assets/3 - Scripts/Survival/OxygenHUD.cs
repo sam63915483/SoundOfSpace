@@ -126,8 +126,13 @@ public class OxygenHUD : MonoBehaviour
 
         SetBar(hullFill, om.HullPercent);
 
-        bool showHull = om.PlayerPiloting || om.PlayerInsideShip
-                        || om.State == OxygenManager.HullState.Draining;
+        // Only show the hull bar when the player is actually with the ship —
+        // piloting, inside, or (while it's venting) within its 25 m radius.
+        // Without the proximity gate the bar lingered on screen when the player
+        // had wandered 50 m+ away from a draining ship.
+        bool showHull = (om.PlayerPiloting || om.PlayerInsideShip
+                        || om.State == OxygenManager.HullState.Draining)
+                        && om.ShipPromptsAudible;
         if (hullGroup != null) hullGroup.alpha = showHull ? 1f : 0f;
     }
 

@@ -37,6 +37,7 @@ public class HALLineHUD : MonoBehaviour
         public string text;               // snapshot text (previews + static lines)
         public System.Func<string> live;  // optional per-frame text source (primary only)
         public string voiceKey;           // optional TTS key (defaults to text/live())
+        public bool shipScoped;           // §5: purged from the queue if the player leaves the ship radius
     }
 
     Canvas         _canvas;
@@ -95,10 +96,10 @@ public class HALLineHUD : MonoBehaviour
     /// Show a static line. If something is already on screen, this queues below
     /// it as a preview and is promoted when the active line finishes.
     /// </summary>
-    public void Show(string text)
+    public void Show(string text, bool shipScoped = false)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        Enqueue(new Line { text = text });
+        Enqueue(new Line { text = text, shipScoped = shipScoped });
     }
 
     /// <summary>
@@ -106,12 +107,28 @@ public class HALLineHUD : MonoBehaviour
     /// primary (e.g. a live countdown). <paramref name="voiceKey"/> is the TTS
     /// key; if null the initial text value is used. Previews show the snapshot.
     /// </summary>
-    public void ShowLive(System.Func<string> textSource, string voiceKey = null)
+    public void ShowLive(System.Func<string> textSource, string voiceKey = null, bool shipScoped = false)
     {
         if (textSource == null) return;
         string snapshot = SafeEval(textSource);
         if (string.IsNullOrWhiteSpace(snapshot)) return;
-        Enqueue(new Line { text = snapshot, live = textSource, voiceKey = voiceKey });
+        Enqueue(new Line { text = snapshot, live = textSource, voiceKey = voiceKey, shipScoped = shipScoped });
+    }
+
+    /// <summary>
+    /// §5: drop every QUEUED ship-scoped line (the active one keeps showing —
+    /// it fades on its own in a few seconds). Called when the player leaves a
+    /// ship's prompt radius so stale hull warnings don't pop up later.
+    /// </summary>
+    public void ClearShipScoped()
+    {
+        if (_queue.Count == 0) return;
+        var kept = new List<Line>(_queue.Count);
+        foreach (var l in _queue) if (!l.shipScoped) kept.Add(l);
+        if (kept.Count == _queue.Count) return;   // nothing ship-scoped was waiting
+        _queue.Clear();
+        foreach (var l in kept) _queue.Enqueue(l);
+        RefreshPreviews();
     }
 
     void Enqueue(Line line)
