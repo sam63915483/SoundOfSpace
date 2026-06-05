@@ -1247,6 +1247,40 @@ public class Ship : GravityObject
     }
     public Rigidbody Rigidbody => rb;
 
+    // --- §5 ship-specific-prompt proximity gate --------------------------------
+    // True if the player is piloting THIS ship, or is within `radius` metres of
+    // it. Per-instance (multi-ship safe), throttled, and null-safe. Used to gate
+    // ship-specific prompts/SFX (reactor, hatch, hull VO, vitals warnings) so they
+    // don't fire when the player is nowhere near the ship they refer to.
+    const float DefaultPromptRadius = 25f;
+    const float NearCheckInterval = 0.2f;
+    [System.NonSerialized] PlayerController _proximityPlayer;
+    [System.NonSerialized] float _nearCheckTime;
+    [System.NonSerialized] bool _nearCached;
+
+    public bool PlayerIsNearOrPiloting(float radius = DefaultPromptRadius)
+    {
+        if (shipIsPiloted) return true;                 // this ship is being flown
+        if (rb == null) return false;
+        if (Time.unscaledTime < _nearCheckTime) return _nearCached;
+        _nearCheckTime = Time.unscaledTime + NearCheckInterval;
+
+        // Lazy-refind the player only when we don't already have it (never per
+        // frame — once found it persists for the session).
+        if (_proximityPlayer == null) _proximityPlayer = pilot;
+        if (_proximityPlayer == null) _proximityPlayer = FindObjectOfType<PlayerController>(true);
+        if (_proximityPlayer == null || _proximityPlayer.Rigidbody == null)
+        {
+            _nearCached = false;
+            return false;
+        }
+
+        float r = radius > 0f ? radius : DefaultPromptRadius;
+        Vector3 playerPos = _proximityPlayer.Rigidbody.position;
+        _nearCached = (playerPos - rb.position).sqrMagnitude <= r * r;
+        return _nearCached;
+    }
+
     // World velocity minus the nearest CelestialBody's velocity. Used by
     // speed-driven camera FX (SpeedLinesOverlay, RadialMotionBlurEffect) so
     // a ship sitting still on Humble Abode reads ~0 — without this, the
