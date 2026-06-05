@@ -113,9 +113,9 @@ public class PlayerSuitAudio : MonoBehaviour
 
     void ScheduleNextBreath()
     {
-        float lo = Mathf.Max(0.1f, breathMinInterval);
-        float hi = Mathf.Max(lo, breathMaxInterval);
-        _nextBreathTime = Time.time + Random.Range(lo, hi);
+        // Fixed 10-15s cadence (per request). Overrides the serialized interval
+        // fields so the scene-stored value can't leave it at the old 15-25s.
+        _nextBreathTime = Time.time + Random.Range(10f, 15f);
     }
 
     void Update()

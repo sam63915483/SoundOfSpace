@@ -203,6 +203,15 @@ public class Ship : GravityObject
     AudioSource _pilotSfxSource;
     AudioClip _startupClip, _shutdownClip;
 
+    // Hatch pressurizer FX: hiss + a fast smoke puff out each pressurizer's local
+    // -Y when the hatch opens/closes. Pressurizer1/2 are child GameObjects on the
+    // ship prefab; we anchor audio + a particle puff to them at runtime.
+    Transform[] _pressurizers;
+    AudioSource[] _pressAudio;
+    ParticleSystem[] _pressPuff;
+    AudioClip _pressurizerClip;
+    bool _prevHatchForPuff;
+
     Rigidbody rb;
     Quaternion targetRot;
     Quaternion smoothedRot;
@@ -249,6 +258,8 @@ public class Ship : GravityObject
         _pilotSfxSource.spatialBlend = 0f;
         StartCoroutine(StreamingAudio.Load("Audio/ShipStartup.wav",  AudioType.WAV, c => _startupClip = c));
         StartCoroutine(StreamingAudio.Load("Audio/ShipShutdown.wav", AudioType.WAV, c => _shutdownClip = c));
+
+        SetupPressurizers();
 
         // Window glass casts shadows by default, which blocks the Sun's
         // shadow rays from passing through the cockpit — interior turns
@@ -579,6 +590,15 @@ public class Ship : GravityObject
             {
                 thrustSource.Stop();
             }
+        }
+
+        // Pressurizer FX whenever the hatch opens/closes (any path that flips
+        // hatchOpen — outside trigger, interior button, etc.). Skip the first 2s
+        // so a load-time hatch restore doesn't puff.
+        if (hatchOpen != _prevHatchForPuff)
+        {
+            _prevHatchForPuff = hatchOpen;
+            if (Time.timeSinceLevelLoad > 2f) FirePressurizers();
         }
 
         // Animate hatch
@@ -948,11 +968,126 @@ public class Ship : GravityObject
         rb.mass = 1000000f;
     }
 
+    // ── Hatch pressurizer FX ───────────────────────────────────────────────
+    void SetupPressurizers()
+    {
+        var list = new List<Transform>(2);
+        var p1 = FindChildByName(transform, "Pressurizer1");
+        var p2 = FindChildByName(transform, "Pressurizer2");
+        if (p1 != null) list.Add(p1);
+        if (p2 != null) list.Add(p2);
+        _pressurizers = list.ToArray();
+        _pressAudio = new AudioSource[_pressurizers.Length];
+        _pressPuff  = new ParticleSystem[_pressurizers.Length];
+        for (int i = 0; i < _pressurizers.Length; i++)
+        {
+            var a = _pressurizers[i].gameObject.AddComponent<AudioSource>();
+            a.playOnAwake = false;
+            a.spatialBlend = 1f;          // 3D — comes from the valve
+            a.minDistance = 2f;
+            a.maxDistance = 20f;
+            _pressAudio[i] = a;
+            _pressPuff[i] = BuildPressurizerPuff(_pressurizers[i]);
+        }
+        if (_pressurizers.Length > 0)
+            StartCoroutine(StreamingAudio.Load("Audio/Pressurizer.wav", AudioType.WAV, c => _pressurizerClip = c));
+        _prevHatchForPuff = hatchOpen;
+    }
+
+    static Transform FindChildByName(Transform root, string name)
+    {
+        var all = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < all.Length; i++)
+            if (all[i] != null && all[i].name == name) return all[i];
+        return null;
+    }
+
+    // A small, fast-dissipating smoke puff parented to a pressurizer. Direction is
+    // driven explicitly by a LOCAL -Y velocity (not the cone's axis, whose
+    // convention is ambiguous) so it reliably shoots out the pressurizer's local
+    // -Y, which Sam set as the exit direction.
+    ParticleSystem BuildPressurizerPuff(Transform parent)
+    {
+        var go = new GameObject("PressurizerPuff");
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = Vector3.zero;
+        go.transform.localRotation = Quaternion.identity;   // aligned with the pressurizer
+
+        var ps = go.AddComponent<ParticleSystem>();
+        if (Application.isPlaying) ps.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+
+        var main = ps.main;
+        main.duration = 1f;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.startLifetime = 0.5f;     // dissipates very fast
+        main.startSpeed = 0f;          // direction comes from velocityOverLifetime (-Y)
+        main.startSize = new ParticleSystem.MinMaxCurve(0.12f, 0.35f);
+        main.startColor = new Color(0.95f, 0.95f, 1f, 0.55f);
+        main.maxParticles = 300;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;  // rides with the ship
+        main.gravityModifier = 0f;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;    // bursts only (we call Emit)
+
+        var shape = ps.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 0.05f;          // tiny spawn cluster at the valve
+
+        // Shoot out the pressurizer's local -Y with a little lateral spread.
+        var vel = ps.velocityOverLifetime;
+        vel.enabled = true;
+        vel.space = ParticleSystemSimulationSpace.Local;
+        vel.x = new ParticleSystem.MinMaxCurve(-1.2f, 1.2f);
+        vel.z = new ParticleSystem.MinMaxCurve(-1.2f, 1.2f);
+        vel.y = new ParticleSystem.MinMaxCurve(-5f, -3.5f);
+
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        var grad = new Gradient();
+        grad.SetKeys(
+            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+            new[] { new GradientAlphaKey(0.85f, 0f), new GradientAlphaKey(0.5f, 0.4f), new GradientAlphaKey(0f, 1f) });
+        col.color = new ParticleSystem.MinMaxGradient(grad);
+
+        var size = ps.sizeOverLifetime;
+        size.enabled = true;
+        var sc = new AnimationCurve();
+        sc.AddKey(0f, 0.6f);
+        sc.AddKey(1f, 1.8f);
+        size.size = new ParticleSystem.MinMaxCurve(1f, sc);
+
+        var renderer = ps.GetComponent<ParticleSystemRenderer>();
+        if (renderer != null)
+        {
+            var m = ConcertParticleAssets.GetAlphaBlendCloudMaterial();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.material = m;
+            renderer.sharedMaterial = m;
+        }
+        return ps;
+    }
+
+    void FirePressurizers()
+    {
+        if (_pressurizers == null) return;
+        for (int i = 0; i < _pressurizers.Length; i++)
+        {
+            if (_pressPuff[i] != null) _pressPuff[i].Emit(45);
+            if (_pressAudio[i] != null && _pressurizerClip != null)
+                _pressAudio[i].PlayOneShot(_pressurizerClip, 0.7f);
+        }
+    }
+
     public void ToggleHatch()
     {
         hatchOpen = !hatchOpen;
         if (hatchClip != null && crashSource != null)
             crashSource.PlayOneShot(hatchClip, hatchVolume);
+        // Pressurizer hiss + smoke puff is driven by the hatchOpen state-change
+        // poll in the per-frame update, so it fires for every toggle path.
     }
 
     public void TogglePiloting()
