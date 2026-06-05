@@ -57,6 +57,20 @@ public class OxygenManager : MonoBehaviour
     const string VO_REOXY = "Re-oxygenating the hull";
     const string VO_AJAR  = "Hull is ajar";
 
+    // §4 sealed-hull air tracking. hullWasFilledOnGround is true once the hull
+    // has been topped up in a breathable zone; it gates the "hull sealed" prompt
+    // + milestone warnings and clears when the sealed reserve is fully spent.
+    bool hullWasFilledOnGround;
+    readonly bool[] hullMilestoneFired = new bool[4];   // 4m, 2m, 1m, 30s
+    static readonly float[] HullMilestones = { 240f, 120f, 60f, 30f };
+    static readonly string[] HullMilestoneMsgs =
+    {
+        "4 minutes of hull air remaining.",
+        "2 minutes of hull air remaining.",
+        "1 minute of hull air remaining.",
+        "30 seconds of hull air remaining."
+    };
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
@@ -175,6 +189,11 @@ public class OxygenManager : MonoBehaviour
         if (hullState == HullState.Refilling && prev != HullState.Refilling)
         {
             if (shipPromptsAudible) PlayVO(VO_REOXY);
+            // A fresh fill arms the "sealed ground air" tracking (§4) and re-arms
+            // the milestone warnings. Entering Refilling means the hatch is open
+            // in a breathable zone, so this air WAS filled on the ground.
+            hullWasFilledOnGround = true;
+            for (int i = 0; i < hullMilestoneFired.Length; i++) hullMilestoneFired[i] = false;
         }
         if (hullState == HullState.Draining && prev != HullState.Draining)
         {
@@ -185,6 +204,41 @@ public class OxygenManager : MonoBehaviour
         {
             ajarTimer -= dt;
             if (ajarTimer <= 0f) { if (shipPromptsAudible) PlayVO(VO_AJAR); ajarTimer = hullAjarRepeat; }
+        }
+
+        // §4 sealed-hull reserve: air sealed inside is FINITE. While the player is
+        // inside breathing it (sealed, and not also standing in free atmosphere)
+        // it depletes — this is what makes the "hull sealed" countdown live and
+        // caps sealed air at ~hullMax seconds. Sealed in breathable atmosphere
+        // does NOT deplete (you're breathing the air outside the hull then).
+        if (hullState == HullState.Sealed && insideShip && !playerInRefill && hullO2 > 0f)
+            hullO2 = Mathf.Max(0f, hullO2 - hullBreathConsumeRate * dt);
+
+        // Sealed air fully spent → disarm tracking (a future fill re-arms it).
+        if (hullO2 <= 0f) hullWasFilledOnGround = false;
+
+        // §4 "Hull sealed — m s of air remaining" with a LIVE countdown, fired on
+        // the hatch-close (→ Sealed) edge, only when the hull holds ground-filled
+        // air and the player is near/piloting THIS ship.
+        if (hullState == HullState.Sealed && prev != HullState.Sealed
+            && hullWasFilledOnGround && shipPromptsAudible && HALLineHUD.Instance != null)
+        {
+            HALLineHUD.Instance.ShowLive(HullSealedCountdownText);
+        }
+
+        // §4 milestone warnings — fire once each as the sealed reserve drains past
+        // 4m / 2m / 1m / 30s. Skipped while Refilling (air rising), gated on
+        // proximity, re-armed on a fresh fill (above).
+        if (hullWasFilledOnGround && hullState != HullState.Refilling && shipPromptsAudible)
+        {
+            for (int i = 0; i < HullMilestones.Length; i++)
+            {
+                if (!hullMilestoneFired[i] && hullO2 <= HullMilestones[i])
+                {
+                    hullMilestoneFired[i] = true;
+                    PlayVO(HullMilestoneMsgs[i]);
+                }
+            }
         }
 
         // ── 2) Breathing → 3) Suit oxygen ────────────────────────────────
@@ -348,6 +402,15 @@ public class OxygenManager : MonoBehaviour
         if (rm != null) rm.TakeDamage(200f, false);
     }
 
+    // Live text for the §4 "hull sealed" prompt — re-evaluated every frame by
+    // HALLineHUD.ShowLive so the countdown ticks in real time.
+    string HullSealedCountdownText()
+    {
+        int t = Mathf.Max(0, Mathf.CeilToInt(hullO2));
+        int m = t / 60, s = t % 60;
+        return $"Hull sealed — {m} minute{(m == 1 ? "" : "s")} {s} second{(s == 1 ? "" : "s")} of air remaining.";
+    }
+
     void PlayVO(string line)
     {
         // HALLineHUD.Show shows the strip AND plays the canned clip via
@@ -374,6 +437,8 @@ public class OxygenManager : MonoBehaviour
     [SerializeField] float hullRefillRate = 60.0f;
     [SerializeField] float hullDrainMin   = 5.0f;
     [SerializeField] float hullDrainMax   = 60.0f;
+    [Tooltip("How fast SEALED hull air is breathed down while the player is inside in vacuum (§4). hullMax / this = seconds of sealed reserve, e.g. 300/1 = 5 min.")]
+    [SerializeField] float hullBreathConsumeRate = 1.0f;
 
     [Header("Atmosphere (metres above surface)")]
     // Humble Abode radius = 200, atmosphereScale ~0.32-0.49 → visible atmosphere
