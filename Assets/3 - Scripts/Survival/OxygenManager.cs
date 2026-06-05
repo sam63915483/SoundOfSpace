@@ -61,6 +61,7 @@ public class OxygenManager : MonoBehaviour
     // has been topped up in a breathable zone; it gates the "hull sealed" prompt
     // + milestone warnings and clears when the sealed reserve is fully spent.
     bool hullWasFilledOnGround;
+    bool hullVacuumTipFired;                            // §6 one-shot per exposure
     readonly bool[] hullMilestoneFired = new bool[4];   // 4m, 2m, 1m, 30s
     static readonly float[] HullMilestones = { 240f, 120f, 60f, 30f };
     static readonly string[] HullMilestoneMsgs =
@@ -239,6 +240,21 @@ public class OxygenManager : MonoBehaviour
                     PlayVO(HullMilestoneMsgs[i]);
                 }
             }
+        }
+
+        // §6 one-shot "hull exposed to the vacuum of space" tip. Draining is
+        // exactly "hatch open and not in a breathable zone" (above the midpoint /
+        // off-world / above the Cyclops ceiling). Fires once per exposure when the
+        // player is near/piloting; re-arms when the exposure clears.
+        bool inVacuumExposure = hullState == HullState.Draining;
+        if (!inVacuumExposure)
+        {
+            hullVacuumTipFired = false;
+        }
+        else if (!hullVacuumTipFired && shipPromptsAudible)
+        {
+            if (HALLineHUD.Instance != null) HALLineHUD.Instance.Show("Hull exposed to the vacuum of space.");
+            hullVacuumTipFired = true;
         }
 
         // ── 2) Breathing → 3) Suit oxygen ────────────────────────────────
