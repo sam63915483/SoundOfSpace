@@ -1041,13 +1041,15 @@ public class Ship : GravityObject
         shape.shapeType = ParticleSystemShapeType.Sphere;
         shape.radius = 0.05f;          // tiny spawn cluster at the valve
 
-        // Shoot out the pressurizer's local -Y with a little lateral spread.
+        // Gentle vent out the ship's -Y (toward the floor) with a little lateral
+        // spread. Kept SMALL so the puff hugs the pressurizer instead of streaming
+        // several units down into the cabin. Tune here if it should travel more/less.
         var vel = ps.velocityOverLifetime;
         vel.enabled = true;
         vel.space = ParticleSystemSimulationSpace.Local;
-        vel.x = new ParticleSystem.MinMaxCurve(-1.2f, 1.2f);
-        vel.z = new ParticleSystem.MinMaxCurve(-1.2f, 1.2f);
-        vel.y = new ParticleSystem.MinMaxCurve(-5f, -3.5f);
+        vel.x = new ParticleSystem.MinMaxCurve(-0.4f, 0.4f);
+        vel.z = new ParticleSystem.MinMaxCurve(-0.4f, 0.4f);
+        vel.y = new ParticleSystem.MinMaxCurve(-1.2f, -0.5f);
 
         var col = ps.colorOverLifetime;
         col.enabled = true;
