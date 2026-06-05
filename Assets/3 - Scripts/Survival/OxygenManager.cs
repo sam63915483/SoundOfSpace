@@ -100,6 +100,12 @@ public class OxygenManager : MonoBehaviour
         _suctionSource.loop = false;
         _suctionSource.spatialBlend = 0f;
         StartCoroutine(StreamingAudio.Load("Audio/HatchSuction.wav", AudioType.WAV, c => _suctionClip = c));
+
+        // Low-oxygen alarm — periodic beep while the suit is draining and low.
+        _alarmSource = gameObject.AddComponent<AudioSource>();
+        _alarmSource.playOnAwake = false;
+        _alarmSource.spatialBlend = 0f;
+        StartCoroutine(StreamingAudio.Load("Audio/O2Alarm.wav", AudioType.WAV, c => _alarmClip = c));
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
@@ -108,6 +114,13 @@ public class OxygenManager : MonoBehaviour
     AudioSource _suctionSource;
     AudioClip   _suctionClip;
     Coroutine   _suctionRoutine;
+
+    // ── Low-oxygen alarm ──────────────────────────────────────────────────
+    AudioSource _alarmSource;
+    AudioClip   _alarmClip;
+    float _nextAlarmTime;
+    const float SuitAlarmThreshold = 0.25f;   // suit O2 fraction below which the alarm beeps
+    const float SuitAlarmInterval  = 1.3f;
 
     // Play the ~3s suction burst: full volume for the first second, then fade to
     // silence over the next two. Triggered on the hatch-vents-in-vacuum edge.
@@ -315,6 +328,13 @@ public class OxygenManager : MonoBehaviour
             {
                 suitDepletedHandled = true;
                 KillPlayer();
+            }
+            // Low-oxygen alarm: periodic beep while the suit is draining and low.
+            if (SuitPercent < SuitAlarmThreshold && _alarmSource != null && _alarmClip != null
+                && Time.unscaledTime >= _nextAlarmTime)
+            {
+                _alarmSource.PlayOneShot(_alarmClip, 0.7f);
+                _nextAlarmTime = Time.unscaledTime + SuitAlarmInterval;
             }
         }
 

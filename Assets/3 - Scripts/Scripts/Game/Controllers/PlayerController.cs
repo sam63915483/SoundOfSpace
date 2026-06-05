@@ -518,9 +518,11 @@ public class PlayerController : GravityObject
 		// Movement input — blocked during dialogue
 		isGrounded = IsGrounded();
 
-		// Landing SFX: only when transitioning from airborne to grounded after >= threshold airborne time
+		// Landing SFX: only when transitioning from airborne to grounded after >= threshold airborne time.
+		// Suppressed when touching water — jumping in from the bank registers as a
+		// "landing", but the water-entry splash (OnTriggerEnter) should play instead.
 		bool justLanded = isGrounded && wasAirborne;
-		if (justLanded && airborneTime >= minAirborneForLandSound && landClip != null && sfxSource != null)
+		if (justLanded && airborneTime >= minAirborneForLandSound && landClip != null && sfxSource != null && waterTouches == 0)
 			sfxSource.PlayOneShot(landClip, landVolume);
 		if (justLanded) OnLanded?.Invoke();
 		if (isGrounded) airborneTime = 0f;

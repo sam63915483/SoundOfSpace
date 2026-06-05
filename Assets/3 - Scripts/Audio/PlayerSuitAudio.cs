@@ -44,10 +44,13 @@ public class PlayerSuitAudio : MonoBehaviour
     // "extra field ... can't be serialized (expected ...)" build errors.
     [Tooltip("Wind stays silent below this speed (units/s, relative to the planet). It only starts once you're moving through the air this fast.")]
     [SerializeField] private float windStartSpeed = 15f;
+    [Tooltip("Volume of the constant suit life-support hum (loaded from StreamingAssets/Audio/SuitAmbient.wav).")]
+    [SerializeField, Range(0f, 1f)] private float lifeSupportVolume = 0.22f;
 
     AudioSource _oneShot;
     AudioSource _breathSrc;
     AudioSource _windSrc;
+    AudioSource _lifeSupportSrc;   // constant low suit life-support hum
     PlayerController _player;
     float _nextBreathTime;
 
@@ -64,6 +67,16 @@ public class PlayerSuitAudio : MonoBehaviour
         _breathSrc = CreateSource("SuitBreath", false);
         _windSrc  = CreateSource("SuitWind", true);
         if (windLoopClip != null) { _windSrc.clip = windLoopClip; _windSrc.volume = 0f; _windSrc.Play(); }
+
+        // Constant, quiet life-support hum (helmet air recycler) — sells the
+        // "sealed in a suit" feeling while on foot. Pauses with this GameObject
+        // while piloting (the ship's own audio covers the cockpit then).
+        _lifeSupportSrc = CreateSource("SuitLifeSupport", true);
+        StartCoroutine(StreamingAudio.Load("Audio/SuitAmbient.wav", AudioType.WAV, c =>
+        {
+            if (c != null && _lifeSupportSrc != null)
+            { _lifeSupportSrc.clip = c; _lifeSupportSrc.volume = lifeSupportVolume; _lifeSupportSrc.Play(); }
+        }));
 
         _player = GetComponent<PlayerController>();
         if (_player == null) _player = FindObjectOfType<PlayerController>();

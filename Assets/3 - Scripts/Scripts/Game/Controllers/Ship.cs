@@ -1086,7 +1086,7 @@ public class Ship : GravityObject
         // Power-down SFX (reverse-feel shutdown). Same 2s gate as start-up so
         // the load-time force-exit during setup stays silent.
         if (_shutdownClip != null && _pilotSfxSource != null && Time.timeSinceLevelLoad > 2f)
-            _pilotSfxSource.PlayOneShot(_shutdownClip, 0.8f);
+            _pilotSfxSource.PlayOneShot(_shutdownClip, 0.5f);
         // Always drop the player at the ship's own pilotSeatPoint. (We used to
         // fall back to pilot.spawnPoint = the starting cabin; removed because
         // it teleported players away from any ship bought far from the cabin.)
