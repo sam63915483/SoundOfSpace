@@ -11,8 +11,16 @@ using UnityEngine.UI;
 /// left + a single line of cyan-white text, near the top of the screen, below
 /// the compass.
 ///
-/// Fades in, holds for ~5s, fades out. Lines queue if multiple events fire
-/// close together so the player never misses one.
+/// Fades in, holds for ~5s, fades out. If more lines arrive while one is on
+/// screen they stack BELOW the active line as smaller, dimmer previews (up to
+/// 3). When the active line fades out, the next preview slides up + scales to
+/// full size to become the new active line, and its voice plays at the end of
+/// that transition. Nothing is silently dropped — an over-full queue drops its
+/// OLDEST waiting preview (and logs a warning), never the incoming line.
+///
+/// Lines may also be "live": <see cref="ShowLive"/> takes a delegate that is
+/// re-evaluated every frame while the line is the active primary, used for the
+/// hull-sealed countdown ("Hull sealed — m s of air remaining").
 ///
 /// Auto-singleton with MainMenu skip — must also be seeded in
 /// MainMenuController.EnsureGameplaySingletons per the trap in CLAUDE.md.
@@ -21,6 +29,16 @@ public class HALLineHUD : MonoBehaviour
 {
     public static HALLineHUD Instance { get; private set; }
 
+    // A queued line: a static snapshot string (always set, used for previews and
+    // for non-live primaries) plus an optional live text source evaluated each
+    // frame while primary, plus an optional explicit voice key.
+    struct Line
+    {
+        public string text;               // snapshot text (previews + static lines)
+        public System.Func<string> live;  // optional per-frame text source (primary only)
+        public string voiceKey;           // optional TTS key (defaults to text/live())
+    }
+
     Canvas         _canvas;
     CanvasGroup    _group;
     RectTransform  _rt;
@@ -28,16 +46,31 @@ public class HALLineHUD : MonoBehaviour
     Image          _eye;
     Image          _eyeHalo;   // ref kept so Update can pulse it counter-phase
 
+    // Preview rows for queued (waiting) lines, stacked below the primary strip.
+    const int MaxQueued = 3;
+    RectTransform[]   _prevRT    = new RectTransform[MaxQueued];
+    CanvasGroup[]     _prevCG    = new CanvasGroup[MaxQueued];
+    TextMeshProUGUI[] _prevLabel = new TextMeshProUGUI[MaxQueued];
+
     // HAL eye colour lives in HALVisuals (shared with AIChatScreen).
     static readonly Color HalText = new Color32(0xEA, 0xF6, 0xFF, 0xFF);
 
-    const float FadeInSeconds  = 0.4f;
-    const float HoldSeconds    = 5.5f;
-    const float FadeOutSeconds = 0.7f;
+    const float FadeInSeconds   = 0.4f;
+    const float HoldSeconds     = 5.5f;
+    const float FadeOutSeconds  = 0.7f;
     const float GapBetweenLines = 0.3f;
+    const float PromoteSeconds  = 0.3f;   // slide-up + scale-up when a preview is promoted
+    const float PreviewScale    = 0.8f;
+    const float PreviewAlpha    = 0.55f;
 
-    readonly Queue<string> _queue = new Queue<string>();
+    // Layout anchors (top-center pivot).
+    const float PrimaryHomeY  = -130f;    // anchoredPosition.y of the active strip
+    const float PreviewFirstY = -182f;    // first preview row (just below the strip)
+    const float PreviewStepY  = -34f;     // vertical gap per preview row
+
+    readonly Queue<Line> _queue = new Queue<Line>();
     Coroutine _processRoutine;
+    System.Func<string> _activeLive;      // non-null while the primary is a live line
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -59,40 +92,143 @@ public class HALLineHUD : MonoBehaviour
     void OnDestroy() { if (Instance == this) Instance = null; }
 
     /// <summary>
-    /// Show a line. If something is already on screen, queues this one to
-    /// appear after.
+    /// Show a static line. If something is already on screen, this queues below
+    /// it as a preview and is promoted when the active line finishes.
     /// </summary>
     public void Show(string text)
     {
         if (string.IsNullOrWhiteSpace(text)) return;
-        _queue.Enqueue(text);
+        Enqueue(new Line { text = text });
+    }
+
+    /// <summary>
+    /// Show a line whose text re-evaluates every frame while it is the active
+    /// primary (e.g. a live countdown). <paramref name="voiceKey"/> is the TTS
+    /// key; if null the initial text value is used. Previews show the snapshot.
+    /// </summary>
+    public void ShowLive(System.Func<string> textSource, string voiceKey = null)
+    {
+        if (textSource == null) return;
+        string snapshot = SafeEval(textSource);
+        if (string.IsNullOrWhiteSpace(snapshot)) return;
+        Enqueue(new Line { text = snapshot, live = textSource, voiceKey = voiceKey });
+    }
+
+    void Enqueue(Line line)
+    {
+        // Bounded queue: drop the OLDEST waiting line, never the incoming one.
+        if (_queue.Count >= MaxQueued)
+        {
+            var dropped = _queue.Dequeue();
+            Debug.LogWarning($"[HALLineHUD] tip queue full ({MaxQueued}); dropped oldest waiting line: \"{dropped.text}\"");
+        }
+        _queue.Enqueue(line);
+        RefreshPreviews();
         if (_processRoutine == null) _processRoutine = StartCoroutine(ProcessQueue());
     }
 
     IEnumerator ProcessQueue()
     {
+        bool firstInRun = true;
         while (_queue.Count > 0)
         {
-            string line = _queue.Dequeue();
-            if (_label != null) _label.text = line;
+            Line line = _queue.Dequeue();
+            RefreshPreviews();          // remaining previews shift up immediately
 
-            // Voice — kick off canned clip playback synchronised with the
-            // start of the fade-in. Returns false silently if the line has
-            // no clip in HALVoiceManifest (dynamic lines like "Astronaut
-            // Number 4." or "Target reached: Tev." just show as text).
-            if (HALVoicePlayer.Instance != null) HALVoicePlayer.Instance.TryPlay(line);
+            SetPrimaryText(line);
 
-            yield return Fade(0f, 1f, FadeInSeconds);
+            if (firstInRun)
+            {
+                // No preview existed for this line — fade in from home, voice at
+                // the start of the fade (the original behaviour for an idle HUD).
+                _rt.anchoredPosition = new Vector2(0f, PrimaryHomeY);
+                _rt.localScale = Vector3.one;
+                PlayVoice(line);
+                yield return Fade(0f, 1f, FadeInSeconds);
+            }
+            else
+            {
+                // This line was visible as a preview — slide it up + scale it to
+                // full size, THEN play its voice (spec: TTS at end of transition).
+                yield return Promote();
+                PlayVoice(line);
+            }
+            firstInRun = false;
 
             float t = 0f;
             while (t < HoldSeconds) { t += Time.unscaledDeltaTime; yield return null; }
 
             yield return Fade(1f, 0f, FadeOutSeconds);
+            _activeLive = null;
 
             t = 0f;
             while (t < GapBetweenLines) { t += Time.unscaledDeltaTime; yield return null; }
         }
+        _activeLive = null;
         _processRoutine = null;
+    }
+
+    void SetPrimaryText(Line line)
+    {
+        _activeLive = line.live;        // null for static lines
+        if (_label != null) _label.text = line.live != null ? SafeEval(line.live) : line.text;
+    }
+
+    void PlayVoice(Line line)
+    {
+        if (HALVoicePlayer.Instance == null) return;
+        // Voice — kick off the canned clip. Returns silently if the key has no
+        // clip in HALVoiceManifest (dynamic lines just show as text).
+        string key = !string.IsNullOrEmpty(line.voiceKey) ? line.voiceKey : line.text;
+        if (!string.IsNullOrEmpty(key)) HALVoicePlayer.Instance.TryPlay(key);
+    }
+
+    // Slide the primary strip from the first preview slot (small + dim) up to its
+    // home position at full size + opacity over PromoteSeconds.
+    IEnumerator Promote()
+    {
+        Vector2 startPos = new Vector2(0f, PreviewFirstY);
+        Vector2 homePos  = new Vector2(0f, PrimaryHomeY);
+        float t = 0f;
+        while (t < PromoteSeconds)
+        {
+            t += Time.unscaledDeltaTime;
+            float u = Mathf.Clamp01(t / PromoteSeconds);
+            float e = 1f - Mathf.Pow(1f - u, 3f);   // ease-out cubic
+            _rt.anchoredPosition = Vector2.Lerp(startPos, homePos, e);
+            _rt.localScale = Vector3.one * Mathf.Lerp(PreviewScale, 1f, e);
+            if (_group != null) _group.alpha = Mathf.Lerp(PreviewAlpha, 1f, e);
+            yield return null;
+        }
+        _rt.anchoredPosition = homePos;
+        _rt.localScale = Vector3.one;
+        if (_group != null) _group.alpha = 1f;
+    }
+
+    // Mirror the current waiting queue into the preview rows.
+    void RefreshPreviews()
+    {
+        var arr = _queue.ToArray();   // oldest..newest still waiting
+        for (int i = 0; i < MaxQueued; i++)
+        {
+            bool on = i < arr.Length;
+            if (_prevCG[i] != null) _prevCG[i].alpha = on ? PreviewAlpha : 0f;
+            if (on)
+            {
+                if (_prevLabel[i] != null) _prevLabel[i].text = arr[i].text;
+                if (_prevRT[i] != null)
+                {
+                    _prevRT[i].localScale = Vector3.one * PreviewScale;
+                    _prevRT[i].anchoredPosition = new Vector2(0f, PreviewFirstY + i * PreviewStepY);
+                }
+            }
+        }
+    }
+
+    static string SafeEval(System.Func<string> f)
+    {
+        try { return f != null ? f() : null; }
+        catch { return null; }
     }
 
     IEnumerator Fade(float from, float to, float duration)
@@ -114,9 +250,8 @@ public class HALLineHUD : MonoBehaviour
     {
         _canvas = gameObject.AddComponent<Canvas>();
         _canvas.renderMode  = RenderMode.ScreenSpaceOverlay;
-        // 830 — above HUDs (800-820) and the phone (850) is irrelevant because
-        // we WANT HAL lines to surface above the phone too. Below pause menu
-        // (1000).
+        // 870 — above HUDs (800-820) and the phone (850) because we WANT HAL
+        // lines to surface above the phone too. Below pause menu (1000).
         _canvas.sortingOrder = 870;
 
         var scaler = gameObject.AddComponent<CanvasScaler>();
@@ -126,13 +261,13 @@ public class HALLineHUD : MonoBehaviour
 
         gameObject.AddComponent<GraphicRaycaster>();
 
-        // Strip near top-center, under the compass.
+        // Active strip near top-center, under the compass.
         _rt = NewUI("HalLineRoot", transform);
         _rt.anchorMin = new Vector2(0.5f, 1f);
         _rt.anchorMax = new Vector2(0.5f, 1f);
         _rt.pivot     = new Vector2(0.5f, 1f);
         _rt.sizeDelta = new Vector2(1100f, 48f);
-        _rt.anchoredPosition = new Vector2(0f, -130f);
+        _rt.anchoredPosition = new Vector2(0f, PrimaryHomeY);
 
         _group = _rt.gameObject.AddComponent<CanvasGroup>();
         _group.alpha = 0f;
@@ -183,6 +318,58 @@ public class HALLineHUD : MonoBehaviour
         var shadow = _label.gameObject.AddComponent<Shadow>();
         shadow.effectColor = new Color(HALVisuals.EyeRed.r, HALVisuals.EyeRed.g, HALVisuals.EyeRed.b, 0.45f);
         shadow.effectDistance = Vector2.zero;
+
+        BuildPreviewRows();
+    }
+
+    // Build the (initially hidden) preview rows that show waiting/queued lines.
+    void BuildPreviewRows()
+    {
+        for (int i = 0; i < MaxQueued; i++)
+        {
+            var rowRT = NewUI($"HalPreview{i}", transform);
+            rowRT.anchorMin = new Vector2(0.5f, 1f);
+            rowRT.anchorMax = new Vector2(0.5f, 1f);
+            rowRT.pivot     = new Vector2(0.5f, 1f);
+            rowRT.sizeDelta = new Vector2(1100f, 40f);
+            rowRT.anchoredPosition = new Vector2(0f, PreviewFirstY + i * PreviewStepY);
+            rowRT.localScale = Vector3.one * PreviewScale;
+
+            var cg = rowRT.gameObject.AddComponent<CanvasGroup>();
+            cg.alpha = 0f;
+            cg.interactable = false;
+            cg.blocksRaycasts = false;
+
+            // Small dim eye dot so previews still read as HAL lines.
+            var dotRT = NewUI("EyeDot", rowRT);
+            dotRT.anchorMin = new Vector2(0f, 0.5f);
+            dotRT.anchorMax = new Vector2(0f, 0.5f);
+            dotRT.pivot     = new Vector2(0f, 0.5f);
+            dotRT.anchoredPosition = new Vector2(24f, 0f);
+            dotRT.sizeDelta = new Vector2(11f, 11f);
+            var dot = dotRT.gameObject.AddComponent<Image>();
+            dot.sprite = HALVisuals.Disc();
+            dot.color = new Color(HALVisuals.EyeRed.r, HALVisuals.EyeRed.g, HALVisuals.EyeRed.b, 0.85f);
+            dot.raycastTarget = false;
+
+            var textRT = NewUI("PreviewText", rowRT);
+            textRT.anchorMin = new Vector2(0f, 0f);
+            textRT.anchorMax = new Vector2(1f, 1f);
+            textRT.offsetMin = new Vector2(48f, 0f);
+            textRT.offsetMax = new Vector2(-24f, 0f);
+            var lbl = textRT.gameObject.AddComponent<TextMeshProUGUI>();
+            HudFontResolver.Apply(lbl);
+            lbl.fontSize = 21f;
+            lbl.color = HalText;
+            lbl.alignment = TextAlignmentOptions.MidlineLeft;
+            lbl.raycastTarget = false;
+            lbl.enableWordWrapping = false;
+            lbl.overflowMode = TextOverflowModes.Ellipsis;
+
+            _prevRT[i]    = rowRT;
+            _prevCG[i]    = cg;
+            _prevLabel[i] = lbl;
+        }
     }
 
     // Pulse the HAL eye on a slow sine — matches the chat-header eye in
@@ -190,8 +377,15 @@ public class HALLineHUD : MonoBehaviour
     // surfaces. Core and halo are counter-phase so the silhouette never
     // reads as flat. Image-alpha multiplies with the CanvasGroup alpha,
     // so this happily co-exists with the fade-in / hold / fade-out cycle.
+    // Also drives live-text lines (the hull-sealed countdown).
     void Update()
     {
+        if (_activeLive != null && _label != null)
+        {
+            string live = SafeEval(_activeLive);
+            if (live != null) _label.text = live;
+        }
+
         if (_eye == null) return;
         float phase = Time.unscaledTime * 0.8f;
         float coreA = 0.7f + 0.3f * (Mathf.Sin(phase) * 0.5f + 0.5f);
