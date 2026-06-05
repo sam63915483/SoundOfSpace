@@ -82,6 +82,11 @@ public static class HALVoiceManifest
         // ── Oxygen / hull pressurization ───────────────────────────────
         { "Re-oxygenating the hull",                              "hull_reoxygenating.mp3" },
         { "Hull is ajar",                                         "hull_ajar.mp3" },
+        { "Hull exposed to the vacuum of space.",                 "hull_vacuum_exposed.mp3" },
+        { "4 minutes of hull air remaining.",                     "hull_4min.mp3" },
+        { "2 minutes of hull air remaining.",                     "hull_2min.mp3" },
+        { "1 minute of hull air remaining.",                      "hull_1min.mp3" },
+        { "30 seconds of hull air remaining.",                    "hull_30sec.mp3" },
 
         // ── Orbit-match transitions ────────────────────────────────────
         { "Orbit matched.",                                       "orbit_matched.mp3" },

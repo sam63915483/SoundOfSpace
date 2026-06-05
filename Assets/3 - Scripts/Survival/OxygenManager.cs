@@ -1,7 +1,5 @@
 using System.Collections;
-using System.IO;
 using UnityEngine;
-using UnityEngine.Networking;
 using UnityEngine.SceneManagement;
 
 /// <summary>
@@ -96,14 +94,14 @@ public class OxygenManager : MonoBehaviour
         suitO2 = suitMax;
         hullO2 = hullMax;
 
-        // Hatch-suction loop (§ play-test request). 2D looping source; the clip
-        // loads lazily from StreamingAssets (mirrors HALVoicePlayer's pattern).
+        // Hatch-suction one-shot (§ play-test request). 2D; plays a ~3s burst the
+        // moment the hatch first vents in vacuum (the "getting sucked out" beat).
+        // Clip loads lazily from StreamingAssets.
         _suctionSource = gameObject.AddComponent<AudioSource>();
         _suctionSource.playOnAwake = false;
-        _suctionSource.loop = true;
+        _suctionSource.loop = false;
         _suctionSource.spatialBlend = 0f;
-        _suctionSource.volume = suctionVolume;
-        StartCoroutine(LoadSuctionClip());
+        StartCoroutine(StreamingAudio.Load("Audio/HatchSuction.wav", AudioType.WAV, c => _suctionClip = c));
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
@@ -111,39 +109,34 @@ public class OxygenManager : MonoBehaviour
     // ── Hatch-suction audio ───────────────────────────────────────────────
     AudioSource _suctionSource;
     AudioClip   _suctionClip;
+    Coroutine   _suctionRoutine;
 
-    IEnumerator LoadSuctionClip()
+    // Play the ~3s suction burst: full volume for the first second, then fade to
+    // silence over the next two. Triggered on the hatch-vents-in-vacuum edge.
+    void PlaySuctionBurst()
     {
-        string path = Path.Combine(Application.streamingAssetsPath, "Audio", "HatchSuction.wav");
-        string url  = "file://" + path.Replace('\\', '/');
-        using (var req = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.WAV))
-        {
-            yield return req.SendWebRequest();
-            if (req.result == UnityWebRequest.Result.Success)
-                _suctionClip = DownloadHandlerAudioClip.GetContent(req);
-            else
-                Debug.LogWarning($"[OxygenManager] hatch-suction clip failed to load: {req.error}");
-        }
+        if (_suctionSource == null || _suctionClip == null) return;
+        if (_suctionRoutine != null) StopCoroutine(_suctionRoutine);
+        _suctionRoutine = StartCoroutine(SuctionBurst());
     }
 
-    // Start/stop the looping suction roar. Called every FixedUpdate with
-    // (hatch draining in vacuum AND player near/inside the ship).
-    void SetSuctionAudio(bool on)
+    IEnumerator SuctionBurst()
     {
-        if (_suctionSource == null) return;
-        if (on && _suctionClip != null)
+        _suctionSource.clip = _suctionClip;
+        _suctionSource.volume = suctionVolume;
+        _suctionSource.Play();
+        yield return new WaitForSecondsRealtime(1f);          // full for the first second
+        const float fade = 2f;
+        float t = 0f;
+        while (t < fade)
         {
-            if (!_suctionSource.isPlaying)
-            {
-                _suctionSource.clip = _suctionClip;
-                _suctionSource.volume = suctionVolume;
-                _suctionSource.Play();
-            }
+            t += Time.unscaledDeltaTime;
+            _suctionSource.volume = suctionVolume * (1f - t / fade);
+            yield return null;
         }
-        else if (_suctionSource.isPlaying)
-        {
-            _suctionSource.Stop();
-        }
+        _suctionSource.Stop();
+        _suctionSource.volume = suctionVolume;
+        _suctionRoutine = null;
     }
 
     // ── Save hooks ───────────────────────────────────────────────────────
@@ -301,7 +294,11 @@ public class OxygenManager : MonoBehaviour
         bool inVacuumExposure = hullState == HullState.Draining;
         if (inVacuumExposure)
         {
-            if (prev != HullState.Draining) vacuumTipTimer = 0f; // fire immediately on entry
+            if (prev != HullState.Draining)
+            {
+                vacuumTipTimer = 0f;                               // fire the tip immediately on entry
+                if (shipPromptsAudible) PlaySuctionBurst();        // 3s "sucked out" suction burst
+            }
             vacuumTipTimer -= dt;
             if (vacuumTipTimer <= 0f)
             {
@@ -310,7 +307,6 @@ public class OxygenManager : MonoBehaviour
                 vacuumTipTimer = VacuumRepeatSeconds;
             }
         }
-        SetSuctionAudio(inVacuumExposure && shipPromptsAudible);
 
         // ── 2) Breathing → 3) Suit oxygen ────────────────────────────────
         // Breathing if standing in breathable air OR inside a hull with air.
