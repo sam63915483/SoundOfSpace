@@ -41,6 +41,14 @@ public class MainMenuController : MonoBehaviour
     // navigator was intermittent in built games; this is deterministic.
     GameObject mainMenuButtonsRoot;
 
+    // §1: looping space-ambient track for the menu. Assign the clip in
+    // MainMenu.unity on the MainMenuController object. Left null = silent menu
+    // (graceful). Built as a runtime AudioSource so no scene component is needed.
+    [Header("Audio")]
+    [SerializeField] AudioClip menuAmbience;
+    [SerializeField, Range(0f, 1f)] float menuAmbienceVolume = 0.5f;
+    AudioSource _ambienceSource;
+
     void Awake()
     {
         Time.timeScale = 1f;
@@ -49,6 +57,20 @@ public class MainMenuController : MonoBehaviour
         AudioListener.volume = 1f;
 
         BuildCanvas();
+        StartMenuAmbience();
+    }
+
+    void StartMenuAmbience()
+    {
+        if (menuAmbience == null) return;   // no clip assigned → silent menu
+        _ambienceSource = gameObject.AddComponent<AudioSource>();
+        _ambienceSource.clip = menuAmbience;
+        _ambienceSource.loop = true;
+        _ambienceSource.playOnAwake = false;
+        _ambienceSource.volume = menuAmbienceVolume;
+        _ambienceSource.spatialBlend = 0f;  // 2D
+        _ambienceSource.ignoreListenerPause = true;
+        _ambienceSource.Play();
     }
 
     void Start()
