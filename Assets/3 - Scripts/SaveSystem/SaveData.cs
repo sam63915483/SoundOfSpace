@@ -360,6 +360,9 @@ public class EarlyGameProgressSave
     // saves missing this field — pre-feature saves will load with the flag
     // unset, which is the correct "story not yet revealed" state.
     public bool orgReveal;
+    // §3: true once the player has opened their phone at least once. Gates the
+    // persistent "Press X to open your phone." first-message nag.
+    public bool hasEverOpenedPhone;
 }
 
 // ── Notes the player has picked up and read ──────────────────────────────

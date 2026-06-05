@@ -74,6 +74,9 @@ public static class NewGameReset
         if (OxygenManager.Instance != null) OxygenManager.Instance.ResetForNewGame();
 
         EarlyGameProgress.ResetAll();
+        // §3: re-arm the first-message "Press X to open your phone." nag for a
+        // fresh game (the static persists across the main-menu round-trip otherwise).
+        PlayerPhoneUI.HasEverOpened = false;
         NoteCollection.ApplySaveState(System.Array.Empty<string>());
         // Inactive = no build-menu restrictions, matching a fresh launch. The
         // tutorial re-applies LockAllExcept when it reaches the build step.

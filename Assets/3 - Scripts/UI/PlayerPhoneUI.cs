@@ -26,6 +26,12 @@ public class PlayerPhoneUI : MonoBehaviour
     // blocked until the phone is fully gone.
     public static bool IsOpen { get; private set; }
 
+    // §3 first-contact forcing function: false until the player has opened the
+    // phone at least once. While false, the first incoming message shows a
+    // PERSISTENT "Press X to open your phone." prompt that does not fade until
+    // the phone is opened. Persisted via SaveCollector; reset by NewGameReset.
+    public static bool HasEverOpened;
+
     // Set true on the frame the phone consumed an Escape press to close
     // itself. Cleared in LateUpdate. TabbedPauseMenu reads this and skips
     // its own ESC-opens-pause branch on the same frame, so "ESC closes
@@ -329,6 +335,9 @@ public class PlayerPhoneUI : MonoBehaviour
     public void Open()
     {
         if (_isAnimating && _animatingToOpen) return; // already opening
+        // §3: opening the phone the first time satisfies the forcing function —
+        // record it and dismiss the persistent nag prompt for good.
+        if (!HasEverOpened) { HasEverOpened = true; HideOpenNag(); }
         // Always land on page 0 (apps) when the phone opens — never resume
         // mid-flipped from a prior session. Also refreshes quests so page 2
         // is ready if the player flips to it.
@@ -638,6 +647,59 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_capturedRT     != null) ApplyContentOrientation(_capturedRT);
         if (_cameraBackdrop != null) ApplyContentOrientation(_cameraBackdrop.rectTransform);
         RefreshCameraSliceUV();
+    }
+
+    // ── First-open nag ("Press X to open your phone.") ───────────────
+    // §3: a PERSISTENT prompt shown when the first message arrives and the
+    // player has never opened the phone. Parented to the canvas root (not the
+    // sliding phone chassis) so it stays put while the phone is closed, and it
+    // does NOT fade — it persists until Open() dismisses it.
+    RectTransform   _openNagRT;
+    CanvasGroup     _openNagGroup;
+    TextMeshProUGUI _openNagLabel;
+
+    void BuildOpenNagLabel()
+    {
+        _openNagRT = NewUI("PhoneOpenNag", transform);
+        _openNagRT.anchorMin = new Vector2(0.5f, 0f);
+        _openNagRT.anchorMax = new Vector2(0.5f, 0f);
+        _openNagRT.pivot     = new Vector2(0.5f, 0f);
+        _openNagRT.sizeDelta = new Vector2(720f, 40f);
+        _openNagRT.anchoredPosition = new Vector2(0f, 180f); // above the hotbar
+
+        _openNagGroup = _openNagRT.gameObject.AddComponent<CanvasGroup>();
+        _openNagGroup.alpha = 0f;
+        _openNagGroup.blocksRaycasts = false;
+        _openNagGroup.interactable = false;
+
+        _openNagLabel = _openNagRT.gameObject.AddComponent<TextMeshProUGUI>();
+        HudFontResolver.Apply(_openNagLabel);
+        _openNagLabel.text = "Press X to open your phone.";
+        _openNagLabel.fontSize = 26f;
+        _openNagLabel.color = AccentCyan;
+        _openNagLabel.alignment = TextAlignmentOptions.Center;
+        _openNagLabel.enableWordWrapping = false;
+        _openNagLabel.fontStyle = FontStyles.Bold;
+        _openNagLabel.raycastTarget = false;
+        var glow = _openNagLabel.gameObject.AddComponent<Shadow>();
+        glow.effectColor = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.45f);
+        glow.effectDistance = Vector2.zero;
+    }
+
+    /// <summary>
+    /// §3: show the persistent "Press X to open your phone." prompt for the very
+    /// first incoming message. No-op once the player has ever opened the phone.
+    /// Called by StoryDirector when the first message arrives.
+    /// </summary>
+    public void RequestFirstOpenNag()
+    {
+        if (HasEverOpened) return;
+        if (_openNagGroup != null) _openNagGroup.alpha = 1f;
+    }
+
+    void HideOpenNag()
+    {
+        if (_openNagGroup != null) _openNagGroup.alpha = 0f;
     }
 
     // ── Hint label ("Press C for camera, press R to rotate") ─────────
@@ -1509,6 +1571,7 @@ public class PlayerPhoneUI : MonoBehaviour
         BuildPhone();
         BuildShutterButton();
         BuildHintLabel();
+        BuildOpenNagLabel();
     }
 
     void BuildShutterButton()

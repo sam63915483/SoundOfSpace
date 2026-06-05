@@ -642,6 +642,7 @@ public static class SaveCollector
         s.fishVendorVisited       = EarlyGameProgress.FishVendorVisited;
         s.goodsVendorVisited      = EarlyGameProgress.GoodsVendorVisited;
         s.orgReveal               = EarlyGameProgress.ORG_Reveal;
+        s.hasEverOpenedPhone      = PlayerPhoneUI.HasEverOpened;   // §3
     }
 
     static void CaptureNotes(NoteSave s)
@@ -1262,6 +1263,7 @@ public static class SaveCollector
         EarlyGameProgress.FishVendorVisited       = s.fishVendorVisited;
         EarlyGameProgress.GoodsVendorVisited      = s.goodsVendorVisited;
         EarlyGameProgress.ORG_Reveal              = s.orgReveal;
+        PlayerPhoneUI.HasEverOpened               = s.hasEverOpenedPhone;   // §3
     }
 
     static void ApplyNotes(NoteSave s)

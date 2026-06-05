@@ -225,7 +225,13 @@ public class StoryDirector : MonoBehaviour
                     SetStoryStep(StoryStep.FirstContact);
                     QueueConversation("conv_first_contact");
                     var phone = PlayerPhoneUI.Instance;
-                    if (phone != null) phone.FlashNotification("Incoming transmission");
+                    if (phone != null)
+                    {
+                        phone.FlashNotification("Incoming transmission");
+                        // §3: first message ever → persistent "Press X to open your
+                        // phone." prompt that stays until the player opens it.
+                        phone.RequestFirstOpenNag();
+                    }
                     // Surface an on-screen cue too, so the player notices with the phone CLOSED — the
                     // in-phone notification alone is invisible until they happen to open it. Reuses the
                     // existing HAL HUD strip.
