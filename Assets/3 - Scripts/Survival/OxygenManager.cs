@@ -166,18 +166,25 @@ public class OxygenManager : MonoBehaviour
             hullState = HullState.Sealed; // holds its air; never depletes
         }
 
+        // §5 proximity gate: ship-specific hull prompts only play when the player
+        // is near or piloting THIS ship — otherwise "Hull is ajar" nags from
+        // across the map (and would cross-talk once multiple ships exist).
+        bool shipPromptsAudible = ship != null && ship.PlayerIsNearOrPiloting();
+
         // Edge-triggered VO on hull-state ENTRY (never per-frame).
         if (hullState == HullState.Refilling && prev != HullState.Refilling)
-            PlayVO(VO_REOXY);
+        {
+            if (shipPromptsAudible) PlayVO(VO_REOXY);
+        }
         if (hullState == HullState.Draining && prev != HullState.Draining)
         {
-            PlayVO(VO_AJAR);
+            if (shipPromptsAudible) PlayVO(VO_AJAR);
             ajarTimer = hullAjarRepeat;
         }
         if (hullState == HullState.Draining)
         {
             ajarTimer -= dt;
-            if (ajarTimer <= 0f) { PlayVO(VO_AJAR); ajarTimer = hullAjarRepeat; }
+            if (ajarTimer <= 0f) { if (shipPromptsAudible) PlayVO(VO_AJAR); ajarTimer = hullAjarRepeat; }
         }
 
         // ── 2) Breathing → 3) Suit oxygen ────────────────────────────────
