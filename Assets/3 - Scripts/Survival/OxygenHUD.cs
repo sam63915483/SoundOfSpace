@@ -16,7 +16,7 @@ public class OxygenHUD : MonoBehaviour
 {
     public static OxygenHUD Instance { get; private set; }
 
-    RectTransform suitFill, hullFill;
+    RectTransform hullFill;   // suit bar moved to VitalsHUD (§2)
     CanvasGroup hullGroup;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -54,10 +54,10 @@ public class OxygenHUD : MonoBehaviour
         // Hide over MainMenu like the other HUDs.
         HUDSceneGate.Register(canvas.rootCanvas);
 
-        // Top-left, stacked below where the vitals panel sits. Tune offsets here.
-        suitFill = MakeBar(canvasGO.transform, "SuitO2", new Vector2(24f, -300f),
-                           new Color32(0x5C, 0xC8, 0xFF, 0xFF), "SUIT O2", out _);
-        hullFill = MakeBar(canvasGO.transform, "HullO2", new Vector2(24f, -332f),
+        // §2: the SUIT O2 bar moved into the bottom-right vitals card (VitalsHUD).
+        // Only the contextual HULL O2 bar remains here — it fades in while
+        // piloting / inside the ship / breaching. Takes the suit bar's old slot.
+        hullFill = MakeBar(canvasGO.transform, "HullO2", new Vector2(24f, -300f),
                            new Color32(0xFF, 0xC8, 0x5C, 0xFF), "HULL O2", out var hullRow);
         hullGroup = hullRow.AddComponent<CanvasGroup>();
         hullGroup.alpha = 0f;
@@ -124,7 +124,6 @@ public class OxygenHUD : MonoBehaviour
         var om = OxygenManager.Instance;
         if (om == null) return;
 
-        SetBar(suitFill, om.SuitPercent);
         SetBar(hullFill, om.HullPercent);
 
         bool showHull = om.PlayerPiloting || om.PlayerInsideShip
