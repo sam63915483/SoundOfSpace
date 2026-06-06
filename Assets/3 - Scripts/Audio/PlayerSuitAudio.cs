@@ -63,6 +63,7 @@ public class PlayerSuitAudio : MonoBehaviour
         { "SuitBreath2.wav", "SuitBreath3.wav", "SuitBreath4.wav",
           "SuitBreath5.wav", "SuitBreath6.wav", "SuitBreath7.wav", "SuitBreath8.wav" };
     readonly List<AudioClip> _loadedBreaths = new List<AudioClip>();
+    readonly List<float> _loadedGains = new List<float>();   // per-clip loudness-normalize gain
 
     void Awake()
     {
@@ -87,12 +88,33 @@ public class PlayerSuitAudio : MonoBehaviour
 
         for (int i = 0; i < ExtraBreathFiles.Length; i++)
             StartCoroutine(StreamingAudio.Load("Audio/" + ExtraBreathFiles[i], AudioType.WAV,
-                c => { if (c != null) _loadedBreaths.Add(c); }));
+                c => { if (c != null) { _loadedBreaths.Add(c); _loadedGains.Add(ComputeBreathGain(c)); } }));
 
         ScheduleNextBreath();
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
+
+    // Loudness-normalize the breath clips: measure RMS and BOOST quieter clips up
+    // toward a target so the faint ones become as audible as the good loud ones.
+    // Boost-only (never reduces) so the clips that already sound right are
+    // untouched. Capped so a near-silent clip isn't amplified into noise.
+    const float BreathTargetRms = 0.14f;
+    static float ComputeBreathGain(AudioClip clip)
+    {
+        if (clip == null || clip.samples <= 0 || clip.channels <= 0) return 1f;
+        try
+        {
+            var data = new float[clip.samples * clip.channels];
+            if (!clip.GetData(data, 0) || data.Length == 0) return 1f;
+            double sumSq = 0.0;
+            for (int i = 0; i < data.Length; i++) { float s = data[i]; sumSq += s * s; }
+            float rms = (float)System.Math.Sqrt(sumSq / data.Length);
+            if (rms < 1e-5f) return 1f;
+            return Mathf.Clamp(BreathTargetRms / rms, 1f, 6f);   // boost only
+        }
+        catch { return 1f; }
+    }
 
     AudioSource CreateSource(string childName, bool loop)
     {
@@ -128,8 +150,16 @@ public class PlayerSuitAudio : MonoBehaviour
             if (total > 0)
             {
                 int idx = Random.Range(0, total);
-                var clip = idx < serialized ? breathingClips[idx] : _loadedBreaths[idx - serialized];
-                if (clip != null) _breathSrc.PlayOneShot(clip, breathingVolume);
+                AudioClip clip;
+                float gain;
+                if (idx < serialized) { clip = breathingClips[idx]; gain = 1f; }
+                else
+                {
+                    int li = idx - serialized;
+                    clip = _loadedBreaths[li];
+                    gain = li < _loadedGains.Count ? _loadedGains[li] : 1f;
+                }
+                if (clip != null) _breathSrc.PlayOneShot(clip, breathingVolume * gain);
                 ScheduleNextBreath();
             }
         }
