@@ -1433,7 +1433,7 @@ public class Ship : GravityObject
     // it. Per-instance (multi-ship safe), throttled, and null-safe. Used to gate
     // ship-specific prompts/SFX (reactor, hatch, hull VO, vitals warnings) so they
     // don't fire when the player is nowhere near the ship they refer to.
-    const float DefaultPromptRadius = 25f;
+    const float DefaultPromptRadius = 35f;
     const float NearCheckInterval = 0.2f;
     [System.NonSerialized] PlayerController _proximityPlayer;
     [System.NonSerialized] float _nearCheckTime;
