@@ -89,6 +89,21 @@ public class PlayerController : GravityObject
 	// and the player snapped back to gravity-up.
 	Ship _shipUpRotationRef;
 
+	// While Time.fixedTime < this, the ship-proximity velocity damping below is
+	// skipped. OxygenManager raises it during a hatch eject so the boarding-assist
+	// damping doesn't instantly brake the player back to the ship's velocity and
+	// cancel the ejection (which otherwise stops you ~1 m out). See SuppressShipProximityDamp.
+	[System.NonSerialized] public float suppressShipDampUntil;
+
+	// Called repeatedly by OxygenManager while the hatch is sucking the player out:
+	// keeps the proximity damping suppressed for `seconds` from now — long enough
+	// for the ejected player to coast clear of the ~25 m damping radius.
+	public void SuppressShipProximityDamp(float seconds)
+	{
+		float until = Time.fixedTime + seconds;
+		if (until > suppressShipDampUntil) suppressShipDampUntil = until;
+	}
+
 	[Header("Mouse settings")]
 	public float mouseSensitivityMultiplier = 1;
 	public float maxMouseSmoothTime = 0.3f;
@@ -723,7 +738,9 @@ public class PlayerController : GravityObject
 				// _shipUpBlend reaches 0).
 				_shipUpRotationRef = _cachedNearestShipInRange;
 				var shipRb = _cachedNearestShipInRange.GetComponent<Rigidbody>();
-				if (shipRb != null)
+				// Skip the velocity braking while an eject is in progress (see
+				// SuppressShipProximityDamp) — otherwise it cancels the blowout.
+				if (shipRb != null && Time.fixedTime >= suppressShipDampUntil)
 				{
 					Vector3 deltaV = shipRb.velocity - rb.velocity;
 					// AddForce with Acceleration adds force*dt to velocity.

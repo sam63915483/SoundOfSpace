@@ -601,9 +601,9 @@ public class Ship : GravityObject
             if (Time.timeSinceLevelLoad > 2f) FirePressurizers();
         }
 
-        // Animate hatch
+        // Animate hatch (1.5× faster open/close so the door isn't in the way of a fast eject)
         float hatchTargetAngle = (hatchOpen) ? hatchAngle : 0;
-        hatch.localEulerAngles = Vector3.right * Mathf.LerpAngle(hatch.localEulerAngles.x, hatchTargetAngle, Time.deltaTime);
+        hatch.localEulerAngles = Vector3.right * Mathf.LerpAngle(hatch.localEulerAngles.x, hatchTargetAngle, Time.deltaTime * 1.5f);
 
         HandleCheats();
     }

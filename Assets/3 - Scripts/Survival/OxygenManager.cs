@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -57,7 +58,11 @@ public class OxygenManager : MonoBehaviour
     Ship derivedShip;
     Bounds shipLocalBounds;       // ship-local AABB for "inside the ship"
     bool shipLocalBoundsValid;
-    Transform ejectPoint;         // child the hatch suction pulls the player toward
+    Transform ejectPoint;         // furthest/final eject child (legacy single-point + fallback)
+    Transform[] ejectChain;       // ordered hatch-eject pull chain (EXITPOINT1 → … → final)
+    int ejectChainIndex;          // index of the current target waypoint within ejectChain
+    Rigidbody shipBody;           // active ship's body — eject steering is relative to its velocity
+    float hullO2AtOpen = -1f;     // hull O2 sampled when the hatch first vents — decompression-strength reference
 
     const string VO_REOXY = "Re-oxygenating the hull";
 
@@ -343,13 +348,64 @@ public class OxygenManager : MonoBehaviour
         // ── 4) Hatch suction — eject a standing player out an open hatch ──
         bool suction = insideShip && !piloting && hatchOpen && ship != null
                        && !shipInRefill && hullO2 > 0f;
-        if (suction && player.gameObject.activeInHierarchy)
+        if (!suction)
         {
-            Vector3 dir = HatchPoint(ship) - player.Rigidbody.position;
-            if (dir.sqrMagnitude > 0.0001f)
+            ejectChainIndex = 0;   // re-arm the pull chain so the next eject starts at EXITPOINT1
+            hullO2AtOpen = -1f;    // re-arm the pressure reference for the next decompression
+        }
+        else if (player.gameObject.activeInHierarchy)
+        {
+            // Sample the cabin's air the instant the hatch starts venting — that's
+            // "full pressure". The shove fades relative to this as the hull empties.
+            if (hullO2AtOpen < 0f) hullO2AtOpen = Mathf.Max(hullO2, 0.0001f);
+
+            // Hold off PlayerController's ship-proximity boarding-damp for a beat —
+            // otherwise it brakes the player straight back to the ship's velocity
+            // and the ejection dies a metre out. Window covers the post-exit coast
+            // clear of the damp radius.
+            player.SuppressShipProximityDamp(ejectDampSuppressSeconds);
+
+            var prb = player.Rigidbody;
+            Vector3 target = CurrentEjectTarget(ship, prb.position);
+            Vector3 toTarget = target - prb.position;
+            float dist = toTarget.magnitude;
+            if (dist > 1e-4f)
             {
-                float mag = Mathf.Lerp(suctionForceMin, suctionForceMax, altT); // MIN > 0
-                player.Rigidbody.AddForce(dir.normalized * mag, ForceMode.Acceleration);
+                Vector3 dir = toTarget / dist;
+                Vector3 vel = prb.velocity - ShipVelocity();   // velocity relative to the ship
+
+                // The last leg (out the back, toward HatchEjectPoint) is the
+                // blowout climax: a boosted full-power shove to a higher exit
+                // speed, ignoring the pressure fade so you're flung clear hard.
+                bool finalLeg = ejectChain == null || ejectChainIndex >= ejectChain.Length - 1;
+                float boost = finalLeg ? ejectExitBoost : 1f;
+                float maxSpeed = ejectMaxSpeed * boost;
+
+                // Decompression shove: accelerate HARD toward the opening (the
+                // pressure slamming you out). Interior legs ease off near their
+                // terminal speed; the final leg holds full accel until the boosted
+                // exit speed, so it feels like being blown out a pressurised door.
+                float vAlong = Vector3.Dot(vel, dir);
+                float throttle = finalLeg
+                    ? (vAlong < maxSpeed ? 1f : 0f)
+                    : Mathf.Clamp01(1f - vAlong / Mathf.Max(0.1f, maxSpeed));
+                Vector3 along = dir * (ejectPullAccel * boost * throttle);
+
+                // Damp only the SIDEWAYS momentum — cancels the corner-cut into the
+                // hull (the head-bonk) without slowing the rush out the hatch.
+                Vector3 vCross = vel - dir * vAlong;
+                Vector3 cross = -vCross * ejectCrossDamp;
+
+                // Strongest with a full cabin, fading as the air empties (a few
+                // seconds → done). sqrt keeps it punchy until nearly spent. The
+                // final blowout ignores the fade so the exit always hits hard.
+                float pressure = finalLeg ? 1f : Mathf.Sqrt(Mathf.Clamp01(hullO2 / hullO2AtOpen));
+                Vector3 accel = (along + cross) * pressure;
+
+                // Safety cap, rising with altitude (thinner air → harder suck) and
+                // opened up on the final leg so the boosted blowout isn't clipped.
+                accel = Vector3.ClampMagnitude(accel, Mathf.Lerp(suctionForceMin, suctionForceMax, altT) * boost);
+                prb.AddForce(accel, ForceMode.Acceleration);
             }
         }
 
@@ -421,6 +477,71 @@ public class OxygenManager : MonoBehaviour
         => ejectPoint != null ? ejectPoint.position
            : (ship.hatch != null ? ship.hatch.position : InteriorAnchor(ship));
 
+    // Active ship's world velocity (so eject steering is ship-relative and a
+    // drifting/orbiting ship doesn't fight the pull). Zero if no body cached.
+    Vector3 ShipVelocity() => shipBody != null ? shipBody.velocity : Vector3.zero;
+
+    // Build the ordered hatch-eject pull chain from ejectChainNames (e.g.
+    // EXITPOINT1 → EXITPOINT2 → HatchEjectPoint). Missing names are skipped; if
+    // none resolve we fall back to the legacy single eject point. Resets the
+    // walk index so a freshly-active ship starts the pull at the first point.
+    void ResolveEjectChain(Ship ship)
+    {
+        ejectChainIndex = 0;
+        var list = new List<Transform>();
+        if (ejectChainNames != null)
+        {
+            for (int i = 0; i < ejectChainNames.Length; i++)
+            {
+                if (string.IsNullOrEmpty(ejectChainNames[i])) continue;
+                var t = FindDeepChild(ship.transform, ejectChainNames[i]);
+                if (t != null) list.Add(t);
+            }
+        }
+        if (list.Count == 0 && ejectPoint != null) list.Add(ejectPoint);
+        ejectChain = list.Count > 0 ? list.ToArray() : null;
+    }
+
+    // World position of the eject waypoint the suction is currently pulling the
+    // player toward. Advances to the next point once the player is within
+    // ejectArriveRadius — OR has overshot it along the incoming segment, so a
+    // fast tug that skips past a small radius in one tick still progresses. The
+    // last point holds (player exits the ship there, which ends suction).
+    Vector3 CurrentEjectTarget(Ship ship, Vector3 playerPos)
+    {
+        if (ejectChain == null || ejectChain.Length == 0) return HatchPoint(ship);
+
+        if (ejectChainIndex >= ejectChain.Length) ejectChainIndex = ejectChain.Length - 1;
+        // Skip any destroyed/null waypoints rather than stalling on them.
+        while (ejectChainIndex < ejectChain.Length - 1 && ejectChain[ejectChainIndex] == null)
+            ejectChainIndex++;
+
+        Transform cur = ejectChain[ejectChainIndex];
+        if (cur == null) return HatchPoint(ship);
+        Vector3 target = cur.position;
+
+        if (ejectChainIndex < ejectChain.Length - 1)
+        {
+            Vector3 toTarget = target - playerPos;
+            bool reached = toTarget.sqrMagnitude < ejectArriveRadius * ejectArriveRadius;
+            if (!reached)
+            {
+                Vector3 prev = (ejectChainIndex > 0 && ejectChain[ejectChainIndex - 1] != null)
+                    ? ejectChain[ejectChainIndex - 1].position
+                    : InteriorAnchor(ship);
+                Vector3 seg = target - prev;
+                if (seg.sqrMagnitude > 0.0001f && Vector3.Dot(toTarget, seg) < 0f) reached = true;
+            }
+            if (reached)
+            {
+                ejectChainIndex++;
+                var next = ejectChain[ejectChainIndex];
+                if (next != null) return next.position;
+            }
+        }
+        return target;
+    }
+
     // Recompute per-ship derived data when the active ship changes: the
     // ship-local AABB (rotation-invariant, built from mesh bounds) used for the
     // "inside the ship" test, and the suction eject point child.
@@ -430,6 +551,8 @@ public class OxygenManager : MonoBehaviour
         derivedShip = ship;
         shipLocalBoundsValid = false;
         ejectPoint = FindDeepChild(ship.transform, ejectPointName);
+        ResolveEjectChain(ship);
+        shipBody = ship.GetComponent<Rigidbody>();
 
         var filters = ship.GetComponentsInChildren<MeshFilter>();
         var w2l = ship.transform.worldToLocalMatrix;
@@ -533,9 +656,11 @@ public class OxygenManager : MonoBehaviour
     [Tooltip("Altitude (m) under which Cyclops counts as breathable everywhere. Covers the surface zone, not orbit.")]
     [SerializeField] float cyclopsBreathableCeiling = 600f;
 
-    [Header("Hatch suction (always-tug: MIN > 0)")]
+    [Header("Hatch suction accel cap (m/s², by altitude)")]
+    [Tooltip("Max corrective acceleration of the eject pull at/below the midpoint (low altitude, thicker air → gentler suck).")]
     [SerializeField] float suctionForceMin = 12f;
-    [SerializeField] float suctionForceMax = 60f;
+    [Tooltip("Max corrective acceleration of the eject pull high up / in space (thin air → harder suck). The pull's clamp lerps Min→Max by altitude.")]
+    [SerializeField] float suctionForceMax = 120f;
 
     [Header("Ship interior")]
     [Tooltip("Extra metres added around the ship's bounding box when deciding 'inside the ship' (small slack so the boundary sits just outside the hull).")]
@@ -551,4 +676,22 @@ public class OxygenManager : MonoBehaviour
     [Header("Planet names (must match CelestialBody.bodyName)")]
     [SerializeField] string humbleAbodeName = "Humble Abode";
     [SerializeField] string cyclopsName = "Cyclops";
+
+    [Header("Hatch eject chain (pull path, first → last)")]
+    [Tooltip("Ordered child transforms the hatch suction pulls the player through, first → last. The player is tugged toward the current point and advances to the next once within 'Eject Arrive Radius' (or once they overshoot it). The LAST point should sit fully outside the hull. Reorder/rename or move these empties in the SHIP44 prefab to tune the eject path.")]
+    [SerializeField] string[] ejectChainNames = { "EXITPOINT1", "EXITPOINT2", "HatchEjectPoint" };
+    [Tooltip("How close (m) the player must get to the current eject waypoint before the pull advances to the next. Small ship → keep this small. Overshooting a point also advances, so erring small is safe. Tune by playtest.")]
+    [SerializeField] float ejectArriveRadius = 0.35f;
+
+    [Header("Hatch eject feel (decompression burst)")]
+    [Tooltip("How hard the vacuum accelerates the player toward the opening (m/s²) — the explosive 'sucked out a pressurised door' shove. Higher = more violent. Limited by the altitude accel cap above.")]
+    [SerializeField] float ejectPullAccel = 70f;
+    [Tooltip("Terminal rush speed (m/s). The shove accelerates you up to this, then holds. Higher = flung out faster/further. ~22 clears a small ship in about a second.")]
+    [SerializeField] float ejectMaxSpeed = 22f;
+    [Tooltip("How strongly sideways momentum is cancelled (1/s). This is what stops the head-bonk at the bend without slowing the rush. Raise if you clip the ramp/floor; lower for a looser, more chaotic tumble out.")]
+    [SerializeField] float ejectCrossDamp = 10f;
+    [Tooltip("Blowout multiplier for the FINAL leg (out the back). Scales exit speed, shove accel, and the accel cap together, so you're flung clear harder than the interior travel. 2 = roughly double the exit velocity. Raise for a more violent ejection.")]
+    [SerializeField] float ejectExitBoost = 2f;
+    [Tooltip("Seconds the ship-proximity boarding-damp stays suppressed after each eject tick, so the ejection isn't braked back to ship velocity before you've coasted clear of the ~25 m damp radius. Raise if you orbit fast and still get pulled back.")]
+    [SerializeField] float ejectDampSuppressSeconds = 5f;
 }
