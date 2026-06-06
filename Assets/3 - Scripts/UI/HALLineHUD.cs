@@ -171,13 +171,14 @@ public class HALLineHUD : MonoBehaviour
 
             SetPrimaryText(line);
 
+            bool hasVoice;
             if (firstInRun)
             {
                 // No preview existed for this line — fade in from home, voice at
                 // the start of the fade (the original behaviour for an idle HUD).
                 _rt.anchoredPosition = new Vector2(0f, PrimaryHomeY);
                 _rt.localScale = Vector3.one;
-                PlayVoice(line);
+                hasVoice = PlayVoice(line);
                 yield return Fade(0f, 1f, FadeInSeconds);
             }
             else
@@ -185,18 +186,19 @@ public class HALLineHUD : MonoBehaviour
                 // This line was visible as a preview — slide it up + scale it to
                 // full size, THEN play its voice (spec: TTS at end of transition).
                 yield return Promote();
-                PlayVoice(line);
+                hasVoice = PlayVoice(line);
             }
             firstInRun = false;
 
-            float t = 0f;
-            while (t < HoldSeconds) { t += Time.unscaledDeltaTime; yield return null; }
+            // Voiced tips linger only as long as the narration; voiceless tips keep
+            // the default read time.
+            yield return HoldForLine(hasVoice);
 
             yield return Fade(1f, 0f, FadeOutSeconds);
             _activeLive = null;
 
-            t = 0f;
-            while (t < GapBetweenLines) { t += Time.unscaledDeltaTime; yield return null; }
+            float gap = 0f;
+            while (gap < GapBetweenLines) { gap += Time.unscaledDeltaTime; yield return null; }
         }
         _activeLive = null;
         _activeKey = null;
@@ -209,13 +211,40 @@ public class HALLineHUD : MonoBehaviour
         if (_label != null) _label.text = line.live != null ? SafeEval(line.live) : line.text;
     }
 
-    void PlayVoice(Line line)
+    // Kicks off the canned clip; returns true if the line HAS a voice clip (so the
+    // caller can hold the tip only as long as the narration). Returns false for
+    // dynamic/voiceless lines (which just show as text for the default hold).
+    bool PlayVoice(Line line)
     {
-        if (HALVoicePlayer.Instance == null) return;
-        // Voice — kick off the canned clip. Returns silently if the key has no
-        // clip in HALVoiceManifest (dynamic lines just show as text).
+        if (HALVoicePlayer.Instance == null) return false;
         string key = !string.IsNullOrEmpty(line.voiceKey) ? line.voiceKey : line.text;
-        if (!string.IsNullOrEmpty(key)) HALVoicePlayer.Instance.TryPlay(key);
+        if (string.IsNullOrEmpty(key)) return false;
+        return HALVoicePlayer.Instance.TryPlay(key);
+    }
+
+    const float MinHoldSeconds = 1.2f;   // floor so a short clip doesn't flash by
+    const float MaxHoldSeconds = 14f;    // ceiling so a long/stuck clip can't hang the HUD
+
+    // Hold the active tip on screen: voiceless lines use the comfortable read time;
+    // voiced lines stay only as long as the narration, then fall through to fade.
+    IEnumerator HoldForLine(bool hasVoice)
+    {
+        float t = 0f;
+        if (!hasVoice)
+        {
+            while (t < HoldSeconds) { t += Time.unscaledDeltaTime; yield return null; }
+            yield break;
+        }
+        var vp = HALVoicePlayer.Instance;
+        // Wait (briefly) for the clip to actually start — first play loads from disk.
+        float startWait = 0f;
+        while (startWait < 1f && (vp == null || !vp.IsPlaying))
+        { startWait += Time.unscaledDeltaTime; t += Time.unscaledDeltaTime; yield return null; }
+        // Hold while it's speaking (capped so it never hangs).
+        while (vp != null && vp.IsPlaying && t < MaxHoldSeconds)
+        { t += Time.unscaledDeltaTime; yield return null; }
+        // Floor so a very short clip (or a failed load) doesn't blink past.
+        while (t < MinHoldSeconds) { t += Time.unscaledDeltaTime; yield return null; }
     }
 
     // Slide the primary strip from the first preview slot (small + dim) up to its
