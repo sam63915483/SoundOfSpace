@@ -55,13 +55,17 @@ public class PlayerSuitAudio : MonoBehaviour
     float _nextBreathTime;
 
     // Extra breathing variety loaded from StreamingAssets, mixed into the random
-    // pool alongside the Inspector-assigned breathingClips.
-    // SuitBreath1 was removed (came out badly). Any of these the user deletes
-    // from StreamingAssets just won't load (StreamingAudio logs a warning and
-    // skips it) — safe to prune the .wav files to taste without touching code.
+    // pool alongside the Inspector-assigned breathingClips. All are loudness-
+    // normalized on load. Any of these the user deletes from StreamingAssets just
+    // won't load (StreamingAudio logs a warning and skips it) — safe to prune the
+    // .wav files to taste without touching code.
+    // Final curated pool — all live in the Breaths/ subfolder.
     static readonly string[] ExtraBreathFiles =
-        { "SuitBreath2.wav", "SuitBreath3.wav", "SuitBreath4.wav",
-          "SuitBreath5.wav", "SuitBreath6.wav", "SuitBreath7.wav", "SuitBreath8.wav" };
+        { "Breaths/Breath01.wav", "Breaths/Breath02.wav", "Breaths/Breath04.wav",
+          "Breaths/Breath05.wav", "Breaths/Breath06.wav", "Breaths/Breath07.wav",
+          "Breaths/Breath09.wav",
+          "Breaths/SuitBreath2.wav", "Breaths/SuitBreath3.wav", "Breaths/SuitBreath4.wav",
+          "Breaths/SuitBreath5.wav", "Breaths/SuitBreath6.wav", "Breaths/SuitBreath8.wav" };
     readonly List<AudioClip> _loadedBreaths = new List<AudioClip>();
     readonly List<float> _loadedGains = new List<float>();   // per-clip loudness-normalize gain
 
