@@ -46,7 +46,7 @@ Forbidden zone:
 - **Save files:** `%AppData%\..\LocalLow\DefaultCompany\Solar System 2\saves\*.json`. One bounded `autosave` slot.
 - **No `.asmdef` files** — everything is `Assembly-CSharp`; moving scripts across folders never breaks compilation.
 - **No `Resources.Load` in user code** except the TMP font and `Resources/HotbarIcons/` + `Resources/Flares/`.
-- **Phone AI backend** (`Assets/3 - Scripts/AI/LLMService.cs`): default **CPU + Qwen-2.5-3B** (`static readonly bool UseGPU = false`). Flip `UseGPU = true` for **GPU + Hermes-3-Llama-3.1-8B** (vulkan). Both GGUFs + the 4 GB `LlamaLib` bundle live in `StreamingAssets/` and are **gitignored** (re-download, don't commit).
+- **Phone AI is now preset dialogue, NOT an LLM.** Player-facing AI is the deterministic preset branching-dialogue system (`Assets/3 - Scripts/Story/` + `StreamingAssets/Story/conv_*.json`) plus the **HAL** companion (`AI/HALCommentator`, `AI/IntentRouter`) — templated lines + a hand-written intent router. `LLMService.cs` still compiles and is still seeded, but `BeginPreload()` early-returns and **no `.gguf` model loads**; the 3.96 GB `StreamingAssets/LlamaLib-v2.0.5/` bundle is now inert dead weight (gitignored; safe to delete locally). See audit §17. Edit the `conv_*.json` / `hinttracks.json` / `objectives.json` files to change what the AI says — no recompile.
 - **Big re-importable third-party packs are gitignored** (`Backrooms/`, `Poolrooms_Lvl37/`, LlamaLib, `*.gguf`). Re-import locally; don't commit them.
 - **Commit hygiene:** new files need `git add` — `git commit -a` skips untracked files (this repo accumulated a backlog of never-added feature files from exactly that). Add new `.cs` **and** its `.meta`.
 
