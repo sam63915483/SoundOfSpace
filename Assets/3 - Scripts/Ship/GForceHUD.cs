@@ -144,7 +144,7 @@ public class GForceHUD : MonoBehaviour
         // corner real estate.
         if (_player == null) _player = FindObjectOfType<PlayerController>(true);
         Ship pilotedForGate = FindPilotedShip();
-        bool show = ((_player != null && _player.JetpackUnlocked) || pilotedForGate != null)
+        bool show = ((_player != null && _player.JetpackUnlocked) || pilotedForGate != null || DroneController.Active != null)
                     && !PlayerController.isMapOpen;
         if (_canvas != null && _canvas.enabled != show) _canvas.enabled = show;
         if (_indicatorCam != null && _indicatorCam.enabled != show) _indicatorCam.enabled = show;
@@ -171,10 +171,12 @@ public class GForceHUD : MonoBehaviour
         // ship's boost meter (Shift = boost mirrors Shift = sprint).
         if (_upSegs != null && _dnSegs != null && _dirSegs != null)
         {
+            // Drone (Mission 1 test) takes priority, then the piloted ship, then the jetpack.
             Ship piloted = FindPilotedShip();
-            float upPct  = piloted != null ? piloted.UpBoostFuelPercent   : _player.JetpackFuelPercent;
-            float dnPct  = piloted != null ? piloted.DownBoostFuelPercent : _player.DownThrustFuelPercent;
-            float dirPct = piloted != null ? piloted.DirBoostFuelPercent  : _player.DirectionalThrustFuelPercent;
+            var drone = DroneController.Active;
+            float upPct  = drone != null ? drone.UpBoostFuelPercent   : piloted != null ? piloted.UpBoostFuelPercent   : _player.JetpackFuelPercent;
+            float dnPct  = drone != null ? drone.DownBoostFuelPercent : piloted != null ? piloted.DownBoostFuelPercent : _player.DownThrustFuelPercent;
+            float dirPct = drone != null ? drone.DirBoostFuelPercent  : piloted != null ? piloted.DirBoostFuelPercent  : _player.DirectionalThrustFuelPercent;
             int upLit  = Mathf.Clamp(Mathf.RoundToInt(upPct  * 8f), 0, 8);
             int dnLit  = Mathf.Clamp(Mathf.RoundToInt(dnPct  * 8f), 0, 8);
             int dirLit = Mathf.Clamp(Mathf.RoundToInt(dirPct * 8f), 0, 8);
@@ -190,8 +192,11 @@ public class GForceHUD : MonoBehaviour
         {
             bool[] active = ReadThrustKeys();
             Ship pilotedArrows = FindPilotedShip();
-            Vector3 vIn = pilotedArrows != null ? pilotedArrows.MatchAssistInput : Vector3.zero;
-            Vector3 oIn = pilotedArrows != null ? pilotedArrows.CircularizeAssistInput : Vector3.zero;
+            var droneArrows = DroneController.Active;
+            Vector3 vIn = droneArrows != null ? droneArrows.MatchAssistInput
+                        : pilotedArrows != null ? pilotedArrows.MatchAssistInput : Vector3.zero;
+            Vector3 oIn = droneArrows != null ? droneArrows.CircularizeAssistInput
+                        : pilotedArrows != null ? pilotedArrows.CircularizeAssistInput : Vector3.zero;
             float dt = Time.unscaledDeltaTime;
             for (int i = 0; i < _arrowMats.Length; i++)
             {
@@ -268,6 +273,8 @@ public class GForceHUD : MonoBehaviour
 
     Vector3 ReadActiveVelocity()
     {
+        var drone = DroneController.Active;
+        if (drone != null && drone.Body != null) return drone.Body.velocity;
         if (_player == null) _player = FindObjectOfType<PlayerController>(true);
         if (_player != null && _player.isActiveAndEnabled)
             return _player.SurfaceVelocity;

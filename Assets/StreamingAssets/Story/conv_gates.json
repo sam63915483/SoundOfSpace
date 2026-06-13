@@ -2,31 +2,12 @@
   "id": "conv_gates",
   "nodes": [
     {
-      "id": "gate_shelter",
-      "speaker": "AI",
-      "lines": [
-        "Good - you're keeping yourself alive. That was the hard part.",
-        "Next you'll want a shelter. A foothold before the journey ahead."
-      ],
-      "responses": [
-        { "buttonText": "How do I build a shelter?", "nextNodeId": "gs_help",
-          "effects": [ { "kind": "StartObjective", "strArg": "obj_shelter" } ],
-          "startHintTrack": "shelter" },
-        { "buttonText": "I'm on it.", "nextNodeId": "end" }
-      ]
-    },
-    {
-      "id": "gs_help",
-      "speaker": "AI",
-      "lines": [ "You'll need wood first - chop trees with your axe, then place a Cabin from the build menu. Tips are on your HUD." ],
-      "responses": [ { "buttonText": "Got it.", "nextNodeId": "end" } ]
-    },
-    {
       "id": "gate_explore",
       "speaker": "AI",
       "lines": [
-        "Shelter's up. You can stand on your own now.",
-        "Time to look outward. Explore Humble Abode and find the main village - there may be answers there."
+        "Good - you're keeping yourself alive. That was the hard part.",
+        "Time to look outward. Head across Humble Abode and find the main village - someone there has taken an interest in you.",
+        "There's something we'll need to track down, eventually. But first - get your feet under you."
       ],
       "responses": [ { "buttonText": "On my way.", "nextNodeId": "end" } ]
     }

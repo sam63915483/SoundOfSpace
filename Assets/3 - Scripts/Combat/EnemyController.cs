@@ -288,10 +288,21 @@ public class EnemyController : MonoBehaviour, IDamageable
         }
     }
 
+    // Shared across ALL enemies. A spawning wave used to have every enemy's
+    // Start() call FindObjectOfType<PlayerController>() independently, batching
+    // into a ~19 ms delayed-Start hitch while being chased. One cached lookup
+    // serves the whole fleet; it re-finds automatically after a scene reload
+    // (the old reference goes Unity-null).
+    static PlayerController _sharedPlayer;
+    static Transform ResolvePlayerTransform()
+    {
+        if (_sharedPlayer == null) _sharedPlayer = FindObjectOfType<PlayerController>(true);
+        return _sharedPlayer != null ? _sharedPlayer.transform : null;
+    }
+
     void Start()
     {
-        var pc = FindObjectOfType<PlayerController>();
-        if (pc != null) player = pc.transform;
+        player = ResolvePlayerTransform();
 
         parentPlanet = GetComponentInParent<CelestialBody>();
         if (parentPlanet == null) parentPlanet = GetNearestPlanet();
@@ -380,8 +391,7 @@ public class EnemyController : MonoBehaviour, IDamageable
 
         if (player == null)
         {
-            var pc = FindObjectOfType<PlayerController>(true);
-            if (pc != null) player = pc.transform;
+            player = ResolvePlayerTransform();
             if (player == null) return;
         }
 

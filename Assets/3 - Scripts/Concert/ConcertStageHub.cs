@@ -34,6 +34,10 @@ public class ConcertStageHub : MonoBehaviour
     [Tooltip("If an active LebronLight (the ship's artificial sun) is within this distance of a stage's speaker, the stage is forced into DAY mode regardless of planet rotation — the artificial sun overrides the natural night/day cycle. The concert shuts down: speaker stops, audience spawn pauses, lights go dark.")]
     public float lebronLightOverrideRadius = 150f;
 
+    [Header("Visual Render Distance")]
+    [Tooltip("Concert visuals (lights, lasers, strobes, beams, haze/fog particles) only render while the viewer is within this distance of the stage speaker. Beyond it they're switched off. The Built-in pipeline has no occlusion culling, so a night-side stage on the far side of the planet otherwise renders straight THROUGH the planet — dozens of real-time lights + particle overdraw — and tanks GPU when you happen to look that way. Audio, the audience, the night gate and the enemy-block zone are all unaffected.")]
+    public float concertVisualRadius = 160f;
+
     [Header("Update")]
     [Tooltip("Seconds between day/night re-checks. Day/night transitions are slow; 1–3s is plenty.")]
     public float checkInterval = 1.5f;
@@ -59,7 +63,20 @@ public class ConcertStageHub : MonoBehaviour
         public Transform stageRoot;
         public bool active;
         public bool initialized;
+        // Combined visual state (distance × night), so we only walk the stage
+        // tree on an actual change, not every frame.
+        public StageVis vis;
+        public bool visualsInitialized;
     }
+
+    // How much of a stage is rendered:
+    //   Off          – too far to see: ALL renderers/lights/particles disabled
+    //                  (stops a far-side stage being drawn THROUGH the planet,
+    //                  which the Built-in pipeline can't occlusion-cull).
+    //   GeometryOnly – close enough to see, but daytime: static stage meshes
+    //                  show; lights/lasers/haze/beam meshes off.
+    //   Full         – close + night: everything on.
+    enum StageVis { Off, GeometryOnly, Full }
     readonly List<StageEntry> _stages = new List<StageEntry>();
 
     /// Fired when a stage transitions from inactive → active (begins playing).
@@ -100,6 +117,7 @@ public class ConcertStageHub : MonoBehaviour
 
     float _nextCheckTime;
     bool _stagesBuilt;
+    Camera _viewerCam;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -179,6 +197,63 @@ public class ConcertStageHub : MonoBehaviour
         // OnSceneLoaded ApplyActive) auto-plays the clip on the day-side
         // stage, with no later state transition to Stop it again.
         EnforceSpeakerState();
+
+        // Per-frame: distance-gate the concert VISUALS so a far-away night-side
+        // stage doesn't render through the planet. Cheap — just a sqr-distance
+        // test per stage; only walks the stage tree when the on/off state flips.
+        UpdateStageVisuals();
+    }
+
+    // Desired visual state for a stage = it's the active (night) stage AND the
+    // viewer is close enough to see it. Only toggles the (expensive) light /
+    // particle / beam tree when that combined state actually changes.
+    void UpdateStageVisuals()
+    {
+        if (_stages.Count == 0) return;
+        Vector3 viewer = GetViewerPosition();
+        float r2 = concertVisualRadius * concertVisualRadius;
+        bool anyFull = false;
+        for (int i = 0; i < _stages.Count; i++)
+        {
+            var s = _stages[i];
+            if (s == null || s.stageRoot == null) continue;
+            float distSq = s.speaker != null
+                ? (s.speaker.transform.position - viewer).sqrMagnitude : float.MaxValue;
+            bool within = distSq <= r2;
+            StageVis desired = !within ? StageVis.Off
+                             : (s.active ? StageVis.Full : StageVis.GeometryOnly);
+            if (desired == StageVis.Full) anyFull = true;
+            if (!s.visualsInitialized || desired != s.vis)
+            {
+                ApplyStageVis(s.stageRoot, desired);
+                // Temporary diagnostic — confirms whether a far stage is actually
+                // being culled. Remove once the concert-direction drop is solved.
+                Debug.Log($"[ConcertStageHub] stage '{s.stageRoot.name}' vis -> {desired} (viewer {Mathf.Sqrt(distSq):F0}m away)");
+                s.vis = desired;
+                s.visualsInitialized = true;
+            }
+        }
+        // The global ConcertLightProgram manager (~2.2 ms Update + GC) is a
+        // DontDestroyOnLoad singleton, NOT under any stage root, so ApplyStageVis
+        // can't reach it. Only run it while a stage is actually showing its full
+        // light show; disable it otherwise.
+        var clp = ConcertLightProgram.Instance;
+        if (clp != null && clp.enabled != anyFull) clp.enabled = anyFull;
+    }
+
+    PlayerController _viewerPlayer;
+    Vector3 GetViewerPosition()
+    {
+        // Camera-based (not player-based) so it's correct while piloting a ship
+        // too — the camera is what actually submits the concert geometry.
+        if (_viewerCam == null) _viewerCam = Camera.main;
+        if (_viewerCam != null) return _viewerCam.transform.position;
+        // Fallback to the player if the main camera is momentarily missing, so
+        // the distance gate never measures from the hub's origin (which would
+        // leave a far concert's visuals switched on).
+        if (_viewerPlayer == null) _viewerPlayer = FindObjectOfType<PlayerController>();
+        if (_viewerPlayer != null) return _viewerPlayer.transform.position;
+        return transform.position;
     }
 
     void EnforceSpeakerState()
@@ -411,86 +486,80 @@ public class ConcertStageHub : MonoBehaviour
         return stageRoot;
     }
 
-    // Toggle every light + concert-light script + visible beam renderer under
-    // the stage. Done FRESH each state change (not cached) because concert
-    // light scripts (ConcertLaser / ConcertConeLight / ConcertStrobeLight)
-    // create their Light components dynamically in Start — which runs AFTER
-    // our first BuildStages cache pass, so a cached list misses them. Cheap:
-    // only runs on state transitions (day ↔ night), not per-frame.
-    void SetStageLightingActive(Transform stageRoot, bool on)
+    // Apply a stage's combined visual state. Walked FRESH each transition (not
+    // cached) because concert-light scripts create their Light components in
+    // Start, after our first BuildStages pass. Runs only on state changes.
+    //   lights/scripts/particles → on only when Full (close + night)
+    //   beam/glow renderers      → on only when Full
+    //   static stage meshes      → on whenever NOT Off (so the stage is still
+    //                               visible up close in daylight, but a far-side
+    //                               stage is fully removed from rendering)
+    void ApplyStageVis(Transform stageRoot, StageVis mode)
     {
         if (stageRoot == null) return;
+        bool lightsOn      = mode == StageVis.Full;
+        bool staticVisible = mode != StageVis.Off;
         int lightCount = 0, scriptCount = 0, rendCount = 0;
 
         var lights = stageRoot.GetComponentsInChildren<Light>(true);
         for (int i = 0; i < lights.Length; i++)
         {
             if (lights[i] == null) continue;
-            lights[i].enabled = on;
+            lights[i].enabled = lightsOn;
             lightCount++;
         }
 
-        // Concert-light MonoBehaviours need to be disabled so their per-frame
-        // Update doesn't keep modulating the Light intensity / cone material.
+        // Concert-light MonoBehaviours — disabled unless Full so their per-frame
+        // Update (ConcertLightProgram ~2.2 ms + GC) doesn't run when culled.
         var lasers   = stageRoot.GetComponentsInChildren<ConcertLaser>(true);
         var cones    = stageRoot.GetComponentsInChildren<ConcertConeLight>(true);
         var strobes  = stageRoot.GetComponentsInChildren<ConcertStrobeLight>(true);
         var blinders = stageRoot.GetComponentsInChildren<ConcertBlinder>(true);
         var fogs     = stageRoot.GetComponentsInChildren<ConcertFogPuff>(true);
         var hazes    = stageRoot.GetComponentsInChildren<ConcertHaze>(true);
-        for (int i = 0; i < lasers.Length;   i++) { if (lasers[i]   != null) { lasers[i].enabled   = on; scriptCount++; } }
-        for (int i = 0; i < cones.Length;    i++) { if (cones[i]    != null) { cones[i].enabled    = on; scriptCount++; } }
-        for (int i = 0; i < strobes.Length;  i++) { if (strobes[i]  != null) { strobes[i].enabled  = on; scriptCount++; } }
-        for (int i = 0; i < blinders.Length; i++) { if (blinders[i] != null) { blinders[i].enabled = on; scriptCount++; } }
-        for (int i = 0; i < fogs.Length;     i++) { if (fogs[i]     != null) { fogs[i].enabled     = on; scriptCount++; } }
-        for (int i = 0; i < hazes.Length;    i++) { if (hazes[i]    != null) { hazes[i].enabled    = on; scriptCount++; } }
+        var programs = stageRoot.GetComponentsInChildren<ConcertLightProgram>(true);
+        for (int i = 0; i < lasers.Length;   i++) { if (lasers[i]   != null) { lasers[i].enabled   = lightsOn; scriptCount++; } }
+        for (int i = 0; i < cones.Length;    i++) { if (cones[i]    != null) { cones[i].enabled    = lightsOn; scriptCount++; } }
+        for (int i = 0; i < strobes.Length;  i++) { if (strobes[i]  != null) { strobes[i].enabled  = lightsOn; scriptCount++; } }
+        for (int i = 0; i < blinders.Length; i++) { if (blinders[i] != null) { blinders[i].enabled = lightsOn; scriptCount++; } }
+        for (int i = 0; i < fogs.Length;     i++) { if (fogs[i]     != null) { fogs[i].enabled     = lightsOn; scriptCount++; } }
+        for (int i = 0; i < hazes.Length;    i++) { if (hazes[i]    != null) { hazes[i].enabled    = lightsOn; scriptCount++; } }
+        for (int i = 0; i < programs.Length; i++) { if (programs[i] != null) { programs[i].enabled = lightsOn; scriptCount++; } }
 
-        // Hide the visible cone / beam / glow renderers so the bulb meshes
-        // don't keep displaying their lit material in daylight. Name-based
-        // heuristic — same shape as the original CollectStageLights filter.
+        // Renderers: beam/glow/laser meshes follow lightsOn; everything else
+        // (the actual stage structure) follows staticVisible — so a far stage
+        // (Off) submits NO draw calls and can't render through the planet.
         var rends = stageRoot.GetComponentsInChildren<Renderer>(true);
         for (int i = 0; i < rends.Length; i++)
         {
             var r = rends[i];
             if (r == null) continue;
             string n = r.gameObject.name;
-            if (n.IndexOf("Beam",    System.StringComparison.OrdinalIgnoreCase) >= 0
-             || n.IndexOf("Cone",    System.StringComparison.OrdinalIgnoreCase) >= 0
-             || n.IndexOf("Bulb",    System.StringComparison.OrdinalIgnoreCase) >= 0
-             || n.IndexOf("Strobe",  System.StringComparison.OrdinalIgnoreCase) >= 0
-             || n.IndexOf("Laser",   System.StringComparison.OrdinalIgnoreCase) >= 0
-             || n.IndexOf("Blinder", System.StringComparison.OrdinalIgnoreCase) >= 0
-             || n.IndexOf("Visual",  System.StringComparison.OrdinalIgnoreCase) >= 0
-             || n.IndexOf("Glow",    System.StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                r.enabled = on;
-                rendCount++;
-            }
+            bool isBeam = n.IndexOf("Beam",    System.StringComparison.OrdinalIgnoreCase) >= 0
+                       || n.IndexOf("Cone",    System.StringComparison.OrdinalIgnoreCase) >= 0
+                       || n.IndexOf("Bulb",    System.StringComparison.OrdinalIgnoreCase) >= 0
+                       || n.IndexOf("Strobe",  System.StringComparison.OrdinalIgnoreCase) >= 0
+                       || n.IndexOf("Laser",   System.StringComparison.OrdinalIgnoreCase) >= 0
+                       || n.IndexOf("Blinder", System.StringComparison.OrdinalIgnoreCase) >= 0
+                       || n.IndexOf("Visual",  System.StringComparison.OrdinalIgnoreCase) >= 0
+                       || n.IndexOf("Glow",    System.StringComparison.OrdinalIgnoreCase) >= 0;
+            r.enabled = isBeam ? lightsOn : staticVisible;
+            rendCount++;
         }
 
-        // ParticleSystems (haze, fog puffs). Disabling the *script* doesn't
-        // halt the particles — we have to act on the ParticleSystem itself.
-        // Stop(true, StopEmittingAndClear) ends emission AND removes any
-        // particles already in the air, so the day-side stage doesn't keep
-        // showing residual haze for the lifetime of the last emitted batch.
+        // ParticleSystems (haze, fog puffs) — play only when Full, else stop+clear.
         int psCount = 0;
         var psyses = stageRoot.GetComponentsInChildren<ParticleSystem>(true);
         for (int i = 0; i < psyses.Length; i++)
         {
             var ps = psyses[i];
             if (ps == null) continue;
-            if (on)
-            {
-                if (!ps.isPlaying) ps.Play(true);
-            }
-            else
-            {
-                ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
-            }
+            if (lightsOn) { if (!ps.isPlaying) ps.Play(true); }
+            else ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
             psCount++;
         }
 
-        if (debugLog) Debug.Log($"[ConcertStageHub]   SetStageLightingActive({on}) on '{stageRoot.name}': {lightCount} Light(s), {scriptCount} concert-light script(s), {rendCount} beam/cone renderer(s), {psCount} particle system(s)");
+        if (debugLog) Debug.Log($"[ConcertStageHub]   ApplyStageVis({mode}) on '{stageRoot.name}': {lightCount} Light(s), {scriptCount} script(s), {rendCount} renderer(s), {psCount} particle system(s)");
     }
 
     CelestialBody FindNearestPlanet(Vector3 worldPos)
@@ -600,10 +669,13 @@ public class ConcertStageHub : MonoBehaviour
         // alien NPCs after their spawner is disabled.
         if (s.spawner != null) s.spawner.enabled = s.active;
 
-        // Lights / lasers / strobes / cones / haze / fog: fresh tree walk
-        // each transition. Toggles Light components, concert-light scripts
-        // (so their Update doesn't fight us), and visible beam renderers.
-        SetStageLightingActive(s.stageRoot, s.active);
+        // Lights / lasers / strobes / cones / haze / fog are NOT toggled here.
+        // They're owned by UpdateStageVisuals (every frame), which combines
+        // this `active` (night) state with a distance-to-viewer gate so a
+        // far-side stage never renders through the planet. Forcing visuals on
+        // here would flash the whole rig on for one frame before the distance
+        // gate culls it. Force a re-evaluation next frame.
+        s.visualsInitialized = false;
     }
 
     // Public helpers ─────────────────────────────────────────────────────

@@ -1127,6 +1127,15 @@ public class Ship : GravityObject
         else
         {
             if (!TutorialGate.IsUnlocked(TutorialAbility.EnterPilot)) return;
+            // Mission 1 Pilot branch: once the player has chosen to learn to fly, they
+            // must finish drone school (earn the galactic licence) before boarding a
+            // real ship. Scoped to the active-and-unlicensed Pilot branch so it never
+            // blocks non-mission play or existing saves.
+            if (Mission1.GetBranch() == Mission1.Branch.Pilot && !Mission1.Get(Mission1.FlagLicensed))
+            {
+                GameUI.DisplayInteractionInfo("You need a pilot's licence — finish drone school with the instructor");
+                return;
+            }
             // Refuse to enter the pilot seat when the ship can't fly. Show a
             // brief HUD message so the player knows why nothing happened.
             if (!HasPower)

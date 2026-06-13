@@ -1,0 +1,23 @@
+{
+  "id": "conv_village_arrival",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "AI",
+      "lines": [
+        "You made it - that's the village ahead.",
+        "Talk to people. Make friends. Any information you can gather could be crucial to finding the whereabouts of the files."
+      ],
+      "responses": [
+        { "buttonText": "Got it, I'll report back with any findings.", "nextNodeId": "end" },
+        { "buttonText": "LJSHLJNASDLKJANSDLKAJSNDLK", "nextNodeId": "confused" }
+      ]
+    },
+    {
+      "id": "confused",
+      "speaker": "AI",
+      "lines": [ "...I don't know what you mean by that. Try finding Tev - talk to him for guidance." ],
+      "responses": [ { "buttonText": "Right.", "nextNodeId": "end" } ]
+    }
+  ]
+}

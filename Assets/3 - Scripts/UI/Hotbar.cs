@@ -235,18 +235,42 @@ public class Hotbar : MonoBehaviour
         OnResourceChanged?.Invoke(ItemId.Fish);
     }
 
+    // Throttle the FindObjectOfType re-search. Some equippables (pistol, ship)
+    // may not exist for a long time, so searching every frame for a "may never
+    // appear" target burns CPU forever (CLAUDE.md: throttle retries, see
+    // LightLookAt). Once everything is found this whole block is skipped.
+    float _resolveRetryTimer;
+    const float ResolveRetryInterval = 0.5f;
+
     bool ResolveRefs()
     {
-        if (water == null) water = FindObjectOfType<WaterBottleController>(true);
-        if (rod == null) rod = FindObjectOfType<FishingRodController>(true);
-        if (guitar == null) guitar = FindObjectOfType<GuitarController>(true);
-        if (axe == null) axe = FindObjectOfType<AxeController>(true);
-        if (pistol == null) pistol = FindObjectOfType<PistolController>(true);
-        if (ship == null) ship = FindObjectOfType<Ship>(true);
+        bool anyMissing = water == null || rod == null || guitar == null
+                          || axe == null || pistol == null || ship == null;
+        if (anyMissing)
+        {
+            _resolveRetryTimer -= Time.unscaledDeltaTime;
+            if (_resolveRetryTimer <= 0f)
+            {
+                _resolveRetryTimer = ResolveRetryInterval;
+                if (water == null) water = FindObjectOfType<WaterBottleController>(true);
+                if (rod == null) rod = FindObjectOfType<FishingRodController>(true);
+                if (guitar == null) guitar = FindObjectOfType<GuitarController>(true);
+                if (axe == null) axe = FindObjectOfType<AxeController>(true);
+                if (pistol == null) pistol = FindObjectOfType<PistolController>(true);
+                if (ship == null) ship = FindObjectOfType<Ship>(true);
 
-        // (Re)build registry whenever a previously-missing controller appears.
-        // BuildRegistry is cheap (5 closures) so we just rebuild on any change.
-        if (RegistryNeedsRebuild()) BuildRegistry();
+                // (Re)build registry whenever a previously-missing controller
+                // appears. BuildRegistry is cheap (5 closures).
+                if (RegistryNeedsRebuild()) BuildRegistry();
+            }
+        }
+        else if (RegistryNeedsRebuild())
+        {
+            // Refs all present but a cached controller went stale (scene
+            // reload swapped instances) — rebuild and let the next frame
+            // re-search via anyMissing.
+            BuildRegistry();
+        }
 
         return water != null || rod != null || guitar != null || axe != null || pistol != null;
     }

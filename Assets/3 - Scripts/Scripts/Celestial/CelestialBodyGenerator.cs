@@ -11,6 +11,13 @@ public class CelestialBodyGenerator : MonoBehaviour {
 
 	public bool logTimers;
 
+	// Bodies at/above this radius (BodyScale) reuse their most-detailed visual
+	// LOD mesh as the physics collider, so ground-level props (grass, footing)
+	// sit on the surface you actually see. Smaller bodies keep the cheap
+	// low-res collision mesh — they're rarely landed on and a full-res
+	// MeshCollider would waste cook time + memory.
+	const float HighResColliderMinRadius = 150f;
+
 	public CelestialBodySettings body;
 
 	bool debugDoubleUpdate = true;
@@ -77,8 +84,26 @@ public class CelestialBodyGenerator : MonoBehaviour {
 				}
 			}
 
-			// Generate collision mesh
-			GenerateCollisionMesh (resolutionSettings.collider);
+			// Pick the collider source. Large (walkable) bodies reuse the most
+			// detailed visual LOD so the physics surface matches what's rendered
+			// — the separate low-res, unperturbed collision mesh is a coarser
+			// approximation that made tiny props (grass) float on bumps / sink
+			// in dips. Small bodies keep the cheap collision mesh.
+			Mesh colliderMesh;
+			bool haveLod0 = lodMeshes != null && lodMeshes.Length > 0 && lodMeshes[0] != null;
+			// World radius = mesh extent × WORLD scale (lossyScale). Using
+			// lossyScale (not localScale/BodyScale) is robust to the radius
+			// living on a parent transform — the previous BodyScale gate could
+			// read 1 and silently fall back to the coarse collider.
+			float worldRadius = haveLod0 ? lodMeshes[0].bounds.extents.x * transform.lossyScale.x : 0f;
+			bool hiResCollider = haveLod0 && worldRadius >= HighResColliderMinRadius;
+			if (hiResCollider) {
+				colliderMesh = lodMeshes[0];
+			} else {
+				GenerateCollisionMesh (resolutionSettings.collider);
+				colliderMesh = collisionMesh;
+			}
+			Debug.Log ($"[CelestialBodyGenerator] '{gameObject.name}' collider: worldRadius={worldRadius:F1}m, hiRes(matches visual)={hiResCollider}");
 
 			// Create terrain renderer and set shading properties on the instanced material
 			terrainMatInstance = new Material (body.shading.terrainMaterial);
@@ -94,8 +119,8 @@ public class CelestialBodyGenerator : MonoBehaviour {
 			}
 
 			var collisionBakeTimer = System.Diagnostics.Stopwatch.StartNew ();
-			MeshBaker.BakeMeshImmediate (collisionMesh);
-			collider.sharedMesh = collisionMesh;
+			MeshBaker.BakeMeshImmediate (colliderMesh);
+			collider.sharedMesh = colliderMesh;
 			LogTimer (collisionBakeTimer, "Mesh collider");
 
 		} else {

@@ -176,6 +176,18 @@ public class OxygenManager : MonoBehaviour
         EnsureRefs();
         if (player == null) return;
 
+        // Mission 1 VR pilot test: the player's real body is safe on the ground at the ship
+        // school (they're wearing goggles flying a training drone). Don't drain suit O2 or run
+        // hull mechanics — the flying drone/camera must not be mistaken for the player in space.
+        if (DroneController.Active != null)
+        {
+            suitO2 = Mathf.Min(suitMax, suitO2 + suitRefillRate * dt);
+            hullState = HullState.Sealed;
+            suitDepletedHandled = false;
+            SetFootState(inside: false, piloting: false, onFoot: true);
+            return;
+        }
+
         // Off the solar-system scene (backrooms / poolrooms interiors) there are
         // no celestial bodies — treat as fully breathable so the player never
         // suffocates indoors. Suit tops up, hull holds sealed, no suction.

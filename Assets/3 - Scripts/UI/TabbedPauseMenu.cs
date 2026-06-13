@@ -745,6 +745,23 @@ public class TabbedPauseMenu : MonoBehaviour
                             _input.SaveSettings();
                         },
                     },
+                    // Grass render distance. 0 = OFF (no grass), 1× = authored
+                    // distance, up to 3× further. Read live by InstancedGrassRenderer
+                    // each frame, so it applies instantly. Independent of the quality
+                    // preset (not bundled), so it never snaps the preset to Custom.
+                    new SliderDef {
+                        label = "GRASS DISTANCE", min = 0f, max = 3f, wholeNumbers = false, format = "{0:F1}×",
+                        get  = () => _input != null ? _input.grassRenderScale : 1f,
+                        set  = v  => {
+                            if (_input == null) return;
+                            _input.grassRenderScale = Mathf.Clamp(v, 0f, 3f);
+                            _input.SaveSettings();
+                        },
+                        formatFunc = vf => {
+                            float s = Mathf.Clamp(vf, 0f, 3f);
+                            return s <= 0.001f ? "OFF" : $"{s:F1}×";
+                        },
+                    },
                     new SliderDef {
                         label = "ANISOTROPIC FILTERING", min = 0f, max = 2f, wholeNumbers = true, format = "{0:F0}",
                         get  = () => _input != null ? (float)(int)_input.anisotropicFiltering : 1f,

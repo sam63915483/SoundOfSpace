@@ -393,6 +393,7 @@ public class AlienNPCSpawner : MonoBehaviour
             ? _prefabLocalBottomY[prefabIdx]
             : 0f;
         pos = hit.point - up * (bottomY * scale + groundOffset + groundEmbedPerScale * scale);
+        if (SpawnExclusionZone.IsExcluded(pos)) return false;   // keep clear of the ship school etc.
         return true;
     }
 

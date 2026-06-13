@@ -380,6 +380,7 @@ public class CrystalSpawner : MonoBehaviour
         // crystals sit 1/17th of their visible size deep in the ground.
         float effectiveBottomY = _prefabLocalBottomY * _prefabBaseScale.y;
         pos = hit.point - up * (effectiveBottomY * scale + groundOffset + groundEmbedPerScale * scale);
+        if (SpawnExclusionZone.IsExcluded(pos)) return false;   // keep clear of the ship school etc.
         return true;
     }
 

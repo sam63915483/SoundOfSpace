@@ -224,6 +224,13 @@ public class ControllerUINavigator : MonoBehaviour
     float _navScanTimer;
     Selectable _cachedTopmost;
 
+    // Reusable buffers so the per-frame border/validation path allocates
+    // nothing (GetWorldCorners + GetComponentsInParent would otherwise churn
+    // the heap every frame the controller UI is active).
+    readonly Vector3[] _corners = new Vector3[4];
+    static readonly System.Collections.Generic.List<CanvasGroup> _cgScratch = new System.Collections.Generic.List<CanvasGroup>();
+    static readonly System.Collections.Generic.List<Canvas> _canvasScratch = new System.Collections.Generic.List<Canvas>();
+
     void Update()
     {
         var es = EventSystem.current;
@@ -323,15 +330,16 @@ public class ControllerUINavigator : MonoBehaviour
         if (!go.activeInHierarchy) return false;
         // Walk up CanvasGroup chain — if any ancestor's alpha is ~0, the panel
         // is hidden via fade-out (not SetActive), so its buttons are visually
-        // absent even though the GameObject is still active.
-        var groups = go.GetComponentsInParent<CanvasGroup>();
-        for (int i = 0; i < groups.Length; i++)
-            if (groups[i].alpha < 0.05f) return false;
+        // absent even though the GameObject is still active. Non-alloc overload
+        // (reusable list) — this runs every frame the border is drawn.
+        go.transform.GetComponentsInParent(false, _cgScratch);
+        for (int i = 0; i < _cgScratch.Count; i++)
+            if (_cgScratch[i].alpha < 0.05f) return false;
         // Walk up Canvas chain — a parent canvas with enabled=false hides
         // the entire subtree without disabling activeInHierarchy.
-        var canvases = go.GetComponentsInParent<Canvas>();
-        for (int i = 0; i < canvases.Length; i++)
-            if (!canvases[i].enabled) return false;
+        go.transform.GetComponentsInParent(false, _canvasScratch);
+        for (int i = 0; i < _canvasScratch.Count; i++)
+            if (!_canvasScratch[i].enabled) return false;
         var sel = go.GetComponent<Selectable>();
         if (sel == null) return false;
         // CRITICAL: also check the Selectable component is itself enabled.
@@ -367,6 +375,15 @@ public class ControllerUINavigator : MonoBehaviour
             if (FindFirstSelectableUnder(c.transform) == null) continue;
             if (c.sortingOrder > topOrder) { topOrder = c.sortingOrder; top = c; }
         }
+
+        // Fast path (the common case during gameplay): no modal canvas with
+        // selectables is open AND nothing was previously suppressed. The two
+        // loops below would be a pure no-op, so skip the expensive
+        // FindObjectsOfType<Selectable>(includeInactive:true) scan entirely —
+        // that scan walks every (even inactive) object in all loaded scenes
+        // and was the single largest per-tick CPU + GC cost in the profiler.
+        if (top == null && _disabledRaycasters.Count == 0 && _disabledSelectables.Count == 0)
+            return;
 
         // Disable raycasters on canvases strictly below the top.
         for (int i = 0; i < allCanvases.Length; i++)
@@ -539,10 +556,9 @@ public class ControllerUINavigator : MonoBehaviour
                      ? srcCanvas.worldCamera
                      : null;
 
-        Vector3[] corners = new Vector3[4];
-        srcRT.GetWorldCorners(corners);
-        Vector3 minScreen = RectTransformUtility.WorldToScreenPoint(cam, corners[0]); // bottom-left
-        Vector3 maxScreen = RectTransformUtility.WorldToScreenPoint(cam, corners[2]); // top-right
+        srcRT.GetWorldCorners(_corners);
+        Vector3 minScreen = RectTransformUtility.WorldToScreenPoint(cam, _corners[0]); // bottom-left
+        Vector3 maxScreen = RectTransformUtility.WorldToScreenPoint(cam, _corners[2]); // top-right
 
         float w = maxScreen.x - minScreen.x;
         float h = maxScreen.y - minScreen.y;

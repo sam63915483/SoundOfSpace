@@ -158,6 +158,14 @@ public class HALCommentator : MonoBehaviour
     float _pollTimer;
     const float PollIntervalSeconds = 0.5f;
 
+    // Ship-telemetry polls (dust totals, orbit-stabilised) iterate every ship
+    // and walk each ship's net hierarchy (GetComponentsInChildren<SpaceNet>),
+    // which the profiler flagged as a ~2 ms spike. Dust accumulation and orbit
+    // stabilisation are slow, multi-second events, so they run on their own
+    // slower cadence — the announcement latency is imperceptible.
+    float _shipPollTimer;
+    const float ShipPollIntervalSeconds = 1.5f;
+
     // Story-progression flag trackers. Each tracker reads a static bool and
     // fires its line on the false→true transition (after the seed pass).
     struct FlagTracker
@@ -297,9 +305,15 @@ public class HALCommentator : MonoBehaviour
             PollEarlyGameFlags();
             PollAtmosphere();
             PollVitals();
+            _pollTimer = PollIntervalSeconds;
+        }
+
+        _shipPollTimer -= Time.unscaledDeltaTime;
+        if (_shipPollTimer <= 0f)
+        {
             PollShipDust();
             PollShipOrbit();
-            _pollTimer = PollIntervalSeconds;
+            _shipPollTimer = ShipPollIntervalSeconds;
         }
 
         // Landing tracker runs every frame — we need the most recent
@@ -641,6 +655,10 @@ public class HALCommentator : MonoBehaviour
 
     void PollAtmosphere()
     {
+        // VR drone test — the player's real body is safe on the ground; don't track the flying
+        // drone/camera as an atmosphere crossing (and skipping keeps the seeded state so the
+        // return to the body doesn't fire a spurious "entering atmosphere").
+        if (DroneController.Active != null) return;
         var s = GetSubject();
         if (!s.valid || s.body == null) return;
 
@@ -684,6 +702,7 @@ public class HALCommentator : MonoBehaviour
     // transition if armed by an earlier entering-atmosphere event.
     void UpdateLandingTracker()
     {
+        if (DroneController.Active != null) return;   // VR drone test — ignore the flying drone's landings
         var s = GetSubject();
         if (!s.valid) return;
 

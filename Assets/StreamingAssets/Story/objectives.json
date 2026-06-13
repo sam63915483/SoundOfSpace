@@ -2,7 +2,8 @@
   "objectives": [
     { "id": "obj_water", "description": "Drink clean water", "completionEvent": "OnCleanWaterDrunk", "hintTrackId": "water", "onComplete": [] },
     { "id": "obj_food", "description": "Cook and eat food", "completionEvent": "OnCookedFoodEaten", "hintTrackId": "food", "onComplete": [] },
-    { "id": "obj_shelter", "description": "Build a shelter", "completionEvent": "OnShelterBuilt", "hintTrackId": "shelter", "onComplete": [] },
-    { "id": "obj_village", "description": "Reach the village", "completionEvent": "OnVillageReached", "hintTrackId": "", "onComplete": [] }
+    { "id": "obj_village", "description": "Find the main village", "completionEvent": "OnVillageReached", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_explore", "description": "Meet the village vendors, then report back to Tev", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_pilot_school", "description": "Earn your pilot's licence at the ship school", "completionEvent": "", "hintTrackId": "", "onComplete": [] }
   ]
 }

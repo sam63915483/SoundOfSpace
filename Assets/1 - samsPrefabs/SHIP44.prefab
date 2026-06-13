@@ -8344,7 +8344,7 @@ MonoBehaviour:
     m_Bits: 1024
   window: {fileID: 790021482138430547}
   thrustStrength: 22
-  thrustPowerScale: 0.33
+  thrustPowerScale: 0.396
   thrustRampSeconds: 0.15
   rotSpeed: 5
   rollSpeed: 30

@@ -323,6 +323,8 @@ public class TreeSpawner : MonoBehaviour
 
         if ((hit.point - playerPos).sqrMagnitude > effectiveRadius * effectiveRadius) return false;
 
+        if (SpawnExclusionZone.IsExcluded(hit.point)) return false;   // keep clear of village buildings / ship school
+
         Vector3 up = (hit.point - planet.Position).normalized;
         float yaw = (hY & 0xFFFFu) / 65535f * 360f;
         rot = Quaternion.AngleAxis(yaw, up) * Quaternion.FromToRotation(Vector3.up, up);

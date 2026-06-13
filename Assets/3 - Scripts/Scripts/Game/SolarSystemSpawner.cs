@@ -23,6 +23,14 @@ public class SolarSystemSpawner : MonoBehaviour {
 			}
 
 			BodyPlaceholder placeholder = body.gameObject.GetComponentInChildren<BodyPlaceholder> ();
+			// A body with no placeholder isn't a procedural planet (e.g. the black
+			// hole — a CelestialBody used only for gravity/targeting). Skip it:
+			// generating terrain for it is wrong, and dereferencing the null
+			// placeholder below would NRE and abort the whole loop, leaving every
+			// later planet stuck on its placeholder mesh.
+			if (placeholder == null) {
+				continue;
+			}
 			var template = placeholder.bodySettings;
 
 			Destroy (placeholder.gameObject);

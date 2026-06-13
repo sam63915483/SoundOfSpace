@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Attached to a spawned blood-spray FX by BloodFX. Drives two things:
+/// Attached to a spawned blood-spray FX by BloodFX. Drives three things:
 ///  - A grow/die ENVELOPE on the whole effect (root scale): grows in over
 ///    growSeconds, holds through the gush, then shrinks to zero over dieSeconds.
 ///  - A BEAT pulse applied ONLY to the mesh "cone" sub-systems (the gush), which
@@ -12,6 +12,14 @@ using UnityEngine;
 ///    live droplets in/out each beat, which looked like stretching/spreading in
 ///    a weird direction. The beat also rises over a short attack so the cone
 ///    doesn't snap (choppy).
+///  - A ROTATION FREEZE on the whole effect (see LateUpdate): the blood is
+///    parented to an enemy bone so it FOLLOWS the wound through animation and
+///    ragdoll, but the enemy constantly yaws to face the player. In Local
+///    simulation space that yaw rigidly sweeps the far-flung droplets sideways
+///    (the "smear" that never showed in the stationary asset preview). Freezing
+///    the ROOT's world rotation cancels the yaw for the cone and droplets at once
+///    — so they keep their authored relationship (droplets erupting from the cone
+///    tip and shooting straight out) while still riding the body's position.
 /// </summary>
 public class BloodSpray : MonoBehaviour
 {
@@ -19,13 +27,23 @@ public class BloodSpray : MonoBehaviour
     Vector3[]   _coneBase;  // their prefab local scales
 
     float _beat = 1f, _beatTarget = 1f, _sinceBeat, _nextBeat;
-    float _beatMin, _beatMax, _beatFall, _restScale;
-    const float BeatAttack = 0.06f; // seconds for a beat to rise — smooths the snap
+    float _beatMin, _beatMax, _beatFall, _restScale, _beatRise;
+
+    Quaternion _aim;        // spawn-time WORLD rotation — re-applied every LateUpdate
+    float _spinSpeed;       // degrees/second around the pointing (+Y) axis
+    float _spin;            // accumulated spin angle
 
     public void Init(float gushSeconds, float growSeconds, Vector3 targetScale,
                      float restScale, float beatIntervalMin, float beatIntervalMax, float beatFallSeconds,
-                     float dieSeconds, float dieStartScale)
+                     float dieSeconds, float dieStartScale, float beatRiseSeconds, float spinSpeed)
     {
+        // The effect was instantiated aimed along the wound normal and parented
+        // with worldPositionStays, so its current world rotation IS the shot
+        // direction. Lock the whole effect to it so the enemy's yaw can't sweep it.
+        _aim = transform.rotation;
+        _spinSpeed = spinSpeed;
+        _beatRise = Mathf.Max(0.02f, beatRiseSeconds);
+
         var cones = new List<Transform>();
         var bases = new List<Vector3>();
         foreach (var ps in GetComponentsInChildren<ParticleSystem>(true))
@@ -48,6 +66,24 @@ public class BloodSpray : MonoBehaviour
 
         StartCoroutine(Run(Mathf.Max(0.1f, gushSeconds), Mathf.Max(0f, growSeconds), targetScale,
                            Mathf.Max(0.1f, dieSeconds), Mathf.Clamp01(dieStartScale)));
+    }
+
+    // Lock the WHOLE effect to the shot direction and SPIN it around that axis.
+    // Runs in LateUpdate so it overrides the bone pose the Animator/ragdoll just
+    // applied this frame. The effect still rides the bone's POSITION (it stays
+    // parented); it just never yaws with the enemy, so the Local-space droplets
+    // stop being swept sideways and keep erupting straight out of the cone like the
+    // editor. The added spin is around local +Y — the wound's outward axis — so the
+    // cone and droplets corkscrew out of the bullet hole. It must be the ROOT (not
+    // the individual droplet sub-systems) so cone and droplets stay locked together
+    // in one frame; spinning around +Y leaves that axis (and the gravity-replacement
+    // -Y pull) untouched, so only the swirl is added.
+    void LateUpdate()
+    {
+        if (_spinSpeed != 0f) _spin += _spinSpeed * Time.deltaTime;
+        transform.rotation = _spinSpeed != 0f
+            ? _aim * Quaternion.AngleAxis(_spin, Vector3.up)
+            : _aim;
     }
 
     IEnumerator Run(float gush, float grow, Vector3 target, float dieSeconds, float dieStartScale)
@@ -112,7 +148,7 @@ public class BloodSpray : MonoBehaviour
             _nextBeat = Random.Range(_beatMin, _beatMax);
         }
         _beatTarget = Mathf.MoveTowards(_beatTarget, 0f, dt / _beatFall);
-        _beat = Mathf.MoveTowards(_beat, _beatTarget, dt / BeatAttack);
+        _beat = Mathf.MoveTowards(_beat, _beatTarget, dt / _beatRise);
         return _restScale + (1f - _restScale) * _beat;
     }
 }
