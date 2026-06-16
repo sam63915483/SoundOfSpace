@@ -88,15 +88,16 @@ is set dressing that happens to be the emotional core.
 **Render approach — HYBRID (approved):**
 1. Capture the actual `Assets/5 - External Imports/Alien_Toys/` prefab(s) — Tev's species — so the
    creatures in the photo are exactly who the player meets later (canon-consistent delayed
-   recognition). Pose a "family" grouping (one adult + smaller figures).
+   recognition). Pose **Tev's family: Tev + a partner + two kids** (four figures, a clear adult
+   pair with two smaller children).
 2. Run that capture through image-gen as reference to render it as a **worn, faded family
    snapshot**: warm domestic framing, soft focus, aged/curled edges, slight vignette — a keepsake,
    not a screenshot.
 3. Apply the resulting texture to a simple framed-photo prop (existing frame prop if one exists,
    else a quad + thin frame mesh) placed in the cabin.
 
-The photo is Tev's family. The player will not be told this; the village meeting reveals it
-implicitly.
+The photo is Tev's family — Tev, his partner, and their two children. The player will not be told
+this; the village meeting reveals it implicitly.
 
 ---
 
