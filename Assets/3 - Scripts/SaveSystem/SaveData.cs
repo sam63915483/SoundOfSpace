@@ -363,6 +363,10 @@ public class EarlyGameProgressSave
     // §3: true once the player has opened their phone at least once. Gates the
     // persistent "Press X to open your phone." first-message nag.
     public bool hasEverOpenedPhone;
+    // Mission 1 cold open — mirrors EarlyGameProgress.IntroPlayed. Old saves
+    // default to false (intro not yet played); harmless since the load path
+    // already skips the intro (PendingLoad.Data != null).
+    public bool introPlayed;
 }
 
 // ── Notes the player has picked up and read ──────────────────────────────
