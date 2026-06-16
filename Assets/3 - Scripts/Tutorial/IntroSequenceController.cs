@@ -43,6 +43,13 @@ public class IntroSequenceController : MonoBehaviour
     [SerializeField] float heartbeatFadeIn  = 3f;
     [SerializeField] float heartbeatFadeOut = 2f;
 
+    [Header("Grogginess (wake-up blur + double vision)")]
+    [SerializeField] Material grogginessMaterial;     // uses the Hidden/Grogginess shader
+    [SerializeField] float grogRecoverRate = 0.07f;   // intensity units/sec (~14s from 1 to 0)
+
+    [Header("Phone")]
+    [SerializeField] float phoneNagDelay = 60f;       // delay the first-open nag this long after control returns
+
     // ── Runtime ────────────────────────────────────────────────────────────
     Canvas _canvas;
     Image _black;
@@ -54,6 +61,9 @@ public class IntroSequenceController : MonoBehaviour
     bool _running;
     AudioSource _heartbeat;
     AudioSource _roomTone;
+    GrogginessImageEffect _grog;
+    float _grogIntensity = 1f;
+    float _grogTarget = 1f;
 
     void Awake()
     {
@@ -64,6 +74,10 @@ public class IntroSequenceController : MonoBehaviour
 
         BuildOverlay();          // black at alpha 1 immediately — hides the spawn frame
         if (roomToneClip != null) StartRoomTone();
+
+        // No "Press X to open your phone." nag during the cold open — the intro
+        // re-issues it a minute after control returns (see ReleasePhoneNag).
+        PlayerPhoneUI.SuppressFirstNag = true;
     }
 
     IEnumerator Start()
@@ -142,6 +156,13 @@ public class IntroSequenceController : MonoBehaviour
             _clicks++;
             _targetAlpha = Mathf.Clamp01(1f - (float)_clicks / clicksToWake);
         }
+
+        // Grogginess recovery — blur + double vision fade as the player comes to.
+        if (_grog != null)
+        {
+            _grogIntensity = Mathf.MoveTowards(_grogIntensity, _grogTarget, grogRecoverRate * Time.unscaledDeltaTime);
+            _grog.intensity = _grogIntensity;
+        }
     }
 
     // ── The sequence ───────────────────────────────────────────────────────
@@ -149,6 +170,7 @@ public class IntroSequenceController : MonoBehaviour
     {
         _running = true;
         TutorialGate.LockAll();                       // freeze movement + look
+        AttachGrogginess();                           // fuzzy + double vision until the player comes to
 
         // Phase 1: black + "Wake up" loop, arm the prompt at the delay.
         var wakeLoop = StartCoroutine(WakeUpLoop());
@@ -164,6 +186,9 @@ public class IntroSequenceController : MonoBehaviour
         _targetAlpha = 0f;
         yield return new WaitUntil(() => _currentAlpha <= 0.001f);
         if (HALLineHUD.Instance != null) HALLineHUD.Instance.ClearAll();   // drop any lingering "Wake up"
+
+        // Scene is now visible — begin coming to (grogginess recovers through the briefing).
+        _grogTarget = 0f;
 
         // Phase 3: briefing.
         yield return Speak(Line01);
@@ -182,8 +207,36 @@ public class IntroSequenceController : MonoBehaviour
 
         // Phase 6: hand off to survival.
         TutorialGate.UnlockAll();
+        // Vision fully clears exactly as control returns; remove the effect.
+        _grogTarget = _grogIntensity = 0f;
+        if (_grog != null) { _grog.intensity = 0f; Destroy(_grog); _grog = null; }
+        StartCoroutine(ReleasePhoneNag());
         yield return FadeHeartbeat(heartbeatTargetVolume * 0.25f, heartbeatFadeOut);
         _running = false;
+    }
+
+    // Attaches the standalone grogginess post effect to the gameplay camera for
+    // the wake-up. Added at runtime so it appends AFTER the existing post-process
+    // stack (CustomPostProcessing) — it only ever processes the final image and
+    // touches none of the planet/atmosphere effects. Removed at handoff.
+    void AttachGrogginess()
+    {
+        if (grogginessMaterial == null) return;
+        var cam = Camera.main;
+        if (cam == null) return;
+        _grog = cam.gameObject.AddComponent<GrogginessImageEffect>();
+        _grog.material = grogginessMaterial;
+        _grogIntensity = _grogTarget = 1f;
+        _grog.intensity = 1f;
+    }
+
+    // The first-open phone nag was suppressed for the whole intro; surface it a
+    // minute after control returns (unless the player already opened the phone).
+    IEnumerator ReleasePhoneNag()
+    {
+        yield return new WaitForSecondsRealtime(phoneNagDelay);
+        PlayerPhoneUI.SuppressFirstNag = false;
+        if (PlayerPhoneUI.Instance != null) PlayerPhoneUI.Instance.RequestFirstOpenNag();
     }
 
     IEnumerator WakeUpLoop()

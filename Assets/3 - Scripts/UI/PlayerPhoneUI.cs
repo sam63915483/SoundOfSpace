@@ -32,6 +32,12 @@ public class PlayerPhoneUI : MonoBehaviour
     // the phone is opened. Persisted via SaveCollector; reset by NewGameReset.
     public static bool HasEverOpened;
 
+    // Set true by the Mission 1 wake-up intro to hold the first-open nag back
+    // until a minute after control returns, so it doesn't pop during the cold
+    // open. Reset to false when the menu loads (OnSceneLoaded) so an aborted
+    // intro never leaves a later Load permanently muted.
+    public static bool SuppressFirstNag;
+
     // Set true on the frame the phone consumed an Escape press to close
     // itself. Cleared in LateUpdate. TabbedPauseMenu reads this and skips
     // its own ESC-opens-pause branch on the same frame, so "ESC closes
@@ -295,7 +301,13 @@ public class PlayerPhoneUI : MonoBehaviour
     }
 
     void OnConversationStarted(MonoBehaviour npc) => ForceCloseNoAnim();
-    void OnSceneLoaded(Scene scene, LoadSceneMode mode) => ForceCloseNoAnim();
+    void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        // Abort-safe: returning to the menu clears any intro nag suppression so a
+        // later Load isn't left permanently muted.
+        if (scene.name == "MainMenu") SuppressFirstNag = false;
+        ForceCloseNoAnim();
+    }
 
     void ForceCloseNoAnim()
     {
@@ -694,6 +706,7 @@ public class PlayerPhoneUI : MonoBehaviour
     public void RequestFirstOpenNag()
     {
         if (HasEverOpened) return;
+        if (SuppressFirstNag) return;   // muted during/just after the wake-up intro
         if (_openNagGroup != null) _openNagGroup.alpha = 1f;
     }
 
