@@ -90,9 +90,43 @@ public class HALLineHUD : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         BuildUI();
+        SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
-    void OnDestroy() { if (Instance == this) Instance = null; }
+    void OnDestroy()
+    {
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+        if (Instance == this) Instance = null;
+    }
+
+    // This HUD is DontDestroyOnLoad, so a line that was mid-display (or still
+    // queued) when the player quits to the menu would keep fading/playing on the
+    // MainMenu screen — and survive back into the next gameplay session. Wipe it
+    // whenever the menu loads.
+    void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (scene.name == "MainMenu") ClearAll();
+    }
+
+    /// True when nothing is showing and nothing is queued — the strip is idle.
+    /// Scripted sequences (the Mission 1 intro) poll this to send the next line
+    /// only after the current one has fully played and faded.
+    public bool IsIdle => _processRoutine == null && _queue.Count == 0;
+
+    /// <summary>
+    /// Stop the active line, drop every queued line, and hide the strip + all
+    /// preview rows immediately. Used on the quit-to-menu transition.
+    /// </summary>
+    public void ClearAll()
+    {
+        if (_processRoutine != null) { StopCoroutine(_processRoutine); _processRoutine = null; }
+        _queue.Clear();
+        _activeLive = null;
+        _activeKey = null;
+        if (_group != null) _group.alpha = 0f;
+        for (int i = 0; i < MaxQueued; i++)
+            if (_prevCG[i] != null) _prevCG[i].alpha = 0f;
+    }
 
     /// <summary>
     /// Show a static line. If something is already on screen, this queues below

@@ -340,6 +340,12 @@ public class HALCommentator : MonoBehaviour
     // that the polled triggers use. Same rate-limit and gating apply.
     public void VolunteerExternal(string line) => Volunteer(line);
 
+    // Scripted-sequence path (intro / cutscenes): bypasses the inter-line
+    // rate-limit so an ordered, pre-paced sequence is never dropped or stalled
+    // by the ambient-line cadence. Still routes through the same HUD + voice +
+    // transcript pipeline.
+    public void VolunteerExternal(string line, bool bypassRateLimit) => Volunteer(line, bypassRateLimit);
+
     void Volunteer(string line, bool bypassRateLimit = false)
     {
         if (string.IsNullOrEmpty(line)) return;
