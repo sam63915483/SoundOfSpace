@@ -50,6 +50,11 @@ public class IntroSequenceController : MonoBehaviour
     [Header("Phone")]
     [SerializeField] float phoneNagDelay = 60f;       // delay the first-open nag this long after control returns
 
+    [Header("Grogginess hold / look")]
+    [SerializeField] float grogTalkFloor  = 0.45f;    // woozy level held through the briefing (never fully clears early)
+    [SerializeField] float grogHandoffFade = 3f;      // seconds to clear the residual woozy as control returns
+    [SerializeField] Transform lookTarget;            // photo prop — gaze is held here until control returns
+
     // ── Runtime ────────────────────────────────────────────────────────────
     Canvas _canvas;
     Image _black;
@@ -64,6 +69,9 @@ public class IntroSequenceController : MonoBehaviour
     GrogginessImageEffect _grog;
     float _grogIntensity = 1f;
     float _grogTarget = 1f;
+    bool _grogHandoff;
+    PlayerController _pc;
+    bool _forceLook;
 
     void Awake()
     {
@@ -159,12 +167,17 @@ public class IntroSequenceController : MonoBehaviour
             _targetAlpha = Mathf.Clamp01(1f - (float)_clicks / clicksToWake);
         }
 
-        // Grogginess recovery — blur + double vision fade as the player comes to.
-        if (_grog != null)
+        // Grogginess eases toward its target (full → woozy floor); the handoff fade
+        // owns the final clear, so skip this lerp once that's running.
+        if (_grog != null && !_grogHandoff)
         {
             _grogIntensity = Mathf.MoveTowards(_grogIntensity, _grogTarget, grogRecoverRate * Time.unscaledDeltaTime);
             _grog.intensity = _grogIntensity;
         }
+
+        // Hold the player's gaze on the cabin photo until control returns.
+        if (_forceLook && _pc != null && lookTarget != null)
+            _pc.ForceLookAt(lookTarget.position);
     }
 
     // ── The sequence ───────────────────────────────────────────────────────
@@ -173,6 +186,8 @@ public class IntroSequenceController : MonoBehaviour
         _running = true;
         TutorialGate.LockAll();                       // freeze movement + look
         AttachGrogginess();                           // fuzzy + double vision until the player comes to
+        if (_pc == null) _pc = FindObjectOfType<PlayerController>();
+        _forceLook = true;                            // hold the gaze on the photo (Update drives it)
 
         // Phase 1: black + "Wake up" loop, arm the prompt at the delay.
         var wakeLoop = StartCoroutine(WakeUpLoop());
@@ -189,17 +204,21 @@ public class IntroSequenceController : MonoBehaviour
         yield return new WaitUntil(() => _currentAlpha <= 0.001f);
         if (HALLineHUD.Instance != null) HALLineHUD.Instance.ClearAll();   // drop any lingering "Wake up"
 
-        // Scene is now visible — begin coming to (grogginess recovers through the briefing).
-        _grogTarget = 0f;
+        // Scene is now visible — ease partway out of the grogginess to a woozy floor
+        // and hold it there through the briefing (it stays double/blurry until handoff).
+        _grogTarget = grogTalkFloor;
 
         // Phase 3: briefing.
         yield return Speak(Line01);
         yield return Speak(Line02);
+
+        // The realization sets in — the body reacts to "three years".
+        StartHeartbeat();
+
         yield return Speak(Line03);
         yield return Speak(Line04);
 
-        // Phase 4: the body reacts — heartbeat fades in, held silence on the photo.
-        StartHeartbeat();
+        // Held silence on the photo before the vitals re-read.
         yield return new WaitForSecondsRealtime(photoBeatSilence);
 
         // Phase 5: vitals re-read + reassurance.
@@ -209,12 +228,29 @@ public class IntroSequenceController : MonoBehaviour
 
         // Phase 6: hand off to survival.
         TutorialGate.UnlockAll();
-        // Vision fully clears exactly as control returns; remove the effect.
-        _grogTarget = _grogIntensity = 0f;
-        if (_grog != null) { _grog.intensity = 0f; Destroy(_grog); _grog = null; }
+        _forceLook = false;                            // the player can look around now
+        StartCoroutine(FadeGrogAndRemove());           // residual woozy vision clears over a few seconds
         StartCoroutine(ReleaseFirstContact());
         yield return FadeHeartbeat(heartbeatTargetVolume * 0.25f, heartbeatFadeOut);
         _running = false;
+    }
+
+    // Clears the residual grogginess from its woozy floor to fully sharp over
+    // grogHandoffFade seconds as the player regains control, then removes the effect.
+    IEnumerator FadeGrogAndRemove()
+    {
+        _grogHandoff = true;
+        if (_grog == null) yield break;
+        float from = _grogIntensity, t = 0f;
+        while (t < grogHandoffFade)
+        {
+            t += Time.unscaledDeltaTime;
+            _grogIntensity = Mathf.Lerp(from, 0f, grogHandoffFade > 0f ? t / grogHandoffFade : 1f);
+            if (_grog != null) _grog.intensity = _grogIntensity;
+            yield return null;
+        }
+        _grogIntensity = 0f;
+        if (_grog != null) { _grog.intensity = 0f; Destroy(_grog); _grog = null; }
     }
 
     // Attaches the standalone grogginess post effect to the gameplay camera for

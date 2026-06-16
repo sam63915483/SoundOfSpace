@@ -595,6 +595,35 @@ public class PlayerController : GravityObject
 		smoothVelocity = Vector3.SmoothDamp(smoothVelocity, targetVelocity, ref smoothVRef, (isGrounded) ? vSmoothTime : airSmoothTime);
 	}
 
+	// Snaps the look so the camera aims at a world point. Used by the Mission 1
+	// wake-up intro to hold the player's gaze on the cabin photo while look is
+	// locked. Horizontal heading rotates the body; vertical is the camera pitch.
+	// Safe to call every frame — it recomputes absolute aim each call, so it
+	// self-corrects against planet rotation / settling and never drifts.
+	public void ForceLookAt(Vector3 worldPoint)
+	{
+		if (cam == null) return;
+		Vector3 up = transform.up;
+		Vector3 toTarget = worldPoint - cam.transform.position;
+		if (toTarget.sqrMagnitude < 1e-6f) return;
+
+		// Horizontal: rotate the body so its forward faces the target in the up-plane.
+		Vector3 flatTo = Vector3.ProjectOnPlane(toTarget, up);
+		if (flatTo.sqrMagnitude > 1e-6f)
+		{
+			Vector3 flatFwd = Vector3.ProjectOnPlane(transform.forward, up);
+			float headingDelta = Vector3.SignedAngle(flatFwd, flatTo, up);
+			transform.Rotate(up * headingDelta, Space.World);
+		}
+
+		// Vertical: camera pitch = -elevation (localEulerAngles.x positive looks down).
+		Vector3 dir = (worldPoint - cam.transform.position).normalized;
+		float elevationDeg = Mathf.Asin(Mathf.Clamp(Vector3.Dot(dir, up), -1f, 1f)) * Mathf.Rad2Deg;
+		pitch = Mathf.Clamp(-elevationDeg, pitchMinMax.x, pitchMinMax.y);
+		smoothPitch = pitch;
+		pitchSmoothV = 0f;
+	}
+
 	void HandleMovement()
 	{
 		if (!debug_playerFrozen && Time.timeScale > 0)
