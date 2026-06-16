@@ -46,6 +46,11 @@ public class StoryDirector : MonoBehaviour
     bool _firstContactQueued;
     float _coldOpenTimer;
     const float FirstContactDelay = 45f;   // ~30–60s window (GDD discoverability cue)
+    // Freezes the cold-open first-contact timer while the Mission 1 wake-up intro is
+    // running (and ~a minute after it hands off). IntroSequenceController sets this and
+    // then calls TriggerFirstContact() itself, so the "Incoming transmission" beat
+    // doesn't fire on top of the wake-up lines. Cleared on the MainMenu (abort-safe).
+    public static bool HoldColdOpen;
     float _gateCheckTimer;
     const float GateCheckInterval = 0.5f;  // catch-up cadence for out-of-order gate progression
 
@@ -214,9 +219,35 @@ public class StoryDirector : MonoBehaviour
         WireGameplayEvents();   // re-assert defensively after any scene/domain reload
     }
 
+    // Fires the one-time first-contact beat: advance the step, queue the opening
+    // conversation, flash the phone notification + first-open nag, and surface the
+    // on-screen HAL cue. Idempotent (guarded by _firstContactQueued). Driven by the
+    // cold-open timer normally, or called directly by IntroSequenceController after
+    // the wake-up so it lands a minute after control returns, not mid-intro.
+    public void TriggerFirstContact()
+    {
+        if (_firstContactQueued) return;
+        _firstContactQueued = true;
+        SetStoryStep(StoryStep.FirstContact);
+        QueueConversation("conv_first_contact");
+        var phone = PlayerPhoneUI.Instance;
+        if (phone != null)
+        {
+            phone.FlashNotification("Incoming transmission");
+            // §3: first message ever → persistent "Press X to open your
+            // phone." prompt that stays until the player opens it.
+            phone.RequestFirstOpenNag();
+        }
+        // Surface an on-screen cue too, so the player notices with the phone CLOSED — the
+        // in-phone notification alone is invisible until they happen to open it. Reuses the
+        // existing HAL HUD strip.
+        if (HALCommentator.Instance != null)
+            HALCommentator.Instance.VolunteerExternal("Incoming transmission. Open your phone.");
+    }
+
     void Update()
     {
-        if (SceneManager.GetActiveScene().name == "MainMenu") return;
+        if (SceneManager.GetActiveScene().name == "MainMenu") { HoldColdOpen = false; return; }
 
         // First-contact discoverability timer — ColdOpen only, fires once (GDD cue).
         if (!_firstContactQueued)
@@ -225,28 +256,12 @@ public class StoryDirector : MonoBehaviour
             {
                 _firstContactQueued = true;
             }
-            else
+            // HoldColdOpen freezes the timer while the wake-up intro owns pacing.
+            else if (!HoldColdOpen)
             {
                 _coldOpenTimer += Time.deltaTime;
                 if (_coldOpenTimer >= FirstContactDelay)
-                {
-                    _firstContactQueued = true;
-                    SetStoryStep(StoryStep.FirstContact);
-                    QueueConversation("conv_first_contact");
-                    var phone = PlayerPhoneUI.Instance;
-                    if (phone != null)
-                    {
-                        phone.FlashNotification("Incoming transmission");
-                        // §3: first message ever → persistent "Press X to open your
-                        // phone." prompt that stays until the player opens it.
-                        phone.RequestFirstOpenNag();
-                    }
-                    // Surface an on-screen cue too, so the player notices with the phone CLOSED — the
-                    // in-phone notification alone is invisible until they happen to open it. Reuses the
-                    // existing HAL HUD strip.
-                    if (HALCommentator.Instance != null)
-                        HALCommentator.Instance.VolunteerExternal("Incoming transmission. Open your phone.");
-                }
+                    TriggerFirstContact();
             }
         }
 

@@ -75,9 +75,11 @@ public class IntroSequenceController : MonoBehaviour
         BuildOverlay();          // black at alpha 1 immediately — hides the spawn frame
         if (roomToneClip != null) StartRoomTone();
 
-        // No "Press X to open your phone." nag during the cold open — the intro
-        // re-issues it a minute after control returns (see ReleasePhoneNag).
+        // Hold the whole "Incoming transmission" first-contact beat (red HAL line +
+        // phone flash + "Press X to open your phone" nag) for the cold open; the intro
+        // fires it a minute after control returns (see ReleaseFirstContact).
         PlayerPhoneUI.SuppressFirstNag = true;
+        StoryDirector.HoldColdOpen = true;
     }
 
     IEnumerator Start()
@@ -210,7 +212,7 @@ public class IntroSequenceController : MonoBehaviour
         // Vision fully clears exactly as control returns; remove the effect.
         _grogTarget = _grogIntensity = 0f;
         if (_grog != null) { _grog.intensity = 0f; Destroy(_grog); _grog = null; }
-        StartCoroutine(ReleasePhoneNag());
+        StartCoroutine(ReleaseFirstContact());
         yield return FadeHeartbeat(heartbeatTargetVolume * 0.25f, heartbeatFadeOut);
         _running = false;
     }
@@ -230,13 +232,16 @@ public class IntroSequenceController : MonoBehaviour
         _grog.intensity = 1f;
     }
 
-    // The first-open phone nag was suppressed for the whole intro; surface it a
-    // minute after control returns (unless the player already opened the phone).
-    IEnumerator ReleasePhoneNag()
+    // The "Incoming transmission" first-contact beat (red HAL line + phone flash +
+    // first-open nag) was held for the whole intro; fire it a minute after control
+    // returns so it lands once the player has settled, not over the wake-up lines.
+    IEnumerator ReleaseFirstContact()
     {
         yield return new WaitForSecondsRealtime(phoneNagDelay);
         PlayerPhoneUI.SuppressFirstNag = false;
-        if (PlayerPhoneUI.Instance != null) PlayerPhoneUI.Instance.RequestFirstOpenNag();
+        StoryDirector.HoldColdOpen = false;
+        if (StoryDirector.Instance != null) StoryDirector.Instance.TriggerFirstContact();
+        else if (PlayerPhoneUI.Instance != null) PlayerPhoneUI.Instance.RequestFirstOpenNag();
     }
 
     IEnumerator WakeUpLoop()
