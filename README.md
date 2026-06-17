@@ -25,6 +25,6 @@ Unity 2022.3 LTS (Built-in Render Pipeline) · C#
 
 ## Ownership & License
 
-Sound of Space is **proprietary software — Copyright © 2026 \<YOUR NAME OR STUDIO NAME\>, All Rights Reserved.** This is **not** open source. If this repository is visible to you, it is for reference and review only — nothing here is licensed for reuse, redistribution, or derivative works. See [LICENSE](LICENSE) for the full terms.
+Sound of Space is **proprietary software — Copyright © 2026 \<FYS STUDIOS\>, All Rights Reserved.** This is **not** open source. If this repository is visible to you, it is for reference and review only — nothing here is licensed for reuse, redistribution, or derivative works. See [LICENSE](LICENSE) for the full terms.
 
 The foundational solar-system simulation and procedural planet generation/rendering are derived from Sebastian Lague's open-source [**Solar System**](https://github.com/SebLague/Solar-System) project (MIT License) and are retained under their original terms — see [LICENSE](LICENSE). Additional third-party assets are used under their respective licenses.
