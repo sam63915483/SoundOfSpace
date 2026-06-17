@@ -1,17 +1,30 @@
-# Solar System
+# Sound of Space
 
-Development branch of my little solar system experiment. Inspired by Outer Wilds.
+*A single-player survival-horror game set in a fully simulated solar system — where the only voice keeping you company may be the thing that's hunting you.*
 
-Notes: If you're looking for the code from a specific episode, you can find it in the branches. You may need to have Blender installed to view some of the 3D models.
+You wake alone in a hand-built solar system that runs on real gravity: a handful of worlds orbiting a single sun, with no loading screen between a planet's surface and open space. Air runs out. The things in the dark don't. A voice on your phone offers to guide you home — though home is a long way from here, and the voice may not want you to reach it.
 
-[Watch episode 01: Solar System](https://www.youtube.com/watch?v=7axImc1sxa0)
+Sound of Space blends Outer Wilds–style seamless space flight with survival horror and a branching narrative that ends more than one way.
 
-[Watch episode 02: Procedural Moons and Planets](https://youtu.be/lctXaT9pxA0)
+## What makes it different
 
-[Watch episode 03: Atmospheres](https://youtu.be/DxfEbulyFcY)
+- **A real solar system.** N-body gravity simulated at 100 Hz on a floating-origin coordinate system — planets genuinely orbit one another, and you can fly from deep space down to a surface and back with no seams or loading.
+- **Build it, break it, fix it.** A modular ship whose parts detach under hard impacts and obey physics — recover them, reattach them, keep flying.
+- **Stay alive.** A layered oxygen and atmosphere system, fishing, trade, and salvage form the survival loop between story beats.
+- **A story that branches.** Your choices, and who you choose to trust, steer the game toward one of several endings.
+- **Monuments.** Points across the map weave real-world history and lyrics into the world's lore — small, optional, and meant to be lingered on.
+- **Original soundtrack** composed by *catatonic*.
 
-![Atmosphere](https://raw.githubusercontent.com/SebLague/Images/master/Atmosphere.png)
+## Status
 
-![Procedural Moons and Planets](https://raw.githubusercontent.com/SebLague/Images/master/Procedural%20moons%20and%20planets.png)
+In active development — solo-built. Not yet released; currently building toward a vertical slice. Wishlisting and store details to come.
 
-![SolarSystem](https://github.com/SebLague/Images/blob/master/Solar%20System.png?raw=true)
+## Built with
+
+Unity 2022.3 LTS (Built-in Render Pipeline) · C#
+
+## Ownership & License
+
+Sound of Space is **proprietary software — Copyright © 2026 \<YOUR NAME OR STUDIO NAME\>, All Rights Reserved.** This is **not** open source. If this repository is visible to you, it is for reference and review only — nothing here is licensed for reuse, redistribution, or derivative works. See [LICENSE](LICENSE) for the full terms.
+
+The foundational solar-system simulation and procedural planet generation/rendering are derived from Sebastian Lague's open-source [**Solar System**](https://github.com/SebLague/Solar-System) project (MIT License) and are retained under their original terms — see [LICENSE](LICENSE). Additional third-party assets are used under their respective licenses.
