@@ -1,8 +1,10 @@
-# Current State Audit — 2026-05-27
+# Current State Audit — 2026-06-13 refresh (base: 2026-05-27)
 
-**Branch at time of audit:** `feature/fish-storage-revamp`
-**Auditor:** Claude Code (Opus 4.7, 1M context)
+**Branch at time of refresh:** `feat/oxygen-atmosphere-system`
+**Auditor:** Claude Code (Opus 4.8, 1M context); original base audit by Opus 4.7.
 **Method:** Direct filesystem inspection, scene-file grep, and parallel-agent exploration of `Assets/3 - Scripts/`, `Assets/3 - Scripts/Scripts/`, `Assets/1.6.7.7.7.unity`, `Assets/MainMenu.unity`, and every top-level `Assets/*` folder. Cross-referenced against the project's `CLAUDE.md`; deviations are flagged inline.
+
+> **⚠️ 2026-06-13 refresh delta — read this first.** The single biggest change since the base audit: **the local-LLM phone companion is gone.** It has been replaced by (1) a deterministic **preset branching-dialogue system** (`Assets/3 - Scripts/Story/` + `Assets/StreamingAssets/Story/conv_*.json`) and (2) the **HAL companion** — templated, event-driven one-liners + a deterministic `IntentRouter` for fact questions. `LLMService` still compiles and is still seeded, but its model path is hard-gated off and **no `.gguf` weights are needed or shipped.** Other notable additions since 2026-05-27: the **oxygen/atmosphere survival system** + pressurised-hatch eject (§6.1), **crystal harvesting** + the shared **cubeface spawner** + **GPU-instanced grass** (§16), and the **Mission 1 "Taken In" story fork** (§10.1). Sections §17, §23, §27 and the scrap list have been rewritten to match; the newer systems are documented in §6.1, §10.1, and §16. Sections not touched by this refresh reflect the 2026-05-27 state and remain accurate unless noted.
 
 This document has **two parts**:
 
@@ -22,17 +24,19 @@ A short **Verification Notes** appendix at the bottom records what was and wasn'
 - §4 Floating Origin
 - §5 Save / Load System
 - §6 Survival Vitals
+- §6.1 Oxygen / Atmosphere Survival (NEW)
 - §7 Hotbar (7-slot inventory)
 - §8 Fishing Loop
 - §9 NPCs and Dialogue
 - §10 Tev's Quest Arc (`EarlyGameProgress`)
+- §10.1 Mission 1 — "Taken In" Story Fork (NEW)
 - §11 Vendors (Goods, Ships, Guitar, Fish Market)
 - §12 Building Loop
 - §13 Combat (Enemies, Ragdolls, Killstreak)
 - §14 Concert System
 - §15 Map and Compass
-- §16 World Streaming (Trees / Mushrooms / Aliens)
-- §17 AI Companion (Phone Chat)
+- §16 World Streaming (Trees / Mushrooms / Aliens) — incl. §16.1 Crystals/cubeface, §16.2 Grass, §16.3 Flashlight (NEW)
+- §17 AI Companion (Phone Chat) & Preset Dialogue — REWRITTEN (LLM removed)
 - §18 Camera Effects
 - §19 Tutorials (Main + Bonus)
 - §20 UI Layer
@@ -141,6 +145,17 @@ Events: `OnHealthDropped(float)` fires **only from discrete `TakeDamage`** (not 
 
 HUD: `ResourceHUD` is the legacy 4-row bar stack; `VitalsHUD` is the newer compact vitals card; `WaterFillHUD` shows the water-bottle fill percent when drinking.
 
+## §6.1 Oxygen / Atmosphere Survival (NEW 2026-06-13)
+
+`OxygenManager.cs` (`Assets/3 - Scripts/Survival/OxygenManager.cs`, ~710 lines; auto-singleton, seeded in `EnsureGameplaySingletons`, **saved** via `CaptureOxygen`/`ApplyOxygen` + `O2Save` schema). Two oxygen pools:
+
+- **Suit O₂** (default 120 s). Drains ~1.0 s/s in vacuum; refills ~24 s/s in breathable air.
+- **Hull O₂** (default 300 s). Behaves by hatch state: **sealed** holds indefinitely but is breathed down ~1.0 s/s while the player stands inside in vacuum; **open in a breathable zone** refills ~60 s/s; **open above the breathe line / in space** vents 5–60 s/s (altitude-scaled, ~3× faster when open to vacuum).
+
+Breathing gate: `playerInRefill || (insideShip && hullO2 > 0)`. Breathable zones: Humble Abode ≤ 60 m altitude, all of Cyclops ≤ 600 m. Inside a sealed hull you breathe hull air first, so the cabin runs out before the suit does.
+
+**Pressurised-hatch eject / decompression burst** (the recent commits): with the hatch open in vacuum, a player inside is shoved toward `HatchEjectPoint` along an ordered waypoint chain (`EXITPOINT1 → EXITPOINT2 → HatchEjectPoint`). The push is driven by *decompression pressure* sampled at hatch-open (`hullO2AtOpen`) and fading as `sqrt(hullO2 / hullO2AtOpen)` — strongest at full cabin, zero when vented. The final leg gets a 2× boost for a hard blowout; a 3D `HatchSuction` audio burst plays while the cabin vents; accel is altitude-capped 12–120 m/s². HUD: `OxygenHUD.cs`.
+
 ## §7 Hotbar (7-slot inventory)
 
 `Hotbar.cs` (auto-singleton, `Assets/3 - Scripts/UI/Hotbar.cs`) is a **7-slot inventory** keyed 1–7 (bumped from 5 in the current `fish-storage-revamp` branch's Phase 1). The hotbar is **table-driven** — internally an `Entry[] _registry` of `(ItemId, DisplayName, IsUnlocked, IsEquipped, ForceEquip, ForceUnequip)` rows; every method (`DetectAcquisitions`, `GetEquipped`, `UnequipAll`, `Equip`, `ItemName`) iterates that array.
@@ -222,6 +237,15 @@ Phase 8: FishVendorVisited, GoodsVendorVisited
 Story-arc placeholder: `ORG_Reveal` (no phase assigned yet; flipped by F9 cheat key / future story trigger; gates the AI's ORG-aware knowledge file).
 
 **Adding a new flag** = one new field in `EarlyGameProgress.cs` + one matching field in `EarlyGameProgressSave` + capture/apply lines in `SaveCollector`.
+
+## §10.1 Mission 1 — "Taken In" Story Fork (NEW 2026-06-13)
+
+A second, newer story layer sits alongside the `EarlyGameProgress`/Tev arc, driven by the preset-dialogue system (§17A) and stored as `StoryDirector` flags (so it persists through saves).
+
+- **`Story/Mission1.cs`** — central registry for the "Taken In" fork. Typed accessors (`FlagMetTevVillage`, `FlagBranchPilot`, `FlagLicensed`, …) over `StoryDirector`'s flag dictionary. Tracks the branch choice (**Pilot / Build / Fish**), the explore gate (visit two vendors), and discoverables.
+- **`Story/Discoverable.cs`** — one-shot trigger; first entry records its ID on the `Mission1` registry and fires an "observed" HAL line. Enough discoverables seen → HAL nudges the player back to Tev.
+- **`Story/VillageReachTrigger.cs`** — one-shot trigger at the main village; fires a static `OnVillageReached` event on first entry.
+- **Pilot branch (flight school):** `NPC_Dialogue/ShipInstructorDialogue.cs` (instructor NPC, menu-driven, $20/attempt) + `Ship/DroneController.cs` (a scaled-down test drone that faithfully copies `Ship` flight but is *not* a real Ship — never in saves/AI/HUD) + `Ship/ShipPilotTest.cs` (harness that tracks takeoff/orbit/land and passes → `Mission1.FlagLicensed`).
 
 ## §11 Vendors
 
@@ -313,23 +337,54 @@ Per-cell deterministic seed reproduces world layout across runs. `consumedCells`
 
 **A new `CrystalSpawner.cs` and `SpawnerCubeface.cs` are in the modified-file list** (git status), suggesting a Phase-on-current-branch addition of crystal harvesting + a cubeface-based spawn distribution system. The `CrystalInventory.cs` script under `Player/` confirms a third resource type is being added alongside wood + space dust.
 
-## §17 AI Companion (Phone Chat)
+### §16.1 Crystal harvesting + cubeface spawner (NEW 2026-06-13, verified)
+- **`World/CrystalSpawner.cs`** — deterministic cubeface-cell grid (seed 11357, 60 m cells), streamed within 300 m, ~35% spawn chance per cell, cap 20 (live from `InputSettings.maxCrystals`). Rejects ocean, slopes > 35°, and `SpawnExclusionZone` volumes; seats each crystal via downward raycast. Harvested via a `SpawnedCrystal` component → `MarkCellMined()` adds the cell to `consumedCells` so it won't respawn this session.
+- **`Player/CrystalInventory.cs`** — auto-singleton facade over `Hotbar.GetResourceTotal(ItemId.Crystal)` (`Count`/`Add`/`Spend`/`Has`, `OnChanged`). **Saved**: `CrystalSave { count }` plus mined cells (`CaptureCrystalsMined`/`ApplyCrystalsMined`).
+- **`World/SpawnerCubeface.cs`** — shared cubeface↔sphere math (`Hash`, `EncodeCell`, `FaceUVToDirection`, prefab `ComputeLocalBottomY`, `WorldPropLayer=3`) now used by **all four** spawners (Tree, Mushroom, Alien, Crystal). The streaming spawners in §16 have been migrated onto this common utility.
 
-The phone-AI feature uses a local `llama.cpp` backend (LlamaLib, 3.96 GB shipped under `Assets/StreamingAssets/LlamaLib-v2.0.5/`). Scripts in `Assets/3 - Scripts/AI/`:
+### §16.2 GPU-instanced grass + perf (NEW 2026-06-13, verified)
+- **`World/InstancedGrassRenderer.cs`** (~790 lines) — the grass renderer. CPU-driven `Graphics.DrawMeshInstanced` (≤1023/batch), streams cells keyed to the **player body** position, per-cell frustum cull + distance-fade thinning, optional **baked frozen-blade blob** (`bakedGrass` asset) to skip runtime reseating. Pushes a depth-only command buffer so atmosphere post reads true grass depth. Lit by the sun + injected `GrassPointLight`s.
+- **`World/GrassSpawner.cs`** — decorative foliage streamer (grass/plants/flowers), cubeface grid (seed 45678, 12 m cells), patch+scatter Perlin distribution. **Not saved** — regenerates identically each load.
+- **`World/GrassPointLight.cs`** — marker on lights (lanterns, the flashlight) tracked in a static `All` list; the renderer injects nearby ones as faked point lights so instanced grass responds to handheld light.
+- **`World/GrassBlocker.cs`** — marker on buildings; grass cells that raycast-hit a `GrassBlocker` are rejected (keeps grass off roofs/footprints/interiors).
+- **`World/SpawnExclusionZone.cs`** — spherical keep-out volume queried by all spawners before placing.
+- **`World/BakedPlanetShading.cs`** — re-applies non-serialized Earth-terrain shader uniforms (`heightMinMax`, `oceanLevel`, `bodyScale`) at runtime so baked terrain's height-remap doesn't collapse. *(Inspect-only — adjacent to the forbidden planet-shading zone; this script just re-pushes uniforms, it doesn't regenerate.)*
 
-- `LLMService.cs` — the backend driver. **Default is CPU + Qwen-2.5-3B-Instruct Q4_K_M** (4096 ctx), gated by `static readonly bool UseGPU = false;` at the top of the file. Flip to true to revert to **GPU + Hermes-3-Llama-3.1-8B Q4_K_M** (vulkan backend, `numGPULayers=99`, `libraryExclusion={tinyblas,noavx,avx}`, 8192 ctx).
-- `AIChatScreen.cs` — procedural chat UI built inside the phone's `_pageHostRT` with message display + typing indicators.
-- `AIMemoryStore.cs` — long-term memory singleton (cap 200 memories), rolling buffer of chat turns. Seeded in `EnsureGameplaySingletons` for the MainMenu trap.
-- `AIMemoryExtractor.cs` — post-conversation compaction using LLM to distill transcript into structured `AIMemory` entries.
-- `GameKnowledgeBase.cs` — loads `StreamingAssets/AI/game_knowledge.md`, parses into PERSONA and ENTRY blocks, hot-reloads in Editor. Merges `game_knowledge_org_reveal.md` when `ORG_Reveal` flips.
-- `AIStoryController.cs` — polls `EarlyGameProgress.ORG_Reveal`; merges the gated knowledge file + advances `StoryPhase` on rising edge.
-- `FleetTelemetry.cs` — builds the FLEET STATE block for the system prompt (enumerates scene ships with location, motion, attachments, dust buffers).
+### §16.3 Player flashlight (NEW 2026-06-13)
+`Player/PlayerFlashlight.cs` — equippable handheld light, 4-mode **E** cycle (Off → Quarter → Half → Full), procedural halo cookie, subtle flicker/sway, and registers as a `GrassPointLight` so it lights nearby grass.
 
-The repo also has `Assets/3 - Scripts/AI/HALCommentator.cs` (in the git-status modified list) — purpose not directly verified by this audit; appears to be a HAL-9000-style commentary system.
+## §17 AI Companion (Phone Chat) & Preset Dialogue — REWRITTEN 2026-06-13
 
-**Knowledge gating** is documented in `docs/superpowers/plans/2026-05-23-ai-companion-knowledge-gating-and-org-placeholder.md`. The CPU/GPU backend swap is documented in `docs/superpowers/plans/2026-05-23-phone-ai-laptop-gpu-fix.md`. On the CPU path, the `Player.log` `[LLMService] === BACKEND PROBE END ===` line should contain `tinyblas`/`avx`/`noavx`; on the GPU path, `vulkan` or `cublas`.
+**The local LLM is gone.** As of this branch the phone-AI companion no longer runs `llama.cpp` inference. Player-facing AI interaction is now **fully deterministic**: a preset branching-dialogue system the player navigates by button, plus the **HAL** companion that volunteers templated one-liners and answers fact questions via a hand-written intent router. No model weights are shipped or needed.
 
-The shipped game StreamingAssets includes `game_knowledge.md` (19.2 KB), `game_knowledge_org_reveal.md` (6.8 KB), the `voice/` folder (76 MP3 voice lines), and **LlamaLib-v2.0.5/** (3,962.8 MB of multi-platform native binaries — by far the biggest single thing in the project). Earlier-iteration model files (`qwen2.5-1.5b-instruct-q4_k_m.gguf`, `qwen2.5-3b-instruct-q4_k_m.gguf.meta`, `Hermes-3-Llama-3.1-8B-Q4_K_M.gguf.meta`) are marked as deleted in `git status` — leftover `.meta` stubs may still need cleanup (verify; the asset-folder agent didn't flag any).
+### A. Preset branching-dialogue system (`Assets/3 - Scripts/Story/`)
+This is the "you can say certain things and get certain responses back" system. Pure data-driven dialogue graphs.
+
+- **`DialogueData.cs`** — the schema + loader. `StoryContent.LoadAll()` reads `Assets/StreamingAssets/Story/*.json` via `JsonUtility`: every `conv_*.json` → one `Conversation { id, DialogueNode[] nodes }`; `objectives.json` → `ObjectiveFile`; `hinttracks.json` → `HintTrackFile`. A `DialogueNode { id, speaker ("AI"|"Tev"), string[] lines, PlayerResponse[] responses }`. A `PlayerResponse { buttonText, nextNodeId, Effect[] effects, startHintTrack, requiresFlag, hiddenIfFlag }`.
+- **`DialogueRunner.cs`** — speaker-agnostic engine. Walks a `Conversation` node-by-node through a `DialoguePresenter`; **filters each node's responses by `StoryDirector` flags** (`requiresFlag` / `hiddenIfFlag`), applies the chosen response's `Effect[]` via `DialogueEffects`, optionally starts a hint track, then navigates to `nextNodeId` (or `"end"`).
+- **`DialoguePresenter.cs` / `PhoneDialoguePresenter.cs`** — the UI side (lines + reply buttons). `DialogueReplyColumn.cs` is the reply-button column widget.
+- **`DialogueEffects.cs`** — applies `Effect { kind, strArg, numArg, boolArg }` side-effects from a chosen response (e.g. `StartObjective`, `SetFlag`).
+- **`StoryDirector.cs`** (auto-singleton) — holds the story flag dictionary, active/completed objectives, and the unlocked preset-question set. The flag store all dialogue gating and `Mission1` (§10.1) read/write.
+- **`HintTrackRunner.cs`** (auto-singleton) — runs a `HintTrack`: streams `HintEntry` tips to the HUD, each advancing on a named `advanceEvent` gameplay event (or a `gatherWoodTarget` wood-count gate).
+- **Authored content** lives in `Assets/StreamingAssets/Story/`: `conv_first_contact.json`, `conv_menu.json` (the main "What do you need?" help menu), `conv_gates.json`, `conv_village_arrival.json`, `hinttracks.json`, `objectives.json`. Edit these JSON files to change what the AI can say/answer — no recompile needed.
+
+### B. HAL companion (`Assets/3 - Scripts/AI/`) — event-driven, deterministic
+- **`HALCommentator.cs`** (auto-singleton) — the heart of the new companion. Polls game state every frame (rate-limited to **1 line / 8 s**) and **volunteers templated one-liners** on events: player death ("Astronaut Number N"), killstreak milestones, story-phase transitions, first arrival at a body, atmosphere entry/exit, landing speed, enemy proximity, ship dust thresholds, orbit stabilization, and vitals thresholds. Routes lines through `HALLineHUD` (red-eye notification) and records them in `HALVolunteeredLog`.
+- **`IntentRouter.cs`** — deterministic Q&A. A handler chain answers objective-fact questions ("how much dust on ship 2", "altitude of ship 3", ship power/fuel, player vitals, mission progress, inventory counts, "mark X on my map"). A non-null match short-circuits everything — there is no model fallback behind it.
+- **`HALToolDispatcher.cs`** — executes the compass/map "tool" verbs `IntentRouter` resolves (`waypoint`, `unwaypoint`, `map`, `markship`, `showship`) with an alias table ("tev"→TEV, "fish market"→Alien4, "village"→VillageMarker, etc.) and proximity auto-removal ("Target reached: X").
+- **`TokenResolver.cs`** — substitutes `{TOKENS}` (`{ASTRONAUT_NUMBER}`, `{CURRENT_PLANET}`, `{STORY_PHASE}`, `{PLAYER_NAME}`, `{AI_NAME}`, …) in authored text with live game values.
+- **`HALVoicePlayer.cs`** (auto-singleton) — plays pre-generated voice clips from `StreamingAssets/AI/voice/` matched against `HALVoiceManifest.cs`; computer-voice FX stack (low-pass, chorus, distortion). Lines with no clip show silently.
+- **`HALVolunteeredLog.cs`** (auto-singleton) — in-memory transcript (cap 500); fires `OnLineAdded` so `AIChatScreen` shows live bubbles. Not yet persisted across saves.
+- **`HALVisuals.cs`** — HAL's on-screen eye/visual treatment. **`NameStore.cs`** — resolves player/AI display names. **`StoryPhase.cs`** — the `Loyal/Uneasy/Resistant` phase enum used by commentary + knowledge gating.
+
+### C. Surviving LLM scaffolding — present but DEAD/dormant
+These compile and several are still seeded, but the inference path is hard-gated off:
+- **`LLMService.cs`** — auto-singleton, still seeded in `EnsureGameplaySingletons`, **but `BeginPreload()` early-returns** with a comment that the `.gguf` weights were removed pending the preset-dialogue replacement; `Chat()` checks `IsModelAvailable` and returns silently. `UseGPU`/`UseLargeModel` are both `true` in source but never reached. The whole `llama.cpp` load path is intact for hypothetical future re-enable, but is not used.
+- **`GameKnowledgeBase.cs`** (live) — still loads/parses `game_knowledge.md` (PERSONA + ENTRY blocks) and merges `game_knowledge_org_reveal.md` when `ORG_Reveal` flips; consulted by `TokenResolver`/intent paths. **`AIStoryController.cs`** (live) — polls `ORG_Reveal`, merges the gated file, advances phase. **`AIMemoryStore.cs`** (live) — still records turns. **`AIMemoryExtractor.cs`** — **orphaned** (would call the LLM; never invoked now). **`FleetTelemetry.cs`** — live as a shared ship-enumerator for HAL, but its FLEET-STATE-prompt purpose is dead.
+- **`AIChatScreen.cs`** — the phone chat UI; on send it checks `IsModelAvailable` and (LLM off) does not spawn an AI reply bubble. The live conversational surface is the preset-dialogue presenter, not free-text chat.
+
+### D. Asset footprint implication
+Because no model runs, **`Assets/StreamingAssets/LlamaLib-v2.0.5/` (≈3.96 GB) and the `.gguf` weights are now dead weight** — see §27/§24 for the (now much stronger) case to remove them. Still-used StreamingAssets: `game_knowledge.md`, `game_knowledge_org_reveal.md`, the `voice/` clips, and the new `Story/` JSON.
 
 ## §18 Camera Effects
 
@@ -457,12 +512,21 @@ Per CLAUDE.md, the following all auto-spawn via `RuntimeInitializeOnLoadMethod(A
 | `RawFishTripController` | `Effects/RawFishTripController.cs` |
 | `AutosaveManager` | `SaveSystem/AutosaveManager.cs` |
 | `NoteCollection` | `Player/NoteCollection.cs` |
+| `OxygenManager` | `Survival/OxygenManager.cs` (new — §6.1) |
 | `GameKnowledgeBase` | `AI/GameKnowledgeBase.cs` |
 | `AIStoryController` | `AI/AIStoryController.cs` |
 | `AIMemoryStore` | `AI/AIMemoryStore.cs` |
-| `LLMService` | `AI/LLMService.cs` |
+| `LLMService` | `AI/LLMService.cs` — **still seeded, but inference is gated OFF (§17C); no model loads** |
+| `StoryDirector` | `Story/StoryDirector.cs` (new — story flags/objectives, §17A) |
+| `HintTrackRunner` | `Story/HintTrackRunner.cs` (new — HUD tip tracks, §17A) |
+| `HALCommentator` | `AI/HALCommentator.cs` (new — volunteered one-liners, §17B) |
+| `HALVolunteeredLog` | `AI/HALVolunteeredLog.cs` (new — transcript, §17B) |
+| `HALVoicePlayer` | `AI/HALVoicePlayer.cs` (new — voice clips, §17B) |
+| `HALLineHUD` | `AI/` (new — red-eye HAL notification HUD, §17B) |
 
-**Scene-bound (not auto-spawned but live in `--- Managers ---`):** `NBodySimulation`, `EndlessManager`, `EnemySpawner`, `TreeSpawner`, `MushroomSpawner`, `AlienNPCSpawner`, `CrystalSpawner` (new), `FishingdexManager`, `PickupUIManager`, `SolarSystemMapController`, `MapTutorial`, `NPCConversationTracker`, `TutorialManager`.
+All of the "new" singletons above are seeded in `MainMenuController.EnsureGameplaySingletons()` (verified) per the MainMenu trap.
+
+**Scene-bound (not auto-spawned but live in `--- Managers ---`):** `NBodySimulation`, `EndlessManager`, `EnemySpawner`, `TreeSpawner`, `MushroomSpawner`, `AlienNPCSpawner`, `CrystalSpawner` (new — §16), `GrassSpawner` (new, decorative — §16), `FishingdexManager`, `PickupUIManager`, `SolarSystemMapController`, `MapTutorial`, `NPCConversationTracker`, `TutorialManager`.
 
 ---
 
@@ -474,8 +538,8 @@ Organized by confidence so you can act with appropriate caution. Every claim her
 
 These are safe to delete. Re-verifiable if you ever change your mind (git history preserves them).
 
-### Orphan `.meta` files in `StreamingAssets/AI/`
-Git status shows three deleted files: `Hermes-3-Llama-3.1-8B-Q4_K_M.gguf.meta`, `qwen2.5-1.5b-instruct-q4_k_m.gguf` (the file), `qwen2.5-1.5b-instruct-q4_k_m.gguf.meta`, `qwen2.5-3b-instruct-q4_k_m.gguf.meta`. These are already marked as deleted in git but may have leftover stubs in the working tree — confirm with `git status`, then `git rm` if any remain. The current default backend is the Qwen-2.5-3B (CPU) model + Hermes-3-Llama-3.1-8B (GPU); the 1.5B model is obsolete.
+### Model `.gguf` weights — fully removed, intended (2026-06-13)
+**Update:** the LLM is gone (§17). As verified on 2026-06-13, `StreamingAssets/AI/` contains **no `.gguf` files at all** — only `game_knowledge.md`, `game_knowledge_org_reveal.md`, and `voice/`. This is the intended state, not an oversight; the preset-dialogue/HAL system needs no model. If any orphan `.gguf.meta` stubs ever resurface, `git rm` them. The bigger cleanup is the 3.96 GB `LlamaLib-v2.0.5/` bundle itself — see §27.
 
 ### `Assets/3 - Scripts/JitterDiagnostic.cs`
 **Verified contents** (file header):
@@ -580,10 +644,10 @@ The `Editor/` folder is a mix of permanent reusable tools and one-shot fix-it sc
 
 ## §27 The Big Stuff
 
-### `Assets/StreamingAssets/LlamaLib-v2.0.5/` — 3.96 GB
-This is **94% of your StreamingAssets** and gigantic. It's the multi-platform native binary bundle for `llama.cpp` inference (ARM64 + x64 variants for CPU and GPU backends). It is **actively used** by `LLMService.cs` for on-device AI inference (no remote API dependency).
+### `Assets/StreamingAssets/LlamaLib-v2.0.5/` — 3.96 GB — NOW DEAD WEIGHT (2026-06-13)
+This is the multi-platform native binary bundle for `llama.cpp` inference. **As of this branch the LLM is gated off and no model loads (§17C)** — so this 3.96 GB bundle (and the deleted `.gguf` weights) no longer serve any runtime purpose. It's gitignored already, so it isn't bloating the repo, but it *is* bloating your local disk and any build that copies StreamingAssets.
 
-You probably can't shrink this much because the runtime needs the right backend variant for the user's platform. Possible mitigation: at build time, strip the platforms you don't ship for (e.g. if you're only targeting Windows x64, strip macOS/Linux/ARM variants). LLM-for-Unity (the LlamaLib distribution) may have a build-time stripping option — worth investigating if disk size is a concern. **Otherwise: keep as-is.**
+**Recommendation:** if you're confident the preset-dialogue/HAL system is the permanent direction, delete `LlamaLib-v2.0.5/` from `StreamingAssets/` (re-downloadable if ever needed) and remove the now-dead `LLMService`/`AIMemoryExtractor`/`FleetTelemetry`-prompt code. If you want to keep the door open for re-enabling local AI later, leave the folder but know it's inert. Either way it should no longer be described as "actively used."
 
 ### `Assets/4 - Scenes/_Archive/` — 416 MB
 Covered in §25. Decision: keep as souvenir or delete to reclaim 400 MB.

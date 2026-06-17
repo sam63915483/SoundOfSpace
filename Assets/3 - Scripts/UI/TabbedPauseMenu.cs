@@ -186,6 +186,9 @@ public class TabbedPauseMenu : MonoBehaviour
             _isPaused = false;
             Time.timeScale = 1f;
         }
+        // Belt-and-braces: never let the looping menu ambience survive a scene
+        // load (it ignores listener-pause and is on a persistent singleton).
+        UiSfxPlayer.StopPauseAmbience();
         ShowMainPanel();
         SetMenuVisible(false, immediate: true);
     }
@@ -246,6 +249,8 @@ public class TabbedPauseMenu : MonoBehaviour
             // immediately pop the pause menu on top of the same frame.
             else if (!BuildMenuUI.IsOpen && !FishingdexManager.IsOpen
                   && !SolarSystemMapController.IsOpen
+                  && !NewspaperReaderUI.IsOpen && !NewspaperReaderUI.ConsumedEscapeThisFrame
+                  && !MonumentLinkPopupUI.IsOpen && !MonumentLinkPopupUI.ConsumedEscapeThisFrame
                   && !PlayerPhoneUI.IsOpen && !PlayerPhoneUI.ConsumedEscapeThisFrame) OpenPause();
         }
 
@@ -275,6 +280,7 @@ public class TabbedPauseMenu : MonoBehaviour
         Time.timeScale = 0f;
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
+        UiSfxPlayer.StartPauseAmbience();   // menu ambience while paused / in settings
         // Always return to the main panel when re-opening; never re-open
         // straight into the settings sub-page or save dialog.
         ShowMainPanel();
@@ -299,6 +305,7 @@ public class TabbedPauseMenu : MonoBehaviour
         _isPaused = false;
         Time.timeScale = 1f;
         SetMenuVisible(false, immediate: false);
+        UiSfxPlayer.StopPauseAmbience();
 
         if (_input != null)
         {
@@ -470,6 +477,7 @@ public class TabbedPauseMenu : MonoBehaviour
         btn.colors = colors;
         btn.targetGraphic = bg;
         btn.onClick.AddListener(() => onClick?.Invoke());
+        UiSfxPlayer.Attach(btn);
 
         // Hover: also tint the border + label cyan.
         var hover = btnRT.gameObject.AddComponent<ButtonHoverTint>();
@@ -740,6 +748,23 @@ public class TabbedPauseMenu : MonoBehaviour
                             _input.ApplyGraphicsQuality();
                             MarkCustomQuality();
                             _input.SaveSettings();
+                        },
+                    },
+                    // Grass render distance. 0 = OFF (no grass), 1× = authored
+                    // distance, up to 3× further. Read live by InstancedGrassRenderer
+                    // each frame, so it applies instantly. Independent of the quality
+                    // preset (not bundled), so it never snaps the preset to Custom.
+                    new SliderDef {
+                        label = "GRASS DISTANCE", min = 0f, max = 3f, wholeNumbers = false, format = "{0:F1}×",
+                        get  = () => _input != null ? _input.grassRenderScale : 1f,
+                        set  = v  => {
+                            if (_input == null) return;
+                            _input.grassRenderScale = Mathf.Clamp(v, 0f, 3f);
+                            _input.SaveSettings();
+                        },
+                        formatFunc = vf => {
+                            float s = Mathf.Clamp(vf, 0f, 3f);
+                            return s <= 0.001f ? "OFF" : $"{s:F1}×";
                         },
                     },
                     new SliderDef {
@@ -1322,6 +1347,7 @@ public class TabbedPauseMenu : MonoBehaviour
         img.raycastTarget = true;
         btn.targetGraphic = img;
         btn.onClick.AddListener(() => onClick?.Invoke());
+        UiSfxPlayer.Attach(btn);
 
         _tabButtons.Add(btn);
         _tabButtonLabels.Add(lbl);
@@ -1389,6 +1415,7 @@ public class TabbedPauseMenu : MonoBehaviour
         btn.colors = colors;
         btn.targetGraphic = bg;
         btn.onClick.AddListener(() => onClick?.Invoke());
+        UiSfxPlayer.Attach(btn);
 
         var hover = btnRT.gameObject.AddComponent<ButtonHoverTint>();
         hover.Init(borderImg, lbl, primary ? ButtonBorderHi : ButtonBorder, CardBorderCool, LabelColor, CardBorderCool);
@@ -1609,6 +1636,7 @@ public class TabbedPauseMenu : MonoBehaviour
         btn.targetGraphic = bg;
         var refs = new SettingRowRefs_Toggle { bg = bg, valueText = stateText, def = def };
         _toggleRows.Add(refs);
+        UiSfxPlayer.Attach(btn);
 
         btn.onClick.AddListener(() =>
         {
@@ -1840,6 +1868,11 @@ public class TabbedPauseMenu : MonoBehaviour
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
         if (_input != null) _input.SaveSettings();
+        // The menu ambience source ignores listener-pause and lives on a
+        // DontDestroyOnLoad singleton, so it keeps looping into MainMenu (and
+        // back into gameplay) unless we stop it here. ClosePauseDirect normally
+        // stops it, but returning to the menu skips that path.
+        UiSfxPlayer.StopPauseAmbience();
         SceneManager.LoadScene("MainMenu");
     }
 

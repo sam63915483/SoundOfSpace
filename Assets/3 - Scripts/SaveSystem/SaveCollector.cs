@@ -22,6 +22,7 @@ public static class SaveCollector
         CaptureShip(data.ship);
         CaptureExtraShips(data.extraShips);
         CaptureResources(data.resources);
+        CaptureOxygen(data.oxygen);
         CaptureWallet(data.wallet);
         CaptureWood(data.wood);
         CaptureCrystals(data.crystal);
@@ -252,6 +253,15 @@ public static class SaveCollector
         s.thirst = rm.ThirstPercent * 100f;
         s.health = rm.HealthPercent * 100f;
         s.totalDeaths = rm.TotalDeaths;
+    }
+
+    static void CaptureOxygen(O2Save s)
+    {
+        var om = OxygenManager.Instance;
+        if (om == null) return;
+        s.suitO2 = om.SuitO2;
+        s.hullO2 = om.HullO2;
+        s.cyclopsCheckpointReached = om.CyclopsCheckpointReached;
     }
 
     static void CaptureWallet(WalletSave s)
@@ -632,6 +642,8 @@ public static class SaveCollector
         s.fishVendorVisited       = EarlyGameProgress.FishVendorVisited;
         s.goodsVendorVisited      = EarlyGameProgress.GoodsVendorVisited;
         s.orgReveal               = EarlyGameProgress.ORG_Reveal;
+        s.hasEverOpenedPhone      = PlayerPhoneUI.HasEverOpened;   // §3
+        s.introPlayed             = EarlyGameProgress.IntroPlayed;
     }
 
     static void CaptureNotes(NoteSave s)
@@ -820,6 +832,7 @@ public static class SaveCollector
         ApplyBuildMenuLock(data.buildMenuLock);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
+        ApplyOxygen(data.oxygen);
         ApplyWallet(data.wallet);
         ApplyWood(data.wood);
         ApplyCrystals(data.crystal);
@@ -978,6 +991,12 @@ public static class SaveCollector
             ResourceManager.Instance.ApplyState(s.hunger, s.thirst, s.health);
             ResourceManager.Instance.SetTotalDeaths(s.totalDeaths);
         }
+    }
+
+    static void ApplyOxygen(O2Save s)
+    {
+        if (OxygenManager.Instance != null)
+            OxygenManager.Instance.ApplyState(s.suitO2, s.hullO2, s.cyclopsCheckpointReached);
     }
 
     static void ApplyWallet(WalletSave s)
@@ -1245,6 +1264,8 @@ public static class SaveCollector
         EarlyGameProgress.FishVendorVisited       = s.fishVendorVisited;
         EarlyGameProgress.GoodsVendorVisited      = s.goodsVendorVisited;
         EarlyGameProgress.ORG_Reveal              = s.orgReveal;
+        PlayerPhoneUI.HasEverOpened               = s.hasEverOpenedPhone;   // §3
+        EarlyGameProgress.IntroPlayed             = s.introPlayed;
     }
 
     static void ApplyNotes(NoteSave s)

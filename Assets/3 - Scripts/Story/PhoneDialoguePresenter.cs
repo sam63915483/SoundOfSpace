@@ -42,5 +42,12 @@ public class PhoneDialoguePresenter : DialoguePresenter
         });
     }
 
-    public void EndConversation() => _column.Clear();
+    public void EndConversation()
+    {
+        _column.Clear();
+        // Let the chat screen reconcile story gates and chain straight into any
+        // follow-up beat the just-finished conversation unlocked, so the player
+        // doesn't have to close and reopen the phone to see it.
+        if (_chat != null) _chat.OnContextualDialogueEnded();
+    }
 }

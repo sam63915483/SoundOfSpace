@@ -133,6 +133,15 @@ public class LensFlareRegistry : MonoBehaviour
     // remains visible through them.
     const float kCanvasPlaneDistance = 5f;
 
+    // Inside a ship the hull walls sit well beyond 5m, so they fail to depth-
+    // occlude the flare — it bleeds through far walls when on foot (piloting
+    // works only because the cockpit is within 5m, and the hull meshes have no
+    // colliders so the backup raycast can't catch them either). When the player
+    // is inside a ship, push the plane out past the whole interior so every
+    // depth-writing hull surface hides the flare, while the depth-less cockpit
+    // window / open hatch still show it. ~40m clears the ship's ~28m diagonal.
+    const float kInteriorPlaneDistance = 40f;
+
     // Additive UI shader name (LensFlareAdditive.shader).
     const string kAdditiveShaderName = "UI/LensFlareAdditive";
 
@@ -175,6 +184,7 @@ public class LensFlareRegistry : MonoBehaviour
         // Rebind every frame is cheap and survives camera/scene swaps
         // (entering the ship, scene reloads, etc.).
         EnsureCanvasCameraBound(cam);
+        UpdateCanvasPlaneForShipInterior();
 
         // Toggle: respect the user setting if InputSettings is reachable,
         // otherwise default ON.
@@ -255,6 +265,20 @@ public class LensFlareRegistry : MonoBehaviour
         if (_canvas == null || cam == null) return;
         if (_canvas.worldCamera == cam) return;
         _canvas.worldCamera = cam;
+    }
+
+    // See kInteriorPlaneDistance. Reuses OxygenManager's already-computed
+    // "inside the ship" flag (true while piloting too); falls back to pilot
+    // state if the oxygen manager isn't present (e.g. a scene without it).
+    void UpdateCanvasPlaneForShipInterior()
+    {
+        if (_canvas == null) return;
+        bool insideShip = OxygenManager.Instance != null
+            ? OxygenManager.Instance.PlayerInsideShip
+            : Ship.PilotedInstance != null;
+        float want = insideShip ? kInteriorPlaneDistance : kCanvasPlaneDistance;
+        if (!Mathf.Approximately(_canvas.planeDistance, want))
+            _canvas.planeDistance = want;
     }
 
     // ─── Procedural sprite builders ──────────────────────────────────────
@@ -580,7 +604,13 @@ public class LensFlareRegistry : MonoBehaviour
     void UpdateSun(Camera cam)
     {
         if (_sunBody == null) { FindSun(); EnsureFlareLayers(); }
-        if (_sunImage == null || _sunBody == null) return;
+        // No valid sun this frame → clear the flare instead of bailing with it
+        // still on screen. Entering an interior (backrooms/poolrooms) unloads the
+        // gameplay scene, destroying the sun: _sunBody becomes a destroyed-object
+        // null and FindSun finds nothing (NBodySimulation.Bodies is empty there),
+        // so without HideFlare the last-rendered halo froze on screen for the
+        // whole visit. Hiding here also covers the sun simply being unavailable.
+        if (_sunImage == null || _sunBody == null) { HideFlare(); return; }
 
         Vector3 sunPos = _sunBody.Position;
         Vector3 toSun = sunPos - cam.transform.position;

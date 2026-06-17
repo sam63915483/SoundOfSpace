@@ -19,10 +19,12 @@ public class ShipWindAudio : MonoBehaviour
 
     Rigidbody _rb;
     AudioSource _windSrc;
+    Ship _ship;
 
     void Awake()
     {
         _rb = GetComponent<Rigidbody>();
+        _ship = GetComponent<Ship>();
         var go = new GameObject("ShipWindAudio");
         go.transform.SetParent(transform, false);
         _windSrc = go.AddComponent<AudioSource>();
@@ -38,10 +40,16 @@ public class ShipWindAudio : MonoBehaviour
         if (_windSrc == null || windLoopClip == null) return;
         if (_windSrc.clip == null) _windSrc.clip = windLoopClip;
 
+        // Only audible when the player is piloting THIS ship or standing within its
+        // prompt radius. The wind is 2D (in-cockpit feel), so without this gate an
+        // unmanned ship ripping through low orbit was heard everywhere — even by a
+        // player standing still on the surface far away.
+        bool audible = _ship == null || _ship.PlayerIsNearOrPiloting();
+
         float atmo = AtmosphericWind.Factor(transform.position, atmosphereHeightFraction, out Vector3 bodyVel);
         float speed = _rb != null ? (_rb.velocity - bodyVel).magnitude : 0f;
         float speed01 = windFullSpeed > 0f ? Mathf.Clamp01(speed / windFullSpeed) : 0f;
-        float targetVol = windMaxVolume * speed01 * atmo;
+        float targetVol = audible ? (windMaxVolume * speed01 * atmo) : 0f;
         _windSrc.volume = Mathf.MoveTowards(_windSrc.volume, targetVol, Time.deltaTime * 2f);
         _windSrc.pitch  = Mathf.Lerp(windMinPitch, windMaxPitch, speed01);
         if (!_windSrc.isPlaying) _windSrc.Play();

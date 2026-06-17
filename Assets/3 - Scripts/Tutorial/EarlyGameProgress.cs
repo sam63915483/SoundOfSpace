@@ -24,6 +24,10 @@ public static class EarlyGameProgress
     public static bool ReturnedHome;
     public static bool TevReturnedDialogueDone;
 
+    // Mission 1 cold open — true once the wake-up intro has played, so it never
+    // replays on load / clone-respawn. Set by IntroSequenceController.
+    public static bool IntroPlayed;
+
     // Phase 6
     public static bool CabinBuilt;
 
@@ -53,6 +57,7 @@ public static class EarlyGameProgress
         WaterBottleDrunk = false;
         ReturnedHome = false;
         TevReturnedDialogueDone = false;
+        IntroPlayed = false;
         CabinBuilt = false;
         VillageCoordsGiven = false;
         FishVendorVisited = false;

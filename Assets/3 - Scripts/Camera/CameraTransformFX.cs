@@ -110,7 +110,7 @@ public class CameraTransformFX : MonoBehaviour
         //    walking, they're flying. Also gated by AIChatScreen typing so
         //    text entry doesn't bob.
         Vector3 posOffset = Vector3.zero;
-        if (input.fxHeadbob && _player != null && _player.IsOnGround && !AIChatScreen.IsTypingActive && !PlayerController.isInModalSlotUI)
+        if (input.fxHeadbob && !IntroSequenceController.SuppressGroggyCameraFx && _player != null && _player.IsOnGround && !AIChatScreen.IsTypingActive && !PlayerController.isInModalSlotUI)
         {
             float h = UnityEngine.Input.GetAxisRaw("Horizontal");
             float v = UnityEngine.Input.GetAxisRaw("Vertical");
@@ -130,7 +130,9 @@ public class CameraTransformFX : MonoBehaviour
         }
 
         // ── Strafe tilt — Z roll proportional to horizontal input.
-        if (input.fxStrafeTilt)
+        //    Suppressed during the groggy wake-up intro (no woozy roll while the
+        //    player takes their first half-speed steps).
+        if (input.fxStrafeTilt && !IntroSequenceController.SuppressGroggyCameraFx)
         {
             float h = (AIChatScreen.IsTypingActive || PlayerController.isInModalSlotUI) ? 0f : UnityEngine.Input.GetAxisRaw("Horizontal");
             float target = -h * 4f;

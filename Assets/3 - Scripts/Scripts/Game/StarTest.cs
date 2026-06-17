@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using UnityEngine;
 
 [ExecuteInEditMode]
+// Run our camera-follow LateUpdate AFTER EndlessManager's origin shift (default
+// order 0) so on a shift frame we read the already-teleported camera position.
+[DefaultExecutionOrder (1000)]
 public class StarTest : MonoBehaviour {
 
 	public int seed = 0;
@@ -41,7 +44,18 @@ public class StarTest : MonoBehaviour {
 		if (regenerateMesh) {
 			GenerateMesh ();
 		}
-		var customPostProcessing = FindObjectOfType<CustomPostProcessing> ();
+		// Bind to the MAIN (player) camera's post-processing — NOT just any
+		// CustomPostProcessing. FindObjectOfType returns an arbitrary instance and
+		// was picking the MapCamera, so the starfield followed the stationary map
+		// camera and appeared to jump as the player flew / the origin shifted.
+		CustomPostProcessing customPostProcessing = null;
+		foreach (var cpp in FindObjectsOfType<CustomPostProcessing> ()) {
+			var c = cpp.GetComponent<Camera> ();
+			if (c != null && c.CompareTag ("MainCamera")) { customPostProcessing = cpp; break; }
+		}
+		if (customPostProcessing == null) customPostProcessing = FindObjectOfType<CustomPostProcessing> ();
+		if (customPostProcessing == null) return;
+
 		customPostProcessing.onPostProcessingComplete -= Set;
 		customPostProcessing.onPostProcessingComplete += Set;
 		cam = customPostProcessing.GetComponent<Camera> ();
@@ -60,7 +74,19 @@ public class StarTest : MonoBehaviour {
 		if (oceanMaskRenderer) {
 			mat.SetTexture ("_OceanMask", oceanMaskRenderer.oceanMaskTexture);
 		}
-		if (Camera.current == cam) { // ignore in scene view
+		// Camera-follow is in LateUpdate (see below) — it always runs and runs
+		// before rendering. (The previous Camera.onPreCull approach never fired for
+		// this post-processing camera, so the starfield wasn't following at all.)
+	}
+
+	// Centre the starfield on the camera every frame so it reads as infinitely
+	// distant (follow POSITION, not rotation). LateUpdate always runs and runs
+	// before rendering; [DefaultExecutionOrder(1000)] makes it run AFTER the
+	// EndlessManager origin shift, so on a shift frame the stars track the
+	// already-teleported camera instead of jumping. Play-mode only so we don't
+	// drag the authored transform around in the editor.
+	void LateUpdate () {
+		if (Application.isPlaying && cam != null) {
 			transform.position = cam.transform.position;
 		}
 	}

@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 // All player-body ("space suit") sounds, assigned in the Inspector on the
@@ -43,12 +44,30 @@ public class PlayerSuitAudio : MonoBehaviour
     // "extra field ... can't be serialized (expected ...)" build errors.
     [Tooltip("Wind stays silent below this speed (units/s, relative to the planet). It only starts once you're moving through the air this fast.")]
     [SerializeField] private float windStartSpeed = 15f;
+    [Tooltip("Volume of the constant suit life-support hum (loaded from StreamingAssets/Audio/SuitAmbient.wav).")]
+    [SerializeField, Range(0f, 1f)] private float lifeSupportVolume = 0.22f;
 
     AudioSource _oneShot;
     AudioSource _breathSrc;
     AudioSource _windSrc;
+    AudioSource _lifeSupportSrc;   // constant low suit life-support hum
     PlayerController _player;
     float _nextBreathTime;
+
+    // Extra breathing variety loaded from StreamingAssets, mixed into the random
+    // pool alongside the Inspector-assigned breathingClips. All are loudness-
+    // normalized on load. Any of these the user deletes from StreamingAssets just
+    // won't load (StreamingAudio logs a warning and skips it) — safe to prune the
+    // .wav files to taste without touching code.
+    // Final curated pool — all live in the Breaths/ subfolder.
+    static readonly string[] ExtraBreathFiles =
+        { "Breaths/Breath01.wav", "Breaths/Breath02.wav", "Breaths/Breath04.wav",
+          "Breaths/Breath05.wav", "Breaths/Breath06.wav", "Breaths/Breath07.wav",
+          "Breaths/Breath09.wav",
+          "Breaths/SuitBreath2.wav", "Breaths/SuitBreath3.wav", "Breaths/SuitBreath4.wav",
+          "Breaths/SuitBreath5.wav", "Breaths/SuitBreath6.wav", "Breaths/SuitBreath8.wav" };
+    readonly List<AudioClip> _loadedBreaths = new List<AudioClip>();
+    readonly List<float> _loadedGains = new List<float>();   // per-clip loudness-normalize gain
 
     void Awake()
     {
@@ -58,12 +77,48 @@ public class PlayerSuitAudio : MonoBehaviour
         _windSrc  = CreateSource("SuitWind", true);
         if (windLoopClip != null) { _windSrc.clip = windLoopClip; _windSrc.volume = 0f; _windSrc.Play(); }
 
+        // Constant, quiet life-support hum (helmet air recycler) — sells the
+        // "sealed in a suit" feeling while on foot. Pauses with this GameObject
+        // while piloting (the ship's own audio covers the cockpit then).
+        _lifeSupportSrc = CreateSource("SuitLifeSupport", true);
+        StartCoroutine(StreamingAudio.Load("Audio/SuitAmbient.wav", AudioType.WAV, c =>
+        {
+            if (c != null && _lifeSupportSrc != null)
+            { _lifeSupportSrc.clip = c; _lifeSupportSrc.volume = lifeSupportVolume; _lifeSupportSrc.Play(); }
+        }));
+
         _player = GetComponent<PlayerController>();
         if (_player == null) _player = FindObjectOfType<PlayerController>();
+
+        for (int i = 0; i < ExtraBreathFiles.Length; i++)
+            StartCoroutine(StreamingAudio.Load("Audio/" + ExtraBreathFiles[i], AudioType.WAV,
+                c => { if (c != null) { _loadedBreaths.Add(c); _loadedGains.Add(ComputeBreathGain(c)); } }));
+
         ScheduleNextBreath();
     }
 
     void OnDestroy() { if (Instance == this) Instance = null; }
+
+    // Loudness-normalize the breath clips: measure RMS and BOOST quieter clips up
+    // toward a target so the faint ones become as audible as the good loud ones.
+    // Boost-only (never reduces) so the clips that already sound right are
+    // untouched. Capped so a near-silent clip isn't amplified into noise.
+    const float BreathTargetRms = 0.14f;
+    static float ComputeBreathGain(AudioClip clip)
+    {
+        if (clip == null || clip.samples <= 0 || clip.channels <= 0) return 1f;
+        try
+        {
+            var data = new float[clip.samples * clip.channels];
+            if (!clip.GetData(data, 0) || data.Length == 0) return 1f;
+            double sumSq = 0.0;
+            for (int i = 0; i < data.Length; i++) { float s = data[i]; sumSq += s * s; }
+            float rms = (float)System.Math.Sqrt(sumSq / data.Length);
+            if (rms < 1e-5f) return 1f;
+            return Mathf.Clamp(BreathTargetRms / rms, 1f, 6f);   // boost only
+        }
+        catch { return 1f; }
+    }
 
     AudioSource CreateSource(string childName, bool loop)
     {
@@ -84,20 +139,33 @@ public class PlayerSuitAudio : MonoBehaviour
 
     void ScheduleNextBreath()
     {
-        float lo = Mathf.Max(0.1f, breathMinInterval);
-        float hi = Mathf.Max(lo, breathMaxInterval);
-        _nextBreathTime = Time.time + Random.Range(lo, hi);
+        // Fixed 10-15s cadence (per request). Overrides the serialized interval
+        // fields so the scene-stored value can't leave it at the old 15-25s.
+        _nextBreathTime = Time.time + Random.Range(10f, 15f);
     }
 
     void Update()
     {
-        // Breathing.
-        if (_breathSrc != null && breathingClips != null && breathingClips.Length > 0
-            && Time.time >= _nextBreathTime)
+        // Breathing — random pick from Inspector clips + the StreamingAssets extras.
+        if (_breathSrc != null && Time.time >= _nextBreathTime)
         {
-            var clip = breathingClips[Random.Range(0, breathingClips.Length)];
-            if (clip != null) _breathSrc.PlayOneShot(clip, breathingVolume);
-            ScheduleNextBreath();
+            int serialized = breathingClips != null ? breathingClips.Length : 0;
+            int total = serialized + _loadedBreaths.Count;
+            if (total > 0)
+            {
+                int idx = Random.Range(0, total);
+                AudioClip clip;
+                float gain;
+                if (idx < serialized) { clip = breathingClips[idx]; gain = 1f; }
+                else
+                {
+                    int li = idx - serialized;
+                    clip = _loadedBreaths[li];
+                    gain = li < _loadedGains.Count ? _loadedGains[li] : 1f;
+                }
+                if (clip != null) _breathSrc.PlayOneShot(clip, breathingVolume * gain);
+                ScheduleNextBreath();
+            }
         }
 
         // Atmosphere wind: speed (relative to the planet) × atmosphere density.

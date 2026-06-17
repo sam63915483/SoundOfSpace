@@ -174,6 +174,11 @@ public class ConcertStrobeLight : MonoBehaviour
         // which made the cone lose its falloff and bloom across the ground.
         _light.renderMode = LightRenderMode.ForcePixel;
 
+        // Also light the GPU-instanced grass (see ConcertConeLight) — white strobe.
+        var grassPL = _light.GetComponent<GrassPointLight>();
+        if (grassPL == null) grassPL = _light.gameObject.AddComponent<GrassPointLight>();
+        grassPL.grassStrength = 0.5f;
+
         var visualT = _strobeRig.Find("_StrobeVisual");
         GameObject visualGO;
         if (visualT == null)

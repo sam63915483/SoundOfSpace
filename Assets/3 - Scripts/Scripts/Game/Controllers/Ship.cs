@@ -199,6 +199,19 @@ public class Ship : GravityObject
     AudioSource thrustSource;
     AudioSource crashSource;
 
+    // Pilot start-up / shut-down SFX (loaded from StreamingAssets).
+    AudioSource _pilotSfxSource;
+    AudioClip _startupClip, _shutdownClip;
+
+    // Hatch pressurizer FX: hiss + a fast smoke puff out each pressurizer's local
+    // -Y when the hatch opens/closes. Pressurizer1/2 are child GameObjects on the
+    // ship prefab; we anchor audio + a particle puff to them at runtime.
+    Transform[] _pressurizers;
+    AudioSource[] _pressAudio;
+    ParticleSystem[] _pressPuff;
+    AudioClip _pressurizerClip;
+    bool _prevHatchForPuff;
+
     Rigidbody rb;
     Quaternion targetRot;
     Quaternion smoothedRot;
@@ -238,6 +251,15 @@ public class Ship : GravityObject
         targetRot = transform.rotation;
         smoothedRot = transform.rotation;
         inputSettings.Begin();
+
+        // Pilot start-up / shut-down SFX. 2D — you're inside the cockpit.
+        _pilotSfxSource = gameObject.AddComponent<AudioSource>();
+        _pilotSfxSource.playOnAwake = false;
+        _pilotSfxSource.spatialBlend = 0f;
+        StartCoroutine(StreamingAudio.Load("Audio/ShipStartup.wav",  AudioType.WAV, c => _startupClip = c));
+        StartCoroutine(StreamingAudio.Load("Audio/ShipShutdown.wav", AudioType.WAV, c => _shutdownClip = c));
+
+        SetupPressurizers();
 
         // Window glass casts shadows by default, which blocks the Sun's
         // shadow rays from passing through the cockpit — interior turns
@@ -570,9 +592,18 @@ public class Ship : GravityObject
             }
         }
 
-        // Animate hatch
+        // Pressurizer FX whenever the hatch opens/closes (any path that flips
+        // hatchOpen — outside trigger, interior button, etc.). Skip the first 2s
+        // so a load-time hatch restore doesn't puff.
+        if (hatchOpen != _prevHatchForPuff)
+        {
+            _prevHatchForPuff = hatchOpen;
+            if (Time.timeSinceLevelLoad > 2f) FirePressurizers();
+        }
+
+        // Animate hatch (1.5× faster open/close so the door isn't in the way of a fast eject)
         float hatchTargetAngle = (hatchOpen) ? hatchAngle : 0;
-        hatch.localEulerAngles = Vector3.right * Mathf.LerpAngle(hatch.localEulerAngles.x, hatchTargetAngle, Time.deltaTime);
+        hatch.localEulerAngles = Vector3.right * Mathf.LerpAngle(hatch.localEulerAngles.x, hatchTargetAngle, Time.deltaTime * 1.5f);
 
         HandleCheats();
     }
@@ -937,11 +968,153 @@ public class Ship : GravityObject
         rb.mass = 1000000f;
     }
 
+    // ── Hatch pressurizer FX ───────────────────────────────────────────────
+    void SetupPressurizers()
+    {
+        var list = new List<Transform>(2);
+        var p1 = FindChildByName(transform, "EMIT1");
+        var p2 = FindChildByName(transform, "EMIT2");
+        if (p1 != null) list.Add(p1);
+        if (p2 != null) list.Add(p2);
+        _pressurizers = list.ToArray();
+        _pressAudio = new AudioSource[_pressurizers.Length];
+        _pressPuff  = new ParticleSystem[_pressurizers.Length];
+        for (int i = 0; i < _pressurizers.Length; i++)
+        {
+            var a = _pressurizers[i].gameObject.AddComponent<AudioSource>();
+            a.playOnAwake = false;
+            a.spatialBlend = 1f;          // 3D — comes from the valve
+            a.minDistance = 2f;
+            a.maxDistance = 20f;
+            _pressAudio[i] = a;
+            _pressPuff[i] = BuildPressurizerPuff(_pressurizers[i]);
+        }
+        if (_pressurizers.Length > 0)
+            StartCoroutine(StreamingAudio.Load("Audio/Pressurizer.wav", AudioType.WAV, c => _pressurizerClip = c));
+        _prevHatchForPuff = hatchOpen;
+    }
+
+    static Transform FindChildByName(Transform root, string name)
+    {
+        var all = root.GetComponentsInChildren<Transform>(true);
+        for (int i = 0; i < all.Length; i++)
+            if (all[i] != null && all[i].name == name) return all[i];
+        return null;
+    }
+
+    // A small, fast-dissipating smoke puff parented to a pressurizer. Direction is
+    // driven explicitly by a LOCAL -Y velocity (not the cone's axis, whose
+    // convention is ambiguous) so it reliably shoots out the pressurizer's local
+    // -Y, which Sam set as the exit direction.
+    ParticleSystem BuildPressurizerPuff(Transform parent)
+    {
+        var go = new GameObject("PressurizerPuff");
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = Vector3.zero;
+        // Neutralise the inherited parent-chain scale so velocity + size values are
+        // in REAL WORLD UNITS. The emit point sits under non-unit-scaled parents,
+        // which amplified velocityOverLifetime (in local space) and flung the smoke
+        // several units down into the cabin no matter how low I set it.
+        Vector3 ls = parent.lossyScale;
+        go.transform.localScale = new Vector3(
+            Mathf.Abs(ls.x) > 1e-4f ? 1f / ls.x : 1f,
+            Mathf.Abs(ls.y) > 1e-4f ? 1f / ls.y : 1f,
+            Mathf.Abs(ls.z) > 1e-4f ? 1f / ls.z : 1f);
+        // Align to the SHIP's axes so the vent goes ship-down (toward the floor).
+        go.transform.rotation = transform.rotation;
+
+        var ps = go.AddComponent<ParticleSystem>();
+        if (Application.isPlaying) ps.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+
+        var main = ps.main;
+        main.duration = 1f;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.startLifetime = 1.2f;     // lingers; with sustained emission the vent reads ~2s+
+        main.startSpeed = 0f;          // direction comes from velocityOverLifetime (-Y)
+        main.startSize = new ParticleSystem.MinMaxCurve(0.5f, 1.1f);   // world units (scale neutralised)
+        main.startColor = new Color(0.95f, 0.95f, 1f, 0.55f);
+        main.maxParticles = 300;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;  // rides with the ship
+        main.gravityModifier = 0f;
+
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;    // bursts only (we call Emit)
+
+        var shape = ps.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 0.05f;          // tiny spawn cluster at the valve
+
+        // Gentle vent out the ship's -Y (toward the floor) with a little lateral
+        // spread. Kept SMALL so the puff hugs the pressurizer instead of streaming
+        // several units down into the cabin. Tune here if it should travel more/less.
+        var vel = ps.velocityOverLifetime;
+        vel.enabled = true;
+        vel.space = ParticleSystemSimulationSpace.Local;   // now in real world units (scale neutralised)
+        vel.x = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);    // width unchanged
+        vel.z = new ParticleSystem.MinMaxCurve(-0.5f, 0.5f);
+        vel.y = new ParticleSystem.MinMaxCurve(-3.6f, -1.8f);   // 1.8x downward → ~1.8x longer plume
+
+        var col = ps.colorOverLifetime;
+        col.enabled = true;
+        var grad = new Gradient();
+        grad.SetKeys(
+            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+            new[] { new GradientAlphaKey(0.85f, 0f), new GradientAlphaKey(0.5f, 0.4f), new GradientAlphaKey(0f, 1f) });
+        col.color = new ParticleSystem.MinMaxGradient(grad);
+
+        var size = ps.sizeOverLifetime;
+        size.enabled = true;
+        var sc = new AnimationCurve();
+        sc.AddKey(0f, 0.6f);
+        sc.AddKey(1f, 1.8f);
+        size.size = new ParticleSystem.MinMaxCurve(1f, sc);
+
+        var renderer = ps.GetComponent<ParticleSystemRenderer>();
+        if (renderer != null)
+        {
+            var m = ConcertParticleAssets.GetAlphaBlendCloudMaterial();
+            renderer.renderMode = ParticleSystemRenderMode.Billboard;
+            renderer.material = m;
+            renderer.sharedMaterial = m;
+        }
+        return ps;
+    }
+
+    void FirePressurizers()
+    {
+        if (_pressurizers == null) return;
+        for (int i = 0; i < _pressurizers.Length; i++)
+        {
+            if (_pressPuff[i] != null) StartCoroutine(EmitPuffOverTime(_pressPuff[i]));
+            if (_pressAudio[i] != null && _pressurizerClip != null)
+                _pressAudio[i].PlayOneShot(_pressurizerClip, 0.7f);
+        }
+    }
+
+    // Sustained ~1.5s vent (plus the ~1.2s particle-lifetime tail) so the puff
+    // reads as 2s+ of escaping air, not a single instantaneous burst.
+    static IEnumerator EmitPuffOverTime(ParticleSystem ps)
+    {
+        const float dur = 1.5f, step = 0.1f;
+        float t = 0f;
+        while (t < dur)
+        {
+            if (ps == null) yield break;
+            ps.Emit(8);
+            t += step;
+            yield return new WaitForSeconds(step);
+        }
+    }
+
     public void ToggleHatch()
     {
         hatchOpen = !hatchOpen;
         if (hatchClip != null && crashSource != null)
             crashSource.PlayOneShot(hatchClip, hatchVolume);
+        // Pressurizer hiss + smoke puff is driven by the hatchOpen state-change
+        // poll in the per-frame update, so it fires for every toggle path.
     }
 
     public void TogglePiloting()
@@ -954,6 +1127,15 @@ public class Ship : GravityObject
         else
         {
             if (!TutorialGate.IsUnlocked(TutorialAbility.EnterPilot)) return;
+            // Mission 1 Pilot branch: once the player has chosen to learn to fly, they
+            // must finish drone school (earn the galactic licence) before boarding a
+            // real ship. Scoped to the active-and-unlicensed Pilot branch so it never
+            // blocks non-mission play or existing saves.
+            if (Mission1.GetBranch() == Mission1.Branch.Pilot && !Mission1.Get(Mission1.FlagLicensed))
+            {
+                GameUI.DisplayInteractionInfo("You need a pilot's licence — finish drone school with the instructor");
+                return;
+            }
             // Refuse to enter the pilot seat when the ship can't fly. Show a
             // brief HUD message so the player knows why nothing happened.
             if (!HasPower)
@@ -998,11 +1180,20 @@ public class Ship : GravityObject
         if (pilot == null) return; // truly no player in scene — bail
         shipIsPiloted = true;
         s_pilotedInstance = this;
+        // Power-up SFX. Gated past the first 2s so the load-time auto-pilot during
+        // scene/save setup doesn't fire a spurious start-up sound.
+        if (_startupClip != null && _pilotSfxSource != null && Time.timeSinceLevelLoad > 2f)
+            _pilotSfxSource.PlayOneShot(_startupClip, 0.8f);
         pilot.Camera.transform.parent = camViewPoint;
         pilot.Camera.transform.localPosition = Vector3.zero;
         pilot.Camera.transform.localRotation = Quaternion.identity;
         pilot.gameObject.SetActive(false);
-        hatchOpen = false;
+        // The hatch is intentionally NOT forced closed here. The oxygen system
+        // (OxygenManager) makes hatch state meaningful — flying with it open
+        // bleeds the hull, sealing it before launch is the "do it right" path.
+        // Slamming it shut on pilot-enter made that mechanic unreachable and
+        // wiped the player's deliberate hatch state. Hatch is now fully
+        // player-controlled (HatchButton inside / OutsideHatchTrigger outside).
         window.SetActive(false);
         if (boostMeterUI) boostMeterUI.SetActive(false);
 
@@ -1063,6 +1254,10 @@ public class Ship : GravityObject
     {
         shipIsPiloted = false;
         if (s_pilotedInstance == this) s_pilotedInstance = null;
+        // Power-down SFX (reverse-feel shutdown). Same 2s gate as start-up so
+        // the load-time force-exit during setup stays silent.
+        if (_shutdownClip != null && _pilotSfxSource != null && Time.timeSinceLevelLoad > 2f)
+            _pilotSfxSource.PlayOneShot(_shutdownClip, 0.5f);
         // Always drop the player at the ship's own pilotSeatPoint. (We used to
         // fall back to pilot.spawnPoint = the starting cabin; removed because
         // it teleported players away from any ship bought far from the cabin.)
@@ -1072,11 +1267,15 @@ public class Ship : GravityObject
         pilot.Rigidbody.velocity = rb.velocity;
         pilot.gameObject.SetActive(true);
         window.SetActive(true);
-        // Open the hatch so the player isn't sealed inside the closed canopy
-        // at pilotSeatPoint — that was the "can't move" symptom: collider
-        // trapped at the seat point with no exit path. With the hatch open
-        // the player can walk out, or float out in zero-g.
-        hatchOpen = true;
+        // The hatch is intentionally LEFT AS-IS on exit (was force-opened here).
+        // Force-opening wiped the player's sealed-hull state every time they
+        // stood up — breaking the oxygen sanctuary (e.g. EVAing on a vacuum moon
+        // while keeping the hull pressurised). If the player sealed the hatch for
+        // flight they now exit into a sealed cockpit and re-open it with the
+        // interior HatchButton (TutorialGate is unlocked post-tutorial, so it
+        // always works) — you open the door to step out, like an airlock. The
+        // common case (entered through an open hatch, never closed it) exits with
+        // the hatch already open, so there's no trap.
         pilot.ExitFromSpaceship();
         // Snap orientation smoothing so the player doesn't see a 1-second
         // tilt animation as smoothed_gravity_up catches up after re-entry.
@@ -1237,6 +1436,40 @@ public class Ship : GravityObject
         return null;
     }
     public Rigidbody Rigidbody => rb;
+
+    // --- §5 ship-specific-prompt proximity gate --------------------------------
+    // True if the player is piloting THIS ship, or is within `radius` metres of
+    // it. Per-instance (multi-ship safe), throttled, and null-safe. Used to gate
+    // ship-specific prompts/SFX (reactor, hatch, hull VO, vitals warnings) so they
+    // don't fire when the player is nowhere near the ship they refer to.
+    const float DefaultPromptRadius = 40f;
+    const float NearCheckInterval = 0.2f;
+    [System.NonSerialized] PlayerController _proximityPlayer;
+    [System.NonSerialized] float _nearCheckTime;
+    [System.NonSerialized] bool _nearCached;
+
+    public bool PlayerIsNearOrPiloting(float radius = DefaultPromptRadius)
+    {
+        if (shipIsPiloted) return true;                 // this ship is being flown
+        if (rb == null) return false;
+        if (Time.unscaledTime < _nearCheckTime) return _nearCached;
+        _nearCheckTime = Time.unscaledTime + NearCheckInterval;
+
+        // Lazy-refind the player only when we don't already have it (never per
+        // frame — once found it persists for the session).
+        if (_proximityPlayer == null) _proximityPlayer = pilot;
+        if (_proximityPlayer == null) _proximityPlayer = FindObjectOfType<PlayerController>(true);
+        if (_proximityPlayer == null || _proximityPlayer.Rigidbody == null)
+        {
+            _nearCached = false;
+            return false;
+        }
+
+        float r = radius > 0f ? radius : DefaultPromptRadius;
+        Vector3 playerPos = _proximityPlayer.Rigidbody.position;
+        _nearCached = (playerPos - rb.position).sqrMagnitude <= r * r;
+        return _nearCached;
+    }
 
     // World velocity minus the nearest CelestialBody's velocity. Used by
     // speed-driven camera FX (SpeedLinesOverlay, RadialMotionBlurEffect) so

@@ -23,6 +23,10 @@ public class HALVoicePlayer : MonoBehaviour
 {
     public static HALVoicePlayer Instance { get; private set; }
 
+    /// True while a voice clip is actively playing (used by HALLineHUD to hold a
+    /// voiced tip only as long as its narration lasts).
+    public bool IsPlaying => _source != null && _source.isPlaying;
+
     AudioSource _source;
     readonly Dictionary<string, AudioClip> _cache    = new Dictionary<string, AudioClip>();
     readonly HashSet<string>                _loading = new HashSet<string>();

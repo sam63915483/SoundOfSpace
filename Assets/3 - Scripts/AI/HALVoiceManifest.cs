@@ -79,9 +79,30 @@ public static class HALVoiceManifest
         { "Leaving atmosphere, Astronaut. Vacuum confirmed.",     "atmo_leave.mp3" },
         { "Entering atmosphere, Astronaut. Descent in progress.", "atmo_enter.mp3" },
 
+        // ── Oxygen / hull pressurization ───────────────────────────────
+        { "Re-oxygenating the hull",                              "hull_reoxygenating.mp3" },
+        { "Hull is ajar",                                         "hull_ajar.mp3" },
+        { "Hull exposed to the vacuum of space.",                 "hull_vacuum_exposed.mp3" },
+        { "4 minutes of hull air remaining.",                     "hull_4min.mp3" },
+        { "2 minutes of hull air remaining.",                     "hull_2min.mp3" },
+        { "1 minute of hull air remaining.",                      "hull_1min.mp3" },
+        { "30 seconds of hull air remaining.",                    "hull_30sec.mp3" },
+
         // ── Orbit-match transitions ────────────────────────────────────
         { "Orbit matched.",                                       "orbit_matched.mp3" },
         { "Orbit unmatched.",                                     "orbit_unmatched.mp3" },
+
+        // ── Mission 1 cold open (IntroSequenceController) ───────────────────
+        // Keys MUST byte-match IntroSequenceController's line consts (em-dash,
+        // ellipsis included) or the line shows silently.
+        { "Wake up",                                                                                                              "intro_wake_up.mp3" },
+        { "Good morning, astronaut. Vital signs stable.",                                                                         "intro_01_good_morning.mp3" },
+        { "You have been in transit for three years. You crash-landed on this world two days ago.",                               "intro_02_transit.mp3" },
+        { "Memory loss is expected after stasis of this length. It will not affect the mission.",                                 "intro_03_memory.mp3" },
+        { "While you were unconscious, a local took you in. A native species. You are, currently, their guest.",                  "intro_04_local.mp3" },
+        { "Heart rate elevated. Vitals irregular.",                                                                               "intro_05_vitals.mp3" },
+        { "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.", "intro_06_reassure.mp3" },
+        { "...For now, try not to think about it.",                                                                               "intro_07_dont_think.mp3" },
     };
 
     // Per-line volume multiplier. Default is 1.0; entries here override.

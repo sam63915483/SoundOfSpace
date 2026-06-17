@@ -927,6 +927,7 @@ MonoBehaviour:
   windMaxPitch: 1.6
   atmosphereHeightFraction: 0.5
   windStartSpeed: 15
+  lifeSupportVolume: 0.22
 --- !u!1 &888087996036368278 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5406502976396438921, guid: 30d1ef01b1bfd4cce849c5888b9c1de4,

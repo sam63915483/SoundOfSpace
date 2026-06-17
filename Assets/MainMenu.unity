@@ -217,8 +217,10 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 95c3959caef94bd48aaf53a2d7598ceb, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name:
+  m_EditorClassIdentifier:
+  menuAmbience: {fileID: 8300000, guid: a922a324dc601474294fbcecc54aa8de, type: 3}
+  menuAmbienceVolume: 0.5
 --- !u!4 &822996122
 Transform:
   m_ObjectHideFlags: 0

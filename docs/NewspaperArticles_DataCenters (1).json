@@ -1,0 +1,54 @@
+{
+  "setId": "datacenter_water_clippings",
+  "setTitle": "Recovered Records — The Water Years",
+  "articles": [
+    {
+      "id": "qts_georgia",
+      "headline": "Town Told to Save Water \u2014 While a Data Center Secretly Took 29 Million Gallons",
+      "date": "May 2026",
+      "body": "Residents in a Fayette County, Georgia neighborhood noticed the water pressure in their homes dropping. Officials told them to stop watering their lawns to conserve water. But the lawns were never the problem.\n\nA nearby data center had been quietly drawing about 29 million gallons of water through two pipe connections the county didn't even know existed \u2014 one installed without permission, the other never billed. That's roughly 44 swimming pools, used during a drought, while families were being asked to cut back.\n\nThe site is owned by one of the world's largest investment firms. After the secret usage came to light, the county billed the company for the missing water but chose not to fine it. The public only learned the truth when a resident obtained the county's letter and posted it online.",
+      "sourceName": "Tom's Hardware",
+      "sourceUrl": "https://www.tomshardware.com/tech-industry/georgia-data-center-used-29-million-gallons-of-water"
+    },
+    {
+      "id": "uruguay_google",
+      "headline": "A Nation Drank Salt Water as a Data Center Was Promised Millions of Gallons",
+      "date": "2023",
+      "body": "Uruguay was gripped by its worst drought in 74 years. The reservoirs fell so low that the government began mixing seawater into the public supply just to keep the taps running. The water turned salty and nearly undrinkable \u2014 officials warned pregnant women and the seriously ill not to drink it at all.\n\nAround half a million people couldn't afford to buy bottled water instead. And through all of it, plans pushed forward for a Google data center that would eventually use millions of liters a day \u2014 as much water as 55,000 people.\n\nProtesters filled the streets of the capital and wrote a single sentence across its walls: \"It's not drought, it's pillage.\"",
+      "sourceName": "One Green Planet",
+      "sourceUrl": "https://www.onegreenplanet.org/environment/uruguayans-protest-googles-plan-use-water-drought/"
+    },
+    {
+      "id": "queretaro_mexico",
+      "headline": "\"We Don't Want Data Centers, We Want Water\"",
+      "date": "2025",
+      "body": "The state of Quer\u00e9taro in central Mexico suffered its worst drought in a century. Seventeen of its eighteen municipalities were hit, and drinking water access was put at risk for thousands of families.\n\nThen came the announcement: 32 new data centers planned for the same region. Residents gathered outside the facilities holding handmade signs with one plain demand \u2014 \"we don't want data centers, we want water.\"",
+      "sourceName": "Mongabay",
+      "sourceUrl": "https://news.mongabay.com/2025/11/ai-data-center-revolution-sucks-up-worlds-energy-water-materials/"
+    },
+    {
+      "id": "mesa_meta",
+      "headline": "One Building. The Daily Water of 49,000 People. In the Desert.",
+      "date": "2025",
+      "body": "Arizona is one of the most water-stressed states in America, and the Colorado River it depends on drops lower every year.\n\nIn the city of Mesa, a single Meta data center secured an agreement allowing it to use up to 4 million gallons of water every day. That's about the same amount used by 49,000 people daily \u2014 running through one building, in the desert, to keep servers cool.",
+      "sourceName": "PANews",
+      "sourceUrl": "https://www.panewslab.com/en/articles/019e8624-79e0-7758-8b4e-7b466fea1872"
+    },
+    {
+      "id": "utah_stratos",
+      "headline": "Nearly 4,000 People Paid to Object. Then the Application Disappeared.",
+      "date": "2026",
+      "body": "Beside the shrinking Great Salt Lake, in what locals called the worst drought in recorded history, a company proposed an enormous data center.\n\nNearly 3,900 residents filed formal objections over the water it would consume \u2014 and each person had to pay $15 just to file. Then the developer simply withdrew the application, which wiped out every one of those paid objections at once. The project kept moving forward anyway.",
+      "sourceName": "ZME Science",
+      "sourceUrl": "https://www.zmescience.com/ecology/climate/proposed-data-center-utah-heat/"
+    },
+    {
+      "id": "global_total",
+      "headline": "264,000,000,000 Gallons",
+      "date": "2025",
+      "body": "In one year, AI data centers drank roughly 264 billion gallons of water \u2014 about what 1.8 million people use in a year. Every single day, they consume around 550 million gallons, close to the entire output of the world's bottled water industry.\n\nAnd of 809 new data centers planned across the country, nearly two out of every three are slated for land already locked in drought. The thirstiest machines ever built, placed exactly where there is least water to give.",
+      "sourceName": "Barchart",
+      "sourceUrl": "https://www.barchart.com/story/news/2339834/ai-data-centers-water-consumption-breaks-264-billion-gallons-in-2025-as-devastating-drought-hits-nearly-63-of-u-s"
+    }
+  ]
+}

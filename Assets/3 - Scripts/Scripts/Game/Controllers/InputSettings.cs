@@ -241,6 +241,13 @@ public class InputSettings : ScriptableObject {
 	[Range(0f, 1f)] public float fxSubtleVignetteIntensity = 0.45f;
 	[Range(0f, 1f)] public float fxChromaticAberrationIntensity = 0.35f;
 
+	[Header("World Detail")]
+	// Grass render-distance multiplier. 0 = no grass at all, 1 = the
+	// InstancedGrassRenderer's authored distance, up to 3× further (more grass on
+	// screen). Read live each stream tick by InstancedGrassRenderer (scales its
+	// spawnRadius). Persists via PlayerPrefs; independent of the quality preset.
+	[Range(0f, 3f)] public float grassRenderScale = 1f;
+
 	// TODO: find better place to call this from
 	public void Begin () {
 		Active = this;
@@ -269,6 +276,7 @@ public class InputSettings : ScriptableObject {
 		maxCrystals = PlayerPrefs.GetInt (nameof (maxCrystals), defaultMaxCrystals);
 		maxAudienceSize = PlayerPrefs.GetInt (nameof (maxAudienceSize), defaultMaxAudienceSize);
 		viewDistance = PlayerPrefs.GetFloat (nameof (viewDistance), defaultViewDistance);
+		grassRenderScale = PlayerPrefs.GetFloat (nameof (grassRenderScale), 1f);
 
 		stickLookSensitivity = PlayerPrefs.GetFloat (nameof (stickLookSensitivity), defaultStickLookSensitivity);
 		shipStickSensitivity = PlayerPrefs.GetFloat (nameof (shipStickSensitivity), defaultShipStickSensitivity);
@@ -368,6 +376,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt (nameof (maxCrystals), maxCrystals);
 		PlayerPrefs.SetInt (nameof (maxAudienceSize), maxAudienceSize);
 		PlayerPrefs.SetFloat (nameof (viewDistance), viewDistance);
+		PlayerPrefs.SetFloat (nameof (grassRenderScale), grassRenderScale);
 
 		PlayerPrefs.SetFloat (nameof (stickLookSensitivity), stickLookSensitivity);
 		PlayerPrefs.SetFloat (nameof (shipStickSensitivity), shipStickSensitivity);

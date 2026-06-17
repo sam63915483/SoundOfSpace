@@ -8,10 +8,9 @@
       "responses": [
         { "buttonText": "How do I get clean water?", "nextNodeId": "m_water", "hiddenIfFlag": "hasWater" },
         { "buttonText": "How do I find food?", "nextNodeId": "m_food", "hiddenIfFlag": "hasFood" },
-        { "buttonText": "How do I build a shelter?", "nextNodeId": "m_shelter", "hiddenIfFlag": "hasShelter" },
-        { "buttonText": "How do I find the village?", "nextNodeId": "m_village", "requiresFlag": "hasShelter", "hiddenIfFlag": "villageReached" },
-        { "buttonText": "How do I use the flashlight?", "nextNodeId": "m_flashlight", "requiresFlag": "hasShelter" },
-        { "buttonText": "How do I use the map?", "nextNodeId": "m_map", "requiresFlag": "hasShelter" },
+        { "buttonText": "How do I find the village?", "nextNodeId": "m_village", "requiresFlag": "hasWater", "hiddenIfFlag": "villageReached" },
+        { "buttonText": "How do I use the flashlight?", "nextNodeId": "m_flashlight", "requiresFlag": "hasWater" },
+        { "buttonText": "How do I use the map?", "nextNodeId": "m_map", "requiresFlag": "hasWater" },
         { "buttonText": "Nothing right now.", "nextNodeId": "end" }
       ]
     },
@@ -33,16 +32,6 @@
         { "buttonText": "Thanks.", "nextNodeId": "m0",
           "effects": [ { "kind": "StartObjective", "strArg": "obj_food" } ],
           "startHintTrack": "food" }
-      ]
-    },
-    {
-      "id": "m_shelter",
-      "speaker": "AI",
-      "lines": [ "Shelter: chop trees for wood, then place a Cabin from the build menu. Tips are on your HUD." ],
-      "responses": [
-        { "buttonText": "Thanks.", "nextNodeId": "m0",
-          "effects": [ { "kind": "StartObjective", "strArg": "obj_shelter" } ],
-          "startHintTrack": "shelter" }
       ]
     },
     {

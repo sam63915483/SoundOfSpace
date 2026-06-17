@@ -158,6 +158,14 @@ public class HALCommentator : MonoBehaviour
     float _pollTimer;
     const float PollIntervalSeconds = 0.5f;
 
+    // Ship-telemetry polls (dust totals, orbit-stabilised) iterate every ship
+    // and walk each ship's net hierarchy (GetComponentsInChildren<SpaceNet>),
+    // which the profiler flagged as a ~2 ms spike. Dust accumulation and orbit
+    // stabilisation are slow, multi-second events, so they run on their own
+    // slower cadence — the announcement latency is imperceptible.
+    float _shipPollTimer;
+    const float ShipPollIntervalSeconds = 1.5f;
+
     // Story-progression flag trackers. Each tracker reads a static bool and
     // fires its line on the false→true transition (after the seed pass).
     struct FlagTracker
@@ -297,9 +305,15 @@ public class HALCommentator : MonoBehaviour
             PollEarlyGameFlags();
             PollAtmosphere();
             PollVitals();
+            _pollTimer = PollIntervalSeconds;
+        }
+
+        _shipPollTimer -= Time.unscaledDeltaTime;
+        if (_shipPollTimer <= 0f)
+        {
             PollShipDust();
             PollShipOrbit();
-            _pollTimer = PollIntervalSeconds;
+            _shipPollTimer = ShipPollIntervalSeconds;
         }
 
         // Landing tracker runs every frame — we need the most recent
@@ -326,13 +340,29 @@ public class HALCommentator : MonoBehaviour
     // that the polled triggers use. Same rate-limit and gating apply.
     public void VolunteerExternal(string line) => Volunteer(line);
 
+    // Scripted-sequence path (intro / cutscenes): bypasses the inter-line
+    // rate-limit so an ordered, pre-paced sequence is never dropped or stalled
+    // by the ambient-line cadence. Still routes through the same HUD + voice +
+    // transcript pipeline.
+    public void VolunteerExternal(string line, bool bypassRateLimit) => Volunteer(line, bypassRateLimit);
+
     void Volunteer(string line, bool bypassRateLimit = false)
     {
         if (string.IsNullOrEmpty(line)) return;
-        if (!bypassRateLimit && Time.unscaledTime < _nextAllowedTime) return;
-        _nextAllowedTime   = Time.unscaledTime + MinSecondsBetweenLines;
-        _lastVolunteerTime = Time.unscaledTime;
-        // HUD: transient red-eye notification at the top of the screen.
+
+        // §7: a rate-limited line used to be silently DROPPED here (early return),
+        // which is exactly why a second tip fired inside the 8s window vanished.
+        // Now we still hand it to the HUD — HALLineHUD owns pacing AND a bounded
+        // queue (3 items, drop-oldest), so the line is queued instead of lost.
+        // The cadence stamp only advances for non-rate-limited lines so a burst
+        // doesn't push the next "fresh" line further out than intended.
+        bool rateLimited = !bypassRateLimit && Time.unscaledTime < _nextAllowedTime;
+        if (!rateLimited)
+        {
+            _nextAllowedTime   = Time.unscaledTime + MinSecondsBetweenLines;
+            _lastVolunteerTime = Time.unscaledTime;
+        }
+        // HUD: red-eye notification (queues if one is already showing).
         if (HALLineHUD.Instance != null) HALLineHUD.Instance.Show(line);
         // Log: persistent record so the chat panel can show a transcript.
         // AIChatScreen subscribes to OnLineAdded to surface live bubbles
@@ -631,6 +661,10 @@ public class HALCommentator : MonoBehaviour
 
     void PollAtmosphere()
     {
+        // VR drone test — the player's real body is safe on the ground; don't track the flying
+        // drone/camera as an atmosphere crossing (and skipping keeps the seeded state so the
+        // return to the body doesn't fire a spurious "entering atmosphere").
+        if (DroneController.Active != null) return;
         var s = GetSubject();
         if (!s.valid || s.body == null) return;
 
@@ -674,6 +708,7 @@ public class HALCommentator : MonoBehaviour
     // transition if armed by an earlier entering-atmosphere event.
     void UpdateLandingTracker()
     {
+        if (DroneController.Active != null) return;   // VR drone test — ignore the flying drone's landings
         var s = GetSubject();
         if (!s.valid) return;
 

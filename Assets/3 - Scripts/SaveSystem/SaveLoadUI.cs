@@ -332,6 +332,7 @@ public static class SaveLoadUI
         pickImg.color = ButtonNormal;
         var pickBtn = pickRT.gameObject.AddComponent<Button>();
         pickBtn.targetGraphic = pickImg;
+        UiSfxPlayer.Attach(pickBtn);
         var colors = pickBtn.colors;
         colors.normalColor = ButtonNormal;
         colors.highlightedColor = ButtonHover;
@@ -368,6 +369,7 @@ public static class SaveLoadUI
         delImg.color = DeleteNormal;
         var delBtn = delRT.gameObject.AddComponent<Button>();
         delBtn.targetGraphic = delImg;
+        UiSfxPlayer.Attach(delBtn);
         var dColors = delBtn.colors;
         dColors.normalColor = DeleteNormal;
         dColors.highlightedColor = DeleteHover;
@@ -532,6 +534,7 @@ public static class SaveLoadUI
         img.color = normal;
         var btn = rt.gameObject.AddComponent<Button>();
         btn.targetGraphic = img;
+        UiSfxPlayer.Attach(btn);
         var colors = btn.colors;
         colors.normalColor = normal;
         colors.highlightedColor = hover;

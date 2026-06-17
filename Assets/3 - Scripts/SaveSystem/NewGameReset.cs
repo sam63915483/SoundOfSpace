@@ -71,12 +71,18 @@ public static class NewGameReset
             ResourceManager.Instance.ApplyState(100f, 100f, 100f); // full hunger/thirst/health
             ResourceManager.Instance.SetTotalDeaths(0);
         }
+        if (OxygenManager.Instance != null) OxygenManager.Instance.ResetForNewGame();
 
         EarlyGameProgress.ResetAll();
+        // §3: re-arm the first-message "Press X to open your phone." nag for a
+        // fresh game (the static persists across the main-menu round-trip otherwise).
+        PlayerPhoneUI.HasEverOpened = false;
         NoteCollection.ApplySaveState(System.Array.Empty<string>());
-        // Inactive = no build-menu restrictions, matching a fresh launch. The
-        // tutorial re-applies LockAllExcept when it reaches the build step.
-        BuildMenuLock.ApplySaveState(false, null);
+        // Mission 1 fork (GDD §2): no shelter-building before the village, and the
+        // Build branch is stubbed for the slice — so building stays fully locked for
+        // the whole slice. LockAllExcept() with no args = nothing is buildable. The
+        // Build branch will UnlockAll() when it's built out later.
+        BuildMenuLock.LockAllExcept();
 
         if (StoryDirector.Instance != null) StoryDirector.Instance.ResetForNewGame();
 

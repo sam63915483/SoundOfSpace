@@ -157,7 +157,16 @@ public class FlightAssistStatusHUD : MonoBehaviour
         bool orbitMatched;
         bool matchingVel;
         bool velMatched;
-        if (_cachedShip != null)
+        var drone = DroneController.Active;
+        if (drone != null)
+        {
+            // Mission 1 pilot test drone — drives the same V/O status display as the ship.
+            circularizing = drone.IsCircularizing;
+            orbitMatched  = drone.IsOrbitMatched;
+            matchingVel   = drone.IsMatchingVelocity;
+            velMatched    = drone.IsVelocityMatched;
+        }
+        else if (_cachedShip != null)
         {
             circularizing = _cachedShip.IsCircularizing;
             orbitMatched  = _cachedShip.IsOrbitMatched;

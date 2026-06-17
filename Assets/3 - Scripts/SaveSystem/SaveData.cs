@@ -12,6 +12,7 @@ public class SaveData
     public PlayerSave player = new PlayerSave();
     public ShipSave ship = new ShipSave();
     public ResourcesSave resources = new ResourcesSave();
+    public O2Save oxygen = new O2Save();
     public WalletSave wallet = new WalletSave();
     public WoodSave wood = new WoodSave();
     public CrystalSave crystal = new CrystalSave();
@@ -210,6 +211,16 @@ public class ResourcesSave
 }
 
 [Serializable]
+public class O2Save
+{
+    // Defaults = full tanks so pre-feature saves (missing this object) load
+    // breathing-safe rather than suffocating on load.
+    public float suitO2 = 120f;
+    public float hullO2 = 300f;
+    public bool cyclopsCheckpointReached;
+}
+
+[Serializable]
 public class WalletSave { public int money; }
 
 [Serializable]
@@ -349,6 +360,13 @@ public class EarlyGameProgressSave
     // saves missing this field — pre-feature saves will load with the flag
     // unset, which is the correct "story not yet revealed" state.
     public bool orgReveal;
+    // §3: true once the player has opened their phone at least once. Gates the
+    // persistent "Press X to open your phone." first-message nag.
+    public bool hasEverOpenedPhone;
+    // Mission 1 cold open — mirrors EarlyGameProgress.IntroPlayed. Old saves
+    // default to false (intro not yet played); harmless since the load path
+    // already skips the intro (PendingLoad.Data != null).
+    public bool introPlayed;
 }
 
 // ── Notes the player has picked up and read ──────────────────────────────

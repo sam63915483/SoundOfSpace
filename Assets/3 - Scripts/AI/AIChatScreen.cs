@@ -901,6 +901,35 @@ public class AIChatScreen : MonoBehaviour
         if (!string.IsNullOrEmpty(startNode)) _runner.StartAt(startNode); else _runner.Start();
     }
 
+    // Invoked by PhoneDialoguePresenter when an authored conversation reaches its
+    // end. Reconcile story gates immediately (so finishing first-contact advances
+    // to the next beat without waiting for StoryDirector's 0.5s catch-up timer),
+    // and if that queued a follow-up conversation, chain straight into it in this
+    // same session. Without this, finishing first-contact left the reply column
+    // empty and the next beat ("How do I build a shelter?") only appeared after
+    // the player closed and reopened the phone.
+    public void OnContextualDialogueEnded()
+    {
+        var sd = StoryDirector.Instance;
+        if (sd == null || _presenter == null) return;
+
+        sd.ReconcileGatesNow();
+        if (!sd.HasPendingConversation) return;
+
+        string convId    = sd.PendingConversationId;
+        string startNode = sd.PendingNodeId;
+        sd.ClearPendingConversation();
+
+        var conv = StoryContent.GetConversation(convId);
+        if (conv == null) return;
+
+        // Reuse THIS session's reply column + presenter — DialogueReplyColumn.Create
+        // spawns a fresh GameObject, which would leak the old column and stack a
+        // second one beside the phone.
+        _runner = new DialogueRunner(conv, _presenter);
+        if (!string.IsNullOrEmpty(startNode)) _runner.StartAt(startNode); else _runner.Start();
+    }
+
     // ── Generated audio clips (cached statically) ──────────────────────
 
     static AudioClip _cachedHum;

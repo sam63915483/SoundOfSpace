@@ -501,6 +501,7 @@ MonoBehaviour:
   contactDamage: 10
   contactDamageInterval: 0.5
   npcContactDamage: 34
+  npcBiteRadius: 2.5
   kind: 0
   moveSpeed: 3
   turnSpeedDegPerSec: 180
@@ -528,6 +529,8 @@ MonoBehaviour:
   audioMaxDistance: 60
   spitClip: {fileID: 8300000, guid: 5fb19ea85c11912489b4743e966568e8, type: 3}
   spitVolume: 1
+  spitAudioMinDistance: 25
+  spitAudioMaxDistance: 80
   spitDamage: 5
   spitIntervalMin: 5
   spitIntervalMax: 10
@@ -556,6 +559,8 @@ MonoBehaviour:
   spawnSurfaceOffset: 3
   spawnAttemptsPerTick: 12
   despawnDistance: 80
+  hitboxRadiusScale: 1
+  drawHitboxGizmos: 1
 --- !u!1 &1686022026838876562
 GameObject:
   m_ObjectHideFlags: 0

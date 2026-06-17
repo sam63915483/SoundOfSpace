@@ -381,6 +381,7 @@ public class MushroomSpawner : MonoBehaviour
         colourPct  = (hCol & 0xFFFFu) / 65535f;
         breathPct  = (hBr  & 0xFFFFu) / 65535f;
         kaleidoPct = (hKa  & 0xFFFFu) / 65535f;
+        if (SpawnExclusionZone.IsExcluded(pos)) return false;   // keep clear of the ship school etc.
         return true;
     }
 

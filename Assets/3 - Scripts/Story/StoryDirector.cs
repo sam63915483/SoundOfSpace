@@ -9,9 +9,18 @@ public enum StoryStep
     ColdOpen = 0,
     FirstContact = 1,
     NeedsWaterFood = 2,
-    NeedsShelter = 3,
-    Explore = 4,
-    VillageSeam = 5,
+    NeedsShelter = 3,   // DEPRECATED (Mission 1 fork removed the build-a-cabin gate); kept for save-int stability
+    Explore = 4,        // shared opening: "find the main village"
+    VillageSeam = 5,    // reached the village — Mission 1 "Taken In" bolts on here
+
+    // ── Mission 1 "Taken In" (three-way fork) ──
+    MeetTevVillage   = 6,   // had the intro with Tev at the village; sent to explore
+    ExploreArea      = 7,   // looking around for discoverables to report back
+    Report           = 8,   // reported to Tev; the three-way fork is offered
+    Branching        = 9,   // a branch was chosen (Pilot built; Build/Fish stubbed)
+    PilotSchool      = 10,  // training on drones with the flight instructor
+    RealFlight       = 11,  // licensed; flying the real ship to Constant Companion
+    Mission1Complete = 12,  // arrived at Constant Companion → Mission 2 hand-off
 }
 
 /// <summary>
@@ -37,6 +46,11 @@ public class StoryDirector : MonoBehaviour
     bool _firstContactQueued;
     float _coldOpenTimer;
     const float FirstContactDelay = 45f;   // ~30–60s window (GDD discoverability cue)
+    // Freezes the cold-open first-contact timer while the Mission 1 wake-up intro is
+    // running (and ~a minute after it hands off). IntroSequenceController sets this and
+    // then calls TriggerFirstContact() itself, so the "Incoming transmission" beat
+    // doesn't fire on top of the wake-up lines. Cleared on the MainMenu (abort-safe).
+    public static bool HoldColdOpen;
     float _gateCheckTimer;
     const float GateCheckInterval = 0.5f;  // catch-up cadence for out-of-order gate progression
 
@@ -109,6 +123,11 @@ public class StoryDirector : MonoBehaviour
     }
 
     void Changed() => OnStoryStateChanged?.Invoke();
+
+    /// <summary>Force an immediate gate reconciliation — e.g. the moment an authored
+    /// conversation ends — instead of waiting up to GateCheckInterval for the catch-up
+    /// timer. Lets a finished beat advance + queue the next one this frame.</summary>
+    public void ReconcileGatesNow() => CheckGates();
 
     public void SaveTo(StoryDirectorSave s)
     {
@@ -200,9 +219,35 @@ public class StoryDirector : MonoBehaviour
         WireGameplayEvents();   // re-assert defensively after any scene/domain reload
     }
 
+    // Fires the one-time first-contact beat: advance the step, queue the opening
+    // conversation, flash the phone notification + first-open nag, and surface the
+    // on-screen HAL cue. Idempotent (guarded by _firstContactQueued). Driven by the
+    // cold-open timer normally, or called directly by IntroSequenceController after
+    // the wake-up so it lands a minute after control returns, not mid-intro.
+    public void TriggerFirstContact()
+    {
+        if (_firstContactQueued) return;
+        _firstContactQueued = true;
+        SetStoryStep(StoryStep.FirstContact);
+        QueueConversation("conv_first_contact");
+        var phone = PlayerPhoneUI.Instance;
+        if (phone != null)
+        {
+            phone.FlashNotification("Incoming transmission");
+            // §3: first message ever → persistent "Press X to open your
+            // phone." prompt that stays until the player opens it.
+            phone.RequestFirstOpenNag();
+        }
+        // Surface an on-screen cue too, so the player notices with the phone CLOSED — the
+        // in-phone notification alone is invisible until they happen to open it. Reuses the
+        // existing HAL HUD strip.
+        if (HALCommentator.Instance != null)
+            HALCommentator.Instance.VolunteerExternal("Incoming transmission. Open your phone.");
+    }
+
     void Update()
     {
-        if (SceneManager.GetActiveScene().name == "MainMenu") return;
+        if (SceneManager.GetActiveScene().name == "MainMenu") { HoldColdOpen = false; return; }
 
         // First-contact discoverability timer — ColdOpen only, fires once (GDD cue).
         if (!_firstContactQueued)
@@ -211,22 +256,12 @@ public class StoryDirector : MonoBehaviour
             {
                 _firstContactQueued = true;
             }
-            else
+            // HoldColdOpen freezes the timer while the wake-up intro owns pacing.
+            else if (!HoldColdOpen)
             {
                 _coldOpenTimer += Time.deltaTime;
                 if (_coldOpenTimer >= FirstContactDelay)
-                {
-                    _firstContactQueued = true;
-                    SetStoryStep(StoryStep.FirstContact);
-                    QueueConversation("conv_first_contact");
-                    var phone = PlayerPhoneUI.Instance;
-                    if (phone != null) phone.FlashNotification("Incoming transmission");
-                    // Surface an on-screen cue too, so the player notices with the phone CLOSED — the
-                    // in-phone notification alone is invisible until they happen to open it. Reuses the
-                    // existing HAL HUD strip.
-                    if (HALCommentator.Instance != null)
-                        HALCommentator.Instance.VolunteerExternal("Incoming transmission. Open your phone.");
-                }
+                    TriggerFirstContact();
             }
         }
 
@@ -252,6 +287,7 @@ public class StoryDirector : MonoBehaviour
         BonfireInteraction.OnEat          += HandleCookedFood;
         GhostPlacement.OnPlaced           += HandleBuildingPlaced;
         VillageReachTrigger.OnVillageReached += HandleVillageReached;
+        NPCConversationTracker.OnConversationStarted += HandleNpcConversation;
     }
 
     void UnwireGameplayEvents()
@@ -262,11 +298,39 @@ public class StoryDirector : MonoBehaviour
         BonfireInteraction.OnEat          -= HandleCookedFood;
         GhostPlacement.OnPlaced           -= HandleBuildingPlaced;
         VillageReachTrigger.OnVillageReached -= HandleVillageReached;
+        NPCConversationTracker.OnConversationStarted -= HandleNpcConversation;
+    }
+
+    // Vendor visits double as Mission 1's "explore" discoverables (talking to the fish
+    // vendor + the goods vendor). The retired tutorial used to set these flags; we set
+    // them here so the phone quest rows, HAL lines, and Tev's report gate all work again.
+    void HandleNpcConversation(MonoBehaviour npc)
+    {
+        if (npc is FishMarketNPC) EarlyGameProgress.FishVendorVisited = true;
+        else if (npc is Alien7Vendor) EarlyGameProgress.GoodsVendorVisited = true;
     }
 
     void HandleCleanWater()    { SetFlag("hasWater", true);  CompleteByEvent("OnCleanWaterDrunk"); CheckGates(); }
     void HandleCookedFood()    { SetFlag("hasFood", true);   CompleteByEvent("OnCookedFoodEaten"); CheckGates(); }
-    void HandleVillageReached(){ SetFlag("villageReached", true); CompleteByEvent("OnVillageReached"); CheckGates(); }
+
+    void HandleVillageReached()
+    {
+        bool first = !GetFlag("villageReached");
+        SetFlag("villageReached", true);
+        CompleteByEvent("OnVillageReached");
+        CheckGates();
+
+        // Recognise the arrival: a fresh AI transmission + a queued village-arrival
+        // conversation that supersedes the free-time menu until the player answers it.
+        if (first)
+        {
+            QueueConversation("conv_village_arrival");
+            var phone = PlayerPhoneUI.Instance;
+            if (phone != null) phone.FlashNotification("Incoming transmission");
+            if (HALCommentator.Instance != null)
+                HALCommentator.Instance.VolunteerExternal("You've reached the village. Open your phone.");
+        }
+    }
 
     void HandleBuildingPlaced(BuildableEntry entry)
     {
@@ -302,16 +366,11 @@ public class StoryDirector : MonoBehaviour
             {
                 case StoryStep.FirstContact:
                 case StoryStep.NeedsWaterFood:
+                    // Mission 1 fork (GDD §2): no shelter-building before the village.
+                    // Once the player has secured water + food, send them straight out to
+                    // find the village — the old NeedsShelter "build a cabin" gate is gone
+                    // (building is now the optional, deferred Build branch).
                     if (GetFlag("hasWater") && GetFlag("hasFood"))
-                    {
-                        SetStoryStep(StoryStep.NeedsShelter);
-                        StartObjective("obj_shelter");
-                        QueueConversation("conv_gates", "gate_shelter");
-                        advanced = true;
-                    }
-                    break;
-                case StoryStep.NeedsShelter:
-                    if (GetFlag("hasShelter"))
                     {
                         SetStoryStep(StoryStep.Explore);
                         StartObjective("obj_village");
@@ -322,7 +381,7 @@ public class StoryDirector : MonoBehaviour
                 case StoryStep.Explore:
                     if (GetFlag("villageReached"))
                     {
-                        SetStoryStep(StoryStep.VillageSeam);   // seam: Tev's thread bolts on here later
+                        SetStoryStep(StoryStep.VillageSeam);   // seam: Mission 1 "Taken In" bolts on here
                         advanced = true;
                     }
                     break;

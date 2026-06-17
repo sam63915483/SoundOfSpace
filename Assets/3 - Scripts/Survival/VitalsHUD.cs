@@ -40,7 +40,7 @@ public class VitalsHUD : MonoBehaviour
     // ── Internal state ──────────────────────────────────────────────
     Canvas _canvas;
     RectTransform _cardRT;
-    StatRow _health, _hunger, _thirst, _shipPower, _shipFuel;
+    StatRow _health, _hunger, _thirst, _suitO2, _shipPower, _shipFuel;
     GameObject _chargingRow;
     TMP_Text _chargingText;
     SolarPanelCharger _solar;
@@ -142,6 +142,9 @@ public class VitalsHUD : MonoBehaviour
         UpdateStat(_health, health);
         UpdateStat(_hunger, hunger);
         UpdateStat(_thirst, thirst);
+        // §2: suit O2 (player vital, always shown). Falls back to full if the
+        // oxygen manager isn't up yet so the bar never reads empty pre-init.
+        UpdateStat(_suitO2, OxygenManager.Instance != null ? OxygenManager.Instance.SuitPercent : 1f);
         if (showShipPower)
         {
             UpdateStat(_shipPower, shipPower);
@@ -333,6 +336,9 @@ public class VitalsHUD : MonoBehaviour
         _health    = BuildStatRow(card, "HEALTH",     new Color32(0xFF, 0x6B, 0x9F, 0xFF), new Color32(0xE6, 0x39, 0x52, 0xFF));
         _hunger    = BuildStatRow(card, "HUNGER",     new Color32(0xFF, 0xC4, 0x77, 0xFF), new Color32(0xFF, 0x8A, 0x4C, 0xFF));
         _thirst    = BuildStatRow(card, "THIRST",     new Color32(0x7B, 0xE2, 0xFF, 0xFF), new Color32(0x4A, 0x8B, 0xFF, 0xFF));
+        // §2: suit O2 moved here from the standalone OxygenHUD. A player vital,
+        // so it always shows (the ship rows below toggle with piloting).
+        _suitO2    = BuildStatRow(card, "SUIT O2",    new Color32(0x5C, 0xC8, 0xFF, 0xFF), new Color32(0x2A, 0x9B, 0xE6, 0xFF));
         _shipPower = BuildStatRow(card, "SHIP POWER", new Color32(0xB8, 0x8C, 0xFF, 0xFF), new Color32(0xC9, 0x4F, 0xFF, 0xFF));
         _shipFuel  = BuildStatRow(card, "SHIP FUEL",  new Color32(0x8C, 0xE6, 0xFF, 0xFF), new Color32(0x4A, 0xB7, 0xFF, 0xFF));
 

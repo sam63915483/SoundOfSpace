@@ -5,6 +5,12 @@ public class EndlessManager : MonoBehaviour
 {
     public float distanceThreshold = 1000;
 
+    // Verbose origin-shift / registration logging. OFF by default — each shift
+    // otherwise writes two formatted strings to Player.log synchronously, a
+    // measurable hitch on the shift frame (and shifts happen often while flying).
+    // Flip on only when debugging the floating-origin system.
+    public static bool VerboseLog = false;
+
     private struct PhysicsEntry
     {
         public Transform transform;
@@ -160,7 +166,7 @@ public class EndlessManager : MonoBehaviour
         if (originOffset.magnitude <= distanceThreshold)
             return;
 
-        Debug.Log($"[EndlessManager] Origin shift firing. " +
+        if (VerboseLog) Debug.Log($"[EndlessManager] Origin shift firing. " +
             $"playerPhysicsPos={playerRigidbody.position}  " +
             $"magnitude={originOffset.magnitude:F1}  " +
             $"frame={Time.frameCount}  time={Time.time:F3}");
@@ -259,7 +265,7 @@ public class EndlessManager : MonoBehaviour
 
         // Bone restoration is deferred — see LateUpdate's _restoreOnFrame drain.
         if (_bonesRestorePending.Count > 0) _restoreOnFrame = Time.frameCount + 1;
-        Debug.Log($"[EndlessManager] Origin shift complete. Shifted {shifted} objects by {originOffset}. {_bonesRestorePending.Count} bones pending kinematic restore.");
+        if (VerboseLog) Debug.Log($"[EndlessManager] Origin shift complete. Shifted {shifted} objects by {originOffset}. {_bonesRestorePending.Count} bones pending kinematic restore.");
     }
 
     public void RegisterPhysicsObject(Transform t)
@@ -269,14 +275,14 @@ public class EndlessManager : MonoBehaviour
         {
             if (entry.transform == t) return;
         }
-        Debug.Log($"[EndlessManager] Registered physics object: {t.name}");
+        if (VerboseLog) Debug.Log($"[EndlessManager] Registered physics object: {t.name}");
         AddEntry(t);
     }
 
     public void UnregisterPhysicsObject(Transform t)
     {
         int removed = physicsObjects.RemoveAll(e => e.transform == t);
-        if (removed > 0)
+        if (removed > 0 && VerboseLog)
             Debug.Log($"[EndlessManager] Unregistered physics object: {t?.name}");
     }
 }

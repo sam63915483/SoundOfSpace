@@ -50,6 +50,13 @@ public class ConcertBlinder : MonoBehaviour
         _light.spotAngle = spotAngle;
         _light.range = range;
         _light.shadows = LightShadows.None; // perf — many of these in a scene
+
+        // Also light the GPU-instanced grass (see ConcertConeLight). Lower strength —
+        // blinders peak very bright (kick/drop/crash 18-50), so a full match would
+        // blow the grass pure white on every flash.
+        var grassPL = _light.GetComponent<GrassPointLight>();
+        if (grassPL == null) grassPL = _light.gameObject.AddComponent<GrassPointLight>();
+        grassPL.grassStrength = 0.3f;
     }
 
     // Live-poll the InputSettings.fxConcertShadows toggle. Default None matches

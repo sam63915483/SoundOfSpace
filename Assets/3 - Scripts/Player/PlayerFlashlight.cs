@@ -44,6 +44,10 @@ public class PlayerFlashlight : MonoBehaviour
     public Vector2 panicStutterInterval = new Vector2(6f, 10f);
     public Vector2 dyingDipInterval = new Vector2(35f, 55f);
 
+    [Header("Grass lighting")]
+    [Tooltip("How strongly the torch lights the GPU-instanced grass. The grass is drawn with DrawMeshInstanced and can't receive Unity's additive spot light, so its torch response is injected through a global shader uniform instead. 1 ≈ matches the surrounding ground; raise if the grass under the beam still looks too dark at night.")]
+    public float grassLightStrength = 1.0f;
+
     [Header("Sway")]
     public bool enableSway = true;
     [Tooltip("Peak rotation in degrees applied at full walking speed.")]
@@ -184,6 +188,36 @@ public class PlayerFlashlight : MonoBehaviour
             flashlight.transform.localRotation = _baseLocalRot;
         }
 
+    }
+
+    // Global shader uniforms read by CartoonGrass/SimpleGrass so the instanced
+    // grass lights up under the torch (it can't receive the real additive spot
+    // light — see the shader's uniform block). Pushed every frame from the
+    // finished light state; black colour = off = no effect.
+    static readonly int _flashPosId    = Shader.PropertyToID("_FlashlightPos");
+    static readonly int _flashDirId    = Shader.PropertyToID("_FlashlightDir");
+    static readonly int _flashColorId  = Shader.PropertyToID("_FlashlightColor");
+    static readonly int _flashParamsId = Shader.PropertyToID("_FlashlightParams");
+
+    void LateUpdate()
+    {
+        // Run unconditionally (Update has several early-returns) so the grass
+        // globals always reflect the torch's final state for this frame.
+        bool on = flashlight != null && flashlight.enabled && flashlight.intensity > 0f;
+        if (on)
+        {
+            Transform lt = flashlight.transform;
+            Shader.SetGlobalVector(_flashPosId, lt.position);
+            Shader.SetGlobalVector(_flashDirId, lt.forward);
+            Shader.SetGlobalColor(_flashColorId, flashlight.color * (flashlight.intensity * grassLightStrength));
+            float cosOuter = Mathf.Cos(flashlight.spotAngle * 0.5f * Mathf.Deg2Rad);
+            float cosInner = Mathf.Cos(flashlight.innerSpotAngle * 0.5f * Mathf.Deg2Rad);
+            Shader.SetGlobalVector(_flashParamsId, new Vector4(flashlight.range, cosOuter, cosInner, 0f));
+        }
+        else
+        {
+            Shader.SetGlobalColor(_flashColorId, Color.black);   // off → zero contribution
+        }
     }
 
     /// <summary>

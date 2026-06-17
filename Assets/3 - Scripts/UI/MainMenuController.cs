@@ -41,6 +41,16 @@ public class MainMenuController : MonoBehaviour
     // navigator was intermittent in built games; this is deterministic.
     GameObject mainMenuButtonsRoot;
 
+    // §1: looping space-ambient track for the menu. Assign the clip in
+    // MainMenu.unity on the MainMenuController object. Left null = silent menu
+    // (graceful). Built as a runtime AudioSource so no scene component is needed.
+    [Header("Audio")]
+    [SerializeField] AudioClip menuAmbience;
+    [SerializeField, Range(0f, 1f)] float menuAmbienceVolume = 0.5f;
+    AudioSource _ambienceSource;
+    // Button hover/click SFX are handled by the shared UiSfxPlayer (used by the
+    // save/load UI and the in-game pause menu too) — see UiSfxPlayer.Attach.
+
     void Awake()
     {
         Time.timeScale = 1f;
@@ -49,6 +59,20 @@ public class MainMenuController : MonoBehaviour
         AudioListener.volume = 1f;
 
         BuildCanvas();
+        StartMenuAmbience();
+    }
+
+    void StartMenuAmbience()
+    {
+        if (menuAmbience == null) return;   // no clip assigned → silent menu
+        _ambienceSource = gameObject.AddComponent<AudioSource>();
+        _ambienceSource.clip = menuAmbience;
+        _ambienceSource.loop = true;
+        _ambienceSource.playOnAwake = false;
+        _ambienceSource.volume = menuAmbienceVolume;
+        _ambienceSource.spatialBlend = 0f;  // 2D
+        _ambienceSource.ignoreListenerPause = true;
+        _ambienceSource.Play();
     }
 
     void Start()
@@ -313,6 +337,7 @@ public class MainMenuController : MonoBehaviour
         colors.fadeDuration = 0.12f;
         btn.colors = colors;
         btn.onClick.AddListener(() => onClick());
+        UiSfxPlayer.Attach(btn);   // shared hover + click SFX
 
         // Inner accent strip (top)
         var topStrip = NewUI("Accent", btnRT);
@@ -533,8 +558,14 @@ public class MainMenuController : MonoBehaviour
         tick("note UI");          yield return null;
         if (InteractPromptUI.Instance == null) { var go = new GameObject("InteractPromptUI"); DontDestroyOnLoad(go); go.AddComponent<InteractPromptUI>(); }
         tick("interact prompt");  yield return null;
+        if (NewspaperReaderUI.Instance == null) { var go = new GameObject("NewspaperReaderUI"); DontDestroyOnLoad(go); go.AddComponent<NewspaperReaderUI>(); }
+        if (MonumentLinkPopupUI.Instance == null) { var go = new GameObject("MonumentLinkPopupUI"); DontDestroyOnLoad(go); go.AddComponent<MonumentLinkPopupUI>(); }
         if (VitalsHUD.Instance == null) { var go = new GameObject("VitalsHUD"); DontDestroyOnLoad(go); go.AddComponent<VitalsHUD>(); }
         tick("vitals HUD");       yield return null;
+        if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
+        tick("oxygen system");    yield return null;
+        if (OxygenHUD.Instance == null) { var go = new GameObject("OxygenHUD"); DontDestroyOnLoad(go); go.AddComponent<OxygenHUD>(); }
+        tick("oxygen HUD");       yield return null;
         if (WaterFillHUD.Instance == null) { var go = new GameObject("WaterFillHUD"); DontDestroyOnLoad(go); go.AddComponent<WaterFillHUD>(); }
         tick("water HUD");        yield return null;
         if (TabbedPauseMenu.Instance == null) { var go = new GameObject("TabbedPauseMenu"); DontDestroyOnLoad(go); go.AddComponent<TabbedPauseMenu>(); }
@@ -701,11 +732,35 @@ public class MainMenuController : MonoBehaviour
             DontDestroyOnLoad(go);
             go.AddComponent<InteractPromptUI>();
         }
+        if (NewspaperReaderUI.Instance == null)
+        {
+            var go = new GameObject("NewspaperReaderUI");
+            DontDestroyOnLoad(go);
+            go.AddComponent<NewspaperReaderUI>();
+        }
+        if (MonumentLinkPopupUI.Instance == null)
+        {
+            var go = new GameObject("MonumentLinkPopupUI");
+            DontDestroyOnLoad(go);
+            go.AddComponent<MonumentLinkPopupUI>();
+        }
         if (VitalsHUD.Instance == null)
         {
             var go = new GameObject("VitalsHUD");
             DontDestroyOnLoad(go);
             go.AddComponent<VitalsHUD>();
+        }
+        if (OxygenManager.Instance == null)
+        {
+            var go = new GameObject("OxygenManager");
+            DontDestroyOnLoad(go);
+            go.AddComponent<OxygenManager>();
+        }
+        if (OxygenHUD.Instance == null)
+        {
+            var go = new GameObject("OxygenHUD");
+            DontDestroyOnLoad(go);
+            go.AddComponent<OxygenHUD>();
         }
         if (WaterFillHUD.Instance == null)
         {

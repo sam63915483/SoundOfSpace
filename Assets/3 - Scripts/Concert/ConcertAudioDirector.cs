@@ -753,6 +753,7 @@ public class ConcertAudioDirector : MonoBehaviour
     SpeakerSource _lastLoggedSource;
     bool _lastLoggedIsPlaying;
     float _nextDiagLogTime;
+    float _nextSourceScanTime;
 
     SpeakerSource ResolveSource()
     {
@@ -767,20 +768,28 @@ public class ConcertAudioDirector : MonoBehaviour
         // — exactly the symptom that shows up in builds where the speaker
         // registration order ends up "wrong". Prefer ANY currently-playing
         // music source; only fall back to a stopped one if nothing is live.
-        SpeakerSource picked = null;
-        if (_source != null && _source.IsPlaying) picked = _source;
-        if (picked == null)
+        SpeakerSource picked = (_source != null && _source.IsPlaying) ? _source : null;
+        // FindObjectsOfType is the expensive fallback. Off the concert stage no
+        // music source is ever playing, so the cheap path above always misses and
+        // this scan used to run EVERY frame for nothing (a per-frame allocation +
+        // full-scene walk during 99% of gameplay). Throttle the rescan to ~2 Hz —
+        // a song starting is picked up within half a second, which the lights'
+        // own smoothing/decay hides completely.
+        if (picked == null && Time.time >= _nextSourceScanTime)
         {
+            _nextSourceScanTime = Time.time + 0.5f;
             var all = FindObjectsOfType<SpeakerSource>();
             SpeakerSource fallback = null;
             for (int i = 0; i < all.Length; i++)
             {
                 if (all[i] == null || !all[i].isMusicSource) continue;
-                if (all[i].IsPlaying) { _source = all[i]; picked = all[i]; break; }
+                if (all[i].IsPlaying) { _source = all[i]; break; }
                 if (fallback == null) fallback = all[i];
             }
-            if (picked == null) { if (_source == null) _source = fallback; picked = _source; }
+            if (_source == null) _source = fallback;
+            picked = _source;
         }
+        if (picked == null) picked = _source;
 
         // Diagnostic: log when the resolved source changes, OR once every 5
         // seconds with current state. Lets us verify in Player.log that the

@@ -60,6 +60,12 @@ public class BloodFX : MonoBehaviour
     [Tooltip("Scale the die-out starts from when the gush ends, then shrinks to zero over sprayDieSeconds. 1.0 = no drop (continues from the full gush and gradually fades); lower = a visible step down first.")]
     [Range(0f, 1f)] [SerializeField] float sprayDieStartScale = 1f;
 
+    [Header("Spray Feel")]
+    [Tooltip("Seconds each beat takes to RISE from the resting scale up to its spurt (the 10%->100% ramp). Higher = a slower, softer, more organic spurt instead of a snap.")]
+    [SerializeField] float sprayBeatRiseSeconds = 0.25f;
+    [Tooltip("Degrees/second the whole spray spins around the wound's outward axis, so the blood corkscrews out of the bullet hole. 0 = no spin.")]
+    [SerializeField] float spraySpinSpeed = 200f;
+
     Camera _depthCam;
 
     void Awake()
@@ -117,12 +123,13 @@ public class BloodFX : MonoBehaviour
         var fx = Instantiate(sprayPrefab, spawnPos, rot);
         if (!Mathf.Approximately(sprayScale, 1f)) fx.transform.localScale *= sprayScale;
 
-        // Simulate every particle layer in LOCAL space so the blood rides with
-        // the enemy. The enemy is parented to a planet orbiting at high world
-        // velocity; in World space the emitter races away from its just-emitted
-        // particles, so they streak off into space and vanish (this is why the
-        // droplets showed in the editor — sim paused — but not in play). Local
-        // space pins them to the moving body.
+        // Simulate every particle layer in LOCAL space so the whole effect stays
+        // in ONE coherent frame (cone + droplets keep their authored relationship
+        // — droplets erupting from the cone tip and shooting straight out) and
+        // rides the moving enemy without streaking off into space. The leftover
+        // artefact of Local space — the enemy's yaw rigidly sweeping the far
+        // droplets sideways — is cancelled by BloodSpray freezing the effect's
+        // world rotation each LateUpdate.
         ForceLocalSimulationSpace(fx);
 
         // Attach to the nearest BONE of the hit enemy (not just the root) so the
@@ -146,7 +153,7 @@ public class BloodFX : MonoBehaviour
         if (anim == null) anim = fx.AddComponent<BloodSpray>();
         anim.Init(sprayLifetime, sprayGrowSeconds, targetScale,
                   sprayRestScale, sprayBeatIntervalMin, sprayBeatIntervalMax, sprayBeatFallSeconds,
-                  sprayDieSeconds, sprayDieStartScale);
+                  sprayDieSeconds, sprayDieStartScale, sprayBeatRiseSeconds, spraySpinSpeed);
     }
 
     /// <summary>
@@ -212,18 +219,67 @@ public class BloodFX : MonoBehaviour
         foreach (var t in root.GetComponentsInChildren<Transform>(true))
         {
             if (t == root) continue;
+
+            // Only attach blood to real skeletal bones. The enemy rig also contains
+            // the world-space HealthBar canvas (a RectTransform scaled to 0.01) and
+            // its children. When the body-centre point happens to land nearest one of
+            // those — pose-dependent, so it only bites now and then — parenting the FX
+            // under it (worldPositionStays) produced a sheared, inflated lossyScale,
+            // and the splash's scalingMode=Hierarchy then rendered it several times
+            // oversized: the "one splash comes in 4x" bug. Skip UI nodes and any
+            // node whose world scale is tiny or non-uniform (a shear/scale hack).
+            if (t is RectTransform) continue;
+            Vector3 ls = t.lossyScale;
+            float mn = Mathf.Min(ls.x, Mathf.Min(ls.y, ls.z));
+            float mx = Mathf.Max(ls.x, Mathf.Max(ls.y, ls.z));
+            if (mn <= 0.05f || mx > mn * 4f) continue;
+
             float d = (t.position - worldPoint).sqrMagnitude;
             if (d < bestSqr) { bestSqr = d; best = t; }
         }
         return best != null ? best : root;
     }
 
+    // Put EVERY particle layer in LOCAL space so the whole effect stays in one
+    // coherent frame and rides the moving enemy (instead of streaking off into
+    // space from the planet's orbital velocity, which is why the droplets showed
+    // in the editor — sim paused — but not in play). Keeping cone and droplets in
+    // the SAME space is what preserves their authored relationship: droplets
+    // erupting from the cone tip and shooting straight out. Inherit Velocity stays
+    // off so the emitter's own speed isn't launched into the particles. The one
+    // remaining Local-space artefact — the enemy's yaw sweeping the far droplets
+    // sideways — is cancelled by BloodSpray freezing the whole effect's world
+    // rotation (it follows the wound's position but never spins).
     static void ForceLocalSimulationSpace(GameObject go)
     {
         foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true))
         {
             var main = ps.main;
             main.simulationSpace = ParticleSystemSimulationSpace.Local;
+
+            var inherit = ps.inheritVelocity;
+            inherit.enabled = false;
+
+            // The droplet layers carry world-space GRAVITY (gravityModifier), which
+            // always pulls straight DOWN in world space however the effect is
+            // aimed. That's invisible in the asset preview — the fountain points up,
+            // so "down" runs along its own axis — but in game the wound points
+            // sideways, so gravity drags the droplets OFF the cone's axis: the cone
+            // fires one way and the droplets fall another. (Gravity is independent
+            // of simulation space and rotation, which is why nothing else fixed it.)
+            // Replace it with the SAME pull but along the effect's own -Y, i.e. back
+            // toward the wound, so the droplets arc back along the cone exactly like
+            // the editor whichever way the wound faces. BloodSpray freezes the
+            // effect's rotation, so local -Y is a stable world direction.
+            float g = main.gravityModifier.constantMax;
+            if (g != 0f)
+            {
+                main.gravityModifier = 0f;
+                var force = ps.forceOverLifetime;
+                force.enabled = true;
+                force.space = ParticleSystemSimulationSpace.Local;
+                force.y = new ParticleSystem.MinMaxCurve(Physics.gravity.y * g);
+            }
         }
     }
 }

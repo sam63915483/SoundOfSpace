@@ -11,6 +11,12 @@ public class CelestialBody : GravityObject {
     public float surfaceGravity;
     public Vector3 initialVelocity;
     public string bodyName = "Unnamed";
+    // When true this body still attracts the player and ship and is fully
+    // targetable, but is NOT a gravity source for other celestial bodies and is
+    // not integrated by the N-body sim (it stays where placed). Used for the
+    // black hole, which must not perturb the sun/planet orbits. See
+    // NBodySimulation.FixedUpdate / CalculateAcceleration.
+    public bool isStaticAttractor = false;
     Transform meshHolder;
 
     public Vector3 velocity { get; private set; }
