@@ -240,7 +240,11 @@ public class Hotbar : MonoBehaviour
     // appear" target burns CPU forever (CLAUDE.md: throttle retries, see
     // LightLookAt). Once everything is found this whole block is skipped.
     float _resolveRetryTimer;
-    const float ResolveRetryInterval = 0.5f;
+    // 2s, not 0.5s: each retry does 6× FindObjectOfType(true) (scans inactive
+    // objects too), and pistol/ship simply don't exist for most of the early
+    // game — so this fires forever. A 2s cadence cuts that idle cost 4×; an
+    // equippable icon appearing up to 2s after the item spawns is imperceptible.
+    const float ResolveRetryInterval = 2f;
 
     bool ResolveRefs()
     {

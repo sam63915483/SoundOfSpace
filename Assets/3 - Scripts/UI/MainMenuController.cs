@@ -558,6 +558,8 @@ public class MainMenuController : MonoBehaviour
         tick("note UI");          yield return null;
         if (InteractPromptUI.Instance == null) { var go = new GameObject("InteractPromptUI"); DontDestroyOnLoad(go); go.AddComponent<InteractPromptUI>(); }
         tick("interact prompt");  yield return null;
+        if (NewspaperReaderUI.Instance == null) { var go = new GameObject("NewspaperReaderUI"); DontDestroyOnLoad(go); go.AddComponent<NewspaperReaderUI>(); }
+        if (MonumentLinkPopupUI.Instance == null) { var go = new GameObject("MonumentLinkPopupUI"); DontDestroyOnLoad(go); go.AddComponent<MonumentLinkPopupUI>(); }
         if (VitalsHUD.Instance == null) { var go = new GameObject("VitalsHUD"); DontDestroyOnLoad(go); go.AddComponent<VitalsHUD>(); }
         tick("vitals HUD");       yield return null;
         if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
@@ -729,6 +731,18 @@ public class MainMenuController : MonoBehaviour
             var go = new GameObject("InteractPromptUI");
             DontDestroyOnLoad(go);
             go.AddComponent<InteractPromptUI>();
+        }
+        if (NewspaperReaderUI.Instance == null)
+        {
+            var go = new GameObject("NewspaperReaderUI");
+            DontDestroyOnLoad(go);
+            go.AddComponent<NewspaperReaderUI>();
+        }
+        if (MonumentLinkPopupUI.Instance == null)
+        {
+            var go = new GameObject("MonumentLinkPopupUI");
+            DontDestroyOnLoad(go);
+            go.AddComponent<MonumentLinkPopupUI>();
         }
         if (VitalsHUD.Instance == null)
         {

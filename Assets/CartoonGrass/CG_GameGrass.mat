@@ -26,8 +26,15 @@ Material:
     m_Ints: []
     m_Floats:
     - _AmbientBoost: 0
+    - _ColorVarAmount: 0.12
+    - _ColorVarScale: 6
+    - _FlashlightResponse: 0.5
     - _GradientPower: 1
     - _InvertGradient: 0
+    - _LanternGrassRadius: 0.5
+    - _PointLightBoost: 8
+    - _ShadowFill: 0.15
+    - _SpotGrassReach: 50
     m_Colors:
     - _BottomColor: {r: 0.32, g: 0.45, b: 0.17, a: 1}
     - _TopColor: {r: 0.64, g: 0.81, b: 0.17, a: 1}

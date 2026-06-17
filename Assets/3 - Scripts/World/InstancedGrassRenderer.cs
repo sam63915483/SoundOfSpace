@@ -97,6 +97,23 @@ public class InstancedGrassRenderer : MonoBehaviour
     [Tooltip("Optional. A .bytes file produced by Tools ▸ Bake Planet ▸ Bake Grass. When set, grass is NOT raycast/streamed at runtime — it's loaded from these frozen, editor-verified positions and merely activated/deactivated as you move. This makes the floating-on-respawn bug structurally impossible (no runtime raycast can ever hit the placeholder sphere) and is identical every load. Leave EMPTY to fall back to the live streaming behaviour.")]
     public TextAsset bakedGrass;
 
+    [Header("Horizon wash fix (depth silhouette dilation)")]
+    [Range(0f, 4f)]
+    [Tooltip("Fattens each blade by this many screen pixels in the DEPTH pre-pass only (never in colour). The atmosphere post tints pixels by depth read from a single-sampled depth texture; with MSAA on, a thin far blade anti-aliases in colour but misses the depth sample, so the atmosphere washes it to sky colour (the 'glass'/see-through blades on the horizon). Dilating the depth silhouette ~1-2px makes the atmosphere read 'near' across the whole blade, killing the wash. 0 = off. Raise if some blades still glass out; lower if grass gets a faint un-hazed fringe.")]
+    // With MSAA on, a thin blade anti-aliases into a partly-green pixel in colour
+    // but its sliver misses that pixel's single depth sample, so the atmosphere
+    // reads "sky" there and washes the blade cyan. This fattens the blade's DEPTH
+    // silhouette a couple of px so the depth sample lands inside the blade and the
+    // atmosphere reads "near". Only works now that the depth material has
+    // instancing enabled (see EnsureDepthCB) — before that the prepass drew
+    // nothing and this had no effect at any value. Raise if blades still glass;
+    // lower if you see a faint un-hazed fringe. 0 = off.
+    public float depthDilatePixels = 0f;
+
+    [Header("Depth pre-pass material (build-critical)")]
+    [Tooltip("Material asset using the CartoonGrass/GrassDepth shader with GPU Instancing ENABLED. This MUST be a real asset referenced here — not created in code — or the build's variant stripper (Graphics ▸ Instancing Variants = Strip Unused) drops the shader's INSTANCING_ON variant, the CommandBuffer.DrawMeshInstanced depth pre-pass silently draws nothing, and grass goes see-through against the sky in the BUILD only (the Editor compiles variants on demand, so it looks fine there). Leave empty only as a fallback to the old code-created material.")]
+    public Material depthMaterial;
+
     // ── internals ───────────────────────────────────────────────────────────
     class Cell
     {
@@ -105,15 +122,15 @@ public class InstancedGrassRenderer : MonoBehaviour
         public Vector3 localAnchor;
     }
 
-    readonly Dictionary<long, Cell> _active = new Dictionary<long, Cell>();
+    readonly Dictionary<long, Cell> _active = new Dictionary<long, Cell>(2048);
     // Reuse Cell objects (and their Lists) instead of allocating one per
     // streamed cell — running fast streams hundreds of cells/sec, and the
     // churn was driving periodic GC stalls.
     readonly Stack<Cell> _cellPool = new Stack<Cell>();
     readonly List<long> _scratchRemove = new List<long>();
     struct NewCell { public long id; public int face, cu, cv; public float distSq; public Vector3 localAnchor; }
-    readonly List<NewCell> _cand = new List<NewCell>();
-    readonly HashSet<long> _seen = new HashSet<long>();
+    readonly List<NewCell> _cand = new List<NewCell>(4096);
+    readonly HashSet<long> _seen = new HashSet<long>(4096);
     static readonly System.Comparison<NewCell> ByDist = (a, b) => a.distSq.CompareTo(b.distSq);
 
     float[] _meshBottomY;
@@ -127,6 +144,16 @@ public class InstancedGrassRenderer : MonoBehaviour
     PlayerController _player;
     bool _playerLayerExcluded;
     float _tick;
+
+    // Stream() steady-state skip. When the viewer hasn't crossed into a new
+    // grass cell and the previous scan already placed every in-range cell, the
+    // ~3000-cell candidate scan would re-project the whole window only to find
+    // everything already active. Cache the last scanned cell + grass distance so
+    // we can skip the scan entirely while standing still or moving slowly — that
+    // skipped scan was the bulk of grass CPU near spawn.
+    int _lastPf = int.MinValue, _lastPcu = int.MinValue, _lastPcv = int.MinValue;
+    float _lastStreamRadius = -1f;
+    bool _streamSettled;
 
     bool _meshInit;
     bool _baked;                              // true once a bakedGrass asset is loaded
@@ -304,6 +331,7 @@ public class InstancedGrassRenderer : MonoBehaviour
 
     void ClearActive()
     {
+        _streamSettled = false;   // next Stream() must repopulate from scratch
         if (_active.Count == 0) return;
         foreach (var c in _active.Values) ReturnCell(c);   // no-op in baked mode; pools in live mode
         _active.Clear();
@@ -314,20 +342,24 @@ public class InstancedGrassRenderer : MonoBehaviour
     // lanterns (and any GrassPointLight) over the grass leave it dark. Each frame
     // we hand the shader the nearby ones as faked point lights — same trick the
     // flashlight uses. Count is 0 when none are near, so the shader loop is free.
-    const int GrassMaxPointLights = 8;
+    const int GrassMaxPointLights = 16;   // raised from 8 so a dense concert rig's flood/blinder lights reach the grass (the ground gets all real lights uncapped; grass only gets this many injected). Only costs GPU where this many lights are actually near.
     static readonly int _gplPosId    = Shader.PropertyToID("_GrassPointLightPos");
     static readonly int _gplColorId  = Shader.PropertyToID("_GrassPointLightColor");
     static readonly int _gplParamsId = Shader.PropertyToID("_GrassPointLightParams");
+    static readonly int _gplDirId    = Shader.PropertyToID("_GrassPointLightDir");
     static readonly int _gplCountId  = Shader.PropertyToID("_GrassPointLightCount");
+    static readonly int _grassSpotCenterId = Shader.PropertyToID("_GrassSpotCenter");
     static readonly Vector4[] _gplPos    = new Vector4[GrassMaxPointLights];
     static readonly Vector4[] _gplColor  = new Vector4[GrassMaxPointLights];
     static readonly Vector4[] _gplParams = new Vector4[GrassMaxPointLights];
+    static readonly Vector4[] _gplDir    = new Vector4[GrassMaxPointLights];
+    static readonly float[]   _gplDistSq = new float[GrassMaxPointLights];
 
     void InjectGrassPointLights(Vector3 viewer)
     {
-        var all = GrassPointLight.All;
         int n = 0;
-        for (int i = 0; i < all.Count && n < GrassMaxPointLights; i++)
+        var all = GrassPointLight.All;
+        for (int i = 0; i < all.Count; i++)
         {
             var gp = all[i];
             if (gp == null || gp.Light == null || !gp.isActiveAndEnabled) continue;
@@ -336,12 +368,46 @@ public class InstancedGrassRenderer : MonoBehaviour
             // Only inject lights whose reach can touch grass near the viewer — keeps
             // the per-fragment loop empty (and free) everywhere but the lit area.
             float gate = reach + spawnRadius;
-            if ((lt.transform.position - viewer).sqrMagnitude > gate * gate) continue;
-            _gplPos[n] = lt.transform.position;
+            float dsq = (lt.transform.position - viewer).sqrMagnitude;
+            if (dsq > gate * gate) continue;
+
+            // Keep the NEAREST GrassMaxPointLights to the viewer. A dense village has
+            // far more than 8 lanterns + torches in range; taking the first 8 in list
+            // (registration) order would drop the lantern right next to the player, so
+            // its grass gets no fill and the sun's shadow looks like it "wins". When
+            // the slots are full, replace the current farthest if this one is nearer.
+            int slot;
+            if (n < GrassMaxPointLights) { slot = n; n++; }
+            else
+            {
+                int farthest = 0;
+                for (int k = 1; k < GrassMaxPointLights; k++)
+                    if (_gplDistSq[k] > _gplDistSq[farthest]) farthest = k;
+                if (dsq >= _gplDistSq[farthest]) continue;   // not nearer than any held light
+                slot = farthest;
+            }
+
+            _gplPos[slot] = lt.transform.position;
             Color c = lt.color * (lt.intensity * Mathf.Max(0f, gp.grassStrength));
-            _gplColor[n] = new Vector4(c.r, c.g, c.b, 1f);
-            _gplParams[n] = new Vector4(reach, 0f, 0f, 0f);
-            n++;
+            _gplColor[slot] = new Vector4(c.r, c.g, c.b, 1f);
+            _gplDistSq[slot] = dsq;
+
+            // Spot lights (concert cone/strobe/blinder) only light grass inside their
+            // beam; point lights (lanterns/torches) are omnidirectional. Pass the spot
+            // forward + cone cosines so the shader can gate the cone; w = 0 = omni.
+            if (lt.type == LightType.Spot)
+            {
+                Vector3 f = lt.transform.forward;
+                float cosOuter = Mathf.Cos(lt.spotAngle * 0.5f * Mathf.Deg2Rad);
+                float cosInner = Mathf.Cos(Mathf.Max(0f, lt.innerSpotAngle) * 0.5f * Mathf.Deg2Rad);
+                _gplParams[slot] = new Vector4(reach, cosOuter, cosInner, 0f);
+                _gplDir[slot] = new Vector4(f.x, f.y, f.z, 1f);
+            }
+            else
+            {
+                _gplParams[slot] = new Vector4(reach, 0f, 0f, 0f);
+                _gplDir[slot] = new Vector4(0f, 0f, 0f, 0f);
+            }
         }
         Shader.SetGlobalFloat(_gplCountId, n);
         if (n > 0)
@@ -349,7 +415,17 @@ public class InstancedGrassRenderer : MonoBehaviour
             Shader.SetGlobalVectorArray(_gplPosId, _gplPos);
             Shader.SetGlobalVectorArray(_gplColorId, _gplColor);
             Shader.SetGlobalVectorArray(_gplParamsId, _gplParams);
+            Shader.SetGlobalVectorArray(_gplDirId, _gplDir);
         }
+
+        // Concert centre = centroid of the injected SPOT lights (w=1). The shader fades
+        // spot light off the grass past _SpotGrassReach metres from here, so grass on
+        // far hills darkens with the terrain. (Lanterns are point lights, w=0, excluded.)
+        Vector3 spotCenter = Vector3.zero;
+        int spotCount = 0;
+        for (int i = 0; i < n; i++)
+            if (_gplDir[i].w > 0.5f) { spotCenter += new Vector3(_gplPos[i].x, _gplPos[i].y, _gplPos[i].z); spotCount++; }
+        if (spotCount > 0) Shader.SetGlobalVector(_grassSpotCenterId, spotCenter / spotCount);
     }
 
     void Stream()
@@ -378,23 +454,55 @@ public class InstancedGrassRenderer : MonoBehaviour
         float inRange = spawnRadius + cellSize;
         float inRangeSq = inRange * inRange;
 
+        // ── Steady-state skip ────────────────────────────────────────────────
+        // If the viewer is still in the same grass cell, the grass distance is
+        // unchanged, the previous scan placed every in-range cell, and nothing
+        // was culled this tick, then the scan below would re-project ~thousands
+        // of cells only to find them all already active. The one-cell margin in
+        // `inRange` (spawnRadius + cellSize) means the prior scan already covered
+        // everything reachable without leaving this cell, so skipping is safe.
+        bool sameCell = pf == _lastPf && pcu == _lastPcu && pcv == _lastPcv;
+        if (sameCell && spawnRadius == _lastStreamRadius && _streamSettled
+            && _scratchRemove.Count == 0)
+            return;
+        _lastPf = pf; _lastPcu = pcu; _lastPcv = pcv; _lastStreamRadius = spawnRadius;
+
         _cand.Clear();
         _seen.Clear();
         for (int cu = pcu - win; cu <= pcu + win; cu++)
         for (int cv = pcv - win; cv <= pcv + win; cv++)
         {
-            Vector3 d = SpawnerCubeface.FaceUVToDirection(pf, (cu + 0.5f) * faceUVPerCell, (cv + 0.5f) * faceUVPerCell);
-            if (d.sqrMagnitude < 1e-6f) continue;
-            d.Normalize();
-            SpawnerCubeface.DirectionToFaceUV(d, out int cf, out float cuu, out float cvv);
-            int ccu = Mathf.RoundToInt(cuu / faceUVPerCell - 0.5f);
-            int ccv = Mathf.RoundToInt(cvv / faceUVPerCell - 0.5f);
+            float fu = (cu + 0.5f) * faceUVPerCell;
+            float fv = (cv + 0.5f) * faceUVPerCell;
+
+            int cf, ccu, ccv;
+            float ccfu, ccfv;
+            // Fast path: a cell whose face-UV stays within the face ([-1,1] on
+            // both axes) lies on the current face pf and maps to itself — the
+            // FaceUVToDirection → DirectionToFaceUV round-trip is the exact
+            // identity for in-face points, so skip it. Only cells spilling past
+            // a cube edge (|fu|>1 or |fv|>1) need the reprojection to find which
+            // neighbouring face they wrap onto. Eliminating the round-trip for
+            // the in-face bulk is what makes the scan cheap while walking.
+            if (fu >= -1f && fu <= 1f && fv >= -1f && fv <= 1f)
+            {
+                cf = pf; ccu = cu; ccv = cv; ccfu = fu; ccfv = fv;
+            }
+            else
+            {
+                Vector3 d = SpawnerCubeface.FaceUVToDirection(pf, fu, fv);
+                if (d.sqrMagnitude < 1e-6f) continue;
+                SpawnerCubeface.DirectionToFaceUV(d, out cf, out float cuu, out float cvv);
+                ccu = Mathf.RoundToInt(cuu / faceUVPerCell - 0.5f);
+                ccv = Mathf.RoundToInt(cvv / faceUVPerCell - 0.5f);
+                ccfu = (ccu + 0.5f) * faceUVPerCell;
+                ccfv = (ccv + 0.5f) * faceUVPerCell;
+            }
+
             long id = SpawnerCubeface.EncodeCell(cf, ccu, ccv);
             if (!_seen.Add(id)) continue;
             if (_active.ContainsKey(id)) continue;
 
-            float ccfu = (ccu + 0.5f) * faceUVPerCell;
-            float ccfv = (ccv + 0.5f) * faceUVPerCell;
             if (ccfu < -1f || ccfu > 1f || ccfv < -1f || ccfv > 1f) continue;
 
             // In baked mode every patch/coverage/slope/water decision was already
@@ -439,6 +547,13 @@ public class InstancedGrassRenderer : MonoBehaviour
             }
             added++;
         }
+
+        // We placed every candidate this tick iff the set fit within the per-tick
+        // budget. If it overflowed (e.g. a teleport repopulating a fresh area),
+        // leftover cells still need placing on later ticks, so stay unsettled and
+        // keep scanning until the area is full; otherwise the steady-state skip
+        // above can engage next tick.
+        _streamSettled = _cand.Count <= maxCellsPerUpdate;
     }
 
     // Rent a cleared Cell from the pool (or allocate if the pool is empty).
@@ -591,15 +706,48 @@ public class InstancedGrassRenderer : MonoBehaviour
     Material _depthMat;
     CommandBuffer _depthCB;
     Camera _depthCBCam;
+    static readonly int _depthDilateId = Shader.PropertyToID("_DepthDilatePixels");
+    bool _warnedNoDepthShader;   // gates the one-time "shader stripped" error
 
     CommandBuffer EnsureDepthCB(Camera cam)
     {
         if (cam == null) return null;
         if (_depthMat == null)
         {
-            var sh = Shader.Find("CartoonGrass/GrassDepth");
-            if (sh == null) return null;
-            _depthMat = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
+            // Use the assigned depth MATERIAL ASSET's shader when present. That asset
+            // (instancing ON, referenced from this component → shipped in the build)
+            // is what forces the shader's INSTANCING_ON variant to survive build-time
+            // variant stripping (Graphics ▸ Instancing Variants = Strip Unused). A
+            // code-created material via Shader.Find does NOT mark that variant used,
+            // so the build strips it and CommandBuffer.DrawMeshInstanced draws NOTHING
+            // — grass then has no depth and washes see-through against the sky in the
+            // BUILD only (the Editor compiles variants on demand, so it looks fine).
+            Shader sh = depthMaterial != null ? depthMaterial.shader : Shader.Find("CartoonGrass/GrassDepth");
+            if (sh == null)
+            {
+                if (!_warnedNoDepthShader)
+                {
+                    _warnedNoDepthShader = true;
+                    Debug.LogError("[InstancedGrassRenderer] 'CartoonGrass/GrassDepth' shader not found — " +
+                                   "it was stripped from the build. Assign a GrassDepth material asset to " +
+                                   "'depthMaterial' (or add the shader to Graphics ▸ Always Included Shaders). " +
+                                   "Grass will glass out against the sky until then.");
+                }
+                return null;
+            }
+            // enableInstancing is MANDATORY: a code-created material has it OFF by
+            // default, and CommandBuffer.DrawMeshInstanced throws ("doesn't enable
+            // instancing") and draws nothing without it.
+            _depthMat = new Material(sh) { hideFlags = HideFlags.HideAndDontSave, enableInstancing = true };
+
+            // One-time build evidence: confirms the pre-pass material is alive, the
+            // shader supports instancing, and which camera/MSAA we're rendering under.
+            // Shows up in Player.log so a build can be diagnosed without the Editor.
+            Debug.Log("[InstancedGrassRenderer] depth pre-pass material ready: shader='" + sh.name +
+                      "' supported=" + sh.isSupported +
+                      " fromAsset=" + (depthMaterial != null) +
+                      " cam='" + cam.name + "' allowMSAA=" + cam.allowMSAA +
+                      " QS.aa=" + QualitySettings.antiAliasing);
         }
         if (_depthCB == null) _depthCB = new CommandBuffer { name = "Grass Depth Prepass" };
         if (_depthCBCam != cam)
@@ -643,6 +791,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         // draws below into _CameraDepthTexture). Cleared and refilled each frame.
         CommandBuffer depthCB = EnsureDepthCB(cam);
         if (depthCB != null) depthCB.Clear();
+        if (_depthMat != null) _depthMat.SetFloat(_depthDilateId, depthDilatePixels);   // live-tunable screen-space fatten
         // Cull box must cover the cell's blades, which sit on the terrain — up to
         // ~maxHeightAboveWater above the sphere-surface anchor — so the box
         // doesn't fall off-screen while hilltop blades are still visible.

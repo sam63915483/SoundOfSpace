@@ -591,9 +591,15 @@ public class PlayerController : GravityObject
 		// plain-WASD air control entirely. The optional in-air AddForce
 		// fine-thrust block in HandleMovement still runs in parallel for
 		// the orbital trim case.
-		targetVelocity = transform.TransformDirection(input.normalized) * ((running) ? runSpeed : walkSpeed);
+		targetVelocity = transform.TransformDirection(input.normalized) * ((running) ? runSpeed : walkSpeed) * introMoveScale;
 		smoothVelocity = Vector3.SmoothDamp(smoothVelocity, targetVelocity, ref smoothVRef, (isGrounded) ? vSmoothTime : airSmoothTime);
 	}
+
+	// Runtime walk/run-speed multiplier the Mission 1 intro uses to hand control
+	// back at half pace (groggy first steps) before clearing it to full speed at
+	// the end of the briefing. Left at 1 in all normal play. NonSerialized so it
+	// never persists to scene/prefab data — it's a pure runtime knob.
+	[System.NonSerialized] public float introMoveScale = 1f;
 
 	// Snaps the look so the camera aims at a world point. Used by the Mission 1
 	// wake-up intro to hold the player's gaze on the cabin photo while look is
@@ -622,6 +628,53 @@ public class PlayerController : GravityObject
 		pitch = Mathf.Clamp(-elevationDeg, pitchMinMax.x, pitchMinMax.y);
 		smoothPitch = pitch;
 		pitchSmoothV = 0f;
+	}
+
+	// Like ForceLookAt, but eases the aim toward the target instead of snapping.
+	// Call every frame. Returns true once the aim is on-target (within ~1°), so
+	// callers can hand control back at the moment the gaze lands.
+	//
+	// Yaw and pitch move by the SAME fraction of their remaining error each frame,
+	// so the camera sweeps in a straight diagonal onto the target rather than
+	// finishing one axis then the other (the "up, then over" L-shape). The cap is
+	// applied to whichever axis has further to go, so the turn never exceeds
+	// degreesPerSecond.
+	//
+	// IMPORTANT: this nudges the SAME yaw/pitch look targets the player's own
+	// input drives, so the existing smoothing pipeline (smoothYaw → body heading
+	// in HandleMovement, smoothPitch → camera pitch) does the actual turning.
+	// Writing transform.rotation / smoothPitch directly here instead would fight
+	// that per-frame pipeline and produce only a tiny jitter.
+	public bool ForceLookAtSmooth(Vector3 worldPoint, float degreesPerSecond)
+	{
+		if (cam == null) return false;
+		Vector3 up = transform.up;
+		Vector3 toTarget = worldPoint - cam.transform.position;
+		if (toTarget.sqrMagnitude < 1e-6f) return true;
+
+		// Heading error (in the up-plane) and pitch error to the target.
+		float headingDelta = 0f;
+		Vector3 flatTo = Vector3.ProjectOnPlane(toTarget, up);
+		if (flatTo.sqrMagnitude > 1e-6f)
+		{
+			Vector3 flatFwd = Vector3.ProjectOnPlane(transform.forward, up);
+			headingDelta = Vector3.SignedAngle(flatFwd, flatTo, up);
+		}
+		Vector3 dir = toTarget.normalized;
+		float elevationDeg = Mathf.Asin(Mathf.Clamp(Vector3.Dot(dir, up), -1f, 1f)) * Mathf.Rad2Deg;
+		float targetPitch = Mathf.Clamp(-elevationDeg, pitchMinMax.x, pitchMinMax.y);
+		float pitchDelta = Mathf.DeltaAngle(pitch, targetPitch);
+
+		float maxAbs = Mathf.Max(Mathf.Abs(headingDelta), Mathf.Abs(pitchDelta));
+		const float alignedDeg = 1f;
+		if (maxAbs < 0.01f) return true;
+
+		float maxStep = degreesPerSecond * Time.unscaledDeltaTime;
+		float frac = Mathf.Min(1f, maxStep / maxAbs);   // same fraction on both axes → straight sweep
+		yaw   += headingDelta * frac;
+		pitch += pitchDelta  * frac;
+
+		return maxAbs <= alignedDeg;
 	}
 
 	void HandleMovement()

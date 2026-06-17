@@ -21,6 +21,9 @@ public class TorchLightSteady : MonoBehaviour
     [Tooltip("How fast the flicker oscillates. Higher = twitchier.")]
     public float flickerSpeed = 4f;
 
+    [Tooltip("Torch light on the GPU-instanced grass. Instanced grass never receives Unity's additive point lights, so a torch lights the ground but NOT the grass unless it carries a GrassPointLight marker (lanterns already do). This auto-adds that marker so torches light grass too. 0.5 matches the lanterns; lower for subtler, 0 to leave grass unlit by this torch.")]
+    [Range(0f, 2f)] public float grassStrength = 0.5f;
+
     Light _light;
     float _baseIntensity;
     float _phaseOffset;
@@ -31,6 +34,17 @@ public class TorchLightSteady : MonoBehaviour
         _baseIntensity = targetIntensity > 0f ? targetIntensity : _light.intensity;
         // Per-instance phase so multiple torches don't pulse in lockstep.
         _phaseOffset = Random.Range(0f, Mathf.PI * 2f);
+
+        // Make this torch illuminate the instanced grass like the lanterns do.
+        // Instanced grass never gets Unity's additive point lights, so it needs the
+        // GrassPointLight marker (InstancedGrassRenderer reads those). Lanterns were
+        // marked; torches weren't — so torches lit the ground but not the grass.
+        if (grassStrength > 0f)
+        {
+            var gpl = GetComponent<GrassPointLight>();
+            if (gpl == null) gpl = gameObject.AddComponent<GrassPointLight>();
+            gpl.grassStrength = grassStrength;
+        }
     }
 
     void LateUpdate()

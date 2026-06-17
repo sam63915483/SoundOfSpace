@@ -186,6 +186,9 @@ public class TabbedPauseMenu : MonoBehaviour
             _isPaused = false;
             Time.timeScale = 1f;
         }
+        // Belt-and-braces: never let the looping menu ambience survive a scene
+        // load (it ignores listener-pause and is on a persistent singleton).
+        UiSfxPlayer.StopPauseAmbience();
         ShowMainPanel();
         SetMenuVisible(false, immediate: true);
     }
@@ -246,6 +249,8 @@ public class TabbedPauseMenu : MonoBehaviour
             // immediately pop the pause menu on top of the same frame.
             else if (!BuildMenuUI.IsOpen && !FishingdexManager.IsOpen
                   && !SolarSystemMapController.IsOpen
+                  && !NewspaperReaderUI.IsOpen && !NewspaperReaderUI.ConsumedEscapeThisFrame
+                  && !MonumentLinkPopupUI.IsOpen && !MonumentLinkPopupUI.ConsumedEscapeThisFrame
                   && !PlayerPhoneUI.IsOpen && !PlayerPhoneUI.ConsumedEscapeThisFrame) OpenPause();
         }
 
@@ -1863,6 +1868,11 @@ public class TabbedPauseMenu : MonoBehaviour
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
         if (_input != null) _input.SaveSettings();
+        // The menu ambience source ignores listener-pause and lives on a
+        // DontDestroyOnLoad singleton, so it keeps looping into MainMenu (and
+        // back into gameplay) unless we stop it here. ClosePauseDirect normally
+        // stops it, but returning to the menu skips that path.
+        UiSfxPlayer.StopPauseAmbience();
         SceneManager.LoadScene("MainMenu");
     }
 

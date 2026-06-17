@@ -33,7 +33,9 @@ public class CameraFOVFX : MonoBehaviour
         // Sprint kick — gated on WASD input being held strongly, not on
         // rb.velocity (which is contaminated by the planet's orbital motion
         // through world space — rb.velocity is huge even when standing still).
-        if (input.fxSprintFovKick)
+        // Suppressed during the groggy wake-up intro (no FOV kick on the first
+        // half-speed WASD/sprint steps).
+        if (input.fxSprintFovKick && !IntroSequenceController.SuppressGroggyCameraFx)
         {
             // Treat WASD as not-pressed while the AI chat input field has
             // focus so typing doesn't pump the sprint-FOV kick.

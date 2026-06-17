@@ -40,7 +40,7 @@ public class ConcertStageHub : MonoBehaviour
 
     [Header("Update")]
     [Tooltip("Seconds between day/night re-checks. Day/night transitions are slow; 1–3s is plenty.")]
-    public float checkInterval = 1.5f;
+    public float checkInterval = 3f; // 3s (was 1.5s): halves the BuildStages+night/day rebuild spike; day/night is slow so this is imperceptible
 
     [Header("Audience zone clone")]
     [Tooltip("When auto-cloning an audience zone for a new stage, position the zone this far in front of the speaker (along the speaker's forward axis). Matches typical concert layout: audience in front of the PA.")]
@@ -226,9 +226,6 @@ public class ConcertStageHub : MonoBehaviour
             if (!s.visualsInitialized || desired != s.vis)
             {
                 ApplyStageVis(s.stageRoot, desired);
-                // Temporary diagnostic — confirms whether a far stage is actually
-                // being culled. Remove once the concert-direction drop is solved.
-                Debug.Log($"[ConcertStageHub] stage '{s.stageRoot.name}' vis -> {desired} (viewer {Mathf.Sqrt(distSq):F0}m away)");
                 s.vis = desired;
                 s.visualsInitialized = true;
             }

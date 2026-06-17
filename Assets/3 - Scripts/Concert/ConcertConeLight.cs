@@ -180,6 +180,14 @@ public class ConcertConeLight : MonoBehaviour
         // which made the cone lose its falloff and bloom across the ground.
         _light.renderMode = LightRenderMode.ForcePixel;
 
+        // Let this cone ALSO light the GPU-instanced grass (which never receives
+        // Unity's real spot lights, so the colored beams hit the ground but not the
+        // grass). GrassPointLight marks it for InstancedGrassRenderer, which reads the
+        // Spot's live colour/direction/cone each frame and gates it to the beam.
+        var grassPL = _light.GetComponent<GrassPointLight>();
+        if (grassPL == null) grassPL = _light.gameObject.AddComponent<GrassPointLight>();
+        grassPL.grassStrength = 0.5f;
+
         var visualT = _coneRig.Find("_ConeVisual");
         GameObject visualGO;
         if (visualT == null)
