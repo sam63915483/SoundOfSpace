@@ -175,6 +175,7 @@ public class InputSettings : ScriptableObject {
 	// catches the Sun's HDR mesh and adds a screen-space glow that brightens
 	// the whole frame when the Sun is in view. Toggle off in CAMERA tab to A/B.
 	public bool fxBloom = true;
+	public bool fxSpaceDust = true;
 
 	[Header("Concert")]
 	// Off by default — concert stages spawn ~20 real-time Lights between cone
@@ -308,6 +309,7 @@ public class InputSettings : ScriptableObject {
 		fxChromaticAberration       = PlayerPrefs.GetInt   (nameof (fxChromaticAberration),       1) != 0;
 		fxLensFlares                = PlayerPrefs.GetInt   (nameof (fxLensFlares),                1) != 0;
 		fxBloom                     = PlayerPrefs.GetInt   (nameof (fxBloom),                     1) != 0;
+		fxSpaceDust                 = PlayerPrefs.GetInt   (nameof (fxSpaceDust),                 1) != 0;
 		fxRadialMotionBlur          = PlayerPrefs.GetInt   (nameof (fxRadialMotionBlur),          0) != 0;
 		fxHeadbobIntensity              = PlayerPrefs.GetFloat (nameof (fxHeadbobIntensity),              1f);
 		fxFilmGrainIntensity            = PlayerPrefs.GetFloat (nameof (fxFilmGrainIntensity),            0.6f);
@@ -408,6 +410,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt   (nameof (fxChromaticAberration),       fxChromaticAberration       ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxLensFlares),                fxLensFlares                ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxBloom),                     fxBloom                     ? 1 : 0);
+		PlayerPrefs.SetInt   (nameof (fxSpaceDust),                 fxSpaceDust                 ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxRadialMotionBlur),          fxRadialMotionBlur          ? 1 : 0);
 		PlayerPrefs.SetFloat (nameof (fxHeadbobIntensity),              fxHeadbobIntensity);
 		PlayerPrefs.SetFloat (nameof (fxFilmGrainIntensity),            fxFilmGrainIntensity);
