@@ -93,6 +93,7 @@ public class PodArrivalSequence : MonoBehaviour
     [SerializeField] AudioClip thrusterClip;             // sustained burn, looped; muffled at runtime (thrusters are OUTSIDE the pod)
     [SerializeField, Range(0f, 1f)] float thrusterVolume = 0.8f;
     [SerializeField] float thrusterLowPassHz = 1100f;    // low-pass cutoff so the outside thrusters read as muffled
+    [SerializeField] float thrusterLeadTime  = 2f;       // seconds the line + burn play BEFORE the countdown starts
 
     // ── Runtime ─────────────────────────────────────────────────────────────
     CelestialBody _target;
@@ -134,8 +135,9 @@ public class PodArrivalSequence : MonoBehaviour
         yield return Approach();                 // calm drift toward the planet
         if (!_skip)
         {
-            Speak(reverseThrusterLine);                               // HAL calls the burn just before the alert
-            StartThruster();                                          // muffled retro-burn under the countdown / braking
+            Speak(reverseThrusterLine);                               // HAL calls the burn first
+            StartThruster();                                          // muffled retro-burn kicks in
+            yield return new WaitForSecondsRealtime(thrusterLeadTime); // ...let the line finish + burn settle BEFORE the alert
             yield return Countdown();                                  // countdown -> impact boom -> cut to black
             yield return new WaitForSecondsRealtime(postCrashBlackHold); // hold black while the crash rings out (player still in the pod)
         }
@@ -296,7 +298,7 @@ public class PodArrivalSequence : MonoBehaviour
                 _heart.pitch  = Mathf.Lerp(Mathf.Lerp(heartbeatStartPitch, heartbeatImpactPitch, 0.25f), heartbeatImpactPitch, k);
             }
             // Thrusters strain against the descent, then give out as gravity wins.
-            if (_thruster != null) _thruster.volume = thrusterVolume * Mathf.Lerp(1f, 0.5f, k);
+            if (_thruster != null) _thruster.volume = thrusterVolume * Mathf.Lerp(1f, 0.7f, k);
 
             int rem = Mathf.CeilToInt(countdownStart * (1f - k));
             if (_console != null) _console.text = rem > 0 ? $"PROXIMITY ALERT\nIMPACT IN {rem}" : "PROXIMITY ALERT";
@@ -392,7 +394,7 @@ public class PodArrivalSequence : MonoBehaviour
         ct.transform.SetParent(go.transform, false);
         _console = ct.AddComponent<TextMeshProUGUI>();
         _console.alignment = TextAlignmentOptions.Center;
-        _console.fontSize = 54;
+        _console.fontSize = 30;
         _console.color = new Color(1f, 0.25f, 0.2f, 1f);
         var rt = _console.rectTransform;
         rt.anchorMin = new Vector2(0.5f, 0.82f); rt.anchorMax = new Vector2(0.5f, 0.82f);  // near the TOP (clear of the bottom HUD)
