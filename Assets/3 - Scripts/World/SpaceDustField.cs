@@ -122,10 +122,16 @@ public class SpaceDustField : MonoBehaviour
             Vector3 lp = _local[i];
             Vector3 wp = camPos + lp;
 
-            // slow drift toward BH + world-fixed parallax
+            // drift straight toward the BH (accelerating as it gets closer, like
+            // infalling matter) + world-fixed parallax
             Vector3 toBH = bhPos - wp;
             float toBHmag = toBH.magnitude;
-            if (toBHmag > 0.001f) lp += (toBH / toBHmag) * driftSpeed * dt;
+            if (toBHmag > 0.001f)
+            {
+                float fbhDrift = 1f - Mathf.Clamp01((toBHmag - bhInnerRadius) / Mathf.Max(1f, bhOuterRadius - bhInnerRadius));
+                float effDrift = driftSpeed * (1f + driftBHAccel * fbhDrift);
+                lp += (toBH / toBHmag) * effDrift * dt;
+            }
             lp -= genuineDelta;
 
             // toroidal wrap into [-half, half]
@@ -200,29 +206,28 @@ public class SpaceDustField : MonoBehaviour
     }
 
     /// <summary>
-    /// 1 while at/below <paramref name="fadeStartFrac"/> of the way out of the nearest planet's
-    /// atmosphere (altitude expressed in atmosphere-thicknesses: 0 = surface, 1 = atmosphere top),
-    /// ramping to 0 by <paramref name="fadeEndFrac"/>, and 0 out in open space. Other camera effects
+    /// 1 while at/inside the nearest planet's atmosphere, then ramping to 0 as the viewer moves out
+    /// from <paramref name="fadeStartFrac"/>x to <paramref name="fadeEndFrac"/>x the atmosphere
+    /// RADIUS (distance from planet centre / atmosphere radius). Defaults: full inside the atmosphere
+    /// (1x), fading once you leave it, gone by twice the atmosphere radius (2x). Other camera effects
     /// (e.g. speed lines) multiply by this so they hand off to the space dust as the player leaves a
-    /// planet. Defaults fade from the atmosphere top (1) to two atmosphere-thicknesses out (2).
-    /// Returns 0 when there are no planets (deep space).
+    /// planet. Returns 0 when there are no planets (deep space).
     /// </summary>
     public float InAtmosphereFactor(Vector3 worldPos, float fadeStartFrac = 1f, float fadeEndFrac = 2f)
     {
         var bodies = NBodySimulation.Bodies;
         if (bodies == null || bodies.Length == 0) return 0f;
-        float bestAlt = float.MaxValue;
+        float bestFrac = float.MaxValue;
         for (int i = 0; i < bodies.Length; i++)
         {
             var b = bodies[i];
             if (b == null || b.isStaticAttractor) continue;
-            float atmoR = AtmosphereRadius(b);
-            float thickness = Mathf.Max(1f, atmoR - b.radius);
-            float alt = (Vector3.Distance(worldPos, b.Position) - b.radius) / thickness; // 0 surface .. 1 atmo top
-            if (alt < bestAlt) bestAlt = alt;
+            float atmoR = Mathf.Max(1f, AtmosphereRadius(b));
+            float frac = Vector3.Distance(worldPos, b.Position) / atmoR; // 1 = atmosphere edge, 2 = 2x atmo radius
+            if (frac < bestFrac) bestFrac = frac;
         }
-        if (bestAlt == float.MaxValue) return 0f;
-        return 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStartFrac, fadeEndFrac, bestAlt));
+        if (bestFrac == float.MaxValue) return 0f;
+        return 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStartFrac, fadeEndFrac, bestFrac));
     }
 
     void RefreshBodies(CelestialBody[] bodies)
@@ -359,7 +364,8 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float boxSize = 1200f;            // L: cube side around the camera
 
     [Header("Motion")]
-    [SerializeField] float driftSpeed = 12f;           // m/s toward the BH (3x the original feel)
+    [SerializeField] float driftSpeed = 30f;           // base m/s toward the BH (far from it)
+    [SerializeField] float driftBHAccel = 5f;          // extra drift multiplier ramped in near the BH (infall accel)
     [SerializeField] float sanityThreshold = 900f;     // single-frame delta guard (< EndlessManager's 1000)
 
     [Header("Density")]
