@@ -24,7 +24,7 @@ public class IntroSequenceController : MonoBehaviour
     const string Line04 = "While you were unconscious, a local took you in. A native species. You are, currently, their guest.";
     const string Line05 = "Heart rate elevated. Vitals irregular.";
     const string Line06 = "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.";
-    const string Line07 = "...For now, try not to think about it.";
+    const string Line07 = "The alien left a note for you on the table. Try walking to it and give it a read.";
 
     // ── Tunables (appended at END per convention) ──────────────────────────
     [Header("Timing")]
@@ -369,15 +369,16 @@ public class IntroSequenceController : MonoBehaviour
 
         yield return Speak(Line05);   // "Heart rate elevated. Vitals irregular." — already climbing
 
+        // Reassurance lands right after the spike — the heart eases back to normal
+        // partway through this line.
+        StartCoroutine(EaseHeartbeatBackAfter(heartbeatEaseDelay));
+        yield return Speak(Line06);   // "It is normal... you will be returned home."
+
         // Held silence before the softer reveal that a local took you in.
         yield return new WaitForSecondsRealtime(photoBeatSilence);
+        yield return Speak(Line04);   // "While you were unconscious, a local took you in..."
 
-        yield return Speak(Line04);
-
-        // Reassurance — the heart eases back to normal partway through this line.
-        StartCoroutine(EaseHeartbeatBackAfter(heartbeatEaseDelay));
-        yield return Speak(Line06);
-        yield return Speak(Line07);
+        yield return Speak(Line07);   // "The alien left a note for you on the table..."
 
         // Phase 6: full handoff to survival — restore full walk speed + everything else.
         if (_pc != null) _pc.introMoveScale = 1f;

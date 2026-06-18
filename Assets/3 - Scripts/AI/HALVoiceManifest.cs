@@ -97,6 +97,7 @@ public static class HALVoiceManifest
         // serialized copy) or the line shows silently.
         { "Stasis cycle complete. Welcome back, astronaut.",     "pod_01_stasis_complete.mp3" },
         { "Approaching Humble Abode. Begin atmospheric entry.",  "pod_02_approaching.mp3" },
+        { "Engaging reverse thrusters.",                         "pod_03_thrusters.mp3" },
 
         // ── Mission 1 cold open (IntroSequenceController) ───────────────────
         // Keys MUST byte-match IntroSequenceController's line consts (em-dash,
@@ -108,7 +109,7 @@ public static class HALVoiceManifest
         { "While you were unconscious, a local took you in. A native species. You are, currently, their guest.",                  "intro_04_local.mp3" },
         { "Heart rate elevated. Vitals irregular.",                                                                               "intro_05_vitals.mp3" },
         { "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.", "intro_06_reassure.mp3" },
-        { "...For now, try not to think about it.",                                                                               "intro_07_dont_think.mp3" },
+        { "The alien left a note for you on the table. Try walking to it and give it a read.",                                     "intro_07_note.mp3" },
     };
 
     // Per-line volume multiplier. Default is 1.0; entries here override.
