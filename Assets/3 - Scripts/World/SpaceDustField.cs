@@ -450,7 +450,7 @@ public class SpaceDustField : MonoBehaviour
     [Header("Look")]
     [SerializeField] Color amberWarm = new Color(1f, 0.55f, 0.18f);
     [SerializeField] Color amberBright = new Color(1f, 0.82f, 0.45f);
-    [SerializeField] float glowSize = 6f;
+    [SerializeField] float glowSize = 3f;
     [SerializeField] float sizeJitter = 0.6f;
     [SerializeField] float brightness = 1.4f;
     [SerializeField] float twinkleAmount = 0.3f;
