@@ -190,33 +190,24 @@ public class SpaceDustField : MonoBehaviour
             if (f < fPlanet) fPlanet = f;
         }
 
-        // black-hole proximity boost (1 near BH, 0 far)
+        // black-hole proximity boost (1 near BH, 0 far). Straight radial pull —
+        // no spiral arms; specks just stream directly into the black hole.
         float R = Vector3.Distance(wp, bhPos);
         float fbh = 1f - Mathf.Clamp01((R - bhInnerRadius) / Mathf.Max(1f, bhOuterRadius - bhInnerRadius));
 
-        // logarithmic spiral arms in the BH equatorial (XZ) plane
-        Vector3 rel = wp - bhPos;
-        float rho = Mathf.Sqrt(rel.x * rel.x + rel.z * rel.z);
-        float theta = Mathf.Atan2(rel.z, rel.x);
-        float armPhase = theta - armTwist * Mathf.Log(rho + 1f) * 0.01f;
-        float arm = 0.5f + 0.5f * Mathf.Cos(armPhase * armCount);
-        arm = Mathf.Pow(Mathf.Clamp01(arm), armSharpness);
-        float n = Mathf.PerlinNoise(rho * 0.0008f, theta * 1.5f + armPhase) - 0.5f; // light filaments
-        arm = Mathf.Clamp01(arm + n * filamentStrength);
-        float vert = Mathf.Exp(-(rel.y * rel.y) / Mathf.Max(1f, diskThickness * diskThickness));
-        float armFactor = Mathf.Lerp(armFloor, 1f, arm * vert);
-
-        float d = fPlanet * Mathf.Clamp01(baseDensity + bhBoost * fbh) * armFactor;
+        float d = fPlanet * Mathf.Clamp01(baseDensity + bhBoost * fbh);
         return Mathf.Clamp01(d);
     }
 
     /// <summary>
-    /// 1 while in (or below) the lower atmosphere of the nearest planet, ramping to 0 as the
-    /// viewer rises from <paramref name="fadeStartFrac"/> of the atmosphere up to its top — and 0
-    /// out in open space. Other camera effects (e.g. speed lines) multiply by this so they hand off
-    /// to the space dust as the player leaves a planet. Returns 0 when there are no planets (space).
+    /// 1 while at/below <paramref name="fadeStartFrac"/> of the way out of the nearest planet's
+    /// atmosphere (altitude expressed in atmosphere-thicknesses: 0 = surface, 1 = atmosphere top),
+    /// ramping to 0 by <paramref name="fadeEndFrac"/>, and 0 out in open space. Other camera effects
+    /// (e.g. speed lines) multiply by this so they hand off to the space dust as the player leaves a
+    /// planet. Defaults fade from the atmosphere top (1) to two atmosphere-thicknesses out (2).
+    /// Returns 0 when there are no planets (deep space).
     /// </summary>
-    public float InAtmosphereFactor(Vector3 worldPos, float fadeStartFrac = 0.75f)
+    public float InAtmosphereFactor(Vector3 worldPos, float fadeStartFrac = 1f, float fadeEndFrac = 2f)
     {
         var bodies = NBodySimulation.Bodies;
         if (bodies == null || bodies.Length == 0) return 0f;
@@ -231,7 +222,7 @@ public class SpaceDustField : MonoBehaviour
             if (alt < bestAlt) bestAlt = alt;
         }
         if (bestAlt == float.MaxValue) return 0f;
-        return 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStartFrac, 1f, bestAlt));
+        return 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStartFrac, fadeEndFrac, bestAlt));
     }
 
     void RefreshBodies(CelestialBody[] bodies)
@@ -339,9 +330,25 @@ public class SpaceDustField : MonoBehaviour
             }
         _glowTex.Apply();
 
-        Shader sh = Shader.Find("Custom/SpaceDust");
-        if (sh == null) { Debug.LogError("[SpaceDustField] Custom/SpaceDust shader not found (add it to Always Included Shaders)"); return; }
-        _material = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
+        // Load a REAL material asset shipped in Resources. A runtime-only material
+        // (new Material(Shader.Find(...))) loses its INSTANCING_ON shader variant in
+        // builds (the build's variant collector never sees instancing used on this
+        // shader), so DrawMeshInstanced renders nothing in the player even though it
+        // works in the Editor. A material asset in Resources forces that variant to
+        // ship. (Same class of bug as the grass build issue.) Fall back to Shader.Find
+        // only if the asset is somehow missing.
+        Material baseMat = Resources.Load<Material>("SpaceDust");
+        if (baseMat != null)
+        {
+            _material = new Material(baseMat);
+        }
+        else
+        {
+            Shader sh = Shader.Find("Custom/SpaceDust");
+            if (sh == null) { Debug.LogError("[SpaceDustField] SpaceDust material/shader not found (Resources/SpaceDust.mat or Always Included Shaders)"); return; }
+            _material = new Material(sh);
+        }
+        _material.hideFlags = HideFlags.HideAndDontSave;
         _material.enableInstancing = true;
         _material.mainTexture = _glowTex;
     }
@@ -363,14 +370,6 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float atmosphereFallbackMultiplier = 1.35f;
     [SerializeField] float lowerAtmosphereFrac = 0.5f; // clear specks below this fraction of atmo thickness
     [SerializeField] float planetFalloff = 600f;       // fade band above the cleared lower atmosphere
-
-    [Header("Spiral arms")]
-    [SerializeField] int armCount = 2;
-    [SerializeField] float armTwist = 8f;
-    [SerializeField] float armSharpness = 1.4f;
-    [SerializeField] float armFloor = 0.45f;           // inter-arm density floor
-    [SerializeField] float diskThickness = 8000f;      // vertical falloff of the arm disk
-    [SerializeField] float filamentStrength = 0.25f;   // light turbulence
 
     [Header("Look")]
     [SerializeField] Color amberWarm = new Color(1f, 0.55f, 0.18f);

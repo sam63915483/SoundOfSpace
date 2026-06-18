@@ -6,7 +6,10 @@ Shader "Custom/SpaceDust"
     }
     SubShader
     {
-        Tags { "Queue"="Transparent" "RenderType"="Transparent" "IgnoreProjector"="True" }
+        // Queue <= 2500 so the [ImageEffectOpaque] atmosphere/ocean post-process
+        // processes (washes/dims) the dust like other opaque-bucket geometry,
+        // instead of drawing on top of it. (CLAUDE.md transparent-queue gotcha.)
+        Tags { "Queue"="Transparent-550" "RenderType"="Transparent" "IgnoreProjector"="True" }
         Blend One One        // additive
         ZWrite Off
         Cull Off
