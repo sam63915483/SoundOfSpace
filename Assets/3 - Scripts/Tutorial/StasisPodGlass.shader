@@ -1,9 +1,13 @@
-// Double-sided variant of "Custom/sFuture Glass Early Queue"
-// (Assets/sFuture Modules Pro/Materials/Glass_EarlyQueue.shader). Identical except
-// `Cull Off`, so a flat window pane renders from BOTH sides (the player is inside
-// the pod looking out). Queue "AlphaTest" (2450, <= 2500) keeps it BEHIND the
-// planet's [ImageEffectOpaque] atmosphere/ocean post so the sky renders through
-// the glass (the transparent-queue gotcha in CLAUDE.md).
+// Smoky double-sided window glass for the stasis pod (player is inside looking out).
+//   • `Cull Off`  — a flat pane renders from BOTH sides.
+//   • `ZWrite Off` — the pane never occludes depth.
+//   • Queue "Transparent" (3000) — the pane renders AFTER the planet's atmosphere
+//     and ocean, which are an [ImageEffectOpaque] post-process (CustomPostProcessing)
+//     that composites between the opaque queue (<= 2500) and transparent geometry.
+//     At an EARLY queue (<= 2500) the pane drew BEFORE that composite, so you saw
+//     bare terrain through the glass but no atmosphere/ocean. Drawing it in the
+//     Transparent queue tints the already-composited planet+atmosphere+ocean image,
+//     so all three show through the glass.
 Shader "Custom/StasisPodGlassDoubleSided" {
     Properties {
         _Color ("Color", Color) = (0.10, 0.12, 0.15, 0.35)
@@ -12,9 +16,10 @@ Shader "Custom/StasisPodGlassDoubleSided" {
     }
 
     SubShader {
-        Tags { "RenderType"="Transparent" "Queue"="AlphaTest" "IgnoreProjector"="True" }
+        Tags { "RenderType"="Transparent" "Queue"="Transparent" "IgnoreProjector"="True" }
         LOD 200
         Cull Off
+        ZWrite Off
 
         CGPROGRAM
         #pragma surface surf StandardSpecular alpha:premul
