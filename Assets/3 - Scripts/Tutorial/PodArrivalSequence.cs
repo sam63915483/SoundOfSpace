@@ -88,6 +88,12 @@ public class PodArrivalSequence : MonoBehaviour
     [SerializeField] float heartbeatStartPitch  = 1f;    // beat speed at wake (calm)
     [SerializeField] float heartbeatImpactPitch = 1.55f; // beat speed at impact (faster = racing)
 
+    [Header("Reverse thrusters (HAL line + muffled burn just before the countdown)")]
+    [SerializeField] string reverseThrusterLine = "Engaging reverse thrusters.";
+    [SerializeField] AudioClip thrusterClip;             // sustained burn, looped; muffled at runtime (thrusters are OUTSIDE the pod)
+    [SerializeField, Range(0f, 1f)] float thrusterVolume = 0.8f;
+    [SerializeField] float thrusterLowPassHz = 1100f;    // low-pass cutoff so the outside thrusters read as muffled
+
     // ── Runtime ─────────────────────────────────────────────────────────────
     CelestialBody _target;
     PlayerController _pc;
@@ -108,6 +114,7 @@ public class PodArrivalSequence : MonoBehaviour
 
     AudioSource _ambient, _rumble, _sfx;
     AudioSource _heart;   // heartbeat loop — volume + pitch ramp up toward impact (panic)
+    AudioSource _thruster; // muffled retro-burn under the countdown (on a child object so only it is low-passed)
 
     Vector3 _dir;                // unit direction from the planet to the pod
     float _curDistance;          // current distance from the planet centre (driven by the phase coroutines)
@@ -127,6 +134,8 @@ public class PodArrivalSequence : MonoBehaviour
         yield return Approach();                 // calm drift toward the planet
         if (!_skip)
         {
+            Speak(reverseThrusterLine);                               // HAL calls the burn just before the alert
+            StartThruster();                                          // muffled retro-burn under the countdown / braking
             yield return Countdown();                                  // countdown -> impact boom -> cut to black
             yield return new WaitForSecondsRealtime(postCrashBlackHold); // hold black while the crash rings out (player still in the pod)
         }
@@ -286,6 +295,8 @@ public class PodArrivalSequence : MonoBehaviour
                 _heart.volume = Mathf.Lerp(heartbeatApproachVolume, heartbeatImpactVolume, k);
                 _heart.pitch  = Mathf.Lerp(Mathf.Lerp(heartbeatStartPitch, heartbeatImpactPitch, 0.25f), heartbeatImpactPitch, k);
             }
+            // Thrusters strain against the descent, then give out as gravity wins.
+            if (_thruster != null) _thruster.volume = thrusterVolume * Mathf.Lerp(1f, 0.5f, k);
 
             int rem = Mathf.CeilToInt(countdownStart * (1f - k));
             if (_console != null) _console.text = rem > 0 ? $"PROXIMITY ALERT\nIMPACT IN {rem}" : "PROXIMITY ALERT";
@@ -336,6 +347,7 @@ public class PodArrivalSequence : MonoBehaviour
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_rumble != null) { _rumble.Stop(); Destroy(_rumble); }
         if (_heart != null) { _heart.Stop(); Destroy(_heart); }
+        if (_thruster != null) { _thruster.Stop(); Destroy(_thruster.gameObject); }
         if (_sfx != null) { _sfx.Stop(); Destroy(_sfx); }
     }
 
@@ -409,6 +421,25 @@ public class PodArrivalSequence : MonoBehaviour
         if (_heart != null) _heart.pitch = heartbeatStartPitch;
         _sfx = gameObject.AddComponent<AudioSource>();
         _sfx.spatialBlend = 0f; _sfx.playOnAwake = false;
+    }
+
+    // The reverse-thruster burn lives on its OWN child object so its low-pass
+    // filter muffles ONLY the thruster (the thrusters fire outside the pod), not
+    // the hum/heartbeat/alarm that share the main object.
+    void StartThruster()
+    {
+        if (thrusterClip == null) return;
+        var go = new GameObject("PodThruster");
+        go.transform.SetParent(transform, false);
+        _thruster = go.AddComponent<AudioSource>();
+        _thruster.clip = thrusterClip;
+        _thruster.loop = true;
+        _thruster.spatialBlend = 0f;
+        _thruster.volume = thrusterVolume;
+        _thruster.playOnAwake = false;
+        var lp = go.AddComponent<AudioLowPassFilter>();
+        lp.cutoffFrequency = thrusterLowPassHz;
+        _thruster.Play();
     }
 
     AudioSource AddLoop(AudioClip clip, float vol, bool play)

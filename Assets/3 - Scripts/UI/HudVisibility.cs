@@ -50,6 +50,15 @@ public static class HudVisibility
         if (canvas == null) return;
         var cg = canvas.GetComponent<CanvasGroup>();
         if (cg == null) cg = canvas.gameObject.AddComponent<CanvasGroup>();
+        RegisterHideable(cg);
+    }
+
+    /// Register a specific CanvasGroup. Use this when the canvas's own CanvasGroup
+    /// is already driven by the HUD (e.g. the Hotbar dims itself), so we hide via an
+    /// independent group on a content child that MULTIPLIES under the HUD's own.
+    public static void RegisterHideable(CanvasGroup cg)
+    {
+        if (cg == null) return;
         if (!_groups.Contains(cg)) _groups.Add(cg);
         ApplyTo(cg);
     }
