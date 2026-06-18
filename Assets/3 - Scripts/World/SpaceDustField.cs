@@ -452,7 +452,7 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] Color amberBright = new Color(1f, 0.82f, 0.45f);
     [SerializeField] float glowSize = 3f;
     [SerializeField] float sizeJitter = 0.6f;
-    [SerializeField] float brightness = 1.4f;
+    [SerializeField] float brightness = 2.8f;
     [SerializeField] float twinkleAmount = 0.3f;
     [SerializeField] float twinkleSpeed = 1.5f;
     [SerializeField] float edgeFadeFrac = 0.18f;       // fraction of half-box where specks fade out
