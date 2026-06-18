@@ -169,6 +169,18 @@ public class SpeedLinesOverlay : MonoBehaviour
         EnsureCameraBinding();
 
         float target = ComputeTargetIntensity();
+
+        // Hand off to the space dust on atmosphere exit: full speed lines in the
+        // lower atmosphere, fading from 75% of the way out to nothing in open
+        // space (where the glowing dust conveys motion instead).
+        var sdf = SpaceDustField.Instance;
+        if (sdf != null)
+        {
+            Camera fadeCam = mgr.PlayerCamera != null ? mgr.PlayerCamera
+                           : (_canvas != null ? _canvas.worldCamera : null);
+            if (fadeCam != null) target *= sdf.InAtmosphereFactor(fadeCam.transform.position);
+        }
+
         _intensity = Mathf.MoveTowards(_intensity, target, Time.unscaledDeltaTime * 2.5f);
 
         Vector2 vpTarget = ComputeVanishingPoint(mgr);

@@ -12,6 +12,9 @@ using UnityEngine.SceneManagement;
 /// is invariant under EndlessManager floating-origin rebases, so origin shifts never cause a jump.
 /// Per-speck visibility/brightness comes from a density field (BH proximity, planet avoidance,
 /// spiral arms + light noise). One additive instanced billboard material, drawn in <=1023 batches.
+///
+/// Specks are cleared from the LOWER atmosphere only, so from a planet surface you can still look
+/// up and see them streaming toward the black hole above the haze.
 /// </summary>
 public class SpaceDustField : MonoBehaviour
 {
@@ -96,9 +99,6 @@ public class SpaceDustField : MonoBehaviour
         Vector3 camPos = _cam.transform.position;
         Vector3 bhPos = _blackHole.Position;
 
-        // On a planet surface? nothing would be visible — skip the whole draw.
-        if (IsInsideAnyAtmosphere(camPos)) return;
-
         // --- genuine, origin-shift-invariant camera delta (relative to the BH) ---
         Vector3 camRelBH = camPos - bhPos;          // invariant under EndlessManager rebase
         Vector3 genuineDelta = Vector3.zero;
@@ -143,10 +143,10 @@ public class SpaceDustField : MonoBehaviour
             // spherical edge fade (hides cube corners + wrap pops)
             float lpMag = lp.magnitude;
             if (lpMag >= half) continue;
-            float edge = 1f - Mathf.SmoothStep(fadeStart, half, lpMag);
+            float edge = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStart, half, lpMag));
             if (edge <= 0.001f) continue;
 
-            float vis = Mathf.SmoothStep(_threshold[i], Mathf.Min(1f, _threshold[i] + 0.15f), d);
+            float vis = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(_threshold[i], Mathf.Min(1f, _threshold[i] + 0.15f), d));
             float tw = 1f - twinkleAmount + twinkleAmount * (0.5f + 0.5f * Mathf.Sin(t * twinkleSpeed + _phase[i]));
             float b = brightness * vis * edge * tw;
             if (b <= 0.004f) continue;
@@ -173,16 +173,20 @@ public class SpaceDustField : MonoBehaviour
     // ---- density field in [0,1] ----
     float DensityAt(Vector3 wp, Vector3 bhPos)
     {
-        // planet avoidance: 0 inside any atmosphere, rising to 1 away from the nearest planet
+        // planet avoidance: specks are cleared from the LOWER atmosphere (up to
+        // lowerAtmosphereFrac of the atmosphere thickness), then fade back in
+        // above it. This keeps the air near the ground clear but still lets you
+        // see the dust higher up / overhead from a planet surface.
         float fPlanet = 1f;
         for (int i = 0; i < _planets.Count; i++)
         {
             var p = _planets[i];
             if (p == null) continue;
-            float ar = AtmosphereRadius(p);
+            float atmoR = AtmosphereRadius(p);
+            float cullR = Mathf.Lerp(p.radius, atmoR, lowerAtmosphereFrac);
             float dist = Vector3.Distance(wp, p.Position);
-            if (dist <= ar) return 0f;
-            float f = Mathf.Clamp01((dist - ar) / Mathf.Max(1f, planetFalloff));
+            if (dist <= cullR) return 0f;
+            float f = Mathf.Clamp01((dist - cullR) / Mathf.Max(1f, planetFalloff));
             if (f < fPlanet) fPlanet = f;
         }
 
@@ -206,15 +210,28 @@ public class SpaceDustField : MonoBehaviour
         return Mathf.Clamp01(d);
     }
 
-    bool IsInsideAnyAtmosphere(Vector3 wp)
+    /// <summary>
+    /// 1 while in (or below) the lower atmosphere of the nearest planet, ramping to 0 as the
+    /// viewer rises from <paramref name="fadeStartFrac"/> of the atmosphere up to its top — and 0
+    /// out in open space. Other camera effects (e.g. speed lines) multiply by this so they hand off
+    /// to the space dust as the player leaves a planet. Returns 0 when there are no planets (space).
+    /// </summary>
+    public float InAtmosphereFactor(Vector3 worldPos, float fadeStartFrac = 0.75f)
     {
-        for (int i = 0; i < _planets.Count; i++)
+        var bodies = NBodySimulation.Bodies;
+        if (bodies == null || bodies.Length == 0) return 0f;
+        float bestAlt = float.MaxValue;
+        for (int i = 0; i < bodies.Length; i++)
         {
-            var p = _planets[i];
-            if (p == null) continue;
-            if (Vector3.Distance(wp, p.Position) <= AtmosphereRadius(p)) return true;
+            var b = bodies[i];
+            if (b == null || b.isStaticAttractor) continue;
+            float atmoR = AtmosphereRadius(b);
+            float thickness = Mathf.Max(1f, atmoR - b.radius);
+            float alt = (Vector3.Distance(worldPos, b.Position) - b.radius) / thickness; // 0 surface .. 1 atmo top
+            if (alt < bestAlt) bestAlt = alt;
         }
-        return false;
+        if (bestAlt == float.MaxValue) return 0f;
+        return 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStartFrac, 1f, bestAlt));
     }
 
     void RefreshBodies(CelestialBody[] bodies)
@@ -335,7 +352,7 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float boxSize = 1200f;            // L: cube side around the camera
 
     [Header("Motion")]
-    [SerializeField] float driftSpeed = 4f;            // m/s toward the BH
+    [SerializeField] float driftSpeed = 12f;           // m/s toward the BH (3x the original feel)
     [SerializeField] float sanityThreshold = 900f;     // single-frame delta guard (< EndlessManager's 1000)
 
     [Header("Density")]
@@ -344,7 +361,8 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float bhOuterRadius = 30000f;     // distance where BH influence begins
     [SerializeField] float bhInnerRadius = 5000f;      // ~just outside the event horizon (BH radius 4000)
     [SerializeField] float atmosphereFallbackMultiplier = 1.35f;
-    [SerializeField] float planetFalloff = 600f;       // fade band beyond a planet's atmosphere
+    [SerializeField] float lowerAtmosphereFrac = 0.5f; // clear specks below this fraction of atmo thickness
+    [SerializeField] float planetFalloff = 600f;       // fade band above the cleared lower atmosphere
 
     [Header("Spiral arms")]
     [SerializeField] int armCount = 2;
