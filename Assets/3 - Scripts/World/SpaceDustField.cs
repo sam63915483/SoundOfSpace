@@ -116,6 +116,23 @@ public class SpaceDustField : MonoBehaviour
         float fadeStart = half * (1f - edgeFadeFrac);
         float t = Time.time;
 
+        // Atmosphere wash: dim the whole field the deeper the camera sits inside an
+        // atmosphere, so dust seen from a planet surface reads as hazed/washed rather
+        // than punching through vibrantly. Down to atmosphereWashMin at the surface,
+        // full brightness once out in clear space.
+        float maxImmersion = 0f;
+        for (int i = 0; i < _planets.Count; i++)
+        {
+            var p = _planets[i];
+            if (p == null) continue;
+            float atmoR = AtmosphereRadius(p);
+            float thickness = Mathf.Max(1f, atmoR - p.radius);
+            float altFrac = (Vector3.Distance(camPos, p.Position) - p.radius) / thickness; // 0 surface .. 1 atmo top
+            float immersion = Mathf.Clamp01(1f - altFrac);
+            if (immersion > maxImmersion) maxImmersion = immersion;
+        }
+        float washMul = Mathf.Lerp(1f, atmosphereWashMin, maxImmersion);
+
         int m = 0;
         for (int i = 0; i < _local.Length; i++)
         {
@@ -154,7 +171,7 @@ public class SpaceDustField : MonoBehaviour
 
             float vis = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(_threshold[i], Mathf.Min(1f, _threshold[i] + 0.15f), d));
             float tw = 1f - twinkleAmount + twinkleAmount * (0.5f + 0.5f * Mathf.Sin(t * twinkleSpeed + _phase[i]));
-            float b = brightness * vis * edge * tw;
+            float b = brightness * vis * edge * tw * washMul;
             if (b <= 0.004f) continue;
 
             float size = glowSize * _sizeRand[i];
@@ -376,6 +393,7 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float atmosphereFallbackMultiplier = 1.35f;
     [SerializeField] float lowerAtmosphereFrac = 0.5f; // clear specks below this fraction of atmo thickness
     [SerializeField] float planetFalloff = 600f;       // fade band above the cleared lower atmosphere
+    [SerializeField] float atmosphereWashMin = 0.3f;   // dust brightness multiplier when deep in an atmosphere (haze wash)
 
     [Header("Look")]
     [SerializeField] Color amberWarm = new Color(1f, 0.55f, 0.18f);

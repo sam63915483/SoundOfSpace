@@ -11,12 +11,7 @@ Shader "Custom/SpaceDust"
         // instead of drawing on top of it. (CLAUDE.md transparent-queue gotcha.)
         Tags { "Queue"="Transparent-550" "RenderType"="Transparent" "IgnoreProjector"="True" }
         Blend One One        // additive
-        // ZWrite On so each speck writes depth. The [ImageEffectOpaque] atmosphere
-        // scatters per-pixel from the depth texture; without a depth write the
-        // specks read as background (far plane) and the atmosphere skips/barely
-        // washes them, so they punch through vibrantly. Writing depth makes the
-        // atmosphere dim/haze them by their real distance like other geometry.
-        ZWrite On
+        ZWrite Off           // soft glow, no hard depth footprint
         Cull Off
         Lighting Off
 
