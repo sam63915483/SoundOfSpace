@@ -35,18 +35,24 @@ been in transit for three years. You crash-landed on this world two days ago."
 
 ## Chosen Approach
 
-**In-scene cinematic that reuses the real player camera.**
+**In-scene cinematic that moves the PLAYER through space, never a detached camera.**
 
-The player camera already carries the atmosphere / ocean / planet post-effects (the
-forbidden-zone rendering). Flying *that* camera out into space renders the real
-solar system *with* Humble Abode's blue atmospheric glow for free. A separate
-cinematic camera would render the planets without that glow and risk disturbing the
-fragile planet-effects coupling, so it is rejected. We never edit the
-generation/shader code — we only move the existing camera's transform.
+> **REVISED 2026-06-18 after implementation.** The first attempt detached the player
+> camera and flew it out on a "pod rig". It failed: this is a floating-origin game
+> (`EndlessManager` recenters the world on the player's `rb.position`), and a camera
+> parked at absolute world coordinates renders garbage — it showed the cabin even
+> though the camera was provably ~4000 units out in space. The home planet also
+> orbits fast, so anything not anchored to the player drifts. See the memory note
+> `floating-origin-move-player-not-camera`.
 
-Rejected alternative: a dedicated cutscene scene with faked planet models + a load
-seam at impact. Cleaner isolation, but the planets wouldn't be the real ones and
-there'd be a load hitch at the cut-to-black.
+The correct approach moves the **player** (the floating-origin anchor) and lets the
+camera ride along as its normal child — so `CameraTransformFX` and the atmosphere /
+planet post-effects keep working untouched. We never edit the generation/shader
+code and never detach the camera.
+
+Rejected alternatives: (a) detaching the camera (fails — see above); (b) a dedicated
+cutscene scene with faked planet models + a load seam at impact (planets wouldn't be
+the real ones, plus a load hitch at the cut-to-black).
 
 ## Insertion Point
 
@@ -68,7 +74,30 @@ Both the existing `PendingLoad.Data == null` (new-game-only) guard and the
 `EarlyGameProgress.IntroPlayed` one-shot already gate this seam, so Load/respawn
 never replays the pod intro. No new flag required.
 
-## New Component: `PodArrivalSequence`
+## Implemented mechanics (player-move approach)
+
+`PodArrivalSequence.Setup()`: freeze the player kinematic (`rb.isKinematic = true`,
+the trick `StartCabinSpawnPoint` uses on the ship), `TutorialGate.LockAll()` then
+`Unlock(MouseLook)` (free-look, no movement, via PlayerController's own look code),
+place the player at `planet.Position + dir * startDistance`, and `ForceLookAt` the
+planet so they start looking out the window.
+
+Flight: in `LateUpdate` (default order 0, runs before `CameraTransformFX` at order
+100) set `rb.position`/`transform.position` to `planet.Position + dir * distance(t)`
+— RELATIVE to the live planet position each frame, so it survives the planet's orbit
+and floating-origin rebases. Only position is driven; rotation stays owned by the
+look pipeline. The placeholder pod box is a separate object positioned at eye height
+each frame with a fixed orientation facing the planet, so looking around pans the
+dark interior with the window/planet ahead.
+
+Crash/teardown: teleport the player to `pc.spawnPoint` (the cabin, live position so
+it survives the orbit), `pc.SetVelocity(parentBody.velocity)`, `isKinematic = false`,
+destroy the pod + overlay → the normal wake-up runs. `Teardown` is idempotent and
+also runs from `OnDisable`/`OnDestroy` so an interrupted run never strands the player.
+
+## Original component sketch (superseded by the above — kept for context)
+
+### New Component: `PodArrivalSequence`
 
 A single self-contained scene-placed MonoBehaviour (lives on the same object as, or a
 sibling of, `IntroSequenceController`), exposing `public IEnumerator Play()`. It is

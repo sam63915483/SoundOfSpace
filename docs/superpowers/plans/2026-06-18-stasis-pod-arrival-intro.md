@@ -10,6 +10,18 @@
 
 **Spec:** `docs/superpowers/specs/2026-06-18-stasis-pod-arrival-intro-design.md`
 
+> **REVISION 2026-06-18 (post-implementation).** Tasks 1–2 were built as written, but
+> Task 2's camera-detach approach failed against the floating origin (see the spec's
+> "REVISED" note). `PodArrivalSequence` was rewritten to **move the player, not the
+> camera** (commit `5aba99f`). That rewrite folded several planned tasks together —
+> **done now:** seam wiring (T1), setup/teardown + reveal (T2, rewritten), free-look
+> (T3, via PlayerController), approach flight (T4), countdown + impact + cut-to-black
+> (T5), HAL subtitles (T7), Esc skip + abort safety (T8). **Remaining:** audio clips
+> (T6), and tuning/polish + load-path regression (T9: framing, distances, look feel,
+> pod-window art). The task bodies below describe the original camera approach for
+> beats already implemented differently — follow the committed code, not the old
+> camera steps, for T2–T5.
+
 ---
 
 ## Conventions for every task
