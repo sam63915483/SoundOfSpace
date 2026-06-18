@@ -81,11 +81,12 @@ public class PodArrivalSequence : MonoBehaviour
     [SerializeField] float breatheGrogSpeed = 1.1f;      // breathing rhythm (rad/sec) — worse -> better -> worse
 
     [Header("Heartbeat (rising panic as impact nears)")]
-    [SerializeField] AudioClip heartbeatSlowClip;        // calm beat that fades in at wake
-    [SerializeField] AudioClip heartbeatFastClip;        // racing beat crossfaded in during the countdown
-    [SerializeField, Range(0f, 1f)] float heartbeatApproachVolume = 0.4f;  // calm beat level during the drift
-    [SerializeField, Range(0f, 1f)] float heartbeatImpactVolume   = 0.9f;  // racing beat level at impact
-    [SerializeField] float heartbeatFadeIn = 3.5f;       // seconds to fade the calm beat in at wake
+    [SerializeField] AudioClip heartbeatClip;            // the regular heartbeat loop (same clip the cabin uses)
+    [SerializeField, Range(0f, 1f)] float heartbeatApproachVolume = 0.75f; // beat level during the drift (clearly audible)
+    [SerializeField, Range(0f, 1f)] float heartbeatImpactVolume   = 1f;    // beat level at impact (loud)
+    [SerializeField] float heartbeatFadeIn      = 3.5f;  // seconds to fade the beat in at wake
+    [SerializeField] float heartbeatStartPitch  = 1f;    // beat speed at wake (calm)
+    [SerializeField] float heartbeatImpactPitch = 1.55f; // beat speed at impact (faster = racing)
 
     // ── Runtime ─────────────────────────────────────────────────────────────
     CelestialBody _target;
@@ -106,7 +107,7 @@ public class PodArrivalSequence : MonoBehaviour
     TextMeshProUGUI _console;
 
     AudioSource _ambient, _rumble, _sfx;
-    AudioSource _heartSlow, _heartFast;   // calm + racing heartbeat loops (panic builds toward impact)
+    AudioSource _heart;   // heartbeat loop — volume + pitch ramp up toward impact (panic)
 
     Vector3 _dir;                // unit direction from the planet to the pod
     float _curDistance;          // current distance from the planet centre (driven by the phase coroutines)
@@ -249,7 +250,12 @@ public class PodArrivalSequence : MonoBehaviour
             float u = Mathf.Clamp01(t / approachDuration);
             // Start from rest, ease up to seamSpeed by the handoff.
             _curDistance = HermiteDistance(startDistance, arrivalDistance, 0f, -seamSpeed, approachDuration, u);
-            if (_heartSlow != null) _heartSlow.volume = Mathf.Lerp(0f, heartbeatApproachVolume, Mathf.Clamp01(t / heartbeatFadeIn));
+            if (_heart != null)
+            {
+                _heart.volume = Mathf.Lerp(0f, heartbeatApproachVolume, Mathf.Clamp01(t / heartbeatFadeIn));
+                // Subtle quickening over the drift (up to 1/4 of the way to the impact rate).
+                _heart.pitch  = Mathf.Lerp(heartbeatStartPitch, Mathf.Lerp(heartbeatStartPitch, heartbeatImpactPitch, 0.25f), u);
+            }
             while (li < approachLines.Length && li < approachLineTimes.Length && t >= approachLineTimes[li])
             {
                 Speak(approachLines[li]);
@@ -274,9 +280,12 @@ public class PodArrivalSequence : MonoBehaviour
             _curDistance = HermiteDistance(arrivalDistance, impactDistance, -seamSpeed, -impactSpeed, countdownDuration, k);
             _shakeAmp = shakeMaxAmplitude * shakeRamp.Evaluate(k);
             if (_rumble != null) _rumble.volume = rumbleVolume * k;
-            // Heart races toward impact: crossfade the calm beat out, the fast beat in (louder).
-            if (_heartSlow != null) _heartSlow.volume = Mathf.Lerp(heartbeatApproachVolume, 0f, k);
-            if (_heartFast != null) _heartFast.volume = Mathf.Lerp(0f, heartbeatImpactVolume, k);
+            // Heart races toward impact — louder AND faster (pitch) the closer we get.
+            if (_heart != null)
+            {
+                _heart.volume = Mathf.Lerp(heartbeatApproachVolume, heartbeatImpactVolume, k);
+                _heart.pitch  = Mathf.Lerp(Mathf.Lerp(heartbeatStartPitch, heartbeatImpactPitch, 0.25f), heartbeatImpactPitch, k);
+            }
 
             int rem = Mathf.CeilToInt(countdownStart * (1f - k));
             if (_console != null) _console.text = rem > 0 ? $"PROXIMITY ALERT\nIMPACT IN {rem}" : "PROXIMITY ALERT";
@@ -326,8 +335,7 @@ public class PodArrivalSequence : MonoBehaviour
         if (_canvas != null) Destroy(_canvas.gameObject);
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_rumble != null) { _rumble.Stop(); Destroy(_rumble); }
-        if (_heartSlow != null) { _heartSlow.Stop(); Destroy(_heartSlow); }
-        if (_heartFast != null) { _heartFast.Stop(); Destroy(_heartFast); }
+        if (_heart != null) { _heart.Stop(); Destroy(_heart); }
         if (_sfx != null) { _sfx.Stop(); Destroy(_sfx); }
     }
 
@@ -397,8 +405,8 @@ public class PodArrivalSequence : MonoBehaviour
     {
         _ambient = AddLoop(ambientHumClip, ambientVolume, true);
         _rumble  = AddLoop(rumbleClip, 0f, false);
-        _heartSlow = AddLoop(heartbeatSlowClip, 0f, true);   // fades in during the approach
-        _heartFast = AddLoop(heartbeatFastClip, 0f, true);   // crossfades in during the countdown
+        _heart = AddLoop(heartbeatClip, 0f, true);           // fades in at wake, ramps louder + faster toward impact
+        if (_heart != null) _heart.pitch = heartbeatStartPitch;
         _sfx = gameObject.AddComponent<AudioSource>();
         _sfx.spatialBlend = 0f; _sfx.playOnAwake = false;
     }

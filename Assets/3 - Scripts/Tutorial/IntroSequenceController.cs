@@ -72,8 +72,8 @@ public class IntroSequenceController : MonoBehaviour
     [SerializeField] float groggyMoveScale = 0.5f;    // walk speed after the first (post-Line03) unlock, before the final line
 
     [Header("Heartbeat spike (vitals irregular)")]
-    [SerializeField] AudioClip heartbeatFastClip;        // a genuinely faster heartbeat loop — crossfaded in (not pitched up)
-    [SerializeField] float heartbeatSpeedUpTime  = 2.5f; // seconds to ramp from the calm beat up to the fast beat
+    [SerializeField] float heartbeatFastPitch    = 1.4f; // elevated beat SPEED at the spike — we pitch up the SAME clip (no separate fast loop)
+    [SerializeField] float heartbeatSpeedUpTime  = 2.5f; // seconds to ramp from the calm beat up to the elevated rate
     [SerializeField] float heartbeatEaseDelay    = 5f;   // seconds into the "returned home" line before it eases back
     [SerializeField] float heartbeatEaseTime     = 5f;   // seconds to ease back down to the calm beat
 
@@ -97,9 +97,8 @@ public class IntroSequenceController : MonoBehaviour
     int _clicks;
     bool _clicksArmed;
     bool _running;
-    AudioSource _heartbeat;       // calm beat
-    AudioSource _heartbeatFast;   // racing beat (crossfaded in on "vitals irregular")
-    Coroutine _heartbeatXfade;
+    AudioSource _heartbeat;       // the heartbeat (pitched up for the vitals spike, eased back after)
+    Coroutine _heartbeatXfade;    // active pitch-ramp coroutine
     AudioSource _roomTone;
     GrogginessImageEffect _grog;
     float _grogIntensity = 1f;
@@ -349,8 +348,13 @@ public class IntroSequenceController : MonoBehaviour
         yield return Speak(Line01);
         yield return Speak(Line02);
 
-        // The realization sets in — the body reacts to "three years".
+        // The realization sets in — the body reacts to "three years". The heart
+        // begins CLIMBING here, a line before "vitals irregular", so HAL appears to
+        // be monitoring it rise and only then announce it — we pitch up the same
+        // beat the player likes rather than switching to a separate fast clip.
         StartHeartbeat();
+        if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
+        _heartbeatXfade = StartCoroutine(RampHeartbeatPitch(heartbeatFastPitch, heartbeatSpeedUpTime));
 
         yield return Speak(Line03);
 
@@ -363,10 +367,7 @@ public class IntroSequenceController : MonoBehaviour
         if (_pc != null) _pc.introMoveScale = groggyMoveScale;
         _forceLook = false;
 
-        // Vitals spike — crossfade up to the faster heartbeat as the alarm reads out.
-        if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
-        _heartbeatXfade = StartCoroutine(CrossfadeHeartbeat(true, heartbeatSpeedUpTime));
-        yield return Speak(Line05);
+        yield return Speak(Line05);   // "Heart rate elevated. Vitals irregular." — already climbing
 
         // Held silence before the softer reveal that a local took you in.
         yield return new WaitForSecondsRealtime(photoBeatSilence);
@@ -512,70 +513,50 @@ public class IntroSequenceController : MonoBehaviour
         _heartbeat.loop = true;
         _heartbeat.spatialBlend = 0f;
         _heartbeat.volume = 0f;
+        _heartbeat.pitch = 1f;        // calm rate; RampHeartbeatPitch raises it for the spike
         _heartbeat.playOnAwake = false;
         _heartbeat.Play();
         StartCoroutine(FadeHeartbeat(heartbeatTargetVolume, heartbeatFadeIn));
-
-        // Pre-roll the faster beat silently so the vitals-spike crossfade is instant.
-        if (heartbeatFastClip != null)
-        {
-            _heartbeatFast = gameObject.AddComponent<AudioSource>();
-            _heartbeatFast.clip = heartbeatFastClip;
-            _heartbeatFast.loop = true;
-            _heartbeatFast.spatialBlend = 0f;
-            _heartbeatFast.volume = 0f;
-            _heartbeatFast.playOnAwake = false;
-            _heartbeatFast.Play();
-        }
     }
 
-    // Crossfades between the calm and racing heartbeat loops at equal volume, so
-    // the beat changes SPEED without getting louder or sounding pitched-up. With
-    // no fast clip wired, the calm beat just keeps playing (no fake speed-up).
-    IEnumerator CrossfadeHeartbeat(bool toFast, float seconds)
+    // Ramps the heartbeat's PITCH (beat SPEED) toward targetPitch over `seconds`,
+    // keeping the same clip the player likes — higher pitch = a faster, more
+    // anxious beat. Replaces the old crossfade to a separate "fast" loop.
+    IEnumerator RampHeartbeatPitch(float targetPitch, float seconds)
     {
-        if (_heartbeatFast == null) yield break;
-        float slowFrom = _heartbeat     != null ? _heartbeat.volume     : 0f;
-        float fastFrom = _heartbeatFast != null ? _heartbeatFast.volume : 0f;
-        float slowTo = toFast ? 0f : heartbeatTargetVolume;
-        float fastTo = toFast ? heartbeatTargetVolume : 0f;
+        if (_heartbeat == null) yield break;
+        float from = _heartbeat.pitch;
         float t = 0f;
         while (t < seconds)
         {
             t += Time.unscaledDeltaTime;
-            float k = seconds > 0f ? t / seconds : 1f;
-            if (_heartbeat     != null) _heartbeat.volume     = Mathf.Lerp(slowFrom, slowTo, k);
-            if (_heartbeatFast != null) _heartbeatFast.volume = Mathf.Lerp(fastFrom, fastTo, k);
+            if (_heartbeat != null) _heartbeat.pitch = Mathf.Lerp(from, targetPitch, seconds > 0f ? t / seconds : 1f);
             yield return null;
         }
-        if (_heartbeat     != null) _heartbeat.volume     = slowTo;
-        if (_heartbeatFast != null) _heartbeatFast.volume = fastTo;
+        if (_heartbeat != null) _heartbeat.pitch = targetPitch;
     }
 
     IEnumerator FadeHeartbeat(float target, float seconds)
     {
         if (_heartbeat == null) yield break;
         float from = _heartbeat.volume;
-        float fastFrom = _heartbeatFast != null ? _heartbeatFast.volume : 0f;
         float t = 0f;
         while (t < seconds)
         {
             t += Time.unscaledDeltaTime;
             float k = seconds > 0f ? t / seconds : 1f;
             _heartbeat.volume = Mathf.Lerp(from, target, k);
-            if (_heartbeatFast != null) _heartbeatFast.volume = Mathf.Lerp(fastFrom, 0f, k);  // retire the racing beat
             yield return null;
         }
         _heartbeat.volume = target;
-        if (_heartbeatFast != null) _heartbeatFast.volume = 0f;
     }
 
-    // After `delay` seconds, crossfades the racing heartbeat back to the calm beat.
+    // After `delay` seconds, eases the heartbeat's pitch back down to the calm rate.
     IEnumerator EaseHeartbeatBackAfter(float delay)
     {
         yield return new WaitForSecondsRealtime(delay);
         if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
-        _heartbeatXfade = StartCoroutine(CrossfadeHeartbeat(false, heartbeatEaseTime));
+        _heartbeatXfade = StartCoroutine(RampHeartbeatPitch(1f, heartbeatEaseTime));
     }
 
     IEnumerator FadeOutAndCleanup()
