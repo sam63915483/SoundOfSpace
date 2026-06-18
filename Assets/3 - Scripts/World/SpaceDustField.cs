@@ -1,10 +1,17 @@
+using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Purely-visual glowing amber "space dust" field. Auto-singleton (mirrors SpaceDustInventory).
-/// Renders specks that drift toward the black hole, form spiral arms, thicken near the BH and
-/// away from planets, vanish inside atmospheres, and are immune to floating-origin rebases.
+/// A fixed pool of specks lives in a cube that follows the camera. Each speck is world-fixed
+/// (parallax) and wraps to the far side of the cube when it exits, giving an endless local field
+/// at constant cost. All motion is derived from camera-position-relative-to-the-black-hole, which
+/// is invariant under EndlessManager floating-origin rebases, so origin shifts never cause a jump.
+/// Per-speck visibility/brightness comes from a density field (BH proximity, planet avoidance,
+/// spiral arms + light noise). One additive instanced billboard material, drawn in <=1023 batches.
 /// </summary>
 public class SpaceDustField : MonoBehaviour
 {
@@ -24,11 +31,336 @@ public class SpaceDustField : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        Debug.Log("[SpaceDustField] created");
     }
 
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        if (_glowTex != null) Destroy(_glowTex);
+        if (_material != null) Destroy(_material);
+        if (_mesh != null) Destroy(_mesh);
     }
+
+    // ---- runtime refs ----
+    Camera _cam;
+    CelestialBody _blackHole;
+    readonly List<CelestialBody> _planets = new List<CelestialBody>();
+    readonly Dictionary<CelestialBody, float> _atmoRadius = new Dictionary<CelestialBody, float>();
+    InputSettings _input;
+    int _inputRefindCooldown;
+
+    // ---- origin-invariant parallax state ----
+    bool _hasPrevRel;
+    Vector3 _prevCamRelBH;
+
+    // ---- particle pool (local offset from camera) ----
+    Vector3[] _local;
+    float[] _threshold;
+    float[] _sizeRand;
+    float[] _phase;
+
+    // ---- render buffers ----
+    Matrix4x4[] _matrices;
+    Vector4[] _colors;
+    MaterialPropertyBlock _mpb;
+    Mesh _mesh;
+    Material _material;
+    Texture2D _glowTex;
+    static readonly int _ColorID = Shader.PropertyToID("_Color");
+    bool _initialized;
+
+    void LateUpdate()
+    {
+        // --- toggle (throttled re-find; default ON if InputSettings not found) ---
+        if (_input == null && --_inputRefindCooldown <= 0)
+        {
+            _input = FindObjectOfType<InputSettings>();
+            _inputRefindCooldown = 60;
+        }
+        if (_input != null && !_input.fxSpaceDust) return;
+
+        // --- camera ---
+        if (_cam == null) _cam = Camera.main;
+        if (_cam == null && Camera.allCamerasCount > 0) _cam = Camera.allCameras[0];
+        if (_cam == null) return;
+
+        // --- bodies / black hole ---
+        var bodies = NBodySimulation.Bodies;
+        if (bodies == null || bodies.Length == 0) return;
+        if (_blackHole == null || _planets.Count == 0) RefreshBodies(bodies);
+        if (_blackHole == null) return;
+
+        EnsureInit();
+        if (_material == null) return;
+
+        Vector3 camPos = _cam.transform.position;
+        Vector3 bhPos = _blackHole.Position;
+
+        // On a planet surface? nothing would be visible — skip the whole draw.
+        if (IsInsideAnyAtmosphere(camPos)) return;
+
+        // --- genuine, origin-shift-invariant camera delta (relative to the BH) ---
+        Vector3 camRelBH = camPos - bhPos;          // invariant under EndlessManager rebase
+        Vector3 genuineDelta = Vector3.zero;
+        if (_hasPrevRel)
+        {
+            genuineDelta = camRelBH - _prevCamRelBH;
+            if (genuineDelta.magnitude > sanityThreshold) genuineDelta = Vector3.zero; // glitch guard
+        }
+        _prevCamRelBH = camRelBH;
+        _hasPrevRel = true;
+
+        float dt = Time.deltaTime;
+        float L = boxSize;
+        float half = L * 0.5f;
+        float fadeStart = half * (1f - edgeFadeFrac);
+        float t = Time.time;
+
+        int m = 0;
+        for (int i = 0; i < _local.Length; i++)
+        {
+            Vector3 lp = _local[i];
+            Vector3 wp = camPos + lp;
+
+            // slow drift toward BH + world-fixed parallax
+            Vector3 toBH = bhPos - wp;
+            float toBHmag = toBH.magnitude;
+            if (toBHmag > 0.001f) lp += (toBH / toBHmag) * driftSpeed * dt;
+            lp -= genuineDelta;
+
+            // toroidal wrap into [-half, half]
+            lp.x -= L * Mathf.Round(lp.x / L);
+            lp.y -= L * Mathf.Round(lp.y / L);
+            lp.z -= L * Mathf.Round(lp.z / L);
+            _local[i] = lp;
+
+            wp = camPos + lp;
+
+            // density at this world position
+            float d = DensityAt(wp, bhPos);
+            if (d <= _threshold[i]) continue;
+
+            // spherical edge fade (hides cube corners + wrap pops)
+            float lpMag = lp.magnitude;
+            if (lpMag >= half) continue;
+            float edge = 1f - Mathf.SmoothStep(fadeStart, half, lpMag);
+            if (edge <= 0.001f) continue;
+
+            float vis = Mathf.SmoothStep(_threshold[i], Mathf.Min(1f, _threshold[i] + 0.15f), d);
+            float tw = 1f - twinkleAmount + twinkleAmount * (0.5f + 0.5f * Mathf.Sin(t * twinkleSpeed + _phase[i]));
+            float b = brightness * vis * edge * tw;
+            if (b <= 0.004f) continue;
+
+            float size = glowSize * _sizeRand[i];
+            _matrices[m] = Matrix4x4.TRS(wp, Quaternion.identity, new Vector3(size, size, size));
+            Color col = Color.Lerp(amberWarm, amberBright, Mathf.Clamp01(d));
+            _colors[m] = new Vector4(col.r, col.g, col.b, b);
+
+            m++;
+            if (m == 1023) { Flush(m); m = 0; }
+        }
+        if (m > 0) Flush(m);
+    }
+
+    void Flush(int count)
+    {
+        _mpb.Clear();
+        _mpb.SetVectorArray(_ColorID, _colors);
+        Graphics.DrawMeshInstanced(_mesh, 0, _material, _matrices, count, _mpb,
+            ShadowCastingMode.Off, false);
+    }
+
+    // ---- density field in [0,1] ----
+    float DensityAt(Vector3 wp, Vector3 bhPos)
+    {
+        // planet avoidance: 0 inside any atmosphere, rising to 1 away from the nearest planet
+        float fPlanet = 1f;
+        for (int i = 0; i < _planets.Count; i++)
+        {
+            var p = _planets[i];
+            if (p == null) continue;
+            float ar = AtmosphereRadius(p);
+            float dist = Vector3.Distance(wp, p.Position);
+            if (dist <= ar) return 0f;
+            float f = Mathf.Clamp01((dist - ar) / Mathf.Max(1f, planetFalloff));
+            if (f < fPlanet) fPlanet = f;
+        }
+
+        // black-hole proximity boost (1 near BH, 0 far)
+        float R = Vector3.Distance(wp, bhPos);
+        float fbh = 1f - Mathf.Clamp01((R - bhInnerRadius) / Mathf.Max(1f, bhOuterRadius - bhInnerRadius));
+
+        // logarithmic spiral arms in the BH equatorial (XZ) plane
+        Vector3 rel = wp - bhPos;
+        float rho = Mathf.Sqrt(rel.x * rel.x + rel.z * rel.z);
+        float theta = Mathf.Atan2(rel.z, rel.x);
+        float armPhase = theta - armTwist * Mathf.Log(rho + 1f) * 0.01f;
+        float arm = 0.5f + 0.5f * Mathf.Cos(armPhase * armCount);
+        arm = Mathf.Pow(Mathf.Clamp01(arm), armSharpness);
+        float n = Mathf.PerlinNoise(rho * 0.0008f, theta * 1.5f + armPhase) - 0.5f; // light filaments
+        arm = Mathf.Clamp01(arm + n * filamentStrength);
+        float vert = Mathf.Exp(-(rel.y * rel.y) / Mathf.Max(1f, diskThickness * diskThickness));
+        float armFactor = Mathf.Lerp(armFloor, 1f, arm * vert);
+
+        float d = fPlanet * Mathf.Clamp01(baseDensity + bhBoost * fbh) * armFactor;
+        return Mathf.Clamp01(d);
+    }
+
+    bool IsInsideAnyAtmosphere(Vector3 wp)
+    {
+        for (int i = 0; i < _planets.Count; i++)
+        {
+            var p = _planets[i];
+            if (p == null) continue;
+            if (Vector3.Distance(wp, p.Position) <= AtmosphereRadius(p)) return true;
+        }
+        return false;
+    }
+
+    void RefreshBodies(CelestialBody[] bodies)
+    {
+        _planets.Clear();
+        _blackHole = null;
+        foreach (var b in bodies)
+        {
+            if (b == null) continue;
+            if (b.isStaticAttractor) { if (_blackHole == null) _blackHole = b; }
+            else _planets.Add(b);
+        }
+    }
+
+    // ---- atmosphere radius (cached; reflection so we never touch/break the forbidden zone) ----
+    float AtmosphereRadius(CelestialBody b)
+    {
+        if (_atmoRadius.TryGetValue(b, out float r)) return r;
+        r = ComputeAtmosphereRadius(b);
+        _atmoRadius[b] = r;
+        return r;
+    }
+
+    float ComputeAtmosphereRadius(CelestialBody b)
+    {
+        float fallback = b.radius * atmosphereFallbackMultiplier;
+        try
+        {
+            MonoBehaviour gen = null;
+            var comps = b.GetComponentsInChildren<MonoBehaviour>(true);
+            foreach (var c in comps)
+                if (c != null && c.GetType().Name == "CelestialBodyGenerator") { gen = c; break; }
+            if (gen == null) return fallback;
+
+            object settings = GetMember(gen, "body");
+            object shading = settings != null ? GetMember(settings, "shading") : null;
+            object atmo = shading != null ? GetMember(shading, "atmosphereSettings") : null;
+            if (atmo == null) return fallback; // body has no atmosphere settings
+            object scaleObj = GetMember(atmo, "atmosphereScale");
+            if (scaleObj is float scale) return (1f + scale) * b.radius;
+        }
+        catch { /* fall through */ }
+        return fallback;
+    }
+
+    static object GetMember(object obj, string name)
+    {
+        if (obj == null) return null;
+        var tp = obj.GetType();
+        var f = tp.GetField(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        if (f != null) return f.GetValue(obj);
+        var p = tp.GetProperty(name, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        if (p != null) return p.GetValue(obj);
+        return null;
+    }
+
+    // ---- init: pool + mesh + material + glow texture ----
+    void EnsureInit()
+    {
+        if (_initialized) return;
+        _initialized = true;
+
+        _local = new Vector3[particleCount];
+        _threshold = new float[particleCount];
+        _sizeRand = new float[particleCount];
+        _phase = new float[particleCount];
+        float half = boxSize * 0.5f;
+        for (int i = 0; i < particleCount; i++)
+        {
+            _local[i] = new Vector3(Random.Range(-half, half), Random.Range(-half, half), Random.Range(-half, half));
+            _threshold[i] = Random.value;
+            _sizeRand[i] = Random.Range(1f - sizeJitter, 1f + sizeJitter);
+            _phase[i] = Random.Range(0f, 6.2831853f);
+        }
+
+        _matrices = new Matrix4x4[1023];
+        _colors = new Vector4[1023];
+        _mpb = new MaterialPropertyBlock();
+        BuildMeshAndMaterial();
+    }
+
+    void BuildMeshAndMaterial()
+    {
+        _mesh = new Mesh { name = "SpaceDustQuad" };
+        _mesh.vertices = new[]
+        {
+            new Vector3(-0.5f,-0.5f,0f), new Vector3(0.5f,-0.5f,0f),
+            new Vector3(0.5f, 0.5f,0f), new Vector3(-0.5f, 0.5f,0f)
+        };
+        _mesh.uv = new[] { new Vector2(0,0), new Vector2(1,0), new Vector2(1,1), new Vector2(0,1) };
+        _mesh.triangles = new[] { 0, 1, 2, 0, 2, 3 };
+        _mesh.bounds = new Bounds(Vector3.zero, Vector3.one * 1e6f); // never frustum-cull the batch
+
+        const int S = 64;
+        _glowTex = new Texture2D(S, S, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        Vector2 c = new Vector2((S - 1) * 0.5f, (S - 1) * 0.5f);
+        float maxd = S * 0.5f;
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float dd = Vector2.Distance(new Vector2(x, y), c) / maxd;
+                float a = Mathf.Clamp01(1f - dd);
+                a = a * a * a; // soft radial falloff
+                _glowTex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+            }
+        _glowTex.Apply();
+
+        Shader sh = Shader.Find("Custom/SpaceDust");
+        if (sh == null) { Debug.LogError("[SpaceDustField] Custom/SpaceDust shader not found (add it to Always Included Shaders)"); return; }
+        _material = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
+        _material.enableInstancing = true;
+        _material.mainTexture = _glowTex;
+    }
+
+    // ================= tuning (appended at END per conventions) =================
+    [Header("Budget")]
+    [SerializeField] int particleCount = 5000;
+    [SerializeField] float boxSize = 1200f;            // L: cube side around the camera
+
+    [Header("Motion")]
+    [SerializeField] float driftSpeed = 4f;            // m/s toward the BH
+    [SerializeField] float sanityThreshold = 900f;     // single-frame delta guard (< EndlessManager's 1000)
+
+    [Header("Density")]
+    [SerializeField] float baseDensity = 0.35f;        // deep-space baseline ("noticeable field")
+    [SerializeField] float bhBoost = 0.65f;            // extra density near the BH
+    [SerializeField] float bhOuterRadius = 30000f;     // distance where BH influence begins
+    [SerializeField] float bhInnerRadius = 5000f;      // ~just outside the event horizon (BH radius 4000)
+    [SerializeField] float atmosphereFallbackMultiplier = 1.35f;
+    [SerializeField] float planetFalloff = 600f;       // fade band beyond a planet's atmosphere
+
+    [Header("Spiral arms")]
+    [SerializeField] int armCount = 2;
+    [SerializeField] float armTwist = 8f;
+    [SerializeField] float armSharpness = 1.4f;
+    [SerializeField] float armFloor = 0.45f;           // inter-arm density floor
+    [SerializeField] float diskThickness = 8000f;      // vertical falloff of the arm disk
+    [SerializeField] float filamentStrength = 0.25f;   // light turbulence
+
+    [Header("Look")]
+    [SerializeField] Color amberWarm = new Color(1f, 0.55f, 0.18f);
+    [SerializeField] Color amberBright = new Color(1f, 0.82f, 0.45f);
+    [SerializeField] float glowSize = 6f;
+    [SerializeField] float sizeJitter = 0.6f;
+    [SerializeField] float brightness = 1.4f;
+    [SerializeField] float twinkleAmount = 0.3f;
+    [SerializeField] float twinkleSpeed = 1.5f;
+    [SerializeField] float edgeFadeFrac = 0.18f;       // fraction of half-box where specks fade out
 }
