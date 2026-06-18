@@ -73,6 +73,13 @@ public class PodArrivalSequence : MonoBehaviour
     [Header("Pod visual")]
     [SerializeField] GameObject podPrefab;   // dark-industrial stasis pod (StasisPod.prefab); null = no pod
 
+    [Header("Grogginess (stasis wake — same blur + double-vision as the cabin wake-up)")]
+    [SerializeField] Material grogginessMaterial;        // the Hidden/Grogginess material (share IntroSequenceController's)
+    [SerializeField] float grogRecoverRate  = 0.07f;     // intensity units/sec easing from full blur down to the floor
+    [SerializeField] float grogFloor        = 0.45f;     // woozy level held through the descent (never fully clears)
+    [SerializeField] float breatheGrogMax   = 2f;        // peak multiplier of the base woozy level (the double-vision pulse)
+    [SerializeField] float breatheGrogSpeed = 1.1f;      // breathing rhythm (rad/sec) — worse -> better -> worse
+
     // ── Runtime ─────────────────────────────────────────────────────────────
     CelestialBody _target;
     PlayerController _pc;
@@ -80,6 +87,9 @@ public class PodArrivalSequence : MonoBehaviour
     Rigidbody _rb;
     Camera _cam;
     GameObject _podInstance;      // spawned StasisPod, positioned/oriented each LateUpdate
+    GrogginessImageEffect _grog;  // stasis-wake blur on the camera; eased + breathing
+    float _grogIntensity = 1f;    // 1 = full blur at wake, eased down to grogFloor
+    float _grogTarget;
     bool _wasKinematic;
     Vector3 _returnPos;          // fallback cabin pose captured before we move the player
     Quaternion _returnRot;
@@ -143,6 +153,7 @@ public class PodArrivalSequence : MonoBehaviour
         IntroSequenceController.SuppressGroggyCameraFx = true;    // mute strafe tilt / sprint FOV
         HALCommentator.SuppressAutonomous = true;                 // no atmosphere/arrival narration while we teleport the player
         FallDamage.Suppressed = true;                             // descent speed must not deal damage at the cabin
+        HudVisibility.SetForceHidden(true);                       // hide compass/vitals/jetpack/wallet for a clean cinematic (countdown + HAL lines stay)
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
@@ -156,6 +167,18 @@ public class PodArrivalSequence : MonoBehaviour
         BuildCanvas();
         StartAudio();
         if (podPrefab != null) _podInstance = Instantiate(podPrefab);
+
+        // Stasis-wake grogginess: come to very blurry, ease down to a woozy floor,
+        // then breathe (worse/better) — the same effect the cabin wake-up uses.
+        if (grogginessMaterial != null && _cam != null)
+        {
+            _grog = _cam.gameObject.AddComponent<GrogginessImageEffect>();
+            _grog.material = grogginessMaterial;
+            _grogIntensity = 1f;          // fully blurry at wake
+            _grogTarget    = grogFloor;   // ease toward the woozy floor; it breathes there
+            _grog.intensity = 1f;
+        }
+
         _flying = true;
         _active = true;
         return true;
@@ -280,7 +303,13 @@ public class PodArrivalSequence : MonoBehaviour
         IntroSequenceController.SuppressGroggyCameraFx = false;
         HALCommentator.SuppressAutonomous = false;
         FallDamage.Suppressed = false;
+        HudVisibility.SetForceHidden(false);
 
+        // DestroyImmediate (not Destroy): the cabin wake-up attaches its OWN
+        // GrogginessImageEffect on the same frame, and the component is
+        // [DisallowMultipleComponent] — a deferred Destroy would still be present
+        // and block the wake-up's AddComponent.
+        if (_grog != null) { DestroyImmediate(_grog); _grog = null; }
         if (_podInstance != null) Destroy(_podInstance);
         if (_canvas != null) Destroy(_canvas.gameObject);
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
@@ -294,6 +323,22 @@ public class PodArrivalSequence : MonoBehaviour
     void Update()
     {
         if (_active && Input.GetKeyDown(KeyCode.Escape)) _skip = true;
+
+        // Ease the stasis grogginess from full blur toward the woozy floor, then
+        // hold it there with the breathing pulse (head-throb / double vision).
+        if (_grog != null)
+        {
+            _grogIntensity = Mathf.MoveTowards(_grogIntensity, _grogTarget, grogRecoverRate * Time.unscaledDeltaTime);
+            _grog.intensity = BreathingGrog(_grogIntensity);
+        }
+    }
+
+    // Base woozy level pulsed up to breatheGrogMax× and back on a slow breathing
+    // rhythm (worse -> better -> worse) — mirrors IntroSequenceController.
+    float BreathingGrog(float baseLevel)
+    {
+        float s = 0.5f * (1f - Mathf.Cos(Time.unscaledTime * breatheGrogSpeed)); // 0..1
+        return Mathf.Clamp01(baseLevel * (1f + s * (breatheGrogMax - 1f)));
     }
 
     // ── UI / audio / fade ─────────────────────────────────────────────────────
@@ -316,7 +361,7 @@ public class PodArrivalSequence : MonoBehaviour
         _console.fontSize = 54;
         _console.color = new Color(1f, 0.25f, 0.2f, 1f);
         var rt = _console.rectTransform;
-        rt.anchorMin = new Vector2(0.5f, 0.18f); rt.anchorMax = new Vector2(0.5f, 0.18f);
+        rt.anchorMin = new Vector2(0.5f, 0.82f); rt.anchorMax = new Vector2(0.5f, 0.82f);  // near the TOP (clear of the bottom HUD)
         rt.pivot = new Vector2(0.5f, 0.5f); rt.anchoredPosition = Vector2.zero;
         rt.sizeDelta = new Vector2(1200f, 200f);
         _console.text = "";
