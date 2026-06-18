@@ -267,6 +267,7 @@ public class VitalsHUD : MonoBehaviour
         canvas.sortingOrder = 830; // above LetterboxBars (820) — stays visible during dialogue / cook UI
         _canvas = canvas;
         HUDSceneGate.Register(canvas);
+        HudVisibility.RegisterHideable(canvas);   // honours the "HIDE HUD" setting / pod cinematic
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);

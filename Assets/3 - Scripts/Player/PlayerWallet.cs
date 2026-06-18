@@ -118,6 +118,7 @@ public class PlayerWallet : MonoBehaviour
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = 830; // above LetterboxBars (820) — stays visible during dialogue / cook UI
         HUDSceneGate.Register(canvas);
+        HudVisibility.RegisterHideable(canvas);   // honours the "HIDE HUD" setting / pod cinematic
 
         var scaler = canvasGO.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

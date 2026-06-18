@@ -177,6 +177,12 @@ public class InputSettings : ScriptableObject {
 	public bool fxBloom = true;
 	public bool fxSpaceDust = true;
 
+		[Header("HUD")]
+		// Hides the gameplay HUD (compass, vitals, jetpack/flight status, wallet)
+		// for a clean, cinematic view. Applied through HudVisibility on load and
+		// whenever the CAMERA-tab "HIDE HUD" toggle changes.
+		public bool hudHidden = false;
+
 	[Header("Concert")]
 	// Off by default — concert stages spawn ~20 real-time Lights between cone
 	// lights, blinders, and strobes. Shadowed dynamic spotlights are one of the
@@ -320,6 +326,9 @@ public class InputSettings : ScriptableObject {
 		displayHeight     = PlayerPrefs.GetInt (nameof (displayHeight),     0);
 		displayFullscreen = PlayerPrefs.GetInt (nameof (displayFullscreen), 1) != 0;
 
+		hudHidden = PlayerPrefs.GetInt (nameof (hudHidden), 0) != 0;
+		HudVisibility.SetUserHidden (hudHidden);
+
 		fxConcertShadows = PlayerPrefs.GetInt (nameof (fxConcertShadows), 0) != 0;
 		qualityPreset    = (QualityPreset) PlayerPrefs.GetInt (nameof (qualityPreset), (int) QualityPreset.Custom);
 		// physicsRateV2 — bumped from physicsRate after the enum was reordered
@@ -420,6 +429,8 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt (nameof (displayWidth),      displayWidth);
 		PlayerPrefs.SetInt (nameof (displayHeight),     displayHeight);
 		PlayerPrefs.SetInt (nameof (displayFullscreen), displayFullscreen ? 1 : 0);
+
+		PlayerPrefs.SetInt (nameof (hudHidden), hudHidden ? 1 : 0);
 
 		PlayerPrefs.SetInt (nameof (fxConcertShadows), fxConcertShadows ? 1 : 0);
 		PlayerPrefs.SetInt (nameof (qualityPreset),    (int) qualityPreset);

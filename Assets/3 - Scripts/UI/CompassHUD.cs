@@ -371,6 +371,7 @@ public class CompassHUD : MonoBehaviour
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         _canvas.sortingOrder = 300;
         HUDSceneGate.Register(_canvas);
+        HudVisibility.RegisterHideable(_canvas);   // honours the "HIDE HUD" setting / pod cinematic
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);

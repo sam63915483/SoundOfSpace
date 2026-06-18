@@ -74,6 +74,7 @@ public class FlightAssistStatusHUD : MonoBehaviour
         // Above the teleport-to-pilot button so toast messages like
         // "Already piloting ship" aren't obscured by it.
         _canvas.sortingOrder = UILayer.Modal;
+        HudVisibility.RegisterHideable(_canvas);   // honours the "HIDE HUD" setting / pod cinematic (jetpack/flight status)
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
