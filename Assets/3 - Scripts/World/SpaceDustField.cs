@@ -47,6 +47,7 @@ public class SpaceDustField : MonoBehaviour
     // ---- runtime refs ----
     Camera _cam;
     CelestialBody _blackHole;
+    CelestialBody _homeBody; // planet whose orbital velocity the field co-moves with
     readonly List<CelestialBody> _planets = new List<CelestialBody>();
     readonly Dictionary<CelestialBody, float> _atmoRadius = new Dictionary<CelestialBody, float>();
     InputSettings _input;
@@ -133,6 +134,13 @@ public class SpaceDustField : MonoBehaviour
         }
         float washMul = Mathf.Lerp(1f, atmosphereWashMin, maxImmersion);
 
+        // Co-move the whole field with the home planet's orbital velocity. On that
+        // planet, this cancels the orbital parallax (you orbit with it), so the only
+        // residual motion is the drift toward the black hole — it reads as the dust
+        // being pulled in. Other planets (different orbital speeds) show some residual
+        // drift, which is fine.
+        Vector3 coMoveStep = (_homeBody != null ? _homeBody.velocity : Vector3.zero) * dt;
+
         int m = 0;
         for (int i = 0; i < _local.Length; i++)
         {
@@ -149,6 +157,7 @@ public class SpaceDustField : MonoBehaviour
                 float effDrift = driftSpeed * (1f + driftBHAccel * fbhDrift);
                 lp += (toBH / toBHmag) * effDrift * dt;
             }
+            lp += coMoveStep;      // co-move with home planet so its orbital parallax cancels there
             lp -= genuineDelta;
 
             // toroidal wrap into [-half, half]
@@ -251,11 +260,13 @@ public class SpaceDustField : MonoBehaviour
     {
         _planets.Clear();
         _blackHole = null;
+        _homeBody = null;
         foreach (var b in bodies)
         {
             if (b == null) continue;
             if (b.isStaticAttractor) { if (_blackHole == null) _blackHole = b; }
             else _planets.Add(b);
+            if (b.bodyName == coMoveBodyName) _homeBody = b;
         }
     }
 
@@ -383,6 +394,7 @@ public class SpaceDustField : MonoBehaviour
     [Header("Motion")]
     [SerializeField] float driftSpeed = 30f;           // base m/s toward the BH (far from it)
     [SerializeField] float driftBHAccel = 5f;          // extra drift multiplier ramped in near the BH (infall accel)
+    [SerializeField] string coMoveBodyName = "Humble Abode"; // field co-moves with this planet's orbit (cancels its parallax)
     [SerializeField] float sanityThreshold = 900f;     // single-frame delta guard (< EndlessManager's 1000)
 
     [Header("Density")]
@@ -393,7 +405,7 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float atmosphereFallbackMultiplier = 1.35f;
     [SerializeField] float lowerAtmosphereFrac = 0.5f; // clear specks below this fraction of atmo thickness
     [SerializeField] float planetFalloff = 600f;       // fade band above the cleared lower atmosphere
-    [SerializeField] float atmosphereWashMin = 0.3f;   // dust brightness multiplier when deep in an atmosphere (haze wash)
+    [SerializeField] float atmosphereWashMin = 0.15f;  // dust brightness multiplier when deep in an atmosphere (haze wash)
 
     [Header("Look")]
     [SerializeField] Color amberWarm = new Color(1f, 0.55f, 0.18f);
