@@ -70,12 +70,16 @@ public class PodArrivalSequence : MonoBehaviour
     [Header("Post-crash")]
     [SerializeField] float postCrashBlackHold = 3f;  // seconds the screen stays black after impact before the cabin teleport + wake-up
 
+    [Header("Pod visual")]
+    [SerializeField] GameObject podPrefab;   // dark-industrial stasis pod (StasisPod.prefab); null = no pod
+
     // ── Runtime ─────────────────────────────────────────────────────────────
     CelestialBody _target;
     PlayerController _pc;
     Transform _player;
     Rigidbody _rb;
     Camera _cam;
+    GameObject _podInstance;      // spawned StasisPod, positioned/oriented each LateUpdate
     bool _wasKinematic;
     Vector3 _returnPos;          // fallback cabin pose captured before we move the player
     Quaternion _returnRot;
@@ -151,6 +155,7 @@ public class PodArrivalSequence : MonoBehaviour
 
         BuildCanvas();
         StartAudio();
+        if (podPrefab != null) _podInstance = Instantiate(podPrefab);
         _flying = true;
         _active = true;
         return true;
@@ -174,6 +179,17 @@ public class PodArrivalSequence : MonoBehaviour
         }
         _rb.position = pos;
         _player.position = pos;
+
+        // Centre the pod on the camera (the eye) and orient it off the CONSTANT
+        // descent direction _dir: +Y (ceiling/space window) points away from the
+        // planet, so the floor window faces it. _dir never changes during flight,
+        // so the pod is rock-stable — unlike the old per-frame LookRotation that
+        // spun wildly once we were metres from the planet. Shake stays positional.
+        if (_podInstance != null && _cam != null)
+        {
+            _podInstance.transform.position = _cam.transform.position;
+            _podInstance.transform.rotation = Quaternion.FromToRotation(Vector3.up, _dir);
+        }
     }
 
     // ── Flight phases ─────────────────────────────────────────────────────────
@@ -265,6 +281,7 @@ public class PodArrivalSequence : MonoBehaviour
         HALCommentator.SuppressAutonomous = false;
         FallDamage.Suppressed = false;
 
+        if (_podInstance != null) Destroy(_podInstance);
         if (_canvas != null) Destroy(_canvas.gameObject);
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_rumble != null) { _rumble.Stop(); Destroy(_rumble); }
