@@ -92,6 +92,12 @@ public static class HALVoiceManifest
         { "Orbit matched.",                                       "orbit_matched.mp3" },
         { "Orbit unmatched.",                                     "orbit_unmatched.mp3" },
 
+        // ── Pod arrival cinematic (PodArrivalSequence approachLines) ────────
+        // Keys MUST byte-match PodArrivalSequence.approachLines (and the scene's
+        // serialized copy) or the line shows silently.
+        { "Stasis cycle complete. Welcome back, astronaut.",     "pod_01_stasis_complete.mp3" },
+        { "Approaching Humble Abode. Begin atmospheric entry.",  "pod_02_approaching.mp3" },
+
         // ── Mission 1 cold open (IntroSequenceController) ───────────────────
         // Keys MUST byte-match IntroSequenceController's line consts (em-dash,
         // ellipsis included) or the line shows silently.
