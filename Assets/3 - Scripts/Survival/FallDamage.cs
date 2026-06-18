@@ -56,6 +56,12 @@ public class FallDamage : MonoBehaviour
 	[Range(0f, 1f)] public float impactVolume = 0.8f;
 	[Range(0f, 1f)] public float painVolume = 0.8f;
 
+	// Set true by scripted cinematics that fly/teleport the player (e.g. the
+	// stasis-pod arrival). While set, we don't accumulate toward-surface speed and
+	// keep the peak at zero, so the descent doesn't deal fall damage that would
+	// otherwise land on the player the moment they're placed in the cabin.
+	public static bool Suppressed;
+
 	// --- runtime ---
 	PlayerController player;
 	AudioSource audioSource;
@@ -95,6 +101,9 @@ public class FallDamage : MonoBehaviour
 			player.OnLanded += HandleLanded;
 			subscribed = true;
 		}
+
+		// A cinematic owns the player's motion — don't bank any of it as a fall.
+		if (Suppressed) { peakFallSpeed = 0f; return; }
 
 		// Toward-surface speed: positive = falling onto the planet. Horizontal
 		// motion projects to ~0 on transform.up, so it doesn't count.

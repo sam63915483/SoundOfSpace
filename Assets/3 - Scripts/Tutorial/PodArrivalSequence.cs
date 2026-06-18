@@ -34,19 +34,9 @@ public class PodArrivalSequence : MonoBehaviour
     [SerializeField] float impactFadeTime = 0.12f;   // cut to black on impact
     [SerializeField] float skipFadeTime   = 0.4f;    // fade on skip
 
-    [Header("Pod interior placeholder (box open at the front = window)")]
-    [SerializeField] float podWidth  = 4f;
-    [SerializeField] float podHeight = 3f;
-    [SerializeField] float podDepth  = 4f;
-    [SerializeField] float podWallThickness = 0.15f;
-    [SerializeField] float podEyeHeight = 1.6f;      // how far above the player's feet the pod is centred (eye level)
-    [SerializeField] Color podInteriorColor = new Color(0.05f, 0.05f, 0.06f, 1f);
-
     [Header("Shake / impact")]
     [SerializeField] float shakeMaxAmplitude = 1.2f; // peak camera shake at impact (world units)
     [SerializeField] AnimationCurve shakeRamp = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-    [SerializeField] AnimationCurve approachEase = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
-    [SerializeField] AnimationCurve countdownAccel = AnimationCurve.EaseInOut(0f, 0f, 1f, 1f);
 
     [Header("Audio (optional; null = silent)")]
     [SerializeField] AudioClip ambientHumClip;
@@ -68,6 +58,18 @@ public class PodArrivalSequence : MonoBehaviour
     [Header("Countdown")]
     [SerializeField] int countdownStart = 10;
 
+    // Speeds (m/s, inward) that pin the velocity at the two seams so the flight is
+    // velocity-continuous — no dead-stop-then-restart. The approach starts at rest
+    // and eases up to seamSpeed by the time reentry begins; reentry then brakes
+    // BELOW seamSpeed (atmospheric drag) before gravity wins and it accelerates to
+    // impactSpeed — a real crash, not a gentle ease-in. Keep impactSpeed > seamSpeed.
+    [Header("Flight speeds")]
+    [SerializeField] float seamSpeed   = 80f;   // inward speed at the approach -> reentry handoff
+    [SerializeField] float impactSpeed = 130f;  // inward speed at the moment of impact
+
+    [Header("Post-crash")]
+    [SerializeField] float postCrashBlackHold = 3f;  // seconds the screen stays black after impact before the cabin teleport + wake-up
+
     // ── Runtime ─────────────────────────────────────────────────────────────
     CelestialBody _target;
     PlayerController _pc;
@@ -77,9 +79,6 @@ public class PodArrivalSequence : MonoBehaviour
     bool _wasKinematic;
     Vector3 _returnPos;          // fallback cabin pose captured before we move the player
     Quaternion _returnRot;
-
-    GameObject _pod;
-    Material _podMat;
 
     Canvas _canvas;
     Image _fade;
@@ -103,10 +102,14 @@ public class PodArrivalSequence : MonoBehaviour
 
         yield return Fade(1f, 0f, fadeInTime);   // reveal the scene
         yield return Approach();                 // calm drift toward the planet
-        if (!_skip) yield return Countdown();     // countdown -> impact -> black
+        if (!_skip)
+        {
+            yield return Countdown();                                  // countdown -> impact boom -> cut to black
+            yield return new WaitForSecondsRealtime(postCrashBlackHold); // hold black while the crash rings out (player still in the pod)
+        }
         if (_skip)  yield return Fade(0f, 1f, skipFadeTime);
 
-        Teardown();
+        Teardown();   // teleport to the cabin under the black screen, then the wake-up takes over
     }
 
     // ── Locate / setup ───────────────────────────────────────────────────────
@@ -134,6 +137,8 @@ public class PodArrivalSequence : MonoBehaviour
         TutorialGate.LockAll();                                   // no movement
         TutorialGate.Unlock(TutorialAbility.MouseLook);           // but free-look out the window
         IntroSequenceController.SuppressGroggyCameraFx = true;    // mute strafe tilt / sprint FOV
+        HALCommentator.SuppressAutonomous = true;                 // no atmosphere/arrival narration while we teleport the player
+        FallDamage.Suppressed = true;                             // descent speed must not deal damage at the cabin
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
@@ -144,7 +149,6 @@ public class PodArrivalSequence : MonoBehaviour
         _player.position = startPos;
         _pc.ForceLookAt(_target.Position);                       // start looking out the window at the planet
 
-        BuildPod();
         BuildCanvas();
         StartAudio();
         _flying = true;
@@ -170,18 +174,24 @@ public class PodArrivalSequence : MonoBehaviour
         }
         _rb.position = pos;
         _player.position = pos;
-
-        if (_pod != null)
-        {
-            Vector3 head = pos + _player.up * podEyeHeight;
-            _pod.transform.position = head;
-            Vector3 toPlanet = _target.Position - head;
-            if (toPlanet.sqrMagnitude > 1e-4f)
-                _pod.transform.rotation = Quaternion.LookRotation(toPlanet, _player.up);
-        }
     }
 
     // ── Flight phases ─────────────────────────────────────────────────────────
+    // Distance is driven by a cubic Hermite per phase so we can pin the inward
+    // SPEED at each end. The approach ends at -seamSpeed and the reentry begins at
+    // -seamSpeed (matched), so the motion is velocity-continuous across the seam —
+    // it never decelerates to a stop and re-accelerates. (Inward = distance
+    // decreasing, so the rates are negative.)
+    static float HermiteDistance(float d0, float d1, float v0, float v1, float duration, float u)
+    {
+        float u2 = u * u, u3 = u2 * u;
+        float h00 = 2f * u3 - 3f * u2 + 1f;
+        float h10 = u3 - 2f * u2 + u;
+        float h01 = -2f * u3 + 3f * u2;
+        float h11 = u3 - u2;
+        return h00 * d0 + h10 * (duration * v0) + h01 * d1 + h11 * (duration * v1);
+    }
+
     IEnumerator Approach()
     {
         int li = 0;
@@ -189,8 +199,9 @@ public class PodArrivalSequence : MonoBehaviour
         while (t < approachDuration && !_skip)
         {
             t += Time.unscaledDeltaTime;
-            float k = approachEase.Evaluate(Mathf.Clamp01(t / approachDuration));
-            _curDistance = Mathf.Lerp(startDistance, arrivalDistance, k);
+            float u = Mathf.Clamp01(t / approachDuration);
+            // Start from rest, ease up to seamSpeed by the handoff.
+            _curDistance = HermiteDistance(startDistance, arrivalDistance, 0f, -seamSpeed, approachDuration, u);
             while (li < approachLines.Length && li < approachLineTimes.Length && t >= approachLineTimes[li])
             {
                 Speak(approachLines[li]);
@@ -210,7 +221,9 @@ public class PodArrivalSequence : MonoBehaviour
         {
             t += Time.unscaledDeltaTime;
             float k = Mathf.Clamp01(t / countdownDuration);
-            _curDistance = Mathf.Lerp(arrivalDistance, impactDistance, countdownAccel.Evaluate(k));
+            // Enter at seamSpeed (continuous), brake below it mid-reentry, then
+            // accelerate to impactSpeed — the brake fails and it crashes.
+            _curDistance = HermiteDistance(arrivalDistance, impactDistance, -seamSpeed, -impactSpeed, countdownDuration, k);
             _shakeAmp = shakeMaxAmplitude * shakeRamp.Evaluate(k);
             if (_rumble != null) _rumble.volume = rumbleVolume * k;
 
@@ -249,9 +262,9 @@ public class PodArrivalSequence : MonoBehaviour
             _pc.SetVelocity(body != null ? body.velocity : Vector3.zero);
         }
         IntroSequenceController.SuppressGroggyCameraFx = false;
+        HALCommentator.SuppressAutonomous = false;
+        FallDamage.Suppressed = false;
 
-        if (_pod != null) Destroy(_pod);
-        if (_podMat != null) Destroy(_podMat);
         if (_canvas != null) Destroy(_canvas.gameObject);
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_rumble != null) { _rumble.Stop(); Destroy(_rumble); }
@@ -264,31 +277,6 @@ public class PodArrivalSequence : MonoBehaviour
     void Update()
     {
         if (_active && Input.GetKeyDown(KeyCode.Escape)) _skip = true;
-    }
-
-    // ── Pod visual (placeholder: five dark slabs, open front = window) ────────
-    void BuildPod()
-    {
-        _pod = new GameObject("PodArrivalVisual");
-        _podMat = new Material(Shader.Find("Unlit/Color")) { color = podInteriorColor };
-        float W = podWidth, H = podHeight, D = podDepth, t = podWallThickness;
-        MakeWall("Back",   new Vector3(0, 0, -D / 2f), new Vector3(W, H, t));
-        MakeWall("Top",    new Vector3(0, H / 2f, 0),  new Vector3(W, t, D));
-        MakeWall("Bottom", new Vector3(0, -H / 2f, 0), new Vector3(W, t, D));
-        MakeWall("Left",   new Vector3(-W / 2f, 0, 0), new Vector3(t, H, D));
-        MakeWall("Right",  new Vector3(W / 2f, 0, 0),  new Vector3(t, H, D));
-    }
-
-    void MakeWall(string name, Vector3 localPos, Vector3 scale)
-    {
-        var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        go.name = "Pod_" + name;
-        var col = go.GetComponent<Collider>();
-        if (col != null) Destroy(col);
-        go.transform.SetParent(_pod.transform, false);
-        go.transform.localPosition = localPos;
-        go.transform.localScale = scale;
-        go.GetComponent<Renderer>().sharedMaterial = _podMat;
     }
 
     // ── UI / audio / fade ─────────────────────────────────────────────────────
