@@ -66,6 +66,9 @@ public static class HudVisibility
     static void ApplyTo(CanvasGroup cg)
     {
         cg.alpha = Hidden ? 0f : 1f;
-        cg.blocksRaycasts = !Hidden;
+        // Only force raycasts off while hidden (so an invisible HUD never eats
+        // clicks). When shown, leave blocksRaycasts as the HUD set it — some HUDs
+        // (e.g. VitalsHUD) deliberately keep their own CanvasGroup non-blocking.
+        if (Hidden) cg.blocksRaycasts = false;
     }
 }

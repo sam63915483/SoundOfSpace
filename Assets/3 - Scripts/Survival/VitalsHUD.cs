@@ -225,7 +225,10 @@ public class VitalsHUD : MonoBehaviour
     {
         var legacy = FindObjectOfType<ResourceHUD>(true);
         if (legacy == null) return;
-        if (!legacy.gameObject.activeInHierarchy) return; // already disabled — nothing to do
+        // NOTE: do NOT early-out when the legacy root is inactive. Its bars/labels
+        // can live on separate GameObjects that are individually active under an
+        // inactive-at-this-instant parent; skipping here left them to pop back on
+        // (the top-left legacy HUD reappearing). Always disable the elements.
         _legacyHidden = true;
 
         // Disable each scene-bound element the legacy HUD drives. The bars,
@@ -267,7 +270,6 @@ public class VitalsHUD : MonoBehaviour
         canvas.sortingOrder = 830; // above LetterboxBars (820) — stays visible during dialogue / cook UI
         _canvas = canvas;
         HUDSceneGate.Register(canvas);
-        HudVisibility.RegisterHideable(canvas);   // honours the "HIDE HUD" setting / pod cinematic
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
@@ -276,6 +278,7 @@ public class VitalsHUD : MonoBehaviour
         var group = gameObject.AddComponent<CanvasGroup>();
         group.interactable = false;
         group.blocksRaycasts = false;
+        HudVisibility.RegisterHideable(canvas);   // reuse the CanvasGroup just created (no duplicate); honours HIDE HUD / pod
 
         // Card root anchored bottom-right.
         var card = NewUI("Card", transform);
