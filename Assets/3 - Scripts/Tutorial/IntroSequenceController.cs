@@ -147,6 +147,19 @@ public class IntroSequenceController : MonoBehaviour
         if (EarlyGameProgress.IntroPlayed) { yield return FadeOutAndCleanup(); yield break; }
 
         EarlyGameProgress.IntroPlayed = true;
+
+        // Pod arrival cinematic runs first, under the black overlay. Hide our
+        // overlay while it owns the screen (it manages its own fade), then
+        // restore it (black, eyes shut) so the wake-up takes over seamlessly.
+        if (_podArrival != null)
+        {
+            if (_canvas != null) _canvas.enabled = false;
+            yield return _podArrival.Play();
+            if (_canvas != null) _canvas.enabled = true;
+            _openness = _opennessTarget = 0f;   // eyes shut again for the wake-up
+            ApplyEyelids(0f);
+        }
+
         yield return RunSequence();
     }
 
@@ -572,4 +585,7 @@ public class IntroSequenceController : MonoBehaviour
         yield return new WaitUntil(() => _openness >= 0.999f);
         if (_canvas != null) Destroy(_canvas.gameObject);
     }
+
+    [Header("Pod arrival intro (plays before the wake-up)")]
+    [SerializeField] PodArrivalSequence _podArrival;   // optional; if null, the pod intro is skipped
 }
