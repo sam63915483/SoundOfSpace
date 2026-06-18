@@ -73,6 +73,12 @@ public class SpaceDustField : MonoBehaviour
     static readonly int _ColorID = Shader.PropertyToID("_Color");
     bool _initialized;
 
+    // ---- per-frame relevant-planet shortlist (perf: avoids dict lookups + far planets in the hot loop) ----
+    Vector3[] _relPos;
+    float[] _relCull, _relCull2, _relOuter2;
+    int _relCount;
+    float _planetFalloffInv = 1f, _bhRampInv = 1f;
+
     void LateUpdate()
     {
         // --- toggle (throttled re-find; default ON if InputSettings not found) ---
@@ -141,21 +147,27 @@ public class SpaceDustField : MonoBehaviour
         // drift, which is fine.
         Vector3 coMoveStep = (_homeBody != null ? _homeBody.velocity : Vector3.zero) * dt;
 
+        // Per-frame planet shortlist so the hot loop skips dictionary lookups and
+        // far planets entirely (cube corner reach = half * sqrt(3)).
+        BuildRelevantPlanets(camPos, half * 1.7320508f);
+
         int m = 0;
         for (int i = 0; i < _local.Length; i++)
         {
             Vector3 lp = _local[i];
             Vector3 wp = camPos + lp;
 
-            // drift straight toward the BH (accelerating as it gets closer, like
-            // infalling matter) + world-fixed parallax
+            // speck -> BH: one sqrt, reused for drift direction, infall accel, and density
             Vector3 toBH = bhPos - wp;
-            float toBHmag = toBH.magnitude;
-            if (toBHmag > 0.001f)
+            float bhDist = toBH.magnitude;
+            float d = DensityAt(wp, bhDist);
+
+            // drift straight toward the BH (accelerating as it gets closer) + co-move + parallax
+            if (bhDist > 0.001f)
             {
-                float fbhDrift = 1f - Mathf.Clamp01((toBHmag - bhInnerRadius) / Mathf.Max(1f, bhOuterRadius - bhInnerRadius));
+                float fbhDrift = 1f - Mathf.Clamp01((bhDist - bhInnerRadius) * _bhRampInv);
                 float effDrift = driftSpeed * (1f + driftBHAccel * fbhDrift);
-                lp += (toBH / toBHmag) * effDrift * dt;
+                lp += (toBH / bhDist) * (effDrift * dt);
             }
             lp += coMoveStep;      // co-move with home planet so its orbital parallax cancels there
             lp -= genuineDelta;
@@ -166,10 +178,6 @@ public class SpaceDustField : MonoBehaviour
             lp.z -= L * Mathf.Round(lp.z / L);
             _local[i] = lp;
 
-            wp = camPos + lp;
-
-            // density at this world position
-            float d = DensityAt(wp, bhPos);
             if (d <= _threshold[i]) continue;
 
             // spherical edge fade (hides cube corners + wrap pops)
@@ -184,8 +192,13 @@ public class SpaceDustField : MonoBehaviour
             if (b <= 0.004f) continue;
 
             float size = glowSize * _sizeRand[i];
-            _matrices[m] = Matrix4x4.TRS(wp, Quaternion.identity, new Vector3(size, size, size));
-            Color col = Color.Lerp(amberWarm, amberBright, Mathf.Clamp01(d));
+            // Translation + uniform scale matrix built directly (cheaper than Matrix4x4.TRS,
+            // which does quaternion->matrix work for a rotation we don't use).
+            Matrix4x4 mtx = Matrix4x4.identity;
+            mtx.m00 = size; mtx.m11 = size; mtx.m22 = size;
+            mtx.m03 = camPos.x + lp.x; mtx.m13 = camPos.y + lp.y; mtx.m23 = camPos.z + lp.z;
+            _matrices[m] = mtx;
+            Color col = Color.Lerp(amberWarm, amberBright, d);
             _colors[m] = new Vector4(col.r, col.g, col.b, b);
 
             m++;
@@ -203,32 +216,52 @@ public class SpaceDustField : MonoBehaviour
     }
 
     // ---- density field in [0,1] ----
-    float DensityAt(Vector3 wp, Vector3 bhPos)
+    // Uses the per-frame "relevant planet" arrays (_relPos/_relCull/_relCull2/_relOuter2)
+    // built in BuildRelevantPlanets, and the already-computed speck->BH distance, so the
+    // hot loop avoids dictionary lookups and skips sqrt for specks far from any planet.
+    float DensityAt(Vector3 wp, float bhDist)
     {
-        // planet avoidance: specks are cleared from the LOWER atmosphere (up to
-        // lowerAtmosphereFrac of the atmosphere thickness), then fade back in
-        // above it. This keeps the air near the ground clear but still lets you
-        // see the dust higher up / overhead from a planet surface.
+        // planet avoidance: specks are cleared from the LOWER atmosphere, fading back
+        // in above it. Squared-distance early-outs keep the common cases sqrt-free.
         float fPlanet = 1f;
-        for (int i = 0; i < _planets.Count; i++)
+        for (int i = 0; i < _relCount; i++)
+        {
+            Vector3 dv = wp - _relPos[i];
+            float sq = dv.x * dv.x + dv.y * dv.y + dv.z * dv.z;
+            if (sq <= _relCull2[i]) return 0f;       // inside lower atmosphere -> no dust
+            if (sq >= _relOuter2[i]) continue;       // past the fade band -> contributes 1
+            float f = (Mathf.Sqrt(sq) - _relCull[i]) * _planetFalloffInv;
+            if (f < fPlanet) fPlanet = f;
+        }
+
+        // black-hole proximity boost (1 near BH, 0 far). Straight radial pull.
+        float fbh = 1f - Mathf.Clamp01((bhDist - bhInnerRadius) * _bhRampInv);
+        float d = fPlanet * Mathf.Clamp01(baseDensity + bhBoost * fbh);
+        return d < 0f ? 0f : (d > 1f ? 1f : d);
+    }
+
+    // Build the short list of planets close enough to affect any speck in the camera box,
+    // with squared cull/outer radii precomputed. Called once per frame.
+    void BuildRelevantPlanets(Vector3 camPos, float boxReach)
+    {
+        _relCount = 0;
+        _planetFalloffInv = 1f / Mathf.Max(1f, planetFalloff);
+        _bhRampInv = 1f / Mathf.Max(1f, bhOuterRadius - bhInnerRadius);
+        for (int i = 0; i < _planets.Count && _relCount < _relPos.Length; i++)
         {
             var p = _planets[i];
             if (p == null) continue;
             float atmoR = AtmosphereRadius(p);
             float cullR = Mathf.Lerp(p.radius, atmoR, lowerAtmosphereFrac);
-            float dist = Vector3.Distance(wp, p.Position);
-            if (dist <= cullR) return 0f;
-            float f = Mathf.Clamp01((dist - cullR) / Mathf.Max(1f, planetFalloff));
-            if (f < fPlanet) fPlanet = f;
+            float outer = cullR + planetFalloff;
+            Vector3 ppos = p.Position;
+            if (Vector3.Distance(camPos, ppos) - boxReach > outer) continue; // too far to touch the box
+            _relPos[_relCount] = ppos;
+            _relCull[_relCount] = cullR;
+            _relCull2[_relCount] = cullR * cullR;
+            _relOuter2[_relCount] = outer * outer;
+            _relCount++;
         }
-
-        // black-hole proximity boost (1 near BH, 0 far). Straight radial pull —
-        // no spiral arms; specks just stream directly into the black hole.
-        float R = Vector3.Distance(wp, bhPos);
-        float fbh = 1f - Mathf.Clamp01((R - bhInnerRadius) / Mathf.Max(1f, bhOuterRadius - bhInnerRadius));
-
-        float d = fPlanet * Mathf.Clamp01(baseDensity + bhBoost * fbh);
-        return Mathf.Clamp01(d);
     }
 
     /// <summary>
@@ -334,6 +367,13 @@ public class SpaceDustField : MonoBehaviour
         _matrices = new Matrix4x4[1023];
         _colors = new Vector4[1023];
         _mpb = new MaterialPropertyBlock();
+
+        int pc = Mathf.Max(_planets.Count, 8);
+        _relPos = new Vector3[pc];
+        _relCull = new float[pc];
+        _relCull2 = new float[pc];
+        _relOuter2 = new float[pc];
+
         BuildMeshAndMaterial();
     }
 
