@@ -79,6 +79,7 @@ public class PodArrivalSequence : MonoBehaviour
     bool _pcWasEnabled;
 
     GameObject _podRig;
+    Material _podMaterial;
     Vector3 _seatLocalPos;
 
     Canvas _canvas;
@@ -96,6 +97,7 @@ public class PodArrivalSequence : MonoBehaviour
     // ── Entry point ──────────────────────────────────────────────────────────
     public IEnumerator Play()
     {
+        _skip = false;                  // reset in case a previous run set it (replay path)
         if (!Locate()) yield break;     // no target -> fall straight through to the wake-up
 
         Setup();
@@ -121,6 +123,7 @@ public class PodArrivalSequence : MonoBehaviour
     {
         _pc  = FindObjectOfType<PlayerController>();
         _cam = _pc != null ? _pc.Camera : Camera.main;
+        if (_cam == null) return;   // no camera to drive — bail before touching anything; Play() degrades to a black beat and Teardown stays a no-op (_active never set)
 
         // Reuse the player camera: detach it from the player and put it under a
         // pod rig. Capture its exact original parent/local pose to restore later.
@@ -157,7 +160,8 @@ public class PodArrivalSequence : MonoBehaviour
     // "window"; looking around shows the dark stasis-pod interior. Placeholder art.
     void BuildPodInterior(Transform parent)
     {
-        var mat = new Material(Shader.Find("Unlit/Color")) { color = podInteriorColor };
+        _podMaterial = new Material(Shader.Find("Unlit/Color")) { color = podInteriorColor };
+        var mat = _podMaterial;
         float W = podWidth, H = podHeight, D = podDepth, t = podWallThickness;
         MakeWall(parent, mat, "Back",   new Vector3(0, 0, -D / 2f), new Vector3(W, H, t));
         MakeWall(parent, mat, "Top",    new Vector3(0, H / 2f, 0),  new Vector3(W, t, D));
@@ -286,10 +290,11 @@ public class PodArrivalSequence : MonoBehaviour
         IntroSequenceController.SuppressGroggyCameraFx = false;
 
         if (_podRig != null) Destroy(_podRig);
+        if (_podMaterial != null) Destroy(_podMaterial);
         if (_canvas != null) Destroy(_canvas.gameObject);
-        if (_ambient != null) Destroy(_ambient);
-        if (_rumble != null) Destroy(_rumble);
-        if (_sfx != null) Destroy(_sfx);
+        if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
+        if (_rumble != null) { _rumble.Stop(); Destroy(_rumble); }
+        if (_sfx != null) { _sfx.Stop(); Destroy(_sfx); }
     }
 
     // Safety net: if the sequence is interrupted (scene reload) mid-flight, never
