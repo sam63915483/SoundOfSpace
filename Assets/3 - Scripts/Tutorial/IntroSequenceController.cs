@@ -106,6 +106,7 @@ public class IntroSequenceController : MonoBehaviour
     bool _grogHandoff;
     PlayerController _pc;
     bool _forceLook;
+    bool _groggyControlGranted;   // stage 1 (look + 15% movement) handed back exactly once
 
     void Awake()
     {
@@ -304,10 +305,7 @@ public class IntroSequenceController : MonoBehaviour
         {
             if (_pc == null) _pc = FindObjectOfType<PlayerController>();
             if (_pc != null && _pc.ForceLookAtSmooth(lookTarget.position, lookPanSpeed))
-            {
-                _forceLook = false;                                 // stop holding the gaze
-                TutorialGate.Unlock(TutorialAbility.MouseLook);     // player can look around now
-            }
+                GrantGroggyControl();   // gaze landed = cursor unlocks: hand back look + movement (15%) together
         }
     }
 
@@ -358,15 +356,12 @@ public class IntroSequenceController : MonoBehaviour
 
         yield return Speak(Line03);
 
-        // Soft handoff: right after "memory loss is expected" the player gets
-        // movement + look back — but at a crawl (15%, still groggy) and free of the
-        // forced gaze. The rest of the briefing plays as voiceover over their first
-        // wobbly steps; the pace steps up to 50% after the reassurance line and to
-        // full speed after the final line.
-        TutorialGate.Unlock(TutorialAbility.Move);
-        TutorialGate.Unlock(TutorialAbility.MouseLook);
-        if (_pc != null) _pc.introMoveScale = moveScaleStart;
-        _forceLook = false;
+        // Fallback: if the groggy gaze pan hasn't landed by now (e.g. no lookTarget),
+        // hand control back here so the player isn't stuck looking at the photo
+        // through the rest of the briefing. No-op if the gaze already returned
+        // control in Update — either way look + 15% movement arrive together. The
+        // pace steps up to 50% after the reassurance line, full at the final line.
+        GrantGroggyControl();
 
         yield return Speak(Line05);   // "Heart rate elevated. Vitals irregular." — already climbing
 
@@ -407,6 +402,23 @@ public class IntroSequenceController : MonoBehaviour
     {
         yield return new WaitForSecondsRealtime(delay);
         _forceLook = true;
+    }
+
+    // Stage 1 of the staged handoff: hands the player back look AND movement
+    // together, at the groggy first walk speed (15%). Fired the instant the forced
+    // gaze pan lands (the "cursor unlocks" beat) and again after Line03 as a
+    // fallback — guarded so it only applies once, so movement can never lag behind
+    // the cursor. Pace later steps up to 50% (after the reassurance line) and to
+    // full speed at the final handoff.
+    void GrantGroggyControl()
+    {
+        if (_groggyControlGranted) return;
+        _groggyControlGranted = true;
+        _forceLook = false;                                 // stop holding the gaze
+        TutorialGate.Unlock(TutorialAbility.MouseLook);     // player can look around now
+        TutorialGate.Unlock(TutorialAbility.Move);          // ...and walk
+        if (_pc == null) _pc = FindObjectOfType<PlayerController>();
+        if (_pc != null) _pc.introMoveScale = moveScaleStart;   // 15% — still groggy
     }
 
     // Shows the "Press LMB" tip after `delay` — but only if the player hasn't
