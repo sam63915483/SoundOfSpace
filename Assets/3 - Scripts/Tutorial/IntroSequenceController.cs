@@ -24,7 +24,7 @@ public class IntroSequenceController : MonoBehaviour
     const string Line04 = "While you were unconscious, a local took you in. A native species. You are, currently, their guest.";
     const string Line05 = "Heart rate elevated. Vitals irregular.";
     const string Line06 = "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.";
-    const string Line07 = "...For now, try not to think about it.";
+    const string Line07 = "The alien left a note for you on the table. Try walking to it and give it a read.";
 
     // ── Tunables (appended at END per convention) ──────────────────────────
     [Header("Timing")]
@@ -72,8 +72,8 @@ public class IntroSequenceController : MonoBehaviour
     [SerializeField] float groggyMoveScale = 0.5f;    // walk speed after the first (post-Line03) unlock, before the final line
 
     [Header("Heartbeat spike (vitals irregular)")]
-    [SerializeField] AudioClip heartbeatFastClip;        // a genuinely faster heartbeat loop — crossfaded in (not pitched up)
-    [SerializeField] float heartbeatSpeedUpTime  = 2.5f; // seconds to ramp from the calm beat up to the fast beat
+    [SerializeField] float heartbeatFastPitch    = 1.4f; // elevated beat SPEED at the spike — we pitch up the SAME clip (no separate fast loop)
+    [SerializeField] float heartbeatSpeedUpTime  = 2.5f; // seconds to ramp from the calm beat up to the elevated rate
     [SerializeField] float heartbeatEaseDelay    = 5f;   // seconds into the "returned home" line before it eases back
     [SerializeField] float heartbeatEaseTime     = 5f;   // seconds to ease back down to the calm beat
 
@@ -97,9 +97,8 @@ public class IntroSequenceController : MonoBehaviour
     int _clicks;
     bool _clicksArmed;
     bool _running;
-    AudioSource _heartbeat;       // calm beat
-    AudioSource _heartbeatFast;   // racing beat (crossfaded in on "vitals irregular")
-    Coroutine _heartbeatXfade;
+    AudioSource _heartbeat;       // the heartbeat (pitched up for the vitals spike, eased back after)
+    Coroutine _heartbeatXfade;    // active pitch-ramp coroutine
     AudioSource _roomTone;
     GrogginessImageEffect _grog;
     float _grogIntensity = 1f;
@@ -107,6 +106,7 @@ public class IntroSequenceController : MonoBehaviour
     bool _grogHandoff;
     PlayerController _pc;
     bool _forceLook;
+    bool _groggyControlGranted;   // stage 1 (look + 15% movement) handed back exactly once
 
     void Awake()
     {
@@ -127,9 +127,11 @@ public class IntroSequenceController : MonoBehaviour
 
     void OnDestroy()
     {
-        // Never leave the camera-FX mute latched on if the intro is torn down
-        // (scene reload / abort) before its normal phase-6 handoff.
+        // Never leave the camera-FX mute or the note-bypass latched on if the
+        // intro is torn down (scene reload / abort) before its phase-6 handoff —
+        // both are statics that would otherwise leak into the next run.
         SuppressGroggyCameraFx = false;
+        NotePickup.ReadableDuringIntro = false;
     }
 
     IEnumerator Start()
@@ -147,6 +149,19 @@ public class IntroSequenceController : MonoBehaviour
         if (EarlyGameProgress.IntroPlayed) { yield return FadeOutAndCleanup(); yield break; }
 
         EarlyGameProgress.IntroPlayed = true;
+
+        // Pod arrival cinematic runs first, under the black overlay. Hide our
+        // overlay while it owns the screen (it manages its own fade), then
+        // restore it (black, eyes shut) so the wake-up takes over seamlessly.
+        if (_podArrival != null)
+        {
+            if (_canvas != null) _canvas.enabled = false;
+            yield return _podArrival.Play();
+            if (_canvas != null) _canvas.enabled = true;
+            _openness = _opennessTarget = 0f;   // eyes shut again for the wake-up
+            ApplyEyelids(0f);
+        }
+
         yield return RunSequence();
     }
 
@@ -292,10 +307,7 @@ public class IntroSequenceController : MonoBehaviour
         {
             if (_pc == null) _pc = FindObjectOfType<PlayerController>();
             if (_pc != null && _pc.ForceLookAtSmooth(lookTarget.position, lookPanSpeed))
-            {
-                _forceLook = false;                                 // stop holding the gaze
-                TutorialGate.Unlock(TutorialAbility.MouseLook);     // player can look around now
-            }
+                GrantGroggyControl();   // gaze landed = cursor unlocks: hand back look + movement (15%) together
         }
     }
 
@@ -336,43 +348,53 @@ public class IntroSequenceController : MonoBehaviour
         yield return Speak(Line01);
         yield return Speak(Line02);
 
-        // The realization sets in — the body reacts to "three years".
+        // The realization sets in — the body reacts to "three years". The heart
+        // begins CLIMBING here, a line before "vitals irregular", so HAL appears to
+        // be monitoring it rise and only then announce it — we pitch up the same
+        // beat the player likes rather than switching to a separate fast clip.
         StartHeartbeat();
+        if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
+        _heartbeatXfade = StartCoroutine(RampHeartbeatPitch(heartbeatFastPitch, heartbeatSpeedUpTime));
 
         yield return Speak(Line03);
 
-        // Soft handoff: right after "memory loss is expected" the player gets
-        // movement + look back — but at half pace (still groggy) and free of the
-        // forced gaze. The rest of the briefing plays as voiceover over their
-        // first wobbly steps. Full speed is restored after the final line.
-        TutorialGate.Unlock(TutorialAbility.Move);
-        TutorialGate.Unlock(TutorialAbility.MouseLook);
-        if (_pc != null) _pc.introMoveScale = groggyMoveScale;
-        _forceLook = false;
+        // Fallback: if the groggy gaze pan hasn't landed by now (e.g. no lookTarget),
+        // hand control back here so the player isn't stuck looking at the photo
+        // through the rest of the briefing. No-op if the gaze already returned
+        // control in Update — either way look + 15% movement arrive together. The
+        // pace steps up to 50% after the reassurance line, full at the final line.
+        GrantGroggyControl();
 
-        // Vitals spike — crossfade up to the faster heartbeat as the alarm reads out.
-        if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
-        _heartbeatXfade = StartCoroutine(CrossfadeHeartbeat(true, heartbeatSpeedUpTime));
-        yield return Speak(Line05);
+        yield return Speak(Line05);   // "Heart rate elevated. Vitals irregular." — already climbing
+
+        // Reassurance lands right after the spike — the heart eases back to normal
+        // partway through this line.
+        StartCoroutine(EaseHeartbeatBackAfter(heartbeatEaseDelay));
+        yield return Speak(Line06);   // "It is normal... you will be returned home."
+
+        // Steadier now that the reassurance has landed — bump the walk pace up to
+        // the mid step (50%) for the rest of the briefing.
+        if (_pc != null) _pc.introMoveScale = groggyMoveScale;
 
         // Held silence before the softer reveal that a local took you in.
         yield return new WaitForSecondsRealtime(photoBeatSilence);
+        yield return Speak(Line04);   // "While you were unconscious, a local took you in..."
 
-        yield return Speak(Line04);
-
-        // Reassurance — the heart eases back to normal partway through this line.
-        StartCoroutine(EaseHeartbeatBackAfter(heartbeatEaseDelay));
-        yield return Speak(Line06);
-        yield return Speak(Line07);
+        yield return Speak(Line07);   // "The alien left a note for you on the table..."
 
         // Phase 6: full handoff to survival — restore full walk speed + everything else.
         if (_pc != null) _pc.introMoveScale = 1f;
         TutorialGate.UnlockAll();
+        NotePickup.ReadableDuringIntro = false;        // Pickup is globally unlocked now — the normal gate governs the note
         SuppressGroggyCameraFx = false;                // strafe tilt + sprint FOV kick return
         _forceLook = false;                            // (already released after Line03)
         StartCoroutine(FadeGrogAndRemove());           // residual woozy vision clears over a few seconds
         StartCoroutine(ReleaseFirstContact());
+        // The heartbeat carried the whole wake-up; bring it down to a faint beat at
+        // the handoff, then fully fade it out + stop it heartbeatStopDelay (15s)
+        // after this final line so it doesn't loop under the ambient mix forever.
         if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
+        StartCoroutine(FadeHeartbeatOutAfter(heartbeatStopDelay, heartbeatStopFade));
         yield return FadeHeartbeat(heartbeatTargetVolume * 0.25f, heartbeatFadeOut);
         _running = false;
     }
@@ -383,6 +405,24 @@ public class IntroSequenceController : MonoBehaviour
     {
         yield return new WaitForSecondsRealtime(delay);
         _forceLook = true;
+    }
+
+    // Stage 1 of the staged handoff: hands the player back look AND movement
+    // together, at the groggy first walk speed (15%). Fired the instant the forced
+    // gaze pan lands (the "cursor unlocks" beat) and again after Line03 as a
+    // fallback — guarded so it only applies once, so movement can never lag behind
+    // the cursor. Pace later steps up to 50% (after the reassurance line) and to
+    // full speed at the final handoff.
+    void GrantGroggyControl()
+    {
+        if (_groggyControlGranted) return;
+        _groggyControlGranted = true;
+        _forceLook = false;                                 // stop holding the gaze
+        TutorialGate.Unlock(TutorialAbility.MouseLook);     // player can look around now
+        TutorialGate.Unlock(TutorialAbility.Move);          // ...and walk
+        NotePickup.ReadableDuringIntro = true;              // ...and read Tev's note, even mid-briefing
+        if (_pc == null) _pc = FindObjectOfType<PlayerController>();
+        if (_pc != null) _pc.introMoveScale = moveScaleStart;   // 15% — still groggy
     }
 
     // Shows the "Press LMB" tip after `delay` — but only if the player hasn't
@@ -499,70 +539,61 @@ public class IntroSequenceController : MonoBehaviour
         _heartbeat.loop = true;
         _heartbeat.spatialBlend = 0f;
         _heartbeat.volume = 0f;
+        _heartbeat.pitch = 1f;        // calm rate; RampHeartbeatPitch raises it for the spike
         _heartbeat.playOnAwake = false;
         _heartbeat.Play();
         StartCoroutine(FadeHeartbeat(heartbeatTargetVolume, heartbeatFadeIn));
-
-        // Pre-roll the faster beat silently so the vitals-spike crossfade is instant.
-        if (heartbeatFastClip != null)
-        {
-            _heartbeatFast = gameObject.AddComponent<AudioSource>();
-            _heartbeatFast.clip = heartbeatFastClip;
-            _heartbeatFast.loop = true;
-            _heartbeatFast.spatialBlend = 0f;
-            _heartbeatFast.volume = 0f;
-            _heartbeatFast.playOnAwake = false;
-            _heartbeatFast.Play();
-        }
     }
 
-    // Crossfades between the calm and racing heartbeat loops at equal volume, so
-    // the beat changes SPEED without getting louder or sounding pitched-up. With
-    // no fast clip wired, the calm beat just keeps playing (no fake speed-up).
-    IEnumerator CrossfadeHeartbeat(bool toFast, float seconds)
+    // Ramps the heartbeat's PITCH (beat SPEED) toward targetPitch over `seconds`,
+    // keeping the same clip the player likes — higher pitch = a faster, more
+    // anxious beat. Replaces the old crossfade to a separate "fast" loop.
+    IEnumerator RampHeartbeatPitch(float targetPitch, float seconds)
     {
-        if (_heartbeatFast == null) yield break;
-        float slowFrom = _heartbeat     != null ? _heartbeat.volume     : 0f;
-        float fastFrom = _heartbeatFast != null ? _heartbeatFast.volume : 0f;
-        float slowTo = toFast ? 0f : heartbeatTargetVolume;
-        float fastTo = toFast ? heartbeatTargetVolume : 0f;
+        if (_heartbeat == null) yield break;
+        float from = _heartbeat.pitch;
         float t = 0f;
         while (t < seconds)
         {
             t += Time.unscaledDeltaTime;
-            float k = seconds > 0f ? t / seconds : 1f;
-            if (_heartbeat     != null) _heartbeat.volume     = Mathf.Lerp(slowFrom, slowTo, k);
-            if (_heartbeatFast != null) _heartbeatFast.volume = Mathf.Lerp(fastFrom, fastTo, k);
+            if (_heartbeat != null) _heartbeat.pitch = Mathf.Lerp(from, targetPitch, seconds > 0f ? t / seconds : 1f);
             yield return null;
         }
-        if (_heartbeat     != null) _heartbeat.volume     = slowTo;
-        if (_heartbeatFast != null) _heartbeatFast.volume = fastTo;
+        if (_heartbeat != null) _heartbeat.pitch = targetPitch;
     }
 
     IEnumerator FadeHeartbeat(float target, float seconds)
     {
         if (_heartbeat == null) yield break;
         float from = _heartbeat.volume;
-        float fastFrom = _heartbeatFast != null ? _heartbeatFast.volume : 0f;
         float t = 0f;
         while (t < seconds)
         {
             t += Time.unscaledDeltaTime;
             float k = seconds > 0f ? t / seconds : 1f;
             _heartbeat.volume = Mathf.Lerp(from, target, k);
-            if (_heartbeatFast != null) _heartbeatFast.volume = Mathf.Lerp(fastFrom, 0f, k);  // retire the racing beat
             yield return null;
         }
         _heartbeat.volume = target;
-        if (_heartbeatFast != null) _heartbeatFast.volume = 0f;
     }
 
-    // After `delay` seconds, crossfades the racing heartbeat back to the calm beat.
+    // After `delay` seconds, eases the heartbeat's pitch back down to the calm rate.
     IEnumerator EaseHeartbeatBackAfter(float delay)
     {
         yield return new WaitForSecondsRealtime(delay);
         if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
-        _heartbeatXfade = StartCoroutine(CrossfadeHeartbeat(false, heartbeatEaseTime));
+        _heartbeatXfade = StartCoroutine(RampHeartbeatPitch(1f, heartbeatEaseTime));
+    }
+
+    // Fully fades the heartbeat out and stops it `delay` seconds after the final
+    // briefing line. Without this the faint beat left after the handoff loops under
+    // the ambient mix for the rest of the session.
+    IEnumerator FadeHeartbeatOutAfter(float delay, float fade)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        if (_heartbeatXfade != null) { StopCoroutine(_heartbeatXfade); _heartbeatXfade = null; }
+        yield return FadeHeartbeat(0f, fade);
+        if (_heartbeat != null) { _heartbeat.Stop(); Destroy(_heartbeat); _heartbeat = null; }
     }
 
     IEnumerator FadeOutAndCleanup()
@@ -572,4 +603,14 @@ public class IntroSequenceController : MonoBehaviour
         yield return new WaitUntil(() => _openness >= 0.999f);
         if (_canvas != null) Destroy(_canvas.gameObject);
     }
+
+    [Header("Pod arrival intro (plays before the wake-up)")]
+    [SerializeField] PodArrivalSequence _podArrival;   // optional; if null, the pod intro is skipped
+
+    [Header("Staged move-speed ramp")]
+    [SerializeField] float moveScaleStart = 0.15f;     // walk speed at the first unlock, when cursor/look returns (post-Line03). groggyMoveScale (0.5) is the mid step after the reassurance line; 100% comes at the final handoff.
+
+    [Header("Heartbeat fade-out (after the final line)")]
+    [SerializeField] float heartbeatStopDelay = 15f;   // seconds after the last briefing line before the heartbeat fully fades out
+    [SerializeField] float heartbeatStopFade  = 4f;    // seconds to fade the faint heartbeat down to silence
 }

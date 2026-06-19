@@ -1248,6 +1248,7 @@ public class Hotbar : MonoBehaviour
 
         float totalWidth = NumSlots * SlotSize + (NumSlots - 1) * SlotSpacing;
         var bar = NewRT("HotbarRoot", canvasGo.transform);
+        HudVisibility.RegisterHideable(bar.gameObject.AddComponent<CanvasGroup>());   // hide for HIDE HUD / pod, independent of the dim group on the canvas
         bar.anchorMin = new Vector2(0.5f, 0f);
         bar.anchorMax = new Vector2(0.5f, 0f);
         bar.pivot = new Vector2(0.5f, 0f);

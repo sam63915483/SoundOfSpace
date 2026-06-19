@@ -32,6 +32,13 @@ public class HALCommentator : MonoBehaviour
 {
     public static HALCommentator Instance { get; private set; }
 
+    // Set true by scripted cinematics that teleport the player around (e.g. the
+    // stasis-pod arrival). While set, autonomous polling is paused so HAL doesn't
+    // narrate the cinematic's jumps ("leaving/entering atmosphere", "arrived at…").
+    // Location trackers are held unseeded so the first poll after it clears seeds
+    // silently at the real position. Scripted lines (VolunteerExternal) still fire.
+    public static bool SuppressAutonomous;
+
     // Rate limit
     float _nextAllowedTime;
     float _lastVolunteerTime = -1000f;  // tracked separately for ambient idle threshold
@@ -245,15 +252,23 @@ public class HALCommentator : MonoBehaviour
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         if (scene.name == "MainMenu") return;
+        ReseedLocationTrackers();
+        // Old player (and its rig) was destroyed with the previous scene;
+        // drop cached references so the next poll re-finds the new one.
+        _cachedPC   = null;
+        _pcForEnemy = null;
+    }
+
+    // Hold the transient location trackers unseeded so the next poll seeds
+    // silently (no enter/leave/arrive line) at wherever the player actually is.
+    // Shared by the scene-reload reset and the SuppressAutonomous pause.
+    void ReseedLocationTrackers()
+    {
         _planetSeeded        = false;
         _lastBodyName        = "";
         _atmosphereSeeded    = false;
         _armedForLandingLine = false;
         _orbitMatchSeeded    = false;
-        // Old player (and its rig) was destroyed with the previous scene;
-        // drop cached references so the next poll re-finds the new one.
-        _cachedPC   = null;
-        _pcForEnemy = null;
     }
 
     void TrySubscribe()
@@ -289,6 +304,15 @@ public class HALCommentator : MonoBehaviour
     void Update()
     {
         if (!_subscribed) TrySubscribe();
+
+        if (SuppressAutonomous)
+        {
+            // A scripted cinematic is moving the player; stay silent and keep the
+            // location trackers unseeded so resuming seeds at the real position
+            // instead of announcing the jump back.
+            ReseedLocationTrackers();
+            return;
+        }
 
         // Subject-switch handling runs once per frame BEFORE any poll/tracker
         // reads it. Both PollAtmosphere and UpdateLandingTracker treat

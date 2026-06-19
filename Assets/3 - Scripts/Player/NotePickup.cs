@@ -153,13 +153,20 @@ public class NotePickup : Interactable
         if (_paperFont != null) t.font = _paperFont;
     }
 
+    // Set true by the intro sequence once the player regains movement, so
+    // impatient players can read Tev's note WHILE the wake-up briefing is still
+    // playing — without opening the global Pickup gate early (which would also
+    // free the fishing rod by the door). The intro resets it at full handoff /
+    // teardown; after that the normal Pickup gate governs the note.
+    public static bool ReadableDuringIntro;
+
     // Suppress the prompt and the F-key while NoteReadUI is open — pressing F
     // again while reading shouldn't re-open the panel, and the prompt doesn't
     // need to be visible behind the fullscreen note.
     protected override bool CanInteract()
     {
         if (NoteReadUI.Instance != null && NoteReadUI.Instance.IsOpen) return false;
-        return TutorialGate.IsUnlocked(TutorialAbility.Pickup);
+        return ReadableDuringIntro || TutorialGate.IsUnlocked(TutorialAbility.Pickup);
     }
 
     protected override string BuildInteractMessage() =>

@@ -548,6 +548,7 @@ public class TabbedPauseMenu : MonoBehaviour
                     new ToggleDef { label = "JETPACK FOV KICK",   get = () => _input != null && _input.fxJetpackFovKick,    set = v => { if (_input != null) _input.fxJetpackFovKick = v; } },
                     new ToggleDef { label = "SHIP BOOST FOV",     get = () => _input != null && _input.fxShipBoostFov,      set = v => { if (_input != null) _input.fxShipBoostFov = v; } },
                     new ToggleDef { label = "SPEED LINES",        get = () => _input != null && _input.fxSpeedLines,        set = v => { if (_input != null) _input.fxSpeedLines = v; } },
+                    new ToggleDef { label = "SPACE DUST",         get = () => _input != null && _input.fxSpaceDust,         set = v => { if (_input != null) _input.fxSpaceDust = v; } },
 
                     new HeaderDef { label = "COMBAT" },
                     new ToggleDef { label = "DAMAGE FLASH",       get = () => _input != null && _input.fxDamageFlash,       set = v => { if (_input != null) _input.fxDamageFlash = v; } },
@@ -579,6 +580,9 @@ public class TabbedPauseMenu : MonoBehaviour
                         set = v => { if (_input != null) _input.fxChromaticAberrationIntensity = v; } },
                     new ToggleDef { label = "LENS FLARES",        get = () => _input != null && _input.fxLensFlares,        set = v => { if (_input != null) _input.fxLensFlares = v; } },
                     new ToggleDef { label = "RADIAL MOTION BLUR", get = () => _input != null && _input.fxRadialMotionBlur, set = v => { if (_input != null) _input.fxRadialMotionBlur = v; } },
+
+                    new HeaderDef { label = "HUD" },
+                    new ToggleDef { label = "HIDE HUD",           get = () => _input != null && _input.hudHidden,           set = v => { if (_input != null) { _input.hudHidden = v; HudVisibility.SetUserHidden(v); } } },
                 },
             },
             new TabDef

@@ -522,7 +522,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 37;
+        const int Total = 38;
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -600,6 +600,8 @@ public class MainMenuController : MonoBehaviour
         tick("pickup UI");        yield return null;
         if (SpaceDustInventory.Instance == null) { var go = new GameObject("SpaceDustInventory"); DontDestroyOnLoad(go); go.AddComponent<SpaceDustInventory>(); }
         tick("space dust");       yield return null;
+        if (SpaceDustField.Instance == null) { var go = new GameObject("SpaceDustField"); DontDestroyOnLoad(go); go.AddComponent<SpaceDustField>(); }
+        tick("dust field");       yield return null;
         if (AIMemoryStore.Instance == null) { var go = new GameObject("AIMemoryStore"); DontDestroyOnLoad(go); go.AddComponent<AIMemoryStore>(); }
         tick("AI memory");        yield return null;
         if (GameKnowledgeBase.Instance == null) { var go = new GameObject("GameKnowledgeBase"); DontDestroyOnLoad(go); go.AddComponent<GameKnowledgeBase>(); }
