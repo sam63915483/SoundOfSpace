@@ -127,9 +127,11 @@ public class IntroSequenceController : MonoBehaviour
 
     void OnDestroy()
     {
-        // Never leave the camera-FX mute latched on if the intro is torn down
-        // (scene reload / abort) before its normal phase-6 handoff.
+        // Never leave the camera-FX mute or the note-bypass latched on if the
+        // intro is torn down (scene reload / abort) before its phase-6 handoff —
+        // both are statics that would otherwise leak into the next run.
         SuppressGroggyCameraFx = false;
+        NotePickup.ReadableDuringIntro = false;
     }
 
     IEnumerator Start()
@@ -383,6 +385,7 @@ public class IntroSequenceController : MonoBehaviour
         // Phase 6: full handoff to survival — restore full walk speed + everything else.
         if (_pc != null) _pc.introMoveScale = 1f;
         TutorialGate.UnlockAll();
+        NotePickup.ReadableDuringIntro = false;        // Pickup is globally unlocked now — the normal gate governs the note
         SuppressGroggyCameraFx = false;                // strafe tilt + sprint FOV kick return
         _forceLook = false;                            // (already released after Line03)
         StartCoroutine(FadeGrogAndRemove());           // residual woozy vision clears over a few seconds
@@ -417,6 +420,7 @@ public class IntroSequenceController : MonoBehaviour
         _forceLook = false;                                 // stop holding the gaze
         TutorialGate.Unlock(TutorialAbility.MouseLook);     // player can look around now
         TutorialGate.Unlock(TutorialAbility.Move);          // ...and walk
+        NotePickup.ReadableDuringIntro = true;              // ...and read Tev's note, even mid-briefing
         if (_pc == null) _pc = FindObjectOfType<PlayerController>();
         if (_pc != null) _pc.introMoveScale = moveScaleStart;   // 15% — still groggy
     }
