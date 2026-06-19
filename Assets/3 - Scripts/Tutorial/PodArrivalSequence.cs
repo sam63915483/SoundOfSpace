@@ -93,7 +93,8 @@ public class PodArrivalSequence : MonoBehaviour
     [SerializeField] AudioClip thrusterClip;             // sustained burn, looped; muffled at runtime (thrusters are OUTSIDE the pod)
     [SerializeField, Range(0f, 1f)] float thrusterVolume = 0.8f;
     [SerializeField] float thrusterLowPassHz = 1100f;    // low-pass cutoff so the outside thrusters read as muffled
-    [SerializeField] float thrusterLeadTime  = 2f;       // seconds the line + burn play BEFORE the countdown starts
+    [SerializeField] float thrusterLeadTime   = 3f;      // seconds the line + burn play (descent slowed, NOT stopped) BEFORE the countdown
+    [SerializeField] float thrusterSlowFactor = 1.5f;    // descent slows to seamSpeed / this during the lead (1.5 = 1.5x slower; not a full stop)
 
     // ── Runtime ─────────────────────────────────────────────────────────────
     CelestialBody _target;
@@ -137,7 +138,7 @@ public class PodArrivalSequence : MonoBehaviour
         {
             Speak(reverseThrusterLine);                               // HAL calls the burn first
             StartThruster();                                          // muffled retro-burn kicks in
-            yield return new WaitForSecondsRealtime(thrusterLeadTime); // ...let the line finish + burn settle BEFORE the alert
+            yield return ReverseThrusterGlide();                      // ...descent SLOWS (not stops) for thrusterLeadTime, then:
             yield return Countdown();                                  // countdown -> impact boom -> cut to black
             yield return new WaitForSecondsRealtime(postCrashBlackHold); // hold black while the crash rings out (player still in the pod)
         }
@@ -276,19 +277,36 @@ public class PodArrivalSequence : MonoBehaviour
         }
     }
 
+    // Reverse thrusters fire BEFORE the countdown: the descent doesn't STOP, it just
+    // slows to seamSpeed/thrusterSlowFactor for thrusterLeadTime seconds while the
+    // line + burn play. Leaves _curDistance wherever it ends for the countdown.
+    IEnumerator ReverseThrusterGlide()
+    {
+        float speed = seamSpeed / Mathf.Max(0.01f, thrusterSlowFactor);
+        float t = 0f;
+        while (t < thrusterLeadTime && !_skip)
+        {
+            t += Time.unscaledDeltaTime;
+            _curDistance = Mathf.Max(impactDistance, _curDistance - speed * Time.unscaledDeltaTime);
+            yield return null;
+        }
+    }
+
     IEnumerator Countdown()
     {
         if (_rumble != null && rumbleClip != null) _rumble.Play();
 
+        float startDist  = _curDistance;                                     // where the thruster glide left us
+        float entrySpeed = seamSpeed / Mathf.Max(0.01f, thrusterSlowFactor); // continuous with the glide — no speed jump
         float t = 0f;
         int last = -1;
         while (t < countdownDuration && !_skip)
         {
             t += Time.unscaledDeltaTime;
             float k = Mathf.Clamp01(t / countdownDuration);
-            // Enter at seamSpeed (continuous), brake below it mid-reentry, then
-            // accelerate to impactSpeed — the brake fails and it crashes.
-            _curDistance = HermiteDistance(arrivalDistance, impactDistance, -seamSpeed, -impactSpeed, countdownDuration, k);
+            // Enter at the glide's (slowed) speed — continuous, no jump — brake further
+            // mid-reentry, then accelerate to impactSpeed: the thrusters fail and it crashes.
+            _curDistance = HermiteDistance(startDist, impactDistance, -entrySpeed, -impactSpeed, countdownDuration, k);
             _shakeAmp = shakeMaxAmplitude * shakeRamp.Evaluate(k);
             if (_rumble != null) _rumble.volume = rumbleVolume * k;
             // Heart races toward impact — louder AND faster (pitch) the closer we get.
