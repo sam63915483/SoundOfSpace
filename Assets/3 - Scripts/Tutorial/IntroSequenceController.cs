@@ -359,12 +359,13 @@ public class IntroSequenceController : MonoBehaviour
         yield return Speak(Line03);
 
         // Soft handoff: right after "memory loss is expected" the player gets
-        // movement + look back — but at half pace (still groggy) and free of the
-        // forced gaze. The rest of the briefing plays as voiceover over their
-        // first wobbly steps. Full speed is restored after the final line.
+        // movement + look back — but at a crawl (15%, still groggy) and free of the
+        // forced gaze. The rest of the briefing plays as voiceover over their first
+        // wobbly steps; the pace steps up to 50% after the reassurance line and to
+        // full speed after the final line.
         TutorialGate.Unlock(TutorialAbility.Move);
         TutorialGate.Unlock(TutorialAbility.MouseLook);
-        if (_pc != null) _pc.introMoveScale = groggyMoveScale;
+        if (_pc != null) _pc.introMoveScale = moveScaleStart;
         _forceLook = false;
 
         yield return Speak(Line05);   // "Heart rate elevated. Vitals irregular." — already climbing
@@ -373,6 +374,10 @@ public class IntroSequenceController : MonoBehaviour
         // partway through this line.
         StartCoroutine(EaseHeartbeatBackAfter(heartbeatEaseDelay));
         yield return Speak(Line06);   // "It is normal... you will be returned home."
+
+        // Steadier now that the reassurance has landed — bump the walk pace up to
+        // the mid step (50%) for the rest of the briefing.
+        if (_pc != null) _pc.introMoveScale = groggyMoveScale;
 
         // Held silence before the softer reveal that a local took you in.
         yield return new WaitForSecondsRealtime(photoBeatSilence);
@@ -387,7 +392,11 @@ public class IntroSequenceController : MonoBehaviour
         _forceLook = false;                            // (already released after Line03)
         StartCoroutine(FadeGrogAndRemove());           // residual woozy vision clears over a few seconds
         StartCoroutine(ReleaseFirstContact());
+        // The heartbeat carried the whole wake-up; bring it down to a faint beat at
+        // the handoff, then fully fade it out + stop it heartbeatStopDelay (15s)
+        // after this final line so it doesn't loop under the ambient mix forever.
         if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
+        StartCoroutine(FadeHeartbeatOutAfter(heartbeatStopDelay, heartbeatStopFade));
         yield return FadeHeartbeat(heartbeatTargetVolume * 0.25f, heartbeatFadeOut);
         _running = false;
     }
@@ -560,6 +569,17 @@ public class IntroSequenceController : MonoBehaviour
         _heartbeatXfade = StartCoroutine(RampHeartbeatPitch(1f, heartbeatEaseTime));
     }
 
+    // Fully fades the heartbeat out and stops it `delay` seconds after the final
+    // briefing line. Without this the faint beat left after the handoff loops under
+    // the ambient mix for the rest of the session.
+    IEnumerator FadeHeartbeatOutAfter(float delay, float fade)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        if (_heartbeatXfade != null) { StopCoroutine(_heartbeatXfade); _heartbeatXfade = null; }
+        yield return FadeHeartbeat(0f, fade);
+        if (_heartbeat != null) { _heartbeat.Stop(); Destroy(_heartbeat); _heartbeat = null; }
+    }
+
     IEnumerator FadeOutAndCleanup()
     {
         // Used when we abort (flag already set): open the eyes we put up in Awake.
@@ -570,4 +590,11 @@ public class IntroSequenceController : MonoBehaviour
 
     [Header("Pod arrival intro (plays before the wake-up)")]
     [SerializeField] PodArrivalSequence _podArrival;   // optional; if null, the pod intro is skipped
+
+    [Header("Staged move-speed ramp")]
+    [SerializeField] float moveScaleStart = 0.15f;     // walk speed at the first unlock, when cursor/look returns (post-Line03). groggyMoveScale (0.5) is the mid step after the reassurance line; 100% comes at the final handoff.
+
+    [Header("Heartbeat fade-out (after the final line)")]
+    [SerializeField] float heartbeatStopDelay = 15f;   // seconds after the last briefing line before the heartbeat fully fades out
+    [SerializeField] float heartbeatStopFade  = 4f;    // seconds to fade the faint heartbeat down to silence
 }
