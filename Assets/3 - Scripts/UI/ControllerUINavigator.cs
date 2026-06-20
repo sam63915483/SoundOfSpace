@@ -246,7 +246,14 @@ public class ControllerUINavigator : MonoBehaviour
             // main menu dim/glass etc. doesn't need to be interactive while a
             // modal is open.
             UpdateRaycasterSuppression();
-            _cachedTopmost = FindFirstSelectableInTopmostPanel();
+            // _cachedTopmost is ONLY consumed below inside the
+            // `if (TutorialGate.ControllerEnabled)` path (focus migration).
+            // For keyboard/mouse players we return before ever using it, so
+            // skip its extra FindObjectsOfType<Canvas> + recursive selectable
+            // walk entirely — this was a pure-waste per-tick cost on KBM.
+            _cachedTopmost = TutorialGate.ControllerEnabled
+                ? FindFirstSelectableInTopmostPanel()
+                : null;
         }
 
         // KBM mode → no controller, no auto-selection. Clear any selection

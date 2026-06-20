@@ -34,14 +34,43 @@ public class SpaceDustField : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+        SceneManager.sceneLoaded += OnSceneLoaded;
     }
 
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        SceneManager.sceneLoaded -= OnSceneLoaded;
         if (_glowTex != null) Destroy(_glowTex);
         if (_material != null) Destroy(_material);
         if (_mesh != null) Destroy(_mesh);
+    }
+
+    // This is a DontDestroyOnLoad singleton, so its drifted particle layout and
+    // cached scene refs survive a scene change. A black-hole dive leaves every
+    // speck clumped/streaking toward the BH; without a reset that frozen layout
+    // carries through backrooms → main menu → save reload and reappears looking
+    // "stuck" (exactly the teleport-moment look). Re-seed a fresh field and drop
+    // cached scene refs on every gameplay load so a reload always starts clean.
+    void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (scene.name == "MainMenu") return;
+        ReseedField();
+    }
+
+    void ReseedField()
+    {
+        _hasPrevRel = false;          // parallax baseline — re-establish from the new camera pos
+        _blackHole = null;            // force RefreshBodies to re-resolve for the loaded scene
+        _homeBody = null;
+        _planets.Clear();
+        _bhMaterial = null;           // the cached Scingularity material is stale after a reload
+        if (_local != null)
+        {
+            float half = boxSize * 0.5f;
+            for (int i = 0; i < _local.Length; i++)
+                _local[i] = new Vector3(Random.Range(-half, half), Random.Range(-half, half), Random.Range(-half, half));
+        }
     }
 
     // ---- runtime refs ----
@@ -72,6 +101,12 @@ public class SpaceDustField : MonoBehaviour
     Texture2D _glowTex;
     static readonly int _ColorID = Shader.PropertyToID("_Color");
     bool _initialized;
+
+    // Black-hole (Scingularity) material, found lazily from the BH body. Driven each
+    // frame with the camera's atmosphere immersion so the BH lens fades into the
+    // hazed sky from a planet surface (no hard circular seam through the atmosphere).
+    Material _bhMaterial;
+    static readonly int _AtmoFadeID = Shader.PropertyToID("_AtmoFade");
 
     // ---- per-frame relevant-planet shortlist (perf: avoids dict lookups + far planets in the hot loop) ----
     Vector3[] _relPos;
@@ -139,6 +174,23 @@ public class SpaceDustField : MonoBehaviour
             if (immersion > maxImmersion) maxImmersion = immersion;
         }
         float washMul = Mathf.Lerp(1f, atmosphereWashMin, maxImmersion);
+
+        // Drive the black hole's atmosphere fade with the same immersion value, so its
+        // lens dissolves into the hazed sky from a planet surface instead of punching
+        // unwashed space through the atmosphere as a hard circle. Found lazily (the
+        // Scingularity quad is a child of the BH body); runtime-only SetFloat, so the
+        // shared material asset is never dirtied on disk.
+        if (_bhMaterial == null && _blackHole != null)
+        {
+            var rends = _blackHole.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < rends.Length; i++)
+            {
+                var mm = rends[i] != null ? rends[i].sharedMaterial : null;
+                if (mm != null && mm.shader != null && mm.shader.name.Contains("Scingularity"))
+                { _bhMaterial = mm; break; }
+            }
+        }
+        if (_bhMaterial != null) _bhMaterial.SetFloat(_AtmoFadeID, maxImmersion);
 
         // Co-move the whole field with the home planet's orbital velocity. On that
         // planet, this cancels the orbital parallax (you orbit with it), so the only
@@ -438,7 +490,7 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float sanityThreshold = 900f;     // single-frame delta guard (< EndlessManager's 1000)
 
     [Header("Density")]
-    [SerializeField] float baseDensity = 0.35f;        // deep-space baseline ("noticeable field")
+    [SerializeField] float baseDensity = 0.5f;         // deep-space baseline ("noticeable field"). Raised 0.35→0.5: the bright Milky Way skybox washes out the additive dust, so more specks must pass threshold to read as a field everywhere (not just dense clumps).
     [SerializeField] float bhBoost = 0.65f;            // extra density near the BH
     [SerializeField] float bhOuterRadius = 30000f;     // distance where BH influence begins
     [SerializeField] float bhInnerRadius = 5000f;      // ~just outside the event horizon (BH radius 4000)
@@ -450,9 +502,9 @@ public class SpaceDustField : MonoBehaviour
     [Header("Look")]
     [SerializeField] Color amberWarm = new Color(1f, 0.55f, 0.18f);
     [SerializeField] Color amberBright = new Color(1f, 0.82f, 0.45f);
-    [SerializeField] float glowSize = 3f;
+    [SerializeField] float glowSize = 5f;              // Raised 3→5: finer specks vanished against the bright galaxy; bigger glows read as a field again.
     [SerializeField] float sizeJitter = 0.6f;
-    [SerializeField] float brightness = 2.8f;
+    [SerializeField] float brightness = 4.5f;          // Raised 2.8→4.5: additive amber needs more punch to show over the bright Milky Way skybox.
     [SerializeField] float twinkleAmount = 0.3f;
     [SerializeField] float twinkleSpeed = 1.5f;
     [SerializeField] float edgeFadeFrac = 0.18f;       // fraction of half-box where specks fade out

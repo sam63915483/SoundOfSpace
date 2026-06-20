@@ -21,6 +21,10 @@ public class GravityDebugUI : MonoBehaviour {
 	[Tooltip("Wood granted when the brown +Wood button is clicked.")]
 	public int debugWoodAmount = 100;
 
+	[Header("Debug Crystal Button")]
+	[Tooltip("Crystals granted when the cyan +Crystals button is clicked. Crystals fuel the ship (1 crystal = 5 fuel).")]
+	public int debugCrystalAmount = 20;
+
 	bool show;
 
 	GameObject _moneyButton;
@@ -55,6 +59,15 @@ public class GravityDebugUI : MonoBehaviour {
 	TextMeshProUGUI _godButtonLabel;
 	Image _godButtonImage;
 	bool? _lastShownGodMode;
+
+	GameObject _bhTestButton;
+	RectTransform _bhTestButtonRT;
+	TextMeshProUGUI _bhTestButtonLabel;
+
+	GameObject _crystalButton;
+	RectTransform _crystalButtonRT;
+	TextMeshProUGUI _crystalButtonLabel;
+	int _lastShownCrystalAmount = int.MinValue;
 
 	void Update () {
 		if (Input.GetKeyDown (KeyCode.BackQuote)) {
@@ -153,6 +166,24 @@ public class GravityDebugUI : MonoBehaviour {
 						_godButtonImage.color = GodMode
 							? new Color32(180, 145, 35, 235)  // gold while active
 							: new Color32(80,  80,  90,  235); // neutral grey while off
+				}
+			}
+		}
+
+		EnsureBHTestButton();
+		if (_bhTestButton != null) {
+			if (_bhTestButton.activeSelf != show) _bhTestButton.SetActive(show);
+			if (show) PositionBHTestButton();
+		}
+
+		EnsureCrystalButton();
+		if (_crystalButton != null) {
+			if (_crystalButton.activeSelf != show) _crystalButton.SetActive(show);
+			if (show) {
+				PositionCrystalButton();
+				if (debugCrystalAmount != _lastShownCrystalAmount && _crystalButtonLabel != null) {
+					_lastShownCrystalAmount = debugCrystalAmount;
+					_crystalButtonLabel.text = $"+{debugCrystalAmount} Crystals (debug)";
 				}
 			}
 		}
@@ -524,6 +555,163 @@ public class GravityDebugUI : MonoBehaviour {
 
 	void ToggleGodMode() {
 		GodMode = !GodMode;
+	}
+
+	void EnsureBHTestButton() {
+		if (_bhTestButton != null) return;
+		if (info == null) return;
+		if (_gravityRT == null) _gravityRT = info.GetComponent<RectTransform>();
+		if (_gravityRT == null || _gravityRT.parent == null) return;
+
+		var btnGo = new GameObject("Debug+BHTest", typeof(RectTransform));
+		btnGo.transform.SetParent(_gravityRT.parent, false);
+		_bhTestButtonRT = btnGo.GetComponent<RectTransform>();
+		_bhTestButtonRT.anchorMin = _gravityRT.anchorMin;
+		_bhTestButtonRT.anchorMax = _gravityRT.anchorMax;
+		_bhTestButtonRT.pivot     = new Vector2(0f, 1f);
+		_bhTestButtonRT.sizeDelta = new Vector2(260f, 48f);
+		_bhTestButtonRT.localScale = _gravityRT.localScale;
+
+		var img = btnGo.AddComponent<Image>();
+		img.color = new Color32(200, 90, 35, 235); // orange — test/teleport
+
+		var btn = btnGo.AddComponent<Button>();
+		btn.targetGraphic = img;
+		var colors = btn.colors;
+		colors.normalColor      = new Color32(200, 90,  35, 235);
+		colors.highlightedColor = new Color32(230, 120, 55, 245);
+		colors.pressedColor     = new Color32(150, 65,  25, 245);
+		colors.selectedColor    = new Color32(200, 90,  35, 235);
+		btn.colors = colors;
+		btn.onClick.AddListener(SpawnAtBlackHoleTest);
+
+		var lblGo = new GameObject("Label", typeof(RectTransform));
+		lblGo.transform.SetParent(btnGo.transform, false);
+		var lblRT = lblGo.GetComponent<RectTransform>();
+		lblRT.anchorMin = Vector2.zero;
+		lblRT.anchorMax = Vector2.one;
+		lblRT.offsetMin = Vector2.zero;
+		lblRT.offsetMax = Vector2.zero;
+		_bhTestButtonLabel = lblGo.AddComponent<TextMeshProUGUI>();
+		_bhTestButtonLabel.text = "BH Test: 4km @ 500m/s (debug)";
+		_bhTestButtonLabel.alignment = TextAlignmentOptions.Center;
+		_bhTestButtonLabel.fontSize = 20;
+		_bhTestButtonLabel.fontStyle = FontStyles.Bold;
+		_bhTestButtonLabel.color = Color.white;
+		_bhTestButtonLabel.raycastTarget = false;
+
+		_bhTestButton = btnGo;
+	}
+
+	void PositionBHTestButton() {
+		if (_godButtonRT == null || _bhTestButtonRT == null) return;
+		// Stack directly under the God Mode button (bottom of the column).
+		Vector2 godPos = _godButtonRT.anchoredPosition;
+		float godHeight = _godButtonRT.sizeDelta.y;
+		_bhTestButtonRT.anchoredPosition = new Vector2(godPos.x, godPos.y - godHeight - 8f);
+	}
+
+	void EnsureCrystalButton() {
+		if (_crystalButton != null) return;
+		if (info == null) return;
+		if (_gravityRT == null) _gravityRT = info.GetComponent<RectTransform>();
+		if (_gravityRT == null || _gravityRT.parent == null) return;
+
+		var btnGo = new GameObject("Debug+Crystals", typeof(RectTransform));
+		btnGo.transform.SetParent(_gravityRT.parent, false);
+		_crystalButtonRT = btnGo.GetComponent<RectTransform>();
+		_crystalButtonRT.anchorMin = _gravityRT.anchorMin;
+		_crystalButtonRT.anchorMax = _gravityRT.anchorMax;
+		_crystalButtonRT.pivot     = new Vector2(0f, 1f);
+		_crystalButtonRT.sizeDelta = new Vector2(260f, 48f);
+		_crystalButtonRT.localScale = _gravityRT.localScale;
+
+		var img = btnGo.AddComponent<Image>();
+		img.color = new Color32(60, 150, 190, 235); // cyan — crystal tint
+
+		var btn = btnGo.AddComponent<Button>();
+		btn.targetGraphic = img;
+		var colors = btn.colors;
+		colors.normalColor      = new Color32(60,  150, 190, 235);
+		colors.highlightedColor = new Color32(85,  185, 225, 245);
+		colors.pressedColor     = new Color32(40,  110, 145, 245);
+		colors.selectedColor    = new Color32(60,  150, 190, 235);
+		btn.colors = colors;
+		btn.onClick.AddListener(GrantCrystals);
+
+		var lblGo = new GameObject("Label", typeof(RectTransform));
+		lblGo.transform.SetParent(btnGo.transform, false);
+		var lblRT = lblGo.GetComponent<RectTransform>();
+		lblRT.anchorMin = Vector2.zero;
+		lblRT.anchorMax = Vector2.one;
+		lblRT.offsetMin = Vector2.zero;
+		lblRT.offsetMax = Vector2.zero;
+		_crystalButtonLabel = lblGo.AddComponent<TextMeshProUGUI>();
+		_crystalButtonLabel.text = $"+{debugCrystalAmount} Crystals (debug)";
+		_crystalButtonLabel.alignment = TextAlignmentOptions.Center;
+		_crystalButtonLabel.fontSize = 24;
+		_crystalButtonLabel.fontStyle = FontStyles.Bold;
+		_crystalButtonLabel.color = Color.white;
+		_crystalButtonLabel.raycastTarget = false;
+		_lastShownCrystalAmount = debugCrystalAmount;
+
+		_crystalButton = btnGo;
+	}
+
+	void PositionCrystalButton() {
+		if (_bhTestButtonRT == null || _crystalButtonRT == null) return;
+		// Stack directly under the BH Test button (bottom of the column).
+		Vector2 bhPos = _bhTestButtonRT.anchoredPosition;
+		float bhHeight = _bhTestButtonRT.sizeDelta.y;
+		_crystalButtonRT.anchoredPosition = new Vector2(bhPos.x, bhPos.y - bhHeight - 8f);
+	}
+
+	void GrantCrystals() {
+		if (CrystalInventory.Instance != null) {
+			CrystalInventory.Instance.Add(debugCrystalAmount);
+		} else {
+			Debug.LogWarning("[GravityDebugUI] CrystalInventory.Instance is null — crystals not granted.");
+		}
+	}
+
+	// Teleports the piloted ship (or on-foot player) 4000m out from the Black Hole and fires
+	// it straight at the core at 500 m/s — a repeatable rig for tuning BlackHoleCapture.
+	void SpawnAtBlackHoleTest() {
+		CelestialBody bh = null;
+		foreach (var b in FindObjectsOfType<CelestialBody>()) {
+			if (b == null) continue;
+			if (b.isStaticAttractor || b.bodyName == "Black Hole") { bh = b; break; }
+		}
+		if (bh == null) { Debug.LogWarning("[GravityDebugUI] Black Hole not found — cannot spawn test."); return; }
+
+		Vector3 center = bh.Position;
+		Vector3 dir = Vector3.forward;                  // approach along +Z
+		Vector3 spawnPos = center - dir * 4000f;        // 4000m out, on the near side
+		Vector3 vel = dir * 500f;                       // 500 m/s straight at the core
+		Quaternion rot = Quaternion.LookRotation(dir, Vector3.up);
+
+		var ship = Ship.PilotedInstance;
+		if (ship != null && ship.Rigidbody != null) {
+			var rb = ship.Rigidbody;
+			rb.position = spawnPos;
+			rb.rotation = rot;
+			rb.velocity = vel;
+			rb.angularVelocity = Vector3.zero;
+			Debug.Log("[GravityDebugUI] Teleported SHIP to 4000m from BH, 500 m/s toward core.");
+			return;
+		}
+
+		if (_cachedPlayer == null) _cachedPlayer = FindObjectOfType<PlayerController>();
+		if (_cachedPlayer != null && _cachedPlayer.Rigidbody != null) {
+			var rb = _cachedPlayer.Rigidbody;
+			rb.position = spawnPos;
+			rb.rotation = rot;
+			rb.velocity = vel;
+			rb.angularVelocity = Vector3.zero;
+			Debug.Log("[GravityDebugUI] Teleported PLAYER to 4000m from BH, 500 m/s toward core.");
+		} else {
+			Debug.LogWarning("[GravityDebugUI] No piloted ship or player found to teleport.");
+		}
 	}
 
 	void SpawnShip44() {

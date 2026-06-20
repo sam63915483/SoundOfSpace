@@ -14,6 +14,7 @@ Properties {
 	_Speed("Accretion Disk Animation Speed", Range(0, 1)) = 0.1
 	_Redshift("Accretion Disk Redshift Effect", Range(0, 1)) = 0.5
 	[Toggle] _Flip("Flipped Projection Correction", Range(0, 1)) = 1
+	[HideInInspector] _AtmoFade("Atmosphere Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -45,6 +46,8 @@ SubShader {
 		uniform half _Speed;
 		uniform half _Redshift;
 		uniform half _Flip;
+		uniform half _AtmoFade;   // 0 in space; ramps toward 1 the deeper the camera sits in a planet's atmosphere (set by SpaceDustField). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
+		uniform sampler2D_float _CameraDepthTexture;
 
 		struct vertexOutput {
 			half4 position : SV_POSITION;
@@ -87,6 +90,15 @@ SubShader {
 			result.a = 1;
 			half viewDistance = length(WorldSpaceViewDir(result));
 			if(viewDistance <= 0)	return result;
+
+				// Depth occlusion: where real scene geometry (planets, terrain) is nearer to the camera
+				// than the black hole, hide the effect so those objects render IN FRONT of it. Uses the
+				// camera depth texture (the atmosphere already enables it). NOTE: the ship cockpit hull
+				// is NOT in this depth texture, so the effect can still wrap over it at point-blank range.
+			float2 bhScrUV = input.position.xy / _ScreenParams.xy;
+			float bhSceneDepth = LinearEyeDepth(SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, bhScrUV));
+			if(bhSceneDepth < viewDistance)	return half4(0, 0, 0, 0);
+
 			half3 impact3D = _WorldSpaceCameraPos + viewDirection * viewDistance;
 			impact3D -= mul(unity_ObjectToWorld, result).xyz;
 			impact3D /= input.radius;
@@ -191,6 +203,16 @@ SubShader {
 						result.a = max(result.a, disk.a);
 					}
 				}
+			}
+
+			// Atmosphere blend (driven by _AtmoFade from SpaceDustField): when the
+			// camera is deep inside a planet's atmosphere, let the hazed sky show
+			// through the DARK parts of the effect so the lensed galaxy stops cutting
+			// a hard-edged circle out of the atmosphere. Bright pixels (accretion disk,
+			// lens core) keep their alpha, so the black hole still reads through haze.
+			if(_AtmoFade > 0){
+				half lum = max(result.r, max(result.g, result.b));
+				result.a *= 1 - _AtmoFade * (1 - saturate(lum));
 			}
 
 			return saturate(result);

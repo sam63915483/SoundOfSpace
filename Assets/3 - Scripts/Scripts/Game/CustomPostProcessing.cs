@@ -25,7 +25,14 @@ public class CustomPostProcessing : MonoBehaviour {
 		if (defaultShader == null) {
 			defaultShader = Shader.Find ("Unlit/Texture");
 		}
-		defaultMat = new Material (defaultShader);
+		// Build the fallback blit material ONCE. This used to run every
+		// OnRenderImage (i.e. every frame), allocating a fresh Material —
+		// and the previous one leaked as a native object until the next GC.
+		// The material is a stateless Unlit/Texture blit, so a single
+		// instance is functionally identical and allocation-free.
+		if (defaultMat == null) {
+			defaultMat = new Material (defaultShader);
+		}
 	}
 
 	[ImageEffectOpaque]
