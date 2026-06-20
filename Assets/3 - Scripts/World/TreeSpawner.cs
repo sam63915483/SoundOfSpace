@@ -113,6 +113,12 @@ public class TreeSpawner : MonoBehaviour
             {
                 var b = sim[i];
                 if (b == null) continue;
+                // Static attractors (the black hole) have no farmable surface and a
+                // huge radius (~4000). At that radius the cell-scan in Tick() explodes
+                // to ~6×203×203 ≈ 250k iterations per tick (profiled at 40+ ms when you
+                // fly close to the hole) — and the surface raycast hits nothing there, so
+                // it spawned NOTHING. Pure waste; skip these bodies outright.
+                if (b.isStaticAttractor) continue;
                 if (IsExcluded(b.bodyName)) continue;
                 var entry = new BodyState
                 {

@@ -185,6 +185,9 @@ public class GrassSpawner : MonoBehaviour
             {
                 var b = sim[i];
                 if (b == null) continue;
+                // Skip static attractors (the black hole): huge radius → the cell-scan
+                // explodes when you fly close, and nothing spawns on it anyway.
+                if (b.isStaticAttractor) continue;
                 if (useOnly) { if (b.bodyName != onlyBodyName) continue; }
                 else if (IsExcluded(b.bodyName)) continue;
                 bodies.Add(new BodyState

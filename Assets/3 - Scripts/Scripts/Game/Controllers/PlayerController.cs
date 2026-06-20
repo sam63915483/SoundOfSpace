@@ -107,7 +107,7 @@ public class PlayerController : GravityObject
 	[Header("Mouse settings")]
 	public float mouseSensitivityMultiplier = 1;
 	public float maxMouseSmoothTime = 0.3f;
-	public Vector2 pitchMinMax = new Vector2(-40, 85);
+	public Vector2 pitchMinMax = new Vector2(-89, 89);   // near-full look up/down (avoid gimbal flip at ±90)
 	public InputSettings inputSettings;
 
 	[Header("Wall Slide (anti-tunneling)")]
@@ -264,10 +264,20 @@ public class PlayerController : GravityObject
 		isInDialogue = false;
 		isMapOpen = false;
 		isInModalSlotUI = false;
+		// Force near-full vertical look on foot. The serialized pitchMinMax kept reverting
+		// to a restrictive (-80, 65) via scene/prefab serialization, cutting off looking
+		// up/down ~25-30°; setting it here guarantees the range no matter what's serialized.
+		// (Piloting is unaffected — the ship has free 6DOF look.)
+		pitchMinMax = new Vector2(-89f, 89f);
 		if (dirThrustFillRect == null && upThrustFillRect != null)
 			dirThrustFillRect = upThrustFillRect.parent.Find("DirBarFill") as RectTransform;
 		cam = GetComponentInChildren<Camera>();
 		cameraLocalPos = cam.transform.localPosition;
+		// Push the eyes forward a little so looking straight down (now that full down-look
+		// is allowed) doesn't clip the near plane into the astronaut's own body. Applied to
+		// the live camera too so CameraTransformFX captures the pushed-out base.
+		cameraLocalPos += Vector3.forward * 0.2f;
+		cam.transform.localPosition = cameraLocalPos;
 		spaceship = FindObjectOfType<Ship>();
 		_hasGravitySim = FindObjectOfType<NBodySimulation>() != null;
 		capsuleCollider = GetComponent<CapsuleCollider>();
@@ -1258,6 +1268,13 @@ public class PlayerController : GravityObject
 	public void SetVelocity(Vector3 velocity)
 	{
 		rb.velocity = velocity;
+	}
+
+	// Auto-yaw (e.g. the black hole dragging you into a spin): feeds the look yaw so the
+	// existing smoothing turns the body + camera naturally — exactly like mouse-look right.
+	public void AddAutoYaw(float degrees)
+	{
+		yaw += degrees;
 	}
 
 	public void ExitFromSpaceship()

@@ -20,6 +20,10 @@ public class LockOnUI : MonoBehaviour {
 	public float aimedAngle;
 	public Color aimedColor;
 
+	[Header ("Black Hole")]
+	[Tooltip ("Extra outward push for the brackets on static attractors (the black hole). Its accretion disk extends far past its collision radius, so without this the brackets are buried in the bright disk. 2 = twice as far out.")]
+	public float staticAttractorRadiusBoost = 2f;
+
 	Camera playerCam;
 	MaterialPropertyBlock materialProperties;
 	Mesh lockedOnMesh;
@@ -55,7 +59,10 @@ public class LockOnUI : MonoBehaviour {
 		float pixelsPerUnit = (cam.WorldToScreenPoint (bodyCentre) - cam.WorldToScreenPoint (bodyCentre + cam.transform.up)).magnitude;
 		float worldThickness = thickness / pixelsPerUnit;
 
-		float innerRadius = body.radius * ((lockedOn) ? lockedRadiusMultiplier : aimedRadiusMutliplier);
+		// The black hole's accretion disk extends far past its collision radius, so its brackets
+		// would be buried in the bright disk — push them outward for static attractors (the BH).
+		float radiusBoost = body.isStaticAttractor ? staticAttractorRadiusBoost : 1f;
+		float innerRadius = body.radius * ((lockedOn) ? lockedRadiusMultiplier : aimedRadiusMutliplier) * radiusBoost;
 		float outerRadius = innerRadius + worldThickness;
 
 		int numIncrements = (int) Mathf.Max (5, numSegments);

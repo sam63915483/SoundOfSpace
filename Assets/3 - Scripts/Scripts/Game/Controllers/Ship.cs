@@ -1289,6 +1289,16 @@ public class Ship : GravityObject
             CameraEffectsManager.Instance.TransformFX.SnapToCurrentPlayer();
         }
         if (boostMeterUI) boostMeterUI.SetActive(true);
+
+        // Clear the flight-controls interaction flag that PilotShip force-set.
+        // Unity does NOT fire OnTriggerExit while the player GameObject is disabled
+        // (piloting), so without this the forced-true flag stays stuck and the
+        // "Press F to fly" prompt hangs on screen forever after you stand up and
+        // walk away — most reproducible when the reactor runs dry mid-flight and you
+        // drift off. The prompt correctly re-asserts via OnTriggerEnter if the player
+        // is genuinely standing in the flight-controls zone. (ForceExitPilot already
+        // did this for the save-teleport path; doing it here covers the normal exit.)
+        if (flightControls != null) flightControls.ClearPlayerInInteractionZone();
     }
 
     void OnCollisionEnter(Collision other)

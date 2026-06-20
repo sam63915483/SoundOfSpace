@@ -610,6 +610,7 @@ public class HALCommentator : MonoBehaviour
             var b = bodies[i];
             if (b == null) continue;
             if (b.bodyType == CelestialBody.BodyType.Sun) continue;
+            if (b.isStaticAttractor) continue;   // black hole — no atmosphere/landing to track
             float surfaceDst = Vector3.Distance(b.Position, pos) - b.radius;
             if (surfaceDst < bestSurfaceDst) { bestSurfaceDst = surfaceDst; best = b; }
         }
@@ -691,6 +692,12 @@ public class HALCommentator : MonoBehaviour
         if (DroneController.Active != null) return;
         var s = GetSubject();
         if (!s.valid || s.body == null) return;
+        // Static attractors (the black hole) have no atmosphere — skip the entering/
+        // leaving-atmosphere lines. Its huge radius would otherwise make
+        // AtmosphereThresholdFor() fire "Entering <black hole> atmosphere" on approach,
+        // which is unrealistic. (Belt-and-braces with NearestBodyToSurface excluding
+        // it, to also cover the on-foot ReferenceBody path.)
+        if (s.body.isStaticAttractor) return;
 
         float dist      = Vector3.Distance(s.position, s.body.Position);
         float threshold = AtmosphereThresholdFor(s.body);

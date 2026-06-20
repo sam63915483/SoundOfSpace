@@ -158,6 +158,10 @@ public class AlienNPCSpawner : MonoBehaviour
             {
                 var b = sim[i];
                 if (b == null) continue;
+                // Skip static attractors (the black hole): huge radius → the cell-scan
+                // in Tick() explodes to ~250k iterations/tick when you fly close, and the
+                // surface raycast hits nothing there so nothing spawns. Pure waste.
+                if (b.isStaticAttractor) continue;
                 if (IsExcluded(b.bodyName)) continue;
                 var entry = new BodyState
                 {
