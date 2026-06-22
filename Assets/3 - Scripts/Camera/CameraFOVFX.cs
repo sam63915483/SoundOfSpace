@@ -23,12 +23,23 @@ public class CameraFOVFX : MonoBehaviour
     void LateUpdate()
     {
         var mgr = CameraEffectsManager.Instance;
-        if (mgr == null || !mgr.MasterEnabled) { ResetIfCached(); return; }
+        if (mgr == null) { ResetIfCached(); return; }
         var input = mgr.Input;
         if (input == null) return;
         if (!CacheRefs(mgr)) return;
 
+        // User-chosen base FOV (the pause-menu "FIELD OF VIEW" slider). Seeded once
+        // from the scene-authored FOV so first run reflects the game's real default,
+        // then it IS the slider value. Applied every frame regardless of the camera-
+        // effects master toggle — FOV is a fundamental view setting, not an effect —
+        // so the kick deltas below stack on top of it.
+        if (input.cameraFov < 1f) input.cameraFov = _baseFOV;
+        float baseFov = input.cameraFov;
+
+        // The sprint/jetpack/boost kicks only contribute when camera effects are on.
         float targetDelta = 0f;
+        if (mgr.MasterEnabled)
+        {
 
         // Sprint kick — gated on WASD input being held strongly, not on
         // rb.velocity (which is contaminated by the planet's orbital motion
@@ -62,8 +73,10 @@ public class CameraFOVFX : MonoBehaviour
         if (input.fxShipBoostFov && _ship != null && _ship.CanThrust && IsShipBoosting(_ship))
             targetDelta += ShipBoostFOVDelta;
 
+        }   // end if (mgr.MasterEnabled)
+
         _currentDelta = Mathf.SmoothDamp(_currentDelta, targetDelta, ref _deltaVelocity, 0.15f);
-        _cam.fieldOfView = _baseFOV + _currentDelta;
+        _cam.fieldOfView = baseFov + _currentDelta;
     }
 
     static bool IsJetpackActive(PlayerController p)

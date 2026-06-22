@@ -25,6 +25,12 @@ public static class HudVisibility
 
     public static bool Hidden => _userHidden || _forceHidden;
 
+    /// The persistent "HIDE HUD" setting ALONE (excludes the transient cinematic
+    /// force). HAL tips gate on this — they stay on during the pod cutscene (which
+    /// uses SetForceHidden) but are suppressed when the player turns the HUD off in
+    /// settings, so a recorded clip has no HAL text/voice in frame.
+    public static bool UserHidden => _userHidden;
+
     /// Persistent user preference (the "HIDE HUD" camera setting).
     public static void SetUserHidden(bool hidden)
     {

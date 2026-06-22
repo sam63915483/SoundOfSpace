@@ -96,6 +96,12 @@ public class HALVoicePlayer : MonoBehaviour
     {
         if (string.IsNullOrEmpty(line)) return false;
 
+        // "HIDE HUD" setting mutes HAL's voice — catches every TTS path, including
+        // voice-only lines that bypass the text strip (e.g. "Orbit matched."). Gated
+        // on the user setting only, NOT the cinematic force, so the pod cutscene keeps
+        // its narration. Lets capture clips with the HUD off stay silent.
+        if (HudVisibility.UserHidden) return false;
+
         // Resolution order:
         //   1. Exact-text manifest entry (covers every stable line — death,
         //      killstreak, phase change, etc.).
@@ -147,6 +153,13 @@ public class HALVoicePlayer : MonoBehaviour
     // UnityWebRequest every chat turn — once a file's missing, fall
     // straight to the generic family clip on subsequent TryPlay calls.
     readonly HashSet<string> _knownMissing = new HashSet<string>();
+
+    /// Immediately silence any playing/queued narration. Called when HAL tips are
+    /// cleared (quit-to-menu, or the "HIDE HUD" setting being switched on mid-line).
+    public void Stop()
+    {
+        if (_source != null) _source.Stop();
+    }
 
     void PlayClip(AudioClip clip, float lineVol)
     {

@@ -255,6 +255,15 @@ public class InputSettings : ScriptableObject {
 	// spawnRadius). Persists via PlayerPrefs; independent of the quality preset.
 	[Range(0f, 3f)] public float grassRenderScale = 1f;
 
+	// Base (vertical) field of view for the player camera, in degrees. Unity's
+	// Camera.fieldOfView is VERTICAL, so this is aspect-independent — raising it
+	// zooms out, fitting more world on screen (useful for ultrawide players who
+	// crop a narrow centre strip for vertical-video capture). Read live each
+	// frame by CameraFOVFX, which adds its sprint/jetpack/boost kicks ON TOP of
+	// this value. 0 = "unset": CameraFOVFX seeds it once from the scene-authored
+	// camera FOV so the slider starts at the game's real default.
+	[Range(50f, 110f)] public float cameraFov = 0f;
+
 	// TODO: find better place to call this from
 	public void Begin () {
 		Active = this;
@@ -284,6 +293,7 @@ public class InputSettings : ScriptableObject {
 		maxAudienceSize = PlayerPrefs.GetInt (nameof (maxAudienceSize), defaultMaxAudienceSize);
 		viewDistance = PlayerPrefs.GetFloat (nameof (viewDistance), defaultViewDistance);
 		grassRenderScale = PlayerPrefs.GetFloat (nameof (grassRenderScale), 1f);
+		cameraFov = PlayerPrefs.GetFloat (nameof (cameraFov), 0f);   // 0 = seed from authored FOV in CameraFOVFX
 
 		stickLookSensitivity = PlayerPrefs.GetFloat (nameof (stickLookSensitivity), defaultStickLookSensitivity);
 		shipStickSensitivity = PlayerPrefs.GetFloat (nameof (shipStickSensitivity), defaultShipStickSensitivity);
@@ -388,6 +398,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt (nameof (maxAudienceSize), maxAudienceSize);
 		PlayerPrefs.SetFloat (nameof (viewDistance), viewDistance);
 		PlayerPrefs.SetFloat (nameof (grassRenderScale), grassRenderScale);
+		PlayerPrefs.SetFloat (nameof (cameraFov), cameraFov);
 
 		PlayerPrefs.SetFloat (nameof (stickLookSensitivity), stickLookSensitivity);
 		PlayerPrefs.SetFloat (nameof (shipStickSensitivity), shipStickSensitivity);

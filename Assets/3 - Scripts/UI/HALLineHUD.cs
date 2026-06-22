@@ -112,6 +112,7 @@ public class HALLineHUD : MonoBehaviour
         if (_group != null) _group.alpha = 0f;
         for (int i = 0; i < MaxQueued; i++)
             if (_prevCG[i] != null) _prevCG[i].alpha = 0f;
+        if (HALVoicePlayer.Instance != null) HALVoicePlayer.Instance.Stop();   // cut any narration mid-line
     }
 
     /// <summary>
@@ -159,6 +160,12 @@ public class HALLineHUD : MonoBehaviour
 
     void Enqueue(Line line)
     {
+        // "HIDE HUD" setting suppresses HAL tips entirely — no text strip, no TTS —
+        // so trailer/clip captures with the HUD off stay clean. Gated on the user
+        // setting only (UserHidden), NOT the cinematic force, so the pod-arrival
+        // cutscene still gets its scripted HAL lines.
+        if (HudVisibility.UserHidden) return;
+
         // No STACKING the same tip: if this exact tip is already showing or waiting
         // in the queue, ignore the new one. Prevents hatch-spam from piling up
         // duplicate "Hull exposed to the vacuum of space." / re-oxy / hull-sealed
@@ -462,8 +469,16 @@ public class HALLineHUD : MonoBehaviour
     // reads as flat. Image-alpha multiplies with the CanvasGroup alpha,
     // so this happily co-exists with the fade-in / hold / fade-out cycle.
     // Also drives live-text lines (the hull-sealed countdown).
+    bool _wasUserHidden;
+
     void Update()
     {
+        // If the player flips "HIDE HUD" on while a tip is showing/queued, drop it
+        // immediately (text + voice) so nothing lingers in a recorded frame.
+        bool userHidden = HudVisibility.UserHidden;
+        if (userHidden && !_wasUserHidden && !IsIdle) ClearAll();
+        _wasUserHidden = userHidden;
+
         if (_activeLive != null && _label != null)
         {
             string live = SafeEval(_activeLive);

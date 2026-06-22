@@ -535,6 +535,15 @@ public class TabbedPauseMenu : MonoBehaviour
                 name = "CAMERA",
                 rows = new List<RowDef>
                 {
+                    new HeaderDef { label = "VIEW" },
+                    // Base vertical FOV. CameraFOVFX seeds _input.cameraFov from the
+                    // scene-authored value on first frame, so this reads the game's
+                    // real default until the player moves it; raising it zooms out
+                    // (more on screen — handy for ultrawide → vertical-video crops).
+                    new SliderDef { label = "FIELD OF VIEW", min = 50f, max = 110f, wholeNumbers = true, format = "{0:F0}",
+                        get = () => _input != null && _input.cameraFov >= 1f ? _input.cameraFov : 60f,
+                        set = v => { if (_input != null) _input.cameraFov = v; } },
+
                     new HeaderDef { label = "MOVEMENT" },
                     new ToggleDef { label = "HEADBOB",            get = () => _input != null && _input.fxHeadbob,            set = v => { if (_input != null) _input.fxHeadbob = v; } },
                     new SliderDef { label = "HEADBOB INTENSITY",  min = 0f, max = 1f, wholeNumbers = false, format = "{0:F2}",
