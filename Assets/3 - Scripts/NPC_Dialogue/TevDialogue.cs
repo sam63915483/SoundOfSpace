@@ -233,6 +233,7 @@ public class TevDialogue : MonoBehaviour
         }
 
         if (_playerInRange && !_conversationActive
+            && InteractGaze.IsLookingAt(this)
             && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             StartConversation();
@@ -424,8 +425,8 @@ public class TevDialogue : MonoBehaviour
         var rows = new List<PostGreetingChoicePanel.Row>
         {
             new PostGreetingChoicePanel.Row("Learn to pilot a ship", true),
-            new PostGreetingChoicePanel.Row("Build your own cabin (later)", false),
-            new PostGreetingChoicePanel.Row("Go on a fishing trip (later)", false),
+            new PostGreetingChoicePanel.Row("Build your own cabin", true),
+            new PostGreetingChoicePanel.Row("Go on a fishing trip", true),
             new PostGreetingChoicePanel.Row("Give me a minute to think.", true),
         };
         PostGreetingChoicePanel.Instance.Show(rows, i => _forkChoice = i);

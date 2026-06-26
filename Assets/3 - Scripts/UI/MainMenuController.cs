@@ -572,6 +572,10 @@ public class MainMenuController : MonoBehaviour
         tick("pause menu");       yield return null;
         if (CameraEffectsManager.Instance == null) { var go = new GameObject("CameraEffectsManager"); DontDestroyOnLoad(go); go.AddComponent<CameraEffectsManager>(); }
         tick("camera FX");        yield return null;
+        if (TrailerFreeCam.Instance == null) { var go = new GameObject("TrailerFreeCam"); DontDestroyOnLoad(go); go.AddComponent<TrailerFreeCam>(); }
+        tick("trailer free-cam"); yield return null;
+        if (TrailerBlackHoleGrow.Instance == null) { var go = new GameObject("TrailerBlackHoleGrow"); DontDestroyOnLoad(go); go.AddComponent<TrailerBlackHoleGrow>(); }
+        tick("trailer BH grow"); yield return null;
         // PixelLightLimitFix — raises QualitySettings.pixelLightCount to 64
         // so torches stay per-pixel instead of getting demoted per camera
         // frustum. Without this seed the ground breathes brighter/dimmer as

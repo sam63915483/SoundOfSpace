@@ -104,7 +104,7 @@ public class NPCDialogue : MonoBehaviour
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
         }
 
-        if (_playerInRange && !_conversationActive && !_conversationCompleted && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
+        if (_playerInRange && !_conversationActive && !_conversationCompleted && InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             StartConversation();
             return;

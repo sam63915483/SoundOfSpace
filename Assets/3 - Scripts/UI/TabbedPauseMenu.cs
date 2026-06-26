@@ -545,11 +545,6 @@ public class TabbedPauseMenu : MonoBehaviour
                         set = v => { if (_input != null) _input.cameraFov = v; } },
 
                     new HeaderDef { label = "MOVEMENT" },
-                    new ToggleDef { label = "HEADBOB",            get = () => _input != null && _input.fxHeadbob,            set = v => { if (_input != null) _input.fxHeadbob = v; } },
-                    new SliderDef { label = "HEADBOB INTENSITY",  min = 0f, max = 1f, wholeNumbers = false, format = "{0:F2}",
-                        get = () => _input != null ? _input.fxHeadbobIntensity : 1f,
-                        set = v => { if (_input != null) _input.fxHeadbobIntensity = v; } },
-                    new ToggleDef { label = "LANDING DIP",        get = () => _input != null && _input.fxLandingDip,        set = v => { if (_input != null) _input.fxLandingDip = v; } },
                     new ToggleDef { label = "STRAFE TILT",        get = () => _input != null && _input.fxStrafeTilt,        set = v => { if (_input != null) _input.fxStrafeTilt = v; } },
                     new ToggleDef { label = "SPRINT FOV KICK",    get = () => _input != null && _input.fxSprintFovKick,     set = v => { if (_input != null) _input.fxSprintFovKick = v; } },
 

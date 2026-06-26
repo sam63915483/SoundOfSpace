@@ -739,7 +739,6 @@ public class LLMService : MonoBehaviour
     public void MarkHistoryDirty()
     {
         _historySeeded = false;
-        Debug.Log("[LLMService] History marked dirty — will re-seed on next chat.");
     }
 
     // ── Live game-state telemetry ──────────────────────────────────────

@@ -85,7 +85,7 @@ public class SpaceNet : MonoBehaviour
         if (n >= 1)
         {
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to collect {n} space dust");
-            if (TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
+            if (InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
             {
                 int drained = Drain(n);
                 if (drained > 0 && SpaceDustInventory.Instance != null)

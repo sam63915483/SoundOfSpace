@@ -140,7 +140,8 @@ public class FishMarketNPC : MonoBehaviour
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
         if (playerInRange && !_suppressPromptUntilExit && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
-            if (!panelOpen && !greetingActive)
+            // Opening requires looking at the NPC; closing (below) works anywhere.
+            if (!panelOpen && !greetingActive && InteractGaze.IsLookingAt(this))
                 greetingCoroutine = StartCoroutine(ShowGreetingThenOpen());
             else if (panelOpen)
                 CloseSellPanel();

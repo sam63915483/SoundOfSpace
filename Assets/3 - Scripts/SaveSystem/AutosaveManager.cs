@@ -51,7 +51,6 @@ public class AutosaveManager : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        Debug.Log($"[Autosave] Manager created. Interval = {IntervalMinutes} min.");
     }
 
     void OnDestroy()

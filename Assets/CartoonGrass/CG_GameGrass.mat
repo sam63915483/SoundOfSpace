@@ -32,7 +32,8 @@ Material:
     - _GradientPower: 1
     - _InvertGradient: 0
     - _LanternGrassRadius: 0.5
-    - _PointLightBoost: 8
+    - _LanternGrassTail: 0.28
+    - _PointLightBoost: 4.5
     - _ShadowFill: 0.15
     - _SpotGrassReach: 50
     m_Colors:

@@ -838,8 +838,6 @@ public class ConcertLightProgram : MonoBehaviour
 
     // ─── Update / dispatch ────────────────────────────────────────────────────
 
-    float _nextDiagLogTime;
-    int _lastLoggedBeatCount = -1;
     void Update()
     {
         UpdateTier();
@@ -849,21 +847,6 @@ public class ConcertLightProgram : MonoBehaviour
         UpdateLaserIntensities();
         UpdateFlashOverlay();
         WriteDebugFields();
-        // Diagnostic — log program state once every 5s, plus log on each
-        // beat-count change so we can see drum events actually firing in
-        // builds. Lets us pin down (in Player.log) which palette is in use
-        // and whether energy / drums are flowing through to the lights.
-        if (Time.time >= _nextDiagLogTime)
-        {
-            _nextDiagLogTime = Time.time + 5f;
-            int beatNow = _director != null ? _director.BeatCount : -1;
-            int beatsDelta = beatNow - _lastLoggedBeatCount;
-            _lastLoggedBeatCount = beatNow;
-            string pal = (_activePalette != null && _activePalette.Length > 0)
-                ? $"[{string.Join(",", System.Array.ConvertAll(_activePalette, c => $"({c.r:F2},{c.g:F2},{c.b:F2})"))}]"
-                : "<null>";
-            Debug.Log($"[ConcertLightProgram] tier={_currentTier} family={_currentFamily} choreo={_choreoState} energy={(_director != null ? _director.EnergyLongAvg.ToString("F3") : "n/a")} beats+{beatsDelta} lasers={_lasers.Count} cones={_cones.Count} strobes={_strobes.Count} fadeMul={_intensityFadeMul:F2} subscribed={_subscribedToEvents} palette={pal}");
-        }
     }
 
     void UpdateTier()

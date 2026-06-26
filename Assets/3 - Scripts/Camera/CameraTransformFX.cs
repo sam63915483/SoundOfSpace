@@ -1,8 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Camera-transform effects: walk/run headbob, strafe roll, landing dip, and
-/// death tilt. Reads PlayerController for the landing event.
+/// Camera-transform effects: strafe roll and death tilt.
 ///
 /// IMPORTANT — this module fights two physics-rotation issues:
 ///
@@ -47,7 +46,6 @@ public class CameraTransformFX : MonoBehaviour
     Transform _cam;
     Vector3 _camBaseLocalPos;
     bool _cached;
-    bool _subscribed;
 
     // ── Manual interpolation snapshots ─────────────────────────────
     Quaternion _prevPlayerRot = Quaternion.identity;
@@ -56,17 +54,9 @@ public class CameraTransformFX : MonoBehaviour
     float _capturedPitch;
 
     // ── Effect state ───────────────────────────────────────────────
-    float _bobPhase;
-    float _dipOffset;
-    float _dipVelocity;
     float _tiltZ;
     float _deathTiltT;
     bool _isDying;
-
-    void OnDisable()
-    {
-        if (_player != null && _subscribed) { _player.OnLanded -= HandleLanded; _subscribed = false; }
-    }
 
     void FixedUpdate()
     {
@@ -102,32 +92,6 @@ public class CameraTransformFX : MonoBehaviour
         if (_playerTransform == null || !_playerTransform.gameObject.activeInHierarchy) return;
 
         float dt = Time.deltaTime;
-
-        // ── Headbob (vertical only — horizontal sine was amplifying the
-        //    50 Hz alignment-rotation step into visible side-to-side ghost).
-        //    Gated by isGrounded so WASD-in-air (jetpack / fine-thrust /
-        //    space float) doesn't trigger walking-bob — the player isn't
-        //    walking, they're flying. Also gated by AIChatScreen typing so
-        //    text entry doesn't bob.
-        Vector3 posOffset = Vector3.zero;
-        if (input.fxHeadbob && !IntroSequenceController.SuppressGroggyCameraFx && _player != null && _player.IsOnGround && !AIChatScreen.IsTypingActive && !PlayerController.isInModalSlotUI)
-        {
-            float h = UnityEngine.Input.GetAxisRaw("Horizontal");
-            float v = UnityEngine.Input.GetAxisRaw("Vertical");
-            float walking = Mathf.Clamp01(Mathf.Sqrt(h * h + v * v));
-            float t = walking * input.fxHeadbobIntensity;
-            _bobPhase += dt * Mathf.Lerp(0f, 10f, t);
-            float bobY = Mathf.Sin(_bobPhase) * 0.05f * t;
-            posOffset += new Vector3(0f, bobY, 0f);
-        }
-
-        // ── Landing dip (decays toward 0; jumps negative on land).
-        if (_dipOffset < 0f)
-        {
-            _dipOffset = Mathf.SmoothDamp(_dipOffset, 0f, ref _dipVelocity, 0.18f);
-            if (input.fxLandingDip)
-                posOffset += new Vector3(0f, _dipOffset, 0f);
-        }
 
         // ── Strafe tilt — Z roll proportional to horizontal input.
         //    Suppressed during the groggy wake-up intro (no woozy roll while the
@@ -167,8 +131,7 @@ public class CameraTransformFX : MonoBehaviour
 
         // Player position is already interpolated by Unity (Rigidbody.Interpolate);
         // reading transform.position returns the smoothed visual value.
-        Vector3 localPosWithBob = _camBaseLocalPos + posOffset;
-        Vector3 desiredCamPos = _playerTransform.position + smoothPlayerRot * localPosWithBob;
+        Vector3 desiredCamPos = _playerTransform.position + smoothPlayerRot * _camBaseLocalPos;
 
         _cam.position = desiredCamPos;
     }
@@ -190,21 +153,11 @@ public class CameraTransformFX : MonoBehaviour
         _lastFixedTime = Time.time;
     }
 
-    void HandleLanded()
-    {
-        var mgr = CameraEffectsManager.Instance;
-        if (mgr == null || mgr.Input == null || !mgr.Input.fxLandingDip) return;
-        var rb = _player != null ? _player.GetComponent<Rigidbody>() : null;
-        float vy = rb != null ? Mathf.Abs(rb.velocity.y) : 0f;
-        _dipOffset = -Mathf.Clamp(vy * 0.012f, 0.04f, 0.18f);
-        _dipVelocity = 0f;
-    }
-
     static float EaseOutCubic(float x) => 1f - Mathf.Pow(1f - x, 3f);
 
     bool CacheRefs(CameraEffectsManager mgr)
     {
-        if (_cached && _player != null && _cam != null && _subscribed) return true;
+        if (_cached && _player != null && _cam != null) return true;
         if (_player == null)
         {
             _player = FindObjectOfType<PlayerController>(true);
@@ -213,7 +166,6 @@ public class CameraTransformFX : MonoBehaviour
         }
         if (_cam == null) _cam = mgr.PlayerCamera != null ? mgr.PlayerCamera.transform : null;
         if (_cam == null) return false;
-        if (!_subscribed) { _player.OnLanded += HandleLanded; _subscribed = true; }
         if (!_cached)
         {
             _camBaseLocalPos = _cam.localPosition;

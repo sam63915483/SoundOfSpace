@@ -54,19 +54,15 @@ public static class SaveSystem
     public static List<SaveSlotInfo> ListSaves()
     {
         var list = new List<SaveSlotInfo>();
-        Debug.Log($"[SaveSystem] ListSaves looking in: {SavesDir}");
         if (!Directory.Exists(SavesDir))
         {
-            Debug.Log($"[SaveSystem] Saves directory does not exist: {SavesDir}");
             return list;
         }
         var files = Directory.GetFiles(SavesDir, "*.json");
-        Debug.Log($"[SaveSystem] Found {files.Length} JSON file(s) in saves directory.");
         foreach (var path in files)
         {
             var name = Path.GetFileNameWithoutExtension(path);
             var ts = File.GetLastWriteTime(path);
-            Debug.Log($"[SaveSystem]   • {name}  ({ts:yyyy-MM-dd HH:mm:ss})");
             list.Add(new SaveSlotInfo
             {
                 fileName = name,

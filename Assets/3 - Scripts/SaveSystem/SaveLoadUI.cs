@@ -49,8 +49,6 @@ public static class SaveLoadUI
         var dim = rootRT.gameObject.AddComponent<Image>();
         dim.color = new Color(0f, 0f, 0f, 0.65f);
         panel.root = rootRT.gameObject;
-        var parentName = parent != null ? parent.name : "null";
-        Debug.Log($"[SaveLoadUI] Built {mode} panel under '{parentName}'.");
 
         // Card
         var cardRT = NewUI("Card", rootRT);
@@ -195,7 +193,6 @@ public static class SaveLoadUI
                 UnityEngine.Object.DestroyImmediate(contentRT.GetChild(i).gameObject);
 
             var saves = SaveSystem.ListSaves();
-            Debug.Log($"[SaveLoadUI] Rebuilding row list: {saves.Count} entry(ies).");
 
             if (saves.Count == 0)
             {
@@ -308,7 +305,6 @@ public static class SaveLoadUI
                          Action<string> onPickSlot, Action onAfter, Action onListChanged,
                          float yOffset, float height)
     {
-        Debug.Log($"[SaveLoadUI] BuildRow: '{slot.fileName}' at y={yOffset}");
         var rowRT = NewUI("Row_" + slot.fileName, parent);
         rowRT.anchorMin = new Vector2(0, 1);
         rowRT.anchorMax = new Vector2(1, 1);

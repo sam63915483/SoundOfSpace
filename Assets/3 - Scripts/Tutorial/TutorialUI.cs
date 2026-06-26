@@ -887,7 +887,18 @@ public class TutorialUI : MonoBehaviour
             var asset = ScriptableObject.CreateInstance<TMP_SpriteAsset>();
             asset.name = "TutorialKeycapAtlas";
             asset.spriteSheet = atlas;
-            var mat = new Material(Shader.Find("TextMeshPro/Sprite"));
+            // "TextMeshPro/Sprite" is stripped from standalone builds unless it's
+            // in Project Settings > Graphics > Always Included Shaders. When that
+            // happens Shader.Find returns null and the old code NullRef'd on the
+            // broken material — silently skip keycaps so tip text falls back to bold.
+            var spriteShader = Shader.Find("TextMeshPro/Sprite");
+            if (spriteShader == null)
+            {
+                _keycapAsset = null;
+                _keycapNames = null;
+                return;
+            }
+            var mat = new Material(spriteShader);
             mat.SetTexture(ShaderUtilities.ID_MainTex, atlas);
             asset.material = mat;
 
@@ -929,7 +940,7 @@ public class TutorialUI : MonoBehaviour
         }
         catch (System.Exception ex)
         {
-            Debug.LogWarning($"[TutorialUI] Keycap atlas build failed; falling back to bold text. {ex.Message}");
+            Debug.LogWarning($"[TutorialUI] Keycap atlas build failed; falling back to bold text. {ex}");
             _keycapAsset = null;
             _keycapNames = null;
         }

@@ -90,7 +90,7 @@ public class GuitarShopNPC : MonoBehaviour
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
         }
 
-        if (_playerInRange && _state == State.Idle && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
+        if (_playerInRange && _state == State.Idle && InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             BeginConversation();
             return;

@@ -33,20 +33,24 @@ public class NotePickup : Interactable
     [Tooltip("Lift the paper a tiny amount above the table surface to avoid z-fighting.")]
     public float paperLift = 0.01f;
 
+    [Tooltip("Existing trigger sphere radius is multiplied by this so the note is detectable from further away (in-memory only — prefab/scene values are not mutated).")]
+    public float triggerGrowFactor = 1.5f;
+
     void Awake()
     {
-        // Ensure at least one trigger collider exists so OnTriggerEnter fires.
-        // Mirrors the convention used by NPCDialogue / BonfireInteraction etc.
-        // where the user is expected to set up a trigger but we add one as a
-        // safety net.
-        bool anyTrigger = false;
+        // Ensure at least one trigger collider exists so OnTriggerEnter fires,
+        // and grow it so the note's detection zone is larger.
+        SphereCollider existing = null;
         foreach (var c in GetComponentsInChildren<Collider>(true))
-            if (c.isTrigger) { anyTrigger = true; break; }
-        if (!anyTrigger)
+            if (c.isTrigger) { existing = c as SphereCollider; if (existing != null) break; }
+
+        if (existing != null)
+            existing.radius *= triggerGrowFactor;
+        else
         {
             var sc = gameObject.AddComponent<SphereCollider>();
             sc.isTrigger = true;
-            sc.radius = fallbackTriggerRadius;
+            sc.radius = fallbackTriggerRadius * triggerGrowFactor;
         }
 
         if (transform.Find("__PaperVisual") == null) BuildPaperVisual();

@@ -9681,6 +9681,7 @@ GameObject:
   m_Component:
   - component: {fileID: 3423422695996240188}
   - component: {fileID: 8827008359133231839}
+  - component: {fileID: 7234261281371140876}
   m_Layer: 0
   m_Name: TorchLight
   m_TagString: Untagged
@@ -9765,6 +9766,19 @@ Light:
   m_UseViewFrustumForShadowCasterCull: 1
   m_ShadowRadius: 0
   m_ShadowAngle: 0
+--- !u!114 &7234261281371140876
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6164340855862967537}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ba21438f2c9e6574585a41f54a64d159, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  grassStrength: 0.5
 --- !u!1 &7181803163224276328
 GameObject:
   m_ObjectHideFlags: 0
@@ -14717,6 +14731,20 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: 4300000, guid: 13b5bf54838e846489a9af9bfe5aa077, type: 3}
+--- !u!114 &7115246001834502761
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8435715526219668467}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8646bb41060396743b36ca3bb965579c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  radius: 15
+  damagePerSecond: 20
 --- !u!1 &8588997238276306160
 GameObject:
   m_ObjectHideFlags: 0
@@ -19557,17 +19585,3 @@ ParticleSystemRenderer:
   m_MeshWeighting2: 1
   m_MeshWeighting3: 1
   m_MaskInteraction: 0
---- !u!114 &7115246001834502761
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 8435715526219668467}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8646bb41060396743b36ca3bb965579c, type: 3}
-  m_Name:
-  m_EditorClassIdentifier:
-  radius: 15
-  damagePerSecond: 20

@@ -53,31 +53,11 @@ public class ControllerUINavigator : MonoBehaviour
         Instance = this;
         EnsureEventSystem();
         BuildBorderUI();
-        Debug.Log("[ControllerUINavigator] Spawned.");
-        var names = Input.GetJoystickNames();
-        for (int i = 0; i < names.Length; i++)
-        {
-            if (!string.IsNullOrEmpty(names[i]))
-                Debug.Log($"[ControllerUINavigator] Joystick {i}: '{names[i]}'");
-        }
     }
 
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
-    }
-
-    GameObject _lastSelected;
-    void LateUpdate()
-    {
-        // One-shot log on selection change for diagnostics.
-        var es = EventSystem.current;
-        var cur = es != null ? es.currentSelectedGameObject : null;
-        if (cur != _lastSelected)
-        {
-            _lastSelected = cur;
-            Debug.Log($"[ControllerUINavigator] Selection -> {(cur == null ? "<none>" : cur.name)}");
-        }
     }
 
     void OnEnable()
@@ -112,7 +92,6 @@ public class ControllerUINavigator : MonoBehaviour
         var go = new GameObject("EventSystem");
         go.AddComponent<EventSystem>();
         go.AddComponent<StandaloneInputModule>();
-        Debug.Log("[ControllerUINavigator] Auto-created an EventSystem.");
     }
 
     void BuildBorderUI()

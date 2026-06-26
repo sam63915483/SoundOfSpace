@@ -120,7 +120,7 @@ public class ShipInstructorDialogue : MonoBehaviour
         if (canPrompt)
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
 
-        if (canPrompt && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
+        if (canPrompt && InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             StartConversation();
             return;

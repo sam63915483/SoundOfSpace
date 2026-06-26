@@ -36,7 +36,9 @@ public class Interactable : MonoBehaviour {
         // CanInteract() does any gating it needs), so we preserve that.
         bool interactDown = Input.GetKeyDown (KeyCode.F) ||
             TutorialGate.PadPressed (TutorialGate.PadButton.X);
-        if (playerInInteractionZone && CanInteract () && interactDown) {
+        // Gaze gate (#2): F only fires while the player is actually looking at
+        // this object, matching the prompt the gaze gate (#1) shows.
+        if (playerInInteractionZone && CanInteract () && interactDown && InteractGaze.IsLookingAt (this)) {
             Interact ();
             // Pickup-style Interactables Destroy(gameObject) inside Interact().
             // The Unity-null check bails before the re-assert below would push a
@@ -53,6 +55,15 @@ public class Interactable : MonoBehaviour {
         // so playerInInteractionZone stays stuck true).
         if (playerInInteractionZone && CanInteract () && IsPlayerActive ()) {
             GameUI.ShowInteractionPrompt (this, BuildInteractMessage ());
+        }
+        else if (playerInInteractionZone) {
+            // In the zone but currently NOT interactable (e.g. the hatch is
+            // already open → CanInteract false, or the player is piloting).
+            // Actively clear our prompt: just ceasing to re-assert isn't enough,
+            // because the continuous gaze gate keeps re-displaying the last owner
+            // until it's explicitly cleared. Owner-scoped, so it won't touch
+            // another interactable's prompt.
+            GameUI.ClearInteractionPrompt (this);
         }
     }
 
@@ -119,5 +130,19 @@ public class Interactable : MonoBehaviour {
         playerInInteractionZone = false;
         GameUI.ClearInteractionPrompt (this);
     }
+
+    // When false, this interactable skips the look-to-interact gaze gate and
+    // behaves like the classic radius-only prompt — the prompt + F work the
+    // moment the player is in the trigger zone, no aiming required. Used by
+    // "Press F to pilot" (you want it the instant you're in the cockpit).
+    // (Appended at the end per the serialization convention in CLAUDE.md.)
+    [Tooltip("Uncheck to ignore the look-at requirement — prompt + F work on radius alone (e.g. Press F to pilot).")]
+    public bool requireGazeToInteract = true;
+
+    [Tooltip("Optional: what the player must look at to interact. Leave null to use this object's own bounds. Set to a larger mesh (e.g. the hatch itself) when the interactable script lives on a small child button.")]
+    public Transform gazeTarget;
+
+    [Tooltip("If true, the look-at raycast ignores occluders (e.g. the hull) and only tests the gaze target's own colliders. Used to open the hatch from outside while standing under the closed ship.")]
+    public bool gazeThroughWalls = false;
 
 }

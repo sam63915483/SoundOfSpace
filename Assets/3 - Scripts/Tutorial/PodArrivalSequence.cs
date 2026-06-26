@@ -15,6 +15,15 @@ using UnityEngine.UI;
 // teleport the player to the cabin spawn and hand off to the wake-up.
 //
 // Design: docs/superpowers/specs/2026-06-18-stasis-pod-arrival-intro-design.md
+//
+// Execution order 50: AFTER EndlessManager's floating-origin shift (order 0, in
+// LateUpdate) so the pod — which is pinned to the camera each LateUpdate but is
+// NOT registered to shift with the world — is placed at the post-shift camera
+// position. Without this it ran before the shift and the pod blinked off for one
+// frame on every origin shift (same class of bug as the instanced grass). Still
+// BEFORE CameraTransformFX (order 100) so the pod keeps riding the camera's base
+// position before the camera FX offset is applied.
+[DefaultExecutionOrder(50)]
 public class PodArrivalSequence : MonoBehaviour
 {
     // ── Tunables (serialized; appended at END per convention) ───────────────
@@ -103,12 +112,14 @@ public class PodArrivalSequence : MonoBehaviour
     Rigidbody _rb;
     Camera _cam;
     GameObject _podInstance;      // spawned StasisPod, positioned/oriented each LateUpdate
+    PodThrustFlames _thrustFlames; // nozzle flame VFX on the pod's four cylinders
     GrogginessImageEffect _grog;  // stasis-wake blur on the camera; eased + breathing
     float _grogIntensity = 1f;    // 1 = full blur at wake, eased down to grogFloor
     float _grogTarget;
     bool _wasKinematic;
     Vector3 _returnPos;          // fallback cabin pose captured before we move the player
     Quaternion _returnRot;
+    Renderer[] _hiddenBodyRenderers; // astronaut body renderers hidden during the pod flight (it clips through the pod); restored on teardown
 
     Canvas _canvas;
     Image _fade;
@@ -125,6 +136,13 @@ public class PodArrivalSequence : MonoBehaviour
     bool _skip;
     bool _active;                // true once set up; guards teardown idempotency
 
+    // True while the pod descent is playing (set up, not yet torn down). Lets the
+    // trailer free-cam pick orbit-the-pod mode during the opening vs free-fly after.
+    public bool IsActive => _active;
+    // The descending pod's transform (null before spawn / after teardown), so an
+    // orbit cam can centre on the actual pod rather than guessing the anchor.
+    public Transform PodTransform => _podInstance != null ? _podInstance.transform : null;
+
     // ── Entry point ──────────────────────────────────────────────────────────
     public IEnumerator Play()
     {
@@ -138,6 +156,7 @@ public class PodArrivalSequence : MonoBehaviour
         {
             Speak(reverseThrusterLine);                               // HAL calls the burn first
             StartThruster();                                          // muffled retro-burn kicks in
+            if (_thrustFlames != null) _thrustFlames.SetFullPower();  // nozzles go to full hard jet
             yield return ReverseThrusterGlide();                      // ...descent SLOWS (not stops) for thrusterLeadTime, then:
             yield return Countdown();                                  // countdown -> impact boom -> cut to black
             yield return new WaitForSecondsRealtime(postCrashBlackHold); // hold black while the crash rings out (player still in the pod)
@@ -175,6 +194,7 @@ public class PodArrivalSequence : MonoBehaviour
         HALCommentator.SuppressAutonomous = true;                 // no atmosphere/arrival narration while we teleport the player
         FallDamage.Suppressed = true;                             // descent speed must not deal damage at the cabin
         HudVisibility.SetForceHidden(true);                       // hide compass/vitals/jetpack/wallet for a clean cinematic (countdown + HAL lines stay)
+        HideAstronautBody();                                      // the astronaut mesh clips through the stasis pod — hide it until the cabin wake-up
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
@@ -187,7 +207,13 @@ public class PodArrivalSequence : MonoBehaviour
 
         BuildCanvas();
         StartAudio();
-        if (podPrefab != null) _podInstance = Instantiate(podPrefab);
+        if (podPrefab != null)
+        {
+            _podInstance = Instantiate(podPrefab);
+            _thrustFlames = _podInstance.AddComponent<PodThrustFlames>();
+            _thrustFlames.Initialize(_podInstance.transform);
+            _thrustFlames.BeginIdleBursts();   // random nozzle puffs during the calm approach
+        }
 
         // Stasis-wake grogginess: come to very blurry, ease down to a woozy floor,
         // then breathe (worse/better) — the same effect the cabin wake-up uses.
@@ -231,7 +257,11 @@ public class PodArrivalSequence : MonoBehaviour
         // spun wildly once we were metres from the planet. Shake stays positional.
         if (_podInstance != null && _cam != null)
         {
-            _podInstance.transform.position = _cam.transform.position;
+            // Normally the pod is centred on the camera (you ride INSIDE it, first
+            // person). While the trailer free-cam owns the camera, pin the pod to the
+            // PLAYER (the falling anchor) instead, so the pod keeps its descent
+            // trajectory and the free-cam can orbit its exterior. See TrailerFreeCam.
+            _podInstance.transform.position = TrailerFreeCam.Active ? _player.position : _cam.transform.position;
             _podInstance.transform.rotation = Quaternion.FromToRotation(Vector3.up, _dir);
         }
     }
@@ -300,6 +330,8 @@ public class PodArrivalSequence : MonoBehaviour
         float entrySpeed = seamSpeed / Mathf.Max(0.01f, thrusterSlowFactor); // continuous with the glide — no speed jump
         float t = 0f;
         int last = -1;
+        float prevDist = startDist, prevInward = entrySpeed; // for detecting "stopped slowing"
+        bool dieOutTriggered = false;
         while (t < countdownDuration && !_skip)
         {
             t += Time.unscaledDeltaTime;
@@ -307,6 +339,17 @@ public class PodArrivalSequence : MonoBehaviour
             // Enter at the glide's (slowed) speed — continuous, no jump — brake further
             // mid-reentry, then accelerate to impactSpeed: the thrusters fail and it crashes.
             _curDistance = HermiteDistance(startDist, impactDistance, -entrySpeed, -impactSpeed, countdownDuration, k);
+
+            // The instant the descent stops slowing (inward speed bottoms out and starts
+            // rising = thrusters losing the fight), kill the nozzle flames: they shrink
+            // and sputter out into the crash.
+            float inward = (prevDist - _curDistance) / Mathf.Max(1e-4f, Time.unscaledDeltaTime);
+            if (!dieOutTriggered && t > 0.15f * countdownDuration && inward > prevInward + 0.05f)
+            {
+                if (_thrustFlames != null) _thrustFlames.BeginDieOut();
+                dieOutTriggered = true;
+            }
+            prevInward = inward; prevDist = _curDistance;
             _shakeAmp = shakeMaxAmplitude * shakeRamp.Evaluate(k);
             if (_rumble != null) _rumble.volume = rumbleVolume * k;
             // Heart races toward impact — louder AND faster (pitch) the closer we get.
@@ -319,7 +362,10 @@ public class PodArrivalSequence : MonoBehaviour
             if (_thruster != null) _thruster.volume = thrusterVolume * Mathf.Lerp(1f, 0.7f, k);
 
             int rem = Mathf.CeilToInt(countdownStart * (1f - k));
-            if (_console != null) _console.text = rem > 0 ? $"PROXIMITY ALERT\nIMPACT IN {rem}" : "PROXIMITY ALERT";
+            // Hide the proximity/countdown readout while the trailer cam owns the view —
+            // it's a player-HUD element, not part of the exterior cinematic shot.
+            if (_console != null)
+                _console.text = TrailerFreeCam.Active ? "" : (rem > 0 ? $"PROXIMITY ALERT\nIMPACT IN {rem}" : "PROXIMITY ALERT");
             if (rem != last)
             {
                 last = rem;
@@ -333,11 +379,40 @@ public class PodArrivalSequence : MonoBehaviour
         yield return Fade(0f, 1f, impactFadeTime);   // hard cut to black
     }
 
+    // ── Astronaut body visibility ─────────────────────────────────────────────
+    // The first-person astronaut mesh (Player/Astronaut) sits inside the camera and
+    // clips through the stasis pod during the descent. Hide its renderers for the
+    // flight; restore exactly the ones we turned off when the cabin wake-up takes over.
+    void HideAstronautBody()
+    {
+        if (_player == null) return;
+        Transform astro = _player.Find("Astronaut");
+        if (astro == null) return;
+        var rends = astro.GetComponentsInChildren<Renderer>(true);
+        var hidden = new System.Collections.Generic.List<Renderer>();
+        foreach (var r in rends)
+            if (r != null && r.enabled) { r.enabled = false; hidden.Add(r); }
+        _hiddenBodyRenderers = hidden.ToArray();
+    }
+
+    void ShowAstronautBody()
+    {
+        if (_hiddenBodyRenderers != null)
+            foreach (var r in _hiddenBodyRenderers)
+                if (r != null) r.enabled = true;
+        _hiddenBodyRenderers = null;
+    }
+
     // ── Teardown (idempotent; also runs on abort) ────────────────────────────
     void Teardown()
     {
         if (!_active) return;
         _active = false; _flying = false; _shakeAmp = 0f;
+
+        // If the trailer cam is orbiting/flying, drop it back to the normal camera
+        // BEFORE we teleport the player to the cabin (it restores PlayerController +
+        // camera parenting first, so the teleport lands cleanly). P re-enables it.
+        TrailerFreeCam.ForceExit();
 
         if (_pc != null && _rb != null)
         {
@@ -356,6 +431,7 @@ public class PodArrivalSequence : MonoBehaviour
         HALCommentator.SuppressAutonomous = false;
         FallDamage.Suppressed = false;
         HudVisibility.SetForceHidden(false);
+        ShowAstronautBody();   // restore the body for the cabin wake-up (normal first-person view)
 
         // DestroyImmediate (not Destroy): the cabin wake-up attaches its OWN
         // GrogginessImageEffect on the same frame, and the component is

@@ -192,6 +192,25 @@ public class PlayerController : GravityObject
 	Vector3 smoothVelocity;
 	Vector3 smoothVRef;
 
+	// Surface normal under the feet, captured by IsGrounded()'s spherecast and
+	// used to project the walk vector onto the slope (see HandleMovement). Defaults
+	// to transform.up so the projection is a no-op while airborne / on flat ground.
+	Vector3 _groundNormal = Vector3.up;
+
+	// Max ground steepness (degrees, measured against gravity-up) the player grips
+	// without sliding. At or below this the grounded grip cancels the gravity-
+	// induced down-slope drift; above it the player slides off (steep cliffs).
+	// Non-serialized so it never reorders the serialized field block — tune here.
+	float slopeLimitAngle = 35f;
+
+	// Grounded-grip tuning. Below slideStopSpeed the along-slope velocity is the slow
+	// gravity drift, cancelled outright so the player never creeps down a walkable hill.
+	// Above it (real landing momentum — e.g. after a running jetpack jump) the velocity
+	// is bled off over momentumFriction seconds so the player slides to a natural stop
+	// instead of an instant clunk. Non-serialized — tune here.
+	float slideStopSpeed = 1.5f;
+	float momentumFriction = 0.3f;
+
 	bool isGrounded;
 	bool jumpQueued;
 	bool jetpackQueued;
@@ -717,11 +736,40 @@ public class PlayerController : GravityObject
 			}
 			else if (!IsHalfSubmerged())
 			{
-				// Apply small downward force to prevent player from bouncing when
-				// going down slopes. Skipped while half-submerged in water so the
-				// 8 m/s downward VelocityChange impulse doesn't drown out the swim
-				// thrust on the seabed (the player would never lift off).
-				rb.AddForce(-transform.up * stickToGroundForce, ForceMode.VelocityChange);
+				// Grounded grip — replaces the old constant downward "stick"
+				// VelocityChange impulse, which felt heavy/"locked" on touchdown
+				// (a per-tick downward yank) AND still let the player slide downhill.
+				//
+				// On a walkable slope (steepness <= slopeLimitAngle) we cancel ONLY
+				// the ALONG-slope component of the body-relative velocity — the
+				// gravity-induced slide — while keeping the into-surface component so
+				// ground contact and landings stay natural (gravity does that, not an
+				// impulse). Walking is unaffected: it runs through MovePosition, not
+				// rb.velocity. On slopes steeper than slopeLimitAngle we DON'T grip,
+				// so steep cliffs still slide the player off as before.
+				//
+				// Skipped while half-submerged so it can't fight the swim/buoyancy
+				// velocity handling on the seabed.
+				float slopeAngle = Vector3.Angle(_groundNormal, transform.up);
+				if (slopeAngle <= slopeLimitAngle)
+				{
+					Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
+					Vector3 relVel = rb.velocity - refVel;
+					// Split into into-surface (normal) and along-slope (tangential).
+					Vector3 normalComp = Vector3.Project(relVel, _groundNormal);
+					Vector3 tangComp   = relVel - normalComp;
+					// Keep the normal component untouched — gravity/collision own the
+					// vertical, so the player settles onto the ground the same frame they
+					// land (no hover-and-sink). Only the ALONG-slope velocity is managed:
+					//   • slow (gravity drift) → cancel, so you don't creep down hills;
+					//   • fast (real momentum) → bleed off over momentumFriction seconds,
+					//     so a fast landing slides to a natural stop, not an instant clunk.
+					if (tangComp.magnitude < slideStopSpeed)
+						tangComp = Vector3.zero;
+					else
+						tangComp *= Mathf.Exp(-Time.fixedDeltaTime / Mathf.Max(0.0001f, momentumFriction));
+					rb.velocity = refVel + normalComp + tangComp;
+				}
 			}
 		}
 		else
@@ -969,6 +1017,7 @@ public class PlayerController : GravityObject
 		const float rayRadius = .3f;
 		const float groundedRayDst = .2f;
 		bool grounded = false;
+		_groundNormal = transform.up;   // default: flat relative to gravity-up (no slope)
 
 		if (referenceBody != null || _flatActive)
 		{
@@ -999,6 +1048,8 @@ public class PlayerController : GravityObject
 						: null;
 					if (hitShip != null && !hitShip.IsLanded)
 						grounded = false;
+					else
+						_groundNormal = hit.normal;   // real walkable ground — keep its slope
 				}
 			}
 		}
@@ -1147,7 +1198,26 @@ public class PlayerController : GravityObject
 		}
 		else
 		{
-			rb.MovePosition(rb.position + ResolveWallSlide(smoothVelocity * Time.fixedDeltaTime));
+			Vector3 move = smoothVelocity * Time.fixedDeltaTime;
+
+			// Slope projection. smoothVelocity is built in the gravity-HORIZONTAL
+			// plane (perpendicular to transform.up). Walking that flat vector down
+			// a hill steps you off the descending surface, so you go briefly
+			// airborne and the stickToGround impulse yanks you back — the "bumpy
+			// downhill" feel. Re-projecting the move onto the actual ground plane
+			// (perpendicular to _groundNormal, captured by IsGrounded's spherecast)
+			// makes you follow the slope smoothly. Magnitude is preserved so walk
+			// speed is constant up/down hills. No-op while airborne / on flat
+			// ground (_groundNormal == transform.up there, so the projection
+			// returns `move` unchanged).
+			if (isGrounded && move.sqrMagnitude > 1e-10f)
+			{
+				Vector3 slopeMove = Vector3.ProjectOnPlane(move, _groundNormal);
+				if (slopeMove.sqrMagnitude > 1e-10f)
+					move = slopeMove.normalized * move.magnitude;
+			}
+
+			rb.MovePosition(rb.position + ResolveWallSlide(move));
 		}
 	}
 

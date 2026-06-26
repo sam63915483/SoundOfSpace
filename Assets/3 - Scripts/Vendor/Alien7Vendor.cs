@@ -128,7 +128,7 @@ public class Alien7Vendor : MonoBehaviour
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
         }
 
-        if (_playerInRange && !_conversationActive && !_suppressPromptUntilExit && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
+        if (_playerInRange && !_conversationActive && !_suppressPromptUntilExit && InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             StartConversation();
             return;

@@ -352,9 +352,10 @@ public static class TutorialGate
     public static bool SecondaryFirePressed() =>
         Input.GetMouseButtonDown(1) || (ControllerEnabled && LTEdgePressed());
 
-    // Pause toggle (Esc / P / Start button)
+    // Pause toggle (Esc / Start button). P is reserved for the trailer free-cam
+    // toggle (TrailerFreeCam); Escape and Start still pause.
     public static bool PausePressed() =>
-        Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.P) ||
+        Input.GetKeyDown(KeyCode.Escape) ||
         PadPressed(PadButton.Start);
 
     public static bool CancelPressed() =>

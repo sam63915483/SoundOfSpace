@@ -26,6 +26,12 @@ using UnityEngine.UI;
 /// Polls CameraEffectsManager.Input.fxLensFlares each frame to honour the
 /// pause-menu toggle.
 /// </summary>
+// DefaultExecutionOrder(300): run the flare AFTER the camera is finalised for the
+// frame — after CameraTransformFX (100) and the trailer free-cam (200). In plain
+// Update() it read the camera one frame stale, which is invisible for the player
+// (camera only moves on mouse input) but constant for the always-rotating orbit cam,
+// so the flare visibly trailed the sun. Reading last keeps it locked to the view.
+[DefaultExecutionOrder(300)]
 public class LensFlareRegistry : MonoBehaviour
 {
     // ─── Halo (bright sun core) ──────────────────────────────────────────
@@ -165,8 +171,14 @@ public class LensFlareRegistry : MonoBehaviour
     // Smoothed occlusion visibility (0 = fully blocked, 1 = fully clear).
     float _smoothedVisibility = 1f;
     float _visibilityVelocity;
+    // The occlusion test fires 9 raycasts/frame while the sun is on-screen.
+    // Throttle the recompute to every 3rd frame and reuse the cached fraction
+    // in between — the SmoothDamp below keeps the fade continuous, so the
+    // visual is unchanged while the per-frame raycast cost drops ~3×.
+    int _occlFrameCounter;
+    float _cachedRawVis = 1f;
 
-    void Update()
+    void LateUpdate()
     {
         if (!_setupComplete) Setup();
         if (!_setupComplete) return;
@@ -215,8 +227,6 @@ public class LensFlareRegistry : MonoBehaviour
         FindSun();
         EnsureFlareLayers();
         _setupComplete = _canvas != null && _haloSprite != null;
-        if (_setupComplete)
-            Debug.Log($"[LensFlareRegistry] Setup complete — sun={(_sunBody != null ? _sunBody.bodyName : "<none>")} additiveMat={(_additiveMat != null ? "ok" : "<missing>")}");
     }
 
     // Load the additive UI shader and build a shared material from it. The
@@ -630,9 +640,16 @@ public class LensFlareRegistry : MonoBehaviour
         // dims the flare by ~30% instead of binary-toggling it off. A small
         // SmoothDamp on the fraction prevents flicker when an obstacle's
         // edge sweeps across sample points between frames.
-        float rawVis = inFront
-            ? ComputeOcclusionVisibility(cam.transform.position, sunPos, _sunBody.radius, dir, cam.transform.up)
-            : 0f;
+        if (!inFront)
+        {
+            _cachedRawVis = 0f;            // sun behind camera → fade out immediately
+        }
+        else if (--_occlFrameCounter <= 0)
+        {
+            _occlFrameCounter = 3;
+            _cachedRawVis = ComputeOcclusionVisibility(cam.transform.position, sunPos, _sunBody.radius, dir, cam.transform.up);
+        }
+        float rawVis = _cachedRawVis;
         _smoothedVisibility = Mathf.SmoothDamp(_smoothedVisibility, rawVis, ref _visibilityVelocity, kVisibilitySmoothTime);
         // Remap: below kVisibilityThreshold → 0, then linear ramp to 1.0 so
         // partial occlusion still feels proportional. Without this, 1-2

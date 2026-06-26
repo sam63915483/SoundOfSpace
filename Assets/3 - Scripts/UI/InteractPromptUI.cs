@@ -14,6 +14,12 @@ public class InteractPromptUI : MonoBehaviour
 {
     public static InteractPromptUI Instance { get; private set; }
 
+    /// <summary>True while a "Press [F] …" prompt is on screen. Read by
+    /// CrosshairReticle to morph the center reticle into its lock-on state.
+    /// Tracks the logical shown/hidden state (flips at the start of the
+    /// slide-in / slide-out), not the animation midpoint.</summary>
+    public static bool IsPromptVisible { get; private set; }
+
     [Tooltip("Seconds for the slide-in / slide-out animation.")]
     public float slideDuration = 0.25f;
     [Tooltip("Pixels the pill slides up from when first revealed.")]
@@ -51,6 +57,8 @@ public class InteractPromptUI : MonoBehaviour
     bool _shown;
     bool _stickyOwner;          // true if Show(owner, ...) set a sticky owner; false for ShowOneShot.
     UnityEngine.Object _owner;
+    string _ownerText;          // latest text for the sticky owner; applied by Update when looked-at.
+    string _lastAppliedText;    // guards per-frame text rebuilds while shown.
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -73,7 +81,7 @@ public class InteractPromptUI : MonoBehaviour
 
     void OnDestroy()
     {
-        if (Instance == this) Instance = null;
+        if (Instance == this) { Instance = null; IsPromptVisible = false; }
     }
 
     void Update()
@@ -82,19 +90,40 @@ public class InteractPromptUI : MonoBehaviour
         // Common case: a pickup destroys itself in Interact() — Interactable.Update
         // re-asserts the prompt one last time AFTER Interact returns, leaving
         // _owner pointing at a now-destroyed object that nothing will Clear.
-        if (_shown && _stickyOwner && _owner == null)
+        if (_stickyOwner && _owner == null)
         {
             _stickyOwner = false;
             HideInternal();
+            return;
         }
-        // Suppress the floating prompt whenever a modal UI is up (NPC
-        // dialogue, the bonfire cook panel, vendor shops, etc. — all set
-        // PlayerController.isInDialogue = true). Other Interactables in range
-        // re-assert "Press F" every frame on top of the modal panel; just
-        // clearing the panel's own owner doesn't stop them.
-        if (_shown && PlayerController.isInDialogue)
+
+        // Suppress the floating prompt whenever a modal UI is up (NPC dialogue,
+        // cook panel, vendor shops — all set PlayerController.isInDialogue).
+        if (PlayerController.isInDialogue)
         {
-            HideInternal();
+            if (_shown) HideInternal();
+            return;
+        }
+
+        // Continuous gaze gate (#1): the gate is evaluated here every frame on
+        // the current owner — NOT inside Show() — so it works regardless of how
+        // often an owner re-asserts Show (e.g. ShipReactor calls it only once).
+        // Looked-at → (re)show with the owner's latest text; looked-away → hide
+        // but KEEP ownership so it reappears the moment the crosshair returns.
+        if (_stickyOwner && _owner != null)
+        {
+            if (InteractGaze.IsLookingAt(_owner))
+            {
+                if (!_shown || _ownerText != _lastAppliedText)
+                {
+                    _lastAppliedText = _ownerText;
+                    ShowInternal(_ownerText);
+                }
+            }
+            else if (_shown)
+            {
+                HideInternal();
+            }
         }
     }
 
@@ -107,9 +136,22 @@ public class InteractPromptUI : MonoBehaviour
     public static void Show(UnityEngine.Object owner, string text)
     {
         if (Instance == null) return;
-        Instance._owner = owner;
-        Instance._stickyOwner = true;
-        Instance.ShowInternal(text);
+        var inst = Instance;
+
+        // Claim ownership with a look-to-select preference: a new candidate only
+        // takes the prompt from the current owner if we're not already looking at
+        // the current owner (or we ARE looking at the newcomer). The actual
+        // show/hide + gaze gating happens continuously in Update().
+        if (owner != inst._owner)
+        {
+            bool take = inst._owner == null
+                     || InteractGaze.IsLookingAt(owner)
+                     || !InteractGaze.IsLookingAt(inst._owner);
+            if (!take) return;
+            inst._owner = owner;
+        }
+        inst._stickyOwner = true;
+        inst._ownerText = text;
     }
 
     /// <summary>Clears iff <paramref name="owner"/> matches the current owner. Idempotent.</summary>
@@ -119,6 +161,8 @@ public class InteractPromptUI : MonoBehaviour
         if (Instance._owner != owner) return;
         Instance._owner = null;
         Instance._stickyOwner = false;
+        Instance._ownerText = null;
+        Instance._lastAppliedText = null;
         Instance.HideInternal();
     }
 
@@ -143,6 +187,7 @@ public class InteractPromptUI : MonoBehaviour
         if (_bodyText != null) _bodyText.text = DecorateKeyGlyphs(text ?? "");
         if (_shown) return;
         _shown = true;
+        IsPromptVisible = true;
         if (_slideRoutine != null) StopCoroutine(_slideRoutine);
         _slideRoutine = StartCoroutine(SlideRoutine(true));
     }
@@ -151,6 +196,7 @@ public class InteractPromptUI : MonoBehaviour
     {
         if (!_shown) return;
         _shown = false;
+        IsPromptVisible = false;
         if (_slideRoutine != null) StopCoroutine(_slideRoutine);
         _slideRoutine = StartCoroutine(SlideRoutine(false));
     }

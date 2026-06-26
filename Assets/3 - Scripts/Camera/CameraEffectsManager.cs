@@ -121,8 +121,6 @@ public class CameraEffectsManager : MonoBehaviour
                 else
                 {
                     RadialBlur = PlayerCamera.gameObject.AddComponent<RadialMotionBlurEffect>();
-                    Debug.Log("[CameraEffectsManager] Attached RadialMotionBlurEffect to camera: "
-                        + PlayerCamera.name);
                 }
             }
             // Same pattern for ChromaticAberrationEffect — camera component.

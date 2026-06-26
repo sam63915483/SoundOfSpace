@@ -57,7 +57,7 @@ public class ShipReactor : MonoBehaviour
         if (eligible)
         {
             ShowPrompt();
-            if (Input.GetKeyDown(KeyCode.F)) Refuel();
+            if (Input.GetKeyDown(KeyCode.F) && InteractGaze.IsLookingAt(this)) Refuel();
         }
         else
         {

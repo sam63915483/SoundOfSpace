@@ -10,20 +10,27 @@ using UnityEngine;
 //   • This GameObject is destroyed (rod is now in the player's hand)
 public class FishingRodPickup : Interactable
 {
-    [Tooltip("Trigger radius if no Collider is present at Start.")]
-    public float fallbackTriggerRadius = 1.2f;
+    [Tooltip("Pickup zone radius in WORLD METRES. The rod prefab is scaled down, so this is converted to local units using the collider's scale (in-memory only — prefab/scene values are not mutated).")]
+    public float pickupWorldRadius = 5f;
 
     void Awake()
     {
-        bool anyTrigger = false;
+        SphereCollider existing = null;
         foreach (var c in GetComponentsInChildren<Collider>(true))
-            if (c.isTrigger) { anyTrigger = true; break; }
-        if (!anyTrigger)
+            if (c.isTrigger) { existing = c as SphereCollider; if (existing != null) break; }
+
+        if (existing == null)
         {
-            var sc = gameObject.AddComponent<SphereCollider>();
-            sc.isTrigger = true;
-            sc.radius = fallbackTriggerRadius;
+            existing = gameObject.AddComponent<SphereCollider>();
+            existing.isTrigger = true;
         }
+
+        // Convert the desired world radius into the collider's local space so the
+        // zone is actually `pickupWorldRadius` metres regardless of prefab scale.
+        Vector3 ls = existing.transform.lossyScale;
+        float scale = Mathf.Max(Mathf.Abs(ls.x), Mathf.Abs(ls.y), Mathf.Abs(ls.z));
+        if (scale < 1e-4f) scale = 1f;
+        existing.radius = Mathf.Max(existing.radius, pickupWorldRadius / scale);
     }
 
     protected override bool CanInteract() =>

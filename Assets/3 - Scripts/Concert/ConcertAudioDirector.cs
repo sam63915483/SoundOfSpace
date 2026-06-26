@@ -802,7 +802,6 @@ public class ConcertAudioDirector : MonoBehaviour
             _nextDiagLogTime = Time.time + 5f;
             _lastLoggedSource = picked;
             _lastLoggedIsPlaying = nowPlaying;
-            Debug.Log($"[ConcertAudioDirector] Resolved source='{(picked != null ? picked.gameObject.name : "<null>")}' IsPlaying={nowPlaying} EnergyLong={EnergyLongAvg:F3} BeatCount={BeatCount} HihatCount={HihatCount}");
         }
         return picked;
     }

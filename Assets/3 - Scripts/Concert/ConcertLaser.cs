@@ -763,7 +763,6 @@ public class ConcertLaser : MonoBehaviour
         if (s_templateMat != null && s_templateMat.shader != null)
         {
             s_beamShader = s_templateMat.shader;
-            Debug.Log($"[ConcertLaser] Beam shader resolved via Resources: {s_beamShader.name}");
             return s_beamShader;
         }
         s_beamShader = Shader.Find("Concert/Additive");
@@ -771,7 +770,6 @@ public class ConcertLaser : MonoBehaviour
         if (s_beamShader == null) s_beamShader = Shader.Find("Legacy Shaders/Particles/Additive");
         if (s_beamShader == null) s_beamShader = Shader.Find("Sprites/Default");
         if (s_beamShader == null) s_beamShader = Shader.Find("Unlit/Color");
-        Debug.Log($"[ConcertLaser] Beam shader resolved via Shader.Find: {(s_beamShader != null ? s_beamShader.name : "<null>")}");
         return s_beamShader;
     }
 

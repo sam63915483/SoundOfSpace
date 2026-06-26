@@ -97,13 +97,11 @@ public class VelocityMarkersHUD : MonoBehaviour
 
     void LateUpdate()
     {
-        if (_cachedShip == null || !_cachedShip.IsPiloted)
-        {
-            var ships = FindObjectsOfType<Ship>(true);
-            _cachedShip = null;
-            for (int i = 0; i < ships.Length; i++)
-                if (ships[i] != null && ships[i].IsPiloted) { _cachedShip = ships[i]; break; }
-        }
+        // O(1) lookup instead of a per-frame FindObjectsOfType<Ship>(true) scan
+        // (which allocated a Ship[] and walked every object — incl. inactive —
+        // every frame while on foot). The piloted ship publishes itself as a
+        // static; null when on foot, which correctly hides the markers below.
+        _cachedShip = Ship.PilotedInstance;
         if (_mainCam == null) _mainCam = Camera.main;
 
         bool show = _cachedShip != null && _mainCam != null;

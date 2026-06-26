@@ -29,6 +29,7 @@ Shader "CartoonGrass/SimpleGrass"
         _PointLightBoost ("Lantern/torch brightness on grass", Range(0, 4)) = 2.0
         _SpotGrassReach ("Concert light reach on grass (m)", Range(5, 250)) = 50
         _LanternGrassRadius ("Lantern grass radius (x range)", Range(0.1, 1.5)) = 0.5
+        _LanternGrassTail ("Lantern grass far-reach tail", Range(0, 1)) = 0.35
     }
     SubShader
     {
@@ -62,6 +63,7 @@ Shader "CartoonGrass/SimpleGrass"
         float _SpotGrassReach;       // distance (m) from the concert centre at which spot lights fade off the grass
         float3 _GrassSpotCenter;     // centroid of the injected concert SPOT lights, set by InstancedGrassRenderer
         float _LanternGrassRadius;   // shrinks the lantern/torch grass falloff distance (x the light's range; 0.5 = half)
+        float _LanternGrassTail;     // brightness of the dim extended tail that carries lantern grass light out to ~full range (0 = old short cutoff)
         float3 _GrassPlanetCenter;   // set globally by InstancedGrassRenderer (per-patch colour hash)
 
         // Player flashlight, injected globally by PlayerFlashlight. The grass is
@@ -204,8 +206,17 @@ Shader "CartoonGrass/SimpleGrass"
                 // Lanterns get a shrunk radius (_LanternGrassRadius x the light's range)
                 // so their grass glow matches the smaller lit ground circle instead of
                 // reaching the light's full range. Spots use their own reach control.
+                // Tight bright CORE — the original tuned near-falloff, unchanged, so
+                // grass right next to the lantern looks exactly as it did before.
                 float pdnPt = pdn / max(_LanternGrassRadius, 0.05);
-                float pattenPoint = saturate(1.0 - pdnPt * pdnPt) / (1.0 + 25.0 * pdnPt * pdnPt);
+                float core  = saturate(1.0 - pdnPt * pdnPt) / (1.0 + 25.0 * pdnPt * pdnPt);
+                // Dim extended TAIL — a gentle, low-amplitude glow reaching ~the light's
+                // full range (like the lit ground), filling the mid/far region where the
+                // steep core has dropped to black. max() lets the bright core win up close
+                // (near brightness preserved) while the tail only shows further out. The
+                // old behaviour is _LanternGrassTail = 0.
+                float tail  = saturate(1.0 - pdn * pdn) / (1.0 + 8.0 * pdn * pdn);
+                float pattenPoint = max(core, tail * _LanternGrassTail);
                 float pattenSpot  = (1.0 / (1.0 + 15.0 * pdn * pdn)) * smoothstep(1.0, 0.85, pdn);
                 float patten = lerp(pattenPoint, pattenSpot, _GrassPointLightDir[li].w);
                 // Light response normal: the terrain-aligned blade up-axis for ALL

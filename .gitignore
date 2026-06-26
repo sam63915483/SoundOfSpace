@@ -93,3 +93,6 @@ MonoBleedingEdge/
 # and is redundant now that the extracted packs are committed.
 /_BackroomsReimport_BACKUP/
 
+
+# Local trailer/test video captures (large binaries, re-creatable)
+/Recordings/

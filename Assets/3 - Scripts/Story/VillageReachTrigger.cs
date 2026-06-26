@@ -23,6 +23,5 @@ public class VillageReachTrigger : MonoBehaviour
         if (_fired || !other.CompareTag("Player")) return;
         _fired = true;
         OnVillageReached?.Invoke();
-        Debug.Log("[Story] VillageReachTrigger fired.");
     }
 }

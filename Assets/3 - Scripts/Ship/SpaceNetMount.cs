@@ -122,7 +122,7 @@ public class SpaceNetMount : MonoBehaviour
         }
 
         ShowPrompt();
-        if (TutorialGate.InteractPressed(TutorialAbility.Pickup))
+        if (InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.Pickup))
         {
             if (reattachClip != null && _reattachSource != null)
                 _reattachSource.PlayOneShot(reattachClip, reattachVolume);

@@ -106,7 +106,7 @@ public class ThrusterMount : MonoBehaviour
             UpdatePlacementState(true);
             ShowPrompt();
 
-            if (TutorialGate.InteractPressed(TutorialAbility.Pickup))
+            if (InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.Pickup))
             {
                 if (reattachClip != null && reattachSource != null)
                     reattachSource.PlayOneShot(reattachClip, reattachVolume);

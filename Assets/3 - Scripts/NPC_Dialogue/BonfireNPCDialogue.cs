@@ -105,7 +105,7 @@ public class BonfireNPCDialogue : MonoBehaviour
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
         }
 
-        if (_playerInRange && !_conversationActive && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
+        if (_playerInRange && !_conversationActive && InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             StartConversation();
             return;

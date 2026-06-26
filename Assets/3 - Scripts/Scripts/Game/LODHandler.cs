@@ -28,11 +28,19 @@ public class LODHandler : MonoBehaviour {
 		}
 	}
 
+	int _lodFrameCounter;
 	void Update () {
 		DebugLODInfo ();
 
 		if (Application.isPlaying) {
-			HandleLODs ();
+			// LOD bands change slowly; recomputing every frame forced a camera
+			// LookAt + two viewport projections per body every frame (view-matrix
+			// thrash even while standing still). Throttle to ~6 Hz — imperceptible
+			// for planet-scale LOD switching.
+			if (++_lodFrameCounter >= 10) {
+				_lodFrameCounter = 0;
+				HandleLODs ();
+			}
 		}
 
 	}

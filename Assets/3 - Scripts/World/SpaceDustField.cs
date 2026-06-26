@@ -16,9 +16,21 @@ using UnityEngine.SceneManagement;
 /// Specks are cleared from the LOWER atmosphere only, so from a planet surface you can still look
 /// up and see them streaming toward the black hole above the haze.
 /// </summary>
+// DefaultExecutionOrder(300): the dust must compute its speck world positions AFTER
+// the camera is finalised for the frame — after EndlessManager's origin rebase (0),
+// CameraTransformFX (100) and the trailer free-cam (200). At order 0 it read the
+// camera one frame stale and (on a rebase frame) in the wrong coordinate frame, so a
+// detached free-cam's field was drawn a full rebase-offset behind for one frame, then
+// snapped back. Reading last keeps the field locked to wherever the camera actually is.
+[DefaultExecutionOrder(300)]
 public class SpaceDustField : MonoBehaviour
 {
     public static SpaceDustField Instance { get; private set; }
+
+    /// When set, the dust cube centres on this transform instead of Camera.main.
+    /// The trailer free-cam points it at the camera it is driving so the field
+    /// follows the free-cam, then clears it on exit so it reverts to the player cam.
+    public static Transform CenterOverride;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -138,18 +150,23 @@ public class SpaceDustField : MonoBehaviour
         EnsureInit();
         if (_material == null) return;
 
-        Vector3 camPos = _cam.transform.position;
+        bool freeCam = CenterOverride != null;
+        Vector3 camPos = freeCam ? CenterOverride.position : _cam.transform.position;
         Vector3 bhPos = _blackHole.Position;
 
         // --- genuine, origin-shift-invariant camera delta (relative to the BH) ---
+        // Skipped entirely for the trailer free-cam: the BH-relative parallax can't be
+        // kept in phase with a detached, separately-rebased camera, so it lagged and
+        // snapped. The free-cam path below uses a self-contained drift locked to the
+        // camera box instead — no rebase/timing dependence, so it can't lag or snap.
         Vector3 camRelBH = camPos - bhPos;          // invariant under EndlessManager rebase
         Vector3 genuineDelta = Vector3.zero;
-        if (_hasPrevRel)
+        if (!freeCam && _hasPrevRel)
         {
             genuineDelta = camRelBH - _prevCamRelBH;
             if (genuineDelta.magnitude > sanityThreshold) genuineDelta = Vector3.zero; // glitch guard
         }
-        _prevCamRelBH = camRelBH;
+        _prevCamRelBH = camRelBH;   // keep fresh so exiting free-cam doesn't spike the first frame
         _hasPrevRel = true;
 
         float dt = Time.deltaTime;
@@ -173,7 +190,9 @@ public class SpaceDustField : MonoBehaviour
             float immersion = Mathf.Clamp01(1f - altFrac);
             if (immersion > maxImmersion) maxImmersion = immersion;
         }
-        float washMul = Mathf.Lerp(1f, atmosphereWashMin, maxImmersion);
+        // Free-cam keeps the dust at full brightness (no atmosphere haze-wash) so the
+        // field stays seamless even when orbiting close to the planet.
+        float washMul = (CenterOverride != null) ? 1f : Mathf.Lerp(1f, atmosphereWashMin, maxImmersion);
 
         // Drive the black hole's atmosphere fade with the same immersion value, so its
         // lens dissolves into the hazed sky from a planet surface instead of punching
@@ -197,7 +216,7 @@ public class SpaceDustField : MonoBehaviour
         // residual motion is the drift toward the black hole — it reads as the dust
         // being pulled in. Other planets (different orbital speeds) show some residual
         // drift, which is fine.
-        Vector3 coMoveStep = (_homeBody != null ? _homeBody.velocity : Vector3.zero) * dt;
+        Vector3 coMoveStep = freeCam ? Vector3.zero : (_homeBody != null ? _homeBody.velocity : Vector3.zero) * dt;
 
         // Per-frame planet shortlist so the hot loop skips dictionary lookups and
         // far planets entirely (cube corner reach = half * sqrt(3)).
@@ -214,15 +233,24 @@ public class SpaceDustField : MonoBehaviour
             float bhDist = toBH.magnitude;
             float d = DensityAt(wp, bhDist);
 
-            // drift straight toward the BH (accelerating as it gets closer) + co-move + parallax
+            // Drift straight toward the BH (accelerating as it gets closer) — the
+            // "dust getting sucked into the black hole" stream. toBH is camera-relative
+            // so it's origin-rebase invariant. Applied in BOTH modes.
             if (bhDist > 0.001f)
             {
                 float fbhDrift = 1f - Mathf.Clamp01((bhDist - bhInnerRadius) * _bhRampInv);
                 float effDrift = driftSpeed * (1f + driftBHAccel * fbhDrift);
                 lp += (toBH / bhDist) * (effDrift * dt);
             }
-            lp += coMoveStep;      // co-move with home planet so its orbital parallax cancels there
-            lp -= genuineDelta;
+            // Camera-relative parallax + planet co-move only in normal play. For the
+            // detached free-cam these can't be kept in phase with a separately-rebased
+            // camera (the left-behind/snap), and the box is kept locked to the camera
+            // instead — so the dust just streams toward the BH all around you.
+            if (!freeCam)
+            {
+                lp += coMoveStep;      // co-move with home planet so its orbital parallax cancels there
+                lp -= genuineDelta;
+            }
 
             // toroidal wrap into [-half, half]
             lp.x -= L * Mathf.Round(lp.x / L);
@@ -273,6 +301,12 @@ public class SpaceDustField : MonoBehaviour
     // hot loop avoids dictionary lookups and skips sqrt for specks far from any planet.
     float DensityAt(Vector3 wp, float bhDist)
     {
+        // Trailer free-cam: render a uniform field all around the camera — skip the
+        // planet-avoidance culling + black-hole density gradient that otherwise leave a
+        // lopsided "cloud" (everything culled on the planet side during the descent) you
+        // can fly out of. Only active while the free-cam owns the view.
+        if (CenterOverride != null) return uniformDensity;
+
         // planet avoidance: specks are cleared from the LOWER atmosphere, fading back
         // in above it. Squared-distance early-outs keep the common cases sqrt-free.
         float fPlanet = 1f;
@@ -498,6 +532,7 @@ public class SpaceDustField : MonoBehaviour
     [SerializeField] float lowerAtmosphereFrac = 0.5f; // clear specks below this fraction of atmo thickness
     [SerializeField] float planetFalloff = 600f;       // fade band above the cleared lower atmosphere
     [SerializeField] float atmosphereWashMin = 0.15f;  // dust brightness multiplier when deep in an atmosphere (haze wash)
+    [SerializeField] float uniformDensity = 0.85f;     // flat density used while the trailer free-cam owns the view (seamless field, no planet/BH clumping)
 
     [Header("Look")]
     [SerializeField] Color amberWarm = new Color(1f, 0.55f, 0.18f);

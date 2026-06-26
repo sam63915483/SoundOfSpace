@@ -93,7 +93,6 @@ public static class StoryContent
             catch (Exception e) { Debug.LogError($"[Story] Failed to parse {file}: {e.Message}"); }
         }
         Loaded = true;
-        Debug.Log($"[Story] Loaded {Conversations.Count} conversations, {Objectives.Count} objectives, {HintTracks.Count} hint tracks.");
     }
 
     public static Conversation GetConversation(string id) => id != null && Conversations.TryGetValue(id, out var c) ? c : null;

@@ -54,18 +54,22 @@ public class StoryImpactNotice : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 1f);
         rt.pivot = new Vector2(0.5f, 1f);
         rt.anchoredPosition = new Vector2(0f, -90f);
-        rt.sizeDelta = new Vector2(1500f, 130f);
+        // Narrow box that wraps to several lines so the banner stays inside a
+        // centred 9:16 vertical crop (TikTok) even when capturing on an ultra-
+        // wide 3440x1080 display. A wide box reads fine on 16:9 but spills off
+        // both sides of a vertical crop. ~480 logical px keeps it in the middle.
+        rt.sizeDelta = new Vector2(480f, 360f);
 
         _text = textGO.AddComponent<TextMeshProUGUI>();
         var font = Resources.Load<TMP_FontAsset>("Fonts & Materials/LiberationSans SDF");
         if (font != null) _text.font = font;
-        _text.fontSize = 38f;
+        _text.fontSize = 36f;
         _text.fontStyle = FontStyles.Bold | FontStyles.Italic;
         _text.alignment = TextAlignmentOptions.Center;
         _text.color = new Color(1f, 0.85f, 0.35f, 1f);
         _text.raycastTarget = false;
         _text.enableWordWrapping = true;
-        _text.characterSpacing = 4f;
+        _text.characterSpacing = 1f;
 
         var shadow = textGO.AddComponent<Shadow>();
         shadow.effectColor = new Color(0f, 0f, 0f, 0.85f);

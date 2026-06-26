@@ -131,8 +131,6 @@ public class InputSettings : ScriptableObject {
 	public bool cameraEffectsEnabled = true;
 
 	[Header("Camera Effects — Movement")]
-	public bool fxHeadbob = true;
-	public bool fxLandingDip = true;
 	public bool fxStrafeTilt = true;
 	public bool fxSprintFovKick = true;
 
@@ -243,7 +241,6 @@ public class InputSettings : ScriptableObject {
 	}
 
 	[Header("Camera Effects — Intensities")]
-	[Range(0f, 1f)] public float fxHeadbobIntensity = 1f;
 	[Range(0f, 1f)] public float fxFilmGrainIntensity = 0.6f;
 	[Range(0f, 1f)] public float fxSubtleVignetteIntensity = 0.45f;
 	[Range(0f, 1f)] public float fxChromaticAberrationIntensity = 0.35f;
@@ -303,8 +300,6 @@ public class InputSettings : ScriptableObject {
 		vibrationEnabled     = PlayerPrefs.GetInt   (nameof (vibrationEnabled),     defaultVibrationEnabled ? 1 : 0) != 0;
 
 		cameraEffectsEnabled        = PlayerPrefs.GetInt   (nameof (cameraEffectsEnabled),        1) != 0;
-		fxHeadbob                   = PlayerPrefs.GetInt   (nameof (fxHeadbob),                   1) != 0;
-		fxLandingDip                = PlayerPrefs.GetInt   (nameof (fxLandingDip),                1) != 0;
 		fxStrafeTilt                = PlayerPrefs.GetInt   (nameof (fxStrafeTilt),                1) != 0;
 		fxSprintFovKick             = PlayerPrefs.GetInt   (nameof (fxSprintFovKick),             1) != 0;
 		fxJetpackFovKick            = PlayerPrefs.GetInt   (nameof (fxJetpackFovKick),            1) != 0;
@@ -327,7 +322,6 @@ public class InputSettings : ScriptableObject {
 		fxBloom                     = PlayerPrefs.GetInt   (nameof (fxBloom),                     1) != 0;
 		fxSpaceDust                 = PlayerPrefs.GetInt   (nameof (fxSpaceDust),                 1) != 0;
 		fxRadialMotionBlur          = PlayerPrefs.GetInt   (nameof (fxRadialMotionBlur),          0) != 0;
-		fxHeadbobIntensity              = PlayerPrefs.GetFloat (nameof (fxHeadbobIntensity),              1f);
 		fxFilmGrainIntensity            = PlayerPrefs.GetFloat (nameof (fxFilmGrainIntensity),            0.6f);
 		fxSubtleVignetteIntensity       = PlayerPrefs.GetFloat (nameof (fxSubtleVignetteIntensity),       0.45f);
 		fxChromaticAberrationIntensity  = PlayerPrefs.GetFloat (nameof (fxChromaticAberrationIntensity),  0.35f);
@@ -408,8 +402,6 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt   (nameof (vibrationEnabled),     vibrationEnabled ? 1 : 0);
 
 		PlayerPrefs.SetInt   (nameof (cameraEffectsEnabled),        cameraEffectsEnabled        ? 1 : 0);
-		PlayerPrefs.SetInt   (nameof (fxHeadbob),                   fxHeadbob                   ? 1 : 0);
-		PlayerPrefs.SetInt   (nameof (fxLandingDip),                fxLandingDip                ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxStrafeTilt),                fxStrafeTilt                ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxSprintFovKick),             fxSprintFovKick             ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxJetpackFovKick),            fxJetpackFovKick            ? 1 : 0);
@@ -432,7 +424,6 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt   (nameof (fxBloom),                     fxBloom                     ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxSpaceDust),                 fxSpaceDust                 ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxRadialMotionBlur),          fxRadialMotionBlur          ? 1 : 0);
-		PlayerPrefs.SetFloat (nameof (fxHeadbobIntensity),              fxHeadbobIntensity);
 		PlayerPrefs.SetFloat (nameof (fxFilmGrainIntensity),            fxFilmGrainIntensity);
 		PlayerPrefs.SetFloat (nameof (fxSubtleVignetteIntensity),       fxSubtleVignetteIntensity);
 		PlayerPrefs.SetFloat (nameof (fxChromaticAberrationIntensity),  fxChromaticAberrationIntensity);

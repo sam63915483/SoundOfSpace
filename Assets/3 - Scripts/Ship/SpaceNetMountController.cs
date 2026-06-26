@@ -125,7 +125,7 @@ public class SpaceNetMountController : MonoBehaviour
         }
 
         // Install on press.
-        if (TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
+        if (InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             target.gameObject.SetActive(true);
             _pickupCached.ClearHeldObject();

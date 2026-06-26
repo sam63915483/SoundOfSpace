@@ -115,7 +115,7 @@ public class LootBox : MonoBehaviour
 
         InteractPromptUI.Show(this, PromptText);
 
-        if (Input.GetKeyDown(KeyCode.F))
+        if (Input.GetKeyDown(KeyCode.F) && InteractGaze.IsLookingAt(this))
         {
             // Same-frame race guard: StorageUI may have just consumed this F
             // press to close the panel. CanInteract() above flipped from

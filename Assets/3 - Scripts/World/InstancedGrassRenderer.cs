@@ -18,6 +18,14 @@ using UnityEngine.Rendering;
 ///   • Lit by the sun (dims at night) via CG_SimpleGrass.
 /// Decorative only.
 /// </summary>
+// Execution order 100 keeps the per-frame work (below, in LateUpdate) running
+// AFTER EndlessManager's floating-origin shift (default order 0, also LateUpdate).
+// Graphics.DrawMeshInstanced captures its blade matrices at call time, so if the
+// draw is submitted before the origin shift, the grass renders one frame at the
+// stale pre-shift planet position (~1 km off-screen) — a visible one-frame blink
+// every time a shift fires. Submitting after the shift keeps it locked to the
+// planet. See also the Draw() notes.
+[DefaultExecutionOrder(100)]
 public class InstancedGrassRenderer : MonoBehaviour
 {
     [Header("Planet")]
@@ -302,7 +310,11 @@ public class InstancedGrassRenderer : MonoBehaviour
         return true;
     }
 
-    void Update()
+    // LateUpdate (not Update) so the draw is submitted AFTER EndlessManager's
+    // origin shift this frame — otherwise DrawMeshInstanced renders the grass at
+    // the stale pre-shift position for one frame on every shift. See the
+    // [DefaultExecutionOrder] note on the class.
+    void LateUpdate()
     {
         if (!Resolve()) return;
         ApplyRenderScale();
@@ -739,15 +751,6 @@ public class InstancedGrassRenderer : MonoBehaviour
             // default, and CommandBuffer.DrawMeshInstanced throws ("doesn't enable
             // instancing") and draws nothing without it.
             _depthMat = new Material(sh) { hideFlags = HideFlags.HideAndDontSave, enableInstancing = true };
-
-            // One-time build evidence: confirms the pre-pass material is alive, the
-            // shader supports instancing, and which camera/MSAA we're rendering under.
-            // Shows up in Player.log so a build can be diagnosed without the Editor.
-            Debug.Log("[InstancedGrassRenderer] depth pre-pass material ready: shader='" + sh.name +
-                      "' supported=" + sh.isSupported +
-                      " fromAsset=" + (depthMaterial != null) +
-                      " cam='" + cam.name + "' allowMSAA=" + cam.allowMSAA +
-                      " QS.aa=" + QualitySettings.antiAliasing);
         }
         if (_depthCB == null) _depthCB = new CommandBuffer { name = "Grass Depth Prepass" };
         if (_depthCBCam != cam)

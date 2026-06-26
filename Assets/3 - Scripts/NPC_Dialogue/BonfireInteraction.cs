@@ -148,7 +148,12 @@ public class BonfireInteraction : MonoBehaviour
             InteractPromptUI.Show(this, _promptCached);
         }
         if (TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
-        { if (panelOpen) CloseCookPanel(); else OpenCookPanel(); }
+        {
+            // Close works regardless of where you're looking (don't trap the
+            // player in the menu); opening requires looking at the bonfire.
+            if (panelOpen) CloseCookPanel();
+            else if (InteractGaze.IsLookingAt(this)) OpenCookPanel();
+        }
     }
 
     // Fired when any bonfire's cook panel opens. Subscribed to by tutorial
