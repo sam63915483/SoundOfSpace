@@ -1,0 +1,30 @@
+name = "photo-gallery"
+main = "src/index.js"
+compatibility_date = "2026-07-01"
+
+# ---------------------------------------------------------------------------
+# R2 bucket: stores the raw JPEG bytes, keyed by photo id.
+# ---------------------------------------------------------------------------
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "sound-of-space-photos"
+
+# ---------------------------------------------------------------------------
+# D1 database: photo metadata + rate-limit counters.
+#
+# >>> PASTE YOUR DATABASE ID BELOW <<<
+# After `wrangler d1 create sound-of-space-gallery`, wrangler prints a
+# database_id (a UUID). Replace the placeholder string below with it.
+# Deploy WILL FAIL until this is a real id.
+# ---------------------------------------------------------------------------
+[[d1_databases]]
+binding = "DB"
+database_name = "sound-of-space-gallery"
+database_id = "PASTE_YOUR_DATABASE_ID_HERE"   # <-- REPLACE THIS PLACEHOLDER
+
+# ---------------------------------------------------------------------------
+# Secrets are NOT stored here. Set them out-of-band so they never touch git:
+#   wrangler secret put UPLOAD_KEY
+#   wrangler secret put ADMIN_KEY
+# For `wrangler dev`, put them in .dev.vars (gitignored) instead.
+# ---------------------------------------------------------------------------
