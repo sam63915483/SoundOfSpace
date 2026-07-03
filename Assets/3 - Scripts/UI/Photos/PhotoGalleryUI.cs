@@ -69,7 +69,13 @@ public class PhotoGalleryUI : MonoBehaviour
 
     void OnDestroy()
     {
-        if (Instance == this) Instance = null;
+        if (Instance == this)
+        {
+            // Belt-and-suspenders: normally only reached on quit/domain
+            // reload, but never leave gates set or textures alive.
+            if (IsOpen) TearDown();
+            Instance = null;
+        }
     }
 
     void OnEnable()  { SceneManager.sceneLoaded += OnSceneLoaded; }
@@ -180,7 +186,9 @@ public class PhotoGalleryUI : MonoBehaviour
             _thumbTextures.Add(tex);
             BuildCell(p, tex);
         }
-        _scroll.verticalNormalizedPosition = 1f; // top
+        // Snap to top via anchoredPosition — normalizedPosition would read a
+        // stale content height (grid/fitter rebuild is deferred to end of frame).
+        _gridContentRT.anchoredPosition = Vector2.zero;
     }
 
     void ClearGrid()
@@ -351,8 +359,11 @@ public class PhotoGalleryUI : MonoBehaviour
         vbg.color = ScreenBg;
         vbg.raycastTarget = true; // block grid interaction underneath
 
-        var photoRT = NewUI("Photo", _viewerRT);
-        Stretch(photoRT, 60f);
+        // The AspectRatioFitter overrides its own RectTransform's offsets, so
+        // the 60px inset must live on a wrapper the fitter operates inside.
+        var photoFrame = NewUI("PhotoFrame", _viewerRT);
+        Stretch(photoFrame, 60f);
+        var photoRT = NewUI("Photo", photoFrame);
         _viewerImage = photoRT.gameObject.AddComponent<RawImage>();
         _viewerImage.raycastTarget = false;
         _viewerFitter = photoRT.gameObject.AddComponent<AspectRatioFitter>();
