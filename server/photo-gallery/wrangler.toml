@@ -20,7 +20,7 @@ bucket_name = "sound-of-space-photos"
 [[d1_databases]]
 binding = "DB"
 database_name = "sound-of-space-gallery"
-database_id = "PASTE_YOUR_DATABASE_ID_HERE"   # <-- REPLACE THIS PLACEHOLDER
+database_id = "90c45862-82e2-4c19-ac65-25dc422480be"
 
 # ---------------------------------------------------------------------------
 # Secrets are NOT stored here. Set them out-of-band so they never touch git:

@@ -176,6 +176,7 @@ public class MainMenuController : MonoBehaviour
 
         BuildButton(buttonsRT, "PlayButton", "START GAME", OnPlay);
         BuildButton(buttonsRT, "CreditsButton", "CREDITS", OnCredits);
+        BuildButton(buttonsRT, "GalleryButton", "COMMUNITY GALLERY", OnCommunityGallery);
         BuildButton(buttonsRT, "ExitButton", "EXIT GAME", OnExit);
 
         // Footer hint
@@ -496,6 +497,33 @@ public class MainMenuController : MonoBehaviour
     public void HideCredits()
     {
         if (creditsPanel != null) creditsPanel.SetActive(false);
+        if (mainMenuButtonsRoot != null) mainMenuButtonsRoot.SetActive(true);
+    }
+
+    // Lazily created on first use so the menu never pays for it unless the
+    // player actually opens the gallery. Reused on subsequent opens/closes
+    // rather than rebuilt (mirrors creditsPanel's SetActive toggle pattern).
+    CommunityGalleryUI communityGalleryUI;
+
+    public void OnCommunityGallery()
+    {
+        // Same reachability guard as OnCredits: hide the button row so PLAY /
+        // CREDITS / GALLERY / EXIT cannot be reached while the modal is open.
+        if (mainMenuButtonsRoot != null) mainMenuButtonsRoot.SetActive(false);
+        if (communityGalleryUI == null)
+        {
+            var go = new GameObject("CommunityGalleryUI");
+            go.transform.SetParent(transform, false);
+            communityGalleryUI = go.AddComponent<CommunityGalleryUI>();
+        }
+        // Not configured yet (dev hasn't deployed the server) — still open;
+        // CommunityGalleryUI shows a "not set up yet" message itself so the
+        // button stays honest instead of being hidden.
+        communityGalleryUI.Open(HideCommunityGallery);
+    }
+
+    public void HideCommunityGallery()
+    {
         if (mainMenuButtonsRoot != null) mainMenuButtonsRoot.SetActive(true);
     }
 
