@@ -622,6 +622,8 @@ public class MainMenuController : MonoBehaviour
         tick("story director");   yield return null;
         if (HintTrackRunner.Instance == null) { var go = new GameObject("HintTrackRunner"); DontDestroyOnLoad(go); go.AddComponent<HintTrackRunner>(); }
         tick("hint tracks");       yield return null;
+        if (PhotoLibrary.Instance == null) { var go = new GameObject("PhotoLibrary"); DontDestroyOnLoad(go); go.AddComponent<PhotoLibrary>(); }
+        tick("photo library");    yield return null;
     }
 
     // Synchronous wrapper — drains the async coroutine without yielding so
