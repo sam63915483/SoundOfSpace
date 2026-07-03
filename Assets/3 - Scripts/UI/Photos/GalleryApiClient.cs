@@ -74,9 +74,15 @@ public static class GalleryApiClient
     // onDone(success, texture, error). Texture is owned by the CALLER — destroy it.
     public static IEnumerator LoadImage(string id, string imageUrl, Action<bool, Texture2D, string> onDone)
     {
-        string cachePath = System.IO.Path.Combine(CacheDir, id + ".jpg");
+        // Defense-in-depth: the server generates 32-hex ids, but never let a
+        // response id build a path that escapes the cache dir (../.. or an
+        // absolute path that Path.Combine would rebase to). Bad id → no cache,
+        // just download to memory.
+        bool cacheable = !string.IsNullOrEmpty(id) &&
+            System.Text.RegularExpressions.Regex.IsMatch(id, "^[a-fA-F0-9]{1,64}$");
+        string cachePath = cacheable ? System.IO.Path.Combine(CacheDir, id + ".jpg") : null;
         // Cache hit.
-        if (System.IO.File.Exists(cachePath))
+        if (cachePath != null && System.IO.File.Exists(cachePath))
         {
             Texture2D cached = null;
             try
@@ -94,7 +100,8 @@ public static class GalleryApiClient
             yield return req.SendWebRequest();
             if (req.result != UnityWebRequest.Result.Success) { onDone?.Invoke(false, null, HttpError(req)); yield break; }
             var tex = DownloadHandlerTexture.GetContent(req);
-            try { System.IO.Directory.CreateDirectory(CacheDir); System.IO.File.WriteAllBytes(cachePath, req.downloadHandler.data); } catch { }
+            if (cachePath != null)
+                try { System.IO.Directory.CreateDirectory(CacheDir); System.IO.File.WriteAllBytes(cachePath, req.downloadHandler.data); } catch { }
             onDone?.Invoke(true, tex, null);
         }
     }
@@ -121,17 +128,21 @@ public static class GalleryApiClient
         int th = Mathf.Max(1, Mathf.RoundToInt(src.height * k));
         var rt = RenderTexture.GetTemporary(tw, th, 0);
         var oldActive = RenderTexture.active;
+        Texture2D small = null;
         try
         {
             Graphics.Blit(src, rt);
             RenderTexture.active = rt;
-            var small = new Texture2D(tw, th, TextureFormat.RGB24, false);
+            small = new Texture2D(tw, th, TextureFormat.RGB24, false);
             small.ReadPixels(new Rect(0, 0, tw, th), 0, 0);
             small.Apply();
-            var bytes = small.EncodeToJPG(quality);
-            UnityEngine.Object.Destroy(small);
-            return bytes;
+            return small.EncodeToJPG(quality);
         }
-        finally { RenderTexture.active = oldActive; RenderTexture.ReleaseTemporary(rt); }
+        finally
+        {
+            RenderTexture.active = oldActive;
+            RenderTexture.ReleaseTemporary(rt);
+            if (small != null) UnityEngine.Object.Destroy(small); // free the temp even if encode threw
+        }
     }
 }
