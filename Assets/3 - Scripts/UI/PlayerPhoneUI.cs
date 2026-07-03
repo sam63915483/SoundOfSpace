@@ -314,9 +314,15 @@ public class PlayerPhoneUI : MonoBehaviour
         if (IsCameraMode) ExitCameraMode();
         if (_animCoroutine != null) { StopCoroutine(_animCoroutine); _animCoroutine = null; }
         if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
+        bool wasInGalleryTransition = _inGalleryTransition;
         if (_galleryTransition != null) { StopCoroutine(_galleryTransition); _galleryTransition = null; }
         _inGalleryTransition = false;
         if (PhotoGalleryUI.Instance != null) PhotoGalleryUI.Instance.ForceClose();
+        // If we interrupted a transition, the gate may be transition-owned
+        // (gallery already closed) — release it or the player stays frozen.
+        // Safe vs NPC conversations: one can't start mid-transition because
+        // isInDialogue is already true, blocking interaction.
+        if (wasInGalleryTransition) PlayerController.isInDialogue = false;
         // The gallery tween may have left the chassis rotated/oversized.
         if (_phoneRT != null)
         {
@@ -329,6 +335,10 @@ public class PlayerPhoneUI : MonoBehaviour
         IsOpen = false;
         if (_phoneRT    != null) _phoneRT.anchoredPosition = new Vector2(_phoneRT.anchoredPosition.x, OffScreenY);
         if (_phoneGroup != null) { _phoneGroup.alpha = 0f; _phoneGroup.blocksRaycasts = false; }
+        // AnimatePhone's close path restores nav events; force-close must too,
+        // or they stay disabled with no UI open.
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        if (es != null) es.sendNavigationEvents = true;
         // Skip cursor lock when we're in MainMenu — this method is invoked
         // by the sceneLoaded callback on EVERY scene load (including the
         // gameplay → MainMenu return), and locking the cursor in the menu
@@ -2578,13 +2588,22 @@ public class PlayerPhoneUI : MonoBehaviour
     // off-screen and the screen interior covers the viewport). 1.10 = margin.
     float GalleryTargetScale()
     {
+        // Fit the SCREEN INTERIOR (chassis minus 12px side / 42px top+bottom
+        // bezels → 356×196 local when rotated), not the chassis — otherwise
+        // the bezel peeks at the viewport edges during the crossfade.
         var parent = (RectTransform)_phoneRT.parent;
-        return Mathf.Max(parent.rect.width / PhoneHeight, parent.rect.height / PhoneWidth) * 1.10f;
+        return Mathf.Max(parent.rect.width  / (PhoneHeight - 84f),
+                         parent.rect.height / (PhoneWidth  - 24f)) * 1.10f;
     }
 
     System.Collections.IEnumerator GalleryEnterRoutine()
     {
         _inGalleryTransition = true;
+        // Movement gates on isInDialogue (not LookBlocked), and our Update
+        // early-return suppresses the WASD-auto-close — so assert the gate
+        // ourselves for the whole tween. The gallery takes ownership of it
+        // in OpenForTransition; the null-gallery fallback releases it below.
+        PlayerController.isInDialogue = true;
         HideHintNow();
         // Kill competing tweens (orientation / slide).
         if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
@@ -2610,7 +2629,11 @@ public class PlayerPhoneUI : MonoBehaviour
             }
             gallery.SetTransitionAlpha(1f);
         }
-        else Debug.LogWarning("[PlayerPhoneUI] PhotoGalleryUI.Instance is null");
+        else
+        {
+            Debug.LogWarning("[PlayerPhoneUI] PhotoGalleryUI.Instance is null");
+            PlayerController.isInDialogue = false; // nobody took ownership — don't brick the player
+        }
 
         // Park the phone closed WITHOUT touching the cursor — the gallery's
         // isInDialogue gate + unlocked cursor own the input state now.
@@ -2647,11 +2670,15 @@ public class PlayerPhoneUI : MonoBehaviour
             }
             // Cursor stays unlocked — the (open) phone owns it now.
             gallery.CloseForPhoneReturn();
+            // CloseForPhoneReturn released isInDialogue — re-assert it for the
+            // shrink tween (Update's early-return suppresses WASD-auto-close).
+            PlayerController.isInDialogue = true;
         }
 
         // …then the phone shrinks + rotates back into the hand.
         yield return GalleryTween(-90f, 0f, bigScale, PhoneScale, 0f, OnScreenY, GalleryGrowDuration);
 
+        PlayerController.isInDialogue = false; // hand back to the normal open-phone state
         if (_screenMask != null) _screenMask.enabled = true;
         _isLandscape = false;
         _inGalleryTransition = false;
