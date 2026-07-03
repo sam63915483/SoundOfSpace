@@ -300,7 +300,14 @@ public class PlayerPhoneUI : MonoBehaviour
         _subscribedToResourceManager = true;
     }
 
-    void OnConversationStarted(MonoBehaviour npc) => ForceCloseNoAnim();
+    void OnConversationStarted(MonoBehaviour npc)
+    {
+        ForceCloseNoAnim();
+        // ForceCloseNoAnim releases isInDialogue when it interrupts the
+        // gallery/transition — but this handler runs precisely because a
+        // conversation is starting, so re-assert the conversation's gate.
+        PlayerController.isInDialogue = true;
+    }
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         // Abort-safe: returning to the menu clears any intro nag suppression so a
@@ -320,8 +327,10 @@ public class PlayerPhoneUI : MonoBehaviour
         if (PhotoGalleryUI.Instance != null) PhotoGalleryUI.Instance.ForceClose();
         // If we interrupted a transition, the gate may be transition-owned
         // (gallery already closed) — release it or the player stays frozen.
-        // Safe vs NPC conversations: one can't start mid-transition because
-        // isInDialogue is already true, blocking interaction.
+        // NOTE: nothing in the NPC interact chain checks isInDialogue, so a
+        // conversation CAN start over the gallery/transition; this release
+        // would clobber its gate, which is why OnConversationStarted
+        // re-asserts it right after calling us.
         if (wasInGalleryTransition) PlayerController.isInDialogue = false;
         // The gallery tween may have left the chassis rotated/oversized.
         if (_phoneRT != null)
