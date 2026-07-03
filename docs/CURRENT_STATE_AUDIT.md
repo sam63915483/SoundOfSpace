@@ -688,6 +688,39 @@ These came up in the audit as "looks suspicious" but turned out to have legitima
 
 ---
 
+## §30 Photos App (local) — added 2026-07-03
+
+The phone camera's captures now flow through **PhotoLibrary** (auto-singleton,
+`Assets/3 - Scripts/UI/Photos/`): `<game folder>/Photos/{id}.jpg` (q85) +
+`{id}_thumb.jpg` (≤256px, q75) + `manifest.json` (JsonUtility; id/capturedAt/
+size/uploaded flag). Deliberately NOT in the save system — photos survive New
+Game; legacy `photo_*.png` files are ignored; videos unchanged. `Photos/` is
+gitignored.
+
+**PhotoGalleryUI** (auto-singleton, canvas `UILayer.PhotoGallery = 960`) is the
+fullscreen Photos app: thumbnail grid (ScrollRect + GridLayoutGroup, letterboxed
+mixed-aspect cells) + full-res viewer (one texture at a time, destroyed on
+close). Input gating mirrors Fishingdex (`PlayerController.isInDialogue` +
+cursor unlock); it handles its own ESC (viewer → grid → phone) and is guarded
+in TabbedPauseMenu's ESC branch. Both singletons are seeded in
+`EnsureGameplaySingletonsAsync` (trap #1).
+
+Entry: fifth app tile ("P / Photos"; the apps grid is now 3 columns × 54px) →
+`PlayerPhoneUI.OpenPhotosApp()` — the rotate-and-grow transition (chassis
+rotates -90° + scales to overfill the SCREEN INTERIOR on any aspect, gallery
+crossfades in; `BeginGalleryExit` reverses it). During the transition
+`_inGalleryTransition` suppresses all phone input and `isInDialogue` blocks
+movement for the whole tween. `ForceCloseNoAnim` force-closes the gallery,
+resets the chassis transform, restores EventSystem nav events, and releases the
+transition-owned dialogue gate (OnConversationStarted re-asserts it for the
+incoming conversation).
+
+Planned next (see `docs/superpowers/specs/2026-07-03-photos-app-community-gallery-design.md`):
+upload flow + Cloudflare Worker backend + main-menu Community Gallery (Plan B).
+User-facing server setup guide: `docs/cloudflare-setup-guide.md`.
+
+---
+
 # Appendix
 
 ## §A Verification Notes
