@@ -75,7 +75,7 @@ public class PlayerPhoneUI : MonoBehaviour
     static readonly Color TileBg        = new Color32(0x0F, 0x19, 0x2A, 0xD9);
     static readonly Color ButtonGrey    = new Color32(0x2A, 0x40, 0x60, 0xFF);
 
-    public enum AppKind { Fishingdex, Build, Settings, Map }
+    public enum AppKind { Fishingdex, Build, Settings, Map, Photos }
 
     // ── Runtime UI refs ─────────────────────────────────────────────
     Canvas        _canvas;
@@ -111,7 +111,7 @@ public class PlayerPhoneUI : MonoBehaviour
     RectTransform _appGridRT;
     RectTransform _reservedZoneRT;
     Button        _putAwayBtn;
-    Button[]      _appButtons = new Button[4];
+    Button[]      _appButtons = new Button[5];
 
     // ── Home-screen page navigation ─────────────────────────────────
     // Four swappable pages live inside _pageHostRT. Only one is active at
@@ -1392,7 +1392,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // while in camera mode to exit back to home. Opens the phone first
         // if it's closed, and closes any open sub-menu (Fishingdex/Build/Map)
         // out of the way.
-        if (Input.GetKeyDown(KeyCode.C) && !_isAnimating)
+        if (Input.GetKeyDown(KeyCode.C) && !_isAnimating && !PhotoGalleryUI.IsOpen)
         {
             if (IsCameraMode)
             {
@@ -2049,12 +2049,14 @@ public class PlayerPhoneUI : MonoBehaviour
         _appGridRT.offsetMin = Vector2.zero; _appGridRT.offsetMax = Vector2.zero;
 
         var grid = _appGridRT.gameObject.AddComponent<GridLayoutGroup>();
-        grid.padding = new RectOffset(8, 8, 4, 4);
-        grid.spacing = new Vector2(10f, 10f);
-        grid.cellSize = new Vector2(78f, 78f);
+        // 5 tiles → 3 columns of 54 px cells (two rows). Row width budget is
+        // ~180 px inside the screen's VerticalLayoutGroup: 3*54 + 2*6 + 8 = 178.
+        grid.padding = new RectOffset(4, 4, 4, 4);
+        grid.spacing = new Vector2(6f, 6f);
+        grid.cellSize = new Vector2(54f, 54f);
         grid.childAlignment = TextAnchor.MiddleCenter;
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        grid.constraintCount = 2;
+        grid.constraintCount = 3;
 
         // Glyphs are uppercase ASCII letters — the bundled LiberationSans SDF
         // doesn't include the unicode-block symbols (⌬ ▦ ⚙ ◎) that were here
@@ -2064,6 +2066,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _appButtons[1] = BuildAppTile(AppKind.Build,      "B", "Build");
         _appButtons[2] = BuildAppTile(AppKind.Settings,   "S", "Settings");
         _appButtons[3] = BuildAppTile(AppKind.Map,        "M", "Map");
+        _appButtons[4] = BuildAppTile(AppKind.Photos,     "P", "Photos");
     }
 
     // Page 1: AI apps — one functional (AI), three stubs.
@@ -2562,6 +2565,10 @@ public class PlayerPhoneUI : MonoBehaviour
             case AppKind.Map:
                 if (SolarSystemMapController.Instance != null) SolarSystemMapController.Instance.OpenMap();
                 else Debug.LogWarning("[PlayerPhoneUI] SolarSystemMapController.Instance is null");
+                break;
+            case AppKind.Photos:
+                if (PhotoGalleryUI.Instance != null) PhotoGalleryUI.Instance.Open();
+                else Debug.LogWarning("[PlayerPhoneUI] PhotoGalleryUI.Instance is null");
                 break;
         }
     }
