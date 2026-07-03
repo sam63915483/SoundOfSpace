@@ -314,6 +314,16 @@ public class PlayerPhoneUI : MonoBehaviour
         if (IsCameraMode) ExitCameraMode();
         if (_animCoroutine != null) { StopCoroutine(_animCoroutine); _animCoroutine = null; }
         if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
+        if (_galleryTransition != null) { StopCoroutine(_galleryTransition); _galleryTransition = null; }
+        _inGalleryTransition = false;
+        if (PhotoGalleryUI.Instance != null) PhotoGalleryUI.Instance.ForceClose();
+        // The gallery tween may have left the chassis rotated/oversized.
+        if (_phoneRT != null)
+        {
+            _phoneRT.localRotation = Quaternion.identity;
+            _phoneRT.localScale = new Vector3(PhoneScale, PhoneScale, 1f);
+        }
+        if (_screenMask != null) _screenMask.enabled = true;
         HideHintNow();
         _isAnimating = false;
         IsOpen = false;
@@ -1266,6 +1276,8 @@ public class PlayerPhoneUI : MonoBehaviour
         // F close / Esc close / WASD movement-close). Visual updates above
         // continue; only input handling below is suppressed.
         if (AIChatScreen.IsTypingActive) return;
+
+        if (_inGalleryTransition) return; // no phone input while zooming to/from the gallery
 
         // R toggles portrait ↔ landscape orientation. Works in both home
         // and camera modes. While phone is open, R is "claimed" by the
@@ -2538,9 +2550,146 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void OnAppClicked(AppKind kind)
     {
+        // Photos zooms INTO the phone instead of sliding it away.
+        if (kind == AppKind.Photos) { OpenPhotosApp(); return; }
         // Slide the phone out, THEN open the target UI — like tapping an
         // app on a real phone (home screen exits, app launches).
         StartCoroutine(CloseThenOpen(kind));
+    }
+
+    /// <summary>Photos tile entry point — rotate-and-grow into the gallery.</summary>
+    public void OpenPhotosApp()
+    {
+        if (_inGalleryTransition || !IsOpen || _isAnimating) return;
+        if (_galleryTransition != null) StopCoroutine(_galleryTransition);
+        _galleryTransition = StartCoroutine(GalleryEnterRoutine());
+    }
+
+    /// <summary>Gallery's back-out entry point — reverse transition to the hand.</summary>
+    public void BeginGalleryExit()
+    {
+        if (_inGalleryTransition) return;
+        if (_galleryTransition != null) StopCoroutine(_galleryTransition);
+        _galleryTransition = StartCoroutine(GalleryExitRoutine());
+    }
+
+    // Rotated -90° the chassis is PhoneHeight wide × PhoneWidth tall on
+    // screen; scale so it overflows the canvas on both axes (the bezel ends
+    // off-screen and the screen interior covers the viewport). 1.10 = margin.
+    float GalleryTargetScale()
+    {
+        var parent = (RectTransform)_phoneRT.parent;
+        return Mathf.Max(parent.rect.width / PhoneHeight, parent.rect.height / PhoneWidth) * 1.10f;
+    }
+
+    System.Collections.IEnumerator GalleryEnterRoutine()
+    {
+        _inGalleryTransition = true;
+        HideHintNow();
+        // Kill competing tweens (orientation / slide).
+        if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
+        if (_animCoroutine   != null) { StopCoroutine(_animCoroutine);   _animCoroutine = null; _isAnimating = false; }
+        // RectMask2D mis-culls children while the chassis rotates — same
+        // reason RotatePhoneRoutine disables it for its tween.
+        if (_screenMask != null) _screenMask.enabled = false;
+
+        yield return GalleryTween(0f, -90f, PhoneScale, GalleryTargetScale(),
+                                  _phoneRT.anchoredPosition.y, 0f, GalleryGrowDuration);
+
+        // Crossfade: the gallery fades in over the now screen-filling phone.
+        var gallery = PhotoGalleryUI.Instance;
+        if (gallery != null)
+        {
+            gallery.OpenForTransition(); // gates on, grid populated, alpha 0
+            float t = 0f;
+            while (t < GalleryFadeDuration)
+            {
+                t += Time.unscaledDeltaTime;
+                gallery.SetTransitionAlpha(Mathf.Clamp01(t / GalleryFadeDuration));
+                yield return null;
+            }
+            gallery.SetTransitionAlpha(1f);
+        }
+        else Debug.LogWarning("[PlayerPhoneUI] PhotoGalleryUI.Instance is null");
+
+        // Park the phone closed WITHOUT touching the cursor — the gallery's
+        // isInDialogue gate + unlocked cursor own the input state now.
+        HideForGallery();
+        _inGalleryTransition = false;
+        _galleryTransition = null;
+    }
+
+    System.Collections.IEnumerator GalleryExitRoutine()
+    {
+        _inGalleryTransition = true;
+        // Stage the phone exactly where the enter transition left it —
+        // rotated, screen-filling, visible — hidden UNDER the gallery.
+        if (_screenMask != null) _screenMask.enabled = false;
+        GoToPage(0);
+        IsOpen = true;
+        _phoneGroup.alpha = 1f;
+        _phoneGroup.blocksRaycasts = true;
+        float bigScale = GalleryTargetScale();
+        _phoneRT.localRotation = Quaternion.Euler(0f, 0f, -90f);
+        _phoneRT.localScale = new Vector3(bigScale, bigScale, 1f);
+        _phoneRT.anchoredPosition = Vector2.zero;
+
+        // Gallery fades out revealing the oversized phone…
+        var gallery = PhotoGalleryUI.Instance;
+        if (gallery != null)
+        {
+            float t = 0f;
+            while (t < GalleryFadeDuration)
+            {
+                t += Time.unscaledDeltaTime;
+                gallery.SetTransitionAlpha(1f - Mathf.Clamp01(t / GalleryFadeDuration));
+                yield return null;
+            }
+            // Cursor stays unlocked — the (open) phone owns it now.
+            gallery.CloseForPhoneReturn();
+        }
+
+        // …then the phone shrinks + rotates back into the hand.
+        yield return GalleryTween(-90f, 0f, bigScale, PhoneScale, 0f, OnScreenY, GalleryGrowDuration);
+
+        if (_screenMask != null) _screenMask.enabled = true;
+        _isLandscape = false;
+        _inGalleryTransition = false;
+        _galleryTransition = null;
+    }
+
+    System.Collections.IEnumerator GalleryTween(float fromDeg, float toDeg, float fromScale, float toScale,
+                                                float fromY, float toY, float duration)
+    {
+        float t = 0f;
+        while (t < duration)
+        {
+            t += Time.unscaledDeltaTime;
+            float u = Mathf.Clamp01(t / duration);
+            float eased = u * u * (3f - 2f * u); // smoothstep ease-in-out
+            _phoneRT.localRotation = Quaternion.Euler(0f, 0f, Mathf.Lerp(fromDeg, toDeg, eased));
+            float s = Mathf.Lerp(fromScale, toScale, eased);
+            _phoneRT.localScale = new Vector3(s, s, 1f);
+            _phoneRT.anchoredPosition = new Vector2(0f, Mathf.Lerp(fromY, toY, eased));
+            yield return null;
+        }
+        _phoneRT.localRotation = Quaternion.Euler(0f, 0f, toDeg);
+        _phoneRT.localScale = new Vector3(toScale, toScale, 1f);
+        _phoneRT.anchoredPosition = new Vector2(0f, toY);
+    }
+
+    // Park the phone in its normal closed state without cursor/nav changes
+    // (the gallery owns input while it's up).
+    void HideForGallery()
+    {
+        IsOpen = false;
+        _phoneGroup.alpha = 0f;
+        _phoneGroup.blocksRaycasts = false;
+        _isLandscape = false;
+        _phoneRT.localRotation = Quaternion.identity;
+        _phoneRT.localScale = new Vector3(PhoneScale, PhoneScale, 1f);
+        _phoneRT.anchoredPosition = new Vector2(0f, OffScreenY);
+        if (_screenMask != null) _screenMask.enabled = true;
     }
 
     System.Collections.IEnumerator CloseThenOpen(AppKind kind)
@@ -2565,10 +2714,6 @@ public class PlayerPhoneUI : MonoBehaviour
             case AppKind.Map:
                 if (SolarSystemMapController.Instance != null) SolarSystemMapController.Instance.OpenMap();
                 else Debug.LogWarning("[PlayerPhoneUI] SolarSystemMapController.Instance is null");
-                break;
-            case AppKind.Photos:
-                if (PhotoGalleryUI.Instance != null) PhotoGalleryUI.Instance.Open();
-                else Debug.LogWarning("[PlayerPhoneUI] PhotoGalleryUI.Instance is null");
                 break;
         }
     }
@@ -2986,4 +3131,11 @@ public class PlayerPhoneUI : MonoBehaviour
         if (pointRight) _triangleRight = spr; else _triangleLeft = spr;
         return spr;
     }
+
+    // ── Photos-app rotate-and-grow transition (fields appended at class
+    //    end per repo convention; see GalleryEnterRoutine) ────────────
+    Coroutine _galleryTransition;
+    bool      _inGalleryTransition;
+    const float GalleryGrowDuration = 0.45f;
+    const float GalleryFadeDuration = 0.12f;
 }

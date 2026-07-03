@@ -94,13 +94,12 @@ public class PhotoGalleryUI : MonoBehaviour
 
     void LateUpdate() { ConsumedEscapeThisFrame = false; }
 
-    /// <summary>ESC / back-button chain: viewer → grid → exit.</summary>
+    /// <summary>ESC / back-button chain: viewer → grid → exit to phone.</summary>
     public void Back()
     {
         if (_viewerOpen) { CloseViewer(); return; }
-        // TEMP until Task 5 adds PlayerPhoneUI.BeginGalleryExit (the reverse
-        // transition) — Task 5 Step 3 replaces this hard close.
-        ForceClose();
+        if (PlayerPhoneUI.Instance != null) PlayerPhoneUI.Instance.BeginGalleryExit();
+        else ForceClose(); // no phone to return to — just drop the gates
     }
 
     // ── Open / close ────────────────────────────────────────────────
