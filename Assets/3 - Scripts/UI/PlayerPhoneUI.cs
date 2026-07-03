@@ -985,21 +985,11 @@ public class PlayerPhoneUI : MonoBehaviour
         tex.Apply();
         RenderTexture.active = oldActive;
 
-        // Persist a copy to disk before the in-memory texture gets destroyed.
-        var bytes = tex.EncodeToPNG();
-        var photosDir = System.IO.Path.GetFullPath(System.IO.Path.Combine(Application.dataPath, "..", "Photos"));
-        try
-        {
-            System.IO.Directory.CreateDirectory(photosDir);
-            var filename = $"photo_{System.DateTime.Now:yyyy-MM-dd_HH-mm-ss-fff}.png";
-            var fullPath = System.IO.Path.Combine(photosDir, filename);
-            System.IO.File.WriteAllBytes(fullPath, bytes);
-            Debug.Log($"[PlayerPhoneUI] Photo saved: {fullPath}");
-        }
-        catch (System.Exception e)
-        {
-            Debug.LogWarning($"[PlayerPhoneUI] Failed to save photo: {e.Message}");
-        }
+        // Persist via the photo roll (JPG + thumbnail + manifest entry).
+        // SavePhoto encodes synchronously and does NOT take ownership of
+        // tex — the preview lifecycle below still destroys it.
+        if (PhotoLibrary.Instance != null) PhotoLibrary.Instance.SavePhoto(tex);
+        else Debug.LogWarning("[PlayerPhoneUI] PhotoLibrary.Instance is null — photo not persisted");
 
         // Show the captured frame on the phone — replaces any prior staged texture.
         if (_capturedCoroutine != null) StopCoroutine(_capturedCoroutine);
