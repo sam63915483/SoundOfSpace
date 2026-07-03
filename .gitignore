@@ -96,3 +96,7 @@ MonoBleedingEdge/
 
 # Local trailer/test video captures (large binaries, re-creatable)
 /Recordings/
+
+# Player photo roll (phone camera captures: JPGs + thumbnails + manifest,
+# plus legacy PNGs and recorded AVIs) — per-player runtime data, never committed.
+/Photos/
