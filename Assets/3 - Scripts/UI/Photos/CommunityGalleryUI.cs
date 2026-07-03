@@ -262,6 +262,23 @@ public class CommunityGalleryUI : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
         gameObject.AddComponent<GraphicRaycaster>();
 
+        // This is a NESTED canvas (the GameObject lives under the main-menu
+        // canvas), so AddComponent<Canvas> gave us a default zero-size
+        // RectTransform centred on the parent. Left as-is, every child
+        // (stretched to it) collapses to a point. Stretch our own rect to
+        // fill the parent canvas so the gallery envelops the whole screen,
+        // exactly like the root-canvas Photos app.
+        var selfRT = transform as RectTransform;
+        if (selfRT != null)
+        {
+            selfRT.anchorMin = Vector2.zero;
+            selfRT.anchorMax = Vector2.one;
+            selfRT.offsetMin = Vector2.zero;
+            selfRT.offsetMax = Vector2.zero;
+            selfRT.localScale = Vector3.one;
+            selfRT.anchoredPosition = Vector2.zero;
+        }
+
         _rootPanelGO = NewUI("Root", transform).gameObject;
         var rootRT = (RectTransform)_rootPanelGO.transform;
         Stretch(rootRT, 0f);
