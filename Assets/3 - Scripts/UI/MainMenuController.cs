@@ -624,6 +624,8 @@ public class MainMenuController : MonoBehaviour
         tick("hint tracks");       yield return null;
         if (PhotoLibrary.Instance == null) { var go = new GameObject("PhotoLibrary"); DontDestroyOnLoad(go); go.AddComponent<PhotoLibrary>(); }
         tick("photo library");    yield return null;
+        if (PhotoGalleryUI.Instance == null) { var go = new GameObject("PhotoGalleryUI"); DontDestroyOnLoad(go); go.AddComponent<PhotoGalleryUI>(); }
+        tick("photo gallery");    yield return null;
     }
 
     // Synchronous wrapper — drains the async coroutine without yielding so

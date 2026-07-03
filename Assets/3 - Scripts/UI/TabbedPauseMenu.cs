@@ -251,7 +251,8 @@ public class TabbedPauseMenu : MonoBehaviour
                   && !SolarSystemMapController.IsOpen
                   && !NewspaperReaderUI.IsOpen && !NewspaperReaderUI.ConsumedEscapeThisFrame
                   && !MonumentLinkPopupUI.IsOpen && !MonumentLinkPopupUI.ConsumedEscapeThisFrame
-                  && !PlayerPhoneUI.IsOpen && !PlayerPhoneUI.ConsumedEscapeThisFrame) OpenPause();
+                  && !PlayerPhoneUI.IsOpen && !PlayerPhoneUI.ConsumedEscapeThisFrame
+                  && !PhotoGalleryUI.IsOpen && !PhotoGalleryUI.ConsumedEscapeThisFrame) OpenPause();
         }
 
         // Show / hide the SAVE AND APPLY button based on whether any row's

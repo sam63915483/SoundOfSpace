@@ -12,6 +12,7 @@ using UnityEngine;
 ///   Hud             = 830   — primary HUDs (vitals, wallet, tutorial)
 ///   Toast           = 900   — autosave + story-impact toasts (below pause)
 ///   Vendor          = 950   — vendor shop UIs (below pause)
+///   PhotoGallery    = 960   — fullscreen photos app (above phone + toasts, below map/pause)
 ///   Map             = 970   — map view legend + orbit lines
 ///   Pause           = 1000  — pause menu (above all HUDs)
 ///   Modal           = 1100  — toasts that overlay the pause menu or map
@@ -30,6 +31,7 @@ public static class UILayer
     public const int Hud              = 830;
     public const int Toast            = 900;
     public const int Vendor           = 950;
+    public const int PhotoGallery     = 960;  // fullscreen photos app (above phone 850 + toasts, below map/pause)
     public const int Map              = 970;
     public const int Pause            = 1000;
     public const int Modal            = 1100;
