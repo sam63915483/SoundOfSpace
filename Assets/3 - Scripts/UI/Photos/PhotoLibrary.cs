@@ -128,8 +128,10 @@ public class PhotoLibrary : MonoBehaviour
             System.IO.Directory.CreateDirectory(PhotosDir);
             System.IO.File.WriteAllBytes(GetPhotoPath(id), tex.EncodeToJPG(JpgQuality));
             var thumb = MakeThumbnail(tex, ThumbMaxEdge);
-            System.IO.File.WriteAllBytes(GetThumbPath(id), thumb.EncodeToJPG(ThumbQuality));
-            Destroy(thumb);
+            // finally: don't leak the thumb Texture2D if the disk write throws
+            // (this component lives forever via DontDestroyOnLoad).
+            try     { System.IO.File.WriteAllBytes(GetThumbPath(id), thumb.EncodeToJPG(ThumbQuality)); }
+            finally { Destroy(thumb); }
         }
         catch (System.Exception e)
         {
@@ -171,13 +173,19 @@ public class PhotoLibrary : MonoBehaviour
         int th = Mathf.Max(1, Mathf.RoundToInt(src.height * k));
         var rt = RenderTexture.GetTemporary(tw, th, 0);
         var oldActive = RenderTexture.active;
-        Graphics.Blit(src, rt);
-        RenderTexture.active = rt;
-        var thumb = new Texture2D(tw, th, TextureFormat.RGB24, false);
-        thumb.ReadPixels(new Rect(0, 0, tw, th), 0, 0);
-        thumb.Apply();
-        RenderTexture.active = oldActive;
-        RenderTexture.ReleaseTemporary(rt);
-        return thumb;
+        try
+        {
+            Graphics.Blit(src, rt);
+            RenderTexture.active = rt;
+            var thumb = new Texture2D(tw, th, TextureFormat.RGB24, false);
+            thumb.ReadPixels(new Rect(0, 0, tw, th), 0, 0);
+            thumb.Apply();
+            return thumb;
+        }
+        finally
+        {
+            RenderTexture.active = oldActive;
+            RenderTexture.ReleaseTemporary(rt);
+        }
     }
 }
