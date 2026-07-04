@@ -101,7 +101,7 @@ public class InputSettings : ScriptableObject {
 	const float defaultShipStickSensitivity = 1f;
 	const float defaultStickDeadzone = 0.19f;
 	const bool  defaultInvertLookY = false;
-	const bool  defaultControllerEnabled = false;   // default to KBM; player opts in via the CONTROLS tab toggle
+	const bool  defaultControllerEnabled = true;    // auto-detected; pads work out of the box (toggle stays as an opt-out)
 	const bool  defaultVibrationEnabled = true;
 
 	public float mouseSensitivity;
@@ -296,7 +296,10 @@ public class InputSettings : ScriptableObject {
 		shipStickSensitivity = PlayerPrefs.GetFloat (nameof (shipStickSensitivity), defaultShipStickSensitivity);
 		stickDeadzone        = PlayerPrefs.GetFloat (nameof (stickDeadzone),        defaultStickDeadzone);
 		invertLookY          = PlayerPrefs.GetInt   (nameof (invertLookY),          defaultInvertLookY ? 1 : 0) != 0;
-		controllerEnabled    = PlayerPrefs.GetInt   (nameof (controllerEnabled),    defaultControllerEnabled ? 1 : 0) != 0;
+		// "_v2" key: the pre-revamp build stored an opt-IN default (false), so
+		// every existing profile has a saved 0. Bumping the key makes the new
+		// auto-detect default win once; the toggle still persists after that.
+		controllerEnabled    = PlayerPrefs.GetInt   ("controllerEnabled_v2",        defaultControllerEnabled ? 1 : 0) != 0;
 		vibrationEnabled     = PlayerPrefs.GetInt   (nameof (vibrationEnabled),     defaultVibrationEnabled ? 1 : 0) != 0;
 
 		cameraEffectsEnabled        = PlayerPrefs.GetInt   (nameof (cameraEffectsEnabled),        1) != 0;
@@ -398,7 +401,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetFloat (nameof (shipStickSensitivity), shipStickSensitivity);
 		PlayerPrefs.SetFloat (nameof (stickDeadzone),        stickDeadzone);
 		PlayerPrefs.SetInt   (nameof (invertLookY),          invertLookY ? 1 : 0);
-		PlayerPrefs.SetInt   (nameof (controllerEnabled),    controllerEnabled ? 1 : 0);
+		PlayerPrefs.SetInt   ("controllerEnabled_v2",        controllerEnabled ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (vibrationEnabled),     vibrationEnabled ? 1 : 0);
 
 		PlayerPrefs.SetInt   (nameof (cameraEffectsEnabled),        cameraEffectsEnabled        ? 1 : 0);
@@ -608,6 +611,11 @@ public class InputSettings : ScriptableObject {
 		TutorialGate.ShipStickLookSensitivity = shipStickSensitivity;
 		TutorialGate.StickDeadzone            = stickDeadzone;
 		TutorialGate.InvertLookY              = invertLookY;
+		GamepadRumble.Enabled                 = vibrationEnabled;
+		// Deadzone finally applies: the Input System's default stick processor
+		// reads this project-wide setting on every stick ReadValue().
+		UnityEngine.InputSystem.InputSystem.settings.defaultDeadzoneMin =
+			Mathf.Clamp (stickDeadzone, 0.01f, 0.5f);
 	}
 
 }

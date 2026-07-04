@@ -499,18 +499,49 @@ public class TabbedPauseMenu : MonoBehaviour
                 name = "CONTROLS",
                 rows = new List<RowDef>
                 {
+                    new HeaderDef { label = "CONTROLLER" },
                     new ToggleDef {
                         label = "CONTROLLER ENABLED",
                         get  = () => _input != null && _input.controllerEnabled,
                         set  = v  => {
                             if (_input == null) return;
                             _input.controllerEnabled = v;
-                            // Push the change into TutorialGate immediately so all the
-                            // PadHeld / PadPressed / RightStickX / etc. reads start
-                            // returning 0 (or live values) on the next frame.
-                            TutorialGate.ControllerEnabled = v;
+                            // Push into TutorialGate (and rumble/deadzone) immediately
+                            // so pad reads flip on the next frame.
+                            _input.PushControllerSettingsToGate();
                         },
                     },
+                    new SliderDef {
+                        label = "STICK LOOK SENSITIVITY", min = 0.1f, max = 5f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.stickLookSensitivity : 1f,
+                        set  = v  => { if (_input == null) return; _input.stickLookSensitivity = v; _input.PushControllerSettingsToGate(); },
+                    },
+                    new SliderDef {
+                        label = "SHIP STICK SENSITIVITY", min = 0.1f, max = 5f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.shipStickSensitivity : 1f,
+                        set  = v  => { if (_input == null) return; _input.shipStickSensitivity = v; _input.PushControllerSettingsToGate(); },
+                    },
+                    new SliderDef {
+                        label = "STICK DEADZONE", min = 0f, max = 0.5f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.stickDeadzone : 0.19f,
+                        set  = v  => { if (_input == null) return; _input.stickDeadzone = v; _input.PushControllerSettingsToGate(); },
+                    },
+                    new ToggleDef {
+                        label = "INVERT LOOK Y",
+                        get  = () => _input != null && _input.invertLookY,
+                        set  = v  => { if (_input == null) return; _input.invertLookY = v; _input.PushControllerSettingsToGate(); },
+                    },
+                    new ToggleDef {
+                        label = "VIBRATION",
+                        get  = () => _input != null && _input.vibrationEnabled,
+                        set  = v  => {
+                            if (_input == null) return;
+                            _input.vibrationEnabled = v;
+                            _input.PushControllerSettingsToGate();
+                            if (!v) GamepadRumble.StopAll();
+                        },
+                    },
+                    new HeaderDef { label = "MOUSE" },
                     new SliderDef {
                         label = "MOUSE SENSITIVITY", min = 1f, max = 200f, wholeNumbers = true, format = "{0:F0}",
                         get  = () => _input != null ? _input.mouseSensitivity : 100f,
@@ -521,6 +552,7 @@ public class TabbedPauseMenu : MonoBehaviour
                         get  = () => _input != null ? _input.mouseSmoothing : 0.2f,
                         set  = v  => { if (_input != null) _input.mouseSmoothing = v; },
                     },
+                    new HeaderDef { label = "AUDIO" },
                     new SliderDef {
                         label = "MASTER VOLUME", min = 0f, max = 1f, wholeNumbers = false, format = "{0:F2}",
                         get  = () => _input != null ? _input.masterVolume : 1f,
