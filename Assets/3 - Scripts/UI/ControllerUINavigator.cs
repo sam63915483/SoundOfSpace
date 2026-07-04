@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem.UI;
 using UnityEngine.Scripting;
 
 // Run before StandaloneInputModule (default order 0) so auto-select fires
@@ -80,18 +81,37 @@ public class ControllerUINavigator : MonoBehaviour
 
     static void EnsureEventSystem()
     {
-        if (EventSystem.current != null) return;
-        // Find any existing in the loaded scenes (active or inactive).
-        var existing = FindObjectOfType<EventSystem>(true);
-        if (existing != null)
+        var es = EventSystem.current;
+        if (es == null)
         {
-            if (!existing.gameObject.activeSelf) existing.gameObject.SetActive(true);
-            if (!existing.enabled) existing.enabled = true;
-            return;
+            // Find any existing in the loaded scenes (active or inactive).
+            es = FindObjectOfType<EventSystem>(true);
+            if (es != null)
+            {
+                if (!es.gameObject.activeSelf) es.gameObject.SetActive(true);
+                if (!es.enabled) es.enabled = true;
+            }
+            else
+            {
+                var go = new GameObject("EventSystem");
+                es = go.AddComponent<EventSystem>();
+            }
         }
-        var go = new GameObject("EventSystem");
-        go.AddComponent<EventSystem>();
-        go.AddComponent<StandaloneInputModule>();
+
+        // Swap any legacy module for the Input System one — this runs even on
+        // scenes with a baked EventSystem, which is exactly where the legacy
+        // module lives. The new module natively maps Submit to A/Cross per
+        // controller brand, replacing the old Submit_DS4 axis-swap hack.
+        var legacy = es.GetComponent<StandaloneInputModule>();
+        if (legacy != null) Destroy(legacy);
+        var module = es.GetComponent<InputSystemUIInputModule>();
+        if (module == null)
+        {
+            module = es.gameObject.AddComponent<InputSystemUIInputModule>();
+            // Built-in DefaultInputActions: navigate/submit/cancel/point/click
+            // across keyboard, mouse, and every gamepad brand.
+            module.AssignDefaultActions();
+        }
     }
 
     void BuildBorderUI()
