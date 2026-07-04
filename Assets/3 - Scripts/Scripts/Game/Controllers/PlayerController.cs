@@ -568,7 +568,12 @@ public class PlayerController : GravityObject
 		bool justLanded = isGrounded && wasAirborne;
 		if (justLanded && airborneTime >= minAirborneForLandSound && landClip != null && sfxSource != null && waterTouches == 0)
 			sfxSource.PlayOneShot(landClip, landVolume);
-		if (justLanded) OnLanded?.Invoke();
+		if (justLanded)
+		{
+			OnLanded?.Invoke();
+			if (airborneTime >= minAirborneForLandSound)
+				GamepadRumble.Pulse(Mathf.Clamp01(airborneTime * 0.4f), 0.15f, 0.15f);
+		}
 		if (isGrounded) airborneTime = 0f;
 		else airborneTime += Time.deltaTime;
 		wasAirborne = !isGrounded;

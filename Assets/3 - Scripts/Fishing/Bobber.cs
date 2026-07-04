@@ -206,6 +206,7 @@ public class Bobber : MonoBehaviour
 
             isStriking = true;
             fishCaught = false;
+            GamepadRumble.Pulse(0.8f, 0.8f, 0.4f);
             Debug.Log($"[Bobber] FISH ON! Type: {currentFishType}, Strike duration: {strikeEndTime - Time.time:F1}s");
 
             if (biteClip != null && biteSource != null)

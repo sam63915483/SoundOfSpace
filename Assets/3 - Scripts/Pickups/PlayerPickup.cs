@@ -189,6 +189,7 @@ public class PlayerPickup : MonoBehaviour
     {
         if (pickupClip != null && pickupAudioSource != null)
             pickupAudioSource.PlayOneShot(pickupClip, pickupVolume);
+        GamepadRumble.Pulse(0.1f, 0.3f, 0.08f);
 
         Rigidbody rb = obj.GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;

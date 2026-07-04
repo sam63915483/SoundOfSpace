@@ -319,6 +319,7 @@ public class PistolController : MonoBehaviour
         _currentAmmo--;
         ShotsFiredCount++;
         if (shootClip != null && _audioSource != null) _audioSource.PlayOneShot(shootClip, shootVolume);
+        GamepadRumble.Pulse(0.25f, 0.9f, 0.1f);
 
         var cam = Camera.main;
         if (cam == null) return;

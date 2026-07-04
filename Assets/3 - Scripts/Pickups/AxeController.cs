@@ -276,6 +276,7 @@ public class AxeController : MonoBehaviour
         if (tree == null || tree.IsDead) return;
         tree.TakeDamage(damagePerSwing);
         if (hitClip != null && _audioSource != null) _audioSource.PlayOneShot(hitClip, hitVolume);
+        GamepadRumble.Pulse(0.6f, 0.35f, 0.15f);
     }
 
     // Temporary axe-mines-crystal hook. Move to PickaxeController.cs when added.
@@ -284,6 +285,7 @@ public class AxeController : MonoBehaviour
         if (crystal == null || crystal.IsDead) return;
         crystal.TakeDamage(damagePerSwing);
         if (hitClip != null && _audioSource != null) _audioSource.PlayOneShot(hitClip, hitVolume);
+        GamepadRumble.Pulse(0.6f, 0.35f, 0.15f);
     }
 
     void ApplyHit(IDamageable target, Vector3 forward)
@@ -293,6 +295,7 @@ public class AxeController : MonoBehaviour
         target.ApplyKnockback(forward, knockbackDistance, knockbackDuration);
         target.TakeDamage(enemyDamagePerSwing);
         if (hitClip != null && _audioSource != null) _audioSource.PlayOneShot(hitClip, hitVolume);
+        GamepadRumble.Pulse(0.6f, 0.35f, 0.15f);
 
         var mgr = CameraEffectsManager.Instance;
         if (mgr != null && mgr.MasterEnabled && mgr.Input != null && mgr.Input.fxEnemyHitMicroShake

@@ -163,6 +163,7 @@ public class ResourceManager : MonoBehaviour
         if (GravityDebugUI.GodMode) return;
         healthCurrent = Mathf.Clamp(healthCurrent - amount, 0f, 100f);
         OnHealthDropped?.Invoke(amount);
+        GamepadRumble.Pulse(Mathf.Clamp01(0.3f + amount * 0.02f), 0.5f, 0.25f);
         if (playHurtClip && damageClip != null && damageSource != null)
             damageSource.PlayOneShot(damageClip, damageVolume);
     }

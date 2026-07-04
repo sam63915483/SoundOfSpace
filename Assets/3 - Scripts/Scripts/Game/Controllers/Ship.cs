@@ -691,6 +691,7 @@ public class Ship : GravityObject
         // altitude without sacrificing fine horizontal precision (or vice
         // versa). Fuel pools mirror PlayerController's jetpack/down/dir split
         // — same UX vocabulary, same HUD bars.
+        GamepadRumble.ClearChannel("ship-thrust");
         if (shipIsPiloted && canFly && CanThrust && !PlayerController.isMapOpen)
         {
             bool boostKey = Input.GetKey(KeyCode.LeftShift);
@@ -722,6 +723,13 @@ public class Ship : GravityObject
             Vector3 scaledLocal = new Vector3(_smoothedThrusterInput.x * scaleX, _smoothedThrusterInput.y * scaleY, _smoothedThrusterInput.z * scaleZ);
             Vector3 thrustDir = transform.TransformVector(scaledLocal);
             rb.AddForce(thrustDir * thrustStrength, ForceMode.Acceleration);
+
+            // Throttle-scaled thruster rumble; boost adds a high-frequency edge.
+            float rumbleMag = Mathf.Clamp01(_smoothedThrusterInput.magnitude);
+            if (rumbleMag > 0.01f)
+                GamepadRumble.SetChannel("ship-thrust",
+                    rumbleMag * 0.20f,
+                    _isBoostingThisTick ? 0.45f : rumbleMag * 0.08f);
 
             // Reset assist flags + axes at the top of the tick. The blocks
             // below set them back to true / non-zero when active.
