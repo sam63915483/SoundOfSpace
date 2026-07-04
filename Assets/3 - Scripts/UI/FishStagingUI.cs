@@ -263,8 +263,9 @@ public class FishStagingUI : MonoBehaviour
     }
 
     // Explicit pad-navigation wiring — mirrors StorageUI.WireSlotNav (see
-    // that comment for the why). Stage grid is 5×2; down from the hotbar is
-    // deliberately blocked: CONFIRM/CANCEL are on pad Y/B, not navigable.
+    // that comment for the why). Stage grid is 5×2; down from the hotbar
+    // reaches CONFIRM (left half) / CANCEL (right half), which Y/B also
+    // trigger directly.
     void WireSlotNav()
     {
         bool bagOpen = _bagPanel != null && _bagPanel.gameObject.activeSelf;
@@ -293,11 +294,25 @@ public class FishStagingUI : MonoBehaviour
             sel.navigation = new Navigation {
                 mode          = Navigation.Mode.Explicit,
                 selectOnUp    = SlotSel(_stageViews[(StageRows - 1) * StageCols + Mathf.Min(c, StageCols - 1)]),
+                selectOnDown  = c <= HotbarSlots / 2 ? (Selectable)_confirmBtn : (Selectable)_cancelBtn,
                 selectOnLeft  = c > 0 ? SlotSel(_hotbarViews[c - 1]) : null,
                 selectOnRight = c < HotbarSlots - 1 ? SlotSel(_hotbarViews[c + 1])
                               : (bagOpen ? SlotSel(_bagViews[_bagViews.Length - 1]) : null),
             };
         }
+
+        if (_confirmBtn != null)
+            _confirmBtn.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = SlotSel(_hotbarViews[2]),
+                selectOnRight = _cancelBtn,
+            };
+        if (_cancelBtn != null)
+            _cancelBtn.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = SlotSel(_hotbarViews[4]),
+                selectOnLeft  = _confirmBtn,
+            };
 
         for (int k = 0; k < _bagViews.Length; k++)
         {
@@ -681,11 +696,14 @@ public class FishStagingUI : MonoBehaviour
         row.sizeDelta = new Vector2(400f, 40f);
         row.anchoredPosition = new Vector2(0f, PanelPad);
 
-        BuildButton(row, "CONFIRM  [ ENTER ]", new Vector2(-105f, 0f), OnConfirmClicked, new Color32(0x42, 0x88, 0x55, 0xFF));
-        BuildButton(row, "CANCEL  [ ESC ]",    new Vector2( 105f, 0f), OnCancelClicked,  new Color32(0x88, 0x44, 0x44, 0xFF));
+        _confirmBtn = BuildButton(row, "CONFIRM  [ ENTER ]", new Vector2(-105f, 0f), OnConfirmClicked, new Color32(0x42, 0x88, 0x55, 0xFF));
+        _cancelBtn  = BuildButton(row, "CANCEL  [ ESC ]",    new Vector2( 105f, 0f), OnCancelClicked,  new Color32(0x88, 0x44, 0x44, 0xFF));
     }
 
-    void BuildButton(RectTransform parent, string label, Vector2 anchored, UnityEngine.Events.UnityAction onClick, Color32 fill)
+    Button _confirmBtn;   // pad navigation targets below the hotbar row
+    Button _cancelBtn;
+
+    Button BuildButton(RectTransform parent, string label, Vector2 anchored, UnityEngine.Events.UnityAction onClick, Color32 fill)
     {
         var rt = NewRT("Btn_" + label, parent);
         rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
@@ -703,6 +721,7 @@ public class FishStagingUI : MonoBehaviour
         var btn = rt.gameObject.AddComponent<Button>();
         btn.targetGraphic = bg;
         btn.onClick.AddListener(onClick);
+        return btn;
     }
 
     void BuildBagSidePanel(RectTransform mainPanel)
