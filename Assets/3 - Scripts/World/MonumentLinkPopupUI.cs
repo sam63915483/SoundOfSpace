@@ -89,7 +89,10 @@ public class MonumentLinkPopupUI : MonoBehaviour {
 
     void Update() {
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.N)) { _consumedEscapeFrame = Time.frameCount; No(); return; }
+        // Pad: B = No/close. Yes stays on the focused button (A submits via
+        // the UI module) so it can't double-fire with a manual binding.
+        if (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.N)
+            || TutorialGate.PadPressed(TutorialGate.PadButton.B)) { _consumedEscapeFrame = Time.frameCount; No(); return; }
         if (Input.GetKeyDown(KeyCode.Y) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) Yes();
     }
 

@@ -52,7 +52,7 @@ public class CommunityGalleryUI : MonoBehaviour
     void Update()
     {
         if (!_isOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B))
         {
             if (_viewerOpen) CloseViewer();
             else Close();

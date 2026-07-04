@@ -96,9 +96,9 @@ public class NewspaperReaderUI : MonoBehaviour {
 
     void Update() {
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape)) { _consumedEscapeFrame = Time.frameCount; Close(); return; }
-        if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A)) Prev();
-        if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D)) Next();
+        if (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B)) { _consumedEscapeFrame = Time.frameCount; Close(); return; }
+        if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A) || TutorialGate.PadPressed(TutorialGate.PadButton.LB)) Prev();
+        if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D) || TutorialGate.PadPressed(TutorialGate.PadButton.RB)) Next();
     }
 
     void Next() { if (_set == null) return; if (_index < _set.articles.Count - 1) { _index++; Render(); } }

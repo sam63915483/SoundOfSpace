@@ -196,12 +196,15 @@ public class FishStagingUI : MonoBehaviour
     void Update()
     {
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B))
         {
             OnCancelClicked();
             return;
         }
-        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        // Pad: Y confirms (A stays reserved for clicking whichever slot
+        // button the nav focus is on).
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)
+            || TutorialGate.PadPressed(TutorialGate.PadButton.Y))
         {
             OnConfirmClicked();
             return;
@@ -230,7 +233,8 @@ public class FishStagingUI : MonoBehaviour
     {
         if (view == null || view.container == null) return;
         var hbSlots = Hotbar.Instance != null ? Hotbar.Instance.RawSlotsRef() : null;
-        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+                  || TutorialGate.PadHeld(TutorialGate.PadButton.LB);   // pad: LB = shift-transfer
 
         // RMB on FishBag opens the side panel (mirror StorageUI behavior).
         if (e.button == PointerEventData.InputButton.Right

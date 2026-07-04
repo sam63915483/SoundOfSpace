@@ -206,7 +206,7 @@ public class Hotbar : MonoBehaviour
         bool fishEquipped = eq >= 0 && eq < NumSlots
                          && slots[eq].id == ItemId.Fish
                          && slots[eq].fishData != null;
-        if (!fishEquipped || !Input.GetMouseButton(0))
+        if (!fishEquipped || !TutorialGate.FireHeld())
         {
             if (_eatProgressSlot != -1) { _eatProgressSlot = -1; _eatHeldSeconds = 0f; }
             return;

@@ -86,7 +86,7 @@ public class PhotoGalleryUI : MonoBehaviour
     void Update()
     {
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.Escape))
+        if (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B))
         {
             ConsumedEscapeThisFrame = true;
             Back();

@@ -171,7 +171,8 @@ public class StorageUI : MonoBehaviour
     void Update()
     {
         if (!IsOpen) return;
-        if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.Escape))
+        if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.Escape)
+            || TutorialGate.PadPressed(TutorialGate.PadButton.B))
         {
             // Mark F as consumed so LootBox.Update (which runs in the same
             // frame) doesn't reopen the panel via its own F-key handler.
@@ -197,7 +198,8 @@ public class StorageUI : MonoBehaviour
     {
         if (view == null || view.container == null || _active == null) return;
         var hbSlots = Hotbar.Instance != null ? Hotbar.Instance.RawSlotsRef() : null;
-        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        bool shift = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)
+                  || TutorialGate.PadHeld(TutorialGate.PadButton.LB);   // pad: LB = shift-transfer
 
         // Phase 3: RMB on a FishBag slot opens (or toggles) the side panel
         // showing its 5 internal slots. Intercept BEFORE the standard RMB
