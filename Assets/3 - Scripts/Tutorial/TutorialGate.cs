@@ -442,7 +442,7 @@ public static class TutorialGate
             LastSource = InputSource.KeyboardMouse;
         }
 
-        // GamepadRumble.Tick(); // enabled in the rumble task
+        GamepadRumble.Tick();
     }
 
     static bool AnyPadButtonHeld(Gamepad g) =>
