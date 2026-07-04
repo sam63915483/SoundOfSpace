@@ -51,6 +51,8 @@ A short **Verification Notes** appendix at the bottom records what was and wasn'
 - §27 The Big Stuff (StreamingAssets, `_Archive/`, `transfer/`)
 - §28 Stragglers from Removed Features
 - §29 Items Flagged But NOT Recommended for Deletion
+- §30 Photos App (local)
+- §31 Input & Controller Support (REVAMPED 2026-07-04)
 
 **Appendix**
 - §A Verification Notes (what was/wasn't checked)
@@ -431,7 +433,7 @@ Major scripts in `Assets/3 - Scripts/UI/`:
 - `Hotbar.cs` (covered in §7)
 - `FishStagingUI.cs` (covered in §7)
 - `MainMenuController.cs` — launcher; owns `EnsureGameplaySingletons()`.
-- `TabbedPauseMenu.cs` — pause menu with tabs (CAMERA / SETTINGS / AUDIO / VIDEO / GRAPHICS), camera FX toggles, streaming cap sliders, map/save/load access.
+- `TabbedPauseMenu.cs` — pause menu with tabs (CONTROLS / CAMERA / GRAPHICS), controller + mouse + volume settings, camera FX toggles, streaming cap sliders, map/save/load access.
 - `CompassHUD.cs` (covered in §15).
 - `KillstreakHUD.cs`, `InteractPromptUI.cs`, `NoteReadUI.cs`, `AutoAlignToggleUI.cs`, `ControllerUINavigator.cs`, `HUDSceneGate.cs`, `MenuSceneCleanup.cs`.
 - `ScannerFrame.cs` + `CyanScannerPalette.cs` — shared "cyan scanner" visual language used by FishingdexManager, BuildMenuUI, GoodsVendorShopUI.
@@ -718,6 +720,56 @@ incoming conversation).
 Planned next (see `docs/superpowers/specs/2026-07-03-photos-app-community-gallery-design.md`):
 upload flow + Cloudflare Worker backend + main-menu Community Gallery (Plan B).
 User-facing server setup guide: `docs/cloudflare-setup-guide.md`.
+
+---
+
+## §31 Input & Controller Support — REVAMPED 2026-07-04
+
+Full spec/plan: `docs/superpowers/specs/2026-07-04-controller-input-revamp-design.md`,
+`docs/superpowers/plans/2026-07-04-controller-input-revamp.md`.
+
+**Architecture (hybrid):** keyboard/mouse reads stay on the legacy Input Manager;
+all **gamepad** reads go through the Unity Input System device API
+(`Gamepad.current`), which normalizes **Xbox / DualShock 4 / DualSense** into one
+layout. `activeInputHandler: 2` ("Both") is required — do not flip it.
+`com.unity.inputsystem` is a pinned dependency in `Packages/manifest.json`.
+
+- **`TutorialGate` (Assets/3 - Scripts/Tutorial/)** — the input facade for ALL
+  gameplay reads (~35 static composite helpers: `JumpPressed`, `LookDelta`,
+  `FireHeld`, `PadPressed(PadButton)`, `MoveAxisHorizontal/Vertical`, …) plus
+  tutorial ability gating, UI-focus arbitration (`UISelectionActive` /
+  `WasUIFocusedThisFrameStart`), input-source tracking (`LastSource`), and brand
+  detection (`DetectedController` ∈ {Xbox, DualShock4, DualSense},
+  `IsPlayStation`). Edge detection uses `wasPressedThisFrame` (stable across
+  Update AND LateUpdate). New code should NEVER read pad hardware directly —
+  add a facade helper.
+- **`GamepadRumble` (Assets/3 - Scripts/Input/)** — haptics hub. One-shot
+  `Pulse(low, high, s)` + named continuous channels (`SetChannel`/`ClearChannel`),
+  ticked from TutorialGate's driver; muted on pause/focus-loss/disable, gated on
+  the VIBRATION setting. Wired: ship thrust (channel), damage, landing, pistol,
+  axe, fishing bite, pickup.
+- **UI navigation** — `ControllerUINavigator` swaps any baked
+  `StandaloneInputModule` for `InputSystemUIInputModule` (default actions) at
+  scene load; keeps its focus ring, auto-select, and modal suppression.
+  A/Cross submits, B/Circle cancels natively per brand.
+- **Glyphs** — `PromptGlyphs` (same file as TutorialGate) returns inline TMP
+  `<sprite name="xbox_a">` tags on pad (text labels on KBM or if the sprite
+  asset is missing). Atlas: `Assets/InputPrompts/` (Kenney CC0, 34 sprites),
+  built by `Tools > Input > Build Glyph Atlas + TMP Sprite Asset`
+  (`Assets/3 - Scripts/Editor/BuildInputGlyphAtlas.cs`), registered as a
+  fallback on the default TMP sprite asset (EmojiOne).
+- **Settings** — `InputSettings` controller fields push through
+  `PushControllerSettingsToGate()` (single choke point: TutorialGate fields +
+  `GamepadRumble.Enabled` + `InputSystem.settings.defaultDeadzoneMin`).
+  CONTROLS tab: controller enabled (default ON via `controllerEnabled_v2`
+  pref key), stick look/ship sensitivity, deadzone, invert Y, vibration.
+- **Notable bindings:** phone opens with **D-pad up** (on foot), B backs out
+  everywhere, camera app shoots with RT / swaps modes with LT, reload is
+  **D-pad down** (`SuppressDpadHeadlight` yields the ship-headlight step while
+  the pistol is equipped), hotbar cycles with D-pad left/right, map on
+  View/Share, newspaper pages on LB/RB, storage shift-transfer on LB.
+- **Deliberately keyboard-only:** TrailerFreeCam, FPSOverlay, CheatCodes,
+  LightingDebugToolbox, debug/dev tools.
 
 ---
 
