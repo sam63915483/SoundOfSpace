@@ -557,7 +557,12 @@ public class ControllerUINavigator : MonoBehaviour
         if (localCanvas != null && !localCanvas.enabled) return null;
 
         var sel = parent.GetComponent<Selectable>();
-        if (sel != null && sel.IsInteractable() && sel.gameObject.activeInHierarchy) return sel;
+        // sel.enabled matters: a DISABLED Selectable component still reports
+        // IsInteractable()==true, but it's invisible to Unity's nav and gets
+        // rejected by IsValidSelection — selecting it would trap focus in a
+        // select→invalidate loop (seen with photo viewers that disable the
+        // thumbnail grid behind them).
+        if (sel != null && sel.enabled && sel.IsInteractable() && sel.gameObject.activeInHierarchy) return sel;
 
         for (int i = 0; i < parent.childCount; i++)
         {

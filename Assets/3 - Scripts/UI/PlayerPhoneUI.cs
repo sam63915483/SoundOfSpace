@@ -111,7 +111,7 @@ public class PlayerPhoneUI : MonoBehaviour
     RectTransform _appGridRT;
     RectTransform _reservedZoneRT;
     Button        _putAwayBtn;
-    Button[]      _appButtons = new Button[5];
+    Button[]      _appButtons = new Button[6];
 
     // ── Home-screen page navigation ─────────────────────────────────
     // Four swappable pages live inside _pageHostRT. Only one is active at
@@ -121,10 +121,10 @@ public class PlayerPhoneUI : MonoBehaviour
     //   1 = AI Apps (AI / Notes / Codex / Calculator — three are stubs)
     //   2 = Vitals
     //   3 = Quests
-    const int PageCount = 4;
+    const int PageCount = 3;
     RectTransform _pageHostRT;
     RectTransform[] _pageRoots = new RectTransform[PageCount];
-    int _currentPage; // 0=Apps, 1=AIApps, 2=Vitals, 3=Quests
+    int _currentPage; // 0=Apps (incl. AI), 1=Vitals, 2=Quests
 
     // Nav widget visuals.
     Image[] _navDots = new Image[PageCount];
@@ -1278,7 +1278,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         // Vitals bars track ResourceManager live — only while page 2 is
         // visible AND the phone is open (no point updating an off-screen UI).
-        if (IsOpen && _currentPage == 2) RefreshVitals();
+        if (IsOpen && _currentPage == 1) RefreshVitals();
 
         // Movement-warning fade is purely time-based (samples Time.unscaledTime
         // against _warningShownAt). It MUST run before the early-returns below
@@ -2094,10 +2094,9 @@ public class PlayerPhoneUI : MonoBehaviour
         _pageHostRT = NewUI("PageHost", _screenRT);
         _pageHostRT.gameObject.AddComponent<LayoutElement>().preferredHeight = 170f;
 
-        BuildAppsPage();    // _pageRoots[0]
-        BuildAIAppsPage();  // _pageRoots[1]
-        BuildVitalsPage();  // _pageRoots[2]
-        BuildQuestsPage();  // _pageRoots[3]
+        BuildAppsPage();    // _pageRoots[0] — 6 tiles incl. AI
+        BuildVitalsPage();  // _pageRoots[1]
+        BuildQuestsPage();  // _pageRoots[2]
     }
 
     void BuildAppsPage()
@@ -2128,28 +2127,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _appButtons[2] = BuildAppTile(AppKind.Settings,   "S", "Settings");
         _appButtons[3] = BuildAppTile(AppKind.Map,        "M", "Map");
         _appButtons[4] = BuildAppTile(AppKind.Photos,     "P", "Photos");
-    }
-
-    // Page 1: AI apps — one functional (AI), three stubs.
-    void BuildAIAppsPage()
-    {
-        var pageRT = NewUI("AIAppsPage", _pageHostRT);
-        _pageRoots[1] = pageRT;
-        pageRT.anchorMin = Vector2.zero; pageRT.anchorMax = Vector2.one;
-        pageRT.offsetMin = Vector2.zero; pageRT.offsetMax = Vector2.zero;
-
-        var grid = pageRT.gameObject.AddComponent<GridLayoutGroup>();
-        grid.padding = new RectOffset(8, 8, 4, 4);
-        grid.spacing = new Vector2(10f, 10f);
-        grid.cellSize = new Vector2(78f, 78f);
-        grid.childAlignment = TextAnchor.MiddleCenter;
-        grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        grid.constraintCount = 2;
-
-        BuildAITile(pageRT);
-        BuildStubTile(pageRT, "N", "Notes",      "Notes");
-        BuildStubTile(pageRT, "C", "Codex",      "Codex");
-        BuildStubTile(pageRT, "=", "Calculator", "Calculator");
+        _appButtons[5] = BuildAITile(_appGridRT);   // AI chat — 6th tile, 3×2 grid
     }
 
     // Unread-notification badge on the AI app tile + the count of lines the
@@ -2352,7 +2330,7 @@ public class PlayerPhoneUI : MonoBehaviour
     void BuildVitalsPage()
     {
         var pageRT = NewUI("VitalsPage", _pageHostRT);
-        _pageRoots[2] = pageRT;
+        _pageRoots[1] = pageRT;
         pageRT.anchorMin = Vector2.zero; pageRT.anchorMax = Vector2.one;
         pageRT.offsetMin = Vector2.zero; pageRT.offsetMax = Vector2.zero;
 
@@ -2438,7 +2416,7 @@ public class PlayerPhoneUI : MonoBehaviour
     void BuildQuestsPage()
     {
         var pageRT = NewUI("QuestsPage", _pageHostRT);
-        _pageRoots[3] = pageRT;
+        _pageRoots[2] = pageRT;
         pageRT.anchorMin = Vector2.zero; pageRT.anchorMax = Vector2.one;
         pageRT.offsetMin = Vector2.zero; pageRT.offsetMax = Vector2.zero;
 
@@ -2527,7 +2505,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // Refresh page-specific content on entry — vitals tick every frame in
         // Update while page 2 is visible, quests only update on phone events
         // so we drive them here.
-        if (_currentPage == 3) RefreshQuests();
+        if (_currentPage == 2) RefreshQuests();
     }
 
     // The page arrows sit far apart with the app grid diagonally above, so
@@ -2540,26 +2518,63 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         if (_prevPageBtn == null || _nextPageBtn == null) return;
 
-        Selectable firstOnPage = null;
-        var pageRoot = (_currentPage >= 0 && _currentPage < PageCount) ? _pageRoots[_currentPage] : null;
-        if (pageRoot != null)
+        // Up-target from the arrows: on the apps page, land on the matching
+        // bottom-row corner tile; on other pages, the first Selectable if any.
+        Selectable upForPrev = null, upForNext = null;
+        if (_currentPage == 0)
         {
-            var sels = pageRoot.GetComponentsInChildren<Selectable>(false);
-            if (sels.Length > 0) firstOnPage = sels[0];
+            upForPrev = _appButtons[3];   // bottom-left tile
+            upForNext = _appButtons[5];   // bottom-right tile
+            WireAppGridNav();
+        }
+        else
+        {
+            var pageRoot = (_currentPage >= 0 && _currentPage < PageCount) ? _pageRoots[_currentPage] : null;
+            if (pageRoot != null)
+            {
+                var sels = pageRoot.GetComponentsInChildren<Selectable>(false);
+                if (sels.Length > 0) { upForPrev = sels[0]; upForNext = sels[0]; }
+            }
         }
 
         _prevPageBtn.navigation = new Navigation {
             mode          = Navigation.Mode.Explicit,
             selectOnRight = _nextPageBtn,
-            selectOnUp    = firstOnPage,
+            selectOnUp    = upForPrev,
             selectOnDown  = _putAwayBtn,
         };
         _nextPageBtn.navigation = new Navigation {
             mode          = Navigation.Mode.Explicit,
             selectOnLeft  = _prevPageBtn,
-            selectOnUp    = firstOnPage,
+            selectOnUp    = upForNext,
             selectOnDown  = _putAwayBtn,
         };
+    }
+
+    // Explicit 3×2 navigation for the app grid — the tiles are small and
+    // close together, so Unity's automatic nav frequently resolves a
+    // vertical press to a diagonal neighbour. index = row*3 + col.
+    // Bottom row falls through to the page arrows / camera button.
+    void WireAppGridNav()
+    {
+        for (int i = 0; i < _appButtons.Length; i++)
+        {
+            var b = _appButtons[i];
+            if (b == null) continue;
+            int row = i / 3, col = i % 3;
+            Selectable down;
+            if (row < 1)          down = _appButtons[i + 3];
+            else if (col == 0)    down = _prevPageBtn;
+            else if (col == 2)    down = _nextPageBtn;
+            else                  down = _putAwayBtn;
+            b.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnLeft  = col > 0 ? _appButtons[i - 1] : null,
+                selectOnRight = col < 2 ? _appButtons[i + 1] : null,
+                selectOnUp    = row > 0 ? _appButtons[i - 3] : null,
+                selectOnDown  = down,
+            };
+        }
     }
 
     void RefreshDots()
