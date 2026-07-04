@@ -147,6 +147,15 @@ public class BonfireInteraction : MonoBehaviour
             }
             InteractPromptUI.Show(this, _promptCached);
         }
+        // Pad B backs out (gated on the staging picker, which stacks on top
+        // and consumes B for its own cancel).
+        bool stagingOpen = FishStagingUI.Instance != null && FishStagingUI.Instance.IsOpen;
+        if (panelOpen && !stagingOpen
+            && TutorialGate.PadPressed(TutorialGate.PadButton.B))
+        {
+            CloseCookPanel();
+            return;
+        }
         if (TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             // Close works regardless of where you're looking (don't trap the
@@ -201,6 +210,10 @@ public class BonfireInteraction : MonoBehaviour
         }
 
         cookPanel.SetActive(true);
+        // The panel lives inside the shared HUD_Canvas (order 0), which the
+        // controller navigator can't isolate — promote it to its own sorting
+        // layer so pad focus snaps to its buttons.
+        ControllerUINavigator.PromoteToModal(cookPanel);
         // Hide the floating "Press F" prompt while the cook panel is open —
         // the panel itself is the active UI, so the redundant world-space
         // prompt was just visual noise. Update() re-asserts the prompt

@@ -79,6 +79,25 @@ public class ControllerUINavigator : MonoBehaviour
         EnsureEventSystem();
     }
 
+    // Promotes a panel that lives inside a shared scene canvas (e.g. the
+    // bonfire cook panel and fish-market sell panel inside HUD_Canvas) onto
+    // its own sorting layer, so this navigator sees it as the topmost modal:
+    // focus auto-snaps to its first button and everything below is
+    // suppressed. 905 sits above HUDs/toasts (≤900) but below the
+    // FishStagingUI picker (910), which stacks on top of both panels.
+    // Call on every open — Unity clears overrideSorting when a nested
+    // canvas is deactivated, so a one-time setup wouldn't stick.
+    public static void PromoteToModal(GameObject panel, int sortingOrder = 905)
+    {
+        if (panel == null) return;
+        var c = panel.GetComponent<Canvas>();
+        if (c == null) c = panel.AddComponent<Canvas>();
+        c.overrideSorting = true;
+        c.sortingOrder = sortingOrder;
+        if (panel.GetComponent<GraphicRaycaster>() == null)
+            panel.AddComponent<GraphicRaycaster>();
+    }
+
     static void EnsureEventSystem()
     {
         var es = EventSystem.current;

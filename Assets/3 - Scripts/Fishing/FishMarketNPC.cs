@@ -138,6 +138,15 @@ public class FishMarketNPC : MonoBehaviour
         // don't overwrite it with the talk prompt on the next frame.
         if (playerInRange && !panelOpen && !greetingActive && !_suppressPromptUntilExit)
             InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
+        // Pad B backs out of the sell panel (gated on the staging picker,
+        // which stacks on top and consumes B for its own cancel).
+        bool stagingOpen = FishStagingUI.Instance != null && FishStagingUI.Instance.IsOpen;
+        if (panelOpen && !stagingOpen
+            && TutorialGate.PadPressed(TutorialGate.PadButton.B))
+        {
+            CloseSellPanel();
+            return;
+        }
         if (playerInRange && !_suppressPromptUntilExit && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
         {
             // Opening requires looking at the NPC; closing (below) works anywhere.
@@ -282,7 +291,13 @@ public class FishMarketNPC : MonoBehaviour
 
         panelOpen = true;
         InteractPromptUI.Clear(this);
-        if (sellPanel      != null) sellPanel.SetActive(true);
+        if (sellPanel != null)
+        {
+            sellPanel.SetActive(true);
+            // Shared HUD_Canvas host — promote so pad focus reaches the
+            // panel's buttons (see ControllerUINavigator.PromoteToModal).
+            ControllerUINavigator.PromoteToModal(sellPanel);
+        }
         InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to close");
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
