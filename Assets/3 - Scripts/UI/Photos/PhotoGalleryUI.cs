@@ -255,6 +255,7 @@ public class PhotoGalleryUI : MonoBehaviour
         _viewerRT.gameObject.SetActive(true);
         _viewerOpen = true;
         RefreshUploadButton();
+        LockNavBehindViewer(true);
     }
 
     void CloseViewer()
@@ -262,9 +263,42 @@ public class PhotoGalleryUI : MonoBehaviour
         if (!_viewerOpen && _viewerTexture == null) return;
         _viewerOpen = false;
         CloseUploadModal();
+        LockNavBehindViewer(false);
         if (_viewerRT != null) _viewerRT.gameObject.SetActive(false);
         if (_viewerImage != null) _viewerImage.texture = null;
         if (_viewerTexture != null) { Destroy(_viewerTexture); _viewerTexture = null; }
+    }
+
+    // Selectables we disabled while the fullscreen viewer is open, so pad
+    // navigation can't wander onto the thumbnail grid behind it (both live
+    // in the same canvas, so the navigator's per-canvas modal suppression
+    // can't see the viewer as a separate layer). Re-enabled on close.
+    readonly System.Collections.Generic.List<UnityEngine.UI.Selectable> _navLockedBehindViewer
+        = new System.Collections.Generic.List<UnityEngine.UI.Selectable>();
+
+    void LockNavBehindViewer(bool locked)
+    {
+        if (locked)
+        {
+            _navLockedBehindViewer.Clear();
+            var sels = GetComponentsInChildren<UnityEngine.UI.Selectable>(false);
+            foreach (var s in sels)
+            {
+                if (_viewerRT != null && s.transform.IsChildOf(_viewerRT)) continue;
+                if (!s.enabled) continue;
+                s.enabled = false;
+                _navLockedBehindViewer.Add(s);
+            }
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null && es.currentSelectedGameObject != null &&
+                (_viewerRT == null || !es.currentSelectedGameObject.transform.IsChildOf(_viewerRT)))
+                es.SetSelectedGameObject(null);
+        }
+        else
+        {
+            foreach (var s in _navLockedBehindViewer) if (s != null) s.enabled = true;
+            _navLockedBehindViewer.Clear();
+        }
     }
 
     // ── Build (once, lazily) ────────────────────────────────────────

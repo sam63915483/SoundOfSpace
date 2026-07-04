@@ -83,205 +83,205 @@ MonoBehaviour:
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 0
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: pad_stick_l
     m_HashCode: -820134465
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 1
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: pad_stick_r
     m_HashCode: -820134495
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 2
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_circle
     m_HashCode: -138904946
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 3
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_cross
     m_HashCode: 1036472610
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 4
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_dpad_down
     m_HashCode: -1874507968
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 5
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_dpad_left
     m_HashCode: -1874230871
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 6
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_dpad_right
     m_HashCode: -1759821390
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 7
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_dpad_up
     m_HashCode: 723965911
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 8
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_l1
     m_HashCode: 128864225
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 9
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_l2
     m_HashCode: 128864226
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 10
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_l3
     m_HashCode: 128864227
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 11
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_options
     m_HashCode: 1093516844
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 12
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_r1
     m_HashCode: 128864191
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 13
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_r2
     m_HashCode: 128864188
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 14
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_r3
     m_HashCode: 128864189
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 15
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_share
     m_HashCode: 1018011665
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 16
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_square
     m_HashCode: -736579203
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 17
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: ps_triangle
     m_HashCode: -950614062
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 18
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_a
     m_HashCode: 288428083
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 19
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_b
     m_HashCode: 288428080
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 20
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_dpad_down
     m_HashCode: 812649966
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 21
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_dpad_left
     m_HashCode: 812373831
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 22
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_dpad_right
     m_HashCode: 1040322652
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 23
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_dpad_up
     m_HashCode: 1262811641
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 24
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_l3
     m_HashCode: 928192461
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 25
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_lb
     m_HashCode: 928192412
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 26
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_lt
     m_HashCode: 928192394
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 27
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_menu
     m_HashCode: 1484464673
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 28
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_r3
     m_HashCode: 928191507
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 29
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_rb
     m_HashCode: 928191554
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 30
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_rt
     m_HashCode: 928191572
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 31
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_view
     m_HashCode: 1483435903
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 32
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_x
     m_HashCode: 288428074
   - m_ElementType: 2
     m_Unicode: 65534
     m_GlyphIndex: 33
-    m_Scale: 1
+    m_Scale: 2.5
     m_Name: xbox_y
     m_HashCode: 288428075
   m_SpriteGlyphTable:

@@ -221,6 +221,7 @@ public class CommunityGalleryUI : MonoBehaviour
         _viewerFitter.aspectRatio = 1f;
         _viewerRT.gameObject.SetActive(true);
         _viewerOpen = true;
+        LockNavBehindViewer(true);
 
         // Same imageUrl serves the grid thumb and the full view — GalleryApiClient
         // disk-caches by id, so this is typically an instant cache hit.
@@ -240,9 +241,43 @@ public class CommunityGalleryUI : MonoBehaviour
     {
         if (!_viewerOpen && _viewerTexture == null) return;
         _viewerOpen = false;
+        LockNavBehindViewer(false);
         if (_viewerRT != null) _viewerRT.gameObject.SetActive(false);
         if (_viewerImage != null) _viewerImage.texture = null;
         if (_viewerTexture != null) { Destroy(_viewerTexture); _viewerTexture = null; }
+    }
+
+    // Selectables we disabled while the fullscreen viewer is open, so pad
+    // navigation can't wander onto the thumbnail grid behind it (same canvas,
+    // so ControllerUINavigator's per-canvas suppression can't isolate the
+    // viewer). The viewer's own BACK button stays enabled and receives focus.
+    readonly List<UnityEngine.UI.Selectable> _navLockedBehindViewer
+        = new List<UnityEngine.UI.Selectable>();
+
+    void LockNavBehindViewer(bool locked)
+    {
+        if (locked)
+        {
+            _navLockedBehindViewer.Clear();
+            if (_rootPanelGO == null) return;
+            var sels = _rootPanelGO.GetComponentsInChildren<UnityEngine.UI.Selectable>(false);
+            foreach (var s in sels)
+            {
+                if (_viewerRT != null && s.transform.IsChildOf(_viewerRT)) continue;
+                if (!s.enabled) continue;
+                s.enabled = false;
+                _navLockedBehindViewer.Add(s);
+            }
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null && es.currentSelectedGameObject != null &&
+                (_viewerRT == null || !es.currentSelectedGameObject.transform.IsChildOf(_viewerRT)))
+                es.SetSelectedGameObject(null);
+        }
+        else
+        {
+            foreach (var s in _navLockedBehindViewer) if (s != null) s.enabled = true;
+            _navLockedBehindViewer.Clear();
+        }
     }
 
     // ── Build (once, lazily) ────────────────────────────────────────

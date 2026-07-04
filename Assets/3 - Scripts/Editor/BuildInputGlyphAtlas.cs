@@ -16,6 +16,11 @@ public static class BuildInputGlyphAtlas
     const string AtlasPath = "Assets/InputPrompts/InputGlyphAtlas.png";
     const string SpriteAssetPath = "Assets/InputPrompts/InputGlyphs.asset";
 
+    // TMP scales sprite glyphs by (text size / font sampling point size), so
+    // 64-px source icons render tiny next to a high-sampling SDF font. 2.5×
+    // puts a button icon at roughly capital-letter-and-a-bit height.
+    const float GlyphScale = 2.5f;
+
     [MenuItem("Tools/Input/Build Glyph Atlas + TMP Sprite Asset")]
     public static void Build()
     {
@@ -68,7 +73,7 @@ public static class BuildInputGlyphAtlas
                 metrics = new GlyphMetrics(gr.width, gr.height, 0f, gr.height * 0.8f, gr.width)
             };
             sa.spriteGlyphTable.Add(glyph);
-            var ch = new TMP_SpriteCharacter(0xFFFE, glyph) { name = names[i], scale = 1f };
+            var ch = new TMP_SpriteCharacter(0xFFFE, glyph) { name = names[i], scale = GlyphScale };
             sa.spriteCharacterTable.Add(ch);
         }
 

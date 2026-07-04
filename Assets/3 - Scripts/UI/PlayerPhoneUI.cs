@@ -2522,11 +2522,44 @@ public class PlayerPhoneUI : MonoBehaviour
                 _pageRoots[i].gameObject.SetActive(i == _currentPage);
 
         RefreshDots();
+        WirePageNavExplicit();
 
         // Refresh page-specific content on entry — vitals tick every frame in
         // Update while page 2 is visible, quests only update on phone events
         // so we drive them here.
         if (_currentPage == 3) RefreshQuests();
+    }
+
+    // The page arrows sit far apart with the app grid diagonally above, so
+    // Unity's automatic navigation "right" from the left arrow scores an app
+    // tile higher than the distant right arrow. Explicit links fix the pad
+    // path: left ↔ right between the arrows, up into the current page's
+    // first Selectable, down to the CAMERA button. Re-wired on every page
+    // flip because the up-target changes with the active page.
+    void WirePageNavExplicit()
+    {
+        if (_prevPageBtn == null || _nextPageBtn == null) return;
+
+        Selectable firstOnPage = null;
+        var pageRoot = (_currentPage >= 0 && _currentPage < PageCount) ? _pageRoots[_currentPage] : null;
+        if (pageRoot != null)
+        {
+            var sels = pageRoot.GetComponentsInChildren<Selectable>(false);
+            if (sels.Length > 0) firstOnPage = sels[0];
+        }
+
+        _prevPageBtn.navigation = new Navigation {
+            mode          = Navigation.Mode.Explicit,
+            selectOnRight = _nextPageBtn,
+            selectOnUp    = firstOnPage,
+            selectOnDown  = _putAwayBtn,
+        };
+        _nextPageBtn.navigation = new Navigation {
+            mode          = Navigation.Mode.Explicit,
+            selectOnLeft  = _prevPageBtn,
+            selectOnUp    = firstOnPage,
+            selectOnDown  = _putAwayBtn,
+        };
     }
 
     void RefreshDots()
@@ -2873,7 +2906,13 @@ public class PlayerPhoneUI : MonoBehaviour
         btn.colors = cb;
         bool right = pointRight; // capture for closure
         btn.onClick.AddListener(() => GoToPage(_currentPage + (right ? 1 : -1)));
+        if (pointRight) _nextPageBtn = btn; else _prevPageBtn = btn;
     }
+
+    // Page-nav arrow buttons, kept for explicit pad-navigation wiring
+    // (see WirePageNavExplicit).
+    Button _prevPageBtn;
+    Button _nextPageBtn;
 
     void BuildPageNavDots()
     {
