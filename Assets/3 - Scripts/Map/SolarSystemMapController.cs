@@ -138,7 +138,7 @@ public class SolarSystemMapController : MonoBehaviour
         // ESC closes the map (does NOT bubble to the pause menu — see
         // TabbedPauseMenu.Update for the SolarSystemMapController.IsOpen guard
         // that prevents the pause menu from popping on top of the map).
-        if (isOpen && Input.GetKeyDown(KeyCode.Escape))
+        if (isOpen && (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B)))
         {
             if (MapTutorial.Instance != null && MapTutorial.Instance.BlockMapClose) return;
             CloseMap();

@@ -30,15 +30,11 @@ public abstract class TutorialStep
 
     protected static bool AnyWASD()
     {
-        // Keyboard WASD/arrows OR analog left stick beyond deadzone.
-        if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) ||
-            Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D)) return true;
-        if (TutorialGate.ControllerEnabled)
-        {
-            float h = Input.GetAxisRaw("Horizontal");
-            float v = Input.GetAxisRaw("Vertical");
-            if (h * h + v * v > TutorialGate.StickDeadzone * TutorialGate.StickDeadzone) return true;
-        }
-        return false;
+        // Keyboard WASD/arrows OR analog left stick beyond deadzone. Uses the
+        // facade's move helpers (Input System stick, D-pad excluded) rather
+        // than the legacy "Horizontal"/"Vertical" axes.
+        float h = TutorialGate.MoveAxisHorizontal(TutorialAbility.Move);
+        float v = TutorialGate.MoveAxisVertical(TutorialAbility.Move);
+        return h * h + v * v > 0.04f;
     }
 }

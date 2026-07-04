@@ -103,8 +103,11 @@ public class GhostPlacement : MonoBehaviour
         if (menu != null && Input.GetKeyDown(menu.toggleKey)) { Cancel(); return; }
 
         // G toggles snap mode (only meaningful for Floor/Wall/Roof; ignored for
-        // other categories so users don't get a no-op key).
-        if (Input.GetKeyDown(KeyCode.G) && entry != null && IsSnappableCategory(entry.category))
+        // other categories so users don't get a no-op key). Pad: Y — this
+        // overlaps the flashlight toggle (also Y on foot), which is harmless
+        // enough during placement to not justify a rarer button.
+        if ((Input.GetKeyDown(KeyCode.G) || TutorialGate.PadPressed(TutorialGate.PadButton.Y))
+            && entry != null && IsSnappableCategory(entry.category))
         {
             s_snapMode = !s_snapMode;
         }
@@ -158,6 +161,14 @@ public class GhostPlacement : MonoBehaviour
         // mode, increments a yaw-offset step that ComputeSnap multiplies onto the
         // computed snap rotation — so R lets you spin the snap by 90° increments
         // around the target's local Y axis.
+        // Pad: while snapping, D-pad left/right is freed up (the 15° free-
+        // rotation above is suppressed), so it drives the 90° snap-yaw steps.
+        if (snapping && TutorialGate.ControllerEnabled)
+        {
+            if (TutorialGate.DPadDirectionPressed(1)) _snapYawSteps = (_snapYawSteps + 1) & 3;
+            else if (TutorialGate.DPadDirectionPressed(3)) _snapYawSteps = (_snapYawSteps + 3) & 3;
+        }
+
         if (Input.GetKeyDown(KeyCode.R))
         {
             if (snapping)

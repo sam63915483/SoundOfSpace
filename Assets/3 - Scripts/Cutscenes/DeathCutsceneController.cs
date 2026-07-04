@@ -177,7 +177,8 @@ public class DeathCutsceneController : MonoBehaviour
 
     void Update()
     {
-        if (_handlingDeath && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Escape)))
+        if (_handlingDeath && (Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Escape)
+            || TutorialGate.PadPressed(TutorialGate.PadButton.A) || TutorialGate.PadPressed(TutorialGate.PadButton.Start)))
             _skipRequested = true;
 
         // Per-frame electric crackle on the living lines.

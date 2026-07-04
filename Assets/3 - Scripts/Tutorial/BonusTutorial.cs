@@ -805,10 +805,10 @@ class FirePistolStep : BonusStep
 
 class ReloadPistolStep : BonusStep
 {
-    public override string Tip => "Press <b>R</b> to reload.";
+    public override string Tip => $"Press {PromptGlyphs.Reload} to reload.";
     public override void Tick()
     {
-        if (Input.GetKeyDown(KeyCode.R)) IsComplete = true;
+        if (TutorialGate.ReloadPressed()) IsComplete = true;
     }
 }
 
@@ -866,9 +866,10 @@ class JetpackDirectionalThrustStep : BonusStep
         if (player == null) return;
         bool dirThrustHeld = Input.GetKey(KeyCode.LeftShift) ||
             TutorialGate.PadHeld(TutorialGate.PadButton.L3);
-        bool anyWasd = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) ||
-                       Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D);
-        if (!player.IsOnGround && dirThrustHeld && anyWasd) IsComplete = true;
+        float mh = TutorialGate.MoveAxisHorizontal(TutorialAbility.Move);
+        float mv = TutorialGate.MoveAxisVertical(TutorialAbility.Move);
+        bool anyMove = mh * mh + mv * mv > 0.04f;
+        if (!player.IsOnGround && dirThrustHeld && anyMove) IsComplete = true;
     }
 }
 
@@ -925,15 +926,9 @@ class ShipMoveBonusStep : BonusStep
     {
         var s = BonusShipFinder.Get(ref ship);
         if (s == null || !s.IsPiloted) return;
-        bool anyMove = Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) ||
-                       Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D);
-        if (TutorialGate.ControllerEnabled)
-        {
-            float h = Input.GetAxisRaw("Horizontal");
-            float v = Input.GetAxisRaw("Vertical");
-            if (h * h + v * v > TutorialGate.StickDeadzone * TutorialGate.StickDeadzone) anyMove = true;
-        }
-        if (anyMove) IsComplete = true;
+        float mh = TutorialGate.MoveAxisHorizontal(TutorialAbility.ShipMove);
+        float mv = TutorialGate.MoveAxisVertical(TutorialAbility.ShipMove);
+        if (mh * mh + mv * mv > 0.04f) IsComplete = true;
     }
 }
 

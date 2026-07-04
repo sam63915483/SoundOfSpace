@@ -226,13 +226,17 @@ class MapLookAroundStep : MapTutorialStep
     Quaternion _lastRot;
     bool _haveLast;
     public override string Tip =>
-        "<b>Right click</b> on the screen and move <b>mouse</b> to look around.";
+        TutorialGate.LastSource == TutorialGate.InputSource.Controller
+            ? $"Move {PromptGlyphs.MouseLook} to look around."
+            : "<b>Right click</b> on the screen and move <b>mouse</b> to look around.";
     public override void OnEnter() { _rotAccum = 0f; _haveLast = false; }
     public override void Tick()
     {
         var ctrl = SolarSystemMapController.Instance;
         if (ctrl == null || ctrl.mapCamera == null) return;
-        if (!Input.GetMouseButton(1)) { _haveLast = false; return; }
+        bool padLooking = Mathf.Abs(TutorialGate.RightStickX()) > 0.25f ||
+                          Mathf.Abs(TutorialGate.RightStickY()) > 0.25f;
+        if (!Input.GetMouseButton(1) && !padLooking) { _haveLast = false; return; }
         var rot = ctrl.mapCamera.transform.rotation;
         if (_haveLast)
         {
@@ -253,6 +257,8 @@ class MapMovementStep : MapTutorialStep
         get
         {
             int done = (_w?1:0)+(_a?1:0)+(_s?1:0)+(_d?1:0)+(_sp?1:0)+(_ct?1:0);
+            if (TutorialGate.LastSource == TutorialGate.InputSource.Controller)
+                return $"Push {PromptGlyphs.Move} to move around, {PromptGlyphs.Jump} to go up, {PromptGlyphs.SecondaryFire} to go down.\n<b>{done}/6</b> directions used.";
             return $"Use <b>WASD</b> to move around, <b>Space</b> to go up, <b>Ctrl</b> to go down.\n<b>{done}/6</b> keys pressed.";
         }
     }
@@ -265,6 +271,16 @@ class MapMovementStep : MapTutorialStep
         if (Input.GetKey(KeyCode.D)) _d = true;
         if (Input.GetKey(KeyCode.Space)) _sp = true;
         if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) _ct = true;
+        // Pad equivalents — mirrors MapCameraRig's bindings exactly
+        // (left stick pan, A up, LT down).
+        float mh = TutorialGate.MoveAxisHorizontal(TutorialAbility.Map);
+        float mv = TutorialGate.MoveAxisVertical(TutorialAbility.Map);
+        if (mh < -0.25f) _a = true;
+        if (mh >  0.25f) _d = true;
+        if (mv >  0.25f) _w = true;
+        if (mv < -0.25f) _s = true;
+        if (TutorialGate.PadHeld(TutorialGate.PadButton.A)) _sp = true;
+        if (TutorialGate.ControllerEnabled && TutorialGate.LTValue() > TutorialGate.TriggerThreshold) _ct = true;
         if (_w && _a && _s && _d && _sp && _ct) IsComplete = true;
     }
 }
