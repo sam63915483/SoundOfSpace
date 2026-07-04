@@ -2109,14 +2109,14 @@ public class PlayerPhoneUI : MonoBehaviour
         _appGridRT.offsetMin = Vector2.zero; _appGridRT.offsetMax = Vector2.zero;
 
         var grid = _appGridRT.gameObject.AddComponent<GridLayoutGroup>();
-        // 5 tiles → 3 columns of 54 px cells (two rows). Row width budget is
-        // ~180 px inside the screen's VerticalLayoutGroup: 3*54 + 2*6 + 8 = 178.
+        // 6 tiles → 2 columns × 3 rows. Width budget ~180 px: 2*60 + 6 + 8 = 134
+        // (centered); height budget 170 px: 3*50 + 2*6 + 8 = 170 exactly.
         grid.padding = new RectOffset(4, 4, 4, 4);
         grid.spacing = new Vector2(6f, 6f);
-        grid.cellSize = new Vector2(54f, 54f);
+        grid.cellSize = new Vector2(60f, 50f);
         grid.childAlignment = TextAnchor.MiddleCenter;
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        grid.constraintCount = 3;
+        grid.constraintCount = 2;
 
         // Glyphs are uppercase ASCII letters — the bundled LiberationSans SDF
         // doesn't include the unicode-block symbols (⌬ ▦ ⚙ ◎) that were here
@@ -2523,7 +2523,7 @@ public class PlayerPhoneUI : MonoBehaviour
         Selectable upForPrev = null, upForNext = null;
         if (_currentPage == 0)
         {
-            upForPrev = _appButtons[3];   // bottom-left tile
+            upForPrev = _appButtons[4];   // bottom-left tile (2-col grid)
             upForNext = _appButtons[5];   // bottom-right tile
             WireAppGridNav();
         }
@@ -2551,27 +2551,25 @@ public class PlayerPhoneUI : MonoBehaviour
         };
     }
 
-    // Explicit 3×2 navigation for the app grid — the tiles are small and
+    // Explicit 2×3 navigation for the app grid — the tiles are small and
     // close together, so Unity's automatic nav frequently resolves a
-    // vertical press to a diagonal neighbour. index = row*3 + col.
-    // Bottom row falls through to the page arrows / camera button.
+    // vertical press to a diagonal neighbour. index = row*2 + col.
+    // Bottom row falls through to the page arrows.
     void WireAppGridNav()
     {
         for (int i = 0; i < _appButtons.Length; i++)
         {
             var b = _appButtons[i];
             if (b == null) continue;
-            int row = i / 3, col = i % 3;
+            int row = i / 2, col = i % 2;
             Selectable down;
-            if (row < 1)          down = _appButtons[i + 3];
-            else if (col == 0)    down = _prevPageBtn;
-            else if (col == 2)    down = _nextPageBtn;
-            else                  down = _putAwayBtn;
+            if (row < 2)  down = _appButtons[i + 2];
+            else          down = col == 0 ? (Selectable)_prevPageBtn : (Selectable)_nextPageBtn;
             b.navigation = new Navigation {
                 mode          = Navigation.Mode.Explicit,
                 selectOnLeft  = col > 0 ? _appButtons[i - 1] : null,
-                selectOnRight = col < 2 ? _appButtons[i + 1] : null,
-                selectOnUp    = row > 0 ? _appButtons[i - 3] : null,
+                selectOnRight = col < 1 ? _appButtons[i + 1] : null,
+                selectOnUp    = row > 0 ? _appButtons[i - 2] : null,
                 selectOnDown  = down,
             };
         }

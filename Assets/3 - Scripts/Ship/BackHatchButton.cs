@@ -39,14 +39,17 @@ public class BackHatchButton : Interactable
         _audioSource.playOnAwake = false;
     }
 
-    // Only interactable while the hatch is closed — once it's open the prompt
-    // shouldn't keep reappearing while you stand in the zone. (Suppresses both
-    // the prompt and the F-press; the back hatch is opened, not toggled, here.)
-    protected override bool CanInteract() => Hatch == null || !Hatch.IsOpen;
+    // Toggleable both ways. (This used to suppress the prompt while the hatch
+    // was open because it kept reappearing when the player just stood in the
+    // zone — but prompts are gaze-gated now, so it only shows when the player
+    // actually looks at the button, and losing the close prompt entirely was
+    // worse.)
+    protected override bool CanInteract() => true;
 
     protected override string BuildInteractMessage()
     {
-        return $"Press {PromptGlyphs.Interact} to open back hatch";
+        bool open = Hatch != null && Hatch.IsOpen;
+        return $"Press {PromptGlyphs.Interact} to {(open ? "close" : "open")} back hatch";
     }
 
     protected override void Interact()

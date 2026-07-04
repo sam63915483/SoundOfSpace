@@ -87,7 +87,9 @@ public class LootBox : MonoBehaviour
 
     // ── Interaction ──────────────────────────────────────────────────
 
-    const string PromptText = "Press F to open storage";
+    // Property (not const) so the interact glyph tracks the active input
+    // device — pad players see the X/Square icon, not "F".
+    static string PromptText => $"Press {PromptGlyphs.Interact} to open storage";
 
     bool _playerInside;
 
@@ -115,7 +117,8 @@ public class LootBox : MonoBehaviour
 
         InteractPromptUI.Show(this, PromptText);
 
-        if (Input.GetKeyDown(KeyCode.F) && InteractGaze.IsLookingAt(this))
+        if ((Input.GetKeyDown(KeyCode.F) || TutorialGate.PadPressed(TutorialGate.PadButton.X))
+            && InteractGaze.IsLookingAt(this))
         {
             // Same-frame race guard: StorageUI may have just consumed this F
             // press to close the panel. CanInteract() above flipped from

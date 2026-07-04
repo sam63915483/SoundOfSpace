@@ -67,11 +67,20 @@ public class StorageUI : MonoBehaviour
     }
 
     // Per-slot click handler — forwards to StorageUI.OnSlotClicked.
-    class StorageSlotClick : MonoBehaviour, IPointerClickHandler
+    // ISubmitHandler makes the pad's A press act as a left-click on the
+    // focused slot (the slot GO also carries a Selectable so stick/D-pad
+    // navigation can reach it); X is handled in Update as right-click.
+    class StorageSlotClick : MonoBehaviour, IPointerClickHandler, ISubmitHandler
     {
         public StorageUI owner;
         public SlotView view;
         public void OnPointerClick(PointerEventData e) { if (owner != null) owner.OnSlotClicked(view, e); }
+        public void OnSubmit(BaseEventData e)
+        {
+            if (owner == null) return;
+            owner.OnSlotClicked(view, new PointerEventData(EventSystem.current) {
+                button = PointerEventData.InputButton.Left });
+        }
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -183,11 +192,34 @@ public class StorageUI : MonoBehaviour
         if (PlayerController.isInDialogue || PlayerController.isMapOpen
             || PlayerPhoneUI.IsOpen || Ship.FindPilotedShip() != null) { RequestClose(); return; }
 
-        // Track mouse for cursor follower.
+        // Pad: X on the focused slot = right-click (pick one / fish-bag panel),
+        // mirroring OnSubmit's A = left-click.
+        if (TutorialGate.PadPressed(TutorialGate.PadButton.X))
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            var go = es != null ? es.currentSelectedGameObject : null;
+            var click = go != null ? go.GetComponent<StorageSlotClick>() : null;
+            if (click != null)
+                OnSlotClicked(click.view, new PointerEventData(es) {
+                    button = PointerEventData.InputButton.Right });
+        }
+
+        // Track the cursor follower: mouse position on KBM; on pad, snap to
+        // the focused slot (offset toward its lower-right so the slot's own
+        // contents stay readable under the held item).
         if (_cursorRoot != null && _cursorRoot.gameObject.activeSelf && _canvas != null)
         {
             float scale = _canvas.scaleFactor > 0f ? _canvas.scaleFactor : 1f;
-            _cursorRoot.anchoredPosition = (Vector2)Input.mousePosition / scale;
+            Vector2 screen = Input.mousePosition;
+            if (TutorialGate.LastSource == TutorialGate.InputSource.Controller)
+            {
+                var es = UnityEngine.EventSystems.EventSystem.current;
+                var go = es != null ? es.currentSelectedGameObject : null;
+                if (go != null && go.GetComponent<StorageSlotClick>() != null)
+                    screen = RectTransformUtility.WorldToScreenPoint(null, go.transform.position)
+                             + new Vector2(28f, -28f);
+            }
+            _cursorRoot.anchoredPosition = screen / scale;
         }
 
         RefreshAll();
@@ -713,6 +745,12 @@ public class StorageUI : MonoBehaviour
         var click = bgRt.gameObject.AddComponent<StorageSlotClick>();
         click.owner = this;
         click.view = v;
+        // Selectable (no visual transition — the navigator's focus ring is
+        // the highlight) so pad navigation can walk the slot grids and the
+        // Submit press reaches StorageSlotClick.OnSubmit.
+        var sel = bgRt.gameObject.AddComponent<Selectable>();
+        sel.transition = Selectable.Transition.None;
+        sel.targetGraphic = v.background;
 
         var borderRt = NewRT("__Border", rt);
         Stretch(borderRt, 0, 0, 0, 0);

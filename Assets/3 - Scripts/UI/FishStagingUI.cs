@@ -65,11 +65,20 @@ public class FishStagingUI : MonoBehaviour
         public int index;
     }
 
-    class StagingSlotClick : MonoBehaviour, IPointerClickHandler
+    // ISubmitHandler makes the pad's A press act as a left-click on the
+    // focused slot (the slot GO also carries a Selectable for nav); X is
+    // handled in Update as right-click.
+    class StagingSlotClick : MonoBehaviour, IPointerClickHandler, ISubmitHandler
     {
         public FishStagingUI owner;
         public SlotView view;
         public void OnPointerClick(PointerEventData e) { if (owner != null) owner.OnSlotClicked(view, e); }
+        public void OnSubmit(BaseEventData e)
+        {
+            if (owner == null) return;
+            owner.OnSlotClicked(view, new PointerEventData(EventSystem.current) {
+                button = PointerEventData.InputButton.Left });
+        }
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -220,10 +229,31 @@ public class FishStagingUI : MonoBehaviour
             OnCancelClicked();
             return;
         }
+        // Pad: X on the focused slot = right-click (pick one / fish-bag panel).
+        if (TutorialGate.PadPressed(TutorialGate.PadButton.X))
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            var go = es != null ? es.currentSelectedGameObject : null;
+            var click = go != null ? go.GetComponent<StagingSlotClick>() : null;
+            if (click != null)
+                OnSlotClicked(click.view, new PointerEventData(es) {
+                    button = PointerEventData.InputButton.Right });
+        }
+
+        // Cursor follower: mouse on KBM; on pad, snap to the focused slot.
         if (_cursorRoot != null && _cursorRoot.gameObject.activeSelf && _canvas != null)
         {
             float scale = _canvas.scaleFactor > 0f ? _canvas.scaleFactor : 1f;
-            _cursorRoot.anchoredPosition = (Vector2)Input.mousePosition / scale;
+            Vector2 screen = Input.mousePosition;
+            if (TutorialGate.LastSource == TutorialGate.InputSource.Controller)
+            {
+                var es = UnityEngine.EventSystems.EventSystem.current;
+                var go = es != null ? es.currentSelectedGameObject : null;
+                if (go != null && go.GetComponent<StagingSlotClick>() != null)
+                    screen = RectTransformUtility.WorldToScreenPoint(null, go.transform.position)
+                             + new Vector2(28f, -28f);
+            }
+            _cursorRoot.anchoredPosition = screen / scale;
         }
         RefreshAll();
         RefreshCursorVisual();
@@ -734,6 +764,12 @@ public class FishStagingUI : MonoBehaviour
         var click = bgRt.gameObject.AddComponent<StagingSlotClick>();
         click.owner = this;
         click.view = v;
+        // Selectable (no visual transition — the navigator's focus ring is
+        // the highlight) so pad navigation can walk the slots and Submit
+        // reaches StagingSlotClick.OnSubmit.
+        var sel = bgRt.gameObject.AddComponent<Selectable>();
+        sel.transition = Selectable.Transition.None;
+        sel.targetGraphic = v.background;
 
         var borderRt = NewRT("__Border", rt);
         Stretch(borderRt, 0, 0, 0, 0);
