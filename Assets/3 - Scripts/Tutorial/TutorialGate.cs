@@ -470,49 +470,67 @@ public static class TutorialGate
 }
 
 // Glyph strings for prompt UIs. Reads TutorialGate.LastSource and
-// TutorialGate.DetectedController so labels track BOTH the input mode
-// (KBM vs controller) and the controller hardware (Xbox vs DS4) — a DS4
-// player should see "Square" not "X" for Interact, since "X" on DS4 is
-// the Cross button (mapped to logical A = Jump).
+// TutorialGate.DetectedController so prompts track BOTH the input mode
+// (KBM vs controller) and the controller brand. On a pad, single buttons
+// render as inline TMP sprite icons (<sprite name="xbox_a"> etc., from the
+// InputGlyphs sprite asset registered as a global TMP fallback); if the
+// sprite asset is missing the old text labels return as a fallback.
+// Keyboard prompts stay as bold text — every consumer is a TMP text.
 public static class PromptGlyphs
 {
     static bool Pad => TutorialGate.LastSource == TutorialGate.InputSource.Controller;
-    static bool DS4 => TutorialGate.DetectedController == TutorialGate.ControllerType.DualShock4;
+    static bool PS  => TutorialGate.IsPlayStation;
 
-    // Pick the right label for the current input + hardware. `xbox` is also
-    // used as the keyboard fallback when only `kbm` and `xbox` are supplied,
-    // and as the controller default when `ps` is omitted (i.e. matches Xbox).
-    static string Pick(string kbm, string xbox, string ps)
+    // One-time check that the glyph sprites actually resolve — if the atlas
+    // build failed or the asset is missing, fall back to text labels instead
+    // of rendering empty squares.
+    static bool? _spritesOk;
+    static bool SpritesOk
     {
-        if (!Pad) return kbm;
-        return DS4 ? ps : xbox;
+        get
+        {
+            if (_spritesOk == null)
+            {
+                // Same case-sensitive hash the TMP tag parser uses.
+                int hash = 0;
+                foreach (char c in "xbox_a") hash = ((hash << 5) + hash) ^ c;
+                _spritesOk = TMPro.TMP_SpriteAsset.SearchForSpriteByHashCode(
+                    TMPro.TMP_Settings.defaultSpriteAsset, hash, true, out _) != null;
+            }
+            return _spritesOk.Value;
+        }
     }
 
-    public static string Jump          => Pick("<b>Space</b>", "<b>A</b>",        "<b>Cross</b>");
-    public static string Interact      => Pick("<b>F</b>",     "<b>X</b>",        "<b>Square</b>");
-    public static string InteractPlain => Pick("F",            "X",               "Square");
-    public static string Sprint        => Pick("<b>Shift</b>", "<b>L3</b>",       "<b>L3</b>");
-    public static string DownThrust    => Pick("<b>Ctrl</b>",  "<b>R3</b>",       "<b>R3</b>");
-    public static string Flashlight    => Pick("<b>E</b>",     "<b>Y</b>",        "<b>Triangle</b>");
-    public static string Drop          => Pick("<b>G</b>",     "<b>B</b>",        "<b>Circle</b>");
-    public static string Map           => Pick("<b>M</b>",     "<b>View</b>",     "<b>Share</b>");
-    public static string Pause         => Pick("<b>Esc</b>",   "<b>Start</b>",    "<b>Options</b>");
-    public static string Cancel        => Pick("<b>Esc</b>",   "<b>B</b>",        "<b>Circle</b>");
-    public static string PrimaryFire   => Pick("<b>LMB</b>",   "<b>RT</b>",       "<b>R2</b>");
-    public static string PrimaryClick  => Pick("<b>left click</b>",  "pull <b>RT</b>", "pull <b>R2</b>");
-    public static string PrimaryClickCap => Pick("<b>Left click</b>","Pull <b>RT</b>", "Pull <b>R2</b>");
-    public static string SecondaryFire => Pick("<b>RMB</b>",   "<b>LT</b>",       "<b>L2</b>");
-    public static string RollLeft      => Pick("<b>Q</b>",     "<b>LB</b>",       "<b>L1</b>");
-    public static string RollRight     => Pick("<b>E</b>",     "<b>RB</b>",       "<b>R1</b>");
-    public static string Move          => Pick("<b>WASD</b>",  "<b>left stick</b>",  "<b>left stick</b>");
-    public static string MouseLook     => Pick("<b>mouse</b>", "<b>right stick</b>", "<b>right stick</b>");
-    public static string BuildMenu     => Pick("<b>N</b>",     "<b>LB</b>",       "<b>L1</b>");
-    public static string Fishingdex    => Pick("<b>B</b>",     "<b>RB</b>",       "<b>R1</b>");
-    public static string AdvanceTip    => Pick("<b>TAB</b>",   "<b>LT</b>",       "<b>L2</b>");
-    public static string DirThrustHold => Pick("<b>WASD + Shift</b>",
-                                                "push left stick + <b>click L3</b>",
-                                                "push left stick + <b>click L3</b>");
-    public static string PlacementRotate => Pick("<b>RMB</b>",
-                                                  "<b>LT + right stick</b>",
-                                                  "<b>L2 + right stick</b>");
+    static string Pick(string kbm, string xboxText, string psText, string xboxSprite, string psSprite)
+    {
+        if (!Pad) return kbm;
+        if (!SpritesOk) return PS ? psText : xboxText;
+        return $"<sprite name=\"{(PS ? psSprite : xboxSprite)}\">";
+    }
+
+    public static string Jump          => Pick("<b>Space</b>", "<b>A</b>",     "<b>Cross</b>",    "xbox_a",    "ps_cross");
+    public static string Interact      => Pick("<b>F</b>",     "<b>X</b>",     "<b>Square</b>",   "xbox_x",    "ps_square");
+    public static string InteractPlain => Pick("F",            "X",            "Square",          "xbox_x",    "ps_square");
+    public static string Sprint        => Pick("<b>Shift</b>", "<b>L3</b>",    "<b>L3</b>",       "xbox_l3",   "ps_l3");
+    public static string DownThrust    => Pick("<b>Ctrl</b>",  "<b>R3</b>",    "<b>R3</b>",       "xbox_r3",   "ps_r3");
+    public static string Flashlight    => Pick("<b>E</b>",     "<b>Y</b>",     "<b>Triangle</b>", "xbox_y",    "ps_triangle");
+    public static string Drop          => Pick("<b>G</b>",     "<b>B</b>",     "<b>Circle</b>",   "xbox_b",    "ps_circle");
+    public static string Map           => Pick("<b>M</b>",     "<b>View</b>",  "<b>Share</b>",    "xbox_view", "ps_share");
+    public static string Pause         => Pick("<b>Esc</b>",   "<b>Start</b>", "<b>Options</b>",  "xbox_menu", "ps_options");
+    public static string Cancel        => Pick("<b>Esc</b>",   "<b>B</b>",     "<b>Circle</b>",   "xbox_b",    "ps_circle");
+    public static string PrimaryFire   => Pick("<b>LMB</b>",   "<b>RT</b>",    "<b>R2</b>",       "xbox_rt",   "ps_r2");
+    public static string SecondaryFire => Pick("<b>RMB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");
+    public static string RollLeft      => Pick("<b>Q</b>",     "<b>LB</b>",    "<b>L1</b>",       "xbox_lb",   "ps_l1");
+    public static string RollRight     => Pick("<b>E</b>",     "<b>RB</b>",    "<b>R1</b>",       "xbox_rb",   "ps_r1");
+    public static string BuildMenu     => Pick("<b>N</b>",     "<b>LB</b>",    "<b>L1</b>",       "xbox_lb",   "ps_l1");
+    public static string Fishingdex    => Pick("<b>B</b>",     "<b>RB</b>",    "<b>R1</b>",       "xbox_rb",   "ps_r1");
+    public static string AdvanceTip    => Pick("<b>TAB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");
+    public static string Reload        => Pick("<b>R</b>",     "<b>D-pad down</b>", "<b>D-pad down</b>", "xbox_dpad_down", "ps_dpad_down");
+    public static string Move          => Pick("<b>WASD</b>",  "<b>left stick</b>",  "<b>left stick</b>",  "pad_stick_l", "pad_stick_l");
+    public static string MouseLook     => Pick("<b>mouse</b>", "<b>right stick</b>", "<b>right stick</b>", "pad_stick_r", "pad_stick_r");
+    // Compound phrases keep text + inline glyph:
+    public static string PrimaryClick    => Pad ? $"pull {PrimaryFire}" : "<b>left click</b>";
+    public static string PrimaryClickCap => Pad ? $"Pull {PrimaryFire}" : "<b>Left click</b>";
+    public static string DirThrustHold   => Pad ? $"push {Move} + click {Sprint}" : "<b>WASD + Shift</b>";
+    public static string PlacementRotate => Pad ? $"{SecondaryFire} + {MouseLook}" : "<b>RMB</b>";
 }
