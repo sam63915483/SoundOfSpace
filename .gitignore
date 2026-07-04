@@ -100,3 +100,8 @@ MonoBleedingEdge/
 # Player photo roll (phone camera captures: JPGs + thumbnails + manifest,
 # plus legacy PNGs and recorded AVIs) — per-player runtime data, never committed.
 /Photos/
+
+# Wrangler (Cloudflare) local cache/state — created when running wrangler
+# commands from the repo root. Never committed. (The real server config lives
+# in server/photo-gallery/, which has its own .gitignore for .dev.vars etc.)
+.wrangler/
