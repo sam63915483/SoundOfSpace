@@ -230,10 +230,35 @@ public class ControllerUINavigator : MonoBehaviour
     static readonly System.Collections.Generic.List<CanvasGroup> _cgScratch = new System.Collections.Generic.List<CanvasGroup>();
     static readonly System.Collections.Generic.List<Canvas> _canvasScratch = new System.Collections.Generic.List<Canvas>();
 
+    // True while WE hid the OS cursor because the player is on the pad —
+    // so we only ever un-hide a cursor we hid ourselves and never fight
+    // gameplay code that hides it for its own reasons (cursor lock, camera
+    // mode, cutscenes).
+    bool _cursorHiddenByPad;
+
     void Update()
     {
         var es = EventSystem.current;
         if (es == null) { HideBorder(); return; }
+
+        // Hide the mouse cursor while the controller is the active input
+        // source (it just sits mid-screen over menus otherwise); restore it
+        // as soon as the mouse moves again. Only applies while the cursor
+        // is unlocked — locked gameplay already hides it.
+        bool padSource = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
+        if (Cursor.lockState == CursorLockMode.None)
+        {
+            if (padSource && Cursor.visible)
+            {
+                Cursor.visible = false;
+                _cursorHiddenByPad = true;
+            }
+            else if (!padSource && _cursorHiddenByPad)
+            {
+                if (!Cursor.visible) Cursor.visible = true;
+                _cursorHiddenByPad = false;
+            }
+        }
 
         _navScanTimer -= Time.unscaledDeltaTime;
         if (_navScanTimer <= 0f)

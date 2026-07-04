@@ -217,14 +217,13 @@ public static class TutorialGate
     public static bool FireHeld() =>
         Input.GetMouseButton(0) || TriggerActive(RTValue());
 
-    // Pistol reload — R key or D-pad down. D-pad down doubles as headlight
-    // step-down; PistolController sets SuppressDpadHeadlight while equipped
-    // so the two never fire together.
+    // Pistol reload — R key or pad X (same button as Interact/pickup; safe
+    // to share because reload only fires with the pistol equipped, and you
+    // can't be shooting while picking something up).
     public static bool ReloadPressed()
     {
         if (Input.GetKeyDown(KeyCode.R)) return true;
-        var g = ActivePad;
-        return g != null && g.dpad.down.wasPressedThisFrame;
+        return PadPressed(PadButton.X);
     }
 
     // Secondary fire: RMB or LT (controller). Used for water-bottle fill,
@@ -282,15 +281,18 @@ public static class TutorialGate
         return 0;
     }
 
-    // D-pad left = -1 (previous slot), right = +1 (next slot), else 0.
-    // Suppressed while a UI Selectable is focused (now or at frame start)
-    // so navigating a menu with D-pad doesn't also flip hotbar slots.
+    // LB = -1 (previous slot), RB = +1 (next slot), else 0. Moved off the
+    // D-pad so the D-pad is free for phone open/navigation. Suppressed while
+    // a UI Selectable is focused (now or at frame start) so LB shift-transfer
+    // in storage panels doesn't also flip hotbar slots, and while piloting
+    // (LB/RB are the ship's roll bindings there).
     public static int HotbarCycleStep()
     {
         if (!ControllerEnabled) return 0;
         if (UISelectionActive() || _uiFocusedAtFrameStart) return 0;
-        if (DPadDirectionPressed(3)) return -1; // D-pad left
-        if (DPadDirectionPressed(1)) return +1; // D-pad right
+        if (Ship.AnyShipPiloted) return 0;
+        if (PadPressed(PadButton.LB)) return -1;
+        if (PadPressed(PadButton.RB)) return +1;
         return 0;
     }
 
@@ -347,15 +349,12 @@ public static class TutorialGate
     // Headlight cycle: mouse scroll value (≈±0.05–0.15 per notch) OR
     // D-pad up/down edge (returns ±0.1 to match scroll-notch magnitude so the
     // caller's existing scroll-sensitivity multiplier feels the same on both).
-    // Set by PistolController while the pistol is equipped — D-pad down is
-    // the reload binding there, so headlight stepping yields.
-    public static bool SuppressDpadHeadlight = false;
-
+    // Only consumed by the ship (piloted context), so it doesn't collide with
+    // the on-foot D-pad-up phone-open binding.
     public static float HeadlightStep()
     {
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) > 0.0001f) return scroll;
-        if (SuppressDpadHeadlight) return 0f;
         if (DPadDirectionPressed(0)) return  0.1f;
         if (DPadDirectionPressed(2)) return -0.1f;
         return 0f;
@@ -522,10 +521,12 @@ public static class PromptGlyphs
     public static string SecondaryFire => Pick("<b>RMB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");
     public static string RollLeft      => Pick("<b>Q</b>",     "<b>LB</b>",    "<b>L1</b>",       "xbox_lb",   "ps_l1");
     public static string RollRight     => Pick("<b>E</b>",     "<b>RB</b>",    "<b>R1</b>",       "xbox_rb",   "ps_r1");
-    public static string BuildMenu     => Pick("<b>N</b>",     "<b>LB</b>",    "<b>L1</b>",       "xbox_lb",   "ps_l1");
-    public static string Fishingdex    => Pick("<b>B</b>",     "<b>RB</b>",    "<b>R1</b>",       "xbox_rb",   "ps_r1");
+    // Build menu + Fishingdex have no direct pad button — pad players go
+    // through the phone (D-pad up), so the pad glyph shows the phone binding.
+    public static string BuildMenu     => Pick("<b>N</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
+    public static string Fishingdex    => Pick("<b>B</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
     public static string AdvanceTip    => Pick("<b>TAB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");
-    public static string Reload        => Pick("<b>R</b>",     "<b>D-pad down</b>", "<b>D-pad down</b>", "xbox_dpad_down", "ps_dpad_down");
+    public static string Reload        => Pick("<b>R</b>",     "<b>X</b>",     "<b>Square</b>",   "xbox_x",    "ps_square");
     public static string Move          => Pick("<b>WASD</b>",  "<b>left stick</b>",  "<b>left stick</b>",  "pad_stick_l", "pad_stick_l");
     public static string MouseLook     => Pick("<b>mouse</b>", "<b>right stick</b>", "<b>right stick</b>", "pad_stick_r", "pad_stick_r");
     // Compound phrases keep text + inline glyph:

@@ -102,15 +102,14 @@ public class BuildMenuUI : MonoBehaviour
         // we guard against both orderings.
         if (Time.frameCount == _placementEndedFrame) return;
 
-        // Configurable keyboard key (default N) OR controller LB. NEVER open
-        // while piloting the ship — LB is also the ship's roll-counter binding,
-        // and players were accidentally popping the build menu mid-flight.
+        // Configurable keyboard key (default N). No direct pad binding —
+        // LB now cycles the hotbar; pad players reach the build menu
+        // through the phone (D-pad up → app button).
         // PilotedInstance is the cached static set on PilotShip / cleared on
         // exit — no FindObjectOfType per Update needed. Used to be 0.03 ms
         // FindObject + some intrinsic cost; this is O(1).
         bool piloting = Ship.PilotedInstance != null;
-        bool toggleDown = Input.GetKeyDown(toggleKey) ||
-            (!piloting && TutorialGate.PadPressed(TutorialGate.PadButton.LB));
+        bool toggleDown = Input.GetKeyDown(toggleKey);
         if (toggleDown && !piloting)
         {
             // Closing is always allowed; opening is gated on TutorialAbility.BuildMenu

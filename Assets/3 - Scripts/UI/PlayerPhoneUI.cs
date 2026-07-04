@@ -1454,6 +1454,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // buttons are Selectables so stick-nav + A drives everything inside,
         // including the camera app).
         if (!IsOpen && !Ship.AnyShipPiloted && TutorialGate.DPadDirectionPressed(0)
+            && !GhostPlacement.IsPlacing   // D-pad up adjusts ghost distance there
             && !FishingdexManager.IsOpen && !BuildMenuUI.IsOpen && !SolarSystemMapController.IsOpen
             && !PlayerController.isInDialogue
             && (TabbedPauseMenu.Instance == null || !TabbedPauseMenu.Instance.IsOpen))
@@ -1565,17 +1566,18 @@ public class PlayerPhoneUI : MonoBehaviour
             _phoneGroup.blocksRaycasts = true;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible   = true;
-            // Disable Submit/Cancel/Navigation events while the phone is
-            // open. Without this, Space (Submit) would fire onClick on
-            // whatever Selectable was selected — typically an app button —
-            // and accidentally open Fishingdex/Build/Map while the player
-            // is just trying to walk. Mouse clicks still work because they
-            // come through PointerClick events, not Submit. Re-enabled in
-            // the close path below.
+            // Navigation events stay ENABLED — controller players drive the
+            // phone with D-pad/stick + A, which needs them. The old
+            // sendNavigationEvents=false guard existed because the legacy
+            // StandaloneInputModule mapped Space to Submit (walking would
+            // click app buttons); the InputSystemUIInputModule submits on
+            // Enter / pad-A only, so that failure mode is gone. Clearing the
+            // selection once on open still prevents a stale pre-open
+            // selection from eating the first input.
             var es = UnityEngine.EventSystems.EventSystem.current;
             if (es != null)
             {
-                es.sendNavigationEvents = false;
+                es.sendNavigationEvents = true;
                 es.SetSelectedGameObject(null);
             }
         }

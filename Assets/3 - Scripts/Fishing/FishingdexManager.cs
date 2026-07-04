@@ -97,13 +97,9 @@ public class FishingdexManager : MonoBehaviour
         if (AIChatScreen.IsTypingActive) return;
         bool kbToggle = Input.GetKeyDown(KeyCode.B);
 
+        // No direct pad-open binding — RB now cycles the hotbar; pad players
+        // reach the Fishingdex through the phone (D-pad up → app button).
         bool padToggle = false;
-        if (TutorialGate.PadPressed(TutorialGate.PadButton.RB))
-        {
-            if (_shipCached == null) _shipCached = FindObjectOfType<Ship>();
-            bool piloting = _shipCached != null && _shipCached.IsPiloted;
-            if (!piloting) padToggle = true;
-        }
         bool padClose = isOpen && TutorialGate.PadPressed(TutorialGate.PadButton.B);
         // ESC close — also advertised on the footer button label. The
         // TabbedPauseMenu reads FishingdexManager.IsOpen and skips its own
