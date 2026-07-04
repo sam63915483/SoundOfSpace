@@ -44,7 +44,8 @@ public static class TutorialGate
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    //  CONTROLLER SUPPORT (Xbox One controller via legacy InputManager)
+    //  CONTROLLER SUPPORT (Xbox / DS4 / DualSense via the Unity Input System;
+    //  keyboard & mouse stay on the legacy InputManager)
     //
     //  Settings here (ControllerEnabled, StickLookSensitivity, InvertLookY,
     //  StickDeadzone) are populated by InputSettings.Begin() from PlayerPrefs
@@ -92,185 +93,64 @@ public static class TutorialGate
     public static InputSource LastSource { get; private set; } = InputSource.KeyboardMouse;
     public static bool ControllerConnected { get; private set; }
 
-    // ── Controller hardware mapping (Xbox vs DualShock 4) ─────────────────
-    // Xbox/XInput and DS4/DirectInput report different button indices and
-    // axis numbers on Windows. Detection runs from Tick(); button helpers
-    // route through Pad(PadButton) so call sites can be hardware-agnostic.
-    public enum ControllerType { Xbox, DualShock4 }
+    // ── Controller hardware (Unity Input System) ──────────────────────────
+    // The Input System normalizes Xbox / DualShock 4 / DualSense into one
+    // Gamepad layout (buttonSouth is A on Xbox and Cross on PlayStation), so
+    // all the per-brand button-index math the legacy version needed is gone.
+    // "Active pad" = Gamepad.current — the pad that most recently sent input,
+    // which reproduces the old press-any-button hot-swap behaviour for free.
+    public enum ControllerType { Xbox, DualShock4, DualSense }
     public static ControllerType DetectedController { get; private set; } = ControllerType.Xbox;
+    public static bool IsPlayStation => DetectedController != ControllerType.Xbox;
 
     public enum PadButton { A, B, X, Y, LB, RB, Back, Start, L3, R3 }
 
-    static KeyCode XboxButton(PadButton b) {
-        switch (b) {
-            case PadButton.A:     return KeyCode.JoystickButton0;
-            case PadButton.B:     return KeyCode.JoystickButton1;
-            case PadButton.X:     return KeyCode.JoystickButton2;
-            case PadButton.Y:     return KeyCode.JoystickButton3;
-            case PadButton.LB:    return KeyCode.JoystickButton4;
-            case PadButton.RB:    return KeyCode.JoystickButton5;
-            case PadButton.Back:  return KeyCode.JoystickButton6;
-            case PadButton.Start: return KeyCode.JoystickButton7;
-            case PadButton.L3:    return KeyCode.JoystickButton8;
-            case PadButton.R3:    return KeyCode.JoystickButton9;
+    static Gamepad ActivePad => ControllerEnabled ? Gamepad.current : null;
+
+    static UnityEngine.InputSystem.Controls.ButtonControl Resolve(Gamepad g, PadButton b)
+    {
+        switch (b)
+        {
+            case PadButton.A:     return g.buttonSouth;
+            case PadButton.B:     return g.buttonEast;
+            case PadButton.X:     return g.buttonWest;
+            case PadButton.Y:     return g.buttonNorth;
+            case PadButton.LB:    return g.leftShoulder;
+            case PadButton.RB:    return g.rightShoulder;
+            case PadButton.Back:  return g.selectButton;
+            case PadButton.Start: return g.startButton;
+            case PadButton.L3:    return g.leftStickButton;
+            case PadButton.R3:    return g.rightStickButton;
         }
-        return KeyCode.None;
+        return null;
     }
 
-    // DualShock 4 (wired, Microsoft default driver). Face-button positions
-    // are ROTATED relative to Xbox: PS Cross is bottom (=Xbox A), Square is
-    // left (=Xbox X). L3/R3 land on JoyButton 10/11 instead of 8/9 because
-    // DS4 reports L2/R2 as buttons too. Share/Options replace Back/Start.
-    static KeyCode Ds4Button(PadButton b) {
-        switch (b) {
-            case PadButton.A:     return KeyCode.JoystickButton1; // Cross  (X)
-            case PadButton.B:     return KeyCode.JoystickButton2; // Circle (O)
-            case PadButton.X:     return KeyCode.JoystickButton0; // Square
-            case PadButton.Y:     return KeyCode.JoystickButton3; // Triangle
-            case PadButton.LB:    return KeyCode.JoystickButton4; // L1
-            case PadButton.RB:    return KeyCode.JoystickButton5; // R1
-            case PadButton.Back:  return KeyCode.JoystickButton8; // Share
-            case PadButton.Start: return KeyCode.JoystickButton9; // Options
-            case PadButton.L3:    return KeyCode.JoystickButton10;
-            case PadButton.R3:    return KeyCode.JoystickButton11;
-        }
-        return KeyCode.None;
-    }
-
-    // The joystick (1-based, matches Unity's "Joystick N" keycode blocks) that
-    // most recently fired a button. Pad() reads route to ONLY this joystick so
-    // that with both DS4 + Xbox connected, pressing Xbox A doesn't accidentally
-    // fire the DS4-mapped action for button 0 (Square = Interact).
-    public static int ActiveJoystickIndex { get; private set; } = 1;
-
-    // Resolves a logical PadButton into a JOYSTICK-SCOPED KeyCode (e.g.
-    // Joystick2Button0) for the currently active joystick + active type.
-    // Layout: KeyCode block per joystick is 20 entries; block N starts at
-    // JoystickButton0 + 20*N (so Joystick1Button0 = JoystickButton0 + 20).
-    public static KeyCode Pad(PadButton b) {
-        KeyCode anyKey = DetectedController == ControllerType.DualShock4 ? Ds4Button(b) : XboxButton(b);
-        int btnNum = (int)anyKey - (int)KeyCode.JoystickButton0;
-        int joy = ActiveJoystickIndex;
-        if (joy < 1 || joy > 16) return anyKey;
-        return (KeyCode)((int)KeyCode.JoystickButton0 + 20 * joy + btnNum);
-    }
-
-    public static bool PadHeld(PadButton b)    => ControllerEnabled && Input.GetKey    (Pad(b));
-    public static bool PadPressed(PadButton b) => ControllerEnabled && Input.GetKeyDown(Pad(b));
-    public static bool PadReleased(PadButton b) => ControllerEnabled && Input.GetKeyUp(Pad(b));
+    public static bool PadHeld(PadButton b)     { var g = ActivePad; return g != null && Resolve(g, b).isPressed; }
+    public static bool PadPressed(PadButton b)  { var g = ActivePad; return g != null && Resolve(g, b).wasPressedThisFrame; }
+    public static bool PadReleased(PadButton b) { var g = ActivePad; return g != null && Resolve(g, b).wasReleasedThisFrame; }
 
     // Ability-gated variants for tutorial progression.
     public static bool PadHeld(PadButton b, TutorialAbility a)    => PadHeld(b)    && IsUnlocked(a);
     public static bool PadPressed(PadButton b, TutorialAbility a) => PadPressed(b) && IsUnlocked(a);
 
-    // Axis name resolution — same logical axis maps to different physical
-    // axis numbers on DS4. The "DS4_*" axes are added in InputManager.asset.
-    static string AxisRightStickX => DetectedController == ControllerType.DualShock4 ? "DS4_RightStickX" : "RightStickX";
-    static string AxisRightStickY => DetectedController == ControllerType.DualShock4 ? "DS4_RightStickY" : "RightStickY";
-    static string AxisLeftTrigger => DetectedController == ControllerType.DualShock4 ? "DS4_LeftTrigger" : "LeftTrigger";
-    static string AxisRightTrigger => DetectedController == ControllerType.DualShock4 ? "DS4_RightTrigger" : "RightTrigger";
-    static string AxisDPadX        => DetectedController == ControllerType.DualShock4 ? "DS4_DPadX" : "DPadX";
-    static string AxisDPadY        => DetectedController == ControllerType.DualShock4 ? "DS4_DPadY" : "DPadY";
+    // Stick reads go through ReadValue(), which applies the Input System's
+    // default stick deadzone processor — the pause-menu STICK DEADZONE slider
+    // drives InputSystem.settings.defaultDeadzoneMin (see InputSettings.
+    // PushControllerSettingsToGate), so the stored deadzone finally applies.
+    public static float RightStickX() { var g = ActivePad; return g != null ? g.rightStick.ReadValue().x : 0f; }
+    public static float RightStickY() { var g = ActivePad; return g != null ? g.rightStick.ReadValue().y : 0f; }
 
-    // Public axis read helpers for non-TutorialGate call sites.
-    public static float RightStickX() => ControllerEnabled ? Input.GetAxisRaw(AxisRightStickX) : 0f;
-    public static float RightStickY() => ControllerEnabled ? Input.GetAxisRaw(AxisRightStickY) : 0f;
-
-    // Per-joystick state, indexed 0-based (joystick #1 = index 0, matches
-    // Input.GetJoystickNames() ordering).
-    static readonly ControllerType[] _joystickTypes = new ControllerType[16];
-    static readonly bool[] _joystickConnected = new bool[16];
-
-    static bool LooksLikeDs4(string name) {
-        if (string.IsNullOrEmpty(name)) return false;
-        string l = name.ToLowerInvariant();
-        // Sony-style names cover the common cases on Windows. The raw
-        // OS-reported strings include "Wireless Controller" (DS4 BT and
-        // wired both report this) plus a few vendor/product variants.
-        return l.Contains("wireless controller")
-            || l.Contains("dualshock")
-            || l.Contains("ds4")
-            || l.Contains("ps4")
-            || l.Contains("playstation")
-            || l.Contains("sony");
+    static void RefreshControllerType(Gamepad g)
+    {
+        if (g == null || g == _lastTypedPad) return;
+        _lastTypedPad = g;
+        if (g is UnityEngine.InputSystem.DualShock.DualShockGamepad)
+            DetectedController = g.GetType().Name.Contains("DualSense")
+                ? ControllerType.DualSense : ControllerType.DualShock4;
+        else
+            DetectedController = ControllerType.Xbox; // XInput + unknown HID default
     }
-
-    static void RefreshControllerType() {
-        var names = Input.GetJoystickNames();
-
-        // Update per-joystick connection + type from Unity's joystick names.
-        for (int i = 0; i < _joystickTypes.Length; i++) {
-            bool connected = i < names.Length && !string.IsNullOrEmpty(names[i]);
-            _joystickConnected[i] = connected;
-            if (connected)
-                _joystickTypes[i] = LooksLikeDs4(names[i]) ? ControllerType.DualShock4 : ControllerType.Xbox;
-        }
-
-        // Switch the "active" joystick to whichever one fired a button this
-        // frame. With multiple controllers connected, this lets the player
-        // hot-swap simply by picking up another pad and pressing anything —
-        // no menu toggle needed. First joystick to fire wins per frame.
-        for (int joy = 1; joy <= 16; joy++) {
-            int idx = joy - 1;
-            if (!_joystickConnected[idx]) continue;
-            int blockBase = (int)KeyCode.JoystickButton0 + 20 * joy;
-            bool any = false;
-            for (int btn = 0; btn < 20; btn++) {
-                if (Input.GetKeyDown((KeyCode)(blockBase + btn))) { any = true; break; }
-            }
-            if (any) { ActiveJoystickIndex = joy; break; }
-        }
-
-        // If the active joystick was disconnected, fall back to the first
-        // still-connected joystick. Keeps _activeJoystickIndex valid so
-        // Pad() always returns a sensible KeyCode.
-        int activeIdx = ActiveJoystickIndex - 1;
-        if (activeIdx < 0 || activeIdx >= _joystickConnected.Length || !_joystickConnected[activeIdx]) {
-            for (int i = 0; i < _joystickConnected.Length; i++) {
-                if (_joystickConnected[i]) { ActiveJoystickIndex = i + 1; break; }
-            }
-            activeIdx = ActiveJoystickIndex - 1;
-        }
-
-        DetectedController = (activeIdx >= 0 && activeIdx < _joystickTypes.Length && _joystickConnected[activeIdx])
-            ? _joystickTypes[activeIdx]
-            : ControllerType.Xbox;
-
-        ApplyInputModuleBindings();
-    }
-
-    // Switches the StandaloneInputModule's Submit / Cancel axes so the UI's
-    // confirm/cancel buttons match the player's controller. Required because
-    // Unity's StandaloneInputModule reads named axes from InputManager.asset,
-    // and those axes hard-bind to physical button numbers (Xbox A vs DS4 X
-    // are NOT the same button index — Xbox A = button 0, DS4 X = button 1).
-    // Without this swap, DS4 users hit Square and the menu submits — wrong.
-    //
-    // We cache BOTH the module instance and the applied type so a scene
-    // transition (which spawns a new EventSystem with a fresh module that
-    // defaults submitButton back to "Submit") triggers a re-apply.
-    static UnityEngine.EventSystems.StandaloneInputModule _lastAppliedModule;
-    static ControllerType _lastAppliedModuleType = (ControllerType)(-1);
-    static void ApplyInputModuleBindings() {
-        var es = UnityEngine.EventSystems.EventSystem.current;
-        if (es == null) return;
-        var module = es.GetComponent<UnityEngine.EventSystems.StandaloneInputModule>();
-        if (module == null) return;
-        // Skip only if the same module instance still has the same type bindings.
-        if (module == _lastAppliedModule && _lastAppliedModuleType == DetectedController) return;
-        if (DetectedController == ControllerType.DualShock4) {
-            module.submitButton = "Submit_DS4";
-            module.cancelButton = "Cancel_DS4";
-        } else {
-            module.submitButton = "Submit";
-            module.cancelButton = "Cancel";
-        }
-        _lastAppliedModule = module;
-        _lastAppliedModuleType = DetectedController;
-    }
-
-    static float _prevLT, _prevRT;
-    static float _prevDPadX, _prevDPadY;
+    static Gamepad _lastTypedPad;
 
     // ── Composite "is held" / "is pressed this frame" helpers ──────────────
 
@@ -287,7 +167,7 @@ public static class TutorialGate
         GetKey(KeyCode.F, a) || PadHeld(PadButton.X, a);
 
     public static bool InteractReleased(TutorialAbility a) =>
-        GetKeyUp(KeyCode.F, a) || (ControllerEnabled && IsUnlocked(a) && Input.GetKeyUp(Pad(PadButton.X)));
+        GetKeyUp(KeyCode.F, a) || (IsUnlocked(a) && PadReleased(PadButton.X));
 
     public static bool DropPressed(TutorialAbility a) =>
         GetKeyDown(KeyCode.G, a) || PadPressed(PadButton.B, a);
@@ -337,9 +217,15 @@ public static class TutorialGate
     public static bool FireHeld() =>
         Input.GetMouseButton(0) || TriggerActive(RTValue());
 
-    // Pistol reload (R key). No controller binding yet.
-    public static bool ReloadPressed() =>
-        Input.GetKeyDown(KeyCode.R);
+    // Pistol reload — R key or D-pad down. D-pad down doubles as headlight
+    // step-down; PistolController sets SuppressDpadHeadlight while equipped
+    // so the two never fire together.
+    public static bool ReloadPressed()
+    {
+        if (Input.GetKeyDown(KeyCode.R)) return true;
+        var g = ActivePad;
+        return g != null && g.dpad.down.wasPressedThisFrame;
+    }
 
     // Secondary fire: RMB or LT (controller). Used for water-bottle fill,
     // build-menu ghost rotate, etc. LT also drives tutorial advance via
@@ -365,20 +251,23 @@ public static class TutorialGate
     // Map toggle (M / Back-View button)
     public static bool MapTogglePressed(TutorialAbility a) =>
         GetKeyDown(KeyCode.M, a) ||
-        (ControllerEnabled && IsUnlocked(a) && Input.GetKeyDown(Pad(PadButton.Back)));
+        (IsUnlocked(a) && PadPressed(PadButton.Back));
 
     // ── D-pad slot edge detection (for hotbar / scroll-replacements) ───────
-    // Returns true on the FRAME the D-pad enters one of the 4 cardinal
-    // directions. `dir`: 0=Up, 1=Right, 2=Down, 3=Left.
+    // Edge-detected D-pad, valid for the whole frame (wasPressedThisFrame is
+    // stable across Update AND LateUpdate — strictly better than the old
+    // prev-frame tracking that needed the LateDriver ordering dance).
+    // `dir`: 0=Up, 1=Right, 2=Down, 3=Left.
     public static bool DPadDirectionPressed(int dir)
     {
-        if (!ControllerEnabled) return false;
+        var g = ActivePad;
+        if (g == null) return false;
         switch (dir)
         {
-            case 0: return _prevDPadY <=  0.5f && Input.GetAxisRaw(AxisDPadY) >  0.5f;
-            case 1: return _prevDPadX <=  0.5f && Input.GetAxisRaw(AxisDPadX) >  0.5f;
-            case 2: return _prevDPadY >= -0.5f && Input.GetAxisRaw(AxisDPadY) < -0.5f;
-            case 3: return _prevDPadX >= -0.5f && Input.GetAxisRaw(AxisDPadX) < -0.5f;
+            case 0: return g.dpad.up.wasPressedThisFrame;
+            case 1: return g.dpad.right.wasPressedThisFrame;
+            case 2: return g.dpad.down.wasPressedThisFrame;
+            case 3: return g.dpad.left.wasPressedThisFrame;
             default: return false;
         }
     }
@@ -415,7 +304,8 @@ public static class TutorialGate
         float k = 0f;
         if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))  k -= 1f;
         if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) k += 1f;
-        float s = ControllerEnabled ? Input.GetAxisRaw("LeftStickX") : 0f;
+        var g = ActivePad;
+        float s = g != null ? g.leftStick.ReadValue().x : 0f;
         return Mathf.Clamp(k + s, -1f, 1f);
     }
 
@@ -425,7 +315,8 @@ public static class TutorialGate
         float k = 0f;
         if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) k -= 1f;
         if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))   k += 1f;
-        float s = ControllerEnabled ? Input.GetAxisRaw("LeftStickY") : 0f;
+        var g = ActivePad;
+        float s = g != null ? g.leftStick.ReadValue().y : 0f;
         return Mathf.Clamp(k + s, -1f, 1f);
     }
 
@@ -437,7 +328,8 @@ public static class TutorialGate
         float mx = Input.GetAxisRaw("Mouse X");
         float my = Input.GetAxisRaw("Mouse Y");
 
-        if (ControllerEnabled)
+        var g = ActivePad;
+        if (g != null)
         {
             // Right-stick value is steady (-1..1), so scale by deltaTime to
             // get per-frame "movement" comparable to mouse delta. The x60
@@ -445,8 +337,9 @@ public static class TutorialGate
             // close to mouse default; player tunes via StickLookSensitivity.
             float dt = Time.unscaledDeltaTime;
             float gain = StickLookSensitivity * dt * 60f;
-            mx += Input.GetAxisRaw(AxisRightStickX) * gain;
-            my += Input.GetAxisRaw(AxisRightStickY) * gain * (InvertLookY ? -1f : 1f);
+            Vector2 stick = g.rightStick.ReadValue();
+            mx += stick.x * gain;
+            my += stick.y * gain * (InvertLookY ? -1f : 1f);
         }
         return new Vector2(mx, my);
     }
@@ -454,10 +347,15 @@ public static class TutorialGate
     // Headlight cycle: mouse scroll value (≈±0.05–0.15 per notch) OR
     // D-pad up/down edge (returns ±0.1 to match scroll-notch magnitude so the
     // caller's existing scroll-sensitivity multiplier feels the same on both).
+    // Set by PistolController while the pistol is equipped — D-pad down is
+    // the reload binding there, so headlight stepping yields.
+    public static bool SuppressDpadHeadlight = false;
+
     public static float HeadlightStep()
     {
         float scroll = Input.GetAxis("Mouse ScrollWheel");
         if (Mathf.Abs(scroll) > 0.0001f) return scroll;
+        if (SuppressDpadHeadlight) return 0f;
         if (DPadDirectionPressed(0)) return  0.1f;
         if (DPadDirectionPressed(2)) return -0.1f;
         return 0f;
@@ -465,11 +363,13 @@ public static class TutorialGate
 
     // ── Internals ─────────────────────────────────────────────────────────
 
-    public static float LTValue() => ControllerEnabled ? Input.GetAxisRaw(AxisLeftTrigger)  : 0f;
-    public static float RTValue() => ControllerEnabled ? Input.GetAxisRaw(AxisRightTrigger) : 0f;
-    static bool  TriggerActive(float v) => v > TriggerThreshold;
-    static bool  LTEdgePressed() => _prevLT < TriggerThreshold && LTValue() >= TriggerThreshold;
-    static bool  RTEdgePressed() => _prevRT < TriggerThreshold && RTValue() >= TriggerThreshold;
+    public static float LTValue() { var g = ActivePad; return g != null ? g.leftTrigger.ReadValue()  : 0f; }
+    public static float RTValue() { var g = ActivePad; return g != null ? g.rightTrigger.ReadValue() : 0f; }
+    static bool TriggerActive(float v) => v > TriggerThreshold;
+    // Triggers are ButtonControls with a 0.5 default press point — matches
+    // the old TriggerThreshold edge detection, no prev-frame tracking needed.
+    static bool LTEdgePressed() { var g = ActivePad; return g != null && g.leftTrigger.wasPressedThisFrame; }
+    static bool RTEdgePressed() { var g = ActivePad; return g != null && g.rightTrigger.wasPressedThisFrame; }
 
     // ── Per-frame driver ──────────────────────────────────────────────────
     // Static class can't host MonoBehaviour callbacks, so we spawn a hidden
@@ -503,11 +403,6 @@ public static class TutorialGate
     {
         void Update() {
             _uiFocusedAtFrameStart = UISelectionActive();
-            // Refresh controller type early so StandaloneInputModule reads the
-            // correct Submit/Cancel axis on the SAME frame the player presses
-            // a button. Without this, the first DS4 X press would still be
-            // handled as Xbox A (i.e. miss).
-            RefreshControllerType();
         }
     }
 
@@ -520,66 +415,56 @@ public static class TutorialGate
 
     static void Tick()
     {
-        // Refresh controller-type detection (Xbox vs DS4) every frame so a
-        // hot-swap mid-session picks the right button mapping. Cheap — just
-        // a string scan over Input.GetJoystickNames().
-        RefreshControllerType();
+        // Connection state straight from the Input System device list — no
+        // per-frame GetJoystickNames() string allocation, works in builds.
+        ControllerConnected = Gamepad.all.Count > 0;
 
-        // Detect controller input by polling the actual axes/buttons rather
-        // than Input.GetJoystickNames(). On Windows builds using
-        // Windows.Gaming.Input (the new XInput pathway), the legacy joystick-
-        // names list comes up empty even when axes and buttons work normally
-        // — the names check is unreliable in builds. So if ANY controller axis
-        // or button fires, we treat that as proof a controller is present.
-        bool controllerActive =
-            IsAnyJoystickButtonDown() ||
-            Mathf.Abs(Input.GetAxisRaw("LeftStickX"))  > 0.3f ||
-            Mathf.Abs(Input.GetAxisRaw("LeftStickY"))  > 0.3f ||
-            Mathf.Abs(Input.GetAxisRaw(AxisRightStickX)) > 0.3f ||
-            Mathf.Abs(Input.GetAxisRaw(AxisRightStickY)) > 0.3f ||
-            Mathf.Abs(Input.GetAxisRaw(AxisDPadX))       > 0.3f ||
-            Mathf.Abs(Input.GetAxisRaw(AxisDPadY))       > 0.3f ||
-            LTValue() > 0.3f || RTValue() > 0.3f;
-
-        // ControllerConnected stays sticky — once we see ANY controller input,
-        // we know one's plugged in. We also fall back to GetJoystickNames so
-        // the value is correct even before the player touches anything.
-        if (controllerActive) ControllerConnected = true;
-        else if (!ControllerConnected)
+        var g = Gamepad.current;
+        bool controllerActive = false;
+        if (ControllerEnabled && g != null)
         {
-            var names = Input.GetJoystickNames();
-            for (int i = 0; i < names.Length; i++)
-                if (!string.IsNullOrEmpty(names[i])) { ControllerConnected = true; break; }
+            controllerActive =
+                AnyPadButtonHeld(g) ||
+                g.leftStick.ReadValue().sqrMagnitude  > 0.09f ||
+                g.rightStick.ReadValue().sqrMagnitude > 0.09f ||
+                g.dpad.ReadValue().sqrMagnitude       > 0.25f ||
+                g.leftTrigger.ReadValue()  > 0.3f ||
+                g.rightTrigger.ReadValue() > 0.3f;
         }
 
-        // Source tracking
-        if (Input.anyKeyDown ||
-            Mathf.Abs(Input.GetAxisRaw("Mouse X")) > 0.01f ||
-            Mathf.Abs(Input.GetAxisRaw("Mouse Y")) > 0.01f)
-        {
-            if (!IsAnyJoystickButtonDown() && !MouseDeltaIsZero())
-                LastSource = InputSource.KeyboardMouse;
-        }
-        if (ControllerEnabled && controllerActive)
+        if (controllerActive)
         {
             LastSource = InputSource.Controller;
+            RefreshControllerType(g);
+        }
+        else if (KeyboardMouseActive())
+        {
+            LastSource = InputSource.KeyboardMouse;
         }
 
-        // Advance edge-detection trackers.
-        _prevLT = LTValue();
-        _prevRT = RTValue();
-        _prevDPadX = ControllerEnabled ? Input.GetAxisRaw(AxisDPadX) : 0f;
-        _prevDPadY = ControllerEnabled ? Input.GetAxisRaw(AxisDPadY) : 0f;
+        // GamepadRumble.Tick(); // enabled in the rumble task
     }
 
-    static bool MouseDeltaIsZero() =>
-        Mathf.Abs(Input.GetAxisRaw("Mouse X")) < 0.001f &&
-        Mathf.Abs(Input.GetAxisRaw("Mouse Y")) < 0.001f;
+    static bool AnyPadButtonHeld(Gamepad g) =>
+        g.buttonSouth.isPressed || g.buttonEast.isPressed ||
+        g.buttonWest.isPressed  || g.buttonNorth.isPressed ||
+        g.leftShoulder.isPressed || g.rightShoulder.isPressed ||
+        g.selectButton.isPressed || g.startButton.isPressed ||
+        g.leftStickButton.isPressed || g.rightStickButton.isPressed;
 
-    static bool IsAnyJoystickButtonDown()
+    static bool KeyboardMouseActive()
     {
-        for (KeyCode k = KeyCode.JoystickButton0; k <= KeyCode.JoystickButton19; k++)
-            if (Input.GetKeyDown(k)) return true;
+        // Legacy reads on purpose — KBM stays on the old backend everywhere.
+        if (Mathf.Abs(Input.GetAxisRaw("Mouse X")) > 0.01f ||
+            Mathf.Abs(Input.GetAxisRaw("Mouse Y")) > 0.01f ||
+            Input.GetMouseButton(0) || Input.GetMouseButton(1)) return true;
+        // anyKeyDown includes joystick buttons on the legacy backend, so make
+        // sure a pad press doesn't masquerade as keyboard.
+        if (Input.anyKeyDown)
+        {
+            var g = Gamepad.current;
+            if (g == null || !AnyPadButtonHeld(g)) return true;
+        }
         return false;
     }
 }
