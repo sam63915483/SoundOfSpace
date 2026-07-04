@@ -1367,22 +1367,23 @@ public class PlayerPhoneUI : MonoBehaviour
             }
             // X exits camera mode back to the phone home screen (phone
             // stays open). Symmetric with X-from-Map/Fishingdex/Build.
-            if (Input.GetKeyDown(KeyCode.X))
+            // Pad: B backs out the same way.
+            if (Input.GetKeyDown(KeyCode.X) || TutorialGate.PadPressed(TutorialGate.PadButton.B))
             {
                 ExitCameraMode();
                 return;
             }
-            // Right click swaps Photo ↔ Video. Locked out while a snap
-            // is mid-lifecycle or a recording is in progress (don't let
+            // Right click (pad: LT) swaps Photo ↔ Video. Locked out while a
+            // snap is mid-lifecycle or a recording is in progress (don't let
             // the player change mode mid-action).
-            if (Input.GetMouseButtonDown(1) && !_isCapturing && !_isRecording)
+            if (TutorialGate.SecondaryFirePressed() && !_isCapturing && !_isRecording)
             {
                 _cameraType = (_cameraType == CameraType.Photo) ? CameraType.Video : CameraType.Photo;
                 ApplyCameraTypeColors();
             }
 
-            // Left click: photo mode snaps; video mode toggles recording.
-            if (Input.GetMouseButtonDown(0))
+            // Left click (pad: RT) — photo mode snaps; video mode toggles recording.
+            if (TutorialGate.FirePressed())
             {
                 if (_cameraType == CameraType.Photo)
                 {
@@ -1412,7 +1413,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // ConsumedEscapeThisFrame protects against Update-order races: if
         // TabbedPauseMenu runs after us, it sees the flag and skips its
         // OpenPause branch.
-        if (IsOpen && Input.GetKeyDown(KeyCode.Escape))
+        if (IsOpen && (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B)))
         {
             Close();
             ConsumedEscapeThisFrame = true;
@@ -1448,7 +1449,24 @@ public class PlayerPhoneUI : MonoBehaviour
         // because Fishingdex / Build / Settings set isInDialogue=true when
         // open and would otherwise block this branch entirely. (Map sets
         // isMapOpen instead, which is why X-from-map already worked.)
-        if (Input.GetKeyDown(KeyCode.X))
+        // Pad: D-pad up OPENS the phone (on foot only — while piloted D-pad up
+        // steps the ship headlight, and closing is B's job once open; app
+        // buttons are Selectables so stick-nav + A drives everything inside,
+        // including the camera app).
+        if (!IsOpen && !Ship.AnyShipPiloted && TutorialGate.DPadDirectionPressed(0)
+            && !FishingdexManager.IsOpen && !BuildMenuUI.IsOpen && !SolarSystemMapController.IsOpen
+            && !PlayerController.isInDialogue
+            && (TabbedPauseMenu.Instance == null || !TabbedPauseMenu.Instance.IsOpen))
+        {
+            Open();
+            return;
+        }
+
+        // Pad B only acts as "back out of a sub-menu" here — never as the
+        // open/close toggle, since B on foot is Drop (X keyboard keeps both roles).
+        bool padSubMenuBack = TutorialGate.PadPressed(TutorialGate.PadButton.B)
+            && (FishingdexManager.IsOpen || BuildMenuUI.IsOpen || SolarSystemMapController.IsOpen);
+        if (Input.GetKeyDown(KeyCode.X) || padSubMenuBack)
         {
             if (FishingdexManager.IsOpen && FishingdexManager.Instance != null)
             {
@@ -1484,9 +1502,19 @@ public class PlayerPhoneUI : MonoBehaviour
         // included because it's the ship's down-thrust button.
         if (IsOpen && !_isAnimating && !AIChatScreen.IsTypingActive)
         {
+            // Pad equivalents only count as "movement" while NO phone UI
+            // element is focused — otherwise left-stick menu navigation and
+            // A-press app selection would read as walking and close the phone.
+            bool padMoving = !TutorialGate.UISelectionActive()
+                && !TutorialGate.WasUIFocusedThisFrameStart()
+                && (Mathf.Abs(TutorialGate.MoveAxisHorizontal(TutorialAbility.Move)) > 0.2f ||
+                    Mathf.Abs(TutorialGate.MoveAxisVertical(TutorialAbility.Move)) > 0.2f ||
+                    TutorialGate.JumpHeld(TutorialAbility.Jump) ||
+                    TutorialGate.DownThrustHeld(TutorialAbility.DownThrust));
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) ||
                 Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D) ||
-                Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.LeftControl))
+                Input.GetKey(KeyCode.Space) || Input.GetKey(KeyCode.LeftControl) ||
+                padMoving)
             {
                 ShowMovementWarning();
                 Close();

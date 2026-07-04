@@ -193,6 +193,11 @@ public class PistolController : MonoBehaviour
 
     void Update()
     {
+        // D-pad down = reload while the pistol is out, so the headlight
+        // step (also D-pad down) must yield. Kept live every frame rather
+        // than on equip/unequip transitions so it can never go stale.
+        TutorialGate.SuppressDpadHeadlight = IsEquipped;
+
         if (_ship != null && _ship.IsPiloted) return;
         if (_currentPistolInstance == null) return;
 

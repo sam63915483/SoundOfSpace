@@ -548,7 +548,7 @@ public class AIChatScreen : MonoBehaviour
     {
         // Esc closes the chat (only when NOT typing — otherwise typing Esc
         // in the field would dismiss the chat mid-sentence).
-        if (Input.GetKeyDown(KeyCode.Escape) && !IsTypingActive)
+        if ((Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B)) && !IsTypingActive)
         {
             Exit();
             return;
@@ -1359,6 +1359,10 @@ public class AIChatScreen : MonoBehaviour
         // rotated forward (player wants OLDER content = scroll content
         // downward visually = vNormPos higher).
         float wheelY = Input.mouseScrollDelta.y;
+        // Pad: right stick Y scrolls the chat log (stick up = older content,
+        // matching wheel-forward). Scaled down so a full deflection feels
+        // like steady wheel notches rather than one giant impulse.
+        wheelY += TutorialGate.RightStickY() * 0.35f;
         if (Mathf.Abs(wheelY) > 0.001f)
         {
             _wheelVelocityPx += wheelY * WheelImpulsePx;
