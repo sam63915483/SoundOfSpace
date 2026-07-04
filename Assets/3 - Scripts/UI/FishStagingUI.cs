@@ -63,6 +63,7 @@ public class FishStagingUI : MonoBehaviour
         public TextMeshProUGUI countText;
         public Hotbar.Slot[] container;
         public int index;
+        public Selectable selectable;   // pad navigation (see WireSlotNav)
     }
 
     // ISubmitHandler makes the pad's A press act as a left-click on the
@@ -240,6 +241,8 @@ public class FishStagingUI : MonoBehaviour
                     button = PointerEventData.InputButton.Right });
         }
 
+        WireSlotNav();
+
         // Cursor follower: mouse on KBM; on pad, snap to the focused slot.
         if (_cursorRoot != null && _cursorRoot.gameObject.activeSelf && _canvas != null)
         {
@@ -258,6 +261,58 @@ public class FishStagingUI : MonoBehaviour
         RefreshAll();
         RefreshCursorVisual();
     }
+
+    // Explicit pad-navigation wiring — mirrors StorageUI.WireSlotNav (see
+    // that comment for the why). Stage grid is 5×2; down from the hotbar is
+    // deliberately blocked: CONFIRM/CANCEL are on pad Y/B, not navigable.
+    void WireSlotNav()
+    {
+        bool bagOpen = _bagPanel != null && _bagPanel.gameObject.activeSelf;
+
+        for (int r = 0; r < StageRows; r++)
+        for (int c = 0; c < StageCols; c++)
+        {
+            int i = r * StageCols + c;
+            var sel = SlotSel(_stageViews[i]);
+            if (sel == null) continue;
+            sel.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = r > 0 ? SlotSel(_stageViews[i - StageCols]) : null,
+                selectOnDown  = r < StageRows - 1 ? SlotSel(_stageViews[i + StageCols])
+                                                  : SlotSel(_hotbarViews[Mathf.Min(c, HotbarSlots - 1)]),
+                selectOnLeft  = c > 0 ? SlotSel(_stageViews[i - 1]) : null,
+                selectOnRight = c < StageCols - 1 ? SlotSel(_stageViews[i + 1])
+                              : (bagOpen ? SlotSel(_bagViews[Mathf.Min(r, _bagViews.Length - 1)]) : null),
+            };
+        }
+
+        for (int c = 0; c < HotbarSlots; c++)
+        {
+            var sel = SlotSel(_hotbarViews[c]);
+            if (sel == null) continue;
+            sel.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = SlotSel(_stageViews[(StageRows - 1) * StageCols + Mathf.Min(c, StageCols - 1)]),
+                selectOnLeft  = c > 0 ? SlotSel(_hotbarViews[c - 1]) : null,
+                selectOnRight = c < HotbarSlots - 1 ? SlotSel(_hotbarViews[c + 1])
+                              : (bagOpen ? SlotSel(_bagViews[_bagViews.Length - 1]) : null),
+            };
+        }
+
+        for (int k = 0; k < _bagViews.Length; k++)
+        {
+            var sel = SlotSel(_bagViews[k]);
+            if (sel == null) continue;
+            sel.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = k > 0 ? SlotSel(_bagViews[k - 1]) : null,
+                selectOnDown  = k < _bagViews.Length - 1 ? SlotSel(_bagViews[k + 1]) : null,
+                selectOnLeft  = SlotSel(_stageViews[Mathf.Min(k, StageRows - 1) * StageCols + StageCols - 1]),
+            };
+        }
+    }
+
+    static Selectable SlotSel(SlotView v) => v != null ? v.selectable : null;
 
     void OnSlotClicked(SlotView view, PointerEventData e)
     {
@@ -770,6 +825,7 @@ public class FishStagingUI : MonoBehaviour
         var sel = bgRt.gameObject.AddComponent<Selectable>();
         sel.transition = Selectable.Transition.None;
         sel.targetGraphic = v.background;
+        v.selectable = sel;
 
         var borderRt = NewRT("__Border", rt);
         Stretch(borderRt, 0, 0, 0, 0);

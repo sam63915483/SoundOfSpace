@@ -48,11 +48,13 @@ public class CameraFOVFX : MonoBehaviour
         // half-speed WASD/sprint steps).
         if (input.fxSprintFovKick && !IntroSequenceController.SuppressGroggyCameraFx)
         {
-            // Treat WASD as not-pressed while the AI chat input field has
-            // focus so typing doesn't pump the sprint-FOV kick.
-            bool typing = AIChatScreen.IsTypingActive || PlayerController.isInModalSlotUI;
-            float h = typing ? 0f : UnityEngine.Input.GetAxisRaw("Horizontal");
-            float v = typing ? 0f : UnityEngine.Input.GetAxisRaw("Vertical");
+            // Treat movement as not-pressed while any UI captures input
+            // (typing, modal panels, phone, focused menus) so navigating with
+            // the stick can't pump the kick. MoveAxis helpers also exclude
+            // the D-pad, which the legacy "Horizontal" axis aggregated.
+            bool suppressed = TutorialGate.MovementInputSuppressed;
+            float h = suppressed ? 0f : TutorialGate.MoveAxisHorizontal(TutorialAbility.Move);
+            float v = suppressed ? 0f : TutorialGate.MoveAxisVertical(TutorialAbility.Move);
             float inputMag = Mathf.Sqrt(h * h + v * v);
             // Sprint key is Shift in most setups, but the simplest signal is
             // "full-magnitude movement input held," which is what the player
@@ -82,10 +84,10 @@ public class CameraFOVFX : MonoBehaviour
     static bool IsJetpackActive(PlayerController p)
     {
         if (!p.JetpackUnlocked) return false;
-        // Typing in the AI chat presses Space / Ctrl / Shift as text — must
-        // not light up the FOV kick. Mirrors the sprint-FOV typing gate
-        // above and the input gates in PlayerController.
-        if (AIChatScreen.IsTypingActive || PlayerController.isInModalSlotUI) return false;
+        // Typing in the AI chat presses Space / Ctrl / Shift as text, and a
+        // focused menu eats the A button — neither must light up the FOV
+        // kick. Mirrors the sprint-FOV gate above.
+        if (TutorialGate.MovementInputSuppressed) return false;
         bool jumpHeld = TutorialGate.JumpHeld(TutorialAbility.Boost);
         bool downHeld = TutorialGate.DownThrustHeld(TutorialAbility.DownThrust);
         bool dirHeld  = TutorialGate.DirectionalThrustHeld(TutorialAbility.DirectionalThrust);

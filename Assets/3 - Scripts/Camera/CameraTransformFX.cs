@@ -98,7 +98,9 @@ public class CameraTransformFX : MonoBehaviour
         //    player takes their first half-speed steps).
         if (input.fxStrafeTilt && !IntroSequenceController.SuppressGroggyCameraFx)
         {
-            float h = (AIChatScreen.IsTypingActive || PlayerController.isInModalSlotUI) ? 0f : UnityEngine.Input.GetAxisRaw("Horizontal");
+            // MovementInputSuppressed covers typing/modal/phone/focused-menu;
+            // MoveAxisHorizontal excludes the D-pad (the legacy axis didn't).
+            float h = TutorialGate.MovementInputSuppressed ? 0f : TutorialGate.MoveAxisHorizontal(TutorialAbility.Move);
             float target = -h * 4f;
             _tiltZ = Mathf.Lerp(_tiltZ, target, 1f - Mathf.Exp(-dt * 5f));
         }

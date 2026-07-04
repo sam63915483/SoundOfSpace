@@ -93,6 +93,16 @@ public static class TutorialGate
     public static InputSource LastSource { get; private set; } = InputSource.KeyboardMouse;
     public static bool ControllerConnected { get; private set; }
 
+    // True while any UI that captures movement-shaped input is up (typing,
+    // modal slot panels, the phone, or any focused menu Selectable).
+    // Camera-FX modules zero their movement reads on this so navigating a
+    // menu with the stick/D-pad can't pump FOV kicks or strafe tilt.
+    public static bool MovementInputSuppressed =>
+        AIChatScreen.IsTypingActive ||
+        PlayerController.isInModalSlotUI ||
+        PlayerPhoneUI.IsOpen ||
+        UISelectionActive() || WasUIFocusedThisFrameStart();
+
     // ── Controller hardware (Unity Input System) ──────────────────────────
     // The Input System normalizes Xbox / DualShock 4 / DualSense into one
     // Gamepad layout (buttonSouth is A on Xbox and Cross on PlayStation), so

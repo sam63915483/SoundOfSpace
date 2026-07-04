@@ -240,6 +240,13 @@ public class TabbedPauseMenu : MonoBehaviour
         // where the gameplay scene loads after we were seeded (build path).
         if (_legacyMenu == null) TryAcquireLegacy();
 
+        // Pad B backs out of the pause menu (Start/Esc still toggle below).
+        if (_isPaused && TutorialGate.PadPressed(TutorialGate.PadButton.B))
+        {
+            ClosePause();
+            return;
+        }
+
         if (TutorialGate.PausePressed())
         {
             if (_isPaused) ClosePause();

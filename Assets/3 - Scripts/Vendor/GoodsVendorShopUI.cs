@@ -86,7 +86,8 @@ public class GoodsVendorShopUI : MonoBehaviour
         if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
         if (!Cursor.visible) Cursor.visible = true;
         bool closePressed = Input.GetKeyDown(KeyCode.F)
-            || TutorialGate.PadPressed(TutorialGate.PadButton.X);
+            || TutorialGate.PadPressed(TutorialGate.PadButton.X)
+            || TutorialGate.PadPressed(TutorialGate.PadButton.B);
         if (closePressed) Close();
     }
 

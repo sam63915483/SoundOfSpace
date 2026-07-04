@@ -64,6 +64,7 @@ public class StorageUI : MonoBehaviour
         public RawImage fishPreview;
         public Hotbar.Slot[] container;   // resolved at every RefreshAll
         public int index;
+        public Selectable selectable;     // pad navigation (see WireSlotNav)
     }
 
     // Per-slot click handler — forwards to StorageUI.OnSlotClicked.
@@ -222,6 +223,7 @@ public class StorageUI : MonoBehaviour
             _cursorRoot.anchoredPosition = screen / scale;
         }
 
+        WireSlotNav();
         RefreshAll();
         RefreshCursorVisual();
     }
@@ -657,7 +659,72 @@ public class StorageUI : MonoBehaviour
         btn.colors = colors;
         btn.targetGraphic = bg;
         btn.onClick.AddListener(RequestClose);
+        _exitBtn = btn;
     }
+
+    Button _exitBtn;   // pad navigation target below the hotbar row
+
+    // Explicit pad-navigation wiring across the three slot groups + exit
+    // button. Unity's automatic mode "teleports" diagonally between the
+    // grids (uniform tiles at different pitches confuse its scoring), so
+    // every link is spelled out. Called every Update while open —
+    // Navigation is a struct, so re-assigning allocates nothing, and the
+    // links self-heal when the fish-bag panel opens/closes.
+    void WireSlotNav()
+    {
+        bool bagOpen = _bagPanel != null && _bagPanel.gameObject.activeSelf;
+
+        for (int r = 0; r < StorageRows; r++)
+        for (int c = 0; c < StorageCols; c++)
+        {
+            int i = r * StorageCols + c;
+            var sel = SlotSel(_storageViews[i]);
+            if (sel == null) continue;
+            sel.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = r > 0 ? SlotSel(_storageViews[i - StorageCols]) : null,
+                selectOnDown  = r < StorageRows - 1 ? SlotSel(_storageViews[i + StorageCols])
+                                                    : SlotSel(_hotbarViews[Mathf.Min(c, HotbarSlots - 1)]),
+                selectOnLeft  = c > 0 ? SlotSel(_storageViews[i - 1]) : null,
+                selectOnRight = c < StorageCols - 1 ? SlotSel(_storageViews[i + 1])
+                              : (bagOpen ? SlotSel(_bagViews[Mathf.Min(r, _bagViews.Length - 1)]) : null),
+            };
+        }
+
+        for (int c = 0; c < HotbarSlots; c++)
+        {
+            var sel = SlotSel(_hotbarViews[c]);
+            if (sel == null) continue;
+            sel.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = SlotSel(_storageViews[(StorageRows - 1) * StorageCols + Mathf.Min(c, StorageCols - 1)]),
+                selectOnDown  = _exitBtn,
+                selectOnLeft  = c > 0 ? SlotSel(_hotbarViews[c - 1]) : null,
+                selectOnRight = c < HotbarSlots - 1 ? SlotSel(_hotbarViews[c + 1])
+                              : (bagOpen ? SlotSel(_bagViews[_bagViews.Length - 1]) : null),
+            };
+        }
+
+        for (int k = 0; k < _bagViews.Length; k++)
+        {
+            var sel = SlotSel(_bagViews[k]);
+            if (sel == null) continue;
+            sel.navigation = new Navigation {
+                mode          = Navigation.Mode.Explicit,
+                selectOnUp    = k > 0 ? SlotSel(_bagViews[k - 1]) : null,
+                selectOnDown  = k < _bagViews.Length - 1 ? SlotSel(_bagViews[k + 1]) : null,
+                selectOnLeft  = SlotSel(_storageViews[Mathf.Min(k, StorageRows - 1) * StorageCols + StorageCols - 1]),
+            };
+        }
+
+        if (_exitBtn != null)
+            _exitBtn.navigation = new Navigation {
+                mode       = Navigation.Mode.Explicit,
+                selectOnUp = SlotSel(_hotbarViews[HotbarSlots / 2]),
+            };
+    }
+
+    static Selectable SlotSel(SlotView v) => v != null ? v.selectable : null;
 
     void BuildCursorFollower(Transform parent)
     {
@@ -751,6 +818,7 @@ public class StorageUI : MonoBehaviour
         var sel = bgRt.gameObject.AddComponent<Selectable>();
         sel.transition = Selectable.Transition.None;
         sel.targetGraphic = v.background;
+        v.selectable = sel;
 
         var borderRt = NewRT("__Border", rt);
         Stretch(borderRt, 0, 0, 0, 0);
