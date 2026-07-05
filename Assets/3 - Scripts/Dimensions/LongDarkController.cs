@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -18,7 +19,14 @@ public class LongDarkController : MonoBehaviour
         public float alpha = 1f;
         public float unobservedSince = -1f;  // Time.time when sight was lost; -1 while observed
         public bool rearrangedSinceSeen;     // one rearrange per look-away, but never lost (no stranding)
+        public int slotIndex;                // which of the 5 fixed bridge slots this tile occupies
     }
+
+    // The bridge is 5 FIXED slots in a straight line — only 2 tiles exist to fill them.
+    const int SlotCount = 5;
+    static float SlotZ(int i) => 20.4f + i * 5.5f;
+    static Vector3 SlotPos(int i) => new Vector3(0f, -0.06f, SlotZ(i));
+    static Bounds SlotBounds(int i) => new Bounds(SlotPos(i), new Vector3(3f, 1f, 3f));
 
     Stone[] _stones;
     Transform _root;
@@ -42,22 +50,22 @@ public class LongDarkController : MonoBehaviour
         BuildCorridor(55f, carpetMat, wallMat, ceilMat, lampMat);   // end:   z 45..65
         _respawnPoint = new Vector3(0f, 1.5f, 4f);
 
-        // Only TWO glass stones exist. They're solid while seen — and any stone that
-        // leaves your view REARRANGES to a new spot somewhere ahead of you. Look away
-        // and look back until the pair lines up into a jumpable path, then keep both
-        // in sight as you commit.
+        // The classic 5-slot straight bridge — but only TWO tiles exist to fill the
+        // slots. Tiles are solid while seen; a tile that leaves your view (and isn't
+        // underfoot) jumps to a different empty slot. Look away and back until the
+        // occupied pair gives you a jump, cross carefully, repeat.
         _stones = new Stone[stoneCount];
         for (int i = 0; i < stoneCount; i++)
         {
-            float z = 20.5f + i * 3.5f;
             var go = DimensionSceneUtil.Block(PrimitiveType.Cube, "GlassStone" + i,
-                new Vector3(i == 0 ? 0f : Random.Range(-2f, 2f), -0.06f, z), new Vector3(2.6f, 0.12f, 2.6f), glassMat, _root);
+                SlotPos(i), new Vector3(2.6f, 0.12f, 2.6f), glassMat, _root);
             _stones[i] = new Stone
             {
                 tf = go.transform,
                 rend = go.GetComponent<Renderer>(),
                 col = go.GetComponent<Collider>(),
                 mpb = new MaterialPropertyBlock(),
+                slotIndex = i,
             };
         }
 
@@ -176,21 +184,36 @@ public class LongDarkController : MonoBehaviour
         }
     }
 
-    // New spot: always AHEAD of the player (progress is never undone), lateral roll,
-    // sometimes in jump range and sometimes not — that's the look-away lottery.
-    // Prefers landing off-screen so stones don't visibly pop in.
+    // Jump to a different EMPTY slot. Slot uniqueness means tiles can never overlap;
+    // a 60% bias toward the nearest empty slot ahead of the player keeps the path
+    // buildable within a couple of look-aways; hidden slots preferred (no pop-in).
     void Rearrange(Stone s, Vector3 playerPos)
     {
-        Vector3 best = s.tf.position;
-        for (int attempt = 0; attempt < 8; attempt++)
+        var candidates = new List<int>();
+        for (int i = 0; i < SlotCount; i++)
         {
-            float z = Mathf.Clamp(playerPos.z + Random.Range(2.0f, 4.5f), 19.5f, 43.5f);
-            float x = Random.Range(-1.5f, 1.5f);            // mostly straight ahead, mild drift
-            best = new Vector3(x, -0.06f, z);
-            if (!ObserverState.IsObserved(new Bounds(best, new Vector3(3f, 1f, 3f))))
-                break;
+            if (i == s.slotIndex) continue;
+            bool occupied = false;
+            foreach (var other in _stones)
+                if (other != s && other.slotIndex == i) occupied = true;
+            if (!occupied) candidates.Add(i);
         }
-        s.tf.position = best;
+        if (candidates.Count == 0) return;
+
+        var hidden = candidates.FindAll(i => !ObserverState.IsObserved(SlotBounds(i)));
+        var pool = hidden.Count > 0 ? hidden : candidates;
+
+        int pick = -1;
+        if (Random.value < 0.6f)
+        {
+            float bestZ = float.MaxValue;
+            foreach (int i in pool)
+                if (SlotZ(i) > playerPos.z + 1f && SlotZ(i) < bestZ) { bestZ = SlotZ(i); pick = i; }
+        }
+        if (pick < 0) pick = pool[Random.Range(0, pool.Count)];
+
+        s.slotIndex = pick;
+        s.tf.position = SlotPos(pick);
         s.tracker.Reset();
         s.unobservedSince = -1f;
         s.rearrangedSinceSeen = true;
