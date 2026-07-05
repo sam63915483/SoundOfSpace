@@ -122,6 +122,13 @@ public class WellFieldController : MonoBehaviour
             var l = lightGo.AddComponent<Light>();
             l.type = LightType.Point; l.range = 12f; l.intensity = 2.5f;
             l.color = new Color(1f, 0.75f, 0.35f);
+            // Loot-beam: a tall emissive column — the point light is invisible in full
+            // daylight and a sine hum can't be direction-traced by ear, so this is the
+            // actual find mechanic. Relocates with the well, so it stays a chase.
+            var beam = DimensionSceneUtil.Block(PrimitiveType.Cube, "Beam",
+                new Vector3(0f, 25f, 0f), new Vector3(0.7f, 50f, 0.7f),
+                DimensionSceneUtil.EmissiveMat(new Color(1f, 0.7f, 0.3f), 3f), well.transform);
+            Destroy(beam.GetComponent<Collider>());
             DimensionSceneUtil.LoopingAudio(well, DimensionSceneUtil.ToneClip(528f, 2f, 0.5f), 260f, 1f);
             DimensionSceneUtil.CreatePortal("ToD3", new Vector3(0f, 0.5f, 0f),
                 new Vector3(1.7f, 0.8f, 1.7f), LevelPortal.PortalAction.EnterInterior, nextScene, well.transform);
