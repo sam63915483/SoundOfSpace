@@ -179,13 +179,6 @@ public class ProcessionController : MonoBehaviour
             _ambience.pitch = Mathf.MoveTowards(_ambience.pitch, 0.85f, Time.deltaTime * 0.25f);
         }
 
-        // The ground keeps yielding: risers appear faster and faster.
-        if (Time.time >= _nextRiserTime)
-        {
-            SpawnRiser();
-            _nextRiserTime = Time.time + Mathf.Lerp(14f, 4f, ramp);
-        }
-
         // Blackout pulse: schedule, and hard-cut the screen to black for its duration.
         // The dark is when they MOVE: every flash, hunters lunge (teleport) toward
         // their ring slots and the exit door jumps somewhere else.
@@ -208,14 +201,21 @@ public class ProcessionController : MonoBehaviour
                     Vector3 face = t - np; face.y = 0f;
                     if (face.sqrMagnitude > 0.01f) s.rb.rotation = Quaternion.LookRotation(face.normalized, Vector3.up);
                 }
-                Vector3 doorFlat = _door.position; doorFlat.y = 0f;
-                RelocateDoor(c.transform.position, initial: false, maxDistance: Vector3.Distance(doorFlat, t));
+                RelocateDoor(c.transform.position, initial: false);
             }
         }
         bool blackout = Time.time < _blackoutUntil;
         float a0 = _black != null ? _black.color.a : 0f;
         if (_black != null)
             _black.color = new Color(0f, 0f, 0f, Mathf.MoveTowards(a0, blackout ? 1f : 0f, Time.deltaTime / 0.08f));
+
+        // The ground keeps yielding: waves of risers, faster and faster — but never
+        // during a flash, so you always SEE them come up.
+        if (!blackout && Time.time >= _nextRiserTime)
+        {
+            for (int r = 0; r < risersPerWave; r++) SpawnRiser();
+            _nextRiserTime = Time.time + Mathf.Lerp(14f, 4f, ramp);
+        }
 
         foreach (var s in _statues)
         {
@@ -259,21 +259,21 @@ public class ProcessionController : MonoBehaviour
         return _climaxed ? 3f : 4f;
     }
 
-    /// <summary>maxDistance > 0 caps how far the new spot may be from the player —
-    /// blackout jumps move the door AROUND you but never farther away, so closing in
-    /// on it stays winnable as the flashes speed up.</summary>
-    void RelocateDoor(Vector3 aroundPos, bool initial, float maxDistance = -1f)
+    /// <summary>The door spawns FAR (initial multiplier) and every later jump — look-away
+    /// or blackout — preserves its current distance band (0.7x..1x): it slides around
+    /// you or slightly closer, never away. Your progress toward it can't be undone.</summary>
+    void RelocateDoor(Vector3 aroundPos, bool initial)
     {
+        Vector3 doorFlat = _door.position; doorFlat.y = 0f;
+        Vector3 pFlat = aroundPos; pFlat.y = 0f;
+        float cur = Vector3.Distance(doorFlat, pFlat);
         Vector3 best = _door.position;
         for (int attempt = 0; attempt < 8; attempt++)
         {
             float a = Random.value * Mathf.PI * 2f;
-            float dMin = doorMinDistance, dMax = doorMaxDistance;
-            if (maxDistance > 0f)
-            {
-                dMax = Mathf.Max(8f, maxDistance);
-                dMin = Mathf.Min(dMin, dMax * 0.6f);
-            }
+            float dMin, dMax;
+            if (initial) { dMin = doorMinDistance * initialDoorDistanceMultiplier; dMax = doorMaxDistance * initialDoorDistanceMultiplier; }
+            else { dMax = Mathf.Max(8f, cur); dMin = Mathf.Max(8f, cur * 0.7f); }
             float d = Random.Range(dMin, dMax);
             Vector3 c = initial ? Vector3.zero : aroundPos;
             best = new Vector3(c.x + Mathf.Cos(a) * d, 0f, c.z + Mathf.Sin(a) * d);
@@ -441,13 +441,17 @@ public class ProcessionController : MonoBehaviour
     [Tooltip("How far they drift back out after holding you.")]
     public float retreatRadius = 7f;
     [Tooltip("Hard cap on statues including risers.")]
-    public int maxStatues = 30;
+    public int maxStatues = 50;
+    [Tooltip("Risers per wave.")]
+    public int risersPerWave = 3;
 
     [Header("Exit door")]
     [Tooltip("Min relocation distance from the player.")]
     public float doorMinDistance = 20f;
     [Tooltip("Max relocation distance from the player.")]
     public float doorMaxDistance = 45f;
+    [Tooltip("Initial spawn distance multiplier (jumps never increase distance, so it starts far).")]
+    public float initialDoorDistanceMultiplier = 5f;
 
     [Header("Exit")]
     [Tooltip("Scene the door leads to — the Backrooms hub.")]
