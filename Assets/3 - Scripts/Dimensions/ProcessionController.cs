@@ -208,7 +208,8 @@ public class ProcessionController : MonoBehaviour
                     Vector3 face = t - np; face.y = 0f;
                     if (face.sqrMagnitude > 0.01f) s.rb.rotation = Quaternion.LookRotation(face.normalized, Vector3.up);
                 }
-                RelocateDoor(c.transform.position, initial: false);
+                Vector3 doorFlat = _door.position; doorFlat.y = 0f;
+                RelocateDoor(c.transform.position, initial: false, maxDistance: Vector3.Distance(doorFlat, t));
             }
         }
         bool blackout = Time.time < _blackoutUntil;
@@ -258,13 +259,22 @@ public class ProcessionController : MonoBehaviour
         return _climaxed ? 3f : 4f;
     }
 
-    void RelocateDoor(Vector3 aroundPos, bool initial)
+    /// <summary>maxDistance > 0 caps how far the new spot may be from the player —
+    /// blackout jumps move the door AROUND you but never farther away, so closing in
+    /// on it stays winnable as the flashes speed up.</summary>
+    void RelocateDoor(Vector3 aroundPos, bool initial, float maxDistance = -1f)
     {
         Vector3 best = _door.position;
         for (int attempt = 0; attempt < 8; attempt++)
         {
             float a = Random.value * Mathf.PI * 2f;
-            float d = Random.Range(doorMinDistance, doorMaxDistance);
+            float dMin = doorMinDistance, dMax = doorMaxDistance;
+            if (maxDistance > 0f)
+            {
+                dMax = Mathf.Max(8f, maxDistance);
+                dMin = Mathf.Min(dMin, dMax * 0.6f);
+            }
+            float d = Random.Range(dMin, dMax);
             Vector3 c = initial ? Vector3.zero : aroundPos;
             best = new Vector3(c.x + Mathf.Cos(a) * d, 0f, c.z + Mathf.Sin(a) * d);
             if (initial || !ObserverState.IsObserved(new Bounds(best + Vector3.up * 1.5f, new Vector3(3f, 4f, 3f))))
