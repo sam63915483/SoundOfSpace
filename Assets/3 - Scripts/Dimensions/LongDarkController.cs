@@ -152,10 +152,11 @@ public class LongDarkController : MonoBehaviour
 
         foreach (var s in _stones)
         {
-            // FLAT test zone: wide enough that seeing any decent part of the stone
-            // counts (forgiving), but thin so the stone underfoot can't clip the
-            // frustum bottom while you look up (the bounce bug).
-            var b = new Bounds(s.tf.position, new Vector3(1.2f, 0.3f, 1.2f));
+            // FULL FOOTPRINT, kept flat: any sliver of the tile on screen counts as
+            // observed (a visible corner keeps it solid and un-rearranged). Flat is
+            // what matters — a TALL test box pokes up toward the camera and reads
+            // "observed" while looking up (the old bounce bug); a thin one can't.
+            var b = new Bounds(s.tf.position, new Vector3(2.6f, 0.2f, 2.6f));
             bool observed = s.tracker.Tick(b, out _, float.PositiveInfinity);
 
             if (!observed && s.unobservedSince < 0f) s.unobservedSince = Time.time;
