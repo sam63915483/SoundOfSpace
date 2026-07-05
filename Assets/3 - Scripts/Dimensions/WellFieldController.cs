@@ -10,6 +10,7 @@ public class WellFieldController : MonoBehaviour
     Transform[] _wells;
     ObservationTracker[] _trackers;
     Material _sandMat, _stoneMat, _holeMat;
+    AudioSource _trueWellAudio;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
@@ -52,6 +53,16 @@ public class WellFieldController : MonoBehaviour
             var b = new Bounds(_wells[i].position + Vector3.up * 0.6f, new Vector3(3.5f, 2.5f, 3.5f));
             _trackers[i].Tick(b, out bool justLost, float.PositiveInfinity);
             if (justLost) PlaceWell(i, cam.transform.position, initial: false);
+        }
+
+        // Gaze-reactive hum: volume tracks how directly the camera points at the true
+        // well — sweep your look around to "scan" for it, then home in by ear.
+        if (_trueWellAudio != null)
+        {
+            Vector3 to = _wells[0].position - cam.transform.position;
+            float align = Vector3.Dot(cam.transform.forward, to.normalized);      // 1 on-axis, -1 behind
+            float look01 = Mathf.InverseLerp(0.2f, 0.95f, align);                 // quiet unless roughly facing it
+            _trueWellAudio.volume = Mathf.Lerp(0.08f, 1f, look01);
         }
     }
 
@@ -122,14 +133,11 @@ public class WellFieldController : MonoBehaviour
             var l = lightGo.AddComponent<Light>();
             l.type = LightType.Point; l.range = 12f; l.intensity = 2.5f;
             l.color = new Color(1f, 0.75f, 0.35f);
-            // Loot-beam: a tall emissive column — the point light is invisible in full
-            // daylight and a sine hum can't be direction-traced by ear, so this is the
-            // actual find mechanic. Relocates with the well, so it stays a chase.
-            var beam = DimensionSceneUtil.Block(PrimitiveType.Cube, "Beam",
-                new Vector3(0f, 25f, 0f), new Vector3(0.7f, 50f, 0.7f),
-                DimensionSceneUtil.EmissiveMat(new Color(1f, 0.7f, 0.3f), 3f), well.transform);
-            Destroy(beam.GetComponent<Collider>());
-            DimensionSceneUtil.LoopingAudio(well, DimensionSceneUtil.ToneClip(528f, 2f, 0.5f), 260f, 1f);
+            // Gaze-reactive hum — the find mechanic: 3D rolloff handles distance, and
+            // Update scales volume by how directly the player is LOOKING at this well
+            // (loud on-axis, near-silent looked-away). You sweep your view like a dish
+            // antenna to triangulate it.
+            _trueWellAudio = DimensionSceneUtil.LoopingAudio(well, DimensionSceneUtil.ToneClip(528f, 2f, 0.5f), 260f, 1f);
             DimensionSceneUtil.CreatePortal("ToD3", new Vector3(0f, 0.5f, 0f),
                 new Vector3(1.7f, 0.8f, 1.7f), LevelPortal.PortalAction.EnterInterior, nextScene, well.transform);
         }

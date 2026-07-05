@@ -14,6 +14,11 @@ public class WaitingFieldController : MonoBehaviour
     PlayerController _player;
     int _playerRefindCooldown;
     bool _observedNow = true;               // start frozen until proven unobserved
+    bool _wasObservedNow;
+    float _frozenDist;                      // distance locked in when the current look began
+    bool _arrived;                          // stalk complete — door open, portal live
+    GameObject _portalGo;
+    Material _glowMat;
     bool _atmosApplied;
 
     void Awake()
@@ -21,7 +26,9 @@ public class WaitingFieldController : MonoBehaviour
         _root = transform;
         var groundMat = DimensionSceneUtil.Mat(new Color(0.18f, 0.26f, 0.16f), 0.05f);
         var stoneMat  = DimensionSceneUtil.Mat(new Color(0.08f, 0.07f, 0.09f), 0.3f);
-        var glowMat   = DimensionSceneUtil.EmissiveMat(new Color(0.9f, 0.55f, 0.25f), 2f);
+        // Doorway starts DARK (dormant). Emission ignites only when the stalk completes.
+        var glowMat   = DimensionSceneUtil.Mat(new Color(0.12f, 0.08f, 0.06f), 0.2f);
+        _glowMat = glowMat;
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Ground",
             new Vector3(0f, -0.5f, 0f), new Vector3(2000f, 1f, 2000f), groundMat, _root);
@@ -38,9 +45,10 @@ public class WaitingFieldController : MonoBehaviour
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Lintel", new Vector3(0f, 7.5f, 0f), new Vector3(5.2f, 3f, 1.5f), stoneMat, _monolith);
         var glow = DimensionSceneUtil.Block(PrimitiveType.Cube, "DoorGlow", new Vector3(0f, 3f, 0f), new Vector3(1.35f, 5.9f, 0.1f), glowMat, _monolith);
         Destroy(glow.GetComponent<Collider>());
-        var portal = DimensionSceneUtil.CreatePortal("ToBackrooms", Vector3.zero, new Vector3(1.3f, 5.8f, 1.2f),
+        _portalGo = DimensionSceneUtil.CreatePortal("ToBackrooms", Vector3.zero, new Vector3(1.3f, 5.8f, 1.2f),
             LevelPortal.PortalAction.EnterInterior, nextScene, _monolith);
-        portal.transform.localPosition = new Vector3(0f, 3f, 0f);
+        _portalGo.transform.localPosition = new Vector3(0f, 3f, 0f);
+        _portalGo.SetActive(false);          // the door only works once it has COME TO YOU
 
         // Spawn far away in a random direction, doorway facing the origin.
         float a = Random.value * Mathf.PI * 2f;
@@ -64,11 +72,24 @@ public class WaitingFieldController : MonoBehaviour
         // Whole-monolith bounds (roughly its 5×9×1.5 body wherever it currently stands).
         var b = new Bounds(_monolith.position + Vector3.up * 4.5f, new Vector3(6f, 10f, 3f));
         _observedNow = _tracker.Tick(b, out _, float.PositiveInfinity);
+        // Lock in the separation at the moment a look begins — while watched, the door
+        // holds THAT distance (walk at it and it slides away). Only unobserved time
+        // can ever close the gap.
+        if (_observedNow && !_wasObservedNow && _player != null && _player.Rigidbody != null)
+            _frozenDist = FlatDistanceToPlayer();
+        _wasObservedNow = _observedNow;
+    }
+
+    float FlatDistanceToPlayer()
+    {
+        Vector3 d = _player.Rigidbody.position - _monolithRb.position;
+        d.y = 0f;
+        return d.magnitude;
     }
 
     void FixedUpdate()
     {
-        if (_observedNow) return;                            // frozen the moment you look
+        if (_arrived) return;                                // door open — it waits forever now
         if (_player == null && --_playerRefindCooldown <= 0)
         {
             _player = FindObjectOfType<PlayerController>();
@@ -79,12 +100,38 @@ public class WaitingFieldController : MonoBehaviour
         Vector3 target = _player.Rigidbody.position; target.y = 0f;
         Vector3 pos = _monolithRb.position; pos.y = 0f;
         Vector3 to = target - pos;
-        if (to.magnitude <= stopDistance) return;            // arrived — waiting at your back
+        float dist = to.magnitude;
+        Vector3 dir = dist > 1e-4f ? to / dist : Vector3.forward;
 
-        Vector3 step = to.normalized * advanceSpeed * Time.fixedDeltaTime;
-        if (step.magnitude > to.magnitude - stopDistance) step = to.normalized * (to.magnitude - stopDistance);
+        if (_observedNow)
+        {
+            // Unapproachable while watched: hold the distance the look began at.
+            if (_frozenDist > stopDistance && dist < _frozenDist - 0.01f)
+            {
+                Vector3 back = -dir * Mathf.Min(advanceSpeed * Time.fixedDeltaTime, _frozenDist - dist);
+                _monolithRb.MovePosition(_monolithRb.position + back);
+                _monolithRb.MoveRotation(Quaternion.LookRotation(dir, Vector3.up));
+            }
+            return;
+        }
+
+        if (dist <= stopDistance) { Arrive(dir); return; }   // stalk complete
+
+        Vector3 step = dir * advanceSpeed * Time.fixedDeltaTime;
+        if (step.magnitude > dist - stopDistance) step = dir * (dist - stopDistance);
         _monolithRb.MovePosition(_monolithRb.position + step);
-        _monolithRb.MoveRotation(Quaternion.LookRotation(to.normalized, Vector3.up));
+        _monolithRb.MoveRotation(Quaternion.LookRotation(dir, Vector3.up));
+    }
+
+    void Arrive(Vector3 dir)
+    {
+        _arrived = true;
+        _portalGo.SetActive(true);
+        // Ignite the doorway — emission on the (instance) glow material.
+        _glowMat.EnableKeyword("_EMISSION");
+        _glowMat.SetColor("_EmissionColor", new Color(0.9f, 0.55f, 0.25f) * 2f);
+        _glowMat.color = new Color(0.9f, 0.55f, 0.25f);
+        if (_rumble != null) _rumble.pitch = 0.6f;           // settle into a low idle drone
     }
 
     // ================= tuning (appended at END per repo conventions) =================
