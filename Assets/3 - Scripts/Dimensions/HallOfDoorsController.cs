@@ -1,96 +1,190 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// D7 "Hall of Doors": one endless hotel corridor, identical doors on both sides.
-/// Every door returns you to the corridor start — except one, findable by a knocking
-/// sound that gets louder the more directly you face it (D2's gaze-audio) and closer
-/// you get. Whenever the true door leaves your view, the knock moves to another door.
+/// D7 "Hall of Doors" (v2): rooms of three colored doors. Look at a door within reach
+/// and press F to open it — it reveals the next room, and closes behind you once you
+/// step through. The true path (an alien in the world gives the clue) is:
+/// RED, RED, WHITE, BLACK, BLACK, BLACK → exit arch to the next dimension.
+/// Any wrong color silently derails you into endless rooms of random doors.
 /// </summary>
 public class HallOfDoorsController : MonoBehaviour
 {
-    Transform _root;
-    Transform[] _doors;
-    int _trueIndex = -1;
-    ObservationTracker _trueTracker = new ObservationTracker();
-    AudioSource _knock;
+    enum DoorColor { Red, Yellow, Blue, White, Black, Green, Purple, Orange }
+
+    static readonly DoorColor[] Sequence = { DoorColor.Red, DoorColor.Red, DoorColor.White, DoorColor.Black, DoorColor.Black, DoorColor.Black };
+
+    class Door
+    {
+        public Transform panel;          // the sliding colored slab
+        public Transform promptAnchor;
+        public DoorColor color;
+        public Vector3 outDir;           // world direction this door leads
+        public bool interactive;
+    }
+
+    class RoomShell
+    {
+        public Transform root;
+        public Door[] doors = new Door[4];   // +x, -x, +z, -z
+        public Material[] panelMats = new Material[4];
+    }
+
+    const float RoomSize = 9f;           // interior span
+    const float WallHalf = RoomSize * 0.5f;
+
+    RoomShell _shellA, _shellB;
+    RoomShell _current, _other;
+    int _progress;                       // index into Sequence while on the true path
+    bool _onPath = true;
+    bool _finished;
+    Door _openDoor;                      // door currently sliding/standing open
+    float _openT;                        // 0 closed → 1 open
+    bool _transiting;                    // player crossing into the other shell
+    Vector3 _pendingRoomCenter;
+    TMPro.TextMeshPro _prompt;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
+    Material _carpetMat, _wallMat, _ceilMat, _frameMat, _lampMat;
+
+    static readonly Vector3[] Dirs = { Vector3.right, Vector3.left, Vector3.forward, Vector3.back };
 
     void Awake()
     {
-        _root = transform;
-        var carpetMat = DimensionSceneUtil.Mat(new Color(0.30f, 0.12f, 0.12f), 0.05f);
-        var wallMat   = DimensionSceneUtil.Mat(new Color(0.52f, 0.46f, 0.36f), 0.1f);
-        var ceilMat   = DimensionSceneUtil.Mat(new Color(0.28f, 0.26f, 0.24f), 0.1f);
-        var lampMat   = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.85f, 0.6f), 1.4f);
-        var frameMat  = DimensionSceneUtil.Mat(new Color(0.20f, 0.13f, 0.08f), 0.15f);
-        var panelMat  = DimensionSceneUtil.Mat(new Color(0.33f, 0.22f, 0.13f), 0.2f);
+        _carpetMat = DimensionSceneUtil.Mat(new Color(0.30f, 0.12f, 0.12f), 0.05f);
+        _wallMat   = DimensionSceneUtil.Mat(new Color(0.52f, 0.46f, 0.36f), 0.1f);
+        _ceilMat   = DimensionSceneUtil.Mat(new Color(0.28f, 0.26f, 0.24f), 0.1f);
+        _frameMat  = DimensionSceneUtil.Mat(new Color(0.20f, 0.13f, 0.08f), 0.15f);
+        _lampMat   = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.85f, 0.6f), 1.4f);
 
-        // Corridor extends back to z=-4 so the (0, 1.5, 0) spawn lands well inside it.
-        float length = (doorCount / 2) * doorSpacing + 12f;
-        float zc = (length - 4f) * 0.5f;
-        float span = length + 4f;
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "Carpet", new Vector3(0f, -0.15f, zc), new Vector3(4f, 0.3f, span), carpetMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "WallL", new Vector3(-2.15f, 1.9f, zc), new Vector3(0.3f, 4.1f, span), wallMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "WallR", new Vector3( 2.15f, 1.9f, zc), new Vector3(0.3f, 4.1f, span), wallMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "Ceil",  new Vector3(0f, 4f, zc), new Vector3(4.6f, 0.3f, span), ceilMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "EndA",  new Vector3(0f, 1.9f, -4.5f), new Vector3(4.6f, 4.1f, 0.3f), wallMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "EndB",  new Vector3(0f, 1.9f, length + 0.5f), new Vector3(4.6f, 4.1f, 0.3f), wallMat, _root);
-        for (float z = 6f; z < length; z += 12f)
+        _shellA = BuildShell("RoomA");
+        _shellB = BuildShell("RoomB");
+        _current = _shellA;
+        _other = _shellB;
+        _other.root.gameObject.SetActive(false);
+
+        _current.root.position = Vector3.zero;
+        // Room 0 is always Red / Yellow / Blue on three walls; the fourth is sealed.
+        DressRoom(_current, new[] { DoorColor.Red, DoorColor.Yellow, DoorColor.Blue }, sealedWall: 3);
+
+        var promptGo = new GameObject("DoorPrompt");
+        promptGo.transform.SetParent(transform, false);
+        _prompt = promptGo.AddComponent<TMPro.TextMeshPro>();
+        _prompt.text = "[F]  OPEN";
+        _prompt.fontSize = 28f;
+        _prompt.alignment = TMPro.TextAlignmentOptions.Center;
+        _prompt.color = new Color(1f, 0.95f, 0.8f);
+        _prompt.GetComponent<RectTransform>().sizeDelta = new Vector2(20f, 4f);
+        promptGo.SetActive(false);
+
+        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(110f, 2f, 0.04f), 300f, 1f);
+    }
+
+    // One reusable room: carpet, ceiling, lamp, and four walls each split around a
+    // central doorway with a slidable panel. Doors not in use are sealed by their panel.
+    RoomShell BuildShell(string name)
+    {
+        var shell = new RoomShell();
+        var root = new GameObject(name);
+        root.transform.SetParent(transform, false);
+        shell.root = root.transform;
+
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Carpet", new Vector3(0f, -0.15f, 0f), new Vector3(RoomSize + 1f, 0.3f, RoomSize + 1f), _carpetMat, shell.root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Ceil", new Vector3(0f, 3.9f, 0f), new Vector3(RoomSize + 1f, 0.3f, RoomSize + 1f), _ceilMat, shell.root);
+        var lamp = DimensionSceneUtil.Block(PrimitiveType.Cube, "Lamp", new Vector3(0f, 3.7f, 0f), new Vector3(1f, 0.1f, 1f), _lampMat, shell.root);
+        Destroy(lamp.GetComponent<Collider>());
+        var lightGo = new GameObject("LampLight");
+        lightGo.transform.SetParent(shell.root, false);
+        lightGo.transform.localPosition = new Vector3(0f, 2.6f, 0f);
+        var pl = lightGo.AddComponent<Light>();
+        pl.type = LightType.Point; pl.range = 12f; pl.intensity = 1.2f;
+        pl.color = new Color(1f, 0.88f, 0.65f);
+
+        for (int w = 0; w < 4; w++)
         {
-            var l = DimensionSceneUtil.Block(PrimitiveType.Cube, "Lamp", new Vector3(0f, 3.8f, z), new Vector3(0.8f, 0.1f, 0.8f), lampMat, _root);
-            Destroy(l.GetComponent<Collider>());
-            var lightGo = new GameObject("LampLight");
-            lightGo.transform.SetParent(l.transform, false);
-            lightGo.transform.localPosition = Vector3.down * 2f;
-            var pl = lightGo.AddComponent<Light>();
-            pl.type = LightType.Point; pl.range = 10f; pl.intensity = 1.0f;
-            pl.color = new Color(1f, 0.88f, 0.65f);
-        }
+            Vector3 dir = Dirs[w];
+            Vector3 side = Vector3.Cross(Vector3.up, dir);            // along the wall
+            Vector3 wallCenter = dir * WallHalf;
+            // Two wall segments flanking a 1.6m doorway + lintel above it.
+            float segLen = (RoomSize - 1.6f) * 0.5f;
+            Vector3 segScale = new Vector3(Mathf.Abs(side.x) * segLen + Mathf.Abs(dir.x) * 0.3f, 3.8f,
+                                           Mathf.Abs(side.z) * segLen + Mathf.Abs(dir.z) * 0.3f);
+            DimensionSceneUtil.Block(PrimitiveType.Cube, "WallSegA" + w,
+                wallCenter + side * (0.8f + segLen * 0.5f) + Vector3.up * 1.9f, segScale, _wallMat, shell.root);
+            DimensionSceneUtil.Block(PrimitiveType.Cube, "WallSegB" + w,
+                wallCenter - side * (0.8f + segLen * 0.5f) + Vector3.up * 1.9f, segScale, _wallMat, shell.root);
+            Vector3 lintelScale = new Vector3(Mathf.Abs(side.x) * 1.6f + Mathf.Abs(dir.x) * 0.3f, 1f,
+                                              Mathf.Abs(side.z) * 1.6f + Mathf.Abs(dir.z) * 0.3f);
+            DimensionSceneUtil.Block(PrimitiveType.Cube, "Lintel" + w,
+                wallCenter + Vector3.up * 3.3f, lintelScale, _wallMat, shell.root);
+            // Threshold under the doorway (bridges the gap between butted rooms).
+            DimensionSceneUtil.Block(PrimitiveType.Cube, "Threshold" + w,
+                wallCenter + Vector3.up * -0.15f, new Vector3(Mathf.Abs(side.x) * 1.6f + Mathf.Abs(dir.x) * 1.2f, 0.3f,
+                                                              Mathf.Abs(side.z) * 1.6f + Mathf.Abs(dir.z) * 1.2f), _carpetMat, shell.root);
 
-        // Doors: pairs facing each other down the corridor.
-        _doors = new Transform[doorCount];
-        for (int i = 0; i < doorCount; i++)
+            // The sliding colored panel (its own material instance per wall).
+            shell.panelMats[w] = DimensionSceneUtil.Mat(Color.grey, 0.25f);
+            Vector3 panelScale = new Vector3(Mathf.Abs(side.x) * 1.55f + Mathf.Abs(dir.x) * 0.15f, 2.75f,
+                                             Mathf.Abs(side.z) * 1.55f + Mathf.Abs(dir.z) * 0.15f);
+            var panel = DimensionSceneUtil.Block(PrimitiveType.Cube, "Panel" + w,
+                wallCenter + Vector3.up * 1.4f, panelScale, shell.panelMats[w], shell.root);
+
+            var anchor = new GameObject("PromptAnchor" + w);
+            anchor.transform.SetParent(shell.root, false);
+            anchor.transform.localPosition = wallCenter + Vector3.up * 3.0f - dir * 0.6f;
+
+            shell.doors[w] = new Door { panel = panel.transform, promptAnchor = anchor.transform, outDir = dir };
+        }
+        return shell;
+    }
+
+    // Assign colors: three interactive doors, one sealed wall (the one you came from).
+    void DressRoom(RoomShell shell, DoorColor[] colors, int sealedWall)
+    {
+        int c = 0;
+        for (int w = 0; w < 4; w++)
         {
-            bool left = i % 2 == 0;
-            float z = 6f + (i / 2) * doorSpacing;
-            float x = left ? -2.0f : 2.0f;
-            // Build the door at identity FIRST, then place it — Block positions in
-            // WORLD space, so building after rotating/moving the root piled all 40
-            // doors' parts at the origin (the "no doors, just a hallway" bug).
-            var door = new GameObject("Door" + i);
-            door.transform.SetParent(_root, false);
-            DimensionSceneUtil.Block(PrimitiveType.Cube, "Panel", new Vector3(0f, 1.4f, 0f), new Vector3(1.2f, 2.8f, 0.12f), panelMat, door.transform);
-            DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameL", new Vector3(-0.7f, 1.4f, 0f), new Vector3(0.18f, 2.8f, 0.2f), frameMat, door.transform);
-            DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameR", new Vector3( 0.7f, 1.4f, 0f), new Vector3(0.18f, 2.8f, 0.2f), frameMat, door.transform);
-            DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameT", new Vector3(0f, 2.85f, 0f), new Vector3(1.58f, 0.18f, 0.2f), frameMat, door.transform);
-            var knob = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Knob", new Vector3(0.45f, 1.35f, 0.12f), Vector3.one * 0.12f, frameMat, door.transform);
-            Destroy(knob.GetComponent<Collider>());
-            door.transform.SetPositionAndRotation(new Vector3(x, 0f, z), Quaternion.Euler(0f, left ? 90f : -90f, 0f));
-            // Trigger pad in FRONT of the door — local +z faces the corridor centre for
-            // BOTH door yaws (local -0.5 buried every trigger inside the wall: doors
-            // visibly there, knocking audible, nothing ever fired).
-            var trig = new GameObject("DoorTrigger");
-            trig.transform.SetParent(door.transform, false);
-            trig.transform.localPosition = new Vector3(0f, 1.2f, 0.5f);
-            var box = trig.AddComponent<BoxCollider>();
-            box.isTrigger = true; box.size = new Vector3(1.1f, 2.4f, 0.7f);
-            var dt = trig.AddComponent<HallDoorTrigger>();
-            dt.owner = this; dt.index = i;
-            _doors[i] = door.transform;
+            var door = shell.doors[w];
+            door.panel.gameObject.SetActive(true);
+            SetPanelClosed(shell, w);
+            if (w == sealedWall)
+            {
+                door.interactive = false;
+                shell.panelMats[w].color = new Color(0.25f, 0.22f, 0.2f);   // inert, unremarkable
+            }
+            else
+            {
+                door.interactive = true;
+                door.color = colors[c++];
+                ApplyDoorColor(shell.panelMats[w], door.color);
+            }
         }
+    }
 
-        // Knock lives on its OWN child — MoveTrueDoor repositions this transform, and
-        // putting the source on DimensionRoot moved the entire corridor with it (the
-        // world teleported out from under the player on load).
-        var knockGo = new GameObject("KnockSource");
-        knockGo.transform.SetParent(_root, false);
-        _knock = DimensionSceneUtil.LoopingAudio(knockGo, KnockClip(), 60f, 1f);
-        MoveTrueDoor();
-        var hum = new GameObject("HumBed");
-        hum.transform.SetParent(_root, false);
-        DimensionSceneUtil.LoopingAudio(hum, DimensionSceneUtil.ToneClip(110f, 2f, 0.04f), 300f, 1f);
+    void ApplyDoorColor(Material m, DoorColor c)
+    {
+        Color col = c switch
+        {
+            DoorColor.Red => new Color(0.75f, 0.1f, 0.1f),
+            DoorColor.Yellow => new Color(0.85f, 0.75f, 0.15f),
+            DoorColor.Blue => new Color(0.15f, 0.3f, 0.8f),
+            DoorColor.White => new Color(0.92f, 0.92f, 0.9f),
+            DoorColor.Black => new Color(0.04f, 0.04f, 0.05f),
+            DoorColor.Green => new Color(0.15f, 0.6f, 0.2f),
+            DoorColor.Purple => new Color(0.5f, 0.15f, 0.65f),
+            _ => new Color(0.85f, 0.45f, 0.1f),
+        };
+        m.color = col;
+        m.EnableKeyword("_EMISSION");
+        m.SetColor("_EmissionColor", col * 0.35f);          // readable in dim light
+    }
+
+    void SetPanelClosed(RoomShell shell, int w)
+    {
+        var p = shell.doors[w].panel;
+        Vector3 lp = p.localPosition;
+        p.localPosition = new Vector3(lp.x, 1.4f, lp.z);
     }
 
     void Update()
@@ -104,96 +198,146 @@ public class HallOfDoorsController : MonoBehaviour
             _atmosApplied = true;
         }
         var cam = ObserverState.Cam;
-        if (cam == null || _trueIndex < 0) return;
-
-        // True door relocates whenever it leaves your view.
-        Vector3 dp = _doors[_trueIndex].position;
-        var b = new Bounds(dp + Vector3.up * 1.5f, new Vector3(2f, 3.2f, 2f));
-        _trueTracker.Tick(b, out bool justLost, float.PositiveInfinity);
-        if (justLost) { MoveTrueDoor(); return; }
-
-        // Gaze + distance reactive knocking (the find mechanic).
-        Vector3 to = dp + Vector3.up * 1.4f - cam.transform.position;
-        float align = Vector3.Dot(cam.transform.forward, to.normalized);
-        float look01 = Mathf.InverseLerp(0.2f, 0.95f, align);
-        _knock.volume = Mathf.Lerp(0.06f, 1f, look01);
-    }
-
-    void MoveTrueDoor()
-    {
-        int next = _trueIndex;
-        while (next == _trueIndex) next = Random.Range(0, doorCount);
-        _trueIndex = next;
-        _trueTracker.Reset();
-        _knock.transform.position = _doors[_trueIndex].position + Vector3.up * 1.4f;
-    }
-
-    public void DoorEntered(int index)
-    {
-        if (index == _trueIndex)
-        {
-            PortalManager.EnterInterior(nextScene);
-            return;
-        }
-        // Wrong door: every one of them opens back onto the start of the corridor.
+        if (cam == null || _finished) return;
         if (_player == null && --_playerRefindCooldown <= 0)
         {
             _player = FindObjectOfType<PlayerController>();
             _playerRefindCooldown = 60;
         }
         if (_player == null || _player.Rigidbody == null) return;
-        _player.Rigidbody.position = new Vector3(0f, 1.5f, 2f);
-        _player.Rigidbody.velocity = Vector3.zero;
-        MoveTrueDoor();
+        Vector3 playerPos = _player.Rigidbody.position;
+
+        // Animate the open door panel sliding into the floor.
+        if (_openDoor != null)
+        {
+            _openT = Mathf.MoveTowards(_openT, 1f, Time.deltaTime / 0.45f);
+            Vector3 lp = _openDoor.panel.localPosition;
+            _openDoor.panel.localPosition = new Vector3(lp.x, Mathf.Lerp(1.4f, -1.6f, _openT), lp.z);
+        }
+
+        // Transit: once the player is inside the newly revealed room, shut the door
+        // behind them and recycle the old shell.
+        if (_transiting)
+        {
+            Vector3 flat = playerPos - _pendingRoomCenter; flat.y = 0f;
+            if (Mathf.Abs(flat.x) < WallHalf - 1f && Mathf.Abs(flat.z) < WallHalf - 1f)
+                CompleteTransit();
+            return;                                          // no interactions mid-transit
+        }
+
+        // Gaze + proximity door prompt.
+        Door target = null;
+        foreach (var d in _current.doors)
+        {
+            if (!d.interactive) continue;
+            Vector3 doorWorld = d.panel.position;
+            if (Vector3.Distance(playerPos, doorWorld) > interactDistance) continue;
+            Vector3 to = doorWorld - cam.transform.position;
+            if (Vector3.Angle(cam.transform.forward, to) > 22f) continue;
+            target = d;
+            break;
+        }
+
+        if (target != null)
+        {
+            _prompt.gameObject.SetActive(true);
+            _prompt.transform.position = target.promptAnchor.position;
+            _prompt.transform.rotation = Quaternion.LookRotation(_prompt.transform.position - cam.transform.position);
+            bool pressed = Input.GetKeyDown(KeyCode.F) || TutorialGate.PadPressed(TutorialGate.PadButton.X);
+            if (pressed) OpenDoor(target);
+        }
+        else
+            _prompt.gameObject.SetActive(false);
     }
 
-    // Three knocks, low and woody, looping every couple of seconds.
-    static AudioClip KnockClip()
+    void OpenDoor(Door door)
     {
-        int rate = 44100;
-        float seconds = 2.2f;
-        int samples = (int)(rate * seconds);
-        var data = new float[samples];
-        float[] knockTimes = { 0f, 0.28f, 0.56f };
-        foreach (float t0 in knockTimes)
+        _prompt.gameObject.SetActive(false);
+
+        bool correct = _onPath && door.color == Sequence[Mathf.Min(_progress, Sequence.Length - 1)];
+        if (correct) _progress++;
+        else _onPath = false;                                // silently derailed — endless rooms
+
+        // Place the other shell beyond the opened door and dress it for what comes next.
+        Vector3 nextCenter = _current.root.position + door.outDir * (RoomSize + 0.6f);
+        _other.root.position = nextCenter;
+        _other.root.gameObject.SetActive(true);
+
+        int entryWall = System.Array.IndexOf(Dirs, -door.outDir);
+        if (_onPath && _progress >= Sequence.Length)
+            DressExitRoom(_other, entryWall);
+        else
+            DressRoom(_other, NextColors(), entryWall);
+
+        // Open BOTH aligned panels: this room's door and the next room's entry panel.
+        _openDoor = door;
+        _openT = 0f;
+        var entryPanel = _other.doors[entryWall].panel;
+        entryPanel.gameObject.SetActive(false);              // entry side simply stands open
+        _pendingRoomCenter = nextCenter;
+        _transiting = true;
+    }
+
+    void CompleteTransit()
+    {
+        _transiting = false;
+        // Shut the door behind the player: restore both panels, seal the entry wall.
+        if (_openDoor != null) { SetPanelClosed(_current, System.Array.IndexOf(_current.doors, _openDoor)); }
+        _openDoor = null;
+        foreach (var d in _other.doors) d.panel.gameObject.SetActive(true);
+
+        var old = _current;
+        _current = _other;
+        _other = old;
+        _other.root.gameObject.SetActive(false);             // old room vanishes behind the shut door
+    }
+
+    // Colors for the next room: on the path, the required color plus two distinct
+    // decoys; off the path, three distinct randoms forever.
+    DoorColor[] NextColors()
+    {
+        var all = (DoorColor[])System.Enum.GetValues(typeof(DoorColor));
+        var picks = new List<DoorColor>();
+        if (_onPath) picks.Add(Sequence[_progress]);
+        while (picks.Count < 3)
         {
-            int start = (int)(t0 * rate);
-            int len = (int)(0.14f * rate);
-            for (int i = 0; i < len && start + i < samples; i++)
-            {
-                float t = i / (float)rate;
-                data[start + i] += Mathf.Sin(2f * Mathf.PI * 85f * t) * Mathf.Exp(-t * 34f) * 0.9f;
-            }
+            var c = all[Random.Range(0, all.Length)];
+            if (!picks.Contains(c)) picks.Add(c);
         }
-        var clip = AudioClip.Create("knock", samples, 1, rate, false);
-        clip.SetData(data, 0);
-        return clip;
+        // Shuffle so the required color isn't always on the same wall.
+        for (int i = 0; i < picks.Count; i++)
+        {
+            int j = Random.Range(i, picks.Count);
+            (picks[i], picks[j]) = (picks[j], picks[i]);
+        }
+        return picks.ToArray();
+    }
+
+    // The final room: a glowing arch straight ahead — walk through to leave.
+    void DressExitRoom(RoomShell shell, int entryWall)
+    {
+        _finished = true;
+        for (int w = 0; w < 4; w++)
+        {
+            shell.doors[w].interactive = false;
+            shell.panelMats[w].color = new Color(0.25f, 0.22f, 0.2f);
+            shell.doors[w].panel.gameObject.SetActive(true);
+            SetPanelClosed(shell, w);
+        }
+        var glow = DimensionSceneUtil.EmissiveMat(new Color(0.75f, 0.95f, 1f), 2.5f);
+        var arch = DimensionSceneUtil.Block(PrimitiveType.Cube, "ExitArch",
+            shell.root.position + new Vector3(0f, 1.5f, 0f), new Vector3(1.6f, 3f, 0.1f), glow, shell.root);
+        Destroy(arch.GetComponent<Collider>());
+        DimensionSceneUtil.CreatePortal("ToNext", shell.root.position + new Vector3(0f, 1.5f, 0f),
+            new Vector3(1.6f, 3f, 0.8f), LevelPortal.PortalAction.EnterInterior, nextScene, shell.root);
     }
 
     // ================= tuning (appended at END per repo conventions) =================
-    [Header("Corridor")]
-    [Tooltip("Total doors (both sides). Even number.")]
-    public int doorCount = 40;
-    [Tooltip("Distance between door pairs along the corridor.")]
-    public float doorSpacing = 6f;
+    [Header("Interaction")]
+    [Tooltip("How close you must be to a door for the open prompt.")]
+    public float interactDistance = 2.2f;
 
     [Header("Exit")]
-    [Tooltip("Scene the true door leads to.")]
+    [Tooltip("Scene the completed sequence leads to.")]
     public string nextScene = "D8_Procession";
-}
-
-/// <summary>Per-door trigger: reports which door the player stepped into.</summary>
-public class HallDoorTrigger : MonoBehaviour
-{
-    [HideInInspector] public HallOfDoorsController owner;
-    [HideInInspector] public int index;
-    float _cooldownUntil;
-
-    void OnTriggerEnter(Collider other)
-    {
-        if (Time.time < _cooldownUntil || owner == null) return;
-        if (other.GetComponentInParent<PlayerController>() == null) return;
-        _cooldownUntil = Time.time + 1f;
-        owner.DoorEntered(index);
-    }
 }

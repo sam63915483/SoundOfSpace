@@ -223,12 +223,12 @@ public class ProcessionController : MonoBehaviour
         Vector3 target = _player.Rigidbody.position;
         target.y = 0f;
 
-        // Encirclement check: how many statues are already standing on their ring slot?
+        // Encirclement check: how many statues are standing ON the ring?
         int onRing = 0;
         foreach (var s in _statues)
         {
             Vector3 pos = s.rb.position; pos.y = 0f;
-            if (Vector3.Distance(pos, target) < ringRadius + 1.2f) onRing++;
+            if (Mathf.Abs(Vector3.Distance(pos, target) - ringRadius) < 1.2f) onRing++;
         }
         bool encircled = onRing >= Mathf.CeilToInt(statueCount * 0.7f);
         if (encircled && _encircledSince < 0f) _encircledSince = Time.time;
@@ -237,36 +237,43 @@ public class ProcessionController : MonoBehaviour
         // so a closed circle is terrifying but never a permanent softlock.
         if (_encircledSince >= 0f && Time.time - _encircledSince > holdSeconds) _retreating = true;
 
+        // Slot assignment every tick: sort statues by their CURRENT angle around the
+        // player and hand out evenly spaced ring slots in that same order. Everyone
+        // takes the nearest gap — no long orbits, no holes, no crossing the middle.
+        var byAngle = new System.Collections.Generic.List<Statue>(_statues);
+        byAngle.Sort((a, b) =>
+        {
+            Vector3 ra = a.rb.position - target, rbv = b.rb.position - target;
+            return Mathf.Atan2(ra.z, ra.x).CompareTo(Mathf.Atan2(rbv.z, rbv.x));
+        });
+        Vector3 rel0 = byAngle[0].rb.position - target;
+        float baseAngle = Mathf.Atan2(rel0.z, rel0.x);
+        for (int k = 0; k < byAngle.Count; k++)
+            byAngle[k].slotAngle = baseAngle + k * Mathf.PI * 2f / statueCount;
+
+        float mult = Mathf.Lerp(1f, maxSpeedMultiplier, Ramp01);
         foreach (var s in _statues)
         {
             if (s.observedNow) continue;                    // statues never move while seen
 
-            Vector3 pos = s.rb.position; pos.y = 0f;
-            Vector3 goal;
-            if (_retreating)
-            {
-                Vector3 away = (pos - target).normalized;
-                if (away.sqrMagnitude < 0.01f) away = Vector3.forward;
-                goal = target + away * retreatRadius;
-            }
-            else
-            {
-                // Steer for MY slot on the ring around the player — the crowd doesn't
-                // chase you, it closes around you.
-                goal = target + new Vector3(Mathf.Cos(s.slotAngle), 0f, Mathf.Sin(s.slotAngle)) * ringRadius;
-            }
+            Vector3 rel = s.rb.position - target; rel.y = 0f;
+            float dist = Mathf.Max(rel.magnitude, 0.01f);
+            float curDeg = Mathf.Atan2(rel.z, rel.x) * Mathf.Rad2Deg;
+            float spd = s.speed * mult;
 
-            Vector3 to = goal - pos;
-            float dist = to.magnitude;
-            if (dist < 0.15f) continue;
-            Vector3 dir = to / dist;
-            // Speed climbs with time-in-dimension: 1x at entry → maxSpeedMultiplier at
-            // the climax and stays there. Past ~90s the circle closes almost instantly.
-            float spd = s.speed * Mathf.Lerp(1f, maxSpeedMultiplier, Ramp01);
-            Vector3 step = dir * spd * Time.fixedDeltaTime;
-            if (step.magnitude > dist) step = to;
-            s.rb.MovePosition(s.rb.position + step);
-            Vector3 face = target - pos;
+            // POLAR movement: radius eases to the ring (from outside — never through
+            // the player), angle orbits toward this statue's slot. The circle closes
+            // like a noose instead of a chase.
+            float goalRadius = _retreating ? retreatRadius : ringRadius;
+            float newDist = Mathf.MoveTowards(dist, goalRadius, spd * Time.fixedDeltaTime);
+            float slotDeg = s.slotAngle * Mathf.Rad2Deg;
+            float angularDegPerSec = spd / Mathf.Max(newDist, 2f) * Mathf.Rad2Deg;
+            float newDeg = _retreating ? curDeg : Mathf.MoveTowardsAngle(curDeg, slotDeg, angularDegPerSec * Time.fixedDeltaTime);
+            float newRad = newDeg * Mathf.Deg2Rad;
+            Vector3 np = target + new Vector3(Mathf.Cos(newRad), 0f, Mathf.Sin(newRad)) * newDist;
+            np.y = s.rb.position.y;
+            s.rb.MovePosition(np);
+            Vector3 face = target - np; face.y = 0f;
             if (face.sqrMagnitude > 0.01f)
                 s.rb.MoveRotation(Quaternion.LookRotation(face.normalized, Vector3.up));
         }
