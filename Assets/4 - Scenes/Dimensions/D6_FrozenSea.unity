@@ -222,6 +222,8 @@ MonoBehaviour:
   beamSweepSpeed: 25
   beamHalfAngle: 7
   caughtGraceSeconds: 0.9
+  fireMinDistance: 45
+  fireMaxDistance: 130
   nextScene: D7_HallOfDoors
 --- !u!4 &1241879775
 Transform:

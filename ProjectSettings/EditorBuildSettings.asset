@@ -41,4 +41,16 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D4_WaitingField.unity
     guid: fbb2e0a4017de924f94d1edd70bf353c
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D5_Archive.unity
+    guid: 799aabdff7d1ff34aa5ec419cc91e6a7
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D6_FrozenSea.unity
+    guid: 831acd8f4d94a33409d07bdb17255057
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D7_HallOfDoors.unity
+    guid: 99d27ade13a5f464288726ee6530c4d9
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D8_Procession.unity
+    guid: 5d4d668021fad11438b75e0f34b39671
   m_configObjects: {}

@@ -826,6 +826,7 @@ MonoBehaviour:
   microDriftAmount: 0.04
   panicStutterInterval: {x: 6, y: 10}
   dyingDipInterval: {x: 35, y: 55}
+  grassLightStrength: 1
   enableSway: 1
   walkBobAmplitude: 2
   walkBobFrequency: 7
