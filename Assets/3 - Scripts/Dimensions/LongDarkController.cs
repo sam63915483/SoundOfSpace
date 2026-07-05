@@ -17,6 +17,7 @@ public class LongDarkController : MonoBehaviour
         public ObservationTracker tracker = new ObservationTracker(0.25f);  // grace — brief peripheral flicks forgiven
         public float alpha = 1f;
         public float unobservedSince = -1f;  // Time.time when sight was lost; -1 while observed
+        public bool rearrangedSinceSeen;     // one rearrange per look-away, but never lost (no stranding)
     }
 
     Stone[] _stones;
@@ -147,19 +148,23 @@ public class LongDarkController : MonoBehaviour
             // counts (forgiving), but thin so the stone underfoot can't clip the
             // frustum bottom while you look up (the bounce bug).
             var b = new Bounds(s.tf.position, new Vector3(1.2f, 0.3f, 1.2f));
-            bool observed = s.tracker.Tick(b, out bool justLost, float.PositiveInfinity);
+            bool observed = s.tracker.Tick(b, out _, float.PositiveInfinity);
 
-            // Off-screen stones rearrange — except the one you're standing on/next to,
-            // which keeps the existing drop-out-from-under-you rule instead.
+            if (!observed && s.unobservedSince < 0f) s.unobservedSince = Time.time;
+            if (observed) { s.unobservedSince = -1f; s.rearrangedSinceSeen = false; }
+
+            // Off-screen stones rearrange (once per look-away) — except the one you're
+            // standing on/next to, which keeps the drop-out-from-under-you rule.
+            // STATE-driven, not edge-driven: a stone whose look-away moment happened
+            // while you stood next to it still rearranges once you move on (the old
+            // one-shot signal left stones stranded behind you, starving the path).
             Vector3 flat = s.tf.position - playerPos; flat.y = 0f;
-            if (justLost && flat.magnitude > 1.6f)
+            if (!observed && !s.rearrangedSinceSeen && s.unobservedSince > 0f
+                && Time.time - s.unobservedSince > 0.35f && flat.magnitude > 1.6f)
             {
                 Rearrange(s, playerPos);
                 continue;
             }
-
-            if (!observed && s.unobservedSince < 0f) s.unobservedSince = Time.time;
-            if (observed) s.unobservedSince = -1f;
 
             float targetAlpha = observed ? 0.35f : 0.02f;
             s.alpha = Mathf.MoveTowards(s.alpha, targetAlpha, Time.deltaTime / 0.2f);
@@ -179,8 +184,8 @@ public class LongDarkController : MonoBehaviour
         Vector3 best = s.tf.position;
         for (int attempt = 0; attempt < 8; attempt++)
         {
-            float z = Mathf.Clamp(playerPos.z + Random.Range(1.5f, 5.5f), 19.5f, 43.5f);
-            float x = Random.Range(-2.5f, 2.5f);
+            float z = Mathf.Clamp(playerPos.z + Random.Range(2.0f, 4.5f), 19.5f, 43.5f);
+            float x = Random.Range(-1.5f, 1.5f);            // mostly straight ahead, mild drift
             best = new Vector3(x, -0.06f, z);
             if (!ObserverState.IsObserved(new Bounds(best, new Vector3(3f, 1f, 3f))))
                 break;
@@ -188,6 +193,7 @@ public class LongDarkController : MonoBehaviour
         s.tf.position = best;
         s.tracker.Reset();
         s.unobservedSince = -1f;
+        s.rearrangedSinceSeen = true;
         s.alpha = 1f;
         s.col.enabled = true;
     }
