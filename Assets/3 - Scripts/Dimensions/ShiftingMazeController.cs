@@ -19,6 +19,8 @@ public class ShiftingMazeController : MonoBehaviour
     readonly Dictionary<Vector2Int, Cell> _cells = new Dictionary<Vector2Int, Cell>();
     readonly Stack<GameObject> _wallPool = new Stack<GameObject>();
     readonly List<Vector2Int> _toDespawn = new List<Vector2Int>();
+    readonly Dictionary<Vector2Int, GameObject> _pillars = new Dictionary<Vector2Int, GameObject>();
+    readonly Stack<GameObject> _pillarPool = new Stack<GameObject>();
 
     Material _wallMat, _floorMat, _ceilMat;
     Transform _root;
@@ -122,7 +124,47 @@ public class ShiftingMazeController : MonoBehaviour
         ReturnWalls(cell);
         if (_door != null && _door.activeSelf && _doorCell == coord) DespawnDoor();
         _cells.Remove(coord);
+        RefreshPillarsAround(coord);
     }
+
+    // A pillar keyed by cell v sits at v's NORTH-EAST vertex. It exists iff any of the
+    // four wall slots meeting that vertex is present. Cells refresh their four corner
+    // pillars whenever their walls change, so junctions stay in sync with reshuffles.
+    void RefreshPillarsAround(Vector2Int c)
+    {
+        RefreshPillar(c);
+        RefreshPillar(new Vector2Int(c.x - 1, c.y));
+        RefreshPillar(new Vector2Int(c.x, c.y - 1));
+        RefreshPillar(new Vector2Int(c.x - 1, c.y - 1));
+    }
+
+    void RefreshPillar(Vector2Int v)
+    {
+        bool needed = HasWall(v, north: true) || HasWall(v, north: false)
+                   || HasWall(new Vector2Int(v.x, v.y + 1), north: false)   // cell above's east wall ends here
+                   || HasWall(new Vector2Int(v.x + 1, v.y), north: true);   // cell right's north wall ends here
+        bool has = _pillars.ContainsKey(v);
+        if (needed == has) return;
+        if (needed)
+        {
+            GameObject p = _pillarPool.Count > 0 ? _pillarPool.Pop() : NewWall();
+            p.name = "Pillar";
+            p.SetActive(true);
+            p.transform.position = new Vector3((v.x + 0.5f) * cellSize, wallHeight * 0.5f, (v.y + 0.5f) * cellSize);
+            p.transform.localScale = new Vector3(pillarSize, wallHeight, pillarSize);
+            _pillars[v] = p;
+        }
+        else
+        {
+            var p = _pillars[v];
+            p.SetActive(false);
+            _pillarPool.Push(p);
+            _pillars.Remove(v);
+        }
+    }
+
+    bool HasWall(Vector2Int coord, bool north) =>
+        _cells.TryGetValue(coord, out var cell) && Rand01(cell.seed, north ? 1 : 2) < wallChance;
 
     void Reroll(Cell cell)
     {
@@ -138,18 +180,18 @@ public class ShiftingMazeController : MonoBehaviour
     {
         ReturnWalls(cell);
         float s = cellSize, cx = cell.coord.x * s, cz = cell.coord.y * s;
-        // North + East edges only — each wall has exactly one owner cell, and density
-        // stays walkable (≤2 walls per owned pair). Dead ends self-heal: look away and
-        // the blocking cell reshuffles.
-        // North and east walls get slightly DIFFERENT thicknesses so no two faces are
-        // ever coplanar where they cross at corners — identical planes z-fight (the
-        // flickering joint-line artifact); a 5% split buries every overlap inside the
-        // other wall's volume where the depth buffer hides it.
-        float tN = wallThickness * 1.05f, tE = wallThickness * 0.95f;
+        // North + East edges only — each cell owns two wall slots, and density stays
+        // walkable. Dead ends self-heal: look away and the blocking cell reshuffles.
+        // Walls span BETWEEN grid vertices (length s - pillarSize) and never touch each
+        // other; corner pillars fill every vertex. Overlapping walls of equal thickness
+        // put identical faces on the identical plane and z-fight (the flickering
+        // joint-line artifact) — butt joints against fatter pillars can't.
+        float tN = wallThickness * 1.05f, tE = wallThickness * 0.95f, len = s - pillarSize;
         if (Rand01(cell.seed, 1) < wallChance)
-            PlaceWall(cell, new Vector3(cx, wallHeight * 0.5f, cz + s * 0.5f), new Vector3(s + tN, wallHeight, tN));
+            PlaceWall(cell, new Vector3(cx, wallHeight * 0.5f, cz + s * 0.5f), new Vector3(len, wallHeight, tN));
         if (Rand01(cell.seed, 2) < wallChance)
-            PlaceWall(cell, new Vector3(cx + s * 0.5f, wallHeight * 0.5f, cz), new Vector3(tE, wallHeight, s + tE));
+            PlaceWall(cell, new Vector3(cx + s * 0.5f, wallHeight * 0.5f, cz), new Vector3(tE, wallHeight, len));
+        RefreshPillarsAround(cell.coord);
     }
 
     void PlaceWall(Cell cell, Vector3 pos, Vector3 scale)
@@ -225,4 +267,7 @@ public class ShiftingMazeController : MonoBehaviour
     [Range(0f, 1f)] public float exitDoorChance = 0.08f;
     [Tooltip("Scene the exit door leads to.")]
     public string nextScene = "D2_DuneSea";
+
+    [Tooltip("Corner pillar width at grid vertices. Must exceed wallThickness so wall ends bury cleanly (no coplanar faces).")]
+    public float pillarSize = 0.55f;
 }
