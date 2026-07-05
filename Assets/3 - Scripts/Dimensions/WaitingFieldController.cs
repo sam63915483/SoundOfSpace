@@ -92,7 +92,7 @@ public class WaitingFieldController : MonoBehaviour
     [Tooltip("How far away the door starts.")]
     public float spawnDistance = 200f;
     [Tooltip("Metres per second it advances while unobserved.")]
-    public float advanceSpeed = 8f;
+    public float advanceSpeed = 16f;
     [Tooltip("It stops this close and waits for you to turn around.")]
     public float stopDistance = 3f;
 

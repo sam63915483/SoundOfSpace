@@ -89,6 +89,7 @@ public class WellFieldController : MonoBehaviour
         mesh.RecalculateNormals(); mesh.RecalculateBounds();
 
         var go = new GameObject("Dunes");
+        go.layer = DimensionSceneUtil.WalkableLayer;
         go.transform.SetParent(_root, false);
         go.AddComponent<MeshFilter>().sharedMesh = mesh;
         go.AddComponent<MeshRenderer>().sharedMaterial = _sandMat;
@@ -119,9 +120,9 @@ public class WellFieldController : MonoBehaviour
             lightGo.transform.SetParent(well.transform, false);
             lightGo.transform.localPosition = new Vector3(0f, 0.6f, 0f);
             var l = lightGo.AddComponent<Light>();
-            l.type = LightType.Point; l.range = 6f; l.intensity = 1.6f;
+            l.type = LightType.Point; l.range = 12f; l.intensity = 2.5f;
             l.color = new Color(1f, 0.75f, 0.35f);
-            DimensionSceneUtil.LoopingAudio(well, DimensionSceneUtil.ToneClip(528f, 2f, 0.35f), 130f, 1f);
+            DimensionSceneUtil.LoopingAudio(well, DimensionSceneUtil.ToneClip(528f, 2f, 0.5f), 260f, 1f);
             DimensionSceneUtil.CreatePortal("ToD3", new Vector3(0f, 0.5f, 0f),
                 new Vector3(1.7f, 0.8f, 1.7f), LevelPortal.PortalAction.EnterInterior, nextScene, well.transform);
         }
@@ -189,7 +190,7 @@ public class WellFieldController : MonoBehaviour
     [Tooltip("Min distance from the player a relocating well may land.")]
     public float relocateMinDistance = 40f;
     [Tooltip("Max distance from the player a relocating well may land.")]
-    public float relocateMaxDistance = 150f;
+    public float relocateMaxDistance = 100f;
     [Tooltip("Scene the true well leads to.")]
     public string nextScene = "D3_LongDark";
 }

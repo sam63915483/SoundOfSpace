@@ -217,7 +217,7 @@ public class ShiftingMazeController : MonoBehaviour
 
     [Header("Exit")]
     [Tooltip("Chance a reshuffled cell contains the exit door (only one exists at a time).")]
-    [Range(0f, 1f)] public float exitDoorChance = 0.04f;
+    [Range(0f, 1f)] public float exitDoorChance = 0.08f;
     [Tooltip("Scene the exit door leads to.")]
     public string nextScene = "D2_DuneSea";
 }

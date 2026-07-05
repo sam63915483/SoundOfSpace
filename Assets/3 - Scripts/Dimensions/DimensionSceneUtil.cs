@@ -86,12 +86,17 @@ public static class DimensionSceneUtil
         return m;
     }
 
-    /// <summary>Primitive with material, position, scale — the basic building block.</summary>
+    /// <summary>Player ground checks only accept the Ship/Body layers (PlayerController.walkableMask
+    /// = 1536) — runtime geometry must sit on Body or the player slides and can't jump.</summary>
+    public static int WalkableLayer => LayerMask.NameToLayer("Body");
+
+    /// <summary>Primitive with material, position, scale — the basic building block. Walkable.</summary>
     public static GameObject Block(PrimitiveType type, string name, Vector3 pos, Vector3 scale,
         Material mat, Transform parent = null)
     {
         var go = GameObject.CreatePrimitive(type);
         go.name = name;
+        go.layer = WalkableLayer;
         go.transform.SetParent(parent, false);
         go.transform.position = pos;
         go.transform.localScale = scale;

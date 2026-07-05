@@ -223,7 +223,7 @@ MonoBehaviour:
   duneAmplitude: 8
   wellCount: 8
   relocateMinDistance: 40
-  relocateMaxDistance: 150
+  relocateMaxDistance: 100
   nextScene: D3_LongDark
 --- !u!4 &441310855
 Transform:

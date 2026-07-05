@@ -220,7 +220,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   spawnDistance: 200
-  advanceSpeed: 8
+  advanceSpeed: 16
   stopDistance: 3
   nextScene: R1_Backrooms
 --- !u!4 &1556841057

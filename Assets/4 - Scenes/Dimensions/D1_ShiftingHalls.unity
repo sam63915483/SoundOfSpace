@@ -158,7 +158,7 @@ MonoBehaviour:
   wallChance: 0.55
   worldSeed: 1337
   observeMaxDistance: 80
-  exitDoorChance: 0.04
+  exitDoorChance: 0.08
   nextScene: D2_DuneSea
 --- !u!4 &957366818
 Transform:
