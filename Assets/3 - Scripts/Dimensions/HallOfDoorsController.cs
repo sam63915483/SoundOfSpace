@@ -258,6 +258,7 @@ public class HallOfDoorsController : MonoBehaviour
 
         bool correct = _onPath && door.color == Sequence[Mathf.Min(_progress, Sequence.Length - 1)];
         if (correct) _progress++;
+        else if (door.color == DoorColor.Red) { _onPath = true; _progress = 1; }  // RED re-anchors: any red door restarts the path (red already counted)
         else _onPath = false;                                // silently derailed — endless rooms
 
         // Place the other shell beyond the opened door and dress it for what comes next.

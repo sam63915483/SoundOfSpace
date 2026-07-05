@@ -187,10 +187,29 @@ public class ProcessionController : MonoBehaviour
         }
 
         // Blackout pulse: schedule, and hard-cut the screen to black for its duration.
+        // The dark is when they MOVE: every flash, hunters lunge (teleport) toward
+        // their ring slots and the exit door jumps somewhere else.
         if (Time.time >= _nextBlackoutTime)
         {
             _blackoutUntil = Time.time + blackoutDuration;
             _nextBlackoutTime = Time.time + BlackoutInterval();
+            var c = ObserverState.Cam;
+            if (c != null)
+            {
+                Vector3 t = c.transform.position; t.y = 0f;
+                foreach (var s in _statues)
+                {
+                    if (s.dormant || s.rising) continue;
+                    Vector3 pos = s.rb.position; pos.y = 0f;
+                    Vector3 slotPos = t + new Vector3(Mathf.Cos(s.slotAngle), 0f, Mathf.Sin(s.slotAngle)) * ringRadius;
+                    float dist = Vector3.Distance(pos, slotPos);
+                    Vector3 np = Vector3.MoveTowards(pos, slotPos, Mathf.Max(blackoutLungeMin, dist * blackoutLungeFraction));
+                    s.rb.position = new Vector3(np.x, s.rb.position.y, np.z);
+                    Vector3 face = t - np; face.y = 0f;
+                    if (face.sqrMagnitude > 0.01f) s.rb.rotation = Quaternion.LookRotation(face.normalized, Vector3.up);
+                }
+                RelocateDoor(c.transform.position, initial: false);
+            }
         }
         bool blackout = Time.time < _blackoutUntil;
         float a0 = _black != null ? _black.color.a : 0f;
@@ -431,4 +450,8 @@ public class ProcessionController : MonoBehaviour
     public float maxSpeedMultiplier = 4f;
     [Tooltip("How long each blackout lasts.")]
     public float blackoutDuration = 0.9f;
+    [Tooltip("Fraction of remaining slot distance a hunter teleports per blackout.")]
+    [Range(0f, 1f)] public float blackoutLungeFraction = 0.5f;
+    [Tooltip("Minimum teleport distance per blackout (metres).")]
+    public float blackoutLungeMin = 4f;
 }
