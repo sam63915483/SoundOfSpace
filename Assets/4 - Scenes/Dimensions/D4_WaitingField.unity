@@ -222,7 +222,7 @@ MonoBehaviour:
   spawnDistance: 200
   advanceSpeed: 16
   stopDistance: 3
-  nextScene: R1_Backrooms
+  nextScene: D5_Archive
 --- !u!4 &1556841057
 Transform:
   m_ObjectHideFlags: 0

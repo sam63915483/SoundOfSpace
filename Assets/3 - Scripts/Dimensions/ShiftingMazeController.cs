@@ -33,9 +33,9 @@ public class ShiftingMazeController : MonoBehaviour
     void Awake()
     {
         _root = transform;
-        _wallMat  = DimensionSceneUtil.Mat(new Color(0.75f, 0.70f, 0.50f));
-        _floorMat = DimensionSceneUtil.Mat(new Color(0.45f, 0.42f, 0.30f));
-        _ceilMat  = DimensionSceneUtil.Mat(new Color(0.80f, 0.80f, 0.75f));
+        _wallMat  = DimensionSceneUtil.Mat(wallColor);
+        _floorMat = DimensionSceneUtil.Mat(floorColor);
+        _ceilMat  = DimensionSceneUtil.Mat(ceilColor);
 
         // Static planes: the floor can never despawn (spec safety rule). They follow the
         // camera in grid-snapped steps so tiling never visibly swims.
@@ -49,7 +49,7 @@ public class ShiftingMazeController : MonoBehaviour
         _lamp.transform.SetParent(_root, false);
         var l = _lamp.AddComponent<Light>();
         l.type = LightType.Point; l.range = 20f; l.intensity = 1.4f;
-        l.color = new Color(1f, 0.93f, 0.75f);
+        l.color = lampColor;
         _lamp.AddComponent<FlickerLight>();
 
         DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(120f, 2f, 0.06f), 60f, 1f);
@@ -61,10 +61,7 @@ public class ShiftingMazeController : MonoBehaviour
         if (cam == null) return;
         if (!_atmosApplied)
         {
-            DimensionSceneUtil.ApplyAtmosphere(
-                ambient: new Color(0.28f, 0.26f, 0.18f),
-                fog: new Color(0.55f, 0.50f, 0.33f), fogDensity: 0.045f,
-                background: new Color(0.35f, 0.32f, 0.20f));
+            DimensionSceneUtil.ApplyAtmosphere(ambientColor, fogColor, fogDensity, backgroundColor);
             _atmosApplied = true;
         }
 
@@ -270,4 +267,14 @@ public class ShiftingMazeController : MonoBehaviour
 
     [Tooltip("Corner pillar width at grid vertices. Must exceed wallThickness so wall ends bury cleanly (no coplanar faces).")]
     public float pillarSize = 0.55f;
+
+    [Header("Theme (defaults = D1 backrooms; D5 Archive overrides these)")]
+    public Color wallColor = new Color(0.75f, 0.70f, 0.50f);
+    public Color floorColor = new Color(0.45f, 0.42f, 0.30f);
+    public Color ceilColor = new Color(0.80f, 0.80f, 0.75f);
+    public Color lampColor = new Color(1f, 0.93f, 0.75f);
+    public Color ambientColor = new Color(0.28f, 0.26f, 0.18f);
+    public Color fogColor = new Color(0.55f, 0.50f, 0.33f);
+    public float fogDensity = 0.045f;
+    public Color backgroundColor = new Color(0.35f, 0.32f, 0.20f);
 }

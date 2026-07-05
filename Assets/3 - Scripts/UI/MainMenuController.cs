@@ -550,7 +550,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 38;
+        const int Total = 39;
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -578,6 +578,8 @@ public class MainMenuController : MonoBehaviour
         tick("fish staging");     yield return null;
         if (AutosaveManager.Instance == null) { var go = new GameObject("AutosaveManager"); DontDestroyOnLoad(go); go.AddComponent<AutosaveManager>(); }
         tick("autosave");         yield return null;
+        if (DimensionDevLoader.Instance == null) { var go = new GameObject("DimensionDevLoader"); DontDestroyOnLoad(go); go.AddComponent<DimensionDevLoader>(); }
+        tick("dimension loader"); yield return null;
         if (TutorialPerformanceReview.Instance == null) { var go = new GameObject("TutorialPerformanceReview"); DontDestroyOnLoad(go); go.AddComponent<TutorialPerformanceReview>(); }
         tick("perf review");      yield return null;
         if (CompassHUD.Instance == null) { var go = new GameObject("CompassHUD"); DontDestroyOnLoad(go); go.AddComponent<CompassHUD>(); }
