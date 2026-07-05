@@ -14,6 +14,8 @@ public class FrozenSeaController : MonoBehaviour
     Renderer _hatchRend;
     Collider _hatchCol;
     GameObject _portalGo;
+    UnityEngine.UI.Image _white;
+    float _whiteAlpha;
     MaterialPropertyBlock _mpb;
     float _beamYaw;
     float _hatchAlpha = 1f;
@@ -29,28 +31,12 @@ public class FrozenSeaController : MonoBehaviour
         _root = transform;
         _mpb = new MaterialPropertyBlock();
         var seaMat   = DimensionSceneUtil.Mat(new Color(0.05f, 0.08f, 0.12f), 0.85f);
-        var towerMat = DimensionSceneUtil.Mat(new Color(0.55f, 0.52f, 0.5f), 0.1f);
         var hatchMat = DimensionSceneUtil.FadeMat(new Color(0.45f, 0.9f, 0.6f, 1f));
 
         BuildSea(seaMat);
         DimensionSceneUtil.CreateDirectionalLight(new Color(0.4f, 0.5f, 0.7f), 0.22f, new Vector3(35f, -60f, 0f), false);
-
-        // Lighthouse tower + rotating head with a spotlight and a visible emissive beam arm.
-        var tower = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Lighthouse",
-            new Vector3(0f, 15f, 140f), new Vector3(6f, 15f, 6f), towerMat, _root);
-        var head = new GameObject("BeamHead");
-        head.transform.SetParent(_root, false);
-        head.transform.position = new Vector3(0f, 29f, 140f);
-        _beamHead = head.transform;
-        var spot = head.AddComponent<Light>();
-        spot.type = LightType.Spot;
-        spot.range = 400f; spot.spotAngle = 12f; spot.intensity = 9f;
-        spot.color = new Color(1f, 0.95f, 0.8f);
-        var beamArm = DimensionSceneUtil.Block(PrimitiveType.Cube, "BeamArm",
-            Vector3.zero, new Vector3(0.5f, 0.5f, 60f),
-            DimensionSceneUtil.EmissiveMat(new Color(1f, 0.95f, 0.7f), 1.2f), _beamHead);
-        beamArm.transform.localPosition = new Vector3(0f, 0f, 30f);
-        Destroy(beamArm.GetComponent<Collider>());
+        BuildLighthouse(new Vector3(0f, 0f, 140f));
+        BuildWhiteoutOverlay();
 
         // The exit hatch: fixed spot on the sea, marked by a small green lamp. Solid
         // (and enterable) only while the beam is looking elsewhere.
@@ -73,6 +59,105 @@ public class FrozenSeaController : MonoBehaviour
             new Vector3(2f, 1.2f, 2f), LevelPortal.PortalAction.EnterInterior, nextScene, _root);
 
         DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(45f, 2f, 0.07f), 600f, 1f);
+    }
+
+    // Tapered banded tower on a rock, gallery deck, glass lamp room, domed roof — and
+    // the rotating head carrying the spotlight, the lamp, and a translucent light CONE.
+    void BuildLighthouse(Vector3 basePos)
+    {
+        var white = DimensionSceneUtil.Mat(new Color(0.85f, 0.84f, 0.8f), 0.15f);
+        var red   = DimensionSceneUtil.Mat(new Color(0.6f, 0.12f, 0.1f), 0.15f);
+        var dark  = DimensionSceneUtil.Mat(new Color(0.12f, 0.12f, 0.14f), 0.2f);
+        var glass = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.95f, 0.75f), 1.8f);
+
+        float baseY = SeaHeight(basePos.x, basePos.z);
+        Vector3 b = new Vector3(basePos.x, baseY, basePos.z);
+        var rock = DimensionSceneUtil.Block(PrimitiveType.Sphere, "LighthouseRock",
+            b + Vector3.up * 0.5f, new Vector3(16f, 5f, 16f), DimensionSceneUtil.Mat(new Color(0.18f, 0.17f, 0.16f), 0.05f), _root);
+
+        // Tapering banded tower (white / red / white / red / white).
+        Cyl("Tower1", b, 2.5f, 5.4f, 4f, white);      // y 2.5..10.5
+        Cyl("Band1",  b, 3f, 4.8f, 10.9f, red);       // 9.4..12.4
+        Cyl("Tower2", b, 3.5f, 4.2f, 13.9f, white);   // 12.15..15.65
+        Cyl("Band2",  b, 2.6f, 3.7f, 16.6f, red);     // 15.3..17.9
+        Cyl("Tower3", b, 3f, 3.2f, 19.2f, white);     // 17.7..20.7
+        Cyl("Deck",   b, 0.5f, 5.2f, 21f, dark);      // gallery deck
+        Cyl("LampRoom", b, 3f, 2.3f, 22.7f, glass);   // glowing glass lamp room
+        var roof = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Roof",
+            b + Vector3.up * 24.6f, new Vector3(3.2f, 1.6f, 3.2f), red, _root);
+
+        // Rotating head: real spotlight + bright lamp ball + translucent volumetric cone.
+        var head = new GameObject("BeamHead");
+        head.transform.SetParent(_root, false);
+        head.transform.position = b + Vector3.up * 23.4f;
+        _beamHead = head.transform;
+        var spot = head.AddComponent<Light>();
+        spot.type = LightType.Spot;
+        spot.range = 450f; spot.spotAngle = 14f; spot.intensity = 14f;
+        spot.color = new Color(1f, 0.95f, 0.8f);
+        var lampBall = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Lamp",
+            Vector3.zero, Vector3.one * 1.4f, DimensionSceneUtil.EmissiveMat(new Color(1f, 0.97f, 0.85f), 4f), _beamHead);
+        lampBall.transform.localPosition = Vector3.zero;
+        Destroy(lampBall.GetComponent<Collider>());
+
+        var coneGo = new GameObject("BeamCone");
+        coneGo.transform.SetParent(_beamHead, false);
+        var mf = coneGo.AddComponent<MeshFilter>();
+        mf.sharedMesh = BuildConeMesh(200f, 21f, 20);
+        var mr = coneGo.AddComponent<MeshRenderer>();
+        mr.sharedMaterial = DimensionSceneUtil.FadeMat(new Color(1f, 0.95f, 0.75f, 0.14f));
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.receiveShadows = false;
+    }
+
+    void Cyl(string name, Vector3 basePos, float halfHeightScale, float diameter, float centerY, Material mat)
+    {
+        var go = DimensionSceneUtil.Block(PrimitiveType.Cylinder, name,
+            basePos + Vector3.up * centerY, new Vector3(diameter, halfHeightScale, diameter), mat, _root);
+    }
+
+    // Cone with apex at the origin opening along +z, double-sided so the shaft reads
+    // from outside and from inside the beam.
+    static Mesh BuildConeMesh(float length, float endRadius, int segs)
+    {
+        var verts = new Vector3[segs + 2];
+        verts[0] = Vector3.zero;
+        for (int i = 0; i <= segs; i++)
+        {
+            float a = i / (float)segs * Mathf.PI * 2f;
+            verts[i + 1] = new Vector3(Mathf.Cos(a) * endRadius, Mathf.Sin(a) * endRadius, length);
+        }
+        var tris = new int[segs * 6];
+        for (int i = 0; i < segs; i++)
+        {
+            tris[i * 6 + 0] = 0; tris[i * 6 + 1] = i + 1; tris[i * 6 + 2] = i + 2;
+            tris[i * 6 + 3] = 0; tris[i * 6 + 4] = i + 2; tris[i * 6 + 5] = i + 1;
+        }
+        var mesh = new Mesh();
+        mesh.vertices = verts;
+        mesh.triangles = tris;
+        mesh.RecalculateNormals();
+        mesh.RecalculateBounds();
+        return mesh;
+    }
+
+    // Full-screen white Image faded in as the beam engulfs the player — the teleport
+    // happens at peak white, so being "rearranged" reads as the light itself.
+    void BuildWhiteoutOverlay()
+    {
+        var canvasGo = new GameObject("BeamWhiteout");
+        canvasGo.transform.SetParent(transform, false);
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 9999;
+        var imgGo = new GameObject("White");
+        imgGo.transform.SetParent(canvasGo.transform, false);
+        _white = imgGo.AddComponent<UnityEngine.UI.Image>();
+        _white.color = new Color(1f, 0.98f, 0.9f, 0f);
+        _white.raycastTarget = false;
+        var rt = _white.rectTransform;
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
     }
 
     /// <summary>Frozen storm surface: ridged Perlin (abs-folded) — sharp crests, deep troughs.</summary>
@@ -147,10 +232,20 @@ public class FrozenSeaController : MonoBehaviour
         bool playerLit = Time.time > _caughtDebounceUntil && LitByBeam(_player.Rigidbody.position);
         if (playerLit && _playerLitSince < 0f) _playerLitSince = Time.time;
         if (!playerLit) _playerLitSince = -1f;
+
+        // The light engulfs you: screen whites out as the beam holds you, the teleport
+        // happens at peak white, then the world fades back in somewhere else.
+        if (playerLit)
+            _whiteAlpha = Mathf.Clamp01((Time.time - _playerLitSince) / caughtGraceSeconds);
+        else
+            _whiteAlpha = Mathf.MoveTowards(_whiteAlpha, 0f, Time.deltaTime * 1.1f);
+        if (_white != null) _white.color = new Color(1f, 0.98f, 0.9f, _whiteAlpha);
+
         if (playerLit && Time.time - _playerLitSince > caughtGraceSeconds)
         {
             _playerLitSince = -1f;
             _caughtDebounceUntil = Time.time + 3f;
+            _whiteAlpha = 1f;
             float a = Random.value * Mathf.PI * 2f;
             float d = Random.Range(60f, 120f);
             Vector3 p = _player.Rigidbody.position;
@@ -178,8 +273,8 @@ public class FrozenSeaController : MonoBehaviour
     public float beamSweepSpeed = 25f;
     [Tooltip("Half-angle (degrees) of the 'you are seen' cone.")]
     public float beamHalfAngle = 7f;
-    [Tooltip("Seconds you can be in the beam before it relocates you.")]
-    public float caughtGraceSeconds = 0.5f;
+    [Tooltip("Seconds you can be in the beam before it relocates you (the whiteout swells over this window).")]
+    public float caughtGraceSeconds = 0.9f;
 
     [Header("Exit")]
     [Tooltip("Scene the hatch leads to.")]

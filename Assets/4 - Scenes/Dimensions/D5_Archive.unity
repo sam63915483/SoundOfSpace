@@ -219,11 +219,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3ec425cb89280674da0eef3616c04f30, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  cellSize: 5
+  cellSize: 7
   wallHeight: 6.5
   wallThickness: 0.4
   radiusCells: 6
-  wallChance: 0.65
+  wallChance: 0.5
   worldSeed: 1337
   observeMaxDistance: 80
   exitDoorChance: 0.08
@@ -235,7 +235,7 @@ MonoBehaviour:
   lampColor: {r: 1, g: 0.82, b: 0.55, a: 1}
   ambientColor: {r: 0.2, g: 0.16, b: 0.12, a: 1}
   fogColor: {r: 0.13, g: 0.09, b: 0.06, a: 1}
-  fogDensity: 0.032
+  fogDensity: 0.022
   backgroundColor: {r: 0.08, g: 0.06, b: 0.04, a: 1}
 --- !u!4 &2095223641
 Transform:

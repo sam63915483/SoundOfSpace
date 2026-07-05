@@ -38,16 +38,16 @@ public class LongDarkController : MonoBehaviour
 
         // Two corridor sections floating over the void, chasm between them.
         BuildCorridor(8f, carpetMat, wallMat, ceilMat, lampMat);    // start: z -2..18
-        BuildCorridor(48f, carpetMat, wallMat, ceilMat, lampMat);   // end:   z 38..58
+        BuildCorridor(55f, carpetMat, wallMat, ceilMat, lampMat);   // end:   z 45..65
         _respawnPoint = new Vector3(0f, 1.5f, 4f);
 
-        // Five glass stepping stones across the chasm (z 18..38), solid only while seen.
+        // Five glass stepping stones across the chasm (z 18..45), solid only while seen.
         _stones = new Stone[5];
         for (int i = 0; i < 5; i++)
         {
-            float z = 20f + i * 4f;
+            float z = 20.4f + i * 5.5f;
             var go = DimensionSceneUtil.Block(PrimitiveType.Cube, "GlassStone" + i,
-                new Vector3(0f, -0.06f, z), new Vector3(1.8f, 0.12f, 1.8f), glassMat, _root);
+                new Vector3(0f, -0.06f, z), new Vector3(2.6f, 0.12f, 2.6f), glassMat, _root);
             _stones[i] = new Stone
             {
                 tf = go.transform,
@@ -76,18 +76,18 @@ public class LongDarkController : MonoBehaviour
         // Exit door at the far end of the second corridor.
         var frame = DimensionSceneUtil.Mat(new Color(0.1f, 0.1f, 0.12f));
         var glow  = DimensionSceneUtil.EmissiveMat(new Color(0.75f, 0.95f, 1f), 2.5f);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "PostL",  new Vector3(-0.8f, 1.5f, 57f), new Vector3(0.3f, 3f, 0.3f), frame, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "PostR",  new Vector3( 0.8f, 1.5f, 57f), new Vector3(0.3f, 3f, 0.3f), frame, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "Lintel", new Vector3(0f, 3.05f, 57f),   new Vector3(1.9f, 0.3f, 0.3f), frame, _root);
-        var pane = DimensionSceneUtil.Block(PrimitiveType.Cube, "Glow", new Vector3(0f, 1.5f, 57f), new Vector3(1.3f, 2.9f, 0.05f), glow, _root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "PostL",  new Vector3(-0.8f, 1.5f, 64f), new Vector3(0.3f, 3f, 0.3f), frame, _root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "PostR",  new Vector3( 0.8f, 1.5f, 64f), new Vector3(0.3f, 3f, 0.3f), frame, _root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Lintel", new Vector3(0f, 3.05f, 64f),   new Vector3(1.9f, 0.3f, 0.3f), frame, _root);
+        var pane = DimensionSceneUtil.Block(PrimitiveType.Cube, "Glow", new Vector3(0f, 1.5f, 64f), new Vector3(1.3f, 2.9f, 0.05f), glow, _root);
         Destroy(pane.GetComponent<Collider>());
-        DimensionSceneUtil.CreatePortal("ToNext", new Vector3(0f, 1.5f, 57f),
+        DimensionSceneUtil.CreatePortal("ToNext", new Vector3(0f, 1.5f, 64f),
             new Vector3(1.3f, 2.9f, 0.6f), LevelPortal.PortalAction.EnterInterior, nextScene, _root);
 
         // Kill volume far below — the drop is the punishment, respawn is the mercy.
         var kill = new GameObject("KillVolume");
         kill.transform.SetParent(_root, false);
-        kill.transform.position = new Vector3(0f, -60f, 28f);
+        kill.transform.position = new Vector3(0f, -60f, 31f);
         var kb = kill.AddComponent<BoxCollider>();
         kb.isTrigger = true; kb.size = new Vector3(300f, 10f, 300f);
         kill.AddComponent<LongDarkKillVolume>().owner = this;
@@ -129,9 +129,14 @@ public class LongDarkController : MonoBehaviour
         }
 
         // Stones exist only while OBSERVED: keep your eyes on them or fall.
+        // Deliberately test only a SMALL core at the stone's centre, not its full box —
+        // the box of the stone you're standing on clips the bottom of the frustum even
+        // when you look up, which re-enabled the collider mid-fall and bounced you
+        // (fall-two-inches-get-pushed-up oscillation). Small core = you must actually
+        // be looking AT the stone.
         foreach (var s in _stones)
         {
-            var b = new Bounds(s.tf.position, new Vector3(2.2f, 1.2f, 2.2f));
+            var b = new Bounds(s.tf.position, Vector3.one * 0.5f);
             bool observed = s.tracker.Tick(b, out _, float.PositiveInfinity);
 
             if (!observed && s.unobservedSince < 0f) s.unobservedSince = Time.time;
