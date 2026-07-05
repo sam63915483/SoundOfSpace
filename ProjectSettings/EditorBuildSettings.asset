@@ -29,4 +29,16 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Poolrooms_Lvl37/Scenes/PoolroomsDemo.unity
     guid: 9c539d17946e0254c930c97dafe24608
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D1_ShiftingHalls.unity
+    guid: 25599c66853831d47a437179d511d5bc
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D2_DuneSea.unity
+    guid: 00ec36cbc5de13a4886c2f6eba75e8da
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D3_LongDark.unity
+    guid: 854645c627cd10948be5b96330dec86d
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D4_WaitingField.unity
+    guid: fbb2e0a4017de924f94d1edd70bf353c
   m_configObjects: {}
