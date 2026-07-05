@@ -30,6 +30,9 @@ public class ProcessionController : MonoBehaviour
     AudioClip _gruntClip, _shriekClip;
     float _startTime;
     bool _climaxed;
+    UnityEngine.UI.Image _black;
+    float _nextBlackoutTime;
+    float _blackoutUntil;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
@@ -99,6 +102,34 @@ public class ProcessionController : MonoBehaviour
         // Ambience bed — volume/pitch climb toward the climax, then fall away.
         _ambience = DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(65f, 2f, 0.5f), 800f, 0.1f);
         _ambience.spatialBlend = 0f;    // dread has no direction
+
+        // Blackout overlay: your sight fails on a quickening rhythm. Without these the
+        // circle can never fully close — you can always watch it. When the dark comes,
+        // EVERYTHING counts as unobserved.
+        var canvasGo = new GameObject("BlackoutOverlay");
+        canvasGo.transform.SetParent(transform, false);
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 9999;
+        var imgGo = new GameObject("Black");
+        imgGo.transform.SetParent(canvasGo.transform, false);
+        _black = imgGo.AddComponent<UnityEngine.UI.Image>();
+        _black.color = new Color(0f, 0f, 0f, 0f);
+        _black.raycastTarget = false;
+        var rt = _black.rectTransform;
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        _nextBlackoutTime = Time.time + 6f;
+    }
+
+    // Blackout cadence: every 6s at the start → 5s after 10s → 4s after 20s → 3s once
+    // the climax hits.
+    float BlackoutInterval()
+    {
+        float elapsed = Time.time - _startTime;
+        if (elapsed < 10f) return 6f;
+        if (elapsed < 20f) return 5f;
+        return _climaxed ? 3f : 4f;
     }
 
     void Update()
@@ -125,10 +156,23 @@ public class ProcessionController : MonoBehaviour
             _ambience.pitch = Mathf.MoveTowards(_ambience.pitch, 0.85f, Time.deltaTime * 0.25f);
         }
 
+        // Blackout pulse: schedule, and hard-cut the screen to black for its duration.
+        if (Time.time >= _nextBlackoutTime)
+        {
+            _blackoutUntil = Time.time + blackoutDuration;
+            _nextBlackoutTime = Time.time + BlackoutInterval();
+        }
+        bool blackout = Time.time < _blackoutUntil;
+        float blackTarget = blackout ? 1f : 0f;
+        float a0 = _black != null ? _black.color.a : 0f;
+        if (_black != null)
+            _black.color = new Color(0f, 0f, 0f, Mathf.MoveTowards(a0, blackTarget, Time.deltaTime / 0.08f));
+
         foreach (var s in _statues)
         {
             var b = new Bounds(s.tf.position + Vector3.up * 1.5f, new Vector3(2f, 3.4f, 2f));
             s.observedNow = s.tracker.Tick(b, out _, float.PositiveInfinity);
+            if (blackout) s.observedNow = false;   // in the dark, nothing is watched
 
             // Moving statues vocalise: grunts from the start, more often as the ramp
             // climbs, shrieking chases near/after the climax.
@@ -314,9 +358,11 @@ public class ProcessionController : MonoBehaviour
 
     [Header("Escalation")]
     [Tooltip("Seconds from entry to the climax (speed + ambience peak).")]
-    public float rampSeconds = 90f;
+    public float rampSeconds = 60f;
     [Tooltip("Statue speed multiplier at/after the climax.")]
     public float maxSpeedMultiplier = 4f;
+    [Tooltip("How long each blackout lasts.")]
+    public float blackoutDuration = 0.9f;
 }
 
 static class ProcessionVecExt

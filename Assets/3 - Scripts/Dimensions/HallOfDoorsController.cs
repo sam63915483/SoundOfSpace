@@ -65,13 +65,15 @@ public class HallOfDoorsController : MonoBehaviour
             DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameL", new Vector3(-0.7f, 1.4f, 0f), new Vector3(0.18f, 2.8f, 0.2f), frameMat, door.transform);
             DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameR", new Vector3( 0.7f, 1.4f, 0f), new Vector3(0.18f, 2.8f, 0.2f), frameMat, door.transform);
             DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameT", new Vector3(0f, 2.85f, 0f), new Vector3(1.58f, 0.18f, 0.2f), frameMat, door.transform);
-            var knob = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Knob", new Vector3(0.45f, 1.35f, -0.12f), Vector3.one * 0.12f, frameMat, door.transform);
+            var knob = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Knob", new Vector3(0.45f, 1.35f, 0.12f), Vector3.one * 0.12f, frameMat, door.transform);
             Destroy(knob.GetComponent<Collider>());
             door.transform.SetPositionAndRotation(new Vector3(x, 0f, z), Quaternion.Euler(0f, left ? 90f : -90f, 0f));
-            // Trigger pad in FRONT of the door (inside the corridor).
+            // Trigger pad in FRONT of the door — local +z faces the corridor centre for
+            // BOTH door yaws (local -0.5 buried every trigger inside the wall: doors
+            // visibly there, knocking audible, nothing ever fired).
             var trig = new GameObject("DoorTrigger");
             trig.transform.SetParent(door.transform, false);
-            trig.transform.localPosition = new Vector3(0f, 1.2f, -0.5f);
+            trig.transform.localPosition = new Vector3(0f, 1.2f, 0.5f);
             var box = trig.AddComponent<BoxCollider>();
             box.isTrigger = true; box.size = new Vector3(1.1f, 2.4f, 0.7f);
             var dt = trig.AddComponent<HallDoorTrigger>();

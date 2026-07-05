@@ -10,15 +10,12 @@ public class FrozenSeaController : MonoBehaviour
 {
     Transform _root;
     Transform _beamHead;
-    Transform _hatch;
-    Renderer _hatchRend;
-    Collider _hatchCol;
-    GameObject _portalGo;
+    Transform[] _fires;
+    ObservationTracker[] _fireTrackers;
     UnityEngine.UI.Image _white;
     float _whiteAlpha;
     MaterialPropertyBlock _mpb;
     float _beamYaw;
-    float _hatchAlpha = 1f;
     float _caughtDebounceUntil;
     float _playerLitSince = -1f;
     PlayerController _player;
@@ -30,35 +27,130 @@ public class FrozenSeaController : MonoBehaviour
     {
         _root = transform;
         _mpb = new MaterialPropertyBlock();
-        var seaMat   = DimensionSceneUtil.Mat(new Color(0.05f, 0.08f, 0.12f), 0.85f);
-        var hatchMat = DimensionSceneUtil.FadeMat(new Color(0.45f, 0.9f, 0.6f, 1f));
+        var seaMat = DimensionSceneUtil.Mat(new Color(0.05f, 0.08f, 0.12f), 0.85f);
 
         BuildSea(seaMat);
         DimensionSceneUtil.CreateDirectionalLight(new Color(0.4f, 0.5f, 0.7f), 0.22f, new Vector3(35f, -60f, 0f), false);
         BuildLighthouse(new Vector3(0f, 0f, 140f));
         BuildWhiteoutOverlay();
 
-        // The exit hatch: fixed spot on the sea, marked by a small green lamp. Solid
-        // (and enterable) only while the beam is looking elsewhere.
-        float a = Random.value * Mathf.PI * 2f;
-        float d = Random.Range(40f, 90f);
-        Vector3 hp = new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d);
-        hp.y = SeaHeight(hp.x, hp.z) + 0.15f;
-        var hatchGo = DimensionSceneUtil.Block(PrimitiveType.Cube, "ExitHatch",
-            hp, new Vector3(2.4f, 0.3f, 2.4f), hatchMat, _root);
-        _hatch = hatchGo.transform;
-        _hatchRend = hatchGo.GetComponent<Renderer>();
-        _hatchCol = hatchGo.GetComponent<Collider>();
-        var marker = DimensionSceneUtil.Block(PrimitiveType.Sphere, "HatchLamp",
-            hp + Vector3.up * 1.2f, Vector3.one * 0.35f,
-            DimensionSceneUtil.EmissiveMat(new Color(0.3f, 1f, 0.5f), 2.5f), _root);
-        Destroy(marker.GetComponent<Collider>());
-        var ml = marker.AddComponent<Light>();
-        ml.type = LightType.Point; ml.range = 10f; ml.intensity = 1.5f; ml.color = new Color(0.3f, 1f, 0.5f);
-        _portalGo = DimensionSceneUtil.CreatePortal("ToNext", hp + Vector3.up * 0.6f,
-            new Vector3(2f, 1.2f, 2f), LevelPortal.PortalAction.EnterInterior, nextScene, _root);
+        // The exits: three campfires with smoke plumes rising into the night. Any of
+        // them teleports you onward — but each fire RELOCATES whenever it leaves your
+        // view. Spot the nearest plume and sprint before the light comes back around.
+        _fires = new Transform[3];
+        _fireTrackers = new ObservationTracker[3];
+        for (int i = 0; i < 3; i++)
+        {
+            _fires[i] = BuildCampfire(i).transform;
+            _fireTrackers[i] = new ObservationTracker();
+            PlaceFire(i, Vector3.zero, initial: true);
+        }
 
         DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(45f, 2f, 0.07f), 600f, 1f);
+    }
+
+    GameObject BuildCampfire(int index)
+    {
+        var stoneMat = DimensionSceneUtil.Mat(new Color(0.25f, 0.24f, 0.23f), 0.05f);
+        var emberMat = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.45f, 0.1f), 3f);
+
+        var fire = new GameObject("Campfire" + index);
+        fire.transform.SetParent(_root, false);
+        for (int k = 0; k < 6; k++)
+        {
+            float a = k * Mathf.PI / 3f;
+            DimensionSceneUtil.Block(PrimitiveType.Cube, "Stone",
+                new Vector3(Mathf.Cos(a) * 1.1f, 0.25f, Mathf.Sin(a) * 1.1f),
+                new Vector3(0.6f, 0.5f, 0.5f), stoneMat, fire.transform);
+        }
+        var embers = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Embers",
+            new Vector3(0f, 0.25f, 0f), new Vector3(1.4f, 0.6f, 1.4f), emberMat, fire.transform);
+        Destroy(embers.GetComponent<Collider>());
+        var lightGo = new GameObject("FireLight");
+        lightGo.transform.SetParent(fire.transform, false);
+        lightGo.transform.localPosition = new Vector3(0f, 1.2f, 0f);
+        var l = lightGo.AddComponent<Light>();
+        l.type = LightType.Point; l.range = 18f; l.intensity = 2.2f;
+        l.color = new Color(1f, 0.6f, 0.25f);
+        lightGo.AddComponent<FlickerLight>();
+
+        BuildSmokePlume(fire.transform);
+        DimensionSceneUtil.CreatePortal("ToNext", new Vector3(0f, 1f, 0f),
+            new Vector3(2.2f, 2f, 2.2f), LevelPortal.PortalAction.EnterInterior, nextScene, fire.transform);
+        return fire;
+    }
+
+    // Tall additive smoke column — the far-visible landmark of each exit.
+    void BuildSmokePlume(Transform fire)
+    {
+        var smokeGo = new GameObject("Smoke");
+        smokeGo.transform.SetParent(fire, false);
+        smokeGo.transform.localPosition = new Vector3(0f, 0.8f, 0f);
+        var ps = smokeGo.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.startLifetime = 9f;
+        main.startSpeed = 5f;
+        main.startSize = new ParticleSystem.MinMaxCurve(1.2f, 2.4f);
+        main.startColor = new Color(0.55f, 0.58f, 0.65f, 0.5f);
+        main.maxParticles = 300;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;   // plume trails when the fire relocates
+        var emission = ps.emission;
+        emission.rateOverTime = 16f;
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 5f;
+        shape.radius = 0.35f;
+        var sol = ps.sizeOverLifetime;
+        sol.enabled = true;
+        sol.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.6f, 1f, 3f));
+        var colLife = ps.colorOverLifetime;
+        colLife.enabled = true;
+        var grad = new Gradient();
+        grad.SetKeys(
+            new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+            new[] { new GradientAlphaKey(0.6f, 0f), new GradientAlphaKey(0.35f, 0.5f), new GradientAlphaKey(0f, 1f) });
+        colLife.color = grad;
+
+        var psr = smokeGo.GetComponent<ParticleSystemRenderer>();
+        var smokeMat = new Material(Shader.Find("Legacy Shaders/Particles/Additive"));
+        smokeMat.mainTexture = SoftCircleTex();
+        smokeMat.SetColor("_TintColor", new Color(0.45f, 0.5f, 0.58f, 0.35f));
+        psr.material = smokeMat;
+    }
+
+    static Texture2D _softCircle;
+    static Texture2D SoftCircleTex()
+    {
+        if (_softCircle != null) return _softCircle;
+        int n = 64;
+        _softCircle = new Texture2D(n, n, TextureFormat.RGBA32, false);
+        for (int y = 0; y < n; y++)
+            for (int x = 0; x < n; x++)
+            {
+                float dx = (x - n / 2f) / (n / 2f), dy = (y - n / 2f) / (n / 2f);
+                float a = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy));
+                _softCircle.SetPixel(x, y, new Color(1f, 1f, 1f, a * a));
+            }
+        _softCircle.Apply();
+        return _softCircle;
+    }
+
+    void PlaceFire(int i, Vector3 aroundPos, bool initial)
+    {
+        Vector3 best = _fires[i].position;
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            float a = Random.value * Mathf.PI * 2f;
+            float d = Random.Range(fireMinDistance, fireMaxDistance);
+            Vector3 c = initial ? Vector3.zero : aroundPos;
+            float x = Mathf.Clamp(c.x + Mathf.Cos(a) * d, -270f, 270f);
+            float z = Mathf.Clamp(c.z + Mathf.Sin(a) * d, -270f, 270f);
+            best = new Vector3(x, SeaHeight(x, z), z);
+            if (initial || !ObserverState.IsObserved(new Bounds(best + Vector3.up * 2f, new Vector3(4f, 6f, 4f))))
+                break;
+        }
+        _fires[i].position = best;
+        _fireTrackers[i].Reset();
     }
 
     // Tapered banded tower on a rock, gallery deck, glass lamp room, domed roof — and
@@ -105,22 +197,11 @@ public class FrozenSeaController : MonoBehaviour
         var mf = coneGo.AddComponent<MeshFilter>();
         mf.sharedMesh = BuildConeMesh(600f, 63f, 20);
         var mr = coneGo.AddComponent<MeshRenderer>();
-        // ADDITIVE, not Fade: alpha-blended Standard multiplies emission by its low
-        // alpha and rendered as a dark cone at night. Additive can only brighten what's
-        // behind it — actual light-shaft behaviour.
-        var addShader = Shader.Find("Legacy Shaders/Particles/Additive");
-        Material coneMat;
-        if (addShader != null)
-        {
-            coneMat = new Material(addShader);
-            coneMat.SetColor("_TintColor", new Color(1f, 0.95f, 0.75f, 0.09f));
-        }
-        else
-        {
-            coneMat = DimensionSceneUtil.FadeMat(new Color(1f, 0.95f, 0.75f, 0.18f));
-            coneMat.EnableKeyword("_EMISSION");
-            coneMat.SetColor("_EmissionColor", new Color(1f, 0.95f, 0.75f) * 2.5f);
-        }
+        // Dedicated unlit-additive shader: previous attempts (Standard Fade, legacy
+        // particle additive) both ended up black at night — this one is unlit, fog-off,
+        // and can only brighten what's behind it.
+        var coneMat = new Material(Shader.Find("Dimensions/BeamAdditive"));
+        coneMat.SetColor("_Color", new Color(1f, 0.95f, 0.75f, 0.10f));
         mr.sharedMaterial = coneMat;
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mr.receiveShadows = false;
@@ -239,14 +320,15 @@ public class FrozenSeaController : MonoBehaviour
             _beamYaw += beamSweepSpeed * Time.deltaTime;
         _beamHead.rotation = Quaternion.Euler(6f, _beamYaw, 0f);
 
-        // Hatch: melts away while the beam is ON it.
-        bool hatchLit = LitByBeam(_hatch.position);
-        float targetAlpha = hatchLit ? 0.05f : 1f;
-        _hatchAlpha = Mathf.MoveTowards(_hatchAlpha, targetAlpha, Time.deltaTime / 0.3f);
-        _mpb.SetColor(ColorId, new Color(0.45f, 0.9f, 0.6f, _hatchAlpha));
-        _hatchRend.SetPropertyBlock(_mpb);
-        _hatchCol.enabled = !hatchLit;
-        _portalGo.SetActive(!hatchLit);
+        // Campfires: any that leaves your view relocates (smoke trail lingers behind).
+        var cam = ObserverState.Cam;
+        if (cam != null)
+            for (int i = 0; i < _fires.Length; i++)
+            {
+                var fb = new Bounds(_fires[i].position + Vector3.up * 4f, new Vector3(4f, 10f, 4f));
+                _fireTrackers[i].Tick(fb, out bool fireLost, float.PositiveInfinity);
+                if (fireLost) PlaceFire(i, cam.transform.position, initial: false);
+            }
 
         // Player: caught in the beam for more than a moment → the sea rearranges you.
         if (_player == null && --_playerRefindCooldown <= 0)
@@ -302,7 +384,13 @@ public class FrozenSeaController : MonoBehaviour
     [Tooltip("Seconds you can be in the beam before it relocates you (the whiteout swells over this window).")]
     public float caughtGraceSeconds = 0.9f;
 
+    [Header("Exit campfires")]
+    [Tooltip("Min relocation distance from the player.")]
+    public float fireMinDistance = 45f;
+    [Tooltip("Max relocation distance from the player.")]
+    public float fireMaxDistance = 130f;
+
     [Header("Exit")]
-    [Tooltip("Scene the hatch leads to.")]
+    [Tooltip("Scene the campfires lead to.")]
     public string nextScene = "D7_HallOfDoors";
 }
