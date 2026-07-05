@@ -151,9 +151,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cdc992ca3a945984caba699cf2201a17, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  bridgeLength: 150
-  segmentLength: 3
-  colliderDropDelay: 0.2
+  colliderDropDelay: 0.4
   nextScene: D4_WaitingField
 --- !u!4 &257679566
 Transform:

@@ -27,13 +27,15 @@ public class HallOfDoorsController : MonoBehaviour
         var frameMat  = DimensionSceneUtil.Mat(new Color(0.20f, 0.13f, 0.08f), 0.15f);
         var panelMat  = DimensionSceneUtil.Mat(new Color(0.33f, 0.22f, 0.13f), 0.2f);
 
+        // Corridor extends back to z=-4 so the (0, 1.5, 0) spawn lands well inside it.
         float length = (doorCount / 2) * doorSpacing + 12f;
-        float zc = length * 0.5f;
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "Carpet", new Vector3(0f, -0.15f, zc), new Vector3(4f, 0.3f, length), carpetMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "WallL", new Vector3(-2.15f, 1.9f, zc), new Vector3(0.3f, 4.1f, length), wallMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "WallR", new Vector3( 2.15f, 1.9f, zc), new Vector3(0.3f, 4.1f, length), wallMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "Ceil",  new Vector3(0f, 4f, zc), new Vector3(4.6f, 0.3f, length), ceilMat, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "EndA",  new Vector3(0f, 1.9f, -0.5f), new Vector3(4.6f, 4.1f, 0.3f), wallMat, _root);
+        float zc = (length - 4f) * 0.5f;
+        float span = length + 4f;
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Carpet", new Vector3(0f, -0.15f, zc), new Vector3(4f, 0.3f, span), carpetMat, _root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "WallL", new Vector3(-2.15f, 1.9f, zc), new Vector3(0.3f, 4.1f, span), wallMat, _root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "WallR", new Vector3( 2.15f, 1.9f, zc), new Vector3(0.3f, 4.1f, span), wallMat, _root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Ceil",  new Vector3(0f, 4f, zc), new Vector3(4.6f, 0.3f, span), ceilMat, _root);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "EndA",  new Vector3(0f, 1.9f, -4.5f), new Vector3(4.6f, 4.1f, 0.3f), wallMat, _root);
         DimensionSceneUtil.Block(PrimitiveType.Cube, "EndB",  new Vector3(0f, 1.9f, length + 0.5f), new Vector3(4.6f, 4.1f, 0.3f), wallMat, _root);
         for (float z = 6f; z < length; z += 12f)
         {
@@ -75,7 +77,12 @@ public class HallOfDoorsController : MonoBehaviour
             _doors[i] = door.transform;
         }
 
-        _knock = DimensionSceneUtil.LoopingAudio(gameObject, KnockClip(), 60f, 1f);
+        // Knock lives on its OWN child — MoveTrueDoor repositions this transform, and
+        // putting the source on DimensionRoot moved the entire corridor with it (the
+        // world teleported out from under the player on load).
+        var knockGo = new GameObject("KnockSource");
+        knockGo.transform.SetParent(_root, false);
+        _knock = DimensionSceneUtil.LoopingAudio(knockGo, KnockClip(), 60f, 1f);
         MoveTrueDoor();
         var hum = new GameObject("HumBed");
         hum.transform.SetParent(_root, false);

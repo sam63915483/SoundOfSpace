@@ -105,7 +105,12 @@ public class FrozenSeaController : MonoBehaviour
         var mf = coneGo.AddComponent<MeshFilter>();
         mf.sharedMesh = BuildConeMesh(200f, 21f, 20);
         var mr = coneGo.AddComponent<MeshRenderer>();
-        mr.sharedMaterial = DimensionSceneUtil.FadeMat(new Color(1f, 0.95f, 0.75f, 0.14f));
+        // Fade alone is LIT — at night nothing lights the cone so it rendered black.
+        // Emission makes it self-glowing translucent light.
+        var coneMat = DimensionSceneUtil.FadeMat(new Color(1f, 0.95f, 0.75f, 0.12f));
+        coneMat.EnableKeyword("_EMISSION");
+        coneMat.SetColor("_EmissionColor", new Color(1f, 0.95f, 0.75f) * 0.7f);
+        mr.sharedMaterial = coneMat;
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mr.receiveShadows = false;
     }
@@ -209,8 +214,18 @@ public class FrozenSeaController : MonoBehaviour
             _atmosApplied = true;
         }
 
-        // Sweep the beam.
-        _beamYaw += beamSweepSpeed * Time.deltaTime;
+        // Sweep the beam — but once it touches the player it LOCKS ON and tracks them
+        // for the catch. (A pure sweep crossed a player in ~0.5s, under the grace
+        // window, so the catch never completed.)
+        bool lockedOn = _playerLitSince >= 0f && _player != null && _player.Rigidbody != null;
+        if (lockedOn)
+        {
+            Vector3 tp = _player.Rigidbody.position - _beamHead.position;
+            float targetYaw = Mathf.Atan2(tp.x, tp.z) * Mathf.Rad2Deg;
+            _beamYaw = Mathf.MoveTowardsAngle(_beamYaw, targetYaw, 120f * Time.deltaTime);
+        }
+        else
+            _beamYaw += beamSweepSpeed * Time.deltaTime;
         _beamHead.rotation = Quaternion.Euler(6f, _beamYaw, 0f);
 
         // Hatch: melts away while the beam is ON it.
