@@ -80,4 +80,19 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D17_TidePools.unity
     guid: fd7de2bcbcc712d4a930fd293485819c
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D18_StaticField.unity
+    guid: 04d9d4e792cf1864889da7145af2a5d4
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D19_BoneGarden.unity
+    guid: 3596654713b1bb34caba5e252f50addd
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D20_CloudShelf.unity
+    guid: 4282c8d45df629c4a8fa8e18008ff00f
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D21_ArchiveStacks.unity
+    guid: b46212e6386622e4894147ef7a2c58b0
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D22_RustSea.unity
+    guid: 5709b7151d2d3894eb743c6e42cb20ca
   m_configObjects: {}
