@@ -42,7 +42,7 @@ public class HallOfDoorsController : MonoBehaviour
     float _openT;                        // 0 closed → 1 open
     bool _transiting;                    // player crossing into the other shell
     Vector3 _pendingRoomCenter;
-    TMPro.TextMeshPro _prompt;
+    GameObject _promptOwner;             // door panel currently owning the shared interact prompt
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
@@ -67,16 +67,6 @@ public class HallOfDoorsController : MonoBehaviour
         _current.root.position = Vector3.zero;
         // Room 0 is always Red / Yellow / Blue on three walls; the fourth is sealed.
         DressRoom(_current, new[] { DoorColor.Red, DoorColor.Yellow, DoorColor.Blue }, sealedWall: 3);
-
-        var promptGo = new GameObject("DoorPrompt");
-        promptGo.transform.SetParent(transform, false);
-        _prompt = promptGo.AddComponent<TMPro.TextMeshPro>();
-        _prompt.text = "[F]  OPEN";
-        _prompt.fontSize = 28f;
-        _prompt.alignment = TMPro.TextAlignmentOptions.Center;
-        _prompt.color = new Color(1f, 0.95f, 0.8f);
-        _prompt.GetComponent<RectTransform>().sizeDelta = new Vector2(20f, 4f);
-        promptGo.SetActive(false);
 
         DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(110f, 2f, 0.04f), 300f, 1f);
     }
@@ -123,10 +113,11 @@ public class HallOfDoorsController : MonoBehaviour
                 wallCenter + Vector3.up * -0.15f, new Vector3(Mathf.Abs(side.x) * 1.6f + Mathf.Abs(dir.x) * 1.2f, 0.3f,
                                                               Mathf.Abs(side.z) * 1.6f + Mathf.Abs(dir.z) * 1.2f), _carpetMat, shell.root);
 
-            // The sliding colored panel (its own material instance per wall).
+            // The sliding colored panel (its own material instance per wall). Deep
+            // (0.45m) on purpose: thin panels let the player controller tunnel through.
             shell.panelMats[w] = DimensionSceneUtil.Mat(Color.grey, 0.25f);
-            Vector3 panelScale = new Vector3(Mathf.Abs(side.x) * 1.55f + Mathf.Abs(dir.x) * 0.15f, 2.75f,
-                                             Mathf.Abs(side.z) * 1.55f + Mathf.Abs(dir.z) * 0.15f);
+            Vector3 panelScale = new Vector3(Mathf.Abs(side.x) * 1.55f + Mathf.Abs(dir.x) * 0.45f, 2.75f,
+                                             Mathf.Abs(side.z) * 1.55f + Mathf.Abs(dir.z) * 0.45f);
             var panel = DimensionSceneUtil.Block(PrimitiveType.Cube, "Panel" + w,
                 wallCenter + Vector3.up * 1.4f, panelScale, shell.panelMats[w], shell.root);
 
@@ -198,7 +189,7 @@ public class HallOfDoorsController : MonoBehaviour
             _atmosApplied = true;
         }
         var cam = ObserverState.Cam;
-        if (cam == null || _finished) return;
+        if (cam == null) return;
         if (_player == null && --_playerRefindCooldown <= 0)
         {
             _player = FindObjectOfType<PlayerController>();
@@ -207,7 +198,8 @@ public class HallOfDoorsController : MonoBehaviour
         if (_player == null || _player.Rigidbody == null) return;
         Vector3 playerPos = _player.Rigidbody.position;
 
-        // Animate the open door panel sliding into the floor.
+        // Animate the open door panel sliding into the floor. (Runs even after the
+        // final door — gating this on _finished left the last door shut forever.)
         if (_openDoor != null)
         {
             _openT = Mathf.MoveTowards(_openT, 1f, Time.deltaTime / 0.45f);
@@ -222,10 +214,12 @@ public class HallOfDoorsController : MonoBehaviour
             Vector3 flat = playerPos - _pendingRoomCenter; flat.y = 0f;
             if (Mathf.Abs(flat.x) < WallHalf - 1f && Mathf.Abs(flat.z) < WallHalf - 1f)
                 CompleteTransit();
+            ClearPrompt();
             return;                                          // no interactions mid-transit
         }
+        if (_finished) { ClearPrompt(); return; }            // exit room has no doors to open
 
-        // Gaze + proximity door prompt.
+        // Gaze + proximity door prompt — the game's standard interact pill.
         Door target = null;
         foreach (var d in _current.doors)
         {
@@ -240,19 +234,27 @@ public class HallOfDoorsController : MonoBehaviour
 
         if (target != null)
         {
-            _prompt.gameObject.SetActive(true);
-            _prompt.transform.position = target.promptAnchor.position;
-            _prompt.transform.rotation = Quaternion.LookRotation(_prompt.transform.position - cam.transform.position);
+            var ownerGo = target.panel.gameObject;
+            if (_promptOwner != ownerGo) ClearPrompt();
+            _promptOwner = ownerGo;
+            InteractPromptUI.Show(ownerGo, "Press F to open");
             bool pressed = Input.GetKeyDown(KeyCode.F) || TutorialGate.PadPressed(TutorialGate.PadButton.X);
             if (pressed) OpenDoor(target);
         }
         else
-            _prompt.gameObject.SetActive(false);
+            ClearPrompt();
+    }
+
+    void ClearPrompt()
+    {
+        if (_promptOwner == null) return;
+        InteractPromptUI.Clear(_promptOwner);
+        _promptOwner = null;
     }
 
     void OpenDoor(Door door)
     {
-        _prompt.gameObject.SetActive(false);
+        ClearPrompt();
 
         bool correct = _onPath && door.color == Sequence[Mathf.Min(_progress, Sequence.Length - 1)];
         if (correct) _progress++;

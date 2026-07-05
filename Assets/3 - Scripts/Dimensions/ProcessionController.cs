@@ -1,11 +1,13 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// D8 "The Procession": a fog-bound stone garden. Statues only move while unseen, and
-/// they don't merely follow — each one steers for its own slot on a tight ring around
-/// you. Let them work unwatched for too long and they close the circle and hold you in
-/// it. The exit is a free-standing glowing door that relocates every time it leaves
-/// your view (D1-style): spot it, keep it in sight, reach it before the circle closes.
+/// D8 "The Procession": a fog-bound stone garden. Statues only move while unseen —
+/// each steers for its own slot on a tight ring around you (polar movement: approach
+/// the ring radially, orbit along it, never through the middle). Blackout pulses give
+/// them windows even while you watch. And the ground keeps yielding more of them:
+/// risers erupt in front of you, stand dormant until you've seen them and look away,
+/// then join the noose. The exit is a glowing doorframe that relocates when unseen.
 /// </summary>
 public class ProcessionController : MonoBehaviour
 {
@@ -16,12 +18,15 @@ public class ProcessionController : MonoBehaviour
         public ObservationTracker tracker = new ObservationTracker();
         public bool observedNow = true;
         public float speed;
-        public float slotAngle;              // this statue's place on the encircling ring
+        public float slotAngle;
         public AudioSource voice;
         public float nextSoundTime;
+        public bool rising;              // animating up out of the ground
+        public bool dormant;             // risen but frozen until seen-then-unseen
     }
 
-    Statue[] _statues;
+    readonly List<Statue> _statues = new List<Statue>();
+    Material _stoneMat;
     Transform _door;
     ObservationTracker _doorTracker = new ObservationTracker();
     float _encircledSince = -1f;
@@ -33,6 +38,7 @@ public class ProcessionController : MonoBehaviour
     UnityEngine.UI.Image _black;
     float _nextBlackoutTime;
     float _blackoutUntil;
+    float _nextRiserTime;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
@@ -43,48 +49,26 @@ public class ProcessionController : MonoBehaviour
     void Awake()
     {
         var groundMat = DimensionSceneUtil.Mat(new Color(0.16f, 0.18f, 0.15f), 0.05f);
-        var stoneMat  = DimensionSceneUtil.Mat(new Color(0.14f, 0.14f, 0.15f), 0.15f);
+        _stoneMat = DimensionSceneUtil.Mat(new Color(0.14f, 0.14f, 0.15f), 0.15f);
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Ground",
             new Vector3(0f, -0.5f, 0f), new Vector3(1500f, 1f, 1500f), groundMat, transform);
         DimensionSceneUtil.CreateDirectionalLight(new Color(0.6f, 0.62f, 0.65f), 0.35f, new Vector3(25f, 40f, 0f), true);
 
-        _statues = new Statue[statueCount];
-        for (int i = 0; i < statueCount; i++)
-        {
-            var root = new GameObject("Statue" + i);
-            root.transform.SetParent(transform, false);
-            var rb = root.AddComponent<Rigidbody>();
-            rb.isKinematic = true;
-            DimensionSceneUtil.Block(PrimitiveType.Cube, "Legs", new Vector3(0f, 0.6f, 0f), new Vector3(0.8f, 1.2f, 0.6f), stoneMat, root.transform);
-            DimensionSceneUtil.Block(PrimitiveType.Cube, "Torso", new Vector3(0f, 1.7f, 0f), new Vector3(1.0f, 1.0f, 0.7f), stoneMat, root.transform);
-            var head = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Head", new Vector3(0f, 2.5f, 0f), Vector3.one * 0.55f, stoneMat, root.transform);
-            Destroy(head.GetComponent<Collider>());
-
-            float a = Random.value * Mathf.PI * 2f;
-            float d = Random.Range(25f, 60f);
-            root.transform.position = new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d);
-            var voice = root.AddComponent<AudioSource>();
-            voice.spatialBlend = 1f;
-            voice.rolloffMode = AudioRolloffMode.Linear;
-            voice.maxDistance = 70f;
-            voice.playOnAwake = false;
-            _statues[i] = new Statue
-            {
-                tf = root.transform,
-                rb = rb,
-                speed = Random.Range(2.5f, 4.5f),
-                slotAngle = i * Mathf.PI * 2f / statueCount,
-                voice = voice,
-                nextSoundTime = Time.time + Random.Range(1f, 4f),
-            };
-        }
         _gruntClip = GruntClip();
         _shriekClip = ShriekClip();
-        _startTime = Time.time;
 
-        // The exit: a lone glowing doorframe out in the fog. Relocates whenever it
-        // leaves your view — the observation chase, D1-style, out in the open.
+        for (int i = 0; i < statueCount; i++)
+        {
+            float a = Random.value * Mathf.PI * 2f;
+            float d = Random.Range(25f, 60f);
+            BuildStatue(new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d), riser: false);
+        }
+        _startTime = Time.time;
+        _nextRiserTime = Time.time + 14f;
+
+        // The exit: a lone glowing doorframe out in the fog; relocates whenever it
+        // leaves your view.
         var frameMat = DimensionSceneUtil.Mat(new Color(0.07f, 0.07f, 0.09f), 0.2f);
         var paneMat  = DimensionSceneUtil.EmissiveMat(new Color(0.7f, 0.9f, 1f), 2f);
         var door = new GameObject("ExitDoor");
@@ -103,9 +87,8 @@ public class ProcessionController : MonoBehaviour
         _ambience = DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(65f, 2f, 0.5f), 800f, 0.1f);
         _ambience.spatialBlend = 0f;    // dread has no direction
 
-        // Blackout overlay: your sight fails on a quickening rhythm. Without these the
-        // circle can never fully close — you can always watch it. When the dark comes,
-        // EVERYTHING counts as unobserved.
+        // Blackout overlay: your sight fails on a quickening rhythm. When the dark
+        // comes, EVERYTHING counts as unobserved.
         var canvasGo = new GameObject("BlackoutOverlay");
         canvasGo.transform.SetParent(transform, false);
         var canvas = canvasGo.AddComponent<Canvas>();
@@ -122,14 +105,54 @@ public class ProcessionController : MonoBehaviour
         _nextBlackoutTime = Time.time + 6f;
     }
 
-    // Blackout cadence: every 6s at the start → 5s after 10s → 4s after 20s → 3s once
-    // the climax hits.
-    float BlackoutInterval()
+    Statue BuildStatue(Vector3 pos, bool riser)
     {
-        float elapsed = Time.time - _startTime;
-        if (elapsed < 10f) return 6f;
-        if (elapsed < 20f) return 5f;
-        return _climaxed ? 3f : 4f;
+        var root = new GameObject(riser ? "Statue_Riser" : "Statue");
+        root.transform.SetParent(transform, false);
+        var rb = root.AddComponent<Rigidbody>();
+        rb.isKinematic = true;
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Legs", new Vector3(0f, 0.6f, 0f), new Vector3(0.8f, 1.2f, 0.6f), _stoneMat, root.transform);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Torso", new Vector3(0f, 1.7f, 0f), new Vector3(1.0f, 1.0f, 0.7f), _stoneMat, root.transform);
+        var head = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Head", new Vector3(0f, 2.5f, 0f), Vector3.one * 0.55f, _stoneMat, root.transform);
+        Destroy(head.GetComponent<Collider>());
+        root.transform.position = pos;
+        var voice = root.AddComponent<AudioSource>();
+        voice.spatialBlend = 1f;
+        voice.rolloffMode = AudioRolloffMode.Linear;
+        voice.maxDistance = 70f;
+        voice.playOnAwake = false;
+        var s = new Statue
+        {
+            tf = root.transform,
+            rb = rb,
+            speed = Random.Range(3.5f, 5.5f),
+            voice = voice,
+            nextSoundTime = Time.time + Random.Range(1f, 4f),
+            rising = riser,
+            dormant = riser,
+        };
+        _statues.Add(s);
+        return s;
+    }
+
+    // A statue erupts from the ground in the player's path, then stands dormant until
+    // it has been SEEN and then unseen — at which point it joins the hunt.
+    void SpawnRiser()
+    {
+        if (_statues.Count >= maxStatues) return;
+        var cam = ObserverState.Cam;
+        if (cam == null || _player == null || _player.Rigidbody == null) return;
+        Vector3 fwd = cam.transform.forward; fwd.y = 0f;
+        if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward;
+        fwd.Normalize();
+        Vector3 right = Vector3.Cross(Vector3.up, fwd);
+        Vector3 pos = _player.Rigidbody.position
+                    + fwd * Random.Range(6f, 11f)
+                    + right * Random.Range(-3.5f, 3.5f);
+        pos.y = -3.4f;                                       // starts buried
+        var s = BuildStatue(pos, riser: true);
+        s.voice.pitch = Random.Range(0.6f, 0.8f);
+        s.voice.PlayOneShot(_gruntClip, 1f);                 // the ground groans
     }
 
     void Update()
@@ -142,7 +165,7 @@ public class ProcessionController : MonoBehaviour
                 background: new Color(0.32f, 0.34f, 0.35f));
             _atmosApplied = true;
         }
-        // The longer you stay, the faster and louder it gets.
+
         float ramp = Ramp01;
         if (!_climaxed)
         {
@@ -156,6 +179,13 @@ public class ProcessionController : MonoBehaviour
             _ambience.pitch = Mathf.MoveTowards(_ambience.pitch, 0.85f, Time.deltaTime * 0.25f);
         }
 
+        // The ground keeps yielding: risers appear faster and faster.
+        if (Time.time >= _nextRiserTime)
+        {
+            SpawnRiser();
+            _nextRiserTime = Time.time + Mathf.Lerp(14f, 4f, ramp);
+        }
+
         // Blackout pulse: schedule, and hard-cut the screen to black for its duration.
         if (Time.time >= _nextBlackoutTime)
         {
@@ -163,20 +193,24 @@ public class ProcessionController : MonoBehaviour
             _nextBlackoutTime = Time.time + BlackoutInterval();
         }
         bool blackout = Time.time < _blackoutUntil;
-        float blackTarget = blackout ? 1f : 0f;
         float a0 = _black != null ? _black.color.a : 0f;
         if (_black != null)
-            _black.color = new Color(0f, 0f, 0f, Mathf.MoveTowards(a0, blackTarget, Time.deltaTime / 0.08f));
+            _black.color = new Color(0f, 0f, 0f, Mathf.MoveTowards(a0, blackout ? 1f : 0f, Time.deltaTime / 0.08f));
 
         foreach (var s in _statues)
         {
             var b = new Bounds(s.tf.position + Vector3.up * 1.5f, new Vector3(2f, 3.4f, 2f));
-            s.observedNow = s.tracker.Tick(b, out _, float.PositiveInfinity);
-            if (blackout) s.observedNow = false;   // in the dark, nothing is watched
+            bool seen = s.tracker.Tick(b, out bool justLost, float.PositiveInfinity);
+            s.observedNow = seen;
+            if (blackout) s.observedNow = false;             // in the dark, nothing is watched
+
+            // Dormant risers activate the first time you look at them and look away.
+            if (s.dormant && !s.rising && s.tracker.WasEverObserved && (justLost || blackout))
+                s.dormant = false;
 
             // Moving statues vocalise: grunts from the start, more often as the ramp
             // climbs, shrieking chases near/after the climax.
-            if (!s.observedNow && Time.time >= s.nextSoundTime)
+            if (!s.observedNow && !s.dormant && !s.rising && Time.time >= s.nextSoundTime)
             {
                 bool shriek = ramp > 0.85f;
                 s.voice.pitch = Random.Range(0.8f, 1.2f);
@@ -187,12 +221,22 @@ public class ProcessionController : MonoBehaviour
 
         // Exit door: leaves your sight → it's somewhere else.
         var cam = ObserverState.Cam;
-        if (cam != null)
+        if (cam != null && !blackout)
         {
             var db = new Bounds(_door.position + Vector3.up * 1.5f, new Vector3(2.5f, 3.5f, 2.5f));
             _doorTracker.Tick(db, out bool doorLost, float.PositiveInfinity);
             if (doorLost) RelocateDoor(cam.transform.position, initial: false);
         }
+    }
+
+    // Blackout cadence: every 6s at the start → 5s after 10s → 4s after 20s → 3s once
+    // the climax hits.
+    float BlackoutInterval()
+    {
+        float elapsed = Time.time - _startTime;
+        if (elapsed < 10f) return 6f;
+        if (elapsed < 20f) return 5f;
+        return _climaxed ? 3f : 4f;
     }
 
     void RelocateDoor(Vector3 aroundPos, bool initial)
@@ -208,7 +252,8 @@ public class ProcessionController : MonoBehaviour
                 break;
         }
         _door.position = best;
-        if (!initial) _door.rotation = Quaternion.LookRotation((aroundPos - best).normalized.Flat(), Vector3.up);
+        Vector3 face = aroundPos - best; face.y = 0f;
+        if (face.sqrMagnitude > 0.01f) _door.rotation = Quaternion.LookRotation(face.normalized, Vector3.up);
         _doorTracker.Reset();
     }
 
@@ -223,36 +268,50 @@ public class ProcessionController : MonoBehaviour
         Vector3 target = _player.Rigidbody.position;
         target.y = 0f;
 
-        // Encirclement check: how many statues are standing ON the ring?
-        int onRing = 0;
+        // Rising animation (runs regardless of observation — emerging is the jumpscare).
+        var active = new List<Statue>();
         foreach (var s in _statues)
+        {
+            if (s.rising)
+            {
+                Vector3 p = s.rb.position;
+                p.y = Mathf.MoveTowards(p.y, 0f, 3.8f * Time.fixedDeltaTime);
+                s.rb.MovePosition(p);
+                if (p.y >= 0f) s.rising = false;
+                continue;
+            }
+            if (!s.dormant) active.Add(s);
+        }
+        if (active.Count == 0) return;
+
+        // Encirclement check on the hunters.
+        int onRing = 0;
+        foreach (var s in active)
         {
             Vector3 pos = s.rb.position; pos.y = 0f;
             if (Mathf.Abs(Vector3.Distance(pos, target) - ringRadius) < 1.2f) onRing++;
         }
-        bool encircled = onRing >= Mathf.CeilToInt(statueCount * 0.7f);
+        bool encircled = onRing >= Mathf.CeilToInt(active.Count * 0.7f);
         if (encircled && _encircledSince < 0f) _encircledSince = Time.time;
         if (!encircled) { _encircledSince = -1f; if (_retreating && AllFar(target)) _retreating = false; }
-        // Mercy valve: after holding you a while they lose interest and drift back out,
-        // so a closed circle is terrifying but never a permanent softlock.
+        // Mercy valve: after holding you a while they lose interest and slink back a
+        // little — a closed circle is terrifying but never a permanent softlock.
         if (_encircledSince >= 0f && Time.time - _encircledSince > holdSeconds) _retreating = true;
 
-        // Slot assignment every tick: sort statues by their CURRENT angle around the
-        // player and hand out evenly spaced ring slots in that same order. Everyone
-        // takes the nearest gap — no long orbits, no holes, no crossing the middle.
-        var byAngle = new System.Collections.Generic.List<Statue>(_statues);
-        byAngle.Sort((a, b) =>
+        // Slot assignment: sort hunters by CURRENT angle around the player, deal evenly
+        // spaced ring slots in that order — nearest gap, no long orbits, no holes.
+        active.Sort((a, b) =>
         {
             Vector3 ra = a.rb.position - target, rbv = b.rb.position - target;
             return Mathf.Atan2(ra.z, ra.x).CompareTo(Mathf.Atan2(rbv.z, rbv.x));
         });
-        Vector3 rel0 = byAngle[0].rb.position - target;
+        Vector3 rel0 = active[0].rb.position - target;
         float baseAngle = Mathf.Atan2(rel0.z, rel0.x);
-        for (int k = 0; k < byAngle.Count; k++)
-            byAngle[k].slotAngle = baseAngle + k * Mathf.PI * 2f / statueCount;
+        for (int k = 0; k < active.Count; k++)
+            active[k].slotAngle = baseAngle + k * Mathf.PI * 2f / active.Count;
 
         float mult = Mathf.Lerp(1f, maxSpeedMultiplier, Ramp01);
-        foreach (var s in _statues)
+        foreach (var s in active)
         {
             if (s.observedNow) continue;                    // statues never move while seen
 
@@ -262,8 +321,7 @@ public class ProcessionController : MonoBehaviour
             float spd = s.speed * mult;
 
             // POLAR movement: radius eases to the ring (from outside — never through
-            // the player), angle orbits toward this statue's slot. The circle closes
-            // like a noose instead of a chase.
+            // the player), angle orbits toward this statue's slot.
             float goalRadius = _retreating ? retreatRadius : ringRadius;
             float newDist = Mathf.MoveTowards(dist, goalRadius, spd * Time.fixedDeltaTime);
             float slotDeg = s.slotAngle * Mathf.Rad2Deg;
@@ -279,8 +337,8 @@ public class ProcessionController : MonoBehaviour
         }
     }
 
-    // The 90-second mark: every statue shrieks at once, then the ambience falls away
-    // to a low aftermath drone (the statues themselves stay at full speed).
+    // The climax: every statue shrieks at once, then the ambience falls away to a low
+    // aftermath drone (the statues themselves stay at full speed).
     void Climax()
     {
         _climaxed = true;
@@ -336,6 +394,7 @@ public class ProcessionController : MonoBehaviour
     {
         foreach (var s in _statues)
         {
+            if (s.dormant || s.rising) continue;
             Vector3 pos = s.rb.position; pos.y = 0f;
             if (Vector3.Distance(pos, target) < retreatRadius - 2f) return false;
         }
@@ -344,14 +403,16 @@ public class ProcessionController : MonoBehaviour
 
     // ================= tuning (appended at END per repo conventions) =================
     [Header("Statues")]
-    [Tooltip("Crowd size.")]
+    [Tooltip("Crowd size at entry (risers add to it over time).")]
     public int statueCount = 14;
     [Tooltip("Radius of the circle they close around you.")]
     public float ringRadius = 2.6f;
     [Tooltip("Seconds a closed circle holds you before they lose interest and drift back.")]
-    public float holdSeconds = 8f;
+    public float holdSeconds = 15f;
     [Tooltip("How far they drift back out after holding you.")]
-    public float retreatRadius = 12f;
+    public float retreatRadius = 7f;
+    [Tooltip("Hard cap on statues including risers.")]
+    public int maxStatues = 30;
 
     [Header("Exit door")]
     [Tooltip("Min relocation distance from the player.")]
@@ -370,14 +431,4 @@ public class ProcessionController : MonoBehaviour
     public float maxSpeedMultiplier = 4f;
     [Tooltip("How long each blackout lasts.")]
     public float blackoutDuration = 0.9f;
-}
-
-static class ProcessionVecExt
-{
-    /// <summary>Y-flattened, safe-normalized direction (for door facing).</summary>
-    public static Vector3 Flat(this Vector3 v)
-    {
-        v.y = 0f;
-        return v.sqrMagnitude > 0.0001f ? v.normalized : Vector3.forward;
-    }
 }
