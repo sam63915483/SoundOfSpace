@@ -65,4 +65,19 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D12_MirrorLake.unity
     guid: ea0a2dd2d8f377843b853fc1723c11eb
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D13_Orchard.unity
+    guid: 28eae686c540b8b4c84fd6793323f6a3
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D14_GlacierThroat.unity
+    guid: b73f4459b724ece4eba70a34eff9d2d7
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D15_Congregation.unity
+    guid: 6fe8dbef4e05d74419ceff9a8757d292
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D16_NeonGrid.unity
+    guid: fe39caa7eafa70d44846a133ed06f8c7
+  - enabled: 1
+    path: Assets/4 - Scenes/Dimensions/D17_TidePools.unity
+    guid: fd7de2bcbcc712d4a930fd293485819c
   m_configObjects: {}
