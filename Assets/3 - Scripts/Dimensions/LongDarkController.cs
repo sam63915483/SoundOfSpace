@@ -41,13 +41,16 @@ public class LongDarkController : MonoBehaviour
         BuildCorridor(55f, carpetMat, wallMat, ceilMat, lampMat);   // end:   z 45..65
         _respawnPoint = new Vector3(0f, 1.5f, 4f);
 
-        // Five glass stepping stones across the chasm (z 18..45), solid only while seen.
-        _stones = new Stone[5];
-        for (int i = 0; i < 5; i++)
+        // Only TWO glass stones exist. They're solid while seen — and any stone that
+        // leaves your view REARRANGES to a new spot somewhere ahead of you. Look away
+        // and look back until the pair lines up into a jumpable path, then keep both
+        // in sight as you commit.
+        _stones = new Stone[stoneCount];
+        for (int i = 0; i < stoneCount; i++)
         {
-            float z = 20.4f + i * 5.5f;
+            float z = 20.5f + i * 3.5f;
             var go = DimensionSceneUtil.Block(PrimitiveType.Cube, "GlassStone" + i,
-                new Vector3(0f, -0.06f, z), new Vector3(2.6f, 0.12f, 2.6f), glassMat, _root);
+                new Vector3(i == 0 ? 0f : Random.Range(-2f, 2f), -0.06f, z), new Vector3(2.6f, 0.12f, 2.6f), glassMat, _root);
             _stones[i] = new Stone
             {
                 tf = go.transform,
@@ -134,13 +137,26 @@ public class LongDarkController : MonoBehaviour
         // when you look up, which re-enabled the collider mid-fall and bounced you
         // (fall-two-inches-get-pushed-up oscillation). Small core = you must actually
         // be looking AT the stone.
+        Vector3 playerPos = _player != null && _player.Rigidbody != null
+            ? _player.Rigidbody.position
+            : (ObserverState.Cam != null ? ObserverState.Cam.transform.position : Vector3.zero);
+
         foreach (var s in _stones)
         {
             // FLAT test zone: wide enough that seeing any decent part of the stone
             // counts (forgiving), but thin so the stone underfoot can't clip the
             // frustum bottom while you look up (the bounce bug).
             var b = new Bounds(s.tf.position, new Vector3(1.2f, 0.3f, 1.2f));
-            bool observed = s.tracker.Tick(b, out _, float.PositiveInfinity);
+            bool observed = s.tracker.Tick(b, out bool justLost, float.PositiveInfinity);
+
+            // Off-screen stones rearrange — except the one you're standing on/next to,
+            // which keeps the existing drop-out-from-under-you rule instead.
+            Vector3 flat = s.tf.position - playerPos; flat.y = 0f;
+            if (justLost && flat.magnitude > 1.6f)
+            {
+                Rearrange(s, playerPos);
+                continue;
+            }
 
             if (!observed && s.unobservedSince < 0f) s.unobservedSince = Time.time;
             if (observed) s.unobservedSince = -1f;
@@ -153,6 +169,27 @@ public class LongDarkController : MonoBehaviour
             // Collider survives a brief blink, then drops — sustained looking-away kills it.
             s.col.enabled = observed || Time.time - s.unobservedSince <= colliderDropDelay;
         }
+    }
+
+    // New spot: always AHEAD of the player (progress is never undone), lateral roll,
+    // sometimes in jump range and sometimes not — that's the look-away lottery.
+    // Prefers landing off-screen so stones don't visibly pop in.
+    void Rearrange(Stone s, Vector3 playerPos)
+    {
+        Vector3 best = s.tf.position;
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            float z = Mathf.Clamp(playerPos.z + Random.Range(1.5f, 5.5f), 19.5f, 43.5f);
+            float x = Random.Range(-2.5f, 2.5f);
+            best = new Vector3(x, -0.06f, z);
+            if (!ObserverState.IsObserved(new Bounds(best, new Vector3(3f, 1f, 3f))))
+                break;
+        }
+        s.tf.position = best;
+        s.tracker.Reset();
+        s.unobservedSince = -1f;
+        s.alpha = 1f;
+        s.col.enabled = true;
     }
 
     /// <summary>Kill-volume respawn: back to the corridor start, velocity zeroed. No damage.</summary>
@@ -172,6 +209,8 @@ public class LongDarkController : MonoBehaviour
     [Header("Stones")]
     [Tooltip("Seconds a stone stays solid after sight is lost (blink forgiveness).")]
     public float colliderDropDelay = 0.3f;
+    [Tooltip("How many stones exist at once (they rearrange off-screen).")]
+    public int stoneCount = 2;
 
     [Header("Exit")]
     [Tooltip("Scene the far corridor's door leads to.")]
