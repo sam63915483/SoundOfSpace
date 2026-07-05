@@ -14,7 +14,7 @@ public class LongDarkController : MonoBehaviour
         public Renderer rend;
         public Collider col;
         public MaterialPropertyBlock mpb;
-        public ObservationTracker tracker = new ObservationTracker(0.35f);  // generous grace — peripheral flicks forgiven
+        public ObservationTracker tracker = new ObservationTracker(0.25f);  // grace — brief peripheral flicks forgiven
         public float alpha = 1f;
         public float unobservedSince = -1f;  // Time.time when sight was lost; -1 while observed
     }
@@ -139,7 +139,7 @@ public class LongDarkController : MonoBehaviour
             // FLAT test zone: wide enough that seeing any decent part of the stone
             // counts (forgiving), but thin so the stone underfoot can't clip the
             // frustum bottom while you look up (the bounce bug).
-            var b = new Bounds(s.tf.position, new Vector3(2.0f, 0.3f, 2.0f));
+            var b = new Bounds(s.tf.position, new Vector3(1.2f, 0.3f, 1.2f));
             bool observed = s.tracker.Tick(b, out _, float.PositiveInfinity);
 
             if (!observed && s.unobservedSince < 0f) s.unobservedSince = Time.time;
@@ -171,7 +171,7 @@ public class LongDarkController : MonoBehaviour
     // ================= tuning (appended at END per repo conventions) =================
     [Header("Stones")]
     [Tooltip("Seconds a stone stays solid after sight is lost (blink forgiveness).")]
-    public float colliderDropDelay = 0.4f;
+    public float colliderDropDelay = 0.3f;
 
     [Header("Exit")]
     [Tooltip("Scene the far corridor's door leads to.")]

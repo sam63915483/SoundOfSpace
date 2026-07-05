@@ -17,6 +17,8 @@ public class ProcessionController : MonoBehaviour
         public bool observedNow = true;
         public float speed;
         public float slotAngle;              // this statue's place on the encircling ring
+        public AudioSource voice;
+        public float nextSoundTime;
     }
 
     Statue[] _statues;
@@ -24,9 +26,16 @@ public class ProcessionController : MonoBehaviour
     ObservationTracker _doorTracker = new ObservationTracker();
     float _encircledSince = -1f;
     bool _retreating;
+    AudioSource _ambience;
+    AudioClip _gruntClip, _shriekClip;
+    float _startTime;
+    bool _climaxed;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
+
+    /// <summary>0 at entry → 1 at the climax (rampSeconds in).</summary>
+    float Ramp01 => Mathf.Clamp01((Time.time - _startTime) / rampSeconds);
 
     void Awake()
     {
@@ -52,14 +61,24 @@ public class ProcessionController : MonoBehaviour
             float a = Random.value * Mathf.PI * 2f;
             float d = Random.Range(25f, 60f);
             root.transform.position = new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d);
+            var voice = root.AddComponent<AudioSource>();
+            voice.spatialBlend = 1f;
+            voice.rolloffMode = AudioRolloffMode.Linear;
+            voice.maxDistance = 70f;
+            voice.playOnAwake = false;
             _statues[i] = new Statue
             {
                 tf = root.transform,
                 rb = rb,
                 speed = Random.Range(2.5f, 4.5f),
                 slotAngle = i * Mathf.PI * 2f / statueCount,
+                voice = voice,
+                nextSoundTime = Time.time + Random.Range(1f, 4f),
             };
         }
+        _gruntClip = GruntClip();
+        _shriekClip = ShriekClip();
+        _startTime = Time.time;
 
         // The exit: a lone glowing doorframe out in the fog. Relocates whenever it
         // leaves your view — the observation chase, D1-style, out in the open.
@@ -77,7 +96,9 @@ public class ProcessionController : MonoBehaviour
             new Vector3(1.3f, 2.9f, 0.6f), LevelPortal.PortalAction.EnterInterior, nextScene, _door);
         RelocateDoor(Vector3.zero, initial: true);
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(65f, 2f, 0.05f), 500f, 1f);
+        // Ambience bed — volume/pitch climb toward the climax, then fall away.
+        _ambience = DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(65f, 2f, 0.5f), 800f, 0.1f);
+        _ambience.spatialBlend = 0f;    // dread has no direction
     }
 
     void Update()
@@ -90,10 +111,34 @@ public class ProcessionController : MonoBehaviour
                 background: new Color(0.32f, 0.34f, 0.35f));
             _atmosApplied = true;
         }
+        // The longer you stay, the faster and louder it gets.
+        float ramp = Ramp01;
+        if (!_climaxed)
+        {
+            _ambience.volume = Mathf.Lerp(0.08f, 0.6f, ramp * ramp);
+            _ambience.pitch = Mathf.Lerp(1f, 1.7f, ramp);
+            if (ramp >= 1f) Climax();
+        }
+        else
+        {
+            _ambience.volume = Mathf.MoveTowards(_ambience.volume, 0.14f, Time.deltaTime * 0.12f);
+            _ambience.pitch = Mathf.MoveTowards(_ambience.pitch, 0.85f, Time.deltaTime * 0.25f);
+        }
+
         foreach (var s in _statues)
         {
             var b = new Bounds(s.tf.position + Vector3.up * 1.5f, new Vector3(2f, 3.4f, 2f));
             s.observedNow = s.tracker.Tick(b, out _, float.PositiveInfinity);
+
+            // Moving statues vocalise: grunts from the start, more often as the ramp
+            // climbs, shrieking chases near/after the climax.
+            if (!s.observedNow && Time.time >= s.nextSoundTime)
+            {
+                bool shriek = ramp > 0.85f;
+                s.voice.pitch = Random.Range(0.8f, 1.2f);
+                s.voice.PlayOneShot(shriek ? _shriekClip : _gruntClip, shriek ? 0.9f : 0.55f);
+                s.nextSoundTime = Time.time + Mathf.Lerp(4.5f, 0.6f, ramp) * Random.Range(0.7f, 1.3f);
+            }
         }
 
         // Exit door: leaves your sight → it's somewhere else.
@@ -171,13 +216,69 @@ public class ProcessionController : MonoBehaviour
             float dist = to.magnitude;
             if (dist < 0.15f) continue;
             Vector3 dir = to / dist;
-            Vector3 step = dir * s.speed * Time.fixedDeltaTime;
+            // Speed climbs with time-in-dimension: 1x at entry → maxSpeedMultiplier at
+            // the climax and stays there. Past ~90s the circle closes almost instantly.
+            float spd = s.speed * Mathf.Lerp(1f, maxSpeedMultiplier, Ramp01);
+            Vector3 step = dir * spd * Time.fixedDeltaTime;
             if (step.magnitude > dist) step = to;
             s.rb.MovePosition(s.rb.position + step);
             Vector3 face = target - pos;
             if (face.sqrMagnitude > 0.01f)
                 s.rb.MoveRotation(Quaternion.LookRotation(face.normalized, Vector3.up));
         }
+    }
+
+    // The 90-second mark: every statue shrieks at once, then the ambience falls away
+    // to a low aftermath drone (the statues themselves stay at full speed).
+    void Climax()
+    {
+        _climaxed = true;
+        foreach (var s in _statues)
+        {
+            s.voice.pitch = Random.Range(0.75f, 1.25f);
+            s.voice.PlayOneShot(_shriekClip, 1f);
+        }
+    }
+
+    // Low woody grunt — a pitched noise thump with a fast decay.
+    static AudioClip GruntClip()
+    {
+        int rate = 44100;
+        float seconds = 0.4f;
+        int samples = (int)(rate * seconds);
+        var data = new float[samples];
+        var rng = new System.Random(12345);
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)rate;
+            float noise = (float)(rng.NextDouble() * 2.0 - 1.0);
+            float tone = Mathf.Sin(2f * Mathf.PI * (95f + 30f * Mathf.Sin(t * 40f)) * t);
+            data[i] = (tone * 0.7f + noise * 0.3f) * Mathf.Exp(-t * 14f) * 0.9f;
+        }
+        var clip = AudioClip.Create("grunt", samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    // Descending vibrato shriek.
+    static AudioClip ShriekClip()
+    {
+        int rate = 44100;
+        float seconds = 0.8f;
+        int samples = (int)(rate * seconds);
+        var data = new float[samples];
+        double phase = 0.0;
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)rate;
+            float f = Mathf.Lerp(1400f, 520f, t / seconds) * (1f + 0.06f * Mathf.Sin(t * 55f));
+            phase += 2.0 * Mathf.PI * f / rate;
+            float env = Mathf.Clamp01(t / 0.03f) * Mathf.Exp(-t * 3.2f);
+            data[i] = (Mathf.Sin((float)phase) * 0.8f + Mathf.Sin((float)phase * 2.01f) * 0.2f) * env;
+        }
+        var clip = AudioClip.Create("shriek", samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
     }
 
     bool AllFar(Vector3 target)
@@ -210,6 +311,12 @@ public class ProcessionController : MonoBehaviour
     [Header("Exit")]
     [Tooltip("Scene the door leads to — the Backrooms hub.")]
     public string nextScene = "R1_Backrooms";
+
+    [Header("Escalation")]
+    [Tooltip("Seconds from entry to the climax (speed + ambience peak).")]
+    public float rampSeconds = 90f;
+    [Tooltip("Statue speed multiplier at/after the climax.")]
+    public float maxSpeedMultiplier = 4f;
 }
 
 static class ProcessionVecExt

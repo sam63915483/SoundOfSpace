@@ -56,16 +56,18 @@ public class HallOfDoorsController : MonoBehaviour
             bool left = i % 2 == 0;
             float z = 6f + (i / 2) * doorSpacing;
             float x = left ? -2.0f : 2.0f;
+            // Build the door at identity FIRST, then place it — Block positions in
+            // WORLD space, so building after rotating/moving the root piled all 40
+            // doors' parts at the origin (the "no doors, just a hallway" bug).
             var door = new GameObject("Door" + i);
             door.transform.SetParent(_root, false);
-            door.transform.position = new Vector3(x, 0f, z);
-            door.transform.rotation = Quaternion.Euler(0f, left ? 90f : -90f, 0f);
             DimensionSceneUtil.Block(PrimitiveType.Cube, "Panel", new Vector3(0f, 1.4f, 0f), new Vector3(1.2f, 2.8f, 0.12f), panelMat, door.transform);
             DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameL", new Vector3(-0.7f, 1.4f, 0f), new Vector3(0.18f, 2.8f, 0.2f), frameMat, door.transform);
             DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameR", new Vector3( 0.7f, 1.4f, 0f), new Vector3(0.18f, 2.8f, 0.2f), frameMat, door.transform);
             DimensionSceneUtil.Block(PrimitiveType.Cube, "FrameT", new Vector3(0f, 2.85f, 0f), new Vector3(1.58f, 0.18f, 0.2f), frameMat, door.transform);
             var knob = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Knob", new Vector3(0.45f, 1.35f, -0.12f), Vector3.one * 0.12f, frameMat, door.transform);
             Destroy(knob.GetComponent<Collider>());
+            door.transform.SetPositionAndRotation(new Vector3(x, 0f, z), Quaternion.Euler(0f, left ? 90f : -90f, 0f));
             // Trigger pad in FRONT of the door (inside the corridor).
             var trig = new GameObject("DoorTrigger");
             trig.transform.SetParent(door.transform, false);

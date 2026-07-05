@@ -93,7 +93,7 @@ public class FrozenSeaController : MonoBehaviour
         _beamHead = head.transform;
         var spot = head.AddComponent<Light>();
         spot.type = LightType.Spot;
-        spot.range = 450f; spot.spotAngle = 14f; spot.intensity = 14f;
+        spot.range = 800f; spot.spotAngle = 14f; spot.intensity = 14f;
         spot.color = new Color(1f, 0.95f, 0.8f);
         var lampBall = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Lamp",
             Vector3.zero, Vector3.one * 1.4f, DimensionSceneUtil.EmissiveMat(new Color(1f, 0.97f, 0.85f), 4f), _beamHead);
@@ -103,13 +103,24 @@ public class FrozenSeaController : MonoBehaviour
         var coneGo = new GameObject("BeamCone");
         coneGo.transform.SetParent(_beamHead, false);
         var mf = coneGo.AddComponent<MeshFilter>();
-        mf.sharedMesh = BuildConeMesh(200f, 21f, 20);
+        mf.sharedMesh = BuildConeMesh(600f, 63f, 20);
         var mr = coneGo.AddComponent<MeshRenderer>();
-        // Fade alone is LIT — at night nothing lights the cone so it rendered black.
-        // Emission makes it self-glowing translucent light.
-        var coneMat = DimensionSceneUtil.FadeMat(new Color(1f, 0.95f, 0.75f, 0.12f));
-        coneMat.EnableKeyword("_EMISSION");
-        coneMat.SetColor("_EmissionColor", new Color(1f, 0.95f, 0.75f) * 0.7f);
+        // ADDITIVE, not Fade: alpha-blended Standard multiplies emission by its low
+        // alpha and rendered as a dark cone at night. Additive can only brighten what's
+        // behind it — actual light-shaft behaviour.
+        var addShader = Shader.Find("Legacy Shaders/Particles/Additive");
+        Material coneMat;
+        if (addShader != null)
+        {
+            coneMat = new Material(addShader);
+            coneMat.SetColor("_TintColor", new Color(1f, 0.95f, 0.75f, 0.09f));
+        }
+        else
+        {
+            coneMat = DimensionSceneUtil.FadeMat(new Color(1f, 0.95f, 0.75f, 0.18f));
+            coneMat.EnableKeyword("_EMISSION");
+            coneMat.SetColor("_EmissionColor", new Color(1f, 0.95f, 0.75f) * 2.5f);
+        }
         mr.sharedMaterial = coneMat;
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mr.receiveShadows = false;
