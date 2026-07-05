@@ -141,10 +141,15 @@ public class ShiftingMazeController : MonoBehaviour
         // North + East edges only — each wall has exactly one owner cell, and density
         // stays walkable (≤2 walls per owned pair). Dead ends self-heal: look away and
         // the blocking cell reshuffles.
+        // North and east walls get slightly DIFFERENT thicknesses so no two faces are
+        // ever coplanar where they cross at corners — identical planes z-fight (the
+        // flickering joint-line artifact); a 5% split buries every overlap inside the
+        // other wall's volume where the depth buffer hides it.
+        float tN = wallThickness * 1.05f, tE = wallThickness * 0.95f;
         if (Rand01(cell.seed, 1) < wallChance)
-            PlaceWall(cell, new Vector3(cx, wallHeight * 0.5f, cz + s * 0.5f), new Vector3(s + wallThickness, wallHeight, wallThickness));
+            PlaceWall(cell, new Vector3(cx, wallHeight * 0.5f, cz + s * 0.5f), new Vector3(s + tN, wallHeight, tN));
         if (Rand01(cell.seed, 2) < wallChance)
-            PlaceWall(cell, new Vector3(cx + s * 0.5f, wallHeight * 0.5f, cz), new Vector3(wallThickness, wallHeight, s + wallThickness));
+            PlaceWall(cell, new Vector3(cx + s * 0.5f, wallHeight * 0.5f, cz), new Vector3(tE, wallHeight, s + tE));
     }
 
     void PlaceWall(Cell cell, Vector3 pos, Vector3 scale)
