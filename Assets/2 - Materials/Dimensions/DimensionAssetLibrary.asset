@@ -1,0 +1,178 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7d36a0abbd1c20844b4afdaf55a1abae, type: 3}
+  m_Name: DimensionAssetLibrary
+  m_EditorClassIdentifier: 
+  textures:
+  - key: burlap
+    texture: {fileID: 2800000, guid: 5baaea4d04079874f8c66c48a7fd2ada, type: 3}
+  - key: concrete
+    texture: {fileID: 2800000, guid: 59f907f9d3c32734d85431b267a6fcd7, type: 3}
+  - key: d11_floor
+    texture: {fileID: 2800000, guid: d0b0f264b36e6b14faa2dd1965f304b8, type: 3}
+  - key: d11_metal
+    texture: {fileID: 2800000, guid: 6f86db71831ef304bbbf6de935d46991, type: 3}
+  - key: d12_planks
+    texture: {fileID: 2800000, guid: f723df8c6340d6d4da938f8f95660e8c, type: 3}
+  - key: d12_rock
+    texture: {fileID: 2800000, guid: 781e88a28a615f149afff3433bda7f9b, type: 3}
+  - key: d13_bark
+    texture: {fileID: 2800000, guid: ede81fa82b3fbd740aac3ca82a734e1a, type: 3}
+  - key: d15_glass1
+    texture: {fileID: 2800000, guid: 35945ffc0efc8984693befa269b84ce0, type: 3}
+  - key: d15_glass2
+    texture: {fileID: 2800000, guid: 192b654c71e4a81469c56114263263be, type: 3}
+  - key: d15_stone
+    texture: {fileID: 2800000, guid: 0825ad88b9edeb541b438220683b98d5, type: 3}
+  - key: d15_wood
+    texture: {fileID: 2800000, guid: e30141f6cb159c548bd490d4ae1ad39c, type: 3}
+  - key: d16_asphalt
+    texture: {fileID: 2800000, guid: 410193b63f2d7614b9aa94c1fd63c376, type: 3}
+  - key: d16_neon1
+    texture: {fileID: 2800000, guid: 320471913067f7a4ea7552f3659c1517, type: 3}
+  - key: d16_neon2
+    texture: {fileID: 2800000, guid: b2c81b6f43df2af428fc4f9ac7ea0971, type: 3}
+  - key: d16_neon3
+    texture: {fileID: 2800000, guid: 05abc3b1945addf4281db33e3143433c, type: 3}
+  - key: d18_corn
+    texture: {fileID: 2800000, guid: e9209be38771e6a4392084a4c880a6f6, type: 3}
+  - key: d18_dirt
+    texture: {fileID: 2800000, guid: 72c270067f770e546a9f2ca4ce632a47, type: 3}
+  - key: d1_ceiling
+    texture: {fileID: 2800000, guid: ec7683dc950de40438064419d1e99b7c, type: 3}
+  - key: d1_floor
+    texture: {fileID: 2800000, guid: 65dc5642de249e4469f928fec3e58695, type: 3}
+  - key: d1_wall
+    texture: {fileID: 2800000, guid: 6d11b9e2de22ef74d8520a2750ea1e20, type: 3}
+  - key: d22_container
+    texture: {fileID: 2800000, guid: e7658c2b97887214aa6742a05913059b, type: 3}
+  - key: d22_rust
+    texture: {fileID: 2800000, guid: bb46d2935ae480643903da3259a39211, type: 3}
+  - key: d23_wheat
+    texture: {fileID: 2800000, guid: 3a4d72251a97f0045acf824b9fe2bb1f, type: 3}
+  - key: d24_carpet
+    texture: {fileID: 2800000, guid: 69aba02561256c5499e1152d34605219, type: 3}
+  - key: d24_ceiling
+    texture: {fileID: 2800000, guid: 2030e18006467304bb8caa37cbf4f3b3, type: 3}
+  - key: d24_wall
+    texture: {fileID: 2800000, guid: f7cb0a2355993f54d932b628486d7dec, type: 3}
+  - key: d25_stone
+    texture: {fileID: 2800000, guid: 2e9370ccb95121c4389e5cc8d846c8de, type: 3}
+  - key: d25_wax
+    texture: {fileID: 2800000, guid: 1a7d89cf6b9cee449b35f504682c84c8, type: 3}
+  - key: d2_sand
+    texture: {fileID: 2800000, guid: 6097eb764b975014aae7dff36404c1ce, type: 3}
+  - key: d3_carpet
+    texture: {fileID: 2800000, guid: 63c311ce9a8f181488aef9f96f4f359c, type: 3}
+  - key: d3_door
+    texture: {fileID: 2800000, guid: 317a4a7f15390634abdc3fb1b9e10385, type: 3}
+  - key: d3_wall
+    texture: {fileID: 2800000, guid: b61f7d9fc76285f43b2f1d5568a2cfdc, type: 3}
+  - key: d4_stone
+    texture: {fileID: 2800000, guid: ae4f15ead08bea044bb278555b6b9e45, type: 3}
+  - key: d5_books
+    texture: {fileID: 2800000, guid: 7e83c6687319d2c418148907d0f047a1, type: 3}
+  - key: d5_wall
+    texture: {fileID: 2800000, guid: 482f8181fc60898459210752027479c5, type: 3}
+  - key: d6_ice
+    texture: {fileID: 2800000, guid: c53bf6ac050a3cf4b9b8d5a9e543484d, type: 3}
+  - key: d7_wall
+    texture: {fileID: 2800000, guid: d092bf011009ca1429243ae5e2d4c4c5, type: 3}
+  - key: d8_statue
+    texture: {fileID: 2800000, guid: 85dbedd3eaa3cde429cd465a672c7c8c, type: 3}
+  - key: d8_stone
+    texture: {fileID: 2800000, guid: 846900d6847f09444a9453f3f11b3d07, type: 3}
+  - key: d9_bark
+    texture: {fileID: 2800000, guid: 940f318a29d737d46bf8ffc709f3854a, type: 3}
+  - key: d9_ground
+    texture: {fileID: 2800000, guid: 0a04d9489ed85724dbc0b6b588ec9815, type: 3}
+  - key: fabric_couch
+    texture: {fileID: 2800000, guid: f04fcead4aec8f7419fe72ee9ce8bd49, type: 3}
+  - key: grass_dry
+    texture: {fileID: 2800000, guid: 5bd6800df9ea16b4890133969a37135b, type: 3}
+  - key: grass_lush
+    texture: {fileID: 2800000, guid: 95ebb20475122414591252198be82b91, type: 3}
+  - key: wood_parquet
+    texture: {fileID: 2800000, guid: 9850650b01935594fad91ef56609f0aa, type: 3}
+  - key: wood_worn
+    texture: {fileID: 2800000, guid: d665a364dbc0ff24c81288f6e9687e36, type: 3}
+  clips:
+  - key: amb_d1
+    clip: {fileID: 8300000, guid: b645030642975834d9d87e38f04e03a2, type: 3}
+  - key: amb_d11
+    clip: {fileID: 8300000, guid: f12b19b0d35778944ae4a679b9682b13, type: 3}
+  - key: amb_d12
+    clip: {fileID: 8300000, guid: 6d6165d8541941d498354982bb5f01c6, type: 3}
+  - key: amb_d13
+    clip: {fileID: 8300000, guid: f10180d265fc93043b8e88226f99efb6, type: 3}
+  - key: amb_d15
+    clip: {fileID: 8300000, guid: 46e6f355fda2faa419d0877c77f77a9c, type: 3}
+  - key: amb_d16
+    clip: {fileID: 8300000, guid: 11a84b52de5153c438e962ed4ffff9b9, type: 3}
+  - key: amb_d18
+    clip: {fileID: 8300000, guid: 6b9a8936126c88a40b0347a31b56a1bf, type: 3}
+  - key: amb_d2
+    clip: {fileID: 8300000, guid: ac64aef50dd0368428e02be686cd081b, type: 3}
+  - key: amb_d22
+    clip: {fileID: 8300000, guid: 2846cf5154600fc46b2175fec95c5472, type: 3}
+  - key: amb_d23
+    clip: {fileID: 8300000, guid: 060624c3431cee24b98ea2ff8f46f846, type: 3}
+  - key: amb_d24
+    clip: {fileID: 8300000, guid: 0cebc11a3e7ac004ab70ed76802f42f1, type: 3}
+  - key: amb_d25
+    clip: {fileID: 8300000, guid: 757c2e05d18ba2441a3f9590b9e82439, type: 3}
+  - key: amb_d3
+    clip: {fileID: 8300000, guid: 9dac72c35d532414ea01ac4ea4a3ae25, type: 3}
+  - key: amb_d4
+    clip: {fileID: 8300000, guid: d259f40ddf9ebc74c8698251ede5c543, type: 3}
+  - key: amb_d5
+    clip: {fileID: 8300000, guid: 3141e58f606b6f4458559076c14a8e5e, type: 3}
+  - key: amb_d6
+    clip: {fileID: 8300000, guid: 070033777af2ae849af33677261bd089, type: 3}
+  - key: amb_d7
+    clip: {fileID: 8300000, guid: aea5ea73786744f46bb00c0af98cb392, type: 3}
+  - key: amb_d8
+    clip: {fileID: 8300000, guid: 1a57c0dada3fa6a4a826cc9bcaa49846, type: 3}
+  - key: amb_d9
+    clip: {fileID: 8300000, guid: 9444c87ae10f9f441a5a3d8e69801519, type: 3}
+  - key: mus_d15_organ
+    clip: {fileID: 8300000, guid: 74bf6d9bb82349d46a3b707c42539bd3, type: 3}
+  - key: mus_d24_muzak
+    clip: {fileID: 8300000, guid: 55faf6d042d2b0e4c92a83317afaadb6, type: 3}
+  - key: mus_d25_choir
+    clip: {fileID: 8300000, guid: a7a3e250899364e4492fdd2af187af9e, type: 3}
+  - key: sfx_chair_scrape
+    clip: {fileID: 8300000, guid: b95433f05bee5e945a89f290216a41b2, type: 3}
+  - key: sfx_clock_tick
+    clip: {fileID: 8300000, guid: d9db0514ad361b648b7663ac95506ac5, type: 3}
+  - key: sfx_crow
+    clip: {fileID: 8300000, guid: 154e38f52e6ae274fb442f1a962c96d0, type: 3}
+  - key: sfx_door_slam_distant
+    clip: {fileID: 8300000, guid: 40f06a67022ccdb4fa36ac3a717a938e, type: 3}
+  - key: sfx_furniture_drag
+    clip: {fileID: 8300000, guid: 231ba597f49dcc8458a603d9a94d0ae5, type: 3}
+  - key: sfx_loon
+    clip: {fileID: 8300000, guid: 9755d163a1db1264f9d1a52f23267075, type: 3}
+  - key: sfx_paper_shuffle
+    clip: {fileID: 8300000, guid: cc3f6360fc7d38e47be60fd4f6543c63, type: 3}
+  - key: sfx_phone_ring
+    clip: {fileID: 8300000, guid: 5eea1e99f1c964049a4e517c232f6313, type: 3}
+  - key: sfx_tv_muffled
+    clip: {fileID: 8300000, guid: c792215638f151548b7ffe8d27d857b7, type: 3}
+  - key: sfx_wax_hiss
+    clip: {fileID: 8300000, guid: 2c558156790cb2d4e8faa8a41b1578c0, type: 3}
+  - key: sfx_whisper
+    clip: {fileID: 8300000, guid: eed3b7861ff81ec429e9a3326a1d5105, type: 3}
+  - key: sfx_windchime
+    clip: {fileID: 8300000, guid: 783994a909ff0654db466c73476537e2, type: 3}
+  - key: sfx_wood_creak
+    clip: {fileID: 8300000, guid: ac95881b16d5d8a46a656a2f5f69c2f4, type: 3}
