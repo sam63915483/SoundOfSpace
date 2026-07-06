@@ -161,6 +161,14 @@ MonoBehaviour:
   exitDoorChance: 0.08
   nextScene: D2_DuneSea
   pillarSize: 0.55
+  wallColor: {r: 0.75, g: 0.7, b: 0.5, a: 1}
+  floorColor: {r: 0.45, g: 0.42, b: 0.3, a: 1}
+  ceilColor: {r: 0.8, g: 0.8, b: 0.75, a: 1}
+  lampColor: {r: 1, g: 0.93, b: 0.75, a: 1}
+  ambientColor: {r: 0.28, g: 0.26, b: 0.18, a: 1}
+  fogColor: {r: 0.55, g: 0.5, b: 0.33, a: 1}
+  fogDensity: 0.045
+  backgroundColor: {r: 0.35, g: 0.32, b: 0.2, a: 1}
 --- !u!4 &957366818
 Transform:
   m_ObjectHideFlags: 0
