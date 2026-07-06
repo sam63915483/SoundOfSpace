@@ -117,6 +117,72 @@ public static class DimensionSceneUtil
         return clip;
     }
 
+    /// <summary>Standard mat with a library texture (flat tint fallback if the key
+    /// doesn't resolve). Pass Color.white for an untinted texture.</summary>
+    public static Material TexMat(string texKey, Color tint, Vector2 tiling, float smoothness = 0.1f)
+    {
+        var m = Mat(tint, smoothness);
+        var t = DimensionAssetLibrary.Tex(texKey);
+        if (t != null)
+        {
+            m.mainTexture = t;
+            m.mainTextureScale = tiling;
+        }
+        return m;
+    }
+
+    /// <summary>Emissive Standard mat with a library texture driving both albedo and
+    /// emission (stained glass, neon signs, CRT screens). Falls back to EmissiveMat(tint).</summary>
+    public static Material EmissiveTexMat(string texKey, Color tint, float emission = 1.5f)
+    {
+        var t = DimensionAssetLibrary.Tex(texKey);
+        if (t == null) return EmissiveMat(tint, emission);
+        var m = Mat(Color.white);
+        m.mainTexture = t;
+        m.EnableKeyword("_EMISSION");
+        m.SetTexture("_EmissionMap", t);
+        m.SetColor("_EmissionColor", Color.white * emission);
+        return m;
+    }
+
+    /// <summary>Library ambience clip, or a ToneClip fallback so pre-polish behavior
+    /// is preserved when the generated asset is missing.</summary>
+    public static AudioClip AmbienceClip(string key, float fallbackHz, float fallbackVol)
+    {
+        var c = DimensionAssetLibrary.Clip(key);
+        return c != null ? c : ToneClip(fallbackHz, 2f, fallbackVol);
+    }
+
+    /// <summary>2D looping ambience bed on an object (replaces the root sine hums).</summary>
+    public static AudioSource AmbienceLoop2D(GameObject on, string key, float fallbackHz, float fallbackVol, float volume)
+    {
+        var src = on.AddComponent<AudioSource>();
+        src.clip = AmbienceClip(key, fallbackHz, fallbackVol);
+        src.loop = true;
+        src.spatialBlend = 0f;
+        src.volume = volume;
+        src.Play();
+        return src;
+    }
+
+    /// <summary>Fire-and-forget 3D one-shot from the library at a world position
+    /// (the "room moved behind you" stingers). Silent no-op if the key is missing.</summary>
+    public static void PlayOneShot3D(string key, Vector3 pos, float volume = 1f, float maxDist = 25f)
+    {
+        var clip = DimensionAssetLibrary.Clip(key);
+        if (clip == null) return;
+        var go = new GameObject("OneShot_" + key);
+        go.transform.position = pos;
+        var src = go.AddComponent<AudioSource>();
+        src.clip = clip;
+        src.spatialBlend = 1f;
+        src.rolloffMode = AudioRolloffMode.Linear;
+        src.maxDistance = maxDist;
+        src.volume = volume;
+        src.Play();
+        Object.Destroy(go, clip.length + 0.2f);
+    }
+
     /// <summary>3D looping audio source (linear rolloff to maxDist) — proximity tells.</summary>
     public static AudioSource LoopingAudio(GameObject on, AudioClip clip, float maxDist, float volume = 1f)
     {
