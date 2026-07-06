@@ -27,7 +27,11 @@ public class FrozenSeaController : MonoBehaviour
     {
         _root = transform;
         _mpb = new MaterialPropertyBlock();
-        var seaMat = DimensionSceneUtil.Mat(new Color(0.05f, 0.08f, 0.12f), 0.85f);
+        // Cracked-ice texture when the library has it (explicit branch — the flat
+        // fallback needs a dark navy tint, the texture wants near-white).
+        var seaMat = DimensionAssetLibrary.Tex("d6_ice") != null
+            ? DimensionSceneUtil.TexMat("d6_ice", new Color(0.82f, 0.88f, 0.98f), Vector2.one, 0.75f)
+            : DimensionSceneUtil.Mat(new Color(0.05f, 0.08f, 0.12f), 0.85f);
 
         BuildSea(seaMat);
         DimensionSceneUtil.CreateDirectionalLight(new Color(0.4f, 0.5f, 0.7f), 0.22f, new Vector3(35f, -60f, 0f), false);
@@ -46,7 +50,108 @@ public class FrozenSeaController : MonoBehaviour
             PlaceFire(i, Vector3.zero, initial: true);
         }
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(45f, 2f, 0.07f), 600f, 1f);
+        BuildFrozenShapes();
+
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d6", 45f, 0.12f, 0.55f);
+    }
+
+    // ── Frozen-in wreckage: dark shapes locked in the ice that swap positions
+    // while unobserved. Per-shape trackers (a single zone the size of the sea
+    // would never fully leave the frustum, so PropShuffleSet doesn't fit here).
+    // Anchors are sparse (≥25m apart, ≥25m from spawn) so they can never wall
+    // you in, and shapes stay ≤3m tall so they never mask a smoke plume.
+    const int FrozenShapeCount = 10;
+    const int FrozenAnchorCount = 22;
+    Transform[] _frozenShapes;
+    ObservationTracker[] _frozenTrackers;
+    Vector3[] _frozenAnchors;
+    int[] _shapeAnchor;
+
+    void BuildFrozenShapes()
+    {
+        var dark = DimensionSceneUtil.Mat(new Color(0.05f, 0.045f, 0.04f), 0.2f);
+        _frozenAnchors = new Vector3[FrozenAnchorCount];
+        for (int i = 0; i < FrozenAnchorCount; i++)
+        {
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                float a = Random.value * Mathf.PI * 2f;
+                float d = Random.Range(25f, 240f);
+                var p = new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d);
+                p.y = SeaHeight(p.x, p.z);
+                _frozenAnchors[i] = p;
+                bool clear = true;
+                for (int j = 0; j < i; j++)
+                    if ((_frozenAnchors[j] - p).sqrMagnitude < 25f * 25f) { clear = false; break; }
+                if (clear) break;
+            }
+        }
+        _frozenShapes = new Transform[FrozenShapeCount];
+        _frozenTrackers = new ObservationTracker[FrozenShapeCount];
+        _shapeAnchor = new int[FrozenShapeCount];
+        for (int i = 0; i < FrozenShapeCount; i++)
+        {
+            _frozenShapes[i] = BuildFrozenShape(i % 4, dark).transform;
+            _frozenTrackers[i] = new ObservationTracker();
+            _shapeAnchor[i] = i;
+            _frozenShapes[i].position = _frozenAnchors[i];
+            _frozenShapes[i].rotation = Quaternion.Euler(0f, Random.value * 360f, 0f);
+        }
+    }
+
+    // Root pivot at ice level; the tilted geometry lives on a child so the yaw-only
+    // rotation applied on relocation never flattens the frozen-in lean.
+    GameObject BuildFrozenShape(int kind, Material dark)
+    {
+        var root = new GameObject("FrozenShape" + kind);
+        root.transform.SetParent(_root, false);
+        var tilt = new GameObject("Tilt");
+        tilt.transform.SetParent(root.transform, false);
+        tilt.transform.localRotation = Quaternion.Euler(Random.Range(12f, 32f), 0f, Random.Range(-8f, 8f));
+        switch (kind)
+        {
+            case 0: // ship mast tip with a spar, most of it under the ice
+                DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Mast",
+                    new Vector3(0f, 0.5f, 0f), new Vector3(0.28f, 2.4f, 0.28f), dark, tilt.transform);
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Spar",
+                    new Vector3(0f, 1.6f, 0f), new Vector3(1.6f, 0.12f, 0.12f), dark, tilt.transform);
+                break;
+            case 1: // chair back cresting the surface
+                var chair = DimensionPropKit.ChairSimple(tilt.transform, dark);
+                chair.transform.localPosition = new Vector3(0f, -0.55f, 0f);
+                break;
+            case 2: // a door corner
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Door",
+                    new Vector3(0f, 0.2f, 0f), new Vector3(0.95f, 2.1f, 0.07f), dark, tilt.transform);
+                break;
+            default: // crate corner
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Crate",
+                    new Vector3(0f, 0.1f, 0f), new Vector3(0.85f, 0.85f, 0.85f), dark, tilt.transform);
+                tilt.transform.localRotation *= Quaternion.Euler(0f, 0f, 38f);
+                break;
+        }
+        return root;
+    }
+
+    void RelocateFrozenShape(int i)
+    {
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            int a = Random.Range(0, _frozenAnchors.Length);
+            bool taken = false;
+            for (int j = 0; j < _shapeAnchor.Length; j++)
+                if (_shapeAnchor[j] == a) { taken = true; break; }
+            if (taken) continue;
+            Vector3 p = _frozenAnchors[a];
+            if (ObserverState.IsObserved(new Bounds(p + Vector3.up * 1.5f, new Vector3(3f, 5f, 3f)))) continue;
+            _shapeAnchor[i] = a;
+            _frozenShapes[i].position = p;
+            _frozenShapes[i].rotation = Quaternion.Euler(0f, Random.value * 360f, 0f);
+            // Distant creak AT the new spot — the ice groans where something now stands.
+            DimensionSceneUtil.PlayOneShot3D("sfx_wood_creak", p, 0.6f, 60f);
+            break;
+        }
+        _frozenTrackers[i].Reset();
     }
 
     GameObject BuildCampfire(int index)
@@ -270,11 +375,13 @@ public class FrozenSeaController : MonoBehaviour
         int n = 128;
         float size = 600f, half = size * 0.5f, step = size / n;
         var verts = new Vector3[(n + 1) * (n + 1)];
+        var uvs = new Vector2[(n + 1) * (n + 1)];      // planar, 1 texture tile per 4m
         for (int z = 0, i = 0; z <= n; z++)
             for (int x = 0; x <= n; x++, i++)
             {
                 float wx = x * step - half, wz = z * step - half;
                 verts[i] = new Vector3(wx, SeaHeight(wx, wz), wz);
+                uvs[i] = new Vector2(wx, wz) * 0.25f;
             }
         var tris = new int[n * n * 6];
         for (int z = 0, t = 0; z < n; z++)
@@ -285,7 +392,7 @@ public class FrozenSeaController : MonoBehaviour
                 tris[t++] = i + 1; tris[t++] = i + n + 1; tris[t++] = i + n + 2;
             }
         var mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
-        mesh.vertices = verts; mesh.triangles = tris;
+        mesh.vertices = verts; mesh.uv = uvs; mesh.triangles = tris;
         mesh.RecalculateNormals(); mesh.RecalculateBounds();
         var go = new GameObject("Sea");
         go.layer = DimensionSceneUtil.WalkableLayer;
@@ -328,6 +435,15 @@ public class FrozenSeaController : MonoBehaviour
                 var fb = new Bounds(_fires[i].position + Vector3.up * 4f, new Vector3(4f, 10f, 4f));
                 _fireTrackers[i].Tick(fb, out bool fireLost, float.PositiveInfinity);
                 if (fireLost) PlaceFire(i, cam.transform.position, initial: false);
+            }
+
+        // Frozen wreckage swaps anchors whenever it leaves your view.
+        if (cam != null && _frozenShapes != null)
+            for (int i = 0; i < _frozenShapes.Length; i++)
+            {
+                var sb = new Bounds(_frozenShapes[i].position + Vector3.up * 1f, new Vector3(3f, 5f, 3f));
+                _frozenTrackers[i].Tick(sb, out bool shapeLost, 180f);
+                if (shapeLost) RelocateFrozenShape(i);
             }
 
         // Player: caught in the beam for more than a moment → the sea rearranges you.

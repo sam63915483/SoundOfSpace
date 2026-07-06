@@ -22,12 +22,16 @@ public class ServerFarmController : MonoBehaviour
     readonly Dictionary<Vector2Int, Cell> _cells = new Dictionary<Vector2Int, Cell>();
     readonly Stack<GameObject> _rackPool = new Stack<GameObject>();
     readonly Stack<GameObject> _trayPool = new Stack<GameObject>();
+    readonly Stack<GameObject> _consolePool = new Stack<GameObject>();
     readonly List<Vector2Int> _toDespawn = new List<Vector2Int>();
     readonly List<Renderer> _blinkers = new List<Renderer>();
 
     Transform _root;
-    Material _rackMat, _faceMat, _trayMat, _wireMat;
+    Material _rackMat, _faceMat, _trayMat, _wireMat, _deskMat, _seatMat, _mugMat;
     Material[] _ledMats;
+    Material[] _screenMats;
+    float _nextScrapeTime;
+    const float ConsoleChance = 0.16f;
     GameObject _floor, _ceiling;
     readonly List<GameObject> _panelLights = new List<GameObject>();
     GameObject _exitRack;
@@ -41,10 +45,21 @@ public class ServerFarmController : MonoBehaviour
     void Awake()
     {
         _root = transform;
-        _rackMat = DimensionSceneUtil.Mat(new Color(0.10f, 0.11f, 0.13f), 0.35f);
+        // Brushed rack metal / raised-floor photo textures via the library; the
+        // original dark tints remain the no-asset fallback.
+        _rackMat = DimensionSceneUtil.TexMat("d11_metal", new Color(0.55f, 0.58f, 0.62f), new Vector2(1f, 1f), 0.35f);
         _faceMat = DimensionSceneUtil.Mat(new Color(0.05f, 0.06f, 0.08f), 0.5f);
         _trayMat = DimensionSceneUtil.Mat(new Color(0.16f, 0.17f, 0.19f), 0.3f);
         _wireMat = DimensionSceneUtil.Mat(new Color(0.04f, 0.04f, 0.05f), 0.2f);
+        _deskMat = DimensionSceneUtil.Mat(new Color(0.22f, 0.23f, 0.25f), 0.4f);
+        _seatMat = DimensionSceneUtil.Mat(new Color(0.09f, 0.09f, 0.11f), 0.25f);
+        _mugMat  = DimensionSceneUtil.Mat(new Color(0.85f, 0.8f, 0.7f), 0.3f);
+        _screenMats = new[]
+        {
+            DimensionSceneUtil.EmissiveMat(new Color(0.25f, 1f, 0.45f), 1.6f),   // live terminal
+            DimensionSceneUtil.EmissiveMat(new Color(0.3f, 0.6f, 1f), 1.4f),      // diagnostics blue
+            DimensionSceneUtil.Mat(new Color(0.05f, 0.06f, 0.06f), 0.6f),         // dead screen
+        };
         _ledMats = new[]
         {
             DimensionSceneUtil.EmissiveMat(new Color(0.2f, 1f, 0.4f), 2.2f),
@@ -52,7 +67,8 @@ public class ServerFarmController : MonoBehaviour
             DimensionSceneUtil.EmissiveMat(new Color(1f, 0.65f, 0.15f), 2.2f),
             DimensionSceneUtil.EmissiveMat(new Color(1f, 0.2f, 0.15f), 2.2f),
         };
-        var floorMat = DimensionSceneUtil.Mat(new Color(0.13f, 0.14f, 0.16f), 0.4f);
+        // 220m plane, one raised-floor tile ≈ 0.6m.
+        var floorMat = DimensionSceneUtil.TexMat("d11_floor", new Color(0.6f, 0.62f, 0.66f), new Vector2(366f, 366f), 0.4f);
         var ceilMat  = DimensionSceneUtil.Mat(new Color(0.07f, 0.08f, 0.10f), 0.2f);
 
         _floor = DimensionSceneUtil.Block(PrimitiveType.Cube, "Floor",
@@ -82,6 +98,9 @@ public class ServerFarmController : MonoBehaviour
         DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(120f, 2f, 0.05f), 400f, 1f);
         var fans = DimensionSceneUtil.LoopingAudio(gameObject, FanClip(), 400f, 0.6f);
         fans.spatialBlend = 0f;
+        // Generated room tone layered quietly UNDER the mechanic hum (zero-volume
+        // fallback tone so nothing doubles up if the asset is missing).
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d11", 120f, 0f, 0.35f);
         _beepClip = BeepClip();
         var beepGo = new GameObject("Beeper");
         beepGo.transform.SetParent(_root, false);
@@ -222,6 +241,23 @@ public class ServerFarmController : MonoBehaviour
         cell.tracker.Reset();
         if ((_exitRack == null || !_exitRack.activeSelf) && Rand01(cell.seed, 7) < exitChance)
             SpawnExit(cell.coord, cell.seed);
+
+        // If the reshuffle re-seated a console near you, let the chair be heard
+        // (throttled so a big sweep of the camera doesn't stack scrapes).
+        if (Time.time >= _nextScrapeTime)
+        {
+            var cam = ObserverState.Cam;
+            if (cam == null) return;
+            for (int i = 0; i < cell.props.Count; i++)
+            {
+                if (cell.props[i].name != "Console") continue;
+                Vector3 d = cell.props[i].transform.position - cam.transform.position;
+                if (d.sqrMagnitude > 30f * 30f) break;
+                _nextScrapeTime = Time.time + 4f;
+                DimensionSceneUtil.PlayOneShot3D("sfx_chair_scrape", cell.props[i].transform.position, 0.45f, 30f);
+                break;
+            }
+        }
     }
 
     void BuildCell(Cell cell)
@@ -244,6 +280,27 @@ public class ServerFarmController : MonoBehaviour
             tray.transform.SetPositionAndRotation(new Vector3(cx, 0f, cz),
                 alongX ? Quaternion.Euler(0f, 90f, 0f) : Quaternion.identity);
             cell.props.Add(tray);
+        }
+        // Operator console (desk + CRT + chair + mug) toward the cell's SW quarter,
+        // clear of the N/E rack edges. Each reroll re-seats the chair and re-tints
+        // the screen — the workstation was USED while you weren't looking.
+        if (Rand01(cell.seed, 8) < ConsoleChance)
+        {
+            GameObject console = _consolePool.Count > 0 ? _consolePool.Pop() : NewConsole();
+            console.SetActive(true);
+            console.transform.SetPositionAndRotation(
+                new Vector3(cx - s * 0.22f, 0f, cz - s * 0.22f),
+                Quaternion.Euler(0f, Rand01(cell.seed, 9) * 360f, 0f));
+            var screen = DimensionPropKit.FindPart(console, "Screen");
+            if (screen != null)
+                screen.sharedMaterial = _screenMats[Mathf.Abs(cell.seed) % _screenMats.Length];
+            var chair = console.transform.Find("Chair");
+            if (chair != null)
+            {
+                chair.localPosition = new Vector3(Rand01(cell.seed, 10) * 0.7f - 0.35f, 0f, 0.75f + Rand01(cell.seed, 11) * 0.5f);
+                chair.localRotation = Quaternion.Euler(0f, 140f + Rand01(cell.seed, 12) * 80f, 0f);
+            }
+            cell.props.Add(console);
         }
     }
 
@@ -315,6 +372,33 @@ public class ServerFarmController : MonoBehaviour
         return tray;
     }
 
+    // Desk + CRT (swappable "Screen") + rolling chair + abandoned mug.
+    GameObject NewConsole()
+    {
+        var console = new GameObject("Console");
+        console.transform.SetParent(_root, false);
+        var desk = DimensionPropKit.Desk(console.transform, _deskMat);
+        desk.transform.localPosition = Vector3.zero;
+        var crt = DimensionPropKit.CrtMonitor(console.transform, _seatMat, _screenMats[0]);
+        crt.transform.localPosition = new Vector3(-0.25f, 0.77f, 0f);
+        crt.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);   // face the chair side
+        var mug = DimensionPropKit.Mug(console.transform, _mugMat);
+        mug.transform.localPosition = new Vector3(0.45f, 0.77f, 0.12f);
+        var chair = DimensionPropKit.ChairSimple(console.transform, _seatMat);
+        chair.name = "Chair";
+        chair.transform.localPosition = new Vector3(0f, 0f, 0.75f);
+        chair.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+        // Caster blobs turn the kit chair into an office chair.
+        for (int c = 0; c < 4; c++)
+        {
+            var caster = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Caster",
+                Vector3.zero, Vector3.one * 0.07f, _seatMat, chair.transform);
+            caster.transform.localPosition = new Vector3((c % 2) * 0.36f - 0.18f, 0.035f, (c / 2) * 0.36f - 0.18f);
+            Destroy(caster.GetComponent<Collider>());
+        }
+        return console;
+    }
+
     void SpawnExit(Vector2Int coord, int seed)
     {
         if (_exitRack == null) BuildExitRack();
@@ -360,6 +444,7 @@ public class ServerFarmController : MonoBehaviour
         {
             prop.SetActive(false);
             if (prop.name == "RackRow") _rackPool.Push(prop);
+            else if (prop.name == "Console") _consolePool.Push(prop);
             else _trayPool.Push(prop);
         }
         cell.props.Clear();

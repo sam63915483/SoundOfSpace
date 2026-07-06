@@ -12,6 +12,10 @@ public class MirrorLakeController : MonoBehaviour
     Transform[] _islands;
     ObservationTracker[] _trackers;
     AudioSource _trueHum;
+    Material _stoneMat;
+    Transform _rowboat;
+    readonly ObservationTracker _boatTracker = new ObservationTracker();
+    float _nextLoonTime;
     readonly System.Collections.Generic.List<Transform> _twinkles = new System.Collections.Generic.List<Transform>();
     Transform _shootingStar;
     Vector3 _shootDir;
@@ -31,6 +35,8 @@ public class MirrorLakeController : MonoBehaviour
 
         BuildStars();
 
+        _stoneMat = DimensionSceneUtil.TexMat("d12_rock", new Color(0.5f, 0.55f, 0.62f), new Vector2(2f, 2f), 0.15f);
+
         _islands = new Transform[islandCount];
         _trackers = new ObservationTracker[islandCount];
         for (int i = 0; i < islandCount; i++)
@@ -40,7 +46,52 @@ public class MirrorLakeController : MonoBehaviour
             PlaceIsland(i, Vector3.zero, initial: true);
         }
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(58f, 3f, 0.05f), 600f, 1f);
+        BuildDockAndBoat();
+
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d12", 58f, 0.05f, 0.5f);
+        _nextLoonTime = Time.time + Random.Range(12f, 20f);
+    }
+
+    // A short plank dock near the spawn point and a rowboat moored at its end.
+    // The boat is never where you left it: while unobserved it drifts to some
+    // other stretch of dark water. It never carries anything — it's just wrong.
+    void BuildDockAndBoat()
+    {
+        var plankMat = DimensionSceneUtil.TexMat("d12_planks", new Color(0.45f, 0.38f, 0.3f), new Vector2(1f, 4f), 0.1f);
+        var dock = new GameObject("Dock");
+        dock.transform.SetParent(_root, false);
+        for (int i = 0; i < 5; i++)
+            DimensionSceneUtil.Block(PrimitiveType.Cube, "Plank",
+                new Vector3(0f, 0.12f, 0f) + Vector3.forward * (i * 1.6f),
+                new Vector3(1.7f, 0.1f, 1.5f), plankMat, dock.transform);
+        for (int i = 0; i < 3; i++)
+        {
+            var post = DimensionSceneUtil.Block(PrimitiveType.Cube, "Post",
+                new Vector3(i % 2 == 0 ? 0.75f : -0.75f, 0.45f, 1.2f + i * 2.9f),
+                new Vector3(0.16f, 0.9f, 0.16f), plankMat, dock.transform);
+        }
+        dock.transform.SetPositionAndRotation(new Vector3(5f, 0f, 3f), Quaternion.Euler(0f, 40f, 0f));
+
+        var boat = new GameObject("Rowboat");
+        boat.transform.SetParent(_root, false);
+        var hullMat = DimensionSceneUtil.TexMat("d12_planks", new Color(0.3f, 0.25f, 0.2f), new Vector2(1f, 2f), 0.1f);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "HullFloor",
+            new Vector3(0f, 0.12f, 0f), new Vector3(0.95f, 0.14f, 2.4f), hullMat, boat.transform);
+        var sideL = DimensionSceneUtil.Block(PrimitiveType.Cube, "SideL",
+            new Vector3(-0.5f, 0.34f, 0f), new Vector3(0.12f, 0.5f, 2.4f), hullMat, boat.transform);
+        sideL.transform.localRotation = Quaternion.Euler(0f, 0f, -10f);
+        var sideR = DimensionSceneUtil.Block(PrimitiveType.Cube, "SideR",
+            new Vector3(0.5f, 0.34f, 0f), new Vector3(0.12f, 0.5f, 2.4f), hullMat, boat.transform);
+        sideR.transform.localRotation = Quaternion.Euler(0f, 0f, 10f);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Stern",
+            new Vector3(0f, 0.34f, -1.14f), new Vector3(0.95f, 0.45f, 0.14f), hullMat, boat.transform);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Bench",
+            new Vector3(0f, 0.38f, 0.2f), new Vector3(0.9f, 0.08f, 0.35f), hullMat, boat.transform);
+        _rowboat = boat.transform;
+        // Moored at the dock's far end to start.
+        _rowboat.SetPositionAndRotation(
+            dock.transform.TransformPoint(new Vector3(1.6f, 0f, 6.6f)),
+            Quaternion.Euler(0f, 70f, 0f));
     }
 
     // Sky stars overhead + still "reflections" lying on the black water — the doubled
@@ -96,7 +147,7 @@ public class MirrorLakeController : MonoBehaviour
 
     GameObject BuildIsland(bool isTrue, int index)
     {
-        var stone = DimensionSceneUtil.Mat(new Color(0.13f, 0.15f, 0.19f), 0.15f);
+        var stone = _stoneMat;
         var island = new GameObject(isTrue ? "Island_TRUE" : "Island" + index);
         island.transform.SetParent(_root, false);
         // Low flat slabs (boxes, not spheres — sphere colliders can't flatten).
@@ -175,6 +226,26 @@ public class MirrorLakeController : MonoBehaviour
             var s = t.localScale;
             t.localScale = new Vector3(s.x, 0.01f * tw, s.z);
         }
+        // The rowboat drifts while nobody watches it (same rule as the islands,
+        // but it's pure dressing — finding it somewhere new is the point).
+        if (_rowboat != null)
+        {
+            var bb = new Bounds(_rowboat.position + Vector3.up * 0.4f, new Vector3(3f, 1.5f, 3f));
+            _boatTracker.Tick(bb, out bool boatLost, float.PositiveInfinity);
+            if (boatLost) RelocateBoat(cam.transform.position);
+        }
+
+        // Loon calls from far out on the black water, never from where you look.
+        if (Time.time >= _nextLoonTime)
+        {
+            _nextLoonTime = Time.time + Random.Range(20f, 40f);
+            Vector3 back = -cam.transform.forward;
+            back.y = 0f; back.Normalize();
+            Vector3 dir = Quaternion.Euler(0f, Random.Range(-50f, 50f), 0f) * back;
+            DimensionSceneUtil.PlayOneShot3D("sfx_loon",
+                cam.transform.position + dir * Random.Range(30f, 60f), 0.5f, 80f);
+        }
+
         if (_shootUntil > 0f)
         {
             if (Time.time >= _shootUntil) { _shootingStar.gameObject.SetActive(false); _shootUntil = -1f; }
@@ -190,6 +261,29 @@ public class MirrorLakeController : MonoBehaviour
             _shootingStar.SetPositionAndRotation(start, Quaternion.LookRotation(_shootDir));
             _shootingStar.gameObject.SetActive(true);
         }
+    }
+
+    void RelocateBoat(Vector3 aroundPos)
+    {
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            float a = Random.value * Mathf.PI * 2f;
+            Vector3 c = aroundPos + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * Random.Range(20f, 60f);
+            c.y = 0f;
+            c.x = Mathf.Clamp(c.x, -300f, 300f);
+            c.z = Mathf.Clamp(c.z, -300f, 300f);
+            Vector3 flat = c - aroundPos; flat.y = 0f;
+            if (flat.magnitude < 12f) continue;                    // never lands on the player
+            bool nearIsland = false;
+            for (int k = 0; k < _islands.Length; k++)              // stay off the hopping route
+                if (_islands[k] != null && (_islands[k].position - c).magnitude < 12f) nearIsland = true;
+            if (nearIsland) continue;
+            if (ObserverState.IsObserved(new Bounds(c + Vector3.up * 0.4f, new Vector3(3f, 1.5f, 3f))))
+                continue;                                          // only ever moves unseen
+            _rowboat.SetPositionAndRotation(c, Quaternion.Euler(0f, Random.value * 360f, 0f));
+            break;
+        }
+        _boatTracker.Reset();
     }
 
     void PlaceIsland(int i, Vector3 aroundPos, bool initial)

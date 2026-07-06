@@ -21,18 +21,25 @@ public class WheatAtDuskController : MonoBehaviour
     Clump[] _clumps;
     Transform _well;
     AudioSource _wellHum;
+    Transform _windmill;
+    Transform _windmillBlades;
+    readonly ObservationTracker _windmillTracker = new ObservationTracker();
+    Vector3[] _windmillAnchors;
+    int _windmillAnchor;
     bool _atmosApplied;
 
     void Awake()
     {
         var root = transform;
-        var soilMat  = DimensionSceneUtil.Mat(new Color(0.22f, 0.15f, 0.10f), 0.05f);
+        // Warm-tinted dirt shows where your gaze has parted the wheat.
+        var soilMat  = DimensionSceneUtil.TexMat("d18_dirt", new Color(0.85f, 0.68f, 0.5f), new Vector2(400f, 400f), 0.05f);
         var stoneMat = DimensionSceneUtil.Mat(new Color(0.35f, 0.33f, 0.31f), 0.1f);
+        // Stalk cards carry the wheat texture; tints keep the three-way field variation.
         Material[] wheatMats =
         {
-            DimensionSceneUtil.Mat(new Color(0.86f, 0.68f, 0.26f), 0.15f),
-            DimensionSceneUtil.Mat(new Color(0.80f, 0.60f, 0.22f), 0.15f),
-            DimensionSceneUtil.Mat(new Color(0.90f, 0.74f, 0.34f), 0.15f),
+            DimensionSceneUtil.TexMat("d23_wheat", new Color(1f, 0.92f, 0.72f), new Vector2(2f, 1f), 0.15f),
+            DimensionSceneUtil.TexMat("d23_wheat", new Color(0.94f, 0.83f, 0.62f), new Vector2(2f, 1f), 0.15f),
+            DimensionSceneUtil.TexMat("d23_wheat", new Color(1f, 0.98f, 0.8f), new Vector2(2f, 1f), 0.15f),
         };
         var headMat = DimensionSceneUtil.Mat(new Color(0.94f, 0.82f, 0.45f), 0.2f);
 
@@ -135,8 +142,94 @@ public class WheatAtDuskController : MonoBehaviour
         _clumps = clumps.ToArray();
         Random.state = prev;
 
+        BuildFences(root, wellPos);
+        BuildWindmill(root, wellPos);
         BuildFireflies(root);
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(75f, 3f, 0.05f), 500f, 1f);
+        // Dusk crickets over the field (falls back to the old low hum).
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d23", 75f, 0.05f, 0.55f);
+    }
+
+    /// <summary>Weathered fence lines at the field edges — framing only, never
+    /// crossing the walkable field interior.</summary>
+    void BuildFences(Transform root, Vector3 wellPos)
+    {
+        var wood = DimensionSceneUtil.TexMat("wood_worn", new Color(0.75f, 0.62f, 0.5f), Vector2.one, 0.05f);
+        Random.State prev = Random.state;
+        Random.InitState(2333);
+        float edge = fieldSize * 0.5f + 3f;
+        Vector3[] starts = { new Vector3(-edge, 0f, -edge), new Vector3(-edge, 0f, edge), new Vector3(edge, 0f, -edge) };
+        Vector3[] dirs   = { Vector3.forward, Vector3.right, Vector3.right };
+        for (int line = 0; line < 3; line++)
+        {
+            int posts = 10;
+            for (int i = 0; i < posts; i++)
+            {
+                Vector3 p = starts[line] + dirs[line] * i * (fieldSize / (posts - 1));
+                if ((p - wellPos).magnitude < 8f) continue;
+                var post = DimensionSceneUtil.Block(PrimitiveType.Cube, "FencePost",
+                    p + Vector3.up * 0.6f, new Vector3(0.16f, 1.2f, 0.16f), wood, root);
+                post.transform.rotation = Quaternion.Euler(Random.Range(-5f, 5f), Random.value * 20f, Random.Range(-5f, 5f));
+                if (i < posts - 1 && Random.value > 0.2f)
+                {
+                    float span = fieldSize / (posts - 1);
+                    var rail = DimensionSceneUtil.Block(PrimitiveType.Cube, "FenceRail",
+                        p + dirs[line] * span * 0.5f + Vector3.up * 0.95f,
+                        new Vector3(0.06f, 0.1f, span), wood, root);
+                    rail.transform.rotation = Quaternion.LookRotation(dirs[line]) * Quaternion.Euler(Random.Range(-2f, 2f), 0f, 0f);
+                    Object.Destroy(rail.GetComponent<Collider>());
+                }
+            }
+        }
+        Random.state = prev;
+    }
+
+    /// <summary>A windmill on the field's horizon, blades turning slow. Look away
+    /// long enough and it's standing somewhere else — a landmark that won't hold
+    /// still, far outside the walkable wheat so it never touches traversal.</summary>
+    void BuildWindmill(Transform root, Vector3 wellPos)
+    {
+        var wood = DimensionSceneUtil.TexMat("wood_worn", new Color(0.55f, 0.45f, 0.38f), new Vector2(1f, 3f), 0.05f);
+        var anchors = new System.Collections.Generic.List<Vector3>();
+        for (int k = 0; k < 4; k++)
+        {
+            float a = (45f + k * 90f) * Mathf.Deg2Rad;
+            Vector3 p = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * (fieldSize * 0.5f + 24f);
+            if ((p - wellPos).magnitude < 18f) continue;   // never share a horizon spot with the well
+            anchors.Add(p);
+        }
+        _windmillAnchors = anchors.ToArray();
+        if (_windmillAnchors.Length == 0) return;
+
+        var mill = new GameObject("Windmill");
+        mill.transform.SetParent(root, false);
+        var tower = DimensionSceneUtil.Block(PrimitiveType.Cube, "Tower",
+            Vector3.zero, new Vector3(1.7f, 9f, 1.7f), wood, mill.transform);
+        tower.transform.localPosition = new Vector3(0f, 4.5f, 0f);
+        var head = DimensionSceneUtil.Block(PrimitiveType.Cube, "Head",
+            Vector3.zero, new Vector3(2.1f, 2f, 2.1f), wood, mill.transform);
+        head.transform.localPosition = new Vector3(0f, 9.9f, 0f);
+        var blades = new GameObject("Blades");
+        blades.transform.SetParent(mill.transform, false);
+        blades.transform.localPosition = new Vector3(0f, 9.9f, 1.3f);
+        for (int b = 0; b < 4; b++)
+        {
+            var blade = DimensionSceneUtil.Block(PrimitiveType.Cube, "Blade",
+                Vector3.zero, new Vector3(0.55f, 5.2f, 0.1f), wood, blades.transform);
+            blade.transform.localRotation = Quaternion.Euler(0f, 0f, b * 90f);
+            blade.transform.localPosition = blade.transform.localRotation * new Vector3(0f, 2.4f, 0f);
+            Object.Destroy(blade.GetComponent<Collider>());
+        }
+        _windmill = mill.transform;
+        _windmillBlades = blades.transform;
+        _windmillAnchor = Random.Range(0, _windmillAnchors.Length);
+        PlaceWindmill();
+    }
+
+    void PlaceWindmill()
+    {
+        Vector3 p = _windmillAnchors[_windmillAnchor];
+        _windmill.SetPositionAndRotation(p, Quaternion.LookRotation(-p.normalized, Vector3.up));
+        _windmillTracker.Reset();
     }
 
     ParticleSystem _fireflies;
@@ -217,6 +310,20 @@ public class WheatAtDuskController : MonoBehaviour
             Vector3 to = _well.position - camPos;
             float align = Vector3.Dot(cam.transform.forward, to.normalized);
             _wellHum.volume = Mathf.Lerp(0.06f, 1f, Mathf.InverseLerp(0.2f, 0.95f, align));
+        }
+
+        if (_windmill != null)
+        {
+            _windmillBlades.Rotate(0f, 0f, 9f * Time.deltaTime, Space.Self);
+            var wb = new Bounds(_windmill.position + Vector3.up * 6f, new Vector3(9f, 14f, 9f));
+            _windmillTracker.Tick(wb, out bool wLost, float.PositiveInfinity);
+            if (wLost && _windmillAnchors.Length > 1 && Random.value < 0.3f)
+            {
+                int next = Random.Range(0, _windmillAnchors.Length - 1);
+                if (next >= _windmillAnchor) next++;
+                _windmillAnchor = next;
+                PlaceWindmill();
+            }
         }
     }
 

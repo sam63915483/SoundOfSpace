@@ -45,6 +45,7 @@ public class RedForestController : MonoBehaviour
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
+    float _nextCrowTime;
 
     class PrintFade { public Transform tf; public Renderer rend; public MaterialPropertyBlock mpb; public float bornAt; }
     static readonly int ColorId = Shader.PropertyToID("_Color");
@@ -53,11 +54,14 @@ public class RedForestController : MonoBehaviour
     void Awake()
     {
         _root = transform;
-        _trunkMat  = DimensionSceneUtil.Mat(new Color(0.20f, 0.07f, 0.06f), 0.05f);
+        // Bark/litter photo textures when the library has them; the red tints keep
+        // the blood-forest grade either way.
+        _trunkMat  = DimensionSceneUtil.TexMat("d9_bark", new Color(0.75f, 0.45f, 0.42f), new Vector2(1f, 3f), 0.05f);
         _canopyMat = DimensionSceneUtil.Mat(new Color(0.28f, 0.045f, 0.045f), 0.05f);
         _rockMat   = DimensionSceneUtil.Mat(new Color(0.16f, 0.08f, 0.08f), 0.1f);
         _printMat  = DimensionSceneUtil.EmissiveMat(new Color(0.85f, 0.9f, 1f), 1.4f);
-        var groundMat = DimensionSceneUtil.Mat(new Color(0.13f, 0.045f, 0.045f), 0.05f);
+        // 2000m ground plane, one tile ≈ 3m.
+        var groundMat = DimensionSceneUtil.TexMat("d9_ground", new Color(0.55f, 0.38f, 0.38f), new Vector2(660f, 660f), 0.05f);
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Ground",
             new Vector3(0f, -0.5f, 0f), new Vector3(2000f, 1f, 2000f), groundMat, _root);
@@ -73,9 +77,11 @@ public class RedForestController : MonoBehaviour
         _clearingPos = new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * clearingDistance;
         BuildClearing();
         BuildDoe();
+        BuildLanternsAndMushrooms();
         _lastPrintPos = _doe.position;
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(70f, 2f, 0.06f), 500f, 1f);
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d9", 70f, 0.06f, 0.5f);
+        _nextCrowTime = Time.time + Random.Range(8f, 14f);
         _howlClip = HowlClip();
         var howlGo = new GameObject("Howler");
         howlGo.transform.SetParent(_root, false);
@@ -105,6 +111,99 @@ public class RedForestController : MonoBehaviour
         var clip = AudioClip.Create("howl", samples, 1, rate, false);
         clip.SetData(data, 0);
         return clip;
+    }
+
+    // Hung lanterns and mushroom clusters in small patches along the spawn→clearing
+    // corridor; each patch is its own PropShuffleSet with a PATCH-sized zone (a
+    // corridor-wide zone would contain the camera and never lose observation), so
+    // walking past and looking away re-deals just that patch. Lanterns creak when
+    // they move; mushrooms are silent — you just count them differently.
+    void BuildLanternsAndMushrooms()
+    {
+        Vector3 dir = _clearingPos.normalized;
+        Vector3 side = Vector3.Cross(Vector3.up, dir);
+        var cage = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.62f, 0.28f), 1.9f);
+        var iron = DimensionSceneUtil.Mat(new Color(0.08f, 0.07f, 0.07f), 0.3f);
+        var stemMat = DimensionSceneUtil.Mat(new Color(0.55f, 0.5f, 0.46f), 0.1f);
+        var capMat = DimensionSceneUtil.EmissiveMat(new Color(0.75f, 0.32f, 0.5f), 0.55f);
+
+        for (int patch = 0; patch < 4; patch++)
+        {
+            float t = 0.2f + patch * 0.2f;
+            float lateral = (patch % 2 == 0 ? 1f : -1f) * 11f;
+            Vector3 center = _clearingPos * t + side * lateral;
+            if (center.sqrMagnitude < 100f) center += dir * 12f;
+            var zone = new Bounds(center + Vector3.up * 3f, new Vector3(18f, 9f, 18f));
+
+            var lanterns = PropShuffleSet.Create("Lanterns" + patch, _root, zone, "sfx_wood_creak");
+            lanterns.posJitter = 1.8f;
+            lanterns.observeMaxDistance = 60f;
+            for (int i = 0; i < 2; i++)
+                lanterns.AddProp(NewLantern(cage, iron, patch == 0 && i == 0));
+            var mushrooms = PropShuffleSet.Create("Mushrooms" + patch, _root, zone, null);
+            mushrooms.posJitter = 1.3f;
+            mushrooms.observeMaxDistance = 50f;
+            for (int i = 0; i < 2; i++)
+                mushrooms.AddProp(NewMushroomCluster(stemMat, capMat, 3 + (patch + i) % 3));
+
+            for (int k = 0; k < 4; k++)
+            {
+                float aa = k * Mathf.PI * 0.5f + patch;
+                Vector3 apos = center + new Vector3(Mathf.Cos(aa), 0f, Mathf.Sin(aa)) * Random.Range(3f, 7.5f);
+                lanterns.AddAnchor(apos, Random.Range(0f, 360f));
+                Vector3 mpos = center + new Vector3(Mathf.Cos(aa + 0.7f), 0f, Mathf.Sin(aa + 0.7f)) * Random.Range(2.5f, 7f);
+                mushrooms.AddAnchor(mpos, Random.Range(0f, 360f));
+            }
+        }
+    }
+
+    GameObject NewLantern(Material cage, Material iron, bool withLight)
+    {
+        var lantern = new GameObject("Lantern");
+        lantern.transform.SetParent(_root, false);
+        var body = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Glow",
+            Vector3.zero, new Vector3(0.2f, 0.13f, 0.2f), cage, lantern.transform);
+        body.transform.localPosition = new Vector3(0f, 3.4f, 0f);
+        Destroy(body.GetComponent<Collider>());
+        var cap = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Cap",
+            Vector3.zero, new Vector3(0.24f, 0.03f, 0.24f), iron, lantern.transform);
+        cap.transform.localPosition = new Vector3(0f, 3.58f, 0f);
+        Destroy(cap.GetComponent<Collider>());
+        var hook = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Hook",
+            Vector3.zero, new Vector3(0.02f, 0.3f, 0.02f), iron, lantern.transform);
+        hook.transform.localPosition = new Vector3(0f, 3.9f, 0f);
+        Destroy(hook.GetComponent<Collider>());
+        if (withLight)
+        {
+            var lg = new GameObject("LanternLight");
+            lg.transform.SetParent(lantern.transform, false);
+            lg.transform.localPosition = new Vector3(0f, 3.3f, 0f);
+            var l = lg.AddComponent<Light>();
+            l.type = LightType.Point; l.range = 10f; l.intensity = 1.1f;
+            l.color = new Color(1f, 0.62f, 0.28f);
+        }
+        return lantern;
+    }
+
+    GameObject NewMushroomCluster(Material stemMat, Material capMat, int n)
+    {
+        var cluster = new GameObject("Mushrooms");
+        cluster.transform.SetParent(_root, false);
+        for (int m = 0; m < n; m++)
+        {
+            float mx = Mathf.Cos(m * 2.4f) * 0.35f, mz = Mathf.Sin(m * 2.4f) * 0.35f;
+            float h = 0.12f + (m % 3) * 0.07f;
+            var stem = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Stem",
+                Vector3.zero, new Vector3(0.05f, h, 0.05f), stemMat, cluster.transform);
+            stem.transform.localPosition = new Vector3(mx, h, mz);
+            Destroy(stem.GetComponent<Collider>());
+            float cs = 0.14f + (m % 2) * 0.05f;
+            var top = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Cap",
+                Vector3.zero, new Vector3(cs, cs, cs), capMat, cluster.transform);
+            top.transform.localPosition = new Vector3(mx, h * 2f + 0.03f, mz);
+            Destroy(top.GetComponent<Collider>());
+        }
+        return cluster;
     }
 
     void BuildClearing()
@@ -264,6 +363,17 @@ public class RedForestController : MonoBehaviour
             _howler.transform.position = p + new Vector3(Mathf.Cos(ha), 0.1f, Mathf.Sin(ha)) * Random.Range(80f, 140f);
             _howler.pitch = Random.Range(0.85f, 1.1f);
             _howler.PlayOneShot(_howlClip, 0.8f);
+        }
+
+        // Crows call from just outside your view — turn and there's nothing there.
+        if (Time.time >= _nextCrowTime)
+        {
+            _nextCrowTime = Time.time + Random.Range(12f, 25f);
+            float yaw = Random.Range(100f, 260f);                  // behind / far to the side
+            Vector3 dir = Quaternion.Euler(0f, yaw, 0f) * cam.transform.forward;
+            dir.y = 0f; dir.Normalize();
+            Vector3 crowPos = p + dir * Random.Range(15f, 25f) + Vector3.up * 6f;
+            DimensionSceneUtil.PlayOneShot3D("sfx_crow", crowPos, 0.6f, 40f);
         }
     }
 

@@ -17,6 +17,8 @@ public class StaticFieldController : MonoBehaviour
     bool _pulseApplied;
     AudioSource _staticBed;
     Vector3 _farmhousePos;
+    Vector3 _chimesPos;
+    Rigidbody[] _junk;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
@@ -24,7 +26,9 @@ public class StaticFieldController : MonoBehaviour
     void Awake()
     {
         _root = transform;
-        var groundMat = DimensionSceneUtil.Mat(new Color(0.07f, 0.09f, 0.06f), 0.05f);
+        // Dirt texture kept dim — the night mood owns this field, the texture just
+        // gives the blackness grain (falls back to the old flat color).
+        var groundMat = DimensionSceneUtil.TexMat("d18_dirt", new Color(0.5f, 0.5f, 0.46f), new Vector2(660f, 660f), 0.05f);
         var woodMat   = DimensionSceneUtil.Mat(new Color(0.13f, 0.10f, 0.07f), 0.05f);
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Ground",
@@ -91,17 +95,102 @@ public class StaticFieldController : MonoBehaviour
         Random.state = prev;
 
         BuildFarmhouseDoor();
+        BuildCornPatches();
+        BuildJunk();
         BuildBlackout();
 
         // Static bed: broadband noise, no direction. It ROARS during each blackout.
         _staticBed = DimensionSceneUtil.LoopingAudio(gameObject, NoiseClip(2f, 0.16f), 800f, 1f);
         _staticBed.spatialBlend = 0f;
+        // Night-field ambience sits quietly UNDER the static — the roar stays boss.
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d18", 55f, 0.03f, 0.35f);
         _nextPulseTime = Time.time + 5f;
+    }
+
+    /// <summary>Dry corn stands scattered through the meadow — visual cover the
+    /// scarecrows arrive from. No colliders: you can push through, it just feels wrong.</summary>
+    void BuildCornPatches()
+    {
+        var cornMat = DimensionSceneUtil.TexMat("d18_corn", new Color(0.55f, 0.5f, 0.4f), Vector2.one, 0.05f);
+        Random.State prev = Random.state;
+        Random.InitState(1881);
+        for (int patch = 0; patch < 9; patch++)
+        {
+            float a = Random.value * Mathf.PI * 2f, d = Random.Range(14f, 100f);
+            Vector3 c = new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d);
+            if ((c - _farmhousePos).magnitude < 20f) continue;   // never crowd the exit light
+            int clusters = Random.Range(3, 6);
+            for (int i = 0; i < clusters; i++)
+            {
+                Vector3 p = c + new Vector3(Random.Range(-3.5f, 3.5f), 0f, Random.Range(-3.5f, 3.5f));
+                float yaw = Random.value * 180f;
+                for (int card = 0; card < 2; card++)
+                {
+                    var sheet = DimensionSceneUtil.Block(PrimitiveType.Cube, "Corn",
+                        p + Vector3.up * 1.3f, new Vector3(1.3f, 2.6f, 0.14f), cornMat, _root);
+                    sheet.transform.rotation = Quaternion.Euler(Random.Range(-4f, 4f), yaw + card * 90f, 0f);
+                    Destroy(sheet.GetComponent<Collider>());
+                }
+            }
+        }
+        Random.state = prev;
+    }
+
+    /// <summary>Farm junk that creeps with the scarecrows: it advances during the
+    /// same blackout pulse (slower, and it never turns to face you — it's just
+    /// closer than you remember).</summary>
+    void BuildJunk()
+    {
+        var wood  = DimensionSceneUtil.TexMat("wood_worn", new Color(0.5f, 0.42f, 0.34f), Vector2.one, 0.05f);
+        var straw = DimensionSceneUtil.Mat(new Color(0.28f, 0.22f, 0.12f), 0.05f);
+        Random.State prev = Random.state;
+        Random.InitState(1888);
+        var junk = new System.Collections.Generic.List<Rigidbody>();
+
+        Rigidbody JunkRoot(string name, Vector3 pos)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(_root, false);
+            var rb = go.AddComponent<Rigidbody>();
+            rb.isKinematic = true;
+            go.transform.position = pos;
+            go.transform.rotation = Quaternion.Euler(0f, Random.value * 360f, 0f);
+            junk.Add(rb);
+            return rb;
+        }
+        Vector3 RingPos()
+        {
+            float a = Random.value * Mathf.PI * 2f, d = Random.Range(28f, 50f);
+            return new Vector3(Mathf.Cos(a) * d, 0f, Mathf.Sin(a) * d);
+        }
+
+        // Feed trough: open box.
+        var trough = JunkRoot("FeedTrough", RingPos()).transform;
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Base", Vector3.zero, new Vector3(2.2f, 0.12f, 0.8f), wood, trough).transform.localPosition = new Vector3(0f, 0.25f, 0f);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "SideA", Vector3.zero, new Vector3(2.2f, 0.5f, 0.1f), wood, trough).transform.localPosition = new Vector3(0f, 0.4f, 0.36f);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "SideB", Vector3.zero, new Vector3(2.2f, 0.5f, 0.1f), wood, trough).transform.localPosition = new Vector3(0f, 0.4f, -0.36f);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "EndA", Vector3.zero, new Vector3(0.1f, 0.5f, 0.8f), wood, trough).transform.localPosition = new Vector3(1.06f, 0.4f, 0f);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "EndB", Vector3.zero, new Vector3(0.1f, 0.5f, 0.8f), wood, trough).transform.localPosition = new Vector3(-1.06f, 0.4f, 0f);
+
+        // Hay bale on its side (uniform x/z so the capsule collider stays sane).
+        var bale = JunkRoot("HayBale", RingPos()).transform;
+        var roll = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Roll", Vector3.zero, new Vector3(1.5f, 0.9f, 1.5f), straw, bale);
+        roll.transform.localPosition = new Vector3(0f, 0.75f, 0f);
+        roll.transform.localRotation = Quaternion.Euler(0f, 0f, 90f);
+
+        // Two crates from the shared kit.
+        DimensionPropKit.Crate(JunkRoot("CrateBig", RingPos()).transform, wood, 1.1f);
+        DimensionPropKit.Crate(JunkRoot("CrateSmall", RingPos()).transform, wood, 0.7f);
+
+        _junk = junk.ToArray();
+        Random.state = prev;
     }
 
     Rigidbody BuildScarecrow(Vector3 pos)
     {
-        var cloth = DimensionSceneUtil.Mat(new Color(0.12f, 0.10f, 0.09f), 0.05f);
+        var cloth  = DimensionSceneUtil.Mat(new Color(0.12f, 0.10f, 0.09f), 0.05f);
+        // Burlap sack head + coat — dim tint so they stay silhouettes until close.
+        var burlap = DimensionSceneUtil.TexMat("burlap", new Color(0.5f, 0.46f, 0.4f), Vector2.one, 0.05f);
         var straw = DimensionSceneUtil.Mat(new Color(0.28f, 0.22f, 0.12f), 0.05f);
         var eyes  = DimensionSceneUtil.EmissiveMat(new Color(0.9f, 0.15f, 0.1f), 1.6f);
         var crow = new GameObject("Scarecrow");
@@ -121,10 +210,10 @@ public class StaticFieldController : MonoBehaviour
         armR.transform.localPosition = new Vector3(0.45f, 1.62f, 0f);
         armR.transform.localRotation = Quaternion.Euler(0f, 0f, droop + Random.Range(-8f, 8f));
         Destroy(armR.GetComponent<Collider>());
-        Part(PrimitiveType.Cube, new Vector3(0f, 1.25f, 0f), new Vector3(0.6f, 0.9f, 0.35f), cloth, crow.transform);
+        Part(PrimitiveType.Cube, new Vector3(0f, 1.25f, 0f), new Vector3(0.6f, 0.9f, 0.35f), burlap, crow.transform);
         // Straw poking from cuffs and hem.
         Part(PrimitiveType.Sphere, new Vector3(0f, 0.76f, 0f), new Vector3(0.5f, 0.18f, 0.32f), straw, crow.transform);
-        Part(PrimitiveType.Sphere, new Vector3(0f, 2.05f, 0f), Vector3.one * 0.42f, cloth, crow.transform);
+        Part(PrimitiveType.Sphere, new Vector3(0f, 2.05f, 0f), Vector3.one * 0.42f, burlap, crow.transform);
         if (Random.value < 0.55f)      // some wear hats
         {
             Part(PrimitiveType.Cylinder, new Vector3(0f, 2.28f, 0f), new Vector3(0.62f, 0.02f, 0.62f), straw, crow.transform);
@@ -167,8 +256,26 @@ public class StaticFieldController : MonoBehaviour
         DimensionSceneUtil.CreatePortal("ToNext", new Vector3(0f, 1.6f, 0f),
             new Vector3(1.4f, 3f, 1.2f), LevelPortal.PortalAction.EnterInterior, nextScene, house.transform);
 
+        // Porch wind chimes — they only ring when the world goes dark (Update
+        // plays the one-shot at each pulse start). Local build; placed with the house.
+        var chimes = new GameObject("WindChimes");
+        chimes.transform.SetParent(house.transform, false);
+        chimes.transform.localPosition = new Vector3(2.4f, 3.1f, -0.9f);
+        var chimeMetal = DimensionSceneUtil.Mat(new Color(0.5f, 0.5f, 0.52f), 0.7f);
+        var bar = DimensionSceneUtil.Block(PrimitiveType.Cube, "Bar", Vector3.zero, new Vector3(0.5f, 0.04f, 0.04f), wood, chimes.transform);
+        bar.transform.localPosition = Vector3.zero;
+        Object.Destroy(bar.GetComponent<Collider>());
+        for (int i = 0; i < 5; i++)
+        {
+            var rod = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Rod", Vector3.zero,
+                new Vector3(0.02f, Random.Range(0.12f, 0.22f), 0.02f), chimeMetal, chimes.transform);
+            rod.transform.localPosition = new Vector3(-0.2f + i * 0.1f, -0.25f, 0f);
+            Object.Destroy(rod.GetComponent<Collider>());
+        }
+
         house.transform.SetPositionAndRotation(pos, Quaternion.LookRotation(-pos.normalized, Vector3.up));
         _farmhousePos = pos;
+        _chimesPos = chimes.transform.position;
 
         // A faint tone from the doorway so the treeline can be scanned by ear too.
         DimensionSceneUtil.LoopingAudio(lg, DimensionSceneUtil.ToneClip(220f, 2f, 0.25f), 300f, 1f);
@@ -229,6 +336,8 @@ public class StaticFieldController : MonoBehaviour
             _pulseUntil = Time.time + pulseDuration;
             _nextPulseTime = Time.time + Random.Range(pulseIntervalMin, pulseIntervalMax);
             _pulseApplied = false;
+            // The porch chimes ring only in the dark.
+            DimensionSceneUtil.PlayOneShot3D("sfx_windchime", _chimesPos, 0.6f, 30f);
         }
         bool dark = Time.time < _pulseUntil;
         // TV feel: a grey static flicker leads the hard black, and the noise roars.
@@ -251,18 +360,28 @@ public class StaticFieldController : MonoBehaviour
             Vector3 farmFlat = _farmhousePos; farmFlat.y = 0f;
             if ((pp - farmFlat).magnitude < safeZoneRadius) return;
             foreach (var rb in _crows)
-            {
-                Vector3 pos = rb.position; pos.y = 0f;
-                Vector3 to = pp - pos;
-                float dist = to.magnitude;
-                if (dist > 90f || dist <= holdDistance + 0.1f) continue;
-                float step = Mathf.Min(Random.Range(stepMin, stepMax), dist - holdDistance);
-                Vector3 np = pos + to.normalized * step;
-                rb.position = new Vector3(np.x, 0f, np.z);
-                Vector3 face = pp - np; face.y = 0f;
-                if (face.sqrMagnitude > 0.01f) rb.rotation = Quaternion.LookRotation(face.normalized, Vector3.up);
-            }
+                AdvanceUnseen(rb, pp, 1f, facePlayer: true);
+            // The junk creeps too — slower, and it never turns to look at you.
+            if (_junk != null)
+                foreach (var rb in _junk)
+                    AdvanceUnseen(rb, pp, 0.55f, facePlayer: false);
         }
+    }
+
+    // One blackout step toward the player (shared by scarecrows and farm junk —
+    // same mercy rules: capped at holdDistance, skipped beyond 90m).
+    void AdvanceUnseen(Rigidbody rb, Vector3 pp, float stepScale, bool facePlayer)
+    {
+        Vector3 pos = rb.position; pos.y = 0f;
+        Vector3 to = pp - pos;
+        float dist = to.magnitude;
+        if (dist > 90f || dist <= holdDistance + 0.1f) return;
+        float step = Mathf.Min(Random.Range(stepMin, stepMax) * stepScale, dist - holdDistance);
+        Vector3 np = pos + to.normalized * step;
+        rb.position = new Vector3(np.x, 0f, np.z);
+        if (!facePlayer) return;
+        Vector3 face = pp - np; face.y = 0f;
+        if (face.sqrMagnitude > 0.01f) rb.rotation = Quaternion.LookRotation(face.normalized, Vector3.up);
     }
 
     // ================= tuning (appended at END per repo conventions) =================

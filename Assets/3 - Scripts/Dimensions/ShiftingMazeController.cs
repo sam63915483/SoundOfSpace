@@ -13,6 +13,7 @@ public class ShiftingMazeController : MonoBehaviour
         public Vector2Int coord;
         public int seed;
         public readonly List<GameObject> walls = new List<GameObject>();
+        public readonly List<GameObject> props = new List<GameObject>();
         public readonly ObservationTracker tracker = new ObservationTracker();
     }
 
@@ -30,12 +31,44 @@ public class ShiftingMazeController : MonoBehaviour
     ObservationTracker _doorTracker;
     bool _atmosApplied;
 
+    // Polish pass: per-cell furniture that rebuilds with the walls, so looking away
+    // rearranges the room. Theme branches at runtime on the scene name — D5_Archive
+    // reuses this controller (adding serialized theme fields would need per-scene
+    // pushes; the scene name is already the distinguisher).
+    bool _archive;
+    Material _woodMat, _fabricMat, _booksMat, _clockFaceMat, _clockHandMat, _shadeLitMat, _shadeDarkMat;
+    Material[] _canvasMats;
+    float _nextShiftSfxTime;
+    Vector2Int _lastPlayerCell;
+    const float PropChance = 0.33f;          // most cells stay empty corridor
+
     void Awake()
     {
         _root = transform;
-        _wallMat  = DimensionSceneUtil.Mat(wallColor);
-        _floorMat = DimensionSceneUtil.Mat(floorColor);
-        _ceilMat  = DimensionSceneUtil.Mat(ceilColor);
+        _archive = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name.StartsWith("D5");
+
+        // Textures multiply against a whitened theme tint so D1/D5 stay distinct
+        // through their serialized colors; missing textures fall back to flat tint.
+        Color Soft(Color c) => Color.Lerp(c, Color.white, 0.7f);
+        _wallMat  = DimensionSceneUtil.TexMat(_archive ? "d5_wall" : "d1_wall", Soft(wallColor), new Vector2(2f, 1.5f));
+        // 220 m planes, cube UVs are 0-1 per face — tiling 110 reads ~1 tile / 2 m.
+        _floorMat = DimensionSceneUtil.TexMat(_archive ? "wood_parquet" : "d1_floor", Soft(floorColor), new Vector2(110f, 110f));
+        _ceilMat  = DimensionSceneUtil.TexMat("d1_ceiling", Soft(ceilColor), new Vector2(110f, 110f));
+
+        _woodMat      = DimensionSceneUtil.TexMat("wood_worn", Color.white, Vector2.one);
+        _fabricMat    = DimensionSceneUtil.TexMat("fabric_couch", Color.white, Vector2.one);
+        _booksMat     = DimensionSceneUtil.TexMat("d5_books", Color.white, Vector2.one);
+        _clockFaceMat = DimensionSceneUtil.Mat(new Color(0.92f, 0.90f, 0.84f));
+        _clockHandMat = DimensionSceneUtil.Mat(new Color(0.08f, 0.08f, 0.08f));
+        _shadeLitMat  = DimensionSceneUtil.EmissiveMat(lampColor, 1.1f);
+        _shadeDarkMat = DimensionSceneUtil.Mat(new Color(0.35f, 0.30f, 0.25f));
+        _canvasMats = new[]
+        {
+            DimensionSceneUtil.Mat(new Color(0.18f, 0.24f, 0.18f)),
+            DimensionSceneUtil.Mat(new Color(0.16f, 0.18f, 0.28f)),
+            DimensionSceneUtil.Mat(new Color(0.30f, 0.20f, 0.12f)),
+            DimensionSceneUtil.Mat(new Color(0.24f, 0.10f, 0.10f)),
+        };
 
         // Static planes: the floor can never despawn (spec safety rule). They follow the
         // camera in grid-snapped steps so tiling never visibly swims.
@@ -52,7 +85,7 @@ public class ShiftingMazeController : MonoBehaviour
         l.color = lampColor;
         _lamp.AddComponent<FlickerLight>();
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(120f, 2f, 0.06f), 60f, 1f);
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, _archive ? "amb_d5" : "amb_d1", 120f, 0.06f, 0.35f);
     }
 
     void Update()
@@ -67,6 +100,7 @@ public class ShiftingMazeController : MonoBehaviour
 
         Vector3 p = cam.transform.position;
         var playerCell = new Vector2Int(Mathf.RoundToInt(p.x / cellSize), Mathf.RoundToInt(p.z / cellSize));
+        _lastPlayerCell = playerCell;
 
         // Floor/ceiling/lamp follow in snapped steps.
         Vector3 snapped = new Vector3(playerCell.x * cellSize, 0f, playerCell.y * cellSize);
@@ -113,12 +147,14 @@ public class ShiftingMazeController : MonoBehaviour
         var cell = new Cell { coord = coord, seed = Hash(coord.x, coord.y, worldSeed) };
         _cells[coord] = cell;
         BuildWalls(cell);
+        if (coord != _lastPlayerCell) BuildProps(cell);   // never on top of the player
     }
 
     void DespawnCell(Vector2Int coord)
     {
         var cell = _cells[coord];
         ReturnWalls(cell);
+        ClearProps(cell);
         if (_door != null && _door.activeSelf && _doorCell == coord) DespawnDoor();
         _cells.Remove(coord);
         RefreshPillarsAround(coord);
@@ -167,7 +203,22 @@ public class ShiftingMazeController : MonoBehaviour
     {
         cell.seed = unchecked(cell.seed * 7919 + 12345);
         BuildWalls(cell);
+        ClearProps(cell);
+        if (cell.coord != _lastPlayerCell) BuildProps(cell);
         cell.tracker.Reset();
+
+        // The room moved just out of sight — a muffled drag/shuffle sells it.
+        // Throttled so a sweep of rerolls doesn't stack one-shots.
+        if (Time.time >= _nextShiftSfxTime &&
+            Mathf.Max(Mathf.Abs(cell.coord.x - _lastPlayerCell.x),
+                      Mathf.Abs(cell.coord.y - _lastPlayerCell.y)) <= 2)
+        {
+            _nextShiftSfxTime = Time.time + 4f;
+            Vector3 center = new Vector3(cell.coord.x * cellSize, 1f, cell.coord.y * cellSize);
+            DimensionSceneUtil.PlayOneShot3D(_archive ? "sfx_paper_shuffle" : "sfx_furniture_drag",
+                center, 0.5f, 25f);
+        }
+
         // A fresh layout may carry the exit — but only one door exists at a time.
         if ((_door == null || !_door.activeSelf) && Rand01(cell.seed, 7) < exitDoorChance)
             SpawnDoor(cell.coord, cell.seed);
@@ -207,6 +258,117 @@ public class ShiftingMazeController : MonoBehaviour
     {
         foreach (var w in cell.walls) { w.SetActive(false); _wallPool.Push(w); }
         cell.walls.Clear();
+    }
+
+    // ── per-cell furniture (polish pass) ─────────────────────────────
+    // Deterministic from cell.seed, so a reroll = a genuinely different room.
+    // Layout keeps a diagonal path clear and stays ≥1.2 m off cell edges so
+    // doorway gaps never clog. Compound props are cheap to rebuild (event-
+    // driven, only on reroll) so they're destroyed rather than pooled.
+
+    void BuildProps(Cell cell)
+    {
+        int seed = cell.seed;
+        float s = cellSize;
+        Vector3 origin = new Vector3(cell.coord.x * s, 0f, cell.coord.y * s);
+        bool hasN = Rand01(seed, 1) < wallChance, hasE = Rand01(seed, 2) < wallChance;
+        float tN = wallThickness * 1.05f, tE = wallThickness * 0.95f;
+
+        // Wall dressing on this cell's own walls (interior faces).
+        if (hasN && Rand01(seed, 31) < 0.45f)
+        {
+            var art = DimensionPropKit.Painting(_root, _woodMat,
+                _canvasMats[Mathf.Abs(Hash(cell.coord.x, cell.coord.y, seed)) % _canvasMats.Length]);
+            art.transform.position = origin + new Vector3((Rand01(seed, 32) - 0.5f) * (s - 3f),
+                1.7f, s * 0.5f - tN * 0.5f - 0.06f);
+            art.transform.rotation = Quaternion.Euler(0f, 180f, 0f);      // face into the cell
+            cell.props.Add(art);
+        }
+        if (hasE && Rand01(seed, 33) < 0.25f)
+        {
+            // Every clock shows a DIFFERENT wrong time — and it changes when the room does.
+            var clock = DimensionPropKit.WallClock(_root, _clockFaceMat, _clockHandMat,
+                Rand01(seed, 34) * 12f, Rand01(seed, 35) * 60f);
+            clock.transform.position = origin + new Vector3(s * 0.5f - tE * 0.5f - 0.06f,
+                1.8f, (Rand01(seed, 36) - 0.5f) * (s - 3f));
+            clock.transform.rotation = Quaternion.Euler(0f, -90f, 0f);    // face west, into the cell
+            cell.props.Add(clock);
+        }
+
+        if (Rand01(seed, 40) >= PropChance) return;
+
+        float yawA = Mathf.Floor(Rand01(seed, 41) * 4f) * 90f + (Rand01(seed, 42) - 0.5f) * 24f;
+        float sideX = Rand01(seed, 43) < 0.5f ? -1f : 1f;
+        Vector3 spotA = origin + new Vector3(sideX * 1.45f, 0f, (Rand01(seed, 44) - 0.5f) * 1.6f);
+        Vector3 spotB = origin + new Vector3(-sideX * 1.35f, 0f, (Rand01(seed, 45) - 0.5f) * 1.6f);
+        int variant = Mathf.Abs(Hash(cell.coord.y, cell.coord.x, seed)) % 4;
+
+        if (!_archive)
+        {
+            GameObject a = null, b = null;
+            switch (variant)
+            {
+                case 0:
+                    a = DimensionPropKit.Couch(_root, _fabricMat, _woodMat);
+                    b = DimensionPropKit.CoffeeTable(_root, _woodMat);
+                    break;
+                case 1:
+                    a = DimensionPropKit.Armchair(_root, _fabricMat, _woodMat);
+                    b = DimensionPropKit.FloorLamp(_root, _clockHandMat,
+                        Rand01(seed, 46) < 0.12f ? _shadeLitMat : _shadeDarkMat,
+                        withLight: Rand01(seed, 46) < 0.12f, lightColor: lampColor);
+                    break;
+                case 2:
+                    a = DimensionPropKit.Couch(_root, _fabricMat, _woodMat);
+                    b = DimensionPropKit.Armchair(_root, _fabricMat, _woodMat);
+                    break;
+                default:
+                    a = DimensionPropKit.DiningTable(_root, _woodMat);
+                    b = DimensionPropKit.ChairSimple(_root, _woodMat);
+                    break;
+            }
+            a.transform.SetPositionAndRotation(spotA, Quaternion.Euler(0f, yawA, 0f));
+            b.transform.SetPositionAndRotation(spotB, Quaternion.Euler(0f, yawA + 180f + (Rand01(seed, 47) - 0.5f) * 30f, 0f));
+            cell.props.Add(a);
+            cell.props.Add(b);
+        }
+        else
+        {
+            // Archive theme: shelves hug the north wall when it exists; a reading
+            // desk + chair and toppled stacks re-deal every reroll.
+            var shelf = DimensionPropKit.Shelf(_root, _woodMat, _booksMat, 1.4f, 2.2f, 4);
+            if (hasN)
+                shelf.transform.SetPositionAndRotation(
+                    origin + new Vector3((Rand01(seed, 48) - 0.5f) * (s - 3.4f), 0f, s * 0.5f - tN * 0.5f - 0.24f),
+                    Quaternion.Euler(0f, 180f, 0f));
+            else
+                shelf.transform.SetPositionAndRotation(spotA, Quaternion.Euler(0f, yawA, 0f));
+            cell.props.Add(shelf);
+
+            if (variant >= 1)
+            {
+                var desk = DimensionPropKit.Desk(_root, _woodMat);
+                desk.transform.SetPositionAndRotation(spotB, Quaternion.Euler(0f, yawA + 180f, 0f));
+                cell.props.Add(desk);
+                var chair = DimensionPropKit.ChairSimple(_root, _woodMat);
+                chair.transform.SetPositionAndRotation(
+                    spotB + Quaternion.Euler(0f, yawA + 180f, 0f) * new Vector3(0f, 0f, 0.65f),
+                    Quaternion.Euler(0f, yawA, 0f));
+                cell.props.Add(chair);
+            }
+            if (variant >= 2)
+            {
+                var stack = DimensionPropKit.BookStack(_root, _booksMat, 3 + variant);
+                stack.transform.position = spotB + new Vector3(0.7f, 0f, 0.4f);
+                cell.props.Add(stack);
+            }
+        }
+    }
+
+    void ClearProps(Cell cell)
+    {
+        foreach (var prop in cell.props) if (prop != null) Destroy(prop);
+        cell.props.Clear();
     }
 
     void SpawnDoor(Vector2Int coord, int seed)

@@ -28,11 +28,13 @@ public class RustSeaController : MonoBehaviour
     void Awake()
     {
         _root = transform;
-        var rustMat = DimensionSceneUtil.Mat(new Color(0.55f, 0.28f, 0.12f), 0.35f);
+        // Dune UVs are world-space (1 tile per 2m), so tiling stays (1,1) here.
+        var rustMat = DimensionSceneUtil.TexMat("d22_rust", new Color(0.75f, 0.55f, 0.4f), Vector2.one, 0.35f);
 
         BuildDunes(rustMat);
         DimensionSceneUtil.CreateDirectionalLight(new Color(0.9f, 0.55f, 0.3f), 0.35f, new Vector3(30f, -70f, 0f), false);
         BuildCrane(new Vector3(0f, 0f, 120f));
+        BuildContainerStacks();
         BuildWhiteout();
 
         _barrels = new Transform[3];
@@ -44,7 +46,8 @@ public class RustSeaController : MonoBehaviour
             PlaceBarrel(i, Vector3.zero, initial: true);
         }
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(48f, 2f, 0.07f), 600f, 1f);
+        // Yard ambience (metal groans, wind over hulls) — sits under the geiger ticks.
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d22", 48f, 0.07f, 0.55f);
 
         // Geiger-style danger ticks: the closer the sweeping beam's heading is to
         // you, the faster the clicks — you can dodge with your ears.
@@ -83,11 +86,13 @@ public class RustSeaController : MonoBehaviour
         int n = 128;
         float size = 600f, half = size * 0.5f, step = size / n;
         var verts = new Vector3[(n + 1) * (n + 1)];
+        var uvs = new Vector2[(n + 1) * (n + 1)];
         for (int z = 0, i = 0; z <= n; z++)
             for (int x = 0; x <= n; x++, i++)
             {
                 float wx = x * step - half, wz = z * step - half;
                 verts[i] = new Vector3(wx, DuneHeight(wx, wz), wz);
+                uvs[i] = new Vector2(wx, wz) * 0.5f;   // 1 texture tile per 2m
             }
         var tris = new int[n * n * 6];
         for (int z = 0, t = 0; z < n; z++)
@@ -98,7 +103,7 @@ public class RustSeaController : MonoBehaviour
                 tris[t++] = i + 1; tris[t++] = i + n + 1; tris[t++] = i + n + 2;
             }
         var mesh = new Mesh { indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
-        mesh.vertices = verts; mesh.triangles = tris;
+        mesh.vertices = verts; mesh.uv = uvs; mesh.triangles = tris;
         mesh.RecalculateNormals(); mesh.RecalculateBounds();
         var go = new GameObject("ScrapDunes");
         go.layer = DimensionSceneUtil.WalkableLayer;
@@ -108,8 +113,8 @@ public class RustSeaController : MonoBehaviour
         go.AddComponent<MeshCollider>().sharedMesh = mesh;
 
         // Half-buried scrap: plates, girders, pipes and oil pools breaking the dunes.
-        var plateMat  = DimensionSceneUtil.Mat(new Color(0.42f, 0.22f, 0.10f), 0.5f);
-        var girderMat = DimensionSceneUtil.Mat(new Color(0.30f, 0.16f, 0.09f), 0.45f);
+        var plateMat  = DimensionSceneUtil.TexMat("d22_rust", new Color(0.6f, 0.42f, 0.3f), new Vector2(2f, 2f), 0.5f);
+        var girderMat = DimensionSceneUtil.TexMat("d22_rust", new Color(0.45f, 0.3f, 0.22f), new Vector2(3f, 1f), 0.45f);
         var pipeMat   = DimensionSceneUtil.Mat(new Color(0.24f, 0.14f, 0.09f), 0.55f);
         var oilMat    = DimensionSceneUtil.Mat(new Color(0.03f, 0.025f, 0.02f), 0.95f);
         Random.State prev = Random.state;
@@ -145,6 +150,51 @@ public class RustSeaController : MonoBehaviour
                 new Vector3(x, DuneHeight(x, z) + 0.04f, z),
                 new Vector3(Random.Range(2.5f, 6f), 0.02f, Random.Range(2.5f, 6f)), oilMat, _root);
             Object.Destroy(oil.GetComponent<Collider>());
+        }
+        Random.state = prev;
+    }
+
+    /// <summary>Three shipping-container yards out in the dunes. Each yard's
+    /// containers re-deal onto different ground slots whenever the whole yard
+    /// leaves your view — the skyline is never quite the way you left it. Fixed
+    /// footprints well away from the crane and spawn, so they can't wall off
+    /// gameplay; anchors are ground-level only (no floating stacks).</summary>
+    void BuildContainerStacks()
+    {
+        Vector2[] yards = { new Vector2(-120f, -60f), new Vector2(90f, -140f), new Vector2(150f, 80f) };
+        Vector2[] slots = { new Vector2(0f, 0f), new Vector2(8f, 2.5f), new Vector2(-7f, 5f),
+                            new Vector2(3.5f, -8f), new Vector2(-5f, -7f) };
+        Color[] tints = { new Color(0.85f, 0.75f, 0.7f), new Color(0.7f, 0.75f, 0.85f), new Color(0.8f, 0.65f, 0.55f) };
+        Random.State prev = Random.state;
+        Random.InitState(2299);
+        for (int y = 0; y < yards.Length; y++)
+        {
+            Vector2 c = yards[y];
+            float cy = DuneHeight(c.x, c.y);
+            var zone = new Bounds(new Vector3(c.x, cy + 3f, c.y), new Vector3(26f, 12f, 26f));
+            var set = PropShuffleSet.Create("ContainerYard" + y, _root, zone, "sfx_wood_creak");
+            set.observeMaxDistance = 150f;
+            set.posJitter = 0.4f;
+            set.yawJitterDeg = 8f;
+            foreach (var s in slots)
+            {
+                float ax = c.x + s.x, az = c.y + s.y;
+                set.AddAnchor(new Vector3(ax, DuneHeight(ax, az), az), Random.Range(0f, 360f));
+            }
+            for (int k = 0; k < 3; k++)
+            {
+                var box = new GameObject("Container");
+                box.transform.SetParent(_root, false);
+                var mat = DimensionSceneUtil.TexMat("d22_container", tints[(y + k) % tints.Length], Vector2.one, 0.4f);
+                var body = DimensionSceneUtil.Block(PrimitiveType.Cube, "Body",
+                    Vector3.zero, new Vector3(2.5f, 2.6f, 6.1f), mat, box.transform);
+                body.transform.localPosition = new Vector3(0f, 1.3f, 0f);
+                // Pre-place on a yard slot so nothing sits on the spawn before the
+                // set's first deal (props default to their built position otherwise).
+                float px = c.x + slots[k].x, pz = c.y + slots[k].y;
+                box.transform.position = new Vector3(px, DuneHeight(px, pz), pz);
+                set.AddProp(box);
+            }
         }
         Random.state = prev;
     }

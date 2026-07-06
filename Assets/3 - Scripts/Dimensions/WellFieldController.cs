@@ -15,12 +15,26 @@ public class WellFieldController : MonoBehaviour
     int _playerRefindCooldown;
     bool _atmosApplied;
 
+    // Polish pass: half-buried domestic junk — a fridge, a dead TV, a fallen
+    // streetlamp — that quietly relocates whenever it leaves your view, like the
+    // wells do. Pure dressing: no triggers, kept clear of the wells.
+    Transform[] _junk;
+    ObservationTracker[] _junkTrackers;
+    float[] _junkHeights;
+    Material _applianceMat, _junkWoodMat, _junkMetalMat, _screenMat;
+    const int JunkCount = 6;
+
     void Awake()
     {
         _root = transform;
-        _sandMat  = DimensionSceneUtil.Mat(new Color(0.85f, 0.72f, 0.45f), 0.05f);
+        // Terrain UVs run 0-1 across the whole mesh — tiling 266 ≈ 1 tile / 3 m on the 800 m field.
+        _sandMat  = DimensionSceneUtil.TexMat("d2_sand", new Color(1f, 0.95f, 0.85f), new Vector2(266f, 266f), 0.05f);
         _stoneMat = DimensionSceneUtil.Mat(new Color(0.45f, 0.42f, 0.38f), 0.05f);
         _holeMat  = DimensionSceneUtil.Mat(new Color(0.02f, 0.02f, 0.03f), 0f);
+        _applianceMat = DimensionSceneUtil.Mat(new Color(0.82f, 0.80f, 0.74f), 0.3f);   // sun-bleached enamel
+        _junkWoodMat  = DimensionSceneUtil.TexMat("wood_worn", Color.white, Vector2.one);
+        _junkMetalMat = DimensionSceneUtil.Mat(new Color(0.25f, 0.24f, 0.22f), 0.35f);
+        _screenMat    = DimensionSceneUtil.Mat(new Color(0.04f, 0.05f, 0.06f), 0.7f);   // dead glass
 
         BuildTerrain();
         DimensionSceneUtil.CreateDirectionalLight(new Color(1f, 0.95f, 0.8f), 1.25f, new Vector3(55f, 40f, 0f), true);
@@ -33,6 +47,18 @@ public class WellFieldController : MonoBehaviour
             _trackers[i] = new ObservationTracker();
             PlaceWell(i, Vector3.zero, initial: true);
         }
+
+        _junk = new Transform[JunkCount];
+        _junkTrackers = new ObservationTracker[JunkCount];
+        _junkHeights = new float[JunkCount];
+        for (int i = 0; i < JunkCount; i++)
+        {
+            _junk[i] = BuildJunk(i).transform;
+            _junkTrackers[i] = new ObservationTracker();
+            PlaceJunk(i, Vector3.zero, initial: true);
+        }
+
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d2", 45f, 0.02f, 0.4f);
     }
 
     void Update()
@@ -53,6 +79,13 @@ public class WellFieldController : MonoBehaviour
             var b = new Bounds(_wells[i].position + Vector3.up * 0.6f, new Vector3(3.5f, 2.5f, 3.5f));
             _trackers[i].Tick(b, out bool justLost, float.PositiveInfinity);
             if (justLost) PlaceWell(i, cam.transform.position, initial: false);
+        }
+
+        for (int i = 0; i < JunkCount; i++)
+        {
+            var b = new Bounds(_junk[i].position + Vector3.up, new Vector3(4f, 4f, 4f));
+            _junkTrackers[i].Tick(b, out bool justLost, float.PositiveInfinity);
+            if (justLost) PlaceJunk(i, cam.transform.position, initial: false);
         }
 
         // Gaze-reactive hum: volume tracks how directly the camera points at the true
@@ -172,6 +205,69 @@ public class WellFieldController : MonoBehaviour
         }
         _wells[i].position = best;
         _trackers[i].Reset();
+    }
+
+    // ── buried junk (polish pass) ────────────────────────────────────
+
+    GameObject BuildJunk(int i)
+    {
+        // Built at identity (Block positions in WORLD space), then the root is
+        // placed/tilted by PlaceJunk.
+        var root = new GameObject("Junk_" + i);
+        root.transform.SetParent(_root, false);
+        switch (i % 3)
+        {
+            case 0: // refrigerator
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Body",
+                    new Vector3(0f, 0.9f, 0f), new Vector3(0.85f, 1.8f, 0.75f), _applianceMat, root.transform);
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Handle",
+                    new Vector3(0.32f, 1.2f, 0.4f), new Vector3(0.05f, 0.5f, 0.05f), _junkMetalMat, root.transform);
+                _junkHeights[i] = 1.8f;
+                break;
+            case 1: // wood-cabinet television
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Body",
+                    new Vector3(0f, 0.38f, 0f), new Vector3(0.78f, 0.62f, 0.55f), _junkWoodMat, root.transform);
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Screen",
+                    new Vector3(0f, 0.42f, 0.29f), new Vector3(0.56f, 0.42f, 0.02f), _screenMat, root.transform);
+                _junkHeights[i] = 0.7f;
+                break;
+            default: // dead streetlamp
+                DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Pole",
+                    new Vector3(0f, 1.9f, 0f), new Vector3(0.12f, 1.9f, 0.12f), _junkMetalMat, root.transform);
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "Head",
+                    new Vector3(0f, 3.8f, 0.35f), new Vector3(0.3f, 0.2f, 0.9f), _junkMetalMat, root.transform);
+                _junkHeights[i] = 3.9f;
+                break;
+        }
+        return root;
+    }
+
+    void PlaceJunk(int i, Vector3 aroundPos, bool initial)
+    {
+        Vector3 best = _junk[i].position;
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            float a = Random.value * Mathf.PI * 2f;
+            float d = Random.Range(30f, 90f);
+            Vector3 c = initial ? Vector3.zero : aroundPos;
+            float x = Mathf.Clamp(c.x + Mathf.Cos(a) * d, -terrainSize * 0.45f, terrainSize * 0.45f);
+            float z = Mathf.Clamp(c.z + Mathf.Sin(a) * d, -terrainSize * 0.45f, terrainSize * 0.45f);
+            best = new Vector3(x, DuneHeight(x, z), z);
+
+            bool nearWell = false;
+            for (int w = 0; w < wellCount; w++)
+                if ((_wells[w].position - best).sqrMagnitude < 12f * 12f) { nearWell = true; break; }
+            if (nearWell) continue;
+
+            if (initial || !ObserverState.IsObserved(new Bounds(best + Vector3.up * 1.5f, Vector3.one * 5f)))
+                break;
+        }
+        // Sunk 30-60 % into the sand, tilted 10-25° off vertical on a random heading.
+        float sink = _junkHeights[i] * Random.Range(0.3f, 0.6f);
+        _junk[i].SetPositionAndRotation(
+            best + Vector3.down * sink,
+            Quaternion.Euler(0f, Random.Range(0f, 360f), 0f) * Quaternion.Euler(Random.Range(10f, 25f), 0f, 0f));
+        _junkTrackers[i].Reset();
     }
 
     /// <summary>Wrong-well punishment: dumped on a random distant dune, no damage.</summary>

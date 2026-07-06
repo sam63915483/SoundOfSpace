@@ -36,9 +36,9 @@ public class CongregationController : MonoBehaviour
     {
         _root = transform;
         var floorMat = DimensionSceneUtil.Mat(new Color(0.16f, 0.14f, 0.13f), 0.25f);
-        var wallMat  = DimensionSceneUtil.Mat(new Color(0.22f, 0.19f, 0.17f), 0.1f);
-        var pillarMat = DimensionSceneUtil.Mat(new Color(0.28f, 0.25f, 0.22f), 0.15f);
-        _pewMat = DimensionSceneUtil.Mat(new Color(0.20f, 0.12f, 0.08f), 0.2f);
+        var wallMat  = DimensionSceneUtil.TexMat("d15_stone", Color.white, new Vector2(18f, 3f), 0.1f);
+        var pillarMat = DimensionSceneUtil.TexMat("d15_stone", new Color(0.9f, 0.85f, 0.8f), new Vector2(2f, 3f), 0.15f);
+        _pewMat = DimensionSceneUtil.TexMat("d15_wood", Color.white, new Vector2(2f, 1f), 0.2f);
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Floor",
             new Vector3(0f, -0.5f, 45f), new Vector3(HallHalfWidth * 2f + 4f, 1f, 110f), floorMat, _root);
@@ -101,7 +101,9 @@ public class CongregationController : MonoBehaviour
         }
 
         BuildAltar();
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(110f, 2f, 0.05f), 400f, 1f);
+        BuildNaveDressing();
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d15", 110f, 0.05f, 0.3f);
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "mus_d15_organ", 55f, 0.02f, 0.25f);
         var organ = new GameObject("OrganFifth");
         organ.transform.SetParent(_root, false);
         organ.transform.position = new Vector3(0f, 6f, 85f);
@@ -126,16 +128,24 @@ public class CongregationController : MonoBehaviour
             new Color(0.5f, 0.2f, 0.8f), new Color(0.2f, 0.75f, 0.5f),
         };
         int wi = 0;
+        // One tall figured pane per window slot — generated stained glass reads as
+        // saints-in-glass through the gloom; falls back to a warm jewel pane.
+        var glass1 = DimensionSceneUtil.EmissiveTexMat("d15_glass1", new Color(1f, 0.9f, 0.75f), 1.2f);
+        var glass2 = DimensionSceneUtil.EmissiveTexMat("d15_glass2", new Color(0.85f, 0.9f, 1f), 1.2f);
         for (float z = 10f; z <= 80f; z += 14f, wi++)
             for (int side = -1; side <= 1; side += 2)
             {
-                for (int pane = 0; pane < 3; pane++)
+                var glass = DimensionSceneUtil.Block(PrimitiveType.Cube, "Window",
+                    new Vector3(side * (HallHalfWidth - 0.05f), 10.6f, z),
+                    new Vector3(0.15f, 9.1f, 1.7f), (wi + side) % 2 == 0 ? glass1 : glass2, _root);
+                Object.Destroy(glass.GetComponent<Collider>());
+                // Stone mullions framing the pane.
+                for (int mz = -1; mz <= 1; mz += 2)
                 {
-                    var mat = DimensionSceneUtil.EmissiveMat(jewels[(wi + pane + (side + 1)) % jewels.Length], 1.5f);
-                    var glass = DimensionSceneUtil.Block(PrimitiveType.Cube, "Window",
-                        new Vector3(side * (HallHalfWidth - 0.05f), 7.5f + pane * 3.1f, z),
-                        new Vector3(0.15f, 2.9f, 1.7f), mat, _root);
-                    Object.Destroy(glass.GetComponent<Collider>());
+                    var mullion = DimensionSceneUtil.Block(PrimitiveType.Cube, "Mullion",
+                        new Vector3(side * (HallHalfWidth - 0.02f), 10.6f, z + mz * 0.95f),
+                        new Vector3(0.2f, 9.3f, 0.22f), _pewMat, _root);
+                    Object.Destroy(mullion.GetComponent<Collider>());
                 }
                 // Arched cap pane.
                 var cap = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "WindowCap",
@@ -233,6 +243,33 @@ public class CongregationController : MonoBehaviour
         tmp.alignment = TMPro.TextAlignmentOptions.Center;
         tmp.color = new Color(0.95f, 0.88f, 0.7f);
         tmp.GetComponent<RectTransform>().sizeDelta = new Vector2(30f, 16f);
+    }
+
+    // Hymn books and candlesticks left in the aisles — never at the same pew twice.
+    // Two shuffle zones (front/back half of the nave) so whichever half is at your
+    // back re-deals itself while you face the other way.
+    void BuildNaveDressing()
+    {
+        var booksMat = DimensionSceneUtil.TexMat("d5_books", new Color(0.45f, 0.2f, 0.15f), new Vector2(1f, 1f), 0.15f);
+        var brassMat = DimensionSceneUtil.Mat(new Color(0.5f, 0.4f, 0.18f), 0.6f);
+        var flameMat = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.65f, 0.25f), 2.8f);
+
+        for (int half = 0; half < 2; half++)
+        {
+            float zCenter = half == 0 ? 26f : 50f;
+            var set = PropShuffleSet.Create(half == 0 ? "NaveDressingBack" : "NaveDressingFront",
+                _root, new Bounds(new Vector3(0f, 1f, zCenter), new Vector3(HallHalfWidth * 2f - 4f, 3f, 24f)),
+                "sfx_wood_creak");
+            for (int i = 0; i < 6; i++)
+            {
+                float x = (i % 2 == 0 ? -1f : 1f) * Random.Range(2.4f, HallHalfWidth - 4f);
+                float z = zCenter - 10f + i * 4f;
+                set.AddAnchor(new Vector3(x, 0.02f, z), Random.value * 360f);
+            }
+            set.AddProp(DimensionPropKit.BookStack(_root, booksMat, 3));
+            set.AddProp(DimensionPropKit.BookStack(_root, booksMat, 5));
+            set.AddProp(DimensionPropKit.Candlestick(_root, brassMat, flameMat));
+        }
     }
 
     void BuildRow(PewRow row)

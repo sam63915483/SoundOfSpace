@@ -25,8 +25,8 @@ public class OrchardController : MonoBehaviour
     void Awake()
     {
         _root = transform;
-        var groundMat  = DimensionSceneUtil.Mat(new Color(0.30f, 0.30f, 0.18f), 0.05f);
-        var trunkMat   = DimensionSceneUtil.Mat(new Color(0.36f, 0.26f, 0.20f), 0.05f);
+        var groundMat  = DimensionSceneUtil.TexMat("grass_lush", Color.white, new Vector2(400f, 400f), 0.05f);
+        var trunkMat   = DimensionSceneUtil.TexMat("d13_bark", Color.white, new Vector2(1f, 2f), 0.05f);
         var blossomMat = DimensionSceneUtil.Mat(new Color(0.97f, 0.93f, 0.94f), 0.1f);
         var blushMat   = DimensionSceneUtil.Mat(new Color(0.98f, 0.88f, 0.90f), 0.1f);
         var fenceMat   = DimensionSceneUtil.Mat(new Color(0.88f, 0.86f, 0.82f), 0.1f);
@@ -44,8 +44,9 @@ public class OrchardController : MonoBehaviour
         BuildFence(fenceMat);
         BuildPetals();
         BuildFlash();
+        BuildPicnicDressing();
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(85f, 3f, 0.05f), 500f, 1f);
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d13", 85f, 0.05f, 0.55f);
         _chimeClip = WindChimeClip();
         var chimeGo = new GameObject("Chimer");
         chimeGo.transform.SetParent(_root, false);
@@ -145,6 +146,120 @@ public class OrchardController : MonoBehaviour
                 Destroy(post.GetComponent<Collider>());
             }
         }
+    }
+
+    // Somebody was picnicking here. The blankets, baskets and ladders are never
+    // where they were the last time you looked — each cluster re-deals itself onto
+    // nearby gaps/trunks whenever its patch of orchard leaves your view.
+    void BuildPicnicDressing()
+    {
+        var blanketMat = DimensionSceneUtil.Mat(new Color(0.78f, 0.24f, 0.22f), 0.05f);
+        var patchMat   = DimensionSceneUtil.Mat(new Color(0.95f, 0.92f, 0.88f), 0.05f);
+        var wickerMat  = DimensionSceneUtil.Mat(new Color(0.62f, 0.45f, 0.24f), 0.15f);
+        var fruitMat   = DimensionSceneUtil.Mat(new Color(0.85f, 0.15f, 0.12f), 0.3f);
+        var ladderMat  = DimensionSceneUtil.TexMat("wood_worn", new Color(0.75f, 0.66f, 0.55f), new Vector2(0.4f, 2f), 0.1f);
+
+        // Picnic cluster: blankets + baskets share ground anchors in the row gaps
+        // around one corner of the orchard.
+        var picnic = PropShuffleSet.Create("PicnicShuffle", _root,
+            new Bounds(new Vector3(-9f, 1f, 0f), new Vector3(24f, 4f, 24f)),
+            "sfx_wood_creak", facePlayer: false, countJitter: true);
+        picnic.AddAnchor(CellCenter(2, 2) + new Vector3(4.5f, 0f, 0f), 15f);
+        picnic.AddAnchor(CellCenter(2, 2) + new Vector3(0f, 0f, 4.5f), 130f);
+        picnic.AddAnchor(CellCenter(1, 2) + new Vector3(4.5f, 0f, 4.5f), 250f);
+        picnic.AddAnchor(CellCenter(2, 3) + new Vector3(-4.5f, 0f, 0f), 80f);
+        picnic.AddAnchor(CellCenter(3, 2) + new Vector3(0f, 0f, -4.5f), 200f);
+        picnic.AddAnchor(CellCenter(3, 3) + new Vector3(-4.5f, 0f, -4.5f), 320f);
+        picnic.AddProp(BuildBlanket(blanketMat, patchMat));
+        picnic.AddProp(BuildBlanket(blanketMat, patchMat));
+        picnic.AddProp(BuildBasket(wickerMat, fruitMat));
+        picnic.AddProp(BuildBasket(wickerMat, fruitMat));
+
+        // Two orchard ladders, each haunting its own little stand of trees — always
+        // leaning against a DIFFERENT trunk when you come back around.
+        BuildLadderSet("LadderShuffleA", ladderMat,
+            new Bounds(new Vector3(9f, 2f, 3f), new Vector3(24f, 6f, 20f)),
+            new[] { new Vector2Int(4, 2), new Vector2Int(5, 3), new Vector2Int(5, 2) });
+        BuildLadderSet("LadderShuffleB", ladderMat,
+            new Bounds(new Vector3(-9f, 2f, 21f), new Vector3(24f, 6f, 22f)),
+            new[] { new Vector2Int(2, 5), new Vector2Int(3, 5), new Vector2Int(2, 4) });
+    }
+
+    void BuildLadderSet(string name, Material ladderMat, Bounds zone, Vector2Int[] cells)
+    {
+        var set = PropShuffleSet.Create(name, _root, zone, "sfx_wood_creak");
+        set.posJitter = 0.05f;          // must stay against the trunk
+        set.yawJitterDeg = 4f;
+        foreach (var c in cells)
+        {
+            Vector3 trunk = CellCenter(c.x, c.y);
+            float a = Random.value * Mathf.PI * 2f;
+            Vector3 pos = trunk + new Vector3(Mathf.Cos(a), 0f, Mathf.Sin(a)) * 0.75f;  // 14° lean over 2.7m rails lands the top on the trunk
+            float yaw = Quaternion.LookRotation(trunk - pos).eulerAngles.y;
+            set.AddAnchor(pos, yaw);
+        }
+        set.AddProp(BuildLadder(ladderMat));
+    }
+
+    GameObject BuildBlanket(Material blanketMat, Material patchMat)
+    {
+        var root = new GameObject("PicnicBlanket");
+        root.transform.SetParent(_root, false);
+        var cloth = DimensionSceneUtil.Block(PrimitiveType.Cube, "Cloth",
+            Vector3.zero, new Vector3(1.7f, 0.02f, 1.7f), blanketMat, root.transform);
+        cloth.transform.localPosition = new Vector3(0f, 0.012f, 0f);
+        Destroy(cloth.GetComponent<Collider>());
+        for (int x = -1; x <= 1; x += 2)
+            for (int z = -1; z <= 1; z += 2)
+            {
+                var patch = DimensionSceneUtil.Block(PrimitiveType.Cube, "Patch",
+                    Vector3.zero, new Vector3(0.42f, 0.012f, 0.42f), patchMat, root.transform);
+                patch.transform.localPosition = new Vector3(x * 0.42f, 0.024f, z * 0.42f);
+                Destroy(patch.GetComponent<Collider>());
+            }
+        return root;
+    }
+
+    GameObject BuildBasket(Material wickerMat, Material fruitMat)
+    {
+        var root = new GameObject("FruitBasket");
+        root.transform.SetParent(_root, false);
+        var body = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Basket",
+            Vector3.zero, new Vector3(0.32f, 0.16f, 0.32f), wickerMat, root.transform);
+        body.transform.localPosition = new Vector3(0f, 0.16f, 0f);
+        for (int k = 0; k < 3; k++)
+        {
+            var fruit = DimensionSceneUtil.Block(PrimitiveType.Sphere, "Fruit",
+                Vector3.zero, Vector3.one * 0.11f, fruitMat, root.transform);
+            fruit.transform.localPosition = new Vector3(
+                Mathf.Cos(k * 2.1f) * 0.09f, 0.36f, Mathf.Sin(k * 2.1f) * 0.09f);
+            Destroy(fruit.GetComponent<Collider>());
+        }
+        return root;
+    }
+
+    // Wooden orchard ladder, lean baked into the prop (+Z tips toward the anchor's trunk).
+    GameObject BuildLadder(Material mat)
+    {
+        var root = new GameObject("OrchardLadder");
+        root.transform.SetParent(_root, false);
+        var lean = new GameObject("Lean");
+        lean.transform.SetParent(root.transform, false);
+        lean.transform.localRotation = Quaternion.Euler(14f, 0f, 0f);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var rail = DimensionSceneUtil.Block(PrimitiveType.Cube, "Rail",
+                Vector3.zero, new Vector3(0.07f, 2.7f, 0.07f), mat, lean.transform);
+            rail.transform.localPosition = new Vector3(side * 0.26f, 1.35f, 0f);
+        }
+        for (int r = 0; r < 5; r++)
+        {
+            var rung = DimensionSceneUtil.Block(PrimitiveType.Cube, "Rung",
+                Vector3.zero, new Vector3(0.55f, 0.06f, 0.06f), mat, lean.transform);
+            rung.transform.localPosition = new Vector3(0f, 0.4f + r * 0.5f, 0f);
+            Destroy(rung.GetComponent<Collider>());
+        }
+        return root;
     }
 
     // Soft pink petal drift that follows the player — the whole orchard is shedding.

@@ -36,11 +36,27 @@ public class LongDarkController : MonoBehaviour
     bool _atmosApplied;
     static readonly int ColorId = Shader.PropertyToID("_Color");
 
+    // Hotel dressing (polish pass): doors the muffled TV can hide behind, and
+    // room-service trays that slide around while the corridor is unobserved.
+    readonly List<Vector3> _doorSpots = new List<Vector3>();
+    GameObject _tvGo;
+    int _tvSpot;
+    readonly ObservationTracker _tvTracker = new ObservationTracker();
+    // Rearrange scratch (hoisted — was a per-call alloc, flagged by the sweep).
+    readonly List<int> _candScratch = new List<int>();
+    readonly List<int> _hiddenScratch = new List<int>();
+
+    /// <summary>Library texture material, or the pre-polish flat color if missing.</summary>
+    static Material TexOr(string key, Color fallback, Vector2 tiling, float smooth = 0.1f, Color? tint = null)
+        => DimensionAssetLibrary.Tex(key) != null
+            ? DimensionSceneUtil.TexMat(key, tint ?? Color.white, tiling, smooth)
+            : DimensionSceneUtil.Mat(fallback, smooth);
+
     void Awake()
     {
         _root = transform;
-        var carpetMat = DimensionSceneUtil.Mat(new Color(0.34f, 0.10f, 0.10f), 0.05f);
-        var wallMat   = DimensionSceneUtil.Mat(new Color(0.55f, 0.48f, 0.38f), 0.1f);
+        var carpetMat = TexOr("d3_carpet", new Color(0.34f, 0.10f, 0.10f), new Vector2(2f, 10f), 0.05f);
+        var wallMat   = TexOr("d3_wall", new Color(0.55f, 0.48f, 0.38f), new Vector2(10f, 2f), 0.1f);
         var ceilMat   = DimensionSceneUtil.Mat(new Color(0.30f, 0.28f, 0.26f), 0.1f);
         var lampMat   = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.85f, 0.6f), 1.6f);
         var glassMat  = DimensionSceneUtil.FadeMat(new Color(0.7f, 0.85f, 1f, 0.35f));
@@ -48,7 +64,21 @@ public class LongDarkController : MonoBehaviour
         // Two corridor sections floating over the void, chasm between them.
         BuildCorridor(8f, carpetMat, wallMat, ceilMat, lampMat);    // start: z -2..18
         BuildCorridor(55f, carpetMat, wallMat, ceilMat, lampMat);   // end:   z 45..65
+        BuildHotelDressing(8f);
+        BuildHotelDressing(55f);
         _respawnPoint = new Vector3(0f, 1.5f, 4f);
+
+        // One door hides a muffled TV set — it moves to another door while the
+        // corridor is unobserved. Skipped entirely if the clip isn't generated yet.
+        var tvClip = DimensionAssetLibrary.Clip("sfx_tv_muffled");
+        if (tvClip != null && _doorSpots.Count > 1)
+        {
+            _tvGo = new GameObject("MuffledTV");
+            _tvGo.transform.SetParent(_root, false);
+            _tvSpot = Random.Range(0, _doorSpots.Count);
+            _tvGo.transform.position = _doorSpots[_tvSpot] + Vector3.up * 1.2f;
+            DimensionSceneUtil.LoopingAudio(_tvGo, tvClip, 12f, 0.5f);
+        }
 
         // The classic 5-slot straight bridge — but only TWO tiles exist to fill the
         // slots. Tiles are solid while seen; a tile that leaves your view (and isn't
@@ -104,7 +134,92 @@ public class LongDarkController : MonoBehaviour
         kb.isTrigger = true; kb.size = new Vector3(300f, 10f, 300f);
         kill.AddComponent<LongDarkKillVolume>().owner = this;
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(55f, 2f, 0.08f), 500f, 1f);
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d3", 55f, 0.08f, 0.55f);
+    }
+
+    // Hotel dressing for one corridor section: numbered guest doors, unlit brass
+    // sconces (pure emissive — the lamp lights already carry the corridor), and a
+    // PropShuffleSet of room-service trays that slide around while unobserved.
+    void BuildHotelDressing(float zCenter)
+    {
+        var doorMat   = TexOr("d3_door", new Color(0.30f, 0.20f, 0.12f), Vector2.one, 0.25f);
+        var frameMat  = DimensionSceneUtil.Mat(new Color(0.16f, 0.11f, 0.07f), 0.2f);
+        var plateMat  = DimensionSceneUtil.EmissiveMat(new Color(0.85f, 0.78f, 0.55f), 0.35f);
+        var sconceMat = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.8f, 0.5f), 1.1f);
+        var trayMat   = DimensionSceneUtil.Mat(new Color(0.75f, 0.72f, 0.68f), 0.5f);
+        var chinaMat  = DimensionSceneUtil.Mat(new Color(0.9f, 0.88f, 0.84f), 0.6f);
+
+        var set = PropShuffleSet.Create("TraySet_" + (int)zCenter, _root,
+            new Bounds(new Vector3(0f, 1.8f, zCenter), new Vector3(4.6f, 4f, 20f)),
+            "sfx_wood_creak");
+
+        for (int side = -1; side <= 1; side += 2)
+            for (int d = 0; d < 3; d++)
+            {
+                float z = zCenter + (-7f + d * 5.5f) + (side > 0 ? 2.5f : 0f);
+                BuildDoor(side, z, doorMat, frameMat, plateMat, sconceMat);
+                _doorSpots.Add(new Vector3(side * 1.9f, 0f, z));
+                set.AddAnchor(new Vector3(side * 1.3f, 0f, z + Random.Range(-0.6f, 0.6f)),
+                    Random.Range(0f, 360f));
+            }
+        set.AddAnchor(new Vector3(0.9f, 0f, zCenter - 4f), 20f);
+        set.AddAnchor(new Vector3(-0.9f, 0f, zCenter + 6f), 200f);
+        for (int i = 0; i < 3; i++) set.AddProp(BuildTray(set.transform, trayMat, chinaMat));
+    }
+
+    // One guest door flush against a corridor wall (side -1 = left/-x, +1 = right/+x).
+    void BuildDoor(int side, float z, Material door, Material frame, Material plate, Material sconce)
+    {
+        float x = side * 1.95f;
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Door", new Vector3(x, 1.05f, z),
+            new Vector3(0.1f, 2.1f, 1.0f), door, _root);
+        foreach (float dz in new[] { -0.56f, 0.56f })
+        {
+            var post = DimensionSceneUtil.Block(PrimitiveType.Cube, "DoorPost",
+                new Vector3(side * 1.97f, 1.15f, z + dz), new Vector3(0.12f, 2.3f, 0.12f), frame, _root);
+            Destroy(post.GetComponent<Collider>());
+        }
+        var lintel = DimensionSceneUtil.Block(PrimitiveType.Cube, "DoorLintel",
+            new Vector3(side * 1.97f, 2.24f, z), new Vector3(0.12f, 0.12f, 1.24f), frame, _root);
+        Destroy(lintel.GetComponent<Collider>());
+        var numPlate = DimensionSceneUtil.Block(PrimitiveType.Cube, "RoomPlate",
+            new Vector3(side * 1.88f, 1.7f, z), new Vector3(0.04f, 0.12f, 0.18f), plate, _root);
+        Destroy(numPlate.GetComponent<Collider>());
+        var sc = DimensionSceneUtil.Block(PrimitiveType.Cube, "Sconce",
+            new Vector3(side * 1.95f, 2.55f, z + 1.5f), new Vector3(0.09f, 0.26f, 0.13f), sconce, _root);
+        Destroy(sc.GetComponent<Collider>());
+    }
+
+    // Abandoned room-service tray: base + plate + cup, parts LOCAL so the shuffle
+    // set can place/rotate the root freely.
+    static GameObject BuildTray(Transform parent, Material trayMat, Material chinaMat)
+    {
+        var root = new GameObject("ServiceTray");
+        root.transform.SetParent(parent, false);
+        LocalPart(PrimitiveType.Cube, "Tray", root.transform, new Vector3(0f, 0.025f, 0f),
+            new Vector3(0.5f, 0.045f, 0.38f), trayMat, true);
+        LocalPart(PrimitiveType.Cylinder, "Plate", root.transform, new Vector3(-0.08f, 0.055f, 0f),
+            new Vector3(0.17f, 0.008f, 0.17f), chinaMat, false);
+        LocalPart(PrimitiveType.Cylinder, "Cup", root.transform, new Vector3(0.15f, 0.08f, 0.09f),
+            new Vector3(0.07f, 0.045f, 0.07f), chinaMat, false);
+        // Dome cover — uniform sphere, collider dropped, so no capsule ballooning.
+        LocalPart(PrimitiveType.Sphere, "Dome", root.transform, new Vector3(-0.08f, 0.06f, 0f),
+            new Vector3(0.16f, 0.16f, 0.16f), chinaMat, false);
+        return root;
+    }
+
+    static GameObject LocalPart(PrimitiveType type, string name, Transform parent,
+        Vector3 localPos, Vector3 scale, Material mat, bool collider)
+    {
+        var go = GameObject.CreatePrimitive(type);
+        go.name = name;
+        go.layer = DimensionSceneUtil.WalkableLayer;
+        go.transform.SetParent(parent, false);
+        go.transform.localPosition = localPos;
+        go.transform.localScale = scale;
+        go.GetComponent<Renderer>().sharedMaterial = mat;
+        if (!collider) Destroy(go.GetComponent<Collider>());
+        return go;
     }
 
     // One 20m hotel corridor section centred at (0, ·, zCenter): carpet, walls, ceiling, lamps.
@@ -183,6 +298,20 @@ public class LongDarkController : MonoBehaviour
             // Collider survives a brief blink, then drops — sustained looking-away kills it.
             s.col.enabled = observed || Time.time - s.unobservedSince <= colliderDropDelay;
         }
+
+        // The muffled TV moves to a different door while its current door is unobserved.
+        if (_tvGo != null)
+        {
+            var tb = new Bounds(_tvGo.transform.position, new Vector3(2.5f, 3f, 2.5f));
+            _tvTracker.Tick(tb, out bool tvLost, 60f);
+            if (tvLost && Random.value < 0.4f)
+            {
+                int next = Random.Range(0, _doorSpots.Count);
+                if (next == _tvSpot) next = (next + 1) % _doorSpots.Count;
+                _tvSpot = next;
+                _tvGo.transform.position = _doorSpots[next] + Vector3.up * 1.2f;
+            }
+        }
     }
 
     // Jump to a different EMPTY slot. Slot uniqueness means tiles can never overlap;
@@ -190,19 +319,21 @@ public class LongDarkController : MonoBehaviour
     // buildable within a couple of look-aways; hidden slots preferred (no pop-in).
     void Rearrange(Stone s, Vector3 playerPos)
     {
-        var candidates = new List<int>();
+        _candScratch.Clear();
         for (int i = 0; i < SlotCount; i++)
         {
             if (i == s.slotIndex) continue;
             bool occupied = false;
             foreach (var other in _stones)
                 if (other != s && other.slotIndex == i) occupied = true;
-            if (!occupied) candidates.Add(i);
+            if (!occupied) _candScratch.Add(i);
         }
-        if (candidates.Count == 0) return;
+        if (_candScratch.Count == 0) return;
 
-        var hidden = candidates.FindAll(i => !ObserverState.IsObserved(SlotBounds(i)));
-        var pool = hidden.Count > 0 ? hidden : candidates;
+        _hiddenScratch.Clear();
+        foreach (int i in _candScratch)
+            if (!ObserverState.IsObserved(SlotBounds(i))) _hiddenScratch.Add(i);
+        var pool = _hiddenScratch.Count > 0 ? _hiddenScratch : _candScratch;
 
         int pick = -1;
         if (Random.value < 0.6f)

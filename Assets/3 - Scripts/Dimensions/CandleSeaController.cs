@@ -24,11 +24,19 @@ public class CandleSeaController : MonoBehaviour
     AudioSource _snuffer;
     AudioClip _snuffClip;
     bool _atmosApplied;
+    // Unseen-growth wax stalagmites.
+    Transform[] _stalagmites;
+    ObservationTracker[] _stalagTrackers;
+    const float StalagMaxYScale = 1.6f;
+    // Global gate so a fast pan across the field can't machine-gun the hiss.
+    float _nextSnuffAllowed;
 
     void Awake()
     {
         var root = transform;
-        var groundMat = DimensionSceneUtil.Mat(new Color(0.015f, 0.013f, 0.012f), 0.35f);
+        // Wax-pool floor texture, tinted well down so the plain still reads
+        // near-black until candlelight catches it.
+        var groundMat = DimensionSceneUtil.TexMat("d25_wax", new Color(0.30f, 0.26f, 0.21f), new Vector2(1500f / 2f, 1500f / 2f), 0.3f);
         var waxMat    = DimensionSceneUtil.Mat(new Color(0.28f, 0.24f, 0.18f), 0.2f);
         var flameMat  = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.62f, 0.2f), 2.6f);
 
@@ -81,7 +89,7 @@ public class CandleSeaController : MonoBehaviour
         candle.transform.SetParent(root, false);
         _trueCandle = candle.transform;
         // Its shrine: a low stone dais ringed by kneeling-stones.
-        var daisMat = DimensionSceneUtil.Mat(new Color(0.14f, 0.13f, 0.12f), 0.3f);
+        var daisMat = DimensionSceneUtil.TexMat("d25_stone", new Color(0.55f, 0.52f, 0.48f), new Vector2(2f, 2f), 0.3f);
         var dais = DimensionSceneUtil.Block(PrimitiveType.Cube, "Dais",
             new Vector3(0f, 0.1f, 0f), new Vector3(2.6f, 0.2f, 2.6f), daisMat, candle.transform);
         for (int k = 0; k < 6; k++)
@@ -110,16 +118,64 @@ public class CandleSeaController : MonoBehaviour
             new Vector3(1.6f, 2f, 1.6f), LevelPortal.PortalAction.EnterInterior, nextScene, candle.transform);
         candle.transform.position = truePos;
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(50f, 3f, 0.05f), 500f, 1f);
+        // Vast cavern air (falls back to the old 50Hz rumble) + a choir so far
+        // away you're never sure it's there.
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d25", 50f, 0.05f, 0.5f);
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "mus_d25_choir", 55f, 0f, 0.18f);
+
+        // Wax stalagmites out in the field — they only grow while unobserved.
+        BuildStalagmites(truePos);
 
         // One roaming voice for the snuff-puff — it hops to whichever cluster dies.
-        _snuffClip = SnuffClip();
+        var libSnuff = DimensionAssetLibrary.Clip("sfx_wax_hiss");
+        _snuffClip = libSnuff != null ? libSnuff : SnuffClip();
         var snuffGo = new GameObject("Snuffer");
         snuffGo.transform.SetParent(root, false);
         _snuffer = snuffGo.AddComponent<AudioSource>();
         _snuffer.spatialBlend = 1f;
         _snuffer.rolloffMode = AudioRolloffMode.Linear;
         _snuffer.maxDistance = 40f;
+    }
+
+    // Squat wax mounds scattered off the traversal lines; each gains ~15%
+    // height every time it leaves your view, capped before it reads as a
+    // figure. No relocation, no sound — you just slowly stop trusting them.
+    void BuildStalagmites(Vector3 truePos)
+    {
+        var stalagMat = DimensionSceneUtil.TexMat("d25_wax", new Color(0.62f, 0.55f, 0.44f), Vector2.one, 0.25f);
+        _stalagmites = new Transform[10];
+        _stalagTrackers = new ObservationTracker[10];
+        for (int i = 0; i < 10; i++)
+        {
+            Vector3 p = Vector3.zero;
+            for (int attempt = 0; attempt < 12; attempt++)
+            {
+                float sa = Random.value * Mathf.PI * 2f;
+                p = new Vector3(Mathf.Cos(sa), 0f, Mathf.Sin(sa)) * Random.Range(15f, 55f);
+                if ((p - truePos).sqrMagnitude > 100f) break;   // keep the shrine approach clean
+            }
+            var stalag = new GameObject("WaxStalagmite");
+            stalag.layer = DimensionSceneUtil.WalkableLayer;
+            stalag.transform.SetParent(transform, false);
+            // Uniform-x/z cylinders, colliders dropped; one box on the root
+            // instead (the capsule-balloon trap).
+            var b0 = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Base",
+                new Vector3(0f, 0.35f, 0f), new Vector3(1.0f, 0.35f, 1.0f), stalagMat, stalag.transform);
+            var b1 = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Mid",
+                new Vector3(0f, 0.85f, 0f), new Vector3(0.6f, 0.3f, 0.6f), stalagMat, stalag.transform);
+            var b2 = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Tip",
+                new Vector3(0f, 1.3f, 0f), new Vector3(0.3f, 0.26f, 0.3f), stalagMat, stalag.transform);
+            Object.Destroy(b0.GetComponent<Collider>());
+            Object.Destroy(b1.GetComponent<Collider>());
+            Object.Destroy(b2.GetComponent<Collider>());
+            var box = stalag.AddComponent<BoxCollider>();
+            box.center = new Vector3(0f, 0.75f, 0f);
+            box.size = new Vector3(0.9f, 1.5f, 0.9f);
+            stalag.transform.position = p;
+            stalag.transform.localScale = new Vector3(1f, Random.Range(0.5f, 0.8f), 1f);
+            _stalagmites[i] = stalag.transform;
+            _stalagTrackers[i] = new ObservationTracker();
+        }
     }
 
     // A short breathy "fft" — air taking a flame.
@@ -165,9 +221,11 @@ public class CandleSeaController : MonoBehaviour
             float target = observed ? 0f : 1f;
             float t = Mathf.MoveTowards(cell.litT, target, Time.deltaTime / (observed ? snuffSeconds : relightSeconds));
             if (Mathf.Approximately(t, cell.litT)) continue;
-            // A cluster starting to die exhales audibly.
-            if (observed && cell.litT >= 1f && t < 1f && _snuffer != null)
+            // A cluster starting to die exhales audibly (rate-gated: a sweep of
+            // the horizon starts many clusters dying in the same instant).
+            if (observed && cell.litT >= 1f && t < 1f && _snuffer != null && Time.time >= _nextSnuffAllowed)
             {
+                _nextSnuffAllowed = Time.time + 0.45f;
                 _snuffer.transform.position = cell.center + Vector3.up * 0.4f;
                 _snuffer.pitch = Random.Range(0.85f, 1.15f);
                 _snuffer.PlayOneShot(_snuffClip, 0.55f);
@@ -177,6 +235,22 @@ public class CandleSeaController : MonoBehaviour
             foreach (var f in cell.flames)
                 f.localScale = new Vector3(0.12f * s, 0.2f * s, 0.12f * s);
         }
+
+        // Stalagmites: each unobserved window adds height, toward the cap.
+        if (_stalagmites != null)
+            for (int i = 0; i < _stalagmites.Length; i++)
+            {
+                var s = _stalagmites[i];
+                if (s == null) continue;
+                var sb = new Bounds(s.position + Vector3.up * 1f, new Vector3(1.6f, 3f, 1.6f));
+                _stalagTrackers[i].Tick(sb, out bool sLost, snuffMaxDistance);
+                if (sLost)
+                {
+                    var ls = s.localScale;
+                    ls.y = Mathf.Min(ls.y * 1.15f, StalagMaxYScale);
+                    s.localScale = ls;
+                }
+            }
 
         // The true flame breathes but never dies.
         if (_trueFlame != null)

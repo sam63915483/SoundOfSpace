@@ -28,6 +28,11 @@ public class HallOfDoorsController : MonoBehaviour
         public Transform root;
         public Door[] doors = new Door[4];   // +x, -x, +z, -z
         public Material[] panelMats = new Material[4];
+        public GameObject propsRoot;         // per-dress furniture (chairs + clock)
+        public readonly List<Transform> chairs = new List<Transform>();
+        public readonly List<ObservationTracker> chairTrackers = new List<ObservationTracker>();
+        public Vector3[] chairAnchors;       // world spots this dress
+        public int[] chairSlot;              // which anchor each chair occupies
     }
 
     const float RoomSize = 9f;           // interior span
@@ -47,16 +52,27 @@ public class HallOfDoorsController : MonoBehaviour
     int _playerRefindCooldown;
     bool _atmosApplied;
     Material _carpetMat, _wallMat, _ceilMat, _frameMat, _lampMat;
+    Material _chairMat, _clockFaceMat, _clockHandMat;
 
     static readonly Vector3[] Dirs = { Vector3.right, Vector3.left, Vector3.forward, Vector3.back };
 
     void Awake()
     {
-        _carpetMat = DimensionSceneUtil.Mat(new Color(0.30f, 0.12f, 0.12f), 0.05f);
-        _wallMat   = DimensionSceneUtil.Mat(new Color(0.52f, 0.46f, 0.36f), 0.1f);
+        // NOTE: door slabs stay PURE color — a wood texture under the tint would
+        // turn the WHITE door brown and muddy the color-sequence tell. The room
+        // itself gets the photoreal treatment instead.
+        _carpetMat = DimensionAssetLibrary.Tex("wood_parquet") != null
+            ? DimensionSceneUtil.TexMat("wood_parquet", Color.white, new Vector2(12f, 12f), 0.2f)
+            : DimensionSceneUtil.Mat(new Color(0.30f, 0.12f, 0.12f), 0.05f);
+        _wallMat   = DimensionAssetLibrary.Tex("d7_wall") != null
+            ? DimensionSceneUtil.TexMat("d7_wall", Color.white, new Vector2(3f, 1.5f), 0.1f)
+            : DimensionSceneUtil.Mat(new Color(0.52f, 0.46f, 0.36f), 0.1f);
         _ceilMat   = DimensionSceneUtil.Mat(new Color(0.28f, 0.26f, 0.24f), 0.1f);
         _frameMat  = DimensionSceneUtil.Mat(new Color(0.20f, 0.13f, 0.08f), 0.15f);
         _lampMat   = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.85f, 0.6f), 1.4f);
+        _chairMat  = DimensionSceneUtil.TexMat("wood_worn", new Color(0.55f, 0.42f, 0.3f), Vector2.one, 0.15f);
+        _clockFaceMat = DimensionSceneUtil.Mat(new Color(0.9f, 0.88f, 0.8f), 0.2f);
+        _clockHandMat = DimensionSceneUtil.Mat(new Color(0.05f, 0.05f, 0.05f), 0.2f);
 
         _shellA = BuildShell("RoomA");
         _shellB = BuildShell("RoomB");
@@ -68,7 +84,7 @@ public class HallOfDoorsController : MonoBehaviour
         // Room 0 is always Red / Yellow / Blue on three walls; the fourth is sealed.
         DressRoom(_current, new[] { DoorColor.Red, DoorColor.Yellow, DoorColor.Blue }, sealedWall: 3);
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(110f, 2f, 0.04f), 300f, 1f);
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d7", 110f, 0.08f, 0.45f);
     }
 
     // One reusable room: carpet, ceiling, lamp, and four walls each split around a
@@ -151,6 +167,92 @@ public class HallOfDoorsController : MonoBehaviour
                 ApplyDoorColor(shell.panelMats[w], door.color);
             }
         }
+        DressProps(shell, sealedWall);
+    }
+
+    // Waiting-room furniture, re-dealt with every room: a few chairs that quietly
+    // TURN TO FACE YOU (and sometimes hop anchors) whenever they individually leave
+    // your view, and a wall clock whose time is always wrong (and always different).
+    // Per-chair trackers, not a room-bounds PropShuffleSet: the camera stands INSIDE
+    // the room's bounds, so a whole-room zone never leaves the frustum and would
+    // never fire. Everything lives under one GO per shell so recycling cleans up.
+    void DressProps(RoomShell shell, int sealedWall)
+    {
+        if (shell.propsRoot != null) Destroy(shell.propsRoot);
+        shell.chairs.Clear();
+        shell.chairTrackers.Clear();
+        Vector3 c = shell.root.position;
+        var props = new GameObject("RoomProps");
+        props.transform.SetParent(shell.root, false);
+        shell.propsRoot = props;
+
+        // Corner + wall spots, clear of all four doorways and the room center.
+        shell.chairAnchors = new[]
+        {
+            c + new Vector3( 3.1f, 0f,  3.1f), c + new Vector3(-3.1f, 0f,  3.1f),
+            c + new Vector3( 3.1f, 0f, -3.1f), c + new Vector3(-3.1f, 0f, -3.1f),
+            c + new Vector3( 3.4f, 0f,  1.6f), c + new Vector3(-3.4f, 0f, -1.6f),
+        };
+        int chairCount = Random.Range(2, 5);
+        shell.chairSlot = new int[chairCount];
+        for (int i = 0; i < chairCount; i++)
+        {
+            var chair = DimensionPropKit.ChairSimple(props.transform, _chairMat);
+            shell.chairSlot[i] = i;
+            chair.transform.position = shell.chairAnchors[i];
+            chair.transform.rotation = Quaternion.Euler(0f, Random.Range(0f, 360f), 0f);
+            shell.chairs.Add(chair.transform);
+            shell.chairTrackers.Add(new ObservationTracker());
+        }
+
+        Vector3 dir = Dirs[sealedWall];
+        var clock = DimensionPropKit.WallClock(props.transform, _clockFaceMat, _clockHandMat,
+            Random.Range(0f, 12f), Random.Range(0f, 60f));
+        clock.transform.position = c + dir * (WallHalf - 0.35f) + Vector3.up * 2.4f;
+        clock.transform.rotation = Quaternion.LookRotation(-dir);
+        var tick = DimensionAssetLibrary.Clip("sfx_clock_tick");
+        if (tick != null)
+        {
+            var tickGo = new GameObject("ClockTick");
+            tickGo.transform.SetParent(clock.transform, false);
+            DimensionSceneUtil.LoopingAudio(tickGo, tick, 12f, 0.35f);
+        }
+    }
+
+    // Each chair creeps independently: look away from a chair and it turns to face
+    // you where it stands — or occasionally relocates to a free corner first.
+    void TickChairs(RoomShell shell)
+    {
+        var cam = ObserverState.Cam;
+        if (cam == null) return;
+        for (int i = 0; i < shell.chairs.Count; i++)
+        {
+            var ch = shell.chairs[i];
+            if (ch == null) continue;
+            var b = new Bounds(ch.position + Vector3.up * 0.6f, new Vector3(1.1f, 1.4f, 1.1f));
+            shell.chairTrackers[i].Tick(b, out bool lost, 40f);
+            if (!lost) continue;
+            if (Random.value < 0.3f && shell.chairAnchors != null)
+            {
+                for (int attempt = 0; attempt < 6; attempt++)
+                {
+                    int a = Random.Range(0, shell.chairAnchors.Length);
+                    bool taken = false;
+                    for (int s = 0; s < shell.chairSlot.Length; s++)
+                        if (shell.chairSlot[s] == a) { taken = true; break; }
+                    if (taken) continue;
+                    shell.chairSlot[i] = a;
+                    ch.position = shell.chairAnchors[a];
+                    break;
+                }
+            }
+            Vector3 to = cam.transform.position - ch.position;
+            to.y = 0f;
+            if (to.sqrMagnitude > 0.01f) ch.rotation = Quaternion.LookRotation(to.normalized);
+            if (Random.value < 0.6f)
+                DimensionSceneUtil.PlayOneShot3D("sfx_chair_scrape", ch.position, 0.35f, 14f);
+            shell.chairTrackers[i].Reset();
+        }
     }
 
     void ApplyDoorColor(Material m, DoorColor c)
@@ -206,6 +308,10 @@ public class HallOfDoorsController : MonoBehaviour
             Vector3 lp = _openDoor.panel.localPosition;
             _openDoor.panel.localPosition = new Vector3(lp.x, Mathf.Lerp(1.4f, -1.6f, _openT), lp.z);
         }
+
+        // Furniture creep runs whenever a shell is live (both shells during transit).
+        TickChairs(_current);
+        if (_other.root.gameObject.activeSelf) TickChairs(_other);
 
         // Transit: once the player is inside the newly revealed room, shut the door
         // behind them and recycle the old shell.
@@ -320,6 +426,8 @@ public class HallOfDoorsController : MonoBehaviour
     void DressExitRoom(RoomShell shell, int entryWall)
     {
         _finished = true;
+        // The exit room is bare — after rooms of watching chairs, emptiness reads as release.
+        if (shell.propsRoot != null) { Destroy(shell.propsRoot); shell.propsRoot = null; }
         for (int w = 0; w < 4; w++)
         {
             shell.doors[w].interactive = false;

@@ -25,6 +25,7 @@ public class NeonGridController : MonoBehaviour
 
     Transform _root;
     Material _blockMat, _cyanMat, _magentaMat, _streetMat;
+    Material[] _neonSignMats;            // cached once; signs swap between these on reroll
     Transform _taxi;
     Rigidbody _taxiRb;
     readonly ObservationTracker _taxiTracker = new ObservationTracker();
@@ -45,14 +46,22 @@ public class NeonGridController : MonoBehaviour
         _cyanMat    = DimensionSceneUtil.EmissiveMat(new Color(0.1f, 0.9f, 1f), 1.8f);
         _magentaMat = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.2f, 0.85f), 1.8f);
         _streetMat  = DimensionSceneUtil.EmissiveMat(new Color(0.15f, 0.5f, 0.6f), 0.8f);
-        var groundMat = DimensionSceneUtil.Mat(new Color(0.015f, 0.015f, 0.03f), 0.5f);
+        // Dark tint keeps the night-city read with the texture AND on flat-color fallback.
+        var groundMat = DimensionSceneUtil.TexMat("d16_asphalt", new Color(0.16f, 0.16f, 0.22f), new Vector2(500f, 500f), 0.5f);
+        _neonSignMats = new[]
+        {
+            DimensionSceneUtil.EmissiveTexMat("d16_neon1", Color.white, 1.8f),
+            DimensionSceneUtil.EmissiveTexMat("d16_neon2", Color.white, 1.8f),
+            DimensionSceneUtil.EmissiveTexMat("d16_neon3", Color.white, 1.8f),
+        };
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Ground",
             new Vector3(0f, -0.5f, 0f), new Vector3(2000f, 1f, 2000f), groundMat, _root);
         DimensionSceneUtil.CreateDirectionalLight(new Color(0.3f, 0.4f, 0.6f), 0.25f, new Vector3(50f, -30f, 0f), false);
 
         BuildTaxi();
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(62f, 2f, 0.05f), 500f, 1f);
+        BuildVendingMachines();
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d16", 62f, 0.05f, 0.5f);
     }
 
     void BuildTaxi()
@@ -304,6 +313,22 @@ public class NeonGridController : MonoBehaviour
             billboard.localPosition = new Vector3(0f, h * 0.62f, -5.3f);
             billboard.GetComponent<Renderer>().sharedMaterial = cyan ? _magentaMat : _cyanMat;   // contrast pop
         }
+        // Neon signage: face, height and TEXT all come off the cell seed, and Reroll
+        // re-seeds — so a sign never says the same thing twice once you look away.
+        var neon = strips.GetChild(9);
+        bool hasNeon = Rand01(cell.seed, 7) < 0.45f && h > 12f;
+        neon.gameObject.SetActive(hasNeon);
+        if (hasNeon)
+        {
+            int face = (int)(Rand01(cell.seed, 8) * 4f) & 3;
+            Vector3 dir = face == 0 ? Vector3.forward : face == 1 ? Vector3.right
+                        : face == 2 ? Vector3.back : Vector3.left;
+            neon.localScale = new Vector3(6.5f, 3.2f, 0.22f);
+            neon.localPosition = dir * 5.22f + Vector3.up * (h * Mathf.Lerp(0.35f, 0.7f, Rand01(cell.seed, 9)));
+            neon.localRotation = Quaternion.Euler(0f, face * 90f, 0f);
+            neon.GetComponent<Renderer>().sharedMaterial =
+                _neonSignMats[(int)(Rand01(cell.seed, 10) * 3f) % 3];
+        }
         b.transform.position = center;
         cell.building = b;
     }
@@ -328,7 +353,44 @@ public class NeonGridController : MonoBehaviour
         }
         var billboard = DimensionSceneUtil.Block(PrimitiveType.Cube, "Billboard", Vector3.zero, Vector3.one, _magentaMat, b.transform);
         Object.Destroy(billboard.GetComponent<Collider>());
+        var neonSign = DimensionSceneUtil.Block(PrimitiveType.Cube, "NeonSign", Vector3.zero, Vector3.one, _neonSignMats[0], b.transform);
+        Object.Destroy(neonSign.GetComponent<Collider>());
         return b;
+    }
+
+    // Four humming vending machines around the spawn plaza — never quite where
+    // they were when you turn back around.
+    void BuildVendingMachines()
+    {
+        var bodyMat = DimensionSceneUtil.Mat(new Color(0.06f, 0.07f, 0.1f), 0.45f);
+        var set = PropShuffleSet.Create("VendingShuffle", _root,
+            new Bounds(new Vector3(0f, 1.2f, 0f), new Vector3(30f, 4f, 30f)),
+            "sfx_chair_scrape");
+        for (int i = 0; i < 8; i++)
+        {
+            float a = i * Mathf.PI / 4f + 0.3f;
+            float r = 9.5f + (i % 3) * 1.6f;
+            Vector3 pos = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
+            float yaw = Quaternion.LookRotation(-pos).eulerAngles.y;   // face the plaza
+            set.AddAnchor(pos, yaw);
+        }
+        for (int m = 0; m < 4; m++)
+        {
+            var root = new GameObject("VendingMachine");
+            root.transform.SetParent(_root, false);
+            var body = DimensionSceneUtil.Block(PrimitiveType.Cube, "Body",
+                Vector3.zero, new Vector3(0.95f, 1.95f, 0.85f), bodyMat, root.transform);
+            body.transform.localPosition = new Vector3(0f, 0.975f, 0f);
+            var panel = DimensionSceneUtil.Block(PrimitiveType.Cube, "Panel",
+                Vector3.zero, new Vector3(0.7f, 1.5f, 0.05f), m % 2 == 0 ? _cyanMat : _magentaMat, root.transform);
+            panel.transform.localPosition = new Vector3(-0.06f, 1.1f, 0.43f);
+            Object.Destroy(panel.GetComponent<Collider>());
+            var slot = DimensionSceneUtil.Block(PrimitiveType.Cube, "Slot",
+                Vector3.zero, new Vector3(0.16f, 0.5f, 0.06f), DimensionSceneUtil.EmissiveMat(new Color(1f, 0.85f, 0.4f), 1.2f), root.transform);
+            slot.transform.localPosition = new Vector3(0.36f, 1.2f, 0.43f);
+            Object.Destroy(slot.GetComponent<Collider>());
+            set.AddProp(root);
+        }
     }
 
     void ReturnBuilding(Cell cell)

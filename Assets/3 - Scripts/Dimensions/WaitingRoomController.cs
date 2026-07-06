@@ -37,18 +37,24 @@ public class WaitingRoomController : MonoBehaviour
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
+    // Missing-ceiling-tile creep (tiles ride _panelGrid so they follow the player).
+    readonly List<GameObject> _holeTiles = new List<GameObject>();
+    readonly ObservationTracker _holeTracker = new ObservationTracker();
 
     void Awake()
     {
         _root = transform;
-        _wallMat = DimensionSceneUtil.Mat(new Color(0.72f, 0.68f, 0.58f), 0.1f);
+        // Library textures with the old flat colors as tint/fallback. Floor and
+        // ceiling snap-follow in cellSize steps; their patterns move with the
+        // object so the 220m spans just need dense tiling (~0.6m pitch).
+        _wallMat = DimensionSceneUtil.TexMat("d24_wall", new Color(0.85f, 0.82f, 0.74f), new Vector2(3f, 1f), 0.1f);
         _potMat  = DimensionSceneUtil.Mat(new Color(0.45f, 0.25f, 0.15f), 0.1f);
         _leafMat = DimensionSceneUtil.Mat(new Color(0.20f, 0.35f, 0.16f), 0.1f);
-        _deskMat = DimensionSceneUtil.Mat(new Color(0.52f, 0.42f, 0.32f), 0.2f);
+        _deskMat = DimensionSceneUtil.TexMat("wood_worn", new Color(0.62f, 0.52f, 0.42f), Vector2.one, 0.2f);
         _screenMat = DimensionSceneUtil.EmissiveMat(new Color(0.55f, 0.7f, 0.85f), 0.9f);
         _coolerMat = DimensionSceneUtil.Mat(new Color(0.80f, 0.82f, 0.84f), 0.3f);
-        var floorMat = DimensionSceneUtil.Mat(new Color(0.55f, 0.50f, 0.42f), 0.15f);
-        var ceilMat  = DimensionSceneUtil.Mat(new Color(0.85f, 0.84f, 0.80f), 0.1f);
+        var floorMat = DimensionSceneUtil.TexMat("d24_carpet", new Color(0.78f, 0.74f, 0.66f), new Vector2(220f / 0.6f, 220f / 0.6f), 0.15f);
+        var ceilMat  = DimensionSceneUtil.TexMat("d24_ceiling", new Color(0.92f, 0.91f, 0.87f), new Vector2(220f / 0.6f, 220f / 0.6f), 0.1f);
 
         _floor = DimensionSceneUtil.Block(PrimitiveType.Cube, "Floor",
             new Vector3(0f, -0.25f, 0f), new Vector3(220f, 0.5f, 220f), floorMat, _root);
@@ -86,15 +92,99 @@ public class WaitingRoomController : MonoBehaviour
             PlaceExit(i, Vector3.zero, initial: true);
         }
 
-        DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(118f, 2f, 0.05f), 400f, 1f);
+        // Fluorescent-buzz room tone (falls back to the old 118Hz hum).
+        DimensionSceneUtil.AmbienceLoop2D(gameObject, "amb_d24", 118f, 0.05f, 0.5f);
         // The muzak. It never stops. It was never meant to stop.
-        var muzak = DimensionSceneUtil.LoopingAudio(gameObject, MuzakClip(), 400f, 0.16f);
+        // (Generated degraded-elevator loop when the library has it, else the arpeggio.)
+        var muzakClip = DimensionAssetLibrary.Clip("mus_d24_muzak");
+        var muzak = DimensionSceneUtil.LoopingAudio(gameObject, muzakClip != null ? muzakClip : MuzakClip(), 400f, 0.16f);
         muzak.spatialBlend = 0f;
+        BuildLobbyDressing();
         _dingClip = DingClip();
         var dingGo = new GameObject("Dinger");
         dingGo.transform.SetParent(_root, false);
         _dinger = dingGo.AddComponent<AudioSource>();
         _dinger.spatialBlend = 0f;
+    }
+
+    // The lobby's polish layer: chairs that turn to face you, clutter that
+    // migrates between cubicle cells, and ceiling tiles that go missing —
+    // all only while unobserved.
+    void BuildLobbyDressing()
+    {
+        var woodMat = DimensionSceneUtil.TexMat("wood_worn", new Color(0.72f, 0.64f, 0.54f), Vector2.one, 0.2f);
+        var paperMat = DimensionSceneUtil.Mat(new Color(0.82f, 0.79f, 0.72f), 0.25f);
+
+        // Waiting chairs by reception. facePlayer: every unseen shuffle re-aims
+        // them at you (they also swap seats within the rows — that's the point).
+        // Rows sit INSIDE cell (0,-1) — clear of the z=-9 / x=±3 partition edge lines.
+        var chairs = PropShuffleSet.Create("WaitingChairs", _root,
+            new Bounds(new Vector3(0f, 1.2f, -8.1f), new Vector3(9f, 3f, 5.5f)),
+            "sfx_chair_scrape", facePlayer: true);
+        chairs.posJitter = 0.03f;
+        for (int row = 0; row < 2; row++)
+            for (int i = 0; i < 4; i++)
+            {
+                chairs.AddAnchor(new Vector3(-3f + i * 1.7f + row * 0.85f, 0f, -7.4f - row * 1.4f), 0f);
+                chairs.AddProp(DimensionPropKit.ChairSimple(_root, woodMat));
+            }
+
+        // Roaming clutter, one set per quadrant so shuffles stay frequent while
+        // the player orbits reception hunting exits. Anchors sit at cell
+        // CENTERS — partitions live on cell edges.
+        for (int q = 0; q < 4; q++)
+        {
+            int qx = (q & 1) == 0 ? 1 : -1, qz = (q & 2) == 0 ? 1 : -1;
+            var set = PropShuffleSet.Create("LobbyClutter" + q, _root,
+                new Bounds(new Vector3(qx * 28f, 1.5f, qz * 28f), new Vector3(56f, 4f, 56f)),
+                "sfx_chair_scrape", facePlayer: false, countJitter: true);
+            for (int aIdx = 0; aIdx < 7; aIdx++)
+            {
+                Vector3 a = new Vector3(qx * Random.Range(2, 9) * cellSize, 0f, qz * Random.Range(2, 9) * cellSize);
+                set.AddAnchor(a + new Vector3(Random.Range(-0.8f, 0.8f), 0f, Random.Range(-0.8f, 0.8f)), Random.Range(0f, 360f));
+            }
+            if (q == 0 || q == 2) set.AddProp(DimensionPropKit.WaterCooler(_root, _coolerMat,
+                DimensionSceneUtil.Mat(new Color(0.5f, 0.7f, 0.85f), 0.6f)));
+            set.AddProp(DimensionPropKit.PottedPlant(_root, _potMat, _leafMat));
+            if (q != 0) set.AddProp(MagazineTable(woodMat, paperMat));
+        }
+
+        // Missing ceiling tiles: matte-black covers that occupy random panel
+        // slots, re-dealt whenever the ceiling overhead leaves your view.
+        var holeMat = DimensionSceneUtil.Mat(new Color(0.02f, 0.02f, 0.025f), 0.05f);
+        for (int i = 0; i < 9; i++)
+        {
+            var tile = DimensionSceneUtil.Block(PrimitiveType.Cube, "MissingTile", Vector3.zero,
+                new Vector3(1.95f, 0.03f, 1.0f), holeMat, _panelGrid.transform);
+            Destroy(tile.GetComponent<Collider>());
+            tile.SetActive(false);
+            _holeTiles.Add(tile);
+        }
+        ShuffleHoles(playSfx: false);
+    }
+
+    GameObject MagazineTable(Material wood, Material paper)
+    {
+        var table = DimensionPropKit.CoffeeTable(_root, wood);
+        table.name = "MagazineTable";
+        var mags = DimensionPropKit.BookStack(table.transform, paper, 3);
+        mags.transform.localPosition = new Vector3(0.18f, 0.45f, 0.05f);
+        return table;
+    }
+
+    void ShuffleHoles(bool playSfx)
+    {
+        int visible = Random.Range(1, 4);
+        for (int i = 0; i < _holeTiles.Count; i++)
+        {
+            _holeTiles[i].transform.localPosition = new Vector3(
+                Random.Range(-3, 4) * cellSize, 2.945f, Random.Range(-3, 4) * cellSize);
+            _holeTiles[i].SetActive(i < visible);
+        }
+        var cam = ObserverState.Cam;
+        if (playSfx && cam != null)
+            DimensionSceneUtil.PlayOneShot3D("sfx_wood_creak",
+                cam.transform.position - cam.transform.forward * 5f + Vector3.up * 2f, 0.35f, 25f);
     }
 
     // Eight bars of soft elevator arpeggio — a slow, endlessly patient major loop.
@@ -250,6 +340,10 @@ public class WaitingRoomController : MonoBehaviour
             _exitTrackers[i].Tick(b, out bool lost, float.PositiveInfinity);
             if (lost) PlaceExit(i, cam.transform.position, initial: false);
         }
+
+        _holeTracker.Tick(new Bounds(_panelGrid.transform.position + Vector3.up * 2.9f,
+            new Vector3(40f, 1.2f, 40f)), out bool holesLost, 50f);
+        if (holesLost) ShuffleHoles(playSfx: true);
 
         if (_chime != null)
         {

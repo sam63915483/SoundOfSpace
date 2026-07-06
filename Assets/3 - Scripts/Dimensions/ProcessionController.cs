@@ -49,8 +49,12 @@ public class ProcessionController : MonoBehaviour
 
     void Awake()
     {
-        var groundMat = DimensionSceneUtil.Mat(new Color(0.16f, 0.18f, 0.15f), 0.05f);
-        _stoneMat = DimensionSceneUtil.Mat(new Color(0.14f, 0.14f, 0.15f), 0.15f);
+        var groundMat = DimensionAssetLibrary.Tex("d8_stone") != null
+            ? DimensionSceneUtil.TexMat("d8_stone", Color.white, new Vector2(375f, 375f), 0.05f)
+            : DimensionSceneUtil.Mat(new Color(0.16f, 0.18f, 0.15f), 0.05f);
+        _stoneMat = DimensionAssetLibrary.Tex("d8_statue") != null
+            ? DimensionSceneUtil.TexMat("d8_statue", Color.white, Vector2.one, 0.15f)
+            : DimensionSceneUtil.Mat(new Color(0.14f, 0.14f, 0.15f), 0.15f);
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "Ground",
             new Vector3(0f, -0.5f, 0f), new Vector3(1500f, 1f, 1500f), groundMat, transform);
@@ -84,9 +88,23 @@ public class ProcessionController : MonoBehaviour
             new Vector3(1.3f, 2.9f, 0.6f), LevelPortal.PortalAction.EnterInterior, nextScene, _door);
         RelocateDoor(Vector3.zero, initial: true);
 
+        BuildShrine();
+
         // Ambience bed — volume/pitch climb toward the climax, then fall away.
         _ambience = DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(65f, 2f, 0.5f), 800f, 0.1f);
         _ambience.spatialBlend = 0f;    // dread has no direction
+
+        // Generated ambience UNDER the ramping drone (the drone stays the mechanic
+        // cue). Only added when the library clip exists — the fallback would just
+        // double the tone.
+        var bed = DimensionAssetLibrary.Clip("amb_d8");
+        if (bed != null)
+        {
+            var bedGo = new GameObject("AmbienceBed");
+            bedGo.transform.SetParent(transform, false);
+            var bedSrc = DimensionSceneUtil.LoopingAudio(bedGo, bed, 800f, 0.35f);
+            bedSrc.spatialBlend = 0f;
+        }
 
         // Blackout overlay: your sight fails on a quickening rhythm. When the dark
         // comes, EVERYTHING counts as unobserved.
@@ -104,6 +122,46 @@ public class ProcessionController : MonoBehaviour
         rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
         rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
         _nextBlackoutTime = Time.time + 6f;
+    }
+
+    // A small abandoned shrine at the spawn point: a candle ring and four cloth
+    // banners. Deliberately clustered HERE (not out in the fog) so it can't sit in
+    // the statues' hunting paths for long — they converge on the player, and the
+    // player leaves the shrine behind. Pure dressing, no mechanics.
+    void BuildShrine()
+    {
+        var metal = DimensionSceneUtil.Mat(new Color(0.1f, 0.09f, 0.08f), 0.4f);
+        var flame = DimensionSceneUtil.EmissiveMat(new Color(1f, 0.62f, 0.18f), 3f);
+        var cloth = DimensionSceneUtil.Mat(new Color(0.12f, 0.05f, 0.06f), 0.05f);
+        for (int i = 0; i < 10; i++)
+        {
+            float a = i / 10f * Mathf.PI * 2f;
+            var cs = DimensionPropKit.Candlestick(transform, metal, flame);
+            cs.transform.position = new Vector3(Mathf.Cos(a) * 6f, 0f, Mathf.Sin(a) * 6f);
+        }
+        for (int i = 0; i < 4; i++)
+        {
+            float a = (i + 0.5f) / 4f * Mathf.PI * 2f;
+            var pole = new GameObject("BannerPole");
+            pole.transform.SetParent(transform, false);
+            // Parts built at identity (local == world at origin), THEN the pole is placed.
+            DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Pole",
+                new Vector3(0f, 2.6f, 0f), new Vector3(0.16f, 2.6f, 0.16f), _stoneMat, pole.transform);
+            DimensionSceneUtil.Block(PrimitiveType.Cube, "Cross",
+                new Vector3(0f, 4.9f, 0f), new Vector3(1.7f, 0.12f, 0.12f), _stoneMat, pole.transform);
+            var banner = DimensionSceneUtil.Block(PrimitiveType.Cube, "Banner",
+                new Vector3(0f, 3.55f, 0f), new Vector3(1.2f, 2.4f, 0.05f), cloth, pole.transform);
+            Destroy(banner.GetComponent<Collider>());       // nothing snags on cloth
+            pole.transform.position = new Vector3(Mathf.Cos(a) * 9f, 0f, Mathf.Sin(a) * 9f);
+            pole.transform.rotation = Quaternion.Euler(0f, Random.value * 360f, 0f);
+        }
+        var glowGo = new GameObject("ShrineGlow");
+        glowGo.transform.SetParent(transform, false);
+        glowGo.transform.position = new Vector3(0f, 1.6f, 0f);
+        var gl = glowGo.AddComponent<Light>();
+        gl.type = LightType.Point; gl.range = 14f; gl.intensity = 1.3f;
+        gl.color = new Color(1f, 0.65f, 0.3f);
+        glowGo.AddComponent<FlickerLight>();
     }
 
     Statue BuildStatue(Vector3 pos, bool riser)
@@ -203,6 +261,9 @@ public class ProcessionController : MonoBehaviour
                     if (face.sqrMagnitude > 0.01f) s.rb.rotation = Quaternion.LookRotation(face.normalized, Vector3.up);
                 }
                 RelocateDoor(c.transform.position, initial: false);
+                // The dark has a voice — a whisper just behind you at every blackout.
+                DimensionSceneUtil.PlayOneShot3D("sfx_whisper",
+                    c.transform.position - c.transform.forward * 4f + Vector3.up, 0.5f, 20f);
             }
         }
         bool blackout = Time.time < _blackoutUntil;
