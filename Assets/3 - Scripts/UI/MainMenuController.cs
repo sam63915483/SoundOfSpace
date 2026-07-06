@@ -550,7 +550,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 39;
+        const int Total = 47; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -626,6 +626,11 @@ public class MainMenuController : MonoBehaviour
         tick("flight assist");    yield return null;
         if (ShipNameHUD.Instance == null) { var go = new GameObject("ShipNameHUD"); DontDestroyOnLoad(go); go.AddComponent<ShipNameHUD>(); }
         tick("ship name HUD");    yield return null;
+        // VelocityMarkersHUD skips MainMenu in its AutoCreate like the other
+        // ship HUDs — without this seed the prograde/retrograde markers never
+        // spawn in builds (trap #1).
+        if (VelocityMarkersHUD.Instance == null) { var go = new GameObject("VelocityMarkersHUD"); DontDestroyOnLoad(go); go.AddComponent<VelocityMarkersHUD>(); }
+        tick("velocity markers"); yield return null;
         if (KillstreakManager.Instance == null) { var go = new GameObject("KillstreakManager"); DontDestroyOnLoad(go); go.AddComponent<KillstreakManager>(); }
         tick("killstreak mgr");   yield return null;
         if (KillstreakHUD.Instance == null) { var go = new GameObject("KillstreakHUD"); DontDestroyOnLoad(go); go.AddComponent<KillstreakHUD>(); }

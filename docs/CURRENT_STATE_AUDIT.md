@@ -53,6 +53,7 @@ A short **Verification Notes** appendix at the bottom records what was and wasn'
 - §29 Items Flagged But NOT Recommended for Deletion
 - §30 Photos App (local)
 - §31 Input & Controller Support (REVAMPED 2026-07-04)
+- §32 Black-Hole Observation Dimensions (NEW 2026-07-05)
 
 **Appendix**
 - §A Verification Notes (what was/wasn't checked)
@@ -63,18 +64,23 @@ A short **Verification Notes** appendix at the bottom records what was and wasn'
 
 ## §1 Build Configuration and Boot Path
 
-The shipped game contains **exactly two scenes** in build settings (verified against `ProjectSettings/EditorBuildSettings.asset`):
+Build settings now register **29 scenes, 23 enabled** (verified against `ProjectSettings/EditorBuildSettings.asset`, 2026-07-05):
 
 | # | Scene | Status |
 |---|---|---|
 | 0 | `Assets/MainMenu.unity` | **enabled** (launcher) |
 | 1 | `Assets/1.6.7.7.7.unity` | **enabled** (gameplay) |
-| 2 | `Assets/4 - Scenes/Cutscene.unity` | disabled (referenced from code) |
-| 3 | `Assets/4 - Scenes/Flashback.unity` | disabled (referenced from code) |
-| 4 | `Assets/4 - Scenes/Flashback1.unity` | disabled (referenced from code) |
-| 5 | `Assets/1.8.unity` | disabled (WIP — 15.3 MB on disk) |
+| — | `Assets/4 - Scenes/Cutscene.unity` | disabled (referenced from code) |
+| — | `Assets/4 - Scenes/Flashback.unity` | disabled (referenced from code) |
+| — | `Assets/4 - Scenes/Flashback1.unity` | disabled (referenced from code) |
+| — | `Assets/1.8.unity` | disabled (WIP — 15.3 MB on disk) |
+| — | `Assets/Backrooms/Scenes/R1_Backrooms.unity` | **enabled** (black-hole interior chain terminus) |
+| — | `Assets/Poolrooms_Lvl37/Scenes/PoolroomsDemo.unity` | **enabled** (interior chain) |
+| — | 19× `Assets/4 - Scenes/Dimensions/D*.unity` (D1–D9, D11–D13, D15, D16, D18, D22–D25) | **enabled** (observation dimensions — see §32) |
 
 **Boot flow:** the build launches `MainMenu`, which displays branding + PLAY / LOAD / NEW GAME buttons. Any of those buttons calls `MainMenuController.EnsureGameplaySingletons()` (seeds `DontDestroyOnLoad` singletons before transition) and then `SceneManager.LoadScene("1.6.7.7.7")`. The Editor usually bypasses this and presses Play directly in the gameplay scene — which is exactly the conditions for the **MainMenu singleton trap** (see CLAUDE.md): a singleton that auto-creates via `RuntimeInitializeOnLoadMethod(AfterSceneLoad)` and skips MainMenu must also be seeded in `EnsureGameplaySingletons`, otherwise it works in Editor and is silently broken in the build.
+
+Separately, the in-world **black hole** (`BlackHoleCapture` in `1.6.7.7.7`) now teleports the player into the observation-dimension chain: its `backroomsScene` field is scene-overridden to `D1_ShiftingHalls` (script default is still `"R1_Backrooms"` at `BlackHoleCapture.cs:295`), so falling in loads D1, which chains through the dimensions and terminates at `R1_Backrooms` (see §32).
 
 The MainMenu scene is small — root contains `EventSystem`, `MenuRoot` (with `MainMenuPanel` + `SaveLoadPanel` children), `Cleanup` (carrying `MenuSceneCleanup`), and `Main Camera`. No gameplay content; no disabled GameObjects flagged.
 
@@ -525,8 +531,10 @@ Per CLAUDE.md, the following all auto-spawn via `RuntimeInitializeOnLoadMethod(A
 | `HALVolunteeredLog` | `AI/HALVolunteeredLog.cs` (new — transcript, §17B) |
 | `HALVoicePlayer` | `AI/HALVoicePlayer.cs` (new — voice clips, §17B) |
 | `HALLineHUD` | `AI/` (new — red-eye HAL notification HUD, §17B) |
+| `DimensionDevLoader` | `Dimensions/DimensionDevLoader.cs` (new — Shift+D dev warp to any dimension, §32) |
+| `VelocityMarkersHUD` | `Ship/VelocityMarkersHUD.cs` (prograde/retrograde markers — seeded 2026-07-05; was missing from the seed list, i.e. broken in builds) |
 
-All of the "new" singletons above are seeded in `MainMenuController.EnsureGameplaySingletons()` (verified) per the MainMenu trap.
+All of the "new" singletons above are seeded in `MainMenuController.EnsureGameplaySingletons()` (verified 2026-07-05) per the MainMenu trap. Known exception: `LightingDebugToolbox` (`Scripts/Game/Lighting/`) has the MainMenu skip but is NOT seeded — it's a dev diagnostic overlay, so it simply never appears in builds; seed it or `#if UNITY_EDITOR`-gate it if that ever matters.
 
 **Scene-bound (not auto-spawned but live in `--- Managers ---`):** `NBodySimulation`, `EndlessManager`, `EnemySpawner`, `TreeSpawner`, `MushroomSpawner`, `AlienNPCSpawner`, `CrystalSpawner` (new — §16), `GrassSpawner` (new, decorative — §16), `FishingdexManager`, `PickupUIManager`, `SolarSystemMapController`, `MapTutorial`, `NPCConversationTracker`, `TutorialManager`.
 
@@ -543,11 +551,8 @@ These are safe to delete. Re-verifiable if you ever change your mind (git histor
 ### Model `.gguf` weights — fully removed, intended (2026-06-13)
 **Update:** the LLM is gone (§17). As verified on 2026-06-13, `StreamingAssets/AI/` contains **no `.gguf` files at all** — only `game_knowledge.md`, `game_knowledge_org_reveal.md`, and `voice/`. This is the intended state, not an oversight; the preset-dialogue/HAL system needs no model. If any orphan `.gguf.meta` stubs ever resurface, `git rm` them. The bigger cleanup is the 3.96 GB `LlamaLib-v2.0.5/` bundle itself — see §27.
 
-### `Assets/3 - Scripts/JitterDiagnostic.cs`
-**Verified contents** (file header):
-> TEMPORARY DIAGNOSTIC — delete this file once the jitter is found.
-
-The file even has `const bool EnableAutoCreate = false;` as a hard-off gate. It's not even running. Author intent is explicit. Safe delete. (If you ever need jitter diagnostics again, recover from git history — the comments explaining what each field means are valuable enough to keep accessible.)
+### `Assets/3 - Scripts/JitterDiagnostic.cs` — DONE, already deleted
+This file has since been removed from the project (recover from git history if the jitter notes are ever needed). No action left.
 
 ### `Assets/4 - Scenes/_Archive/Planet.unity` (63.6 MB)
 The scene with the anomalously huge size (4× the size of any other archived scene) — flagged by the asset-folder audit. Almost certainly a one-off planet-generation test scene from an early iteration. If you can't remember what it's for, it's safe to delete. 63 MB recovered.
@@ -580,10 +585,10 @@ Confirmed dumping-ground folder. Contents inventoried:
 **Action:** open in editor, decide per-item. Likely 60+ MB recoverable.
 
 ### `Assets/3 - Scripts/Editor/EnableFrameTimingStats.cs`
-**Verified active**: `[InitializeOnLoad]` that turns on `PlayerSettings.enableFrameTimingStats` so the FPSOverlay's "gpu" line works. This is a one-line idempotent setup tool — NOT recommended for deletion. Listed in this section because git status shows it as untracked (you may have just added it and not committed yet — `git add` it).
+**Verified active**: `[InitializeOnLoad]` that turns on `PlayerSettings.enableFrameTimingStats` so the FPSOverlay's "gpu" line works. This is a one-line idempotent setup tool — NOT recommended for deletion. (Since committed — the old "untracked" note is resolved.)
 
 ### `Assets/3 - Scripts/PerfBootstrap.cs`
-**Verified active**: `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` that strips Debug.Log stack-trace capture to prevent ~7 KB/log allocation. Fixes a TMP-lazy-init stutter. **Keep — this is doing real work**. Listed because git status shows it untracked (commit it).
+**Verified active**: `[RuntimeInitializeOnLoadMethod(BeforeSceneLoad)]` that strips Debug.Log stack-trace capture to prevent ~7 KB/log allocation. Fixes a TMP-lazy-init stutter. **Keep — this is doing real work**. (Since committed — the old "untracked" note is resolved.)
 
 ### `Assets/1.8.unity` (15.3 MB, disabled in build settings)
 The WIP scene per CLAUDE.md. If you've completely abandoned the WIP, delete it; if you still plan to return to it, leave it. The asset-folder agent confirmed no scripts reference it.
@@ -717,8 +722,7 @@ resets the chassis transform, restores EventSystem nav events, and releases the
 transition-owned dialogue gate (OnConversationStarted re-asserts it for the
 incoming conversation).
 
-Planned next (see `docs/superpowers/specs/2026-07-03-photos-app-community-gallery-design.md`):
-upload flow + Cloudflare Worker backend + main-menu Community Gallery (Plan B).
+The community-gallery layer is now partly in code — `CommunityGalleryUI.cs`, `GalleryApiClient.cs`, `GalleryConfig.cs` exist under `UI/Photos/` (upload flow + Cloudflare Worker client + main-menu gallery). Completeness/wiring not audited this pass; spot-check before relying on it. Design ref: `docs/superpowers/specs/2026-07-03-photos-app-community-gallery-design.md`.
 User-facing server setup guide: `docs/cloudflare-setup-guide.md`.
 
 ---
@@ -773,6 +777,45 @@ layout. `activeInputHandler: 2` ("Both") is required — do not flip it.
 
 ---
 
+## §32 Black-Hole Observation Dimensions — NEW 2026-07-05
+
+Self-contained "observation dimensions" reached through the in-world black hole
+(`BlackHoleCapture` in `1.6.7.7.7` — its `backroomsScene` field is
+scene-overridden to `D1_ShiftingHalls`; the script default at
+`BlackHoleCapture.cs:295` is still `"R1_Backrooms"`). Each dimension is a
+near-empty scene under `Assets/4 - Scenes/Dimensions/` (an `InteriorPlayer`
+prefab + a `DimensionRoot` GameObject holding one `*Controller`); the
+controller builds the entire world procedurally in `Awake`. All code lives in
+`Assets/3 - Scripts/Dimensions/` (25 files).
+
+**Shared core:** `ObserverState` (frustum "is it on screen" test),
+`ObservationTracker` (grace-window observed/unobserved transitions),
+`DimensionSceneUtil` (atmosphere/lights/portals/materials/tone-clip builders),
+`FlickerLight`, `SliverTileSet` + `DimensionRespawnVolume` (shared
+bridge-tile engine). Runtime geometry is placed on the walkable **Body layer**.
+
+**What ships: 19 dimensions** — the original **D1–D8** plus the **11 keepers**
+from the D9–D28 test reel: D9 RedForest, D11 Shelves (ServerFarm), D12
+MirrorLake, D13 Orchard, D15 Congregation, D16 NeonGrid, D18 StaticField, D22
+RustSea, D23 WheatAtDusk, D24 WaitingRoom, D25 CandleSea. Nine reel dimensions
+were cut after playtest (D10, D14, D17, D19, D20, D21, D26, D27, D28) —
+controllers/scenes removed from the tree but preserved in git tag
+`archive/dimensions-v1-all20` (commit `371878de`); rationale in
+`docs/superpowers/_archive/2026-07-05-cut-dimensions.md`.
+
+**Chains** (from `nextScene` defaults, verified 2026-07-05): main chain black
+hole → D1 → … → D8 → `R1_Backrooms`; keeper reel D9→D11→D12→D13→D15→D16→D18→
+D22→D23→D24→D25→`R1_Backrooms`. Caveat: scene-serialized `nextScene` values
+beat script defaults — check the scene YAML before trusting a default.
+
+**Dev loader** (`DimensionDevLoader.cs`, auto-singleton, seeded at
+`MainMenuController` per trap #1): hold **Shift+D** and type digits 1–28
+(TV-remote style, on-screen buffer); 3 s after the last digit it warps via
+`PortalManager.EnterInterior("D<n>")`. Numbers for the 9 cut dimensions log a
+warning and skip.
+
+---
+
 # Appendix
 
 ## §A Verification Notes
@@ -792,7 +835,7 @@ What this audit verified directly (via Read/Glob/Grep):
 - ✅ Foundational layer file enumeration for Celestial/, Game/, Script Utilities/, Game/UI/, Game/Controllers/
 - ✅ Editor scripts full list (29 files)
 - ✅ `EnableFrameTimingStats.cs` is a real `[InitializeOnLoad]` tool, not dead code
-- ✅ `JitterDiagnostic.cs` is self-marked as deletable
+- ✅ `JitterDiagnostic.cs` has since been deleted (was self-marked deletable)
 - ✅ `PerfBootstrap.cs` is a real perf-optimization hook, not dead code
 
 What this audit did NOT verify (don't fully trust):

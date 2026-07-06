@@ -26,6 +26,7 @@ public class ProcessionController : MonoBehaviour
     }
 
     readonly List<Statue> _statues = new List<Statue>();
+    readonly List<Statue> _active = new List<Statue>();   // scratch — reused every FixedUpdate to avoid per-frame GC
     Material _stoneMat;
     Transform _door;
     ObservationTracker _doorTracker = new ObservationTracker();
@@ -298,7 +299,8 @@ public class ProcessionController : MonoBehaviour
         target.y = 0f;
 
         // Rising animation (runs regardless of observation — emerging is the jumpscare).
-        var active = new List<Statue>();
+        var active = _active;
+        active.Clear();
         foreach (var s in _statues)
         {
             if (s.rising)

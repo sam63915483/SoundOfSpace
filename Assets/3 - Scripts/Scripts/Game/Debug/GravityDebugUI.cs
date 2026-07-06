@@ -26,6 +26,9 @@ public class GravityDebugUI : MonoBehaviour {
 	public int debugCrystalAmount = 20;
 
 	bool show;
+	Camera _cachedCam;                 // Camera.main is a tagged find — cache it
+	float _nextGravityRefresh;         // gravity readout rebuilt 4x/s, not per frame
+	readonly System.Text.StringBuilder _gravitySb = new System.Text.StringBuilder(256);
 
 	GameObject _moneyButton;
 	RectTransform _moneyButtonRT;
@@ -73,15 +76,22 @@ public class GravityDebugUI : MonoBehaviour {
 		if (Input.GetKeyDown (KeyCode.BackQuote)) {
 			show = !show;
 			SetCursorState(show);
+			_nextGravityRefresh = 0f; // rebuild immediately on open
 		}
 
-		info.text = "";
-
 		if (show) {
-			var grav = GetGravityInfo (Camera.main.transform.position);
-			for (int i = 0; i < grav.Length; i++) {
-				info.text += grav[i] + "\n";
+			if (Time.unscaledTime >= _nextGravityRefresh) {
+				_nextGravityRefresh = Time.unscaledTime + 0.25f;
+				if (_cachedCam == null) _cachedCam = Camera.main;
+				if (_cachedCam != null) {
+					var grav = GetGravityInfo (_cachedCam.transform.position);
+					_gravitySb.Length = 0;
+					for (int i = 0; i < grav.Length; i++) _gravitySb.Append(grav[i]).Append('\n');
+					info.text = _gravitySb.ToString();
+				}
 			}
+		} else if (info.text.Length > 0) {
+			info.text = "";
 		}
 
 		EnsureMoneyButton();
@@ -754,7 +764,7 @@ public class GravityDebugUI : MonoBehaviour {
 	}
 
 	static string[] GetGravityInfo (Vector3 point, CelestialBody ignore = null) {
-		CelestialBody[] bodies = GameObject.FindObjectsOfType<CelestialBody> ();
+		CelestialBody[] bodies = NBodySimulation.Bodies; // null-safe cached list — never FindObjectsOfType here (called 4x/s while the panel is open)
 		Vector3 totalAcc = Vector3.zero;
 
 		// gravity

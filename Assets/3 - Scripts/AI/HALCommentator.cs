@@ -271,6 +271,16 @@ public class HALCommentator : MonoBehaviour
         _orbitMatchSeeded    = false;
     }
 
+    // New Game: forget which bodies already triggered arrival lines and which
+    // streak milestones fired — this instance is DontDestroyOnLoad, so without
+    // this a fresh run never gets its first-visit reactions again.
+    public void ResetForNewGame()
+    {
+        _visitedBodies.Clear();
+        _streakMilestonesHit.Clear();
+        ReseedLocationTrackers();
+    }
+
     void TrySubscribe()
     {
         if (_subscribed) return;

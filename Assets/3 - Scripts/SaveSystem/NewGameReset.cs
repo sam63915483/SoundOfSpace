@@ -90,6 +90,15 @@ public static class NewGameReset
         // previous in-process run's chat history doesn't replay in the new game's AI app.
         if (AIMemoryStore.Instance != null) AIMemoryStore.Instance.Restore(null);
         if (HALVolunteeredLog.Instance != null) HALVolunteeredLog.Instance.Clear();
+        // Forget visited-body / streak-milestone dedupe so HAL's first-visit
+        // lines fire again in the new run.
+        if (HALCommentator.Instance != null) HALCommentator.Instance.ResetForNewGame();
+        // Names + first-contact flag are static (NameStore, mirrors the
+        // EarlyGameProgress pattern) — without this a new game reuses the
+        // previous run's player/AI names and skips the first-contact naming UX.
+        NameStore.PlayerName = "";
+        NameStore.AIName = "";
+        NameStore.FirstContactComplete = false;
 
         if (CompassHUD.Instance != null) CompassHUD.Instance.ClearAll();
         // idx = -1 → NotStarted, so the map tutorial fires again on first open.
