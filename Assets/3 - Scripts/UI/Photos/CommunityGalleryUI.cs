@@ -91,6 +91,12 @@ public class CommunityGalleryUI : MonoBehaviour
     {
         if (!_isOpen) return;
         _isOpen = false;
+        // In-flight List/LoadImage fetches guard on _isOpen so they can't leak
+        // textures, but they'd still run to completion — stop them outright.
+        // A killed List coroutine never runs its callback, so _loadingPage
+        // must be cleared here or the next Open() refuses to load anything.
+        StopAllCoroutines();
+        _loadingPage = false;
         CloseViewer();
         ClearGrid();
         _nextCursor = null;

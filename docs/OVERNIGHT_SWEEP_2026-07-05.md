@@ -68,6 +68,40 @@ gameplay-world runtime physics spawns register; dimension pocket scenes have no
 `EndlessManager`, so it doesn't apply there). All 14 dimension
 `FindObjectOfType` player-refinds are properly throttled.
 
+## Round 2 (user asked to spend the remaining budget)
+
+### Dimension chains verified against actual scene YAML ✅
+
+All 19 scenes have `nextScene` explicitly serialized; both chains match the
+intended order exactly (D1→…→D8→Backrooms and D9→D11→D12→D13→D15→D16→D18→D22→
+D23→D24→D25→Backrooms), and every transition target is enabled in build
+settings. Two scenes (D4, D5) have serialized values that *differ* from their
+script defaults — the scenes are what make the chain correct, so never trust
+the C# defaults for chain questions.
+
+**⚠️ Design gap — the 11-keeper reel is unreachable by players.** Repo-wide,
+the only thing that ever loads D9 is the Shift+D dev loader
+(`DimensionDevLoader.cs:20` is the sole `D9_RedForest` reference). The black
+hole enters D1 (main chain), D8 exits to the Backrooms, and nothing in-world
+targets D9. All 11 keepers are dead content in a real playthrough until you
+decide the entry (second black-hole roll? portal in the Backrooms? something
+else). Deliberately not wired overnight — it's a design call.
+
+### Photos community gallery — status corrected
+
+The "Plan B tasks 2-5 remain" note was stale: **the feature is code-complete,
+wired, deployed, and was E2E-verified live on 2026-07-03** (upload → /admin
+approve → public list → image served). Audit §30 and memory updated. Remaining
+is only visual eyeballing of the upload modal + gallery grid in the Editor.
+One fix applied: `CommunityGalleryUI.Close()` now calls `StopAllCoroutines()`
+so in-flight list/image fetches don't keep running after the player backs out
+(plus `_loadingPage = false` — a killed List coroutine never runs its callback,
+so without the reset the next Open() would refuse to load and show an empty
+grid until scene reload).
+Two nits left as notes: the load-more trigger can't fire if the first page
+doesn't fill a tall viewport (`CommunityGalleryUI.OnScrollChanged`), and the
+`CloseModalAfter` coroutine in `PhotoGalleryUI` is untracked (harmless).
+
 ## Suggested next steps
 
 1. Open the Editor on `chore/overnight-sweep`, let it compile, check Console.

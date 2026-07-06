@@ -722,7 +722,7 @@ resets the chassis transform, restores EventSystem nav events, and releases the
 transition-owned dialogue gate (OnConversationStarted re-asserts it for the
 incoming conversation).
 
-The community-gallery layer is now partly in code — `CommunityGalleryUI.cs`, `GalleryApiClient.cs`, `GalleryConfig.cs` exist under `UI/Photos/` (upload flow + Cloudflare Worker client + main-menu gallery). Completeness/wiring not audited this pass; spot-check before relying on it. Design ref: `docs/superpowers/specs/2026-07-03-photos-app-community-gallery-design.md`.
+The community-gallery layer (Plan B) is **code-complete and wired end-to-end** (verified 2026-07-05): `GalleryConfig.cs` (deployed Worker URL + upload key; `IsConfigured` gates everything), `GalleryApiClient.cs` (Upload/List/LoadImage, disk-cached, error-hardened), upload button + modal in `PhotoGalleryUI` (hidden when unconfigured), and a lazily-created `CommunityGalleryUI` behind the main menu's COMMUNITY GALLERY button (`MainMenuController.OnCommunityGallery`). Server lives in `server/photo-gallery/`. The full loop was E2E-verified live on 2026-07-03 (upload → /admin approve → public list → image served); remaining is only visual eyeballing of the upload modal + gallery grid. Note the client ships a real `UPLOAD_KEY` by design (server-side approval queue is the actual defense) — rotate it if the repo ever goes public. Design ref: `docs/superpowers/specs/2026-07-03-photos-app-community-gallery-design.md`.
 User-facing server setup guide: `docs/cloudflare-setup-guide.md`.
 
 ---
