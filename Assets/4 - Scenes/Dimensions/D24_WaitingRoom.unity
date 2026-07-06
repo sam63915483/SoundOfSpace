@@ -122,7 +122,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1001 &574295678
+--- !u!1001 &1223208566
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -190,7 +190,7 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ba627c0c24a88df4292aa7d763fe9ad4, type: 3}
---- !u!1 &1879197506
+--- !u!1 &1635188918
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -198,8 +198,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1879197508}
-  - component: {fileID: 1879197507}
+  - component: {fileID: 1635188920}
+  - component: {fileID: 1635188919}
   m_Layer: 0
   m_Name: DimensionRoot
   m_TagString: Untagged
@@ -207,13 +207,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1879197507
+--- !u!114 &1635188919
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1879197506}
+  m_GameObject: {fileID: 1635188918}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 45c712851b42e154c8e4d6ebe71df8b1, type: 3}
@@ -223,17 +223,18 @@ MonoBehaviour:
   partitionHeight: 1.7
   radiusCells: 6
   wallChance: 0.45
-  plantChance: 0.18
+  plantChance: 0.14
+  deskChance: 0.12
   worldSeed: 2424
   observeMaxDistance: 60
   nextScene: D25_CandleSea
---- !u!4 &1879197508
+--- !u!4 &1635188920
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1879197506}
+  m_GameObject: {fileID: 1635188918}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -246,5 +247,5 @@ Transform:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 574295678}
-  - {fileID: 1879197508}
+  - {fileID: 1223208566}
+  - {fileID: 1635188920}

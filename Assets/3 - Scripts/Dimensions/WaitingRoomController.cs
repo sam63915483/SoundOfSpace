@@ -21,14 +21,18 @@ public class WaitingRoomController : MonoBehaviour
     readonly Dictionary<Vector2Int, Cell> _cells = new Dictionary<Vector2Int, Cell>();
     readonly Stack<GameObject> _wallPool = new Stack<GameObject>();
     readonly Stack<GameObject> _plantPool = new Stack<GameObject>();
+    readonly Stack<GameObject> _deskPool = new Stack<GameObject>();
+    readonly Stack<GameObject> _coolerPool = new Stack<GameObject>();
     readonly List<Vector2Int> _toDespawn = new List<Vector2Int>();
 
     Transform _root;
-    Material _wallMat, _potMat, _leafMat;
-    GameObject _floor, _ceiling, _lamp;
+    Material _wallMat, _potMat, _leafMat, _deskMat, _screenMat, _coolerMat;
+    GameObject _floor, _ceiling, _lamp, _panelGrid;
     Transform[] _exits;
     ObservationTracker[] _exitTrackers;
     AudioSource _chime;
+    AudioSource _dinger;
+    AudioClip _dingClip;
     float _loopDebounceUntil;
     PlayerController _player;
     int _playerRefindCooldown;
@@ -40,6 +44,9 @@ public class WaitingRoomController : MonoBehaviour
         _wallMat = DimensionSceneUtil.Mat(new Color(0.72f, 0.68f, 0.58f), 0.1f);
         _potMat  = DimensionSceneUtil.Mat(new Color(0.45f, 0.25f, 0.15f), 0.1f);
         _leafMat = DimensionSceneUtil.Mat(new Color(0.20f, 0.35f, 0.16f), 0.1f);
+        _deskMat = DimensionSceneUtil.Mat(new Color(0.52f, 0.42f, 0.32f), 0.2f);
+        _screenMat = DimensionSceneUtil.EmissiveMat(new Color(0.55f, 0.7f, 0.85f), 0.9f);
+        _coolerMat = DimensionSceneUtil.Mat(new Color(0.80f, 0.82f, 0.84f), 0.3f);
         var floorMat = DimensionSceneUtil.Mat(new Color(0.55f, 0.50f, 0.42f), 0.15f);
         var ceilMat  = DimensionSceneUtil.Mat(new Color(0.85f, 0.84f, 0.80f), 0.1f);
 
@@ -56,6 +63,19 @@ public class WaitingRoomController : MonoBehaviour
         var flicker = _lamp.AddComponent<FlickerLight>();
         flicker.flickerDepth = 0.12f;
 
+        // Fluorescent panel grid glued under the ceiling, following in snapped steps.
+        _panelGrid = new GameObject("PanelGrid");
+        _panelGrid.transform.SetParent(_root, false);
+        var panelMat = DimensionSceneUtil.EmissiveMat(new Color(0.95f, 0.95f, 0.88f), 1.4f);
+        for (int px = -3; px <= 3; px++)
+            for (int pz = -3; pz <= 3; pz++)
+            {
+                var panel = DimensionSceneUtil.Block(PrimitiveType.Cube, "CeilPanel",
+                    Vector3.zero, new Vector3(1.9f, 0.05f, 0.95f), panelMat, _panelGrid.transform);
+                panel.transform.localPosition = new Vector3(px * cellSize, 2.96f, pz * cellSize);
+                Destroy(panel.GetComponent<Collider>());
+            }
+
         // The exits: 1 true + 3 loops, all relocating unseen.
         _exits = new Transform[4];
         _exitTrackers = new ObservationTracker[4];
@@ -67,6 +87,52 @@ public class WaitingRoomController : MonoBehaviour
         }
 
         DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(118f, 2f, 0.05f), 400f, 1f);
+        // The muzak. It never stops. It was never meant to stop.
+        var muzak = DimensionSceneUtil.LoopingAudio(gameObject, MuzakClip(), 400f, 0.16f);
+        muzak.spatialBlend = 0f;
+        _dingClip = DingClip();
+        var dingGo = new GameObject("Dinger");
+        dingGo.transform.SetParent(_root, false);
+        _dinger = dingGo.AddComponent<AudioSource>();
+        _dinger.spatialBlend = 0f;
+    }
+
+    // Eight bars of soft elevator arpeggio — a slow, endlessly patient major loop.
+    static AudioClip MuzakClip()
+    {
+        int rate = 44100;
+        float[] notes = { 261.6f, 329.6f, 392f, 329.6f, 293.7f, 370f, 440f, 370f };
+        float noteLen = 0.55f;
+        int samples = (int)(rate * noteLen * notes.Length);
+        var data = new float[samples];
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)rate;
+            int n = Mathf.Min((int)(t / noteLen), notes.Length - 1);
+            float nt = t - n * noteLen;
+            float env = Mathf.Clamp01(nt / 0.06f) * Mathf.Exp(-nt * 2.6f);
+            data[i] = (Mathf.Sin(2f * Mathf.PI * notes[n] * nt)
+                     + 0.4f * Mathf.Sin(2f * Mathf.PI * notes[n] * 2f * nt)) * env * 0.5f;
+        }
+        var clip = AudioClip.Create("muzak", samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
+    }
+
+    static AudioClip DingClip()
+    {
+        int rate = 44100;
+        int samples = (int)(rate * 0.9f);
+        var data = new float[samples];
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)rate;
+            data[i] = (Mathf.Sin(2f * Mathf.PI * 987f * t) * 0.6f + Mathf.Sin(2f * Mathf.PI * 1975f * t) * 0.2f)
+                    * Mathf.Exp(-t * 5f) * 0.7f;
+        }
+        var clip = AudioClip.Create("ding", samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
     }
 
     GameObject BuildExit(bool isTrue)
@@ -156,6 +222,7 @@ public class WaitingRoomController : MonoBehaviour
         Vector3 snapped = new Vector3(playerCell.x * cellSize, 0f, playerCell.y * cellSize);
         _floor.transform.position = snapped + Vector3.up * -0.25f;
         _ceiling.transform.position = snapped + Vector3.up * 3.25f;
+        _panelGrid.transform.position = snapped;
         _lamp.transform.position = p + Vector3.up * 1.1f;
 
         for (int dx = -radiusCells; dx <= radiusCells; dx++)
@@ -227,16 +294,25 @@ public class WaitingRoomController : MonoBehaviour
             PlaceWall(cell, new Vector3(cx, partitionHeight * 0.5f, cz + s * 0.5f), new Vector3(s - 0.7f, partitionHeight, 0.35f));
         if (Rand01(cell.seed, 2) < wallChance)
             PlaceWall(cell, new Vector3(cx + s * 0.5f, partitionHeight * 0.5f, cz), new Vector3(0.32f, partitionHeight, s - 0.7f));
-        // The occasional potted plant.
-        if (Rand01(cell.seed, 3) < plantChance)
-        {
-            GameObject plant = _plantPool.Count > 0 ? _plantPool.Pop() : NewPlant();
-            plant.SetActive(true);
-            plant.transform.position = new Vector3(
-                cx + (Rand01(cell.seed, 4) - 0.5f) * (s - 2f), 0f,
-                cz + (Rand01(cell.seed, 5) - 0.5f) * (s - 2f));
-            cell.props.Add(plant);
-        }
+        // The occasional potted plant, abandoned desk or water cooler.
+        float propRoll = Rand01(cell.seed, 3);
+        if (propRoll < plantChance)
+            PlaceProp(cell, _plantPool, NewPlant, cx, cz, s);
+        else if (propRoll < plantChance + deskChance)
+            PlaceProp(cell, _deskPool, NewDesk, cx, cz, s);
+        else if (propRoll < plantChance + deskChance + 0.05f)
+            PlaceProp(cell, _coolerPool, NewCooler, cx, cz, s);
+    }
+
+    void PlaceProp(Cell cell, Stack<GameObject> pool, System.Func<GameObject> make, float cx, float cz, float s)
+    {
+        GameObject prop = pool.Count > 0 ? pool.Pop() : make();
+        prop.SetActive(true);
+        prop.transform.SetPositionAndRotation(new Vector3(
+            cx + (Rand01(cell.seed, 4) - 0.5f) * (s - 2.4f), 0f,
+            cz + (Rand01(cell.seed, 5) - 0.5f) * (s - 2.4f)),
+            Quaternion.Euler(0f, Rand01(cell.seed, 6) * 360f, 0f));
+        cell.props.Add(prop);
     }
 
     void PlaceWall(Cell cell, Vector3 pos, Vector3 scale)
@@ -261,12 +337,53 @@ public class WaitingRoomController : MonoBehaviour
         return plant;
     }
 
+    // A workstation nobody ever came back to: desk, dead-glow monitor, office chair.
+    GameObject NewDesk()
+    {
+        var desk = new GameObject("Desk");
+        desk.transform.SetParent(_root, false);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Top",
+            new Vector3(0f, 0.74f, 0f), new Vector3(1.6f, 0.07f, 0.8f), _deskMat, desk.transform);
+        for (int side = -1; side <= 1; side += 2)
+        {
+            var leg = DimensionSceneUtil.Block(PrimitiveType.Cube, "Leg",
+                new Vector3(side * 0.72f, 0.36f, 0f), new Vector3(0.08f, 0.72f, 0.7f), _deskMat, desk.transform);
+            Object.Destroy(leg.GetComponent<Collider>());
+        }
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "MonitorBack",
+            new Vector3(0f, 1.08f, 0.12f), new Vector3(0.62f, 0.42f, 0.07f), _potMat, desk.transform);
+        var screen = DimensionSceneUtil.Block(PrimitiveType.Cube, "Screen",
+            new Vector3(0f, 1.08f, 0.075f), new Vector3(0.54f, 0.34f, 0.01f), _screenMat, desk.transform);
+        Object.Destroy(screen.GetComponent<Collider>());
+        var chair = DimensionSceneUtil.Block(PrimitiveType.Cube, "ChairSeat",
+            new Vector3(0f, 0.45f, -0.75f), new Vector3(0.5f, 0.08f, 0.5f), _potMat, desk.transform);
+        var chairBack = DimensionSceneUtil.Block(PrimitiveType.Cube, "ChairBack",
+            new Vector3(0f, 0.8f, -0.98f), new Vector3(0.5f, 0.62f, 0.07f), _potMat, desk.transform);
+        Object.Destroy(chairBack.GetComponent<Collider>());
+        return desk;
+    }
+
+    GameObject NewCooler()
+    {
+        var cooler = new GameObject("Cooler");
+        cooler.transform.SetParent(_root, false);
+        DimensionSceneUtil.Block(PrimitiveType.Cube, "Body",
+            new Vector3(0f, 0.55f, 0f), new Vector3(0.42f, 1.1f, 0.42f), _coolerMat, cooler.transform);
+        var jug = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Jug",
+            new Vector3(0f, 1.32f, 0f), new Vector3(0.34f, 0.22f, 0.34f),
+            DimensionSceneUtil.Mat(new Color(0.5f, 0.7f, 0.85f), 0.6f), cooler.transform);
+        Object.Destroy(jug.GetComponent<Collider>());
+        return cooler;
+    }
+
     void ReturnProps(Cell cell)
     {
         foreach (var prop in cell.props)
         {
             prop.SetActive(false);
             if (prop.name == "Plant") _plantPool.Push(prop);
+            else if (prop.name == "Desk") _deskPool.Push(prop);
+            else if (prop.name == "Cooler") _coolerPool.Push(prop);
             else _wallPool.Push(prop);
         }
         cell.props.Clear();
@@ -289,6 +406,7 @@ public class WaitingRoomController : MonoBehaviour
         }
         if (_player == null || _player.Rigidbody == null) return;
         _loopDebounceUntil = Time.time + 1.5f;
+        if (_dinger != null) _dinger.PlayOneShot(_dingClip, 0.8f);       // "now serving: you, again"
         _player.Rigidbody.position = new Vector3(0f, 1.5f, 0f);
         _player.Rigidbody.velocity = Vector3.zero;
     }
@@ -304,7 +422,9 @@ public class WaitingRoomController : MonoBehaviour
     [Tooltip("Chance each owned edge carries a partition.")]
     [Range(0f, 1f)] public float wallChance = 0.45f;
     [Tooltip("Chance a cell holds a potted plant.")]
-    [Range(0f, 1f)] public float plantChance = 0.18f;
+    [Range(0f, 1f)] public float plantChance = 0.14f;
+    [Tooltip("Chance a cell holds an abandoned desk.")]
+    [Range(0f, 1f)] public float deskChance = 0.12f;
     [Tooltip("Deterministic world seed.")]
     public int worldSeed = 2424;
     [Tooltip("Beyond this distance a cell counts as unobserved even on screen.")]

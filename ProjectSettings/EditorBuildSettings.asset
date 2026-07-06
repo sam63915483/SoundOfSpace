@@ -57,9 +57,6 @@ EditorBuildSettings:
     path: Assets/4 - Scenes/Dimensions/D9_RedForest.unity
     guid: 0b6c8d1f307829f4d889f3b9169cbaeb
   - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D10_SaltFlats.unity
-    guid: 509d781b68bae75458a7d3f25a8bb188
-  - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D11_Shelves.unity
     guid: e0316153ec8e263418b67050335d00c8
   - enabled: 1
@@ -69,29 +66,14 @@ EditorBuildSettings:
     path: Assets/4 - Scenes/Dimensions/D13_Orchard.unity
     guid: 28eae686c540b8b4c84fd6793323f6a3
   - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D14_GlacierThroat.unity
-    guid: b73f4459b724ece4eba70a34eff9d2d7
-  - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D15_Congregation.unity
     guid: 6fe8dbef4e05d74419ceff9a8757d292
   - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D16_NeonGrid.unity
     guid: fe39caa7eafa70d44846a133ed06f8c7
   - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D17_TidePools.unity
-    guid: fd7de2bcbcc712d4a930fd293485819c
-  - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D18_StaticField.unity
     guid: 04d9d4e792cf1864889da7145af2a5d4
-  - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D19_BoneGarden.unity
-    guid: 3596654713b1bb34caba5e252f50addd
-  - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D20_CloudShelf.unity
-    guid: 4282c8d45df629c4a8fa8e18008ff00f
-  - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D21_ArchiveStacks.unity
-    guid: b46212e6386622e4894147ef7a2c58b0
   - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D22_RustSea.unity
     guid: 5709b7151d2d3894eb743c6e42cb20ca
@@ -104,13 +86,4 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D25_CandleSea.unity
     guid: 550f7f1a3ed8eec4ebc655d9effc31ad
-  - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D26_Ferry.unity
-    guid: c7e4bccd16b392e4dad194b58ed1114c
-  - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D27_InvertedRain.unity
-    guid: 492c00f65235dcd419ea18467b4cf47c
-  - enabled: 1
-    path: Assets/4 - Scenes/Dimensions/D28_LongTable.unity
-    guid: b9795d2bbe461da499d2c5b946753b74
   m_configObjects: {}

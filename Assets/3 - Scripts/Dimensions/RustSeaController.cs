@@ -17,6 +17,10 @@ public class RustSeaController : MonoBehaviour
     float _beamYaw;
     float _caughtDebounceUntil;
     float _playerLitSince = -1f;
+    Renderer _beacon;
+    AudioSource _ticker;
+    AudioClip _tickClip;
+    float _nextTickTime;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
@@ -41,6 +45,29 @@ public class RustSeaController : MonoBehaviour
         }
 
         DimensionSceneUtil.LoopingAudio(gameObject, DimensionSceneUtil.ToneClip(48f, 2f, 0.07f), 600f, 1f);
+
+        // Geiger-style danger ticks: the closer the sweeping beam's heading is to
+        // you, the faster the clicks — you can dodge with your ears.
+        _tickClip = TickClip();
+        var tickGo = new GameObject("DangerTicker");
+        tickGo.transform.SetParent(_root, false);
+        _ticker = tickGo.AddComponent<AudioSource>();
+        _ticker.spatialBlend = 0f;
+    }
+
+    static AudioClip TickClip()
+    {
+        int rate = 44100;
+        int samples = (int)(rate * 0.04f);
+        var data = new float[samples];
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)rate;
+            data[i] = Mathf.Sin(2f * Mathf.PI * 2400f * t) * Mathf.Exp(-t * 160f) * 0.5f;
+        }
+        var clip = AudioClip.Create("tick", samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
     }
 
     /// <summary>Scrap dunes: ridged Perlin, sharper than sand.</summary>
@@ -80,17 +107,44 @@ public class RustSeaController : MonoBehaviour
         go.AddComponent<MeshRenderer>().sharedMaterial = rustMat;
         go.AddComponent<MeshCollider>().sharedMesh = mesh;
 
-        // Half-buried scrap: plates and beams jutting from the dunes.
-        var plateMat = DimensionSceneUtil.Mat(new Color(0.42f, 0.22f, 0.10f), 0.5f);
+        // Half-buried scrap: plates, girders, pipes and oil pools breaking the dunes.
+        var plateMat  = DimensionSceneUtil.Mat(new Color(0.42f, 0.22f, 0.10f), 0.5f);
+        var girderMat = DimensionSceneUtil.Mat(new Color(0.30f, 0.16f, 0.09f), 0.45f);
+        var pipeMat   = DimensionSceneUtil.Mat(new Color(0.24f, 0.14f, 0.09f), 0.55f);
+        var oilMat    = DimensionSceneUtil.Mat(new Color(0.03f, 0.025f, 0.02f), 0.95f);
         Random.State prev = Random.state;
         Random.InitState(2222);
-        for (int i = 0; i < 40; i++)
+        for (int i = 0; i < 34; i++)
         {
             float x = Random.Range(-250f, 250f), z = Random.Range(-250f, 250f);
             var plate = DimensionSceneUtil.Block(PrimitiveType.Cube, "Scrap",
                 new Vector3(x, DuneHeight(x, z) + Random.Range(-0.4f, 0.6f), z),
                 new Vector3(Random.Range(1.5f, 5f), Random.Range(0.2f, 0.5f), Random.Range(1.5f, 5f)), plateMat, _root);
             plate.transform.rotation = Quaternion.Euler(Random.Range(-35f, 35f), Random.value * 360f, Random.Range(-35f, 35f));
+        }
+        for (int i = 0; i < 16; i++)
+        {
+            float x = Random.Range(-240f, 240f), z = Random.Range(-240f, 240f);
+            var girder = DimensionSceneUtil.Block(PrimitiveType.Cube, "Girder",
+                new Vector3(x, DuneHeight(x, z) + Random.Range(1f, 3.2f), z),
+                new Vector3(0.45f, 0.45f, Random.Range(6f, 14f)), girderMat, _root);
+            girder.transform.rotation = Quaternion.Euler(Random.Range(-40f, -12f), Random.value * 360f, Random.Range(-10f, 10f));
+        }
+        for (int i = 0; i < 12; i++)
+        {
+            float x = Random.Range(-240f, 240f), z = Random.Range(-240f, 240f);
+            var pipe = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "Pipe",
+                new Vector3(x, DuneHeight(x, z) + 0.5f, z),
+                new Vector3(Random.Range(0.9f, 1.6f), Random.Range(2.5f, 5f), Random.Range(0.9f, 1.6f)), pipeMat, _root);
+            pipe.transform.rotation = Quaternion.Euler(Random.Range(70f, 110f), Random.value * 360f, 0f);
+        }
+        for (int i = 0; i < 10; i++)
+        {
+            float x = Random.Range(-200f, 200f), z = Random.Range(-200f, 200f);
+            var oil = DimensionSceneUtil.Block(PrimitiveType.Cylinder, "OilPool",
+                new Vector3(x, DuneHeight(x, z) + 0.04f, z),
+                new Vector3(Random.Range(2.5f, 6f), 0.02f, Random.Range(2.5f, 6f)), oilMat, _root);
+            Object.Destroy(oil.GetComponent<Collider>());
         }
         Random.state = prev;
     }
@@ -103,9 +157,30 @@ public class RustSeaController : MonoBehaviour
         Vector3 b = new Vector3(basePos.x, baseY, basePos.z);
 
         DimensionSceneUtil.Block(PrimitiveType.Cube, "CraneBase", b + Vector3.up * 1.5f, new Vector3(8f, 3f, 8f), dark, _root);
-        DimensionSceneUtil.Block(PrimitiveType.Cube, "CraneMast", b + Vector3.up * 17f, new Vector3(2.4f, 28f, 2.4f), steel, _root);
+        // Lattice mast: four corner chords + cross-bracing instead of one solid box.
+        for (int cx = -1; cx <= 1; cx += 2)
+            for (int cz = -1; cz <= 1; cz += 2)
+                DimensionSceneUtil.Block(PrimitiveType.Cube, "MastChord",
+                    b + new Vector3(cx * 0.9f, 17f, cz * 0.9f), new Vector3(0.35f, 28f, 0.35f), steel, _root);
+        for (float y = 5f; y <= 29f; y += 4f)
+        {
+            var braceA = DimensionSceneUtil.Block(PrimitiveType.Cube, "MastBrace",
+                b + new Vector3(0f, y, 0.9f), new Vector3(2.4f, 0.22f, 0.22f), steel, _root);
+            braceA.transform.rotation = Quaternion.Euler(0f, 0f, 32f);
+            Object.Destroy(braceA.GetComponent<Collider>());
+            var braceB = DimensionSceneUtil.Block(PrimitiveType.Cube, "MastBrace",
+                b + new Vector3(0.9f, y + 2f, 0f), new Vector3(0.22f, 0.22f, 2.4f), steel, _root);
+            braceB.transform.rotation = Quaternion.Euler(32f, 0f, 0f);
+            Object.Destroy(braceB.GetComponent<Collider>());
+        }
         DimensionSceneUtil.Block(PrimitiveType.Cube, "CraneJib", b + new Vector3(0f, 31f, -9f), new Vector3(2f, 1.8f, 24f), steel, _root);
         DimensionSceneUtil.Block(PrimitiveType.Cube, "CraneCab", b + new Vector3(0f, 29f, 1.5f), new Vector3(3.2f, 2.6f, 3.2f), dark, _root);
+        // Aircraft warning beacon on the mast top — slow red pulse.
+        var beacon = DimensionSceneUtil.Block(PrimitiveType.Sphere, "WarningBeacon",
+            b + Vector3.up * 31.8f, Vector3.one * 0.7f,
+            DimensionSceneUtil.EmissiveMat(new Color(1f, 0.12f, 0.08f), 3f), _root);
+        Object.Destroy(beacon.GetComponent<Collider>());
+        _beacon = beacon.GetComponent<Renderer>();
 
         // The sweeping head hangs from the jib tip.
         var head = new GameObject("BeamHead");
@@ -308,7 +383,21 @@ public class RustSeaController : MonoBehaviour
             _player = FindObjectOfType<PlayerController>();
             _playerRefindCooldown = 60;
         }
+        // Beacon pulse rides a slow sine (renderer toggle — no material churn).
+        if (_beacon != null) _beacon.enabled = Mathf.Sin(Time.time * 2.4f) > -0.2f;
+
         if (_player == null || _player.Rigidbody == null) return;
+
+        // Danger ticker: tick rate scales with how close the beam heading is to you.
+        Vector3 toPlayer = _player.Rigidbody.position - _beamHead.position; toPlayer.y = 0f;
+        Vector3 beamFlat = _beamHead.forward; beamFlat.y = 0f;
+        float beamAngle = Vector3.Angle(beamFlat, toPlayer);
+        if (beamAngle < 55f && toPlayer.magnitude < 380f && Time.time >= _nextTickTime)
+        {
+            _nextTickTime = Time.time + Mathf.Lerp(0.09f, 0.85f, beamAngle / 55f);
+            _ticker.PlayOneShot(_tickClip, Mathf.Lerp(0.7f, 0.25f, beamAngle / 55f));
+        }
+
         bool playerLit = Time.time > _caughtDebounceUntil && LitByBeam(_player.Rigidbody.position);
         if (playerLit && _playerLitSince < 0f) _playerLitSince = Time.time;
         if (!playerLit) _playerLitSince = -1f;

@@ -14,11 +14,13 @@ public class NeonGridController : MonoBehaviour
         public Vector2Int coord;
         public int seed;
         public GameObject building;
+        public GameObject streetLines;
         public readonly ObservationTracker tracker = new ObservationTracker();
     }
 
     readonly Dictionary<Vector2Int, Cell> _cells = new Dictionary<Vector2Int, Cell>();
     readonly Stack<GameObject> _buildingPool = new Stack<GameObject>();
+    readonly Stack<GameObject> _streetPool = new Stack<GameObject>();
     readonly List<Vector2Int> _toDespawn = new List<Vector2Int>();
 
     Transform _root;
@@ -29,6 +31,9 @@ public class NeonGridController : MonoBehaviour
     bool _taxiObservedNow = true;
     Vector2Int _taxiTarget;                  // intersection (i,j) it's driving toward
     AudioSource _taxiHum;
+    AudioSource _taxiHorn;
+    AudioClip _hornClip;
+    float _nextHonkTime;
     PlayerController _player;
     int _playerRefindCooldown;
     bool _atmosApplied;
@@ -80,10 +85,35 @@ public class NeonGridController : MonoBehaviour
             .transform.localPosition = new Vector3(0f, 1.2f, 0f);
 
         _taxiHum = DimensionSceneUtil.LoopingAudio(taxi, DimensionSceneUtil.ToneClip(150f, 2f, 0.4f), 260f, 1f);
+        _hornClip = HornClip();
+        _taxiHorn = taxi.AddComponent<AudioSource>();
+        _taxiHorn.spatialBlend = 1f;
+        _taxiHorn.rolloffMode = AudioRolloffMode.Linear;
+        _taxiHorn.maxDistance = 220f;
+        _nextHonkTime = Time.time + 4f;
 
         // Start a few blocks out on an intersection, then wander.
         _taxi.position = IntersectionPos(new Vector2Int(2, 2));
         _taxiTarget = new Vector2Int(2, 3);
+    }
+
+    // A cheerful double honk — the taxi calls out while it cruises, so you can
+    // chase it by ear through the towers.
+    static AudioClip HornClip()
+    {
+        int rate = 44100;
+        int samples = (int)(rate * 0.5f);
+        var data = new float[samples];
+        for (int i = 0; i < samples; i++)
+        {
+            float t = i / (float)rate;
+            bool on = t < 0.14f || (t > 0.2f && t < 0.38f);
+            if (!on) { data[i] = 0f; continue; }
+            data[i] = (Mathf.Sin(2f * Mathf.PI * 440f * t) * 0.5f + Mathf.Sin(2f * Mathf.PI * 554f * t) * 0.4f) * 0.55f;
+        }
+        var clip = AudioClip.Create("horn", samples, 1, rate, false);
+        clip.SetData(data, 0);
+        return clip;
     }
 
     Vector3 IntersectionPos(Vector2Int ij) =>
@@ -124,10 +154,16 @@ public class NeonGridController : MonoBehaviour
             if (justLost && cell.coord != playerCell) Reroll(cell);
         }
 
-        // Taxi observation + soft idle-vs-drive hum.
+        // Taxi observation + soft idle-vs-drive hum; it honks while cruising unseen.
         var tb = new Bounds(_taxi.position + Vector3.up * 1.4f, new Vector3(5.5f, 3.4f, 6.5f));
         _taxiObservedNow = _taxiTracker.Tick(tb, out _, float.PositiveInfinity);
         if (_taxiHum != null) _taxiHum.pitch = _taxiObservedNow ? 0.7f : 1.05f;
+        if (!_taxiObservedNow && Time.time >= _nextHonkTime)
+        {
+            _nextHonkTime = Time.time + Random.Range(4f, 9f);
+            _taxiHorn.pitch = Random.Range(0.95f, 1.05f);
+            _taxiHorn.PlayOneShot(_hornClip, 0.8f);
+        }
     }
 
     void FixedUpdate()
@@ -179,11 +215,40 @@ public class NeonGridController : MonoBehaviour
         var cell = new Cell { coord = coord, seed = Hash(coord.x, coord.y, worldSeed) };
         _cells[coord] = cell;
         BuildBuilding(cell);
+        // The Tron floor: glowing street edges on every cell, buildings or not.
+        GameObject lines = _streetPool.Count > 0 ? _streetPool.Pop() : NewStreetLines();
+        lines.SetActive(true);
+        lines.transform.position = new Vector3(coord.x * cellSize, 0f, coord.y * cellSize);
+        cell.streetLines = lines;
+    }
+
+    GameObject NewStreetLines()
+    {
+        var lines = new GameObject("StreetLines");
+        lines.transform.SetParent(_root, false);
+        var n = DimensionSceneUtil.Block(PrimitiveType.Cube, "LineN",
+            Vector3.zero, Vector3.one, _streetMat, lines.transform);
+        n.transform.localPosition = new Vector3(0f, 0.02f, cellSize * 0.5f);
+        n.transform.localScale = new Vector3(cellSize, 0.03f, 0.16f);
+        Object.Destroy(n.GetComponent<Collider>());
+        var e = DimensionSceneUtil.Block(PrimitiveType.Cube, "LineE",
+            Vector3.zero, Vector3.one, _streetMat, lines.transform);
+        e.transform.localPosition = new Vector3(cellSize * 0.5f, 0.02f, 0f);
+        e.transform.localScale = new Vector3(0.16f, 0.03f, cellSize);
+        Object.Destroy(e.GetComponent<Collider>());
+        return lines;
     }
 
     void DespawnCell(Vector2Int coord)
     {
-        ReturnBuilding(_cells[coord]);
+        var cell = _cells[coord];
+        ReturnBuilding(cell);
+        if (cell.streetLines != null)
+        {
+            cell.streetLines.SetActive(false);
+            _streetPool.Push(cell.streetLines);
+            cell.streetLines = null;
+        }
         _cells.Remove(coord);
     }
 
@@ -222,6 +287,23 @@ public class NeonGridController : MonoBehaviour
         cap.localScale = new Vector3(10.4f, 0.15f, 10.4f);
         cap.localPosition = new Vector3(0f, h + 0.1f, 0f);
         cap.GetComponent<Renderer>().sharedMaterial = cyan ? _cyanMat : _magentaMat;
+        // Two dim window bands split the tower's height.
+        for (int wband = 0; wband < 2; wband++)
+        {
+            var band = strips.GetChild(6 + wband);
+            band.localScale = new Vector3(10.15f, 0.35f, 10.15f);
+            band.localPosition = new Vector3(0f, h * (wband + 1) / 3f, 0f);
+        }
+        // One tower in five hangs a glowing billboard over the street.
+        var billboard = strips.GetChild(8);
+        bool hasBillboard = Rand01(cell.seed, 6) < 0.2f && h > 14f;
+        billboard.gameObject.SetActive(hasBillboard);
+        if (hasBillboard)
+        {
+            billboard.localScale = new Vector3(6.5f, 3.6f, 0.25f);
+            billboard.localPosition = new Vector3(0f, h * 0.62f, -5.3f);
+            billboard.GetComponent<Renderer>().sharedMaterial = cyan ? _magentaMat : _cyanMat;   // contrast pop
+        }
         b.transform.position = center;
         cell.building = b;
     }
@@ -238,6 +320,14 @@ public class NeonGridController : MonoBehaviour
         }
         var cap = DimensionSceneUtil.Block(PrimitiveType.Cube, "Cap", Vector3.zero, Vector3.one, _cyanMat, b.transform);
         Object.Destroy(cap.GetComponent<Collider>());
+        var windowMat = DimensionSceneUtil.EmissiveMat(new Color(0.5f, 0.65f, 0.8f), 0.7f);
+        for (int wband = 0; wband < 2; wband++)
+        {
+            var band = DimensionSceneUtil.Block(PrimitiveType.Cube, "WindowBand", Vector3.zero, Vector3.one, windowMat, b.transform);
+            Object.Destroy(band.GetComponent<Collider>());
+        }
+        var billboard = DimensionSceneUtil.Block(PrimitiveType.Cube, "Billboard", Vector3.zero, Vector3.one, _magentaMat, b.transform);
+        Object.Destroy(billboard.GetComponent<Collider>());
         return b;
     }
 
@@ -274,5 +364,5 @@ public class NeonGridController : MonoBehaviour
 
     [Header("Exit")]
     [Tooltip("Scene the taxi takes you to.")]
-    public string nextScene = "D17_TidePools";
+    public string nextScene = "D18_StaticField";
 }

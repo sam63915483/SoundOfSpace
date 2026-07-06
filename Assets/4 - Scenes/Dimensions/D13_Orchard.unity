@@ -122,7 +122,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1001 &1482393400
+--- !u!1001 &933729585
 PrefabInstance:
   m_ObjectHideFlags: 0
   serializedVersion: 2
@@ -190,7 +190,7 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: ba627c0c24a88df4292aa7d763fe9ad4, type: 3}
---- !u!1 &1948698234
+--- !u!1 &1330931549
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -198,8 +198,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1948698236}
-  - component: {fileID: 1948698235}
+  - component: {fileID: 1330931551}
+  - component: {fileID: 1330931550}
   m_Layer: 0
   m_Name: DimensionRoot
   m_TagString: Untagged
@@ -207,13 +207,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1948698235
+--- !u!114 &1330931550
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1948698234}
+  m_GameObject: {fileID: 1330931549}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8ccd26ce2019e5f429fbb54a782ffd62, type: 3}
@@ -221,14 +221,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   gridCount: 8
   rowSpacing: 9
-  nextScene: D14_GlacierThroat
---- !u!4 &1948698236
+  nextScene: D15_Congregation
+--- !u!4 &1330931551
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1948698234}
+  m_GameObject: {fileID: 1330931549}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -241,5 +241,5 @@ Transform:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 1482393400}
-  - {fileID: 1948698236}
+  - {fileID: 933729585}
+  - {fileID: 1330931551}
