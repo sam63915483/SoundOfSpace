@@ -173,7 +173,7 @@ public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
         var layout = _replyColumn.gameObject.AddComponent<VerticalLayoutGroup>();
         layout.childAlignment = TextAnchor.LowerRight;
         layout.childControlWidth = true;
-        layout.childControlHeight = false;
+        layout.childControlHeight = true;   // so LayoutElement.minHeight governs button height
         layout.childForceExpandWidth = true;
         layout.childForceExpandHeight = false;
         layout.spacing = 8f;

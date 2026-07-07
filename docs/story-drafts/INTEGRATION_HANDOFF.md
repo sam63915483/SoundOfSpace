@@ -322,7 +322,7 @@ user feels like. **Each chunk ends with: compile check, play test, commit.**
 
 | Chunk | Status | Notes |
 |---|---|---|
-| 0 — Sanity + debug window | NOT STARTED | WorldDialogueUI never seen in play mode |
+| 0 — Sanity + debug window | **MOSTLY DONE 2026-07-06** | `Mission2DebugWindow` shipped (Window ▸ Story ▸ Mission 2 Debug: phase buttons, all flags, open/queue any conversation). WorldDialogueUI **play-tested + screenshotted**: conv_menu rendered with speaker label, typewriter, 3 reply buttons; button-height layout bug found + fixed (childControlHeight). Remaining: USER eyeballs it once and gives feel feedback; clicking through responses not yet exercised. |
 | 1 — Face Down | NOT STARTED | JSONs ready in drafts; FaceDownSpot.cs shipped |
 | 2 — Moon delivery | NOT STARTED | |
 | 3 — Tev letter + Icey outpost | NOT STARTED | |
