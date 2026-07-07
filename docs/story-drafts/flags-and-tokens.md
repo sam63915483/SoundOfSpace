@@ -89,11 +89,45 @@ flags are recomputed at trigger time so they need no save entry).
     label. If hardcoded to AI/Tev, add a passthrough (one small change,
     listed here so it isn't discovered at integration time).
 
-## 4. Suggested build order (first coding session)
+## 4. Build order — STATUS 2026-07-06 (first slice IMPLEMENTED, compile-verified)
 
-1. Wiring #6 (ORG_Reveal bridge) + #12 (speaker passthrough) — unblockers.
-2. conv_face_down + _after with the zero-new-UI variant — first shippable
-   beat, tests the whole pipeline (flags, presenter, HAL nudge).
-3. conv_interview + trigger (#5) — turns on Phase 3 end-to-end.
-4. conv_we_need_to_talk + pre-compute (#7) + tokens ★ — the confrontation.
-5. Act 2 missions in any order (each is independent); conv_door last.
+**DONE (in `Assets/3 - Scripts/Story/`, seeded in both MainMenuController
+paths, zero compile errors):**
+- `Mission2.cs` — the full flag registry from §1 as typed constants, plus
+  `Act2MissionCount()`, `NotifyDimensionReturn()`, `PrecomputeTalkFlags()`
+  (wiring #7), and `KilledNamesJoined()` (the `{KILLED_NAMES}` data source).
+- `Mission2Director.cs` — auto-singleton wiring hub: Phase 1→2 gate
+  (dimension return OR 3 Act-2 missions), the Face Down offer queue, the
+  **ORG_Reveal bridge** (wiring #6 — mirrors the StoryDirector flag onto
+  `EarlyGameProgress.ORG_Reveal`; `AIStoryController` merges the knowledge
+  file on its own poll; phase → Resistant), and the `conv_we_need_to_talk`
+  queue with Talk_* precompute. **Inert until the conv JSONs ship** — every
+  queue is guarded on `StoryContent.GetConversation(...) != null`.
+- `FaceDownSpot.cs` — scene-placeable trigger (zero-new-UI variant): stand
+  inside with the phone closed for 60 s → queues `conv_face_down_after`
+  silently. Needs placement in 1–3 locations (cave, moon far side).
+
+**Wiring #12 ANSWERED:** `PhoneDialoguePresenter.ShowLines` **ignores the
+speaker string** — every line renders as an AI chat bubble (shipped "Tev"
+lines already do). Nothing breaks with new speakers, but NPC-delivered
+conversations (tev_letter, trade_back, interview, iceytwin, rebels, offers)
+render wrong on the phone. The right fix is a `WorldDialoguePresenter`
+implementing the same `DialoguePresenter` interface over a world-space/
+overlay panel with a speaker name label — the engine (`DialogueRunner`) is
+already presenter-agnostic.
+
+**Remaining, in order:**
+1. Copy `conv_face_down.json` + `conv_face_down_after.json` into
+   `StreamingAssets/Story/` and place 1–3 `FaceDownSpot`s → the first beat
+   is live end-to-end (Mission2Director offers it at Phase 2).
+2. To test without playing to Phase 2: F9/dev-flip a flag or call
+   `GameKnowledgeBase.Instance.SetStoryPhase(StoryPhase.Phase2_Uneasy)`.
+3. `WorldDialoguePresenter` (see above) → unlocks all NPC-giver convs.
+4. conv_interview + collect-the-player trigger (#5) — Phase 3 end-to-end
+   (the bridge is already waiting for the flag).
+5. `{DEATHS}`/`{KILLED_NAMES}`/`{HOURS_PLAYED}` tokens in TokenResolver
+   (data sources ready on Mission2).
+6. Act 2 missions in any order; conv_door last.
+7. Call `Mission2.NotifyDimensionReturn()` from the dimension-return path
+   (PortalManager/BlackHoleCapture exit) so the Phase 1→2 gate's first
+   condition works.

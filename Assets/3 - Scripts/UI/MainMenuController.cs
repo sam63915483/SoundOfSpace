@@ -655,6 +655,8 @@ public class MainMenuController : MonoBehaviour
         tick("death cutscene");   yield return null;
         if (StoryDirector.Instance == null) { var go = new GameObject("StoryDirector"); DontDestroyOnLoad(go); go.AddComponent<StoryDirector>(); }
         tick("story director");   yield return null;
+        if (Mission2Director.Instance == null) { var go = new GameObject("Mission2Director"); DontDestroyOnLoad(go); go.AddComponent<Mission2Director>(); }
+        tick("mission 2");        yield return null;
         if (HintTrackRunner.Instance == null) { var go = new GameObject("HintTrackRunner"); DontDestroyOnLoad(go); go.AddComponent<HintTrackRunner>(); }
         tick("hint tracks");       yield return null;
         if (PhotoLibrary.Instance == null) { var go = new GameObject("PhotoLibrary"); DontDestroyOnLoad(go); go.AddComponent<PhotoLibrary>(); }
@@ -881,6 +883,16 @@ public class MainMenuController : MonoBehaviour
             var go = new GameObject("HALCommentator");
             DontDestroyOnLoad(go);
             go.AddComponent<HALCommentator>();
+        }
+        if (Mission2Director.Instance == null)
+        {
+            // Mission 2 story wiring hub: phase gates, the StoryDirector→
+            // EarlyGameProgress ORG_Reveal bridge, and queued phone beats.
+            // Inert until the story-draft conversation JSONs ship in
+            // StreamingAssets/Story/. Same MainMenu-skip trap as the others.
+            var go = new GameObject("Mission2Director");
+            DontDestroyOnLoad(go);
+            go.AddComponent<Mission2Director>();
         }
         if (GForceHUD.Instance == null)
         {
