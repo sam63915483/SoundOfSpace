@@ -323,7 +323,7 @@ user feels like. **Each chunk ends with: compile check, play test, commit.**
 | Chunk | Status | Notes |
 |---|---|---|
 | 0 — Sanity + debug window | **MOSTLY DONE 2026-07-06** | `Mission2DebugWindow` shipped (Window ▸ Story ▸ Mission 2 Debug: phase buttons, all flags, open/queue any conversation). WorldDialogueUI **play-tested + screenshotted**: conv_menu rendered with speaker label, typewriter, 3 reply buttons; button-height layout bug found + fixed (childControlHeight). Remaining: USER eyeballs it once and gives feel feedback; clicking through responses not yet exercised. |
-| 1 — Face Down | NOT STARTED | JSONs ready in drafts; FaceDownSpot.cs shipped |
+| 1 — Face Down | **LOGIC PRE-VERIFIED 2026-07-06** | Full chain tested live in play mode (JSONs temp-shipped, then removed): Phase 2 → director offers conv_face_down (the HasPendingConversation guard correctly deferred while conv_first_contact occupied the slot — expected), spot timer → FaceDown_WaitDone → conv_face_down_after queued. WorldDialogueUI response CLICKING also verified (invoke → effects → end → destroy → cursor restored). Remaining for this chunk: copy the 2 JSONs to StreamingAssets/Story, USER places 1–3 FaceDownSpots, one real playthrough for feel. |
 | 2 — Moon delivery | NOT STARTED | |
 | 3 — Tev letter + Icey outpost | NOT STARTED | |
 | 4 — Fiery claims | NOT STARTED | |
