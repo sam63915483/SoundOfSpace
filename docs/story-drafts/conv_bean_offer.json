@@ -1,0 +1,47 @@
+{
+  "id": "conv_bean_offer",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "ShipMarket",
+      "lines": [
+        "Bean's throwing wrecks again.",
+        "Tumbling Bean — her spin walks old expedition junk down to the gentle spots once an orbit, like a tide. Thrusters, dishes, panels. Some of it still holds a serial number."
+      ],
+      "responses": [
+        { "buttonText": "And you'll buy whatever I haul back.", "nextNodeId": "pay" },
+        { "buttonText": "Whose expeditions?", "nextNodeId": "whose" }
+      ]
+    },
+    {
+      "id": "whose",
+      "speaker": "ShipMarket",
+      "lines": [
+        "Old ones. Pre-withdrawal. People used to go out there, friend — the outer system used to have traffic, patrols, schedules.",
+        "Then it had reasons instead. Now it has salvage."
+      ],
+      "responses": [
+        { "buttonText": "What do you pay?", "nextNodeId": "pay" }
+      ]
+    },
+    {
+      "id": "pay",
+      "speaker": "ShipMarket",
+      "lines": [
+        "Standard salvage rates, plus a finder's bonus for anything with a serial older than me.",
+        "Watch your footing out there. The Bean doesn't have a down. First-timers usually give her one anyway — headfirst."
+      ],
+      "responses": [
+        {
+          "buttonText": "I'll make a run.",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "M2_BeanOfferTaken", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_bean_salvage" }
+          ]
+        },
+        { "buttonText": "Maybe later.", "nextNodeId": "end" }
+      ]
+    }
+  ]
+}

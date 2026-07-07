@@ -1,0 +1,46 @@
+{
+  "id": "conv_lights_on_offer",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Alien7",
+      "lines": [
+        "Faller! FALLER. Good, you're here —",
+        "My pilot ran the Cyclops route this morning and went dark. Not crashed-dark. QUIET-dark. Power-dark. Marlo's in the shadow cone, has to be — there's no sun in there, and her panels are her heart."
+      ],
+      "responses": [
+        { "buttonText": "Slow down. Who's Marlo?", "nextNodeId": "marlo" },
+        { "buttonText": "What do you need from me?", "nextNodeId": "job" }
+      ]
+    },
+    {
+      "id": "marlo",
+      "speaker": "Alien7",
+      "lines": [
+        "Best freight pilot on the Abode, and the only one who'll still fly past the Bean. She's run my routes eleven years without a scratch.",
+        "Eleven years, and the one morning I say 'take the short way through the shadow'—"
+      ],
+      "responses": [
+        { "buttonText": "What do you need from me?", "nextNodeId": "job" }
+      ]
+    },
+    {
+      "id": "job",
+      "speaker": "Alien7",
+      "lines": [
+        "You have that ridiculous artificial sun bolted to your ship, don't you? The Lebron thing.",
+        "No sun reaches the cone. So BRING one. Hold it over her panels until her heart starts. GO."
+      ],
+      "responses": [
+        {
+          "buttonText": "I'm going.",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "M2_LightsOnTaken", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_lights_on" }
+          ]
+        }
+      ]
+    }
+  ]
+}

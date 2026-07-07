@@ -1,0 +1,51 @@
+{
+  "id": "conv_lights_on_rescue",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Marlo",
+      "lines": [
+        "...you brought a SUN.",
+        "You absolute lunatic. Hold it over the panel — starboard side — and DON'T drift."
+      ],
+      "responses": [
+        { "buttonText": "(Hold the light steady.)", "nextNodeId": "charging" }
+      ]
+    },
+    {
+      "id": "charging",
+      "speaker": "Marlo",
+      "lines": [
+        "Systems waking. Oh, that's warm. That's — okay. Okay.",
+        "Six hours I've been sitting in the dark out here, and you know the worst part? It wasn't the cold."
+      ],
+      "responses": [
+        { "buttonText": "What was the worst part?", "nextNodeId": "worst" },
+        { "buttonText": "Save it for the Abode. Can you fly?", "nextNodeId": "fly" }
+      ]
+    },
+    {
+      "id": "worst",
+      "speaker": "Marlo",
+      "lines": [
+        "The Pupil. You can't see it from inside the cone — no light, right? Can't see anything.",
+        "But you can feel where it is. Six hours, and I could have pointed to it with my eyes shut the whole time.",
+        "Don't tell the boss. She'll make me take the long way forever."
+      ],
+      "responses": [
+        { "buttonText": "Can you fly?", "nextNodeId": "fly" }
+      ]
+    },
+    {
+      "id": "fly",
+      "speaker": "Marlo",
+      "lines": [
+        "I can fly. I can always fly — it's the stopping that got complicated.",
+        "I owe you my heartbeat, stranger. When you need something moved quiet, no questions, no manifest — the name's Marlo. Remember it."
+      ],
+      "responses": [
+        { "buttonText": "(Escort her out of the shadow.)", "nextNodeId": "end" }
+      ]
+    }
+  ]
+}

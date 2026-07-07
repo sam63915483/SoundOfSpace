@@ -1,0 +1,96 @@
+{
+  "id": "conv_trade_back",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Alien3",
+      "lines": [ "You've come about the drawer." ],
+      "responses": [
+        { "buttonText": "How did you know?", "nextNodeId": "know" },
+        { "buttonText": "I want my cassette back.", "nextNodeId": "terms" }
+      ]
+    },
+    {
+      "id": "know",
+      "speaker": "Alien3",
+      "lines": [
+        "Everyone comes about the drawer, eventually. Eight tapes, eight fallers.",
+        "You're the first who ever came BACK for one."
+      ],
+      "responses": [
+        { "buttonText": "Then trade it back to me.", "nextNodeId": "terms" }
+      ]
+    },
+    {
+      "id": "terms",
+      "speaker": "Alien3",
+      "lines": [
+        "I'll trade. I traded fair for it, I'll trade fair back.",
+        "Bring me one rare of every fish that swims — or stand right there and play me something true on that guitar.",
+        "Your choice. Patience, or music."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Offer the rare fish.)",
+          "nextNodeId": "handover",
+          "requiresFlag": "TradeBack_HasFish"
+        },
+        {
+          "buttonText": "(Play something true.)",
+          "nextNodeId": "song",
+          "requiresFlag": "TradeBack_HasGuitar"
+        },
+        { "buttonText": "I'll be back.", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "song",
+      "speaker": "Alien3",
+      "lines": [
+        "(He closes his eyes for the whole of it. When it ends, he doesn't open them right away.)",
+        "That's the one the first faller hummed. You've got the wrong version.",
+        "Good. The wrong version is ours."
+      ],
+      "responses": [
+        { "buttonText": "(Wait.)", "nextNodeId": "handover" }
+      ]
+    },
+    {
+      "id": "handover",
+      "speaker": "Alien3",
+      "lines": [
+        "(He opens the drawer without looking at it, the way you reach for something whose place you know by heart.)",
+        "Careful with side B. Six pressed hard when he wrote."
+      ],
+      "responses": [
+        { "buttonText": "You knew him?", "nextNodeId": "knew" },
+        {
+          "buttonText": "(Take the cassette.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "CassetteSix_Owned", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_trade_back" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "knew",
+      "speaker": "Alien3",
+      "lines": [
+        "I knew all of them, friend.",
+        "I keep the drawer so that somebody does."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Take the cassette.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "CassetteSix_Owned", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_trade_back" }
+          ]
+        }
+      ]
+    }
+  ]
+}

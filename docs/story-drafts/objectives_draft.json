@@ -15,6 +15,13 @@
       "hintTrackId": "hint_fiery_claims"
     },
     {
+      "id": "obj_quiet_neighbors",
+      "description": "Take Tev's letter to his friends under Icey Twin's ice. Inside: not a word. Smile a lot.",
+      "completionEvent": "OnIceyOutpostEntered",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "M2_IceyReached", "boolArg": true } ],
+      "hintTrackId": "hint_quiet_neighbors"
+    },
+    {
       "id": "obj_ledger",
       "description": "Get the researchers' luminosity ledger to someone who still asks questions.",
       "completionEvent": "OnLedgerDelivered",

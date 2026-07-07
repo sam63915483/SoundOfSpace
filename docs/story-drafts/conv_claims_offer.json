@@ -1,0 +1,74 @@
+{
+  "id": "conv_claims_offer",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "ShipMarket",
+      "lines": [
+        "Heard you can keep a ship in one piece. Mostly.",
+        "I hold paper on the old consortium camp — Fiery Twin, trailing edge. Nineteen years abandoned, claim beacons still ticking. Law says the claims transfer to whoever physically retrieves the beacons. Three of them."
+      ],
+      "responses": [
+        { "buttonText": "What's my cut?", "nextNodeId": "cut" },
+        { "buttonText": "What happened to the consortium?", "nextNodeId": "what" }
+      ]
+    },
+    {
+      "id": "what",
+      "speaker": "ShipMarket",
+      "lines": [
+        "Officially? Contract concluded.",
+        "Unofficially, friend, there's a reason salvage on that world pays forty percent."
+      ],
+      "responses": [
+        { "buttonText": "Forty percent. Go on.", "nextNodeId": "cut" }
+      ]
+    },
+    {
+      "id": "cut",
+      "speaker": "ShipMarket",
+      "lines": [
+        "Forty percent of the claim value, plus your pick of any one part off my racks.",
+        "Land on the terminator — the line between burn and freeze. The dayside will chew your systems in minutes, so don't be on the dayside."
+      ],
+      "responses": [
+        {
+          "buttonText": "Deal.",
+          "nextNodeId": "written",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "M2_ClaimsOfferTaken", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_fiery_claims" }
+          ]
+        },
+        { "buttonText": "I'll think about it.", "nextNodeId": "decline" }
+      ]
+    },
+    {
+      "id": "written",
+      "speaker": "ShipMarket",
+      "lines": [
+        "One more thing. Whatever you find up there — the gear's mine, the paper's mine.",
+        "Anything WRITTEN... I don't want anything written. Keep the written things."
+      ],
+      "responses": [
+        { "buttonText": "Why don't you want the written things?", "nextNodeId": "why" },
+        { "buttonText": "(Leave.)", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "why",
+      "speaker": "ShipMarket",
+      "lines": [
+        "Because I read the first batch, nineteen years ago.",
+        "Safe flight."
+      ],
+      "responses": [ { "buttonText": "(Leave.)", "nextNodeId": "end" } ]
+    },
+    {
+      "id": "decline",
+      "speaker": "ShipMarket",
+      "lines": [ "Paper keeps. So does the heat." ],
+      "responses": [ { "buttonText": "(Leave.)", "nextNodeId": "end" } ]
+    }
+  ]
+}

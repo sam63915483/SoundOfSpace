@@ -19,6 +19,14 @@
       ]
     },
     {
+      "id": "hint_quiet_neighbors",
+      "objectiveId": "obj_quiet_neighbors",
+      "entries": [
+        { "tipText": "The outpost entrance is a vent mouth where the ice steams. Land clear of the slush.", "advanceEvent": "OnIceyLanded", "gatherWoodTarget": 0 },
+        { "tipText": "Remember the rules: not a word. No matter what you see.", "advanceEvent": "OnIceyOutpostEntered", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
       "id": "hint_ledger",
       "objectiveId": "obj_ledger",
       "entries": [

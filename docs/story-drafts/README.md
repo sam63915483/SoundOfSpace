@@ -22,6 +22,13 @@ id collision would shadow a live one).
 | `conv_door.json` | A3-3 finale — the Eye, three endings |
 | `objectives_draft.json` | Objective entries for every Part 1 + Part 2 mission |
 | `hinttracks_draft.json` | Hint tracks for the missions that want them |
+| `conv_moon_offer.json` / `conv_claims_offer.json` / `conv_bean_offer.json` | Act 2 giver hooks — Alien7 and ShipMarket contracts |
+| `conv_lights_on_offer.json` / `conv_lights_on_rescue.json` | N-2 "Lights On" — Alien7's panic + Marlo in the shadow cone |
+| `conv_tev_letter.json` | Starts A2-3 (the letter + rules), plus Tev's post-Interview "how many" scene and One's note |
+| `conv_trade_back.json` | Alien3 — Six's cassette back (fish or a song) |
+| `staging-scripts.md` | Beat-by-beat direction for Face Down, Cover Set, the Interview, the Door — using shipped camera/concert systems |
+| `steady-gaze-spec.md` | The phone-camera Observed mechanic — full spec + implementation sketch |
+| `ambient-lines.md` | RandomAlienDialogue sets + vendor barks, flag-gated per act and per ending |
 | `notes-and-logs.md` | Full text of every readable: predecessor notes, cassettes, boards, ORG file, grave markers |
 | `hal-lines.md` | Complete HAL line pack — phases, dimensions, mission beats, reactive lines |
 | `flags-and-tokens.md` | Flag registry, new TokenResolver tokens, and the wiring map (what code each conv needs) |

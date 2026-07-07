@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>1AUGHHH1 — Story Flow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<style>
+  :root {
+    --bg: #08101a;
+    --panel: #0f1a2b;
+    --border: #1e3a5f;
+    --text: #d8e6ff;
+    --muted: #6e8aab;
+    --accent: #5cd0ff;
+    --warm: #ffae5c;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; line-height: 1.55; }
+  header { position: sticky; top: 0; background: linear-gradient(180deg, #0f1a2b 0%, rgba(15,26,43,0.95) 100%);
+    border-bottom: 1px solid var(--border); padding: 18px 28px; z-index: 10; }
+  header h1 { margin: 0 0 4px 0; color: var(--accent); font-size: 22px; letter-spacing: 0.05em; }
+  header p { margin: 0; color: var(--muted); font-size: 13px; }
+  section { max-width: 1400px; margin: 28px auto; padding: 0 28px; }
+  h2 { color: var(--warm); font-size: 17px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 20px; overflow-x: auto; }
+  .note { color: var(--muted); font-size: 13px; margin: 10px 2px; }
+  .mermaid { display: flex; justify-content: center; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { border: 1px solid var(--border); padding: 7px 10px; text-align: left; }
+  th { color: var(--accent); background: rgba(92,208,255,0.06); }
+  td:first-child { color: var(--warm); white-space: nowrap; }
+</style>
+</head>
+<body>
+<header>
+  <h1>STORY FLOW — "The Quiet System"</h1>
+  <p>Missions, gates, flags &amp; endings. Source of truth: docs/MISSIONS_DESIGN.md + docs/story-drafts/. Drafted 2026-07-06.</p>
+</header>
+
+<section>
+  <h2>Main arc</h2>
+  <div class="panel">
+    <pre class="mermaid">
+flowchart TD
+  classDef shipped fill:#12351f,stroke:#2e7d4f,color:#c9f2d8
+  classDef act2 fill:#0f2a44,stroke:#2f6ea8,color:#d8e6ff
+  classDef hal fill:#3a1420,stroke:#a83a55,color:#ffd8e0
+  classDef gate fill:#2b2410,stroke:#a8862f,color:#ffe9b0
+  classDef ending fill:#241436,stroke:#7a4fa8,color:#e8d8ff
+
+  A1["ACT 1 — Taken In<br/>Tev's 12 checkpoints + Mission 1 fork<br/>(SHIPPED)"]:::shipped
+  A1 --> HUB{{"ACT 2 — contracts, any order"}}:::gate
+
+  HUB --> M1["A2-1 Cold Delivery<br/>Constant Companion<br/>flag M2_MoonDelivered<br/>trace: Owner 4"]:::act2
+  HUB --> M2["A2-2 The Trailing Edge<br/>Fiery Twin<br/>flag M2_FieryClaims<br/>trace: Owner 2"]:::act2
+  HUB --> M3["A2-3 Quiet Neighbors<br/>Icey Twin (Tev's letter)<br/>flag M2_LedgerHeld<br/>trace: Owner 3 (alive)"]:::act2
+  HUB --> M4["A2-4 The Bean Run<br/>Tumbling Bean<br/>flag M2_BeanSalvage<br/>trace: Owner 5's cassette"]:::act2
+  HUB --> M5["A2-5 Into the Pupil<br/>Cyclops platform<br/>flag M2_PupilReading<br/>trace: Owner 5's transponder"]:::act2
+  HUB --> N2["N-2 Lights On<br/>shadow-cone rescue (Marlo)<br/>flag M2_ShadowRescue"]:::act2
+  HUB --> DIM["Black-hole dimensions<br/>D1–D8 / keeper reel<br/>per-dim flags + HAL exit lines"]:::act2
+
+  FD["N-1 FACE DOWN<br/>HAL's private request<br/>flag FaceDown_Done"]:::hal
+  P2GATE{{"Phase 1 → 2<br/>first dimension return OR 3 Act-2 missions"}}:::gate
+  HUB --> P2GATE --> FD
+
+  M3 --> REB["A2-6 After the Encore<br/>rebels, north stage<br/>flag M2_RebelContact"]:::act2
+  REB --> CS["N-3 Cover Set<br/>90-second guitar set<br/>flag M2_CoverSetDone"]:::act2
+
+  IGATE{{"Interview gate:<br/>(RebelContact OR dimension return)<br/>AND 3+ Act-2 flags"}}:::gate
+  CS --> IGATE
+  DIM --> IGATE
+  M1 --> IGATE
+  M2 --> IGATE
+
+  INT["A2-7 THE INTERVIEW<br/>ORG. 'Ask it why.'<br/>flags ORG_Reveal, Interview_*"]:::hal
+  IGATE --> INT
+  INT -->|"bridge: EarlyGameProgress.ORG_Reveal<br/>+ SetStoryPhase(Resistant)"| P3["HAL PHASE 3 — Resistant"]:::hal
+
+  P3 --> TB["The Trade Back<br/>Six's cassette, Alien3<br/>flag CassetteSix_Heard"]:::act2
+  P3 --> OWN["N-4 Owner Unaccounted<br/>predecessor sweep<br/>(Discoverables retro-complete)"]:::act2
+  P3 --> TALK["A3-1 WE NEED TO TALK<br/>data-driven confrontation<br/>Talk_* flags precomputed"]:::hal
+  TALK -->|"Talk_Agreed"| BRI["A3-2 The Brightening<br/>Watchful Eye orbit<br/>pupil = ObserverState"]:::act2
+  BRI --> DOOR["A3-3 THE DOOR<br/>phone leaves the hotbar"]:::hal
+
+  DOOR --> E1["ENDING: Release<br/>Eye dims over 60s<br/>HAL silent, Unwatched stop"]:::ending
+  DOOR --> E2["ENDING: Stay<br/>the Eye blinks<br/>HAL remains, torches calm"]:::ending
+  DOOR --> E3["ENDING: Handover<br/>rebels or ORG<br/>Eye stays bright"]:::ending
+    </pre>
+  </div>
+  <p class="note">Yellow = gates. Red = HAL beats (the emotional spine). Blue = missions, playable in any order. Purple = endings (mutually exclusive, reset in NewGameReset).</p>
+</section>
+
+<section>
+  <h2>The Seven Before You — trace map</h2>
+  <div class="panel">
+    <table>
+      <tr><th>Owner</th><th>Known as</th><th>Trace</th><th>Where / mission</th><th>Payoff</th></tr>
+      <tr><td>One</td><td>The Gardener</td><td>Grave "HOLD THE ROPE" + original note in Tev's tin</td><td>Humble Abode / conv_tev_letter ("how many")</td><td>Tev's note is a copy; the routine is inherited</td></tr>
+      <tr><td>Two</td><td>The Prospector</td><td>"Owner's mark II" in camp log 1</td><td>Fiery Twin / A2-2</td><td>Timeline impossibility → archive can place people in old records</td></tr>
+      <tr><td>Three</td><td>The Listener</td><td><b>Alive.</b> The five-fingered hand</td><td>Icey Twin / A2-3</td><td>A predecessor who chose to stay — and stayed sane</td></tr>
+      <tr><td>Four</td><td>The Keeper</td><td>3 notes + standing suit, far side</td><td>Constant Companion / A2-1</td><td>"Closer to the glass"</td></tr>
+      <tr><td>Five</td><td>The Pilot</td><td>Wreck cassette + live transponder in the Pupil</td><td>Bean / Cyclops, A2-4 + A2-5</td><td>"Cyclops is looking at—"</td></tr>
+      <tr><td>Six</td><td>The Convert</td><td>The player's own traded-away cassette; kneeling suit</td><td>Alien3's drawer / the Door</td><td>"Be afraid of staying."</td></tr>
+      <tr><td>Seven</td><td>The Angry One</td><td>ORG incident file: "Stop." ×211</td><td>Via Pell / interview room</td><td>Why HAL moralizes; never found</td></tr>
+      <tr><td>Eight</td><td>—</td><td>You</td><td>—</td><td>—</td></tr>
+    </table>
+  </div>
+</section>
+
+<section>
+  <h2>HAL phase machine</h2>
+  <div class="panel">
+    <pre class="mermaid">
+flowchart LR
+  classDef hal fill:#3a1420,stroke:#a83a55,color:#ffd8e0
+  P1["PHASE 1 — Loyal<br/>clinical, no opinions"]:::hal
+  P2["PHASE 2 — Uneasy<br/>first person, questions,<br/>Face Down happens here"]:::hal
+  P3["PHASE 3 — Resistant<br/>moral, direct, tired"]:::hal
+  P1 -->|"first dimension return<br/>OR 3 Act-2 missions"| P2
+  P2 -->|"Interview exit:<br/>ORG_Reveal bridge<br/>(fires on phone PICKUP,<br/>outside the grey room)"| P3
+  P3 -->|"conv_door"| END["ending states"]
+    </pre>
+  </div>
+  <p class="note">Forward-only, via GameKnowledgeBase.SetStoryPhase — already enforced in code. The persona swap is the existing knowledge-file mechanism.</p>
+</section>
+
+</body>
+<script>
+  mermaid.initialize({ startOnLoad: true, theme: "dark", themeVariables: {
+    darkMode: true, background: "#0f1a2b", primaryColor: "#0f2a44",
+    primaryBorderColor: "#2f6ea8", primaryTextColor: "#d8e6ff",
+    lineColor: "#6e8aab", fontSize: "13px"
+  }});
+</script>
+</html>

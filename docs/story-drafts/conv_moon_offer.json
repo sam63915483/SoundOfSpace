@@ -1,0 +1,61 @@
+{
+  "id": "conv_moon_offer",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Alien7",
+      "lines": [
+        "You. Yes, you, the faller. You fly, don't you? Everyone says you fly.",
+        "There's a base on the moon. MoonBase — we were not an imaginative generation. Twelve years ago the supply runs stopped, nobody ever told ME why, and the keeper up there still owes me for six crates of preserves."
+      ],
+      "responses": [
+        { "buttonText": "You want me to collect a twelve-year-old debt?", "nextNodeId": "job" },
+        { "buttonText": "Why did the runs stop?", "nextNodeId": "whystop" }
+      ]
+    },
+    {
+      "id": "whystop",
+      "speaker": "Alien7",
+      "lines": [
+        "Orders. From whom? 'The Accord.' Which part of the Accord? 'The Accord.'",
+        "Twelve years of that answer. I sell goods, faller — I know the sound of a price nobody wants to say out loud."
+      ],
+      "responses": [
+        { "buttonText": "So what's the job?", "nextNodeId": "job" }
+      ]
+    },
+    {
+      "id": "job",
+      "speaker": "Alien7",
+      "lines": [
+        "I want you to carry ONE crate up, knock on the door, and come back able to look me in the eye and tell me what you saw.",
+        "The crate is a formality. The looking is the job."
+      ],
+      "responses": [
+        {
+          "buttonText": "I'll fly it up.",
+          "nextNodeId": "accept",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "M2_MoonOfferTaken", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_moon_delivery" }
+          ]
+        },
+        { "buttonText": "Not today.", "nextNodeId": "decline" }
+      ]
+    },
+    {
+      "id": "accept",
+      "speaker": "Alien7",
+      "lines": [
+        "The crate's beside the stall. Mind your landing speed — that base glass is older than my complaints, and my complaints are historic."
+      ],
+      "responses": [ { "buttonText": "(Take the crate.)", "nextNodeId": "end" } ]
+    },
+    {
+      "id": "decline",
+      "speaker": "Alien7",
+      "lines": [ "It'll keep. Debts and moons, faller — neither one goes anywhere." ],
+      "responses": [ { "buttonText": "(Leave.)", "nextNodeId": "end" } ]
+    }
+  ]
+}

@@ -1,0 +1,101 @@
+{
+  "id": "conv_tev_letter",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Tev",
+      "lines": [
+        "You've been flying far. Good. Far is what the ship's for.",
+        "I have a favor, and it's a strange one. Friends of mine live under the ice on the cold twin. We write letters. Paper letters — they don't... they don't do radio."
+      ],
+      "responses": [
+        { "buttonText": "Why don't they do radio?", "nextNodeId": "whyradio" },
+        { "buttonText": "Who are they?", "nextNodeId": "who" },
+        { "buttonText": "How many of us have you taken in, Tev?", "nextNodeId": "howmany", "requiresFlag": "Interview_Done" }
+      ]
+    },
+    {
+      "id": "whyradio",
+      "speaker": "Tev",
+      "lines": [
+        "They'll tell you themselves. In their way.",
+        "It's not mine to write in someone else's hand."
+      ],
+      "responses": [
+        { "buttonText": "Who are they?", "nextNodeId": "who" },
+        { "buttonText": "I'll take the letter.", "nextNodeId": "rules" }
+      ]
+    },
+    {
+      "id": "who",
+      "speaker": "Tev",
+      "lines": [
+        "Researchers, once. Neighbors, always. Eleven years of letters, and every one of mine signed the same way.",
+        "One of them has been asking about you, you know. And I never told them a thing — which is how I know they'll like you."
+      ],
+      "responses": [
+        { "buttonText": "Asking about me?", "nextNodeId": "asking" },
+        { "buttonText": "I'll take the letter.", "nextNodeId": "rules" }
+      ]
+    },
+    {
+      "id": "asking",
+      "speaker": "Tev",
+      "lines": [
+        "Mm. The one with the smallest handwriting.",
+        "Go and see. Some introductions shouldn't be made by a third party."
+      ],
+      "responses": [
+        { "buttonText": "I'll take the letter.", "nextNodeId": "rules" }
+      ]
+    },
+    {
+      "id": "rules",
+      "speaker": "Tev",
+      "lines": [
+        "Thank you. Now listen, because this part matters more than the letter.",
+        "When you're inside: don't speak. Not a word, not a whisper, no matter what you see.",
+        "Smile a lot. They like manners."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Take the letter.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "Tev_LetterGiven", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_quiet_neighbors" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "howmany",
+      "speaker": "Tev",
+      "lines": [
+        "...Eight. You're eight.",
+        "The first one taught me the routine. The water, the fish, the fire. I only wrote it down.",
+        "Don't tell me how it ends this time. I find I do better work when I don't know."
+      ],
+      "responses": [
+        { "buttonText": "Can I see what the first one wrote?", "nextNodeId": "showsnote" },
+        { "buttonText": "(Let it be.)", "nextNodeId": "open" }
+      ]
+    },
+    {
+      "id": "showsnote",
+      "speaker": "Tev",
+      "lines": [
+        "(He takes a tin from the shelf, and from the tin, a folded paper worn soft as cloth.)",
+        "You've been reading my copy since your first morning. This is the hand it came from.",
+        "Bring it back before dark. It's the only thing in this house I'd chase you for."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Read One's note.)",
+          "nextNodeId": "end",
+          "effects": [ { "kind": "SetFlag", "strArg": "Tev_ShowedNote", "boolArg": true } ]
+        }
+      ]
+    }
+  ]
+}
