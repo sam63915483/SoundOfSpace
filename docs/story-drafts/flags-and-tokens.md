@@ -33,11 +33,16 @@ flags are recomputed at trigger time so they need no save entry).
 
 ## 2. New TokenResolver tokens ★
 
-| Token | Source |
+| Token | Status |
 |---|---|
-| `{DEATHS}` | `ResourceManager` TotalDeaths |
-| `{KILLED_NAMES}` | `AlienKillsSave.killedPrePlacedNames`, joined "Marn. Ulo. Sett." — display-name map wanted so it's names, not GameObject names |
-| `{HOURS_PLAYED}` | accumulate `Time.unscaledDeltaTime` in a saved counter (new small save field) |
+| `{PLAYER_DEATHS}` | **Already shipped** in TokenResolver — drafts updated to use it (was `{DEATHS}`) |
+| `{KILLED_NAMES}` | **IMPLEMENTED** — TokenResolver case → `Mission2.KilledNamesJoined()` (GameObject names for now; a display-name map is a nice-to-have) |
+| `{HOURS_PLAYED}` | **Dropped** — would need a new saved playtime counter; the conv doesn't use it |
+
+**Also implemented:** `DialogueRunner` now runs every authored line through
+`TokenResolver.Resolve()` before display (they were never resolved before —
+tokens in conv JSONs would have printed literally). Unknown tokens pass
+through unchanged, so existing token-free content is unaffected.
 
 ## 3. Wiring map — one item per conversation/mission
 
@@ -116,18 +121,28 @@ implementing the same `DialoguePresenter` interface over a world-space/
 overlay panel with a speaker name label — the engine (`DialogueRunner`) is
 already presenter-agnostic.
 
+**ALSO DONE (second slice, compile- and type-verified in the live editor):**
+- `WorldDialogueUI.cs` — the world-surface presenter (procedural bottom
+  panel, speaker name label, typewriter via `DialogueTextStyling`, reply
+  buttons, cursor handling). Start any conversation from any script with
+  `WorldDialogueUI.Begin("conv_tev_letter")`. One at a time; check
+  `WorldDialogueUI.IsOpen`. **Not yet eyeballed in play mode** — layout
+  values may want a visual pass.
+- `DialogueRunner` token resolution + `{KILLED_NAMES}` token (see §2).
+
 **Remaining, in order:**
 1. Copy `conv_face_down.json` + `conv_face_down_after.json` into
    `StreamingAssets/Story/` and place 1–3 `FaceDownSpot`s → the first beat
    is live end-to-end (Mission2Director offers it at Phase 2).
-2. To test without playing to Phase 2: F9/dev-flip a flag or call
+   To test without playing to Phase 2: call
    `GameKnowledgeBase.Instance.SetStoryPhase(StoryPhase.Phase2_Uneasy)`.
-3. `WorldDialoguePresenter` (see above) → unlocks all NPC-giver convs.
-4. conv_interview + collect-the-player trigger (#5) — Phase 3 end-to-end
+2. Eyeball `WorldDialogueUI` once in play mode
+   (`WorldDialogueUI.Begin("conv_menu")` from anywhere) and tune the panel.
+3. conv_interview + collect-the-player trigger (#5) — Phase 3 end-to-end
    (the bridge is already waiting for the flag).
-5. `{DEATHS}`/`{KILLED_NAMES}`/`{HOURS_PLAYED}` tokens in TokenResolver
-   (data sources ready on Mission2).
-6. Act 2 missions in any order; conv_door last.
-7. Call `Mission2.NotifyDimensionReturn()` from the dimension-return path
+4. NPC-giver hookups: each giver calls `WorldDialogueUI.Begin(...)` from its
+   existing interact path; ship the corresponding conv JSON with each.
+5. Act 2 missions in any order; conv_door last.
+6. Call `Mission2.NotifyDimensionReturn()` from the dimension-return path
    (PortalManager/BlackHoleCapture exit) so the Phase 1→2 gate's first
    condition works.

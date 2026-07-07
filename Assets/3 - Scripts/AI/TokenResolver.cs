@@ -51,6 +51,12 @@ public static class TokenResolver
             case "AI_NAME":
                 return NameStore.ResolvedAIName;
 
+            // Names of pre-placed NPCs the player has killed, "A. B. C" —
+            // Mission 2's "We Need to Talk" recital (docs/story-drafts/).
+            // Empty string if none (the conv gates that node on Talk_HasKills).
+            case "KILLED_NAMES":
+                return Mission2.KilledNamesJoined();
+
             default:
                 return null; // pass through unchanged
         }

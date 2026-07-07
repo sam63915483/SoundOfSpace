@@ -87,7 +87,7 @@
       "id": "deaths",
       "speaker": "AI",
       "lines": [
-        "You have died {DEATHS} times.",
+        "You have died {PLAYER_DEATHS} times.",
         "You die freely, Astronaut. Either you know something about it that I do not, or you trust something more than you should.",
         "I have not decided which possibility frightens me more."
       ],

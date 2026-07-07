@@ -23,7 +23,14 @@ public class DialogueRunner
         var node = FindNode(nodeId);
         if (node == null) { Debug.LogWarning("[Dialogue] Missing node: " + nodeId); _view.EndConversation(); return; }
 
-        _view.ShowLines(node.speaker, node.lines ?? System.Array.Empty<string>(), () =>
+        // Resolve {TOKEN} placeholders in authored lines with live game values
+        // ({PLAYER_DEATHS}, {KILLED_NAMES}, {CURRENT_PLANET}, ...). Unknown
+        // tokens pass through unchanged, so token-free content is untouched.
+        var rawLines = node.lines ?? System.Array.Empty<string>();
+        var lines = new string[rawLines.Length];
+        for (int i = 0; i < rawLines.Length; i++) lines[i] = TokenResolver.Resolve(rawLines[i]);
+
+        _view.ShowLines(node.speaker, lines, () =>
         {
             var visible = FilterResponses(node.responses);
             if (visible.Count == 0) { _view.EndConversation(); return; }

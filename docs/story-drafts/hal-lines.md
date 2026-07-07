@@ -61,7 +61,7 @@ It is the most important line in the pack.)*
 | D18 StaticField | "Stay out of the static. Some things resent being forgotten." |
 | D22 RustSea | "Eleven hull designs, Astronaut. One of them is yours." |
 | D23 WheatAtDusk | "That was not this system's sun." |
-| D24 WaitingRoom | "You have been here before, Astronaut. {DEATHS}★ times." |
+| D24 WaitingRoom | "You have been here before, Astronaut. {PLAYER_DEATHS} times." |
 | D25 CandleSea | "Each flame was lit by hand. I counted." |
 
 ## Phase-shaded variants for existing triggers
