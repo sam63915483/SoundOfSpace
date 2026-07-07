@@ -25,12 +25,7 @@
       "lines": [ "First finding." ],
       "responses": [
         { "buttonText": "(Listen.)", "nextNodeId": "kills", "requiresFlag": "Talk_HasKills" },
-        { "buttonText": "(Listen.)", "nextNodeId": "clean", "requiresFlag": "Talk_CleanHands" },
-        {
-          "buttonText": "(Listen.)",
-          "nextNodeId": "route2",
-          "hiddenIfFlag": "Talk_HasKills"
-        }
+        { "buttonText": "(Listen.)", "nextNodeId": "clean", "hiddenIfFlag": "Talk_HasKills" }
       ]
     },
     {
