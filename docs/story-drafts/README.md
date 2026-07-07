@@ -1,5 +1,8 @@
 # Story Drafts — drop-in content package
 
+> **Implementing? Start at [`INTEGRATION_HANDOFF.md`](INTEGRATION_HANDOFF.md)**
+> — the master chunked plan (who places what, who wires what, status table).
+
 Companion to `docs/MISSIONS_DESIGN.md` (Parts 1–2). This folder contains
 **production-format content**: conversation JSONs in the exact
 `DialogueData.cs` schema, objective/hint-track entries, all readable
