@@ -1,0 +1,163 @@
+{
+  "id": "conv_iceytwin",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Board",
+      "lines": [
+        "DO NOT SPEAK.",
+        "SMILE IF YOU UNDERSTAND."
+      ],
+      "responses": [
+        { "buttonText": "(Smile.)", "nextNodeId": "manners" },
+        { "buttonText": "[Write] Why can't I speak?", "nextNodeId": "why" }
+      ]
+    },
+    {
+      "id": "manners",
+      "speaker": "Board",
+      "lines": [ "GOOD. TEV STILL TEACHES MANNERS." ],
+      "responses": [
+        { "buttonText": "[Write] I have a letter from him.", "nextNodeId": "letter" }
+      ]
+    },
+    {
+      "id": "why",
+      "speaker": "Board",
+      "lines": [
+        "SOUND CARRIES INTENT.",
+        "INTENT IS WHAT IT READS.",
+        "WE HAVE BEEN QUIET FIFTEEN YEARS. IT HAS NOT LOOKED AT US IN FOURTEEN."
+      ],
+      "responses": [
+        { "buttonText": "[Write] I have a letter from Tev.", "nextNodeId": "letter" }
+      ]
+    },
+    {
+      "id": "letter",
+      "speaker": "Board",
+      "lines": [
+        "GIVE IT TO THE TALL ONE.",
+        "THE TALL ONE IS NOT TALL. THE TALL ONE IS THE ONE WITH FIVE FINGERS."
+      ],
+      "responses": [
+        { "buttonText": "(Find the hand with five fingers.)", "nextNodeId": "three_intro" }
+      ]
+    },
+    {
+      "id": "three_intro",
+      "speaker": "Three",
+      "lines": [
+        "hello. you're number eight.",
+        "i was number three."
+      ],
+      "responses": [
+        { "buttonText": "[Write] YOU'RE HUMAN.", "nextNodeId": "human" },
+        { "buttonText": "[Write] How long have you been down here?", "nextNodeId": "howlong" }
+      ]
+    },
+    {
+      "id": "human",
+      "speaker": "Three",
+      "lines": [
+        "so were the others.",
+        "write smaller. you're shouting."
+      ],
+      "responses": [
+        { "buttonText": "[Write] how long have you been down here?", "nextNodeId": "howlong" },
+        { "buttonText": "[Write] why did you stay?", "nextNodeId": "whystay" }
+      ]
+    },
+    {
+      "id": "howlong",
+      "speaker": "Three",
+      "lines": [
+        "nine years. seven of them good.",
+        "the quiet grows on you. it grew on me."
+      ],
+      "responses": [
+        { "buttonText": "[Write] why did you stay?", "nextNodeId": "whystay" },
+        { "buttonText": "(Hand over Tev's letter.)", "nextNodeId": "ledger" }
+      ]
+    },
+    {
+      "id": "whystay",
+      "speaker": "Three",
+      "lines": [
+        "up there, everything i did was watched, weighed, filed.",
+        "down here i am nobody's data. you'll understand later. or you won't, and that will also be fine."
+      ],
+      "responses": [
+        { "buttonText": "(Hand over Tev's letter.)", "nextNodeId": "ledger" }
+      ]
+    },
+    {
+      "id": "ledger",
+      "speaker": "Three",
+      "lines": [
+        "he still signs it 'your friend on the warm side.' eleven years.",
+        "we measure the eye. sixty years of measurements. the curve was a curve until you people started falling out of the sky.",
+        "now it is a staircase.",
+        "take the ledger. someone above the ice needs to see the shape of it."
+      ],
+      "responses": [
+        { "buttonText": "[Write] who should see it?", "nextNodeId": "who" },
+        {
+          "buttonText": "(Take the ledger.)",
+          "nextNodeId": "warning",
+          "effects": [ { "kind": "SetFlag", "strArg": "M2_LedgerHeld", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "who",
+      "speaker": "Three",
+      "lines": [
+        "someone who still asks questions.",
+        "you'll know them because everyone around them has stopped."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Take the ledger.)",
+          "nextNodeId": "warning",
+          "effects": [ { "kind": "SetFlag", "strArg": "M2_LedgerHeld", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "warning",
+      "speaker": "Three",
+      "lines": [
+        "one more thing.",
+        "the phone. do not bring it inside again."
+      ],
+      "responses": [
+        { "buttonText": "[Write] it's just a phone.", "nextNodeId": "interject" },
+        { "buttonText": "(Nod.)", "nextNodeId": "interject" }
+      ]
+    },
+    {
+      "id": "interject",
+      "speaker": "AI",
+      "lines": [ "Why is no one speaking, Astronaut?" ],
+      "responses": [
+        { "buttonText": "(The boards go up all at once.)", "nextNodeId": "go" }
+      ]
+    },
+    {
+      "id": "go",
+      "speaker": "Board",
+      "lines": [ "GO.", "GO NOW." ],
+      "responses": [
+        {
+          "buttonText": "(Leave.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "M2_IceyVisited", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_ledger" }
+          ]
+        }
+      ]
+    }
+  ]
+}

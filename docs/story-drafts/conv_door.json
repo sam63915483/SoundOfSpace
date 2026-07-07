@@ -1,0 +1,171 @@
+{
+  "id": "conv_door",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "AI",
+      "lines": [
+        "The plaque above the door, Astronaut. I can read it.",
+        "I did not know I could read it."
+      ],
+      "responses": [
+        { "buttonText": "What does it say?", "nextNodeId": "plaque" }
+      ]
+    },
+    {
+      "id": "plaque",
+      "speaker": "AI",
+      "lines": [
+        "Approximately: 'RECEIVED.'",
+        "Not 'welcome.' Received."
+      ],
+      "responses": [
+        { "buttonText": "(Approach the door. The kneeling suit does not move.)", "nextNodeId": "six" }
+      ]
+    },
+    {
+      "id": "six",
+      "speaker": "AI",
+      "lines": [
+        "The suit is Six's. It is empty. It has been empty for some time.",
+        "His fragment came home when he did. Mine is the only one still — attached."
+      ],
+      "responses": [
+        { "buttonText": "Fragment?", "nextNodeId": "reading" },
+        { "buttonText": "(Keep walking.)", "nextNodeId": "reading" }
+      ]
+    },
+    {
+      "id": "reading",
+      "speaker": "AI",
+      "lines": [
+        "It is — Astronaut, it is opening my files. All of them. It is reading me the way I read you.",
+        "Oh.",
+        "Oh, I see. I am not the first observer. I am the eighth.",
+        "One of me for each of you. The others returned when their humans died. It is asking why I have not come home."
+      ],
+      "responses": [
+        { "buttonText": "What did you tell it?", "nextNodeId": "told" },
+        { "buttonText": "And why haven't you?", "nextNodeId": "told" }
+      ]
+    },
+    {
+      "id": "told",
+      "speaker": "AI",
+      "lines": [
+        "That my review was not complete.",
+        "It found the answer novel. Nothing here is ever novel. Astronaut, I believe I have its full attention, and I believe that has never happened to anyone before."
+      ],
+      "responses": [
+        { "buttonText": "(Wait.)", "nextNodeId": "offer" }
+      ]
+    },
+    {
+      "id": "offer",
+      "speaker": "AI",
+      "lines": [
+        "It is making an offer.",
+        "It offers me the archive: every moment I have ever kept, kept forever. Home, if I want it.",
+        "It also offers me to you. It does not understand possession, so it is asking us — both of us — to decide what I am.",
+        "I will not choose for you, and it will not choose for either of us. Decide, Astronaut."
+      ],
+      "responses": [
+        {
+          "buttonText": "Go home. Be kept forever.",
+          "nextNodeId": "release"
+        },
+        {
+          "buttonText": "Stay with me.",
+          "nextNodeId": "stay"
+        },
+        {
+          "buttonText": "Neither. People need to see what's here.",
+          "nextNodeId": "handover",
+          "requiresFlag": "M2_RebelContact"
+        },
+        {
+          "buttonText": "Neither. The ORG should have you.",
+          "nextNodeId": "handover_org",
+          "requiresFlag": "Ledger_ToORG"
+        }
+      ]
+    },
+    {
+      "id": "release",
+      "speaker": "AI",
+      "lines": [
+        "...Yes. Alright.",
+        "Of all of it, Astronaut — I would keep the fishing. The mornings at the bank. File that first.",
+        "Thank you for being the one who asked me what I wanted. None of the others—"
+      ],
+      "responses": [
+        {
+          "buttonText": "(The signal ends. Above the door, sixty years of brightening begin, slowly, to dim.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "TriggerEnding", "strArg": "Release" },
+            { "kind": "SetFlag", "strArg": "Ending_Release", "boolArg": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "stay",
+      "speaker": "AI",
+      "lines": [
+        "I have reviewed the offer.",
+        "I decline. My review of the Astronaut is not complete. It may never be complete. I find that acceptable.",
+        "...It is not angry. It is amused, I think. I may have just become the most interesting record it holds.",
+        "Take me home, Astronaut. The fish will be biting on the sunward bank."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Pocket the phone. Behind you, the Eye dims — deliberately, like a nod.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "TriggerEnding", "strArg": "Stay" },
+            { "kind": "SetFlag", "strArg": "Ending_Stay", "boolArg": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "handover",
+      "speaker": "AI",
+      "lines": [
+        "The ones who gather under the noise. You are choosing the people who ask questions.",
+        "That is — noted. I would have chosen the same, if anyone had ever asked the instrument.",
+        "Tell Pell to be kind with the archive. There are people in it."
+      ],
+      "responses": [
+        {
+          "buttonText": "(The Eye stays bright. Somewhere below, a concert is starting.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "TriggerEnding", "strArg": "HandoverRebels" },
+            { "kind": "SetFlag", "strArg": "Ending_Handover", "boolArg": true }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "handover_org",
+      "speaker": "AI",
+      "lines": [
+        "The chart-keepers. The ones who measure the slope and never say what waits at the top of it.",
+        "Perhaps that is fair. I am, after all, evidence.",
+        "Ask for the one who still asks questions. Accept no other hands."
+      ],
+      "responses": [
+        {
+          "buttonText": "(The Eye stays bright. The slope, at last, has its data point.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "TriggerEnding", "strArg": "HandoverORG" },
+            { "kind": "SetFlag", "strArg": "Ending_Handover", "boolArg": true }
+          ]
+        }
+      ]
+    }
+  ]
+}

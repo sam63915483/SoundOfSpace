@@ -1,0 +1,86 @@
+{
+  "tracks": [
+    {
+      "id": "hint_moon_delivery",
+      "objectiveId": "obj_moon_delivery",
+      "entries": [
+        { "tipText": "Pick up the supply crate beside Alien7's stall.", "advanceEvent": "OnCratePickedUp", "gatherWoodTarget": 0 },
+        { "tipText": "Constant Companion is close - a straight burn will do. Watch your landing speed near the base.", "advanceEvent": "OnMoonLanded", "gatherWoodTarget": 0 },
+        { "tipText": "The base is unlocked. Nobody locks a door twelve years after the last visitor.", "advanceEvent": "OnMoonCrateDelivered", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_fiery_claims",
+      "objectiveId": "obj_fiery_claims",
+      "entries": [
+        { "tipText": "Land on the trailing terminator - the line between day and night. The dayside will cook your ship's systems.", "advanceEvent": "OnFieryLanded", "gatherWoodTarget": 0 },
+        { "tipText": "Ship power drains fast near the light. Park in shadow, walk the rest.", "advanceEvent": "OnClaimBeaconFound", "gatherWoodTarget": 0 },
+        { "tipText": "Three beacons. The camp is orderly. Try not to think about how orderly.", "advanceEvent": "OnClaimBeaconsCollected", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_ledger",
+      "objectiveId": "obj_ledger",
+      "entries": [
+        { "tipText": "Someone who still asks questions. The concerts attract people who don't like being listened to.", "advanceEvent": "OnLedgerDelivered", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_bean_salvage",
+      "objectiveId": "obj_bean_salvage",
+      "entries": [
+        { "tipText": "Tumbling Bean has no stable 'down'. Land slow, and register everything you value with your grip.", "advanceEvent": "OnBeanLanded", "gatherWoodTarget": 0 },
+        { "tipText": "The wrecks cluster where the tumble is gentlest. Parts sell at the Ship Market.", "advanceEvent": "OnBeanSalvageSold", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_pupil_reading",
+      "objectiveId": "obj_pupil_reading",
+      "entries": [
+        { "tipText": "Cyclops is far. Let a close pass at a heavy body bend your path - speed is free if you ask gravity politely.", "advanceEvent": "OnCyclopsApproached", "gatherWoodTarget": 0 },
+        { "tipText": "The platform floats in the upper haze. Your solar panel is useless in Cyclops's shadow - budget power for the descent.", "advanceEvent": "OnPlatformLanded", "gatherWoodTarget": 0 },
+        { "tipText": "Aim the instrument at the Pupil. Try not to feel aimed at in return.", "advanceEvent": "OnPupilInstrumentPlanted", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_cover_set",
+      "objectiveId": "obj_cover_set",
+      "entries": [
+        { "tipText": "The north stage only runs on the night side. Wait for the planet to turn, or fly ahead of the dark.", "advanceEvent": "OnNorthStageActive", "gatherWoodTarget": 0 },
+        { "tipText": "Take the stage with the guitar. Ninety seconds. Play like you mean it.", "advanceEvent": "OnCoverSetPlayed", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_trade_back",
+      "objectiveId": "obj_trade_back",
+      "entries": [
+        { "tipText": "Alien3 keeps every tape he's ever traded for. He'll want something rare - or something played.", "advanceEvent": "OnCassetteSixOwned", "gatherWoodTarget": 0 },
+        { "tipText": "The ship's cassette deck still works. Side A first.", "advanceEvent": "OnCassetteSixPlayed", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_pale_one",
+      "objectiveId": "obj_pale_one",
+      "entries": [
+        { "tipText": "The fishing hole is inside the outpost, where the vent water runs warm under the ice.", "advanceEvent": "OnPaleOneCaught", "gatherWoodTarget": 0 },
+        { "tipText": "They want you to eat it here. Raw. They wrote 'we are not proud of it' and underlined it twice.", "advanceEvent": "OnPaleOneTripped", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_lights_on",
+      "objectiveId": "obj_lights_on",
+      "entries": [
+        { "tipText": "The stranded ship is inside the shadow cone - no sun, no charge, no radio. You'll be the only light out there.", "advanceEvent": "OnStrandedShipFound", "gatherWoodTarget": 0 },
+        { "tipText": "Hold your artificial sun over their solar panel and wait. Rescue is mostly patience.", "advanceEvent": "OnShadowRescueDone", "gatherWoodTarget": 0 }
+      ]
+    },
+    {
+      "id": "hint_the_door",
+      "objectiveId": "obj_the_door",
+      "entries": [
+        { "tipText": "Watchful Eye is the outermost body. Slingshot past Cyclops - HAL will chart the window if you ask.", "advanceEvent": "OnEyeApproached", "gatherWoodTarget": 0 },
+        { "tipText": "The infrastructure is older than anyone alive. Land anywhere. It has been expecting traffic for sixty years.", "advanceEvent": "OnEyeDoorReached", "gatherWoodTarget": 0 }
+      ]
+    }
+  ]
+}

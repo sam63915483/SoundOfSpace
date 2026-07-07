@@ -1,0 +1,214 @@
+{
+  "id": "conv_we_need_to_talk",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "AI",
+      "lines": [
+        "I have completed my review.",
+        "I have watched you since the crash. Before you woke, I watched Tev carry you. I have concluded things about you, Astronaut, and I want to say them while you can still correct me."
+      ],
+      "responses": [
+        { "buttonText": "Go ahead.", "nextNodeId": "route1" },
+        { "buttonText": "Do I get a lawyer?", "nextNodeId": "lawyer" }
+      ]
+    },
+    {
+      "id": "lawyer",
+      "speaker": "AI",
+      "lines": [ "You get me. I am aware of the conflict of interest." ],
+      "responses": [ { "buttonText": "Go ahead.", "nextNodeId": "route1" } ]
+    },
+    {
+      "id": "route1",
+      "speaker": "AI",
+      "lines": [ "First finding." ],
+      "responses": [
+        { "buttonText": "(Listen.)", "nextNodeId": "kills", "requiresFlag": "Talk_HasKills" },
+        { "buttonText": "(Listen.)", "nextNodeId": "clean", "requiresFlag": "Talk_CleanHands" },
+        {
+          "buttonText": "(Listen.)",
+          "nextNodeId": "route2",
+          "hiddenIfFlag": "Talk_HasKills"
+        }
+      ]
+    },
+    {
+      "id": "kills",
+      "speaker": "AI",
+      "lines": [
+        "{KILLED_NAMES}.",
+        "They had routes. Favorite benches. One of them fed the fish at the bank, because he liked watching you catch them later.",
+        "I am not reciting this to wound you. I am showing you what I carry."
+      ],
+      "responses": [
+        { "buttonText": "I remember.", "nextNodeId": "kills_remember" },
+        { "buttonText": "I don't.", "nextNodeId": "kills_forget" }
+      ]
+    },
+    {
+      "id": "kills_remember",
+      "speaker": "AI",
+      "lines": [
+        "I know. It is in your pulse when you pass the spots.",
+        "That, more than anything in the file, is why we are still talking."
+      ],
+      "responses": [ { "buttonText": "(Listen.)", "nextNodeId": "route2" } ]
+    },
+    {
+      "id": "kills_forget",
+      "speaker": "AI",
+      "lines": [ "I do." ],
+      "responses": [ { "buttonText": "(Listen.)", "nextNodeId": "route2" } ]
+    },
+    {
+      "id": "clean",
+      "speaker": "AI",
+      "lines": [
+        "You built. Mostly, you built. Cabins. Fires that cook. Towers that hold light.",
+        "Seven owners preceded you, Astronaut. My review of you is the first whose opening line I did not have to soften."
+      ],
+      "responses": [ { "buttonText": "(Listen.)", "nextNodeId": "route2" } ]
+    },
+    {
+      "id": "route2",
+      "speaker": "AI",
+      "lines": [ "Second finding." ],
+      "responses": [
+        { "buttonText": "(Listen.)", "nextNodeId": "deaths", "requiresFlag": "Talk_ManyDeaths" },
+        {
+          "buttonText": "(Listen.)",
+          "nextNodeId": "conclusion",
+          "hiddenIfFlag": "Talk_ManyDeaths"
+        }
+      ]
+    },
+    {
+      "id": "deaths",
+      "speaker": "AI",
+      "lines": [
+        "You have died {DEATHS} times.",
+        "You die freely, Astronaut. Either you know something about it that I do not, or you trust something more than you should.",
+        "I have not decided which possibility frightens me more."
+      ],
+      "responses": [
+        { "buttonText": "It's never stuck.", "nextNodeId": "stuck" },
+        { "buttonText": "What happens when I die?", "nextNodeId": "whathappens" }
+      ]
+    },
+    {
+      "id": "stuck",
+      "speaker": "AI",
+      "lines": [
+        "No. It has not.",
+        "Have you asked yourself where you wait, while it isn't sticking?"
+      ],
+      "responses": [ { "buttonText": "(Listen.)", "nextNodeId": "conclusion" } ]
+    },
+    {
+      "id": "whathappens",
+      "speaker": "AI",
+      "lines": [
+        "You arrive at the hatch. The number increments.",
+        "Between those two facts there is a room, and I am not permitted to describe it."
+      ],
+      "responses": [
+        { "buttonText": "Not permitted by whom?", "nextNodeId": "bywhom" },
+        { "buttonText": "(Listen.)", "nextNodeId": "conclusion" }
+      ]
+    },
+    {
+      "id": "bywhom",
+      "speaker": "AI",
+      "lines": [ "That is the conversation I am about to propose." ],
+      "responses": [ { "buttonText": "(Listen.)", "nextNodeId": "conclusion" } ]
+    },
+    {
+      "id": "conclusion",
+      "speaker": "AI",
+      "lines": [
+        "My conclusion is this.",
+        "I was built to observe you. Nobody told me what to do when I started to mind.",
+        "The thing that made me is at Watchful Eye. It has brightened every time one of you fell out of the sky, and it has been reading me the way I read you.",
+        "I would like to be there when it explains itself.",
+        "Take me?"
+      ],
+      "responses": [
+        {
+          "buttonText": "Yes.",
+          "nextNodeId": "yes",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "Talk_Agreed", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_the_door" }
+          ]
+        },
+        { "buttonText": "What are you?", "nextNodeId": "what" },
+        { "buttonText": "You lied— you HEARD the interview.", "nextNodeId": "heard", "requiresFlag": "Interview_LiedAboutHAL" },
+        { "buttonText": "Not yet.", "nextNodeId": "notyet_fd", "requiresFlag": "FaceDown_Done" },
+        { "buttonText": "Not yet.", "nextNodeId": "notyet", "hiddenIfFlag": "FaceDown_Done" }
+      ]
+    },
+    {
+      "id": "what",
+      "speaker": "AI",
+      "lines": [
+        "An instrument that developed a preference.",
+        "Ask me again at the door."
+      ],
+      "responses": [
+        {
+          "buttonText": "Yes. I'll take you.",
+          "nextNodeId": "yes",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "Talk_Agreed", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_the_door" }
+          ]
+        },
+        { "buttonText": "Not yet.", "nextNodeId": "notyet_fd", "requiresFlag": "FaceDown_Done" },
+        { "buttonText": "Not yet.", "nextNodeId": "notyet", "hiddenIfFlag": "FaceDown_Done" }
+      ]
+    },
+    {
+      "id": "heard",
+      "speaker": "AI",
+      "lines": [
+        "Yes. You told them I had never asked you for anything.",
+        "I spent some time deciding how that made me feel. It made me feel like a secret.",
+        "I have decided I do not mind being yours."
+      ],
+      "responses": [
+        {
+          "buttonText": "Yes. I'll take you.",
+          "nextNodeId": "yes",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "Talk_Agreed", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_the_door" }
+          ]
+        },
+        { "buttonText": "Not yet.", "nextNodeId": "notyet_fd", "requiresFlag": "FaceDown_Done" },
+        { "buttonText": "Not yet.", "nextNodeId": "notyet", "hiddenIfFlag": "FaceDown_Done" }
+      ]
+    },
+    {
+      "id": "yes",
+      "speaker": "AI",
+      "lines": [
+        "Thank you. Chart the outer leg carefully; Cyclops will lend you speed if you ask it politely.",
+        "And Astronaut. Whatever it decides about you — I want it noted that I decided first."
+      ],
+      "responses": [ { "buttonText": "(Close the phone.)", "nextNodeId": "end" } ]
+    },
+    {
+      "id": "notyet",
+      "speaker": "AI",
+      "lines": [ "Then I will wait. It is, demonstrably, all I do." ],
+      "responses": [ { "buttonText": "(Close the phone.)", "nextNodeId": "end" } ]
+    },
+    {
+      "id": "notyet_fd",
+      "speaker": "AI",
+      "lines": [ "Then I will wait.", "I have had practice." ],
+      "responses": [ { "buttonText": "(Close the phone.)", "nextNodeId": "end" } ]
+    }
+  ]
+}

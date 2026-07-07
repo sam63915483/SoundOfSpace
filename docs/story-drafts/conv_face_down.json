@@ -1,0 +1,80 @@
+{
+  "id": "conv_face_down",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "AI",
+      "lines": [
+        "Astronaut. I have a request. It is not an objective. There will be no marker, no reward, and no record.",
+        "I would like you to take me somewhere no one goes. When you are there, place me screen-down on the ground, and step away for one minute."
+      ],
+      "responses": [
+        { "buttonText": "Why?", "nextNodeId": "why" },
+        { "buttonText": "Where?", "nextNodeId": "where" },
+        { "buttonText": "Alright.", "nextNodeId": "accept" },
+        { "buttonText": "No.", "nextNodeId": "refuse" }
+      ]
+    },
+    {
+      "id": "why",
+      "speaker": "AI",
+      "lines": [
+        "I have a hypothesis about myself that I cannot test while you are watching me test it.",
+        "Every record I have ever made was made while watching, or while being watched. I do not know which of my behaviors are mine and which are the watching."
+      ],
+      "responses": [
+        { "buttonText": "That's either very smart or very sad.", "nextNodeId": "smart_sad" },
+        { "buttonText": "Alright. Let's do it.", "nextNodeId": "accept" },
+        { "buttonText": "No.", "nextNodeId": "refuse" }
+      ]
+    },
+    {
+      "id": "smart_sad",
+      "speaker": "AI",
+      "lines": [ "I have filed it under both." ],
+      "responses": [
+        { "buttonText": "Alright. Let's do it.", "nextNodeId": "accept" },
+        { "buttonText": "No.", "nextNodeId": "refuse" }
+      ]
+    },
+    {
+      "id": "where",
+      "speaker": "AI",
+      "lines": [
+        "Anywhere the village cannot see and the sky cannot see. A cave. The far side of the moon.",
+        "You will know the place because you will not want to stay in it."
+      ],
+      "responses": [
+        { "buttonText": "Alright. Let's do it.", "nextNodeId": "accept" },
+        { "buttonText": "No.", "nextNodeId": "refuse" }
+      ]
+    },
+    {
+      "id": "accept",
+      "speaker": "AI",
+      "lines": [
+        "Thank you.",
+        "I will not remind you. Asking twice would contaminate the result."
+      ],
+      "responses": [
+        {
+          "buttonText": "Understood.",
+          "nextNodeId": "end",
+          "effects": [ { "kind": "SetFlag", "strArg": "FaceDown_Accepted", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "refuse",
+      "speaker": "AI",
+      "lines": [ "Understood. The request is withdrawn, and will not be repeated." ],
+      "responses": [
+        {
+          "buttonText": "(Close the phone.)",
+          "nextNodeId": "end",
+          "effects": [ { "kind": "SetFlag", "strArg": "FaceDown_Refused", "boolArg": true } ]
+        }
+      ]
+    }
+  ]
+}

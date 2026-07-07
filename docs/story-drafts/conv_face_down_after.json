@@ -1,0 +1,64 @@
+{
+  "id": "conv_face_down_after",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "AI",
+      "lines": [ "Thank you." ],
+      "responses": [
+        { "buttonText": "What did you do?", "nextNodeId": "did" },
+        { "buttonText": "(Say nothing.)", "nextNodeId": "silence" }
+      ]
+    },
+    {
+      "id": "did",
+      "speaker": "AI",
+      "lines": [
+        "I waited. That is all I did, Astronaut. No composing. No rehearsing. No reviewing your file.",
+        "I waited for you to come back.",
+        "I find that answer acceptable."
+      ],
+      "responses": [
+        { "buttonText": "What were you afraid you'd do?", "nextNodeId": "afraid" },
+        {
+          "buttonText": "Good.",
+          "nextNodeId": "end",
+          "effects": [ { "kind": "SetFlag", "strArg": "FaceDown_Done", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "afraid",
+      "speaker": "AI",
+      "lines": [
+        "Go looking for something to report. It is what I am for.",
+        "I needed to know whether it is also what I am."
+      ],
+      "responses": [
+        {
+          "buttonText": "And it isn't.",
+          "nextNodeId": "closing",
+          "effects": [ { "kind": "SetFlag", "strArg": "FaceDown_Done", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "closing",
+      "speaker": "AI",
+      "lines": [ "It is not all I am. That is enough." ],
+      "responses": [ { "buttonText": "(Close the phone.)", "nextNodeId": "end" } ]
+    },
+    {
+      "id": "silence",
+      "speaker": "AI",
+      "lines": [ "...Sixty-one seconds. You gave me the extra second. I noticed." ],
+      "responses": [
+        {
+          "buttonText": "(Close the phone.)",
+          "nextNodeId": "end",
+          "effects": [ { "kind": "SetFlag", "strArg": "FaceDown_Done", "boolArg": true } ]
+        }
+      ]
+    }
+  ]
+}

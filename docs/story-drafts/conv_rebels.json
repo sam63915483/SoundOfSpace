@@ -1,0 +1,120 @@
+{
+  "id": "conv_rebels",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Pell",
+      "lines": [
+        "You came on the dark. Good.",
+        "Stand closer to the speaker. The big ones make a shadow you can talk in."
+      ],
+      "responses": [
+        { "buttonText": "A shadow?", "nextNodeId": "shadow" },
+        { "buttonText": "Who are you people?", "nextNodeId": "who" }
+      ]
+    },
+    {
+      "id": "shadow",
+      "speaker": "Pell",
+      "lines": [
+        "Light shows it where to look. Sound shows it what you mean.",
+        "Under enough noise, meaning smears. The concerts aren't parties, friend. They're the only rooms in the sky."
+      ],
+      "responses": [
+        { "buttonText": "Who's 'it'?", "nextNodeId": "it" },
+        { "buttonText": "Who are you people?", "nextNodeId": "who" }
+      ]
+    },
+    {
+      "id": "who",
+      "speaker": "Pell",
+      "lines": [
+        "Dancers.",
+        "Officially? Dancers."
+      ],
+      "responses": [
+        { "buttonText": "And unofficially?", "nextNodeId": "it" }
+      ]
+    },
+    {
+      "id": "it",
+      "speaker": "Pell",
+      "lines": [
+        "The Accord says the outer system is closed for budget reasons. The ice-folk went quiet for health reasons. The moon went dark for supply reasons.",
+        "A lot of reasons, for one system. We're the people who noticed they all started the same decade.",
+        "The thing on Watchful Eye is awake, it takes notes, and everybody official has decided the safest thing to be is boring. We disagree. Loudly. On a schedule."
+      ],
+      "responses": [
+        {
+          "buttonText": "I'm carrying the ice-folk's measurements.",
+          "nextNodeId": "ledger",
+          "requiresFlag": "M2_LedgerHeld"
+        },
+        { "buttonText": "What do you want from me?", "nextNodeId": "recruit" }
+      ]
+    },
+    {
+      "id": "recruit",
+      "speaker": "Pell",
+      "lines": [
+        "Tonight? Nothing. You're new, and new people are loud without knowing it.",
+        "Go do your jobs. Fly your routes. When you're carrying something worth carrying, come find the north stage on the dark."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Leave.)",
+          "nextNodeId": "end",
+          "effects": [ { "kind": "SetFlag", "strArg": "M2_RebelMet", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "ledger",
+      "speaker": "Pell",
+      "lines": [
+        "The staircase. So they finally let it off the ice.",
+        "There's one person inside the ORG who still asks questions. We're getting things to them — and soon, getting THEM out.",
+        "Next set, north stage: we need ninety seconds nobody's listening. You own a guitar, don't you?",
+        "You're the act."
+      ],
+      "responses": [
+        {
+          "buttonText": "I'll play.",
+          "nextNodeId": "close",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "M2_RebelContact", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_cover_set" }
+          ]
+        },
+        { "buttonText": "Why me?", "nextNodeId": "whyme" }
+      ]
+    },
+    {
+      "id": "whyme",
+      "speaker": "Pell",
+      "lines": [
+        "Because the crowd will watch you, the sky will watch you, and everything watching you is not watching us.",
+        "Congratulations. It's the first time being observed will ever have done anybody any good."
+      ],
+      "responses": [
+        {
+          "buttonText": "I'll play.",
+          "nextNodeId": "close",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "M2_RebelContact", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_cover_set" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "speaker": "Pell",
+      "lines": [
+        "Ninety seconds. Play anything. Play it like you mean it — meaning smears best when there's a lot of it.",
+        "And friend. Leave the phone in your ship."
+      ],
+      "responses": [ { "buttonText": "(Leave.)", "nextNodeId": "end" } ]
+    }
+  ]
+}

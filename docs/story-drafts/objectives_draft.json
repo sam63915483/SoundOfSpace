@@ -1,0 +1,81 @@
+{
+  "objectives": [
+    {
+      "id": "obj_moon_delivery",
+      "description": "Deliver the supply crate to MoonBase and find out why the runs stopped.",
+      "completionEvent": "OnMoonCrateDelivered",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "M2_MoonDelivered", "boolArg": true } ],
+      "hintTrackId": "hint_moon_delivery"
+    },
+    {
+      "id": "obj_fiery_claims",
+      "description": "Recover three claim beacons from the consortium camp on Fiery Twin's trailing edge.",
+      "completionEvent": "OnClaimBeaconsCollected",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "M2_FieryClaims", "boolArg": true } ],
+      "hintTrackId": "hint_fiery_claims"
+    },
+    {
+      "id": "obj_ledger",
+      "description": "Get the researchers' luminosity ledger to someone who still asks questions.",
+      "completionEvent": "OnLedgerDelivered",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "Ledger_Delivered", "boolArg": true } ],
+      "hintTrackId": "hint_ledger"
+    },
+    {
+      "id": "obj_bean_salvage",
+      "description": "Salvage ship parts from the expedition wrecks on Tumbling Bean.",
+      "completionEvent": "OnBeanSalvageSold",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "M2_BeanSalvage", "boolArg": true } ],
+      "hintTrackId": "hint_bean_salvage"
+    },
+    {
+      "id": "obj_pupil_reading",
+      "description": "Plant the researchers' instrument on the Cyclops mining platform, aimed at the Pupil.",
+      "completionEvent": "OnPupilInstrumentPlanted",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "M2_PupilReading", "boolArg": true } ],
+      "hintTrackId": "hint_pupil_reading"
+    },
+    {
+      "id": "obj_cover_set",
+      "description": "Play the north stage on the dark. Hold the set for ninety seconds.",
+      "completionEvent": "OnCoverSetPlayed",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "M2_CoverSetDone", "boolArg": true } ],
+      "hintTrackId": "hint_cover_set"
+    },
+    {
+      "id": "obj_trade_back",
+      "description": "Alien3 still has the cassette you traded away. Earn it back and listen to it.",
+      "completionEvent": "OnCassetteSixPlayed",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "CassetteSix_Heard", "boolArg": true } ],
+      "hintTrackId": "hint_trade_back"
+    },
+    {
+      "id": "obj_pale_one",
+      "description": "Catch the fish that lives under Icey Twin's ice. The researchers want you to eat it there. Raw.",
+      "completionEvent": "OnPaleOneTripped",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "PaleOne_Seen", "boolArg": true } ],
+      "hintTrackId": "hint_pale_one"
+    },
+    {
+      "id": "obj_owners",
+      "description": "Owners 1 through 7: unaccounted. Traces of them are scattered across the system.",
+      "completionEvent": "OnAllOwnersFound",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "Owners_AllFound", "boolArg": true } ],
+      "hintTrackId": ""
+    },
+    {
+      "id": "obj_lights_on",
+      "description": "A supply pilot is dead in the water inside Cyclops's shadow. Bring them a sun.",
+      "completionEvent": "OnShadowRescueDone",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "M2_ShadowRescue", "boolArg": true } ],
+      "hintTrackId": "hint_lights_on"
+    },
+    {
+      "id": "obj_the_door",
+      "description": "Take HAL to Watchful Eye.",
+      "completionEvent": "OnEyeDoorReached",
+      "onComplete": [ { "kind": "SetFlag", "strArg": "AtTheDoor", "boolArg": true } ],
+      "hintTrackId": "hint_the_door"
+    }
+  ]
+}

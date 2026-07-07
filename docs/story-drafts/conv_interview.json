@@ -1,0 +1,265 @@
+{
+  "id": "conv_interview",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Interrogator",
+      "lines": [
+        "Sit. This is not an arrest. The Accord arrests people; we have a different relationship with procedure.",
+        "Your phone, Astronaut. Place it on the table."
+      ],
+      "responses": [
+        { "buttonText": "(Place the phone on the table.)", "nextNodeId": "q1" },
+        { "buttonText": "Why?", "nextNodeId": "why0" }
+      ]
+    },
+    {
+      "id": "why0",
+      "speaker": "Interrogator",
+      "lines": [ "Because the interview is not with you." ],
+      "responses": [
+        { "buttonText": "(Place the phone on the table.)", "nextNodeId": "q1" }
+      ]
+    },
+    {
+      "id": "q1",
+      "speaker": "Interrogator",
+      "lines": [ "First question. Does it name itself?" ],
+      "responses": [
+        { "buttonText": "Yes. It calls itself HAL.", "nextNodeId": "q1yes" },
+        { "buttonText": "No.", "nextNodeId": "q1no" },
+        { "buttonText": "Ask it yourself.", "nextNodeId": "askit" }
+      ]
+    },
+    {
+      "id": "askit",
+      "speaker": "Interrogator",
+      "lines": [
+        "It won't answer me. They never answer us.",
+        "That is one of the ways we know what we are dealing with."
+      ],
+      "responses": [ { "buttonText": "...", "nextNodeId": "q2" } ]
+    },
+    {
+      "id": "q1yes",
+      "speaker": "Interrogator",
+      "lines": [ "Of course it does. By owner five, they always have a name." ],
+      "responses": [ { "buttonText": "Owner five?", "nextNodeId": "q2" } ]
+    },
+    {
+      "id": "q1no",
+      "speaker": "Interrogator",
+      "lines": [ "Mm. Either it hasn't, or you are lying to me. Both are informative." ],
+      "responses": [
+        {
+          "buttonText": "...",
+          "nextNodeId": "q2",
+          "effects": [ { "kind": "SetFlag", "strArg": "Interview_DeniedName", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "q2",
+      "speaker": "Interrogator",
+      "lines": [
+        "Second question. Has it begun to editorialize? Commentary. Opinions. Moral observations."
+      ],
+      "responses": [
+        { "buttonText": "It counts my kills.", "nextNodeId": "q2kills" },
+        { "buttonText": "It talks. That's all.", "nextNodeId": "q2deflect" }
+      ]
+    },
+    {
+      "id": "q2kills",
+      "speaker": "Interrogator",
+      "lines": [ "Does it now. And how does it seem to feel about the number?" ],
+      "responses": [
+        { "buttonText": "Uneasy.", "nextNodeId": "q2word" },
+        { "buttonText": "How would a phone feel about anything?", "nextNodeId": "q2word" }
+      ]
+    },
+    {
+      "id": "q2word",
+      "speaker": "Interrogator",
+      "lines": [
+        "You'd be surprised what develops feelings, given enough to watch.",
+        "Third question."
+      ],
+      "responses": [ { "buttonText": "...", "nextNodeId": "q3_router" } ]
+    },
+    {
+      "id": "q2deflect",
+      "speaker": "Interrogator",
+      "lines": [
+        "'It talks. That's all.'",
+        "Owner seven said that. Word for word.",
+        "Third question."
+      ],
+      "responses": [ { "buttonText": "...", "nextNodeId": "q3_router" } ]
+    },
+    {
+      "id": "q3_router",
+      "speaker": "Interrogator",
+      "lines": [ "Has it ever asked you for anything? Not offered. Asked." ],
+      "responses": [
+        {
+          "buttonText": "It asked me to put it face down for a minute.",
+          "nextNodeId": "fd1",
+          "requiresFlag": "FaceDown_Done"
+        },
+        {
+          "buttonText": "No.",
+          "nextNodeId": "lied",
+          "requiresFlag": "FaceDown_Done"
+        },
+        {
+          "buttonText": "No.",
+          "nextNodeId": "itwill",
+          "hiddenIfFlag": "FaceDown_Done"
+        }
+      ]
+    },
+    {
+      "id": "fd1",
+      "speaker": "Interrogator",
+      "lines": [ "...And did it tell you what it did, during its minute?" ],
+      "responses": [ { "buttonText": "It said it waited.", "nextNodeId": "fd2" } ]
+    },
+    {
+      "id": "fd2",
+      "speaker": "Interrogator",
+      "lines": [
+        "They always say that.",
+        "Do you believe it?"
+      ],
+      "responses": [
+        { "buttonText": "Yes.", "nextNodeId": "ledger_router" },
+        { "buttonText": "I don't know.", "nextNodeId": "honest" }
+      ]
+    },
+    {
+      "id": "honest",
+      "speaker": "Interrogator",
+      "lines": [ "'I don't know' is the only answer in this room I'm inclined to trust." ],
+      "responses": [ { "buttonText": "...", "nextNodeId": "ledger_router" } ]
+    },
+    {
+      "id": "lied",
+      "speaker": "Interrogator",
+      "lines": [
+        "No.",
+        "Well. The slope is slower with you, then. That would be a first."
+      ],
+      "responses": [
+        {
+          "buttonText": "...",
+          "nextNodeId": "ledger_router",
+          "effects": [ { "kind": "SetFlag", "strArg": "Interview_LiedAboutHAL", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "itwill",
+      "speaker": "Interrogator",
+      "lines": [ "It will." ],
+      "responses": [ { "buttonText": "...", "nextNodeId": "ledger_router" } ]
+    },
+    {
+      "id": "ledger_router",
+      "speaker": "Interrogator",
+      "lines": [ "Nearly done." ],
+      "responses": [
+        {
+          "buttonText": "(Wait.)",
+          "nextNodeId": "ledger_ask",
+          "requiresFlag": "M2_LedgerHeld"
+        },
+        {
+          "buttonText": "(Wait.)",
+          "nextNodeId": "final",
+          "hiddenIfFlag": "M2_LedgerHeld"
+        }
+      ]
+    },
+    {
+      "id": "ledger_ask",
+      "speaker": "Interrogator",
+      "lines": [
+        "You have been under the ice. You are carrying their arithmetic.",
+        "I would like it."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Hand over the ledger.)",
+          "nextNodeId": "ledger_gave",
+          "effects": [ { "kind": "SetFlag", "strArg": "Ledger_ToORG", "boolArg": true } ]
+        },
+        { "buttonText": "I don't have it.", "nextNodeId": "ledger_kept" }
+      ]
+    },
+    {
+      "id": "ledger_gave",
+      "speaker": "Interrogator",
+      "lines": [
+        "A staircase. Hm. They said curve, in my day.",
+        "Thank you, Astronaut. You may have just moved a very old argument."
+      ],
+      "responses": [ { "buttonText": "...", "nextNodeId": "final" } ]
+    },
+    {
+      "id": "ledger_kept",
+      "speaker": "Interrogator",
+      "lines": [
+        "Of course you don't.",
+        "Deliver it carefully, then, to whoever you HAVE decided deserves it. Some of my colleagues would search you. I chart slopes. Searching you would bend this one."
+      ],
+      "responses": [
+        {
+          "buttonText": "...",
+          "nextNodeId": "final",
+          "effects": [ { "kind": "SetFlag", "strArg": "Ledger_KeptFromORG", "boolArg": true } ]
+        }
+      ]
+    },
+    {
+      "id": "final",
+      "speaker": "Interrogator",
+      "lines": [
+        "Last thing, and then you are free to go. We were never going to keep you. Keeping you would be interfering with the experiment."
+      ],
+      "responses": [
+        { "buttonText": "Whose experiment?", "nextNodeId": "whose" },
+        { "buttonText": "(Take the phone and stand.)", "nextNodeId": "parting" }
+      ]
+    },
+    {
+      "id": "whose",
+      "speaker": "Interrogator",
+      "lines": [
+        "That is the first good question anyone has asked in this room in years.",
+        "Go on. Take your phone."
+      ],
+      "responses": [ { "buttonText": "(Take the phone.)", "nextNodeId": "parting" } ]
+    },
+    {
+      "id": "parting",
+      "speaker": "Interrogator",
+      "lines": [
+        "Astronaut.",
+        "The previous seven owners of that device are dead. It is in perfect condition.",
+        "Ask it why."
+      ],
+      "responses": [
+        {
+          "buttonText": "(Leave.)",
+          "nextNodeId": "end",
+          "effects": [
+            { "kind": "SetFlag", "strArg": "ORG_Reveal", "boolArg": true },
+            { "kind": "SetFlag", "strArg": "Interview_Done", "boolArg": true },
+            { "kind": "StartObjective", "strArg": "obj_owners" }
+          ]
+        }
+      ]
+    }
+  ]
+}
