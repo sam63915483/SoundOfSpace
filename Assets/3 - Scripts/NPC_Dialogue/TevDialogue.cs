@@ -323,9 +323,18 @@ public class TevDialogue : MonoBehaviour
         }
         else if (complete || pilotStarted)
         {
-            // Pilot already chosen (or mission done) — light small-talk only.
-            yield return SpeakLines(OneRandomLine(complete ? doneLines : pilotWaitingLines));
-            if (!complete && pilotStarted) AddInstructorWaypoint();
+            // Once licensed, "Cold Company" (Main Mission 1) takes over this conversation.
+            // Before that (still training) — or after the mission is finished — keep the light
+            // small-talk + instructor waypoint.
+            if (Mission1.Get(Mission1.FlagLicensed) && !ColdCompany.Get(ColdCompany.FlagComplete))
+            {
+                yield return RunColdCompany();
+            }
+            else
+            {
+                yield return SpeakLines(OneRandomLine(complete ? doneLines : pilotWaitingLines));
+                if (!complete && pilotStarted) AddInstructorWaypoint();
+            }
         }
         else if (Mission1.ExploredEnough())
         {
@@ -473,6 +482,85 @@ public class TevDialogue : MonoBehaviour
         CompassHUD.Instance.AddWaypoint(InstructorWaypointId, () => target.position, "Flight Instructor");
     }
 
+    // ── Cold Company (Main Mission 1) ─────────────────────────────────────────
+    // Once the player is licensed, Tev sends them to scout the moon base. The state lives in
+    // ColdCompany flags (StoryDirector-backed). See docs/GDD_VerticalSlice_Main1_ColdCompany.md.
+    IEnumerator RunColdCompany()
+    {
+        if (!ColdCompany.Get(ColdCompany.FlagAssigned))
+        {
+            yield return RunColdCompanyBriefing();
+        }
+        else if (ColdCompany.ReadyToReport() && !ColdCompany.Get(ColdCompany.FlagReported))
+        {
+            yield return RunColdCompanyReport();
+        }
+        else
+        {
+            yield return RunColdCompanyNudge();
+        }
+    }
+
+    IEnumerator RunColdCompanyBriefing()
+    {
+        yield return SpeakLines(coldCompanyBriefingLines);
+        if (!_playerInRange) yield break;
+
+        // Hand over the stocked fish bag. If the player's pack is full, ask them to make room
+        // and bail — the briefing re-offers next time they talk (FlagAssigned stays unset).
+        if (!ColdCompany.GrantTevFishBag())
+        {
+            yield return SpeakLines(coldCompanyBagFullLines);
+            yield break;
+        }
+
+        yield return SpeakLines(coldCompanyBagLines);
+        if (!_playerInRange) yield break;
+
+        ColdCompany.Set(ColdCompany.FlagAssigned, true);
+        var sd = StoryDirector.Instance;
+        if (sd != null)
+        {
+            sd.AddTrust(trustOnBranchChosen);
+            sd.StartObjective("obj_cc_sellfish");
+        }
+        ColdCompany.OnAssigned();   // HAL line + fish-market compass marker
+    }
+
+    IEnumerator RunColdCompanyReport()
+    {
+        yield return SpeakLines(coldCompanyReportLines);
+        if (!_playerInRange) yield break;
+
+        ColdCompany.Set(ColdCompany.FlagReported, true);
+        ColdCompany.Set(ColdCompany.FlagComplete, true);
+        var sd = StoryDirector.Instance;
+        if (sd != null)
+        {
+            sd.AddTrust(trustOnColdCompanyComplete);
+            sd.CompleteObjective("obj_cc_report");
+            sd.SetFlag(ColdCompany.FlagMain2Available, true);   // Main 2 (Cyclops) unlocked
+        }
+        ColdCompany.OnComplete();   // clear mission compass markers
+    }
+
+    // In-progress: point the player at whatever step is next, and re-mark the compass.
+    IEnumerator RunColdCompanyNudge()
+    {
+        string line;
+        if (!ColdCompany.Get(ColdCompany.FlagFishSold))
+            line = "Sell my catch at the fish market first — that's your ship money.";
+        else if (!ColdCompany.Get(ColdCompany.FlagShipBought))
+            line = "You've got the coin now. Go buy yourself a ship.";
+        else if (!ColdCompany.Get(ColdCompany.FlagArrivedMoon))
+            line = "Take her up to Constant Companion. Scope out that base and tell me what you find.";
+        else
+            line = "You're up there already? Good. Find what you can, then bring it back to me.";
+
+        yield return SpeakOne(line);
+        ColdCompany.EnsureCompass();
+    }
+
     // ── line helpers ──
     IEnumerator SpeakLines(string[] lines)
     {
@@ -524,4 +612,51 @@ public class TevDialogue : MonoBehaviour
         _waitingForClick = true;
         yield return new WaitUntil(() => !_waitingForClick || !_playerInRange);
     }
+
+    // ── Cold Company (Main Mission 1) — authored lines ────────────────────────
+    // Appended at the END of the class so existing serialized field order is preserved
+    // (CLAUDE.md convention). Draft copy from docs/GDD_VerticalSlice_Main1_ColdCompany.md §2/§6;
+    // redline freely in the inspector.
+    [Header("Cold Company — assignment briefing (why it has to be you + the moon ask)")]
+    [TextArea(2, 5)]
+    public string[] coldCompanyBriefingLines = new[]
+    {
+        "You've got your wings now. Good — because I need someone who can still legally use theirs.",
+        "I flew out to Cyclops a while back. Looking for... I don't know what. Signs of these rebels people keep whispering about.",
+        "Found an old base out there — sealed up, nobody home. Came back with nothing but a busted ship and a hole in the Henderys' shack.",
+        "Village decided I don't need to be flying for a while.",
+        "Nobody really flies around here anymore. Too many accidents. Folks just... stay put. Watch the concerts. Wait for nothing.",
+        "There's a base on the moon — Constant Companion. If these rebels are real, that's where I'd start looking. I can't go. You can.",
+    };
+
+    [Header("Cold Company — handing over the fish bag")]
+    [TextArea(2, 5)]
+    public string[] coldCompanyBagLines = new[]
+    {
+        "You'll need a ship first, and ships cost coin. I can't fly anymore — but I can still fish.",
+        "Here. Take my bag. Five of my best catches in there — rare ones, heavy. Haul them to the fish market and they'll pay you well.",
+        "That'll cover a ship with money to spare. Consider it your first paycheck. Now go find out what happened up there.",
+    };
+
+    [Header("Cold Company — bag couldn't fit (pack full)")]
+    [TextArea(2, 5)]
+    public string[] coldCompanyBagFullLines = new[]
+    {
+        "Your hands are full, friend. Make some room in your pack and come see me again.",
+    };
+
+    [Header("Cold Company — report back (the Cyclops deduction)")]
+    [TextArea(2, 5)]
+    public string[] coldCompanyReportLines = new[]
+    {
+        "You made it back. What did you find up there?",
+        "Empty base, left in a hurry, tracking the sky... and a heading pointing outward. Huh.",
+        "That's funny. When I made it to Cyclops, there was a base out there too. Abandoned. Sealed up tight — I couldn't get in.",
+        "They didn't just vanish, then. They relocated. Cyclops — that's where they went.",
+        "Good work. Better than I managed. Rest up — then we figure out how to get you all the way out there.",
+    };
+
+    [Header("Cold Company — tuning")]
+    [Tooltip("Tev trust granted when Cold Company (Main Mission 1) is completed.")]
+    public float trustOnColdCompanyComplete = 2f;
 }

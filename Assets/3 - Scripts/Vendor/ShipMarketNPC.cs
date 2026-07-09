@@ -303,6 +303,9 @@ public class ShipMarketNPC : MonoBehaviour
                 if (!PlayerWallet.Instance.SpendMoney(item.price)) return PurchaseResult.NotEnoughMoney;
                 if (purchaseClip != null && purchaseSource != null) purchaseSource.PlayOneShot(purchaseClip, purchaseVolume);
                 SpawnShip(item.kind);
+                // Cold Company (Main Mission 1): buying a flyable ship advances the mission.
+                if (item.kind == ShopItemKind.ShipFull || item.kind == ShopItemKind.ShipNoDish)
+                    ColdCompany.NotifyShipBought();
                 return PurchaseResult.Success;
 
             case ShopItemKind.PartLeftThruster:

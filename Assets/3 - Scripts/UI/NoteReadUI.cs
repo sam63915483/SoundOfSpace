@@ -24,6 +24,9 @@ public class NoteReadUI : MonoBehaviour
     GameObject _root;
     TextMeshProUGUI _titleText;
     TextMeshProUGUI _bodyText;
+    RectTransform _bodyRt;
+    Image _photo;
+    RectTransform _photoRt;
     TextMeshProUGUI _hintText;
     Coroutine _typewriterRoutine;
     bool _isTyping;
@@ -55,11 +58,26 @@ public class NoteReadUI : MonoBehaviour
     }
 
     public void ShowNote(string title, string body, System.Action onClose = null)
+        => ShowNote(title, body, null, onClose);
+
+    // Overload with an optional photo shown above the body (used for the Cold Company
+    // pod-crash surveillance still). Passing null image behaves exactly like the text-only path.
+    public void ShowNote(string title, string body, Sprite image, System.Action onClose = null)
     {
         if (IsOpen) return;
         IsOpen = true;
         _onClose = onClose;
         _openedFrame = Time.frameCount;
+
+        // Reveal/hide the photo and reflow the body area beneath it.
+        bool hasImg = image != null && _photo != null;
+        if (_photo != null)
+        {
+            _photo.gameObject.SetActive(hasImg);
+            if (hasImg) _photo.sprite = image;
+        }
+        if (_bodyRt != null)
+            _bodyRt.offsetMax = new Vector2(-60f, hasImg ? -500f : -140f);
 
         _titleText.text = title ?? "";
 
@@ -247,6 +265,22 @@ public class NoteReadUI : MonoBehaviour
         _bodyText.enableWordWrapping = true;
         _bodyText.lineSpacing = 6f;
         _bodyText.raycastTarget = false;
+        _bodyRt = bodyRt;
+
+        // Optional photo, shown above the body for image clues (hidden by default). Sits
+        // just under the divider; ShowNote reflows the body beneath it when a sprite is set.
+        var photoGo = new GameObject("Photo", typeof(RectTransform));
+        photoGo.transform.SetParent(cardGo.transform, false);
+        _photoRt = photoGo.GetComponent<RectTransform>();
+        _photoRt.anchorMin = new Vector2(0.5f, 1f);
+        _photoRt.anchorMax = new Vector2(0.5f, 1f);
+        _photoRt.pivot = new Vector2(0.5f, 1f);
+        _photoRt.sizeDelta = new Vector2(560f, 340f);
+        _photoRt.anchoredPosition = new Vector2(0f, -140f);
+        _photo = photoGo.AddComponent<Image>();
+        _photo.preserveAspect = true;
+        _photo.raycastTarget = false;
+        photoGo.SetActive(false);
 
         // "Press TAB to close" hint at bottom.
         var hintGo = new GameObject("Hint", typeof(RectTransform));

@@ -189,9 +189,13 @@ public static class InteractGaze
 
     static bool HasSolidCollider(Transform aim)
     {
+        // Only ENABLED, non-trigger colliders make the crosshair cast authoritative — a
+        // disabled collider can't be raycast-hit, so counting it here would make IsLookingAt
+        // always fail (it did: a repurposed enemy model kept a disabled CharacterController,
+        // which is a Collider, so gaze never resolved on it). Skip disabled + trigger colliders.
         var cols = aim.GetComponentsInChildren<Collider>();
         for (int i = 0; i < cols.Length; i++)
-            if (cols[i] != null && !cols[i].isTrigger) return true;
+            if (cols[i] != null && cols[i].enabled && !cols[i].isTrigger) return true;
         return false;
     }
 

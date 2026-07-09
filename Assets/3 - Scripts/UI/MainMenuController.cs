@@ -656,6 +656,7 @@ public class MainMenuController : MonoBehaviour
         if (StoryDirector.Instance == null) { var go = new GameObject("StoryDirector"); DontDestroyOnLoad(go); go.AddComponent<StoryDirector>(); }
         tick("story director");   yield return null;
         if (Mission2Director.Instance == null) { var go = new GameObject("Mission2Director"); DontDestroyOnLoad(go); go.AddComponent<Mission2Director>(); }
+        if (ColdCompanyDirector.Instance == null) { var go = new GameObject("ColdCompanyDirector"); DontDestroyOnLoad(go); go.AddComponent<ColdCompanyDirector>(); }
         tick("mission 2");        yield return null;
         if (HintTrackRunner.Instance == null) { var go = new GameObject("HintTrackRunner"); DontDestroyOnLoad(go); go.AddComponent<HintTrackRunner>(); }
         tick("hint tracks");       yield return null;

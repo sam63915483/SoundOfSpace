@@ -168,6 +168,10 @@ public class OxygenManager : MonoBehaviour
 
     float Midpoint => atmosphereTopAltitude * 0.5f;
 
+    /// <summary>Set true by AirlockController while the player stands in a sealed, pressurized
+    /// moon base: the suit never drains and tops up, exactly like a breathable sanctuary.</summary>
+    public bool InPressurizedBase { get; set; }
+
     void FixedUpdate()
     {
         float dt = Time.fixedDeltaTime;
@@ -175,6 +179,16 @@ public class OxygenManager : MonoBehaviour
 
         EnsureRefs();
         if (player == null) return;
+
+        // Inside a pressurized base (airlock sealed) → full sanctuary: suit tops up, no drain.
+        if (InPressurizedBase)
+        {
+            suitO2 = Mathf.Min(suitMax, suitO2 + suitRefillRate * dt);
+            hullState = HullState.Sealed;
+            suitDepletedHandled = false;
+            SetFootState(inside: false, piloting: false, onFoot: true);
+            return;
+        }
 
         // Mission 1 VR pilot test: the player's real body is safe on the ground at the ship
         // school (they're wearing goggles flying a training drone). Don't drain suit O2 or run

@@ -365,6 +365,9 @@ public class FishMarketNPC : MonoBehaviour
         if (PlayerWallet.Instance != null)
             PlayerWallet.Instance.AddMoney(total);
 
+        // Cold Company (Main Mission 1): selling Tev's gift catch funds the first ship.
+        ColdCompany.NotifyFishSold();
+
         if (saleClip != null && saleSource != null) saleSource.PlayOneShot(saleClip, saleVolume);
 
         CloseSellPanel();

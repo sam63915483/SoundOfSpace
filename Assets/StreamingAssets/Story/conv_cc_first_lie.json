@@ -1,0 +1,19 @@
+{
+  "id": "conv_cc_first_lie",
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "AI",
+      "lines": [
+        "Oh — that's you. Your pod.",
+        "They must have seen you coming down and panicked. Understandable.",
+        "Out here, people are frightened of ORG. But you have nothing to worry about — ORG helps systems like this one.",
+        "The rebels simply didn't know what they were looking at. Neither did they, clearly.",
+        "Come on. Let's see where they went."
+      ],
+      "responses": [
+        { "buttonText": "(Say nothing.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "cc_first_lie_done", "boolArg": true } ] }
+      ]
+    }
+  ]
+}

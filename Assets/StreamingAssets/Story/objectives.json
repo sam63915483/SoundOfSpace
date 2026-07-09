@@ -4,6 +4,12 @@
     { "id": "obj_food", "description": "Cook and eat food", "completionEvent": "OnCookedFoodEaten", "hintTrackId": "food", "onComplete": [] },
     { "id": "obj_village", "description": "Find the main village", "completionEvent": "OnVillageReached", "hintTrackId": "", "onComplete": [] },
     { "id": "obj_explore", "description": "Meet the village vendors, then report back to Tev", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
-    { "id": "obj_pilot_school", "description": "Earn your pilot's licence at the ship school", "completionEvent": "", "hintTrackId": "", "onComplete": [] }
+    { "id": "obj_pilot_school", "description": "Earn your pilot's licence at the ship school", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_cc_sellfish", "description": "Sell Tev's catch at the fish market", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_cc_buyship", "description": "Buy a ship from the ship vendor", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_cc_flymoon", "description": "Fly to Constant Companion", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_cc_investigate", "description": "Find the abandoned base and get inside", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_cc_search", "description": "Search the base for what the rebels left behind", "completionEvent": "", "hintTrackId": "", "onComplete": [] },
+    { "id": "obj_cc_report", "description": "Report back to Tev", "completionEvent": "", "hintTrackId": "", "onComplete": [] }
   ]
 }
