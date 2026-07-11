@@ -273,7 +273,7 @@ public class VitalsHUD : MonoBehaviour
         ApplyPerspectiveFit();
         ApplyIntegratedStyle(_cardRT);
         _projector.Warp.SetQuad(q.blFrac, q.brFrac, q.trFrac, q.tlFrac);
-        HudIdleSweep.Ensure(_cardRT);   // recurring scanline refresh
+        HudIdleSweep.Ensure(_cardRT, _projector.Warp);   // recurring scanline refresh (spatial reveal on the warp)
     }
 
     HelmetOverlayHUD.HousingQuad _seatedQuad;

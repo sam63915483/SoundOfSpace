@@ -137,5 +137,5 @@ public class HelmetHudConfig : MonoBehaviour
     [Tooltip("Extra scale on the boost (bottom-left) cluster content only — multiplies screenContentScale. Clamped at seat time so the card can never overflow its glass.")]
     [Range(0.8f, 1.5f)] public float blContentBoost = 1.2f;
     [Tooltip("Extra scale on the vitals (bottom-right) cluster content only — multiplies screenContentScale. Clamped at seat time so the card (including the ship rows while piloting) can never overflow its glass.")]
-    [Range(0.8f, 1.5f)] public float brContentBoost = 1.3f;
+    [Range(0.8f, 1.5f)] public float brContentBoost = 1.0f;
 }

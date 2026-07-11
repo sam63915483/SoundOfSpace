@@ -363,7 +363,7 @@ public class GForceHUD : MonoBehaviour
         _cardRT.localRotation = Quaternion.identity;   // perspective comes from the warp, not a lean
         VitalsHUD.ApplyIntegratedStyle(_cardRT);
         _projector.Warp.SetQuad(q.blFrac, q.brFrac, q.trFrac, q.tlFrac);
-        HudIdleSweep.Ensure(_cardRT);   // recurring scanline refresh
+        HudIdleSweep.Ensure(_cardRT, _projector.Warp);   // recurring scanline refresh (spatial reveal on the warp)
     }
 
     void DetachProjector()

@@ -393,7 +393,7 @@ public class CompassHUD : MonoBehaviour
         if (bot != null) SetImageEnabled(bot, false);
         HelmetSway.Reregister(_strip);
         HelmetSway.Reregister(_badgeRT);
-        HudIdleSweep.Ensure(_strip, _badgeRT);   // recurring scanline refresh; badge dims with the strip
+        HudIdleSweep.Ensure(_strip, null, _badgeRT);   // recurring scanline refresh; badge dims with the strip
     }
 
     static void SetImageEnabled(Transform t, bool on)

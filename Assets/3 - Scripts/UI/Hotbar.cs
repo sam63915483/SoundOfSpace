@@ -1255,7 +1255,7 @@ public class Hotbar : MonoBehaviour
         // Sized to sit between the helmet's corner pods: 1.2× smaller than
         // the slots' native layout, raised off the bottom span art. Scale
         // (not layout constants) so the slot-grow animations stay untouched.
-        bar.anchoredPosition = new Vector2(0f, BottomMargin + 16f);
+        bar.anchoredPosition = new Vector2(0f, BottomMargin + 30f);
         bar.sizeDelta = new Vector2(totalWidth + 32f, ActiveSize + ActiveLift + 32f);
         bar.localScale = new Vector3(1f / 1.2f, 1f / 1.2f, 1f);
 

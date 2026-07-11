@@ -21,6 +21,13 @@ public class HousingScreenWarp : MaskableGraphic
     bool _hasQuad;
     const int Grid = 12;          // 12×12 cells ≈ invisible projective error
 
+    // Screen-life shading (driven by HudIdleSweep): rows below the reveal
+    // line render at _shadeBase brightness, rows above it at full — so the
+    // scanline visibly wipes the screen back to life instead of the whole
+    // card popping bright. _revealV < 0 = uniform brightness.
+    float _shadeBase = 1f;
+    float _revealV = -1f;
+
     public override Texture mainTexture => _tex != null ? _tex : s_WhiteTexture;
 
     public void SetTexture(Texture tex)
@@ -34,6 +41,18 @@ public class HousingScreenWarp : MaskableGraphic
     {
         _bl = blFrac; _br = brFrac; _tr = trFrac; _tl = tlFrac;
         _hasQuad = true;
+        SetVerticesDirty();
+    }
+
+    /// Uniform brightness (revealLineV = -1), or a reveal in progress: content
+    /// above revealLineV (0=bottom, 1=top of the screen) is full-bright,
+    /// content below stays at baseBrightness.
+    public void SetShade(float baseBrightness, float revealLineV = -1f)
+    {
+        if (Mathf.Approximately(_shadeBase, baseBrightness) && Mathf.Approximately(_revealV, revealLineV))
+            return;
+        _shadeBase = baseBrightness;
+        _revealV = revealLineV;
         SetVerticesDirty();
     }
 
@@ -65,10 +84,16 @@ public class HousingScreenWarp : MaskableGraphic
         float e = p01.y - p00.y + h * p01.y;
         float f = p00.y;
 
-        Color32 col = color;
         for (int j = 0; j <= Grid; j++)
         {
             float v = j / (float)Grid;
+            // Per-row brightness: full above the reveal line (with a short
+            // soft band so the wipe edge isn't a hard step), base below.
+            float bright;
+            if (_revealV < 0f) bright = _shadeBase;
+            else bright = Mathf.Lerp(_shadeBase, 1f,
+                Mathf.Clamp01(Mathf.InverseLerp(_revealV - 0.02f, _revealV + 0.10f, v)));
+            Color32 col = new Color(color.r * bright, color.g * bright, color.b * bright, color.a);
             for (int i = 0; i <= Grid; i++)
             {
                 float u = i / (float)Grid;
