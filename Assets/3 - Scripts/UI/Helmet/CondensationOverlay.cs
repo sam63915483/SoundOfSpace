@@ -122,7 +122,10 @@ public class CondensationOverlay : MonoBehaviour
                 float dy = Mathf.Abs(v - 0.5f) * 2f;
                 float d = Mathf.Max(dx, dy) * 0.6f
                         + Mathf.Sqrt(dx * dx + dy * dy) / 1.41421f * 0.4f;
-                float edge = Mathf.Pow(Mathf.Clamp01((d - 0.35f) / 0.65f), 1.6f);
+                // Mask starts creeping at 15% from center — the outermost band
+                // is hidden behind the opaque helmet frame art, so the fog must
+                // reach well into the visible visor to read as feedback.
+                float edge = Mathf.Pow(Mathf.Clamp01((d - 0.15f) / 0.85f), 1.4f);
                 float noise = 0.55f + 0.45f * Mathf.PerlinNoise(u * 6f, v * 6f);
                 // A second octave adds droplet-scale texture.
                 noise *= 0.8f + 0.2f * Mathf.PerlinNoise(u * 23f + 7.3f, v * 23f + 3.1f);

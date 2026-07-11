@@ -369,7 +369,9 @@ public class CompassHUD : MonoBehaviour
     {
         _canvas = gameObject.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 300;
+        // Above the helmet frame art (805) so the strip sits ON the brow pad,
+        // still under LetterboxBars (820) so dialogue cinematics cover it.
+        _canvas.sortingOrder = UILayer.CompassHud;
         HUDSceneGate.Register(_canvas);
         HudVisibility.RegisterHideable(_canvas);   // honours the "HIDE HUD" setting / pod cinematic
         var scaler = gameObject.AddComponent<CanvasScaler>();

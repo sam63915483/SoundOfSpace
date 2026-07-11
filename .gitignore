@@ -105,3 +105,7 @@ MonoBleedingEdge/
 # commands from the repo root. Never committed. (The real server config lives
 # in server/photo-gallery/, which has its own .gitignore for .dev.vars etc.)
 .wrangler/
+
+# Helmet HUD art intermediates (raw AI gen + pod-removal edit; final is helmet_frame.png)
+Assets/2 - Materials/HelmetHUD/helmet_frame_raw.png*
+Assets/2 - Materials/HelmetHUD/helmet_frame_clean.png*

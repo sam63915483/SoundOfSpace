@@ -153,6 +153,10 @@ Events: `OnHealthDropped(float)` fires **only from discrete `TakeDamage`** (not 
 
 HUD: `ResourceHUD` is the legacy 4-row bar stack; `VitalsHUD` is the newer compact vitals card; `WaterFillHUD` shows the water-bottle fill percent when drinking.
 
+### §6.0.1 Helmet HUD overlay (NEW 2026-07-10)
+
+The gameplay HUD is framed as the interior of an astronaut helmet (`Assets/3 - Scripts/UI/Helmet/`, branch `feat/helmet-hud`). `HelmetOverlayHUD` (auto-singleton, seeded in `EnsureGameplaySingletons`) renders AI-generated helmet art (`Assets/2 - Materials/HelmetHUD/helmet_frame.png`, alpha-keyed visor opening) full-screen at sorting **805 — UNDER the readouts**; the three clusters sit ON the shell with `HelmetBezelKit` bezel/backlit-glass/halo dressing (halo = faked bloom; KinoBloom runs pre-UI so real bloom can't reach overlay canvases). `VitalsHUD` bottom-right and `GForceHUD` bottom-left seat via the `HelmetHudLayout` contract; `CompassHUD` sits on the brow pad at sorting `UILayer.CompassHud` (815, still under LetterboxBars 820). `VisorGlassOverlay` (810) adds accent tint + fresnel rim + scanlines; `CondensationOverlay` (838, above the readouts) fogs the visor from the edges as `OxygenManager.SuitPercent` drops (starts 60%, full 10%, pulses with the O₂ alarm below 25%) — functional low-O₂ feedback. `HudBootFX` plays a flicker + scanline sweep when GForceHUD's cluster powers on. All tunables + the not-yet-locked accent color live on the scene-placed `HelmetHudConfig` (under `--- Managers ---`); accent routes through `HelmetHudPalette` (live re-tint). Settings: `fxHelmetOverlay` / `fxHelmetCondensation` (CAMERA tab). `HelmetSway` drives damped look/movement sway from camera-rotation deltas (device-agnostic). The 10-piece corner-anchored art mode exists in `HelmetOverlayHUD` for template-authored textures; current art uses single-stretch mode (`stretchWholeTexture`).
+
 ## §6.1 Oxygen / Atmosphere Survival (NEW 2026-06-13)
 
 `OxygenManager.cs` (`Assets/3 - Scripts/Survival/OxygenManager.cs`, ~710 lines; auto-singleton, seeded in `EnsureGameplaySingletons`, **saved** via `CaptureOxygen`/`ApplyOxygen` + `O2Save` schema). Two oxygen pools:

@@ -46,7 +46,7 @@ public class HelmetHudConfig : MonoBehaviour
     [Tooltip("True: stretch the whole texture full-screen — right for organic art (e.g. the AI-generated frame) whose housings come from the code bezels. False: 10-piece corner-anchored mode for template-authored art with baked-in housing cutouts.")]
     public bool stretchWholeTexture = true;
     [Tooltip("Zoom on the stretched frame so a thick painted rim can be pushed outward/off-screen (1 = as authored).")]
-    [Range(1f, 1.6f)] public float frameZoom = 1.12f;
+    [Range(1f, 1.6f)] public float frameZoom = 1.15f;
 
     [Header("Condensation (suit O2 feedback)")]
     [Tooltip("Suit O2 fraction where fog starts creeping in.")]
