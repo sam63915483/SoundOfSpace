@@ -86,6 +86,7 @@ public class GForceHUD : MonoBehaviour
     Ship _ship;
     PlayerController _player;
     int _lastShownSpeed = int.MinValue;
+    bool _wasShown;   // show-edge detect for the HudBootFX power-on
 
     // Speed-tape rows: index 2 is the highlighted current value.
     TextMeshProUGUI[] _tape;
@@ -148,6 +149,10 @@ public class GForceHUD : MonoBehaviour
                     && !PlayerController.isMapOpen;
         if (_canvas != null && _canvas.enabled != show) _canvas.enabled = show;
         if (_indicatorCam != null && _indicatorCam.enabled != show) _indicatorCam.enabled = show;
+        // Helmet-screen power-on: flicker + scanline sweep whenever the boost
+        // cluster comes back on (jetpack equip / boarding a ship / drone).
+        if (show && !_wasShown) HudBootFX.Play(GetComponent<CanvasGroup>(), _cardRT);
+        _wasShown = show;
         if (!show) return;
 
         // Speed tape — five rows update together on integer-speed change.
@@ -494,13 +499,20 @@ public class GForceHUD : MonoBehaviour
         group.interactable = false;
         group.blocksRaycasts = false;
 
+        // Seated in the helmet's bottom-left housing (HelmetHudLayout contract
+        // — keeps the card aligned with the helmet frame art at any aspect
+        // ratio). Width still comes from the ContentSizeFitter below.
         var card = NewUI("Card", transform);
         card.anchorMin = new Vector2(0f, 0f);
         card.anchorMax = new Vector2(0f, 0f);
         card.pivot     = new Vector2(0f, 0f);
-        card.anchoredPosition = new Vector2(leftOffset, bottomOffset);
+        card.anchoredPosition = new Vector2(
+            HelmetHudLayout.BottomLeftOffset.x + HelmetHudLayout.CardInset,
+            HelmetHudLayout.BottomLeftOffset.y + HelmetHudLayout.CardInset);
         card.sizeDelta = new Vector2(cardWidth, 0f);
         _cardRT = card;
+        HelmetBezelKit.BuildBezel(card, HelmetHudLayout.CardInset - 4f);
+        HelmetSway.Register(card, 0.85f);   // slight parallax vs the frame (1.0)
 
         // Beveled background panel (same sprite as other HUDs).
         var bg = card.gameObject.AddComponent<Image>();
@@ -528,7 +540,7 @@ public class GForceHUD : MonoBehaviour
         led.sizeDelta = new Vector2(3f, -16f);
         led.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
         var ledImg = led.gameObject.AddComponent<Image>();
-        ledImg.color = LedColor;
+        ledImg.color = HelmetHudPalette.Accent;   // tracks the tweakable helmet accent
         ledImg.raycastTarget = false;
 
         // Horizontal layout: tape | widget | seg-bars.

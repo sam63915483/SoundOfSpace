@@ -550,7 +550,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 47; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
+        const int Total = 48; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -602,6 +602,8 @@ public class MainMenuController : MonoBehaviour
         tick("pause menu");       yield return null;
         if (CameraEffectsManager.Instance == null) { var go = new GameObject("CameraEffectsManager"); DontDestroyOnLoad(go); go.AddComponent<CameraEffectsManager>(); }
         tick("camera FX");        yield return null;
+        if (HelmetOverlayHUD.Instance == null) { var go = new GameObject("HelmetOverlayHUD"); DontDestroyOnLoad(go); go.AddComponent<HelmetOverlayHUD>(); }
+        tick("helmet HUD");       yield return null;
         if (TrailerFreeCam.Instance == null) { var go = new GameObject("TrailerFreeCam"); DontDestroyOnLoad(go); go.AddComponent<TrailerFreeCam>(); }
         tick("trailer free-cam"); yield return null;
         if (TrailerBlackHoleGrow.Instance == null) { var go = new GameObject("TrailerBlackHoleGrow"); DontDestroyOnLoad(go); go.AddComponent<TrailerBlackHoleGrow>(); }

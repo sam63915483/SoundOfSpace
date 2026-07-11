@@ -378,6 +378,13 @@ public class CompassHUD : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
         gameObject.AddComponent<GraphicRaycaster>();
 
+        // Seat the strip + badge inside the helmet's top-brow window
+        // (HelmetHudLayout contract). Assigned here rather than as field
+        // defaults so an Inspector override on a scene-placed instance would
+        // still win. 22 extra units leave room for the heading badge row.
+        stripWidth = HelmetHudLayout.TopBrowSize.x - HelmetHudLayout.CardInset * 2f;
+        topMargin  = HelmetHudLayout.TopBrowYOffset + HelmetHudLayout.CardInset + 22f;
+
         var stripGo = new GameObject("Strip", typeof(RectTransform));
         stripGo.transform.SetParent(transform, false);
         _strip = stripGo.GetComponent<RectTransform>();
@@ -405,7 +412,7 @@ public class CompassHUD : MonoBehaviour
         topSheenRt.anchoredPosition = Vector2.zero;
         var topSheen = topSheenGo.AddComponent<Image>();
         topSheen.sprite = GetSheenSprite();
-        topSheen.color = StripSheenColor;
+        topSheen.color = HelmetHudPalette.GlassSheen;   // tracks the helmet accent
         topSheen.raycastTarget = false;
 
         // Bottom edge sheen — mirror.
@@ -419,7 +426,7 @@ public class CompassHUD : MonoBehaviour
         botSheenRt.anchoredPosition = Vector2.zero;
         var botSheen = botSheenGo.AddComponent<Image>();
         botSheen.sprite = GetSheenSprite();
-        botSheen.color = StripSheenColor;
+        botSheen.color = HelmetHudPalette.GlassSheen;   // tracks the helmet accent
         botSheen.raycastTarget = false;
 
         stripGo.AddComponent<RectMask2D>();
@@ -434,7 +441,7 @@ public class CompassHUD : MonoBehaviour
         tickRt.sizeDelta = new Vector2(2f, -8f);
         tickRt.anchoredPosition = Vector2.zero;
         var tickImg = tickGo.AddComponent<Image>();
-        tickImg.color = CenterTickColor;
+        tickImg.color = HelmetHudPalette.Accent;   // tracks the helmet accent
         tickImg.raycastTarget = false;
         var tickGlow = tickGo.AddComponent<Shadow>();
         tickGlow.effectColor = MarkerGlowColor;
@@ -483,6 +490,10 @@ public class CompassHUD : MonoBehaviour
         SeedTickWaypoints();        // bottom layer of the strip's child stack
         SeedDegreeNumberWaypoints();
         SeedCardinalWaypoints();    // letters sit on top, drawn last
+
+        // Helmet sway — registered last so base positions are final.
+        HelmetSway.Register(_strip, 0.85f);
+        HelmetSway.Register(_badgeRT, 0.85f);
     }
 
     void SeedCardinalWaypoints()

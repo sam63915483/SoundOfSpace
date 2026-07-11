@@ -325,6 +325,8 @@ public class InputSettings : ScriptableObject {
 		fxBloom                     = PlayerPrefs.GetInt   (nameof (fxBloom),                     1) != 0;
 		fxSpaceDust                 = PlayerPrefs.GetInt   (nameof (fxSpaceDust),                 1) != 0;
 		fxRadialMotionBlur          = PlayerPrefs.GetInt   (nameof (fxRadialMotionBlur),          0) != 0;
+		fxHelmetOverlay             = PlayerPrefs.GetInt   (nameof (fxHelmetOverlay),             1) != 0;
+		fxHelmetCondensation        = PlayerPrefs.GetInt   (nameof (fxHelmetCondensation),        1) != 0;
 		fxFilmGrainIntensity            = PlayerPrefs.GetFloat (nameof (fxFilmGrainIntensity),            0.6f);
 		fxSubtleVignetteIntensity       = PlayerPrefs.GetFloat (nameof (fxSubtleVignetteIntensity),       0.45f);
 		fxChromaticAberrationIntensity  = PlayerPrefs.GetFloat (nameof (fxChromaticAberrationIntensity),  0.35f);
@@ -427,6 +429,8 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt   (nameof (fxBloom),                     fxBloom                     ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxSpaceDust),                 fxSpaceDust                 ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxRadialMotionBlur),          fxRadialMotionBlur          ? 1 : 0);
+		PlayerPrefs.SetInt   (nameof (fxHelmetOverlay),             fxHelmetOverlay             ? 1 : 0);
+		PlayerPrefs.SetInt   (nameof (fxHelmetCondensation),        fxHelmetCondensation        ? 1 : 0);
 		PlayerPrefs.SetFloat (nameof (fxFilmGrainIntensity),            fxFilmGrainIntensity);
 		PlayerPrefs.SetFloat (nameof (fxSubtleVignetteIntensity),       fxSubtleVignetteIntensity);
 		PlayerPrefs.SetFloat (nameof (fxChromaticAberrationIntensity),  fxChromaticAberrationIntensity);
@@ -617,5 +621,10 @@ public class InputSettings : ScriptableObject {
 		UnityEngine.InputSystem.InputSystem.settings.defaultDeadzoneMin =
 			Mathf.Clamp (stickDeadzone, 0.01f, 0.5f);
 	}
+
+	// ── Helmet HUD overlay (APPEND-ONLY: serialized fields stay at class end) ──
+	[Header("Helmet HUD Overlay")]
+	public bool fxHelmetOverlay = true;       // helmet frame + visor glass + sway
+	public bool fxHelmetCondensation = true;  // low-O2 visor fog (functional feedback — recommended on)
 
 }

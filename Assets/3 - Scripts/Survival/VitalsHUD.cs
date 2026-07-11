@@ -280,14 +280,22 @@ public class VitalsHUD : MonoBehaviour
         group.blocksRaycasts = false;
         HudVisibility.RegisterHideable(canvas);   // reuse the CanvasGroup just created (no duplicate); honours HIDE HUD / pod
 
-        // Card root anchored bottom-right.
+        // Card root anchored bottom-right, seated in the helmet's bottom-right
+        // housing (HelmetHudLayout contract — keeps the card aligned with the
+        // helmet frame art at any aspect ratio). Pivot (1,0): the card grows
+        // upward inside the housing when the ship rows toggle on.
         var card = NewUI("Card", transform);
         card.anchorMin = new Vector2(1f, 0f);
         card.anchorMax = new Vector2(1f, 0f);
         card.pivot = new Vector2(1f, 0f);
-        card.anchoredPosition = new Vector2(-rightMargin, bottomMargin);
-        card.sizeDelta = new Vector2(cardWidth, 0f);
+        card.anchoredPosition = new Vector2(
+            -(HelmetHudLayout.BottomRightOffset.x + HelmetHudLayout.CardInset),
+            HelmetHudLayout.BottomRightOffset.y + HelmetHudLayout.CardInset);
+        card.sizeDelta = new Vector2(
+            HelmetHudLayout.BottomRightSize.x - HelmetHudLayout.CardInset * 2f, 0f);
         _cardRT = card;
+        HelmetBezelKit.BuildBezel(card, HelmetHudLayout.CardInset - 4f);
+        HelmetSway.Register(card, 0.85f);   // slight parallax vs the frame (1.0)
 
         var bg = card.gameObject.AddComponent<Image>();
         bg.sprite = UIPanelSprites.GetBeveledPanel();
@@ -313,7 +321,7 @@ public class VitalsHUD : MonoBehaviour
         led.sizeDelta = new Vector2(3f, -20f);
         led.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
         var ledImg = led.gameObject.AddComponent<Image>();
-        ledImg.color = LedColor;
+        ledImg.color = HelmetHudPalette.Accent;   // tracks the tweakable helmet accent
         ledImg.raycastTarget = false;
 
         // Vertical layout for header + stat rows.
