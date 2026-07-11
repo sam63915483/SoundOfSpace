@@ -2024,7 +2024,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _screenMask = _screenRT.gameObject.AddComponent<RectMask2D>();
 
         var vlg = _screenRT.gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(8, 8, 8, 8);
+        vlg.padding = new RectOffset(16, 16, 8, 8);   // wider side gutters for the 4:3 screen
         vlg.spacing = 8f;
         vlg.childAlignment = TextAnchor.UpperCenter;
         vlg.childControlWidth  = true;  vlg.childControlHeight  = true;
@@ -2973,24 +2973,17 @@ public class PlayerPhoneUI : MonoBehaviour
 
         var hlg = _reservedZoneRT.gameObject.AddComponent<HorizontalLayoutGroup>();
         hlg.padding = new RectOffset(4, 4, 3, 3);
-        hlg.spacing = 0f;
+        // Arrows hug the dots as one centered cluster — flexible spacers used
+        // to fling them to the screen edges, which read fine on the narrow
+        // phone but looked broken across the 4:3 tablet's width.
+        hlg.spacing = 18f;
         hlg.childAlignment = TextAnchor.MiddleCenter;
         hlg.childControlWidth = true;  hlg.childControlHeight = true;
         hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
 
         BuildPageNavArrow(false); // left  → previous page
-        BuildPageNavSpacer();
         BuildPageNavDots();
-        BuildPageNavSpacer();
         BuildPageNavArrow(true);  // right → next page
-    }
-
-    void BuildPageNavSpacer()
-    {
-        var rt = NewUI("Spacer", _reservedZoneRT);
-        var le = rt.gameObject.AddComponent<LayoutElement>();
-        le.flexibleWidth = 1f;
-        le.preferredHeight = 1f;
     }
 
     void BuildPageNavArrow(bool pointRight)
@@ -3092,8 +3085,18 @@ public class PlayerPhoneUI : MonoBehaviour
     // live world feed displayed, cursor relocks for free look).
     void BuildCameraButton()
     {
-        var rt = NewUI("CameraButton", _screenRT);
-        rt.gameObject.AddComponent<LayoutElement>().preferredHeight = 30f;
+        // Full-width layout row; the button itself is a fixed-width pill
+        // centered inside it — stretched edge-to-edge it read as a thin bar
+        // on the 4:3 tablet.
+        var row = NewUI("CameraRow", _screenRT);
+        row.gameObject.AddComponent<LayoutElement>().preferredHeight = 30f;
+
+        var rt = NewUI("CameraButton", row);
+        rt.anchorMin = new Vector2(0.5f, 0f);
+        rt.anchorMax = new Vector2(0.5f, 1f);
+        rt.pivot     = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(320f, 0f);
 
         var bg = rt.gameObject.AddComponent<Image>();
         bg.color = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.10f);
