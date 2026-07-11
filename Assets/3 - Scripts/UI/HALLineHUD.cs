@@ -66,8 +66,8 @@ public class HALLineHUD : MonoBehaviour
     const float PreviewAlpha    = 0.55f;
 
     // Layout anchors (top-center pivot).
-    const float PrimaryHomeY  = -200f;    // anchoredPosition.y of the active strip
-    const float PreviewFirstY = -252f;    // first preview row (just below the strip)
+    const float PrimaryHomeY  = -240f;    // anchoredPosition.y of the active strip
+    const float PreviewFirstY = -292f;    // first preview row (just below the strip)
     const float PreviewStepY  = -34f;     // vertical gap per preview row
 
     readonly Queue<Line> _queue = new Queue<Line>();

@@ -51,6 +51,12 @@ public class HelmetSway : MonoBehaviour
     PlayerController _player;
     float _nextPlayerFind;
 
+    // Helmet bob state — stride phase + a smoothed weight so the bob eases
+    // in/out instead of cutting when the player stops or leaves the ground.
+    float _bobPhase;
+    float _bobWeight;
+    Vector2 _bob;
+
     void LateUpdate()
     {
         var cfg = HelmetHudConfig.Instance;
@@ -99,11 +105,48 @@ public class HelmetSway : MonoBehaviour
         float smooth = cfg != null ? 1f / Mathf.Max(0.01f, cfg.swaySmoothing) : 0.12f;
         _offset = Vector2.SmoothDamp(_offset, target, ref _offsetVel, smooth, Mathf.Infinity, dt);
 
+        UpdateBob(cfg, dt);
+
         for (int i = _entries.Count - 1; i >= 0; i--)
         {
             var e = _entries[i];
             if (e.rt == null) { _entries.RemoveAt(i); continue; }
-            e.rt.anchoredPosition = e.basePos + _offset * e.mult;
+            e.rt.anchoredPosition = e.basePos + (_offset + _bob) * e.mult;
         }
+    }
+
+    // Stride-matched helmet bob: the whole helmet (frame + seated readouts,
+    // via the same registered-entry offsets as sway) dips on each footfall
+    // and rocks slightly side to side. Phase advances with DISTANCE traveled
+    // so cadence tracks speed — walking bobs gently, sprinting bobs harder
+    // (amplitude blends with speed too). Applied outside the sway smoothing:
+    // the oscillation is its own motion, not a damped spring response.
+    // Gated by InputSettings.fxHelmetBob (CAMERA tab); defaults on pre-init.
+    void UpdateBob(HelmetHudConfig cfg, float dt)
+    {
+        var mgr = CameraEffectsManager.Instance;
+        bool enabled = mgr == null || mgr.Input == null || mgr.Input.fxHelmetBob;
+        bool striding = enabled
+            && _player != null && _player.isActiveAndEnabled && _player.IsOnGround
+            && Ship.PilotedInstance == null;
+
+        float speed = striding ? _player.SurfaceVelocity.magnitude : 0f;
+        striding &= speed > 0.6f;   // dead-still / drift shouldn't tick steps
+
+        // Ease the bob in/out over ~0.25 s so stopping mid-step settles the
+        // helmet instead of freezing it at an offset.
+        _bobWeight = Mathf.MoveTowards(_bobWeight, striding ? 1f : 0f, dt * 4f);
+        if (_bobWeight <= 0f) { _bob = Vector2.zero; return; }
+
+        float stepsPerMeter = cfg != null ? cfg.bobStepsPerMeter : 1.1f;
+        float walkAmp = cfg != null ? cfg.bobWalkAmplitude : 3f;
+        float runAmp = cfg != null ? cfg.bobRunAmplitude : 7f;
+
+        if (striding) _bobPhase += speed * dt * stepsPerMeter * Mathf.PI;
+        // ~4 m/s walk → ~9 m/s sprint; blend amplitude across that band.
+        float amp = Mathf.Lerp(walkAmp, runAmp, Mathf.InverseLerp(4f, 9f, speed)) * _bobWeight;
+        // |sin| dips once per step; lateral rocks alternate sides per step.
+        _bob = new Vector2(Mathf.Sin(_bobPhase) * amp * 0.35f,
+                           -Mathf.Abs(Mathf.Sin(_bobPhase)) * amp);
     }
 }

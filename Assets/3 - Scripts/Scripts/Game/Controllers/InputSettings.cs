@@ -327,6 +327,7 @@ public class InputSettings : ScriptableObject {
 		fxRadialMotionBlur          = PlayerPrefs.GetInt   (nameof (fxRadialMotionBlur),          0) != 0;
 		fxHelmetOverlay             = PlayerPrefs.GetInt   (nameof (fxHelmetOverlay),             1) != 0;
 		fxHelmetCondensation        = PlayerPrefs.GetInt   (nameof (fxHelmetCondensation),        1) != 0;
+		fxHelmetBob                 = PlayerPrefs.GetInt   (nameof (fxHelmetBob),                 1) != 0;
 		fxFilmGrainIntensity            = PlayerPrefs.GetFloat (nameof (fxFilmGrainIntensity),            0.6f);
 		fxSubtleVignetteIntensity       = PlayerPrefs.GetFloat (nameof (fxSubtleVignetteIntensity),       0.45f);
 		fxChromaticAberrationIntensity  = PlayerPrefs.GetFloat (nameof (fxChromaticAberrationIntensity),  0.35f);
@@ -431,6 +432,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt   (nameof (fxRadialMotionBlur),          fxRadialMotionBlur          ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxHelmetOverlay),             fxHelmetOverlay             ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxHelmetCondensation),        fxHelmetCondensation        ? 1 : 0);
+		PlayerPrefs.SetInt   (nameof (fxHelmetBob),                 fxHelmetBob                 ? 1 : 0);
 		PlayerPrefs.SetFloat (nameof (fxFilmGrainIntensity),            fxFilmGrainIntensity);
 		PlayerPrefs.SetFloat (nameof (fxSubtleVignetteIntensity),       fxSubtleVignetteIntensity);
 		PlayerPrefs.SetFloat (nameof (fxChromaticAberrationIntensity),  fxChromaticAberrationIntensity);
@@ -626,5 +628,6 @@ public class InputSettings : ScriptableObject {
 	[Header("Helmet HUD Overlay")]
 	public bool fxHelmetOverlay = true;       // helmet frame + visor glass + sway
 	public bool fxHelmetCondensation = true;  // low-O2 visor fog (functional feedback — recommended on)
+	public bool fxHelmetBob = true;           // walk/run helmet bob (stride-matched, stronger when sprinting)
 
 }

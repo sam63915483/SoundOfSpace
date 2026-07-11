@@ -605,6 +605,7 @@ public class TabbedPauseMenu : MonoBehaviour
                     new HeaderDef { label = "SURVIVAL & CINEMATIC" },
                     new ToggleDef { label = "HELMET OVERLAY",     get = () => _input != null && _input.fxHelmetOverlay,      set = v => { if (_input != null) _input.fxHelmetOverlay = v; } },
                     new ToggleDef { label = "HELMET CONDENSATION",get = () => _input != null && _input.fxHelmetCondensation, set = v => { if (_input != null) _input.fxHelmetCondensation = v; } },
+                    new ToggleDef { label = "HELMET BOB",         get = () => _input != null && _input.fxHelmetBob,          set = v => { if (_input != null) _input.fxHelmetBob = v; } },
                     new ToggleDef { label = "LOW HEALTH VIGNETTE", get = () => _input != null && _input.fxLowHealthVignette, set = v => { if (_input != null) _input.fxLowHealthVignette = v; } },
                     new ToggleDef { label = "DIALOGUE VIGNETTE",  get = () => _input != null && _input.fxDialogueVignette,  set = v => { if (_input != null) _input.fxDialogueVignette = v; } },
                     new ToggleDef { label = "LETTERBOX BARS",     get = () => _input != null && _input.fxLetterboxBars,     set = v => { if (_input != null) _input.fxLetterboxBars = v; } },

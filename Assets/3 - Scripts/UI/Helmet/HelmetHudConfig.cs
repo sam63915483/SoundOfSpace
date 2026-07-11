@@ -138,4 +138,12 @@ public class HelmetHudConfig : MonoBehaviour
     [Range(0.8f, 1.5f)] public float blContentBoost = 1.2f;
     [Tooltip("Extra scale on the vitals (bottom-right) cluster content only — multiplies screenContentScale. Clamped at seat time so the card (including the ship rows while piloting) can never overflow its glass.")]
     [Range(0.8f, 1.5f)] public float brContentBoost = 1.0f;
+
+    [Header("Helmet bob (stride-matched dip while walking, stronger sprinting)")]
+    [Tooltip("Bob dip depth (ref units) at walking speed.")]
+    [Range(0f, 12f)] public float bobWalkAmplitude = 3f;
+    [Tooltip("Bob dip depth (ref units) at sprint speed.")]
+    [Range(0f, 20f)] public float bobRunAmplitude = 7f;
+    [Tooltip("Stride cadence: bob steps per meter traveled (phase locks to distance, so it never drifts against the footsteps).")]
+    [Range(0.4f, 3f)] public float bobStepsPerMeter = 1.1f;
 }
