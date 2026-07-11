@@ -370,6 +370,10 @@ public class PlayerPhoneUI : MonoBehaviour
         _isAnimating = false;
         IsOpen = false;
         _flipAngle = FlipClosedAngle;   // next Open starts from the stowed pose
+        // A force-close can interrupt a mid-flip tween — make sure we're
+        // back on the overlay canvas with the flip camera off.
+        if (_canvas != null) { _canvas.renderMode = RenderMode.ScreenSpaceOverlay; _canvas.sortingOrder = 800; }
+        if (_phoneCam != null) _phoneCam.enabled = false;
         if (_phoneRT    != null) _phoneRT.anchoredPosition = new Vector2(_phoneRT.anchoredPosition.x, OffScreenY);
         if (_phoneGroup != null) { _phoneGroup.alpha = 0f; _phoneGroup.blocksRaycasts = false; }
         // AnimatePhone's close path restores nav events; force-close must too,
@@ -1306,13 +1310,6 @@ public class PlayerPhoneUI : MonoBehaviour
         UpdatePosition();
         UpdateAIUnreadBadge();
 
-        // The phone camera only needs to render while something is showing.
-        if (_phoneCam != null)
-        {
-            bool camOn = IsOpen || _isAnimating || _inGalleryTransition;
-            if (_phoneCam.enabled != camOn) _phoneCam.enabled = camOn;
-        }
-
         // Arm art arrives whenever HelmetHudConfig resolves (scene object;
         // throttled find). The arm is a chassis child, so visibility and the
         // flip pose come for free.
@@ -1627,6 +1624,16 @@ public class PlayerPhoneUI : MonoBehaviour
         // mask sits out the whole tween.
         if (_screenMask != null) _screenMask.enabled = false;
 
+        // Perspective ONLY for the flip: swap to the camera canvas for the
+        // tween, back to pixel-perfect overlay at both endpoints.
+        if (_phoneCam != null)
+        {
+            _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+            _canvas.worldCamera = _phoneCam;
+            _canvas.planeDistance = 1f;
+            _phoneCam.enabled = true;
+        }
+
         float chassisH = PhoneHeight * PhoneScale;
         float armLen   = (ArmLocalHeight - ArmLocalOverlap) * PhoneScale;
 
@@ -1659,6 +1666,13 @@ public class PlayerPhoneUI : MonoBehaviour
         _flipAngle = toAng;
         ApplyFlip(chassisH, armLen);
         _phoneGroup.alpha = toOpen ? 1f : 0f;
+        // Flip done — back to the overlay canvas for exact clicks/rendering.
+        if (_phoneCam != null)
+        {
+            _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            _canvas.sortingOrder = 800;
+            _phoneCam.enabled = false;
+        }
         // Restore mask + camera-content state for the current orientation.
         SnapCameraContentToOrientation();
 
@@ -1696,17 +1710,18 @@ public class PlayerPhoneUI : MonoBehaviour
     void BuildCanvas()
     {
         _canvas = gameObject.AddComponent<Canvas>();
-        // Screen Space — CAMERA on a dedicated perspective UI camera, not
-        // Overlay: perspective renders the flip's X-rotation with TRUE
-        // keystone/foreshortening, so it reads as a panel swinging up (an
-        // overlay canvas can only squash the rotation — always looked like a
-        // slide). A dedicated camera (rather than Camera.main) keeps the
-        // phone out of the scene's post chain — grogginess/mood grading were
-        // crushing it to near-invisible indoors. It renders after the main
-        // camera (depth 90), and every overlay canvas (helmet frame 805+,
-        // HUDs) still draws on top, so the helmet naturally occludes the
-        // tablet — it's physically outside the visor.
-        _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+        // HYBRID rendering: Screen Space — OVERLAY while resting (pixel-
+        // perfect clicks + rendering, no scene post — exactly the phone-era
+        // behaviour), switched to Screen Space — CAMERA on the dedicated
+        // perspective PhoneUICamera ONLY for the flip animation, when
+        // nothing is clickable anyway. Perspective gives the flip TRUE
+        // keystone (an overlay canvas can only squash an X-rotation — it
+        // always read as a slide); staying camera-space at rest caused a
+        // constant ~90px raycast-vs-visual offset that made buttons miss.
+        // Sorting 800 keeps it UNDER the helmet layers (frame 805 / HUDs
+        // 830) both ways — the tablet is physically outside the visor.
+        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        _canvas.sortingOrder = 800;
         // The camera must be a ROOT object, NOT a child of this canvas: an
         // SSC canvas drives its own transform to sit in front of its camera,
         // so a child camera gets dragged along in a feedback loop until it
@@ -1726,11 +1741,8 @@ public class PlayerPhoneUI : MonoBehaviour
         _phoneCam.allowHDR = false;
         _phoneCam.allowMSAA = false;
         _phoneCam.useOcclusionCulling = false;
-        _phoneCam.enabled = false;                       // gated by IsOpen/animation in Update
+        _phoneCam.enabled = false;                       // on only while flipping
         gameObject.layer = 5;                            // canvas culling uses the canvas GO's layer
-        _canvas.worldCamera = _phoneCam;
-        _canvas.planeDistance = 1f;
-        _canvas.sortingOrder = 800;
 
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;

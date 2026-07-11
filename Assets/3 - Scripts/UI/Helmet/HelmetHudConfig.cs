@@ -140,12 +140,12 @@ public class HelmetHudConfig : MonoBehaviour
     [Range(0.8f, 1.5f)] public float brContentBoost = 1.0f;
 
     [Header("Helmet bob (stride-matched dip while walking, stronger sprinting)")]
-    [Tooltip("Bob dip depth (ref units) at walking speed.")]
-    [Range(0f, 12f)] public float bobWalkAmplitude = 3f;
+    [Tooltip("Bob dip depth (ref units) at walking speed. Keep TINY — barely noticeable is the goal.")]
+    [Range(0f, 12f)] public float bobWalkAmplitude = 1.2f;
     [Tooltip("Bob dip depth (ref units) at sprint speed.")]
-    [Range(0f, 20f)] public float bobRunAmplitude = 7f;
+    [Range(0f, 20f)] public float bobRunAmplitude = 2.6f;
     [Tooltip("Stride cadence: bob steps per meter traveled (phase locks to distance, so it never drifts against the footsteps).")]
-    [Range(0.4f, 3f)] public float bobStepsPerMeter = 1.1f;
+    [Range(0.4f, 3f)] public float bobStepsPerMeter = 0.7f;
 
     [Header("Phone flip-up rig")]
     [Tooltip("Mechanical mount-arm art for the chest tablet (PlayerPhoneUI reads it from here — auto-singletons can't take Inspector references).")]

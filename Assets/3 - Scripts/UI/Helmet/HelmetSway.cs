@@ -145,8 +145,11 @@ public class HelmetSway : MonoBehaviour
         if (striding) _bobPhase += speed * dt * stepsPerMeter * Mathf.PI;
         // ~4 m/s walk → ~9 m/s sprint; blend amplitude across that band.
         float amp = Mathf.Lerp(walkAmp, runAmp, Mathf.InverseLerp(4f, 9f, speed)) * _bobWeight;
-        // |sin| dips once per step; lateral rocks alternate sides per step.
-        _bob = new Vector2(Mathf.Sin(_bobPhase) * amp * 0.35f,
-                           -Mathf.Abs(Mathf.Sin(_bobPhase)) * amp);
+        // Raised-cosine dip per step — the previous |sin| wave had a sharp
+        // direction-reversal kink at every footfall that read as shake, not
+        // bob. This is C1-smooth, and the lateral rock is nearly nothing:
+        // the bob should be FELT, not watched.
+        float dip = 0.5f - 0.5f * Mathf.Cos(_bobPhase * 2f);   // 0→1→0 per step, smooth
+        _bob = new Vector2(Mathf.Sin(_bobPhase) * amp * 0.15f, -dip * amp);
     }
 }
