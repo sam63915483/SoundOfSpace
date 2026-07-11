@@ -237,7 +237,7 @@ public class VitalsHUD : MonoBehaviour
         // half. Bottom-anchoring left the top half empty (looked off-center).
         _cardRT.anchoredPosition = new Vector2(0f, -(150f * fit) * 0.5f);
         _cardRT.localScale = new Vector3(fit, fit, 1f);
-        _cardRT.localRotation = Quaternion.Euler(0f, 0f, h.tiltDeg);   // match the screen's painted perspective
+        _cardRT.localRotation = Quaternion.Euler(h.euler);   // 3D panel lean matching the painted screen
         ApplyIntegratedStyle(_cardRT);
         HelmetSway.Reregister(_cardRT);
     }

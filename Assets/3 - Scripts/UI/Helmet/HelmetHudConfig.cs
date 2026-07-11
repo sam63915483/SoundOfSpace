@@ -97,4 +97,10 @@ public class HelmetHudConfig : MonoBehaviour
 
     [Tooltip("Extra shrink on the readout content inside each screen (applied on top of fit-to-glass). 0.8 = 1.25x smaller — breathing room between content and bezel.")]
     [Range(0.5f, 1.2f)] public float screenContentScale = 0.8f;
+
+    [Header("3D panel lean (pitch X / yaw Y, deg — combines with the Z tilt above)")]
+    [Tooltip("Bottom-left screen: X tips the panel back, Y turns it toward screen center. Overlay UI renders orthographically, so this reads as an angled-panel lean + compression rather than true perspective.")]
+    public Vector2 blScreenTilt3D = new Vector2(12f, -30f);
+    [Tooltip("Bottom-right screen (mirrored).")]
+    public Vector2 brScreenTilt3D = new Vector2(12f, 30f);
 }

@@ -322,7 +322,7 @@ public class GForceHUD : MonoBehaviour
         _cardRT.anchoredPosition = Vector2.zero;
         float fit = Mathf.Min(1f, (h.sizeRef.x - 12f) / 370f, (h.sizeRef.y - 16f) / 170f) * h.contentScale;
         _cardRT.localScale = new Vector3(fit, fit, 1f);
-        _cardRT.localRotation = Quaternion.Euler(0f, 0f, h.tiltDeg);   // match the screen's painted perspective
+        _cardRT.localRotation = Quaternion.Euler(h.euler);   // 3D panel lean matching the painted screen
         VitalsHUD.ApplyIntegratedStyle(_cardRT);
         HelmetSway.Reregister(_cardRT);
     }
