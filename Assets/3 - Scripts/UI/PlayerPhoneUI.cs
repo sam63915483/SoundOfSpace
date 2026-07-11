@@ -346,6 +346,7 @@ public class PlayerPhoneUI : MonoBehaviour
     void ForceCloseNoAnim()
     {
         if (IsCameraMode) ExitCameraMode();
+        ClosePhoneApp();
         if (_animCoroutine != null) { StopCoroutine(_animCoroutine); _animCoroutine = null; }
         if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
         bool wasInGalleryTransition = _inGalleryTransition;
@@ -429,6 +430,7 @@ public class PlayerPhoneUI : MonoBehaviour
     public void Close()
     {
         if (_activeChat != null) _activeChat.Exit();
+        ClosePhoneApp();   // reopening always lands on the home screen
         if (_isAnimating && !_animatingToOpen) return; // already closing
         // Always drop out of camera mode on close so re-opening the phone
         // lands on the home screen, never resumes inside camera mode.
@@ -472,6 +474,9 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         if (IsCameraMode) return;
 
+        // Any in-phone app backs out — the camera feed covers the screen.
+        ClosePhoneApp();
+
         // Lazily build the camera GameObject + RenderTexture on first entry.
         EnsureCameraRig();
 
@@ -506,7 +511,15 @@ public class PlayerPhoneUI : MonoBehaviour
         // Close button, etc.) and re-select it next frame — kicking us back
         // into the look-blocked state. Camera-mode left-click is still read
         // (it's a direct Input.GetMouseButtonDown call, not a UI raycast).
-        if (_phoneGroup != null) _phoneGroup.blocksRaycasts = false;
+        // interactable=false additionally makes every phone Selectable
+        // ineligible for selection — ControllerUINavigator's pad auto-select
+        // was grabbing a hidden home-screen button every frame, which
+        // PlayerController reads as "UI focused" and zeroes look + movement.
+        if (_phoneGroup != null)
+        {
+            _phoneGroup.blocksRaycasts = false;
+            _phoneGroup.interactable = false;
+        }
 
         // Camera mode needs the cursor LOCKED so the player can look around
         // freely to aim the lens. The default Open() unlocked it; we override.
@@ -546,7 +559,11 @@ public class PlayerPhoneUI : MonoBehaviour
         // actually closing.
         if (IsOpen)
         {
-            if (_phoneGroup != null) _phoneGroup.blocksRaycasts = true;
+            if (_phoneGroup != null)
+            {
+                _phoneGroup.blocksRaycasts = true;
+                _phoneGroup.interactable = true;
+            }
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible   = true;
         }
@@ -1440,6 +1457,17 @@ public class PlayerPhoneUI : MonoBehaviour
 
         if (_isAnimating) return;
 
+        // In-phone app open: X / ESC / pad-B back out to the home screen
+        // first; a second press then closes the phone via the branches below.
+        if (IsOpen && _activeApp != null
+            && (Input.GetKeyDown(KeyCode.X) || Input.GetKeyDown(KeyCode.Escape)
+                || TutorialGate.PadPressed(TutorialGate.PadButton.B)))
+        {
+            ClosePhoneApp();
+            ConsumedEscapeThisFrame = true;
+            return;
+        }
+
         // ESC closes the phone (without opening the pause menu — see
         // TabbedPauseMenu.Update for the dual guard). Setting
         // ConsumedEscapeThisFrame protects against Update-order races: if
@@ -2050,6 +2078,16 @@ public class PlayerPhoneUI : MonoBehaviour
 
         // All pages built — show page 0 by default.
         GoToPage(0);
+
+        // In-phone app host — full-screen panel OVER the home content that
+        // the Build / Fishingdex apps render into (the AI-chat model: use
+        // the app inside the phone, back out to home). Sits below the
+        // camera-mode overlays so entering the camera covers it.
+        _appHostRT = NewUI("AppHost", _screenRT);
+        _appHostRT.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+        _appHostRT.anchorMin = Vector2.zero; _appHostRT.anchorMax = Vector2.one;
+        _appHostRT.offsetMin = Vector2.zero; _appHostRT.offsetMax = Vector2.zero;
+        _appHostRT.gameObject.SetActive(false);
 
         // Opaque black backdrop — sibling BEFORE the live camera RawImage so
         // it draws BEHIND it but ABOVE every home-screen widget. Hides the
@@ -2780,9 +2818,52 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         // Photos zooms INTO the phone instead of sliding it away.
         if (kind == AppKind.Photos) { OpenPhotosApp(); return; }
-        // Slide the phone out, THEN open the target UI — like tapping an
-        // app on a real phone (home screen exits, app launches).
+        // Build + Fishingdex run INSIDE the tablet screen (the AI-chat
+        // model) — no more separate fullscreen panels.
+        if (kind == AppKind.Build || kind == AppKind.Fishingdex) { OpenPhoneApp(kind); return; }
+        // Everything else (Settings / Map): slide the phone out, THEN open
+        // the target UI — like tapping an app on a real phone.
         StartCoroutine(CloseThenOpen(kind));
+    }
+
+    // ── In-phone apps (Build / Fishingdex) ──────────────────────────
+    RectTransform _appHostRT;
+    PhoneAppBase _activeApp;
+    PhoneBuildApp _buildApp;
+    PhoneFishdexApp _fishdexApp;
+
+    /// True while an in-phone app (Build / Fishingdex) covers the home screen.
+    public bool AppViewOpen => _activeApp != null;
+
+    void OpenPhoneApp(AppKind kind)
+    {
+        if (_appHostRT == null) return;
+        ClosePhoneApp();
+        _appHostRT.gameObject.SetActive(true);
+        switch (kind)
+        {
+            case AppKind.Build:
+                if (_buildApp == null) _buildApp = _appHostRT.gameObject.AddComponent<PhoneBuildApp>();
+                _activeApp = _buildApp;
+                break;
+            case AppKind.Fishingdex:
+                if (_fishdexApp == null) _fishdexApp = _appHostRT.gameObject.AddComponent<PhoneFishdexApp>();
+                _activeApp = _fishdexApp;
+                break;
+            default:
+                _appHostRT.gameObject.SetActive(false);
+                return;
+        }
+        _activeApp.OpenApp(_appHostRT);
+    }
+
+    /// Back out of the in-phone app to the home screen. Safe to call when
+    /// no app is open.
+    public void ClosePhoneApp()
+    {
+        if (_activeApp != null) _activeApp.CloseApp();
+        _activeApp = null;
+        if (_appHostRT != null) _appHostRT.gameObject.SetActive(false);
     }
 
     /// <summary>Photos tile entry point — rotate-and-grow into the gallery.</summary>

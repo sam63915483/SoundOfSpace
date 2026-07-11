@@ -923,6 +923,36 @@ public class BuildMenuUI : MonoBehaviour
         return rt;
     }
 
+    // ── Phone build-app bridge ──────────────────────────────────────────
+    // The in-phone build app reuses this component's catalogue, preview
+    // cache, and placement flow instead of duplicating any of it.
+
+    /// The buildables catalogue (Inspector-authored on the scene instance).
+    public BuildableEntry[] Buildables => buildables;
+
+    /// Cached prefab preview — the same RT the desktop panel renders.
+    public RenderTexture GetPreviewFor(BuildableEntry entry)
+        => entry != null ? GetOrRenderPreview(entry.prefab, PreviewSize) : null;
+
+    /// Prefab footprint in metres (cached alongside the preview).
+    public Vector3 GetSizeFor(BuildableEntry entry)
+        => entry != null ? GetCachedPrefabSize(entry.prefab) : Vector3.zero;
+
+    /// Start ghost placement directly — the phone app flow has no desktop
+    /// panel to close, so this is OnPlaceClicked minus the menu teardown.
+    public void StartPlacementFromPhone(BuildableEntry entry)
+    {
+        if (entry == null || entry.prefab == null || activePlacement != null) return;
+        var go = new GameObject("GhostPlacement_Runtime");
+        activePlacement = go.AddComponent<GhostPlacement>();
+        activePlacement.onFinished = () =>
+        {
+            activePlacement = null;
+            _placementEndedFrame = Time.frameCount;
+        };
+        activePlacement.Begin(entry, this);
+    }
+
     RenderTexture RenderPrefabPreview(GameObject prefab, int size)
     {
         EnsurePreviewRig();

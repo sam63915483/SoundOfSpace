@@ -368,14 +368,14 @@ public class FishingdexManager : MonoBehaviour
         _          => commonFishPrefab,
     };
 
-    string GetRarityLabel(string fishType) => fishType switch
+    public string GetRarityLabel(string fishType) => fishType switch
     {
         "Rare"     => "*** RARE ***",
         "Uncommon" => "** UNCOMMON **",
         _          => "* COMMON *",
     };
 
-    string GetRarityDescription(string fishType) => fishType switch
+    public string GetRarityDescription(string fishType) => fishType switch
     {
         "Rare"     => "A rare catch. Eating raw triggers a powerful trip.",
         "Uncommon" => "An uncommon find. Eating raw causes a mild trip.",

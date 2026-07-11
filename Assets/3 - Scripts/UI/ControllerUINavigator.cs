@@ -318,6 +318,20 @@ public class ControllerUINavigator : MonoBehaviour
             return;
         }
 
+        // Phone camera mode: the player is AIMING, not navigating a menu.
+        // The phone canvas is still up with (visually hidden) home-screen
+        // Selectables, so the force-selection below would grab one every
+        // frame — and PlayerController zeroes look + movement whenever a
+        // Selectable is focused. Keep the selection empty until the player
+        // leaves camera mode.
+        if (PlayerPhoneUI.IsCameraMode)
+        {
+            if (es.currentSelectedGameObject != null && !IsTextInputSelected(es))
+                es.SetSelectedGameObject(null);
+            HideBorder();
+            return;
+        }
+
         // Always force selection into the topmost panel that has selectables.
         // Two checks:
         //   1. If the current selection isn't valid (destroyed, disabled,
