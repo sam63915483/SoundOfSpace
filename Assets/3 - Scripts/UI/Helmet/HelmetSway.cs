@@ -25,6 +25,15 @@ public class HelmetSway : MonoBehaviour
         _entries.Add(new Entry { rt = rt, basePos = rt.anchoredPosition, mult = multiplier });
     }
 
+    /// Re-snapshot a registered transform's base position after it has been
+    /// re-seated (art-housing seating moves anchoredPosition post-Register).
+    public static void Reregister(RectTransform rt)
+    {
+        if (rt == null) return;
+        for (int i = 0; i < _entries.Count; i++)
+            if (_entries[i].rt == rt) { _entries[i].basePos = rt.anchoredPosition; return; }
+    }
+
     Camera _cam;
     float _nextCamFind;
     Quaternion _lastCamRot;

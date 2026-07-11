@@ -221,6 +221,39 @@ public class VitalsHUD : MonoBehaviour
         }
     }
 
+    // ── Helmet art-housing seating ───────────────────────────────────
+    // Called by HelmetOverlayHUD once the art config resolves (and again on
+    // live Inspector tuning): centers the card inside the art's recessed
+    // bottom-right display, scales it to fit, and drops the floating-card
+    // chrome — the helmet's own screen IS the panel.
+    public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
+    {
+        if (_cardRT == null) return;
+        _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
+        _cardRT.pivot = new Vector2(0.5f, 0f);   // grows upward from the screen's lower edge
+        _cardRT.anchoredPosition = new Vector2(0f, -h.sizeRef.y * 0.5f + 16f);
+        float fit = Mathf.Min(1f, (h.sizeRef.x - 20f) / 332f, (h.sizeRef.y - 16f) / 232f);
+        _cardRT.localScale = new Vector3(fit, fit, 1f);
+        ApplyIntegratedStyle(_cardRT);
+        HelmetSway.Reregister(_cardRT);
+    }
+
+    // "Built into the helmet": hide the beveled bg, border outline, and code
+    // bezels; keep the rows/bars/text rendering straight on the art's glass.
+    internal static void ApplyIntegratedStyle(RectTransform card)
+    {
+        var bg = card.GetComponent<Image>();
+        if (bg != null) bg.enabled = false;
+        foreach (Transform ch in card)
+        {
+            if (ch.name == "Border" || ch.name.StartsWith("Bezel"))
+            {
+                var img = ch.GetComponent<Image>();
+                if (img != null) img.enabled = false;
+            }
+        }
+    }
+
     void DisableLegacyResourceHUD()
     {
         var legacy = FindObjectOfType<ResourceHUD>(true);

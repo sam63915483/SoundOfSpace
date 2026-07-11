@@ -307,6 +307,23 @@ public class GForceHUD : MonoBehaviour
         return Ship.PilotedInstance;
     }
 
+    // ── Helmet art-housing seating ─────────────────────────────────
+    // Called by HelmetOverlayHUD once the art config resolves: centers the
+    // card inside the art's recessed bottom-left display, scales to fit, and
+    // drops the floating-card chrome (bg/border/bezels) — the helmet's own
+    // screen IS the panel. Wire-tags (M/S, BOOST) stay: they read as labels.
+    public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
+    {
+        if (_cardRT == null) return;
+        _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
+        _cardRT.pivot = new Vector2(0.5f, 0f);
+        _cardRT.anchoredPosition = new Vector2(0f, -h.sizeRef.y * 0.5f + 16f);
+        float fit = Mathf.Min(1f, (h.sizeRef.x - 20f) / 370f, (h.sizeRef.y - 24f) / 170f);
+        _cardRT.localScale = new Vector3(fit, fit, 1f);
+        VitalsHUD.ApplyIntegratedStyle(_cardRT);
+        HelmetSway.Reregister(_cardRT);
+    }
+
     // ── 3D widget build ────────────────────────────────────────────
 
     void Build3DWidget()

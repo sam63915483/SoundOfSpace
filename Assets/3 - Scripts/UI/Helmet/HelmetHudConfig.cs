@@ -73,4 +73,15 @@ public class HelmetHudConfig : MonoBehaviour
         Version++;
         HelmetHudPalette.SetAccent(accentColor);
     }
+
+    // ── Art housing screens (APPEND-ONLY: serialized fields stay at class end) ──
+    [Header("Art housing screens (texture px, bottom-left origin)")]
+    [Tooltip("True: the art has displays built into the shell — the clusters seat inside the rects below and drop their floating-card chrome (no bg/border/bezels). False: clusters keep the code-drawn bezel-card look at the HelmetHudLayout contract positions.")]
+    public bool artHousingMode = true;
+    [Tooltip("Bottom-left pod's dark display face (jetpack/boost cluster seats here).")]
+    public Rect blScreenPx   = new Rect(150, 90, 760, 500);
+    [Tooltip("Bottom-right pod's dark display face (vitals cluster seats here).")]
+    public Rect brScreenPx   = new Rect(2930, 90, 760, 500);
+    [Tooltip("Brow's slim dark instrument strip (compass seats here).")]
+    public Rect browScreenPx = new Rect(1300, 1990, 1240, 110);
 }

@@ -26,6 +26,12 @@ public class HelmetOverlayHUD : MonoBehaviour
     HelmetHudConfig _config;
     float _nextConfigFind;
     int _builtVersion = int.MinValue;
+    bool _clustersSeated;
+
+    /// A housing screen in the art, resolved to screen space: anchor fraction
+    /// of the canvas (follows the stretched art at any aspect) + size in 16:9
+    /// reference units.
+    public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -94,7 +100,40 @@ public class HelmetOverlayHUD : MonoBehaviour
         {
             _builtVersion = _config.Version;
             RebuildPieces();
+            _clustersSeated = false;   // re-seat with the (possibly retuned) rects
         }
+        // Seat the clusters into the art's built-in screens once all three
+        // singletons exist (they auto-create in arbitrary order around us).
+        if (haveArt && !_clustersSeated) _clustersSeated = TrySeatClusters();
+    }
+
+    bool TrySeatClusters()
+    {
+        var c = _config;
+        if (!c.artHousingMode) return true;
+        if (VitalsHUD.Instance == null || GForceHUD.Instance == null || CompassHUD.Instance == null)
+            return false;
+        float S = 1.025f * (c.stretchWholeTexture ? c.frameZoom : 1f);
+        VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S));
+        GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S));
+        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S));
+        return true;
+    }
+
+    // Texture-px rect (bottom-left origin) → screen space. The art stretches
+    // full-screen, so a texture point at fraction f sits at canvas fraction
+    // 0.5 + (f - 0.5) * S (S = overscan × zoom on the sway root). Size maps at
+    // 2 px = 1 ref unit (4K art on the 1920-unit canvas), scaled by S.
+    static HousingRect ToScreen(HelmetHudConfig c, Rect px, float S)
+    {
+        var tex = c.helmetTexture;
+        float cx = (px.x + px.width * 0.5f) / tex.width;
+        float cy = (px.y + px.height * 0.5f) / tex.height;
+        return new HousingRect
+        {
+            anchorFrac = new Vector2(0.5f + (cx - 0.5f) * S, 0.5f + (cy - 0.5f) * S),
+            sizeRef = new Vector2(px.width, px.height) * 0.5f * S,
+        };
     }
 
     void BuildFrameCanvas()

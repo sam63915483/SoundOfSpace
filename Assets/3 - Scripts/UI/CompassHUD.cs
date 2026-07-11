@@ -363,6 +363,37 @@ public class CompassHUD : MonoBehaviour
         }
     }
 
+    // ── Helmet art-housing seating ──
+    // Called by HelmetOverlayHUD once the art config resolves: centers the
+    // strip inside the art's slim brow display and hides the strip's own
+    // bg/sheens — the helmet's dark glass IS the instrument housing. The
+    // heading badge tucks just under the slot, over the visor top.
+    public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
+    {
+        if (_strip == null || _badgeRT == null) return;
+        stripWidth = Mathf.Min(612f, h.sizeRef.x - 30f);
+        _strip.anchorMin = _strip.anchorMax = h.anchorFrac;
+        _strip.pivot = new Vector2(0.5f, 0.5f);
+        _strip.sizeDelta = new Vector2(stripWidth, stripHeight);
+        _strip.anchoredPosition = Vector2.zero;
+        _badgeRT.anchorMin = _badgeRT.anchorMax = h.anchorFrac;
+        _badgeRT.pivot = new Vector2(0.5f, 1f);
+        _badgeRT.anchoredPosition = new Vector2(0f, -h.sizeRef.y * 0.5f - 12f);   // clear of the brow's lower bezel lip
+        SetImageEnabled(_strip, false);
+        var top = _strip.Find("TopSheen");
+        if (top != null) SetImageEnabled(top, false);
+        var bot = _strip.Find("BottomSheen");
+        if (bot != null) SetImageEnabled(bot, false);
+        HelmetSway.Reregister(_strip);
+        HelmetSway.Reregister(_badgeRT);
+    }
+
+    static void SetImageEnabled(Transform t, bool on)
+    {
+        var img = t.GetComponent<Image>();
+        if (img != null) img.enabled = on;
+    }
+
     // ── Canvas + waypoint UI build ──
 
     void BuildCanvas()
