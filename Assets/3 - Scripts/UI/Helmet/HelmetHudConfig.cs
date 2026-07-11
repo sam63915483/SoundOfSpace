@@ -146,4 +146,8 @@ public class HelmetHudConfig : MonoBehaviour
     [Range(0f, 20f)] public float bobRunAmplitude = 7f;
     [Tooltip("Stride cadence: bob steps per meter traveled (phase locks to distance, so it never drifts against the footsteps).")]
     [Range(0.4f, 3f)] public float bobStepsPerMeter = 1.1f;
+
+    [Header("Phone flip-up rig")]
+    [Tooltip("Mechanical mount-arm art for the chest tablet (PlayerPhoneUI reads it from here — auto-singletons can't take Inspector references).")]
+    public Texture2D phoneArmTexture;
 }

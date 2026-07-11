@@ -59,12 +59,24 @@ public class PlayerPhoneUI : MonoBehaviour
     public RectTransform PhoneChassisRect => _phoneRT;
 
     // ── Layout constants ────────────────────────────────────────────
-    const float PhoneWidth     = 220f;
+    // 4:3 landscape tablet (FNAF security-cam style): flips up from the
+    // player's chest on a mechanical arm instead of sliding in. Height keeps
+    // the original 440 so every internal layout constant still fits; width
+    // is 4/3 of it.
+    const float PhoneWidth     = 586f;
     const float PhoneHeight    = 440f;
-    // Overall on-screen scale of the phone. 1.5× was the user's ask — easier
-    // to apply at the root than to bump every internal pixel-size constant.
-    const float PhoneScale     = 1.5f;
-    const float SlideDuration  = 0.25f;
+    // Overall on-screen scale of the phone — easier to apply at the root
+    // than to bump every internal pixel-size constant. (Was 1.5 as a
+    // portrait handset; the 4:3 chest tablet reads too big past ~1.05.)
+    const float PhoneScale     = 1.05f;
+    const float SlideDuration  = 0.25f;   // legacy pacing constant (gallery waits key off animation end)
+    // FNAF2-style flip: the monitor hinges around its OWN bottom edge,
+    // rotating up from past-edge-on (you glimpse its back for a frame) to
+    // face-on with a springy overshoot, while the hinge line rises from
+    // below the screen. Fully opaque throughout — the flip is the reveal.
+    const float FlipOpenDuration  = 0.30f;
+    const float FlipCloseDuration = 0.20f;
+    const float FlipClosedAngle   = 100f;  // X-rotation when stowed (past edge-on, lying against the chest)
 
     // ── Palette (mirrors VitalsHUD / AutoAlignToggleUI) ─────────────
     static readonly Color ChassisBg     = new Color32(0x0A, 0x18, 0x28, 0xFF);
@@ -83,6 +95,20 @@ public class PlayerPhoneUI : MonoBehaviour
     RectTransform _phoneRT;
     RectTransform _screenRT;
     RectMask2D    _screenMask;
+
+    // Current hinge X-rotation of the flip (FlipClosedAngle when stowed).
+    float _flipAngle = FlipClosedAngle;
+
+    // Mount arm: a CHILD of the chassis hanging below its bottom edge, so
+    // arm + tablet sweep as one rigid assembly around the hinge at the
+    // arm's base (the chest). Inherits the chassis CanvasGroup and, on the
+    // camera-space canvas, real perspective. Art from HelmetHudConfig.
+    RectTransform _armRT;
+    RawImage      _armImage;
+    float         _nextArmTexFind;
+    const float ArmLocalHeight  = 400f;   // local units; ~370 hangs below the chassis
+    const float ArmLocalOverlap = 30f;    // clamp bracket grips over the bottom bezel
+    const float ArmAspect       = 0.7467f; // phone_arm.png width/height
     // R key cycles portrait → landscape (90° CW) → portrait. Always reset
     // to portrait on Open so re-opening lands in the default orientation.
     bool          _isLandscape;
@@ -271,6 +297,7 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         DetachCaptureCmd();
         if (Instance == this) Instance = null;
+        if (_phoneCam != null) Destroy(_phoneCam.gameObject);   // root object, not a child
     }
 
     void OnEnable()
@@ -342,6 +369,7 @@ public class PlayerPhoneUI : MonoBehaviour
         HideHintNow();
         _isAnimating = false;
         IsOpen = false;
+        _flipAngle = FlipClosedAngle;   // next Open starts from the stowed pose
         if (_phoneRT    != null) _phoneRT.anchoredPosition = new Vector2(_phoneRT.anchoredPosition.x, OffScreenY);
         if (_phoneGroup != null) { _phoneGroup.alpha = 0f; _phoneGroup.blocksRaycasts = false; }
         // AnimatePhone's close path restores nav events; force-close must too,
@@ -762,7 +790,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         _hintLabel = _hintRT.gameObject.AddComponent<TextMeshProUGUI>();
         HudFontResolver.Apply(_hintLabel);
-        _hintLabel.text = "Press C for camera, press R to rotate";
+        _hintLabel.text = "Press C for camera";
         _hintLabel.fontSize = 22f;
         _hintLabel.color = AccentCyan;
         _hintLabel.alignment = TextAlignmentOptions.Center;
@@ -1248,6 +1276,7 @@ public class PlayerPhoneUI : MonoBehaviour
     Coroutine _animCoroutine;
     bool _isAnimating;
     bool _animatingToOpen;
+    Camera _phoneCam;
 
     // Phone is anchor+pivot (0.5, 0.5) — sits slightly above canvas centre
     // so its bottom edge + the "Press C for camera, press R to rotate" hint
@@ -1256,7 +1285,8 @@ public class PlayerPhoneUI : MonoBehaviour
     // 3440×1440 (vs the reference 1080), which left the hint overlapping
     // the hotbar's top edge. +40 lifts everything cleanly above it on
     // ultrawide while still looking centered on 16:9.
-    const float OnScreenLift = 40f;
+    // 0 = the open monitor sits dead-centre of the view, FNAF2 style.
+    const float OnScreenLift = 0f;
     float OnScreenY  => OnScreenLift;
     float OffScreenY
     {
@@ -1275,6 +1305,27 @@ public class PlayerPhoneUI : MonoBehaviour
         RefreshStatusBar();
         UpdatePosition();
         UpdateAIUnreadBadge();
+
+        // The phone camera only needs to render while something is showing.
+        if (_phoneCam != null)
+        {
+            bool camOn = IsOpen || _isAnimating || _inGalleryTransition;
+            if (_phoneCam.enabled != camOn) _phoneCam.enabled = camOn;
+        }
+
+        // Arm art arrives whenever HelmetHudConfig resolves (scene object;
+        // throttled find). The arm is a chassis child, so visibility and the
+        // flip pose come for free.
+        if (_armImage != null && !_armImage.enabled && Time.unscaledTime >= _nextArmTexFind)
+        {
+            _nextArmTexFind = Time.unscaledTime + 1f;
+            var helmetCfg = HelmetHudConfig.Instance;
+            if (helmetCfg != null && helmetCfg.phoneArmTexture != null)
+            {
+                _armImage.texture = helmetCfg.phoneArmTexture;
+                _armImage.enabled = true;
+            }
+        }
 
         // Vitals bars track ResourceManager live — only while page 2 is
         // visible AND the phone is open (no point updating an off-screen UI).
@@ -1298,26 +1349,10 @@ public class PlayerPhoneUI : MonoBehaviour
 
         if (_inGalleryTransition) return; // no phone input while zooming to/from the gallery
 
-        // R toggles portrait ↔ landscape orientation. Works in both home
-        // and camera modes. While phone is open, R is "claimed" by the
-        // phone — the pistol skips its reload on the same press by
-        // checking PlayerPhoneUI.IsOpen.
-        //
-        // Suppressed while the AI chat is up: landscape would force the
-        // chat's input row + bubble layout into a much wider/shorter rect
-        // that wasn't designed for, and the chat is meant to read as a
-        // dedicated portrait conversation surface.
-        //
-        // If a video recording is in progress we finalize the AVI first
-        // (the file's W×H is locked at StartVideoRecording from the
-        // current crop, so continuing past a rotation would record the
-        // wrong aspect while the live preview shows the new one).
-        if (IsOpen && !_isAnimating && _activeChat == null && Input.GetKeyDown(KeyCode.R))
-        {
-            if (_isRecording) StopVideoRecording();
-            _isLandscape = !_isLandscape;
-            ApplyOrientation();
-        }
+        // R-rotate is retired: the chest tablet is natively 4:3 landscape,
+        // so there's no portrait orientation to flip to. The _isLandscape
+        // machinery stays (gallery/orientation plumbing reads it) but is
+        // never toggled — it's permanently false.
 
         // Hint timer — fires only when phone is open AND no overlay UI
         // (Fishingdex / Build menu / Settings tabbed-pause-menu) is up,
@@ -1582,25 +1617,50 @@ public class PlayerPhoneUI : MonoBehaviour
             }
         }
 
-        float fromY = _phoneRT.anchoredPosition.y;
-        float toY   = toOpen ? OnScreenY : OffScreenY;
-        float fromA = _phoneGroup.alpha;
-        float toA   = toOpen ? 1f : 0f;
+        // FNAF2-style flip: arm + tablet sweep as ONE rigid assembly around
+        // the hinge at the arm's base (the chest, below the view). A single
+        // rotation drives both the rise and the tilt — with the camera-space
+        // canvas providing real perspective, it reads as a monitor genuinely
+        // flipping up in front of the helmet. Fully opaque throughout.
+        // RectMask2D mis-culls children while the chassis holds an
+        // X-rotation (same reason RotatePhoneRoutine disables it), so the
+        // mask sits out the whole tween.
+        if (_screenMask != null) _screenMask.enabled = false;
+
+        float chassisH = PhoneHeight * PhoneScale;
+        float armLen   = (ArmLocalHeight - ArmLocalOverlap) * PhoneScale;
+
+        float fromAng = _flipAngle;
+        float toAng   = toOpen ? 0f : FlipClosedAngle;
+        float dur     = toOpen ? FlipOpenDuration : FlipCloseDuration;
+
+        _phoneGroup.alpha = 1f;   // opaque for the whole flip, both ways
 
         float t = 0f;
-        while (t < SlideDuration)
+        while (t < dur)
         {
             t += Time.unscaledDeltaTime;
-            float u = Mathf.Clamp01(t / SlideDuration);
-            // ease-out for open (lands soft), ease-in for close.
-            float eased = toOpen ? 1f - Mathf.Pow(1f - u, 3f) : u * u * u;
-            _phoneRT.anchoredPosition = new Vector2(_phoneRT.anchoredPosition.x, Mathf.Lerp(fromY, toY, eased));
-            _phoneGroup.alpha = Mathf.Lerp(fromA, toA, eased);
+            float u = Mathf.Clamp01(t / dur);
+            float eased;
+            if (toOpen)
+            {
+                // Ease-out-back — snaps up, overshoots a few degrees past
+                // face-on, springs back like a latched mount.
+                const float c1 = 1.70158f, c3 = c1 + 1f;
+                float v = u - 1f;
+                eased = 1f + c3 * v * v * v + c1 * v * v;
+            }
+            else eased = u * u;   // ease-in — drops away fast
+            _flipAngle = Mathf.LerpUnclamped(fromAng, toAng, eased);
+            ApplyFlip(chassisH, armLen);
             yield return null;
         }
 
-        _phoneRT.anchoredPosition = new Vector2(_phoneRT.anchoredPosition.x, toY);
-        _phoneGroup.alpha = toA;
+        _flipAngle = toAng;
+        ApplyFlip(chassisH, armLen);
+        _phoneGroup.alpha = toOpen ? 1f : 0f;
+        // Restore mask + camera-content state for the current orientation.
+        SnapCameraContentToOrientation();
 
         if (!toOpen)
         {
@@ -1617,13 +1677,60 @@ public class PlayerPhoneUI : MonoBehaviour
         _animCoroutine = null;
     }
 
+    // Poses the assembly for the current hinge angle. The hinge is the arm
+    // BASE below the view; the chassis centre orbits it: at θ=0 it rests at
+    // OnScreenY, and rotating back by θ drops it by pivotDist·(1−cosθ)
+    // while the whole assembly (arm is a child) tilts. One rotation = rise
+    // + tilt together, like a real bottom-hinged monitor.
+    void ApplyFlip(float chassisH, float armLen)
+    {
+        float pivotDist = armLen + chassisH * 0.5f;
+        float c = Mathf.Cos(_flipAngle * Mathf.Deg2Rad);
+        float cy = OnScreenY - pivotDist * (1f - c);
+        _phoneRT.localRotation = Quaternion.Euler(_flipAngle, 0f, 0f);
+        _phoneRT.anchoredPosition = new Vector2(0f, cy);
+    }
+
     // ── Canvas + chassis + screen ───────────────────────────────────
 
     void BuildCanvas()
     {
         _canvas = gameObject.AddComponent<Canvas>();
-        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 850; // above HUDs (800-820), below pause menu (1000)
+        // Screen Space — CAMERA on a dedicated perspective UI camera, not
+        // Overlay: perspective renders the flip's X-rotation with TRUE
+        // keystone/foreshortening, so it reads as a panel swinging up (an
+        // overlay canvas can only squash the rotation — always looked like a
+        // slide). A dedicated camera (rather than Camera.main) keeps the
+        // phone out of the scene's post chain — grogginess/mood grading were
+        // crushing it to near-invisible indoors. It renders after the main
+        // camera (depth 90), and every overlay canvas (helmet frame 805+,
+        // HUDs) still draws on top, so the helmet naturally occludes the
+        // tablet — it's physically outside the visor.
+        _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+        // The camera must be a ROOT object, NOT a child of this canvas: an
+        // SSC canvas drives its own transform to sit in front of its camera,
+        // so a child camera gets dragged along in a feedback loop until it
+        // ends up inside the canvas plane rendering nothing. Parked far
+        // below the world; with a UI-only mask + 3m far clip it can only
+        // ever see the canvas Unity places in front of it.
+        var camGo = new GameObject("PhoneUICamera");
+        DontDestroyOnLoad(camGo);
+        camGo.transform.position = new Vector3(0f, -80000f, 0f);
+        _phoneCam = camGo.AddComponent<Camera>();
+        _phoneCam.clearFlags = CameraClearFlags.Depth;   // draw over the finished frame
+        _phoneCam.cullingMask = 1 << 5;                  // UI layer only (this canvas)
+        _phoneCam.fieldOfView = 60f;
+        _phoneCam.nearClipPlane = 0.05f;
+        _phoneCam.farClipPlane = 3f;
+        _phoneCam.depth = 90f;                           // after main camera + post
+        _phoneCam.allowHDR = false;
+        _phoneCam.allowMSAA = false;
+        _phoneCam.useOcclusionCulling = false;
+        _phoneCam.enabled = false;                       // gated by IsOpen/animation in Update
+        gameObject.layer = 5;                            // canvas culling uses the canvas GO's layer
+        _canvas.worldCamera = _phoneCam;
+        _canvas.planeDistance = 1f;
+        _canvas.sortingOrder = 800;
 
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
@@ -1735,10 +1842,9 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void BuildPhone()
     {
-        // Phone root — animates anchoredPosition.y and CanvasGroup.alpha.
-        // Anchored to canvas centre so the phone rests between the top
-        // compass and bottom hotbar; pivot at centre so OnScreenY = 0 is
-        // a true vertical centre.
+        // Phone root — the flip animation drives anchoredPosition.y +
+        // X-rotation (the monitor hinges around its own bottom edge) and
+        // CanvasGroup.alpha. Anchored to canvas centre; pivot centre.
         _phoneRT = NewUI("Phone", transform);
         _phoneRT.anchorMin = new Vector2(0.5f, 0.5f);
         _phoneRT.anchorMax = new Vector2(0.5f, 0.5f);
@@ -1820,6 +1926,20 @@ public class PlayerPhoneUI : MonoBehaviour
         BuildScreen();
         BuildCloseButtonOnBezel();
         BuildMovementWarning();
+
+        // Mount arm — child of the chassis so the assembly flips as one.
+        // First sibling: renders right after the chassis bg, under all the
+        // other chrome, with only the clamp bracket overlapping the bezel.
+        _armRT = NewUI("MountArm", _phoneRT);
+        _armRT.SetAsFirstSibling();
+        _armRT.anchorMin = new Vector2(0.5f, 0f);
+        _armRT.anchorMax = new Vector2(0.5f, 0f);
+        _armRT.pivot     = new Vector2(0.5f, 1f);
+        _armRT.anchoredPosition = new Vector2(0f, ArmLocalOverlap);
+        _armRT.sizeDelta = new Vector2(ArmLocalHeight * ArmAspect, ArmLocalHeight);
+        _armImage = _armRT.gameObject.AddComponent<RawImage>();
+        _armImage.raycastTarget = false;
+        _armImage.enabled = false;   // until the art texture resolves (see Update)
     }
 
     void BuildMovementWarning()
@@ -2109,14 +2229,15 @@ public class PlayerPhoneUI : MonoBehaviour
         _appGridRT.offsetMin = Vector2.zero; _appGridRT.offsetMax = Vector2.zero;
 
         var grid = _appGridRT.gameObject.AddComponent<GridLayoutGroup>();
-        // 6 tiles → 2 columns × 3 rows. Width budget ~180 px: 2*60 + 6 + 8 = 134
-        // (centered); height budget 170 px: 3*50 + 2*6 + 8 = 170 exactly.
+        // 6 tiles → 3 columns × 2 rows on the 4:3 landscape screen. Width
+        // budget: 3*110 + 2*10 + 8 = 358 (centered in ~546); height budget
+        // 170 px: 2*66 + 10 + 8 = 150.
         grid.padding = new RectOffset(4, 4, 4, 4);
-        grid.spacing = new Vector2(6f, 6f);
-        grid.cellSize = new Vector2(60f, 50f);
+        grid.spacing = new Vector2(10f, 10f);
+        grid.cellSize = new Vector2(110f, 66f);
         grid.childAlignment = TextAnchor.MiddleCenter;
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        grid.constraintCount = 2;
+        grid.constraintCount = 3;
 
         // Glyphs are uppercase ASCII letters — the bundled LiberationSans SDF
         // doesn't include the unicode-block symbols (⌬ ▦ ⚙ ◎) that were here
@@ -2668,17 +2789,17 @@ public class PlayerPhoneUI : MonoBehaviour
         _galleryTransition = StartCoroutine(GalleryExitRoutine());
     }
 
-    // Rotated -90° the chassis is PhoneHeight wide × PhoneWidth tall on
-    // screen; scale so it overflows the canvas on both axes (the bezel ends
-    // off-screen and the screen interior covers the viewport). 1.10 = margin.
+    // The chassis is already landscape 4:3 — no rotation needed; scale so it
+    // overflows the canvas on both axes (the bezel ends off-screen and the
+    // screen interior covers the viewport). 1.10 = margin.
     float GalleryTargetScale()
     {
         // Fit the SCREEN INTERIOR (chassis minus 12px side / 42px top+bottom
-        // bezels → 356×196 local when rotated), not the chassis — otherwise
-        // the bezel peeks at the viewport edges during the crossfade.
+        // bezels), not the chassis — otherwise the bezel peeks at the
+        // viewport edges during the crossfade.
         var parent = (RectTransform)_phoneRT.parent;
-        return Mathf.Max(parent.rect.width  / (PhoneHeight - 84f),
-                         parent.rect.height / (PhoneWidth  - 24f)) * 1.10f;
+        return Mathf.Max(parent.rect.width  / (PhoneWidth  - 24f),
+                         parent.rect.height / (PhoneHeight - 84f)) * 1.10f;
     }
 
     System.Collections.IEnumerator GalleryEnterRoutine()
@@ -2697,7 +2818,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // reason RotatePhoneRoutine disables it for its tween.
         if (_screenMask != null) _screenMask.enabled = false;
 
-        yield return GalleryTween(0f, -90f, PhoneScale, GalleryTargetScale(),
+        yield return GalleryTween(0f, 0f, PhoneScale, GalleryTargetScale(),
                                   _phoneRT.anchoredPosition.y, 0f, GalleryGrowDuration);
 
         // Crossfade: the gallery fades in over the now screen-filling phone.
@@ -2738,7 +2859,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _phoneGroup.alpha = 1f;
         _phoneGroup.blocksRaycasts = true;
         float bigScale = GalleryTargetScale();
-        _phoneRT.localRotation = Quaternion.Euler(0f, 0f, -90f);
+        _phoneRT.localRotation = Quaternion.identity;   // landscape chassis fills the screen unrotated
         _phoneRT.localScale = new Vector3(bigScale, bigScale, 1f);
         _phoneRT.anchoredPosition = Vector2.zero;
 
@@ -2760,8 +2881,8 @@ public class PlayerPhoneUI : MonoBehaviour
             PlayerController.isInDialogue = true;
         }
 
-        // …then the phone shrinks + rotates back into the hand.
-        yield return GalleryTween(-90f, 0f, bigScale, PhoneScale, 0f, OnScreenY, GalleryGrowDuration);
+        // …then the phone shrinks back onto the chest arm.
+        yield return GalleryTween(0f, 0f, bigScale, PhoneScale, 0f, OnScreenY, GalleryGrowDuration);
 
         PlayerController.isInDialogue = false; // hand back to the normal open-phone state
         if (_screenMask != null) _screenMask.enabled = true;
@@ -2798,6 +2919,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _phoneGroup.alpha = 0f;
         _phoneGroup.blocksRaycasts = false;
         _isLandscape = false;
+        _flipAngle = FlipClosedAngle;   // next Open flips up from the stowed pose
         _phoneRT.localRotation = Quaternion.identity;
         _phoneRT.localScale = new Vector3(PhoneScale, PhoneScale, 1f);
         _phoneRT.anchoredPosition = new Vector2(0f, OffScreenY);

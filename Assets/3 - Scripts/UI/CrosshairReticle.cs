@@ -105,6 +105,8 @@ public class CrosshairReticle : MonoBehaviour
         else DestroyImmediate(go);
     }
 
+    bool _hiddenForPhone;
+
     void Update()
     {
         if (_needsRebuild
@@ -116,6 +118,21 @@ public class CrosshairReticle : MonoBehaviour
             _needsRebuild = false;
             Rebuild();
         }
+
+        // The chest tablet occupies screen centre while open — hide the whole
+        // reticle (pip included) so it never draws over the phone screen.
+        bool phoneUp = Application.isPlaying && PlayerPhoneUI.IsOpen;
+        if (phoneUp != _hiddenForPhone)
+        {
+            _hiddenForPhone = phoneUp;
+            for (int i = 0; i < transform.childCount; i++)
+            {
+                var c = transform.GetChild(i);
+                if (c.name == "SquareFrame" || c.name == "TriangleFrame" || c.name == "Pip")
+                    c.gameObject.SetActive(!phoneUp);
+            }
+        }
+        if (phoneUp) return;
 
         // Keep the gaze gate in sync with the inspector fields (live-tunable).
         InteractGaze.RequireGaze = requireLookToInteract;
