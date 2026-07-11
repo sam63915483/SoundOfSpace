@@ -251,6 +251,7 @@ public class GoodsVendorShopUI : MonoBehaviour
         BuildGridView(panel);
         BuildDetailView(panel);
         BuildToast(panel);
+        VendorMoneyBadge.Attach(panel);   // live balance while buying
 
         _root.SetActive(false);
     }

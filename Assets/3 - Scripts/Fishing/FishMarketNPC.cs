@@ -525,6 +525,8 @@ public class FishMarketNPC : MonoBehaviour
         uiEarningsCG.alpha      = 0f;
         earnGO.SetActive(false);
 
+        VendorMoneyBadge.Attach(panelRT);   // live balance while selling
+
         RefreshUI();
     }
 

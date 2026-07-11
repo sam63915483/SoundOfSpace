@@ -333,6 +333,8 @@ public class SpaceDustSellUI : MonoBehaviour
         _cancelBtn = MkBtn(rRT, "CANCEL", C_BtnBack, Close);
         _sellBtn   = MkBtn(rRT, "SELL",   C_BtnSell, OnSellClicked);
 
+        VendorMoneyBadge.Attach(_panelRT);   // live balance while selling
+
         _panelRT.gameObject.SetActive(false);
     }
 
