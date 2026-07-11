@@ -34,6 +34,15 @@ public class HelmetSway : MonoBehaviour
             if (_entries[i].rt == rt) { _entries[i].basePos = rt.anchoredPosition; return; }
     }
 
+    /// Stop swaying a transform (e.g. a cluster card that moved into an
+    /// off-screen RenderTexture rig — its warped on-screen quad sways instead).
+    public static void Unregister(RectTransform rt)
+    {
+        if (rt == null) return;
+        for (int i = _entries.Count - 1; i >= 0; i--)
+            if (_entries[i].rt == rt) { _entries.RemoveAt(i); return; }
+    }
+
     Camera _cam;
     float _nextCamFind;
     Quaternion _lastCamRot;

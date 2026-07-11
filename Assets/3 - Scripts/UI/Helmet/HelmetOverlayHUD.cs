@@ -33,6 +33,18 @@ public class HelmetOverlayHUD : MonoBehaviour
     /// reference units, and the Z-tilt matching the screen's painted perspective.
     public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; public Vector3 euler; public float contentScale; public Vector2 contentOffset; }
 
+    /// A painted screen's true quad, resolved to canvas fractions (BL/BR/TR/TL)
+    /// plus its average dimensions in reference units — the perspective-seating
+    /// contract for HudScreenProjector/HousingScreenWarp. Fractions track the
+    /// stretched art at any aspect ratio, so no tilt correction is needed.
+    public struct HousingQuad
+    {
+        public Vector2 blFrac, brFrac, trFrac, tlFrac;
+        public Vector2 sizeRef;
+        public float contentScale;
+        public Vector2 contentOffset;
+    }
+
     readonly System.Collections.Generic.List<RawImage> _pieceImages =
         new System.Collections.Generic.List<RawImage>();
 
@@ -139,9 +151,19 @@ public class HelmetOverlayHUD : MonoBehaviour
         if (VitalsHUD.Instance == null || GForceHUD.Instance == null || CompassHUD.Instance == null)
             return false;
         float S = 1.025f * (c.stretchWholeTexture ? c.frameZoom : 1f);
-        VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S, c.brScreenTiltDeg, c.brScreenTilt3D, c.brContentOffset));
-        GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S, c.blScreenTiltDeg, c.blScreenTilt3D, c.blContentOffset));
-        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f, Vector2.zero, Vector2.zero));
+        if (c.perspectiveScreens)
+        {
+            // True-perspective seating: the clusters render to RenderTextures
+            // and land on the art's painted quads via homography warp.
+            VitalsHUD.Instance.SeatOnArtScreen(ToQuad(c, c.brQuadTL, c.brQuadTR, c.brQuadBL, c.brQuadBR, S, c.brContentOffset));
+            GForceHUD.Instance.SeatOnArtScreen(ToQuad(c, c.blQuadTL, c.blQuadTR, c.blQuadBL, c.blQuadBR, S, c.blContentOffset));
+        }
+        else
+        {
+            VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S, c.brScreenTiltDeg, c.brScreenTilt3D, c.brContentOffset));
+            GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S, c.blScreenTiltDeg, c.blScreenTilt3D, c.blContentOffset));
+        }
+        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f, Vector2.zero, c.browContentOffset, c.browContentScale));
         return true;
     }
 
@@ -149,7 +171,7 @@ public class HelmetOverlayHUD : MonoBehaviour
     // full-screen, so a texture point at fraction f sits at canvas fraction
     // 0.5 + (f - 0.5) * S (S = overscan × zoom on the sway root). Size maps at
     // 2 px = 1 ref unit (4K art on the 1920-unit canvas), scaled by S.
-    static HousingRect ToScreen(HelmetHudConfig c, Rect px, float S, float tiltDeg, Vector2 tilt3D, Vector2 contentOffset)
+    static HousingRect ToScreen(HelmetHudConfig c, Rect px, float S, float tiltDeg, Vector2 tilt3D, Vector2 contentOffset, float contentScale = -1f)
     {
         var tex = c.helmetTexture;
         float cx = (px.x + px.width * 0.5f) / tex.width;
@@ -165,6 +187,28 @@ public class HelmetOverlayHUD : MonoBehaviour
             anchorFrac = new Vector2(0.5f + (cx - 0.5f) * S, 0.5f + (cy - 0.5f) * S),
             sizeRef = new Vector2(px.width, px.height) * 0.5f * S,
             euler = new Vector3(tilt3D.x, tilt3D.y, effTilt),
+            contentScale = contentScale >= 0f ? contentScale : c.screenContentScale,
+            contentOffset = contentOffset,
+        };
+    }
+
+    // Measured painted-quad corners (texture px, bottom-left origin) → canvas
+    // fractions. Fractions ride the stretched art, so the quad distorts with
+    // the window exactly like the painting does — correct at every aspect
+    // with no tilt math. sizeRef = the quad's average dimensions in reference
+    // units (2 px = 1 unit), which sizes the capture RT so content units
+    // match the old flat-seating fit numbers 1:1.
+    static HousingQuad ToQuad(HelmetHudConfig c, Vector2 tl, Vector2 tr, Vector2 bl, Vector2 br, float S, Vector2 contentOffset)
+    {
+        var tex = c.helmetTexture;
+        Vector2 F(Vector2 p) => new Vector2(0.5f + (p.x / tex.width - 0.5f) * S,
+                                            0.5f + (p.y / tex.height - 0.5f) * S);
+        float wTop = (tr - tl).magnitude, wBot = (br - bl).magnitude;
+        float hL = (tl - bl).magnitude, hR = (tr - br).magnitude;
+        return new HousingQuad
+        {
+            blFrac = F(bl), brFrac = F(br), trFrac = F(tr), tlFrac = F(tl),
+            sizeRef = new Vector2((wTop + wBot) * 0.25f * S, (hL + hR) * 0.25f * S),
             contentScale = c.screenContentScale,
             contentOffset = contentOffset,
         };

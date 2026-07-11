@@ -381,10 +381,11 @@ public class CompassHUD : MonoBehaviour
         // Strip rides the lower half of the glass; the heading badge tucks
         // into the upper half so the WHOLE instrument lives inside the glass
         // (the badge used to dangle below onto the brow padding).
-        _strip.anchoredPosition = new Vector2(0f, -(h.sizeRef.y * 0.5f - stripHeight * cs * 0.5f - 9f));
+        // contentOffset = the browContentOffset nudge, moving both together.
+        _strip.anchoredPosition = new Vector2(0f, -(h.sizeRef.y * 0.5f - stripHeight * cs * 0.5f - 9f)) + h.contentOffset;
         _badgeRT.anchorMin = _badgeRT.anchorMax = h.anchorFrac;
         _badgeRT.pivot = new Vector2(0.5f, 1f);
-        _badgeRT.anchoredPosition = new Vector2(0f, h.sizeRef.y * 0.5f - 3f);
+        _badgeRT.anchoredPosition = new Vector2(0f, h.sizeRef.y * 0.5f - 3f) + h.contentOffset;
         SetImageEnabled(_strip, false);
         var top = _strip.Find("TopSheen");
         if (top != null) SetImageEnabled(top, false);

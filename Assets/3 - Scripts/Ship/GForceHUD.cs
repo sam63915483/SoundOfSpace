@@ -315,6 +315,7 @@ public class GForceHUD : MonoBehaviour
     public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
     {
         if (_cardRT == null) return;
+        DetachProjector();
         _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
         // Fixed-height card → dead-center in the glass (an off-center readout
         // is what makes it look pasted on rather than displayed by the screen).
@@ -325,6 +326,45 @@ public class GForceHUD : MonoBehaviour
         _cardRT.localRotation = Quaternion.Euler(h.euler);   // 3D panel lean matching the painted screen
         VitalsHUD.ApplyIntegratedStyle(_cardRT);
         HelmetSway.Reregister(_cardRT);
+    }
+
+    // ── True-perspective seating ───────────────────────────────────
+    // Mirrors VitalsHUD.SeatOnArtScreen: card moves into an off-screen
+    // capture rig, re-drawn here as a warped quad on the painted screen.
+    HudScreenProjector _projector;
+
+    public void SeatOnArtScreen(HelmetOverlayHUD.HousingQuad q)
+    {
+        if (_cardRT == null) return;
+        if (_projector == null)
+        {
+            _projector = HudScreenProjector.Attach("Boost", _canvas, q.sizeRef, -1f);
+            HelmetSway.Unregister(_cardRT);   // the warp quad sways instead
+            _cardRT.SetParent(_projector.ContentRoot, false);
+        }
+        else
+        {
+            _projector.SetLogicalSize(q.sizeRef);
+        }
+        // Fixed-height card → dead-center in the glass (same fit numbers as
+        // flat seating; rig-canvas units are glass reference units).
+        _cardRT.anchorMin = _cardRT.anchorMax = new Vector2(0.5f, 0.5f);
+        _cardRT.pivot = new Vector2(0.5f, 0.5f);
+        _cardRT.anchoredPosition = q.contentOffset;
+        float fit = Mathf.Min(1f, (q.sizeRef.x - 12f) / 370f, (q.sizeRef.y - 16f) / 170f) * q.contentScale;
+        _cardRT.localScale = new Vector3(fit, fit, 1f);
+        _cardRT.localRotation = Quaternion.identity;   // perspective comes from the warp, not a lean
+        VitalsHUD.ApplyIntegratedStyle(_cardRT);
+        _projector.Warp.SetQuad(q.blFrac, q.brFrac, q.trFrac, q.tlFrac);
+    }
+
+    void DetachProjector()
+    {
+        if (_projector == null) return;
+        _cardRT.SetParent(transform, false);
+        Destroy(_projector);
+        _projector = null;
+        HelmetSway.Register(_cardRT, 0.85f);
     }
 
     // ── 3D widget build ────────────────────────────────────────────

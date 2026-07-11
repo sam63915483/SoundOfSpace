@@ -112,4 +112,25 @@ public class HelmetHudConfig : MonoBehaviour
     [Header("Manual tweak mode")]
     [Tooltip("Freeze auto-seating AND helmet sway so you can hand-edit the cluster transforms in the play-mode Inspector without them being overwritten. Objects to select (Hierarchy → DontDestroyOnLoad): VitalsHUD/Card, GForceHUD/Card, CompassHUD/Strip + HeadingBadge, HelmetOverlayHUD/SwayRoot. Play-mode edits revert on stop — note your values and bake them into this config.")]
     public bool manualTweakMode;
+
+    // ── Perspective screens (APPEND-ONLY: serialized fields stay at class end) ──
+    [Header("Perspective screens (painted quad corners, texture px, bottom-left origin)")]
+    [Tooltip("Project the corner clusters onto the art's angled screens with true perspective: each cluster renders to a RenderTexture and is drawn as a homography-warped quad whose corners match the painted screen exactly (rotation alone can't taper toward a vanishing point on an overlay canvas). Off = legacy flat seating via blScreenPx/brScreenPx.")]
+    public bool perspectiveScreens = true;
+    [Tooltip("Bottom-left pod's dark glass — corners measured from the art (edge-line fits on the dark region).")]
+    public Vector2 blQuadTL = new Vector2(690.6f, 513.0f);
+    public Vector2 blQuadTR = new Vector2(1287.4f, 542.1f);
+    public Vector2 blQuadBL = new Vector2(753.6f, 112.5f);
+    public Vector2 blQuadBR = new Vector2(1355.5f, 190.0f);
+    [Tooltip("Bottom-right pod's dark glass — corners measured from the art.")]
+    public Vector2 brQuadTL = new Vector2(2551.5f, 542.1f);
+    public Vector2 brQuadTR = new Vector2(3147.7f, 514.3f);
+    public Vector2 brQuadBL = new Vector2(2483.2f, 190.1f);
+    public Vector2 brQuadBR = new Vector2(3084.7f, 112.5f);
+
+    [Header("Compass (brow) content")]
+    [Tooltip("Scale on the compass strip + heading badge inside the brow glass (replaces screenContentScale for the brow only).")]
+    [Range(0.3f, 1.2f)] public float browContentScale = 0.7f;
+    [Tooltip("Position nudge (ref units) for the compass strip + heading badge inside the brow glass.")]
+    public Vector2 browContentOffset = new Vector2(0f, -8f);
 }

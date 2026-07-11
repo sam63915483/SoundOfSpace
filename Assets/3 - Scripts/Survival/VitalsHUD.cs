@@ -229,6 +229,7 @@ public class VitalsHUD : MonoBehaviour
     public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
     {
         if (_cardRT == null) return;
+        DetachProjector();
         _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
         _cardRT.pivot = new Vector2(0.5f, 0f);   // grows upward from the screen's lower edge
         float fit = Mathf.Min(1f, (h.sizeRef.x - 24f) / 332f, (h.sizeRef.y - 16f) / 232f) * h.contentScale;
@@ -241,6 +242,49 @@ public class VitalsHUD : MonoBehaviour
         _cardRT.localRotation = Quaternion.Euler(h.euler);   // 3D panel lean matching the painted screen
         ApplyIntegratedStyle(_cardRT);
         HelmetSway.Reregister(_cardRT);
+    }
+
+    // ── True-perspective seating ─────────────────────────────────────
+    // The card moves into an off-screen capture rig and is re-drawn on this
+    // canvas as a homography-warped quad matching the art's painted screen.
+    HudScreenProjector _projector;
+
+    public void SeatOnArtScreen(HelmetOverlayHUD.HousingQuad q)
+    {
+        if (_cardRT == null) return;
+        if (_projector == null)
+        {
+            _projector = HudScreenProjector.Attach("Vitals", _canvas, q.sizeRef, +1f);
+            HelmetSway.Unregister(_cardRT);   // the warp quad sways instead
+            _cardRT.SetParent(_projector.ContentRoot, false);
+        }
+        else
+        {
+            _projector.SetLogicalSize(q.sizeRef);
+        }
+        // Same fit-to-glass math as flat seating — rig-canvas units ARE glass
+        // reference units. Pivot bottom-center + half-typical-card offset so
+        // the TYPICAL card (header + 4 rows ≈ 150 units) centers vertically
+        // and the ship rows grow upward into the spare top half.
+        _cardRT.anchorMin = _cardRT.anchorMax = new Vector2(0.5f, 0.5f);
+        _cardRT.pivot = new Vector2(0.5f, 0f);
+        float fit = Mathf.Min(1f, (q.sizeRef.x - 24f) / 332f, (q.sizeRef.y - 16f) / 232f) * q.contentScale;
+        _cardRT.anchoredPosition = new Vector2(0f, -(150f * fit) * 0.5f) + q.contentOffset;
+        _cardRT.localScale = new Vector3(fit, fit, 1f);
+        _cardRT.localRotation = Quaternion.identity;   // perspective comes from the warp, not a lean
+        ApplyIntegratedStyle(_cardRT);
+        _projector.Warp.SetQuad(q.blFrac, q.brFrac, q.trFrac, q.tlFrac);
+    }
+
+    // Legacy flat seating re-selected at runtime (perspectiveScreens toggled
+    // off live): bring the card home and drop the rig.
+    void DetachProjector()
+    {
+        if (_projector == null) return;
+        _cardRT.SetParent(transform, false);
+        Destroy(_projector);
+        _projector = null;
+        HelmetSway.Register(_cardRT, 0.85f);
     }
 
     // "Built into the helmet": hide the beveled bg, border outline, and code
