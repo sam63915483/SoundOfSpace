@@ -45,6 +45,9 @@ public class HelmetSway : MonoBehaviour
     void LateUpdate()
     {
         var cfg = HelmetHudConfig.Instance;
+        // Manual tweak mode: stop driving positions so play-mode Inspector
+        // edits on the registered transforms stick.
+        if (cfg != null && cfg.manualTweakMode) return;
         // Throttled re-finds — never FindObjectOfType/Camera.main per frame.
         if (_cam == null && Time.unscaledTime >= _nextCamFind)
         { _nextCamFind = Time.unscaledTime + 0.5f; _cam = Camera.main; _hasLast = false; }

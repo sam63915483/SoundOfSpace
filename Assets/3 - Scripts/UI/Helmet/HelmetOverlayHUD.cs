@@ -125,7 +125,9 @@ public class HelmetOverlayHUD : MonoBehaviour
         }
         // Seat the clusters into the art's built-in screens once all three
         // singletons exist (they auto-create in arbitrary order around us).
-        if (haveArt && !_clustersSeated) _clustersSeated = TrySeatClusters();
+        // Manual tweak mode freezes seating so Inspector edits stick.
+        if (haveArt && !_clustersSeated && !_config.manualTweakMode)
+            _clustersSeated = TrySeatClusters();
     }
 
     int _lastScreenW, _lastScreenH;
