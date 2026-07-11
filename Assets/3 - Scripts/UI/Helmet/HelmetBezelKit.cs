@@ -97,6 +97,9 @@ public static class HelmetBezelKit
         };
     }
 
+    /// Shared soft-glow sprite for other helmet layers (screen-bed backlight).
+    public static Sprite HaloSprite => GetRadialHaloSprite();
+
     // Soft radial halo sprite (procedural, cached) — the faked bloom.
     static Sprite _halo;
     static Sprite GetRadialHaloSprite()

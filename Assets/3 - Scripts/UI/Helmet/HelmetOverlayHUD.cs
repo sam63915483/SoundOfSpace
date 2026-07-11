@@ -29,9 +29,12 @@ public class HelmetOverlayHUD : MonoBehaviour
     bool _clustersSeated;
 
     /// A housing screen in the art, resolved to screen space: anchor fraction
-    /// of the canvas (follows the stretched art at any aspect) + size in 16:9
-    /// reference units.
-    public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; }
+    /// of the canvas (follows the stretched art at any aspect), size in 16:9
+    /// reference units, and the Z-tilt matching the screen's painted perspective.
+    public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; public float tiltDeg; }
+
+    readonly System.Collections.Generic.List<RawImage> _pieceImages =
+        new System.Collections.Generic.List<RawImage>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -43,14 +46,17 @@ public class HelmetOverlayHUD : MonoBehaviour
         go.AddComponent<HelmetOverlayHUD>();
     }
 
+    VisorGlassOverlay _glass;
+    CondensationOverlay _condensation;
+
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         BuildFrameCanvas();
         gameObject.AddComponent<HelmetSway>();
-        CreateChild<VisorGlassOverlay>("VisorGlassOverlay");
-        CreateChild<CondensationOverlay>("CondensationOverlay");
+        _glass = CreateOverlayRoot<VisorGlassOverlay>("VisorGlassOverlay");
+        _condensation = CreateOverlayRoot<CondensationOverlay>("CondensationOverlay");
         HelmetHudPalette.OnAccentChanged += Retint;
     }
 
@@ -58,12 +64,19 @@ public class HelmetOverlayHUD : MonoBehaviour
     {
         if (Instance == this) Instance = null;
         HelmetHudPalette.OnAccentChanged -= Retint;
+        if (_glass != null) Destroy(_glass.gameObject);
+        if (_condensation != null) Destroy(_condensation.gameObject);
     }
 
-    T CreateChild<T>(string name) where T : Component
+    // NOT parented under this GameObject: this root carries a Canvas, and a
+    // Canvas on a descendant becomes a NESTED canvas — its CanvasScaler is
+    // ignored (default ~100×100 rect → renders as a small square at screen
+    // center) and its sortingOrder needs overrideSorting. A sibling root
+    // object gives each layer a true root canvas at its intended sort order.
+    static T CreateOverlayRoot<T>(string name) where T : Component
     {
         var go = new GameObject(name);
-        go.transform.SetParent(transform, false);
+        DontDestroyOnLoad(go);
         return go.AddComponent<T>();
     }
 
@@ -114,9 +127,9 @@ public class HelmetOverlayHUD : MonoBehaviour
         if (VitalsHUD.Instance == null || GForceHUD.Instance == null || CompassHUD.Instance == null)
             return false;
         float S = 1.025f * (c.stretchWholeTexture ? c.frameZoom : 1f);
-        VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S));
-        GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S));
-        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S));
+        VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S, c.brScreenTiltDeg));
+        GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S, c.blScreenTiltDeg));
+        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f));
         return true;
     }
 
@@ -124,7 +137,7 @@ public class HelmetOverlayHUD : MonoBehaviour
     // full-screen, so a texture point at fraction f sits at canvas fraction
     // 0.5 + (f - 0.5) * S (S = overscan × zoom on the sway root). Size maps at
     // 2 px = 1 ref unit (4K art on the 1920-unit canvas), scaled by S.
-    static HousingRect ToScreen(HelmetHudConfig c, Rect px, float S)
+    static HousingRect ToScreen(HelmetHudConfig c, Rect px, float S, float tiltDeg)
     {
         var tex = c.helmetTexture;
         float cx = (px.x + px.width * 0.5f) / tex.width;
@@ -133,6 +146,7 @@ public class HelmetOverlayHUD : MonoBehaviour
         {
             anchorFrac = new Vector2(0.5f + (cx - 0.5f) * S, 0.5f + (cy - 0.5f) * S),
             sizeRef = new Vector2(px.width, px.height) * 0.5f * S,
+            tiltDeg = tiltDeg,
         };
     }
 
@@ -169,6 +183,7 @@ public class HelmetOverlayHUD : MonoBehaviour
     {
         for (int i = _swayRoot.childCount - 1; i >= 0; i--)
             Destroy(_swayRoot.GetChild(i).gameObject);
+        _pieceImages.Clear();
 
         var c = _config;
         var tex = c.helmetTexture;
@@ -186,6 +201,14 @@ public class HelmetOverlayHUD : MonoBehaviour
             rt.anchorMax = Vector2.one;
             rt.offsetMin = Vector2.zero;
             rt.offsetMax = Vector2.zero;
+            if (c.artHousingMode)
+            {
+                // "Powered glass" beds under the readouts — unify the painted
+                // glass with the cluster content so it reads lit, not pasted.
+                AddScreenBed("BedBL", c.blScreenPx, c.blScreenTiltDeg);
+                AddScreenBed("BedBR", c.brScreenPx, c.brScreenTiltDeg);
+                AddScreenBed("BedBrow", c.browScreenPx, 0f);
+            }
             return;
         }
         _swayRoot.localScale = new Vector3(1.025f, 1.025f, 1f);
@@ -211,9 +234,88 @@ public class HelmetOverlayHUD : MonoBehaviour
         img.texture = tex;
         img.uvRect = new Rect(px.x / tex.width, px.y / tex.height,
                               px.width / tex.width, px.height / tex.height);
-        img.color = HelmetHudPalette.FrameTint;
+        img.color = _config != null ? _config.frameTint : HelmetHudPalette.FrameTint;
         img.raycastTarget = false;
+        _pieceImages.Add(img);
         return img;
+    }
+
+    // Dark "powered glass" bed inside an art screen: dim fill + inner shadow +
+    // faint accent backlight, drawn on the frame layer beneath the readouts.
+    // Anchored by texture fraction inside the sway root, so it tracks the
+    // stretched art exactly (the root's scale applies the zoom for us).
+    void AddScreenBed(string name, Rect px, float tiltDeg)
+    {
+        var c = _config;
+        float strength = c.screenBedStrength;
+        if (strength <= 0f) return;
+        var tex = c.helmetTexture;
+
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(_swayRoot, false);
+        var rt = (RectTransform)go.transform;
+        rt.anchorMin = rt.anchorMax = new Vector2((px.x + px.width * 0.5f) / tex.width,
+                                                  (px.y + px.height * 0.5f) / tex.height);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
+        rt.sizeDelta = new Vector2(px.width * 0.5f, px.height * 0.5f);
+        rt.localRotation = Quaternion.Euler(0f, 0f, tiltDeg);
+
+        var fill = go.AddComponent<Image>();
+        fill.color = new Color(0.01f, 0.03f, 0.06f, 0.75f * strength);
+        fill.raycastTarget = false;
+
+        var glowGo = new GameObject("Backlight", typeof(RectTransform));
+        glowGo.transform.SetParent(rt, false);
+        var glowRt = (RectTransform)glowGo.transform;
+        glowRt.anchorMin = Vector2.zero;
+        glowRt.anchorMax = Vector2.one;
+        glowRt.offsetMin = new Vector2(4f, 4f);
+        glowRt.offsetMax = new Vector2(-4f, -4f);
+        var glow = glowGo.AddComponent<Image>();
+        glow.sprite = HelmetBezelKit.HaloSprite;
+        glow.type = Image.Type.Sliced;
+        Color gc = HelmetHudPalette.Accent;
+        gc.a = 0.12f * strength;
+        glow.color = gc;
+        glow.raycastTarget = false;
+
+        var shadowGo = new GameObject("InnerShadow", typeof(RectTransform));
+        shadowGo.transform.SetParent(rt, false);
+        var shadowRt = (RectTransform)shadowGo.transform;
+        shadowRt.anchorMin = Vector2.zero;
+        shadowRt.anchorMax = Vector2.one;
+        shadowRt.offsetMin = Vector2.zero;
+        shadowRt.offsetMax = Vector2.zero;
+        var sh = shadowGo.AddComponent<RawImage>();
+        sh.texture = GetInnerShadowTexture();
+        sh.color = new Color(0f, 0f, 0f, 0.85f * strength);
+        sh.raycastTarget = false;
+    }
+
+    // Rectangular edge-dark vignette — the glass recess shading.
+    static Texture2D _innerShadow;
+    static Texture2D GetInnerShadowTexture()
+    {
+        if (_innerShadow != null) return _innerShadow;
+        const int S = 256;
+        var tex = new Texture2D(S, S, TextureFormat.RGBA32, false);
+        tex.filterMode = FilterMode.Bilinear;
+        tex.wrapMode = TextureWrapMode.Clamp;
+        var px = new Color[S * S];
+        for (int y = 0; y < S; y++)
+            for (int x = 0; x < S; x++)
+            {
+                float dx = Mathf.Abs((x + 0.5f) / S - 0.5f) * 2f;
+                float dy = Mathf.Abs((y + 0.5f) / S - 0.5f) * 2f;
+                float d = Mathf.Max(dx, dy);
+                float a = Mathf.Pow(Mathf.Clamp01((d - 0.6f) / 0.4f), 1.6f);
+                px[y * S + x] = new Color(1f, 1f, 1f, a);
+            }
+        tex.SetPixels(px);
+        tex.Apply();
+        _innerShadow = tex;
+        return tex;
     }
 
     void AddCorner(string name, Rect px, Texture2D tex, Vector2 corner)
@@ -266,8 +368,13 @@ public class HelmetOverlayHUD : MonoBehaviour
 
     void Retint()
     {
-        if (_swayRoot == null) return;
-        var images = _swayRoot.GetComponentsInChildren<RawImage>(true);
-        for (int i = 0; i < images.Length; i++) images[i].color = HelmetHudPalette.FrameTint;
+        // Only the art pieces track the frame tint — bed shadows/backlights
+        // have their own colors and rebuild on config Version bumps.
+        Color tint = _config != null ? _config.frameTint : (Color)HelmetHudPalette.FrameTint;
+        for (int i = _pieceImages.Count - 1; i >= 0; i--)
+        {
+            if (_pieceImages[i] == null) { _pieceImages.RemoveAt(i); continue; }
+            _pieceImages[i].color = tint;
+        }
     }
 }

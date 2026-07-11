@@ -232,8 +232,9 @@ public class VitalsHUD : MonoBehaviour
         _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
         _cardRT.pivot = new Vector2(0.5f, 0f);   // grows upward from the screen's lower edge
         _cardRT.anchoredPosition = new Vector2(0f, -h.sizeRef.y * 0.5f + 16f);
-        float fit = Mathf.Min(1f, (h.sizeRef.x - 20f) / 332f, (h.sizeRef.y - 16f) / 232f);
+        float fit = Mathf.Min(1f, (h.sizeRef.x - 24f) / 332f, (h.sizeRef.y - 16f) / 232f);
         _cardRT.localScale = new Vector3(fit, fit, 1f);
+        _cardRT.localRotation = Quaternion.Euler(0f, 0f, h.tiltDeg);   // match the screen's painted perspective
         ApplyIntegratedStyle(_cardRT);
         HelmetSway.Reregister(_cardRT);
     }

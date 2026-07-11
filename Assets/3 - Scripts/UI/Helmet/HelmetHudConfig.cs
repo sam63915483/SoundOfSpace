@@ -32,9 +32,9 @@ public class HelmetHudConfig : MonoBehaviour
     public Rect bottomSpan   = new Rect(840,  0,  2160,  96);
 
     [Header("Visor glass")]
-    [Range(0f, 0.3f)]  public float glassTintAlpha = 0.05f;
-    [Range(0f, 0.5f)]  public float fresnelAlpha   = 0.12f;
-    [Range(0f, 0.15f)] public float scanlineAlpha  = 0.03f;
+    [Range(0f, 0.3f)]  public float glassTintAlpha = 0.02f;
+    [Range(0f, 0.5f)]  public float fresnelAlpha   = 0.05f;
+    [Range(0f, 0.15f)] public float scanlineAlpha  = 0.02f;
 
     [Header("Sway")]
     [Range(0f, 3f)]  public float lookSwayGain   = 1.0f;
@@ -84,4 +84,14 @@ public class HelmetHudConfig : MonoBehaviour
     public Rect brScreenPx   = new Rect(2930, 90, 760, 500);
     [Tooltip("Brow's slim dark instrument strip (compass seats here).")]
     public Rect browScreenPx = new Rect(1300, 1990, 1240, 110);
+
+    [Header("Blend (art integration)")]
+    [Tooltip("Multiply tint on the helmet art — darken it so the interior reads shadowed, not showroom-white.")]
+    public Color frameTint = new Color(0.45f, 0.46f, 0.50f, 1f);
+    [Tooltip("Z-tilt (deg) on the boost cluster to match the bottom-left screen's painted perspective.")]
+    [Range(-15f, 15f)] public float blScreenTiltDeg = 4f;
+    [Tooltip("Z-tilt (deg) on the vitals cluster to match the bottom-right screen's painted perspective.")]
+    [Range(-15f, 15f)] public float brScreenTiltDeg = -4f;
+    [Tooltip("Dark 'powered glass' bed (fill + inner shadow + accent backlight) drawn into each art screen beneath the readouts. 0 = off.")]
+    [Range(0f, 1f)] public float screenBedStrength = 0.6f;
 }

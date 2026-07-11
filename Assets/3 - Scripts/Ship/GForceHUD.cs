@@ -318,8 +318,9 @@ public class GForceHUD : MonoBehaviour
         _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
         _cardRT.pivot = new Vector2(0.5f, 0f);
         _cardRT.anchoredPosition = new Vector2(0f, -h.sizeRef.y * 0.5f + 16f);
-        float fit = Mathf.Min(1f, (h.sizeRef.x - 20f) / 370f, (h.sizeRef.y - 24f) / 170f);
+        float fit = Mathf.Min(1f, (h.sizeRef.x - 12f) / 370f, (h.sizeRef.y - 16f) / 170f);
         _cardRT.localScale = new Vector3(fit, fit, 1f);
+        _cardRT.localRotation = Quaternion.Euler(0f, 0f, h.tiltDeg);   // match the screen's painted perspective
         VitalsHUD.ApplyIntegratedStyle(_cardRT);
         HelmetSway.Reregister(_cardRT);
     }

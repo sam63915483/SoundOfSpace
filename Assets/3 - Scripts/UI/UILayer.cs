@@ -9,8 +9,8 @@ using UnityEngine;
 ///   Background      = 0     — main menu background, default canvases
 ///   HudBackground   = 22    — water-fill HUD, behind hotbar
 ///   Hotbar          = 200   — build menu, fishingdex, hotbar slot grid
-///   HelmetFrame     = 805   — helmet interior art (under glass + all readouts)
-///   VisorGlass      = 810   — helmet glass tint/fresnel/scanlines (under letterbox 820)
+///   VisorGlass      = 803   — visor glass tint/fresnel/scanlines (only visible through the opening)
+///   HelmetFrame     = 805   — helmet interior art (under all readouts)
 ///   CompassHud      = 815   — compass strip (above helmet frame, under letterbox 820)
 ///   Hud             = 830   — primary HUDs (vitals, wallet, tutorial)
 ///   HelmetCondensation = 838 — O2 fog creeps OVER the cluster readouts (functional feedback)
@@ -33,8 +33,8 @@ public static class UILayer
     public const int HudBackground    = 22;
     public const int Hotbar           = 200;
     public const int Hud              = 830;
+    public const int VisorGlass       = 803;  // visor glass tint/fresnel/scanlines — UNDER the frame art: glass shows only through the visor opening, never over the matte shell
     public const int HelmetFrame      = 805;  // helmet interior art — UNDER the clusters: the art has opaque corners, so readouts mount ON the shell (bezels sell the recessed-screen look)
-    public const int VisorGlass       = 810;  // helmet glass — above the frame, below letterbox(820) + clusters(830)
     public const int CompassHud       = 815;  // compass strip — above the helmet frame/glass, still under letterbox(820) so dialogue cinematics cover it
     public const int HelmetCondensation = 838; // O2 fog over the readouts — a fogged screen IS the low-O2 warning
     public const int Toast            = 900;

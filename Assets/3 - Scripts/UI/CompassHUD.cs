@@ -371,7 +371,7 @@ public class CompassHUD : MonoBehaviour
     public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
     {
         if (_strip == null || _badgeRT == null) return;
-        stripWidth = Mathf.Min(612f, h.sizeRef.x - 30f);
+        stripWidth = Mathf.Min(612f, h.sizeRef.x - 44f);   // clear of the glass' rounded ends
         _strip.anchorMin = _strip.anchorMax = h.anchorFrac;
         _strip.pivot = new Vector2(0.5f, 0.5f);
         _strip.sizeDelta = new Vector2(stripWidth, stripHeight);
