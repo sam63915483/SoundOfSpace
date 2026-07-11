@@ -1252,8 +1252,12 @@ public class Hotbar : MonoBehaviour
         bar.anchorMin = new Vector2(0.5f, 0f);
         bar.anchorMax = new Vector2(0.5f, 0f);
         bar.pivot = new Vector2(0.5f, 0f);
-        bar.anchoredPosition = new Vector2(0f, BottomMargin);
+        // Sized to sit between the helmet's corner pods: 1.2× smaller than
+        // the slots' native layout, raised off the bottom span art. Scale
+        // (not layout constants) so the slot-grow animations stay untouched.
+        bar.anchoredPosition = new Vector2(0f, BottomMargin + 16f);
         bar.sizeDelta = new Vector2(totalWidth + 32f, ActiveSize + ActiveLift + 32f);
+        bar.localScale = new Vector3(1f / 1.2f, 1f / 1.2f, 1f);
 
         for (int i = 0; i < NumSlots; i++)
         {

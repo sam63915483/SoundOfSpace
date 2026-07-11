@@ -133,4 +133,9 @@ public class HelmetHudConfig : MonoBehaviour
     [Range(0.3f, 1.2f)] public float browContentScale = 0.7f;
     [Tooltip("Position nudge (ref units) for the compass strip + heading badge inside the brow glass.")]
     public Vector2 browContentOffset = new Vector2(0f, -8f);
+
+    [Tooltip("Extra scale on the boost (bottom-left) cluster content only — multiplies screenContentScale. Clamped at seat time so the card can never overflow its glass.")]
+    [Range(0.8f, 1.5f)] public float blContentBoost = 1.2f;
+    [Tooltip("Extra scale on the vitals (bottom-right) cluster content only — multiplies screenContentScale. Clamped at seat time so the card (including the ship rows while piloting) can never overflow its glass.")]
+    [Range(0.8f, 1.5f)] public float brContentBoost = 1.3f;
 }

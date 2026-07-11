@@ -155,8 +155,8 @@ public class HelmetOverlayHUD : MonoBehaviour
         {
             // True-perspective seating: the clusters render to RenderTextures
             // and land on the art's painted quads via homography warp.
-            VitalsHUD.Instance.SeatOnArtScreen(ToQuad(c, c.brQuadTL, c.brQuadTR, c.brQuadBL, c.brQuadBR, S, c.brContentOffset));
-            GForceHUD.Instance.SeatOnArtScreen(ToQuad(c, c.blQuadTL, c.blQuadTR, c.blQuadBL, c.blQuadBR, S, c.blContentOffset));
+            VitalsHUD.Instance.SeatOnArtScreen(ToQuad(c, c.brQuadTL, c.brQuadTR, c.brQuadBL, c.brQuadBR, S, c.brContentOffset, c.brContentBoost));
+            GForceHUD.Instance.SeatOnArtScreen(ToQuad(c, c.blQuadTL, c.blQuadTR, c.blQuadBL, c.blQuadBR, S, c.blContentOffset, c.blContentBoost));
         }
         else
         {
@@ -198,7 +198,7 @@ public class HelmetOverlayHUD : MonoBehaviour
     // with no tilt math. sizeRef = the quad's average dimensions in reference
     // units (2 px = 1 unit), which sizes the capture RT so content units
     // match the old flat-seating fit numbers 1:1.
-    static HousingQuad ToQuad(HelmetHudConfig c, Vector2 tl, Vector2 tr, Vector2 bl, Vector2 br, float S, Vector2 contentOffset)
+    static HousingQuad ToQuad(HelmetHudConfig c, Vector2 tl, Vector2 tr, Vector2 bl, Vector2 br, float S, Vector2 contentOffset, float contentScaleMul = 1f)
     {
         var tex = c.helmetTexture;
         Vector2 F(Vector2 p) => new Vector2(0.5f + (p.x / tex.width - 0.5f) * S,
@@ -209,7 +209,7 @@ public class HelmetOverlayHUD : MonoBehaviour
         {
             blFrac = F(bl), brFrac = F(br), trFrac = F(tr), tlFrac = F(tl),
             sizeRef = new Vector2((wTop + wBot) * 0.25f * S, (hL + hR) * 0.25f * S),
-            contentScale = c.screenContentScale,
+            contentScale = c.screenContentScale * contentScaleMul,
             contentOffset = contentOffset,
         };
     }

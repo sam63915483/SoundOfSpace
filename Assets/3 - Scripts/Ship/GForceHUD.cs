@@ -352,10 +352,18 @@ public class GForceHUD : MonoBehaviour
         _cardRT.pivot = new Vector2(0.5f, 0.5f);
         _cardRT.anchoredPosition = q.contentOffset;
         float fit = Mathf.Min(1f, (q.sizeRef.x - 12f) / 370f, (q.sizeRef.y - 16f) / 170f) * q.contentScale;
+        // blContentBoost rides in via q.contentScale — clamp against the
+        // card's MEASURED size so the boosted card can never overflow the
+        // capture canvas (anything past the glass edge would just clip).
+        UnityEngine.UI.LayoutRebuilder.ForceRebuildLayoutImmediate(_cardRT);
+        float cw = Mathf.Max(1f, _cardRT.rect.width);
+        float chh = Mathf.Max(1f, _cardRT.rect.height);
+        fit = Mathf.Min(fit, (q.sizeRef.x - 2f) / cw, (q.sizeRef.y - 2f) / chh);
         _cardRT.localScale = new Vector3(fit, fit, 1f);
         _cardRT.localRotation = Quaternion.identity;   // perspective comes from the warp, not a lean
         VitalsHUD.ApplyIntegratedStyle(_cardRT);
         _projector.Warp.SetQuad(q.blFrac, q.brFrac, q.trFrac, q.tlFrac);
+        HudIdleSweep.Ensure(_cardRT);   // recurring scanline refresh
     }
 
     void DetachProjector()

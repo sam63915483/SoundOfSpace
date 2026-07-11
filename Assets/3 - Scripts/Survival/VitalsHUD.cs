@@ -131,6 +131,11 @@ public class VitalsHUD : MonoBehaviour
         {
             _shipFuel.root.gameObject.SetActive(showShipPower);
         }
+        if (showShipPower != _lastRowsShownForFit)
+        {
+            _lastRowsShownForFit = showShipPower;
+            if (_perspectiveSeated) ApplyPerspectiveFit();
+        }
 
         var piloted     = Ship.PilotedInstance;
         float health    = ResourceManager.Instance.HealthPercent;
@@ -167,6 +172,7 @@ public class VitalsHUD : MonoBehaviour
         {
             _chargingShown = charging;
             _chargingRow.SetActive(charging);
+            if (_perspectiveSeated) ApplyPerspectiveFit();
         }
     }
 
@@ -262,18 +268,38 @@ public class VitalsHUD : MonoBehaviour
         {
             _projector.SetLogicalSize(q.sizeRef);
         }
-        // Same fit-to-glass math as flat seating — rig-canvas units ARE glass
-        // reference units. Pivot bottom-center + half-typical-card offset so
-        // the TYPICAL card (header + 4 rows ≈ 150 units) centers vertically
-        // and the ship rows grow upward into the spare top half.
-        _cardRT.anchorMin = _cardRT.anchorMax = new Vector2(0.5f, 0.5f);
-        _cardRT.pivot = new Vector2(0.5f, 0f);
-        float fit = Mathf.Min(1f, (q.sizeRef.x - 24f) / 332f, (q.sizeRef.y - 16f) / 232f) * q.contentScale;
-        _cardRT.anchoredPosition = new Vector2(0f, -(150f * fit) * 0.5f) + q.contentOffset;
-        _cardRT.localScale = new Vector3(fit, fit, 1f);
-        _cardRT.localRotation = Quaternion.identity;   // perspective comes from the warp, not a lean
+        _seatedQuad = q;
+        _perspectiveSeated = true;
+        ApplyPerspectiveFit();
         ApplyIntegratedStyle(_cardRT);
         _projector.Warp.SetQuad(q.blFrac, q.brFrac, q.trFrac, q.tlFrac);
+        HudIdleSweep.Ensure(_cardRT);   // recurring scanline refresh
+    }
+
+    HelmetOverlayHUD.HousingQuad _seatedQuad;
+    bool _perspectiveSeated;
+    // Rows are built active, so the first measured height includes them until
+    // the first Update toggles them off — start true so that toggle refits.
+    bool _lastRowsShownForFit = true;
+
+    // Fit-to-glass against the card's MEASURED size (rig-canvas units are
+    // glass reference units) — brContentBoost rides in via q.contentScale and
+    // the clamp keeps even the boosted card fully on the glass. Called again
+    // whenever the ship/charging rows toggle: the taller piloting card
+    // re-fits smaller instead of growing off the screen.
+    void ApplyPerspectiveFit()
+    {
+        var q = _seatedQuad;
+        _cardRT.anchorMin = _cardRT.anchorMax = new Vector2(0.5f, 0.5f);
+        _cardRT.pivot = new Vector2(0.5f, 0f);
+        LayoutRebuilder.ForceRebuildLayoutImmediate(_cardRT);
+        float cw = Mathf.Max(1f, _cardRT.rect.width);
+        float ch = Mathf.Max(1f, _cardRT.rect.height);
+        float fit = Mathf.Min(1f, (q.sizeRef.x - 24f) / 332f, (q.sizeRef.y - 16f) / ch) * q.contentScale;
+        fit = Mathf.Min(fit, (q.sizeRef.x - 2f) / cw, (q.sizeRef.y - 2f) / ch);
+        _cardRT.anchoredPosition = new Vector2(0f, -(ch * fit) * 0.5f) + q.contentOffset;
+        _cardRT.localScale = new Vector3(fit, fit, 1f);
+        _cardRT.localRotation = Quaternion.identity;   // perspective comes from the warp, not a lean
     }
 
     // Legacy flat seating re-selected at runtime (perspectiveScreens toggled
