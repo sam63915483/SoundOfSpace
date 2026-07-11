@@ -31,7 +31,7 @@ public class HelmetOverlayHUD : MonoBehaviour
     /// A housing screen in the art, resolved to screen space: anchor fraction
     /// of the canvas (follows the stretched art at any aspect), size in 16:9
     /// reference units, and the Z-tilt matching the screen's painted perspective.
-    public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; public float tiltDeg; }
+    public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; public float tiltDeg; public float contentScale; }
 
     readonly System.Collections.Generic.List<RawImage> _pieceImages =
         new System.Collections.Generic.List<RawImage>();
@@ -115,10 +115,20 @@ public class HelmetOverlayHUD : MonoBehaviour
             RebuildPieces();
             _clustersSeated = false;   // re-seat with the (possibly retuned) rects
         }
+        // Re-seat when the window shape changes — the stretched art's painted
+        // angles and housing positions shift with aspect.
+        if (Screen.width != _lastScreenW || Screen.height != _lastScreenH)
+        {
+            _lastScreenW = Screen.width;
+            _lastScreenH = Screen.height;
+            _clustersSeated = false;
+        }
         // Seat the clusters into the art's built-in screens once all three
         // singletons exist (they auto-create in arbitrary order around us).
         if (haveArt && !_clustersSeated) _clustersSeated = TrySeatClusters();
     }
+
+    int _lastScreenW, _lastScreenH;
 
     bool TrySeatClusters()
     {
@@ -142,11 +152,18 @@ public class HelmetOverlayHUD : MonoBehaviour
         var tex = c.helmetTexture;
         float cx = (px.x + px.width * 0.5f) / tex.width;
         float cy = (px.y + px.height * 0.5f) / tex.height;
+        // The art stretches to the window, so a slope painted for 16:9 renders
+        // steeper in a taller window and shallower in a wider one. Correct the
+        // authored tilt by the actual aspect so the content stays parallel to
+        // the painted screen at ANY window shape (re-seated on resize).
+        float aspect = (float)Screen.width / Mathf.Max(1, Screen.height);
+        float effTilt = Mathf.Atan(Mathf.Tan(tiltDeg * Mathf.Deg2Rad) * (16f / 9f) / aspect) * Mathf.Rad2Deg;
         return new HousingRect
         {
             anchorFrac = new Vector2(0.5f + (cx - 0.5f) * S, 0.5f + (cy - 0.5f) * S),
             sizeRef = new Vector2(px.width, px.height) * 0.5f * S,
-            tiltDeg = tiltDeg,
+            tiltDeg = effTilt,
+            contentScale = c.screenContentScale,
         };
     }
 
@@ -291,6 +308,25 @@ public class HelmetOverlayHUD : MonoBehaviour
         sh.texture = GetInnerShadowTexture();
         sh.color = new Color(0f, 0f, 0f, 0.85f * strength);
         sh.raycastTarget = false;
+
+        // Thin accent outline hugging the glass edge, tilted WITH the bed —
+        // the parallel-edges cue that makes the readout read as part of the
+        // screen instead of a flat sticker (the clusters dropped their own
+        // borders when they went integrated).
+        var lineGo = new GameObject("EdgeLine", typeof(RectTransform));
+        lineGo.transform.SetParent(rt, false);
+        var lineRt = (RectTransform)lineGo.transform;
+        lineRt.anchorMin = Vector2.zero;
+        lineRt.anchorMax = Vector2.one;
+        lineRt.offsetMin = new Vector2(3f, 3f);
+        lineRt.offsetMax = new Vector2(-3f, -3f);
+        var line = lineGo.AddComponent<Image>();
+        line.sprite = UIPanelSprites.GetBeveledOutline();
+        line.type = Image.Type.Sliced;
+        Color lc = HelmetHudPalette.Accent;
+        lc.a = 0.22f * strength;
+        line.color = lc;
+        line.raycastTarget = false;
     }
 
     // Rectangular edge-dark vignette — the glass recess shading.

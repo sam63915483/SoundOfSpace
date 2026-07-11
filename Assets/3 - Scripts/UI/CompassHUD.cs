@@ -371,14 +371,20 @@ public class CompassHUD : MonoBehaviour
     public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
     {
         if (_strip == null || _badgeRT == null) return;
+        float cs = h.contentScale;
         stripWidth = Mathf.Min(612f, h.sizeRef.x - 44f);   // clear of the glass' rounded ends
         _strip.anchorMin = _strip.anchorMax = h.anchorFrac;
         _strip.pivot = new Vector2(0.5f, 0.5f);
         _strip.sizeDelta = new Vector2(stripWidth, stripHeight);
-        _strip.anchoredPosition = Vector2.zero;
+        _strip.localScale = new Vector3(cs, cs, 1f);
+        _badgeRT.localScale = new Vector3(cs, cs, 1f);
+        // Strip rides the lower half of the glass; the heading badge tucks
+        // into the upper half so the WHOLE instrument lives inside the glass
+        // (the badge used to dangle below onto the brow padding).
+        _strip.anchoredPosition = new Vector2(0f, -(h.sizeRef.y * 0.5f - stripHeight * cs * 0.5f - 4f));
         _badgeRT.anchorMin = _badgeRT.anchorMax = h.anchorFrac;
         _badgeRT.pivot = new Vector2(0.5f, 1f);
-        _badgeRT.anchoredPosition = new Vector2(0f, -h.sizeRef.y * 0.5f - 12f);   // clear of the brow's lower bezel lip
+        _badgeRT.anchoredPosition = new Vector2(0f, h.sizeRef.y * 0.5f - 3f);
         SetImageEnabled(_strip, false);
         var top = _strip.Find("TopSheen");
         if (top != null) SetImageEnabled(top, false);

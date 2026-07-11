@@ -94,4 +94,7 @@ public class HelmetHudConfig : MonoBehaviour
     [Range(-15f, 15f)] public float brScreenTiltDeg = -4f;
     [Tooltip("Dark 'powered glass' bed (fill + inner shadow + accent backlight) drawn into each art screen beneath the readouts. 0 = off.")]
     [Range(0f, 1f)] public float screenBedStrength = 0.6f;
+
+    [Tooltip("Extra shrink on the readout content inside each screen (applied on top of fit-to-glass). 0.8 = 1.25x smaller — breathing room between content and bezel.")]
+    [Range(0.5f, 1.2f)] public float screenContentScale = 0.8f;
 }

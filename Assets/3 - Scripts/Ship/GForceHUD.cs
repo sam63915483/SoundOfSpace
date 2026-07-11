@@ -316,9 +316,11 @@ public class GForceHUD : MonoBehaviour
     {
         if (_cardRT == null) return;
         _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
-        _cardRT.pivot = new Vector2(0.5f, 0f);
-        _cardRT.anchoredPosition = new Vector2(0f, -h.sizeRef.y * 0.5f + 16f);
-        float fit = Mathf.Min(1f, (h.sizeRef.x - 12f) / 370f, (h.sizeRef.y - 16f) / 170f);
+        // Fixed-height card → dead-center in the glass (an off-center readout
+        // is what makes it look pasted on rather than displayed by the screen).
+        _cardRT.pivot = new Vector2(0.5f, 0.5f);
+        _cardRT.anchoredPosition = Vector2.zero;
+        float fit = Mathf.Min(1f, (h.sizeRef.x - 12f) / 370f, (h.sizeRef.y - 16f) / 170f) * h.contentScale;
         _cardRT.localScale = new Vector3(fit, fit, 1f);
         _cardRT.localRotation = Quaternion.Euler(0f, 0f, h.tiltDeg);   // match the screen's painted perspective
         VitalsHUD.ApplyIntegratedStyle(_cardRT);
