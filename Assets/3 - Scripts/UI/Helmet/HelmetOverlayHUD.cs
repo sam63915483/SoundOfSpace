@@ -31,7 +31,7 @@ public class HelmetOverlayHUD : MonoBehaviour
     /// A housing screen in the art, resolved to screen space: anchor fraction
     /// of the canvas (follows the stretched art at any aspect), size in 16:9
     /// reference units, and the Z-tilt matching the screen's painted perspective.
-    public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; public Vector3 euler; public float contentScale; }
+    public struct HousingRect { public Vector2 anchorFrac; public Vector2 sizeRef; public Vector3 euler; public float contentScale; public Vector2 contentOffset; }
 
     readonly System.Collections.Generic.List<RawImage> _pieceImages =
         new System.Collections.Generic.List<RawImage>();
@@ -139,9 +139,9 @@ public class HelmetOverlayHUD : MonoBehaviour
         if (VitalsHUD.Instance == null || GForceHUD.Instance == null || CompassHUD.Instance == null)
             return false;
         float S = 1.025f * (c.stretchWholeTexture ? c.frameZoom : 1f);
-        VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S, c.brScreenTiltDeg, c.brScreenTilt3D));
-        GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S, c.blScreenTiltDeg, c.blScreenTilt3D));
-        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f, Vector2.zero));
+        VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S, c.brScreenTiltDeg, c.brScreenTilt3D, c.brContentOffset));
+        GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S, c.blScreenTiltDeg, c.blScreenTilt3D, c.blContentOffset));
+        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f, Vector2.zero, Vector2.zero));
         return true;
     }
 
@@ -149,7 +149,7 @@ public class HelmetOverlayHUD : MonoBehaviour
     // full-screen, so a texture point at fraction f sits at canvas fraction
     // 0.5 + (f - 0.5) * S (S = overscan × zoom on the sway root). Size maps at
     // 2 px = 1 ref unit (4K art on the 1920-unit canvas), scaled by S.
-    static HousingRect ToScreen(HelmetHudConfig c, Rect px, float S, float tiltDeg, Vector2 tilt3D)
+    static HousingRect ToScreen(HelmetHudConfig c, Rect px, float S, float tiltDeg, Vector2 tilt3D, Vector2 contentOffset)
     {
         var tex = c.helmetTexture;
         float cx = (px.x + px.width * 0.5f) / tex.width;
@@ -166,6 +166,7 @@ public class HelmetOverlayHUD : MonoBehaviour
             sizeRef = new Vector2(px.width, px.height) * 0.5f * S,
             euler = new Vector3(tilt3D.x, tilt3D.y, effTilt),
             contentScale = c.screenContentScale,
+            contentOffset = contentOffset,
         };
     }
 

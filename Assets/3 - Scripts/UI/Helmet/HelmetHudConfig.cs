@@ -104,6 +104,11 @@ public class HelmetHudConfig : MonoBehaviour
     [Tooltip("Bottom-right screen (mirrored).")]
     public Vector2 brScreenTilt3D = new Vector2(12f, 30f);
 
+    [Tooltip("Position nudge (ref units) for the boost content inside its screen, applied after auto-centering.")]
+    public Vector2 blContentOffset = Vector2.zero;
+    [Tooltip("Position nudge (ref units) for the vitals content inside its screen, applied after auto-centering.")]
+    public Vector2 brContentOffset = Vector2.zero;
+
     [Header("Manual tweak mode")]
     [Tooltip("Freeze auto-seating AND helmet sway so you can hand-edit the cluster transforms in the play-mode Inspector without them being overwritten. Objects to select (Hierarchy → DontDestroyOnLoad): VitalsHUD/Card, GForceHUD/Card, CompassHUD/Strip + HeadingBadge, HelmetOverlayHUD/SwayRoot. Play-mode edits revert on stop — note your values and bake them into this config.")]
     public bool manualTweakMode;

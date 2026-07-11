@@ -235,7 +235,8 @@ public class VitalsHUD : MonoBehaviour
         // Vertically center the TYPICAL card (header + 4 always-on rows ≈ 150
         // units) — the extra ship rows grow upward into the glass' spare top
         // half. Bottom-anchoring left the top half empty (looked off-center).
-        _cardRT.anchoredPosition = new Vector2(0f, -(150f * fit) * 0.5f);
+        // contentOffset = the user's hand-tuned nudge on top.
+        _cardRT.anchoredPosition = new Vector2(0f, -(150f * fit) * 0.5f) + h.contentOffset;
         _cardRT.localScale = new Vector3(fit, fit, 1f);
         _cardRT.localRotation = Quaternion.Euler(h.euler);   // 3D panel lean matching the painted screen
         ApplyIntegratedStyle(_cardRT);

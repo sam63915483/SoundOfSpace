@@ -319,7 +319,7 @@ public class GForceHUD : MonoBehaviour
         // Fixed-height card → dead-center in the glass (an off-center readout
         // is what makes it look pasted on rather than displayed by the screen).
         _cardRT.pivot = new Vector2(0.5f, 0.5f);
-        _cardRT.anchoredPosition = Vector2.zero;
+        _cardRT.anchoredPosition = h.contentOffset;   // hand-tuned nudge from config
         float fit = Mathf.Min(1f, (h.sizeRef.x - 12f) / 370f, (h.sizeRef.y - 16f) / 170f) * h.contentScale;
         _cardRT.localScale = new Vector3(fit, fit, 1f);
         _cardRT.localRotation = Quaternion.Euler(h.euler);   // 3D panel lean matching the painted screen
