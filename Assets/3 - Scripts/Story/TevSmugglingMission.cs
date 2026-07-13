@@ -61,6 +61,22 @@ public class TevSmugglingMission : MonoBehaviour
     public float pullOverProgress = 0.25f;
     public AudioClip radarPingClip;       // one ping blip — repeats faster/louder as a taser shot closes
     public AudioClip taserZapClip;        // electric fry when a shot connects
+    [Header("Suit translator — flat machine-TTS spoken OVER Tev's alien voice")]
+    public AudioClip trSpiritClip;
+    public AudioClip trIdeaClip;
+    public AudioClip tr20SecClip;
+    public AudioClip trLauncherClip;
+    public AudioClip trHoldSteadyClip;
+    public AudioClip trOpenHatchClip;
+    public AudioClip trNotSoFastClip;
+    public AudioClip trTooSlowClip;
+    public AudioClip trBombsAwayClip;
+    public AudioClip trDirectHitClip;
+    [Tooltip("Parallel to the blast-warning lines: INCOMING / PROJECTILE INBOUND / WATCH OUT / DODGE / HE'S SHOOTING.")]
+    public AudioClip[] trWarningClips;
+    public AudioClip trThreeClip;
+    public AudioClip trTwoClip;
+    public AudioClip trOneClip;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -81,6 +97,7 @@ public class TevSmugglingMission : MonoBehaviour
     bool _decelActive;       // forced pull-over deceleration / velocity hold running
     float _decelRate;        // units/s² toward the anchor's velocity
     AudioSource _tevVoice;   // Tev's alien babble + rocket SFX during the chase
+    AudioSource _trVoice;    // the suit's translator — flat 2D TTS in the player's helmet
     TextMeshProUGUI _subtitle;
     RectTransform _subtitlePanel;
     Coroutine _subtitleCo;
@@ -525,7 +542,9 @@ public class TevSmugglingMission : MonoBehaviour
         _cop.onBlastFired = () =>
         {
             if (_subtitleCo != null || _countdownActive) return;
-            ShowTevLine(BlastWarnings[UnityEngine.Random.Range(0, BlastWarnings.Length)]);
+            int i = UnityEngine.Random.Range(0, BlastWarnings.Length);
+            ShowTevLine(BlastWarnings[i],
+                trWarningClips != null && i < trWarningClips.Length ? trWarningClips[i] : null);
         };
     }
 
@@ -621,18 +640,37 @@ public class TevSmugglingMission : MonoBehaviour
         _tevVoice.loop = false;
     }
 
-    void ShowTevLine(string line)
+    /// The suit's real-time translator: a flat machine voice speaks the
+    /// English line in the player's helmet WHILE Tev's alien voice babbles —
+    /// eyes stay on the road. A new line cuts off the previous translation
+    /// (matches the subtitle being replaced).
+    void PlayTranslator(AudioClip clip)
     {
-        if (_subtitleCo != null) StopCoroutine(_subtitleCo);
-        _subtitleCo = StartCoroutine(TevLineRoutine(line));
+        if (_trVoice == null)
+        {
+            _trVoice = gameObject.AddComponent<AudioSource>();
+            _trVoice.spatialBlend = 0f;   // in-helmet speaker
+            _trVoice.volume = 0.85f;
+        }
+        _trVoice.Stop();
+        if (clip == null) return;
+        _trVoice.clip = clip;
+        _trVoice.Play();
     }
 
-    IEnumerator TevLineRoutine(string line)
+    void ShowTevLine(string line, AudioClip translated = null)
+    {
+        if (_subtitleCo != null) StopCoroutine(_subtitleCo);
+        _subtitleCo = StartCoroutine(TevLineRoutine(line, translated));
+    }
+
+    IEnumerator TevLineRoutine(string line, AudioClip translated)
     {
         EnsureSubtitleUI();
         _subtitlePanel.gameObject.SetActive(true);
         float start = Time.time;
         StartBabble();
+        PlayTranslator(translated);
         yield return DialogueTextStyling.RevealCharsTMP(_subtitle, line, SubtitleCharDelay, () => false);
         // Short barks ("INCOMING!") reveal in a blink — hold the babble a
         // moment so the alien voice actually registers.
@@ -746,19 +784,19 @@ public class TevSmugglingMission : MonoBehaviour
 
         yield return new WaitForSeconds(1f);
         if (_phase != Phase.Chase) yield break;
-        ShowTevLine("THAT'S THE SPIRIT! But what's your plan?! You can't outrun this ship!");
+        ShowTevLine("THAT'S THE SPIRIT! But what's your plan?! You can't outrun this ship!", trSpiritClip);
 
         yield return WaitUntilChaseTime(t0, 8f);
         if (_phase != Phase.Chase) yield break;
-        ShowTevLine("Wait, wait, wait... I've got an idea! Keep driving! Don't you DARE slow down!");
+        ShowTevLine("Wait, wait, wait... I've got an idea! Keep driving! Don't you DARE slow down!", trIdeaClip);
 
         yield return WaitUntilChaseTime(t0, 17f);
         if (_phase != Phase.Chase) yield break;
-        ShowTevLine("Just give me twenty seconds! I know what to do!");
+        ShowTevLine("Just give me twenty seconds! I know what to do!", tr20SecClip);
 
         yield return WaitUntilChaseTime(t0, 27f);
         if (_phase != Phase.Chase) yield break;
-        ShowTevLine("STUPID ROCKET LAUNCHER! WHERE did I put the EMERGENCY ROCKETS?!");
+        ShowTevLine("STUPID ROCKET LAUNCHER! WHERE did I put the EMERGENCY ROCKETS?!", trLauncherClip);
 
         yield return WaitUntilChaseTime(t0, chaseSeconds - 5f);
         if (_phase != Phase.Chase) yield break;
@@ -771,7 +809,7 @@ public class TevSmugglingMission : MonoBehaviour
         while (_phase == Phase.Chase && CopEnergyBlast.ActiveCount > 0) yield return null;
         if (_phase != Phase.Chase) yield break;
 
-        ShowTevLine("HOLD HER STEADY! I'VE GOT A SHOT!");
+        ShowTevLine("HOLD HER STEADY! I'VE GOT A SHOT!", trHoldSteadyClip);
         yield return new WaitForSeconds(2.6f);
 
         // Countdown QTE loop: white ring shrinks onto the H keycap during
@@ -792,14 +830,14 @@ public class TevSmugglingMission : MonoBehaviour
             if (_cdResult == CdResult.EarlyPress)
             {
                 if (_ship != null && _ship.HatchOpen) _ship.ToggleHatch();   // Tev slams it shut
-                ShowTevLine("NOT SO FAST!");
+                ShowTevLine("NOT SO FAST!", trNotSoFastClip);
                 yield return new WaitForSeconds(2.2f);
                 continue;
             }
 
             // Timeout: the corvette makes them pay with one shot, then Tev
             // resets once the sky is clear again.
-            ShowTevLine("TOO SLOW!");
+            ShowTevLine("TOO SLOW!", trTooSlowClip);
             yield return new WaitForSeconds(0.9f);
             if (_cop != null) _cop.FireOneNow();
             float clearBy = Time.time + 12f;
@@ -811,7 +849,7 @@ public class TevSmugglingMission : MonoBehaviour
         if (_phase != Phase.Chase) yield break;
 
         // FIRE. Rocket leaves from Tev at the open hatch, homes on the corvette.
-        ShowTevLine("BOMBS AWAYYYYY!");
+        ShowTevLine("BOMBS AWAYYYYY!", trBombsAwayClip);
         yield return new WaitForSeconds(0.9f);
         EnsureTevVoice();
         if (rocketFireClip != null) _tevVoice.PlayOneShot(rocketFireClip);
@@ -836,6 +874,7 @@ public class TevSmugglingMission : MonoBehaviour
         EnsureSubtitleUI();
         _subtitlePanel.gameObject.SetActive(true);
         StartBabble();
+        PlayTranslator(trOpenHatchClip);
         yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH!", SubtitleCharDelay, () => false);
         StopBabble();
         _subtitle.maxVisibleCharacters = int.MaxValue;
@@ -857,6 +896,7 @@ public class TevSmugglingMission : MonoBehaviour
             {
                 said = step;
                 _subtitle.text = step == 0 ? baseTxt + " 3..." : baseTxt + " 3... 2...";
+                PlayTranslator(step == 0 ? trThreeClip : trTwoClip);
             }
             _qteWhiteRing.localScale = Vector3.one * Mathf.Lerp(3f, 1f, t / 2f);
 
@@ -870,6 +910,7 @@ public class TevSmugglingMission : MonoBehaviour
             yield return null;
         }
         _subtitle.text = baseTxt + " 3... 2... 1!";
+        PlayTranslator(trOneClip);
         _qteWhiteRing.localScale = Vector3.one;
 
         // The window: rings pulse together — NOW is the time.
@@ -888,7 +929,7 @@ public class TevSmugglingMission : MonoBehaviour
     IEnumerator TevCelebrate()
     {
         yield return new WaitForSeconds(1.2f);
-        ShowTevLine("HAHAHA! DIRECT HIT! That's why you always pack emergency rockets!");
+        ShowTevLine("HAHAHA! DIRECT HIT! That's why you always pack emergency rockets!", trDirectHitClip);
     }
 
     IEnumerator WaitUntilChaseTime(float t0, float t)
