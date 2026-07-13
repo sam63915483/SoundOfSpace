@@ -166,14 +166,8 @@ public class VitalsHUD : MonoBehaviour
         }
         else { _shipPowerWarned = false; _shipFuelWarned = false; }
 
-        // Charging row visibility toggle.
-        bool charging = _solar != null && _solar.IsCharging;
-        if (charging != _chargingShown && _chargingRow != null)
-        {
-            _chargingShown = charging;
-            _chargingRow.SetActive(charging);
-            if (_perspectiveSeated) ApplyPerspectiveFit();
-        }
+        // (Charging row removed — charging now shows on the ship's cockpit
+        // right screen instead of the suit vitals HUD.)
     }
 
     void UpdateStat(StatRow row, float percent)
@@ -462,9 +456,9 @@ public class VitalsHUD : MonoBehaviour
         _shipPower = BuildStatRow(card, "SHIP POWER", new Color32(0xB8, 0x8C, 0xFF, 0xFF), new Color32(0xC9, 0x4F, 0xFF, 0xFF));
         _shipFuel  = BuildStatRow(card, "SHIP FUEL",  new Color32(0x8C, 0xE6, 0xFF, 0xFF), new Color32(0x4A, 0xB7, 0xFF, 0xFF));
 
-        // Charging row (hidden by default).
-        _chargingRow = BuildChargingRow(card);
-        _chargingRow.SetActive(false);
+        // Charging indicator removed from the vitals HUD — charging state is
+        // now a per-ship readout on the cockpit right screen (RearViewMirror
+        // FuelStatus display). BuildChargingRow kept for reference.
     }
 
     StatRow BuildStatRow(RectTransform parent, string labelText, Color colorA, Color colorB)
