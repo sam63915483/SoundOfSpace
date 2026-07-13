@@ -211,15 +211,20 @@ public class RearViewMirror : MonoBehaviour
 
     void BuildIdleText()
     {
+        // The mesh's visible (front) face is its +Z side — the pilot reads
+        // the screen from +Z. TMP text reads from its own -Z, so each text is
+        // spun 180°, floats a fixed ~1.4cm WORLD distance off the glass on
+        // the +Z side (a scaled local offset was drifting it off the screen
+        // and behind it), and viewer-left is local +X, so the columns swap.
+        float zLocal = 0.014f / Mathf.Max(0.02f, Mathf.Abs(transform.lossyScale.z));
         if (idleContent == IdleContent.Combined)
         {
-            // Wide screen: systems on the left half, fuel on the right half.
-            _text = MakeIdleText("IdleTextLeft", new Vector3(-0.25f, 0.01f, -0.075f), new Vector2(0.44f, 0.42f));
-            _text2 = MakeIdleText("IdleTextRight", new Vector3(0.25f, 0.01f, -0.075f), new Vector2(0.44f, 0.42f));
+            _text = MakeIdleText("IdleTextLeft", new Vector3(0.25f, 0.01f, zLocal), new Vector2(0.44f, 0.42f));
+            _text2 = MakeIdleText("IdleTextRight", new Vector3(-0.25f, 0.01f, zLocal), new Vector2(0.44f, 0.42f));
         }
         else
         {
-            _text = MakeIdleText("IdleText", new Vector3(0f, 0f, -0.075f), new Vector2(0.84f, 0.84f));
+            _text = MakeIdleText("IdleText", new Vector3(0f, 0f, zLocal), new Vector2(0.84f, 0.84f));
         }
     }
 
@@ -227,7 +232,8 @@ public class RearViewMirror : MonoBehaviour
     {
         var go = new GameObject(name);
         go.transform.SetParent(transform, false);
-        go.transform.localPosition = localPos;   // just in front of the concave face
+        go.transform.localPosition = localPos;
+        go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);   // face the pilot on the +Z side
         // Healthy glyph sizes scaled down by the transform — TMP generates
         // degenerate/invisible meshes at sub-1pt font sizes, which is what
         // made the previous (fontSize < 0.6) idle text render as nothing.
