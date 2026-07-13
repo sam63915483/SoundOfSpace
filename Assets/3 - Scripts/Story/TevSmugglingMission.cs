@@ -56,6 +56,9 @@ public class TevSmugglingMission : MonoBehaviour
     public AudioClip tevSpeechLoopClip;
     [Tooltip("The scare spin locks the player's view onto THIS transform (user-placed 'lookat' object) until the offer conversation ends.")]
     public Transform scareLookTarget;
+    [Tooltip("The pull-over fires this far into the trip (0.5 = midpoint, 0.25 = a quarter of the way to Fiery Twin).")]
+    [Range(0.05f, 0.95f)]
+    public float pullOverProgress = 0.25f;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -167,10 +170,12 @@ public class TevSmugglingMission : MonoBehaviour
         // single spin used to snap back to the old look direction the moment
         // we stopped calling ForceLookAtSmooth. For the first ~2s the grip
         // chases at spin speed (the jittery fight reads as the scare shake —
-        // keep it); after that it locks HARD: with a huge deg/s the step
-        // fraction clamps to 1, so the view lands exactly on target every
-        // frame and cannot oscillate. Movement + look come back via
-        // ApplyState only after the dialogue closes.
+        // keep it); after that the speed is PROPORTIONAL to the remaining
+        // error (deg/s = 6× the angle left), so it converges exponentially
+        // and settles dead still — a fixed fast speed here fed back against
+        // the camera's look-smoothing lag and oscillated harder, not less.
+        // Movement + look come back via ApplyState after the dialogue closes.
+        var camT = Camera.main != null ? Camera.main.transform : null;
         float start = Time.time;
         float openAt = start + scareTurnSeconds + 0.35f;
         bool opened = false;
@@ -178,7 +183,12 @@ public class TevSmugglingMission : MonoBehaviour
         while (Time.time < failsafe)
         {
             if (pc == null) break;
-            float grip = Time.time - start < 2f ? degPerSec : 100000f;
+            float grip = degPerSec;
+            if (Time.time - start >= 2f)
+            {
+                float err = camT != null ? Vector3.Angle(camT.forward, LookPoint() - camT.position) : 20f;
+                grip = Mathf.Max(10f, err * 6f);
+            }
             pc.ForceLookAtSmooth(LookPoint(), grip);
             if (!opened && Time.time >= openAt)
             {
@@ -345,7 +355,12 @@ public class TevSmugglingMission : MonoBehaviour
 
         float dHome = Vector3.Distance(transform.position, _homeBody.Position);
         float dDest = Vector3.Distance(transform.position, _destBody.Position);
-        if (dHome >= dDest) BeginPullOver();
+
+        // Pull over at pullOverProgress of the trip (fraction of the way to
+        // the destination), not the midpoint — but never while still close
+        // to home's surface, so a low first-fraction can't fire on takeoff.
+        if (dHome < _homeBody.radius + 600f) return;
+        if (dHome / Mathf.Max(1f, dHome + dDest) >= pullOverProgress) BeginPullOver();
     }
 
     void BeginPullOver()

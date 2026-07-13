@@ -31,19 +31,19 @@ public class CopEnergyBlast : MonoBehaviour
         go.name = "CopEnergyBlast";
         Destroy(go.GetComponent<Collider>());   // never shove the ship — hit test is manual
         go.transform.position = origin;
-        go.transform.localScale = Vector3.one * 3.6f;   // 2× — reads clearly at chase distance
+        go.transform.localScale = Vector3.one * 5.4f;   // 3× the original — unmissable at chase distance
 
         var mat = go.GetComponent<Renderer>().material;
         var glow = new Color(0.3f, 0.85f, 1f);
         mat.color = glow;
         mat.EnableKeyword("_EMISSION");
-        mat.SetColor("_EmissionColor", glow * 3f);
+        mat.SetColor("_EmissionColor", glow * 4f);
 
         var light = go.AddComponent<Light>();
         light.type = LightType.Point;
         light.color = glow;
-        light.range = 50f;
-        light.intensity = 6f;
+        light.range = 70f;
+        light.intensity = 8f;
 
         var b = go.AddComponent<CopEnergyBlast>();
         b._target = target;
@@ -60,13 +60,13 @@ public class CopEnergyBlast : MonoBehaviour
         return b;
     }
 
-    // Four jittery polylines wrapped around the core, re-randomized ~22×/s —
+    // Jittery polylines wrapped around the core, re-randomized ~30×/s —
     // cheap convincing electricity. Local space, so they ride the blast free.
     void BuildArcs(Transform parent)
     {
-        _arcs = new LineRenderer[4];
+        _arcs = new LineRenderer[7];
         var arcMat = new Material(Shader.Find("Particles/Standard Unlit"));
-        arcMat.color = new Color(0.75f, 0.95f, 1f);
+        arcMat.color = new Color(0.9f, 0.98f, 1f);
         for (int i = 0; i < _arcs.Length; i++)
         {
             var go = new GameObject("Arc" + i);
@@ -74,11 +74,11 @@ public class CopEnergyBlast : MonoBehaviour
             var lr = go.AddComponent<LineRenderer>();
             lr.useWorldSpace = false;
             lr.material = arcMat;
-            lr.positionCount = 6;
-            lr.startWidth = 0.09f;   // parent scale ×3.6 → ~0.3 world units
-            lr.endWidth = 0.02f;
-            lr.startColor = new Color(0.85f, 0.97f, 1f, 0.95f);
-            lr.endColor = new Color(0.3f, 0.85f, 1f, 0.5f);
+            lr.positionCount = 7;
+            lr.startWidth = 0.16f;   // parent scale ×5.4 → ~0.85 world units at the root
+            lr.endWidth = 0.03f;
+            lr.startColor = new Color(0.95f, 0.99f, 1f, 1f);
+            lr.endColor = new Color(0.35f, 0.9f, 1f, 0.75f);
             _arcs[i] = lr;
         }
         RandomizeArcs();
@@ -96,8 +96,8 @@ public class CopEnergyBlast : MonoBehaviour
             {
                 float t = p / (float)(lr.positionCount - 1);
                 Vector3 point = Vector3.Slerp(a, b, t);
-                point *= UnityEngine.Random.Range(1.0f, 1.7f);           // crawl off the surface
-                point += UnityEngine.Random.insideUnitSphere * 0.12f;    // kink
+                point *= UnityEngine.Random.Range(1.0f, 2.3f);           // long tendrils off the surface
+                point += UnityEngine.Random.insideUnitSphere * 0.22f;    // hard kinks
                 lr.SetPosition(p, point);
             }
         }
@@ -110,7 +110,7 @@ public class CopEnergyBlast : MonoBehaviour
 
         if (Time.time >= _nextArcAt)
         {
-            _nextArcAt = Time.time + 0.045f;
+            _nextArcAt = Time.time + 0.033f;
             RandomizeArcs();
         }
 
