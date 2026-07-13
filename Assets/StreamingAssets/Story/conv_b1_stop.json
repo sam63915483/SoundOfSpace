@@ -1,0 +1,91 @@
+{
+  "id": "conv_b1_stop",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "UNIDENTIFIED VESSEL. CUT YOUR THRUST.",
+        "This is Galactic Patrol. Our radar operators recorded your vessel crossing this corridor significantly above the posted limit.",
+        "We have reasonable suspicion of a speed violation. This is a routine check. Hold your position."
+      ],
+      "responses": [
+        { "buttonText": "(Reach for the radio.)", "nextNodeId": "panic" }
+      ]
+    },
+    {
+      "id": "panic",
+      "speaker": "Tev",
+      "lines": [
+        "okay okay okay okay.",
+        "Do NOT be weird. I need ninety seconds."
+      ],
+      "responses": [
+        { "buttonText": "(Deep breath. Answer the radio.)", "nextNodeId": "q1" }
+      ]
+    },
+    {
+      "id": "q1",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "First question. Do you know how fast you were going?"
+      ],
+      "responses": [
+        { "buttonText": "Faster than you, apparently.", "nextNodeId": "q2" },
+        { "buttonText": "No sir — this ship's speedometer is in units I don't recognize.", "nextNodeId": "q2", "effects": [ { "kind": "SetFlag", "strArg": "b1_q1_pass", "boolArg": true } ] },
+        { "buttonText": "About 150 m/s. Tops.", "nextNodeId": "q2", "effects": [ { "kind": "SetFlag", "strArg": "b1_q1_pass", "boolArg": true } ] },
+        { "buttonText": "Is this about the dust?", "nextNodeId": "q2" }
+      ]
+    },
+    {
+      "id": "q2",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Do you know what the speed limit is in this corridor?"
+      ],
+      "responses": [
+        { "buttonText": "100 m/s.", "nextNodeId": "q3" },
+        { "buttonText": "200 m/s.", "nextNodeId": "q3", "effects": [ { "kind": "SetFlag", "strArg": "b1_q2_pass", "boolArg": true } ] },
+        { "buttonText": "300 m/s.", "nextNodeId": "q3" },
+        { "buttonText": "400? A million? It's SPACE, man.", "nextNodeId": "q3" },
+        { "buttonText": "I genuinely have no idea.", "nextNodeId": "q3", "effects": [ { "kind": "SetFlag", "strArg": "b1_q2_pass", "boolArg": true } ] }
+      ]
+    },
+    {
+      "id": "q3",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "State your business on Fiery Twin."
+      ],
+      "responses": [
+        { "buttonText": "Delivery.", "nextNodeId": "q4" },
+        { "buttonText": "My associate and I are visiting family.", "nextNodeId": "q4" },
+        { "buttonText": "Tourism. We heard the sunrise is lethal and wanted to see it.", "nextNodeId": "q4", "effects": [ { "kind": "SetFlag", "strArg": "b1_q3_pass", "boolArg": true } ] }
+      ]
+    },
+    {
+      "id": "q4",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "...",
+        "What is that sound?"
+      ],
+      "responses": [
+        { "buttonText": "What sound?", "nextNodeId": "done" },
+        { "buttonText": "My co-pilot gets spacesick. He's in the back being sick.", "nextNodeId": "done", "effects": [ { "kind": "SetFlag", "strArg": "b1_q4_pass", "boolArg": true } ] },
+        { "buttonText": "The ship is haunted.", "nextNodeId": "done" }
+      ]
+    },
+    {
+      "id": "done",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Hold position. Running your answers through central.",
+        "..."
+      ],
+      "responses": [
+        { "buttonText": "(Wait.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_interrogation_done", "boolArg": true } ] }
+      ]
+    }
+  ]
+}

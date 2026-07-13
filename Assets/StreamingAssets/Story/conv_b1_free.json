@@ -1,0 +1,16 @@
+{
+  "id": "conv_b1_free",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Your story checks out. Somehow.",
+        "Maintain corridor speed. Have a boring day."
+      ],
+      "responses": [
+        { "buttonText": "(Exhale.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_released", "boolArg": true } ] }
+      ]
+    }
+  ]
+}

@@ -660,3 +660,182 @@ the CLAUDE.md recipe.
    acknowledged.
 9. **Ending world-state swaps** (M) — spawner gates, emission value, audio
    mixes, TorchAura flip.
+
+---
+---
+
+# PART 3 — Idea backlog (2026-07-12, not yet scheduled)
+
+Ideas parked here until a build slot opens. Not part of the Act 2/3 spine
+unless promoted.
+
+## 17. B-1 · "Routine Stop" — the Tev smuggling run  [effort M–L, comedy→suspense→chase]
+
+**The pitch:** the ONLY mission in the whole game where Tev leaves the cabin
+and rides in a ship. A fun buddy road-trip that snaps into sudden tension:
+a giant patrol ship pulls you over in open space for speeding while you're
+smuggling space dust, and you have to talk your way out over the radio while
+Tev frantically hides the contraband behind you — with an optional
+run-from-the-cops chase finale.
+
+- **Giver:** Tev. He's got a buyer on Fiery Twin for a crate of space dust —
+  "technically it's not *illegal* illegal, it's more of a paperwork
+  situation" — but he can't fly, so you drive, he rides in the back. Split
+  the take. Story frames it as **Tev's ship**; implementation reuses the
+  player's existing flyable-ship systems (cheapest: it IS the player's ship
+  and Tev just insists on calling it his — play that as the joke).
+- **Route:** Humble Abode → Fiery Twin, crate of space dust in the hold.
+- **Beats (staged for cheap build — no NPC walking anywhere):**
+  1. **The offer.** Player meets Tev, they discuss the job. Tev ends with
+     "meet me back at the cabin, we'll take my ship out." The ship gets
+     **pinged on the helmet compass** as the objective marker.
+  2. **The swap trick.** When the player is **halfway to the ship**, the
+     original Tev NPC **despawns**, and a Tev instance **appears standing
+     inside the ship** — no walk animation, no pathing, ever. He was
+     somehow already there. (If a sprinting player notices — that's just
+     Tev being weird; do not explain.)
+  3. **The ride out.** Board, take off, Tev standing in the back. Pure
+     hangout energy — banter lines while you fly (he critiques your
+     takeoff, calls dibs on the radio, tells a rambling story about the
+     last guy who flew him somewhere). Road trip with your weird uncle.
+  4. **The stop** (trigger: **halfway between Humble Abode and Fiery
+     Twin**). The ship radio throws an **INCOMING — GALACTIC PATROL**
+     popup, **flashing red and blue**. Music cuts. The **giant patrol
+     ship** (prefab already in the project — see build list) **flies into
+     frame** and pulls up dead ahead, filling the front window, light bars
+     strobing, spotlight on your cockpit — and fires a **cone of blue
+     vortex field** that traps you in front of it, bleeding BOTH ships'
+     velocity so the whole encounter stays parked between the two planets.
+  5. **The radio.** The cop's fiction is specific: they're radar operators —
+     somewhere inside that giant ship, people at screens watched **your
+     ping cross a lot of meters very fast** — so they have "reasonable
+     suspicion you exceeded the corridor limit" and are conducting "a
+     routine check." Procedural, bored, dead serious. Tev goes white:
+     "okay okay okay do NOT be weird, I need ninety seconds" — and
+     vanishes into the back.
+  6. **The interrogation.** Four questions over the radio (drafted below),
+     Tev audibly scrambling behind you the whole time — clattering,
+     muffled swearing — his noise spiking at the worst moments (that's Q4).
+- **Outcomes (the ending tree; 4/4-vs-3/4 split is a proposal — tune):**
+  - **Ace it (4/4): free man.** Vortex releases, "maintain corridor
+    speed," the giant ship peels away. Tev emerges covered in dust: "I ate
+    some of it. As a precaution." Deliver, get paid.
+  - **Pass with a miss (3/4): the ticket.** They buy the story but write
+    you up for the speeding itself — **$200 fine**, payable on the spot
+    from the wallet. Deliberately small: cheap enough that paying is
+    painless, and cheap enough that the average player looks at the fine,
+    looks at their throttle, and decides to run anyway. Pay → released,
+    deliver, get paid (a framed-ticket cabin prop afterward would be very
+    Tev).
+  - **Refuse / can't pay: THE CHASE.** You punch it. The vortex snaps and
+    the giant ship pursues, firing **3–5 electromagnetic shock blasts** —
+    slow, aimed, dodgeable projectiles that disable your ship on hit.
+    **Dodge them all and open up enough distance → the patrol pulls off**
+    and stops chasing, letting you escape to safety at Fiery Twin — fine
+    unpaid, dust intact, the riskiest and most profitable ending. **Get
+    hit → ship disabled**, they reel you in: dust confiscated + the fine
+    deducted anyway. Tev, drifting in zero thrust: "worth a shot."
+  - **Hard fail (≤2/4): boarding.** They stop believing you entirely —
+    flashlight sweep through the cockpit glass, and they find the crate
+    instantly, because Tev hid it under his own seat with his feet on it.
+    Dust confiscated + fine, silent ride home.
+  - All bad endings fail forward: retryable later with fresh dust
+    ("lightning never stops the mail, kid").
+- **Draft interrogation (tune in writing pass):**
+  - **Q1: "Do you know how fast you were going?"**
+    - a) "Faster than you, apparently." *(wrong — smug)*
+    - b) "No sir, this ship's speedometer is in units I don't recognize."
+      *(RIGHT — dumb-but-honest reads as harmless)*
+    - c) "Is this about the dust?" *(catastrophically wrong — insta-suspicion)*
+    - d) **"I was doing about ___ m/s."** — custom numeric entry (dial in a
+      speed). **The corridor limit is exactly 200 m/s; grading: any stated
+      speed ≤ 215 passes** (at-or-under reads honest; 200–215 is inside
+      radar tolerance and the cop lets it slide), **anything > 215 is
+      wrong** — you just confessed on the record ("...I appreciate the
+      honesty. Strike.") **Mechanic tie-in:** the existing planet lock-on
+      (left-click a body while flying) shows speed relative to that body —
+      an attentive pilot literally knows their number. The cop can't prove
+      your claim, so lowballing works — this is the "smart player" answer.
+  - **Q2 (NEW): "Do you know what the speed limit is in this corridor?"**
+    — the trap follow-up. **Two right answers: be exactly correct, or play
+    fully dumb. Anything in between reads as snark or a lie.**
+    - a) "100 m/s." *(wrong — transparent lowball; you're fishing, and the
+      cop has met a thousand of you)*
+    - b) "200 m/s." *(RIGHT — correct; the cop is briefly, visibly
+      disappointed to have nothing)*
+    - c) "300 m/s." *(wrong — you thought you had headroom; now he knows
+      you weren't even trying to follow it)*
+    - d) "400? A million? It's space, man. It's SPACE." *(wrong — the
+      snarky one; long pause, then: "It's a corridor, sir.")*
+    - e) "I genuinely have no idea." *(RIGHT — full dumb is legally
+      airtight; ignorance reads as harmless, not defiant)*
+    - Cross-question flavor (polish, not logic): if the player stated a
+      number in Q1d and then claims a *limit* lower than their own stated
+      speed here, the cop reads it back to them slowly.
+  - **Q3: "What is your business on Fiery Twin?"**
+    - a) "Delivery." *(wrong — too short, invites follow-up: "of WHAT?")*
+    - b) "My associate and I are visiting family." *(wrong — cop can see
+      Tev, who is visibly not related to you and currently upside down)*
+    - c) "Tourism. We heard the sunrise is lethal and wanted to see it."
+      *(RIGHT — stupid enough to be true; cop sighs, "it IS lethal.")*
+  - **Q4: "...What is that sound?"** *(Tev drops something enormous)*
+    - a) "What sound?" *(wrong — the sound happens again, louder)*
+    - b) "My co-pilot gets spacesick. He's in the back being sick." *(RIGHT
+      — cop wants to be nowhere near that; wraps up the stop faster)*
+    - c) "The ship is haunted." *(wrong... but funniest — consider a hidden
+      third outcome where the cop just leaves out of unease? backlog polish)*
+- **Systems used:** preset dialogue with choice branching (the conv_*.json
+  system already does player-choice responses — this is a dialogue tree
+  with a pass-counter flag), planet lock-on speed readout (already shipped —
+  left-click a body while flying shows relative speed; Q1's numeric answer
+  rewards players who checked it), ship flight, space dust
+  economy (dust already exists as `SpaceDustInventory`), Tev
+  (Alien10) as a ship passenger, radio-filtered TTS for the cop voice
+  (Coplay TTS + a radio EQ pass).
+- **New (the real build cost):**
+  - **Tev-in-ship, cheap version:** the despawn/respawn swap trick kills
+    the walking problem entirely — Tev only ever exists as a *standing
+    static pose* parented inside the ship interior. Still needs: parenting
+    that survives flight (he inherits the ship transform), floating-origin
+    safety (he's a child of the ship, which is already registered), and
+    LateUpdate bone rules if he gestures (see CLAUDE.md). Way smaller than
+    a real passenger rig.
+  - **Giant patrol ship flyby:** reuse an existing prefab — candidates
+    found in-project: `Assets/F3_Corvette/Prefabs/ORG ship.prefab` (likely
+    the big one) or `Assets/5 - External Imports/Prefabs/Space Ship.prefab`
+    — verify which is the giant one in the Editor. Needs a scripted fly-in
+    (planet-relative LateUpdate drive per the floating-origin recipe — see
+    [[floating-origin-move-player-not-camera]] memory / pod-arrival code)
+    + `EndlessManager.RegisterPhysicsObject` + light-bar rig + spotlight.
+  - **Vortex tractor cone:** blue cone VFX from the patrol ship's nose +
+    hold logic that pins the player ship in front of it and bleeds both
+    velocities to ~0 relative (this is also what keeps the encounter
+    parked between the planets). Player throttle disabled while held,
+    EXCEPT the run-for-it choice re-enables it.
+  - **Radio popup UI:** INCOMING — GALACTIC PATROL panel on the ship
+    radio, flashing red/blue + siren SFX.
+  - **Numeric-entry dialogue response** (Q1d "state a speed") — the conv
+    system is choice-only today; needs one small widget (slider or +/-
+    stepper in m/s) that resolves against the ≤215 threshold.
+  - **The chase encounter:** patrol pursuit steering + 3–5 EM shock-blast
+    projectiles (slow, dodgeable, homing-ish; hit = ship disabled a few
+    seconds + caught), a dodge/distance check, and a disengage threshold
+    where the patrol pulls off. Biggest new system in the mission — but
+    it's optional-path, so it can ship in a second pass (v1: refuse-to-pay
+    just isn't offered yet; ticket auto-deducts).
+  - **Helmet compass objective ping** for the walk-to-ship beat
+    (feat/helmet-hud compass).
+  - Tev off-screen scramble SFX bed timed against the question beats.
+  - $200 fine + wallet integration; citation item; retry gate.
+- **Tone spec:** beats 1 is full comedy; the SNAP at beat 2 must be played
+  completely straight — real siren, real "pull over" dread, music gone —
+  and stays straight through the questions; the comedy sneaks back in only
+  through Tev's noises and the answer options themselves. The gap between
+  "cop procedure played dead serious" and "the crime is space-speeding" IS
+  the joke. Don't wink at it.
+- **Flags:** `B1_TevRun` (offered), `B1_DustDelivered` (pass),
+  `B1_Busted` (fail count, gates retry lines), `B1_Outlaw` (won the chase —
+  fine unpaid; hook for later cop-flavored callbacks if ever wanted).
+- **Canon note:** keep it disconnected from the Eye/HAL spine — this is
+  deliberately the one pure-fun mission. At most, one HAL line at the end:
+  "I observed everything. I have elected to log none of it."

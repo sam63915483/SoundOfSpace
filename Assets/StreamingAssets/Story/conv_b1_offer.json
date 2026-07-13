@@ -1,0 +1,54 @@
+{
+  "id": "conv_b1_offer",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Tev",
+      "lines": [
+        "GRAAAAH!",
+        "...Heh. Sorry. Couldn't resist. You should see your face.",
+        "Anyway. Wanna help me smuggle some alien goodies?"
+      ],
+      "responses": [
+        { "buttonText": "Yes. Obviously.", "nextNodeId": "accept", "effects": [ { "kind": "SetFlag", "strArg": "b1_accepted", "boolArg": true } ] },
+        { "buttonText": "What kind of goodies?", "nextNodeId": "explain" },
+        { "buttonText": "Absolutely not.", "nextNodeId": "refuse" }
+      ]
+    },
+    {
+      "id": "explain",
+      "speaker": "Tev",
+      "lines": [
+        "Space dust. A whole crate of it. And before you ask — it's not ILLEGAL illegal. It's more of a paperwork situation.",
+        "Buyer's on Fiery Twin. I can't fly. You can. We split the take."
+      ],
+      "responses": [
+        { "buttonText": "Fine. I'm in.", "nextNodeId": "accept", "effects": [ { "kind": "SetFlag", "strArg": "b1_accepted", "boolArg": true } ] },
+        { "buttonText": "Not a chance.", "nextNodeId": "refuse" }
+      ]
+    },
+    {
+      "id": "accept",
+      "speaker": "Tev",
+      "lines": [
+        "HA! Knew it.",
+        "Crate's already in the back. Don't ask how long it's been there.",
+        "Take us up, keep it casual, and whatever happens out there — do NOT be weird."
+      ],
+      "responses": [
+        { "buttonText": "(Take the controls.)", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "refuse",
+      "speaker": "Tev",
+      "lines": [
+        "Sure. Sure. Take your time.",
+        "Me and the crate will be right here. Being patient. And extremely legal."
+      ],
+      "responses": [
+        { "buttonText": "(Back away slowly.)", "nextNodeId": "end" }
+      ]
+    }
+  ]
+}

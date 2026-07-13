@@ -1,0 +1,18 @@
+{
+  "id": "conv_b1_ticket",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Your answers were... partially satisfactory.",
+        "Citation issued: one (1) count of corridor speeding.",
+        "The fine is $200. Payable immediately."
+      ],
+      "responses": [
+        { "buttonText": "Pay the $200.", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_pay", "boolArg": true } ] },
+        { "buttonText": "(Punch it.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true } ] }
+      ]
+    }
+  ]
+}

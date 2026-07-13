@@ -1,0 +1,306 @@
+using System;
+using UnityEngine;
+
+/// Runtime brain added to the spawned patrol corvette (mission B-1).
+/// Fly-in / hold are driven in the target ship's local frame each LateUpdate,
+/// so floating-origin shifts are free (the target ship is registered).
+/// The chase runs in world space with the corvette registered on EndlessManager.
+public class CopShipController : MonoBehaviour
+{
+    public float flyInSeconds = 2.2f;
+    public float standoffDistance = 130f;
+    public float standoffHeight = 25f;
+    public float chaseSpeed = 75f;
+    public float escapeDistance = 900f;
+    public float blastInterval = 4f;
+    public int maxBlasts = 5;
+    public float blastRange = 550f;
+    public float blastSpeed = 90f;
+    public float blastHitRadius = 8f;
+    public int hitsToKill = 3;
+
+    enum Mode { Inactive, FlyIn, Hold, Chase, Depart }
+    Mode _mode = Mode.Inactive;
+
+    Ship _target;
+    CelestialBody _anchor;
+    Action _onArrived, _onEscaped, _onCaught;
+
+    Vector3 _holdLocal;      // rest pose, target-ship local space
+    Vector3 _startLocal;
+    float _flyT;
+    Vector3 _departLocalDir;
+    float _departSpeed;
+    Vector3 _chaseRel;       // cop position relative to the ship, world axes
+    Vector3 _fleeBaseVel;    // ship rb velocity at chase start (the "stopped" frame)
+
+    Light _spot, _red, _blue;
+    Transform _spotPivot;
+    AudioSource _siren;
+    float _flashTimer;
+    bool _redOn;
+
+    int _fired, _hits, _pending;
+    float _nextBlastAt;
+    bool _resolved;          // chase finished (escaped or caught)
+    EndlessManager _endless;
+
+    public void Init(Ship target, CelestialBody anchor, AudioClip sirenClip, Action onArrived)
+    {
+        _target = target;
+        _anchor = anchor;
+        _onArrived = onArrived;
+        _endless = FindObjectOfType<EndlessManager>();
+
+        // Rest pose: dead ahead of the target's front window, slightly above,
+        // nose pointed back at it. Approach start: far beyond + above the rest
+        // pose so it streaks into frame and stops.
+        _holdLocal = new Vector3(0f, standoffHeight, standoffDistance);
+        _startLocal = _holdLocal + new Vector3(0f, 250f, 1600f);
+
+        transform.position = LocalToWorld(_startLocal);
+        FaceTarget();
+
+        BuildLights();
+        if (sirenClip != null)
+        {
+            _siren = gameObject.AddComponent<AudioSource>();
+            _siren.clip = sirenClip;
+            _siren.spatialBlend = 0.4f;
+            _siren.volume = 0.9f;
+            _siren.Play();
+        }
+
+        _mode = Mode.FlyIn;
+        _flyT = 0f;
+    }
+
+    public void FlyAway()
+    {
+        if (_mode == Mode.Depart) return;
+        _departLocalDir = (Vector3.up * 0.35f + Vector3.forward).normalized;
+        _departSpeed = 60f;
+        _mode = Mode.Depart;
+        if (_siren != null) _siren.Stop();
+        Destroy(gameObject, 10f);
+    }
+
+    public void StartChase(Action onEscaped, Action onCaught)
+    {
+        _onEscaped = onEscaped;
+        _onCaught = onCaught;
+        _mode = Mode.Chase;
+        _nextBlastAt = Time.time + 1.5f;
+
+        // The chase is simulated entirely in the target ship's reference frame:
+        // cop position = shipPos + _chaseRel, recomputed fresh every frame. That
+        // makes it immune to floating-origin shifts and to the N-body sim's
+        // velocity/transform unit quirks. The gap opens or closes purely from
+        // how hard the player flees relative to their velocity at the stop.
+        Rigidbody rb = _target.Rigidbody;
+        Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
+        _chaseRel = transform.position - shipPos;
+        _fleeBaseVel = rb != null ? rb.velocity : Vector3.zero;
+
+        if (_siren != null) { _siren.loop = true; _siren.Play(); }
+    }
+
+    void LateUpdate()
+    {
+        if (_target == null || _mode == Mode.Inactive) return;
+        float dt = Time.deltaTime;
+
+        FlashLights(dt);
+
+        switch (_mode)
+        {
+            case Mode.FlyIn:
+            {
+                _flyT += dt / Mathf.Max(0.1f, flyInSeconds);
+                float e = 1f - Mathf.Pow(1f - Mathf.Clamp01(_flyT), 3f);   // ease-out cubic
+                transform.position = LocalToWorld(Vector3.LerpUnclamped(_startLocal, _holdLocal, e));
+                FaceTarget();
+                if (_flyT >= 1f)
+                {
+                    _mode = Mode.Hold;
+                    _onArrived?.Invoke();
+                    _onArrived = null;
+                }
+                break;
+            }
+
+            case Mode.Hold:
+                transform.position = LocalToWorld(_holdLocal);
+                FaceTarget();
+                break;
+
+            case Mode.Depart:
+                _departSpeed = Mathf.Min(2500f, _departSpeed + _departSpeed * 1.6f * dt);   // accelerate away "super fast"
+                _holdLocal += _departLocalDir * _departSpeed * dt;
+                transform.position = LocalToWorld(_holdLocal);
+                break;
+
+            case Mode.Chase:
+                TickChase(dt);
+                break;
+        }
+
+        AimSpot();
+    }
+
+    void TickChase(float dt)
+    {
+        if (_resolved) return;
+
+        Rigidbody rb = _target.Rigidbody;
+        Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
+        Vector3 fleeVel = (rb != null ? rb.velocity : Vector3.zero) - _fleeBaseVel;
+        float fleeSpeed = fleeVel.magnitude;
+
+        // Scalar gap model: the player's flee speed opens the gap, chaseSpeed
+        // closes it. Dawdle → the cop closes to point-blank. Commit to the
+        // throttle → the gap opens toward escapeDistance.
+        float dist = _chaseRel.magnitude;
+        dist = Mathf.Max(35f, dist + (fleeSpeed - chaseSpeed) * dt);
+
+        // The cop settles in behind the player's direction of travel.
+        Vector3 trailDir = fleeSpeed > 2f ? -fleeVel.normalized : _chaseRel.normalized;
+        Vector3 dir = Vector3.Slerp(_chaseRel.normalized, trailDir, 1.2f * dt).normalized;
+        _chaseRel = dir * dist;
+
+        transform.position = shipPos + _chaseRel;
+        Vector3 toShip = -_chaseRel.normalized;
+        transform.rotation = Quaternion.Slerp(transform.rotation,
+            Quaternion.LookRotation(toShip, _target.transform.up), 4f * dt);
+
+        if (dist > escapeDistance) { ResolveChase(escaped: true); return; }
+
+        if (_fired < maxBlasts && Time.time >= _nextBlastAt && dist < blastRange)
+        {
+            CopEnergyBlast.Spawn(transform.position + transform.forward * 25f,
+                                 _target, blastSpeed, blastHitRadius, OnBlastResolved);
+            _fired++;
+            _pending++;
+            _nextBlastAt = Time.time + blastInterval;
+        }
+
+        // All shots spent, everything resolved, target still alive → give up.
+        if (_fired >= maxBlasts && _pending == 0 && _hits < hitsToKill)
+            ResolveChase(escaped: true);
+    }
+
+    void OnBlastResolved(bool hit)
+    {
+        _pending = Mathf.Max(0, _pending - 1);
+        if (!hit || _resolved) return;
+
+        _hits++;
+        if (CameraShake.Instance != null) CameraShake.Instance.TriggerShake(0.5f, 0.5f, 6f);
+
+        if (_hits >= hitsToKill)
+        {
+            ResolveChase(escaped: false);
+        }
+        else if (ResourceManager.Instance != null)
+        {
+            ResourceManager.Instance.TakeDamage(15f);   // sting, not lethal
+        }
+    }
+
+    void ResolveChase(bool escaped)
+    {
+        if (_resolved) return;
+        _resolved = true;
+        if (escaped)
+        {
+            _onEscaped?.Invoke();
+            // Depart drives in target-local space — refresh the local pose first.
+            _holdLocal = WorldToLocal(transform.position);
+            FlyAway();
+        }
+        else
+        {
+            _onCaught?.Invoke();
+            FlyAway();
+        }
+    }
+
+    // ── Presentation ──
+
+    void BuildLights()
+    {
+        // Alternating red/blue light bar.
+        _red = MakeLight("CopLight_Red", Color.red);
+        _blue = MakeLight("CopLight_Blue", new Color(0.2f, 0.4f, 1f));
+
+        // Spotlight: reuse the prefab's brightest light if it has one, else make one.
+        foreach (var l in GetComponentsInChildren<Light>())
+        {
+            if (l == _red || l == _blue) continue;
+            if (l.type == LightType.Spot) { _spot = l; break; }
+        }
+        if (_spot == null)
+        {
+            var go = new GameObject("CopSpotlight");
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = new Vector3(0f, -2f, 5f);
+            _spot = go.AddComponent<Light>();
+            _spot.type = LightType.Spot;
+            _spot.spotAngle = 28f;
+            _spot.range = 600f;
+            _spot.intensity = 10f;
+            _spot.color = Color.white;
+        }
+        _spotPivot = _spot.transform;
+    }
+
+    Light MakeLight(string name, Color color)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = new Vector3(0f, 8f, 0f);
+        var l = go.AddComponent<Light>();
+        l.type = LightType.Point;
+        l.color = color;
+        l.range = 90f;
+        l.intensity = 7f;
+        l.enabled = false;
+        return l;
+    }
+
+    void FlashLights(float dt)
+    {
+        _flashTimer += dt;
+        if (_flashTimer < 0.35f) return;
+        _flashTimer = 0f;
+        _redOn = !_redOn;
+        if (_red != null) _red.enabled = _redOn;
+        if (_blue != null) _blue.enabled = !_redOn;
+    }
+
+    void AimSpot()
+    {
+        if (_spotPivot == null || _target == null) return;
+        Vector3 dir = _target.transform.position - _spotPivot.position;
+        if (dir.sqrMagnitude < 0.01f) return;
+        _spotPivot.rotation = Quaternion.Slerp(_spotPivot.rotation,
+            Quaternion.LookRotation(dir.normalized, transform.up), 6f * Time.deltaTime);
+    }
+
+    // ── Frames ──
+
+    Vector3 LocalToWorld(Vector3 local) => _target.transform.TransformPoint(local);
+    Vector3 WorldToLocal(Vector3 world) => _target.transform.InverseTransformPoint(world);
+
+    void FaceTarget()
+    {
+        Vector3 dir = _target.transform.position - transform.position;
+        if (dir.sqrMagnitude > 0.01f)
+            transform.rotation = Quaternion.LookRotation(dir.normalized, _target.transform.up);
+    }
+
+    void OnDestroy()
+    {
+        if (_endless != null) _endless.UnregisterPhysicsObject(transform);
+    }
+}
