@@ -86,6 +86,14 @@ public class TevSmugglingMission : MonoBehaviour
     Coroutine _subtitleCo;
     bool _countdownActive;   // hatch countdown owns the subtitle — blast warnings must not stomp it
 
+    // Hatch quick-time event: H keycap in a red ring; a white ring shrinks
+    // from 3× during Tev's 3-2-1 and lands on the red ring at "1".
+    enum CdResult { Success, EarlyPress, Timeout }
+    CdResult _cdResult;
+    GameObject _qteRoot;
+    RectTransform _qteWhiteRing;
+    static Sprite s_ringSprite;
+
     void Awake()
     {
         _ship = GetComponent<Ship>();
@@ -642,6 +650,90 @@ public class TevSmugglingMission : MonoBehaviour
         _subtitlePanel.gameObject.SetActive(false);
     }
 
+    // ── hatch quick-time event UI ──
+
+    void EnsureQteUI()
+    {
+        if (_qteRoot != null) return;
+        EnsureSubtitleUI();   // owns the canvas
+        Transform canvas = _subtitlePanel.parent;
+
+        _qteRoot = new GameObject("HatchQTE");
+        _qteRoot.transform.SetParent(canvas, false);
+        var root = _qteRoot.AddComponent<RectTransform>();
+        root.anchorMin = root.anchorMax = new Vector2(0.5f, 0.46f);
+        root.sizeDelta = Vector2.zero;
+
+        MakeRing("RedRing", root, new Color(1f, 0.25f, 0.20f, 0.95f));
+        _qteWhiteRing = MakeRing("WhiteRing", root, Color.white);
+
+        // Keycap: bordered dark square with a bold H.
+        var border = new GameObject("CapBorder");
+        border.transform.SetParent(root, false);
+        var brt = border.AddComponent<RectTransform>();
+        brt.sizeDelta = new Vector2(96f, 96f);
+        border.AddComponent<UnityEngine.UI.Image>().color = new Color(0.9f, 0.94f, 1f, 0.95f);
+
+        var cap = new GameObject("Cap");
+        cap.transform.SetParent(root, false);
+        var crt = cap.AddComponent<RectTransform>();
+        crt.sizeDelta = new Vector2(86f, 86f);
+        cap.AddComponent<UnityEngine.UI.Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
+
+        var hGo = new GameObject("H");
+        hGo.transform.SetParent(root, false);
+        var hText = hGo.AddComponent<TextMeshProUGUI>();
+        hText.rectTransform.sizeDelta = new Vector2(96f, 96f);
+        hText.text = "H";
+        hText.fontSize = 56f;
+        hText.fontStyle = FontStyles.Bold;
+        hText.color = Color.white;
+        hText.alignment = TextAlignmentOptions.Center;
+
+        _qteRoot.SetActive(false);
+    }
+
+    RectTransform MakeRing(string name, RectTransform parent, Color color)
+    {
+        var go = new GameObject(name);
+        go.transform.SetParent(parent, false);
+        var rt = go.AddComponent<RectTransform>();
+        rt.sizeDelta = new Vector2(170f, 170f);
+        var img = go.AddComponent<UnityEngine.UI.Image>();
+        img.sprite = RingSprite();
+        img.color = color;
+        img.raycastTarget = false;
+        return rt;
+    }
+
+    static Sprite RingSprite()
+    {
+        if (s_ringSprite != null) return s_ringSprite;
+        const int size = 256;
+        float outer = 124f, inner = 106f, c = size * 0.5f;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        var px = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
+                // 2px soft edges so the ring doesn't look jagged.
+                float a = Mathf.Clamp01((outer - d) * 0.5f) * Mathf.Clamp01((d - inner) * 0.5f);
+                px[y * size + x] = new Color(1f, 1f, 1f, a);
+            }
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        s_ringSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        return s_ringSprite;
+    }
+
+    void QteHide()
+    {
+        if (_qteRoot != null) _qteRoot.SetActive(false);
+    }
+
     /// The hidden chase clock. Starts the moment the cop sees you run. Tev
     /// scrambles for his rocket launcher in the back, narrating over the
     /// engine noise, and at T-5s calls the shot: a 3-2-1 countdown, the player
@@ -670,30 +762,51 @@ public class TevSmugglingMission : MonoBehaviour
 
         yield return WaitUntilChaseTime(t0, chaseSeconds - 5f);
         if (_phase != Phase.Chase) yield break;
+
+        // CEASE FIRE: no more taser shots from here on, and let anything
+        // already in flight resolve — the player needs a calm moment to
+        // actually read Tev (he doesn't speak English, the subtitle IS the
+        // information).
+        if (_cop != null) _cop.HoldFire(true);
+        while (_phase == Phase.Chase && CopEnergyBlast.ActiveCount > 0) yield return null;
+        if (_phase != Phase.Chase) yield break;
+
         ShowTevLine("HOLD HER STEADY! I'VE GOT A SHOT!");
         yield return new WaitForSeconds(2.6f);
 
-        // Countdown → hatch window loop. The window is the full
-        // hatchWindowSeconds after the "1!" — it plays out entirely, and if
-        // the hatch was opened at any point during it, Tev takes the shot.
+        // Countdown QTE loop: white ring shrinks onto the H keycap during
+        // 3-2-1, then hatchWindowSeconds to pop the hatch. Early press =
+        // NOT SO FAST + restart. Timeout = one punishment shot, then again.
         while (_phase == Phase.Chase)
         {
+            // Clean slate: the QTE needs the hatch CLOSED at countdown start.
+            if (_ship != null && _ship.HatchOpen) _ship.SetHatchOpen(false);
+
             _countdownActive = true;
             yield return TevCountdown();
-            if (_phase != Phase.Chase) { _countdownActive = false; yield break; }
-
-            bool open = false;
-            float windowEnd = Time.time + hatchWindowSeconds;
-            while (Time.time < windowEnd && _phase == Phase.Chase)
-            {
-                if (_ship != null && _ship.HatchOpen) open = true;
-                yield return null;
-            }
             _countdownActive = false;
-            if (open) break;
+            if (_phase != Phase.Chase) yield break;
 
-            ShowTevLine("TOO SLOW! Seal it up! Okay, okay — we go AGAIN!");
-            yield return new WaitForSeconds(4f);
+            if (_cdResult == CdResult.Success) break;
+
+            if (_cdResult == CdResult.EarlyPress)
+            {
+                if (_ship != null && _ship.HatchOpen) _ship.ToggleHatch();   // Tev slams it shut
+                ShowTevLine("NOT SO FAST!");
+                yield return new WaitForSeconds(2.2f);
+                continue;
+            }
+
+            // Timeout: the corvette makes them pay with one shot, then Tev
+            // resets once the sky is clear again.
+            ShowTevLine("TOO SLOW!");
+            yield return new WaitForSeconds(0.9f);
+            if (_cop != null) _cop.FireOneNow();
+            float clearBy = Time.time + 12f;
+            while (_phase == Phase.Chase && Time.time < clearBy && CopEnergyBlast.ActiveCount > 0)
+                yield return null;
+            if (_phase != Phase.Chase) yield break;
+            yield return new WaitForSeconds(0.8f);
         }
         if (_phase != Phase.Chase) yield break;
 
@@ -712,25 +825,64 @@ public class TevSmugglingMission : MonoBehaviour
         });
     }
 
-    /// "OPEN THE HATCH! Press H in" types out with babble, then 3 / 2 / 1 tick
-    /// on real one-second beats so the window timing is honest.
+    /// "OPEN THE HATCH!" types out with babble, then the QTE runs: the white
+    /// ring shrinks from 3× onto the red ring around the H keycap during the
+    /// spoken 3-2-1 (one-second beats), landing exactly on "1". The result is
+    /// left in _cdResult: hatch opened during the shrink = EarlyPress; during
+    /// the window after "1" = Success; window expires = Timeout.
     IEnumerator TevCountdown()
     {
         if (_subtitleCo != null) { StopCoroutine(_subtitleCo); _subtitleCo = null; }
         EnsureSubtitleUI();
         _subtitlePanel.gameObject.SetActive(true);
         StartBabble();
-        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH! Press H in", SubtitleCharDelay, () => false);
+        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH!", SubtitleCharDelay, () => false);
         StopBabble();
         _subtitle.maxVisibleCharacters = int.MaxValue;
+        yield return new WaitForSeconds(0.6f);
+        if (_phase != Phase.Chase) yield break;
 
-        _subtitle.text = "OPEN THE HATCH! Press H in 3...";
-        yield return new WaitForSeconds(1f);
-        if (_phase != Phase.Chase) yield break;
-        _subtitle.text = "OPEN THE HATCH! Press H in 3... 2...";
-        yield return new WaitForSeconds(1f);
-        if (_phase != Phase.Chase) yield break;
-        _subtitle.text = "OPEN THE HATCH! Press H in 3... 2... 1!";
+        EnsureQteUI();
+        _qteRoot.SetActive(true);
+        _qteWhiteRing.localScale = Vector3.one * 3f;
+
+        const string baseTxt = "OPEN THE HATCH!";
+        float start = Time.time;
+        int said = -1;
+        while (Time.time - start < 2f)   // "3" at 0s, "2" at 1s, "1" at 2s
+        {
+            float t = Time.time - start;
+            int step = Mathf.FloorToInt(t);
+            if (step > said)
+            {
+                said = step;
+                _subtitle.text = step == 0 ? baseTxt + " 3..." : baseTxt + " 3... 2...";
+            }
+            _qteWhiteRing.localScale = Vector3.one * Mathf.Lerp(3f, 1f, t / 2f);
+
+            if (_ship != null && _ship.HatchOpen)
+            {
+                QteHide();
+                _cdResult = CdResult.EarlyPress;
+                yield break;
+            }
+            if (_phase != Phase.Chase) { QteHide(); yield break; }
+            yield return null;
+        }
+        _subtitle.text = baseTxt + " 3... 2... 1!";
+        _qteWhiteRing.localScale = Vector3.one;
+
+        // The window: rings pulse together — NOW is the time.
+        bool open = false;
+        float windowEnd = Time.time + hatchWindowSeconds;
+        while (Time.time < windowEnd && _phase == Phase.Chase)
+        {
+            _qteWhiteRing.localScale = Vector3.one * (1f + 0.08f * Mathf.Sin(Time.time * 24f));
+            if (_ship != null && _ship.HatchOpen) { open = true; break; }
+            yield return null;
+        }
+        QteHide();
+        _cdResult = open ? CdResult.Success : CdResult.Timeout;
     }
 
     IEnumerator TevCelebrate()

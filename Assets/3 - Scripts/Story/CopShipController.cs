@@ -68,7 +68,29 @@ public class CopShipController : MonoBehaviour
     int _fired, _hits, _pending;
     float _nextBlastAt;
     bool _resolved;          // chase finished (escaped or caught)
+    bool _holdFire;          // mission-scripted cease-fire (Tev's countdown beat)
     EndlessManager _endless;
+
+    /// Scripted cease-fire: no new blasts while held (in-flight ones finish).
+    public void HoldFire(bool hold)
+    {
+        _holdFire = hold;
+        if (hold) _shotArmed = false;
+    }
+
+    /// Fire a single immediate blast (no callout lead) — the punishment shot
+    /// after a missed hatch window.
+    public void FireOneNow()
+    {
+        if (_resolved || _target == null || _mode != Mode.Chase) return;
+        CopEnergyBlast.Spawn(transform.position + transform.forward * 25f,
+                             _target, blastSpeed, blastHitRadius,
+                             pingClip, zapClip, OnBlastResolved);
+        _fired++;
+        _pending++;
+        _nextBlastAt = Time.time + blastInterval;
+        onBlastFired?.Invoke();
+    }
 
     /// The corvette streaks in from far AHEAD of the target and settles into a
     /// shadowing pose in front of the windshield (sirens + lights) — the player
@@ -352,7 +374,7 @@ public class CopShipController : MonoBehaviour
 
         // Every shot is telegraphed: a radio bark (escalating through the
         // callout list) plays calloutLeadSeconds before the blast leaves.
-        if (_fired < maxBlasts && dist < blastRange)
+        if (!_holdFire && _fired < maxBlasts && dist < blastRange)
         {
             if (!_shotArmed && Time.time >= _nextBlastAt)
             {

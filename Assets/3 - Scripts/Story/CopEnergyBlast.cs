@@ -11,6 +11,10 @@ using UnityEngine;
 /// away. Fly hard, dodge blasts.
 public class CopEnergyBlast : MonoBehaviour
 {
+    /// Live blast count — lets the mission wait for clear skies without
+    /// FindObjectOfType polling.
+    public static int ActiveCount { get; private set; }
+
     Ship _target;
     Vector3 _rel;            // blast position relative to the ship, world axes
     Vector3 _relVel0;        // fire-time velocity toward the ship (frame-relative)
@@ -80,6 +84,7 @@ public class CopEnergyBlast : MonoBehaviour
         b._shipVelAtFire = rb != null ? rb.velocity : Vector3.zero;
         b._life = (b._rel.magnitude / Mathf.Max(1f, speed)) * 1.6f + 0.5f;
         b._startDist = Mathf.Max(1f, b._rel.magnitude);
+        ActiveCount++;
         return b;
     }
 
@@ -179,6 +184,7 @@ public class CopEnergyBlast : MonoBehaviour
     {
         if (_done) return;
         _done = true;
+        ActiveCount = Mathf.Max(0, ActiveCount - 1);
         if (hit && _zapClip != null)
         {
             // The blast object dies right now — play the fry on a detached 2D
@@ -191,5 +197,11 @@ public class CopEnergyBlast : MonoBehaviour
         }
         _onResolved?.Invoke(hit);
         Destroy(gameObject);
+    }
+
+    void OnDestroy()
+    {
+        // Scene reloads destroy blasts without Resolve — don't leak the count.
+        if (!_done) { _done = true; ActiveCount = Mathf.Max(0, ActiveCount - 1); }
     }
 }
