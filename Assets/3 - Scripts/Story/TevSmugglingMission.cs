@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 
 /// Mission B-1 "Routine Stop" — barebones spine (see docs/MISSIONS_DESIGN.md §17).
@@ -49,16 +50,10 @@ public class TevSmugglingMission : MonoBehaviour
     [Tooltip("After the countdown lands on 1, the hatch must be open within this window or Tev calls for a retry.")]
     public float hatchWindowSeconds = 1.8f;
     public AudioClip copPursuitClip;      // cop, the moment you bolt: "so that's how you want it..."
-    public AudioClip tevSpiritClip;       // "THAT'S THE SPIRIT! But what's your plan?!"
-    public AudioClip tevIdeaClip;         // "Wait wait wait... I've got an idea!"
-    public AudioClip tev20SecClip;        // "Just give me 20 seconds!"
-    public AudioClip tevLauncherClip;     // "STUPID ROCKET LAUNCHER! WHERE DID I PUT..."
-    public AudioClip tevHoldSteadyClip;   // "HOLD HER STEADY, I'VE GOT A SHOT!"
-    public AudioClip tevCountdownClip;    // "Open the hatch! Press H in 3... 2... 1!"
-    public AudioClip tevRetryClip;        // "TOO SLOW! Seal it — we go again!"
-    public AudioClip tevHitClip;          // post-explosion celebration
     public AudioClip rocketFireClip;
     public AudioClip explosionClip;
+    [Tooltip("Tev's alien speech loop — plays while his subtitle types out (same clip TevDialogue uses).")]
+    public AudioClip tevSpeechLoopClip;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -78,7 +73,9 @@ public class TevSmugglingMission : MonoBehaviour
     bool _pinSampled;
     bool _decelActive;       // forced pull-over deceleration / velocity hold running
     float _decelRate;        // units/s² toward the anchor's velocity
-    AudioSource _tevVoice;   // Tev's in-cabin grumbling during the chase
+    AudioSource _tevVoice;   // Tev's alien babble + rocket SFX during the chase
+    TextMeshProUGUI _subtitle;
+    Coroutine _subtitleCo;
 
     void Awake()
     {
@@ -478,18 +475,84 @@ public class TevSmugglingMission : MonoBehaviour
 
     // ── Tev's rocket-launcher finale ──
 
-    float PlayTev(AudioClip clip)
+    const float SubtitleCharDelay = 0.028f;
+
+    void EnsureTevVoice()
     {
-        if (clip == null) return 0f;
-        if (_tevVoice == null)
-        {
-            var host = tevNpc != null ? tevNpc.gameObject : gameObject;
-            _tevVoice = host.AddComponent<AudioSource>();
-            _tevVoice.spatialBlend = 0.35f;   // mostly-2D: he's right behind your seat
-            _tevVoice.volume = 1f;
-        }
-        _tevVoice.PlayOneShot(clip);
-        return clip.length;
+        if (_tevVoice != null) return;
+        var host = tevNpc != null ? tevNpc.gameObject : gameObject;
+        _tevVoice = host.AddComponent<AudioSource>();
+        _tevVoice.spatialBlend = 0.35f;   // mostly-2D: he's right behind your seat
+        _tevVoice.volume = 1f;
+    }
+
+    // Bottom-of-screen subtitle bar for Tev's chase chatter — the player is
+    // piloting, so this can't be the click-through dialogue UI. Same speech
+    // treatment as TevDialogue: alien babble loop while the text types out.
+    void EnsureSubtitleUI()
+    {
+        if (_subtitle != null) return;
+        var canvasGo = new GameObject("TevChaseSubtitles");
+        canvasGo.transform.SetParent(transform, false);
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 340;
+
+        var textGo = new GameObject("Line");
+        textGo.transform.SetParent(canvasGo.transform, false);
+        _subtitle = textGo.AddComponent<TextMeshProUGUI>();
+        var rt = _subtitle.rectTransform;
+        rt.anchorMin = new Vector2(0.12f, 0.10f);
+        rt.anchorMax = new Vector2(0.88f, 0.30f);
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        _subtitle.alignment = TextAlignmentOptions.Bottom;
+        _subtitle.fontSize = 34f;
+        _subtitle.fontStyle = FontStyles.Bold;
+        _subtitle.color = new Color(0.55f, 1f, 0.6f);   // Tev green
+        _subtitle.text = "";
+        _subtitle.gameObject.SetActive(false);
+    }
+
+    void StartBabble()
+    {
+        EnsureTevVoice();
+        if (tevSpeechLoopClip == null) return;
+        _tevVoice.clip = tevSpeechLoopClip;
+        _tevVoice.loop = true;
+        _tevVoice.Play();
+    }
+
+    void StopBabble()
+    {
+        if (_tevVoice == null || !_tevVoice.loop) return;
+        _tevVoice.Stop();
+        _tevVoice.loop = false;
+    }
+
+    void ShowTevLine(string line)
+    {
+        if (_subtitleCo != null) StopCoroutine(_subtitleCo);
+        _subtitleCo = StartCoroutine(TevLineRoutine(line));
+    }
+
+    IEnumerator TevLineRoutine(string line)
+    {
+        EnsureSubtitleUI();
+        _subtitle.gameObject.SetActive(true);
+        StartBabble();
+        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, line, SubtitleCharDelay, () => false);
+        StopBabble();
+        yield return new WaitForSeconds(2.4f);
+        HideSubtitle();
+        _subtitleCo = null;
+    }
+
+    void HideSubtitle()
+    {
+        if (_subtitle == null) return;
+        _subtitle.text = "";
+        _subtitle.gameObject.SetActive(false);
     }
 
     /// The hidden chase clock. Starts the moment the cop sees you run. Tev
@@ -504,33 +567,34 @@ public class TevSmugglingMission : MonoBehaviour
 
         yield return new WaitForSeconds(1f);
         if (_phase != Phase.Chase) yield break;
-        PlayTev(tevSpiritClip);                                   // "THAT'S THE SPIRIT!..."
+        ShowTevLine("THAT'S THE SPIRIT! But what's your plan?! You can't outrun this ship!");
 
         yield return WaitUntilChaseTime(t0, 8f);
         if (_phase != Phase.Chase) yield break;
-        PlayTev(tevIdeaClip);                                     // "...I've got an idea!"
+        ShowTevLine("Wait, wait, wait... I've got an idea! Keep driving! Don't you DARE slow down!");
 
         yield return WaitUntilChaseTime(t0, 17f);
         if (_phase != Phase.Chase) yield break;
-        PlayTev(tev20SecClip);                                    // "Just give me 20 seconds!"
+        ShowTevLine("Just give me twenty seconds! I know what to do!");
 
         yield return WaitUntilChaseTime(t0, 27f);
         if (_phase != Phase.Chase) yield break;
-        PlayTev(tevLauncherClip);                                 // "STUPID ROCKET LAUNCHER!..."
+        ShowTevLine("STUPID ROCKET LAUNCHER! WHERE did I put the EMERGENCY ROCKETS?!");
 
         yield return WaitUntilChaseTime(t0, chaseSeconds - 5f);
         if (_phase != Phase.Chase) yield break;
-        yield return new WaitForSeconds(PlayTev(tevHoldSteadyClip));   // "HOLD HER STEADY!"
+        ShowTevLine("HOLD HER STEADY! I'VE GOT A SHOT!");
+        yield return new WaitForSeconds(2.6f);
 
-        // Countdown → hatch window loop. Success = the main hatch is open when
-        // (or shortly after) the countdown lands.
+        // Countdown → hatch window loop. Success = the main hatch is open
+        // within hatchWindowSeconds of the "1!".
         while (_phase == Phase.Chase)
         {
-            float cdLen = PlayTev(tevCountdownClip);              // "...press H in 3... 2... 1!"
-            yield return new WaitForSeconds(Mathf.Max(0f, cdLen - 0.3f));
+            yield return TevCountdown();
+            if (_phase != Phase.Chase) yield break;
 
             bool open = false;
-            float windowEnd = Time.time + hatchWindowSeconds + 0.3f;
+            float windowEnd = Time.time + hatchWindowSeconds;
             while (Time.time < windowEnd && _phase == Phase.Chase)
             {
                 if (_ship != null && _ship.HatchOpen) { open = true; break; }
@@ -538,12 +602,15 @@ public class TevSmugglingMission : MonoBehaviour
             }
             if (open) break;
 
-            yield return new WaitForSeconds(PlayTev(tevRetryClip) + 1.5f);   // "TOO SLOW!..."
+            ShowTevLine("TOO SLOW! Seal it up! Okay, okay — we go AGAIN!");
+            yield return new WaitForSeconds(4f);
         }
         if (_phase != Phase.Chase) yield break;
 
         // FIRE. Rocket leaves from Tev at the open hatch, homes on the corvette.
-        PlayTev(rocketFireClip);
+        HideSubtitle();
+        EnsureTevVoice();
+        if (rocketFireClip != null) _tevVoice.PlayOneShot(rocketFireClip);
         Vector3 origin = tevNpc != null ? tevNpc.position : transform.position;
         TevRocket.Spawn(origin, _ship, _cop != null ? _cop.transform : null, 320f, onHit: () =>
         {
@@ -554,10 +621,31 @@ public class TevSmugglingMission : MonoBehaviour
         });
     }
 
+    /// "OPEN THE HATCH! Press H in" types out with babble, then 3 / 2 / 1 tick
+    /// on real one-second beats so the window timing is honest.
+    IEnumerator TevCountdown()
+    {
+        if (_subtitleCo != null) { StopCoroutine(_subtitleCo); _subtitleCo = null; }
+        EnsureSubtitleUI();
+        _subtitle.gameObject.SetActive(true);
+        StartBabble();
+        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH! Press H in", SubtitleCharDelay, () => false);
+        StopBabble();
+        _subtitle.maxVisibleCharacters = int.MaxValue;
+
+        _subtitle.text = "OPEN THE HATCH! Press H in 3...";
+        yield return new WaitForSeconds(1f);
+        if (_phase != Phase.Chase) yield break;
+        _subtitle.text = "OPEN THE HATCH! Press H in 3... 2...";
+        yield return new WaitForSeconds(1f);
+        if (_phase != Phase.Chase) yield break;
+        _subtitle.text = "OPEN THE HATCH! Press H in 3... 2... 1!";
+    }
+
     IEnumerator TevCelebrate()
     {
         yield return new WaitForSeconds(1.2f);
-        PlayTev(tevHitClip);
+        ShowTevLine("HAHAHA! DIRECT HIT! That's why you always pack emergency rockets!");
     }
 
     IEnumerator WaitUntilChaseTime(float t0, float t)

@@ -15,7 +15,9 @@ public class CopShipController : MonoBehaviour
     public float chaseSpeed = 75f;
     public float escapeDistance = 900f;
     public float minChaseDistance = 260f;    // the cop never closes past this — shots stay visible + dodgeable
+    public float maxChaseDistance = 500f;    // ...and never falls further behind than this — always in sight + in range
     public float fleeThreshold = 20f;        // rel speed that counts as "trying to run"
+    public float turnThreshold = 10f;        // degrees of ship rotation that also count as "trying to run"
     public float blastInterval = 4f;
     public float calloutLeadSeconds = 1.5f;  // radio bark plays this long before each shot
     public int maxBlasts = 5;
@@ -42,6 +44,7 @@ public class CopShipController : MonoBehaviour
     float _departSpeed;
     Vector3 _chaseRel;       // cop position relative to the ship, world axes
     Vector3 _fleeBaseVel;    // ship rb velocity at chase start (the "stopped" frame)
+    Quaternion _awaitRot;    // ship orientation when the await-flee watch began
 
     Light _spot, _red, _blue;
     Transform _spotPivot;
@@ -198,6 +201,7 @@ public class CopShipController : MonoBehaviour
 
         Rigidbody rb = _target.Rigidbody;
         _fleeBaseVel = rb != null ? rb.velocity : Vector3.zero;
+        _awaitRot = _target.transform.rotation;
         _restLocal = WorldToLocal(transform.position);
         _mode = Mode.AwaitFlee;
 
@@ -241,9 +245,12 @@ public class CopShipController : MonoBehaviour
                 transform.position = LocalToWorld(_restLocal);
                 FaceTarget();
 
+                // Running = throttling up OR turning the ship (mouse-look turns
+                // the hull while piloting, so "moving the camera" counts too).
                 Rigidbody rb = _target.Rigidbody;
                 Vector3 fleeVel = (rb != null ? rb.velocity : Vector3.zero) - _fleeBaseVel;
-                if (fleeVel.magnitude > fleeThreshold)
+                float turned = Quaternion.Angle(_awaitRot, _target.transform.rotation);
+                if (fleeVel.magnitude > fleeThreshold || turned > turnThreshold)
                 {
                     PlayRadio(_pursuitClip);
                     Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
@@ -288,7 +295,11 @@ public class CopShipController : MonoBehaviour
         // throttle → the gap opens toward escapeDistance.
         _floorRamp = Mathf.MoveTowards(_floorRamp, minChaseDistance, 70f * dt);
         float dist = _chaseRel.magnitude;
-        dist = Mathf.Max(_floorRamp, dist + (fleeSpeed - chaseSpeed) * dt);
+        // Clamped both ways: never closes past the floor (shots stay dodgeable),
+        // never falls further behind than maxChaseDistance (a boosting player
+        // was leaving it a speck within 20s — it rubber-bands to stay in sight
+        // and in blast range; this scripted chase can't be out-ranged anyway).
+        dist = Mathf.Clamp(dist + (fleeSpeed - chaseSpeed) * dt, _floorRamp, maxChaseDistance);
 
         // The cop settles in behind the player's direction of travel.
         Vector3 trailDir = fleeSpeed > 2f ? -fleeVel.normalized : _chaseRel.normalized;
