@@ -142,15 +142,13 @@ public class CopShipController : MonoBehaviour
     /// comms rather than from the corvette's position.
     public void PlayRadio(AudioClip clip)
     {
-        if (clip == null) return;
-        if (_radio == null)
-        {
-            _radio = gameObject.AddComponent<AudioSource>();
-            _radio.spatialBlend = 0f;
-            _radio.volume = 1f;
-        }
-        // 0.65: the officer sits under Tev + the suit translator in the mix.
-        _radio.PlayOneShot(clip, 0.65f);
+        // MUTED by playtest request: the officer's voice lines (callouts,
+        // pursuit bark, stop-engine) were talking over Tev + the suit
+        // translator and muddying the mix. Siren + lights still sell the cop.
+        // Re-enable by restoring the PlayOneShot below.
+        // if (clip == null) return;
+        // if (_radio == null) { _radio = gameObject.AddComponent<AudioSource>(); _radio.spatialBlend = 0f; }
+        // _radio.PlayOneShot(clip, 0.65f);
     }
 
     public void FlyAway()
@@ -328,7 +326,7 @@ public class CopShipController : MonoBehaviour
         // Scalar gap model: the player's flee speed opens the gap, chaseSpeed
         // closes it. Dawdle → the cop closes to point-blank. Commit to the
         // throttle → the gap opens toward escapeDistance.
-        _floorRamp = Mathf.MoveTowards(_floorRamp, minChaseDistance, 70f * dt);
+        _floorRamp = Mathf.MoveTowards(_floorRamp, minChaseDistance, 30f * dt);
         float dist = _chaseRel.magnitude;
         // Clamped both ways: never closes past the floor (shots stay dodgeable),
         // never falls further behind than maxChaseDistance (a boosting player
@@ -336,9 +334,11 @@ public class CopShipController : MonoBehaviour
         // and in blast range; this scripted chase can't be out-ranged anyway).
         dist = Mathf.Clamp(dist + (fleeSpeed - chaseSpeed) * dt, _floorRamp, maxChaseDistance);
 
-        // The cop settles in behind the player's direction of travel.
+        // The cop settles in behind the player's direction of travel. 0.4/s:
+        // the front-to-behind takeover swing after refusing the ticket takes
+        // a natural ~4s arc instead of whipping around in one.
         Vector3 trailDir = fleeSpeed > 2f ? -fleeVel.normalized : _chaseRel.normalized;
-        Vector3 dir = Vector3.Slerp(_chaseRel.normalized, trailDir, 1.2f * dt).normalized;
+        Vector3 dir = Vector3.Slerp(_chaseRel.normalized, trailDir, 0.4f * dt).normalized;
         _chaseRel = dir * dist;
 
         // Presentation on top of the pure gap model: the corvette weaves —
