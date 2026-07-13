@@ -650,7 +650,7 @@ public class TevSmugglingMission : MonoBehaviour
         {
             _trVoice = gameObject.AddComponent<AudioSource>();
             _trVoice.spatialBlend = 0f;   // in-helmet speaker
-            _trVoice.volume = 0.85f;
+            _trVoice.volume = 1f;
         }
         _trVoice.Stop();
         if (clip == null) return;
@@ -671,12 +671,19 @@ public class TevSmugglingMission : MonoBehaviour
         float start = Time.time;
         StartBabble();
         PlayTranslator(translated);
-        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, line, SubtitleCharDelay, () => false);
+        // Sync the typewriter to the translator: pace the reveal so the last
+        // character lands as the voice finishes — text and speech end together.
+        float delay = translated != null
+            ? Mathf.Max(SubtitleCharDelay, translated.length * 0.92f / Mathf.Max(1, line.Length))
+            : SubtitleCharDelay;
+        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, line, delay, () => false);
         // Short barks ("INCOMING!") reveal in a blink — hold the babble a
         // moment so the alien voice actually registers.
         while (Time.time - start < 1.0f) yield return null;
         StopBabble();
-        yield return new WaitForSeconds(2.4f);
+        // Never drop the subtitle while the translation is still speaking.
+        while (_trVoice != null && _trVoice.isPlaying) yield return null;
+        yield return new WaitForSeconds(1.6f);
         HideSubtitle();
         _subtitleCo = null;
     }
@@ -875,7 +882,10 @@ public class TevSmugglingMission : MonoBehaviour
         _subtitlePanel.gameObject.SetActive(true);
         StartBabble();
         PlayTranslator(trOpenHatchClip);
-        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH!", SubtitleCharDelay, () => false);
+        float cdDelay = trOpenHatchClip != null
+            ? Mathf.Max(SubtitleCharDelay, trOpenHatchClip.length * 0.92f / 15f)
+            : SubtitleCharDelay;
+        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH!", cdDelay, () => false);
         StopBabble();
         _subtitle.maxVisibleCharacters = int.MaxValue;
         yield return new WaitForSeconds(0.6f);

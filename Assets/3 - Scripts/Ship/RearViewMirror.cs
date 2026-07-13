@@ -219,12 +219,12 @@ public class RearViewMirror : MonoBehaviour
         float zLocal = 0.014f / Mathf.Max(0.02f, Mathf.Abs(transform.lossyScale.z));
         if (idleContent == IdleContent.Combined)
         {
-            _text = MakeIdleText("IdleTextLeft", new Vector3(0.25f, 0.01f, zLocal), new Vector2(0.44f, 0.42f));
-            _text2 = MakeIdleText("IdleTextRight", new Vector3(-0.25f, 0.01f, zLocal), new Vector2(0.44f, 0.42f));
+            _text = MakeIdleText("IdleTextLeft", new Vector3(0.26f, -0.02f, zLocal), new Vector2(0.40f, 0.38f));
+            _text2 = MakeIdleText("IdleTextRight", new Vector3(-0.24f, -0.02f, zLocal), new Vector2(0.36f, 0.38f));
         }
         else
         {
-            _text = MakeIdleText("IdleText", new Vector3(0f, 0f, zLocal), new Vector2(0.84f, 0.84f));
+            _text = MakeIdleText("IdleText", new Vector3(0f, 0f, zLocal), new Vector2(0.78f, 0.42f));
         }
     }
 
@@ -234,15 +234,18 @@ public class RearViewMirror : MonoBehaviour
         go.transform.SetParent(transform, false);
         go.transform.localPosition = localPos;
         go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);   // face the pilot on the +Z side
-        // Healthy glyph sizes scaled down by the transform — TMP generates
-        // degenerate/invisible meshes at sub-1pt font sizes, which is what
-        // made the previous (fontSize < 0.6) idle text render as nothing.
-        const float shrink = 0.05f;
+        // Healthy glyph sizes scaled down by the transform (TMP degenerates at
+        // sub-1pt sizes), auto-sized WITHIN the rect with wrapping OFF — the
+        // fixed size used before was far too large for the rect, so TMP
+        // wrapped and overflowed clean off the glass.
+        const float shrink = 0.01f;
         go.transform.localScale = Vector3.one * shrink;
         var t = go.AddComponent<TextMeshPro>();
         t.rectTransform.sizeDelta = size / shrink;
-        t.fontSize = 10f;
-        t.enableAutoSizing = false;
+        t.enableAutoSizing = true;
+        t.fontSizeMin = 3f;
+        t.fontSizeMax = 16f;
+        t.enableWordWrapping = false;
         t.color = TextColor;
         t.alignment = TextAlignmentOptions.TopLeft;
         t.richText = true;
@@ -259,12 +262,12 @@ public class RearViewMirror : MonoBehaviour
             sb.Append($"<color={DimColor}>NO PART DATA</color>");
             return sb.ToString();
         }
-        AppendPart(sb, "LEFT THRUSTER", _parts.leftThrusterChild);
-        AppendPart(sb, "RIGHT THRUSTER", _parts.rightThrusterChild);
-        AppendPart(sb, "SATELLITE DISH", _parts.dishChild);
+        AppendPart(sb, "L THRUSTER", _parts.leftThrusterChild);
+        AppendPart(sb, "R THRUSTER", _parts.rightThrusterChild);
+        AppendPart(sb, "SAT DISH", _parts.dishChild);
         AppendPart(sb, "SOLAR PANEL", _parts.solarPanelChild);
-        AppendPart(sb, "LEFT NET", _parts.leftSpaceNetChild);
-        AppendPart(sb, "RIGHT NET", _parts.rightSpaceNetChild);
+        AppendPart(sb, "L NET", _parts.leftSpaceNetChild);
+        AppendPart(sb, "R NET", _parts.rightSpaceNetChild);
         return sb.ToString();
     }
 
@@ -272,7 +275,9 @@ public class RearViewMirror : MonoBehaviour
     {
         if (child == null) return;   // this ship variant doesn't have the part slot
         bool good = child.activeSelf;
-        sb.Append(label).Append("  ")
+        // <pos> pins the status into a fixed right-hand column — table look.
+        sb.Append(label)
+          .Append("<pos=62%>")
           .Append(good ? $"<color={GoodColor}>GOOD</color>" : $"<color={BadColor}>MISSING</color>")
           .Append('\n');
     }
@@ -292,7 +297,7 @@ public class RearViewMirror : MonoBehaviour
         for (int i = 0; i < filled; i++) sb.Append('|');
         sb.Append("</color><color=#33475a>");
         for (int i = filled; i < 10; i++) sb.Append('|');
-        sb.Append("</color>  ").Append(Mathf.RoundToInt(pct * 100f)).Append("%\n\n");
+        sb.Append("</color> ").Append(Mathf.RoundToInt(pct * 100f)).Append("%\n\n");
 
         bool charging = _charger != null && _charger.IsCharging;
         sb.Append(charging ? $"<color={GoodColor}>++ CHARGING ++</color>"

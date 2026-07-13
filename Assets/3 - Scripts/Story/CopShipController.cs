@@ -149,7 +149,8 @@ public class CopShipController : MonoBehaviour
             _radio.spatialBlend = 0f;
             _radio.volume = 1f;
         }
-        _radio.PlayOneShot(clip);
+        // 0.65: the officer sits under Tev + the suit translator in the mix.
+        _radio.PlayOneShot(clip, 0.65f);
     }
 
     public void FlyAway()
