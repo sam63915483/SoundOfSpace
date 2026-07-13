@@ -66,7 +66,16 @@ public class StartCabinSpawnPoint : MonoBehaviour
         // so a free-falling ship at scene start would trigger it. Also sets
         // canFly = false so the player can't accidentally take off if they
         // wander into the pilot seat.
-        var ship = FindObjectOfType<Ship>();
+        // Skip mission-prop ships (e.g. Tevsship): they manage their own
+        // parked physics, and freezing one here would leave the MAIN ship
+        // un-frozen. Same guard as GameSetUp.
+        Ship ship = null;
+        foreach (Ship s in FindObjectsOfType<Ship>())
+        {
+            if (s.GetComponent<TevSmugglingMission>() != null) continue;
+            ship = s;
+            break;
+        }
         if (ship != null)
         {
             var shipRb = ship.Rigidbody;

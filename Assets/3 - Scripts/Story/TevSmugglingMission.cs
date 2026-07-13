@@ -31,6 +31,10 @@ public class TevSmugglingMission : MonoBehaviour
     public int payoutAmount = 500;
     public string homeBodyName = "Humble";
     public string destBodyName = "Fiery";
+    [Tooltip("How long after scene load the parked ship stays kinematically pinned to its authored spot. Long enough to ride out startup origin shifts, then it's handed to real gravity and settles onto the terrain.")]
+    public float settleDelaySeconds = 10f;
+    [Tooltip("Raised this much along planet-up at release so the terrain collider can't depenetration-launch it; it falls this far and lands.")]
+    public float releaseLift = 1.5f;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -44,6 +48,10 @@ public class TevSmugglingMission : MonoBehaviour
 
     Vector3 _authoredLocalPos;
     Quaternion _authoredLocalRot;
+    float _releaseAt;
+    Vector3 _lastPinTarget;
+    Vector3 _pinVelocity;
+    bool _pinSampled;
 
     void Awake()
     {
@@ -70,13 +78,19 @@ public class TevSmugglingMission : MonoBehaviour
         transform.localRotation = _authoredLocalRot;
         Physics.SyncTransforms();
 
-        // While parked (pre-accept) the ship stays KINEMATIC and is pinned to
-        // its authored planet-local pose every physics tick (see FixedUpdate).
-        // A kinematic pinned ship rides the planet's orbit + spin exactly, can
-        // never drift, and can never be depenetration-launched by the planet's
-        // 2M-triangle collider. Real physics takes over in BeginEnRoute.
+        // For the first settleDelaySeconds the ship stays KINEMATIC and is
+        // pinned to its authored planet-local pose every physics tick (see
+        // FixedUpdate) — rides the planet exactly through the startup origin
+        // shifts, can't drift, can't be depenetration-launched by the planet's
+        // 2M-triangle collider while everything is still settling. After that
+        // it's released to real gravity (ReleaseToGravity) and just sits on
+        // the terrain like any landed ship. Locked (canFly=false) until the
+        // player accepts the job.
         var rb0 = _ship != null ? _ship.Rigidbody : null;
         if (rb0 != null) rb0.isKinematic = true;
+        if (_ship != null) _ship.canFly = false;
+        _releaseAt = Time.time + settleDelaySeconds;
+        _pinSampled = false;
 
         // Cheap resume from a save that already has mission flags.
         if (Flag("b1_delivered")) { _phase = Phase.Done; return; }
@@ -184,18 +198,30 @@ public class TevSmugglingMission : MonoBehaviour
         var rb = _ship.Rigidbody;
         if (rb == null) return;
 
-        // Parked (pre-accept): kinematic pin to the authored planet-local pose.
-        // Rides orbit + spin exactly; immune to origin shifts and depenetration.
-        if (_phase == Phase.Idle)
+        // Parked startup pin: kinematic, glued to the authored planet-local
+        // pose. Rides orbit + spin exactly; immune to origin shifts and
+        // depenetration. While pinned we also measure the parked spot's TRUE
+        // world velocity (orbit + spin combined — the planet's `velocity`
+        // property alone understates its actual transform motion), so the
+        // hand-off to real physics is seamless. After settleDelaySeconds the
+        // ship is released and gravity owns it from then on.
+        if (rb.isKinematic && _phase == Phase.Idle)
         {
             var parent = transform.parent;
-            if (parent != null && rb.isKinematic)
+            if (parent != null)
             {
-                rb.MovePosition(parent.TransformPoint(_authoredLocalPos));
+                Vector3 target = parent.TransformPoint(_authoredLocalPos);
+                if (_pinSampled)
+                    _pinVelocity = (target - _lastPinTarget) / Time.fixedDeltaTime;
+                _lastPinTarget = target;
+                _pinSampled = true;
+                rb.MovePosition(target);
                 rb.MoveRotation(parent.rotation * _authoredLocalRot);
             }
+            if (Time.time >= _releaseAt) ReleaseToGravity();
             return;
         }
+        if (_phase == Phase.Idle) return;
 
         // Traffic stop: hold still relative to the nearest planet — planets keep
         // orbiting normally, the ship just rides along with the closest one.
@@ -210,6 +236,35 @@ public class TevSmugglingMission : MonoBehaviour
 
     // ── Phase transitions ──
 
+    /// Hand the parked ship from the kinematic pin to real physics. Safe to
+    /// call more than once — no-op if already released. Unparents from the
+    /// planet (a live rigidbody can't sit under a moving planet transform —
+    /// the parent's motion teleports it every frame and fights the physics),
+    /// registers with the floating origin like any runtime ship, lifts a hair
+    /// so the terrain collider can't depenetration-launch it, then lets
+    /// Ship's own N-body gravity drop it onto the ground.
+    void ReleaseToGravity()
+    {
+        var rb = _ship != null ? _ship.Rigidbody : null;
+        if (rb == null || !rb.isKinematic) return;
+
+        var body = GetComponentInParent<CelestialBody>();
+        transform.SetParent(null, true);
+
+        Vector3 up = body != null ? (rb.position - body.Position).normalized : transform.up;
+        transform.position += up * releaseLift;
+        Physics.SyncTransforms();
+
+        rb.isKinematic = false;
+        rb.maxDepenetrationVelocity = 2f;   // the 2M-tri planet collider once launched this ship at 21k/s
+        rb.velocity = _pinSampled ? _pinVelocity
+                    : body != null ? body.velocity : Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+
+        var endless = FindObjectOfType<EndlessManager>();
+        if (endless != null) endless.RegisterPhysicsObject(transform);
+    }
+
     void BeginEnRoute()
     {
         _phase = Phase.EnRoute;
@@ -217,19 +272,8 @@ public class TevSmugglingMission : MonoBehaviour
         _homeBody = FindBody(homeBodyName);
         _destBody = FindBody(destBodyName);
 
-        // Hand the parked ship to real physics for the flight: un-pin, give it
-        // the planet's velocity so it keeps riding the surface until takeoff.
-        if (_ship != null)
-        {
-            var rb = _ship.Rigidbody;
-            if (rb != null)
-            {
-                rb.isKinematic = false;
-                rb.velocity = _homeBody != null ? _homeBody.velocity : Vector3.zero;
-                rb.angularVelocity = Vector3.zero;
-            }
-            _ship.canFly = true;
-        }
+        ReleaseToGravity();   // no-op if the startup park already released it
+        if (_ship != null) _ship.canFly = true;
         if (CompassHUD.Instance != null && _destBody != null)
         {
             var dest = _destBody;
