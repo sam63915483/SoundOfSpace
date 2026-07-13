@@ -33,6 +33,8 @@ public class CopShipController : MonoBehaviour
     CelestialBody _anchor;
     Action _onArrived, _onEscaped, _onCaught, _onFleeDetected;
     public Action onBlastFired;   // fires the moment each blast leaves (Tev's "INCOMING!")
+    public AudioClip pingClip;    // radar ping while a blast is inbound (set by the mission)
+    public AudioClip zapClip;     // electric fry on a blast hit
     AudioClip _pursuitClip;
 
     // All poses are ship-POSITION-relative offsets in WORLD axes ("rel"), not
@@ -363,7 +365,8 @@ public class CopShipController : MonoBehaviour
             {
                 _shotArmed = false;
                 CopEnergyBlast.Spawn(transform.position + transform.forward * 25f,
-                                     _target, blastSpeed, blastHitRadius, OnBlastResolved);
+                                     _target, blastSpeed, blastHitRadius,
+                                     pingClip, zapClip, OnBlastResolved);
                 _fired++;
                 _pending++;
                 _nextBlastAt = Time.time + blastInterval;

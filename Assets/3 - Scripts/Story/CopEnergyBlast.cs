@@ -24,8 +24,15 @@ public class CopEnergyBlast : MonoBehaviour
     LineRenderer[] _arcs;    // crackling lightning around the core — "big taser shot"
     float _nextArcAt;
 
+    // Cockpit radar: a 2D ping that gets louder and faster as the shot closes.
+    AudioClip _pingClip, _zapClip;
+    AudioSource _pingSrc;
+    float _startDist, _nextPingAt;
+
     public static CopEnergyBlast Spawn(Vector3 origin, Ship target,
-                                       float speed, float hitRadius, Action<bool> onResolved)
+                                       float speed, float hitRadius,
+                                       AudioClip pingClip, AudioClip zapClip,
+                                       Action<bool> onResolved)
     {
         var go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         go.name = "CopEnergyBlast";
@@ -49,6 +56,13 @@ public class CopEnergyBlast : MonoBehaviour
         b._target = target;
         b._hitRadius = hitRadius;
         b._onResolved = onResolved;
+        b._pingClip = pingClip;
+        b._zapClip = zapClip;
+        if (pingClip != null)
+        {
+            b._pingSrc = go.AddComponent<AudioSource>();
+            b._pingSrc.spatialBlend = 0f;   // cockpit radar, not positional
+        }
         b.BuildArcs(go.transform);
 
         Rigidbody rb = target != null ? target.Rigidbody : null;
@@ -57,6 +71,7 @@ public class CopEnergyBlast : MonoBehaviour
         b._relVel0 = -b._rel.normalized * speed;            // aimed dead at the ship
         b._shipVelAtFire = rb != null ? rb.velocity : Vector3.zero;
         b._life = (b._rel.magnitude / Mathf.Max(1f, speed)) * 1.6f + 0.5f;
+        b._startDist = Mathf.Max(1f, b._rel.magnitude);
         return b;
     }
 
@@ -127,6 +142,16 @@ public class CopEnergyBlast : MonoBehaviour
         transform.position = shipPos + _rel;
 
         float dist = _rel.magnitude;
+
+        // Radar ping: louder and faster the closer the shot is. Dies with the
+        // blast (miss = silence until the next shot).
+        if (_pingSrc != null && _pingClip != null && Time.time >= _nextPingAt)
+        {
+            float closeness = 1f - Mathf.Clamp01(dist / _startDist);
+            _pingSrc.PlayOneShot(_pingClip, Mathf.Lerp(0.25f, 1f, closeness));
+            _nextPingAt = Time.time + Mathf.Lerp(0.85f, 0.12f, closeness);
+        }
+
         if (dist <= _hitRadius) { Resolve(true); return; }
         if (_t >= _life) Resolve(false);
     }
@@ -135,6 +160,16 @@ public class CopEnergyBlast : MonoBehaviour
     {
         if (_done) return;
         _done = true;
+        if (hit && _zapClip != null)
+        {
+            // The blast object dies right now — play the fry on a detached 2D
+            // one-shot that outlives it.
+            var go = new GameObject("TaserZap");
+            var src = go.AddComponent<AudioSource>();
+            src.spatialBlend = 0f;
+            src.PlayOneShot(_zapClip, 1f);
+            Destroy(go, _zapClip.length + 0.2f);
+        }
         _onResolved?.Invoke(hit);
         Destroy(gameObject);
     }

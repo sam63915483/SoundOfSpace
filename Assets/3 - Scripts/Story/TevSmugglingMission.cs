@@ -48,7 +48,7 @@ public class TevSmugglingMission : MonoBehaviour
     [Tooltip("Hidden timer: Tev's shot comes roughly this many seconds after you start running.")]
     public float chaseSeconds = 45f;
     [Tooltip("After the countdown lands on 1, the hatch must be open within this window or Tev calls for a retry.")]
-    public float hatchWindowSeconds = 1.8f;
+    public float hatchWindowSeconds = 2f;
     public AudioClip copPursuitClip;      // cop, the moment you bolt: "so that's how you want it..."
     public AudioClip rocketFireClip;
     public AudioClip explosionClip;
@@ -59,6 +59,8 @@ public class TevSmugglingMission : MonoBehaviour
     [Tooltip("The pull-over fires this far into the trip (0.5 = midpoint, 0.25 = a quarter of the way to Fiery Twin).")]
     [Range(0.05f, 0.95f)]
     public float pullOverProgress = 0.25f;
+    public AudioClip radarPingClip;       // one ping blip — repeats faster/louder as a taser shot closes
+    public AudioClip taserZapClip;        // electric fry when a shot connects
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -168,13 +170,14 @@ public class TevSmugglingMission : MonoBehaviour
 
         // GRIP the view every frame until the offer conversation is done — a
         // single spin used to snap back to the old look direction the moment
-        // we stopped calling ForceLookAtSmooth. For the first ~2s the grip
+        // we stopped calling ForceLookAtSmooth. For the first ~1s the grip
         // chases at spin speed (the jittery fight reads as the scare shake —
-        // keep it); after that the speed is PROPORTIONAL to the remaining
-        // error (deg/s = 6× the angle left), so it converges exponentially
-        // and settles dead still — a fixed fast speed here fed back against
-        // the camera's look-smoothing lag and oscillated harder, not less.
-        // Movement + look come back via ApplyState after the dialogue closes.
+        // keep it); after that: DEAD ZONE — inside 0.8° of the target we
+        // don't touch the camera at all (look input is gate-locked, so it
+        // stays put on its own = perfectly still), and outside it a
+        // proportional speed (5× the remaining angle) eases it back without
+        // ever oscillating. Movement + look return via ApplyState after the
+        // dialogue closes.
         var camT = Camera.main != null ? Camera.main.transform : null;
         float start = Time.time;
         float openAt = start + scareTurnSeconds + 0.35f;
@@ -183,13 +186,12 @@ public class TevSmugglingMission : MonoBehaviour
         while (Time.time < failsafe)
         {
             if (pc == null) break;
-            float grip = degPerSec;
-            if (Time.time - start >= 2f)
-            {
-                float err = camT != null ? Vector3.Angle(camT.forward, LookPoint() - camT.position) : 20f;
-                grip = Mathf.Max(10f, err * 6f);
-            }
-            pc.ForceLookAtSmooth(LookPoint(), grip);
+            bool shakePhase = Time.time - start < 1f;
+            float err = camT != null ? Vector3.Angle(camT.forward, LookPoint() - camT.position) : 20f;
+            if (shakePhase)
+                pc.ForceLookAtSmooth(LookPoint(), degPerSec);
+            else if (err > 0.8f)
+                pc.ForceLookAtSmooth(LookPoint(), Mathf.Max(5f, err * 5f));
             if (!opened && Time.time >= openAt)
             {
                 WorldDialogueUI.Begin("conv_b1_offer");
@@ -396,6 +398,8 @@ public class TevSmugglingMission : MonoBehaviour
             var go = Instantiate(copShipPrefab);
             _cop = go.AddComponent<CopShipController>();
             _cop.Init(_ship, _anchorBody, sirenClip, copCalloutClips);
+            _cop.pingClip = radarPingClip;
+            _cop.zapClip = taserZapClip;
         }
         yield return new WaitForSeconds(sirenLeadSeconds);
 
@@ -669,8 +673,9 @@ public class TevSmugglingMission : MonoBehaviour
         ShowTevLine("HOLD HER STEADY! I'VE GOT A SHOT!");
         yield return new WaitForSeconds(2.6f);
 
-        // Countdown → hatch window loop. Success = the main hatch is open
-        // within hatchWindowSeconds of the "1!".
+        // Countdown → hatch window loop. The window is the full
+        // hatchWindowSeconds after the "1!" — it plays out entirely, and if
+        // the hatch was opened at any point during it, Tev takes the shot.
         while (_phase == Phase.Chase)
         {
             _countdownActive = true;
@@ -681,7 +686,7 @@ public class TevSmugglingMission : MonoBehaviour
             float windowEnd = Time.time + hatchWindowSeconds;
             while (Time.time < windowEnd && _phase == Phase.Chase)
             {
-                if (_ship != null && _ship.HatchOpen) { open = true; break; }
+                if (_ship != null && _ship.HatchOpen) open = true;
                 yield return null;
             }
             _countdownActive = false;
@@ -693,7 +698,8 @@ public class TevSmugglingMission : MonoBehaviour
         if (_phase != Phase.Chase) yield break;
 
         // FIRE. Rocket leaves from Tev at the open hatch, homes on the corvette.
-        HideSubtitle();
+        ShowTevLine("BOMBS AWAYYYYY!");
+        yield return new WaitForSeconds(0.9f);
         EnsureTevVoice();
         if (rocketFireClip != null) _tevVoice.PlayOneShot(rocketFireClip);
         Vector3 origin = tevNpc != null ? tevNpc.position : transform.position;
