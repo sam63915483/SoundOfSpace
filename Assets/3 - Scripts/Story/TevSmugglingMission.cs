@@ -54,6 +54,8 @@ public class TevSmugglingMission : MonoBehaviour
     public AudioClip explosionClip;
     [Tooltip("Tev's alien speech loop — plays while his subtitle types out (same clip TevDialogue uses).")]
     public AudioClip tevSpeechLoopClip;
+    [Tooltip("The scare spin locks the player's view onto THIS transform (user-placed 'lookat' object) until the offer conversation ends.")]
+    public Transform scareLookTarget;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -76,6 +78,7 @@ public class TevSmugglingMission : MonoBehaviour
     AudioSource _tevVoice;   // Tev's alien babble + rocket SFX during the chase
     TextMeshProUGUI _subtitle;
     Coroutine _subtitleCo;
+    bool _countdownActive;   // hatch countdown owns the subtitle — blast warnings must not stomp it
 
     void Awake()
     {
@@ -149,26 +152,37 @@ public class TevSmugglingMission : MonoBehaviour
         var unlockedSnapshot = new List<TutorialAbility>(TutorialGate.GetUnlocked());
         TutorialGate.LockAll();
 
-        Vector3 lookPoint = tevNpc != null ? tevNpc.position + tevNpc.up * 0.5f : transform.position;
-        if (scareClip != null) AudioSource.PlayClipAtPoint(scareClip, lookPoint, 1f);
+        Vector3 LookPoint() => scareLookTarget != null ? scareLookTarget.position
+                             : tevNpc != null ? tevNpc.position + tevNpc.up * 0.5f
+                             : transform.position;
+
+        if (scareClip != null) AudioSource.PlayClipAtPoint(scareClip, LookPoint(), 1f);
 
         // Speed chosen so the full spin takes ~scareTurnSeconds regardless of angle.
-        float angle = Vector3.Angle(pc.transform.forward, lookPoint - pc.transform.position);
+        float angle = Vector3.Angle(pc.transform.forward, LookPoint() - pc.transform.position);
         float degPerSec = Mathf.Max(90f, angle / Mathf.Max(0.05f, scareTurnSeconds));
 
-        float elapsed = 0f;
-        while (elapsed < scareTurnSeconds + 0.6f)
+        // GRIP the view every frame until the offer conversation is done — a
+        // single spin used to snap back to the old look direction the moment
+        // we stopped calling ForceLookAtSmooth. Movement + look come back via
+        // ApplyState only after the dialogue closes.
+        float openAt = Time.time + scareTurnSeconds + 0.35f;
+        bool opened = false;
+        float failsafe = Time.time + 90f;
+        while (Time.time < failsafe)
         {
             if (pc == null) break;
-            if (pc.ForceLookAtSmooth(lookPoint, degPerSec)) break;
-            elapsed += Time.unscaledDeltaTime;
+            pc.ForceLookAtSmooth(LookPoint(), degPerSec);
+            if (!opened && Time.time >= openAt)
+            {
+                WorldDialogueUI.Begin("conv_b1_offer");
+                opened = true;
+            }
+            else if (opened && !WorldDialogueUI.IsOpen) break;
             yield return null;
         }
 
         TutorialGate.ApplyState(gateWasEnabled, unlockedSnapshot);
-
-        yield return new WaitForSeconds(0.25f);
-        WorldDialogueUI.Begin("conv_b1_offer");
         _busy = false;
     }
 
@@ -471,7 +485,24 @@ public class TevSmugglingMission : MonoBehaviour
             },
             onFleeDetected: () => StartCoroutine(TevRocketRoutine()),
             pursuitClip: copPursuitClip);
+
+        // Tev calls out every incoming shot — but never over his scripted
+        // lines or the hatch countdown.
+        _cop.onBlastFired = () =>
+        {
+            if (_subtitleCo != null || _countdownActive) return;
+            ShowTevLine(BlastWarnings[UnityEngine.Random.Range(0, BlastWarnings.Length)]);
+        };
     }
+
+    static readonly string[] BlastWarnings =
+    {
+        "INCOMING!",
+        "PROJECTILE INBOUND!",
+        "WATCHHH OUTTTT!",
+        "DODGE! DODGE! DODGE!",
+        "HE'S SHOOTING AT US! HE'S ACTUALLY SHOOTING AT US!",
+    };
 
     // ── Tev's rocket-launcher finale ──
 
@@ -496,18 +527,19 @@ public class TevSmugglingMission : MonoBehaviour
         canvasGo.transform.SetParent(transform, false);
         var canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 340;
+        canvas.sortingOrder = 860;   // above helmet frame (805) + condensation (838), below toasts (900)
 
         var textGo = new GameObject("Line");
         textGo.transform.SetParent(canvasGo.transform, false);
         _subtitle = textGo.AddComponent<TextMeshProUGUI>();
         var rt = _subtitle.rectTransform;
-        rt.anchorMin = new Vector2(0.12f, 0.10f);
-        rt.anchorMax = new Vector2(0.88f, 0.30f);
+        // Raised clear of the helmet's opaque bottom shell.
+        rt.anchorMin = new Vector2(0.14f, 0.17f);
+        rt.anchorMax = new Vector2(0.86f, 0.40f);
         rt.offsetMin = Vector2.zero;
         rt.offsetMax = Vector2.zero;
         _subtitle.alignment = TextAlignmentOptions.Bottom;
-        _subtitle.fontSize = 34f;
+        _subtitle.fontSize = 46f;
         _subtitle.fontStyle = FontStyles.Bold;
         _subtitle.color = new Color(0.55f, 1f, 0.6f);   // Tev green
         _subtitle.text = "";
@@ -590,8 +622,9 @@ public class TevSmugglingMission : MonoBehaviour
         // within hatchWindowSeconds of the "1!".
         while (_phase == Phase.Chase)
         {
+            _countdownActive = true;
             yield return TevCountdown();
-            if (_phase != Phase.Chase) yield break;
+            if (_phase != Phase.Chase) { _countdownActive = false; yield break; }
 
             bool open = false;
             float windowEnd = Time.time + hatchWindowSeconds;
@@ -600,6 +633,7 @@ public class TevSmugglingMission : MonoBehaviour
                 if (_ship != null && _ship.HatchOpen) { open = true; break; }
                 yield return null;
             }
+            _countdownActive = false;
             if (open) break;
 
             ShowTevLine("TOO SLOW! Seal it up! Okay, okay — we go AGAIN!");

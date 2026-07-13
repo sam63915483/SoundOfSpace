@@ -32,15 +32,21 @@ public class CopShipController : MonoBehaviour
     Ship _target;
     CelestialBody _anchor;
     Action _onArrived, _onEscaped, _onCaught, _onFleeDetected;
+    public Action onBlastFired;   // fires the moment each blast leaves (Tev's "INCOMING!")
     AudioClip _pursuitClip;
 
-    Vector3 _holdLocal;      // interrogation pose, target-ship local space
-    Vector3 _shadowLocal;    // siren-phase shadowing pose, ahead of the target
-    Vector3 _restLocal;      // wherever Hold/AwaitFlee should park right now
-    Vector3 _flyFrom, _flyTo;
+    // All poses are ship-POSITION-relative offsets in WORLD axes ("rel"), not
+    // ship-local: local poses rotated with the hull, so mouse-looking (which
+    // turns the ship while piloting) dragged the parked corvette around with
+    // the player's gaze. World-axis offsets follow the ship's translation
+    // (shift-proof, like the chase) but ignore its rotation.
+    Vector3 _restRel;        // wherever Hold/AwaitFlee should park right now
+    Vector3 _flyFromRel, _flyToRel;
+    Vector3 _departDir;
     float _flyT;
     float _floorRamp;        // chase floor eases from the takeover gap up to minChaseDistance
-    Vector3 _departLocalDir;
+    float _nextBarrelAt;     // next barrel-roll flourish during the chase
+    float _barrelT;          // 0 = not rolling, else roll progress
     float _departSpeed;
     Vector3 _chaseRel;       // cop position relative to the ship, world axes
     Vector3 _fleeBaseVel;    // ship rb velocity at chase start (the "stopped" frame)
@@ -73,12 +79,12 @@ public class CopShipController : MonoBehaviour
         _callouts = calloutClips;
         _endless = FindObjectOfType<EndlessManager>();
 
-        _holdLocal = new Vector3(0f, standoffHeight, standoffDistance);
-        _shadowLocal = new Vector3(0f, shadowHeight, shadowDistance);
-
-        _flyFrom = _shadowLocal + new Vector3(0f, 180f, 1400f);
-        _flyTo = _shadowLocal;
-        transform.position = LocalToWorld(_flyFrom);
+        // Front poses are computed from the ship's orientation ONCE, here, then
+        // live in world axes — looking around afterwards won't drag them.
+        Transform st = target.transform;
+        _flyToRel = st.up * shadowHeight + st.forward * shadowDistance;
+        _flyFromRel = _flyToRel + st.up * 180f + st.forward * 1400f;
+        transform.position = ShipPos() + _flyFromRel;
         FaceTarget();
 
         BuildLights();
@@ -96,12 +102,14 @@ public class CopShipController : MonoBehaviour
     }
 
     /// Sweep from wherever we are to the interrogation pose dead ahead of the
-    /// target's windshield. onArrived fires when parked.
+    /// target's windshield (computed from its orientation NOW — the ship is
+    /// stopped and rotation-locked at this point). onArrived fires when parked.
     public void PullInFront(Action onArrived)
     {
         _onArrived = onArrived;
-        _flyFrom = WorldToLocal(transform.position);
-        _flyTo = _holdLocal;
+        Transform st = _target.transform;
+        _flyFromRel = transform.position - ShipPos();
+        _flyToRel = st.up * standoffHeight + st.forward * standoffDistance;
         _flyT = 0f;
         _mode = Mode.FlyIn;
     }
@@ -123,8 +131,9 @@ public class CopShipController : MonoBehaviour
     public void FlyAway()
     {
         if (_mode == Mode.Depart) return;
-        _restLocal = WorldToLocal(transform.position);
-        _departLocalDir = (Vector3.up * 0.35f + Vector3.forward).normalized;
+        _restRel = transform.position - ShipPos();
+        Transform st = _target != null ? _target.transform : transform;
+        _departDir = (st.up * 0.35f + st.forward).normalized;
         _departSpeed = 60f;
         _mode = Mode.Depart;
         if (_siren != null) _siren.Stop();
@@ -202,7 +211,7 @@ public class CopShipController : MonoBehaviour
         Rigidbody rb = _target.Rigidbody;
         _fleeBaseVel = rb != null ? rb.velocity : Vector3.zero;
         _awaitRot = _target.transform.rotation;
-        _restLocal = WorldToLocal(transform.position);
+        _restRel = transform.position - ShipPos();
         _mode = Mode.AwaitFlee;
 
         if (_siren != null) { _siren.loop = true; _siren.Play(); }
@@ -221,11 +230,11 @@ public class CopShipController : MonoBehaviour
             {
                 _flyT += dt / Mathf.Max(0.1f, flyInSeconds);
                 float e = 1f - Mathf.Pow(1f - Mathf.Clamp01(_flyT), 3f);   // ease-out cubic
-                transform.position = LocalToWorld(Vector3.LerpUnclamped(_flyFrom, _flyTo, e));
+                transform.position = ShipPos() + Vector3.LerpUnclamped(_flyFromRel, _flyToRel, e);
                 FaceTarget();
                 if (_flyT >= 1f)
                 {
-                    _restLocal = _flyTo;
+                    _restRel = _flyToRel;
                     _mode = Mode.Hold;
                     _onArrived?.Invoke();
                     _onArrived = null;
@@ -234,15 +243,15 @@ public class CopShipController : MonoBehaviour
             }
 
             case Mode.Hold:
-                transform.position = LocalToWorld(_restLocal);
+                transform.position = ShipPos() + _restRel;
                 FaceTarget();
                 break;
 
             case Mode.AwaitFlee:
             {
-                // Parked in front, watching. Glued ship-local, so even if the
-                // player creeps it stays put relative to them.
-                transform.position = LocalToWorld(_restLocal);
+                // Parked in front, watching. Rides the ship's translation but
+                // not its rotation — looking around doesn't drag it.
+                transform.position = ShipPos() + _restRel;
                 FaceTarget();
 
                 // Running = throttling up OR turning the ship (mouse-look turns
@@ -260,6 +269,7 @@ public class CopShipController : MonoBehaviour
                     // trail slerp in TickChase swings it around behind.
                     _floorRamp = Mathf.Min(_chaseRel.magnitude, minChaseDistance);
                     _nextBlastAt = Time.time + 3f;
+                    _nextBarrelAt = Time.time + UnityEngine.Random.Range(4f, 8f);
                     _mode = Mode.Chase;
                     _onFleeDetected?.Invoke();
                     _onFleeDetected = null;
@@ -269,8 +279,8 @@ public class CopShipController : MonoBehaviour
 
             case Mode.Depart:
                 _departSpeed = Mathf.Min(2500f, _departSpeed + _departSpeed * 1.6f * dt);   // accelerate away "super fast"
-                _restLocal += _departLocalDir * _departSpeed * dt;
-                transform.position = LocalToWorld(_restLocal);
+                _restRel += _departDir * _departSpeed * dt;
+                transform.position = ShipPos() + _restRel;
                 break;
 
             case Mode.Chase:
@@ -306,10 +316,35 @@ public class CopShipController : MonoBehaviour
         Vector3 dir = Vector3.Slerp(_chaseRel.normalized, trailDir, 1.2f * dt).normalized;
         _chaseRel = dir * dist;
 
-        transform.position = shipPos + _chaseRel;
+        // Presentation on top of the pure gap model: the corvette weaves —
+        // lateral sway + vertical bob (rendered offset only, never fed back
+        // into _chaseRel), banks into the sway, and pulls the occasional
+        // full barrel roll. Reads as a live pilot instead of a statue.
+        Vector3 upRef = _target.transform.up;
+        Vector3 side = Vector3.Cross(upRef, dir);
+        if (side.sqrMagnitude < 0.001f) side = _target.transform.right;
+        side.Normalize();
+        float sway = Mathf.Sin(Time.time * 0.8f) * 42f;
+        float bob = Mathf.Sin(Time.time * 1.7f + 1.3f) * 14f;
+
+        if (Time.time >= _nextBarrelAt)
+        {
+            _barrelT = 0.0001f;
+            _nextBarrelAt = Time.time + UnityEngine.Random.Range(7f, 14f);
+        }
+        float rollExtra = 0f;
+        if (_barrelT > 0f)
+        {
+            _barrelT += dt / 1.4f;
+            if (_barrelT >= 1f) _barrelT = 0f;
+            else rollExtra = _barrelT * 360f;
+        }
+        float bank = -sway * 0.55f;
+
+        transform.position = shipPos + _chaseRel + side * sway + upRef * bob;
         Vector3 toShip = -_chaseRel.normalized;
         transform.rotation = Quaternion.Slerp(transform.rotation,
-            Quaternion.LookRotation(toShip, _target.transform.up), 4f * dt);
+            Quaternion.LookRotation(toShip, upRef) * Quaternion.Euler(0f, 0f, bank + rollExtra), 6f * dt);
 
         if (dist > escapeDistance) { ResolveChase(escaped: true); return; }
 
@@ -332,6 +367,7 @@ public class CopShipController : MonoBehaviour
                 _fired++;
                 _pending++;
                 _nextBlastAt = Time.time + blastInterval;
+                onBlastFired?.Invoke();
             }
         }
 
@@ -365,8 +401,6 @@ public class CopShipController : MonoBehaviour
         if (escaped)
         {
             _onEscaped?.Invoke();
-            // Depart drives in target-local space — refresh the local pose first.
-            _restLocal = WorldToLocal(transform.position);
             FlyAway();
         }
         else
@@ -440,8 +474,11 @@ public class CopShipController : MonoBehaviour
 
     // ── Frames ──
 
-    Vector3 LocalToWorld(Vector3 local) => _target.transform.TransformPoint(local);
-    Vector3 WorldToLocal(Vector3 world) => _target.transform.InverseTransformPoint(world);
+    Vector3 ShipPos()
+    {
+        Rigidbody rb = _target != null ? _target.Rigidbody : null;
+        return rb != null ? rb.position : (_target != null ? _target.transform.position : transform.position);
+    }
 
     void FaceTarget()
     {
