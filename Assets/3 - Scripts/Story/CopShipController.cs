@@ -14,15 +14,15 @@ public class CopShipController : MonoBehaviour
     public float shadowHeight = 35f;
     public float chaseSpeed = 75f;
     public float escapeDistance = 900f;
-    public float minChaseDistance = 260f;    // the cop never closes past this — shots stay visible + dodgeable
-    public float maxChaseDistance = 500f;    // ...and never falls further behind than this — always in sight + in range
+    public float minChaseDistance = 180f;    // the cop never closes past this — shots stay visible + dodgeable
+    public float maxChaseDistance = 380f;    // ...and never falls further behind than this — always in sight + in range
     public float fleeThreshold = 20f;        // rel speed that counts as "trying to run"
     public float turnThreshold = 10f;        // degrees of ship rotation that also count as "trying to run"
     public float blastInterval = 4f;
     public float calloutLeadSeconds = 1.5f;  // radio bark plays this long before each shot
     public int maxBlasts = 5;
     public float blastRange = 550f;
-    public float blastSpeed = 90f;
+    public float blastSpeed = 126f;   // 1.4× the original 90 — reads as a real shot, still dodgeable
     public float blastHitRadius = 8f;
     public int hitsToKill = 3;
 

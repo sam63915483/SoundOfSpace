@@ -77,6 +77,7 @@ public class TevSmugglingMission : MonoBehaviour
     float _decelRate;        // units/s² toward the anchor's velocity
     AudioSource _tevVoice;   // Tev's alien babble + rocket SFX during the chase
     TextMeshProUGUI _subtitle;
+    RectTransform _subtitlePanel;
     Coroutine _subtitleCo;
     bool _countdownActive;   // hatch countdown owns the subtitle — blast warnings must not stomp it
 
@@ -164,15 +165,21 @@ public class TevSmugglingMission : MonoBehaviour
 
         // GRIP the view every frame until the offer conversation is done — a
         // single spin used to snap back to the old look direction the moment
-        // we stopped calling ForceLookAtSmooth. Movement + look come back via
+        // we stopped calling ForceLookAtSmooth. For the first ~2s the grip
+        // chases at spin speed (the jittery fight reads as the scare shake —
+        // keep it); after that it locks HARD: with a huge deg/s the step
+        // fraction clamps to 1, so the view lands exactly on target every
+        // frame and cannot oscillate. Movement + look come back via
         // ApplyState only after the dialogue closes.
-        float openAt = Time.time + scareTurnSeconds + 0.35f;
+        float start = Time.time;
+        float openAt = start + scareTurnSeconds + 0.35f;
         bool opened = false;
-        float failsafe = Time.time + 90f;
+        float failsafe = start + 90f;
         while (Time.time < failsafe)
         {
             if (pc == null) break;
-            pc.ForceLookAtSmooth(LookPoint(), degPerSec);
+            float grip = Time.time - start < 2f ? degPerSec : 100000f;
+            pc.ForceLookAtSmooth(LookPoint(), grip);
             if (!opened && Time.time >= openAt)
             {
                 WorldDialogueUI.Begin("conv_b1_offer");
@@ -517,8 +524,10 @@ public class TevSmugglingMission : MonoBehaviour
         _tevVoice.volume = 1f;
     }
 
-    // Bottom-of-screen subtitle bar for Tev's chase chatter — the player is
-    // piloting, so this can't be the click-through dialogue UI. Same speech
+    // In-flight dialogue box for Tev's chase chatter — the player is piloting,
+    // so this can't be the click-through dialogue UI, but it wears the SAME
+    // look as WorldDialogueUI (dark panel, copper speaker, blue-white body)
+    // so it reads as part of the mission's conversation language. Same speech
     // treatment as TevDialogue: alien babble loop while the text types out.
     void EnsureSubtitleUI()
     {
@@ -527,23 +536,46 @@ public class TevSmugglingMission : MonoBehaviour
         canvasGo.transform.SetParent(transform, false);
         var canvas = canvasGo.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 860;   // above helmet frame (805) + condensation (838), below toasts (900)
+        canvas.sortingOrder = 880;   // above helmet frame (805) + condensation (838), just under the real dialogue box (900)
+        var scaler = canvasGo.AddComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
 
-        var textGo = new GameObject("Line");
-        textGo.transform.SetParent(canvasGo.transform, false);
+        var panelGo = new GameObject("Panel");
+        panelGo.transform.SetParent(canvasGo.transform, false);
+        _subtitlePanel = panelGo.AddComponent<RectTransform>();
+        _subtitlePanel.anchorMin = new Vector2(0.14f, 0.03f);   // same footprint as WorldDialogueUI's panel
+        _subtitlePanel.anchorMax = new Vector2(0.86f, 0.24f);
+        _subtitlePanel.offsetMin = Vector2.zero;
+        _subtitlePanel.offsetMax = Vector2.zero;
+        panelGo.AddComponent<UnityEngine.UI.Image>().color = new Color(0.05f, 0.07f, 0.10f, 0.92f);
+
+        var speakerGo = new GameObject("Speaker");
+        speakerGo.transform.SetParent(panelGo.transform, false);
+        var speaker = speakerGo.AddComponent<TextMeshProUGUI>();
+        var srt = speaker.rectTransform;
+        srt.anchorMin = new Vector2(0f, 0.68f);
+        srt.anchorMax = new Vector2(1f, 1f);
+        srt.offsetMin = new Vector2(24f, 0f);
+        srt.offsetMax = new Vector2(-24f, -12f);
+        speaker.fontSize = 26f;
+        speaker.color = new Color(1.00f, 0.68f, 0.36f);   // WorldDialogueUI's copper
+        speaker.alignment = TextAlignmentOptions.TopLeft;
+        speaker.text = "TEV";
+
+        var textGo = new GameObject("Body");
+        textGo.transform.SetParent(panelGo.transform, false);
         _subtitle = textGo.AddComponent<TextMeshProUGUI>();
         var rt = _subtitle.rectTransform;
-        // Raised clear of the helmet's opaque bottom shell.
-        rt.anchorMin = new Vector2(0.14f, 0.17f);
-        rt.anchorMax = new Vector2(0.86f, 0.40f);
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
-        _subtitle.alignment = TextAlignmentOptions.Bottom;
-        _subtitle.fontSize = 46f;
-        _subtitle.fontStyle = FontStyles.Bold;
-        _subtitle.color = new Color(0.55f, 1f, 0.6f);   // Tev green
+        rt.anchorMin = new Vector2(0f, 0f);
+        rt.anchorMax = new Vector2(1f, 0.68f);
+        rt.offsetMin = new Vector2(24f, 12f);
+        rt.offsetMax = new Vector2(-24f, -4f);
+        _subtitle.alignment = TextAlignmentOptions.TopLeft;
+        _subtitle.fontSize = 30f;
+        _subtitle.color = new Color(0.85f, 0.90f, 1.00f);   // WorldDialogueUI's body color
         _subtitle.text = "";
-        _subtitle.gameObject.SetActive(false);
+        _subtitlePanel.gameObject.SetActive(false);
     }
 
     void StartBabble()
@@ -571,9 +603,13 @@ public class TevSmugglingMission : MonoBehaviour
     IEnumerator TevLineRoutine(string line)
     {
         EnsureSubtitleUI();
-        _subtitle.gameObject.SetActive(true);
+        _subtitlePanel.gameObject.SetActive(true);
+        float start = Time.time;
         StartBabble();
         yield return DialogueTextStyling.RevealCharsTMP(_subtitle, line, SubtitleCharDelay, () => false);
+        // Short barks ("INCOMING!") reveal in a blink — hold the babble a
+        // moment so the alien voice actually registers.
+        while (Time.time - start < 1.0f) yield return null;
         StopBabble();
         yield return new WaitForSeconds(2.4f);
         HideSubtitle();
@@ -584,7 +620,7 @@ public class TevSmugglingMission : MonoBehaviour
     {
         if (_subtitle == null) return;
         _subtitle.text = "";
-        _subtitle.gameObject.SetActive(false);
+        _subtitlePanel.gameObject.SetActive(false);
     }
 
     /// The hidden chase clock. Starts the moment the cop sees you run. Tev
@@ -661,7 +697,7 @@ public class TevSmugglingMission : MonoBehaviour
     {
         if (_subtitleCo != null) { StopCoroutine(_subtitleCo); _subtitleCo = null; }
         EnsureSubtitleUI();
-        _subtitle.gameObject.SetActive(true);
+        _subtitlePanel.gameObject.SetActive(true);
         StartBabble();
         yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH! Press H in", SubtitleCharDelay, () => false);
         StopBabble();

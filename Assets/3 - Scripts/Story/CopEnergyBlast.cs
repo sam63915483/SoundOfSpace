@@ -21,6 +21,9 @@ public class CopEnergyBlast : MonoBehaviour
     Action<bool> _onResolved;
     bool _done;
 
+    LineRenderer[] _arcs;    // crackling lightning around the core — "big taser shot"
+    float _nextArcAt;
+
     public static CopEnergyBlast Spawn(Vector3 origin, Ship target,
                                        float speed, float hitRadius, Action<bool> onResolved)
     {
@@ -28,7 +31,7 @@ public class CopEnergyBlast : MonoBehaviour
         go.name = "CopEnergyBlast";
         Destroy(go.GetComponent<Collider>());   // never shove the ship — hit test is manual
         go.transform.position = origin;
-        go.transform.localScale = Vector3.one * 1.8f;
+        go.transform.localScale = Vector3.one * 3.6f;   // 2× — reads clearly at chase distance
 
         var mat = go.GetComponent<Renderer>().material;
         var glow = new Color(0.3f, 0.85f, 1f);
@@ -39,13 +42,14 @@ public class CopEnergyBlast : MonoBehaviour
         var light = go.AddComponent<Light>();
         light.type = LightType.Point;
         light.color = glow;
-        light.range = 30f;
-        light.intensity = 4f;
+        light.range = 50f;
+        light.intensity = 6f;
 
         var b = go.AddComponent<CopEnergyBlast>();
         b._target = target;
         b._hitRadius = hitRadius;
         b._onResolved = onResolved;
+        b.BuildArcs(go.transform);
 
         Rigidbody rb = target != null ? target.Rigidbody : null;
         Vector3 shipPos = rb != null ? rb.position : (target != null ? target.transform.position : origin);
@@ -56,10 +60,59 @@ public class CopEnergyBlast : MonoBehaviour
         return b;
     }
 
+    // Four jittery polylines wrapped around the core, re-randomized ~22×/s —
+    // cheap convincing electricity. Local space, so they ride the blast free.
+    void BuildArcs(Transform parent)
+    {
+        _arcs = new LineRenderer[4];
+        var arcMat = new Material(Shader.Find("Particles/Standard Unlit"));
+        arcMat.color = new Color(0.75f, 0.95f, 1f);
+        for (int i = 0; i < _arcs.Length; i++)
+        {
+            var go = new GameObject("Arc" + i);
+            go.transform.SetParent(parent, false);
+            var lr = go.AddComponent<LineRenderer>();
+            lr.useWorldSpace = false;
+            lr.material = arcMat;
+            lr.positionCount = 6;
+            lr.startWidth = 0.09f;   // parent scale ×3.6 → ~0.3 world units
+            lr.endWidth = 0.02f;
+            lr.startColor = new Color(0.85f, 0.97f, 1f, 0.95f);
+            lr.endColor = new Color(0.3f, 0.85f, 1f, 0.5f);
+            _arcs[i] = lr;
+        }
+        RandomizeArcs();
+    }
+
+    void RandomizeArcs()
+    {
+        for (int i = 0; i < _arcs.Length; i++)
+        {
+            var lr = _arcs[i];
+            if (lr == null) continue;
+            Vector3 a = UnityEngine.Random.onUnitSphere * 0.5f;
+            Vector3 b = UnityEngine.Random.onUnitSphere * 0.5f;
+            for (int p = 0; p < lr.positionCount; p++)
+            {
+                float t = p / (float)(lr.positionCount - 1);
+                Vector3 point = Vector3.Slerp(a, b, t);
+                point *= UnityEngine.Random.Range(1.0f, 1.7f);           // crawl off the surface
+                point += UnityEngine.Random.insideUnitSphere * 0.12f;    // kink
+                lr.SetPosition(p, point);
+            }
+        }
+    }
+
     void Update()
     {
         if (_done) return;
         if (_target == null) { Resolve(false); return; }
+
+        if (Time.time >= _nextArcAt)
+        {
+            _nextArcAt = Time.time + 0.045f;
+            RandomizeArcs();
+        }
 
         float dt = Time.deltaTime;
         Rigidbody rb = _target.Rigidbody;
