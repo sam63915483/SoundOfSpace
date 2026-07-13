@@ -42,18 +42,41 @@ public class TevSmugglingMission : MonoBehaviour
     bool _busy;                              // a coroutine owns the next transition
     float _nextPoll;
 
+    Vector3 _authoredLocalPos;
+    Quaternion _authoredLocalRot;
+
     void Awake()
     {
         _ship = GetComponent<Ship>();
+        // Snapshot the authored planet-local pose before anything can move us.
+        _authoredLocalPos = transform.localPosition;
+        _authoredLocalRot = transform.localRotation;
     }
 
     void Start()
     {
-        // Scene-placed second ship: EndlessManager.Bootstrap only registers the
-        // FIRST Ship it finds, so Tevsship must self-register or it pops on
-        // every floating-origin shift.
+        // Tevsship is authored as a CHILD of Humble Abode (like placed buildings),
+        // so it rides the planet through orbits and origin shifts with no physics.
+        // It must NOT be EndlessManager-registered: a registered planet-child gets
+        // double-shifted on every origin shift (parent moves it AND its own entry
+        // moves it) and flings ~24k out into space. EndlessManager.Bootstrap
+        // registers "the first Ship it finds" — which can be this one now that
+        // two ships exist — so undo that here (Start runs after AfterSceneLoad
+        // but before the first origin shift), and restore the authored pose in
+        // case anything already moved us.
         var endless = FindObjectOfType<EndlessManager>();
-        if (endless != null) endless.RegisterPhysicsObject(transform);
+        if (endless != null) endless.UnregisterPhysicsObject(transform);
+        transform.localPosition = _authoredLocalPos;
+        transform.localRotation = _authoredLocalRot;
+        Physics.SyncTransforms();
+
+        // While parked (pre-accept) the ship stays KINEMATIC and is pinned to
+        // its authored planet-local pose every physics tick (see FixedUpdate).
+        // A kinematic pinned ship rides the planet's orbit + spin exactly, can
+        // never drift, and can never be depenetration-launched by the planet's
+        // 2M-triangle collider. Real physics takes over in BeginEnRoute.
+        var rb0 = _ship != null ? _ship.Rigidbody : null;
+        if (rb0 != null) rb0.isKinematic = true;
 
         // Cheap resume from a save that already has mission flags.
         if (Flag("b1_delivered")) { _phase = Phase.Done; return; }
@@ -157,15 +180,30 @@ public class TevSmugglingMission : MonoBehaviour
 
     void FixedUpdate()
     {
-        // Hold the traffic stop still relative to the nearest planet: planets keep
+        if (_ship == null) return;
+        var rb = _ship.Rigidbody;
+        if (rb == null) return;
+
+        // Parked (pre-accept): kinematic pin to the authored planet-local pose.
+        // Rides orbit + spin exactly; immune to origin shifts and depenetration.
+        if (_phase == Phase.Idle)
+        {
+            var parent = transform.parent;
+            if (parent != null && rb.isKinematic)
+            {
+                rb.MovePosition(parent.TransformPoint(_authoredLocalPos));
+                rb.MoveRotation(parent.rotation * _authoredLocalRot);
+            }
+            return;
+        }
+
+        // Traffic stop: hold still relative to the nearest planet — planets keep
         // orbiting normally, the ship just rides along with the closest one.
         bool frozen = _phase == Phase.PullOver || _phase == Phase.Interrogation ||
                       _phase == Phase.Verdict || _phase == Phase.AwaitRelease ||
                       _phase == Phase.TicketChoice;
-        if (!frozen || _anchorBody == null || _ship == null) return;
+        if (!frozen || _anchorBody == null || rb.isKinematic) return;
 
-        var rb = _ship.Rigidbody;
-        if (rb == null) return;
         rb.velocity = _anchorBody.velocity;
         rb.angularVelocity = Vector3.Lerp(rb.angularVelocity, Vector3.zero, 0.15f);
     }
@@ -175,8 +213,23 @@ public class TevSmugglingMission : MonoBehaviour
     void BeginEnRoute()
     {
         _phase = Phase.EnRoute;
+
         _homeBody = FindBody(homeBodyName);
         _destBody = FindBody(destBodyName);
+
+        // Hand the parked ship to real physics for the flight: un-pin, give it
+        // the planet's velocity so it keeps riding the surface until takeoff.
+        if (_ship != null)
+        {
+            var rb = _ship.Rigidbody;
+            if (rb != null)
+            {
+                rb.isKinematic = false;
+                rb.velocity = _homeBody != null ? _homeBody.velocity : Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+            }
+            _ship.canFly = true;
+        }
         if (CompassHUD.Instance != null && _destBody != null)
         {
             var dest = _destBody;

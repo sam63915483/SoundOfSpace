@@ -9,7 +9,16 @@ public class GameSetUp : MonoBehaviour {
 	public CelestialBody startBody;
 
 	void Start () {
-		Ship ship = FindObjectOfType<Ship> ();
+		// Never grab a mission-prop ship (e.g. Tevsship, a scene-authored second
+		// Ship parked on Humble Abode): auto-piloting it at startup seats the
+		// player in the wrong cockpit. Historically no scene ship existed at
+		// Start, so FindObjectOfType returned null and InShip was skipped.
+		Ship ship = null;
+		foreach (Ship s in FindObjectsOfType<Ship> ()) {
+			if (s.GetComponent<TevSmugglingMission> () != null) continue;
+			ship = s;
+			break;
+		}
 		PlayerController player = FindObjectOfType<PlayerController> (true);
 
 		if (startCondition == StartCondition.InShip) {
