@@ -593,6 +593,7 @@ public class TabbedPauseMenu : MonoBehaviour
                     new ToggleDef { label = "SHIP BOOST FOV",     get = () => _input != null && _input.fxShipBoostFov,      set = v => { if (_input != null) _input.fxShipBoostFov = v; } },
                     new ToggleDef { label = "SPEED LINES",        get = () => _input != null && _input.fxSpeedLines,        set = v => { if (_input != null) _input.fxSpeedLines = v; } },
                     new ToggleDef { label = "SPACE DUST",         get = () => _input != null && _input.fxSpaceDust,         set = v => { if (_input != null) _input.fxSpaceDust = v; } },
+                    new ToggleDef { label = "REAR-VIEW 60HZ",     get = () => _input != null && _input.mirror60Hz,          set = v => { if (_input != null) _input.mirror60Hz = v; } },
 
                     new HeaderDef { label = "COMBAT" },
                     new ToggleDef { label = "DAMAGE FLASH",       get = () => _input != null && _input.fxDamageFlash,       set = v => { if (_input != null) _input.fxDamageFlash = v; } },

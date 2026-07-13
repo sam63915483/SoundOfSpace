@@ -34,6 +34,7 @@ public class RearViewMirror : MonoBehaviour
     Ship _ship;
     ThrusterDetachOnImpact _parts;
     SolarPanelCharger _charger;
+    InputSettings _input;    // for the 30/60 Hz mirror setting
     RenderTexture _rt;
     Material _mat;
     TextMeshPro _text;
@@ -50,6 +51,7 @@ public class RearViewMirror : MonoBehaviour
         if (_parts == null && _ship != null) _parts = _ship.GetComponentInChildren<ThrusterDetachOnImpact>(true);
         _charger = GetComponentInParent<SolarPanelCharger>();
         if (_charger == null && _ship != null) _charger = _ship.GetComponentInChildren<SolarPanelCharger>(true);
+        _input = FindObjectOfType<InputSettings>();
 
         if (sourceCamera != null)
         {
@@ -119,12 +121,14 @@ public class RearViewMirror : MonoBehaviour
     {
         bool piloted = _ship != null && Ship.PilotedInstance == _ship;
 
-        // Camera renders only while piloted, throttled to renderHz. Toggling
-        // `enabled` keeps it inside the normal render loop (dust renders).
+        // Camera renders only while piloted, throttled by the settings-menu
+        // refresh option (CAMERA tab → REAR-VIEW 60HZ). Toggling `enabled`
+        // keeps it inside the normal render loop (dust renders).
         if (sourceCamera != null && _rt != null)
         {
+            float hz = _input != null ? (_input.mirror60Hz ? 60f : 30f) : renderHz;
             bool due = piloted && Time.unscaledTime >= _nextRenderAt;
-            if (due) _nextRenderAt = Time.unscaledTime + 1f / Mathf.Max(1f, renderHz);
+            if (due) _nextRenderAt = Time.unscaledTime + 1f / Mathf.Max(1f, hz);
             sourceCamera.enabled = due;
         }
 
@@ -224,11 +228,15 @@ public class RearViewMirror : MonoBehaviour
         var go = new GameObject(name);
         go.transform.SetParent(transform, false);
         go.transform.localPosition = localPos;   // just in front of the concave face
+        // Healthy glyph sizes scaled down by the transform — TMP generates
+        // degenerate/invisible meshes at sub-1pt font sizes, which is what
+        // made the previous (fontSize < 0.6) idle text render as nothing.
+        const float shrink = 0.05f;
+        go.transform.localScale = Vector3.one * shrink;
         var t = go.AddComponent<TextMeshPro>();
-        t.rectTransform.sizeDelta = size;
-        t.enableAutoSizing = true;
-        t.fontSizeMin = 0.08f;
-        t.fontSizeMax = 0.55f;
+        t.rectTransform.sizeDelta = size / shrink;
+        t.fontSize = 10f;
+        t.enableAutoSizing = false;
         t.color = TextColor;
         t.alignment = TextAlignmentOptions.TopLeft;
         t.richText = true;

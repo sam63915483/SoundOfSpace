@@ -340,6 +340,7 @@ public class InputSettings : ScriptableObject {
 		HudVisibility.SetUserHidden (hudHidden);
 
 		fxConcertShadows = PlayerPrefs.GetInt (nameof (fxConcertShadows), 0) != 0;
+		mirror60Hz       = PlayerPrefs.GetInt (nameof (mirror60Hz), 0) != 0;
 		qualityPreset    = (QualityPreset) PlayerPrefs.GetInt (nameof (qualityPreset), (int) QualityPreset.Custom);
 		// physicsRateV2 — bumped from physicsRate after the enum was reordered
 		// (low→high). Old saved key is intentionally ignored so a previous
@@ -444,6 +445,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt (nameof (hudHidden), hudHidden ? 1 : 0);
 
 		PlayerPrefs.SetInt (nameof (fxConcertShadows), fxConcertShadows ? 1 : 0);
+		PlayerPrefs.SetInt (nameof (mirror60Hz),       mirror60Hz ? 1 : 0);
 		PlayerPrefs.SetInt (nameof (qualityPreset),    (int) qualityPreset);
 		PlayerPrefs.SetInt ("physicsRateV2",            (int) physicsRate);
 		PlayerPrefs.SetInt ("phoneResolutionScaleV2",      (int) phoneResolutionScale);
@@ -629,5 +631,8 @@ public class InputSettings : ScriptableObject {
 	public bool fxHelmetOverlay = true;       // helmet frame + visor glass + sway
 	public bool fxHelmetCondensation = true;  // low-O2 visor fog (functional feedback — recommended on)
 	public bool fxHelmetBob = true;           // walk/run helmet bob (stride-matched, stronger when sprinting)
+
+	[Header("Ship Screens")]
+	public bool mirror60Hz = false;           // rear-view screen refresh: off = 30 Hz, on = 60 Hz (costs an extra camera render per frame)
 
 }

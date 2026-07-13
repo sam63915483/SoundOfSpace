@@ -29,6 +29,14 @@ public class CopEnergyBlast : MonoBehaviour
     AudioSource _pingSrc;
     float _startDist, _nextPingAt;
 
+    // Fly-past: once the shot gets close its trajectory COMMITS (the ship-
+    // acceleration term freezes). Without this, dodging by boosting made the
+    // shot fall behind in the ship's frame and it could never overtake — you
+    // never saw the near-miss whoosh past the windshield.
+    const float CommitDistance = 70f;
+    bool _committed;
+    Vector3 _commitVel;
+
     public static CopEnergyBlast Spawn(Vector3 origin, Ship target,
                                        float speed, float hitRadius,
                                        AudioClip pingClip, AudioClip zapClip,
@@ -136,12 +144,23 @@ public class CopEnergyBlast : MonoBehaviour
 
         // Frame-correct kinematics: in the ship frame the blast's velocity is its
         // fire-time velocity minus however much the ship has accelerated since.
-        _rel += (_relVel0 + (_shipVelAtFire - shipVel)) * dt;
+        // Inside CommitDistance the trajectory locks — it either connects or
+        // streaks past the cockpit; further player acceleration can't push it
+        // back out of view. (Dodging is decided during the approach.)
+        Vector3 relVel = _committed ? _commitVel
+                                    : _relVel0 + (_shipVelAtFire - shipVel);
+        _rel += relVel * dt;
         _t += dt;
 
         transform.position = shipPos + _rel;
 
         float dist = _rel.magnitude;
+        if (!_committed && dist < CommitDistance)
+        {
+            _committed = true;
+            _commitVel = relVel;
+            _life = _t + 4f;   // enough flight time to sail well past the window
+        }
 
         // Radar ping: louder and faster the closer the shot is. Dies with the
         // blast (miss = silence until the next shot).
