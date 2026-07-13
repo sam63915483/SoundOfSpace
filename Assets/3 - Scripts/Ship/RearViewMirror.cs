@@ -11,7 +11,7 @@ using UnityEngine;
 /// renders while this ship is piloted, so parked ships pay zero GPU.
 public class RearViewMirror : MonoBehaviour
 {
-    public enum IdleContent { ShipComponents, FuelStatus }
+    public enum IdleContent { ShipComponents, FuelStatus, Combined }
 
     public Camera sourceCamera;
     public int resolution = 384;
@@ -37,6 +37,7 @@ public class RearViewMirror : MonoBehaviour
     RenderTexture _rt;
     Material _mat;
     TextMeshPro _text;
+    TextMeshPro _text2;      // right column when idleContent == Combined
     bool _mirrorMode;        // what the material is currently configured as
     float _level = 1f;       // fade level of the current mode (0..1)
     float _nextRenderAt, _nextTextAt;
@@ -151,7 +152,19 @@ public class RearViewMirror : MonoBehaviour
         if (!_mirrorMode && _text != null && Time.unscaledTime >= _nextTextAt)
         {
             _nextTextAt = Time.unscaledTime + 0.5f;
-            _text.text = idleContent == IdleContent.ShipComponents ? BuildComponentsText() : BuildFuelText();
+            switch (idleContent)
+            {
+                case IdleContent.Combined:
+                    _text.text = BuildComponentsText();
+                    if (_text2 != null) _text2.text = BuildFuelText();
+                    break;
+                case IdleContent.ShipComponents:
+                    _text.text = BuildComponentsText();
+                    break;
+                default:
+                    _text.text = BuildFuelText();
+                    break;
+            }
         }
     }
 
@@ -163,6 +176,7 @@ public class RearViewMirror : MonoBehaviour
         _mat.mainTextureOffset = Vector2.zero;
         _mat.SetTextureScale("_EmissionMap", new Vector2(1f, 14f));   // tile the lines
         if (_text != null) _text.gameObject.SetActive(true);
+        if (_text2 != null) _text2.gameObject.SetActive(true);
     }
 
     void ConfigureMirrorMaterial()
@@ -172,6 +186,7 @@ public class RearViewMirror : MonoBehaviour
         _mat.SetTextureScale("_EmissionMap", mirrorHorizontal ? new Vector2(-1f, 1f) : Vector2.one);
         _mat.SetTextureOffset("_EmissionMap", mirrorHorizontal ? new Vector2(1f, 0f) : Vector2.zero);
         if (_text != null) _text.gameObject.SetActive(false);
+        if (_text2 != null) _text2.gameObject.SetActive(false);
     }
 
     void ApplyLevel()
@@ -181,25 +196,44 @@ public class RearViewMirror : MonoBehaviour
             Color tint = _mirrorMode ? Color.white : IdleTint;
             _mat.SetColor("_EmissionColor", tint * _level);
         }
-        if (_text != null && !_mirrorMode)
-            _text.alpha = _level;
+        if (!_mirrorMode)
+        {
+            if (_text != null) _text.alpha = _level;
+            if (_text2 != null) _text2.alpha = _level;
+        }
     }
 
     // ── idle displays ──
 
     void BuildIdleText()
     {
-        var go = new GameObject("IdleText");
+        if (idleContent == IdleContent.Combined)
+        {
+            // Wide screen: systems on the left half, fuel on the right half.
+            _text = MakeIdleText("IdleTextLeft", new Vector3(-0.25f, 0.01f, -0.075f), new Vector2(0.44f, 0.42f));
+            _text2 = MakeIdleText("IdleTextRight", new Vector3(0.25f, 0.01f, -0.075f), new Vector2(0.44f, 0.42f));
+        }
+        else
+        {
+            _text = MakeIdleText("IdleText", new Vector3(0f, 0f, -0.075f), new Vector2(0.84f, 0.84f));
+        }
+    }
+
+    TextMeshPro MakeIdleText(string name, Vector3 localPos, Vector2 size)
+    {
+        var go = new GameObject(name);
         go.transform.SetParent(transform, false);
-        go.transform.localPosition = new Vector3(0f, 0f, -0.075f);   // just in front of the concave face
-        _text = go.AddComponent<TextMeshPro>();
-        _text.rectTransform.sizeDelta = new Vector2(0.84f, 0.84f);
-        _text.fontSize = 0.62f;
-        _text.enableAutoSizing = false;
-        _text.color = TextColor;
-        _text.alignment = TextAlignmentOptions.TopLeft;
-        _text.richText = true;
-        _text.text = "";
+        go.transform.localPosition = localPos;   // just in front of the concave face
+        var t = go.AddComponent<TextMeshPro>();
+        t.rectTransform.sizeDelta = size;
+        t.enableAutoSizing = true;
+        t.fontSizeMin = 0.08f;
+        t.fontSizeMax = 0.55f;
+        t.color = TextColor;
+        t.alignment = TextAlignmentOptions.TopLeft;
+        t.richText = true;
+        t.text = "";
+        return t;
     }
 
     string BuildComponentsText()
