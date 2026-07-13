@@ -7,19 +7,24 @@ using UnityEngine;
 /// The chase runs in world space with the corvette registered on EndlessManager.
 public class CopShipController : MonoBehaviour
 {
-    public float flyInSeconds = 2.2f;
+    public float flyInSeconds = 2.6f;
     public float standoffDistance = 130f;
     public float standoffHeight = 25f;
+    public float tailDistance = 260f;        // shadowing offset behind the target during the siren phase
+    public float tailHeight = 50f;
     public float chaseSpeed = 75f;
     public float escapeDistance = 900f;
+    public float minChaseDistance = 260f;    // the cop never closes past this — shots stay visible + dodgeable
+    public float chaseStartDistance = 380f;  // gap at the moment the chase kicks off
     public float blastInterval = 4f;
+    public float calloutLeadSeconds = 1.5f;  // radio bark plays this long before each shot
     public int maxBlasts = 5;
     public float blastRange = 550f;
     public float blastSpeed = 90f;
     public float blastHitRadius = 8f;
     public int hitsToKill = 3;
 
-    enum Mode { Inactive, FlyIn, Hold, Chase, Depart }
+    enum Mode { Inactive, Tail, FlyIn, Hold, Chase, Depart }
     Mode _mode = Mode.Inactive;
 
     Ship _target;
@@ -27,6 +32,7 @@ public class CopShipController : MonoBehaviour
     Action _onArrived, _onEscaped, _onCaught;
 
     Vector3 _holdLocal;      // rest pose, target-ship local space
+    Vector3 _tailLocal;      // shadowing pose behind the target
     Vector3 _startLocal;
     float _flyT;
     Vector3 _departLocalDir;
@@ -36,29 +42,36 @@ public class CopShipController : MonoBehaviour
 
     Light _spot, _red, _blue;
     Transform _spotPivot;
-    AudioSource _siren;
+    AudioSource _siren, _radio;
     float _flashTimer;
     bool _redOn;
+
+    AudioClip[] _callouts;   // escalating warnings, one per shot, in array order
+    int _calloutIdx;
+    bool _shotArmed;         // callout played, shot queued
+    float _fireAt;
 
     int _fired, _hits, _pending;
     float _nextBlastAt;
     bool _resolved;          // chase finished (escaped or caught)
     EndlessManager _endless;
 
-    public void Init(Ship target, CelestialBody anchor, AudioClip sirenClip, Action onArrived)
+    /// The corvette materialises BEHIND the target and shadows it (sirens +
+    /// lights) while the mission script talks the player down. Call
+    /// PullInFront() once the target has (nearly) stopped to run the approach.
+    public void Init(Ship target, CelestialBody anchor, AudioClip sirenClip, AudioClip[] calloutClips)
     {
         _target = target;
         _anchor = anchor;
-        _onArrived = onArrived;
+        _callouts = calloutClips;
         _endless = FindObjectOfType<EndlessManager>();
 
         // Rest pose: dead ahead of the target's front window, slightly above,
-        // nose pointed back at it. Approach start: far beyond + above the rest
-        // pose so it streaks into frame and stops.
+        // nose pointed back at it.
         _holdLocal = new Vector3(0f, standoffHeight, standoffDistance);
-        _startLocal = _holdLocal + new Vector3(0f, 250f, 1600f);
+        _tailLocal = new Vector3(0f, tailHeight, -tailDistance);
 
-        transform.position = LocalToWorld(_startLocal);
+        transform.position = LocalToWorld(_tailLocal);
         FaceTarget();
 
         BuildLights();
@@ -71,8 +84,31 @@ public class CopShipController : MonoBehaviour
             _siren.Play();
         }
 
-        _mode = Mode.FlyIn;
+        _mode = Mode.Tail;
+    }
+
+    /// Sweep from wherever we are (tail pose) to the hold pose dead ahead of
+    /// the target's windshield. onArrived fires when parked.
+    public void PullInFront(Action onArrived)
+    {
+        _onArrived = onArrived;
+        _startLocal = WorldToLocal(transform.position);
         _flyT = 0f;
+        _mode = Mode.FlyIn;
+    }
+
+    /// Cockpit-radio bark: 2D so it reads as coming over the player's own
+    /// comms rather than from the corvette's position.
+    public void PlayRadio(AudioClip clip)
+    {
+        if (clip == null) return;
+        if (_radio == null)
+        {
+            _radio = gameObject.AddComponent<AudioSource>();
+            _radio.spatialBlend = 0f;
+            _radio.volume = 1f;
+        }
+        _radio.PlayOneShot(clip);
     }
 
     public void FlyAway()
@@ -98,9 +134,15 @@ public class CopShipController : MonoBehaviour
         // velocity/transform unit quirks. The gap opens or closes purely from
         // how hard the player flees relative to their velocity at the stop.
         Rigidbody rb = _target.Rigidbody;
-        Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
-        _chaseRel = transform.position - shipPos;
         _fleeBaseVel = rb != null ? rb.velocity : Vector3.zero;
+
+        // Drop in BEHIND the target at chase-start distance. It was holding
+        // dead ahead — starting the chase from there meant the fleeing player
+        // flew straight through it ("right inside of you"). The swap happens
+        // while the ticket dialogue is closing, so it reads as the corvette
+        // swinging around rather than teleporting.
+        Transform shipT = _target.transform;
+        _chaseRel = (-shipT.forward + shipT.up * 0.25f).normalized * chaseStartDistance;
 
         if (_siren != null) { _siren.loop = true; _siren.Play(); }
     }
@@ -114,6 +156,13 @@ public class CopShipController : MonoBehaviour
 
         switch (_mode)
         {
+            case Mode.Tail:
+                // Glued to a ship-local offset behind the target — matches its
+                // speed exactly however hard the player is boosting.
+                transform.position = LocalToWorld(_tailLocal);
+                FaceTarget();
+                break;
+
             case Mode.FlyIn:
             {
                 _flyT += dt / Mathf.Max(0.1f, flyInSeconds);
@@ -161,7 +210,7 @@ public class CopShipController : MonoBehaviour
         // closes it. Dawdle → the cop closes to point-blank. Commit to the
         // throttle → the gap opens toward escapeDistance.
         float dist = _chaseRel.magnitude;
-        dist = Mathf.Max(35f, dist + (fleeSpeed - chaseSpeed) * dt);
+        dist = Mathf.Max(minChaseDistance, dist + (fleeSpeed - chaseSpeed) * dt);
 
         // The cop settles in behind the player's direction of travel.
         Vector3 trailDir = fleeSpeed > 2f ? -fleeVel.normalized : _chaseRel.normalized;
@@ -175,13 +224,26 @@ public class CopShipController : MonoBehaviour
 
         if (dist > escapeDistance) { ResolveChase(escaped: true); return; }
 
-        if (_fired < maxBlasts && Time.time >= _nextBlastAt && dist < blastRange)
+        // Every shot is telegraphed: a radio bark (escalating through the
+        // callout list) plays calloutLeadSeconds before the blast leaves.
+        if (_fired < maxBlasts && dist < blastRange)
         {
-            CopEnergyBlast.Spawn(transform.position + transform.forward * 25f,
-                                 _target, blastSpeed, blastHitRadius, OnBlastResolved);
-            _fired++;
-            _pending++;
-            _nextBlastAt = Time.time + blastInterval;
+            if (!_shotArmed && Time.time >= _nextBlastAt)
+            {
+                _shotArmed = true;
+                _fireAt = Time.time + calloutLeadSeconds;
+                if (_callouts != null && _callouts.Length > 0)
+                    PlayRadio(_callouts[_calloutIdx++ % _callouts.Length]);
+            }
+            if (_shotArmed && Time.time >= _fireAt)
+            {
+                _shotArmed = false;
+                CopEnergyBlast.Spawn(transform.position + transform.forward * 25f,
+                                     _target, blastSpeed, blastHitRadius, OnBlastResolved);
+                _fired++;
+                _pending++;
+                _nextBlastAt = Time.time + blastInterval;
+            }
         }
 
         // All shots spent, everything resolved, target still alive → give up.
@@ -262,7 +324,7 @@ public class CopShipController : MonoBehaviour
         var l = go.AddComponent<Light>();
         l.type = LightType.Point;
         l.color = color;
-        l.range = 90f;
+        l.range = 320f;   // must reach the player's hull from the tail pose so the red/blue wash is visible
         l.intensity = 7f;
         l.enabled = false;
         return l;

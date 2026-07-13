@@ -95,8 +95,10 @@ public class ShipHUD : MonoBehaviour {
 
 				// LMB (kbm) or RT-trigger pull (controller). FirePressed wraps
 				// both inputs; while piloting, neither is used by anything else
-				// on the ship so this binding is conflict-free.
-				if (TutorialGate.FirePressed ()) {
+				// on the ship so this binding is conflict-free. Swallow it while
+				// a conversation is open — clicking through dialogue while aimed
+				// at a planet was toggling its mark.
+				if (!WorldDialogueUI.IsOpen && TutorialGate.FirePressed ()) {
 					var newLock = (lockedBody == aimedBody) ? null : aimedBody;
 					lockedBody = newLock;
 					if (mapCtl != null) mapCtl.SetMarkedBody (newLock);

@@ -35,6 +35,14 @@ public class TevSmugglingMission : MonoBehaviour
     public float settleDelaySeconds = 10f;
     [Tooltip("Raised this much along planet-up at release so the terrain collider can't depenetration-launch it; it falls this far and lands.")]
     public float releaseLift = 1.5f;
+    [Header("Pull-over pacing")]
+    [Tooltip("Sirens + lights shadow you for this long before the STOP YOUR ENGINE call.")]
+    public float sirenLeadSeconds = 2.5f;
+    [Tooltip("Once the stop call lands, the forced deceleration takes roughly this long to bring you to a halt.")]
+    public float pullOverSlowSeconds = 4f;
+    public AudioClip stopEngineClip;      // "STOP YOUR ENGINE" radio bark
+    [Tooltip("Chase warnings, escalating — one plays over the radio before every shot, in array order.")]
+    public AudioClip[] copCalloutClips;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -52,6 +60,8 @@ public class TevSmugglingMission : MonoBehaviour
     Vector3 _lastPinTarget;
     Vector3 _pinVelocity;
     bool _pinSampled;
+    bool _decelActive;       // forced pull-over deceleration / velocity hold running
+    float _decelRate;        // units/s² toward the anchor's velocity
 
     void Awake()
     {
@@ -223,14 +233,24 @@ public class TevSmugglingMission : MonoBehaviour
         }
         if (_phase == Phase.Idle) return;
 
-        // Traffic stop: hold still relative to the nearest planet — planets keep
-        // orbiting normally, the ship just rides along with the closest one.
+        // Traffic stop: ramp down to a halt relative to the nearest planet
+        // (instead of an instant velocity snap), then keep holding that match
+        // through the interrogation. _decelActive stays true until the stop
+        // resolves (Release / StartChase), so once the relative velocity hits
+        // zero this doubles as the hold. Planets keep orbiting normally; the
+        // ship just rides along with the closest one.
         bool frozen = _phase == Phase.PullOver || _phase == Phase.Interrogation ||
                       _phase == Phase.Verdict || _phase == Phase.AwaitRelease ||
                       _phase == Phase.TicketChoice;
-        if (!frozen || _anchorBody == null || rb.isKinematic) return;
+        if (!frozen || !_decelActive || _anchorBody == null || rb.isKinematic) return;
 
-        rb.velocity = _anchorBody.velocity;
+        // Gravity-compensated: Ship.FixedUpdate re-adds N-body gravity every
+        // tick (it runs before us), so without the +grav term the hold
+        // plateaus wherever gravity matches _decelRate instead of stopping.
+        float grav = NBodySimulation.CalculateAcceleration(rb.position).magnitude;
+        Vector3 rel = rb.velocity - _anchorBody.velocity;
+        rb.velocity = _anchorBody.velocity +
+                      Vector3.MoveTowards(rel, Vector3.zero, (_decelRate + grav) * Time.fixedDeltaTime);
         rb.angularVelocity = Vector3.Lerp(rb.angularVelocity, Vector3.zero, 0.15f);
     }
 
@@ -295,9 +315,19 @@ public class TevSmugglingMission : MonoBehaviour
 
     void BeginPullOver()
     {
+        if (_busy) return;
+        StartCoroutine(PullOverRoutine());
+    }
+
+    /// Staged stop: sirens + lights shadow the player from behind → "STOP
+    /// YOUR ENGINE" over the radio → controls cut and the ship decelerates
+    /// smoothly → as it rolls to a halt the corvette sweeps around and parks
+    /// dead ahead → interrogation.
+    IEnumerator PullOverRoutine()
+    {
+        _busy = true;
         _phase = Phase.PullOver;
         _anchorBody = FindNearestBody();
-        if (_ship != null) _ship.canFly = false;
 
         // Per-stop flags must start clean or a retry inherits last attempt's answers.
         SetFlag("b1_q1_pass", false);
@@ -309,11 +339,48 @@ public class TevSmugglingMission : MonoBehaviour
         SetFlag("b1_run", false);
         SetFlag("b1_released", false);
 
+        // 1. The corvette drops in behind and shadows the ship — sirens, lights.
+        //    The player still has full control; nothing is forcing them yet.
         if (copShipPrefab != null)
         {
             var go = Instantiate(copShipPrefab);
             _cop = go.AddComponent<CopShipController>();
-            _cop.Init(_ship, _anchorBody, sirenClip, onArrived: () =>
+            _cop.Init(_ship, _anchorBody, sirenClip, copCalloutClips);
+        }
+        yield return new WaitForSeconds(sirenLeadSeconds);
+
+        // 2. "STOP YOUR ENGINE."
+        if (_cop != null && stopEngineClip != null)
+        {
+            _cop.PlayRadio(stopEngineClip);
+            yield return new WaitForSeconds(Mathf.Max(1f, stopEngineClip.length * 0.9f));
+        }
+
+        // 3. Controls cut; forced smooth deceleration down to a stop relative
+        //    to the anchor planet (see FixedUpdate). Rate is sized so however
+        //    fast they were going, the slowdown takes ~pullOverSlowSeconds.
+        if (_ship != null) _ship.canFly = false;
+        var rb = _ship != null ? _ship.Rigidbody : null;
+        float relSpeed = rb != null && _anchorBody != null
+            ? (rb.velocity - _anchorBody.velocity).magnitude : 0f;
+        _decelRate = Mathf.Max(8f, relSpeed / Mathf.Max(0.5f, pullOverSlowSeconds));
+        _decelActive = true;
+
+        // 4. As the ship is rolling to a complete stop (last ~15% of the
+        //    slowdown), the corvette overtakes and parks in front — its
+        //    fly-in finishes right about when the ship does.
+        if (rb != null && _anchorBody != null)
+        {
+            float stopBy = Time.time + pullOverSlowSeconds + 10f;   // safety timeout
+            float trigger = Mathf.Max(4f, relSpeed * 0.15f);
+            while (Time.time < stopBy &&
+                   (rb.velocity - _anchorBody.velocity).magnitude > trigger)
+                yield return null;
+        }
+
+        if (_cop != null)
+        {
+            _cop.PullInFront(() =>
             {
                 WorldDialogueUI.Begin("conv_b1_stop");
                 _phase = Phase.Interrogation;
@@ -325,6 +392,7 @@ public class TevSmugglingMission : MonoBehaviour
             WorldDialogueUI.Begin("conv_b1_stop");
             _phase = Phase.Interrogation;
         }
+        _busy = false;
     }
 
     IEnumerator VerdictRoutine()
@@ -355,6 +423,7 @@ public class TevSmugglingMission : MonoBehaviour
     void Release()
     {
         if (_ship != null) _ship.canFly = true;
+        _decelActive = false;
         _anchorBody = null;
         if (_cop != null) _cop.FlyAway();
         _phase = Phase.Delivering;
@@ -363,6 +432,7 @@ public class TevSmugglingMission : MonoBehaviour
     void StartChase()
     {
         if (_ship != null) _ship.canFly = true;
+        _decelActive = false;
         _anchorBody = null;
         _phase = Phase.Chase;
 
