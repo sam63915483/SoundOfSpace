@@ -559,6 +559,17 @@ public class Ship : GravityObject
             }
         }
 
+        // H toggles the MAIN hatch (not the back hatch) from the pilot seat.
+        // Opening it in vacuum vents the hull 3x faster (OxygenManager), so
+        // this is a deliberate, risky move — e.g. letting a passenger take a
+        // shot out the door. Swallowed while the map or a conversation is up
+        // so UI keystrokes can't fly the door open.
+        if (shipIsPiloted && !PlayerController.isMapOpen && !WorldDialogueUI.IsOpen &&
+            Input.GetKeyDown(KeyCode.H))
+        {
+            ToggleHatch();
+        }
+
         // Engine loop SFX
         if (engineSource != null)
         {

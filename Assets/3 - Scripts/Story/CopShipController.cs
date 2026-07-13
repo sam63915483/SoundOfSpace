@@ -10,12 +10,12 @@ public class CopShipController : MonoBehaviour
     public float flyInSeconds = 2.6f;
     public float standoffDistance = 130f;
     public float standoffHeight = 25f;
-    public float tailDistance = 260f;        // shadowing offset behind the target during the siren phase
-    public float tailHeight = 50f;
+    public float shadowDistance = 300f;      // shadowing offset AHEAD of the target during the siren phase
+    public float shadowHeight = 35f;
     public float chaseSpeed = 75f;
     public float escapeDistance = 900f;
     public float minChaseDistance = 260f;    // the cop never closes past this — shots stay visible + dodgeable
-    public float chaseStartDistance = 380f;  // gap at the moment the chase kicks off
+    public float fleeThreshold = 20f;        // rel speed that counts as "trying to run"
     public float blastInterval = 4f;
     public float calloutLeadSeconds = 1.5f;  // radio bark plays this long before each shot
     public int maxBlasts = 5;
@@ -24,17 +24,20 @@ public class CopShipController : MonoBehaviour
     public float blastHitRadius = 8f;
     public int hitsToKill = 3;
 
-    enum Mode { Inactive, Tail, FlyIn, Hold, Chase, Depart }
+    enum Mode { Inactive, FlyIn, Hold, AwaitFlee, Chase, Depart }
     Mode _mode = Mode.Inactive;
 
     Ship _target;
     CelestialBody _anchor;
-    Action _onArrived, _onEscaped, _onCaught;
+    Action _onArrived, _onEscaped, _onCaught, _onFleeDetected;
+    AudioClip _pursuitClip;
 
-    Vector3 _holdLocal;      // rest pose, target-ship local space
-    Vector3 _tailLocal;      // shadowing pose behind the target
-    Vector3 _startLocal;
+    Vector3 _holdLocal;      // interrogation pose, target-ship local space
+    Vector3 _shadowLocal;    // siren-phase shadowing pose, ahead of the target
+    Vector3 _restLocal;      // wherever Hold/AwaitFlee should park right now
+    Vector3 _flyFrom, _flyTo;
     float _flyT;
+    float _floorRamp;        // chase floor eases from the takeover gap up to minChaseDistance
     Vector3 _departLocalDir;
     float _departSpeed;
     Vector3 _chaseRel;       // cop position relative to the ship, world axes
@@ -56,9 +59,10 @@ public class CopShipController : MonoBehaviour
     bool _resolved;          // chase finished (escaped or caught)
     EndlessManager _endless;
 
-    /// The corvette materialises BEHIND the target and shadows it (sirens +
-    /// lights) while the mission script talks the player down. Call
-    /// PullInFront() once the target has (nearly) stopped to run the approach.
+    /// The corvette streaks in from far AHEAD of the target and settles into a
+    /// shadowing pose in front of the windshield (sirens + lights) — the player
+    /// sees it arrive through the glass. Call PullInFront() once the target has
+    /// (nearly) stopped to close to the interrogation pose.
     public void Init(Ship target, CelestialBody anchor, AudioClip sirenClip, AudioClip[] calloutClips)
     {
         _target = target;
@@ -66,12 +70,12 @@ public class CopShipController : MonoBehaviour
         _callouts = calloutClips;
         _endless = FindObjectOfType<EndlessManager>();
 
-        // Rest pose: dead ahead of the target's front window, slightly above,
-        // nose pointed back at it.
         _holdLocal = new Vector3(0f, standoffHeight, standoffDistance);
-        _tailLocal = new Vector3(0f, tailHeight, -tailDistance);
+        _shadowLocal = new Vector3(0f, shadowHeight, shadowDistance);
 
-        transform.position = LocalToWorld(_tailLocal);
+        _flyFrom = _shadowLocal + new Vector3(0f, 180f, 1400f);
+        _flyTo = _shadowLocal;
+        transform.position = LocalToWorld(_flyFrom);
         FaceTarget();
 
         BuildLights();
@@ -84,15 +88,17 @@ public class CopShipController : MonoBehaviour
             _siren.Play();
         }
 
-        _mode = Mode.Tail;
+        _mode = Mode.FlyIn;
+        _flyT = 0f;
     }
 
-    /// Sweep from wherever we are (tail pose) to the hold pose dead ahead of
-    /// the target's windshield. onArrived fires when parked.
+    /// Sweep from wherever we are to the interrogation pose dead ahead of the
+    /// target's windshield. onArrived fires when parked.
     public void PullInFront(Action onArrived)
     {
         _onArrived = onArrived;
-        _startLocal = WorldToLocal(transform.position);
+        _flyFrom = WorldToLocal(transform.position);
+        _flyTo = _holdLocal;
         _flyT = 0f;
         _mode = Mode.FlyIn;
     }
@@ -114,6 +120,7 @@ public class CopShipController : MonoBehaviour
     public void FlyAway()
     {
         if (_mode == Mode.Depart) return;
+        _restLocal = WorldToLocal(transform.position);
         _departLocalDir = (Vector3.up * 0.35f + Vector3.forward).normalized;
         _departSpeed = 60f;
         _mode = Mode.Depart;
@@ -121,28 +128,78 @@ public class CopShipController : MonoBehaviour
         Destroy(gameObject, 10f);
     }
 
-    public void StartChase(Action onEscaped, Action onCaught)
+    /// Tev's rocket connected: detonate. Fireball + flash + boom + shake, and
+    /// the corvette is gone. Ends the chase without invoking escaped/caught —
+    /// the mission drives what happens next.
+    public void BlowUp(AudioClip boomClip)
+    {
+        if (_resolved && _mode == Mode.Depart) return;
+        _resolved = true;
+        if (_siren != null) _siren.Stop();
+        SpawnExplosion(transform.position, boomClip);
+        if (CameraShake.Instance != null) CameraShake.Instance.TriggerShake(0.9f, 0.8f, 5f);
+        Destroy(gameObject);
+    }
+
+    static void SpawnExplosion(Vector3 pos, AudioClip boomClip)
+    {
+        var go = new GameObject("CopShipExplosion");
+        go.transform.position = pos;
+
+        var ps = go.AddComponent<ParticleSystem>();
+        var main = ps.main;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.8f, 1.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(15f, 55f);
+        main.startSize = new ParticleSystem.MinMaxCurve(4f, 14f);
+        main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.55f, 0.1f), new Color(1f, 0.85f, 0.3f));
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.maxParticles = 400;
+        var emission = ps.emission;
+        emission.rateOverTime = 0f;
+        var shape = ps.shape;
+        shape.shapeType = ParticleSystemShapeType.Sphere;
+        shape.radius = 6f;
+        var renderer = go.GetComponent<ParticleSystemRenderer>();
+        renderer.material = new Material(Shader.Find("Particles/Standard Unlit"));
+        renderer.material.color = new Color(1f, 0.6f, 0.15f);
+        ps.Emit(300);
+
+        var lightGo = new GameObject("Flash");
+        lightGo.transform.SetParent(go.transform, false);
+        var flash = lightGo.AddComponent<Light>();
+        flash.type = LightType.Point;
+        flash.color = new Color(1f, 0.6f, 0.2f);
+        flash.range = 900f;
+        flash.intensity = 35f;
+        go.AddComponent<ExplosionFlashFade>();
+
+        if (boomClip != null)
+        {
+            // Mostly-2D so the boom lands hard even from 300+ units behind the cockpit.
+            var src = go.AddComponent<AudioSource>();
+            src.spatialBlend = 0.2f;
+            src.PlayOneShot(boomClip, 1f);
+        }
+
+        Destroy(go, 5f);
+    }
+
+    /// Arms the chase but does NOT move: the corvette keeps holding in front,
+    /// watching. The moment the player actually accelerates (rel speed passes
+    /// fleeThreshold), it barks pursuitClip over the radio, swings around
+    /// behind them, and the real chase begins (onFleeDetected fires — the
+    /// mission uses it to start Tev's hidden rocket timer).
+    public void StartChase(Action onEscaped, Action onCaught, Action onFleeDetected, AudioClip pursuitClip)
     {
         _onEscaped = onEscaped;
         _onCaught = onCaught;
-        _mode = Mode.Chase;
-        _nextBlastAt = Time.time + 1.5f;
+        _onFleeDetected = onFleeDetected;
+        _pursuitClip = pursuitClip;
 
-        // The chase is simulated entirely in the target ship's reference frame:
-        // cop position = shipPos + _chaseRel, recomputed fresh every frame. That
-        // makes it immune to floating-origin shifts and to the N-body sim's
-        // velocity/transform unit quirks. The gap opens or closes purely from
-        // how hard the player flees relative to their velocity at the stop.
         Rigidbody rb = _target.Rigidbody;
         _fleeBaseVel = rb != null ? rb.velocity : Vector3.zero;
-
-        // Drop in BEHIND the target at chase-start distance. It was holding
-        // dead ahead — starting the chase from there meant the fleeing player
-        // flew straight through it ("right inside of you"). The swap happens
-        // while the ticket dialogue is closing, so it reads as the corvette
-        // swinging around rather than teleporting.
-        Transform shipT = _target.transform;
-        _chaseRel = (-shipT.forward + shipT.up * 0.25f).normalized * chaseStartDistance;
+        _restLocal = WorldToLocal(transform.position);
+        _mode = Mode.AwaitFlee;
 
         if (_siren != null) { _siren.loop = true; _siren.Play(); }
     }
@@ -156,21 +213,15 @@ public class CopShipController : MonoBehaviour
 
         switch (_mode)
         {
-            case Mode.Tail:
-                // Glued to a ship-local offset behind the target — matches its
-                // speed exactly however hard the player is boosting.
-                transform.position = LocalToWorld(_tailLocal);
-                FaceTarget();
-                break;
-
             case Mode.FlyIn:
             {
                 _flyT += dt / Mathf.Max(0.1f, flyInSeconds);
                 float e = 1f - Mathf.Pow(1f - Mathf.Clamp01(_flyT), 3f);   // ease-out cubic
-                transform.position = LocalToWorld(Vector3.LerpUnclamped(_startLocal, _holdLocal, e));
+                transform.position = LocalToWorld(Vector3.LerpUnclamped(_flyFrom, _flyTo, e));
                 FaceTarget();
                 if (_flyT >= 1f)
                 {
+                    _restLocal = _flyTo;
                     _mode = Mode.Hold;
                     _onArrived?.Invoke();
                     _onArrived = null;
@@ -179,14 +230,40 @@ public class CopShipController : MonoBehaviour
             }
 
             case Mode.Hold:
-                transform.position = LocalToWorld(_holdLocal);
+                transform.position = LocalToWorld(_restLocal);
                 FaceTarget();
                 break;
 
+            case Mode.AwaitFlee:
+            {
+                // Parked in front, watching. Glued ship-local, so even if the
+                // player creeps it stays put relative to them.
+                transform.position = LocalToWorld(_restLocal);
+                FaceTarget();
+
+                Rigidbody rb = _target.Rigidbody;
+                Vector3 fleeVel = (rb != null ? rb.velocity : Vector3.zero) - _fleeBaseVel;
+                if (fleeVel.magnitude > fleeThreshold)
+                {
+                    PlayRadio(_pursuitClip);
+                    Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
+                    _chaseRel = transform.position - shipPos;
+                    // Floor starts at the current (small, in-front) gap and eases
+                    // up to minChaseDistance, so the takeover has no snap; the
+                    // trail slerp in TickChase swings it around behind.
+                    _floorRamp = Mathf.Min(_chaseRel.magnitude, minChaseDistance);
+                    _nextBlastAt = Time.time + 3f;
+                    _mode = Mode.Chase;
+                    _onFleeDetected?.Invoke();
+                    _onFleeDetected = null;
+                }
+                break;
+            }
+
             case Mode.Depart:
                 _departSpeed = Mathf.Min(2500f, _departSpeed + _departSpeed * 1.6f * dt);   // accelerate away "super fast"
-                _holdLocal += _departLocalDir * _departSpeed * dt;
-                transform.position = LocalToWorld(_holdLocal);
+                _restLocal += _departLocalDir * _departSpeed * dt;
+                transform.position = LocalToWorld(_restLocal);
                 break;
 
             case Mode.Chase:
@@ -209,8 +286,9 @@ public class CopShipController : MonoBehaviour
         // Scalar gap model: the player's flee speed opens the gap, chaseSpeed
         // closes it. Dawdle → the cop closes to point-blank. Commit to the
         // throttle → the gap opens toward escapeDistance.
+        _floorRamp = Mathf.MoveTowards(_floorRamp, minChaseDistance, 70f * dt);
         float dist = _chaseRel.magnitude;
-        dist = Mathf.Max(minChaseDistance, dist + (fleeSpeed - chaseSpeed) * dt);
+        dist = Mathf.Max(_floorRamp, dist + (fleeSpeed - chaseSpeed) * dt);
 
         // The cop settles in behind the player's direction of travel.
         Vector3 trailDir = fleeSpeed > 2f ? -fleeVel.normalized : _chaseRel.normalized;
@@ -277,7 +355,7 @@ public class CopShipController : MonoBehaviour
         {
             _onEscaped?.Invoke();
             // Depart drives in target-local space — refresh the local pose first.
-            _holdLocal = WorldToLocal(transform.position);
+            _restLocal = WorldToLocal(transform.position);
             FlyAway();
         }
         else
@@ -364,5 +442,26 @@ public class CopShipController : MonoBehaviour
     void OnDestroy()
     {
         if (_endless != null) _endless.UnregisterPhysicsObject(transform);
+    }
+}
+
+/// Fades the explosion flash light out over its lifetime.
+public class ExplosionFlashFade : MonoBehaviour
+{
+    Light _light;
+    float _t, _startIntensity;
+
+    void Awake()
+    {
+        _light = GetComponentInChildren<Light>();
+        _startIntensity = _light != null ? _light.intensity : 0f;
+    }
+
+    void Update()
+    {
+        if (_light == null) return;
+        _t += Time.deltaTime;
+        _light.intensity = Mathf.Lerp(_startIntensity, 0f, _t / 1.6f);
+        if (_t >= 1.6f) _light.enabled = false;
     }
 }

@@ -43,6 +43,22 @@ public class TevSmugglingMission : MonoBehaviour
     public AudioClip stopEngineClip;      // "STOP YOUR ENGINE" radio bark
     [Tooltip("Chase warnings, escalating — one plays over the radio before every shot, in array order.")]
     public AudioClip[] copCalloutClips;
+    [Header("Chase — Tev's rocket")]
+    [Tooltip("Hidden timer: Tev's shot comes roughly this many seconds after you start running.")]
+    public float chaseSeconds = 45f;
+    [Tooltip("After the countdown lands on 1, the hatch must be open within this window or Tev calls for a retry.")]
+    public float hatchWindowSeconds = 1.8f;
+    public AudioClip copPursuitClip;      // cop, the moment you bolt: "so that's how you want it..."
+    public AudioClip tevSpiritClip;       // "THAT'S THE SPIRIT! But what's your plan?!"
+    public AudioClip tevIdeaClip;         // "Wait wait wait... I've got an idea!"
+    public AudioClip tev20SecClip;        // "Just give me 20 seconds!"
+    public AudioClip tevLauncherClip;     // "STUPID ROCKET LAUNCHER! WHERE DID I PUT..."
+    public AudioClip tevHoldSteadyClip;   // "HOLD HER STEADY, I'VE GOT A SHOT!"
+    public AudioClip tevCountdownClip;    // "Open the hatch! Press H in 3... 2... 1!"
+    public AudioClip tevRetryClip;        // "TOO SLOW! Seal it — we go again!"
+    public AudioClip tevHitClip;          // post-explosion celebration
+    public AudioClip rocketFireClip;
+    public AudioClip explosionClip;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -62,6 +78,7 @@ public class TevSmugglingMission : MonoBehaviour
     bool _pinSampled;
     bool _decelActive;       // forced pull-over deceleration / velocity hold running
     float _decelRate;        // units/s² toward the anchor's velocity
+    AudioSource _tevVoice;   // Tev's in-cabin grumbling during the chase
 
     void Awake()
     {
@@ -437,6 +454,12 @@ public class TevSmugglingMission : MonoBehaviour
         _phase = Phase.Chase;
 
         if (_cop == null) { _phase = Phase.Delivering; return; }
+
+        // This chase is scripted: you can't out-RANGE the corvette and it never
+        // runs dry — it ends when Tev's rocket connects (or you eat 3 hits).
+        _cop.escapeDistance = 999999f;
+        _cop.maxBlasts = 999;
+
         _cop.StartChase(
             onEscaped: () =>
             {
@@ -448,7 +471,98 @@ public class TevSmugglingMission : MonoBehaviour
                 // Blown up — routes through the normal death path, which reloads
                 // the newest save via DeathCutsceneController.
                 if (ResourceManager.Instance != null) ResourceManager.Instance.TakeDamage(99999f);
-            });
+            },
+            onFleeDetected: () => StartCoroutine(TevRocketRoutine()),
+            pursuitClip: copPursuitClip);
+    }
+
+    // ── Tev's rocket-launcher finale ──
+
+    float PlayTev(AudioClip clip)
+    {
+        if (clip == null) return 0f;
+        if (_tevVoice == null)
+        {
+            var host = tevNpc != null ? tevNpc.gameObject : gameObject;
+            _tevVoice = host.AddComponent<AudioSource>();
+            _tevVoice.spatialBlend = 0.35f;   // mostly-2D: he's right behind your seat
+            _tevVoice.volume = 1f;
+        }
+        _tevVoice.PlayOneShot(clip);
+        return clip.length;
+    }
+
+    /// The hidden chase clock. Starts the moment the cop sees you run. Tev
+    /// scrambles for his rocket launcher in the back, narrating over the
+    /// engine noise, and at T-5s calls the shot: a 3-2-1 countdown, the player
+    /// must pop the hatch (H) within hatchWindowSeconds of "1" — venting the
+    /// hull — and the rocket takes the corvette out of the sky. Miss the
+    /// window and he resets for another pass until you get it.
+    IEnumerator TevRocketRoutine()
+    {
+        float t0 = Time.time;
+
+        yield return new WaitForSeconds(1f);
+        if (_phase != Phase.Chase) yield break;
+        PlayTev(tevSpiritClip);                                   // "THAT'S THE SPIRIT!..."
+
+        yield return WaitUntilChaseTime(t0, 8f);
+        if (_phase != Phase.Chase) yield break;
+        PlayTev(tevIdeaClip);                                     // "...I've got an idea!"
+
+        yield return WaitUntilChaseTime(t0, 17f);
+        if (_phase != Phase.Chase) yield break;
+        PlayTev(tev20SecClip);                                    // "Just give me 20 seconds!"
+
+        yield return WaitUntilChaseTime(t0, 27f);
+        if (_phase != Phase.Chase) yield break;
+        PlayTev(tevLauncherClip);                                 // "STUPID ROCKET LAUNCHER!..."
+
+        yield return WaitUntilChaseTime(t0, chaseSeconds - 5f);
+        if (_phase != Phase.Chase) yield break;
+        yield return new WaitForSeconds(PlayTev(tevHoldSteadyClip));   // "HOLD HER STEADY!"
+
+        // Countdown → hatch window loop. Success = the main hatch is open when
+        // (or shortly after) the countdown lands.
+        while (_phase == Phase.Chase)
+        {
+            float cdLen = PlayTev(tevCountdownClip);              // "...press H in 3... 2... 1!"
+            yield return new WaitForSeconds(Mathf.Max(0f, cdLen - 0.3f));
+
+            bool open = false;
+            float windowEnd = Time.time + hatchWindowSeconds + 0.3f;
+            while (Time.time < windowEnd && _phase == Phase.Chase)
+            {
+                if (_ship != null && _ship.HatchOpen) { open = true; break; }
+                yield return null;
+            }
+            if (open) break;
+
+            yield return new WaitForSeconds(PlayTev(tevRetryClip) + 1.5f);   // "TOO SLOW!..."
+        }
+        if (_phase != Phase.Chase) yield break;
+
+        // FIRE. Rocket leaves from Tev at the open hatch, homes on the corvette.
+        PlayTev(rocketFireClip);
+        Vector3 origin = tevNpc != null ? tevNpc.position : transform.position;
+        TevRocket.Spawn(origin, _ship, _cop != null ? _cop.transform : null, 320f, onHit: () =>
+        {
+            if (_cop != null) _cop.BlowUp(explosionClip);
+            SetFlag("b1_outlaw", true);
+            _phase = Phase.Delivering;
+            StartCoroutine(TevCelebrate());
+        });
+    }
+
+    IEnumerator TevCelebrate()
+    {
+        yield return new WaitForSeconds(1.2f);
+        PlayTev(tevHitClip);
+    }
+
+    IEnumerator WaitUntilChaseTime(float t0, float t)
+    {
+        while (_phase == Phase.Chase && Time.time - t0 < t) yield return null;
     }
 
     void CheckArrival()
