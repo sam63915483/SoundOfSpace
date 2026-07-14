@@ -1,0 +1,93 @@
+{
+  "id": "conv_b1_clean",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Your story checks out. Somehow.",
+        "All four. First time this month.",
+        "No citation. Consider the speed a warning.",
+        "...",
+        "Which leaves one small thing.",
+        "If you're doing nothing wrong, you won't mind me boarding your vessel. Just to confirm you're good to go."
+      ],
+      "responses": [
+        { "buttonText": "Yes. Come aboard.", "nextNodeId": "yes_cop" },
+        { "buttonText": "No.", "nextNodeId": "no_cop" },
+        { "buttonText": "Go fuck yourself.", "nextNodeId": "gfy_cop", "effects": [ { "kind": "SetFlag", "strArg": "b1_attitude", "boolArg": true } ] }
+      ]
+    },
+
+    {
+      "id": "yes_cop",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Good. Stand by. I'm bringing my corvette across."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "yes_tev" }
+      ]
+    },
+    {
+      "id": "yes_tev",
+      "speaker": "Tev - Translating",
+      "lines": [
+        "NO. NO NO NO.",
+        "HE CANNOT COME ABOARD. HE CANNOT COME ABOARD—",
+        "START THE ENGINE. START IT RIGHT NOW—"
+      ],
+      "responses": [
+        { "buttonText": "(Start the engine.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true }, { "kind": "SetFlag", "strArg": "b1_hs_long", "boolArg": true } ] }
+      ]
+    },
+
+    {
+      "id": "no_cop",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "No.",
+        "Hm. That's fine. That's completely fine.",
+        "I'll run a full-spectrum scan from right here instead. Sit tight — takes about thirty seconds."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "no_tev" }
+      ]
+    },
+    {
+      "id": "no_tev",
+      "speaker": "Tev - Translating",
+      "lines": [
+        "THIRTY SEC— NO. NO NO NO.",
+        "GO. GO GO GO GO—"
+      ],
+      "responses": [
+        { "buttonText": "(GO.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true }, { "kind": "SetFlag", "strArg": "b1_hs_med", "boolArg": true } ] }
+      ]
+    },
+
+    {
+      "id": "gfy_cop",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "...",
+        "...Say again?"
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "gfy_tev" }
+      ]
+    },
+    {
+      "id": "gfy_tev",
+      "speaker": "Tev - Translating",
+      "lines": [
+        "HA! Nice one!",
+        "Better have the piloting skills to back that attitude up—",
+        "GO! GO!"
+      ],
+      "responses": [
+        { "buttonText": "(Punch it.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true } ] }
+      ]
+    }
+  ]
+}

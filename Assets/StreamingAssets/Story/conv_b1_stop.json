@@ -7,7 +7,9 @@
       "lines": [
         "UNIDENTIFIED VESSEL. CUT YOUR THRUST.",
         "This is Galactic Patrol. Our radar operators recorded your vessel crossing this corridor significantly above the posted limit.",
-        "We have reasonable suspicion of a speed violation. This is a routine check. Hold your position."
+        "We have reasonable suspicion of a speed violation. This is a routine check. Hold your position.",
+        "Officer Kolb, badge four-one-one. Forty-one years on this corridor. I have heard every excuse a mouth can produce.",
+        "Four questions. Tell me the truth, or tell me you don't know. Make something up and I will find something to charge you with. I always do."
       ],
       "responses": [
         { "buttonText": "(Reach for the radio.)", "nextNodeId": "panic" }
@@ -18,12 +20,15 @@
       "speaker": "Tev - Translating",
       "lines": [
         "okay okay okay okay.",
-        "Do NOT be weird. I need ninety seconds."
+        "Do NOT be weird. I need ninety seconds.",
+        "And listen — he's a truth guy. I know the type. Tell him the truth, or tell him you don't know. Either one.",
+        "Just do NOT make something up. And do NOT be funny."
       ],
       "responses": [
         { "buttonText": "(Deep breath. Answer the radio.)", "nextNodeId": "q1" }
       ]
     },
+
     {
       "id": "q1",
       "speaker": "Galactic Patrol",
@@ -31,26 +36,60 @@
         "First question. Do you know how fast you were going?"
       ],
       "responses": [
-        { "buttonText": "Faster than you, apparently.", "nextNodeId": "q2" },
-        { "buttonText": "No sir — this ship's speedometer is in units I don't recognize.", "nextNodeId": "q2", "effects": [ { "kind": "SetFlag", "strArg": "b1_q1_pass", "boolArg": true } ] },
-        { "buttonText": "About 150 m/s. Tops.", "nextNodeId": "q2", "effects": [ { "kind": "SetFlag", "strArg": "b1_q1_pass", "boolArg": true } ] },
-        { "buttonText": "Is this about the dust?", "nextNodeId": "q2" }
+        { "buttonText": "Fast. Too fast. I'm not going to pretend otherwise.", "nextNodeId": "q2", "effects": [ { "kind": "SetFlag", "strArg": "b1_q1_pass", "boolArg": true } ] },
+        { "buttonText": "No. Honestly, I wasn't watching the gauge.", "nextNodeId": "q2", "effects": [ { "kind": "SetFlag", "strArg": "b1_q1_pass", "boolArg": true } ] },
+        { "buttonText": "I was under the limit the whole way.", "nextNodeId": "q1_lie" },
+        { "buttonText": "Faster than you, apparently.", "nextNodeId": "warn_q1", "effects": [ { "kind": "SetFlag", "strArg": "b1_sass_q1", "boolArg": true } ] }
       ]
     },
+    {
+      "id": "q1_lie",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Mm.",
+        "...I'm writing that down."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "q2" }
+      ]
+    },
+
     {
       "id": "q2",
       "speaker": "Galactic Patrol",
       "lines": [
-        "Do you know what the speed limit is in this corridor?"
+        "Question two. This vessel. Who does it belong to?"
       ],
       "responses": [
-        { "buttonText": "100 m/s.", "nextNodeId": "q3" },
-        { "buttonText": "200 m/s.", "nextNodeId": "q3", "effects": [ { "kind": "SetFlag", "strArg": "b1_q2_pass", "boolArg": true } ] },
-        { "buttonText": "300 m/s.", "nextNodeId": "q3" },
-        { "buttonText": "400? A million? It's SPACE, man.", "nextNodeId": "q3" },
-        { "buttonText": "I genuinely have no idea.", "nextNodeId": "q3", "effects": [ { "kind": "SetFlag", "strArg": "b1_q2_pass", "boolArg": true } ] }
+        { "buttonText": "It's his. All his. I'm just the driver.", "nextNodeId": "q2_true", "effects": [ { "kind": "SetFlag", "strArg": "b1_q2_pass", "boolArg": true } ] },
+        { "buttonText": "My associate's. He can't fly — that's what I'm for.", "nextNodeId": "q2_true", "effects": [ { "kind": "SetFlag", "strArg": "b1_q2_pass", "boolArg": true } ] },
+        { "buttonText": "Mine.", "nextNodeId": "q2_lie" },
+        { "buttonText": "Finders keepers.", "nextNodeId": "warn_q2", "effects": [ { "kind": "SetFlag", "strArg": "b1_sass_q2", "boolArg": true } ] }
       ]
     },
+    {
+      "id": "q2_true",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Registered to a Tev. Flight licence revoked four years ago.",
+        "...So you're the driver."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "q3" }
+      ]
+    },
+    {
+      "id": "q2_lie",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "The registry says this hull belongs to someone named Tev.",
+        "Mm. ...Writing that down."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "q3" }
+      ]
+    },
+
     {
       "id": "q3",
       "speaker": "Galactic Patrol",
@@ -58,11 +97,25 @@
         "State your business on Fiery Twin."
       ],
       "responses": [
-        { "buttonText": "Delivery.", "nextNodeId": "q4" },
-        { "buttonText": "My associate and I are visiting family.", "nextNodeId": "q4" },
-        { "buttonText": "Tourism. We heard the sunrise is lethal and wanted to see it.", "nextNodeId": "q4", "effects": [ { "kind": "SetFlag", "strArg": "b1_q3_pass", "boolArg": true } ] }
+        { "buttonText": "Cargo run. I'm delivering something for my associate.", "nextNodeId": "q4", "effects": [ { "kind": "SetFlag", "strArg": "b1_q3_pass", "boolArg": true } ] },
+        { "buttonText": "Honestly? He asked, I said yes, I didn't ask what for.", "nextNodeId": "q4", "effects": [ { "kind": "SetFlag", "strArg": "b1_q3_pass", "boolArg": true } ] },
+        { "buttonText": "Visiting family.", "nextNodeId": "q3_lie" },
+        { "buttonText": "Tourism. We heard the sunrise is lethal and wanted to see it.", "nextNodeId": "warn_q3", "effects": [ { "kind": "SetFlag", "strArg": "b1_sass_q3", "boolArg": true } ] }
       ]
     },
+    {
+      "id": "q3_lie",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Family.",
+        "Son, the surface of Fiery Twin peels paint off a hull. Nobody has family there.",
+        "Mm."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "q4" }
+      ]
+    },
+
     {
       "id": "q4",
       "speaker": "Galactic Patrol",
@@ -71,11 +124,101 @@
         "What is that sound?"
       ],
       "responses": [
-        { "buttonText": "What sound?", "nextNodeId": "done" },
-        { "buttonText": "My co-pilot gets spacesick. He's in the back being sick.", "nextNodeId": "done", "effects": [ { "kind": "SetFlag", "strArg": "b1_q4_pass", "boolArg": true } ] },
-        { "buttonText": "The ship is haunted.", "nextNodeId": "done" }
+        { "buttonText": "That's my associate. He's panicking.", "nextNodeId": "q4_true", "effects": [ { "kind": "SetFlag", "strArg": "b1_q4_pass", "boolArg": true } ] },
+        { "buttonText": "I don't hear anything.", "nextNodeId": "q4_static", "effects": [ { "kind": "SetFlag", "strArg": "b1_q4_pass", "boolArg": true } ] },
+        { "buttonText": "Hull tick. She does that when she's cold.", "nextNodeId": "q4_lie" },
+        { "buttonText": "The ship is haunted.", "nextNodeId": "warn_q4", "effects": [ { "kind": "SetFlag", "strArg": "b1_sass_q4", "boolArg": true } ] }
       ]
     },
+    {
+      "id": "q4_true",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "...Panicking.",
+        "Huh. At least that's an honest answer."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "done" }
+      ]
+    },
+    {
+      "id": "q4_static",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "...Hm.",
+        "Could be my end. This channel's been garbage all week.",
+        "Forget it."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "done" }
+      ]
+    },
+    {
+      "id": "q4_lie",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "That's not a hull tick.",
+        "I've flown hulls for forty-one years. That is a voice.",
+        "Mm."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "done" }
+      ]
+    },
+
+    {
+      "id": "warn_q1",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Stop.",
+        "You think you're funny. Every one of you thinks you're funny. Forty-one years, and not one of you has been.",
+        "That's your one. Try it again and I stop asking questions and start filling out forms.",
+        "Answer the rest of them straight."
+      ],
+      "responses": [
+        { "buttonText": "(Answer straight.)", "nextNodeId": "q2" }
+      ]
+    },
+    {
+      "id": "warn_q2",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Stop.",
+        "You think you're funny. Every one of you thinks you're funny. Forty-one years, and not one of you has been.",
+        "That's your one. Try it again and I stop asking questions and start filling out forms.",
+        "Answer the rest of them straight."
+      ],
+      "responses": [
+        { "buttonText": "(Answer straight.)", "nextNodeId": "q3" }
+      ]
+    },
+    {
+      "id": "warn_q3",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Stop.",
+        "You think you're funny. Every one of you thinks you're funny. Forty-one years, and not one of you has been.",
+        "That's your one. Try it again and I stop asking questions and start filling out forms.",
+        "Answer the rest of them straight."
+      ],
+      "responses": [
+        { "buttonText": "(Answer straight.)", "nextNodeId": "q4" }
+      ]
+    },
+    {
+      "id": "warn_q4",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Stop.",
+        "You think you're funny. Every one of you thinks you're funny. Forty-one years, and not one of you has been.",
+        "That's your one. Try it again and I stop asking questions and start filling out forms.",
+        "Answer the rest of them straight."
+      ],
+      "responses": [
+        { "buttonText": "(Answer straight.)", "nextNodeId": "done" }
+      ]
+    },
+
     {
       "id": "done",
       "speaker": "Galactic Patrol",

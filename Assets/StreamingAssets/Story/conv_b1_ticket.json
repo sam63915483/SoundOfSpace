@@ -6,12 +6,62 @@
       "speaker": "Galactic Patrol",
       "lines": [
         "Your answers were... partially satisfactory.",
+        "I'm not going to tell you which ones. You know which ones.",
         "Citation issued: one (1) count of corridor speeding.",
         "The fine is $200. Payable immediately."
       ],
       "responses": [
-        { "buttonText": "Pay the $200.", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_pay", "boolArg": true } ] },
-        { "buttonText": "(Punch it.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true } ] }
+        { "buttonText": "Pay the $200.", "nextNodeId": "paid_cop", "effects": [ { "kind": "SetFlag", "strArg": "b1_pay", "boolArg": true } ] },
+        { "buttonText": "I'm not paying that.", "nextNodeId": "refused_cop", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true } ] }
+      ]
+    },
+
+    {
+      "id": "paid_cop",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "...Received.",
+        "Now. While I've got you. Standard procedure on a paid citation — I need to log your cargo manifest.",
+        "Open the hold."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "paid_tev" }
+      ]
+    },
+    {
+      "id": "paid_tev",
+      "speaker": "Tev - Translating",
+      "lines": [
+        "WHAT.",
+        "He TOOK the money. He took the money and he's STILL—",
+        "GO! GO NOW!"
+      ],
+      "responses": [
+        { "buttonText": "(Punch it.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true }, { "kind": "SetFlag", "strArg": "b1_hs_med", "boolArg": true } ] }
+      ]
+    },
+
+    {
+      "id": "refused_cop",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "...Refusing to pay a lawful citation.",
+        "Huh. Well. That's obstruction.",
+        "And obstruction means I can legally search your vessel. OPEN UP."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "refused_tev" }
+      ]
+    },
+    {
+      "id": "refused_tev",
+      "speaker": "Tev - Translating",
+      "lines": [
+        "okay okay okay — let's get the FUCK out of here—",
+        "GO!"
+      ],
+      "responses": [
+        { "buttonText": "(Punch it.)", "nextNodeId": "end" }
       ]
     }
   ]

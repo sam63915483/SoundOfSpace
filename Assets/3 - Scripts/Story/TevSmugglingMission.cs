@@ -11,13 +11,18 @@ using UnityEngine;
 ///                 halfway point between Humble Abode and Fiery Twin while piloting.
 ///   PullOver    → ship frozen (velocity matched to nearest body), cop corvette
 ///                 flies in, interrogation conversation (conv_b1_stop).
-///   Verdict     → count b1_q1..q4_pass: 4/4 → conv_b1_free; else conv_b1_ticket.
-///   TicketChoice→ b1_pay → SpendMoney(200) (fail = chase); b1_run → chase.
-///   Chase       → CopShipController pursues + fires blasts; escape or die.
+///   Verdict     → sass >= 2 → conv_b1_arrest; 4/4 passes → conv_b1_clean;
+///                 else conv_b1_ticket. EVERY outcome now leads to the chase —
+///                 the interrogation decides how hard it is (the head start),
+///                 not whether it happens (docs/B1_INTERROGATION_REWRITE.md).
+///   Confrontation→ arrest/clean boarding demand; watches b1_run → chase.
+///   TicketChoice→ b1_pay → SpendMoney(200) (fail = no head start); b1_run → chase.
+///   Chase       → b1_hs_long/med grants free-flight seconds before pursuit,
+///                 then CopShipController pursues + fires blasts until the rocket.
 ///   Delivering  → reach Fiery Twin → payout, done.
 public class TevSmugglingMission : MonoBehaviour
 {
-    public enum Phase { Idle, EnRoute, PullOver, Interrogation, Verdict, AwaitRelease, TicketChoice, Chase, Delivering, Done }
+    public enum Phase { Idle, EnRoute, PullOver, Interrogation, Verdict, Confrontation, TicketChoice, Chase, Delivering, Done }
 
     [Header("Scene refs")]
     public Transform tevNpc;                 // TEVONSHIP (standing Tev inside the ship)
@@ -83,6 +88,11 @@ public class TevSmugglingMission : MonoBehaviour
     [Tooltip("The only two cop barks during the chase — timed into gaps where Tev isn't speaking.")]
     public AudioClip copChase1Clip;
     public AudioClip copChase2Clip;
+    [Header("Chase — head start")]
+    [Tooltip("Seconds the player flies free before the corvette begins pursuit. Set by how the traffic stop ended: long = he was mid-docking-approach, most committed, slowest to abort.")]
+    public float headStartLong = 5f;
+    [Tooltip("Medium head start: he was charging a scanner / logging a payment.")]
+    public float headStartMedium = 3f;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -102,31 +112,107 @@ public class TevSmugglingMission : MonoBehaviour
         "Me and the crate will be right here. Being patient. And extremely legal.",
     };
 
-    // Officer lines across conv_b1_stop / conv_b1_free / conv_b1_ticket, in
-    // file order (the "..." beats are silent on purpose) — index-matched to
-    // copConvClips. MUST stay byte-identical to the JSON.
+    // Officer lines across conv_b1_stop / conv_b1_clean / conv_b1_ticket /
+    // conv_b1_arrest, in file order (the "..." beats are silent on purpose;
+    // duplicate strings — "Mm.", the warn_q* speech — appear ONCE and share a
+    // clip) — index-matched to copConvClips. MUST stay byte-identical to the
+    // JSON. Run "Validate B1 voice bindings" after any edit here or in the
+    // JSONs: a mismatch plays SILENT with no error.
     static readonly string[] CopConvLines =
     {
+        // conv_b1_stop — open
         "UNIDENTIFIED VESSEL. CUT YOUR THRUST.",
         "This is Galactic Patrol. Our radar operators recorded your vessel crossing this corridor significantly above the posted limit.",
         "We have reasonable suspicion of a speed violation. This is a routine check. Hold your position.",
+        "Officer Kolb, badge four-one-one. Forty-one years on this corridor. I have heard every excuse a mouth can produce.",
+        "Four questions. Tell me the truth, or tell me you don't know. Make something up and I will find something to charge you with. I always do.",
+        // q1 / q1_lie
         "First question. Do you know how fast you were going?",
-        "Do you know what the speed limit is in this corridor?",
+        "Mm.",
+        "...I'm writing that down.",
+        // q2 / q2_true / q2_lie
+        "Question two. This vessel. Who does it belong to?",
+        "Registered to a Tev. Flight licence revoked four years ago.",
+        "...So you're the driver.",
+        "The registry says this hull belongs to someone named Tev.",
+        "Mm. ...Writing that down.",
+        // q3 / q3_lie
         "State your business on Fiery Twin.",
+        "Family.",
+        "Son, the surface of Fiery Twin peels paint off a hull. Nobody has family there.",
+        // q4 / q4_true / q4_static / q4_lie
         "What is that sound?",
+        "...Panicking.",
+        "Huh. At least that's an honest answer.",
+        "...Hm.",
+        "Could be my end. This channel's been garbage all week.",
+        "Forget it.",
+        "That's not a hull tick.",
+        "I've flown hulls for forty-one years. That is a voice.",
+        // warn_q1..q4 (identical on purpose — one set of clips serves all four)
+        "Stop.",
+        "You think you're funny. Every one of you thinks you're funny. Forty-one years, and not one of you has been.",
+        "That's your one. Try it again and I stop asking questions and start filling out forms.",
+        "Answer the rest of them straight.",
+        // done
         "Hold position. Running your answers through central.",
+        // conv_b1_clean
         "Your story checks out. Somehow.",
-        "Maintain corridor speed. Have a boring day.",
+        "All four. First time this month.",
+        "No citation. Consider the speed a warning.",
+        "Which leaves one small thing.",
+        "If you're doing nothing wrong, you won't mind me boarding your vessel. Just to confirm you're good to go.",
+        "Good. Stand by. I'm bringing my corvette across.",
+        "No.",
+        "Hm. That's fine. That's completely fine.",
+        "I'll run a full-spectrum scan from right here instead. Sit tight — takes about thirty seconds.",
+        "...Say again?",
+        // conv_b1_ticket
         "Your answers were... partially satisfactory.",
+        "I'm not going to tell you which ones. You know which ones.",
         "Citation issued: one (1) count of corridor speeding.",
         "The fine is $200. Payable immediately.",
+        "...Received.",
+        "Now. While I've got you. Standard procedure on a paid citation — I need to log your cargo manifest.",
+        "Open the hold.",
+        "...Refusing to pay a lawful citation.",
+        "Huh. Well. That's obstruction.",
+        "And obstruction means I can legally search your vessel. OPEN UP.",
+        // conv_b1_arrest
+        "Central's back. Doesn't matter.",
+        "I told you what would happen.",
+        "I'm not writing you a ticket. I'm boarding your vessel and taking you in. And then I am going to take my time with the paperwork.",
+        "Cut your engine and open the hold.",
     };
 
-    // Tev's lines inside conv_b1_stop — index-matched to trConvClips.
+    // Tev's lines across the four interrogation convs, in file order —
+    // index-matched to trConvClips. MUST stay byte-identical to the JSON.
     static readonly string[] TevConvLines =
     {
+        // conv_b1_stop — panic
         "okay okay okay okay.",
         "Do NOT be weird. I need ninety seconds.",
+        "And listen — he's a truth guy. I know the type. Tell him the truth, or tell him you don't know. Either one.",
+        "Just do NOT make something up. And do NOT be funny.",
+        // conv_b1_clean — yes_tev / no_tev / gfy_tev
+        "NO. NO NO NO.",
+        "HE CANNOT COME ABOARD. HE CANNOT COME ABOARD—",
+        "START THE ENGINE. START IT RIGHT NOW—",
+        "THIRTY SEC— NO. NO NO NO.",
+        "GO. GO GO GO GO—",
+        "HA! Nice one!",
+        "Better have the piloting skills to back that attitude up—",
+        "GO! GO!",
+        // conv_b1_ticket — paid_tev / refused_tev
+        "WHAT.",
+        "He TOOK the money. He took the money and he's STILL—",
+        "GO! GO NOW!",
+        "okay okay okay — let's get the FUCK out of here—",
+        "GO!",
+        // conv_b1_arrest — arrest_tev
+        "...what did you SAY to him.",
+        "WHAT DID YOU SAY TO HIM—",
+        "GO!! GO!!",
     };
 
     Phase _phase = Phase.Idle;
@@ -390,19 +476,24 @@ public class TevSmugglingMission : MonoBehaviour
                     StartCoroutine(VerdictRoutine());
                 break;
 
-            case Phase.AwaitRelease:
-                if (Flag("b1_released") && !WorldDialogueUI.IsOpen) Release();
+            case Phase.Confrontation:
+                if (!WorldDialogueUI.IsOpen && Flag("b1_run")) StartChase();
                 break;
 
             case Phase.TicketChoice:
                 if (WorldDialogueUI.IsOpen) break;
                 if (Flag("b1_pay"))
                 {
+                    // Paying no longer ends the stop — Kolb demands the hold
+                    // anyway; the $200 buys the head start (he's distracted
+                    // logging the payment). If the spend bounces he notices,
+                    // and the head start is gone.
                     var wallet = PlayerWallet.Instance;
-                    if (wallet != null && wallet.SpendMoney(fineAmount)) Release();
-                    else StartChase();   // can't pay = same as running
+                    if (wallet == null || !wallet.SpendMoney(fineAmount))
+                        SetFlag("b1_hs_med", false);
+                    SetFlag("b1_pay", false);   // never charge twice
                 }
-                else if (Flag("b1_run")) StartChase();
+                if (Flag("b1_run")) StartChase();
                 break;
 
             case Phase.Delivering:
@@ -449,7 +540,7 @@ public class TevSmugglingMission : MonoBehaviour
         // zero this doubles as the hold. Planets keep orbiting normally; the
         // ship just rides along with the closest one.
         bool frozen = _phase == Phase.PullOver || _phase == Phase.Interrogation ||
-                      _phase == Phase.Verdict || _phase == Phase.AwaitRelease ||
+                      _phase == Phase.Verdict || _phase == Phase.Confrontation ||
                       _phase == Phase.TicketChoice;
         if (!frozen || !_decelActive || _anchorBody == null || rb.isKinematic) return;
 
@@ -548,10 +639,16 @@ public class TevSmugglingMission : MonoBehaviour
         SetFlag("b1_q2_pass", false);
         SetFlag("b1_q3_pass", false);
         SetFlag("b1_q4_pass", false);
+        SetFlag("b1_sass_q1", false);
+        SetFlag("b1_sass_q2", false);
+        SetFlag("b1_sass_q3", false);
+        SetFlag("b1_sass_q4", false);
         SetFlag("b1_interrogation_done", false);
         SetFlag("b1_pay", false);
         SetFlag("b1_run", false);
-        SetFlag("b1_released", false);
+        SetFlag("b1_hs_long", false);
+        SetFlag("b1_hs_med", false);
+        SetFlag("b1_attitude", false);
 
         // 1. The corvette starts ONE continuous glide toward the ship — sirens,
         //    lights. The glide is stretched to cover the whole staging (it never
@@ -628,11 +725,24 @@ public class TevSmugglingMission : MonoBehaviour
         if (Flag("b1_q3_pass")) passes++;
         if (Flag("b1_q4_pass")) passes++;
 
+        int sass = 0;
+        if (Flag("b1_sass_q1")) sass++;
+        if (Flag("b1_sass_q2")) sass++;
+        if (Flag("b1_sass_q3")) sass++;
+        if (Flag("b1_sass_q4")) sass++;
+
         StartCoroutine(ConvVoiceover());
-        if (passes >= 4)
+        if (sass >= 2)
         {
-            WorldDialogueUI.Begin("conv_b1_free");
-            _phase = Phase.AwaitRelease;
+            // He warned you. He does not warn twice.
+            WorldDialogueUI.Begin("conv_b1_arrest");
+            _phase = Phase.Confrontation;
+        }
+        else if (passes >= 4)
+        {
+            // Clean run: no fine — but he still wants inside the hold.
+            WorldDialogueUI.Begin("conv_b1_clean");
+            _phase = Phase.Confrontation;
         }
         else
         {
@@ -640,15 +750,6 @@ public class TevSmugglingMission : MonoBehaviour
             _phase = Phase.TicketChoice;
         }
         _busy = false;
-    }
-
-    void Release()
-    {
-        if (_ship != null) _ship.canFly = true;
-        _decelActive = false;
-        _anchorBody = null;
-        if (_cop != null) _cop.FlyAway();
-        _phase = Phase.Delivering;
     }
 
     void StartChase()
@@ -659,6 +760,21 @@ public class TevSmugglingMission : MonoBehaviour
         _phase = Phase.Chase;
 
         if (_cop == null) { _phase = Phase.Delivering; return; }
+
+        // The politer the stop ended, the further away Kolb is when Tev punches
+        // it: he's mid-docking-approach / mid-scan / logging the payment.
+        float headStart = Flag("b1_hs_long") ? headStartLong
+                        : Flag("b1_hs_med")  ? headStartMedium
+                        : 0f;
+        StartCoroutine(ChaseRoutine(headStart));
+    }
+
+    IEnumerator ChaseRoutine(float headStart)
+    {
+        // The player flies free while Kolb is still distracted. Zero head
+        // start = he was already hot and comes straight after you.
+        if (headStart > 0f) yield return new WaitForSeconds(headStart);
+        if (_phase != Phase.Chase || _cop == null) yield break;
 
         // This chase is scripted: you can't out-RANGE the corvette and it never
         // runs dry — it ends when Tev's rocket connects (or you eat 3 hits).
@@ -1124,6 +1240,55 @@ public class TevSmugglingMission : MonoBehaviour
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(payoutAmount);
         Debug.Log("[TevSmuggling] Delivered to Fiery Twin — mission complete (barebones end).");
     }
+
+#if UNITY_EDITOR
+    /// Guard against the silent-failure trap: FindClip matches JSON lines
+    /// against the C# tables byte-for-byte, and a miss plays SILENT with
+    /// default typewriter pacing — no exception, no warning. This walks every
+    /// conv_b1_* JSON and flags any voiced line missing from its table or
+    /// bound to a null clip slot. "..." beats are silent on purpose.
+    [ContextMenu("Validate B1 voice bindings")]
+    void ValidateVoiceBindings()
+    {
+        StoryContent.LoadAll();
+        int problems = 0;
+        foreach (var conv in StoryContent.Conversations.Values)
+        {
+            if (conv.id == null || !conv.id.StartsWith("conv_b1_")) continue;
+            foreach (var node in conv.nodes)
+            {
+                bool tev = node.speaker != null &&
+                           node.speaker.StartsWith("TEV", System.StringComparison.OrdinalIgnoreCase);
+                if (node.lines == null) continue;
+                foreach (var line in node.lines)
+                {
+                    if (line == "...") continue;
+                    string[] table = tev ? TevConvLines : CopConvLines;
+                    AudioClip[] clips = tev ? trConvClips : copConvClips;
+                    int idx = System.Array.IndexOf(table, line);
+                    if (tev && idx < 0)
+                    {
+                        idx = System.Array.IndexOf(OfferLines, line);
+                        clips = trOfferClips;
+                    }
+                    if (idx < 0)
+                    {
+                        problems++;
+                        Debug.LogWarning($"[TevSmuggling] UNVOICED line in {conv.id}/{node.id} — not in the {(tev ? "Tev" : "cop")} table: \"{line}\"");
+                    }
+                    else if (clips == null || idx >= clips.Length || clips[idx] == null)
+                    {
+                        problems++;
+                        Debug.LogWarning($"[TevSmuggling] NULL CLIP at {(tev ? "tr" : "cop")}ConvClips[{idx}] for {conv.id}/{node.id}: \"{line}\"");
+                    }
+                }
+            }
+        }
+        Debug.Log(problems == 0
+            ? "[TevSmuggling] voice bindings OK — every conv_b1_* line has a clip."
+            : $"[TevSmuggling] voice bindings: {problems} problem(s) — see warnings above.");
+    }
+#endif
 
     // ── Helpers ──
 

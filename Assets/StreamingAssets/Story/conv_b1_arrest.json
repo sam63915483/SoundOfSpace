@@ -1,0 +1,30 @@
+{
+  "id": "conv_b1_arrest",
+  "nodes": [
+    {
+      "id": "open",
+      "speaker": "Galactic Patrol",
+      "lines": [
+        "Central's back. Doesn't matter.",
+        "I told you what would happen.",
+        "I'm not writing you a ticket. I'm boarding your vessel and taking you in. And then I am going to take my time with the paperwork.",
+        "Cut your engine and open the hold."
+      ],
+      "responses": [
+        { "buttonText": "(...)", "nextNodeId": "arrest_tev" }
+      ]
+    },
+    {
+      "id": "arrest_tev",
+      "speaker": "Tev - Translating",
+      "lines": [
+        "...what did you SAY to him.",
+        "WHAT DID YOU SAY TO HIM—",
+        "GO!! GO!!"
+      ],
+      "responses": [
+        { "buttonText": "(Punch it.)", "nextNodeId": "end", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true } ] }
+      ]
+    }
+  ]
+}
