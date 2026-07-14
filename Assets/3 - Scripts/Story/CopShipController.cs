@@ -45,6 +45,7 @@ public class CopShipController : MonoBehaviour
     Vector3 _departDir;
     float _flyT;
     float _floorRamp;        // chase floor eases from the takeover gap up to minChaseDistance
+    float _chaseBlend;       // 0 at takeover → 1: fades the sway/bob in so the parked pose doesn't snap
     float _nextBarrelAt;     // next barrel-roll flourish during the chase
     float _barrelT;          // 0 = not rolling, else roll progress
     float _departSpeed;
@@ -225,8 +226,8 @@ public class CopShipController : MonoBehaviour
         _awaitRot = _target.transform.rotation;
         _restRel = transform.position - ShipPos();
         _mode = Mode.AwaitFlee;
-
-        if (_siren != null) { _siren.loop = true; _siren.Play(); }
+        // Siren stays quiet here: it kicks in the moment the flee is actually
+        // detected (the player throttles up), not while he's still parked.
     }
 
     void LateUpdate()
@@ -279,9 +280,11 @@ public class CopShipController : MonoBehaviour
                     // up to minChaseDistance, so the takeover has no snap; the
                     // trail slerp in TickChase swings it around behind.
                     _floorRamp = Mathf.Min(_chaseRel.magnitude, minChaseDistance);
+                    _chaseBlend = 0f;
                     _nextBlastAt = Time.time + 3f;
                     _nextBarrelAt = Time.time + UnityEngine.Random.Range(4f, 8f);
                     _mode = Mode.Chase;
+                    if (_siren != null) { _siren.loop = true; _siren.Play(); }
                     _onFleeDetected?.Invoke();
                     _onFleeDetected = null;
                 }
@@ -326,7 +329,18 @@ public class CopShipController : MonoBehaviour
         // the front-to-behind takeover swing after refusing the ticket takes
         // a natural ~4s arc instead of whipping around in one.
         Vector3 trailDir = fleeSpeed > 2f ? -fleeVel.normalized : _chaseRel.normalized;
-        Vector3 dir = Vector3.Slerp(_chaseRel.normalized, trailDir, 0.4f * dt).normalized;
+        Vector3 cur = _chaseRel.normalized;
+        // At the takeover the corvette is dead AHEAD and the trail point dead
+        // BEHIND — near-antiparallel Slerp has no defined arc plane, so each
+        // frame picked a different great circle and the swing stuttered. Bias
+        // the target toward one consistent flank so it peels off smoothly.
+        if (Vector3.Dot(cur, trailDir) < -0.9f)
+        {
+            Vector3 peel = Vector3.Cross(_target.transform.up, cur);
+            if (peel.sqrMagnitude < 0.001f) peel = _target.transform.right;
+            trailDir = (trailDir + peel.normalized * 0.5f).normalized;
+        }
+        Vector3 dir = Vector3.Slerp(cur, trailDir, 0.4f * dt).normalized;
         _chaseRel = dir * dist;
 
         // Presentation on top of the pure gap model: the corvette weaves —
@@ -337,8 +351,12 @@ public class CopShipController : MonoBehaviour
         Vector3 side = Vector3.Cross(upRef, dir);
         if (side.sqrMagnitude < 0.001f) side = _target.transform.right;
         side.Normalize();
-        float sway = Mathf.Sin(Time.time * 0.8f) * 42f;
-        float bob = Mathf.Sin(Time.time * 1.7f + 1.3f) * 14f;
+        // The weave fades in over the first seconds of the chase — the parked
+        // pose has zero sway, so full amplitude on frame one was a visible
+        // sideways snap at the takeover.
+        _chaseBlend = Mathf.MoveTowards(_chaseBlend, 1f, dt / 2.5f);
+        float sway = Mathf.Sin(Time.time * 0.8f) * 42f * _chaseBlend;
+        float bob = Mathf.Sin(Time.time * 1.7f + 1.3f) * 14f * _chaseBlend;
 
         if (Time.time >= _nextBarrelAt)
         {

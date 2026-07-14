@@ -93,6 +93,8 @@ public class TevSmugglingMission : MonoBehaviour
     public float headStartLong = 5f;
     [Tooltip("Medium head start: he was charging a scanner / logging a payment.")]
     public float headStartMedium = 3f;
+    [Tooltip("Tev after the corvette goes down: get us to Fiery Twin, we lay low.")]
+    public AudioClip trLayLowClip;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -1221,6 +1223,10 @@ public class TevSmugglingMission : MonoBehaviour
     {
         yield return new WaitForSeconds(1.2f);
         ShowTevLine("HAHAHA! DIRECT HIT! That's why you always pack emergency rockets!", trDirectHitClip);
+        // Once the cheer clears, snap back to business: destination + lay low.
+        while (_subtitleCo != null) yield return null;
+        yield return new WaitForSeconds(0.8f);
+        ShowTevLine("Great. Now get us to Fiery Twin, ASAP — we can lay low for a bit.", trLayLowClip);
     }
 
     IEnumerator WaitUntilChaseTime(float t0, float t)
