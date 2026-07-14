@@ -19,7 +19,6 @@ public class CopShipController : MonoBehaviour
     public float fleeThreshold = 20f;        // rel speed that counts as "trying to run"
     public float turnThreshold = 10f;        // degrees of ship rotation that also count as "trying to run"
     public float blastInterval = 4f;
-    public float calloutLeadSeconds = 1.5f;  // radio bark plays this long before each shot
     public int maxBlasts = 5;
     public float blastRange = 550f;
     public float blastSpeed = 126f;   // 1.4× the original 90 — reads as a real shot, still dodgeable
@@ -35,7 +34,6 @@ public class CopShipController : MonoBehaviour
     public Action onBlastFired;   // fires the moment each blast leaves (Tev's "INCOMING!")
     public AudioClip pingClip;    // radar ping while a blast is inbound (set by the mission)
     public AudioClip zapClip;     // electric fry on a blast hit
-    AudioClip _pursuitClip;
 
     // All poses are ship-POSITION-relative offsets in WORLD axes ("rel"), not
     // ship-local: local poses rotated with the hull, so mouse-looking (which
@@ -60,11 +58,6 @@ public class CopShipController : MonoBehaviour
     float _flashTimer;
     bool _redOn;
 
-    AudioClip[] _callouts;   // escalating warnings, one per shot, in array order
-    int _calloutIdx;
-    bool _shotArmed;         // callout played, shot queued
-    float _fireAt;
-
     int _fired, _hits, _pending;
     float _nextBlastAt;
     bool _resolved;          // chase finished (escaped or caught)
@@ -75,7 +68,6 @@ public class CopShipController : MonoBehaviour
     public void HoldFire(bool hold)
     {
         _holdFire = hold;
-        if (hold) _shotArmed = false;
     }
 
     /// Fire a single immediate blast (no callout lead) — the punishment shot
@@ -96,11 +88,10 @@ public class CopShipController : MonoBehaviour
     /// shadowing pose in front of the windshield (sirens + lights) — the player
     /// sees it arrive through the glass. Call PullInFront() once the target has
     /// (nearly) stopped to close to the interrogation pose.
-    public void Init(Ship target, CelestialBody anchor, AudioClip sirenClip, AudioClip[] calloutClips)
+    public void Init(Ship target, CelestialBody anchor, AudioClip sirenClip)
     {
         _target = target;
         _anchor = anchor;
-        _callouts = calloutClips;
         _endless = FindObjectOfType<EndlessManager>();
 
         // Front poses are computed from the ship's orientation ONCE, here, then
@@ -223,12 +214,11 @@ public class CopShipController : MonoBehaviour
     /// fleeThreshold), it barks pursuitClip over the radio, swings around
     /// behind them, and the real chase begins (onFleeDetected fires — the
     /// mission uses it to start Tev's hidden rocket timer).
-    public void StartChase(Action onEscaped, Action onCaught, Action onFleeDetected, AudioClip pursuitClip)
+    public void StartChase(Action onEscaped, Action onCaught, Action onFleeDetected)
     {
         _onEscaped = onEscaped;
         _onCaught = onCaught;
         _onFleeDetected = onFleeDetected;
-        _pursuitClip = pursuitClip;
 
         Rigidbody rb = _target.Rigidbody;
         _fleeBaseVel = rb != null ? rb.velocity : Vector3.zero;
@@ -283,7 +273,6 @@ public class CopShipController : MonoBehaviour
                 float turned = Quaternion.Angle(_awaitRot, _target.transform.rotation);
                 if (fleeVel.magnitude > fleeThreshold || turned > turnThreshold)
                 {
-                    PlayRadio(_pursuitClip);
                     Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
                     _chaseRel = transform.position - shipPos;
                     // Floor starts at the current (small, in-front) gap and eases
@@ -372,28 +361,18 @@ public class CopShipController : MonoBehaviour
 
         if (dist > escapeDistance) { ResolveChase(escaped: true); return; }
 
-        // Every shot is telegraphed: a radio bark (escalating through the
-        // callout list) plays calloutLeadSeconds before the blast leaves.
-        if (!_holdFire && _fired < maxBlasts && dist < blastRange)
+        // Shots fire on the interval, untelegraphed — the radar ping and Tev's
+        // warnings carry the tension (the mission schedules the only two cop
+        // barks itself, in Tev's gaps).
+        if (!_holdFire && _fired < maxBlasts && dist < blastRange && Time.time >= _nextBlastAt)
         {
-            if (!_shotArmed && Time.time >= _nextBlastAt)
-            {
-                _shotArmed = true;
-                _fireAt = Time.time + calloutLeadSeconds;
-                if (_callouts != null && _callouts.Length > 0)
-                    PlayRadio(_callouts[_calloutIdx++ % _callouts.Length]);
-            }
-            if (_shotArmed && Time.time >= _fireAt)
-            {
-                _shotArmed = false;
-                CopEnergyBlast.Spawn(transform.position + transform.forward * 25f,
-                                     _target, blastSpeed, blastHitRadius,
-                                     pingClip, zapClip, OnBlastResolved);
-                _fired++;
-                _pending++;
-                _nextBlastAt = Time.time + blastInterval;
-                onBlastFired?.Invoke();
-            }
+            CopEnergyBlast.Spawn(transform.position + transform.forward * 25f,
+                                 _target, blastSpeed, blastHitRadius,
+                                 pingClip, zapClip, OnBlastResolved);
+            _fired++;
+            _pending++;
+            _nextBlastAt = Time.time + blastInterval;
+            onBlastFired?.Invoke();
         }
 
         // All shots spent, everything resolved, target still alive → give up.

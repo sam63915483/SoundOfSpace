@@ -41,15 +41,12 @@ public class TevSmugglingMission : MonoBehaviour
     public float sirenLeadSeconds = 2.5f;
     [Tooltip("Once the stop call lands, the forced deceleration takes roughly this long to bring you to a halt.")]
     public float pullOverSlowSeconds = 4f;
-    public AudioClip stopEngineClip;      // "STOP YOUR ENGINE" radio bark
-    [Tooltip("Chase warnings, escalating — one plays over the radio before every shot, in array order.")]
-    public AudioClip[] copCalloutClips;
+    public AudioClip stopEngineClip;      // "CUT YOUR ENGINE" radio bark
     [Header("Chase — Tev's rocket")]
     [Tooltip("Hidden timer: Tev's shot comes roughly this many seconds after you start running.")]
     public float chaseSeconds = 45f;
     [Tooltip("After the countdown lands on 1, the hatch must be open within this window or Tev calls for a retry.")]
     public float hatchWindowSeconds = 2f;
-    public AudioClip copPursuitClip;      // cop, the moment you bolt: "so that's how you want it..."
     public AudioClip rocketFireClip;
     public AudioClip explosionClip;
     [Tooltip("Tev's alien speech loop — plays while his subtitle types out (same clip TevDialogue uses).")]
@@ -79,6 +76,13 @@ public class TevSmugglingMission : MonoBehaviour
     public AudioClip trOneClip;
     [Tooltip("Translator clips for the scare/offer conversation, parallel to OfferLines (the conv_b1_offer Tev lines, in file order).")]
     public AudioClip[] trOfferClips;
+    [Tooltip("Officer radio clips for the interrogation conversations, parallel to CopConvLines.")]
+    public AudioClip[] copConvClips;
+    [Tooltip("Translator clips for Tev's lines inside the interrogation, parallel to TevConvLines.")]
+    public AudioClip[] trConvClips;
+    [Tooltip("The only two cop barks during the chase — timed into gaps where Tev isn't speaking.")]
+    public AudioClip copChase1Clip;
+    public AudioClip copChase2Clip;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -96,6 +100,33 @@ public class TevSmugglingMission : MonoBehaviour
         "Take us up, keep it casual, and whatever happens out there — do NOT be weird.",
         "Sure. Sure. Take your time.",
         "Me and the crate will be right here. Being patient. And extremely legal.",
+    };
+
+    // Officer lines across conv_b1_stop / conv_b1_free / conv_b1_ticket, in
+    // file order (the "..." beats are silent on purpose) — index-matched to
+    // copConvClips. MUST stay byte-identical to the JSON.
+    static readonly string[] CopConvLines =
+    {
+        "UNIDENTIFIED VESSEL. CUT YOUR THRUST.",
+        "This is Galactic Patrol. Our radar operators recorded your vessel crossing this corridor significantly above the posted limit.",
+        "We have reasonable suspicion of a speed violation. This is a routine check. Hold your position.",
+        "First question. Do you know how fast you were going?",
+        "Do you know what the speed limit is in this corridor?",
+        "State your business on Fiery Twin.",
+        "What is that sound?",
+        "Hold position. Running your answers through central.",
+        "Your story checks out. Somehow.",
+        "Maintain corridor speed. Have a boring day.",
+        "Your answers were... partially satisfactory.",
+        "Citation issued: one (1) count of corridor speeding.",
+        "The fine is $200. Payable immediately.",
+    };
+
+    // Tev's lines inside conv_b1_stop — index-matched to trConvClips.
+    static readonly string[] TevConvLines =
+    {
+        "okay okay okay okay.",
+        "Do NOT be weird. I need ninety seconds.",
     };
 
     Phase _phase = Phase.Idle;
@@ -187,21 +218,26 @@ public class TevSmugglingMission : MonoBehaviour
         }
         else if (!WorldDialogueUI.IsOpen)
         {
-            StartCoroutine(OfferVoiceover());
+            StartCoroutine(ConvVoiceover());
             WorldDialogueUI.Begin("conv_b1_offer");
         }
     }
 
-    /// Layers Tev's alien babble + the suit translator onto the offer
-    /// conversation (same treatment as his chase lines) — subscribe BEFORE
-    /// Begin() or the first line's event fires unheard. Lives until the
-    /// conversation closes, then cleans up after itself.
-    float _offerBabbleUntil;
+    /// Layers per-line audio onto the mission's preset conversations: Tev
+    /// lines get alien babble + the suit translator, officer lines get the
+    /// fuzzy patrol radio — and each line's typewriter is paced to its clip
+    /// so text and voice finish together (LineDelayOverride). Subscribe
+    /// BEFORE Begin() or the first line's event fires unheard. Lives until
+    /// the conversation closes, then cleans up after itself.
+    float _babbleUntil;
+    float _convLineDelay;    // per-char delay reported to WorldDialogueUI for the current line
+    AudioSource _copVoice;   // officer's radio in the player's helmet (2D)
 
-    IEnumerator OfferVoiceover()
+    IEnumerator ConvVoiceover()
     {
-        WorldDialogueUI.OnLineShown -= OnOfferLine;   // never double-subscribe
-        WorldDialogueUI.OnLineShown += OnOfferLine;
+        WorldDialogueUI.OnLineShown -= OnConvLine;   // never double-subscribe
+        WorldDialogueUI.OnLineShown += OnConvLine;
+        WorldDialogueUI.LineDelayOverride = () => _convLineDelay;
 
         // Wait for the conversation to open (with a timeout so an aborted
         // Begin can't leak the subscription), then ride it until it closes.
@@ -209,26 +245,68 @@ public class TevSmugglingMission : MonoBehaviour
         while (!WorldDialogueUI.IsOpen && Time.time < openBy) yield return null;
         while (WorldDialogueUI.IsOpen)
         {
-            if (_tevVoice != null && _tevVoice.loop && Time.time >= _offerBabbleUntil) StopBabble();
+            if (_tevVoice != null && _tevVoice.loop && Time.time >= _babbleUntil) StopBabble();
             yield return null;
         }
 
-        WorldDialogueUI.OnLineShown -= OnOfferLine;
+        WorldDialogueUI.OnLineShown -= OnConvLine;
+        WorldDialogueUI.LineDelayOverride = null;
+        _convLineDelay = 0f;
         StopBabble();
         if (_trVoice != null) _trVoice.Stop();
+        if (_copVoice != null) _copVoice.Stop();
     }
 
-    void OnOfferLine(string speaker, string line)
+    void OnConvLine(string speaker, string line)
     {
-        if (speaker != "TEV") { StopBabble(); return; }
-        StartBabble();
-        _offerBabbleUntil = Time.time + Mathf.Max(0.8f, line.Length * 0.015f + 0.4f);
-        for (int i = 0; i < OfferLines.Length; i++)
+        _convLineDelay = 0f;
+        if (speaker != null && speaker.StartsWith("TEV"))
         {
-            if (OfferLines[i] != line) continue;
-            if (trOfferClips != null && i < trOfferClips.Length) PlayTranslator(trOfferClips[i]);
-            return;
+            StartBabble();
+            _babbleUntil = Time.time + Mathf.Max(0.8f, line.Length * 0.015f + 0.4f);
+            AudioClip clip = FindClip(line, OfferLines, trOfferClips);
+            if (clip == null) clip = FindClip(line, TevConvLines, trConvClips);
+            if (clip != null)
+            {
+                PlayTranslator(clip);
+                _convLineDelay = clip.length * 0.92f / Mathf.Max(1, line.Length);
+                _babbleUntil = Time.time + Mathf.Min(clip.length, 3.5f);
+            }
         }
+        else
+        {
+            StopBabble();
+            AudioClip clip = FindClip(line, CopConvLines, copConvClips);
+            if (clip != null)
+            {
+                PlayCopRadio(clip);
+                _convLineDelay = clip.length * 0.92f / Mathf.Max(1, line.Length);
+            }
+        }
+    }
+
+    static AudioClip FindClip(string line, string[] table, AudioClip[] clips)
+    {
+        if (clips == null) return null;
+        for (int i = 0; i < table.Length && i < clips.Length; i++)
+            if (table[i] == line) return clips[i];
+        return null;
+    }
+
+    /// Officer over the cockpit radio — 2D, one line at a time (a new line
+    /// cuts the previous one, mirroring the translator).
+    void PlayCopRadio(AudioClip clip)
+    {
+        if (_copVoice == null)
+        {
+            _copVoice = gameObject.AddComponent<AudioSource>();
+            _copVoice.spatialBlend = 0f;
+            _copVoice.volume = 0.85f;
+        }
+        _copVoice.Stop();
+        if (clip == null) return;
+        _copVoice.clip = clip;
+        _copVoice.Play();
     }
 
     IEnumerator ScareRoutine(PlayerController pc)
@@ -277,7 +355,7 @@ public class TevSmugglingMission : MonoBehaviour
                 pc.ForceLookAtSmooth(LookPoint(), Mathf.Max(5f, err * 5f));
             if (!opened && Time.time >= openAt)
             {
-                StartCoroutine(OfferVoiceover());
+                StartCoroutine(ConvVoiceover());
                 WorldDialogueUI.Begin("conv_b1_offer");
                 opened = true;
             }
@@ -483,7 +561,7 @@ public class TevSmugglingMission : MonoBehaviour
             var go = Instantiate(copShipPrefab);
             _cop = go.AddComponent<CopShipController>();
             _cop.flyInSeconds = sirenLeadSeconds + pullOverSlowSeconds + 6f;
-            _cop.Init(_ship, _anchorBody, sirenClip, copCalloutClips);
+            _cop.Init(_ship, _anchorBody, sirenClip);
             _cop.pingClip = radarPingClip;
             _cop.zapClip = taserZapClip;
         }
@@ -532,6 +610,7 @@ public class TevSmugglingMission : MonoBehaviour
             yield return null;
         }
 
+        StartCoroutine(ConvVoiceover());
         WorldDialogueUI.Begin("conv_b1_stop");
         _phase = Phase.Interrogation;
         _busy = false;
@@ -549,6 +628,7 @@ public class TevSmugglingMission : MonoBehaviour
         if (Flag("b1_q3_pass")) passes++;
         if (Flag("b1_q4_pass")) passes++;
 
+        StartCoroutine(ConvVoiceover());
         if (passes >= 4)
         {
             WorldDialogueUI.Begin("conv_b1_free");
@@ -597,8 +677,11 @@ public class TevSmugglingMission : MonoBehaviour
                 // the newest save via DeathCutsceneController.
                 if (ResourceManager.Instance != null) ResourceManager.Instance.TakeDamage(99999f);
             },
-            onFleeDetected: () => StartCoroutine(TevRocketRoutine()),
-            pursuitClip: copPursuitClip);
+            onFleeDetected: () =>
+            {
+                StartCoroutine(TevRocketRoutine());
+                StartCoroutine(CopBarkRoutine(Time.time));
+            });
 
         // Tev calls out every incoming shot — but never over his scripted
         // lines or the hatch countdown.
@@ -609,6 +692,25 @@ public class TevSmugglingMission : MonoBehaviour
             ShowTevLine(BlastWarnings[i],
                 trWarningClips != null && i < trWarningClips.Length ? trWarningClips[i] : null);
         };
+    }
+
+    /// The cop speaks exactly TWICE during the chase, in the gaps between
+    /// Tev's scripted lines (waits for the subtitle to be free; skips rather
+    /// than talk over the hatch countdown).
+    IEnumerator CopBarkRoutine(float t0)
+    {
+        yield return BarkWhenClear(t0, 13f, copChase1Clip);
+        yield return BarkWhenClear(t0, 32f, copChase2Clip);
+    }
+
+    IEnumerator BarkWhenClear(float t0, float at, AudioClip clip)
+    {
+        while (_phase == Phase.Chase && Time.time - t0 < at) yield return null;
+        float giveUp = Time.time + 8f;
+        while (_phase == Phase.Chase && Time.time < giveUp && (_subtitleCo != null || _countdownActive))
+            yield return null;
+        if (_phase != Phase.Chase || _subtitleCo != null || _countdownActive) yield break;
+        PlayCopRadio(clip);
     }
 
     static readonly string[] BlastWarnings =
@@ -670,7 +772,7 @@ public class TevSmugglingMission : MonoBehaviour
         speaker.fontSize = 26f;
         speaker.color = new Color(1.00f, 0.68f, 0.36f);   // WorldDialogueUI's copper
         speaker.alignment = TextAlignmentOptions.TopLeft;
-        speaker.text = "TEV";
+        speaker.text = "TEV - TRANSLATING";
 
         var textGo = new GameObject("Body");
         textGo.transform.SetParent(panelGo.transform, false);

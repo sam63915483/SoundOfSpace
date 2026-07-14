@@ -27,6 +27,11 @@ public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
     /// Lets missions layer per-line audio (e.g. Tev's babble + suit translator)
     /// onto a preset conversation without touching the dialogue system.
     public static Action<string, string> OnLineShown;
+    /// Queried right after OnLineShown: return a per-character delay to pace
+    /// this line's typewriter to a voice clip (0 or null = default speed).
+    /// The OnLineShown handler typically picks the clip, then this reports
+    /// clip.length / line.Length so text and voice finish together.
+    public static Func<float> LineDelayOverride;
     static WorldDialogueUI _active;
 
     const int SortingOrder = 900;          // above FX overlays (800-820), below pause menu (1000)
@@ -97,7 +102,8 @@ public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
         {
             _advanceHint.text = "";
             OnLineShown?.Invoke(_speakerLabel.text, lines[i]);
-            yield return DialogueTextStyling.RevealCharsTMP(_body, lines[i], CharDelay, AdvancePressed);
+            float delay = LineDelayOverride != null ? Mathf.Max(CharDelay, LineDelayOverride()) : CharDelay;
+            yield return DialogueTextStyling.RevealCharsTMP(_body, lines[i], delay, AdvancePressed);
             // Swallow the frame the skip landed on so it can't also advance.
             yield return null;
             _advanceHint.text = (i < lines.Length - 1) ? "click to continue" : "";

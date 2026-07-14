@@ -3,7 +3,7 @@
   "nodes": [
     {
       "id": "open",
-      "speaker": "Tev",
+      "speaker": "Tev - Translating",
       "lines": [
         "GRAAAAH!",
         "...Heh. Sorry. Couldn't resist. You should see your face.",
@@ -17,7 +17,7 @@
     },
     {
       "id": "explain",
-      "speaker": "Tev",
+      "speaker": "Tev - Translating",
       "lines": [
         "Space dust. A whole crate of it. And before you ask — it's not ILLEGAL illegal. It's more of a paperwork situation.",
         "Buyer's on Fiery Twin. I can't fly. You can. We split the take."
@@ -29,7 +29,7 @@
     },
     {
       "id": "accept",
-      "speaker": "Tev",
+      "speaker": "Tev - Translating",
       "lines": [
         "HA! Knew it.",
         "Crate's already in the back. Don't ask how long it's been there.",
@@ -41,7 +41,7 @@
     },
     {
       "id": "refuse",
-      "speaker": "Tev",
+      "speaker": "Tev - Translating",
       "lines": [
         "Sure. Sure. Take your time.",
         "Me and the crate will be right here. Being patient. And extremely legal."
