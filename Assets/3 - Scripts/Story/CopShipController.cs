@@ -215,7 +215,7 @@ public class CopShipController : MonoBehaviour
     /// fleeThreshold), it barks pursuitClip over the radio, swings around
     /// behind them, and the real chase begins (onFleeDetected fires — the
     /// mission uses it to start Tev's hidden rocket timer).
-    public void StartChase(Action onEscaped, Action onCaught, Action onFleeDetected)
+    public void StartChase(Action onEscaped, Action onCaught, Action onFleeDetected, bool immediateFlee = false)
     {
         _onEscaped = onEscaped;
         _onCaught = onCaught;
@@ -228,6 +228,31 @@ public class CopShipController : MonoBehaviour
         _mode = Mode.AwaitFlee;
         // Siren stays quiet here: it kicks in the moment the flee is actually
         // detected (the player throttles up), not while he's still parked.
+
+        // The "WE GOT A RUNNER" branch — the player ignored the engine-cut
+        // order, so there is no parked watch phase: pursuit starts right now
+        // from wherever the corvette currently is (usually still tailing).
+        if (immediateFlee) BeginPursuit();
+    }
+
+    /// The AwaitFlee → Chase takeover: seed the chase offset from the current
+    /// pose (no snap), light the siren, and hand control to TickChase.
+    void BeginPursuit()
+    {
+        Rigidbody rb = _target.Rigidbody;
+        Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
+        _chaseRel = transform.position - shipPos;
+        // Floor starts at the current gap and eases up to minChaseDistance,
+        // so the takeover has no snap; the trail slerp in TickChase swings
+        // it around behind.
+        _floorRamp = Mathf.Min(_chaseRel.magnitude, minChaseDistance);
+        _chaseBlend = 0f;
+        _nextBlastAt = Time.time + 3f;
+        _nextBarrelAt = Time.time + UnityEngine.Random.Range(4f, 8f);
+        _mode = Mode.Chase;
+        if (_siren != null) { _siren.loop = true; _siren.Play(); }
+        _onFleeDetected?.Invoke();
+        _onFleeDetected = null;
     }
 
     void LateUpdate()
@@ -273,21 +298,7 @@ public class CopShipController : MonoBehaviour
                 Vector3 fleeVel = (rb != null ? rb.velocity : Vector3.zero) - _fleeBaseVel;
                 float turned = Quaternion.Angle(_awaitRot, _target.transform.rotation);
                 if (fleeVel.magnitude > fleeThreshold || turned > turnThreshold)
-                {
-                    Vector3 shipPos = rb != null ? rb.position : _target.transform.position;
-                    _chaseRel = transform.position - shipPos;
-                    // Floor starts at the current (small, in-front) gap and eases
-                    // up to minChaseDistance, so the takeover has no snap; the
-                    // trail slerp in TickChase swings it around behind.
-                    _floorRamp = Mathf.Min(_chaseRel.magnitude, minChaseDistance);
-                    _chaseBlend = 0f;
-                    _nextBlastAt = Time.time + 3f;
-                    _nextBarrelAt = Time.time + UnityEngine.Random.Range(4f, 8f);
-                    _mode = Mode.Chase;
-                    if (_siren != null) { _siren.loop = true; _siren.Play(); }
-                    _onFleeDetected?.Invoke();
-                    _onFleeDetected = null;
-                }
+                    BeginPursuit();
                 break;
             }
 

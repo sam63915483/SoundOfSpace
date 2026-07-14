@@ -508,18 +508,27 @@ public class Ship : GravityObject
         // contact while removing the "catching" feel.
         UpdateShipFrictionState();
 
-        if (shipIsPiloted && canFly && !PlayerController.isMapOpen)
+        if (shipIsPiloted && canFly && engineOn && !PlayerController.isMapOpen)
         {
             HandleMovement();
         }
+        else
+        {
+            // Engine off / controls cut / map open: no live thrust input. Zero
+            // it so the drain block below and FixedUpdate never act on stale
+            // values from the last flown frame.
+            thrusterInput = Vector3.zero;
+            _smoothedThrusterInput = Vector3.zero;
+        }
 
         // Per-ship drain — power drains while piloted (faster) OR idle (slower).
-        // Fuel drains ONLY while piloted, faster under thrust, faster still with boost.
+        // Fuel drains ONLY while piloted with the engine running, faster under
+        // thrust, faster still with boost.
         // Damage-disabled ships (canFly=false) don't drain either resource.
         if (canFly)
         {
             float dt = Time.deltaTime;
-            if (shipIsPiloted)
+            if (shipIsPiloted && engineOn)
             {
                 powerCurrent = Mathf.Clamp(powerCurrent - powerFlyingDrainPerSec * dt, 0f, powerMax);
                 // V (match velocity) and O (circularize) apply thrust directly
@@ -570,10 +579,30 @@ public class Ship : GravityObject
             ToggleHatch();
         }
 
+        // ── Engine state: E from the pilot seat ──
+        // The ship must be STARTED before thrust responds: hold E for
+        // engineToggleHoldSeconds to spin it up, and the same hold shuts it
+        // down. With the engine off, thrust and rotation are dead but the
+        // hatch, headlight and LebronLight keep working. Ignition also needs
+        // canFly (a control-cut or damage-disabled ship can't be restarted).
+        // Note E doubles as roll-right while flying — roll is inert with the
+        // engine off, and the shutdown hold shows a closing ring
+        // (ShipEngineUI) so a long roll can't silently kill the engine.
+        if (shipIsPiloted && !PlayerController.isMapOpen && !WorldDialogueUI.IsOpen)
+        {
+            HandleEngineKey();
+        }
+        else
+        {
+            _engineHoldT = 0f;
+            _engineKeyLatched = false;
+        }
+        if (shipIsPiloted) UpdateEngineUI();
+
         // Engine loop SFX
         if (engineSource != null)
         {
-            bool shouldEngineRun = shipIsPiloted && canFly && CanThrust && !PlayerController.isMapOpen && engineLoopClip != null;
+            bool shouldEngineRun = shipIsPiloted && canFly && engineOn && CanThrust && !PlayerController.isMapOpen && engineLoopClip != null;
             if (shouldEngineRun && !engineSource.isPlaying)
             {
                 engineSource.clip = engineLoopClip;
@@ -589,7 +618,7 @@ public class Ship : GravityObject
         // Thrust loop SFX (any WASD/up/down input while piloted)
         if (thrustSource != null)
         {
-            bool thrustActive = shipIsPiloted && canFly && CanThrust && !PlayerController.isMapOpen && thrustLoopClip != null
+            bool thrustActive = shipIsPiloted && canFly && engineOn && CanThrust && !PlayerController.isMapOpen && thrustLoopClip != null
                                 && (thrusterInput.sqrMagnitude > 0.01f || IsMatchingVelocity || IsCircularizing);
             if (thrustActive && !thrustSource.isPlaying)
             {
@@ -691,6 +720,61 @@ public class Ship : GravityObject
         }
     }
 
+    /// One E hold = one toggle; the key must be released before the next
+    /// hold counts, so keeping E pressed past the threshold can't flip the
+    /// engine straight back.
+    void HandleEngineKey()
+    {
+        if (!Input.GetKey(KeyCode.E))
+        {
+            _engineHoldT = 0f;
+            _engineKeyLatched = false;
+            return;
+        }
+        if (_engineKeyLatched) return;
+        if (!engineOn && !canFly) { _engineHoldT = 0f; return; }   // flight systems locked — no ignition
+
+        _engineHoldT += Time.deltaTime;
+        if (_engineHoldT >= engineToggleHoldSeconds)
+        {
+            _engineHoldT = 0f;
+            _engineKeyLatched = true;
+            SetEngineOn(!engineOn);
+        }
+    }
+
+    void UpdateEngineUI()
+    {
+        bool uiBlocked = PlayerController.isMapOpen || WorldDialogueUI.IsOpen;
+        float progress = engineToggleHoldSeconds > 0.01f ? _engineHoldT / engineToggleHoldSeconds : 1f;
+        if (!uiBlocked && !engineOn && canFly &&
+            (Time.time - _pilotedAt >= enginePromptDelaySeconds || _engineHoldT > 0f))
+        {
+            ShipEngineUI.Show("HOLD E — START ENGINE", progress);
+        }
+        else if (!uiBlocked && engineOn && _engineHoldT > 0.2f)
+        {
+            ShipEngineUI.Show("ENGINE SHUTDOWN", progress);
+        }
+        else
+        {
+            ShipEngineUI.Hide();
+        }
+    }
+
+    /// Engine master switch. Thrust, rotation, flight assists, fuel drain and
+    /// the engine/thrust loops are all dead while off; hatch, headlight and
+    /// LebronLight stay live. Missions may force it (the B-1 traffic stop).
+    public void SetEngineOn(bool on)
+    {
+        if (engineOn == on) return;
+        engineOn = on;
+        if (on && _startupClip != null && _pilotSfxSource != null)
+            _pilotSfxSource.PlayOneShot(_startupClip, 0.8f);
+    }
+
+    public bool EngineOn => engineOn;
+
     void FixedUpdate()
     {
         // Gravity always applied
@@ -703,7 +787,7 @@ public class Ship : GravityObject
         // versa). Fuel pools mirror PlayerController's jetpack/down/dir split
         // — same UX vocabulary, same HUD bars.
         GamepadRumble.ClearChannel("ship-thrust");
-        if (shipIsPiloted && canFly && CanThrust && !PlayerController.isMapOpen)
+        if (shipIsPiloted && canFly && engineOn && CanThrust && !PlayerController.isMapOpen)
         {
             bool boostKey = Input.GetKey(KeyCode.LeftShift);
             float dt = Time.fixedDeltaTime;
@@ -1199,6 +1283,11 @@ public class Ship : GravityObject
         if (pilot == null) return; // truly no player in scene — bail
         shipIsPiloted = true;
         s_pilotedInstance = this;
+        _pilotedAt = Time.time;
+        // Load-time auto-seat (GameSetUp InShip / save restore mid-flight):
+        // the engine comes up running so a restored pilot isn't stranded in a
+        // dead ship. Manual boarding keeps whatever state the engine was in.
+        if (Time.timeSinceLevelLoad < 2f) engineOn = true;
         // Power-up SFX. Gated past the first 2s so the load-time auto-pilot during
         // scene/save setup doesn't fire a spurious start-up sound.
         if (_startupClip != null && _pilotSfxSource != null && Time.timeSinceLevelLoad > 2f)
@@ -1318,6 +1407,10 @@ public class Ship : GravityObject
         // is genuinely standing in the flight-controls zone. (ForceExitPilot already
         // did this for the save-teleport path; doing it here covers the normal exit.)
         if (flightControls != null) flightControls.ClearPlayerInInteractionZone();
+
+        ShipEngineUI.Hide();
+        _engineHoldT = 0f;
+        _engineKeyLatched = false;
     }
 
     void OnCollisionEnter(Collision other)
@@ -1550,4 +1643,16 @@ public class Ship : GravityObject
         StopPilotingShip();
         if (flightControls != null) flightControls.ClearPlayerInInteractionZone();
     }
+
+    // ── Engine state (appended fields — serialization order must not change) ──
+    [Header("Engine state")]
+    [Tooltip("The ship must be started before thrust works: hold E in the pilot seat this long to start (or stop) the engine. Hatch, headlight and LebronLight work with the engine off.")]
+    public float engineToggleHoldSeconds = 1f;
+    [Tooltip("Boarding a cold ship: if the engine hasn't been started this many seconds after sitting down, the HOLD E prompt appears.")]
+    public float enginePromptDelaySeconds = 3f;
+
+    bool engineOn;             // runtime only — ships boot cold except load-time auto-seat
+    float _engineHoldT;        // current E-hold progress toward a toggle
+    bool _engineKeyLatched;    // one toggle per press — must release E before the next
+    float _pilotedAt;          // Time.time when the pilot sat down (drives the prompt delay)
 }

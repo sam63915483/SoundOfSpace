@@ -95,6 +95,11 @@ public class TevSmugglingMission : MonoBehaviour
     public float headStartMedium = 3f;
     [Tooltip("Tev after the corvette goes down: get us to Fiery Twin, we lay low.")]
     public AudioClip trLayLowClip;
+    [Header("Pull-over — engine-cut QTE")]
+    [Tooltip("After CUT YOUR ENGINE lands, the player has this long to start cutting the engine (E). The window extends while the E hold is in progress, so it's forgiving.")]
+    public float engineCutWindowSeconds = 3f;
+    [Tooltip("Radio bark when the player ignores the engine-cut order — the chase starts immediately, no interrogation, no head start.")]
+    public AudioClip copRunnerClip;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -246,6 +251,7 @@ public class TevSmugglingMission : MonoBehaviour
     CdResult _cdResult;
     GameObject _qteRoot;
     RectTransform _qteWhiteRing;
+    TextMeshProUGUI _qteKeyText;
     static Sprite s_ringSprite;
 
     void Awake()
@@ -673,6 +679,42 @@ public class TevSmugglingMission : MonoBehaviour
             yield return new WaitForSeconds(Mathf.Max(1f, stopEngineClip.length * 0.9f));
         }
 
+        // 2b. Engine-cut QTE: the player must actually cut the engine (hold E
+        // from the pilot seat) within engineCutWindowSeconds. Forgiving: the
+        // deadline stretches while the E hold is in progress. Ignore the order
+        // and Kolb calls it in — no interrogation, no head start, pursuit NOW.
+        bool engineCut = _ship == null || !_ship.EngineOn;   // coasting cold already = compliant
+        if (!engineCut)
+        {
+            SetQteKey("E");
+            _qteRoot.SetActive(true);
+            _qteWhiteRing.localScale = Vector3.one * 3f;
+            float qteStart = Time.time;
+            float hardCap = engineCutWindowSeconds + 2.5f;   // grace can't stall the stop forever
+            while (true)
+            {
+                float t = Time.time - qteStart;
+                if (_ship != null && !_ship.EngineOn) { engineCut = true; break; }
+                if (t >= engineCutWindowSeconds && !Input.GetKey(KeyCode.E)) break;
+                if (t >= hardCap) break;
+                _qteWhiteRing.localScale = Vector3.one *
+                    Mathf.Lerp(3f, 1f, Mathf.Clamp01(t / engineCutWindowSeconds));
+                yield return null;
+            }
+            QteHide();
+        }
+
+        if (!engineCut)
+        {
+            // "WE GOT A RUNNER!" — straight to the chase from wherever the
+            // corvette currently is; the engine was never cut, so the ship
+            // keeps flying under the player's control.
+            PlayCopRadio(copRunnerClip);
+            _busy = false;
+            StartChase(immediateFlee: true);
+            yield break;
+        }
+
         // 3. Controls cut; forced smooth deceleration down to a stop relative
         //    to the anchor planet (see FixedUpdate). Rate is sized so however
         //    fast they were going, the slowdown takes ~pullOverSlowSeconds.
@@ -754,7 +796,7 @@ public class TevSmugglingMission : MonoBehaviour
         _busy = false;
     }
 
-    void StartChase()
+    void StartChase(bool immediateFlee = false)
     {
         if (_ship != null) _ship.canFly = true;
         _decelActive = false;
@@ -764,14 +806,16 @@ public class TevSmugglingMission : MonoBehaviour
         if (_cop == null) { _phase = Phase.Delivering; return; }
 
         // The politer the stop ended, the further away Kolb is when Tev punches
-        // it: he's mid-docking-approach / mid-scan / logging the payment.
-        float headStart = Flag("b1_hs_long") ? headStartLong
+        // it: he's mid-docking-approach / mid-scan / logging the payment. A
+        // runner (ignored the engine-cut order) gets pursued on the spot.
+        float headStart = immediateFlee ? 0f
+                        : Flag("b1_hs_long") ? headStartLong
                         : Flag("b1_hs_med")  ? headStartMedium
                         : 0f;
-        StartCoroutine(ChaseRoutine(headStart));
+        StartCoroutine(ChaseRoutine(headStart, immediateFlee));
     }
 
-    IEnumerator ChaseRoutine(float headStart)
+    IEnumerator ChaseRoutine(float headStart, bool immediateFlee)
     {
         // The player flies free while Kolb is still distracted. Zero head
         // start = he was already hot and comes straight after you.
@@ -784,6 +828,7 @@ public class TevSmugglingMission : MonoBehaviour
         _cop.maxBlasts = 999;
 
         _cop.StartChase(
+            immediateFlee: immediateFlee,
             onEscaped: () =>
             {
                 SetFlag("b1_outlaw", true);
@@ -1008,17 +1053,24 @@ public class TevSmugglingMission : MonoBehaviour
         crt.sizeDelta = new Vector2(86f, 86f);
         cap.AddComponent<UnityEngine.UI.Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
 
-        var hGo = new GameObject("H");
+        var hGo = new GameObject("Key");
         hGo.transform.SetParent(root, false);
-        var hText = hGo.AddComponent<TextMeshProUGUI>();
-        hText.rectTransform.sizeDelta = new Vector2(96f, 96f);
-        hText.text = "H";
-        hText.fontSize = 56f;
-        hText.fontStyle = FontStyles.Bold;
-        hText.color = Color.white;
-        hText.alignment = TextAlignmentOptions.Center;
+        _qteKeyText = hGo.AddComponent<TextMeshProUGUI>();
+        _qteKeyText.rectTransform.sizeDelta = new Vector2(96f, 96f);
+        _qteKeyText.text = "H";
+        _qteKeyText.fontSize = 56f;
+        _qteKeyText.fontStyle = FontStyles.Bold;
+        _qteKeyText.color = Color.white;
+        _qteKeyText.alignment = TextAlignmentOptions.Center;
 
         _qteRoot.SetActive(false);
+    }
+
+    /// The QTE keycap is shared: H for the hatch shot, E for the engine cut.
+    void SetQteKey(string key)
+    {
+        EnsureQteUI();
+        if (_qteKeyText.text != key) _qteKeyText.text = key;
     }
 
     RectTransform MakeRing(string name, RectTransform parent, Color color)
@@ -1175,7 +1227,7 @@ public class TevSmugglingMission : MonoBehaviour
         yield return new WaitForSeconds(0.6f);
         if (_phase != Phase.Chase) yield break;
 
-        EnsureQteUI();
+        SetQteKey("H");
         _qteRoot.SetActive(true);
         _qteWhiteRing.localScale = Vector3.one * 3f;
 
