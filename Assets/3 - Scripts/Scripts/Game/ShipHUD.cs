@@ -24,6 +24,14 @@ public class ShipHUD : MonoBehaviour {
 	public Material velocityIndicatorMat;
 	public Material arrowHeadMat;
 
+	/// Immovable mission marker. While set, the lock-on stays glued to this
+	/// body: clicking it doesn't unmark it, clicking elsewhere doesn't move
+	/// it, and the map is force-synced back to it. Missions set it (B-1 pins
+	/// Fiery Twin from first pilot until touchdown) and clear it when done.
+	/// A destroyed body (scene reload) reads as null, which is the same as
+	/// cleared — no reset hook needed.
+	public static CelestialBody MissionPin;
+
 	CelestialBody lockedBody;
 	Camera cam;
 	Transform camT;
@@ -90,6 +98,13 @@ public class ShipHUD : MonoBehaviour {
 			var mapCtl = SolarSystemMapController.Instance;
 			if (mapCtl != null) lockedBody = mapCtl.PendingHighlight;
 
+			// Mission pin overrides everything: whatever the player clicked
+			// (here or in the map), the marker snaps back to the pinned body.
+			if (MissionPin != null && lockedBody != MissionPin) {
+				lockedBody = MissionPin;
+				if (mapCtl != null) mapCtl.SetMarkedBody (MissionPin);
+			}
+
 			if (Time.timeScale != 0) {
 				aimedBody = FindAimedBody ();
 
@@ -97,8 +112,9 @@ public class ShipHUD : MonoBehaviour {
 				// both inputs; while piloting, neither is used by anything else
 				// on the ship so this binding is conflict-free. Swallow it while
 				// a conversation is open — clicking through dialogue while aimed
-				// at a planet was toggling its mark.
-				if (!WorldDialogueUI.IsOpen && TutorialGate.FirePressed ()) {
+				// at a planet was toggling its mark. Swallowed entirely while a
+				// mission pin is active — that marker can't be moved or cleared.
+				if (!WorldDialogueUI.IsOpen && MissionPin == null && TutorialGate.FirePressed ()) {
 					var newLock = (lockedBody == aimedBody) ? null : aimedBody;
 					lockedBody = newLock;
 					if (mapCtl != null) mapCtl.SetMarkedBody (newLock);
@@ -151,8 +167,14 @@ public class ShipHUD : MonoBehaviour {
 		// ~3.7 KB / frame from $"..." interpolation + TMP text setter +
 		// color struct creation — ~370 KB/sec of GC churn while piloting.
 		Vector3 planetInfoWorldPos = planet.transform.position + horizontal * planet.radius * lockOnUI.lockedRadiusMultiplier + vertical * planet.radius * 0.35f;
-		planetName.gameObject.SetActive (PointIsOnScreen (planetInfoWorldPos));
-		planetName.rectTransform.localPosition = CalculateUIPos (planetInfoWorldPos);
+		bool labelOnScreen = PointIsOnScreen (planetInfoWorldPos);
+		// A mission-pinned body must stay findable even when it's off-screen
+		// (mid-chase it can end up anywhere): hug the label to the screen edge
+		// in the body's direction so it doubles as a pointer.
+		planetName.gameObject.SetActive (labelOnScreen || planet == MissionPin);
+		planetName.rectTransform.localPosition = labelOnScreen
+			? CalculateUIPos (planetInfoWorldPos)
+			: CalculateEdgeUIPos (planet.transform.position);
 		if (planet.bodyName != _lastBodyName) {
 			_lastBodyName = planet.bodyName;
 			planetName.text = planet.bodyName;
@@ -283,6 +305,26 @@ public class ShipHUD : MonoBehaviour {
 		// Debug.Log ($"Rel world: {relativeVelocityWorldSpace} rel: {relativeV} speed world: {relativeVelocityWorldSpace.magnitude} speed rel: {relativeV.magnitude}");
 
 		return relativeV;
+	}
+
+	/// Screen position clamped to the viewport edge, in the direction of the
+	/// world point from screen centre (points behind the camera flip so they
+	/// still land on a sensible edge). The mission pin's label uses this to
+	/// double as an off-screen direction pointer.
+	Vector2 CalculateEdgeUIPos (Vector3 worldPos) {
+		const int referenceWidth = 1920;
+		const int referenceHeight = 1080;
+		const float margin = 0.07f;
+
+		Vector3 vp = cam.WorldToViewportPoint (worldPos);
+		Vector2 dir = new Vector2 (vp.x - 0.5f, vp.y - 0.5f);
+		if (vp.z < 0) dir = -dir;
+		if (dir.sqrMagnitude < 1e-6f) dir = Vector2.up;
+
+		// Scale so the longer axis lands on the edge box.
+		float scale = (0.5f - margin) / Mathf.Max (Mathf.Abs (dir.x), Mathf.Abs (dir.y));
+		dir *= scale;
+		return new Vector2 (dir.x * referenceWidth, dir.y * referenceHeight);
 	}
 
 	Vector2 CalculateUIPos (Vector3 worldPos) {

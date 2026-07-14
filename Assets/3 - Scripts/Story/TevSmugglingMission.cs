@@ -474,6 +474,18 @@ public class TevSmugglingMission : MonoBehaviour
         if (Time.time < _nextPoll) return;
         _nextPoll = Time.time + 0.2f;
 
+        // Immovable ship-HUD marker on the destination: pinned the moment the
+        // player takes the stick, immune to clicks (ShipHUD swallows marker
+        // input while a pin is set), cleared on arrival. The 2D compass
+        // waypoint only helps on foot — this is the in-space pointer, and it
+        // survives the whole chase.
+        if (_phase != Phase.Idle && ShipHUD.MissionPin == null &&
+            Ship.PilotedInstance == _ship)
+        {
+            if (_destBody == null) _destBody = FindBody(destBodyName);
+            ShipHUD.MissionPin = _destBody;
+        }
+
         switch (_phase)
         {
             case Phase.Idle:
@@ -1330,6 +1342,7 @@ public class TevSmugglingMission : MonoBehaviour
 
         _phase = Phase.Done;
         SetFlag("b1_delivered", true);
+        ShipHUD.MissionPin = null;   // touchdown — release the pinned marker
         if (CompassHUD.Instance != null) CompassHUD.Instance.RemoveWaypoint(WaypointId);
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(payoutAmount);
         Debug.Log("[TevSmuggling] Delivered to Fiery Twin — mission complete (barebones end).");
