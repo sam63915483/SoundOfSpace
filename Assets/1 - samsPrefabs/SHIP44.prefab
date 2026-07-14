@@ -2078,8 +2078,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 4.066575, y: 8.464156, z: 0.27386865}
-  m_Center: {x: 0, y: 4.2412534, z: -0.002613358}
+  m_Size: {x: 4.066575, y: 8.464156, z: 1}
+  m_Center: {x: 0, y: 4.2412534, z: 0.3604523}
 --- !u!1 &1894384358187470834
 GameObject:
   m_ObjectHideFlags: 0
@@ -8403,6 +8403,8 @@ MonoBehaviour:
   crashLightThreshold: 15
   crashMediumThreshold: 30
   crashHardThreshold: 45
+  engineToggleHoldSeconds: 1
+  enginePromptDelaySeconds: 3
 --- !u!54 &6609386593544707878
 Rigidbody:
   m_ObjectHideFlags: 0
