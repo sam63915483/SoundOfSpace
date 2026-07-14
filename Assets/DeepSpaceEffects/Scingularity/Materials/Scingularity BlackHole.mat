@@ -71,7 +71,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _AccretionRadius: 10
-    - _AtmoFade: 0.87491274
+    - _AtmoFade: 0.8733992
     - _BumpScale: 1
     - _Cutoff: 0.002
     - _DetailNormalMapScale: 1
