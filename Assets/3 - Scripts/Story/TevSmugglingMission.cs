@@ -1045,12 +1045,13 @@ public class TevSmugglingMission : MonoBehaviour
         if (_subtitleCo != null) { StopCoroutine(_subtitleCo); _subtitleCo = null; }
         EnsureSubtitleUI();
         _subtitlePanel.gameObject.SetActive(true);
+        const string baseTxt = "I'VE GOT THE SHOT! OPEN THE HATCH IN";
         StartBabble();
         PlayTranslator(trOpenHatchClip);
         float cdDelay = trOpenHatchClip != null
-            ? Mathf.Max(SubtitleCharDelay, trOpenHatchClip.length * 0.92f / 15f)
+            ? Mathf.Max(SubtitleCharDelay, trOpenHatchClip.length * 0.92f / baseTxt.Length)
             : SubtitleCharDelay;
-        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, "OPEN THE HATCH!", cdDelay, () => false);
+        yield return DialogueTextStyling.RevealCharsTMP(_subtitle, baseTxt, cdDelay, () => false);
         StopBabble();
         _subtitle.maxVisibleCharacters = int.MaxValue;
         yield return new WaitForSeconds(0.6f);
@@ -1060,7 +1061,6 @@ public class TevSmugglingMission : MonoBehaviour
         _qteRoot.SetActive(true);
         _qteWhiteRing.localScale = Vector3.one * 3f;
 
-        const string baseTxt = "OPEN THE HATCH!";
         float start = Time.time;
         int said = -1;
         while (Time.time - start < 2f)   // "3" at 0s, "2" at 1s, "1" at 2s
