@@ -142,13 +142,12 @@ public class CopShipController : MonoBehaviour
     /// comms rather than from the corvette's position.
     public void PlayRadio(AudioClip clip)
     {
-        // MUTED by playtest request: the officer's voice lines (callouts,
-        // pursuit bark, stop-engine) were talking over Tev + the suit
-        // translator and muddying the mix. Siren + lights still sell the cop.
-        // Re-enable by restoring the PlayOneShot below.
-        // if (clip == null) return;
-        // if (_radio == null) { _radio = gameObject.AddComponent<AudioSource>(); _radio.spatialBlend = 0f; }
-        // _radio.PlayOneShot(clip, 0.65f);
+        // The clips themselves carry the "shitty patrol radio" fuzz (bandpass +
+        // bitcrush + static baked in) so the texture is instantly distinct from
+        // Tev's babble and the suit translator.
+        if (clip == null) return;
+        if (_radio == null) { _radio = gameObject.AddComponent<AudioSource>(); _radio.spatialBlend = 0f; }
+        _radio.PlayOneShot(clip, 0.7f);
     }
 
     public void FlyAway()

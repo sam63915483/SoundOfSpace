@@ -23,6 +23,10 @@ using UnityEngine.UI;
 public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
 {
     public static bool IsOpen { get; private set; }
+    /// Fires as each line starts typing: (speaker label as displayed, line text).
+    /// Lets missions layer per-line audio (e.g. Tev's babble + suit translator)
+    /// onto a preset conversation without touching the dialogue system.
+    public static Action<string, string> OnLineShown;
     static WorldDialogueUI _active;
 
     const int SortingOrder = 900;          // above FX overlays (800-820), below pause menu (1000)
@@ -92,6 +96,7 @@ public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
         for (int i = 0; i < lines.Length; i++)
         {
             _advanceHint.text = "";
+            OnLineShown?.Invoke(_speakerLabel.text, lines[i]);
             yield return DialogueTextStyling.RevealCharsTMP(_body, lines[i], CharDelay, AdvancePressed);
             // Swallow the frame the skip landed on so it can't also advance.
             yield return null;

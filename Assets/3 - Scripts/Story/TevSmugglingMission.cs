@@ -77,8 +77,26 @@ public class TevSmugglingMission : MonoBehaviour
     public AudioClip trThreeClip;
     public AudioClip trTwoClip;
     public AudioClip trOneClip;
+    [Tooltip("Translator clips for the scare/offer conversation, parallel to OfferLines (the conv_b1_offer Tev lines, in file order).")]
+    public AudioClip[] trOfferClips;
 
     const string WaypointId = "b1_fiery_twin";
+
+    // conv_b1_offer's Tev lines in file order — index-matched to trOfferClips.
+    // MUST stay byte-identical to the JSON: the voiceover hook matches on text.
+    static readonly string[] OfferLines =
+    {
+        "GRAAAAH!",
+        "...Heh. Sorry. Couldn't resist. You should see your face.",
+        "Anyway. Wanna help me smuggle some alien goodies?",
+        "Space dust. A whole crate of it. And before you ask — it's not ILLEGAL illegal. It's more of a paperwork situation.",
+        "Buyer's on Fiery Twin. I can't fly. You can. We split the take.",
+        "HA! Knew it.",
+        "Crate's already in the back. Don't ask how long it's been there.",
+        "Take us up, keep it casual, and whatever happens out there — do NOT be weird.",
+        "Sure. Sure. Take your time.",
+        "Me and the crate will be right here. Being patient. And extremely legal.",
+    };
 
     Phase _phase = Phase.Idle;
     Ship _ship;
@@ -169,7 +187,47 @@ public class TevSmugglingMission : MonoBehaviour
         }
         else if (!WorldDialogueUI.IsOpen)
         {
+            StartCoroutine(OfferVoiceover());
             WorldDialogueUI.Begin("conv_b1_offer");
+        }
+    }
+
+    /// Layers Tev's alien babble + the suit translator onto the offer
+    /// conversation (same treatment as his chase lines) — subscribe BEFORE
+    /// Begin() or the first line's event fires unheard. Lives until the
+    /// conversation closes, then cleans up after itself.
+    float _offerBabbleUntil;
+
+    IEnumerator OfferVoiceover()
+    {
+        WorldDialogueUI.OnLineShown -= OnOfferLine;   // never double-subscribe
+        WorldDialogueUI.OnLineShown += OnOfferLine;
+
+        // Wait for the conversation to open (with a timeout so an aborted
+        // Begin can't leak the subscription), then ride it until it closes.
+        float openBy = Time.time + 10f;
+        while (!WorldDialogueUI.IsOpen && Time.time < openBy) yield return null;
+        while (WorldDialogueUI.IsOpen)
+        {
+            if (_tevVoice != null && _tevVoice.loop && Time.time >= _offerBabbleUntil) StopBabble();
+            yield return null;
+        }
+
+        WorldDialogueUI.OnLineShown -= OnOfferLine;
+        StopBabble();
+        if (_trVoice != null) _trVoice.Stop();
+    }
+
+    void OnOfferLine(string speaker, string line)
+    {
+        if (speaker != "TEV") { StopBabble(); return; }
+        StartBabble();
+        _offerBabbleUntil = Time.time + Mathf.Max(0.8f, line.Length * 0.015f + 0.4f);
+        for (int i = 0; i < OfferLines.Length; i++)
+        {
+            if (OfferLines[i] != line) continue;
+            if (trOfferClips != null && i < trOfferClips.Length) PlayTranslator(trOfferClips[i]);
+            return;
         }
     }
 
@@ -219,6 +277,7 @@ public class TevSmugglingMission : MonoBehaviour
                 pc.ForceLookAtSmooth(LookPoint(), Mathf.Max(5f, err * 5f));
             if (!opened && Time.time >= openAt)
             {
+                StartCoroutine(OfferVoiceover());
                 WorldDialogueUI.Begin("conv_b1_offer");
                 opened = true;
             }
@@ -416,12 +475,14 @@ public class TevSmugglingMission : MonoBehaviour
         SetFlag("b1_run", false);
         SetFlag("b1_released", false);
 
-        // 1. The corvette drops in behind and shadows the ship — sirens, lights.
-        //    The player still has full control; nothing is forcing them yet.
+        // 1. The corvette starts ONE continuous glide toward the ship — sirens,
+        //    lights. The glide is stretched to cover the whole staging (it never
+        //    visibly parks-and-waits; that stop/wait/re-approach read as janky).
         if (copShipPrefab != null)
         {
             var go = Instantiate(copShipPrefab);
             _cop = go.AddComponent<CopShipController>();
+            _cop.flyInSeconds = sirenLeadSeconds + pullOverSlowSeconds + 6f;
             _cop.Init(_ship, _anchorBody, sirenClip, copCalloutClips);
             _cop.pingClip = radarPingClip;
             _cop.zapClip = taserZapClip;
@@ -438,6 +499,9 @@ public class TevSmugglingMission : MonoBehaviour
         // 3. Controls cut; forced smooth deceleration down to a stop relative
         //    to the anchor planet (see FixedUpdate). Rate is sized so however
         //    fast they were going, the slowdown takes ~pullOverSlowSeconds.
+        //    The corvette's glide redirects to the interrogation pose NOW (the
+        //    hull is rotation-locked from here, so the pose is stable) — it
+        //    sweeps in while the ship slows and both finish together.
         if (_ship != null) _ship.canFly = false;
         var rb = _ship != null ? _ship.Rigidbody : null;
         float relSpeed = rb != null && _anchorBody != null
@@ -445,32 +509,31 @@ public class TevSmugglingMission : MonoBehaviour
         _decelRate = Mathf.Max(8f, relSpeed / Mathf.Max(0.5f, pullOverSlowSeconds));
         _decelActive = true;
 
-        // 4. As the ship is rolling to a complete stop (last ~15% of the
-        //    slowdown), the corvette overtakes and parks in front — its
-        //    fly-in finishes right about when the ship does.
-        if (rb != null && _anchorBody != null)
-        {
-            float stopBy = Time.time + pullOverSlowSeconds + 10f;   // safety timeout
-            float trigger = Mathf.Max(4f, relSpeed * 0.15f);
-            while (Time.time < stopBy &&
-                   (rb.velocity - _anchorBody.velocity).magnitude > trigger)
-                yield return null;
-        }
-
+        bool copParked = _cop == null;
         if (_cop != null)
         {
-            _cop.PullInFront(() =>
-            {
-                WorldDialogueUI.Begin("conv_b1_stop");
-                _phase = Phase.Interrogation;
-            });
+            _cop.flyInSeconds = Mathf.Max(2f, pullOverSlowSeconds);
+            _cop.PullInFront(() => copParked = true);
         }
         else
         {
             Debug.LogWarning("[TevSmuggling] copShipPrefab not assigned — skipping straight to interrogation.");
-            WorldDialogueUI.Begin("conv_b1_stop");
-            _phase = Phase.Interrogation;
         }
+
+        // 4. Dialogue the moment BOTH are set: corvette parked dead ahead and
+        //    the ship rolled (nearly) to its stop. No pause in between.
+        float stopBy = Time.time + pullOverSlowSeconds + 12f;   // safety timeout
+        float trigger = Mathf.Max(4f, relSpeed * 0.15f);
+        while (Time.time < stopBy)
+        {
+            bool shipSlow = rb == null || _anchorBody == null ||
+                            (rb.velocity - _anchorBody.velocity).magnitude <= trigger;
+            if (copParked && shipSlow) break;
+            yield return null;
+        }
+
+        WorldDialogueUI.Begin("conv_b1_stop");
+        _phase = Phase.Interrogation;
         _busy = false;
     }
 
