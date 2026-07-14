@@ -745,21 +745,14 @@ public class Ship : GravityObject
 
     void UpdateEngineUI()
     {
+        // Cold-ship nudge only. No visual for the E hold itself — the
+        // shrinking-ring look is reserved for mission QTEs, so routine
+        // engine starts/stops don't read as one.
         bool uiBlocked = PlayerController.isMapOpen || WorldDialogueUI.IsOpen;
-        float progress = engineToggleHoldSeconds > 0.01f ? _engineHoldT / engineToggleHoldSeconds : 1f;
-        if (!uiBlocked && !engineOn && canFly &&
-            (Time.time - _pilotedAt >= enginePromptDelaySeconds || _engineHoldT > 0f))
-        {
-            ShipEngineUI.Show("HOLD E — START ENGINE", progress);
-        }
-        else if (!uiBlocked && engineOn && _engineHoldT > 0.2f)
-        {
-            ShipEngineUI.Show("ENGINE SHUTDOWN", progress);
-        }
+        if (!uiBlocked && !engineOn && canFly && Time.time - _pilotedAt >= enginePromptDelaySeconds)
+            ShipEngineUI.Show("HOLD E — START ENGINE");
         else
-        {
             ShipEngineUI.Hide();
-        }
     }
 
     /// Engine master switch. Thrust, rotation, flight assists, fuel drain and

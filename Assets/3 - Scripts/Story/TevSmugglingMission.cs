@@ -252,6 +252,7 @@ public class TevSmugglingMission : MonoBehaviour
     GameObject _qteRoot;
     RectTransform _qteWhiteRing;
     TextMeshProUGUI _qteKeyText;
+    TextMeshProUGUI _qteCaption;
     static Sprite s_ringSprite;
 
     void Awake()
@@ -686,7 +687,7 @@ public class TevSmugglingMission : MonoBehaviour
         bool engineCut = _ship == null || !_ship.EngineOn;   // coasting cold already = compliant
         if (!engineCut)
         {
-            SetQteKey("E");
+            SetQteKey("E", "E TO SHUT DOWN ENGINE");
             _qteRoot.SetActive(true);
             _qteWhiteRing.localScale = Vector3.one * 3f;
             float qteStart = Time.time;
@@ -1063,14 +1064,31 @@ public class TevSmugglingMission : MonoBehaviour
         _qteKeyText.color = Color.white;
         _qteKeyText.alignment = TextAlignmentOptions.Center;
 
+        // Caption above the rings ("E TO SHUT DOWN ENGINE") — only some QTEs
+        // set one; the hatch shot's context comes from Tev's subtitle instead.
+        var capGo = new GameObject("Caption");
+        capGo.transform.SetParent(root, false);
+        _qteCaption = capGo.AddComponent<TextMeshProUGUI>();
+        var caprt = _qteCaption.rectTransform;
+        caprt.anchorMin = caprt.anchorMax = new Vector2(0.5f, 0.5f);
+        caprt.anchoredPosition = new Vector2(0f, 132f);
+        caprt.sizeDelta = new Vector2(700f, 44f);
+        _qteCaption.fontSize = 30f;
+        _qteCaption.fontStyle = FontStyles.Bold;
+        _qteCaption.color = new Color(0.9f, 0.94f, 1f);
+        _qteCaption.alignment = TextAlignmentOptions.Center;
+
         _qteRoot.SetActive(false);
     }
 
     /// The QTE keycap is shared: H for the hatch shot, E for the engine cut.
-    void SetQteKey(string key)
+    /// caption ("" = none) sits above the rings.
+    void SetQteKey(string key, string caption = "")
     {
         EnsureQteUI();
         if (_qteKeyText.text != key) _qteKeyText.text = key;
+        _qteCaption.text = caption;
+        _qteCaption.gameObject.SetActive(!string.IsNullOrEmpty(caption));
     }
 
     RectTransform MakeRing(string name, RectTransform parent, Color color)

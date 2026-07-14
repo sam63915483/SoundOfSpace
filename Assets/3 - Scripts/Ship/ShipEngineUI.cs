@@ -3,28 +3,21 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// Code-built overlay for the ship engine state: the "HOLD E" nudge that
-/// appears a few seconds after boarding a cold ship, and the ring that
-/// closes onto the E keycap while the hold is in progress (ignition or
-/// shutdown). One static canvas shared by every ship — only the piloted
-/// one drives it (Ship.UpdateEngineUI).
+/// appears a few seconds after boarding a cold ship. Deliberately NO ring —
+/// the shrinking-ring visual is reserved for mission quick-time events
+/// (TevSmugglingMission QTE UI), so holding E to start/stop the engine in
+/// normal play never looks like a QTE. One static canvas shared by every
+/// ship — only the piloted one drives it (Ship.UpdateEngineUI).
 public static class ShipEngineUI
 {
     static GameObject s_root;
     static TextMeshProUGUI s_label;
-    static RectTransform s_ring;
-    static Sprite s_ringSprite;
 
-    /// Ring shrinks 2.2× → 1× onto the keycap as the hold completes — the
-    /// same visual language as the mission QTEs, so "ring meets cap" always
-    /// reads as "the key is doing something".
-    public static void Show(string label, float holdProgress01)
+    public static void Show(string label)
     {
         Ensure();
         if (!s_root.activeSelf) s_root.SetActive(true);
         if (s_label.text != label) s_label.text = label;
-        bool holding = holdProgress01 > 0f;
-        if (s_ring.gameObject.activeSelf != holding) s_ring.gameObject.SetActive(holding);
-        s_ring.localScale = Vector3.one * Mathf.Lerp(2.2f, 1f, Mathf.Clamp01(holdProgress01));
     }
 
     public static void Hide()
@@ -49,8 +42,6 @@ public static class ShipEngineUI
         var root = s_root.AddComponent<RectTransform>();
         root.anchorMin = root.anchorMax = new Vector2(0.5f, 0.30f);
         root.sizeDelta = Vector2.zero;
-
-        s_ring = MakeRing(root);
 
         // Keycap: bordered dark square with a bold E (mission QTE style).
         var border = new GameObject("CapBorder");
@@ -87,40 +78,5 @@ public static class ShipEngineUI
 
         Object.DontDestroyOnLoad(canvasGo);
         s_root.SetActive(false);
-    }
-
-    static RectTransform MakeRing(RectTransform parent)
-    {
-        var go = new GameObject("HoldRing");
-        go.transform.SetParent(parent, false);
-        var rt = go.AddComponent<RectTransform>();
-        rt.sizeDelta = new Vector2(130f, 130f);
-        var img = go.AddComponent<Image>();
-        img.sprite = RingSprite();
-        img.color = Color.white;
-        img.raycastTarget = false;
-        return rt;
-    }
-
-    static Sprite RingSprite()
-    {
-        if (s_ringSprite != null) return s_ringSprite;
-        const int size = 256;
-        float outer = 124f, inner = 106f, c = size * 0.5f;
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        var px = new Color[size * size];
-        for (int y = 0; y < size; y++)
-        {
-            for (int x = 0; x < size; x++)
-            {
-                float d = Mathf.Sqrt((x - c) * (x - c) + (y - c) * (y - c));
-                float a = Mathf.Clamp01((outer - d) * 0.5f) * Mathf.Clamp01((d - inner) * 0.5f);
-                px[y * size + x] = new Color(1f, 1f, 1f, a);
-            }
-        }
-        tex.SetPixels(px);
-        tex.Apply();
-        s_ringSprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
-        return s_ringSprite;
     }
 }
