@@ -1197,23 +1197,23 @@ public class TevSmugglingMission : MonoBehaviour
         // Point the run at the destination: every second of fleeing should be
         // trip progress, not fuel burned in a random direction. The compass
         // waypoint is already up from BeginEnRoute.
-        yield return WaitUntilChaseTime(t0, 5.5f);
+        yield return WaitForChaseLineSlot(t0, 5.5f);
         if (_phase != Phase.Chase) yield break;
         ShowTevLine("HEAD FOR FIERY TWIN! FLOOR IT! I'LL HANDLE THE COP!", trHeadForTwinClip);
 
-        yield return WaitUntilChaseTime(t0, 11f);
+        yield return WaitForChaseLineSlot(t0, 11f);
         if (_phase != Phase.Chase) yield break;
         ShowTevLine("Wait, wait, wait... I've got an idea! Keep driving! Don't you DARE slow down!", trIdeaClip);
 
-        yield return WaitUntilChaseTime(t0, 17f);
+        yield return WaitForChaseLineSlot(t0, 17f);
         if (_phase != Phase.Chase) yield break;
         ShowTevLine("Just give me twenty seconds! I know what to do!", tr20SecClip);
 
-        yield return WaitUntilChaseTime(t0, 27f);
+        yield return WaitForChaseLineSlot(t0, 27f);
         if (_phase != Phase.Chase) yield break;
         ShowTevLine("STUPID ROCKET LAUNCHER! WHERE did I put the EMERGENCY ROCKETS?!", trLauncherClip);
 
-        yield return WaitUntilChaseTime(t0, chaseSeconds - 5f);
+        yield return WaitForChaseLineSlot(t0, chaseSeconds - 5f);
         if (_phase != Phase.Chase) yield break;
 
         // CEASE FIRE: no more taser shots from here on, and let anything
@@ -1225,7 +1225,11 @@ public class TevSmugglingMission : MonoBehaviour
         if (_phase != Phase.Chase) yield break;
 
         ShowTevLine("HOLD HER STEADY! I'VE GOT A SHOT!", trHoldSteadyClip);
-        yield return new WaitForSeconds(2.6f);
+        // Let the line fully land — the countdown takes over the subtitle box
+        // and cuts the translator, so starting on a fixed 2.6s timer clipped
+        // the tail of this line.
+        while (_phase == Phase.Chase && _subtitleCo != null) yield return null;
+        yield return new WaitForSeconds(0.4f);
 
         // Countdown QTE loop: white ring shrinks onto the H keycap during
         // 3-2-1, then hatchWindowSeconds to pop the hatch. Early press =
@@ -1364,6 +1368,16 @@ public class TevSmugglingMission : MonoBehaviour
     IEnumerator WaitUntilChaseTime(float t0, float t)
     {
         while (_phase == Phase.Chase && Time.time - t0 < t) yield return null;
+    }
+
+    /// A scripted chase line's slot: the scheduled time is the EARLIEST it
+    /// may start — if the previous line (voice + subtitle tail) is still up,
+    /// wait for it to clear first. The fixed timeline was cutting long clips
+    /// short (SPIRIT is 6.1s but HEAD FOR FIERY TWIN fired 4.5s after it).
+    IEnumerator WaitForChaseLineSlot(float t0, float t)
+    {
+        while (_phase == Phase.Chase && Time.time - t0 < t) yield return null;
+        while (_phase == Phase.Chase && _subtitleCo != null) yield return null;
     }
 
     void CheckArrival()
