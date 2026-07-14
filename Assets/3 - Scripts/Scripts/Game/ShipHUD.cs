@@ -122,12 +122,17 @@ public class ShipHUD : MonoBehaviour {
 			}
 
 			if (aimedBody && aimedBody != lockedBody) {
-				lockOnUI.DrawLockOnUI (aimedBody, false);
+				if (!OccludedByOwnShip (aimedBody.transform.position))
+					lockOnUI.DrawLockOnUI (aimedBody, false);
 			}
 
 			if (lockedBody) {
-				lockOnUI.DrawLockOnUI (lockedBody, true);
-				DrawPlanetHUD (lockedBody);
+				// The marker is only visible through the canopy: when the
+				// cabin hull blocks the sight line, the brackets/label/arrows
+				// hide (a pinned body falls back to its edge pointer).
+				bool occluded = OccludedByOwnShip (lockedBody.transform.position);
+				if (!occluded) lockOnUI.DrawLockOnUI (lockedBody, true);
+				DrawPlanetHUD (lockedBody, occluded);
 			} else {
 				SetHudActive (false);
 			}
@@ -142,7 +147,7 @@ public class ShipHUD : MonoBehaviour {
 		velocityVertical.SetActive (active);
 	}
 
-	void DrawPlanetHUD (CelestialBody planet) {
+	void DrawPlanetHUD (CelestialBody planet, bool occluded) {
 		SetHudActive (true);
 		Vector3 dirToPlanet = (planet.transform.position - camT.position).normalized;
 		float dstToPlanetCentre = (planet.transform.position - camT.position).magnitude;
@@ -167,7 +172,7 @@ public class ShipHUD : MonoBehaviour {
 		// ~3.7 KB / frame from $"..." interpolation + TMP text setter +
 		// color struct creation — ~370 KB/sec of GC churn while piloting.
 		Vector3 planetInfoWorldPos = planet.transform.position + horizontal * planet.radius * lockOnUI.lockedRadiusMultiplier + vertical * planet.radius * 0.35f;
-		bool labelOnScreen = PointIsOnScreen (planetInfoWorldPos);
+		bool labelOnScreen = PointIsOnScreen (planetInfoWorldPos) && !occluded;
 		// A mission-pinned body must stay findable even when it's off-screen
 		// (mid-chase it can end up anywhere): hug the label to the screen edge
 		// in the body's direction so it doubles as a pointer.
@@ -199,7 +204,7 @@ public class ShipHUD : MonoBehaviour {
 		}
 
 		// Relative velocity lines
-		if (PointIsOnScreen (planet.transform.position)) {
+		if (!occluded && PointIsOnScreen (planet.transform.position)) {
 			float arrowHeadSizePercent = dstToPlanetSurface / maxVisDst;
 			//Debug.Log (arrowHeadSizePercent);
 			float arrowHeadSize = Mathf.Lerp (velocityIndicatorSizeMinMax.y, velocityIndicatorSizeMinMax.x, arrowHeadSizePercent);
@@ -219,6 +224,35 @@ public class ShipHUD : MonoBehaviour {
 			velocityVertical.SetActive (false);
 		}
 
+	}
+
+	// Line-of-sight buffer — NonAlloc so the per-frame occlusion test doesn't
+	// churn GC (this runs every LateUpdate while piloting).
+	static readonly RaycastHit[] s_losHits = new RaycastHit[16];
+
+	/// True when the sight line from the cockpit camera toward worldPos is
+	/// blocked by the piloted ship's OWN hull — the marker should only be
+	/// visible through the canopy. The canopy's solid collider is named
+	/// "Window", so Window/Glass colliders count as see-through. Other
+	/// ships/objects never occlude (the marker is a HUD aid, not a physical
+	/// sight).
+	bool OccludedByOwnShip (Vector3 worldPos) {
+		if (ship == null || camT == null) return false;
+		Vector3 offset = worldPos - camT.position;
+		// The cabin hull is metres away — a short sweep is enough and keeps
+		// the ray from wading through the whole scene.
+		float dst = Mathf.Min (offset.magnitude, 60f);
+		int n = Physics.RaycastNonAlloc (camT.position, offset.normalized, s_losHits, dst, ~0, QueryTriggerInteraction.Ignore);
+		for (int i = 0; i < n; i++) {
+			var col = s_losHits[i].collider;
+			if (col == null) continue;
+			if (col.GetComponentInParent<Ship> () != ship) continue;
+			string cn = col.name;
+			if (cn.IndexOf ("Window", System.StringComparison.OrdinalIgnoreCase) >= 0 ||
+				cn.IndexOf ("Glass", System.StringComparison.OrdinalIgnoreCase) >= 0) continue;
+			return true;
+		}
+		return false;
 	}
 
 	CelestialBody FindAimedBody () {
