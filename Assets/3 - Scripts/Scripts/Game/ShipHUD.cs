@@ -88,7 +88,6 @@ public class ShipHUD : MonoBehaviour {
 	// identical positions, and VelocityIndicator.Update is canvas-local math,
 	// so nothing changes visually except the occlusion.
 	Canvas depthCanvas;
-	Transform overlayLabelParent;   // original parent — the pin's edge pointer hops back here
 
 	void EnsureDepthCanvas () {
 		if (depthCanvas != null || cam == null) return;
@@ -113,22 +112,11 @@ public class ShipHUD : MonoBehaviour {
 			scaler.referenceResolution = new Vector2 (1920f, 1080f);
 		}
 
-		overlayLabelParent = planetName.transform.parent;
 		planetName.transform.SetParent (go.transform, false);
 		velocityHorizontal.line.transform.SetParent (go.transform, false);
 		velocityHorizontal.head.transform.SetParent (go.transform, false);
 		velocityVertical.line.transform.SetParent (go.transform, false);
 		velocityVertical.head.transform.SetParent (go.transform, false);
-	}
-
-	/// The label lives on the depth canvas while anchored to the planet
-	/// (hull occludes it) and hops to the overlay canvas while acting as the
-	/// mission pin's screen-edge pointer (which must never be hidden).
-	void SetLabelDepthTested (bool depthTested) {
-		if (depthCanvas == null) return;
-		Transform want = depthTested ? depthCanvas.transform : overlayLabelParent;
-		if (planetName.transform.parent != want)
-			planetName.transform.SetParent (want, false);
 	}
 
 	void UpdateUI () {
@@ -237,15 +225,8 @@ public class ShipHUD : MonoBehaviour {
 		Vector3 planetInfoWorldPos = planet.transform.position + horizontal * planet.radius * lockOnUI.lockedRadiusMultiplier + vertical * planet.radius * 0.35f;
 		bool inFront = cam.WorldToViewportPoint (planet.transform.position).z > 0f;
 		bool labelInFront = cam.WorldToViewportPoint (planetInfoWorldPos).z > 0f;
-		// A mission-pinned body must stay findable when it leaves the screen
-		// entirely: the label hops to the overlay canvas (never occluded) and
-		// hugs the screen edge in the body's direction as a pointer.
-		bool edgeMode = planet == MissionPin && !PointIsOnScreen (planet.transform.position);
-		planetName.gameObject.SetActive (edgeMode || labelInFront);
-		SetLabelDepthTested (!edgeMode);
-		planetName.rectTransform.localPosition = edgeMode
-			? CalculateEdgeUIPos (planet.transform.position)
-			: CalculateUIPos (planetInfoWorldPos);
+		planetName.gameObject.SetActive (labelInFront);
+		planetName.rectTransform.localPosition = CalculateUIPos (planetInfoWorldPos);
 		if (planet.bodyName != _lastBodyName) {
 			_lastBodyName = planet.bodyName;
 			planetName.text = planet.bodyName;
@@ -382,26 +363,6 @@ public class ShipHUD : MonoBehaviour {
 		// Debug.Log ($"Rel world: {relativeVelocityWorldSpace} rel: {relativeV} speed world: {relativeVelocityWorldSpace.magnitude} speed rel: {relativeV.magnitude}");
 
 		return relativeV;
-	}
-
-	/// Screen position clamped to the viewport edge, in the direction of the
-	/// world point from screen centre (points behind the camera flip so they
-	/// still land on a sensible edge). The mission pin's label uses this to
-	/// double as an off-screen direction pointer.
-	Vector2 CalculateEdgeUIPos (Vector3 worldPos) {
-		const int referenceWidth = 1920;
-		const int referenceHeight = 1080;
-		const float margin = 0.07f;
-
-		Vector3 vp = cam.WorldToViewportPoint (worldPos);
-		Vector2 dir = new Vector2 (vp.x - 0.5f, vp.y - 0.5f);
-		if (vp.z < 0) dir = -dir;
-		if (dir.sqrMagnitude < 1e-6f) dir = Vector2.up;
-
-		// Scale so the longer axis lands on the edge box.
-		float scale = (0.5f - margin) / Mathf.Max (Mathf.Abs (dir.x), Mathf.Abs (dir.y));
-		dir *= scale;
-		return new Vector2 (dir.x * referenceWidth, dir.y * referenceHeight);
 	}
 
 	Vector2 CalculateUIPos (Vector3 worldPos) {
