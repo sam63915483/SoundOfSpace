@@ -371,7 +371,9 @@ public class TevSmugglingMission : MonoBehaviour
             {
                 PlayTranslator(clip);
                 _convLineDelay = clip.length * 0.92f / Mathf.Max(1, line.Length);
-                _babbleUntil = Time.time + Mathf.Min(clip.length, 3.5f);
+                // The babble loop runs under the ENTIRE translation — long
+                // lines used to go silent at 3.5s while the voice kept going.
+                _babbleUntil = Time.time + clip.length;
             }
         }
         else
@@ -1040,9 +1042,10 @@ public class TevSmugglingMission : MonoBehaviour
         // Short barks ("INCOMING!") reveal in a blink — hold the babble a
         // moment so the alien voice actually registers.
         while (Time.time - start < 1.0f) yield return null;
-        StopBabble();
-        // Never drop the subtitle while the translation is still speaking.
+        // Never drop the subtitle — or Tev's alien voice — while the
+        // translation is still speaking; the babble loops under all of it.
         while (_trVoice != null && _trVoice.isPlaying) yield return null;
+        StopBabble();
         yield return new WaitForSeconds(1.6f);
         HideSubtitle();
         _subtitleCo = null;
