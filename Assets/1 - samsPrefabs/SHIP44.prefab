@@ -2006,8 +2006,7 @@ Transform:
   m_LocalPosition: {x: 0.003908276, y: -1.6123874, z: 3.6947808}
   m_LocalScale: {x: 0.62, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 3305627488467235657}
+  m_Children: []
   m_Father: {fileID: 6659326691661242037}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &2973027061939621632
@@ -2079,8 +2078,8 @@ BoxCollider:
   m_ProvidesContacts: 0
   m_Enabled: 1
   serializedVersion: 3
-  m_Size: {x: 4.066575, y: 8.464156, z: 1}
-  m_Center: {x: 0, y: 4.2412534, z: -0.36567903}
+  m_Size: {x: 4.066575, y: 8.464156, z: 0.27386865}
+  m_Center: {x: 0, y: 4.2412534, z: -0.002613358}
 --- !u!1 &1894384358187470834
 GameObject:
   m_ObjectHideFlags: 0
@@ -6494,59 +6493,6 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
---- !u!1 &5440974102585241267
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 3305627488467235657}
-  - component: {fileID: 813931787216263561}
-  m_Layer: 9
-  m_Name: HatchRampAid
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!4 &3305627488467235657
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5440974102585241267}
-  serializedVersion: 2
-  m_LocalRotation: {x: -0.17364821, y: 0, z: 0, w: 0.9848078}
-  m_LocalPosition: {x: 0, y: 9.238093, z: -0.45765042}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 7623543468530425569}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!65 &813931787216263561
-BoxCollider:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 5440974102585241267}
-  m_Material: {fileID: 0}
-  m_IncludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_ExcludeLayers:
-    serializedVersion: 2
-    m_Bits: 0
-  m_LayerOverridePriority: 0
-  m_IsTrigger: 0
-  m_ProvidesContacts: 0
-  m_Enabled: 1
-  serializedVersion: 3
-  m_Size: {x: 4.066575, y: 2.5, z: 0.35}
-  m_Center: {x: 0, y: 0, z: 0}
 --- !u!1 &5486991830031748308
 GameObject:
   m_ObjectHideFlags: 0
@@ -8457,8 +8403,6 @@ MonoBehaviour:
   crashLightThreshold: 15
   crashMediumThreshold: 30
   crashHardThreshold: 45
-  engineToggleHoldSeconds: 1
-  enginePromptDelaySeconds: 3
 --- !u!54 &6609386593544707878
 Rigidbody:
   m_ObjectHideFlags: 0
