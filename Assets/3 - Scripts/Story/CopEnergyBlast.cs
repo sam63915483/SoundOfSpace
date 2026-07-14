@@ -92,7 +92,7 @@ public class CopEnergyBlast : MonoBehaviour
     // cheap convincing electricity. Local space, so they ride the blast free.
     void BuildArcs(Transform parent)
     {
-        _arcs = new LineRenderer[7];
+        _arcs = new LineRenderer[10];
         var arcMat = new Material(Shader.Find("Particles/Standard Unlit"));
         arcMat.color = new Color(0.9f, 0.98f, 1f);
         for (int i = 0; i < _arcs.Length; i++)
@@ -103,8 +103,8 @@ public class CopEnergyBlast : MonoBehaviour
             lr.useWorldSpace = false;
             lr.material = arcMat;
             lr.positionCount = 7;
-            lr.startWidth = 0.16f;   // parent scale ×5.4 → ~0.85 world units at the root
-            lr.endWidth = 0.03f;
+            lr.startWidth = 0.48f;   // parent scale ×5.4 → ~2.6 world units at the root
+            lr.endWidth = 0.09f;
             lr.startColor = new Color(0.95f, 0.99f, 1f, 1f);
             lr.endColor = new Color(0.35f, 0.9f, 1f, 0.75f);
             _arcs[i] = lr;
@@ -124,8 +124,8 @@ public class CopEnergyBlast : MonoBehaviour
             {
                 float t = p / (float)(lr.positionCount - 1);
                 Vector3 point = Vector3.Slerp(a, b, t);
-                point *= UnityEngine.Random.Range(1.0f, 2.3f);           // long tendrils off the surface
-                point += UnityEngine.Random.insideUnitSphere * 0.22f;    // hard kinks
+                point *= UnityEngine.Random.Range(1.5f, 7f);             // long tendrils off the surface (3× reach)
+                point += UnityEngine.Random.insideUnitSphere * 0.6f;     // hard kinks
                 lr.SetPosition(p, point);
             }
         }
