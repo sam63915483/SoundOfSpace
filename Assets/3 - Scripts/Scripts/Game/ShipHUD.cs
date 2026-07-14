@@ -75,6 +75,47 @@ public class ShipHUD : MonoBehaviour {
 		// cached static is set/cleared on pilot enter/exit, so it tracks
 		// cockpit swaps without scanning every Ship in the scene every frame.
 		ship = Ship.PilotedInstance;
+
+		EnsureDepthCanvas ();
+	}
+
+	// Camera-space canvas that hosts the world-anchored marker elements (the
+	// planet label + the velocity arrows). Unlike the overlay canvas they
+	// were authored on, this one renders inside the 3D pass with real scene
+	// depth, so the cockpit hull occludes the marker per-pixel while the
+	// canopy glass (transparent, no depth write) stays see-through. The plane
+	// sits at 40 units — beyond the hull, closer than anything the marker
+	// should hide behind.
+	Canvas depthCanvas;
+	Transform overlayLabelParent;   // original parent — the edge pointer moves back here
+
+	void EnsureDepthCanvas () {
+		if (depthCanvas != null || cam == null) return;
+
+		var go = new GameObject ("ShipHUD_DepthCanvas");
+		depthCanvas = go.AddComponent<Canvas> ();
+		depthCanvas.renderMode = RenderMode.ScreenSpaceCamera;
+		depthCanvas.worldCamera = cam;
+		depthCanvas.planeDistance = 40f;
+		var scaler = go.AddComponent<CanvasScaler> ();
+		scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+		scaler.referenceResolution = new Vector2 (1920f, 1080f);
+
+		overlayLabelParent = planetName.transform.parent;
+		planetName.transform.SetParent (go.transform, false);
+		velocityHorizontal.line.transform.SetParent (go.transform, false);
+		velocityHorizontal.head.transform.SetParent (go.transform, false);
+		velocityVertical.line.transform.SetParent (go.transform, false);
+		velocityVertical.head.transform.SetParent (go.transform, false);
+	}
+
+	/// The label lives on the depth canvas while anchored to the planet
+	/// (hull occludes it) and hops back to the overlay canvas while acting
+	/// as the mission pin's screen-edge pointer (must never be hidden).
+	void SetLabelDepthTested (bool depthTested) {
+		Transform want = depthTested ? depthCanvas.transform : overlayLabelParent;
+		if (planetName.transform.parent != want)
+			planetName.transform.SetParent (want, false);
 	}
 
 	void UpdateUI () {
@@ -122,17 +163,16 @@ public class ShipHUD : MonoBehaviour {
 			}
 
 			if (aimedBody && aimedBody != lockedBody) {
-				if (!OccludedByOwnShip (aimedBody.transform.position))
-					lockOnUI.DrawLockOnUI (aimedBody, false);
+				lockOnUI.DrawLockOnUI (aimedBody, false);
 			}
 
+			// Occlusion is per-pixel: the brackets' LockOnRing shader and the
+			// label/arrows (moved onto the camera-space canvas in Init) all
+			// ZTest against the scene, so the cabin hull covers them and the
+			// canopy glass (no depth write) doesn't.
 			if (lockedBody) {
-				// The marker is only visible through the canopy: when the
-				// cabin hull blocks the sight line, the brackets/label/arrows
-				// hide (a pinned body falls back to its edge pointer).
-				bool occluded = OccludedByOwnShip (lockedBody.transform.position);
-				if (!occluded) lockOnUI.DrawLockOnUI (lockedBody, true);
-				DrawPlanetHUD (lockedBody, occluded);
+				lockOnUI.DrawLockOnUI (lockedBody, true);
+				DrawPlanetHUD (lockedBody);
 			} else {
 				SetHudActive (false);
 			}
@@ -147,7 +187,7 @@ public class ShipHUD : MonoBehaviour {
 		velocityVertical.SetActive (active);
 	}
 
-	void DrawPlanetHUD (CelestialBody planet, bool occluded) {
+	void DrawPlanetHUD (CelestialBody planet) {
 		SetHudActive (true);
 		Vector3 dirToPlanet = (planet.transform.position - camT.position).normalized;
 		float dstToPlanetCentre = (planet.transform.position - camT.position).magnitude;
@@ -172,14 +212,19 @@ public class ShipHUD : MonoBehaviour {
 		// ~3.7 KB / frame from $"..." interpolation + TMP text setter +
 		// color struct creation — ~370 KB/sec of GC churn while piloting.
 		Vector3 planetInfoWorldPos = planet.transform.position + horizontal * planet.radius * lockOnUI.lockedRadiusMultiplier + vertical * planet.radius * 0.35f;
-		bool labelOnScreen = PointIsOnScreen (planetInfoWorldPos) && !occluded;
+		bool labelOnScreen = PointIsOnScreen (planetInfoWorldPos);
 		// A mission-pinned body must stay findable even when it's off-screen
-		// (mid-chase it can end up anywhere): hug the label to the screen edge
-		// in the body's direction so it doubles as a pointer.
-		planetName.gameObject.SetActive (labelOnScreen || planet == MissionPin);
-		planetName.rectTransform.localPosition = labelOnScreen
-			? CalculateUIPos (planetInfoWorldPos)
-			: CalculateEdgeUIPos (planet.transform.position);
+		// or hidden behind the cabin (mid-chase it can end up anywhere): hug
+		// the label to the screen edge in the body's direction — on the
+		// overlay canvas, where nothing occludes it — so it doubles as a
+		// pointer. The world-anchored label depth-tests behind the hull.
+		bool edgeMode = planet == MissionPin &&
+			(!labelOnScreen || OccludedByOwnShip (planet.transform.position));
+		planetName.gameObject.SetActive (labelOnScreen || edgeMode);
+		SetLabelDepthTested (!edgeMode);
+		planetName.rectTransform.localPosition = edgeMode
+			? CalculateEdgeUIPos (planet.transform.position)
+			: CalculateUIPos (planetInfoWorldPos);
 		if (planet.bodyName != _lastBodyName) {
 			_lastBodyName = planet.bodyName;
 			planetName.text = planet.bodyName;
@@ -204,7 +249,7 @@ public class ShipHUD : MonoBehaviour {
 		}
 
 		// Relative velocity lines
-		if (!occluded && PointIsOnScreen (planet.transform.position)) {
+		if (PointIsOnScreen (planet.transform.position)) {
 			float arrowHeadSizePercent = dstToPlanetSurface / maxVisDst;
 			//Debug.Log (arrowHeadSizePercent);
 			float arrowHeadSize = Mathf.Lerp (velocityIndicatorSizeMinMax.y, velocityIndicatorSizeMinMax.x, arrowHeadSizePercent);

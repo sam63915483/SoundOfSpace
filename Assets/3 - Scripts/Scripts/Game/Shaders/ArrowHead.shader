@@ -9,7 +9,10 @@
 	 SubShader
 	 {
 		  Tags { "RenderType"="Transparent" "Queue"="Overlay" }
-		  ZTest Always
+		  // LEqual so the arrow depth-tests on the camera-space ShipHUD canvas
+		  // (hull occludes it); on overlay canvases UI sits at the near plane,
+		  // so LEqual still always passes — same look as the old ZTest Always.
+		  ZTest LEqual
 		  ZWrite Off
 		  Blend SrcAlpha OneMinusSrcAlpha
 		  LOD 100
