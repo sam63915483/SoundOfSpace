@@ -100,6 +100,8 @@ public class TevSmugglingMission : MonoBehaviour
     public float engineCutWindowSeconds = 3f;
     [Tooltip("Radio bark when the player ignores the engine-cut order — the chase starts immediately, no interrogation, no head start.")]
     public AudioClip copRunnerClip;
+    [Tooltip("Radio scream the moment the player restarts the engine after the stop — Kolb knows exactly what's coming.")]
+    public AudioClip copLethalForceClip;
     [Tooltip("Tev early in the chase: run TOWARD Fiery Twin so the flee distance is trip progress, not wasted fuel.")]
     public AudioClip trHeadForTwinClip;
     [Tooltip("Tev after the win: cracks the smuggled crate and tops the reactor up — the chase can't leave the player stranded short of Fiery Twin.")]
@@ -834,9 +836,19 @@ public class TevSmugglingMission : MonoBehaviour
 
     IEnumerator ChaseRoutine(float headStart, bool immediateFlee)
     {
-        // The player flies free while Kolb is still distracted. Zero head
-        // start = he was already hot and comes straight after you.
-        if (headStart > 0f) yield return new WaitForSeconds(headStart);
+        if (!immediateFlee)
+        {
+            // The stop ended with the engine cut, so IGNITION is the tell:
+            // the moment the player spins the engine back up, Kolb screams
+            // the lethal-force warning — and how long he takes to actually
+            // get rolling is the head start the stop earned (he's mid-
+            // docking-approach / mid-scan / logging the payment).
+            while (_phase == Phase.Chase && _ship != null && !_ship.EngineOn)
+                yield return null;
+            if (_phase != Phase.Chase) yield break;
+            PlayCopRadio(copLethalForceClip);
+            if (headStart > 0f) yield return new WaitForSeconds(headStart);
+        }
         if (_phase != Phase.Chase || _cop == null) yield break;
 
         // This chase is scripted: you can't out-RANGE the corvette and it never
@@ -844,8 +856,11 @@ public class TevSmugglingMission : MonoBehaviour
         _cop.escapeDistance = 999999f;
         _cop.maxBlasts = 999;
 
+        // immediateFlee always: after the ignition tell (or the QTE runner
+        // branch) Kolb doesn't wait to see movement — he swings straight
+        // around behind the ship.
         _cop.StartChase(
-            immediateFlee: immediateFlee,
+            immediateFlee: true,
             onEscaped: () =>
             {
                 SetFlag("b1_outlaw", true);
