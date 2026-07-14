@@ -579,15 +579,13 @@ public class Ship : GravityObject
             ToggleHatch();
         }
 
-        // ── Engine state: E from the pilot seat ──
-        // The ship must be STARTED before thrust responds: hold E for
+        // ── Engine state: I (Ignition) from the pilot seat ──
+        // The ship must be STARTED before thrust responds: hold I for
         // engineToggleHoldSeconds to spin it up, and the same hold shuts it
         // down. With the engine off, thrust and rotation are dead but the
         // hatch, headlight and LebronLight keep working. Ignition also needs
         // canFly (a control-cut or damage-disabled ship can't be restarted).
-        // Note E doubles as roll-right while flying — roll is inert with the
-        // engine off, and the shutdown hold shows a closing ring
-        // (ShipEngineUI) so a long roll can't silently kill the engine.
+        // I was chosen over E because E is roll-right while flying.
         if (shipIsPiloted && !PlayerController.isMapOpen && !WorldDialogueUI.IsOpen)
         {
             HandleEngineKey();
@@ -720,12 +718,12 @@ public class Ship : GravityObject
         }
     }
 
-    /// One E hold = one toggle; the key must be released before the next
-    /// hold counts, so keeping E pressed past the threshold can't flip the
+    /// One I hold = one toggle; the key must be released before the next
+    /// hold counts, so keeping I pressed past the threshold can't flip the
     /// engine straight back.
     void HandleEngineKey()
     {
-        if (!Input.GetKey(KeyCode.E))
+        if (!Input.GetKey(KeyCode.I))
         {
             _engineHoldT = 0f;
             _engineKeyLatched = false;
@@ -745,12 +743,12 @@ public class Ship : GravityObject
 
     void UpdateEngineUI()
     {
-        // Cold-ship nudge only. No visual for the E hold itself — the
+        // Cold-ship nudge only. No visual for the I hold itself — the
         // shrinking-ring look is reserved for mission QTEs, so routine
         // engine starts/stops don't read as one.
         bool uiBlocked = PlayerController.isMapOpen || WorldDialogueUI.IsOpen;
         if (!uiBlocked && !engineOn && canFly && Time.time - _pilotedAt >= enginePromptDelaySeconds)
-            ShipEngineUI.Show("HOLD E — START ENGINE");
+            ShipEngineUI.Show("HOLD I — START ENGINE");
         else
             ShipEngineUI.Hide();
     }
@@ -1639,13 +1637,13 @@ public class Ship : GravityObject
 
     // ── Engine state (appended fields — serialization order must not change) ──
     [Header("Engine state")]
-    [Tooltip("The ship must be started before thrust works: hold E in the pilot seat this long to start (or stop) the engine. Hatch, headlight and LebronLight work with the engine off.")]
+    [Tooltip("The ship must be started before thrust works: hold I (Ignition) in the pilot seat this long to start (or stop) the engine. Hatch, headlight and LebronLight work with the engine off.")]
     public float engineToggleHoldSeconds = 1f;
-    [Tooltip("Boarding a cold ship: if the engine hasn't been started this many seconds after sitting down, the HOLD E prompt appears.")]
+    [Tooltip("Boarding a cold ship: if the engine hasn't been started this many seconds after sitting down, the HOLD I prompt appears.")]
     public float enginePromptDelaySeconds = 3f;
 
     bool engineOn;             // runtime only — ships boot cold except load-time auto-seat
-    float _engineHoldT;        // current E-hold progress toward a toggle
-    bool _engineKeyLatched;    // one toggle per press — must release E before the next
+    float _engineHoldT;        // current I-hold progress toward a toggle
+    bool _engineKeyLatched;    // one toggle per press — must release I before the next
     float _pilotedAt;          // Time.time when the pilot sat down (drives the prompt delay)
 }

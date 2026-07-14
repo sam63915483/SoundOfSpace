@@ -2,10 +2,10 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-/// Code-built overlay for the ship engine state: the "HOLD E" nudge that
+/// Code-built overlay for the ship engine state: the "HOLD I" nudge that
 /// appears a few seconds after boarding a cold ship. Deliberately NO ring —
 /// the shrinking-ring visual is reserved for mission quick-time events
-/// (TevSmugglingMission QTE UI), so holding E to start/stop the engine in
+/// (TevSmugglingMission QTE UI), so holding I to start/stop the engine in
 /// normal play never looks like a QTE. One static canvas shared by every
 /// ship — only the piloted one drives it (Ship.UpdateEngineUI).
 public static class ShipEngineUI
@@ -43,7 +43,7 @@ public static class ShipEngineUI
         root.anchorMin = root.anchorMax = new Vector2(0.5f, 0.30f);
         root.sizeDelta = Vector2.zero;
 
-        // Keycap: bordered dark square with a bold E (mission QTE style).
+        // Keycap: bordered dark square with a bold I (mission QTE style).
         var border = new GameObject("CapBorder");
         border.transform.SetParent(root, false);
         border.AddComponent<RectTransform>().sizeDelta = new Vector2(72f, 72f);
@@ -54,11 +54,11 @@ public static class ShipEngineUI
         cap.AddComponent<RectTransform>().sizeDelta = new Vector2(64f, 64f);
         cap.AddComponent<Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
 
-        var letterGo = new GameObject("E");
+        var letterGo = new GameObject("I");
         letterGo.transform.SetParent(root, false);
         var letter = letterGo.AddComponent<TextMeshProUGUI>();
         letter.rectTransform.sizeDelta = new Vector2(72f, 72f);
-        letter.text = "E";
+        letter.text = "I";
         letter.fontSize = 42f;
         letter.fontStyle = FontStyles.Bold;
         letter.color = Color.white;

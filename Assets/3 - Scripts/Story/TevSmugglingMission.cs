@@ -96,10 +96,14 @@ public class TevSmugglingMission : MonoBehaviour
     [Tooltip("Tev after the corvette goes down: get us to Fiery Twin, we lay low.")]
     public AudioClip trLayLowClip;
     [Header("Pull-over — engine-cut QTE")]
-    [Tooltip("After CUT YOUR ENGINE lands, the player has this long to start cutting the engine (E). The window extends while the E hold is in progress, so it's forgiving.")]
+    [Tooltip("After CUT YOUR ENGINE lands, the player has this long to start cutting the engine (I). The window extends while the I hold is in progress, so it's forgiving.")]
     public float engineCutWindowSeconds = 3f;
     [Tooltip("Radio bark when the player ignores the engine-cut order — the chase starts immediately, no interrogation, no head start.")]
     public AudioClip copRunnerClip;
+    [Tooltip("Tev early in the chase: run TOWARD Fiery Twin so the flee distance is trip progress, not wasted fuel.")]
+    public AudioClip trHeadForTwinClip;
+    [Tooltip("Tev after the win: cracks the smuggled crate and tops the reactor up — the chase can't leave the player stranded short of Fiery Twin.")]
+    public AudioClip trFuelTopUpClip;
 
     const string WaypointId = "b1_fiery_twin";
 
@@ -680,14 +684,14 @@ public class TevSmugglingMission : MonoBehaviour
             yield return new WaitForSeconds(Mathf.Max(1f, stopEngineClip.length * 0.9f));
         }
 
-        // 2b. Engine-cut QTE: the player must actually cut the engine (hold E
+        // 2b. Engine-cut QTE: the player must actually cut the engine (hold I
         // from the pilot seat) within engineCutWindowSeconds. Forgiving: the
-        // deadline stretches while the E hold is in progress. Ignore the order
+        // deadline stretches while the I hold is in progress. Ignore the order
         // and Kolb calls it in — no interrogation, no head start, pursuit NOW.
         bool engineCut = _ship == null || !_ship.EngineOn;   // coasting cold already = compliant
         if (!engineCut)
         {
-            SetQteKey("E", "E TO SHUT DOWN ENGINE");
+            SetQteKey("I", "I TO SHUT DOWN ENGINE");
             _qteRoot.SetActive(true);
             _qteWhiteRing.localScale = Vector3.one * 3f;
             float qteStart = Time.time;
@@ -696,7 +700,7 @@ public class TevSmugglingMission : MonoBehaviour
             {
                 float t = Time.time - qteStart;
                 if (_ship != null && !_ship.EngineOn) { engineCut = true; break; }
-                if (t >= engineCutWindowSeconds && !Input.GetKey(KeyCode.E)) break;
+                if (t >= engineCutWindowSeconds && !Input.GetKey(KeyCode.I)) break;
                 if (t >= hardCap) break;
                 _qteWhiteRing.localScale = Vector3.one *
                     Mathf.Lerp(3f, 1f, Mathf.Clamp01(t / engineCutWindowSeconds));
@@ -1146,7 +1150,14 @@ public class TevSmugglingMission : MonoBehaviour
         if (_phase != Phase.Chase) yield break;
         ShowTevLine("THAT'S THE SPIRIT! But what's your plan?! You can't outrun this ship!", trSpiritClip);
 
-        yield return WaitUntilChaseTime(t0, 8f);
+        // Point the run at the destination: every second of fleeing should be
+        // trip progress, not fuel burned in a random direction. The compass
+        // waypoint is already up from BeginEnRoute.
+        yield return WaitUntilChaseTime(t0, 5.5f);
+        if (_phase != Phase.Chase) yield break;
+        ShowTevLine("HEAD FOR FIERY TWIN! FLOOR IT! I'LL HANDLE THE COP!", trHeadForTwinClip);
+
+        yield return WaitUntilChaseTime(t0, 11f);
         if (_phase != Phase.Chase) yield break;
         ShowTevLine("Wait, wait, wait... I've got an idea! Keep driving! Don't you DARE slow down!", trIdeaClip);
 
@@ -1297,6 +1308,13 @@ public class TevSmugglingMission : MonoBehaviour
         while (_subtitleCo != null) yield return null;
         yield return new WaitForSeconds(0.8f);
         ShowTevLine("Great. Now get us to Fiery Twin, ASAP — we can lay low for a bit.", trLayLowClip);
+        // The chase burns most of the reactor; Tev cracks the smuggled crate
+        // and tops it up so the win can't leave the player stranded short of
+        // Fiery Twin.
+        while (_subtitleCo != null) yield return null;
+        yield return new WaitForSeconds(0.8f);
+        ShowTevLine("Oh — and the buyer's not gonna miss ONE fuel crystal. Topping us up.", trFuelTopUpClip);
+        if (_ship != null) _ship.RestoreFuel(_ship.fuelMax);
     }
 
     IEnumerator WaitUntilChaseTime(float t0, float t)
