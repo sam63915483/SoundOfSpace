@@ -102,6 +102,8 @@ public class TevSmugglingMission : MonoBehaviour
     public AudioClip copRunnerClip;
     [Tooltip("Radio scream the moment the player restarts the engine after the stop — Kolb knows exactly what's coming.")]
     public AudioClip copLethalForceClip;
+    [Tooltip("Tev right after CUT YOUR ENGINE, before the QTE: comply, we can't outrun that corvette.")]
+    public AudioClip trDoWhatHeSaysClip;
     [Tooltip("Tev early in the chase: run TOWARD Fiery Twin so the flee distance is trip progress, not wasted fuel.")]
     public AudioClip trHeadForTwinClip;
     [Tooltip("Tev after the win: cracks the smuggled crate and tops the reactor up — the chase can't leave the player stranded short of Fiery Twin.")]
@@ -705,6 +707,18 @@ public class TevSmugglingMission : MonoBehaviour
         // deadline stretches while the I hold is in progress. Ignore the order
         // and Kolb calls it in — no interrogation, no head start, pursuit NOW.
         bool engineCut = _ship == null || !_ship.EngineOn;   // coasting cold already = compliant
+        if (!engineCut)
+        {
+            // Tev, urgently sensible, before the clock starts: comply.
+            ShowTevLine("Do what he says and turn the engine off NOW — we can't outrun that corvette.", trDoWhatHeSaysClip);
+            float lineBy = Time.time + 8f;   // safety timeout
+            while (Time.time < lineBy && _subtitleCo != null)
+            {
+                // Early compliance while Tev is still talking skips the QTE.
+                if (_ship != null && !_ship.EngineOn) { engineCut = true; break; }
+                yield return null;
+            }
+        }
         if (!engineCut)
         {
             SetQteKey("I", "I TO SHUT DOWN ENGINE");

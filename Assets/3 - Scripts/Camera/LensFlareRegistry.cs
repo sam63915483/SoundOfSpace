@@ -48,10 +48,15 @@ public class LensFlareRegistry : MonoBehaviour
     // Partial-occlusion sampling: number of rays around the sun's
     // silhouette circle (plus one at the centre = N+1 total samples).
     // More samples = finer-grained partial fade, slightly more raycast cost.
-    const int   kOcclusionEdgeSamples = 8;
-    // Temporal smoothing for the visibility fraction so 1/9-step quantization
-    // doesn't read as a flicker when an obstacle's edge sweeps past samples.
-    const float kVisibilitySmoothTime = 0.08f;
+    // 12 (was 8): 1/13 steps instead of 1/9 — partial cover fades in finer
+    // increments, so a planet limb sweeping the silhouette pulses less.
+    const int   kOcclusionEdgeSamples = 12;
+    // Temporal smoothing for the visibility fraction so per-sample steps
+    // don't read as a flicker when an obstacle's edge sweeps past samples.
+    // 0.25s (was 0.08s): single-sample flips at a partially-covered sun were
+    // still visible as fast glow/dim pulsing — a slower glide reads as the
+    // sun smoothly emerging/hiding instead.
+    const float kVisibilitySmoothTime = 0.25f;
     // Raw visibility below this is treated as fully occluded (remapped to 0).
     // Kills the "thin gap in tree/cabin collider lets 1-2 silhouette samples
     // slip through" flicker without breaking the partial-occlusion feel for
@@ -542,7 +547,13 @@ public class LensFlareRegistry : MonoBehaviour
             // Ship: ignore only when the hit is close enough that the
             // depth-occlusion already covers it (cockpit hull when
             // piloting, ship's own bulk when standing right next to it).
-            if (go.GetComponentInParent<Ship>() != null && hit.distance < kCanvasPlaneDistance) continue;
+            // Use the canvas's CURRENT plane distance — while inside a ship
+            // it's pushed to kInteriorPlaneDistance, and comparing against
+            // the on-foot 5m here double-counted hull pieces 5-40m away
+            // (raycast block + depth occlusion), so the flare pulsed as the
+            // ship rotated even with the sun steady in the window.
+            float depthCovered = _canvas != null ? _canvas.planeDistance : kCanvasPlaneDistance;
+            if (go.GetComponentInParent<Ship>() != null && hit.distance < depthCovered) continue;
             var hitBody = go.GetComponentInParent<CelestialBody>();
             if (hitBody != null && hitBody == _sunBody) continue;
             return true;
