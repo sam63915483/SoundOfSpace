@@ -269,6 +269,10 @@ public class TevSmugglingMission : MonoBehaviour
     const float EngineCutSecondChanceSeconds = 3f;
     const float EngineCutHoldGraceSeconds    = 2.5f;
 
+    // Hatch countdown: opening this many seconds before "1" still counts as a
+    // hit (forgives an eager-but-close open instead of forcing a retry).
+    const float HatchEarlyCushionSeconds = 1f;
+
     GameObject _qteRoot;
     RectTransform _qteWhiteRing;
     RectTransform _qteRedRing;
@@ -1370,7 +1374,13 @@ public class TevSmugglingMission : MonoBehaviour
             if (_ship != null && _ship.HatchOpen)
             {
                 QteHide();
-                _cdResult = CdResult.EarlyPress;
+                // Cushion: opening within the last HatchEarlyCushionSeconds of
+                // the 3-2-1 (i.e. t past 2 - cushion) still counts as a hit, so
+                // an eager-but-close open isn't punished with a retry. Only a
+                // genuinely early jump (before that) is an EarlyPress.
+                _cdResult = (t >= 2f - HatchEarlyCushionSeconds)
+                    ? CdResult.Success
+                    : CdResult.EarlyPress;
                 yield break;
             }
             if (_phase != Phase.Chase) { QteHide(); yield break; }

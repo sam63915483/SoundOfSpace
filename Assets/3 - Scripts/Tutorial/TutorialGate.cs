@@ -588,7 +588,11 @@ public static class PromptGlyphs
     {
         if (!Pad) return kb;
         if (!SpritesOk) return fallback;
-        return $"<sprite name=\"{(PS ? psSprite : xboxSprite)}\">";
+        // voffset drops the sprite ~0.18em so it sits centered in the keycap /
+        // QTE circle instead of riding high on the text baseline (TMP aligns
+        // sprites to the baseline, not the glyph's optical centre). em units
+        // scale the nudge with whatever font size the keycap uses.
+        return $"<voffset=-0.18em><sprite name=\"{(PS ? psSprite : xboxSprite)}\"></voffset>";
     }
     // "Primary action" (LMB / pad A) — matches TutorialGate.PrimaryActionPressed.
     public static string PrimaryAction  => Pick("<b>LMB</b>",  "<b>A</b>",  "<b>Cross</b>", "xbox_a", "ps_cross");
