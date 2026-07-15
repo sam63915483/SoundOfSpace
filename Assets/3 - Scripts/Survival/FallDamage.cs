@@ -10,6 +10,15 @@ using UnityEngine;
 /// surface-up axis (player.transform.up). Sprinting off a ledge and dropping
 /// straight down are judged purely on how fast you're moving DOWNWARD.
 ///
+/// Impact speed is the max downward speed over the last ~0.25 s before the
+/// landing (sampled at physics rate), NOT the all-time peak of the airborne
+/// stretch. The old peak model banked the fastest moment of the whole fall and
+/// spent it at the NEXT OnLanded, whenever that was — so braking softly with
+/// the down-thrust still hurt, and landing in water (which fires no OnLanded
+/// and bleeds the speed) then wading ashore dealt the cliff-dive damage at the
+/// shoreline. The window means only speed you actually carried into the ground
+/// counts; touching water clears it outright.
+///
 /// Three tiers (light / medium / hard) each play an impact thud + a player pain
 /// voice and deal speed-scaled damage. A normal jump launches/lands at ~20 m/s
 /// (PlayerController.jumpForce = 20, applied as VelocityChange), so the light
@@ -65,9 +74,16 @@ public class FallDamage : MonoBehaviour
 	// --- runtime ---
 	PlayerController player;
 	AudioSource audioSource;
-	float peakFallSpeed;          // max toward-surface speed seen this airborne stretch
 	bool subscribed;
 	float nextFindTime;           // throttle for lazy re-find
+
+	// Pre-impact window: ring buffer of toward-surface speeds sampled every
+	// FixedUpdate. 32 slots covers 0.32 s at the default 0.02 s timestep —
+	// comfortably more than the 0.25 s window read at landing.
+	const float impactWindow = 0.25f;
+	readonly float[] sampleSpeeds = new float[32];
+	readonly float[] sampleTimes  = new float[32];
+	int sampleIndex;
 
 	void Awake()
 	{
@@ -101,20 +117,50 @@ public class FallDamage : MonoBehaviour
 			player.OnLanded += HandleLanded;
 			subscribed = true;
 		}
+	}
 
-		// A cinematic owns the player's motion — don't bank any of it as a fall.
-		if (Suppressed) { peakFallSpeed = 0f; return; }
+	void FixedUpdate()
+	{
+		if (player == null) return;
+
+		// A cinematic owns the player's motion (don't bank any of it as a fall),
+		// and water IS the landing — entering it dissipates the speed, so the
+		// eventual shoreline OnLanded must see nothing.
+		if (Suppressed || player.IsInWater) { ClearSamples(); return; }
 
 		// Toward-surface speed: positive = falling onto the planet. Horizontal
 		// motion projects to ~0 on transform.up, so it doesn't count.
 		float down = -Vector3.Dot(player.RelativeVelocity, player.transform.up);
-		if (down > peakFallSpeed) peakFallSpeed = down;
+		sampleSpeeds[sampleIndex] = Mathf.Max(0f, down);
+		sampleTimes[sampleIndex]  = Time.fixedTime;
+		sampleIndex = (sampleIndex + 1) % sampleSpeeds.Length;
+	}
+
+	void ClearSamples()
+	{
+		for (int i = 0; i < sampleSpeeds.Length; i++) sampleSpeeds[i] = 0f;
+	}
+
+	// Max toward-surface speed recorded inside the impact window. Landing
+	// detection (a grounded spherecast in the player's Update) can run a frame
+	// or two after the physics contact has already killed the velocity, so the
+	// instantaneous speed at OnLanded reads ~0 — the short window reliably
+	// captures the speed the player actually carried into the ground while
+	// forgetting anything older (water entries, bounces off props, thrust
+	// braking high in the fall).
+	float RecentImpactSpeed()
+	{
+		float cutoff = Time.fixedTime - impactWindow;
+		float best = 0f;
+		for (int i = 0; i < sampleSpeeds.Length; i++)
+			if (sampleTimes[i] >= cutoff && sampleSpeeds[i] > best) best = sampleSpeeds[i];
+		return best;
 	}
 
 	void HandleLanded()
 	{
-		float speed = peakFallSpeed;
-		peakFallSpeed = 0f;   // reset for the next airborne stretch
+		float speed = RecentImpactSpeed();
+		ClearSamples();   // reset for the next airborne stretch
 
 		if (speed < lightThreshold) return;   // soft enough — leave it to the land sound
 

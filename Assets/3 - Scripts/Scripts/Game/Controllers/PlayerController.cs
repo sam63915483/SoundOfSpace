@@ -215,6 +215,19 @@ public class PlayerController : GravityObject
 	bool jumpQueued;
 	bool jetpackQueued;
 
+	// Grounded state at the end of the previous FixedUpdate — drives the
+	// ground↔air momentum handoff in HandleMovement.
+	bool _wasGroundedPhys;
+	// Raw local-space move input stashed by HandleInput (Update) for the
+	// velocity-based air-control block in HandleMovement (FixedUpdate).
+	Vector3 _moveInputLocal;
+	// Airborne WASD acceleration (m/s²) toward the input direction, capped at
+	// walkSpeed along that direction. Non-serialized so it never reorders the
+	// serialized field block — tune here. 24 ≈ 0 → walkSpeed in a third of a second.
+	float airAcceleration = 24f;
+	// Zero-alloc scratch for the wall-overlap rescue's OverlapCapsuleNonAlloc.
+	readonly Collider[] _overlapHits = new Collider[8];
+
 	AudioSource sfxSource;
 	AudioSource footstepsSource;
 	AudioSource upBoostSource;
@@ -589,6 +602,7 @@ public class PlayerController : GravityObject
 			targetVelocity = Vector3.zero;
 			smoothVelocity = Vector3.zero;
 			smoothVRef     = Vector3.zero;
+			_moveInputLocal = Vector3.zero;
 			return;
 		}
 		// Jump button = Space OR Xbox A. Ability gating depends on grounded state
@@ -614,18 +628,21 @@ public class PlayerController : GravityObject
 			0,
 			TutorialGate.MoveAxisVertical(TutorialAbility.Move));
 		bool running = TutorialGate.SprintHeld(TutorialAbility.Move) && isGrounded;
-		// Air WASD via MovePosition (restored from pre-jetpack-revamp
-		// baseline). In air, `running` flips false, so targetVelocity drops
-		// to walkSpeed in the input direction — running+jump naturally
-		// decelerates to walking pace in air, holding W keeps walking
-		// momentum, and release decays smoothVelocity toward zero over
-		// airSmoothTime. The previous "zero in air" gate was added for an
-		// orbital-matching snap-back edge case (jetpack-induced rb.velocity
-		// causing visible snap on key-release near ships) but it killed
-		// plain-WASD air control entirely. The optional in-air AddForce
-		// fine-thrust block in HandleMovement still runs in parallel for
-		// the orbital trim case.
-		targetVelocity = transform.TransformDirection(input.normalized) * ((running) ? runSpeed : walkSpeed) * introMoveScale;
+		// Grounded movement stays on the MovePosition walk pipeline
+		// (smoothVelocity, below). AIRBORNE movement is now VELOCITY-based:
+		// the walk pipeline's target drops to zero in air, and HandleMovement's
+		// air-control block accelerates rb.velocity toward the stashed input
+		// instead. This is the momentum fix — on leaving the ground the walk
+		// velocity is transferred into rb.velocity (see the ground↔air handoff
+		// in HandleMovement), so releasing the keys mid-jump keeps you coasting
+		// exactly like letting go of the jetpack does, and holding back
+		// genuinely brakes. The old air-WASD-via-MovePosition displacement
+		// (a per-tick teleport that vanished on key release) is gone; it was
+		// also the main CCD bypass that let sprint-jumps tunnel through walls.
+		_moveInputLocal = input;
+		targetVelocity = isGrounded
+			? transform.TransformDirection(input.normalized) * ((running) ? runSpeed : walkSpeed) * introMoveScale
+			: Vector3.zero;
 		smoothVelocity = Vector3.SmoothDamp(smoothVelocity, targetVelocity, ref smoothVRef, (isGrounded) ? vSmoothTime : airSmoothTime);
 	}
 
@@ -729,6 +746,39 @@ public class PlayerController : GravityObject
 		// W/A/S/D as text doesn't trigger thrust, FOV, or boost.
 		bool typing = AIChatScreen.IsTypingActive;
 
+		// ── Ground ↔ air momentum handoff ─────────────────────────────────
+		// Walking moves via rb.MovePosition (displacement that never enters
+		// rb.velocity), so historically a running jump had NO horizontal
+		// momentum — release the key mid-air and you stopped dead. On the
+		// grounded→airborne transition (ledge walk-off; the jump branch below
+		// does its own inline transfer) we convert the walk velocity into real
+		// rb.velocity so physics conserves it. On the airborne→grounded
+		// transition we do the reverse: seed the walk pipeline from the
+		// tangential landing momentum (clamped to run speed) and remove that
+		// share from rb.velocity, so landing while holding W continues at full
+		// stride with no double-counted speed surge; any excess above run
+		// speed stays in rb.velocity for the grounded grip to bleed off
+		// naturally (momentumFriction slide).
+		if (_wasGroundedPhys != isGrounded)
+		{
+			if (!isGrounded)
+			{
+				rb.AddForce(smoothVelocity, ForceMode.VelocityChange);
+				targetVelocity = Vector3.zero;
+				smoothVelocity = Vector3.zero;
+				smoothVRef     = Vector3.zero;
+			}
+			else
+			{
+				Vector3 refVelLand = referenceBody != null ? referenceBody.velocity : Vector3.zero;
+				Vector3 tangLand   = Vector3.ProjectOnPlane(rb.velocity - refVelLand, _groundNormal);
+				Vector3 seed       = Vector3.ClampMagnitude(tangLand, runSpeed);
+				smoothVelocity = seed;
+				smoothVRef     = Vector3.zero;
+				rb.velocity   -= seed;
+			}
+		}
+
 		// Grounded state
 		if (isGrounded)
 		{
@@ -736,7 +786,13 @@ public class PlayerController : GravityObject
 			{
 				if (jumpClip != null && sfxSource != null)
 					sfxSource.PlayOneShot(jumpClip, jumpVolume);
-				rb.AddForce(transform.up * jumpForce, ForceMode.VelocityChange);
+				// Jump impulse + the walk velocity in the same VelocityChange —
+				// the horizontal stride becomes real momentum the instant the
+				// feet leave the ground (see handoff comment above).
+				rb.AddForce(transform.up * jumpForce + smoothVelocity, ForceMode.VelocityChange);
+				targetVelocity = Vector3.zero;
+				smoothVelocity = Vector3.zero;
+				smoothVRef     = Vector3.zero;
 				isGrounded = false;
 			}
 			else if (!IsHalfSubmerged())
@@ -788,6 +844,37 @@ public class PlayerController : GravityObject
 			if (!typing && TutorialGate.DownThrustPressed(TutorialAbility.DownThrust))
 			{
 				usingDownThrust = true;
+			}
+
+			// Plain air control — velocity-based so momentum persists (parity
+			// with jetpack thrust). Accelerates the frame-relative velocity
+			// toward the input direction, but never past walkSpeed ALONG that
+			// direction: a running jump keeps its 14 m/s launch speed (holding
+			// W adds nothing on top), releasing every key keeps you coasting,
+			// and holding S genuinely brakes at airAcceleration. Quake-style
+			// air accelerate, replacing the old MovePosition air-WASD teleport.
+			// Frame of reference: the nearby orbiting ship while the proximity
+			// assist is engaged (so WASD near a ship trims RELATIVE to the
+			// ship — orbital speeds would otherwise saturate the cap), else
+			// the reference body.
+			if (!typing && _moveInputLocal.sqrMagnitude > 0.01f)
+			{
+				Vector3 wishDir = transform.TransformDirection(_moveInputLocal.normalized);
+				Vector3 frameVel;
+				if (_cachedNearestShipInRange != null && !_cachedNearestShipInRange.IsLanded)
+				{
+					var frameRb = _cachedNearestShipInRange.GetComponent<Rigidbody>();
+					frameVel = frameRb != null ? frameRb.velocity : Vector3.zero;
+				}
+				else
+				{
+					frameVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
+				}
+				float curAlongWish = Vector3.Dot(rb.velocity - frameVel, wishDir);
+				float cap = walkSpeed * introMoveScale;
+				float add = Mathf.Min(airAcceleration * Time.fixedDeltaTime, Mathf.Max(0f, cap - curAlongWish));
+				if (add > 0f)
+					rb.AddForce(wishDir * add, ForceMode.VelocityChange);
 			}
 		}
 		jumpQueued = false;
@@ -1200,10 +1287,17 @@ public class PlayerController : GravityObject
 		if (isInDialogue)
 		{
 			smoothVelocity = Vector3.zero;
+			_wasGroundedPhys = isGrounded;
 		}
 		else
 		{
-			Vector3 move = smoothVelocity * Time.fixedDeltaTime;
+			// Walk displacement applies ONLY while grounded — airborne motion is
+			// fully velocity-based now (air-control block in HandleMovement), so
+			// continuous collision detection actually protects the flight path.
+			// The old airborne MovePosition teleports (0.28 m per tick at sprint)
+			// bypassed CCD entirely and were the main way sprint-jumps punched
+			// through walls.
+			Vector3 move = isGrounded ? smoothVelocity * Time.fixedDeltaTime : Vector3.zero;
 
 			// Slope projection. smoothVelocity is built in the gravity-HORIZONTAL
 			// plane (perpendicular to transform.up). Walking that flat vector down
@@ -1222,7 +1316,25 @@ public class PlayerController : GravityObject
 					move = slopeMove.normalized * move.magnitude;
 			}
 
-			rb.MovePosition(rb.position + ResolveWallSlide(move));
+			move = ResolveWallSlide(move);
+
+			// Rescue pass: if the capsule already overlaps a wall, sweeps are
+			// blind (casts started inside a collider report no hit) — the exact
+			// state that used to end with depenetration ejecting the player out
+			// the FAR side of the wall. Depenetrate back out along the wall
+			// normal this tick instead.
+			move += ResolveWallOverlap();
+
+			// Speculative velocity clamp: rb.velocity (jump arcs, transferred
+			// momentum, thrust) moves the capsule OUTSIDE the swept walk move —
+			// cap its into-wall component so the integrator can never press us
+			// into (and eventually through) a wall.
+			ClampVelocityAgainstWalls();
+
+			if (isGrounded || move.sqrMagnitude > 0f)
+				rb.MovePosition(rb.position + move);
+
+			_wasGroundedPhys = isGrounded;
 		}
 	}
 
@@ -1328,6 +1440,87 @@ public class PlayerController : GravityObject
 		return result;
 	}
 
+	// Speculative-contact velocity clamp. rb.velocity carries jump arcs,
+	// transferred run momentum, jetpack thrust and gravity — motion the
+	// ResolveWallSlide sweep (which only covers the walk MovePosition) never
+	// sees. Each tick, sweep along the frame-relative velocity for the
+	// distance the integrator will travel this step; if a WALL (steep normal)
+	// would be reached, cap the into-wall component of the velocity so the
+	// capsule arrives flush at wallSlideSkin and stops — tangential velocity
+	// is untouched, so you slide along walls naturally. Floors/slopes are
+	// excluded (normal physics owns landings). Two iterations handle inside
+	// corners. This is the other half of the anti-tunneling fix: without it,
+	// velocity pressed the capsule slightly into the wall, the next tick's
+	// sweeps started INSIDE the collider (blind), and depenetration would
+	// eventually pop the player out the far side.
+	void ClampVelocityAgainstWalls()
+	{
+		Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
+		Vector3 relVel = rb.velocity - refVel;
+		float dt = Time.fixedDeltaTime;
+		bool changed = false;
+
+		for (int i = 0; i < 2; i++)
+		{
+			float speed = relVel.magnitude;
+			if (speed < 0.01f) break;
+
+			Vector3 dir = relVel / speed;
+			float travel = speed * dt + wallSlideOvershoot;
+			if (!rb.SweepTest(dir, out RaycastHit hit, travel, QueryTriggerInteraction.Ignore)) break;
+			// Walkable surface — let normal physics handle the landing.
+			if (Vector3.Dot(hit.normal, transform.up) >= wallSlideMaxNormalUpDot) break;
+
+			float intoSpeed = -Vector3.Dot(relVel, hit.normal);
+			if (intoSpeed <= 0f) break;
+			// Fastest approach speed that still stops at the skin gap this tick.
+			float maxIntoSpeed = Mathf.Max(0f, hit.distance - wallSlideSkin) / dt;
+			if (intoSpeed <= maxIntoSpeed) break;
+
+			relVel += hit.normal * (intoSpeed - maxIntoSpeed);
+			changed = true;
+		}
+
+		if (changed) rb.velocity = refVel + relVel;
+	}
+
+	// Overlap rescue: if the capsule is ALREADY intersecting a wall-like
+	// collider (sweeps can't see it — casts that start inside a collider
+	// report nothing), compute the depenetration vector and return it as an
+	// extra MovePosition nudge that pushes the player back out along the wall
+	// normal. Floor-ish overlaps (normal mostly up) are skipped — PhysX's own
+	// contact solver owns standing depenetration and fighting it causes
+	// jitter. Clamped so a bad frame can never fling the player.
+	Vector3 ResolveWallOverlap()
+	{
+		if (capsuleCollider == null) return Vector3.zero;
+
+		// World-space capsule from the collider (assumes Y-axis capsule, which
+		// the player is; lossyScale is ~1 but respected anyway).
+		Vector3 lossy = transform.lossyScale;
+		float radius = capsuleCollider.radius * Mathf.Max(Mathf.Abs(lossy.x), Mathf.Abs(lossy.z));
+		float half = Mathf.Max(0f, capsuleCollider.height * 0.5f * Mathf.Abs(lossy.y) - radius);
+		Vector3 center = transform.TransformPoint(capsuleCollider.center);
+		Vector3 p0 = center + transform.up * half;
+		Vector3 p1 = center - transform.up * half;
+
+		int count = Physics.OverlapCapsuleNonAlloc(p0, p1, radius, _overlapHits, Physics.AllLayers, QueryTriggerInteraction.Ignore);
+		Vector3 nudge = Vector3.zero;
+		for (int i = 0; i < count; i++)
+		{
+			Collider col = _overlapHits[i];
+			if (col == null || col.attachedRigidbody == rb) continue;
+			if (!Physics.ComputePenetration(
+				capsuleCollider, transform.position, transform.rotation,
+				col, col.transform.position, col.transform.rotation,
+				out Vector3 depenDir, out float depenDist)) continue;
+			// Floor-ish: leave to the physics contact solver.
+			if (Vector3.Dot(depenDir, transform.up) >= wallSlideMaxNormalUpDot) continue;
+			nudge += depenDir * (depenDist + 0.001f);
+		}
+		return Vector3.ClampMagnitude(nudge, 0.5f);
+	}
+
 	void HandleEditorInput()
 	{
 		if (Application.isEditor && !AIChatScreen.IsTypingActive)
@@ -1416,6 +1609,10 @@ public class PlayerController : GravityObject
 	public float DownThrustFuelPercent => downThrustFuelPercent;
 	public float DirectionalThrustFuelPercent => dirThrustFuelPercent;
 	public bool IsOnGround => isGrounded;
+	/// True while the player is touching any Water trigger (even just the
+	/// feet). FallDamage uses this to discard pre-impact speed — water is the
+	/// landing, so wading ashore afterwards must never spend a stale fall.
+	public bool IsInWater => waterTouches > 0;
 	public bool JetpackUnlocked => jetpackUnlocked;
 
 	/// <summary>
