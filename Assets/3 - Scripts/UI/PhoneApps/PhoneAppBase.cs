@@ -35,6 +35,17 @@ public abstract class PhoneAppBase : MonoBehaviour
         if (!_built) { BuildChrome(host); _built = true; }
         Root.gameObject.SetActive(true);
         OnOpened();
+        // Pad: focus the first list row (fallback: the ‹ HOME button) so stick
+        // navigation works immediately inside the app — the phone's movement-
+        // close logic reads an UNFOCUSED left stick as walking and would
+        // otherwise close the phone on the first nudge.
+        if (TutorialGate.ControllerEnabled)
+        {
+            Selectable first = ListContent != null ? ListContent.GetComponentInChildren<Selectable>() : null;
+            if (first == null && Root != null) first = Root.GetComponentInChildren<Selectable>();
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null && first != null) es.SetSelectedGameObject(first.gameObject);
+        }
     }
 
     /// Called when backing out to the home screen (or the phone closes).

@@ -535,6 +535,8 @@ public static class PromptGlyphs
     // through the phone (D-pad up), so the pad glyph shows the phone binding.
     public static string BuildMenu     => Pick("<b>N</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
     public static string Fishingdex    => Pick("<b>B</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
+    // Phone open: X on keyboard, D-pad up on pad (on foot).
+    public static string PhoneOpen     => Pick("<b>X</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
     public static string AdvanceTip    => Pick("<b>TAB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");
     public static string Reload        => Pick("<b>R</b>",     "<b>X</b>",     "<b>Square</b>",   "xbox_x",    "ps_square");
     public static string Move          => Pick("<b>WASD</b>",  "<b>left stick</b>",  "<b>left stick</b>",  "pad_stick_l", "pad_stick_l");

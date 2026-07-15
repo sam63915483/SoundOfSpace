@@ -785,6 +785,10 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         if (HasEverOpened) return;
         if (SuppressFirstNag) return;   // muted during/just after the wake-up intro
+        // Refresh the binding text at show time — controller players are told
+        // D-pad up, not the keyboard X (PromptGlyphs picks live per device).
+        if (_openNagLabel != null)
+            _openNagLabel.text = $"Press {PromptGlyphs.PhoneOpen} to open your phone.";
         if (_openNagGroup != null) _openNagGroup.alpha = 1f;
     }
 
@@ -1638,7 +1642,20 @@ public class PlayerPhoneUI : MonoBehaviour
             if (es != null)
             {
                 es.sendNavigationEvents = true;
-                es.SetSelectedGameObject(null);
+                // Pad players need a focused Selectable IMMEDIATELY: the global
+                // ControllerUINavigator only rescans every 0.25 s, and Update's
+                // movement-close check reads an UNFOCUSED left stick as
+                // "walking" — so opening the phone and nudging the stick inside
+                // that window closed it right back with the movement warning.
+                // Hand focus to the first app tile ourselves (mirrors
+                // AIChatScreen's explicit input-field focus). Mouse players
+                // keep the old clear-to-null so a stale pre-open selection
+                // can't eat the first click.
+                if (TutorialGate.ControllerEnabled
+                    && _appButtons[0] != null && _appButtons[0].gameObject.activeInHierarchy)
+                    es.SetSelectedGameObject(_appButtons[0].gameObject);
+                else
+                    es.SetSelectedGameObject(null);
             }
         }
 
@@ -2864,6 +2881,15 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_activeApp != null) _activeApp.CloseApp();
         _activeApp = null;
         if (_appHostRT != null) _appHostRT.gameObject.SetActive(false);
+        // Pad focus was on a row inside the app (just deactivated) — hand it
+        // back to the home grid so stick navigation keeps working and the
+        // movement-close check doesn't read the next nudge as walking.
+        if (IsOpen && !_isAnimating && TutorialGate.ControllerEnabled
+            && _appButtons[0] != null && _appButtons[0].gameObject.activeInHierarchy)
+        {
+            var es = UnityEngine.EventSystems.EventSystem.current;
+            if (es != null) es.SetSelectedGameObject(_appButtons[0].gameObject);
+        }
     }
 
     /// <summary>Photos tile entry point — rotate-and-grow into the gallery.</summary>
