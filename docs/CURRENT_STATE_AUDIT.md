@@ -165,10 +165,11 @@ The gameplay HUD is framed as the interior of an astronaut helmet (`Assets/3 - S
 
 ## §6.1 Oxygen / Atmosphere Survival (NEW 2026-06-13)
 
-`OxygenManager.cs` (`Assets/3 - Scripts/Survival/OxygenManager.cs`, ~710 lines; auto-singleton, seeded in `EnsureGameplaySingletons`, **saved** via `CaptureOxygen`/`ApplyOxygen` + `O2Save` schema). Two oxygen pools:
+`OxygenManager.cs` (`Assets/3 - Scripts/Survival/OxygenManager.cs`, ~780 lines; auto-singleton, seeded in `EnsureGameplaySingletons`, **saved** via `CaptureOxygen`/`ApplyOxygen` + `O2Save` schema). Three oxygen pools:
 
 - **Suit O₂** (default 120 s). Drains ~1.0 s/s in vacuum; refills ~24 s/s in breathable air.
 - **Hull O₂** (default 300 s). Behaves by hatch state: **sealed** holds indefinitely but is breathed down ~1.0 s/s while the player stands inside in vacuum; **open in a breathable zone** refills ~60 s/s; **open above the breathe line / in space** vents 5–60 s/s (altitude-scaled, ~3× faster when open to vacuum).
+- **Backup reserve tanks** (default 300 s; NEW 2026-07-15). Fill alongside the hull (hatch open in a breathable zone, same rate), never vent out an open hatch, and dump at most one hull-full into the cabin the moment the hull is **sealed and dry** — hatch-close after a spacewalk, or a sealed cabin breathed to empty. The dump fires `Ship.FirePressurizers()` (public now), the "Using backup oxygen tanks — N minutes of hull air remaining" line, and re-arms the sealed countdown + milestones. Saved as `O2Save.reserveO2` (-1 sentinel = pre-feature save → full). HUD: a RESERVE bar under the ship-proximity HULL O2 bar in `OxygenHUD.cs`.
 
 Breathing gate: `playerInRefill || (insideShip && hullO2 > 0)`. Breathable zones: Humble Abode ≤ 60 m altitude, all of Cyclops ≤ 600 m. Inside a sealed hull you breathe hull air first, so the cabin runs out before the suit does.
 
