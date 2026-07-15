@@ -136,6 +136,11 @@ public class TevSmugglingMission : MonoBehaviour
     static readonly string[] CopConvLines =
     {
         // conv_b1_stop — open
+        // NOTE: "UNIDENTIFIED VESSEL. CUT YOUR THRUST." was REMOVED from the
+        // JSON (2026-07-15) — redundant once the pull-over radio bark + engine
+        // -cut prompt already made the player comply. The entry stays here so
+        // copConvClips keeps its index alignment (FindClip matches by text, so
+        // an unused table row is harmless).
         "UNIDENTIFIED VESSEL. CUT YOUR THRUST.",
         "This is Galactic Patrol. Our radar operators recorded your vessel crossing this corridor significantly above the posted limit.",
         "We have reasonable suspicion of a speed violation. This is a routine check. Hold your position.",
