@@ -129,7 +129,10 @@ public class PlayerPickup : MonoBehaviour
         {
             pickupPromptText.gameObject.SetActive(isLookingAtPickup);
             if (isLookingAtPickup)
-                pickupPromptText.text = "Hold F to Pickup";
+            {
+                pickupPromptText.text = $"Hold {PromptGlyphs.Interact} to Pickup";
+                _lastShownPickupPct = -1;   // force the %-string to rebuild with the right glyph
+            }
         }
     }
 
@@ -161,7 +164,7 @@ public class PlayerPickup : MonoBehaviour
                 if (pct != _lastShownPickupPct)
                 {
                     _lastShownPickupPct = pct;
-                    pickupPromptText.text = $"Hold F to Pickup ({pct}%)";
+                    pickupPromptText.text = $"Hold {PromptGlyphs.Interact} to Pickup ({pct}%)";
                 }
             }
 

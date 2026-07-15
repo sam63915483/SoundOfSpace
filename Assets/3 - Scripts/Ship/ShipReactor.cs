@@ -57,7 +57,9 @@ public class ShipReactor : MonoBehaviour
         if (eligible)
         {
             ShowPrompt();
-            if (Input.GetKeyDown(KeyCode.F) && InteractGaze.IsLookingAt(this)) Refuel();
+            // F (keyboard) OR pad X — mirror the LootBox / ThrusterMount interact path.
+            if ((Input.GetKeyDown(KeyCode.F) || TutorialGate.PadPressed(TutorialGate.PadButton.X))
+                && InteractGaze.IsLookingAt(this)) Refuel();
         }
         else
         {
