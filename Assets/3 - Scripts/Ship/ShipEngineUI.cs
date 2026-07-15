@@ -13,16 +13,24 @@ public static class ShipEngineUI
     static GameObject s_root;
     static TextMeshProUGUI s_label;
     static TextMeshProUGUI s_cap;
+    static GameObject s_capBorder;   // light frame — the "keyboard key" look
+    static GameObject s_capBox;      // dark square behind the letter
 
-    /// `cap` is the big keycap glyph — "I" for keyboard, "<" (D-pad left)
-    /// when the caller detects a controller. ASCII only: the default TMP
-    /// font has no arrow/D-pad glyphs.
+    /// `cap` is the big keycap glyph — "I" for keyboard, or a D-pad
+    /// `<sprite …>` tag on controller. When it's a sprite the framed keycap
+    /// box is hidden so the glyph reads as a controller button, not a
+    /// keyboard key with a square stuck behind it.
     public static void Show(string label, string cap = "I")
     {
         Ensure();
         if (!s_root.activeSelf) s_root.SetActive(true);
         if (s_label.text != label) s_label.text = label;
         if (s_cap != null && s_cap.text != cap) s_cap.text = cap;
+
+        // Hide the keyboard-key box for a sprite glyph; show it for a letter.
+        bool isSprite = cap != null && cap.Contains("<sprite");
+        if (s_capBorder != null) s_capBorder.SetActive(!isSprite);
+        if (s_capBox != null)    s_capBox.SetActive(!isSprite);
     }
 
     public static void Hide()
@@ -49,15 +57,18 @@ public static class ShipEngineUI
         root.sizeDelta = Vector2.zero;
 
         // Keycap: bordered dark square with a bold I (mission QTE style).
+        // Hidden by Show() when the glyph is a D-pad sprite (controller).
         var border = new GameObject("CapBorder");
         border.transform.SetParent(root, false);
         border.AddComponent<RectTransform>().sizeDelta = new Vector2(72f, 72f);
         border.AddComponent<Image>().color = new Color(0.9f, 0.94f, 1f, 0.95f);
+        s_capBorder = border;
 
         var cap = new GameObject("Cap");
         cap.transform.SetParent(root, false);
         cap.AddComponent<RectTransform>().sizeDelta = new Vector2(64f, 64f);
         cap.AddComponent<Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
+        s_capBox = cap;
 
         var letterGo = new GameObject("Cap Glyph");
         letterGo.transform.SetParent(root, false);

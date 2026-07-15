@@ -274,6 +274,8 @@ public class TevSmugglingMission : MonoBehaviour
     RectTransform _qteRedRing;
     TextMeshProUGUI _qteKeyText;
     TextMeshProUGUI _qteCaption;
+    GameObject _qteCapBorder;   // light keycap frame — hidden for D-pad sprites
+    GameObject _qteCapBox;      // dark keycap square — hidden for D-pad sprites
     static Sprite s_ringSprite;
 
     void Awake()
@@ -1120,18 +1122,22 @@ public class TevSmugglingMission : MonoBehaviour
         _qteRedRing   = MakeRing("RedRing", root, new Color(1f, 0.25f, 0.20f, 0.95f));
         _qteWhiteRing = MakeRing("WhiteRing", root, Color.white);
 
-        // Keycap: bordered dark square with a bold H.
+        // Keycap: bordered dark square with a bold H. The box is hidden by
+        // SetQteKey when the glyph is a D-pad sprite (controller), so the
+        // sprite doesn't sit on a leftover keyboard-key square.
         var border = new GameObject("CapBorder");
         border.transform.SetParent(root, false);
         var brt = border.AddComponent<RectTransform>();
         brt.sizeDelta = new Vector2(96f, 96f);
         border.AddComponent<UnityEngine.UI.Image>().color = new Color(0.9f, 0.94f, 1f, 0.95f);
+        _qteCapBorder = border;
 
         var cap = new GameObject("Cap");
         cap.transform.SetParent(root, false);
         var crt = cap.AddComponent<RectTransform>();
         crt.sizeDelta = new Vector2(86f, 86f);
         cap.AddComponent<UnityEngine.UI.Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
+        _qteCapBox = cap;
 
         var hGo = new GameObject("Key");
         hGo.transform.SetParent(root, false);
@@ -1172,6 +1178,10 @@ public class TevSmugglingMission : MonoBehaviour
         _qteCaption.gameObject.SetActive(!string.IsNullOrEmpty(caption));
         if (_qteRedRing   != null) _qteRedRing.gameObject.SetActive(showRings);
         if (_qteWhiteRing != null) _qteWhiteRing.gameObject.SetActive(showRings);
+        // Hide the keyboard-key box behind a D-pad sprite glyph (controller).
+        bool isSprite = key != null && key.Contains("<sprite");
+        if (_qteCapBorder != null) _qteCapBorder.SetActive(!isSprite);
+        if (_qteCapBox    != null) _qteCapBox.SetActive(!isSprite);
     }
 
     RectTransform MakeRing(string name, RectTransform parent, Color color)
