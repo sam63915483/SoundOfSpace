@@ -46,7 +46,7 @@ SubShader {
 		uniform half _Speed;
 		uniform half _Redshift;
 		uniform half _Flip;
-		uniform half _AtmoFade;   // 0 in space; ramps toward 1 the deeper the camera sits in a planet's atmosphere (set by SpaceDustField). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
+		uniform half _AtmoFade;   // 0 in clear space; ramps toward 1 when a planet's atmosphere is between the eye and the effect — EITHER the camera sits inside that atmosphere OR the black hole is viewed through/behind it from outside (set by SpaceDustField.UpdateBlackHoleAtmoFade). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
 		uniform sampler2D_float _CameraDepthTexture;
 
 		struct vertexOutput {

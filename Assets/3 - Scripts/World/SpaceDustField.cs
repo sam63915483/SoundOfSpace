@@ -91,6 +91,10 @@ public class SpaceDustField : MonoBehaviour
     CelestialBody _homeBody; // planet whose orbital velocity the field co-moves with
     readonly List<CelestialBody> _planets = new List<CelestialBody>();
     readonly Dictionary<CelestialBody, float> _atmoRadius = new Dictionary<CelestialBody, float>();
+    // Whether a body has REAL atmosphere settings (vs the geometric fallback
+    // radius). Populated by ComputeAtmosphereRadius; used to gate the black-hole
+    // fade so it only dissolves the BH into bodies that actually have haze.
+    readonly Dictionary<CelestialBody, bool> _hasAtmo = new Dictionary<CelestialBody, bool>();
     InputSettings _input;
     int _inputRefindCooldown;
 
@@ -126,6 +130,75 @@ public class SpaceDustField : MonoBehaviour
     int _relCount;
     float _planetFalloffInv = 1f, _bhRampInv = 1f;
 
+    // Drives the Scingularity shader's _AtmoFade uniform. The black-hole quad is
+    // a queue-3000 transparent that draws AFTER the [ImageEffectOpaque] atmosphere
+    // post-process, so left alone it paints its dark lensed void straight OVER the
+    // planet haze — the hard "circle" where the atmosphere should be. _AtmoFade
+    // dissolves those dark pixels back into the already-hazed sky (the bright disk
+    // is luminance-protected in the shader), removing the seam.
+    //
+    // It ramps up in TWO independent cases — the old driver only handled the first:
+    //   1. the camera sits INSIDE a planet's atmosphere (immersion), and
+    //   2. the black hole is seen THROUGH / behind a planet's atmosphere from
+    //      OUTSIDE it (immersion ~0) — the "looking at the planet from space with
+    //      the BH beyond it" case where the seam actually showed.
+    // Stays 0 for a black hole alone in clear space, so its dark lens is preserved.
+    void UpdateBlackHoleAtmoFade()
+    {
+        if (_bhMaterial == null && _blackHole != null)
+        {
+            var rends = _blackHole.GetComponentsInChildren<Renderer>(true);
+            for (int i = 0; i < rends.Length; i++)
+            {
+                var mm = rends[i] != null ? rends[i].sharedMaterial : null;
+                if (mm != null && mm.shader != null && mm.shader.name.Contains("Scingularity"))
+                { _bhMaterial = mm; break; }
+            }
+        }
+        if (_bhMaterial == null) return;
+
+        // The ACTUAL render camera (not the free-cam dust centre) — the fade must
+        // match what's on screen. Runtime-only SetFloat, so the shared material
+        // asset is never dirtied on disk.
+        Vector3 camPos = _cam.transform.position;
+        Vector3 toBH = _blackHole.Position - camPos;
+        float distBH = toBH.magnitude;
+        Vector3 dirBH = distBH > 1e-3f ? toBH / distBH : _cam.transform.forward;
+
+        float fade = 0f;
+        for (int i = 0; i < _planets.Count; i++)
+        {
+            var p = _planets[i];
+            if (p == null) continue;
+            Vector3 toP = p.Position - camPos;
+            float distP = toP.magnitude;
+            float atmoR = AtmosphereRadius(p);
+
+            // Case 1 — camera immersed in this atmosphere (1 at the surface, 0 at the top).
+            float thickness = Mathf.Max(1f, atmoR - p.radius);
+            float immersion = Mathf.Clamp01(1f - (distP - p.radius) / thickness);
+
+            // Case 2 — BH viewed through this atmosphere from outside. Only counts
+            // when the atmosphere sits BETWEEN the camera and the (far) black hole,
+            // and only for bodies that actually HAVE haze (a bare rock's limb has
+            // nothing to dissolve the BH's dark void into).
+            float through = 0f;
+            if (HasAtmosphere(p) && distP > 1e-3f && distP < distBH)
+            {
+                float atmoAng = Mathf.Atan2(atmoR, distP);                        // angular radius of the atmo disk
+                float ang = Vector3.Angle(dirBH, toP / distP) * Mathf.Deg2Rad;    // BH offset from the planet centre
+                // 1 while the BH direction sits inside the atmo disk, easing to 0
+                // as it crosses the outer edge (slack leads the hard seam in).
+                through = 1f - Mathf.SmoothStep(atmoAng * 0.85f, atmoAng * 1.35f, ang);
+            }
+
+            float f = Mathf.Max(immersion, through);
+            if (f > fade) fade = f;
+        }
+
+        _bhMaterial.SetFloat(_AtmoFadeID, fade);
+    }
+
     void LateUpdate()
     {
         // --- toggle (throttled re-find; default ON if InputSettings not found) ---
@@ -134,7 +207,6 @@ public class SpaceDustField : MonoBehaviour
             _input = FindObjectOfType<InputSettings>();
             _inputRefindCooldown = 60;
         }
-        if (_input != null && !_input.fxSpaceDust) return;
 
         // --- camera ---
         if (_cam == null) _cam = Camera.main;
@@ -146,6 +218,14 @@ public class SpaceDustField : MonoBehaviour
         if (bodies == null || bodies.Length == 0) return;
         if (_blackHole == null || _planets.Count == 0) RefreshBodies(bodies);
         if (_blackHole == null) return;
+
+        // Black-hole atmosphere fade runs BEFORE the space-dust toggle gate below,
+        // so it keeps updating even when the player turns space dust off (it used
+        // to freeze there and the atmosphere seam around the BH came back).
+        UpdateBlackHoleAtmoFade();
+
+        // --- space-dust toggle: only the dust field itself is skipped when off ---
+        if (_input != null && !_input.fxSpaceDust) return;
 
         EnsureInit();
         if (_material == null) return;
@@ -194,22 +274,8 @@ public class SpaceDustField : MonoBehaviour
         // field stays seamless even when orbiting close to the planet.
         float washMul = (CenterOverride != null) ? 1f : Mathf.Lerp(1f, atmosphereWashMin, maxImmersion);
 
-        // Drive the black hole's atmosphere fade with the same immersion value, so its
-        // lens dissolves into the hazed sky from a planet surface instead of punching
-        // unwashed space through the atmosphere as a hard circle. Found lazily (the
-        // Scingularity quad is a child of the BH body); runtime-only SetFloat, so the
-        // shared material asset is never dirtied on disk.
-        if (_bhMaterial == null && _blackHole != null)
-        {
-            var rends = _blackHole.GetComponentsInChildren<Renderer>(true);
-            for (int i = 0; i < rends.Length; i++)
-            {
-                var mm = rends[i] != null ? rends[i].sharedMaterial : null;
-                if (mm != null && mm.shader != null && mm.shader.name.Contains("Scingularity"))
-                { _bhMaterial = mm; break; }
-            }
-        }
-        if (_bhMaterial != null) _bhMaterial.SetFloat(_AtmoFadeID, maxImmersion);
+        // (Black-hole _AtmoFade is now driven by UpdateBlackHoleAtmoFade() above,
+        //  before the dust toggle — so it works from space AND with dust off.)
 
         // Co-move the whole field with the home planet's orbital velocity. On that
         // planet, this cancels the orbital parallax (you orbit with it), so the only
@@ -401,6 +467,7 @@ public class SpaceDustField : MonoBehaviour
     float ComputeAtmosphereRadius(CelestialBody b)
     {
         float fallback = b.radius * atmosphereFallbackMultiplier;
+        _hasAtmo[b] = false;   // assume none until real settings are found
         try
         {
             MonoBehaviour gen = null;
@@ -414,10 +481,18 @@ public class SpaceDustField : MonoBehaviour
             object atmo = shading != null ? GetMember(shading, "atmosphereSettings") : null;
             if (atmo == null) return fallback; // body has no atmosphere settings
             object scaleObj = GetMember(atmo, "atmosphereScale");
-            if (scaleObj is float scale) return (1f + scale) * b.radius;
+            if (scaleObj is float scale) { _hasAtmo[b] = true; return (1f + scale) * b.radius; }
         }
         catch { /* fall through */ }
         return fallback;
+    }
+
+    // True only for bodies with real atmosphere settings (not the fallback).
+    // Ensures the radius/flag are computed+cached first.
+    bool HasAtmosphere(CelestialBody b)
+    {
+        AtmosphereRadius(b);
+        return _hasAtmo.TryGetValue(b, out bool v) && v;
     }
 
     static object GetMember(object obj, string name)
