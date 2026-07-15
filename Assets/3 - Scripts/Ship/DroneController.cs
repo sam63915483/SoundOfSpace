@@ -308,8 +308,11 @@ public class DroneController : MonoBehaviour
             return;
         }
 
-        float thrustInputX = TutorialGate.GetAxisRaw("Horizontal", TutorialAbility.ShipMove);
-        float thrustInputZ = TutorialGate.GetAxisRaw("Vertical",   TutorialAbility.ShipMove);
+        // Left stick + keyboard only (see Ship.HandleMovement) — NOT the legacy
+        // Horizontal/Vertical axes, which leak the D-pad / right stick via a
+        // stray InputManager axis-5/6 mapping.
+        float thrustInputX = TutorialGate.MoveAxisHorizontal(TutorialAbility.ShipMove);
+        float thrustInputZ = TutorialGate.MoveAxisVertical(TutorialAbility.ShipMove);
         int thrustInputY = 0;
         if (TutorialGate.JumpHeld(TutorialAbility.ShipUpThrust))         thrustInputY++;
         if (TutorialGate.DownThrustHeld(TutorialAbility.ShipDownThrust)) thrustInputY--;

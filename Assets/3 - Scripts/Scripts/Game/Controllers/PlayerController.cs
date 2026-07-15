@@ -914,10 +914,12 @@ public class PlayerController : GravityObject
 		bool dirThrustHeld = !typing && TutorialGate.DirectionalThrustHeld(TutorialAbility.DirectionalThrust);
 		if (jetpackUnlocked && !isGrounded && dirThrustHeld && dirThrustFuelPercent > 0)
 		{
+			// Left stick + keyboard only — the legacy Horizontal/Vertical axes
+			// leak the D-pad / right stick via a stray InputManager axis-5/6 map.
 			Vector3 inputVec = new Vector3(
-				TutorialGate.GetAxisRaw("Horizontal", TutorialAbility.DirectionalThrust),
+				TutorialGate.MoveAxisHorizontal(TutorialAbility.DirectionalThrust),
 				0,
-				TutorialGate.GetAxisRaw("Vertical", TutorialAbility.DirectionalThrust));
+				TutorialGate.MoveAxisVertical(TutorialAbility.DirectionalThrust));
 			if (inputVec.magnitude > 0.1f)
 			{
 				lastDirThrustUseTime = Time.time;

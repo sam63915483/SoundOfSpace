@@ -654,13 +654,17 @@ public class Ship : GravityObject
             return;
         }
         // Thruster input — each axis is gated by its own tutorial ability.
-        // X (strafe) and Z (forward/back) read from the InputManager's combined
-        // Horizontal/Vertical axes, which already aggregate WASD + arrow keys
-        // + the Xbox left stick (joystick axes 0/1). Y (ascend/descend) is the
-        // only axis that needs explicit composite digital handling because
-        // there's no equivalent pre-aggregated axis for "Space + A button".
-        float thrustInputX = TutorialGate.GetAxisRaw("Horizontal", TutorialAbility.ShipMove);
-        float thrustInputZ = TutorialGate.GetAxisRaw("Vertical",   TutorialAbility.ShipMove);
+        // X (strafe) and Z (forward/back) come from MoveAxisHorizontal/Vertical:
+        // keyboard WASD/arrows + the LEFT STICK ONLY (Input System, deadzoned).
+        // These used to read the legacy Input.GetAxisRaw("Horizontal"/"Vertical"),
+        // but the InputManager has a stray third Horizontal/Vertical pair bound to
+        // joystick axes 5/6 (D-pad / right stick on Windows), so the D-pad and
+        // right stick leaked into thrust — pressing them fired the thrust SFX and
+        // nudged the ship. Reading the left stick explicitly (same as on-foot
+        // movement) ignores those axes. Y (ascend/descend) still needs explicit
+        // composite handling — there's no pre-aggregated "Space + A button" axis.
+        float thrustInputX = TutorialGate.MoveAxisHorizontal(TutorialAbility.ShipMove);
+        float thrustInputZ = TutorialGate.MoveAxisVertical(TutorialAbility.ShipMove);
         int thrustInputY = 0;
         if (TutorialGate.JumpHeld(TutorialAbility.ShipUpThrust))         thrustInputY++;  // Space / A
         if (TutorialGate.DownThrustHeld(TutorialAbility.ShipDownThrust)) thrustInputY--;  // LeftCtrl / LT
