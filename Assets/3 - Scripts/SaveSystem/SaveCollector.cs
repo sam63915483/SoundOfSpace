@@ -261,6 +261,7 @@ public static class SaveCollector
         if (om == null) return;
         s.suitO2 = om.SuitO2;
         s.hullO2 = om.HullO2;
+        s.reserveO2 = om.ReserveO2;
         s.cyclopsCheckpointReached = om.CyclopsCheckpointReached;
     }
 
@@ -996,7 +997,7 @@ public static class SaveCollector
     static void ApplyOxygen(O2Save s)
     {
         if (OxygenManager.Instance != null)
-            OxygenManager.Instance.ApplyState(s.suitO2, s.hullO2, s.cyclopsCheckpointReached);
+            OxygenManager.Instance.ApplyState(s.suitO2, s.hullO2, s.reserveO2, s.cyclopsCheckpointReached);
     }
 
     static void ApplyWallet(WalletSave s)

@@ -575,6 +575,8 @@ public static class PromptGlyphs
     public static string EngineIgnition => Pad ? "<b>D-pad left</b>"  : "<b>I</b>";
     public static string Hatch          => Pad ? "<b>D-pad right</b>" : "<b>H</b>";
     public static string ShipBoost      => Pick("<b>Shift</b>", "<b>LT</b>", "<b>L2</b>", "xbox_lt", "ps_l2");
+    // "Primary action" (LMB / pad A) — matches TutorialGate.PrimaryActionPressed.
+    public static string PrimaryAction  => Pick("<b>LMB</b>",  "<b>A</b>",  "<b>Cross</b>", "xbox_a", "ps_cross");
     public static string AdvanceTip    => Pick("<b>TAB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");
     public static string Reload        => Pick("<b>R</b>",     "<b>X</b>",     "<b>Square</b>",   "xbox_x",    "ps_square");
     public static string Move          => Pick("<b>WASD</b>",  "<b>left stick</b>",  "<b>left stick</b>",  "pad_stick_l", "pad_stick_l");

@@ -29,14 +29,23 @@ public class OxygenManager : MonoBehaviour
     // ── Pools (seconds-of-air) ───────────────────────────────────────────
     float suitO2;
     float hullO2;
+    // Backup tanks. Fill alongside the hull (hatch open in a breathable zone)
+    // but are otherwise inert — they NEVER vent out an open hatch. The moment
+    // the hull is SEALED and dry, they dump (at most one hull-full) into the
+    // cabin: close the hatch after a spacewalk and the ship repressurizes
+    // from the tanks, or run the sealed cabin dry and they kick in. This is
+    // what makes "fly up, open the hatch, do stuff, close it, fly home" work.
+    float reserveO2;
     HullState hullState = HullState.Sealed;
     bool cyclopsCheckpointReached;
 
     // ── Public accessors (HUD + save) ────────────────────────────────────
     public float SuitO2 => suitO2;
     public float HullO2 => hullO2;
+    public float ReserveO2 => reserveO2;
     public float SuitPercent => suitMax > 0f ? Mathf.Clamp01(suitO2 / suitMax) : 0f;
     public float HullPercent => hullMax > 0f ? Mathf.Clamp01(hullO2 / hullMax) : 0f;
+    public float ReservePercent => reserveMax > 0f ? Mathf.Clamp01(reserveO2 / reserveMax) : 0f;
     public HullState State => hullState;
     public bool PlayerOnFoot { get; private set; }
     public bool PlayerPiloting { get; private set; }
@@ -96,6 +105,7 @@ public class OxygenManager : MonoBehaviour
         Instance = this;
         suitO2 = suitMax;
         hullO2 = hullMax;
+        reserveO2 = reserveMax;
 
         // Hatch-suction one-shot (§ play-test request). 2D; plays a ~3s burst the
         // moment the hatch first vents in vacuum (the "getting sucked out" beat).
@@ -156,15 +166,22 @@ public class OxygenManager : MonoBehaviour
     }
 
     // ── Save hooks ───────────────────────────────────────────────────────
+    // 3-arg overload preserves the current reserve — used by AirlockController's
+    // sanctuary top-up, which must not touch the ship's backup tanks.
     public void ApplyState(float suit, float hull, bool cyclopsReached)
+        => ApplyState(suit, hull, reserveO2, cyclopsReached);
+
+    /// reserve < 0 = "unknown" (pre-reserve save file) → treated as full tanks.
+    public void ApplyState(float suit, float hull, float reserve, bool cyclopsReached)
     {
         suitO2 = Mathf.Clamp(suit, 0f, suitMax);
         hullO2 = Mathf.Clamp(hull, 0f, hullMax);
+        reserveO2 = reserve < 0f ? reserveMax : Mathf.Clamp(reserve, 0f, reserveMax);
         cyclopsCheckpointReached = cyclopsReached;
         suitDepletedHandled = false;
     }
 
-    public void ResetForNewGame() => ApplyState(suitMax, hullMax, false);
+    public void ResetForNewGame() => ApplyState(suitMax, hullMax, reserveMax, false);
 
     float Midpoint => atmosphereTopAltitude * 0.5f;
 
@@ -258,6 +275,10 @@ public class OxygenManager : MonoBehaviour
         {
             hullState = HullState.Refilling;
             hullO2 = Mathf.Min(hullMax, hullO2 + hullRefillRate * dt);
+            // Backup tanks fill the SAME way the hull does — hatch open in a
+            // breathable zone — they just bank the air instead of holding it
+            // in the cabin (an open hatch in vacuum never vents them).
+            reserveO2 = Mathf.Min(reserveMax, reserveO2 + hullRefillRate * dt);
         }
         else if (ship != null && hatchOpen && !shipInRefill)
         {
@@ -302,6 +323,29 @@ public class OxygenManager : MonoBehaviour
         // Caps the reserve at ~hullMax seconds.
         if (hullState == HullState.Sealed && insideShip && hullO2 > 0f)
             hullO2 = Mathf.Max(0f, hullO2 - hullBreathConsumeRate * dt);
+
+        // ── Backup tanks → hull transfer ──────────────────────────────────
+        // Fires ONLY while the hull is SEALED and dry: the tanks repressurize
+        // the cabin the moment the hatch closes after a spacewalk dumped the
+        // air, or when a sealed cabin is breathed down to empty. Never while
+        // the hatch is open (Draining/Refilling) — vacuum can't touch the
+        // tanks, and a refill zone doesn't need them. One dump moves at most
+        // a hull-full. The pressurizer vents fire so the cabin visibly fills.
+        if (ship != null && hullState == HullState.Sealed && hullO2 <= 0f && reserveO2 > 0f)
+        {
+            float xfer = Mathf.Min(reserveO2, hullMax);
+            reserveO2 -= xfer;
+            hullO2 = xfer;
+            hullWasFilledOnGround = true;
+            for (int i = 0; i < hullMilestoneFired.Length; i++) hullMilestoneFired[i] = false;
+            ship.FirePressurizers();
+            if (shipPromptsAudible)
+            {
+                PlayVO(BackupO2Text());
+                if (HALLineHUD.Instance != null)
+                    HALLineHUD.Instance.ShowLive(HullSealedCountdownText, voiceKey: null, shipScoped: true, dedupKey: "hull_sealed");
+            }
+        }
 
         // Sealed air fully spent → disarm tracking (a future fill re-arms it).
         if (hullO2 <= 0f) hullWasFilledOnGround = false;
@@ -640,6 +684,18 @@ public class OxygenManager : MonoBehaviour
         return $"Hull sealed — {m} minute{(m == 1 ? "" : "s")} {s} second{(s == 1 ? "" : "s")} of air remaining.";
     }
 
+    // One-shot line for the reserve dump ("Using backup oxygen tanks —
+    // 5 minutes of hull air remaining."), sized to what actually transferred.
+    string BackupO2Text()
+    {
+        int t = Mathf.Max(0, Mathf.CeilToInt(hullO2));
+        int m = t / 60, s = t % 60;
+        string amount = s == 0
+            ? $"{m} minute{(m == 1 ? "" : "s")}"
+            : $"{m} minute{(m == 1 ? "" : "s")} {s} second{(s == 1 ? "" : "s")}";
+        return $"Using backup oxygen tanks — {amount} of hull air remaining.";
+    }
+
     void PlayVO(string line)
     {
         // Ship-scoped hull VO — shows the strip AND plays the canned clip via
@@ -720,4 +776,8 @@ public class OxygenManager : MonoBehaviour
     [SerializeField] float ejectExitBoost = 2f;
     [Tooltip("Seconds the ship-proximity boarding-damp stays suppressed after each eject tick, so the ejection isn't braked back to ship velocity before you've coasted clear of the ~25 m damp radius. Raise if you orbit fast and still get pulled back.")]
     [SerializeField] float ejectDampSuppressSeconds = 5f;
+
+    [Header("Backup oxygen reserve (seconds of air)")]
+    [Tooltip("Capacity of the backup tanks. They fill alongside the hull whenever the hatch is open in a breathable zone, never vent out an open hatch, and dump (at most one hull-full) into the cabin the moment the hull is sealed and dry. 300 = 5 minutes.")]
+    [SerializeField] float reserveMax = 300f;
 }

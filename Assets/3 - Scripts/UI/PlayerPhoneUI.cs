@@ -1568,13 +1568,18 @@ public class PlayerPhoneUI : MonoBehaviour
         if (IsOpen && !_isAnimating && !AIChatScreen.IsTypingActive)
         {
             // Pad equivalents only count as "movement" while NO phone UI
-            // element is focused — otherwise left-stick menu navigation and
-            // A-press app selection would read as walking and close the phone.
+            // element is focused — otherwise left-stick menu navigation would
+            // read as walking and close the phone. NOTE: pad A (JumpHeld) is
+            // deliberately NOT in this list — A is the UI submit button, and
+            // during screen transitions (e.g. tapping the AI tile) there are
+            // frames with no selection while A is still held, which used to
+            // slam the phone shut with the movement warning the moment you
+            // opened an app. Keyboard Space still closes via the raw key list
+            // below; pad players put the phone away with B.
             bool padMoving = !TutorialGate.UISelectionActive()
                 && !TutorialGate.WasUIFocusedThisFrameStart()
                 && (Mathf.Abs(TutorialGate.MoveAxisHorizontal(TutorialAbility.Move)) > 0.2f ||
                     Mathf.Abs(TutorialGate.MoveAxisVertical(TutorialAbility.Move)) > 0.2f ||
-                    TutorialGate.JumpHeld(TutorialAbility.Jump) ||
                     TutorialGate.DownThrustHeld(TutorialAbility.DownThrust));
             if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.A) ||
                 Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.D) ||
@@ -2711,8 +2716,8 @@ public class PlayerPhoneUI : MonoBehaviour
         Selectable upForPrev = null, upForNext = null;
         if (_currentPage == 0)
         {
-            upForPrev = _appButtons[4];   // bottom-left tile (2-col grid)
-            upForNext = _appButtons[5];   // bottom-right tile
+            upForPrev = _appButtons[3];   // bottom-left tile (Map — 3-col grid)
+            upForNext = _appButtons[5];   // bottom-right tile (AI)
             WireAppGridNav();
         }
         else
@@ -2739,25 +2744,28 @@ public class PlayerPhoneUI : MonoBehaviour
         };
     }
 
-    // Explicit 2×3 navigation for the app grid — the tiles are small and
+    // Explicit navigation for the app grid — the tiles are small and
     // close together, so Unity's automatic nav frequently resolves a
-    // vertical press to a diagonal neighbour. index = row*2 + col.
-    // Bottom row falls through to the page arrows.
+    // vertical press to a diagonal neighbour. The grid is 2 ROWS × 3 COLS
+    // (F B S / M P ?), index = row*3 + col. This was wired as 3×2 for the
+    // old two-column layout, which made stick focus hop to tiles that
+    // didn't match the visual grid at all — the "controller layout feels
+    // broken" bug. Bottom row falls through to the page arrows.
     void WireAppGridNav()
     {
         for (int i = 0; i < _appButtons.Length; i++)
         {
             var b = _appButtons[i];
             if (b == null) continue;
-            int row = i / 2, col = i % 2;
+            int row = i / 3, col = i % 3;
             Selectable down;
-            if (row < 2)  down = _appButtons[i + 2];
-            else          down = col == 0 ? (Selectable)_prevPageBtn : (Selectable)_nextPageBtn;
+            if (row < 1)  down = _appButtons[i + 3];
+            else          down = col == 2 ? (Selectable)_nextPageBtn : (Selectable)_prevPageBtn;
             b.navigation = new Navigation {
                 mode          = Navigation.Mode.Explicit,
                 selectOnLeft  = col > 0 ? _appButtons[i - 1] : null,
-                selectOnRight = col < 1 ? _appButtons[i + 1] : null,
-                selectOnUp    = row > 0 ? _appButtons[i - 2] : null,
+                selectOnRight = col < 2 ? _appButtons[i + 1] : null,
+                selectOnUp    = row > 0 ? _appButtons[i - 3] : null,
                 selectOnDown  = down,
             };
         }

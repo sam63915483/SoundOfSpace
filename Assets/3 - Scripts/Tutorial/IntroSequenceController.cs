@@ -195,7 +195,7 @@ public class IntroSequenceController : MonoBehaviour
         var promptGO = new GameObject("PressLMBPrompt");
         promptGO.transform.SetParent(go.transform, false);   // last child → on top of the lids
         _prompt = promptGO.AddComponent<TextMeshProUGUI>();
-        _prompt.text = "Press " + PromptGlyphs.PrimaryFire;   // "LMB" on M&K (RT / R2 on controller)
+        _prompt.text = "Press " + PromptGlyphs.PrimaryAction;   // "LMB" on M&K, "A" on controller (matches PrimaryActionPressed)
         _prompt.alignment = TextAlignmentOptions.Center;
         _prompt.fontSize = 42;
         _prompt.color = new Color(1f, 1f, 1f, 0.85f);
@@ -285,7 +285,7 @@ public class IntroSequenceController : MonoBehaviour
         // click cracks the eyes open in the middle; each further click prises them
         // open another notch. (The gaze turn onto the photo is triggered separately,
         // a beat after the eyes are fully open — see RunSequence.)
-        if (_running && _clicksArmed && Input.GetMouseButtonDown(0))
+        if (_running && _clicksArmed && TutorialGate.PrimaryActionPressed())   // LMB or pad A
         {
             _clicks++;
             _opennessTarget = Mathf.Clamp01((float)_clicks / clicksToWake);
@@ -432,7 +432,13 @@ public class IntroSequenceController : MonoBehaviour
     {
         float t = 0f;
         while (t < delay && _clicks < clicksToWake) { t += Time.unscaledDeltaTime; yield return null; }
-        if (_clicks < clicksToWake && _prompt != null) _prompt.gameObject.SetActive(true);
+        if (_clicks < clicksToWake && _prompt != null)
+        {
+            // Refresh at show time — the player may have switched to the pad
+            // since the label was built (glyph picks per the live input source).
+            _prompt.text = "Press " + PromptGlyphs.PrimaryAction;
+            _prompt.gameObject.SetActive(true);
+        }
     }
 
     // Base woozy level pulsed up to breatheGrogMax× and back on a slow breathing

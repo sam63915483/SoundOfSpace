@@ -217,6 +217,9 @@ public class O2Save
     // breathing-safe rather than suffocating on load.
     public float suitO2 = 120f;
     public float hullO2 = 300f;
+    // Backup oxygen tanks (2026-07-15). -1 = "unknown" (save predates the
+    // feature) → OxygenManager.ApplyState treats it as full tanks.
+    public float reserveO2 = -1f;
     public bool cyclopsCheckpointReached;
 }
 

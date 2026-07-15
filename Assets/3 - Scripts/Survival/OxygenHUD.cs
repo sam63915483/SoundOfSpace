@@ -18,6 +18,8 @@ public class OxygenHUD : MonoBehaviour
 
     RectTransform hullFill;   // suit bar moved to VitalsHUD (§2)
     CanvasGroup hullGroup;
+    RectTransform reserveFill; // backup oxygen tanks — shown alongside the hull bar
+    CanvasGroup reserveGroup;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -61,6 +63,14 @@ public class OxygenHUD : MonoBehaviour
                            new Color32(0xFF, 0xC8, 0x5C, 0xFF), "HULL O2", out var hullRow);
         hullGroup = hullRow.AddComponent<CanvasGroup>();
         hullGroup.alpha = 0f;
+
+        // Backup-tank meter, directly under the hull bar and sharing its
+        // visibility: the tanks bank breathable air (filled hatch-open on a
+        // breathable planet) and dump into the hull when it's sealed and dry.
+        reserveFill = MakeBar(canvasGO.transform, "ReserveO2", new Vector2(24f, -328f),
+                              new Color32(0x5C, 0xC8, 0xFF, 0xFF), "RESERVE", out var reserveRow);
+        reserveGroup = reserveRow.AddComponent<CanvasGroup>();
+        reserveGroup.alpha = 0f;
     }
 
     // Builds a label + background + left-pivot fill row anchored top-left.
@@ -125,15 +135,17 @@ public class OxygenHUD : MonoBehaviour
         if (om == null) return;
 
         SetBar(hullFill, om.HullPercent);
+        SetBar(reserveFill, om.ReservePercent);
 
-        // Only show the hull bar when the player is actually with the ship —
-        // piloting, inside, or (while it's venting) within its 25 m radius.
-        // Without the proximity gate the bar lingered on screen when the player
-        // had wandered 50 m+ away from a draining ship.
+        // Only show the hull + reserve bars when the player is actually with
+        // the ship — piloting, inside, or (while it's venting) within its 25 m
+        // radius. Without the proximity gate the bars lingered on screen when
+        // the player had wandered 50 m+ away from a draining ship.
         bool showHull = (om.PlayerPiloting || om.PlayerInsideShip
                         || om.State == OxygenManager.HullState.Draining)
                         && om.ShipPromptsAudible;
         if (hullGroup != null) hullGroup.alpha = showHull ? 1f : 0f;
+        if (reserveGroup != null) reserveGroup.alpha = showHull ? 1f : 0f;
     }
 
     static void SetBar(RectTransform fill, float percent)

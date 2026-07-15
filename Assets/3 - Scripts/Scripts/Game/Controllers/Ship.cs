@@ -1180,7 +1180,9 @@ public class Ship : GravityObject
         return ps;
     }
 
-    void FirePressurizers()
+    // Public: OxygenManager fires these on the backup-tank → hull dump so the
+    // cabin visibly repressurizes (same puff+hiss as the hatch toggle path).
+    public void FirePressurizers()
     {
         if (_pressurizers == null) return;
         for (int i = 0; i < _pressurizers.Length; i++)

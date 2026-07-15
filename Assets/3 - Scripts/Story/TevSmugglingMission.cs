@@ -96,7 +96,7 @@ public class TevSmugglingMission : MonoBehaviour
     [Tooltip("Tev after the corvette goes down: get us to Fiery Twin, we lay low.")]
     public AudioClip trLayLowClip;
     [Header("Pull-over — engine-cut QTE")]
-    [Tooltip("After CUT YOUR ENGINE lands, the player has this long to start cutting the engine (I). The window extends while the I hold is in progress, so it's forgiving.")]
+    [Tooltip("LEGACY — no longer read. The engine-cut prompt now runs a fixed two-chance flow: 5 s, then the cop yells again and you get 3 more (consts EngineCutFirstChanceSeconds / EngineCutSecondChanceSeconds in code). Kept so scene serialization doesn't dangle.")]
     public float engineCutWindowSeconds = 3f;
     [Tooltip("Radio bark when the player ignores the engine-cut order — the chase starts immediately, no interrogation, no head start.")]
     public AudioClip copRunnerClip;
@@ -257,8 +257,16 @@ public class TevSmugglingMission : MonoBehaviour
     // from 3× during Tev's 3-2-1 and lands on the red ring at "1".
     enum CdResult { Success, EarlyPress, Timeout }
     CdResult _cdResult;
+    // Engine-cut two-chance timing (user-tuned 2026-07-15): a long first
+    // window, then the cop repeats the order for a short second window. The
+    // hold grace on top of each lets an ignition hold started in time finish.
+    const float EngineCutFirstChanceSeconds  = 5f;
+    const float EngineCutSecondChanceSeconds = 3f;
+    const float EngineCutHoldGraceSeconds    = 2.5f;
+
     GameObject _qteRoot;
     RectTransform _qteWhiteRing;
+    RectTransform _qteRedRing;
     TextMeshProUGUI _qteKeyText;
     TextMeshProUGUI _qteCaption;
     static Sprite s_ringSprite;
@@ -702,9 +710,10 @@ public class TevSmugglingMission : MonoBehaviour
             yield return new WaitForSeconds(Mathf.Max(1f, stopEngineClip.length * 0.9f));
         }
 
-        // 2b. Engine-cut QTE: the player must actually cut the engine (hold I
-        // from the pilot seat) within engineCutWindowSeconds. Forgiving: the
-        // deadline stretches while the I hold is in progress. Ignore the order
+        // 2b. Engine-cut prompt: the player must actually cut the engine (hold
+        // I / D-pad Left from the pilot seat). Two chances — a 5 s first window,
+        // then the cop repeats the order and a 3 s second window. Both stretch
+        // while the ignition hold is in progress. Ignore the order through both
         // and Kolb calls it in — no interrogation, no head start, pursuit NOW.
         bool engineCut = _ship == null || !_ship.EngineOn;   // coasting cold already = compliant
         if (!engineCut)
@@ -721,24 +730,33 @@ public class TevSmugglingMission : MonoBehaviour
         }
         if (!engineCut)
         {
+            // No shrinking-ring QTE here — it read as confusing. Just the keycap
+            // + instruction, and TWO chances: a long first window, then the cop
+            // barks the order again and you get a short second window. Each
+            // deadline stretches while an ignition hold (I / D-pad Left) is in
+            // progress, so a hold started in time always completes.
             bool qtePad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
             SetQteKey(qtePad ? "<" : "I",
-                      qtePad ? "D-PAD LEFT TO SHUT DOWN ENGINE" : "I TO SHUT DOWN ENGINE");
+                      qtePad ? "D-PAD LEFT TO SHUT DOWN ENGINE" : "I TO SHUT DOWN ENGINE",
+                      showRings: false);
             _qteRoot.SetActive(true);
-            _qteWhiteRing.localScale = Vector3.one * 3f;
-            float qteStart = Time.time;
-            float hardCap = engineCutWindowSeconds + 2.5f;   // grace can't stall the stop forever
-            while (true)
+
+            for (int chance = 0; chance < 2 && !engineCut; chance++)
             {
-                float t = Time.time - qteStart;
-                if (_ship != null && !_ship.EngineOn) { engineCut = true; break; }
-                // Grace: the deadline stretches while an ignition hold (I or
-                // D-pad Left) is in progress.
-                if (t >= engineCutWindowSeconds && !TutorialGate.EngineIgnitionHeld()) break;
-                if (t >= hardCap) break;
-                _qteWhiteRing.localScale = Vector3.one *
-                    Mathf.Lerp(3f, 1f, Mathf.Clamp01(t / engineCutWindowSeconds));
-                yield return null;
+                if (chance == 1)
+                    PlayCopRadio(stopEngineClip);   // second warning — the cop yells it again
+
+                float window  = chance == 0 ? EngineCutFirstChanceSeconds : EngineCutSecondChanceSeconds;
+                float start   = Time.time;
+                float hardCap = window + EngineCutHoldGraceSeconds;   // grace can't stall the stop forever
+                while (true)
+                {
+                    float t = Time.time - start;
+                    if (_ship != null && !_ship.EngineOn) { engineCut = true; break; }
+                    if (t >= window && !TutorialGate.EngineIgnitionHeld()) break;
+                    if (t >= hardCap) break;
+                    yield return null;
+                }
             }
             QteHide();
         }
@@ -1090,7 +1108,7 @@ public class TevSmugglingMission : MonoBehaviour
         root.anchorMin = root.anchorMax = new Vector2(0.5f, 0.46f);
         root.sizeDelta = Vector2.zero;
 
-        MakeRing("RedRing", root, new Color(1f, 0.25f, 0.20f, 0.95f));
+        _qteRedRing   = MakeRing("RedRing", root, new Color(1f, 0.25f, 0.20f, 0.95f));
         _qteWhiteRing = MakeRing("WhiteRing", root, Color.white);
 
         // Keycap: bordered dark square with a bold H.
@@ -1133,14 +1151,18 @@ public class TevSmugglingMission : MonoBehaviour
         _qteRoot.SetActive(false);
     }
 
-    /// The QTE keycap is shared: H for the hatch shot, E for the engine cut.
-    /// caption ("" = none) sits above the rings.
-    void SetQteKey(string key, string caption = "")
+    /// The QTE keycap is shared: H for the hatch shot, I for the engine cut.
+    /// caption ("" = none) sits above the rings. showRings=false hides the
+    /// shrinking-ring pair for prompts that are just "press this" with a
+    /// timer the player can't see (the engine-cut two-chance flow).
+    void SetQteKey(string key, string caption = "", bool showRings = true)
     {
         EnsureQteUI();
         if (_qteKeyText.text != key) _qteKeyText.text = key;
         _qteCaption.text = caption;
         _qteCaption.gameObject.SetActive(!string.IsNullOrEmpty(caption));
+        if (_qteRedRing   != null) _qteRedRing.gameObject.SetActive(showRings);
+        if (_qteWhiteRing != null) _qteWhiteRing.gameObject.SetActive(showRings);
     }
 
     RectTransform MakeRing(string name, RectTransform parent, Color color)
