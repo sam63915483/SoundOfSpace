@@ -106,7 +106,15 @@ public class ThrusterMount : MonoBehaviour
             UpdatePlacementState(true);
             ShowPrompt();
 
-            if (InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.Pickup))
+            // Gaze-test the GREEN GHOST the player is actually looking at — NOT
+            // the mount's (invisible, renderer-less) transform, which fell back
+            // to a razor 6° cone toward the trigger centre that's usually offset
+            // from where the ghost sits. That mismatch is why placement failed
+            // even with the ghost green and dead-centre (thrusters especially).
+            // The ghost has real renderers (colliders disabled), so IsLookingAt
+            // accepts anywhere within its on-screen silhouette + slack.
+            Component gazeTarget = _ghost != null ? (Component)_ghost.transform : this;
+            if (InteractGaze.IsLookingAt(gazeTarget) && TutorialGate.InteractPressed(TutorialAbility.Pickup))
             {
                 if (reattachClip != null && reattachSource != null)
                     reattachSource.PlayOneShot(reattachClip, reattachVolume);
