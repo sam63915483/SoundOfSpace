@@ -721,7 +721,9 @@ public class TevSmugglingMission : MonoBehaviour
         }
         if (!engineCut)
         {
-            SetQteKey("I", "I TO SHUT DOWN ENGINE");
+            bool qtePad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
+            SetQteKey(qtePad ? "<" : "I",
+                      qtePad ? "D-PAD LEFT TO SHUT DOWN ENGINE" : "I TO SHUT DOWN ENGINE");
             _qteRoot.SetActive(true);
             _qteWhiteRing.localScale = Vector3.one * 3f;
             float qteStart = Time.time;
@@ -730,7 +732,9 @@ public class TevSmugglingMission : MonoBehaviour
             {
                 float t = Time.time - qteStart;
                 if (_ship != null && !_ship.EngineOn) { engineCut = true; break; }
-                if (t >= engineCutWindowSeconds && !Input.GetKey(KeyCode.I)) break;
+                // Grace: the deadline stretches while an ignition hold (I or
+                // D-pad Left) is in progress.
+                if (t >= engineCutWindowSeconds && !TutorialGate.EngineIgnitionHeld()) break;
                 if (t >= hardCap) break;
                 _qteWhiteRing.localScale = Vector3.one *
                     Mathf.Lerp(3f, 1f, Mathf.Clamp01(t / engineCutWindowSeconds));
@@ -1304,7 +1308,7 @@ public class TevSmugglingMission : MonoBehaviour
         yield return new WaitForSeconds(0.6f);
         if (_phase != Phase.Chase) yield break;
 
-        SetQteKey("H");
+        SetQteKey(TutorialGate.LastSource == TutorialGate.InputSource.Controller ? ">" : "H");
         _qteRoot.SetActive(true);
         _qteWhiteRing.localScale = Vector3.one * 3f;
 

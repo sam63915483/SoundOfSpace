@@ -574,7 +574,7 @@ public class Ship : GravityObject
         // shot out the door. Swallowed while the map or a conversation is up
         // so UI keystrokes can't fly the door open.
         if (shipIsPiloted && !PlayerController.isMapOpen && !WorldDialogueUI.IsOpen &&
-            Input.GetKeyDown(KeyCode.H))
+            TutorialGate.HatchTogglePressed())   // H or D-pad Right
         {
             ToggleHatch();
         }
@@ -723,7 +723,7 @@ public class Ship : GravityObject
     /// engine straight back.
     void HandleEngineKey()
     {
-        if (!Input.GetKey(KeyCode.I))
+        if (!TutorialGate.EngineIgnitionHeld())   // hold I or D-pad Left
         {
             _engineHoldT = 0f;
             _engineKeyLatched = false;
@@ -748,7 +748,11 @@ public class Ship : GravityObject
         // engine starts/stops don't read as one.
         bool uiBlocked = PlayerController.isMapOpen || WorldDialogueUI.IsOpen;
         if (!uiBlocked && !engineOn && canFly && Time.time - _pilotedAt >= enginePromptDelaySeconds)
-            ShipEngineUI.Show("HOLD I — START ENGINE");
+        {
+            bool pad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
+            ShipEngineUI.Show(pad ? "HOLD D-PAD LEFT — START ENGINE" : "HOLD I — START ENGINE",
+                              pad ? "<" : "I");
+        }
         else
             ShipEngineUI.Hide();
     }
@@ -780,7 +784,7 @@ public class Ship : GravityObject
         GamepadRumble.ClearChannel("ship-thrust");
         if (shipIsPiloted && canFly && engineOn && CanThrust && !PlayerController.isMapOpen)
         {
-            bool boostKey = Input.GetKey(KeyCode.LeftShift);
+            bool boostKey = TutorialGate.ShipBoostHeld();   // Shift or LT hold
             float dt = Time.fixedDeltaTime;
 
             // Per-axis scale: default thrustPowerScale; boostMultiplier×that

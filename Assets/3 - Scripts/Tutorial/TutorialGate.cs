@@ -370,6 +370,39 @@ public static class TutorialGate
         return 0f;
     }
 
+    // Level-detected D-pad hold (edge variant above). Same dir codes:
+    // 0=Up, 1=Right, 2=Down, 3=Left.
+    public static bool DPadDirectionHeld(int dir)
+    {
+        var g = ActivePad;
+        if (g == null) return false;
+        switch (dir)
+        {
+            case 0: return g.dpad.up.isPressed;
+            case 1: return g.dpad.right.isPressed;
+            case 2: return g.dpad.down.isPressed;
+            case 3: return g.dpad.left.isPressed;
+            default: return false;
+        }
+    }
+
+    // ── Ship pilot bindings (pad additions — user-chosen 2026-07-15) ──────
+    // All three are read from the PILOTED context only, so the pad inputs
+    // don't collide with their on-foot roles (LT = secondary fire on foot;
+    // D-pad left/right are ghost-placement rotate while building).
+
+    // Engine ignition: HOLD I (keyboard) or HOLD D-pad Left (pad).
+    public static bool EngineIgnitionHeld() =>
+        Input.GetKey(KeyCode.I) || DPadDirectionHeld(3);
+
+    // Pilot-seat hatch toggle: H (keyboard) or D-pad Right (pad).
+    public static bool HatchTogglePressed() =>
+        Input.GetKeyDown(KeyCode.H) || DPadDirectionPressed(1);
+
+    // Ship boost: LeftShift (keyboard) or LT hold (pad).
+    public static bool ShipBoostHeld() =>
+        Input.GetKey(KeyCode.LeftShift) || (ControllerEnabled && LTValue() > TriggerThreshold);
+
     // ── Internals ─────────────────────────────────────────────────────────
 
     public static float LTValue() { var g = ActivePad; return g != null ? g.leftTrigger.ReadValue()  : 0f; }
@@ -537,6 +570,11 @@ public static class PromptGlyphs
     public static string Fishingdex    => Pick("<b>B</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
     // Phone open: X on keyboard, D-pad up on pad (on foot).
     public static string PhoneOpen     => Pick("<b>X</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
+    // Ship pilot bindings (text-only on pad — no left/right D-pad sprites in
+    // the glyph asset, and the bold text reads fine in prompts/QTEs).
+    public static string EngineIgnition => Pad ? "<b>D-pad left</b>"  : "<b>I</b>";
+    public static string Hatch          => Pad ? "<b>D-pad right</b>" : "<b>H</b>";
+    public static string ShipBoost      => Pick("<b>Shift</b>", "<b>LT</b>", "<b>L2</b>", "xbox_lt", "ps_l2");
     public static string AdvanceTip    => Pick("<b>TAB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");
     public static string Reload        => Pick("<b>R</b>",     "<b>X</b>",     "<b>Square</b>",   "xbox_x",    "ps_square");
     public static string Move          => Pick("<b>WASD</b>",  "<b>left stick</b>",  "<b>left stick</b>",  "pad_stick_l", "pad_stick_l");

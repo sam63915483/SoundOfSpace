@@ -106,7 +106,10 @@ public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
             yield return DialogueTextStyling.RevealCharsTMP(_body, lines[i], delay, AdvancePressed);
             // Swallow the frame the skip landed on so it can't also advance.
             yield return null;
-            _advanceHint.text = (i < lines.Length - 1) ? "click to continue" : "";
+            _advanceHint.text = (i < lines.Length - 1)
+                ? (TutorialGate.LastSource == TutorialGate.InputSource.Controller
+                    ? "A to continue" : "click to continue")
+                : "";
             if (i < lines.Length - 1)
             {
                 while (!AdvancePressed()) yield return null;
@@ -117,21 +120,41 @@ public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
         onComplete?.Invoke();
     }
 
-    static bool AdvancePressed() => Input.GetMouseButtonDown(0) || Input.GetKeyDown(KeyCode.E);
+    // LMB / E (legacy) / pad A. PrimaryActionPressed covers LMB + A — the
+    // same "UI submit" pairing every other dialogue flow uses. (E doubles as
+    // roll-right while flying, exactly like A doubles as up-thrust; both are
+    // harmless blips during a radio conversation.)
+    static bool AdvancePressed() =>
+        TutorialGate.PrimaryActionPressed() || Input.GetKeyDown(KeyCode.E);
 
     public void ShowResponses(List<PlayerResponse> responses, Action<PlayerResponse> onPick)
     {
         ClearReplies();
+        Button first = null;
         foreach (var r in responses)
         {
             var chosen = r; // capture
             var btn = MakeReplyButton(r.buttonText);
+            if (first == null) first = btn;
             btn.onClick.AddListener(() =>
             {
                 ClearReplies();
                 onPick?.Invoke(chosen);
             });
         }
+        // Pad: focus the first reply so stick-nav + A works. Deferred one
+        // frame so the A press that advanced the final line can't also
+        // submit the freshly focused button.
+        if (first != null && TutorialGate.ControllerEnabled)
+            StartCoroutine(FocusReplyNextFrame(first));
+    }
+
+    IEnumerator FocusReplyNextFrame(Button b)
+    {
+        yield return null;
+        if (b == null) yield break;
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        if (es != null) es.SetSelectedGameObject(b.gameObject);
     }
 
     public void EndConversation()

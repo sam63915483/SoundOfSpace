@@ -12,12 +12,17 @@ public static class ShipEngineUI
 {
     static GameObject s_root;
     static TextMeshProUGUI s_label;
+    static TextMeshProUGUI s_cap;
 
-    public static void Show(string label)
+    /// `cap` is the big keycap glyph — "I" for keyboard, "<" (D-pad left)
+    /// when the caller detects a controller. ASCII only: the default TMP
+    /// font has no arrow/D-pad glyphs.
+    public static void Show(string label, string cap = "I")
     {
         Ensure();
         if (!s_root.activeSelf) s_root.SetActive(true);
         if (s_label.text != label) s_label.text = label;
+        if (s_cap != null && s_cap.text != cap) s_cap.text = cap;
     }
 
     public static void Hide()
@@ -54,7 +59,7 @@ public static class ShipEngineUI
         cap.AddComponent<RectTransform>().sizeDelta = new Vector2(64f, 64f);
         cap.AddComponent<Image>().color = new Color(0.10f, 0.12f, 0.16f, 1f);
 
-        var letterGo = new GameObject("I");
+        var letterGo = new GameObject("Cap Glyph");
         letterGo.transform.SetParent(root, false);
         var letter = letterGo.AddComponent<TextMeshProUGUI>();
         letter.rectTransform.sizeDelta = new Vector2(72f, 72f);
@@ -63,6 +68,7 @@ public static class ShipEngineUI
         letter.fontStyle = FontStyles.Bold;
         letter.color = Color.white;
         letter.alignment = TextAlignmentOptions.Center;
+        s_cap = letter;
 
         var labelGo = new GameObject("Label");
         labelGo.transform.SetParent(root, false);
