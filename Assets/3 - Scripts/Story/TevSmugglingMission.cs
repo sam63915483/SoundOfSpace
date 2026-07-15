@@ -411,6 +411,11 @@ public class TevSmugglingMission : MonoBehaviour
         return null;
     }
 
+    // 1.5× louder than the old 0.85 baseline (user request). Applied as a
+    // PlayOneShot gain because AudioSource.volume is hard-clamped to 1.0 —
+    // 0.85 × 1.5 = 1.275 effective, which .volume alone can't reach.
+    const float CopRadioGain = 1.5f;
+
     /// Officer over the cockpit radio — 2D, one line at a time (a new line
     /// cuts the previous one, mirroring the translator).
     void PlayCopRadio(AudioClip clip)
@@ -419,12 +424,11 @@ public class TevSmugglingMission : MonoBehaviour
         {
             _copVoice = gameObject.AddComponent<AudioSource>();
             _copVoice.spatialBlend = 0f;
-            _copVoice.volume = 0.85f;
+            _copVoice.volume = 0.85f;   // baseline; the 1.5× gain rides on the PlayOneShot below
         }
-        _copVoice.Stop();
+        _copVoice.Stop();   // cut the previous line (Stop also halts the prior PlayOneShot)
         if (clip == null) return;
-        _copVoice.clip = clip;
-        _copVoice.Play();
+        _copVoice.PlayOneShot(clip, CopRadioGain);
     }
 
     IEnumerator ScareRoutine(PlayerController pc)
@@ -741,7 +745,7 @@ public class TevSmugglingMission : MonoBehaviour
             // deadline stretches while an ignition hold (I / D-pad Left) is in
             // progress, so a hold started in time always completes.
             bool qtePad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
-            SetQteKey(qtePad ? "<" : "I",
+            SetQteKey(PromptGlyphs.EngineKeycap,   // real D-pad sprite on pad, "I" on keyboard
                       qtePad ? "D-PAD LEFT TO SHUT DOWN ENGINE" : "I TO SHUT DOWN ENGINE",
                       showRings: false);
             _qteRoot.SetActive(true);
@@ -1335,7 +1339,7 @@ public class TevSmugglingMission : MonoBehaviour
         yield return new WaitForSeconds(0.6f);
         if (_phase != Phase.Chase) yield break;
 
-        SetQteKey(TutorialGate.LastSource == TutorialGate.InputSource.Controller ? ">" : "H");
+        SetQteKey(PromptGlyphs.HatchKeycap);   // real D-pad sprite on pad, "H" on keyboard
         _qteRoot.SetActive(true);
         _qteWhiteRing.localScale = Vector3.one * 3f;
 

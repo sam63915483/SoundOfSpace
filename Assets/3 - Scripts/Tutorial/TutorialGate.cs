@@ -570,11 +570,26 @@ public static class PromptGlyphs
     public static string Fishingdex    => Pick("<b>B</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
     // Phone open: X on keyboard, D-pad up on pad (on foot).
     public static string PhoneOpen     => Pick("<b>X</b>",     "<b>D-pad up</b>", "<b>D-pad up</b>", "xbox_dpad_up", "ps_dpad_up");
-    // Ship pilot bindings (text-only on pad — no left/right D-pad sprites in
-    // the glyph asset, and the bold text reads fine in prompts/QTEs).
-    public static string EngineIgnition => Pad ? "<b>D-pad left</b>"  : "<b>I</b>";
-    public static string Hatch          => Pad ? "<b>D-pad right</b>" : "<b>H</b>";
+    // Ship pilot bindings. The InputGlyphs sprite asset DOES have
+    // xbox_/ps_dpad_left/right, so these render the real D-pad logo on pad
+    // (falling back to bold text if the sprite asset is somehow missing).
+    public static string EngineIgnition => Pick("<b>I</b>", "<b>D-pad left</b>",  "<b>D-pad left</b>",  "xbox_dpad_left",  "ps_dpad_left");
+    public static string Hatch          => Pick("<b>H</b>", "<b>D-pad right</b>", "<b>D-pad right</b>", "xbox_dpad_right", "ps_dpad_right");
     public static string ShipBoost      => Pick("<b>Shift</b>", "<b>LT</b>", "<b>L2</b>", "xbox_lt", "ps_l2");
+
+    // Bare single-glyph forms for the code-built KEYCAP boxes (ShipEngineUI,
+    // Tev engine/hatch QTE). Returns the D-pad sprite on pad, the letter on
+    // keyboard, and a compact "<"/">" only if the sprite asset is missing —
+    // never the long "D-pad left" text, which wouldn't fit a keycap square.
+    public static string EngineKeycap => KeycapPick("I", "xbox_dpad_left",  "ps_dpad_left",  "<");
+    public static string HatchKeycap  => KeycapPick("H", "xbox_dpad_right", "ps_dpad_right", ">");
+
+    static string KeycapPick(string kb, string xboxSprite, string psSprite, string fallback)
+    {
+        if (!Pad) return kb;
+        if (!SpritesOk) return fallback;
+        return $"<sprite name=\"{(PS ? psSprite : xboxSprite)}\">";
+    }
     // "Primary action" (LMB / pad A) — matches TutorialGate.PrimaryActionPressed.
     public static string PrimaryAction  => Pick("<b>LMB</b>",  "<b>A</b>",  "<b>Cross</b>", "xbox_a", "ps_cross");
     public static string AdvanceTip    => Pick("<b>TAB</b>",   "<b>LT</b>",    "<b>L2</b>",       "xbox_lt",   "ps_l2");

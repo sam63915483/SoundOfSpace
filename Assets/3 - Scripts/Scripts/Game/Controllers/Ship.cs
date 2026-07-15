@@ -751,7 +751,7 @@ public class Ship : GravityObject
         {
             bool pad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
             ShipEngineUI.Show(pad ? "HOLD D-PAD LEFT — START ENGINE" : "HOLD I — START ENGINE",
-                              pad ? "<" : "I");
+                              PromptGlyphs.EngineKeycap);   // real D-pad sprite on pad, "I" on keyboard
         }
         else
             ShipEngineUI.Hide();

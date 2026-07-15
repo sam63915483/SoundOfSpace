@@ -21,7 +21,7 @@ public class CopShipController : MonoBehaviour
     public float blastInterval = 4f;
     public int maxBlasts = 5;
     public float blastRange = 550f;
-    public float blastSpeed = 126f;   // 1.4× the original 90 — reads as a real shot, still dodgeable
+    public float blastSpeed = 63f;    // halved from 126 (user: taser shots too hard to dodge) — slow, readable, easy to juke
     public float blastHitRadius = 8f;
     public int hitsToKill = 3;
 
