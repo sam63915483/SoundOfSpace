@@ -143,6 +143,7 @@ public class EnemyController : MonoBehaviour, IDamageable
     public EnemyKind Kind => kind;
     public float CurrentHealth => currentHealth;
     public bool IsDying => _dying;
+    public float HitboxRadiusScale => hitboxRadiusScale;   // read by KillShotCam's collider viz
 
     Rigidbody rb;
     Collider ownCollider;
@@ -184,6 +185,32 @@ public class EnemyController : MonoBehaviour, IDamageable
     float _deathTimer;
     Vector3 _deathStartScale;
     bool _frozenForShrink;
+
+    // ── Stealth revamp: AI state ──
+    public enum AIState { Docile, Investigating, Chasing, Searching }
+    AIState _state = AIState.Docile;
+    public AIState State => _state;
+    public EnemyVision Vision => _vision;
+    public float SearchProgress01 => searchLookSeconds > 0.01f ? Mathf.Clamp01(_searchTimer / searchLookSeconds) : 0f;
+    EnemyVision _vision;
+    CelestialBody _sun;
+    Vector3 _leashLocalToPlanet;
+    bool _hasLeash;
+    bool _wanderWalking;
+    Vector3 _wanderTargetLocal;
+    float _wanderTimer;
+    Quaternion _lookTargetRot = Quaternion.identity;
+    float _searchTimer;
+    float _searchScanTimer;
+    Vector3 _investigateLookDir;
+    float _nextSniffTime;
+    float _loseSightTimer;
+    float _burnTimer;
+    bool _forceChase;
+    Vector3 _stuckRefLocal;      // planet-local position at last watchdog sample
+    float _stuckDeadline;        // next watchdog check time
+    const float StuckSeconds = 2f;
+    float _nextMobRecruit;       // throttle for the mob-mentality recruit sweep
     const float RagdollDuration     = 30f;   // total corpse lifetime before shrink
     const float DeathShrinkDuration = 1.5f;  // shrink-to-zero after ragdoll (long enough to actually read on screen — 0.4s was perceived as instant disappear)
     // Free physics tumble is capped: once the corpse settles (relative to the
@@ -214,6 +241,7 @@ public class EnemyController : MonoBehaviour, IDamageable
     {
         rb = GetComponent<Rigidbody>();
         ownCollider = GetComponent<Collider>();
+        _vision = GetComponent<EnemyVision>();
 
         // Kinematic + parented to the planet means the enemy rides the planet's
         // transform — no need for EndlessManager registration; the floating-origin
@@ -261,7 +289,7 @@ public class EnemyController : MonoBehaviour, IDamageable
         // through PlayOneShot's volumeScale parameter.
         bool needsOneShot = attackClip != null || deathClip != null
                          || spawnLoopClip != null || chargeStartClip != null
-                         || spitClip != null;
+                         || spitClip != null || sniffClip != null;
         if (needsOneShot)
         {
             _oneShotSource = gameObject.AddComponent<AudioSource>();
@@ -306,6 +334,14 @@ public class EnemyController : MonoBehaviour, IDamageable
 
         parentPlanet = GetComponentInParent<CelestialBody>();
         if (parentPlanet == null) parentPlanet = GetNearestPlanet();
+        if (parentPlanet != null)
+        {
+            // Leash center for docile wander = spawn spot, stored planet-relative so it
+            // survives orbital motion / floating-origin shifts.
+            _leashLocalToPlanet = parentPlanet.transform.InverseTransformPoint(rb.position);
+            _hasLeash = true;
+        }
+        _sun = GetSun();
 
         // Bootstrap the per-player tree-contact timer the first time any enemy
         // wakes up. The tracker is global and survives scene transitions; this
@@ -335,13 +371,15 @@ public class EnemyController : MonoBehaviour, IDamageable
         // [spawnLoopRepeatMin, spawnLoopRepeatMax] seconds until BeginDeath
         // sets _dying. The clip is dispatched via PlayOneShot so it never
         // collides with attack/charge/death one-shots on the same source.
-        _oneShotSource.PlayOneShot(spawnLoopClip, spawnLoopVolume);
+        // Recurring scream/presence motif — only while actively chasing (docile
+        // enemies are silent; the lock-on scream is played once by EnterChase).
         while (!_dying)
         {
             float wait = Random.Range(spawnLoopRepeatMin, spawnLoopRepeatMax);
             yield return new WaitForSeconds(wait);
             if (_dying) yield break;
-            _oneShotSource.PlayOneShot(spawnLoopClip, spawnLoopVolume);
+            if (_state == AIState.Chasing)
+                _oneShotSource.PlayOneShot(spawnLoopClip, spawnLoopVolume);
         }
     }
 
@@ -349,16 +387,49 @@ public class EnemyController : MonoBehaviour, IDamageable
     {
         if (_dying) { TickDeath(); return; }
 
-        // Advance the spit state machine BEFORE the locomotion checks below,
-        // so a windup-flick-settle cycle progresses every tick once started
-        // (even on a tick where the locomotion code early-outs).
-        TickSpitState();
+        if (player == null)
+        {
+            player = ResolvePlayerTransform();
+            if (player == null) return;
+        }
 
-        // Proximity-bite NPCs we're stuck on. Runs every fixed update because
-        // OnCollisionStay doesn't fire against AlienNPCDamageable's static
-        // collider; this is the substitute path. Cheap O(N) over the small
-        // AlienNPCDamageable.AllInstances list with an sqrMagnitude cull.
+        if (parentPlanet == null)
+        {
+            parentPlanet = GetComponentInParent<CelestialBody>();
+            if (parentPlanet == null) parentPlanet = GetNearestPlanet();
+            if (parentPlanet == null) return;
+        }
+
+        // Sunlight burns them on the lit side — bait a chase into the terminator to kill them.
+        TickSunburn();
+        if (_dying) return;
+
+        // Un-wedge safety net (reads LAST tick's walking flag — cheap, order-independent).
+        TickStuckWatchdog();
+
+        // Despawn if we've drifted out of the player's bubble.
+        if ((player.position - rb.position).magnitude > despawnDistance)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        // Proximity-bite NPCs we're stuck on. Runs EVERY tick regardless of AI state —
+        // this is the substitute for OnCollisionStay against AlienNPCDamageable's static
+        // colliders (kinematic-vs-static fires no collision events), and enemies must
+        // keep threatening NPCs even while Docile/Searching, as they always did.
         TryBiteNearbyNPC();
+
+        // ── Stealth state machine ───────────────────────────────────────────
+        // Docile / Investigating / Searching run their own cheap locomotion and
+        // return inside UpdateAIState; only Chasing falls through to the full
+        // aggression path below (spit, charge, pursuit).
+        UpdateAIState();
+        if (_state != AIState.Chasing) return;
+
+        // Advance the spit state machine (chase-only; EnterSearch/EnterDocile cancel a
+        // mid-flight cycle so it can't freeze half-wound outside Chasing).
+        TickSpitState();
 
         // Reset every tick; the grounded-and-moving branch below sets it true
         // if the enemy is actually walking toward the player this step.
@@ -374,8 +445,6 @@ public class EnemyController : MonoBehaviour, IDamageable
                 if (_isCharging)
                 {
                     _isCharging = false;
-                    // Cooldown is the guaranteed minimum walk; the random gap
-                    // on top is what makes the charge feel non-rhythmic.
                     _phaseTimer = chargeCooldown + Random.Range(walkBeforeChargeMin, walkBeforeChargeMax);
                 }
                 else
@@ -387,26 +456,6 @@ public class EnemyController : MonoBehaviour, IDamageable
                 }
             }
             _currentMoveSpeed = _isCharging ? chargeSpeed : walkSpeed;
-        }
-
-        if (player == null)
-        {
-            player = ResolvePlayerTransform();
-            if (player == null) return;
-        }
-
-        if (parentPlanet == null)
-        {
-            parentPlanet = GetComponentInParent<CelestialBody>();
-            if (parentPlanet == null) parentPlanet = GetNearestPlanet();
-            if (parentPlanet == null) return;
-        }
-
-        // Despawn if we've drifted out of the player's bubble.
-        if ((player.position - rb.position).magnitude > despawnDistance)
-        {
-            Destroy(gameObject);
-            return;
         }
 
         Vector3 fromCenter = rb.position - parentPlanet.Position;
@@ -544,6 +593,7 @@ public class EnemyController : MonoBehaviour, IDamageable
                     : horizDir.normalized;
 
                 float stepLen = Mathf.Min(_currentMoveSpeed * Time.fixedDeltaTime, horizDist - stoppingDistance);
+                stepDir = DeflectAroundObstacles(stepDir, stepLen, up);   // slide along walls, don't grind
                 Vector3 candidate = newPos + stepDir * stepLen;
 
                 // Snap candidate to the *local* ground beneath/at-its-feet — probe
@@ -564,10 +614,17 @@ public class EnemyController : MonoBehaviour, IDamageable
                     float climbDelta = Vector3.Dot(snapped - newPos, up);
                     if (climbDelta <= maxClimbHeight)
                         newPos = snapped;
-                    // Else: blocked by something too tall — stay put this tick.
+                    // Else: blocked by something too tall — the slide above already bent
+                    // the path; hold this tick and next tick's deflection finds a way around.
                 }
-                // Else: blocked or no ground → don't take the step (stay put rather
-                // than walking off into space).
+                else
+                {
+                    // No ground within probe range below the candidate — a roof lip / ledge.
+                    // Take the horizontal step anyway: the grounded check next tick starts
+                    // the fall and they drop off naturally. The old "stay put" here was THE
+                    // frozen-in-the-air bug — enemies parked forever on roof/crystal edges.
+                    newPos = candidate;
+                }
             }
         }
 
@@ -615,6 +672,392 @@ public class EnemyController : MonoBehaviour, IDamageable
                 rb.MoveRotation(nextRot);
             }
         }
+    }
+
+    // ── Stealth AI ───────────────────────────────────────────────────────────
+    void UpdateAIState()
+    {
+        bool alerted = _forceChase || (_vision != null && _vision.IsAlerted);
+        bool canSee  = _vision != null && _vision.CanSeePlayerNow;
+        float suspicion = _vision != null ? _vision.Suspicion01 : 0f;
+
+        switch (_state)
+        {
+            case AIState.Docile:
+                if (alerted) { EnterChase(); return; }
+                if (canSee && suspicion > 0.01f) { EnterInvestigate(); return; }
+                TickDocile();
+                return;
+
+            case AIState.Investigating:
+                if (alerted) { EnterChase(); return; }
+                if (suspicion <= 0.01f) { EnterDocile(false); return; }
+                TickInvestigate();
+                return;
+
+            case AIState.Searching:
+                // Re-spotting during the hunt is NOT instant: seeing the player just fills
+                // suspicion at searchFillMult speed (EnemyVision) — chase resumes only when
+                // the meter fills (or they're shot). TickSearch stares while it confirms.
+                if (alerted) { EnterChase(); return; }
+                TickSearch();
+                return;
+
+            case AIState.Chasing:
+                if (canSee)
+                {
+                    _loseSightTimer = 0f;
+                    _forceChase = false;
+                    // Mob mentality (recruit): a chaser WITH visual pulls nearby
+                    // non-chasing enemies into the chase — they want in on the fun.
+                    if (Time.time >= _nextMobRecruit)
+                    {
+                        _nextMobRecruit = Time.time + 0.5f;
+                        RecruitMob();
+                    }
+                }
+                else if (MobHasVisual())
+                {
+                    // Mob mentality (shared eyes): I can't see you, but a chasing
+                    // packmate within mobLinkRadius CAN — the group stays locked on.
+                    _loseSightTimer = 0f;
+                }
+                else
+                {
+                    _loseSightTimer += Time.fixedDeltaTime;
+                    if (_loseSightTimer >= loseSightGrace) { EnterSearch(); return; }
+                }
+                return;   // caller falls through to the chase locomotion
+        }
+    }
+
+    // Pull nearby docile/investigating/searching enemies into the chase. Newly
+    // recruited chasers become recruiters themselves next tick, so a scream
+    // chains through a tight group naturally.
+    void RecruitMob()
+    {
+        float r2 = mobLinkRadius * mobLinkRadius;
+        for (int i = 0; i < s_active.Count; i++)
+        {
+            var other = s_active[i];
+            if (other == null || other == this || other._dying) continue;
+            if (other._state == AIState.Chasing) continue;
+            if ((other.rb.position - rb.position).sqrMagnitude > r2) continue;
+            if (other._vision != null) other._vision.ForceAlert();
+            other._forceChase = true;   // their next UpdateAIState → EnterChase (+ scream)
+        }
+    }
+
+    // True if any OTHER chasing enemy within mobLinkRadius currently sees the player.
+    bool MobHasVisual()
+    {
+        float r2 = mobLinkRadius * mobLinkRadius;
+        for (int i = 0; i < s_active.Count; i++)
+        {
+            var other = s_active[i];
+            if (other == null || other == this || other._dying) continue;
+            if (other._state != AIState.Chasing) continue;
+            if (other._vision == null || !other._vision.CanSeePlayerNow) continue;
+            if ((other.rb.position - rb.position).sqrMagnitude <= r2) return true;
+        }
+        return false;
+    }
+
+    /// <summary>Loud-noise alert (gunshots): every living enemy within radius locks
+    /// onto the player and charges, regardless of vision.</summary>
+    public static void AlertNearby(Vector3 pos, float radius)
+    {
+        float r2 = radius * radius;
+        for (int i = 0; i < s_active.Count; i++)
+        {
+            var e = s_active[i];
+            if (e == null || e._dying) continue;
+            if ((e.rb.position - pos).sqrMagnitude > r2) continue;
+            if (e._vision != null) e._vision.ForceAlert();
+            e._forceChase = true;
+        }
+    }
+
+    void EnterChase()
+    {
+        if (_state != AIState.Chasing)
+        {
+            _state = AIState.Chasing;
+            if (_oneShotSource != null && spawnLoopClip != null)
+                _oneShotSource.PlayOneShot(spawnLoopClip, spawnLoopVolume);   // scream on lock-on
+        }
+        _loseSightTimer = 0f;
+    }
+
+    void EnterSearch()
+    {
+        _state = AIState.Searching;
+        CancelSpit();
+        _searchTimer = 0f;
+        _nextSniffTime = Time.time;   // sniff right away
+        _forceChase = false;
+        Vector3 up = (rb.position - (parentPlanet != null ? parentPlanet.Position : Vector3.zero)).normalized;
+        _lookTargetRot = RandomTangentRotation(up);
+        if (_runSource != null && _runSource.isPlaying) _runSource.Pause();
+    }
+
+    // A spit cycle started during a chase must not outlive the chase: TickSpitState is
+    // chase-gated, so a half-wound cycle would otherwise freeze (_spitting stuck true →
+    // LateUpdate cranks the neck forever, and the stale cycle fires the instant a later
+    // chase begins). Cancel cleanly on any exit from Chasing.
+    void CancelSpit()
+    {
+        _spitting = false;
+        _spitFired = false;
+        _spitPhaseTime = 0f;
+    }
+
+    void EnterDocile(bool reLeashHere)
+    {
+        _state = AIState.Docile;
+        CancelSpit();
+        _wanderWalking = false;
+        _wanderTimer = 0f;
+        _forceChase = false;
+        if (_runSource != null && _runSource.isPlaying) _runSource.Pause();
+        if (reLeashHere && parentPlanet != null)
+        {
+            _leashLocalToPlanet = parentPlanet.transform.InverseTransformPoint(rb.position);
+            _hasLeash = true;
+        }
+    }
+
+    Vector3 LeashCenterWorld()
+    {
+        if (_hasLeash && parentPlanet != null) return parentPlanet.transform.TransformPoint(_leashLocalToPlanet);
+        return rb.position;
+    }
+
+    void TickDocile()
+    {
+        _wanderTimer -= Time.fixedDeltaTime;
+        if (_wanderWalking)
+        {
+            Vector3 target = parentPlanet.transform.TransformPoint(_wanderTargetLocal);
+            Vector3 up = (rb.position - parentPlanet.Position).normalized;
+            float horiz = Vector3.ProjectOnPlane(target - rb.position, up).magnitude;
+            if (horiz <= stoppingDistance + 0.3f || _wanderTimer <= 0f)
+            {
+                _wanderWalking = false;
+                _wanderTimer = Random.Range(wanderIdleMin, wanderIdleMax);
+                _lookTargetRot = RandomTangentRotation(up);
+            }
+            else StepTowardWorld(target, wanderSpeed, true);
+        }
+        else
+        {
+            StepTowardWorld(rb.position, 0f, false);   // hold ground + inherit orbit
+            rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, _lookTargetRot,
+                                                     turnSpeedDegPerSec * 0.25f * Time.fixedDeltaTime));
+            if (_wanderTimer <= 0f)
+            {
+                Vector3 center = LeashCenterWorld();
+                Vector3 up = (center - parentPlanet.Position).normalized;
+                Vector3 t = Vector3.Cross(up,
+                    Mathf.Abs(Vector3.Dot(up, Vector3.right)) < 0.9f ? Vector3.right : Vector3.forward).normalized;
+                // Anti-clumping: roll a few candidate wander points and take the one
+                // farthest from its nearest neighbouring enemy — the field drifts APART
+                // over time instead of bunching up.
+                Vector3 best = center;
+                float bestScore = -1f;
+                for (int c = 0; c < 3; c++)
+                {
+                    Vector3 tangent = Quaternion.AngleAxis(Random.Range(0f, 360f), up) * t;
+                    Vector3 cand = center + tangent * Random.Range(1f, wanderRadius);
+                    float nearestSqr = float.MaxValue;
+                    for (int i = 0; i < s_active.Count; i++)
+                    {
+                        var o = s_active[i];
+                        if (o == null || o == this) continue;
+                        float d2 = (o.rb.position - cand).sqrMagnitude;
+                        if (d2 < nearestSqr) nearestSqr = d2;
+                    }
+                    if (nearestSqr > bestScore) { bestScore = nearestSqr; best = cand; }
+                }
+                _wanderTargetLocal = parentPlanet.transform.InverseTransformPoint(best);
+                _wanderWalking = true;
+                _wanderTimer = 12f;   // safety cap to reach the point
+            }
+        }
+    }
+
+    void EnterInvestigate()
+    {
+        _state = AIState.Investigating;
+        // Snap to face where we FIRST glimpsed the player, then HOLD that facing (no continuous
+        // tracking) — this gives the player a window to slip out of the cone before it fills.
+        if (player != null && parentPlanet != null)
+        {
+            Vector3 up = (rb.position - parentPlanet.Position).normalized;
+            Vector3 d = Vector3.ProjectOnPlane(player.position - rb.position, up);
+            if (d.sqrMagnitude > 0.0001f) _investigateLookDir = d.normalized;
+        }
+    }
+
+    void TickInvestigate()
+    {
+        StepTowardWorld(rb.position, 0f, false);   // plant on the spot, stay grounded
+        if (parentPlanet == null) return;
+        Vector3 up = (rb.position - parentPlanet.Position).normalized;
+        Vector3 fwd = Vector3.ProjectOnPlane(_investigateLookDir, up);
+        if (fwd.sqrMagnitude > 0.0001f)
+        {
+            Quaternion tr = Quaternion.LookRotation(fwd.normalized, up);
+            rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, tr, investigateTurnSpeed * Time.fixedDeltaTime));
+        }
+    }
+
+    void TickSearch()
+    {
+        _searchTimer += Time.fixedDeltaTime;
+        _searchScanTimer -= Time.fixedDeltaTime;
+        Vector3 up = (rb.position - parentPlanet.Position).normalized;
+
+        // A glimpse mid-hunt: stop scanning and STARE at it — the 2× suspicion fill does the
+        // confirming, and the player gets one last window to break the stare before re-chase.
+        if (_vision != null && _vision.CanSeePlayerNow && player != null)
+        {
+            Vector3 stare = Vector3.ProjectOnPlane(player.position - rb.position, up);
+            if (stare.sqrMagnitude > 0.0001f) _lookTargetRot = Quaternion.LookRotation(stare.normalized, up);
+            _searchScanTimer = Mathf.Max(_searchScanTimer, 0.5f);   // hold the random scan while staring
+        }
+
+        // Actively sweep — snap to a new look direction often so slipping behind them doesn't work.
+        // Combined with the expanded chase/search view range, flanking a searcher gets punished.
+        if (_searchScanTimer <= 0f)
+        {
+            _lookTargetRot = RandomTangentRotation(up);
+            _searchScanTimer = Random.Range(searchScanIntervalMin, searchScanIntervalMax);
+        }
+
+        Vector3 target = (_vision != null && _vision.HasLastSeen) ? _vision.LastSeenPlayerPos : rb.position;
+        float horiz = Vector3.ProjectOnPlane(target - rb.position, up).magnitude;
+        if (horiz > searchReachDist) StepTowardWorld(target, searchSpeed, false);   // head there, but face the scan dir
+        else                         StepTowardWorld(rb.position, 0f, false);        // arrived — hold and scan
+
+        // Fast head/body turns while scanning (whether en route or arrived).
+        rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, _lookTargetRot,
+                                                 turnSpeedDegPerSec * 1.5f * Time.fixedDeltaTime));
+
+        if (sniffClip != null && _oneShotSource != null && Time.time >= _nextSniffTime)
+        {
+            _oneShotSource.PlayOneShot(sniffClip, sniffVolume);
+            _nextSniffTime = Time.time + sniffInterval;
+        }
+        if (_searchTimer >= searchLookSeconds) EnterDocile(true);
+    }
+
+    Quaternion RandomTangentRotation(Vector3 up)
+    {
+        if (up.sqrMagnitude < 0.0001f) up = Vector3.up;
+        Vector3 t = Vector3.Cross(up,
+            Mathf.Abs(Vector3.Dot(up, Vector3.right)) < 0.9f ? Vector3.right : Vector3.forward).normalized;
+        Vector3 dir = Quaternion.AngleAxis(Random.Range(0f, 360f), up) * t;
+        return Quaternion.LookRotation(dir, up);
+    }
+
+    // Cheap grounded step toward a world target along the surface. Shared by the
+    // docile / investigate / search states (chase has its own richer locomotion).
+    void StepTowardWorld(Vector3 worldTarget, float speed, bool faceTarget)
+    {
+        Vector3 fromCenter = rb.position - parentPlanet.Position;
+        if (fromCenter.sqrMagnitude < 0.0001f) return;
+        Vector3 up = fromCenter.normalized;
+        int groundMask = ~((1 << 9) | (1 << 11) | (1 << 12));
+
+        Vector3 newPos = rb.position;
+        float groundedRange = _scaledGroundedOffset + 0.5f;
+        Vector3 probeStart = rb.position + up * 0.1f;
+        bool grounded = TryGroundProbe(probeStart, -up, groundedRange, groundMask, out RaycastHit groundHit);
+        bool moved = false;
+
+        if (!grounded)
+        {
+            newPos = rb.position - up * fallSpeed * Time.fixedDeltaTime;
+        }
+        else
+        {
+            newPos = groundHit.point + up * _scaledGroundedOffset;
+            if (speed > 0.001f)
+            {
+                Vector3 horizDir = Vector3.ProjectOnPlane(worldTarget - newPos, up);
+                float horizDist = horizDir.magnitude;
+                if (horizDist > stoppingDistance)
+                {
+                    float stepLen = Mathf.Min(speed * Time.fixedDeltaTime, horizDist - stoppingDistance);
+                    Vector3 stepDir = DeflectAroundObstacles(horizDir.normalized, stepLen, up);
+                    Vector3 candidate = newPos + stepDir * stepLen;
+                    Vector3 candUp = (candidate - parentPlanet.Position).normalized;
+                    Vector3 candProbeStart = candidate + candUp * maxClimbHeight;
+                    float candProbeRange = maxClimbHeight + _scaledGroundedOffset + 1f;
+                    if (TryGroundProbe(candProbeStart, -candUp, candProbeRange, groundMask, out RaycastHit candHit))
+                    {
+                        Vector3 snapped = candHit.point + candUp * _scaledGroundedOffset;
+                        if (Vector3.Dot(snapped - newPos, up) <= maxClimbHeight) { newPos = snapped; moved = true; }
+                    }
+                    else
+                    {
+                        // Ledge — step off and let gravity take it (mirrors the chase path;
+                        // freezing here was the stuck-on-roof-edge bug for wander/search too).
+                        newPos = candidate;
+                        moved = true;
+                    }
+                }
+            }
+        }
+        _walkingThisStep = moved;   // feeds the stuck watchdog (and nothing else on this path)
+
+        newPos += parentPlanet.velocity * Time.fixedDeltaTime;
+        rb.MovePosition(newPos);
+
+        if (_anim != null)
+            _anim.SetFloat(_animSpeedHash, moved ? (useChargeBehavior ? 0.5f : 1f) : 0f);
+
+        if (faceTarget)
+        {
+            Vector3 finalUp = (newPos - parentPlanet.Position).normalized;
+            Vector3 fwd = Vector3.ProjectOnPlane(worldTarget - newPos, finalUp);
+            if (fwd.sqrMagnitude > 0.0001f)
+            {
+                Quaternion tr = Quaternion.LookRotation(fwd.normalized, finalUp);
+                rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, tr, turnSpeedDegPerSec * Time.fixedDeltaTime));
+            }
+        }
+    }
+
+    float _nextSunRefind;   // throttle: no per-tick body scans when the scene has no sun
+
+    void TickSunburn()
+    {
+        if (_sun == null)
+        {
+            if (Time.time < _nextSunRefind) return;
+            _nextSunRefind = Time.time + 2f;
+            _sun = GetSun();
+        }
+        if (_sun == null || parentPlanet == null) return;
+        Vector3 up = (rb.position - parentPlanet.Position).normalized;
+        Vector3 sunDir = (_sun.Position - parentPlanet.Position).normalized;
+        if (Vector3.Dot(up, sunDir) > sunLitDotThreshold)
+        {
+            _burnTimer += Time.fixedDeltaTime;
+            if (_burnTimer >= sunBurnSeconds) BeginDeath(false);
+        }
+        else _burnTimer = Mathf.Max(0f, _burnTimer - Time.fixedDeltaTime * 2f);
+    }
+
+    CelestialBody GetSun()
+    {
+        var bodies = NBodySimulation.Bodies;
+        if (bodies == null) return null;
+        foreach (var b in bodies)
+            if (b != null && b.bodyType == CelestialBody.BodyType.Sun) return b;
+        return null;
     }
 
     // ── Spit attack ───────────────────────────────────────────────────────
@@ -742,7 +1185,84 @@ public class EnemyController : MonoBehaviour, IDamageable
         if (hit.collider == ownCollider) return false;
         if (hit.collider.transform.IsChildOf(transform)) return false;
         if (hit.collider.GetComponentInParent<PlayerController>() != null) return false;
+        // Props are NOT floor. Accepting any collider as ground is how enemies ended up
+        // perched on tree canopies, crystal tips, NPC heads, and each other — then stuck.
+        // These stay OBSTACLES (the wall-slide steers around them); they are never stood on.
+        // Houses / moon base remain walkable on purpose (roof edges are handled by the
+        // ledge step-off, and the stuck watchdog re-seats anything that still wedges).
+        if (hit.collider.GetComponentInParent<EnemyController>() != null) return false;
+        if (hit.collider.GetComponentInParent<AlienNPCDamageable>() != null) return false;
+        if (hit.collider.GetComponentInParent<SpawnedCrystal>() != null) return false;
+        if (hit.collider.GetComponentInParent<SpawnedTree>() != null) return false;
         return true;
+    }
+
+    // Steep-obstacle slide: cast along the intended step at chest height; a STEEP surface
+    // (house wall, moon-base wall, tree trunk, crystal, another enemy) deflects the step to
+    // run ALONG the wall instead of grinding into it — enemies flow around buildings instead
+    // of jogging in place. Gentle terrain (normal within ~50° of up) is NOT an obstacle; the
+    // existing climb logic handles hills. The player is never dodged.
+    Vector3 DeflectAroundObstacles(Vector3 stepDir, float stepLen, Vector3 up)
+    {
+        Vector3 origin = rb.position + up * 0.5f;
+        int n = Physics.RaycastNonAlloc(origin, stepDir, s_hitBuffer, stepLen + 1.0f,
+                                        ~((1 << 9) | (1 << 11) | (1 << 12)), QueryTriggerInteraction.Ignore);
+        RaycastHit best = default;
+        float bestD = float.MaxValue;
+        bool found = false;
+        for (int i = 0; i < n; i++)
+        {
+            var h = s_hitBuffer[i];
+            if (h.collider == ownCollider || h.collider.transform.IsChildOf(transform)) continue;
+            if (h.collider.GetComponentInParent<PlayerController>() != null) continue;
+            if (Vector3.Angle(h.normal, up) < 50f) continue;   // walkable slope, not a wall
+            if (h.distance < bestD) { bestD = h.distance; best = h; found = true; }
+        }
+        if (!found) return stepDir;
+
+        Vector3 slide = Vector3.ProjectOnPlane(Vector3.ProjectOnPlane(stepDir, best.normal), up);
+        if (slide.sqrMagnitude < 0.001f)
+        {
+            // Dead head-on: pick a direction along the wall face.
+            slide = Vector3.Cross(up, best.normal);
+            if (Vector3.Dot(slide, stepDir) < 0f) slide = -slide;
+        }
+        return slide.sqrMagnitude > 0.001f ? slide.normalized : stepDir;
+    }
+
+    // ── Stuck watchdog ── If the enemy has been TRYING to walk but hasn't actually moved
+    // (planet-relative) for a while, it's wedged somewhere the local probes can't solve
+    // (inside a house, on a roof lip, prop intersection). Re-seat it on the real terrain
+    // column with a sideways nudge — the same top-down cast the spawner uses. Repeated
+    // fires keep nudging randomly until it escapes the footprint. Guarantees no enemy
+    // stays frozen mid-air or inside geometry forever.
+    void TickStuckWatchdog()
+    {
+        if (parentPlanet == null) return;
+        Vector3 nowLocal = parentPlanet.transform.InverseTransformPoint(rb.position);
+        if (!_walkingThisStep)
+        {
+            _stuckRefLocal = nowLocal;
+            _stuckDeadline = Time.time + StuckSeconds;
+            return;
+        }
+        if (Time.time < _stuckDeadline) return;
+        if ((nowLocal - _stuckRefLocal).sqrMagnitude < 0.25f) ReseatOnTerrain();
+        _stuckRefLocal = parentPlanet.transform.InverseTransformPoint(rb.position);
+        _stuckDeadline = Time.time + StuckSeconds;
+    }
+
+    void ReseatOnTerrain()
+    {
+        Vector3 up = (rb.position - parentPlanet.Position).normalized;
+        Vector3 t = Vector3.Cross(up,
+            Mathf.Abs(Vector3.Dot(up, Vector3.right)) < 0.9f ? Vector3.right : Vector3.forward).normalized;
+        Vector3 side = Quaternion.AngleAxis(Random.Range(0f, 360f), up) * t * 3f;
+        Vector3 dir = (rb.position + side - parentPlanet.Position).normalized;
+        Vector3 origin = parentPlanet.Position + dir * (parentPlanet.radius + 100f);
+        if (TryGroundProbe(origin, -dir, parentPlanet.radius * 2f,
+                           ~((1 << 9) | (1 << 11) | (1 << 12)), out RaycastHit hit))
+            rb.position = hit.point + dir * _scaledGroundedOffset;   // kinematic teleport is intended here
     }
 
     // Closest non-self hit along the ray. Plain Physics.Raycast returns only the
@@ -857,6 +1377,17 @@ public class EnemyController : MonoBehaviour, IDamageable
     {
         if (amount <= 0f || _dying) return;
 
+        // Getting shot by the PLAYER always alerts them → chase (even from outside their
+        // view cone). Environmental damage (torch aura / Lebron light / concert speakers,
+        // creditPlayer == false) must NOT alert: ForceAlert writes the player's live position
+        // into LastSeen, so a docile enemy grazing a torch would beacon-lock onto a hidden
+        // player through walls — turning defensive torches into player-position trackers.
+        if (creditPlayer)
+        {
+            if (_vision != null) _vision.ForceAlert();
+            _forceChase = true;
+        }
+
         // Random blood splash at the body centre on any PLAYER hit (gun / axe /
         // fishing rod all route through here). creditPlayer == false is
         // environmental damage (torch, Lebron) and is excluded.
@@ -880,6 +1411,16 @@ public class EnemyController : MonoBehaviour, IDamageable
         if (_dying) return;
         _dying = true;
         if (creditPlayer) OnAnyEnemyDeath?.Invoke();
+        // Perception dies with the body: stop EnemyVision (its Update would keep filling
+        // suspicion / rendering the cone on a 30s ragdoll corpse) and leave the live-enemy
+        // list so the detection HUD and separation steering ignore the corpse.
+        if (_vision != null)
+        {
+            _vision.SetConeVisible(false);
+            _vision.enabled = false;
+        }
+        CancelSpit();
+        s_active.Remove(this);
         _knockbackTimer = 0f;
         if (healthBar != null) healthBar.gameObject.SetActive(false);
         if (_runSource != null && _runSource.isPlaying) _runSource.Stop();
@@ -1175,4 +1716,33 @@ public class EnemyController : MonoBehaviour, IDamageable
         }
         return nearest;
     }
+
+    // ── Stealth revamp tunables (appended per CLAUDE.md serialization rule) ──
+    [Header("Stealth — wander (docile)")]
+    [SerializeField] float wanderRadius = 12f;       // leash from the spawn point
+    [SerializeField] float wanderSpeed = 1.2f;       // slow amble
+    [SerializeField] float wanderIdleMin = 2f;
+    [SerializeField] float wanderIdleMax = 5f;
+
+    [Header("Stealth — investigate / search")]
+    [SerializeField] float investigateTurnSpeed = 540f;  // fast snap-turn toward the first-glimpse spot
+    [SerializeField] float searchSpeed = 2.5f;           // move to last-seen spot
+    [SerializeField] float searchLookSeconds = 10f;      // look around before giving up
+    [SerializeField] float searchReachDist = 2.5f;
+    [SerializeField] float searchScanIntervalMin = 0.7f; // snap to a new look dir this often while searching
+    [SerializeField] float searchScanIntervalMax = 1.4f;
+    [SerializeField] float loseSightGrace = 1.2f;        // chase → search after losing LOS this long
+
+    [Header("Stealth — sniff (searching audio)")]
+    [SerializeField] AudioClip sniffClip;            // regular = soft, brute = louder (set per prefab)
+    [SerializeField, Range(0f, 1f)] float sniffVolume = 0.9f;
+    [SerializeField] float sniffInterval = 3f;
+
+    [Header("Stealth — sunlight burn")]
+    [SerializeField] float sunBurnSeconds = 3.5f;    // time in light before death
+    [SerializeField] float sunLitDotThreshold = 0.02f;
+
+    [Header("Stealth — mob mentality")]
+    [Tooltip("A chasing enemy WITH visual recruits non-chasing enemies within this radius; chasers within it of a seeing packmate stay locked on without their own visual.")]
+    [SerializeField] float mobLinkRadius = 20f;
 }

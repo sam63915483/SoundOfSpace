@@ -12,15 +12,18 @@ public class WheatAtDuskController : MonoBehaviour
     class Clump
     {
         public Transform tf;                // invisible collider root
-        public Collider col;
         public Transform visuals;           // crossed stalk cards, scaled to bow
+        public BoxCollider col;             // tracks the bowed height so you can stand/ride on it
         public ObservationTracker tracker = new ObservationTracker(0.1f);
         public float openT;                 // 0 standing wall .. 1 fully parted
+        public bool wasObserved;            // for the gaze-arrival (rising edge) drop trigger
+        public bool dropping;               // true while snapping down, before it rises again
     }
 
     Clump[] _clumps;
     Transform _well;
     AudioSource _wellHum;
+    readonly ObservationTracker _wellTracker = new ObservationTracker(0.4f);   // grace so a quick glance-away doesn't move the well
     Transform _windmill;
     Transform _windmillBlades;
     readonly ObservationTracker _windmillTracker = new ObservationTracker();
@@ -95,6 +98,7 @@ public class WheatAtDuskController : MonoBehaviour
         DimensionSceneUtil.CreatePortal("ToNext", new Vector3(0f, 0.5f, 0f),
             new Vector3(1.7f, 0.8f, 1.7f), LevelPortal.PortalAction.EnterInterior, nextScene, well.transform);
         well.transform.position = wellPos;
+        well.transform.localScale = Vector3.one * 2f;   // the well read too small — double its size
 
         // The field: invisible collider walls + crossed stalk-card visuals per clump.
         Random.State prev = Random.state;
@@ -294,15 +298,35 @@ public class WheatAtDuskController : MonoBehaviour
             if (flat.sqrMagnitude > partMaxDistance * partMaxDistance)
             {
                 if (c.openT > 0f) SetClump(c, 0f);
+                c.dropping = false; c.wasObserved = false;
                 continue;
             }
 
             var b = new Bounds(new Vector3(pos.x, wheatHeight * 0.5f, pos.z),
                 new Vector3(clumpSpacing * 0.98f, wheatHeight, clumpSpacing * 0.98f));
             bool observed = c.tracker.Tick(b, out _, partMaxDistance);
-            float target = observed ? 1f : 0f;
-            float t = Mathf.MoveTowards(c.openT, target, Time.deltaTime / (observed ? partSeconds : standSeconds));
-            if (!Mathf.Approximately(t, c.openT)) SetClump(c, t);
+
+            // Gaze ARRIVING knocks the clump down (a quick drop); then it rises back
+            // up on its own — even while you keep looking — over a duration that
+            // scales with distance: near wheat lingers down (~nearRiseSeconds), far
+            // wheat snaps back almost at once (~farRiseSeconds). Sweep your gaze to
+            // keep dropping fresh wheat; the path closes behind you.
+            if (observed && !c.wasObserved) c.dropping = true;
+            c.wasObserved = observed;
+
+            float next;
+            if (c.dropping)
+            {
+                next = Mathf.MoveTowards(c.openT, 1f, Time.deltaTime / Mathf.Max(0.02f, dropSeconds));
+                if (next >= 0.999f) c.dropping = false;
+            }
+            else
+            {
+                float dist = flat.magnitude;
+                float riseDur = Mathf.Lerp(nearRiseSeconds, farRiseSeconds, Mathf.Clamp01(dist / partMaxDistance));
+                next = Mathf.MoveTowards(c.openT, 0f, Time.deltaTime / Mathf.Max(0.05f, riseDur));
+            }
+            if (!Mathf.Approximately(next, c.openT)) SetClump(c, next);
         }
 
         if (_wellHum != null)
@@ -325,6 +349,40 @@ public class WheatAtDuskController : MonoBehaviour
                 PlaceWindmill();
             }
         }
+
+        // The exit well wanders: when it leaves your view it hops to a fresh spot.
+        // This is a frustum test (grass blocking it still counts as looking), so you
+        // can keep it framed through the wheat and chase it down.
+        if (_well != null)
+        {
+            var wb = new Bounds(_well.position + Vector3.up * 3f, new Vector3(8f, 8f, 8f));
+            _wellTracker.Tick(wb, out bool wellLost, float.PositiveInfinity);
+            if (wellLost) RelocateWell();
+        }
+    }
+
+    // Hops the well to a fresh spot in the field whenever it leaves view. Keeps it
+    // inside the field and never drops it on top of the player.
+    void RelocateWell()
+    {
+        if (_well == null) return;
+        Vector3 cur = _well.position; cur.y = 0f;
+        float maxR = fieldSize * 0.45f;
+        var cam = ObserverState.Cam;
+        Vector3 playerFlat = Vector3.zero;
+        if (cam != null) { playerFlat = cam.transform.position; playerFlat.y = 0f; }
+        for (int attempt = 0; attempt < 10; attempt++)
+        {
+            float ang = Random.value * Mathf.PI * 2f;
+            float hop = Random.Range(wellShiftMin, wellShiftMax);
+            Vector3 cand = cur + new Vector3(Mathf.Cos(ang), 0f, Mathf.Sin(ang)) * hop;
+            if (cand.magnitude > maxR) cand = cand.normalized * maxR;                     // stay inside the field
+            if (cam != null && (cand - playerFlat).magnitude < wellMinPlayerDist) continue; // not on top of the player
+            _well.position = cand;
+            _wellTracker.Reset();
+            return;
+        }
+        _wellTracker.Reset();   // couldn't find a spot — re-arm and try again next look-away
     }
 
     void SetClump(Clump c, float openT)
@@ -333,27 +391,44 @@ public class WheatAtDuskController : MonoBehaviour
         // The stalks BOW: they squash toward the ground as you watch them part.
         float h = Mathf.Lerp(1f, 0.07f, openT);
         c.visuals.localScale = new Vector3(1f, h, 1f);
-        c.col.enabled = openT < 0.55f;
+        // Collider tracks the current standing height: a full-height solid wall when
+        // up (you can't run through it), shrinking as it bows down and growing back
+        // as it rises — so a player standing on the flat top is carried up with it.
+        // Only a mostly-flat clump drops its collider, so the gaze-parted path stays
+        // walkable.
+        float colH = wheatHeight * h;
+        c.col.size = new Vector3(clumpSpacing * 0.98f, colH, clumpSpacing * 0.98f);
+        c.col.center = new Vector3(0f, colH * 0.5f, 0f);
+        c.col.enabled = colH > standWalkoverHeight;
     }
 
     // ================= tuning (appended at END per repo conventions) =================
     [Header("Field")]
-    [Tooltip("Field edge length (metres).")]
-    public float fieldSize = 72f;
+    [Tooltip("Field edge length (metres). 240 ≈ 10x the wheat of the original 72; drop to 200 for ~7x, 170 for ~5x if it hitches on load or FPS.")]
+    public float fieldSize = 240f;
     [Tooltip("Clump grid pitch (metres).")]
     public float clumpSpacing = 4f;
     [Tooltip("Standing wheat wall height — deliberately over jump height.")]
     public float wheatHeight = 2.8f;
-    [Tooltip("Seconds for watched wheat to bow open.")]
-    public float partSeconds = 0.7f;
-    [Tooltip("Seconds for unwatched wheat to stand back up.")]
-    public float standSeconds = 1.2f;
+    [Tooltip("Seconds for gaze-hit wheat to snap DOWN (the quick drop).")]
+    public float dropSeconds = 0.25f;
+    [Tooltip("Seconds for NEAR wheat to rise back up — slow, lingers open.")]
+    public float nearRiseSeconds = 10f;
+    [Tooltip("Seconds for FAR wheat (at partMaxDistance) to rise back up — fast, snaps shut.")]
+    public float farRiseSeconds = 0.5f;
     [Tooltip("Wheat further than this doesn't animate (and stands solid).")]
     public float partMaxDistance = 45f;
+    [Tooltip("A clump bowed below this height (metres) drops its collider so you can walk over the parted path. Above it the clump is solid and can carry you up as it rises. 0 = always solid.")]
+    public float standWalkoverHeight = 0.5f;
 
     [Header("Exit")]
-    [Tooltip("Distance from spawn to the well.")]
+    [Tooltip("Distance from spawn to the well's starting spot.")]
     public float wellDistance = 55f;
     [Tooltip("Scene the well leads to.")]
     public string nextScene = "D24_WaitingRoom";
+    [Tooltip("When the well leaves view it hops this far (min/max metres).")]
+    public float wellShiftMin = 15f;
+    public float wellShiftMax = 45f;
+    [Tooltip("Never relocate the well closer than this to the player.")]
+    public float wellMinPlayerDist = 20f;
 }

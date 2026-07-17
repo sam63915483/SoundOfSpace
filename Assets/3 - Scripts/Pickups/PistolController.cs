@@ -313,6 +313,16 @@ public class PistolController : MonoBehaviour
         }));
     }
 
+    /// <summary>Show/hide the equipped pistol viewmodel (KillShotCam hides it during the
+    /// bullet cinematic so the gun doesn't fly along with the borrowed camera).</summary>
+    public void SetViewmodelVisible(bool visible)
+    {
+        if (_currentPistolInstance == null) return;
+        var rends = _currentPistolInstance.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < rends.Length; i++)
+            if (rends[i] != null) rends[i].enabled = visible;
+    }
+
     void TriggerShot()
     {
         _lastShotTime = Time.time;
@@ -327,6 +337,7 @@ public class PistolController : MonoBehaviour
         Vector3 forward = cam.transform.forward;
 
         Vector3 endPoint = origin + forward * range;
+        bool killCamTookShot = false;
         if (Physics.Raycast(origin, forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore))
         {
             endPoint = hit.point;
@@ -338,14 +349,56 @@ public class PistolController : MonoBehaviour
                 // direction for the ragdoll's backwards momentum).
                 damageable.ApplyKnockback(forward, knockbackDistance, knockbackDuration);
 
-                // Blood burst out of the entry wound, back toward the shooter.
-                // Spawn BEFORE TakeDamage: a kill shot triggers death (ragdoll +
-                // collider disable) which otherwise suppresses the spray. Parent
-                // it to the hit collider so it rides with a moving enemy.
-                BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward,
-                    hit.collider != null ? hit.collider.transform : null);
+                // KILL-SHOT CINEMATIC: if this shot kills an enemy, hand the moment to
+                // KillShotCam — it flies the camera after the bullet in slow-mo, paints the
+                // target's real hit colliders + a targeting bracket, and applies the kill
+                // (blood + damage, deferred via callback) when the bullet lands. Falls back
+                // to the normal instant path if the cam declines (already active / piloting
+                // / slow-mo disabled in settings).
+                var ecKill = damageable as EnemyController;
+                if (ecKill != null && !ecKill.IsDying && ecKill.CurrentHealth <= damagePerShot)
+                {
+                    Transform kcMuzzle = muzzlePoint != null ? muzzlePoint : _resolvedMuzzle;
+                    Vector3 kcStart = kcMuzzle != null ? kcMuzzle.position : (origin + forward * 0.5f);
+                    Vector3 kcPoint = hit.point;
+                    Vector3 kcNormal = hit.normal;
+                    Transform kcParent = hit.collider != null ? hit.collider.transform : null;
+                    killCamTookShot = KillShotCam.TryPlay(kcStart, kcPoint, ecKill, () =>
+                    {
+                        BloodFX.Instance?.SpawnSpray(kcPoint, kcNormal, forward, kcParent);
+                        // Wet squelch lands the same instant the blood pops — sound + spray together.
+                        // Hand-rolled source instead of PlayClipAtPoint: volume clamps at 1, so
+                        // "louder" comes from half-2D blend + a fat minDistance (full volume
+                        // out to 10m) — reads ~2.5x the old default-rolloff loudness.
+                        if (killImpactClip != null)
+                        {
+                            var sgo = new GameObject("KillSquelch");
+                            sgo.transform.position = kcPoint;
+                            var src = sgo.AddComponent<AudioSource>();
+                            src.clip = killImpactClip;
+                            src.volume = 1f;
+                            src.spatialBlend = 0.5f;
+                            src.minDistance = 10f;
+                            src.maxDistance = 60f;
+                            src.rolloffMode = AudioRolloffMode.Linear;
+                            src.Play();
+                            Destroy(sgo, killImpactClip.length + 0.1f);
+                        }
+                        ecKill.TakeDamage(damagePerShot);
+                    }, this);
+                }
 
-                damageable.TakeDamage(damagePerShot);
+                if (!killCamTookShot)
+                {
+                    // Blood burst out of the entry wound, back toward the shooter.
+                    // Spawn BEFORE TakeDamage: a kill shot triggers death (ragdoll +
+                    // collider disable) which otherwise suppresses the spray. Parent
+                    // it to the hit collider so it rides with a moving enemy.
+                    BloodFX.Instance?.SpawnSpray(hit.point, hit.normal, forward,
+                        hit.collider != null ? hit.collider.transform : null);
+
+                    damageable.TakeDamage(damagePerShot);
+                }
 
                 var mgr = CameraEffectsManager.Instance;
                 if (mgr != null && mgr.MasterEnabled && mgr.Input != null && mgr.Input.fxEnemyHitMicroShake
@@ -381,6 +434,10 @@ public class PistolController : MonoBehaviour
         if (airborneRecoilForce > 0f && _playerController != null && !_playerController.IsOnGround)
             _playerController.Rigidbody.AddForce(-forward * airborneRecoilForce, ForceMode.VelocityChange);
 
+        // Gunshot noise: every enemy within earshot locks onto the shooter and charges —
+        // guns are LOUD (stealth revamp). Fires per shot, hit or miss.
+        EnemyController.AlertNearby(origin, 33f);
+
         Transform muzzle = muzzlePoint != null ? muzzlePoint : _resolvedMuzzle;
         Vector3 tracerStart = muzzle != null ? muzzle.position : (origin + forward * 0.5f);
         // Cap the tracer's visual end-point in world distance from the muzzle.
@@ -393,7 +450,9 @@ public class PistolController : MonoBehaviour
         Vector3 tracerDir = hitDist > 0.0001f ? toHit / hitDist : forward;
         float tracerLen = Mathf.Min(maxTracerLength, hitDist);
         Vector3 tracerEnd = tracerStart + tracerDir * tracerLen;
-        SpawnTracer(tracerStart, tracerEnd, cam.transform);
+        // The kill-cam draws its own slow bullet along the full path — the normal fast
+        // tracer would race ahead of it and read as two bullets.
+        if (!killCamTookShot) SpawnTracer(tracerStart, tracerEnd, cam.transform);
 
         if (_recoilCoroutine != null) StopCoroutine(_recoilCoroutine);
         _recoilCoroutine = StartCoroutine(RecoilRoutine());
@@ -817,4 +876,8 @@ public class PistolController : MonoBehaviour
         }
         return null;
     }
+
+    // (Appended at the END per the serialization convention in CLAUDE.md.)
+    [Tooltip("Played at the hit point the moment a kill-cam bullet lands (synced with the blood spray). Assign 'wetsquelchy impact'.")]
+    public AudioClip killImpactClip;
 }

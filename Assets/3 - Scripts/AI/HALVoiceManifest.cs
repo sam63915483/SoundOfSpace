@@ -92,11 +92,14 @@ public static class HALVoiceManifest
         { "Orbit matched.",                                       "orbit_matched.mp3" },
         { "Orbit unmatched.",                                     "orbit_unmatched.mp3" },
 
-        // ── Pod arrival cinematic (PodArrivalSequence approachLines) ────────
-        // Keys MUST byte-match PodArrivalSequence.approachLines (and the scene's
-        // serialized copy) or the line shows silently.
+        // ── Pod arrival cinematic (PodArrivalSequence._briefing) ───────────
+        // Keys MUST byte-match PodArrivalSequence._briefing or the line shows
+        // silently. The pod now also speaks the memory / vitals / reassurance
+        // lines that used to be in the cabin — those keep their intro_03/05/06
+        // entries in the section below (same text → same clips play).
         { "Stasis cycle complete. Welcome back, astronaut.",     "pod_01_stasis_complete.mp3" },
         { "Approaching Humble Abode. Begin atmospheric entry.",  "pod_02_approaching.mp3" },
+        { "You have been in transit for three years, and are twenty-five trillion miles from Earth.", "pod_04_transit_distance.mp3" },
         { "Engaging reverse thrusters.",                         "pod_03_thrusters.mp3" },
 
         // ── Mission 1 cold open (IntroSequenceController) ───────────────────
@@ -104,10 +107,10 @@ public static class HALVoiceManifest
         // ellipsis included) or the line shows silently.
         { "Wake up",                                                                                                              "intro_wake_up.mp3" },
         { "Good morning, astronaut. Vital signs stable.",                                                                         "intro_01_good_morning.mp3" },
-        { "You have been in transit for three years. You crash-landed on this world two days ago.",                               "intro_02_transit.mp3" },
+        { "You crash-landed on this world two days ago.",                                                                         "intro_02_crashed.mp3" },
         { "Memory loss is expected after stasis of this length. It will not affect the mission.",                                 "intro_03_memory.mp3" },
         { "While you were unconscious, a local took you in. A native species. You are, currently, their guest.",                  "intro_04_local.mp3" },
-        { "Heart rate elevated. Vitals irregular.",                                                                               "intro_05_vitals.mp3" },
+        { "Heart rate elevated. Vitals irregular. Do not worry, memories will return with time.",                                  "intro_05_vitals.mp3" },
         { "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.", "intro_06_reassure.mp3" },
         { "The alien left a note for you on the table. Try walking to it and give it a read.",                                     "intro_07_note.mp3" },
     };

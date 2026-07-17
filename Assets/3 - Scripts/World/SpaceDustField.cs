@@ -77,6 +77,7 @@ public class SpaceDustField : MonoBehaviour
         _homeBody = null;
         _planets.Clear();
         _bhMaterial = null;           // the cached Scingularity material is stale after a reload
+        _oceanRadius.Clear();         // ocean radii belong to destroyed bodies after a reload
         if (_local != null)
         {
             float half = boxSize * 0.5f;
@@ -123,6 +124,27 @@ public class SpaceDustField : MonoBehaviour
     // hazed sky from a planet surface (no hard circular seam through the atmosphere).
     Material _bhMaterial;
     static readonly int _AtmoFadeID = Shader.PropertyToID("_AtmoFade");
+    static readonly int _OceanFadeID = Shader.PropertyToID("_OceanFade");
+
+    // Ocean radii per body (world units; 0 = no ocean), cached like _atmoRadius.
+    // Cleared in ReseedField on scene load.
+    readonly Dictionary<CelestialBody, float> _oceanRadius = new Dictionary<CelestialBody, float>();
+
+    // Per-frame ocean shortlist for the per-speck occlusion test (planets whose ocean
+    // sphere can actually sit between the camera and a speck in the box).
+    Vector3[] _relOceanPos;
+    float[] _relOceanR2;
+    int _relOceanCount;
+
+    float OceanRadius(CelestialBody p)
+    {
+        if (p == null) return 0f;
+        if (_oceanRadius.TryGetValue(p, out float r)) return r;
+        var gen = p.GetComponentInChildren<CelestialBodyGenerator>();
+        r = gen != null ? gen.GetOceanRadius() : 0f;
+        _oceanRadius[p] = r;
+        return r;
+    }
 
     // ---- per-frame relevant-planet shortlist (perf: avoids dict lookups + far planets in the hot loop) ----
     Vector3[] _relPos;
@@ -166,6 +188,7 @@ public class SpaceDustField : MonoBehaviour
         Vector3 dirBH = distBH > 1e-3f ? toBH / distBH : _cam.transform.forward;
 
         float fade = 0f;
+        float oceanFade = 0f;
         for (int i = 0; i < _planets.Count; i++)
         {
             var p = _planets[i];
@@ -173,6 +196,22 @@ public class SpaceDustField : MonoBehaviour
             Vector3 toP = p.Position - camPos;
             float distP = toP.magnitude;
             float atmoR = AtmosphereRadius(p);
+
+            // Ocean occlusion (drives _OceanFade — a FULL fade in the shader): the ocean
+            // post-process writes no depth, so the BH's own depth kill can't hide it behind
+            // water — without this the whole lensed ring shows straight through the sea.
+            float oceanR = OceanRadius(p);
+            if (oceanR > 0f)
+            {
+                if (distP < oceanR) { oceanFade = 1f; }              // camera underwater
+                else if (distP < distBH && distP > 1e-3f)
+                {
+                    float oceanAng = Mathf.Atan2(oceanR, distP);                      // angular radius of the water disk
+                    float angO = Vector3.Angle(dirBH, toP / distP) * Mathf.Deg2Rad;   // BH offset from planet centre
+                    float thr = 1f - Mathf.SmoothStep(oceanAng * 0.92f, oceanAng * 1.10f, angO);
+                    if (thr > oceanFade) oceanFade = thr;
+                }
+            }
 
             // Case 1 — camera immersed in this atmosphere (1 at the surface, 0 at the top).
             float thickness = Mathf.Max(1f, atmoR - p.radius);
@@ -197,6 +236,7 @@ public class SpaceDustField : MonoBehaviour
         }
 
         _bhMaterial.SetFloat(_AtmoFadeID, fade);
+        _bhMaterial.SetFloat(_OceanFadeID, oceanFade);
     }
 
     void LateUpdate()
@@ -337,6 +377,21 @@ public class SpaceDustField : MonoBehaviour
             float b = brightness * vis * edge * tw * washMul;
             if (b <= 0.004f) continue;
 
+            // Ocean occlusion: kill specks BEHIND a planet's water surface. The dust is a
+            // queue-3000 additive draw AFTER the [ImageEffectOpaque] ocean composite (which
+            // writes no depth), so a speck past the water would otherwise punch through it.
+            // Analytic segment(camera → speck)-vs-sphere; specks IN FRONT of the water pass
+            // naturally (segment ends before the sphere).
+            bool behindOcean = false;
+            for (int k = 0; k < _relOceanCount; k++)
+            {
+                Vector3 toC = _relOceanPos[k] - camPos;
+                float tSeg = Mathf.Clamp01(Vector3.Dot(toC, lp) / Mathf.Max(0.0001f, lpMag * lpMag));
+                Vector3 closest = lp * tSeg - toC;
+                if (closest.sqrMagnitude < _relOceanR2[k]) { behindOcean = true; break; }
+            }
+            if (behindOcean) continue;
+
             float size = glowSize * _sizeRand[i];
             // Translation + uniform scale matrix built directly (cheaper than Matrix4x4.TRS,
             // which does quaternion->matrix work for a rotation we don't use).
@@ -397,6 +452,8 @@ public class SpaceDustField : MonoBehaviour
     void BuildRelevantPlanets(Vector3 camPos, float boxReach)
     {
         _relCount = 0;
+        _relOceanCount = 0;
+        if (_relOceanPos == null) { _relOceanPos = new Vector3[8]; _relOceanR2 = new float[8]; }
         _planetFalloffInv = 1f / Mathf.Max(1f, planetFalloff);
         _bhRampInv = 1f / Mathf.Max(1f, bhOuterRadius - bhInnerRadius);
         for (int i = 0; i < _planets.Count && _relCount < _relPos.Length; i++)
@@ -413,6 +470,17 @@ public class SpaceDustField : MonoBehaviour
             _relCull2[_relCount] = cullR * cullR;
             _relOuter2[_relCount] = outer * outer;
             _relCount++;
+
+            // Ocean shortlist for the per-speck occlusion test — only planets whose water
+            // sphere can reach between the camera and a speck inside the box.
+            float oceanR = OceanRadius(p);
+            if (oceanR > 0f && _relOceanCount < _relOceanPos.Length
+                && Vector3.Distance(camPos, ppos) - boxReach < oceanR)
+            {
+                _relOceanPos[_relOceanCount] = ppos;
+                _relOceanR2[_relOceanCount] = oceanR * oceanR;
+                _relOceanCount++;
+            }
         }
     }
 

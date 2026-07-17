@@ -50,6 +50,9 @@ public class SlowmoOnKill : MonoBehaviour
         // Streak 1 (solo kill) → baseDuration; each tier above multiplies by 1.2.
         int exp = Mathf.Max(0, newStreak - 1);
         float duration = kBaseDuration * Mathf.Pow(kStackMultiplier, exp);
+        // DOUBLE kill and above: the whole dip runs 2× longer — multi-kills are the
+        // showpiece moments (pairs with the KillShotCam bullet cinematic).
+        if (newStreak >= 2) duration *= 2f;
 
         float candidateEnd = Time.unscaledTime + duration;
         if (candidateEnd > _slowmoEndTime) _slowmoEndTime = candidateEnd;

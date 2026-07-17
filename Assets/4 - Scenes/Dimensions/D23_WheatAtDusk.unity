@@ -219,14 +219,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3654518b2388d094397643b306ca9df4, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  fieldSize: 72
+  fieldSize: 240
   clumpSpacing: 4
   wheatHeight: 2.8
-  partSeconds: 0.7
-  standSeconds: 1.2
+  dropSeconds: 0.25
+  nearRiseSeconds: 10
+  farRiseSeconds: 0.5
   partMaxDistance: 45
+  standWalkoverHeight: 0.5
   wellDistance: 55
   nextScene: D24_WaitingRoom
+  wellShiftMin: 15
+  wellShiftMax: 45
+  wellMinPlayerDist: 20
 --- !u!4 &1635188920
 Transform:
   m_ObjectHideFlags: 0

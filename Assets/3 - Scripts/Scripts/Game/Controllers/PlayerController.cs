@@ -13,6 +13,11 @@ public class PlayerController : GravityObject
 	[Header("Movement settings")]
 	public float walkSpeed = 8;
 	public float runSpeed = 14;
+
+	// True while the player is actively sprinting on the ground. Read by EnemyVision
+	// for the stealth "sprint = instant spot" rule. Set in the grounded-move block
+	// below (not a serialized field, so it never reorders the serialized block).
+	public bool IsSprinting { get; private set; }
 	public float jumpForce = 20;
 	public float vSmoothTime = 0.1f;
 	public float airSmoothTime = 0.5f;
@@ -225,6 +230,12 @@ public class PlayerController : GravityObject
 	// walkSpeed along that direction. Non-serialized so it never reorders the
 	// serialized field block — tune here. 24 ≈ 0 → walkSpeed in a third of a second.
 	float airAcceleration = 24f;
+	// Underwater locomotion. Swim speed is walkSpeed × this fraction — i.e. half
+	// of normal ground walking (2× slower), per design. kSwimAcceleration is how
+	// fast that swim speed is reached (m/s² of velocity change toward the look
+	// direction). Non-serialized so they never reorder the serialized block.
+	const float kSwimSpeedFraction = 0.5f;
+	const float kSwimAcceleration  = 20f;
 	// Zero-alloc scratch for the wall-overlap rescue's OverlapCapsuleNonAlloc.
 	readonly Collider[] _overlapHits = new Collider[8];
 
@@ -267,6 +278,15 @@ public class PlayerController : GravityObject
 	// the scene). _flatActive is recomputed each FixedUpdate and read by IsGrounded.
 	bool _hasGravitySim;
 	bool _flatActive;
+
+	// Magnitude (m/s²) of the gravity the FixedUpdate gravity step applied last
+	// frame — flatGravity in interiors, the nearest body's pull on a planet.
+	// Cached here so the swim/buoyancy code (which runs in HandleMovement, BEFORE
+	// gravity is recomputed) can scale its upward forces to the ACTUAL gravity.
+	// Without this, the flooded-interior 20 m/s² fallback buries the water forces
+	// that were tuned against ~1 g and the player can't swim up. One-frame lag is
+	// negligible. Seeded to standard gravity so the first frame isn't a no-op.
+	float _lastGravityMag = 9.81f;
 
 	Camera cam;
 	bool readyToFlyShip;
@@ -370,6 +390,12 @@ public class PlayerController : GravityObject
 	// shoreline doesn't trigger swim physics or block jumping.
 	bool IsHalfSubmerged()
 	{
+		// Flooding Poolrooms: a flat, rising water plane rather than the spherical
+		// ocean model. Submerged once the capsule centre (rb.position ≈ chest) is below
+		// the surface — this feeds the same buoyancy/swim/velocity-cap code below with
+		// no need for a Water-tagged sphere.
+		if (PoolFlood.Active && rb.position.y < PoolFlood.SurfaceY) return true;
+
 		if (waterTouches == 0 || waterCollider == null || waterTransform == null) return false;
 		float distFromCenter = (rb.position - waterTransform.position).magnitude;
 		float waterRadius = waterCollider.radius * waterTransform.lossyScale.x;
@@ -628,6 +654,7 @@ public class PlayerController : GravityObject
 			0,
 			TutorialGate.MoveAxisVertical(TutorialAbility.Move));
 		bool running = TutorialGate.SprintHeld(TutorialAbility.Move) && isGrounded;
+		IsSprinting = running;
 		// Grounded movement stays on the MovePosition walk pipeline
 		// (smoothVelocity, below). AIRBORNE movement is now VELOCITY-based:
 		// the walk pipeline's target drops to zero in air, and HandleMovement's
@@ -857,7 +884,7 @@ public class PlayerController : GravityObject
 			// assist is engaged (so WASD near a ship trims RELATIVE to the
 			// ship — orbital speeds would otherwise saturate the cap), else
 			// the reference body.
-			if (!typing && _moveInputLocal.sqrMagnitude > 0.01f)
+			if (!typing && !IsHalfSubmerged() && _moveInputLocal.sqrMagnitude > 0.01f)
 			{
 				Vector3 wishDir = transform.TransformDirection(_moveInputLocal.normalized);
 				Vector3 frameVel;
@@ -1078,25 +1105,51 @@ public class PlayerController : GravityObject
 		IsOrbitMatched   = playerOrbitNowMatched;
 		IsCircularizing  = playerCircularizing;
 
-		// Water buoyancy + swim — only kicks in once at least half the body
-		// is below the water surface (rb.position is the capsule centre).
-		// Constant upward thrust slightly under gravity = slow sink; Space
-		// adds enough extra to rise. Velocity cap is RELATIVE TO the
-		// reference body so an orbiting planet doesn't fly out from under
-		// the player while the cap zeroes their world-space velocity.
+		// ── Swimming ──────────────────────────────────────────────────────
+		// Kicks in once at least half the body is below the water surface
+		// (rb.position is the capsule centre). Three parts:
+		//   1. WASD swims in the direction you're LOOKING (camera basis, so
+		//      pitch counts — look straight up + W rises toward the surface),
+		//      at roughly half ground walk speed (heavy-water feel).
+		//   2. Constant buoyancy = a slow sink when idle; Space / pad-A adds a
+		//      swim-up boost that overcomes gravity so you can climb out.
+		//   3. Everything is clamped to a slow terminal speed RELATIVE to the
+		//      reference body so an orbiting planet doesn't fly out from under
+		//      the player while the cap zeroes their world-space velocity.
+		//
+		// Buoyancy + swim-up are scaled to the ACTUAL gravity (_lastGravityMag)
+		// rather than being absolute: the serialized forces were tuned against
+		// ~1 g planet seas, but the flooded Poolrooms interior runs a 20 m/s²
+		// flat-gravity fallback that would otherwise bury them (net downward
+		// even with Space held). On a planet _lastGravityMag ≈ 9.81 so gScale ≈
+		// 1 and the feel is unchanged.
 		if (IsHalfSubmerged())
 		{
-			if (referenceBody != null)
+			Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
+
+			// 1. Look-relative swim thrust, capped at half walk speed.
+			float swimSpeed = walkSpeed * kSwimSpeedFraction * introMoveScale;
+			if (!typing && cam != null && _moveInputLocal.sqrMagnitude > 0.01f)
 			{
-				Vector3 relV = rb.velocity - referenceBody.velocity;
-				if (relV.sqrMagnitude > waterMaxSpeed * waterMaxSpeed)
-					rb.velocity = referenceBody.velocity + relV.normalized * waterMaxSpeed;
+				Vector3 swimDir = cam.transform.TransformDirection(_moveInputLocal.normalized);
+				float curAlong = Vector3.Dot(rb.velocity - refVel, swimDir);
+				float add = Mathf.Min(kSwimAcceleration * Time.fixedDeltaTime, Mathf.Max(0f, swimSpeed - curAlong));
+				if (add > 0f)
+					rb.AddForce(swimDir * add, ForceMode.VelocityChange);
 			}
 
-			rb.AddForce(transform.up * waterBuoyancyForce, ForceMode.Acceleration);
-			bool swimUpHeld = Input.GetKey(KeyCode.Space) || TutorialGate.PadHeld(TutorialGate.PadButton.A);
+			// 3. Heavy-water terminal-speed clamp (relative to the reference body).
+			float cap = Mathf.Max(waterMaxSpeed, swimSpeed);
+			Vector3 relV = rb.velocity - refVel;
+			if (relV.sqrMagnitude > cap * cap)
+				rb.velocity = refVel + relV.normalized * cap;
+
+			// 2. Gravity-scaled buoyancy (slow sink) + Space/A swim-up boost.
+			float gScale = _lastGravityMag / 9.81f;
+			rb.AddForce(transform.up * waterBuoyancyForce * gScale, ForceMode.Acceleration);
+			bool swimUpHeld = !typing && (Input.GetKey(KeyCode.Space) || TutorialGate.PadHeld(TutorialGate.PadButton.A));
 			if (swimUpHeld)
-				rb.AddForce(transform.up * waterSwimForce, ForceMode.Acceleration);
+				rb.AddForce(transform.up * waterSwimForce * gScale, ForceMode.Acceleration);
 		}
 
 		UpdateLoopAudio(upBoostSource,   upBoostClip,   upBoostActive,   upBoostVolume);
@@ -1173,6 +1226,7 @@ public class PlayerController : GravityObject
 			rb.AddForce(Vector3.down * flatGravity, ForceMode.Acceleration);
 			gravityOfNearestBody = Vector3.down * flatGravity;
 			referenceBody = null;
+			_lastGravityMag = flatGravity;
 		}
 		else
 		{
@@ -1196,6 +1250,7 @@ public class PlayerController : GravityObject
 					referenceBody = body;
 				}
 			}
+			_lastGravityMag = gravityOfNearestBody.magnitude;
 		}
 
 		// Rotate to align with up — usually the nearest body's gravity-up,
@@ -1299,7 +1354,11 @@ public class PlayerController : GravityObject
 			// The old airborne MovePosition teleports (0.28 m per tick at sprint)
 			// bypassed CCD entirely and were the main way sprint-jumps punched
 			// through walls.
-			Vector3 move = isGrounded ? smoothVelocity * Time.fixedDeltaTime : Vector3.zero;
+			// Submerged movement is fully velocity/force-based (the swim block in
+			// HandleMovement), so suppress the grounded walk displacement while
+			// half-submerged — otherwise standing on the pool floor would walk at
+			// full ground speed instead of swimming.
+			Vector3 move = (isGrounded && !IsHalfSubmerged()) ? smoothVelocity * Time.fixedDeltaTime : Vector3.zero;
 
 			// Slope projection. smoothVelocity is built in the gravity-HORIZONTAL
 			// plane (perpendicular to transform.up). Walking that flat vector down

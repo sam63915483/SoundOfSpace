@@ -139,12 +139,22 @@ public class CompassHUD : MonoBehaviour
                                   Sprite icon = null, Color? tint = null)
     {
         if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(sourceTag)) return;
+        // Cache the resolved Transform in the closure. The provider is invoked
+        // every frame from the waypoint loop; the previous version ran
+        // GameObject.FindWithTag on every call. Re-find only when the cached
+        // Transform goes null (target destroyed/respawned), per the repo's
+        // "cache once, lazy-refind only if null" convention.
+        Transform cachedTf = null;
         AddWaypointInternal(id, sourceTag, () =>
         {
             try
             {
-                var go = GameObject.FindWithTag(sourceTag);
-                return go != null ? go.transform.position : Vector3.zero;
+                if (cachedTf == null)
+                {
+                    var go = GameObject.FindWithTag(sourceTag);
+                    cachedTf = go != null ? go.transform : null;
+                }
+                return cachedTf != null ? cachedTf.position : Vector3.zero;
             }
             catch (UnityException)
             {

@@ -12,6 +12,19 @@ public class OceanMaskRenderer : MonoBehaviour {
 	CelestialBodyGenerator[] oceanBodies;
 	RenderTexture prev;
 
+	// Reused across frames — the original allocated (and never destroyed) a fresh
+	// Material every post-process frame, leaking one material per frame. Cached
+	// here and rebuilt only when the ocean-body count changes (Material.SetVectorArray
+	// locks its length on the first set, so the array size can't grow on a reuse).
+	Material _maskMat;
+	Vector4[] _oceanSpheres;
+
+	void DestroyMaskMat () {
+		if (_maskMat == null) return;
+		if (Application.isPlaying) Destroy (_maskMat); else DestroyImmediate (_maskMat);
+		_maskMat = null;
+	}
+
 	void Update () {
 		Init ();
 	}
@@ -50,19 +63,22 @@ public class OceanMaskRenderer : MonoBehaviour {
 
 		oceanMaskTexture.Create ();
 		if (oceanBodies != null && oceanBodies.Length > 0) {
-			var mat = new Material (oceanMaskShader);
-
-			Vector4[] oceanSpheres = new Vector4[oceanBodies.Length];
+			// Rebuild the cached array + material only when the body count changes.
+			if (_oceanSpheres == null || _oceanSpheres.Length != oceanBodies.Length) {
+				_oceanSpheres = new Vector4[oceanBodies.Length];
+				DestroyMaskMat ();
+			}
 			for (int i = 0; i < oceanBodies.Length; i++) {
 				Vector3 pos = oceanBodies[i].transform.position;
 				float oceanRadius = oceanBodies[i].GetOceanRadius ();
-				oceanSpheres[i] = new Vector4 (pos.x, pos.y, pos.z, oceanRadius);
+				_oceanSpheres[i] = new Vector4 (pos.x, pos.y, pos.z, oceanRadius);
 			}
-			mat.SetInt ("numSpheres", oceanSpheres.Length);
-			mat.SetVectorArray ("spheres", oceanSpheres);
+			if (_maskMat == null) _maskMat = new Material (oceanMaskShader);
+			_maskMat.SetInt ("numSpheres", _oceanSpheres.Length);
+			_maskMat.SetVectorArray ("spheres", _oceanSpheres);
 			//ComputeHelper.Run (oceanMaskCompute, width, height);
 
-			Graphics.Blit (screenTex, oceanMaskTexture, mat);
+			Graphics.Blit (screenTex, oceanMaskTexture, _maskMat);
 		}
 
 	}
@@ -71,5 +87,6 @@ public class OceanMaskRenderer : MonoBehaviour {
 		if (oceanMaskTexture != null) {
 			oceanMaskTexture.Release ();
 		}
+		DestroyMaskMat ();
 	}
 }

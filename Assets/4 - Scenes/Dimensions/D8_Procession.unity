@@ -220,7 +220,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   statueCount: 14
-  nextScene: R1_Backrooms
+  nextScene: D9_RedForest
 --- !u!4 &1755872625
 Transform:
   m_ObjectHideFlags: 0

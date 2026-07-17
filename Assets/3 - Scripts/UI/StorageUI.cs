@@ -191,7 +191,7 @@ public class StorageUI : MonoBehaviour
             return;
         }
         if (PlayerController.isInDialogue || PlayerController.isMapOpen
-            || PlayerPhoneUI.IsOpen || Ship.FindPilotedShip() != null) { RequestClose(); return; }
+            || PlayerPhoneUI.IsOpen || Ship.AnyShipPiloted) { RequestClose(); return; }
 
         // Pad: X on the focused slot = right-click (pick one / fish-bag panel),
         // mirroring OnSubmit's A = left-click.
@@ -427,7 +427,20 @@ public class StorageUI : MonoBehaviour
     static bool IsStackable(Hotbar.ItemId id) =>
         id == Hotbar.ItemId.Wood || id == Hotbar.ItemId.Crystal || id == Hotbar.ItemId.SpaceDust;
 
+    // Icon sprites are session-stable (Resources assets + controller.hotbarIcon).
+    // PaintSlot runs every frame per populated slot while the panel is open, so the
+    // uncached path did a Resources.Load + a full-scene FindObjectOfType per tool
+    // slot per frame. Cache each id's sprite once it resolves non-null.
+    static readonly Dictionary<Hotbar.ItemId, Sprite> _iconCache = new Dictionary<Hotbar.ItemId, Sprite>();
     static Sprite ResolveIcon(Hotbar.ItemId id)
+    {
+        if (_iconCache.TryGetValue(id, out var cached) && cached != null) return cached;
+        var result = ResolveIconUncached(id);
+        if (result != null) _iconCache[id] = result;
+        return result;
+    }
+
+    static Sprite ResolveIconUncached(Hotbar.ItemId id)
     {
         switch (id)
         {

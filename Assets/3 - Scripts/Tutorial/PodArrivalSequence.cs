@@ -38,7 +38,7 @@ public class PodArrivalSequence : MonoBehaviour
 
     [Header("Timing (seconds)")]
     [SerializeField] float fadeInTime   = 2f;        // black -> scene reveal
-    [SerializeField] float approachDuration  = 20f;  // calm drift
+    [SerializeField] float approachDuration  = 60f;  // calm drift + in-pod briefing (was 20f; 3x for the longer briefing). NOTE: the scene object --- Managers ---/IntroSequence overrides this — edit it there (or via set_property) for runtime.
     [SerializeField] float countdownDuration = 10f;  // proximity-alert countdown
     [SerializeField] float impactFadeTime = 0.12f;   // cut to black on impact
     [SerializeField] float skipFadeTime   = 0.4f;    // fade on skip
@@ -57,12 +57,22 @@ public class PodArrivalSequence : MonoBehaviour
     [SerializeField, Range(0f, 1f)] float rumbleVolume  = 0.8f;
     [SerializeField, Range(0f, 1f)] float impactVolume  = 1f;
 
-    [Header("HAL subtitles during approach")]
-    [SerializeField] string[] approachLines = {
+    // ── HAL briefing (code-authoritative) ───────────────────────────────────
+    // All spoken pod lines, in order, delivered across the approach drift at
+    // _briefingTimes (any not reached before the drift ends are flushed just
+    // before the crash — see FlushRemainingBriefing). Text MUST byte-match
+    // HALVoiceManifest.Lines or the line plays silent, so these live in code
+    // (not the Inspector) to keep the voice binding intact. Reorder/reword here.
+    static readonly string[] _briefing = {
         "Stasis cycle complete. Welcome back, astronaut.",
-        "Approaching Humble Abode. Begin atmospheric entry."
+        "You have been in transit for three years, and are twenty-five trillion miles from Earth.",
+        "Memory loss is expected after stasis of this length. It will not affect the mission.",
+        "Heart rate elevated. Vitals irregular. Do not worry, memories will return with time.",
+        "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.",
+        "Approaching Humble Abode. Begin atmospheric entry.",
     };
-    [SerializeField] float[] approachLineTimes = { 2f, 11f };
+    static readonly float[] _briefingTimes = { 2f, 12f, 22f, 32f, 42f, 49f };
+    int _briefingIndex;   // next briefing line to speak; also drives the pre-crash flush
 
     [Header("Countdown")]
     [SerializeField] int countdownStart = 10;
@@ -151,7 +161,8 @@ public class PodArrivalSequence : MonoBehaviour
         if (!Setup()) yield break;      // couldn't acquire the player -> bail cleanly
 
         yield return Fade(1f, 0f, fadeInTime);   // reveal the scene
-        yield return Approach();                 // calm drift toward the planet
+        yield return Approach();                 // calm drift + the in-pod HAL briefing
+        yield return FlushRemainingBriefing();   // speak any briefing lines the drift didn't reach
         if (!_skip)
         {
             Speak(reverseThrusterLine);                               // HAL calls the burn first
@@ -200,6 +211,7 @@ public class PodArrivalSequence : MonoBehaviour
 
         _dir = approachOffset.sqrMagnitude > 0.0001f ? approachOffset.normalized : Vector3.up;
         _curDistance = startDistance;
+        _briefingIndex = 0;
         Vector3 startPos = _target.Position + _dir * _curDistance;
         _rb.position = startPos;
         _player.position = startPos;
@@ -284,7 +296,6 @@ public class PodArrivalSequence : MonoBehaviour
 
     IEnumerator Approach()
     {
-        int li = 0;
         float t = 0f;
         while (t < approachDuration && !_skip)
         {
@@ -298,12 +309,26 @@ public class PodArrivalSequence : MonoBehaviour
                 // Subtle quickening over the drift (up to 1/4 of the way to the impact rate).
                 _heart.pitch  = Mathf.Lerp(heartbeatStartPitch, Mathf.Lerp(heartbeatStartPitch, heartbeatImpactPitch, 0.25f), u);
             }
-            while (li < approachLines.Length && li < approachLineTimes.Length && t >= approachLineTimes[li])
+            while (_briefingIndex < _briefing.Length && _briefingIndex < _briefingTimes.Length
+                   && t >= _briefingTimes[_briefingIndex])
             {
-                Speak(approachLines[li]);
-                li++;
+                Speak(_briefing[_briefingIndex]);
+                _briefingIndex++;
             }
             yield return null;
+        }
+    }
+
+    // Speaks any briefing lines the drift didn't reach (e.g. approachDuration was
+    // shortened below a line's scheduled time), back-to-back, so no line is ever
+    // silently dropped. A no-op when the drift already delivered them all.
+    IEnumerator FlushRemainingBriefing()
+    {
+        while (_briefingIndex < _briefing.Length && !_skip)
+        {
+            Speak(_briefing[_briefingIndex]);
+            _briefingIndex++;
+            yield return new WaitForSecondsRealtime(4f);
         }
     }
 

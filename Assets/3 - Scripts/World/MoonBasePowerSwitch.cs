@@ -61,6 +61,26 @@ public class MoonBasePowerSwitch : MonoBehaviour
             sc.isTrigger = true;
             sc.radius = interactRadius;
         }
+
+        // Give the visible switch body a SOLID (non-trigger) collider so the gaze
+        // crosshair (InteractGaze) can actually hit it: occlusion-respecting and easy
+        // to aim. Without this the switch has only its trigger sphere, so InteractGaze
+        // falls back to a through-wall silhouette cone — you could flip it from the far
+        // side of a wall, and had to aim precisely from up close. Fit the box to the
+        // mesh's local bounds (runtime AddComponent does NOT auto-fit). Mirrors how the
+        // trigger sphere is auto-added above: scene stays clean, every switch fixed.
+        var body = GetComponentInChildren<MeshRenderer>();
+        if (body != null && body.GetComponent<Collider>() == null)
+        {
+            var bc = body.gameObject.AddComponent<BoxCollider>();
+            var mf = body.GetComponent<MeshFilter>();
+            if (mf != null && mf.sharedMesh != null)
+            {
+                bc.center = mf.sharedMesh.bounds.center;
+                bc.size = mf.sharedMesh.bounds.size;
+            }
+        }
+
         _requireGaze = GetComponentInChildren<Renderer>() != null;
         if (leverHandle != null) leverHandle.localRotation = Quaternion.Euler(leverOffLocalEuler);
         RefreshIndicators();

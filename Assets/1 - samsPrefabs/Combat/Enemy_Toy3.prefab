@@ -1259,6 +1259,7 @@ GameObject:
   - component: {fileID: 7438149668836702244}
   - component: {fileID: 193530837501912257}
   - component: {fileID: 6709610926708482633}
+  - component: {fileID: 1526219640827060582}
   m_Layer: 0
   m_Name: Enemy_Toy3
   m_TagString: Enemy
@@ -1350,13 +1351,14 @@ MonoBehaviour:
   contactDamage: 20
   contactDamageInterval: 0.5
   npcContactDamage: 34
+  npcBiteRadius: 2.5
   kind: 1
   moveSpeed: 3
   turnSpeedDegPerSec: 180
   stoppingDistance: 0.8
   fallSpeed: 15
   groundedOffset: 1
-  maxClimbHeight: 2.5
+  maxClimbHeight: 1.2
   separationRadius: 2.5
   separationWeight: 2
   treeAvoidRadius: 8
@@ -1377,6 +1379,8 @@ MonoBehaviour:
   audioMaxDistance: 60
   spitClip: {fileID: 8300000, guid: 5fb19ea85c11912489b4743e966568e8, type: 3}
   spitVolume: 1
+  spitAudioMinDistance: 25
+  spitAudioMaxDistance: 80
   spitDamage: 5
   spitIntervalMin: 5
   spitIntervalMax: 10
@@ -1404,7 +1408,48 @@ MonoBehaviour:
   darkSideDotThreshold: -0.05
   spawnSurfaceOffset: 3
   spawnAttemptsPerTick: 12
-  despawnDistance: 80
+  despawnDistance: 150
+  hitboxRadiusScale: 1
+  drawHitboxGizmos: 1
+  wanderRadius: 12
+  wanderSpeed: 1.2
+  wanderIdleMin: 2
+  wanderIdleMax: 5
+  investigateTurnSpeed: 540
+  searchSpeed: 2.5
+  searchLookSeconds: 10
+  searchReachDist: 2.5
+  searchScanIntervalMin: 0.7
+  searchScanIntervalMax: 1.4
+  loseSightGrace: 1.2
+  sniffClip: {fileID: 8300000, guid: 54b0a9b44e213e349aaaff774c626302, type: 3}
+  sniffVolume: 0.9
+  sniffInterval: 3
+  sunBurnSeconds: 3.5
+  sunLitDotThreshold: 0.02
+  mobLinkRadius: 20
+--- !u!114 &1526219640827060582
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8323662937744480524}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7221e72700da6d44ae1190395eb5cb1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  viewRange: 30
+  viewHalfAngleDeg: 55
+  eyeHeight: 1.4
+  bulgeFraction: 0.45
+  chaseRangeMult: 2
+  centerSpotSeconds: 2
+  edgeSpotSeconds: 4
+  sprintFillMult: 1.5
+  searchFillMult: 2
+  suspicionDecayPerSec: 1.5
 --- !u!1 &8549520112292580599
 GameObject:
   m_ObjectHideFlags: 0

@@ -1599,13 +1599,21 @@ public class Ship : GravityObject
     // a ship sitting still on Humble Abode reads ~0 — without this, the
     // ship's velocity always carries Humble Abode's orbital speed around the
     // sun (thousands of u/s), triggering the FX as soon as the ship spawns.
+    Vector3 _relVelCached;
+    int _relVelFrame = -1;
     public Vector3 RelativeVelocity
     {
         get
         {
             if (rb == null) return Vector3.zero;
+            // Cache per frame: several speed-driven FX read this every frame, and
+            // the nearest-body search is O(bodies). One scan per frame, shared by
+            // all readers (values are frame-stable — this drives FX, not physics).
+            if (_relVelFrame == Time.frameCount) return _relVelCached;
+            _relVelFrame = Time.frameCount;
+
             var bodies = NBodySimulation.Bodies;
-            if (bodies == null) return rb.velocity;
+            if (bodies == null) { _relVelCached = rb.velocity; return _relVelCached; }
             CelestialBody nearest = null;
             float bestSqr = float.MaxValue;
             Vector3 myPos = rb.position;
@@ -1616,7 +1624,8 @@ public class Ship : GravityObject
                 float d = (b.Position - myPos).sqrMagnitude;
                 if (d < bestSqr) { bestSqr = d; nearest = b; }
             }
-            return nearest != null ? rb.velocity - nearest.velocity : rb.velocity;
+            _relVelCached = nearest != null ? rb.velocity - nearest.velocity : rb.velocity;
+            return _relVelCached;
         }
     }
 

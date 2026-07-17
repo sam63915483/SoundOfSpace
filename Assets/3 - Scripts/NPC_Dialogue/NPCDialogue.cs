@@ -95,13 +95,25 @@ public class NPCDialogue : MonoBehaviour
         if (_conversationActive) StopConversation();
     }
 
+    // Cached prompt text — rebuilt only when the InputSource flips (KBM ↔
+    // controller), not every frame. The `$"..."` interpolation otherwise
+    // allocated ~1.2 KB/frame while the player stood in range (see BonfireInteraction).
+    string _promptCached;
+    TutorialGate.InputSource _promptCachedSource = (TutorialGate.InputSource)(-1);
+
     void Update()
     {
         // Live-refresh the talk prompt glyph (F vs X) while the player stands
         // in range. Show is idempotent; InteractPromptUI updates the glyph each call.
         if (_playerInRange && !_conversationActive && !_conversationCompleted)
         {
-            InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
+            var src = TutorialGate.LastSource;
+            if (_promptCached == null || src != _promptCachedSource)
+            {
+                _promptCachedSource = src;
+                _promptCached = $"Press {PromptGlyphs.Interact} to talk";
+            }
+            InteractPromptUI.Show(this, _promptCached);
         }
 
         if (_playerInRange && !_conversationActive && !_conversationCompleted && InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))

@@ -84,6 +84,7 @@ public class Hotbar : MonoBehaviour
     const float EatHoldDuration = 1.0f;
 
     Canvas canvas;
+    CanvasGroup _canvasGroup;   // cached at build time; Refresh() ran GetComponent every frame otherwise
     SlotVisuals[] slotViews = new SlotVisuals[NumSlots];
 
     RectTransform _namePlateRT;
@@ -951,7 +952,8 @@ public class Hotbar : MonoBehaviour
     {
         ItemId equipped = GetEquipped();
         float groupAlpha = dimmed ? 0.45f : 1f;
-        canvas.GetComponent<CanvasGroup>().alpha = groupAlpha;
+        if (_canvasGroup == null && canvas != null) _canvasGroup = canvas.GetComponent<CanvasGroup>();
+        if (_canvasGroup != null) _canvasGroup.alpha = groupAlpha;
 
         // When something is equipped, "active" tracks the equipped slot.
         // When nothing is equipped, "active" tracks the cycle cursor instead
@@ -1244,7 +1246,7 @@ public class Hotbar : MonoBehaviour
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         scaler.matchWidthOrHeight = 0.5f;
         canvasGo.AddComponent<GraphicRaycaster>();
-        canvasGo.AddComponent<CanvasGroup>();
+        _canvasGroup = canvasGo.AddComponent<CanvasGroup>();
 
         float totalWidth = NumSlots * SlotSize + (NumSlots - 1) * SlotSpacing;
         var bar = NewRT("HotbarRoot", canvasGo.transform);

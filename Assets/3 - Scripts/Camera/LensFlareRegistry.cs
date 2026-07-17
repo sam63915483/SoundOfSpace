@@ -172,6 +172,13 @@ public class LensFlareRegistry : MonoBehaviour
     Image[] _orbImages;    RectTransform[] _orbRTs;
 
     readonly RaycastHit[] _hitBuf = new RaycastHit[16];
+    // Ocean radii per body (0 = no ocean), lazily cached. The ocean is an
+    // [ImageEffectOpaque] post-process with NO collider, so the raycast occlusion
+    // can't see it — without the analytic sphere test below, the flare pierces
+    // straight through water. Destroyed-body keys after a scene reload simply
+    // never match again (tiny, bounded leak — same tradeoff as _sunBody).
+    readonly System.Collections.Generic.Dictionary<CelestialBody, float> _oceanRadii =
+        new System.Collections.Generic.Dictionary<CelestialBody, float>();
     bool _setupComplete;
     // Smoothed occlusion visibility (0 = fully blocked, 1 = fully clear).
     float _smoothedVisibility = 1f;
@@ -557,6 +564,39 @@ public class LensFlareRegistry : MonoBehaviour
             var hitBody = go.GetComponentInParent<CelestialBody>();
             if (hitBody != null && hitBody == _sunBody) continue;
             return true;
+        }
+        // No collider blocked the ray — but the OCEANS have no colliders at all
+        // (post-process water). Analytic segment-vs-sphere against each body's
+        // ocean radius so water occludes the sun like terrain does.
+        return OceanBlocks(origin, target);
+    }
+
+    float OceanRadiusOf(CelestialBody b)
+    {
+        if (_oceanRadii.TryGetValue(b, out float r)) return r;
+        var gen = b.GetComponentInChildren<CelestialBodyGenerator>();
+        r = gen != null ? gen.GetOceanRadius() : 0f;
+        _oceanRadii[b] = r;
+        return r;
+    }
+
+    bool OceanBlocks(Vector3 origin, Vector3 target)
+    {
+        var bodies = NBodySimulation.Bodies;
+        if (bodies == null) return false;
+        Vector3 seg = target - origin;
+        float len2 = seg.sqrMagnitude;
+        if (len2 < 1e-6f) return false;
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            var b = bodies[i];
+            if (b == null || b == _sunBody) continue;
+            float r = OceanRadiusOf(b);
+            if (r <= 0f) continue;
+            Vector3 toC = b.Position - origin;
+            float t = Mathf.Clamp01(Vector3.Dot(toC, seg) / len2);
+            Vector3 closest = seg * t - toC;
+            if (closest.sqrMagnitude < r * r) return true;
         }
         return false;
     }

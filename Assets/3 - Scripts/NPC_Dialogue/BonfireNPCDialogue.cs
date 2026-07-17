@@ -97,12 +97,23 @@ public class BonfireNPCDialogue : MonoBehaviour
         if (_conversationActive) StopConversation();
     }
 
+    // Cached prompt text — rebuilt only when the input source flips (KBM ↔
+    // controller), not every frame. Avoids ~1.2 KB/frame GC while in range.
+    string _promptCached;
+    TutorialGate.InputSource _promptCachedSource = (TutorialGate.InputSource)(-1);
+
     void Update()
     {
         // Live-refresh the talk prompt glyph (F vs X) per frame.
         if (_playerInRange && !_conversationActive)
         {
-            InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
+            var src = TutorialGate.LastSource;
+            if (_promptCached == null || src != _promptCachedSource)
+            {
+                _promptCachedSource = src;
+                _promptCached = $"Press {PromptGlyphs.Interact} to talk";
+            }
+            InteractPromptUI.Show(this, _promptCached);
         }
 
         if (_playerInRange && !_conversationActive && InteractGaze.IsLookingAt(this) && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))

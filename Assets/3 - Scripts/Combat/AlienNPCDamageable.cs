@@ -145,16 +145,25 @@ public class AlienNPCDamageable : MonoBehaviour, IDamageable
     // (10-50m on a planet's surface) the result is practically silent.
     // Using a 2D source instead so the player always hears the hit at the
     // configured volume regardless of where on the planet the alien is.
+    // One shared, persistent 2D source reused for every alien hit/death sound.
+    // The old version spawned a fresh GameObject+AudioSource per hit and
+    // Destroy'd it after the clip — a steady stream of GO alloc/teardown churn
+    // in a firefight. PlayOneShot mixes overlapping hits onto the single source.
+    static AudioSource _sharedOneShot;
+
     static void PlayOneShot2D(AudioClip clip, float volume)
     {
         if (clip == null) return;
-        var go = new GameObject("AlienOneShotAudio");
-        var src = go.AddComponent<AudioSource>();
-        src.clip = clip;
-        src.volume = volume;
-        src.spatialBlend = 0f;   // 2D — full volume regardless of position
-        src.Play();
-        Destroy(go, clip.length + 0.5f);
+        if (_sharedOneShot == null)
+        {
+            var go = new GameObject("AlienOneShotAudio2D");
+            Object.DontDestroyOnLoad(go);
+            _sharedOneShot = go.AddComponent<AudioSource>();
+            _sharedOneShot.playOnAwake = false;
+            _sharedOneShot.spatialBlend = 0f;   // 2D — full volume regardless of position
+            _sharedOneShot.volume = 1f;         // per-clip level comes from PlayOneShot's volumeScale
+        }
+        _sharedOneShot.PlayOneShot(clip, volume);
     }
 
     public void ApplyKnockback(Vector3 worldDir, float distance, float duration)

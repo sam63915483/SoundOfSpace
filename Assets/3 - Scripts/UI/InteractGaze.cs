@@ -1,4 +1,5 @@
 using UnityEngine;
+using System.Collections.Generic;
 
 // Single source of truth for "is the player looking at this interactable?".
 //
@@ -112,14 +113,21 @@ public static class InteractGaze
 
     static readonly Vector3[] _corners = new Vector3[4];
 
+    // Reusable buffers for the per-frame component scans below — the array-returning
+    // GetComponentsInChildren<T>() allocates a fresh array on every call, and these
+    // run every frame on the current prompt owner. The List overloads reuse storage.
+    static readonly List<Renderer> _rendBuf = new List<Renderer>();
+    static readonly List<Collider> _colBuf = new List<Collider>();
+    static readonly List<UnityEngine.UI.Graphic> _graphicBuf = new List<UnityEngine.UI.Graphic>();
+
     static bool TryGetVisualBounds(Transform aim, out Bounds b)
     {
         b = default;
         bool any = false;
-        var rends = aim.GetComponentsInChildren<Renderer>();
-        for (int i = 0; i < rends.Length; i++)
+        aim.GetComponentsInChildren(_rendBuf);
+        for (int i = 0; i < _rendBuf.Count; i++)
         {
-            var r = rends[i];
+            var r = _rendBuf[i];
             if (r == null || !r.enabled || r is ParticleSystemRenderer) continue;
             if (!any) { b = r.bounds; any = true; }
             else b.Encapsulate(r.bounds);
@@ -128,10 +136,10 @@ public static class InteractGaze
 
         // No mesh renderer — fall back to world-space UI graphics (e.g. the
         // NotePickup "paper" Canvas), so a UI-only interactable is still aimable.
-        var graphics = aim.GetComponentsInChildren<UnityEngine.UI.Graphic>();
-        for (int i = 0; i < graphics.Length; i++)
+        aim.GetComponentsInChildren(_graphicBuf);
+        for (int i = 0; i < _graphicBuf.Count; i++)
         {
-            var g = graphics[i];
+            var g = _graphicBuf[i];
             if (g == null || !g.isActiveAndEnabled) continue;
             var canvas = g.canvas;
             if (canvas == null || canvas.renderMode != RenderMode.WorldSpace) continue;
@@ -177,10 +185,10 @@ public static class InteractGaze
     static bool AimRayHit(Transform aim, Camera cam)
     {
         Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-        var cols = aim.GetComponentsInChildren<Collider>();
-        for (int i = 0; i < cols.Length; i++)
+        aim.GetComponentsInChildren(_colBuf);
+        for (int i = 0; i < _colBuf.Count; i++)
         {
-            var c = cols[i];
+            var c = _colBuf[i];
             if (c == null || c.isTrigger) continue;
             if (c.Raycast(ray, out _, MaxDistance)) return true;
         }
@@ -193,23 +201,23 @@ public static class InteractGaze
         // disabled collider can't be raycast-hit, so counting it here would make IsLookingAt
         // always fail (it did: a repurposed enemy model kept a disabled CharacterController,
         // which is a Collider, so gaze never resolved on it). Skip disabled + trigger colliders.
-        var cols = aim.GetComponentsInChildren<Collider>();
-        for (int i = 0; i < cols.Length; i++)
-            if (cols[i] != null && cols[i].enabled && !cols[i].isTrigger) return true;
+        aim.GetComponentsInChildren(_colBuf);
+        for (int i = 0; i < _colBuf.Count; i++)
+            if (_colBuf[i] != null && _colBuf[i].enabled && !_colBuf[i].isTrigger) return true;
         return false;
     }
 
     // Center of the aim's geometry — renderer bounds, else collider bounds, else pivot.
     static Vector3 AimCenter(Transform aim)
     {
-        var rends = aim.GetComponentsInChildren<Renderer>();
-        for (int i = 0; i < rends.Length; i++)
-            if (rends[i] != null && rends[i].enabled && !(rends[i] is ParticleSystemRenderer))
-                return rends[i].bounds.center;
+        aim.GetComponentsInChildren(_rendBuf);
+        for (int i = 0; i < _rendBuf.Count; i++)
+            if (_rendBuf[i] != null && _rendBuf[i].enabled && !(_rendBuf[i] is ParticleSystemRenderer))
+                return _rendBuf[i].bounds.center;
 
-        var cols = aim.GetComponentsInChildren<Collider>();
-        for (int i = 0; i < cols.Length; i++)
-            if (cols[i] != null) return cols[i].bounds.center;
+        aim.GetComponentsInChildren(_colBuf);
+        for (int i = 0; i < _colBuf.Count; i++)
+            if (_colBuf[i] != null) return _colBuf[i].bounds.center;
 
         return aim.position;
     }

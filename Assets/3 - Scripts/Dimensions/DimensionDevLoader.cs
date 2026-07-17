@@ -13,7 +13,9 @@ public class DimensionDevLoader : MonoBehaviour
 {
     public static DimensionDevLoader Instance;
 
-    static readonly string[] Scenes =
+    // Public: this is the CANONICAL dimension order — LevelPortal routes chain exits
+    // through it so per-scene baked 'nextScene' strings can never skip levels.
+    public static readonly string[] Scenes =
     {
         "D1_ShiftingHalls", "D2_DuneSea", "D3_LongDark", "D4_WaitingField",
         "D5_Archive", "D6_FrozenSea", "D7_HallOfDoors", "D8_Procession",

@@ -1,146 +1,184 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Population director for the stealth revamp. Instead of timed waves, it maintains a
+/// standing field of docile enemies on the DARK side around the player: spawns fill toward
+/// <see cref="populationTarget"/> at 30–120 m, always terrain-occluded from the camera so
+/// nothing pops in, keeping a 3:1 regular:elite ratio. Spawns only while the player is
+/// actually on a dark side (so we don't pay for enemies you're not near); enemies self-despawn
+/// at range and burn in sunlight (see EnemyController). Docile is the enemy's default state.
+/// </summary>
 public class EnemySpawner : MonoBehaviour
 {
     public static EnemySpawner Instance { get; private set; }
 
     [Header("References")]
     public GameObject enemyPrefab;
-    // Optional elite variant. When assigned, every 4th spawn (after 3 regulars)
-    // uses this prefab instead, keeping a 1:3 ratio of elite:regular over the
-    // session. Both share enemyPrefab's MaxConcurrent / SpawnInterval — the
-    // elite doesn't double the spawn budget.
-    public GameObject enemy2Prefab;
+    public GameObject enemy2Prefab;   // elite; every 4th spawn (3 regular : 1 elite)
     public Transform playerOverride;
 
-    EnemyController prefabConfig;
+    [Header("Population")]
+    [Tooltip("Fallback target if no planet is resolved. Normally the target scales with planet size below.")]
+    public int populationTarget = 22;
+    [Tooltip("Enemies scale with planet size: target = planetRadius × this, clamped. r50 moon → ~6, r200 planet → ~24.")]
+    public float enemiesPerRadius = 0.12f;
+    public int minPopulation = 5;
+    public int maxPopulation = 33;
+    [Tooltip("Max spawn distance is also capped to planetRadius × this, so a small moon isn't ringed to its far side.")]
+    public float spawnRingRadiusFraction = 1.5f;
+    [Tooltip("Max spawned per check tick, so filling the field doesn't spike.")]
+    public int maxSpawnsPerTick = 3;
+    [Tooltip("Seconds between population checks.")]
+    public float spawnCheckInterval = 0.5f;
+
+    [Header("Placement")]
+    public float minSpawnDistance = 30f;
+    public float maxSpawnDistance = 120f;
+    [Tooltip("Dot(playerDir, sunDir) must be below this for the player to count as 'on the dark side'.")]
+    public float darkSideDotThreshold = -0.05f;
+    [Tooltip("Camera FOV cone (deg) that candidates must avoid (belt-and-braces with the occlusion test).")]
+    public float viewConeAngleDeg = 75f;
+    public float spawnSurfaceOffset = 3f;
+    public int spawnAttemptsPerTick = 18;
+    [Tooltip("New spawns must land at least this far from every existing enemy — keeps the field spread out instead of clumped.")]
+    public float minEnemySpacing = 15f;
+
     PlayerController playerCtl;
     readonly List<EnemyController> activeEnemies = new List<EnemyController>();
-    float timer;
+    float _spawnTimer;
     int _regularsSinceLastEnemy2;
+
+    const float CapsuleHalfHeight = 1.0f;
+    static readonly int SurfaceMask = ~((1 << 9) | (1 << 11) | (1 << 12)); // exclude Ship, Sun, FishPreview
 
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-
-        if (enemyPrefab != null)
-            prefabConfig = enemyPrefab.GetComponent<EnemyController>();
-
-        if (prefabConfig == null)
+        if (enemyPrefab == null || enemyPrefab.GetComponent<EnemyController>() == null)
+        {
             Debug.LogError("[EnemySpawner] enemyPrefab is missing or has no EnemyController.");
+            // Hard stop (mirrors the old prefabConfig null-out): a prefab without an
+            // EnemyController would spawn UNBOUNDED — instances only count toward the
+            // population target via their EnemyController, so the fill loop never sees them.
+            enemyPrefab = null;
+        }
     }
 
-    void OnDestroy()
-    {
-        if (Instance == this) Instance = null;
-    }
+    void OnDestroy() { if (Instance == this) Instance = null; }
 
     void Update()
     {
-        if (prefabConfig == null) return;
+        if (enemyPrefab == null) return;
         if (playerCtl == null) playerCtl = FindObjectOfType<PlayerController>(true);
 
-        // Prune destroyed enemies.
         for (int i = activeEnemies.Count - 1; i >= 0; i--)
             if (activeEnemies[i] == null) activeEnemies.RemoveAt(i);
 
-        timer += Time.deltaTime;
-        if (timer < prefabConfig.SpawnInterval) return;
-        timer = 0f;
-        TrySpawn();
+        _spawnTimer += Time.deltaTime;
+        if (_spawnTimer < spawnCheckInterval) return;
+        _spawnTimer = 0f;
+
+        // Target scales with the planet you're on — a small moon gets far fewer than a big planet.
+        Transform p = playerOverride != null ? playerOverride : (playerCtl != null ? playerCtl.transform : null);
+        CelestialBody homePlanet = p != null ? GetNearestPlanet(p.position) : null;
+        int target = homePlanet != null ? EffectiveTarget(homePlanet.radius) : populationTarget;
+
+        if (activeEnemies.Count >= target) return;
+
+        int budget = maxSpawnsPerTick;
+        while (budget-- > 0 && activeEnemies.Count < target)
+            if (!TrySpawn()) break;   // stop early if we couldn't place one this tick
     }
 
-    void TrySpawn()
+    int EffectiveTarget(float planetRadius)
+        => Mathf.Clamp(Mathf.RoundToInt(planetRadius * enemiesPerRadius), minPopulation, maxPopulation);
+
+    // Returns true if an enemy was placed.
+    bool TrySpawn()
     {
-        if (activeEnemies.Count >= prefabConfig.MaxConcurrent) return;
+        Transform player = playerOverride != null ? playerOverride
+                         : (playerCtl != null ? playerCtl.transform : null);
+        if (player == null) return false;
+        Camera cam = playerCtl != null ? playerCtl.Camera : Camera.main;
+        if (cam == null) return false;
+
+        CelestialBody planet = GetNearestPlanet(player.position);
+        CelestialBody sun = GetSun();
+        if (planet == null || sun == null) return false;
+
+        Vector3 playerDir = (player.position - planet.Position).normalized;
+        Vector3 sunDir = (sun.Position - planet.Position).normalized;
+        // Only populate while the player is actually on the dark side.
+        if (Vector3.Dot(playerDir, sunDir) >= darkSideDotThreshold) return false;
 
         bool spawnElite = enemy2Prefab != null && _regularsSinceLastEnemy2 >= 3;
         GameObject targetPrefab = spawnElite ? enemy2Prefab : enemyPrefab;
 
-        Transform player = playerOverride != null ? playerOverride
-                         : (playerCtl != null ? playerCtl.transform : null);
-        if (player == null) return;
+        float halfConeCos = Mathf.Cos(viewConeAngleDeg * 0.5f * Mathf.Deg2Rad);
+        Vector3 surfaceUp = playerDir;
+        Vector3 camPos = cam.transform.position;
 
-        Camera cam = playerCtl != null ? playerCtl.Camera : Camera.main;
-        if (cam == null) return;
+        // Cap the spawn ring to the planet so a small moon isn't ringed out to 120 m (its far side).
+        float effMax = Mathf.Min(maxSpawnDistance, planet.radius * spawnRingRadiusFraction);
+        float effMin = Mathf.Min(minSpawnDistance, effMax * 0.5f);
 
-        CelestialBody planet = GetNearestPlanet(player.position);
-        CelestialBody sun = GetSun();
-        if (planet == null || sun == null) return;
+        // Ocean radius is a per-planet constant — resolve ONCE per spawn call, not once per
+        // attempt (GetComponentInChildren is a recursive hierarchy walk; 18 attempts × walk
+        // was pure waste).
+        float oceanRadius = 0f;
+        var oceanGen = planet.GetComponentInChildren<CelestialBodyGenerator>();
+        if (oceanGen != null) oceanRadius = oceanGen.GetOceanRadius();
 
-        Vector3 playerDir = (player.position - planet.Position).normalized;
-        Vector3 sunDir = (sun.Position - planet.Position).normalized;
-        if (Vector3.Dot(playerDir, sunDir) >= prefabConfig.DarkSideDotThreshold) return;
-
-        float halfConeCos = Mathf.Cos(prefabConfig.ViewConeAngleDeg * 0.5f * Mathf.Deg2Rad);
-        Vector3 surfaceUp = (player.position - planet.Position).normalized;
-        int surfaceMask = ~((1 << 9) | (1 << 11) | (1 << 12)); // exclude Ship, Sun, FishPreview
-        const float capsuleHalfHeight = 1.0f; // primitive capsule extends 1m above its centre
-
-        for (int attempt = 0; attempt < prefabConfig.SpawnAttemptsPerTick; attempt++)
+        for (int attempt = 0; attempt < spawnAttemptsPerTick; attempt++)
         {
-            // Random tangent direction around the player's local up.
-            float angle = Random.Range(0f, 360f);
             Vector3 ortho = Vector3.Cross(surfaceUp,
                 Mathf.Abs(Vector3.Dot(surfaceUp, Vector3.right)) < 0.9f ? Vector3.right : Vector3.forward).normalized;
-            Vector3 tangent = Quaternion.AngleAxis(angle, surfaceUp) * ortho;
-
-            float dist = Random.Range(prefabConfig.MinSpawnDistance, prefabConfig.MaxSpawnDistance);
+            Vector3 tangent = Quaternion.AngleAxis(Random.Range(0f, 360f), surfaceUp) * ortho;
+            float dist = Random.Range(effMin, effMax);
             Vector3 candidate = player.position + tangent * dist;
-
             Vector3 dirFromCenter = (candidate - planet.Position).normalized;
 
-            // Reject if inside the camera's view cone.
+            // Keep the spawn on the dark side.
+            if (Vector3.Dot(dirFromCenter, sunDir) >= darkSideDotThreshold) continue;
+
+            // Cheap pre-filter: reject candidates roughly in front of the camera.
             Vector3 toCandidate = (candidate - player.position).normalized;
             if (Vector3.Dot(cam.transform.forward, toCandidate) > halfConeCos) continue;
 
-            // Keep the spawn point on the dark side of the planet.
-            if (Vector3.Dot(dirFromCenter, sunDir) >= prefabConfig.DarkSideDotThreshold) continue;
-
-            // Cast inward from above the nominal surface to find the *actual* terrain
-            // height at this column, accounting for hills/mountains.
+            // Find the real terrain height at this column.
             Vector3 rayOrigin = planet.Position + dirFromCenter * (planet.radius + 100f);
             if (!Physics.Raycast(rayOrigin, -dirFromCenter, out RaycastHit hit,
-                                 planet.radius * 2f, surfaceMask, QueryTriggerInteraction.Ignore))
+                                 planet.radius * 2f, SurfaceMask, QueryTriggerInteraction.Ignore))
                 continue;
-
-            // Don't spawn on top of the player.
             if (hit.collider.GetComponentInParent<PlayerController>() != null) continue;
-
-            // Don't spawn on top of trees — the raycast happily picks up a
-            // SpawnedTree's collider since trees aren't on a special layer,
-            // and we'd plant an enemy on top of the canopy with no chase
-            // path back down.
             if (hit.collider.GetComponentInParent<SpawnedTree>() != null) continue;
 
-            // Don't spawn underwater. Mirrors TreeSpawner / MushroomSpawner
-            // / AlienNPCSpawner — if the terrain hit point is below the
-            // planet's ocean radius, this column is sea floor. Falling-
-            // through-water animation looked off and the enemy capsule
-            // probe loop produced jittery movement on submerged terrain.
-            var gen = planet.GetComponentInChildren<CelestialBodyGenerator>();
-            if (gen != null)
+            // No underwater spawns.
+            if (oceanRadius > 0f && (hit.point - planet.Position).magnitude < oceanRadius) continue;
+
+            Vector3 surfacePos = hit.point + dirFromCenter * (CapsuleHalfHeight + spawnSurfaceOffset);
+
+            // NO POP-IN: the spawn point must be occluded from the camera (a hill / the horizon
+            // between it and the player). If the camera has a clear line to it, skip.
+            if (!Physics.Linecast(camPos, surfacePos, SurfaceMask, QueryTriggerInteraction.Ignore))
+                continue;
+
+            // Spacing: don't drop a new enemy on top of an existing one — the field
+            // should read as scattered individuals, not a clump.
+            bool tooClose = false;
+            float spacingSqr = minEnemySpacing * minEnemySpacing;
+            for (int e = 0; e < activeEnemies.Count; e++)
             {
-                float oceanR = gen.GetOceanRadius();
-                if (oceanR > 0f && (hit.point - planet.Position).magnitude < oceanR)
-                    continue;
+                var ex = activeEnemies[e];
+                if (ex == null) continue;
+                if ((ex.transform.position - surfacePos).sqrMagnitude < spacingSqr) { tooClose = true; break; }
             }
-
-            // Sit the capsule one half-height above the hit, then add the configured
-            // drop margin so it falls onto the ground naturally.
-            Vector3 surfacePos = hit.point + dirFromCenter * (capsuleHalfHeight + prefabConfig.SpawnSurfaceOffset);
-
-            // Re-confirm the view cone with the actual surface point.
-            Vector3 toSurface = (surfacePos - player.position).normalized;
-            if (Vector3.Dot(cam.transform.forward, toSurface) > halfConeCos) continue;
+            if (tooClose) continue;
 
             if (LebronLight.IsPositionProtected(surfacePos)) continue;
             if (TorchAura.IsPositionProtected(surfacePos)) continue;
-            // Concert speakers: no enemies within enemyBlockRadius (100m by
-            // default) of any concert speaker, so audience members and the
-            // concert experience aren't interrupted by combat.
             if (ConcertStageHub.IsBlockedForEnemy(surfacePos)) continue;
 
             Vector3 forwardLook = Vector3.ProjectOnPlane((player.position - surfacePos).normalized, dirFromCenter);
@@ -149,43 +187,36 @@ public class EnemySpawner : MonoBehaviour
             Quaternion rot = Quaternion.LookRotation(forwardLook.normalized, dirFromCenter);
 
             GameObject go = Instantiate(targetPrefab, surfacePos, rot);
-            // Parent to the planet so the enemy rides its transform — orbital
-            // motion + EndlessManager origin shifts come for free, no registration.
-            go.transform.SetParent(planet.transform, true);
+            go.transform.SetParent(planet.transform, true);   // ride orbital motion + floating origin
             var ec = go.GetComponent<EnemyController>();
             if (ec != null) activeEnemies.Add(ec);
             if (spawnElite) _regularsSinceLastEnemy2 = 0;
             else            _regularsSinceLastEnemy2++;
-            return;
+            return true;
         }
+        return false;
     }
 
-    public void OnEnemyDestroyed(EnemyController e)
-    {
-        activeEnemies.Remove(e);
-    }
+    public void OnEnemyDestroyed(EnemyController e) => activeEnemies.Remove(e);
 
-    // ── Save / load API ──────────────────────────────────────────────────
-    // Exposed so SaveCollector can round-trip the spawner's cooldown — saving
-    // 9.9s into a 10s spawn interval and reloading shouldn't reset to 0.
-    public float TimerForSave => timer;
+    // ── Save / load API (unchanged signatures — SaveCollector depends on these) ──
+    public float TimerForSave => _spawnTimer;
     public int RegularsSinceEliteForSave => _regularsSinceLastEnemy2;
 
-    // Re-instantiates a saved enemy. Resolves the right prefab from `kind`
-    // (regular/elite), parents to the matching CelestialBody so it inherits
-    // orbital motion + floating-origin shifts, restores health. World pos/rot
-    // come from the body-relative xform in the save.
+    public void RestoreTimerState(float timerValue, int regularsSinceElite)
+    {
+        _spawnTimer = timerValue;
+        _regularsSinceLastEnemy2 = regularsSinceElite;
+    }
+
     public void SpawnFromSave(EnemySave save)
     {
         if (save == null) return;
-        GameObject prefab = save.kind == "elite" && enemy2Prefab != null
-            ? enemy2Prefab
-            : enemyPrefab;
+        GameObject prefab = save.kind == "elite" && enemy2Prefab != null ? enemy2Prefab : enemyPrefab;
         if (prefab == null) return;
 
         CelestialBody planet = ResolveBodyByName(save.xform.bodyName);
-        Vector3 worldPos;
-        Quaternion worldRot;
+        Vector3 worldPos; Quaternion worldRot;
         if (planet != null)
         {
             worldPos = planet.Position + planet.transform.rotation * save.xform.localPos;
@@ -193,9 +224,6 @@ public class EnemySpawner : MonoBehaviour
         }
         else
         {
-            // Legacy / out-of-range save: BodyRelativeTransform stored world-
-            // absolute when bodyName == "". Re-parent to nearest planet so the
-            // enemy still rides orbital motion.
             worldPos = save.xform.localPos;
             worldRot = save.xform.localRot;
             planet = GetNearestPlanet(worldPos);
@@ -210,12 +238,6 @@ public class EnemySpawner : MonoBehaviour
             ec.SetHealthOnLoad(save.health);
             activeEnemies.Add(ec);
         }
-    }
-
-    public void RestoreTimerState(float timerValue, int regularsSinceElite)
-    {
-        timer = timerValue;
-        _regularsSinceLastEnemy2 = regularsSinceElite;
     }
 
     static CelestialBody ResolveBodyByName(string name)

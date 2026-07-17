@@ -410,6 +410,7 @@ GameObject:
   - component: {fileID: 508508718647427518}
   - component: {fileID: 6499709194149714908}
   - component: {fileID: 5724225490261644832}
+  - component: {fileID: 4705207114709209325}
   m_Layer: 0
   m_Name: Enemy_Toy10
   m_TagString: Enemy
@@ -508,7 +509,7 @@ MonoBehaviour:
   stoppingDistance: 0.8
   fallSpeed: 15
   groundedOffset: 1
-  maxClimbHeight: 2.5
+  maxClimbHeight: 1.2
   separationRadius: 2.5
   separationWeight: 2
   treeAvoidRadius: 8
@@ -558,9 +559,48 @@ MonoBehaviour:
   darkSideDotThreshold: -0.05
   spawnSurfaceOffset: 3
   spawnAttemptsPerTick: 12
-  despawnDistance: 80
+  despawnDistance: 150
   hitboxRadiusScale: 1
   drawHitboxGizmos: 1
+  wanderRadius: 12
+  wanderSpeed: 1.2
+  wanderIdleMin: 2
+  wanderIdleMax: 5
+  investigateTurnSpeed: 540
+  searchSpeed: 2.5
+  searchLookSeconds: 10
+  searchReachDist: 2.5
+  searchScanIntervalMin: 0.7
+  searchScanIntervalMax: 1.4
+  loseSightGrace: 1.2
+  sniffClip: {fileID: 8300000, guid: eb11b12dcfe8e8c499b907b79953016d, type: 3}
+  sniffVolume: 0.9
+  sniffInterval: 3
+  sunBurnSeconds: 3.5
+  sunLitDotThreshold: 0.02
+  mobLinkRadius: 20
+--- !u!114 &4705207114709209325
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1539138939463809553}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d7221e72700da6d44ae1190395eb5cb1, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  viewRange: 30
+  viewHalfAngleDeg: 55
+  eyeHeight: 1.4
+  bulgeFraction: 0.45
+  chaseRangeMult: 2
+  centerSpotSeconds: 2
+  edgeSpotSeconds: 4
+  sprintFillMult: 1.5
+  searchFillMult: 2
+  suspicionDecayPerSec: 1.5
 --- !u!1 &1686022026838876562
 GameObject:
   m_ObjectHideFlags: 0

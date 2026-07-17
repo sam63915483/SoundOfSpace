@@ -219,10 +219,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9bb0dbd3188aa0443b63df92a75bff36, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  fieldSize: 120
+  fieldSize: 276
   cellPitch: 6
   snuffSeconds: 0.8
-  relightSeconds: 2.2
+  nearRelightSeconds: 6
+  farRelightSeconds: 0.5
   snuffMaxDistance: 60
   trueCandleDistance: 65
   nextScene: R1_Backrooms

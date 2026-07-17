@@ -19,11 +19,11 @@ public class IntroSequenceController : MonoBehaviour
     // ── Authored lines (also the exact TTS manifest keys) ──────────────────
     const string LineWakeUp   = "Wake up";
     const string Line01 = "Good morning, astronaut. Vital signs stable.";
-    const string Line02 = "You have been in transit for three years. You crash-landed on this world two days ago.";
-    const string Line03 = "Memory loss is expected after stasis of this length. It will not affect the mission.";
+    const string Line02 = "You crash-landed on this world two days ago.";
+    // The memory-loss, "three years / distance from Earth", vitals-spike and
+    // reassurance lines moved to the POD descent (PodArrivalSequence._briefing),
+    // so the cabin wake-up stays a soft landing. Kept out of here on purpose.
     const string Line04 = "While you were unconscious, a local took you in. A native species. You are, currently, their guest.";
-    const string Line05 = "Heart rate elevated. Vitals irregular.";
-    const string Line06 = "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.";
     const string Line07 = "The alien left a note for you on the table. Try walking to it and give it a read.";
 
     // ── Tunables (appended at END per convention) ──────────────────────────
@@ -344,42 +344,24 @@ public class IntroSequenceController : MonoBehaviour
         // A beat after the eyes open, the head slowly turns to find the family photo.
         StartCoroutine(BeginGazeAfterDelay(lookTurnDelay));
 
-        // Phase 3: briefing.
-        yield return Speak(Line01);
-        yield return Speak(Line02);
+        // Phase 3: brief wake-up. The heavy briefing — mission, three-year transit,
+        // distance from Earth, the vitals spike and reassurance — now plays during
+        // the pod descent (see PodArrivalSequence._briefing). The cabin keeps only
+        // the soft landing: good morning, you've been out two days, a local took
+        // you in, and here's the note. (The old heartbeat spike moved to the pod
+        // too — the cabin wakes calm.)
+        yield return Speak(Line01);   // "Good morning, astronaut. Vital signs stable."
+        yield return Speak(Line02);   // "You crash-landed on this world two days ago."
 
-        // The realization sets in — the body reacts to "three years". The heart
-        // begins CLIMBING here, a line before "vitals irregular", so HAL appears to
-        // be monitoring it rise and only then announce it — we pitch up the same
-        // beat the player likes rather than switching to a separate fast clip.
-        StartHeartbeat();
-        if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
-        _heartbeatXfade = StartCoroutine(RampHeartbeatPitch(heartbeatFastPitch, heartbeatSpeedUpTime));
-
-        yield return Speak(Line03);
-
-        // Fallback: if the groggy gaze pan hasn't landed by now (e.g. no lookTarget),
-        // hand control back here so the player isn't stuck looking at the photo
-        // through the rest of the briefing. No-op if the gaze already returned
-        // control in Update — either way look + 15% movement arrive together. The
-        // pace steps up to 50% after the reassurance line, full at the final line.
+        // Fallback: hand look + 15% movement back if the groggy gaze pan onto the
+        // photo hasn't already done so in Update. No-op if it fired there first.
         GrantGroggyControl();
 
-        yield return Speak(Line05);   // "Heart rate elevated. Vitals irregular." — already climbing
-
-        // Reassurance lands right after the spike — the heart eases back to normal
-        // partway through this line.
-        StartCoroutine(EaseHeartbeatBackAfter(heartbeatEaseDelay));
-        yield return Speak(Line06);   // "It is normal... you will be returned home."
-
-        // Steadier now that the reassurance has landed — bump the walk pace up to
-        // the mid step (50%) for the rest of the briefing.
-        if (_pc != null) _pc.introMoveScale = groggyMoveScale;
-
-        // Held silence before the softer reveal that a local took you in.
+        // Held silence before the softer reveal that a local took you in; the walk
+        // pace steps up to 50% here, then to full at the handoff.
         yield return new WaitForSecondsRealtime(photoBeatSilence);
+        if (_pc != null) _pc.introMoveScale = groggyMoveScale;
         yield return Speak(Line04);   // "While you were unconscious, a local took you in..."
-
         yield return Speak(Line07);   // "The alien left a note for you on the table..."
 
         // Phase 6: full handoff to survival — restore full walk speed + everything else.
@@ -387,15 +369,9 @@ public class IntroSequenceController : MonoBehaviour
         TutorialGate.UnlockAll();
         NotePickup.ReadableDuringIntro = false;        // Pickup is globally unlocked now — the normal gate governs the note
         SuppressGroggyCameraFx = false;                // strafe tilt + sprint FOV kick return
-        _forceLook = false;                            // (already released after Line03)
+        _forceLook = false;                            // (already released after the gaze pan)
         StartCoroutine(FadeGrogAndRemove());           // residual woozy vision clears over a few seconds
         StartCoroutine(ReleaseFirstContact());
-        // The heartbeat carried the whole wake-up; bring it down to a faint beat at
-        // the handoff, then fully fade it out + stop it heartbeatStopDelay (15s)
-        // after this final line so it doesn't loop under the ambient mix forever.
-        if (_heartbeatXfade != null) StopCoroutine(_heartbeatXfade);
-        StartCoroutine(FadeHeartbeatOutAfter(heartbeatStopDelay, heartbeatStopFade));
-        yield return FadeHeartbeat(heartbeatTargetVolume * 0.25f, heartbeatFadeOut);
         _running = false;
     }
 

@@ -15,6 +15,7 @@ Properties {
 	_Redshift("Accretion Disk Redshift Effect", Range(0, 1)) = 0.5
 	[Toggle] _Flip("Flipped Projection Correction", Range(0, 1)) = 1
 	[HideInInspector] _AtmoFade("Atmosphere Fade (driven by SpaceDustField)", Range(0, 1)) = 0
+	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -47,6 +48,7 @@ SubShader {
 		uniform half _Redshift;
 		uniform half _Flip;
 		uniform half _AtmoFade;   // 0 in clear space; ramps toward 1 when a planet's atmosphere is between the eye and the effect — EITHER the camera sits inside that atmosphere OR the black hole is viewed through/behind it from outside (set by SpaceDustField.UpdateBlackHoleAtmoFade). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
+		uniform half _OceanFade;  // 0 normally; 1 when a planet's OCEAN sphere sits between the eye and the black hole (also driven by SpaceDustField). Unlike _AtmoFade this is a FULL fade — bright ring included — because the ocean post-process writes no depth, so without it the whole lensed effect (galaxy ring and all) punches through the water. See CLAUDE.md transparent-queue gotcha.
 		uniform sampler2D_float _CameraDepthTexture;
 
 		struct vertexOutput {
@@ -214,6 +216,12 @@ SubShader {
 				half lum = max(result.r, max(result.g, result.b));
 				result.a *= 1 - _AtmoFade * (1 - saturate(lum));
 			}
+
+			// Ocean occlusion (driven by _OceanFade from SpaceDustField): the ocean is an
+			// [ImageEffectOpaque] post-process that writes NO depth, so the per-pixel depth
+			// kill above can't hide the effect behind water. Full fade — no luminance
+			// protection — or the bright lensed galaxy ring stays visible through the sea.
+			result.a *= 1 - _OceanFade;
 
 			return saturate(result);
 		}

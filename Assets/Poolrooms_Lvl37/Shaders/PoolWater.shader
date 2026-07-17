@@ -33,7 +33,7 @@ Shader "Custom/PoolWater"
         {
             Tags { "LightMode"="ForwardBase" }
             ZWrite On
-            Cull Back
+            Cull Off   // double-sided: also render the underside so a submerged player sees the surface / waterline from below
 
             CGPROGRAM
             #pragma vertex vert
@@ -147,9 +147,10 @@ Shader "Custom/PoolWater"
                 return normalize(float3(-grad.x * _WaveStrength, 1.0, -grad.y * _WaveStrength));
             }
 
-            fixed4 frag (v2f IN) : SV_Target
+            fixed4 frag (v2f IN, fixed facing : VFACE) : SV_Target
             {
                 float3 N = rippleNormal(IN.worldPos.xz);
+                if (facing < 0) N = -N;   // backface (seen from underwater) → point the normal down at the camera so it lights/refracts correctly
                 float3 V = normalize(_WorldSpaceCameraPos - IN.worldPos);
 
                 // Fresnel: more reflective / sheened at grazing angles.

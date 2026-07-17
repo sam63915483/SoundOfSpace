@@ -550,7 +550,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 48; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
+        const int Total = 49; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -666,6 +666,8 @@ public class MainMenuController : MonoBehaviour
         tick("photo library");    yield return null;
         if (PhotoGalleryUI.Instance == null) { var go = new GameObject("PhotoGalleryUI"); DontDestroyOnLoad(go); go.AddComponent<PhotoGalleryUI>(); }
         tick("photo gallery");    yield return null;
+        if (EnemyDetectionHUD.Instance == null) { var go = new GameObject("EnemyDetectionHUD"); DontDestroyOnLoad(go); go.AddComponent<EnemyDetectionHUD>(); }
+        tick("threat indicator"); yield return null;
     }
 
     // Synchronous wrapper — drains the async coroutine without yielding so

@@ -30,6 +30,22 @@ public class SpitProjectile : MonoBehaviour
     float _spawnTime;
     bool _hit;
 
+    // One shared material for every spit (all the same sickly green). The old
+    // version did `new Material(Shader.Find("Standard"))` per shot and assigned
+    // it via `.material`, which leaks one material per projectile (an explicitly
+    // assigned material is not auto-destroyed with the GameObject). Reusing one
+    // sharedMaterial removes both the per-shot Shader.Find and the leak.
+    static Material _sharedMat;
+    static Material SharedSpitMaterial()
+    {
+        if (_sharedMat == null)
+        {
+            _sharedMat = new Material(Shader.Find("Standard"));
+            _sharedMat.color = new Color(0.55f, 0.7f, 0.18f); // sickly green
+        }
+        return _sharedMat;
+    }
+
     /// <summary>
     /// Build a spit and launch it. Pass the firing enemy's parent CelestialBody
     /// so we can parent under it; without that, floating-origin shifts mid-
@@ -58,11 +74,7 @@ public class SpitProjectile : MonoBehaviour
 
         var mr = go.GetComponent<MeshRenderer>();
         if (mr != null)
-        {
-            var mat = new Material(Shader.Find("Standard"));
-            mat.color = new Color(0.55f, 0.7f, 0.18f); // sickly green
-            mr.material = mat;
-        }
+            mr.sharedMaterial = SharedSpitMaterial();
 
         var p = go.AddComponent<SpitProjectile>();
         p._planet         = planet;

@@ -16,6 +16,8 @@ public class CandleSeaController : MonoBehaviour
         public readonly List<Transform> flames = new List<Transform>();
         public readonly ObservationTracker tracker = new ObservationTracker(0.1f);
         public float litT = 1f;             // 1 burning .. 0 snuffed
+        public bool wasObserved;            // for the gaze-arrival (rising edge) snuff trigger
+        public bool snuffing;               // true while guttering out, before it relights
     }
 
     CandleCell[] _cells;
@@ -214,24 +216,49 @@ public class CandleSeaController : MonoBehaviour
         foreach (var cell in _cells)
         {
             Vector3 flat = cell.center - camPos; flat.y = 0f;
-            if (flat.sqrMagnitude > snuffMaxDistance * snuffMaxDistance) continue;
+            if (flat.sqrMagnitude > snuffMaxDistance * snuffMaxDistance)
+            {
+                cell.snuffing = false; cell.wasObserved = false;
+                continue;
+            }
 
             var b = new Bounds(cell.center + Vector3.up * 0.3f, new Vector3(cellPitch, 1f, cellPitch));
             bool observed = cell.tracker.Tick(b, out _, snuffMaxDistance);
-            float target = observed ? 0f : 1f;
-            float t = Mathf.MoveTowards(cell.litT, target, Time.deltaTime / (observed ? snuffSeconds : relightSeconds));
-            if (Mathf.Approximately(t, cell.litT)) continue;
-            // A cluster starting to die exhales audibly (rate-gated: a sweep of
-            // the horizon starts many clusters dying in the same instant).
-            if (observed && cell.litT >= 1f && t < 1f && _snuffer != null && Time.time >= _nextSnuffAllowed)
+
+            // Gaze ARRIVING snuffs the cluster; then it comes back ON on its own —
+            // even while you keep looking — over a duration that scales with distance:
+            // NEAR clusters relight LATER (stay dark around you ~nearRelightSeconds),
+            // FAR clusters relight SOONER (~farRelightSeconds). A dark bubble follows you.
+            if (observed && !cell.wasObserved)
             {
-                _nextSnuffAllowed = Time.time + 0.45f;
-                _snuffer.transform.position = cell.center + Vector3.up * 0.4f;
-                _snuffer.pitch = Random.Range(0.85f, 1.15f);
-                _snuffer.PlayOneShot(_snuffClip, 0.55f);
+                cell.snuffing = true;
+                // The cluster starting to die exhales audibly (rate-gated so a sweep
+                // of the horizon doesn't machine-gun the hiss).
+                if (cell.litT >= 0.9f && _snuffer != null && Time.time >= _nextSnuffAllowed)
+                {
+                    _nextSnuffAllowed = Time.time + 0.45f;
+                    _snuffer.transform.position = cell.center + Vector3.up * 0.4f;
+                    _snuffer.pitch = Random.Range(0.85f, 1.15f);
+                    _snuffer.PlayOneShot(_snuffClip, 0.55f);
+                }
             }
-            cell.litT = t;
-            float s = Mathf.Lerp(0.01f, 1f, t);
+            cell.wasObserved = observed;
+
+            float next;
+            if (cell.snuffing)
+            {
+                next = Mathf.MoveTowards(cell.litT, 0f, Time.deltaTime / Mathf.Max(0.05f, snuffSeconds));
+                if (next <= 0.001f) cell.snuffing = false;
+            }
+            else
+            {
+                float dist = flat.magnitude;
+                float relightDur = Mathf.Lerp(nearRelightSeconds, farRelightSeconds, Mathf.Clamp01(dist / snuffMaxDistance));
+                next = Mathf.MoveTowards(cell.litT, 1f, Time.deltaTime / Mathf.Max(0.05f, relightDur));
+            }
+            if (Mathf.Approximately(next, cell.litT)) continue;
+            cell.litT = next;
+            float s = Mathf.Lerp(0.01f, 1f, next);
             foreach (var f in cell.flames)
                 f.localScale = new Vector3(0.12f * s, 0.2f * s, 0.12f * s);
         }
@@ -262,14 +289,16 @@ public class CandleSeaController : MonoBehaviour
 
     // ================= tuning (appended at END per repo conventions) =================
     [Header("Candles")]
-    [Tooltip("Field edge length (metres).")]
-    public float fieldSize = 120f;
+    [Tooltip("Field edge length (metres). 276 ≈ 5x the candles of the original 120; drop toward 200/170 if it hitches on load or FPS (candles are heavier per cell than the wheat).")]
+    public float fieldSize = 276f;
     [Tooltip("Candle cluster pitch (metres) — clusters snuff/relight together.")]
     public float cellPitch = 6f;
-    [Tooltip("Seconds for a watched cluster to gutter out.")]
+    [Tooltip("Seconds for a gaze-hit cluster to gutter OUT (the snuff).")]
     public float snuffSeconds = 0.8f;
-    [Tooltip("Seconds for an unwatched cluster to relight.")]
-    public float relightSeconds = 2.2f;
+    [Tooltip("Seconds for a NEAR cluster to come back ON — long, so it stays dark around you.")]
+    public float nearRelightSeconds = 6f;
+    [Tooltip("Seconds for a FAR cluster (at snuffMaxDistance) to come back ON — short, snaps back.")]
+    public float farRelightSeconds = 0.5f;
     [Tooltip("Clusters further than this don't react (stay lit).")]
     public float snuffMaxDistance = 60f;
 
