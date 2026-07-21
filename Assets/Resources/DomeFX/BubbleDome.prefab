@@ -326,6 +326,7 @@ MonoBehaviour:
   bubble: {fileID: 2901185757189448317}
   fullDiameter: 24
   growTime: 1.4
+  collapseTime: 0.7
 --- !u!114 &4501352796468145713
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -340,9 +341,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   radius: 12
   baseInterior: 20
-  perTreeInterior: 10
-  ventPointsPerMinute: 3
+  perTreeInterior: 20
+  ventBasePerMinute: 5
+  ventExcessPerMinute: 0.1
+  startFuelPercent: 100
+  fuelSeconds: 3600
+  fuelPerCrystal: 5
   sampleInterval: 0.5
+  humVolume: 0.35
+  sealedGainPerTreePerMinute: 1.5
 --- !u!1 &1347846629620531567
 GameObject:
   m_ObjectHideFlags: 0

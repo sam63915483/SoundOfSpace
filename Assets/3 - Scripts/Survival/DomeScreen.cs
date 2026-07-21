@@ -124,9 +124,18 @@ public class DomeScreen : MonoBehaviour
             float floor = Mathf.Max(dome.BaseInteriorO2, dome.OutsideO2);
             float raw = dome.RawInteriorO2;
             string eq = $"<color=#8FE8A0>TREES {units:0.#}</color> ×{dome.PerTreeInterior:0.#}%  +  BASE {floor:0}%  =  {raw:0}%";
-            string status = raw >= 100f
-                ? $"<color=#7FD4FF>EXCESS +{dome.ExcessO2:0}%  →  VENTING +{dome.VentPerMinute:0.#}%/MIN</color>"
-                : $"<color=#8FA6BD>+{100f - raw:0}% MORE TO START VENTING</color>";
+            // Three regimes: overproducing (excess pump) / sealed-full by
+            // accumulation (production passthrough) / still pressurizing (or no
+            // trees to do it).
+            string status;
+            if (raw >= 100f)
+                status = $"<color=#7FD4FF>EXCESS +{dome.ExcessO2:0}%  →  VENTING +{dome.VentPerMinute:0.#}%/MIN</color>";
+            else if (dome.IsFull)
+                status = $"<color=#7FD4FF>SEALED FULL  →  VENTING +{dome.VentPerMinute:0.#}%/MIN</color>";
+            else if (dome.ProductionPerMinute > 0f)
+                status = $"<color=#8FA6BD>RISING +{dome.ProductionPerMinute:0.#}%/MIN  —  {100f - o2:0}% TO FULL</color>";
+            else
+                status = "<color=#8FA6BD>PLANT TREES TO PRESSURIZE</color>";
             SetText(ventText, eq + "\n" + status);
         }
     }

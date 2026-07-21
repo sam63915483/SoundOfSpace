@@ -536,6 +536,7 @@ public static class SaveCollector
                 localPos = bt.InverseTransformPoint(d.transform.position),
                 localRot = Quaternion.Inverse(bt.rotation) * d.transform.rotation,
                 fuel = d.FuelPercent,
+                interior = d.InteriorLevel,
             });
         }
     }
@@ -1657,7 +1658,11 @@ public static class SaveCollector
             // Before the dome's Start(): _fuelInit guards the start-full default,
             // and Start's !HasFuel branch brings a drained dome up dark.
             var dome = go.GetComponent<BubbleDome>();
-            if (dome != null) dome.SetFuelPercent(save.fuel);
+            if (dome != null)
+            {
+                dome.SetFuelPercent(save.fuel);
+                if (save.interior >= 0f) dome.SetInteriorLevel(save.interior);
+            }
         }
     }
 

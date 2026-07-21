@@ -1252,6 +1252,7 @@ MonoBehaviour:
   ventText: {fileID: 3096553727777291530}
   o2Fill: {fileID: 5430167512508541842}
   fuelFill: {fileID: 151364481469749660}
+  planetText: {fileID: 0}
   refreshInterval: 0.25
 --- !u!114 &6510686091954763183
 MonoBehaviour:
@@ -2105,6 +2106,7 @@ MonoBehaviour:
   bubble: {fileID: 2589890078080996065}
   fullDiameter: 24
   growTime: 1.4
+  collapseTime: 0.7
 --- !u!114 &3935939059043950521
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2119,13 +2121,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   radius: 12
   baseInterior: 20
-  perTreeInterior: 10
-  ventPointsPerMinute: 3
+  perTreeInterior: 20
+  ventBasePerMinute: 5
+  ventExcessPerMinute: 0.1
   startFuelPercent: 100
   fuelSeconds: 3600
   fuelPerCrystal: 5
   sampleInterval: 0.5
   humVolume: 0.35
+  sealedGainPerTreePerMinute: 1.5
 --- !u!1 &6272804704738642275
 GameObject:
   m_ObjectHideFlags: 0

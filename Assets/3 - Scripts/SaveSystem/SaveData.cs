@@ -81,6 +81,9 @@ public class DomeSave
     public Vector3 localPos;
     public Quaternion localRot;
     public float fuel = 100f;   // 0..100 %
+    // Sealed-greenhouse accumulated level. -1 = save predates the field →
+    // dome re-pressurizes from its production floor on load.
+    public float interior = -1f;
 }
 
 // Per-planet O2 vented into the atmosphere by full domes (PlanetOxygen's

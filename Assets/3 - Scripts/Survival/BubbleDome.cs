@@ -29,6 +29,8 @@ public class BubbleDome : MonoBehaviour
 
     CelestialBody _body;
     float _treeUnitsInside;      // mature trees ×1 + half-grown-or-better saplings ×0.5
+    float _interior;             // sealed interior O2 STATE (0..100) — accumulates over time
+    bool _interiorInit;
     float _sampleTimer;
     AudioSource _hum;
     DomeShieldGrow _shield;
@@ -40,17 +42,13 @@ public class BubbleDome : MonoBehaviour
     /// baseline O2 outside is higher, the dome lets it in instead of trapping you
     /// lower. Mature trees inside then raise it further.
     ///   interiorO2 = min(100, max(baseInterior, outsideO2) + perTreeInterior * treesInside)
-    public float InteriorO2
-    {
-        get
-        {
-            float outside = (PlanetOxygen.Instance != null && _body != null)
-                ? PlanetOxygen.Instance.SurfaceO2(_body) : 0f;
-            if (!HasFuel) return outside;   // no fuel → emitter offline, just the planet's own air
-            float floor = Mathf.Max(baseInterior, outside);
-            return Mathf.Min(100f, floor + perTreeInterior * _treeUnitsInside);
-        }
-    }
+    /// The breathable level inside the dome. This is sealed-greenhouse STATE, not
+    /// a pure formula: production (RawInteriorO2) is the floor, and while below
+    /// 100% the trees inside keep pumping the sealed pocket fuller over time
+    /// (sealedGainPerTreePerMinute per tree unit) — so a dome that can only
+    /// instantaneously make 80% still climbs to 100% and eventually vents.
+    /// Offline (no fuel) the pocket is lost and you breathe the planet's own air.
+    public float InteriorO2 => HasFuel ? _interior : OutsideO2;
 
     /// Interior O2 BEFORE the 100% cap — the dome's raw production. Anything over
     /// 100 is the surplus it pumps to the planet (see ExcessO2). 0 when offline.
@@ -66,8 +64,18 @@ public class BubbleDome : MonoBehaviour
     }
     /// O2 produced beyond the 100% the interior can hold — the "excess" being vented.
     public float ExcessO2 => Mathf.Max(0f, RawInteriorO2 - 100f);
-    public bool IsFull => InteriorO2 >= 100f;
+    public bool IsFull => HasFuel && _interior >= 100f;
     public CelestialBody Body => _body;
+
+    /// Sealed-greenhouse fill rate (%/min) from the trees inside — what drives
+    /// the climb below 100%, and the passthrough vent once an accumulated dome
+    /// is full.
+    public float ProductionPerMinute => HasFuel ? sealedGainPerTreePerMinute * _treeUnitsInside : 0f;
+
+    /// Raw accumulated level for save capture (InteriorO2 hides it when offline).
+    public float InteriorLevel => _interior;
+    /// Restore the sealed level from a save (call before Start).
+    public void SetInteriorLevel(float pct) { _interior = Mathf.Clamp(pct, 0f, 100f); _interiorInit = true; }
 
     // Equation ingredients, exposed so the status screen can show the player the
     // actual math: floor + trees × perTree = raw production (excess gets vented).
@@ -85,12 +93,22 @@ public class BubbleDome : MonoBehaviour
     /// Real seconds of fuel remaining at the current drain rate.
     public float SecondsOfFuelLeft => _fuel * Mathf.Max(1f, fuelSeconds) / 100f;
     /// Atmosphere O2 pumped out per minute right now (only while full AND fuelled).
-    /// A base rate plus a bonus that scales with the surplus (ExcessO2) — so a dome
-    /// packed with trees terraforms the planet noticeably faster than a barely-full
-    /// one, and the screen's "EXCESS" number directly drives the pump speed.
-    public float VentPerMinute => (HasFuel && IsFull)
-        ? ventBasePerMinute + ExcessO2 * ventExcessPerMinute
-        : 0f;
+    /// Two regimes:
+    ///  - OVERPRODUCING (raw >= 100): base + excess-scaled — a packed dome is a
+    ///    proper pump and the screen's "EXCESS" number drives the speed.
+    ///  - SEALED-FULL by accumulation (raw < 100 but the pocket filled up over
+    ///    time): the trees' actual production passes straight through. Slower,
+    ///    but a sparse dome still terraforms — and 0 trees → 0 vent, so a full
+    ///    pocket with no trees can't mint O2 from nothing.
+    public float VentPerMinute
+    {
+        get
+        {
+            if (!IsFull) return 0f;
+            if (RawInteriorO2 >= 100f) return ventBasePerMinute + ExcessO2 * ventExcessPerMinute;
+            return ProductionPerMinute;
+        }
+    }
 
     /// Crystals needed to top the tank back to 100% from its current level.
     public int CrystalsToFull()
@@ -124,6 +142,9 @@ public class BubbleDome : MonoBehaviour
         _shield = GetComponent<DomeShieldGrow>();
         _wasFueled = HasFuel;
         RecountMatureInside();
+        // Fresh dome pressurizes from its production floor; a restored one had
+        // SetInteriorLevel called before Start and keeps its accumulated level.
+        if (!_interiorInit) { _interior = Mathf.Clamp(RawInteriorO2, 0f, 100f); _interiorInit = true; }
         EnsureGeneratorHum();
         // A dome restored from a save with an empty tank must come up DARK —
         // OnEnable already started the shield grow and the hum started above, and
@@ -141,6 +162,11 @@ public class BubbleDome : MonoBehaviour
             if (online) { if (!_hum.isPlaying) _hum.Play(); }
             else _hum.Pause();
         }
+        // The shield IS the seal: losing it releases the accumulated pocket, so
+        // fuel protects your buildup. Refuelling re-pressurizes from the trees'
+        // production floor and climbs again from there.
+        if (online) _interior = Mathf.Clamp(RawInteriorO2, 0f, 100f);
+        else _interior = 0f;
     }
 
     /// Restore a saved fuel level (call before Start via the future save hook).
@@ -182,6 +208,18 @@ public class BubbleDome : MonoBehaviour
         {
             _sampleTimer = sampleInterval;
             RecountMatureInside();
+        }
+
+        // Sealed-greenhouse accumulation: instantaneous production is the FLOOR
+        // (snap up — also covers a tree maturing or the planet's air rising), and
+        // below 100% the trees keep pumping the sealed pocket fuller over time.
+        // Chopping trees doesn't drain what's already stored (the air stays in).
+        if (fueled)
+        {
+            float floor = Mathf.Min(RawInteriorO2, 100f);
+            if (_interior < floor) _interior = floor;
+            else if (_interior < 100f && _treeUnitsInside > 0f)
+                _interior = Mathf.Min(100f, _interior + (ProductionPerMinute / 60f) * Time.deltaTime);
         }
 
         // Vent surplus into the planet's atmosphere while full (and fuelled). Rate
@@ -278,4 +316,8 @@ public class BubbleDome : MonoBehaviour
     [Header("Audio")]
     [Tooltip("Volume of the looping generator whir at the dome centre (0 = silent).")]
     [SerializeField] float humVolume = 0.35f;
+
+    [Header("Sealed greenhouse")]
+    [Tooltip("Interior %% gained per minute PER TREE UNIT while below 100%% — the dome is sealed, so trees keep filling it over time even when instantaneous production can't reach 100. 1.5 → 4 trees climb 6%%/min. Once full-by-accumulation, this same production is what vents to the planet.")]
+    [SerializeField] float sealedGainPerTreePerMinute = 1.5f;
 }
