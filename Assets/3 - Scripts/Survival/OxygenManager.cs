@@ -389,29 +389,57 @@ public class OxygenManager : MonoBehaviour
             if (shipPromptsAudible && hullO2 > 0f) PlaySuctionBurst();   // air rushing out
         }
 
-        // ── 2) Breathing → 3) Suit oxygen ────────────────────────────────
-        // Breathing if standing in breathable air OR inside a hull with air.
-        // This single line yields "hull drains before the suit".
-        bool breathing = playerInRefill || (insideShip && hullO2 > 0f);
-        if (breathing)
+        // ── 2) Breathing → 3) Suit oxygen (ecosystem O2 converter) ───────
+        // A pressurized hull (inside the ship with air) stays a TRUE sanctuary:
+        // the suit tops up fast, exactly as before — "hull drains before the
+        // suit" is preserved. Everywhere else on foot the suit now runs on the
+        // O2 converter: the denser the breathable air around you (planet tree
+        // baseline × altitude + nearby forest), the slower it drains, and in
+        // rich enough air it slowly refills. A dead world reads ~0 O2, so the
+        // suit drains at full rate until you revive the ecosystem.
+        bool inHullSanctuary = insideShip && hullO2 > 0f;
+        if (inHullSanctuary)
         {
-            suitO2 = Mathf.Min(suitMax, suitO2 + suitRefillRate * dt); // refill (sanctuary)
+            suitO2 = Mathf.Min(suitMax, suitO2 + suitRefillRate * dt); // fast refill (sanctuary)
             suitDepletedHandled = false;
         }
         else
         {
-            suitO2 = Mathf.Max(0f, suitO2 - suitDrainRate * dt);
-            if (suitO2 <= 0f && !suitDepletedHandled)
+            // Effective ambient O2 (0..100) at the player, sampled on the
+            // ecosystem service's own timer (cheap; no per-physics-step tree
+            // scan). Defaults to breathable until the first sample, so there's
+            // no false drain-blip at spawn. Falls back to the legacy binary
+            // refill zone if the service isn't seeded at all.
+            float effO2 = PlanetOxygen.Instance != null
+                ? PlanetOxygen.Instance.PlayerAmbientO2
+                : (playerInRefill ? 100f : 0f);
+
+            // Converter net rate: >0 drains, <0 refills. Break-even at O2 ==
+            // suitRefillPoint; below it drains (harder the thinner the air),
+            // above it refills — but clamped slow (a reward, not a fountain).
+            float net = suitDrainRate * (1f - effO2 / Mathf.Max(1f, suitRefillPoint));
+            if (net < 0f) net = Mathf.Max(net, -suitDrainRate * suitMaxRefillFraction);
+
+            suitO2 = Mathf.Clamp(suitO2 - net * dt, 0f, suitMax);
+
+            if (net > 0f)
             {
-                suitDepletedHandled = true;
-                KillPlayer();
+                if (suitO2 <= 0f && !suitDepletedHandled)
+                {
+                    suitDepletedHandled = true;
+                    KillPlayer();
+                }
+                // Low-oxygen alarm: periodic beep while the suit is draining and low.
+                if (SuitPercent < SuitAlarmThreshold && _alarmSource != null && _alarmClip != null
+                    && Time.unscaledTime >= _nextAlarmTime)
+                {
+                    _alarmSource.PlayOneShot(_alarmClip, 0.7f);
+                    _nextAlarmTime = Time.unscaledTime + SuitAlarmInterval;
+                }
             }
-            // Low-oxygen alarm: periodic beep while the suit is draining and low.
-            if (SuitPercent < SuitAlarmThreshold && _alarmSource != null && _alarmClip != null
-                && Time.unscaledTime >= _nextAlarmTime)
+            else
             {
-                _alarmSource.PlayOneShot(_alarmClip, 0.7f);
-                _nextAlarmTime = Time.unscaledTime + SuitAlarmInterval;
+                suitDepletedHandled = false; // holding or refilling
             }
         }
 
@@ -780,4 +808,10 @@ public class OxygenManager : MonoBehaviour
     [Header("Backup oxygen reserve (seconds of air)")]
     [Tooltip("Capacity of the backup tanks. They fill alongside the hull whenever the hatch is open in a breathable zone, never vent out an open hatch, and dump (at most one hull-full) into the cabin the moment the hull is sealed and dry. 300 = 5 minutes.")]
     [SerializeField] float reserveMax = 300f;
+
+    [Header("Suit O2 converter (ecosystem breathing)")]
+    [Tooltip("Ambient O2 % at which the suit breaks even (no net drain). Below this the suit drains (harder the thinner the air); above it the suit slowly refills. TUNE ME FIRST: set below a cultivated planet's surface O2 so forests refill you, above a bare planet's so it still drains.")]
+    [SerializeField] float suitRefillPoint = 80f;
+    [Tooltip("Cap on refill speed as a fraction of the drain rate — refilling is deliberately slow (0.2 = at most 1/5th the drain rate). Raise if recovering air in a forest / at home feels too slow.")]
+    [SerializeField] float suitMaxRefillFraction = 0.2f;
 }

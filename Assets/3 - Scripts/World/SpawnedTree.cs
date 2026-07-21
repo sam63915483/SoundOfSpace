@@ -17,6 +17,10 @@ public class SpawnedTree : MonoBehaviour
     int hp;
     int woodReward;
     bool dead;
+    // Planted trees (matured saplings) aren't part of the seed cell grid, so
+    // harvesting one must NOT mark a cell mined — it just removes the instance.
+    bool isPlanted;
+    CelestialBody plantedBody;
     Vector3 _baseScale;
     Quaternion _restRotation;
     Coroutine _shakeRoutine;
@@ -27,6 +31,7 @@ public class SpawnedTree : MonoBehaviour
     public int PrefabIndex => prefabIndex;
     public int HP => hp;
     public bool IsDead => dead;
+    public bool IsPlanted => isPlanted;
 
     void Awake()
     {
@@ -53,6 +58,28 @@ public class SpawnedTree : MonoBehaviour
         woodReward = Random.Range(8, 21);
         dead = false;
         transform.localScale = _baseScale;
+        _restRotation = transform.localRotation;
+        SetCollidersEnabled(true);
+        if (_shakeRoutine != null) { StopCoroutine(_shakeRoutine); _shakeRoutine = null; }
+        if (_fallRoutine != null) { StopCoroutine(_fallRoutine); _fallRoutine = null; }
+    }
+
+    /// A player-planted tree that has matured (SaplingGrowth grew it to full).
+    /// It behaves as a normal choppable tree — drops wood + saplings — but on
+    /// harvest it removes its own instance instead of marking a seed cell mined.
+    /// It counts toward local + planet O2 while it stands.
+    public void InitPlanted(TreeSpawner s, CelestialBody body, int idx)
+    {
+        spawner = s;
+        isPlanted = true;
+        plantedBody = body;
+        bodySlot = -1;
+        cellId = 0;
+        prefabIndex = idx;
+        hp = Random.Range(4, 9);
+        woodReward = Random.Range(8, 21);
+        dead = false;
+        _baseScale = transform.localScale;   // full scale set by SaplingGrowth before this
         _restRotation = transform.localRotation;
         SetCollidersEnabled(true);
         if (_shakeRoutine != null) { StopCoroutine(_shakeRoutine); _shakeRoutine = null; }
@@ -105,6 +132,16 @@ public class SpawnedTree : MonoBehaviour
         SetCollidersEnabled(false);
         if (WoodInventory.Instance != null)
             WoodInventory.Instance.AddWood(woodReward);
+        // Ecosystem loop: every felled tree also yields saplings — 1 guaranteed,
+        // +1 at 25%, +1 more at 10% (max 3) — so cutting a tree hands you the
+        // means to replant. Applies to seed trees AND matured planted ones.
+        if (Hotbar.Instance != null)
+        {
+            int saplings = 1;
+            if (Random.value < 0.25f) saplings++;
+            if (Random.value < 0.10f) saplings++;
+            Hotbar.Instance.AddResource(Hotbar.ItemId.Sapling, saplings);
+        }
         SpawnPopup();
         PlayBreakSound();
         if (_shakeRoutine != null) { StopCoroutine(_shakeRoutine); _shakeRoutine = null; }
@@ -159,6 +196,9 @@ public class SpawnedTree : MonoBehaviour
 
     public void Mine()
     {
+        // Planted trees aren't cell-based: just remove the instance. Its
+        // SaplingGrowth.OnDisable drops it from the planet/local O2 counts.
+        if (isPlanted) { Destroy(gameObject); return; }
         if (spawner != null) spawner.MarkCellMined(bodySlot, cellId);
     }
 }

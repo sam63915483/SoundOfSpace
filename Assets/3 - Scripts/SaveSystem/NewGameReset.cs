@@ -72,6 +72,7 @@ public static class NewGameReset
             ResourceManager.Instance.SetTotalDeaths(0);
         }
         if (OxygenManager.Instance != null) OxygenManager.Instance.ResetForNewGame();
+        if (PlanetOxygen.Instance != null) PlanetOxygen.Instance.ResetForNewGame();
 
         EarlyGameProgress.ResetAll();
         // §3: re-arm the first-message "Press X to open your phone." nag for a

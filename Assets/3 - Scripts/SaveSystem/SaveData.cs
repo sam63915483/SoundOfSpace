@@ -50,6 +50,46 @@ public class SaveData
     public AIStateSave aiState = new AIStateSave();
     public NameStoreSave nameStore = new NameStoreSave();
     public StoryDirectorSave storyDirector = new StoryDirectorSave();
+    // Tree/oxygen ecosystem (2026-07-21). JsonUtility defaults these to empty on
+    // pre-feature saves, so old files load with no saplings/domes/reserve — safe.
+    public List<SaplingSave> saplings = new List<SaplingSave>();
+    public List<DomeSave> domes = new List<DomeSave>();
+    public PlanetO2Save planetO2 = new PlanetO2Save();
+}
+
+// A planted sapling OR a matured planted tree (growth >= 1 — the SaplingGrowth
+// component stays on the object after maturing, so one DTO covers both).
+// Positions are parent-body-local so they survive orbital motion, mirroring
+// PlacedBuildingSave.
+[Serializable]
+public class SaplingSave
+{
+    public string bodyName;
+    public Vector3 localPos;
+    public Quaternion localRot;
+    public float growth;        // 0..1; >= 1 restores as a mature planted tree
+    public int prefabIndex;     // index into TreeSpawner.treePrefabs
+}
+
+// A placed bubble dome. Captured separately from PlacedBuildingSave so fuel
+// rides along and restore doesn't depend on the runtime-injected buildable
+// entry (SaveCollector loads the prefab from Resources directly).
+[Serializable]
+public class DomeSave
+{
+    public string bodyName;
+    public Vector3 localPos;
+    public Quaternion localRot;
+    public float fuel = 100f;   // 0..100 %
+}
+
+// Per-planet O2 vented into the atmosphere by full domes (PlanetOxygen's
+// ventedReserve dict, flattened to parallel lists — JsonUtility can't do dicts).
+[Serializable]
+public class PlanetO2Save
+{
+    public List<string> ventedBodies = new List<string>();
+    public List<float> ventedValues = new List<float>();
 }
 
 [Serializable]

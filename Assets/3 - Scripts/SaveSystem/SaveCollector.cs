@@ -32,6 +32,9 @@ public static class SaveCollector
         CaptureTutorial(data.tutorial);
         CaptureNPCs(data.npcs);
         CaptureBuildings(data.buildings);
+        CaptureSaplings(data.saplings);
+        CaptureDomes(data.domes);
+        CapturePlanetO2(data.planetO2);
         CaptureLooseParts(data.looseParts);
         CaptureCassette(data.cassette);
         CaptureEquipment(data.equipment);
@@ -472,6 +475,10 @@ public static class SaveCollector
             {
                 var child = body.transform.GetChild(i);
                 if (!child.name.EndsWith("_Placed")) continue;
+                // Bubble domes share the "_Placed" suffix but persist through the
+                // dedicated dome save (fuel rides along; prefab loads from
+                // Resources, independent of the runtime-injected buildable entry).
+                if (child.GetComponent<BubbleDome>() != null) continue;
                 var prefabKey = child.name.Substring(0, child.name.Length - "_Placed".Length);
                 list.Add(new PlacedBuildingSave
                 {
@@ -481,6 +488,67 @@ public static class SaveCollector
                     localRot = child.localRotation,
                 });
             }
+        }
+    }
+
+    // ── Tree/oxygen ecosystem (saplings, domes, vented reserve) ─────────────
+
+    // One entry per SaplingGrowth — covers BOTH still-growing saplings and
+    // matured planted trees (the component stays after Mature(), growth == 1).
+    // Static children of their body, no rigidbody → transform is the correct
+    // capture source (the rb rule applies to physics objects only). Positions
+    // body-local, matching CaptureBuildings.
+    static void CaptureSaplings(List<SaplingSave> list)
+    {
+        var all = SaplingGrowth.AllSaplings;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var s = all[i];
+            if (s == null) continue;
+            var body = s.Body != null ? s.Body : s.GetComponentInParent<CelestialBody>();
+            if (body == null) continue;
+            var bt = body.transform;
+            list.Add(new SaplingSave
+            {
+                bodyName = body.bodyName,
+                localPos = bt.InverseTransformPoint(s.transform.position),
+                localRot = Quaternion.Inverse(bt.rotation) * s.transform.rotation,
+                growth = s.IsMature ? 1f : s.Growth,
+                prefabIndex = s.PrefabIndex,
+            });
+        }
+    }
+
+    static void CaptureDomes(List<DomeSave> list)
+    {
+        var all = BubbleDome.AllDomes;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var d = all[i];
+            if (d == null) continue;
+            // Body fallback covers a capture landing before the dome's Start.
+            var body = d.Body != null ? d.Body : d.GetComponentInParent<CelestialBody>();
+            if (body == null) continue;
+            var bt = body.transform;
+            list.Add(new DomeSave
+            {
+                bodyName = body.bodyName,
+                localPos = bt.InverseTransformPoint(d.transform.position),
+                localRot = Quaternion.Inverse(bt.rotation) * d.transform.rotation,
+                fuel = d.FuelPercent,
+            });
+        }
+    }
+
+    static void CapturePlanetO2(PlanetO2Save s)
+    {
+        s.ventedBodies.Clear();
+        s.ventedValues.Clear();
+        if (PlanetOxygen.Instance == null) return;
+        foreach (var kv in PlanetOxygen.Instance.VentedReserves)
+        {
+            s.ventedBodies.Add(kv.Key);
+            s.ventedValues.Add(kv.Value);
         }
     }
 
@@ -834,6 +902,9 @@ public static class SaveCollector
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
         ApplyOxygen(data.oxygen);
+        // Vented reserve is pure singleton state (PlanetOxygen dict) — restore
+        // with the other singletons, before domes/saplings tick their first frame.
+        ApplyPlanetO2(data.planetO2);
         ApplyWallet(data.wallet);
         ApplyWood(data.wood);
         ApplyCrystals(data.crystal);
@@ -859,7 +930,15 @@ public static class SaveCollector
         ApplyStorages(data.storages);
         ApplyPlayerTransform(data.player);
 
+        // Saves from before the dome split carry domes in `buildings`; move them
+        // into `domes` (fuel=full) BEFORE either apply so they restore exactly
+        // once, through the dedicated path.
+        MigrateLegacyDomes(data);
         ApplyBuildings(data.buildings);
+        // Domes + saplings need bodies positioned (step 1) and run with the other
+        // world-object restores, before enemies/held-item.
+        ApplyDomes(data.domes);
+        ApplySaplings(data.saplings);
         ApplyLooseParts(data.looseParts);
 
         // Enemies run after buildings/loose-parts (independent state) and
@@ -1500,6 +1579,130 @@ public static class SaveCollector
                     sc.radius = 2f;
                 }
             }
+        }
+    }
+
+    // ── Tree/oxygen ecosystem applies ───────────────────────────────────────
+
+    static void ApplyPlanetO2(PlanetO2Save s)
+    {
+        if (PlanetOxygen.Instance == null) return;
+        // Clear first so a previous in-process session's reserves don't leak
+        // into the loaded save (the dict lives on a DontDestroyOnLoad singleton).
+        PlanetOxygen.Instance.ResetForNewGame();
+        if (s == null || s.ventedBodies == null || s.ventedValues == null) return;
+        int n = Mathf.Min(s.ventedBodies.Count, s.ventedValues.Count);
+        for (int i = 0; i < n; i++)
+            PlanetOxygen.Instance.SetVentedReserve(s.ventedBodies[i], s.ventedValues[i]);
+    }
+
+    // Saves written before the dedicated dome save carried domes as generic
+    // "_Placed" buildings (no fuel). Move them to the dome list (full tank) so
+    // they restore exactly once through ApplyDomes and never hit ApplyBuildings'
+    // buildable-entry lookup.
+    static void MigrateLegacyDomes(SaveData data)
+    {
+        if (data == null || data.buildings == null) return;
+        for (int i = data.buildings.Count - 1; i >= 0; i--)
+        {
+            var b = data.buildings[i];
+            if (b == null) continue;
+            if (b.prefabKey != "BubbleDome_Gen" && b.prefabKey != "BubbleDome"
+                && b.prefabKey != "BubbleDome_Placeholder") continue;
+            data.domes.Add(new DomeSave
+            {
+                bodyName = b.parentBodyName,
+                localPos = b.localPos,
+                localRot = b.localRot,
+                fuel = 100f,
+            });
+            data.buildings.RemoveAt(i);
+        }
+    }
+
+    static void ApplyDomes(List<DomeSave> list)
+    {
+        // Destroy existing domes (live-registry sweep — ApplyBuildings' "_Placed"
+        // sweep usually got them already, but this keeps the apply self-sufficient
+        // and duplicate-proof).
+        var existing = new List<BubbleDome>(BubbleDome.AllDomes);
+        foreach (var d in existing)
+            if (d != null) Object.Destroy(d.gameObject);
+
+        if (list == null || list.Count == 0) return;
+
+        var prefab = Resources.Load<GameObject>("DomeFX/BubbleDome_Gen");
+        if (prefab == null) prefab = Resources.Load<GameObject>("DomeFX/BubbleDome");
+        if (prefab == null)
+        {
+            Debug.LogWarning("[SaveCollector] ApplyDomes: no dome prefab under Resources/DomeFX — skipping.");
+            return;
+        }
+
+        foreach (var save in list)
+        {
+            if (save == null) continue;
+            var body = FindBodyByName(save.bodyName);
+            if (body == null)
+            {
+                Debug.LogWarning($"[SaveCollector] ApplyDomes: parent body '{save.bodyName}' not found — skipping a dome.");
+                continue;
+            }
+            var go = Object.Instantiate(prefab);
+            if (!go.activeSelf) go.SetActive(true);
+            go.name = prefab.name + "_Placed";
+            go.transform.SetParent(body.transform, worldPositionStays: false);
+            go.transform.localPosition = save.localPos;
+            go.transform.localRotation = save.localRot;
+            // Before the dome's Start(): _fuelInit guards the start-full default,
+            // and Start's !HasFuel branch brings a drained dome up dark.
+            var dome = go.GetComponent<BubbleDome>();
+            if (dome != null) dome.SetFuelPercent(save.fuel);
+        }
+    }
+
+    static void ApplySaplings(List<SaplingSave> list)
+    {
+        // Destroy existing planted saplings/trees — the growth-aware twin of
+        // ApplyBuildings' "_Placed" sweep ("_Sapling" objects are skipped there
+        // by name, so they need their own cleanup to avoid duplicates).
+        var existing = new List<SaplingGrowth>(SaplingGrowth.AllSaplings);
+        foreach (var s in existing)
+            if (s != null) Object.Destroy(s.gameObject);
+
+        if (list == null || list.Count == 0) return;
+
+        var spawner = TreeSpawner.Instance != null ? TreeSpawner.Instance : Object.FindObjectOfType<TreeSpawner>();
+        if (spawner == null || spawner.treePrefabs == null || spawner.treePrefabs.Length == 0)
+        {
+            Debug.LogWarning("[SaveCollector] ApplySaplings: no TreeSpawner/prefabs available — skipping.");
+            return;
+        }
+
+        foreach (var save in list)
+        {
+            if (save == null) continue;
+            var body = FindBodyByName(save.bodyName);
+            if (body == null)
+            {
+                Debug.LogWarning($"[SaveCollector] ApplySaplings: parent body '{save.bodyName}' not found — skipping a sapling.");
+                continue;
+            }
+            int idx = Mathf.Clamp(save.prefabIndex, 0, spawner.treePrefabs.Length - 1);
+            var prefab = spawner.treePrefabs[idx];
+            if (prefab == null) continue;
+
+            // Mirror GhostPlacement.Place()'s sapling branch: "_Sapling" name (so
+            // the generic building save skips it), WorldProp layer, growth driver.
+            var go = Object.Instantiate(prefab);
+            go.name = prefab.name + "_Sapling";
+            go.transform.SetParent(body.transform, worldPositionStays: false);
+            go.transform.localPosition = save.localPos;
+            go.transform.localRotation = save.localRot;
+            SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
+            var sg = go.GetComponent<SaplingGrowth>();
+            if (sg == null) sg = go.AddComponent<SaplingGrowth>();
+            sg.RestoreGrowth(body, idx, save.growth);   // >= 1 matures instantly
         }
     }
 

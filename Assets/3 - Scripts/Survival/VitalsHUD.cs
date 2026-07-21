@@ -40,7 +40,7 @@ public class VitalsHUD : MonoBehaviour
     // ── Internal state ──────────────────────────────────────────────
     Canvas _canvas;
     RectTransform _cardRT;
-    StatRow _health, _hunger, _thirst, _suitO2, _shipPower, _shipFuel;
+    StatRow _health, _hunger, _thirst, _suitO2, _ambientO2, _shipPower, _shipFuel;
     GameObject _chargingRow;
     TMP_Text _chargingText;
     SolarPanelCharger _solar;
@@ -150,6 +150,9 @@ public class VitalsHUD : MonoBehaviour
         // §2: suit O2 (player vital, always shown). Falls back to full if the
         // oxygen manager isn't up yet so the bar never reads empty pre-init.
         UpdateStat(_suitO2, OxygenManager.Instance != null ? OxygenManager.Instance.SuitPercent : 1f);
+        // Ambient O2 around the player — the ecosystem readout. Falls back to
+        // full if the service isn't up yet so the bar never reads empty pre-init.
+        UpdateStat(_ambientO2, PlanetOxygen.Instance != null ? PlanetOxygen.Instance.PlayerAmbientPercent : 1f);
         if (showShipPower)
         {
             UpdateStat(_shipPower, shipPower);
@@ -233,11 +236,11 @@ public class VitalsHUD : MonoBehaviour
         _cardRT.anchorMin = _cardRT.anchorMax = h.anchorFrac;
         _cardRT.pivot = new Vector2(0.5f, 0f);   // grows upward from the screen's lower edge
         float fit = Mathf.Min(1f, (h.sizeRef.x - 24f) / 332f, (h.sizeRef.y - 16f) / 232f) * h.contentScale;
-        // Vertically center the TYPICAL card (header + 4 always-on rows ≈ 150
+        // Vertically center the TYPICAL card (header + 5 always-on rows ≈ 175
         // units) — the extra ship rows grow upward into the glass' spare top
         // half. Bottom-anchoring left the top half empty (looked off-center).
         // contentOffset = the user's hand-tuned nudge on top.
-        _cardRT.anchoredPosition = new Vector2(0f, -(150f * fit) * 0.5f) + h.contentOffset;
+        _cardRT.anchoredPosition = new Vector2(0f, -(175f * fit) * 0.5f) + h.contentOffset;
         _cardRT.localScale = new Vector3(fit, fit, 1f);
         _cardRT.localRotation = Quaternion.Euler(h.euler);   // 3D panel lean matching the painted screen
         ApplyIntegratedStyle(_cardRT);
@@ -453,6 +456,10 @@ public class VitalsHUD : MonoBehaviour
         // §2: suit O2 moved here from the standalone OxygenHUD. A player vital,
         // so it always shows (the ship rows below toggle with piloting).
         _suitO2    = BuildStatRow(card, "SUIT O2",    new Color32(0x5C, 0xC8, 0xFF, 0xFF), new Color32(0x2A, 0x9B, 0xE6, 0xFF));
+        // Ambient breathable O2 around the player (planet ecosystem × altitude +
+        // nearby forest). Green = the air you're actually standing in; drives
+        // whether the suit is draining or refilling. Always shown.
+        _ambientO2 = BuildStatRow(card, "AMBIENT O2", new Color32(0x7B, 0xE6, 0x8C, 0xFF), new Color32(0x39, 0xB5, 0x5A, 0xFF));
         _shipPower = BuildStatRow(card, "SHIP POWER", new Color32(0xB8, 0x8C, 0xFF, 0xFF), new Color32(0xC9, 0x4F, 0xFF, 0xFF));
         _shipFuel  = BuildStatRow(card, "SHIP FUEL",  new Color32(0x8C, 0xE6, 0xFF, 0xFF), new Color32(0x4A, 0xB7, 0xFF, 0xFF));
 

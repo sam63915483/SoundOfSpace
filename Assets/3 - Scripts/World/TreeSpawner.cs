@@ -3,6 +3,10 @@ using UnityEngine;
 
 public class TreeSpawner : MonoBehaviour
 {
+    // Single scene instance. PlanetOxygen reads the per-planet tree counts
+    // through this to turn the living forest into a breathable-air value.
+    public static TreeSpawner Instance { get; private set; }
+
     [Header("Planets")]
     [Tooltip("Body names to skip (case-sensitive, matched against CelestialBody.bodyName). Trees spawn on every other body in NBodySimulation.Bodies.")]
     public string[] excludeBodyNames = { "Sun", "Constant Companion", "Watchful Eye", "Tumbling Bean" };
@@ -79,6 +83,7 @@ public class TreeSpawner : MonoBehaviour
 
     void Awake()
     {
+        Instance = this;
         if (treePrefabs == null || treePrefabs.Length == 0)
         {
             Debug.LogWarning("[TreeSpawner] No tree prefabs assigned; spawner will stay idle.");
@@ -151,6 +156,13 @@ public class TreeSpawner : MonoBehaviour
         }
         return false;
     }
+
+    /// True if trees can grow on this body — natural forest OR a player-planted
+    /// sapling. The excludeBodyNames list (moons + sun) is barren rock with no
+    /// soil, so nothing roots there, not even inside a bubble dome (a dome adds
+    /// air, never soil). Static attractors (sun / black hole) are barren too.
+    public bool CanGrowTreesOn(CelestialBody body)
+        => body != null && !body.isStaticAttractor && !IsExcluded(body.bodyName);
 
     Vector3 GetViewerPosition()
     {
@@ -468,5 +480,68 @@ public class TreeSpawner : MonoBehaviour
         if (bodySlot < 0 || bodySlot >= bodies.Count) return false;
         return bodies[bodySlot].minedCells.Contains(cellId);
     }
+
+    // ─── Planet tree-count API (for PlanetOxygen) ─────────────────────────
+    // The seed deterministically decides whether EVERY cell on a planet holds
+    // a tree, whether or not it's currently streamed in near the player. So the
+    // planet's true tree population is knowable: enumerate the seed's forest
+    // once (cached — it never changes at runtime) and subtract chopped cells.
+
+    // Cached designated (seed) tree count per body name. Depends only on
+    // seed / cellSize / radius, none of which change at runtime.
+    readonly Dictionary<string, int> designatedCountCache = new Dictionary<string, int>();
+
+    /// The seed's designated tree count for a planet — every cell the forest
+    /// hash would place a tree on (before terrain rejection like water/cliffs,
+    /// which needs loaded mesh and so can't be known for the far side). Excluded
+    /// bodies (moons, sun) and the black hole have no forest → 0.
+    public int DesignatedTreeCount(CelestialBody body)
+    {
+        if (body == null || body.isStaticAttractor || IsExcluded(body.bodyName)) return 0;
+        if (designatedCountCache.TryGetValue(body.bodyName, out int cached)) return cached;
+        int c = ComputeDesignatedCount(body);
+        designatedCountCache[body.bodyName] = c;
+        return c;
+    }
+
+    int ComputeDesignatedCount(CelestialBody body)
+    {
+        float faceUVPerCell = cellSize / Mathf.Max(0.001f, body.radius);
+        int half = Mathf.CeilToInt(1f / Mathf.Max(0.0001f, faceUVPerCell)) + 1;
+        int count = 0;
+        for (int face = 0; face < 6; face++)
+        {
+            for (int cu = -half; cu <= half; cu++)
+            {
+                for (int cv = -half; cv <= half; cv++)
+                {
+                    // Match Tick()'s valid-cell bounds (cell centre inside the face).
+                    float faceU = (cu + 0.5f) * faceUVPerCell;
+                    float faceV = (cv + 0.5f) * faceUVPerCell;
+                    if (faceU < -1f || faceU > 1f || faceV < -1f || faceV > 1f) continue;
+                    if (CellHasTree(face, cu, cv)) count++;
+                }
+            }
+        }
+        return count;
+    }
+
+    /// How many of this planet's trees the player has chopped (persisted as
+    /// mined cells). Handles bodies not yet resolved via the pending queue.
+    public int MinedTreeCount(CelestialBody body)
+    {
+        if (body == null) return 0;
+        for (int s = 0; s < bodies.Count; s++)
+            if (bodies[s].body == body) return bodies[s].minedCells.Count;
+        if (pendingMinedCellsByBody.TryGetValue(body.bodyName, out var pending)) return pending.Count;
+        return 0;
+    }
+
+    /// The planet's REAL current living-tree count: seed forest minus chopped.
+    /// (Phase b will add matured player-planted saplings on top.)
+    public int CurrentTreeCount(CelestialBody body)
+        => Mathf.Max(0, DesignatedTreeCount(body) - MinedTreeCount(body));
+
+    void OnDestroy() { if (Instance == this) Instance = null; }
 
 }

@@ -6,7 +6,9 @@ using UnityEngine.UI;
 
 public class Hotbar : MonoBehaviour
 {
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag }
+    // Append-only (JsonUtility serializes enums by name in the hotbar save, but
+    // keep new values at the END so nothing shifts).
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling }
 
     public struct Slot
     {
@@ -305,6 +307,7 @@ public class Hotbar : MonoBehaviour
             ItemId.Wood => 100,
             ItemId.Crystal => 20,
             ItemId.SpaceDust => 100,
+            ItemId.Sapling => 50,
             _ => 1,
         };
     }
@@ -520,6 +523,7 @@ public class Hotbar : MonoBehaviour
         OnResourceChanged?.Invoke(ItemId.Wood);
         OnResourceChanged?.Invoke(ItemId.Crystal);
         OnResourceChanged?.Invoke(ItemId.SpaceDust);
+        OnResourceChanged?.Invoke(ItemId.Sapling);
     }
 
     // ── Save / load access ───────────────────────────────────────────
@@ -562,11 +566,12 @@ public class Hotbar : MonoBehaviour
         OnResourceChanged?.Invoke(ItemId.Wood);
         OnResourceChanged?.Invoke(ItemId.Crystal);
         OnResourceChanged?.Invoke(ItemId.SpaceDust);
+        OnResourceChanged?.Invoke(ItemId.Sapling);
     }
 
     static bool IsResource(ItemId id)
     {
-        return id is ItemId.Wood or ItemId.Crystal or ItemId.SpaceDust;
+        return id is ItemId.Wood or ItemId.Crystal or ItemId.SpaceDust or ItemId.Sapling;
     }
 
     // Slot-only items: selected via number key but have no controller to equip.
@@ -616,6 +621,7 @@ public class Hotbar : MonoBehaviour
     static readonly Color WoodSwatchColor    = new Color32(0xD4, 0xA0, 0x6B, 0xFF);
     static readonly Color CrystalSwatchColor = new Color32(0x8C, 0xE6, 0xFF, 0xFF);
     static readonly Color DustSwatchColor    = new Color32(0xB8, 0x8C, 0xFF, 0xFF);
+    static readonly Color SaplingSwatchColor = new Color32(0x7B, 0xE6, 0x8C, 0xFF);   // living green (matches AMBIENT O2 bar)
     static readonly Color FishBagSwatchColor = new Color32(0x6F, 0xC0, 0x7A, 0xFF);   // muted green canvas (procedural fallback)
 
     // Phase 4 polish: picks the right fishbag sprite based on whether the bag
@@ -648,6 +654,7 @@ public class Hotbar : MonoBehaviour
             case ItemId.Wood:      return WoodSwatchColor;
             case ItemId.Crystal:   return CrystalSwatchColor;
             case ItemId.SpaceDust: return DustSwatchColor;
+            case ItemId.Sapling:   return SaplingSwatchColor;
             default: return Color.white;
         }
     }
@@ -659,6 +666,7 @@ public class Hotbar : MonoBehaviour
             case ItemId.Wood:      return "WOOD";
             case ItemId.Crystal:   return "CRYSTAL";
             case ItemId.SpaceDust: return "DUST";
+            case ItemId.Sapling:   return "SAPLINGS";
             default: return "—";
         }
     }
@@ -666,7 +674,7 @@ public class Hotbar : MonoBehaviour
     // Resource icons live in Assets/Resources/HotbarIcons/ so they can be loaded
     // at runtime without scene/prefab wiring (the Hotbar is auto-created, no
     // inspector). Loaded once per session and cached statically.
-    static Sprite _woodIcon, _crystalIcon, _dustIcon;
+    static Sprite _woodIcon, _crystalIcon, _dustIcon, _saplingIcon;
     static bool _iconsLoaded;
 
     static Sprite ResourceIcon(ItemId id)
@@ -676,6 +684,8 @@ public class Hotbar : MonoBehaviour
             _woodIcon    = Resources.Load<Sprite>("HotbarIcons/TransparentWoodLog");
             _crystalIcon = Resources.Load<Sprite>("HotbarIcons/TransparentCrystalShards");
             _dustIcon    = Resources.Load<Sprite>("HotbarIcons/TransparentSpaceDust");
+            // Optional — if absent, the slot falls back to the green swatch colour.
+            _saplingIcon = Resources.Load<Sprite>("HotbarIcons/TransparentSapling");
             _iconsLoaded = true;
         }
         switch (id)
@@ -683,6 +693,7 @@ public class Hotbar : MonoBehaviour
             case ItemId.Wood:      return _woodIcon;
             case ItemId.Crystal:   return _crystalIcon;
             case ItemId.SpaceDust: return _dustIcon;
+            case ItemId.Sapling:   return _saplingIcon;
             default: return null;
         }
     }
@@ -814,10 +825,11 @@ public class Hotbar : MonoBehaviour
 
         // Mouse wheel cycles the hotbar while on foot. Scroll up = previous slot
         // (toward slot 1), down = next (toward slot 7) — matches the D-pad cycle
-        // and Minecraft. Skipped during build placement, where the wheel adjusts
-        // the ghost's distance (GhostPlacement). HandleInput already only runs
-        // when not piloting / in dialogue / phone / map / modal slot UI.
-        if (!GhostPlacement.IsPlacing)
+        // and Minecraft. Skipped only during BUILDING placement, where the wheel
+        // adjusts the ghost's distance; sapling placement leaves the wheel free
+        // (scrolling off the sapling slot also exits planting). HandleInput only
+        // runs when not piloting / in dialogue / phone / map / modal slot UI.
+        if (!GhostPlacement.WheelControlsPlacement)
         {
             float wheel = Input.mouseScrollDelta.y;
             if (wheel > 0.01f) CycleSlot(-1);

@@ -550,7 +550,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 49; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
+        const int Total = 53; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -594,6 +594,14 @@ public class MainMenuController : MonoBehaviour
         tick("vitals HUD");       yield return null;
         if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
         tick("oxygen system");    yield return null;
+        if (PlanetOxygen.Instance == null) { var go = new GameObject("PlanetOxygen"); DontDestroyOnLoad(go); go.AddComponent<PlanetOxygen>(); }
+        tick("planet oxygen");    yield return null;
+        if (SaplingPlanter.Instance == null) { var go = new GameObject("SaplingPlanter"); DontDestroyOnLoad(go); go.AddComponent<SaplingPlanter>(); }
+        tick("sapling planter");  yield return null;
+        if (DomeBuildRegistrar.Instance == null) { var go = new GameObject("DomeBuildRegistrar"); DontDestroyOnLoad(go); go.AddComponent<DomeBuildRegistrar>(); }
+        tick("dome registrar");   yield return null;
+        if (DomeAudio.Instance == null) { var go = new GameObject("DomeAudio"); DontDestroyOnLoad(go); go.AddComponent<DomeAudio>(); }
+        tick("dome audio");       yield return null;
         if (OxygenHUD.Instance == null) { var go = new GameObject("OxygenHUD"); DontDestroyOnLoad(go); go.AddComponent<OxygenHUD>(); }
         tick("oxygen HUD");       yield return null;
         if (WaterFillHUD.Instance == null) { var go = new GameObject("WaterFillHUD"); DontDestroyOnLoad(go); go.AddComponent<WaterFillHUD>(); }

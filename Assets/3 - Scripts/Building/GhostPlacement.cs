@@ -20,6 +20,43 @@ public class GhostPlacement : MonoBehaviour
     // OnDestroy — Finish() destroys this GameObject when placement ends.
     public static bool IsPlacing { get; private set; }
 
+    // The active placement (if any) — so SaplingPlanter can drive/cancel the
+    // sapling ghost as the hotbar selection changes.
+    public static GhostPlacement Current { get; private set; }
+    public bool IsSaplingPlacement => entry != null && entry.isSapling;
+
+    // The hotbar suppresses wheel-cycling only when the wheel drives the
+    // placement (building distance). Sapling placement doesn't use the wheel, so
+    // the hotbar keeps cycling — and scrolling off the sapling slot exits it.
+    public static bool WheelControlsPlacement => IsPlacing && (Current == null || !Current.IsSaplingPlacement);
+
+    // Sapling ground-snap state. The ghost previews a short distance in front of
+    // the player, snapped straight DOWN to the surface (a near-vertical ray is
+    // stable, unlike a long grazing forward ray).
+    int  _saplingGroundMask;
+    bool _saplingHasValidSpot;
+    bool _saplingBlocked;                 // spot is too close to another tree/sapling
+    bool _saplingBarren;                  // the body under the crosshair is dead rock (no soil) — no planting
+    bool _saplingPoseInit;                // first valid frame snaps; later frames smooth
+    bool _saplingSnapNext;                // snap (not ease) the next apply
+    CelestialBody _saplingBody;           // ghost is parented here so it rides the orbiting planet
+    Vector3 _saplingTargetLocalPos;       // committed target, planet-local
+    Quaternion _saplingTargetLocalRot;
+    float _domeSpinYaw;                    // hold-R yaw (deg) spun onto the dome ghost about its up axis
+    // Aim tracked in PLANET-LOCAL space so orbital motion doesn't count as
+    // "aiming" — we only re-cast the ground when the player genuinely looks/moves.
+    Vector3 _lastAimLocalPos;
+    Vector3 _lastAimLocalFwd;
+    const float SaplingReach = 14f;       // how far along your look direction the ground is sampled
+    const float SaplingSmoothing = 22f;   // ease rate when the target moves (higher = snappier)
+    const float SaplingGroundSink = 0.25f;// metres the trunk sinks INTO the ground so it isn't hovering
+    const float SaplingMinSpacing = 8.33f; // min metres to any other tree/sapling (10→8.33 = another 1.2× closer, so more fit in a dome)
+    static readonly Color C_GhostBlocked = new Color(1.00f, 0.35f, 0.30f, 0.55f); // red = can't place here
+    const float SaplingReaimAngle = 0.3f; // degrees of view change (planet-local) before re-casting
+    const float SaplingReaimMove  = 0.1f; // metres of player move (planet-local) before re-casting
+    const float SaplingDeadzone   = 0.1f; // ignore sub-threshold hit changes on a re-cast
+    const float DomeSpinSpeed = 90f;      // deg/sec the dome ghost spins while R (or LT) is held
+
     BuildableEntry entry;
     BuildMenuUI    menu;
     Transform      cam;
@@ -28,6 +65,9 @@ public class GhostPlacement : MonoBehaviour
     float distance;
     bool  rotating;
     bool  rotateLockedDialogue;
+    // Frame placement began — the same primary-action press that opens placement
+    // (e.g. hotbar sapling planting) must not also place on that first frame.
+    int   _beganFrame = -1;
 
     // Snap-mode state. Toggled with G; only effective when the active entry's
     // category is Floor/Wall/Roof. When actively snapping (target found),
@@ -46,6 +86,7 @@ public class GhostPlacement : MonoBehaviour
     // categories. Built once on Begin and torn down on Finish.
     GameObject _hintCanvasGo;
     TextMeshProUGUI _hintText;
+    GameObject _barrenBannerGo;           // top-center "barren rock" warning during sapling placement
     bool _lastHintSnapping;
     bool _lastHintMode;
 
@@ -58,11 +99,28 @@ public class GhostPlacement : MonoBehaviour
         if (cameraComp == null) { Debug.LogError("GhostPlacement: no Camera.main"); Cancel(); return; }
         cam = cameraComp.transform;
         IsPlacing = true;
+        Current = this;
+        _beganFrame = Time.frameCount;
 
         distance = menu.ghostStartDistance;
 
         ghost = Instantiate(entry.prefab);
         ghost.name = entry.prefab.name + "_Ghost";
+
+        // Saplings preview at their planted (small) size and snap to the ground,
+        // so scale the ghost down and prepare the surface-cast mask.
+        if (entry.isSapling || entry.isBubbleDome)
+        {
+            if (entry.isSapling) ghost.transform.localScale *= SaplingGrowth.DefaultPlantedScale;
+            _saplingGroundMask = ~0 & ~SpawnerCubeface.WorldSpawnExcludeMask;
+            var pc = FindObjectOfType<PlayerController>();
+            if (pc != null) _saplingGroundMask &= ~(1 << pc.gameObject.layer);
+            // Parent the ghost to the planet so it moves WITH the orbiting/rotating
+            // surface — otherwise smoothing lags a moving world-space target and
+            // the ghost sinks through the ground.
+            _saplingBody = FindClosestBody(cam.position);
+            if (_saplingBody != null) ghost.transform.SetParent(_saplingBody.transform, worldPositionStays: true);
+        }
 
         // Disable any colliders, rigidbodies and behaviours on the ghost so it
         // doesn't physically interact or run gameplay scripts while previewing.
@@ -81,6 +139,11 @@ public class GhostPlacement : MonoBehaviour
             r.shadowCastingMode = ShadowCastingMode.Off;
             r.receiveShadows = false;
         }
+
+        // Activate now (in case the prefab was a runtime-built inactive template,
+        // e.g. the placeholder dome). Components were disabled above first, so
+        // nothing gameplay-relevant runs on the ghost.
+        if (!ghost.activeSelf) ghost.SetActive(true);
 
         _ghostLocalBounds = ComputeLocalBounds(ghost);
 
@@ -101,6 +164,28 @@ public class GhostPlacement : MonoBehaviour
         // key that opens/closes the menu also exits placement.
         if (TutorialGate.CancelPressed()) { Cancel(); return; }
         if (menu != null && Input.GetKeyDown(menu.toggleKey)) { Cancel(); return; }
+
+        // Saplings AND bubble domes use a dedicated ground-snap mode: no free
+        // move / rotate / distance / snapping — the ghost sits on the surface
+        // where the player looks, oriented to the planet normal. (Saplings add a
+        // no-overlap spacing gate; domes don't.)
+        if (entry != null && (entry.isSapling || entry.isBubbleDome))
+        {
+            // Hold R (or LT on a controller) to spin the dome ghost about its up
+            // axis — the surface normal — and release when it looks right.
+            if (entry.isBubbleDome &&
+                (Input.GetKey(KeyCode.R)
+                 || (TutorialGate.ControllerEnabled && TutorialGate.LTValue() > TutorialGate.TriggerThreshold)))
+                _domeSpinYaw += DomeSpinSpeed * Time.deltaTime;
+
+            UpdateSaplingPose();
+            SetBarrenBanner(entry.isSapling && _saplingBarren && _saplingHasValidSpot);
+            bool blocked = entry.isSapling && _saplingBlocked;
+            if (Time.frameCount > _beganFrame && _saplingHasValidSpot && !blocked
+                && TutorialGate.PrimaryActionPressed())
+                Place();
+            return;
+        }
 
         // G toggles snap mode (only meaningful for Floor/Wall/Roof; ignored for
         // other categories so users don't get a no-op key). Pad: Y — this
@@ -235,8 +320,9 @@ public class GhostPlacement : MonoBehaviour
         ApplyGhostPose(rawTarget, snapTarget, snapTargetCat);
         UpdateHintUI(snapping);
 
-        // Place: LMB OR controller A button.
-        if (TutorialGate.PrimaryActionPressed())
+        // Place: LMB OR controller A button. Skip the frame placement began so
+        // the opening press (hotbar plant) doesn't place instantly.
+        if (Time.frameCount > _beganFrame && TutorialGate.PrimaryActionPressed())
         {
             Place();
         }
@@ -255,6 +341,143 @@ public class GhostPlacement : MonoBehaviour
         ghost.transform.position = rawTarget;
         // Rotation persists across frames in free mode — managed by RMB rotate.
     }
+
+    // Slide the sapling ghost along the planet surface under the crosshair,
+    // always oriented so its up axis points away from the planet centre. When
+    // the player looks at the sky (no ground hit) the ghost holds its last spot
+    // and placement is blocked (_saplingHasValidSpot=false).
+    void UpdateSaplingPose()
+    {
+        if (ghost == null || cam == null) return;
+
+        // Only re-sample the ground when the aim genuinely changes — measured in
+        // the PLANET'S frame so the planet's orbital drift doesn't register as
+        // aiming. Standing still ⇒ no raycast ⇒ the ghost stays pinned to its
+        // planet-local spot (parented, static like a placed tree) ⇒ no shake.
+        Vector3 camLocalPos = _saplingBody != null
+            ? _saplingBody.transform.InverseTransformPoint(cam.position) : cam.position;
+        Vector3 camLocalFwd = _saplingBody != null
+            ? _saplingBody.transform.InverseTransformDirection(cam.forward) : cam.forward;
+
+        bool aimChanged = !_saplingPoseInit
+            || Vector3.Angle(camLocalFwd, _lastAimLocalFwd) > SaplingReaimAngle
+            || (camLocalPos - _lastAimLocalPos).sqrMagnitude > SaplingReaimMove * SaplingReaimMove;
+
+        if (aimChanged)
+        {
+            _lastAimLocalPos = camLocalPos;
+            _lastAimLocalFwd = camLocalFwd;
+            ReaimSapling();
+        }
+
+        if (!_saplingPoseInit) return;
+
+        // Apply the committed planet-local pose. Snap the first commit; ease after
+        // a re-aim so the ghost glides to the new spot instead of popping. Domes
+        // add the hold-R yaw about their up axis on top of the surface alignment.
+        Quaternion targetRot = _saplingTargetLocalRot;
+        if (entry != null && entry.isBubbleDome)
+            targetRot = _saplingTargetLocalRot * Quaternion.AngleAxis(_domeSpinYaw, Vector3.up);
+
+        if (_saplingSnapNext)
+        {
+            ghost.transform.localPosition = _saplingTargetLocalPos;
+            ghost.transform.localRotation = targetRot;
+            _saplingSnapNext = false;
+        }
+        else
+        {
+            float t = 1f - Mathf.Exp(-SaplingSmoothing * Time.deltaTime);
+            ghost.transform.localPosition = Vector3.Lerp(ghost.transform.localPosition, _saplingTargetLocalPos, t);
+            ghost.transform.localRotation = Quaternion.Slerp(ghost.transform.localRotation, targetRot, t);
+        }
+
+        // Spacing (saplings only) is checked EVERY frame against the ghost's
+        // just-applied spot (not only on aim change) — otherwise it goes stale the
+        // instant you plant one and lets you stack a second on top. Cheap.
+        _saplingBlocked = entry != null && entry.isSapling && _saplingHasValidSpot
+            && (_saplingBarren || IsTooCloseToFlora(ghost.transform.position));
+
+        // Red tint when the spot is blocked (too close to another tree/sapling) so
+        // the player can see they can't plant here.
+        if (_ghostMat != null)
+        {
+            Color want = (_saplingBlocked || !_saplingHasValidSpot) ? C_GhostBlocked : C_GhostFree;
+            if (_ghostMat.color != want) _ghostMat.color = want;
+        }
+    }
+
+    // Cast once (only called when the aim changed): straight along the look
+    // direction to the terrain, so the ghost sits exactly where the crosshair
+    // meets the ground — always touching. Committed in planet-local space.
+    void ReaimSapling()
+    {
+        if (Physics.Raycast(cam.position, cam.forward, out RaycastHit hit,
+                             SaplingReach, _saplingGroundMask, QueryTriggerInteraction.Ignore))
+        {
+            var nearBody = _saplingBody != null ? _saplingBody : FindClosestBody(hit.point);
+            // Saplings can't root in barren rock (moons / sun) — a dome adds air but
+            // never soil, so this blocks planting even inside a dome on a moon.
+            _saplingBarren = entry != null && entry.isSapling && nearBody != null
+                && TreeSpawner.Instance != null && !TreeSpawner.Instance.CanGrowTreesOn(nearBody);
+            Vector3 gUp = nearBody != null ? (hit.point - nearBody.Position).normalized : hit.normal;
+            Quaternion worldRot = Quaternion.FromToRotation(Vector3.up, gUp);
+            // Saplings sink slightly into the ground so the trunk isn't hovering;
+            // domes sit right on the surface.
+            float sink = (entry != null && entry.isSapling) ? SaplingGroundSink : 0f;
+            Vector3 worldSpot = hit.point - gUp * sink;
+
+            Vector3 candLocalPos = _saplingBody != null
+                ? _saplingBody.transform.InverseTransformPoint(worldSpot) : worldSpot;
+            Quaternion candLocalRot = _saplingBody != null
+                ? Quaternion.Inverse(_saplingBody.transform.rotation) * worldRot : worldRot;
+
+            if (!_saplingPoseInit)
+            {
+                _saplingTargetLocalPos = candLocalPos;
+                _saplingTargetLocalRot = candLocalRot;
+                _saplingSnapNext = true;
+                _saplingPoseInit = true;
+            }
+            else if ((candLocalPos - _saplingTargetLocalPos).sqrMagnitude > SaplingDeadzone * SaplingDeadzone)
+            {
+                _saplingTargetLocalPos = candLocalPos;
+                _saplingTargetLocalRot = candLocalRot;
+            }
+            _saplingHasValidSpot = true;
+        }
+        else
+        {
+            _saplingHasValidSpot = false;
+            _saplingBlocked = false;
+            _saplingBarren = false;
+        }
+    }
+
+    // True if a mature tree or another sapling stands within SaplingMinSpacing of
+    // the spot — so freshly-grown trees never overlap. Covers both seed/planted
+    // mature trees (SpawnedTree.AllTrees) and still-growing saplings.
+    static bool IsTooCloseToFlora(Vector3 worldSpot)
+    {
+        float minSq = SaplingMinSpacing * SaplingMinSpacing;
+        var trees = SpawnedTree.AllTrees;
+        for (int i = 0; i < trees.Count; i++)
+        {
+            var t = trees[i];
+            if (t != null && !t.IsDead && (t.transform.position - worldSpot).sqrMagnitude < minSq) return true;
+        }
+        var saps = SaplingGrowth.AllSaplings;
+        for (int i = 0; i < saps.Count; i++)
+        {
+            var s = saps[i];
+            if (s != null && (s.transform.position - worldSpot).sqrMagnitude < minSq) return true;
+        }
+        return false;
+    }
+
+    // Cancel from outside (SaplingPlanter, when the player deselects the sapling
+    // slot or runs out). Safe no-op if already finishing.
+    public void CancelPlacement() => Cancel();
 
     static bool IsSnappableCategory(BuildableCategory c) =>
         c == BuildableCategory.Floor || c == BuildableCategory.Wall || c == BuildableCategory.Roof;
@@ -468,22 +691,43 @@ public class GhostPlacement : MonoBehaviour
     {
         if (entry == null || entry.prefab == null) { Cancel(); return; }
 
-        if (entry.woodCost > 0)
+        // Barren guard: never plant a sapling on dead rock (moon / sun), even if a
+        // caller reaches Place() past the Update gate. Stay in placement mode.
+        if (entry.isSapling && _saplingBarren) return;
+
+        // Cost. Saplings spend a Sapling from the hotbar; everything else spends wood.
+        if (entry.isSapling)
         {
-            if (WoodInventory.Instance == null || !WoodInventory.Instance.SpendWood(entry.woodCost))
+            if (Hotbar.Instance == null || !Hotbar.Instance.SpendResource(Hotbar.ItemId.Sapling, 1))
             {
-                // Out of wood: leave placement mode active so the user can keep aiming
-                // (e.g., chop more trees and come back). Just skip this click.
-                Debug.Log($"[GhostPlacement] Not enough wood ({(WoodInventory.Instance != null ? WoodInventory.Instance.Wood : 0)}/{entry.woodCost}); skipped this placement.");
+                // Out of saplings: stay in placement mode so the player can chop a
+                // tree for more and come back. Just skip this click.
+                Debug.Log("[GhostPlacement] No saplings to plant; skipped this placement.");
                 return;
             }
+        }
+        else if (entry.woodCost > 0 || entry.crystalCost > 0)
+        {
+            int wood = WoodInventory.Instance != null ? WoodInventory.Instance.Wood : 0;
+            int crystals = Hotbar.Instance != null ? Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Crystal) : 0;
+            if (wood < entry.woodCost || crystals < entry.crystalCost)
+            {
+                // Can't afford: stay in placement mode so the player can gather more.
+                Debug.Log($"[GhostPlacement] Not enough resources (need {entry.woodCost} wood + {entry.crystalCost} crystals; have {wood} + {crystals}); skipped.");
+                return;
+            }
+            if (entry.woodCost > 0) WoodInventory.Instance.SpendWood(entry.woodCost);
+            if (entry.crystalCost > 0) Hotbar.Instance.SpendResource(Hotbar.ItemId.Crystal, entry.crystalCost);
         }
 
         Vector3 pos = ghost.transform.position;
         Quaternion rot = ghost.transform.rotation;
 
         var real = Instantiate(entry.prefab, pos, rot);
-        real.name = entry.prefab.name + "_Placed";
+        if (!real.activeSelf) real.SetActive(true);   // runtime templates ship inactive
+        // Saplings are named "_Sapling" (NOT "_Placed") so the generic building
+        // save skips them — they persist through their own growth-aware hook.
+        real.name = entry.prefab.name + (entry.isSapling ? "_Sapling" : "_Placed");
         OnPlaced?.Invoke(entry);
 
         // Parent to the closest celestial body so the placement rotates / moves with the
@@ -492,7 +736,18 @@ public class GhostPlacement : MonoBehaviour
         if (parentBody != null)
             real.transform.SetParent(parentBody.transform, worldPositionStays: true);
 
-        if (entry.addBonfireInteractionOnPlace)
+        if (entry.isSapling)
+        {
+            // Same layer as seed trees: keeps the ground-snap ray from landing on
+            // an existing sapling, and makes it chop identically once mature.
+            SpawnerCubeface.SetLayerRecursively(real, SpawnerCubeface.WorldPropLayer);
+            // Growing tree: attach the grower, which scales it down and grows it
+            // back up over time based on the ambient O2 at its spot.
+            var sg = real.GetComponent<SaplingGrowth>();
+            if (sg == null) sg = real.AddComponent<SaplingGrowth>();
+            sg.Init(parentBody, 0);
+        }
+        else if (entry.addBonfireInteractionOnPlace)
         {
             var bf = real.GetComponent<BonfireInteraction>();
             if (bf == null) bf = real.AddComponent<BonfireInteraction>();
@@ -551,6 +806,29 @@ public class GhostPlacement : MonoBehaviour
             s_finishAfterNextPlacement = false;
             Finish();
         }
+        // Otherwise keep the ghost ONLY while the player can still afford another.
+        // The moment a placement empties them below the cost, end placement so the
+        // ghost vanishes instead of dangling as an un-placeable preview.
+        else if (!CanAffordAnother(entry))
+        {
+            Finish();
+        }
+    }
+
+    // Can the player pay for one more of this entry right now? Mirrors the cost
+    // logic in Place() (sapling stack / wood + crystals). Free entries always pass.
+    static bool CanAffordAnother(BuildableEntry e)
+    {
+        if (e == null) return false;
+        if (e.isSapling)
+            return Hotbar.Instance != null && Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Sapling) >= 1;
+        if (e.woodCost > 0 || e.crystalCost > 0)
+        {
+            int wood = WoodInventory.Instance != null ? WoodInventory.Instance.Wood : 0;
+            int crystals = Hotbar.Instance != null ? Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Crystal) : 0;
+            return wood >= e.woodCost && crystals >= e.crystalCost;
+        }
+        return true; // no material cost — never auto-exit
     }
 
     static BonfireInteraction FindSceneBonfireTemplate(BonfireInteraction self)
@@ -589,6 +867,7 @@ public class GhostPlacement : MonoBehaviour
         if (rotateLockedDialogue) { PlayerController.isInDialogue = false; rotateLockedDialogue = false; }
         if (ghost != null) Destroy(ghost);
         if (_hintCanvasGo != null) Destroy(_hintCanvasGo);
+        if (_barrenBannerGo != null) Destroy(_barrenBannerGo);
         var cb = onFinished;
         onFinished = null;
         cb?.Invoke();
@@ -598,6 +877,61 @@ public class GhostPlacement : MonoBehaviour
     void OnDestroy()
     {
         IsPlacing = false;
+        if (Current == this) Current = null;
+    }
+
+    // Top-center red warning shown while the sapling ghost is over barren rock, so
+    // the player understands the whole body (not just this spot) can't be planted.
+    void SetBarrenBanner(bool show)
+    {
+        if (!show)
+        {
+            if (_barrenBannerGo != null && _barrenBannerGo.activeSelf) _barrenBannerGo.SetActive(false);
+            return;
+        }
+        if (_barrenBannerGo == null) BuildBarrenBanner();
+        if (_barrenBannerGo != null && !_barrenBannerGo.activeSelf) _barrenBannerGo.SetActive(true);
+    }
+
+    void BuildBarrenBanner()
+    {
+        var canvasGo = new GameObject("GhostPlacement_Barren", typeof(RectTransform));
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 199; // just under BuildMenuUI's 200
+        var scaler = canvasGo.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight = 0.5f;
+        canvasGo.AddComponent<GraphicRaycaster>();
+        _barrenBannerGo = canvasGo;
+
+        var bgGo = new GameObject("Bg", typeof(RectTransform));
+        bgGo.transform.SetParent(canvasGo.transform, false);
+        var bgRt = bgGo.GetComponent<RectTransform>();
+        bgRt.anchorMin = new Vector2(0.5f, 1f);
+        bgRt.anchorMax = new Vector2(0.5f, 1f);
+        bgRt.pivot     = new Vector2(0.5f, 1f);
+        bgRt.sizeDelta = new Vector2(620f, 56f);
+        bgRt.anchoredPosition = new Vector2(0f, -30f);
+        var bgImg = bgGo.AddComponent<Image>();
+        bgImg.color = new Color32(46, 12, 12, 220);
+        bgImg.raycastTarget = false;
+
+        var textGo = new GameObject("Text", typeof(RectTransform));
+        textGo.transform.SetParent(bgGo.transform, false);
+        var trt = textGo.GetComponent<RectTransform>();
+        trt.anchorMin = Vector2.zero;
+        trt.anchorMax = Vector2.one;
+        trt.offsetMin = new Vector2(16f, 0f);
+        trt.offsetMax = new Vector2(-16f, 0f);
+        var t = textGo.AddComponent<TextMeshProUGUI>();
+        t.fontSize = 22;
+        t.fontStyle = FontStyles.Bold;
+        t.alignment = TextAlignmentOptions.Center;
+        t.color = new Color32(255, 150, 150, 255);
+        t.raycastTarget = false;
+        t.text = "Barren rock — nothing will grow here";
     }
 
     void BuildHintUI()

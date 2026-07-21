@@ -165,19 +165,26 @@ public class BuildMenuUI : MonoBehaviour
     {
         if (specCost == null || detailEntry == null) return;
         int wood = WoodInventory.Instance != null ? WoodInventory.Instance.Wood : 0;
-        if (detailEntry.woodCost <= 0)
+        int crystals = Hotbar.Instance != null ? Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Crystal) : 0;
+
+        bool free = detailEntry.woodCost <= 0 && detailEntry.crystalCost <= 0;
+        bool affordable = wood >= detailEntry.woodCost && crystals >= detailEntry.crystalCost;
+
+        if (free)
         {
             specCost.text = "FREE";
             specCost.color = CyanScannerPalette.AccentDim;
         }
         else
         {
-            bool affordable = wood >= detailEntry.woodCost;
-            specCost.text  = detailEntry.woodCost + " WOOD";
+            string txt = "";
+            if (detailEntry.woodCost > 0) txt = detailEntry.woodCost + " WOOD";
+            if (detailEntry.crystalCost > 0) txt += (txt.Length > 0 ? " + " : "") + detailEntry.crystalCost + " CRYSTAL";
+            specCost.text  = txt;
             specCost.color = affordable ? CyanScannerPalette.CostAfford : CyanScannerPalette.CostUnafford;
         }
         if (placeBtn != null)
-            placeBtn.interactable = detailEntry.woodCost <= 0 || wood >= detailEntry.woodCost;
+            placeBtn.interactable = free || affordable;
         if (placeBtnBg != null)
             placeBtnBg.color = placeBtn.interactable ? CyanScannerPalette.BtnPrimary : CyanScannerPalette.BtnNormalEdge;
     }
