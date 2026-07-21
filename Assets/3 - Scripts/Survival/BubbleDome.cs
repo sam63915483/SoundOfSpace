@@ -69,6 +69,14 @@ public class BubbleDome : MonoBehaviour
     public bool IsFull => InteriorO2 >= 100f;
     public CelestialBody Body => _body;
 
+    // Equation ingredients, exposed so the status screen can show the player the
+    // actual math: floor + trees × perTree = raw production (excess gets vented).
+    public float TreeUnitsInside => _treeUnitsInside;
+    public float PerTreeInterior => perTreeInterior;
+    public float BaseInteriorO2  => baseInterior;
+    public float OutsideO2 => (PlanetOxygen.Instance != null && _body != null)
+        ? PlanetOxygen.Instance.SurfaceO2(_body) : 0f;
+
     // ── Fuel (crystals) ────────────────────────────────────────────────────
     public bool  HasFuel        => _fuel > 0f;
     public float FuelPercent    => _fuel;           // 0..100

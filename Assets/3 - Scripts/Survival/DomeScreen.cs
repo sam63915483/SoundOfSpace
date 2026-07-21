@@ -27,6 +27,9 @@ public class DomeScreen : MonoBehaviour
     public Image o2Fill;
     public Image fuelFill;
 
+    [Tooltip("Optional bottom row for planet terraforming progress. Runtime-created under the panel if left empty (keeps the hand-positioned prefab untouched).")]
+    public TMP_Text planetText;
+
     [Tooltip("Seconds between screen refreshes. Cheap; the screen doesn't need per-frame.")]
     [SerializeField] float refreshInterval = 0.25f;
 
@@ -35,6 +38,29 @@ public class DomeScreen : MonoBehaviour
     void Awake()
     {
         if (dome == null) dome = GetComponentInParent<BubbleDome>();
+        EnsurePlanetText();
+    }
+
+    // The vent block now holds the tree-production equation, so the planet line
+    // gets its own bottom row — created at runtime so the prefab (which Sam
+    // positions by hand) never needs rebaking.
+    void EnsurePlanetText()
+    {
+        if (planetText != null || ventText == null) return;
+        var go = new GameObject("Planet", typeof(RectTransform));
+        go.transform.SetParent(ventText.rectTransform.parent, false);
+        var t = go.AddComponent<TextMeshProUGUI>();
+        t.fontSize = 15;
+        t.fontStyle = FontStyles.Bold;
+        t.alignment = TextAlignmentOptions.Center;
+        t.color = new Color(0.62f, 0.72f, 0.81f, 1f);
+        t.raycastTarget = false;
+        var rt = t.rectTransform;
+        rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
+        rt.pivot = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta = new Vector2(360f, 26f);
+        rt.anchoredPosition = new Vector2(0f, -150f);
+        planetText = t;
     }
 
     void Update()
@@ -62,7 +88,8 @@ public class DomeScreen : MonoBehaviour
             ? PlanetOxygen.Instance.SurfaceO2(dome.Body) : -1f;
         string planetLine = planet < 0f ? ""
             : planet >= 99.5f ? "<color=#9FE8AF>PLANET ATMOSPHERE COMPLETE</color>"
-            : $"<color=#9FB8CF>PLANET O2  {planet:0}%</color>";
+            : $"PLANET O2  {planet:0}%";
+        if (planetText != null) SetText(planetText, planetLine);
 
         // Offline: no fuel → the emitter is dead. Make that unmistakable.
         if (!dome.HasFuel)
@@ -70,7 +97,7 @@ public class DomeScreen : MonoBehaviour
             if (fuelText != null) { SetText(fuelText, "FUEL  0%"); fuelText.color = FuelAlarm; }
             if (fuelFill != null) fuelFill.fillAmount = 0f;
             if (timeText != null) SetText(timeText, "<color=#FF6060>OFFLINE - INSERT CRYSTALS</color>");
-            if (ventText != null) SetText(ventText, planetLine);
+            if (ventText != null) SetText(ventText, "");
             return;
         }
 
@@ -86,13 +113,21 @@ public class DomeScreen : MonoBehaviour
         if (fuelFill != null) fuelFill.fillAmount = Mathf.Clamp01(fuel / 100f);
         if (timeText != null) SetText(timeText, FormatTime(dome.SecondsOfFuelLeft) + " left");
 
-        // Excess / venting line while topped out; planet progress always shown.
+        // The production math, spelled out so the player can plan their planting:
+        //   line 1: TREES n ×perTree% + BASE floor% = raw%
+        //   line 2: over 100 → how much is excess and the resulting vent rate;
+        //           under 100 → how far from starting to vent.
+        // BASE is max(emitter minimum, planet's own air let in) — the dome floor.
         if (ventText != null)
         {
-            if (dome.IsFull && dome.VentPerMinute > 0f)
-                SetText(ventText, $"<color=#7FD4FF>EXCESS +{dome.ExcessO2:0}%   VENTING +{dome.VentPerMinute:0.#}%/min</color>\n{planetLine}");
-            else
-                SetText(ventText, planetLine);
+            float units = dome.TreeUnitsInside;
+            float floor = Mathf.Max(dome.BaseInteriorO2, dome.OutsideO2);
+            float raw = dome.RawInteriorO2;
+            string eq = $"<color=#8FE8A0>TREES {units:0.#}</color> ×{dome.PerTreeInterior:0.#}%  +  BASE {floor:0}%  =  {raw:0}%";
+            string status = raw >= 100f
+                ? $"<color=#7FD4FF>EXCESS +{dome.ExcessO2:0}%  →  VENTING +{dome.VentPerMinute:0.#}%/MIN</color>"
+                : $"<color=#8FA6BD>+{100f - raw:0}% MORE TO START VENTING</color>";
+            SetText(ventText, eq + "\n" + status);
         }
     }
 
