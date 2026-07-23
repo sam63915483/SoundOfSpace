@@ -19809,10 +19809,14 @@ MonoBehaviour:
   deadzoneDegrees: 1.5
   flipScreenNormal: 0
   tiltPivot: {fileID: 7854428792393197861}
-  maxExtraTilt: 35
+  maxExtraTilt: 42
   tiltStartDistance: 5
   tiltFullDistance: 1.4
   tiltDegreesPerSecond: 80
+  yawSpring: 4
+  yawDamping: 2.2
+  tiltSpring: 7
+  tiltDamping: 4.2
 --- !u!1 &7534427809657819500
 GameObject:
   m_ObjectHideFlags: 0

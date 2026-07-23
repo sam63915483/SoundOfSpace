@@ -33,6 +33,8 @@ public class OrientationTVSpin : MonoBehaviour
     float _yaw;
     Quaternion _tiltRestLocalRot;
     float _tilt;
+    float _yawVel;
+    float _tiltVel;
 
     void Awake()
     {
@@ -58,33 +60,49 @@ public class OrientationTVSpin : MonoBehaviour
             if (_player == null) return;
         }
 
+        float dt = Time.deltaTime;
         Vector3 playerPos = _player.transform.position;
-        if ((playerPos - transform.position).sqrMagnitude > trackRange * trackRange) return;
+        bool inRange = (playerPos - transform.position).sqrMagnitude <= trackRange * trackRange;
 
-        // Work in the parent's space: local Y is the mount's spin axis there.
-        Transform parent = transform.parent;
-        Vector3 toPlayer = parent.InverseTransformPoint(playerPos) - transform.localPosition;
-        toPlayer.y = 0f;
-        Vector3 facing = parent.InverseTransformDirection(flipScreenNormal ? -screen.forward : screen.forward);
-        facing.y = 0f;
-        if (toPlayer.sqrMagnitude < 0.01f || facing.sqrMagnitude < 0.0001f) return;
+        // Both axes run a spring-damper instead of chasing directly: the arm
+        // accelerates toward the target, lags behind, overshoots a touch and
+        // settles with a swing — reads as a servo, not a perfect tracker.
+        // Out of range the targets go to 0 so the springs relax to rest.
 
-        float error = Vector3.SignedAngle(facing, toPlayer, Vector3.up);
-        if (Mathf.Abs(error) >= deadzoneDegrees)
+        // -- yaw around the mount axis (parent space: local Y is the axis) --
+        float error = 0f;
+        if (inRange)
         {
-            _yaw += Mathf.Clamp(error, -degreesPerSecond * Time.deltaTime, degreesPerSecond * Time.deltaTime);
-            transform.localRotation = Quaternion.AngleAxis(_yaw, Vector3.up) * _restLocalRot;
+            Transform parent = transform.parent;
+            Vector3 toPlayer = parent.InverseTransformPoint(playerPos) - transform.localPosition;
+            toPlayer.y = 0f;
+            Vector3 facing = parent.InverseTransformDirection(flipScreenNormal ? -screen.forward : screen.forward);
+            facing.y = 0f;
+            if (toPlayer.sqrMagnitude > 0.01f && facing.sqrMagnitude > 0.0001f)
+            {
+                error = Vector3.SignedAngle(facing, toPlayer, Vector3.up);
+                if (Mathf.Abs(error) < deadzoneDegrees) error = 0f;
+            }
         }
+        _yawVel += (error * yawSpring - _yawVel * yawDamping) * dt;
+        _yawVel = Mathf.Clamp(_yawVel, -degreesPerSecond, degreesPerSecond);
+        _yaw += _yawVel * dt;
+        transform.localRotation = Quaternion.AngleAxis(_yaw, Vector3.up) * _restLocalRot;
 
-        // Extra downtilt, hinged at the wrist: the closer the player stands to
-        // being underneath the TV, the further it leans down to meet them.
+        // -- downtilt hinged at the wrist: lean down as the player gets under --
         if (tiltPivot != null)
         {
-            float dist = Vector3.ProjectOnPlane(playerPos - tiltPivot.position, transform.up).magnitude;
-            // sqrt front-loads the curve: most of the lean arrives while
-            // approaching, not just in the last step.
-            float target = maxExtraTilt * Mathf.Sqrt(Mathf.InverseLerp(tiltStartDistance, tiltFullDistance, dist));
-            _tilt = Mathf.MoveTowards(_tilt, target, tiltDegreesPerSecond * Time.deltaTime);
+            float target = 0f;
+            if (inRange)
+            {
+                float dist = Vector3.ProjectOnPlane(playerPos - tiltPivot.position, transform.up).magnitude;
+                // sqrt front-loads the curve: most of the lean arrives while
+                // approaching, not just in the last step.
+                target = maxExtraTilt * Mathf.Sqrt(Mathf.InverseLerp(tiltStartDistance, tiltFullDistance, dist));
+            }
+            _tiltVel += ((target - _tilt) * tiltSpring - _tiltVel * tiltDamping) * dt;
+            _tiltVel = Mathf.Clamp(_tiltVel, -tiltDegreesPerSecond, tiltDegreesPerSecond);
+            _tilt = Mathf.Clamp(_tilt + _tiltVel * dt, -5f, maxExtraTilt + 8f);
             tiltPivot.localRotation = _tiltRestLocalRot * Quaternion.AngleAxis(_tilt, Vector3.right);
         }
     }
@@ -95,7 +113,7 @@ public class OrientationTVSpin : MonoBehaviour
     public Transform tiltPivot;
 
     [Tooltip("Maximum EXTRA downward tilt (deg) on top of the authored rest tilt.")]
-    public float maxExtraTilt = 35f;
+    public float maxExtraTilt = 42f;
 
     [Tooltip("Closer than this (m, horizontal) the TV starts leaning down.")]
     public float tiltStartDistance = 5f;
@@ -105,4 +123,16 @@ public class OrientationTVSpin : MonoBehaviour
 
     [Tooltip("Degrees per second the tilt hinge can move.")]
     public float tiltDegreesPerSecond = 80f;
+
+    [Tooltip("Yaw spring strength (accel per degree of error). Lower = lazier.")]
+    public float yawSpring = 4f;
+
+    [Tooltip("Yaw damping. Below 2*sqrt(spring) the arm overshoots and swings.")]
+    public float yawDamping = 2.2f;
+
+    [Tooltip("Tilt spring strength.")]
+    public float tiltSpring = 7f;
+
+    [Tooltip("Tilt damping (slightly underdamped for a small nod-past).")]
+    public float tiltDamping = 4.2f;
 }
