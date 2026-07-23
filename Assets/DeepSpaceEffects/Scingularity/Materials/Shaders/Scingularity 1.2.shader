@@ -14,6 +14,8 @@ Properties {
 	_Speed("Accretion Disk Animation Speed", Range(0, 1)) = 0.1
 	_Redshift("Accretion Disk Redshift Effect", Range(0, 1)) = 0.5
 	[Toggle] _Flip("Flipped Projection Correction", Range(0, 1)) = 1
+	_LensFadeLo("Lens Far-Field Fade Start (rad)", Float) = 0.012
+	_LensFadeHi("Lens Full-Strength Bend (rad)", Float) = 0.06
 	[HideInInspector] _AtmoFade("Atmosphere Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
@@ -49,6 +51,8 @@ SubShader {
 		uniform half _Speed;
 		uniform half _Redshift;
 		uniform half _Flip;
+		uniform float _LensFadeLo;   // bend (radians) below which the lens is fully transparent — the REAL sky shows
+		uniform float _LensFadeHi;   // bend at which the lens reaches full strength
 		uniform half _AtmoFade;   // 0 in clear space; ramps toward 1 when a planet's atmosphere is between the eye and the effect — EITHER the camera sits inside that atmosphere OR the black hole is viewed through/behind it from outside (set by SpaceDustField.UpdateBlackHoleAtmoFade). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
 		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
 		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
@@ -139,6 +143,17 @@ SubShader {
 						result.b *= max(1, result.b / brighten);
 					}
 				}
+
+				// Far-field falloff: the asset draws its bent cubemap across the
+				// ENTIRE screen (cutoff ~0), silently replacing the real sky with
+				// the black hole's private starfield — invisible in deep space
+				// (cubemap == skybox) but glaring from a planet or underwater.
+				// Alpha now follows LENS STRENGTH: full in the visibly-warped
+				// zone near the hole, fading to 0 where bending is negligible so
+				// the real sky/atmosphere shows. Accretion disk alpha is applied
+				// after this block and is unaffected. Close approaches still fill
+				// the screen naturally (the bend is strong everywhere there).
+				result.a *= saturate((abs(angle) - _LensFadeLo) / max(_LensFadeHi - _LensFadeLo, 0.00001));
 
 			}else	result.a = 0;
 

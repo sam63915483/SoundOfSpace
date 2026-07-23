@@ -602,7 +602,7 @@ public class LensFlareRegistry : MonoBehaviour
             float camDepth = r - toC.magnitude;
             if (camDepth > 0f)
             {
-                if (camDepth > 8f) return true;
+                if (camDepth > 2.5f) return true;   // gone just below the surface; visible while wading
                 continue;
             }
 

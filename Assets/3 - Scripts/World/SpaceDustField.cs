@@ -287,7 +287,7 @@ public class SpaceDustField : MonoBehaviour
     }
 
     // Metres below the water surface at which the BH/sky effect is fully gone.
-    const float bhUnderwaterFadeDepth = 12f;
+    const float bhUnderwaterFadeDepth = 5f;
 
     void LateUpdate()
     {
