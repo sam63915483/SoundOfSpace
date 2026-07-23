@@ -156,6 +156,10 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
         _wasKinematic = _rb.isKinematic;
         _rb.isKinematic = true;                                // no N-body gravity in the chamber
+        // The controller's own FixedUpdate alignment keeps running while
+        // kinematic — route it to the shuttle's up so body AND camera (which
+        // snapshots the FixedUpdate rotation) agree for the whole ride.
+        PlayerController.UpOverrideTransform = transform;
         TutorialGate.LockAll();
         TutorialGate.Unlock(TutorialAbility.MouseLook);        // free-look through the chamber glass
         IntroSequenceController.SuppressGroggyCameraFx = true;
@@ -196,17 +200,6 @@ public class ShuttleArrivalSequence : MonoBehaviour
     void SyncPlayerToPod()
     {
         if (_rb == null || _podGrp == null) return;
-
-        // Keep the player upright RELATIVE TO THE SHUTTLE. The kinematic freeze
-        // also freezes PlayerController's own gravity-up alignment (its
-        // FixedUpdate early-returns), so without this the body keeps its spawn
-        // orientation and clips out of the chamber as the shuttle moves. Same
-        // FromToRotation pattern the controller uses for gravity-up; mouse-look
-        // yaw/pitch ride on top untouched.
-        Quaternion upFix = Quaternion.FromToRotation(_playerT.up, transform.up);
-        _playerT.rotation = upFix * _playerT.rotation;
-        _rb.rotation = _playerT.rotation;
-
         Vector3 pos = _podGrp.TransformPoint(standOffset);
         if (_shakeAmp > 0f)
         {
@@ -306,6 +299,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
             var body = GetComponentInParent<CelestialBody>();
             _pc.SetVelocity(body != null ? body.velocity : Vector3.zero);   // inherit the planet's orbit
         }
+        if (PlayerController.UpOverrideTransform == transform)
+            PlayerController.UpOverrideTransform = null;       // hand the up back to gravity
         TutorialGate.UnlockAll();
         if (_pc != null) _pc.introMoveScale = 1f;
         IntroSequenceController.SuppressGroggyCameraFx = false;

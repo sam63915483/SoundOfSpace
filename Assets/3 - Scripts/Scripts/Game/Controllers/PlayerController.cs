@@ -679,6 +679,14 @@ public class PlayerController : GravityObject
 	// never persists to scene/prefab data — it's a pure runtime knob.
 	[System.NonSerialized] public float introMoveScale = 1f;
 
+	// Cinematic up override (e.g. the shuttle-landing intro): while set, the
+	// FixedUpdate alignment uses this transform's up instead of the gravity /
+	// ship-up blend, so the whole camera pipeline (which snapshots the
+	// FixedUpdate rotation) stays consistent with the ride. Static so a
+	// prefab-resident sequence can set it without a scene reference. The
+	// setter MUST clear it when done.
+	[System.NonSerialized] public static Transform UpOverrideTransform;
+
 	// Snaps the look so the camera aims at a world point. Used by the Mission 1
 	// wake-up intro to hold the player's gaze on the cabin photo while look is
 	// locked. Horizontal heading rotates the body; vertical is the camera pitch.
@@ -1333,6 +1341,9 @@ public class PlayerController : GravityObject
 			if (shipUp.sqrMagnitude > 0.001f)
 				chosenUp = Vector3.Slerp(gravityUp, shipUp, _shipUpBlend);
 		}
+		// Cinematic up override (shuttle-landing intro): the ride owns the up.
+		if (UpOverrideTransform != null)
+			chosenUp = UpOverrideTransform.up;
 		transform.rotation = Quaternion.FromToRotation(transform.up, chosenUp) * transform.rotation;
 		// Clear the rotation reference once the blend has fully decayed
 		// AND we're out of the zone. The damping cache nulls instantly
