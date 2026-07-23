@@ -178,7 +178,10 @@ public class ShuttleArrivalSequence : MonoBehaviour
         IntroSequenceController.SuppressGroggyCameraFx = true;
         HALCommentator.SuppressAutonomous = true;
         FallDamage.Suppressed = true;
-        HudVisibility.SetForceHidden(true);
+        // NOTE: unlike the pod cinematic we deliberately DO NOT hide the HUD —
+        // the helmet visor frame is registered with HudVisibility, and hiding
+        // it reads as "no helmet on" in the stasis chamber (then it pops on at
+        // release). Suit + helmet stay on for the whole ride.
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible = false;
 
@@ -336,7 +339,6 @@ public class ShuttleArrivalSequence : MonoBehaviour
         IntroSequenceController.SuppressGroggyCameraFx = false;
         HALCommentator.SuppressAutonomous = false;
         FallDamage.Suppressed = false;
-        HudVisibility.SetForceHidden(false);
 
         if (_grog != null) { DestroyImmediate(_grog); _grog = null; }
         if (_canvas != null) Destroy(_canvas.gameObject);
