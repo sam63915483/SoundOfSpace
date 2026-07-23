@@ -34,7 +34,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     [Header("Timing (seconds)")]
     [SerializeField] float fadeInTime    = 2f;
-    [SerializeField] float entryDuration = 57f;     // film starts ~45s; touchdown at entry+18 = 75s (~30s into the film)
+    [SerializeField] float entryDuration = 70f;     // long spacefall; film ~45s, touchdown at entry+18 = 88s (~43s into the film)
     [SerializeField] float brakeDuration = 8f;      // 150m -> 12m, entrySpeed -> finalSinkSpeed
     [SerializeField] float finalDuration = 10f;     // 12m -> touchdown, easing to 0 m/s
     [SerializeField] float touchdownHold = 1.2f;    // beat on the ground before the door opens
@@ -139,8 +139,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [Tooltip("Seconds after the film ends before the exit door folds open.")]
     public float doorUnlockDelay = 2f;
 
-    [Tooltip("'Approaching Humble Abode' fires when the descent crosses this altitude (m). High enough that it lands mid-briefing, BEFORE the film starts.")]
-    public float approachLineAltitude = 800f;
+    [Tooltip("'Approaching Humble Abode' fires when the descent crosses this altitude (m). Tuned to land AFTER the film has started (~57s with the default profile).")]
+    public float approachLineAltitude = 550f;
 
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
