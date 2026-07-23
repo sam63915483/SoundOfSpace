@@ -21,21 +21,32 @@ using UnityEngine.UI;
 [DefaultExecutionOrder(50)]
 public class ShuttleArrivalSequence : MonoBehaviour
 {
+    // Three velocity-continuous phases (each seam's sink rate matches, so the
+    // motion never jumps): a long ENTRY fall while the briefing plays, a hard
+    // retro-thruster BRAKE once the atmosphere is hit (fast -> crawl), then a
+    // slow FINAL sink that touches down at 0 m/s — a soft landing, no clip.
     [Header("Descent profile (metres above the authored rest pose)")]
     [SerializeField] float startAltitude = 900f;    // where the fade-in reveals the shuttle
-    [SerializeField] float lowAltitude   = 60f;     // handoff to the retro-thruster landing
-    [SerializeField] float seamSpeed     = 25f;     // sink rate (m/s) at the approach -> landing seam
+    [SerializeField] float brakeAltitude = 150f;    // atmosphere entry: the retro-burn starts here
+    [SerializeField] float hoverAltitude = 12f;     // brake ends here, moving at finalSinkSpeed
+    [SerializeField] float entrySpeed    = 35f;     // sink rate (m/s) at the end of the entry fall
+    [SerializeField] float finalSinkSpeed = 1.5f;   // crawl rate after the brake (soft-landing sink)
 
     [Header("Timing (seconds)")]
-    [SerializeField] float fadeInTime       = 2f;
-    [SerializeField] float approachDuration = 55f;  // covers the briefing schedule (last line at 49s)
-    [SerializeField] float landingDuration  = 10f;  // retro-burn: lowAltitude -> touchdown, easing to 0 m/s
-    [SerializeField] float touchdownHold    = 1.2f; // beat on the ground before the door opens
-    [SerializeField] float doorOpenTime     = 1.8f;
-    [SerializeField] float doorOpenAngle    = 115f; // stasis door flips up-and-out around the top-front pivot
+    [SerializeField] float fadeInTime    = 2f;
+    [SerializeField] float entryDuration = 52f;     // covers the briefing schedule (last line at 49s)
+    [SerializeField] float brakeDuration = 8f;      // 150m -> 12m, entrySpeed -> finalSinkSpeed
+    [SerializeField] float finalDuration = 10f;     // 12m -> touchdown, easing to 0 m/s
+    [SerializeField] float touchdownHold = 1.2f;    // beat on the ground before the door opens
+    [SerializeField] float doorOpenTime  = 1.8f;
+    [SerializeField] float doorOpenAngle = 115f;    // stasis door flips up-and-out around the top-front pivot
 
+    // Capsule is radius 0.5, pivot at CENTER: y 1.02 (pod-local, ×1.2 instance
+    // scale) puts the feet ~3cm above the plinth top, z 0 clears the back glass
+    // and the (collider-stripped) spine pad — NO overlap at kinematic release,
+    // or PhysX depenetration hurls the player out of the chamber.
     [Header("Player placement (StasisPod-group local space)")]
-    [SerializeField] Vector3 standOffset = new Vector3(0f, 1.25f, -0.05f);
+    [SerializeField] Vector3 standOffset = new Vector3(0f, 1.02f, 0f);
 
     [Header("Shake")]
     [SerializeField] float approachShake = 0.03f;   // faint entry rumble
@@ -100,13 +111,15 @@ public class ShuttleArrivalSequence : MonoBehaviour
         yield return Approach();
         yield return FlushRemainingBriefing();
 
-        // Retro-burn landing: HAL calls it, the muffled burn spins up, and the
-        // shuttle eases from the seam sink rate to a dead-soft touchdown.
+        // Atmosphere hit: HAL calls the burn, the shuttle brakes HARD from the
+        // entry fall to a crawl, then sinks the last few metres to a dead-soft
+        // 0 m/s touchdown.
         if (!_skip)
         {
             Speak(ReverseThrusterLine);
             StartThruster();
-            yield return Landing();
+            yield return Braking();
+            yield return FinalDescent();
         }
 
         if (_skip)
@@ -230,11 +243,11 @@ public class ShuttleArrivalSequence : MonoBehaviour
     IEnumerator Approach()
     {
         float t = 0f;
-        while (t < approachDuration && !_skip)
+        while (t < entryDuration && !_skip)
         {
             t += Time.unscaledDeltaTime;
-            float u = Mathf.Clamp01(t / approachDuration);
-            _altitude = Hermite(startAltitude, lowAltitude, 0f, -seamSpeed, approachDuration, u);
+            float u = Mathf.Clamp01(t / entryDuration);
+            _altitude = Hermite(startAltitude, brakeAltitude, 0f, -entrySpeed, entryDuration, u);
             _shakeAmp = approachShake * u;   // entry rumble builds gently
             while (_briefingIndex < _briefing.Length && t >= _briefingTimes[_briefingIndex])
             {
@@ -255,16 +268,33 @@ public class ShuttleArrivalSequence : MonoBehaviour
         }
     }
 
-    IEnumerator Landing()
+    // The retro-burn: entrySpeed down to a crawl by hoverAltitude. Duration is
+    // matched to the distance (2*d/(v0+v1)) so the Hermite stays monotonic —
+    // the old single landing curve dove BELOW the ground mid-phase and the
+    // clamp pinned the shuttle down while the shake played out the timer.
+    IEnumerator Braking()
     {
         float t = 0f;
-        while (t < landingDuration && !_skip)
+        while (t < brakeDuration && !_skip)
         {
             t += Time.unscaledDeltaTime;
-            float u = Mathf.Clamp01(t / landingDuration);
-            _altitude = Mathf.Max(0f, Hermite(lowAltitude, 0f, -seamSpeed, 0f, landingDuration, u));
-            // Burn hardest mid-descent, dying to nothing right at the pads.
-            _shakeAmp = landingShake * Mathf.Sin(u * Mathf.PI);
+            float u = Mathf.Clamp01(t / brakeDuration);
+            _altitude = Mathf.Max(0f, Hermite(brakeAltitude, hoverAltitude, -entrySpeed, -finalSinkSpeed, brakeDuration, u));
+            _shakeAmp = landingShake * Mathf.Sin(u * Mathf.PI * 0.5f);   // ramps up as the burn bites
+            yield return null;
+        }
+    }
+
+    // Last metres at a crawl, easing to 0 m/s AT the pads — a soft landing.
+    IEnumerator FinalDescent()
+    {
+        float t = 0f;
+        while (t < finalDuration && !_skip)
+        {
+            t += Time.unscaledDeltaTime;
+            float u = Mathf.Clamp01(t / finalDuration);
+            _altitude = Mathf.Max(0f, Hermite(hoverAltitude, 0f, -finalSinkSpeed, 0f, finalDuration, u));
+            _shakeAmp = landingShake * (1f - u);                          // dies out with the sink rate
             yield return null;
         }
     }

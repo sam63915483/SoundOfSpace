@@ -22968,15 +22968,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   startAltitude: 900
-  lowAltitude: 60
-  seamSpeed: 25
+  brakeAltitude: 150
+  hoverAltitude: 12
+  entrySpeed: 35
+  finalSinkSpeed: 1.5
   fadeInTime: 2
-  approachDuration: 55
-  landingDuration: 10
+  entryDuration: 52
+  brakeDuration: 8
+  finalDuration: 10
   touchdownHold: 1.2
   doorOpenTime: 1.8
   doorOpenAngle: 115
-  standOffset: {x: 0, y: 1.25, z: -0.05}
+  standOffset: {x: 0, y: 1.02, z: 0}
   approachShake: 0.03
   landingShake: 0.12
   ambientHumClip: {fileID: 8300000, guid: 149a1f6f318bf684e935aaf910d4d12c, type: 3}
