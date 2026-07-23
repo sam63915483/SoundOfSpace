@@ -146,6 +146,15 @@ public class SpaceDustField : MonoBehaviour
     float[] _relOceanR2;
     int _relOceanCount;
 
+    // HLSL-style smoothstep: 0 below edge0, 1 above edge1, smooth between.
+    // (Unity's Mathf.SmoothStep has DIFFERENT semantics — it interpolates
+    // between its first two args using the third as the 0..1 parameter.)
+    static float EdgeSmoothstep(float edge0, float edge1, float x)
+    {
+        float t = Mathf.Clamp01((x - edge0) / Mathf.Max(1e-6f, edge1 - edge0));
+        return t * t * (3f - 2f * t);
+    }
+
     float OceanRadius(CelestialBody p)
     {
         if (p == null) return 0f;
@@ -218,7 +227,12 @@ public class SpaceDustField : MonoBehaviour
                 {
                     float oceanAng = Mathf.Atan2(oceanR, distP);                      // angular radius of the water disk
                     float angO = Vector3.Angle(dirBH, toP / distP) * Mathf.Deg2Rad;   // BH offset from planet centre
-                    float thr = 1f - Mathf.SmoothStep(oceanAng * 0.92f, oceanAng * 1.10f, angO);
+                    // EdgeSmoothstep, NOT Mathf.SmoothStep: Unity's SmoothStep(a,b,t)
+                    // INTERPOLATES a->b (t is the 0..1 parameter). Passing the angle as
+                    // t made every distant ocean planet return ~edge1 (tiny radians) so
+                    // thr ~= 0.98 REGARDLESS OF DIRECTION — _OceanFade sat pinned at ~1
+                    // and the black hole was erased from the sky in all of gameplay.
+                    float thr = 1f - EdgeSmoothstep(oceanAng * 0.92f, oceanAng * 1.10f, angO);
                     if (thr > oceanFade) oceanFade = thr;
                 }
             }
@@ -238,7 +252,9 @@ public class SpaceDustField : MonoBehaviour
                 float ang = Vector3.Angle(dirBH, toP / distP) * Mathf.Deg2Rad;    // BH offset from the planet centre
                 // 1 while the BH direction sits inside the atmo disk, easing to 0
                 // as it crosses the outer edge (slack leads the hard seam in).
-                through = 1f - Mathf.SmoothStep(atmoAng * 0.85f, atmoAng * 1.35f, ang);
+                // EdgeSmoothstep — same Mathf.SmoothStep misuse as the ocean
+                // branch above (it pinned _AtmoFade near 1 from everywhere).
+                through = 1f - EdgeSmoothstep(atmoAng * 0.85f, atmoAng * 1.35f, ang);
             }
 
             // Immersion is CAPPED: at 1.0 the shader's luminance gate erased
