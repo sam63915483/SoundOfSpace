@@ -101,6 +101,13 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     public bool IsActive => _active;
 
+    // Test hook: jumps straight to the landed/skip path (same release code).
+    public void SkipNow() { _skip = true; }
+
+    // Flip on to log a per-FixedUpdate release report to the scratchpad —
+    // this is how the one-frame orbital-lag seating bug was caught.
+    const bool ReleaseDiagnostics = false;
+
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
     {
@@ -361,13 +368,17 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (_pc != null && _rb != null)
         {
             _rb.isKinematic = _wasKinematic;
-            // CRITICAL (same class of bug as PlayerPickup's "drop teleports
-            // super far"): the project runs Physics.autoSyncTransforms = false,
-            // so a freshly-dynamic body keeps the STALE PhysX pose it had while
-            // kinematic and reconciles by snapping/depenetrating from there —
-            // flinging the player through the floor. Seat the body exactly at
-            // the visible pose and commit it into PhysX NOW.
-            _rb.position = _playerT.position;
+            // CRITICAL, measured with the release diagnostic: the planet orbits
+            // ~0.7m per frame, so the player's transform (last pinned in the
+            // PREVIOUS frame's LateUpdate) is one frame BEHIND the shuttle at
+            // teardown time — seating from it embeds the player in the wall
+            // behind the chamber and PhysX depenetration blasts them out of the
+            // ship. Seat from the shuttle's LIVE pose at this instant instead,
+            // then commit into PhysX (autoSyncTransforms is off) — the
+            // PlayerPickup "drop teleports super far" recipe, plus the lag fix.
+            Vector3 seatPos = _podGrp != null ? _podGrp.TransformPoint(standOffset) : _playerT.position;
+            _playerT.position = seatPos;
+            _rb.position = seatPos;
             _rb.rotation = _playerT.rotation;
             _rb.angularVelocity = Vector3.zero;
             var body = GetComponentInParent<CelestialBody>();
@@ -377,6 +388,14 @@ public class ShuttleArrivalSequence : MonoBehaviour
             // slerp from a pre-release snapshot (one-frame judder otherwise).
             if (CameraEffectsManager.Instance != null && CameraEffectsManager.Instance.TransformFX != null)
                 CameraEffectsManager.Instance.TransformFX.SnapToCurrentPlayer();
+
+            // Release diagnostics (leave off unless the handoff regresses):
+            // records shuttle-local position + velocity + contacts post-release.
+            if (ReleaseDiagnostics)
+            {
+                var diag = _playerT.gameObject.AddComponent<ShuttleReleaseDiag>();
+                diag.Init(transform, _rb);
+            }
         }
         // Only clear the override if it's still pointing at US — the normal
         // path hands it to the blend proxy first (see BlendUpOverrideOut),
@@ -481,5 +500,71 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (string.IsNullOrEmpty(line)) return;
         if (HALCommentator.Instance != null) HALCommentator.Instance.VolunteerExternal(line, true);
         else if (HALLineHUD.Instance != null) HALLineHUD.Instance.Show(line);
+    }
+}
+
+// TEMP diagnostic (remove once the release is verified): logs the player's
+// shuttle-local position, speed, and collision contacts every FixedUpdate for
+// a few seconds after the stasis release, then writes a report file.
+public class ShuttleReleaseDiag : MonoBehaviour
+{
+    Transform _shuttle;
+    Rigidbody _rb;
+    CelestialBody _body;
+    System.Text.StringBuilder _sb = new System.Text.StringBuilder();
+    float _t;
+    int _contacts;
+
+    public void Init(Transform shuttle, Rigidbody rb)
+    {
+        _shuttle = shuttle;
+        _rb = rb;
+        _body = shuttle != null ? shuttle.GetComponentInParent<CelestialBody>() : null;
+        _sb.AppendLine("t=0 RELEASE localPos=" + LocalPos() + " vel=" + (_rb != null ? _rb.velocity.magnitude.ToString("F1") : "-")
+            + " relVel=" + RelVel() + " kinematic=" + (_rb != null && _rb.isKinematic)
+            + " interp=" + (_rb != null ? _rb.interpolation.ToString() : "-")
+            + " ccd=" + (_rb != null ? _rb.collisionDetectionMode.ToString() : "-"));
+    }
+
+    string LocalPos() { return _shuttle != null ? _shuttle.InverseTransformPoint(transform.position).ToString("F2") : "?"; }
+    string RelVel()
+    {
+        if (_rb == null) return "-";
+        Vector3 v = _rb.velocity - (_body != null ? _body.velocity : Vector3.zero);
+        return v.magnitude.ToString("F2");
+    }
+
+    void FixedUpdate()
+    {
+        _t += Time.fixedDeltaTime;
+        _sb.AppendLine("t=" + _t.ToString("F2") + " localPos=" + LocalPos() + " relVel=" + RelVel());
+        if (_t >= 4f) Finish();
+    }
+
+    void OnCollisionEnter(Collision c) { Contact("ENTER", c); }
+    void OnCollisionStay(Collision c) { if (_contacts < 40) Contact("stay", c); }
+
+    void Contact(string kind, Collision c)
+    {
+        _contacts++;
+        if (_contacts > 60) return;
+        var p = c.contactCount > 0 ? c.GetContact(0) : default;
+        _sb.AppendLine("  contact(" + kind + ") " + c.collider.name + " sep=" + p.separation.ToString("F3")
+            + " normal=" + p.normal.ToString("F2") + " impulse=" + c.impulse.magnitude.ToString("F1"));
+    }
+
+    void Finish()
+    {
+        try
+        {
+            System.IO.File.WriteAllText(@"C:\Users\Sammc\AppData\Local\Temp\claude\C--Users-Sammc-Desktop-1ass-1aughhh1\5a149854-1a50-4389-8a70-027cf0eae613\scratchpad\release_diag.txt", _sb.ToString());
+        }
+        catch { }
+        Destroy(this);
+    }
+
+    void OnDestroy()
+    {
+        if (_t < 4f) Finish();
     }
 }
