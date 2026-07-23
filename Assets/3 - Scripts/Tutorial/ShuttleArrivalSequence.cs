@@ -196,6 +196,17 @@ public class ShuttleArrivalSequence : MonoBehaviour
     void SyncPlayerToPod()
     {
         if (_rb == null || _podGrp == null) return;
+
+        // Keep the player upright RELATIVE TO THE SHUTTLE. The kinematic freeze
+        // also freezes PlayerController's own gravity-up alignment (its
+        // FixedUpdate early-returns), so without this the body keeps its spawn
+        // orientation and clips out of the chamber as the shuttle moves. Same
+        // FromToRotation pattern the controller uses for gravity-up; mouse-look
+        // yaw/pitch ride on top untouched.
+        Quaternion upFix = Quaternion.FromToRotation(_playerT.up, transform.up);
+        _playerT.rotation = upFix * _playerT.rotation;
+        _rb.rotation = _playerT.rotation;
+
         Vector3 pos = _podGrp.TransformPoint(standOffset);
         if (_shakeAmp > 0f)
         {
