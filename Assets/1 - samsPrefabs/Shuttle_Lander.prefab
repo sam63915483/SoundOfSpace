@@ -22984,7 +22984,7 @@ MonoBehaviour:
   landingShake: 0.12
   ambientHumClip: {fileID: 8300000, guid: 149a1f6f318bf684e935aaf910d4d12c, type: 3}
   thrusterClip: {fileID: 8300000, guid: 54c8e92113c975c4f8de097d33677e5a, type: 3}
-  touchdownClip: {fileID: 8300000, guid: b6825b49510956340bc1cc9c09ce740c, type: 3}
+  touchdownClip: {fileID: 0}
   ambientVolume: 0.3
   thrusterVolume: 0.8
   touchdownVolume: 0.4

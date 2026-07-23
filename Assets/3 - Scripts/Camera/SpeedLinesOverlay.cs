@@ -24,6 +24,12 @@ using UnityEngine.UI;
 /// </summary>
 public class SpeedLinesOverlay : MonoBehaviour
 {
+    // Cinematic gate: the shuttle-landing intro drives the player at descent
+    // speeds while they stand INSIDE the sealed stasis chamber — air streaks
+    // across the visor read wrong indoors. While true, target intensity is 0
+    // and any live streaks fade out through the normal path.
+    public static bool Suppressed;
+
     // ── Tuning ──────────────────────────────────────────────────────
     // 60+ very thin, very faint streaks. No single streak is visually
     // prominent — density creates the "moving through air" feel rather
@@ -239,6 +245,7 @@ public class SpeedLinesOverlay : MonoBehaviour
 
     float ComputeTargetIntensity()
     {
+        if (Suppressed) return 0f;
         // Only consider the CURRENTLY piloted ship — without this, after the
         // player exits, an orbiting abandoned ship keeps tripping speed
         // lines because FindObjectOfType returns the first ship found.

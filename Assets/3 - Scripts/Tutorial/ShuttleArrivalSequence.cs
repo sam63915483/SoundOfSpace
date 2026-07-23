@@ -142,8 +142,39 @@ public class ShuttleArrivalSequence : MonoBehaviour
             yield return new WaitForSecondsRealtime(touchdownHold);
         }
 
+        // Hand the up-override to a blend proxy BEFORE teardown: clearing it
+        // outright makes the controller snap from shuttle-up to gravity-up in
+        // one FixedUpdate — a visible hitch right as the door finishes. The
+        // proxy eases between the two over a second and a half instead.
+        StartCoroutine(BlendUpOverrideOut(1.5f));
         yield return OpenStasisDoor();
         Teardown();   // release the player into normal play (door stays open)
+    }
+
+    // Slerps the alignment target from the shuttle's up to true gravity-up,
+    // then releases the override entirely. Runs across the door-open beat and
+    // the first free steps; the player never feels the frame change.
+    IEnumerator BlendUpOverrideOut(float seconds)
+    {
+        var body = GetComponentInParent<CelestialBody>();
+        var proxy = new GameObject("ShuttleUpBlendProxy").transform;
+        proxy.SetParent(transform, false);
+        Vector3 fromUp = transform.up;
+        proxy.rotation = Quaternion.FromToRotation(Vector3.up, fromUp);
+        PlayerController.UpOverrideTransform = proxy;
+
+        float t = 0f;
+        while (t < seconds && _playerT != null)
+        {
+            t += Time.deltaTime;
+            Vector3 gravityUp = body != null ? (_playerT.position - body.Position).normalized : fromUp;
+            Vector3 up = Vector3.Slerp(fromUp, gravityUp, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / seconds)));
+            proxy.rotation = Quaternion.FromToRotation(Vector3.up, up);
+            yield return null;
+        }
+        if (PlayerController.UpOverrideTransform == proxy)
+            PlayerController.UpOverrideTransform = null;
+        Destroy(proxy.gameObject);
     }
 
     bool Setup()
@@ -178,6 +209,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         IntroSequenceController.SuppressGroggyCameraFx = true;
         HALCommentator.SuppressAutonomous = true;
         FallDamage.Suppressed = true;
+        SpeedLinesOverlay.Suppressed = true;                   // no air streaks inside the sealed chamber
         // NOTE: unlike the pod cinematic we deliberately DO NOT hide the HUD —
         // the helmet visor frame is registered with HudVisibility, and hiding
         // it reads as "no helmet on" in the stasis chamber (then it pops on at
@@ -332,13 +364,17 @@ public class ShuttleArrivalSequence : MonoBehaviour
             var body = GetComponentInParent<CelestialBody>();
             _pc.SetVelocity(body != null ? body.velocity : Vector3.zero);   // inherit the planet's orbit
         }
+        // Only clear the override if it's still pointing at US — the normal
+        // path hands it to the blend proxy first (see BlendUpOverrideOut),
+        // which owns its own release.
         if (PlayerController.UpOverrideTransform == transform)
-            PlayerController.UpOverrideTransform = null;       // hand the up back to gravity
+            PlayerController.UpOverrideTransform = null;
         TutorialGate.UnlockAll();
         if (_pc != null) _pc.introMoveScale = 1f;
         IntroSequenceController.SuppressGroggyCameraFx = false;
         HALCommentator.SuppressAutonomous = false;
         FallDamage.Suppressed = false;
+        SpeedLinesOverlay.Suppressed = false;
 
         if (_grog != null) { DestroyImmediate(_grog); _grog = null; }
         if (_canvas != null) Destroy(_canvas.gameObject);
