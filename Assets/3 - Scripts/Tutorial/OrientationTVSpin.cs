@@ -81,7 +81,9 @@ public class OrientationTVSpin : MonoBehaviour
         if (tiltPivot != null)
         {
             float dist = Vector3.ProjectOnPlane(playerPos - tiltPivot.position, transform.up).magnitude;
-            float target = maxExtraTilt * Mathf.InverseLerp(tiltStartDistance, tiltFullDistance, dist);
+            // sqrt front-loads the curve: most of the lean arrives while
+            // approaching, not just in the last step.
+            float target = maxExtraTilt * Mathf.Sqrt(Mathf.InverseLerp(tiltStartDistance, tiltFullDistance, dist));
             _tilt = Mathf.MoveTowards(_tilt, target, tiltDegreesPerSecond * Time.deltaTime);
             tiltPivot.localRotation = _tiltRestLocalRot * Quaternion.AngleAxis(_tilt, Vector3.right);
         }
@@ -93,14 +95,14 @@ public class OrientationTVSpin : MonoBehaviour
     public Transform tiltPivot;
 
     [Tooltip("Maximum EXTRA downward tilt (deg) on top of the authored rest tilt.")]
-    public float maxExtraTilt = 25f;
+    public float maxExtraTilt = 35f;
 
     [Tooltip("Closer than this (m, horizontal) the TV starts leaning down.")]
-    public float tiltStartDistance = 3.5f;
+    public float tiltStartDistance = 5f;
 
     [Tooltip("At this horizontal distance (m) the tilt reaches its maximum.")]
-    public float tiltFullDistance = 1.2f;
+    public float tiltFullDistance = 1.4f;
 
     [Tooltip("Degrees per second the tilt hinge can move.")]
-    public float tiltDegreesPerSecond = 60f;
+    public float tiltDegreesPerSecond = 80f;
 }
