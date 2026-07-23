@@ -361,8 +361,22 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (_pc != null && _rb != null)
         {
             _rb.isKinematic = _wasKinematic;
+            // CRITICAL (same class of bug as PlayerPickup's "drop teleports
+            // super far"): the project runs Physics.autoSyncTransforms = false,
+            // so a freshly-dynamic body keeps the STALE PhysX pose it had while
+            // kinematic and reconciles by snapping/depenetrating from there —
+            // flinging the player through the floor. Seat the body exactly at
+            // the visible pose and commit it into PhysX NOW.
+            _rb.position = _playerT.position;
+            _rb.rotation = _playerT.rotation;
+            _rb.angularVelocity = Vector3.zero;
             var body = GetComponentInParent<CelestialBody>();
             _pc.SetVelocity(body != null ? body.velocity : Vector3.zero);   // inherit the planet's orbit
+            Physics.SyncTransforms();
+            // Reset the camera's rotation-interpolation buffer so it doesn't
+            // slerp from a pre-release snapshot (one-frame judder otherwise).
+            if (CameraEffectsManager.Instance != null && CameraEffectsManager.Instance.TransformFX != null)
+                CameraEffectsManager.Instance.TransformFX.SnapToCurrentPlayer();
         }
         // Only clear the override if it's still pointing at US — the normal
         // path hands it to the blend proxy first (see BlendUpOverrideOut),
