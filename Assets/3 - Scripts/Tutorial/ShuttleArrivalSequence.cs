@@ -257,6 +257,26 @@ public class ShuttleArrivalSequence : MonoBehaviour
     IEnumerator WakeUpPhase()
     {
         PreloadVoices();   // warm the whole briefing bank while the eyes are shut
+
+        // Hold the first "Wake up" until (a) the scene-load hitch storm has
+        // passed (5 consecutive smooth frames) and (b) the clip is actually
+        // decoded — otherwise the first calls play into frozen frames or a
+        // cold cache and the player hears nothing until half-woken.
+        int calm = 0; float guard = 0f;
+        while (calm < 5 && guard < 8f && !_skip)
+        {
+            guard += Time.unscaledDeltaTime;
+            calm = Time.unscaledDeltaTime < 0.1f ? calm + 1 : 0;
+            yield return null;
+        }
+        float warm = 0f;
+        while (warm < 4f && !_skip
+               && !(HALVoicePlayer.Instance != null && HALVoicePlayer.Instance.IsCached("Wake up")))
+        {
+            warm += Time.unscaledDeltaTime;
+            yield return null;
+        }
+
         _wakeArmed = true;
         var wakeLoop = StartCoroutine(WakeUpLoop());
         StartCoroutine(ShowWakePromptAfter(wakePromptDelay));

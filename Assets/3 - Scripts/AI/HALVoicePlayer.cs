@@ -145,6 +145,10 @@ public class HALVoicePlayer : MonoBehaviour
         // clip if the per-planet file is missing on disk.
         if (!_loading.Contains(preferredFile))
             StartCoroutine(LoadAndPlay(preferredFile, lineVol, line));
+        else
+            // A load (e.g. a Preload) is already in flight — without this the
+            // line was silently DROPPED. Play it the moment the clip lands.
+            StartCoroutine(PlayWhenLoaded(preferredFile, lineVol));
         return true;
     }
 
@@ -171,6 +175,20 @@ public class HALVoicePlayer : MonoBehaviour
         if (!HALVoiceManifest.Lines.TryGetValue(line, out var file)) return;
         if (_cache.ContainsKey(file) || _loading.Contains(file)) return;
         StartCoroutine(LoadOnly(file));
+    }
+
+    /// True once `line`'s clip is decoded and ready for instant playback.
+    public bool IsCached(string line)
+        => !string.IsNullOrEmpty(line)
+        && HALVoiceManifest.Lines.TryGetValue(line, out var file)
+        && _cache.ContainsKey(file);
+
+    IEnumerator PlayWhenLoaded(string file, float lineVol)
+    {
+        float t = 0f;
+        while (_loading.Contains(file) && t < 6f) { t += Time.unscaledDeltaTime; yield return null; }
+        if (_cache.TryGetValue(file, out var clip) && clip != null)
+            PlayClip(clip, lineVol);
     }
 
     IEnumerator LoadOnly(string file)

@@ -241,7 +241,13 @@ public class SpaceDustField : MonoBehaviour
                 through = 1f - Mathf.SmoothStep(atmoAng * 0.85f, atmoAng * 1.35f, ang);
             }
 
-            float f = Mathf.Max(immersion, through);
+            // Immersion is CAPPED: at 1.0 the shader's luminance gate erased
+            // everything but the thin bright ring from a planet surface — the
+            // black hole read as "gone" from Humble Abode. At 0.7 the dark
+            // lensed body keeps ~30% presence through the haze while the
+            // "through the limb from space" case (through) stays full-strength.
+            const float surfaceImmersionCap = 0.7f;
+            float f = Mathf.Max(immersion * surfaceImmersionCap, through);
             if (f > fade) fade = f;
         }
 
