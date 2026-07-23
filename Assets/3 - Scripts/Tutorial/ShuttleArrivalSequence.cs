@@ -34,7 +34,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     [Header("Timing (seconds)")]
     [SerializeField] float fadeInTime    = 2f;
-    [SerializeField] float entryDuration = 52f;     // covers the briefing schedule (last line at 49s)
+    [SerializeField] float entryDuration = 67f;     // stretched so touchdown lands ~30s into the film (film starts ~55s)
     [SerializeField] float brakeDuration = 8f;      // 150m -> 12m, entrySpeed -> finalSinkSpeed
     [SerializeField] float finalDuration = 10f;     // 12m -> touchdown, easing to 0 m/s
     [SerializeField] float touchdownHold = 1.2f;    // beat on the ground before the door opens
@@ -65,25 +65,38 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [SerializeField] Material grogginessMaterial;
     [SerializeField] float grogRecoverRate = 0.025f;    // full blur -> sharp across the descent
 
-    // HAL briefing — identical lines + schedule to the pod descent. Text MUST
-    // byte-match HALVoiceManifest.Lines or a line plays silent, so they live in
-    // code. (See PodArrivalSequence for the original.)
+    // HAL briefing (2026-07 orientation-film rework). Text MUST byte-match
+    // HALVoiceManifest.Lines or a line plays silent, so they live in code.
+    // The memory-loss line was deleted (the film covers it) and the vitals
+    // line trimmed; the last entry is the film lead-in (the film schedules
+    // itself filmDelayAfterLeadIn seconds after it's dispatched). The
+    // "Approaching Humble Abode" callout is NOT timer-driven any more — it
+    // fires from descent physics (crossing approachLineAltitude, over the film).
     static readonly string[] _briefing = {
         "Stasis cycle complete. Welcome back, astronaut.",
         "You have been in transit for three years, and are twenty-five trillion miles from Earth.",
-        "Memory loss is expected after stasis of this length. It will not affect the mission.",
-        "Heart rate elevated. Vitals irregular. Do not worry, memories will return with time.",
+        "Heart rate elevated. Vitals irregular. Within acceptable parameters.",
         "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.",
-        "Approaching Humble Abode. Begin atmospheric entry.",
+        "To assist with recalibration, please enjoy this orientation film. Viewing is mandatory and comforting.",
     };
-    static readonly float[] _briefingTimes = { 2f, 12f, 22f, 32f, 42f, 49f };
+    static readonly float[] _briefingTimes = { 2f, 12f, 32f, 42f, 50f };
     const string ReverseThrusterLine = "Engaging reverse thrusters.";
+    const string ApproachLine = "Approaching Humble Abode. Begin atmospheric entry.";
 
     // ── Runtime ──────────────────────────────────────────────────────────────
     PlayerController _pc;
     Transform _playerT;
     Rigidbody _rb;
     Transform _podGrp, _doorPivot;
+    Renderer _screenRenderer;
+    ShuttleExitDoor _exitDoor;
+    UnityEngine.Video.VideoPlayer _video;
+    RenderTexture _videoRT;
+    Material _filmMat, _screenOriginalMat;
+    AudioSource _videoAudio;
+    bool _filmScheduled, _filmStarted, _filmEnded;
+    bool _approachSpoken;
+    bool _released;
     Vector3 _restLocalPos;
     Vector3 _localUp;
     Quaternion _doorRestRot;
@@ -107,6 +120,24 @@ public class ShuttleArrivalSequence : MonoBehaviour
     // Flip on to log a per-FixedUpdate release report to the scratchpad —
     // this is how the one-frame orbital-lag seating bug was caught.
     const bool ReleaseDiagnostics = false;
+
+    // -- fields below appended after initial release; keep order (serialization) --
+
+    [Header("Orientation film (plays on the pod TV; exit door unlocks after)")]
+    [Tooltip("The ~60s orientation video. Plays on TVScreen; audio from the TV.")]
+    public UnityEngine.Video.VideoClip orientationFilm;
+
+    [Tooltip("Seconds after the lead-in line before the film starts.")]
+    public float filmDelayAfterLeadIn = 5f;
+
+    [Range(0f, 1f), Tooltip("Film audio volume (ducked to half under HAL callouts).")]
+    public float filmVolume = 0.85f;
+
+    [Tooltip("Seconds after the film ends before the exit door folds open.")]
+    public float doorUnlockDelay = 2f;
+
+    [Tooltip("'Approaching Humble Abode' fires when the descent crosses this altitude (m).")]
+    public float approachLineAltitude = 300f;
 
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
@@ -137,6 +168,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
             transform.localPosition = _restLocalPos;
             SyncPlayerToPod();
             StopThruster(0f);
+            StopFilm();
             yield return Fade(1f, 0f, 0.4f);
         }
         else
@@ -149,13 +181,49 @@ public class ShuttleArrivalSequence : MonoBehaviour
             yield return new WaitForSecondsRealtime(touchdownHold);
         }
 
-        // Hand the up-override to a blend proxy BEFORE teardown: clearing it
+        // Hand the up-override to a blend proxy BEFORE the release: clearing it
         // outright makes the controller snap from shuttle-up to gravity-up in
         // one FixedUpdate — a visible hitch right as the door finishes. The
         // proxy eases between the two over a second and a half instead.
         StartCoroutine(BlendUpOverrideOut(1.5f));
         yield return OpenStasisDoor();
-        Teardown();   // release the player into normal play (door stays open)
+        ReleasePlayer();   // free to roam the cabin; the film keeps playing
+
+        // The EXIT door stays locked until the film ends (the player never
+        // controls it). Skip = straight to open, no film.
+        if (_skip)
+        {
+            StopFilm();
+            if (_exitDoor != null) _exitDoor.OpenInstant();
+        }
+        else
+        {
+            float safety = (orientationFilm != null ? (float)orientationFilm.length : 60f) + 90f;
+            float waited = 0f;
+            while (!_skip && waited < safety && !FilmFinished())
+            {
+                // Belt + braces: loopPointReached is the primary end signal,
+                // but a stopped player counts too.
+                if (_filmStarted && _video != null && !_video.isPlaying) _filmEnded = true;
+                waited += Time.deltaTime;
+                yield return null;
+            }
+            StopFilm();   // restores the green glow
+            if (_skip) { if (_exitDoor != null) _exitDoor.OpenInstant(); }
+            else
+            {
+                yield return new WaitForSecondsRealtime(doorUnlockDelay);
+                if (_exitDoor != null) _exitDoor.Open();
+            }
+        }
+
+        Teardown();
+    }
+
+    bool FilmFinished()
+    {
+        if (!_filmScheduled) return true;   // no film (clip missing / never reached the lead-in)
+        return _filmStarted ? _filmEnded : false;
     }
 
     // Slerps the alignment target from the shuttle's up to true gravity-up,
@@ -196,9 +264,14 @@ public class ShuttleArrivalSequence : MonoBehaviour
         {
             if (t.name == "StasisPod") _podGrp = t;
             else if (t.name == "StasisDoor_Pivot") _doorPivot = t;
+            else if (t.name == "TVScreen") _screenRenderer = t.GetComponent<Renderer>();
         }
         if (_podGrp == null) return false;
         if (_doorPivot != null) _doorRestRot = _doorPivot.localRotation;
+        _exitDoor = GetComponentInChildren<ShuttleExitDoor>(true);
+        _filmScheduled = _filmStarted = _filmEnded = false;
+        _approachSpoken = false;
+        _released = false;
 
         _restLocalPos = transform.localPosition;
         _localUp = _restLocalPos.sqrMagnitude > 0.001f ? _restLocalPos.normalized : Vector3.up;
@@ -250,6 +323,15 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (!_flying) return;
         transform.localPosition = _restLocalPos + _localUp * _altitude;
         SyncPlayerToPod();
+
+        // The approach callout is physics-triggered (crossing the altitude
+        // threshold during the real descent), not a scheduled timer — it lands
+        // over the film with the film's audio ducked underneath.
+        if (!_approachSpoken && _altitude <= approachLineAltitude)
+        {
+            _approachSpoken = true;
+            Speak(ApproachLine);
+        }
     }
 
     void SyncPlayerToPod()
@@ -272,6 +354,15 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (_active && Input.GetKeyDown(KeyCode.Escape)) _skip = true;
         if (_grog != null)
             _grog.intensity = Mathf.MoveTowards(_grog.intensity, 0f, grogRecoverRate * Time.unscaledDeltaTime);
+
+        // Duck the film ~6dB under HAL callouts (approach / reverse thrusters),
+        // easing back up when the line clears.
+        if (_videoAudio != null && _filmStarted && !_filmEnded)
+        {
+            bool halTalking = HALLineHUD.Instance != null && !HALLineHUD.Instance.IsIdle;
+            float target = filmVolume * (halTalking ? 0.5f : 1f);
+            _videoAudio.volume = Mathf.MoveTowards(_videoAudio.volume, target, 2f * Time.deltaTime);
+        }
     }
 
     // ── Flight phases (Hermite: pins the sink rate at each seam, like the pod) ─
@@ -295,6 +386,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
             {
                 Speak(_briefing[_briefingIndex]);
                 _briefingIndex++;
+                if (_briefingIndex == _briefing.Length) ScheduleFilm();   // last line = the film lead-in
             }
             yield return null;
         }
@@ -306,6 +398,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         {
             Speak(_briefing[_briefingIndex]);
             _briefingIndex++;
+            if (_briefingIndex == _briefing.Length) ScheduleFilm();
             yield return new WaitForSecondsRealtime(4f);
         }
     }
@@ -355,11 +448,12 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _doorPivot.localRotation = _doorRestRot * Quaternion.AngleAxis(-doorOpenAngle, Vector3.right);
     }
 
-    // ── Teardown: hand the player to normal play (idempotent) ────────────────
-    void Teardown()
+    // ── Release: hand the player to normal play while the sequence keeps
+    //    running (the film + locked exit door outlive the player's freedom).
+    void ReleasePlayer()
     {
-        if (!_active) return;
-        _active = false;
+        if (_released) return;
+        _released = true;
         _flying = false;
         _shakeAmp = 0f;
 
@@ -405,15 +499,83 @@ public class ShuttleArrivalSequence : MonoBehaviour
         TutorialGate.UnlockAll();
         if (_pc != null) _pc.introMoveScale = 1f;
         IntroSequenceController.SuppressGroggyCameraFx = false;
-        HALCommentator.SuppressAutonomous = false;
         FallDamage.Suppressed = false;
         SpeedLinesOverlay.Suppressed = false;
-
         if (_grog != null) { DestroyImmediate(_grog); _grog = null; }
+        // NOTE: HALCommentator stays suppressed until Teardown — no ambient
+        // HAL chatter over the orientation film.
+    }
+
+    // ── Final teardown (idempotent; also the abort path via OnDisable/Destroy) ─
+    void Teardown()
+    {
+        if (!_active) return;
+        _active = false;
+        ReleasePlayer();
+        HALCommentator.SuppressAutonomous = false;
+        StopFilm();
         if (_canvas != null) Destroy(_canvas.gameObject);
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_thruster != null) { _thruster.Stop(); Destroy(_thruster.gameObject); }
         if (_sfx != null) Destroy(_sfx, 3f);   // let the touchdown thump ring out
+    }
+
+    // ── Orientation film ─────────────────────────────────────────────────────
+    void ScheduleFilm()
+    {
+        if (_filmScheduled) return;
+        _filmScheduled = true;
+        StartCoroutine(StartFilmAfter(filmDelayAfterLeadIn));
+    }
+
+    IEnumerator StartFilmAfter(float delay)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        if (_skip || orientationFilm == null || _screenRenderer == null)
+        {
+            _filmStarted = true; _filmEnded = true;   // nothing to wait on
+            yield break;
+        }
+
+        _videoRT = new RenderTexture(1024, 576, 0);
+        var go = _screenRenderer.gameObject;
+        _video = go.AddComponent<UnityEngine.Video.VideoPlayer>();
+        _video.playOnAwake = false;
+        _video.clip = orientationFilm;
+        _video.isLooping = false;
+        _video.renderMode = UnityEngine.Video.VideoRenderMode.RenderTexture;
+        _video.targetTexture = _videoRT;
+        _video.audioOutputMode = UnityEngine.Video.VideoAudioOutputMode.AudioSource;
+        _video.controlledAudioTrackCount = 1;
+        _videoAudio = go.AddComponent<AudioSource>();
+        _videoAudio.playOnAwake = false;
+        _videoAudio.spatialBlend = 0.6f;               // from the TV, but clear anywhere in the cabin
+        _videoAudio.rolloffMode = AudioRolloffMode.Linear;
+        _videoAudio.maxDistance = 18f;
+        _videoAudio.volume = filmVolume;
+        _video.EnableAudioTrack(0, true);
+        _video.SetTargetAudioSource(0, _videoAudio);
+        _video.loopPointReached += _ => _filmEnded = true;
+
+        // Swap the green glow for the film; restored by StopFilm.
+        _screenOriginalMat = _screenRenderer.sharedMaterial;
+        _filmMat = new Material(Shader.Find("Unlit/Texture"));
+        _filmMat.mainTexture = _videoRT;
+        _screenRenderer.material = _filmMat;
+
+        _video.Play();
+        _filmStarted = true;
+    }
+
+    void StopFilm()
+    {
+        _filmEnded = true;
+        if (_video != null) { _video.Stop(); Destroy(_video); _video = null; }
+        if (_videoAudio != null) { Destroy(_videoAudio); _videoAudio = null; }
+        if (_screenRenderer != null && _screenOriginalMat != null)
+            _screenRenderer.sharedMaterial = _screenOriginalMat;   // green glow returns
+        if (_filmMat != null) { Destroy(_filmMat); _filmMat = null; }
+        if (_videoRT != null) { _videoRT.Release(); Destroy(_videoRT); _videoRT = null; }
     }
 
     void OnDisable() { Teardown(); }

@@ -1753,7 +1753,6 @@ Transform:
   - {fileID: 7244409962051491406}
   - {fileID: 6486825340619590969}
   - {fileID: 7967310454940529340}
-  - {fileID: 5040477156561757623}
   - {fileID: 2990736737047147400}
   - {fileID: 7692993990793371630}
   - {fileID: 5719363394278095406}
@@ -1828,6 +1827,7 @@ Transform:
   - {fileID: 5619612826124058332}
   - {fileID: 7577981689971895815}
   - {fileID: 3535482776953012397}
+  - {fileID: 8013389237207003211}
   m_Father: {fileID: 4421007967151122899}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &711919678068556658
@@ -3074,6 +3074,53 @@ MeshCollider:
   m_Convex: 1
   m_CookingOptions: 30
   m_Mesh: {fileID: 10206, guid: 0000000000000000e000000000000000, type: 0}
+--- !u!1 &1002463531754211112
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8013389237207003211}
+  - component: {fileID: 3763991160324826284}
+  m_Layer: 10
+  m_Name: ExitDoor_Pivot
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8013389237207003211
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1002463531754211112}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.9299723, z: 4.09}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 5040477156561757623}
+  m_Father: {fileID: 2458099821085782306}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &3763991160324826284
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1002463531754211112}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 521f6b0461a9fe54680a2ce7b12f70c0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  openAngle: 115
+  openTime: 2.5
 --- !u!1 &1031164260619243529
 GameObject:
   m_ObjectHideFlags: 0
@@ -21509,12 +21556,12 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8695225776708576090}
   serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 1, z: 0, w: -0.00000004371139}
-  m_LocalPosition: {x: -0, y: 2.434, z: 4.09}
-  m_LocalScale: {x: 2.81, y: 3.61, z: 0.18}
+  m_LocalRotation: {x: -0, y: 1, z: -0, w: -0.00000004371139}
+  m_LocalPosition: {x: 0, y: 1.5041097, z: 0}
+  m_LocalScale: {x: 2.81, y: 3.6100001, z: 0.18}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 2458099821085782306}
+  m_Father: {fileID: 8013389237207003211}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!33 &789713293868404793
 MeshFilter:
@@ -22171,7 +22218,7 @@ MonoBehaviour:
   entrySpeed: 35
   finalSinkSpeed: 1.5
   fadeInTime: 2
-  entryDuration: 52
+  entryDuration: 67
   brakeDuration: 8
   finalDuration: 10
   touchdownHold: 1.2
@@ -22189,6 +22236,11 @@ MonoBehaviour:
   thrusterLowPassHz: 1100
   grogginessMaterial: {fileID: 2100000, guid: 22e5ca827c024ee458571725b910fd32, type: 2}
   grogRecoverRate: 0.025
+  orientationFilm: {fileID: 32900000, guid: 4b88a2baf93706949a1c57aebf196249, type: 3}
+  filmDelayAfterLeadIn: 5
+  filmVolume: 0.85
+  doorUnlockDelay: 2
+  approachLineAltitude: 300
 --- !u!1 &8812311342787602616
 GameObject:
   m_ObjectHideFlags: 0

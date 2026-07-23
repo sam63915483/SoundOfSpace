@@ -101,6 +101,9 @@ public static class HALVoiceManifest
         { "Approaching Humble Abode. Begin atmospheric entry.",  "pod_02_approaching.mp3" },
         { "You have been in transit for three years, and are twenty-five trillion miles from Earth.", "pod_04_transit_distance.mp3" },
         { "Engaging reverse thrusters.",                         "pod_03_thrusters.mp3" },
+        // Shuttle-landing rework (2026-07): trimmed vitals + orientation-film lead-in.
+        { "Heart rate elevated. Vitals irregular. Within acceptable parameters.", "pod_05_vitals_ok.mp3" },
+        { "To assist with recalibration, please enjoy this orientation film. Viewing is mandatory and comforting.", "pod_06_orientation.mp3" },
 
         // ── Mission 1 cold open (IntroSequenceController) ───────────────────
         // Keys MUST byte-match IntroSequenceController's line consts (em-dash,
