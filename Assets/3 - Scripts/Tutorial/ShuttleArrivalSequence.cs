@@ -34,7 +34,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     [Header("Timing (seconds)")]
     [SerializeField] float fadeInTime    = 2f;
-    [SerializeField] float entryDuration = 67f;     // stretched so touchdown lands ~30s into the film (film starts ~55s)
+    [SerializeField] float entryDuration = 57f;     // film starts ~45s; touchdown at entry+18 = 75s (~30s into the film)
     [SerializeField] float brakeDuration = 8f;      // 150m -> 12m, entrySpeed -> finalSinkSpeed
     [SerializeField] float finalDuration = 10f;     // 12m -> touchdown, easing to 0 m/s
     [SerializeField] float touchdownHold = 1.2f;    // beat on the ground before the door opens
@@ -79,7 +79,10 @@ public class ShuttleArrivalSequence : MonoBehaviour
         "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.",
         "To assist with recalibration, please enjoy this orientation film. Viewing is mandatory and comforting.",
     };
-    static readonly float[] _briefingTimes = { 2f, 12f, 32f, 42f, 50f };
+    // Tightened 2026-07 (the old 12->32 gap was 20s of dead air): lines flow
+    // back-to-back with breathing room, the altitude-triggered approach
+    // callout slots naturally into the ~25s gap, and the film starts clean.
+    static readonly float[] _briefingTimes = { 2f, 10f, 18f, 28f, 37f };
     const string ReverseThrusterLine = "Engaging reverse thrusters.";
     const string ApproachLine = "Approaching Humble Abode. Begin atmospheric entry.";
 
@@ -127,8 +130,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [Tooltip("The ~60s orientation video. Plays on TVScreen; audio from the TV.")]
     public UnityEngine.Video.VideoClip orientationFilm;
 
-    [Tooltip("Seconds after the lead-in line before the film starts.")]
-    public float filmDelayAfterLeadIn = 5f;
+    [Tooltip("Seconds after the lead-in line before the film starts (lead-in is ~7s spoken — keep the film clear of it).")]
+    public float filmDelayAfterLeadIn = 8f;
 
     [Range(0f, 1f), Tooltip("Film audio volume (ducked to half under HAL callouts).")]
     public float filmVolume = 0.85f;
@@ -136,8 +139,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [Tooltip("Seconds after the film ends before the exit door folds open.")]
     public float doorUnlockDelay = 2f;
 
-    [Tooltip("'Approaching Humble Abode' fires when the descent crosses this altitude (m).")]
-    public float approachLineAltitude = 300f;
+    [Tooltip("'Approaching Humble Abode' fires when the descent crosses this altitude (m). High enough that it lands mid-briefing, BEFORE the film starts.")]
+    public float approachLineAltitude = 800f;
 
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()

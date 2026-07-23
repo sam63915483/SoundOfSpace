@@ -3099,8 +3099,8 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1002463531754211112}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0.9299723, z: 4.09}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0.79, z: 4}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
@@ -21557,8 +21557,8 @@ Transform:
   m_GameObject: {fileID: 8695225776708576090}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: 1, z: -0, w: -0.00000004371139}
-  m_LocalPosition: {x: 0, y: 1.5041097, z: 0}
-  m_LocalScale: {x: 2.81, y: 3.6100001, z: 0.18}
+  m_LocalPosition: {x: 0, y: 1.5810122, z: 0.09000015}
+  m_LocalScale: {x: 2.81, y: 3.7, z: 0.18}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 8013389237207003211}
@@ -22218,7 +22218,7 @@ MonoBehaviour:
   entrySpeed: 35
   finalSinkSpeed: 1.5
   fadeInTime: 2
-  entryDuration: 67
+  entryDuration: 57
   brakeDuration: 8
   finalDuration: 10
   touchdownHold: 1.2
@@ -22237,10 +22237,10 @@ MonoBehaviour:
   grogginessMaterial: {fileID: 2100000, guid: 22e5ca827c024ee458571725b910fd32, type: 2}
   grogRecoverRate: 0.025
   orientationFilm: {fileID: 32900000, guid: 4b88a2baf93706949a1c57aebf196249, type: 3}
-  filmDelayAfterLeadIn: 5
+  filmDelayAfterLeadIn: 8
   filmVolume: 0.85
   doorUnlockDelay: 2
-  approachLineAltitude: 300
+  approachLineAltitude: 800
 --- !u!1 &8812311342787602616
 GameObject:
   m_ObjectHideFlags: 0
