@@ -1,4 +1,5 @@
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -100,6 +101,12 @@ public class ShuttleArrivalSequence : MonoBehaviour
     bool _filmScheduled, _filmStarted, _filmEnded;
     bool _approachSpoken;
     bool _released;
+    Image _veil;
+    Image _topLid, _botLid;
+    TextMeshProUGUI _prompt;
+    float _openness, _opennessTarget;
+    int _wakeClicks;
+    bool _wakeArmed, _wokeUp;
     Vector3 _restLocalPos;
     Vector3 _localUp;
     Quaternion _doorRestRot;
@@ -142,13 +149,30 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [Tooltip("'Approaching Humble Abode' fires when the descent crosses this altitude (m). Tuned to land AFTER the film has started (~57s with the default profile).")]
     public float approachLineAltitude = 550f;
 
+    [Header("Wake-up (eyes shut; descent holds until fully open)")]
+    [Tooltip("Seconds before the 'Press LMB' tip appears (clicks count from the start).")]
+    public float wakePromptDelay = 10f;
+
+    [Tooltip("Gap between 'Wake up' repeats.")]
+    public float wakeLoopInterval = 1.0f;
+
+    [Tooltip("Clicks to prise the eyes fully open.")]
+    public int clicksToWake = 6;
+
+    [Tooltip("Seconds each click's eye-opening step takes.")]
+    public float unfadePerClick = 0.30f;
+
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
     {
         _skip = false;
         if (!Setup()) yield break;
 
-        yield return Fade(1f, 0f, fadeInTime);
+        // Eyes-shut wake-up: "Wake up" loops and the player clicks their eyes
+        // open. The shuttle HOLDS at start altitude until the eyes are fully
+        // open — keep them shut for 30s and you miss nothing; the descent (and
+        // the whole briefing/film schedule) only starts once you're awake.
+        yield return WakeUpPhase();
         yield return Approach();
         yield return FlushRemainingBriefing();
 
@@ -227,6 +251,110 @@ public class ShuttleArrivalSequence : MonoBehaviour
     {
         if (!_filmScheduled) return true;   // no film (clip missing / never reached the lead-in)
         return _filmStarted ? _filmEnded : false;
+    }
+
+    // ── Wake-up (eyes shut in the stasis chamber; descent holds) ─────────────
+    IEnumerator WakeUpPhase()
+    {
+        PreloadVoices();   // warm the whole briefing bank while the eyes are shut
+        _wakeArmed = true;
+        var wakeLoop = StartCoroutine(WakeUpLoop());
+        StartCoroutine(ShowWakePromptAfter(wakePromptDelay));
+
+        yield return new WaitUntil(() => _wakeClicks >= clicksToWake || _skip);
+        StopCoroutine(wakeLoop);
+        if (_prompt != null) _prompt.gameObject.SetActive(false);
+        _opennessTarget = 1f;
+        yield return new WaitUntil(() => _openness >= 0.999f || _skip);
+        _wokeUp = true;
+        if (HALLineHUD.Instance != null) HALLineHUD.Instance.ClearAll();   // drop any lingering "Wake up"
+        DestroyWakeOverlay();
+    }
+
+    IEnumerator WakeUpLoop()
+    {
+        while (!_wokeUp && !_skip)
+        {
+            Speak("Wake up");
+            yield return null;
+            yield return new WaitWhile(() => HALLineHUD.Instance != null && !HALLineHUD.Instance.IsIdle && !_skip);
+            yield return new WaitForSecondsRealtime(wakeLoopInterval);
+        }
+    }
+
+    IEnumerator ShowWakePromptAfter(float delay)
+    {
+        float t = 0f;
+        while (t < delay && _wakeClicks < clicksToWake && !_skip) { t += Time.unscaledDeltaTime; yield return null; }
+        if (_wakeClicks < clicksToWake && !_skip && _prompt != null)
+        {
+            _prompt.text = "Press " + PromptGlyphs.PrimaryAction;
+            _prompt.gameObject.SetActive(true);
+        }
+    }
+
+    // Preloads every scripted clip while the eyes are shut, so the first line
+    // ("Stasis cycle complete...") is never swallowed by scene-load hitches or
+    // first-use disk latency.
+    void PreloadVoices()
+    {
+        var vp = HALVoicePlayer.Instance;
+        if (vp == null) return;
+        vp.Preload("Wake up");
+        foreach (var line in _briefing) vp.Preload(line);
+        vp.Preload(ApproachLine);
+        vp.Preload(ReverseThrusterLine);
+    }
+
+    // Positions both lids + veil for the given openness (0 shut, 1 open),
+    // with an idle woozy drift that fades as the eyes finish opening.
+    void ApplyEyelids(float openness)
+    {
+        if (_topLid == null || _botLid == null) return;
+        const float lidTopClosed = 0.56f, lidBottomClosed = 0.50f, lidOpenOvershoot = 0.06f;
+        const float woozeAmp = 0.022f, woozeSpeed = 1.6f;
+
+        float wooze = (Mathf.Sin(Time.unscaledTime * woozeSpeed) * woozeAmp
+                       + Mathf.Sin(Time.unscaledTime * woozeSpeed * 2.3f + 1.7f) * woozeAmp * 0.4f) * (1f - openness);
+
+        float topCover = Mathf.Lerp(lidTopClosed, -lidOpenOvershoot, openness) + wooze;
+        float botCover = Mathf.Lerp(lidBottomClosed, -lidOpenOvershoot, openness) + wooze * 0.5f;
+
+        var trt = _topLid.rectTransform;
+        trt.anchorMin = new Vector2(0f, 1f - topCover); trt.anchorMax = Vector2.one;
+        trt.offsetMin = Vector2.zero; trt.offsetMax = Vector2.zero;
+
+        var brt = _botLid.rectTransform;
+        brt.anchorMin = Vector2.zero; brt.anchorMax = new Vector2(1f, botCover);
+        brt.offsetMin = Vector2.zero; brt.offsetMax = Vector2.zero;
+
+        if (_veil != null) _veil.color = new Color(0f, 0f, 0f, Mathf.Lerp(1f, 0f, openness));
+    }
+
+    // Feathered eyelid sprite: opaque at the outer (screen) edge, soft at the
+    // lash line — same construction as the cabin wake-up's.
+    static Sprite MakeLidSprite(bool opaqueAtTop)
+    {
+        const int h = 64;
+        const float feather = 0.30f;
+        var tex = new Texture2D(1, h, TextureFormat.RGBA32, false) { wrapMode = TextureWrapMode.Clamp };
+        for (int y = 0; y < h; y++)
+        {
+            float v = y / (float)(h - 1);
+            float fromOuter = opaqueAtTop ? v : 1f - v;
+            float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(fromOuter / feather));
+            tex.SetPixel(0, y, new Color(0f, 0f, 0f, a));
+        }
+        tex.Apply();
+        return Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f), 100f);
+    }
+
+    void DestroyWakeOverlay()
+    {
+        if (_veil != null) { Destroy(_veil.gameObject); _veil = null; }
+        if (_topLid != null) { Destroy(_topLid.gameObject); _topLid = null; }
+        if (_botLid != null) { Destroy(_botLid.gameObject); _botLid = null; }
+        if (_prompt != null) { Destroy(_prompt.gameObject); _prompt = null; }
     }
 
     // Slerps the alignment target from the shuttle's up to true gravity-up,
@@ -355,7 +483,25 @@ public class ShuttleArrivalSequence : MonoBehaviour
     void Update()
     {
         if (_active && Input.GetKeyDown(KeyCode.Escape)) _skip = true;
-        if (_grog != null)
+
+        // Eyelids: count wake clicks, ease toward the per-click open target,
+        // and position the lids (with the idle woozy drift) until awake.
+        if (_wakeArmed && !_wokeUp)
+        {
+            if (TutorialGate.PrimaryActionPressed())
+            {
+                _wakeClicks++;
+                _opennessTarget = Mathf.Clamp01((float)_wakeClicks / clicksToWake);
+            }
+            float perClick = clicksToWake > 0 ? 1f / clicksToWake : 1f;
+            float step = unfadePerClick > 0f ? perClick * Time.unscaledDeltaTime / unfadePerClick : 1f;
+            _openness = Mathf.MoveTowards(_openness, _opennessTarget, step);
+            ApplyEyelids(_openness);
+        }
+
+        // Grogginess only starts clearing once the eyes are open (it would
+        // otherwise burn off invisibly behind shut lids).
+        if (_grog != null && _wokeUp)
             _grog.intensity = Mathf.MoveTowards(_grog.intensity, 0f, grogRecoverRate * Time.unscaledDeltaTime);
 
         // Duck the film ~6dB under HAL callouts (approach / reverse thrusters),
@@ -638,14 +784,48 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         _canvas.sortingOrder = 32761;
         go.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        var imgGO = new GameObject("Fade");
-        imgGO.transform.SetParent(go.transform, false);
-        _fade = imgGO.AddComponent<Image>();
-        _fade.raycastTarget = false;
-        _fade.color = new Color(0f, 0f, 0f, 1f);   // start black
-        var rt = _fade.rectTransform;
+
+        // Fade (for skip blinks) — transparent at rest; the wake-up's veil +
+        // eyelids own the initial blackout.
+        _fade = MakeFullScreenImage(go.transform, "Fade", null);
+        _fade.color = new Color(0f, 0f, 0f, 0f);
+
+        _veil = MakeFullScreenImage(go.transform, "Veil", null);
+        _veil.color = new Color(0f, 0f, 0f, 1f);         // eyes shut: full blackout
+        _topLid = MakeFullScreenImage(go.transform, "TopLid", MakeLidSprite(true));
+        _botLid = MakeFullScreenImage(go.transform, "BottomLid", MakeLidSprite(false));
+        _topLid.color = Color.black;
+        _botLid.color = Color.black;
+
+        var promptGO = new GameObject("PressPrompt");
+        promptGO.transform.SetParent(go.transform, false);
+        _prompt = promptGO.AddComponent<TextMeshProUGUI>();
+        _prompt.text = "Press " + PromptGlyphs.PrimaryAction;
+        _prompt.alignment = TextAlignmentOptions.Center;
+        _prompt.fontSize = 42;
+        _prompt.color = new Color(1f, 1f, 1f, 0.85f);
+        var prt = _prompt.rectTransform;
+        prt.anchorMin = new Vector2(0.5f, 0.5f); prt.anchorMax = new Vector2(0.5f, 0.5f);
+        prt.pivot = new Vector2(0.5f, 0.5f);
+        prt.anchoredPosition = Vector2.zero;
+        prt.sizeDelta = new Vector2(800f, 120f);
+        _prompt.gameObject.SetActive(false);
+
+        _openness = _opennessTarget = 0f;
+        ApplyEyelids(0f);
+    }
+
+    Image MakeFullScreenImage(Transform parent, string name, Sprite sprite)
+    {
+        var imgGO = new GameObject(name);
+        imgGO.transform.SetParent(parent, false);
+        var img = imgGO.AddComponent<Image>();
+        if (sprite != null) { img.sprite = sprite; img.type = Image.Type.Simple; }
+        img.raycastTarget = false;
+        var rt = img.rectTransform;
         rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
         rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        return img;
     }
 
     IEnumerator Fade(float from, float to, float seconds)

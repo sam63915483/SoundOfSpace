@@ -56,6 +56,16 @@ public class SpaceDustField : MonoBehaviour
         if (_glowTex != null) Destroy(_glowTex);
         if (_material != null) Destroy(_material);
         if (_mesh != null) Destroy(_mesh);
+
+        // The BH fades are written onto the SHARED material asset — in the
+        // editor, play-mode writes PERSIST into the .mat. Quitting while
+        // immersed once baked _AtmoFade 0.96 / _OceanFade 0.98 into the asset
+        // and the black hole shipped invisible. Always park them at 0.
+        if (_bhMaterial != null)
+        {
+            _bhMaterial.SetFloat(_AtmoFadeID, 0f);
+            _bhMaterial.SetFloat(_OceanFadeID, 0f);
+        }
     }
 
     // This is a DontDestroyOnLoad singleton, so its drifted particle layout and

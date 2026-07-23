@@ -71,7 +71,7 @@ Material:
     m_Ints: []
     m_Floats:
     - _AccretionRadius: 10
-    - _AtmoFade: 0.9695087
+    - _AtmoFade: 0
     - _BumpScale: 1
     - _Cutoff: 0.002
     - _DetailNormalMapScale: 1
@@ -85,7 +85,7 @@ Material:
     - _Metallic: 0
     - _Mode: 0
     - _OcclusionStrength: 1
-    - _OceanFade: 0.98977536
+    - _OceanFade: 0
     - _Parallax: 0.02
     - _Redshift: 0.25
     - _SmoothnessTextureChannel: 0

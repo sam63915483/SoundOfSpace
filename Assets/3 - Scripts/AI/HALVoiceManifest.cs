@@ -126,6 +126,10 @@ public static class HALVoiceManifest
     {
         { "Leaving atmosphere, Astronaut. Vacuum confirmed.",     0.6f },
         { "Entering atmosphere, Astronaut. Descent in progress.", 0.6f },
+        // Shuttle-intro callouts that land OVER the orientation film — 1.25x
+        // quieter (1/1.25 = 0.8) so they sit with the film rather than on it.
+        { "Approaching Humble Abode. Begin atmospheric entry.",   0.8f },
+        { "Engaging reverse thrusters.",                          0.8f },
     };
 
     /// Per-line volume multiplier — 1.0 if no override is set.

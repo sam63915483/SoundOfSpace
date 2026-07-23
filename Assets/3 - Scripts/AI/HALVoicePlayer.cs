@@ -161,6 +161,35 @@ public class HALVoicePlayer : MonoBehaviour
         if (_source != null) _source.Stop();
     }
 
+    /// Warms the clip cache for `line` WITHOUT playing it. Call ahead of a
+    /// scripted sequence (the shuttle intro preloads its briefing during the
+    /// wake-up phase) so the first play is never swallowed by scene-load
+    /// hitches or first-use disk latency.
+    public void Preload(string line)
+    {
+        if (string.IsNullOrEmpty(line)) return;
+        if (!HALVoiceManifest.Lines.TryGetValue(line, out var file)) return;
+        if (_cache.ContainsKey(file) || _loading.Contains(file)) return;
+        StartCoroutine(LoadOnly(file));
+    }
+
+    IEnumerator LoadOnly(string file)
+    {
+        _loading.Add(file);
+        string path = Path.Combine(Application.streamingAssetsPath, "AI", "voice", file);
+        string url  = "file://" + path.Replace('\\', '/');
+        using (var req = UnityWebRequestMultimedia.GetAudioClip(url, AudioType.MPEG))
+        {
+            yield return req.SendWebRequest();
+            if (req.result == UnityWebRequest.Result.Success)
+            {
+                var clip = DownloadHandlerAudioClip.GetContent(req);
+                if (clip != null) _cache[file] = clip;
+            }
+        }
+        _loading.Remove(file);
+    }
+
     void PlayClip(AudioClip clip, float lineVol)
     {
         if (_source == null || clip == null) return;
