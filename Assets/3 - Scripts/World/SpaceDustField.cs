@@ -65,6 +65,7 @@ public class SpaceDustField : MonoBehaviour
         {
             _bhMaterial.SetFloat(_AtmoFadeID, 0f);
             _bhMaterial.SetFloat(_OceanFadeID, 0f);
+            _bhMaterial.SetFloat(_OceanRadiusID, 0f);
         }
     }
 
@@ -135,6 +136,8 @@ public class SpaceDustField : MonoBehaviour
     Material _bhMaterial;
     static readonly int _AtmoFadeID = Shader.PropertyToID("_AtmoFade");
     static readonly int _OceanFadeID = Shader.PropertyToID("_OceanFade");
+    static readonly int _OceanCenterID = Shader.PropertyToID("_OceanCenter");
+    static readonly int _OceanRadiusID = Shader.PropertyToID("_OceanRadius");
 
     // Ocean radii per body (world units; 0 = no ocean), cached like _atmoRadius.
     // Cleared in ReseedField on scene load.
@@ -145,6 +148,8 @@ public class SpaceDustField : MonoBehaviour
     Vector3[] _relOceanPos;
     float[] _relOceanR2;
     int _relOceanCount;
+    float _dustUnderwaterMul = 1f;                 // global dust dim while the camera is submerged (1 dry -> 0 deep)
+    const float dustUnderwaterFadeDepth = 10f;     // metres below the surface at which dust is fully gone
 
     // HLSL-style smoothstep: 0 below edge0, 1 above edge1, smooth between.
     // (Unity's Mathf.SmoothStep has DIFFERENT semantics — it interpolates
@@ -208,6 +213,9 @@ public class SpaceDustField : MonoBehaviour
 
         float fade = 0f;
         float oceanFade = 0f;
+        float nearestOceanDist = float.MaxValue;
+        Vector3 nearestOceanPos = Vector3.zero;
+        float nearestOceanR = 0f;
         for (int i = 0; i < _planets.Count; i++)
         {
             var p = _planets[i];
@@ -216,24 +224,29 @@ public class SpaceDustField : MonoBehaviour
             float distP = toP.magnitude;
             float atmoR = AtmosphereRadius(p);
 
-            // Ocean occlusion (drives _OceanFade — a FULL fade in the shader): the ocean
-            // post-process writes no depth, so the BH's own depth kill can't hide it behind
-            // water — without this the whole lensed ring shows straight through the sea.
+            // Ocean handling, two parts:
+            //  1. SUBMERSION (_OceanFade scalar): fade with DEPTH below the
+            //     surface — shallow paddling keeps the sky visible, a few
+            //     metres down it's gone. (The old binary "underwater -> 1"
+            //     popped the whole effect off at the waterline.)
+            //  2. ABOVE WATER: per-pixel ray-vs-ocean-sphere occlusion in the
+            //     Scingularity shader (fed the nearest ocean's params below).
+            //     A single centre-angle scalar could never handle the lens's
+            //     huge screen footprint half-overlapping the sea.
             float oceanR = OceanRadius(p);
             if (oceanR > 0f)
             {
-                if (distP < oceanR) { oceanFade = 1f; }              // camera underwater
-                else if (distP < distBH && distP > 1e-3f)
+                float depth = oceanR - distP;
+                if (depth > 0f)
                 {
-                    float oceanAng = Mathf.Atan2(oceanR, distP);                      // angular radius of the water disk
-                    float angO = Vector3.Angle(dirBH, toP / distP) * Mathf.Deg2Rad;   // BH offset from planet centre
-                    // EdgeSmoothstep, NOT Mathf.SmoothStep: Unity's SmoothStep(a,b,t)
-                    // INTERPOLATES a->b (t is the 0..1 parameter). Passing the angle as
-                    // t made every distant ocean planet return ~edge1 (tiny radians) so
-                    // thr ~= 0.98 REGARDLESS OF DIRECTION — _OceanFade sat pinned at ~1
-                    // and the black hole was erased from the sky in all of gameplay.
-                    float thr = 1f - EdgeSmoothstep(oceanAng * 0.92f, oceanAng * 1.10f, angO);
-                    if (thr > oceanFade) oceanFade = thr;
+                    float sub = Mathf.Clamp01(depth / bhUnderwaterFadeDepth);
+                    if (sub > oceanFade) oceanFade = sub;
+                }
+                if (distP < nearestOceanDist)
+                {
+                    nearestOceanDist = distP;
+                    nearestOceanPos = p.Position;
+                    nearestOceanR = oceanR;
                 }
             }
 
@@ -269,7 +282,12 @@ public class SpaceDustField : MonoBehaviour
 
         _bhMaterial.SetFloat(_AtmoFadeID, fade);
         _bhMaterial.SetFloat(_OceanFadeID, oceanFade);
+        _bhMaterial.SetVector(_OceanCenterID, nearestOceanPos);
+        _bhMaterial.SetFloat(_OceanRadiusID, nearestOceanR);
     }
+
+    // Metres below the water surface at which the BH/sky effect is fully gone.
+    const float bhUnderwaterFadeDepth = 12f;
 
     void LateUpdate()
     {
@@ -406,7 +424,7 @@ public class SpaceDustField : MonoBehaviour
 
             float vis = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(_threshold[i], Mathf.Min(1f, _threshold[i] + 0.15f), d));
             float tw = 1f - twinkleAmount + twinkleAmount * (0.5f + 0.5f * Mathf.Sin(t * twinkleSpeed + _phase[i]));
-            float b = brightness * vis * edge * tw * washMul;
+            float b = brightness * vis * edge * tw * washMul * _dustUnderwaterMul;
             if (b <= 0.004f) continue;
 
             // Ocean occlusion: kill specks BEHIND a planet's water surface. The dust is a
@@ -485,6 +503,7 @@ public class SpaceDustField : MonoBehaviour
     {
         _relCount = 0;
         _relOceanCount = 0;
+        _dustUnderwaterMul = 1f;
         if (_relOceanPos == null) { _relOceanPos = new Vector3[8]; _relOceanR2 = new float[8]; }
         _planetFalloffInv = 1f / Mathf.Max(1f, planetFalloff);
         _bhRampInv = 1f / Mathf.Max(1f, bhOuterRadius - bhInnerRadius);
@@ -505,9 +524,19 @@ public class SpaceDustField : MonoBehaviour
 
             // Ocean shortlist for the per-speck occlusion test — only planets whose water
             // sphere can reach between the camera and a speck inside the box.
+            // A sphere the CAMERA IS INSIDE is excluded (every speck's segment
+            // starts inside it, so the binary test culled ALL dust the moment
+            // the player's head dipped underwater); that body instead applies a
+            // global depth fade via _dustUnderwaterMul.
             float oceanR = OceanRadius(p);
-            if (oceanR > 0f && _relOceanCount < _relOceanPos.Length
-                && Vector3.Distance(camPos, ppos) - boxReach < oceanR)
+            float camToCenter = Vector3.Distance(camPos, ppos);
+            if (oceanR > 0f && camToCenter < oceanR)
+            {
+                float sub = 1f - Mathf.Clamp01((oceanR - camToCenter) / dustUnderwaterFadeDepth);
+                if (sub < _dustUnderwaterMul) _dustUnderwaterMul = sub;
+            }
+            else if (oceanR > 0f && _relOceanCount < _relOceanPos.Length
+                && camToCenter - boxReach < oceanR)
             {
                 _relOceanPos[_relOceanCount] = ppos;
                 _relOceanR2[_relOceanCount] = oceanR * oceanR;

@@ -594,6 +594,18 @@ public class LensFlareRegistry : MonoBehaviour
             float r = OceanRadiusOf(b);
             if (r <= 0f) continue;
             Vector3 toC = b.Position - origin;
+
+            // Camera IS inside this ocean: shallow = the sun still reads
+            // through the surface; a few metres down it's gone. (The plain
+            // segment test always hits from inside, so the flare used to pop
+            // off the instant the player's head touched the water.)
+            float camDepth = r - toC.magnitude;
+            if (camDepth > 0f)
+            {
+                if (camDepth > 8f) return true;
+                continue;
+            }
+
             float t = Mathf.Clamp01(Vector3.Dot(toC, seg) / len2);
             Vector3 closest = seg * t - toC;
             if (closest.sqrMagnitude < r * r) return true;

@@ -16,6 +16,8 @@ Properties {
 	[Toggle] _Flip("Flipped Projection Correction", Range(0, 1)) = 1
 	[HideInInspector] _AtmoFade("Atmosphere Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
+	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
+	[HideInInspector] _OceanRadius("Ocean Radius (driven by SpaceDustField)", Float) = 0
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -48,7 +50,9 @@ SubShader {
 		uniform half _Redshift;
 		uniform half _Flip;
 		uniform half _AtmoFade;   // 0 in clear space; ramps toward 1 when a planet's atmosphere is between the eye and the effect — EITHER the camera sits inside that atmosphere OR the black hole is viewed through/behind it from outside (set by SpaceDustField.UpdateBlackHoleAtmoFade). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
-		uniform half _OceanFade;  // 0 normally; 1 when a planet's OCEAN sphere sits between the eye and the black hole (also driven by SpaceDustField). Unlike _AtmoFade this is a FULL fade — bright ring included — because the ocean post-process writes no depth, so without it the whole lensed effect (galaxy ring and all) punches through the water. See CLAUDE.md transparent-queue gotcha.
+		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
+		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
+		uniform float _OceanRadius;   // 0 = no ocean nearby / disabled
 		uniform sampler2D_float _CameraDepthTexture;
 
 		struct vertexOutput {
@@ -214,13 +218,34 @@ SubShader {
 			// lens core) keep their alpha, so the black hole still reads through haze.
 			if(_AtmoFade > 0){
 				half lum = max(result.r, max(result.g, result.b));
-				result.a *= 1 - _AtmoFade * (1 - saturate(lum));
+				// Lens-strength protection alongside the luminance one: the
+				// strongly-bent CORE (void + ring zone) keeps its alpha; only
+				// the faint outer bending dissolves into the hazed sky. Kills
+				// the "darker halo ring" around the hole without erasing the
+				// hole itself from inside an atmosphere.
+				half core = saturate(abs(angle) / max(_Cutoff * 40, 0.0001));
+				result.a *= 1 - _AtmoFade * (1 - max(saturate(lum), core));
 			}
 
-			// Ocean occlusion (driven by _OceanFade from SpaceDustField): the ocean is an
-			// [ImageEffectOpaque] post-process that writes NO depth, so the per-pixel depth
-			// kill above can't hide the effect behind water. Full fade — no luminance
-			// protection — or the bright lensed galaxy ring stays visible through the sea.
+			// PER-PIXEL ocean occlusion: fade any pixel whose view ray passes
+			// through the nearest ocean sphere before reaching the black hole.
+			// The ocean post-process writes NO depth, and the lens's screen
+			// footprint is huge — a single scalar can't handle "centre above
+			// the horizon but the outer ring overlapping the sea", which let
+			// the lensed galaxy show through the water. Soft edge at the rim.
+			if(_OceanRadius > 0){
+				float3 oc = _OceanCenter - _WorldSpaceCameraPos;
+				float bproj = dot(viewDirection, oc);
+				if(bproj > 0 && bproj < viewDistance){
+					float closest2 = dot(oc, oc) - bproj * bproj;
+					float rr = _OceanRadius * _OceanRadius;
+					result.a *= smoothstep(rr * 0.98, rr * 1.04, closest2);
+				}
+			}
+
+			// Submersion ramp (camera depth below the water surface, driven by
+			// SpaceDustField): full fade — no luminance protection — so the
+			// whole effect dissolves smoothly as the player dives.
 			result.a *= 1 - _OceanFade;
 
 			return saturate(result);
