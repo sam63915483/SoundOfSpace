@@ -150,6 +150,25 @@ public class IntroSequenceController : MonoBehaviour
 
         EarlyGameProgress.IntroPlayed = true;
 
+        // Shuttle landing intro (2026-07 opening redesign): when the landed
+        // Shuttle_Lander carries a ShuttleArrivalSequence, it supersedes BOTH
+        // the pod crash and this cabin wake-up. The player wakes in the
+        // shuttle's stasis chamber, rides the landing, and is released at
+        // touchdown — no crash, no cabin. The pod + wake-up path below is kept
+        // intact (archived) and runs only when no shuttle sequence is present.
+        var shuttleArrival = FindObjectOfType<ShuttleArrivalSequence>();
+        if (shuttleArrival != null)
+        {
+            // The CABIN room tone started in Awake has no place in the shuttle
+            // (and nothing on this path would ever stop the loop).
+            if (_roomTone != null) { _roomTone.Stop(); Destroy(_roomTone); _roomTone = null; }
+            if (_canvas != null) _canvas.enabled = false;   // the shuttle owns the screen fade
+            yield return shuttleArrival.Play();
+            if (_canvas != null) Destroy(_canvas.gameObject);
+            StartCoroutine(ReleaseFirstContact());          // phone first-contact beat still fires ~a minute in
+            yield break;
+        }
+
         // Pod arrival cinematic runs first, under the black overlay. Hide our
         // overlay while it owns the screen (it manages its own fade), then
         // restore it (black, eyes shut) so the wake-up takes over seamlessly.

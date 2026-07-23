@@ -22926,6 +22926,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 4421007967151122899}
+  - component: {fileID: 1483505330793110083}
   m_Layer: 10
   m_Name: Shuttle_Lander
   m_TagString: Untagged
@@ -22954,6 +22955,39 @@ Transform:
   - {fileID: 6680851690803408729}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1483505330793110083
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8799065548145837188}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37358e93e824181458ed406e2987d491, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  startAltitude: 900
+  lowAltitude: 60
+  seamSpeed: 25
+  fadeInTime: 2
+  approachDuration: 55
+  landingDuration: 10
+  touchdownHold: 1.2
+  doorOpenTime: 1.8
+  doorOpenAngle: 115
+  standOffset: {x: 0, y: 1.25, z: -0.05}
+  approachShake: 0.03
+  landingShake: 0.12
+  ambientHumClip: {fileID: 8300000, guid: 149a1f6f318bf684e935aaf910d4d12c, type: 3}
+  thrusterClip: {fileID: 8300000, guid: 54c8e92113c975c4f8de097d33677e5a, type: 3}
+  touchdownClip: {fileID: 8300000, guid: b6825b49510956340bc1cc9c09ce740c, type: 3}
+  ambientVolume: 0.3
+  thrusterVolume: 0.8
+  touchdownVolume: 0.4
+  thrusterLowPassHz: 1100
+  grogginessMaterial: {fileID: 2100000, guid: 22e5ca827c024ee458571725b910fd32, type: 2}
+  grogRecoverRate: 0.025
 --- !u!1 &8812311342787602616
 GameObject:
   m_ObjectHideFlags: 0
