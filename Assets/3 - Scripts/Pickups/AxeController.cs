@@ -59,7 +59,14 @@ public class AxeController : MonoBehaviour
     [SerializeField] AudioClip hitClip;
     [SerializeField, Range(0, 1)] float hitVolume = 0.7f;
 
+    // Appended at the end of the serialized block (serialization-order rule).
+    [Header("Physics Swing (spike)")]
+    [Tooltip("Fallback to the classic click-chop tween + camera-cone hit search. Insurance + future accessibility option.")]
+    [SerializeField] bool useClassicSwing = false;
+
     GameObject _currentAxeInstance;
+    GameObject _rigRoot;    // AxeMotorRig — top of the equip chain, driven by AxeMotor (carry sway)
+    GameObject _swingRoot;  // AxeSwingRig — between motor rig and pivot, driven by AxeSwing
     Transform _pivot;
     bool _axeUnlocked;
     bool _isSwinging;
@@ -82,6 +89,23 @@ public class AxeController : MonoBehaviour
     public bool IsEquipped => _currentAxeInstance != null;
     public bool IsUnlocked => _axeUnlocked;
 
+    // Physics-axe spike accessors.
+    public AudioClip HitClip => hitClip;
+    public float HitVolume => hitVolume;
+    public AudioClip SwingClip => swingClip;
+    public float SwingVolume => swingVolume;
+    /// True while the mouse-driven swing layer may consume LMB — same guards
+    /// the classic path uses (equipped, no equip anim, not piloting, tutorial
+    /// gate passed, no modal slot UI open).
+    public bool PhysicsSwingAllowed =>
+        !useClassicSwing
+        && _currentAxeInstance != null
+        && _equipCoroutine == null
+        && !_isSwinging
+        && (_ship == null || !_ship.IsPiloted)
+        && TutorialGate.IsUnlocked(TutorialAbility.ChopAxe)
+        && !PlayerController.isInModalSlotUI;
+
     void Start()
     {
         _fishingRodController  = GetComponent<FishingRodController>();
@@ -94,6 +118,11 @@ public class AxeController : MonoBehaviour
         _audioSource = GetComponent<AudioSource>();
         if (_audioSource == null) _audioSource = gameObject.AddComponent<AudioSource>();
         _audioSource.playOnAwake = false;
+
+        // Physics-axe spike M1: reactive carry layer. Auto-added so no editor
+        // setup is needed; tune its inspector values in Play mode, then bake
+        // keepers back into AxeMotor's defaults.
+        if (GetComponent<AxeMotor>() == null) gameObject.AddComponent<AxeMotor>();
     }
 
     void Update()
@@ -113,10 +142,10 @@ public class AxeController : MonoBehaviour
         }
 
         if (_isSwinging || _equipCoroutine != null) return;
-        // LMB or right-trigger pull (controller). Gated on TutorialAbility.ChopAxe
-        // so the player can't swing until MainSwingAxeStep unlocks it. Once
-        // the tutorial ends, TutorialGate.UnlockAll makes this pass through.
-        if (TutorialGate.FirePressed() && TutorialGate.IsUnlocked(TutorialAbility.ChopAxe)) TriggerSwing();
+        // Classic path only: LMB or right-trigger pull (controller), gated on
+        // TutorialAbility.ChopAxe. The physics swing (default) is driven by
+        // AxeSwing reading LMB-held directly — see PhysicsSwingAllowed.
+        if (useClassicSwing && TutorialGate.FirePressed() && TutorialGate.IsUnlocked(TutorialAbility.ChopAxe)) TriggerSwing();
     }
 
     void EquipAxe()
@@ -135,9 +164,27 @@ public class AxeController : MonoBehaviour
             if (_pendingDestroyPivots[i] != null) Destroy(_pendingDestroyPivots[i]);
         _pendingDestroyPivots.Clear();
 
+        // AxeMotorRig sits between axeHoldPosition and the pivot: AxeMotor
+        // sways the rig while the equip/swing tweens keep driving the pivot.
+        var rigGo = new GameObject("AxeMotorRig");
+        rigGo.transform.SetParent(axeHoldPosition, false);
+        _rigRoot = rigGo;
+
+        // AxeSwingRig between the motor rig and the pivot: the mouse-driven
+        // swing layer (AxeSwing) drives it; carry sway and the equip tween
+        // stay on their own transforms.
+        var swingGo = new GameObject("AxeSwingRig");
+        swingGo.transform.SetParent(rigGo.transform, false);
+
         var pivotGo = new GameObject("AxePivot");
-        pivotGo.transform.SetParent(axeHoldPosition, false);
+        pivotGo.transform.SetParent(swingGo.transform, false);
         _pivot = pivotGo.transform;
+
+        // GetComponent-or-add here too: a save-load ForceEquipAxe can run
+        // before Start() has had a chance to add the motor.
+        var motor = GetComponent<AxeMotor>();
+        if (motor == null) motor = gameObject.AddComponent<AxeMotor>();
+        motor.Attach(rigGo.transform);
 
         _currentAxeInstance = Instantiate(axePrefab, _pivot);
         _currentAxeInstance.transform.localPosition = gripOffset;
@@ -146,6 +193,15 @@ public class AxeController : MonoBehaviour
         var rb = _currentAxeInstance.GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
         foreach (var col in _currentAxeInstance.GetComponentsInChildren<Collider>()) col.enabled = false;
+
+        var sweep = GetComponent<BladeSweep>();
+        if (sweep == null) sweep = gameObject.AddComponent<BladeSweep>();
+        sweep.Attach(_currentAxeInstance.transform, this);
+
+        var swing = GetComponent<AxeSwing>();
+        if (swing == null) swing = gameObject.AddComponent<AxeSwing>();
+        swing.Attach(swingGo.transform, this, sweep);
+        _swingRoot = swingGo;
 
         Quaternion rest    = Quaternion.Euler(holdRotationOffset);
         Quaternion startRot = rest * Quaternion.AngleAxis(equipStartAngle, equipRotationAxis);
@@ -164,14 +220,23 @@ public class AxeController : MonoBehaviour
         Quaternion startRot = _pivot.localRotation;
         Quaternion endRot   = startRot * Quaternion.AngleAxis(180f, equipRotationAxis);
         var pivot = _pivot;
-        GameObject pivotGo = pivot.gameObject;
-        _pendingDestroyPivots.Add(pivotGo);
+        // Destroy the rig root (pivot's parent) so the AxeMotorRig can't leak.
+        GameObject rigGo = _rigRoot != null ? _rigRoot : pivot.gameObject;
+        _pendingDestroyPivots.Add(rigGo);
+        var motor = GetComponent<AxeMotor>();
+        if (motor != null && _rigRoot != null) motor.Detach(_rigRoot.transform);
+        var swing = GetComponent<AxeSwing>();
+        if (swing != null && _swingRoot != null) swing.Detach(_swingRoot.transform);
+        var sweep = GetComponent<BladeSweep>();
+        if (sweep != null && _currentAxeInstance != null) sweep.Detach(_currentAxeInstance.transform);
         _currentAxeInstance = null;
         _pivot = null;
+        _rigRoot = null;
+        _swingRoot = null;
         _equipCoroutine = StartCoroutine(AnimateRotationOn(pivot, startRot, endRot, equipDuration, () =>
         {
-            if (pivotGo != null) Destroy(pivotGo);
-            _pendingDestroyPivots.Remove(pivotGo);
+            if (rigGo != null) Destroy(rigGo);
+            _pendingDestroyPivots.Remove(rigGo);
             _equipCoroutine = null;
         }));
     }

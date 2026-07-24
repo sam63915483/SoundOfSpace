@@ -109,6 +109,12 @@ public class PlayerController : GravityObject
 		if (until > suppressShipDampUntil) suppressShipDampUntil = until;
 	}
 
+	// Physics-axe spike: while a mouse-driven swing is held, the swing layer
+	// (AxeSwing) consumes most of the mouse and sets this to its swingLookScale
+	// for the frame; it restores 1 on release/disable. Scales MOUSE look only —
+	// right-stick look is untouched (gamepad swing is out of spike scope).
+	public static float SwingLookScale = 1f;
+
 	[Header("Mouse settings")]
 	public float mouseSensitivityMultiplier = 1;
 	public float maxMouseSmoothTime = 0.3f;
@@ -575,8 +581,8 @@ public class PlayerController : GravityObject
 		// Mouse and right-stick are accumulated separately because each has its own sensitivity slider.
 		if (!isInDialogue && !isMapOpen && !isInModalSlotUI && !uiHasFocus && !phoneBlocksLook)
 		{
-			yaw   += TutorialGate.GetAxisRaw("Mouse X", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier;
-			pitch -= TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier;
+			yaw   += TutorialGate.GetAxisRaw("Mouse X", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale;
+			pitch -= TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale;
 
 			if (TutorialGate.ControllerEnabled && TutorialGate.IsUnlocked(TutorialAbility.MouseLook))
 			{
