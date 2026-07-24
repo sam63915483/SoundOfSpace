@@ -80,10 +80,12 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Damping for the return spring.")]
     public float returnDamping = 13f;
 
-    [Header("Blade facing (aims at the crosshair)")]
-    [Tooltip("Roll (deg) about the handle at full slash extent. The edge continuously faces screen centre: out on the right → edge faces in-left, dead ahead through the middle, mirrored on the left.")]
+    [Header("Blade facing (latched at the wind-up)")]
+    [Tooltip("Roll (deg) about the handle once a wind-up latches. Wind up on the right → edge sets facing left for the swing, and STAYS there through partial swings — chop one-sided forever. Only carrying the axe to the opposite wind-up rest re-latches it the other way.")]
     public float bladeFaceAngle = 90f;
-    [Tooltip("How fast the edge tracks (deg/s). Deliberately lazy: the blade follows through on a stroke before rotating around for the return swing, which also paces out left-right spam.")]
+    [Tooltip("How far into the arc (0..1 of full extent) counts as reaching the wind-up rest and latches the blade.")]
+    public float windupLatchPoint = 0.85f;
+    [Tooltip("How fast the edge rotates when the latch changes (deg/s).")]
     public float maxRollRate = 260f;
     [Tooltip("Local axis of the pivot the blade rolls around — the handle's long axis.")]
     public Vector3 rollAxis = Vector3.up;
@@ -99,6 +101,7 @@ public class AxeSwing : MonoBehaviour
     float _chop, _chopVelocity;     // -1 = full cock (up/back), +1 = full drive (down/through)
     float _slashBlend;              // 0 = chop/carry pose family, 1 = laid-out slash pose
     float _roll;                    // deg — current edge facing (slash only)
+    float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
     float _emaX, _emaY;             // recent |mouse| per axis, for mode dominance
     bool _holding;
     bool _slashMode;
@@ -114,7 +117,7 @@ public class AxeSwing : MonoBehaviour
         _axe = axe;
         _sweep = sweep;
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
-        _slashBlend = _roll = _emaX = _emaY = 0f;
+        _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
         _holding = _slashMode = false;
     }
 
@@ -189,10 +192,21 @@ public class AxeSwing : MonoBehaviour
         float blendTarget = _holding && _slashMode ? 1f : 0f;
         _slashBlend = Mathf.MoveTowards(_slashBlend, blendTarget, modeBlendRate * dt);
 
-        // Edge facing: always aim the blade at the crosshair (screen centre).
-        // Position-driven, so it rotates smoothly through dead-forward as the
-        // sweep crosses the middle — which is also where contact happens.
-        float rollTarget = _slashBlend > 0.05f ? -_slash * bladeFaceAngle * (invertRoll ? -1f : 1f) : 0f;
+        // Edge facing: LATCHED at the wind-up. Reaching an arc extent commits
+        // the blade to swing off that side (right wind-up → edge faces left);
+        // partial swings never flip it — you can keep winding up on one side
+        // and chopping like a real tree-feller. Only reaching the OPPOSITE
+        // extent re-latches. Neutral until the first wind-up, and on release.
+        if (_slashBlend > 0.05f)
+        {
+            if (Mathf.Abs(_slash) >= windupLatchPoint)
+                _latchedRoll = -Mathf.Sign(_slash) * bladeFaceAngle * (invertRoll ? -1f : 1f);
+        }
+        else
+        {
+            _latchedRoll = 0f;   // left slash mode / released: forget the side
+        }
+        float rollTarget = _slashBlend > 0.05f ? _latchedRoll : 0f;
         _roll = Mathf.MoveTowards(_roll, rollTarget, maxRollRate * dt);
 
         // SLASH pose: lay the axe flat (pitch forward), then sweep the laid axe
