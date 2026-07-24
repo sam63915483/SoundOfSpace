@@ -43,6 +43,8 @@ public class AxeSwing : MonoBehaviour
     public bool showDebugReadout = true;
     [Tooltip("Controller: right-stick deflection → swing input, in mouse-units per second at full deflection. Hold RT to swing, stick sweeps the axe. A mouse flick spikes far harder than a held stick, so this needs to be generous.")]
     public float stickSwingRate = 420f;
+    [Tooltip("Controller only: stick swing input multiplier while the axe is ARMED — a charged swing whips through at speed.")]
+    public float armedStickBoost = 2f;
 
     [Header("Horizontal SLASH (axe lays flat and sweeps like a scythe)")]
     [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal. Too high and the head dips out the bottom of the frame — the grip sits at mid-height.")]
@@ -182,7 +184,11 @@ public class AxeSwing : MonoBehaviour
         // an equivalent per-frame delta; RT is the pad's "LMB held".
         Vector2 delta = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
         if (TutorialGate.ControllerEnabled)
-            delta += new Vector2(TutorialGate.RightStickX(), TutorialGate.RightStickY()) * (stickSwingRate * dt);
+        {
+            // Charged boost (pad only): an armed swing whips twice as fast.
+            float rate = stickSwingRate * (_armed ? armedStickBoost : 1f);
+            delta += new Vector2(TutorialGate.RightStickX(), TutorialGate.RightStickY()) * (rate * dt);
+        }
 
         bool allowed = _axe != null && _axe.PhysicsSwingAllowed;
         _holding = TutorialGate.FireHeld() && allowed;
