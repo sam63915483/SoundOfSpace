@@ -81,6 +81,7 @@ public class AxeMotor : MonoBehaviour
     public Vector3 restOffset = new Vector3(0f, -0.06f, 0.75f);
 
     Transform _rig;               // the AxeMotorRig created by AxeController on equip
+    Vector3 _gripPoint;           // pivot local offset — rotations pivot around this
     PlayerController _player;
     Quaternion _prevCamRotation;
     bool _hasPrevCamRotation;
@@ -93,10 +94,15 @@ public class AxeMotor : MonoBehaviour
     Vector3 _position, _positionVelocity;
     Vector3 _rotation, _rotationVelocity;   // small-angle Euler degrees
 
-    /// <summary>Called by AxeController when the axe is equipped and its motor rig exists.</summary>
-    public void Attach(Transform rig)
+    /// <summary>
+    /// Called by AxeController when the axe is equipped and its motor rig
+    /// exists. gripPoint = the pivot's local offset (holdPositionOffset) so
+    /// carry rotations pivot around the axe's grip, not the rig origin.
+    /// </summary>
+    public void Attach(Transform rig, Vector3 gripPoint = default)
     {
         _rig = rig;
+        _gripPoint = gripPoint;
         ResetPose();
     }
 
@@ -217,8 +223,9 @@ public class AxeMotor : MonoBehaviour
         Spring(ref _position, ref _positionVelocity, targetPosition, positionStiffness, positionDamping, dt);
         Spring(ref _rotation, ref _rotationVelocity, targetRotation, rotationStiffness, rotationDamping, dt);
 
-        _rig.localPosition = restOffset + _position;
-        _rig.localRotation = Quaternion.Euler(_rotation);
+        Quaternion carryRot = Quaternion.Euler(_rotation);
+        _rig.localRotation = carryRot;
+        _rig.localPosition = restOffset + _position + (_gripPoint - carryRot * _gripPoint);
     }
 
     static void Spring(ref Vector3 value, ref Vector3 velocity, Vector3 target, float stiffness, float damping, float dt)

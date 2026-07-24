@@ -187,11 +187,20 @@ public class AxeSwing : MonoBehaviour
 
         // Compose: wiper tilt in the view plane (about camera forward), then the
         // stance lean + vertical wiggle, then the blade roll about the handle.
-        _rig.localRotation =
+        Quaternion swingRot =
             Quaternion.AngleAxis(-_wiper, Vector3.forward)
             * Quaternion.Euler(slashPitch * _stanceBlend + _pitch, 0f, 0f)
             * Quaternion.AngleAxis(_roll, rollAxis.normalized);
-        _rig.localPosition = new Vector3(_wiper * lateralShiftPerDeg, 0f, 0f) + stancePositionOffset * _stanceBlend;
+
+        // Rotate about the GRIP, not the rig origin. The pivot below us sits at
+        // holdPositionOffset (Sam's hand-tuned grip point — the model has large
+        // authoring-orientation corrections), so a naive rig rotation ORBITS the
+        // axe ~0.6m around empty space. Counter-translate so the grip stays put.
+        Vector3 gripPoint = _axe != null ? _axe.holdPositionOffset : Vector3.zero;
+        _rig.localRotation = swingRot;
+        _rig.localPosition = new Vector3(_wiper * lateralShiftPerDeg, 0f, 0f)
+                           + stancePositionOffset * _stanceBlend
+                           + (gripPoint - swingRot * gripPoint);
 
         // Blade sweep runs after the pose is final so casts see this frame's edge path.
         if (_sweep != null) _sweep.Tick(dt, IsActive);

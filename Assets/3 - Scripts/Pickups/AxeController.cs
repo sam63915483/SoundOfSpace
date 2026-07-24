@@ -184,7 +184,7 @@ public class AxeController : MonoBehaviour
         // before Start() has had a chance to add the motor.
         var motor = GetComponent<AxeMotor>();
         if (motor == null) motor = gameObject.AddComponent<AxeMotor>();
-        motor.Attach(rigGo.transform);
+        motor.Attach(rigGo.transform, holdPositionOffset);
 
         _currentAxeInstance = Instantiate(axePrefab, _pivot);
         _currentAxeInstance.transform.localPosition = gripOffset;
