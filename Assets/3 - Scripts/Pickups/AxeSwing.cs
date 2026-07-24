@@ -103,6 +103,8 @@ public class AxeSwing : MonoBehaviour
     [Header("Wind-up arming (hits only count when armed)")]
     [Tooltip("Seconds the axe must SIT at the wind-up before it arms and the shake begins — the forced pause between swings.")]
     public float armDelay = 0.5f;
+    [Tooltip("How far into the arc (0..1 of full extent) counts as FULLY pulled back for the shake to show. Tighter than the latch/arm point so the shake only plays parked at the full left/right/up positions, not while passing nearby.")]
+    public float shakeFullPullPoint = 0.97f;
     [Tooltip("Seconds for the armed shake to ramp from its starting intensity to max; it holds at max after that.")]
     public float shakeRampTime = 3f;
     [Tooltip("Shake amplitude (m) the instant the axe arms.")]
@@ -286,11 +288,14 @@ public class AxeSwing : MonoBehaviour
         if (_atWindup && _windupTimer >= armDelay) _armed = true;
         if (!_holding) _armed = false;
 
-        // Shake = the "ready" indicator: plays only while armed AND still at
-        // the wind-up. Starting the swing stops it instantly; returning to a
-        // wind-up while still armed resumes it where the ramp left off.
+        // Shake = the "ready" indicator: plays only while armed AND parked at
+        // the FULL pull (tighter than the latch point — passing near the
+        // wind-up must not flicker the shake). Starting the swing stops it
+        // instantly; returning fully back while still armed resumes the ramp.
+        bool atFullPull = _holding && (_slashMode ? Mathf.Abs(_slash) >= shakeFullPullPoint
+                                                  : _chop <= -shakeFullPullPoint);
         Vector3 shakeOffset = Vector3.zero;
-        if (_armed && _atWindup)
+        if (_armed && atFullPull)
         {
             _armedTime += dt;
             float ramp = ArmedRamp;
