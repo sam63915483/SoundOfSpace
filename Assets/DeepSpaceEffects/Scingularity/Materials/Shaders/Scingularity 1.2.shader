@@ -233,12 +233,12 @@ SubShader {
 			// lens core) keep their alpha, so the black hole still reads through haze.
 			if(_AtmoFade > 0){
 				half lum = max(result.r, max(result.g, result.b));
-				// Lens-strength protection alongside the luminance one: the
-				// strongly-bent CORE (void + ring zone) keeps its alpha; only
-				// the faint outer bending dissolves into the hazed sky. Kills
-				// the "darker halo ring" around the hole without erasing the
-				// hole itself from inside an atmosphere.
-				half core = saturate(abs(angle) / max(_Cutoff * 40, 0.0001));
+				// Protect the VOID (at/inside the event horizon, impactParameter
+				// around/below 0) so the hole itself never dissolves into the
+				// sky. The dark compressed-starfield ring just OUTSIDE it (dark
+				// pixels, ip > 0) hazes out with the atmosphere like the rest of
+				// the sky — that ring was reading as a dirty dark halo.
+				half core = saturate(1 - impactParameter * 8);
 				result.a *= 1 - _AtmoFade * (1 - max(saturate(lum), core));
 			}
 
@@ -250,11 +250,18 @@ SubShader {
 			// the lensed galaxy show through the water. Soft edge at the rim.
 			if(_OceanRadius > 0){
 				float3 oc = _OceanCenter - _WorldSpaceCameraPos;
-				float bproj = dot(viewDirection, oc);
-				if(bproj > 0 && bproj < viewDistance){
-					float closest2 = dot(oc, oc) - bproj * bproj;
-					float rr = _OceanRadius * _OceanRadius;
-					result.a *= smoothstep(rr * 0.98, rr * 1.04, closest2);
+				float rr = _OceanRadius * _OceanRadius;
+				float oc2 = dot(oc, oc);
+				// Only while the camera is ABOVE the water. Submerged, the
+				// uniform _OceanFade ramp owns the whole effect — running this
+				// ray test from inside the sphere painted a hazy horizontal
+				// seam across the hole at the analytic waterline.
+				if(oc2 > rr){
+					float bproj = dot(viewDirection, oc);
+					if(bproj > 0 && bproj < viewDistance){
+						float closest2 = oc2 - bproj * bproj;
+						result.a *= smoothstep(rr * 0.98, rr * 1.04, closest2);
+					}
 				}
 			}
 

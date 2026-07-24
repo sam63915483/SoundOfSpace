@@ -239,7 +239,8 @@ public class SpaceDustField : MonoBehaviour
                 float depth = oceanR - distP;
                 if (depth > 0f)
                 {
-                    float sub = Mathf.Clamp01(depth / bhUnderwaterFadeDepth);
+                    // Instant 50% dim at the waterline, then fade to gone with depth.
+                    float sub = 0.5f + 0.5f * Mathf.Clamp01(depth / bhUnderwaterFadeDepth);
                     if (sub > oceanFade) oceanFade = sub;
                 }
                 if (distP < nearestOceanDist)
@@ -275,7 +276,7 @@ public class SpaceDustField : MonoBehaviour
             // black hole read as "gone" from Humble Abode. At 0.7 the dark
             // lensed body keeps ~30% presence through the haze while the
             // "through the limb from space" case (through) stays full-strength.
-            const float surfaceImmersionCap = 0.7f;
+            const float surfaceImmersionCap = 0.85f;
             float f = Mathf.Max(immersion * surfaceImmersionCap, through);
             if (f > fade) fade = f;
         }
@@ -532,7 +533,8 @@ public class SpaceDustField : MonoBehaviour
             float camToCenter = Vector3.Distance(camPos, ppos);
             if (oceanR > 0f && camToCenter < oceanR)
             {
-                float sub = 1f - Mathf.Clamp01((oceanR - camToCenter) / dustUnderwaterFadeDepth);
+                // Instant 50% dim at the waterline, then fade to gone with depth.
+                float sub = 0.5f * (1f - Mathf.Clamp01((oceanR - camToCenter) / dustUnderwaterFadeDepth));
                 if (sub < _dustUnderwaterMul) _dustUnderwaterMul = sub;
             }
             else if (oceanR > 0f && _relOceanCount < _relOceanPos.Length

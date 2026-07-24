@@ -580,6 +580,23 @@ public class LensFlareRegistry : MonoBehaviour
         return r;
     }
 
+    // 1 above water; 0.5 the moment the camera submerges; 0 by ~2.5m down.
+    float UnderwaterFlareDim(Vector3 camPos)
+    {
+        var bodies = NBodySimulation.Bodies;
+        if (bodies == null) return 1f;
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            var b = bodies[i];
+            if (b == null || b == _sunBody) continue;
+            float r = OceanRadiusOf(b);
+            if (r <= 0f) continue;
+            float depth = r - (b.Position - camPos).magnitude;
+            if (depth > 0f) return 0.5f * (1f - Mathf.Clamp01(depth / 2.5f));
+        }
+        return 1f;
+    }
+
     bool OceanBlocks(Vector3 origin, Vector3 target)
     {
         var bodies = NBodySimulation.Bodies;
@@ -599,12 +616,10 @@ public class LensFlareRegistry : MonoBehaviour
             // through the surface; a few metres down it's gone. (The plain
             // segment test always hits from inside, so the flare used to pop
             // off the instant the player's head touched the water.)
-            float camDepth = r - toC.magnitude;
-            if (camDepth > 0f)
-            {
-                if (camDepth > 2.5f) return true;   // gone just below the surface; visible while wading
-                continue;
-            }
+            // Camera inside this ocean: the segment test always hits from
+            // inside — submersion is handled by UnderwaterFlareDim (50% at
+            // the waterline, gone with depth), so skip this body here.
+            if (r - toC.magnitude > 0f) continue;
 
             float t = Mathf.Clamp01(Vector3.Dot(toC, seg) / len2);
             Vector3 closest = seg * t - toC;
@@ -720,6 +735,10 @@ public class LensFlareRegistry : MonoBehaviour
         // produces a faint persistent flare even when the sun is fully
         // hidden visually.
         float visibility = Mathf.InverseLerp(kVisibilityThreshold, 1f, _smoothedVisibility);
+
+        // Submersion: dim to 50% the instant the camera goes under, then fade
+        // to nothing with depth (matches the black hole / space dust rule).
+        visibility *= UnderwaterFlareDim(cam.transform.position);
 
         float align = Mathf.Clamp01(dot);
         float fade  = Mathf.Pow(align, kHaloDotPowerForAlpha) * visibility;
