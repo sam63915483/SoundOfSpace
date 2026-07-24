@@ -127,6 +127,7 @@ public class AxeSwing : MonoBehaviour
     float _roll;                    // deg — current edge facing (slash only)
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
     bool _armed;                    // charged by a full wind-up; next in-swing contact is a hit
+    bool _armedSwingInFlight;       // the charge has left the wind-up — spent when a wind-up is reached again
     bool _atWindup;                 // currently sitting at a wind-up position
     float _windupTimer;             // continuous seconds at the wind-up (gates arming)
     float _armedTime;               // shake ramp time (accumulates only while shaking)
@@ -142,6 +143,7 @@ public class AxeSwing : MonoBehaviour
     public void Disarm()
     {
         _armed = false;
+        _armedSwingInFlight = false;
         _armedTime = 0f;
     }
 
@@ -157,7 +159,7 @@ public class AxeSwing : MonoBehaviour
         _sweep = sweep;
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
-        _armed = _atWindup = false;
+        _armed = _armedSwingInFlight = _atWindup = false;
         _windupTimer = _armedTime = _shakePhase = 0f;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
@@ -282,11 +284,25 @@ public class AxeSwing : MonoBehaviour
         // landing a hit or releasing LMB. Hits only count once the swing has
         // LEFT the wind-up — a charged axe parked at the wind-up can't damage
         // anything, so walking it into a tree does nothing (multi-hit exploit).
+        bool wasAtWindup = _atWindup;
         _atWindup = _holding && (_slashMode ? Mathf.Abs(_slash) >= windupLatchPoint
                                             : _chop <= -windupLatchPoint);
+
+        // A charge is spent by the swing it powers: leaving the wind-up marks
+        // the charge in-flight (contact still counts), and re-reaching ANY
+        // wind-up ends that swing — disarm and start the whole charge-up over.
+        // Every swing pays the 0.5s pause + ramp; no free max-speed reversals.
+        if (_armed && !_atWindup) _armedSwingInFlight = true;
+        if (_armed && _armedSwingInFlight && _atWindup && !wasAtWindup)
+        {
+            _armed = false;
+            _armedSwingInFlight = false;
+            _windupTimer = 0f;
+        }
+
         _windupTimer = _atWindup ? _windupTimer + dt : 0f;
         if (_atWindup && _windupTimer >= armDelay) _armed = true;
-        if (!_holding) _armed = false;
+        if (!_holding) { _armed = false; _armedSwingInFlight = false; }
 
         // Shake = the "ready" indicator: plays only while armed AND parked at
         // the FULL pull (tighter than the latch point — passing near the
