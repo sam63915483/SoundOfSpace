@@ -41,8 +41,8 @@ public class AxeSwing : MonoBehaviour
     [Range(0f, 1f)] public float swingLookScale = 0.25f;
     [Tooltip("Spike-build on-screen readout. Turn off when the verdict is in.")]
     public bool showDebugReadout = true;
-    [Tooltip("Controller: right-stick deflection → swing input, in mouse-units per second at full deflection. Hold RT to swing, stick sweeps the axe.")]
-    public float stickSwingRate = 140f;
+    [Tooltip("Controller: right-stick deflection → swing input, in mouse-units per second at full deflection. Hold RT to swing, stick sweeps the axe. A mouse flick spikes far harder than a held stick, so this needs to be generous.")]
+    public float stickSwingRate = 420f;
 
     [Header("Horizontal SLASH (axe lays flat and sweeps like a scythe)")]
     [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal. Too high and the head dips out the bottom of the frame — the grip sits at mid-height.")]

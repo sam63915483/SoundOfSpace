@@ -63,7 +63,7 @@ public class AxeController : MonoBehaviour
     [Header("Physics Swing (spike)")]
     [Tooltip("Fallback to the classic click-chop tween + camera-cone hit search. Insurance + future accessibility option.")]
     [SerializeField] bool useClassicSwing = false;
-    [Tooltip("Uniform scale multiplier on the spawned axe model — a longer axe reaches trees more easily. Applied before BladeSweep calibrates, so detection matches the visual.")]
+    [Tooltip("Length multiplier on the spawned axe model's LONG axis (the handle) — taller, not fatter. Applied before BladeSweep calibrates, so detection matches the visual.")]
     [SerializeField] float axeScale = 1.7f;
 
     GameObject _currentAxeInstance;
@@ -150,6 +150,32 @@ public class AxeController : MonoBehaviour
         if (useClassicSwing && TutorialGate.FirePressed() && TutorialGate.IsUnlocked(TutorialAbility.ChopAxe)) TriggerSwing();
     }
 
+    // Which of the model root's local axes spans the longest — the handle
+    // direction. Measured from mesh bounds corners in root-local space, so it
+    // is pose-independent and survives the model's odd authoring orientation.
+    static int LongestLocalAxis(Transform root)
+    {
+        var filters = root.GetComponentsInChildren<MeshFilter>();
+        bool any = false;
+        Bounds bounds = default;
+        foreach (var f in filters)
+        {
+            if (f.sharedMesh == null) continue;
+            Bounds mb = f.sharedMesh.bounds;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = mb.center + Vector3.Scale(mb.extents,
+                    new Vector3((i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f, (i & 4) == 0 ? -1f : 1f));
+                Vector3 local = root.InverseTransformPoint(f.transform.TransformPoint(corner));
+                if (!any) { bounds = new Bounds(local, Vector3.zero); any = true; }
+                else bounds.Encapsulate(local);
+            }
+        }
+        if (!any) return 1;   // no meshes: assume Y
+        Vector3 e = bounds.extents;
+        return (e.x >= e.y && e.x >= e.z) ? 0 : (e.y >= e.z ? 1 : 2);
+    }
+
     void EquipAxe()
     {
         if (axePrefab == null || axeHoldPosition == null) return;
@@ -191,7 +217,15 @@ public class AxeController : MonoBehaviour
         _currentAxeInstance = Instantiate(axePrefab, _pivot);
         _currentAxeInstance.transform.localPosition = gripOffset;
         _currentAxeInstance.transform.localRotation = Quaternion.identity;
-        _currentAxeInstance.transform.localScale *= axeScale;
+        // Taller only, not uniformly bigger: stretch the model's LONG axis
+        // (the handle) by axeScale. The model's authoring axes are nonstandard,
+        // so the long axis is measured from its mesh bounds instead of assumed.
+        {
+            int longAxis = LongestLocalAxis(_currentAxeInstance.transform);
+            Vector3 ls = _currentAxeInstance.transform.localScale;
+            ls[longAxis] *= axeScale;
+            _currentAxeInstance.transform.localScale = ls;
+        }
 
         var rb = _currentAxeInstance.GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
