@@ -46,7 +46,7 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal. Too high and the head dips out the bottom of the frame — the grip sits at mid-height.")]
     public float slashLayPitch = 58f;
     [Tooltip("Yaw arc half-width (deg): the laid-out axe sweeps between -this and +this across the view.")]
-    public float slashYawRange = 65f;
+    public float slashYawRange = 85f;
     [Tooltip("Swing-progress impulse per unit of raw mouse X. Higher = lighter, faster to cross the arc.")]
     public float slashSensitivity = 0.55f;
     [Tooltip("Exponential decay (1/s) of slash momentum — the weight.")]
@@ -54,7 +54,7 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Flip if mouse-right sweeps the axe left.")]
     public bool invertSwing = false;
     [Tooltip("Sideways hand travel (m) at full slash extent — carries the swing across the screen.")]
-    public float slashHandTravel = 0.28f;
+    public float slashHandTravel = 0.42f;
     [Tooltip("Hand rise (m) while in the slash pose — keeps the laid-out axe up in frame.")]
     public float slashHandRise = 0.16f;
 
@@ -83,8 +83,8 @@ public class AxeSwing : MonoBehaviour
     [Header("Blade facing (aims at the crosshair)")]
     [Tooltip("Roll (deg) about the handle at full slash extent. The edge continuously faces screen centre: out on the right → edge faces in-left, dead ahead through the middle, mirrored on the left.")]
     public float bladeFaceAngle = 90f;
-    [Tooltip("How fast the edge tracks (deg/s).")]
-    public float maxRollRate = 900f;
+    [Tooltip("How fast the edge tracks (deg/s). Deliberately lazy: the blade follows through on a stroke before rotating around for the return swing, which also paces out left-right spam.")]
+    public float maxRollRate = 260f;
     [Tooltip("Local axis of the pivot the blade rolls around — the handle's long axis.")]
     public Vector3 rollAxis = Vector3.up;
     [Tooltip("Flip if the edge trails instead of leads.")]
