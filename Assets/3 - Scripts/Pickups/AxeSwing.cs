@@ -45,8 +45,10 @@ public class AxeSwing : MonoBehaviour
     [Header("Horizontal SLASH (axe lays flat and sweeps like a scythe)")]
     [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal. Too high and the head dips out the bottom of the frame — the grip sits at mid-height.")]
     public float slashLayPitch = 58f;
-    [Tooltip("Yaw arc half-width (deg): the laid-out axe sweeps between -this and +this across the view.")]
+    [Tooltip("Yaw arc half-width (deg) on the RIGHT side.")]
     public float slashYawRange = 85f;
+    [Tooltip("Extra reach (deg) on the LEFT side — the arc is asymmetric, the left sweep carries further over.")]
+    public float slashYawExtraLeft = 30f;
     [Tooltip("Swing-progress impulse per unit of raw mouse X. Higher = lighter, faster to cross the arc.")]
     public float slashSensitivity = 0.55f;
     [Tooltip("Exponential decay (1/s) of slash momentum — the weight.")]
@@ -86,7 +88,7 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("How far into the arc (0..1 of full extent) counts as reaching the wind-up rest and latches the blade.")]
     public float windupLatchPoint = 0.85f;
     [Tooltip("How fast the edge rotates when the latch changes (deg/s).")]
-    public float maxRollRate = 260f;
+    public float maxRollRate = 520f;
     [Tooltip("Local axis of the pivot the blade rolls around — the handle's long axis.")]
     public Vector3 rollAxis = Vector3.up;
     [Tooltip("Flip if the edge trails instead of leads.")]
@@ -211,8 +213,9 @@ public class AxeSwing : MonoBehaviour
 
         // SLASH pose: lay the axe flat (pitch forward), then sweep the laid axe
         // about camera-up, edge roll innermost about the handle.
+        float slashYaw = _slash * (_slash < 0f ? slashYawRange + slashYawExtraLeft : slashYawRange);
         Quaternion slashRot =
-            Quaternion.AngleAxis(_slash * slashYawRange, Vector3.up)
+            Quaternion.AngleAxis(slashYaw, Vector3.up)
             * Quaternion.AngleAxis(slashLayPitch, Vector3.right)
             * Quaternion.AngleAxis(_roll, rollAxis.normalized);
 
