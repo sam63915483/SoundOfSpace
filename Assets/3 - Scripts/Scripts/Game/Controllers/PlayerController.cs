@@ -109,10 +109,10 @@ public class PlayerController : GravityObject
 		if (until > suppressShipDampUntil) suppressShipDampUntil = until;
 	}
 
-	// Physics-axe spike: while a mouse-driven swing is held, the swing layer
-	// (AxeSwing) consumes most of the mouse and sets this to its swingLookScale
-	// for the frame; it restores 1 on release/disable. Scales MOUSE look only —
-	// right-stick look is untouched (gamepad swing is out of spike scope).
+	// Physics-axe spike: while a swing is held (LMB or RT), the swing layer
+	// (AxeSwing) consumes most of the look input and sets this to its
+	// swingLookScale for the frame; it restores 1 on release/disable.
+	// Scales both mouse look and right-stick look.
 	public static float SwingLookScale = 1f;
 
 	[Header("Mouse settings")]
@@ -592,7 +592,9 @@ public class PlayerController : GravityObject
 				// "how snappy" the look feels — independent of the (much smaller)
 				// mouse-sensitivity slider.
 				const float kStickDegreesPerSecond = 360f;
-				float gain = TutorialGate.StickLookSensitivity * kStickDegreesPerSecond * Time.unscaledDeltaTime;
+				// SwingLookScale: while a swing is held the right stick drives the
+				// axe (AxeSwing), so pad look is damped the same way mouse look is.
+				float gain = TutorialGate.StickLookSensitivity * kStickDegreesPerSecond * Time.unscaledDeltaTime * SwingLookScale;
 				yaw   += TutorialGate.RightStickX() * gain;
 				pitch -= TutorialGate.RightStickY() * gain * (TutorialGate.InvertLookY ? -1f : 1f);
 			}

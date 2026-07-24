@@ -63,6 +63,8 @@ public class AxeController : MonoBehaviour
     [Header("Physics Swing (spike)")]
     [Tooltip("Fallback to the classic click-chop tween + camera-cone hit search. Insurance + future accessibility option.")]
     [SerializeField] bool useClassicSwing = false;
+    [Tooltip("Uniform scale multiplier on the spawned axe model — a longer axe reaches trees more easily. Applied before BladeSweep calibrates, so detection matches the visual.")]
+    [SerializeField] float axeScale = 1.7f;
 
     GameObject _currentAxeInstance;
     GameObject _rigRoot;    // AxeMotorRig — top of the equip chain, driven by AxeMotor (carry sway)
@@ -189,6 +191,7 @@ public class AxeController : MonoBehaviour
         _currentAxeInstance = Instantiate(axePrefab, _pivot);
         _currentAxeInstance.transform.localPosition = gripOffset;
         _currentAxeInstance.transform.localRotation = Quaternion.identity;
+        _currentAxeInstance.transform.localScale *= axeScale;
 
         var rb = _currentAxeInstance.GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
