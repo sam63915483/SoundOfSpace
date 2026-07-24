@@ -78,7 +78,7 @@ public class AxeMotor : MonoBehaviour
 
     [Header("Rest pose")]
     [Tooltip("Base camera-space offset of the whole axe chain from axeHoldPosition. Pushed well forward so the axe isn't in the astronaut's face (axeHoldPosition itself is shared with the rod/pistol — don't move that).")]
-    public Vector3 restOffset = new Vector3(0f, 0.05f, 1.05f);
+    public Vector3 restOffset = new Vector3(0f, 0.15f, 1.05f);
 
     Transform _rig;               // the AxeMotorRig created by AxeController on equip
     Vector3 _gripPoint;           // pivot local offset — rotations pivot around this

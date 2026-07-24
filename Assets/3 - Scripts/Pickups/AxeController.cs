@@ -64,7 +64,7 @@ public class AxeController : MonoBehaviour
     [Tooltip("Fallback to the classic click-chop tween + camera-cone hit search. Insurance + future accessibility option.")]
     [SerializeField] bool useClassicSwing = false;
     [Tooltip("Length multiplier on the spawned axe model's LONG axis (the handle) — taller, not fatter. Applied before BladeSweep calibrates, so detection matches the visual.")]
-    [SerializeField] float axeScale = 1.5f;   // height alone didn't add reach — reach lives in AxeMotor.restOffset
+    [SerializeField] float axeScale = 1.0f;   // height alone didn't add reach — reach lives in AxeMotor.restOffset
 
     GameObject _currentAxeInstance;
     GameObject _rigRoot;    // AxeMotorRig — top of the equip chain, driven by AxeMotor (carry sway)

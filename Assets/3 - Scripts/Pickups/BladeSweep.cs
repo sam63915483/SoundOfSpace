@@ -41,6 +41,10 @@ public class BladeSweep : MonoBehaviour
     public float minEdgeSpeed = 2.5f;
     [Tooltip("Edge speed (m/s) above which UNARMED contact makes a scrape sound.")]
     public float scrapeMinSpeed = 0.4f;
+    [Tooltip("Fraction of a charged hit an UNCHARGED swing deals. Trees keep integer chops, so this accumulates per target and lands a real chop when the pool fills (1/3 → three uncharged swings = one chop). Must still be a real swing — edge speed above minEdgeSpeed — so parking the blade in a tree stays harmless.")]
+    public float unchargedHitFraction = 1f / 3f;
+    [Tooltip("Seconds between uncharged damage ticks on the same target — one per swing-through, not one per frame.")]
+    public float unchargedHitCooldown = 0.6f;
     [Tooltip("Seconds between scrape sounds on the same target.")]
     public float scrapeCooldown = 0.4f;
     [Tooltip("Edge speed at (and past) which hit feedback maxes out — pitch, shake, hit-stop scaling.")]
@@ -69,6 +73,8 @@ public class BladeSweep : MonoBehaviour
     bool _whooshArmed = true;
     float _lastEdgeSpeed;
     readonly Dictionary<int, float> _lastScrapeTime = new Dictionary<int, float>();
+    readonly Dictionary<int, float> _lastUnchargedHitTime = new Dictionary<int, float>();
+    readonly Dictionary<int, float> _unchargedDamagePool = new Dictionary<int, float>();   // fractional chops per target
     Coroutine _hitStop;
 
     public float LastEdgeSpeed => _lastEdgeSpeed;
@@ -92,6 +98,8 @@ public class BladeSweep : MonoBehaviour
         }
         _hasPrev = false;
         _lastScrapeTime.Clear();
+        _lastUnchargedHitTime.Clear();
+        _unchargedDamagePool.Clear();
     }
 
     public void Detach(Transform bladeInstance)
@@ -200,6 +208,7 @@ public class BladeSweep : MonoBehaviour
             if (tree != null && tree.IsDead) continue;
             if (crystal != null && crystal.IsDead) continue;
 
+            int id = tree != null ? tree.GetInstanceID() : crystal.GetInstanceID();
             if (armed)
             {
                 if (tree != null) tree.TakeDamage(_axe.damagePerSwing);
@@ -209,9 +218,44 @@ public class BladeSweep : MonoBehaviour
                 return true;
             }
 
-            Scrape(tree != null ? tree.GetInstanceID() : crystal.GetInstanceID());
+            // Uncharged but genuinely swinging: partial damage. Fractions pool
+            // per target and convert to a real integer chop when full, so the
+            // tree pipeline (drops/O2/saves) never sees a fraction.
+            if (speed >= minEdgeSpeed && unchargedHitFraction > 0f)
+            {
+                UnchargedHit(tree, crystal, id, speed);
+                continue;
+            }
+
+            Scrape(id);
         }
         return false;
+    }
+
+    void UnchargedHit(SpawnedTree tree, SpawnedCrystal crystal, int id, float speed)
+    {
+        float now = Time.time;
+        if (_lastUnchargedHitTime.TryGetValue(id, out float last) && now - last < unchargedHitCooldown) return;
+        _lastUnchargedHitTime[id] = now;
+
+        _unchargedDamagePool.TryGetValue(id, out float pool);
+        pool += unchargedHitFraction;
+        if (pool >= 1f)
+        {
+            pool -= 1f;
+            if (tree != null) tree.TakeDamage(_axe.damagePerSwing);
+            else if (crystal != null) crystal.TakeDamage(_axe.damagePerSwing);
+        }
+        _unchargedDamagePool[id] = pool;
+
+        // Lighter feedback than a charged hit: a dull knock, small rumble,
+        // no hit-stop, no camera shake.
+        if (_audio != null && _axe != null && _axe.HitClip != null)
+        {
+            _audio.pitch = 0.8f;
+            _audio.PlayOneShot(_axe.HitClip, _axe.HitVolume * 0.45f);
+        }
+        GamepadRumble.Pulse(0.25f, 0.12f, 0.1f);
     }
 
     void HitFeedback(float speed)
