@@ -16,6 +16,7 @@ Properties {
 	[Toggle] _Flip("Flipped Projection Correction", Range(0, 1)) = 1
 	_LensFadeLo("Lens Far-Field Fade Start (rad)", Float) = 0.012
 	_LensFadeHi("Lens Full-Strength Bend (rad)", Float) = 0.06
+	_AtmoWash("Atmosphere Wash On Bright Content", Range(0, 1)) = 0.35
 	[HideInInspector] _AtmoFade("Atmosphere Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
@@ -53,6 +54,7 @@ SubShader {
 		uniform half _Flip;
 		uniform float _LensFadeLo;   // bend (radians) below which the lens is fully transparent — the REAL sky shows
 		uniform float _LensFadeHi;   // bend at which the lens reaches full strength
+		uniform half _AtmoWash;      // fraction of _AtmoFade applied to EVERYTHING incl. the bright disk — atmospheric haze dims the whole effect from a planet; 0 in space either way
 		uniform half _AtmoFade;   // 0 in clear space; ramps toward 1 when a planet's atmosphere is between the eye and the effect — EITHER the camera sits inside that atmosphere OR the black hole is viewed through/behind it from outside (set by SpaceDustField.UpdateBlackHoleAtmoFade). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
 		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
 		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
@@ -240,6 +242,11 @@ SubShader {
 				// the sky — that ring was reading as a dirty dark halo.
 				half core = saturate(1 - impactParameter * 8);
 				result.a *= 1 - _AtmoFade * (1 - max(saturate(lum), core));
+				// Haze wash: unlike the dark-dissolve above, this dims the WHOLE
+				// effect — bright accretion disk included — when viewed from
+				// inside an atmosphere, so it reads hazed from a planet surface
+				// but full-strength from space.
+				result.a *= 1 - _AtmoFade * _AtmoWash;
 			}
 
 			// PER-PIXEL ocean occlusion: fade any pixel whose view ray passes

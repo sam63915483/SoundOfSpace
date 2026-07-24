@@ -594,14 +594,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
             _grog.intensity = Mathf.Clamp01(baseLvl * (1f + s * (grogBreatheMax - 1f)));
         }
 
-        // Duck the film ~6dB under HAL callouts (approach / reverse thrusters),
-        // easing back up when the line clears.
-        if (_videoAudio != null && _filmStarted && !_filmEnded)
-        {
-            bool halTalking = HALLineHUD.Instance != null && !HALLineHUD.Instance.IsIdle;
-            float target = filmVolume * (halTalking ? 0.5f : 1f);
-            _videoAudio.volume = Mathf.MoveTowards(_videoAudio.volume, target, 2f * Time.deltaTime);
-        }
+        // (Film ducking under HAL lines removed by request — the film plays at
+        // constant volume; HAL talks over it.)
     }
 
     // ── Flight phases (Hermite: pins the sink rate at each seam, like the pod) ─
