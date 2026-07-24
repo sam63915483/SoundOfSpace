@@ -50,13 +50,15 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Extra reach (deg) on the LEFT side — the arc is asymmetric, the left sweep carries further over.")]
     public float slashYawExtraLeft = 30f;
     [Tooltip("Swing-progress impulse per unit of raw mouse X. Higher = lighter, faster to cross the arc.")]
-    public float slashSensitivity = 0.55f;
-    [Tooltip("Exponential decay (1/s) of slash momentum — the weight.")]
-    public float slashDamping = 5f;
+    public float slashSensitivity = 0.18f;
+    [Tooltip("Exponential decay (1/s) of slash momentum. Higher = tracks the mouse more directly, less coasting/overshoot past where you stopped.")]
+    public float slashDamping = 9f;
     [Tooltip("Flip if mouse-right sweeps the axe left.")]
     public bool invertSwing = false;
-    [Tooltip("Sideways hand travel (m) at full slash extent — carries the swing across the screen.")]
+    [Tooltip("Sideways hand travel (m) at full RIGHT slash extent — carries the swing across the screen.")]
     public float slashHandTravel = 0.42f;
+    [Tooltip("Extra hand travel (m) on the LEFT — the hold sits right-of-centre, so the left wind-up needs more distance to leave the frame like the right does.")]
+    public float slashHandTravelExtraLeft = 0.25f;
     [Tooltip("Hand rise (m) while in the slash pose — keeps the laid-out axe up in frame.")]
     public float slashHandRise = 0.16f;
 
@@ -228,7 +230,8 @@ public class AxeSwing : MonoBehaviour
         Quaternion swingRot = Quaternion.Slerp(chopRot, slashRot, _slashBlend);
 
         // Hand travel: carries the swing without stealing the show.
-        Vector3 slashPos = new Vector3(_slash * slashHandTravel, slashHandRise, 0f);
+        float slashTravel = _slash < 0f ? slashHandTravel + slashHandTravelExtraLeft : slashHandTravel;
+        Vector3 slashPos = new Vector3(_slash * slashTravel, slashHandRise, 0f);
         Vector3 chopPos = new Vector3(0f, _chop < 0f ? -_chop * chopHandRise : -_chop * chopHandRise * 0.4f, 0f);
         Vector3 handPos = Vector3.Lerp(chopPos, slashPos, _slashBlend);
 
