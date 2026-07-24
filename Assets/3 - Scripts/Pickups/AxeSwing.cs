@@ -41,10 +41,21 @@ public class AxeSwing : MonoBehaviour
     [Range(0f, 1f)] public float swingLookScale = 0.25f;
     [Tooltip("Spike-build on-screen readout. Turn off when the verdict is in.")]
     public bool showDebugReadout = true;
-    [Tooltip("Controller: right-stick deflection → swing input, in mouse-units per second at full deflection. Hold RT to swing, stick sweeps the axe. A mouse flick spikes far harder than a held stick, so this needs to be generous.")]
-    public float stickSwingRate = 420f;
-    [Tooltip("Controller only: stick swing input multiplier while the axe is ARMED — a charged swing whips through at speed.")]
-    public float armedStickBoost = 2f;
+    [Header("Controller slingshot (RT) — replaces stick-as-mouse on pad")]
+    [Tooltip("How far (m) the stick can pull the axe back at full deflection, per axis.")]
+    public Vector2 pullTravel = new Vector2(0.45f, 0.38f);
+    [Tooltip("Release speed (m/s) at the smallest pull that still fires.")]
+    public float slingMinSpeed = 3f;
+    [Tooltip("Release speed (m/s) at full pull — the further back, the faster it whips.")]
+    public float slingMaxSpeed = 9f;
+    [Tooltip("Spring stiffness of the flight back through the anchor. With the damping below it's underdamped on purpose: fly through centre, follow through, settle home.")]
+    public float slingReturnStiffness = 60f;
+    [Tooltip("Flight damping. Lower = bigger follow-through overshoot.")]
+    public float slingReturnDamping = 9f;
+    [Tooltip("Lean (deg) per metre of pull/flight offset — how much the axe cocks into the pull.")]
+    public float slingLeanPerMeter = 110f;
+    [Tooltip("Lean cap (deg).")]
+    public float slingMaxLean = 55f;
 
     [Header("Horizontal SLASH (axe lays flat and sweeps like a scythe)")]
     [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal. Too high and the head dips out the bottom of the frame — the grip sits at mid-height.")]
@@ -129,6 +140,16 @@ public class AxeSwing : MonoBehaviour
     float _windupTimer;             // continuous seconds at the wind-up (gates arming)
     float _armedTime;               // shake ramp time (accumulates only while shaking)
     float _shakePhase;              // perlin scrub position for the shake
+
+    // Controller slingshot state.
+    enum SlingState { Idle, Pull, Flight }
+    SlingState _sling = SlingState.Idle;
+    Vector2 _slingPos, _slingVel;   // camera-plane metres relative to rest
+    float _slingHoldTime;           // seconds RT has been held this pull
+    bool _slingCharged;             // pull lasted past armDelay → flight hits are full hits
+    float _slingRoll;               // blade facing during the sling (separate from mouse-path _roll)
+    Quaternion _anchorRot;          // camera rotation when RT was pressed — where the slingshot aims
+    Transform _camT;
     float _emaX, _emaY;             // recent |mouse| per axis, for mode dominance
     bool _holding;
     bool _slashMode;
@@ -136,11 +157,12 @@ public class AxeSwing : MonoBehaviour
     public bool IsArmed => _armed;
     public float ArmedRamp => Mathf.Clamp01(_armedTime / Mathf.Max(0.01f, shakeRampTime));
 
-    /// <summary>BladeSweep calls this when an armed contact lands — one hit per wind-up.</summary>
+    /// <summary>BladeSweep calls this when an armed contact lands — one hit per wind-up/sling.</summary>
     public void Disarm()
     {
         _armed = false;
         _armedTime = 0f;
+        _slingCharged = false;
     }
 
     public bool IsActive => _rig != null &&
@@ -158,6 +180,12 @@ public class AxeSwing : MonoBehaviour
         _armed = _atWindup = false;
         _windupTimer = _armedTime = _shakePhase = 0f;
         _holding = _slashMode = false;
+        _sling = SlingState.Idle;
+        _slingPos = _slingVel = Vector2.zero;
+        _slingHoldTime = _slingRoll = 0f;
+        _slingCharged = false;
+        var cam = rig != null ? rig.GetComponentInParent<Camera>() : null;
+        _camT = cam != null ? cam.transform : null;
         if (sweep != null) sweep.OnHitLanded = Disarm;
     }
 
@@ -180,19 +208,15 @@ public class AxeSwing : MonoBehaviour
         if (dt <= 0f) return;
 
         // Raw per-frame mouse delta — deliberately NOT the smoothed camera path.
-        // Controller: the right stick is a rate input, so convert deflection to
-        // an equivalent per-frame delta; RT is the pad's "LMB held".
         Vector2 delta = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
-        if (TutorialGate.ControllerEnabled)
-        {
-            // Charged boost (pad only): an armed swing whips twice as fast.
-            float rate = stickSwingRate * (_armed ? armedStickBoost : 1f);
-            delta += new Vector2(TutorialGate.RightStickX(), TutorialGate.RightStickY()) * (rate * dt);
-        }
 
         bool allowed = _axe != null && _axe.PhysicsSwingAllowed;
-        _holding = TutorialGate.FireHeld() && allowed;
-        PlayerController.SwingLookScale = _holding ? swingLookScale : 1f;
+        // Mouse keeps the mode-arc system; the pad's RT drives the slingshot.
+        bool mouseHold = Input.GetMouseButton(0) && allowed;
+        bool rtHold = allowed && TutorialGate.ControllerEnabled && !mouseHold
+                      && TutorialGate.FireHeld() && !Input.GetMouseButton(0);
+        _holding = mouseHold;
+        PlayerController.SwingLookScale = (_holding || rtHold) ? swingLookScale : 1f;
 
         // Mode: follow whichever axis the player is actually moving (EMA + hysteresis).
         float emaDecay = Mathf.Exp(-4f * dt);
@@ -284,7 +308,9 @@ public class AxeSwing : MonoBehaviour
                                             : _chop <= -windupLatchPoint);
         _windupTimer = _atWindup ? _windupTimer + dt : 0f;
         if (_atWindup && _windupTimer >= armDelay) _armed = true;
-        if (!_holding) _armed = false;
+        // Sling states own _armed themselves (set later in the frame) — only
+        // the mouse path may clear it here.
+        if (!_holding && _sling == SlingState.Idle) _armed = false;
 
         // Shake = the "ready" indicator: plays only while armed AND still at
         // the wind-up. Starting the swing stops it instantly; returning to a
@@ -301,7 +327,7 @@ public class AxeSwing : MonoBehaviour
                 Mathf.PerlinNoise(0.73f, _shakePhase) - 0.5f,
                 0f) * (2f * amplitude);
         }
-        if (!_armed) _armedTime = 0f;
+        if (!_armed && _sling == SlingState.Idle) _armedTime = 0f;
 
         // Hand travel: carries the swing without stealing the show.
         float slashTravel = _slash < 0f ? slashHandTravel + slashHandTravelExtraLeft : slashHandTravel;
@@ -309,23 +335,146 @@ public class AxeSwing : MonoBehaviour
         Vector3 chopPos = new Vector3(0f, _chop < 0f ? -_chop * chopHandRise : -_chop * chopHandRise * 0.4f, 0f);
         Vector3 handPos = Vector3.Lerp(chopPos, slashPos, _slashBlend) + shakeOffset;
 
+        // ---- Controller slingshot (RT): pull back with the stick, release to
+        // whip the axe through the anchor (where you were looking at RT-press).
+        // Overrides the mouse-path pose while active.
+        if (_sling == SlingState.Idle && rtHold)
+        {
+            _sling = SlingState.Pull;
+            _slingHoldTime = 0f;
+            _slingPos = _slingVel = Vector2.zero;
+            if (_camT != null) _anchorRot = _camT.rotation;
+        }
+
+        if (_sling == SlingState.Pull)
+        {
+            if (rtHold)
+            {
+                _slingHoldTime += dt;
+                Vector2 stick = Vector2.ClampMagnitude(
+                    new Vector2(TutorialGate.RightStickX(), TutorialGate.RightStickY()), 1f);
+                Vector2 target = new Vector2(stick.x * pullTravel.x, stick.y * pullTravel.y);
+                _slingPos = Vector2.Lerp(_slingPos, target, 1f - Mathf.Exp(-12f * dt));
+
+                // Shake begins armDelay after RT-press — the usual ramp.
+                _armed = _slingHoldTime >= armDelay;
+
+                // Blade faces the strike direction (opposite the pull, horizontal part).
+                float pullNormX = pullTravel.x > 0.01f ? Mathf.Clamp(_slingPos.x / pullTravel.x, -1f, 1f) : 0f;
+                float slingRollTarget = -pullNormX * bladeFaceAngle * (invertRoll ? -1f : 1f);
+                _slingRoll = Mathf.MoveTowards(_slingRoll, slingRollTarget, maxRollRate * dt);
+            }
+            else
+            {
+                // Release: fire toward the anchor, speed scaled by pull distance.
+                _slingCharged = _armed && _slingPos.magnitude > 0.06f;
+                if (_slingPos.magnitude > 0.06f)
+                {
+                    float pullAmount = Mathf.Clamp01(_slingPos.magnitude / Mathf.Max(0.05f, Mathf.Max(pullTravel.x, pullTravel.y)));
+                    _slingVel = (AnchorPoint2D() - _slingPos).normalized
+                                * Mathf.Lerp(slingMinSpeed, slingMaxSpeed, pullAmount);
+                }
+                _sling = SlingState.Flight;
+            }
+        }
+
+        if (_sling == SlingState.Flight)
+        {
+            // Underdamped spring home: flies through the anchor/centre, follows
+            // through past it, then settles back to the carry pose.
+            float remainingF = Mathf.Min(dt, 0.1f);
+            while (remainingF > 0f)
+            {
+                float h = Mathf.Min(remainingF, 1f / 120f);
+                _slingVel += (slingReturnStiffness * -_slingPos - slingReturnDamping * _slingVel) * h;
+                _slingPos += _slingVel * h;
+                remainingF -= h;
+            }
+            if (_slingVel.magnitude < 1.5f)
+                _slingRoll = Mathf.MoveTowards(_slingRoll, 0f, maxRollRate * dt);
+            if (rtHold)
+            {
+                // New pull can start straight out of the follow-through.
+                _sling = SlingState.Pull;
+                _slingHoldTime = 0f;
+                _slingCharged = false;
+                if (_camT != null) _anchorRot = _camT.rotation;
+            }
+            else if (_slingPos.magnitude < 0.02f && _slingVel.magnitude < 0.15f && Mathf.Abs(_slingRoll) < 4f)
+            {
+                _sling = SlingState.Idle;
+                _slingCharged = false;
+                _slingPos = _slingVel = Vector2.zero;
+                _slingRoll = 0f;
+            }
+        }
+
+        if (_sling != SlingState.Idle)
+        {
+            // Pose from the sling: lean into the offset, blade roll on the handle.
+            float yawLean = Mathf.Clamp(_slingPos.x * slingLeanPerMeter, -slingMaxLean, slingMaxLean);
+            float pitchLean = Mathf.Clamp(-_slingPos.y * slingLeanPerMeter, -slingMaxLean, slingMaxLean);
+            if (_sling == SlingState.Flight)
+            {
+                yawLean = Mathf.Clamp(yawLean + _slingVel.x * 4f, -slingMaxLean, slingMaxLean);
+                pitchLean = Mathf.Clamp(pitchLean - _slingVel.y * 4f, -slingMaxLean, slingMaxLean);
+            }
+            swingRot = Quaternion.Euler(pitchLean, yawLean, 0f) * Quaternion.AngleAxis(_slingRoll, rollAxis.normalized);
+
+            // Shake only during an armed pull (the ready indicator).
+            Vector3 slingShake = Vector3.zero;
+            if (_sling == SlingState.Pull && _armed)
+            {
+                _armedTime += dt;
+                float ramp = ArmedRamp;
+                float amplitude = Mathf.Lerp(shakeBaseAmplitude, shakeMaxAmplitude, ramp);
+                _shakePhase += Mathf.Lerp(shakeMinFrequency, shakeMaxFrequency, ramp) * dt;
+                slingShake = new Vector3(
+                    Mathf.PerlinNoise(_shakePhase, 0.31f) - 0.5f,
+                    Mathf.PerlinNoise(0.73f, _shakePhase) - 0.5f,
+                    0f) * (2f * amplitude);
+            }
+            handPos = new Vector3(_slingPos.x, _slingPos.y, 0f) + slingShake;
+        }
+
         // Rotate about the GRIP (holdPositionOffset), not the rig origin.
         Vector3 gripPoint = _axe != null ? _axe.holdPositionOffset : Vector3.zero;
         _rig.localRotation = swingRot;
         _rig.localPosition = handPos + (gripPoint - swingRot * gripPoint);
 
         // Blade sweep runs after the pose is final so casts see this frame's
-        // edge path. Hits require armed AND mid-swing (left the wind-up).
-        if (_sweep != null) _sweep.Tick(dt, _armed && !_atWindup);
+        // edge path. Mouse path: armed AND mid-swing. Sling: charged flight
+        // lands full hits; an early-release flight falls through to the
+        // uncharged 1/3-damage rule via its real edge speed.
+        bool sweepArmed = _sling == SlingState.Flight ? _slingCharged
+                        : _sling == SlingState.Pull ? false
+                        : _armed && !_atWindup;
+        if (_sweep != null) _sweep.Tick(dt, sweepArmed);
+    }
+
+    // Where the RT-press look direction sits NOW, on the camera plane at the
+    // axe's working depth — the slingshot's target. Near (0,0) unless the
+    // (damped) camera moved during the pull.
+    Vector2 AnchorPoint2D()
+    {
+        if (_camT == null) return Vector2.zero;
+        Vector3 dirLocal = Quaternion.Inverse(_camT.rotation) * (_anchorRot * Vector3.forward);
+        if (dirLocal.z < 0.2f) return Vector2.zero;   // looked way off — aim centre
+        const float workingDepth = 1.05f;             // ≈ AxeMotor.restOffset.z
+        return Vector2.ClampMagnitude(new Vector2(dirLocal.x, dirLocal.y) * (workingDepth / dirLocal.z), 0.7f);
     }
 
     void OnGUI()
     {
         if (!showDebugReadout || _rig == null) return;
         float edge = _sweep != null ? _sweep.LastEdgeSpeed : 0f;
-        string mode = _holding ? (_slashMode ? "SLASH" : "CHOP") : "carry";
-        string armed = _armed ? (_atWindup ? $"ARMED {ArmedRamp * 100f:0}%" : "ARMED — swing!")
-                              : (_atWindup ? $"winding {Mathf.Clamp01(_windupTimer / Mathf.Max(0.01f, armDelay)) * 100f:0}%" : "unarmed");
+        string mode = _sling == SlingState.Pull ? "SLING pull" : _sling == SlingState.Flight ? "SLING!"
+                    : _holding ? (_slashMode ? "SLASH" : "CHOP") : "carry";
+        string armed = _sling == SlingState.Pull
+            ? (_armed ? $"ARMED {ArmedRamp * 100f:0}%  pull {_slingPos.magnitude / Mathf.Max(0.05f, Mathf.Max(pullTravel.x, pullTravel.y)) * 100f:0}%" : "winding...")
+            : _sling == SlingState.Flight ? (_slingCharged ? "charged" : "uncharged")
+            : _armed ? (_atWindup ? $"ARMED {ArmedRamp * 100f:0}%" : "ARMED — swing!")
+                     : (_atWindup ? $"winding {Mathf.Clamp01(_windupTimer / Mathf.Max(0.01f, armDelay)) * 100f:0}%" : "unarmed");
         GUI.Label(new Rect(12, 12, 560, 22),
             $"swingLookScale {swingLookScale:0.00}   [{mode}]   {armed}   edge {edge:0.0} m/s");
     }
