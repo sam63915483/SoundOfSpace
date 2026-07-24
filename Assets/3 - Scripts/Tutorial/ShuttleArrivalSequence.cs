@@ -68,11 +68,13 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     // HAL briefing (2026-07 orientation-film rework). Text MUST byte-match
     // HALVoiceManifest.Lines or a line plays silent, so they live in code.
-    // The memory-loss line was deleted (the film covers it) and the vitals
-    // line trimmed; the last entry is the film lead-in (the film schedules
-    // itself filmDelayAfterLeadIn seconds after it's dispatched). The
-    // "Approaching Humble Abode" callout is NOT timer-driven any more — it
-    // fires from descent physics (crossing approachLineAltitude, over the film).
+    // Delivered SEQUENTIALLY (each line starts when the previous finishes —
+    // no dead-air timetable), with one authored beat: a 3.5s uneasy pause
+    // after the far-from-Earth line while an anxious heartbeat fades in;
+    // HAL then notes "Heart rate elevated..." and the heartbeat fades back
+    // out halfway through that line. The film lead-in is last (the film
+    // schedules itself filmDelayAfterLeadIn seconds after it's dispatched).
+    // "Approaching Humble Abode" stays physics-triggered (approachLineAltitude).
     static readonly string[] _briefing = {
         "Stasis cycle complete. Welcome back, astronaut.",
         "You have been in transit for three years, and are twenty-five trillion miles from Earth.",
@@ -80,10 +82,6 @@ public class ShuttleArrivalSequence : MonoBehaviour
         "It is normal for those emerging from stasis to have difficulty recalibrating. Remember — when the mission is complete, you will be returned home.",
         "To assist with recalibration, please enjoy this orientation film. Viewing is mandatory and comforting.",
     };
-    // Tightened 2026-07 (the old 12->32 gap was 20s of dead air): lines flow
-    // back-to-back with breathing room, the altitude-triggered approach
-    // callout slots naturally into the ~25s gap, and the film starts clean.
-    static readonly float[] _briefingTimes = { 2f, 10f, 18f, 28f, 37f };
     const string ReverseThrusterLine = "Engaging reverse thrusters.";
     const string ApproachLine = "Approaching Humble Abode. Begin atmospheric entry.";
 
@@ -116,7 +114,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
     bool _active;
     bool _skip;
     bool _wasKinematic;
-    int _briefingIndex;
+    AudioSource _heartbeat;
     Canvas _canvas;
     Image _fade;
     AudioSource _ambient, _thruster, _sfx;
@@ -162,6 +160,19 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [Tooltip("Seconds each click's eye-opening step takes.")]
     public float unfadePerClick = 0.30f;
 
+    [Header("Anxious heartbeat (the uneasy beat after the far-from-Earth line)")]
+    [Tooltip("Nervous heartbeat loop; fades in during the pause, out during the vitals line.")]
+    public AudioClip heartbeatClip;
+
+    [Range(0f, 1f)]
+    public float heartbeatVolume = 0.55f;
+
+    [Tooltip("Seconds of uneasy silence after the far-from-Earth line.")]
+    public float pauseAfterEarthLine = 3.5f;
+
+    [Tooltip("Seconds into the 'Heart rate elevated' line before the heartbeat starts fading out (~halfway).")]
+    public float heartbeatOutDelay = 2.3f;
+
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
     {
@@ -173,8 +184,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
         // open — keep them shut for 30s and you miss nothing; the descent (and
         // the whole briefing/film schedule) only starts once you're awake.
         yield return WakeUpPhase();
+        StartCoroutine(RunBriefing());   // sequential narration, in parallel with the descent
         yield return Approach();
-        yield return FlushRemainingBriefing();
 
         // Atmosphere hit: HAL calls the burn, the shuttle brakes HARD from the
         // entry fall to a crawl, then sinks the last few metres to a dead-soft
@@ -427,7 +438,6 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _restLocalPos = transform.localPosition;
         _localUp = _restLocalPos.sqrMagnitude > 0.001f ? _restLocalPos.normalized : Vector3.up;
         _altitude = startAltitude;
-        _briefingIndex = 0;
 
         _wasKinematic = _rb.isKinematic;
         _rb.isKinematic = true;                                // no N-body gravity in the chamber
@@ -551,25 +561,84 @@ public class ShuttleArrivalSequence : MonoBehaviour
             float u = Mathf.Clamp01(t / entryDuration);
             _altitude = Hermite(startAltitude, brakeAltitude, 0f, -entrySpeed, entryDuration, u);
             _shakeAmp = approachShake * u;   // entry rumble builds gently
-            while (_briefingIndex < _briefing.Length && t >= _briefingTimes[_briefingIndex])
-            {
-                Speak(_briefing[_briefingIndex]);
-                _briefingIndex++;
-                if (_briefingIndex == _briefing.Length) ScheduleFilm();   // last line = the film lead-in
-            }
             yield return null;
         }
     }
 
-    IEnumerator FlushRemainingBriefing()
+    // ── Sequential narration (runs in parallel with the descent) ─────────────
+    IEnumerator RunBriefing()
     {
-        while (_briefingIndex < _briefing.Length && !_skip)
+        yield return new WaitForSecondsRealtime(2f);
+        if (_skip) yield break;
+        yield return SpeakAndWait(_briefing[0]);   // "Stasis cycle complete..."
+        if (_skip) yield break;
+        yield return SpeakAndWait(_briefing[1]);   // "...twenty-five trillion miles from Earth."
+        if (_skip) yield break;
+
+        // The uneasy beat: dead air on purpose while an anxious heartbeat
+        // fades in — the player is rattled by how far from home they are.
+        StartHeartbeatLoop();
+        yield return new WaitForSecondsRealtime(pauseAfterEarthLine);
+        if (_skip) yield break;
+
+        // HAL notices: "Heart rate elevated..." — the heartbeat starts fading
+        // back out roughly halfway through the line.
+        Speak(_briefing[2]);
+        StartCoroutine(FadeHeartbeatOutAfter(heartbeatOutDelay));
+        yield return WaitForHalIdle();
+        if (_skip) yield break;
+
+        yield return SpeakAndWait(_briefing[3]);   // recalibration / returned home
+        if (_skip) yield break;
+        Speak(_briefing[4]);                       // film lead-in
+        ScheduleFilm();
+        yield return WaitForHalIdle();
+    }
+
+    IEnumerator SpeakAndWait(string line)
+    {
+        Speak(line);
+        yield return WaitForHalIdle();
+        yield return new WaitForSecondsRealtime(0.35f);   // breath, not a pause
+    }
+
+    IEnumerator WaitForHalIdle()
+    {
+        yield return null;   // let the HUD start processing the line
+        yield return new WaitWhile(() => HALLineHUD.Instance != null && !HALLineHUD.Instance.IsIdle && !_skip);
+    }
+
+    // ── Anxious heartbeat ────────────────────────────────────────────────────
+    void StartHeartbeatLoop()
+    {
+        if (heartbeatClip == null || _heartbeat != null) return;
+        _heartbeat = gameObject.AddComponent<AudioSource>();
+        _heartbeat.clip = heartbeatClip;
+        _heartbeat.loop = true;
+        _heartbeat.spatialBlend = 0f;
+        _heartbeat.volume = 0f;
+        _heartbeat.playOnAwake = false;
+        _heartbeat.Play();
+        StartCoroutine(FadeHeartbeatTo(heartbeatVolume, 2.5f));
+    }
+
+    IEnumerator FadeHeartbeatTo(float target, float seconds)
+    {
+        if (_heartbeat == null) yield break;
+        float from = _heartbeat.volume, t = 0f;
+        while (t < seconds && _heartbeat != null)
         {
-            Speak(_briefing[_briefingIndex]);
-            _briefingIndex++;
-            if (_briefingIndex == _briefing.Length) ScheduleFilm();
-            yield return new WaitForSecondsRealtime(4f);
+            t += Time.unscaledDeltaTime;
+            _heartbeat.volume = Mathf.Lerp(from, target, seconds > 0f ? t / seconds : 1f);
+            yield return null;
         }
+    }
+
+    IEnumerator FadeHeartbeatOutAfter(float delay)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        yield return FadeHeartbeatTo(0f, 2.5f);
+        if (_heartbeat != null) { _heartbeat.Stop(); Destroy(_heartbeat); _heartbeat = null; }
     }
 
     // The retro-burn: entrySpeed down to a crawl by hoverAltitude. Duration is
@@ -686,6 +755,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (_canvas != null) Destroy(_canvas.gameObject);
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_thruster != null) { _thruster.Stop(); Destroy(_thruster.gameObject); }
+        if (_heartbeat != null) { _heartbeat.Stop(); Destroy(_heartbeat); _heartbeat = null; }
         if (_sfx != null) Destroy(_sfx, 3f);   // let the touchdown thump ring out
     }
 

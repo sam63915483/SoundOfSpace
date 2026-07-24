@@ -284,7 +284,11 @@ public class SpaceDustField : MonoBehaviour
         _bhMaterial.SetFloat(_AtmoFadeID, fade);
         _bhMaterial.SetFloat(_OceanFadeID, oceanFade);
         _bhMaterial.SetVector(_OceanCenterID, nearestOceanPos);
-        _bhMaterial.SetFloat(_OceanRadiusID, nearestOceanR);
+        // Per-pixel water cut DISABLED for playtest (Sam kept noticing its
+        // horizontal boundary across the hole). With the far-field falloff the
+        // lens footprint is tight, so the see-through-water case is much
+        // smaller now. Re-enable by feeding nearestOceanR again.
+        _bhMaterial.SetFloat(_OceanRadiusID, 0f);
     }
 
     // Metres below the water surface at which the BH/sky effect is fully gone.

@@ -22241,6 +22241,14 @@ MonoBehaviour:
   filmVolume: 0.85
   doorUnlockDelay: 2
   approachLineAltitude: 550
+  wakePromptDelay: 10
+  wakeLoopInterval: 1
+  clicksToWake: 6
+  unfadePerClick: 0.3
+  heartbeatClip: {fileID: 8300000, guid: f4dea9bc5e4701a4a9746d2de3c7fcf9, type: 3}
+  heartbeatVolume: 0.55
+  pauseAfterEarthLine: 3.5
+  heartbeatOutDelay: 2.3
 --- !u!1 &8812311342787602616
 GameObject:
   m_ObjectHideFlags: 0
