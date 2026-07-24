@@ -111,3 +111,9 @@ Assets/2 - Materials/HelmetHUD/helmet_frame_raw.png*
 Assets/2 - Materials/HelmetHUD/helmet_frame_clean.png*
 Assets/2 - Materials/HelmetHUD/helmet_white_raw.png*
 Assets/2 - Materials/HelmetHUD/helmet_thin_raw.png*
+
+# Pod TV orientation film — 304MB, over GitHub's 100MB hard limit (stripped
+# from history 2026-07-24). Kept local-only like the other big media; the
+# meta is ignored too so a fresh clone doesn't get a dangling reference.
+Assets/1 - sam3d/video.mp4
+Assets/1 - sam3d/video.mp4.meta
