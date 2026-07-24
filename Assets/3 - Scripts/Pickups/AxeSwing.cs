@@ -7,24 +7,30 @@ using UnityEngine;
 ///
 ///   axeHoldPosition → AxeMotorRig (carry sway) → AxeSwingRig (this) → AxePivot (equip anim + rest offsets)
 ///
-/// v4 — carried-hand model (v2 travel + v3 orientation discipline):
-/// the mouse moves the HAND. While LMB is held the whole axe TRAVELS through
-/// a big on-screen workspace with momentum — swing left/right and the entire
-/// axe crosses the view (v3's fixed-base "metronome" is gone), push up to
-/// raise it overhead, yank down to chop. Orientation stays disciplined:
-/// the axe rides mostly upright, LEANS into its direction of travel
-/// (velocity-derived, capped, self-zeroing at rest — never integrated, so it
-/// cannot wind up), and the blade flips discretely: edge sideways when the
-/// motion is horizontal (slash), edge forward-down when vertical (chop),
-/// neutral at rest. Release LMB: a spring returns the hand to the sitting
-/// point and everything settles.
+/// v5 — two real swings (Sam's spec, plainly): an axe swung sideways goes
+/// VERTICAL → HORIZONTAL. So v5 encodes the two actual motions as
+/// first-class arcs instead of one generic model:
+///
+///   SLASH (mouse moves sideways while LMB held): the axe lays down flat —
+///   handle horizontal, pointed out toward the tree — and sweeps left↔right
+///   through a wide yaw arc like a scythe, head crossing the trunk, edge
+///   flipping to lead the motion. Swing rhythm = mouse left-right-left.
+///
+///   CHOP (mouse moves vertically): mouse up cocks the axe up and back over
+///   the shoulder; mouse down drives it down and through. Edge stays on the
+///   axe's natural forward-down chop face.
+///
+/// The mode follows whichever way the mouse is actually moving (with
+/// hysteresis + smooth blending); momentum lives in a 1D swing progress per
+/// mode, so a flick carries through and reversals re-cock naturally.
+/// Release LMB: everything springs back to the upright carry pose.
 ///
 /// All rotations pivot about the GRIP with (grip − R·grip) compensation —
 /// the axe model carries large authoring-orientation offsets and naive rig
-/// rotations orbit it around empty space (the discovered v3 bug).
+/// rotations orbit it around empty space.
 ///
-/// While a swing is held, camera mouse-look is scaled by swingLookScale via
-/// the PlayerController.SwingLookScale static hook (0 = camera locked).
+/// While held, camera mouse-look is scaled by swingLookScale via the
+/// PlayerController.SwingLookScale static hook (0 = camera locked).
 /// Kinematic, camera-local, framerate-independent.
 /// </summary>
 [DefaultExecutionOrder(10)]   // after AxeMotor (0) so BladeSweep reads a settled world pose
@@ -36,70 +42,80 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Spike-build on-screen readout. Turn off when the verdict is in.")]
     public bool showDebugReadout = true;
 
-    [Header("Hand workspace (camera-space metres, relative to the rest point)")]
-    [Tooltip("Lower-left hand travel limit (x = left, y = down).")]
-    public Vector2 workspaceMin = new Vector2(-0.50f, -0.35f);
-    [Tooltip("Upper-right hand travel limit (x = right, y = up — raise for the overhead chop).")]
-    public Vector2 workspaceMax = new Vector2(0.50f, 0.45f);
+    [Header("Horizontal SLASH (axe lays flat and sweeps like a scythe)")]
+    [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal, pointing at the tree.")]
+    public float slashLayPitch = 78f;
+    [Tooltip("Yaw arc half-width (deg): the laid-out axe sweeps between -this and +this across the view.")]
+    public float slashYawRange = 65f;
+    [Tooltip("Swing-progress impulse per unit of raw mouse X. Higher = lighter, faster to cross the arc.")]
+    public float slashSensitivity = 0.55f;
+    [Tooltip("Exponential decay (1/s) of slash momentum — the weight.")]
+    public float slashDamping = 5f;
+    [Tooltip("Flip if mouse-right sweeps the axe left.")]
+    public bool invertSwing = false;
+    [Tooltip("Sideways hand travel (m) at full slash extent — carries the swing across the screen.")]
+    public float slashHandTravel = 0.28f;
 
-    [Header("Swing dynamics (the weight)")]
-    [Tooltip("Hand velocity impulse (m/s) per unit of raw mouse delta. Higher = lighter axe.")]
-    public float dragSensitivity = 1.1f;
-    [Tooltip("Exponential decay (1/s) of hand velocity. Higher = heavier, less follow-through.")]
-    public float gripDamping = 7f;
-    [Tooltip("Hand speed cap (m/s).")]
-    public float maxGripSpeed = 14f;
-    [Tooltip("Spring stiffness returning the hand to rest when LMB is released.")]
-    public float returnStiffness = 140f;
+    [Header("Vertical CHOP (cock up, drive down)")]
+    [Tooltip("Pitch (deg) at full cock — negative = raised up and back over the shoulder.")]
+    public float chopCockPitch = -50f;
+    [Tooltip("Pitch (deg) at full extension — driven down and through.")]
+    public float chopDrivePitch = 80f;
+    [Tooltip("Swing-progress impulse per unit of raw mouse Y.")]
+    public float chopSensitivity = 0.5f;
+    [Tooltip("Exponential decay (1/s) of chop momentum.")]
+    public float chopDamping = 5f;
+    [Tooltip("Hand rise (m) at full cock (and half of it drops at full drive).")]
+    public float chopHandRise = 0.22f;
+
+    [Header("Mode selection + return")]
+    [Tooltip("How much one mouse axis must dominate the other (ratio) before the mode switches. Hysteresis against jitter.")]
+    public float modeDominance = 1.4f;
+    [Tooltip("How fast (1/s) the pose blends between slash and chop modes.")]
+    public float modeBlendRate = 9f;
+    [Tooltip("Spring stiffness returning swing progress to rest on release.")]
+    public float returnStiffness = 110f;
     [Tooltip("Damping for the return spring.")]
-    public float returnDamping = 12f;
+    public float returnDamping = 13f;
 
-    [Header("Lean (orientation follows motion — derived, never integrated)")]
-    [Tooltip("Degrees of lean into the travel direction per (m/s) of hand speed.")]
-    public float leanFactor = 6f;
-    [Tooltip("Cap (deg) on the lean. The axe stays readable — it tilts, it never tumbles.")]
-    public float maxLean = 40f;
-    [Tooltip("Forward pitch (deg) while LMB is held — squares the axe up for contact.")]
-    public float slashPitch = 15f;
-    [Tooltip("Small raise/pull-back of the rig while LMB is held (camera space).")]
-    public Vector3 stancePositionOffset = new Vector3(0f, 0.02f, -0.02f);
-    [Tooltip("Seconds to blend the stance lean in/out.")]
-    public float stanceBlendTime = 0.12f;
-
-    [Header("Blade facing (the flip)")]
-    [Tooltip("Roll (deg) about the handle when the blade faces fully left/right for a horizontal slash. Vertical chops use neutral (edge forward-down, the axe's natural chop face).")]
+    [Header("Blade facing (slash edge flip)")]
+    [Tooltip("Roll (deg) about the handle so the edge leads a sideways sweep.")]
     public float bladeFaceAngle = 90f;
-    [Tooltip("Hand speed (m/s) above which the blade commits to the motion direction.")]
-    public float flipThresholdSpeed = 1.8f;
-    [Tooltip("How fast the blade flips (deg/s). Always through neutral, never the long way round.")]
+    [Tooltip("Slash momentum (progress/s) above which the edge commits to the motion direction.")]
+    public float flipThresholdSpeed = 1.2f;
+    [Tooltip("How fast the blade flips (deg/s). Always through neutral.")]
     public float maxRollRate = 900f;
     [Tooltip("Local axis of the pivot the blade rolls around — the handle's long axis.")]
     public Vector3 rollAxis = Vector3.up;
-    [Tooltip("Flip if the blade faces away from the swing instead of into it.")]
+    [Tooltip("Flip if the edge trails instead of leads.")]
     public bool invertRoll = false;
 
     Transform _rig;                 // AxeSwingRig
     AxeController _axe;
     BladeSweep _sweep;
 
-    Vector2 _hand, _handVelocity;   // camera-plane metres relative to rest, m/s
-    float _roll;                    // deg — current blade facing
-    float _stanceBlend;             // 0..1 stance blend
+    // 1D swing progress per mode, each in [-1, +1], with momentum.
+    float _slash, _slashVelocity;   // -1 = full left, +1 = full right
+    float _chop, _chopVelocity;     // -1 = full cock (up/back), +1 = full drive (down/through)
+    float _slashBlend;              // 0 = chop/carry pose family, 1 = laid-out slash pose
+    float _roll;                    // deg — current edge facing (slash only)
+    float _emaX, _emaY;             // recent |mouse| per axis, for mode dominance
     bool _holding;
+    bool _slashMode;
 
     public bool IsActive => _rig != null &&
-        (_holding || _handVelocity.sqrMagnitude > 0.25f || _hand.sqrMagnitude > 0.0025f || Mathf.Abs(_roll) > 2f);
-    public float HandSpeed => _handVelocity.magnitude;   // m/s, for readouts
+        (_holding || Mathf.Abs(_slashVelocity) > 0.1f || Mathf.Abs(_chopVelocity) > 0.1f
+                  || Mathf.Abs(_slash) > 0.05f || Mathf.Abs(_chop) > 0.05f
+                  || _slashBlend > 0.02f || Mathf.Abs(_roll) > 2f);
 
     public void Attach(Transform rig, AxeController axe, BladeSweep sweep)
     {
         _rig = rig;
         _axe = axe;
         _sweep = sweep;
-        _hand = _handVelocity = Vector2.zero;
-        _roll = 0f;
-        _stanceBlend = 0f;
-        _holding = false;
+        _slash = _slashVelocity = _chop = _chopVelocity = 0f;
+        _slashBlend = _roll = _emaX = _emaY = 0f;
+        _holding = _slashMode = false;
     }
 
     public void Detach(Transform rig)
@@ -127,64 +143,86 @@ public class AxeSwing : MonoBehaviour
         _holding = Input.GetMouseButton(0) && allowed;
         PlayerController.SwingLookScale = _holding ? swingLookScale : 1f;
 
-        // Mouse moves the hand: right = +x, up = +y, one-to-one.
-        if (_holding) _handVelocity += delta * dragSensitivity;
-        if (_handVelocity.magnitude > maxGripSpeed) _handVelocity = _handVelocity.normalized * maxGripSpeed;
+        // Mode: follow whichever axis the player is actually moving (EMA + hysteresis).
+        float emaDecay = Mathf.Exp(-4f * dt);
+        _emaX = _emaX * emaDecay + Mathf.Abs(delta.x);
+        _emaY = _emaY * emaDecay + Mathf.Abs(delta.y);
+        if (_holding)
+        {
+            if (_emaX > _emaY * modeDominance) _slashMode = true;
+            else if (_emaY > _emaX * modeDominance) _slashMode = false;
+            // between: keep the current mode
+        }
 
-        // Integrate, substepped so 30fps and 144fps produce the same swing.
+        if (_holding)
+        {
+            if (_slashMode) _slashVelocity += (invertSwing ? -delta.x : delta.x) * slashSensitivity;
+            else            _chopVelocity  += -delta.y * chopSensitivity;   // mouse up = cock up (progress toward -1)
+        }
+
+        // Integrate both progress values, substepped. The inactive mode always
+        // springs home so mode switches start from a clean pose.
         const float maxStep = 1f / 120f;
         float remaining = Mathf.Min(dt, 0.1f);
         while (remaining > 0f)
         {
             float h = Mathf.Min(remaining, maxStep);
-            if (!_holding)
-                _handVelocity += (returnStiffness * -_hand - returnDamping * _handVelocity) * h;
-            _handVelocity *= Mathf.Exp(-gripDamping * h);
-            _hand += _handVelocity * h;
+
+            bool slashDriven = _holding && _slashMode;
+            if (!slashDriven) _slashVelocity += (returnStiffness * -_slash - returnDamping * _slashVelocity) * h;
+            _slashVelocity *= Mathf.Exp(-slashDamping * h);
+            _slash += _slashVelocity * h;
+
+            bool chopDriven = _holding && !_slashMode;
+            if (!chopDriven) _chopVelocity += (returnStiffness * -_chop - returnDamping * _chopVelocity) * h;
+            _chopVelocity *= Mathf.Exp(-chopDamping * h);
+            _chop += _chopVelocity * h;
+
             remaining -= h;
         }
 
-        // Hard workspace clamp — the end of your reach bleeds the velocity.
-        Vector2 clamped = new Vector2(
-            Mathf.Clamp(_hand.x, workspaceMin.x, workspaceMax.x),
-            Mathf.Clamp(_hand.y, workspaceMin.y, workspaceMax.y));
-        if (clamped.x != _hand.x) _handVelocity.x = 0f;
-        if (clamped.y != _hand.y) _handVelocity.y = 0f;
-        _hand = clamped;
+        // Arc ends bleed momentum.
+        if (Mathf.Abs(_slash) > 1f) { _slash = Mathf.Sign(_slash); if (Mathf.Sign(_slashVelocity) == _slash) _slashVelocity = 0f; }
+        if (Mathf.Abs(_chop) > 1f)  { _chop = Mathf.Sign(_chop);  if (Mathf.Sign(_chopVelocity) == _chop)  _chopVelocity = 0f; }
 
-        // Lean into the travel direction — pure function of velocity, so it
-        // grows with the swing and dies to zero at rest on its own.
-        float bankLean = Mathf.Clamp(_handVelocity.x * leanFactor, -maxLean, maxLean);   // sideways lean
-        float pitchLean = Mathf.Clamp(-_handVelocity.y * leanFactor, -maxLean, maxLean); // down-travel → lean forward
+        // Pose blend: laid-out slash family vs upright chop/carry family.
+        float blendTarget = _holding && _slashMode ? 1f : 0f;
+        _slashBlend = Mathf.MoveTowards(_slashBlend, blendTarget, modeBlendRate * dt);
 
-        // Blade facing by dominant motion axis: horizontal slash → edge sideways;
-        // vertical chop → neutral (the axe's natural forward-down chop face).
+        // Edge facing (slash only): lead the sweep; neutral otherwise.
         float rollTarget;
-        float speed = _handVelocity.magnitude;
-        if (speed > flipThresholdSpeed)
-        {
-            bool horizontal = Mathf.Abs(_handVelocity.x) > Mathf.Abs(_handVelocity.y);
-            rollTarget = horizontal ? Mathf.Sign(_handVelocity.x) * bladeFaceAngle * (invertRoll ? -1f : 1f) : 0f;
-        }
-        else if (!_holding) rollTarget = 0f;
-        else rollTarget = _roll;   // slow moment mid-hold: keep facing until the next stroke commits
+        if (_slashBlend > 0.3f && Mathf.Abs(_slashVelocity) > flipThresholdSpeed)
+            rollTarget = Mathf.Sign(_slashVelocity) * bladeFaceAngle * (invertRoll ? -1f : 1f);
+        else if (_slashBlend > 0.3f && _holding)
+            rollTarget = _roll;                    // hold facing through the reversal
+        else
+            rollTarget = 0f;
         _roll = Mathf.MoveTowards(_roll, rollTarget, maxRollRate * dt);
 
-        _stanceBlend = Mathf.MoveTowards(_stanceBlend, _holding ? 1f : 0f, dt / Mathf.Max(0.01f, stanceBlendTime));
-
-        // Compose. AngleAxis(+deg, forward) leans the top LEFT, so bank is negated.
-        Quaternion swingRot =
-            Quaternion.AngleAxis(-bankLean, Vector3.forward)
-            * Quaternion.Euler(slashPitch * _stanceBlend + pitchLean, 0f, 0f)
+        // SLASH pose: lay the axe flat (pitch forward), then sweep the laid axe
+        // about camera-up, edge roll innermost about the handle.
+        Quaternion slashRot =
+            Quaternion.AngleAxis(_slash * slashYawRange, Vector3.up)
+            * Quaternion.AngleAxis(slashLayPitch, Vector3.right)
             * Quaternion.AngleAxis(_roll, rollAxis.normalized);
 
-        // Rotate about the GRIP (holdPositionOffset), not the rig origin — the
-        // model's authoring offsets put the visual axe ~0.6m from the origin.
+        // CHOP pose: pitch arc through the upright rest — piecewise so _chop = 0
+        // is exactly the untouched carry pose: -1 → chopCockPitch (raised/back),
+        // +1 → chopDrivePitch (driven down/through).
+        float chopPitch = _chop < 0f ? -_chop * chopCockPitch : _chop * chopDrivePitch;
+        Quaternion chopRot = Quaternion.AngleAxis(chopPitch, Vector3.right);
+
+        Quaternion swingRot = Quaternion.Slerp(chopRot, slashRot, _slashBlend);
+
+        // Hand travel: carries the swing without stealing the show.
+        Vector3 slashPos = new Vector3(_slash * slashHandTravel, 0.04f, 0f);
+        Vector3 chopPos = new Vector3(0f, _chop < 0f ? -_chop * chopHandRise : -_chop * chopHandRise * 0.4f, 0f);
+        Vector3 handPos = Vector3.Lerp(chopPos, slashPos, _slashBlend);
+
+        // Rotate about the GRIP (holdPositionOffset), not the rig origin.
         Vector3 gripPoint = _axe != null ? _axe.holdPositionOffset : Vector3.zero;
         _rig.localRotation = swingRot;
-        _rig.localPosition = new Vector3(_hand.x, _hand.y, 0f)
-                           + stancePositionOffset * _stanceBlend
-                           + (gripPoint - swingRot * gripPoint);
+        _rig.localPosition = handPos + (gripPoint - swingRot * gripPoint);
 
         // Blade sweep runs after the pose is final so casts see this frame's edge path.
         if (_sweep != null) _sweep.Tick(dt, IsActive);
@@ -194,8 +232,9 @@ public class AxeSwing : MonoBehaviour
     {
         if (!showDebugReadout || _rig == null) return;
         float edge = _sweep != null ? _sweep.LastEdgeSpeed : 0f;
-        GUI.Label(new Rect(12, 12, 520, 22),
-            $"swingLookScale {swingLookScale:0.00}   hand {HandSpeed:0.0} m/s   edge {edge:0.0} m/s" +
+        string mode = _holding ? (_slashMode ? "SLASH" : "CHOP") : "carry";
+        GUI.Label(new Rect(12, 12, 560, 22),
+            $"swingLookScale {swingLookScale:0.00}   [{mode}]   edge {edge:0.0} m/s" +
             (_sweep != null ? $"   (gate {_sweep.minEdgeSpeed:0.0})" : ""));
     }
 }
