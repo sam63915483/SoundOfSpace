@@ -76,6 +76,10 @@ public class AxeMotor : MonoBehaviour
     [Tooltip("Maximum target rotation offset per axis (degrees).")]
     public float maxRotationOffset = 24f;
 
+    [Header("Rest pose")]
+    [Tooltip("Base camera-space offset of the whole axe chain from axeHoldPosition. Pushed well forward so the axe isn't in the astronaut's face (axeHoldPosition itself is shared with the rod/pistol — don't move that).")]
+    public Vector3 restOffset = new Vector3(0f, -0.04f, 0.45f);
+
     Transform _rig;               // the AxeMotorRig created by AxeController on equip
     PlayerController _player;
     Quaternion _prevCamRotation;
@@ -112,7 +116,7 @@ public class AxeMotor : MonoBehaviour
         _bobPhase = 0f;
         if (_rig != null)
         {
-            _rig.localPosition = Vector3.zero;
+            _rig.localPosition = restOffset;
             _rig.localRotation = Quaternion.identity;
         }
     }
@@ -213,7 +217,7 @@ public class AxeMotor : MonoBehaviour
         Spring(ref _position, ref _positionVelocity, targetPosition, positionStiffness, positionDamping, dt);
         Spring(ref _rotation, ref _rotationVelocity, targetRotation, rotationStiffness, rotationDamping, dt);
 
-        _rig.localPosition = _position;
+        _rig.localPosition = restOffset + _position;
         _rig.localRotation = Quaternion.Euler(_rotation);
     }
 

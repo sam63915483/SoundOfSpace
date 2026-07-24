@@ -52,7 +52,7 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Grip speed cap (m/s).")]
     public float maxGripSpeed = 12f;
     [Tooltip("Spring stiffness returning the grip to rest when LMB is not held.")]
-    public float returnStiffness = 50f;
+    public float returnStiffness = 140f;
     [Tooltip("Damping for the return spring.")]
     public float returnDamping = 10f;
 
@@ -87,6 +87,8 @@ public class AxeSwing : MonoBehaviour
     public float maxRollRate = 720f;
     [Tooltip("Grip speed (m/s) below which the blade keeps its current roll instead of chasing noise.")]
     public float rollSpeedThreshold = 1.5f;
+    [Tooltip("Deg/s the blade rolls back to neutral after release, once the swing has slowed.")]
+    public float rollReturnRate = 360f;
 
     Transform _rig;                 // AxeSwingRig
     AxeController _axe;
@@ -221,6 +223,12 @@ public class AxeSwing : MonoBehaviour
             float target = Mathf.Atan2(_gripVelocity.x, -_gripVelocity.y) * Mathf.Rad2Deg;
             if (invertRoll) target = -target;
             _roll = Mathf.MoveTowardsAngle(_roll, target, maxRollRate * dt);
+        }
+        else if (!_holding)
+        {
+            // Released and slowed down: ease the blade back to its neutral roll
+            // so the axe settles into the regular sitting pose, not mid-twist.
+            _roll = Mathf.MoveTowardsAngle(_roll, 0f, rollReturnRate * dt);
         }
 
         // Stance raise blend.
