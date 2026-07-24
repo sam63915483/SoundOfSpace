@@ -97,6 +97,8 @@ public class AxeSwing : MonoBehaviour
     public bool invertRoll = false;
 
     [Header("Wind-up arming (hits only count when armed)")]
+    [Tooltip("Seconds the axe must SIT at the wind-up before it arms and the shake begins — the forced pause between swings.")]
+    public float armDelay = 0.5f;
     [Tooltip("Seconds for the armed shake to ramp from its starting intensity to max; it holds at max after that.")]
     public float shakeRampTime = 3f;
     [Tooltip("Shake amplitude (m) the instant the axe arms.")]
@@ -118,8 +120,10 @@ public class AxeSwing : MonoBehaviour
     float _slashBlend;              // 0 = chop/carry pose family, 1 = laid-out slash pose
     float _roll;                    // deg — current edge facing (slash only)
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
-    bool _armed;                    // wind-up reached; next armed contact is a hit
-    float _armedTime;               // seconds since arming — drives the shake ramp
+    bool _armed;                    // charged by a full wind-up; next in-swing contact is a hit
+    bool _atWindup;                 // currently sitting at a wind-up position
+    float _windupTimer;             // continuous seconds at the wind-up (gates arming)
+    float _armedTime;               // shake ramp time (accumulates only while shaking)
     float _shakePhase;              // perlin scrub position for the shake
     float _emaX, _emaY;             // recent |mouse| per axis, for mode dominance
     bool _holding;
@@ -147,8 +151,8 @@ public class AxeSwing : MonoBehaviour
         _sweep = sweep;
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
-        _armed = false;
-        _armedTime = _shakePhase = 0f;
+        _armed = _atWindup = false;
+        _windupTimer = _armedTime = _shakePhase = 0f;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
     }
@@ -257,18 +261,24 @@ public class AxeSwing : MonoBehaviour
 
         Quaternion swingRot = Quaternion.Slerp(chopRot, slashRot, _slashBlend);
 
-        // Wind-up arming: reaching a full wind-up (either slash side; chop is
-        // COCK-UP ONLY — down is the strike) arms the axe. Armed contact = a
-        // hit regardless of swing speed; landing it (or releasing LMB) disarms
-        // until the next full wind-up.
-        bool windupReached = _holding && (_slashMode ? Mathf.Abs(_slash) >= windupLatchPoint
-                                                     : _chop <= -windupLatchPoint);
-        if (windupReached) _armed = true;
+        // Wind-up arming. The axe must SIT at a full wind-up (either slash
+        // side; chop is COCK-UP ONLY — down is the strike) for armDelay before
+        // it arms and the shake begins — the forced pause between swings.
+        // Arming persists through the swing (and a miss); it's cleared by
+        // landing a hit or releasing LMB. Hits only count once the swing has
+        // LEFT the wind-up — a charged axe parked at the wind-up can't damage
+        // anything, so walking it into a tree does nothing (multi-hit exploit).
+        _atWindup = _holding && (_slashMode ? Mathf.Abs(_slash) >= windupLatchPoint
+                                            : _chop <= -windupLatchPoint);
+        _windupTimer = _atWindup ? _windupTimer + dt : 0f;
+        if (_atWindup && _windupTimer >= armDelay) _armed = true;
         if (!_holding) _armed = false;
 
-        // Armed shake: ramps intensity + frequency over shakeRampTime, then holds.
+        // Shake = the "ready" indicator: plays only while armed AND still at
+        // the wind-up. Starting the swing stops it instantly; returning to a
+        // wind-up while still armed resumes it where the ramp left off.
         Vector3 shakeOffset = Vector3.zero;
-        if (_armed)
+        if (_armed && _atWindup)
         {
             _armedTime += dt;
             float ramp = ArmedRamp;
@@ -279,10 +289,7 @@ public class AxeSwing : MonoBehaviour
                 Mathf.PerlinNoise(0.73f, _shakePhase) - 0.5f,
                 0f) * (2f * amplitude);
         }
-        else
-        {
-            _armedTime = 0f;
-        }
+        if (!_armed) _armedTime = 0f;
 
         // Hand travel: carries the swing without stealing the show.
         float slashTravel = _slash < 0f ? slashHandTravel + slashHandTravelExtraLeft : slashHandTravel;
@@ -295,8 +302,9 @@ public class AxeSwing : MonoBehaviour
         _rig.localRotation = swingRot;
         _rig.localPosition = handPos + (gripPoint - swingRot * gripPoint);
 
-        // Blade sweep runs after the pose is final so casts see this frame's edge path.
-        if (_sweep != null) _sweep.Tick(dt, _armed);
+        // Blade sweep runs after the pose is final so casts see this frame's
+        // edge path. Hits require armed AND mid-swing (left the wind-up).
+        if (_sweep != null) _sweep.Tick(dt, _armed && !_atWindup);
     }
 
     void OnGUI()
@@ -304,7 +312,8 @@ public class AxeSwing : MonoBehaviour
         if (!showDebugReadout || _rig == null) return;
         float edge = _sweep != null ? _sweep.LastEdgeSpeed : 0f;
         string mode = _holding ? (_slashMode ? "SLASH" : "CHOP") : "carry";
-        string armed = _armed ? $"ARMED {ArmedRamp * 100f:0}%" : "unarmed";
+        string armed = _armed ? (_atWindup ? $"ARMED {ArmedRamp * 100f:0}%" : "ARMED — swing!")
+                              : (_atWindup ? $"winding {Mathf.Clamp01(_windupTimer / Mathf.Max(0.01f, armDelay)) * 100f:0}%" : "unarmed");
         GUI.Label(new Rect(12, 12, 560, 22),
             $"swingLookScale {swingLookScale:0.00}   [{mode}]   {armed}   edge {edge:0.0} m/s");
     }
