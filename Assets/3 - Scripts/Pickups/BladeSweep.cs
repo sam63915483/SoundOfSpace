@@ -22,14 +22,16 @@ using UnityEngine;
 public class BladeSweep : MonoBehaviour
 {
     [Header("Edge geometry (local to the axe model instance)")]
-    [Tooltip("Sample points along the blade edge, local to the spawned axe model. Nudge with drawDebug on until the gizmo line hugs the edge.")]
+    [Tooltip("Measure the axe model's renderer bounds at equip and lay the samples from grip to head automatically (recommended — the model's authoring axes are nonstandard, so hand-guessed points miss the visual blade). Off = use edgeLocalPoints/bladeRadius as authored.")]
+    public bool autoComputeFromBounds = true;
+    [Tooltip("Manual sample points along the blade edge, local to the spawned axe model. Only used when autoComputeFromBounds is off. Nudge with drawDebug on until the gizmo line hugs the edge.")]
     public Vector3[] edgeLocalPoints = new Vector3[]
     {
         new Vector3(0f, 0.45f, 0.10f),
         new Vector3(0f, 0.62f, 0.16f),
         new Vector3(0f, 0.78f, 0.22f),
     };
-    [Tooltip("SphereCast radius (m) for each edge sample.")]
+    [Tooltip("Manual SphereCast radius (m). Only used when autoComputeFromBounds is off.")]
     public float bladeRadius = 0.06f;
     [Tooltip("Draw the edge samples + sweep paths in the Scene view (spike build).")]
     public bool drawDebug = true;
@@ -57,6 +59,8 @@ public class BladeSweep : MonoBehaviour
     Transform _cam;
     AudioSource _audio;
 
+    Vector3[] _samples;             // blade-local sample points actually used
+    float _radius;                  // sweep radius actually used
     Vector3[] _prevCamLocal;        // last frame's edge samples, camera-local
     bool _hasPrev;
     bool _whooshArmed = true;
@@ -74,6 +78,10 @@ public class BladeSweep : MonoBehaviour
         _axe = axe;
         var cam = bladeInstance != null ? bladeInstance.GetComponentInParent<Camera>() : null;
         _cam = cam != null ? cam.transform : null;
+
+        _samples = edgeLocalPoints;
+        _radius = bladeRadius;
+        if (autoComputeFromBounds && _blade != null) ComputeSamplesFromBounds();
         // Dedicated source: we pitch-shift per hit, and doing that on the shared
         // AxeController source would warp any equip/swing clip already playing.
         if (_audio == null)
@@ -96,14 +104,15 @@ public class BladeSweep : MonoBehaviour
     public void Tick(float dt, bool armed)
     {
         if (_blade == null || _cam == null || dt <= 0f) { _hasPrev = false; return; }
-        int n = edgeLocalPoints.Length;
+        if (_samples == null || _samples.Length == 0) { _samples = edgeLocalPoints; _radius = bladeRadius; }
+        int n = _samples.Length;
         if (n == 0) return;
         if (_prevCamLocal == null || _prevCamLocal.Length != n) { _prevCamLocal = new Vector3[n]; _hasPrev = false; }
 
         float fastest = 0f;
         for (int i = 0; i < n; i++)
         {
-            Vector3 cur = _blade.TransformPoint(edgeLocalPoints[i]);
+            Vector3 cur = _blade.TransformPoint(_samples[i]);
             if (_hasPrev)
             {
                 Vector3 prev = _cam.TransformPoint(_prevCamLocal[i]);   // origin-shift safe
@@ -138,9 +147,43 @@ public class BladeSweep : MonoBehaviour
         if (fastest < minEdgeSpeed * 0.5f) _hitThisStroke.Clear();
     }
 
+    // Measure the spawned axe model and lay the sweep samples along its real
+    // grip→head axis, with a radius sized to the real head. Immune to the
+    // model's nonstandard authoring axes — works purely from rendered bounds.
+    void ComputeSamplesFromBounds()
+    {
+        var renderers = _blade.GetComponentsInChildren<Renderer>();
+        if (renderers.Length == 0) return;
+        Bounds b = renderers[0].bounds;
+        for (int i = 1; i < renderers.Length; i++) b.Encapsulate(renderers[i].bounds);
+
+        Vector3 grip = _blade.parent != null ? _blade.parent.position : _blade.position;
+        Vector3 toCenter = b.center - grip;
+        if (toCenter.sqrMagnitude < 1e-6f) return;
+        Vector3 dir = toCenter.normalized;
+
+        // Head = far end of the bounds along the grip→center axis.
+        float extentAlong = Mathf.Abs(dir.x) * b.extents.x + Mathf.Abs(dir.y) * b.extents.y + Mathf.Abs(dir.z) * b.extents.z;
+        Vector3 headCenter = b.center + dir * (extentAlong * 0.5f);
+        float length = Vector3.Distance(grip, headCenter);
+        if (length < 0.1f) return;
+
+        _samples = new Vector3[]
+        {
+            _blade.InverseTransformPoint(grip + dir * (length * 0.55f)),
+            _blade.InverseTransformPoint(grip + dir * (length * 0.80f)),
+            _blade.InverseTransformPoint(headCenter),
+        };
+
+        // Radius from the average cross-section (the two smaller half-extents).
+        float maxExtent = Mathf.Max(b.extents.x, Mathf.Max(b.extents.y, b.extents.z));
+        float crossSection = (b.extents.x + b.extents.y + b.extents.z - maxExtent) * 0.5f;
+        _radius = Mathf.Clamp(crossSection * 0.5f, 0.08f, 0.22f);
+    }
+
     void CastSegment(Vector3 origin, Vector3 dir, float dist, float speed)
     {
-        var hits = Physics.SphereCastAll(origin, bladeRadius, dir, dist, ~0, QueryTriggerInteraction.Ignore);
+        var hits = Physics.SphereCastAll(origin, _radius, dir, dist, ~0, QueryTriggerInteraction.Ignore);
         for (int h = 0; h < hits.Length; h++)
         {
             var col = hits[h].collider;
