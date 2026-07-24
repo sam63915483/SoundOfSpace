@@ -36,10 +36,10 @@ public class BladeSweep : MonoBehaviour
     [Tooltip("Draw the edge samples + sweep paths in the Scene view (spike build).")]
     public bool drawDebug = true;
 
-    [Header("Hit gate")]
-    [Tooltip("Edge speed (m/s) a sample must exceed for a chop to COUNT. Below this: scrape only, zero damage.")]
+    [Header("Hit rules (wind-up arming — speed does NOT gate damage)")]
+    [Tooltip("Edge speed (m/s) that triggers the whoosh sound and scales hit feedback. Damage is gated by the wind-up arm (AxeSwing), not by speed.")]
     public float minEdgeSpeed = 2.5f;
-    [Tooltip("Edge speed (m/s) above which contact makes a scrape sound (still no damage below minEdgeSpeed).")]
+    [Tooltip("Edge speed (m/s) above which UNARMED contact makes a scrape sound.")]
     public float scrapeMinSpeed = 0.4f;
     [Tooltip("Seconds between scrape sounds on the same target.")]
     public float scrapeCooldown = 0.4f;
@@ -54,6 +54,9 @@ public class BladeSweep : MonoBehaviour
     [Tooltip("Camera micro-shake magnitude at maxFeedbackSpeed (uses CameraShake, scaled by edge speed).")]
     public float hitShakeMagnitude = 0.12f;
 
+    /// <summary>Fired when an armed contact lands — AxeSwing disarms until the next wind-up.</summary>
+    public System.Action OnHitLanded;
+
     AxeController _axe;
     Transform _blade;               // spawned axe model instance
     Transform _cam;
@@ -65,8 +68,6 @@ public class BladeSweep : MonoBehaviour
     bool _hasPrev;
     bool _whooshArmed = true;
     float _lastEdgeSpeed;
-    // One chop per target per stroke; re-arms when the edge drops below half the gate.
-    readonly HashSet<int> _hitThisStroke = new HashSet<int>();
     readonly Dictionary<int, float> _lastScrapeTime = new Dictionary<int, float>();
     Coroutine _hitStop;
 
@@ -90,7 +91,6 @@ public class BladeSweep : MonoBehaviour
             _audio.playOnAwake = false;
         }
         _hasPrev = false;
-        _hitThisStroke.Clear();
         _lastScrapeTime.Clear();
     }
 
@@ -121,18 +121,23 @@ public class BladeSweep : MonoBehaviour
                 float speed = dist / dt;
                 if (speed > fastest) fastest = speed;
 
-                if (armed && dist > 0.001f && speed >= scrapeMinSpeed)
-                    CastSegment(prev, move / dist, dist, speed);
+                // Armed: any contact counts, however slow. Unarmed: cast only
+                // fast enough motion, for the scrape sound.
+                if (dist > 0.0008f && (armed || speed >= scrapeMinSpeed))
+                {
+                    if (CastSegment(prev, move / dist, dist, speed, armed))
+                        armed = false;   // hit landed — remaining samples this frame scrape at most
+                }
 
-                if (drawDebug) Debug.DrawLine(prev, cur, speed >= minEdgeSpeed ? Color.red : Color.yellow, 0.25f);
+                if (drawDebug) Debug.DrawLine(prev, cur, armed ? Color.red : Color.yellow, 0.25f);
             }
             _prevCamLocal[i] = _cam.InverseTransformPoint(cur);
         }
         _hasPrev = true;
         _lastEdgeSpeed = fastest;
 
-        // Whoosh when the edge crosses the hit gate; re-arms once it slows down.
-        if (armed && _whooshArmed && fastest >= minEdgeSpeed)
+        // Whoosh when the edge moves fast; re-arms once it slows down.
+        if (_whooshArmed && fastest >= minEdgeSpeed)
         {
             _whooshArmed = false;
             if (_audio != null && _axe != null && _axe.SwingClip != null)
@@ -142,9 +147,6 @@ public class BladeSweep : MonoBehaviour
             }
         }
         if (fastest < minEdgeSpeed * 0.6f) _whooshArmed = true;
-
-        // Stroke re-arm: once the blade slows right down, targets can be chopped again.
-        if (fastest < minEdgeSpeed * 0.5f) _hitThisStroke.Clear();
     }
 
     // Measure the spawned axe model and lay the sweep samples along its real
@@ -181,7 +183,9 @@ public class BladeSweep : MonoBehaviour
         _radius = Mathf.Clamp(crossSection * 0.5f, 0.08f, 0.22f);
     }
 
-    void CastSegment(Vector3 origin, Vector3 dir, float dist, float speed)
+    // Returns true when an armed hit landed (one hit per wind-up — the
+    // OnHitLanded callback disarms AxeSwing).
+    bool CastSegment(Vector3 origin, Vector3 dir, float dist, float speed, bool armed)
     {
         var hits = Physics.SphereCastAll(origin, _radius, dir, dist, ~0, QueryTriggerInteraction.Ignore);
         for (int h = 0; h < hits.Length; h++)
@@ -193,23 +197,21 @@ public class BladeSweep : MonoBehaviour
             var tree = col.GetComponentInParent<SpawnedTree>();
             var crystal = tree == null ? col.GetComponentInParent<SpawnedCrystal>() : null;
             if (tree == null && crystal == null) continue;
+            if (tree != null && tree.IsDead) continue;
+            if (crystal != null && crystal.IsDead) continue;
 
-            int id = tree != null ? tree.GetInstanceID() : crystal.GetInstanceID();
-            if (speed >= minEdgeSpeed)
+            if (armed)
             {
-                if (_hitThisStroke.Contains(id)) continue;
-                if (tree != null && tree.IsDead) continue;
-                if (crystal != null && crystal.IsDead) continue;
-                _hitThisStroke.Add(id);
                 if (tree != null) tree.TakeDamage(_axe.damagePerSwing);
                 else crystal.TakeDamage(_axe.damagePerSwing);
                 HitFeedback(speed);
+                OnHitLanded?.Invoke();
+                return true;
             }
-            else
-            {
-                Scrape(id);
-            }
+
+            Scrape(tree != null ? tree.GetInstanceID() : crystal.GetInstanceID());
         }
+        return false;
     }
 
     void HitFeedback(float speed)
