@@ -118,6 +118,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
     AudioSource _wind;
     Quaternion _restLocalRot;
     float _prevSpin;
+    Vector3 _worldShake;
     Canvas _canvas;
     Image _fade;
     AudioSource _ambient, _thruster, _sfx;
@@ -191,6 +192,18 @@ public class ShuttleArrivalSequence : MonoBehaviour
     public float grogMaxAfterWake = 0.55f;
     public float grogBreatheSpeed = 1.1f;   // rad/sec — worse -> better -> worse rhythm
     public float grogBreatheMax = 1.9f;     // peak multiplier of the base level
+
+    [Range(0f, 1f), Tooltip("Heartbeat level under the opening lines, before the far-from-Earth surge.")]
+    public float heartbeatQuietVolume = 0.35f;
+
+    [Tooltip("Seconds into the far-from-Earth line before the heartbeat surges to full volume (~halfway).")]
+    public float earthLineSurgeDelay = 2.5f;
+
+    [Range(0f, 1f), Tooltip("Fraction of the ship's shake the player inherits (1 = fully locked to the cabin, 0 = rock steady).")]
+    public float playerShakeFraction = 0.5f;
+
+    [Tooltip("Seal-release + glass-slide sound when the stasis door opens.")]
+    public AudioClip stasisDoorClip;
 
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
@@ -515,7 +528,21 @@ public class ShuttleArrivalSequence : MonoBehaviour
     void LateUpdate()
     {
         if (!_flying) return;
-        transform.localPosition = _restLocalPos + _localUp * _altitude;
+
+        // The SHUTTLE carries the shake (the cabin visibly rattles against
+        // the world); the player inherits only playerShakeFraction of it in
+        // SyncPlayerToPod, so there's relative motion — you feel shaken AND
+        // see the ship shaking around you.
+        Vector3 shakeLocal = Vector3.zero;
+        if (_shakeAmp > 0f)
+        {
+            float ts = Time.unscaledTime * 30f;
+            shakeLocal = new Vector3(Mathf.PerlinNoise(ts, 0f) - 0.5f,
+                                     Mathf.PerlinNoise(0f, ts) - 0.5f,
+                                     Mathf.PerlinNoise(ts, ts) - 0.5f) * (2f * _shakeAmp);
+        }
+        transform.localPosition = _restLocalPos + _localUp * _altitude + shakeLocal;
+        _worldShake = transform.parent != null ? transform.parent.TransformVector(shakeLocal) : shakeLocal;
 
         // Descent spin — and co-rotate the player with the cabin so the world
         // sweeps past the windows instead of the cabin spinning around them.
@@ -553,14 +580,9 @@ public class ShuttleArrivalSequence : MonoBehaviour
     void SyncPlayerToPod()
     {
         if (_rb == null || _podGrp == null) return;
-        Vector3 pos = _podGrp.TransformPoint(standOffset);
-        if (_shakeAmp > 0f)
-        {
-            float ts = Time.unscaledTime * 30f;
-            pos += new Vector3(Mathf.PerlinNoise(ts, 0f) - 0.5f,
-                               Mathf.PerlinNoise(0f, ts) - 0.5f,
-                               Mathf.PerlinNoise(ts, ts) - 0.5f) * (2f * _shakeAmp);
-        }
+        // Pod point already carries the shuttle's FULL shake; back out part of
+        // it so the player only rides playerShakeFraction of the rattle.
+        Vector3 pos = _podGrp.TransformPoint(standOffset) - _worldShake * (1f - playerShakeFraction);
         _rb.position = pos;
         _playerT.position = pos;
     }
@@ -624,27 +646,28 @@ public class ShuttleArrivalSequence : MonoBehaviour
     {
         yield return new WaitForSecondsRealtime(2f);
         if (_skip) yield break;
+
+        // Heartbeat runs under the WHOLE briefing: audible from the very
+        // start (quiet)...
+        StartHeartbeatLoop(heartbeatQuietVolume, 2f);
         yield return SpeakAndWait(_briefing[0]);   // "Stasis cycle complete..."
         if (_skip) yield break;
+
+        // ...SURGING much louder halfway through the far-from-Earth line...
+        StartCoroutine(RaiseHeartbeatAfter(earthLineSurgeDelay));
         yield return SpeakAndWait(_briefing[1]);   // "...twenty-five trillion miles from Earth."
         if (_skip) yield break;
 
-        // The uneasy beat: dead air on purpose while an anxious heartbeat
-        // fades in — the player is rattled by how far from home they are.
-        StartHeartbeatLoop();
+        // Uneasy dead air: just the pounding.
         yield return new WaitForSecondsRealtime(pauseAfterEarthLine);
         if (_skip) yield break;
 
-        // HAL notices: "Heart rate elevated..." — the heartbeat keeps going
-        // under this line (the player is still rattled).
-        yield return SpeakAndWait(_briefing[2]);
+        yield return SpeakAndWait(_briefing[2]);   // "Heart rate elevated..."
         if (_skip) yield break;
 
-        // The REASSURANCE ("...you will be returned home."): the heartbeat
-        // lets go starting roughly halfway through this line.
-        Speak(_briefing[3]);
-        StartCoroutine(FadeHeartbeatOutAfter(heartbeatOutDelay));
-        yield return WaitForHalIdle();
+        yield return SpeakAndWait(_briefing[3]);   // reassurance, in full
+        // ...settling once the reassurance has landed.
+        StartCoroutine(FadeHeartbeatOutAfter(0f));
         if (_skip) yield break;
         Speak(_briefing[4]);                       // film lead-in
         ScheduleFilm();
@@ -665,7 +688,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
     }
 
     // ── Anxious heartbeat ────────────────────────────────────────────────────
-    void StartHeartbeatLoop()
+    void StartHeartbeatLoop(float targetVolume, float fadeSeconds)
     {
         if (heartbeatClip == null || _heartbeat != null) return;
         _heartbeat = gameObject.AddComponent<AudioSource>();
@@ -675,7 +698,13 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _heartbeat.volume = 0f;
         _heartbeat.playOnAwake = false;
         _heartbeat.Play();
-        StartCoroutine(FadeHeartbeatTo(heartbeatVolume, 2.5f));
+        StartCoroutine(FadeHeartbeatTo(targetVolume, fadeSeconds));
+    }
+
+    IEnumerator RaiseHeartbeatAfter(float delay)
+    {
+        yield return new WaitForSecondsRealtime(delay);
+        yield return FadeHeartbeatTo(heartbeatVolume, 1.5f);
     }
 
     IEnumerator FadeHeartbeatTo(float target, float seconds)
@@ -734,6 +763,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
     IEnumerator OpenStasisDoor()
     {
         if (_doorPivot == null) yield break;
+        if (!_skip && stasisDoorClip != null && _sfx != null)
+            _sfx.PlayOneShot(stasisDoorClip, 0.9f);   // seal release + glass slide
         foreach (var c in _doorPivot.GetComponentsInChildren<Collider>(true))
             c.enabled = false;   // passable the moment it starts moving
         float t = 0f;

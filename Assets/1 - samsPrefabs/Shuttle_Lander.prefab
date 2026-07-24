@@ -3121,6 +3121,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   openAngle: 115
   openTime: 2.5
+  openSound: {fileID: 8300000, guid: 358f66700a326a446af2157738d83024, type: 3}
 --- !u!1 &1031164260619243529
 GameObject:
   m_ObjectHideFlags: 0
@@ -22247,7 +22248,7 @@ MonoBehaviour:
   clicksToWake: 6
   unfadePerClick: 0.3
   heartbeatClip: {fileID: 8300000, guid: f4dea9bc5e4701a4a9746d2de3c7fcf9, type: 3}
-  heartbeatVolume: 0.55
+  heartbeatVolume: 0.9
   pauseAfterEarthLine: 3.5
   heartbeatOutDelay: 4.5
   spinTurns: 2
@@ -22257,6 +22258,10 @@ MonoBehaviour:
   grogMaxAfterWake: 0.55
   grogBreatheSpeed: 1.1
   grogBreatheMax: 1.9
+  heartbeatQuietVolume: 0.35
+  earthLineSurgeDelay: 2.5
+  playerShakeFraction: 0.5
+  stasisDoorClip: {fileID: 8300000, guid: 358d0409457b10541a5462626af4198f, type: 3}
 --- !u!114 &1116818577685290352
 MonoBehaviour:
   m_ObjectHideFlags: 0

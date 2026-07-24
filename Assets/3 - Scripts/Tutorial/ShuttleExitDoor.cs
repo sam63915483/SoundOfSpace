@@ -32,6 +32,7 @@ public class ShuttleExitDoor : MonoBehaviour
         if (_open || _opening) return;
         _opening = true;
         _t = 0f;
+        if (openSound != null) AudioSource.PlayClipAtPoint(openSound, transform.position, 0.9f);
     }
 
     public void OpenInstant()
@@ -51,4 +52,9 @@ public class ShuttleExitDoor : MonoBehaviour
         transform.localRotation = _restRot * Quaternion.AngleAxis(openAngle * k, Vector3.right);
         if (u >= 1f) { _opening = false; _open = true; }
     }
+
+    // -- appended after initial release; keep order (serialization) --
+
+    [Tooltip("Hydraulic ramp-deploy sound played when the door starts folding open.")]
+    public AudioClip openSound;
 }
