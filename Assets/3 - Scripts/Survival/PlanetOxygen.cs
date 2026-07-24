@@ -108,6 +108,10 @@ public class PlanetOxygen : MonoBehaviour
         var dome = BubbleDome.DomeContaining(worldPos);
         if (dome != null) return dome.InteriorO2;
 
+        // Inside the landed shuttle → the lander keeps 100% air even with the
+        // doors open (a permanent safe pocket, like a dome that never depletes).
+        if (ShuttleInteriorOxygen.AnyContains(worldPos)) return 100f;
+
         CelestialBody body = NearestBody(worldPos);
         float alt = Altitude(worldPos, body);
         return AmbientO2(body, alt, worldPos);

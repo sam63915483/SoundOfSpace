@@ -115,6 +115,9 @@ public class ShuttleArrivalSequence : MonoBehaviour
     bool _skip;
     bool _wasKinematic;
     AudioSource _heartbeat;
+    AudioSource _wind;
+    Quaternion _restLocalRot;
+    float _prevSpin;
     Canvas _canvas;
     Image _fade;
     AudioSource _ambient, _thruster, _sfx;
@@ -170,8 +173,24 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [Tooltip("Seconds of uneasy silence after the far-from-Earth line.")]
     public float pauseAfterEarthLine = 3.5f;
 
-    [Tooltip("Seconds into the 'Heart rate elevated' line before the heartbeat starts fading out (~halfway).")]
-    public float heartbeatOutDelay = 2.3f;
+    [Tooltip("Seconds into the recalibration/returned-home REASSURANCE line before the heartbeat starts fading out (~halfway through it).")]
+    public float heartbeatOutDelay = 4.5f;
+
+    [Header("Descent spin (unwinds as the shuttle nears the ground)")]
+    [Tooltip("Full turns of yaw at start altitude; unwinds smoothly to EXACTLY the authored rest orientation at touchdown.")]
+    public float spinTurns = 2f;
+
+    [Header("Atmosphere wind (loudest between entry and the ground)")]
+    [Tooltip("Looping wind/whoosh; fades in below windStartAltitude, peaks midway, silent at touchdown.")]
+    public AudioClip windClip;
+    public float windStartAltitude = 450f;
+    [Range(0f, 1f)] public float windVolume = 0.8f;
+
+    [Header("Grogginess breathing (pulses, clears with proximity to the ground)")]
+    [Range(0f, 1f), Tooltip("Woozy base level right after waking; scales down with altitude to 0 at touchdown.")]
+    public float grogMaxAfterWake = 0.55f;
+    public float grogBreatheSpeed = 1.1f;   // rad/sec — worse -> better -> worse rhythm
+    public float grogBreatheMax = 1.9f;     // peak multiplier of the base level
 
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
@@ -204,6 +223,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
             yield return Fade(0f, 1f, 0.15f);
             _altitude = 0f;
             transform.localPosition = _restLocalPos;
+            transform.localRotation = _restLocalRot;
             SyncPlayerToPod();
             StopThruster(0f);
             StopFilm();
@@ -436,8 +456,10 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _released = false;
 
         _restLocalPos = transform.localPosition;
+        _restLocalRot = transform.localRotation;
         _localUp = _restLocalPos.sqrMagnitude > 0.001f ? _restLocalPos.normalized : Vector3.up;
         _altitude = startAltitude;
+        _prevSpin = SpinAngle(_altitude);
 
         _wasKinematic = _rb.isKinematic;
         _rb.isKinematic = true;                                // no N-body gravity in the chamber
@@ -466,6 +488,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
         BuildCanvas();
         _ambient = AddLoop(ambientHumClip, ambientVolume);
+        _wind = AddLoop(windClip, 0f);   // volume driven by altitude in LateUpdate
+        if (_wind != null && windClip != null) _wind.Play();
         _sfx = gameObject.AddComponent<AudioSource>();
         _sfx.spatialBlend = 0f; _sfx.playOnAwake = false;
 
@@ -478,12 +502,43 @@ public class ShuttleArrivalSequence : MonoBehaviour
         return true;
     }
 
+    // How much yaw the shuttle carries at a given altitude. A FUNCTION of
+    // altitude (not an integration), so it unwinds to EXACTLY zero — the
+    // authored rest orientation — at touchdown: fast spin up high, gently
+    // slowing the closer it gets to the ground.
+    float SpinAngle(float alt)
+    {
+        return 360f * spinTurns * Mathf.Pow(Mathf.Clamp01(alt / Mathf.Max(1f, startAltitude)), 1.7f);
+    }
+
     // Drive shuttle + player planet-relative, after the origin shift (order 50).
     void LateUpdate()
     {
         if (!_flying) return;
         transform.localPosition = _restLocalPos + _localUp * _altitude;
+
+        // Descent spin — and co-rotate the player with the cabin so the world
+        // sweeps past the windows instead of the cabin spinning around them.
+        float spin = SpinAngle(_altitude);
+        transform.localRotation = _restLocalRot * Quaternion.AngleAxis(spin, Vector3.up);
+        float dSpin = spin - _prevSpin;
+        _prevSpin = spin;
+        if (Mathf.Abs(dSpin) > 0.0001f && _playerT != null && _rb != null)
+        {
+            Quaternion dq = Quaternion.AngleAxis(dSpin, transform.up);
+            _playerT.rotation = dq * _playerT.rotation;
+            _rb.rotation = _playerT.rotation;
+        }
+
         SyncPlayerToPod();
+
+        // Atmosphere wind: silent above windStartAltitude, peaks midway down,
+        // silent again at the pads.
+        if (_wind != null)
+        {
+            float x = Mathf.Clamp01(_altitude / Mathf.Max(1f, windStartAltitude));
+            _wind.volume = windVolume * Mathf.Sin(Mathf.PI * (1f - x));
+        }
 
         // The approach callout is physics-triggered (crossing the altitude
         // threshold during the real descent), not a scheduled timer — it lands
@@ -529,10 +584,15 @@ public class ShuttleArrivalSequence : MonoBehaviour
             ApplyEyelids(_openness);
         }
 
-        // Grogginess only starts clearing once the eyes are open (it would
-        // otherwise burn off invisibly behind shut lids).
+        // Grogginess BREATHES (worse -> better -> worse on a slow rhythm) and
+        // its base level clears with PROXIMITY to the ground, not time — fully
+        // sharp by touchdown. Held at full blur while the eyes are still shut.
         if (_grog != null && _wokeUp)
-            _grog.intensity = Mathf.MoveTowards(_grog.intensity, 0f, grogRecoverRate * Time.unscaledDeltaTime);
+        {
+            float baseLvl = grogMaxAfterWake * Mathf.Pow(Mathf.Clamp01(_altitude / Mathf.Max(1f, startAltitude)), 0.8f);
+            float s = 0.5f * (1f - Mathf.Cos(Time.unscaledTime * grogBreatheSpeed));
+            _grog.intensity = Mathf.Clamp01(baseLvl * (1f + s * (grogBreatheMax - 1f)));
+        }
 
         // Duck the film ~6dB under HAL callouts (approach / reverse thrusters),
         // easing back up when the line clears.
@@ -581,14 +641,16 @@ public class ShuttleArrivalSequence : MonoBehaviour
         yield return new WaitForSecondsRealtime(pauseAfterEarthLine);
         if (_skip) yield break;
 
-        // HAL notices: "Heart rate elevated..." — the heartbeat starts fading
-        // back out roughly halfway through the line.
-        Speak(_briefing[2]);
-        StartCoroutine(FadeHeartbeatOutAfter(heartbeatOutDelay));
-        yield return WaitForHalIdle();
+        // HAL notices: "Heart rate elevated..." — the heartbeat keeps going
+        // under this line (the player is still rattled).
+        yield return SpeakAndWait(_briefing[2]);
         if (_skip) yield break;
 
-        yield return SpeakAndWait(_briefing[3]);   // recalibration / returned home
+        // The REASSURANCE ("...you will be returned home."): the heartbeat
+        // lets go starting roughly halfway through this line.
+        Speak(_briefing[3]);
+        StartCoroutine(FadeHeartbeatOutAfter(heartbeatOutDelay));
+        yield return WaitForHalIdle();
         if (_skip) yield break;
         Speak(_briefing[4]);                       // film lead-in
         ScheduleFilm();
@@ -672,18 +734,35 @@ public class ShuttleArrivalSequence : MonoBehaviour
         }
     }
 
+    // Slides UP, moonbase-door style: the pivot IS the door's top edge, so
+    // shrinking its Y scale retracts the leaf upward into its own top line —
+    // nothing ever rises past the frame, no roof clipping, no occluder needed.
     IEnumerator OpenStasisDoor()
     {
         if (_doorPivot == null) yield break;
+        foreach (var c in _doorPivot.GetComponentsInChildren<Collider>(true))
+            c.enabled = false;   // passable the moment it starts moving
         float t = 0f;
         while (t < doorOpenTime && !_skip)
         {
             t += Time.unscaledDeltaTime;
             float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / doorOpenTime));
-            _doorPivot.localRotation = _doorRestRot * Quaternion.AngleAxis(-doorOpenAngle * u, Vector3.right);
+            ApplyStasisDoorState(1f - u);
             yield return null;
         }
-        _doorPivot.localRotation = _doorRestRot * Quaternion.AngleAxis(-doorOpenAngle, Vector3.right);
+        ApplyStasisDoorState(0f);
+    }
+
+    // s = leaf fraction (1 closed ... 0 fully retracted).
+    void ApplyStasisDoorState(float s)
+    {
+        if (_doorPivot == null) return;
+        var sc = _doorPivot.localScale;
+        sc.y = Mathf.Max(0.001f, s);
+        _doorPivot.localScale = sc;
+        if (s <= 0.001f)
+            foreach (var r in _doorPivot.GetComponentsInChildren<Renderer>(true))
+                r.enabled = false;   // hide the zero-height sliver
     }
 
     // ── Release: hand the player to normal play while the sequence keeps
@@ -696,6 +775,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _shakeAmp = 0f;
 
         transform.localPosition = _restLocalPos;   // guarantee the authored rest pose
+        transform.localRotation = _restLocalRot;   // spin fully unwound
 
         if (_pc != null && _rb != null)
         {
@@ -755,6 +835,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (_canvas != null) Destroy(_canvas.gameObject);
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_thruster != null) { _thruster.Stop(); Destroy(_thruster.gameObject); }
+        if (_wind != null) { _wind.Stop(); Destroy(_wind); _wind = null; }
         if (_heartbeat != null) { _heartbeat.Stop(); Destroy(_heartbeat); _heartbeat = null; }
         if (_sfx != null) Destroy(_sfx, 3f);   // let the touchdown thump ring out
     }

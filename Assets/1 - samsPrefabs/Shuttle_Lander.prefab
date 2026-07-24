@@ -22172,6 +22172,7 @@ GameObject:
   m_Component:
   - component: {fileID: 4421007967151122899}
   - component: {fileID: 1483505330793110083}
+  - component: {fileID: 1116818577685290352}
   m_Layer: 10
   m_Name: Shuttle_Lander
   m_TagString: Untagged
@@ -22248,7 +22249,29 @@ MonoBehaviour:
   heartbeatClip: {fileID: 8300000, guid: f4dea9bc5e4701a4a9746d2de3c7fcf9, type: 3}
   heartbeatVolume: 0.55
   pauseAfterEarthLine: 3.5
-  heartbeatOutDelay: 2.3
+  heartbeatOutDelay: 4.5
+  spinTurns: 2
+  windClip: {fileID: 8300000, guid: 1f887a642fcd13a4ea9fe627ba08f009, type: 3}
+  windStartAltitude: 450
+  windVolume: 0.8
+  grogMaxAfterWake: 0.55
+  grogBreatheSpeed: 1.1
+  grogBreatheMax: 1.9
+--- !u!114 &1116818577685290352
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8799065548145837188}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 51e94d8779e19574a89774c7c8a1ec20, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  interiorRadius: 4.1
+  interiorYMin: 0.4
+  interiorYMax: 4.8
 --- !u!1 &8812311342787602616
 GameObject:
   m_ObjectHideFlags: 0
