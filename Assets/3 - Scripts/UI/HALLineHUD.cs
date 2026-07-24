@@ -70,6 +70,11 @@ public class HALLineHUD : MonoBehaviour
     const float PreviewFirstY = -292f;    // first preview row (just below the strip)
     const float PreviewStepY  = -34f;     // vertical gap per preview row
 
+    // Hitch-clamped frame delta for all hold/fade timers. The single huge
+    // frame after an alt-tab refocus (or a load hitch) otherwise expires a
+    // hold or a whole fade in one step — lines visibly snap/skip on return.
+    static float UDT => Mathf.Min(Time.unscaledDeltaTime, 0.25f);
+
     readonly Queue<Line> _queue = new Queue<Line>();
     Coroutine _processRoutine;
     System.Func<string> _activeLive;      // non-null while the primary is a live line
@@ -225,7 +230,7 @@ public class HALLineHUD : MonoBehaviour
             _activeLive = null;
 
             float gap = 0f;
-            while (gap < GapBetweenLines) { gap += Time.unscaledDeltaTime; yield return null; }
+            while (gap < GapBetweenLines) { gap += UDT; yield return null; }
         }
         _activeLive = null;
         _activeKey = null;
@@ -259,19 +264,19 @@ public class HALLineHUD : MonoBehaviour
         float t = 0f;
         if (!hasVoice)
         {
-            while (t < HoldSeconds) { t += Time.unscaledDeltaTime; yield return null; }
+            while (t < HoldSeconds) { t += UDT; yield return null; }
             yield break;
         }
         var vp = HALVoicePlayer.Instance;
         // Wait (briefly) for the clip to actually start — first play loads from disk.
         float startWait = 0f;
         while (startWait < 1f && (vp == null || !vp.IsPlaying))
-        { startWait += Time.unscaledDeltaTime; t += Time.unscaledDeltaTime; yield return null; }
+        { startWait += UDT; t += UDT; yield return null; }
         // Hold while it's speaking (capped so it never hangs).
         while (vp != null && vp.IsPlaying && t < MaxHoldSeconds)
-        { t += Time.unscaledDeltaTime; yield return null; }
+        { t += UDT; yield return null; }
         // Floor so a very short clip (or a failed load) doesn't blink past.
-        while (t < MinHoldSeconds) { t += Time.unscaledDeltaTime; yield return null; }
+        while (t < MinHoldSeconds) { t += UDT; yield return null; }
     }
 
     // Slide the primary strip from the first preview slot (small + dim) up to its
@@ -283,7 +288,7 @@ public class HALLineHUD : MonoBehaviour
         float t = 0f;
         while (t < PromoteSeconds)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             float u = Mathf.Clamp01(t / PromoteSeconds);
             float e = 1f - Mathf.Pow(1f - u, 3f);   // ease-out cubic
             _rt.anchoredPosition = Vector2.Lerp(startPos, homePos, e);
@@ -327,7 +332,7 @@ public class HALLineHUD : MonoBehaviour
         float t = 0f;
         while (t < duration)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             float u = Mathf.Clamp01(t / duration);
             // ease-out cubic for in, ease-in for out
             float eased = (to > from) ? 1f - Mathf.Pow(1f - u, 3f) : u * u * u;

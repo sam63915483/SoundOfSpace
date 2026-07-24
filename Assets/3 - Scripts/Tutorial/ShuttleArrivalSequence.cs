@@ -85,6 +85,17 @@ public class ShuttleArrivalSequence : MonoBehaviour
     const string ReverseThrusterLine = "Engaging reverse thrusters.";
     const string ApproachLine = "Approaching Humble Abode. Begin atmospheric entry.";
 
+    // Cold open [CANON — wording LOCKED Jul 23, GDD §8]: the recruiter's three
+    // questions on the black screen, each dismissed by a click (the click IS
+    // the "yes"), then "Open your eyes." — whose clicks pry the eyes open.
+    // Text-only; no voice. Do not reword without Sam.
+    static readonly string[] _coldOpenQuestions = {
+        "Do you want your life to mean something?",
+        "Would you give anything for a purpose?",
+        "Even yourself?",
+    };
+    const string OpenYourEyesLine = "Open your eyes.";
+
     // ── Runtime ──────────────────────────────────────────────────────────────
     PlayerController _pc;
     Transform _playerT;
@@ -102,6 +113,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
     Image _veil;
     Image _topLid, _botLid;
     TextMeshProUGUI _prompt;
+    TextMeshProUGUI _coldOpenText;
     float _openness, _opennessTarget;
     int _wakeClicks;
     bool _wakeArmed, _wokeUp;
@@ -123,6 +135,11 @@ public class ShuttleArrivalSequence : MonoBehaviour
     Image _fade;
     AudioSource _ambient, _thruster, _sfx;
     GrogginessImageEffect _grog;
+    ShuttleThrustFX _thrustFX;
+    Camera _landingCam;
+    RenderTexture _landingRT;
+    Material _landingMat;
+    float _landingNextAt;
 
     public bool IsActive => _active;
 
@@ -205,6 +222,19 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [Tooltip("Seal-release + glass-slide sound when the stasis door opens.")]
     public AudioClip stasisDoorClip;
 
+    [Header("Cold open (recruiter questions on black; wording LOCKED — GDD §8)")]
+    [Tooltip("Black-screen beat before the first question appears.")]
+    public float coldOpenStartDelay = 1.5f;
+
+    [Tooltip("Seconds each line takes to fade in (clicks don't register until it's fully in).")]
+    public float questionFadeIn = 0.9f;
+
+    [Tooltip("Seconds each line takes to fade out after the click.")]
+    public float questionFadeOut = 0.6f;
+
+    [Tooltip("Dark gap between one question fading out and the next fading in.")]
+    public float questionGap = 0.4f;
+
     // ── Entry point (called by IntroSequenceController on fresh New Game) ────
     public IEnumerator Play()
     {
@@ -226,6 +256,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         {
             Speak(ReverseThrusterLine);
             StartThruster();
+            if (_thrustFX != null) _thrustFX.Ignite();   // engine flare + correction nozzles light up
             yield return Braking();
             yield return FinalDescent();
         }
@@ -239,6 +270,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
             transform.localRotation = _restLocalRot;
             SyncPlayerToPod();
             StopThruster(0f);
+            if (_thrustFX != null) _thrustFX.StopImmediate();
             StopFilm();
             yield return Fade(1f, 0f, 0.4f);
         }
@@ -249,7 +281,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
             _shakeAmp = 0f;
             if (_sfx != null && touchdownClip != null) _sfx.PlayOneShot(touchdownClip, touchdownVolume);
             StopThruster(1.5f);
-            yield return new WaitForSecondsRealtime(touchdownHold);
+            if (_thrustFX != null) _thrustFX.Shutdown();   // flames collapse with the burn
+            yield return WaitUnscaled(touchdownHold);
         }
 
         // Hand the up-override to a blend proxy BEFORE the release: clearing it
@@ -283,7 +316,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
             if (_skip) { if (_exitDoor != null) _exitDoor.OpenInstant(); }
             else
             {
-                yield return new WaitForSecondsRealtime(doorUnlockDelay);
+                yield return WaitUnscaled(doorUnlockDelay);
                 if (_exitDoor != null) _exitDoor.Open();
             }
         }
@@ -315,23 +348,34 @@ public class ShuttleArrivalSequence : MonoBehaviour
         }
         float warm = 0f;
         while (warm < 4f && !_skip
-               && !(HALVoicePlayer.Instance != null && HALVoicePlayer.Instance.IsCached("Wake up")))
+               && !(HALVoicePlayer.Instance != null && HALVoicePlayer.Instance.IsCached(_briefing[0])))
         {
             warm += Time.unscaledDeltaTime;
             yield return null;
         }
 
+        // Cold open: the three recruiter questions, click-to-advance. The eyes
+        // stay fully shut throughout — _wakeArmed is still false, so these
+        // clicks never touch the eyelids.
+        yield return ColdOpenQuestions();
+
+        // "Open your eyes." — NOW the clicks pry the eyes open (the existing
+        // multi-click mechanic), HAL's "Wake up" murmur starts looping under
+        // the line, and the line melts away on the first click.
+        yield return ShowColdOpenLine(OpenYourEyesLine);
         _wakeArmed = true;
         var wakeLoop = StartCoroutine(WakeUpLoop());
         StartCoroutine(ShowWakePromptAfter(wakePromptDelay));
 
+        yield return new WaitUntil(() => _wakeClicks >= 1 || _skip);
+        StartCoroutine(FadeColdOpenLine(0f, questionFadeOut));
         yield return new WaitUntil(() => _wakeClicks >= clicksToWake || _skip);
         StopCoroutine(wakeLoop);
         if (_prompt != null) _prompt.gameObject.SetActive(false);
         _opennessTarget = 1f;
         yield return new WaitUntil(() => _openness >= 0.999f || _skip);
         _wokeUp = true;
-        if (HALLineHUD.Instance != null) HALLineHUD.Instance.ClearAll();   // drop any lingering "Wake up"
+        if (HALLineHUD.Instance != null) HALLineHUD.Instance.ClearAll();
         DestroyWakeOverlay();
     }
 
@@ -342,14 +386,74 @@ public class ShuttleArrivalSequence : MonoBehaviour
             Speak("Wake up");
             yield return null;
             yield return new WaitWhile(() => HALLineHUD.Instance != null && !HALLineHUD.Instance.IsIdle && !_skip);
-            yield return new WaitForSecondsRealtime(wakeLoopInterval);
+            yield return WaitUnscaled(wakeLoopInterval);
+        }
+    }
+
+    // Alt-tab/pause-safe timing. WaitForSecondsRealtime runs on the OS wall
+    // clock, which KEEPS COUNTING while the player is paused (fullscreen
+    // alt-tab) — every scripted beat "expires" during the pause and fires the
+    // instant the game resumes, while the voice clips and film (which freeze
+    // with the player loop) are still mid-line: the whole briefing desyncs.
+    // Accumulating CLAMPED unscaled deltas instead freezes with the player
+    // loop and swallows the giant refocus hitch frame.
+    static float UDT => Mathf.Min(Time.unscaledDeltaTime, 0.25f);
+
+    IEnumerator WaitUnscaled(float seconds)
+    {
+        float t = 0f;
+        while (t < seconds && !_skip) { t += UDT; yield return null; }
+    }
+
+    // ── Cold open (three questions on black; GDD §8, wording locked) ─────────
+    IEnumerator ColdOpenQuestions()
+    {
+        float t = 0f;
+        while (t < coldOpenStartDelay && !_skip) { t += UDT; yield return null; }
+
+        foreach (var q in _coldOpenQuestions)
+        {
+            if (_skip) yield break;
+            yield return ShowColdOpenLine(q);
+            // Poll only AFTER the fade-in completes — a click while the line is
+            // still materialising doesn't count, so it can't be skimmed blind.
+            while (!_skip && !TutorialGate.PrimaryActionPressed()) yield return null;
+            yield return FadeColdOpenLine(0f, questionFadeOut);
+            t = 0f;
+            while (t < questionGap && !_skip) { t += UDT; yield return null; }
+        }
+    }
+
+    IEnumerator ShowColdOpenLine(string line)
+    {
+        if (_coldOpenText == null) yield break;
+        _coldOpenText.text = line;
+        _coldOpenText.alpha = 0f;
+        _coldOpenText.gameObject.SetActive(true);
+        yield return FadeColdOpenLine(1f, questionFadeIn);
+    }
+
+    IEnumerator FadeColdOpenLine(float target, float seconds)
+    {
+        if (_coldOpenText == null) yield break;
+        float from = _coldOpenText.alpha, t = 0f;
+        while (t < seconds && !_skip && _coldOpenText != null)
+        {
+            t += UDT;
+            _coldOpenText.alpha = Mathf.Lerp(from, target, seconds > 0f ? t / seconds : 1f);
+            yield return null;
+        }
+        if (_coldOpenText != null)
+        {
+            _coldOpenText.alpha = target;
+            if (target <= 0.01f) _coldOpenText.gameObject.SetActive(false);
         }
     }
 
     IEnumerator ShowWakePromptAfter(float delay)
     {
         float t = 0f;
-        while (t < delay && _wakeClicks < clicksToWake && !_skip) { t += Time.unscaledDeltaTime; yield return null; }
+        while (t < delay && _wakeClicks < clicksToWake && !_skip) { t += UDT; yield return null; }
         if (_wakeClicks < clicksToWake && !_skip && _prompt != null)
         {
             _prompt.text = "Press " + PromptGlyphs.PrimaryAction;
@@ -415,6 +519,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     void DestroyWakeOverlay()
     {
+        if (_coldOpenText != null) { Destroy(_coldOpenText.gameObject); _coldOpenText = null; }
         if (_veil != null) { Destroy(_veil.gameObject); _veil = null; }
         if (_topLid != null) { Destroy(_topLid.gameObject); _topLid = null; }
         if (_botLid != null) { Destroy(_botLid.gameObject); _botLid = null; }
@@ -512,7 +617,85 @@ public class ShuttleArrivalSequence : MonoBehaviour
             _grog.material = grogginessMaterial;
             _grog.intensity = 1f;                              // stasis wake: fully blurry, clears over the descent
         }
+
+        _thrustFX = gameObject.AddComponent<ShuttleThrustFX>();
+        _thrustFX.Initialize(transform);   // dark until Ignite() at the retro-burn
+
+        StartLandingCam();   // belly camera feed on the TV until the film claims it
         return true;
+    }
+
+    // ── Landing cam (belly camera on the TV until the orientation film) ──────
+    // Second-camera gotchas, solved the RearViewMirror way:
+    //  • Space dust is Graphics.DrawMeshInstanced from the dust field's
+    //    LateUpdate — manual Render() calls MISS those submissions, so the
+    //    camera stays a real enabled camera, toggled on for one frame at
+    //    ~15fps (the CCTV cadence). Enabled cameras in the render loop see
+    //    the dust.
+    //  • Ocean/atmosphere are post effects on the player camera — copied onto
+    //    this one (OceanMaskRenderer + CustomPostProcessing, JSON field copy)
+    //    with a depth texture so the water renders.
+    void StartLandingCam()
+    {
+        if (_screenRenderer == null) return;
+        Transform flare = null;
+        foreach (var t in GetComponentsInChildren<Transform>(true))
+            if (t.name == "EngineFlare") { flare = t; break; }
+
+        var go = new GameObject("LandingCam");
+        go.transform.SetParent(transform, true);
+        go.transform.position = (flare != null ? flare.position : transform.position) - transform.up * 0.45f;
+        go.transform.rotation = Quaternion.LookRotation(-transform.up, transform.forward);
+        _landingCam = go.AddComponent<Camera>();
+        _landingCam.enabled = false;                 // flipped on for single frames in LateUpdate
+        _landingCam.fieldOfView = 78f;
+        _landingCam.nearClipPlane = 0.3f;
+        _landingCam.farClipPlane = 8000f;
+        _landingCam.depthTextureMode = DepthTextureMode.Depth;   // ocean effect needs scene depth
+        _landingCam.depth = -10f;                    // render before the main camera
+        if (_pc != null && _pc.Camera != null) _landingCam.cullingMask = _pc.Camera.cullingMask;
+
+        // Ocean + post stack, copied from the live player camera (guarded —
+        // a failure just means a feed without water, never an error).
+        var mainCam = _pc != null && _pc.Camera != null ? _pc.Camera : Camera.main;
+        if (mainCam != null)
+        {
+            CopyCamEffect(mainCam, "OceanMaskRenderer");
+            CopyCamEffect(mainCam, "CustomPostProcessing");
+        }
+
+        _landingRT = new RenderTexture(512, 384, 16);
+        _screenOriginalMat = _screenRenderer.sharedMaterial;   // the green glow; restored on handoff
+        _landingMat = new Material(Shader.Find("Unlit/Texture"));
+        _landingMat.mainTexture = _landingRT;
+        _landingCam.targetTexture = _landingRT;
+        _screenRenderer.sharedMaterial = _landingMat;
+    }
+
+    void CopyCamEffect(Camera mainCam, string typeName)
+    {
+        try
+        {
+            var src = mainCam.GetComponent(typeName);
+            if (src == null) return;
+            if (_landingCam.GetComponent(typeName) != null) return;
+            var dst = _landingCam.gameObject.AddComponent(src.GetType());
+            JsonUtility.FromJsonOverwrite(JsonUtility.ToJson(src), dst);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[ShuttleArrival] couldn't copy " + typeName + " onto the landing cam: " + e.Message);
+        }
+    }
+
+    void StopLandingCam()
+    {
+        if (_landingCam != null) { Destroy(_landingCam.gameObject); _landingCam = null; }
+        // Give the screen back (green glow) unless the film has already taken it.
+        if (!_filmStarted && _screenRenderer != null && _screenOriginalMat != null)
+            _screenRenderer.sharedMaterial = _screenOriginalMat;
+        if (_landingMat != null) { Destroy(_landingMat); _landingMat = null; }
+        if (_landingRT != null) { _landingRT.Release(); Destroy(_landingRT); _landingRT = null; }
     }
 
     // How much yaw the shuttle carries at a given altitude. A FUNCTION of
@@ -527,6 +710,19 @@ public class ShuttleArrivalSequence : MonoBehaviour
     // Drive shuttle + player planet-relative, after the origin shift (order 50).
     void LateUpdate()
     {
+        // Landing-cam cadence: a real enabled camera flipped on for single
+        // frames at ~15fps (manual Render() misses the space-dust submissions
+        // — see StartLandingCam). Driven BEFORE the _flying gate so it can
+        // never stick 'enabled' after touchdown.
+        if (_landingCam != null)
+        {
+            _landingCam.transform.rotation = Quaternion.LookRotation(-transform.up, transform.forward);
+            bool due = !_filmStarted && !_skip && _openness > 0.01f
+                       && Time.unscaledTime >= _landingNextAt;
+            if (due) _landingNextAt = Time.unscaledTime + 1f / 15f;
+            _landingCam.enabled = due;
+        }
+
         if (!_flying) return;
 
         // The SHUTTLE carries the shake (the cabin visibly rattles against
@@ -567,6 +763,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
             _wind.volume = windVolume * Mathf.Sin(Mathf.PI * (1f - x));
         }
 
+        if (_thrustFX != null) _thrustFX.SetAltitude(_altitude);
+
         // The approach callout is physics-triggered (crossing the altitude
         // threshold during the real descent), not a scheduled timer — it lands
         // over the film with the film's audio ducked underneath.
@@ -601,7 +799,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
                 _opennessTarget = Mathf.Clamp01((float)_wakeClicks / clicksToWake);
             }
             float perClick = clicksToWake > 0 ? 1f / clicksToWake : 1f;
-            float step = unfadePerClick > 0f ? perClick * Time.unscaledDeltaTime / unfadePerClick : 1f;
+            float step = unfadePerClick > 0f ? perClick * UDT / unfadePerClick : 1f;
             _openness = Mathf.MoveTowards(_openness, _opennessTarget, step);
             ApplyEyelids(_openness);
         }
@@ -633,7 +831,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         float t = 0f;
         while (t < entryDuration && !_skip)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             float u = Mathf.Clamp01(t / entryDuration);
             _altitude = Hermite(startAltitude, brakeAltitude, 0f, -entrySpeed, entryDuration, u);
             _shakeAmp = approachShake * u;   // entry rumble builds gently
@@ -644,7 +842,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
     // ── Sequential narration (runs in parallel with the descent) ─────────────
     IEnumerator RunBriefing()
     {
-        yield return new WaitForSecondsRealtime(2f);
+        yield return WaitUnscaled(2f);
         if (_skip) yield break;
 
         // Heartbeat runs under the WHOLE briefing: audible from the very
@@ -659,7 +857,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         if (_skip) yield break;
 
         // Uneasy dead air: just the pounding.
-        yield return new WaitForSecondsRealtime(pauseAfterEarthLine);
+        yield return WaitUnscaled(pauseAfterEarthLine);
         if (_skip) yield break;
 
         yield return SpeakAndWait(_briefing[2]);   // "Heart rate elevated..."
@@ -678,7 +876,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
     {
         Speak(line);
         yield return WaitForHalIdle();
-        yield return new WaitForSecondsRealtime(0.35f);   // breath, not a pause
+        yield return WaitUnscaled(0.35f);   // breath, not a pause
     }
 
     IEnumerator WaitForHalIdle()
@@ -703,7 +901,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     IEnumerator RaiseHeartbeatAfter(float delay)
     {
-        yield return new WaitForSecondsRealtime(delay);
+        yield return WaitUnscaled(delay);
         yield return FadeHeartbeatTo(heartbeatVolume, 1.5f);
     }
 
@@ -713,7 +911,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         float from = _heartbeat.volume, t = 0f;
         while (t < seconds && _heartbeat != null)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             _heartbeat.volume = Mathf.Lerp(from, target, seconds > 0f ? t / seconds : 1f);
             yield return null;
         }
@@ -721,7 +919,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     IEnumerator FadeHeartbeatOutAfter(float delay)
     {
-        yield return new WaitForSecondsRealtime(delay);
+        yield return WaitUnscaled(delay);
         yield return FadeHeartbeatTo(0f, 2.5f);
         if (_heartbeat != null) { _heartbeat.Stop(); Destroy(_heartbeat); _heartbeat = null; }
     }
@@ -735,7 +933,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         float t = 0f;
         while (t < brakeDuration && !_skip)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             float u = Mathf.Clamp01(t / brakeDuration);
             _altitude = Mathf.Max(0f, Hermite(brakeAltitude, hoverAltitude, -entrySpeed, -finalSinkSpeed, brakeDuration, u));
             _shakeAmp = landingShake * Mathf.Sin(u * Mathf.PI * 0.5f);   // ramps up as the burn bites
@@ -749,7 +947,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         float t = 0f;
         while (t < finalDuration && !_skip)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             float u = Mathf.Clamp01(t / finalDuration);
             _altitude = Mathf.Max(0f, Hermite(hoverAltitude, 0f, -finalSinkSpeed, 0f, finalDuration, u));
             _shakeAmp = landingShake * (1f - u);                          // dies out with the sink rate
@@ -770,7 +968,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         float t = 0f;
         while (t < doorOpenTime && !_skip)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / doorOpenTime));
             ApplyStasisDoorState(1f - u);
             yield return null;
@@ -858,6 +1056,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
         HALCommentator.SuppressAutonomous = false;
         StopFilm();
         if (_canvas != null) Destroy(_canvas.gameObject);
+        StopLandingCam();
+        if (_thrustFX != null) { _thrustFX.StopImmediate(); Destroy(_thrustFX); _thrustFX = null; }
         if (_ambient != null) { _ambient.Stop(); Destroy(_ambient); }
         if (_thruster != null) { _thruster.Stop(); Destroy(_thruster.gameObject); }
         if (_wind != null) { _wind.Stop(); Destroy(_wind); _wind = null; }
@@ -875,9 +1075,16 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     IEnumerator StartFilmAfter(float delay)
     {
-        yield return new WaitForSecondsRealtime(delay);
+        yield return WaitUnscaled(delay);
+        StopLandingCam();   // the film owns the screen from here; landing feed is done for good
         if (_skip || orientationFilm == null || _screenRenderer == null)
         {
+            // Diagnostic breadcrumb: if the film ever silently fails to start
+            // again, THIS tells us which reference was missing.
+            if (!_skip)
+                Debug.LogWarning("[ShuttleArrival] Orientation film NOT started: clip="
+                    + (orientationFilm != null ? orientationFilm.name : "NULL")
+                    + " screenRenderer=" + (_screenRenderer != null ? "ok" : "NULL"));
             _filmStarted = true; _filmEnded = true;   // nothing to wait on
             yield break;
         }
@@ -956,7 +1163,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         float from = src.volume, t = 0f;
         while (t < seconds && src != null)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             src.volume = Mathf.Lerp(from, 0f, t / seconds);
             yield return null;
         }
@@ -979,7 +1186,13 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _canvas = go.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         _canvas.sortingOrder = 32761;
-        go.AddComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        // Reference resolution MUST be set: the scaler default is 800x600,
+        // which blew the cold-open text up ~2.4x (the first question clipped
+        // off both edges of the screen). 1920x1080 matches HALLineHUD.
+        var scaler = go.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920f, 1080f);
+        scaler.matchWidthOrHeight = 0.5f;
 
         // Fade (for skip blinks) — transparent at rest; the wake-up's veil +
         // eyelids own the initial blackout.
@@ -998,14 +1211,31 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _prompt = promptGO.AddComponent<TextMeshProUGUI>();
         _prompt.text = "Press " + PromptGlyphs.PrimaryAction;
         _prompt.alignment = TextAlignmentOptions.Center;
-        _prompt.fontSize = 42;
+        _prompt.fontSize = 30;
         _prompt.color = new Color(1f, 1f, 1f, 0.85f);
         var prt = _prompt.rectTransform;
         prt.anchorMin = new Vector2(0.5f, 0.5f); prt.anchorMax = new Vector2(0.5f, 0.5f);
         prt.pivot = new Vector2(0.5f, 0.5f);
-        prt.anchoredPosition = Vector2.zero;
+        prt.anchoredPosition = new Vector2(0f, -150f);   // below the cold-open line
         prt.sizeDelta = new Vector2(800f, 120f);
         _prompt.gameObject.SetActive(false);
+
+        // Cold-open line: the recruiter's questions, centered on the blackout.
+        var coldGO = new GameObject("ColdOpenLine");
+        coldGO.transform.SetParent(go.transform, false);
+        _coldOpenText = coldGO.AddComponent<TextMeshProUGUI>();
+        _coldOpenText.text = "";
+        _coldOpenText.alignment = TextAlignmentOptions.Center;
+        _coldOpenText.fontSize = 34;
+        _coldOpenText.enableWordWrapping = true;
+        _coldOpenText.color = new Color(0.92f, 0.92f, 0.92f, 1f);
+        _coldOpenText.alpha = 0f;
+        var crt = _coldOpenText.rectTransform;
+        crt.anchorMin = new Vector2(0.5f, 0.5f); crt.anchorMax = new Vector2(0.5f, 0.5f);
+        crt.pivot = new Vector2(0.5f, 0.5f);
+        crt.anchoredPosition = Vector2.zero;
+        crt.sizeDelta = new Vector2(1400f, 300f);
+        _coldOpenText.gameObject.SetActive(false);
 
         _openness = _opennessTarget = 0f;
         ApplyEyelids(0f);
@@ -1029,7 +1259,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
         float t = 0f;
         while (t < seconds)
         {
-            t += Time.unscaledDeltaTime;
+            t += UDT;
             if (_fade != null) _fade.color = new Color(0f, 0f, 0f, Mathf.Lerp(from, to, seconds > 0f ? t / seconds : 1f));
             yield return null;
         }

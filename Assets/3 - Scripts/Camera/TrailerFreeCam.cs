@@ -75,6 +75,7 @@ public class TrailerFreeCam : MonoBehaviour
     Transform _camT;
     Transform _anchor;            // the player; the pod is pinned here during the descent
     PodArrivalSequence _pod;      // non-null + IsActive while the descent plays
+    ShuttleArrivalSequence _shuttle;   // 2026-07 intro: orbit the shuttle during ITS descent too
     CameraTransformFX _camFx;
     GrogginessImageEffect _grog;
     EndlessManager _endless;      // registered so the camera rebases IN-STEP with the world
@@ -173,9 +174,7 @@ public class TrailerFreeCam : MonoBehaviour
                                     orbitMinRadius, orbitMaxRadius);
         _radius = Mathf.Lerp(_radius, _radiusTarget, 1f - Mathf.Exp(-dt * orbitSmoothing));
 
-        // Centre on the actual pod if we have it, else the anchor (they coincide
-        // during the descent — the pod is pinned to the player while Active).
-        Vector3 center = (_pod != null && _pod.PodTransform != null) ? _pod.PodTransform.position : _anchor.position;
+        Vector3 center = OrbitCenter();
 
         float az = _azimuth * Mathf.Deg2Rad, el = _elevation * Mathf.Deg2Rad;
         Vector3 dir = new Vector3(Mathf.Cos(el) * Mathf.Sin(az), Mathf.Sin(el), Mathf.Cos(el) * Mathf.Cos(az));
@@ -266,9 +265,11 @@ public class TrailerFreeCam : MonoBehaviour
         _rb = _pc.Rigidbody;
         _anchor = _pc.transform;
 
-        // Mode: orbit the pod while the descent plays, free-fly otherwise.
+        // Mode: orbit the pod/shuttle while a descent plays, free-fly otherwise.
         _pod = FindObjectOfType<PodArrivalSequence>();
-        _mode = (_pod != null && _pod.IsActive) ? Mode.Orbit : Mode.FreeFly;
+        _shuttle = FindObjectOfType<ShuttleArrivalSequence>();
+        bool descentPlaying = (_pod != null && _pod.IsActive) || (_shuttle != null && _shuttle.IsActive);
+        _mode = descentPlaying ? Mode.Orbit : Mode.FreeFly;
 
         // Free-fly: anchor to the NEAREST planet (not the player). The player is frozen
         // in world space, but planets keep orbiting the sun — anchoring to the player
@@ -325,9 +326,18 @@ public class TrailerFreeCam : MonoBehaviour
         Active = true;
     }
 
+    // Orbit centre: the live shuttle during ITS descent, else the pod, else the
+    // player anchor (pod + player coincide while the pod descent is active).
+    Vector3 OrbitCenter()
+    {
+        if (_shuttle != null && _shuttle.IsActive) return _shuttle.transform.position;
+        if (_pod != null && _pod.PodTransform != null) return _pod.PodTransform.position;
+        return _anchor.position;
+    }
+
     void InitOrbitState()
     {
-        Vector3 center = (_pod != null && _pod.PodTransform != null) ? _pod.PodTransform.position : _anchor.position;
+        Vector3 center = OrbitCenter();
         Vector3 rel = _camT.position - center;
         float r = rel.magnitude;
         _radius = _radiusTarget = Mathf.Clamp(r < 0.1f ? orbitDefaultRadius : r, orbitMinRadius, orbitMaxRadius);
@@ -372,7 +382,7 @@ public class TrailerFreeCam : MonoBehaviour
         Cursor.lockState = _cursorLockWas;
         Cursor.visible = _cursorVisibleWas;
 
-        _pc = null; _rb = null; _cam = null; _camT = null; _anchor = null; _pod = null; _camFx = null; _grog = null; _endless = null;
+        _pc = null; _rb = null; _cam = null; _camT = null; _anchor = null; _pod = null; _shuttle = null; _camFx = null; _grog = null; _endless = null;
     }
 
     void ShowAstronautBody()
