@@ -49,7 +49,13 @@ public static class SaveSystem
         }
     }
 
-    public static void Apply(SaveData data) => SaveCollector.Apply(data);
+    public static void Apply(SaveData data)
+    {
+        // Spawn protection: the restore teleport + settling physics frames can
+        // register as a lethal impact (load → instant fall-damage death loop).
+        FallDamage.LoadGraceUntil = Time.unscaledTime + 4f;
+        SaveCollector.Apply(data);
+    }
 
     public static List<SaveSlotInfo> ListSaves()
     {

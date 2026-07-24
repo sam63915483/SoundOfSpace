@@ -71,6 +71,15 @@ public class FallDamage : MonoBehaviour
 	// otherwise land on the player the moment they're placed in the cabin.
 	public static bool Suppressed;
 
+	// Spawn grace: SaveSystem.Apply stamps this a few seconds ahead whenever a
+	// save is applied. The restore teleport + first physics frames can read as
+	// a lethal impact (player killed the instant they load in — the stasis-pod
+	// save spawn-death loop, 2026-07-24); until this deadline passes, fall
+	// samples are cleared just like Suppressed.
+	public static float LoadGraceUntil;
+
+	static bool InLoadGrace => Time.unscaledTime < LoadGraceUntil;
+
 	// --- runtime ---
 	PlayerController player;
 	AudioSource audioSource;
@@ -126,7 +135,7 @@ public class FallDamage : MonoBehaviour
 		// A cinematic owns the player's motion (don't bank any of it as a fall),
 		// and water IS the landing — entering it dissipates the speed, so the
 		// eventual shoreline OnLanded must see nothing.
-		if (Suppressed || player.IsInWater) { ClearSamples(); return; }
+		if (Suppressed || InLoadGrace || player.IsInWater) { ClearSamples(); return; }
 
 		// Toward-surface speed: positive = falling onto the planet. Horizontal
 		// motion projects to ~0 on transform.up, so it doesn't count.
