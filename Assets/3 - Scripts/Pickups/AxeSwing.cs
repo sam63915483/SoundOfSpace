@@ -43,8 +43,8 @@ public class AxeSwing : MonoBehaviour
     public bool showDebugReadout = true;
 
     [Header("Horizontal SLASH (axe lays flat and sweeps like a scythe)")]
-    [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal, pointing at the tree.")]
-    public float slashLayPitch = 78f;
+    [Tooltip("How far the axe lays down for a side swing (deg pitch forward from vertical). ~90 = fully horizontal. Too high and the head dips out the bottom of the frame — the grip sits at mid-height.")]
+    public float slashLayPitch = 58f;
     [Tooltip("Yaw arc half-width (deg): the laid-out axe sweeps between -this and +this across the view.")]
     public float slashYawRange = 65f;
     [Tooltip("Swing-progress impulse per unit of raw mouse X. Higher = lighter, faster to cross the arc.")]
@@ -55,6 +55,8 @@ public class AxeSwing : MonoBehaviour
     public bool invertSwing = false;
     [Tooltip("Sideways hand travel (m) at full slash extent — carries the swing across the screen.")]
     public float slashHandTravel = 0.28f;
+    [Tooltip("Hand rise (m) while in the slash pose — keeps the laid-out axe up in frame.")]
+    public float slashHandRise = 0.16f;
 
     [Header("Vertical CHOP (cock up, drive down)")]
     [Tooltip("Pitch (deg) at full cock — negative = raised up and back over the shoulder.")]
@@ -78,12 +80,10 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Damping for the return spring.")]
     public float returnDamping = 13f;
 
-    [Header("Blade facing (slash edge flip)")]
-    [Tooltip("Roll (deg) about the handle so the edge leads a sideways sweep.")]
+    [Header("Blade facing (aims at the crosshair)")]
+    [Tooltip("Roll (deg) about the handle at full slash extent. The edge continuously faces screen centre: out on the right → edge faces in-left, dead ahead through the middle, mirrored on the left.")]
     public float bladeFaceAngle = 90f;
-    [Tooltip("Slash momentum (progress/s) above which the edge commits to the motion direction.")]
-    public float flipThresholdSpeed = 1.2f;
-    [Tooltip("How fast the blade flips (deg/s). Always through neutral.")]
+    [Tooltip("How fast the edge tracks (deg/s).")]
     public float maxRollRate = 900f;
     [Tooltip("Local axis of the pivot the blade rolls around — the handle's long axis.")]
     public Vector3 rollAxis = Vector3.up;
@@ -189,14 +189,10 @@ public class AxeSwing : MonoBehaviour
         float blendTarget = _holding && _slashMode ? 1f : 0f;
         _slashBlend = Mathf.MoveTowards(_slashBlend, blendTarget, modeBlendRate * dt);
 
-        // Edge facing (slash only): lead the sweep; neutral otherwise.
-        float rollTarget;
-        if (_slashBlend > 0.3f && Mathf.Abs(_slashVelocity) > flipThresholdSpeed)
-            rollTarget = Mathf.Sign(_slashVelocity) * bladeFaceAngle * (invertRoll ? -1f : 1f);
-        else if (_slashBlend > 0.3f && _holding)
-            rollTarget = _roll;                    // hold facing through the reversal
-        else
-            rollTarget = 0f;
+        // Edge facing: always aim the blade at the crosshair (screen centre).
+        // Position-driven, so it rotates smoothly through dead-forward as the
+        // sweep crosses the middle — which is also where contact happens.
+        float rollTarget = _slashBlend > 0.05f ? -_slash * bladeFaceAngle * (invertRoll ? -1f : 1f) : 0f;
         _roll = Mathf.MoveTowards(_roll, rollTarget, maxRollRate * dt);
 
         // SLASH pose: lay the axe flat (pitch forward), then sweep the laid axe
@@ -215,7 +211,7 @@ public class AxeSwing : MonoBehaviour
         Quaternion swingRot = Quaternion.Slerp(chopRot, slashRot, _slashBlend);
 
         // Hand travel: carries the swing without stealing the show.
-        Vector3 slashPos = new Vector3(_slash * slashHandTravel, 0.04f, 0f);
+        Vector3 slashPos = new Vector3(_slash * slashHandTravel, slashHandRise, 0f);
         Vector3 chopPos = new Vector3(0f, _chop < 0f ? -_chop * chopHandRise : -_chop * chopHandRise * 0.4f, 0f);
         Vector3 handPos = Vector3.Lerp(chopPos, slashPos, _slashBlend);
 
