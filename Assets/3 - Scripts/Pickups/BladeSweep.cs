@@ -226,44 +226,88 @@ public class BladeSweep : MonoBehaviour
 
             var tree = col.GetComponentInParent<SpawnedTree>();
             var crystal = tree == null ? col.GetComponentInParent<SpawnedCrystal>() : null;
-            if (tree == null && crystal == null) continue;
+            IDamageable damageable = (tree == null && crystal == null) ? col.GetComponentInParent<IDamageable>() : null;
+            if (tree == null && crystal == null && damageable == null) continue;
             if (tree != null && tree.IsDead) continue;
             if (crystal != null && crystal.IsDead) continue;
 
-            int id = tree != null ? tree.GetInstanceID() : crystal.GetInstanceID();
+            // Enemies/NPCs: line-of-sight check so a blade poking through a
+            // wall can't damage what's on the other side (M3 doc rule).
+            if (damageable != null && _cam != null)
+            {
+                Vector3 contact = hits[h].point.sqrMagnitude > 0.0001f ? hits[h].point : col.bounds.center;
+                if (Physics.Linecast(_cam.position, contact, out RaycastHit block, ~0, QueryTriggerInteraction.Ignore)
+                    && block.collider != null
+                    && block.collider.transform.root != col.transform.root
+                    && block.collider.GetComponentInParent<PlayerController>() == null)
+                    continue;
+            }
+
+            int id = tree != null ? tree.GetInstanceID()
+                   : crystal != null ? crystal.GetInstanceID()
+                   : ((Component)damageable).GetInstanceID();
             if (armed)
             {
-                // Damage scales with wind-up charge: just-armed = 1 chop,
-                // full bar = fullChargeChops. Fractions pool per target so the
-                // integer tree pipeline (drops/O2/saves) never sees a partial.
-                float chops = Mathf.Lerp(1f, Mathf.Max(1f, fullChargeChops), Mathf.Clamp01(_currentCharge));
-                _unchargedDamagePool.TryGetValue(id, out float pool);
-                pool += chops * _axe.damagePerSwing;
-                int apply = (int)pool;
-                pool -= apply;
-                _unchargedDamagePool[id] = pool;
-                if (apply > 0)
+                // Damage scales with wind-up charge: just-armed = 1x, full bar
+                // = fullChargeChops. Tree fractions pool per target so the
+                // integer pipeline (drops/O2/saves) never sees a partial;
+                // enemies take float damage directly, knocked back along the
+                // blade's actual motion (M3 doc rule, not the camera axis).
+                float chargeScale = Mathf.Lerp(1f, Mathf.Max(1f, fullChargeChops), Mathf.Clamp01(_currentCharge));
+                if (damageable != null)
                 {
-                    if (tree != null) tree.TakeDamage(apply);
-                    else crystal.TakeDamage(apply);
+                    damageable.ApplyKnockback(dir, _axe.knockbackDistance, _axe.knockbackDuration);
+                    damageable.TakeDamage(_axe.enemyDamagePerSwing * chargeScale);
+                    // Kill slow-mo + multi-kill deepening ride the existing
+                    // EnemyController.OnAnyEnemyDeath → KillstreakManager →
+                    // SlowmoOnKill pipeline — same as the gun, no kill cam.
+                }
+                else
+                {
+                    _unchargedDamagePool.TryGetValue(id, out float pool);
+                    pool += chargeScale * _axe.damagePerSwing;
+                    int apply = (int)pool;
+                    pool -= apply;
+                    _unchargedDamagePool[id] = pool;
+                    if (apply > 0)
+                    {
+                        if (tree != null) tree.TakeDamage(apply);
+                        else crystal.TakeDamage(apply);
+                    }
                 }
                 HitFeedback(speed);
                 OnHitLanded?.Invoke();
                 return true;
             }
 
-            // Uncharged but genuinely swinging: partial damage. Fractions pool
-            // per target and convert to a real integer chop when full, so the
-            // tree pipeline (drops/O2/saves) never sees a fraction.
+            // Uncharged but genuinely swinging: partial damage. Tree fractions
+            // pool per target and convert to a real integer chop when full;
+            // enemies just take the fraction directly (no knockback — pokes
+            // sting, they don't shove).
             if (speed >= minEdgeSpeed && unchargedHitFraction > 0f)
             {
-                UnchargedHit(tree, crystal, id, speed);
+                if (damageable != null) UnchargedEnemyHit(damageable, id);
+                else UnchargedHit(tree, crystal, id, speed);
                 continue;
             }
 
             Scrape(id);
         }
         return false;
+    }
+
+    void UnchargedEnemyHit(IDamageable damageable, int id)
+    {
+        float now = Time.time;
+        if (_lastUnchargedHitTime.TryGetValue(id, out float last) && now - last < unchargedHitCooldown) return;
+        _lastUnchargedHitTime[id] = now;
+        damageable.TakeDamage(_axe.enemyDamagePerSwing * unchargedHitFraction);
+        if (_audio != null && _axe != null && _axe.HitClip != null)
+        {
+            _audio.pitch = 0.8f;
+            _audio.PlayOneShot(_axe.HitClip, _axe.HitVolume * 0.45f);
+        }
+        GamepadRumble.Pulse(0.25f, 0.12f, 0.1f);
     }
 
     void UnchargedHit(SpawnedTree tree, SpawnedCrystal crystal, int id, float speed)

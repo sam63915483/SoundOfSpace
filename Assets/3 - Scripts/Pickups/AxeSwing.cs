@@ -91,8 +91,8 @@ public class AxeSwing : MonoBehaviour
     [Header("Mode selection + return")]
     [Tooltip("How much one mouse axis must dominate the other (ratio) before the mode switches. Hysteresis against jitter.")]
     public float modeDominance = 1.4f;
-    [Tooltip("How fast (1/s) the pose blends between slash and chop modes.")]
-    public float modeBlendRate = 9f;
+    [Tooltip("Seconds for the pose to blend between slash and chop modes. SmoothDamp — eases in AND out, no snap at either end.")]
+    public float modeBlendTime = 0.18f;
     [Tooltip("Spring stiffness returning swing progress to rest on release.")]
     public float returnStiffness = 110f;
     [Tooltip("Damping for the return spring.")]
@@ -156,6 +156,7 @@ public class AxeSwing : MonoBehaviour
     float _slash, _slashVelocity;   // -1 = full left, +1 = full right
     float _chop, _chopVelocity;     // -1 = full cock (up/back), +1 = full drive (down/through)
     float _slashBlend;              // 0 = chop/carry pose family, 1 = laid-out slash pose
+    float _slashBlendVelocity;      // SmoothDamp state for the mode blend
     float _roll;                    // deg — current edge facing (slash only)
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
     float _groundLift;              // smoothed world-up lift keeping the axe out of the ground
@@ -200,7 +201,7 @@ public class AxeSwing : MonoBehaviour
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
         _armed = _armedSwingInFlight = _atWindup = false;
-        _windupTimer = _armedTime = _shakePhase = _groundLift = _reachBlend = 0f;
+        _windupTimer = _armedTime = _shakePhase = _groundLift = _reachBlend = _slashBlendVelocity = 0f;
         _comboStreak = 0;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
@@ -282,8 +283,11 @@ public class AxeSwing : MonoBehaviour
         if (Mathf.Abs(_chop) > 1f)  { _chop = Mathf.Sign(_chop);  if (Mathf.Sign(_chopVelocity) == _chop)  _chopVelocity = 0f; }
 
         // Pose blend: laid-out slash family vs upright chop/carry family.
+        // SmoothDamp + SmoothStep below = eased both ends, no jerky snap when
+        // switching between left-right slashing and up-down chopping.
         float blendTarget = _holding && _slashMode ? 1f : 0f;
-        _slashBlend = Mathf.MoveTowards(_slashBlend, blendTarget, modeBlendRate * dt);
+        _slashBlend = Mathf.SmoothDamp(_slashBlend, blendTarget, ref _slashBlendVelocity, Mathf.Max(0.01f, modeBlendTime));
+        float poseBlend = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_slashBlend));
 
         // Edge facing: LATCHED at the wind-up. Reaching an arc extent commits
         // the blade to swing off that side (right wind-up → edge faces left);
@@ -316,7 +320,7 @@ public class AxeSwing : MonoBehaviour
         float chopPitch = _chop < 0f ? -_chop * chopCockPitch : _chop * chopDrivePitch;
         Quaternion chopRot = Quaternion.AngleAxis(chopPitch, Vector3.right);
 
-        Quaternion swingRot = Quaternion.Slerp(chopRot, slashRot, _slashBlend);
+        Quaternion swingRot = Quaternion.Slerp(chopRot, slashRot, poseBlend);
 
         // Wind-up arming. The axe must SIT at a full wind-up (either slash
         // side; chop is COCK-UP ONLY — down is the strike) for armDelay before
@@ -380,7 +384,7 @@ public class AxeSwing : MonoBehaviour
         float slashTravel = _slash < 0f ? slashHandTravel + slashHandTravelExtraLeft : slashHandTravel;
         Vector3 slashPos = new Vector3(_slash * slashTravel, slashHandRise, 0f);
         Vector3 chopPos = new Vector3(0f, _chop < 0f ? -_chop * chopHandRise : -_chop * chopHandRise * 0.4f, 0f);
-        Vector3 handPos = Vector3.Lerp(chopPos, slashPos, _slashBlend) + shakeOffset;
+        Vector3 handPos = Vector3.Lerp(chopPos, slashPos, poseBlend) + shakeOffset;
 
         // Reach through the strike: the axe extends forward on a smooth arc —
         // nothing at the wind-up ends, furthest at the middle of the swing
@@ -389,8 +393,8 @@ public class AxeSwing : MonoBehaviour
         bool chargedSwingInFlight = _armed && _armedSwingInFlight;
         _reachBlend = Mathf.Lerp(_reachBlend, chargedSwingInFlight ? 1f : 0f,
                                  1f - Mathf.Exp(-reachBlendRate * dt));
-        float arcProgress = Mathf.Clamp(Mathf.Lerp(_chop, _slash, _slashBlend), -1f, 1f);
-        float arcSpeed = Mathf.Lerp(Mathf.Abs(_chopVelocity), Mathf.Abs(_slashVelocity), _slashBlend);
+        float arcProgress = Mathf.Clamp(Mathf.Lerp(_chop, _slash, poseBlend), -1f, 1f);
+        float arcSpeed = Mathf.Lerp(Mathf.Abs(_chopVelocity), Mathf.Abs(_slashVelocity), poseBlend);
         handPos.z += swingReachExtension
                    * Mathf.Cos(arcProgress * (Mathf.PI * 0.5f))
                    * Mathf.Clamp01(arcSpeed / Mathf.Max(0.01f, reachFullSpeed))
