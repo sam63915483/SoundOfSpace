@@ -27,6 +27,15 @@ public class ShuttleExitDoor : MonoBehaviour
         _restRot = transform.localRotation;
     }
 
+    void Start()
+    {
+        // Loaded games are always post-intro (saving requires the stasis pod),
+        // and the film-end event that opens the door never replays on a load —
+        // without this a save made after the ramp deployed reloads with the
+        // door shut and the player sealed in the shuttle forever.
+        if (PendingLoad.Data != null) OpenInstant();
+    }
+
     public void Open()
     {
         if (_open || _opening) return;
