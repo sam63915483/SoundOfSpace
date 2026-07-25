@@ -143,6 +143,12 @@ public class AxeSwing : MonoBehaviour
     public float maxClearanceLift = 0.9f;
     [Tooltip("Ignore lift-target changes smaller than this (m) — probe noise from the carry sway stays invisible once the axe is resting.")]
     public float clearanceDeadband = 0.012f;
+    [Tooltip("Also pull the axe back toward the player when walls/geometry sit between the camera and the blade (shuttle interiors). Trees/crystals/enemies are always swing-through.")]
+    public bool wallClearance = true;
+    [Tooltip("Gap (m) kept between the blade and a wall.")]
+    public float wallClearanceSkin = 0.08f;
+    [Tooltip("Cap (m) on the wall pull-back.")]
+    public float wallMaxPull = 2.5f;
 
     [Header("Camera kick (thrust into the swing at arc centre)")]
     [Tooltip("Degrees of camera nudge in the swing direction as it crosses the middle of the arc. Subtle — gives back some of the motion the look-scale damping takes away.")]
@@ -170,6 +176,9 @@ public class AxeSwing : MonoBehaviour
     float _roll;                    // deg — current edge facing (slash only)
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
     float _groundLift;              // smoothed world-up lift keeping the axe out of the ground
+    float _wallPull;                // smoothed pull-back keeping the axe out of walls
+    Transform _camT;                // the player camera — wall probes originate here
+    static readonly RaycastHit[] s_clearanceHits = new RaycastHit[16];
     float _flightCharge;            // ArmedRamp locked in when the armed swing left the wind-up
     float _reachBlend;              // 0..1 smoothed gate: reach only during charged swings
     float _prevArcProgress;         // last frame's blended arc position — mid-crossing detection
@@ -213,9 +222,11 @@ public class AxeSwing : MonoBehaviour
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
         _armed = _armedSwingInFlight = _atWindup = false;
-        _windupTimer = _armedTime = _shakePhase = _groundLift = _reachBlend = _slashBlendVelocity = _prevArcProgress = 0f;
+        _windupTimer = _armedTime = _shakePhase = _groundLift = _wallPull = _reachBlend = _slashBlendVelocity = _prevArcProgress = 0f;
         _cameraKickVelocity = Vector2.zero;
         _comboStreak = 0;
+        var cam = rig != null ? rig.GetComponentInParent<Camera>() : null;
+        _camT = cam != null ? cam.transform : null;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
     }
@@ -448,6 +459,7 @@ public class AxeSwing : MonoBehaviour
         // Recomputed from the unlifted pose each frame — no feedback build-up.
         if (_sweep != null) _sweep.ExternalMotion = Vector3.zero;
         if (groundClearance) ApplyGroundClearance(dt);
+        if (wallClearance) ApplyWallClearance(dt);
 
         // Blade sweep runs after the pose is final so casts see this frame's
         // edge path. Hits require armed AND mid-swing (left the wind-up);
@@ -468,13 +480,14 @@ public class AxeSwing : MonoBehaviour
         const float probe = 1.5f;
 
         // How far below the ground surface (plus skin) the deepest sample sits.
+        // Trees/crystals/enemies never count — the blade swings through them.
         float needed = 0f;
         for (int i = 0; i < samples.Length; i++)
         {
             Vector3 p = blade.TransformPoint(samples[i]);
-            if (!Physics.Raycast(p + up * probe, -up, out RaycastHit hit, probe + 0.6f, groundMask, QueryTriggerInteraction.Ignore))
-                continue;
-            float below = (probe - hit.distance) + clearanceSkin + radius;
+            float hitDist = NearestSolidHit(p + up * probe, -up, probe + 0.6f);
+            if (hitDist < 0f) continue;
+            float below = (probe - hitDist) + clearanceSkin + radius;
             if (below > needed) needed = below;
         }
         needed = Mathf.Min(needed, maxClearanceLift);
@@ -494,6 +507,64 @@ public class AxeSwing : MonoBehaviour
         // Tell the sweep how much of this frame's blade motion was lift, so a
         // clearance bounce can't register as swing speed (phantom whooshes).
         if (_sweep != null) _sweep.ExternalMotion = up * (_groundLift - prevLift);
+    }
+
+    // Pull the axe back toward the player when solid geometry (shuttle walls,
+    // buildings) sits between the camera and the blade — the classic FPS
+    // weapon-against-wall response. Same smoothing/deadband as the ground lift.
+    void ApplyWallClearance(float dt)
+    {
+        if (_sweep == null || _camT == null) return;
+        Transform blade = _sweep.Blade;
+        Vector3[] samples = _sweep.SampleLocalPoints;
+        if (blade == null || samples == null || samples.Length == 0) return;
+
+        if (groundMask == 0) groundMask = LayerMask.GetMask("Body");
+        float radius = _sweep.SampleRadius;
+        Vector3 camPos = _camT.position;
+
+        float needed = 0f;
+        for (int i = 0; i < samples.Length; i++)
+        {
+            Vector3 p = blade.TransformPoint(samples[i]);
+            Vector3 to = p - camPos;
+            float dist = to.magnitude;
+            if (dist < 0.05f) continue;
+            float hitDist = NearestSolidHit(camPos, to / dist, dist);
+            if (hitDist < 0f) continue;
+            float penetration = (dist + radius + wallClearanceSkin) - hitDist;
+            if (penetration > needed) needed = penetration;
+        }
+        needed = Mathf.Min(needed, wallMaxPull);
+
+        float prevPull = _wallPull;
+        if (Mathf.Abs(needed - _wallPull) > clearanceDeadband || needed <= 0.0001f)
+        {
+            float response = needed > _wallPull ? clearanceRiseResponse : clearanceFallResponse;
+            _wallPull = Mathf.Lerp(_wallPull, needed, 1f - Mathf.Exp(-response * dt));
+        }
+        if (_wallPull > 0.0001f) _rig.position -= _camT.forward * _wallPull;
+        if (_sweep != null) _sweep.ExternalMotion += -_camT.forward * (_wallPull - prevPull);
+    }
+
+    // Nearest hit along the ray that is genuinely solid scenery — trees,
+    // crystals, enemies/NPCs, and the player are swing-through and never
+    // constrain the axe. Returns -1 when nothing solid is in range.
+    float NearestSolidHit(Vector3 origin, Vector3 dir, float maxDist)
+    {
+        int n = Physics.RaycastNonAlloc(origin, dir, s_clearanceHits, maxDist, groundMask, QueryTriggerInteraction.Ignore);
+        float nearest = -1f;
+        for (int h = 0; h < n; h++)
+        {
+            var c = s_clearanceHits[h].collider;
+            if (c == null) continue;
+            if (c.GetComponentInParent<SpawnedTree>() != null) continue;
+            if (c.GetComponentInParent<SpawnedCrystal>() != null) continue;
+            if (c.GetComponentInParent<PlayerController>() != null) continue;
+            if (c.GetComponentInParent<IDamageable>() != null) continue;
+            if (nearest < 0f || s_clearanceHits[h].distance < nearest) nearest = s_clearanceHits[h].distance;
+        }
+        return nearest;
     }
 
     void OnGUI()
