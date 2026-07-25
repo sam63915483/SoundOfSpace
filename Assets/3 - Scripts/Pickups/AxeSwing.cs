@@ -85,6 +85,8 @@ public class AxeSwing : MonoBehaviour
     public float swingReachExtension = 2.1f;
     [Tooltip("Swing speed (progress/s) at which the extension is fully available — a slow drag barely reaches, a committed swing lunges.")]
     public float reachFullSpeed = 2f;
+    [Tooltip("Extra reach multiplier for CHOP (up-down) swings — an overhead chop drives further out than a sideways slash.")]
+    public float chopReachMultiplier = 2f;
     [Tooltip("How fast (1/s) the reach eases in on a charged launch and back out after the hit — no snapping.")]
     public float reachBlendRate = 10f;
 
@@ -395,7 +397,9 @@ public class AxeSwing : MonoBehaviour
                                  1f - Mathf.Exp(-reachBlendRate * dt));
         float arcProgress = Mathf.Clamp(Mathf.Lerp(_chop, _slash, poseBlend), -1f, 1f);
         float arcSpeed = Mathf.Lerp(Mathf.Abs(_chopVelocity), Mathf.Abs(_slashVelocity), poseBlend);
-        handPos.z += swingReachExtension
+        // Chops drive further out than slashes (poseBlend 0 = chop pose).
+        float reachExtension = Mathf.Lerp(swingReachExtension * chopReachMultiplier, swingReachExtension, poseBlend);
+        handPos.z += reachExtension
                    * Mathf.Cos(arcProgress * (Mathf.PI * 0.5f))
                    * Mathf.Clamp01(arcSpeed / Mathf.Max(0.01f, reachFullSpeed))
                    * _reachBlend;
