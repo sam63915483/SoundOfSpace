@@ -81,10 +81,12 @@ public class AxeSwing : MonoBehaviour
     public float chopHandRise = 0.22f;
 
     [Header("Swing reach (extend through the strike)")]
-    [Tooltip("How far (m) the axe pushes out toward the tree at the middle of a swing. Zero at the wind-up ends, max at arc centre — where the strike lands.")]
-    public float swingReachExtension = 1.05f;
+    [Tooltip("How far (m) the axe pushes out toward the tree at the middle of a swing. Zero at the wind-up ends, max at arc centre — where the strike lands. CHARGED swings only.")]
+    public float swingReachExtension = 2.1f;
     [Tooltip("Swing speed (progress/s) at which the extension is fully available — a slow drag barely reaches, a committed swing lunges.")]
     public float reachFullSpeed = 2f;
+    [Tooltip("How fast (1/s) the reach eases in on a charged launch and back out after the hit — no snapping.")]
+    public float reachBlendRate = 10f;
 
     [Header("Mode selection + return")]
     [Tooltip("How much one mouse axis must dominate the other (ratio) before the mode switches. Hysteresis against jitter.")]
@@ -158,6 +160,7 @@ public class AxeSwing : MonoBehaviour
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
     float _groundLift;              // smoothed world-up lift keeping the axe out of the ground
     float _flightCharge;            // ArmedRamp locked in when the armed swing left the wind-up
+    float _reachBlend;              // 0..1 smoothed gate: reach only during charged swings
     int _comboStreak;               // consecutive clean charged hits — speeds up the fill
 
     float ComboFillMultiplier => Mathf.Min(Mathf.Pow(Mathf.Max(1f, comboFillBoostPerHit), _comboStreak), Mathf.Max(1f, maxComboFillBoost));
@@ -197,7 +200,7 @@ public class AxeSwing : MonoBehaviour
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
         _armed = _armedSwingInFlight = _atWindup = false;
-        _windupTimer = _armedTime = _shakePhase = _groundLift = 0f;
+        _windupTimer = _armedTime = _shakePhase = _groundLift = _reachBlend = 0f;
         _comboStreak = 0;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
@@ -381,13 +384,17 @@ public class AxeSwing : MonoBehaviour
 
         // Reach through the strike: the axe extends forward on a smooth arc —
         // nothing at the wind-up ends, furthest at the middle of the swing
-        // (where the tree is) — scaled by swing speed so only a moving swing
-        // lunges, never a parked axe.
+        // (where the tree is) — scaled by swing speed, and ONLY on charged
+        // swings (the blend eases it in on launch / out after the hit).
+        bool chargedSwingInFlight = _armed && _armedSwingInFlight;
+        _reachBlend = Mathf.Lerp(_reachBlend, chargedSwingInFlight ? 1f : 0f,
+                                 1f - Mathf.Exp(-reachBlendRate * dt));
         float arcProgress = Mathf.Clamp(Mathf.Lerp(_chop, _slash, _slashBlend), -1f, 1f);
         float arcSpeed = Mathf.Lerp(Mathf.Abs(_chopVelocity), Mathf.Abs(_slashVelocity), _slashBlend);
         handPos.z += swingReachExtension
                    * Mathf.Cos(arcProgress * (Mathf.PI * 0.5f))
-                   * Mathf.Clamp01(arcSpeed / Mathf.Max(0.01f, reachFullSpeed));
+                   * Mathf.Clamp01(arcSpeed / Mathf.Max(0.01f, reachFullSpeed))
+                   * _reachBlend;
 
         // Rotate about the GRIP (holdPositionOffset), not the rig origin.
         Vector3 gripPoint = _axe != null ? _axe.holdPositionOffset : Vector3.zero;
