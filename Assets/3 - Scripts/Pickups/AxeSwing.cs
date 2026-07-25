@@ -123,10 +123,10 @@ public class AxeSwing : MonoBehaviour
     public LayerMask groundMask;
     [Tooltip("Gap (m) kept between the blade and the ground surface.")]
     public float clearanceSkin = 0.05f;
-    [Tooltip("How fast (m/s) the axe is pushed up when it meets the ground.")]
-    public float clearanceRiseSpeed = 10f;
-    [Tooltip("How fast (m/s) it settles back down once clear.")]
-    public float clearanceFallSpeed = 3f;
+    [Tooltip("Response rate (1/s) of the push-up. Exponential — slows as it arrives, so sample noise doesn't read as shaking.")]
+    public float clearanceRiseResponse = 14f;
+    [Tooltip("Response rate (1/s) of settling back down once clear.")]
+    public float clearanceFallResponse = 4f;
     [Tooltip("Cap (m) on the lift so extreme geometry can't shove the axe into the camera.")]
     public float maxClearanceLift = 0.9f;
 
@@ -384,9 +384,11 @@ public class AxeSwing : MonoBehaviour
         }
         needed = Mathf.Min(needed, maxClearanceLift);
 
-        // Fast push up, gentle settle down — reads as resting on the surface.
-        float rate = needed > _groundLift ? clearanceRiseSpeed : clearanceFallSpeed;
-        _groundLift = Mathf.MoveTowards(_groundLift, needed, rate * dt);
+        // Exponential smoothing — velocity dies out as it reaches the target,
+        // so millimetre noise in the probe results can't turn into shaking.
+        // Fast response pushing up, gentle settling down.
+        float response = needed > _groundLift ? clearanceRiseResponse : clearanceFallResponse;
+        _groundLift = Mathf.Lerp(_groundLift, needed, 1f - Mathf.Exp(-response * dt));
         if (_groundLift > 0.0001f) _rig.position += up * _groundLift;
     }
 
