@@ -116,6 +116,20 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Shake frequency at full ramp.")]
     public float shakeMaxFrequency = 22f;
 
+    [Header("Ground clearance (kinematic — no Rigidbody)")]
+    [Tooltip("Push the axe up so it rests against the ground instead of clipping through it (look-at-feet, downward chops into dirt).")]
+    public bool groundClearance = true;
+    [Tooltip("Layers that count as ground. Zero = auto (the Body/walkable layer).")]
+    public LayerMask groundMask;
+    [Tooltip("Gap (m) kept between the blade and the ground surface.")]
+    public float clearanceSkin = 0.05f;
+    [Tooltip("How fast (m/s) the axe is pushed up when it meets the ground.")]
+    public float clearanceRiseSpeed = 10f;
+    [Tooltip("How fast (m/s) it settles back down once clear.")]
+    public float clearanceFallSpeed = 3f;
+    [Tooltip("Cap (m) on the lift so extreme geometry can't shove the axe into the camera.")]
+    public float maxClearanceLift = 0.9f;
+
     Transform _rig;                 // AxeSwingRig
     AxeController _axe;
     BladeSweep _sweep;
@@ -126,6 +140,7 @@ public class AxeSwing : MonoBehaviour
     float _slashBlend;              // 0 = chop/carry pose family, 1 = laid-out slash pose
     float _roll;                    // deg — current edge facing (slash only)
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
+    float _groundLift;              // smoothed world-up lift keeping the axe out of the ground
     bool _armed;                    // charged by a full wind-up; next in-swing contact is a hit
     bool _armedSwingInFlight;       // the charge has left the wind-up — spent when a wind-up is reached again
     bool _atWindup;                 // currently sitting at a wind-up position
@@ -160,7 +175,7 @@ public class AxeSwing : MonoBehaviour
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
         _armed = _armedSwingInFlight = _atWindup = false;
-        _windupTimer = _armedTime = _shakePhase = 0f;
+        _windupTimer = _armedTime = _shakePhase = _groundLift = 0f;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
     }
@@ -335,9 +350,44 @@ public class AxeSwing : MonoBehaviour
         _rig.localRotation = swingRot;
         _rig.localPosition = handPos + (gripPoint - swingRot * gripPoint);
 
+        // Ground clearance: probe down (gravity-up) from the blade samples and
+        // lift the rig so the axe rests against the ground instead of clipping.
+        // Recomputed from the unlifted pose each frame — no feedback build-up.
+        if (groundClearance) ApplyGroundClearance(dt);
+
         // Blade sweep runs after the pose is final so casts see this frame's
         // edge path. Hits require armed AND mid-swing (left the wind-up).
         if (_sweep != null) _sweep.Tick(dt, _armed && !_atWindup);
+    }
+
+    void ApplyGroundClearance(float dt)
+    {
+        if (_sweep == null) return;
+        Transform blade = _sweep.Blade;
+        Vector3[] samples = _sweep.SampleLocalPoints;
+        if (blade == null || samples == null || samples.Length == 0) return;
+
+        if (groundMask == 0) groundMask = LayerMask.GetMask("Body");   // walkable/terrain layer
+        Vector3 up = _axe != null ? _axe.transform.up : Vector3.up;    // gravity-aligned on the planet
+        float radius = _sweep.SampleRadius;
+        const float probe = 1.5f;
+
+        // How far below the ground surface (plus skin) the deepest sample sits.
+        float needed = 0f;
+        for (int i = 0; i < samples.Length; i++)
+        {
+            Vector3 p = blade.TransformPoint(samples[i]);
+            if (!Physics.Raycast(p + up * probe, -up, out RaycastHit hit, probe + 0.6f, groundMask, QueryTriggerInteraction.Ignore))
+                continue;
+            float below = (probe - hit.distance) + clearanceSkin + radius;
+            if (below > needed) needed = below;
+        }
+        needed = Mathf.Min(needed, maxClearanceLift);
+
+        // Fast push up, gentle settle down — reads as resting on the surface.
+        float rate = needed > _groundLift ? clearanceRiseSpeed : clearanceFallSpeed;
+        _groundLift = Mathf.MoveTowards(_groundLift, needed, rate * dt);
+        if (_groundLift > 0.0001f) _rig.position += up * _groundLift;
     }
 
     void OnGUI()

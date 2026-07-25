@@ -79,6 +79,12 @@ public class BladeSweep : MonoBehaviour
 
     public float LastEdgeSpeed => _lastEdgeSpeed;
 
+    // Exposed for AxeSwing's ground-clearance pass — the calibrated edge
+    // samples double as the axe's collision probe points.
+    public Transform Blade => _blade;
+    public Vector3[] SampleLocalPoints => _samples;
+    public float SampleRadius => _radius;
+
     public void Attach(Transform bladeInstance, AxeController axe)
     {
         _blade = bladeInstance;
