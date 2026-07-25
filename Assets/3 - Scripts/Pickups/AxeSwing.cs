@@ -82,7 +82,7 @@ public class AxeSwing : MonoBehaviour
 
     [Header("Swing reach (extend through the strike)")]
     [Tooltip("How far (m) the axe pushes out toward the tree at the middle of a swing. Zero at the wind-up ends, max at arc centre — where the strike lands.")]
-    public float swingReachExtension = 0.35f;
+    public float swingReachExtension = 1.05f;
     [Tooltip("Swing speed (progress/s) at which the extension is fully available — a slow drag barely reaches, a committed swing lunges.")]
     public float reachFullSpeed = 2f;
 
