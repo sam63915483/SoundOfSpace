@@ -73,8 +73,8 @@ public class AxeSwing : MonoBehaviour
     public float chopCockPitch = -50f;
     [Tooltip("Pitch (deg) at full extension — driven down and through.")]
     public float chopDrivePitch = 80f;
-    [Tooltip("Swing-progress impulse per unit of raw mouse Y.")]
-    public float chopSensitivity = 0.5f;
+    [Tooltip("Swing-progress impulse per unit of raw mouse Y. Deliberately heavier than the slash — an overhead chop should take real time, not snap down.")]
+    public float chopSensitivity = 0.29f;
     [Tooltip("Exponential decay (1/s) of chop momentum.")]
     public float chopDamping = 5f;
     [Tooltip("Hand rise (m) at full cock (and half of it drops at full drive).")]
@@ -86,7 +86,7 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Swing speed (progress/s) at which the extension is fully available — a slow drag barely reaches, a committed swing lunges.")]
     public float reachFullSpeed = 2f;
     [Tooltip("Extra reach multiplier for CHOP (up-down) swings — an overhead chop drives further out than a sideways slash.")]
-    public float chopReachMultiplier = 2f;
+    public float chopReachMultiplier = 1.33f;
     [Tooltip("How fast (1/s) the reach eases in on a charged launch and back out after the hit — no snapping.")]
     public float reachBlendRate = 10f;
 
@@ -144,6 +144,14 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Ignore lift-target changes smaller than this (m) — probe noise from the carry sway stays invisible once the axe is resting.")]
     public float clearanceDeadband = 0.012f;
 
+    [Header("Camera kick (thrust into the swing at arc centre)")]
+    [Tooltip("Degrees of camera nudge in the swing direction as it crosses the middle of the arc. Subtle — gives back some of the motion the look-scale damping takes away.")]
+    public float swingCameraKick = 2.2f;
+    [Tooltip("Decay rate (1/s) of the kick — higher delivers it faster. ~12 = most of it inside 0.15s.")]
+    public float cameraKickDecay = 12f;
+    [Tooltip("Swing speed (progress/s) below which the mid-arc crossing gives no kick.")]
+    public float cameraKickMinSpeed = 1f;
+
     [Header("Clean-strike combo (charge fills faster)")]
     [Tooltip("Each clean charged hit multiplies the wind-up + charge fill speed by this. A charged swing that misses resets the streak — rewards good clean strikes.")]
     public float comboFillBoostPerHit = 1.3f;
@@ -164,6 +172,8 @@ public class AxeSwing : MonoBehaviour
     float _groundLift;              // smoothed world-up lift keeping the axe out of the ground
     float _flightCharge;            // ArmedRamp locked in when the armed swing left the wind-up
     float _reachBlend;              // 0..1 smoothed gate: reach only during charged swings
+    float _prevArcProgress;         // last frame's blended arc position — mid-crossing detection
+    Vector2 _cameraKickVelocity;    // deg/s decaying camera nudge (x = yaw, y = up)
     int _comboStreak;               // consecutive clean charged hits — speeds up the fill
 
     float ComboFillMultiplier => Mathf.Min(Mathf.Pow(Mathf.Max(1f, comboFillBoostPerHit), _comboStreak), Mathf.Max(1f, maxComboFillBoost));
@@ -203,7 +213,8 @@ public class AxeSwing : MonoBehaviour
         _slash = _slashVelocity = _chop = _chopVelocity = 0f;
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
         _armed = _armedSwingInFlight = _atWindup = false;
-        _windupTimer = _armedTime = _shakePhase = _groundLift = _reachBlend = _slashBlendVelocity = 0f;
+        _windupTimer = _armedTime = _shakePhase = _groundLift = _reachBlend = _slashBlendVelocity = _prevArcProgress = 0f;
+        _cameraKickVelocity = Vector2.zero;
         _comboStreak = 0;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
@@ -403,6 +414,29 @@ public class AxeSwing : MonoBehaviour
                    * Mathf.Cos(arcProgress * (Mathf.PI * 0.5f))
                    * Mathf.Clamp01(arcSpeed / Mathf.Max(0.01f, reachFullSpeed))
                    * _reachBlend;
+
+        // Camera kick: as the swing crosses the middle of the arc, nudge the
+        // camera in the swing direction — a short decaying impulse, scaled by
+        // swing speed. Fires once per crossing (sign change of arc progress).
+        bool crossedMiddle = _prevArcProgress != 0f && arcProgress != 0f
+                             && Mathf.Sign(arcProgress) != Mathf.Sign(_prevArcProgress);
+        if (crossedMiddle && arcSpeed >= cameraKickMinSpeed && swingCameraKick > 0f)
+        {
+            Vector2 kickDir = new Vector2(_slashVelocity * poseBlend, -_chopVelocity * (1f - poseBlend));
+            if (kickDir.sqrMagnitude > 0.01f)
+            {
+                kickDir.Normalize();
+                float strength = swingCameraKick * Mathf.Clamp01(arcSpeed / Mathf.Max(0.01f, reachFullSpeed));
+                // Velocity whose integral over the exponential decay = strength degrees.
+                _cameraKickVelocity = kickDir * (strength * cameraKickDecay);
+            }
+        }
+        _prevArcProgress = arcProgress;
+        if (_cameraKickVelocity.sqrMagnitude > 0.0001f)
+        {
+            PlayerController.SwingCameraKick += _cameraKickVelocity * dt;
+            _cameraKickVelocity *= Mathf.Exp(-cameraKickDecay * dt);
+        }
 
         // Rotate about the GRIP (holdPositionOffset), not the rig origin.
         Vector3 gripPoint = _axe != null ? _axe.holdPositionOffset : Vector3.zero;

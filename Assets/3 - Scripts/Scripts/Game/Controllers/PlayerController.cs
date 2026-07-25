@@ -115,6 +115,11 @@ public class PlayerController : GravityObject
 	// Scales both mouse look and right-stick look.
 	public static float SwingLookScale = 1f;
 
+	// Physics-axe spike: degrees of camera nudge (x = yaw, y = up) queued by
+	// AxeSwing as a swing crosses arc centre — the camera thrusts subtly into
+	// the swing. Consumed (and always cleared) once per Update below.
+	public static Vector2 SwingCameraKick;
+
 	[Header("Mouse settings")]
 	public float mouseSensitivityMultiplier = 1;
 	public float maxMouseSmoothTime = 0.3f;
@@ -599,8 +604,13 @@ public class PlayerController : GravityObject
 				pitch -= TutorialGate.RightStickY() * gain * (TutorialGate.InvertLookY ? -1f : 1f);
 			}
 
+			// Swing camera kick — additive on top of the (scaled) look input.
+			yaw   += SwingCameraKick.x;
+			pitch -= SwingCameraKick.y;
+
 			pitch = Mathf.Clamp(pitch, pitchMinMax.x, pitchMinMax.y);
 		}
+		SwingCameraKick = Vector2.zero;   // never accumulates while look is blocked
 		float mouseSmoothTime = Mathf.Lerp(0.01f, maxMouseSmoothTime, inputSettings.mouseSmoothing);
 		smoothPitch = Mathf.SmoothDampAngle(smoothPitch, pitch, ref pitchSmoothV, mouseSmoothTime);
 		smoothYawOld = smoothYaw;
