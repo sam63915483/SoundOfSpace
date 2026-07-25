@@ -613,10 +613,15 @@ public class PlayerController : GravityObject
 			pitch = Mathf.Clamp(pitch, pitchMinMax.x, pitchMinMax.y);
 		}
 		SwingCameraKick = Vector2.zero;   // never accumulates while look is blocked
+		// Smoothing runs on UNSCALED time: mouse deltas are real-time hardware
+		// input, so during kill slow-mo (timeScale 0.15) scaled-dt smoothing
+		// took ~7x longer in real time to catch up — the camera rubber-banded
+		// behind the mouse and read as laggy/low-FPS. Identical behavior at
+		// timeScale 1 (unscaled == scaled there).
 		float mouseSmoothTime = Mathf.Lerp(0.01f, maxMouseSmoothTime, inputSettings.mouseSmoothing);
-		smoothPitch = Mathf.SmoothDampAngle(smoothPitch, pitch, ref pitchSmoothV, mouseSmoothTime);
+		smoothPitch = Mathf.SmoothDampAngle(smoothPitch, pitch, ref pitchSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
 		smoothYawOld = smoothYaw;
-		smoothYaw = Mathf.SmoothDampAngle(smoothYaw, yaw, ref yawSmoothV, mouseSmoothTime);
+		smoothYaw = Mathf.SmoothDampAngle(smoothYaw, yaw, ref yawSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
 
 		// Movement input — blocked during dialogue
 		isGrounded = IsGrounded();
