@@ -71,6 +71,7 @@ public class BladeSweep : MonoBehaviour
     Vector3[] _prevCamLocal;        // last frame's edge samples, camera-local
     bool _hasPrev;
     bool _whooshArmed = true;
+    float _lastWhooshTime;
     float _lastEdgeSpeed;
     readonly Dictionary<int, float> _lastScrapeTime = new Dictionary<int, float>();
     readonly Dictionary<int, float> _lastUnchargedHitTime = new Dictionary<int, float>();
@@ -84,6 +85,12 @@ public class BladeSweep : MonoBehaviour
     public Transform Blade => _blade;
     public Vector3[] SampleLocalPoints => _samples;
     public float SampleRadius => _radius;
+
+    /// World-space displacement applied to the whole axe this frame by
+    /// something other than swinging (the ground-clearance lift). Excluded
+    /// from edge-speed measurement so a clearance bounce can't read as a
+    /// swing — no phantom whooshes/scrapes. Set by AxeSwing each frame.
+    [System.NonSerialized] public Vector3 ExternalMotion;
 
     public void Attach(Transform bladeInstance, AxeController axe)
     {
@@ -132,7 +139,9 @@ public class BladeSweep : MonoBehaviour
                 Vector3 prev = _cam.TransformPoint(_prevCamLocal[i]);   // origin-shift safe
                 Vector3 move = cur - prev;
                 float dist = move.magnitude;
-                float speed = dist / dt;
+                // Speed from swing motion only — the clearance lift moves the
+                // whole axe and must not register as a swing.
+                float speed = (move - ExternalMotion).magnitude / dt;
                 if (speed > fastest) fastest = speed;
 
                 // Armed: any contact counts, however slow. Unarmed: cast only
@@ -150,10 +159,12 @@ public class BladeSweep : MonoBehaviour
         _hasPrev = true;
         _lastEdgeSpeed = fastest;
 
-        // Whoosh when the edge moves fast; re-arms once it slows down.
-        if (_whooshArmed && fastest >= minEdgeSpeed)
+        // Whoosh when the edge moves fast; re-arms once it slows down, with a
+        // hard floor between whooshes so borderline speeds can't machine-gun it.
+        if (_whooshArmed && fastest >= minEdgeSpeed && Time.time - _lastWhooshTime >= 0.3f)
         {
             _whooshArmed = false;
+            _lastWhooshTime = Time.time;
             if (_audio != null && _axe != null && _axe.SwingClip != null)
             {
                 _audio.pitch = Mathf.Lerp(0.95f, 1.25f, Mathf.Clamp01(fastest / Mathf.Max(0.01f, maxFeedbackSpeed)));

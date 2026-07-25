@@ -129,6 +129,8 @@ public class AxeSwing : MonoBehaviour
     public float clearanceFallResponse = 4f;
     [Tooltip("Cap (m) on the lift so extreme geometry can't shove the axe into the camera.")]
     public float maxClearanceLift = 0.9f;
+    [Tooltip("Ignore lift-target changes smaller than this (m) — probe noise from the carry sway stays invisible once the axe is resting.")]
+    public float clearanceDeadband = 0.012f;
 
     Transform _rig;                 // AxeSwingRig
     AxeController _axe;
@@ -353,6 +355,7 @@ public class AxeSwing : MonoBehaviour
         // Ground clearance: probe down (gravity-up) from the blade samples and
         // lift the rig so the axe rests against the ground instead of clipping.
         // Recomputed from the unlifted pose each frame — no feedback build-up.
+        if (_sweep != null) _sweep.ExternalMotion = Vector3.zero;
         if (groundClearance) ApplyGroundClearance(dt);
 
         // Blade sweep runs after the pose is final so casts see this frame's
@@ -384,12 +387,21 @@ public class AxeSwing : MonoBehaviour
         }
         needed = Mathf.Min(needed, maxClearanceLift);
 
-        // Exponential smoothing — velocity dies out as it reaches the target,
-        // so millimetre noise in the probe results can't turn into shaking.
-        // Fast response pushing up, gentle settling down.
-        float response = needed > _groundLift ? clearanceRiseResponse : clearanceFallResponse;
-        _groundLift = Mathf.Lerp(_groundLift, needed, 1f - Mathf.Exp(-response * dt));
+        // Deadband: once resting, ignore target flicker smaller than the carry
+        // sway's own amplitude — the axe sits still instead of micro-bouncing.
+        float prevLift = _groundLift;
+        if (Mathf.Abs(needed - _groundLift) > clearanceDeadband || needed <= 0.0001f)
+        {
+            // Exponential smoothing — velocity dies out as it reaches the
+            // target. Fast response pushing up, gentle settling down.
+            float response = needed > _groundLift ? clearanceRiseResponse : clearanceFallResponse;
+            _groundLift = Mathf.Lerp(_groundLift, needed, 1f - Mathf.Exp(-response * dt));
+        }
         if (_groundLift > 0.0001f) _rig.position += up * _groundLift;
+
+        // Tell the sweep how much of this frame's blade motion was lift, so a
+        // clearance bounce can't register as swing speed (phantom whooshes).
+        if (_sweep != null) _sweep.ExternalMotion = up * (_groundLift - prevLift);
     }
 
     void OnGUI()
