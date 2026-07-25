@@ -63,9 +63,12 @@ public class SlowmoOnKill : MonoBehaviour
     IEnumerator Routine()
     {
         _routineRunning = true;
-        Time.timeScale = kSlowTimeScale;
+        // SlowMoTime also scales the fixed timestep — without it, physics
+        // (including the player body's yaw) steps ~7x/real-second at 0.15x
+        // and camera movement stutters during the slow-mo.
+        SlowMoTime.Apply(kSlowTimeScale);
         while (Time.unscaledTime < _slowmoEndTime) yield return null;
-        Time.timeScale = 1f;
+        SlowMoTime.Restore();
         _routineRunning = false;
     }
 }

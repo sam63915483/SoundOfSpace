@@ -118,8 +118,10 @@ public class KillShotCam : MonoBehaviour
         _pistol?.SetViewmodelVisible(false);
 
         // Slow the world for the whole flight; the kill at impact routes through
-        // KillstreakManager → SlowmoOnKill, which extends/owns the timescale after us.
-        Time.timeScale = 0.15f;
+        // KillstreakManager → SlowmoOnKill, which extends/owns the timescale after
+        // us. SlowMoTime keeps the fixed timestep in real-time cadence so camera
+        // movement doesn't stutter during the flight.
+        SlowMoTime.Apply(0.15f);
         return true;
     }
 

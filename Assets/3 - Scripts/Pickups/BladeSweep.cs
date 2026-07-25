@@ -359,9 +359,9 @@ public class BladeSweep : MonoBehaviour
     {
         // Only dip from normal speed — never fight pause menus or cutscene scaling.
         if (!Mathf.Approximately(Time.timeScale, 1f)) yield break;
-        Time.timeScale = hitStopScale;
+        SlowMoTime.Apply(hitStopScale);
         yield return new WaitForSecondsRealtime(hitStopDuration);
-        if (Mathf.Approximately(Time.timeScale, hitStopScale)) Time.timeScale = 1f;
+        if (Mathf.Approximately(Time.timeScale, hitStopScale)) SlowMoTime.Restore();
         _hitStop = null;
     }
 
