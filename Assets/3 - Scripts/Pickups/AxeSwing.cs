@@ -279,11 +279,12 @@ public class AxeSwing : MonoBehaviour
         }
         PlayerController.SwingLookScale = lookScale;
 
-        // Mode lock: once the axe is at a wind-up (charging) or a charged
-        // swing is in flight, the swing direction is COMMITTED — the mode
-        // cannot switch until the swing resolves. The off-axis mouse becomes
-        // pure camera aim (see the per-axis look scale below).
-        bool modeLocked = _atWindup || (_armed && _armedSwingInFlight);
+        // Mode lock: ONLY while parked at the wind-up (charging, bar visible)
+        // — that's the aiming window, so the off-axis mouse becomes pure
+        // camera aim (per-axis look scale below). The moment the swing leaves
+        // the wind-up you're free again: no forced follow-through, lifting
+        // into a chop mid-swing is allowed.
+        bool modeLocked = _atWindup;
 
         // Mode: follow whichever axis the player is actually moving (EMA +
         // hysteresis) — only while unlocked. EMAs decay while locked so the
