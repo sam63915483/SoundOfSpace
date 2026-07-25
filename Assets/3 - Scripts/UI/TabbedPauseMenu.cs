@@ -1092,7 +1092,10 @@ public class TabbedPauseMenu : MonoBehaviour
         scroll.horizontal = false;
         scroll.vertical = true;
         scroll.movementType = ScrollRect.MovementType.Clamped;
-        scroll.scrollSensitivity = 24f;
+        // The Input System UI module reports wheel deltas in PIXELS (~±120 per
+        // notch), not the legacy ±1 "lines" — 24 here meant ~2900px per notch,
+        // slamming the list top-to-bottom in one tick. 2 ≈ 240px per notch.
+        scroll.scrollSensitivity = 2f;
 
         // Viewport (clips content to scroll bounds).
         var viewportRT = NewUI("Viewport", scrollRT);
