@@ -45,6 +45,8 @@ public class BladeSweep : MonoBehaviour
     public float unchargedHitFraction = 1f / 3f;
     [Tooltip("Seconds between uncharged damage ticks on the same target — one per swing-through, not one per frame.")]
     public float unchargedHitCooldown = 0.6f;
+    [Tooltip("Chops a FULLY charged swing deals (the crosshair bar at green). A just-armed swing deals 1; in between scales linearly, fractions pooling per target.")]
+    public float fullChargeChops = 2f;
     [Tooltip("Seconds between scrape sounds on the same target.")]
     public float scrapeCooldown = 0.4f;
     [Tooltip("Edge speed at (and past) which hit feedback maxes out — pitch, shake, hit-stop scaling.")]
@@ -73,6 +75,7 @@ public class BladeSweep : MonoBehaviour
     bool _whooshArmed = true;
     float _lastWhooshTime;
     float _lastEdgeSpeed;
+    float _currentCharge;           // 0..1 charge of the in-flight swing, from AxeSwing
     readonly Dictionary<int, float> _lastScrapeTime = new Dictionary<int, float>();
     readonly Dictionary<int, float> _lastUnchargedHitTime = new Dictionary<int, float>();
     readonly Dictionary<int, float> _unchargedDamagePool = new Dictionary<int, float>();   // fractional chops per target
@@ -121,9 +124,11 @@ public class BladeSweep : MonoBehaviour
         _hasPrev = false;
     }
 
-    /// <summary>Called by AxeSwing after the swing pose is applied this frame.</summary>
-    public void Tick(float dt, bool armed)
+    /// <summary>Called by AxeSwing after the swing pose is applied this frame.
+    /// charge = 0..1 wind-up charge of the in-flight swing (scales damage).</summary>
+    public void Tick(float dt, bool armed, float charge = 0f)
     {
+        _currentCharge = charge;
         if (_blade == null || _cam == null || dt <= 0f) { _hasPrev = false; return; }
         if (_samples == null || _samples.Length == 0) { _samples = edgeLocalPoints; _radius = bladeRadius; }
         int n = _samples.Length;
@@ -228,8 +233,20 @@ public class BladeSweep : MonoBehaviour
             int id = tree != null ? tree.GetInstanceID() : crystal.GetInstanceID();
             if (armed)
             {
-                if (tree != null) tree.TakeDamage(_axe.damagePerSwing);
-                else crystal.TakeDamage(_axe.damagePerSwing);
+                // Damage scales with wind-up charge: just-armed = 1 chop,
+                // full bar = fullChargeChops. Fractions pool per target so the
+                // integer tree pipeline (drops/O2/saves) never sees a partial.
+                float chops = Mathf.Lerp(1f, Mathf.Max(1f, fullChargeChops), Mathf.Clamp01(_currentCharge));
+                _unchargedDamagePool.TryGetValue(id, out float pool);
+                pool += chops * _axe.damagePerSwing;
+                int apply = (int)pool;
+                pool -= apply;
+                _unchargedDamagePool[id] = pool;
+                if (apply > 0)
+                {
+                    if (tree != null) tree.TakeDamage(apply);
+                    else crystal.TakeDamage(apply);
+                }
                 HitFeedback(speed);
                 OnHitLanded?.Invoke();
                 return true;

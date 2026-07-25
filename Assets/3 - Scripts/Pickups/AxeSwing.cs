@@ -41,6 +41,8 @@ public class AxeSwing : MonoBehaviour
     [Range(0f, 1f)] public float swingLookScale = 0.25f;
     [Tooltip("Spike-build on-screen readout. Turn off when the verdict is in.")]
     public bool showDebugReadout = true;
+    [Tooltip("Small charge bar under the crosshair while winding up: grey = the pause, orange = charging, green = full (max damage).")]
+    public bool showChargeBar = true;
     [Tooltip("Controller: right-stick deflection → swing input, in mouse-units per second at full deflection. Hold RT to swing, stick sweeps the axe. A mouse flick spikes far harder than a held stick, so this needs to be generous.")]
     public float stickSwingRate = 420f;
     [Tooltip("Controller only: stick swing input multiplier while the axe is ARMED — a charged swing whips through at speed.")]
@@ -143,6 +145,7 @@ public class AxeSwing : MonoBehaviour
     float _roll;                    // deg — current edge facing (slash only)
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
     float _groundLift;              // smoothed world-up lift keeping the axe out of the ground
+    float _flightCharge;            // ArmedRamp locked in when the armed swing left the wind-up
     bool _armed;                    // charged by a full wind-up; next in-swing contact is a hit
     bool _armedSwingInFlight;       // the charge has left the wind-up — spent when a wind-up is reached again
     bool _atWindup;                 // currently sitting at a wind-up position
@@ -309,7 +312,11 @@ public class AxeSwing : MonoBehaviour
         // the charge in-flight (contact still counts), and re-reaching ANY
         // wind-up ends that swing — disarm and start the whole charge-up over.
         // Every swing pays the 0.5s pause + ramp; no free max-speed reversals.
-        if (_armed && !_atWindup) _armedSwingInFlight = true;
+        if (_armed && !_atWindup && !_armedSwingInFlight)
+        {
+            _armedSwingInFlight = true;
+            _flightCharge = ArmedRamp;   // charge is locked in as the swing leaves the wind-up
+        }
         if (_armed && _armedSwingInFlight && _atWindup && !wasAtWindup)
         {
             _armed = false;
@@ -359,8 +366,9 @@ public class AxeSwing : MonoBehaviour
         if (groundClearance) ApplyGroundClearance(dt);
 
         // Blade sweep runs after the pose is final so casts see this frame's
-        // edge path. Hits require armed AND mid-swing (left the wind-up).
-        if (_sweep != null) _sweep.Tick(dt, _armed && !_atWindup);
+        // edge path. Hits require armed AND mid-swing (left the wind-up);
+        // damage scales with the charge locked in when the swing launched.
+        if (_sweep != null) _sweep.Tick(dt, _armed && !_atWindup, _flightCharge);
     }
 
     void ApplyGroundClearance(float dt)
@@ -406,6 +414,29 @@ public class AxeSwing : MonoBehaviour
 
     void OnGUI()
     {
+        // Charge bar under the crosshair — visible whenever the axe is at a
+        // wind-up. Fills through the pause, then the charge ramp; full green
+        // means the next swing hits for maximum damage.
+        if (showChargeBar && _rig != null && _atWindup)
+        {
+            float total = armDelay + shakeRampTime;
+            float current = _armed ? armDelay + Mathf.Min(_armedTime, shakeRampTime)
+                                   : Mathf.Min(_windupTimer, armDelay);
+            float fill = Mathf.Clamp01(current / Mathf.Max(0.01f, total));
+
+            const float barW = 110f, barH = 7f;
+            float x = Screen.width * 0.5f - barW * 0.5f;
+            float y = Screen.height * 0.5f + 26f;
+            Color prevColor = GUI.color;
+            GUI.color = new Color(0f, 0f, 0f, 0.55f);
+            GUI.DrawTexture(new Rect(x - 1f, y - 1f, barW + 2f, barH + 2f), Texture2D.whiteTexture);
+            GUI.color = !_armed ? new Color(0.85f, 0.85f, 0.85f, 0.85f)
+                      : fill >= 0.999f ? new Color(0.35f, 1f, 0.35f, 0.95f)
+                                       : new Color(1f, 0.75f, 0.25f, 0.9f);
+            GUI.DrawTexture(new Rect(x, y, barW * fill, barH), Texture2D.whiteTexture);
+            GUI.color = prevColor;
+        }
+
         if (!showDebugReadout || _rig == null) return;
         float edge = _sweep != null ? _sweep.LastEdgeSpeed : 0f;
         string mode = _holding ? (_slashMode ? "SLASH" : "CHOP") : "carry";
