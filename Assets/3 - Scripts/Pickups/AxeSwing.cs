@@ -134,6 +134,12 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Ignore lift-target changes smaller than this (m) — probe noise from the carry sway stays invisible once the axe is resting.")]
     public float clearanceDeadband = 0.012f;
 
+    [Header("Clean-strike combo (charge fills faster)")]
+    [Tooltip("Each clean charged hit multiplies the wind-up + charge fill speed by this. A charged swing that misses resets the streak — rewards good clean strikes.")]
+    public float comboFillBoostPerHit = 1.3f;
+    [Tooltip("Cap on the combined fill-speed multiplier.")]
+    public float maxComboFillBoost = 3f;
+
     Transform _rig;                 // AxeSwingRig
     AxeController _axe;
     BladeSweep _sweep;
@@ -146,6 +152,9 @@ public class AxeSwing : MonoBehaviour
     float _latchedRoll;             // deg — facing committed at the last wind-up (0 = not yet latched)
     float _groundLift;              // smoothed world-up lift keeping the axe out of the ground
     float _flightCharge;            // ArmedRamp locked in when the armed swing left the wind-up
+    int _comboStreak;               // consecutive clean charged hits — speeds up the fill
+
+    float ComboFillMultiplier => Mathf.Min(Mathf.Pow(Mathf.Max(1f, comboFillBoostPerHit), _comboStreak), Mathf.Max(1f, maxComboFillBoost));
     bool _armed;                    // charged by a full wind-up; next in-swing contact is a hit
     bool _armedSwingInFlight;       // the charge has left the wind-up — spent when a wind-up is reached again
     bool _atWindup;                 // currently sitting at a wind-up position
@@ -162,6 +171,8 @@ public class AxeSwing : MonoBehaviour
     /// <summary>BladeSweep calls this when an armed contact lands — one hit per wind-up.</summary>
     public void Disarm()
     {
+        // Only ever called when an armed hit LANDS — a clean strike.
+        _comboStreak++;
         _armed = false;
         _armedSwingInFlight = false;
         _armedTime = 0f;
@@ -181,6 +192,7 @@ public class AxeSwing : MonoBehaviour
         _slashBlend = _roll = _latchedRoll = _emaX = _emaY = 0f;
         _armed = _armedSwingInFlight = _atWindup = false;
         _windupTimer = _armedTime = _shakePhase = _groundLift = 0f;
+        _comboStreak = 0;
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
     }
@@ -319,14 +331,21 @@ public class AxeSwing : MonoBehaviour
         }
         if (_armed && _armedSwingInFlight && _atWindup && !wasAtWindup)
         {
+            // The charged swing came back around without landing — a miss.
             _armed = false;
             _armedSwingInFlight = false;
             _windupTimer = 0f;
+            _comboStreak = 0;
         }
 
-        _windupTimer = _atWindup ? _windupTimer + dt : 0f;
+        _windupTimer = _atWindup ? _windupTimer + dt * ComboFillMultiplier : 0f;
         if (_atWindup && _windupTimer >= armDelay) _armed = true;
-        if (!_holding) { _armed = false; _armedSwingInFlight = false; }
+        if (!_holding)
+        {
+            if (_armedSwingInFlight) _comboStreak = 0;   // dropped a charged swing without connecting
+            _armed = false;
+            _armedSwingInFlight = false;
+        }
 
         // Shake = the "ready" indicator: plays only while armed AND parked at
         // the FULL pull (tighter than the latch point — passing near the
@@ -337,7 +356,7 @@ public class AxeSwing : MonoBehaviour
         Vector3 shakeOffset = Vector3.zero;
         if (_armed && atFullPull)
         {
-            _armedTime += dt;
+            _armedTime += dt * ComboFillMultiplier;
             float ramp = ArmedRamp;
             float amplitude = Mathf.Lerp(shakeBaseAmplitude, shakeMaxAmplitude, ramp);
             _shakePhase += Mathf.Lerp(shakeMinFrequency, shakeMaxFrequency, ramp) * dt;
@@ -427,12 +446,14 @@ public class AxeSwing : MonoBehaviour
             const float barW = 110f, barH = 7f;
             float x = Screen.width * 0.5f - barW * 0.5f;
             float y = Screen.height * 0.5f + 26f;
+            // Crosshair family (#BFE9FF ice blue — CrosshairReticle.color):
+            // translucent while pausing, solid while charging, bright at full.
             Color prevColor = GUI.color;
             GUI.color = new Color(0f, 0f, 0f, 0.55f);
             GUI.DrawTexture(new Rect(x - 1f, y - 1f, barW + 2f, barH + 2f), Texture2D.whiteTexture);
-            GUI.color = !_armed ? new Color(0.85f, 0.85f, 0.85f, 0.85f)
-                      : fill >= 0.999f ? new Color(0.35f, 1f, 0.35f, 0.95f)
-                                       : new Color(1f, 0.75f, 0.25f, 0.9f);
+            GUI.color = !_armed ? new Color(0.749f, 0.914f, 1f, 0.35f)
+                      : fill >= 0.999f ? new Color(1f, 1f, 1f, 0.95f)
+                                       : new Color(0.749f, 0.914f, 1f, 0.85f);
             GUI.DrawTexture(new Rect(x, y, barW * fill, barH), Texture2D.whiteTexture);
             GUI.color = prevColor;
         }
@@ -442,7 +463,8 @@ public class AxeSwing : MonoBehaviour
         string mode = _holding ? (_slashMode ? "SLASH" : "CHOP") : "carry";
         string armed = _armed ? (_atWindup ? $"ARMED {ArmedRamp * 100f:0}%" : "ARMED — swing!")
                               : (_atWindup ? $"winding {Mathf.Clamp01(_windupTimer / Mathf.Max(0.01f, armDelay)) * 100f:0}%" : "unarmed");
-        GUI.Label(new Rect(12, 12, 560, 22),
-            $"swingLookScale {swingLookScale:0.00}   [{mode}]   {armed}   edge {edge:0.0} m/s");
+        string combo = _comboStreak > 0 ? $"   combo x{ComboFillMultiplier:0.00} ({_comboStreak})" : "";
+        GUI.Label(new Rect(12, 12, 620, 22),
+            $"swingLookScale {swingLookScale:0.00}   [{mode}]   {armed}   edge {edge:0.0} m/s{combo}");
     }
 }
