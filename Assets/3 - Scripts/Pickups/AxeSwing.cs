@@ -237,17 +237,17 @@ public class AxeSwing : MonoBehaviour
     {
         if (_rig != rig) return;
         _rig = null;
-        PlayerController.SwingLookScale = 1f;
+        PlayerController.SwingLookScale = Vector2.one;
     }
 
     void OnDisable()
     {
-        PlayerController.SwingLookScale = 1f;   // never leave the camera stuck slow
+        PlayerController.SwingLookScale = Vector2.one;   // never leave the camera stuck slow
     }
 
     void LateUpdate()
     {
-        if (_rig == null) { PlayerController.SwingLookScale = 1f; return; }
+        if (_rig == null) { PlayerController.SwingLookScale = Vector2.one; return; }
         float dt = Time.deltaTime;
         if (dt <= 0f) return;
 
@@ -264,13 +264,39 @@ public class AxeSwing : MonoBehaviour
 
         bool allowed = _axe != null && _axe.PhysicsSwingAllowed;
         _holding = TutorialGate.FireHeld() && allowed;
-        PlayerController.SwingLookScale = _holding ? swingLookScale : 1f;
 
-        // Mode: follow whichever axis the player is actually moving (EMA + hysteresis).
-        float emaDecay = Mathf.Exp(-4f * dt);
-        _emaX = _emaX * emaDecay + Mathf.Abs(delta.x);
-        _emaY = _emaY * emaDecay + Mathf.Abs(delta.y);
+        // Per-axis look scale: at a wind-up only the SWING axis is damped —
+        // the other axis is full-speed camera so you can aim the charged
+        // strike (charging right + mouse up = look up, axe stays put).
+        // Mid-flight and free swinging keep the uniform damp. (_atWindup is
+        // last frame's value here — one frame of lag is imperceptible.)
+        Vector2 lookScale = Vector2.one;
         if (_holding)
+        {
+            lookScale = _atWindup
+                ? (_slashMode ? new Vector2(swingLookScale, 1f) : new Vector2(1f, swingLookScale))
+                : new Vector2(swingLookScale, swingLookScale);
+        }
+        PlayerController.SwingLookScale = lookScale;
+
+        // Mode lock: once the axe is at a wind-up (charging) or a charged
+        // swing is in flight, the swing direction is COMMITTED — the mode
+        // cannot switch until the swing resolves. The off-axis mouse becomes
+        // pure camera aim (see the per-axis look scale below).
+        bool modeLocked = _atWindup || (_armed && _armedSwingInFlight);
+
+        // Mode: follow whichever axis the player is actually moving (EMA +
+        // hysteresis) — only while unlocked. EMAs decay while locked so the
+        // unlock starts from fresh intent, not stale wind-up motion.
+        float emaDecay = Mathf.Exp(-4f * dt);
+        _emaX *= emaDecay;
+        _emaY *= emaDecay;
+        if (!modeLocked)
+        {
+            _emaX += Mathf.Abs(delta.x);
+            _emaY += Mathf.Abs(delta.y);
+        }
+        if (_holding && !modeLocked)
         {
             if (_emaX > _emaY * modeDominance) _slashMode = true;
             else if (_emaY > _emaX * modeDominance) _slashMode = false;

@@ -110,10 +110,11 @@ public class PlayerController : GravityObject
 	}
 
 	// Physics-axe spike: while a swing is held (LMB or RT), the swing layer
-	// (AxeSwing) consumes most of the look input and sets this to its
-	// swingLookScale for the frame; it restores 1 on release/disable.
-	// Scales both mouse look and right-stick look.
-	public static float SwingLookScale = 1f;
+	// (AxeSwing) consumes look input and sets per-axis scales for the frame
+	// (x = yaw/mouse-X, y = pitch/mouse-Y); restored to (1,1) on release.
+	// Per-axis so a charging wind-up can damp only its own swing axis while
+	// the other axis stays full-speed camera for aiming the strike.
+	public static Vector2 SwingLookScale = Vector2.one;
 
 	// Physics-axe spike: degrees of camera nudge (x = yaw, y = up) queued by
 	// AxeSwing as a swing crosses arc centre — the camera thrusts subtly into
@@ -586,8 +587,8 @@ public class PlayerController : GravityObject
 		// Mouse and right-stick are accumulated separately because each has its own sensitivity slider.
 		if (!isInDialogue && !isMapOpen && !isInModalSlotUI && !uiHasFocus && !phoneBlocksLook)
 		{
-			yaw   += TutorialGate.GetAxisRaw("Mouse X", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale;
-			pitch -= TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale;
+			yaw   += TutorialGate.GetAxisRaw("Mouse X", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.x;
+			pitch -= TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.y;
 
 			if (TutorialGate.ControllerEnabled && TutorialGate.IsUnlocked(TutorialAbility.MouseLook))
 			{
@@ -598,10 +599,11 @@ public class PlayerController : GravityObject
 				// mouse-sensitivity slider.
 				const float kStickDegreesPerSecond = 360f;
 				// SwingLookScale: while a swing is held the right stick drives the
-				// axe (AxeSwing), so pad look is damped the same way mouse look is.
-				float gain = TutorialGate.StickLookSensitivity * kStickDegreesPerSecond * Time.unscaledDeltaTime * SwingLookScale;
-				yaw   += TutorialGate.RightStickX() * gain;
-				pitch -= TutorialGate.RightStickY() * gain * (TutorialGate.InvertLookY ? -1f : 1f);
+				// axe (AxeSwing), so pad look is damped the same way mouse look is
+				// — per-axis, so a charging wind-up keeps free look on the aim axis.
+				float gain = TutorialGate.StickLookSensitivity * kStickDegreesPerSecond * Time.unscaledDeltaTime;
+				yaw   += TutorialGate.RightStickX() * gain * SwingLookScale.x;
+				pitch -= TutorialGate.RightStickY() * gain * (TutorialGate.InvertLookY ? -1f : 1f) * SwingLookScale.y;
 			}
 
 			// Swing camera kick — additive on top of the (scaled) look input.
