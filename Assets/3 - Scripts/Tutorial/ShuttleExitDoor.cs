@@ -25,15 +25,22 @@ public class ShuttleExitDoor : MonoBehaviour
     void Awake()
     {
         _restRot = transform.localRotation;
-    }
 
-    void Start()
-    {
         // Loaded games are always post-intro (saving requires the stasis pod),
         // and the film-end event that opens the door never replays on a load —
         // without this a save made after the ramp deployed reloads with the
         // door shut and the player sealed in the shuttle forever.
+        // MUST be Awake: PendingLoad consumes+clears Data in the sceneLoaded
+        // callback, which fires after Awake but BEFORE Start.
         if (PendingLoad.Data != null) OpenInstant();
+    }
+
+    void Start()
+    {
+        // Fallback for any load path where Data was already consumed by the
+        // time we woke: the load process spawns a [SaveLoadRunner] that lives
+        // through the first frames — its presence means this boot is a load.
+        if (!_open && FindObjectOfType<SaveLoadRunner>() != null) OpenInstant();
     }
 
     public void Open()

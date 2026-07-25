@@ -75,6 +75,8 @@ public class AxeSwing : MonoBehaviour
     public float chopDrivePitch = 80f;
     [Tooltip("Swing-progress impulse per unit of raw mouse Y. Deliberately heavier than the slash — an overhead chop should take real time, not snap down.")]
     public float chopSensitivity = 0.29f;
+    [Tooltip("CHARGED chops drive at this fraction of normal chop speed (0.59 ≈ 1.7x slower) — the big lunging overhead swing is the slowest, weightiest one.")]
+    public float chargedChopSpeedFactor = 0.59f;
     [Tooltip("Exponential decay (1/s) of chop momentum.")]
     public float chopDamping = 5f;
     [Tooltip("Hand rise (m) at full cock (and half of it drops at full drive).")]
@@ -278,7 +280,8 @@ public class AxeSwing : MonoBehaviour
         if (_holding)
         {
             if (_slashMode) _slashVelocity += (invertSwing ? -delta.x : delta.x) * slashSensitivity;
-            else            _chopVelocity  += -delta.y * chopSensitivity;   // mouse up = cock up (progress toward -1)
+            else            _chopVelocity  += -delta.y * chopSensitivity
+                                              * (_armed ? chargedChopSpeedFactor : 1f);   // mouse up = cock up; charged drive is the slow heavy one
         }
 
         // Integrate both progress values, substepped. The inactive mode always
