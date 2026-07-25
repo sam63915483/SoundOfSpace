@@ -80,6 +80,12 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("Hand rise (m) at full cock (and half of it drops at full drive).")]
     public float chopHandRise = 0.22f;
 
+    [Header("Swing reach (extend through the strike)")]
+    [Tooltip("How far (m) the axe pushes out toward the tree at the middle of a swing. Zero at the wind-up ends, max at arc centre — where the strike lands.")]
+    public float swingReachExtension = 0.35f;
+    [Tooltip("Swing speed (progress/s) at which the extension is fully available — a slow drag barely reaches, a committed swing lunges.")]
+    public float reachFullSpeed = 2f;
+
     [Header("Mode selection + return")]
     [Tooltip("How much one mouse axis must dominate the other (ratio) before the mode switches. Hysteresis against jitter.")]
     public float modeDominance = 1.4f;
@@ -372,6 +378,16 @@ public class AxeSwing : MonoBehaviour
         Vector3 slashPos = new Vector3(_slash * slashTravel, slashHandRise, 0f);
         Vector3 chopPos = new Vector3(0f, _chop < 0f ? -_chop * chopHandRise : -_chop * chopHandRise * 0.4f, 0f);
         Vector3 handPos = Vector3.Lerp(chopPos, slashPos, _slashBlend) + shakeOffset;
+
+        // Reach through the strike: the axe extends forward on a smooth arc —
+        // nothing at the wind-up ends, furthest at the middle of the swing
+        // (where the tree is) — scaled by swing speed so only a moving swing
+        // lunges, never a parked axe.
+        float arcProgress = Mathf.Clamp(Mathf.Lerp(_chop, _slash, _slashBlend), -1f, 1f);
+        float arcSpeed = Mathf.Lerp(Mathf.Abs(_chopVelocity), Mathf.Abs(_slashVelocity), _slashBlend);
+        handPos.z += swingReachExtension
+                   * Mathf.Cos(arcProgress * (Mathf.PI * 0.5f))
+                   * Mathf.Clamp01(arcSpeed / Mathf.Max(0.01f, reachFullSpeed));
 
         // Rotate about the GRIP (holdPositionOffset), not the rig origin.
         Vector3 gripPoint = _axe != null ? _axe.holdPositionOffset : Vector3.zero;
