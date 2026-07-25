@@ -107,6 +107,10 @@ public static class NewGameReset
         // null key → Idle (no bonus tutorial running).
         if (BonusTutorial.Instance != null) BonusTutorial.Instance.ApplySaveState(null, 0, null, false);
 
+        // Each new game claims the next free "stasis pod N" slot so runs never
+        // overwrite each other's pod saves (death respawn targets this slot too).
+        StasisPodSave.ActiveSlotName = StasisPodSave.NextFreeSlotName();
+
         // Death reloads the newest save. New Game doesn't touch disk, so a stale
         // autosave from a previous run could be the newest file — dying early in a
         // fresh game would then reload the OLD run. Force a snapshot of this fresh

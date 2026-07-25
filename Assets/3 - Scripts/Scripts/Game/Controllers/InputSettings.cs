@@ -126,6 +126,10 @@ public class InputSettings : ScriptableObject {
 	public bool invertLookY = defaultInvertLookY;
 	public bool controllerEnabled = defaultControllerEnabled;
 	public bool vibrationEnabled = defaultVibrationEnabled;
+	// Axe swing input scaling (physics-axe system) — how fast mouse/stick
+	// motion actually moves the axe. Separate from look sensitivity.
+	[Range(0.2f, 3f)] public float axeMouseSensitivity = 1f;
+	[Range(0.2f, 3f)] public float axeStickSensitivity = 1f;
 
 	[Header("Camera Effects (master)")]
 	public bool cameraEffectsEnabled = true;
@@ -295,6 +299,8 @@ public class InputSettings : ScriptableObject {
 		stickLookSensitivity = PlayerPrefs.GetFloat (nameof (stickLookSensitivity), defaultStickLookSensitivity);
 		shipStickSensitivity = PlayerPrefs.GetFloat (nameof (shipStickSensitivity), defaultShipStickSensitivity);
 		stickDeadzone        = PlayerPrefs.GetFloat (nameof (stickDeadzone),        defaultStickDeadzone);
+		axeMouseSensitivity  = PlayerPrefs.GetFloat (nameof (axeMouseSensitivity),  1f);
+		axeStickSensitivity  = PlayerPrefs.GetFloat (nameof (axeStickSensitivity),  1f);
 		invertLookY          = PlayerPrefs.GetInt   (nameof (invertLookY),          defaultInvertLookY ? 1 : 0) != 0;
 		// "_v2" key: the pre-revamp build stored an opt-IN default (false), so
 		// every existing profile has a saved 0. Bumping the key makes the new
@@ -404,6 +410,8 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetFloat (nameof (stickLookSensitivity), stickLookSensitivity);
 		PlayerPrefs.SetFloat (nameof (shipStickSensitivity), shipStickSensitivity);
 		PlayerPrefs.SetFloat (nameof (stickDeadzone),        stickDeadzone);
+		PlayerPrefs.SetFloat (nameof (axeMouseSensitivity),  axeMouseSensitivity);
+		PlayerPrefs.SetFloat (nameof (axeStickSensitivity),  axeStickSensitivity);
 		PlayerPrefs.SetInt   (nameof (invertLookY),          invertLookY ? 1 : 0);
 		PlayerPrefs.SetInt   ("controllerEnabled_v2",        controllerEnabled ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (vibrationEnabled),     vibrationEnabled ? 1 : 0);

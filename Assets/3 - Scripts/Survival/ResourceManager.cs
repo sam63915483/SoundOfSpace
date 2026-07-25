@@ -31,6 +31,10 @@ public class ResourceManager : MonoBehaviour
     [Tooltip("Sound played each time the player takes damage. Drag any clip here.")]
     public AudioClip damageClip;
     [Range(0f, 1f)] public float damageVolume = 0.7f;
+
+    // Appended after initial release — keep at the end of the serialized block.
+    [Tooltip("Global multiplier on ALL incoming player damage (2026-07-24 balance pass: 1/1.3).")]
+    public float damageTakenMultiplier = 0.769f;
     AudioSource damageSource;
 
     float hungerCurrent = 100f;
@@ -161,6 +165,10 @@ public class ResourceManager : MonoBehaviour
         // Debug god-mode (toggled via the backtick debug menu). Block all
         // incoming damage so enemies' spit / contact hits don't drain health.
         if (GravityDebugUI.GodMode) return;
+        // Global incoming-damage scale (2026-07-24 balance: 1/1.3). Applied at
+        // the single choke point so every source (enemies, falls, spit, cops)
+        // is covered; instant-kill amounts stay far past lethal.
+        amount *= damageTakenMultiplier;
         healthCurrent = Mathf.Clamp(healthCurrent - amount, 0f, 100f);
         OnHealthDropped?.Invoke(amount);
         GamepadRumble.Pulse(Mathf.Clamp01(0.3f + amount * 0.02f), 0.5f, 0.25f);

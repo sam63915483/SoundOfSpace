@@ -54,6 +54,16 @@ public static class SaveSystem
         // Spawn protection: the restore teleport + settling physics frames can
         // register as a lethal impact (load → instant fall-damage death loop).
         FallDamage.LoadGraceUntil = Time.unscaledTime + 4f;
+
+        // Restore this run's pod-save slot so re-saving (and death respawn)
+        // targets the same "stasis pod N" file the loaded run owns. Old saves
+        // without the field: infer from the loaded file's own name if it IS a
+        // pod slot, else leave for lazy assignment at the next pod save.
+        if (!string.IsNullOrEmpty(data.podSlotName))
+            StasisPodSave.ActiveSlotName = data.podSlotName;
+        else if (!string.IsNullOrEmpty(data.saveName) && data.saveName.StartsWith("stasis pod"))
+            StasisPodSave.ActiveSlotName = data.saveName;
+
         SaveCollector.Apply(data);
     }
 

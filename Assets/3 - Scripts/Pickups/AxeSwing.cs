@@ -254,11 +254,15 @@ public class AxeSwing : MonoBehaviour
         // Raw per-frame mouse delta — deliberately NOT the smoothed camera path.
         // Controller: the right stick is a rate input, so convert deflection to
         // an equivalent per-frame delta; RT is the pad's "LMB held".
-        Vector2 delta = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y"));
+        // Player-facing sensitivities from settings (CONTROLS tab sliders).
+        var settings = CameraEffectsManager.Instance != null ? CameraEffectsManager.Instance.Input : null;
+        float mouseSens = settings != null ? settings.axeMouseSensitivity : 1f;
+        float stickSens = settings != null ? settings.axeStickSensitivity : 1f;
+        Vector2 delta = new Vector2(Input.GetAxisRaw("Mouse X"), Input.GetAxisRaw("Mouse Y")) * mouseSens;
         if (TutorialGate.ControllerEnabled)
         {
             // Charged boost (pad only): an armed swing whips twice as fast.
-            float rate = stickSwingRate * (_armed ? armedStickBoost : 1f);
+            float rate = stickSwingRate * (_armed ? armedStickBoost : 1f) * stickSens;
             delta += new Vector2(TutorialGate.RightStickX(), TutorialGate.RightStickY()) * (rate * dt);
         }
 

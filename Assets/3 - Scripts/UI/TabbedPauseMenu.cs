@@ -533,6 +533,16 @@ public class TabbedPauseMenu : MonoBehaviour
                         get  = () => _input != null ? _input.stickDeadzone : 0.19f,
                         set  = v  => { if (_input == null) return; _input.stickDeadzone = v; _input.PushControllerSettingsToGate(); },
                     },
+                    new SliderDef {
+                        label = "AXE SENSITIVITY (MOUSE)", min = 0.2f, max = 3f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.axeMouseSensitivity : 1f,
+                        set  = v  => { if (_input != null) _input.axeMouseSensitivity = v; },
+                    },
+                    new SliderDef {
+                        label = "AXE SENSITIVITY (PAD)", min = 0.2f, max = 3f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.axeStickSensitivity : 1f,
+                        set  = v  => { if (_input != null) _input.axeStickSensitivity = v; },
+                    },
                     new ToggleDef {
                         label = "INVERT LOOK Y",
                         get  = () => _input != null && _input.invertLookY,

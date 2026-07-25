@@ -235,7 +235,27 @@ public class DeathCutsceneController : MonoBehaviour
     IEnumerator DeathSequence()
     {
         yield return DeathIntro();
-        yield return PlayThenReload();
+        if (playTreeCutscene)
+        {
+            yield return PlayThenReload();
+        }
+        else
+        {
+            // Fast respawn (2026-07-24, Sam): skip the timeline-tree cutscene —
+            // fade to black (DeathIntro above), then reload straight into the
+            // newest stasis-pod save, waking in the pod with the DOWNLOADING
+            // screen exactly like loading that save. The full cutscene stays
+            // intact behind playTreeCutscene.
+            BeginReloadLoad();
+            if (_reloadOp == null || _reloadData == null)
+            {
+                Debug.LogWarning("[DeathCutscene] No save to reload — finishing in place.");
+                FinishWithoutReload();
+                yield break;
+            }
+            while (_reloadOp.progress < 0.9f) yield return null;
+            ActivateReload();
+        }
     }
 
     IEnumerator DeathIntro()
@@ -395,7 +415,20 @@ public class DeathCutsceneController : MonoBehaviour
     {
         var saves = SaveSystem.ListSaves();
         if (saves.Count == 0) return;
-        _reloadData = SaveSystem.LoadFromDisk(saves[0].fileName);
+        // Prefer THIS RUN's stasis-pod slot — death wakes you in the pod with
+        // the DOWNLOADING screen (the respawn ritual). Never an older run's pod
+        // save: a fresh run that hasn't pod-saved yet falls back to the newest
+        // save of any kind (its own forced autosave, per NewGameReset).
+        string pickName = saves[0].fileName;
+        string podSlot = StasisPodSave.ActiveSlotName;
+        if (!string.IsNullOrEmpty(podSlot))
+        {
+            for (int i = 0; i < saves.Count; i++)
+            {
+                if (saves[i].fileName == podSlot) { pickName = podSlot; break; }
+            }
+        }
+        _reloadData = SaveSystem.LoadFromDisk(pickName);
         if (_reloadData == null) { Debug.LogError("[DeathCutscene] Newest save failed to load."); return; }
         _reloadOp = SceneManager.LoadSceneAsync(GameplayScene);
         _reloadOp.allowSceneActivation = false; // hold at 0.9 until the boom
@@ -1371,4 +1404,9 @@ public class DeathCutsceneController : MonoBehaviour
     static float EaseIn(float p) => p * p;
     static float EaseOut(float p) => 1f - (1f - p) * (1f - p);
     static float EaseInOut(float p) => p < 0.5f ? 2f * p * p : 1f - Mathf.Pow(-2f * p + 2f, 2f) / 2f;
+
+    // -- appended after initial release; keep order (serialization) --
+
+    [Tooltip("Play the full timeline-tree death cutscene before reloading. OFF (default): fade to black and wake straight in the newest stasis-pod save with the DOWNLOADING screen. The cutscene code is preserved — flip this to bring it back.")]
+    public bool playTreeCutscene = false;
 }

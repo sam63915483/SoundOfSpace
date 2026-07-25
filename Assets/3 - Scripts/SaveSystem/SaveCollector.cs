@@ -15,6 +15,7 @@ public static class SaveCollector
         {
             saveName = saveName,
             isoTimestamp = System.DateTime.Now.ToString("o"),
+            podSlotName = StasisPodSave.ActiveSlotName,
         };
 
         CaptureCelestialBodies(data.celestialBodies);

@@ -55,6 +55,10 @@ public class SaveData
     public List<SaplingSave> saplings = new List<SaplingSave>();
     public List<DomeSave> domes = new List<DomeSave>();
     public PlanetO2Save planetO2 = new PlanetO2Save();
+    // Per-run stasis-pod slot ("stasis pod N") this run saves to — new games
+    // claim the next free N so runs never overwrite each other. Empty on
+    // pre-feature saves (falls back to saveName / next-free at save time).
+    public string podSlotName;
 }
 
 // A planted sapling OR a matured planted tree (growth >= 1 — the SaplingGrowth

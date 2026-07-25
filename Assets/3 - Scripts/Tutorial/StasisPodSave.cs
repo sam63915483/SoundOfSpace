@@ -22,8 +22,28 @@ using UnityEngine.UI;
 // veil's frontier.
 public class StasisPodSave : MonoBehaviour
 {
-    [Tooltip("Save-slot name this pod writes (fixed slot; overwritten each ritual).")]
+    [Tooltip("Fallback save-slot name. The pod actually writes to the per-run ActiveSlotName (\"stasis pod N\") — each new game claims the next free N so runs never overwrite each other.")]
     public string saveSlotName = "stasis pod 1";
+
+    /// Per-run pod slot. Set by NewGameReset (next free) and restored from
+    /// SaveData.podSlotName on load; lazily assigned at first pod save if
+    /// somehow still empty (e.g. old saves, editor direct-play).
+    public static string ActiveSlotName;
+
+    /// Next unused "stasis pod N" slot, scanning existing save files.
+    public static string NextFreeSlotName()
+    {
+        const string prefix = "stasis pod ";
+        int max = 0;
+        var saves = SaveSystem.ListSaves();
+        for (int i = 0; i < saves.Count; i++)
+        {
+            string name = saves[i].fileName;
+            if (name == null || !name.StartsWith(prefix)) continue;
+            if (int.TryParse(name.Substring(prefix.Length), out int n) && n > max) max = n;
+        }
+        return prefix + (max + 1);
+    }
     public float fillSeconds = 1.2f;
     public float holdSeconds = 0.7f;
     public float clearSeconds = 1.2f;
@@ -136,7 +156,12 @@ public class StasisPodSave : MonoBehaviour
 
         // ── Full coverage. UPLOAD: write the save. DOWNLOAD: never save —
         //    this is the wake-up playback of an existing consciousness.
-        if (!download) SaveSystem.Save(saveSlotName);
+        if (!download)
+        {
+            if (string.IsNullOrEmpty(ActiveSlotName))
+                ActiveSlotName = string.IsNullOrEmpty(saveSlotName) ? NextFreeSlotName() : saveSlotName;
+            SaveSystem.Save(ActiveSlotName);
+        }
         float holdFor = download ? holdSeconds + 0.9f : holdSeconds;   // a beat longer to read DOWNLOADING
         t = 0f;
         while (t < holdFor)
