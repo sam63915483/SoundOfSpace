@@ -47,8 +47,8 @@ public class Ship : GravityObject
     [Tooltip("Maximum reactor fuel. Drains ONLY while a thrust input is held (WASD / Space / Ctrl). Sitting in the pilot seat doing nothing does not drain fuel. Boost (Shift+thrust) drains at 2x the thrust rate.")]
     public float fuelMax = 100f;
     public float fuelPilotedDrainPerSec = 0f;       // no drain just sitting in the cockpit
-    public float fuelThrustDrainPerSec  = 0.875f;   // WASD / Space / Ctrl held
-    public float fuelBoostDrainPerSec   = 1.75f;    // Shift + thrust = 2x thrust rate
+    public float fuelThrustDrainPerSec  = 0.673f;   // WASD / Space / Ctrl held (0.875/1.3 — 2026-07-24 balance pass)
+    public float fuelBoostDrainPerSec   = 1.346f;   // Shift + thrust = 2x thrust rate
     float fuelCurrent;
     public float FuelPercent => fuelMax > 0f ? fuelCurrent / fuelMax : 0f;
     public bool HasFuel      => fuelCurrent > 0f;

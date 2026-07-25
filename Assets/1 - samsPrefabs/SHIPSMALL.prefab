@@ -2797,8 +2797,8 @@ MonoBehaviour:
   powerFlyingDrainPerSec: 1.5
   fuelMax: 100
   fuelPilotedDrainPerSec: 0
-  fuelThrustDrainPerSec: 0.875
-  fuelBoostDrainPerSec: 1.75
+  fuelThrustDrainPerSec: 0.673
+  fuelBoostDrainPerSec: 1.346
   boostMultiplier: 2.5
   boostFuelMax: 1
   boostDrainPerSec: 0.5

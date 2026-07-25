@@ -746,7 +746,7 @@ public class OxygenManager : MonoBehaviour
     [SerializeField] float hullMax = 300f;
 
     [Header("Rates (seconds-of-air per real second)")]
-    [SerializeField] float suitDrainRate  = 1.0f;
+    [SerializeField] float suitDrainRate  = 0.667f;   // 1.0/1.5 — 2026-07-24 balance pass
     [SerializeField] float suitRefillRate = 24.0f;
     [SerializeField] float hullRefillRate = 60.0f;
     [SerializeField] float hullDrainMin   = 5.0f;

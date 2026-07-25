@@ -17,8 +17,8 @@ public class ResourceManager : MonoBehaviour
     public static System.Func<bool> LegacyRespawnSuppressed;
 
     [Header("Hunger & Thirst")]
-    public float hungerDecayTime = 15f;
-    public float thirstDecayTime = 10f;
+    public float hungerDecayTime = 45f;   // minutes full→empty (2026-07-24 balance pass: 3x slower; scene value matches)
+    public float thirstDecayTime = 30f;
 
     [Header("Health Drain Rates (HP/sec)")]
     public float healthDrainRateHungry = 2f;
