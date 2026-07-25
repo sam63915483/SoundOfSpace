@@ -265,19 +265,13 @@ public class AxeSwing : MonoBehaviour
         bool allowed = _axe != null && _axe.PhysicsSwingAllowed;
         _holding = TutorialGate.FireHeld() && allowed;
 
-        // Per-axis look scale: at a wind-up only the SWING axis is damped —
-        // the other axis is full-speed camera so you can aim the charged
-        // strike (charging right + mouse up = look up, axe stays put).
-        // Mid-flight and free swinging keep the uniform damp. (_atWindup is
-        // last frame's value here — one frame of lag is imperceptible.)
-        Vector2 lookScale = Vector2.one;
-        if (_holding)
-        {
-            lookScale = _atWindup
-                ? (_slashMode ? new Vector2(swingLookScale, 1f) : new Vector2(1f, swingLookScale))
-                : new Vector2(swingLookScale, swingLookScale);
-        }
-        PlayerController.SwingLookScale = lookScale;
+        // Look scale: uniformly damped the whole time the axe is held — the
+        // sluggish weighty camera IS the axe feel, including while aiming at
+        // a wind-up. (Aiming works because the mode lock below stops off-axis
+        // mouse from switching modes or moving the axe — it only looks.)
+        PlayerController.SwingLookScale = _holding
+            ? new Vector2(swingLookScale, swingLookScale)
+            : Vector2.one;
 
         // Mode lock: ONLY while parked at the wind-up (charging, bar visible)
         // — that's the aiming window, so the off-axis mouse becomes pure
