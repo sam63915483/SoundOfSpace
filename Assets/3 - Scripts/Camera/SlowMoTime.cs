@@ -1,31 +1,27 @@
 using UnityEngine;
 
 /// <summary>
-/// Shared slow-mo timescale helper. Setting Time.timeScale alone leaves
-/// Time.fixedDeltaTime at its game-time value, so at 0.15x physics steps only
-/// ~7 times per REAL second (instead of 50) — the player body's yaw and every
-/// physics-driven object visibly stutter while the world is slowed ("camera
-/// feels really low frames"). Apply() scales the fixed timestep with the
-/// timescale so physics keeps its normal real-time cadence (same CPU cost per
-/// real second as normal play); Restore() puts both back.
+/// Shared slow-mo timescale helper for SlowmoOnKill, KillShotCam, and
+/// BladeSweep's hit-stop.
 ///
-/// Used by SlowmoOnKill, KillShotCam, and BladeSweep's hit-stop. Pause menus
-/// set Time.timeScale = 0 directly and are unaffected.
+/// DO NOT scale Time.fixedDeltaTime here (tried once to smooth the ~7Hz
+/// physics-stepped camera during 0.15x slow-mo): NBodySimulation integrates
+/// every FixedUpdate by the CONSTANT Universe.physicsTimeStep — and owns
+/// Time.fixedDeltaTime (sets it in Awake) — so a smaller fixed step makes the
+/// PLANETS run ~7x faster than the slowed player. Sam's kill shot ended with
+/// the planet orbiting out from under him ("everything shifts, I ended up in
+/// space"). The slightly steppy camera during slow-mo is the accepted trade;
+/// fixing it properly would mean making the whole world sim timestep-aware.
 /// </summary>
 public static class SlowMoTime
 {
-    static float _baseFixedDelta = -1f;
-
     public static void Apply(float timeScale)
     {
-        if (_baseFixedDelta < 0f) _baseFixedDelta = Time.fixedDeltaTime;
         Time.timeScale = timeScale;
-        Time.fixedDeltaTime = _baseFixedDelta * Mathf.Max(0.01f, timeScale);
     }
 
     public static void Restore()
     {
         Time.timeScale = 1f;
-        if (_baseFixedDelta > 0f) Time.fixedDeltaTime = _baseFixedDelta;
     }
 }
