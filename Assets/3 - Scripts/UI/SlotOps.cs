@@ -34,8 +34,23 @@ public static class SlotOps
         // entirely — the bag would still appear in inventory but be unable
         // to receive new fish. Null for non-FishBag cursors.
         public Hotbar.Slot[] bagContents;
+        // For Mushroom / MushroomSapling cursors: the species key travels with
+        // the cursor. Mushroom stacks are SPECIES-PURE, so without this a red
+        // stack dropped onto a blue one would merge and silently take the
+        // destination's species.
+        public string mushroomSpecies;
         public bool IsHeld => id != Hotbar.ItemId.None && count > 0;
     }
+
+    /// Can these two stack together? Same id, and for mushrooms the same
+    /// species as well — the whole point of species-pure stacks.
+    static bool CanStack(Hotbar.Slot slot, in CursorState cursor) =>
+        slot.id == cursor.id
+        && (!Hotbar.IsMushroomItem(slot.id) || slot.mushroomSpecies == cursor.mushroomSpecies);
+
+    static bool CanStack(Hotbar.Slot a, Hotbar.Slot b) =>
+        a.id == b.id
+        && (!Hotbar.IsMushroomItem(a.id) || a.mushroomSpecies == b.mushroomSpecies);
 
     // LMB on a slot: pick up the entire stack (or deposit/swap/merge if held).
     public static void HandleLeftClick(Hotbar.Slot[] container, int idx, ref CursorState cursor)
@@ -68,7 +83,7 @@ public static class SlotOps
         {
             for (int i = 0; i < dest.Length && remaining > 0; i++)
             {
-                if (dest[i].id != s.id) continue;
+                if (!CanStack(dest[i], s)) continue;
                 int room = cap - dest[i].count;
                 if (room <= 0) continue;
                 int take = Mathf.Min(room, remaining);
@@ -82,12 +97,12 @@ public static class SlotOps
         {
             if (dest[i].id != Hotbar.ItemId.None) continue;
             int take = Mathf.Min(cap, remaining);
-            dest[i] = new Hotbar.Slot { id = s.id, count = take, fishData = s.fishData, bagContents = s.bagContents };
+            dest[i] = new Hotbar.Slot { id = s.id, count = take, fishData = s.fishData, bagContents = s.bagContents, mushroomSpecies = s.mushroomSpecies };
             remaining -= take;
         }
 
         if (remaining == 0) source[idx] = default;
-        else                source[idx] = new Hotbar.Slot { id = s.id, count = remaining, fishData = s.fishData, bagContents = s.bagContents };
+        else                source[idx] = new Hotbar.Slot { id = s.id, count = remaining, fishData = s.fishData, bagContents = s.bagContents, mushroomSpecies = s.mushroomSpecies };
     }
 
     static void PickUpFull(Hotbar.Slot[] container, int idx, ref CursorState cursor)
@@ -100,6 +115,7 @@ public static class SlotOps
         cursor.sourceIndex = idx;
         cursor.fishData = s.fishData;       // carry fish payload onto cursor
         cursor.bagContents = s.bagContents; // carry bag's 5-slot array onto cursor
+        cursor.mushroomSpecies = s.mushroomSpecies;
         container[idx] = default;
     }
 
@@ -113,6 +129,7 @@ public static class SlotOps
         cursor.sourceIndex = idx;
         cursor.fishData = s.fishData;       // single-fish slots: payload moves to cursor
         cursor.bagContents = s.bagContents; // single-bag slots: contents move to cursor
+        cursor.mushroomSpecies = s.mushroomSpecies;
         s.count -= 1;
         if (s.count <= 0) container[idx] = default;
         else              container[idx] = s;
@@ -125,13 +142,13 @@ public static class SlotOps
         // Empty slot — drop the whole cursor here.
         if (s.id == Hotbar.ItemId.None || s.count <= 0)
         {
-            container[idx] = new Hotbar.Slot { id = cursor.id, count = cursor.count, fishData = cursor.fishData, bagContents = cursor.bagContents };
+            container[idx] = NewSlotFrom(cursor, cursor.count);
             ClearCursor(ref cursor);
             return;
         }
 
-        // Same id — try to merge.
-        if (s.id == cursor.id)
+        // Same id (and species, for mushrooms) — try to merge.
+        if (CanStack(s, cursor))
         {
             int cap = Hotbar.StackMax(s.id);
             int room = cap - s.count;
@@ -144,13 +161,14 @@ public static class SlotOps
             return;
         }
 
-        // Different id — swap cursor with slot.
+        // Different item (or a different mushroom species) — swap cursor with slot.
         var temp = s;
-        container[idx] = new Hotbar.Slot { id = cursor.id, count = cursor.count, fishData = cursor.fishData, bagContents = cursor.bagContents };
+        container[idx] = NewSlotFrom(cursor, cursor.count);
         cursor.id = temp.id;
         cursor.count = temp.count;
         cursor.fishData = temp.fishData;        // swap pulls slot payload onto cursor
         cursor.bagContents = temp.bagContents;  // same for bag contents
+        cursor.mushroomSpecies = temp.mushroomSpecies;
         // sourceContainer/sourceIndex stay as the original pickup origin —
         // that's where return-on-close should put it.
     }
@@ -162,16 +180,16 @@ public static class SlotOps
         // Empty slot — drop one.
         if (s.id == Hotbar.ItemId.None || s.count <= 0)
         {
-            container[idx] = new Hotbar.Slot { id = cursor.id, count = 1, fishData = cursor.fishData, bagContents = cursor.bagContents };
+            container[idx] = NewSlotFrom(cursor, 1);
             cursor.count -= 1;
             if (cursor.count <= 0) ClearCursor(ref cursor);
             return;
         }
 
-        // Different id — RMB-on-different is a no-op (don't swap on right click).
-        if (s.id != cursor.id) return;
+        // Different item (or species) — RMB-on-different is a no-op (no swap on right click).
+        if (!CanStack(s, cursor)) return;
 
-        // Same id — drop one if room.
+        // Same stack — drop one if room.
         int cap = Hotbar.StackMax(s.id);
         if (s.count >= cap) return;
         s.count += 1;
@@ -188,7 +206,17 @@ public static class SlotOps
         cursor.sourceIndex = -1;
         cursor.fishData = null;
         cursor.bagContents = null;
+        cursor.mushroomSpecies = null;
     }
+
+    static Hotbar.Slot NewSlotFrom(in CursorState cursor, int count) => new Hotbar.Slot
+    {
+        id = cursor.id,
+        count = count,
+        fishData = cursor.fishData,
+        bagContents = cursor.bagContents,
+        mushroomSpecies = cursor.mushroomSpecies,
+    };
 
     // Return-to-source on close. Best-effort: if source slot is now occupied
     // by something else (defensive — shouldn't happen with single-open-at-a-
@@ -205,11 +233,11 @@ public static class SlotOps
             var s = src[idx];
             if (s.id == Hotbar.ItemId.None || s.count <= 0)
             {
-                src[idx] = new Hotbar.Slot { id = cursor.id, count = cursor.count, fishData = cursor.fishData, bagContents = cursor.bagContents };
+                src[idx] = NewSlotFrom(cursor, cursor.count);
                 ClearCursor(ref cursor);
                 return true;
             }
-            if (s.id == cursor.id)
+            if (CanStack(s, cursor))
             {
                 int cap = Hotbar.StackMax(s.id);
                 int room = cap - s.count;
@@ -224,7 +252,7 @@ public static class SlotOps
         for (int i = 0; i < src.Length; i++)
         {
             if (src[i].id != Hotbar.ItemId.None) continue;
-            src[i] = new Hotbar.Slot { id = cursor.id, count = cursor.count, fishData = cursor.fishData, bagContents = cursor.bagContents };
+            src[i] = NewSlotFrom(cursor, cursor.count);
             ClearCursor(ref cursor);
             return true;
         }

@@ -233,46 +233,39 @@ public class FishMarketNPC : MonoBehaviour
     }
 
     // ── Post-greeting choice ───────────────────────────────────────────────────
+    // Sell rows are build-configurable (mushrooms live, space dust vaulted), so
+    // the menu is assembled rather than hard-indexed — see NPCSellRows.
+    readonly System.Collections.Generic.List<NPCSellRows.SellAction> _sellActions =
+        new System.Collections.Generic.List<NPCSellRows.SellAction>();
+    const int SellHeadRows = 1;   // "Sell fish" sits above the sell block
+
     void ShowPostGreetingChoice()
     {
-        bool hasDust = SpaceDustInventory.Instance != null && SpaceDustInventory.Instance.Count > 0;
         var rows = new System.Collections.Generic.List<PostGreetingChoicePanel.Row>
         {
             new PostGreetingChoicePanel.Row("Sell fish", true),
-            new PostGreetingChoicePanel.Row(hasDust ? "Sell space dust" : "Sell space dust (no dust)", hasDust),
-            new PostGreetingChoicePanel.Row("Leave", true),
         };
+        NPCSellRows.Append(rows, _sellActions);
+        rows.Add(new PostGreetingChoicePanel.Row("Leave", true));
         PostGreetingChoicePanel.Instance.Show(rows, HandleChoice);
     }
 
     void HandleChoice(int index)
     {
-        switch (index)
+        if (index == 0) { OpenSellPanel(); return; }
+        if (NPCSellRows.ActionAt(_sellActions, SellHeadRows, index, out var action))
         {
-            case 0: OpenSellPanel(); break;
-            case 1: OpenSellDust(); break;
-            case 2: StopConversation(); break;
+            NPCSellRows.Open(action, this, "Fish Vendor", _sellDustOption, ShowPostGreetingChoice);
+            return;
         }
-    }
-
-    void OpenSellDust()
-    {
-        if (_sellDustOption == null) { StopConversation(); return; }
-        SpaceDustSellUI.Instance.Open(
-            npcName: "Fish Vendor",
-            acceptChance: _sellDustOption.AcceptChance,
-            pricePerDust: _sellDustOption.PricePerDust,
-            preferredMaxQty: _sellDustOption.PreferredMaxQty,
-            onClose: ShowPostGreetingChoice
-        );
+        StopConversation();
     }
 
     void StopConversation()
     {
         if (PostGreetingChoicePanel.Instance != null && PostGreetingChoicePanel.Instance.IsVisible)
             PostGreetingChoicePanel.Instance.Hide();
-        if (SpaceDustSellUI.Instance != null && SpaceDustSellUI.Instance.IsOpen)
-            SpaceDustSellUI.Instance.Close();
+        NPCSellRows.CloseAny();
         PlayerController.isInDialogue = false;
         Cursor.lockState = CursorLockMode.Locked;
         Cursor.visible   = false;
@@ -310,8 +303,7 @@ public class FishMarketNPC : MonoBehaviour
     {
         if (PostGreetingChoicePanel.Instance != null && PostGreetingChoicePanel.Instance.IsVisible)
             PostGreetingChoicePanel.Instance.Hide();
-        if (SpaceDustSellUI.Instance != null && SpaceDustSellUI.Instance.IsOpen)
-            SpaceDustSellUI.Instance.Close();
+        NPCSellRows.CloseAny();
 
         // Return any staged fish on close and release their thumbnails
         foreach (var (f, rt, src) in stagedFish) { if (!FishStagingUI.TryReturnTo(f, src)) InventoryFullPopup.Show(); ReleaseRT(rt); }

@@ -1,10 +1,22 @@
 using UnityEngine;
 
-// Runtime-attached to every spawned mushroom by MushroomSpawner. Subclasses
-// Interactable so it inherits the "Press F to ___" prompt + trigger plumbing.
-// On eat: heals proportionally to the mushroom's spawn-time scale and starts a
-// raw-fish-style trip with this mushroom's deterministic mix of colour /
-// breathing / kaleidoscope intensities.
+// DEPRECATED (2026-08-04) — no longer attached to anything.
+//
+// This was the press-F-to-eat-the-whole-mushroom prop. The mushroom rework
+// (docs/Handoff_CozyLoop_Switch_MushroomSlice_v1.md §3) replaced it entirely:
+// world mushrooms are harvest nodes now (SpawnedMushroom — chop, topple, drop
+// 3–9 caps + 0–2 spores), and EATING moved onto the hotbar as a held-item
+// action (hold fire on a selected mushroom → Hotbar.ConsumeEquippedMushroom →
+// MushroomEffect.Consume, which keeps the heal + trip this file used to do).
+//
+// MushroomSpawner no longer adds it, and strips it off any instance that still
+// carries one. Kept rather than deleted per the handoff's "disable it — don't
+// delete assets" rule: the component still compiles and still works if dropped
+// on something by hand.
+//
+// Original behaviour: heals proportionally to the mushroom's spawn-time scale
+// and starts a raw-fish-style trip with this mushroom's deterministic mix of
+// colour / breathing / kaleidoscope intensities.
 public class MushroomInteraction : Interactable
 {
     public string mushroomDisplayName = "mushroom";

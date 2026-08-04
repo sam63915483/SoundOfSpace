@@ -22,6 +22,14 @@ public class ShuttleExitDoor : MonoBehaviour
 
     public bool IsOpen => _open;
 
+    /// Time.time at which the ramp first started deploying this session, or -1 if
+    /// it hasn't. TevMushroomOnboarding counts its 120s hidden window from here
+    /// (handoff §2.1) — the player gets that long to loot the locker and chop
+    /// trees before an NPC turns up.
+    public static float OpenedAtTime { get; private set; } = -1f;
+    public static bool HasOpened => OpenedAtTime >= 0f;
+    static void MarkOpened() { if (OpenedAtTime < 0f) OpenedAtTime = Time.time; }
+
     void Awake()
     {
         _restRot = transform.localRotation;
@@ -48,6 +56,7 @@ public class ShuttleExitDoor : MonoBehaviour
         if (_open || _opening) return;
         _opening = true;
         _t = 0f;
+        MarkOpened();
         if (openSound != null) AudioSource.PlayClipAtPoint(openSound, transform.position, 0.9f);
     }
 
@@ -55,6 +64,7 @@ public class ShuttleExitDoor : MonoBehaviour
     {
         _opening = false;
         _open = true;
+        MarkOpened();
         transform.localRotation = _restRot * Quaternion.AngleAxis(openAngle, Vector3.right);
     }
 

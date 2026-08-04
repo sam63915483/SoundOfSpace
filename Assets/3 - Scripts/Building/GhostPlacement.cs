@@ -24,6 +24,7 @@ public class GhostPlacement : MonoBehaviour
     // sapling ghost as the hotbar selection changes.
     public static GhostPlacement Current { get; private set; }
     public bool IsSaplingPlacement => entry != null && entry.isSapling;
+    public bool IsMushroomPlacement => entry != null && entry.isMushroomSapling;
 
     // The hotbar suppresses wheel-cycling only when the wheel drives the
     // placement (building distance). Sapling placement doesn't use the wheel, so
@@ -111,7 +112,8 @@ public class GhostPlacement : MonoBehaviour
         // so scale the ghost down and prepare the surface-cast mask.
         if (entry.isSapling || entry.isBubbleDome)
         {
-            if (entry.isSapling) ghost.transform.localScale *= SaplingGrowth.DefaultPlantedScale;
+            if (entry.isMushroomSapling) ghost.transform.localScale *= MushroomGrowth.DefaultPlantedScale;
+            else if (entry.isSapling) ghost.transform.localScale *= SaplingGrowth.DefaultPlantedScale;
             _saplingGroundMask = ~0 & ~SpawnerCubeface.WorldSpawnExcludeMask;
             var pc = FindObjectOfType<PlayerController>();
             if (pc != null) _saplingGroundMask &= ~(1 << pc.gameObject.layer);
@@ -395,8 +397,13 @@ public class GhostPlacement : MonoBehaviour
         // Spacing (saplings only) is checked EVERY frame against the ghost's
         // just-applied spot (not only on aim change) — otherwise it goes stale the
         // instant you plant one and lets you stack a second on top. Cheap.
+        // Mushrooms skip the tree-spacing gate: caps grow in clusters in the
+        // real world, and an 8m no-build radius round every trunk would make a
+        // forest unplantable — which is exactly where you want a mushroom farm.
+        // The barren-rock gate still applies to both.
         _saplingBlocked = entry != null && entry.isSapling && _saplingHasValidSpot
-            && (_saplingBarren || IsTooCloseToFlora(ghost.transform.position));
+            && (_saplingBarren
+                || (!entry.isMushroomSapling && IsTooCloseToFlora(ghost.transform.position)));
 
         // Red tint when the spot is blocked (too close to another tree/sapling) so
         // the player can see they can't plant here.
@@ -695,8 +702,18 @@ public class GhostPlacement : MonoBehaviour
         // caller reaches Place() past the Update gate. Stay in placement mode.
         if (entry.isSapling && _saplingBarren) return;
 
-        // Cost. Saplings spend a Sapling from the hotbar; everything else spends wood.
-        if (entry.isSapling)
+        // Cost. Saplings spend a Sapling from the hotbar; mushroom saplings spend
+        // one MushroomSapling OF THEIR OWN SPECIES; everything else spends wood.
+        if (entry.isMushroomSapling)
+        {
+            if (Hotbar.Instance == null ||
+                !Hotbar.Instance.SpendResource(Hotbar.ItemId.MushroomSapling, 1, entry.mushroomSpecies))
+            {
+                Debug.Log("[GhostPlacement] No mushroom spores of that species to plant; skipped this placement.");
+                return;
+            }
+        }
+        else if (entry.isSapling)
         {
             if (Hotbar.Instance == null || !Hotbar.Instance.SpendResource(Hotbar.ItemId.Sapling, 1))
             {
@@ -727,7 +744,8 @@ public class GhostPlacement : MonoBehaviour
         if (!real.activeSelf) real.SetActive(true);   // runtime templates ship inactive
         // Saplings are named "_Sapling" (NOT "_Placed") so the generic building
         // save skips them — they persist through their own growth-aware hook.
-        real.name = entry.prefab.name + (entry.isSapling ? "_Sapling" : "_Placed");
+        real.name = entry.prefab.name + (entry.isMushroomSapling ? "_MushroomSapling"
+                                       : entry.isSapling ? "_Sapling" : "_Placed");
         OnPlaced?.Invoke(entry);
 
         // Parent to the closest celestial body so the placement rotates / moves with the
@@ -736,7 +754,17 @@ public class GhostPlacement : MonoBehaviour
         if (parentBody != null)
             real.transform.SetParent(parentBody.transform, worldPositionStays: true);
 
-        if (entry.isSapling)
+        if (entry.isMushroomSapling)
+        {
+            SpawnerCubeface.SetLayerRecursively(real, SpawnerCubeface.WorldPropLayer);
+            // Planted mushrooms need a solid collider to be choppable once grown,
+            // the same one MushroomSpawner gives its streamed instances.
+            MushroomSpawner.EnsureSolidColliderOn(real);
+            var mg = real.GetComponent<MushroomGrowth>();
+            if (mg == null) mg = real.AddComponent<MushroomGrowth>();
+            mg.Init(parentBody, entry.mushroomSpecies);
+        }
+        else if (entry.isSapling)
         {
             // Same layer as seed trees: keeps the ground-snap ray from landing on
             // an existing sapling, and makes it chop identically once mature.
@@ -820,6 +848,9 @@ public class GhostPlacement : MonoBehaviour
     static bool CanAffordAnother(BuildableEntry e)
     {
         if (e == null) return false;
+        if (e.isMushroomSapling)
+            return Hotbar.Instance != null
+                && Hotbar.Instance.GetMushroomTotal(Hotbar.ItemId.MushroomSapling, e.mushroomSpecies) >= 1;
         if (e.isSapling)
             return Hotbar.Instance != null && Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Sapling) >= 1;
         if (e.woodCost > 0 || e.crystalCost > 0)

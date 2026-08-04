@@ -182,8 +182,7 @@ public class RandomAlienDialogue : MonoBehaviour
 
         if (PostGreetingChoicePanel.Instance != null && PostGreetingChoicePanel.Instance.IsVisible)
             PostGreetingChoicePanel.Instance.Hide();
-        if (SpaceDustSellUI.Instance != null && SpaceDustSellUI.Instance.IsOpen)
-            SpaceDustSellUI.Instance.Close();
+        NPCSellRows.CloseAny();
 
         // Suppress prompt until player walks out + back in — see field comment.
         _suppressPromptUntilExit = true;
@@ -234,35 +233,28 @@ public class RandomAlienDialogue : MonoBehaviour
         yield return new WaitUntil(() => !_waitingForClick || !_playerInRange);
     }
 
+    // Sell rows are build-configurable (mushrooms live, space dust vaulted), so
+    // the menu is assembled rather than hard-indexed — see NPCSellRows. Every
+    // wandering alien is a mushroom buyer, at their OWN price (NPCMushroomPrice
+    // derives a stable per-alien rate around 20 credits).
+    readonly System.Collections.Generic.List<NPCSellRows.SellAction> _sellActions =
+        new System.Collections.Generic.List<NPCSellRows.SellAction>();
+
     void ShowPostGreetingChoice()
     {
-        bool hasDust = SpaceDustInventory.Instance != null && SpaceDustInventory.Instance.Count > 0;
-        var rows = new System.Collections.Generic.List<PostGreetingChoicePanel.Row>
-        {
-            new PostGreetingChoicePanel.Row(hasDust ? "Sell space dust" : "Sell space dust (no dust)", hasDust),
-            new PostGreetingChoicePanel.Row("Leave", true),
-        };
+        var rows = new System.Collections.Generic.List<PostGreetingChoicePanel.Row>();
+        NPCSellRows.Append(rows, _sellActions);
+        rows.Add(new PostGreetingChoicePanel.Row("Leave", true));
         PostGreetingChoicePanel.Instance.Show(rows, HandleChoice);
     }
 
     void HandleChoice(int index)
     {
-        switch (index)
+        if (NPCSellRows.ActionAt(_sellActions, 0, index, out var action))
         {
-            case 0: OpenSellDust(); break;
-            case 1: StopConversation(); break;
+            NPCSellRows.Open(action, this, "Wandering Alien", _sellDustOption, ShowPostGreetingChoice);
+            return;
         }
-    }
-
-    void OpenSellDust()
-    {
-        if (_sellDustOption == null) { StopConversation(); return; }
-        SpaceDustSellUI.Instance.Open(
-            npcName: "Wandering Alien",
-            acceptChance: _sellDustOption.AcceptChance,
-            pricePerDust: _sellDustOption.PricePerDust,
-            preferredMaxQty: _sellDustOption.PreferredMaxQty,
-            onClose: ShowPostGreetingChoice
-        );
+        StopConversation();
     }
 }

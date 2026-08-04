@@ -37,6 +37,7 @@ public class StoryDirector : MonoBehaviour
     StoryStep _step = StoryStep.ColdOpen;
     float _tevTrust;
     readonly Dictionary<string, bool> _flags = new Dictionary<string, bool>();
+    readonly Dictionary<string, int> _counters = new Dictionary<string, int>();
     readonly HashSet<string> _activeObjectives = new HashSet<string>();
     readonly HashSet<string> _completedObjectives = new HashSet<string>();
     readonly List<string> _unlockedQuestions = new List<string>();
@@ -71,6 +72,27 @@ public class StoryDirector : MonoBehaviour
     {
         if (string.IsNullOrEmpty(name)) return;
         _flags[name] = value;
+        Changed();
+    }
+
+    // ---- counters ----
+    // Named ints, alongside the named bools above. Flags can't count, and the
+    // mushroom onboarding needs to (how many of Tev's caps you sold, how many
+    // batches he's fronted you). Same persistence path as the flags.
+    public int GetCounter(string name) =>
+        !string.IsNullOrEmpty(name) && _counters.TryGetValue(name, out var v) ? v : 0;
+
+    public void SetCounter(string name, int value)
+    {
+        if (string.IsNullOrEmpty(name)) return;
+        _counters[name] = value;
+        Changed();
+    }
+
+    public void AddCounter(string name, int delta)
+    {
+        if (string.IsNullOrEmpty(name) || delta == 0) return;
+        _counters[name] = GetCounter(name) + delta;
         Changed();
     }
 
@@ -135,6 +157,10 @@ public class StoryDirector : MonoBehaviour
         s.tevTrust = _tevTrust;
         s.flagNames.Clear(); s.flagValues.Clear();
         foreach (var kv in _flags) { s.flagNames.Add(kv.Key); s.flagValues.Add(kv.Value); }
+        if (s.counterNames == null) s.counterNames = new List<string>();
+        if (s.counterValues == null) s.counterValues = new List<int>();
+        s.counterNames.Clear(); s.counterValues.Clear();
+        foreach (var kv in _counters) { s.counterNames.Add(kv.Key); s.counterValues.Add(kv.Value); }
         s.activeObjectives = new List<string>(_activeObjectives);
         s.completedObjectives = new List<string>(_completedObjectives);
         s.unlockedQuestions = new List<string>(_unlockedQuestions);
@@ -150,6 +176,9 @@ public class StoryDirector : MonoBehaviour
         _flags.Clear();
         int n = Mathf.Min(s.flagNames?.Count ?? 0, s.flagValues?.Count ?? 0);
         for (int i = 0; i < n; i++) _flags[s.flagNames[i]] = s.flagValues[i];
+        _counters.Clear();
+        int cn = Mathf.Min(s.counterNames?.Count ?? 0, s.counterValues?.Count ?? 0);
+        for (int i = 0; i < cn; i++) _counters[s.counterNames[i]] = s.counterValues[i];
         _activeObjectives.Clear();
         if (s.activeObjectives != null) foreach (var id in s.activeObjectives) _activeObjectives.Add(id);
         _completedObjectives.Clear();
@@ -171,6 +200,7 @@ public class StoryDirector : MonoBehaviour
         _step = StoryStep.ColdOpen;
         _tevTrust = 0f;
         _flags.Clear();
+        _counters.Clear();
         _activeObjectives.Clear();
         _completedObjectives.Clear();
         _unlockedQuestions.Clear();

@@ -550,7 +550,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 53; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
+        const int Total = 56; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -597,6 +597,7 @@ public class MainMenuController : MonoBehaviour
         if (PlanetOxygen.Instance == null) { var go = new GameObject("PlanetOxygen"); DontDestroyOnLoad(go); go.AddComponent<PlanetOxygen>(); }
         tick("planet oxygen");    yield return null;
         if (SaplingPlanter.Instance == null) { var go = new GameObject("SaplingPlanter"); DontDestroyOnLoad(go); go.AddComponent<SaplingPlanter>(); }
+        if (MushroomPlanter.Instance == null) { var go = new GameObject("MushroomPlanter"); DontDestroyOnLoad(go); go.AddComponent<MushroomPlanter>(); }
         tick("sapling planter");  yield return null;
         if (DomeBuildRegistrar.Instance == null) { var go = new GameObject("DomeBuildRegistrar"); DontDestroyOnLoad(go); go.AddComponent<DomeBuildRegistrar>(); }
         tick("dome registrar");   yield return null;
@@ -616,12 +617,32 @@ public class MainMenuController : MonoBehaviour
         tick("trailer free-cam"); yield return null;
         if (TrailerBlackHoleGrow.Instance == null) { var go = new GameObject("TrailerBlackHoleGrow"); DontDestroyOnLoad(go); go.AddComponent<TrailerBlackHoleGrow>(); }
         tick("trailer BH grow"); yield return null;
+        // Progression quartet. PlayerProgress MUST come first — the other three
+        // read it on their very first frame (the toast and the ceremony subscribe
+        // to its static events, ProgressHooks polls it for visited worlds).
+        if (PlayerProgress.Instance == null) { var go = new GameObject("PlayerProgress"); DontDestroyOnLoad(go); go.AddComponent<PlayerProgress>(); }
+        if (ProgressToastUI.Instance == null) { var go = new GameObject("ProgressToastUI"); DontDestroyOnLoad(go); go.AddComponent<ProgressToastUI>(); }
+        if (ProgressHooks.Instance == null) { var go = new GameObject("ProgressHooks"); DontDestroyOnLoad(go); go.AddComponent<ProgressHooks>(); }
+        if (LevelUpCeremonyUI.Instance == null) { var go = new GameObject("LevelUpCeremonyUI"); DontDestroyOnLoad(go); go.AddComponent<LevelUpCeremonyUI>(); }
+        // The opening's six survival beats. MUST be seeded: it's what tells a
+        // brand-new player what to do after the shuttle ramp drops, and in a
+        // build the RuntimeInitializeOnLoadMethod never fires (trap #1).
+        if (OpeningDirector.Instance == null) { var go = new GameObject("OpeningDirector"); DontDestroyOnLoad(go); go.AddComponent<OpeningDirector>(); }
+        // Feeds cave volumes to OceanEffect.shader so caves aren't flooded.
+        // MUST be seeded — without it the shader globals are never set in a
+        // build and every cave below sea level fills with water (trap #1).
+        if (CaveOceanCutout.Instance == null) { var go = new GameObject("CaveOceanCutout"); DontDestroyOnLoad(go); go.AddComponent<CaveOceanCutout>(); }
+        tick("progression");    yield return null;
         // PixelLightLimitFix — raises QualitySettings.pixelLightCount to 64
         // so torches stay per-pixel instead of getting demoted per camera
         // frustum. Without this seed the ground breathes brighter/dimmer as
         // the camera rotates (grass-flicker incident — CLAUDE.md top).
         if (PixelLightLimitFix.Instance == null) { var go = new GameObject("[PixelLightLimitFix]"); DontDestroyOnLoad(go); go.AddComponent<PixelLightLimitFix>(); }
         tick("lighting fix");     yield return null;
+        if (ViewmodelFillLight.Instance == null) { var go = new GameObject("ViewmodelFillLight"); DontDestroyOnLoad(go); go.AddComponent<ViewmodelFillLight>(); }
+        tick("viewmodel light");  yield return null;
+        if (HeldItemViewmodel.Instance == null) { var go = new GameObject("HeldItemViewmodel"); DontDestroyOnLoad(go); go.AddComponent<HeldItemViewmodel>(); }
+        tick("held items");       yield return null;
         if (HALLineHUD.Instance == null) { var go = new GameObject("HALLineHUD"); DontDestroyOnLoad(go); go.AddComponent<HALLineHUD>(); }
         tick("HAL line HUD");     yield return null;
         if (HALVolunteeredLog.Instance == null) { var go = new GameObject("HALVolunteeredLog"); DontDestroyOnLoad(go); go.AddComponent<HALVolunteeredLog>(); }
@@ -853,6 +874,22 @@ public class MainMenuController : MonoBehaviour
             var go = new GameObject("[PixelLightLimitFix]");
             DontDestroyOnLoad(go);
             go.AddComponent<PixelLightLimitFix>();
+        }
+        if (ViewmodelFillLight.Instance == null)
+        {
+            // Short-range point light on the camera so held items stay readable
+            // in the dark. Same MainMenu-skip trap as the others.
+            var go = new GameObject("ViewmodelFillLight");
+            DontDestroyOnLoad(go);
+            go.AddComponent<ViewmodelFillLight>();
+        }
+        if (HeldItemViewmodel.Instance == null)
+        {
+            // Puts select-only hotbar items (wood/crystal/dust/sapling/fish/bag)
+            // in the player's hand. Same MainMenu-skip trap as the others.
+            var go = new GameObject("HeldItemViewmodel");
+            DontDestroyOnLoad(go);
+            go.AddComponent<HeldItemViewmodel>();
         }
         if (HALLineHUD.Instance == null)
         {

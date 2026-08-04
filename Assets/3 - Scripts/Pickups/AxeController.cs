@@ -231,6 +231,12 @@ public class AxeController : MonoBehaviour
         if (rb != null) rb.isKinematic = true;
         foreach (var col in _currentAxeInstance.GetComponentsInChildren<Collider>()) col.enabled = false;
 
+        // Held viewmodels don't cast shadows — see the note in PistolController.
+        // The axe rides even further from the camera (AxeMotor.restOffset z=1.05),
+        // so its sun silhouette lands well out in front of the player.
+        foreach (var r in _currentAxeInstance.GetComponentsInChildren<Renderer>(true))
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
         var sweep = GetComponent<BladeSweep>();
         if (sweep == null) sweep = gameObject.AddComponent<BladeSweep>();
         sweep.Attach(_currentAxeInstance.transform, this);
@@ -304,10 +310,13 @@ public class AxeController : MonoBehaviour
             // overload) into PickaxeController and delete from here.
             var crystal = hit.collider.GetComponentInParent<SpawnedCrystal>();
             if (crystal != null) { ApplyHit(crystal); return; }
+            var mushroom = hit.collider.GetComponentInParent<SpawnedMushroom>();
+            if (mushroom != null) { ApplyHit(mushroom); return; }
         }
 
         SpawnedTree bestTree = null;
         SpawnedCrystal bestCrystal = null;
+        SpawnedMushroom bestMushroom = null;
         IDamageable bestDamageable = null;
         float bestDist = swingRange;
 
@@ -365,12 +374,36 @@ public class AxeController : MonoBehaviour
             if (dist > swingRange || dist < 0.001f) continue;
             float dot = Vector3.Dot(forward, toCrystal / dist);
             if (dot < swingConeDot) continue;
-            if (dist < bestDist) { bestDist = dist; bestCrystal = c; bestTree = null; bestDamageable = null; }
+            if (dist < bestDist) { bestDist = dist; bestCrystal = c; bestTree = null; bestDamageable = null; bestMushroom = null; }
+        }
+
+        // Mushrooms are harvest nodes now (handoff §3) — the classic swing has to
+        // reach them too, not just the physics-axe BladeSweep path.
+        var mushrooms = SpawnedMushroom.AllMushrooms;
+        for (int i = 0; i < mushrooms.Count; i++)
+        {
+            var m = mushrooms[i];
+            if (m == null || m.IsDead) continue;
+            Vector3 toM = m.transform.position - origin;
+            float dist = toM.magnitude;
+            if (dist > swingRange || dist < 0.001f) continue;
+            float dot = Vector3.Dot(forward, toM / dist);
+            if (dot < swingConeDot) continue;
+            if (dist < bestDist) { bestDist = dist; bestMushroom = m; bestTree = null; bestCrystal = null; bestDamageable = null; }
         }
 
         if (bestDamageable != null) ApplyHit(bestDamageable, forward);
         else if (bestTree != null) ApplyHit(bestTree);
         else if (bestCrystal != null) ApplyHit(bestCrystal);
+        else if (bestMushroom != null) ApplyHit(bestMushroom);
+    }
+
+    // Mushrooms play their own squish inside TakeDamage — no wooden hit clip.
+    void ApplyHit(SpawnedMushroom mushroom)
+    {
+        if (mushroom == null || mushroom.IsDead) return;
+        mushroom.TakeDamage(damagePerSwing);
+        GamepadRumble.Pulse(0.45f, 0.25f, 0.12f);
     }
 
     void ApplyHit(SpawnedTree tree)

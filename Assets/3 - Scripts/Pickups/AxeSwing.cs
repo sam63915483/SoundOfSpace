@@ -40,7 +40,7 @@ public class AxeSwing : MonoBehaviour
     [Tooltip("While LMB is held: how much the camera still turns with the mouse. 0 = locked (committed), 1 = full turn (view-drag).")]
     [Range(0f, 1f)] public float swingLookScale = 0.25f;
     [Tooltip("Spike-build on-screen readout. Turn off when the verdict is in.")]
-    public bool showDebugReadout = true;
+    public bool showDebugReadout = false;
     [Tooltip("Small charge bar under the crosshair while winding up: grey = the pause, orange = charging, green = full (max damage).")]
     public bool showChargeBar = true;
     [Tooltip("Controller: right-stick deflection → swing input, in mouse-units per second at full deflection. Hold RT to swing, stick sweeps the axe. A mouse flick spikes far harder than a held stick, so this needs to be generous.")]
@@ -588,6 +588,7 @@ public class AxeSwing : MonoBehaviour
             if (c == null) continue;
             if (c.GetComponentInParent<SpawnedTree>() != null) continue;
             if (c.GetComponentInParent<SpawnedCrystal>() != null) continue;
+            if (c.GetComponentInParent<SpawnedMushroom>() != null) continue;
             if (c.GetComponentInParent<PlayerController>() != null) continue;
             if (c.GetComponentInParent<IDamageable>() != null) continue;
             if (nearest < 0f || s_clearanceHits[h].distance < nearest) nearest = s_clearanceHits[h].distance;

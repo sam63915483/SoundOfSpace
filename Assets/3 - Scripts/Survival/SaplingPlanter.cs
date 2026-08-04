@@ -48,8 +48,12 @@ public class SaplingPlanter : MonoBehaviour
         bool free = !PlayerController.isInDialogue && !Ship.AnyShipPiloted;
         bool wantPlanting = saplingSlot && count > 0 && free;
 
+        // Mushroom spores also set isSapling (they reuse the ground-snap flow),
+        // so exclude them here or this would cancel MushroomPlanter's ghost the
+        // frame after it opens.
         bool placingSapling = GhostPlacement.IsPlacing && GhostPlacement.Current != null
-                              && GhostPlacement.Current.IsSaplingPlacement;
+                              && GhostPlacement.Current.IsSaplingPlacement
+                              && !GhostPlacement.Current.IsMushroomPlacement;
 
         if (placingSapling && !wantPlanting)
         {

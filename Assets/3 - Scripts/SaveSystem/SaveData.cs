@@ -59,6 +59,42 @@ public class SaveData
     // claim the next free N so runs never overwrite each other. Empty on
     // pre-feature saves (falls back to saveName / next-free at save time).
     public string podSlotName;
+    // Five-track progression (2026-08-02). JsonUtility gives pre-feature saves an
+    // empty ProgressSave, which ApplyState reads as all-zero — an old save loads
+    // at level 0 on every track, which is the correct fallback.
+    public ProgressSave progress = new ProgressSave();
+    // Mushroom economy (2026-08-04). Player-planted mushroom spores + the mushroom
+    // they grow into. JsonUtility gives pre-feature saves an empty list, which is
+    // the correct "nothing planted" default.
+    public List<PlantedMushroomSave> plantedMushrooms = new List<PlantedMushroomSave>();
+}
+
+// A planted mushroom sapling OR the mushroom it matured into (the MushroomGrowth
+// component stays after Mature(), so one DTO covers both). The twin of
+// SaplingSave — body-local so it survives orbital motion — except the species is
+// stored by KEY (the source prefab's NAME) rather than by index, so reordering
+// MushroomSpawner.mushroomPrefabs can't turn a saved red cap into a blue one.
+[Serializable]
+public class PlantedMushroomSave
+{
+    public string bodyName;
+    public Vector3 localPos;
+    public Quaternion localRot;
+    public float growth;          // 0..1; >= 1 restores as a mature, choppable mushroom
+    public string speciesKey;
+}
+
+// PlayerProgress state. `scores` is indexed by the ProgressTrack enum, so that
+// enum must never be reordered — append only (there's a matching warning on it).
+// A short array from an older save just leaves the newer tracks at 0.
+[Serializable]
+public class ProgressSave
+{
+    public int[] scores;
+    // Worlds already counted for Explorer, by CelestialBody.bodyName. Stored as
+    // names because the bodies are procedurally rebuilt each load and carry no
+    // stable id — the name is the only thing that survives.
+    public List<string> visitedWorlds = new List<string>();
 }
 
 // A planted sapling OR a matured planted tree (growth >= 1 — the SaplingGrowth
@@ -114,6 +150,10 @@ public class HotbarSlotSave
     // load with bagContents = null. Recursive but only one level deep —
     // bags can't contain bags by current design.
     public List<HotbarSlotSave> bagContents;
+    // Populated only when itemId is "Mushroom" / "MushroomSapling": the species
+    // key (source prefab name). Stacks are species-pure, so this IS part of the
+    // stack's identity — losing it would merge two species on load.
+    public string mushroomSpecies;
 }
 
 // Flat DTO mirror of FishEntry for JsonUtility. Lives alongside
@@ -546,4 +586,9 @@ public class StoryDirectorSave
     public List<string> unlockedQuestions = new List<string>();
     public string pendingConversationId = "";
     public string pendingNodeId = "";
+    // Named INT counters (2026-08-04) — flags can't count. Added for the Tev
+    // mushroom onboarding (how many of his caps you sold, how many batches he's
+    // fronted). Parallel lists, JsonUtility-safe; empty on pre-feature saves.
+    public List<string> counterNames = new List<string>();
+    public List<int> counterValues = new List<int>();
 }

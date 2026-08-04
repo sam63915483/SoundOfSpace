@@ -34,6 +34,7 @@ public static class SaveCollector
         CaptureNPCs(data.npcs);
         CaptureBuildings(data.buildings);
         CaptureSaplings(data.saplings);
+        CapturePlantedMushrooms(data.plantedMushrooms);
         CaptureDomes(data.domes);
         CapturePlanetO2(data.planetO2);
         CaptureLooseParts(data.looseParts);
@@ -51,6 +52,7 @@ public static class SaveCollector
         CaptureEarlyGame(data.earlyGame);
         CaptureNotes(data.notes);
         CaptureBuildMenuLock(data.buildMenuLock);
+        CaptureProgress(data.progress);
         CaptureCompass(data.compass);
         CaptureStoryDirector(data.storyDirector);
         CaptureEnemies(data);
@@ -308,6 +310,9 @@ public static class SaveCollector
                 bagContents = slot.id == Hotbar.ItemId.FishBag && slot.bagContents != null
                     ? SerializeBagContents(slot.bagContents)
                     : null,
+                // Species is part of a mushroom stack's identity (stacks are
+                // species-pure) — drop it and two species merge on load.
+                mushroomSpecies = Hotbar.IsMushroomItem(slot.id) ? slot.mushroomSpecies : null,
             });
         }
     }
@@ -335,6 +340,7 @@ public static class SaveCollector
                       }
                     : null,
                 bagContents = null,   // no nested bags
+                mushroomSpecies = Hotbar.IsMushroomItem(s.id) ? s.mushroomSpecies : null,
             });
         }
         return list;
@@ -363,7 +369,13 @@ public static class SaveCollector
                 fish = new FishEntry(e.fishData.fishType, e.fishData.weightLbs);
                 fish.fishColor = e.fishData.fishColor;
             }
-            arr[k] = new Hotbar.Slot { id = id, count = count, fishData = fish };
+            arr[k] = new Hotbar.Slot
+            {
+                id = id,
+                count = count,
+                fishData = fish,
+                mushroomSpecies = Hotbar.IsMushroomItem(id) ? e.mushroomSpecies : null,
+            };
         }
         return arr;
     }
@@ -397,6 +409,7 @@ public static class SaveCollector
                     bagContents = slot.id == Hotbar.ItemId.FishBag && slot.bagContents != null
                         ? SerializeBagContents(slot.bagContents)
                         : null,
+                    mushroomSpecies = Hotbar.IsMushroomItem(slot.id) ? slot.mushroomSpecies : null,
                 });
             }
             list.Add(entry);
@@ -516,6 +529,31 @@ public static class SaveCollector
                 localRot = Quaternion.Inverse(bt.rotation) * s.transform.rotation,
                 growth = s.IsMature ? 1f : s.Growth,
                 prefabIndex = s.PrefabIndex,
+            });
+        }
+    }
+
+    // Player-planted mushrooms — spores still growing AND the mushrooms they
+    // matured into (the MushroomGrowth component stays after Mature(), so one
+    // pass covers both). Same body-local capture as CaptureSaplings.
+    static void CapturePlantedMushrooms(List<PlantedMushroomSave> list)
+    {
+        if (list == null) return;
+        var all = MushroomGrowth.AllPlanted;
+        for (int i = 0; i < all.Count; i++)
+        {
+            var m = all[i];
+            if (m == null) continue;
+            var body = m.Body != null ? m.Body : m.GetComponentInParent<CelestialBody>();
+            if (body == null) continue;
+            var bt = body.transform;
+            list.Add(new PlantedMushroomSave
+            {
+                bodyName = body.bodyName,
+                localPos = bt.InverseTransformPoint(m.transform.position),
+                localRot = Quaternion.Inverse(bt.rotation) * m.transform.rotation,
+                growth = m.IsMature ? 1f : m.Growth,
+                speciesKey = m.SpeciesKey,
             });
         }
     }
@@ -730,6 +768,14 @@ public static class SaveCollector
         foreach (var n in BuildMenuLock.GetUnlockedNames()) s.unlockedNames.Add(n);
     }
 
+    static void CaptureProgress(ProgressSave s)
+    {
+        if (s == null || PlayerProgress.Instance == null) return;
+        s.scores = PlayerProgress.Instance.CaptureScores();
+        s.visitedWorlds.Clear();
+        s.visitedWorlds.AddRange(PlayerProgress.Instance.CaptureVisited());
+    }
+
     static void CaptureCompass(CompassSave s)
     {
         s.waypoints.Clear();
@@ -901,6 +947,11 @@ public static class SaveCollector
         ApplyEarlyGame(data.earlyGame);
         ApplyNotes(data.notes);
         ApplyBuildMenuLock(data.buildMenuLock);
+        // Progression is pure singleton state and nothing else reads it during
+        // apply, so it just needs to land in the singleton block alongside the
+        // build lock — which it pairs with anyway (Colonizer level will drive
+        // which buildables are unlocked).
+        ApplyProgress(data.progress);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
         ApplyOxygen(data.oxygen);
@@ -941,6 +992,7 @@ public static class SaveCollector
         // world-object restores, before enemies/held-item.
         ApplyDomes(data.domes);
         ApplySaplings(data.saplings);
+        ApplyPlantedMushrooms(data.plantedMushrooms);
         ApplyLooseParts(data.looseParts);
 
         // Enemies run after buildings/loose-parts (independent state) and
@@ -1161,7 +1213,14 @@ public static class SaveCollector
                 {
                     bag = DeserializeBagContentsPublic(e.bagContents);
                 }
-                slots[k] = new Hotbar.Slot { id = id, count = count, fishData = fish, bagContents = bag };
+                slots[k] = new Hotbar.Slot
+                {
+                    id = id,
+                    count = count,
+                    fishData = fish,
+                    bagContents = bag,
+                    mushroomSpecies = Hotbar.IsMushroomItem(id) ? e.mushroomSpecies : null,
+                };
             }
         }
     }
@@ -1360,6 +1419,14 @@ public static class SaveCollector
     {
         if (s == null) return;
         BuildMenuLock.ApplySaveState(s.isLockingActive, s.unlockedNames);
+    }
+
+    static void ApplyProgress(ProgressSave s)
+    {
+        if (s == null || PlayerProgress.Instance == null) return;
+        PlayerProgress.Instance.ApplyState(
+            s.scores,
+            s.visitedWorlds != null ? s.visitedWorlds.ToArray() : null);
     }
 
     static void ApplyCompass(CompassSave s)
@@ -1709,6 +1776,47 @@ public static class SaveCollector
             var sg = go.GetComponent<SaplingGrowth>();
             if (sg == null) sg = go.AddComponent<SaplingGrowth>();
             sg.RestoreGrowth(body, idx, save.growth);   // >= 1 matures instantly
+        }
+    }
+
+    // Twin of ApplySaplings for the mushroom economy. Sweeps the live planted
+    // mushrooms first (they're named "_MushroomSapling", so ApplyBuildings'
+    // "_Placed" sweep never touches them) and rebuilds from the save.
+    static void ApplyPlantedMushrooms(List<PlantedMushroomSave> list)
+    {
+        var existing = new List<MushroomGrowth>(MushroomGrowth.AllPlanted);
+        foreach (var m in existing)
+            if (m != null) Object.Destroy(m.gameObject);
+
+        if (list == null || list.Count == 0) return;
+
+        foreach (var save in list)
+        {
+            if (save == null) continue;
+            var body = FindBodyByName(save.bodyName);
+            if (body == null)
+            {
+                Debug.LogWarning($"[SaveCollector] ApplyPlantedMushrooms: parent body '{save.bodyName}' not found — skipping one.");
+                continue;
+            }
+            var prefab = MushroomRegistry.PrefabFor(save.speciesKey);
+            if (prefab == null)
+            {
+                Debug.LogWarning($"[SaveCollector] ApplyPlantedMushrooms: no prefab for species '{save.speciesKey}' — skipping one.");
+                continue;
+            }
+
+            // Mirror GhostPlacement.Place()'s mushroom branch.
+            var go = Object.Instantiate(prefab);
+            go.name = prefab.name + "_MushroomSapling";
+            go.transform.SetParent(body.transform, worldPositionStays: false);
+            go.transform.localPosition = save.localPos;
+            go.transform.localRotation = save.localRot;
+            SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
+            MushroomSpawner.EnsureSolidColliderOn(go);
+            var mg = go.GetComponent<MushroomGrowth>();
+            if (mg == null) mg = go.AddComponent<MushroomGrowth>();
+            mg.RestoreGrowth(body, save.speciesKey, save.growth);   // >= 1 matures instantly
         }
     }
 

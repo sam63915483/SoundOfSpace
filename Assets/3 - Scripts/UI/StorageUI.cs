@@ -327,8 +327,21 @@ public class StorageUI : MonoBehaviour
         if (!_cursor.IsHeld) { _cursorRoot.gameObject.SetActive(false); return; }
         _cursorRoot.gameObject.SetActive(true);
 
-        bool isFish = _cursor.id == Hotbar.ItemId.Fish && _cursor.fishData != null;
-        if (isFish)
+        // Mushrooms show their species render in the cursor, same as in the slot.
+        RenderTexture cursorMush = Hotbar.IsMushroomItem(_cursor.id)
+            ? MushroomRegistry.Preview(_cursor.mushroomSpecies)
+            : null;
+        if (cursorMush != null)
+        {
+            if (_cursorFishPreview != null)
+            {
+                _cursorFishPreview.texture = cursorMush;
+                _cursorFishPreview.enabled = true;
+            }
+            _cursorIcon.enabled = false;
+            _cursorIcon.sprite = null;
+        }
+        else if (_cursor.id == Hotbar.ItemId.Fish && _cursor.fishData != null)
         {
             // Use the cached preview (or render now if first display).
             var fe = _cursor.fishData;
@@ -367,6 +380,11 @@ public class StorageUI : MonoBehaviour
         if (v == null) return;
         bool empty = s.id == Hotbar.ItemId.None || s.count <= 0;
         bool isFish = !empty && s.id == Hotbar.ItemId.Fish && s.fishData != null;
+        // Species likeness in the locker too — a red cap in storage looks like
+        // the red cap it is, through the same RawImage the fish preview uses.
+        RenderTexture mushPreview = (!empty && Hotbar.IsMushroomItem(s.id))
+            ? MushroomRegistry.Preview(s.mushroomSpecies)
+            : null;
         v.background.color = empty
             ? new Color32(0x0C, 0x1A, 0x32, 0x66)
             : (Color)CyanScannerPalette.InnerBg;
@@ -376,7 +394,7 @@ public class StorageUI : MonoBehaviour
         // Phase 4 polish: FishBag picks empty vs full sprite from bagContents.
         // Other items use the static ResolveIcon path.
         Sprite resolvedSprite = null;
-        if (!empty && !isFish)
+        if (!empty && !isFish && mushPreview == null)
         {
             resolvedSprite = s.id == Hotbar.ItemId.FishBag
                 ? Hotbar.ResolveFishBagSprite(s.bagContents)
@@ -396,7 +414,12 @@ public class StorageUI : MonoBehaviour
         // once per fish per session, not per frame.
         if (v.fishPreview != null)
         {
-            if (isFish)
+            if (mushPreview != null)
+            {
+                v.fishPreview.texture = mushPreview;
+                v.fishPreview.enabled = true;
+            }
+            else if (isFish)
             {
                 var fe = s.fishData;
                 if (fe.cachedHotbarPreview == null && FishingdexManager.Instance != null)
@@ -425,7 +448,8 @@ public class StorageUI : MonoBehaviour
     }
 
     static bool IsStackable(Hotbar.ItemId id) =>
-        id == Hotbar.ItemId.Wood || id == Hotbar.ItemId.Crystal || id == Hotbar.ItemId.SpaceDust;
+        id == Hotbar.ItemId.Wood || id == Hotbar.ItemId.Crystal || id == Hotbar.ItemId.SpaceDust
+        || id == Hotbar.ItemId.Sapling || Hotbar.IsMushroomItem(id);
 
     // Icon sprites are session-stable (Resources assets + controller.hotbarIcon).
     // PaintSlot runs every frame per populated slot while the panel is open, so the

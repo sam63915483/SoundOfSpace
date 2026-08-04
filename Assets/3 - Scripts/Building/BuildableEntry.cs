@@ -21,4 +21,11 @@ public class BuildableEntry
     public bool isSapling = false;
     [Tooltip("Mark this a BUBBLE DOME: uses the same steady ground-snap placement as saplings (sits flat on the surface where you look), placed full-size and saved as a normal _Placed building. The prefab should carry a BubbleDome component + the visible bubble.")]
     public bool isBubbleDome = false;
+
+    // -- appended; keep new fields at the END (serialization) --
+
+    [Tooltip("Mark this a plantable MUSHROOM SAPLING (\"spores\"). Set isSapling as well — it reuses the whole sapling ground-snap placement flow — but the cost is 1 MushroomSapling of mushroomSpecies (not a tree sapling), it gets a MushroomGrowth (not SaplingGrowth), it makes no oxygen, and it doesn't score the Tree Daddy track. These entries are SYNTHESIZED at runtime per species by MushroomPlanter; there's no need to author one.")]
+    public bool isMushroomSapling = false;
+    [Tooltip("Species key (the source mushroom prefab's name) this entry plants. Only meaningful when isMushroomSapling is set.")]
+    public string mushroomSpecies = "";
 }

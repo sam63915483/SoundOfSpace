@@ -417,36 +417,18 @@ public class MushroomSpawner : MonoBehaviour
             mushroom.transform.localScale = Vector3.one * scale;
 
             // First-time setup of components the prefab doesn't ship with.
-            // SphereCollider trigger, sized in prefab-local space — world-space
-            // radius scales with the mushroom (5× mushroom = 5× trigger).
-            SphereCollider trigger = null;
-            var existing = mushroom.GetComponents<SphereCollider>();
-            for (int i = 0; i < existing.Length; i++)
-                if (existing[i].isTrigger) { trigger = existing[i]; break; }
-            if (trigger == null)
-            {
-                trigger = mushroom.AddComponent<SphereCollider>();
-                trigger.isTrigger = true;
-                trigger.radius = 1.5f;
-                trigger.center = new Vector3(0f, 0.6f, 0f);
-            }
+            //
+            // A mushroom is a HARVEST NODE now, not a press-F-to-eat prop, so it
+            // needs a SOLID collider: the axe's BladeSweep sphere-casts with
+            // QueryTriggerInteraction.Ignore and would sweep straight through a
+            // trigger. Sized from the prefab's own mesh bounds in local space, so
+            // the world-space hitbox scales with the instance like the model does.
+            EnsureSolidCollider(mushroom);
 
-            if (mushroom.GetComponent<MushroomInteraction>() == null)
-                mushroom.AddComponent<MushroomInteraction>();
-        }
-
-        var interaction = mushroom.GetComponent<MushroomInteraction>();
-        if (interaction != null)
-        {
-            interaction.spawner = this;
-            interaction.bodySlot = bodySlot;
-            interaction.cellId = cellId;
-            interaction.mushroomScale = scale;
-            interaction.colourPct = colourPct;
-            interaction.breathPct = breathPct;
-            interaction.kaleidoPct = kaleidoPct;
-            interaction.mushroomDisplayName = PrettifyName(prefab.name);
-            interaction.ClearPlayerInInteractionZone();
+            // The old eat-on-interact component is gone from the spawn path.
+            // Defensive: strip it off anything that still carries one.
+            var legacy = mushroom.GetComponent<MushroomInteraction>();
+            if (legacy != null) Destroy(legacy);
         }
 
         mushroom.transform.SetParent(entry.body.transform, true);
@@ -454,9 +436,58 @@ public class MushroomSpawner : MonoBehaviour
         entry.activeMushrooms[cellId] = mushroom;
         entry.cellPrefabIdx[cellId] = prefabIdx;
 
+        // AFTER the reparent: Init caches the rest pose + scale for the wobble,
+        // and SetParent(worldPositionStays) can rewrite localScale.
+        var node = mushroom.GetComponent<SpawnedMushroom>();
+        if (node == null) node = mushroom.AddComponent<SpawnedMushroom>();
+        node.Init(this, bodySlot, cellId, prefab.name, scale);
+
         var fade = mushroom.GetComponent<SpawnFade>();
         if (fade == null) fade = mushroom.AddComponent<SpawnFade>();
         fade.BeginFadeIn();
+    }
+
+    /// Give a streamed mushroom a solid (non-trigger) collider so the axe can
+    /// actually hit it. Prefers whatever the prefab already ships with; otherwise
+    /// fits a capsule to the mesh bounds in PREFAB-LOCAL space, so the hitbox
+    /// scales with the per-instance random scale for free.
+    public static void EnsureSolidColliderOn(GameObject mushroom) => EnsureSolidCollider(mushroom);
+
+    static void EnsureSolidCollider(GameObject mushroom)
+    {
+        var existing = mushroom.GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < existing.Length; i++)
+            if (existing[i] != null && !existing[i].isTrigger) return;   // already solid
+
+        // Local-space bounds of the whole renderer hierarchy.
+        var filters = mushroom.GetComponentsInChildren<MeshFilter>(true);
+        bool any = false;
+        Bounds b = new Bounds(Vector3.zero, Vector3.zero);
+        Matrix4x4 worldToRoot = mushroom.transform.worldToLocalMatrix;
+        for (int i = 0; i < filters.Length; i++)
+        {
+            var mesh = filters[i].sharedMesh;
+            if (mesh == null) continue;
+            var mb = mesh.bounds;
+            Matrix4x4 toRoot = worldToRoot * filters[i].transform.localToWorldMatrix;
+            for (int c = 0; c < 8; c++)
+            {
+                Vector3 corner = mb.center + new Vector3(
+                    ((c & 1) == 0 ? -mb.extents.x : mb.extents.x),
+                    ((c & 2) == 0 ? -mb.extents.y : mb.extents.y),
+                    ((c & 4) == 0 ? -mb.extents.z : mb.extents.z));
+                Vector3 p = toRoot.MultiplyPoint3x4(corner);
+                if (!any) { b = new Bounds(p, Vector3.zero); any = true; }
+                else b.Encapsulate(p);
+            }
+        }
+        if (!any) return;
+
+        var cap = mushroom.AddComponent<CapsuleCollider>();
+        cap.direction = 1;                       // Y — mushrooms stand up
+        cap.center = b.center;
+        cap.height = Mathf.Max(0.05f, b.size.y);
+        cap.radius = Mathf.Max(0.02f, Mathf.Max(b.extents.x, b.extents.z) * 0.75f);
     }
 
     static string PrettifyName(string raw)
@@ -560,4 +591,39 @@ public class MushroomSpawner : MonoBehaviour
         pools[poolIdx].Push(mushroom);
     }
 
+    // ── Squish audio (APPENDED — keep new serialized fields at the END) ─────
+    // SpawnedMushroom plays these; a planted mushroom has no spawner reference
+    // and reaches them through the static Any* helpers below.
+
+    [Header("Squish audio (mushroom chopping)")]
+    [Tooltip("Wet squish one-shots played on every axe hit that doesn't fell the mushroom. One is picked at random per hit. Generated placeholders live in Assets/5 - Audio/Mushroom/.")]
+    public AudioClip[] hitSquishClips;
+    [Tooltip("The bigger squelch played when the mushroom finally breaks. Falls back to a random hit squish if empty.")]
+    public AudioClip breakSquishClip;
+    [Range(0f, 1f)]
+    [Tooltip("Volume for both the hit squishes and the break squelch.")]
+    public float squishVolume = 0.85f;
+
+    static MushroomSpawner s_audioSource;   // first spawner seen — the static fallback
+
+    void OnEnable() { if (s_audioSource == null) s_audioSource = this; }
+    void OnDisable() { if (s_audioSource == this) s_audioSource = null; }
+
+    public AudioClip RandomHitSquish()
+    {
+        if (hitSquishClips == null || hitSquishClips.Length == 0) return null;
+        for (int attempt = 0; attempt < 4; attempt++)
+        {
+            var c = hitSquishClips[Random.Range(0, hitSquishClips.Length)];
+            if (c != null) return c;
+        }
+        return null;
+    }
+
+    public AudioClip BreakSquish() => breakSquishClip != null ? breakSquishClip : RandomHitSquish();
+
+    /// For mushrooms with no spawner of their own (player-planted ones).
+    public static AudioClip AnyHitSquish() => s_audioSource != null ? s_audioSource.RandomHitSquish() : null;
+    public static AudioClip AnyBreakSquish() => s_audioSource != null ? s_audioSource.BreakSquish() : null;
+    public static float AnySquishVolume() => s_audioSource != null ? s_audioSource.squishVolume : 0.85f;
 }

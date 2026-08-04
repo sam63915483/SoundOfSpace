@@ -8,7 +8,7 @@ public class Hotbar : MonoBehaviour
 {
     // Append-only (JsonUtility serializes enums by name in the hotbar save, but
     // keep new values at the END so nothing shifts).
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling }
 
     public struct Slot
     {
@@ -23,7 +23,17 @@ public class Hotbar : MonoBehaviour
         // length 5 when populated. Each entry is a regular Hotbar.Slot —
         // typically Fish, but the data layer doesn't enforce content.
         public Hotbar.Slot[] bagContents;
+        // Populated only when id == Mushroom / MushroomSapling. The species KEY
+        // (the source prefab's name — see MushroomRegistry). Stacks are
+        // SPECIES-PURE: two different species never merge into one stack, so
+        // every add/spend path has to match on this as well as the id.
+        public string mushroomSpecies;
     }
+
+    /// True for the two species-carrying item ids. Their stacks match on
+    /// <see cref="Slot.mushroomSpecies"/> as well as the id.
+    public static bool IsMushroomItem(ItemId id) =>
+        id == ItemId.Mushroom || id == ItemId.MushroomSapling;
 
     const int NumSlots = 7;
     const float SlotSize = 64f;
@@ -84,6 +94,14 @@ public class Hotbar : MonoBehaviour
     int _eatProgressSlot = -1;
     float _eatHeldSeconds = 0f;
     const float EatHoldDuration = 1.0f;
+
+    /// True while the player is holding fire on a selected raw fish.
+    /// HeldItemViewmodel reads this to raise the fish to the mouth and run the
+    /// chewing loop for exactly as long as the progress ring is filling.
+    public bool IsEatingHeldItem => _eatProgressSlot >= 0;
+    /// 0..1 fill of the eat progress ring — the same value the ring renders.
+    public float EatProgress01 =>
+        _eatProgressSlot < 0 ? 0f : Mathf.Clamp01(_eatHeldSeconds / EatHoldDuration);
 
     Canvas canvas;
     CanvasGroup _canvasGroup;   // cached at build time; Refresh() ran GetComponent every frame otherwise
@@ -209,7 +227,12 @@ public class Hotbar : MonoBehaviour
         bool fishEquipped = eq >= 0 && eq < NumSlots
                          && slots[eq].id == ItemId.Fish
                          && slots[eq].fishData != null;
-        if (!fishEquipped || !TutorialGate.FireHeld())
+        // Handoff §3: eating a mushroom is a HELD-ITEM action now, not an
+        // interact on the world prop. Same hold-fire ring the raw fish uses.
+        bool mushroomEquipped = eq >= 0 && eq < NumSlots
+                             && slots[eq].id == ItemId.Mushroom
+                             && slots[eq].count > 0;
+        if ((!fishEquipped && !mushroomEquipped) || !TutorialGate.FireHeld())
         {
             if (_eatProgressSlot != -1) { _eatProgressSlot = -1; _eatHeldSeconds = 0f; }
             return;
@@ -220,10 +243,26 @@ public class Hotbar : MonoBehaviour
 
         if (_eatHeldSeconds >= EatHoldDuration)
         {
-            ConsumeEquippedFish();
+            if (fishEquipped) ConsumeEquippedFish();
+            else ConsumeEquippedMushroom();
             _eatProgressSlot = -1;
             _eatHeldSeconds = 0f;
         }
+    }
+
+    void ConsumeEquippedMushroom()
+    {
+        int eq = _equippedSlot;
+        if (eq < 0 || eq >= NumSlots) return;
+        var slot = slots[eq];
+        if (slot.id != ItemId.Mushroom || slot.count <= 0) return;
+
+        MushroomEffect.Consume(slot.mushroomSpecies);
+        PlayerSuitAudio.Instance?.PlayBurpAfterDelay();
+
+        slots[eq].count--;
+        if (slots[eq].count <= 0) slots[eq] = default;
+        OnResourceChanged?.Invoke(ItemId.Mushroom);
     }
 
     void ConsumeEquippedFish()
@@ -234,6 +273,10 @@ public class Hotbar : MonoBehaviour
         if (slot.id != ItemId.Fish || slot.fishData == null) return;
 
         RawFishConsumption.Consume(slot.fishData.fishType);
+        // Burp reaction, 1-3s later so it reads as a response to the meal rather
+        // than landing on top of the last chew. PlayerSuitAudio owns the delay
+        // and the random pick.
+        PlayerSuitAudio.Instance?.PlayBurpAfterDelay();
         slots[eq] = default;
         OnResourceChanged?.Invoke(ItemId.Fish);
     }
@@ -308,12 +351,17 @@ public class Hotbar : MonoBehaviour
             ItemId.Crystal => 20,
             ItemId.SpaceDust => 100,
             ItemId.Sapling => 50,
+            // Handoff §3: 20 per stack, species-pure.
+            ItemId.Mushroom => 20,
+            ItemId.MushroomSapling => 20,
             _ => 1,
         };
     }
 
     public event System.Action<ItemId> OnResourceChanged;
 
+    /// Total of a resource across every stack. For mushrooms this is the total
+    /// of ALL species — use <see cref="GetMushroomTotal"/> for one species.
     public int GetResourceTotal(ItemId resource)
     {
         if (!IsResource(resource)) return 0;
@@ -323,18 +371,50 @@ public class Hotbar : MonoBehaviour
         return sum;
     }
 
+    /// Total of ONE mushroom species. Pass a null/empty species to match any.
+    public int GetMushroomTotal(ItemId resource, string species)
+    {
+        if (!IsMushroomItem(resource)) return 0;
+        bool anySpecies = string.IsNullOrEmpty(species);
+        int sum = 0;
+        for (int i = 0; i < NumSlots; i++)
+            if (slots[i].id == resource && (anySpecies || slots[i].mushroomSpecies == species))
+                sum += slots[i].count;
+        return sum;
+    }
+
+    /// The species of the first stack of <paramref name="resource"/> found, or
+    /// null if the player has none. Used by the sell flow to know what it's
+    /// selling without asking the player to pick a stack.
+    public string FirstMushroomSpecies(ItemId resource)
+    {
+        for (int i = 0; i < NumSlots; i++)
+            if (slots[i].id == resource && slots[i].count > 0) return slots[i].mushroomSpecies;
+        return null;
+    }
+
     // Returns leftover amount that didn't fit (0 = fully accepted).
-    public int AddResource(ItemId resource, int amount)
+    public int AddResource(ItemId resource, int amount) => AddResource(resource, amount, null);
+
+    /// Species-aware add. <paramref name="species"/> is ignored for non-mushroom
+    /// items; for mushrooms a null species is resolved to the registry's first
+    /// species so a mis-wired caller can never create an unidentifiable stack.
+    public int AddResource(ItemId resource, int amount, string species)
     {
         if (!IsResource(resource) || amount <= 0) return amount > 0 ? amount : 0;
+        bool mushroom = IsMushroomItem(resource);
+        if (mushroom && string.IsNullOrEmpty(species)) species = MushroomRegistry.AnyKey();
+        if (!mushroom) species = null;
+
         int cap = StackMax(resource);
         int remaining = amount;
         bool changed = false;
 
-        // Fill existing stacks first.
+        // Fill existing stacks first — species-pure for mushrooms.
         for (int i = 0; i < NumSlots && remaining > 0; i++)
         {
             if (slots[i].id != resource) continue;
+            if (mushroom && slots[i].mushroomSpecies != species) continue;
             int room = cap - slots[i].count;
             if (room <= 0) continue;
             int take = Mathf.Min(room, remaining);
@@ -348,7 +428,7 @@ public class Hotbar : MonoBehaviour
         {
             if (slots[i].id != ItemId.None) continue;
             int take = Mathf.Min(cap, remaining);
-            slots[i] = new Slot { id = resource, count = take };
+            slots[i] = new Slot { id = resource, count = take, mushroomSpecies = species };
             remaining -= take;
             changed = true;
         }
@@ -358,16 +438,26 @@ public class Hotbar : MonoBehaviour
     }
 
     // All-or-nothing: drain leftmost stacks first, return false if total insufficient.
-    public bool SpendResource(ItemId resource, int amount)
+    public bool SpendResource(ItemId resource, int amount) => SpendResource(resource, amount, null);
+
+    /// Species-aware spend. A null species on a mushroom item means "any
+    /// species", draining leftmost-first across stacks.
+    public bool SpendResource(ItemId resource, int amount, string species)
     {
         if (!IsResource(resource)) return false;
         if (amount <= 0) return true;
-        if (GetResourceTotal(resource) < amount) return false;
+        bool mushroom = IsMushroomItem(resource);
+        if (!mushroom) species = null;
+        bool anySpecies = !mushroom || string.IsNullOrEmpty(species);
+
+        int have = anySpecies ? GetResourceTotal(resource) : GetMushroomTotal(resource, species);
+        if (have < amount) return false;
 
         int remaining = amount;
         for (int i = 0; i < NumSlots && remaining > 0; i++)
         {
             if (slots[i].id != resource) continue;
+            if (!anySpecies && slots[i].mushroomSpecies != species) continue;
             int take = Mathf.Min(slots[i].count, remaining);
             slots[i].count -= take;
             remaining -= take;
@@ -524,6 +614,8 @@ public class Hotbar : MonoBehaviour
         OnResourceChanged?.Invoke(ItemId.Crystal);
         OnResourceChanged?.Invoke(ItemId.SpaceDust);
         OnResourceChanged?.Invoke(ItemId.Sapling);
+        OnResourceChanged?.Invoke(ItemId.Mushroom);
+        OnResourceChanged?.Invoke(ItemId.MushroomSapling);
     }
 
     // ── Save / load access ───────────────────────────────────────────
@@ -560,18 +652,28 @@ public class Hotbar : MonoBehaviour
             {
                 bag = SaveCollector.DeserializeBagContentsPublic(entry.bagContents);
             }
-            slots[i] = new Slot { id = id, count = count, fishData = fish, bagContents = bag };
+            slots[i] = new Slot
+            {
+                id = id,
+                count = count,
+                fishData = fish,
+                bagContents = bag,
+                mushroomSpecies = IsMushroomItem(id) ? entry.mushroomSpecies : null,
+            };
         }
         // Notify subscribers (facades) so their OnChanged fires once each.
         OnResourceChanged?.Invoke(ItemId.Wood);
         OnResourceChanged?.Invoke(ItemId.Crystal);
         OnResourceChanged?.Invoke(ItemId.SpaceDust);
         OnResourceChanged?.Invoke(ItemId.Sapling);
+        OnResourceChanged?.Invoke(ItemId.Mushroom);
+        OnResourceChanged?.Invoke(ItemId.MushroomSapling);
     }
 
     static bool IsResource(ItemId id)
     {
-        return id is ItemId.Wood or ItemId.Crystal or ItemId.SpaceDust or ItemId.Sapling;
+        return id is ItemId.Wood or ItemId.Crystal or ItemId.SpaceDust or ItemId.Sapling
+                  or ItemId.Mushroom or ItemId.MushroomSapling;
     }
 
     // Slot-only items: selected via number key but have no controller to equip.
@@ -647,6 +749,9 @@ public class Hotbar : MonoBehaviour
         return hasFish ? _bagFullIcon : _bagEmptyIcon;
     }
 
+    static readonly Color MushroomSwatchColor  = new Color32(0xE0, 0x6C, 0x75, 0xFF);   // cap red
+    static readonly Color MushSaplingSwatchCol = new Color32(0xC8, 0x9B, 0xE6, 0xFF);   // spore violet
+
     static Color ResourceSwatchColor(ItemId id)
     {
         switch (id)
@@ -655,6 +760,8 @@ public class Hotbar : MonoBehaviour
             case ItemId.Crystal:   return CrystalSwatchColor;
             case ItemId.SpaceDust: return DustSwatchColor;
             case ItemId.Sapling:   return SaplingSwatchColor;
+            case ItemId.Mushroom:  return MushroomSwatchColor;
+            case ItemId.MushroomSapling: return MushSaplingSwatchCol;
             default: return Color.white;
         }
     }
@@ -667,6 +774,8 @@ public class Hotbar : MonoBehaviour
             case ItemId.Crystal:   return "CRYSTAL";
             case ItemId.SpaceDust: return "DUST";
             case ItemId.Sapling:   return "SAPLINGS";
+            case ItemId.Mushroom:  return "MUSHROOM";
+            case ItemId.MushroomSapling: return "SPORES";
             default: return "—";
         }
     }
@@ -677,7 +786,9 @@ public class Hotbar : MonoBehaviour
     static Sprite _woodIcon, _crystalIcon, _dustIcon, _saplingIcon;
     static bool _iconsLoaded;
 
-    static Sprite ResourceIcon(ItemId id)
+    // public: ResourceDrop reuses this as the single source of truth for the
+    // world-drop sprite, so hotbar slot and ground item always match.
+    public static Sprite ResourceIcon(ItemId id)
     {
         if (!_iconsLoaded)
         {
@@ -805,6 +916,19 @@ public class Hotbar : MonoBehaviour
         if (_equippedSlot < 0 || _equippedSlot >= NumSlots) return ItemId.None;
         return slots[_equippedSlot].id;
     }
+
+    /// The whole selected slot, not just its id — HeldItemViewmodel needs
+    /// fishData (weight/colour/tier) and bagContents to build the held model.
+    public Slot GetEquippedSlot()
+    {
+        if (_equippedSlot < 0 || _equippedSlot >= NumSlots) return default;
+        return slots[_equippedSlot];
+    }
+
+    /// Public face of IsSelectOnly — items that highlight a slot but have no
+    /// controller to equip (resources, fish, fish bags). These are exactly the
+    /// ones HeldItemViewmodel is responsible for showing in the player's hand.
+    public static bool IsSelectOnlyItem(ItemId id) => IsSelectOnly(id);
 
     void HandleInput()
     {
@@ -991,12 +1115,26 @@ public class Hotbar : MonoBehaviour
             bool isRes = IsResource(id);
             bool isFish = id == ItemId.Fish;
             bool isFishBag = id == ItemId.FishBag;
+            // Species likeness (handoff §3): a mushroom slot shows a live render
+            // of the species that was chopped, through the same RawImage the
+            // fish preview uses. Null until the registry has resolved a spawner,
+            // in which case the slot falls back to the tinted swatch.
+            bool isMushroom = IsMushroomItem(id);
+            RenderTexture mushPreview = (isMushroom && !empty)
+                ? MushroomRegistry.Preview(slots[i].mushroomSpecies)
+                : null;
+            bool mushPreviewVisible = mushPreview != null;
             Sprite sprite = null;
             Color iconTint = new Color32(0xF1, 0xF4, 0xFF, 0xC0);
             bool isProceduralSwatch = false;
             if (!empty)
             {
-                if (isFish)
+                if (isMushroom && mushPreviewVisible)
+                {
+                    // Rendered through the RawImage below; sprite stays null so
+                    // the standard itemIcon Image is disabled.
+                }
+                else if (isFish)
                 {
                     // Fish slots use a live RenderTexture via RawImage instead
                     // of the sprite path. The sprite stays null so the standard
@@ -1035,14 +1173,20 @@ public class Hotbar : MonoBehaviour
                 }
             }
             v.itemIcon.sprite = sprite;
-            v.itemIcon.enabled = sprite != null && !isFish;
+            v.itemIcon.enabled = sprite != null && !isFish && !mushPreviewVisible;
 
             // Phase 2: paint the fish preview RawImage for Fish slots. Render
             // via the dex's preview camera if we haven't yet for this entry.
+            // Mushroom slots reuse the same RawImage for their species render.
             if (v.fishPreview != null)
             {
                 bool fishVisible = isFish && !empty && slots[i].fishData != null;
-                if (fishVisible)
+                if (mushPreviewVisible)
+                {
+                    v.fishPreview.texture = mushPreview;
+                    v.fishPreview.enabled = true;
+                }
+                else if (fishVisible)
                 {
                     var fe = slots[i].fishData;
                     if (fe.cachedHotbarPreview == null && FishingdexManager.Instance != null)
@@ -1163,6 +1307,14 @@ public class Hotbar : MonoBehaviour
                 var bag = slots[newActive].bagContents;
                 if (bag != null) for (int b = 0; b < bag.Length; b++) if (bag[b].id != ItemId.None) filled++;
                 label = $"FISH BAG · {filled}/5";
+            }
+            else if (IsMushroomItem(activeId))
+            {
+                // Name the SPECIES, not the category — the whole point of
+                // species-pure stacks is that the player can tell them apart.
+                string sp = MushroomRegistry.DisplayName(slots[newActive].mushroomSpecies).ToUpperInvariant();
+                string suffix = activeId == ItemId.MushroomSapling ? " SPORES" : "";
+                label = $"{sp}{suffix} ×{slots[newActive].count}";
             }
             else if (IsResource(activeId))
             {

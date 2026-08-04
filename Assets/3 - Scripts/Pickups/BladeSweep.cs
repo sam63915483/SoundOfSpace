@@ -36,9 +36,11 @@ public class BladeSweep : MonoBehaviour
     [Tooltip("Draw the edge samples + sweep paths in the Scene view (spike build).")]
     public bool drawDebug = true;
 
-    [Header("Hit rules (wind-up arming — speed does NOT gate damage)")]
-    [Tooltip("Edge speed (m/s) that triggers the whoosh sound and scales hit feedback. Damage is gated by the wind-up arm (AxeSwing), not by speed.")]
+    [Header("Hit rules (wind-up arming + a minimum blade speed)")]
+    [Tooltip("Edge speed (m/s) that triggers the whoosh sound and scales hit feedback.")]
     public float minEdgeSpeed = 2.5f;
+    [Tooltip("Minimum edge speed (m/s) for an ARMED contact to land. Below this the axe is being CARRIED into the target rather than swung — it scrapes instead, and the wind-up is NOT consumed, so the swing is still loaded when you actually move the blade. Set to 0 to restore the old behaviour where any armed contact hit, however slow. Note edge speed is measured in CAMERA-LOCAL space, so walking or turning never counts as blade motion — only moving the axe relative to your view does.")]
+    public float armedMinEdgeSpeed = 1.5f;
     [Tooltip("Edge speed (m/s) above which UNARMED contact makes a scrape sound.")]
     public float scrapeMinSpeed = 0.4f;
     [Tooltip("Fraction of a charged hit an UNCHARGED swing deals. Trees keep integer chops, so this accumulates per target and lands a real chop when the pool fills (1/3 → three uncharged swings = one chop). Must still be a real swing — edge speed above minEdgeSpeed — so parking the blade in a tree stays harmless.")]
@@ -226,10 +228,13 @@ public class BladeSweep : MonoBehaviour
 
             var tree = col.GetComponentInParent<SpawnedTree>();
             var crystal = tree == null ? col.GetComponentInParent<SpawnedCrystal>() : null;
-            IDamageable damageable = (tree == null && crystal == null) ? col.GetComponentInParent<IDamageable>() : null;
-            if (tree == null && crystal == null && damageable == null) continue;
+            var mushroom = (tree == null && crystal == null) ? col.GetComponentInParent<SpawnedMushroom>() : null;
+            IDamageable damageable = (tree == null && crystal == null && mushroom == null)
+                ? col.GetComponentInParent<IDamageable>() : null;
+            if (tree == null && crystal == null && mushroom == null && damageable == null) continue;
             if (tree != null && tree.IsDead) continue;
             if (crystal != null && crystal.IsDead) continue;
+            if (mushroom != null && mushroom.IsDead) continue;
 
             // Enemies/NPCs: line-of-sight check so a blade poking through a
             // wall can't damage what's on the other side (M3 doc rule).
@@ -245,8 +250,15 @@ public class BladeSweep : MonoBehaviour
 
             int id = tree != null ? tree.GetInstanceID()
                    : crystal != null ? crystal.GetInstanceID()
+                   : mushroom != null ? mushroom.GetInstanceID()
                    : ((Component)damageable).GetInstanceID();
-            if (armed)
+            // An armed contact only lands if the blade is actually MOVING.
+            // Without this, winding up and then simply walking the axe into a
+            // tree or an NPC counted as a full hit — AxeMotor's carry sway
+            // supplies just enough camera-local motion to pass the distance
+            // gate in Tick(). Falling through instead of returning leaves the
+            // wind-up armed, so a parked blade costs the player nothing.
+            if (armed && speed >= armedMinEdgeSpeed)
             {
                 // Damage scales with wind-up charge: just-armed = 1x, full bar
                 // = fullChargeChops. Tree fractions pool per target so the
@@ -256,6 +268,8 @@ public class BladeSweep : MonoBehaviour
                 float chargeScale = Mathf.Lerp(1f, Mathf.Max(1f, fullChargeChops), Mathf.Clamp01(_currentCharge));
                 if (damageable != null)
                 {
+                    // No blood call here on purpose — see the note above
+                    // UnchargedEnemyHit. TakeDamage spawns the splash.
                     damageable.ApplyKnockback(dir, _axe.knockbackDistance, _axe.knockbackDuration);
                     damageable.TakeDamage(_axe.enemyDamagePerSwing * chargeScale);
                     // Kill slow-mo + multi-kill deepening ride the existing
@@ -272,10 +286,12 @@ public class BladeSweep : MonoBehaviour
                     if (apply > 0)
                     {
                         if (tree != null) tree.TakeDamage(apply);
-                        else crystal.TakeDamage(apply);
+                        else if (crystal != null) crystal.TakeDamage(apply);
+                        else mushroom.TakeDamage(apply);
                     }
                 }
-                HitFeedback(speed);
+                // Mushrooms bring their own squish — suppress the wooden thunk.
+                HitFeedback(speed, playClip: mushroom == null);
                 OnHitLanded?.Invoke();
                 return true;
             }
@@ -287,7 +303,7 @@ public class BladeSweep : MonoBehaviour
             if (speed >= minEdgeSpeed && unchargedHitFraction > 0f)
             {
                 if (damageable != null) UnchargedEnemyHit(damageable, id);
-                else UnchargedHit(tree, crystal, id, speed);
+                else UnchargedHit(tree, crystal, mushroom, id, speed);
                 continue;
             }
 
@@ -296,6 +312,17 @@ public class BladeSweep : MonoBehaviour
         return false;
     }
 
+    // NOTE: the axe deliberately spawns NO blood of its own.
+    //
+    // A previous pass had it call BloodFX.SpawnSpray on every contact. That was
+    // wrong twice over. SpawnSpray is the BULLET-HOLE fountain — a long-lived,
+    // bone-attached gusher meant for entry wounds — and the damage pipeline
+    // already covers melee: EnemyController.TakeDamage spawns a damage splash
+    // for "gun / axe / fishing rod", and AlienNPCDamageable.TakeDamage now does
+    // the same. Blood belongs in the damage pipeline, not in each weapon, so
+    // every present and future damage source gets it for free and nothing
+    // double-spawns. Those redundant fountains outliving their corpse are what
+    // left gushers hanging in the air at old kill sites.
     void UnchargedEnemyHit(IDamageable damageable, int id)
     {
         float now = Time.time;
@@ -310,7 +337,7 @@ public class BladeSweep : MonoBehaviour
         GamepadRumble.Pulse(0.25f, 0.12f, 0.1f);
     }
 
-    void UnchargedHit(SpawnedTree tree, SpawnedCrystal crystal, int id, float speed)
+    void UnchargedHit(SpawnedTree tree, SpawnedCrystal crystal, SpawnedMushroom mushroom, int id, float speed)
     {
         float now = Time.time;
         if (_lastUnchargedHitTime.TryGetValue(id, out float last) && now - last < unchargedHitCooldown) return;
@@ -323,12 +350,15 @@ public class BladeSweep : MonoBehaviour
             pool -= 1f;
             if (tree != null) tree.TakeDamage(_axe.damagePerSwing);
             else if (crystal != null) crystal.TakeDamage(_axe.damagePerSwing);
+            else if (mushroom != null) mushroom.TakeDamage(_axe.damagePerSwing);
         }
         _unchargedDamagePool[id] = pool;
 
         // Lighter feedback than a charged hit: a dull knock, small rumble,
-        // no hit-stop, no camera shake.
-        if (_audio != null && _axe != null && _axe.HitClip != null)
+        // no hit-stop, no camera shake. Mushrooms carry their own squish (played
+        // by SpawnedMushroom.TakeDamage) so the wooden knock is skipped for them
+        // — a cap should never sound like a trunk.
+        if (mushroom == null && _audio != null && _axe != null && _axe.HitClip != null)
         {
             _audio.pitch = 0.8f;
             _audio.PlayOneShot(_axe.HitClip, _axe.HitVolume * 0.45f);
@@ -336,11 +366,11 @@ public class BladeSweep : MonoBehaviour
         GamepadRumble.Pulse(0.25f, 0.12f, 0.1f);
     }
 
-    void HitFeedback(float speed)
+    void HitFeedback(float speed, bool playClip = true)
     {
         float t = Mathf.Clamp01(speed / Mathf.Max(0.01f, maxFeedbackSpeed));
 
-        if (_audio != null && _axe != null && _axe.HitClip != null)
+        if (playClip && _audio != null && _axe != null && _axe.HitClip != null)
         {
             _audio.pitch = Mathf.Lerp(0.9f, 1.3f, t);
             _audio.PlayOneShot(_axe.HitClip, _axe.HitVolume);
