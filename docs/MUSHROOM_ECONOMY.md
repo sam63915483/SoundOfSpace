@@ -145,6 +145,30 @@ idle and interactable. He appears whether or not the player left the shuttle.
 Once past the first talk he's permanently present, so a mid-game scene reload
 can't make him vanish for another two minutes.
 
+### The "can't talk to Tev" bug was not Tev's
+
+Worth recording because it bit twice and it is **not a mushroom bug at all**:
+
+`StasisPodSave.Ritual` locks the tutorial gate (`TutorialGate.LockAll()`, leaving
+only MouseLook) so the player can't walk out of the pod mid-ritual — and then
+writes the save **while that lock is on**. `SaveCollector` persists
+`TutorialGate.IsGateEnabled` + the unlocked list, so **every stasis save was
+written as "gate enabled, nothing unlocked but MouseLook"**. Loading it left the
+player unable to interact with anything at all — no talking to any NPC, so no
+selling either. The saving session never noticed, because the ritual calls
+`UnlockAll()` when it finishes.
+
+Then, because `TutorialGate` is pure statics, that locked state **survived a
+return to the main menu**: load such a save, back out, hit New Game, and the
+fresh run inherited the lock with no in-game way to recover.
+`ShuttleExitDoor.OpenedAtTime` leaked the same way, which is why Tev appeared
+instantly on that new game instead of after 120s.
+
+Fixes: the ritual restores the real gate state just for the `SaveSystem.Save`
+call; `NewGameReset` calls `TutorialGate.UnlockAll()` and clears the ramp stamp;
+`ShuttleExitDoor` clears its stamp on every MainMenu load. **If NPC interaction
+ever dies wholesale again, check `TutorialGate.IsGateEnabled` first.**
+
 Two robustness rules learned the hard way, both verified in play mode:
 
 - **`fallbackSeconds` (180) is a hard backstop.** Pressing Play straight into
@@ -197,7 +221,9 @@ All JsonUtility-safe and empty-by-default, so old saves load correctly.
 - [ ] Locker holds axe + water bottle on first open *(verified in-scene: two
       `LootBoxStarterItem`s on `Shuttle_Lander/Interior/Locker_2` — Axe + WaterBottle)*
 - [ ] Ramp opens → Tev absent exactly 120s → **the Tev by the START CABIN**
-      (`TEV`, not the village `TEV2`) appears and is talkable; no wave
+      (`TEV`, not the village `TEV2`) appears, still animates, and is talkable
+- [ ] Load a save → can still talk to NPCs at all (the gate regression above)
+- [ ] Load a save, back out to the menu, New Game → Tev hides for 120s again
 - [ ] Mushroom chop: ~half a tree's effort, squish per hit, wobble reads rubbery,
       topple + shrink, 3–9 species-matched drops, spin/bob, walk-over pickup
 - [ ] 0–2 spores drop; planting one grows the SAME species back

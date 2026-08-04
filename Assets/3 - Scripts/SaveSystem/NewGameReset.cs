@@ -56,6 +56,15 @@ public static class NewGameReset
     // reset. Each Instance is null-guarded — order doesn't matter here.
     public static void Apply()
     {
+        // TutorialGate is pure statics, so its state SURVIVES a return to the
+        // main menu. Load a save whose gate was locked, back out, hit New Game,
+        // and the fresh run inherits that lock — the player can't interact with
+        // anything and there is no in-game way to recover. A new game always
+        // starts with everything unlocked (the tutorial re-locks if it runs).
+        TutorialGate.UnlockAll();
+        // Same class of leak: the ramp's "when did it open" stamp is static.
+        ShuttleExitDoor.ResetOpenedStamp();
+
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);
         if (WoodInventory.Instance != null) WoodInventory.Instance.SetWood(0);
@@ -84,6 +93,19 @@ public static class NewGameReset
         // the whole slice. LockAllExcept() with no args = nothing is buildable. The
         // Build branch will UnlockAll() when it's built out later.
         BuildMenuLock.LockAllExcept();
+
+        // Progression lives in a DontDestroyOnLoad singleton, so without this a
+        // New Game inherits the previous run's levels and visited worlds (New
+        // Game runs no Apply — CLAUDE.md).
+        if (PlayerProgress.Instance != null) PlayerProgress.Instance.ResetAll();
+
+        // The jetpack is standard kit now (Sam, 2026-08-03) — you start with it
+        // rather than buying it from Alien7. Done here as well as on the
+        // prefab's default because the PLAYER IN THE SCENE carries its own
+        // serialised copy of that flag, and a changed C# default never reaches
+        // an object that already exists.
+        var playerForJetpack = Object.FindObjectOfType<PlayerController>();
+        if (playerForJetpack != null) playerForJetpack.UnlockJetpack();
 
         if (StoryDirector.Instance != null) StoryDirector.Instance.ResetForNewGame();
 

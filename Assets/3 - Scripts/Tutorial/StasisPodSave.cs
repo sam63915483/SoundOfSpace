@@ -133,6 +133,19 @@ public class StasisPodSave : MonoBehaviour
     {
         _running = true;
         _labelBase = download ? "DOWNLOADING" : "UPLOADING";
+
+        // Remember the REAL gate state before the cinematic lock. The lock below
+        // is transient — it exists to stop the player walking out of the pod
+        // mid-ritual — but SaveCollector persists TutorialGate.IsGateEnabled +
+        // the unlocked list, and the save is written further down while that
+        // lock is still on. Without this, every stasis save was written as
+        // "gate ENABLED, only MouseLook unlocked", and loading it left the
+        // player unable to interact with ANYTHING — no talking to NPCs, so no
+        // selling, on every loaded game. The saving session never noticed
+        // because UnlockAll() runs at the end of the ritual.
+        bool gateWasEnabled = TutorialGate.IsGateEnabled;
+        var gateWasUnlocked = new List<TutorialAbility>(TutorialGate.GetUnlocked());
+
         TutorialGate.LockAll();
         TutorialGate.Unlock(TutorialAbility.MouseLook);
 
@@ -160,7 +173,14 @@ public class StasisPodSave : MonoBehaviour
         {
             if (string.IsNullOrEmpty(ActiveSlotName))
                 ActiveSlotName = string.IsNullOrEmpty(saveSlotName) ? NextFreeSlotName() : saveSlotName;
+
+            // Put the real gate state back JUST for the capture, so the file
+            // records the game's actual progression rather than this cinematic's
+            // temporary lock — then re-lock for the rest of the ritual.
+            TutorialGate.ApplyState(gateWasEnabled, gateWasUnlocked);
             SaveSystem.Save(ActiveSlotName);
+            TutorialGate.LockAll();
+            TutorialGate.Unlock(TutorialAbility.MouseLook);
         }
         float holdFor = download ? holdSeconds + 0.9f : holdSeconds;   // a beat longer to read DOWNLOADING
         t = 0f;

@@ -30,6 +30,21 @@ public class ShuttleExitDoor : MonoBehaviour
     public static bool HasOpened => OpenedAtTime >= 0f;
     static void MarkOpened() { if (OpenedAtTime < 0f) OpenedAtTime = Time.time; }
 
+    /// Statics survive a return to the main menu, so without this a run that
+    /// opened the ramp leaves the stamp set for the NEXT run — and anything
+    /// timing off it (Tev's hidden window) fires instantly on a fresh game.
+    /// Called by NewGameReset and on every MainMenu load.
+    public static void ResetOpenedStamp() { OpenedAtTime = -1f; }
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void HookRunReset()
+    {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded += (scene, mode) =>
+        {
+            if (scene.name == "MainMenu") ResetOpenedStamp();   // a run ended
+        };
+    }
+
     void Awake()
     {
         _restRot = transform.localRotation;

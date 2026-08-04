@@ -44,8 +44,8 @@ public class TevMushroomOnboarding : MonoBehaviour
     public float fallbackSeconds = 180f;
 
     [Header("Deprecated behaviour")]
-    [Tooltip("Disable Tev's wave animation while the onboarding is live. The component is only disabled, never removed.")]
-    public bool suppressWave = true;
+    [Tooltip("Disable Tev's wave/idle animation while the onboarding is live. OFF: switching it off turns him into a frozen statue that doesn't even look at you, which reads as broken rather than as 'the old waving beat is deprecated'. The handoff wanted the on-LANDING wave gone, and the 120s hidden window already achieves that — he isn't there to wave.")]
+    public bool suppressWave = false;
     [Tooltip("Disable the old Mission 1 TevDialogue while the onboarding is live. The component is only disabled, never removed.")]
     public bool suppressMissionDialogue = true;
     [Tooltip("Re-enable TevDialogue once the onboarding completes. OFF while all mission/story content is on hold — turn it on to hand Tev back to the mission tree.")]
@@ -137,6 +137,7 @@ public class TevMushroomOnboarding : MonoBehaviour
     Transform _playerTf;
     float _nextPlayerSearch;
     float _startedAt;
+    bool _bootedFromLoad;
 
     bool _playerInRange;
     bool _conversationActive;
@@ -149,9 +150,21 @@ public class TevMushroomOnboarding : MonoBehaviour
     string _promptCached;
     TutorialGate.InputSource _promptCachedSource = (TutorialGate.InputSource)(-1);
 
+    void Awake()
+    {
+        // MUST be Awake: PendingLoad consumes + clears Data in the sceneLoaded
+        // callback, which fires after Awake but before Start (same reason
+        // ShuttleExitDoor checks it there).
+        _bootedFromLoad = PendingLoad.Data != null;
+    }
+
     void Start()
     {
         _startedAt = Time.time;
+        // Fallback for any load path where Data was already consumed by the time
+        // we woke: the loader spawns a [SaveLoadRunner] that lives through the
+        // first frames, so its presence means this boot is a load.
+        if (!_bootedFromLoad && FindObjectOfType<SaveLoadRunner>() != null) _bootedFromLoad = true;
         if (dialogueText == null || talkPromptText == null)
         {
             var existing = FindObjectOfType<NPCDialogue>();
@@ -207,6 +220,10 @@ public class TevMushroomOnboarding : MonoBehaviour
     bool ShouldBeVisible()
     {
         if (MushroomQuest.CurrentStage != MushroomQuest.Stage.NotMet) return true;
+        // Loading a save means the arrival is long over — the only save station
+        // is the stasis pod, which is past the ramp. Re-hiding him for two
+        // minutes on every load is just a player wondering where Tev went.
+        if (_bootedFromLoad) return true;
         if (ShuttleExitDoor.HasOpened && Time.time - ShuttleExitDoor.OpenedAtTime >= hiddenSeconds)
             return true;
         return Time.time - _startedAt >= fallbackSeconds;
