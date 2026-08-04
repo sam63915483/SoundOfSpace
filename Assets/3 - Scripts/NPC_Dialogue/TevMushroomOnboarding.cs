@@ -40,8 +40,8 @@ public class TevMushroomOnboarding : MonoBehaviour
     public float hiddenSeconds = 120f;
     [Tooltip("Metres the player must be within to get the talk prompt. Set explicitly rather than derived from the trigger — Tev is the first NPC in the game and his talk range should not be an accident of how his collider was scaled. 0 falls back to deriving it from the SphereCollider.")]
     public float talkRadius = 8f;
-    [Tooltip("Log one line a second describing every gate between 'player nearby' and 'prompt shown', whenever the player is within debugRadius. Leave ON until the onboarding is play-verified; it costs one string a second and it is the only way to tell WHICH gate is refusing.")]
-    public bool debugLogging = true;
+    [Tooltip("Log one line a second describing every gate between 'player nearby' and 'prompt shown', whenever the player is within debugRadius. OFF now that the onboarding is play-verified — flip it back on if talking to him ever breaks again; it names the failing gate in one line and it is how the last three regressions were found.")]
+    public bool debugLogging = false;
     [Tooltip("Metres within which debugLogging reports.")]
     public float debugRadius = 25f;
     [Tooltip("Hard backstop: seconds after this component wakes at which Tev appears regardless of the exit ramp. Covers boots where the arrival sequence never runs (Play straight into the gameplay scene, dev spawns) — without it he'd stay hidden forever there.")]
