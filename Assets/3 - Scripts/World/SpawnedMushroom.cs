@@ -70,14 +70,14 @@ public class SpawnedMushroom : MonoBehaviour
 
     /// A player-grown mushroom that has matured. Behaves identically when
     /// chopped, but removes its own instance instead of marking a seed cell.
-    public void InitPlanted(string species)
+    public void InitPlanted(string species, float scale)
     {
         spawner = null;
         bodySlot = -1;
         cellId = 0;
         isPlanted = true;
         speciesKey = species;
-        mushroomScale = 1f;
+        mushroomScale = scale;
         RollHarvest();
         _baseScale = transform.localScale;
         _restRotation = transform.localRotation;
@@ -89,9 +89,18 @@ public class SpawnedMushroom : MonoBehaviour
     void RollHarvest()
     {
         // HALF a tree's effort. SpawnedTree rolls hp 4–8; a mushroom rolls 2–4.
+        // Deliberately NOT scaled by size: a big cap is a better prize for the
+        // same work, which is what makes hunting the big ones worth doing.
         hp = Random.Range(2, 5);
-        // 3–9 caps per mushroom (handoff §3).
-        dropCount = Random.Range(3, 10);
+
+        // Payout scales with SIZE. The handoff's 3–9 band is now the range across
+        // the whole 1–5× spread rather than a flat roll: a runt gives 2–4, a
+        // monster gives 7–12. Applies identically to wild and cultivated
+        // mushrooms, so a 5× you grew yourself is worth a 5× you found.
+        float t = Mathf.Clamp01((mushroomScale - 1f) / 4f);
+        int lo = Mathf.RoundToInt(Mathf.Lerp(2f, 7f, t));
+        int hi = Mathf.RoundToInt(Mathf.Lerp(4f, 12f, t));
+        dropCount = Random.Range(lo, hi + 1);
     }
 
     void StopRoutines()
@@ -197,9 +206,13 @@ public class SpawnedMushroom : MonoBehaviour
         // saplings of the SAME species, so the loop closes exactly like trees —
         // chop, replant, the same mushroom grows back. 0 is a real outcome: a
         // mushroom patch has to be worth walking to, not a guaranteed printer.
+        // Spores lean on size too, but far more gently than the caps do — the
+        // ceiling stays 2, so a big find speeds the loop up without ever making
+        // one lucky mushroom self-sustaining.
+        float sizeT = Mathf.Clamp01((mushroomScale - 1f) / 4f);
         int saplings = 0;
-        if (Random.value < 0.55f) saplings++;
-        if (Random.value < 0.20f) saplings++;
+        if (Random.value < Mathf.Lerp(0.45f, 0.75f, sizeT)) saplings++;
+        if (Random.value < Mathf.Lerp(0.10f, 0.35f, sizeT)) saplings++;
         if (saplings > 0)
             ResourceDrop.DropMushrooms(Hotbar.ItemId.MushroomSapling, species, saplings,
                                        transform.position, bodyParent);

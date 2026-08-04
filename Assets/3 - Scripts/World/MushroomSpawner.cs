@@ -604,10 +604,24 @@ public class MushroomSpawner : MonoBehaviour
     [Tooltip("Volume for both the hit squishes and the break squelch.")]
     public float squishVolume = 0.85f;
 
-    static MushroomSpawner s_audioSource;   // first spawner seen — the static fallback
+    /// The live spawner, for code that needs the WILD tuning without holding a
+    /// reference — planted mushrooms read minScale/maxScale off this so a
+    /// player-grown cap can reach the same sizes as one that grew on its own.
+    public static MushroomSpawner Instance { get; private set; }
 
-    void OnEnable() { if (s_audioSource == null) s_audioSource = this; }
-    void OnDisable() { if (s_audioSource == this) s_audioSource = null; }
+    void OnEnable() { if (Instance == null) Instance = this; }
+    void OnDisable() { if (Instance == this) Instance = null; }
+
+    /// A size multiplier rolled from the same 1–5× band the wild mushrooms use.
+    /// Falls back to the same defaults if no spawner exists yet.
+    public static float RollWildScale()
+    {
+        float lo = Instance != null ? Mathf.Min(Instance.minScale, Instance.maxScale) : 1f;
+        float hi = Instance != null ? Mathf.Max(Instance.minScale, Instance.maxScale) : 5f;
+        return Random.Range(lo, hi);
+    }
+
+    static MushroomSpawner s_audioSource => Instance;
 
     public AudioClip RandomHitSquish()
     {

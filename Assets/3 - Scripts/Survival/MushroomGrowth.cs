@@ -34,8 +34,18 @@ public class MushroomGrowth : MonoBehaviour
     string speciesKey;
     float growth;          // 0..1
     bool mature;
-    Vector3 fullScale;
+    Vector3 fullScale;     // the prefab's authored scale (== a 1× wild mushroom)
     float sampleTimer;
+
+    // How big this one grows UP TO, as a multiple of the prefab scale. Rolled
+    // from the same 1–5× band MushroomSpawner uses for wild mushrooms, so a
+    // cultivated patch has the same size variety as one you find in the world —
+    // and a lucky 5× planting is worth as much as the best wild cap.
+    // Every seedling still STARTS at the same small size; the multiplier is the
+    // finish line, not the starting line, so you don't know what you've got
+    // until it fills out.
+    float sizeMultiplier = 1f;
+    public float SizeMultiplier => sizeMultiplier;
 
     public bool IsMature => mature;
     public float Growth => growth;
@@ -52,18 +62,22 @@ public class MushroomGrowth : MonoBehaviour
     void OnDisable() { s_all.Remove(this); }
 
     /// Called by the placement flow right after the spores are placed + parented.
+    /// Rolls this planting's mature size from the wild 1–5× band.
     public void Init(CelestialBody plantedBody, string species)
     {
         body = plantedBody;
         speciesKey = species;
+        sizeMultiplier = MushroomSpawner.RollWildScale();
         ApplyScale();
     }
 
     /// Restore a saved planted mushroom's progress. growth >= 1 matures instantly.
-    public void RestoreGrowth(CelestialBody plantedBody, string species, float savedGrowth)
+    /// A savedSize of 0 is a pre-feature save — those planted at 1× flat.
+    public void RestoreGrowth(CelestialBody plantedBody, string species, float savedGrowth, float savedSize)
     {
         body = plantedBody;
         speciesKey = species;
+        sizeMultiplier = savedSize > 0.01f ? savedSize : 1f;
         growth = Mathf.Clamp01(savedGrowth);
         if (growth >= 1f) Mature();
         else ApplyScale();
@@ -91,10 +105,13 @@ public class MushroomGrowth : MonoBehaviour
         }
     }
 
+    // Every seedling starts at the same minScaleFraction and grows toward its own
+    // rolled sizeMultiplier — so the size a mushroom is GOING to be only reveals
+    // itself as it fills out.
     void ApplyScale()
     {
         if (fullScale == Vector3.zero) fullScale = Vector3.one;
-        transform.localScale = fullScale * Mathf.Lerp(minScaleFraction, 1f, growth);
+        transform.localScale = fullScale * Mathf.Lerp(minScaleFraction, sizeMultiplier, growth);
     }
 
     void Mature()
@@ -102,11 +119,13 @@ public class MushroomGrowth : MonoBehaviour
         if (mature) return;
         mature = true;
         growth = 1f;
-        transform.localScale = fullScale;
+        transform.localScale = fullScale * sizeMultiplier;
 
+        // Hand the size across: SpawnedMushroom pays out by scale, so a 5×
+        // cultivated cap is worth the same as a 5× wild one.
         var node = GetComponent<SpawnedMushroom>();
         if (node == null) node = gameObject.AddComponent<SpawnedMushroom>();
-        node.InitPlanted(speciesKey);
+        node.InitPlanted(speciesKey, sizeMultiplier);
     }
 
     // ── Tunables ───────────────────────────────────────────────────────────

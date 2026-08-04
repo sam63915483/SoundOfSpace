@@ -82,6 +82,9 @@ public class PlantedMushroomSave
     public Quaternion localRot;
     public float growth;          // 0..1; >= 1 restores as a mature, choppable mushroom
     public string speciesKey;
+    // Mature size as a multiple of the prefab scale, rolled from the same 1–5×
+    // band wild mushrooms use. 0 on pre-feature saves, which restore at 1×.
+    public float sizeMultiplier;
 }
 
 // PlayerProgress state. `scores` is indexed by the ProgressTrack enum, so that

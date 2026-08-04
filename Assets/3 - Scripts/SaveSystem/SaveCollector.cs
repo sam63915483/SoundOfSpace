@@ -554,6 +554,7 @@ public static class SaveCollector
                 localRot = Quaternion.Inverse(bt.rotation) * m.transform.rotation,
                 growth = m.IsMature ? 1f : m.Growth,
                 speciesKey = m.SpeciesKey,
+                sizeMultiplier = m.SizeMultiplier,
             });
         }
     }
@@ -1816,7 +1817,7 @@ public static class SaveCollector
             MushroomSpawner.EnsureSolidColliderOn(go);
             var mg = go.GetComponent<MushroomGrowth>();
             if (mg == null) mg = go.AddComponent<MushroomGrowth>();
-            mg.RestoreGrowth(body, save.speciesKey, save.growth);   // >= 1 matures instantly
+            mg.RestoreGrowth(body, save.speciesKey, save.growth, save.sizeMultiplier);   // >= 1 matures instantly
         }
     }
 
