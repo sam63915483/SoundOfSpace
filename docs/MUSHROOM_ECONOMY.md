@@ -145,6 +145,31 @@ idle and interactable. He appears whether or not the player left the shuttle.
 Once past the first talk he's permanently present, so a mid-game scene reload
 can't make him vanish for another two minutes.
 
+### The "no Press F prompt" bug was an InteractGaze bug
+
+**A SkinnedMeshRenderer's `localBounds` are relative to its ROOT BONE, not to
+its own transform.** `InteractGaze.CrosshairOverlap` was transforming the
+crosshair ray into `sm.transform` space and intersecting `localBounds` there, so
+for any skinned prop with a rootBone the test box landed somewhere else
+entirely. Measured on the start-cabin Tev: the box came out 1.7 × 6.5 × 6.9 m
+and ~2 m adrift of a body whose real world bounds are 3.8 × 3.9 × 4.7 m.
+Transforming through `rootBone` reproduces the world bounds exactly.
+
+Consequence: the ray missed from every angle except dead-centre-and-close, so
+`IsLookingAt` returned false → `InteractPromptUI` (which gaze-gates its owner
+every frame) never showed the prompt → no way to talk. Sam's log, standing 2.5 m
+away: `inRange=True gaze=False promptOwner=TEV gateEnabled=False
+talkUnlocked=True`. Everything passed except the gaze.
+
+This only bites interactables that have **no solid collider** — with one, the
+crosshair SphereCast hits it and the skinned path is never reached. That's why
+selling always worked: `AlienNPCDamageable` gives every wandering alien a
+non-trigger CapsuleCollider. The hand-placed TEV and TEV2 carry only a trigger,
+so they were the two objects in the game taking the broken path.
+
+Fixed in `InteractGaze.CrosshairOverlap`; verified both directions (aimed at him
+→ true, 40° off → false), so it isn't a blanket pass.
+
 ### The "can't talk to Tev" bug was not Tev's
 
 Worth recording because it bit twice and it is **not a mushroom bug at all**:
