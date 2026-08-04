@@ -113,10 +113,19 @@ public static class SolarSystemRescale
         foreach (var b in bodies)
         {
             if (MoonParents.ContainsKey(b.bodyName)) continue;   // pass 2
+            // Static attractors (the black hole) are NOT part of the orbital
+            // layout — they don't orbit anything and nothing orbits them, so
+            // there's nothing for a scale factor to preserve. Dragging one
+            // inward just moves a piece of authored content closer for no
+            // reason. Left exactly where it was placed. (Sam's call.)
+            if (b.isStaticAttractor)
+            {
+                newPos[b] = pos0[b];
+                newVel[b] = vel0[b];
+                continue;
+            }
             newPos[b] = sunPos + (pos0[b] - sunPos) * k;
-            // Static attractors (the black hole) don't orbit — leave their
-            // velocity at whatever it is, which is zero.
-            newVel[b] = b.isStaticAttractor ? vel0[b] : vel0[b] * invSqrtK;
+            newVel[b] = vel0[b] * invSqrtK;
         }
 
         // Pass 1b — binary pairs. Re-seat each pair symmetrically about its
