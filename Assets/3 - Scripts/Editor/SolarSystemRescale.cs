@@ -56,6 +56,22 @@ public static class SolarSystemRescale
     [Tooltip("Planet-pair spacing in mutual Hill radii. Below ~3.5 a pair of planets perturbs itself into crossing orbits over time; 3.5 is the standard rule of thumb.")]
     public const float HillSpacing = 3.5f;
 
+    /// Explicit twin separation, in metres. 0 = derive it from the Hill rule.
+    ///
+    /// Set to the ORIGINAL 1995 because that separation IS the look — two worlds
+    /// that read as a pair, the way the moon reads against Humble Abode. The
+    /// Hill-stable answer is 3681 at 0.5×, which is orbitally correct and
+    /// visually wrong: they stop looking like twins.
+    ///
+    /// The honest cost: at 1995 they sit at ~0.95 mutual Hill radii, so they
+    /// perturb each other. That is EXACTLY the situation the game already
+    /// shipped with (the original pair was at 0.95 too), and it takes the better
+    /// part of an uninterrupted hour to matter. Circularising their heliocentric
+    /// orbits — which the rescale does anyway — removes the eccentric mutual
+    /// orbit that made the original pair close fast, so this is strictly better
+    /// than what was there before, just not textbook-stable.
+    public const float BinarySeparation = 1995f;
+
     [MenuItem("Tools/Solar System/Rescale — dry run (0.6 / 0.5 / 0.4 / 0.3)")]
     public static void DryRunSweep()
     {
@@ -152,8 +168,14 @@ public static class SolarSystemRescale
                 Vector3 radial = (bary - sunPos).normalized;
 
                 float hill = baryDist * Mathf.Pow((float)(mt / (3.0 * sunMass)), 1f / 3f);
-                float sep = Mathf.Max(HillSpacing * hill,
-                                      (inner.radius + outer.radius) * 3f);   // never let surfaces near each other
+                // BinarySeparation > 0 pins the gap instead of deriving it from
+                // the Hill rule. The twins read as a PAIR — that's the whole
+                // point of them — and the Hill-stable spacing (3681 at 0.5×) puts
+                // them so far apart they stop looking related. Their original
+                // 1995 is the look; see the class comment for what it costs.
+                float sep = BinarySeparation > 0f
+                    ? Mathf.Max(BinarySeparation, (inner.radius + outer.radius) * 1.5f)
+                    : Mathf.Max(HillSpacing * hill, (inner.radius + outer.radius) * 3f);
 
                 // Split the separation about the barycentre by mass.
                 float dIn = sep * (float)(mo / mt);
