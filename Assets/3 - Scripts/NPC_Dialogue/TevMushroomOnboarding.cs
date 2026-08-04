@@ -38,8 +38,12 @@ public class TevMushroomOnboarding : MonoBehaviour
     [Header("Timing")]
     [Tooltip("Seconds after the shuttle's exit ramp deploys before Tev appears outside his cabin. Handoff §2.1 = 120. He appears whether or not the player has left the shuttle.")]
     public float hiddenSeconds = 120f;
-    [Tooltip("Metres the player must be within to get the talk prompt. 0 = derive it from this object's own trigger SphereCollider (scale included). Set a value to override.")]
-    public float talkRadius = 0f;
+    [Tooltip("Metres the player must be within to get the talk prompt. Set explicitly rather than derived from the trigger — Tev is the first NPC in the game and his talk range should not be an accident of how his collider was scaled. 0 falls back to deriving it from the SphereCollider.")]
+    public float talkRadius = 8f;
+    [Tooltip("Log one line a second describing every gate between 'player nearby' and 'prompt shown', whenever the player is within debugRadius. Leave ON until the onboarding is play-verified; it costs one string a second and it is the only way to tell WHICH gate is refusing.")]
+    public bool debugLogging = true;
+    [Tooltip("Metres within which debugLogging reports.")]
+    public float debugRadius = 25f;
     [Tooltip("Hard backstop: seconds after this component wakes at which Tev appears regardless of the exit ramp. Covers boots where the arrival sequence never runs (Play straight into the gameplay scene, dev spawns) — without it he'd stay hidden forever there.")]
     public float fallbackSeconds = 180f;
 
@@ -282,17 +286,7 @@ public class TevMushroomOnboarding : MonoBehaviour
             _playerTf = pc.transform;
         }
 
-        float radius = talkRadius;
-        if (radius <= 0f)
-        {
-            // Derive from the authored trigger so this matches whatever range the
-            // NPC was set up with, scale included.
-            var sc = GetComponent<SphereCollider>();
-            var ls = transform.lossyScale;
-            radius = sc != null
-                ? sc.radius * Mathf.Max(ls.x, Mathf.Max(ls.y, ls.z))
-                : 5f;
-        }
+        float radius = EffectiveTalkRadius();
 
         bool near = (_playerTf.position - transform.position).sqrMagnitude <= radius * radius;
         if (near) _playerInRange = true;
@@ -316,6 +310,8 @@ public class TevMushroomOnboarding : MonoBehaviour
         if (!_visible) return;
 
         UpdateProximity();
+
+        if (debugLogging) TickDebug();
 
         if (_playerInRange && !_conversationActive)
         {
@@ -341,6 +337,42 @@ public class TevMushroomOnboarding : MonoBehaviour
             if (_isTyping) _skipTyping = true;
             else if (_waitingForClick) _waitingForClick = false;
         }
+    }
+
+    // One line a second while the player is near, naming the state of every gate
+    // between "player is nearby" and "Press F is on screen". Cheap, and it turns
+    // "I couldn't talk to him" into an exact answer instead of a guess.
+    float _nextDebugLog;
+    void TickDebug()
+    {
+        if (Time.time < _nextDebugLog) return;
+        if (_playerTf == null) return;
+        float dist = Vector3.Distance(_playerTf.position, transform.position);
+        if (dist > debugRadius) return;
+        _nextDebugLog = Time.time + 1f;
+
+        var ui = InteractPromptUI.Instance;
+        string owner = "n/a";
+        if (ui != null)
+        {
+            var f = typeof(InteractPromptUI).GetField("_owner",
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            var o = f != null ? f.GetValue(ui) as Object : null;
+            owner = o != null ? o.name : "null";
+        }
+
+        Debug.Log($"[TevOnboarding] dist={dist:F1}/{EffectiveTalkRadius():F1} visible={_visible} inRange={_playerInRange}" +
+                  $" gaze={InteractGaze.IsLookingAt(this)} promptVisible={InteractPromptUI.IsPromptVisible} promptOwner={owner}" +
+                  $" gateEnabled={TutorialGate.IsGateEnabled} talkUnlocked={TutorialGate.IsUnlocked(TutorialAbility.TalkToNPC)}" +
+                  $" inDialogue={PlayerController.isInDialogue} stage={MushroomQuest.CurrentStage}");
+    }
+
+    float EffectiveTalkRadius()
+    {
+        if (talkRadius > 0f) return talkRadius;
+        var sc = GetComponent<SphereCollider>();
+        var ls = transform.lossyScale;
+        return sc != null ? sc.radius * Mathf.Max(ls.x, Mathf.Max(ls.y, ls.z)) : 5f;
     }
 
     void StartConversation()
