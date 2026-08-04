@@ -111,8 +111,8 @@ public class MushroomGrowth : MonoBehaviour
 
     // ── Tunables ───────────────────────────────────────────────────────────
     [Header("Growth pacing")]
-    [Tooltip("Seconds to fully mature at 100% ambient O2 (doubles at 50%, stalls below the floor). Shorter than a tree's — a crop should come round faster than a forest.")]
-    [SerializeField] float baseGrowthDuration = 60f;
+    [Tooltip("Seconds to fully mature at 100% ambient O2 (doubles at 50%, stalls below the floor). Kept EQUAL to SaplingGrowth.baseGrowthDuration (90) at Sam's request 2026-08-04 — mushrooms and trees grow at the same rate for now. If one of these is retuned, retune the other or the pair drifts apart silently.")]
+    [SerializeField] float baseGrowthDuration = 90f;
     [Tooltip("Ambient O2 %% below which a planted mushroom doesn't grow at all (keeps its progress).")]
     [SerializeField] float minO2ToGrow = 10f;
     [Tooltip("Seconds between growth/O2 samples. Cheap; growth doesn't need per-frame precision.")]

@@ -3,7 +3,9 @@
 Built 2026-08-04 from `Handoff_CozyLoop_Switch_MushroomSlice_v1.md` plus Sam's
 answers to its five open questions and one addition (mushroom saplings).
 
-**Status: BUILT + compiles clean in the Editor. NOT play-tested.**
+**Status: mushroom harvest + selling PLAY-VERIFIED by Sam 2026-08-04.** The Tev
+onboarding was attached to the wrong Tev on the first pass (fixed — see below)
+and is still unplayed end to end; planting/growth unplayed.
 
 ---
 
@@ -58,6 +60,10 @@ single icon carrying "×9" would not.
 
 Chop → 0–2 spores of that species → select the spore slot → the placement ghost
 appears → plant → `MushroomGrowth` grows it back into **the same species**.
+
+Growth rate is **90s at 100% ambient O2 — deliberately identical to
+`SaplingGrowth`** (Sam's call 2026-08-04: "make them grow at the same rate for
+now"). If either is retuned, retune the other or the pair drifts apart silently.
 
 `MushroomGrowth` is a deliberate near-copy of `SaplingGrowth` rather than a
 reuse of it, because a mushroom is not a tree in the one way that matters:
@@ -121,17 +127,35 @@ was the payout for eating an ENTIRE mushroom and one mushroom is now 3–9 caps.
 
 ## Tev's onboarding
 
-`TevMushroomOnboarding`, on `Humble Abode/TEV2` beside the existing
-`TevDialogue`. It **disables** the deprecated on-landing behaviour (the wave,
-and the Mission-1 dialogue tied to on-hold story content) rather than deleting
-it — `restoreMissionDialogue` hands Tev back to the mission tree when story
-resumes.
+`TevMushroomOnboarding`, on **`Humble Abode/TEV`** — the Tev standing 9.5m from
+the StartCabin, 25m from where the shuttle lands. **Not `TEV2`**, which is the
+village Tev 229m away carrying the on-hold Mission-1 tree. (It went on TEV2
+first; the player could see the near Tev and not talk to him, because `TEV` has
+only an Animator, a wave and a trigger — it never had a dialogue component at
+all.) `TEV`'s trigger was also widened 0.385 → 0.72 to match TEV2's, so the talk
+prompt reaches from the same distance as every other NPC (~5.6m world).
+
+It **disables** the deprecated on-landing behaviour (the wave, and — on TEV2, if
+it were ever hosted there — the Mission-1 dialogue) rather than deleting it;
+`restoreMissionDialogue` hands Tev back to the mission tree when story resumes.
 
 Hidden for **120s** from the moment the shuttle's exit ramp deploys
 (`ShuttleExitDoor.OpenedAtTime`), then he's just standing outside his cabin,
 idle and interactable. He appears whether or not the player left the shuttle.
 Once past the first talk he's permanently present, so a mid-game scene reload
 can't make him vanish for another two minutes.
+
+Two robustness rules learned the hard way, both verified in play mode:
+
+- **`fallbackSeconds` (180) is a hard backstop.** Pressing Play straight into
+  the gameplay scene never runs the arrival sequence, so `ShuttleExitDoor
+  .HasOpened` stays false — keying visibility purely off the ramp left Tev
+  hidden *forever* on those boots.
+- **Range is derived from distance every frame, not just from the trigger.**
+  This component toggles Tev's colliders to hide him, and a trigger disabled
+  while the player stands inside it can miss its `OnTriggerEnter` when it comes
+  back — which reads as an NPC who refuses to talk. Trigger callbacks stay as
+  the fast path; whichever says "in range" wins.
 
 State lives in `MushroomQuest` over new **StoryDirector counters** (`GetCounter`
 / `SetCounter` / `AddCounter`, persisted in `StoryDirectorSave`) — flags can't
@@ -172,8 +196,8 @@ All JsonUtility-safe and empty-by-default, so old saves load correctly.
 
 - [ ] Locker holds axe + water bottle on first open *(verified in-scene: two
       `LootBoxStarterItem`s on `Shuttle_Lander/Interior/Locker_2` — Axe + WaterBottle)*
-- [ ] Ramp opens → Tev absent exactly 120s → appears at his cabin; no wave, no
-      old Mission-1 dialogue
+- [ ] Ramp opens → Tev absent exactly 120s → **the Tev by the START CABIN**
+      (`TEV`, not the village `TEV2`) appears and is talkable; no wave
 - [ ] Mushroom chop: ~half a tree's effort, squish per hit, wobble reads rubbery,
       topple + shrink, 3–9 species-matched drops, spin/bob, walk-over pickup
 - [ ] 0–2 spores drop; planting one grows the SAME species back

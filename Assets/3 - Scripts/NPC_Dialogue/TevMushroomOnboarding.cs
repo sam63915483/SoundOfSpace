@@ -38,6 +38,10 @@ public class TevMushroomOnboarding : MonoBehaviour
     [Header("Timing")]
     [Tooltip("Seconds after the shuttle's exit ramp deploys before Tev appears outside his cabin. Handoff §2.1 = 120. He appears whether or not the player has left the shuttle.")]
     public float hiddenSeconds = 120f;
+    [Tooltip("Metres the player must be within to get the talk prompt. 0 = derive it from this object's own trigger SphereCollider (scale included). Set a value to override.")]
+    public float talkRadius = 0f;
+    [Tooltip("Hard backstop: seconds after this component wakes at which Tev appears regardless of the exit ramp. Covers boots where the arrival sequence never runs (Play straight into the gameplay scene, dev spawns) — without it he'd stay hidden forever there.")]
+    public float fallbackSeconds = 180f;
 
     [Header("Deprecated behaviour")]
     [Tooltip("Disable Tev's wave animation while the onboarding is live. The component is only disabled, never removed.")]
@@ -130,6 +134,10 @@ public class TevMushroomOnboarding : MonoBehaviour
     Collider[] _colliders;
     bool _visible = true;
 
+    Transform _playerTf;
+    float _nextPlayerSearch;
+    float _startedAt;
+
     bool _playerInRange;
     bool _conversationActive;
     bool _isTyping;
@@ -143,6 +151,7 @@ public class TevMushroomOnboarding : MonoBehaviour
 
     void Start()
     {
+        _startedAt = Time.time;
         if (dialogueText == null || talkPromptText == null)
         {
             var existing = FindObjectOfType<NPCDialogue>();
@@ -189,11 +198,18 @@ public class TevMushroomOnboarding : MonoBehaviour
     /// ramp deploys at all he's hidden too — the player is still inside the pod.
     /// Once the onboarding is past its first talk he's permanently present, so a
     /// mid-game scene reload can't make him vanish for another two minutes.
+    ///
+    /// The backstop matters: the ramp beat doesn't run on every boot (pressing
+    /// Play straight into the gameplay scene in the Editor, a dev spawn, a
+    /// future flow that skips the arrival). Keying visibility PURELY off the
+    /// door would leave Tev hidden forever on those, which reads to the player
+    /// as an NPC that refuses to exist. So there's a hard ceiling either way.
     bool ShouldBeVisible()
     {
         if (MushroomQuest.CurrentStage != MushroomQuest.Stage.NotMet) return true;
-        if (!ShuttleExitDoor.HasOpened) return false;
-        return Time.time - ShuttleExitDoor.OpenedAtTime >= hiddenSeconds;
+        if (ShuttleExitDoor.HasOpened && Time.time - ShuttleExitDoor.OpenedAtTime >= hiddenSeconds)
+            return true;
+        return Time.time - _startedAt >= fallbackSeconds;
     }
 
     void SetVisible(bool on)
@@ -230,11 +246,59 @@ public class TevMushroomOnboarding : MonoBehaviour
         if (_conversationActive) StopConversation();
     }
 
+    /// Distance fallback for "player is close enough to talk".
+    ///
+    /// This component TOGGLES Tev's colliders to hide him for the first two
+    /// minutes, and a trigger that gets disabled while the player is standing
+    /// inside it can miss its OnTriggerEnter when it comes back — which reads to
+    /// the player as an NPC who simply refuses to talk. So range is also derived
+    /// straight from distance every frame; the trigger callbacks stay as the
+    /// fast path. Whichever says "in range" wins.
+    void UpdateProximity()
+    {
+        if (_playerTf == null)
+        {
+            if (Time.time < _nextPlayerSearch) return;
+            _nextPlayerSearch = Time.time + 1f;
+            var pc = FindObjectOfType<PlayerController>();
+            if (pc == null) return;
+            _playerTf = pc.transform;
+        }
+
+        float radius = talkRadius;
+        if (radius <= 0f)
+        {
+            // Derive from the authored trigger so this matches whatever range the
+            // NPC was set up with, scale included.
+            var sc = GetComponent<SphereCollider>();
+            var ls = transform.lossyScale;
+            radius = sc != null
+                ? sc.radius * Mathf.Max(ls.x, Mathf.Max(ls.y, ls.z))
+                : 5f;
+        }
+
+        bool near = (_playerTf.position - transform.position).sqrMagnitude <= radius * radius;
+        if (near) _playerInRange = true;
+        else if (_playerInRange && !_conversationActive)
+        {
+            _playerInRange = false;
+            InteractPromptUI.Clear(this);
+        }
+        else if (!near && _conversationActive)
+        {
+            // Walked off mid-conversation.
+            _playerInRange = false;
+            StopConversation();
+        }
+    }
+
     void Update()
     {
         SetVisible(ShouldBeVisible());
         ApplySuppression();
         if (!_visible) return;
+
+        UpdateProximity();
 
         if (_playerInRange && !_conversationActive)
         {
