@@ -17,6 +17,43 @@ public class CelestialBody : GravityObject {
     // black hole, which must not perturb the sun/planet orbits. See
     // NBodySimulation.FixedUpdate / CalculateAcceleration.
     public bool isStaticAttractor = false;
+    /// Bodies sharing a non-empty orbitGroup do NOT pull on each other.
+    ///
+    /// This exists for the twins. Two worlds that read as a close pair is a
+    /// look, and the sun makes it physically impossible here: a pair only stays
+    /// bound well inside its Hill radius, that radius grows with distance from
+    /// the sun, and a compact solar system means nothing is far from the sun.
+    /// At 6020 out, a 998-wide pair of radius-300 planets needs surface gravity
+    /// ~133 to hold together — unwalkable. Left interacting at that spacing they
+    /// eject each other past 1,000,000 within the hour (measured).
+    ///
+    /// So the twins are placed CO-ORBITALLY — same orbital radius, offset along
+    /// the orbit — and simply don't feel each other. Same radius means identical
+    /// angular speed, so they hold their spacing exactly, forever, with no drift
+    /// to soak-test. The player and the ship still feel BOTH at full strength;
+    /// only the body-on-body loop skips the pair (CalculateAcceleration only
+    /// applies the skip when the thing being accelerated is itself a grouped
+    /// body, and the player passes ignoreBody = null).
+    public string orbitGroup = "";
+
+    /// Set on a FOLLOWER to lock it beside a leader forever.
+    ///
+    /// orbitGroup alone (no mutual gravity, same orbital radius) keeps the twins
+    /// paired in theory, but they are still perturbed INDEPENDENTLY by the sun's
+    /// own wobble and by passing planets, and at ~1000 apart it only takes a
+    /// little accumulated difference to close the gap — measured, they overlap
+    /// after about an hour. Slaving removes the whole failure mode instead of
+    /// making it slower: the follower is not integrated at all, it is placed each
+    /// step at the leader's own orbital radius, rotated by a fixed angle about
+    /// the orbit normal. Identical radius and identical speed, by construction,
+    /// permanently. It still has full mass and full surface gravity — it just
+    /// doesn't get its own opinion about where to be.
+    public CelestialBody coOrbitLeader;
+    /// Angle (degrees) around the orbit by which this follower trails its leader.
+    /// Captured from the authored placement, so moving either in the editor and
+    /// re-running the rescale keeps whatever spacing was set.
+    public float coOrbitAngle;
+
     Transform meshHolder;
 
     public Vector3 velocity { get; private set; }

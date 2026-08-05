@@ -168,33 +168,59 @@ public static class SolarSystemRescale
                 Vector3 radial = (bary - sunPos).normalized;
 
                 float hill = baryDist * Mathf.Pow((float)(mt / (3.0 * sunMass)), 1f / 3f);
-                // BinarySeparation > 0 pins the gap instead of deriving it from
-                // the Hill rule. The twins read as a PAIR — that's the whole
-                // point of them — and the Hill-stable spacing (3681 at 0.5×) puts
-                // them so far apart they stop looking related. Their original
-                // 1995 is the look; see the class comment for what it costs.
-                float sep = BinarySeparation > 0f
-                    ? Mathf.Max(BinarySeparation, (inner.radius + outer.radius) * 1.5f)
-                    : Mathf.Max(HillSpacing * hill, (inner.radius + outer.radius) * 3f);
 
-                // Split the separation about the barycentre by mass.
-                float dIn = sep * (float)(mo / mt);
-                float dOut = sep * (float)(mi / mt);
-                newPos[inner] = sunPos + radial * (baryDist - dIn);
-                newPos[outer] = sunPos + radial * (baryDist + dOut);
+                // The separation SCALES with the system. Keeping it fixed was the
+                // bug: at 0.5× the twins stayed 1995 apart while the viewing
+                // distance from Humble Abode halved, so they appeared exactly
+                // twice as far apart in the sky (9.2° -> 18.2°). Scaling it
+                // preserves the look, which is the thing that actually matters.
+                float sep = Mathf.Max(Vector3.Distance(pos0[inner], pos0[outer]) * k,
+                                      (inner.radius + outer.radius) * 1.4f);
 
-                // Circular heliocentric velocity, in the pair's existing direction of travel.
-                Vector3 dir = newVel[inner].sqrMagnitude > 0.0001f ? newVel[inner].normalized
+                // CO-ORBITAL, not a bound binary. Both twins sit at the SAME
+                // orbital radius, offset ALONG the orbit, and are exempted from
+                // each other's gravity via orbitGroup. Same radius means the same
+                // angular speed, so the spacing is exact and permanent — no
+                // drift, nothing to soak-test. A real bound pair is impossible
+                // here: at this distance from the sun it would need surface
+                // gravity ~133 to stay together (see CelestialBody.orbitGroup).
+                Vector3 dir = newVel[inner].sqrMagnitude > 0.0001f
+                            ? newVel[inner].normalized
                             : Vector3.Cross(radial, Vector3.forward).normalized;
-                foreach (var b in new[] { inner, outer })
+                Vector3 along = Vector3.ProjectOnPlane(dir, radial).normalized;
+                if (along.sqrMagnitude < 0.5f) along = Vector3.Cross(radial, Vector3.up).normalized;
+
+                float halfAngle = sep * 0.5f / Mathf.Max(1f, baryDist);
+                foreach (var (b, sign) in new[] { (inner, 0f), (outer, 2f) })
                 {
-                    float r = Vector3.Distance(newPos[b], sunPos);
-                    newVel[b] = dir * Mathf.Sqrt((float)(G * sunMass / r));
+                    // Rotate about the orbit normal so BOTH end up at baryDist.
+                    Vector3 normal = Vector3.Cross(radial, along).normalized;
+                    Vector3 r = Quaternion.AngleAxis(sign * halfAngle * Mathf.Rad2Deg, normal) * radial;
+                    newPos[b] = sunPos + r * baryDist;
+                    Vector3 v = Vector3.Cross(normal, r).normalized;
+                    if (Vector3.Dot(v, along) < 0f) v = -v;
+                    newVel[b] = v * Mathf.Sqrt((float)(G * sunMass / baryDist));
+
+                    var bso = new SerializedObject(b);
+                    bso.FindProperty("orbitGroup").stringValue = "twins";
+                    // The OUTER twin follows the inner one: not integrated, just
+                    // placed at the leader's radius rotated by the pair angle.
+                    if (b == outer)
+                    {
+                        bso.FindProperty("coOrbitLeader").objectReferenceValue = inner;
+                        bso.FindProperty("coOrbitAngle").floatValue = halfAngle * 2f * Mathf.Rad2Deg;
+                    }
+                    else
+                    {
+                        bso.FindProperty("coOrbitLeader").objectReferenceValue = null;
+                        bso.FindProperty("coOrbitAngle").floatValue = 0f;
+                    }
+                    if (apply) bso.ApplyModifiedPropertiesWithoutUndo();
                 }
 
-                sb.AppendLine($"  binary '{innerName} + {outerName}': barycentre {baryDist:F0}, Hill {hill:F0}," +
-                              $" separation {Vector3.Distance(pos0[inner], pos0[outer]):F0} -> {sep:F0}" +
-                              $" ({HillSpacing}× Hill), both circularised");
+                sb.AppendLine($"  co-orbital pair '{innerName} + {outerName}': both at {baryDist:F0} from the sun," +
+                              $" separation {Vector3.Distance(pos0[inner], pos0[outer]):F0} -> {sep:F0} (scaled by k)," +
+                              $" orbitGroup='twins' so they ignore each other, Hill would have been {hill:F0}");
             }
         }
 
