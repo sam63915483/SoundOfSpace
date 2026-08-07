@@ -5,41 +5,51 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// The phone's Messages app (spec §7, 2026-08-07 design): an index of
-/// contacts (pinned guide thread + every buyer with ledger state), a thread
-/// view with reply chips (accept / counter / decline, window pick,
-/// counter-back), the pending-appointment card with live distance, and a
-/// contact card listing the hidden wants the player has earned.
+/// The phone's Messages app, v2 (Sam's mockup pick, 2026-08-07): the
+/// "bubble readability + scanner accents" look from
+/// docs/superpowers/mockups/, with the SLIDER counter mechanic — click or
+/// drag along a green→red risk track, big live price readout, no typing
+/// anywhere (controller-ready by construction).
 ///
-/// Mounted by PlayerPhoneUI.EnterMessages the same way AIChatScreen is
-/// (full-screen child of _screenRT). Renders everything from BuyerLedger
-/// events via BuyerTexts — this class generates no content and owns no
-/// persistent state. Mirrors AIChatScreen's visual language and its
-/// wrapped-bubble sizing + sticky-scroll patterns.
+/// Structure is unchanged from v1: index (pinned guide thread + buyers),
+/// thread view with reply chips, appointment card with live countdown +
+/// distance, contact card of earned reveals. Everything renders from
+/// BuyerLedger events via BuyerTexts; this class owns no persistent state.
+/// Mounted by PlayerPhoneUI.EnterMessages as a full-screen child of the
+/// phone screen.
 /// </summary>
 public class MessagesScreen : MonoBehaviour
 {
-    /// True while the counter-offer input field has focus, so typed digits
-    /// can't double as movement/hotkey input. ORed with
-    /// AIChatScreen.IsTypingActive at the phone/player guards.
-    public static bool IsTypingActive { get; private set; }
+    /// Kept for AIChatScreen's aggregate typing guard. v2 has no text input
+    /// anywhere (the counter is a slider), so this is constant.
+    public static bool IsTypingActive => false;
 
-    // Palette — same values as PlayerPhoneUI / AIChatScreen.
+    // ── Palette — the mockup blend: neutral dark bases, cyan/gold accents ──
+    static readonly Color ScreenBg   = new Color32(0x0F, 0x11, 0x16, 0xFF);
+    static readonly Color HeaderBg   = new Color32(0x15, 0x18, 0x20, 0xFF);
+    static readonly Color TrayBg     = new Color32(0x12, 0x15, 0x1C, 0xFF);
+    static readonly Color RowBg      = new Color32(0x1A, 0x1D, 0x25, 0xFF);
+    static readonly Color ThemBubble = new Color32(0x20, 0x24, 0x2E, 0xFF);
+    static readonly Color MeBubble   = new Color32(0x2E, 0x7D, 0x4F, 0xFF);
+    static readonly Color TextMain   = new Color32(0xE9, 0xED, 0xF2, 0xFF);
+    static readonly Color TextDim    = new Color32(0x8B, 0x95, 0xA3, 0xFF);
     static readonly Color AccentCyan = new Color32(0x5C, 0xC8, 0xFF, 0xFF);
-    static readonly Color LabelWhite = new Color32(0xEA, 0xF6, 0xFF, 0xFF);
-    static readonly Color DimBlue    = new Color32(0x7F, 0xA0, 0xBD, 0xFF);
-    static readonly Color TileBg     = new Color32(0x0F, 0x19, 0x2A, 0xD9);
-    static readonly Color ScreenBg   = new Color32(0x06, 0x0F, 0x1A, 0xFF);
-    static readonly Color ButtonGrey = new Color32(0x2A, 0x40, 0x60, 0xFF);
-    static readonly Color UnreadRed  = new Color32(0xFF, 0x5A, 0x5A, 0xFF);
-    static readonly Color OkGreen    = new Color32(0x6E, 0xDC, 0x82, 0xFF);
-    static readonly Color WarnAmber  = new Color32(0xFF, 0xD7, 0x32, 0xFF);
+    static readonly Color Gold       = new Color32(0xFF, 0xD7, 0x32, 0xFF);
+    static readonly Color OkGreen    = new Color32(0x57, 0xC4, 0x6E, 0xFF);
+    static readonly Color OkGreenBg  = new Color32(0x1C, 0x3A, 0x26, 0xFF);
+    static readonly Color WarnAmber  = new Color32(0xE8, 0xA3, 0x3D, 0xFF);
+    static readonly Color WarnBg     = new Color32(0x3A, 0x2F, 0x1A, 0xFF);
+    static readonly Color DimBtnBg   = new Color32(0x1A, 0x20, 0x29, 0xFF);
+    static readonly Color BadRed     = new Color32(0xE0, 0x55, 0x55, 0xFF);
+    static readonly Color UnreadCyan = new Color32(0x4F, 0xC3, 0xF7, 0xFF);
+    static readonly Color ApptBg     = new Color32(0x20, 0x30, 0x1F, 0xFF);
 
     enum View { Index, Thread, Card }
-    enum ChipMode { Main, WindowPick, CounterInput }
+    enum ChipMode { Main, WindowPick, CounterSlider }
 
     System.Action _onExit;
     System.Action _openHalChat;
+    PlayerController _player;   // cached once — screen is short-lived
 
     RectTransform _root;
     RectTransform _indexRoot, _threadRoot, _cardRoot;
@@ -57,15 +67,18 @@ public class MessagesScreen : MonoBehaviour
     RectTransform _chipsRow;
     TextMeshProUGUI _apptText;
     RectTransform _apptCard;
-    TMP_InputField _counterInput;
     ChipMode _chipMode = ChipMode.Main;
     int _threadStamp = -1;
     bool _stickToBottom = true;
 
-    struct BubbleEntry { public RectTransform Row; public LayoutElement RowLE; public TextMeshProUGUI Label; public int LastShownLen; }
-    readonly List<BubbleEntry> _bubbles = new List<BubbleEntry>();
+    // Counter slider state.
+    Slider _slider;
+    TextMeshProUGUI _sliderPrice, _sliderTotal, _sliderRisk, _sliderSendLabel, _handleLabel;
+    int _sliderMin, _sliderMax;
+    int _lastSliderVal = -1;
 
-    PlayerController _player;   // cached once — screen is short-lived
+    struct BubbleEntry { public RectTransform Row; public LayoutElement RowLE; public TextMeshProUGUI Label; public int LastShownLen; public float LastWidth; }
+    readonly List<BubbleEntry> _bubbles = new List<BubbleEntry>();
 
     public void Init(System.Action onExit, System.Action openHalChat)
     {
@@ -81,16 +94,11 @@ public class MessagesScreen : MonoBehaviour
         ShowIndex();
     }
 
-    void OnDestroy() { IsTypingActive = false; }
-
     void Update()
     {
-        IsTypingActive = _counterInput != null && _counterInput.isFocused;
-
-        // Esc / pad-B backs out one level (matches AIChatScreen — note the
-        // phone itself also reacts to Esc, same as it always has with the
-        // AI chat; X is reserved for the phone's own app handling).
-        if ((Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B)) && !IsTypingActive)
+        // Esc / pad-B backs out one level (matches AIChatScreen — the phone
+        // itself also reacts to Esc, same as it always has with the AI chat).
+        if (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B))
         {
             if (_view == View.Card) { ShowThread(_openId); return; }
             if (_view == View.Thread) { ShowIndex(); return; }
@@ -99,6 +107,7 @@ public class MessagesScreen : MonoBehaviour
         }
 
         ResizeBubblesToFit();
+        UpdateSliderReadout();
 
         _refreshTimer += Time.unscaledDeltaTime;
         if (_refreshTimer >= 1f)
@@ -138,24 +147,12 @@ public class MessagesScreen : MonoBehaviour
 
         _indexRoot = FullRect("IndexView", _root);
         var vlg = _indexRoot.gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(4, 4, 4, 4);
-        vlg.spacing = 4f;
+        vlg.padding = new RectOffset(6, 6, 6, 6);
+        vlg.spacing = 6f;
         vlg.childControlWidth = true; vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
 
-        // Header: back arrow + title.
-        var header = NewUI("Header", _indexRoot);
-        header.gameObject.AddComponent<LayoutElement>().preferredHeight = 24f;
-        var hlg = header.gameObject.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(4, 4, 0, 0);
-        hlg.spacing = 6f;
-        hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.childControlWidth = true; hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
-        MakeButton(header, "<", 16f, AccentCyan, Exit, 16f);
-        var title = MakeText(header, "MESSAGES", 12, AccentCyan, TextAlignmentOptions.MidlineLeft);
-        title.fontStyle = FontStyles.Bold;
-        title.characterSpacing = 2f;
+        BuildHeaderBar(_indexRoot, "MESSAGES", null, Exit, null);
 
         // Scrollable row list.
         var viewport = NewUI("ScrollViewport", _indexRoot);
@@ -171,7 +168,7 @@ public class MessagesScreen : MonoBehaviour
         content.sizeDelta = Vector2.zero;
         var cvlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
         cvlg.padding = new RectOffset(2, 2, 2, 2);
-        cvlg.spacing = 4f;
+        cvlg.spacing = 5f;
         cvlg.childControlWidth = true; cvlg.childControlHeight = true;
         cvlg.childForceExpandWidth = true; cvlg.childForceExpandHeight = false;
         content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -204,13 +201,9 @@ public class MessagesScreen : MonoBehaviour
             Destroy(_indexContent.GetChild(i).gameObject);
 
         // Pinned guide thread (HAL today, Frump later — pure content swap).
-        BuildIndexRow(_indexContent,
-            name: NameStore.ResolvedAIName,
-            sub: "guide",
-            pips: -1, unread: false,
-            time: "",
-            onTap: () => _openHalChat?.Invoke(),
-            accent: true);
+        BuildIndexRow(_indexContent, NameStore.ResolvedAIName, "tap to talk",
+            pips: -1, unread: false, time: "",
+            onTap: () => _openHalChat?.Invoke(), guide: true, id: "guide");
 
         // Buyers with any thread history, most recent first.
         var buyers = new List<BuyerLedger.Buyer>();
@@ -223,21 +216,19 @@ public class MessagesScreen : MonoBehaviour
             var last = b.events[b.events.Count - 1];
             string captured = b.id;
             BuildIndexRow(_indexContent,
-                name: AlienNames.For(b.id),
-                sub: BuyerTexts.Preview(b.id, last),
-                pips: BuyerLedger.PipCount(b.id),
-                unread: b.unread > 0,
-                time: Ago(last.at),
-                onTap: () => ShowThread(captured),
-                accent: false);
+                AlienNames.For(b.id), BuyerTexts.Preview(b.id, last),
+                pips: BuyerLedger.PipCount(b.id), unread: b.unread > 0,
+                time: Ago(last.at), onTap: () => ShowThread(captured),
+                guide: false, id: b.id);
         }
 
         if (buyers.Count == 0)
         {
             var empty = NewUI("Empty", _indexContent);
-            empty.gameObject.AddComponent<LayoutElement>().preferredHeight = 40f;
-            var t = MakeText(empty, "no messages yet — regulars will text\nyou when they want more", 9, DimBlue, TextAlignmentOptions.Center);
+            empty.gameObject.AddComponent<LayoutElement>().preferredHeight = 48f;
+            var t = MakeText(empty, "no messages yet — regulars will text\nyou when they want more", 10, TextDim, TextAlignmentOptions.Center);
             t.fontStyle = FontStyles.Italic;
+            Fill(t.rectTransform);
         }
     }
 
@@ -252,78 +243,110 @@ public class MessagesScreen : MonoBehaviour
         return $"{Mathf.FloorToInt(s / 3600f)}h";
     }
 
+    /// A stable per-buyer avatar tint (mockup B's identity trick).
+    static Color AvatarColor(string id)
+    {
+        float hue = (AlienIdentity.Hash(id + ":avatar") % 360u) / 360f;
+        return Color.HSVToRGB(hue, 0.48f, 0.72f);
+    }
+
     void BuildIndexRow(RectTransform parent, string name, string sub, int pips,
-                       bool unread, string time, System.Action onTap, bool accent)
+                       bool unread, string time, System.Action onTap, bool guide, string id)
     {
         var row = NewUI($"Row_{name}", parent);
-        row.gameObject.AddComponent<LayoutElement>().preferredHeight = 34f;
+        row.gameObject.AddComponent<LayoutElement>().preferredHeight = 44f;
         var bg = row.gameObject.AddComponent<Image>();
-        bg.color = TileBg;
+        bg.sprite = Rounded(10);
+        bg.type = Image.Type.Sliced;
+        bg.color = RowBg;
         bg.raycastTarget = true;
         var btn = row.gameObject.AddComponent<Button>();
         btn.onClick.AddListener(() => onTap?.Invoke());
 
-        // Name (top-left).
-        var nameT = MakeText(row, name, 11, accent ? AccentCyan : LabelWhite, TextAlignmentOptions.TopLeft);
-        var nameRT = (RectTransform)nameT.transform;
-        nameRT.anchorMin = new Vector2(0f, 0f); nameRT.anchorMax = new Vector2(0.6f, 1f);
-        nameRT.offsetMin = new Vector2(8f, 2f); nameRT.offsetMax = new Vector2(0f, -3f);
+        // Avatar disc + initial.
+        var avRT = NewUI("Avatar", row);
+        avRT.anchorMin = new Vector2(0f, 0.5f);
+        avRT.anchorMax = new Vector2(0f, 0.5f);
+        avRT.pivot = new Vector2(0f, 0.5f);
+        avRT.sizeDelta = new Vector2(30f, 30f);
+        avRT.anchoredPosition = new Vector2(8f, 0f);
+        var av = avRT.gameObject.AddComponent<Image>();
+        av.sprite = HALVisuals.Disc();
+        av.color = guide ? new Color32(0x8E, 0x6A, 0xC8, 0xFF) : AvatarColor(id);
+        av.raycastTarget = false;
+        var initial = MakeText(avRT, name.Length > 0 ? name.Substring(0, 1) : "?", 14, Color.white, TextAlignmentOptions.Center);
+        initial.fontStyle = FontStyles.Bold;
+        Fill(initial.rectTransform);
+
+        // Name (top, right of avatar).
+        var nameT = MakeText(row, name, 12, guide ? AccentCyan : TextMain, TextAlignmentOptions.TopLeft);
+        var nameRT = nameT.rectTransform;
+        nameRT.anchorMin = new Vector2(0f, 0f); nameRT.anchorMax = new Vector2(0.55f, 1f);
+        nameRT.offsetMin = new Vector2(46f, 2f); nameRT.offsetMax = new Vector2(0f, -5f);
         nameT.fontStyle = FontStyles.Bold;
 
-        // Preview (bottom-left, dim, one line).
-        var subT = MakeText(row, sub, 8, DimBlue, TextAlignmentOptions.BottomLeft);
-        var subRT = (RectTransform)subT.transform;
-        subRT.anchorMin = new Vector2(0f, 0f); subRT.anchorMax = new Vector2(1f, 0.55f);
-        subRT.offsetMin = new Vector2(8f, 3f); subRT.offsetMax = new Vector2(-24f, 0f);
+        // Preview (bottom, dim, one line, ellipsized).
+        var subT = MakeText(row, sub, 9, TextDim, TextAlignmentOptions.BottomLeft);
+        var subRT = subT.rectTransform;
+        subRT.anchorMin = new Vector2(0f, 0f); subRT.anchorMax = new Vector2(1f, 0.5f);
+        subRT.offsetMin = new Vector2(46f, 5f); subRT.offsetMax = new Vector2(-28f, 0f);
         subT.enableWordWrapping = false;
         subT.overflowMode = TextOverflowModes.Ellipsis;
 
         // Time (top-right, dim).
-        var timeT = MakeText(row, time, 8, DimBlue, TextAlignmentOptions.TopRight);
-        var timeRT = (RectTransform)timeT.transform;
-        timeRT.anchorMin = new Vector2(0.7f, 0.45f); timeRT.anchorMax = new Vector2(1f, 1f);
-        timeRT.offsetMin = Vector2.zero; timeRT.offsetMax = new Vector2(-22f, -3f);
+        var timeT = MakeText(row, time, 8, TextDim, TextAlignmentOptions.TopRight);
+        var timeRT = timeT.rectTransform;
+        timeRT.anchorMin = new Vector2(0.7f, 0.5f); timeRT.anchorMax = new Vector2(1f, 1f);
+        timeRT.offsetMin = Vector2.zero; timeRT.offsetMax = new Vector2(-26f, -5f);
 
-        // Bond pips (right of the name) — sprite discs, not font glyphs
-        // (Techno SDF has no geometric-shape characters). Labelled "BOND"
-        // so a new player knows what the circles measure (Sam's note).
+        // Guide gets a subtitle chip instead of pips.
+        if (guide)
+        {
+            var g = MakeText(row, "GUIDE", 7, TextDim, TextAlignmentOptions.MidlineLeft);
+            var gRT = g.rectTransform;
+            gRT.anchorMin = new Vector2(0.55f, 0.55f); gRT.anchorMax = new Vector2(0.7f, 1f);
+            gRT.offsetMin = Vector2.zero; gRT.offsetMax = Vector2.zero;
+            g.characterSpacing = 2f;
+        }
+
+        // Bond pips (sprite discs — Techno SDF has no shape glyphs) + label.
         if (pips >= 0)
         {
-            var bondLbl = MakeText(row, "BOND", 6, DimBlue, TextAlignmentOptions.MidlineLeft);
-            var bondRT = (RectTransform)bondLbl.transform;
-            bondRT.anchorMin = new Vector2(0.62f, 0.62f);
-            bondRT.anchorMax = new Vector2(0.62f, 0.62f);
+            var bondLbl = MakeText(row, "BOND", 7, TextDim, TextAlignmentOptions.MidlineRight);
+            var bondRT = bondLbl.rectTransform;
+            bondRT.anchorMin = new Vector2(0.55f, 0.58f);
+            bondRT.anchorMax = new Vector2(0.55f, 0.58f);
             bondRT.pivot = new Vector2(1f, 0.5f);
-            bondRT.sizeDelta = new Vector2(30f, 10f);
-            bondRT.anchoredPosition = new Vector2(-4f, 0f);
+            bondRT.sizeDelta = new Vector2(34f, 10f);
+            bondRT.anchoredPosition = new Vector2(0f, 0f);
             bondLbl.characterSpacing = 1f;
             for (int i = 0; i < 5; i++)
             {
                 var pipRT = NewUI($"Pip{i}", row);
-                pipRT.anchorMin = new Vector2(0.62f, 0.62f);
-                pipRT.anchorMax = new Vector2(0.62f, 0.62f);
+                pipRT.anchorMin = new Vector2(0.55f, 0.58f);
+                pipRT.anchorMax = new Vector2(0.55f, 0.58f);
                 pipRT.pivot = new Vector2(0f, 0.5f);
-                pipRT.sizeDelta = new Vector2(5f, 5f);
-                pipRT.anchoredPosition = new Vector2(i * 8f, 0f);
+                pipRT.sizeDelta = new Vector2(6f, 6f);
+                pipRT.anchoredPosition = new Vector2(4f + i * 9f, 0f);
                 var pip = pipRT.gameObject.AddComponent<Image>();
                 pip.sprite = HALVisuals.Disc();
-                pip.color = i < pips ? AccentCyan : new Color(DimBlue.r, DimBlue.g, DimBlue.b, 0.35f);
+                pip.color = i < pips ? AccentCyan : new Color(TextDim.r, TextDim.g, TextDim.b, 0.3f);
                 pip.raycastTarget = false;
             }
         }
 
-        // Unread dot (far right, centered).
+        // Unread dot (far right, centered) — cyan like the mockup.
         if (unread)
         {
             var dotRT = NewUI("Unread", row);
             dotRT.anchorMin = new Vector2(1f, 0.5f);
             dotRT.anchorMax = new Vector2(1f, 0.5f);
             dotRT.pivot = new Vector2(1f, 0.5f);
-            dotRT.sizeDelta = new Vector2(9f, 9f);
-            dotRT.anchoredPosition = new Vector2(-7f, 0f);
+            dotRT.sizeDelta = new Vector2(10f, 10f);
+            dotRT.anchoredPosition = new Vector2(-9f, 0f);
             var dot = dotRT.gameObject.AddComponent<Image>();
             dot.sprite = HALVisuals.Disc();
-            dot.color = UnreadRed;
+            dot.color = UnreadCyan;
             dot.raycastTarget = false;
         }
     }
@@ -335,7 +358,7 @@ public class MessagesScreen : MonoBehaviour
         _openId = id;
         _view = View.Thread;
         _chipMode = ChipMode.Main;
-        _counterInput = null;
+        _slider = null;
         ClearViews();
         _bubbles.Clear();
         _stickToBottom = true;
@@ -346,37 +369,27 @@ public class MessagesScreen : MonoBehaviour
 
         _threadRoot = FullRect("ThreadView", _root);
         var vlg = _threadRoot.gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(4, 4, 4, 4);
-        vlg.spacing = 4f;
+        vlg.padding = new RectOffset(6, 6, 6, 6);
+        vlg.spacing = 5f;
         vlg.childControlWidth = true; vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
 
-        // Header: back, name (tap = contact card), pips.
-        var header = NewUI("Header", _threadRoot);
-        header.gameObject.AddComponent<LayoutElement>().preferredHeight = 24f;
-        var hlg = header.gameObject.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(4, 4, 0, 0);
-        hlg.spacing = 6f;
-        hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.childControlWidth = true; hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
-        MakeButton(header, "<", 16f, AccentCyan, ShowIndex, 16f);
         string captured = id;
-        var nameBtn = MakeButton(header, AlienNames.For(id), 12f, LabelWhite, () => ShowCard(captured), 120f);
-        nameBtn.GetComponentInChildren<TextMeshProUGUI>().fontStyle = FontStyles.Bold;
-        var pipsT = MakeText(header, $"BOND {BuyerLedger.BondPips(id)}", 9, DimBlue, TextAlignmentOptions.MidlineLeft);
-        pipsT.characterSpacing = 2f;
+        BuildHeaderBar(_threadRoot, AlienNames.For(id), $"BOND {BuyerLedger.BondPips(id)}",
+                       ShowIndex, () => ShowCard(captured));
 
         // Appointment card (only while Scheduled).
         _apptCard = NewUI("ApptCard", _threadRoot);
-        _apptCard.gameObject.AddComponent<LayoutElement>().preferredHeight = 30f;
+        _apptCard.gameObject.AddComponent<LayoutElement>().preferredHeight = 34f;
         var cardBg = _apptCard.gameObject.AddComponent<Image>();
-        cardBg.color = new Color32(0x14, 0x2A, 0x1C, 0xE0);
+        cardBg.sprite = Rounded(10);
+        cardBg.type = Image.Type.Sliced;
+        cardBg.color = ApptBg;
         cardBg.raycastTarget = false;
-        _apptText = MakeText(_apptCard, "", 9, OkGreen, TextAlignmentOptions.Center);
-        var apptTextRT = (RectTransform)_apptText.transform;
+        _apptText = MakeText(_apptCard, "", 10, OkGreen, TextAlignmentOptions.Center);
+        var apptTextRT = _apptText.rectTransform;
         apptTextRT.anchorMin = Vector2.zero; apptTextRT.anchorMax = Vector2.one;
-        apptTextRT.offsetMin = new Vector2(6f, 2f); apptTextRT.offsetMax = new Vector2(-6f, -2f);
+        apptTextRT.offsetMin = new Vector2(8f, 2f); apptTextRT.offsetMax = new Vector2(-8f, -2f);
         UpdateAppointmentCard(b);
 
         // Bubble scroll.
@@ -393,7 +406,7 @@ public class MessagesScreen : MonoBehaviour
         content.sizeDelta = Vector2.zero;
         var cvlg = content.gameObject.AddComponent<VerticalLayoutGroup>();
         cvlg.padding = new RectOffset(4, 4, 4, 4);
-        cvlg.spacing = 6f;
+        cvlg.spacing = 7f;
         cvlg.childControlWidth = true; cvlg.childControlHeight = true;
         cvlg.childForceExpandWidth = true; cvlg.childForceExpandHeight = false;
         content.gameObject.AddComponent<ContentSizeFitter>().verticalFit = ContentSizeFitter.FitMode.PreferredSize;
@@ -412,24 +425,22 @@ public class MessagesScreen : MonoBehaviour
             for (int i = 0; i < b.events.Count; i++)
                 AddEventBubble(b, b.events[i]);
 
-        // Reply chips.
-        _chipsRow = NewUI("Chips", _threadRoot);
-        _chipsRow.gameObject.AddComponent<LayoutElement>().preferredHeight = 26f;
-        var chlg = _chipsRow.gameObject.AddComponent<HorizontalLayoutGroup>();
-        chlg.padding = new RectOffset(2, 2, 1, 1);
-        chlg.spacing = 4f;
-        chlg.childAlignment = TextAnchor.MiddleCenter;
-        chlg.childControlWidth = true; chlg.childControlHeight = true;
-        chlg.childForceExpandWidth = true; chlg.childForceExpandHeight = true;
+        // Reply tray. Height is driven per-mode (the slider needs more room).
+        _chipsRow = NewUI("Tray", _threadRoot);
+        var trayBg = _chipsRow.gameObject.AddComponent<Image>();
+        trayBg.sprite = Rounded(10);
+        trayBg.type = Image.Type.Sliced;
+        trayBg.color = TrayBg;
+        trayBg.raycastTarget = true;
         RebuildChips(b);
 
         StartCoroutine(ScrollToBottomNextFrame());
     }
 
     // Events + convo only — deliberately NOT the local chip mode, or the 1 Hz
-    // sweep would rebuild the thread (and eject the player from the counter
-    // input field) the moment they tapped COUNTER. ×32 so an event-count
-    // change can never alias with a convo change.
+    // sweep would rebuild the thread (and yank the slider out from under the
+    // player) the moment they tapped COUNTER. ×32 so an event-count change
+    // can never alias with a convo change.
     int ThreadStamp(BuyerLedger.Buyer b) =>
         b == null ? 0 : b.events.Count * 32 + (int)b.convo;
 
@@ -452,8 +463,6 @@ public class MessagesScreen : MonoBehaviour
                    || t == BuyerLedger.EvType.PlayerDeclined;
         MakeBubble(text, player);
 
-        // A fulfilled/missed order also gets a system line so the deal's
-        // numbers are scannable without reading prose.
         if (t == BuyerLedger.EvType.FulfilledExact || t == BuyerLedger.EvType.FulfilledSub)
             AddSystemLine($"— deal done: {e.b} caps @ {e.a} each = {e.a * e.b} —");
     }
@@ -462,23 +471,21 @@ public class MessagesScreen : MonoBehaviour
     {
         var row = NewUI("SysRow", _threadContent);
         var le = row.gameObject.AddComponent<LayoutElement>();
-        le.preferredHeight = 14f;
-        le.minHeight = 14f;
-        var t = MakeText(row, text, 8, DimBlue, TextAlignmentOptions.Center);
-        var rt = (RectTransform)t.transform;
-        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        le.preferredHeight = 15f;
+        le.minHeight = 15f;
+        var t = MakeText(row, text, 9, TextDim, TextAlignmentOptions.Center);
+        Fill(t.rectTransform);
     }
 
     void MakeBubble(string text, bool player)
     {
         var row = NewUI("BubbleRow", _threadContent);
         var rowLE = row.gameObject.AddComponent<LayoutElement>();
-        rowLE.minHeight = 20f;
+        rowLE.minHeight = 24f;
         rowLE.flexibleHeight = 0f;
 
         var bubble = NewUI("Bubble", row);
-        const float MaxFrac = 0.78f;
+        const float MaxFrac = 0.76f;
         if (player)
         {
             bubble.anchorMin = new Vector2(1f - MaxFrac, 0f);
@@ -493,16 +500,18 @@ public class MessagesScreen : MonoBehaviour
         bubble.offsetMax = Vector2.zero;
 
         var bg = bubble.gameObject.AddComponent<Image>();
-        bg.color = player ? ButtonGrey : TileBg;
+        bg.sprite = Rounded(12);
+        bg.type = Image.Type.Sliced;
+        bg.color = player ? MeBubble : ThemBubble;
         bg.raycastTarget = false;
 
         var labelRT = NewUI("Label", bubble);
         labelRT.anchorMin = Vector2.zero; labelRT.anchorMax = Vector2.one;
-        labelRT.offsetMin = new Vector2(6f, 3f); labelRT.offsetMax = new Vector2(-6f, -3f);
+        labelRT.offsetMin = new Vector2(9f, 4f); labelRT.offsetMax = new Vector2(-9f, -4f);
         var label = labelRT.gameObject.AddComponent<TextMeshProUGUI>();
         label.text = text;
-        label.fontSize = 10;
-        label.color = LabelWhite;
+        label.fontSize = 11;
+        label.color = TextMain;
         label.alignment = player ? TextAlignmentOptions.TopRight : TextAlignmentOptions.TopLeft;
         label.enableWordWrapping = true;
         label.raycastTarget = false;
@@ -518,9 +527,14 @@ public class MessagesScreen : MonoBehaviour
             var b = _bubbles[i];
             if (b.Label == null || b.RowLE == null || b.Row == null) continue;
             int len = b.Label.text != null ? b.Label.text.Length : 0;
-            if (len == b.LastShownLen) continue;
+            // Re-measure on WIDTH change too, not just text change — the first
+            // measure runs before layout has given the label its real width,
+            // so a one-line message wrapped into a tower and the wrong height
+            // stuck forever (the giant-bubble bug from the first UI pass).
+            float w = b.Label.rectTransform.rect.width;
+            if (len == b.LastShownLen && Mathf.Abs(w - b.LastWidth) < 1f) continue;
             b.Label.ForceMeshUpdate();
-            float h = Mathf.Max(20f, b.Label.preferredHeight + 8f);
+            float h = Mathf.Max(24f, b.Label.preferredHeight + 10f);
             if (Mathf.Abs(b.RowLE.preferredHeight - h) > 0.5f)
             {
                 b.RowLE.preferredHeight = h;
@@ -528,6 +542,7 @@ public class MessagesScreen : MonoBehaviour
                 LayoutRebuilder.MarkLayoutForRebuild(b.Row);
             }
             b.LastShownLen = len;
+            b.LastWidth = w;
             _bubbles[i] = b;
         }
     }
@@ -550,8 +565,7 @@ public class MessagesScreen : MonoBehaviour
         if (_apptCard.gameObject.activeSelf != live) _apptCard.gameObject.SetActive(live);
         if (!live) return;
 
-        // Show the PROMISED window only — the 60s grace is hidden slack, not
-        // part of the deal (a 10-min promise displaying 11:00 reads as a bug).
+        // Show the PROMISED window only — the 60s grace is hidden slack.
         float left = b.deadline - Time.unscaledTime;
         string clock = left > 0f
             ? $"{Mathf.FloorToInt(left / 60f)}:{Mathf.FloorToInt(left % 60f):00}"
@@ -565,23 +579,26 @@ public class MessagesScreen : MonoBehaviour
             if (_player != null)
             {
                 int dist = Mathf.RoundToInt(Vector3.Distance(_player.transform.position, pos));
-                where = string.IsNullOrEmpty(body) ? $" - ~{dist} m" : $" - {body}, ~{dist} m";
+                where = string.IsNullOrEmpty(body) ? $" · ~{dist} m" : $" · {body}, ~{dist} m";
             }
         }
-        string line = $"MEETUP — {b.askQty} {tierWord} @ {b.offerPerCap} · {clock} left{where}";
+        string line = $"MEETUP — {b.askQty} {tierWord} @ {b.offerPerCap} · {clock}{where}";
         if (_apptText.text != line) _apptText.text = line;
         var col = left < 60f ? WarnAmber : OkGreen;
         if (_apptText.color != col) _apptText.color = col;
     }
 
-    // ── Reply chips ────────────────────────────────────────────────────────
+    // ── Reply tray ─────────────────────────────────────────────────────────
 
     void RebuildChips(BuyerLedger.Buyer b)
     {
         if (_chipsRow == null) return;
         for (int i = _chipsRow.childCount - 1; i >= 0; i--)
             Destroy(_chipsRow.GetChild(i).gameObject);
-        _counterInput = null;
+        _slider = null;
+
+        var trayLE = _chipsRow.gameObject.GetComponent<LayoutElement>();
+        if (trayLE == null) trayLE = _chipsRow.gameObject.AddComponent<LayoutElement>();
 
         if (b == null) { _chipsRow.gameObject.SetActive(false); return; }
         var dir = BuyerMessageDirector.Instance;
@@ -591,109 +608,248 @@ public class MessagesScreen : MonoBehaviour
         _chipsRow.gameObject.SetActive(open);
         if (!open || dir == null) return;
 
-        // Price locked by an accepted counter — the ONLY moves are picking a
-        // window or backing out. No COUNTER chip: countering off your own
-        // accepted number was an exploit (climb the price one "fine" at a time).
-        if (b.convo == BuyerLedger.Convo.PriceAgreed)
+        if (_chipMode == ChipMode.CounterSlider && b.convo == BuyerLedger.Convo.AwaitingReply)
         {
-            foreach (int w in BuyerDeals.WindowMinutes)
-            {
-                int captured = w;
-                Chip($"~{w} MIN", OkGreen, () => { dir.Accept(b, captured); AfterChipAction(); });
-            }
-            Chip("NOT NOW", DimBlue, () => { dir.Decline(b); AfterChipAction(); });
+            trayLE.preferredHeight = 126f;
+            BuildCounterSlider(b, dir);
             return;
         }
 
-        if (_chipMode == ChipMode.WindowPick)
+        trayLE.preferredHeight = 42f;
+        var hlg = _chipsRow.gameObject.GetComponent<HorizontalLayoutGroup>();
+        if (hlg == null) hlg = _chipsRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+        hlg.enabled = true;
+        hlg.padding = new RectOffset(5, 5, 5, 5);
+        hlg.spacing = 6f;
+        hlg.childAlignment = TextAnchor.MiddleCenter;
+        hlg.childControlWidth = true; hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = true; hlg.childForceExpandHeight = true;
+
+        // Price locked by an accepted counter — window pick only (no re-counter).
+        if (b.convo == BuyerLedger.Convo.PriceAgreed || _chipMode == ChipMode.WindowPick)
         {
+            bool agreed = b.convo == BuyerLedger.Convo.PriceAgreed;
             foreach (int w in BuyerDeals.WindowMinutes)
             {
                 int captured = w;
-                Chip($"~{w} MIN", OkGreen, () => { dir.Accept(b, captured); AfterChipAction(); });
+                int pct = Mathf.RoundToInt((BuyerDeals.GratitudeBonus(w) - 1f) * 100f);
+                Chip($"~{w} MIN +{pct}%", OkGreen, OkGreenBg, () => { dir.Accept(b, captured); AfterChipAction(); });
             }
-            Chip("BACK", DimBlue, () => { _chipMode = ChipMode.Main; RebuildChips(b); });
-            return;
-        }
-
-        if (_chipMode == ChipMode.CounterInput)
-        {
-            BuildCounterInput(b, dir);
+            if (agreed) Chip("NOT NOW", TextDim, DimBtnBg, () => { dir.Decline(b); AfterChipAction(); });
+            else Chip("BACK", TextDim, DimBtnBg, () => { _chipMode = ChipMode.Main; RebuildChips(b); });
             return;
         }
 
         if (b.convo == BuyerLedger.Convo.AwaitingCounterBack)
         {
-            Chip($"TAKE {b.counterBackPerCap}", OkGreen, () => { _chipMode = ChipMode.WindowPick; RebuildChips(b); });
-            Chip("DECLINE", UnreadRed, () => { dir.Decline(b); AfterChipAction(); });
+            Chip($"TAKE {b.counterBackPerCap}", OkGreen, OkGreenBg, () => { _chipMode = ChipMode.WindowPick; RebuildChips(b); });
+            Chip("DECLINE", BadRed, DimBtnBg, () => { dir.Decline(b); AfterChipAction(); });
             return;
         }
 
         // AwaitingReply.
-        Chip("ACCEPT", OkGreen, () => { _chipMode = ChipMode.WindowPick; RebuildChips(b); });
-        Chip("COUNTER", WarnAmber, () => { _chipMode = ChipMode.CounterInput; RebuildChips(b); });
-        Chip("NOT NOW", DimBlue, () => { dir.Decline(b); AfterChipAction(); });
+        Chip("ACCEPT", OkGreen, OkGreenBg, () => { _chipMode = ChipMode.WindowPick; RebuildChips(b); });
+        Chip("COUNTER", WarnAmber, WarnBg, () => { _chipMode = ChipMode.CounterSlider; RebuildChips(b); });
+        Chip("NOT NOW", TextDim, DimBtnBg, () => { dir.Decline(b); AfterChipAction(); });
     }
 
     void AfterChipAction()
     {
         _chipMode = ChipMode.Main;
-        // Rebuild the whole thread so the new events render as bubbles.
         if (!string.IsNullOrEmpty(_openId)) ShowThread(_openId);
     }
 
-    void Chip(string label, Color color, System.Action onTap)
+    void Chip(string label, Color color, Color bgColor, System.Action onTap)
     {
         var rt = NewUI($"Chip_{label}", _chipsRow);
         var bg = rt.gameObject.AddComponent<Image>();
-        bg.color = TileBg;
+        bg.sprite = Rounded(10);
+        bg.type = Image.Type.Sliced;
+        bg.color = bgColor;
         bg.raycastTarget = true;
         var btn = rt.gameObject.AddComponent<Button>();
         btn.onClick.AddListener(() => onTap?.Invoke());
-        var t = MakeText(rt, label, 9, color, TextAlignmentOptions.Center);
-        var tRT = (RectTransform)t.transform;
-        tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one;
-        tRT.offsetMin = Vector2.zero; tRT.offsetMax = Vector2.zero;
+        var t = MakeText(rt, label, 11, color, TextAlignmentOptions.Center);
+        Fill(t.rectTransform);
         t.fontStyle = FontStyles.Bold;
     }
 
-    void BuildCounterInput(BuyerLedger.Buyer b, BuyerMessageDirector dir)
+    // ── The counter SLIDER (Sam's pick, mockup option 2) ───────────────────
+    // Click anywhere on the gradient track to jump, or drag the thumb for
+    // fine control. Big live price + total + risk-in-words readout. Risk is
+    // measured against their OFFER (public), never their hidden ceiling.
+
+    void BuildCounterSlider(BuyerLedger.Buyer b, BuyerMessageDirector dir)
     {
-        // Numeric field pre-filled ~10% over their offer, SEND, and a back-out.
-        var inputRT = NewUI("CounterInput", _chipsRow);
-        var inputBg = inputRT.gameObject.AddComponent<Image>();
-        inputBg.color = new Color32(0x08, 0x13, 0x1F, 0xFF);
-        inputBg.raycastTarget = true;
-        _counterInput = inputRT.gameObject.AddComponent<TMP_InputField>();
+        var hlg = _chipsRow.gameObject.GetComponent<HorizontalLayoutGroup>();
+        if (hlg != null) hlg.enabled = false;   // manual layout in this mode
 
-        var areaRT = NewUI("TextArea", inputRT);
+        _sliderMin = b.offerPerCap;
+        _sliderMax = Mathf.Max(_sliderMin + 10, Mathf.RoundToInt(b.offerPerCap * 1.55f));
+        int start = Mathf.RoundToInt(b.offerPerCap * 1.1f);
+
+        // Readout block (price / total / risk).
+        _sliderPrice = MakeText(_chipsRow, "", 22, TextMain, TextAlignmentOptions.Center);
+        var pRT = _sliderPrice.rectTransform;
+        pRT.anchorMin = new Vector2(0f, 1f); pRT.anchorMax = new Vector2(1f, 1f);
+        pRT.pivot = new Vector2(0.5f, 1f);
+        pRT.sizeDelta = new Vector2(0f, 26f);
+        pRT.anchoredPosition = new Vector2(0f, -4f);
+        _sliderPrice.fontStyle = FontStyles.Bold;
+
+        _sliderTotal = MakeText(_chipsRow, "", 9, TextDim, TextAlignmentOptions.Center);
+        var tRT = _sliderTotal.rectTransform;
+        tRT.anchorMin = new Vector2(0f, 1f); tRT.anchorMax = new Vector2(1f, 1f);
+        tRT.pivot = new Vector2(0.5f, 1f);
+        tRT.sizeDelta = new Vector2(0f, 12f);
+        tRT.anchoredPosition = new Vector2(0f, -30f);
+
+        _sliderRisk = MakeText(_chipsRow, "", 10, OkGreen, TextAlignmentOptions.Center);
+        var rRT = _sliderRisk.rectTransform;
+        rRT.anchorMin = new Vector2(0f, 1f); rRT.anchorMax = new Vector2(1f, 1f);
+        rRT.pivot = new Vector2(0.5f, 1f);
+        rRT.sizeDelta = new Vector2(0f, 13f);
+        rRT.anchoredPosition = new Vector2(0f, -42f);
+        _sliderRisk.fontStyle = FontStyles.Bold;
+
+        // Slider row: gradient track + draggable thumb.
+        var sliderRT = NewUI("Slider", _chipsRow);
+        sliderRT.anchorMin = new Vector2(0f, 1f); sliderRT.anchorMax = new Vector2(1f, 1f);
+        sliderRT.pivot = new Vector2(0.5f, 1f);
+        sliderRT.sizeDelta = new Vector2(-28f, 22f);
+        sliderRT.anchoredPosition = new Vector2(0f, -58f);
+        _slider = sliderRT.gameObject.AddComponent<Slider>();
+
+        var trackRT = NewUI("Track", sliderRT);
+        trackRT.anchorMin = new Vector2(0f, 0.5f); trackRT.anchorMax = new Vector2(1f, 0.5f);
+        trackRT.pivot = new Vector2(0.5f, 0.5f);
+        trackRT.sizeDelta = new Vector2(0f, 12f);
+        var track = trackRT.gameObject.AddComponent<Image>();
+        track.sprite = RiskGradient();
+        track.raycastTarget = true;   // clicking the track jumps the thumb
+
+        var areaRT = NewUI("HandleArea", sliderRT);
         areaRT.anchorMin = Vector2.zero; areaRT.anchorMax = Vector2.one;
-        areaRT.offsetMin = new Vector2(4f, 2f); areaRT.offsetMax = new Vector2(-4f, -2f);
-        areaRT.gameObject.AddComponent<RectMask2D>();
+        areaRT.offsetMin = new Vector2(10f, 0f); areaRT.offsetMax = new Vector2(-10f, 0f);
 
-        var textRT = NewUI("Text", areaRT);
-        textRT.anchorMin = Vector2.zero; textRT.anchorMax = Vector2.one;
-        textRT.offsetMin = Vector2.zero; textRT.offsetMax = Vector2.zero;
-        var textComp = textRT.gameObject.AddComponent<TextMeshProUGUI>();
-        textComp.fontSize = 10;
-        textComp.color = LabelWhite;
-        textComp.alignment = TextAlignmentOptions.MidlineLeft;
-        textComp.raycastTarget = false;
-        HudFontResolver.Apply(textComp);
+        var handleRT = NewUI("Handle", areaRT);
+        handleRT.sizeDelta = new Vector2(24f, 24f);
+        var handle = handleRT.gameObject.AddComponent<Image>();
+        handle.sprite = HALVisuals.Disc();
+        handle.color = TextMain;
+        handle.raycastTarget = true;
 
-        _counterInput.textComponent = textComp;
-        _counterInput.textViewport = areaRT;
-        _counterInput.contentType = TMP_InputField.ContentType.IntegerNumber;
-        _counterInput.text = Mathf.RoundToInt(b.offerPerCap * 1.1f).ToString();
+        var ring = NewUI("Ring", handleRT);
+        ring.anchorMin = Vector2.zero; ring.anchorMax = Vector2.one;
+        ring.offsetMin = new Vector2(-3f, -3f); ring.offsetMax = new Vector2(3f, 3f);
+        var ringImg = ring.gameObject.AddComponent<Image>();
+        ringImg.sprite = HALVisuals.Disc();
+        ringImg.color = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.35f);
+        ringImg.raycastTarget = false;
+        ring.SetAsFirstSibling();
 
-        Chip("SEND", WarnAmber, () =>
+        _handleLabel = MakeText(handleRT, "", 8, new Color32(0x0B, 0x0D, 0x12, 0xFF), TextAlignmentOptions.Center);
+        Fill(_handleLabel.rectTransform);
+        _handleLabel.fontStyle = FontStyles.Bold;
+
+        _slider.targetGraphic = handle;
+        _slider.handleRect = handleRT;
+        _slider.direction = Slider.Direction.LeftToRight;
+        _slider.minValue = _sliderMin;
+        _slider.maxValue = _sliderMax;
+        _slider.wholeNumbers = true;
+        _slider.value = start;
+
+        // Range labels under the track.
+        var lo = MakeText(_chipsRow, $"{_sliderMin} (their offer)", 8, TextDim, TextAlignmentOptions.MidlineLeft);
+        var loRT = lo.rectTransform;
+        loRT.anchorMin = new Vector2(0f, 1f); loRT.anchorMax = new Vector2(0.5f, 1f);
+        loRT.pivot = new Vector2(0f, 1f);
+        loRT.sizeDelta = new Vector2(0f, 10f);
+        loRT.anchoredPosition = new Vector2(14f, -82f);
+        var hi = MakeText(_chipsRow, _sliderMax.ToString(), 8, TextDim, TextAlignmentOptions.MidlineRight);
+        var hiRT = hi.rectTransform;
+        hiRT.anchorMin = new Vector2(0.5f, 1f); hiRT.anchorMax = new Vector2(1f, 1f);
+        hiRT.pivot = new Vector2(1f, 1f);
+        hiRT.sizeDelta = new Vector2(0f, 10f);
+        hiRT.anchoredPosition = new Vector2(-14f, -82f);
+
+        // SEND / BACK buttons along the bottom.
+        var btnRow = NewUI("Btns", _chipsRow);
+        btnRow.anchorMin = new Vector2(0f, 0f); btnRow.anchorMax = new Vector2(1f, 0f);
+        btnRow.pivot = new Vector2(0.5f, 0f);
+        btnRow.sizeDelta = new Vector2(-10f, 24f);
+        btnRow.anchoredPosition = new Vector2(0f, 4f);
+        var bhlg = btnRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+        bhlg.spacing = 6f;
+        bhlg.childControlWidth = true; bhlg.childControlHeight = true;
+        bhlg.childForceExpandWidth = true; bhlg.childForceExpandHeight = true;
+
+        var sendRT = NewUI("Send", btnRow);
+        var sendBg = sendRT.gameObject.AddComponent<Image>();
+        sendBg.sprite = Rounded(9);
+        sendBg.type = Image.Type.Sliced;
+        sendBg.color = WarnBg;
+        sendBg.raycastTarget = true;
+        var sendLE = sendRT.gameObject.AddComponent<LayoutElement>();
+        sendLE.flexibleWidth = 2f;
+        var sendBtn = sendRT.gameObject.AddComponent<Button>();
+        sendBtn.onClick.AddListener(() =>
         {
-            int ask;
-            if (!int.TryParse(_counterInput != null ? _counterInput.text : "", out ask) || ask <= 0) return;
-            dir.Counter(b, ask);
+            if (_slider == null) return;
+            dir.Counter(b, Mathf.RoundToInt(_slider.value));
             AfterChipAction();
         });
-        Chip("BACK", DimBlue, () => { _chipMode = ChipMode.Main; RebuildChips(b); });
+        _sliderSendLabel = MakeText(sendRT, "", 11, WarnAmber, TextAlignmentOptions.Center);
+        Fill(_sliderSendLabel.rectTransform);
+        _sliderSendLabel.fontStyle = FontStyles.Bold;
+
+        var backRT = NewUI("Back", btnRow);
+        var backBg = backRT.gameObject.AddComponent<Image>();
+        backBg.sprite = Rounded(9);
+        backBg.type = Image.Type.Sliced;
+        backBg.color = DimBtnBg;
+        backBg.raycastTarget = true;
+        backRT.gameObject.AddComponent<LayoutElement>().flexibleWidth = 1f;
+        var backBtn = backRT.gameObject.AddComponent<Button>();
+        backBtn.onClick.AddListener(() => { _chipMode = ChipMode.Main; RebuildChips(b); });
+        var backT = MakeText(backRT, "BACK", 11, TextDim, TextAlignmentOptions.Center);
+        Fill(backT.rectTransform);
+        backT.fontStyle = FontStyles.Bold;
+
+        _lastSliderVal = -1;
+        UpdateSliderReadout();
+    }
+
+    /// Risk wording vs their OFFER (public info only). Same bands as the
+    /// approved mockup.
+    static void RiskFor(int ask, int offer, out string text, out Color col)
+    {
+        float over = offer > 0 ? (float)ask / offer : 1f;
+        if (ask <= offer) { text = "their number — just send it"; col = OkGreen; return; }
+        if (over <= 1.10f) { text = "modest push — decent odds"; col = OkGreen; return; }
+        if (over <= 1.22f) { text = "firm push — they may counter"; col = WarnAmber; return; }
+        if (over <= 1.38f) { text = "pushing it — likely a counter, maybe worse"; col = new Color32(0xFF, 0x9A, 0x3C, 0xFF); return; }
+        text = "greedy — you might blow the deal"; col = BadRed;
+    }
+
+    /// Change-detected per-frame update while the slider tray is open — the
+    /// Slider's own drag callback path plus click-to-jump both land here.
+    void UpdateSliderReadout()
+    {
+        if (_slider == null) return;
+        int v = Mathf.RoundToInt(_slider.value);
+        if (v == _lastSliderVal) return;
+        _lastSliderVal = v;
+        var b = BuyerLedger.Get(_openId);
+        int qty = b != null ? b.askQty : 0;
+        _sliderPrice.text = $"{v} <size=10><color=#8B95A3>/cap</color></size>";
+        _sliderTotal.text = $"{qty} caps → <color=#FFD732>{v * qty}</color> credits";
+        RiskFor(v, _sliderMin, out string risk, out Color col);
+        _sliderRisk.text = risk;
+        _sliderRisk.color = col;
+        if (_handleLabel != null) _handleLabel.text = v.ToString();
+        if (_sliderSendLabel != null) _sliderSendLabel.text = $"SEND {v}";
     }
 
     // ══ Contact card ═══════════════════════════════════════════════════════
@@ -705,56 +861,110 @@ public class MessagesScreen : MonoBehaviour
 
         _cardRoot = FullRect("CardView", _root);
         var vlg = _cardRoot.gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(8, 8, 4, 8);
+        vlg.padding = new RectOffset(8, 8, 6, 8);
         vlg.spacing = 6f;
         vlg.childControlWidth = true; vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
 
-        var header = NewUI("Header", _cardRoot);
-        header.gameObject.AddComponent<LayoutElement>().preferredHeight = 24f;
-        var hlg = header.gameObject.AddComponent<HorizontalLayoutGroup>();
-        hlg.spacing = 6f;
-        hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.childControlWidth = true; hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
         string captured = id;
-        MakeButton(header, "<", 16f, AccentCyan, () => ShowThread(captured), 16f);
-        var title = MakeText(header, AlienNames.For(id), 13, LabelWhite, TextAlignmentOptions.MidlineLeft);
-        title.fontStyle = FontStyles.Bold;
-        var pipsT = MakeText(header, $"BOND {BuyerLedger.BondPips(id)}", 9, DimBlue, TextAlignmentOptions.MidlineLeft);
-        pipsT.characterSpacing = 2f;
+        BuildHeaderBar(_cardRoot, AlienNames.For(id), $"BOND {BuyerLedger.BondPips(id)}",
+                       () => ShowThread(captured), null);
 
         var b = BuyerLedger.Get(id);
         int deals = b != null ? b.dealsCompleted : 0;
-        AddCardLine($"deals done: {deals}", DimBlue);
-        AddCardLine(" ", DimBlue);
-        AddCardLine("WHAT YOU'VE LEARNED", AccentCyan);
+        AddCardLine($"deals done: {deals}", TextDim, known: false, plain: true);
+        AddCardLine("WHAT YOU'VE LEARNED  <size=8>(one per deal)</size>", AccentCyan, known: false, plain: true);
 
         int reveals = BuyerLedger.RevealCount(id);
         for (int i = 0; i < reveals; i++)
-            AddCardLine("· " + BuyerLedger.RevealLine(id, i), LabelWhite);
+            AddCardLine(BuyerLedger.RevealLine(id, i), TextMain, known: true, plain: false);
         if (reveals < BuyerLedger.RevealCap)
-            AddCardLine("— deal again to learn more —", new Color(DimBlue.r, DimBlue.g, DimBlue.b, 0.6f));
+            AddCardLine("deal again to learn more…", new Color(TextDim.r, TextDim.g, TextDim.b, 0.6f), known: false, plain: false);
     }
 
-    void AddCardLine(string text, Color color)
+    void AddCardLine(string text, Color color, bool known, bool plain)
     {
         var row = NewUI("CardLine", _cardRoot);
         var le = row.gameObject.AddComponent<LayoutElement>();
-        le.preferredHeight = 16f;
-        le.minHeight = 14f;
-        var t = MakeText(row, text, 9, color, TextAlignmentOptions.MidlineLeft);
-        var rt = (RectTransform)t.transform;
+        le.preferredHeight = plain ? 18f : 24f;
+        le.minHeight = 16f;
+        if (!plain)
+        {
+            var bg = row.gameObject.AddComponent<Image>();
+            bg.sprite = Rounded(8);
+            bg.type = Image.Type.Sliced;
+            bg.color = known ? RowBg : new Color(RowBg.r, RowBg.g, RowBg.b, 0.45f);
+            bg.raycastTarget = false;
+        }
+        var t = MakeText(row, text, 10, color, TextAlignmentOptions.MidlineLeft);
+        var rt = t.rectTransform;
         rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
-        rt.offsetMin = new Vector2(4f, 0f); rt.offsetMax = Vector2.zero;
+        rt.offsetMin = new Vector2(plain ? 4f : 10f, 0f); rt.offsetMax = new Vector2(-4f, 0f);
     }
 
-    // ══ tiny UI helpers (same shapes as AIChatScreen's) ════════════════════
+    // ══ shared chrome + tiny helpers ═══════════════════════════════════════
+
+    /// The rounded header bar every view shares: back button, title (optionally
+    /// tappable → contact card), dim subtitle on the right.
+    void BuildHeaderBar(RectTransform parent, string title, string right,
+                        System.Action onBack, System.Action onTitleTap)
+    {
+        var header = NewUI("Header", parent);
+        header.gameObject.AddComponent<LayoutElement>().preferredHeight = 30f;
+        var bg = header.gameObject.AddComponent<Image>();
+        bg.sprite = Rounded(10);
+        bg.type = Image.Type.Sliced;
+        bg.color = HeaderBg;
+        bg.raycastTarget = false;
+
+        // Back button — explicit rect (NOT layout-sized; the v1 back button
+        // died because an HLG gave a sprite-less Image zero height).
+        var backRT = NewUI("Back", header);
+        backRT.anchorMin = new Vector2(0f, 0f); backRT.anchorMax = new Vector2(0f, 1f);
+        backRT.pivot = new Vector2(0f, 0.5f);
+        backRT.sizeDelta = new Vector2(34f, 0f);
+        backRT.anchoredPosition = Vector2.zero;
+        var backImg = backRT.gameObject.AddComponent<Image>();
+        backImg.color = new Color(0, 0, 0, 0);
+        backImg.raycastTarget = true;
+        var backBtn = backRT.gameObject.AddComponent<Button>();
+        backBtn.onClick.AddListener(() => onBack?.Invoke());
+        var backT = MakeText(backRT, "<", 15, AccentCyan, TextAlignmentOptions.Center);
+        Fill(backT.rectTransform);
+        backT.fontStyle = FontStyles.Bold;
+
+        var titleRT = NewUI("Title", header);
+        titleRT.anchorMin = new Vector2(0f, 0f); titleRT.anchorMax = new Vector2(0.62f, 1f);
+        titleRT.offsetMin = new Vector2(38f, 0f); titleRT.offsetMax = Vector2.zero;
+        var titleT = titleRT.gameObject.AddComponent<TextMeshProUGUI>();
+        titleT.text = title;
+        titleT.fontSize = 13;
+        titleT.color = TextMain;
+        titleT.fontStyle = FontStyles.Bold;
+        titleT.alignment = TextAlignmentOptions.MidlineLeft;
+        HudFontResolver.Apply(titleT);
+        if (onTitleTap != null)
+        {
+            titleT.raycastTarget = true;
+            var tBtn = titleRT.gameObject.AddComponent<Button>();
+            tBtn.onClick.AddListener(() => onTitleTap.Invoke());
+        }
+        else titleT.raycastTarget = false;
+
+        if (!string.IsNullOrEmpty(right))
+        {
+            var rT = MakeText(header, right, 9, TextDim, TextAlignmentOptions.MidlineRight);
+            var rRT = rT.rectTransform;
+            rRT.anchorMin = new Vector2(0.62f, 0f); rRT.anchorMax = new Vector2(1f, 1f);
+            rRT.offsetMin = Vector2.zero; rRT.offsetMax = new Vector2(-10f, 0f);
+            rT.characterSpacing = 2f;
+        }
+    }
 
     void ClearViews()
     {
         if (_indexRoot != null) { Destroy(_indexRoot.gameObject); _indexRoot = null; _indexContent = null; }
-        if (_threadRoot != null) { Destroy(_threadRoot.gameObject); _threadRoot = null; _threadContent = null; _threadScroll = null; _chipsRow = null; _apptCard = null; _apptText = null; _counterInput = null; }
+        if (_threadRoot != null) { Destroy(_threadRoot.gameObject); _threadRoot = null; _threadContent = null; _threadScroll = null; _chipsRow = null; _apptCard = null; _apptText = null; _slider = null; }
         if (_cardRoot != null) { Destroy(_cardRoot.gameObject); _cardRoot = null; }
         _bubbles.Clear();
     }
@@ -775,6 +985,12 @@ public class MessagesScreen : MonoBehaviour
         return rt;
     }
 
+    static void Fill(RectTransform rt)
+    {
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+    }
+
     static TextMeshProUGUI MakeText(RectTransform parent, string text, float size, Color color, TextAlignmentOptions align)
     {
         var rt = NewUI("Text", parent);
@@ -788,28 +1004,54 @@ public class MessagesScreen : MonoBehaviour
         return t;
     }
 
-    static Button MakeButton(RectTransform parent, string label, float size, Color color, System.Action onTap, float width)
+    // ── procedural sprites ─────────────────────────────────────────────────
+
+    static readonly Dictionary<int, Sprite> s_rounded = new Dictionary<int, Sprite>();
+    static Sprite s_gradient;
+
+    /// 9-sliced rounded-rect sprite (white; tint via Image.color). Same trick
+    /// as PlayerPhoneUI.RoundedRectFilled, local so this screen stays
+    /// self-contained.
+    static Sprite Rounded(int radius)
     {
-        var rt = NewUI($"Btn_{label}", parent);
-        var le = rt.gameObject.AddComponent<LayoutElement>();
-        le.preferredWidth = width;
-        // Without a preferred height, an HLG with childControlHeight=true and
-        // forceExpand=false sizes the button to the Image's preferred height —
-        // which is ZERO for a sprite-less Image. The label still renders (TMP
-        // overflows its rect), so the button LOOKS fine but has a 0-px hit
-        // area. This was the dead back button Sam hit on the thread header.
-        le.preferredHeight = 24f;
-        le.flexibleHeight = 1f;
-        var img = rt.gameObject.AddComponent<Image>();
-        img.color = new Color(0, 0, 0, 0); // invisible hit target
-        img.raycastTarget = true;
-        var btn = rt.gameObject.AddComponent<Button>();
-        btn.onClick.AddListener(() => onTap?.Invoke());
-        var t = MakeText(rt, label, size, color, TextAlignmentOptions.MidlineLeft);
-        var tRT = (RectTransform)t.transform;
-        tRT.anchorMin = Vector2.zero; tRT.anchorMax = Vector2.one;
-        tRT.offsetMin = Vector2.zero; tRT.offsetMax = Vector2.zero;
-        t.fontStyle = FontStyles.Bold;
-        return btn;
+        if (s_rounded.TryGetValue(radius, out var cached)) return cached;
+        int size = radius * 2 + 8;
+        var tex = new Texture2D(size, size, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            float cx = Mathf.Clamp(x, radius, size - 1 - radius);
+            float cy = Mathf.Clamp(y, radius, size - 1 - radius);
+            float d = Vector2.Distance(new Vector2(x, y), new Vector2(cx, cy));
+            float a = Mathf.Clamp01(radius - d + 1f);
+            tex.SetPixel(x, y, new Color(1f, 1f, 1f, a));
+        }
+        tex.Apply();
+        var sp = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f,
+                               0, SpriteMeshType.FullRect,
+                               new Vector4(radius + 2, radius + 2, radius + 2, radius + 2));
+        s_rounded[radius] = sp;
+        return sp;
+    }
+
+    /// Horizontal green→amber→red gradient for the counter slider's risk track.
+    static Sprite RiskGradient()
+    {
+        if (s_gradient != null) return s_gradient;
+        const int W = 256;
+        var tex = new Texture2D(W, 1, TextureFormat.ARGB32, false);
+        tex.wrapMode = TextureWrapMode.Clamp;
+        Color g = new Color32(0x2A, 0x54, 0x36, 0xFF);
+        Color a = new Color32(0x5C, 0x4A, 0x28, 0xFF);
+        Color r = new Color32(0x5C, 0x2A, 0x2A, 0xFF);
+        for (int x = 0; x < W; x++)
+        {
+            float t = (float)x / (W - 1);
+            tex.SetPixel(x, 0, t < 0.55f ? Color.Lerp(g, a, t / 0.55f) : Color.Lerp(a, r, (t - 0.55f) / 0.45f));
+        }
+        tex.Apply();
+        s_gradient = Sprite.Create(tex, new Rect(0, 0, W, 1), new Vector2(0.5f, 0.5f), 100f);
+        return s_gradient;
     }
 }
