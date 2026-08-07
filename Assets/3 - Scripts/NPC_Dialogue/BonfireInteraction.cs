@@ -19,6 +19,12 @@ public class BonfireInteraction : MonoBehaviour
     [Header("Sound Effects")]
     [SerializeField] private AudioClip eatClip;
     [SerializeField, Range(0, 1)] private float eatVolume = 0.7f;
+
+    /// Exposed so HeldItemViewmodel can borrow the already-authored eating sound
+    /// for the raw-fish chew loop instead of needing its own asset wired up (it's
+    /// an auto-created singleton, so it has no inspector to wire).
+    public AudioClip EatClip => eatClip;
+    public float EatVolume => eatVolume;
     [SerializeField] private AudioClip fireLoopClip;
     [SerializeField, Range(0, 1)] private float fireVolume = 0.5f;
     private AudioSource sfxSource;

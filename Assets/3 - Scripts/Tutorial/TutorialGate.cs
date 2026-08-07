@@ -316,9 +316,7 @@ public static class TutorialGate
         float k = 0f;
         if (Input.GetKey(KeyCode.A) || Input.GetKey(KeyCode.LeftArrow))  k -= 1f;
         if (Input.GetKey(KeyCode.D) || Input.GetKey(KeyCode.RightArrow)) k += 1f;
-        var g = ActivePad;
-        float s = g != null ? g.leftStick.ReadValue().x : 0f;
-        return Mathf.Clamp(k + s, -1f, 1f);
+        return Mathf.Clamp(k + MoveStick().x, -1f, 1f);
     }
 
     public static float MoveAxisVertical(TutorialAbility a)
@@ -327,9 +325,35 @@ public static class TutorialGate
         float k = 0f;
         if (Input.GetKey(KeyCode.S) || Input.GetKey(KeyCode.DownArrow)) k -= 1f;
         if (Input.GetKey(KeyCode.W) || Input.GetKey(KeyCode.UpArrow))   k += 1f;
+        return Mathf.Clamp(k + MoveStick().y, -1f, 1f);
+    }
+
+    // Left stick, read once with a RADIAL (magnitude-based) deadzone applied on
+    // top of the Input System's own processor, then rescaled so there's no
+    // speed jump at the gate.
+    //
+    // Why the second gate exists: on a lot of pads a HARD deflection of the
+    // RIGHT stick bleeds a small reading into the LEFT stick's axes (shared
+    // ADC / worn gimbals), and the Input System's default deadzone (0.19) is
+    // not always wide enough to swallow it. That leak used to walk the player
+    // at FULL SPEED while they were only turning the camera, because
+    // PlayerController normalised the move vector — any non-zero reading, no
+    // matter how tiny, became a full-magnitude walk direction. The companion
+    // fix is in PlayerController.HandleInput (ClampMagnitude, not normalized),
+    // which also restores proper analog walk speed; this gate makes the leak
+    // read as exactly zero instead of a slow drift. Both are driven by the
+    // existing pause-menu STICK DEADZONE slider, so a pad that leaks harder
+    // can be tuned without a recompile.
+    static Vector2 MoveStick()
+    {
         var g = ActivePad;
-        float s = g != null ? g.leftStick.ReadValue().y : 0f;
-        return Mathf.Clamp(k + s, -1f, 1f);
+        if (g == null) return Vector2.zero;
+        Vector2 s = g.leftStick.ReadValue();
+        float m = s.magnitude;
+        float gate = Mathf.Clamp(StickDeadzone, 0f, 0.6f);
+        if (m <= gate) return Vector2.zero;
+        if (gate <= 0f) return s;
+        return s * ((Mathf.Min(m, 1f) - gate) / ((1f - gate) * m));
     }
 
     // ── Look-axis composite (mouse delta + right-stick rate-scaled) ───────

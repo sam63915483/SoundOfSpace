@@ -249,6 +249,50 @@ public class InstancedGrassRenderer : MonoBehaviour
 
     const int BakeMagic = 0x42535247;  // 'GRSB'
 
+    // How many no-grass volumes were accounted for at the last prune. A prefab
+    // dropped in later (or a hole punched a few frames after load) raises the
+    // count, which re-runs the pass. Pruning only ever REMOVES blades, so
+    // re-running is idempotent.
+    int _prunedVolumeCount = -1;
+
+    // Baked grass is FROZEN — no raycast runs, so it has no idea the terrain
+    // under it was cut away by a PlanetHolePuncher after the bake. That's how
+    // grass ends up floating in mid-air over a cave mouth: the blades are exactly
+    // where the bake put them and the ground simply isn't there any more.
+    //
+    // Rather than force a re-bake every time a cave moves, drop the blades that
+    // fall inside a hole (or an explicit NoGrassVolume, which also covers the
+    // rock collar sitting on top of the ground) once, at load.
+    void PruneBakedForHoles()
+    {
+        if (!_baked || _bakedCells == null || _body == null) return;
+
+        int volumeCount = NoGrassVolume.All.Count + TerrainHole.All.Count;
+        if (volumeCount == _prunedVolumeCount) return;
+        _prunedVolumeCount = volumeCount;
+        if (volumeCount == 0) return;
+
+        Matrix4x4 l2w = _body.transform.localToWorldMatrix;
+        int removed = 0;
+        foreach (var kv in _bakedCells)
+        {
+            var cell = kv.Value;
+            for (int i = cell.local.Count - 1; i >= 0; i--)
+            {
+                // Blade matrices are body-LOCAL (Draw multiplies by the body's
+                // localToWorld), so column 3 is the blade's local position.
+                Vector3 world = l2w.MultiplyPoint3x4(cell.local[i].GetColumn(3));
+                if (!NoGrassVolume.AnyContainsOrHole(world)) continue;
+                cell.local.RemoveAt(i);
+                cell.mesh.RemoveAt(i);
+                removed++;
+            }
+        }
+        if (removed > 0)
+            Debug.Log($"[InstancedGrassRenderer] Removed {removed} baked blades inside " +
+                      $"{volumeCount} no-grass volume(s) — cave mouths / punched holes.");
+    }
+
     bool Resolve()
     {
         if (grassMeshes == null || grassMeshes.Length == 0 || grassMaterial == null) return false;
@@ -442,6 +486,7 @@ public class InstancedGrassRenderer : MonoBehaviour
 
     void Stream()
     {
+        PruneBakedForHoles();
         Vector3 viewer = _player.transform.position;
         Vector3 vLocal = _body.transform.InverseTransformPoint(viewer);
         float r = _body.radius;
@@ -777,6 +822,40 @@ public class InstancedGrassRenderer : MonoBehaviour
         if (_depthMat != null) { Destroy(_depthMat); _depthMat = null; }
     }
 
+    // Affine 4x4 multiply for the per-blade world-matrix build.
+    //
+    // `l2w * cell.local[k]` in Draw() is the single hottest statement in the
+    // frame — it runs once per visible blade, per frame (tens of thousands of
+    // times). Unity's Matrix4x4 operator* is a general 4x4 multiply: it also
+    // computes the bottom row and carries the w term through every dot product.
+    // Both inputs here are affine — a Transform's localToWorldMatrix and a TRS
+    // blade matrix both have bottom row (0,0,0,1) — so that work is provably
+    // wasted. Dropping it is ~40% fewer multiply-adds for a bit-identical
+    // result on affine input.
+    //
+    // Taken by ref purely to avoid copying two 64-byte structs per call.
+    static Matrix4x4 MulAffine(ref Matrix4x4 a, ref Matrix4x4 b)
+    {
+        Matrix4x4 r;
+        r.m00 = a.m00 * b.m00 + a.m01 * b.m10 + a.m02 * b.m20;
+        r.m01 = a.m00 * b.m01 + a.m01 * b.m11 + a.m02 * b.m21;
+        r.m02 = a.m00 * b.m02 + a.m01 * b.m12 + a.m02 * b.m22;
+        r.m03 = a.m00 * b.m03 + a.m01 * b.m13 + a.m02 * b.m23 + a.m03;
+
+        r.m10 = a.m10 * b.m00 + a.m11 * b.m10 + a.m12 * b.m20;
+        r.m11 = a.m10 * b.m01 + a.m11 * b.m11 + a.m12 * b.m21;
+        r.m12 = a.m10 * b.m02 + a.m11 * b.m12 + a.m12 * b.m22;
+        r.m13 = a.m10 * b.m03 + a.m11 * b.m13 + a.m12 * b.m23 + a.m13;
+
+        r.m20 = a.m20 * b.m00 + a.m21 * b.m10 + a.m22 * b.m20;
+        r.m21 = a.m20 * b.m01 + a.m21 * b.m11 + a.m22 * b.m21;
+        r.m22 = a.m20 * b.m02 + a.m21 * b.m12 + a.m22 * b.m22;
+        r.m23 = a.m20 * b.m03 + a.m21 * b.m13 + a.m22 * b.m23 + a.m23;
+
+        r.m30 = 0f; r.m31 = 0f; r.m32 = 0f; r.m33 = 1f;
+        return r;
+    }
+
     void Draw()
     {
         if (grassMaterial == null || grassMeshes.Length == 0 || _body == null) return;
@@ -832,7 +911,8 @@ public class InstancedGrassRenderer : MonoBehaviour
             for (int k = 0; k < n; k++)
             {
                 int m = cell.mesh[k];
-                _batches[m][_counts[m]++] = l2w * cell.local[k];
+                Matrix4x4 bl = cell.local[k];
+                _batches[m][_counts[m]++] = MulAffine(ref l2w, ref bl);
                 if (_counts[m] == 1023)
                 {
                     Graphics.DrawMeshInstanced(grassMeshes[m], 0, grassMaterial, _batches[m], 1023, null,

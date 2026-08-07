@@ -30,6 +30,22 @@ Forbidden zone:
 - All of `Assets/3 - Scripts/Scripts/Celestial/` (generators, settings, `Shape/*`, `Shading/*`, `NoiseSettings/*`, `Texture Gen/*`)
 - Any `.shader`/`.compute`/`.hlsl` under those, and `Assets/2 - Materials/` planet/ocean/atmosphere materials.
 
+**One sanctioned exception (2026-08-03, Sam's explicit call) — CAVE CUTOUTS.**
+Two shaders in this zone take the same three globals (`_NumCaveCapsules`,
+`_CaveCapsuleA/B`), fed by `World/CaveOceanCutout.cs`:
+
+- `OceanEffect.shader` — `InsideCaveCapsule` zeroes `oceanViewDepth`, so no water
+  is drawn inside a cave. The ocean is an analytic sphere with no notion of a
+  cave, so nothing outside the shader can fix this.
+- `Atmosphere.shader` — that shader clips the atmosphere at the ocean surface
+  (`dstToSurface = min(sceneDepth, dstToOcean)`). Below sea level `dstToOcean`
+  is 0, the atmosphere is skipped entirely and **the sky goes black inside a
+  cave**. The cutout makes it ignore the ocean clip when the camera is in a cave.
+
+Both are **strictly additive**: with zero capsules registered they behave exactly
+as before, so every scene without a cave is unaffected. Revert with
+`git checkout` on those two files if either ever misbehaves.
+
 **`CelestialBody.cs` is NOT forbidden** — it has gameplay accessors (`Position`, `Rigidbody`, `velocity`, `bodyName`) + the `ApplySavedState` save hook. The forbidden part is the *generation/shading* code, not runtime physics state.
 
 **Atmosphere-vanishes-on-warm-reload trap (fixed, don't re-break):** the blue atmosphere disappeared after returning from the backrooms — or any gameplay-scene reload within one process run. `AtmosphereSettings` (a persistent ScriptableObject) gates `SetProperties()` — which applies all scattering uniforms + the baked `_BakedOpticalDepth` texture — behind a non-serialized `settingsUpToDate` flag that's set `true` on first load and never reset at runtime. On a warm reload, `PlanetEffects` builds fresh atmosphere materials but `SetProperties` is skipped, so they render nothing. (A main-menu round-trip masked it: `LoadScene`'s `UnloadUnusedAssets` reclaimed the asset, resetting the flag.) Fix lives **outside** the forbidden zone: `Assets/3 - Scripts/Camera/AtmosphereReloadFix.cs` resets the flag on every non-MainMenu sceneLoaded via reflection. If atmosphere/ocean post-process ever vanishes after a scene transition again, suspect a persistent "baked/up-to-date" flag not being reset — not the camera/depth/generators.

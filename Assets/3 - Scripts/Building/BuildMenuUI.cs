@@ -40,7 +40,23 @@ public class BuildMenuUI : MonoBehaviour
     BuildableCategory _activeFilter;
     readonly List<Button> _tabButtons = new List<Button>();
     readonly List<BuildableCategory?> _tabFilters = new List<BuildableCategory?>(); // null = All
-    readonly List<(GameObject row, BuildableCategory cat, BuildableEntry entry)> _rowEntries = new List<(GameObject, BuildableCategory, BuildableEntry)>();
+
+    // One row in the blueprint list. Holds the graphics the Colonizer lock has
+    // to repaint (dimmed thumb, padlock, "LV 3" where the cost sits) so
+    // RefreshLockStates never has to Find() its way back down the hierarchy.
+    class RowRef
+    {
+        public GameObject row;
+        public BuildableCategory cat;
+        public BuildableEntry entry;
+        public RawImage thumb;
+        public Image padlock;
+        public TextMeshProUGUI name;
+        public TextMeshProUGUI cost;
+        public bool locked;
+    }
+    readonly List<RowRef> _rowEntries = new List<RowRef>();
+    TextMeshProUGUI _nextUnlockText;
 
     // Runtime preview rig — mirrors the FishingdexManager / GoodsVendorShopUI pattern.
     // A dedicated camera off-screen renders each prefab once into a cached RenderTexture.
@@ -86,9 +102,24 @@ public class BuildMenuUI : MonoBehaviour
         BuildUI();
     }
 
+    void OnEnable()
+    {
+        // Keep the padlocks honest while the menu is open — placing a structure
+        // from the menu closes it, but Colonizer also moves from a sapling
+        // planted elsewhere, and a load can rewrite the score under us.
+        PlayerProgress.OnTrackChanged += HandleProgressChanged;
+    }
+
     void OnDisable()
     {
+        PlayerProgress.OnTrackChanged -= HandleProgressChanged;
         if (s_instance == this) s_instance = null;
+    }
+
+    void HandleProgressChanged(ProgressTrack track, int delta, bool leveledUp)
+    {
+        if (track != ProgressTrack.Colonizer) return;
+        if (_rowEntries.Count > 0) RefreshLockStates();
     }
 
     void Update()
@@ -156,6 +187,7 @@ public class BuildMenuUI : MonoBehaviour
         PlayerController.isInDialogue = true;
         menuRoot.SetActive(true);
         ShowList();
+        RefreshLockStates();     // Colonizer level may have moved while closed
         OnOpened?.Invoke();
     }
 
@@ -164,6 +196,22 @@ public class BuildMenuUI : MonoBehaviour
     void RefreshDetailCost()
     {
         if (specCost == null || detailEntry == null) return;
+
+        // Locked blueprints short-circuit the whole affordability readout: the
+        // cost of something you can't build yet is not the information the
+        // player needs, the level is.
+        if (IsLocked(detailEntry))
+        {
+            int req = BuildableUnlocks.RequiredLevel(detailEntry.displayName);
+            specCost.text  = $"LOCKED · COLONIZER LV {req}";
+            specCost.color = CyanScannerPalette.CostUnafford;
+            if (placeBtn != null) placeBtn.interactable = false;
+            if (placeBtnLabel != null) placeBtnLabel.text = "LOCKED";
+            if (placeBtnBg != null) placeBtnBg.color = CyanScannerPalette.BtnNormalEdge;
+            return;
+        }
+        if (placeBtnLabel != null) placeBtnLabel.text = "[ENTER] PLACE";
+
         int wood = WoodInventory.Instance != null ? WoodInventory.Instance.Wood : 0;
         int crystals = Hotbar.Instance != null ? Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Crystal) : 0;
 
@@ -241,6 +289,9 @@ public class BuildMenuUI : MonoBehaviour
     void OnPlaceClicked()
     {
         if (detailEntry == null || detailEntry.prefab == null) return;
+        // Belt and braces — the button is already non-interactable when locked,
+        // but the ENTER key path reaches here too.
+        if (IsLocked(detailEntry)) return;
 
         var go = new GameObject("GhostPlacement_Runtime");
         activePlacement = go.AddComponent<GhostPlacement>();
@@ -676,6 +727,21 @@ public class BuildMenuUI : MonoBehaviour
         prt.sizeDelta = new Vector2(220, 40);
         prt.anchoredPosition = new Vector2(-24, 0);
         placeBtn.onClick.AddListener(OnPlaceClicked);
+
+        // The carrot. Sits in the dead space between CLOSE and PLACE and names
+        // what the next Colonizer level hands over, so the padlocks read as a
+        // countdown rather than a wall.
+        _nextUnlockText = NewText("NextUnlock", footer.transform,
+            BuildableUnlocks.NextUnlockSummary(), 12,
+            CyanScannerPalette.AccentDim, FontStyles.Normal, TextAlignmentOptions.Center);
+        _nextUnlockText.characterSpacing = 2;
+        _nextUnlockText.raycastTarget = false;
+        _nextUnlockText.enableWordWrapping = false;
+        var nrt2 = _nextUnlockText.rectTransform;
+        nrt2.anchorMin = new Vector2(0, 0);
+        nrt2.anchorMax = new Vector2(1, 1);
+        nrt2.offsetMin = new Vector2(256, 0);    // clear of the 220px CLOSE button
+        nrt2.offsetMax = new Vector2(-256, 0);   // clear of the 220px PLACE button
     }
 
     void RebuildVisibleRows()
@@ -688,21 +754,76 @@ public class BuildMenuUI : MonoBehaviour
             foreach (var entry in buildables)
             {
                 if (entry == null) continue;
-                var row = AddListRow(listContent, entry);
-                _rowEntries.Add((row, entry.category, entry));
+                _rowEntries.Add(AddListRow(listContent, entry));
             }
         }
 
-        foreach (var (row, cat, _) in _rowEntries)
+        foreach (var r in _rowEntries)
         {
-            if (row == null) continue;
-            bool visible = !_filterActive || cat == _activeFilter;
-            if (row.activeSelf != visible) row.SetActive(visible);
+            if (r == null || r.row == null) continue;
+            bool visible = !_filterActive || r.cat == _activeFilter;
+            if (r.row.activeSelf != visible) r.row.SetActive(visible);
         }
         UpdateTabHighlights();
+        RefreshLockStates();
     }
 
-    GameObject AddListRow(Transform parent, BuildableEntry entry)
+    // ─────────────────────── Colonizer blueprint locks ───────────────────────
+    // Locked blueprints stay VISIBLE — dimmed, padlocked, and labelled with the
+    // level they need. Seeing the wall you can't build yet is the whole point;
+    // hiding it (what the retired BuildMenuLock did) just made the menu look
+    // small. BuildableUnlocks owns the table.
+
+    static readonly Color LockedTint  = new Color(1f, 1f, 1f, 0.28f);  // thumb wash
+    static readonly Color LockedText  = new Color32(0x6E, 0x8A, 0x99, 0xFF);
+    static readonly Color PadlockTint = new Color32(0x9F, 0xC4, 0xD6, 0xE6);
+
+    /// Repaints every row against the current Colonizer level, and refreshes
+    /// the footer's "next unlock" line. Called on open and whenever progression
+    /// moves while the menu is up.
+    public void RefreshLockStates()
+    {
+        int level = BuildableUnlocks.ColonizerLevel;
+        foreach (var r in _rowEntries)
+        {
+            if (r == null || r.row == null || r.entry == null) continue;
+            ApplyRowLock(r, BuildableUnlocks.IsUnlockedAt(r.entry.displayName, level));
+        }
+        if (_nextUnlockText != null) _nextUnlockText.text = BuildableUnlocks.NextUnlockSummary();
+
+        // The detail panel may be showing the entry that just unlocked.
+        if (detailEntry != null) RefreshDetailCost();
+    }
+
+    void ApplyRowLock(RowRef r, bool unlocked)
+    {
+        r.locked = !unlocked;
+
+        if (r.padlock != null) r.padlock.enabled = r.locked;
+        if (r.thumb != null && r.thumb.texture != null)
+            r.thumb.color = r.locked ? LockedTint : Color.white;
+        if (r.name != null && r.row != _selectedRow)
+            r.name.color = r.locked ? LockedText : CyanScannerPalette.AccentDim;
+        if (r.cost != null)
+        {
+            if (r.locked)
+            {
+                int req = BuildableUnlocks.RequiredLevel(r.entry.displayName);
+                r.cost.text  = "LV " + req;
+                r.cost.color = LockedText;
+            }
+            else
+            {
+                r.cost.text  = r.entry.woodCost > 0 ? r.entry.woodCost + "W" : "FREE";
+                r.cost.color = CyanScannerPalette.Accent;
+            }
+        }
+    }
+
+    bool IsLocked(BuildableEntry e)
+        => e != null && !BuildableUnlocks.IsUnlocked(e.displayName);
+
+    RowRef AddListRow(Transform parent, BuildableEntry entry)
     {
         var row = NewUIObject("Row_" + entry.displayName, parent);
         var le = row.AddComponent<LayoutElement>();
@@ -757,6 +878,23 @@ public class BuildMenuUI : MonoBehaviour
             else { thumb.color = new Color(1, 1, 1, 0); }
         }
 
+        // Padlock, drawn over the thumbnail. Built for every row and simply
+        // enabled/disabled by ApplyRowLock — 60 always-disabled Images cost
+        // nothing, and rebuilding rows on every level-up would throw away the
+        // cached prefab preview textures.
+        var lockGo = NewUIObject("Lock", iconGo.transform);
+        var lrt = lockGo.GetComponent<RectTransform>();
+        lrt.anchorMin = new Vector2(0.5f, 0.5f);
+        lrt.anchorMax = new Vector2(0.5f, 0.5f);
+        lrt.pivot     = new Vector2(0.5f, 0.5f);
+        lrt.sizeDelta = new Vector2(22, 22);
+        lrt.anchoredPosition = Vector2.zero;
+        var padlock = lockGo.AddComponent<Image>();
+        padlock.sprite = LockIcon.Sprite;
+        padlock.color = PadlockTint;
+        padlock.raycastTarget = false;
+        padlock.enabled = false;
+
         // Name label
         var name = NewText("Name", row.transform, entry.displayName.ToUpper(), 13,
             CyanScannerPalette.AccentDim, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
@@ -781,8 +919,17 @@ public class BuildMenuUI : MonoBehaviour
 
         var captured = entry;
         var capturedRow = row;
+        // Locked rows stay CLICKABLE on purpose — selecting one shows the model
+        // and the spec with "LOCKED · COLONIZER LV n" in the cost slot. Being
+        // able to inspect what you're working toward is the reward tease; only
+        // PLACE is refused.
         btn.onClick.AddListener(() => SelectRow(captured, capturedRow));
-        return row;
+
+        return new RowRef
+        {
+            row = row, cat = entry.category, entry = entry,
+            thumb = thumb, padlock = padlock, name = name, cost = cost,
+        };
     }
 
     void SelectRow(BuildableEntry entry, GameObject row)
@@ -793,7 +940,12 @@ public class BuildMenuUI : MonoBehaviour
             var prevBg = _selectedRow.GetComponent<Image>();
             if (prevBg != null) prevBg.color = new Color32(0, 0, 0, 0);
             var prevName = _selectedRow.transform.Find("Name")?.GetComponent<TextMeshProUGUI>();
-            if (prevName != null) prevName.color = CyanScannerPalette.AccentDim;
+            // Deselecting a LOCKED row must return it to the locked colour, not
+            // the normal dim — otherwise clicking through the list slowly turns
+            // every locked entry back to looking available.
+            if (prevName != null)
+                prevName.color = FindRow(_selectedRow)?.locked == true
+                    ? LockedText : CyanScannerPalette.AccentDim;
         }
         _selectedRow = row;
         if (row != null)
@@ -805,6 +957,14 @@ public class BuildMenuUI : MonoBehaviour
         }
 
         ShowDetail(entry);
+    }
+
+    RowRef FindRow(GameObject row)
+    {
+        if (row == null) return null;
+        for (int i = 0; i < _rowEntries.Count; i++)
+            if (_rowEntries[i] != null && _rowEntries[i].row == row) return _rowEntries[i];
+        return null;
     }
 
     // ───────────────────────── UI helpers ─────────────────────────
@@ -950,6 +1110,7 @@ public class BuildMenuUI : MonoBehaviour
     public void StartPlacementFromPhone(BuildableEntry entry)
     {
         if (entry == null || entry.prefab == null || activePlacement != null) return;
+        if (IsLocked(entry)) return;                 // same Colonizer gate as the desktop panel
         var go = new GameObject("GhostPlacement_Runtime");
         activePlacement = go.AddComponent<GhostPlacement>();
         activePlacement.onFinished = () =>

@@ -147,10 +147,11 @@ public class PlayerPhoneUI : MonoBehaviour
     //   1 = AI Apps (AI / Notes / Codex / Calculator — three are stubs)
     //   2 = Vitals
     //   3 = Quests
-    const int PageCount = 3;
+    //   4 = Levels
+    const int PageCount = 4;
     RectTransform _pageHostRT;
     RectTransform[] _pageRoots = new RectTransform[PageCount];
-    int _currentPage; // 0=Apps (incl. AI), 1=Vitals, 2=Quests
+    int _currentPage; // 0=Apps (incl. AI), 1=Vitals, 2=Quests, 3=Levels
 
     // Nav widget visuals.
     Image[] _navDots = new Image[PageCount];
@@ -187,9 +188,10 @@ public class PlayerPhoneUI : MonoBehaviour
 
     // Status bar refs
     TextMeshProUGUI _timeText;
-    TextMeshProUGUI _batteryText;
-    RectTransform   _batteryFill;
-    int            _batteryPct;
+    // Status-bar general level (replaced the fake battery readout).
+    TextMeshProUGUI _levelText;
+    Image           _levelRing;
+    int             _lastShownLevel = -1;   // -1 forces the first paint
     int            _lastShownMinute = -1;
 
     // Camera mode runtime objects — created on first EnterCameraMode and
@@ -289,7 +291,6 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
-        _batteryPct = Random.Range(20, 96); // 20..95
         BuildCanvas();
     }
 
@@ -1348,6 +1349,10 @@ public class PlayerPhoneUI : MonoBehaviour
         // Vitals bars track ResourceManager live — only while page 2 is
         // visible AND the phone is open (no point updating an off-screen UI).
         if (IsOpen && _currentPage == 1) RefreshVitals();
+        // Levels tick live too — a tree felled while the phone is up should move
+        // the bar without needing a page flip. Both refreshes are change-detected
+        // internally, so the per-frame cost is a handful of comparisons.
+        if (IsOpen && _currentPage == 3) RefreshLevels();
 
         // Movement-warning fade is purely time-based (samples Time.unscaledTime
         // against _warningShownAt). It MUST run before the early-returns below
@@ -1614,14 +1619,20 @@ public class PlayerPhoneUI : MonoBehaviour
             if (_timeText != null) _timeText.text = now.ToString("HH:mm");
         }
 
-        // Battery percentage text + horizontal fill scaled to pct/100.
-        if (_batteryText != null && _batteryText.text == "--%")
-            _batteryText.text = $"{_batteryPct}%";
-        if (_batteryFill != null)
+        // General level, where the fake battery used to be. Change-detected —
+        // this runs every frame while the phone is up, and reassigning a TMP
+        // string allocates + forces a mesh rebuild (CLAUDE.md).
+        var prog = PlayerProgress.Instance;
+        int lv = prog != null ? prog.GeneralLevel : 0;
+        if (_levelText != null && lv != _lastShownLevel)
         {
-            float pct = _batteryPct / 100f;
-            _batteryFill.anchorMax = new Vector2(pct, 1f);
+            _lastShownLevel = lv;
+            _levelText.text = $"LV {lv}";
         }
+        // The ring sweeps with progress toward the next general level, so the
+        // icon is doing real work rather than being decoration.
+        if (_levelRing != null && prog != null)
+            _levelRing.fillAmount = Mathf.Repeat(prog.GeneralPercent * 10f, 1f);
     }
 
     System.Collections.IEnumerator AnimatePhone(bool toOpen)
@@ -2178,56 +2189,43 @@ public class PlayerPhoneUI : MonoBehaviour
         _timeText.enableWordWrapping = false;
         _timeText.raycastTarget = false;
 
-        // Battery percent text — sits to the LEFT of the battery shell.
-        var pctRT = NewUI("Pct", _statusBarRT);
-        pctRT.anchorMin = new Vector2(1f, 0f);
-        pctRT.anchorMax = new Vector2(1f, 1f);
-        pctRT.pivot = new Vector2(1f, 0.5f);
-        pctRT.anchoredPosition = new Vector2(-34f, 0f); // leave 34 px for shell + nub + gap
-        pctRT.sizeDelta = new Vector2(36f, 0f);
-        _batteryText = pctRT.gameObject.AddComponent<TextMeshProUGUI>();
-        HudFontResolver.Apply(_batteryText);
-        _batteryText.text = "--%";
-        _batteryText.fontSize = 11f;
-        _batteryText.color = AccentCyan;
-        _batteryText.alignment = TextAlignmentOptions.MidlineRight;
-        _batteryText.enableWordWrapping = false;
-        _batteryText.raycastTarget = false;
+        // GENERAL LEVEL — replaces the battery readout. The battery was
+        // Random.Range(20,96) picked once at startup: a number that never moved
+        // and meant nothing. Same slot, same visual weight, now it's the mean
+        // completion across all five progression tracks.
+        var lvRT = NewUI("Level", _statusBarRT);
+        lvRT.anchorMin = new Vector2(1f, 0f);
+        lvRT.anchorMax = new Vector2(1f, 1f);
+        lvRT.pivot = new Vector2(1f, 0.5f);
+        lvRT.anchoredPosition = new Vector2(-24f, 0f); // leave 24 px for the ring + gap
+        lvRT.sizeDelta = new Vector2(44f, 0f);
+        _levelText = lvRT.gameObject.AddComponent<TextMeshProUGUI>();
+        HudFontResolver.Apply(_levelText);
+        _levelText.text = "LV 0";
+        _levelText.fontSize = 11f;
+        _levelText.color = AccentCyan;
+        _levelText.fontStyle = FontStyles.Bold;
+        _levelText.alignment = TextAlignmentOptions.MidlineRight;
+        _levelText.enableWordWrapping = false;
+        _levelText.raycastTarget = false;
 
-        // Battery shell — small fixed-size horizontal cell on the FAR RIGHT.
-        var shell = NewUI("Shell", _statusBarRT);
-        shell.anchorMin = new Vector2(1f, 0.5f);
-        shell.anchorMax = new Vector2(1f, 0.5f);
-        shell.pivot = new Vector2(1f, 0.5f);
-        shell.anchoredPosition = new Vector2(-8f, 0f); // small gap for the nub on the right
-        shell.sizeDelta = new Vector2(22f, 10f);
-        var shellImg = shell.gameObject.AddComponent<Image>();
-        shellImg.sprite = RoundedRectOutline(3); // tiny radius for a 22×10 battery cell — almost rectangular
-        shellImg.type   = Image.Type.Sliced;
-        shellImg.color  = AccentCyan;
-        shellImg.raycastTarget = false;
-
-        // Battery nub — tiny positive terminal on the right of the shell.
-        var nub = NewUI("Nub", _statusBarRT);
-        nub.anchorMin = new Vector2(1f, 0.5f);
-        nub.anchorMax = new Vector2(1f, 0.5f);
-        nub.pivot = new Vector2(1f, 0.5f);
-        nub.anchoredPosition = new Vector2(-5f, 0f);
-        nub.sizeDelta = new Vector2(3f, 4f);
-        var nubImg = nub.gameObject.AddComponent<Image>();
-        nubImg.color = AccentCyan;
-        nubImg.raycastTarget = false;
-
-        // Battery fill — inside the shell, width scaled to _batteryPct/100 every Update.
-        _batteryFill = NewUI("Fill", shell);
-        _batteryFill.anchorMin = new Vector2(0f, 0f);
-        _batteryFill.anchorMax = new Vector2(0f, 1f); // anchorMax.x updated live in RefreshStatusBar
-        _batteryFill.pivot = new Vector2(0f, 0.5f);
-        _batteryFill.offsetMin = new Vector2(2f, 2f);
-        _batteryFill.offsetMax = new Vector2(-2f, -2f);
-        var fillImg = _batteryFill.gameObject.AddComponent<Image>();
-        fillImg.color = AccentCyan;
-        fillImg.raycastTarget = false;
+        // Progress ring — a radial-filled disc outline that sweeps toward the
+        // next general level. Uses Image.Type.Filled so no per-frame texture work.
+        var ringRT = NewUI("LevelRing", _statusBarRT);
+        ringRT.anchorMin = new Vector2(1f, 0.5f);
+        ringRT.anchorMax = new Vector2(1f, 0.5f);
+        ringRT.pivot = new Vector2(1f, 0.5f);
+        ringRT.anchoredPosition = new Vector2(-6f, 0f);
+        ringRT.sizeDelta = new Vector2(13f, 13f);
+        _levelRing = ringRT.gameObject.AddComponent<Image>();
+        _levelRing.sprite = Ring();
+        _levelRing.color = AccentCyan;
+        _levelRing.type = Image.Type.Filled;
+        _levelRing.fillMethod = Image.FillMethod.Radial360;
+        _levelRing.fillOrigin = (int)Image.Origin360.Top;
+        _levelRing.fillClockwise = true;
+        _levelRing.fillAmount = 0f;
+        _levelRing.raycastTarget = false;
     }
 
     // ── Notification strip ──────────────────────────────────────────
@@ -2289,6 +2287,7 @@ public class PlayerPhoneUI : MonoBehaviour
         BuildAppsPage();    // _pageRoots[0] — 6 tiles incl. AI
         BuildVitalsPage();  // _pageRoots[1]
         BuildQuestsPage();  // _pageRoots[2]
+        BuildLevelsPage();  // _pageRoots[3]
     }
 
     void BuildAppsPage()
@@ -2699,6 +2698,158 @@ public class PlayerPhoneUI : MonoBehaviour
         // Update while page 2 is visible, quests only update on phone events
         // so we drive them here.
         if (_currentPage == 2) RefreshQuests();
+        if (_currentPage == 3) RefreshLevels();
+    }
+
+    // ── Page 4: Levels ──────────────────────────────────────────────
+
+    // One row per ProgressTrack plus the averaged general level at the bottom.
+    // Rows are built once and repainted by RefreshLevels — building five rows
+    // every time the page opens would churn UI garbage for no reason.
+    TextMeshProUGUI[] _lvName  = new TextMeshProUGUI[PlayerProgress.TrackCount];
+    TextMeshProUGUI[] _lvLevel = new TextMeshProUGUI[PlayerProgress.TrackCount];
+    TextMeshProUGUI[] _lvSub   = new TextMeshProUGUI[PlayerProgress.TrackCount];
+    RectTransform[]   _lvFill  = new RectTransform[PlayerProgress.TrackCount];
+    TextMeshProUGUI   _lvGeneral;
+
+    void BuildLevelsPage()
+    {
+        var pageRT = NewUI("LevelsPage", _pageHostRT);
+        _pageRoots[3] = pageRT;
+        pageRT.anchorMin = Vector2.zero; pageRT.anchorMax = Vector2.one;
+        pageRT.offsetMin = Vector2.zero; pageRT.offsetMax = Vector2.zero;
+
+        var vlg = pageRT.gameObject.AddComponent<VerticalLayoutGroup>();
+        vlg.padding = new RectOffset(9, 9, 6, 6);
+        vlg.spacing = 4f;
+        vlg.childAlignment = TextAnchor.UpperLeft;
+        vlg.childControlWidth = true;  vlg.childControlHeight = true;
+        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
+
+        for (int i = 0; i < PlayerProgress.TrackCount; i++)
+        {
+            var track = (ProgressTrack)i;
+            Color c = PlayerProgress.ColorOf(track);
+
+            var row = NewUI("Track_" + track, pageRT);
+            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 26f;
+
+            // Name (left) + level (right) share the top line.
+            var nameRT = NewUI("Name", row);
+            nameRT.anchorMin = new Vector2(0f, 1f); nameRT.anchorMax = new Vector2(0.7f, 1f);
+            nameRT.offsetMin = new Vector2(0f, -11f); nameRT.offsetMax = new Vector2(0f, 0f);
+            _lvName[i] = nameRT.gameObject.AddComponent<TextMeshProUGUI>();
+            HudFontResolver.Apply(_lvName[i]);
+            _lvName[i].text = PlayerProgress.DisplayName(track);
+            _lvName[i].fontSize = 8.5f;
+            _lvName[i].color = c;
+            _lvName[i].characterSpacing = 3f;
+            _lvName[i].alignment = TextAlignmentOptions.MidlineLeft;
+            _lvName[i].enableWordWrapping = false;
+            _lvName[i].raycastTarget = false;
+
+            var lvRT = NewUI("Lv", row);
+            lvRT.anchorMin = new Vector2(0.6f, 1f); lvRT.anchorMax = new Vector2(1f, 1f);
+            lvRT.offsetMin = new Vector2(0f, -11f); lvRT.offsetMax = new Vector2(0f, 0f);
+            _lvLevel[i] = lvRT.gameObject.AddComponent<TextMeshProUGUI>();
+            HudFontResolver.Apply(_lvLevel[i]);
+            _lvLevel[i].fontSize = 9f;
+            _lvLevel[i].color = c;
+            _lvLevel[i].fontStyle = FontStyles.Bold;
+            _lvLevel[i].alignment = TextAlignmentOptions.MidlineRight;
+            _lvLevel[i].enableWordWrapping = false;
+            _lvLevel[i].raycastTarget = false;
+
+            // Bar track + left-pivot fill (the ResourceHUD trick used elsewhere
+            // in this file: scale anchorMax.x rather than rebuilding geometry).
+            var barRT = NewUI("Bar", row);
+            barRT.anchorMin = new Vector2(0f, 1f); barRT.anchorMax = new Vector2(1f, 1f);
+            barRT.offsetMin = new Vector2(0f, -17f); barRT.offsetMax = new Vector2(0f, -12f);
+            var barImg = barRT.gameObject.AddComponent<Image>();
+            barImg.color = new Color(1f, 1f, 1f, 0.09f);
+            barImg.raycastTarget = false;
+
+            _lvFill[i] = NewUI("Fill", barRT);
+            _lvFill[i].anchorMin = new Vector2(0f, 0f);
+            _lvFill[i].anchorMax = new Vector2(0f, 1f);   // .x driven in RefreshLevels
+            _lvFill[i].pivot = new Vector2(0f, 0.5f);
+            _lvFill[i].offsetMin = Vector2.zero; _lvFill[i].offsetMax = Vector2.zero;
+            var fillImg = _lvFill[i].gameObject.AddComponent<Image>();
+            fillImg.color = c;
+            fillImg.raycastTarget = false;
+
+            var subRT = NewUI("Sub", row);
+            subRT.anchorMin = new Vector2(0f, 1f); subRT.anchorMax = new Vector2(1f, 1f);
+            subRT.offsetMin = new Vector2(0f, -26f); subRT.offsetMax = new Vector2(0f, -18f);
+            _lvSub[i] = subRT.gameObject.AddComponent<TextMeshProUGUI>();
+            HudFontResolver.Apply(_lvSub[i]);
+            _lvSub[i].fontSize = 7.5f;
+            _lvSub[i].color = new Color32(0x6D, 0x8A, 0xA3, 0xFF);
+            _lvSub[i].alignment = TextAlignmentOptions.MidlineLeft;
+            _lvSub[i].enableWordWrapping = false;
+            _lvSub[i].raycastTarget = false;
+        }
+
+        // General level footer.
+        var footer = NewUI("General", pageRT);
+        footer.gameObject.AddComponent<LayoutElement>().preferredHeight = 30f;
+        _lvGeneral = footer.gameObject.AddComponent<TextMeshProUGUI>();
+        HudFontResolver.Apply(_lvGeneral);
+        _lvGeneral.fontSize = 10f;
+        _lvGeneral.color = AccentCyan;
+        _lvGeneral.alignment = TextAlignmentOptions.Center;
+        _lvGeneral.characterSpacing = 4f;
+        _lvGeneral.enableWordWrapping = false;
+        _lvGeneral.raycastTarget = false;
+    }
+
+    void RefreshLevels()
+    {
+        var p = PlayerProgress.Instance;
+        if (p == null) return;
+
+        for (int i = 0; i < PlayerProgress.TrackCount; i++)
+        {
+            var track = (ProgressTrack)i;
+            if (_lvLevel[i] != null)
+                _lvLevel[i].text = p.IsMaxed(track)
+                    ? "MAX"
+                    : $"{p.LevelOf(track)}<color=#4E677E>/{PlayerProgress.MaxLevelOf(track)}</color>";
+            if (_lvSub[i] != null)
+            {
+                string sub = p.SubLabelOf(track);
+                // Colonizer is the one track that currently pays out something
+                // concrete per level, so it says what's coming. The rest get
+                // this line once their perks land (see docs/PROGRESSION_PERKS.md).
+                if (track == ProgressTrack.Colonizer && !p.IsMaxed(track))
+                {
+                    int next = BuildableUnlocks.NextUnlockLevel(p.LevelOf(track));
+                    if (next >= 0)
+                    {
+                        int n = BuildableUnlocks.UnlockedAt(next).Length;
+                        sub += n == 1 ? "  ·  NEXT: 1 BLUEPRINT" : $"  ·  NEXT: {n} BLUEPRINTS";
+                    }
+                }
+                _lvSub[i].text = sub;
+            }
+            if (_lvFill[i] != null)
+                _lvFill[i].anchorMax = new Vector2(Mathf.Clamp01(p.LevelProgressOf(track)), 1f);
+        }
+
+        // The Tree Killer / Tree Daddy ratio is the one readout that states the
+        // game's thesis: felling far more than you plant means you're stripping
+        // the planet, and you should be able to SEE that without being told.
+        int felled  = Mathf.Max(0, p.ScoreOf(ProgressTrack.TreeKiller));
+        int planted = Mathf.Max(0, p.ScoreOf(ProgressTrack.TreeDaddy));
+        string balance = felled == 0 && planted == 0
+            ? ""
+            : planted >= felled ? "   ·   FOREST GROWING" : "   ·   NET LOSS " + (felled - planted);
+
+        if (_lvGeneral != null)
+            // Rank, not just the number — the ceremony hands it to you, this is
+            // where you go to look at it again.
+            _lvGeneral.text =
+                $"GENERAL LEVEL {p.GeneralLevel}   ·   {LevelUpCeremonyUI.RankFor(p.GeneralLevel)}{balance}";
     }
 
     // The page arrows sit far apart with the app grid diagonally above, so

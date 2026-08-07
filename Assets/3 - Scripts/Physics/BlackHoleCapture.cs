@@ -75,12 +75,18 @@ public class BlackHoleCapture : MonoBehaviour
         if (dist >= captureRadius) return;   // outside the zone: hands off, normal gravity/flight
 
         // Cancel the BH's own gravity so it can't accelerate you while we glide you in.
+        //
+        // This MUST use the exact same formula the gravity that's being applied uses
+        // (PlayerController's per-body loop and Ship's NBodySimulation.CalculateAcceleration
+        // both go through Universe.GravityAcceleration), or the mismatch becomes a net force.
+        // That is a real bug this already hit: this line used to hard-code the exterior 1/r²
+        // law while Universe.GravityAcceleration switched to the shell-theorem INTERIOR law
+        // (linear falloff to zero at the centre). The BH's radius is 4000 and captureRadius
+        // is 2500, so the ENTIRE capture zone is interior — the cancellation over-subtracted
+        // by up to ~1000x and pushed you back OUT. You stalled at ~185 units, just outside
+        // arrivalRadius (150), so the dimension teleport never fired.
         if (_selfBody != null)
-        {
-            Vector3 radial = dist > 1e-4f ? toCenter / dist : Vector3.zero;
-            float g = Universe.gravitationalConstant * _selfBody.mass / Mathf.Max(dist * dist, 1f);
-            rb.AddForce(-radial * g, ForceMode.Acceleration);
-        }
+            rb.AddForce(-Universe.GravityAcceleration(rb.position, _selfBody), ForceMode.Acceleration);
 
         // Kill momentum (and any spin) so nothing carries you past the middle...
         rb.velocity = Vector3.zero;

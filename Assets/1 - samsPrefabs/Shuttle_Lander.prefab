@@ -20692,7 +20692,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 8136725259115129354}
-  m_Mesh: {fileID: 4300000, guid: 994c5c6a447815043bdcad17ec446bb8, type: 2}
+  m_Mesh: {fileID: 4300000, guid: ffecda699ecf9824f975c6f2dbb3c073, type: 2}
 --- !u!23 &2517453263638709264
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -23003,6 +23003,7 @@ GameObject:
   - component: {fileID: 853715920623455751}
   - component: {fileID: 6715403576135205355}
   - component: {fileID: 6951750730696039558}
+  - component: {fileID: 1155347297228244739}
   m_Layer: 10
   m_Name: Locker_2
   m_TagString: Untagged
@@ -23142,6 +23143,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   itemId: 4
+  count: 1
+  unlockController: 1
+--- !u!114 &1155347297228244739
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8854043091118048104}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: abd6a2fce3d040b29452ee757b1ca5c5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  itemId: 1
   count: 1
   unlockController: 1
 --- !u!1 &8870692608475386918

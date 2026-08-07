@@ -15,8 +15,8 @@ public class WaterFillHUD : MonoBehaviour
     public static WaterFillHUD Instance { get; private set; }
 
     [Header("Layout (1920x1080 reference)")]
-    [Tooltip("Distance from the screen bottom to the bottom of the pill. Default 180 sits comfortably above the hotbar with room for the Press-F prompt above.")]
-    public float bottomMargin = 180f;
+    [Tooltip("Distance from the screen bottom to the bottom of the pill. The hotbar's active slot plus its name plate reach ~y=174, so 180 sat right on top of it; 236 clears it with a visible gap.")]
+    public float bottomMargin = 236f;
     [Tooltip("Pill width. Tip text + 10 segments + percent fit comfortably at 240.")]
     public float pillWidth = 240f;
     [Tooltip("Number of fill segments. 10 → each cell = 10%.")]

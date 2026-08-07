@@ -96,9 +96,10 @@ public class SpawnedCrystal : MonoBehaviour
         if (dead) return;
         dead = true;
         SetCollidersEnabled(false);
-        if (CrystalInventory.Instance != null)
-            CrystalInventory.Instance.Add(crystalReward);
-        SpawnPopup();
+        // Minecraft-style loot — shards scatter on the ground as ResourceDrop
+        // sprites and are collected by walking over them. ResourceDrop awards
+        // the crystals and fires the +N popup at pickup time.
+        ResourceDrop.Drop(Hotbar.ItemId.Crystal, crystalReward, transform.position, transform.parent);
         PlayBreakSound();
         if (_shakeRoutine != null) { StopCoroutine(_shakeRoutine); _shakeRoutine = null; }
         if (_shrinkRoutine != null) StopCoroutine(_shrinkRoutine);
@@ -126,12 +127,6 @@ public class SpawnedCrystal : MonoBehaviour
         transform.localScale = Vector3.zero;
         _shrinkRoutine = null;
         Mine();
-    }
-
-    void SpawnPopup()
-    {
-        Vector3 popupPos = transform.position + transform.up * 1.5f;
-        CrystalPopup.Spawn(popupPos, crystalReward);
     }
 
     public void Mine()

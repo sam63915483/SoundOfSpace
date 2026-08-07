@@ -166,9 +166,20 @@ public class FPSOverlay : MonoBehaviour
 
     void Update()
     {
+        // Visibility lives on InputSettings.fxPerfOverlay (PAUSE ▸ CAMERA ▸ PERF
+        // OVERLAY) so it persists via PlayerPrefs. F3 stays as the quick in-game
+        // toggle and writes the SAME flag, so the key and the menu can never
+        // disagree. Falls back to the local bool if settings aren't loaded yet.
+        var settings = InputSettings.Active;
+        bool want = settings != null ? settings.fxPerfOverlay : _visible;
         if (Input.GetKeyDown(ToggleKey))
         {
-            _visible = !_visible;
+            want = !want;
+            if (settings != null) settings.fxPerfOverlay = want;
+        }
+        if (want != _visible)
+        {
+            _visible = want;
             if (_canvas != null) _canvas.enabled = _visible;
         }
         if (Input.GetKeyDown(AtmoToggleKey))

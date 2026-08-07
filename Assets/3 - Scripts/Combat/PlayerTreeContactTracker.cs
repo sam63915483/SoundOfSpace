@@ -74,6 +74,11 @@ public class PlayerTreeContactTracker : MonoBehaviour
         {
             var t = trees[i];
             if (t == null || t.IsDead) continue;
+            // Growing saplings carry a SpawnedTree so they can be chopped down,
+            // but you cannot climb one — it's knee-high. Without this skip,
+            // walking past a sapling would open a tree episode and hand the
+            // enemies a detection window for nothing.
+            if (t.IsSapling) continue;
             Vector3 toPlayer = playerPos - t.transform.position;
             Vector3 horiz = Vector3.ProjectOnPlane(toPlayer, up);
             float vertical = Vector3.Dot(toPlayer, up);

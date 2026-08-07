@@ -24,8 +24,8 @@ public class InteractPromptUI : MonoBehaviour
     public float slideDuration = 0.25f;
     [Tooltip("Pixels the pill slides up from when first revealed.")]
     public float slideOffset = 40f;
-    [Tooltip("Vertical anchor — pixels above the bottom edge of the screen at rest. Default 260 keeps the prompt above the WaterFillHUD pill (at y=180).")]
-    public float bottomMargin = 260f;
+    [Tooltip("Vertical anchor — pixels above the bottom edge of the screen at rest. Sits above the WaterFillHUD pill, which moved up to y=236 to clear the hotbar — so this moved up with it.")]
+    public float bottomMargin = 320f;
     [Tooltip("Diagonal cut on top-left and bottom-right corners (pixels).")]
     public float bevelSize = 14f;
 

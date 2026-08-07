@@ -24,14 +24,17 @@ public class PlayerController : GravityObject
 	public float stickToGroundForce = 8;
 
 	[Header("Upward Jetpack")]
-	public float jetpackForce = 10;
+	// 1.3x weaker than the original 10 (Sam, 2026-08-03). The SCENE instance
+	// carries its own serialised copy of this, so changing the default here does
+	// NOT change the player already in the scene — that value is set to match.
+	public float jetpackForce = 7.7f;
 	public float jetpackDuration = 2;
 	public float jetpackRefuelTime = 2;
 	public float jetpackRefuelDelay = 2;
 
 	[Header("Jetpack Unlock")]
-	[Tooltip("When false, all three thrust types (up/down/directional) are suppressed and the BoostMeters HUD is hidden. New games start with this false; player buys the jetpack from Alien7 to enable. Set true via UnlockJetpack().")]
-	[SerializeField] bool jetpackUnlocked = false;
+	[Tooltip("When false, all three thrust types (up/down/directional) are suppressed and the BoostMeters HUD is hidden. NEW GAMES NOW START WITH THIS ON (Sam, 2026-08-03) — NewGameReset unlocks it, so it no longer has to be bought from Alien7. Set true via UnlockJetpack().")]
+	[SerializeField] bool jetpackUnlocked = true;
 
 	[Header("Downward Thrust")]
 	public float downThrustForce = 10;
@@ -151,10 +154,17 @@ public class PlayerController : GravityObject
 	[SerializeField] AudioClip footstepWalkClipB;
 	[SerializeField] float sprintPitchMultiplier = 1.5f;
 	[SerializeField] Vector2 footstepSwapInterval = new Vector2(0.5f, 1.5f);
+	// DEAD — kept only so the scene/prefab serialization layout doesn't shift
+	// (CLAUDE.md: never remove a serialized field mid-class). The jump sound moved
+	// to PlayerSuitAudio.PlayJump(); see the note at the jump call site.
+#pragma warning disable 0414
 	[SerializeField] AudioClip jumpClip;
+#pragma warning restore 0414
 	[SerializeField] AudioClip landClip;
 	[SerializeField, Range(0, 1)] float footstepVolume = 0.5f;
+#pragma warning disable 0414
 	[SerializeField, Range(0, 1)] float jumpVolume     = 0.7f;
+#pragma warning restore 0414
 	[SerializeField, Range(0, 1)] float landVolume     = 0.6f;
 	[SerializeField] float minAirborneForLandSound = 1.0f;
 
@@ -199,7 +209,16 @@ public class PlayerController : GravityObject
 	float smoothYaw;
 	float smoothPitch;
 
-	float smoothYawOld;
+	// How much of smoothYaw the player TRANSFORM has already been rotated by.
+	// HandleMovement advances this to smoothYaw each fixed step, so no input is
+	// dropped when render fps outruns the physics rate (see the note there).
+	float _yawAppliedToTransform;
+
+	/// Live look angles, updated every render frame in HandleInput on UNSCALED
+	/// time. CameraTransformFX reads these so the camera pose is composed at
+	/// render rate rather than being frozen between physics steps.
+	public float SmoothYaw => smoothYaw;
+	public float SmoothPitch => smoothPitch;
 
 	float yawSmoothV;
 	float pitchSmoothV;
@@ -227,6 +246,20 @@ public class PlayerController : GravityObject
 	// instead of an instant clunk. Non-serialized — tune here.
 	float slideStopSpeed = 1.5f;
 	float momentumFriction = 0.3f;
+
+	// True when the surface under the feet is marked SlickSurface (a slide tube,
+	// chute, ice). Refreshed by every IsGrounded() cast, never persisted.
+	bool _groundIsSlick;
+
+	// Gravity (m/s²) at or above which the grounded grip is applied at full
+	// strength; below it the grip fades out linearly, reaching zero in true
+	// zero-g. The grip exists purely to cancel GRAVITY-induced creep, so where
+	// there's no gravity there's nothing to cancel — and applying it anyway
+	// killed all momentum when the player brushed a wall near a body's core
+	// (gravity fades to zero at the centre, see Universe.GravityAcceleration).
+	// Well below any real surface gravity in the game, so normal walking is
+	// completely unaffected. Non-serialized — tune here.
+	float gripFullGravity = 2f;
 
 	bool isGrounded;
 	bool jumpQueued;
@@ -400,6 +433,16 @@ public class PlayerController : GravityObject
 	// is below the water surface — i.e. ~half the body or more is in water.
 	// Just touching the trigger with feet doesn't count, so wading at the
 	// shoreline doesn't trigger swim physics or block jumping.
+	// The ocean is one trigger sphere the size of the whole planet (radius 200 on
+	// Humble Abode IS sea level), so anything below sea level counts as "in
+	// water" — including the inside of a cave cut into the crust. Without this
+	// you swim down a rock corridor.
+	//
+	// Every water read goes through here rather than testing waterTouches
+	// directly, so the swim forces, the velocity cap, the swim-loop audio, the
+	// footstep suppression and the landing-sound suppression all agree.
+	bool InWaterVolume => waterTouches > 0 && !CaveVolume.IsInsideAnyCave(rb.position);
+
 	bool IsHalfSubmerged()
 	{
 		// Flooding Poolrooms: a flat, rising water plane rather than the spherical
@@ -408,7 +451,7 @@ public class PlayerController : GravityObject
 		// no need for a Water-tagged sphere.
 		if (PoolFlood.Active && rb.position.y < PoolFlood.SurfaceY) return true;
 
-		if (waterTouches == 0 || waterCollider == null || waterTransform == null) return false;
+		if (!InWaterVolume || waterCollider == null || waterTransform == null) return false;
 		float distFromCenter = (rb.position - waterTransform.position).magnitude;
 		float waterRadius = waterCollider.radius * waterTransform.lossyScale.x;
 		return distFromCenter < waterRadius;
@@ -511,7 +554,7 @@ public class PlayerController : GravityObject
 
 	void UpdateWaterLoop()
 	{
-		bool inWater = waterTouches > 0;
+		bool inWater = InWaterVolume;
 		bool inputHeld = Mathf.Abs(TutorialGate.MoveAxisHorizontal(TutorialAbility.Move)) > 0.1f
 		              || Mathf.Abs(TutorialGate.MoveAxisVertical(TutorialAbility.Move)) > 0.1f;
 		bool active = inWater && inputHeld && !isInDialogue && !isMapOpen && !isInModalSlotUI;
@@ -522,7 +565,7 @@ public class PlayerController : GravityObject
 	{
 		if (footstepsSource == null) return;
 
-		bool moving = isGrounded && !isInDialogue && !isMapOpen && !isInModalSlotUI && smoothVelocity.magnitude > 0.5f && waterTouches == 0;
+		bool moving = isGrounded && !isInDialogue && !isMapOpen && !isInModalSlotUI && smoothVelocity.magnitude > 0.5f && !InWaterVolume;
 		if (!moving)
 		{
 			if (footstepsSource.isPlaying) footstepsSource.Stop();
@@ -620,8 +663,16 @@ public class PlayerController : GravityObject
 		// timeScale 1 (unscaled == scaled there).
 		float mouseSmoothTime = Mathf.Lerp(0.01f, maxMouseSmoothTime, inputSettings.mouseSmoothing);
 		smoothPitch = Mathf.SmoothDampAngle(smoothPitch, pitch, ref pitchSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
-		smoothYawOld = smoothYaw;
 		smoothYaw = Mathf.SmoothDampAngle(smoothYaw, yaw, ref yawSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
+
+		// Camera pitch is written here as well as in HandleMovement so it tracks
+		// the RENDER rate. HandleMovement runs in FixedUpdate, and FixedUpdate's
+		// real-world rate is timeScale-dependent — during a 0.15x kill slow-mo it
+		// drops to ~7 Hz, which froze the pitch into visible steps. CameraTransformFX
+		// normally overrides the camera pose in LateUpdate anyway; this keeps the
+		// fallback path (camera effects disabled) smooth too.
+		if (!debug_playerFrozen && Time.timeScale > 0 && cam != null)
+			cam.transform.localEulerAngles = Vector3.right * smoothPitch;
 
 		// Movement input — blocked during dialogue
 		isGrounded = IsGrounded();
@@ -630,7 +681,7 @@ public class PlayerController : GravityObject
 		// Suppressed when touching water — jumping in from the bank registers as a
 		// "landing", but the water-entry splash (OnTriggerEnter) should play instead.
 		bool justLanded = isGrounded && wasAirborne;
-		if (justLanded && airborneTime >= minAirborneForLandSound && landClip != null && sfxSource != null && waterTouches == 0)
+		if (justLanded && airborneTime >= minAirborneForLandSound && landClip != null && sfxSource != null && !InWaterVolume)
 			sfxSource.PlayOneShot(landClip, landVolume);
 		if (justLanded)
 		{
@@ -691,9 +742,17 @@ public class PlayerController : GravityObject
 		// genuinely brakes. The old air-WASD-via-MovePosition displacement
 		// (a per-tick teleport that vanished on key release) is gone; it was
 		// also the main CCD bypass that let sprint-jumps tunnel through walls.
+		// ClampMagnitude, NOT normalized. `normalized` turned ANY non-zero read
+		// into a full-speed walk direction — so a 0.05 analog leak on the left
+		// stick (right-stick crosstalk at hard deflection) walked the player at
+		// 100% speed while they were only turning the camera. Clamping keeps
+		// diagonal keyboard input at speed 1 exactly like normalize did, while
+		// giving the stick genuine analog walk speed and letting a residual
+		// leak read as the near-nothing it actually is. Radial deadzone that
+		// zeroes the leak outright lives in TutorialGate.MoveStick().
 		_moveInputLocal = input;
 		targetVelocity = isGrounded
-			? transform.TransformDirection(input.normalized) * ((running) ? runSpeed : walkSpeed) * introMoveScale
+			? transform.TransformDirection(Vector3.ClampMagnitude(input, 1f)) * ((running) ? runSpeed : walkSpeed) * introMoveScale
 			: Vector3.zero;
 		smoothVelocity = Vector3.SmoothDamp(smoothVelocity, targetVelocity, ref smoothVRef, (isGrounded) ? vSmoothTime : airSmoothTime);
 	}
@@ -793,7 +852,21 @@ public class PlayerController : GravityObject
 		if (!debug_playerFrozen && Time.timeScale > 0)
 		{
 			cam.transform.localEulerAngles = Vector3.right * smoothPitch;
-			transform.Rotate(Vector3.up * Mathf.DeltaAngle(smoothYawOld, smoothYaw), Space.Self);
+			// Apply every degree of yaw accumulated since the LAST FIXED STEP,
+			// not just the last render frame's slice.
+			//
+			// This used to be DeltaAngle(smoothYawOld, smoothYaw) where
+			// smoothYawOld was rewritten every Update — so with render fps above
+			// the physics rate, only the most recent frame's increment was ever
+			// applied and the rest was silently dropped. At 144 fps / 50 Hz that
+			// discarded ~2/3 of every mouse movement (look sensitivity was
+			// literally framerate-dependent), and during a 0.15x kill slow-mo,
+			// where FixedUpdate falls to ~7 Hz, it discarded ~95% — which is why
+			// the camera turned in sluggish, juddering steps for the whole dip.
+			// Tracking the yaw the transform has actually consumed makes the
+			// applied rotation exact and framerate-independent.
+			transform.Rotate(Vector3.up * Mathf.DeltaAngle(_yawAppliedToTransform, smoothYaw), Space.Self);
+			_yawAppliedToTransform = smoothYaw;
 		}
 
 		if (isInDialogue) return;
@@ -828,7 +901,7 @@ public class PlayerController : GravityObject
 				smoothVelocity = Vector3.zero;
 				smoothVRef     = Vector3.zero;
 			}
-			else
+			else if (!_groundIsSlick)
 			{
 				Vector3 refVelLand = referenceBody != null ? referenceBody.velocity : Vector3.zero;
 				Vector3 tangLand   = Vector3.ProjectOnPlane(rb.velocity - refVelLand, _groundNormal);
@@ -837,6 +910,11 @@ public class PlayerController : GravityObject
 				smoothVRef     = Vector3.zero;
 				rb.velocity   -= seed;
 			}
+			// On a SLICK surface the momentum deliberately stays in rb.velocity.
+			// Handing it to the walk pipeline would let SmoothDamp bleed it to
+			// zero the moment the player isn't holding a direction — which is
+			// exactly the "brush the wall, stop dead" behaviour a slide tube
+			// must never have.
 		}
 
 		// Grounded state
@@ -844,8 +922,13 @@ public class PlayerController : GravityObject
 		{
 			if (jumpQueued)
 			{
-				if (jumpClip != null && sfxSource != null)
-					sfxSource.PlayOneShot(jumpClip, jumpVolume);
+				// Jump effort sound lives in PlayerSuitAudio now — see PlayJump() there.
+				// The serialized `jumpClip` is deliberately NO LONGER read: the scene had it
+				// wired to transfer/audio/dsadasdasd-[AudioTrimmer.com].mp3, which is the
+				// flatulence noise. The field stays (never delete a serialized field
+				// mid-class — CLAUDE.md) but is dead; assign PlayerSuitAudio.jumpEffortClip
+				// instead, or leave that empty to use the suit-breath exertion fallback.
+				PlayerSuitAudio.Instance?.PlayJump();
 				// Jump impulse + the walk velocity in the same VelocityChange —
 				// the horizontal stride becomes real momentum the instant the
 				// feet leave the ground (see handoff comment above).
@@ -871,8 +954,18 @@ public class PlayerController : GravityObject
 				//
 				// Skipped while half-submerged so it can't fight the swim/buoyancy
 				// velocity handling on the seabed.
+				//
+				// TWO further cases skip the grip entirely:
+				//   • SLICK surfaces — slide tubes and chutes you're meant to glide
+				//     through, never to get traction on.
+				//   • NEAR-ZERO gravity, scaled by gripFullGravity. Gravity falls to
+				//     zero at a body's core, and gripping there stopped a floating
+				//     player dead the instant they brushed a wall. Scaling BOTH the
+				//     hard-stop cutoff and the friction rate keeps the transition
+				//     smooth and leaves normal surface walking untouched.
+				float gravityGrip = Mathf.Clamp01(_lastGravityMag / Mathf.Max(0.0001f, gripFullGravity));
 				float slopeAngle = Vector3.Angle(_groundNormal, transform.up);
-				if (slopeAngle <= slopeLimitAngle)
+				if (slopeAngle <= slopeLimitAngle && !_groundIsSlick && gravityGrip > 0.001f)
 				{
 					Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
 					Vector3 relVel = rb.velocity - refVel;
@@ -885,10 +978,10 @@ public class PlayerController : GravityObject
 					//   • slow (gravity drift) → cancel, so you don't creep down hills;
 					//   • fast (real momentum) → bleed off over momentumFriction seconds,
 					//     so a fast landing slides to a natural stop, not an instant clunk.
-					if (tangComp.magnitude < slideStopSpeed)
+					if (tangComp.magnitude < slideStopSpeed * gravityGrip)
 						tangComp = Vector3.zero;
 					else
-						tangComp *= Mathf.Exp(-Time.fixedDeltaTime / Mathf.Max(0.0001f, momentumFriction));
+						tangComp *= Mathf.Exp(-Time.fixedDeltaTime * gravityGrip / Mathf.Max(0.0001f, momentumFriction));
 					rb.velocity = refVel + normalComp + tangComp;
 				}
 			}
@@ -1198,6 +1291,7 @@ public class PlayerController : GravityObject
 		const float groundedRayDst = .2f;
 		bool grounded = false;
 		_groundNormal = transform.up;   // default: flat relative to gravity-up (no slope)
+		_groundIsSlick = false;         // recomputed per cast; never carries over
 
 		if (referenceBody != null || _flatActive)
 		{
@@ -1211,7 +1305,19 @@ public class PlayerController : GravityObject
 				Vector3 rayOrigin = rb.position + offsetToFeet + transform.up * rayRadius;
 				Vector3 rayDir = -transform.up;
 
-				grounded = Physics.SphereCast(rayOrigin, rayRadius, rayDir, out hit, groundedRayDst, walkableMask);
+				// QueryTriggerInteraction.Ignore is NOT optional. Physics.queriesHitTriggers
+				// is ON project-wide, and the ocean `waterline` objects are TRIGGER
+				// SphereColliders (radius 200-500) sitting on layer 10 (Body) — which is
+				// inside walkableMask (bits 9|10 = 1536). Without this the water SURFACE
+				// counted as solid ground, which caused two bugs:
+				//   • the land SFX fired mid-air whenever you passed near the surface;
+				//   • jumping into water played the LAND sound instead of the splash — the
+				//     cast reaches ~0.5 ahead of the feet, so it "landed" on the surface a
+				//     frame before OnTriggerEnter bumped waterTouches off 0 and armed the
+				//     splash / suppressed the landing.
+				// A grounded check must only ever be satisfied by a SOLID collider.
+				grounded = Physics.SphereCast(rayOrigin, rayRadius, rayDir, out hit, groundedRayDst,
+					walkableMask, QueryTriggerInteraction.Ignore);
 				// Reject ground-hits on ships that aren't themselves landed.
 				// The ship hull's collider sits on the walkable layer so the
 				// player can walk on a parked ship's roof, but when the same
@@ -1229,7 +1335,11 @@ public class PlayerController : GravityObject
 					if (hitShip != null && !hitShip.IsLanded)
 						grounded = false;
 					else
+					{
 						_groundNormal = hit.normal;   // real walkable ground — keep its slope
+						// Slide tubes/chutes: landing is fine, traction is not.
+						_groundIsSlick = SlickSurface.IsSlick(hit.collider);
+					}
 				}
 			}
 		}
@@ -1268,12 +1378,16 @@ public class PlayerController : GravityObject
 			// Gravity
 			foreach (CelestialBody body in bodies)
 			{
-				float sqrDst = (body.Position - rb.position).sqrMagnitude;
-				Vector3 forceDir = (body.Position - rb.position).normalized;
-				Vector3 acceleration = forceDir * Universe.gravitationalConstant * body.mass / sqrDst;
+				// Shell-theorem-aware: inverse-square outside the body, but
+				// falling linearly to ZERO at its centre once you're inside.
+				// The old inline 1/r² diverged as sqrDst -> 0, so walking down a
+				// shaft toward a core launched the player at absurd speed. This
+				// is also what makes gravity fade as you descend into a cave.
+				// See Universe.GravityAcceleration.
+				Vector3 acceleration = Universe.GravityAcceleration(rb.position, body);
 				rb.AddForce(acceleration, ForceMode.Acceleration);
 
-				float dstToSurface = Mathf.Sqrt(sqrDst) - body.radius;
+				float dstToSurface = (body.Position - rb.position).magnitude - body.radius;
 
 				// Find body with strongest gravitational pull
 				if (dstToSurface < nearestSurfaceDst)
@@ -1647,6 +1761,7 @@ public class PlayerController : GravityObject
 		cam.transform.parent = transform;
 		cam.transform.localPosition = cameraLocalPos;
 		smoothYaw = 0;
+		_yawAppliedToTransform = 0;   // keep the consumed-yaw marker in step with the reset
 		yaw = 0;
 		smoothPitch = cam.transform.localEulerAngles.x;
 		pitch = smoothPitch;
@@ -1709,7 +1824,7 @@ public class PlayerController : GravityObject
 	/// True while the player is touching any Water trigger (even just the
 	/// feet). FallDamage uses this to discard pre-impact speed — water is the
 	/// landing, so wading ashore afterwards must never spend a stale fall.
-	public bool IsInWater => waterTouches > 0;
+	public bool IsInWater => InWaterVolume;
 	public bool JetpackUnlocked => jetpackUnlocked;
 
 	/// <summary>

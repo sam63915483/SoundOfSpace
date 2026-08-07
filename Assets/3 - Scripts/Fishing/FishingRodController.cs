@@ -73,6 +73,7 @@ public class FishingRodController : MonoBehaviour
     private AudioSource audioSource;
 
     private GameObject currentRodInstance;
+    private ViewmodelMotor _motorRig;   // floaty carry layer between the hold transform and the rod
     private GameObject currentBobber;
     private Transform lineAttachPoint;
     private Ship ship;
@@ -359,8 +360,16 @@ public class FishingRodController : MonoBehaviour
             if (_pendingDestroyRods[i] != null) Destroy(_pendingDestroyRods[i]);
         _pendingDestroyRods.Clear();
 
-        currentRodInstance = Instantiate(fishingRodPrefab, rodHoldPosition);
+        // Floaty carry: a ViewmodelMotor rig sits between the hold transform and
+        // the rod, so the existing equip / cast tweens (which drive the rod's own
+        // localRotation) are untouched and simply ride on top of the sway.
+        _motorRig = ViewmodelMotor.CreateRig(rodHoldPosition, "RodMotorRig", rodMotorRestOffset, holdPositionOffset);
+        currentRodInstance = Instantiate(fishingRodPrefab, _motorRig.transform);
         currentRodInstance.transform.localPosition = holdPositionOffset;
+        // Held viewmodels never cast shadows — otherwise the sun throws the rod's
+        // silhouette onto the ground ahead as a blob pinned to your view.
+        foreach (var r in currentRodInstance.GetComponentsInChildren<Renderer>(true))
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         originalRodRotation = Quaternion.Euler(holdRotationOffset);
 
         Quaternion startRot = originalRodRotation * Quaternion.AngleAxis(equipStartAngle, castRotationAxis);
@@ -416,31 +425,37 @@ public class FishingRodController : MonoBehaviour
         // hotbar swap to another item (which checks rod.IsEquipped) sees the
         // slot as free during the put-away animation, instead of having to
         // wait for the animation to finish before the next item can equip.
+        // Queue the RIG for destruction, not the rod — the rod is its child, so
+        // destroying the rig takes both and no orphan ViewmodelMotor is left
+        // under the hold transform. The put-away tween still drives the rod's
+        // own transform, which rides the rig exactly as it did while equipped.
         var instance = currentRodInstance;
-        _pendingDestroyRods.Add(instance);
+        var rigGo = _motorRig != null ? _motorRig.gameObject : instance;
+        _pendingDestroyRods.Add(rigGo);
+        _motorRig = null;
         currentRodInstance = null;
         lineAttachPoint = null;
 
-        equipCoroutine = StartCoroutine(AnimateUnequip(instance, originalRodRotation, targetRot, equipDuration));
+        equipCoroutine = StartCoroutine(AnimateUnequip(instance, rigGo, originalRodRotation, targetRot, equipDuration));
     }
 
-    IEnumerator AnimateUnequip(GameObject rod, Quaternion from, Quaternion to, float duration)
+    IEnumerator AnimateUnequip(GameObject rod, GameObject rigGo, Quaternion from, Quaternion to, float duration)
     {
-        if (rod == null) { equipCoroutine = null; yield break; }
+        if (rod == null) { if (rigGo != null) Destroy(rigGo); _pendingDestroyRods.Remove(rigGo); equipCoroutine = null; yield break; }
         float elapsed = 0f;
         Transform rodTransform = rod.transform;
 
         while (elapsed < duration)
         {
-            if (rodTransform == null) { _pendingDestroyRods.Remove(rod); equipCoroutine = null; yield break; }
+            if (rodTransform == null) { _pendingDestroyRods.Remove(rigGo); equipCoroutine = null; yield break; }
             rodTransform.localRotation = Quaternion.Slerp(from, to, elapsed / duration);
             elapsed += Time.deltaTime;
             yield return null;
         }
         if (rodTransform != null) rodTransform.localRotation = to;
 
-        if (rod != null) Destroy(rod);
-        _pendingDestroyRods.Remove(rod);
+        if (rigGo != null) Destroy(rigGo);
+        _pendingDestroyRods.Remove(rigGo);
         equipCoroutine = null;
 
         Debug.Log("Fishing rod unequipped.");
@@ -633,4 +648,9 @@ public class FishingRodController : MonoBehaviour
 
         castAnimationCoroutine = null;
     }
+
+    // (Appended at the END per the serialization convention in CLAUDE.md.)
+    [Header("Floaty Carry (ViewmodelMotor)")]
+    [Tooltip("Camera-space offset of the whole rod chain from rodHoldPosition — the 'hold it further out' dial. X pushes right, Z pushes away from you. Tune the sway itself on the RodMotorRig in Play mode.")]
+    public Vector3 rodMotorRestOffset = new Vector3(0.03f, 0f, 0.18f);
 }

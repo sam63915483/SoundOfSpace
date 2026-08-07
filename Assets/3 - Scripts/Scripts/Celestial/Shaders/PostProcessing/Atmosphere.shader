@@ -66,6 +66,36 @@
 			float oceanRadius;
 			float planetRadius;
 
+			// ── Cave cutouts ────────────────────────────────────────────────
+			// Same globals OceanEffect.shader uses, set by CaveOceanCutout.
+			//
+			// This shader clips the atmosphere at the ocean surface:
+			//     dstToSurface = min(sceneDepth, dstToOcean)
+			// Stand inside a cave below sea level and dstToOcean is 0, so
+			// dstThroughAtmosphere collapses to 0, the atmosphere is skipped
+			// entirely and you see the raw space skybox — the sky goes black the
+			// moment you drop into the hole. Nothing to do with the ocean being
+			// drawn; the atmosphere removes ITSELF.
+			//
+			// Guarded on _NumCaveCapsules, so with no caves in the scene this is
+			// bit-for-bit the original behaviour.
+			#define MAX_CAVE_CAPSULES 32
+			int _NumCaveCapsules;
+			float4 _CaveCapsuleA[MAX_CAVE_CAPSULES];   // xyz = endpoint A, w = radius
+			float4 _CaveCapsuleB[MAX_CAVE_CAPSULES];   // xyz = endpoint B
+
+			bool InsideCaveCapsule(float3 p) {
+				for (int c = 0; c < _NumCaveCapsules; c++) {
+					float3 a = _CaveCapsuleA[c].xyz;
+					float3 b = _CaveCapsuleB[c].xyz;
+					float r = _CaveCapsuleA[c].w;
+					float3 ab = b - a;
+					float t = saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-6));
+					if (distance(p, a + ab * t) < r) return true;
+				}
+				return false;
+			}
+
 			// Paramaters
 			int numInScatteringPoints;
 			int numOpticalDepthPoints;
@@ -77,7 +107,17 @@
 
 			
 			float densityAtPoint(float3 densitySamplePoint) {
-				float heightAboveSurface = length(densitySamplePoint - planetCentre) - planetRadius;
+				// CLAMPED AT THE SURFACE. Below it this height goes negative, and
+				// then exp(-height01 * densityFalloff) is exp(+something) — the
+				// air density grows exponentially the deeper you are. Nothing
+				// ever sampled below the surface before, because the atmosphere
+				// was clipped at the ocean; now that caves let it run underground
+				// that blow-up shows up as a bright fog filling the cave as soon
+				// as the camera goes in.
+				//
+				// There is no air below the ground, so the honest value is
+				// "no denser than at sea level".
+				float heightAboveSurface = max(0, length(densitySamplePoint - planetCentre) - planetRadius);
 				float height01 = heightAboveSurface / (atmosphereRadius - planetRadius);
 				float localDensity = exp(-height01 * densityFalloff) * (1 - height01);
 				return localDensity;
@@ -173,6 +213,33 @@
 				float3 rayDir = normalize(i.viewVector);
 				
 				float dstToOcean = raySphere(planetCentre, oceanRadius, rayOrigin, rayDir);
+
+				// ── Caves ───────────────────────────────────────────────────
+				// NOTHING HERE MAY DEPEND ON WHERE THE CAMERA IS. Testing the
+				// camera position is what made the cave visibly change the
+				// instant you stepped through the mouth: a binary switch on
+				// rayOrigin means every pixel is treated one way outside and
+				// another way inside, so it pops. Both tests below are about
+				// what THIS RAY does, so a given surface looks identical from
+				// five metres outside and one metre inside.
+				if (_NumCaveCapsules > 0) {
+
+					// 1. Where this ray would meet "water" — is that point
+					//    actually inside a cave? Then it isn't water, and it must
+					//    not clip the atmosphere away. (Standing in a cave below
+					//    sea level, this point is the camera itself, which is
+					//    what stopped the sky going black.)
+					float3 oceanPoint = rayOrigin + rayDir * max(dstToOcean, 0);
+					if (InsideCaveCapsule(oceanPoint)) dstToOcean = 1e20;
+
+					// 2. If the ray ENDS inside the cave it never reached open
+					//    air, so there is no sky along it and no atmosphere to
+					//    add — that's a rock wall, and it should look like one
+					//    from either side of the mouth.
+					float3 rayEnd = rayOrigin + rayDir * min(sceneDepth, 500);
+					if (InsideCaveCapsule(rayEnd)) return originalCol;
+				}
+
 				float dstToSurface = min(sceneDepth, dstToOcean);
 				
 				float2 hitInfo = raySphere(planetCentre, atmosphereRadius, rayOrigin, rayDir);

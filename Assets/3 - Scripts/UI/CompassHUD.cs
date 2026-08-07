@@ -37,6 +37,24 @@ public class CompassHUD : MonoBehaviour
 
     Canvas _canvas;
     RectTransform _strip;
+
+    /// Bottom edge of the compass strip in SCREEN pixels (0 = bottom of screen).
+    /// Returns false when the compass isn't built or is hidden.
+    ///
+    /// Screen space rather than canvas units on purpose: the strip is laid out
+    /// two different ways (standalone top-margin vs the helmet-HUD brow anchor,
+    /// which re-anchors AND rescales it), so anything that reads anchoredPosition
+    /// is wrong in one of the two modes. World corners are correct in both.
+    /// ProgressToastUI uses this to sit itself just under the compass.
+    public bool TryGetStripScreenBottom(out float screenY)
+    {
+        screenY = 0f;
+        if (_strip == null || !_strip.gameObject.activeInHierarchy) return false;
+        var corners = new Vector3[4];
+        _strip.GetWorldCorners(corners);   // ScreenSpaceOverlay → already screen px
+        screenY = Mathf.Min(corners[0].y, corners[3].y);
+        return true;
+    }
     RectTransform _badgeRT;
     TextMeshProUGUI _badgeText;
     int _lastHeadingShown = int.MinValue;

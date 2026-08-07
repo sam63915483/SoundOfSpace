@@ -42,8 +42,24 @@ public class NBodySimulation : MonoBehaviour {
             Vector3 v = lead.velocity;
             Vector3 normal = Vector3.Cross (r, v);
             if (normal.sqrMagnitude < 1e-6f) normal = Vector3.up;
-            var rot = Quaternion.AngleAxis (f.coOrbitAngle, normal.normalized);
-            f.ApplySavedState (origin + rot * r, f.transform.rotation, rot * v);
+            normal = normal.normalized;
+
+            if (f.satelliteOrbitRadius > 0f) {
+                // SATELLITE lock: circle the leader in its orbital plane.
+                float w = f.satellitePeriod > 0.01f ? (2f * Mathf.PI / f.satellitePeriod) : 0f;
+                f.satellitePhase += w * Universe.physicsTimeStep;
+                Vector3 radialAxis = r.sqrMagnitude > 1e-6f ? r.normalized : Vector3.right;
+                Vector3 tangentAxis = Vector3.Cross (normal, radialAxis);
+                Vector3 offset = (radialAxis * Mathf.Cos (f.satellitePhase)
+                                + tangentAxis * Mathf.Sin (f.satellitePhase)) * f.satelliteOrbitRadius;
+                Vector3 offsetVel = (-radialAxis * Mathf.Sin (f.satellitePhase)
+                                   + tangentAxis * Mathf.Cos (f.satellitePhase)) * (f.satelliteOrbitRadius * w);
+                f.ApplySavedState (lead.Position + offset, f.transform.rotation, lead.velocity + offsetVel);
+            } else {
+                // CO-ORBITAL lock: same solar radius, fixed angle around the orbit.
+                var rot = Quaternion.AngleAxis (f.coOrbitAngle, normal);
+                f.ApplySavedState (origin + rot * r, f.transform.rotation, rot * v);
+            }
         }
     }
 

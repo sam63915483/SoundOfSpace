@@ -54,6 +54,26 @@ public class CelestialBody : GravityObject {
     /// re-running the rescale keeps whatever spacing was set.
     public float coOrbitAngle;
 
+    /// > 0 turns coOrbitLeader into a SATELLITE lock instead of a co-orbital one:
+    /// this body circles its leader at exactly this radius, in the leader's own
+    /// orbital plane, forever.
+    ///
+    /// Same reasoning as the twins, different constraint. A real moon has to sit
+    /// inside its planet's Hill radius, and that radius shrinks in proportion to
+    /// the planet's distance from the sun — while the planet's RADIUS doesn't
+    /// shrink at all. Squeeze the system and the moon gets crushed between a
+    /// surface that stays the same size and a Hill radius that keeps closing:
+    /// below about 0.47x the original spacing there is no orbit that is both
+    /// stable and clear of the ground. Placing the moon instead of simulating it
+    /// removes the Hill limit entirely, so the only remaining constraint is
+    /// geometric — don't hit the surface — and the system can be as tight as it
+    /// looks good at. The moon keeps full mass and full surface gravity.
+    public float satelliteOrbitRadius = 0f;
+    /// Seconds for one lap around the leader. Kept from the moon's real orbital
+    /// period at the time of the rescale, so it doesn't visibly change speed.
+    public float satellitePeriod = 0f;
+    [System.NonSerialized] public float satellitePhase;
+
     Transform meshHolder;
 
     public Vector3 velocity { get; private set; }

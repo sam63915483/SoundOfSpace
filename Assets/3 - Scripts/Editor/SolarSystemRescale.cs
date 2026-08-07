@@ -53,6 +53,10 @@ public static class SolarSystemRescale
     /// multiple of their mutual Hill radius.
     static readonly (string inner, string outer)[] BinaryPairs = { ("Fiery Twin", "Icey Twin") };
 
+    /// Metres of empty space kept between a moon's surface and its planet's.
+    /// The floor under every moon orbit however hard the system is squeezed.
+    public const float MoonSurfaceClearance = 250f;
+
     [Tooltip("Planet-pair spacing in mutual Hill radii. Below ~3.5 a pair of planets perturbs itself into crossing orbits over time; 3.5 is the standard rule of thumb.")]
     public const float HillSpacing = 3.5f;
 
@@ -236,17 +240,37 @@ public static class SolarSystemRescale
                 newVel[b] = vel0[b];
                 continue;
             }
-            // The moon's orbit scales WITH the system, not against it. Keeping
-            // its absolute offset looks safer but is the opposite: a planet's
-            // Hill radius is proportional to its distance from the sun, so at
-            // 0.4× Humble Abode's shrinks from 2405 to 962 while an unscaled
-            // Constant Companion still sits 945 out — right on the boundary, and
-            // the soak has it escaping into its own solar orbit within the hour.
-            // Scaling the offset by k and the relative velocity by 1/√k keeps the
-            // moon at the SAME FRACTION of the Hill radius it occupies today,
-            // which is the only thing that preserves its stability.
-            newPos[b] = newPos[parent] + (pos0[b] - pos0[parent]) * k;
-            newVel[b] = newVel[parent] + (vel0[b] - vel0[parent]) * invSqrtK;
+            // Moons are SATELLITE-LOCKED, not simulated. A real moon is squeezed
+            // between a planet surface that never shrinks and a Hill radius that
+            // shrinks with the system, so below ~0.47× there is no orbit that is
+            // both stable and clear of the ground. Placing the moon removes the
+            // Hill limit, leaving only the geometric one.
+            //
+            // Its orbit radius scales with the system but is floored so it can
+            // never graze: at least both radii plus MoonSurfaceClearance.
+            float r0 = Vector3.Distance(pos0[b], pos0[parent]);
+            float minR = b.radius + parent.radius + MoonSurfaceClearance;
+            float rNew = Mathf.Max(r0 * k, minR);
+
+            // Keep the moon's real orbital period so it doesn't visibly change speed.
+            float relSpeed = (vel0[b] - vel0[parent]).magnitude;
+            float period = relSpeed > 0.01f ? (2f * Mathf.PI * r0 / relSpeed) : 0f;
+
+            Vector3 offsetDir = (pos0[b] - pos0[parent]).normalized;
+            newPos[b] = newPos[parent] + offsetDir * rNew;
+            newVel[b] = newVel[parent];
+
+            if (apply)
+            {
+                var mso = new SerializedObject(b);
+                mso.FindProperty("coOrbitLeader").objectReferenceValue = parent;
+                mso.FindProperty("satelliteOrbitRadius").floatValue = rNew;
+                mso.FindProperty("satellitePeriod").floatValue = period;
+                mso.ApplyModifiedPropertiesWithoutUndo();
+                EditorUtility.SetDirty(b);
+            }
+            sb.AppendLine($"  satellite '{b.bodyName}' of {parentName}: orbit {r0:F0} -> {rNew:F0}" +
+                          $" (floor {minR:F0}), period {period:F0}s, surface clearance {rNew - b.radius - parent.radius:F0}");
         }
 
         // Report + optionally write.

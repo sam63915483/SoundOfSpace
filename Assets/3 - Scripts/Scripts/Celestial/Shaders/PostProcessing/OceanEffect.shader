@@ -64,6 +64,36 @@
 			float oceanRadius;
 			float3 dirToSun;
 
+			// ── Cave cutouts ────────────────────────────────────────────────
+			// Air pockets inside the ocean sphere. A cave dug below sea level is
+			// still DRY, but this effect only knows about a sphere of water, so
+			// it drew the sea across the cave mouth and flooded the interior —
+			// and, because the underwater material is composited AFTER the
+			// atmosphere, it painted the sky black from inside too.
+			//
+			// Set by CaveOceanCutout (a plain MonoBehaviour, outside this
+			// folder). If _NumCaveCapsules is 0 — i.e. always, on any scene
+			// without caves — every line below is skipped and this effect
+			// behaves exactly as it did before.
+			// Must match CaveOceanCutout.MaxCapsules. The current cave alone is
+			// 21 capsules (tunnels + branches + rooms), so this has headroom.
+			#define MAX_CAVE_CAPSULES 32
+			int _NumCaveCapsules;
+			float4 _CaveCapsuleA[MAX_CAVE_CAPSULES];   // xyz = endpoint A, w = radius
+			float4 _CaveCapsuleB[MAX_CAVE_CAPSULES];   // xyz = endpoint B
+
+			bool InsideCaveCapsule(float3 p) {
+				for (int c = 0; c < _NumCaveCapsules; c++) {
+					float3 a = _CaveCapsuleA[c].xyz;
+					float3 b = _CaveCapsuleB[c].xyz;
+					float r = _CaveCapsuleA[c].w;
+					float3 ab = b - a;
+					float t = saturate(dot(p - a, ab) / max(dot(ab, ab), 1e-6));
+					if (distance(p, a + ab * t) < r) return true;
+				}
+				return false;
+			}
+
 			fixed4 frag (v2f i) : SV_Target
 			{
 	
@@ -84,6 +114,17 @@
 				// dst that view ray travels through ocean (before hitting terrain / exiting ocean)
 				float oceanViewDepth = min(dstThroughOcean, sceneDepth - dstToOcean);
 
+				// Caves are air, not water. If the stretch of "ocean" this ray
+				// crosses lies inside a cave, there is nothing to draw: looking
+				// into a cave mouth from outside, and standing inside one below
+				// sea level, are both this case.
+				if (_NumCaveCapsules > 0 && oceanViewDepth > 0) {
+					float3 spanStart = rayPos + rayDir * max(dstToOcean, 0);
+					float3 spanEnd = rayPos + rayDir * (max(dstToOcean, 0) + oceanViewDepth);
+					if (InsideCaveCapsule(spanStart) || InsideCaveCapsule((spanStart + spanEnd) * 0.5)) {
+						oceanViewDepth = 0;
+					}
+				}
 
 				if (oceanViewDepth > 0) {
 					float3 clipPlanePos = rayPos + i.viewVector * _ProjectionParams.y;

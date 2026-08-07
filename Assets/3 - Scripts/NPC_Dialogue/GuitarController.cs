@@ -24,6 +24,7 @@ public class GuitarController : MonoBehaviour
     public AudioClip musicClip;
 
     private GameObject _currentGuitarInstance;
+    private ViewmodelMotor _motorRig;   // floaty carry layer between the hold transform and the guitar
     private bool _guitarUnlocked;
     private bool _resetOnNextPlay;
     private bool _isPlaying;
@@ -105,13 +106,15 @@ public class GuitarController : MonoBehaviour
             if (_pendingDestroyGuitars[i] != null) Destroy(_pendingDestroyGuitars[i]);
         _pendingDestroyGuitars.Clear();
 
-        _currentGuitarInstance = Instantiate(guitarPrefab, guitarHoldPosition);
+        // Floaty carry: a ViewmodelMotor rig between the hold transform and the
+        // guitar, so the equip tween keeps driving the guitar's own rotation and
+        // just rides on top of the sway.
+        _motorRig = ViewmodelMotor.CreateRig(guitarHoldPosition, "GuitarMotorRig", guitarMotorRestOffset, holdPositionOffset);
+        _currentGuitarInstance = Instantiate(guitarPrefab, _motorRig.transform);
 
-        Rigidbody rb = _currentGuitarInstance.GetComponent<Rigidbody>();
-        if (rb != null) rb.isKinematic = true;
-
-        foreach (Collider col in _currentGuitarInstance.GetComponentsInChildren<Collider>())
-            col.enabled = false;
+        // Kinematic + colliders off + no shadow casting (a held viewmodel throws
+        // its silhouette onto the ground ahead of the player otherwise).
+        ViewmodelMotor.MakeViewmodel(_currentGuitarInstance);
 
         Quaternion targetRot = Quaternion.Euler(holdRotationOffset);
         Quaternion startRot  = targetRot * Quaternion.AngleAxis(equipStartAngle, equipRotationAxis);
@@ -153,27 +156,31 @@ public class GuitarController : MonoBehaviour
         // Capture and clear immediately so a hotbar swap to another item can
         // proceed during the put-away animation (otherwise IsEquipped stays
         // true for the full equipDuration and the next item refuses to equip).
+        // Queue the RIG, not the guitar — the guitar is its child, so this takes
+        // both and can't orphan a ViewmodelMotor under the hold transform.
         var instance = _currentGuitarInstance;
-        _pendingDestroyGuitars.Add(instance);
+        var rigGo = _motorRig != null ? _motorRig.gameObject : instance;
+        _pendingDestroyGuitars.Add(rigGo);
+        _motorRig = null;
         _currentGuitarInstance = null;
 
-        _equipCoroutine = StartCoroutine(AnimateUnequip(instance, startRot, endRot, equipDuration));
+        _equipCoroutine = StartCoroutine(AnimateUnequip(instance, rigGo, startRot, endRot, equipDuration));
     }
 
-    IEnumerator AnimateUnequip(GameObject guitar, Quaternion from, Quaternion to, float duration)
+    IEnumerator AnimateUnequip(GameObject guitar, GameObject rigGo, Quaternion from, Quaternion to, float duration)
     {
-        if (guitar == null) { _equipCoroutine = null; yield break; }
+        if (guitar == null) { if (rigGo != null) Destroy(rigGo); _pendingDestroyGuitars.Remove(rigGo); _equipCoroutine = null; yield break; }
         float elapsed = 0f;
         Transform t = guitar.transform;
         while (elapsed < duration)
         {
-            if (t == null) { _pendingDestroyGuitars.Remove(guitar); _equipCoroutine = null; yield break; }
+            if (t == null) { _pendingDestroyGuitars.Remove(rigGo); _equipCoroutine = null; yield break; }
             t.localRotation = Quaternion.Slerp(from, to, elapsed / duration);
             elapsed += Time.deltaTime;
             yield return null;
         }
-        if (guitar != null) Destroy(guitar);
-        _pendingDestroyGuitars.Remove(guitar);
+        if (rigGo != null) Destroy(rigGo);
+        _pendingDestroyGuitars.Remove(rigGo);
         _equipCoroutine = null;
     }
 
@@ -191,4 +198,9 @@ public class GuitarController : MonoBehaviour
     }
 
     public void SetUnlocked(bool v) { _guitarUnlocked = v; }
+
+    // (Appended at the END per the serialization convention in CLAUDE.md.)
+    [Header("Floaty Carry (ViewmodelMotor)")]
+    [Tooltip("Camera-space offset of the whole guitar chain from guitarHoldPosition — the 'hold it further out' dial. Tune the sway itself on the GuitarMotorRig in Play mode.")]
+    public Vector3 guitarMotorRestOffset = new Vector3(0f, 0f, 0.12f);
 }

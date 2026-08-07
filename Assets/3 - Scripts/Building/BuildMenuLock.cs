@@ -7,8 +7,12 @@ using System.Collections.Generic;
 //     during the build tutorial (Phase 6) to restrict the player to cabin/
 //     torch/bonfire while they learn.
 //
-// BuildMenuUI.RebuildVisibleCards calls IsUnlocked(entry.displayName) when
-// deciding whether to show a card.
+// ⚠ NOT CONSULTED BY THE BUILD MENU ANY MORE. The live gate is
+// BuildableUnlocks (Colonizer level → blueprints), which BuildMenuUI and
+// PhoneBuildApp both ask. This class is kept because it's in the save schema
+// and the retired tutorial steps still call it — but wiring it back into the
+// menu would black the whole thing out on a new game, since NewGameReset calls
+// LockAllExcept() with no arguments, i.e. "lock everything".
 //
 // Saved/restored via SaveCollector.
 public static class BuildMenuLock

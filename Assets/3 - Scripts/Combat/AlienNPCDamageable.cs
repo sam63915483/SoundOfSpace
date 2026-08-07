@@ -129,6 +129,19 @@ public class AlienNPCDamageable : MonoBehaviour, IDamageable
     public void TakeDamage(float amount)
     {
         if (amount <= 0f || _dying) return;
+
+        // Random blood splash at the body centre on any hit, mirroring
+        // EnemyController.TakeDamage. Living here rather than in each weapon
+        // means gun / axe / anything else that routes through IDamageable all
+        // draw blood for free — NPCs previously never bled at all, because the
+        // only blood call in the codebase was PistolController's bullet-hole
+        // fountain. Spawned BEFORE the health subtraction so a killing blow
+        // (which runs Die() → ragdoll + collider disable) can't swallow it.
+        // Scale by the root scale: aliens spawn at a random 2-5x, so a fixed
+        // splash would vanish inside a big one.
+        Vector3 center = _liveCollider != null ? _liveCollider.bounds.center : transform.position;
+        BloodFX.Instance?.SpawnDamageSplash(center, transform, transform.localScale.x);
+
         currentHealth -= amount;
         if (_healthBar != null)
         {
@@ -200,6 +213,10 @@ public class AlienNPCDamageable : MonoBehaviour, IDamageable
     {
         if (_dying) return;
         _dying = true;
+        // Progression: GANGSTA REP goes DOWN. One alien exactly cancels one
+        // regular enemy — the whole point of the track is that you want high rep
+        // for PROTECTING the aliens.
+        PlayerProgress.Instance?.AddAlienKill();
         // Drop out of the live-NPC list immediately so EnemyController.Try-
         // BiteNearbyNPC doesn't keep "biting" a ragdolling corpse for the
         // 120s before Destroy runs.

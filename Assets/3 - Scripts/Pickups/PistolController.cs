@@ -134,6 +134,7 @@ public class PistolController : MonoBehaviour
     public float reloadSoundDelay = 0.3f;
 
     GameObject _currentPistolInstance;
+    GameObject _rigRoot;    // PistolMotorRig — top of the equip chain, driven by PistolMotor (carry sway)
     Transform _pivot;
     Transform _resolvedMuzzle;
     Transform _resolvedBarrelGuard;
@@ -146,7 +147,16 @@ public class PistolController : MonoBehaviour
     bool _isRecoiling;
     float _lastShotTime = -999f;
     Coroutine _equipCoroutine;
-    Coroutine _recoilCoroutine;
+    // Recoil is no longer a coroutine that writes the pivot directly — it's an
+    // ADDITIVE offset composed in ApplyPivotPose(), so it layers cleanly on top
+    // of whichever pose (hip or aimed) the gun is currently in.
+    float _recoilTime;      // seconds into the current kick
+    float _recoilT;         // 0..1 kick amount
+    float _recoilScale;     // captured at the shot (halved while aiming)
+    float _reloadRoll;      // 0..1 reload roll, also additive so it plays while aimed
+    float _adsBlend;        // 0 = hip, 1 = fully aimed
+    Transform _holdCamera;  // the Camera transform pistolHoldPosition hangs under
+    PistolMotor _motor;
     Coroutine _slideCoroutine;
     Coroutine _reloadCoroutine;
     Coroutine _reloadSoundCoroutine;
@@ -171,6 +181,10 @@ public class PistolController : MonoBehaviour
     public int  CurrentAmmo => _currentAmmo;
     public int  MaxAmmo => maxAmmo;
     public bool IsReloading => _isReloading;
+    /// <summary>True while the player is holding secondary-fire to aim down the sights.</summary>
+    public bool IsAiming { get; private set; }
+    /// <summary>0 = hip-fire pose, 1 = fully aimed. Eased over adsTransitionDuration.</summary>
+    public float AimBlend => _adsBlend;
     public int  ShotsFiredCount { get; private set; }
     public void SetAmmo(int n) => _currentAmmo = Mathf.Clamp(n, 0, maxAmmo);
 
@@ -189,6 +203,19 @@ public class PistolController : MonoBehaviour
         _audioSource.playOnAwake = false;
 
         _currentAmmo = maxAmmo;
+
+        // Reactive carry layer. Auto-added (mirrors AxeController) so no editor
+        // setup is needed and its sliders are visible for Play-mode tuning
+        // before the pistol is ever equipped.
+        if (useFloatyMotor && GetComponent<PistolMotor>() == null)
+            gameObject.AddComponent<PistolMotor>();
+    }
+
+    // Belt-and-braces: if this component is switched off mid-aim, hand the
+    // crosshair back rather than leaving it faded out.
+    void OnDisable()
+    {
+        CrosshairReticle.ExternalAlpha = 1f;
     }
 
     void Update()
@@ -196,15 +223,18 @@ public class PistolController : MonoBehaviour
         if (_ship != null && _ship.IsPiloted) return;
         if (_currentPistolInstance == null) return;
 
-        // Live-apply the three offset fields so the inspector values can be tuned
-        // in Play mode without re-equipping. Skip while the equip animation is
-        // running (it drives the pivot itself) and skip rotation during recoil
-        // or reload so those animations aren't overwritten mid-frame.
+        UpdateAim();
+        UpdateRecoil();
+
+        // Live-apply the offset fields so the inspector values can be tuned in
+        // Play mode without re-equipping. Only the equip animation still owns
+        // the pivot outright — recoil and the reload roll are both additive
+        // offsets composed inside ApplyPivotPose(), so they layer on the aimed
+        // pose instead of fighting it.
         if (_equipCoroutine == null && _pivot != null)
         {
-            _pivot.localPosition = holdPositionOffset;
             _currentPistolInstance.transform.localPosition = gripOffset;
-            if (!_isRecoiling && !_isReloading) _pivot.localRotation = Quaternion.Euler(holdRotationOffset);
+            ApplyPivotPose();
         }
 
         if (_equipCoroutine != null) return;
@@ -223,6 +253,123 @@ public class PistolController : MonoBehaviour
         if (TutorialGate.FirePressed()) TriggerShot();
     }
 
+    // ── Aim down sights ────────────────────────────────────────────────────
+    // Secondary fire (RMB / left trigger) swings the gun off the hip and into
+    // the centre of the screen, barrel parallel to the camera's forward axis.
+    // Aiming also steadies the carry sway, halves recoil and removes hip-fire
+    // spread — that last one is what actually makes aimed shots more accurate.
+    void UpdateAim()
+    {
+        // Note: reloading no longer blocks aiming — the reload roll is additive,
+        // so the whole choreography plays in the aimed pose.
+        bool wantAim = useAimDownSights
+            && _pivot != null
+            && _equipCoroutine == null
+            && !PlayerPhoneUI.IsOpen
+            && !AIChatScreen.IsTypingActive
+            && !TutorialGate.UISelectionActive()
+            && TutorialGate.SecondaryFireHeld();
+
+        IsAiming = wantAim;
+        float step = adsTransitionDuration > 0.0001f ? Time.deltaTime / adsTransitionDuration : 1f;
+        _adsBlend = Mathf.MoveTowards(_adsBlend, wantAim ? 1f : 0f, step);
+
+        if (_motor != null) _motor.SwayScale = Mathf.Lerp(1f, adsSwayScale, _adsBlend);
+
+        // Fade the crosshair out as the sights come up — aimed shots are pinpoint
+        // anyway, so the reticle is just noise over the iron sights.
+        CrosshairReticle.ExternalAlpha = Mathf.Lerp(1f, adsCrosshairAlpha, _adsBlend);
+    }
+
+    void UpdateRecoil()
+    {
+        if (!_isRecoiling) return;
+        _recoilTime += Time.deltaTime;
+        if (_recoilTime < recoilBackDuration)
+        {
+            _recoilT = recoilBackDuration > 0.0001f ? _recoilTime / recoilBackDuration : 1f;
+            return;
+        }
+        float t = _recoilTime - recoilBackDuration;
+        if (t >= recoilReturnDuration)
+        {
+            _recoilT = 0f;
+            _isRecoiling = false;
+            return;
+        }
+        _recoilT = 1f - t / Mathf.Max(0.0001f, recoilReturnDuration);
+    }
+
+    void ResetRecoil()
+    {
+        _isRecoiling = false;
+        _recoilTime = 0f;
+        _recoilT = 0f;
+    }
+
+    /// <summary>
+    /// Composes the pivot's local pose: hip↔aimed base, plus the additive
+    /// recoil kick (rotation AND a small push straight back along the barrel).
+    /// </summary>
+    void ApplyPivotPose()
+    {
+        if (_pivot == null) return;
+
+        Vector3 basePos = holdPositionOffset;
+        Quaternion baseRot = Quaternion.Euler(holdRotationOffset);
+
+        if (_adsBlend > 0.0001f)
+        {
+            GetAimPose(out Vector3 aimPos, out Quaternion aimRot);
+            basePos = Vector3.Lerp(basePos, aimPos, _adsBlend);
+            baseRot = Quaternion.Slerp(baseRot, aimRot, _adsBlend);
+        }
+
+        // Reload roll, additive — the gun tilts in place wherever it's being
+        // held rather than being yanked back to the hip.
+        if (_reloadRoll > 0.0001f)
+            baseRot *= Quaternion.AngleAxis(reloadRotateAngle * _reloadRoll, reloadRotateAxis);
+
+        float kick = _recoilT * _recoilScale;
+        if (kick > 0.0001f)
+        {
+            baseRot *= Quaternion.AngleAxis(-recoilBackAngle * kick, recoilAxis);
+            Vector3 axis = recoilKickbackAxis.sqrMagnitude > 0.0001f ? recoilKickbackAxis.normalized : Vector3.back;
+            // Rotated by baseRot so the gun slides back along ITS OWN barrel,
+            // not along the rig's axes — reads right at any aim angle.
+            basePos += baseRot * (axis * (recoilKickbackDistance * kick));
+        }
+
+        _pivot.localPosition = basePos;
+        _pivot.localRotation = baseRot;
+    }
+
+    /// <summary>
+    /// The fully-aimed pivot pose, in the pivot's own (motor-rig) local space.
+    /// Derived from the camera every frame rather than hand-authored, so it
+    /// stays centred no matter where pistolHoldPosition sits.
+    /// </summary>
+    void GetAimPose(out Vector3 pos, out Quaternion rot)
+    {
+        pos = holdPositionOffset;
+        rot = Quaternion.Euler(holdRotationOffset);
+        if (_holdCamera == null || pistolHoldPosition == null) return;
+
+        // Anchor in CAMERA space: dead ahead, nudged down so the sights land on
+        // the crosshair instead of floating above it.
+        Vector3 camPoint = new Vector3(adsHorizontalOffset, adsVerticalOffset, adsForwardDistance);
+        Vector3 inHoldSpace = pistolHoldPosition.InverseTransformPoint(_holdCamera.TransformPoint(camPoint));
+
+        // The pivot hangs under the motor rig, which rests at PistolMotor
+        // .restOffset — subtract it so "hold the gun further out" doesn't also
+        // shove the aimed pose off-centre.
+        Vector3 rigRest = (useFloatyMotor && _motor != null) ? _motor.restOffset : Vector3.zero;
+        pos = inHoldSpace - rigRest;
+
+        // Barrel parallel to the camera's forward axis.
+        rot = Quaternion.Inverse(pistolHoldPosition.rotation) * _holdCamera.rotation * Quaternion.Euler(adsRotationOffset);
+    }
+
     void EquipPistol()
     {
         if (pistolPrefab == null || pistolHoldPosition == null) return;
@@ -233,9 +380,12 @@ public class PistolController : MonoBehaviour
         if (_playerPickup           != null && _playerPickup.IsHoldingObject) return;
 
         if (_equipCoroutine != null) StopCoroutine(_equipCoroutine);
-        if (_recoilCoroutine != null) { StopCoroutine(_recoilCoroutine); _recoilCoroutine = null; _isRecoiling = false; }
+        ResetRecoil();
+        _adsBlend = 0f;
+        IsAiming = false;
         if (_slideCoroutine != null) { StopCoroutine(_slideCoroutine); _slideCoroutine = null; }
         if (_reloadCoroutine != null) { StopCoroutine(_reloadCoroutine); _reloadCoroutine = null; _isReloading = false; }
+        _reloadRoll = 0f;   // a cancelled reload must not leave the gun rolled over
         if (_reloadSoundCoroutine != null) { StopCoroutine(_reloadSoundCoroutine); _reloadSoundCoroutine = null; }
 
         // Reap orphans from any prior unequip animations whose destroy
@@ -244,8 +394,34 @@ public class PistolController : MonoBehaviour
             if (_pendingDestroyPivots[i] != null) Destroy(_pendingDestroyPivots[i]);
         _pendingDestroyPivots.Clear();
 
+        // PistolMotorRig sits between pistolHoldPosition and the pivot: PistolMotor
+        // sways the rig while the equip / recoil / reload tweens keep driving the
+        // pivot. When useFloatyMotor is off the rig is still created (so the
+        // hierarchy is identical either way) but nothing drives it, leaving it at
+        // identity — i.e. exactly the pre-motor behaviour.
+        var rigGo = new GameObject("PistolMotorRig");
+        rigGo.transform.SetParent(pistolHoldPosition, false);
+        _rigRoot = rigGo;
+
+        _motor = GetComponent<PistolMotor>();
+        if (useFloatyMotor)
+        {
+            // GetComponent-or-add: a save-load ForceEquipPistol can run before
+            // Start() has had a chance to add the motor.
+            if (_motor == null) _motor = gameObject.AddComponent<PistolMotor>();
+            _motor.SwayScale = 1f;
+            _motor.Attach(rigGo.transform, holdPositionOffset);
+        }
+
+        // The camera pistolHoldPosition hangs under — the frame the aimed pose
+        // is derived from. Cached at equip, never searched per-frame.
+        _holdCamera = null;
+        for (Transform t = pistolHoldPosition; t != null; t = t.parent)
+            if (t.GetComponent<Camera>() != null) { _holdCamera = t; break; }
+        if (_holdCamera == null && Camera.main != null) _holdCamera = Camera.main.transform;
+
         var pivotGo = new GameObject("PistolPivot");
-        pivotGo.transform.SetParent(pistolHoldPosition, false);
+        pivotGo.transform.SetParent(rigGo.transform, false);
         _pivot = pivotGo.transform;
 
         _currentPistolInstance = Instantiate(pistolPrefab, _pivot);
@@ -255,6 +431,14 @@ public class PistolController : MonoBehaviour
         var rb = _currentPistolInstance.GetComponent<Rigidbody>();
         if (rb != null) rb.isKinematic = true;
         foreach (var col in _currentPistolInstance.GetComponentsInChildren<Collider>()) col.enabled = false;
+
+        // A held viewmodel must not cast shadows. It sits centimetres from the
+        // camera, so the sun throws its silhouette onto the ground a few metres
+        // ahead — a dark blob pinned to your view that you can never walk up to,
+        // jittering with every bit of carry sway. Standard first-person practice
+        // is to exclude the viewmodel from shadow casting entirely.
+        foreach (var r in _currentPistolInstance.GetComponentsInChildren<Renderer>(true))
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
         _resolvedMuzzle = null;
         if (!string.IsNullOrEmpty(muzzleChildName))
@@ -287,9 +471,14 @@ public class PistolController : MonoBehaviour
     void UnequipPistol()
     {
         if (_currentPistolInstance == null || _pivot == null) return;
-        if (_recoilCoroutine != null) { StopCoroutine(_recoilCoroutine); _recoilCoroutine = null; _isRecoiling = false; }
+        ResetRecoil();
+        _adsBlend = 0f;
+        IsAiming = false;
+        CrosshairReticle.ExternalAlpha = 1f;   // never leave the reticle faded once the gun is away
+        if (_motor != null) _motor.SwayScale = 1f;
         if (_slideCoroutine != null) { StopCoroutine(_slideCoroutine); _slideCoroutine = null; }
         if (_reloadCoroutine != null) { StopCoroutine(_reloadCoroutine); _reloadCoroutine = null; _isReloading = false; }
+        _reloadRoll = 0f;   // a cancelled reload must not leave the gun rolled over
         if (_reloadSoundCoroutine != null) { StopCoroutine(_reloadSoundCoroutine); _reloadSoundCoroutine = null; }
         if (_equipCoroutine != null) StopCoroutine(_equipCoroutine);
 
@@ -298,8 +487,13 @@ public class PistolController : MonoBehaviour
         Vector3 startPos = _pivot.localPosition;
         Vector3 endPos   = holdPositionOffset + equipStartPositionOffset;
         var pivot = _pivot;
-        GameObject pivotGo = pivot.gameObject;
+        // Destroy the RIG root (the pivot's parent) so the PistolMotorRig can't
+        // leak a stray transform under pistolHoldPosition on every unequip.
+        GameObject pivotGo = _rigRoot != null ? _rigRoot : pivot.gameObject;
         _pendingDestroyPivots.Add(pivotGo);
+        var motorToDetach = GetComponent<PistolMotor>();
+        if (motorToDetach != null && _rigRoot != null) motorToDetach.Detach(_rigRoot.transform);
+        _rigRoot = null;
         _currentPistolInstance = null;
         _pivot = null;
         _resolvedMuzzle = null;
@@ -335,6 +529,19 @@ public class PistolController : MonoBehaviour
         if (cam == null) return;
         Vector3 origin = cam.transform.position;
         Vector3 forward = cam.transform.forward;
+
+        // Hip-fire scatters, aimed fire doesn't — this is what makes aiming
+        // down the sights genuinely more accurate rather than just prettier.
+        // Applied to `forward` before anything reads it, so the raycast, the
+        // tracer and the kill-cam all agree on where the bullet went.
+        float spread = Mathf.Lerp(hipSpreadDegrees, adsSpreadDegrees, _adsBlend);
+        if (spread > 0.001f)
+        {
+            Vector2 cone = Random.insideUnitCircle * spread;
+            forward = Quaternion.AngleAxis(cone.x, cam.transform.up)
+                    * Quaternion.AngleAxis(cone.y, cam.transform.right)
+                    * forward;
+        }
 
         Vector3 endPoint = origin + forward * range;
         bool killCamTookShot = false;
@@ -454,8 +661,12 @@ public class PistolController : MonoBehaviour
         // tracer would race ahead of it and read as two bullets.
         if (!killCamTookShot) SpawnTracer(tracerStart, tracerEnd, cam.transform);
 
-        if (_recoilCoroutine != null) StopCoroutine(_recoilCoroutine);
-        _recoilCoroutine = StartCoroutine(RecoilRoutine());
+        // Kick the additive recoil. Scale is captured NOW so a shot fired while
+        // aimed keeps its softened kick even if the player releases aim mid-recoil.
+        _recoilScale = Mathf.Lerp(1f, adsRecoilScale, _adsBlend);
+        _recoilTime = 0f;
+        _recoilT = 0f;
+        _isRecoiling = true;
 
         if (_resolvedBarrelGuard != null)
         {
@@ -510,7 +721,9 @@ public class PistolController : MonoBehaviour
     void StartReload()
     {
         if (_isReloading || _currentAmmo == maxAmmo || _pivot == null) return;
-        if (_recoilCoroutine != null) { StopCoroutine(_recoilCoroutine); _recoilCoroutine = null; _isRecoiling = false; }
+        ResetRecoil();
+        // Aim is deliberately NOT cancelled here — the roll is additive, so the
+        // reload plays wherever the gun is being held, hip or aimed.
         if (_slideCoroutine != null)  { StopCoroutine(_slideCoroutine);  _slideCoroutine = null; }
         if (_reloadSoundCoroutine != null) { StopCoroutine(_reloadSoundCoroutine); _reloadSoundCoroutine = null; }
         if (_resolvedBarrelGuard != null) _resolvedBarrelGuard.localPosition = _barrelGuardRestLocalPos;
@@ -528,12 +741,9 @@ public class PistolController : MonoBehaviour
     IEnumerator ReloadRoutine()
     {
         _isReloading = true;
-        Transform pivot = _pivot;
-        Quaternion rest   = Quaternion.Euler(holdRotationOffset);
-        Quaternion rolled = rest * Quaternion.AngleAxis(reloadRotateAngle, reloadRotateAxis);
 
         // Phase 1: roll the gun clockwise (from player's POV).
-        yield return AnimateRotationOn(pivot, rest, rolled, reloadRotateInDuration, null);
+        yield return AnimateReloadRoll(0f, 1f, reloadRotateInDuration);
 
         // Phase 2: rack the slide back and HOLD it open.
         if (_resolvedBarrelGuard != null) yield return SlideBarrelGuardBack();
@@ -563,11 +773,26 @@ public class PistolController : MonoBehaviour
         if (_resolvedBarrelGuard != null) yield return SlideBarrelGuardForward();
 
         // Phase 6: roll back to rest.
-        if (pivot != null) yield return AnimateRotationOn(pivot, rolled, rest, reloadRotateOutDuration, null);
+        yield return AnimateReloadRoll(1f, 0f, reloadRotateOutDuration);
 
         _currentAmmo = maxAmmo;
         _isReloading = false;
         _reloadCoroutine = null;
+    }
+
+    // Drives the additive reload roll rather than writing the pivot, so the
+    // hip↔aimed base pose underneath it keeps being honoured every frame.
+    IEnumerator AnimateReloadRoll(float from, float to, float duration)
+    {
+        if (duration <= 0.0001f) { _reloadRoll = to; yield break; }
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            _reloadRoll = Mathf.Lerp(from, to, elapsed / duration);
+            elapsed += Time.deltaTime;
+            yield return null;
+        }
+        _reloadRoll = to;
     }
 
     IEnumerator AnimateLocalPos(Transform t, Vector3 from, Vector3 to, float duration)
@@ -779,34 +1004,6 @@ public class PistolController : MonoBehaviour
         return s_softGlow;
     }
 
-    IEnumerator RecoilRoutine()
-    {
-        _isRecoiling = true;
-        Transform t = _pivot;
-        Quaternion rest    = Quaternion.Euler(holdRotationOffset);
-        Quaternion kicked  = rest * Quaternion.AngleAxis(-recoilBackAngle, recoilAxis);
-
-        float elapsed = 0f;
-        while (elapsed < recoilBackDuration && _pivot != null && t != null)
-        {
-            t.localRotation = Quaternion.Slerp(rest, kicked, elapsed / recoilBackDuration);
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-        if (_pivot != null && t != null) t.localRotation = kicked;
-
-        elapsed = 0f;
-        while (elapsed < recoilReturnDuration && _pivot != null && t != null)
-        {
-            t.localRotation = Quaternion.Slerp(kicked, rest, elapsed / recoilReturnDuration);
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-        if (_pivot != null && t != null) t.localRotation = rest;
-        _recoilCoroutine = null;
-        _isRecoiling = false;
-    }
-
     IEnumerator AnimateRotation(Quaternion from, Quaternion to, float duration, System.Action onComplete)
     {
         Transform t = _pivot;
@@ -880,4 +1077,38 @@ public class PistolController : MonoBehaviour
     // (Appended at the END per the serialization convention in CLAUDE.md.)
     [Tooltip("Played at the hit point the moment a kill-cam bullet lands (synced with the blood spray). Assign 'wetsquelchy impact'.")]
     public AudioClip killImpactClip;
+
+    [Header("Floaty Carry (PistolMotor)")]
+    [Tooltip("Route the equipped pistol through PistolMotor — the same reactive spring/camera-lag carry layer the axe uses. Turn off to go back to the rigid, camera-locked viewmodel. Takes effect on the next equip. To hold the gun FURTHER OUT, edit PistolMotor.restOffset (X = right, Z = away from you).")]
+    public bool useFloatyMotor = true;
+
+    [Header("Recoil Kickback (positional)")]
+    [Tooltip("Metres the gun slides straight back along its own barrel on each shot, on top of the existing rotational kick. 0 disables.")]
+    public float recoilKickbackDistance = 0.0525f;   // 1.5x the original 0.035 pass
+    [Tooltip("Local-space direction the gun is pushed on firing. Default -Z (Vector3.back) is correct when the barrel points along +Z — same convention as slideAxis.")]
+    public Vector3 recoilKickbackAxis = Vector3.back;
+
+    [Header("Aim Down Sights")]
+    [Tooltip("Hold secondary fire (RMB / left trigger) to swing the gun from the hip into the centre of the screen, barrel pointing straight out.")]
+    public bool useAimDownSights = true;
+    [Tooltip("Metres in FRONT of the camera the aimed gun sits. Lower = closer to your face (more zoomed-in feel), higher = further out.")]
+    public float adsForwardDistance = 0.42f;
+    [Tooltip("Camera-space sideways offset of the aimed pose. 0 = dead centre.")]
+    public float adsHorizontalOffset = 0f;
+    [Tooltip("Camera-space vertical offset of the aimed pose. Negative sits the gun lower in frame — this is the dial to nudge if the aimed pose sits too high or too low.")]
+    public float adsVerticalOffset = -0.075f;
+    [Tooltip("Extra rotation (Euler degrees) applied to the aimed pose. Use this to square the sights up if the model's barrel isn't exactly along +Z.")]
+    public Vector3 adsRotationOffset = Vector3.zero;
+    [Tooltip("Seconds to raise / lower the gun between hip and aimed.")]
+    public float adsTransitionDuration = 0.14f;
+    [Tooltip("Recoil multiplier while aimed. 0.5 = half as strong as hip-fire.")]
+    [Range(0f, 1f)] public float adsRecoilScale = 0.5f;
+    [Tooltip("PistolMotor sway multiplier while aimed — the gun steadies as you bring it up. 1 = no steadying, 0 = rock solid.")]
+    [Range(0f, 1f)] public float adsSwayScale = 0.35f;
+    [Tooltip("Bullet scatter cone (degrees) when firing from the hip. This is what makes aiming actually more accurate; 0 restores the old always-perfect hitscan.")]
+    public float hipSpreadDegrees = 2.5f;
+    [Tooltip("Bullet scatter cone (degrees) when fully aimed. 0 = pin-point.")]
+    public float adsSpreadDegrees = 0f;
+    [Tooltip("Crosshair opacity when fully aimed — the reticle fades out as the sights come up. 0 = fully hidden, 1 = no fade.")]
+    [Range(0f, 1f)] public float adsCrosshairAlpha = 0f;
 }

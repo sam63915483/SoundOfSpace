@@ -52,6 +52,7 @@ public class CameraTransformFX : MonoBehaviour
     Quaternion _currPlayerRot = Quaternion.identity;
     float _lastFixedTime = -1f;
     float _capturedPitch;
+    float _prevAppliedYaw, _currAppliedYaw;
 
     // ── Effect state ───────────────────────────────────────────────
     float _tiltZ;
@@ -68,6 +69,11 @@ public class CameraTransformFX : MonoBehaviour
         _prevPlayerRot = _currPlayerRot;
         _currPlayerRot = _playerTransform.rotation;
         _lastFixedTime = Time.fixedTime;
+
+        // ...and the yaw those snapshots correspond to, so LateUpdate can tell
+        // how much look input the transform hasn't consumed yet.
+        _prevAppliedYaw = _currAppliedYaw;
+        _currAppliedYaw = _player != null ? _player.SmoothYaw : _currAppliedYaw;
 
         // Capture PC's freshly-written pitch. PC writes
         // `cam.localEulerAngles = Vector3.right * smoothPitch` in its own
@@ -124,11 +130,33 @@ public class CameraTransformFX : MonoBehaviour
             : 1f;
         Quaternion smoothPlayerRot = Quaternion.Slerp(_prevPlayerRot, _currPlayerRot, interpT);
 
+        // ── Yaw the transform hasn't caught up to yet, added on at render rate.
+        //    Interpolating between two physics snapshots is smooth but always
+        //    LAGS by up to a full fixed step — and a fixed step is 20 ms of real
+        //    time at timeScale 1 but ~133 ms during a 0.15x kill slow-mo, which
+        //    is what made looking around mid-slow-mo feel like it was running at
+        //    single-digit fps. The slerp above lands on the pose matching
+        //    `appliedYaw`; the remainder up to the LIVE (unscaled, per-frame)
+        //    smoothYaw is applied here, so the view answers the mouse on the
+        //    frame the input arrives no matter what timeScale is doing.
+        if (_player != null)
+        {
+            float appliedYaw = Mathf.LerpAngle(_prevAppliedYaw, _currAppliedYaw, interpT);
+            float pendingYaw = Mathf.DeltaAngle(appliedYaw, _player.SmoothYaw);
+            // Right-multiply = rotate about the player's LOCAL up, matching
+            // HandleMovement's transform.Rotate(..., Space.Self).
+            smoothPlayerRot *= Quaternion.AngleAxis(pendingYaw, Vector3.up);
+        }
+
         // ── Compose final camera world pose. Setting world pose (rather
         //    than local) overrides the parent-inheritance chain at the
         //    render frame, so the camera sees the smoothed rotation even
         //    though the player transform itself snaps at 50 Hz.
-        Quaternion camLocalRot = Quaternion.Euler(_capturedPitch, 0f, _tiltZ + deathRoll);
+        //    Pitch comes from the LIVE value for the same reason as yaw — the
+        //    old _capturedPitch was a FixedUpdate snapshot, so vertical look
+        //    froze into ~7 Hz steps for the whole slow-mo.
+        float livePitch = _player != null ? _player.SmoothPitch : _capturedPitch;
+        Quaternion camLocalRot = Quaternion.Euler(livePitch, 0f, _tiltZ + deathRoll);
         _cam.rotation = smoothPlayerRot * camLocalRot;
 
         // Player position is already interpolated by Unity (Rigidbody.Interpolate);
@@ -153,6 +181,7 @@ public class CameraTransformFX : MonoBehaviour
         _currPlayerRot = _playerTransform.rotation;
         _prevPlayerRot = _currPlayerRot;
         _lastFixedTime = Time.time;
+        if (_player != null) _prevAppliedYaw = _currAppliedYaw = _player.SmoothYaw;
     }
 
     static float EaseOutCubic(float x) => 1f - Mathf.Pow(1f - x, 3f);

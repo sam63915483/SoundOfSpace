@@ -49,6 +49,7 @@ public class PlayerSuitAudio : MonoBehaviour
 
     AudioSource _oneShot;
     AudioSource _breathSrc;
+    AudioSource _jumpSrc;          // own source so the jump's pitch shift can't detune other one-shots
     AudioSource _windSrc;
     AudioSource _lifeSupportSrc;   // constant low suit life-support hum
     PlayerController _player;
@@ -74,6 +75,7 @@ public class PlayerSuitAudio : MonoBehaviour
         Instance = this;
         _oneShot  = CreateSource("SuitOneShot", false);
         _breathSrc = CreateSource("SuitBreath", false);
+        _jumpSrc  = CreateSource("SuitJump", false);
         _windSrc  = CreateSource("SuitWind", true);
         if (windLoopClip != null) { _windSrc.clip = windLoopClip; _windSrc.volume = 0f; _windSrc.Play(); }
 
@@ -185,5 +187,97 @@ public class PlayerSuitAudio : MonoBehaviour
             _windSrc.pitch  = Mathf.Lerp(windMinPitch, windMaxPitch, speed01);
             if (!_windSrc.isPlaying) _windSrc.Play();
         }
+    }
+
+    // ── Eating / burping (raw fish) ────────────────────────────────────────
+    // (Appended at the END per the serialization convention in CLAUDE.md.)
+    [Header("Eating / Burping (raw fish)")]
+    [Tooltip("Looped chewing sound while the player holds fire to eat a raw fish. HeldItemViewmodel plays it — that's an auto-created singleton with no Inspector, so the clip is wired here on the Player instead. Assign Audio/Eating/eat_raw_fish_loop.")]
+    [SerializeField] private AudioClip eatLoopClip;
+    [SerializeField, Range(0f, 1f)] private float eatVolume = 0.75f;
+    [Tooltip("One is picked at random and played a short delay after a raw fish is swallowed. Assign Audio/Eating/burp_01..03.")]
+    [SerializeField] private AudioClip[] burpClips;
+    [SerializeField, Range(0f, 1f)] private float burpVolume = 0.8f;
+    [Tooltip("Random delay (seconds) between swallowing the fish and the burp.")]
+    [SerializeField] private float burpDelayMin = 1f;
+    [SerializeField] private float burpDelayMax = 3f;
+
+    public AudioClip EatLoopClip => eatLoopClip;
+    public float EatLoopVolume => eatVolume;
+
+    /// Called by Hotbar the moment a raw fish is consumed. Picks a random burp
+    /// and plays it after burpDelayMin..burpDelayMax seconds, so it lands as a
+    /// reaction to the meal rather than on top of the last chew.
+    public void PlayBurpAfterDelay()
+    {
+        if (burpClips == null || burpClips.Length == 0) return;
+        if (!isActiveAndEnabled) return;   // the Player is disabled while piloting
+        StartCoroutine(BurpRoutine());
+    }
+
+    System.Collections.IEnumerator BurpRoutine()
+    {
+        float lo = Mathf.Min(burpDelayMin, burpDelayMax);
+        float hi = Mathf.Max(burpDelayMin, burpDelayMax);
+        yield return new WaitForSeconds(Random.Range(lo, hi));
+
+        var clip = burpClips[Random.Range(0, burpClips.Length)];
+        if (clip != null) _oneShot?.PlayOneShot(clip, burpVolume);
+    }
+
+    // ── Jump effort ────────────────────────────────────────────────────────
+    // (Appended at the END per the serialization convention in CLAUDE.md.)
+    [Header("Jump Effort")]
+    [Tooltip("Optional dedicated jump sound. LEAVE EMPTY to use the fallback: a random suit breath, pitched up and played quietly as an exertion grunt. The old PlayerController.jumpClip is dead — it was wired to a flatulence mp3.")]
+    [SerializeField] private AudioClip jumpEffortClip;
+    [Tooltip("Volume of the jump effort sound. Deliberately quiet — a jump should be felt through the LANDING, not announced. 0 mutes it entirely.")]
+    [SerializeField, Range(0f, 1f)] private float jumpEffortVolume = 0.28f;
+    [Tooltip("Random pitch range for the jump effort. Above 1 shortens a breath into a sharper exhale, which reads as effort rather than idle breathing.")]
+    [SerializeField] private Vector2 jumpEffortPitch = new Vector2(1.25f, 1.45f);
+
+    float _lastJumpSfxTime = -99f;
+
+    /// Called by PlayerController the frame a grounded jump fires.
+    ///
+    /// Design note: there is no such thing as a "jump noise" a person makes — which is
+    /// why the placeholder ended up being a fart. What a suited astronaut actually
+    /// makes is a short involuntary EXHALE plus gear movement. So the fallback reuses
+    /// the existing breath pool, pitched up (shorter + sharper = effort, not idling)
+    /// and mixed low. The landing SFX carries the weight of the jump; this is only the
+    /// push-off. Set jumpEffortVolume to 0 for no jump sound at all — a perfectly
+    /// legitimate choice, and what a lot of shipped FPS games do.
+    public void PlayJump()
+    {
+        if (jumpEffortVolume <= 0.001f) return;
+        // Rate-limit: bunny-hopping must not stack a dozen exhales on top of each other.
+        if (Time.time - _lastJumpSfxTime < 0.25f) return;
+        _lastJumpSfxTime = Time.time;
+
+        AudioClip clip = jumpEffortClip;
+        float gain = 1f;
+        if (clip == null)
+        {
+            // Fallback: borrow the breath pool. Prefer the StreamingAssets clips
+            // (they carry loudness-normalize gains); fall back to the Inspector ones.
+            if (_loadedBreaths.Count > 0)
+            {
+                int i = Random.Range(0, _loadedBreaths.Count);
+                clip = _loadedBreaths[i];
+                gain = i < _loadedGains.Count ? _loadedGains[i] : 1f;
+            }
+            else if (breathingClips != null && breathingClips.Length > 0)
+            {
+                clip = breathingClips[Random.Range(0, breathingClips.Length)];
+            }
+        }
+        if (clip == null || _jumpSrc == null) return;
+
+        // Pitch is a live property of the SOURCE, read continuously while the clip
+        // plays — it is not captured by PlayOneShot. So the jump gets its own source
+        // rather than borrowing _oneShot: setting the pitch there and restoring it on
+        // the next line would just play the clip at the restored pitch, and leaving it
+        // set would detune every equip/burp one-shot after it.
+        _jumpSrc.pitch = Random.Range(jumpEffortPitch.x, jumpEffortPitch.y);
+        _jumpSrc.PlayOneShot(clip, jumpEffortVolume * gain);
     }
 }

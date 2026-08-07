@@ -255,7 +255,10 @@ public class BubbleDome : MonoBehaviour
         for (int i = 0; i < trees.Count; i++)
         {
             var t = trees[i];
-            if (t != null && !t.IsDead && (t.transform.position - c).sqrMagnitude < rSq) n += 1f;
+            // Skip sapling-mode entries — the half-grown loop below counts those
+            // (they only carry a SpawnedTree so they can be chopped back down).
+            if (t == null || t.IsDead || t.IsSapling) continue;
+            if ((t.transform.position - c).sqrMagnitude < rSq) n += 1f;
         }
         // Half-grown-or-better saplings count 0.5 — same rule the planet baseline
         // uses (SaplingGrowth.GrowingO2EquivalentOnBody), so the dome's ramp to

@@ -138,12 +138,26 @@ public class BloodFX : MonoBehaviour
         // corpse, still bleeding, instead of being left behind at the standing
         // spot. Falls back to the nearest planet for non-enemy hits so
         // floating-origin shifts don't teleport it.
-        Transform parent = attachTo != null
-            ? FindNearestDescendant(attachTo, spawnPos)
-            : ResolveNearestPlanet(point);
+        // FindNearestDescendant can legitimately return null — it rejects UI
+        // nodes and anything with a tiny or sheared lossyScale, so a small or
+        // oddly-rigged target has no eligible bone. When that happened the
+        // spray was left UNPARENTED: it didn't ride the body, it wasn't taken
+        // down with the corpse when the enemy despawned, and it ignored
+        // floating-origin shifts — a fountain gushing out of thin air at the
+        // old kill site for its full ~18 s life. Fall through to the planet so
+        // a spray is always parented to SOMETHING that persists correctly.
+        Transform parent = attachTo != null ? FindNearestDescendant(attachTo, spawnPos) : null;
+        if (parent == null) parent = ResolveNearestPlanet(point);
         if (parent != null) fx.transform.SetParent(parent, worldPositionStays: true);
 
         DisableColliders(fx);
+
+        // Hard backstop. BloodSpray.Run destroys the effect at the end of its
+        // grow → gush → die-out envelope, but a coroutine only advances while
+        // its GameObject is active — park the spray on a pooled enemy that gets
+        // SetActive(false) and the countdown simply stops. Destroy(obj, t) is
+        // engine-scheduled and fires regardless, so nothing can outlive this.
+        Destroy(fx, sprayGrowSeconds + sprayLifetime + sprayDieSeconds + 2f);
 
         // Capture the target scale AFTER parenting — SetParent rescales
         // localScale to preserve world size, so this is the correct local target
@@ -174,9 +188,9 @@ public class BloodFX : MonoBehaviour
 
         ForceLocalSimulationSpace(fx);
 
-        Transform parent = attachTo != null
-            ? FindNearestDescendant(attachTo, center)
-            : ResolveNearestPlanet(center);
+        // Same null-bone fallback as SpawnSpray — never leave an FX unparented.
+        Transform parent = attachTo != null ? FindNearestDescendant(attachTo, center) : null;
+        if (parent == null) parent = ResolveNearestPlanet(center);
         if (parent != null) fx.transform.SetParent(parent, worldPositionStays: true);
 
         DisableColliders(fx);

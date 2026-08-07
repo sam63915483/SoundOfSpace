@@ -49,18 +49,31 @@ public class SaplingGrowth : MonoBehaviour
     {
         fullScale = transform.localScale;
 
-        // If the planted prefab already carries a SpawnedTree (e.g. a reused
-        // tree prefab), strip it — a sapling must NOT count as a mature tree
-        // until it grows up. We add a fresh one back on maturing.
-        // DestroyImmediate, NOT Destroy: the save-restore path calls
-        // RestoreGrowth(growth=1) in the same frame as AddComponent, and its
-        // Mature() → GetComponent<SpawnedTree>() would find a deferred-destroy
-        // zombie and wire the planted-tree state onto a component that dies at
-        // end of frame (tree never counts toward O2 after a load).
-        var existing = GetComponent<SpawnedTree>();
-        if (existing != null) DestroyImmediate(existing);
-
+        // A growing sapling now KEEPS a SpawnedTree, in sapling mode, so it can
+        // be chopped back down (you planted it in the wrong spot and want it
+        // back). Sapling mode is emphatically not tree-hood: no oxygen, no Tree
+        // Killer score, a fraction of the wood, and exactly one sapling
+        // returned — see SpawnedTree.InitSapling.
+        //
+        // This also retired an old trap. The component used to be stripped here
+        // with DestroyImmediate specifically because the save-restore path calls
+        // RestoreGrowth(growth=1) in the same frame, and Mature()'s
+        // GetComponent<SpawnedTree> would otherwise find a deferred-destroy
+        // zombie and wire planted-tree state onto a component dying at end of
+        // frame. Nothing is destroyed now, so there is no zombie to find.
+        EnsureSaplingTree();
         ApplyScale();
+    }
+
+    /// Attaches (or re-arms) the sapling-mode SpawnedTree. Called from Awake so
+    /// a sapling is choppable the instant it exists, and again from
+    /// Init/RestoreGrowth once the body and prefab index are known.
+    void EnsureSaplingTree()
+    {
+        if (mature) return;
+        var st = GetComponent<SpawnedTree>();
+        if (st == null) st = gameObject.AddComponent<SpawnedTree>();
+        st.InitSapling(this, body, prefabIndex);
     }
 
     void OnEnable() { if (!s_all.Contains(this)) s_all.Add(this); }
@@ -71,6 +84,7 @@ public class SaplingGrowth : MonoBehaviour
     {
         body = plantedBody;
         prefabIndex = prefabIdx;
+        EnsureSaplingTree();     // re-arm with the body/index now that we have them
         ApplyScale();
     }
 
@@ -81,7 +95,7 @@ public class SaplingGrowth : MonoBehaviour
         prefabIndex = prefabIdx;
         growth = Mathf.Clamp01(savedGrowth);
         if (growth >= 1f) Mature();
-        else ApplyScale();
+        else { EnsureSaplingTree(); ApplyScale(); }
     }
 
     void Update()

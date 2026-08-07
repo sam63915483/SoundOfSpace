@@ -198,6 +198,12 @@ public class PlanetOxygen : MonoBehaviour
         {
             var t = all[i];
             if (t == null || t.IsDead) continue;
+            // Growing saplings carry a SpawnedTree so they can be chopped, but
+            // they are not trees: SaplingGrowth.GrowingO2EquivalentOnBody
+            // already counts them at half rate once half-grown. Without this
+            // skip they'd be counted twice, and at full strength from the
+            // moment they were planted.
+            if (t.IsSapling) continue;
             Vector3 tp = t.transform.position;
             float dSq = (tp - worldPos).sqrMagnitude;
             if (dSq >= rSq) continue;

@@ -131,7 +131,11 @@ public class PhoneBuildApp : PhoneAppBase
             if (entry == null) continue;
             if (_catIndex != 0 && entry.category != Cats[_catIndex - 1]) continue;
             var e = entry;   // capture
-            string cost = e.woodCost <= 0 ? "FREE" : e.woodCost + " W";
+            // Locked blueprints stay listed (same as the desktop panel) with the
+            // Colonizer level they need in place of their cost.
+            string cost = !BuildableUnlocks.IsUnlocked(e.displayName)
+                ? "LV " + BuildableUnlocks.RequiredLevel(e.displayName)
+                : e.woodCost <= 0 ? "FREE" : e.woodCost + " W";
             Button row = null;
             row = AddRow(e.displayName, cost, LabelDim, () => Select(e, row), out _, out var costText);
             _rows.Add((row, costText, e));
@@ -147,6 +151,12 @@ public class PhoneBuildApp : PhoneAppBase
         foreach (var (row, cost, entry) in _rows)
         {
             if (cost == null) continue;
+            if (!BuildableUnlocks.IsUnlocked(entry.displayName))
+            {
+                cost.text  = "LV " + BuildableUnlocks.RequiredLevel(entry.displayName);
+                cost.color = WarnRed;
+                continue;
+            }
             bool affordable = entry.woodCost <= 0 || wood >= entry.woodCost;
             cost.color = affordable ? LabelDim : WarnRed;
         }
@@ -176,7 +186,9 @@ public class PhoneBuildApp : PhoneAppBase
         _preview.color = rt != null ? Color.white : new Color(1f, 1f, 1f, 0f);
         _name.text = entry.displayName.ToUpper();
         _classVal.text = entry.category.ToString().ToUpper();
-        _costVal.text = entry.woodCost <= 0 ? "FREE" : entry.woodCost + " WOOD";
+        _costVal.text = !BuildableUnlocks.IsUnlocked(entry.displayName)
+            ? "LOCKED · LV " + BuildableUnlocks.RequiredLevel(entry.displayName)
+            : entry.woodCost <= 0 ? "FREE" : entry.woodCost + " WOOD";
         Vector3 size = menu.GetSizeFor(entry);
         _sizeVal.text = size == Vector3.zero ? "—" : $"{size.x:0.#}×{size.y:0.#}×{size.z:0.#} M";
         _desc.text = entry.description;
@@ -187,12 +199,13 @@ public class PhoneBuildApp : PhoneAppBase
     {
         if (_placeBtn == null) return;
         int wood = WoodInventory.Instance != null ? WoodInventory.Instance.Wood : 0;
-        bool can = _selected != null && _selected.prefab != null
+        bool locked = _selected != null && !BuildableUnlocks.IsUnlocked(_selected.displayName);
+        bool can = _selected != null && _selected.prefab != null && !locked
                    && (_selected.woodCost <= 0 || wood >= _selected.woodCost);
         _placeBtn.interactable = can;
         if (_placeLabel != null)
         {
-            _placeLabel.text = can || _selected == null ? "PLACE" : "NEED WOOD";
+            _placeLabel.text = can || _selected == null ? "PLACE" : locked ? "LOCKED" : "NEED WOOD";
             _placeLabel.color = can ? AccentCyan : WarnRed;
         }
         if (_placeBtnBg != null)

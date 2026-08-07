@@ -265,6 +265,13 @@ public class InputSettings : ScriptableObject {
 	// camera FOV so the slider starts at the game's real default.
 	[Range(50f, 110f)] public float cameraFov = 0f;
 
+	// Dev perf readout (FPS / ms / cpu / gpu / draws / gc) in the top-left.
+	// Appended at the END of the serialized fields on purpose — inserting mid-class
+	// reorders serialization and corrupts existing scene/prefab data (CLAUDE.md).
+	// F3 still toggles it in-game; both paths write this same flag so they can't
+	// drift out of sync.
+	public bool fxPerfOverlay = true;
+
 	// TODO: find better place to call this from
 	public void Begin () {
 		Active = this;
@@ -330,10 +337,12 @@ public class InputSettings : ScriptableObject {
 		fxLensFlares                = PlayerPrefs.GetInt   (nameof (fxLensFlares),                1) != 0;
 		fxBloom                     = PlayerPrefs.GetInt   (nameof (fxBloom),                     1) != 0;
 		fxSpaceDust                 = PlayerPrefs.GetInt   (nameof (fxSpaceDust),                 1) != 0;
+		fxPerfOverlay               = PlayerPrefs.GetInt   (nameof (fxPerfOverlay),               1) != 0;
 		fxRadialMotionBlur          = PlayerPrefs.GetInt   (nameof (fxRadialMotionBlur),          0) != 0;
 		fxHelmetOverlay             = PlayerPrefs.GetInt   (nameof (fxHelmetOverlay),             1) != 0;
 		fxHelmetCondensation        = PlayerPrefs.GetInt   (nameof (fxHelmetCondensation),        1) != 0;
 		fxHelmetBob                 = PlayerPrefs.GetInt   (nameof (fxHelmetBob),                 1) != 0;
+		fxViewmodelLight            = PlayerPrefs.GetInt   (nameof (fxViewmodelLight),            1) != 0;
 		fxFilmGrainIntensity            = PlayerPrefs.GetFloat (nameof (fxFilmGrainIntensity),            0.6f);
 		fxSubtleVignetteIntensity       = PlayerPrefs.GetFloat (nameof (fxSubtleVignetteIntensity),       0.45f);
 		fxChromaticAberrationIntensity  = PlayerPrefs.GetFloat (nameof (fxChromaticAberrationIntensity),  0.35f);
@@ -348,10 +357,10 @@ public class InputSettings : ScriptableObject {
 		fxConcertShadows = PlayerPrefs.GetInt (nameof (fxConcertShadows), 0) != 0;
 		mirror60Hz       = PlayerPrefs.GetInt (nameof (mirror60Hz), 0) != 0;
 		qualityPreset    = (QualityPreset) PlayerPrefs.GetInt (nameof (qualityPreset), (int) QualityPreset.Custom);
-		// physicsRateV2 — bumped from physicsRate after the enum was reordered
-		// (low→high). Old saved key is intentionally ignored so a previous
-		// Ultra=0 doesn't read back as the new Low=0.
-		physicsRate      = (PhysicsRate)   PlayerPrefs.GetInt ("physicsRateV2",        (int) PhysicsRate.Ultra);
+		// Physics rate is pinned at 100 Hz and no longer a setting — any value
+		// saved by an older build is deliberately discarded, so a profile left
+		// on LOW or INSANE comes back at Ultra. See ApplyPhysicsRate.
+		physicsRate      = PhysicsRate.Ultra;
 		// phoneResolutionScaleV2 — bumped from phoneResolutionScale after the
 		// enum was reordered to put Eighth at the front. Old saved key is
 		// intentionally ignored so a previous Quarter=0 doesn't read back
@@ -438,10 +447,12 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt   (nameof (fxLensFlares),                fxLensFlares                ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxBloom),                     fxBloom                     ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxSpaceDust),                 fxSpaceDust                 ? 1 : 0);
+		PlayerPrefs.SetInt   (nameof (fxPerfOverlay),               fxPerfOverlay               ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxRadialMotionBlur),          fxRadialMotionBlur          ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxHelmetOverlay),             fxHelmetOverlay             ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxHelmetCondensation),        fxHelmetCondensation        ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxHelmetBob),                 fxHelmetBob                 ? 1 : 0);
+		PlayerPrefs.SetInt   (nameof (fxViewmodelLight),            fxViewmodelLight            ? 1 : 0);
 		PlayerPrefs.SetFloat (nameof (fxFilmGrainIntensity),            fxFilmGrainIntensity);
 		PlayerPrefs.SetFloat (nameof (fxSubtleVignetteIntensity),       fxSubtleVignetteIntensity);
 		PlayerPrefs.SetFloat (nameof (fxChromaticAberrationIntensity),  fxChromaticAberrationIntensity);
@@ -597,28 +608,41 @@ public class InputSettings : ScriptableObject {
 		QualitySettings.globalTextureMipmapLimit   = (int) textureQuality;
 	}
 
-	// Apply a physics tick rate by updating BOTH Universe.physicsTimeStep
-	// (read by NBodySimulation each FixedUpdate for the velocity integration
-	// step size) AND Time.fixedDeltaTime (Unity's solver tick). They must stay
-	// in lockstep or the simulation desyncs from Unity's solver.
+	// The one true physics step: 100 Hz, the value the solar system was
+	// originally built and tuned around.
+	public const float kFixedPhysicsStep = 0.01f;
+
+	// Applies the physics tick rate to BOTH Universe.physicsTimeStep (read by
+	// NBodySimulation each FixedUpdate as the velocity-integration step) AND
+	// Time.fixedDeltaTime (Unity's solver tick). They must stay in lockstep or
+	// the n-body sim desyncs from Unity's solver and the planets run fast/slow.
 	//
-	// Frame rate (FPS) is independent: Rigidbody interpolation smooths the
-	// rendered position between physics ticks, so a 50 Hz physics game still
-	// renders at whatever the GPU + monitor allow.
+	// NOT PLAYER-CONFIGURABLE, deliberately — the `rate` argument is ignored.
+	// This used to be a PHYSICS RATE slider (40/50/100/144/240 Hz). It was
+	// removed because it did not do the thing it looked like it did:
+	//
+	//   • It never bought smoothness. Rigidbody interpolation already smooths
+	//     rendering between ticks, so raising the rate only costs CPU (and can
+	//     lower fps). What DID look smoother at high rates was the camera —
+	//     but only because its pose was being composed in FixedUpdate; that's
+	//     fixed now (see CameraTransformFX / PlayerController.HandleMovement),
+	//     so the camera runs at render rate no matter what.
+	//   • It quietly retuned aim. Look sensitivity used to scale with
+	//     physicsHz / fps because dropped yaw slices were framerate-dependent.
+	//     Also fixed; sensitivity is now rate-independent.
+	//   • It changed the ORBITS. NBodySimulation integrates with semi-implicit
+	//     Euler at this exact step. That's stable (planets never spiral in),
+	//     but apsidal precession scales with step size — so a 40 Hz player and
+	//     a 240 Hz player were running measurably different solar systems over
+	//     a long session. That's the one global thing that shouldn't vary.
+	//
+	// The PhysicsRate enum, the field and its PlayerPrefs key are all kept so
+	// existing saved settings still parse; the value is just forced to Ultra.
 	public void ApplyPhysicsRate (PhysicsRate rate) {
-		physicsRate = rate;
+		physicsRate = PhysicsRate.Ultra;
 		if (deferApply) return;
-		float dt;
-		switch (rate) {
-			case PhysicsRate.Low:      dt = 0.025f;       break; //  40 Hz
-			case PhysicsRate.Balanced: dt = 0.02f;        break; //  50 Hz (Unity default)
-			case PhysicsRate.Ultra:    dt = 0.01f;        break; // 100 Hz
-			case PhysicsRate.Max:      dt = 1f / 144f;    break; // 144 Hz — matches high-refresh monitors
-			case PhysicsRate.Insane:   dt = 1f / 240f;    break; // 240 Hz — beefy PCs only; ~6× the work of Low
-			default:                   dt = 0.01f;        break;
-		}
-		Universe.physicsTimeStep = dt;
-		Time.fixedDeltaTime      = dt;
+		Universe.physicsTimeStep = kFixedPhysicsStep;
+		Time.fixedDeltaTime      = kFixedPhysicsStep;
 	}
 
 	public void PushControllerSettingsToGate () {
@@ -639,6 +663,12 @@ public class InputSettings : ScriptableObject {
 	public bool fxHelmetOverlay = true;       // helmet frame + visor glass + sway
 	public bool fxHelmetCondensation = true;  // low-O2 visor fog (functional feedback — recommended on)
 	public bool fxHelmetBob = true;           // walk/run helmet bob (stride-matched, stronger when sprinting)
+
+	[Header("Viewmodel Fill Light")]
+	// Short-range point light on the camera so the held item isn't a black
+	// silhouette in the dark (ViewmodelFillLight). Functional, not cosmetic —
+	// on by default.
+	public bool fxViewmodelLight = true;
 
 	[Header("Ship Screens")]
 	public bool mirror60Hz = false;           // rear-view screen refresh: off = 30 Hz, on = 60 Hz (costs an extra camera render per frame)

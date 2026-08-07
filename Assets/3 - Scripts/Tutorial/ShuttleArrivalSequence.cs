@@ -124,6 +124,17 @@ public class ShuttleArrivalSequence : MonoBehaviour
     float _shakeAmp;
     bool _flying;
     bool _active;
+    // True while the landing + orientation film owns the screen. Read by
+    // OpeningDirector, which must never put a tutorial pill up over the film —
+    // and which starts itself if no sequence is running at all (pressing Play
+    // straight into the gameplay scene).
+    public static bool IsPlaying { get; private set; }
+
+    /// True once the landing has STARTED this session. OpeningDirector needs
+    /// both flags: "not playing" alone is also true in the seconds between the
+    /// scene loading and IntroSequenceController calling Play(), and starting
+    /// the opening in that window would put a tutorial pill over the film.
+    public static bool HasPlayed { get; private set; }
     bool _skip;
     bool _wasKinematic;
     AudioSource _heartbeat;
@@ -357,7 +368,9 @@ public class ShuttleArrivalSequence : MonoBehaviour
         // Cold open: the three recruiter questions, click-to-advance. The eyes
         // stay fully shut throughout — _wakeArmed is still false, so these
         // clicks never touch the eyelids.
-        yield return ColdOpenQuestions();
+        // VAULTED (FeatureVault.ColdOpenQuestions) — "Open your eyes." below is
+        // deliberately kept, so the black screen and the eyelid wake still play.
+        if (FeatureVault.ColdOpenQuestions) yield return ColdOpenQuestions();
 
         // "Open your eyes." — NOW the clicks pry the eyes open (the existing
         // multi-click mechanic), HAL's "Wake up" murmur starts looping under
@@ -600,6 +613,8 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
         _flying = true;
         _active = true;
+        IsPlaying = true;
+        HasPlayed = true;
         transform.localPosition = _restLocalPos + _localUp * _altitude;
         SyncPlayerToPod();
         _pc.ForceLookAt(_podGrp.TransformPoint(standOffset + Vector3.forward * 6f));  // face the chamber door / cabin
@@ -845,6 +860,15 @@ public class ShuttleArrivalSequence : MonoBehaviour
         yield return WaitUnscaled(2f);
         if (_skip) yield break;
 
+        // VAULTED (FeatureVault.DescentBriefing). The film still needs
+        // scheduling or the descent has nothing to show, so that survives; only
+        // the five spoken lines and their heartbeat choreography are held back.
+        if (!FeatureVault.DescentBriefing)
+        {
+            ScheduleFilm();
+            yield break;
+        }
+
         // Heartbeat runs under the WHOLE briefing: audible from the very
         // start (quiet)...
         StartHeartbeatLoop(heartbeatQuietVolume, 2f);
@@ -1052,8 +1076,12 @@ public class ShuttleArrivalSequence : MonoBehaviour
     {
         if (!_active) return;
         _active = false;
+        IsPlaying = false;
         ReleasePlayer();
         HALCommentator.SuppressAutonomous = false;
+        // Hand the player to the opening's six survival beats. Idempotent, and
+        // this is also the abort path, so a skipped landing still gets guided.
+        if (OpeningDirector.Instance != null) OpeningDirector.Instance.Begin();
         StopFilm();
         if (_canvas != null) Destroy(_canvas.gameObject);
         StopLandingCam();

@@ -576,6 +576,7 @@ public class EnemyController : MonoBehaviour, IDamageable
                 {
                     var tree = trees[i];
                     if (tree == null || tree.IsDead) continue;
+                    if (tree.IsSapling) continue;   // knee-high, not an obstacle to steer around
                     Vector3 diff = rb.position - tree.transform.position;
                     if (diff.sqrMagnitude > treeCullSqr) continue;
                     Vector3 diffTangent = Vector3.ProjectOnPlane(diff, up);
@@ -1411,6 +1412,11 @@ public class EnemyController : MonoBehaviour, IDamageable
         if (_dying) return;
         _dying = true;
         if (creditPlayer) OnAnyEnemyDeath?.Invoke();
+        // Progression: GANGSTA REP. +1 for a regular, +3 for an Elite. Gated on
+        // creditPlayer for the same reason the event is — a sun-death or a fall
+        // isn't your kill, so it shouldn't build your rep. Called directly rather
+        // than off OnAnyEnemyDeath because that event carries no EnemyKind.
+        if (creditPlayer) PlayerProgress.Instance?.AddEnemyKill(kind);
         // Perception dies with the body: stop EnemyVision (its Update would keep filling
         // suspicion / rendering the cone on a 30s ragdoll corpse) and leave the live-enemy
         // list so the detection HUD and separation steering ignore the corpse.

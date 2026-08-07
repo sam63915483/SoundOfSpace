@@ -41,7 +41,17 @@ public class CrosshairReticle : MonoBehaviour
 
     bool _needsRebuild;
 
-    void OnEnable()  { Rebuild(); }
+    // ── External fade hook ───────────────────────────────────────────
+    // Gameplay can dim or hide the whole reticle without holding a reference to
+    // it — PistolController drives this to 0 while aiming down the sights, so
+    // the iron sights aren't competing with a crosshair. Reset on OnEnable so a
+    // scene reload can never leave the reticle stuck invisible (static state
+    // leaking across the main menu is the trap in CLAUDE.md).
+    public static float ExternalAlpha = 1f;
+    CanvasGroup _rootGroup;
+    float _appliedExternalAlpha = -1f;
+
+    void OnEnable()  { ExternalAlpha = 1f; _appliedExternalAlpha = -1f; Rebuild(); }
     void OnDisable() { Teardown(); }
 
     void OnValidate()
@@ -134,9 +144,25 @@ public class CrosshairReticle : MonoBehaviour
         }
         if (phoneUp) return;
 
+        // Apply the external fade through a root CanvasGroup, which multiplies
+        // down over the triangle/square groups AND the pip. Change-gated so it
+        // costs nothing on the overwhelming majority of frames.
+        if (Application.isPlaying && !Mathf.Approximately(_appliedExternalAlpha, ExternalAlpha))
+        {
+            if (_rootGroup == null)
+            {
+                _rootGroup = GetComponent<CanvasGroup>();
+                if (_rootGroup == null) _rootGroup = gameObject.AddComponent<CanvasGroup>();
+            }
+            _appliedExternalAlpha = Mathf.Clamp01(ExternalAlpha);
+            _rootGroup.alpha = _appliedExternalAlpha;
+        }
+
         // Keep the gaze gate in sync with the inspector fields (live-tunable).
         InteractGaze.RequireGaze = requireLookToInteract;
         InteractGaze.AimRadius = aimRadius;
+        InteractGaze.ExtraAimMargin = extraAimMargin;
+        InteractGaze.ForgiveDepth = forgiveDepth;
 
         bool active = Application.isPlaying && InteractPromptUI.IsPromptVisible;
         float target = active ? 1f : 0f;
@@ -291,4 +317,12 @@ public class CrosshairReticle : MonoBehaviour
     [Tooltip("Fatness of the crosshair aim-ray in world units. 0 = razor-thin (must be dead-on); ~0.1 gives a little forgiveness without feeling loose.")]
     [Range(0f, 0.5f)]
     public float aimRadius = 0.10f;
+
+    // (Appended at the end per the serialization convention in CLAUDE.md.)
+    [Tooltip("Extra world-space slack around a target's silhouette, ON TOP of the crosshair radius above. 0 = the near-miss test is exactly as tight as the crosshair itself. Raise only if aiming feels fussy.")]
+    [Range(0f, 0.5f)]
+    public float extraAimMargin = 0f;
+    [Tooltip("How much further away than the nearest thing the crosshair touched the target may sit and still count as looked-at. Keeps real occluders (walls, the ship hull) blocking.")]
+    [Range(0f, 2f)]
+    public float forgiveDepth = 0.5f;
 }
