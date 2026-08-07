@@ -44,12 +44,21 @@ public static class NPCSellRows
                     && MushroomDealState.IsFull(id, price.AppetiteMax)
                     && MushroomDealState.LastPaid(id) > 0;   // only once they've actually bought
 
+        // A live scheduled appointment outranks BOTH other states — they're
+        // waiting for THIS delivery, so "full" is irrelevant (they text
+        // because they're empty) and barred can't coexist with Scheduled
+        // (barring cancels the appointment).
+        var ledger = id != null ? BuyerLedger.Get(id) : null;
+        bool scheduled = ledger != null && ledger.convo == BuyerLedger.Convo.Scheduled
+                         && Time.unscaledTime <= ledger.deadline + BuyerDeals.GraceSeconds;
+
         string label;
-        if (barred)       label = $"Sell mushrooms (not talking to you — {FormatWait(MushroomDealState.SecondsLeft(id))})";
+        if (scheduled)    label = $"Deliver order — {ledger.askQty} {MushroomSpecies.TierName((MushroomTier)ledger.askTier).ToLowerInvariant()} @ {ledger.offerPerCap}";
+        else if (barred)  label = $"Sell mushrooms (not talking to you — {FormatWait(MushroomDealState.SecondsLeft(id))})";
         else if (full)    label = $"Sell mushrooms (they're full — {FormatWait(MushroomDealState.SecondsUntilHungry(id, price.AppetiteMax))})";
         else              label = mushrooms > 0 ? "Sell mushrooms" : "Sell mushrooms (none on you)";
 
-        rows.Add(new PostGreetingChoicePanel.Row(label, !barred && !full && mushrooms > 0));
+        rows.Add(new PostGreetingChoicePanel.Row(label, scheduled || (!barred && !full && mushrooms > 0)));
         actions.Add(SellAction.Mushrooms);
 
         if (FeatureVault.SpaceDustSelling)

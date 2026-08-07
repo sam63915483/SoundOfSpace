@@ -93,6 +93,10 @@ public class MushroomSellUI : MonoBehaviour
     SlotOps.CursorState _cursor;
     Coroutine _resultRoutine;
     bool _suppressInput;
+    // Scheduled-deal mode (Messages app appointment): price is agreed, the
+    // haggle is off, and DELIVER runs the exact/substitution flow instead.
+    bool _scheduled;
+    BuyerLedger.Buyer _appt;
 
     class SlotWidget
     {
@@ -200,6 +204,12 @@ public class MushroomSellUI : MonoBehaviour
         _stage = Stage.Open;
         _counter = 0;
 
+        // A live appointment flips the panel into delivery mode.
+        var ledger = BuyerLedger.Get(_buyerId);
+        _scheduled = ledger != null && ledger.convo == BuyerLedger.Convo.Scheduled
+                     && Time.unscaledTime <= ledger.deadline + BuyerDeals.GraceSeconds;
+        _appt = _scheduled ? ledger : null;
+
         if (_dim != null) _dim.SetActive(true);
         _panelRT.gameObject.SetActive(true);
         PlayerController.isInModalSlotUI = true;
@@ -237,6 +247,8 @@ public class MushroomSellUI : MonoBehaviour
         _onClose = null;
         _onSold = null;
         _price = null;
+        _scheduled = false;
+        _appt = null;
         cb?.Invoke();
     }
 
@@ -574,6 +586,17 @@ public class MushroomSellUI : MonoBehaviour
             var tier = MushroomRegistry.Tier(_offerSpecies);
             Color32 tc = MushroomSpecies.TierColor(tier);
             string tierHex = ColorUtility.ToHtmlStringRGB(tc);
+            if (_scheduled && _appt != null)
+            {
+                var at = (MushroomTier)_appt.askTier;
+                string atHex = ColorUtility.ToHtmlStringRGB(MushroomSpecies.TierColor(at));
+                int bump = Mathf.RoundToInt((BuyerDeals.GratitudeBonus(_appt.windowMinutes) - 1f) * 100f);
+                _offerText.text =
+                    $"<b>ORDER</b> — {_appt.askQty} <color=#{atHex}>{MushroomSpecies.TierName(at).ToLowerInvariant()}</color> @ <color=#FFD732>{_appt.offerPerCap}</color> a cap agreed" +
+                    $"  <size=13><color=#6EDC82>on time (+{bump}%)</color></size>\n" +
+                    $"<size=13><color=#7FA0BD>on the table: {MushroomRegistry.DisplayName(_offerSpecies).ToUpperInvariant()}  <color=#{tierHex}>{MushroomSpecies.TierName(tier)}</color></color></size>";
+            }
+            else
             _offerText.text =
                 $"<b>{MushroomRegistry.DisplayName(_offerSpecies).ToUpperInvariant()}</b>  <size=13><color=#{tierHex}>{MushroomSpecies.TierName(tier)}</color></size>\n" +
                 $"<size=13><color=#7FA0BD>market value <color=#FFD732>{Market}</color> a cap — what {_npcName} pays is up to {_npcName}</color></size>";
@@ -586,7 +609,10 @@ public class MushroomSellUI : MonoBehaviour
         }
         else
         {
-            _offerText.text = "<color=#4D6F90>DRAG ONE KIND OF MUSHROOM ONTO THE TABLE</color>";
+            _offerText.text = _scheduled && _appt != null
+                ? $"<b>ORDER</b> — {_appt.askQty} {MushroomSpecies.TierName((MushroomTier)_appt.askTier).ToLowerInvariant()} @ <color=#FFD732>{_appt.offerPerCap}</color> a cap agreed\n" +
+                  "<color=#4D6F90>DRAG THE CAPS ONTO THE TABLE</color>"
+                : "<color=#4D6F90>DRAG ONE KIND OF MUSHROOM ONTO THE TABLE</color>";
             _offerPreview.enabled = false;
             _offerCount.enabled = false;
             _offerTier.enabled = false;
@@ -652,11 +678,14 @@ public class MushroomSellUI : MonoBehaviour
                     $"<color=#FFD732>{_counter * _offerCountN}</color> for the lot</color></size>";
         }
 
-        // Ask control.
+        // Ask control. In scheduled mode the price is AGREED — the field shows
+        // it read-only and the total tracks the order, not an ask.
         _suppressInput = true;
-        _askInput.text = _ask.ToString();
+        _askInput.text = _scheduled && _appt != null ? _appt.offerPerCap.ToString() : _ask.ToString();
         _suppressInput = false;
-        _totalText.text = $"{Total}";
+        _askInput.interactable = !_scheduled;
+        _totalText.text = _scheduled && _appt != null
+            ? $"{_appt.offerPerCap * _offerCountN}" : $"{Total}";
 
         // The greed read, in words. Measured against MARKET, never against the
         // buyer — market value is a property of the strain, so this reads the
@@ -664,7 +693,17 @@ public class MushroomSellUI : MonoBehaviour
         float over = (HasOffer && Market > 0) ? (float)_ask / Market : 1f;
         int pct = Mathf.RoundToInt(Mathf.Abs(over - 1f) * 100f);
         string band; Color32 bandCol;
-        if (!HasOffer)          { band = ""; bandCol = C_Dim; }
+        if (_scheduled && _appt != null)
+        {
+            // Delivery read instead: does the table match the order?
+            var at = (MushroomTier)_appt.askTier;
+            if (!HasOffer) { band = ""; bandCol = C_Dim; }
+            else if (BuyerDeals.IsExact(at, _appt.askQty, MushroomRegistry.Tier(_offerSpecies), _offerCountN))
+            { band = "exactly what they ordered"; bandCol = new Color32(110, 220, 130, 255); }
+            else
+            { band = "not what they ordered — they might take it anyway"; bandCol = new Color32(255, 215, 50, 255); }
+        }
+        else if (!HasOffer)     { band = ""; bandCol = C_Dim; }
         else if (pct == 0)      { band = "asking exactly market value";                bandCol = new Color32(110, 220, 130, 255); }
         else if (over < 1f)     { band = $"asking {pct}% UNDER market value";           bandCol = new Color32(110, 220, 130, 255); }
         else if (over <= 1.25f) { band = $"asking {pct}% over market value";            bandCol = new Color32(159, 216, 110, 255); }
@@ -675,7 +714,13 @@ public class MushroomSellUI : MonoBehaviour
         _riskText.color = bandCol;
 
         // Buttons.
-        if (countered)
+        if (_scheduled)
+        {
+            SetBtn(_takeBtn, _takeLabel, "", C_BtnTake, false, hide: true);
+            SetBtn(_primaryBtn, _primaryLabel, "DELIVER", C_BtnSell, HasOffer);
+            SetBtn(_secondaryBtn, _secondaryLabel, "CLOSE", C_BtnBack, true);
+        }
+        else if (countered)
         {
             SetBtn(_takeBtn, _takeLabel, $"TAKE {_counter}/CAP", C_BtnTake, !barred);
             SetBtn(_primaryBtn, _primaryLabel, $"PUSH FOR {_ask}", C_BtnSell, !barred && _ask > 0);
@@ -908,8 +953,66 @@ public class MushroomSellUI : MonoBehaviour
 
     void OnPrimary()
     {
-        if (_stage == Stage.Countered) PushBack();
+        if (_scheduled) DeliverOrder();
+        else if (_stage == Stage.Countered) PushBack();
         else MakeOffer();
+    }
+
+    /// Scheduled-deal fulfilment (spec §5). Exact = agreed tier and ≥ agreed
+    /// qty, paid at agreed price × gratitude, full bond. Anything else rolls
+    /// the substitution chance: accepted → their standard PriceFor (no bump,
+    /// half bond); refused → −5 bond, appointment dead, ONE roll only.
+    void DeliverOrder()
+    {
+        if (!_scheduled || _appt == null || !HasOffer) return;
+        var offeredTier = MushroomRegistry.Tier(_offerSpecies);
+        var agreedTier = (MushroomTier)_appt.askTier;
+
+        if (BuyerDeals.IsExact(agreedTier, _appt.askQty, offeredTier, _offerCountN))
+        {
+            int perCap = Mathf.RoundToInt(_appt.offerPerCap * BuyerDeals.GratitudeBonus(_appt.windowMinutes));
+            CompleteScheduled(perCap, Mathf.Min(_offerCountN, _appt.askQty), substituted: false);
+            return;
+        }
+
+        float chance = BuyerDeals.SubstitutionChance(agreedTier, _appt.askQty, offeredTier, _offerCountN);
+        if (UnityEngine.Random.value <= chance)
+        {
+            int perCap = _price != null ? _price.PriceFor(_offerSpecies) : Market;
+            int qty = Mathf.Min(_offerCountN, RemainingAppetite);
+            if (qty <= 0) { SetResult("\"I'm full up. Come back later.\"", C_Err); return; }
+            CompleteScheduled(perCap, qty, substituted: true);
+        }
+        else
+        {
+            BuyerLedger.SubstitutionRefused(_buyerId, Mathf.RoundToInt(chance * 100));
+            _scheduled = false; _appt = null;
+            ReturnOfferToBar();
+            SetResult($"\"That's not what we agreed.\" — {_npcName} waves you off.", C_Err);
+            Refresh();
+        }
+    }
+
+    void CompleteScheduled(int perCap, int qty, bool substituted)
+    {
+        int leftover = _offerCountN - qty;
+        var tier = MushroomRegistry.Tier(_offerSpecies);
+        string species = _offerSpecies;
+        _offerSpecies = null; _offerCountN = 0; _stage = Stage.Open; _counter = 0; _ask = 0;
+        if (leftover > 0 && Hotbar.Instance != null)
+            Hotbar.Instance.AddResource(Hotbar.ItemId.Mushroom, leftover, species);
+        int credits = perCap * qty;
+        if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(credits);
+        MushroomDealState.RecordSale(_buyerId, perCap, qty, tier, AppetiteMax);
+        MushroomQuest.NotifySold(qty);
+        BuyerLedger.ReportDeal(_buyerId, tier, perCap, qty,
+                               keptAppointment: true, substituted: substituted);
+        _scheduled = false; _appt = null;
+        _onSold?.Invoke(qty);
+        SetResult(substituted
+            ? $"{_npcName} grumbled, but took {qty} for {credits}."
+            : $"Order delivered. {_npcName} paid {credits} credits.", C_Ok);
+        Refresh();
     }
 
     void OnSecondary()
