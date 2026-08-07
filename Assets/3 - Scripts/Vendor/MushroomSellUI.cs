@@ -217,7 +217,7 @@ public class MushroomSellUI : MonoBehaviour
         Cursor.visible = true;
 
         if (_header != null)
-            _header.text = $"// {_npcName.ToUpperInvariant()}  <size=15><color=#7FA0BD>{BuyerLedger.BondPips(_buyerId)}</color></size>";
+            _header.text = $"// {_npcName.ToUpperInvariant()}  <size=13><color=#7FA0BD>BOND {BuyerLedger.BondPips(_buyerId)}</color></size>";
         SetResult("", C_Ok);
         Refresh();
     }

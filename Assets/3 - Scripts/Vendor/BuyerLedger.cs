@@ -29,7 +29,12 @@ public static class BuyerLedger
     public const int MaxEventsPerBuyer = 40;
     public const int RevealCap = 5;
 
-    public enum Convo { None = 0, AwaitingReply = 1, AwaitingCounterBack = 2, Scheduled = 3 }
+    // PriceAgreed: the buyer accepted the player's counter — the price is
+    // LOCKED and only the window pick remains. Without this state the chips
+    // fell back to Accept/Counter/Decline and the player could counter off
+    // their own accepted number, climbing the price one grudging "fine" at a
+    // time (Sam hit this in play 2026-08-07).
+    public enum Convo { None = 0, AwaitingReply = 1, AwaitingCounterBack = 2, Scheduled = 3, PriceAgreed = 4 }
 
     public enum EvType
     {

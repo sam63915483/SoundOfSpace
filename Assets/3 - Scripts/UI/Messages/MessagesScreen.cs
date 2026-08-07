@@ -285,9 +285,18 @@ public class MessagesScreen : MonoBehaviour
         timeRT.offsetMin = Vector2.zero; timeRT.offsetMax = new Vector2(-22f, -3f);
 
         // Bond pips (right of the name) — sprite discs, not font glyphs
-        // (Techno SDF has no geometric-shape characters).
+        // (Techno SDF has no geometric-shape characters). Labelled "BOND"
+        // so a new player knows what the circles measure (Sam's note).
         if (pips >= 0)
         {
+            var bondLbl = MakeText(row, "BOND", 6, DimBlue, TextAlignmentOptions.MidlineLeft);
+            var bondRT = (RectTransform)bondLbl.transform;
+            bondRT.anchorMin = new Vector2(0.62f, 0.62f);
+            bondRT.anchorMax = new Vector2(0.62f, 0.62f);
+            bondRT.pivot = new Vector2(1f, 0.5f);
+            bondRT.sizeDelta = new Vector2(30f, 10f);
+            bondRT.anchoredPosition = new Vector2(-4f, 0f);
+            bondLbl.characterSpacing = 1f;
             for (int i = 0; i < 5; i++)
             {
                 var pipRT = NewUI($"Pip{i}", row);
@@ -355,7 +364,7 @@ public class MessagesScreen : MonoBehaviour
         string captured = id;
         var nameBtn = MakeButton(header, AlienNames.For(id), 12f, LabelWhite, () => ShowCard(captured), 120f);
         nameBtn.GetComponentInChildren<TextMeshProUGUI>().fontStyle = FontStyles.Bold;
-        var pipsT = MakeText(header, BuyerLedger.BondPips(id), 10, DimBlue, TextAlignmentOptions.MidlineLeft);
+        var pipsT = MakeText(header, $"BOND {BuyerLedger.BondPips(id)}", 9, DimBlue, TextAlignmentOptions.MidlineLeft);
         pipsT.characterSpacing = 2f;
 
         // Appointment card (only while Scheduled).
@@ -419,9 +428,10 @@ public class MessagesScreen : MonoBehaviour
 
     // Events + convo only — deliberately NOT the local chip mode, or the 1 Hz
     // sweep would rebuild the thread (and eject the player from the counter
-    // input field) the moment they tapped COUNTER.
+    // input field) the moment they tapped COUNTER. ×32 so an event-count
+    // change can never alias with a convo change.
     int ThreadStamp(BuyerLedger.Buyer b) =>
-        b == null ? 0 : b.events.Count * 16 + (int)b.convo * 4;
+        b == null ? 0 : b.events.Count * 32 + (int)b.convo;
 
     void AddEventBubble(BuyerLedger.Buyer b, BuyerLedger.Ev e)
     {
@@ -540,9 +550,12 @@ public class MessagesScreen : MonoBehaviour
         if (_apptCard.gameObject.activeSelf != live) _apptCard.gameObject.SetActive(live);
         if (!live) return;
 
-        float left = b.deadline + BuyerDeals.GraceSeconds - Time.unscaledTime;
-        string clock = left <= 0f ? "0:00"
-            : $"{Mathf.FloorToInt(left / 60f)}:{Mathf.FloorToInt(left % 60f):00}";
+        // Show the PROMISED window only — the 60s grace is hidden slack, not
+        // part of the deal (a 10-min promise displaying 11:00 reads as a bug).
+        float left = b.deadline - Time.unscaledTime;
+        string clock = left > 0f
+            ? $"{Mathf.FloorToInt(left / 60f)}:{Mathf.FloorToInt(left % 60f):00}"
+            : "0:00 — they're about to leave";
         string tierWord = MushroomSpecies.TierName((MushroomTier)b.askTier).ToLowerInvariant();
 
         string where = "";
@@ -573,9 +586,24 @@ public class MessagesScreen : MonoBehaviour
         if (b == null) { _chipsRow.gameObject.SetActive(false); return; }
         var dir = BuyerMessageDirector.Instance;
         bool open = b.convo == BuyerLedger.Convo.AwaitingReply
-                 || b.convo == BuyerLedger.Convo.AwaitingCounterBack;
+                 || b.convo == BuyerLedger.Convo.AwaitingCounterBack
+                 || b.convo == BuyerLedger.Convo.PriceAgreed;
         _chipsRow.gameObject.SetActive(open);
         if (!open || dir == null) return;
+
+        // Price locked by an accepted counter — the ONLY moves are picking a
+        // window or backing out. No COUNTER chip: countering off your own
+        // accepted number was an exploit (climb the price one "fine" at a time).
+        if (b.convo == BuyerLedger.Convo.PriceAgreed)
+        {
+            foreach (int w in BuyerDeals.WindowMinutes)
+            {
+                int captured = w;
+                Chip($"~{w} MIN", OkGreen, () => { dir.Accept(b, captured); AfterChipAction(); });
+            }
+            Chip("NOT NOW", DimBlue, () => { dir.Decline(b); AfterChipAction(); });
+            return;
+        }
 
         if (_chipMode == ChipMode.WindowPick)
         {
@@ -693,7 +721,7 @@ public class MessagesScreen : MonoBehaviour
         MakeButton(header, "<", 16f, AccentCyan, () => ShowThread(captured), 16f);
         var title = MakeText(header, AlienNames.For(id), 13, LabelWhite, TextAlignmentOptions.MidlineLeft);
         title.fontStyle = FontStyles.Bold;
-        var pipsT = MakeText(header, BuyerLedger.BondPips(id), 10, DimBlue, TextAlignmentOptions.MidlineLeft);
+        var pipsT = MakeText(header, $"BOND {BuyerLedger.BondPips(id)}", 9, DimBlue, TextAlignmentOptions.MidlineLeft);
         pipsT.characterSpacing = 2f;
 
         var b = BuyerLedger.Get(id);
@@ -763,7 +791,15 @@ public class MessagesScreen : MonoBehaviour
     static Button MakeButton(RectTransform parent, string label, float size, Color color, System.Action onTap, float width)
     {
         var rt = NewUI($"Btn_{label}", parent);
-        rt.gameObject.AddComponent<LayoutElement>().preferredWidth = width;
+        var le = rt.gameObject.AddComponent<LayoutElement>();
+        le.preferredWidth = width;
+        // Without a preferred height, an HLG with childControlHeight=true and
+        // forceExpand=false sizes the button to the Image's preferred height —
+        // which is ZERO for a sprite-less Image. The label still renders (TMP
+        // overflows its rect), so the button LOOKS fine but has a 0-px hit
+        // area. This was the dead back button Sam hit on the thread header.
+        le.preferredHeight = 24f;
+        le.flexibleHeight = 1f;
         var img = rt.gameObject.AddComponent<Image>();
         img.color = new Color(0, 0, 0, 0); // invisible hit target
         img.raycastTarget = true;

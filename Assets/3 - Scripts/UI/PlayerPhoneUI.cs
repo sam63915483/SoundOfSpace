@@ -67,8 +67,10 @@ public class PlayerPhoneUI : MonoBehaviour
     const float PhoneHeight    = 440f;
     // Overall on-screen scale of the phone — easier to apply at the root
     // than to bump every internal pixel-size constant. (Was 1.5 as a
-    // portrait handset; the 4:3 chest tablet reads too big past ~1.05.)
-    const float PhoneScale     = 1.05f;
+    // portrait handset, then 1.05 as the 4:3 chest tablet; Sam asked for
+    // 1.8× that on 2026-08-07 — the tablet read too small once the Messages
+    // app put real reading/tapping on it.)
+    const float PhoneScale     = 1.89f;
     const float SlideDuration  = 0.25f;   // legacy pacing constant (gallery waits key off animation end)
     // FNAF2-style flip: the monitor hinges around its OWN bottom edge,
     // rotating up from past-edge-on (you glimpse its back for a frame) to
