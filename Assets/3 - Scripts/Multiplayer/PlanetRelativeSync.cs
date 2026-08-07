@@ -1,13 +1,21 @@
-using System.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
-/// Owner-authoritative planet-local pose sync for the LAN proof test.
-/// Hard rule: no world-space value ever crosses the network. Each machine's
-/// world coordinates are meaningless elsewhere (independent sim start times +
-/// independent floating-origin rebases). A pose relative to the home planet's
-/// transform is rebase-invariant: EndlessManager shifts the planet and
-/// everything on it by the same offset, so the relative pose never changes.
+/// Owner-authoritative planet-local pose sync (multiplayer LAN test).
+///
+/// The spawned network player is a pure PUPPET on every machine — the real,
+/// scene-placed player rig is NEVER destroyed or modified. On the owner's
+/// machine the puppet is invisible and publishes the real player's planet-
+/// local pose + animation state; on remote machines it renders that pose.
+/// (v8: the old design despawned the real player and promoted the clone,
+/// which killed the camera post stack / skybox and left systems holding dead
+/// references — the "everything breaks when you press HOST" bugs.)
+///
+/// Hard rule: no world-space value crosses the network. World coordinates are
+/// machine-specific (independent sim start times + independent floating-origin
+/// rebases); a pose relative to the home planet's transform is rebase-
+/// invariant because EndlessManager shifts the planet and everything on it by
+/// the same offset.
 public class PlanetRelativeSync : NetworkBehaviour
 {
     public string planetName = "Humble Abode";
@@ -23,8 +31,7 @@ public class PlanetRelativeSync : NetworkBehaviour
 
     // Spawn pose for a joining client, written by the SERVER in planet-local
     // space. NetworkVariables (not an RPC) so delivery rides the guaranteed
-    // spawn-time state sync — a one-shot RPC can race the object spawn and be
-    // dropped, which left the joiner frozen at the wrong place in playtest 1.
+    // spawn-time state sync — a one-shot RPC can race the object spawn.
     readonly NetworkVariable<Vector3> netSpawnLocalPos = new NetworkVariable<Vector3>(
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
     readonly NetworkVariable<Quaternion> netSpawnLocalRot = new NetworkVariable<Quaternion>(
@@ -33,47 +40,49 @@ public class PlanetRelativeSync : NetworkBehaviour
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Server);
 
     // The player Animator runs off exactly two parameters (PlayerController
-    // line ~548): "Speed" and "Grounded". Sync them so remote avatars play
-    // idle/walk/run instead of freezing in the airborne default pose.
+    // ~line 548): "Speed" and "Grounded". Grounded defaults false, which is
+    // the airborne pose — unfed remote animators look like they're floating.
     readonly NetworkVariable<float> netAnimSpeed = new NetworkVariable<float>(
         0f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     readonly NetworkVariable<bool> netAnimGrounded = new NetworkVariable<bool>(
         true, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
-    // The host stashes the despawned scene player's planet-local pose here
-    // (set by MultiplayerTestUI) so its own network player spawns exactly
-    // where the scene player stood.
-    public static bool HasPendingHostPose;
-    public static Vector3 PendingHostLocalPos;
-    public static Quaternion PendingHostLocalRot;
-
     Transform planet;
     CelestialBody planetBody;
     EndlessManager endless;
-    Rigidbody rb;
     bool subscribedToOriginUpdate;
     bool ownerPoseReady;
     bool remoteEverPlaced;
-    float nextPlanetSearchTime;
+    float nextSearchTime;
     Renderer[] remoteRenderers;
-    PlayerController frozenController;
+    Animator puppetAnimator;
+
+    // Owner side: the REAL scene player being mirrored.
+    PlayerController realPlayer;
+    Animator realAnimator;
+
+    // The remote avatar's smoothed pose LIVES in planet-local space across
+    // frames. NEVER seed smoothing from the avatar's previous world position:
+    // the planet moves ~1.6 m per frame, so a stale world pos re-expressed in
+    // the fresh planet frame starts every frame behind — the lerp settles into
+    // a permanent multi-meter trail opposite the planet's motion (measured
+    // 6.3 m; read as sunk-in-ground / floating depending on where you stand).
+    Vector3 smoothedLocalPos;
+    Quaternion smoothedLocalRot = Quaternion.identity;
 
     // Session-state readouts for MultiplayerTestUI's debug line.
     public bool OwnerPoseReady => ownerPoseReady;
     public bool RemotePoseValid => netPoseValid.Value;
     public bool RemotePlaced => remoteEverPlaced;
-    /// Distance from planet center as this machine RENDERS this body.
+    /// Distance from planet center as this machine RENDERS this puppet.
     public float ShownAltitude => planet != null
         ? Vector3.Distance(planet.position, transform.position) : -1f;
     /// Distance from planet center in the pose the OWNER machine published.
     public float SyncedAltitude => netLocalPos.Value.magnitude;
 
-    Animator animator;
-
     void Awake()
     {
-        rb = GetComponent<Rigidbody>();
-        animator = GetComponentInChildren<Animator>(true);
+        puppetAnimator = GetComponentInChildren<Animator>(true);
     }
 
     public override void OnNetworkSpawn()
@@ -82,29 +91,11 @@ public class PlanetRelativeSync : NetworkBehaviour
 
         if (IsOwner)
         {
-            if (IsServer)
-            {
-                if (HasPendingHostPose && planet != null)
-                {
-                    PlaceOwner(PendingHostLocalPos, PendingHostLocalRot);
-                    HasPendingHostPose = false;
-                }
-                // If the planet wasn't resolvable yet, FixedUpdate consumes the
-                // pending pose as soon as it is.
-                ownerPoseReady = true;
-            }
-            else
-            {
-                // Joining client: the raw spawn position came from the server's
-                // world space and is meaningless here. Fully freeze — physics
-                // AND input — until the server's planet-local spawn pose
-                // arrives (a kinematic body still moves via MovePosition, so
-                // the controller must be disabled too or inputs drive it).
-                if (rb != null) rb.isKinematic = true;
-                frozenController = GetComponent<PlayerController>();
-                if (frozenController != null) frozenController.enabled = false;
-                Debug.Log("[MP] Own player frozen, waiting for spawn pose from host");
-            }
+            // Host: the real player already stands wherever it stands —
+            // publish immediately. Joining client: wait for the server's
+            // planet-local spawn pose, teleport the real player there first
+            // (its own current position is fine meanwhile; nothing freezes).
+            ownerPoseReady = IsServer;
         }
         else
         {
@@ -133,9 +124,15 @@ public class PlanetRelativeSync : NetworkBehaviour
 
     void TryResolveRefs()
     {
-        if (planet == null && Time.unscaledTime >= nextPlanetSearchTime)
+        bool needPlanet = planet == null;
+        bool needEndless = endless == null;
+        bool needPlayer = IsOwner && realPlayer == null;
+        if (!needPlanet && !needEndless && !needPlayer) return;
+        if (Time.unscaledTime < nextSearchTime) return;
+        nextSearchTime = Time.unscaledTime + 0.5f;
+
+        if (needPlanet)
         {
-            nextPlanetSearchTime = Time.unscaledTime + 0.5f;
             foreach (var b in NBodySimulation.Bodies)
             {
                 if (b != null && b.bodyName == planetName)
@@ -146,33 +143,45 @@ public class PlanetRelativeSync : NetworkBehaviour
                 }
             }
         }
-        if (endless == null)
+        if (needEndless)
             endless = FindObjectOfType<EndlessManager>();
+        if (needPlayer)
+        {
+            foreach (var pc in FindObjectsOfType<PlayerController>(true))
+            {
+                if (pc.GetComponent<NetworkObject>() == null)
+                {
+                    realPlayer = pc;
+                    realAnimator = pc.GetComponentInChildren<Animator>(true);
+                    break;
+                }
+            }
+        }
     }
 
     void Update()
     {
-        // Joining client: poll for the server-written spawn pose, then unfreeze.
+        // Joining client: poll for the server-written spawn pose, then
+        // teleport the real player beside the host.
         if (!IsSpawned || !IsOwner || IsServer || ownerPoseReady) return;
         TryResolveRefs();
-        if (planet == null || !netSpawnPoseSet.Value) return;
+        if (planet == null || realPlayer == null || !netSpawnPoseSet.Value) return;
 
-        PlaceOwner(netSpawnLocalPos.Value, netSpawnLocalRot.Value);
-        if (frozenController != null) frozenController.enabled = true;
+        TeleportRealPlayer(netSpawnLocalPos.Value, netSpawnLocalRot.Value);
         ownerPoseReady = true;
-        Debug.Log($"[MP] Own player placed at planet-local {netSpawnLocalPos.Value} and unfrozen");
     }
 
     void LateUpdate()
     {
         if (!IsSpawned) return;
         if (IsOwner) { OwnerPublish(); return; }
+
         TryResolveRefs();
 
-        // Place AFTER EndlessManager's origin update (its event fires at the end
-        // of its LateUpdate every frame) so a rebase can never leave the avatar
-        // one frame stale. Fallback to plain LateUpdate placement in scenes
-        // without an EndlessManager.
+        // Place AFTER EndlessManager's origin update (its event fires at the
+        // end of its LateUpdate every frame) so a rebase can never leave the
+        // avatar one frame stale. Fallback to plain LateUpdate placement in
+        // scenes without an EndlessManager.
         if (!subscribedToOriginUpdate && endless != null)
         {
             endless.PostFloatingOriginUpdate += PlaceRemote;
@@ -182,44 +191,31 @@ public class PlanetRelativeSync : NetworkBehaviour
             PlaceRemote();
     }
 
-    // WYSIWYG sampling, at render time: the player's RENDERED pose measured
-    // against the planet's RENDERED transform — the exact on-screen
-    // relationship between body and terrain. Physics copies, interpolation
-    // copies, and collider-sync copies of these positions disagree by up to a
-    // physics tick of planet motion (~2 m at this orbit speed); sampling and
-    // display both purely in render space makes every such mismatch cancel.
+    // WYSIWYG sampling at render time: the real player's RENDERED pose
+    // measured against the planet's RENDERED transform — the exact on-screen
+    // body↔terrain relationship. Physics copies and interpolation copies of
+    // these positions disagree by up to a physics tick of planet motion;
+    // sampling and display both purely in render space cancels every such
+    // mismatch.
     void OwnerPublish()
     {
         TryResolveRefs();
-        if (planet == null) return;
+        if (planet == null || realPlayer == null || !ownerPoseReady) return;
 
-        if (IsServer && HasPendingHostPose)
+        Transform rt = realPlayer.transform;
+        netLocalPos.Value = planet.InverseTransformPoint(rt.position);
+        netLocalRot.Value = Quaternion.Inverse(planet.rotation) * rt.rotation;
+        if (realAnimator != null)
         {
-            PlaceOwner(PendingHostLocalPos, PendingHostLocalRot);
-            HasPendingHostPose = false;
-        }
-        if (!ownerPoseReady) return;
-
-        netLocalPos.Value = planet.InverseTransformPoint(transform.position);
-        netLocalRot.Value = Quaternion.Inverse(planet.rotation) * transform.rotation;
-        if (animator != null)
-        {
-            netAnimSpeed.Value = animator.GetFloat("Speed");
-            netAnimGrounded.Value = animator.GetBool("Grounded");
+            netAnimSpeed.Value = realAnimator.GetFloat("Speed");
+            netAnimGrounded.Value = realAnimator.GetBool("Grounded");
         }
         if (!netPoseValid.Value) netPoseValid.Value = true;
-    }
 
-    // The avatar's smoothed pose LIVES in planet-local space across frames
-    // (fields below). NEVER seed the smoothing from the avatar's previous
-    // world position: the planet moves ~1.6 m per frame, so a stale world pos
-    // re-expressed in the fresh planet frame starts every frame ~1.6 m behind
-    // — the lerp then settles into a permanent multi-meter trail opposite the
-    // planet's motion (measured 6.3 m; read as sunk-in-ground on one side of
-    // the planet, floating on the other). Keeping state in local space makes
-    // the avatar effectively planet-parented; planet motion cannot leak in.
-    Vector3 smoothedLocalPos;
-    Quaternion smoothedLocalRot = Quaternion.identity;
+        // Keep the invisible puppet riding the real player so its transform is
+        // never somewhere absurd for anything that might glance at it.
+        transform.SetPositionAndRotation(rt.position, rt.rotation);
+    }
 
     void PlaceRemote()
     {
@@ -249,10 +245,10 @@ public class PlanetRelativeSync : NetworkBehaviour
         transform.SetPositionAndRotation(
             planet.TransformPoint(smoothedLocalPos), planet.rotation * smoothedLocalRot);
 
-        if (animator != null)
+        if (puppetAnimator != null)
         {
-            animator.SetFloat("Speed", netAnimSpeed.Value);
-            animator.SetBool("Grounded", netAnimGrounded.Value);
+            puppetAnimator.SetFloat("Speed", netAnimSpeed.Value);
+            puppetAnimator.SetBool("Grounded", netAnimGrounded.Value);
         }
     }
 
@@ -265,8 +261,28 @@ public class PlanetRelativeSync : NetworkBehaviour
             if (r != null) r.enabled = visible;
     }
 
+    void TeleportRealPlayer(Vector3 localPos, Quaternion localRot)
+    {
+        Vector3 worldPos = planet.TransformPoint(localPos);
+        Quaternion worldRot = planet.rotation * localRot;
+        var prb = realPlayer.GetComponent<Rigidbody>();
+        if (prb != null)
+        {
+            prb.position = worldPos;
+            prb.rotation = worldRot;
+            // Planet-matched velocity: zero RELATIVE velocity. A zero WORLD
+            // velocity strands the player while the planet flies on at ~99 m/s
+            // — the "launched into space on session start" bug.
+            prb.velocity = planetBody != null ? planetBody.velocity : Vector3.zero;
+            prb.angularVelocity = Vector3.zero;
+        }
+        realPlayer.transform.SetPositionAndRotation(worldPos, worldRot);
+        Physics.SyncTransforms();
+        Debug.Log($"[MP] Local player teleported to planet-local {localPos} (joiner spawn beside host)");
+    }
+
     /// Server-side: set the planet-local spawn pose for this (client-owned)
-    /// player. The owning client polls netSpawnPoseSet and places itself.
+    /// player. The owning client polls netSpawnPoseSet and teleports itself.
     public void ServerSetSpawnPose(Vector3 localPos, Quaternion localRot)
     {
         if (!IsServer) return;
@@ -275,38 +291,17 @@ public class PlanetRelativeSync : NetworkBehaviour
         netSpawnPoseSet.Value = true;
     }
 
-    void PlaceOwner(Vector3 localPos, Quaternion localRot)
-    {
-        // One-shot spawn placement; sub-meter frame imprecision here is fine —
-        // the body settles onto the ground physically right after.
-        Vector3 worldPos = planet.TransformPoint(localPos);
-        Quaternion worldRot = planet.rotation * localRot;
-        if (rb != null)
-        {
-            rb.isKinematic = false;
-            rb.position = worldPos;
-            rb.rotation = worldRot;
-            rb.velocity = Vector3.zero;
-            rb.angularVelocity = Vector3.zero;
-        }
-        transform.SetPositionAndRotation(worldPos, worldRot);
-        Physics.SyncTransforms();
-
-        // Runtime-spawned physics object: the floating origin must shift it.
-        TryResolveRefs();
-        if (endless != null) endless.RegisterPhysicsObject(transform);
-    }
-
-    /// Current planet-local pose of this (owned) player. Used host-side to
-    /// compute the joiner's spawn pose.
+    /// Current planet-local pose of the REAL player on this machine. Used
+    /// host-side to compute the joiner's spawn pose.
     public bool TryGetCurrentLocalPose(out Vector3 localPos, out Quaternion localRot)
     {
         localPos = default;
         localRot = Quaternion.identity;
-        if (planet == null) return false;
-        // Render space, matching OwnerPublish.
-        localPos = planet.InverseTransformPoint(transform.position);
-        localRot = Quaternion.Inverse(planet.rotation) * transform.rotation;
+        TryResolveRefs();
+        if (planet == null || realPlayer == null) return false;
+        Transform rt = realPlayer.transform;
+        localPos = planet.InverseTransformPoint(rt.position);
+        localRot = Quaternion.Inverse(planet.rotation) * rt.rotation;
         return true;
     }
 }

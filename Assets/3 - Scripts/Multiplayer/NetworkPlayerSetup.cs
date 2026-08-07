@@ -1,9 +1,10 @@
 using Unity.Netcode;
 using UnityEngine;
 
-/// Strips a spawned network player down to a visible dummy on non-owner
-/// machines. Owners keep the full stock rig — movement, camera, and gravity
-/// run exactly as in single player.
+/// Strips a spawned network player down to a pure puppet on EVERY machine.
+/// The real scene player rig is never touched — the puppet only renders the
+/// remote pose (or, on the owner's machine, invisibly mirrors the real
+/// player for publishing).
 public class NetworkPlayerSetup : NetworkBehaviour
 {
     static readonly Color[] ClientColors =
@@ -16,34 +17,19 @@ public class NetworkPlayerSetup : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        var indicator = transform.Find("RemoteBodyIndicator");
-
-        if (IsOwner)
+        // The puppet must never render or listen — the real player's camera
+        // (with its runtime-attached post stack) stays the one and only.
+        var cam = GetComponentInChildren<Camera>(true);
+        if (cam != null)
         {
-            if (indicator != null) Destroy(indicator.gameObject);
-            // Deterministic scene-player stand-down: the moment the owned
-            // network player exists, every non-networked player rig goes away.
-            // (Backs up the UI-side despawn — in playtest 1 the callback-based
-            // despawn raced and the joiner ended up with two driven bodies.)
-            foreach (var pc in FindObjectsOfType<PlayerController>(true))
-            {
-                if (pc.GetComponent<NetworkObject>() == null)
-                {
-                    Debug.Log($"[MP] Scene player '{pc.name}' stands down");
-                    Destroy(pc.gameObject);
-                }
-            }
-            return;
+            cam.gameObject.SetActive(false); // instantly, Destroy is end-of-frame
+            Destroy(cam.gameObject);
         }
 
-        // Camera child carries the AudioListener and the whole post stack.
-        var cam = GetComponentInChildren<Camera>(true);
-        if (cam != null) Destroy(cam.gameObject);
-
         // Destroy (not disable) every behaviour that could drive the transform
-        // or run input: half the codebase locates "the player" via
-        // FindObjectOfType<PlayerController>(), which still returns disabled
-        // components. Keep only the network stack.
+        // or run input; half the codebase locates "the player" via
+        // FindObjectOfType<PlayerController>(), which must keep finding ONLY
+        // the real scene player. Keep the network stack.
         foreach (var mb in GetComponents<MonoBehaviour>())
         {
             if (mb == null) continue;
@@ -51,7 +37,7 @@ public class NetworkPlayerSetup : NetworkBehaviour
             Destroy(mb);
         }
 
-        // PlanetRelativeSync places the avatar directly each frame; physics
+        // PlanetRelativeSync places the puppet directly each frame; physics
         // must neither move it nor fight the placement.
         var rb = GetComponent<Rigidbody>();
         if (rb != null)
@@ -60,16 +46,23 @@ public class NetworkPlayerSetup : NetworkBehaviour
             rb.interpolation = RigidbodyInterpolation.None;
         }
 
-        // The astronaut model renders fine on remote avatars, so the capsule
-        // placeholder is unnecessary visual noise (playtest 2 feedback).
+        var indicator = transform.Find("RemoteBodyIndicator");
         if (indicator != null) Destroy(indicator.gameObject);
 
-        CreateNametag();
+        if (IsOwner)
+        {
+            // Invisible and non-colliding: the real player stands inside it.
+            foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+            foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = false;
+        }
+        else
+        {
+            CreateNametag();
+        }
     }
 
     // World-space "Player N" tag above remote avatars (host = Player 1, first
-    // joiner = Player 2, ...). Only on avatars of OTHER players — you can't
-    // see your own head in first person anyway.
+    // joiner = Player 2, ...). Only on avatars of OTHER players.
     void CreateNametag()
     {
         var go = new GameObject("Nametag");

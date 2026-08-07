@@ -83,7 +83,7 @@ public class MultiplayerTestUI : MonoBehaviour
             if (GUILayout.Button("SHUTDOWN", GUILayout.Height(26)))
             {
                 nm.Shutdown();
-                status = "session ended — restart the game before starting another session";
+                status = "session ended — single player continues; HOST/JOIN again anytime";
             }
         }
         GUILayout.EndArea();
@@ -99,9 +99,6 @@ public class MultiplayerTestUI : MonoBehaviour
             status = $"planet '{planetName}' not found — wrong scene?";
             return;
         }
-
-        // Scene player stands down; its pose becomes the host player's spawn.
-        DestroyScenePlayers(planet, stashHostPose: true);
 
         utp.SetConnectionData(lanIP, port, "0.0.0.0"); // 0.0.0.0 or LAN clients can never connect
         if (nm.StartHost())
@@ -158,10 +155,6 @@ public class MultiplayerTestUI : MonoBehaviour
         else if (clientId == nm.LocalClientId)
         {
             status = $"CONNECTED to {ipField.Trim()}:{port}";
-            // Only now does the local scene player stand down — a failed join
-            // must leave single player intact.
-            CelestialBody planet = FindPlanet();
-            if (planet != null) DestroyScenePlayers(planet, stashHostPose: false);
         }
     }
 
@@ -261,7 +254,7 @@ public class MultiplayerTestUI : MonoBehaviour
                     sb.Append($"P{s.OwnerClientId + 1}: {(s.RemotePlaced ? "visible" : (s.RemotePoseValid ? "placing" : "no pose yet"))}" +
                               $" sent={s.SyncedAltitude:F2} shown={s.ShownAltitude:F2} feetGap={gap:F2}\n");
             }
-            debugLine = $"net bodies: {netPlayers}, scene bodies: {scenePlayers} (must be 0)\n{sb}";
+            debugLine = $"puppets: {netPlayers}, real player rigs: {scenePlayers} (must be 1)\n{sb}";
 
             // Numbers into Player.log so build sessions leave evidence.
             if (Time.unscaledTime >= nextAltLogTime)
@@ -281,26 +274,6 @@ public class MultiplayerTestUI : MonoBehaviour
         foreach (var b in NBodySimulation.Bodies)
             if (b != null && b.bodyName == planetName) return b;
         return null;
-    }
-
-    void DestroyScenePlayers(CelestialBody planet, bool stashHostPose)
-    {
-        foreach (var pc in FindObjectsOfType<PlayerController>(true))
-        {
-            if (pc.GetComponent<NetworkObject>() != null) continue; // network player, keep
-            if (stashHostPose)
-            {
-                // Render space (transform vs transform), matching
-                // PlanetRelativeSync.OwnerPublish — WYSIWYG.
-                PlanetRelativeSync.PendingHostLocalPos =
-                    planet.transform.InverseTransformPoint(pc.transform.position);
-                PlanetRelativeSync.PendingHostLocalRot =
-                    Quaternion.Inverse(planet.transform.rotation) * pc.transform.rotation;
-                PlanetRelativeSync.HasPendingHostPose = true;
-                stashHostPose = false; // first (and only) scene player wins
-            }
-            Destroy(pc.gameObject);
-        }
     }
 
     static string GetLanIPv4()
