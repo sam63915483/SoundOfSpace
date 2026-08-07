@@ -125,13 +125,22 @@ public static class BuyerLedger
         return b == null ? 1f : 1f + BondMaxPayBonus * (b.bond / 100f);
     }
 
-    /// 5-pip readout, one pip per 20 bond. The only bond display ever shown.
-    public static string BondPips(string id)
+    /// One filled pip per 20 bond, out of 5.
+    public static int PipCount(string id)
     {
         var b = Get(id);
-        int filled = b == null ? 0 : Mathf.Clamp(Mathf.RoundToInt(b.bond / 20f), 0, 5);
+        return b == null ? 0 : Mathf.Clamp(Mathf.RoundToInt(b.bond / 20f), 0, 5);
+    }
+
+    /// 5-pip text readout, one pip per 20 bond. The only bond display ever
+    /// shown. ASCII bars, not ●/○ — the HUD's Techno SDF font has no
+    /// geometric-shape glyphs, so those would render as tofu boxes. UI that
+    /// can draw sprites (Messages index) uses PipCount + disc Images instead.
+    public static string BondPips(string id)
+    {
+        int filled = PipCount(id);
         var sb = new System.Text.StringBuilder(5);
-        for (int i = 0; i < 5; i++) sb.Append(i < filled ? '●' : '○');
+        for (int i = 0; i < 5; i++) sb.Append(i < filled ? '|' : '-');
         return sb.ToString();
     }
 

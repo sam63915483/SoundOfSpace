@@ -21,8 +21,15 @@ public class AIChatScreen : MonoBehaviour
 {
     // Set true while the TMP_InputField has focus. PlayerController.Update
     // early-returns when this is true so typed WASD letters can't double
-    // as movement input.
-    public static bool IsTypingActive { get; private set; }
+    // as movement input. Every consumer in the codebase reads THIS property,
+    // so the Messages app's counter-offer field reports through it too rather
+    // than making ~20 call sites check a second flag.
+    public static bool IsTypingActive
+    {
+        get => _selfTyping || MessagesScreen.IsTypingActive;
+        private set => _selfTyping = value;
+    }
+    static bool _selfTyping;
 
     // First-contact scripted exchange state. Runs on the very first opening
     // of the AI app per save (NameStore.FirstContactComplete == false). Two

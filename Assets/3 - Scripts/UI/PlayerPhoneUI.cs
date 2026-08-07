@@ -431,6 +431,7 @@ public class PlayerPhoneUI : MonoBehaviour
     public void Close()
     {
         if (_activeChat != null) _activeChat.Exit();
+        if (_activeMessages != null) { Destroy(_activeMessages.gameObject); OnMessagesExit(); }
         ClosePhoneApp();   // reopening always lands on the home screen
         if (_isAnimating && !_animatingToOpen) return; // already closing
         // Always drop out of camera mode on close so re-opening the phone
@@ -2348,11 +2349,11 @@ public class PlayerPhoneUI : MonoBehaviour
         vlg.childControlWidth = true; vlg.childControlHeight = true;
         vlg.childForceExpandHeight = false;
 
-        var glyph = MakeText(rt, "?", 22, AccentCyan, TextAnchor.MiddleCenter);
+        var glyph = MakeText(rt, "@", 22, AccentCyan, TextAnchor.MiddleCenter);
         glyph.fontStyle = FontStyles.Bold;
         glyph.gameObject.AddComponent<LayoutElement>().preferredHeight = 30f;
 
-        var label = MakeText(rt, "AI", 9, LabelWhite, TextAnchor.MiddleCenter);
+        var label = MakeText(rt, "MESSAGES", 9, LabelWhite, TextAnchor.MiddleCenter);
         label.characterSpacing = 1f;
         label.gameObject.AddComponent<LayoutElement>().preferredHeight = 14f;
 
@@ -2374,7 +2375,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _aiUnreadBadge.enabled = false; // hidden until there's something unread
 
         var btn = rt.gameObject.AddComponent<Button>();
-        btn.onClick.AddListener(EnterAIChat);
+        btn.onClick.AddListener(EnterMessages);
         return btn;
     }
 
@@ -2385,10 +2386,15 @@ public class PlayerPhoneUI : MonoBehaviour
     void UpdateAIUnreadBadge()
     {
         if (_aiUnreadBadge == null) return;
+
+        // Buyer texts (Messages app) light the badge too — threads clear
+        // their own unread when opened, so no "seen" bookkeeping needed here.
+        bool buyerUnread = BuyerLedger.TotalUnread() > 0 && _activeMessages == null;
+
         var log = HALVolunteeredLog.Instance;
         if (log == null)
         {
-            if (_aiUnreadBadge.enabled) _aiUnreadBadge.enabled = false;
+            if (_aiUnreadBadge.enabled != buyerUnread) _aiUnreadBadge.enabled = buyerUnread;
             return;
         }
 
@@ -2396,11 +2402,11 @@ public class PlayerPhoneUI : MonoBehaviour
         {
             // Chat is open → consume new lines as they arrive.
             _aiLastSeenLineCount = log.Lines.Count;
-            if (_aiUnreadBadge.enabled) _aiUnreadBadge.enabled = false;
+            if (_aiUnreadBadge.enabled != buyerUnread) _aiUnreadBadge.enabled = buyerUnread;
             return;
         }
 
-        bool hasUnread = log.Lines.Count > _aiLastSeenLineCount;
+        bool hasUnread = buyerUnread || log.Lines.Count > _aiLastSeenLineCount;
         if (_aiUnreadBadge.enabled != hasUnread) _aiUnreadBadge.enabled = hasUnread;
     }
 
@@ -2473,6 +2479,48 @@ public class PlayerPhoneUI : MonoBehaviour
     }
 
     AIChatScreen _activeChat;
+    MessagesScreen _activeMessages;
+
+    // The MESSAGES tile opens the index (threads, unread, bond pips). The
+    // pinned guide row inside it re-enters the old AI chat via EnterAIChat —
+    // that screen and its LLM lifecycle are untouched.
+    void EnterMessages()
+    {
+        for (int i = 0; i < PageCount; i++)
+            if (_pageRoots[i] != null)
+                _pageRoots[i].gameObject.SetActive(false);
+
+        var go = new GameObject("MessagesScreen", typeof(RectTransform));
+        var rt = (RectTransform)go.transform;
+        rt.SetParent(_screenRT, false);
+        var le = go.AddComponent<LayoutElement>();
+        le.ignoreLayout = true;
+        rt.anchorMin = Vector2.zero; rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero; rt.offsetMax = Vector2.zero;
+        _activeMessages = go.AddComponent<MessagesScreen>();
+        _activeMessages.Init(OnMessagesExit, OpenHalFromMessages);
+    }
+
+    void OnMessagesExit()
+    {
+        _activeMessages = null;
+        for (int i = 0; i < PageCount; i++)
+            if (_pageRoots[i] != null)
+                _pageRoots[i].gameObject.SetActive(i == _currentPage);
+    }
+
+    void OpenHalFromMessages()
+    {
+        // Tear down the index, then mount the chat. The chat's own exit
+        // restores the page grid, so backing out of HAL lands on the home
+        // screen — same as it always did.
+        if (_activeMessages != null)
+        {
+            Destroy(_activeMessages.gameObject);
+            _activeMessages = null;
+        }
+        EnterAIChat();
+    }
 
     void EnterAIChat()
     {
