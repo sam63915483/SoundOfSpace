@@ -107,6 +107,7 @@ public class MushroomSpawner : MonoBehaviour
         _prefabLocalBottomY = new float[mushroomPrefabs.Length];
         for (int i = 0; i < mushroomPrefabs.Length; i++)
             _prefabLocalBottomY[i] = SpawnerCubeface.ComputeLocalBottomY(mushroomPrefabs[i]);
+        BuildSpawnWeights();
 
         // Stop this spawner's surface raycast from hitting other spawners'
         // instances (tree, alien, crystal) OR a low-flying ship — see the
@@ -138,6 +139,7 @@ public class MushroomSpawner : MonoBehaviour
                 // surface raycast hits nothing there so nothing spawns. Pure waste.
                 if (b.isStaticAttractor) continue;
                 if (IsExcluded(b.bodyName)) continue;
+                if (!CanGrowMushroomsOn(b)) continue;
                 var entry = new BodyState
                 {
                     body = b,
@@ -168,6 +170,28 @@ public class MushroomSpawner : MonoBehaviour
             if (excludeBodyNames[i] == bodyName) return true;
         }
         return false;
+    }
+
+    /// A mushroom is flora: it needs soil. Moons and the Sun are barren rock, so
+    /// nothing grows there — not even inside a bubble dome, which adds air but
+    /// never soil. This is the SAME rule the planting ghost already enforced
+    /// (GhostPlacement → TreeSpawner.CanGrowTreesOn); wild mushrooms were the
+    /// one path that ignored it and seeded caps across the three moons.
+    ///
+    /// The primary gate is <see cref="CelestialBody.bodyType"/> rather than a
+    /// name list, because the list lives on a serialized inspector field: editing
+    /// this file's `excludeBodyNames` default would not touch the value already
+    /// baked into the scene's MushroomSpawner, so the moons would still spawn.
+    /// bodyType is authored per body and cannot drift out of sync that way.
+    /// TreeSpawner's own list is then honoured on top, so a body Sam marks barren
+    /// for trees stays barren for mushrooms with no second edit — and because it
+    /// is only consulted when the spawner exists, resolve order can't matter.
+    public static bool CanGrowMushroomsOn(CelestialBody body)
+    {
+        if (body == null || body.isStaticAttractor) return false;
+        if (body.bodyType != CelestialBody.BodyType.Planet) return false;
+        var trees = TreeSpawner.Instance;
+        return trees == null || trees.CanGrowTreesOn(body);
     }
 
     Vector3 GetViewerPosition()
@@ -366,7 +390,7 @@ public class MushroomSpawner : MonoBehaviour
 
         float yaw = (hY & 0xFFFFu) / 65535f * 360f;
         rot = Quaternion.AngleAxis(yaw, up) * Quaternion.FromToRotation(Vector3.up, up);
-        prefabIdx = (int)(hPI % (uint)mushroomPrefabs.Length);
+        prefabIdx = PickWeightedPrefab(hPI);
         float lo = Mathf.Min(minScale, maxScale);
         float hi = Mathf.Max(minScale, maxScale);
         scale = Mathf.Lerp(lo, hi, (hSC & 0xFFFFu) / 65535f);
@@ -445,6 +469,40 @@ public class MushroomSpawner : MonoBehaviour
         var fade = mushroom.GetComponent<SpawnFade>();
         if (fade == null) fade = mushroom.AddComponent<SpawnFade>();
         fade.BeginFadeIn();
+    }
+
+    // ── Rarity-weighted species pick ───────────────────────────────────────
+    // Cumulative spawn weights over mushroomPrefabs, from MushroomSpecies
+    // (common 5 / uncommon 3 / rare 1). Built once at Awake — weights are
+    // authored constants and never change at runtime.
+    int[] _cumWeight;
+    int _totalWeight;
+
+    void BuildSpawnWeights()
+    {
+        _cumWeight = new int[mushroomPrefabs.Length];
+        _totalWeight = 0;
+        for (int i = 0; i < mushroomPrefabs.Length; i++)
+        {
+            int w = mushroomPrefabs[i] != null
+                ? Mathf.Max(1, MushroomSpecies.SpawnWeight(mushroomPrefabs[i].name))
+                : 1;
+            _totalWeight += w;
+            _cumWeight[i] = _totalWeight;
+        }
+    }
+
+    /// Species for a cell, weighted by rarity. Still driven purely by the
+    /// cell's own hash, so the world stays deterministic: the same cell always
+    /// grows the same species, exactly as it did with the old modulo pick.
+    int PickWeightedPrefab(uint cellHash)
+    {
+        if (_cumWeight == null || _cumWeight.Length != mushroomPrefabs.Length) BuildSpawnWeights();
+        if (_totalWeight <= 0) return (int)(cellHash % (uint)mushroomPrefabs.Length);
+        int roll = (int)(cellHash % (uint)_totalWeight);
+        for (int i = 0; i < _cumWeight.Length; i++)
+            if (roll < _cumWeight[i]) return i;
+        return _cumWeight.Length - 1;
     }
 
     /// Give a streamed mushroom a solid (non-trigger) collider so the axe can

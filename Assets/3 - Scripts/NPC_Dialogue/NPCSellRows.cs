@@ -21,7 +21,10 @@ public static class NPCSellRows
 
     /// Appends every sell row this build offers to <paramref name="rows"/>, and
     /// the matching action to <paramref name="actions"/> (parallel lists).
-    public static void Append(List<PostGreetingChoicePanel.Row> rows, List<SellAction> actions)
+    /// <param name="npc">The NPC being talked to. Optional, but without it the
+    /// row can't know this buyer has barred the player, so pass it.</param>
+    public static void Append(List<PostGreetingChoicePanel.Row> rows, List<SellAction> actions,
+                              MonoBehaviour npc = null)
     {
         if (rows == null || actions == null) return;
         actions.Clear();
@@ -29,8 +32,24 @@ public static class NPCSellRows
         int mushrooms = Hotbar.Instance != null
             ? Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Mushroom)
             : 0;
-        rows.Add(new PostGreetingChoicePanel.Row(
-            mushrooms > 0 ? "Sell mushrooms" : "Sell mushrooms (none on you)", mushrooms > 0));
+
+        // Two different "no" states, and they must read differently or the
+        // player can't tell a punishment from a timer:
+        //   BARRED  — you pushed past their counter, they're offended (5 min)
+        //   FULL UP — they've simply bought all they want for now
+        var price = npc != null ? NPCMushroomPrice.GetOrAdd(npc) : null;
+        string id = price != null ? price.Identity : null;
+        bool barred = MushroomDealState.IsBarred(id);
+        bool full = !barred && price != null
+                    && MushroomDealState.IsFull(id, price.AppetiteMax)
+                    && MushroomDealState.LastPaid(id) > 0;   // only once they've actually bought
+
+        string label;
+        if (barred)       label = $"Sell mushrooms (not talking to you — {FormatWait(MushroomDealState.SecondsLeft(id))})";
+        else if (full)    label = $"Sell mushrooms (they're full — {FormatWait(MushroomDealState.SecondsUntilHungry(id, price.AppetiteMax))})";
+        else              label = mushrooms > 0 ? "Sell mushrooms" : "Sell mushrooms (none on you)";
+
+        rows.Add(new PostGreetingChoicePanel.Row(label, !barred && !full && mushrooms > 0));
         actions.Add(SellAction.Mushrooms);
 
         if (FeatureVault.SpaceDustSelling)
@@ -65,10 +84,13 @@ public static class NPCSellRows
         if (action == SellAction.Mushrooms)
         {
             if (MushroomSellUI.Instance == null) { onClose?.Invoke(); return; }
+            // The whole NPCMushroomPrice goes across, not a single number: the
+            // panel needs this buyer's multiplier AND patience to run the
+            // haggle, and its identity to look up any parked counter-offer.
             var price = NPCMushroomPrice.GetOrAdd(npc);
             MushroomSellUI.Instance.Open(
                 npcName: npcName,
-                pricePerMushroom: price != null ? price.PricePerMushroom : 20,
+                price: price,
                 onClose: onClose,
                 onSold: onMushroomsSold);
             return;
@@ -81,6 +103,12 @@ public static class NPCSellRows
             pricePerDust: dustOption.PricePerDust,
             preferredMaxQty: dustOption.PreferredMaxQty,
             onClose: onClose);
+    }
+
+    static string FormatWait(int seconds)
+    {
+        if (seconds >= 60) return $"{Mathf.CeilToInt(seconds / 60f)} min";
+        return $"{Mathf.Max(1, seconds)}s";
     }
 
     /// Close whichever sell panel is open — every NPC's StopConversation calls this.

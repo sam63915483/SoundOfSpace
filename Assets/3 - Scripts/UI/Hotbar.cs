@@ -38,8 +38,61 @@ public class Hotbar : MonoBehaviour
     const int NumSlots = 7;
     const float SlotSize = 64f;
     const float ActiveSize = 80f;       // size when slot is the equipped/cursor active slot
+
+    // E2 scan-sweep dressing.
+    //
+    // EVERY slot carries brackets and a scanline — that's what makes an empty
+    // slot visible at all now the boxes are gone. Selection is shown by the
+    // brackets GROWING and the sweep speeding up, rather than by being the only
+    // slot that has them.
+    const float BracketIdleSize   = 9f;     // L-arm length on an unselected slot
+    const float BracketActiveSize = 12f;    // …and on the selected one
+    const float BracketIdleOut    = 2f;     // how far the corner sits outside the slot
+    const float BracketActiveOut  = 3f;
+    const float BracketGrowSpeed  = 26f;    // px/sec — fast enough to feel snappy, slow enough to read
+
+    const float SweepHeight       = 15f;    // thickness of the travelling scanline
+    const float SweepOverhang     = 6f;     // how far it spills past the slot's sides
+    const float SweepPeriod       = 1.4f;   // selected slot: one pass, on a tight loop
+    // Unselected passes look IDENTICAL to the selected one — same duration, same
+    // colour. What separates them is how OFTEN: the selected slot loops
+    // continuously, the rest get one pass at a random gap so the bar never
+    // pulses in unison.
+    const float IdleSweepDuration = SweepPeriod;
+    const float IdleSweepGapMin   = 4f;
+    const float IdleSweepGapMax   = 13f;
+    const float IdleSweepDimFactor = 0.5f;   // unselected passes are half as bright
+
+    // Wake-brightening, matching HudIdleSweep on the vitals / boost / compass
+    // clusters: a slot decays toward SlotDimFloor, and its scanline wipes it
+    // back to full as it passes. The selected slot sweeps constantly, so it
+    // simply never gets a chance to dim.
+    // NOTE this multiplies BaselineAlpha, it doesn't replace it — an unselected
+    // item ends up at 0.55 × floor. At floor 0.48 that was 0.26, faint enough
+    // that reading your own bar got hard. 0.55 lands them at ~0.30 at rest and
+    // ~0.55 straight after a pass: a 1.8× swing, still obvious, still legible.
+    const float SlotDimFloor      = 0.55f;
+    // Idle passes are 4–13 s apart, so the fade is stretched to fill most of
+    // that wait. At 0.9 s the slot snapped dark almost immediately and the
+    // brighten-then-settle the sweep is supposed to produce wasn't readable.
+    const float SlotDecayTime     = 3.2f;
+
+    const float BaselineAlpha     = 0.55f;  // dim applied to every non-active item
+
+    // Cyan backing glow, filled slots only. Rides the same per-slot brightness
+    // as everything else, so it swells with each scanline pass and settles back.
+    // NEGATIVE spread = the glow sits INSIDE the slot, roughly icon-sized, so it
+    // reads as light coming off the item rather than a panel behind it. At +10
+    // its footprint was 84 px on a 64 px slot; -11 halves that to 42.
+    const float GlowSpread        = -11f;
+    const float GlowAlphaIdle     = 0.34f;
+    const float GlowAlphaActive   = 0.62f;
+    const float IndexAlphaIdle    = 0.42f;
+    const float IndexAlphaActive  = 0.95f;
     const float ActiveLift = 8f;        // pixels lifted above the row when active
-    const float SlotSpacing = 14f;
+    // Widened twice on 2026-08-06. The helmet frame art is vaulted now, so the
+    // corner clusters moved out to the screen edges and the bar has room.
+    const float SlotSpacing = 44f;
     const float BottomMargin = 36f;
 
     static Hotbar instance;
@@ -116,10 +169,22 @@ public class Hotbar : MonoBehaviour
     class SlotVisuals
     {
         public RectTransform root;
-        public Image glow;
-        public Image border;
-        public Image background;
-        public Image accent;
+        // E2 "scan sweep" (2026-08-06). The hotbar was the last surface still
+        // using the rounded / nebula / glow language; everything else moved to
+        // the flat cyan scanner look. There is no slot box any more: items float,
+        // inactive ones are dimmed, and the ACTIVE one gets corner brackets plus
+        // a scanline that sweeps down through it. The old glow / border /
+        // background / accent images are gone rather than hidden.
+        public Image[] brackets;    // 4 corners, on EVERY slot; grow when selected
+        public Image sweep;         // the scanline, on every slot
+        public Image glow;          // soft cyan backing — FILLED slots only
+        public TextMeshProUGUI indexText;   // 1-7, top-left
+        public float bracketSize;   // current arm length, eased toward its target
+        public float idleSweepStart;// unscaled time this idle pass began; <0 = idle
+        public float idleSweepNext; // unscaled time the next idle pass is due
+        public float brightness;    // 1 = just scanned, SlotDimFloor = fully decayed
+        public float dimAtSweepStart;
+        public bool  sweepWasOn;
         public Image itemIcon;
         public TextMeshProUGUI countText;
         // Phase 2: live-rendered fish preview from FishingdexManager.RenderFish.
@@ -152,7 +217,6 @@ public class Hotbar : MonoBehaviour
         _acquireArmTime = Time.time;
         UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnSceneLoadedForAcquire;
         BuildUI();
-        StartCoroutine(BorderPulse());
     }
 
     void OnDestroy()
@@ -1231,21 +1295,17 @@ public class Hotbar : MonoBehaviour
                 }
             }
 
-            // Dim non-active filled slots; lighter dim on empty slots.
-            if (active)
-            {
-                v.itemIcon.color = new Color32(0xEA, 0xF6, 0xFF, 0xFF);
-                v.background.color = new Color32(0x14, 0x28, 0x44, 0xF8);
-            }
-            else
-            {
-                v.itemIcon.color = empty
-                    ? new Color32(0xF1, 0xF4, 0xFF, 0x00)
-                    : new Color32(0xF1, 0xF4, 0xFF, 0x80);
-                v.background.color = empty
-                    ? new Color32(0x05, 0x03, 0x12, 0xC0)
-                    : GalaxyHudKit.SlotColor;
-            }
+            // Sweep first — it produces this slot's brightness, which every
+            // colour below is then multiplied by so the scanline visibly wipes
+            // the slot back to life in its wake.
+            UpdateSweep(v, active);
+            float b = v.brightness;
+
+            // No slot box any more, so "selected" is carried entirely by
+            // brightness + brackets + the sweep. Everything not held is dimmed.
+            v.itemIcon.color = empty
+                ? new Color32(0xF1, 0xF4, 0xFF, 0x00)
+                : new Color(0.918f, 0.965f, 1f, (active ? 1f : BaselineAlpha) * b);
 
             // Real PNG resource icons render with their own colours (white tint
             // with active-state alpha). Procedural fallback swatches need the
@@ -1253,15 +1313,38 @@ public class Hotbar : MonoBehaviour
             if (isRes && !empty)
             {
                 Color c = isProceduralSwatch ? iconTint : Color.white;
-                c.a = active ? 1f : 0.85f;
+                c.a = (active ? 1f : BaselineAlpha) * b;
                 v.itemIcon.color = c;
             }
+            if (v.countText != null && v.countText.enabled)
+                v.countText.color = new Color(1f, 1f, 1f, (active ? 1f : BaselineAlpha + 0.2f) * b);
 
-            v.glow.gameObject.SetActive(active);
-            v.glow.color = active
-                ? new Color32(0x5C, 0xC8, 0xFF, 0xD0)
-                : GalaxyHudKit.GlowColor;
-            v.accent.color = new Color(1f, 1f, 1f, active ? 0.9f : 0.35f);
+            if (v.indexText != null)
+                v.indexText.color = new Color(GalaxyHudKit.BorderCool.r, GalaxyHudKit.BorderCool.g,
+                    GalaxyHudKit.BorderCool.b, (active ? IndexAlphaActive : IndexAlphaIdle) * b);
+
+            if (v.glow != null)
+            {
+                // Empty slots never glow — the glow is what says "there's
+                // something in here", so lighting an empty one would say nothing.
+                bool glowOn = !empty;
+                if (v.glow.enabled != glowOn) v.glow.enabled = glowOn;
+                if (glowOn)
+                {
+                    // The glow fades to NOTHING, not to a floor. Everything else
+                    // on the slot multiplies straight by `b`, which bottoms out
+                    // at SlotDimFloor and so never reaches zero — that left a
+                    // permanent faint smudge. Remapping [floor..1] → [0..1]
+                    // makes the glow swell with each scanline and vanish
+                    // completely between passes.
+                    float g = Mathf.InverseLerp(SlotDimFloor, 1f, b);
+                    var gc = (Color)GalaxyHudKit.BorderCool;
+                    gc.a = (active ? GlowAlphaActive : GlowAlphaIdle) * g * g;
+                    v.glow.color = gc;
+                }
+            }
+
+            UpdateBrackets(v, active, empty, b);
         }
 
         // Slot lift/scale animation — only fire on active-index change.
@@ -1376,26 +1459,117 @@ public class Hotbar : MonoBehaviour
         _slotAnimRoutines[idx] = null;
     }
 
-    IEnumerator BorderPulse()
+    // Brackets sit on every slot and GROW on the selected one — that's the
+    // selection read, along with the slot's own lift/scale. Eased rather than
+    // snapped so the growth is legible as a transition.
+    void UpdateBrackets(SlotVisuals v, bool active, bool empty, float brightness)
     {
-        while (this != null)
+        if (v.brackets == null) return;
+
+        float target = active ? BracketActiveSize : BracketIdleSize;
+        v.bracketSize = Mathf.MoveTowards(v.bracketSize, target, BracketGrowSpeed * Time.unscaledDeltaTime);
+        // Corners ride outward as the arms lengthen, so the frame opens up
+        // around the item instead of closing in on it.
+        float t = Mathf.InverseLerp(BracketIdleSize, BracketActiveSize, v.bracketSize);
+        float outp = Mathf.Lerp(BracketIdleOut, BracketActiveOut, t);
+
+        Color col = active
+            ? (Color)GalaxyHudKit.BorderHot
+            : new Color(GalaxyHudKit.BorderCool.r, GalaxyHudKit.BorderCool.g, GalaxyHudKit.BorderCool.b,
+                        empty ? 0.28f : 0.55f);
+        col.a *= brightness;   // brackets dim and re-light with the rest of the slot
+
+        for (int c = 0; c < v.brackets.Length; c++)
         {
-            float t = (Mathf.Sin(Time.unscaledTime * 1.4f) + 1f) * 0.5f;
-            Color pulse = Color.Lerp(GalaxyHudKit.BorderCool, GalaxyHudKit.BorderHot, t);
-            ItemId equipped = GetEquipped();
-            for (int i = 0; i < slotViews.Length; i++)
-            {
-                if (slotViews[i] == null || slotViews[i].border == null) continue;
-                bool active = (_equippedSlot >= 0 && _equippedSlot < NumSlots)
-                    ? (i == _equippedSlot && slots[i].id != ItemId.None)
-                    : (i == _cycleCursor);
-                slotViews[i].border.color = active
-                    ? pulse
-                    : new Color(GalaxyHudKit.BorderCool.r, GalaxyHudKit.BorderCool.g, GalaxyHudKit.BorderCool.b, 0.35f);
-            }
-            yield return null;
+            var img = v.brackets[c];
+            if (img == null) continue;
+            var rt = img.rectTransform;
+            rt.sizeDelta = new Vector2(v.bracketSize, v.bracketSize);
+            Vector2 a = rt.anchorMin;
+            rt.anchoredPosition = new Vector2(
+                (a.x < 0.5f ? -1f : 1f) * outp,
+                (a.y < 0.5f ? -1f : 1f) * outp);
+            img.color = col;
         }
     }
+
+    // Two rhythms. The selected slot sweeps continuously on a tight loop; every
+    // other slot gets one slower pass at a random interval, so the bar reads as
+    // idling equipment rather than seven things blinking in time.
+    void UpdateSweep(SlotVisuals v, bool active)
+    {
+        if (v.sweep == null) return;
+        float now = Time.unscaledTime;
+        float u = -1f;
+
+        if (active)
+        {
+            v.idleSweepStart = -1f;
+            v.idleSweepNext = now + Random.Range(IdleSweepGapMin, IdleSweepGapMax);
+            u = (now % SweepPeriod) / SweepPeriod;
+        }
+        else
+        {
+            if (v.idleSweepStart < 0f && now >= v.idleSweepNext) v.idleSweepStart = now;
+            if (v.idleSweepStart >= 0f)
+            {
+                float p = (now - v.idleSweepStart) / IdleSweepDuration;
+                if (p >= 1f)
+                {
+                    v.idleSweepStart = -1f;
+                    v.idleSweepNext = now + Random.Range(IdleSweepGapMin, IdleSweepGapMax);
+                }
+                else u = p;
+            }
+        }
+
+        bool on = u >= 0f;
+        if (v.sweep.enabled != on) v.sweep.enabled = on;
+
+        // Wake-brightening. Mirrors HudIdleSweep on the helmet clusters: the
+        // slot decays toward the floor, and the pass wipes it back to full from
+        // wherever it had faded to. The selected slot sweeps continuously, so it
+        // never falls far — which is exactly the read we want.
+        // A pass is DOWN then back UP, matching HudIdleSweep on the helmet
+        // clusters: the line wipes down re-brightening as it goes, then rides
+        // back up over the now-lit slot, fading out on the rise.
+        float travel = u < 0.5f ? u / 0.5f : 1f - (u - 0.5f) / 0.5f;
+        float fade   = u < 0.5f ? 1f : 1f - (u - 0.5f) / 0.5f;
+
+        if (active)
+        {
+            // The held slot stays lit, full stop. Its sweep is a CONTINUOUS
+            // loop, so ramping brightness with u would reset to dim every time
+            // u wrapped past 1 — a 1.4 s pulse on the one slot that should be
+            // the steadiest thing on the bar.
+            v.brightness = 1f;
+        }
+        else if (on)
+        {
+            if (!v.sweepWasOn) v.dimAtSweepStart = v.brightness;
+            // Only the DOWN stroke re-brightens; the rise leaves it lit.
+            v.brightness = Mathf.Lerp(v.dimAtSweepStart, 1f, Mathf.Min(1f, u / 0.5f));
+        }
+        else
+        {
+            v.brightness = Mathf.MoveTowards(v.brightness, SlotDimFloor,
+                (1f - SlotDimFloor) / SlotDecayTime * Time.unscaledDeltaTime);
+        }
+        v.sweepWasOn = on;
+        if (!on) return;
+
+        // Unselected passes are the same speed and shape, just half as bright.
+        Color c = GalaxyHudKit.BorderHot;
+        c.a *= fade * (active ? 1f : IdleSweepDimFactor);
+        v.sweep.color = c;
+
+        float h = v.root.sizeDelta.y;
+        v.sweep.rectTransform.anchoredPosition =
+            new Vector2(0f, Mathf.Lerp(SweepHeight, -(h + SweepHeight), travel));
+    }
+
+    // BorderPulse is gone with the slot borders it pulsed. The travelling
+    // scanline is what gives the active slot its motion now.
 
     void BuildUI()
     {
@@ -1424,6 +1598,22 @@ public class Hotbar : MonoBehaviour
         bar.anchoredPosition = new Vector2(0f, BottomMargin + 76f);
         bar.sizeDelta = new Vector2(totalWidth + 32f, ActiveSize + ActiveLift + 32f);
         bar.localScale = new Vector3(1f / 1.2f, 1f / 1.2f, 1f);
+
+        // Baseline. With the slot boxes gone the row had no top or bottom edge,
+        // so it read as items floating at an arbitrary height. One hairline
+        // under them, faded at both ends, is enough to ground it — added BEFORE
+        // the slots so it draws underneath them.
+        var baseRT = NewRT("__Baseline", bar);
+        baseRT.anchorMin = new Vector2(0.5f, 0f);
+        baseRT.anchorMax = new Vector2(0.5f, 0f);
+        baseRT.pivot = new Vector2(0.5f, 0.5f);
+        baseRT.sizeDelta = new Vector2(totalWidth + 36f, 1f);
+        baseRT.anchoredPosition = new Vector2(0f, 12f);
+        var baseImg = baseRT.gameObject.AddComponent<Image>();
+        baseImg.sprite = HotbarBaselineFade.GetSprite();
+        baseImg.color = new Color(GalaxyHudKit.BorderCool.r, GalaxyHudKit.BorderCool.g,
+                                  GalaxyHudKit.BorderCool.b, 0.85f);
+        baseImg.raycastTarget = false;
 
         for (int i = 0; i < NumSlots; i++)
         {
@@ -1507,52 +1697,84 @@ public class Hotbar : MonoBehaviour
         slotRT.sizeDelta = new Vector2(SlotSize, SlotSize);
         v.root = slotRT;
 
+        // Soft cyan backing, FIRST so it draws behind everything else in the
+        // slot. Only ever shown on a slot that holds something — an empty slot
+        // glowing would undo the whole point of the bracket-only look.
         var glowRT = NewRT("__Glow", slotRT);
-        // Compact rounded-square halo extending ~8 px outside the slot.
-        Stretch(glowRT, -8f, -8f, 8f, 8f);
+        Stretch(glowRT, -GlowSpread, -GlowSpread, GlowSpread, GlowSpread);
         v.glow = glowRT.gameObject.AddComponent<Image>();
-        v.glow.sprite = HotbarHaloGlow.GetSprite();
-        v.glow.type = Image.Type.Sliced;
-        v.glow.color = new Color32(0x5C, 0xC8, 0xFF, 0x90);
+        v.glow.sprite = HotbarSoftGlow.GetSprite();
+        v.glow.type = Image.Type.Simple;   // NOT Sliced — slicing would flatten the falloff
         v.glow.raycastTarget = false;
+        v.glow.enabled = false;
 
-        var bgRT = NewRT("__Background", slotRT);
-        Stretch(bgRT, 0f, 0f, 0f, 0f);
-        v.background = bgRT.gameObject.AddComponent<Image>();
-        v.background.sprite = GalaxyHudKit.SlotSprite();
-        v.background.type = Image.Type.Sliced;
-        v.background.color = GalaxyHudKit.SlotColor;
-        v.background.raycastTarget = false;
+        // Corner brackets — the only chrome on the bar. One L-shaped sprite
+        // rotated four ways rather than eight thin strips per slot.
+        v.bracketSize = BracketIdleSize;
+        v.brightness = 1f;
+        v.idleSweepStart = -1f;
+        // Stagger the first idle pass so the seven slots never sweep together.
+        v.idleSweepNext = Time.unscaledTime + Random.Range(0f, IdleSweepGapMax);
+        v.brackets = new Image[4];
+        for (int c = 0; c < 4; c++)
+        {
+            var brRT = NewRT("__Bracket" + c, slotRT);
+            // c: 0 = top-left, 1 = top-right, 2 = bottom-right, 3 = bottom-left.
+            Vector2 anchor = c == 0 ? new Vector2(0f, 1f)
+                           : c == 1 ? new Vector2(1f, 1f)
+                           : c == 2 ? new Vector2(1f, 0f)
+                                    : new Vector2(0f, 0f);
+            brRT.anchorMin = brRT.anchorMax = anchor;
+            brRT.pivot = new Vector2(0.5f, 0.5f);
+            brRT.sizeDelta = new Vector2(BracketIdleSize, BracketIdleSize);
+            // Push each corner OUT of the slot so the brackets frame the item
+            // rather than crowd it. Re-applied every frame as the size eases.
+            brRT.anchoredPosition = new Vector2(
+                (anchor.x < 0.5f ? -1f : 1f) * BracketIdleOut,
+                (anchor.y < 0.5f ? -1f : 1f) * BracketIdleOut);
+            brRT.localRotation = Quaternion.Euler(0f, 0f, -90f * c);
+            var img = brRT.gameObject.AddComponent<Image>();
+            img.sprite = HotbarBracket.GetSprite();
+            img.color = GalaxyHudKit.BorderCool;
+            img.raycastTarget = false;
+            v.brackets[c] = img;
+        }
 
-        var nebulaRT = NewRT("__Nebula", slotRT);
-        Stretch(nebulaRT, 4f, 4f, -4f, -4f);
-        var nebula = nebulaRT.gameObject.AddComponent<Image>();
-        nebula.sprite = GalaxyHudKit.NebulaSprite();
-        nebula.type = Image.Type.Sliced;
-        nebula.color = new Color(1f, 1f, 1f, 0.18f);
-        nebula.raycastTarget = false;
+        // Slot number, top-left, inside the bracket arm.
+        var idxRT = NewRT("__Index", slotRT);
+        idxRT.anchorMin = idxRT.anchorMax = new Vector2(0f, 1f);
+        idxRT.pivot = new Vector2(0f, 1f);
+        idxRT.anchoredPosition = new Vector2(6f, -5f);
+        idxRT.sizeDelta = new Vector2(18f, 14f);
+        v.indexText = idxRT.gameObject.AddComponent<TextMeshProUGUI>();
+        HudFontResolver.Apply(v.indexText);
+        v.indexText.text = (index + 1).ToString();
+        v.indexText.fontSize = 11f;   // 1.5× smaller than 16; faceDilate keeps the weight
+        v.indexText.fontStyle = FontStyles.Bold;
+        // Thickened 2026-08-06 — bold alone still read as hairline against a
+        // bright planet. faceDilate fattens the glyph itself rather than just
+        // scaling it up, so the digit stays small but gains weight.
+        // .fontMaterial (not fontSharedMaterial) auto-instantiates, so this
+        // fattens THIS label without touching every other TMP text in the game.
+        v.indexText.fontMaterial.SetFloat(TMPro.ShaderUtilities.ID_FaceDilate, 0.28f);
+        v.indexText.alignment = TextAlignmentOptions.TopLeft;
+        v.indexText.raycastTarget = false;
+        var idxDrop = idxRT.gameObject.AddComponent<Shadow>();
+        idxDrop.effectColor = new Color(0f, 0f, 0f, 0.9f);
+        idxDrop.effectDistance = new Vector2(1f, -1.5f);
 
-        var borderRT = NewRT("__Border", slotRT);
-        Stretch(borderRT, 0f, 0f, 0f, 0f);
-        v.border = borderRT.gameObject.AddComponent<Image>();
-        // Ring (transparent center) — GalaxyHudKit.RoundedSprite is filled, which
-        // would cover the slot fill at any meaningful alpha. The ring lets the
-        // dark navy fill + icon read through unobstructed.
-        v.border.sprite = HotbarRoundedRing.GetSprite();
-        v.border.type = Image.Type.Sliced;
-        v.border.color = GalaxyHudKit.BorderCool;
-        v.border.raycastTarget = false;
-
-        var accentRT = NewRT("__Accent", slotRT);
-        accentRT.anchorMin = new Vector2(0f, 1f);
-        accentRT.anchorMax = new Vector2(1f, 1f);
-        accentRT.pivot = new Vector2(0.5f, 1f);
-        accentRT.anchoredPosition = new Vector2(0f, -5f);
-        accentRT.sizeDelta = new Vector2(-22f, 2f);
-        v.accent = accentRT.gameObject.AddComponent<Image>();
-        v.accent.sprite = GalaxyHudKit.AccentSprite();
-        v.accent.color = new Color(1f, 1f, 1f, 0.35f);
-        v.accent.raycastTarget = false;
+        // The scanline. Parented to the slot so it inherits the active-slot
+        // grow/lift animation for free; driven vertically in Refresh.
+        var sweepRT = NewRT("__Sweep", slotRT);
+        sweepRT.anchorMin = new Vector2(0f, 1f);
+        sweepRT.anchorMax = new Vector2(1f, 1f);
+        sweepRT.pivot = new Vector2(0.5f, 1f);
+        sweepRT.sizeDelta = new Vector2(SweepOverhang * 2f, SweepHeight);
+        v.sweep = sweepRT.gameObject.AddComponent<Image>();
+        v.sweep.sprite = HotbarScanSweep.GetSprite();
+        v.sweep.color = GalaxyHudKit.BorderHot;
+        v.sweep.raycastTarget = false;
+        v.sweep.enabled = false;
 
         var iconRT = NewRT("__ItemIcon", slotRT);
         iconRT.anchorMin = new Vector2(0.5f, 0.5f);
@@ -1599,7 +1821,6 @@ public class Hotbar : MonoBehaviour
         countDrop.effectColor = new Color(0f, 0f, 0f, 0.9f);
         countDrop.effectDistance = new Vector2(0f, -1.5f);
 
-        v.glow.gameObject.SetActive(false);
         return v;
     }
 
@@ -1624,6 +1845,149 @@ public class Hotbar : MonoBehaviour
 // concentrates all alpha in the dead centre — invisible behind the slot
 // background. This profile keeps the slot-edge zone fully opaque, so the
 // visible halo around the slot reads loud.
+// The bar's baseline: a horizontal 1px strip that fades out at both ends so it
+// doesn't stop dead in mid-air.
+static class HotbarBaselineFade
+{
+    static Sprite _sprite;
+
+    public static Sprite GetSprite()
+    {
+        if (_sprite != null) return _sprite;
+        const int w = 64;
+        var tex = new Texture2D(w, 1, TextureFormat.RGBA32, false)
+        {
+            name = "HotbarBaselineFade",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color[w];
+        for (int x = 0; x < w; x++)
+        {
+            float t = x / (float)(w - 1);
+            // Flat across the middle 64%, easing to nothing over the outer 18%.
+            float a = Mathf.Clamp01(Mathf.Min(t, 1f - t) / 0.18f);
+            px[x] = new Color(1f, 1f, 1f, a);
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        _sprite = Sprite.Create(tex, new Rect(0, 0, w, 1), new Vector2(0.5f, 0.5f), 100f);
+        _sprite.name = "HotbarBaselineFade";
+        return _sprite;
+    }
+}
+
+// Soft radial glow that reaches ZERO at its edge.
+//
+// HotbarHaloGlow deliberately does the opposite — its comment says it "keeps the
+// slot-edge zone fully opaque so the visible halo reads loud", which was right
+// when there was a slot background to fight. With the boxes gone that profile
+// reads as a hard rectangle of colour, not a glow, so this one falls off
+// smoothly to nothing instead.
+static class HotbarSoftGlow
+{
+    static Sprite _sprite;
+
+    public static Sprite GetSprite()
+    {
+        if (_sprite != null) return _sprite;
+        const int size = 64;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "HotbarSoftGlow",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color[size * size];
+        float half = (size - 1) * 0.5f;
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            // Radial distance, 0 at centre → 1 at the inscribed circle.
+            float dx = (x - half) / half, dy = (y - half) / half;
+            float d = Mathf.Sqrt(dx * dx + dy * dy);
+            // smoothstep gives a plateau in the middle and a gentle shoulder, so
+            // there's no visible ring where the falloff starts.
+            float a = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(d));
+            px[y * size + x] = new Color(1f, 1f, 1f, a * a);   // squared = softer tail
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        _sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        _sprite.name = "HotbarSoftGlow";
+        return _sprite;
+    }
+}
+
+// L-shaped corner bracket, drawn once and rotated 90° per corner. Generated in
+// code like the rest of the hotbar's sprites (HotbarRoundedRing,
+// GalaxyHudKit.RoundedSprite) so it needs no art asset.
+static class HotbarBracket
+{
+    static Sprite _sprite;
+
+    public static Sprite GetSprite()
+    {
+        if (_sprite != null) return _sprite;
+        const int size = 16;
+        const int thick = 6;            // arm thickness in px — doubled 2026-08-06, 3 read as hairline
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            name = "HotbarBracket",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color[size * size];
+        for (int y = 0; y < size; y++)
+        for (int x = 0; x < size; x++)
+        {
+            // Top edge and left edge of the square = an "⌐" corner. Texture y=0
+            // is the BOTTOM row, so the top arm is the high-y rows.
+            bool onTop  = y >= size - thick;
+            bool onLeft = x < thick;
+            px[y * size + x] = (onTop || onLeft) ? Color.white : new Color(1f, 1f, 1f, 0f);
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        _sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+        _sprite.name = "HotbarBracket";
+        return _sprite;
+    }
+}
+
+// The travelling scanline: a 1×N vertical gradient, transparent at both ends
+// and brightest in the middle, stretched across the slot.
+static class HotbarScanSweep
+{
+    static Sprite _sprite;
+
+    public static Sprite GetSprite()
+    {
+        if (_sprite != null) return _sprite;
+        const int h = 32;
+        var tex = new Texture2D(1, h, TextureFormat.RGBA32, false)
+        {
+            name = "HotbarScanSweep",
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color[h];
+        for (int y = 0; y < h; y++)
+        {
+            float t = y / (float)(h - 1);
+            // Smooth bell so the line has no hard edge at either end — a hard
+            // edge reads as a rectangle sliding past rather than a scan.
+            float a = Mathf.Sin(t * Mathf.PI);
+            px[y] = new Color(1f, 1f, 1f, a * a);
+        }
+        tex.SetPixels(px);
+        tex.Apply();
+        _sprite = Sprite.Create(tex, new Rect(0, 0, 1, h), new Vector2(0.5f, 0.5f), 100f);
+        _sprite.name = "HotbarScanSweep";
+        return _sprite;
+    }
+}
+
 static class HotbarHaloGlow
 {
     static Sprite _glow;

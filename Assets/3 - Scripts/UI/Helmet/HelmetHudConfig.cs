@@ -117,7 +117,16 @@ public class HelmetHudConfig : MonoBehaviour
     [Header("Perspective screens (painted quad corners, texture px, bottom-left origin)")]
     [Tooltip("Project the corner clusters onto the art's angled screens with true perspective: each cluster renders to a RenderTexture and is drawn as a homography-warped quad whose corners match the painted screen exactly (rotation alone can't taper toward a vanishing point on an overlay canvas). Off = legacy flat seating via blScreenPx/brScreenPx.")]
     public bool perspectiveScreens = true;
-    [Tooltip("Bottom-left pod's dark glass — corners measured from the art (edge-line fits on the dark region).")]
+    // These are the corners as MEASURED off the helmet painting. Leave them that
+    // way — the outward spread that moves the pods apart now lives in
+    // HelmetOverlayHUD.PodOutwardPx, applied at seat time.
+    //
+    // Why there and not here: these are serialized on a SCENE object, so editing
+    // the defaults does nothing to the value already baked into 1.6.7.7.7.unity
+    // (same trap as MushroomSpawner.excludeBodyNames). A code-side shift can't
+    // fall out of sync with the scene, and it keeps these numbers meaning
+    // "where the painting is" in case the shell is ever unvaulted.
+    [Tooltip("Bottom-left pod's dark glass — corners measured from the art (edge-line fits on the dark region). Outward spread is applied in code, see HelmetOverlayHUD.PodOutwardPx.")]
     public Vector2 blQuadTL = new Vector2(690.6f, 513.0f);
     public Vector2 blQuadTR = new Vector2(1287.4f, 542.1f);
     public Vector2 blQuadBL = new Vector2(753.6f, 112.5f);

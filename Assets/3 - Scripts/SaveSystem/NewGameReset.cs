@@ -65,6 +65,11 @@ public static class NewGameReset
         // Same class of leak: the ramp's "when did it open" stamp is static.
         ShuttleExitDoor.ResetOpenedStamp();
 
+        // Same class of leak: buyer bans and remembered counter-offers are pure
+        // statics, so a New Game would otherwise start with an alien still
+        // refusing to deal because of something the PREVIOUS run did.
+        MushroomDealState.ResetAll();
+
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);
         if (WoodInventory.Instance != null) WoodInventory.Instance.SetWood(0);

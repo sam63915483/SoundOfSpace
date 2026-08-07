@@ -27,7 +27,16 @@ public class HudIdleSweep : MonoBehaviour
     const float SweepUpTime = 0.28f;
     const float BarHeight = 14f;
     const float BarAlpha = 0.65f;
-    const float DimFloor = 0.55f;   // brightness the cluster decays to before the next sweep
+    // 2026-08-06: the decay used to be stretched across the WHOLE 3–5 s gap, so
+    // brightness crept down a few percent a second and the wipe had almost
+    // nothing to restore — the effect was there but unreadable. It now falls to
+    // the floor in DecayTime and SITS there until the next sweep, so the screen
+    // is visibly dark when the line arrives. Floor dropped with it for contrast.
+    const float DimFloor = 0.42f;   // brightness the cluster decays to before the next sweep
+    // 0.9s was an over-correction: the screen snapped dark and then sat there
+    // for most of the 3–5 s gap. The sweeps are infrequent, so the fade should
+    // fill most of the wait rather than being over before it registers.
+    const float DecayTime = 2.6f;
 
     HousingScreenWarp _warp;        // spatial reveal path (corner clusters)
     CanvasGroup _group;             // temporal ramp path (compass)
@@ -88,7 +97,7 @@ public class HudIdleSweep : MonoBehaviour
             float interval = Random.Range(MinInterval, MaxInterval);
             for (float t = 0f; t < interval; t += Time.unscaledDeltaTime)
             {
-                SetUniform(Mathf.Lerp(1f, DimFloor, t / interval));
+                SetUniform(Mathf.Lerp(1f, DimFloor, Mathf.Clamp01(t / DecayTime)));
                 yield return null;
             }
         }

@@ -21,52 +21,54 @@ using UnityEngine;
 /// </summary>
 public static class MushroomEffect
 {
-    public const float HealPerMushroom = 5f;    // low end of the old 5–25 range
-    public const float TripDuration    = 30f;   // unchanged
+    // 2026-08-06: the dials, the duration and the heal are now AUTHORED per
+    // species in MushroomSpecies rather than hashed from the name. Species with
+    // no row in that table still fall back to the old hash, so nothing breaks.
+    public const float HealPerMushroom = 5f;    // legacy default; table wins
+    public const float TripDuration    = 30f;   // legacy default; table wins
+
+    // Dials during a creeper's lead-in. Not zero — "almost nothing" reads as a
+    // mushroom that hasn't kicked in yet; exactly nothing reads as a dud.
+    const float CreeperEarly = 0.05f;
 
     public static void Consume(string speciesKey)
     {
+        var e = MushroomSpecies.Get(speciesKey);
+
+        // Heal can be NEGATIVE (the Deathcaps). Routing that through TakeDamage
+        // rather than a negative Heal is deliberate: TakeDamage is the game's
+        // single damage choke point, so the hurt voice, the red flash and the
+        // death check all fire — eating a Deathcap can actually kill you.
         if (ResourceManager.Instance != null)
-            ResourceManager.Instance.Heal(HealPerMushroom);
+        {
+            if (e.heal >= 0f) ResourceManager.Instance.Heal(e.heal);
+            else              ResourceManager.Instance.TakeDamage(-e.heal);
+        }
 
-        GetDials(speciesKey, out float colour, out float breath, out float kaleido);
+        bool creeper = e.creeperLeadIn > 0.01f && e.creeperLeadIn < e.tripSeconds;
 
-        // Constant-intensity trip: early == late, so all three dials stay at
-        // their target % for the whole trip (the old MushroomInteraction shape).
+        // Flat strain  → early == late, early phase covers the whole trip.
+        // Creeper      → muted for creeperLeadIn seconds, then the real dials.
         RawFishTripController.StartTrip(
-            TripDuration,
-            kaleido, breath,
-            TripDuration,
-            kaleido, breath,
-            colour);
+            e.tripSeconds,
+            creeper ? CreeperEarly : e.kaleido,
+            creeper ? CreeperEarly : e.wave,
+            creeper ? e.creeperLeadIn : e.tripSeconds,
+            e.kaleido,
+            e.wave,
+            e.colour);
     }
 
-    /// The species' three trip dials, 0..1. Deterministic — the same species
-    /// always produces the same mix, in this session and every future one.
+    /// The species' three trip dials, 0..1 (the steady/late values). Read by
+    /// anything that wants to describe a strain without eating it.
     public static void GetDials(string speciesKey, out float colour, out float breath, out float kaleido)
     {
-        uint h = Hash(speciesKey);
-        colour  = ((h)        & 0xFFFFu) / 65535f;
-        breath  = ((h >>  7)  & 0xFFFFu) / 65535f;
-        kaleido = ((h >> 15)  & 0xFFFFu) / 65535f;
+        var e = MushroomSpecies.Get(speciesKey);
+        colour  = e.colour;
+        breath  = e.wave;
+        kaleido = e.kaleido;
     }
 
-    // FNV-1a over the species key, then an avalanche so the three shifted
-    // windows above don't correlate.
-    static uint Hash(string s)
-    {
-        uint h = 2166136261u;
-        if (!string.IsNullOrEmpty(s))
-        {
-            for (int i = 0; i < s.Length; i++)
-            {
-                h ^= s[i];
-                h *= 16777619u;
-            }
-        }
-        h ^= h >> 16; h *= 2246822507u;
-        h ^= h >> 13; h *= 3266489909u;
-        h ^= h >> 16;
-        return h;
-    }
+    /// HP a single cap of this species gives. Negative = it hurts you.
+    public static float HealFor(string speciesKey) => MushroomSpecies.Get(speciesKey).heal;
 }

@@ -383,7 +383,7 @@ public class Alien7Vendor : MonoBehaviour
         {
             new PostGreetingChoicePanel.Row("Open shop", true),
         };
-        NPCSellRows.Append(rows, _sellActions);
+        NPCSellRows.Append(rows, _sellActions, this);
         rows.Add(new PostGreetingChoicePanel.Row("Leave", true));
         PostGreetingChoicePanel.Instance.Show(rows, HandleChoice);
     }

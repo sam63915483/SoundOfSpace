@@ -115,6 +115,7 @@ public class PostGreetingChoicePanel : MonoBehaviour
         }
         _panelRT.gameObject.SetActive(true);
         _visible = true;
+        HideSpokenLine();
         // Free the cursor so the player can click rows with the mouse in
         // addition to the 1-9 hotkeys. NPCDialogue locks the cursor again
         // when its typewriter finishes (NPCDialogue.cs:331), so we have to
@@ -122,6 +123,38 @@ public class PostGreetingChoicePanel : MonoBehaviour
         // pattern SpaceDustSellUI uses while open.
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
+    }
+
+    // The NPC's spoken line and this choice list are both full-width and both
+    // sit low on the screen, so they overlapped: the greeting stayed up for the
+    // whole conversation (every NPC only clears it in StopConversation), and
+    // coming back from the sell panel redrew the rows straight over it.
+    //
+    // Hidden HERE rather than in each NPC because there are four of them plus
+    // NPCDialogue, and a fifth would forget. Safe to hide unconditionally
+    // because DialogueTextStyling.RevealChars* re-activates the label before it
+    // types — every typewriter in the game goes through there — so a line spoken
+    // AFTER a choice (Tev's branching questions) still shows.
+    //
+    // The label is shared across NPCs and owned by NPCDialogue; resolved once
+    // and cached, never per-frame (CLAUDE.md: no FindObjectOfType in a loop).
+    static TMPro.TextMeshProUGUI _spokenLine;
+
+    static void HideSpokenLine()
+    {
+        // Re-resolve whenever it's null rather than caching a "resolved" flag:
+        // this is a static on a DontDestroyOnLoad singleton, so a gameplay-scene
+        // reload destroys the label while the reference lives on. Unity's null
+        // check catches the destroyed object and we look it up again. Show() runs
+        // a handful of times per conversation, never per frame, so the occasional
+        // FindObjectOfType is free.
+        if (_spokenLine == null)
+        {
+            var owner = FindObjectOfType<NPCDialogue>(true);
+            if (owner != null) _spokenLine = owner.dialogueText;
+        }
+        if (_spokenLine != null && _spokenLine.gameObject.activeSelf)
+            _spokenLine.gameObject.SetActive(false);
     }
 
     public void Hide()

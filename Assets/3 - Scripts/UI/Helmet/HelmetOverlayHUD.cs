@@ -92,10 +92,19 @@ public class HelmetOverlayHUD : MonoBehaviour
         return go.AddComponent<T>();
     }
 
-    /// Shared gate for all helmet layers. Defaults ON when settings aren't up
-    /// yet (early boot) — the helmet is the intended look, not a garnish.
+    /// Gate for the helmet SHELL ART and its visor glass.
+    ///
+    /// Vaulted 2026-08-06 (FeatureVault.HelmetFrameArt) — Sam played with it off
+    /// and wants the raw clusters. The old "default ON when settings aren't up
+    /// yet" is gone with it: defaulting on meant the shell flashed for a frame or
+    /// two during boot before the settings loaded.
+    ///
+    /// NOTE this never gated cluster seating — see TrySeatClusters, which runs
+    /// on `haveArt` alone. That's why turning the toggle off still left the
+    /// clusters on the painted quads, and why vaulting the art doesn't move them.
     public static bool FxEnabled()
     {
+        if (!FeatureVault.HelmetFrameArt) return false;
         var mgr = CameraEffectsManager.Instance;
         return mgr == null || mgr.Input == null || mgr.Input.fxHelmetOverlay;
     }
@@ -144,6 +153,27 @@ public class HelmetOverlayHUD : MonoBehaviour
 
     int _lastScreenW, _lastScreenH;
 
+    /// How far outward (helmet-texture px, 3840-wide art) to push each bottom
+    /// pod from where the painting had it — boost left, vitals right. 0 puts
+    /// them back exactly on the painted glass, which is what you'd want if
+    /// FeatureVault.HelmetFrameArt is ever turned back on.
+    ///
+    /// Lives here rather than on HelmetHudConfig because that's a SCENE
+    /// component: its serialized values win over any default written in code, so
+    /// a shift authored there would silently do nothing until someone reset the
+    /// component. This can't get out of sync.
+    /// Tuned empirically, not derived: the texture→screen map isn't a plain
+    /// scale about centre (there's overscan AND aspect correction), so 340 px
+    /// looked reasonable on paper and actually pushed the pods 1% off both
+    /// edges. Measure the warp quad, don't trust the arithmetic.
+    const float PodOutwardPx = 170f;
+
+    /// Extra scale on the compass strip, on top of HelmetHudConfig.browContentScale.
+    /// Code-side for the same reason as PodOutwardPx: browContentScale is
+    /// serialized on a scene component, so changing its default there would do
+    /// nothing to the value already saved in 1.6.7.7.7.unity.
+    const float CompassScaleMul = 1.8f;
+
     bool TrySeatClusters()
     {
         var c = _config;
@@ -155,15 +185,25 @@ public class HelmetOverlayHUD : MonoBehaviour
         {
             // True-perspective seating: the clusters render to RenderTextures
             // and land on the art's painted quads via homography warp.
-            VitalsHUD.Instance.SeatOnArtScreen(ToQuad(c, c.brQuadTL, c.brQuadTR, c.brQuadBL, c.brQuadBR, S, c.brContentOffset, c.brContentBoost));
-            GForceHUD.Instance.SeatOnArtScreen(ToQuad(c, c.blQuadTL, c.blQuadTR, c.blQuadBL, c.blQuadBR, S, c.blContentOffset, c.blContentBoost));
+            // Push the two bottom pods apart. The quad corners in the config are
+            // where the PAINTING put them; with the shell vaulted there's
+            // nothing to line up with, and sitting at 27% / 73% of the width they
+            // crowded the hotbar between them.
+            //
+            // Every corner of a pod moves by the same amount, so the quad's
+            // SHAPE — which is what produces the perspective taper — is
+            // untouched and each still reads as an angled panel.
+            Vector2 outR = new Vector2(PodOutwardPx, 0f);
+            Vector2 outL = new Vector2(-PodOutwardPx, 0f);
+            VitalsHUD.Instance.SeatOnArtScreen(ToQuad(c, c.brQuadTL + outR, c.brQuadTR + outR, c.brQuadBL + outR, c.brQuadBR + outR, S, c.brContentOffset, c.brContentBoost));
+            GForceHUD.Instance.SeatOnArtScreen(ToQuad(c, c.blQuadTL + outL, c.blQuadTR + outL, c.blQuadBL + outL, c.blQuadBR + outL, S, c.blContentOffset, c.blContentBoost));
         }
         else
         {
             VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S, c.brScreenTiltDeg, c.brScreenTilt3D, c.brContentOffset));
             GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S, c.blScreenTiltDeg, c.blScreenTilt3D, c.blContentOffset));
         }
-        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f, Vector2.zero, c.browContentOffset, c.browContentScale));
+        CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f, Vector2.zero, c.browContentOffset, c.browContentScale * CompassScaleMul));
         return true;
     }
 

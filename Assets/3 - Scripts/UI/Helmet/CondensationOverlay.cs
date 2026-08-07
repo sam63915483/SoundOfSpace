@@ -63,9 +63,13 @@ public class CondensationOverlay : MonoBehaviour
 
     void Update()
     {
+        // Decoupled from HelmetOverlayHUD.FxEnabled() on 2026-08-06 when the
+        // helmet SHELL ART was vaulted. The fog is functional low-O2 feedback
+        // with its own setting, and you're still wearing a helmet whether or not
+        // its picture is drawn — riding the art's gate would have silently
+        // removed a survival cue along with a cosmetic.
         var mgr = CameraEffectsManager.Instance;
-        bool fxOn = HelmetOverlayHUD.FxEnabled()
-                    && (mgr == null || mgr.Input == null || mgr.Input.fxHelmetCondensation);
+        bool fxOn = mgr == null || mgr.Input == null || mgr.Input.fxHelmetCondensation;
 
         float target = 0f;
         if (fxOn && !HelmetOverlayHUD.InMainMenu())

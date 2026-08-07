@@ -17,6 +17,11 @@ public static class DialogueTextStyling
     public static IEnumerator RevealCharsTMP(TextMeshProUGUI text, string line, float charDelay, System.Func<bool> skipPredicate)
     {
         if (text == null || string.IsNullOrEmpty(line)) yield break;
+        // Typing a line always makes the label visible again. PostGreetingChoicePanel
+        // hides it while a choice list is up (they overlapped on screen), and this
+        // is what guarantees that can never strand a later line invisible — every
+        // typewriter in the game funnels through here.
+        if (!text.gameObject.activeSelf) text.gameObject.SetActive(true);
         text.text = line;
         text.maxVisibleCharacters = 0;
         // Force a mesh update so TMP knows the character count immediately —
@@ -42,6 +47,7 @@ public static class DialogueTextStyling
     public static IEnumerator RevealCharsLegacy(Text text, string line, float charDelay, System.Func<bool> skipPredicate)
     {
         if (text == null || string.IsNullOrEmpty(line)) yield break;
+        if (!text.gameObject.activeSelf) text.gameObject.SetActive(true);   // see RevealCharsTMP
         for (int i = 1; i <= line.Length; i++)
         {
             if (skipPredicate != null && skipPredicate()) { text.text = line; yield break; }

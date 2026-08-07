@@ -81,14 +81,21 @@ public static class MushroomRegistry
         return _keys[i];
     }
 
-    /// "mushroom_red_big" → "red mushroom"-ish. Mirrors MushroomSpawner's own
-    /// prettifier so the world prompt and the hotbar name plate agree.
+    /// The species' STREET NAME ("Amanita_big" → "Fly Agaric"), from
+    /// <see cref="MushroomSpecies"/>. Species with no authored row fall back to
+    /// the old prettifier, so an unlisted prefab still reads sensibly.
     public static string DisplayName(string key)
     {
         if (string.IsNullOrEmpty(key)) return "mushroom";
-        string s = key.Replace("_big", "").Replace("_little", "").Replace("_", " ").Trim();
-        return string.IsNullOrEmpty(s) ? "mushroom" : s;
+        return MushroomSpecies.DisplayName(key);
     }
+
+    /// Rarity tier — drives slot corner colour and the sell panel's label.
+    public static MushroomTier Tier(string key) => MushroomSpecies.Tier(key);
+
+    /// Market value per cap, before any buyer's multiplier. A property of the
+    /// STRAIN, identical for every buyer, so it's safe to show the player.
+    public static int BaseValue(string key) => MushroomSpecies.BaseValue(key);
 
     static void Resolve()
     {

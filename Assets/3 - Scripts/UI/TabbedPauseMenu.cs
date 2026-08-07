@@ -259,7 +259,8 @@ public class TabbedPauseMenu : MonoBehaviour
                   && !NewspaperReaderUI.IsOpen && !NewspaperReaderUI.ConsumedEscapeThisFrame
                   && !MonumentLinkPopupUI.IsOpen && !MonumentLinkPopupUI.ConsumedEscapeThisFrame
                   && !PlayerPhoneUI.IsOpen && !PlayerPhoneUI.ConsumedEscapeThisFrame
-                  && !PhotoGalleryUI.IsOpen && !PhotoGalleryUI.ConsumedEscapeThisFrame) OpenPause();
+                  && !PhotoGalleryUI.IsOpen && !PhotoGalleryUI.ConsumedEscapeThisFrame
+                  && !MushroomSellUI.AnyOpen && !MushroomSellUI.ConsumedEscapeThisFrame) OpenPause();
         }
 
         // Show / hide the SAVE AND APPLY button based on whether any row's
@@ -603,6 +604,7 @@ public class TabbedPauseMenu : MonoBehaviour
                     new ToggleDef { label = "SHIP BOOST FOV",     get = () => _input != null && _input.fxShipBoostFov,      set = v => { if (_input != null) _input.fxShipBoostFov = v; } },
                     new ToggleDef { label = "SPEED LINES",        get = () => _input != null && _input.fxSpeedLines,        set = v => { if (_input != null) _input.fxSpeedLines = v; } },
                     new ToggleDef { label = "SPACE DUST",         get = () => _input != null && _input.fxSpaceDust,         set = v => { if (_input != null) _input.fxSpaceDust = v; } },
+                    new ToggleDef { label = "PERF OVERLAY",       get = () => _input != null && _input.fxPerfOverlay,       set = v => { if (_input != null) _input.fxPerfOverlay = v; } },
                     new ToggleDef { label = "REAR-VIEW 60HZ",     get = () => _input != null && _input.mirror60Hz,          set = v => { if (_input != null) _input.mirror60Hz = v; } },
 
                     new HeaderDef { label = "COMBAT" },
@@ -614,9 +616,13 @@ public class TabbedPauseMenu : MonoBehaviour
                     new ToggleDef { label = "SLOWMO ON KILL",     get = () => _input != null && _input.fxSlowmoOnKill,      set = v => { if (_input != null) _input.fxSlowmoOnKill = v; } },
 
                     new HeaderDef { label = "SURVIVAL & CINEMATIC" },
-                    new ToggleDef { label = "HELMET OVERLAY",     get = () => _input != null && _input.fxHelmetOverlay,      set = v => { if (_input != null) _input.fxHelmetOverlay = v; } },
+                    // "HELMET OVERLAY" row removed 2026-08-06 — the shell art is
+                    // vaulted (FeatureVault.HelmetFrameArt), so the toggle had
+                    // nothing left to switch. fxHelmetOverlay itself is kept in
+                    // InputSettings so old PlayerPrefs still load cleanly.
                     new ToggleDef { label = "HELMET CONDENSATION",get = () => _input != null && _input.fxHelmetCondensation, set = v => { if (_input != null) _input.fxHelmetCondensation = v; } },
                     new ToggleDef { label = "HELMET BOB",         get = () => _input != null && _input.fxHelmetBob,          set = v => { if (_input != null) _input.fxHelmetBob = v; } },
+                    new ToggleDef { label = "VIEWMODEL LIGHT",    get = () => _input != null && _input.fxViewmodelLight,     set = v => { if (_input != null) _input.fxViewmodelLight = v; } },
                     new ToggleDef { label = "LOW HEALTH VIGNETTE", get = () => _input != null && _input.fxLowHealthVignette, set = v => { if (_input != null) _input.fxLowHealthVignette = v; } },
                     new ToggleDef { label = "DIALOGUE VIGNETTE",  get = () => _input != null && _input.fxDialogueVignette,  set = v => { if (_input != null) _input.fxDialogueVignette = v; } },
                     new ToggleDef { label = "LETTERBOX BARS",     get = () => _input != null && _input.fxLetterboxBars,     set = v => { if (_input != null) _input.fxLetterboxBars = v; } },
@@ -881,31 +887,9 @@ public class TabbedPauseMenu : MonoBehaviour
                             }
                         },
                     },
-                    // Physics tick rate. Independent of the quality preset
-                    // (different axis — CPU cost vs precision). Slider-as-
-                    // dropdown 0..2 with formatFunc showing the enum name +
-                    // the resulting Hz so the user knows what they're picking.
-                    new SliderDef {
-                        label = "PHYSICS RATE", min = 0f, max = 4f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? (float)(int)_input.physicsRate : (float)(int)InputSettings.PhysicsRate.Ultra,
-                        set  = v  => {
-                            if (_input == null) return;
-                            var rate = (InputSettings.PhysicsRate)Mathf.Clamp(Mathf.RoundToInt(v), 0, 4);
-                            _input.ApplyPhysicsRate(rate);
-                            _input.SaveSettings();
-                        },
-                        formatFunc = vf => {
-                            var p = (InputSettings.PhysicsRate)Mathf.Clamp(Mathf.RoundToInt(vf), 0, 4);
-                            switch (p) {
-                                case InputSettings.PhysicsRate.Low:      return "LOW (40 Hz)";
-                                case InputSettings.PhysicsRate.Balanced: return "BALANCED (50 Hz)";
-                                case InputSettings.PhysicsRate.Ultra:    return "ULTRA (100 Hz)";
-                                case InputSettings.PhysicsRate.Max:      return "MAX (144 Hz)";
-                                case InputSettings.PhysicsRate.Insane:   return "INSANE (240 Hz)";
-                                default: return p.ToString().ToUpper();
-                            }
-                        },
-                    },
+                    // (The PHYSICS RATE slider used to live here. Removed — the
+                    // tick rate is pinned at 100 Hz now; see InputSettings
+                    // .ApplyPhysicsRate for why it can't be a player setting.)
 
                     // ── Streaming / world ─────────────────────────────
                     // These five sliders ARE the spawn-amount knobs the player

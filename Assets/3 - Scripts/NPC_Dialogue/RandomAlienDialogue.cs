@@ -105,7 +105,10 @@ public class RandomAlienDialogue : MonoBehaviour
             if (_promptCached == null || src != _promptCachedSource)
             {
                 _promptCachedSource = src;
-                _promptCached = $"Press {PromptGlyphs.Interact} to talk";
+                // Name in the prompt: this is where the player actually learns
+                // who they're standing in front of, which is what makes the sell
+                // panel's "last paid" memory worth anything.
+                _promptCached = $"Press {PromptGlyphs.Interact} to talk to {AlienNames.For(this)}";
             }
             InteractPromptUI.Show(this, _promptCached);
         }
@@ -127,7 +130,7 @@ public class RandomAlienDialogue : MonoBehaviour
 
     void ShowPrompt()
     {
-        InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
+        InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk to {AlienNames.For(this)}");
     }
 
     // The dialogueText/talkPromptText are shared across NPCs; another NPC nearby
@@ -243,7 +246,7 @@ public class RandomAlienDialogue : MonoBehaviour
     void ShowPostGreetingChoice()
     {
         var rows = new System.Collections.Generic.List<PostGreetingChoicePanel.Row>();
-        NPCSellRows.Append(rows, _sellActions);
+        NPCSellRows.Append(rows, _sellActions, this);
         rows.Add(new PostGreetingChoicePanel.Row("Leave", true));
         PostGreetingChoicePanel.Instance.Show(rows, HandleChoice);
     }
@@ -252,7 +255,7 @@ public class RandomAlienDialogue : MonoBehaviour
     {
         if (NPCSellRows.ActionAt(_sellActions, 0, index, out var action))
         {
-            NPCSellRows.Open(action, this, "Wandering Alien", _sellDustOption, ShowPostGreetingChoice);
+            NPCSellRows.Open(action, this, AlienNames.For(this), _sellDustOption, ShowPostGreetingChoice);
             return;
         }
         StopConversation();

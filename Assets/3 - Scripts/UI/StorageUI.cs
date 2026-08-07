@@ -273,6 +273,16 @@ public class StorageUI : MonoBehaviour
         RefreshCursorVisual();
     }
 
+    static bool SlotHasItem(SlotView v) =>
+        v != null && v.container != null && v.index >= 0 && v.index < v.container.Length
+        && v.container[v.index].id != Hotbar.ItemId.None && v.container[v.index].count > 0;
+
+    void AfterSlotChange()
+    {
+        RefreshAll();
+        RefreshCursorVisual();
+    }
+
     void ToggleBagPanel(Hotbar.Slot[] bag)
     {
         if (_bagPanel == null) return;
@@ -849,6 +859,18 @@ public class StorageUI : MonoBehaviour
         var click = bgRt.gameObject.AddComponent<StorageSlotClick>();
         click.owner = this;
         click.view = v;
+
+        // Hold-and-drag (2026-08-06). Additive: both click paths above are
+        // unchanged. Every slot is BOTH a drag source and a drop target —
+        // wiring only the source is what made dragging a cap back onto its own
+        // stack snap back instead of merging. Everything routes through SlotOps
+        // so the 20-stack cap and the species-purity swap come for free rather
+        // than being reimplemented here.
+        var drag = bgRt.gameObject.AddComponent<SlotDragProxy>();
+        drag.canBeginDrag = () => !_cursor.IsHeld && SlotHasItem(v);
+        drag.beginDrag = () => { SlotOps.HandleLeftClick(v.container, v.index, ref _cursor); AfterSlotChange(); };
+        drag.drop = () => { if (_cursor.IsHeld) { SlotOps.HandleLeftClick(v.container, v.index, ref _cursor); AfterSlotChange(); } };
+        drag.returnToSource = () => { SlotOps.ReturnHeldToSource(ref _cursor); AfterSlotChange(); };
         // Selectable (no visual transition — the navigator's focus ring is
         // the highlight) so pad navigation can walk the slot grids and the
         // Submit press reaches StorageSlotClick.OnSubmit.

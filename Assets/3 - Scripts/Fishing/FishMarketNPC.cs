@@ -245,7 +245,7 @@ public class FishMarketNPC : MonoBehaviour
         {
             new PostGreetingChoicePanel.Row("Sell fish", true),
         };
-        NPCSellRows.Append(rows, _sellActions);
+        NPCSellRows.Append(rows, _sellActions, this);
         rows.Add(new PostGreetingChoicePanel.Row("Leave", true));
         PostGreetingChoicePanel.Instance.Show(rows, HandleChoice);
     }

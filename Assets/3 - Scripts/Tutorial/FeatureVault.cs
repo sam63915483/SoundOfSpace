@@ -39,4 +39,26 @@ public static class FeatureVault
     /// compiled and still wired — flip this to true and the "Sell space dust"
     /// row comes back on every NPC exactly as it was.
     public const bool SpaceDustSelling = false;
+
+    /// The astronaut HELMET FRAME ART — the painted shell, its visor glass, and
+    /// the settings toggle that used to switch them on. Vaulted 2026-08-06:
+    /// "i dont really care for the astronaut helmet image overlay, i play with
+    /// it turned off but i still like the ui".
+    ///
+    /// This gates the PICTURE ONLY. Everything Sam likes is untouched and still
+    /// runs: the three clusters still render, still seat onto their perspective
+    /// quads (that seating never depended on this flag — only the frame canvas
+    /// did), still sway, and still do the HudIdleSweep dim-and-wipe.
+    ///
+    /// Two things deliberately do NOT follow it:
+    ///   • Low-O2 condensation, which used to be gated by the helmet toggle as
+    ///     well. It's functional feedback with its own setting, so it was
+    ///     decoupled rather than vaulted with the art.
+    ///   • HelmetHudConfig + its texture must stay assigned in the scene. The
+    ///     cluster seating reads the painted quad corners from it, so clearing
+    ///     the texture would strand all three clusters, not just hide the shell.
+    ///
+    /// Flip to true and the helmet comes back exactly as it was, except the
+    /// quads have since been widened (clusters sit further out than the painting).
+    public const bool HelmetFrameArt = false;
 }
