@@ -7,6 +7,13 @@ answers to its five open questions and one addition (mushroom saplings).
 onboarding was attached to the wrong Tev on the first pass (fixed — see below)
 and is still unplayed end to end; planting/growth unplayed.
 
+**2026-08-07 — Messages app / repeat buyers built on top of this loop:**
+regulars text you when they refill, deals are negotiated in-thread and
+scheduled with 5/10/15-min windows, a saved bond stat scales what buyers pay,
+and each completed deal reveals one hidden want. Spec:
+`docs/superpowers/specs/2026-08-07-messages-app-design.md`; system summary:
+`docs/CURRENT_STATE_AUDIT.md` §33.
+
 ---
 
 ## What a "mushroom" is now

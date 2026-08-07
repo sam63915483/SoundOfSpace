@@ -827,6 +827,50 @@ warning and skip.
 
 ---
 
+## §33 Messages App & Repeat Buyers — NEW 2026-08-07
+
+The phone's AI tile is now **MESSAGES** (`UI/Messages/MessagesScreen.cs`):
+an index of contacts (HAL pinned as the guide thread — slated to become
+Frump; buyer threads below, with unread dots, bond pips, previews), a thread
+view with reply chips, and a contact card of earned hidden-want reveals. The
+old `AIChatScreen` is unchanged and mounts from the pinned row.
+
+Systems (spec: `docs/superpowers/specs/2026-08-07-messages-app-design.md`):
+
+- **`BuyerLedger`** (Vendor/, static, **SAVED** via `BuyerLedgerSave` —
+  parallel lists + flattened event log; times saved relative and re-anchored;
+  reset in `NewGameReset`): bond 0–100, deals completed (drives the 5-step
+  hidden-want reveal schedule), regular flag, open conversation/appointment
+  state machine, bounded event log threads render from (`BuyerTexts`
+  templates, 3 stable voice variants per buyer — no strings in saves).
+- **`BuyerMessageDirector`** (auto-singleton, seeded in
+  `EnsureGameplaySingletons`): regulars text when their appetite refills
+  (max 3 open want-texts, staggered up to 3 min after load), deadline sweep
+  turns lapsed appointments into misses. Cheats (`Universe.cheatsEnabled`):
+  **F6** all regulars hungry, **F7** fast-forward deadlines.
+- **`BuyerDeals`** (pure math): tier-based asks (favourite ~70%), opening
+  offer = 90% of true price, counter → accept / counter-back / refuse
+  (patience-anchored), windows 5/10/15 min with +15/+10/+5% gratitude,
+  substitution chance for fuzzy fulfilment (−50%/tier down, +30%·extra qty,
+  −40%·shortfall, floor 5%).
+- **Conversion:** deal in their favourite tier → guaranteed regular, else
+  1/3. Bond: +8/deal, +4 kept appointment, +4 favourite tier (halved when
+  substituted); miss halves bond; refused counter −10; refused sub −5. Bond
+  feeds `NPCMushroomPrice.PriceFor` (up to +15%).
+- **Sell panel** (`MushroomSellUI`): bond pips in header, memo line reads
+  the ledger's reveal schedule (replaced the old `HasSoldTier` gate), and a
+  **scheduled-deal mode** ("Deliver order" row via `NPCSellRows`) with
+  DELIVER running exact-vs-substitution.
+- Trait math hoisted to statics on `NPCMushroomPrice` (`MultiplierOf` etc.,
+  `Def*` constants are the live values) so unstreamed buyers price deals;
+  `SpawnerCubeface.DecodeCell` + `AlienNPCSpawner.TryGetCellWorldPos` give
+  the appointment card its distance line.
+
+Logic layer verified by editor self-test (26/26) + live play-mode director
+test 2026-08-07; UI eyeball pass pending.
+
+---
+
 # Appendix
 
 ## §A Verification Notes
