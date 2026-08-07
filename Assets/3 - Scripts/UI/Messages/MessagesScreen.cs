@@ -851,10 +851,11 @@ public class MessagesScreen : MonoBehaviour
         return slider;
     }
 
-    /// Risk wording vs their OFFER + their ASK (public info only). Price
-    /// bands from the approved mockup; quantity notes per Sam's short/over
-    /// rules.
-    static void RiskFor(int ask, int offer, int qty, int wantQty, out string text, out Color col)
+    /// Risk wording vs their OFFER (public info only) — price bands from the
+    /// approved mockup. Deliberately NO quantity commentary: Sam cut it —
+    /// players learn that shitty deals get declined by having shitty deals
+    /// declined, not from a caption.
+    static void RiskFor(int ask, int offer, out string text, out Color col)
     {
         float over = offer > 0 ? (float)ask / offer : 1f;
         if (ask <= offer) { text = "their number — just send it"; col = OkGreen; }
@@ -862,12 +863,6 @@ public class MessagesScreen : MonoBehaviour
         else if (over <= 1.22f) { text = "firm push — they may counter"; col = WarnAmber; }
         else if (over <= 1.38f) { text = "pushing it — likely a counter, maybe worse"; col = new Color32(0xFF, 0x9A, 0x3C, 0xFF); }
         else { text = "greedy — you might blow the deal"; col = BadRed; }
-
-        // Quantity mismatch shrinks the price they'll tolerate (QtyMood).
-        // Spell out the CONSEQUENCE — "no premium" and "they'll cool" both
-        // needed explaining in Sam's playtest, which means they were wrong.
-        if (qty < wantQty) { text += " · fewer caps than asked — they won't pay as much"; if (col == OkGreen) col = WarnAmber; }
-        else if (qty > wantQty) { text += " · extra caps — they'll take them, but won't pay as much"; if (col == OkGreen) col = WarnAmber; }
     }
 
     /// Change-detected per-frame update while the slider tray is open — the
@@ -882,7 +877,7 @@ public class MessagesScreen : MonoBehaviour
         _lastQtyVal = q;
         _sliderPrice.text = $"{q} <size=10><color=#8B95A3>caps @</color></size> {p} <size=10><color=#8B95A3>each</color></size>";
         _sliderTotal.text = $"= <color=#FFD732>{p * q}</color> credits  <color=#8B95A3>(they asked for {_askQtyAtBuild})</color>";
-        RiskFor(p, _priceMin, q, _askQtyAtBuild, out string risk, out Color col);
+        RiskFor(p, _priceMin, out string risk, out Color col);
         _sliderRisk.text = risk;
         _sliderRisk.color = col;
         if (_priceHandleLabel != null) _priceHandleLabel.text = p.ToString();

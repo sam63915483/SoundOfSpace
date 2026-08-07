@@ -1,4 +1,4 @@
-using TMPro;
+﻿using TMPro;
 using UnityEngine;
 using UnityEngine.Experimental.Rendering; // GraphicsFormat for ImageConversion.EncodeArrayToJPG
 using UnityEngine.Rendering;
@@ -13,7 +13,7 @@ using UnityEngine.UI;
 ///
 /// Auto-singleton pattern (mirror VitalsHUD). MUST also be seeded in
 /// MainMenuController.EnsureGameplaySingletons because builds start in
-/// MainMenu where the RuntimeInitializeOnLoadMethod early-outs — see top
+/// MainMenu where the RuntimeInitializeOnLoadMethod early-outs â€” see top
 /// of CLAUDE.md for the full trap explanation.
 /// </summary>
 public class PlayerPhoneUI : MonoBehaviour
@@ -26,7 +26,7 @@ public class PlayerPhoneUI : MonoBehaviour
     // blocked until the phone is fully gone.
     public static bool IsOpen { get; private set; }
 
-    // §3 first-contact forcing function: false until the player has opened the
+    // Â§3 first-contact forcing function: false until the player has opened the
     // phone at least once. While false, the first incoming message shows a
     // PERSISTENT "Press X to open your phone." prompt that does not fade until
     // the phone is opened. Persisted via SaveCollector; reset by NewGameReset.
@@ -44,13 +44,13 @@ public class PlayerPhoneUI : MonoBehaviour
     // phone" doesn't simultaneously open the pause menu.
     public static bool ConsumedEscapeThisFrame { get; private set; }
 
-    // Camera mode — distinct from regular phone-open. While in camera mode
-    // the phone is rotated 90° clockwise, cursor is relocked for free look,
+    // Camera mode â€” distinct from regular phone-open. While in camera mode
+    // the phone is rotated 90Â° clockwise, cursor is relocked for free look,
     // movement is allowed, and the screen shows a live world feed from a
     // Camera parented to the player's main camera.
     public static bool IsCameraMode { get; private set; }
 
-    // PlayerController look gate keys on this — look is blocked when the
+    // PlayerController look gate keys on this â€” look is blocked when the
     // phone is open AND we're on the home screen, but free when in camera
     // mode (the whole point of camera mode is aiming the lens).
     public static bool LookBlocked => IsOpen && !IsCameraMode;
@@ -58,28 +58,33 @@ public class PlayerPhoneUI : MonoBehaviour
     /// <summary>The phone chassis RectTransform (animates on/off screen). Used to anchor preset-reply UI.</summary>
     public RectTransform PhoneChassisRect => _phoneRT;
 
-    // ── Layout constants ────────────────────────────────────────────
+    // â”€â”€ Layout constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // 4:3 landscape tablet (FNAF security-cam style): flips up from the
     // player's chest on a mechanical arm instead of sliding in. Height keeps
     // the original 440 so every internal layout constant still fits; width
     // is 4/3 of it.
     const float PhoneWidth     = 586f;
     const float PhoneHeight    = 440f;
-    // Overall on-screen scale of the phone — easier to apply at the root
+    // Overall on-screen scale of the phone â€” easier to apply at the root
     // than to bump every internal pixel-size constant. History: 1.5 portrait
-    // handset → 1.05 4:3 tablet → 1.89 when the Messages app landed (too
-    // small to read) → Sam walked it back 1.25× to 1.51 (2026-08-07).
+    // handset â†’ 1.05 4:3 tablet â†’ 1.89 when the Messages app landed (too
+    // small to read) â†’ Sam walked it back 1.25Ã— to 1.51 (2026-08-07).
     const float PhoneScale     = 1.51f;
+    // Canvas sort order: phone + arm draw over EVERY gameplay/HUD canvas
+    // (hotbar 830, HAL 870, flight assist 1100, monument popup 2100 —
+    // Sam's call 2026-08-07). Still under LoadingScreen (30000), the
+    // controller cursor (32000) and the intro overlay (32760).
+    const int   PhoneSortOrder = 5000;
     const float SlideDuration  = 0.25f;   // legacy pacing constant (gallery waits key off animation end)
     // FNAF2-style flip: the monitor hinges around its OWN bottom edge,
     // rotating up from past-edge-on (you glimpse its back for a frame) to
     // face-on with a springy overshoot, while the hinge line rises from
-    // below the screen. Fully opaque throughout — the flip is the reveal.
+    // below the screen. Fully opaque throughout â€” the flip is the reveal.
     const float FlipOpenDuration  = 0.30f;
     const float FlipCloseDuration = 0.20f;
     const float FlipClosedAngle   = 100f;  // X-rotation when stowed (past edge-on, lying against the chest)
 
-    // ── Palette (mirrors VitalsHUD / AutoAlignToggleUI) ─────────────
+    // â”€â”€ Palette (mirrors VitalsHUD / AutoAlignToggleUI) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     static readonly Color ChassisBg     = new Color32(0x0A, 0x18, 0x28, 0xFF);
     static readonly Color ChassisBorder = new Color32(0x78, 0xC8, 0xFF, 0x73);
     static readonly Color ScreenBg      = new Color32(0x06, 0x0F, 0x1A, 0xFF);
@@ -90,7 +95,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
     public enum AppKind { Fishingdex, Build, Settings, Map, Photos }
 
-    // ── Runtime UI refs ─────────────────────────────────────────────
+    // â”€â”€ Runtime UI refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     Canvas        _canvas;
     CanvasGroup   _phoneGroup;
     RectTransform _phoneRT;
@@ -109,15 +114,15 @@ public class PlayerPhoneUI : MonoBehaviour
     float         _nextArmTexFind;
     const float ArmLocalHeight  = 400f;   // local units; ~330 hangs below the chassis
     const float ArmLocalOverlap = 70f;    // clamp bracket grips over the bottom bezel
-                                          // (30 → 70 on 2026-08-07: a visible gap had
-                                          // opened between arm and chassis — Sam wants
+                                          // (30 â†’ 70 on 2026-08-07: a visible gap had
+                                          // opened between arm and chassis â€” Sam wants
                                           // it reading as physically attached)
     const float ArmAspect       = 0.7467f; // phone_arm.png width/height
-    // R key cycles portrait → landscape (90° CW) → portrait. Always reset
+    // R key cycles portrait â†’ landscape (90Â° CW) â†’ portrait. Always reset
     // to portrait on Open so re-opening lands in the default orientation.
     bool          _isLandscape;
 
-    // Hint label "Press C for camera, press R to rotate" — fades in/out 3
+    // Hint label "Press C for camera, press R to rotate" â€” fades in/out 3
     // times over 2s, then waits 10s, repeats forever. Timer runs on
     // absolute Time.unscaledTime so it keeps advancing while the phone is
     // closed (so the popup feels random rather than predictably 10s after
@@ -129,7 +134,7 @@ public class PlayerPhoneUI : MonoBehaviour
     TextMeshProUGUI _hintLabel;
     const float     HintMargin            = 14f;
     const float     HintInterval          = 10f;
-    // 4 s split across HintBreatheCycles × 2 half-cycles = ~0.667 s per
+    // 4 s split across HintBreatheCycles Ã— 2 half-cycles = ~0.667 s per
     // fade-in or fade-out. Earlier 2 s felt too fast to read.
     const float     HintAnimDuration      = 4f;
     const int       HintBreatheCycles     = 3;
@@ -143,13 +148,13 @@ public class PlayerPhoneUI : MonoBehaviour
     Button        _putAwayBtn;
     Button[]      _appButtons = new Button[6];
 
-    // ── Home-screen page navigation ─────────────────────────────────
+    // â”€â”€ Home-screen page navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Swappable pages live inside _pageHostRT. Only one is active at
-    // a time; the nav widget below flips between them. Not saved —
+    // a time; the nav widget below flips between them. Not saved â€”
     // resets to page 0 on every phone open.
     //   0 = Apps (Fishingdex / Build / Settings / Map / Photos / Messages)
     //   1 = Levels
-    // (Vitals + Quests pages removed 2026-08-07 per Sam — the survival HUD
+    // (Vitals + Quests pages removed 2026-08-07 per Sam â€” the survival HUD
     // already shows vitals and the tutorial quest list was stale.)
     const int PageCount = 2;
     RectTransform _pageHostRT;
@@ -168,13 +173,13 @@ public class PlayerPhoneUI : MonoBehaviour
     int             _lastShownLevel = -1;   // -1 forces the first paint
     int            _lastShownMinute = -1;
 
-    // Camera mode runtime objects — created on first EnterCameraMode and
+    // Camera mode runtime objects â€” created on first EnterCameraMode and
     // reused thereafter. The Camera component is parented to the player's
     // main camera with a small leftward offset (where a phone's lens would
     // sit) so it automatically follows player look (yaw + pitch). Its view
     // is rendered into _phoneCameraRT and displayed on _cameraView, which
     // covers the screen interior while we're in camera mode.
-    RenderTexture _phoneCameraRT;           // landscape RT — matches the main camera's render output
+    RenderTexture _phoneCameraRT;           // landscape RT â€” matches the main camera's render output
     Image         _cameraBackdrop;          // opaque black behind _cameraView, so home content doesn't show through if the RT has any alpha holes
     RawImage      _cameraView;
     RawImage      _capturedView;            // sits on top of _cameraView; shows the most recent snap for ~3s before shrinking away
@@ -186,7 +191,7 @@ public class PlayerPhoneUI : MonoBehaviour
     // EnsureCameraRig runs, so Blit from the back buffer is a 1:1 copy
     // regardless of ultrawide / 4K / windowed resolution.
 
-    // iPhone-style shutter button — shown only in camera mode, anchored to
+    // iPhone-style shutter button â€” shown only in camera mode, anchored to
     // the bottom-center of the phone screen. Color: white for Photo mode,
     // red for Video mode. Inner solid disc shrinks to 50% on snap (photo)
     // or while recording (video). _isCapturing / _isRecording gates input
@@ -200,7 +205,7 @@ public class PlayerPhoneUI : MonoBehaviour
     bool          _isCapturing;
 
     // Video-mode recording state. Frames are streamed directly into an
-    // AVI Motion-JPEG container — a real playable video file with no
+    // AVI Motion-JPEG container â€” a real playable video file with no
     // external deps. AsyncGPUReadback avoids stalling the render thread;
     // the encode + AVI append happens on the main thread in the readback
     // callback (Unity's ImageConversion is main-thread-only). Timer
@@ -220,7 +225,7 @@ public class PlayerPhoneUI : MonoBehaviour
     static readonly Color ShutterColorPhoto = Color.white;
     static readonly Color ShutterColorVideo = new Color(0.92f, 0.22f, 0.22f, 1f);
 
-    // "Cannot move while using phone" toast — shown above the phone for 2s
+    // "Cannot move while using phone" toast â€” shown above the phone for 2s
     // (full brightness) then fades over 0.5s when the player triggers an
     // auto-close by pressing a movement key. Sits above the chassis as a
     // child of the phone, so it slides + fades with the phone naturally
@@ -306,7 +311,7 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         ForceCloseNoAnim();
         // ForceCloseNoAnim releases isInDialogue when it interrupts the
-        // gallery/transition — but this handler runs precisely because a
+        // gallery/transition â€” but this handler runs precisely because a
         // conversation is starting, so re-assert the conversation's gate.
         PlayerController.isInDialogue = true;
     }
@@ -329,7 +334,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _inGalleryTransition = false;
         if (PhotoGalleryUI.Instance != null) PhotoGalleryUI.Instance.ForceClose();
         // If we interrupted a transition, the gate may be transition-owned
-        // (gallery already closed) — release it or the player stays frozen.
+        // (gallery already closed) â€” release it or the player stays frozen.
         // NOTE: nothing in the NPC interact chain checks isInDialogue, so a
         // conversation CAN start over the gallery/transition; this release
         // would clobber its gate, which is why OnConversationStarted
@@ -346,9 +351,9 @@ public class PlayerPhoneUI : MonoBehaviour
         _isAnimating = false;
         IsOpen = false;
         _flipAngle = FlipClosedAngle;   // next Open starts from the stowed pose
-        // A force-close can interrupt a mid-flip tween — make sure we're
+        // A force-close can interrupt a mid-flip tween â€” make sure we're
         // back on the overlay canvas with the flip camera off.
-        if (_canvas != null) { _canvas.renderMode = RenderMode.ScreenSpaceOverlay; _canvas.sortingOrder = 800; }
+        if (_canvas != null) { _canvas.renderMode = RenderMode.ScreenSpaceOverlay; _canvas.sortingOrder = PhoneSortOrder; }
         if (_phoneCam != null) _phoneCam.enabled = false;
         if (_phoneRT    != null) _phoneRT.anchoredPosition = new Vector2(_phoneRT.anchoredPosition.x, OffScreenY);
         if (_phoneGroup != null) { _phoneGroup.alpha = 0f; _phoneGroup.blocksRaycasts = false; }
@@ -356,9 +361,9 @@ public class PlayerPhoneUI : MonoBehaviour
         // or they stay disabled with no UI open.
         var es = UnityEngine.EventSystems.EventSystem.current;
         if (es != null) es.sendNavigationEvents = true;
-        // Skip cursor lock when we're in MainMenu — this method is invoked
+        // Skip cursor lock when we're in MainMenu â€” this method is invoked
         // by the sceneLoaded callback on EVERY scene load (including the
-        // gameplay → MainMenu return), and locking the cursor in the menu
+        // gameplay â†’ MainMenu return), and locking the cursor in the menu
         // strands the player with no way to click buttons. The lock is the
         // right default during gameplay (NPC dialogue triggers this path
         // to close the phone and resume mouse-look), so we only suppress
@@ -373,24 +378,24 @@ public class PlayerPhoneUI : MonoBehaviour
     void LateUpdate()
     {
         ConsumedEscapeThisFrame = false;
-        // The phone RT is filled by a CommandBuffer on the main camera —
+        // The phone RT is filled by a CommandBuffer on the main camera â€”
         // LateUpdate runs after the camera renders, so the RT has the
         // current frame by the time we tick the recording loop.
         TickVideoRecording();
     }
 
-    // ── Public API ──────────────────────────────────────────────────
+    // â”€â”€ Public API â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public void Open()
     {
         if (_isAnimating && _animatingToOpen) return; // already opening
-        // §3: opening the phone the first time satisfies the forcing function —
+        // Â§3: opening the phone the first time satisfies the forcing function â€”
         // record it and dismiss the persistent nag prompt for good.
         if (!HasEverOpened) { HasEverOpened = true; HideOpenNag(); }
-        // Always land on page 0 (apps) when the phone opens — never resume
+        // Always land on page 0 (apps) when the phone opens â€” never resume
         // mid-flipped from a prior session.
         GoToPage(0);
-        // Always reset to portrait on open — landscape never carries across
+        // Always reset to portrait on open â€” landscape never carries across
         // close/reopen, per design. Snap instantly so the slide-in plays in
         // the final portrait orientation (no rotation tween off-screen).
         if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
@@ -416,7 +421,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // doesn't race with ExitCameraMode re-enabling _cameraView after
         // we wanted it off.
         if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
-        // Kill any in-flight hint breathe — don't leave it pulsing on a
+        // Kill any in-flight hint breathe â€” don't leave it pulsing on a
         // closed phone. Schedule (_hintNextFireUnscaledTime) is intentionally
         // NOT reset; the absolute timer keeps marching so the next popup
         // doesn't always land exactly 10 s after reopen.
@@ -431,11 +436,11 @@ public class PlayerPhoneUI : MonoBehaviour
         else        Open();
     }
 
-    // ── Camera mode ─────────────────────────────────────────────────
+    // â”€â”€ Camera mode â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     // Public hook for the pause-menu phone-resolution slider. If the user
     // changes the resolution while the camera is open, EnsureCameraRig
-    // detects the size mismatch and rebuilds the RT — but the CommandBuffer
+    // detects the size mismatch and rebuilds the RT â€” but the CommandBuffer
     // was detached as part of that rebuild, so we re-attach it here so the
     // live feed keeps drawing. Recording is stopped first because the open
     // AVI's header was sized for the old RT.
@@ -451,7 +456,7 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         if (IsCameraMode) return;
 
-        // Any in-phone app backs out — the camera feed covers the screen.
+        // Any in-phone app backs out â€” the camera feed covers the screen.
         ClosePhoneApp();
 
         // Lazily build the camera GameObject + RenderTexture on first entry.
@@ -459,7 +464,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         IsCameraMode = true;
 
-        // Phone stays portrait — no rotation. Photos come out vertical, which
+        // Phone stays portrait â€” no rotation. Photos come out vertical, which
         // matches the screen aspect and makes the rendering pipeline simpler.
 
         // Swap home content for the live camera feed.
@@ -473,7 +478,7 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_shutterRoot != null) _shutterRoot.gameObject.SetActive(true);
         if (_shutterInnerRT != null) _shutterInnerRT.localScale = Vector3.one;
 
-        // Clear EventSystem focus — clicking the CAMERA button leaves that
+        // Clear EventSystem focus â€” clicking the CAMERA button leaves that
         // button as the currentSelectedGameObject, which makes
         // TutorialGate.UISelectionActive() return true, which sets uiHasFocus
         // on PlayerController and blocks mouse-look. Symptom was "cursor locks
@@ -485,11 +490,11 @@ public class PlayerPhoneUI : MonoBehaviour
         // Also stop the phone canvas from blocking raycasts. With the cursor
         // locked at screen-center, Unity's EventSystem could otherwise hover
         // a phone Selectable that sits under the center point (CAMERA button,
-        // Close button, etc.) and re-select it next frame — kicking us back
+        // Close button, etc.) and re-select it next frame â€” kicking us back
         // into the look-blocked state. Camera-mode left-click is still read
         // (it's a direct Input.GetMouseButtonDown call, not a UI raycast).
         // interactable=false additionally makes every phone Selectable
-        // ineligible for selection — ControllerUINavigator's pad auto-select
+        // ineligible for selection â€” ControllerUINavigator's pad auto-select
         // was grabbing a hidden home-screen button every frame, which
         // PlayerController reads as "UI focused" and zeroes look + movement.
         if (_phoneGroup != null)
@@ -523,14 +528,14 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_capturedView != null) _capturedView.enabled = false;
         if (_shutterRoot != null) _shutterRoot.gameObject.SetActive(false);
         if (_shutterInnerRT != null) _shutterInnerRT.localScale = Vector3.one;
-        _isCapturing = false; // exit mid-capture → free lockout
+        _isCapturing = false; // exit mid-capture â†’ free lockout
 
         // Stop any in-flight capture-display coroutine and free the staged
         // Texture2D so we don't leak.
         if (_capturedCoroutine != null) { StopCoroutine(_capturedCoroutine); _capturedCoroutine = null; }
         if (_capturedTex != null) { Destroy(_capturedTex); _capturedTex = null; }
 
-        // Coming back to the home screen — re-enable raycasts so the player
+        // Coming back to the home screen â€” re-enable raycasts so the player
         // can click apps + Close button, and unlock cursor like a regular
         // phone-open state. Close() handles re-locking if the phone is
         // actually closing.
@@ -548,13 +553,13 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void EnsureCameraRig()
     {
-        // Match the RT to the actual screen resolution × user-selected
+        // Match the RT to the actual screen resolution Ã— user-selected
         // phone-resolution scale. Full = native screen res (1:1 photos +
         // live feed, but expensive to record); lower tiers downsize the RT
         // to make video recording cheaper (AsyncGPUReadback + JPEG encode
         // + AVI write are all O(pixels)). Down-Blit from the screen back
         // buffer to a smaller RT stretches via bilinear filtering so the
-        // photo / live feed still cover the same FOV — they're just softer.
+        // photo / live feed still cover the same FOV â€” they're just softer.
         float scale = InputSettings.Active != null
             ? InputSettings.Active.GetPhoneResolutionMultiplier()
             : 1f;
@@ -564,7 +569,7 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_phoneCameraRT != null
             && (_phoneCameraRT.width != targetW || _phoneCameraRT.height != targetH))
         {
-            // Screen size changed (resolution change, alt-tab, etc.) — rebuild.
+            // Screen size changed (resolution change, alt-tab, etc.) â€” rebuild.
             DetachCaptureCmd();
             _phoneCameraRT.Release();
             _phoneCameraRT = null;
@@ -585,13 +590,13 @@ public class PlayerPhoneUI : MonoBehaviour
         }
 
         // Set the live-view RawImage to crop a vertical slice from the
-        // (now-screen-aspect) RT — phone screen is portrait but the RT is
+        // (now-screen-aspect) RT â€” phone screen is portrait but the RT is
         // landscape, so we show the middle column. Photos read this same slice.
         RefreshCameraSliceUV();
     }
 
     // The fraction of the landscape RT's WIDTH (in UV space) that the phone
-    // screen displays. e.g. phone aspect ~0.45 / RT aspect ~1.78 = ~0.25 →
+    // screen displays. e.g. phone aspect ~0.45 / RT aspect ~1.78 = ~0.25 â†’
     // we show the middle 25% of the RT's width.
     float _sliceWidthUV = 0.25f;
     float _sliceLeftUV  = 0.375f;
@@ -601,10 +606,10 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_cameraView == null || _phoneCameraRT == null) return;
         if (_isLandscape)
         {
-            // Phone is rotated 90° CW and the camera view is counter-rotated
+            // Phone is rotated 90Â° CW and the camera view is counter-rotated
             // back to upright; we want the whole landscape RT visible inside
             // it. RT aspect ~16:9 vs the visible camera-view aspect (~1.75)
-            // is close enough — no perceptible squish.
+            // is close enough â€” no perceptible squish.
             _sliceLeftUV  = 0f;
             _sliceWidthUV = 1f;
         }
@@ -632,7 +637,7 @@ public class PlayerPhoneUI : MonoBehaviour
     // are hidden for the duration of the tween (so the screen reads as a
     // clean rotating chassis with the black backdrop showing), and snap
     // back to the new orientation at the end. In HOME MODE both
-    // RawImages are already disabled, so this hide is a no-op — the home
+    // RawImages are already disabled, so this hide is a no-op â€” the home
     // content (apps, status bar) just rotates with the chassis.
     const float RotationDuration = 0.28f;
     Coroutine _rotateCoroutine;
@@ -668,7 +673,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // Disable the screen mask for the duration of the tween. RectMask2D
         // soft-culls children against the mask rect, and as the mask's
         // parent rotates, the cull intersects against bounds that no
-        // longer match the rotated rect — which makes home-screen apps
+        // longer match the rotated rect â€” which makes home-screen apps
         // (children of _screenRT) blank out mid-tween. Disable up-front
         // in both directions; the end-of-tween SnapCameraContentToOrientation
         // sets the final state based on _isLandscape.
@@ -676,7 +681,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         // Stash and hide the live-feed + captured-photo RawImages for the
         // tween. Only fires in camera mode (both are disabled in home
-        // mode → liveWas/snapWas stay false → no-op).
+        // mode â†’ liveWas/snapWas stay false â†’ no-op).
         bool liveWas = _cameraView    != null && _cameraView.enabled;
         bool snapWas = _capturedView  != null && _capturedView.enabled;
         if (liveWas) _cameraView.enabled    = false;
@@ -697,7 +702,7 @@ public class PlayerPhoneUI : MonoBehaviour
         SnapCameraContentToOrientation();
         UpdateHintLabelPosition(toDeg);
 
-        // Restore visibility — content reappears in its new orientation,
+        // Restore visibility â€” content reappears in its new orientation,
         // already upright in canvas space.
         if (liveWas && _cameraView   != null) _cameraView.enabled   = true;
         if (snapWas && _capturedView != null) _capturedView.enabled = true;
@@ -706,7 +711,7 @@ public class PlayerPhoneUI : MonoBehaviour
     }
 
     // Snap mask + every camera-content RT to the orientation indicated by
-    // _isLandscape. Idempotent — safe to call repeatedly.
+    // _isLandscape. Idempotent â€” safe to call repeatedly.
     void SnapCameraContentToOrientation()
     {
         if (_screenMask != null) _screenMask.enabled = !_isLandscape;
@@ -716,11 +721,11 @@ public class PlayerPhoneUI : MonoBehaviour
         RefreshCameraSliceUV();
     }
 
-    // ── First-open nag ("Press X to open your phone.") ───────────────
-    // §3: a PERSISTENT prompt shown when the first message arrives and the
+    // â”€â”€ First-open nag ("Press X to open your phone.") â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Â§3: a PERSISTENT prompt shown when the first message arrives and the
     // player has never opened the phone. Parented to the canvas root (not the
     // sliding phone chassis) so it stays put while the phone is closed, and it
-    // does NOT fade — it persists until Open() dismisses it.
+    // does NOT fade â€” it persists until Open() dismisses it.
     RectTransform   _openNagRT;
     CanvasGroup     _openNagGroup;
     TextMeshProUGUI _openNagLabel;
@@ -754,7 +759,7 @@ public class PlayerPhoneUI : MonoBehaviour
     }
 
     /// <summary>
-    /// §3: show the persistent "Press X to open your phone." prompt for the very
+    /// Â§3: show the persistent "Press X to open your phone." prompt for the very
     /// first incoming message. No-op once the player has ever opened the phone.
     /// Called by StoryDirector when the first message arrives.
     /// </summary>
@@ -762,7 +767,7 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         if (HasEverOpened) return;
         if (SuppressFirstNag) return;   // muted during/just after the wake-up intro
-        // Refresh the binding text at show time — controller players are told
+        // Refresh the binding text at show time â€” controller players are told
         // D-pad up, not the keyboard X (PromptGlyphs picks live per device).
         if (_openNagLabel != null)
             _openNagLabel.text = $"Press {PromptGlyphs.PhoneOpen} to open your phone.";
@@ -774,14 +779,14 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_openNagGroup != null) _openNagGroup.alpha = 0f;
     }
 
-    // ── Hint label ("Press C for camera, press R to rotate") ─────────
+    // â”€â”€ Hint label ("Press C for camera, press R to rotate") â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     void BuildHintLabel()
     {
         _hintRT = NewUI("PhoneHint", transform);
         _hintRT.anchorMin = new Vector2(0.5f, 0.5f);
         _hintRT.anchorMax = new Vector2(0.5f, 0.5f);
-        _hintRT.pivot     = new Vector2(0.5f, 1f); // pivot top-center → grows downward
+        _hintRT.pivot     = new Vector2(0.5f, 1f); // pivot top-center â†’ grows downward
         _hintRT.sizeDelta = new Vector2(720f, 36f);
         _hintRT.anchoredPosition = Vector2.zero;
 
@@ -800,7 +805,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _hintLabel.fontStyle = FontStyles.Bold;
         _hintLabel.raycastTarget = false;
 
-        // Initial position for portrait (0° rotation).
+        // Initial position for portrait (0Â° rotation).
         UpdateHintLabelPosition(0f);
 
         // Start the background timer ticking from "now + 10s". From here on
@@ -810,8 +815,8 @@ public class PlayerPhoneUI : MonoBehaviour
     }
 
     // Position the hint label just under the visible bottom edge of the
-    // (possibly mid-rotation) phone. For a W×H rect rotated by θ around
-    // its centre, the lowest point's Y is -(|W/2 · sinθ| + |H/2 · cosθ|).
+    // (possibly mid-rotation) phone. For a WÃ—H rect rotated by Î¸ around
+    // its centre, the lowest point's Y is -(|W/2 Â· sinÎ¸| + |H/2 Â· cosÎ¸|).
     // Scaled by PhoneScale, then padded by HintMargin. The hint is parented
     // to this canvas (not _phoneRT) so it doesn't rotate with the chassis,
     // so we add the phone's resting OnScreenLift here to keep the hint
@@ -829,7 +834,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
     // The hint is suppressed when the phone is closed OR when any of the
     // overlay UIs that the phone launches (Fishingdex, Build menu, the
-    // tabbed pause menu opened from the Settings app) is currently up —
+    // tabbed pause menu opened from the Settings app) is currently up â€”
     // the player is busy with something the hint shouldn't be advising on.
     // The 10 s schedule keeps ticking regardless; the popup simply skips
     // any window where this returns true.
@@ -880,7 +885,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         _hintGroup.alpha = 0f;
         _hintShowing = false;
-        // Schedule the next fire 10 s after THIS one's tail — total cycle
+        // Schedule the next fire 10 s after THIS one's tail â€” total cycle
         // is HintInterval + HintAnimDuration when the phone stays open.
         _hintNextFireUnscaledTime = Time.unscaledTime + HintInterval;
         _hintRoutine = null;
@@ -889,8 +894,8 @@ public class PlayerPhoneUI : MonoBehaviour
     // Configures a single camera-content RectTransform for the current
     // orientation. In portrait it returns to its default full-fill of
     // _screenRT. In landscape it becomes a center-anchored rect sized to
-    // the swapped screen dimensions, with a +90° local rotation that
-    // exactly counter-rotates the phone — net rotation in canvas space
+    // the swapped screen dimensions, with a +90Â° local rotation that
+    // exactly counter-rotates the phone â€” net rotation in canvas space
     // is zero, so the texture displays upright.
     void ApplyContentOrientation(RectTransform rt)
     {
@@ -923,7 +928,7 @@ public class PlayerPhoneUI : MonoBehaviour
     // effects + lens flares + halo, but BEFORE the screen-space-overlay HUD
     // canvases (those don't go through a camera at all). One Blit copies the
     // camera target into our phone RT, which gives a pixel-perfect copy of
-    // what the player sees — no double-render cost.
+    // what the player sees â€” no double-render cost.
     CommandBuffer _captureBuffer;
     Camera        _captureAttachedTo;
     Material      _opaqueBlitMat;
@@ -931,12 +936,12 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void AttachCaptureCmd()
     {
-        DetachCaptureCmd(); // belt and suspenders — never double-attach
+        DetachCaptureCmd(); // belt and suspenders â€” never double-attach
         var main = ResolveMainCamera();
         if (main == null || _phoneCameraRT == null) return;
 
         // Blit through Hidden/PhoneOpaqueBlit so the RT comes out with
-        // alpha=1 forced — fixes the dim live feed in alpha-low areas
+        // alpha=1 forced â€” fixes the dim live feed in alpha-low areas
         // (skybox, additive lasers/lights). The shader lives in
         // Assets/3 - Scripts/UI/Resources/, which guarantees Unity bundles
         // it in builds. Shader.Find is reliable for shaders in Resources.
@@ -951,22 +956,22 @@ public class PlayerPhoneUI : MonoBehaviour
         {
             // Two-stage blit. CommandBuffer.Blit(BuiltinRenderTextureType.
             // CameraTarget, dst, material) binds _MainTex from the camera
-            // target inconsistently between Editor and standalone builds —
+            // target inconsistently between Editor and standalone builds â€”
             // in builds the source often isn't bound and the shader samples
             // the default white fallback, giving us a pure-white live feed.
             // Workaround: blit the camera target into a regular temporary
-            // RT first (plain Blit, no material → bulletproof binding),
+            // RT first (plain Blit, no material â†’ bulletproof binding),
             // then blit THAT temp RT through the opaque material into our
             // phone RT. The material's source is now a real RenderTexture,
             // and _MainTex binds correctly on every platform.
             // Stage 1 temp RT MUST match the screen size, not the phone RT.
             // CommandBuffer.Blit from BuiltinRenderTextureType.CameraTarget
-            // into a smaller destination does NOT stretch — it copies pixel-
+            // into a smaller destination does NOT stretch â€” it copies pixel-
             // for-pixel from the source's top-left corner, so a half-size dest
             // ends up showing only the top-left quadrant of the screen
             // (zoomed in + shifted toward (0,0)). By keeping stage 1 at full
-            // screen size we sidestep that entirely — the screen→temp copy is
-            // 1:1, and the temp→phoneRT material Blit downsamples cleanly via
+            // screen size we sidestep that entirely â€” the screenâ†’temp copy is
+            // 1:1, and the tempâ†’phoneRT material Blit downsamples cleanly via
             // the standard fullscreen-quad/UV pipeline.
             int tmpId = Shader.PropertyToID("_PhoneCaptureTmp");
             int srcW  = Mathf.Max(1, Screen.width);
@@ -979,7 +984,7 @@ public class PlayerPhoneUI : MonoBehaviour
         }
         else
         {
-            // Shader missing entirely — fall back to plain Blit. Live feed
+            // Shader missing entirely â€” fall back to plain Blit. Live feed
             // will be dim in alpha-low areas but won't crash or render white.
             _captureBuffer.Blit(BuiltinRenderTextureType.CameraTarget, _phoneCameraRT);
         }
@@ -1001,7 +1006,7 @@ public class PlayerPhoneUI : MonoBehaviour
     Camera ResolveMainCamera()
     {
         if (_mainCamRef != null && _mainCamRef.gameObject != null) return _mainCamRef;
-        // Prefer the PlayerController's own camera reference — it's the
+        // Prefer the PlayerController's own camera reference â€” it's the
         // actual gameplay camera that handles look input. Camera.main can
         // be ambiguous if there are multiple "MainCamera"-tagged objects
         // in the scene (cinematic, ship, etc.) and might return one with
@@ -1016,12 +1021,12 @@ public class PlayerPhoneUI : MonoBehaviour
     // screen for ~3s before shrinking away to reveal the live feed.
     void SnapPhoto()
     {
-        // Lockout — one photo at a time. Player has to wait for the
+        // Lockout â€” one photo at a time. Player has to wait for the
         // preview/shrink/grow-back cycle to complete before snapping again.
         if (_isCapturing) return;
         if (_phoneCameraRT == null || _capturedView == null) return;
 
-        // Read just the vertical slice the phone is displaying — same crop
+        // Read just the vertical slice the phone is displaying â€” same crop
         // as the live feed. That's the "phone took a vertical photo" result.
         int cropX = Mathf.Clamp(Mathf.RoundToInt(_sliceLeftUV  * _phoneCameraRT.width), 0, _phoneCameraRT.width);
         int cropW = Mathf.Clamp(Mathf.RoundToInt(_sliceWidthUV * _phoneCameraRT.width), 1, _phoneCameraRT.width - cropX);
@@ -1046,11 +1051,11 @@ public class PlayerPhoneUI : MonoBehaviour
 
         // Persist via the photo roll (JPG + thumbnail + manifest entry).
         // SavePhoto encodes synchronously and does NOT take ownership of
-        // tex — the preview lifecycle below still destroys it.
+        // tex â€” the preview lifecycle below still destroys it.
         if (PhotoLibrary.Instance != null) PhotoLibrary.Instance.SavePhoto(tex);
-        else Debug.LogWarning("[PlayerPhoneUI] PhotoLibrary.Instance is null — photo not persisted");
+        else Debug.LogWarning("[PlayerPhoneUI] PhotoLibrary.Instance is null â€” photo not persisted");
 
-        // Show the captured frame on the phone — replaces any prior staged texture.
+        // Show the captured frame on the phone â€” replaces any prior staged texture.
         if (_capturedCoroutine != null) StopCoroutine(_capturedCoroutine);
         if (_capturedTex != null) Destroy(_capturedTex);
         _capturedTex = tex;
@@ -1059,8 +1064,8 @@ public class PlayerPhoneUI : MonoBehaviour
         _capturedView.color = Color.white;
         _capturedRT.localScale = Vector3.one;
 
-        // Begin the full snap lifecycle: shutter shrink → preview hold → fade
-        // → shutter grow back → clear lockout. Single coroutine so ordering
+        // Begin the full snap lifecycle: shutter shrink â†’ preview hold â†’ fade
+        // â†’ shutter grow back â†’ clear lockout. Single coroutine so ordering
         // is explicit and ExitCameraMode/Close can stop the whole flow
         // cleanly via StopCoroutine.
         _isCapturing = true;
@@ -1075,18 +1080,18 @@ public class PlayerPhoneUI : MonoBehaviour
         const float ShrinkTo           = 0.5f;
 
         // The shutter's full shrink-and-grow cycle is fit ENTIRELY inside
-        // the 2 s preview window — by the time the preview begins to fade
+        // the 2 s preview window â€” by the time the preview begins to fade
         // away, the shutter is already back at full size. Phases:
-        //   [0.0, 0.2)   shutter shrinks 1.0 → 0.5
+        //   [0.0, 0.2)   shutter shrinks 1.0 â†’ 0.5
         //   [0.2, 1.8)   shutter holds at 0.5
-        //   [1.8, 2.0)   shutter grows back 0.5 → 1.0
+        //   [1.8, 2.0)   shutter grows back 0.5 â†’ 1.0
         //   [2.0, 2.45)  preview fades away (shutter at 1.0)
 
-        // Phase 1 — shutter shrinks over 0.2 s.
+        // Phase 1 â€” shutter shrinks over 0.2 s.
         yield return ShutterScale(1f, ShrinkTo, ShutterAnimSeconds);
 
-        // Phase 2 — hold the shrunk shutter for the MIDDLE of the preview:
-        // 2.0s total preview − 0.2s shrink − 0.2s grow = 1.6s.
+        // Phase 2 â€” hold the shrunk shutter for the MIDDLE of the preview:
+        // 2.0s total preview âˆ’ 0.2s shrink âˆ’ 0.2s grow = 1.6s.
         float middleHold = HoldSeconds - 2f * ShutterAnimSeconds;
         if (middleHold > 0f)
         {
@@ -1094,11 +1099,11 @@ public class PlayerPhoneUI : MonoBehaviour
             while (t < middleHold) { t += Time.unscaledDeltaTime; yield return null; }
         }
 
-        // Phase 3 — shutter grows back to full size during the last 0.2 s
+        // Phase 3 â€” shutter grows back to full size during the last 0.2 s
         // of the preview hold. Preview is still showing at full opacity.
         yield return ShutterScale(ShrinkTo, 1f, ShutterAnimSeconds);
 
-        // Phase 4 — preview shrinks + fades away. Shutter stays at 1.0
+        // Phase 4 â€” preview shrinks + fades away. Shutter stays at 1.0
         // throughout. Lockout still on until the preview is fully gone.
         float u = 0f;
         while (u < PreviewFadeSeconds)
@@ -1137,13 +1142,13 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_shutterInnerRT != null) _shutterInnerRT.localScale = new Vector3(to, to, 1f);
     }
 
-    // ── Video recording ─────────────────────────────────────────────
+    // â”€â”€ Video recording â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     //
     // Pipeline: LateUpdate calls AsyncGPUReadback.Request at the chosen
-    // capture rate → readback completes 1-2 frames later on the main
-    // thread → callback encodes the raw bytes to JPEG via ImageConversion
+    // capture rate â†’ readback completes 1-2 frames later on the main
+    // thread â†’ callback encodes the raw bytes to JPEG via ImageConversion
     // and appends to a Motion-JPEG AVI file. No sync GPU stall, no PNG
-    // compression, no per-frame disk thrashing — output is a single .avi
+    // compression, no per-frame disk thrashing â€” output is a single .avi
     // playable in VLC / Windows Media Player / browsers.
 
     void StartVideoRecording()
@@ -1163,7 +1168,7 @@ public class PlayerPhoneUI : MonoBehaviour
             System.IO.Directory.CreateDirectory(rootDir);
             _videoPath = System.IO.Path.Combine(rootDir, $"video_{System.DateTime.Now:yyyy-MM-dd_HH-mm-ss}.avi");
             _aviWriter = new PhoneAviMjpegWriter(_videoPath, _videoCropW, _videoCropH, (int)VideoFrameRate);
-            Debug.Log($"[PlayerPhoneUI] Video recording → {_videoPath}");
+            Debug.Log($"[PlayerPhoneUI] Video recording â†’ {_videoPath}");
         }
         catch (System.Exception e)
         {
@@ -1201,7 +1206,7 @@ public class PlayerPhoneUI : MonoBehaviour
             try { frameCount = writer.FrameCount; writer.Close(); }
             catch (System.Exception e) { Debug.LogWarning($"[PlayerPhoneUI] Failed to finalize AVI: {e.Message}"); }
         }
-        Debug.Log($"[PlayerPhoneUI] Recording stopped — {frameCount} frames saved to {_videoPath ?? "(none)"}");
+        Debug.Log($"[PlayerPhoneUI] Recording stopped â€” {frameCount} frames saved to {_videoPath ?? "(none)"}");
         _videoPath = null;
 
         // Inner disc grows back to full size.
@@ -1216,7 +1221,7 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         if (!_isRecording) return;
 
-        // Timer display — change-detected so we only allocate a string
+        // Timer display â€” change-detected so we only allocate a string
         // when the displayed second actually advances.
         float elapsed = Time.unscaledTime - _recordingStartTime;
         if (_recordingTimer != null)
@@ -1233,7 +1238,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _videoNextFrameTime = Time.unscaledTime + 1f / VideoFrameRate;
 
         // Submit an async readback for the cropped vertical slice. This
-        // returns immediately — no GPU stall. The callback fires on the
+        // returns immediately â€” no GPU stall. The callback fires on the
         // main thread when the GPU has finished filling our copy buffer.
         AsyncGPUReadback.Request(_phoneCameraRT, 0,
             _videoCropX, _videoCropW, 0, _videoCropH, 0, 1,
@@ -1251,7 +1256,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         // Native data is in RT storage order (row 0 = bottom). Flip rows
         // so JPEG encode produces a right-side-up frame matching the live
-        // feed orientation — same convention as SnapPhoto.
+        // feed orientation â€” same convention as SnapPhoto.
         var nativeData = req.GetData<byte>();
         var raw = new byte[nativeData.Length];
         nativeData.CopyTo(raw);
@@ -1273,18 +1278,18 @@ public class PlayerPhoneUI : MonoBehaviour
         }
     }
 
-    // ── Update + animation ──────────────────────────────────────────
+    // â”€â”€ Update + animation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     Coroutine _animCoroutine;
     bool _isAnimating;
     bool _animatingToOpen;
     Camera _phoneCam;
 
-    // Phone is anchor+pivot (0.5, 0.5) — sits slightly above canvas centre
+    // Phone is anchor+pivot (0.5, 0.5) â€” sits slightly above canvas centre
     // so its bottom edge + the "Press C for camera, press R to rotate" hint
     // label below it clear the hotbar on ultrawide aspect ratios. With
     // matchWidthOrHeight=0.5 the canvas in design units is ~932 tall on
-    // 3440×1440 (vs the reference 1080), which left the hint overlapping
+    // 3440Ã—1440 (vs the reference 1080), which left the hint overlapping
     // the hotbar's top edge. +40 lifts everything cleanly above it on
     // ultrawide while still looking centered on 16:9.
     // 0 = the open monitor sits dead-centre of the view, FNAF2 style.
@@ -1322,18 +1327,18 @@ public class PlayerPhoneUI : MonoBehaviour
             }
         }
 
-        // Levels tick live — a tree felled while the phone is up should move
+        // Levels tick live â€” a tree felled while the phone is up should move
         // the bar without needing a page flip. Change-detected internally, so
         // the per-frame cost is a handful of comparisons.
         if (IsOpen && _currentPage == 1) RefreshLevels();
 
         // Movement-warning fade is purely time-based (samples Time.unscaledTime
         // against _warningShownAt). It MUST run before the early-returns below
-        // — otherwise the toast freezes at alpha=1 whenever the phone enters
+        // â€” otherwise the toast freezes at alpha=1 whenever the phone enters
         // camera mode or starts animating, because line 927 (camera mode) and
         // line 930 (_isAnimating) both bail out before reaching the bottom of
-        // Update. Symptom: press X → press W → warning shows + phone closes →
-        // press C to re-open in camera mode within 2s → warning sticks until
+        // Update. Symptom: press X â†’ press W â†’ warning shows + phone closes â†’
+        // press C to re-open in camera mode within 2s â†’ warning sticks until
         // the phone fully closes again.
         UpdateMovementWarning();
 
@@ -1348,9 +1353,9 @@ public class PlayerPhoneUI : MonoBehaviour
         // R-rotate is retired: the chest tablet is natively 4:3 landscape,
         // so there's no portrait orientation to flip to. The _isLandscape
         // machinery stays (gallery/orientation plumbing reads it) but is
-        // never toggled — it's permanently false.
+        // never toggled â€” it's permanently false.
 
-        // Hint timer — fires only when phone is open AND no overlay UI
+        // Hint timer â€” fires only when phone is open AND no overlay UI
         // (Fishingdex / Build menu / Settings tabbed-pause-menu) is up,
         // but the schedule itself is driven by absolute Time.unscaledTime
         // so the wait between fires keeps counting while the phone is
@@ -1366,13 +1371,13 @@ public class PlayerPhoneUI : MonoBehaviour
             _hintRoutine = StartCoroutine(HintBreatheRoutine());
         }
 
-        // ── Camera mode input (handled BEFORE the regular open/close logic
+        // â”€â”€ Camera mode input (handled BEFORE the regular open/close logic
         //    so movement keys don't trigger the home-screen auto-close while
         //    the player is using the camera).
         if (IsCameraMode && !_isAnimating)
         {
             // PlayerController's look gate keys on TutorialGate.UISelectionActive()
-            // — if anything is selected in the EventSystem, look + movement
+            // â€” if anything is selected in the EventSystem, look + movement
             // are zeroed. Unity's StandaloneInputModule can re-select a
             // hovered Selectable across frames, so force-clear every frame
             // while we're using the camera. Also re-assert the cursor lock
@@ -1390,7 +1395,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
             // F or C closes the camera AND the phone in one press. F is for
             // the "I need to talk to this NPC right now" case; C is the
-            // symmetric "C toggles camera mode" → in camera, C closes it all.
+            // symmetric "C toggles camera mode" â†’ in camera, C closes it all.
             if (Input.GetKeyDown(KeyCode.F) || Input.GetKeyDown(KeyCode.C))
             {
                 Close();
@@ -1404,7 +1409,7 @@ public class PlayerPhoneUI : MonoBehaviour
                 ExitCameraMode();
                 return;
             }
-            // Right click (pad: LT) swaps Photo ↔ Video. Locked out while a
+            // Right click (pad: LT) swaps Photo â†” Video. Locked out while a
             // snap is mid-lifecycle or a recording is in progress (don't let
             // the player change mode mid-action).
             if (TutorialGate.SecondaryFirePressed() && !_isCapturing && !_isRecording)
@@ -1413,7 +1418,7 @@ public class PlayerPhoneUI : MonoBehaviour
                 ApplyCameraTypeColors();
             }
 
-            // Left click (pad: RT) — photo mode snaps; video mode toggles recording.
+            // Left click (pad: RT) â€” photo mode snaps; video mode toggles recording.
             if (TutorialGate.FirePressed())
             {
                 if (_cameraType == CameraType.Photo)
@@ -1426,7 +1431,7 @@ public class PlayerPhoneUI : MonoBehaviour
                     else              StartVideoRecording();
                 }
             }
-            // ESC also exits camera mode → home; second ESC then closes the
+            // ESC also exits camera mode â†’ home; second ESC then closes the
             // phone (handled by the regular ESC branch below).
             if (Input.GetKeyDown(KeyCode.Escape))
             {
@@ -1450,7 +1455,7 @@ public class PlayerPhoneUI : MonoBehaviour
             return;
         }
 
-        // ESC closes the phone (without opening the pause menu — see
+        // ESC closes the phone (without opening the pause menu â€” see
         // TabbedPauseMenu.Update for the dual guard). Setting
         // ConsumedEscapeThisFrame protects against Update-order races: if
         // TabbedPauseMenu runs after us, it sees the flag and skips its
@@ -1487,11 +1492,11 @@ public class PlayerPhoneUI : MonoBehaviour
             return;
         }
 
-        // X handling — sub-menu close paths run BEFORE the isInDialogue gate
+        // X handling â€” sub-menu close paths run BEFORE the isInDialogue gate
         // because Fishingdex / Build / Settings set isInDialogue=true when
         // open and would otherwise block this branch entirely. (Map sets
         // isMapOpen instead, which is why X-from-map already worked.)
-        // Pad: D-pad up OPENS the phone (on foot only — while piloted D-pad up
+        // Pad: D-pad up OPENS the phone (on foot only â€” while piloted D-pad up
         // steps the ship headlight, and closing is B's job once open; app
         // buttons are Selectables so stick-nav + A drives everything inside,
         // including the camera app).
@@ -1505,7 +1510,7 @@ public class PlayerPhoneUI : MonoBehaviour
             return;
         }
 
-        // Pad B only acts as "back out of a sub-menu" here — never as the
+        // Pad B only acts as "back out of a sub-menu" here â€” never as the
         // open/close toggle, since B on foot is Drop (X keyboard keeps both roles).
         bool padSubMenuBack = TutorialGate.PadPressed(TutorialGate.PadButton.B)
             && (FishingdexManager.IsOpen || BuildMenuUI.IsOpen || SolarSystemMapController.IsOpen);
@@ -1530,7 +1535,7 @@ public class PlayerPhoneUI : MonoBehaviour
                 return;
             }
 
-            // No sub-menu open — fall through to the normal toggle, but
+            // No sub-menu open â€” fall through to the normal toggle, but
             // gated on dialogue / pause-menu state so we don't fight other UIs.
             if (!PlayerController.isInDialogue
                 && (TabbedPauseMenu.Instance == null || !TabbedPauseMenu.Instance.IsOpen))
@@ -1539,16 +1544,16 @@ public class PlayerPhoneUI : MonoBehaviour
             }
         }
 
-        // Movement input closes the phone — works on foot AND while piloting.
+        // Movement input closes the phone â€” works on foot AND while piloting.
         // Design intent (user): "this teaches the player not to move if they
         // want to use the phone." Same key set in both contexts; LeftCtrl is
         // included because it's the ship's down-thrust button.
         if (IsOpen && !_isAnimating && !AIChatScreen.IsTypingActive)
         {
             // Pad equivalents only count as "movement" while NO phone UI
-            // element is focused — otherwise left-stick menu navigation would
+            // element is focused â€” otherwise left-stick menu navigation would
             // read as walking and close the phone. NOTE: pad A (JumpHeld) is
-            // deliberately NOT in this list — A is the UI submit button, and
+            // deliberately NOT in this list â€” A is the UI submit button, and
             // during screen transitions (e.g. tapping the AI tile) there are
             // frames with no selection while A is still held, which used to
             // slam the phone shut with the movement warning the moment you
@@ -1568,11 +1573,11 @@ public class PlayerPhoneUI : MonoBehaviour
                 Close();
             }
         }
-        // (UpdateMovementWarning moved to the top of Update — see comment there.)
+        // (UpdateMovementWarning moved to the top of Update â€” see comment there.)
     }
 
     // Phone sits horizontally centered (anchor.x = 0.5). No per-frame X
-    // shifting needed — the old hotbar-left layout has been retired in
+    // shifting needed â€” the old hotbar-left layout has been retired in
     // favour of a centered resting position between the compass and hotbar.
     void UpdatePosition()
     {
@@ -1592,7 +1597,7 @@ public class PlayerPhoneUI : MonoBehaviour
             if (_timeText != null) _timeText.text = now.ToString("HH:mm");
         }
 
-        // General level, where the fake battery used to be. Change-detected —
+        // General level, where the fake battery used to be. Change-detected â€”
         // this runs every frame while the phone is up, and reassigning a TMP
         // string allocates + forces a mesh rebuild (CLAUDE.md).
         var prog = PlayerProgress.Instance;
@@ -1619,7 +1624,7 @@ public class PlayerPhoneUI : MonoBehaviour
             _phoneGroup.blocksRaycasts = true;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible   = true;
-            // Navigation events stay ENABLED — controller players drive the
+            // Navigation events stay ENABLED â€” controller players drive the
             // phone with D-pad/stick + A, which needs them. The old
             // sendNavigationEvents=false guard existed because the legacy
             // StandaloneInputModule mapped Space to Submit (walking would
@@ -1634,7 +1639,7 @@ public class PlayerPhoneUI : MonoBehaviour
                 // Pad players need a focused Selectable IMMEDIATELY: the global
                 // ControllerUINavigator only rescans every 0.25 s, and Update's
                 // movement-close check reads an UNFOCUSED left stick as
-                // "walking" — so opening the phone and nudging the stick inside
+                // "walking" â€” so opening the phone and nudging the stick inside
                 // that window closed it right back with the movement warning.
                 // Hand focus to the first app tile ourselves (mirrors
                 // AIChatScreen's explicit input-field focus). Mouse players
@@ -1650,7 +1655,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         // FNAF2-style flip: arm + tablet sweep as ONE rigid assembly around
         // the hinge at the arm's base (the chest, below the view). A single
-        // rotation drives both the rise and the tilt — with the camera-space
+        // rotation drives both the rise and the tilt â€” with the camera-space
         // canvas providing real perspective, it reads as a monitor genuinely
         // flipping up in front of the helmet. Fully opaque throughout.
         // RectMask2D mis-culls children while the chassis holds an
@@ -1685,13 +1690,13 @@ public class PlayerPhoneUI : MonoBehaviour
             float eased;
             if (toOpen)
             {
-                // Ease-out-back — snaps up, overshoots a few degrees past
+                // Ease-out-back â€” snaps up, overshoots a few degrees past
                 // face-on, springs back like a latched mount.
                 const float c1 = 1.70158f, c3 = c1 + 1f;
                 float v = u - 1f;
                 eased = 1f + c3 * v * v * v + c1 * v * v;
             }
-            else eased = u * u;   // ease-in — drops away fast
+            else eased = u * u;   // ease-in â€” drops away fast
             _flipAngle = Mathf.LerpUnclamped(fromAng, toAng, eased);
             ApplyFlip(chassisH, armLen);
             yield return null;
@@ -1700,11 +1705,11 @@ public class PlayerPhoneUI : MonoBehaviour
         _flipAngle = toAng;
         ApplyFlip(chassisH, armLen);
         _phoneGroup.alpha = toOpen ? 1f : 0f;
-        // Flip done — back to the overlay canvas for exact clicks/rendering.
+        // Flip done â€” back to the overlay canvas for exact clicks/rendering.
         if (_phoneCam != null)
         {
             _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            _canvas.sortingOrder = 800;
+            _canvas.sortingOrder = PhoneSortOrder;
             _phoneCam.enabled = false;
         }
         // Restore mask + camera-content state for the current orientation.
@@ -1726,8 +1731,8 @@ public class PlayerPhoneUI : MonoBehaviour
     }
 
     // Poses the assembly for the current hinge angle. The hinge is the arm
-    // BASE below the view; the chassis centre orbits it: at θ=0 it rests at
-    // OnScreenY, and rotating back by θ drops it by pivotDist·(1−cosθ)
+    // BASE below the view; the chassis centre orbits it: at Î¸=0 it rests at
+    // OnScreenY, and rotating back by Î¸ drops it by pivotDistÂ·(1âˆ’cosÎ¸)
     // while the whole assembly (arm is a child) tilts. One rotation = rise
     // + tilt together, like a real bottom-hinged monitor.
     void ApplyFlip(float chassisH, float armLen)
@@ -1739,23 +1744,23 @@ public class PlayerPhoneUI : MonoBehaviour
         _phoneRT.anchoredPosition = new Vector2(0f, cy);
     }
 
-    // ── Canvas + chassis + screen ───────────────────────────────────
+    // â”€â”€ Canvas + chassis + screen â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     void BuildCanvas()
     {
         _canvas = gameObject.AddComponent<Canvas>();
-        // HYBRID rendering: Screen Space — OVERLAY while resting (pixel-
-        // perfect clicks + rendering, no scene post — exactly the phone-era
-        // behaviour), switched to Screen Space — CAMERA on the dedicated
+        // HYBRID rendering: Screen Space â€” OVERLAY while resting (pixel-
+        // perfect clicks + rendering, no scene post â€” exactly the phone-era
+        // behaviour), switched to Screen Space â€” CAMERA on the dedicated
         // perspective PhoneUICamera ONLY for the flip animation, when
         // nothing is clickable anyway. Perspective gives the flip TRUE
-        // keystone (an overlay canvas can only squash an X-rotation — it
+        // keystone (an overlay canvas can only squash an X-rotation â€” it
         // always read as a slide); staying camera-space at rest caused a
         // constant ~90px raycast-vs-visual offset that made buttons miss.
         // Sorting 800 keeps it UNDER the helmet layers (frame 805 / HUDs
-        // 830) both ways — the tablet is physically outside the visor.
+        // 830) both ways â€” the tablet is physically outside the visor.
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 800;
+        _canvas.sortingOrder = PhoneSortOrder;
         // The camera must be a ROOT object, NOT a child of this canvas: an
         // SSC canvas drives its own transform to sit in front of its camera,
         // so a child camera gets dragged along in a feedback loop until it
@@ -1808,7 +1813,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _shutterRoot.sizeDelta = new Vector2(50f, 50f);
         _shutterRoot.gameObject.SetActive(false); // shown only in camera mode
 
-        // Outer ring — 50×50 white hollow circle, 3-px thick.
+        // Outer ring â€” 50Ã—50 white hollow circle, 3-px thick.
         var outerRT = NewUI("Outer", _shutterRoot);
         outerRT.anchorMin = Vector2.zero; outerRT.anchorMax = Vector2.one;
         outerRT.offsetMin = Vector2.zero; outerRT.offsetMax = Vector2.zero;
@@ -1817,8 +1822,8 @@ public class PlayerPhoneUI : MonoBehaviour
         _shutterOuter.color  = Color.white;
         _shutterOuter.raycastTarget = false;
 
-        // Inner disc — 36×36 white filled circle. Gap between inner edge
-        // and outer ring ≈ 5 px. This is the one that shrinks on snap.
+        // Inner disc â€” 36Ã—36 white filled circle. Gap between inner edge
+        // and outer ring â‰ˆ 5 px. This is the one that shrinks on snap.
         _shutterInnerRT = NewUI("Inner", _shutterRoot);
         _shutterInnerRT.anchorMin = new Vector2(0.5f, 0.5f);
         _shutterInnerRT.anchorMax = new Vector2(0.5f, 0.5f);
@@ -1849,7 +1854,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _recordingTimerRT.sizeDelta = new Vector2(0f, 18f);
         _recordingTimerRT.gameObject.SetActive(false);
 
-        // Small red dot — sits to the left of the timer text. "REC" indicator.
+        // Small red dot â€” sits to the left of the timer text. "REC" indicator.
         var dot = NewUI("Dot", _recordingTimerRT);
         dot.anchorMin = new Vector2(0.5f, 0.5f);
         dot.anchorMax = new Vector2(0.5f, 0.5f);
@@ -1861,7 +1866,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _recordingDot.color  = ShutterColorVideo;
         _recordingDot.raycastTarget = false;
 
-        // The timer text — centered to the right of the dot.
+        // The timer text â€” centered to the right of the dot.
         var textRT = NewUI("Text", _recordingTimerRT);
         textRT.anchorMin = new Vector2(0.5f, 0f);
         textRT.anchorMax = new Vector2(0.5f, 1f);
@@ -1888,7 +1893,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void BuildPhone()
     {
-        // Phone root — the flip animation drives anchoredPosition.y +
+        // Phone root â€” the flip animation drives anchoredPosition.y +
         // X-rotation (the monitor hinges around its own bottom edge) and
         // CanvasGroup.alpha. Anchored to canvas centre; pivot centre.
         _phoneRT = NewUI("Phone", transform);
@@ -1905,8 +1910,15 @@ public class PlayerPhoneUI : MonoBehaviour
 
         // Chassis: dark navy rounded rect with the biggest radius (~26 px on
         // a 220-px-wide phone, matching the mockup's ~14% chassis-to-radius
-        // ratio).
-        var chassis = _phoneRT.gameObject.AddComponent<Image>();
+        // ratio). On a CHILD, not on _phoneRT itself â€” a parent's Graphic
+        // always draws before its children, so the mount arm (first child)
+        // could never render behind a chassis painted on the root. With the
+        // plate as sibling #2 the order is: arm â†’ plate â†’ everything else,
+        // and the arm disappears behind the phone (Sam's request).
+        var plateRT = NewUI("ChassisPlate", _phoneRT);
+        plateRT.anchorMin = Vector2.zero; plateRT.anchorMax = Vector2.one;
+        plateRT.offsetMin = Vector2.zero; plateRT.offsetMax = Vector2.zero;
+        var chassis = plateRT.gameObject.AddComponent<Image>();
         chassis.sprite = RoundedRectFilled(26);
         chassis.type   = Image.Type.Sliced;
         chassis.color  = ChassisBg;
@@ -1931,7 +1943,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // Top hardware on the bezel: pill-shaped speaker grille centered in
         // the bezel middle, with the round camera lens just to its right.
         // Bezel midline is at y = -21 (half of the 42 px bezel), so both
-        // fixtures use pivot (0.5, 0.5) and anchoredPosition.y = -21 — the
+        // fixtures use pivot (0.5, 0.5) and anchoredPosition.y = -21 â€” the
         // camera dot sits next to the speaker's right edge with a small gap.
         const float BezelMidY = -21f;
 
@@ -1973,7 +1985,7 @@ public class PlayerPhoneUI : MonoBehaviour
         BuildCloseButtonOnBezel();
         BuildMovementWarning();
 
-        // Mount arm — child of the chassis so the assembly flips as one.
+        // Mount arm â€” child of the chassis so the assembly flips as one.
         // First sibling: renders right after the chassis bg, under all the
         // other chrome, with only the clamp bracket overlapping the bezel.
         _armRT = NewUI("MountArm", _phoneRT);
@@ -1991,7 +2003,7 @@ public class PlayerPhoneUI : MonoBehaviour
     void BuildMovementWarning()
     {
         // Parented to the root canvas (NOT _phoneRT) so the phone's close
-        // slide+fade doesn't carry the warning off-screen with it — the
+        // slide+fade doesn't carry the warning off-screen with it â€” the
         // toast needs to persist for 2 s + 0.5 s fade after the phone is
         // gone. Anchored bottom-center, well above the hotbar (hotbar's
         // top edge is ~156 px from screen bottom; warning sits at 175 px
@@ -2055,7 +2067,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void BuildScreen()
     {
-        // Bezels — 42 px top + 42 px bottom (was 56 px, originally 22 px).
+        // Bezels â€” 42 px top + 42 px bottom (was 56 px, originally 22 px).
         // Top bezel carries the centered speaker + camera lens; bottom
         // bezel carries the small Close button. 42 keeps enough room for
         // both fixtures while looking trimmer than the previous 56.
@@ -2082,10 +2094,10 @@ public class PlayerPhoneUI : MonoBehaviour
         BuildReservedZone();
         BuildCameraButton();
 
-        // All pages built — show page 0 by default.
+        // All pages built â€” show page 0 by default.
         GoToPage(0);
 
-        // In-phone app host — full-screen panel OVER the home content that
+        // In-phone app host â€” full-screen panel OVER the home content that
         // the Build / Fishingdex apps render into (the AI-chat model: use
         // the app inside the phone, back out to home). Sits below the
         // camera-mode overlays so entering the camera covers it.
@@ -2095,7 +2107,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _appHostRT.offsetMin = Vector2.zero; _appHostRT.offsetMax = Vector2.zero;
         _appHostRT.gameObject.SetActive(false);
 
-        // Opaque black backdrop — sibling BEFORE the live camera RawImage so
+        // Opaque black backdrop â€” sibling BEFORE the live camera RawImage so
         // it draws BEHIND it but ABOVE every home-screen widget. Hides the
         // home content even if the RenderTexture has alpha holes (skybox
         // clear leaves alpha=0 in sky pixels, which is what was making the
@@ -2109,7 +2121,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _cameraBackdrop.raycastTarget = false;
         _cameraBackdrop.enabled = false;
 
-        // Camera-mode live view — RawImage that covers the entire screen.
+        // Camera-mode live view â€” RawImage that covers the entire screen.
         // Hidden by default; shown only while IsCameraMode == true. Set to
         // ignoreLayout so the screen's VerticalLayoutGroup doesn't try to
         // stack it as a sibling row. Stacked last (highest sibling index)
@@ -2123,7 +2135,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _cameraView.color = Color.white;
         _cameraView.enabled = false;
 
-        // Captured-photo overlay — shown for 3s right after a snap, then
+        // Captured-photo overlay â€” shown for 3s right after a snap, then
         // shrinks away to reveal the live feed underneath. Sibling-stacked
         // ABOVE _cameraView so it occludes the live feed while displayed.
         _capturedRT = NewUI("CapturedView", _screenRT);
@@ -2136,18 +2148,18 @@ public class PlayerPhoneUI : MonoBehaviour
         _capturedView.enabled = false;
     }
 
-    // ── Status bar (time + battery) ─────────────────────────────────
+    // â”€â”€ Status bar (time + battery) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     void BuildStatusBar()
     {
         // The previous version used a HorizontalLayoutGroup with childForceExpandHeight=true
         // which stretched the battery shell vertically and produced a mangled icon.
-        // Rewritten with explicit absolute positioning — no HLGs in here, so each piece
+        // Rewritten with explicit absolute positioning â€” no HLGs in here, so each piece
         // (time text, pct text, battery shell, nub, fill) lands at exactly the size we set.
         _statusBarRT = NewUI("StatusBar", _screenRT);
         _statusBarRT.gameObject.AddComponent<LayoutElement>().preferredHeight = 18f;
 
-        // Time text — anchored to the LEFT side of the status bar.
+        // Time text â€” anchored to the LEFT side of the status bar.
         var timeRT = NewUI("Time", _statusBarRT);
         timeRT.anchorMin = new Vector2(0f, 0f);
         timeRT.anchorMax = new Vector2(0.5f, 1f);
@@ -2162,7 +2174,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _timeText.enableWordWrapping = false;
         _timeText.raycastTarget = false;
 
-        // GENERAL LEVEL — replaces the battery readout. The battery was
+        // GENERAL LEVEL â€” replaces the battery readout. The battery was
         // Random.Range(20,96) picked once at startup: a number that never moved
         // and meant nothing. Same slot, same visual weight, now it's the mean
         // completion across all five progression tracks.
@@ -2182,7 +2194,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _levelText.enableWordWrapping = false;
         _levelText.raycastTarget = false;
 
-        // Progress ring — a radial-filled disc outline that sweeps toward the
+        // Progress ring â€” a radial-filled disc outline that sweeps toward the
         // next general level. Uses Image.Type.Filled so no per-frame texture work.
         var ringRT = NewUI("LevelRing", _statusBarRT);
         ringRT.anchorMin = new Vector2(1f, 0.5f);
@@ -2201,13 +2213,13 @@ public class PlayerPhoneUI : MonoBehaviour
         _levelRing.raycastTarget = false;
     }
 
-    // ── Notification strip ──────────────────────────────────────────
+    // â”€â”€ Notification strip â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     void BuildNotificationStrip()
     {
         // Previous version used HLG with childForceExpandHeight=true, which stretched
         // the LED dot vertically into a thin bar. Now using absolute positioning so the
-        // dot stays a 6×6 circle and the label flows next to it.
+        // dot stays a 6Ã—6 circle and the label flows next to it.
         _notificationStripRT = NewUI("NotificationStrip", _screenRT);
         _notificationStripRT.gameObject.AddComponent<LayoutElement>().preferredHeight = 22f;
 
@@ -2217,7 +2229,7 @@ public class PlayerPhoneUI : MonoBehaviour
         bg.type   = Image.Type.Sliced;
         bg.raycastTarget = false;
 
-        // LED dot — small circle, fixed position on the LEFT.
+        // LED dot â€” small circle, fixed position on the LEFT.
         var dot = NewUI("Dot", _notificationStripRT);
         dot.anchorMin = new Vector2(0f, 0.5f);
         dot.anchorMax = new Vector2(0f, 0.5f);
@@ -2229,7 +2241,7 @@ public class PlayerPhoneUI : MonoBehaviour
         dotImg.color = AccentCyan;
         dotImg.raycastTarget = false;
 
-        // Label — fills the remaining width after the dot.
+        // Label â€” fills the remaining width after the dot.
         var labelRT = NewUI("Label", _notificationStripRT);
         labelRT.anchorMin = new Vector2(0f, 0f);
         labelRT.anchorMax = new Vector2(1f, 1f);
@@ -2246,7 +2258,7 @@ public class PlayerPhoneUI : MonoBehaviour
         label.raycastTarget = false;
     }
 
-    // ── 2×2 app grid ────────────────────────────────────────────────
+    // â”€â”€ 2Ã—2 app grid â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     // Builds the page host (170 px slot in the screen VLG) plus the three
     // overlapping page roots. Each page root is anchored full-stretch inside
@@ -2257,7 +2269,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _pageHostRT = NewUI("PageHost", _screenRT);
         _pageHostRT.gameObject.AddComponent<LayoutElement>().preferredHeight = 170f;
 
-        BuildAppsPage();    // _pageRoots[0] — 6 tiles incl. Messages
+        BuildAppsPage();    // _pageRoots[0] â€” 6 tiles incl. Messages
         BuildLevelsPage();  // _pageRoots[1]
     }
 
@@ -2266,12 +2278,12 @@ public class PlayerPhoneUI : MonoBehaviour
         _appGridRT = NewUI("AppsPage", _pageHostRT);
         _pageRoots[0] = _appGridRT;
         // Full-stretch so the GridLayoutGroup's centered children sit inside
-        // the host slot — same area whether we're page 0, 1, or 2.
+        // the host slot â€” same area whether we're page 0, 1, or 2.
         _appGridRT.anchorMin = Vector2.zero; _appGridRT.anchorMax = Vector2.one;
         _appGridRT.offsetMin = Vector2.zero; _appGridRT.offsetMax = Vector2.zero;
 
         var grid = _appGridRT.gameObject.AddComponent<GridLayoutGroup>();
-        // 6 tiles → 3 columns × 2 rows on the 4:3 landscape screen. Width
+        // 6 tiles â†’ 3 columns Ã— 2 rows on the 4:3 landscape screen. Width
         // budget: 3*110 + 2*10 + 8 = 358 (centered in ~546); height budget
         // 170 px: 2*66 + 10 + 8 = 150.
         grid.padding = new RectOffset(4, 4, 4, 4);
@@ -2281,8 +2293,8 @@ public class PlayerPhoneUI : MonoBehaviour
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
         grid.constraintCount = 3;
 
-        // Glyphs are uppercase ASCII letters — the bundled LiberationSans SDF
-        // doesn't include the unicode-block symbols (⌬ ▦ ⚙ ◎) that were here
+        // Glyphs are uppercase ASCII letters â€” the bundled LiberationSans SDF
+        // doesn't include the unicode-block symbols (âŒ¬ â–¦ âš™ â—Ž) that were here
         // originally, so they rendered as missing-character squares. Letters
         // are universally supported and read clearly at this size.
         _appButtons[0] = BuildAppTile(AppKind.Fishingdex, "F", "Fishingdex");
@@ -2290,7 +2302,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _appButtons[2] = BuildAppTile(AppKind.Settings,   "S", "Settings");
         _appButtons[3] = BuildAppTile(AppKind.Map,        "M", "Map");
         _appButtons[4] = BuildAppTile(AppKind.Photos,     "P", "Photos");
-        _appButtons[5] = BuildAITile(_appGridRT);   // AI chat — 6th tile, 3×2 grid
+        _appButtons[5] = BuildAITile(_appGridRT);   // AI chat â€” 6th tile, 3Ã—2 grid
     }
 
     // Unread-notification badge on the AI app tile + the count of lines the
@@ -2299,7 +2311,7 @@ public class PlayerPhoneUI : MonoBehaviour
     Image _aiUnreadBadge;
     int   _aiLastSeenLineCount;
 
-    // The one functional tile on the AI page — opens the chat screen.
+    // The one functional tile on the AI page â€” opens the chat screen.
     Button BuildAITile(RectTransform parent)
     {
         var rt = NewUI("App_AI", parent);
@@ -2327,7 +2339,7 @@ public class PlayerPhoneUI : MonoBehaviour
         label.characterSpacing = 1f;
         label.gameObject.AddComponent<LayoutElement>().preferredHeight = 14f;
 
-        // Notification badge — small red HAL eye in the top-right corner of
+        // Notification badge â€” small red HAL eye in the top-right corner of
         // the AI tile. Visible when HALVolunteeredLog has more entries than
         // the player has "seen" (i.e. been in the AI chat for). ignoreLayout
         // so the VerticalLayoutGroup doesn't try to stack it as a row.
@@ -2351,13 +2363,13 @@ public class PlayerPhoneUI : MonoBehaviour
 
     // Keeps the unread badge in sync with HALVolunteeredLog. While the chat
     // is open, the player is actively reading lines as they arrive, so we
-    // continuously bump the "seen" count — no badge stays lit after the
+    // continuously bump the "seen" count â€” no badge stays lit after the
     // player closes the chat. Update() polls this every frame.
     void UpdateAIUnreadBadge()
     {
         if (_aiUnreadBadge == null) return;
 
-        // Buyer texts (Messages app) light the badge too — threads clear
+        // Buyer texts (Messages app) light the badge too â€” threads clear
         // their own unread when opened, so no "seen" bookkeeping needed here.
         bool buyerUnread = BuyerLedger.TotalUnread() > 0 && _activeMessages == null;
 
@@ -2370,7 +2382,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         if (_activeChat != null)
         {
-            // Chat is open → consume new lines as they arrive.
+            // Chat is open â†’ consume new lines as they arrive.
             _aiLastSeenLineCount = log.Lines.Count;
             if (_aiUnreadBadge.enabled != buyerUnread) _aiUnreadBadge.enabled = buyerUnread;
             return;
@@ -2380,7 +2392,7 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_aiUnreadBadge.enabled != hasUnread) _aiUnreadBadge.enabled = hasUnread;
     }
 
-    // Stub tile — shows a "Coming soon" pill on tap.
+    // Stub tile â€” shows a "Coming soon" pill on tap.
     Button BuildStubTile(RectTransform parent, string glyph, string label, string stubName)
     {
         var rt = NewUI($"App_Stub_{stubName}", parent);
@@ -2435,7 +2447,7 @@ public class PlayerPhoneUI : MonoBehaviour
         bg.type = Image.Type.Sliced;
         bg.raycastTarget = false;
 
-        var text = MakeText(pill, $"Coming soon — {label}", 11, AccentCyan, TextAnchor.MiddleCenter);
+        var text = MakeText(pill, $"Coming soon â€” {label}", 11, AccentCyan, TextAnchor.MiddleCenter);
         text.characterSpacing = 1f;
 
         _comingSoonPill = pill.gameObject;
@@ -2452,7 +2464,7 @@ public class PlayerPhoneUI : MonoBehaviour
     MessagesScreen _activeMessages;
 
     // The MESSAGES tile opens the index (threads, unread, bond pips). The
-    // pinned guide row inside it re-enters the old AI chat via EnterAIChat —
+    // pinned guide row inside it re-enters the old AI chat via EnterAIChat â€”
     // that screen and its LLM lifecycle are untouched.
     void EnterMessages()
     {
@@ -2479,7 +2491,7 @@ public class PlayerPhoneUI : MonoBehaviour
                 _pageRoots[i].gameObject.SetActive(i == _currentPage);
     }
 
-    // True while the AI chat was entered THROUGH the Messages index — its
+    // True while the AI chat was entered THROUGH the Messages index â€” its
     // exit should return there, not to the home screen (Sam's playtest note:
     // backing out of the assistant thread dumped you all the way home).
     bool _chatOpenedFromMessages;
@@ -2498,7 +2510,7 @@ public class PlayerPhoneUI : MonoBehaviour
     void EnterAIChat()
     {
         // Kick the LLM load now (4-5s on GPU first time, instant if already
-        // loaded). Gated on InputSettings.aiEnabled inside BeginPreload —
+        // loaded). Gated on InputSettings.aiEnabled inside BeginPreload â€”
         // if the toggle is off, this is a no-op and the chat opens but
         // can't talk to the model. Releasing this VRAM during gameplay
         // is why the model is no longer preloaded at scene start.
@@ -2510,7 +2522,7 @@ public class PlayerPhoneUI : MonoBehaviour
                 _pageRoots[i].gameObject.SetActive(false);
 
         // Parent the chat to _screenRT (not _pageHostRT) so it overlays the
-        // entire screen — covering the status bar, nav dots, scroll arrows,
+        // entire screen â€” covering the status bar, nav dots, scroll arrows,
         // and camera button as well as the page host. ignoreLayout keeps the
         // screen's VerticalLayoutGroup from trying to stack it as a row.
         var go = new GameObject("AIChatScreen", typeof(RectTransform));
@@ -2528,11 +2540,11 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         _activeChat = null;
         // Free the LLM's VRAM/RAM now that the player is leaving the chat.
-        // Frees ~6 GB on GPU (Hermes-8B Q4_K_M) — drops the game's GPU
+        // Frees ~6 GB on GPU (Hermes-8B Q4_K_M) â€” drops the game's GPU
         // bottleneck back to whatever the chosen graphics settings demand.
         // Re-loaded on the next EnterAIChat (4-5 s first-token delay).
         if (LLMService.Instance != null) LLMService.Instance.UnloadModel();
-        // Came in via the Messages index → back goes THERE, one level up.
+        // Came in via the Messages index â†’ back goes THERE, one level up.
         if (_chatOpenedFromMessages)
         {
             _chatOpenedFromMessages = false;
@@ -2545,11 +2557,11 @@ public class PlayerPhoneUI : MonoBehaviour
                 _pageRoots[i].gameObject.SetActive(i == _currentPage);
     }
 
-    // (Vitals + Quests pages deleted 2026-08-07 — Sam's call: the survival
+    // (Vitals + Quests pages deleted 2026-08-07 â€” Sam's call: the survival
     // HUD already shows vitals live, and the tutorial quest list predates
     // the mushroom-economy refocus.)
 
-    // ── Page navigation ─────────────────────────────────────────────
+    // â”€â”€ Page navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     void GoToPage(int n)
     {
@@ -2565,10 +2577,10 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_currentPage == 1) RefreshLevels();
     }
 
-    // ── Page 4: Levels ──────────────────────────────────────────────
+    // â”€â”€ Page 4: Levels â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     // One row per ProgressTrack plus the averaged general level at the bottom.
-    // Rows are built once and repainted by RefreshLevels — building five rows
+    // Rows are built once and repainted by RefreshLevels â€” building five rows
     // every time the page opens would churn UI garbage for no reason.
     TextMeshProUGUI[] _lvName  = new TextMeshProUGUI[PlayerProgress.TrackCount];
     TextMeshProUGUI[] _lvLevel = new TextMeshProUGUI[PlayerProgress.TrackCount];
@@ -2691,7 +2703,7 @@ public class PlayerPhoneUI : MonoBehaviour
                     if (next >= 0)
                     {
                         int n = BuildableUnlocks.UnlockedAt(next).Length;
-                        sub += n == 1 ? "  ·  NEXT: 1 BLUEPRINT" : $"  ·  NEXT: {n} BLUEPRINTS";
+                        sub += n == 1 ? "  Â·  NEXT: 1 BLUEPRINT" : $"  Â·  NEXT: {n} BLUEPRINTS";
                     }
                 }
                 _lvSub[i].text = sub;
@@ -2707,19 +2719,19 @@ public class PlayerPhoneUI : MonoBehaviour
         int planted = Mathf.Max(0, p.ScoreOf(ProgressTrack.TreeDaddy));
         string balance = felled == 0 && planted == 0
             ? ""
-            : planted >= felled ? "   ·   FOREST GROWING" : "   ·   NET LOSS " + (felled - planted);
+            : planted >= felled ? "   Â·   FOREST GROWING" : "   Â·   NET LOSS " + (felled - planted);
 
         if (_lvGeneral != null)
-            // Rank, not just the number — the ceremony hands it to you, this is
+            // Rank, not just the number â€” the ceremony hands it to you, this is
             // where you go to look at it again.
             _lvGeneral.text =
-                $"GENERAL LEVEL {p.GeneralLevel}   ·   {LevelUpCeremonyUI.RankFor(p.GeneralLevel)}{balance}";
+                $"GENERAL LEVEL {p.GeneralLevel}   Â·   {LevelUpCeremonyUI.RankFor(p.GeneralLevel)}{balance}";
     }
 
     // The page arrows sit far apart with the app grid diagonally above, so
     // Unity's automatic navigation "right" from the left arrow scores an app
     // tile higher than the distant right arrow. Explicit links fix the pad
-    // path: left ↔ right between the arrows, up into the current page's
+    // path: left â†” right between the arrows, up into the current page's
     // first Selectable, down to the CAMERA button. Re-wired on every page
     // flip because the up-target changes with the active page.
     void WirePageNavExplicit()
@@ -2731,7 +2743,7 @@ public class PlayerPhoneUI : MonoBehaviour
         Selectable upForPrev = null, upForNext = null;
         if (_currentPage == 0)
         {
-            upForPrev = _appButtons[3];   // bottom-left tile (Map — 3-col grid)
+            upForPrev = _appButtons[3];   // bottom-left tile (Map â€” 3-col grid)
             upForNext = _appButtons[5];   // bottom-right tile (AI)
             WireAppGridNav();
         }
@@ -2759,12 +2771,12 @@ public class PlayerPhoneUI : MonoBehaviour
         };
     }
 
-    // Explicit navigation for the app grid — the tiles are small and
+    // Explicit navigation for the app grid â€” the tiles are small and
     // close together, so Unity's automatic nav frequently resolves a
-    // vertical press to a diagonal neighbour. The grid is 2 ROWS × 3 COLS
-    // (F B S / M P ?), index = row*3 + col. This was wired as 3×2 for the
+    // vertical press to a diagonal neighbour. The grid is 2 ROWS Ã— 3 COLS
+    // (F B S / M P ?), index = row*3 + col. This was wired as 3Ã—2 for the
     // old two-column layout, which made stick focus hop to tiles that
-    // didn't match the visual grid at all — the "controller layout feels
+    // didn't match the visual grid at all â€” the "controller layout feels
     // broken" bug. Bottom row falls through to the page arrows.
     void WireAppGridNav()
     {
@@ -2805,7 +2817,7 @@ public class PlayerPhoneUI : MonoBehaviour
         var rt = NewUI($"App_{kind}", _appGridRT);
         var bg = rt.gameObject.AddComponent<Image>();
         bg.color = TileBg;
-        bg.sprite = RoundedRectFilled(14); // app tile — ~18% radius on a 78 px square
+        bg.sprite = RoundedRectFilled(14); // app tile â€” ~18% radius on a 78 px square
         bg.type = Image.Type.Sliced;
         bg.raycastTarget = true;
 
@@ -2859,14 +2871,14 @@ public class PlayerPhoneUI : MonoBehaviour
         // Photos zooms INTO the phone instead of sliding it away.
         if (kind == AppKind.Photos) { OpenPhotosApp(); return; }
         // Build + Fishingdex run INSIDE the tablet screen (the AI-chat
-        // model) — no more separate fullscreen panels.
+        // model) â€” no more separate fullscreen panels.
         if (kind == AppKind.Build || kind == AppKind.Fishingdex) { OpenPhoneApp(kind); return; }
         // Everything else (Settings / Map): slide the phone out, THEN open
-        // the target UI — like tapping an app on a real phone.
+        // the target UI â€” like tapping an app on a real phone.
         StartCoroutine(CloseThenOpen(kind));
     }
 
-    // ── In-phone apps (Build / Fishingdex) ──────────────────────────
+    // â”€â”€ In-phone apps (Build / Fishingdex) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     RectTransform _appHostRT;
     PhoneAppBase _activeApp;
     PhoneBuildApp _buildApp;
@@ -2904,7 +2916,7 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_activeApp != null) _activeApp.CloseApp();
         _activeApp = null;
         if (_appHostRT != null) _appHostRT.gameObject.SetActive(false);
-        // Pad focus was on a row inside the app (just deactivated) — hand it
+        // Pad focus was on a row inside the app (just deactivated) â€” hand it
         // back to the home grid so stick navigation keeps working and the
         // movement-close check doesn't read the next nudge as walking.
         if (IsOpen && !_isAnimating && TutorialGate.ControllerEnabled
@@ -2915,7 +2927,7 @@ public class PlayerPhoneUI : MonoBehaviour
         }
     }
 
-    /// <summary>Photos tile entry point — rotate-and-grow into the gallery.</summary>
+    /// <summary>Photos tile entry point â€” rotate-and-grow into the gallery.</summary>
     public void OpenPhotosApp()
     {
         if (_inGalleryTransition || !IsOpen || _isAnimating) return;
@@ -2923,7 +2935,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _galleryTransition = StartCoroutine(GalleryEnterRoutine());
     }
 
-    /// <summary>Gallery's back-out entry point — reverse transition to the hand.</summary>
+    /// <summary>Gallery's back-out entry point â€” reverse transition to the hand.</summary>
     public void BeginGalleryExit()
     {
         if (_inGalleryTransition) return;
@@ -2931,13 +2943,13 @@ public class PlayerPhoneUI : MonoBehaviour
         _galleryTransition = StartCoroutine(GalleryExitRoutine());
     }
 
-    // The chassis is already landscape 4:3 — no rotation needed; scale so it
+    // The chassis is already landscape 4:3 â€” no rotation needed; scale so it
     // overflows the canvas on both axes (the bezel ends off-screen and the
     // screen interior covers the viewport). 1.10 = margin.
     float GalleryTargetScale()
     {
         // Fit the SCREEN INTERIOR (chassis minus 12px side / 42px top+bottom
-        // bezels), not the chassis — otherwise the bezel peeks at the
+        // bezels), not the chassis â€” otherwise the bezel peeks at the
         // viewport edges during the crossfade.
         var parent = (RectTransform)_phoneRT.parent;
         return Mathf.Max(parent.rect.width  / (PhoneWidth  - 24f),
@@ -2948,7 +2960,7 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         _inGalleryTransition = true;
         // Movement gates on isInDialogue (not LookBlocked), and our Update
-        // early-return suppresses the WASD-auto-close — so assert the gate
+        // early-return suppresses the WASD-auto-close â€” so assert the gate
         // ourselves for the whole tween. The gallery takes ownership of it
         // in OpenForTransition; the null-gallery fallback releases it below.
         PlayerController.isInDialogue = true;
@@ -2956,7 +2968,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // Kill competing tweens (orientation / slide).
         if (_rotateCoroutine != null) { StopCoroutine(_rotateCoroutine); _rotateCoroutine = null; }
         if (_animCoroutine   != null) { StopCoroutine(_animCoroutine);   _animCoroutine = null; _isAnimating = false; }
-        // RectMask2D mis-culls children while the chassis rotates — same
+        // RectMask2D mis-culls children while the chassis rotates â€” same
         // reason RotatePhoneRoutine disables it for its tween.
         if (_screenMask != null) _screenMask.enabled = false;
 
@@ -2980,10 +2992,10 @@ public class PlayerPhoneUI : MonoBehaviour
         else
         {
             Debug.LogWarning("[PlayerPhoneUI] PhotoGalleryUI.Instance is null");
-            PlayerController.isInDialogue = false; // nobody took ownership — don't brick the player
+            PlayerController.isInDialogue = false; // nobody took ownership â€” don't brick the player
         }
 
-        // Park the phone closed WITHOUT touching the cursor — the gallery's
+        // Park the phone closed WITHOUT touching the cursor â€” the gallery's
         // isInDialogue gate + unlocked cursor own the input state now.
         HideForGallery();
         _inGalleryTransition = false;
@@ -2993,8 +3005,8 @@ public class PlayerPhoneUI : MonoBehaviour
     System.Collections.IEnumerator GalleryExitRoutine()
     {
         _inGalleryTransition = true;
-        // Stage the phone exactly where the enter transition left it —
-        // rotated, screen-filling, visible — hidden UNDER the gallery.
+        // Stage the phone exactly where the enter transition left it â€”
+        // rotated, screen-filling, visible â€” hidden UNDER the gallery.
         if (_screenMask != null) _screenMask.enabled = false;
         GoToPage(0);
         IsOpen = true;
@@ -3005,7 +3017,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _phoneRT.localScale = new Vector3(bigScale, bigScale, 1f);
         _phoneRT.anchoredPosition = Vector2.zero;
 
-        // Gallery fades out revealing the oversized phone…
+        // Gallery fades out revealing the oversized phoneâ€¦
         var gallery = PhotoGalleryUI.Instance;
         if (gallery != null)
         {
@@ -3016,14 +3028,14 @@ public class PlayerPhoneUI : MonoBehaviour
                 gallery.SetTransitionAlpha(1f - Mathf.Clamp01(t / GalleryFadeDuration));
                 yield return null;
             }
-            // Cursor stays unlocked — the (open) phone owns it now.
+            // Cursor stays unlocked â€” the (open) phone owns it now.
             gallery.CloseForPhoneReturn();
-            // CloseForPhoneReturn released isInDialogue — re-assert it for the
+            // CloseForPhoneReturn released isInDialogue â€” re-assert it for the
             // shrink tween (Update's early-return suppresses WASD-auto-close).
             PlayerController.isInDialogue = true;
         }
 
-        // …then the phone shrinks back onto the chest arm.
+        // â€¦then the phone shrinks back onto the chest arm.
         yield return GalleryTween(0f, 0f, bigScale, PhoneScale, 0f, OnScreenY, GalleryGrowDuration);
 
         PlayerController.isInDialogue = false; // hand back to the normal open-phone state
@@ -3094,20 +3106,20 @@ public class PlayerPhoneUI : MonoBehaviour
         }
     }
 
-    // ── Reserved zone + Put Away button ─────────────────────────────
+    // â”€â”€ Reserved zone + Put Away button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-    // Bold Tactile page-nav: [◀]   ●  ○  ○   [▶]
-    // Replaces the old "— RESERVED —" placeholder. Left/right buttons flip
-    // pages; 3 dots indicate which page is active (active = cyan + 1.25×
+    // Bold Tactile page-nav: [â—€]   â—  â—‹  â—‹   [â–¶]
+    // Replaces the old "â€” RESERVED â€”" placeholder. Left/right buttons flip
+    // pages; 3 dots indicate which page is active (active = cyan + 1.25Ã—
     // scale + glow). Wraps modulo 3 in both directions.
     void BuildReservedZone()
     {
         _reservedZoneRT = NewUI("PageNav", _screenRT);
         // preferredHeight gives the row at least enough vertical room for the
         // 24-px buttons + padding. flexibleHeight=1 lets it absorb any leftover
-        // screen space the same way the old "— RESERVED —" zone did, so the
+        // screen space the same way the old "â€” RESERVED â€”" zone did, so the
         // CAMERA button stays anchored to the bottom of the screen. The
-        // buttons themselves stay at 32×24 — they just float centered inside
+        // buttons themselves stay at 32Ã—24 â€” they just float centered inside
         // the taller zone via HLG childAlignment.
         var le = _reservedZoneRT.gameObject.AddComponent<LayoutElement>();
         le.preferredHeight = 30f;
@@ -3115,7 +3127,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
         var hlg = _reservedZoneRT.gameObject.AddComponent<HorizontalLayoutGroup>();
         hlg.padding = new RectOffset(4, 4, 3, 3);
-        // Arrows hug the dots as one centered cluster — flexible spacers used
+        // Arrows hug the dots as one centered cluster â€” flexible spacers used
         // to fling them to the screen edges, which read fine on the narrow
         // phone but looked broken across the 4:3 tablet's width.
         hlg.spacing = 18f;
@@ -3123,9 +3135,9 @@ public class PlayerPhoneUI : MonoBehaviour
         hlg.childControlWidth = true;  hlg.childControlHeight = true;
         hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
 
-        BuildPageNavArrow(false); // left  → previous page
+        BuildPageNavArrow(false); // left  â†’ previous page
         BuildPageNavDots();
-        BuildPageNavArrow(true);  // right → next page
+        BuildPageNavArrow(true);  // right â†’ next page
     }
 
     void BuildPageNavArrow(bool pointRight)
@@ -3164,7 +3176,7 @@ public class PlayerPhoneUI : MonoBehaviour
         triImg.raycastTarget = false;
 
         var btn = rt.gameObject.AddComponent<Button>();
-        // Hover/press tints — Unity's ColorBlock multiplies these against
+        // Hover/press tints â€” Unity's ColorBlock multiplies these against
         // bg.color (TileBg), so the brightened states show as a slight cyan
         // wash without us needing to wire pointer-enter events ourselves.
         var cb = btn.colors;
@@ -3188,7 +3200,7 @@ public class PlayerPhoneUI : MonoBehaviour
     {
         var dotsRT = NewUI("Dots", _reservedZoneRT);
         var dotsLE = dotsRT.gameObject.AddComponent<LayoutElement>();
-        // Width = N dots × 9 px + (N-1) gaps × 11 px. Computed from PageCount
+        // Width = N dots Ã— 9 px + (N-1) gaps Ã— 11 px. Computed from PageCount
         // so adding/removing a page doesn't quietly squash the dots into pills.
         dotsLE.preferredWidth  = PageCount * 9f + (PageCount - 1) * 11f;
         dotsLE.preferredHeight = 24f;
@@ -3210,7 +3222,7 @@ public class PlayerPhoneUI : MonoBehaviour
             img.sprite = Disc();
             img.color = ButtonGrey;
             img.raycastTarget = false;
-            // Cyan glow Shadow at zero distance — enabled only on the
+            // Cyan glow Shadow at zero distance â€” enabled only on the
             // active dot, mirrors the movement-warning toast glow trick.
             var glow = dot.gameObject.AddComponent<UnityEngine.UI.Shadow>();
             glow.effectColor = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.70f);
@@ -3222,13 +3234,13 @@ public class PlayerPhoneUI : MonoBehaviour
         }
     }
 
-    // Camera launcher — bottom slot inside the screen, where Put Away used
-    // to live. Clicking it enters camera mode (phone rotates 90° clockwise,
+    // Camera launcher â€” bottom slot inside the screen, where Put Away used
+    // to live. Clicking it enters camera mode (phone rotates 90Â° clockwise,
     // live world feed displayed, cursor relocks for free look).
     void BuildCameraButton()
     {
         // Full-width layout row; the button itself is a fixed-width pill
-        // centered inside it — stretched edge-to-edge it read as a thin bar
+        // centered inside it â€” stretched edge-to-edge it read as a thin bar
         // on the 4:3 tablet.
         var row = NewUI("CameraRow", _screenRT);
         row.gameObject.AddComponent<LayoutElement>().preferredHeight = 30f;
@@ -3267,7 +3279,7 @@ public class PlayerPhoneUI : MonoBehaviour
         _putAwayBtn.onClick.AddListener(EnterCameraMode);
     }
 
-    // Small system button on the bottom bezel — replaces the in-screen Put
+    // Small system button on the bottom bezel â€” replaces the in-screen Put
     // Away button. Sized smaller, just says "Close".
     void BuildCloseButtonOnBezel()
     {
@@ -3276,7 +3288,7 @@ public class PlayerPhoneUI : MonoBehaviour
         rt.anchorMax = new Vector2(0.5f, 0f);
         rt.pivot     = new Vector2(0.5f, 0f);
         // Bezel is 42 px tall; button is 22 px tall, anchored 14 px up from
-        // bottom → leaves 6 px above the button (room before the screen
+        // bottom â†’ leaves 6 px above the button (room before the screen
         // border) and 14 px below (visual breathing room from phone edge).
         // Width 54 keeps the "Close" label comfortable while looking like a
         // compact pill rather than a fat bar.
@@ -3308,7 +3320,7 @@ public class PlayerPhoneUI : MonoBehaviour
         btn.onClick.AddListener(Close);
     }
 
-    // ── Helpers ─────────────────────────────────────────────────────
+    // â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     TMP_Text MakeText(Transform parent, string text, float fontSize, Color color, TextAnchor anchor)
     {
@@ -3339,13 +3351,13 @@ public class PlayerPhoneUI : MonoBehaviour
         return go.GetComponent<RectTransform>();
     }
 
-    // ── Procedural sprites (rounded all 4 corners, no chamfering) ───
+    // â”€â”€ Procedural sprites (rounded all 4 corners, no chamfering) â”€â”€â”€
     // The existing UIPanelSprites used by the rest of the HUD cuts the
     // top-left + bottom-right corners (the "scanner panel" look). For the
-    // phone we want fully rounded corners — generated procedurally below,
+    // phone we want fully rounded corners â€” generated procedurally below,
     // 9-sliced so a single source texture serves every panel size.
 
-    // Cached per-radius — different elements want different corner radii
+    // Cached per-radius â€” different elements want different corner radii
     // (chassis ~26 px, screen ~18, app tile ~14, put-away/notif/zone ~8,
     // battery shell ~3). Sharing one source sprite made the small panels
     // look like pills, because 9-slice can't REDUCE the baked corner radius,
@@ -3517,8 +3529,8 @@ public class PlayerPhoneUI : MonoBehaviour
         return spr;
     }
 
-    // ── Photos-app rotate-and-grow transition (fields appended at class
-    //    end per repo convention; see GalleryEnterRoutine) ────────────
+    // â”€â”€ Photos-app rotate-and-grow transition (fields appended at class
+    //    end per repo convention; see GalleryEnterRoutine) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     Coroutine _galleryTransition;
     bool      _inGalleryTransition;
     const float GalleryGrowDuration = 0.45f;
