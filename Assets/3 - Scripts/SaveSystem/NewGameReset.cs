@@ -69,6 +69,10 @@ public static class NewGameReset
         // statics, so a New Game would otherwise start with an alien still
         // refusing to deal because of something the PREVIOUS run did.
         MushroomDealState.ResetAll();
+        // Same again for the PERSISTENT buyer state (bond, regulars, message
+        // threads) — statics leak across the main menu and New Game runs no
+        // Apply, so a fresh run would inherit the old run's regulars.
+        BuyerLedger.ResetAll();
 
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);

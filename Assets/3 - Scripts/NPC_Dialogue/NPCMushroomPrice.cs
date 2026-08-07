@@ -74,16 +74,10 @@ public class NPCMushroomPrice : MonoBehaviour
     public float maxPatience = 1.40f;
 
     /// What fraction of market value this buyer pays. HIDDEN from the player.
-    public float Multiplier => Mathf.Lerp(
-        Mathf.Min(minMultiplier, maxMultiplier),
-        Mathf.Max(minMultiplier, maxMultiplier),
-        Unit(Hash(Identity + ":mult")));
+    public float Multiplier => MultiplierOf(Identity);
 
     /// How far over their own price you can push before they walk. HIDDEN.
-    public float Patience => Mathf.Lerp(
-        Mathf.Min(minPatience, maxPatience),
-        Mathf.Max(minPatience, maxPatience),
-        Unit(Hash(Identity + ":patience")));
+    public float Patience => PatienceOf(Identity);
 
     // ── Taste ──────────────────────────────────────────────────────────────
     // A buyer who pays the same for a Buttoncap as for an Amanita makes the
@@ -98,25 +92,12 @@ public class NPCMushroomPrice : MonoBehaviour
 
     /// The tier this buyer pays a premium for. HIDDEN until the player sells
     /// them one and notices the price.
-    public MushroomTier FavouriteTier => (MushroomTier)(AlienIdentity.Hash(Identity + ":taste") % 3u);
+    public MushroomTier FavouriteTier => FavouriteTierOf(Identity);
 
     /// The tier they don't rate. Always one of the other two.
-    public MushroomTier DislikedTier
-    {
-        get
-        {
-            int fav = (int)FavouriteTier;
-            int step = 1 + (int)(AlienIdentity.Hash(Identity + ":distaste") % 2u);
-            return (MushroomTier)((fav + step) % 3);
-        }
-    }
+    public MushroomTier DislikedTier => DislikedTierOf(Identity);
 
-    public float TasteFor(MushroomTier tier)
-    {
-        if (tier == FavouriteTier) return favouriteTasteBonus;
-        if (tier == DislikedTier)  return dislikedTastePenalty;
-        return 1f;
-    }
+    public float TasteFor(MushroomTier tier) => TasteOf(Identity, tier);
 
     // ── Appetite ───────────────────────────────────────────────────────────
 
@@ -127,15 +108,7 @@ public class NPCMushroomPrice : MonoBehaviour
 
     /// How many caps this buyer takes before they're full. Refills over real
     /// time — see MushroomDealState.AppetiteRefillSeconds.
-    public int AppetiteMax
-    {
-        get
-        {
-            int lo = Mathf.Min(minAppetite, maxAppetite);
-            int hi = Mathf.Max(minAppetite, maxAppetite);
-            return lo + (int)(AlienIdentity.Hash(Identity + ":appetite") % (uint)(hi - lo + 1));
-        }
-    }
+    public int AppetiteMax => AppetiteMaxOf(Identity);
 
     /// What this buyer thinks ONE cap of this species is worth right now.
     /// Hidden — the player only ever sees it via a counter-offer or an accepted
@@ -152,9 +125,48 @@ public class NPCMushroomPrice : MonoBehaviour
         float v = MushroomRegistry.BaseValue(speciesKey)
                   * Multiplier
                   * TasteFor(MushroomRegistry.Tier(speciesKey))
-                  * saturation;
+                  * saturation
+                  * BuyerLedger.BondBonus(Identity);   // up to +15% at bond 100
         return Mathf.Max(1, Mathf.RoundToInt(v));
     }
+
+    // ── Static trait accessors (2026-08-07, Messages app) ─────────────────
+    // The message director needs a buyer's traits while they're UNSTREAMED
+    // (no component exists). Every trait was already a pure function of the
+    // identity hash, so the math lives here now, with the tuning constants;
+    // the instance properties above delegate. The serialized min/max fields
+    // are LEGACY — every streamed alien gets this component via GetOrAdd
+    // with defaults, so the constants below are the live values.
+    public const float DefMinMultiplier = 0.75f, DefMaxMultiplier = 1.35f;
+    public const float DefMinPatience   = 1.12f, DefMaxPatience   = 1.40f;
+    public const float DefFavouriteBonus = 1.35f, DefDislikedPenalty = 0.72f;
+    public const int   DefMinAppetite = 6, DefMaxAppetite = 24;
+
+    public static float MultiplierOf(string id) =>
+        Mathf.Lerp(DefMinMultiplier, DefMaxMultiplier, Unit(AlienIdentity.Hash(id + ":mult")));
+
+    public static float PatienceOf(string id) =>
+        Mathf.Lerp(DefMinPatience, DefMaxPatience, Unit(AlienIdentity.Hash(id + ":patience")));
+
+    public static MushroomTier FavouriteTierOf(string id) =>
+        (MushroomTier)(AlienIdentity.Hash(id + ":taste") % 3u);
+
+    public static MushroomTier DislikedTierOf(string id)
+    {
+        int fav = (int)FavouriteTierOf(id);
+        int step = 1 + (int)(AlienIdentity.Hash(id + ":distaste") % 2u);
+        return (MushroomTier)((fav + step) % 3);
+    }
+
+    public static float TasteOf(string id, MushroomTier tier)
+    {
+        if (tier == FavouriteTierOf(id)) return DefFavouriteBonus;
+        if (tier == DislikedTierOf(id))  return DefDislikedPenalty;
+        return 1f;
+    }
+
+    public static int AppetiteMaxOf(string id) =>
+        DefMinAppetite + (int)(AlienIdentity.Hash(id + ":appetite") % (uint)(DefMaxAppetite - DefMinAppetite + 1));
 
     static float Unit(uint h) => (h & 0xFFFFu) / 65535f;
 

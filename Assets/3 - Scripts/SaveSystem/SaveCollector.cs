@@ -57,6 +57,7 @@ public static class SaveCollector
         CaptureStoryDirector(data.storyDirector);
         CaptureEnemies(data);
         CaptureSpaceDust(data);
+        BuyerLedger.FillSave(data.buyerLedger);
 
         return data;
     }
@@ -953,6 +954,10 @@ public static class SaveCollector
         // build lock — which it pairs with anyway (Colonizer level will drive
         // which buildables are unlocked).
         ApplyProgress(data.progress);
+        // Buyer ledger (Messages app) is pure static-singleton state; nothing
+        // else reads it during apply. Deadlines re-anchor to this session's
+        // unscaledTime inside ApplySave.
+        BuyerLedger.ApplySave(data.buyerLedger);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
         ApplyOxygen(data.oxygen);

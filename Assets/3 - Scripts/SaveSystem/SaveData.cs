@@ -67,6 +67,36 @@ public class SaveData
     // they grow into. JsonUtility gives pre-feature saves an empty list, which is
     // the correct "nothing planted" default.
     public List<PlantedMushroomSave> plantedMushrooms = new List<PlantedMushroomSave>();
+    // Messages app / repeat buyers (2026-08-07). JsonUtility gives pre-feature
+    // saves an empty ledger — no regulars, no threads — the correct default.
+    public BuyerLedgerSave buyerLedger = new BuyerLedgerSave();
+}
+
+// Persistent per-buyer state for the Messages app (BuyerLedger). Parallel
+// lists keyed by index (JsonUtility can't do dictionaries) — same shape as
+// WorldPropConsumedSave. Events are flattened: buyer i owns the next
+// eventCounts[i] entries of `events`, in order. All times are RELATIVE
+// (seconds-ago / seconds-remaining), re-anchored to unscaledTime on load.
+[Serializable]
+public class BuyerLedgerSave
+{
+    public List<string> ids = new List<string>();
+    public List<int> bond = new List<int>();
+    public List<int> deals = new List<int>();
+    public List<bool> regular = new List<bool>();
+    public List<int> unread = new List<int>();
+    public List<int> convo = new List<int>();
+    public List<int> askTier = new List<int>();
+    public List<int> askQty = new List<int>();
+    public List<int> offerPerCap = new List<int>();
+    public List<int> counterBack = new List<int>();
+    public List<int> windowMinutes = new List<int>();
+    public List<float> deadlineSecondsLeft = new List<float>();
+    public List<int> eventCounts = new List<int>();
+    public List<EvSave> events = new List<EvSave>();
+
+    [Serializable]
+    public class EvSave { public int type; public float secondsAgo; public int a; public int b; public int tier; }
 }
 
 // A planted mushroom sapling OR the mushroom it matured into (the MushroomGrowth
