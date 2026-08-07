@@ -1663,15 +1663,16 @@ public class PlayerPhoneUI : MonoBehaviour
         // mask sits out the whole tween.
         if (_screenMask != null) _screenMask.enabled = false;
 
-        // Perspective ONLY for the flip: swap to the camera canvas for the
-        // tween, back to pixel-perfect overlay at both endpoints.
-        if (_phoneCam != null)
-        {
-            _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-            _canvas.worldCamera = _phoneCam;
-            _canvas.planeDistance = 1f;
-            _phoneCam.enabled = true;
-        }
+        // Perspective handoff RETIRED (2026-08-07). It swapped to a
+        // ScreenSpaceCamera canvas for the tween — but Unity draws EVERY
+        // overlay canvas on top of any camera-space canvas, so for the 0.3s
+        // flip the hotbar/HUD rendered over the phone, then the phone popped
+        // above them when the tween ended. Sam read it as a hitch. The flip
+        // now stays on the overlay canvas at PhoneSortOrder the whole way:
+        // the X-rotation still sweeps/squashes the chassis, just with
+        // orthographic foreshortening instead of true perspective — at flip
+        // speed the difference is imperceptible, and sorting never jumps.
+        // (_phoneCam is left in place but never enabled.)
 
         float chassisH = PhoneHeight * PhoneScale;
         float armLen   = (ArmLocalHeight - ArmLocalOverlap) * PhoneScale;
