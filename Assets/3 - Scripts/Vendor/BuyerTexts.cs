@@ -26,7 +26,9 @@ public static class BuyerTexts
             case BuyerLedger.EvType.PlayerAccepted:
                 return $"on my way — give me {e.a} minutes.";
             case BuyerLedger.EvType.PlayerCountered:
-                return $"make it {e.a} a cap.";
+                // b carries the countered quantity (0 on pre-quantity-slider
+                // saves — fall back to the old price-only wording).
+                return e.b > 0 ? $"I'll do {e.b} caps — {e.a} each." : $"make it {e.a} a cap.";
             case BuyerLedger.EvType.BuyerCounterBack:
                 // b == 1 flags the grudging-acceptance flavor (their counter
                 // resolved as Accept at the player's number).

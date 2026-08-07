@@ -71,11 +71,14 @@ public class MessagesScreen : MonoBehaviour
     int _threadStamp = -1;
     bool _stickToBottom = true;
 
-    // Counter slider state.
-    Slider _slider;
-    TextMeshProUGUI _sliderPrice, _sliderTotal, _sliderRisk, _sliderSendLabel, _handleLabel;
-    int _sliderMin, _sliderMax;
-    int _lastSliderVal = -1;
+    // Counter tray state — TWO sliders (Sam's spec): price per cap on the
+    // risk gradient, and how many caps you're offering against their ask.
+    Slider _priceSlider, _qtySlider;
+    TextMeshProUGUI _sliderPrice, _sliderTotal, _sliderRisk, _sliderSendLabel;
+    TextMeshProUGUI _priceHandleLabel, _qtyHandleLabel;
+    int _priceMin;
+    int _askQtyAtBuild;
+    int _lastPriceVal = -1, _lastQtyVal = -1;
 
     struct BubbleEntry { public RectTransform Row; public LayoutElement RowLE; public TextMeshProUGUI Label; public int LastShownLen; public float LastWidth; }
     readonly List<BubbleEntry> _bubbles = new List<BubbleEntry>();
@@ -358,7 +361,7 @@ public class MessagesScreen : MonoBehaviour
         _openId = id;
         _view = View.Thread;
         _chipMode = ChipMode.Main;
-        _slider = null;
+        _priceSlider = null; _qtySlider = null;
         ClearViews();
         _bubbles.Clear();
         _stickToBottom = true;
@@ -595,7 +598,7 @@ public class MessagesScreen : MonoBehaviour
         if (_chipsRow == null) return;
         for (int i = _chipsRow.childCount - 1; i >= 0; i--)
             Destroy(_chipsRow.GetChild(i).gameObject);
-        _slider = null;
+        _priceSlider = null; _qtySlider = null;
 
         var trayLE = _chipsRow.gameObject.GetComponent<LayoutElement>();
         if (trayLE == null) trayLE = _chipsRow.gameObject.AddComponent<LayoutElement>();
@@ -610,7 +613,7 @@ public class MessagesScreen : MonoBehaviour
 
         if (_chipMode == ChipMode.CounterSlider && b.convo == BuyerLedger.Convo.AwaitingReply)
         {
-            trayLE.preferredHeight = 126f;
+            trayLE.preferredHeight = 150f;
             BuildCounterSlider(b, dir);
             return;
         }
@@ -684,95 +687,43 @@ public class MessagesScreen : MonoBehaviour
         var hlg = _chipsRow.gameObject.GetComponent<HorizontalLayoutGroup>();
         if (hlg != null) hlg.enabled = false;   // manual layout in this mode
 
-        _sliderMin = b.offerPerCap;
-        _sliderMax = Mathf.Max(_sliderMin + 10, Mathf.RoundToInt(b.offerPerCap * 1.55f));
-        int start = Mathf.RoundToInt(b.offerPerCap * 1.1f);
+        _priceMin = b.offerPerCap;
+        int priceMax = Mathf.Max(_priceMin + 10, Mathf.RoundToInt(b.offerPerCap * 1.55f));
+        int priceStart = Mathf.RoundToInt(b.offerPerCap * 1.1f);
+        _askQtyAtBuild = Mathf.Max(1, b.askQty);
+        // Quantity range: 1 up to double their ask (or their full appetite if
+        // that's bigger) — shorting AND overselling are both on the table.
+        int qtyMax = Mathf.Max(_askQtyAtBuild * 2, NPCMushroomPrice.AppetiteMaxOf(b.id));
 
-        // Readout block (price / total / risk).
-        _sliderPrice = MakeText(_chipsRow, "", 22, TextMain, TextAlignmentOptions.Center);
+        // Readout block (deal line / total / risk).
+        _sliderPrice = MakeText(_chipsRow, "", 20, TextMain, TextAlignmentOptions.Center);
         var pRT = _sliderPrice.rectTransform;
         pRT.anchorMin = new Vector2(0f, 1f); pRT.anchorMax = new Vector2(1f, 1f);
         pRT.pivot = new Vector2(0.5f, 1f);
-        pRT.sizeDelta = new Vector2(0f, 26f);
-        pRT.anchoredPosition = new Vector2(0f, -4f);
+        pRT.sizeDelta = new Vector2(0f, 24f);
+        pRT.anchoredPosition = new Vector2(0f, -3f);
         _sliderPrice.fontStyle = FontStyles.Bold;
 
         _sliderTotal = MakeText(_chipsRow, "", 9, TextDim, TextAlignmentOptions.Center);
         var tRT = _sliderTotal.rectTransform;
         tRT.anchorMin = new Vector2(0f, 1f); tRT.anchorMax = new Vector2(1f, 1f);
         tRT.pivot = new Vector2(0.5f, 1f);
-        tRT.sizeDelta = new Vector2(0f, 12f);
-        tRT.anchoredPosition = new Vector2(0f, -30f);
+        tRT.sizeDelta = new Vector2(0f, 11f);
+        tRT.anchoredPosition = new Vector2(0f, -27f);
 
-        _sliderRisk = MakeText(_chipsRow, "", 10, OkGreen, TextAlignmentOptions.Center);
+        _sliderRisk = MakeText(_chipsRow, "", 9, OkGreen, TextAlignmentOptions.Center);
         var rRT = _sliderRisk.rectTransform;
         rRT.anchorMin = new Vector2(0f, 1f); rRT.anchorMax = new Vector2(1f, 1f);
         rRT.pivot = new Vector2(0.5f, 1f);
-        rRT.sizeDelta = new Vector2(0f, 13f);
-        rRT.anchoredPosition = new Vector2(0f, -42f);
+        rRT.sizeDelta = new Vector2(0f, 12f);
+        rRT.anchoredPosition = new Vector2(0f, -39f);
         _sliderRisk.fontStyle = FontStyles.Bold;
 
-        // Slider row: gradient track + draggable thumb.
-        var sliderRT = NewUI("Slider", _chipsRow);
-        sliderRT.anchorMin = new Vector2(0f, 1f); sliderRT.anchorMax = new Vector2(1f, 1f);
-        sliderRT.pivot = new Vector2(0.5f, 1f);
-        sliderRT.sizeDelta = new Vector2(-28f, 22f);
-        sliderRT.anchoredPosition = new Vector2(0f, -58f);
-        _slider = sliderRT.gameObject.AddComponent<Slider>();
-
-        var trackRT = NewUI("Track", sliderRT);
-        trackRT.anchorMin = new Vector2(0f, 0.5f); trackRT.anchorMax = new Vector2(1f, 0.5f);
-        trackRT.pivot = new Vector2(0.5f, 0.5f);
-        trackRT.sizeDelta = new Vector2(0f, 12f);
-        var track = trackRT.gameObject.AddComponent<Image>();
-        track.sprite = RiskGradient();
-        track.raycastTarget = true;   // clicking the track jumps the thumb
-
-        var areaRT = NewUI("HandleArea", sliderRT);
-        areaRT.anchorMin = Vector2.zero; areaRT.anchorMax = Vector2.one;
-        areaRT.offsetMin = new Vector2(10f, 0f); areaRT.offsetMax = new Vector2(-10f, 0f);
-
-        var handleRT = NewUI("Handle", areaRT);
-        handleRT.sizeDelta = new Vector2(24f, 24f);
-        var handle = handleRT.gameObject.AddComponent<Image>();
-        handle.sprite = HALVisuals.Disc();
-        handle.color = TextMain;
-        handle.raycastTarget = true;
-
-        var ring = NewUI("Ring", handleRT);
-        ring.anchorMin = Vector2.zero; ring.anchorMax = Vector2.one;
-        ring.offsetMin = new Vector2(-3f, -3f); ring.offsetMax = new Vector2(3f, 3f);
-        var ringImg = ring.gameObject.AddComponent<Image>();
-        ringImg.sprite = HALVisuals.Disc();
-        ringImg.color = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.35f);
-        ringImg.raycastTarget = false;
-        ring.SetAsFirstSibling();
-
-        _handleLabel = MakeText(handleRT, "", 8, new Color32(0x0B, 0x0D, 0x12, 0xFF), TextAlignmentOptions.Center);
-        Fill(_handleLabel.rectTransform);
-        _handleLabel.fontStyle = FontStyles.Bold;
-
-        _slider.targetGraphic = handle;
-        _slider.handleRect = handleRT;
-        _slider.direction = Slider.Direction.LeftToRight;
-        _slider.minValue = _sliderMin;
-        _slider.maxValue = _sliderMax;
-        _slider.wholeNumbers = true;
-        _slider.value = start;
-
-        // Range labels under the track.
-        var lo = MakeText(_chipsRow, $"{_sliderMin} (their offer)", 8, TextDim, TextAlignmentOptions.MidlineLeft);
-        var loRT = lo.rectTransform;
-        loRT.anchorMin = new Vector2(0f, 1f); loRT.anchorMax = new Vector2(0.5f, 1f);
-        loRT.pivot = new Vector2(0f, 1f);
-        loRT.sizeDelta = new Vector2(0f, 10f);
-        loRT.anchoredPosition = new Vector2(14f, -82f);
-        var hi = MakeText(_chipsRow, _sliderMax.ToString(), 8, TextDim, TextAlignmentOptions.MidlineRight);
-        var hiRT = hi.rectTransform;
-        hiRT.anchorMin = new Vector2(0.5f, 1f); hiRT.anchorMax = new Vector2(1f, 1f);
-        hiRT.pivot = new Vector2(1f, 1f);
-        hiRT.sizeDelta = new Vector2(0f, 10f);
-        hiRT.anchoredPosition = new Vector2(-14f, -82f);
+        // PRICE slider on the risk gradient; CAPS slider on a plain track.
+        _priceSlider = BuildSliderRow(_chipsRow, "PRICE", -55f, _priceMin, priceMax, priceStart,
+                                      RiskGradient(), out _priceHandleLabel);
+        _qtySlider = BuildSliderRow(_chipsRow, "CAPS", -79f, 1, qtyMax, _askQtyAtBuild,
+                                    null, out _qtyHandleLabel);
 
         // SEND / BACK buttons along the bottom.
         var btnRow = NewUI("Btns", _chipsRow);
@@ -796,8 +747,8 @@ public class MessagesScreen : MonoBehaviour
         var sendBtn = sendRT.gameObject.AddComponent<Button>();
         sendBtn.onClick.AddListener(() =>
         {
-            if (_slider == null) return;
-            dir.Counter(b, Mathf.RoundToInt(_slider.value));
+            if (_priceSlider == null || _qtySlider == null) return;
+            dir.Counter(b, Mathf.RoundToInt(_priceSlider.value), Mathf.RoundToInt(_qtySlider.value));
             AfterChipAction();
         });
         _sliderSendLabel = MakeText(sendRT, "", 11, WarnAmber, TextAlignmentOptions.Center);
@@ -817,39 +768,123 @@ public class MessagesScreen : MonoBehaviour
         Fill(backT.rectTransform);
         backT.fontStyle = FontStyles.Bold;
 
-        _lastSliderVal = -1;
+        _lastPriceVal = -1;
+        _lastQtyVal = -1;
         UpdateSliderReadout();
     }
 
-    /// Risk wording vs their OFFER (public info only). Same bands as the
-    /// approved mockup.
-    static void RiskFor(int ask, int offer, out string text, out Color col)
+    /// One labelled slider row: mini caption left, track + circular thumb
+    /// right. The thumb's size is pinned AFTER the Slider takes ownership of
+    /// the rect and preserveAspect'd — the Slider stretched it into an oval
+    /// otherwise (Sam's note).
+    Slider BuildSliderRow(RectTransform tray, string caption, float y, int min, int max, int start,
+                          Sprite trackSprite, out TextMeshProUGUI handleLabel)
+    {
+        var row = NewUI($"SliderRow_{caption}", tray);
+        row.anchorMin = new Vector2(0f, 1f); row.anchorMax = new Vector2(1f, 1f);
+        row.pivot = new Vector2(0.5f, 1f);
+        row.sizeDelta = new Vector2(-20f, 20f);
+        row.anchoredPosition = new Vector2(0f, y);
+
+        var cap = MakeText(row, caption, 7, TextDim, TextAlignmentOptions.MidlineLeft);
+        var capRT = cap.rectTransform;
+        capRT.anchorMin = new Vector2(0f, 0f); capRT.anchorMax = new Vector2(0f, 1f);
+        capRT.pivot = new Vector2(0f, 0.5f);
+        capRT.sizeDelta = new Vector2(36f, 0f);
+        capRT.anchoredPosition = Vector2.zero;
+        cap.characterSpacing = 1f;
+
+        var sliderRT = NewUI("Slider", row);
+        sliderRT.anchorMin = new Vector2(0f, 0f); sliderRT.anchorMax = new Vector2(1f, 1f);
+        sliderRT.offsetMin = new Vector2(40f, 0f); sliderRT.offsetMax = Vector2.zero;
+        var slider = sliderRT.gameObject.AddComponent<Slider>();
+
+        var trackRT = NewUI("Track", sliderRT);
+        trackRT.anchorMin = new Vector2(0f, 0.5f); trackRT.anchorMax = new Vector2(1f, 0.5f);
+        trackRT.pivot = new Vector2(0.5f, 0.5f);
+        trackRT.sizeDelta = new Vector2(0f, 10f);
+        var track = trackRT.gameObject.AddComponent<Image>();
+        if (trackSprite != null) track.sprite = trackSprite;
+        else track.color = DimBtnBg;
+        track.raycastTarget = true;   // clicking the track jumps the thumb
+
+        var areaRT = NewUI("HandleArea", sliderRT);
+        areaRT.anchorMin = Vector2.zero; areaRT.anchorMax = Vector2.one;
+        areaRT.offsetMin = new Vector2(9f, 0f); areaRT.offsetMax = new Vector2(-9f, 0f);
+
+        var handleRT = NewUI("Handle", areaRT);
+        var handle = handleRT.gameObject.AddComponent<Image>();
+        handle.sprite = HALVisuals.Disc();
+        handle.color = TextMain;
+        handle.raycastTarget = true;
+        handle.preserveAspect = true;
+
+        var ring = NewUI("Ring", handleRT);
+        ring.anchorMin = Vector2.zero; ring.anchorMax = Vector2.one;
+        ring.offsetMin = new Vector2(-2f, -2f); ring.offsetMax = new Vector2(2f, 2f);
+        var ringImg = ring.gameObject.AddComponent<Image>();
+        ringImg.sprite = HALVisuals.Disc();
+        ringImg.color = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.35f);
+        ringImg.raycastTarget = false;
+        ringImg.preserveAspect = true;
+        ring.SetAsFirstSibling();
+
+        handleLabel = MakeText(handleRT, "", 7, new Color32(0x0B, 0x0D, 0x12, 0xFF), TextAlignmentOptions.Center);
+        Fill(handleLabel.rectTransform);
+        handleLabel.fontStyle = FontStyles.Bold;
+
+        slider.targetGraphic = handle;
+        slider.handleRect = handleRT;
+        slider.direction = Slider.Direction.LeftToRight;
+        slider.minValue = min;
+        slider.maxValue = max;
+        slider.wholeNumbers = true;
+        slider.value = start;
+
+        // Pin the thumb to an 18px CIRCLE after the Slider has claimed the
+        // rect — its axis-anchor writes leave whatever height the hierarchy
+        // implies, which rendered as a tall oval spilling over the labels.
+        handleRT.anchorMin = new Vector2(handleRT.anchorMin.x, 0.5f);
+        handleRT.anchorMax = new Vector2(handleRT.anchorMax.x, 0.5f);
+        handleRT.sizeDelta = new Vector2(18f, 18f);
+
+        return slider;
+    }
+
+    /// Risk wording vs their OFFER + their ASK (public info only). Price
+    /// bands from the approved mockup; quantity notes per Sam's short/over
+    /// rules.
+    static void RiskFor(int ask, int offer, int qty, int wantQty, out string text, out Color col)
     {
         float over = offer > 0 ? (float)ask / offer : 1f;
-        if (ask <= offer) { text = "their number — just send it"; col = OkGreen; return; }
-        if (over <= 1.10f) { text = "modest push — decent odds"; col = OkGreen; return; }
-        if (over <= 1.22f) { text = "firm push — they may counter"; col = WarnAmber; return; }
-        if (over <= 1.38f) { text = "pushing it — likely a counter, maybe worse"; col = new Color32(0xFF, 0x9A, 0x3C, 0xFF); return; }
-        text = "greedy — you might blow the deal"; col = BadRed;
+        if (ask <= offer) { text = "their number — just send it"; col = OkGreen; }
+        else if (over <= 1.10f) { text = "modest push — decent odds"; col = OkGreen; }
+        else if (over <= 1.22f) { text = "firm push — they may counter"; col = WarnAmber; }
+        else if (over <= 1.38f) { text = "pushing it — likely a counter, maybe worse"; col = new Color32(0xFF, 0x9A, 0x3C, 0xFF); }
+        else { text = "greedy — you might blow the deal"; col = BadRed; }
+
+        if (qty < wantQty) { text += " · short order, no premium"; if (col == OkGreen) col = WarnAmber; }
+        else if (qty > wantQty) { text += " · more than they want — they'll cool"; if (col == OkGreen) col = WarnAmber; }
     }
 
     /// Change-detected per-frame update while the slider tray is open — the
-    /// Slider's own drag callback path plus click-to-jump both land here.
+    /// Sliders' drag paths plus click-to-jump both land here.
     void UpdateSliderReadout()
     {
-        if (_slider == null) return;
-        int v = Mathf.RoundToInt(_slider.value);
-        if (v == _lastSliderVal) return;
-        _lastSliderVal = v;
-        var b = BuyerLedger.Get(_openId);
-        int qty = b != null ? b.askQty : 0;
-        _sliderPrice.text = $"{v} <size=10><color=#8B95A3>/cap</color></size>";
-        _sliderTotal.text = $"{qty} caps → <color=#FFD732>{v * qty}</color> credits";
-        RiskFor(v, _sliderMin, out string risk, out Color col);
+        if (_priceSlider == null || _qtySlider == null) return;
+        int p = Mathf.RoundToInt(_priceSlider.value);
+        int q = Mathf.RoundToInt(_qtySlider.value);
+        if (p == _lastPriceVal && q == _lastQtyVal) return;
+        _lastPriceVal = p;
+        _lastQtyVal = q;
+        _sliderPrice.text = $"{q} <size=10><color=#8B95A3>caps @</color></size> {p} <size=10><color=#8B95A3>each</color></size>";
+        _sliderTotal.text = $"= <color=#FFD732>{p * q}</color> credits  <color=#8B95A3>(they asked for {_askQtyAtBuild})</color>";
+        RiskFor(p, _priceMin, q, _askQtyAtBuild, out string risk, out Color col);
         _sliderRisk.text = risk;
         _sliderRisk.color = col;
-        if (_handleLabel != null) _handleLabel.text = v.ToString();
-        if (_sliderSendLabel != null) _sliderSendLabel.text = $"SEND {v}";
+        if (_priceHandleLabel != null) _priceHandleLabel.text = p.ToString();
+        if (_qtyHandleLabel != null) _qtyHandleLabel.text = q.ToString();
+        if (_sliderSendLabel != null) _sliderSendLabel.text = $"SEND {q} @ {p}";
     }
 
     // ══ Contact card ═══════════════════════════════════════════════════════
@@ -964,7 +999,7 @@ public class MessagesScreen : MonoBehaviour
     void ClearViews()
     {
         if (_indexRoot != null) { Destroy(_indexRoot.gameObject); _indexRoot = null; _indexContent = null; }
-        if (_threadRoot != null) { Destroy(_threadRoot.gameObject); _threadRoot = null; _threadContent = null; _threadScroll = null; _chipsRow = null; _apptCard = null; _apptText = null; _slider = null; }
+        if (_threadRoot != null) { Destroy(_threadRoot.gameObject); _threadRoot = null; _threadContent = null; _threadScroll = null; _chipsRow = null; _apptCard = null; _apptText = null; _priceSlider = null; _qtySlider = null; }
         if (_cardRoot != null) { Destroy(_cardRoot.gameObject); _cardRoot = null; }
         _bubbles.Clear();
     }

@@ -236,16 +236,23 @@ public class BuyerMessageDirector : MonoBehaviour
         BuyerLedger.Log(b, BuyerLedger.EvType.Scheduled, agreed, b.askQty, b.askTier, markUnread: false);
     }
 
-    public void Counter(BuyerLedger.Buyer b, int askPerCap)
+    /// Player counters with a price AND a quantity (Sam's rule: you can
+    /// short their ask — they buy but pay no premium — or oversupply, which
+    /// cools them; BuyerDeals.QtyMood does the math). A counter-back is on
+    /// PRICE only: your quantity stands.
+    public void Counter(BuyerLedger.Buyer b, int askPerCap, int offerQty)
     {
         if (b == null || b.convo != BuyerLedger.Convo.AwaitingReply) return;
         askPerCap = Mathf.Max(1, askPerCap);
-        BuyerLedger.Log(b, BuyerLedger.EvType.PlayerCountered, askPerCap, 0, b.askTier, markUnread: false);
-        var res = BuyerDeals.ResolveCounter(b.id, (MushroomTier)b.askTier, askPerCap, out int counterBack);
+        offerQty = Mathf.Max(1, offerQty);
+        BuyerLedger.Log(b, BuyerLedger.EvType.PlayerCountered, askPerCap, offerQty, b.askTier, markUnread: false);
+        var res = BuyerDeals.ResolveCounter(b.id, (MushroomTier)b.askTier, askPerCap,
+                                            b.askQty, offerQty, out int counterBack);
         switch (res)
         {
             case BuyerDeals.CounterResult.Accept:
                 b.offerPerCap = askPerCap;
+                b.askQty = offerQty;
                 // Price LOCKED — PriceAgreed only offers the window pick, so
                 // the player can't counter again off their own accepted number.
                 // b=1 flags the grudging-acceptance wording in BuyerTexts.
@@ -253,6 +260,7 @@ public class BuyerMessageDirector : MonoBehaviour
                 BuyerLedger.Log(b, BuyerLedger.EvType.BuyerCounterBack, askPerCap, 1, b.askTier);
                 break;
             case BuyerDeals.CounterResult.CounterBack:
+                b.askQty = offerQty;   // they take your quantity, argue the price
                 b.counterBackPerCap = counterBack;
                 b.convo = BuyerLedger.Convo.AwaitingCounterBack;
                 BuyerLedger.Log(b, BuyerLedger.EvType.BuyerCounterBack, counterBack, 0, b.askTier);

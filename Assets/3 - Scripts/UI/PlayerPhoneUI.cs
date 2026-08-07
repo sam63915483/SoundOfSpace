@@ -66,11 +66,10 @@ public class PlayerPhoneUI : MonoBehaviour
     const float PhoneWidth     = 586f;
     const float PhoneHeight    = 440f;
     // Overall on-screen scale of the phone — easier to apply at the root
-    // than to bump every internal pixel-size constant. (Was 1.5 as a
-    // portrait handset, then 1.05 as the 4:3 chest tablet; Sam asked for
-    // 1.8× that on 2026-08-07 — the tablet read too small once the Messages
-    // app put real reading/tapping on it.)
-    const float PhoneScale     = 1.89f;
+    // than to bump every internal pixel-size constant. History: 1.5 portrait
+    // handset → 1.05 4:3 tablet → 1.89 when the Messages app landed (too
+    // small to read) → Sam walked it back 1.25× to 1.51 (2026-08-07).
+    const float PhoneScale     = 1.51f;
     const float SlideDuration  = 0.25f;   // legacy pacing constant (gallery waits key off animation end)
     // FNAF2-style flip: the monitor hinges around its OWN bottom edge,
     // rotating up from past-edge-on (you glimpse its back for a frame) to
@@ -108,8 +107,11 @@ public class PlayerPhoneUI : MonoBehaviour
     RectTransform _armRT;
     RawImage      _armImage;
     float         _nextArmTexFind;
-    const float ArmLocalHeight  = 400f;   // local units; ~370 hangs below the chassis
-    const float ArmLocalOverlap = 30f;    // clamp bracket grips over the bottom bezel
+    const float ArmLocalHeight  = 400f;   // local units; ~330 hangs below the chassis
+    const float ArmLocalOverlap = 70f;    // clamp bracket grips over the bottom bezel
+                                          // (30 → 70 on 2026-08-07: a visible gap had
+                                          // opened between arm and chassis — Sam wants
+                                          // it reading as physically attached)
     const float ArmAspect       = 0.7467f; // phone_arm.png width/height
     // R key cycles portrait → landscape (90° CW) → portrait. Always reset
     // to portrait on Open so re-opening lands in the default orientation.
@@ -142,51 +144,21 @@ public class PlayerPhoneUI : MonoBehaviour
     Button[]      _appButtons = new Button[6];
 
     // ── Home-screen page navigation ─────────────────────────────────
-    // Four swappable pages live inside _pageHostRT. Only one is active at
+    // Swappable pages live inside _pageHostRT. Only one is active at
     // a time; the nav widget below flips between them. Not saved —
     // resets to page 0 on every phone open.
-    //   0 = Apps (Fishingdex / Build / Settings / Map)
-    //   1 = AI Apps (AI / Notes / Codex / Calculator — three are stubs)
-    //   2 = Vitals
-    //   3 = Quests
-    //   4 = Levels
-    const int PageCount = 4;
+    //   0 = Apps (Fishingdex / Build / Settings / Map / Photos / Messages)
+    //   1 = Levels
+    // (Vitals + Quests pages removed 2026-08-07 per Sam — the survival HUD
+    // already shows vitals and the tutorial quest list was stale.)
+    const int PageCount = 2;
     RectTransform _pageHostRT;
     RectTransform[] _pageRoots = new RectTransform[PageCount];
-    int _currentPage; // 0=Apps (incl. AI), 1=Vitals, 2=Quests, 3=Levels
+    int _currentPage; // 0=Apps (incl. Messages), 1=Levels
 
     // Nav widget visuals.
     Image[] _navDots = new Image[PageCount];
     UnityEngine.UI.Shadow[] _navDotGlows = new UnityEngine.UI.Shadow[PageCount];
-
-    // Vitals page state — bars + change-detected percent so we don't
-    // reassign anchorMax every frame when nothing moved.
-    RectTransform[] _vitalFills = new RectTransform[4];
-    int[] _lastVitalPct = new int[] { -1, -1, -1, -1 };
-
-    // Quests page state — sliding window of 5 visible rows over the
-    // 12-entry _quests table. Cached at build time, refreshed on open
-    // and on entering the page.
-    const int VisibleQuestRows = 5;
-    struct QuestRowUI { public Image Dot; public TextMeshProUGUI Label; }
-    QuestRowUI[] _questRowUI = new QuestRowUI[VisibleQuestRows];
-
-    struct QuestRow { public System.Func<bool> Read; public string Label; }
-    static readonly QuestRow[] _quests = new QuestRow[]
-    {
-        new QuestRow{ Read = () => EarlyGameProgress.NoteRead,               Label = "Read the note" },
-        new QuestRow{ Read = () => EarlyGameProgress.RodPickedUp,            Label = "Pick up the fishing rod" },
-        new QuestRow{ Read = () => EarlyGameProgress.FirstFishCaught,        Label = "Catch your first fish" },
-        new QuestRow{ Read = () => EarlyGameProgress.OneOfEachCaught,        Label = "Catch one of each fish" },
-        new QuestRow{ Read = () => EarlyGameProgress.FirstMealEaten,         Label = "Cook and eat a meal" },
-        new QuestRow{ Read = () => EarlyGameProgress.WaterBottleDrunk,       Label = "Drink from the bottle" },
-        new QuestRow{ Read = () => EarlyGameProgress.ReturnedHome,           Label = "Return home" },
-        new QuestRow{ Read = () => EarlyGameProgress.TevReturnedDialogueDone,Label = "Speak to Tev" },
-        new QuestRow{ Read = () => EarlyGameProgress.CabinBuilt,             Label = "Build a cabin" },
-        new QuestRow{ Read = () => EarlyGameProgress.VillageCoordsGiven,     Label = "Get village coordinates" },
-        new QuestRow{ Read = () => EarlyGameProgress.FishVendorVisited,      Label = "Visit the fish vendor" },
-        new QuestRow{ Read = () => EarlyGameProgress.GoodsVendorVisited,     Label = "Visit the goods vendor" },
-    };
 
     // Status bar refs
     TextMeshProUGUI _timeText;
@@ -416,10 +388,8 @@ public class PlayerPhoneUI : MonoBehaviour
         // record it and dismiss the persistent nag prompt for good.
         if (!HasEverOpened) { HasEverOpened = true; HideOpenNag(); }
         // Always land on page 0 (apps) when the phone opens — never resume
-        // mid-flipped from a prior session. Also refreshes quests so page 2
-        // is ready if the player flips to it.
+        // mid-flipped from a prior session.
         GoToPage(0);
-        RefreshQuests();
         // Always reset to portrait on open — landscape never carries across
         // close/reopen, per design. Snap instantly so the slide-in plays in
         // the final portrait orientation (no rotation tween off-screen).
@@ -432,6 +402,9 @@ public class PlayerPhoneUI : MonoBehaviour
 
     public void Close()
     {
+        // Clear BEFORE Exit(): OnChatExit would otherwise mount the Messages
+        // index into a phone that's in the middle of closing.
+        _chatOpenedFromMessages = false;
         if (_activeChat != null) _activeChat.Exit();
         if (_activeMessages != null) { Destroy(_activeMessages.gameObject); OnMessagesExit(); }
         ClosePhoneApp();   // reopening always lands on the home screen
@@ -1349,13 +1322,10 @@ public class PlayerPhoneUI : MonoBehaviour
             }
         }
 
-        // Vitals bars track ResourceManager live — only while page 2 is
-        // visible AND the phone is open (no point updating an off-screen UI).
-        if (IsOpen && _currentPage == 1) RefreshVitals();
-        // Levels tick live too — a tree felled while the phone is up should move
-        // the bar without needing a page flip. Both refreshes are change-detected
-        // internally, so the per-frame cost is a handful of comparisons.
-        if (IsOpen && _currentPage == 3) RefreshLevels();
+        // Levels tick live — a tree felled while the phone is up should move
+        // the bar without needing a page flip. Change-detected internally, so
+        // the per-frame cost is a handful of comparisons.
+        if (IsOpen && _currentPage == 1) RefreshLevels();
 
         // Movement-warning fade is purely time-based (samples Time.unscaledTime
         // against _warningShownAt). It MUST run before the early-returns below
@@ -2287,10 +2257,8 @@ public class PlayerPhoneUI : MonoBehaviour
         _pageHostRT = NewUI("PageHost", _screenRT);
         _pageHostRT.gameObject.AddComponent<LayoutElement>().preferredHeight = 170f;
 
-        BuildAppsPage();    // _pageRoots[0] — 6 tiles incl. AI
-        BuildVitalsPage();  // _pageRoots[1]
-        BuildQuestsPage();  // _pageRoots[2]
-        BuildLevelsPage();  // _pageRoots[3]
+        BuildAppsPage();    // _pageRoots[0] — 6 tiles incl. Messages
+        BuildLevelsPage();  // _pageRoots[1]
     }
 
     void BuildAppsPage()
@@ -2511,16 +2479,19 @@ public class PlayerPhoneUI : MonoBehaviour
                 _pageRoots[i].gameObject.SetActive(i == _currentPage);
     }
 
+    // True while the AI chat was entered THROUGH the Messages index — its
+    // exit should return there, not to the home screen (Sam's playtest note:
+    // backing out of the assistant thread dumped you all the way home).
+    bool _chatOpenedFromMessages;
+
     void OpenHalFromMessages()
     {
-        // Tear down the index, then mount the chat. The chat's own exit
-        // restores the page grid, so backing out of HAL lands on the home
-        // screen — same as it always did.
         if (_activeMessages != null)
         {
             Destroy(_activeMessages.gameObject);
             _activeMessages = null;
         }
+        _chatOpenedFromMessages = true;
         EnterAIChat();
     }
 
@@ -2561,176 +2532,22 @@ public class PlayerPhoneUI : MonoBehaviour
         // bottleneck back to whatever the chosen graphics settings demand.
         // Re-loaded on the next EnterAIChat (4-5 s first-token delay).
         if (LLMService.Instance != null) LLMService.Instance.UnloadModel();
-        // Restore the AI-apps page (the one the player tapped from).
+        // Came in via the Messages index → back goes THERE, one level up.
+        if (_chatOpenedFromMessages)
+        {
+            _chatOpenedFromMessages = false;
+            EnterMessages();
+            return;
+        }
+        // Otherwise restore the page the player tapped from.
         for (int i = 0; i < PageCount; i++)
             if (_pageRoots[i] != null)
                 _pageRoots[i].gameObject.SetActive(i == _currentPage);
     }
 
-    // ── Page 2: Vitals ──────────────────────────────────────────────
-
-    void BuildVitalsPage()
-    {
-        var pageRT = NewUI("VitalsPage", _pageHostRT);
-        _pageRoots[1] = pageRT;
-        pageRT.anchorMin = Vector2.zero; pageRT.anchorMax = Vector2.one;
-        pageRT.offsetMin = Vector2.zero; pageRT.offsetMax = Vector2.zero;
-
-        var vlg = pageRT.gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(10, 10, 16, 16);
-        vlg.spacing = 10f;
-        vlg.childAlignment = TextAnchor.UpperCenter;
-        vlg.childControlWidth = true;  vlg.childControlHeight = true;
-        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
-
-        _vitalFills[0] = BuildVitalRow(pageRT, "HUNGER");
-        _vitalFills[1] = BuildVitalRow(pageRT, "THIRST");
-        _vitalFills[2] = BuildVitalRow(pageRT, "HEALTH");
-        _vitalFills[3] = BuildVitalRow(pageRT, "SHIP PWR");
-    }
-
-    RectTransform BuildVitalRow(RectTransform parent, string labelText)
-    {
-        var row = NewUI($"Row_{labelText}", parent);
-        row.gameObject.AddComponent<LayoutElement>().preferredHeight = 14f;
-        var hlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
-        hlg.padding = new RectOffset(0, 0, 0, 0);
-        hlg.spacing = 6f;
-        hlg.childAlignment = TextAnchor.MiddleLeft;
-        hlg.childControlWidth = true;  hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
-
-        var label = MakeText(row, labelText, 9, AccentCyan, TextAnchor.MiddleLeft);
-        label.characterSpacing = 1f;
-        var labelLE = label.gameObject.AddComponent<LayoutElement>();
-        labelLE.preferredWidth = 54f;
-        labelLE.preferredHeight = 14f;
-
-        // Bar background: dark cyan-tinted track.
-        var trackRT = NewUI("Track", row);
-        var trackLE = trackRT.gameObject.AddComponent<LayoutElement>();
-        trackLE.flexibleWidth = 1f;
-        trackLE.preferredHeight = 7f;
-        var trackImg = trackRT.gameObject.AddComponent<Image>();
-        trackImg.color = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.10f);
-        trackImg.sprite = RoundedRectFilled(3);
-        trackImg.type = Image.Type.Sliced;
-        trackImg.raycastTarget = false;
-
-        // Bar fill — child whose anchorMax.x is the live percent.
-        var fillRT = NewUI("Fill", trackRT);
-        fillRT.anchorMin = new Vector2(0f, 0f);
-        fillRT.anchorMax = new Vector2(0f, 1f); // x set live in RefreshVital
-        fillRT.pivot = new Vector2(0f, 0.5f);
-        fillRT.offsetMin = Vector2.zero;
-        fillRT.offsetMax = Vector2.zero;
-        var fillImg = fillRT.gameObject.AddComponent<Image>();
-        fillImg.color = AccentCyan;
-        fillImg.sprite = RoundedRectFilled(3);
-        fillImg.type = Image.Type.Sliced;
-        fillImg.raycastTarget = false;
-
-        return fillRT;
-    }
-
-    void RefreshVitals()
-    {
-        if (ResourceManager.Instance == null) return;
-        RefreshVital(0, ResourceManager.Instance.HungerPercent);
-        RefreshVital(1, ResourceManager.Instance.ThirstPercent);
-        RefreshVital(2, ResourceManager.Instance.HealthPercent);
-        var piloted = Ship.PilotedInstance;
-        RefreshVital(3, piloted != null ? piloted.PowerPercent : 0f);
-    }
-
-    void RefreshVital(int i, float pct)
-    {
-        if (_vitalFills[i] == null) return;
-        int rounded = Mathf.Clamp(Mathf.RoundToInt(pct * 100f), 0, 100);
-        if (rounded == _lastVitalPct[i]) return;
-        _lastVitalPct[i] = rounded;
-        float clamped = Mathf.Clamp01(pct);
-        _vitalFills[i].anchorMax = new Vector2(clamped, 1f);
-    }
-
-    // ── Page 3: Quests ──────────────────────────────────────────────
-
-    void BuildQuestsPage()
-    {
-        var pageRT = NewUI("QuestsPage", _pageHostRT);
-        _pageRoots[2] = pageRT;
-        pageRT.anchorMin = Vector2.zero; pageRT.anchorMax = Vector2.one;
-        pageRT.offsetMin = Vector2.zero; pageRT.offsetMax = Vector2.zero;
-
-        var vlg = pageRT.gameObject.AddComponent<VerticalLayoutGroup>();
-        vlg.padding = new RectOffset(8, 8, 8, 8);
-        vlg.spacing = 6f;
-        vlg.childAlignment = TextAnchor.UpperLeft;
-        vlg.childControlWidth = true;  vlg.childControlHeight = true;
-        vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
-
-        for (int i = 0; i < VisibleQuestRows; i++)
-        {
-            var row = NewUI($"Quest_{i}", pageRT);
-            row.gameObject.AddComponent<LayoutElement>().preferredHeight = 20f;
-            var hlg = row.gameObject.AddComponent<HorizontalLayoutGroup>();
-            hlg.padding = new RectOffset(0, 0, 0, 0);
-            hlg.spacing = 8f;
-            hlg.childAlignment = TextAnchor.MiddleLeft;
-            hlg.childControlWidth = true; hlg.childControlHeight = true;
-            hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = false;
-
-            var dotRT = NewUI("Dot", row);
-            var dotLE = dotRT.gameObject.AddComponent<LayoutElement>();
-            dotLE.preferredWidth = 6f;
-            dotLE.preferredHeight = 6f;
-            var dotImg = dotRT.gameObject.AddComponent<Image>();
-            dotImg.sprite = Disc();
-            dotImg.color = AccentCyan;
-            dotImg.raycastTarget = false;
-
-            var label = MakeText(row, "", 9, LabelWhite, TextAnchor.MiddleLeft);
-            label.richText = true;
-            var labelLE = label.gameObject.AddComponent<LayoutElement>();
-            labelLE.flexibleWidth = 1f;
-            labelLE.preferredHeight = 14f;
-
-            _questRowUI[i] = new QuestRowUI { Dot = dotImg, Label = (TextMeshProUGUI)label };
-        }
-    }
-
-    void RefreshQuests()
-    {
-        // Find the first incomplete quest and show a sliding window of
-        // VisibleQuestRows centered around it (2 above + the rest below),
-        // clamped so the window never runs off either end.
-        int firstIncomplete = _quests.Length;
-        for (int i = 0; i < _quests.Length; i++)
-            if (!_quests[i].Read()) { firstIncomplete = i; break; }
-
-        int start = Mathf.Clamp(firstIncomplete - 2, 0,
-            Mathf.Max(0, _quests.Length - VisibleQuestRows));
-
-        for (int slot = 0; slot < VisibleQuestRows; slot++)
-        {
-            int q = start + slot;
-            var ui = _questRowUI[slot];
-            if (ui.Dot == null || ui.Label == null) continue;
-
-            if (q >= _quests.Length)
-            {
-                ui.Dot.enabled = false;
-                ui.Label.text = "";
-                continue;
-            }
-
-            bool done = _quests[q].Read();
-            ui.Dot.enabled = true;
-            ui.Dot.color = done ? ButtonGrey : AccentCyan;
-            ui.Label.color = done ? ButtonGrey : LabelWhite;
-            ui.Label.text = done ? $"<s>{_quests[q].Label}</s>" : _quests[q].Label;
-        }
-    }
+    // (Vitals + Quests pages deleted 2026-08-07 — Sam's call: the survival
+    // HUD already shows vitals live, and the tutorial quest list predates
+    // the mushroom-economy refocus.)
 
     // ── Page navigation ─────────────────────────────────────────────
 
@@ -2744,11 +2561,8 @@ public class PlayerPhoneUI : MonoBehaviour
         RefreshDots();
         WirePageNavExplicit();
 
-        // Refresh page-specific content on entry — vitals tick every frame in
-        // Update while page 2 is visible, quests only update on phone events
-        // so we drive them here.
-        if (_currentPage == 2) RefreshQuests();
-        if (_currentPage == 3) RefreshLevels();
+        // Refresh page-specific content on entry.
+        if (_currentPage == 1) RefreshLevels();
     }
 
     // ── Page 4: Levels ──────────────────────────────────────────────
@@ -2765,7 +2579,7 @@ public class PlayerPhoneUI : MonoBehaviour
     void BuildLevelsPage()
     {
         var pageRT = NewUI("LevelsPage", _pageHostRT);
-        _pageRoots[3] = pageRT;
+        _pageRoots[1] = pageRT;
         pageRT.anchorMin = Vector2.zero; pageRT.anchorMax = Vector2.one;
         pageRT.offsetMin = Vector2.zero; pageRT.offsetMax = Vector2.zero;
 

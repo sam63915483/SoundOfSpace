@@ -65,24 +65,39 @@ public static class BuyerDeals
 
     // ── Counter resolution (spec §4, incl. the counter-back rule) ──────────
 
-    /// Player counters at <paramref name="ask"/> per cap. One exchange each,
-    /// no loops:
-    ///   within patience          → Accept at the player's number
-    ///   ≤ patience × 1.25        → CounterBack (midpoint, clamped to their
-    ///                              patience ceiling, never below their offer)
-    ///   beyond that (outrageous) → Refuse, deal off, bond ding
-    public static CounterResult ResolveCounter(string id, MushroomTier tier, int ask, out int counterBack)
+    /// How the quantity you're proposing shifts what they'll tolerate paying
+    /// (Sam's rule, 2026-08-07). Short of what they asked: still interested,
+    /// but no premium — their tolerated price shrinks toward 0.85×. Over what
+    /// they asked: they'll take it, but they cool on it — down to 0.85× at
+    /// double their ask. Exactly what they wanted = 1.0.
+    public static float QtyMood(int wantQty, int offerQty)
+    {
+        if (wantQty <= 0 || offerQty == wantQty) return 1f;
+        float ratio = (float)offerQty / wantQty;
+        if (ratio < 1f) return Mathf.Lerp(0.85f, 1f, ratio);
+        return 1f - 0.15f * Mathf.Min(1f, ratio - 1f);
+    }
+
+    /// Player counters at <paramref name="ask"/> per cap for
+    /// <paramref name="offerQty"/> caps (they asked for
+    /// <paramref name="wantQty"/>). One exchange each, no loops:
+    ///   within patience × qty-mood → Accept at the player's numbers
+    ///   ≤ that × 1.25              → CounterBack on PRICE (midpoint, clamped
+    ///                                to their ceiling; your qty stands)
+    ///   beyond that (outrageous)   → Refuse, deal off, bond ding
+    public static CounterResult ResolveCounter(string id, MushroomTier tier, int ask,
+                                               int wantQty, int offerQty, out int counterBack)
     {
         counterBack = 0;
         int truePrice = TruePricePerCap(id, tier);
         float patience = NPCMushroomPrice.PatienceOf(id);
-        float ceiling = truePrice * patience;
+        float ceiling = truePrice * patience * QtyMood(wantQty, offerQty);
         if (ask <= ceiling) return CounterResult.Accept;
         if (ask <= ceiling * 1.25f)
         {
             int opening = OpeningOffer(id, tier);
             counterBack = Mathf.Min(Mathf.RoundToInt((opening + ask) / 2f), Mathf.FloorToInt(ceiling));
-            counterBack = Mathf.Max(counterBack, opening); // never counter below their own offer
+            counterBack = Mathf.Max(counterBack, 1);
             return CounterResult.CounterBack;
         }
         return CounterResult.Refuse;
@@ -122,4 +137,15 @@ public static class BuyerDeals
     public static bool IsExact(MushroomTier agreedTier, int agreedQty,
                                MushroomTier offeredTier, int offeredQty) =>
         offeredTier == agreedTier && offeredQty >= agreedQty;
+
+    /// Re-asking ABOVE the agreed price at the meetup (Sam's rule: agree 20,
+    /// show up and ask 30 — they may take it, they may not). At or under the
+    /// agreed price: no penalty. Over: acceptance odds fall off linearly —
+    /// +10% over → 0.8, +25% → 0.5, +50% or more → 5% floor.
+    public static float OverchargeFactor(int ask, int agreed)
+    {
+        if (agreed <= 0 || ask <= agreed) return 1f;
+        float over = (float)ask / agreed - 1f;
+        return Mathf.Clamp(1f - over / 0.5f, 0.05f, 1f);
+    }
 }

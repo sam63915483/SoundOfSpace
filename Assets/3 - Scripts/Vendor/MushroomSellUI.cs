@@ -204,11 +204,15 @@ public class MushroomSellUI : MonoBehaviour
         _stage = Stage.Open;
         _counter = 0;
 
-        // A live appointment flips the panel into delivery mode.
+        // A live appointment flips the panel into delivery mode. The ask is
+        // seeded at the AGREED price but stays editable — you can re-ask at
+        // the meetup, at the risk of the whole delivery (spec update
+        // 2026-08-07, Sam's playtest).
         var ledger = BuyerLedger.Get(_buyerId);
         _scheduled = ledger != null && ledger.convo == BuyerLedger.Convo.Scheduled
                      && Time.unscaledTime <= ledger.deadline + BuyerDeals.GraceSeconds;
         _appt = _scheduled ? ledger : null;
+        if (_scheduled) _ask = _appt.offerPerCap;
 
         if (_dim != null) _dim.SetActive(true);
         _panelRT.gameObject.SetActive(true);
@@ -454,7 +458,13 @@ public class MushroomSellUI : MonoBehaviour
         _offerCountN += _cursor.count;
         _cursor = default;
 
-        if (wasEmpty)
+        if (wasEmpty && _scheduled && _appt != null)
+        {
+            // Delivery mode: the ask stays seeded at the AGREED price — the
+            // market seed below would silently clobber the deal's number.
+            _ask = _appt.offerPerCap;
+        }
+        else if (wasEmpty)
         {
             // Seed the ask at MARKET, never at the buyer's hidden rate — that
             // would hand over the number the player is meant to learn.
@@ -678,14 +688,13 @@ public class MushroomSellUI : MonoBehaviour
                     $"<color=#FFD732>{_counter * _offerCountN}</color> for the lot</color></size>";
         }
 
-        // Ask control. In scheduled mode the price is AGREED — the field shows
-        // it read-only and the total tracks the order, not an ask.
+        // Ask control. In scheduled mode the field seeds at the AGREED price
+        // but stays editable — re-asking over it risks the delivery.
         _suppressInput = true;
-        _askInput.text = _scheduled && _appt != null ? _appt.offerPerCap.ToString() : _ask.ToString();
+        _askInput.text = _ask.ToString();
         _suppressInput = false;
-        _askInput.interactable = !_scheduled;
-        _totalText.text = _scheduled && _appt != null
-            ? $"{_appt.offerPerCap * _offerCountN}" : $"{Total}";
+        _askInput.interactable = true;
+        _totalText.text = $"{Total}";
 
         // The greed read, in words. Measured against MARKET, never against the
         // buyer — market value is a property of the strain, so this reads the
@@ -695,13 +704,22 @@ public class MushroomSellUI : MonoBehaviour
         string band; Color32 bandCol;
         if (_scheduled && _appt != null)
         {
-            // Delivery read instead: does the table match the order?
+            // Delivery read instead: does the table (and the price) match
+            // the order?
             var at = (MushroomTier)_appt.askTier;
+            bool goodsOk = HasOffer && BuyerDeals.IsExact(at, _appt.askQty, MushroomRegistry.Tier(_offerSpecies), _offerCountN);
+            bool priceOk = _ask <= _appt.offerPerCap;
             if (!HasOffer) { band = ""; bandCol = C_Dim; }
-            else if (BuyerDeals.IsExact(at, _appt.askQty, MushroomRegistry.Tier(_offerSpecies), _offerCountN))
-            { band = "exactly what they ordered"; bandCol = new Color32(110, 220, 130, 255); }
-            else
+            else if (goodsOk && _ask == _appt.offerPerCap)
+            { band = "exactly as agreed"; bandCol = new Color32(110, 220, 130, 255); }
+            else if (goodsOk && priceOk)
+            { band = "as ordered, under the agreed price"; bandCol = new Color32(110, 220, 130, 255); }
+            else if (goodsOk)
+            { band = $"asking over the agreed {_appt.offerPerCap} — they may walk"; bandCol = new Color32(255, 154, 60, 255); }
+            else if (priceOk)
             { band = "not what they ordered — they might take it anyway"; bandCol = new Color32(255, 215, 50, 255); }
+            else
+            { band = "wrong goods AND over the agreed price — long odds"; bandCol = new Color32(255, 110, 110, 255); }
         }
         else if (!HasOffer)     { band = ""; bandCol = C_Dim; }
         else if (pct == 0)      { band = "asking exactly market value";                bandCol = new Color32(110, 220, 130, 255); }
@@ -958,37 +976,61 @@ public class MushroomSellUI : MonoBehaviour
         else MakeOffer();
     }
 
-    /// Scheduled-deal fulfilment (spec §5). Exact = agreed tier and ≥ agreed
-    /// qty, paid at agreed price × gratitude, full bond. Anything else rolls
-    /// the substitution chance: accepted → their standard PriceFor (no bump,
-    /// half bond); refused → −5 bond, appointment dead, ONE roll only.
+    /// Scheduled-deal fulfilment (spec §5 + the 2026-08-07 playtest updates).
+    /// The delivery is judged on TWO axes, multiplied into one roll:
+    ///   goods — exact (agreed tier, ≥ agreed qty) is a certainty; anything
+    ///           else runs the substitution chance
+    ///   price — at or under the agreed number is a certainty; re-asking OVER
+    ///           it decays fast (agree 20, demand 30 → they almost walk)
+    /// Untouched price + exact goods pays agreed × gratitude with full bond.
+    /// Any deviation that lands pays YOUR ask, but bond gains are halved.
+    /// A refusal is −5 bond, kills the appointment AND bars them for 5 min —
+    /// no instant re-deal through the walk-up panel (Sam found that exploit).
     void DeliverOrder()
     {
         if (!_scheduled || _appt == null || !HasOffer) return;
         var offeredTier = MushroomRegistry.Tier(_offerSpecies);
         var agreedTier = (MushroomTier)_appt.askTier;
+        int agreed = _appt.offerPerCap;
+        int ask = Mathf.Max(1, _ask);
 
-        if (BuyerDeals.IsExact(agreedTier, _appt.askQty, offeredTier, _offerCountN))
-        {
-            int perCap = Mathf.RoundToInt(_appt.offerPerCap * BuyerDeals.GratitudeBonus(_appt.windowMinutes));
-            CompleteScheduled(perCap, Mathf.Min(_offerCountN, _appt.askQty), substituted: false);
-            return;
-        }
+        bool exactGoods = BuyerDeals.IsExact(agreedTier, _appt.askQty, offeredTier, _offerCountN);
+        bool exactPrice = ask <= agreed;
+        float chance = (exactGoods ? 1f : BuyerDeals.SubstitutionChance(agreedTier, _appt.askQty, offeredTier, _offerCountN))
+                     * BuyerDeals.OverchargeFactor(ask, agreed);
 
-        float chance = BuyerDeals.SubstitutionChance(agreedTier, _appt.askQty, offeredTier, _offerCountN);
-        if (UnityEngine.Random.value <= chance)
+        if (chance >= 0.999f || UnityEngine.Random.value <= chance)
         {
-            int perCap = _price != null ? _price.PriceFor(_offerSpecies) : Market;
-            int qty = Mathf.Min(_offerCountN, RemainingAppetite);
-            if (qty <= 0) { SetResult("\"I'm full up. Come back later.\"", C_Err); return; }
-            CompleteScheduled(perCap, qty, substituted: true);
+            int perCap;
+            int qty;
+            if (exactGoods)
+            {
+                // Gratitude bump only when the deal is honoured as written.
+                perCap = (ask == agreed)
+                    ? Mathf.RoundToInt(agreed * BuyerDeals.GratitudeBonus(_appt.windowMinutes))
+                    : ask;
+                qty = Mathf.Min(_offerCountN, _appt.askQty);
+            }
+            else
+            {
+                perCap = ask;
+                qty = Mathf.Min(_offerCountN, RemainingAppetite);
+                if (qty <= 0) { SetResult("\"I'm full up. Come back later.\"", C_Err); return; }
+            }
+            CompleteScheduled(perCap, qty, substituted: !(exactGoods && exactPrice));
         }
         else
         {
             BuyerLedger.SubstitutionRefused(_buyerId, Mathf.RoundToInt(chance * 100));
+            // Refused deliveries sting: same 5-minute freeze-out as pushing
+            // past an in-person counter, or the walk-up panel becomes a free
+            // second attempt at any price.
+            MushroomDealState.Bar(_buyerId);
             _scheduled = false; _appt = null;
             ReturnOfferToBar();
-            SetResult($"\"That's not what we agreed.\" — {_npcName} waves you off.", C_Err);
+            SetResult(ask > agreed
+                ? $"\"We agreed {agreed}. Get away from me.\" — {_npcName} won't deal for 5 minutes."
+                : $"\"That's not what we agreed.\" — {_npcName} won't deal for 5 minutes.", C_Err);
             Refresh();
         }
     }
