@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Counter Mechanic — 4 Options</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#0b0d12; color:#cfd8e3; font-family:'Segoe UI',system-ui,sans-serif; padding:24px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:#7d8a99; font-size:13px; margin-bottom:18px; max-width:1200px; line-height:1.5; }
+  .sub b { color:#aeb9c6; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(560px,1fr)); gap:28px; max-width:2400px; }
+  .slot h2 { font-size:14px; margin-bottom:2px; letter-spacing:1px; }
+  .slot p.desc { font-size:12px; color:#7d8a99; margin-bottom:8px; min-height:32px; }
+
+  .phone { width:560px; height:420px; border-radius:10px; overflow:hidden; position:relative;
+           border:2px solid #2b3d52; background:#06121e; user-select:none; outline:none; }
+  .phone.focus { border-color:#5cc8ff; }
+  .screen { position:absolute; inset:8px; display:flex; flex-direction:column;
+            background:#0f1116; }
+  /* shared thread chrome — B-style readability, A-style accents */
+  .hdr { display:flex; align-items:center; gap:10px; padding:9px 12px; background:#151820;
+         border-bottom:1px solid #232734; }
+  .hdr .ttl { font-size:15px; font-weight:600; color:#e9edf2; }
+  .hdr .bond { font-size:10px; color:#8b95a3; letter-spacing:1px; }
+  .hdr .bond b { color:#5cc8ff; }
+  .hdr .reset { margin-left:auto; font-size:11px; color:#7d8a99; border:1px solid #2b3d52;
+                border-radius:6px; padding:2px 10px; cursor:pointer; }
+  .hdr .reset:hover { color:#5cc8ff; }
+  .bubbles { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:7px; }
+  .bb { max-width:76%; padding:8px 12px; font-size:13px; line-height:1.4; border-radius:14px; color:#e9edf2; }
+  .bb.them { align-self:flex-start; background:#20242e; border-bottom-left-radius:4px; }
+  .bb.me { align-self:flex-end; background:#2e7d4f; border-bottom-right-radius:4px; }
+  .sys { align-self:center; font-size:11px; color:#7d8a99; }
+
+  .tray { padding:10px 12px 12px; background:#12151c; border-top:1px solid #232734; }
+  .bigprice { text-align:center; margin-bottom:8px; }
+  .bigprice .n { font-size:34px; font-weight:800; color:#eaf6ff; letter-spacing:1px; }
+  .bigprice .per { font-size:12px; color:#8b95a3; }
+  .bigprice .tot { font-size:12px; color:#8b95a3; }
+  .bigprice .tot b { color:#ffd732; }
+  .risk { text-align:center; font-size:12px; font-weight:600; margin-bottom:8px; min-height:16px; }
+
+  .rowbtns { display:flex; gap:8px; }
+  .btn { flex:1; text-align:center; padding:12px 4px; border-radius:12px; font-size:14px; font-weight:700;
+         cursor:pointer; border:1px solid transparent; }
+  .btn:hover { filter:brightness(1.25); }
+  .btn.ok { background:#1c3a26; color:#57c46e; border-color:#2c5c3a; }
+  .btn.warn { background:#3a2f1a; color:#e8a33d; border-color:#5c4a28; }
+  .btn.dim { background:#1a2029; color:#77839a; border-color:#232c3b; }
+  .btn.sel { outline:2px solid #5cc8ff; }
+
+  /* 1 — preset chips */
+  .chips2 { display:flex; flex-direction:column; gap:8px; }
+  .chips2 .rowbtns .btn { padding:10px 4px; }
+  .chips2 .hintline { font-size:10px; color:#7d8a99; text-align:center; margin-top:2px; }
+  .chips2 .btn small { display:block; font-size:10px; font-weight:400; opacity:.75; margin-top:2px; }
+
+  /* 2 — slider */
+  .sliderwrap { padding:4px 6px 8px; }
+  .track { position:relative; height:34px; border-radius:17px; background:linear-gradient(90deg,#1c3a26 0%,#3a2f1a 55%,#3a2222 100%);
+           border:1px solid #2b3d52; cursor:pointer; }
+  .thumb { position:absolute; top:-4px; width:42px; height:42px; border-radius:50%; background:#eaf6ff;
+           border:3px solid #5cc8ff; transform:translateX(-50%); cursor:grab;
+           display:flex; align-items:center; justify-content:center; font-weight:800; font-size:11px; color:#0b0d12; }
+  .ticks { display:flex; justify-content:space-between; font-size:10px; color:#7d8a99; padding:4px 6px 0; }
+
+  /* 3 — hold to raise */
+  .holdbtn { text-align:center; padding:16px 4px; border-radius:14px; background:#2a3a52; color:#eaf6ff;
+             font-size:15px; font-weight:800; letter-spacing:1px; cursor:pointer; border:1px solid #3d5a78; }
+  .holdbtn:active { background:#385a86; }
+  .meter { height:8px; border-radius:4px; background:#1a2029; margin:8px 0; overflow:hidden; }
+  .meter i { display:block; height:100%; width:0%; background:linear-gradient(90deg,#57c46e,#e8a33d,#e05555); }
+
+  /* 4 — big stepper */
+  .stepper { display:flex; align-items:center; gap:10px; }
+  .arrow { width:84px; height:84px; border-radius:16px; background:#1a2433; border:1px solid #2b3d52;
+           display:flex; align-items:center; justify-content:center; font-size:38px; color:#5cc8ff;
+           cursor:pointer; flex-shrink:0; font-weight:800; }
+  .arrow:hover { background:#213048; }
+  .arrow:active { background:#2a3d5c; }
+  .stepmid { flex:1; text-align:center; }
+  .kbd { font-size:10px; color:#7d8a99; text-align:center; margin-top:6px; }
+  .kbd b { color:#aeb9c6; }
+  .toast { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); background:#000d;
+           color:#fff; font-size:11px; padding:6px 14px; border-radius:14px; opacity:0; transition:opacity .3s;
+           pointer-events:none; white-space:nowrap; z-index:9; }
+  .toast.on { opacity:1; }
+</style>
+</head>
+<body>
+<h1>Counter mechanic — 4 controller-friendly options</h1>
+<p class="sub">
+  Same deal everywhere: <b>Vorn wants 8 rare, offering 84/cap</b>. Hidden truth (so you can feel the bands):
+  he'll take up to <b>~102</b>, counter-back up to <b>~127</b>, and refuses beyond that.
+  Every option resolves with the real rules — push each one into all three zones.
+  <b>Keyboard arrows + Enter work everywhere</b> (that's the d-pad/A-button simulation) — click a phone first to focus it.
+  RESET in the corner re-arms the deal.
+</p>
+<div class="grid">
+  <div class="slot"><h2>1 — THREE PUSHES</h2><p class="desc">No number entry at all. Three fixed pushes (safe / firm / greedy) computed off their offer. One tap = sent. The risk ladder IS the interface. D-pad: left/right + A.</p><div class="phone" id="m1" tabindex="0"><div class="screen"></div><div class="toast"></div></div></div>
+  <div class="slot"><h2>2 — SLIDER</h2><p class="desc">Drag (or d-pad nudge) along a green→red risk track, big live number, then SEND. Full precision, risk visible as position + color.</p><div class="phone" id="m2" tabindex="0"><div class="screen"></div><div class="toast"></div></div></div>
+  <div class="slot"><h2>3 — HOLD TO PUSH</h2><p class="desc">Hold one big button (hold A on pad, Space on keyboard) and the ask climbs with acceleration — release to stop, send it, or keep pushing. Tactile greed: the longer you hold, the greedier you are.</p><div class="phone" id="m3" tabindex="0"><div class="screen"></div><div class="toast"></div></div></div>
+  <div class="slot"><h2>4 — BIG STEPPER</h2><p class="desc">Two giant arrows (±2/cap, hold to repeat; LB/RB = ±10), huge center number, risk in words. The classic, at controller size.</p><div class="phone" id="m4" tabindex="0"><div class="screen"></div><div class="toast"></div></div></div>
+</div>
+
+<script>
+const DEAL = { qty:8, tier:'rare', offer:84, truePrice:88, patience:1.16 };
+const CEIL = DEAL.truePrice * DEAL.patience;          // ~102 accept ceiling
+const MAXA = Math.round(DEAL.offer * 1.55);           // slider/stepper range top
+
+function riskFor(ask) {
+  // Measured against their OFFER (public) — mirrors the sell panel's rule of
+  // never leaking the hidden ceiling. Bands are wording, not a promise.
+  const over = ask / DEAL.offer;
+  if (ask <= DEAL.offer) return ['they already offered that — just accept', '#57c46e'];
+  if (over <= 1.10) return ['modest push — decent odds', '#57c46e'];
+  if (over <= 1.22) return ['firm push — they may counter', '#e8a33d'];
+  if (over <= 1.38) return ['pushing it — likely a counter, maybe worse', '#ff9a3c'];
+  return ['greedy — you might blow the deal', '#e05555'];
+}
+function resolve(ask) {
+  if (ask <= DEAL.offer * 1.02) return { r:'accept', line:"done. see you soon." };
+  if (ask <= CEIL) return { r:'accept', line:"...fine. " + ask + " a cap. don't be late." };
+  if (ask <= CEIL * 1.25) {
+    const cb = Math.min(Math.round((DEAL.offer + ask) / 2), Math.floor(CEIL));
+    return { r:'cb', cb, line:"steep. " + cb + " and we're done talking." };
+  }
+  return { r:'refuse', line:"forget it. don't text me numbers like that." };
+}
+
+class Base {
+  constructor(id) {
+    this.root = document.getElementById(id);
+    this.scr = this.root.querySelector('.screen');
+    this.root.addEventListener('mousedown', () => this.focus());
+    this.root.addEventListener('keydown', e => this.key(e));
+    this.reset();
+  }
+  focus() { document.querySelectorAll('.phone').forEach(p => p.classList.remove('focus'));
+            this.root.classList.add('focus'); this.root.focus(); }
+  toast(t) { const el = this.root.querySelector('.toast'); el.textContent = t; el.classList.add('on');
+             clearTimeout(this._tt); this._tt = setTimeout(() => el.classList.remove('on'), 2600); }
+  reset() { this.ask = Math.round(DEAL.offer * 1.1); this.done = false; this.outcome = null;
+            this.msgs = [{who:'them', t:'after 8 rare caps. I\'ll do 84 a cap if you can get here.'}];
+            this.state = {}; this.render(); }
+  send(ask) {
+    if (this.done) return;
+    this.msgs.push({who:'me', t:'make it ' + ask + ' a cap.'});
+    const res = resolve(ask);
+    this.msgs.push({who:'them', t:res.line});
+    if (res.r === 'accept') { this.msgs.push({who:'sys', t:'price locked at ' + ask + ' — pick your window next'}); this.toast('Accepted — price locked.'); }
+    if (res.r === 'cb') { this.msgs.push({who:'sys', t:'counter-back: TAKE ' + res.cb + ' or DECLINE'}); this.toast('Counter-back — take it or walk.'); }
+    if (res.r === 'refuse') { this.msgs.push({who:'sys', t:'deal off — bond took a hit'}); this.toast('Refused outright. Bond down.'); }
+    this.done = true; this.render();
+  }
+  chrome(trayHtml) {
+    const bubbles = this.msgs.map(m =>
+      m.who === 'sys' ? '<div class="sys">— ' + m.t + ' —</div>'
+                      : '<div class="bb ' + (m.who === 'me' ? 'me' : 'them') + '">' + m.t + '</div>').join('');
+    return '<div class="hdr"><span class="ttl">Vorn</span><span class="bond">BOND <b>&#9679;</b>&#9675;&#9675;&#9675;&#9675;</span>'
+      + '<span class="reset" data-reset>RESET</span></div>'
+      + '<div class="bubbles">' + bubbles + '</div>'
+      + '<div class="tray">' + (this.done ? '<div class="risk" style="color:#7d8a99">tap RESET to try another number</div>' : trayHtml) + '</div>';
+  }
+  wire() {
+    const r = this.scr.querySelector('[data-reset]');
+    if (r) r.onclick = () => this.reset();
+  }
+  priceHtml(ask) {
+    const [txt, col] = riskFor(ask);
+    return '<div class="bigprice"><span class="n">' + ask + '</span> <span class="per">/cap</span>'
+      + '<div class="tot">' + DEAL.qty + ' caps &rarr; <b>' + (ask * DEAL.qty) + '</b> credits</div></div>'
+      + '<div class="risk" style="color:' + col + '">' + txt + '</div>';
+  }
+  key(e) {}
+  render() {}
+}
+
+// 1 — THREE PUSHES: fixed options, no numbers to dial.
+class M1 extends Base {
+  reset() { this.sel = 0; super.reset(); }
+  options() {
+    const p10 = Math.round(DEAL.offer * 1.10), p22 = Math.round(DEAL.offer * 1.22), p35 = Math.round(DEAL.offer * 1.35);
+    return [
+      { label:'TAKE 84', sub:'their number — no risk', ask:DEAL.offer, cls:'ok' },
+      { label:'PUSH ' + p10, sub:'+10% — decent odds', ask:p10, cls:'ok' },
+      { label:'PUSH ' + p22, sub:'+22% — they may counter', ask:p22, cls:'warn' },
+      { label:'PUSH ' + p35, sub:'+35% — risky', ask:p35, cls:'warn' },
+    ];
+  }
+  render() {
+    const opts = this.options();
+    const btns = opts.map((o, i) =>
+      '<div class="btn ' + o.cls + (i === this.sel ? ' sel' : '') + '" data-i="' + i + '">' + o.label + '<small>' + o.sub + '</small></div>').join('');
+    this.scr.innerHTML = this.chrome('<div class="chips2"><div class="rowbtns">' + btns + '</div>'
+      + '<div class="hintline">d-pad &larr;&rarr; pick &middot; A sends &middot; no typing anywhere</div></div>');
+    this.wire();
+    this.scr.querySelectorAll('[data-i]').forEach(el => el.onclick = () => this.send(this.options()[+el.dataset.i].ask));
+  }
+  key(e) {
+    if (this.done) return;
+    if (e.key === 'ArrowLeft') { this.sel = Math.max(0, this.sel - 1); this.render(); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { this.sel = Math.min(3, this.sel + 1); this.render(); e.preventDefault(); }
+    if (e.key === 'Enter') { this.send(this.options()[this.sel].ask); e.preventDefault(); }
+  }
+}
+
+// 2 — SLIDER
+class M2 extends Base {
+  render() {
+    const t = (this.ask - DEAL.offer) / (MAXA - DEAL.offer);
+    this.scr.innerHTML = this.chrome(
+      this.priceHtml(this.ask)
+      + '<div class="sliderwrap"><div class="track" data-track><div class="thumb" data-thumb style="left:' + (t * 100) + '%">' + this.ask + '</div></div>'
+      + '<div class="ticks"><span>' + DEAL.offer + ' (their offer)</span><span>' + MAXA + '</span></div></div>'
+      + '<div class="rowbtns" style="margin-top:6px"><div class="btn warn" data-send>SEND ' + this.ask + '</div><div class="btn dim" data-take>JUST TAKE 84</div></div>'
+      + '<div class="kbd"><b>&larr;/&rarr;</b> nudge &middot; hold for speed &middot; <b>Enter</b> send</div>');
+    this.wire();
+    const track = this.scr.querySelector('[data-track]');
+    if (!track) return;
+    const drag = e => {
+      const r = track.getBoundingClientRect();
+      const x = Math.min(Math.max((e.clientX - r.left) / r.width, 0), 1);
+      this.ask = Math.round(DEAL.offer + x * (MAXA - DEAL.offer));
+      this.render();
+    };
+    track.onmousedown = e => { drag(e);
+      const mv = ev => drag(ev), up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); };
+      window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up); };
+    this.scr.querySelector('[data-send]').onclick = () => this.send(this.ask);
+    this.scr.querySelector('[data-take]').onclick = () => this.send(DEAL.offer);
+  }
+  key(e) {
+    if (this.done) return;
+    if (e.key === 'ArrowLeft') { this.ask = Math.max(DEAL.offer, this.ask - 1); this.render(); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { this.ask = Math.min(MAXA, this.ask + 1); this.render(); e.preventDefault(); }
+    if (e.key === 'Enter') { this.send(this.ask); e.preventDefault(); }
+  }
+}
+
+// 3 — HOLD TO PUSH
+class M3 extends Base {
+  reset() { super.reset(); this.ask = DEAL.offer; this._vel = 0; this.render(); }
+  startHold() {
+    if (this.done || this._hold) return;
+    this._vel = 0.35;
+    this._hold = setInterval(() => {
+      this._vel = Math.min(this._vel * 1.06, 2.2);          // acceleration = greed
+      this.ask = Math.min(MAXA, this.ask + this._vel);
+      this.renderTrayOnly();
+    }, 50);
+  }
+  stopHold() { clearInterval(this._hold); this._hold = null; this.ask = Math.round(this.ask); this.renderTrayOnly(); }
+  render() {
+    this.scr.innerHTML = this.chrome(this.trayHtml());
+    this.wire(); this.wireTray();
+  }
+  trayHtml() {
+    const t = (this.ask - DEAL.offer) / (MAXA - DEAL.offer);
+    return this.priceHtml(Math.round(this.ask))
+      + '<div class="meter"><i style="width:' + (t * 100) + '%"></i></div>'
+      + '<div class="rowbtns"><div class="holdbtn" data-hold style="flex:2">HOLD TO PUSH &uarr;</div>'
+      + '<div class="btn warn" data-send>SEND</div><div class="btn dim" data-zero>BACK TO 84</div></div>'
+      + '<div class="kbd">hold <b>Space</b> (= hold A) &middot; <b>Enter</b> send</div>';
+  }
+  renderTrayOnly() {
+    const tray = this.scr.querySelector('.tray');
+    if (tray && !this.done) { tray.innerHTML = this.trayHtml(); this.wireTray(); }
+  }
+  wireTray() {
+    const h = this.scr.querySelector('[data-hold]');
+    if (!h) return;
+    h.onmousedown = () => this.startHold();
+    window.addEventListener('mouseup', () => this.stopHold());
+    this.scr.querySelector('[data-send]').onclick = () => this.send(Math.round(this.ask));
+    this.scr.querySelector('[data-zero]').onclick = () => { this.ask = DEAL.offer; this.renderTrayOnly(); };
+  }
+  key(e) {
+    if (this.done) return;
+    if (e.key === ' ') { this.startHold(); e.preventDefault(); }
+    if (e.key === 'Enter') { this.send(Math.round(this.ask)); e.preventDefault(); }
+  }
+}
+document.addEventListener('keyup', e => { if (e.key === ' ') document.querySelectorAll('.phone').forEach(p => { const s = SIMS.m3; if (s) s.stopHold(); }); });
+
+// 4 — BIG STEPPER
+class M4 extends Base {
+  render() {
+    this.scr.innerHTML = this.chrome(
+      '<div class="stepper"><div class="arrow" data-dn>&#9664;</div>'
+      + '<div class="stepmid">' + this.priceHtml(this.ask) + '</div>'
+      + '<div class="arrow" data-up>&#9654;</div></div>'
+      + '<div class="rowbtns" style="margin-top:8px"><div class="btn warn" data-send>SEND ' + this.ask + '</div></div>'
+      + '<div class="kbd"><b>&larr;/&rarr;</b> &plusmn;2 &middot; <b>Shift+&larr;/&rarr;</b> &plusmn;10 (LB/RB) &middot; <b>Enter</b> send</div>');
+    this.wire();
+    const hold = (el, d) => {
+      const step = () => { this.ask = Math.min(MAXA, Math.max(DEAL.offer, this.ask + d)); this.render(); };
+      el.onmousedown = () => { step(); this._rep = setInterval(step, 160); };
+      el.onmouseup = el.onmouseleave = () => clearInterval(this._rep);
+    };
+    const up = this.scr.querySelector('[data-up]'), dn = this.scr.querySelector('[data-dn]');
+    if (up) { hold(up, 2); hold(dn, -2); this.scr.querySelector('[data-send]').onclick = () => this.send(this.ask); }
+  }
+  key(e) {
+    if (this.done) return;
+    const d = e.shiftKey ? 10 : 2;
+    if (e.key === 'ArrowLeft') { this.ask = Math.max(DEAL.offer, this.ask - d); this.render(); e.preventDefault(); }
+    if (e.key === 'ArrowRight') { this.ask = Math.min(MAXA, this.ask + d); this.render(); e.preventDefault(); }
+    if (e.key === 'Enter') { this.send(this.ask); e.preventDefault(); }
+  }
+}
+
+const SIMS = { m1:new M1('m1'), m2:new M2('m2'), m3:new M3('m3'), m4:new M4('m4') };
+</script>
+</body>
+</html>
