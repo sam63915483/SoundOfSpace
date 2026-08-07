@@ -681,6 +681,9 @@ public class MainMenuController : MonoBehaviour
         if (LLMService.Instance == null) { var go = new GameObject("LLMService"); DontDestroyOnLoad(go); go.AddComponent<LLMService>(); }
         tick("AI model");         yield return null;
         if (PlayerPhoneUI.Instance == null) { var go = new GameObject("PlayerPhoneUI"); DontDestroyOnLoad(go); go.AddComponent<PlayerPhoneUI>(); }
+        // Messages-app clock (want-texts, appointment deadlines). Shares the
+        // phone's tick — it's the phone's back-end. Trap #1 applies.
+        if (BuyerMessageDirector.Instance == null) { var go = new GameObject("[BuyerMessageDirector]"); go.AddComponent<BuyerMessageDirector>(); }
         tick("phone UI");         yield return null;
         if (DeathCutsceneController.Instance == null) { var go = new GameObject("DeathCutsceneController"); DontDestroyOnLoad(go); go.AddComponent<DeathCutsceneController>(); }
         tick("death cutscene");   yield return null;

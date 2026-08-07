@@ -510,6 +510,21 @@ public class AlienNPCSpawner : MonoBehaviour
 
     // Called by SpawnedAlienNPC at OnEnable so it can resolve its body name
     // for the save system without holding a hot reference to BodyState.
+    /// World position of a buyer's home cell (approximate sphere point, same
+    /// jitter math the spawner uses) — for the Messages appointment distance
+    /// line. Works while the alien is unstreamed. False if the slot/body is
+    /// gone (e.g. called before ResolveRefs has run).
+    public bool TryGetCellWorldPos(int bodySlot, long cellId, out Vector3 pos)
+    {
+        pos = default;
+        if (bodySlot < 0 || bodySlot >= bodies.Count) return false;
+        var entry = bodies[bodySlot];
+        if (entry.body == null) return false;
+        SpawnerCubeface.DecodeCell(cellId, out int face, out int cu, out int cv);
+        float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+        return TryComputeCellApproxPos(entry.body, face, cu, cv, faceUVPerCell, out pos);
+    }
+
     public string GetBodyName(int bodySlot)
     {
         if (bodySlot < 0 || bodySlot >= bodies.Count) return "";

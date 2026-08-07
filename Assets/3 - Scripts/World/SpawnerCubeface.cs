@@ -73,6 +73,16 @@ public static class SpawnerCubeface
         return ((long)(face & 0x7) << 40) | (u << 20) | v;
     }
 
+    /// Inverse of EncodeCell. Needed by the Messages system to point at a
+    /// buyer's home cell while they're unstreamed.
+    public static void DecodeCell(long id, out int face, out int cellU, out int cellV)
+    {
+        const long OFFSET = 1L << 19;
+        face  = (int)((id >> 40) & 0x7);
+        cellU = (int)(((id >> 20) & 0xFFFFFL) - OFFSET);
+        cellV = (int)((id & 0xFFFFFL) - OFFSET);
+    }
+
     // ── Cubeface ↔ sphere direction ───────────────────────────────────────
 
     /// Convert (face, faceU, faceV) → world-space direction on the unit cube
