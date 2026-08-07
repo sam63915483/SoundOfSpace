@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Messages App — 4 Interactive Mockups</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background:#0b0d12; color:#cfd8e3; font-family:'Segoe UI',system-ui,sans-serif; padding:24px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  .sub { color:#7d8a99; font-size:13px; margin-bottom:18px; max-width:1200px; line-height:1.5; }
+  .sub b { color:#aeb9c6; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(560px,1fr)); gap:28px; max-width:2400px; }
+  .slot h2 { font-size:14px; margin-bottom:2px; letter-spacing:1px; }
+  .slot p.desc { font-size:12px; color:#7d8a99; margin-bottom:8px; height:32px; }
+
+  /* ── the 4:3 tablet frame (matches the in-game 586x440 chassis) ── */
+  .phone { width:560px; height:420px; border-radius:10px; overflow:hidden; position:relative;
+           border:2px solid #2b3d52; background:#06121e; user-select:none; }
+  .screen { position:absolute; inset:8px; overflow:hidden; display:flex; flex-direction:column; }
+  .view { position:absolute; inset:0; display:none; flex-direction:column; }
+  .view.on { display:flex; }
+  .clickable { cursor:pointer; }
+
+  /* ════════ SKIN A — SCANNER (game HUD language) ════════ */
+  .skin-a { --bg:#060f1a; --tile:#0f192a; --cyan:#5cc8ff; --white:#eaf6ff; --dim:#7fa0bd;
+            --ok:#6edc82; --warn:#ffd732; --bad:#ff6e6e;
+            font-family:'Consolas','Courier New',monospace; }
+  .skin-a .screen { background:var(--bg); }
+  .skin-a .hdr { display:flex; align-items:center; gap:8px; padding:7px 10px; color:var(--cyan);
+                 font-size:13px; letter-spacing:3px; border-bottom:1px solid #1c3550; }
+  .skin-a .hdr .back { color:var(--cyan); font-weight:bold; padding:2px 8px; border:1px solid #1c3550; }
+  .skin-a .hdr .back:hover { background:#12253a; }
+  .skin-a .list { flex:1; overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; }
+  .skin-a .row { position:relative; background:var(--tile); padding:8px 12px; }
+  .skin-a .row:hover { background:#15243a; }
+  .skin-a .row::before, .skin-a .row::after { content:''; position:absolute; width:9px; height:9px; border:1.5px solid var(--cyan); opacity:.7; }
+  .skin-a .row::before { top:2px; left:2px; border-right:0; border-bottom:0; }
+  .skin-a .row::after  { bottom:2px; right:2px; border-left:0; border-top:0; }
+  .skin-a .row .nm { color:var(--white); font-weight:bold; font-size:13px; letter-spacing:1px; }
+  .skin-a .row .pv { color:var(--dim); font-size:11px; margin-top:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .skin-a .row .meta { position:absolute; top:7px; right:10px; text-align:right; font-size:10px; color:var(--dim); }
+  .skin-a .bondbar { display:inline-flex; gap:2px; align-items:center; margin-left:8px; }
+  .skin-a .bondbar i { width:10px; height:4px; background:#22354c; }
+  .skin-a .bondbar i.f { background:var(--cyan); }
+  .skin-a .bondbar .lbl { font-size:8px; color:var(--dim); letter-spacing:1px; margin-right:3px; }
+  .skin-a .dot { position:absolute; right:10px; bottom:10px; width:8px; height:8px; border-radius:50%; background:var(--bad);
+                 box-shadow:0 0 6px var(--bad); }
+  .skin-a .bubbles { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:6px; }
+  .skin-a .bb { max-width:76%; padding:6px 10px; font-size:12px; line-height:1.4; border:1px solid #1c3550; }
+  .skin-a .bb.them { align-self:flex-start; background:var(--tile); color:var(--white); }
+  .skin-a .bb.me { align-self:flex-end; background:#132c42; color:var(--cyan); border-color:#265a80; }
+  .skin-a .sys { align-self:center; color:var(--dim); font-size:10px; letter-spacing:1px; }
+  .skin-a .appt { margin:8px 10px 0; border:1px solid #2a5c38; background:#0d2214; color:var(--ok);
+                  font-size:11px; padding:6px 10px; letter-spacing:1px; }
+  .skin-a .appt .t { color:var(--warn); }
+  .skin-a .chips { display:flex; gap:6px; padding:8px 10px; }
+  .skin-a .chip { flex:1; text-align:center; padding:8px 4px; font-size:11px; font-weight:bold; letter-spacing:1px;
+                  background:var(--tile); border:1px solid #1c3550; }
+  .skin-a .chip:hover { background:#193049; }
+  .skin-a .chip.ok { color:var(--ok); } .skin-a .chip.warn { color:var(--warn); }
+  .skin-a .chip.dim { color:var(--dim); } .skin-a .chip.bad { color:var(--bad); }
+  .skin-a input { background:#08131f; border:1px solid #265a80; color:var(--white); font:inherit;
+                  font-size:12px; padding:8px; flex:2; min-width:0; }
+  .skin-a .scan { pointer-events:none; position:absolute; inset:0;
+     background:repeating-linear-gradient(0deg, transparent 0 3px, rgba(92,200,255,.025) 3px 4px); }
+  .skin-a .card { flex:1; padding:14px; font-size:12px; color:var(--white); }
+  .skin-a .card .ln { padding:5px 0; border-bottom:1px dashed #1c3550; color:var(--dim); }
+  .skin-a .card .ln.known { color:var(--white); }
+  .skin-a .card .cap { color:var(--cyan); letter-spacing:2px; font-size:11px; margin:10px 0 4px; }
+
+  /* ════════ SKIN B — BUBBLE (Schedule-1 modern messenger) ════════ */
+  .skin-b { --bg:#141519; --card:#1e2028; --me:#2e7d4f; --them:#26282e; --tx:#e9edf2; --dim:#8b95a3;
+            --acc:#4fc3f7; --warn:#ffb74d; --bad:#ef5350; --ok:#66bb6a;
+            font-family:'Segoe UI',system-ui,sans-serif; }
+  .skin-b .screen { background:var(--bg); }
+  .skin-b .hdr { display:flex; align-items:center; gap:10px; padding:9px 12px; background:#1b1d22;
+                 border-bottom:1px solid #24262c; }
+  .skin-b .hdr .back { font-size:18px; color:var(--acc); padding:0 6px; }
+  .skin-b .hdr .ttl { font-size:15px; font-weight:600; color:var(--tx); }
+  .skin-b .list { flex:1; overflow-y:auto; }
+  .skin-b .row { display:flex; align-items:center; gap:10px; padding:9px 12px; border-bottom:1px solid #1c1e23; }
+  .skin-b .row:hover { background:#1a1c21; }
+  .skin-b .av { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+                font-weight:700; font-size:16px; color:#fff; flex-shrink:0; }
+  .skin-b .row .mid { flex:1; min-width:0; }
+  .skin-b .row .nm { font-size:14px; font-weight:600; color:var(--tx); display:flex; align-items:center; gap:8px; }
+  .skin-b .row .pv { font-size:12px; color:var(--dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+  .skin-b .row .meta { font-size:11px; color:var(--dim); text-align:right; }
+  .skin-b .hearts { font-size:10px; letter-spacing:1px; color:#e57373; }
+  .skin-b .hearts .lbl { color:var(--dim); font-size:9px; margin-right:2px; }
+  .skin-b .dot { width:10px; height:10px; border-radius:50%; background:var(--acc); margin-top:4px; margin-left:auto; }
+  .skin-b .bubbles { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:7px; }
+  .skin-b .bb { max-width:74%; padding:8px 12px; font-size:13px; line-height:1.4; border-radius:16px; color:var(--tx); }
+  .skin-b .bb.them { align-self:flex-start; background:var(--them); border-bottom-left-radius:4px; }
+  .skin-b .bb.me { align-self:flex-end; background:var(--me); border-bottom-right-radius:4px; }
+  .skin-b .sys { align-self:center; font-size:11px; color:var(--dim); }
+  .skin-b .appt { margin:10px 12px 0; background:#20301f; border:1px solid #33502f; border-radius:12px;
+                  padding:8px 12px; font-size:12px; color:var(--ok); display:flex; align-items:center; gap:8px; }
+  .skin-b .appt .t { color:var(--warn); font-weight:700; }
+  .skin-b .chips { display:flex; gap:8px; padding:10px 12px; }
+  .skin-b .chip { flex:1; text-align:center; padding:10px 4px; border-radius:22px; font-size:13px; font-weight:600; }
+  .skin-b .chip.ok { background:var(--me); color:#fff; }
+  .skin-b .chip.warn { background:#4a3b22; color:var(--warn); }
+  .skin-b .chip.dim { background:#26282e; color:var(--dim); }
+  .skin-b .chip.bad { background:#3a2626; color:var(--bad); }
+  .skin-b .chip:hover { filter:brightness(1.2); }
+  .skin-b input { background:#26282e; border:1px solid #3a3d45; border-radius:22px; color:var(--tx);
+                  font:inherit; font-size:13px; padding:9px 14px; flex:2; min-width:0; }
+  .skin-b .tierdot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:4px; }
+  .skin-b .card { flex:1; padding:16px; font-size:13px; color:var(--tx); }
+  .skin-b .card .ln { padding:6px 10px; background:#1b1d22; border-radius:8px; margin-bottom:6px; color:var(--dim); }
+  .skin-b .card .ln.known { color:var(--tx); }
+  .skin-b .card .cap { font-size:11px; letter-spacing:1px; color:var(--dim); margin:12px 0 6px; text-transform:uppercase; }
+
+  /* ════════ SKIN C — TERMINAL (pager / CRT) ════════ */
+  .skin-c { --gr:#39ff74; --grdim:#1d8a41; --bg:#020a04;
+            font-family:'Consolas','Courier New',monospace; }
+  .skin-c .screen { background:var(--bg); color:var(--gr); }
+  .skin-c .crt { pointer-events:none; position:absolute; inset:0; z-index:5;
+     background:repeating-linear-gradient(0deg, rgba(0,0,0,.25) 0 2px, transparent 2px 4px); }
+  .skin-c .hdr { padding:8px 12px; font-size:12px; color:var(--gr); border-bottom:1px dashed var(--grdim);
+                 letter-spacing:2px; display:flex; gap:10px; }
+  .skin-c .hdr .back { border:1px solid var(--grdim); padding:1px 8px; }
+  .skin-c .hdr .back:hover { background:#06280f; }
+  .skin-c .list { flex:1; overflow-y:auto; padding:10px 12px; font-size:13px; line-height:2.1; }
+  .skin-c .row { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .skin-c .row:hover { background:#052410; }
+  .skin-c .row .new { color:#aaffc3; animation:blink 1.1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity:.15; } }
+  .skin-c .row .dimm { color:var(--grdim); }
+  .skin-c .bubbles { flex:1; overflow-y:auto; padding:10px 14px; font-size:12.5px; line-height:1.75; }
+  .skin-c .bb { margin-bottom:4px; }
+  .skin-c .bb.them::before { content:'< '; color:var(--grdim); }
+  .skin-c .bb.me { color:#aaffc3; } .skin-c .bb.me::before { content:'> '; color:var(--grdim); }
+  .skin-c .sys { color:var(--grdim); font-size:11px; }
+  .skin-c .appt { margin:8px 14px 0; border:1px dashed var(--gr); padding:5px 10px; font-size:12px; }
+  .skin-c .chips { display:flex; gap:10px; padding:9px 14px; font-size:12.5px; }
+  .skin-c .chip { border:1px solid var(--grdim); padding:6px 10px; flex:1; text-align:center; }
+  .skin-c .chip:hover { background:#06280f; }
+  .skin-c input { background:#020a04; border:1px solid var(--grdim); color:var(--gr); font:inherit;
+                  font-size:12.5px; padding:6px 8px; flex:2; min-width:0; }
+  .skin-c .card { flex:1; padding:12px 16px; font-size:12.5px; line-height:2; }
+  .skin-c .card .dimm { color:var(--grdim); }
+
+  /* ════════ SKIN D — DEAL BOARD (deals on the index) ════════ */
+  .skin-d { --bg:#0d1117; --card:#161c26; --acc:#e8a33d; --tx:#e8edf4; --dim:#77839a;
+            --ok:#57c46e; --bad:#e05555; font-family:'Segoe UI',system-ui,sans-serif; }
+  .skin-d .screen { background:var(--bg); }
+  .skin-d .hdr { padding:9px 14px; font-size:14px; font-weight:700; color:var(--acc); letter-spacing:2px;
+                 border-bottom:2px solid #232c3b; display:flex; gap:10px; align-items:center; }
+  .skin-d .hdr .back { color:var(--acc); border:1px solid #3a4356; border-radius:6px; padding:1px 9px; font-weight:400; }
+  .skin-d .list { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px; }
+  .skin-d .deal { background:var(--card); border:1px solid #232c3b; border-radius:10px; padding:10px 12px; position:relative; }
+  .skin-d .deal .who { display:flex; align-items:baseline; gap:10px; }
+  .skin-d .deal .nm { font-size:14px; font-weight:700; color:var(--tx); }
+  .skin-d .deal .nm:hover { color:var(--acc); }
+  .skin-d .deal .bond { font-size:10px; color:var(--dim); }
+  .skin-d .deal .bond b { color:var(--acc); letter-spacing:2px; }
+  .skin-d .deal .want { font-size:16px; margin:6px 0 2px; color:var(--tx); }
+  .skin-d .deal .want .qty { color:var(--acc); font-weight:800; }
+  .skin-d .deal .want .price { color:var(--ok); font-weight:800; }
+  .skin-d .deal .sub2 { font-size:11px; color:var(--dim); margin-bottom:8px; }
+  .skin-d .cbar { height:4px; background:#232c3b; border-radius:2px; overflow:hidden; margin-bottom:8px; }
+  .skin-d .cbar i { display:block; height:100%; background:var(--ok); transition:width 1s linear; }
+  .skin-d .dchips { display:flex; gap:8px; }
+  .skin-d .dchip { flex:1; text-align:center; padding:8px 2px; border-radius:8px; font-size:12.5px; font-weight:700; }
+  .skin-d .dchip.ok { background:#1c3a26; color:var(--ok); border:1px solid #2c5c3a; }
+  .skin-d .dchip.warn { background:#3a2f1a; color:var(--acc); border:1px solid #5c4a28; }
+  .skin-d .dchip.dim { background:#1a2029; color:var(--dim); border:1px solid #232c3b; }
+  .skin-d .dchip:hover { filter:brightness(1.25); }
+  .skin-d input { background:#1a2029; border:1px solid #3a4356; border-radius:8px; color:var(--tx);
+                  font:inherit; font-size:13px; padding:8px 10px; flex:2; min-width:0; }
+  .skin-d .quiet { background:var(--card); border-radius:10px; padding:8px 12px; font-size:12px; color:var(--dim);
+                   display:flex; justify-content:space-between; align-items:center; }
+  .skin-d .quiet .nm { color:var(--tx); font-weight:600; }
+  .skin-d .bubbles { flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:6px; }
+  .skin-d .bb { max-width:76%; padding:7px 11px; font-size:12.5px; border-radius:10px; color:var(--tx); }
+  .skin-d .bb.them { align-self:flex-start; background:var(--card); }
+  .skin-d .bb.me { align-self:flex-end; background:#2a3a52; }
+  .skin-d .sys { align-self:center; font-size:11px; color:var(--dim); }
+  .skin-d .card { flex:1; padding:14px; font-size:13px; color:var(--tx); }
+  .skin-d .card .ln { padding:6px 10px; border-left:3px solid var(--acc); background:var(--card); margin-bottom:6px; color:var(--dim); }
+  .skin-d .card .ln.known { color:var(--tx); }
+  .skin-d .card .cap { font-size:11px; color:var(--dim); letter-spacing:1px; margin:10px 0 6px; }
+
+  .toast { position:absolute; left:50%; bottom:14px; transform:translateX(-50%); background:#000c;
+           color:#fff; font-size:11px; padding:6px 14px; border-radius:14px; opacity:0; transition:opacity .3s;
+           pointer-events:none; white-space:nowrap; z-index:9; }
+  .toast.on { opacity:1; }
+</style>
+</head>
+<body>
+<h1>Messages App — 4 interactive mockups</h1>
+<p class="sub">
+  All four run the same fake data and the same rules as the game. <b>Things to try in each:</b>
+  tap <b>Vorn</b> (new text) → ACCEPT → pick a window → watch the meetup countdown + "marker added to compass".
+  Or COUNTER: try <b>95</b> (they take it — price locks, you can only pick a time),
+  <b>110</b> (they counter back — take it or walk), <b>150</b> (refused, deal dead).
+  <b>Skell</b> has a deal already running. Tap any buyer's <b>name</b> in a thread for their contact card
+  (the learned hidden wants). Bond is always labelled.
+</p>
+<div class="grid">
+  <div class="slot"><h2>A — SCANNER</h2><p class="desc">The game's existing HUD language: flat cyan, corner brackets, scanlines. Zero new visual vocabulary to learn.</p><div class="phone skin-a" id="pA"><div class="screen"></div><div class="scan"></div><div class="toast"></div></div></div>
+  <div class="slot"><h2>B — BUBBLE</h2><p class="desc">Modern messenger, Schedule-1 adjacent: avatars, round bubbles, big friendly reply pills. Most readable at a glance.</p><div class="phone skin-b" id="pB"><div class="screen"></div><div class="toast"></div></div></div>
+  <div class="slot"><h2>C — TERMINAL</h2><p class="desc">Retro pager/CRT: monospace green phosphor, blinking NEW, replies as command options. Simplest to build, strong flavor.</p><div class="phone skin-c" id="pC"><div class="screen"></div><div class="crt"></div><div class="toast"></div></div></div>
+  <div class="slot"><h2>D — DEAL BOARD</h2><p class="desc">Deal-first: open the app and the deals ARE the index — accept/haggle/pass without ever opening a thread. Fastest loop.</p><div class="phone skin-d" id="pD"><div class="screen"></div><div class="toast"></div></div></div>
+</div>
+
+<script>
+// ─── shared fake data + deal rules (mirrors BuyerDeals) ───
+function freshContacts() { return {
+  frump: { id:'frump', name:'Frump', guide:true, bond:-1,
+    msgs:[ {who:'them', t:"quota's quota, kid. move caps, don't die."},
+           {who:'them', t:"the wanderers pay best for what they love. figure out what that is."} ] },
+  vorn: { id:'vorn', name:'Vorn', bond:1, deals:1, state:'want',
+    want:{ qty:8, tier:'RARE', tierColor:'#c77dff', offer:84, truePrice:88, patience:1.16 },
+    unread:true, time:'2m',
+    learned:['takes about 18 caps before they\'re full'],
+    msgs:[ {who:'them', t:'after 8 rare caps. I\'ll do 84 a cap if you can get here.'} ] },
+  skell: { id:'skell', name:'Skell', bond:3, deals:4, state:'scheduled',
+    want:{ qty:6, tier:'UNCOMMON', tierColor:'#5dd39e', offer:41, truePrice:44, patience:1.3 },
+    secs:432, window:10, unread:false, time:'9m',
+    learned:['takes about 12 caps before they\'re full','keen on uncommon','won\'t pay much for common'],
+    msgs:[ {who:'them', t:'got room for 6 more uncommon. 38 each, come find me.'},
+           {who:'me', t:'make it 41 a cap.'},
+           {who:'them', t:'...fine. 41 a cap. don\'t be late.'},
+           {who:'me', t:'on my way — give me 10 minutes.'},
+           {who:'sys', t:'MEETUP SET — 6 uncommon @ 41'} ] },
+  nyra: { id:'nyra', name:'Nyra', bond:4, deals:6, state:'idle', unread:false, time:'1h',
+    learned:['takes about 21 caps before they\'re full','keen on rare','won\'t pay much for common','pays generously'],
+    msgs:[ {who:'them', t:'quality. I\'ll be in touch.'},
+           {who:'sys', t:'deal done: 9 caps @ 96 each = 864'} ] },
+}; }
+
+class Sim {
+  constructor(rootId, skin, dealboard) {
+    this.root = document.getElementById(rootId);
+    this.scr = this.root.querySelector('.screen');
+    this.skin = skin; this.dealboard = dealboard;
+    this.c = freshContacts();
+    this.view = 'index'; this.open = null; this.mode = 'main';
+    setInterval(() => this.tickTimers(), 1000);
+    this.render();
+  }
+  toast(t) {
+    const el = this.root.querySelector('.toast');
+    el.textContent = t; el.classList.add('on');
+    clearTimeout(this._tt); this._tt = setTimeout(() => el.classList.remove('on'), 2600);
+  }
+  tickTimers() {
+    let dirty = false;
+    for (const k in this.c) { const b = this.c[k];
+      if (b.state === 'scheduled' && b.secs > 0) { b.secs--; dirty = true; } }
+    if (dirty && (this.view === 'index' || (this.view === 'thread' && this.c[this.open].state === 'scheduled'))) this.render();
+  }
+  clock(s) { return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); }
+
+  // ── deal rules (same bands as BuyerDeals.ResolveCounter) ──
+  counter(b, ask) {
+    const ceil = b.want.truePrice * b.want.patience;
+    if (ask <= b.want.offer) { this.accept(b, ask); return; }
+    if (ask <= ceil) {
+      b.want.offer = ask; b.state = 'priceAgreed';
+      b.msgs.push({who:'me', t:'make it '+ask+' a cap.'});
+      b.msgs.push({who:'them', t:'...fine. '+ask+' a cap. don\'t be late.'});
+    } else if (ask <= ceil * 1.25) {
+      const cb = Math.min(Math.round((b.want.offer + ask) / 2), Math.floor(ceil));
+      b.cb = cb; b.state = 'counterBack';
+      b.msgs.push({who:'me', t:'make it '+ask+' a cap.'});
+      b.msgs.push({who:'them', t:'steep. '+cb+' and we\'re done talking.'});
+    } else {
+      b.state = 'refused'; b.bond = Math.max(0, b.bond - 1);
+      b.msgs.push({who:'me', t:'make it '+ask+' a cap.'});
+      b.msgs.push({who:'them', t:'forget it. don\'t text me numbers like that.'});
+      b.msgs.push({who:'sys', t:'deal off — bond took a hit'});
+      this.toast('Refused outright — that ask was outrageous. Bond down.');
+    }
+    this.mode = 'main'; this.render();
+  }
+  accept(b, price) {
+    if (price) b.want.offer = price;
+    b.state = 'pickWindow'; this.mode = 'main'; this.render();
+  }
+  schedule(b, mins) {
+    b.state = 'scheduled'; b.secs = mins * 60; b.window = mins;
+    const bump = mins === 5 ? '+15%' : mins === 10 ? '+10%' : '+5%';
+    b.msgs.push({who:'me', t:'on my way — give me '+mins+' minutes.'});
+    b.msgs.push({who:'them', t:'good. '+b.want.qty+' '+b.want.tier.toLowerCase()+' at '+b.want.offer+' a cap. I\'ll be waiting.'});
+    b.msgs.push({who:'sys', t:'MEETUP SET — on-time pays '+bump});
+    this.toast('◈ '+b.name+' marker added to your compass (same planet)');
+    this.render();
+  }
+  decline(b) {
+    b.state = 'idle';
+    b.msgs.push({who:'me', t:'can\'t right now.'});
+    this.mode = 'main'; this.render();
+  }
+
+  // ── rendering ──
+  render() {
+    if (this.view === 'index') this.scr.innerHTML = this.dealboard ? this.rIndexDeals() : this.rIndex();
+    else if (this.view === 'thread') this.scr.innerHTML = this.rThread(this.c[this.open]);
+    else this.scr.innerHTML = this.rCard(this.c[this.open]);
+    this.wire();
+  }
+  bondHtml(b) {
+    if (b.bond < 0) return '';
+    if (this.skin === 'a') { let s = '<span class="bondbar"><span class="lbl">BOND</span>';
+      for (let i = 0; i < 5; i++) s += '<i class="' + (i < b.bond ? 'f' : '') + '"></i>'; return s + '</span>'; }
+    if (this.skin === 'b') { let h = ''; for (let i = 0; i < 5; i++) h += i < b.bond ? '&#9829;' : '&#9825;';
+      return '<span class="hearts"><span class="lbl">BOND</span>' + h + '</span>'; }
+    if (this.skin === 'c') { let h = ''; for (let i = 0; i < 5; i++) h += i < b.bond ? '&#9646;' : '&#9647;';
+      return '<span class="dimm">[BOND ' + h + ']</span>'; }
+    return '<span class="bond">BOND <b>' + '&#9679;'.repeat(b.bond) + '</b>' + '&#9675;'.repeat(5 - b.bond) + '</span>';
+  }
+  preview(b) {
+    if (b.guide) return b.msgs[b.msgs.length-1].t;
+    if (b.state === 'want') return b.msgs[b.msgs.length-1].t;
+    if (b.state === 'scheduled') return 'meetup running — ' + this.clock(b.secs) + ' left';
+    return b.msgs.length ? b.msgs[b.msgs.length-1].t : '';
+  }
+
+  rIndex() {
+    const rows = [];
+    const hdr = { a: '<div class="hdr"><span>MESSAGES</span></div>',
+                  b: '<div class="hdr"><span class="ttl">Messages</span></div>',
+                  c: '<div class="hdr"><span>MSGR v0.9 — INBOX</span></div>' }[this.skin];
+    const order = ['frump','vorn','skell','nyra'];
+    for (const k of order) { const b = this.c[k];
+      if (this.skin === 'c') {
+        rows.push('<div class="row clickable" data-open="' + k + '">&gt; ' + b.name.toUpperCase()
+          + (b.guide ? ' <span class="dimm">[GUIDE]</span>' : ' ' + this.bondHtml(b))
+          + (b.unread ? ' <span class="new">*NEW*</span>' : '')
+          + ' <span class="dimm">— ' + this.preview(b).slice(0, 34) + '</span></div>');
+      } else if (this.skin === 'b') {
+        const col = { frump:'#8e6ac8', vorn:'#c77dff', skell:'#5dd39e', nyra:'#e8a33d' }[k];
+        rows.push('<div class="row clickable" data-open="' + k + '">'
+          + '<div class="av" style="background:' + col + '">' + b.name[0] + '</div>'
+          + '<div class="mid"><div class="nm">' + b.name + (b.guide ? ' <span style="font-size:10px;color:var(--dim)">GUIDE</span>' : ' ' + this.bondHtml(b)) + '</div>'
+          + '<div class="pv">' + this.preview(b) + '</div></div>'
+          + '<div class="meta">' + (b.time || '') + (b.unread ? '<div class="dot"></div>' : '') + '</div></div>');
+      } else {
+        rows.push('<div class="row clickable" data-open="' + k + '">'
+          + '<div class="nm">' + b.name.toUpperCase() + (b.guide ? ' <span style="font-size:9px;color:var(--dim)">// GUIDE</span>' : ' ' + this.bondHtml(b)) + '</div>'
+          + '<div class="pv">' + this.preview(b) + '</div>'
+          + '<div class="meta">' + (b.time || '') + '</div>'
+          + (b.unread ? '<div class="dot"></div>' : '') + '</div>');
+      }
+    }
+    return hdr + '<div class="list">' + rows.join('') + '</div>';
+  }
+
+  rIndexDeals() {  // skin D — deals live on the index
+    const cards = [];
+    for (const k of ['vorn','skell']) { const b = this.c[k];
+      let body = '';
+      if (b.state === 'want') body =
+        '<div class="want">wants <span class="qty">' + b.want.qty + ' ' + b.want.tier + '</span> — offering <span class="price">' + b.want.offer + '/cap</span></div>'
+        + '<div class="sub2">total ' + (b.want.qty * b.want.offer) + ' credits if you fill it</div>'
+        + '<div class="dchips"><div class="dchip ok clickable" data-act="accept" data-b="' + k + '">ACCEPT</div>'
+        + '<div class="dchip warn clickable" data-act="haggle" data-b="' + k + '">HAGGLE</div>'
+        + '<div class="dchip dim clickable" data-act="pass" data-b="' + k + '">PASS</div></div>';
+      else if (b.state === 'pickWindow' || b.state === 'priceAgreed') body =
+        '<div class="want">locked at <span class="price">' + b.want.offer + '/cap</span> — when can you be there?</div>'
+        + '<div class="dchips"><div class="dchip ok clickable" data-act="win" data-m="5" data-b="' + k + '">~5 MIN +15%</div>'
+        + '<div class="dchip ok clickable" data-act="win" data-m="10" data-b="' + k + '">~10 MIN +10%</div>'
+        + '<div class="dchip ok clickable" data-act="win" data-m="15" data-b="' + k + '">~15 MIN +5%</div></div>';
+      else if (b.state === 'haggling') body =
+        '<div class="want">their offer: <span class="price">' + b.want.offer + '/cap</span> — name yours</div>'
+        + '<div class="dchips"><input type="number" value="' + Math.round(b.want.offer * 1.1) + '" id="ci-' + k + '">'
+        + '<div class="dchip warn clickable" data-act="send" data-b="' + k + '">SEND</div></div>';
+      else if (b.state === 'counterBack') body =
+        '<div class="want">they came back: <span class="price">' + b.cb + '/cap</span></div>'
+        + '<div class="dchips"><div class="dchip ok clickable" data-act="takecb" data-b="' + k + '">TAKE ' + b.cb + '</div>'
+        + '<div class="dchip dim clickable" data-act="pass" data-b="' + k + '">WALK</div></div>';
+      else if (b.state === 'scheduled') body =
+        '<div class="want"><span class="qty">' + b.want.qty + ' ' + b.want.tier + '</span> @ <span class="price">' + b.want.offer + '/cap</span> — meetup running</div>'
+        + '<div class="sub2">&#9670; compass marker live — ' + this.clock(b.secs) + ' left</div>'
+        + '<div class="cbar"><i style="width:' + (100 * b.secs / (b.window * 60)) + '%"></i></div>';
+      else if (b.state === 'refused') body = '<div class="sub2">deal\'s off. they\'ll text again when they cool down.</div>';
+      else body = '<div class="sub2">full up right now — they\'ll text when hungry.</div>';
+      cards.push('<div class="deal"><div class="who"><span class="nm clickable" data-card="' + k + '">' + b.name + '</span>' + this.bondHtml(b) + '</div>' + body + '</div>');
+    }
+    return '<div class="hdr">DEALS</div><div class="list">' + cards.join('')
+      + '<div class="quiet clickable" data-card="nyra"><span><span class="nm">Nyra</span> — full, back in ~6 min</span>' + this.bondHtml(this.c.nyra) + '</div>'
+      + '<div class="quiet clickable" data-open="frump"><span><span class="nm">Frump</span> — guide</span><span style="font-size:11px">&#9993;</span></div></div>';
+  }
+
+  rThread(b) {
+    const back = { a:'&lt; BACK', b:'&#8249;', c:'[&lt;]', d:'&lt;' }[this.skin];
+    let hdr = '<div class="hdr"><span class="back clickable" data-act="back">' + back + '</span>'
+      + '<span class="' + (this.skin === 'b' ? 'ttl' : '') + ' clickable" data-card="' + b.id + '">' + (this.skin === 'a' || this.skin === 'c' ? b.name.toUpperCase() : b.name) + '</span>'
+      + (b.guide ? '' : this.bondHtml(b)) + '</div>';
+    let appt = '';
+    if (b.state === 'scheduled') appt =
+      '<div class="appt">MEETUP — ' + b.want.qty + ' ' + b.want.tier.toLowerCase() + ' @ ' + b.want.offer
+      + ' &nbsp;<span class="t">' + this.clock(b.secs) + '</span>&nbsp; Humble Abode, ~340 m &nbsp;&#9670; on compass</div>';
+    const bubbles = b.msgs.map(m =>
+      m.who === 'sys' ? '<div class="sys">— ' + m.t + ' —</div>'
+                      : '<div class="bb ' + (m.who === 'me' ? 'me' : 'them') + '">' + m.t + '</div>').join('');
+    let chips = '';
+    if (!b.guide) {
+      if (b.state === 'want' && this.mode === 'counter') chips =
+        '<div class="chips"><input type="number" id="ci" value="' + Math.round(b.want.offer * 1.1) + '">'
+        + '<div class="chip warn clickable" data-act="send">SEND</div>'
+        + '<div class="chip dim clickable" data-act="mode-main">BACK</div></div>';
+      else if (b.state === 'want') chips =
+        '<div class="chips"><div class="chip ok clickable" data-act="accept">ACCEPT</div>'
+        + '<div class="chip warn clickable" data-act="mode-counter">COUNTER</div>'
+        + '<div class="chip dim clickable" data-act="decline">NOT NOW</div></div>';
+      else if (b.state === 'pickWindow' || b.state === 'priceAgreed') chips =
+        '<div class="chips"><div class="chip ok clickable" data-act="win" data-m="5">~5 MIN +15%</div>'
+        + '<div class="chip ok clickable" data-act="win" data-m="10">~10 +10%</div>'
+        + '<div class="chip ok clickable" data-act="win" data-m="15">~15 +5%</div>'
+        + '<div class="chip dim clickable" data-act="decline">NOT NOW</div></div>';
+      else if (b.state === 'counterBack') chips =
+        '<div class="chips"><div class="chip ok clickable" data-act="takecb">TAKE ' + b.cb + '</div>'
+        + '<div class="chip bad clickable" data-act="decline">DECLINE</div></div>';
+    }
+    return hdr + appt + '<div class="bubbles">' + bubbles + '</div>' + chips;
+  }
+
+  rCard(b) {
+    const back = { a:'&lt; BACK', b:'&#8249;', c:'[&lt;]', d:'&lt;' }[this.skin];
+    let hdr = '<div class="hdr"><span class="back clickable" data-act="backthread">' + back + '</span>'
+      + '<span class="' + (this.skin === 'b' ? 'ttl' : '') + '">' + b.name + '</span>' + this.bondHtml(b) + '</div>';
+    const dimCls = this.skin === 'c' ? 'dimm' : '';
+    let lines = '<div class="' + dimCls + '" style="padding:4px 0">deals done: ' + (b.deals || 0) + '</div>'
+      + '<div class="cap">WHAT YOU\'VE LEARNED (1 per deal)</div>';
+    for (const l of (b.learned || [])) lines += '<div class="ln known">&#183; ' + l + '</div>';
+    for (let i = (b.learned || []).length; i < 5; i++) lines += '<div class="ln ' + dimCls + '">&#183; deal again to learn more</div>';
+    return hdr + '<div class="card">' + lines + '</div>';
+  }
+
+  wire() {
+    this.scr.querySelectorAll('[data-open]').forEach(el => el.onclick = () => {
+      const b = this.c[el.dataset.open]; b.unread = false;
+      this.open = el.dataset.open; this.view = 'thread'; this.mode = 'main'; this.render();
+    });
+    this.scr.querySelectorAll('[data-card]').forEach(el => el.onclick = (e) => {
+      e.stopPropagation(); this.open = el.dataset.card; this.view = 'card'; this.render();
+    });
+    this.scr.querySelectorAll('[data-act]').forEach(el => el.onclick = (e) => {
+      e.stopPropagation();
+      const act = el.dataset.act;
+      const b = this.c[el.dataset.b || this.open];
+      if (act === 'back') { this.view = 'index'; this.render(); }
+      else if (act === 'backthread') { this.view = this.dealboard ? 'index' : 'thread'; this.render(); }
+      else if (act === 'accept') this.accept(b);
+      else if (act === 'haggle') { b.state = 'haggling'; this.render(); }
+      else if (act === 'mode-counter') { this.mode = 'counter'; this.render(); }
+      else if (act === 'mode-main') { this.mode = 'main'; this.render(); }
+      else if (act === 'send') {
+        const inp = this.scr.querySelector('#ci') || this.scr.querySelector('#ci-' + b.id);
+        const v = parseInt(inp && inp.value, 10);
+        if (v > 0) { if (b.state === 'haggling') b.state = 'want'; this.counter(b, v); }
+      }
+      else if (act === 'takecb') { b.want.offer = b.cb; b.msgs.push({who:'me', t:'deal. ' + b.cb + '.'}); this.accept(b); }
+      else if (act === 'win') this.schedule(b, parseInt(el.dataset.m, 10));
+      else if (act === 'pass' || act === 'decline') this.decline(b);
+    });
+  }
+}
+new Sim('pA', 'a', false);
+new Sim('pB', 'b', false);
+new Sim('pC', 'c', false);
+new Sim('pD', 'd', true);
+</script>
+</body>
+</html>
