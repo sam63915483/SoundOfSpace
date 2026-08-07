@@ -863,8 +863,11 @@ public class MessagesScreen : MonoBehaviour
         else if (over <= 1.38f) { text = "pushing it — likely a counter, maybe worse"; col = new Color32(0xFF, 0x9A, 0x3C, 0xFF); }
         else { text = "greedy — you might blow the deal"; col = BadRed; }
 
-        if (qty < wantQty) { text += " · short order, no premium"; if (col == OkGreen) col = WarnAmber; }
-        else if (qty > wantQty) { text += " · more than they want — they'll cool"; if (col == OkGreen) col = WarnAmber; }
+        // Quantity mismatch shrinks the price they'll tolerate (QtyMood).
+        // Spell out the CONSEQUENCE — "no premium" and "they'll cool" both
+        // needed explaining in Sam's playtest, which means they were wrong.
+        if (qty < wantQty) { text += " · fewer caps than asked — they won't pay as much"; if (col == OkGreen) col = WarnAmber; }
+        else if (qty > wantQty) { text += " · extra caps — they'll take them, but won't pay as much"; if (col == OkGreen) col = WarnAmber; }
     }
 
     /// Change-detected per-frame update while the slider tray is open — the
