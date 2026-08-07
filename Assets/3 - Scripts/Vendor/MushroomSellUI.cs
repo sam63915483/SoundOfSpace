@@ -206,7 +206,8 @@ public class MushroomSellUI : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        if (_header != null) _header.text = $"// {_npcName.ToUpperInvariant()}";
+        if (_header != null)
+            _header.text = $"// {_npcName.ToUpperInvariant()}  <size=15><color=#7FA0BD>{BuyerLedger.BondPips(_buyerId)}</color></size>";
         SetResult("", C_Ok);
         Refresh();
     }
@@ -380,6 +381,10 @@ public class MushroomSellUI : MonoBehaviour
         // Central hook: ANY alien buying advances Tev's onboarding, so no NPC
         // has to remember to wire it up (no-ops outside the quest).
         MushroomQuest.NotifySold(qty);
+        // Persistent ledger: bond, deal count (reveals), regular conversion.
+        // Scheduled-mode fulfilment reports through DeliverOrder instead.
+        BuyerLedger.ReportDeal(_buyerId, tier, pricePerCap, qty,
+                               keptAppointment: false, substituted: false);
         _onSold?.Invoke(qty);
 
         SetResult(leftover > 0
@@ -391,6 +396,8 @@ public class MushroomSellUI : MonoBehaviour
     void BarBuyer()
     {
         MushroomDealState.Bar(_buyerId);
+        BuyerLedger.CounterRefused(_buyerId);           // −10 bond, spec §2
+        BuyerLedger.CancelAppointmentQuietly(_buyerId); // barred kills any appointment, no halving (spec §9)
         _stage = Stage.Open;
         _counter = 0;
         SetResult($"\"Get away from me.\" — {_npcName} won't deal for 5 minutes.", C_Err);
@@ -549,15 +556,13 @@ public class MushroomSellUI : MonoBehaviour
             {
                 int qty = MushroomDealState.LastQty(_buyerId);
                 string line = $"you remember: paid <color=#FFD732>{last}</color> a cap, took <color=#FFD732>{qty}</color>";
-                // Taste note ONLY once the player has actually sold them their
-                // favourite tier — earned knowledge, not a readout handed over
-                // on arrival. Same rule as everything else on this panel.
-                if (_price != null && MushroomDealState.HasSoldTier(_buyerId, _price.FavouriteTier))
-                {
-                    var t = _price.FavouriteTier;
-                    string hex = ColorUtility.ToHtmlStringRGB(MushroomSpecies.TierColor(t));
-                    line += $" · keen on <color=#{hex}>{MushroomSpecies.TierName(t).ToLowerInvariant()}</color>";
-                }
+                // Earned notes come from the ledger's reveal schedule: one
+                // hidden want per completed deal, fixed order (spec §6). The
+                // memo fits the taste pair (fav + disliked); the full list
+                // lives in the Messages contact card.
+                int reveals = BuyerLedger.RevealCount(_buyerId);
+                for (int r = 1; r < reveals && r < 3; r++)
+                    line += " · " + BuyerLedger.RevealLine(_buyerId, r);
                 _memoText.text = line;
             }
             else _memoText.text = "you've never dealt with them";
