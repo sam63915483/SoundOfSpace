@@ -107,8 +107,13 @@ public class SolarSystemSync : MonoBehaviour
                 body.Position - sun.Position, body.velocity - sun.velocity));
         }
 
-        int size = 8 + entries.Count * (4 + 1 + 12 + 12) + 64;
+        int size = 16 + entries.Count * (4 + 1 + 12 + 12) + 64;
         using var writer = new FastBufferWriter(size, Allocator.Temp);
+        // Timestamp on the shared server clock: the client extrapolates the
+        // state by its age on arrival. Without this, frame/network jitter
+        // reads as meters of phantom error at ~99 m/s orbital speed — the 1 Hz
+        // planet-jerk bug.
+        writer.WriteValueSafe(NetworkManager.Singleton.ServerTime.Time);
         writer.WriteValueSafe(entries.Count);
         foreach (var e in entries)
         {
@@ -135,6 +140,15 @@ public class SolarSystemSync : MonoBehaviour
         foreach (var b in NBodySimulation.Bodies)
             if (b != null) byHash[NameHash(b.bodyName)] = b;
 
+        reader.ReadValueSafe(out double sentTime);
+        // Age of this snapshot on the shared server clock; extrapolate the
+        // sun-relative state forward by it so latency/frame jitter never
+        // reads as position error.
+        float age = Mathf.Clamp((float)(nm.ServerTime.Time - sentTime), 0f, 2f);
+
+        Rigidbody[] riderPool = null; // collected once, only if a correction is applied
+        bool anyApplied = false;
+
         reader.ReadValueSafe(out int count);
         for (int i = 0; i < count; i++)
         {
@@ -147,28 +161,24 @@ public class SolarSystemSync : MonoBehaviour
             if (kind == KindSatellitePhase)
                 body.satellitePhase = a.x;
             else
-                ApplyBodyCorrection(body, sun.Position + a, sun.velocity + b);
+                ApplyBodyCorrection(body,
+                    sun.Position + a + b * age,   // sun-relative pos advanced by age
+                    sun.velocity + b,
+                    ref riderPool, ref anyApplied);
         }
 
         // Second pass: followers. NBodySimulation re-derives their pose from
-        // the leader next tick anyway; doing it here too lets us detect a big
-        // jump (leader just snapped / phase just synced) and carry riders.
+        // the leader next tick anyway; doing it here too lets us detect the
+        // jump (leader just corrected / phase just synced) and carry riders.
         foreach (var f in NBodySimulation.Bodies)
         {
             if (f == null || f.coOrbitLeader == null) continue;
             if (TryDeriveFollowerPose(f, sun, out Vector3 fPos, out Vector3 fVel))
-            {
-                Vector3 err = fPos - f.Position;
-                if (err.magnitude > hardSnapDistance)
-                {
-                    Vector3 velDelta = fVel - f.velocity;
-                    CarryRiders(f, err, velDelta);
-                    f.ApplySavedState(fPos, f.transform.rotation, fVel);
-                    Physics.SyncTransforms();
-                    Debug.Log($"[MP][ORBIT] follower '{f.bodyName}' snapped {err.magnitude:F0}m with its leader");
-                }
-            }
+                ApplyBodyCorrection(f, fPos, fVel, ref riderPool, ref anyApplied);
         }
+
+        if (anyApplied)
+            Physics.SyncTransforms();
     }
 
     // Mirrors NBodySimulation.FixedUpdate's follower placement exactly — keep
@@ -206,36 +216,42 @@ public class SolarSystemSync : MonoBehaviour
         return true;
     }
 
-    void ApplyBodyCorrection(CelestialBody body, Vector3 targetPos, Vector3 targetVel)
+    // EVERY correction — large or tiny — is a rigid shift of the body AND all
+    // free rigidbodies near it, by the same delta (position and velocity).
+    // Body-relative poses are preserved exactly, so a correction is invisible
+    // and impulse-free — the same provably-safe operation the floating origin
+    // performs every ~10s. The earlier "gentle nudge without carrying riders"
+    // approach moved the ground under the players' feet: 1 Hz bounces and
+    // launched-into-space, per playtest.
+    void ApplyBodyCorrection(CelestialBody body, Vector3 targetPos, Vector3 targetVel,
+        ref Rigidbody[] riderPool, ref bool anyApplied)
     {
         Vector3 posErr = targetPos - body.Position;
         Vector3 velDelta = targetVel - body.velocity;
 
+        // Dead-zone: skip micro-corrections not worth a transform sync.
+        if (posErr.sqrMagnitude < 0.05f * 0.05f && velDelta.sqrMagnitude < 0.05f * 0.05f)
+            return;
+
+        if (riderPool == null)
+            riderPool = FindObjectsOfType<Rigidbody>(true);
+        CarryRiders(body, posErr, velDelta, riderPool);
+        body.ApplySavedState(targetPos, body.transform.rotation, targetVel);
+        anyApplied = true;
+
         if (posErr.magnitude > hardSnapDistance)
-        {
-            CarryRiders(body, posErr, velDelta);
-            body.ApplySavedState(targetPos, body.transform.rotation, targetVel);
-            Physics.SyncTransforms();
-            Debug.Log($"[MP][ORBIT] '{body.bodyName}' hard-snapped {posErr.magnitude:F0}m to match host");
-        }
-        else
-        {
-            // Gentle convergence: adopt host velocity outright, walk position
-            // error down a fraction per update. Sub-snap errors are cm-scale —
-            // riders don't need carrying, contacts absorb it.
-            body.ApplySavedState(body.Position + posErr * softPosGain, body.transform.rotation, targetVel);
-        }
+            Debug.Log($"[MP][ORBIT] '{body.bodyName}' aligned {posErr.magnitude:F0}m to match host (riders carried)");
     }
 
-    /// Carry every free rigidbody near the snapped body by the same delta so
+    /// Carry every free rigidbody near the corrected body by the same delta so
     /// its body-relative pose (and therefore what's on screen) is unchanged.
     /// Skips: celestial bodies (corrected individually), network puppets
     /// (placed from net pose every frame), and anything parented under a
     /// celestial body (the hierarchy + Physics.SyncTransforms carries those).
-    void CarryRiders(CelestialBody body, Vector3 posDelta, Vector3 velDelta)
+    void CarryRiders(CelestialBody body, Vector3 posDelta, Vector3 velDelta, Rigidbody[] pool)
     {
         float maxDist = body.radius * carryRadiusFactor;
-        foreach (var rb in FindObjectsOfType<Rigidbody>(true))
+        foreach (var rb in pool)
         {
             if (rb == null) continue;
             if (rb.GetComponent<CelestialBody>() != null) continue;

@@ -46,14 +46,19 @@ public class NetworkPlayerSetup : NetworkBehaviour
             rb.interpolation = RigidbodyInterpolation.None;
         }
 
+        // Puppets NEVER collide — on any machine. A solid kinematic capsule
+        // swept around by network poses shoves the local player out of any
+        // overlap (the "host randomly launched into space" bug). Players
+        // simply pass through each other.
+        foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = false;
+
         var indicator = transform.Find("RemoteBodyIndicator");
         if (indicator != null) Destroy(indicator.gameObject);
 
         if (IsOwner)
         {
-            // Invisible and non-colliding: the real player stands inside it.
+            // Invisible too: the real player stands inside it.
             foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = false;
-            foreach (var c in GetComponentsInChildren<Collider>(true)) c.enabled = false;
         }
         else
         {
