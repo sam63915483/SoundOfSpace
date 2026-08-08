@@ -70,8 +70,12 @@ public class MushroomSellUI : MonoBehaviour
     RawImage _offerPreview;
     TextMeshProUGUI _offerCount;
     Image _offerTier;
-    TMP_InputField _askInput;
-    Button _primaryBtn, _takeBtn, _secondaryBtn, _offerPlusBtn, _offerMinusBtn;
+    // CAPS + PRICE sliders — the same control the Messages app haggles with,
+    // built from DealSliderKit so the two negotiation screens stay identical in
+    // feel. They replaced a TMP_InputField + four ± steppers.
+    UnityEngine.UI.Slider _qtySlider, _askSlider;
+    TextMeshProUGUI _qtyHandleLabel, _askHandleLabel;
+    Button _primaryBtn, _takeBtn, _secondaryBtn;
     TextMeshProUGUI _primaryLabel, _takeLabel, _secondaryLabel;
     SlotWidget[] _barSlots = new SlotWidget[HotbarSlots];
     RectTransform _cursorRT;
@@ -92,6 +96,9 @@ public class MushroomSellUI : MonoBehaviour
     int _offerCountN;
     SlotOps.CursorState _cursor;
     Coroutine _resultRoutine;
+    // Guards the sliders' onValueChanged while Refresh writes their values back
+    // from state. _ask / _offerCountN stay the source of truth; the sliders are
+    // only ever a view onto them.
     bool _suppressInput;
     // Scheduled-deal mode (Messages app appointment): price is agreed, the
     // haggle is off, and DELIVER runs the exact/substitution flow instead.
@@ -397,6 +404,8 @@ public class MushroomSellUI : MonoBehaviour
         // Central hook: ANY alien buying advances Tev's onboarding, so no NPC
         // has to remember to wire it up (no-ops outside the quest).
         MushroomQuest.NotifySold(qty);
+        // Progression: dealing is what GANGSTA REP tracks now, not just kills.
+        ProgressHooks.NotifyMushroomSale(qty);
         // Persistent ledger: bond, deal count (reveals), regular conversion.
         // Scheduled-mode fulfilment reports through DeliverOrder instead.
         BuyerLedger.ReportDeal(_buyerId, tier, pricePerCap, qty,
@@ -499,12 +508,32 @@ public class MushroomSellUI : MonoBehaviour
         Refresh();
     }
 
-    /// Move ONE cap of the offered species from the bar onto the table.
-    void OfferPlusOne()
+    /// Caps of the offered species still sitting in the player's bar. The CAPS
+    /// slider's headroom — its max is this plus whatever is already on the table.
+    ///
+    /// Bounded by STOCK only, never by the buyer's remaining appetite: appetite
+    /// is hidden information the player is meant to discover by overshooting and
+    /// being handed the excess back, and a slider that stopped at their exact
+    /// limit would print that secret on screen.
+    int BarStockOfOfferSpecies()
     {
-        if (_offerSpecies == null || Barred) return;
         var bar = Bar;
-        if (bar == null) return;
+        if (bar == null || _offerSpecies == null) return 0;
+        int n = 0;
+        for (int i = 0; i < bar.Length; i++)
+            if (bar[i].id == Hotbar.ItemId.Mushroom
+                && bar[i].mushroomSpecies == _offerSpecies && bar[i].count > 0)
+                n += bar[i].count;
+        return n;
+    }
+
+    /// Move ONE cap of the offered species from the bar onto the table.
+    /// Returns false when the bar has none left.
+    bool OfferPlusOne()
+    {
+        if (_offerSpecies == null || Barred) return false;
+        var bar = Bar;
+        if (bar == null) return false;
         for (int i = 0; i < bar.Length; i++)
         {
             if (bar[i].id != Hotbar.ItemId.Mushroom) continue;
@@ -513,23 +542,19 @@ public class MushroomSellUI : MonoBehaviour
             s.count -= 1;
             bar[i] = s.count > 0 ? s : default;
             _offerCountN += 1;
-            Refresh();
-            return;
+            return true;
         }
-        SetResult("That's all of them.", C_Dim);
-        Refresh();
+        return false;
     }
 
     /// Move ONE cap off the table and back into the bar.
-    void OfferMinusOne()
+    /// Returns false when the bar has no room to take it.
+    bool OfferMinusOne()
     {
-        if (!HasOffer) return;
+        if (!HasOffer) return false;
         var hb = Hotbar.Instance;
         if (hb != null && hb.AddResource(Hotbar.ItemId.Mushroom, 1, _offerSpecies) > 0)
-        {
-            SetResult("No room in your bar for it.", C_Err);
-            return;
-        }
+            return false;
         _offerCountN -= 1;
         if (_offerCountN <= 0)
         {
@@ -540,6 +565,34 @@ public class MushroomSellUI : MonoBehaviour
             _stage = Stage.Open;
             _counter = 0;
             _ask = 0;
+        }
+        return true;
+    }
+
+    /// Drive the pile on the table to `target` caps.
+    ///
+    /// The CAPS slider routes through here rather than assigning _offerCountN,
+    /// because the count is not a number — it is a PHYSICAL transfer. Caps
+    /// genuinely leave the hotbar array when they go on the table, and that is
+    /// what Close()/ReturnOfferToBar() rely on to give them back. Setting the
+    /// field directly would duplicate or destroy the player's mushrooms.
+    ///
+    /// Steps one at a time so both failure cases the single-step paths already
+    /// handle (bar empty, bar full) stop the loop honestly instead of desyncing
+    /// the slider from the pile.
+    void SetOfferCount(int target)
+    {
+        if (Barred) { Refresh(); return; }
+        target = Mathf.Max(0, target);
+
+        int guard = 0;   // belt-and-braces against a step that reports success without moving
+        while (_offerCountN < target && guard++ < 512)
+        {
+            if (!OfferPlusOne()) { SetResult("That's all of them.", C_Dim); break; }
+        }
+        while (_offerCountN > target && guard++ < 512)
+        {
+            if (!OfferMinusOne()) { SetResult("No room in your bar for it.", C_Err); break; }
         }
         Refresh();
     }
@@ -628,18 +681,7 @@ public class MushroomSellUI : MonoBehaviour
             _offerTier.enabled = false;
         }
 
-        // + only when there's another cap of this species left in the bar.
-        bool canAdd = false;
-        if (HasOffer && !barred)
-        {
-            var b = Bar;
-            if (b != null)
-                for (int i = 0; i < b.Length && !canAdd; i++)
-                    canAdd = b[i].id == Hotbar.ItemId.Mushroom
-                          && b[i].mushroomSpecies == _offerSpecies && b[i].count > 0;
-        }
-        SetMini(_offerPlusBtn, canAdd);
-        SetMini(_offerMinusBtn, HasOffer);
+        RefreshSliders(barred);
 
         // The bar — MUSHROOM STACKS ONLY, packed left. Showing the axe and the
         // water bottle in a mushroom deal implied you could drag them in.
@@ -688,12 +730,6 @@ public class MushroomSellUI : MonoBehaviour
                     $"<color=#FFD732>{_counter * _offerCountN}</color> for the lot</color></size>";
         }
 
-        // Ask control. In scheduled mode the field seeds at the AGREED price
-        // but stays editable — re-asking over it risks the delivery.
-        _suppressInput = true;
-        _askInput.text = _ask.ToString();
-        _suppressInput = false;
-        _askInput.interactable = true;
         _totalText.text = $"{Total}";
 
         // The greed read, in words. Measured against MARKET, never against the
@@ -757,12 +793,45 @@ public class MushroomSellUI : MonoBehaviour
         RefreshCursorVisual();
     }
 
-    static void SetMini(Button b, bool on)
+    /// Push state INTO the two sliders. They are a view, never the truth —
+    /// _offerCountN and _ask stay authoritative, so every existing reset site
+    /// (CloseSale, CompleteScheduled, HardHide, OfferMinusOne) keeps working
+    /// untouched and the sliders just follow on the next Refresh.
+    ///
+    /// Writes are wrapped in _suppressInput because SetValueWithoutNotify alone
+    /// isn't enough: clamping a value by changing minValue/maxValue DOES fire
+    /// onValueChanged, which would re-enter SetOfferCount mid-Refresh.
+    void RefreshSliders(bool barred)
     {
-        if (b == null) return;
-        b.interactable = on;
-        var img = b.targetGraphic as Image;
-        if (img != null) img.color = on ? new Color32(18, 41, 63, 255) : new Color32(12, 24, 36, 255);
+        if (_qtySlider == null || _askSlider == null) return;
+
+        _suppressInput = true;
+
+        // ── CAPS ──
+        int stock = BarStockOfOfferSpecies();
+        int qtyMax = Mathf.Max(1, _offerCountN + stock);
+        _qtySlider.minValue = 0;
+        _qtySlider.maxValue = qtyMax;
+        _qtySlider.SetValueWithoutNotify(Mathf.Clamp(_offerCountN, 0, qtyMax));
+        _qtySlider.interactable = HasOffer && !barred;
+        if (_qtyHandleLabel != null) _qtyHandleLabel.text = _offerCountN.ToString();
+
+        // ── PRICE ──
+        // Anchored on MARKET in a walk-up (which is what the risk wording below
+        // is measured against, so the thumb's position and the sentence agree),
+        // and on the AGREED price in scheduled mode, where over-asking is what
+        // risks the delivery. Half market to double it spans the whole existing
+        // band table, from "asking N% UNDER market" to "absurd".
+        int anchor = (_scheduled && _appt != null) ? Mathf.Max(1, _appt.offerPerCap) : Mathf.Max(1, Market);
+        int askMin = HasOffer ? Mathf.Max(1, Mathf.RoundToInt(anchor * 0.5f)) : 0;
+        int askMax = HasOffer ? Mathf.Max(askMin + 1, Mathf.RoundToInt(anchor * 2f)) : 1;
+        _askSlider.minValue = askMin;
+        _askSlider.maxValue = askMax;
+        _askSlider.SetValueWithoutNotify(Mathf.Clamp(_ask, askMin, askMax));
+        _askSlider.interactable = HasOffer && !barred;
+        if (_askHandleLabel != null) _askHandleLabel.text = _ask.ToString();
+
+        _suppressInput = false;
     }
 
     void SetBtn(Button b, TextMeshProUGUI label, string text, Color32 col, bool on, bool hide = false)
@@ -879,14 +948,8 @@ public class MushroomSellUI : MonoBehaviour
         zoneClick.onLeft = () => { if (_cursor.IsHeld) DepositToOffer(); else LiftOffer(); };
         zoneClick.onRight = () => { if (_cursor.IsHeld) DepositToOffer(); };
 
-        // + / − stepping the amount on the table, stacked against the slot's
-        // right edge. Parented to the PANEL, not the zone: a Button doesn't
-        // implement IBeginDragHandler, so inside the zone a press-and-twitch on
-        // one of these would bubble up and start dragging the whole offer out.
-        // The zone spans y 84..202 from the panel top; the 84px slot is centred
-        // in it at 101..185, so these sit flush with its top and bottom edges.
-        _offerPlusBtn  = MkMini(_panelRT, "+", new Vector2(-288, -101), OfferPlusOne);
-        _offerMinusBtn = MkMini(_panelRT, "−", new Vector2(-288, -159), OfferMinusOne);
+        // The ± minis that used to sit against the slot's right edge are gone —
+        // the CAPS slider below does that job now, and does it in one drag.
 
         Txt(_panelRT, "YOUR MUSHROOMS", new Vector2(0, -212), 820, 18, 12, C_Dim, FontStyles.Bold, TextAlignmentOptions.Center);
 
@@ -907,41 +970,38 @@ public class MushroomSellUI : MonoBehaviour
         _counterText = Txt(_counterPanel, "", new Vector2(0, -8), 780, 66, 14, C_Label, FontStyles.Normal, TextAlignmentOptions.Left);
         _counterPanel.gameObject.SetActive(false);
 
-        // ── ask ──
-        // No slider. The number field plus − / + is the whole control: a slider
-        // for a value the player wants to set exactly is just a second, worse
-        // way to do the same thing, and it made the panel look busier than it is.
-        Txt(_panelRT, "ASKING PER CAP", new Vector2(0, -430), 820, 18, 12, C_Dim, FontStyles.Bold, TextAlignmentOptions.Center);
+        // ── the deal: CAPS + PRICE, on the same sliders the phone haggles with ──
+        //
+        // This used to be a number field with ± steppers, on the argument that a
+        // slider is a worse way to set a value you want exact. That argument
+        // loses to a bigger one: the Messages app negotiates the identical pair
+        // of numbers on sliders, and two different controls for one mechanic is
+        // the confusing part. Precision survives — both sliders are whole-number
+        // and the live value is printed inside the thumb, so a drag lands on an
+        // exact figure and the arrow keys nudge by one.
+        //
+        // The rows come from DealSliderKit, skinned to this panel's blue-teal
+        // palette rather than the phone's greys.
+        var sliderStyle = DealSliderKit.Style.VendorPanel();
 
-        MkStep(_panelRT, "−", new Vector2(-92, -456), () => { _ask = Mathf.Max(0, _ask - 1); Refresh(); });
-        var inputGO = new GameObject("AskInput", typeof(RectTransform));
-        inputGO.transform.SetParent(_panelRT, false);
-        var inRT = (RectTransform)inputGO.transform;
-        inRT.anchorMin = inRT.anchorMax = new Vector2(0.5f, 1f);
-        inRT.pivot = new Vector2(0.5f, 1f);
-        inRT.sizeDelta = new Vector2(130, 48);
-        inRT.anchoredPosition = new Vector2(0, -454);
-        var inImg = inputGO.AddComponent<Image>();
-        inImg.color = C_SlotBg;
-        var itGO = new GameObject("Text", typeof(RectTransform));
-        itGO.transform.SetParent(inputGO.transform, false);
-        var itRT = (RectTransform)itGO.transform;
-        itRT.anchorMin = Vector2.zero; itRT.anchorMax = Vector2.one;
-        itRT.offsetMin = new Vector2(6, 4); itRT.offsetMax = new Vector2(-6, -4);
-        var itTmp = itGO.AddComponent<TextMeshProUGUI>();
-        itTmp.fontSize = 22; itTmp.color = C_Value; itTmp.fontStyle = FontStyles.Bold;
-        itTmp.alignment = TextAlignmentOptions.Center; itTmp.raycastTarget = false;
-        _askInput = inputGO.AddComponent<TMP_InputField>();
-        _askInput.textComponent = itTmp;
-        _askInput.contentType = TMP_InputField.ContentType.IntegerNumber;
-        _askInput.onValueChanged.AddListener(t =>
+        _qtySlider = DealSliderKit.BuildSliderRow(
+            _panelRT, "CAPS", -424f, 0, 1, 0, null, out _qtyHandleLabel, sliderStyle);
+        _qtySlider.onValueChanged.AddListener(v =>
         {
             if (_suppressInput) return;
-            if (!int.TryParse(t, out int v)) v = 0;
-            _ask = Mathf.Max(0, v);
+            SetOfferCount(Mathf.RoundToInt(v));
+        });
+
+        // PRICE rides the green→amber→red risk gradient — position on the track
+        // IS the risk read, same as the phone.
+        _askSlider = DealSliderKit.BuildSliderRow(
+            _panelRT, "PRICE", -462f, 0, 1, 0, DealSliderKit.RiskGradient(), out _askHandleLabel, sliderStyle);
+        _askSlider.onValueChanged.AddListener(v =>
+        {
+            if (_suppressInput) return;
+            _ask = Mathf.Max(0, Mathf.RoundToInt(v));
             Refresh();
         });
-        MkStep(_panelRT, "+", new Vector2(92, -456), () => { _ask += 1; Refresh(); });
 
         // The greed read, as a SENTENCE rather than an unlabelled coloured bar.
         // The bar said nothing on its own — if the person who commissioned it
@@ -1047,6 +1107,7 @@ public class MushroomSellUI : MonoBehaviour
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(credits);
         MushroomDealState.RecordSale(_buyerId, perCap, qty, tier, AppetiteMax);
         MushroomQuest.NotifySold(qty);
+        ProgressHooks.NotifyMushroomSale(qty);
         BuyerLedger.ReportDeal(_buyerId, tier, perCap, qty,
                                keptAppointment: true, substituted: substituted);
         _scheduled = false; _appt = null;
@@ -1245,28 +1306,8 @@ public class MushroomSellUI : MonoBehaviour
         return btn;
     }
 
-    /// Small square stepper. Returns the Button so Refresh can grey it out.
-    Button MkMini(RectTransform parent, string glyph, Vector2 pos, Action onClick)
-    {
-        var rt = Panel(parent, "Mini" + glyph, pos, new Vector2(26, 26), new Color32(18, 41, 63, 255));
-        Outline(rt, C_SlotEdge);
-        var btn = rt.gameObject.AddComponent<Button>();
-        btn.targetGraphic = rt.GetComponent<Image>();
-        btn.transition = Selectable.Transition.None;
-        btn.onClick.AddListener(() => onClick?.Invoke());
-        Txt(rt, glyph, Vector2.zero, 26, 26, 18, C_Label, FontStyles.Bold, TextAlignmentOptions.Center);
-        return btn;
-    }
-
-    void MkStep(RectTransform parent, string glyph, Vector2 pos, Action onClick)
-    {
-        var rt = Panel(parent, "Step" + glyph, pos, new Vector2(40, 40), new Color32(18, 41, 63, 255));
-        Outline(rt, C_SlotEdge);
-        var btn = rt.gameObject.AddComponent<Button>();
-        btn.targetGraphic = rt.GetComponent<Image>();
-        btn.onClick.AddListener(() => onClick?.Invoke());
-        Txt(rt, glyph, Vector2.zero, 40, 40, 22, C_Label, FontStyles.Bold, TextAlignmentOptions.Center);
-    }
+    // MkMini / MkStep are gone with the ± steppers they built — the CAPS and
+    // PRICE sliders replaced both clusters.
 
     static void Outline(RectTransform parent, Color32 col) { OutlineImage(parent, col); }
 

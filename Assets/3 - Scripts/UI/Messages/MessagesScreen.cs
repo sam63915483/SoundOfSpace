@@ -773,97 +773,17 @@ public class MessagesScreen : MonoBehaviour
         UpdateSliderReadout();
     }
 
-    /// One labelled slider row: mini caption left, track + circular thumb
-    /// right. The thumb's size is pinned AFTER the Slider takes ownership of
-    /// the rect and preserveAspect'd — the Slider stretched it into an oval
-    /// otherwise (Sam's note).
+    /// One labelled slider row. The widget itself now lives in DealSliderKit so
+    /// the walk-up sell panel builds the SAME control from the SAME code — two
+    /// lookalike copies would drift apart the first time one was retuned.
     Slider BuildSliderRow(RectTransform tray, string caption, float y, int min, int max, int start,
                           Sprite trackSprite, out TextMeshProUGUI handleLabel)
-    {
-        var row = NewUI($"SliderRow_{caption}", tray);
-        row.anchorMin = new Vector2(0f, 1f); row.anchorMax = new Vector2(1f, 1f);
-        row.pivot = new Vector2(0.5f, 1f);
-        row.sizeDelta = new Vector2(-20f, 20f);
-        row.anchoredPosition = new Vector2(0f, y);
+        => DealSliderKit.BuildSliderRow(tray, caption, y, min, max, start, trackSprite, out handleLabel);
 
-        var cap = MakeText(row, caption, 7, TextDim, TextAlignmentOptions.MidlineLeft);
-        var capRT = cap.rectTransform;
-        capRT.anchorMin = new Vector2(0f, 0f); capRT.anchorMax = new Vector2(0f, 1f);
-        capRT.pivot = new Vector2(0f, 0.5f);
-        capRT.sizeDelta = new Vector2(36f, 0f);
-        capRT.anchoredPosition = Vector2.zero;
-        cap.characterSpacing = 1f;
-
-        var sliderRT = NewUI("Slider", row);
-        sliderRT.anchorMin = new Vector2(0f, 0f); sliderRT.anchorMax = new Vector2(1f, 1f);
-        sliderRT.offsetMin = new Vector2(40f, 0f); sliderRT.offsetMax = Vector2.zero;
-        var slider = sliderRT.gameObject.AddComponent<Slider>();
-
-        var trackRT = NewUI("Track", sliderRT);
-        trackRT.anchorMin = new Vector2(0f, 0.5f); trackRT.anchorMax = new Vector2(1f, 0.5f);
-        trackRT.pivot = new Vector2(0.5f, 0.5f);
-        trackRT.sizeDelta = new Vector2(0f, 10f);
-        var track = trackRT.gameObject.AddComponent<Image>();
-        if (trackSprite != null) track.sprite = trackSprite;
-        else track.color = DimBtnBg;
-        track.raycastTarget = true;   // clicking the track jumps the thumb
-
-        var areaRT = NewUI("HandleArea", sliderRT);
-        areaRT.anchorMin = Vector2.zero; areaRT.anchorMax = Vector2.one;
-        areaRT.offsetMin = new Vector2(9f, 0f); areaRT.offsetMax = new Vector2(-9f, 0f);
-
-        var handleRT = NewUI("Handle", areaRT);
-        var handle = handleRT.gameObject.AddComponent<Image>();
-        handle.sprite = HALVisuals.Disc();
-        handle.color = TextMain;
-        handle.raycastTarget = true;
-        handle.preserveAspect = true;
-
-        var ring = NewUI("Ring", handleRT);
-        ring.anchorMin = Vector2.zero; ring.anchorMax = Vector2.one;
-        ring.offsetMin = new Vector2(-2f, -2f); ring.offsetMax = new Vector2(2f, 2f);
-        var ringImg = ring.gameObject.AddComponent<Image>();
-        ringImg.sprite = HALVisuals.Disc();
-        ringImg.color = new Color(AccentCyan.r, AccentCyan.g, AccentCyan.b, 0.35f);
-        ringImg.raycastTarget = false;
-        ringImg.preserveAspect = true;
-        ring.SetAsFirstSibling();
-
-        handleLabel = MakeText(handleRT, "", 7, new Color32(0x0B, 0x0D, 0x12, 0xFF), TextAlignmentOptions.Center);
-        Fill(handleLabel.rectTransform);
-        handleLabel.fontStyle = FontStyles.Bold;
-
-        slider.targetGraphic = handle;
-        slider.handleRect = handleRT;
-        slider.direction = Slider.Direction.LeftToRight;
-        slider.minValue = min;
-        slider.maxValue = max;
-        slider.wholeNumbers = true;
-        slider.value = start;
-
-        // Pin the thumb to an 18px CIRCLE after the Slider has claimed the
-        // rect — its axis-anchor writes leave whatever height the hierarchy
-        // implies, which rendered as a tall oval spilling over the labels.
-        handleRT.anchorMin = new Vector2(handleRT.anchorMin.x, 0.5f);
-        handleRT.anchorMax = new Vector2(handleRT.anchorMax.x, 0.5f);
-        handleRT.sizeDelta = new Vector2(18f, 18f);
-
-        return slider;
-    }
-
-    /// Risk wording vs their OFFER (public info only) — price bands from the
-    /// approved mockup. Deliberately NO quantity commentary: Sam cut it —
-    /// players learn that shitty deals get declined by having shitty deals
-    /// declined, not from a caption.
+    /// Risk wording vs their OFFER (public info only) — never their hidden
+    /// accept ceiling. Shared with the sell panel; see DealSliderKit.RiskFor.
     static void RiskFor(int ask, int offer, out string text, out Color col)
-    {
-        float over = offer > 0 ? (float)ask / offer : 1f;
-        if (ask <= offer) { text = "their number — just send it"; col = OkGreen; }
-        else if (over <= 1.10f) { text = "modest push — decent odds"; col = OkGreen; }
-        else if (over <= 1.22f) { text = "firm push — they may counter"; col = WarnAmber; }
-        else if (over <= 1.38f) { text = "pushing it — likely a counter, maybe worse"; col = new Color32(0xFF, 0x9A, 0x3C, 0xFF); }
-        else { text = "greedy — you might blow the deal"; col = BadRed; }
-    }
+        => DealSliderKit.RiskFor(ask, offer, out text, out col);
 
     /// Change-detected per-frame update while the slider tray is open — the
     /// Sliders' drag paths plus click-to-jump both land here.
@@ -1040,7 +960,6 @@ public class MessagesScreen : MonoBehaviour
     // ── procedural sprites ─────────────────────────────────────────────────
 
     static readonly Dictionary<int, Sprite> s_rounded = new Dictionary<int, Sprite>();
-    static Sprite s_gradient;
 
     /// 9-sliced rounded-rect sprite (white; tint via Image.color). Same trick
     /// as PlayerPhoneUI.RoundedRectFilled, local so this screen stays
@@ -1069,22 +988,6 @@ public class MessagesScreen : MonoBehaviour
     }
 
     /// Horizontal green→amber→red gradient for the counter slider's risk track.
-    static Sprite RiskGradient()
-    {
-        if (s_gradient != null) return s_gradient;
-        const int W = 256;
-        var tex = new Texture2D(W, 1, TextureFormat.ARGB32, false);
-        tex.wrapMode = TextureWrapMode.Clamp;
-        Color g = new Color32(0x2A, 0x54, 0x36, 0xFF);
-        Color a = new Color32(0x5C, 0x4A, 0x28, 0xFF);
-        Color r = new Color32(0x5C, 0x2A, 0x2A, 0xFF);
-        for (int x = 0; x < W; x++)
-        {
-            float t = (float)x / (W - 1);
-            tex.SetPixel(x, 0, t < 0.55f ? Color.Lerp(g, a, t / 0.55f) : Color.Lerp(a, r, (t - 0.55f) / 0.45f));
-        }
-        tex.Apply();
-        s_gradient = Sprite.Create(tex, new Rect(0, 0, W, 1), new Vector2(0.5f, 0.5f), 100f);
-        return s_gradient;
-    }
+    /// Shared with the sell panel — see DealSliderKit.RiskGradient.
+    static Sprite RiskGradient() => DealSliderKit.RiskGradient();
 }
