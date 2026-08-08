@@ -61,4 +61,21 @@ public static class FeatureVault
     /// Flip to true and the helmet comes back exactly as it was, except the
     /// quads have since been widened (clusters sit further out than the painting).
     public const bool HelmetFrameArt = false;
+
+    /// DROP-IN MULTIPLAYER — the menu MULTIPLAYER button, the "play together?"
+    /// prompt after picking a save, the lobby (4-digit code + password over
+    /// Unity Relay), and the second player's stasis-pod arrival.
+    ///
+    /// This is the lever Sam asked for so Phase A can be tested without any
+    /// interference from Phase B. Set it FALSE and:
+    ///   • the MULTIPLAYER button never appears in the main menu,
+    ///   • picking a save goes straight into the game with no prompt,
+    ///   • no Unity Services connection is ever attempted,
+    ///   • MultiplayerSession never auto-creates.
+    /// The game boots and plays exactly as it did before any of this existed.
+    ///
+    /// It does NOT gate the older in-game MultiplayerTestUI overlay (the raw
+    /// HOST/JOIN/IP box on the NetworkManager) — that is a separate debug tool
+    /// and still works on its own.
+    public const bool Multiplayer = true;
 }

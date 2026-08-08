@@ -165,16 +165,20 @@ public class MainMenuController : MonoBehaviour
         buttonsRT.anchorMax = new Vector2(0.5f, 0.5f);
         buttonsRT.pivot     = new Vector2(0.5f, 0.5f);
         buttonsRT.anchoredPosition = new Vector2(0f, -120f);
-        buttonsRT.sizeDelta = new Vector2(420f, 360f);
+        // 5 rows x 68 + 4 x 16 gaps = 404. The column was sized for four 80px
+        // buttons; adding MULTIPLAYER without growing it would clip the last row.
+        buttonsRT.sizeDelta = new Vector2(460f, 404f);
         var vlg = buttonsRT.gameObject.AddComponent<VerticalLayoutGroup>();
         vlg.childAlignment = TextAnchor.MiddleCenter;
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true;
         vlg.childForceExpandHeight = false;
-        vlg.spacing = 22f;
+        vlg.spacing = 16f;
 
         BuildButton(buttonsRT, "PlayButton", "START GAME", OnPlay);
+        if (FeatureVault.Multiplayer)
+            BuildButton(buttonsRT, "MultiplayerButton", "MULTIPLAYER", OnMultiplayer);
         BuildButton(buttonsRT, "CreditsButton", "CREDITS", OnCredits);
         BuildButton(buttonsRT, "GalleryButton", "COMMUNITY GALLERY", OnCommunityGallery);
         BuildButton(buttonsRT, "ExitButton", "EXIT GAME", OnExit);
@@ -313,60 +317,117 @@ public class MainMenuController : MonoBehaviour
     {
         var btnRT = NewUI(name, parent);
         var le = btnRT.gameObject.AddComponent<LayoutElement>();
-        le.preferredHeight = 80f;
+        le.preferredHeight = 68f;
         le.flexibleHeight = 0f;
         BuildButtonContent(btnRT, label, onClick);
     }
 
+    /// Menu option row — the approved "treatment D".
+    ///
+    /// Left-aligned with a cyan caret, on a rule that stays faint until hover
+    /// and then FILLS left-to-right in cyan→magenta. On hover a thin cyan
+    /// scanline also wipes down through the row once and leaves it lit.
+    ///
+    /// The scanline is the reason this treatment was picked: it is the same
+    /// motif as the stasis pod's DOWNLOADING screen, which is exactly where a
+    /// joining player arrives. The menu and the arrival rhyme.
+    ///
+    /// Replaces the old centred pill (rounded background + top accent strip).
     void BuildButtonContent(RectTransform btnRT, string label, System.Action onClick)
     {
-        // Background image (rounded)
-        var bg = btnRT.gameObject.AddComponent<Image>();
-        bg.sprite = GetRoundedSprite();
-        bg.type = Image.Type.Sliced;
-        bg.color = ButtonNormal;
+        // Transparent hit target — the row has no fill of its own now, but a
+        // Button still needs a raycastable graphic to be clickable at all.
+        var hit = btnRT.gameObject.AddComponent<Image>();
+        hit.color = new Color(0f, 0f, 0f, 0f);
+        hit.raycastTarget = true;
 
         var btn = btnRT.gameObject.AddComponent<Button>();
-        btn.targetGraphic = bg;
-        var colors = btn.colors;
-        colors.normalColor = ButtonNormal;
-        colors.highlightedColor = ButtonHover;
-        colors.pressedColor = ButtonPressed;
-        colors.selectedColor = ButtonHover;
-        colors.disabledColor = new Color(0.2f, 0.2f, 0.2f, 0.6f);
-        colors.colorMultiplier = 1f;
-        colors.fadeDuration = 0.12f;
-        btn.colors = colors;
+        btn.targetGraphic = hit;
+        // Colour transitions are driven by MenuOptionRow instead, so the Button
+        // must not also tint the (invisible) background.
+        btn.transition = Selectable.Transition.None;
         btn.onClick.AddListener(() => onClick());
         UiSfxPlayer.Attach(btn);   // shared hover + click SFX
 
-        // Inner accent strip (top)
-        var topStrip = NewUI("Accent", btnRT);
-        topStrip.anchorMin = new Vector2(0f, 1f);
-        topStrip.anchorMax = new Vector2(1f, 1f);
-        topStrip.pivot = new Vector2(0.5f, 1f);
-        topStrip.anchoredPosition = new Vector2(0f, -3f);
-        topStrip.sizeDelta = new Vector2(-30f, 2f);
-        var stripImg = topStrip.gameObject.AddComponent<Image>();
-        stripImg.sprite = GetAccentSprite();
-        stripImg.raycastTarget = false;
-        stripImg.color = new Color(1f, 1f, 1f, 0.65f);
+        // Lit wash that fades in behind the row on hover.
+        var washRT = NewUI("Wash", btnRT);
+        Stretch(washRT, 0f, 0f, 0f, 0f);
+        var wash = washRT.gameObject.AddComponent<Image>();
+        wash.sprite = GetAccentSprite();
+        wash.color = new Color(AccentCool.r, AccentCool.g, AccentCool.b, 0f);
+        wash.raycastTarget = false;
+
+        // The rule along the bottom, and the gradient that fills it.
+        var trackRT = NewUI("Rule", btnRT);
+        trackRT.anchorMin = new Vector2(0f, 0f);
+        trackRT.anchorMax = new Vector2(1f, 0f);
+        trackRT.pivot = new Vector2(0.5f, 0f);
+        trackRT.anchoredPosition = Vector2.zero;
+        trackRT.sizeDelta = new Vector2(0f, 2f);
+        var track = trackRT.gameObject.AddComponent<Image>();
+        track.color = new Color(1f, 1f, 1f, 0.14f);
+        track.raycastTarget = false;
+
+        var fillRT = NewUI("Fill", trackRT);
+        fillRT.anchorMin = new Vector2(0f, 0f);
+        fillRT.anchorMax = new Vector2(0f, 1f);
+        fillRT.pivot = new Vector2(0f, 0.5f);
+        fillRT.anchoredPosition = Vector2.zero;
+        fillRT.sizeDelta = new Vector2(0f, 0f);
+        var fill = fillRT.gameObject.AddComponent<Image>();
+        fill.sprite = GetAccentSprite();
+        fill.color = Color.white;
+        fill.raycastTarget = false;
+
+        // The scanline that sweeps down once per hover.
+        var scanRT = NewUI("Scanline", btnRT);
+        scanRT.anchorMin = new Vector2(0f, 1f);
+        scanRT.anchorMax = new Vector2(1f, 1f);
+        scanRT.pivot = new Vector2(0.5f, 1f);
+        scanRT.anchoredPosition = Vector2.zero;
+        scanRT.sizeDelta = new Vector2(0f, 2f);
+        var scan = scanRT.gameObject.AddComponent<Image>();
+        scan.sprite = GetAccentSprite();
+        scan.color = new Color(AccentCool.r, AccentCool.g, AccentCool.b, 0f);
+        scan.raycastTarget = false;
+
+        // Caret
+        var caretRT = NewUI("Caret", btnRT);
+        caretRT.anchorMin = new Vector2(0f, 0f);
+        caretRT.anchorMax = new Vector2(0f, 1f);
+        caretRT.pivot = new Vector2(0f, 0.5f);
+        caretRT.anchoredPosition = new Vector2(10f, 0f);
+        caretRT.sizeDelta = new Vector2(34f, 0f);
+        var caretTMP = caretRT.gameObject.AddComponent<TextMeshProUGUI>();
+        ApplyDefaultFont(caretTMP);
+        caretTMP.text = ">";
+        caretTMP.fontSize = 26f;
+        caretTMP.fontStyle = FontStyles.Bold;
+        caretTMP.alignment = TextAlignmentOptions.Left;
+        caretTMP.color = new Color(AccentCool.r, AccentCool.g, AccentCool.b, 0.55f);
+        caretTMP.raycastTarget = false;
 
         // Label
         var labelRT = NewUI("Label", btnRT);
-        Stretch(labelRT, 0f, 0f, 0f, 0f);
+        labelRT.anchorMin = new Vector2(0f, 0f);
+        labelRT.anchorMax = new Vector2(1f, 1f);
+        labelRT.offsetMin = new Vector2(46f, 0f);
+        labelRT.offsetMax = new Vector2(-12f, 0f);
         var labelTMP = labelRT.gameObject.AddComponent<TextMeshProUGUI>();
         ApplyDefaultFont(labelTMP);
         labelTMP.text = label;
-        labelTMP.fontSize = 30f;
+        labelTMP.fontSize = 28f;
         labelTMP.fontStyle = FontStyles.Bold;
-        labelTMP.alignment = TextAlignmentOptions.Center;
+        labelTMP.alignment = TextAlignmentOptions.Left;
         labelTMP.characterSpacing = 8f;
-        labelTMP.color = ButtonText;
+        labelTMP.color = new Color(ButtonText.r, ButtonText.g, ButtonText.b, 0.72f);
         labelTMP.raycastTarget = false;
         var labelShadow = labelTMP.gameObject.AddComponent<Shadow>();
         labelShadow.effectColor = new Color(0f, 0f, 0f, 0.65f);
         labelShadow.effectDistance = new Vector2(0f, -2f);
+
+        var row = btnRT.gameObject.AddComponent<MenuOptionRow>();
+        row.Init(labelTMP, caretTMP, fillRT, scan, wash);
     }
 
     void AddStars(RectTransform parent)
@@ -460,9 +521,7 @@ public class MainMenuController : MonoBehaviour
                 // of EnsureGameplaySingletons yields between each singleton
                 // creation so the loading bar animates through the seeding
                 // block instead of freezing at one value.
-                if (LoadingScreen.Instance != null)
-                    LoadingScreen.Instance.LoadSceneAndShow("1.6.7.7.7", preSceneSetup: EnsureGameplaySingletonsAsync);
-                else { EnsureGameplaySingletons(); SceneManager.LoadScene("1.6.7.7.7"); }
+                OfferMultiplayerThen(EnterGameplay);
             },
             onCreateOrNew: (_) =>
             {
@@ -471,9 +530,7 @@ public class MainMenuController : MonoBehaviour
                 // gameplay scene loads (otherwise the previous unsaved session's
                 // hotbar / money / dust / dex / story progress leak in).
                 NewGameReset.Schedule();
-                if (LoadingScreen.Instance != null)
-                    LoadingScreen.Instance.LoadSceneAndShow("1.6.7.7.7", preSceneSetup: EnsureGameplaySingletonsAsync);
-                else { EnsureGameplaySingletons(); SceneManager.LoadScene("1.6.7.7.7"); }
+                OfferMultiplayerThen(EnterGameplay);
             },
             onClose: () =>
             {
@@ -481,6 +538,41 @@ public class MainMenuController : MonoBehaviour
                 saveSelectionPanel = null;
             });
         saveSelectionPanel = panel.root;
+    }
+
+    /// The single waist both save paths converge on. Kept as one method so the
+    /// multiplayer prompt has exactly one place to interpose.
+    void EnterGameplay()
+    {
+        if (LoadingScreen.Instance != null)
+            LoadingScreen.Instance.LoadSceneAndShow("1.6.7.7.7", preSceneSetup: EnsureGameplaySingletonsAsync);
+        else { EnsureGameplaySingletons(); SceneManager.LoadScene("1.6.7.7.7"); }
+    }
+
+    /// Offers "play together?" and runs `solo` if they decline. With multiplayer
+    /// vaulted off this is a straight passthrough, so the prompt never appears
+    /// and the menu behaves exactly as it did before any of this existed.
+    void OfferMultiplayerThen(System.Action solo)
+    {
+        if (!FeatureVault.Multiplayer) { solo(); return; }
+        EnsureMultiplayerUI();
+        if (MultiplayerMenuUI.Instance == null) { solo(); return; }
+        MultiplayerMenuUI.Instance.AskPlayTogether(solo);
+    }
+
+    void EnsureMultiplayerUI()
+    {
+        if (MultiplayerMenuUI.Instance != null) return;
+        var go = new GameObject("MultiplayerMenuUI");
+        go.transform.SetParent(transform, false);
+        go.AddComponent<MultiplayerMenuUI>();
+    }
+
+    public void OnMultiplayer()
+    {
+        if (!FeatureVault.Multiplayer) return;
+        EnsureMultiplayerUI();
+        MultiplayerMenuUI.Instance?.OpenJoin();
     }
 
     public void OnCredits()
@@ -717,7 +809,9 @@ public class MainMenuController : MonoBehaviour
     // that caused the grass-flicker regression (PixelLightLimitFix and 16
     // others were missing from the async version when the chunked seeder
     // first landed).
-    static void EnsureGameplaySingletons()
+    // public: MultiplayerSession loads the gameplay scene itself when a session
+    // starts, and must seed the same singletons this menu does.
+    public static void EnsureGameplaySingletons()
     {
         var iter = EnsureGameplaySingletonsAsync(null);
         while (iter.MoveNext()) { /* drain — each yield return null is a no-op when iterated this way */ }

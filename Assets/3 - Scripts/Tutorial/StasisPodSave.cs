@@ -129,6 +129,24 @@ public class StasisPodSave : MonoBehaviour
         }
     }
 
+    /// Play the DOWNLOADING wake on demand, without the pod having to detect a
+    /// body standing sealed inside it.
+    ///
+    /// The normal path infers the wake: Update notices, within 3s of level load,
+    /// that the player is Deep in a fully-closed pod. A player who ARRIVES into
+    /// a session already in progress misses that window entirely — the ramp is
+    /// long since down — so SecondPlayerArrival calls this directly rather than
+    /// trying to fake the conditions. Same effect, same ritual, no duplication.
+    ///
+    /// No-ops if a ritual is already running.
+    public void PlayDownloadWake()
+    {
+        if (_running) return;
+        _armed = false;
+        _leftPodSinceLoad = false;
+        StartCoroutine(Ritual(download: true));
+    }
+
     IEnumerator Ritual(bool download)
     {
         _running = true;
