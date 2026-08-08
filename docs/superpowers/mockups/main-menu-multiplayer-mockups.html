@@ -1,0 +1,944 @@
+<title>Sound of Space — Main Menu &amp; Lobby Mockups</title>
+<style>
+  /* Committed single-theme: this is a deck of GAME screens, and the game is a
+     dark violet nebula. A light variant would misrepresent the subject, so
+     every colour is painted explicitly and nothing is left to the host ground. */
+  :root {
+    --void:      #07051C;   /* GalaxyHudKit BgBottom  */
+    --nebula:    #1B0C42;   /* GalaxyHudKit BgMid     */
+    --nebula-hi: #351866;   /* GalaxyHudKit BgTop     */
+    --cool:      #5BD8FF;   /* BorderCool / HUD accent*/
+    --hot:       #C94FFF;   /* BorderHot              */
+    --label:     #F1F4FF;   /* GalaxyHudKit LabelColor*/
+    --live:      #57C46E;   /* the "turns green" state*/
+    --warn:      #E8A33D;
+    --bad:       #E05555;
+
+    /* Violet-biased neutrals, pulled toward the ground rather than pure grey. */
+    --ink-0: #0B0918;
+    --ink-1: #14112A;
+    --ink-2: #1E1A3C;
+    --ink-3: #2E2856;
+    --dim:   #9A93C4;
+    --dimmer:#6C659A;
+
+    --mono: ui-monospace, "Cascadia Mono", "SF Mono", Consolas, "DejaVu Sans Mono", monospace;
+    --sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+    --stage-w: 1000px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--label);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 40px 24px 96px; }
+
+  /* ── deck chrome ───────────────────────────────────────────────────── */
+  header.deck { display: flex; flex-direction: column; gap: 10px; margin-bottom: 32px; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--cool);
+  }
+  h1 {
+    margin: 0; font-size: clamp(28px, 4vw, 42px); line-height: 1.1;
+    text-wrap: balance; font-weight: 650; letter-spacing: -.01em;
+  }
+  .standfirst { margin: 0; max-width: 68ch; color: var(--dim); font-size: 16.5px; }
+
+  h2 {
+    font-size: 20px; margin: 56px 0 14px; text-wrap: balance;
+    padding-bottom: 8px; border-bottom: 1px solid var(--ink-3);
+  }
+  h3 { font-size: 15px; margin: 26px 0 8px; color: var(--label); }
+  p  { margin: 0 0 12px; max-width: 72ch; }
+  .wrap > p, .wrap > ul { color: var(--dim); }
+  ul { max-width: 72ch; padding-left: 20px; }
+  li { margin-bottom: 7px; }
+  strong { color: var(--label); font-weight: 620; }
+  code {
+    font-family: var(--mono); font-size: .88em; background: var(--ink-1);
+    border: 1px solid var(--ink-3); border-radius: 4px; padding: 1px 5px; color: var(--cool);
+  }
+
+  /* ── design switcher ───────────────────────────────────────────────── */
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+  .tab {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .12em;
+    text-transform: uppercase; cursor: pointer;
+    background: var(--ink-1); color: var(--dim);
+    border: 1px solid var(--ink-3); border-radius: 3px;
+    padding: 9px 14px; transition: background .15s, color .15s, border-color .15s;
+  }
+  .tab:hover { color: var(--label); border-color: var(--dimmer); }
+  .tab[aria-selected="true"] {
+    background: linear-gradient(180deg, var(--nebula-hi), var(--nebula));
+    color: var(--label); border-color: var(--cool);
+    box-shadow: 0 0 0 1px rgba(91,216,255,.22), 0 0 22px rgba(91,216,255,.14);
+  }
+  .tab-note { color: var(--dimmer); font-size: 13.5px; margin: 0 0 18px; max-width: 72ch; min-height: 44px; }
+
+  /* ── the stage: a fake 16:9 game screen ────────────────────────────── */
+  .stage-shell { position: relative; }
+  .stage {
+    position: relative; width: 100%; aspect-ratio: 16 / 9;
+    border: 1px solid var(--ink-3); border-radius: 6px; overflow: hidden;
+    background: radial-gradient(120% 90% at 50% 8%, var(--nebula-hi) 0%, var(--nebula) 42%, var(--void) 100%);
+    container-type: inline-size;
+    user-select: none;
+  }
+  canvas.stars { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .scanlines {
+    position: absolute; inset: 0; pointer-events: none; opacity: .5;
+    background: repeating-linear-gradient(180deg, rgba(0,0,0,.20) 0 1px, transparent 1px 3px);
+  }
+  .vignette {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(120% 80% at 50% 45%, transparent 45%, rgba(3,2,10,.72) 100%);
+  }
+  .screen {
+    position: absolute; inset: 0; display: flex; z-index: 2;
+    /* cq units keep the mock legible at any deck width.
+       The real menu loads "Fonts & Materials/LiberationSans SDF" and carries its
+       style with WEIGHT + LETTER-SPACING rather than a display face — so these
+       screens are a bold sans, not the techno face the in-world HUD uses. */
+    font-family: var(--sans);
+  }
+
+  /* game-screen type scale, in container units so it scales with the stage */
+  .g-title  { font-size: 7.2cqw; letter-spacing: .16em; font-weight: 700; line-height: 1; }
+  .g-sub    { font-size: 1.5cqw; letter-spacing: .34em; color: var(--dim); }
+  .g-btn    { font-size: 1.75cqw; letter-spacing: .2em; }
+  .g-small  { font-size: 1.3cqw; letter-spacing: .16em; }
+  .g-tiny   { font-size: 1.1cqw; letter-spacing: .2em; color: var(--dimmer); }
+
+  .title-grad {
+    background: linear-gradient(100deg, var(--cool), var(--hot) 50%, var(--cool));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+
+  /* Menu button — the real recipe: near-black indigo pill (#10082E @ 88%),
+     18px corner radius, a 2px cyan→magenta hairline sitting 3px below the top
+     edge, centred bold label with a 2px drop shadow. Hover #7A42C8. */
+  .mbtn {
+    position: relative; display: block; width: 100%; text-align: center; cursor: pointer;
+    font-family: var(--sans); font-weight: 700; color: var(--label);
+    background: rgba(16,8,46,.88);
+    border: none; border-radius: .9cqw;
+    padding: 1.3cqw 1.6cqw;
+    text-shadow: 0 2px 0 rgba(0,0,0,.65);
+    transition: background .12s;
+  }
+  .mbtn::after {
+    content: ""; position: absolute; left: 1.5cqw; right: 1.5cqw; top: .3cqw; height: 2px;
+    background: linear-gradient(90deg, var(--cool), var(--hot));
+    opacity: .65; border-radius: 2px;
+  }
+  .mbtn:hover, .mbtn:focus-visible { background: #7A42C8; outline: none; }
+  .mbtn:active { background: #A066E6; }
+  .mbtn.accent::after { opacity: 1; height: 3px; }
+  .mbtn.ghost { color: rgba(241,244,255,.72); }
+  .mbtn.ghost::after { opacity: .3; }
+
+  /* ── skin: NEBULA (evolved current menu) ───────────────────────────── */
+  .skin-nebula .screen { flex-direction: column; align-items: center; justify-content: center; gap: 1.6cqw; }
+  .skin-nebula .menu-col { display: flex; flex-direction: column; gap: 1.1cqw; width: 30cqw; margin-top: 1.2cqw; }
+  /* the real 420x3 cyan→magenta bar under the subtitle */
+  .accent-bar { width: 30cqw; height: 3px; background: linear-gradient(90deg, var(--cool), var(--hot)); }
+
+  /* ── skin: BOOT LOG ────────────────────────────────────────────────── */
+  .skin-boot .screen { flex-direction: column; justify-content: flex-end; padding: 4cqw 5cqw; gap: 1.2cqw; }
+  .skin-boot .logline { color: var(--dimmer); font-size: 1.2cqw; letter-spacing: .08em; }
+  .skin-boot .logline .ok { color: var(--live); }
+  .skin-boot .menu-col { display: flex; flex-direction: column; gap: .5cqw; width: 40cqw; margin-top: 1.2cqw; }
+  .skin-boot .mbtn {
+    background: transparent; border-left: 2px solid transparent; border-radius: 0;
+    padding: .7cqw 1.4cqw; text-align: left; text-shadow: none;
+    font-family: var(--mono); font-weight: 500;
+  }
+  .skin-boot .mbtn::after { display: none; }
+  .skin-boot .mbtn::before { content: "> "; color: var(--cool); }
+  .skin-boot .mbtn:hover, .skin-boot .mbtn:focus-visible {
+    border-left-color: var(--cool); background: rgba(91,216,255,.09);
+  }
+
+  /* ── skin: ORBIT RAIL ──────────────────────────────────────────────── */
+  .skin-orbit .screen { flex-direction: row; align-items: center; padding: 0 6cqw; }
+  .skin-orbit .rail { width: 34cqw; display: flex; flex-direction: column; gap: 1cqw; z-index: 3; }
+  .skin-orbit .planet {
+    position: absolute; right: -14cqw; top: 50%; transform: translateY(-50%);
+    width: 52cqw; height: 52cqw; border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, #6B3FA8 0%, #2A1250 46%, #0A0620 72%);
+    box-shadow: inset -3cqw -2cqw 8cqw rgba(0,0,0,.85), 0 0 12cqw rgba(91,216,255,.14);
+  }
+  .skin-orbit .planet::after {
+    content: ""; position: absolute; inset: -1.5%;
+    border-radius: 50%; border: 1px solid rgba(91,216,255,.22);
+  }
+  .skin-orbit .mbtn {
+    background: transparent; border-bottom: 1px solid rgba(154,147,196,.22);
+    border-radius: 0; text-align: left; padding: .95cqw .4cqw;
+  }
+  .skin-orbit .mbtn::after { left: 0; right: auto; width: 0; top: auto; bottom: -1px; height: 2px; transition: width .18s; }
+  .skin-orbit .mbtn:hover::after, .skin-orbit .mbtn:focus-visible::after { width: 100%; }
+  .skin-orbit .mbtn:hover, .skin-orbit .mbtn:focus-visible {
+    background: linear-gradient(90deg, rgba(91,216,255,.12), transparent);
+  }
+
+  /* ── skin: POD GLASS ───────────────────────────────────────────────── */
+  .skin-pod .screen { align-items: center; justify-content: center; }
+  .skin-pod .glass {
+    position: relative; width: 46cqw; padding: 3.4cqw 3.4cqw 3cqw;
+    border-radius: 44% 44% 6% 6% / 16% 16% 4% 4%;
+    background: linear-gradient(180deg, rgba(91,216,255,.10), rgba(12,8,32,.80));
+    border: 1px solid rgba(91,216,255,.36);
+    box-shadow: inset 0 0 6cqw rgba(91,216,255,.10), 0 0 5cqw rgba(0,0,0,.7);
+    display: flex; flex-direction: column; align-items: center; gap: 1.2cqw;
+  }
+  .skin-pod .glass::before {
+    content: ""; position: absolute; left: 8%; top: 4%; width: 26%; height: 46%;
+    border-radius: 50%; background: linear-gradient(150deg, rgba(255,255,255,.14), transparent 70%);
+    pointer-events: none;
+  }
+  .skin-pod .menu-col { display: flex; flex-direction: column; gap: .55cqw; width: 100%; }
+  .skin-pod .g-title { font-size: 4.6cqw; }
+  .skin-pod .mbtn { text-align: center; background: rgba(10,7,26,.5); }
+
+  /* ── panels used by the lobby flow (shared across skins) ───────────── */
+  .panel {
+    width: 44cqw; background: linear-gradient(180deg, rgba(30,26,60,.94), rgba(11,9,24,.96));
+    border: 1px solid rgba(91,216,255,.44); border-radius: 4px;
+    padding: 2.4cqw 2.6cqw; display: flex; flex-direction: column; gap: 1.2cqw;
+    box-shadow: 0 0 4cqw rgba(0,0,0,.6), inset 0 0 3cqw rgba(91,216,255,.05);
+    z-index: 3;
+  }
+  .panel.live { border-color: var(--live); box-shadow: 0 0 4cqw rgba(0,0,0,.6), 0 0 3cqw rgba(87,196,110,.30), inset 0 0 3cqw rgba(87,196,110,.10); }
+  .panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1cqw; }
+  .panel-title { font-size: 1.9cqw; letter-spacing: .2em; }
+  .panel .lead { font-size: 1.3cqw; color: var(--dim); letter-spacing: .04em; line-height: 1.55; }
+
+  .field { display: flex; flex-direction: column; gap: .45cqw; }
+  .field label { font-size: 1.05cqw; letter-spacing: .22em; color: var(--dimmer); }
+  .field .box {
+    background: rgba(8,6,20,.92); border: 1px solid rgba(154,147,196,.34);
+    border-radius: 3px; padding: .95cqw 1.2cqw; font-size: 1.8cqw; letter-spacing: .34em;
+  }
+  /* The code is data you read aloud to a friend — mono + tabular so the digits
+     are unambiguous and don't shift width as they change. */
+  .field .box.code {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    color: var(--cool); font-weight: 700; font-size: 2.6cqw;
+    text-align: center; letter-spacing: .5em; text-indent: .5em;
+  }
+  .field .box.code.live { color: var(--live); }
+  .caret::after { content: "▌"; color: var(--cool); animation: blink 1.05s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .btnrow { display: flex; gap: .8cqw; margin-top: .4cqw; }
+  .pbtn {
+    flex: 1; cursor: pointer; font-family: var(--sans); font-weight: 600; font-size: 1.35cqw;
+    letter-spacing: .16em; padding: 1cqw; border-radius: 3px;
+    background: rgba(91,216,255,.13); border: 1px solid rgba(91,216,255,.5); color: var(--label);
+    transition: background .14s, border-color .14s;
+  }
+  .pbtn:hover, .pbtn:focus-visible { background: rgba(91,216,255,.24); outline: none; }
+  .pbtn.go   { background: rgba(87,196,110,.16); border-color: var(--live); color: #D6FFE2; }
+  .pbtn.go:hover { background: rgba(87,196,110,.3); }
+  .pbtn.kill { background: rgba(224,85,85,.12); border-color: rgba(224,85,85,.55); color: #FFD9D9; }
+  .pbtn.kill:hover { background: rgba(224,85,85,.24); }
+  .pbtn.ghost { background: transparent; border-color: rgba(154,147,196,.3); color: var(--dim); }
+
+  .roster { display: flex; flex-direction: column; gap: .45cqw; }
+  .slot {
+    display: flex; align-items: center; gap: .9cqw; font-size: 1.25cqw; letter-spacing: .1em;
+    padding: .75cqw 1cqw; border-radius: 3px;
+    background: rgba(8,6,20,.7); border: 1px solid rgba(154,147,196,.18); color: var(--dim);
+  }
+  .slot.filled { border-color: rgba(87,196,110,.5); color: var(--label); }
+  .slot .dot { width: .8cqw; height: .8cqw; border-radius: 50%; background: var(--dimmer); flex: none; }
+  .slot.filled .dot { background: var(--live); box-shadow: 0 0 .8cqw var(--live); }
+  .slot .tag { margin-left: auto; font-size: 1cqw; color: var(--dimmer); letter-spacing: .18em; }
+
+  .savelist { display: flex; flex-direction: column; gap: .5cqw; }
+  .saverow {
+    display: flex; align-items: center; gap: 1cqw; cursor: pointer; text-align: left;
+    font-family: var(--sans); background: rgba(8,6,20,.66);
+    border: 1px solid rgba(154,147,196,.2); border-radius: 3px; padding: 1cqw 1.2cqw; color: var(--label);
+    transition: border-color .14s, background .14s;
+  }
+  .saverow:hover, .saverow:focus-visible { border-color: var(--cool); background: rgba(91,216,255,.09); outline: none; }
+  .saverow .nm { font-size: 1.4cqw; letter-spacing: .1em; }
+  .saverow .meta { margin-left: auto; font-size: 1.05cqw; color: var(--dimmer); letter-spacing: .12em; }
+
+  .status {
+    font-size: 1.15cqw; letter-spacing: .16em; color: var(--live);
+    display: flex; align-items: center; gap: .7cqw;
+  }
+  .status .pulse {
+    width: .75cqw; height: .75cqw; border-radius: 50%; background: var(--live);
+    box-shadow: 0 0 .9cqw var(--live); animation: pulse 1.5s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: .32; } }
+
+  /* player-2 waiting + DOWNLOADING wake */
+  .blackout { position: absolute; inset: 0; background: #000; display: flex;
+              align-items: center; justify-content: center; z-index: 5; }
+  .blackout .msg { font-size: 1.5cqw; letter-spacing: .34em; color: var(--dimmer); }
+  .lanes { position: absolute; inset: 0; overflow: hidden; z-index: 5; background: rgba(4,10,26,.94); }
+  .lanes .col {
+    position: absolute; top: -20%; width: 1.1cqw; color: rgba(91,216,255,.5);
+    font-size: 1.15cqw; line-height: 1.25; letter-spacing: 0; writing-mode: vertical-rl;
+    animation: rain linear infinite;
+  }
+  @keyframes rain { from { transform: translateY(-40%); } to { transform: translateY(120%); } }
+  .lanes .wake {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 1.4cqw; z-index: 6;
+  }
+  .lanes .wake .big { font-size: 2.6cqw; letter-spacing: .5em; color: var(--cool); animation: pulse 1.35s ease-in-out infinite; }
+  .lanes .bar { width: 30cqw; height: 1cqw; display: flex; gap: .25cqw; }
+  .lanes .bar i { flex: 1; background: rgba(91,216,255,.18); border: 1px solid rgba(91,216,255,.3); }
+  .lanes .bar i.on { background: var(--cool); }
+
+  /* ══ OPTION ROW TREATMENTS ═════════════════════════════════════════════
+     Direction 01's composition, wearing 02's left-aligned caret list and 03's
+     underline that fills on hover. Six ways to combine them. Each lab is a
+     real nebula ground at menu scale so hover reads the way it will in game. */
+  .labgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin: 18px 0 8px; }
+  .lab {
+    border: 1px solid var(--ink-3); border-radius: 6px; overflow: hidden;
+    background: var(--ink-0); display: flex; flex-direction: column;
+  }
+  .lab .ground {
+    position: relative; padding: 26px 24px 28px;
+    background: radial-gradient(120% 120% at 50% 0%, var(--nebula-hi) 0%, var(--nebula) 45%, var(--void) 100%);
+  }
+  .lab .ground::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(180deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+  }
+  .lab .cap {
+    padding: 12px 16px 14px; border-top: 1px solid var(--ink-3); background: var(--ink-1);
+  }
+  .lab .cap b { display: block; font-size: 13.5px; margin-bottom: 3px; color: var(--label); }
+  .lab .cap span { font-size: 12.5px; color: var(--dimmer); line-height: 1.5; }
+  .lab .cap .letter {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .2em;
+    color: var(--cool); text-transform: uppercase; display: block; margin-bottom: 5px;
+  }
+
+  .opt {
+    position: relative; display: block; width: 100%; text-align: left; cursor: pointer;
+    background: transparent; border: none; color: rgba(241,244,255,.68);
+    font-family: var(--sans); font-weight: 700; font-size: 15px; letter-spacing: .16em;
+    padding: 9px 4px; transition: color .16s, letter-spacing .16s, background .16s, transform .16s;
+  }
+  .opt + .opt { margin-top: 2px; }
+  /* the shared underline — always present, fills on hover (direction 03) */
+  .opt .rule {
+    position: absolute; left: 0; bottom: 0; height: 2px; width: 100%;
+    background: rgba(154,147,196,.18); overflow: hidden; border-radius: 2px;
+  }
+  .opt .rule i {
+    display: block; height: 100%; width: 0;
+    background: linear-gradient(90deg, var(--cool), var(--hot));
+    transition: width .26s cubic-bezier(.22,.61,.36,1);
+  }
+  .opt:hover .rule i, .opt:focus-visible .rule i { width: 100%; }
+  .opt:focus-visible { outline: none; }
+  /* the caret from direction 02 */
+  .opt .k { color: var(--cool); opacity: .55; transition: opacity .16s, transform .16s; display: inline-block; }
+  .opt:hover .k, .opt:focus-visible .k { opacity: 1; }
+
+  /* A — caret + fill, row lights */
+  .t-a:hover, .t-a:focus-visible { color: #FFF; }
+  .t-a:hover .k, .t-a:focus-visible .k { transform: translateX(3px); }
+
+  /* B — brackets snap in */
+  .t-b .br { color: var(--hot); opacity: 0; transition: opacity .16s; }
+  .t-b:hover .br, .t-b:focus-visible .br { opacity: 1; }
+  .t-b:hover, .t-b:focus-visible { color: #FFF; }
+
+  /* C — indent + inner glow */
+  .t-c:hover, .t-c:focus-visible {
+    color: #FFF; transform: translateX(8px);
+    background: linear-gradient(90deg, rgba(91,216,255,.16), transparent 70%);
+  }
+
+  /* D — scanline wipe leaves the row lit */
+  .t-d::before {
+    content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cool), transparent);
+    opacity: 0; transform: translateY(0);
+  }
+  .t-d:hover::before, .t-d:focus-visible::before { animation: wipe .42s ease-out forwards; }
+  @keyframes wipe { 0% { opacity: 1; transform: translateY(0); } 100% { opacity: 0; transform: translateY(34px); } }
+  .t-d:hover, .t-d:focus-visible { color: #FFF; background: rgba(91,216,255,.07); }
+
+  /* E — letterspacing opens up, no caret */
+  .t-e:hover, .t-e:focus-visible { color: #FFF; letter-spacing: .3em; }
+
+  /* F — terminal block cursor parks at the label */
+  .t-f .cur {
+    display: inline-block; width: .55em; height: 1em; margin-left: .5em;
+    background: var(--cool); opacity: 0; vertical-align: -.12em;
+  }
+  .t-f:hover .cur, .t-f:focus-visible .cur { opacity: 1; animation: blink 1s steps(1) infinite; }
+  .t-f:hover, .t-f:focus-visible { color: #FFF; }
+
+  /* ── flow map ──────────────────────────────────────────────────────── */
+  .flowbar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px;
+    margin-top: 14px; padding: 12px 14px;
+    background: var(--ink-1); border: 1px solid var(--ink-3); border-radius: 5px;
+  }
+  .flowbar .lbl {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--dimmer); margin-right: 4px;
+  }
+  .step {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
+    padding: 5px 9px; border-radius: 3px; color: var(--dimmer);
+    background: transparent; border: 1px solid transparent; cursor: pointer;
+  }
+  .step:hover { color: var(--label); }
+  .step[aria-current="true"] { color: var(--void); background: var(--cool); border-color: var(--cool); font-weight: 700; }
+  .step.livestep[aria-current="true"] { background: var(--live); }
+  .sep { color: var(--ink-3); font-family: var(--mono); }
+  .reset {
+    margin-left: auto; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em;
+    background: transparent; border: 1px solid var(--ink-3); color: var(--dim);
+    border-radius: 3px; padding: 5px 10px; cursor: pointer;
+  }
+  .reset:hover { border-color: var(--cool); color: var(--label); }
+
+  /* ── explainer blocks ──────────────────────────────────────────────── */
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin: 16px 0 8px; }
+  .card {
+    background: var(--ink-1); border: 1px solid var(--ink-3);
+    border-radius: 5px; padding: 16px 18px;
+  }
+  .card h3 { margin-top: 0; }
+  .card p { color: var(--dim); font-size: 14.5px; margin-bottom: 0; }
+  .card .kicker {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--cool); display: block; margin-bottom: 6px;
+  }
+  .card.warn { border-color: rgba(232,163,61,.42); }
+  .card.warn .kicker { color: var(--warn); }
+
+  .tablewrap { overflow-x: auto; margin: 14px 0; }
+  table { border-collapse: collapse; width: 100%; min-width: 520px; font-size: 14px; }
+  th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--ink-3); vertical-align: top; }
+  th { font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--cool); }
+  td { color: var(--dim); }
+  td strong { color: var(--label); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="deck">
+    <span class="eyebrow">Sound of Space · design deck</span>
+    <h1>Main menu revamp &amp; the drop-in multiplayer lobby</h1>
+    <p class="standfirst">
+      Direction 01 is the pick, so the live question is now how its options
+      behave — six hover treatments below blend 02's caret list with 03's
+      filling underline. The four original directions stay on the stage for
+      reference, and every screen is clickable: pick a tab, then walk the lobby
+      flow.
+    </p>
+  </header>
+
+  <div class="tabs" role="tablist" aria-label="Main menu directions">
+    <button class="tab" role="tab" data-skin="nebula" aria-selected="true">01 · Nebula</button>
+    <button class="tab" role="tab" data-skin="boot"   aria-selected="false">02 · Boot log</button>
+    <button class="tab" role="tab" data-skin="orbit"  aria-selected="false">03 · Orbit rail</button>
+    <button class="tab" role="tab" data-skin="pod"    aria-selected="false">04 · Pod glass</button>
+  </div>
+  <p class="tab-note" id="tabnote"></p>
+
+  <div class="stage-shell">
+    <div class="stage skin-nebula" id="stage">
+      <canvas class="stars" id="stars"></canvas>
+      <div class="screen" id="screen"></div>
+      <div class="scanlines"></div>
+      <div class="vignette"></div>
+    </div>
+
+    <div class="flowbar">
+      <span class="lbl">Flow</span>
+      <button class="step" data-go="menu">Menu</button><span class="sep">/</span>
+      <button class="step" data-go="saves">Saves</button><span class="sep">›</span>
+      <button class="step" data-go="ask">Together?</button><span class="sep">›</span>
+      <button class="step" data-go="host">Lobby</button><span class="sep">›</span>
+      <button class="step livestep" data-go="live">Live</button><span class="sep">›</span>
+      <button class="step livestep" data-go="joined">2 players</button>
+      <span class="sep">|</span>
+      <button class="step" data-go="join">Join screen</button><span class="sep">›</span>
+      <button class="step" data-go="wait">P2 waiting</button><span class="sep">›</span>
+      <button class="step" data-go="wake">P2 wake</button>
+      <button class="reset" id="reset">Reset</button>
+    </div>
+  </div>
+
+  <h2>Option row treatments — hover these</h2>
+  <p>
+    Direction 01's composition, wearing 02's left-aligned caret list and 03's
+    underline that fills on hover. Six ways to combine them, each on a real
+    nebula ground at menu scale. Hover the rows — the differences only exist in
+    motion.
+  </p>
+  <div class="labgrid" id="labgrid"></div>
+
+  <h2>What each direction is arguing</h2>
+  <div class="grid2">
+    <div class="card">
+      <span class="kicker">01 · Nebula</span>
+      <h3>The one you already have, tightened</h3>
+      <p>Keeps the nebula, the twinkling stars and the cyan→magenta gradient title exactly as they ship today. The change is structural: the button column gets a real hierarchy so <strong>Multiplayer</strong> can sit beside Start Game without the row turning into a list of four equal things. Lowest risk, and nothing to relearn.</p>
+    </div>
+    <div class="card">
+      <span class="kicker">02 · Boot log</span>
+      <h3>The ship is waking up, and so are you</h3>
+      <p>The menu resolves out of a boot sequence — reactor, life support, comms — and the options are the last lines of the log. It makes the main menu diegetic and it makes “COMMS LINK” a natural home for multiplayer rather than a bolted-on fifth button. Costs you the big title moment.</p>
+    </div>
+    <div class="card">
+      <span class="kicker">03 · Orbit rail</span>
+      <h3>Cinematic, and the calmest to read</h3>
+      <p>Title and options lock to a left rail; a planet holds the right two-thirds with the camera drifting. The most conventional of the four, which is the point — it is the easiest to add items to later without redesigning, and screenshots well.</p>
+    </div>
+    <div class="card">
+      <span class="kicker">04 · Pod glass</span>
+      <h3>You are already in the machine</h3>
+      <p>The menu is etched on the inside of the stasis pod glass. It is the opinionated one, and it earns its place: <strong>every arrival in this game already comes out of the pod</strong> — new game, loading a save, dying, and now a second player joining. Starting the game inside the pod makes that the spine of the whole experience rather than a save-system detail.</p>
+    </div>
+  </div>
+
+  <h2>How joining actually works now</h2>
+
+  <p>
+    Right now a friend has to type your IPv4 address and both machines have to be
+    on the same network, with the right UDP port open. That is why it only ever
+    worked on your desk. Sending the game to a friend across town cannot work
+    that way without port forwarding, which you have already ruled out.
+  </p>
+  <p>
+    The fix is <strong>Unity Relay</strong> plus <strong>Unity Lobby</strong>, and it changes the shape of the
+    problem completely. Nobody connects <em>to</em> anybody. Both machines make an
+    outbound connection to a Unity-run relay server in the middle and it forwards
+    packets between them. Outbound connections are what home routers already
+    allow, so there is no port forwarding, no firewall prompt, and no IP address
+    to share.
+  </p>
+  <p>
+    Lobby is the part that turns that into a code. When you start a session, the
+    game creates a lobby holding your relay join code, stamps your four-digit
+    code onto it as a searchable field, and locks it with your password. Your
+    friend types the four digits, the game finds that lobby, the password unlocks
+    it, and only then does it read out the relay code and connect. The relay code
+    itself is never shown to anyone.
+  </p>
+
+  <div class="grid2">
+    <div class="card warn">
+      <span class="kicker">You have to do this bit</span>
+      <h3>The project is not linked to Unity's services</h3>
+      <p>Your <code>cloudProjectId</code> is empty and Unity Connect is switched off, so Relay and Lobby have nothing to talk to. Linking the project (Project Settings → Services) and enabling Relay + Lobby on the dashboard is a one-time job I cannot do for you. I will write you a step-by-step guide the same way the Cloudflare one works.</p>
+    </div>
+    <div class="card warn">
+      <span class="kicker">Constraint worth knowing now</span>
+      <h3>Passwords have to be at least 8 characters</h3>
+      <p>Unity's lobby password field is 8–64 characters, so a 4-digit PIN is not an option for the password itself. The <em>code</em> stays four digits as you asked. If you want a short PIN for both, I would have to check it myself instead of letting Unity do it, which is weaker — I would rather keep the real one.</p>
+    </div>
+  </div>
+
+  <h3>Four digits is 10,000 codes</h3>
+  <p>
+    That is plenty for you and your friends and not enough to be globally unique,
+    so two live sessions can collide. The game handles it by rolling a new code if
+    the one it picked is already in use — you will just see a different four digits
+    than the one that flashed up for an instant. Worth knowing rather than being
+    surprised by it later.
+  </p>
+
+  <h3>Localhost still works</h3>
+  <p>
+    The lobby screen keeps a <strong>Local</strong> toggle that bypasses Relay entirely and
+    uses <code>127.0.0.1</code> exactly as today, so you can still run two windows
+    side by side on your desk without touching the network, and without burning
+    relay bandwidth while iterating.
+  </p>
+
+  <h2>What is already in place, and what is missing</h2>
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Piece</th><th>State</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><strong>Netcode for GameObjects 1.12</strong></td><td>Installed. Targets Unity 2022.3, which is what you are on.</td></tr>
+        <tr><td><strong>Unity Transport 1.5</strong></td><td>Installed, and its <code>SetRelayServerData</code> API is already compiled in — the transport half of Relay needs no new code.</td></tr>
+        <tr><td><strong>Relay / Lobby / Authentication / Core packages</strong></td><td>Missing. Four packages to add via Package Manager.</td></tr>
+        <tr><td><strong>Unity Gaming Services project link</strong></td><td>Not linked. The one manual step, and a hard prerequisite.</td></tr>
+        <tr><td><strong>Password gate</strong></td><td>None. Connection approval is switched off in the scene.</td></tr>
+        <tr><td><strong>The IP text field</strong></td><td>Two lines of transport setup and one text box in the debug overlay. Genuinely small to replace.</td></tr>
+        <tr><td><strong>Pose sync, orbit sync, puppets</strong></td><td>Untouched by any of this. None of the sync layer knows what transport it is on.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>The lever you asked for</h2>
+  <p>
+    This repo already has the right pattern for it — <code>FeatureVault</code>, the
+    same const-flip that vaulted space-dust selling. Multiplayer goes behind
+    <code>FeatureVault.Multiplayer</code>. Set it false and the Multiplayer button
+    disappears from the menu, the “play together?” prompt never fires, and the
+    game boots and plays exactly as it does today, so you can test Phase A with
+    zero interference. Set it true and it all comes back. One line, no rebuild of
+    anything else.
+  </p>
+
+  <h2>Settled, and still open</h2>
+  <ul>
+    <li><strong>Settled:</strong> direction 01 as the base, with a left-aligned caret list and a rule that fills on hover.</li>
+    <li><strong>Settled:</strong> Unity services get linked now, so the flow is built against Relay rather than retrofitted.</li>
+    <li><strong>Open — pick a letter:</strong> which of the six option treatments above. They are all the same amount of work, so choose on feel alone.</li>
+    <li><strong>Open:</strong> whether the options stay centred like today or move left with the caret. The treatments above assume left, because a caret pointing at a centred label reads oddly — but the title can stay centred above them either way.</li>
+  </ul>
+
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  // ── option-row treatment labs ──────────────────────────────────────────
+  const OPTIONS = ["START GAME", "MULTIPLAYER", "CREDITS", "COMMUNITY GALLERY", "EXIT GAME"];
+
+  const TREATMENTS = [
+    { id: "a", letter: "Treatment A", name: "Caret nudge",
+      blurb: "The straight blend. Caret brightens and steps right, the label goes to pure white, the rule fills cyan→magenta. Quietest of the six and the least likely to age badly.",
+      wrap: l => `<span class="k">&gt;</span> ${l}` },
+    { id: "b", letter: "Treatment B", name: "Brackets snap in",
+      blurb: "Magenta brackets appear around the label on hover. Reads as a targeting reticle, which suits a suit HUD — but it shifts the label's optical weight, so long rows wobble.",
+      wrap: l => `<span class="k">&gt;</span> <span class="br">[</span> ${l} <span class="br">]</span>` },
+    { id: "c", letter: "Treatment C", name: "Indent + glow",
+      blurb: "The row slides right and a cyan wash rises under it. The most physical of the six — it feels like the option leans toward you. Strongest at a distance.",
+      wrap: l => `<span class="k">&gt;</span> ${l}` },
+    { id: "d", letter: "Treatment D", name: "Scanline wipe",
+      blurb: "A cyan line sweeps down through the row once and leaves it lit. Ties the menu to the DOWNLOADING screen's scanlines. Costs a beat of latency before the row looks selected.",
+      wrap: l => `<span class="k">&gt;</span> ${l}` },
+    { id: "e", letter: "Treatment E", name: "Letter-spacing opens",
+      blurb: "No caret. The label brightens and its tracking widens as the rule fills. Most typographic, most restrained — and the only one that still works if you ever drop the caret.",
+      wrap: l => l },
+    { id: "f", letter: "Treatment F", name: "Terminal cursor",
+      blurb: "A blinking block cursor parks after the hovered label. The most diegetic — this is a ship's computer — but a blinking element on every hover can get busy.",
+      wrap: l => `<span class="k">&gt;</span> ${l}<span class="cur"></span>` }
+  ];
+
+  const labgrid = document.getElementById("labgrid");
+  if (labgrid) {
+    labgrid.innerHTML = TREATMENTS.map(t => `
+      <div class="lab">
+        <div class="ground">
+          ${OPTIONS.map(o => `
+            <button class="opt t-${t.id}">${t.wrap(o)}<span class="rule"><i></i></span></button>
+          `).join("")}
+        </div>
+        <div class="cap">
+          <span class="letter">${t.letter}</span>
+          <b>${t.name}</b>
+          <span>${t.blurb}</span>
+        </div>
+      </div>`).join("");
+  }
+
+  // ── starfield ──────────────────────────────────────────────────────────
+  const cv = document.getElementById("stars");
+  const ctx = cv.getContext("2d");
+  let stars = [], raf = null;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function seedStars() {
+    const r = cv.getBoundingClientRect();
+    cv.width = Math.max(1, Math.floor(r.width));
+    cv.height = Math.max(1, Math.floor(r.height));
+    const n = Math.round((cv.width * cv.height) / 5200);
+    stars = Array.from({ length: n }, () => ({
+      x: Math.random() * cv.width,
+      y: Math.random() * cv.height,
+      r: Math.random() * 1.25 + .25,
+      a: Math.random(),
+      s: Math.random() * .018 + .004
+    }));
+  }
+  function drawStars(t) {
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    for (const st of stars) {
+      const tw = reduce ? .8 : (Math.sin(t * st.s + st.a * 6.28) * .5 + .5);
+      ctx.globalAlpha = .18 + tw * .72;
+      ctx.fillStyle = st.a > .82 ? "#5BD8FF" : "#FFFFFF";
+      ctx.beginPath();
+      ctx.arc(st.x, st.y, st.r, 0, 6.2832);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+    raf = requestAnimationFrame(drawStars);
+  }
+  seedStars();
+  raf = requestAnimationFrame(drawStars);
+  addEventListener("resize", seedStars);
+
+  // ── state ──────────────────────────────────────────────────────────────
+  const stage  = document.getElementById("stage");
+  const screen = document.getElementById("screen");
+  const note   = document.getElementById("tabnote");
+
+  const NOTES = {
+    nebula: "Direction 01 — the current menu, restructured. Start Game leads; Multiplayer sits under it as a peer, not a fifth equal row.",
+    boot:   "Direction 02 — the menu is the tail of the ship's boot log. Multiplayer reads as COMMS LINK, which is where you'd look for it anyway.",
+    orbit:  "Direction 03 — left rail over a drifting planet. The most conventional, and the easiest to keep adding options to.",
+    pod:    "Direction 04 — the menu is etched on the stasis pod glass. Ties the start screen to the fact that every arrival in this game comes out of the machine."
+  };
+
+  let skin = "nebula";
+  let view = "menu";
+  let code = roll();
+  let joined = false;
+
+  function roll() { return String(Math.floor(1000 + Math.random() * 9000)); }
+
+  // ── screen builders ────────────────────────────────────────────────────
+  const esc = s => String(s).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+
+  function menuItems() {
+    return [
+      { k: "saves", label: "START GAME", cls: "" },
+      { k: "join",  label: skin === "boot" ? "COMMS LINK" : "MULTIPLAYER", cls: "accent" },
+      { k: null,    label: "CREDITS", cls: "ghost" },
+      { k: null,    label: "COMMUNITY GALLERY", cls: "ghost" },
+      { k: null,    label: "EXIT GAME", cls: "ghost" }
+    ];
+  }
+
+  function buttonsHTML() {
+    return menuItems().map(i =>
+      `<button class="mbtn g-btn ${i.cls}" ${i.k ? `data-go="${i.k}"` : "disabled"}>${esc(i.label)}</button>`
+    ).join("");
+  }
+
+  function menuScreen() {
+    if (skin === "nebula") {
+      return `<div class="g-title title-grad">SOUND OF SPACE</div>
+              <div class="g-sub" style="font-style:italic">A Solar System Adventure</div>
+              <div class="accent-bar"></div>
+              <div class="menu-col">${buttonsHTML()}</div>`;
+    }
+    if (skin === "boot") {
+      const log = [
+        ["REACTOR", "ONLINE"], ["LIFE SUPPORT", "NOMINAL"],
+        ["NAV / N-BODY SOLVER", "LOCKED"], ["COMMS ARRAY", "STANDBY"]
+      ].map(([a, b]) => `<div class="logline">${a} ................ <span class="ok">${b}</span></div>`).join("");
+      return `${log}
+              <div class="g-title title-grad" style="font-size:4.2cqw">SOUND OF SPACE</div>
+              <div class="menu-col">${buttonsHTML()}</div>`;
+    }
+    if (skin === "orbit") {
+      return `<div class="planet"></div>
+              <div class="rail">
+                <div class="g-title title-grad" style="font-size:5cqw">SOUND OF<br>SPACE</div>
+                <div class="g-sub" style="margin-bottom:1cqw">A SOLAR SYSTEM ADVENTURE</div>
+                ${buttonsHTML()}
+              </div>`;
+    }
+    return `<div class="glass">
+              <div class="g-tiny">STASIS POD 1 · OCCUPANT AWAKE</div>
+              <div class="g-title title-grad">SOUND OF SPACE</div>
+              <div class="menu-col">${buttonsHTML()}</div>
+            </div>`;
+  }
+
+  function panel(inner, live) {
+    return `<div class="panel ${live ? "live" : ""}">${inner}</div>`;
+  }
+
+  const VIEWS = {
+    saves: () => panel(`
+      <div class="panel-head"><span class="panel-title">SELECT A RUN</span>
+        <span class="g-tiny">4 SAVES</span></div>
+      <div class="savelist">
+        <button class="saverow" data-go="ask"><span class="nm">stasis pod 3</span><span class="meta">DAY 6 · 14:20 GST</span></button>
+        <button class="saverow" data-go="ask"><span class="nm">stasis pod 2</span><span class="meta">DAY 2 · 09:05 GST</span></button>
+        <button class="saverow" data-go="ask"><span class="nm">autosave</span><span class="meta">DAY 1 · 18:44 GST</span></button>
+        <button class="saverow" data-go="ask"><span class="nm">+ NEW GAME</span><span class="meta">FRESH DROP</span></button>
+      </div>
+      <div class="btnrow"><button class="pbtn ghost" data-go="menu">BACK</button></div>`),
+
+    ask: () => panel(`
+      <div class="panel-head"><span class="panel-title">PLAY TOGETHER?</span></div>
+      <p class="lead">Open this run as a session your friends can drop into. You
+        can still start on your own and let people join later.</p>
+      <div class="btnrow">
+        <button class="pbtn go" data-go="host">YES — OPEN A SESSION</button>
+        <button class="pbtn ghost" data-go="menu">SOLO</button>
+      </div>`),
+
+    host: () => panel(`
+      <div class="panel-head"><span class="panel-title">SESSION SETUP</span>
+        <span class="g-tiny">OFFLINE</span></div>
+      <div class="field"><label>LOBBY CODE</label>
+        <div class="box code">${code}</div></div>
+      <div class="field"><label>PASSWORD · MIN 8 CHARACTERS</label>
+        <div class="box caret">mushroom</div></div>
+      <p class="lead">Nothing is live yet. Starting the session publishes the code
+        so friends can find it from the main menu.</p>
+      <div class="btnrow">
+        <button class="pbtn go" data-go="live">START SESSION</button>
+        <button class="pbtn ghost" data-go="ask">CANCEL</button>
+      </div>`),
+
+    live: () => panel(`
+      <div class="panel-head"><span class="panel-title">SESSION LIVE</span>
+        <span class="status"><span class="pulse"></span>OPEN</span></div>
+      <div class="field"><label>LOBBY CODE — SHARE THIS</label>
+        <div class="box code live">${code}</div></div>
+      <div class="roster">
+        <div class="slot filled"><span class="dot"></span>SAM <span class="tag">HOST</span></div>
+        <div class="slot"><span class="dot"></span>WAITING FOR A PLAYER…</div>
+      </div>
+      <p class="lead">You can launch on your own right now, or wait. Anyone who
+        joins after you've started drops in from the pod.</p>
+      <div class="btnrow">
+        <button class="pbtn go" data-go="launch">START GAME</button>
+        <button class="pbtn kill" data-go="host">CANCEL SESSION</button>
+      </div>`),
+
+    joined: () => panel(`
+      <div class="panel-head"><span class="panel-title">SESSION LIVE</span>
+        <span class="status"><span class="pulse"></span>2 PLAYERS</span></div>
+      <div class="field"><label>LOBBY CODE — SHARE THIS</label>
+        <div class="box code live">${code}</div></div>
+      <div class="roster">
+        <div class="slot filled"><span class="dot"></span>SAM <span class="tag">HOST</span></div>
+        <div class="slot filled"><span class="dot"></span>PLAYER 2 <span class="tag">READY</span></div>
+      </div>
+      <div class="btnrow">
+        <button class="pbtn go" data-go="launch">START GAME</button>
+        <button class="pbtn kill" data-go="host">CANCEL SESSION</button>
+      </div>`),
+
+    join: () => panel(`
+      <div class="panel-head"><span class="panel-title">JOIN A SESSION</span></div>
+      <div class="field"><label>LOBBY CODE</label>
+        <div class="box code caret">${code}</div></div>
+      <div class="field"><label>PASSWORD</label>
+        <div class="box">••••••••</div></div>
+      <div class="btnrow">
+        <button class="pbtn go" data-go="wait">JOIN</button>
+        <button class="pbtn ghost" data-go="menu">BACK</button>
+      </div>`),
+
+    launch: () => panel(`
+      <div class="panel-head"><span class="panel-title">LAUNCHING</span>
+        <span class="status"><span class="pulse"></span>SYNCING</span></div>
+      <p class="lead">Both players load into the same world together. If you were
+        mid-intro, anyone joining waits in the dark until the shuttle ramp drops.</p>
+      <div class="btnrow"><button class="pbtn ghost" data-go="menu">BACK TO MENU</button></div>`, true)
+  };
+
+  function waitScreen() {
+    return `<div class="blackout"><div class="msg">WAITING FOR HOST…</div></div>`;
+  }
+
+  function wakeScreen() {
+    let cols = "";
+    for (let i = 0; i < 34; i++) {
+      const bits = Array.from({ length: 26 }, () => Math.random() > .5 ? "1" : "0").join("");
+      cols += `<div class="col" style="left:${(i / 34) * 100}%;animation-duration:${(2.2 + Math.random() * 2.6).toFixed(2)}s;animation-delay:-${(Math.random() * 3).toFixed(2)}s">${bits}</div>`;
+    }
+    const seg = Array.from({ length: 18 }, (_, i) => `<i class="${i < 12 ? "on" : ""}"></i>`).join("");
+    return `<div class="lanes">${cols}
+              <div class="wake">
+                <div class="big">DOWNLOADING</div>
+                <div class="bar">${seg}</div>
+                <div class="g-tiny">STASIS POD · OCCUPANT 2 · RECONSTITUTING</div>
+              </div>
+            </div>`;
+  }
+
+  // ── render ─────────────────────────────────────────────────────────────
+  function render() {
+    stage.className = "stage skin-" + skin;
+    note.textContent = NOTES[skin];
+
+    let html = menuScreen();
+    if (view === "wait")      html = menuScreen() + waitScreen();
+    else if (view === "wake") html = menuScreen() + wakeScreen();
+    else if (VIEWS[view])     html = menuScreen() + VIEWS[view]();
+
+    // For panel views the menu behind is dimmed context, not interactive.
+    screen.innerHTML = html;
+    if (view !== "menu") {
+      screen.querySelectorAll(".mbtn").forEach(b => {
+        b.setAttribute("disabled", "");
+        b.style.opacity = ".28";
+      });
+      // Panels/overlays sit centred over the dimmed menu.
+      screen.style.alignItems = "center";
+      screen.style.justifyContent = "center";
+    } else {
+      screen.style.alignItems = "";
+      screen.style.justifyContent = "";
+    }
+
+    document.querySelectorAll(".step").forEach(s =>
+      s.setAttribute("aria-current", String(s.dataset.go === view)));
+  }
+
+  function go(next) {
+    if (next === "live" && joined) next = "joined";
+    if (next === "host") joined = false;
+    view = next;
+    render();
+    // A player "arrives" a beat after the session goes live — the thing Sam
+    // wants to see is the roster filling while the host is already sitting there.
+    if (view === "live" && !joined) {
+      clearTimeout(go._t);
+      go._t = setTimeout(() => {
+        if (view !== "live") return;
+        joined = true; view = "joined"; render();
+      }, 2600);
+    }
+  }
+
+  // ── wiring ─────────────────────────────────────────────────────────────
+  document.addEventListener("click", e => {
+    const t = e.target.closest("[data-go]");
+    if (t && !t.hasAttribute("disabled")) { go(t.dataset.go); return; }
+
+    const tab = e.target.closest(".tab");
+    if (tab) {
+      skin = tab.dataset.skin;
+      document.querySelectorAll(".tab").forEach(x =>
+        x.setAttribute("aria-selected", String(x === tab)));
+      render();
+      return;
+    }
+
+    if (e.target.id === "reset") { code = roll(); joined = false; go("menu"); }
+  });
+
+  render();
+})();
+</script>
