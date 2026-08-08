@@ -65,42 +65,64 @@ anything — `ProjectSettings/ProjectSettings.asset` has an empty
 should now have a non-empty `cloudProjectId:` line. You can also just tell me
 and I will check.
 
+✅ **Done** — linked as project **Solar System 2** under organization
+`sam63915483`, cloud project id `a74fcb20…`.
+
+> **One thing to watch:** `cloudEnabled` in ProjectSettings and `m_Enabled` in
+> `UnityConnectSettings.asset` are both still `0`. That is usually harmless —
+> those are the legacy Unity Connect / Analytics switches, not the UGS SDK — but
+> if `UnityServices.InitializeAsync()` ever fails with a project-not-found
+> error, flipping Services on in **Edit → Project Settings → Services** is the
+> first thing to try.
+
 ---
 
 ## Step 3 — Turn on Relay and Lobby in the dashboard
 
-1. Go to **https://cloud.unity.com** and sign in with the same account.
-2. Pick the project you just linked from the project list.
-3. In the left-hand menu find **Multiplayer**.
-4. Open **Relay** and click whatever the enable / get-started button is called.
-5. Do the same for **Lobby**.
+The services are **not** in the project's own left-hand menu, which is the
+obvious place to look and the wrong one. They live under Products:
 
-Both should end up showing as active for this project. You do not need to
-configure anything inside them — no regions, no limits, no fleet settings. The
-defaults are correct for what we are doing.
+1. Go to **https://cloud.unity.com** and sign in with the same account.
+2. Make sure the project selected at the top is **Solar System 2**.
+3. In the sidebar, click the **Products** tab.
+4. Scroll to **Gaming Services → Multiplayer**.
+5. Find **Relay** and click **Launch**. This adds Relay to the **Shortcuts**
+   section of the sidebar and opens its Overview page.
+6. On that Overview page there is an **activation toggle**. Make sure it is
+   **On**.
+7. Go back to **Products → Gaming Services → Multiplayer** and do exactly the
+   same for **Lobby**.
+
+You do not need to configure anything inside either one — no regions, no limits,
+no fleet settings. The defaults are correct for what we are doing.
+
+> If you get a **403** error later when the game tries to connect, it is almost
+> always one of these two toggles being off, or the dashboard project not being
+> the one the Editor is linked to. That is the first thing to check.
 
 ---
 
-## Step 4 — Install the four packages
+## Step 4 — Install the four packages · ✅ DONE
 
-Back in Unity: **Window → Package Manager**, then set the dropdown at the top-left
-to **Unity Registry** and install these four, in this order:
+Already done for you through the Editor, so there is nothing to do here. For the
+record, what went in:
 
-1. **Services Core**
-2. **Authentication**
-3. **Relay**
-4. **Lobby**
+| Package | Version |
+|---|---|
+| `com.unity.services.core` | 1.18.0 |
+| `com.unity.services.authentication` | 3.7.3 |
+| `com.unity.services.relay` | 1.2.0 |
+| `com.unity.services.lobby` | 1.3.0 |
 
-> Install them from Package Manager rather than editing `Packages/manifest.json`
-> by hand. Each of these pulls in other packages behind the scenes, and doing it
-> manually tends to miss one and produce compile errors that look unrelated.
-
-Unity will reimport and recompile after each one. That is normal and can take a
-minute on a project this size.
+`com.unity.services.qos` 1.3.2 came along as a dependency, and Newtonsoft JSON
+moved 3.2.1 → 3.2.2. **Unity Transport stayed at 1.5.0**, which is the one that
+mattered — Relay and Lobby ask for older transport versions, and a downgrade
+there would have broken Netcode. It resolved upward correctly. Project compiles
+clean.
 
 **Already installed, nothing to do:** Netcode for GameObjects 1.12 and Unity
-Transport 1.5 are both in the project already, and the transport's Relay support
-is compiled in — so this is genuinely just the four service packages.
+Transport 1.5, whose Relay support is compiled in — so the transport half of
+this needed no new code at all.
 
 ---
 
