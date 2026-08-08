@@ -50,4 +50,10 @@ public class ShopItem : ScriptableObject
     public ShopItemKind kind = ShopItemKind.None;
     [Tooltip("If true, the card shows OWNED and is unclickable after the player buys this once. Set false for consumables (ammo, food, etc.).")]
     public bool oneTimePurchase = true;
+
+    // -- appended; keep new fields at the END (serialization) --
+
+    [Header("Gating")]
+    [Tooltip("GANGSTA REP tier required before this item appears in the shop at all.\n\n0 = base stock, always on the shelf. 1 = unlocked at Gangsta Rep 3. 2 = unlocked at Gangsta Rep 6.\n\nThresholds live in ProgressPerks.RepTier1/RepTier2. Derived at shop-open and never saved, so building rep shows up the next time the player walks in. Leave at 0 for anything the player must never be locked out of — spore stock in particular, since it's the recovery path when they've spent every spore.")]
+    public int requiredRepTier = 0;
 }

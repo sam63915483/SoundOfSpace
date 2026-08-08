@@ -811,6 +811,9 @@ public static class SaveCollector
             data.enemySpawnTimer = EnemySpawner.Instance.TimerForSave;
             data.enemyRegularsSinceElite = EnemySpawner.Instance.RegularsSinceEliteForSave;
         }
+
+        if (GalaxyTime.Instance != null)
+            data.galaxyTimeMinutes = GalaxyTime.Instance.MinutesForSave;
     }
 
     static void CaptureSpaceDust(SaveData data)
@@ -948,6 +951,11 @@ public static class SaveCollector
         // eventually check progress flags to decide whether to unlock items).
         ApplyEarlyGame(data.earlyGame);
         ApplyNotes(data.notes);
+        // Galactic Standard Time, restored ABSOLUTELY (not re-anchored). It goes
+        // near the front of the singleton block because later steps schedule
+        // AGAINST it — ApplyStoryDirector below carries the rent due-date, which
+        // is only meaningful once the clock knows what day it is.
+        if (GalaxyTime.Instance != null) GalaxyTime.Instance.RestoreMinutes(data.galaxyTimeMinutes);
         ApplyBuildMenuLock(data.buildMenuLock);
         // Progression is pure singleton state and nothing else reads it during
         // apply, so it just needs to land in the singleton block alongside the

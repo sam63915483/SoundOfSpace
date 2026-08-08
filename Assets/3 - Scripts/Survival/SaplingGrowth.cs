@@ -111,6 +111,10 @@ public class SaplingGrowth : MonoBehaviour
         float o2 = PlanetOxygen.Instance != null ? PlanetOxygen.Instance.AmbientO2At(pos) : 100f;
 
         float rate = o2 >= minO2ToGrow ? o2 / 100f : 0f;   // stalled below the floor
+        // TREE DADDY perk: a practised planter grows them faster. Multiplies the
+        // rate rather than shortening the duration, so it stacks cleanly with the
+        // O2 term instead of fighting it — and a stalled sapling stays stalled.
+        rate *= ProgressPerks.SaplingGrowthMultiplier();
         if (rate > 0f)
         {
             growth += (rate / Mathf.Max(1f, baseGrowthDuration)) * elapsed;

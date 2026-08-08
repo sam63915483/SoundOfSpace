@@ -70,6 +70,12 @@ public class SaveData
     // Messages app / repeat buyers (2026-08-07). JsonUtility gives pre-feature
     // saves an empty ledger — no regulars, no threads — the correct default.
     public BuyerLedgerSave buyerLedger = new BuyerLedgerSave();
+    // Galactic Standard Time (2026-08-08). Total in-game minutes since day 1
+    // 00:00, ABSOLUTE — unlike the buyer deadlines above, which persist a
+    // remaining duration. JsonUtility gives pre-feature saves 0, which
+    // GalaxyTime.RestoreMinutes reads as "start a fresh day 1", so old saves
+    // open on the same morning a new game does.
+    public double galaxyTimeMinutes;
 }
 
 // Persistent per-buyer state for the Messages app (BuyerLedger). Parallel

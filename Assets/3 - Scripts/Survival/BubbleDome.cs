@@ -105,8 +105,12 @@ public class BubbleDome : MonoBehaviour
         get
         {
             if (!IsFull) return 0f;
-            if (RawInteriorO2 >= 100f) return ventBasePerMinute + ExcessO2 * ventExcessPerMinute;
-            return ProductionPerMinute;
+            // terraformVentScale converts raw dome output into planet effect. Both
+            // regimes go through it so packing trees still speeds terraforming up —
+            // it just does so on an hours scale instead of minutes.
+            if (RawInteriorO2 >= 100f)
+                return (ventBasePerMinute + ExcessO2 * ventExcessPerMinute) * terraformVentScale;
+            return ProductionPerMinute * terraformVentScale;
         }
     }
 
@@ -323,4 +327,10 @@ public class BubbleDome : MonoBehaviour
     [Header("Sealed greenhouse")]
     [Tooltip("Interior %% gained per minute PER TREE UNIT while below 100%% — the dome is sealed, so trees keep filling it over time even when instantaneous production can't reach 100. 1.5 → 4 trees climb 6%%/min. Once full-by-accumulation, this same production is what vents to the planet.")]
     [SerializeField] float sealedGainPerTreePerMinute = 1.5f;
+
+    // -- appended; keep new fields at the END (serialization) --
+
+    [Header("Terraforming")]
+    [Tooltip("Converts the dome's raw O2 output into PLANET O2 gained per minute. This is the master 'how fast do domes terraform a world' slider.\n\nAt 1.0 a packed 4-tree dome pumps ~8.5%%/min and takes a planet from 55%% to 100%% in about five minutes, which erases terraforming as a goal. 0.01 makes that same dome worth ~5%% per HOUR, so lifting a world is the multi-hour project it's meant to be and building MORE domes is how you speed it up.\n\nRaise toward 0.05 if terraforming feels too slow to notice; drop toward 0.005 if planets fill up before the player has a reason to care.")]
+    [SerializeField] float terraformVentScale = 0.01f;
 }

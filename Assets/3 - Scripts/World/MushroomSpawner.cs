@@ -118,11 +118,65 @@ public class MushroomSpawner : MonoBehaviour
     void Update()
     {
         if (!ResolveRefs()) return;
+        // Runs on its own slow timer, NOT inside Tick() — Tick is the 4 Hz
+        // streaming hot path and a sweep over every consumed cell has no
+        // business in it.
+        TickWildRespawn(Time.deltaTime);
         tickTimer += Time.deltaTime;
         if (tickTimer < updateInterval) return;
         tickTimer = 0f;
         Tick();
     }
+
+    /// WILD RESPAWN — the payoff for terraforming a world.
+    ///
+    /// Below the threshold nothing comes back and the land stays picked clean,
+    /// which is the pressure that pushes a player from foraging into farming.
+    /// Above it, consumed cells trickle back at a rate that climbs with planet
+    /// oxygen, so a bloomed world slowly becomes a self-sustaining farm.
+    ///
+    /// Respawning is just dropping the cell from the consumed set: the streaming
+    /// loop rebuilds it from the seed hash on the next Tick, which is why the
+    /// species and the size come back EXACTLY as they were with no per-cell
+    /// record to store, and why wild density can never exceed its first-landing
+    /// value — only originally-seeded cells exist to be restored.
+    ///
+    /// Gated on the planet-wide surface value (SurfaceO2), deliberately NOT the
+    /// local proximity bonus: this is a reward for lifting a whole world, not
+    /// for standing in a copse.
+    void TickWildRespawn(float dt)
+    {
+        respawnTimer += dt;
+        if (respawnTimer < wildRespawnTickSeconds) return;
+        respawnTimer = 0f;
+
+        if (!wildRespawnEnabled || PlanetOxygen.Instance == null) return;
+
+        for (int s = 0; s < bodies.Count; s++)
+        {
+            var entry = bodies[s];
+            if (entry.body == null || entry.consumedCells.Count == 0) continue;
+
+            float o2 = PlanetOxygen.Instance.SurfaceO2(entry.body) / 100f;
+            if (o2 < wildRespawnThreshold) continue;
+
+            // 0 at the threshold, full rate at 100% — so crossing the gate is a
+            // trickle you have to look for, not a sudden carpet of mushrooms.
+            float t = Mathf.InverseLerp(wildRespawnThreshold, 1f, o2);
+            float chance = cellRespawnChanceAt100 * t;
+            if (chance <= 0f) continue;
+
+            scratchRespawn.Clear();
+            foreach (long id in entry.consumedCells)
+                if (UnityEngine.Random.value < chance) scratchRespawn.Add(id);
+
+            for (int i = 0; i < scratchRespawn.Count; i++)
+                entry.consumedCells.Remove(scratchRespawn[i]);
+        }
+    }
+
+    float respawnTimer;
+    readonly List<long> scratchRespawn = new List<long>();
 
     bool ResolveRefs()
     {
@@ -698,4 +752,19 @@ public class MushroomSpawner : MonoBehaviour
     public static AudioClip AnyHitSquish() => s_audioSource != null ? s_audioSource.RandomHitSquish() : null;
     public static AudioClip AnyBreakSquish() => s_audioSource != null ? s_audioSource.BreakSquish() : null;
     public static float AnySquishVolume() => s_audioSource != null ? s_audioSource.squishVolume : 0.85f;
+
+    // -- appended; keep new fields at the END (serialization) --
+
+    [Header("Wild respawn (terraforming payoff)")]
+    [Tooltip("Master switch. OFF restores the original behaviour exactly: harvested wild cells never come back.")]
+    [SerializeField] bool wildRespawnEnabled = true;
+
+    [Tooltip("Planet-wide surface O2 (0-1) at which wild mushrooms start coming back.\n\nIMPORTANT: Humble Abode already STARTS at roughly 0.55 from its seed forest, so a threshold of 0.50 would be satisfied on a fresh save and depletion would never bite. 0.75 sits well above the starting value, so reaching it is a real terraforming project — worth roughly 150 planted trees, or a long stretch of dome venting.\n\nIf you retune the seed forest or treesForFullO2PerMillionSqm, re-check this number against the planet's actual starting O2 or the gate silently opens on day one.")]
+    [SerializeField] float wildRespawnThreshold = 0.75f;
+
+    [Tooltip("Real seconds between respawn rolls. Each consumed cell gets one roll per tick, so this and the chance below together set the regrowth rate.")]
+    [SerializeField] float wildRespawnTickSeconds = 60f;
+
+    [Tooltip("Per-cell chance per tick at 100% planet O2, scaling linearly down to 0 at the threshold. 0.01 means a fully bloomed world brings back about 1% of its picked cells a minute — visible regrowth over a session, not an instant refill.")]
+    [SerializeField] float cellRespawnChanceAt100 = 0.01f;
 }

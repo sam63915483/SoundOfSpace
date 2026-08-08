@@ -420,7 +420,20 @@ public class TevMushroomOnboarding : MonoBehaviour
 
     IEnumerator RunFirstTalk()
     {
-        yield return SpeakLines(firstTalkLines);
+        // Lead-in, up to and including the "you parked on my lawn" line.
+        yield return SpeakLinesRange(firstTalkLines, 0, rentAfterLineIndex);
+        if (!_playerInRange) yield break;
+
+        // The shakedown. Skipped once settled, so the pack-full replay path
+        // below doesn't let him charge rent twice.
+        if (!MushroomQuest.RentSettled)
+        {
+            yield return RunRentHaggle();
+            if (!_playerInRange) yield break;
+        }
+
+        // The rest of the lead-in, ending on the offer of three caps.
+        yield return SpeakLinesRange(firstTalkLines, rentAfterLineIndex, int.MaxValue);
         if (!_playerInRange) yield break;
 
         int given = MushroomQuest.GrantBatch();
@@ -494,6 +507,75 @@ public class TevMushroomOnboarding : MonoBehaviour
         yield return SpeakLines(refrontLines);
     }
 
+    /// The lawn-rent haggle. Tev opens high, folds once, then folds completely —
+    /// the joke is that every "no" costs him money and he never actually minds.
+    ///
+    /// Branching is on `_choice == 0` (accept) rather than `!= 1`, deliberately:
+    /// AskChoice leaves _choice at -1 if PostGreetingChoicePanel is missing, and
+    /// -1 must fall through to the FREE outcome rather than silently billing a
+    /// player who was never shown a prompt.
+    IEnumerator RunRentHaggle()
+    {
+        yield return SpeakRentLines(rentDemandLines, rentHighPerWeek);
+        if (!_playerInRange) yield break;
+        yield return AskChoice(
+            new PostGreetingChoicePanel.Row($"Fine. {rentHighPerWeek} a week.", true),
+            new PostGreetingChoicePanel.Row("Not a chance.", true));
+        if (!_playerInRange) yield break;
+
+        if (_choice == 0)
+        {
+            MushroomQuest.SettleRent(rentHighPerWeek);
+            yield return SpeakLines(rentAcceptedHighLines);
+            yield break;
+        }
+
+        yield return SpeakRentLines(rentClimbdownLines, rentLowPerWeek);
+        if (!_playerInRange) yield break;
+        yield return AskChoice(
+            new PostGreetingChoicePanel.Row($"{rentLowPerWeek} a week. Done.", true),
+            new PostGreetingChoicePanel.Row("Still no.", true));
+        if (!_playerInRange) yield break;
+
+        if (_choice == 0)
+        {
+            MushroomQuest.SettleRent(rentLowPerWeek);
+            yield return SpeakLines(rentAcceptedLowLines);
+            yield break;
+        }
+
+        MushroomQuest.SettleRent(0);
+        yield return SpeakLines(rentWaivedLines);
+    }
+
+    /// SpeakLines with "{rent}" swapped for the actual figure, so the spoken
+    /// price can never drift from the rate the player is charged when the
+    /// tunables are retuned.
+    IEnumerator SpeakRentLines(string[] lines, int amount)
+    {
+        if (lines == null) yield break;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (!_playerInRange) yield break;
+            string line = lines[i] != null ? lines[i].Replace("{rent}", amount.ToString()) : string.Empty;
+            yield return SpeakOne(line);
+        }
+    }
+
+    /// SpeakLines over a half-open slice [from, to). Clamped, so passing
+    /// int.MaxValue for `to` safely means "to the end".
+    IEnumerator SpeakLinesRange(string[] lines, int from, int to)
+    {
+        if (lines == null) yield break;
+        int start = Mathf.Clamp(from, 0, lines.Length);
+        int end = Mathf.Clamp(to, start, lines.Length);
+        for (int i = start; i < end; i++)
+        {
+            if (!_playerInRange) yield break;
+            yield return SpeakOne(lines[i]);
+        }
+    }
+
     /// Show a two-row choice and wait. Disabled rows are visible but dimmed and
     /// unselectable (PostGreetingChoicePanel handles that natively).
     IEnumerator AskChoice(params PostGreetingChoicePanel.Row[] rows)
@@ -551,4 +633,53 @@ public class TevMushroomOnboarding : MonoBehaviour
         _waitingForClick = true;
         yield return new WaitUntil(() => !_waitingForClick || !_playerInRange);
     }
+
+    // -- appended; keep new fields at the END (serialization) --
+    //
+    // NOTE: these are NEW keys, so they take the C# values below. The older
+    // arrays above (firstTalkLines etc.) are already serialized on the scene's
+    // TEV object, so editing THEIR initializers here changes nothing that ships
+    // — edit those in the Inspector instead.
+
+    [Header("Lawn rent — the haggle before he fronts you")]
+    [Tooltip("Index into firstTalkLines where the rent shakedown is inserted. 1 = straight after the 'you parked a shuttle on my lawn' line. Everything from this index on is spoken AFTER the haggle resolves.")]
+    [SerializeField] int rentAfterLineIndex = 1;
+
+    [Tooltip("Tev's opening ask, in credits per galactic week (a week is 7 in-game days = 2h48m of play at the default clock rate).")]
+    [SerializeField] int rentHighPerWeek = 500;
+    [Tooltip("What he climbs down to when the player refuses the opening ask.")]
+    [SerializeField] int rentLowPerWeek = 100;
+
+    [TextArea(2, 5)]
+    public string[] rentDemandLines = new[]
+    {
+        "Course, a berth like that isn't free. Prime lawn, southern exposure.",
+        "{rent} a week and we'll say no more about it.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentAcceptedHighLines = new[]
+    {
+        "Well now. A man who pays his way. Don't see many of those out here.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentClimbdownLines = new[]
+    {
+        "Ha! Alright, alright — I was messing with ya.",
+        "{rent} a week. That's me being generous, mind.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentAcceptedLowLines = new[]
+    {
+        "There we go. Neighbourly.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentWaivedLines = new[]
+    {
+        "You drive a hard bargain for a man with nothing in his pockets.",
+        "I'm busting your balls. Park it wherever. Costs me nothing.",
+    };
 }

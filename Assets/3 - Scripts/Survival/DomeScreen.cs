@@ -128,10 +128,12 @@ public class DomeScreen : MonoBehaviour
             // accumulation (production passthrough) / still pressurizing (or no
             // trees to do it).
             string status;
+            // Terraforming runs on an hours scale, so the vent line reads per HOUR —
+            // per-minute would round to "+0%" and look broken.
             if (raw >= 100f)
-                status = $"<color=#7FD4FF>EXCESS +{dome.ExcessO2:0}%  →  VENTING +{dome.VentPerMinute:0.#}%/MIN</color>";
+                status = $"<color=#7FD4FF>EXCESS +{dome.ExcessO2:0}%  →  VENTING +{dome.VentPerMinute * 60f:0.0}%/HR</color>";
             else if (dome.IsFull)
-                status = $"<color=#7FD4FF>SEALED FULL  →  VENTING +{dome.VentPerMinute:0.#}%/MIN</color>";
+                status = $"<color=#7FD4FF>SEALED FULL  →  VENTING +{dome.VentPerMinute * 60f:0.0}%/HR</color>";
             else if (dome.ProductionPerMinute > 0f)
                 status = $"<color=#8FA6BD>RISING +{dome.ProductionPerMinute:0.#}%/MIN  —  {100f - o2:0}% TO FULL</color>";
             else

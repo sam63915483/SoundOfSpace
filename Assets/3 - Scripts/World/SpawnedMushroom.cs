@@ -209,10 +209,12 @@ public class SpawnedMushroom : MonoBehaviour
         // Spores lean on size too, but far more gently than the caps do — the
         // ceiling stays 2, so a big find speeds the loop up without ever making
         // one lucky mushroom self-sustaining.
+        //
+        // Richer air also throws more spores, and a GROW POT guarantees a floor
+        // so a pot farm can never dead-end the way a picked-clean field does.
+        // That floor is the whole reason to build one.
         float sizeT = Mathf.Clamp01((mushroomScale - 1f) / 4f);
-        int saplings = 0;
-        if (Random.value < Mathf.Lerp(0.45f, 0.75f, sizeT)) saplings++;
-        if (Random.value < Mathf.Lerp(0.10f, 0.35f, sizeT)) saplings++;
+        int saplings = RollSpores(sizeT);
         if (saplings > 0)
             ResourceDrop.DropMushrooms(Hotbar.ItemId.MushroomSapling, species, saplings,
                                        transform.position, bodyParent);
@@ -263,4 +265,57 @@ public class SpawnedMushroom : MonoBehaviour
         if (!isPlanted && spawner != null) spawner.MarkCellConsumed(bodySlot, cellId);
         Destroy(gameObject);
     }
+
+    /// How many spores this mushroom drops.
+    ///
+    /// Structure: a guaranteed FLOOR (0 in open ground, 1-2 in a Grow Pot),
+    /// then one Bernoulli trial per point of headroom up to the O2-scaled
+    /// ceiling. The first extra is likely, the rest are long shots, which is
+    /// what keeps a lucky monster from becoming self-sustaining.
+    ///
+    /// At 0% O2 in open ground this reduces to exactly the two-trial roll the
+    /// game shipped with, so nothing about early foraging changes.
+    int RollSpores(float sizeT)
+    {
+        float o2 = PlanetOxygen.Instance != null
+            ? PlanetOxygen.Instance.AmbientO2At(transform.position)
+            : 100f;
+        // AmbientO2At is 0-100; normalize before lerping.
+        float t = Mathf.Clamp01(o2 / 100f);
+
+        bool inPot = GrowPot.PotContaining(transform.position) != null;
+
+        int min = inPot ? Mathf.RoundToInt(Mathf.Lerp(potSporeMinLowO2, potSporeMinHighO2, t)) : 0;
+        int max = inPot ? Mathf.RoundToInt(Mathf.Lerp(potSporeMaxLowO2, potSporeMaxHighO2, t))
+                        : Mathf.RoundToInt(Mathf.Lerp(groundSporeMaxLowO2, groundSporeMaxHighO2, t));
+        max = Mathf.Max(max, min);
+
+        int spores = min;
+        for (int i = min; i < max; i++)
+        {
+            float chance = (i == min)
+                ? Mathf.Lerp(0.45f, 0.75f, sizeT)   // the likely one
+                : Mathf.Lerp(0.10f, 0.35f, sizeT);  // the long shots
+            if (Random.value < chance) spores++;
+        }
+        return spores;
+    }
+
+    // -- appended; keep new fields at the END (serialization) --
+
+    [Header("Spores — open ground / wild")]
+    [Tooltip("Spore ceiling in DEAD air. 2 = the roll the game shipped with, so barren-world foraging is unchanged.")]
+    [SerializeField] int groundSporeMaxLowO2 = 2;
+    [Tooltip("Spore ceiling in FULL air. 3 = a terraformed world throws one more spore than a dead one.")]
+    [SerializeField] int groundSporeMaxHighO2 = 3;
+
+    [Header("Spores — inside a Grow Pot")]
+    [Tooltip("GUARANTEED spores from a potted mushroom in dead air. 1 = a pot always at least replaces itself, which is what stops a pot farm dead-ending.")]
+    [SerializeField] int potSporeMinLowO2 = 1;
+    [Tooltip("Guaranteed spores from a potted mushroom in full air.")]
+    [SerializeField] int potSporeMinHighO2 = 2;
+    [Tooltip("Spore ceiling for a potted mushroom in dead air.")]
+    [SerializeField] int potSporeMaxLowO2 = 2;
+    [Tooltip("Spore ceiling for a potted mushroom in full air.")]
+    [SerializeField] int potSporeMaxHighO2 = 4;
 }

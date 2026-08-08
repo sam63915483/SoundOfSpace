@@ -407,9 +407,14 @@ public class GoodsVendorShopUI : MonoBehaviour
         _cards.Clear();
 
         if (_vendor == null || _vendor.Inventory == null) return;
+        // GANGSTA REP perk: higher rep puts more on the shelf. Derived here at
+        // open time rather than stored, so the shop reflects the player's rep the
+        // moment they walk back in. Tier-0 items are always shown.
+        int repTier = ProgressPerks.VendorStockTier();
         foreach (var item in _vendor.Inventory)
         {
             if (item == null) continue;
+            if (item.requiredRepTier > repTier) continue;
             var card = BuildCard(item);
             _cards.Add(card);
         }

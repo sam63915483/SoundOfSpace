@@ -67,8 +67,43 @@ public class MushroomGrowth : MonoBehaviour
     {
         body = plantedBody;
         speciesKey = species;
-        sizeMultiplier = MushroomSpawner.RollWildScale();
+        // Keep the wild 1-5x roll's DISTRIBUTION, then clamp it by an O2-derived
+        // ceiling: barren air can only ever produce runts, rich air can produce
+        // monsters. Rolled once, at plant time, because that is when the existing
+        // roll happens and the finish line has to be fixed before the seedling
+        // starts growing toward it.
+        //
+        // Cultivated only. Wild mushroom size is a pure hash of the cell
+        // (MushroomSpawner), which is exactly what makes wild respawn free and
+        // species-true — clamping THAT by live O2 would make a wild cap change
+        // size as trees grow nearby or as it streams out and back in. Terraforming
+        // pays off in the crop you plant, not in the props popping around you.
+        sizeMultiplier = Mathf.Min(MushroomSpawner.RollWildScale(), SizeCeilingAt(transform.position));
         ApplyScale();
+    }
+
+    /// The biggest a mushroom planted in this air can ever grow, lerped between
+    /// the barren and rich ceilings by ambient O2. Floor is always 1x.
+    float SizeCeilingAt(Vector3 pos)
+    {
+        float o2 = PlanetOxygen.Instance != null
+            ? PlanetOxygen.Instance.AmbientO2At(pos)
+            : 100f;
+        // AmbientO2At is 0-100, NOT normalized — normalize before lerping or the
+        // t value saturates instantly and every planting caps out at the max.
+        return Mathf.Lerp(sizeCeilingLowO2, sizeCeilingHighO2, Mathf.Clamp01(o2 / 100f));
+    }
+
+    /// Growth-rate multiplier from any structure the mushroom is sitting in.
+    /// Pot and dome stack multiplicatively (1.5 x 2.0 = 3x in a potted dome) —
+    /// that's the intended reward for investing in both halves of the Industry
+    /// path, and it's the knob to revisit first if pots+domes outrun everything.
+    float StructureGrowthMultiplier(Vector3 pos)
+    {
+        float mult = 1f;
+        if (GrowPot.PotContaining(pos) != null) mult *= potGrowthMultiplier;
+        if (BubbleDome.DomeContaining(pos) != null) mult *= domeGrowthMultiplier;
+        return mult;
     }
 
     /// Restore a saved planted mushroom's progress. growth >= 1 matures instantly.
@@ -97,6 +132,11 @@ public class MushroomGrowth : MonoBehaviour
             : 100f;
 
         float rate = o2 >= minO2ToGrow ? o2 / 100f : 0f;   // stalled below the floor
+        // A pot or a dome speeds the crop up. Applied to the RATE so a stalled
+        // mushroom stays stalled — a pot on barren rock is still just a pot;
+        // it's the dome's own interior O2 (which AmbientO2At already returns)
+        // that makes dead worlds farmable, not this multiplier.
+        rate *= StructureGrowthMultiplier(transform.position);
         if (rate > 0f)
         {
             growth += (rate / Mathf.Max(1f, baseGrowthDuration)) * elapsed;
@@ -140,4 +180,18 @@ public class MushroomGrowth : MonoBehaviour
     [Header("Appearance")]
     [Tooltip("Scale of freshly-planted spores as a fraction of the full mushroom. Grows linearly to 1 as it matures.")]
     [SerializeField] float minScaleFraction = DefaultPlantedScale;
+
+    // -- appended; keep new fields at the END (serialization) --
+
+    [Header("Oxygen scaling (cultivated only)")]
+    [Tooltip("Biggest size multiplier a mushroom planted in DEAD air (0% O2) can roll. The 1-5x roll is clamped to this, so barren ground only ever grows runts.")]
+    [SerializeField] float sizeCeilingLowO2 = 2f;
+    [Tooltip("Biggest size multiplier a mushroom planted in FULL air (100% O2) can roll. 5 = the same ceiling wild mushrooms use, so a fully terraformed world grows monsters.")]
+    [SerializeField] float sizeCeilingHighO2 = 5f;
+
+    [Header("Structure multipliers")]
+    [Tooltip("Growth-speed multiplier while inside a Grow Pot's radius.")]
+    [SerializeField] float potGrowthMultiplier = 1.5f;
+    [Tooltip("Growth-speed multiplier while inside a Bubble Dome. Stacks with the pot multiplier (1.5 x 2 = 3x).")]
+    [SerializeField] float domeGrowthMultiplier = 2f;
 }

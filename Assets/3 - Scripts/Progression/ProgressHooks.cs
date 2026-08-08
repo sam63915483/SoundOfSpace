@@ -73,6 +73,22 @@ public class ProgressHooks : MonoBehaviour
         else                 p.AddStructurePlaced();
     }
 
+    /// A completed mushroom sale — walk-up or scheduled delivery — scores
+    /// GANGSTA REP. Called from both resolve paths in MushroomSellUI.
+    ///
+    /// Rep used to come only from violence (enemy kills up, murdering a friendly
+    /// alien down). Dealing is the game now, so the track that gates vendor stock
+    /// has to move when you deal. Kills still count; this is an additional source,
+    /// not a replacement.
+    ///
+    /// Scored per SALE, not per cap — otherwise one 20-cap dump would outrank a
+    /// dozen relationships, and the track is meant to reward working the route.
+    public static void NotifyMushroomSale(int qty)
+    {
+        if (qty <= 0) return;
+        PlayerProgress.Instance?.Add(ProgressTrack.GangstaRep, 1);
+    }
+
     void Update()
     {
         if (Time.time < _nextCheck) return;

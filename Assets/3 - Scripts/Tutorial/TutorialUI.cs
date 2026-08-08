@@ -33,8 +33,8 @@ public class TutorialUI : MonoBehaviour
     [Header("Layout (1920x1080 reference)")]
     [Tooltip("Distance from the right edge of the screen to the right edge of the pill.")]
     public float rightMargin = 20f;
-    [Tooltip("Distance from the top of the screen to the top of the pill.")]
-    public float topMargin = 20f;
+    [Tooltip("Distance from the top of the screen to the top of the pill. Parked below the Galactic Standard Time card, which owns the top-right corner — see GalaxyTimeHUD.ReservedTopHeight. If that clock is ever removed, this can go back to 20.")]
+    public float topMargin = GalaxyTimeHUD.ReservedTopHeight + 8f;
     [Tooltip("Fixed width of the pill. Tip text wraps to two lines if it exceeds this.")]
     public float pillWidth = 360f;
     [Tooltip("Diagonal cut on the top-left and bottom-right corners (pixels).")]

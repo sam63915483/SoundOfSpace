@@ -23,8 +23,11 @@ using System.Text;
 ///
 /// Anything NOT in the table is always available. That's the safe default: the
 /// build menu gains entries at RUNTIME (SaplingPlanter registers "Sapling",
-/// DomeBuildRegistrar registers "Bubble Dome") and those have their own gates,
-/// so an unlisted name must never fall into "locked forever".
+/// DomeBuildRegistrar registers "Bubble Dome"), so an unlisted name must never
+/// fall into "locked forever". Runtime-registered names CAN still be gated here
+/// — matching is by displayName, so the registrar's name just has to agree.
+/// "Bubble Dome" is gated at L6 that way; "Sapling" stays ungated on purpose,
+/// since planting is the one thing the player must always be able to do.
 ///
 /// Nothing here is saved. The unlock set is derived from the Colonizer score,
 /// which PlayerProgress already saves — so a load restores unlocks for free.
@@ -45,8 +48,9 @@ public static class BuildableUnlocks
         // L1 (1 placed) — the first wall goes up the moment you place anything.
         new[] { "Wall 1", "Wall 3", "Wooden Floor 1" },
 
-        // L2 (2) — enough to close a corner and step up into it.
-        new[] { "Wall 2", "Ground Step", "Roof Tile 1" },
+        // L2 (2) — enough to close a corner and step up into it, plus the first
+        // step off foraging: the Grow Pot is the whole Industry path's entry fee.
+        new[] { "Wall 2", "Ground Step", "Roof Tile 1", "Grow Pot" },
 
         // L3 (5) — a real roof over a real building.
         new[] { "Cabin", "Chimney", "Wooden Floor 2", "Roof Tile 2" },
@@ -57,8 +61,10 @@ public static class BuildableUnlocks
         // L5 (13) — furnishing tier opens.
         new[] { "Bench", "Chair", "Table 1", "Crate 1", "Barrel 1" },
 
-        // L6 (19) — wall variety + the first shelf.
-        new[] { "Wall 6", "Wall 7", "Wall 8", "Roof Tile 3", "Checker Floor", "Book Shelf 1" },
+        // L6 (19) — wall variety + the first shelf, and the Bubble Dome: the
+        // Industry path's tier 2 and the thing that makes barren rock farmable.
+        new[] { "Wall 6", "Wall 7", "Wall 8", "Roof Tile 3", "Checker Floor", "Book Shelf 1",
+                "Bubble Dome" },
 
         // L7 (28)
         new[] { "Wall 9", "Wall 10", "Wall 11", "Stairs Case 2", "Roof Tile 4",

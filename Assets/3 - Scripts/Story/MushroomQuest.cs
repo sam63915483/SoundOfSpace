@@ -28,6 +28,10 @@ public static class MushroomQuest
     const string KeyStage    = "mushQuestStage";      // counter
     const string KeySold     = "mushQuestSold";       // counter — mushrooms sold since he fronted you
     const string KeyRefronts = "mushQuestRefronts";   // counter — extra batches he's handed over
+    const string KeyRent     = "tevRentPerWeek";      // counter — credits per galactic week for the lawn
+    const string FlagRentSet = "tevRentSettled";      // flag — the haggle has happened
+    const string KeyArrears  = "tevRentArrears";      // counter — unpaid rent owed
+    const string KeyNextDue  = "tevRentNextDueDay";   // counter — GalaxyTime day the next bill lands
 
     /// Mushrooms in a batch Tev hands over.
     public const int BatchSize = 3;
@@ -60,6 +64,55 @@ public static class MushroomQuest
     }
 
     public static bool CanRefront => Refronts < MaxRefronts;
+
+    // ── Lawn rent (the Tev haggle) ───────────────────────────────────────
+    //
+    // Tev opens at 500/week for the shuttle on his lawn, drops to 100 if you
+    // push back, and waives it entirely if you push back twice. The amount is
+    // whatever the player talked him down to; 0 is a legitimate settled value,
+    // which is why "has this been negotiated at all" needs its own flag rather
+    // than being inferred from the counter.
+
+    /// True once the player has been through the rent haggle. A counter of 0
+    /// means FREE, not "unasked" — don't infer settlement from the amount.
+    public static bool RentSettled
+    {
+        get => StoryDirector.Instance != null && StoryDirector.Instance.GetFlag(FlagRentSet);
+        set { StoryDirector.Instance?.SetFlag(FlagRentSet, value); }
+    }
+
+    /// Credits owed per galactic week. 0 = Tev waived it.
+    public static int RentPerWeek
+    {
+        get => StoryDirector.Instance != null ? StoryDirector.Instance.GetCounter(KeyRent) : 0;
+        set { StoryDirector.Instance?.SetCounter(KeyRent, Mathf.Max(0, value)); }
+    }
+
+    /// Rent the player owed but couldn't cover. Accrues; never evicts.
+    public static int RentArrears
+    {
+        get => StoryDirector.Instance != null ? StoryDirector.Instance.GetCounter(KeyArrears) : 0;
+        set { StoryDirector.Instance?.SetCounter(KeyArrears, Mathf.Max(0, value)); }
+    }
+
+    /// GalaxyTime day number the next rent bill falls due on. 0 = not scheduled
+    /// (either the haggle hasn't happened or Tev waived the rent).
+    public static int RentNextDueDay
+    {
+        get => StoryDirector.Instance != null ? StoryDirector.Instance.GetCounter(KeyNextDue) : 0;
+        set { StoryDirector.Instance?.SetCounter(KeyNextDue, Mathf.Max(0, value)); }
+    }
+
+    /// Lock in the negotiated rate and schedule the first bill one full week
+    /// out, so the player never gets charged on the day they land.
+    public static void SettleRent(int perWeek)
+    {
+        RentPerWeek = Mathf.Max(0, perWeek);
+        RentSettled = true;
+        RentArrears = 0;
+        int today = GalaxyTime.Instance != null ? GalaxyTime.Instance.Day : 1;
+        RentNextDueDay = perWeek > 0 ? today + GalaxyTime.DaysPerWeek : 0;
+    }
 
     /// Mushrooms of ANY species currently in the player's HOTBAR. Not the locker
     /// — see the class summary; that gap is the point.

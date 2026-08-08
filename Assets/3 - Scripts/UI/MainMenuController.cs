@@ -550,7 +550,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 56; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
+        const int Total = 60; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -596,11 +596,19 @@ public class MainMenuController : MonoBehaviour
         tick("oxygen system");    yield return null;
         if (PlanetOxygen.Instance == null) { var go = new GameObject("PlanetOxygen"); DontDestroyOnLoad(go); go.AddComponent<PlanetOxygen>(); }
         tick("planet oxygen");    yield return null;
+        if (GalaxyTime.Instance == null) { var go = new GameObject("GalaxyTime"); DontDestroyOnLoad(go); go.AddComponent<GalaxyTime>(); }
+        tick("galactic time");    yield return null;
+        if (GalaxyTimeHUD.Instance == null) { var go = new GameObject("GalaxyTimeHUD"); DontDestroyOnLoad(go); go.AddComponent<GalaxyTimeHUD>(); }
+        tick("clock HUD");        yield return null;
+        if (TevRentCollector.Instance == null) { var go = new GameObject("TevRentCollector"); DontDestroyOnLoad(go); go.AddComponent<TevRentCollector>(); }
+        tick("rent collector");   yield return null;
         if (SaplingPlanter.Instance == null) { var go = new GameObject("SaplingPlanter"); DontDestroyOnLoad(go); go.AddComponent<SaplingPlanter>(); }
         if (MushroomPlanter.Instance == null) { var go = new GameObject("MushroomPlanter"); DontDestroyOnLoad(go); go.AddComponent<MushroomPlanter>(); }
         tick("sapling planter");  yield return null;
         if (DomeBuildRegistrar.Instance == null) { var go = new GameObject("DomeBuildRegistrar"); DontDestroyOnLoad(go); go.AddComponent<DomeBuildRegistrar>(); }
         tick("dome registrar");   yield return null;
+        if (GrowPotRegistrar.Instance == null) { var go = new GameObject("GrowPotRegistrar"); DontDestroyOnLoad(go); go.AddComponent<GrowPotRegistrar>(); }
+        tick("grow pot");         yield return null;
         if (DomeAudio.Instance == null) { var go = new GameObject("DomeAudio"); DontDestroyOnLoad(go); go.AddComponent<DomeAudio>(); }
         tick("dome audio");       yield return null;
         if (OxygenHUD.Instance == null) { var go = new GameObject("OxygenHUD"); DontDestroyOnLoad(go); go.AddComponent<OxygenHUD>(); }

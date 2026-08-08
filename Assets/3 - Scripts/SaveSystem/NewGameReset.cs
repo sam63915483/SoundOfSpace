@@ -91,6 +91,10 @@ public static class NewGameReset
         }
         if (OxygenManager.Instance != null) OxygenManager.Instance.ResetForNewGame();
         if (PlanetOxygen.Instance != null) PlanetOxygen.Instance.ResetForNewGame();
+        // The clock lives on a DontDestroyOnLoad singleton and New Game runs no
+        // Apply, so without this the previous run's date survives the main menu
+        // and a "new" game opens on Day 9 with rent already overdue.
+        if (GalaxyTime.Instance != null) GalaxyTime.Instance.ResetForNewGame();
 
         EarlyGameProgress.ResetAll();
         // §3: re-arm the first-message "Press X to open your phone." nag for a

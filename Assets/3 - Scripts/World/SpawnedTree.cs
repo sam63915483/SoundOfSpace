@@ -181,7 +181,10 @@ public class SpawnedTree : MonoBehaviour
         // fires the +N popup on pickup (and falls back to an instant award if
         // the item has no hotbar icon, e.g. saplings without a sprite).
         Transform bodyParent = transform.parent;
-        ResourceDrop.Drop(Hotbar.ItemId.Wood, woodReward, transform.position, bodyParent);
+        // TREE KILLER perk: +floor(level/2) wood. Read AFTER AddTreeFelled above,
+        // so the tree that levels you up already pays the new rate.
+        ResourceDrop.Drop(Hotbar.ItemId.Wood, ProgressPerks.WoodPerTree(woodReward),
+                          transform.position, bodyParent);
         // Ecosystem loop: every felled tree also yields saplings — 1 guaranteed,
         // +1 at 25%, +1 more at 10% (max 3) — so cutting a tree hands you the
         // means to replant. Applies to seed trees AND matured planted ones.
