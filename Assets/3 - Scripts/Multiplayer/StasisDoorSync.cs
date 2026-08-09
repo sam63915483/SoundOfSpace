@@ -280,7 +280,26 @@ public class StasisDoorSync : MonoBehaviour
                 if (door != null) door.OpenHold();
                 break;
 
-            case KindState:
+            // ⚠️ `!nm.IsServer` IS THE WHOLE FIX FOR "THE DOOR NEVER CLOSES".
+            //
+            // SendNamedMessageToAll targets NetworkManager.ConnectedClientsIds,
+            // and on a host that list INCLUDES the host's own client id. NGO
+            // then delivers it locally — CustomMessageManager.cs:342,
+            // `if (IsHost) … if (clientIds[i] == LocalClientId) InvokeNamedMessage(…)`.
+            //
+            // So the host's own periodic resend came straight back to it, hit
+            // this case, and called NetSetTarget(1) → OpenHold() → _closeAt = -1,
+            // wiping the pending close every ResendInterval (2s). The door
+            // physically could not close while anyone was connected.
+            //
+            // It also explains the earlier "closes only once they walk away":
+            // the old 2s autoCloseDelay was racing the 2s resend and sometimes
+            // won. Raising the deep-exit grace to 5s made it lose every time,
+            // which is why the door got WORSE rather than better.
+            //
+            // The host is the authority. Being told its own state is meaningless
+            // at best and destructive at worst, so it ignores it.
+            case KindState when nm != null && !nm.IsServer:
                 if (door != null) door.NetSetTarget(payload != 0 ? 1f : 0f);
                 break;
 

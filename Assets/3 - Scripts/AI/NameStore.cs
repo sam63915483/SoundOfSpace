@@ -20,8 +20,30 @@ public static class NameStore
     // for save migration: an old save missing these fields loads as empty
     // strings → resolved as defaults → first-contact reruns to fix.
 
+    /// The character system owns the player's name as of Aug 2026, so it is
+    /// checked FIRST.
+    ///
+    /// Why it wins over the PlayerName field rather than being copied into it:
+    ///   • A character is CROSS-SAVE; PlayerName is per-save. Loading an old
+    ///     world would otherwise restore a stale name over the current one, and
+    ///     getting that right would mean threading a new step into
+    ///     SaveCollector's already fragile 17-step apply order.
+    ///   • PlayerName is dead at runtime anyway. It was written by HAL's
+    ///     first-contact naming exchange, which was retired when typed input was
+    ///     removed (AIChatScreen.Init now force-completes first contact), so it
+    ///     has resolved to the literal "Player" ever since.
+    ///
+    /// The field and its save round-trip are left intact so existing saves keep
+    /// loading unchanged.
     public static string ResolvedPlayerName
-        => string.IsNullOrWhiteSpace(PlayerName) ? "Player" : PlayerName;
+    {
+        get
+        {
+            string character = CharacterStore.ActiveName;
+            if (!string.IsNullOrWhiteSpace(character)) return character;
+            return string.IsNullOrWhiteSpace(PlayerName) ? "Player" : PlayerName;
+        }
+    }
 
     public static string ResolvedAIName
         => string.IsNullOrWhiteSpace(AIName) ? "Assistant" : AIName;

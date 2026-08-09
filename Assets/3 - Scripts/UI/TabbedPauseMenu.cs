@@ -185,7 +185,7 @@ public class TabbedPauseMenu : MonoBehaviour
         if (_isPaused)
         {
             _isPaused = false;
-            Time.timeScale = 1f;
+            PauseState.Exit();
         }
         // Belt-and-braces: never let the looping menu ambience survive a scene
         // load (it ignores listener-pause and is on a persistent singleton).
@@ -234,7 +234,7 @@ public class TabbedPauseMenu : MonoBehaviour
             // If we're somehow flagged as paused (shouldn't happen — ReturnToMainMenu
             // clears it — but defensive), force the state clean so a future
             // re-enter of gameplay doesn't carry the wrong _isPaused.
-            if (_isPaused) { _isPaused = false; SetMenuVisible(false, immediate: true); Time.timeScale = 1f; }
+            if (_isPaused) { _isPaused = false; SetMenuVisible(false, immediate: true); PauseState.Exit(); }
             return;
         }
         // Retry the legacy acquisition until we have it — handles the case
@@ -291,7 +291,9 @@ public class TabbedPauseMenu : MonoBehaviour
     {
         _isPaused = true;
         RefreshMultiplayerButton();
-        Time.timeScale = 0f;
+        // Blocks input always; stops the clock only in single player.
+        // See PauseState for why multiplayer deliberately keeps running.
+        PauseState.Enter();
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
         UiSfxPlayer.StartPauseAmbience();   // menu ambience while paused / in settings
@@ -317,7 +319,7 @@ public class TabbedPauseMenu : MonoBehaviour
     void ClosePauseDirect()
     {
         _isPaused = false;
-        Time.timeScale = 1f;
+        PauseState.Exit();
         SetMenuVisible(false, immediate: false);
         UiSfxPlayer.StopPauseAmbience();
 
@@ -1305,7 +1307,7 @@ public class TabbedPauseMenu : MonoBehaviour
         HideRestartPrompt();
         // Make sure settings are persisted before we relaunch.
         if (_input != null) { _input.deferApply = false; _input.SaveSettings(); }
-        Time.timeScale = 1f;
+        PauseState.Exit();
 #if !UNITY_EDITOR
         // Windows-only relaunch: dataPath is "<exepath>_Data"; replacing the
         // suffix yields the .exe. Process.Start launches a fresh instance;
@@ -1960,7 +1962,7 @@ public class TabbedPauseMenu : MonoBehaviour
         // appears immediately when the player starts a new game session.
         _isPaused = false;
         SetMenuVisible(false, immediate: true);
-        Time.timeScale = 1f;
+        PauseState.Exit();
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
         if (_input != null) _input.SaveSettings();

@@ -50,7 +50,13 @@ public class SolarSystemSync : MonoBehaviour
             handlerRegistered = false;
         }
 
-        if (nm.IsServer && nm.IsListening && Time.unscaledTime >= nextSendTime)
+        // The mirror of the guest-pause gate in OnStateMessage: a PAUSED HOST has
+        // a frozen NBodySimulation, so every snapshot it sends carries the same
+        // stale positions. Guests are still simulating, so those corrections drag
+        // their planets backwards once per syncInterval — a visible rubber-band.
+        // Sending nothing lets guests free-run until the host is live again.
+        if (nm.IsServer && nm.IsListening && Time.timeScale > 0f
+            && Time.unscaledTime >= nextSendTime)
         {
             nextSendTime = Time.unscaledTime + syncInterval;
             foreach (var c in nm.ConnectedClientsList)
@@ -132,6 +138,26 @@ public class SolarSystemSync : MonoBehaviour
     {
         var nm = NetworkManager.Singleton;
         if (nm == null || nm.IsServer) return; // host is the authority
+
+        // NEVER MOVE THE SOLAR SYSTEM WHILE THIS MACHINE IS PAUSED.
+        //
+        // This is the other half of the pause bug fixed in 3f8ab8ca. That one
+        // stopped a paused player DRIFTING on everyone else's screen; this one
+        // stops the world drifting on their own.
+        //
+        // At timeScale 0 the guest's NBodySimulation.FixedUpdate stops, so their
+        // planets hold still — but the HOST is not paused, keeps orbiting, and
+        // keeps sending snapshots on unscaled time. Applying them teleported the
+        // guest's planets to the host's ever-advancing positions while the
+        // guest's own rigidbody stayed frozen in world space, so the planet slid
+        // out from under them: Sam's "it's like the planet disappears" when a
+        // joiner presses ESC.
+        //
+        // Skipping is safe and self-correcting. The whole local world is frozen,
+        // which is what pause should look like, and the next snapshot after
+        // unpausing (within syncInterval) restores authority — carrying riders,
+        // because ApplyBodyCorrection already handles a large jump that way.
+        if (Time.timeScale == 0f) return;
 
         var sun = FindSun();
         if (sun == null) return;

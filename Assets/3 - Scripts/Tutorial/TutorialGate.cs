@@ -28,10 +28,24 @@ public static class TutorialGate
     public static void UnlockAll() { _enabled = false; _unlocked.Clear(); }
 
     public static bool GetKey(KeyCode k, TutorialAbility a) => IsUnlocked(a) && Input.GetKey(k);
-    public static bool GetKeyDown(KeyCode k, TutorialAbility a) => IsUnlocked(a) && Input.GetKeyDown(k);
-    public static bool GetKeyUp(KeyCode k, TutorialAbility a) => IsUnlocked(a) && Input.GetKeyUp(k);
-    public static float GetAxisRaw(string axis, TutorialAbility a) => IsUnlocked(a) ? Input.GetAxisRaw(axis) : 0f;
-    public static float GetAxis(string axis, TutorialAbility a) => IsUnlocked(a) ? Input.GetAxis(axis) : 0f;
+    // ⚠️ THE ABILITY-GATED OVERLOADS ARE DEAD WHILE THE PAUSE MENU IS OPEN.
+    //
+    // Taking a TutorialAbility is what marks a read as a GAMEPLAY action — menu
+    // and UI navigation never use these overloads, so this is a safe blanket
+    // rule and the one place that catches every current and future consumer
+    // (InteractPressed alone feeds a dozen NPCs).
+    //
+    // Note PausePressed() and the raw PadPressed(b) overload are deliberately
+    // NOT gated: Escape and Start have to keep working to CLOSE the menu.
+    //
+    // This predates multiplayer. Update() runs at timeScale 0 (only physics
+    // stops), so single-player pause never blocked interaction either — you
+    // could talk to an NPC through the pause menu. Gating on PauseState fixes
+    // both that and co-op, where the clock intentionally keeps running.
+    public static bool GetKeyDown(KeyCode k, TutorialAbility a) => !PauseState.MenuOpen && IsUnlocked(a) && Input.GetKeyDown(k);
+    public static bool GetKeyUp(KeyCode k, TutorialAbility a) => !PauseState.MenuOpen && IsUnlocked(a) && Input.GetKeyUp(k);
+    public static float GetAxisRaw(string axis, TutorialAbility a) => (!PauseState.MenuOpen && IsUnlocked(a)) ? Input.GetAxisRaw(axis) : 0f;
+    public static float GetAxis(string axis, TutorialAbility a) => (!PauseState.MenuOpen && IsUnlocked(a)) ? Input.GetAxis(axis) : 0f;
 
     // ───── Save/Load ─────
     public static bool IsGateEnabled => _enabled;
@@ -101,6 +115,9 @@ public static class TutorialGate
         AIChatScreen.IsTypingActive ||
         PlayerController.isInModalSlotUI ||
         PlayerPhoneUI.IsOpen ||
+        // The pause menu no longer stops the clock in multiplayer, so it has to
+        // announce itself here instead of relying on timeScale to do it.
+        PauseState.MenuOpen ||
         UISelectionActive() || WasUIFocusedThisFrameStart();
 
     // ── Controller hardware (Unity Input System) ──────────────────────────
@@ -140,8 +157,10 @@ public static class TutorialGate
     public static bool PadReleased(PadButton b) { var g = ActivePad; return g != null && Resolve(g, b).wasReleasedThisFrame; }
 
     // Ability-gated variants for tutorial progression.
-    public static bool PadHeld(PadButton b, TutorialAbility a)    => PadHeld(b)    && IsUnlocked(a);
-    public static bool PadPressed(PadButton b, TutorialAbility a) => PadPressed(b) && IsUnlocked(a);
+    // Ability-gated => gameplay action => dead while the pause menu is up.
+    // The raw PadPressed(b)/PadHeld(b) above stay live so Start can close it.
+    public static bool PadHeld(PadButton b, TutorialAbility a)    => !PauseState.MenuOpen && PadHeld(b)    && IsUnlocked(a);
+    public static bool PadPressed(PadButton b, TutorialAbility a) => !PauseState.MenuOpen && PadPressed(b) && IsUnlocked(a);
 
     // Stick reads go through ReadValue(), which applies the Input System's
     // default stick deadzone processor — the pause-menu STICK DEADZONE slider
@@ -220,18 +239,31 @@ public static class TutorialGate
     public static bool RollRightHeld(TutorialAbility a) =>
         GetKey(KeyCode.E, a) || PadHeld(PadButton.RB, a);
 
+    // ⚠️ THE ACTION VERBS BELOW ALL DIE WHILE THE PAUSE MENU IS OPEN.
+    //
+    // Gated here, at the source, rather than at each call site — FirePressed
+    // alone has six consumers (pistol, axe, fishing rod, guitar, two tutorial
+    // steps) and every future weapon would be one more place to forget.
+    //
+    // This closes a bug that predates multiplayer: Update() keeps running at
+    // timeScale 0 (only physics stops), so the single-player pause freeze never
+    // actually stopped firing or reloading — you could empty the pistol with the
+    // menu up. Now that co-op deliberately does not freeze at all, gating on
+    // PauseState rather than the clock is the only thing that works in both.
+
     // Mouse LMB and RT-pull, edge-detected. For chop / cast / drink / etc.
     public static bool FirePressed() =>
-        Input.GetMouseButtonDown(0) || RTEdgePressed();
+        !PauseState.MenuOpen && (Input.GetMouseButtonDown(0) || RTEdgePressed());
 
     public static bool FireHeld() =>
-        Input.GetMouseButton(0) || TriggerActive(RTValue());
+        !PauseState.MenuOpen && (Input.GetMouseButton(0) || TriggerActive(RTValue()));
 
     // Pistol reload — R key or pad X (same button as Interact/pickup; safe
     // to share because reload only fires with the pistol equipped, and you
     // can't be shooting while picking something up).
     public static bool ReloadPressed()
     {
+        if (PauseState.MenuOpen) return false;
         if (Input.GetKeyDown(KeyCode.R)) return true;
         return PadPressed(PadButton.X);
     }
@@ -243,10 +275,12 @@ public static class TutorialGate
     // foot holding an item. Net behaviour: on foot with item equipped,
     // LT = RMB.
     public static bool SecondaryFireHeld() =>
-        Input.GetMouseButton(1) || (ControllerEnabled && LTValue() > TriggerThreshold);
+        !PauseState.MenuOpen &&
+        (Input.GetMouseButton(1) || (ControllerEnabled && LTValue() > TriggerThreshold));
 
     public static bool SecondaryFirePressed() =>
-        Input.GetMouseButtonDown(1) || (ControllerEnabled && LTEdgePressed());
+        !PauseState.MenuOpen &&
+        (Input.GetMouseButtonDown(1) || (ControllerEnabled && LTEdgePressed()));
 
     // Pause toggle (Esc / Start button). P is reserved for the trailer free-cam
     // toggle (TrailerFreeCam); Escape and Start still pause.
@@ -300,6 +334,7 @@ public static class TutorialGate
     {
         if (!ControllerEnabled) return 0;
         if (UISelectionActive() || _uiFocusedAtFrameStart) return 0;
+        if (PauseState.MenuOpen) return 0;   // clock still runs here in co-op
         if (Ship.AnyShipPiloted) return 0;
         if (PadPressed(PadButton.LB)) return -1;
         if (PadPressed(PadButton.RB)) return +1;

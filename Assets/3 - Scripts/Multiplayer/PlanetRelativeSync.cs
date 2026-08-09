@@ -78,6 +78,20 @@ public class PlanetRelativeSync : NetworkBehaviour
     const float RemoteInnerAngle = 22f;
     const float RemoteMaxRange   = 90f;
 
+    /// The remote beam is dimmer than the intensity its owner is actually
+    /// running, and deliberately so.
+    ///
+    /// The real lamp is a ~150° spot with a procedural cookie; the cookie eats a
+    /// lot of light, and its owner sits at the beam's origin so they only ever
+    /// see what it lands on. The remote copy drops the cookie (side-on it
+    /// degenerates into streaks) and narrows to 55°, which concentrates the same
+    /// nominal intensity into a much tighter, un-attenuated cone — so the other
+    /// player saw a blazing beam while the owner saw something ordinary.
+    ///
+    /// 1/1.7 is Sam's number from the 2026-08-09 playtest. Retune here; it is
+    /// purely cosmetic and costs nothing on the wire.
+    const float RemoteIntensityScale = 1f / 1.7f;
+
     Transform planet;
     CelestialBody planetBody;
     EndlessManager endless;
@@ -361,8 +375,9 @@ public class PlanetRelativeSync : NetworkBehaviour
         if (!on || planet == null) return;
 
         // Follow the owner's brightness mode (off / dim / medium / high) rather
-        // than blazing at whatever value the light was created with.
-        puppetLight.intensity = netLightIntensity.Value;
+        // than blazing at whatever value the light was created with — scaled
+        // down, see RemoteIntensityScale.
+        puppetLight.intensity = netLightIntensity.Value * RemoteIntensityScale;
 
         // Position and aim in world space from the planet-local values, so a
         // floating-origin rebase can't leave the beam behind.
@@ -385,7 +400,11 @@ public class PlanetRelativeSync : NetworkBehaviour
             smoothedLocalPos = targetLocal;
             smoothedLocalRot = targetLocalRot;
             if (!remoteEverPlaced)
-                Debug.Log($"[MP] Remote player {OwnerClientId + 1} now visible at planet-local {targetLocal}");
+            {
+                var identity = GetComponent<NetworkPlayerIdentity>();
+                string who = identity != null ? identity.DisplayName : $"Colonist {OwnerClientId + 1}";
+                Debug.Log($"[MP] Remote player {who} now visible at planet-local {targetLocal}");
+            }
             remoteEverPlaced = true;
             SetRemoteVisible(true);
         }

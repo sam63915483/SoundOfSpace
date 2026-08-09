@@ -53,7 +53,11 @@ public class MainMenuController : MonoBehaviour
 
     void Awake()
     {
-        Time.timeScale = 1f;
+        // Clears the menu-open input block as well as the clock. Quitting to the
+        // menu from a paused game already routes through PauseState.Exit, but if
+        // any path ever misses it the flag would silently suppress gameplay input
+        // in the NEXT session — cheap insurance against a very confusing bug.
+        PauseState.Exit();
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
         AudioListener.volume = 1f;
@@ -78,6 +82,28 @@ public class MainMenuController : MonoBehaviour
     void Start()
     {
         StartCoroutine(TitlePulse());
+
+        // BuildCanvas ran in Awake, which can beat CharacterStore's
+        // AfterSceneLoad creation — so the chip was drawn with no store to read.
+        // Subscribe and redraw now that it exists.
+        SubscribeToCharacterStore();
+        RefreshCharacterChip();
+    }
+
+    bool subscribedToCharacterStore;
+
+    void SubscribeToCharacterStore()
+    {
+        if (subscribedToCharacterStore) return;
+        if (CharacterStore.Instance == null) return;
+        CharacterStore.Instance.Changed += RefreshCharacterChip;
+        subscribedToCharacterStore = true;
+    }
+
+    void OnDestroy()
+    {
+        if (subscribedToCharacterStore && CharacterStore.Instance != null)
+            CharacterStore.Instance.Changed -= RefreshCharacterChip;
     }
 
     // ── Layout build ───────────────────────────────────────────────────────
@@ -127,35 +153,28 @@ public class MainMenuController : MonoBehaviour
         titleGlow.effectColor = new Color(0.36f, 0.85f, 1f, 0.6f);
         titleGlow.effectDistance = new Vector2(0f, -3f);
 
-        // Subtitle — anchored 340 px below the canvas top (was -400 which
-        // read too low on ultrawide aspect ratios because CanvasScaler's
-        // matchWidthOrHeight=0.5 stretches vertical spacing).
-        var subRT = NewUI("Subtitle", transform);
-        subRT.anchorMin = new Vector2(0.5f, 1f);
-        subRT.anchorMax = new Vector2(0.5f, 1f);
-        subRT.pivot     = new Vector2(0.5f, 1f);
-        subRT.anchoredPosition = new Vector2(0f, -340f);
-        subRT.sizeDelta = new Vector2(1200f, 60f);
-        var sub = subRT.gameObject.AddComponent<TextMeshProUGUI>();
-        ApplyDefaultFont(sub);
-        sub.text = "A Solar System Adventure";
-        sub.fontSize = 32f;
-        sub.fontStyle = FontStyles.Italic;
-        sub.alignment = TextAlignmentOptions.Center;
-        sub.color = SubtitleColor;
-        sub.characterSpacing = 8f;
-        sub.raycastTarget = false;
+        // The "A Solar System Adventure" subtitle used to sit at -340. Removed
+        // 2026-08-09: it was redundant next to the title, and the space it took
+        // is what forced the character chip down into the START GAME row.
+        // SubtitleColor is still used by the chip and the footer.
 
-        // Accent strip under subtitle — shifted up with the subtitle by 60 px.
+        // Accent strip under the title. Moved up from -400 into the space the
+        // subtitle vacated, so the chip below it clears the button column.
         var accent = NewUI("TitleAccent", transform);
         accent.anchorMin = new Vector2(0.5f, 1f);
         accent.anchorMax = new Vector2(0.5f, 1f);
         accent.pivot = new Vector2(0.5f, 1f);
-        accent.anchoredPosition = new Vector2(0f, -400f);
+        accent.anchoredPosition = new Vector2(0f, -364f);
         accent.sizeDelta = new Vector2(420f, 3f);
         var accentImg = accent.gameObject.AddComponent<Image>();
         accentImg.sprite = GetAccentSprite();
         accentImg.raycastTarget = false;
+
+        // "PLAYING AS <name>" chip — the whole of the character flow's presence
+        // on the main menu. The menu never asks you to pick a character; it uses
+        // the one you used last, and this is how you see who that is and change
+        // it. Sits between the accent strip and the button column.
+        BuildCharacterChip();
 
         // Button column. Stored on `mainMenuButtonsRoot` for OnCredits/HideCredits
         // to deactivate while the credits modal is open.
@@ -164,10 +183,14 @@ public class MainMenuController : MonoBehaviour
         buttonsRT.anchorMin = new Vector2(0.5f, 0.5f);
         buttonsRT.anchorMax = new Vector2(0.5f, 0.5f);
         buttonsRT.pivot     = new Vector2(0.5f, 0.5f);
-        buttonsRT.anchoredPosition = new Vector2(0f, -120f);
-        // 5 rows x 68 + 4 x 16 gaps = 404. The column was sized for four 80px
-        // buttons; adding MULTIPLAYER without growing it would clip the last row.
-        buttonsRT.sizeDelta = new Vector2(460f, 404f);
+        // Dropped from -120 to -160 to clear the character chip above it.
+        // At the 1080 reference height this puts the column's top edge at -456
+        // from the canvas top (540 - 160 + 244), i.e. 26 px below the chip.
+        buttonsRT.anchoredPosition = new Vector2(0f, -160f);
+        // 6 rows x 68 + 5 x 16 gaps = 488. Was 404 for five rows; adding
+        // CHARACTERS without growing it would clip the last row (the same bug
+        // MULTIPLAYER caused when it was added).
+        buttonsRT.sizeDelta = new Vector2(460f, 488f);
         var vlg = buttonsRT.gameObject.AddComponent<VerticalLayoutGroup>();
         vlg.childAlignment = TextAnchor.MiddleCenter;
         vlg.childControlWidth = true;
@@ -179,6 +202,9 @@ public class MainMenuController : MonoBehaviour
         BuildButton(buttonsRT, "PlayButton", "START GAME", OnPlay);
         if (FeatureVault.Multiplayer)
             BuildButton(buttonsRT, "MultiplayerButton", "MULTIPLAYER", OnMultiplayer);
+        // Directly below MULTIPLAYER. Not gated by FeatureVault.Multiplayer —
+        // your character is your name and suit in single player too.
+        BuildButton(buttonsRT, "CharactersButton", "CHARACTERS", OnCharacters);
         BuildButton(buttonsRT, "CreditsButton", "CREDITS", OnCredits);
         BuildButton(buttonsRT, "GalleryButton", "COMMUNITY GALLERY", OnCommunityGallery);
         BuildButton(buttonsRT, "ExitButton", "EXIT GAME", OnExit);
@@ -498,7 +524,10 @@ public class MainMenuController : MonoBehaviour
 
     public void OnPlay()
     {
-        OpenSaveSelectionPanel();
+        // The ONLY place the character flow can interrupt you, and only when you
+        // own zero characters. Otherwise this is exactly the old behaviour: one
+        // click from the menu to save select.
+        EnsureCharacterUI().RequireCharacter(OpenSaveSelectionPanel);
     }
 
     void OpenSaveSelectionPanel()
@@ -584,8 +613,124 @@ public class MainMenuController : MonoBehaviour
     public void OnMultiplayer()
     {
         if (!FeatureVault.Multiplayer) return;
-        EnsureMultiplayerUI();
-        MultiplayerMenuUI.Instance?.OpenJoin();
+        // Same gate as OnPlay — your friends need to see a name and a colour, so
+        // a session cannot be started without a character.
+        EnsureCharacterUI().RequireCharacter(() =>
+        {
+            EnsureMultiplayerUI();
+            MultiplayerMenuUI.Instance?.OpenJoin();
+        });
+    }
+
+    // ── Character system ───────────────────────────────────────────────────
+
+    RectTransform characterChipRT;
+    TextMeshProUGUI characterChipLabel;
+    Image characterChipDot;
+
+    CharacterUI EnsureCharacterUI() => CharacterUI.Ensure(transform, astronautPreviewPrefab);
+
+    public void OnCharacters()
+    {
+        // Same reachability guard the credits and gallery modals use: the menu
+        // rows must be unreachable by mouse, pad or keyboard while a modal is up.
+        if (mainMenuButtonsRoot != null) mainMenuButtonsRoot.SetActive(false);
+        EnsureCharacterUI().OpenList(() =>
+        {
+            if (mainMenuButtonsRoot != null) mainMenuButtonsRoot.SetActive(true);
+            RefreshCharacterChip();
+        });
+    }
+
+    /// The chip itself is the "change character" affordance — clicking it opens
+    /// the quick picker rather than the full management list.
+    void OnCharacterChip()
+    {
+        if (mainMenuButtonsRoot != null) mainMenuButtonsRoot.SetActive(false);
+
+        System.Action restore = () =>
+        {
+            if (mainMenuButtonsRoot != null) mainMenuButtonsRoot.SetActive(true);
+            RefreshCharacterChip();
+        };
+
+        var ui = EnsureCharacterUI();
+        var store = CharacterStore.Instance;
+        // With nobody to pick from, the chip reads "TAP TO CREATE" — so honour
+        // that and go straight to the create screen instead of an empty picker.
+        // OpenCreate (not RequireCharacter) because `restore` must run on cancel
+        // too, or the menu buttons stay hidden.
+        if (store == null || !store.HasAny) ui.OpenCreate(restore);
+        else                                ui.OpenPicker(restore);
+    }
+
+    void BuildCharacterChip()
+    {
+        characterChipRT = NewUI("CharacterChip", transform);
+        characterChipRT.anchorMin = new Vector2(0.5f, 1f);
+        characterChipRT.anchorMax = new Vector2(0.5f, 1f);
+        characterChipRT.pivot     = new Vector2(0.5f, 1f);
+        // Vertical budget from the canvas top, at the 1080 reference height:
+        //   title glyphs end ≈ -347   accent -364   chip -392…-430
+        //   button column top -456    (see buttonsRT.anchoredPosition below)
+        // That leaves a 26 px gap above START GAME. If you move any of these,
+        // move the others — the chip overlapped START GAME on the first pass.
+        characterChipRT.anchoredPosition = new Vector2(0f, -392f);
+        characterChipRT.sizeDelta = new Vector2(360f, 38f);
+
+        var bg = characterChipRT.gameObject.AddComponent<Image>();
+        bg.color = new Color32(0x10, 0x08, 0x2E, 0x8C);
+
+        var btn = characterChipRT.gameObject.AddComponent<Button>();
+        btn.targetGraphic = bg;
+        btn.onClick.AddListener(OnCharacterChip);
+        UiSfxPlayer.Attach(btn);
+
+        characterChipDot = NewUI("Dot", characterChipRT).gameObject.AddComponent<Image>();
+        var dotRT = characterChipDot.rectTransform;
+        dotRT.anchorMin = new Vector2(0f, 0.5f);
+        dotRT.anchorMax = new Vector2(0f, 0.5f);
+        dotRT.pivot     = new Vector2(0f, 0.5f);
+        dotRT.anchoredPosition = new Vector2(14f, 0f);
+        dotRT.sizeDelta = new Vector2(16f, 16f);
+        characterChipDot.raycastTarget = false;
+
+        var labelRT = NewUI("Label", characterChipRT);
+        labelRT.anchorMin = new Vector2(0f, 0f);
+        labelRT.anchorMax = new Vector2(1f, 1f);
+        labelRT.offsetMin = new Vector2(38f, 0f);
+        labelRT.offsetMax = new Vector2(-14f, 0f);
+        characterChipLabel = labelRT.gameObject.AddComponent<TextMeshProUGUI>();
+        ApplyDefaultFont(characterChipLabel);
+        characterChipLabel.fontSize = 17f;
+        characterChipLabel.characterSpacing = 8f;
+        characterChipLabel.alignment = TextAlignmentOptions.Center;
+        characterChipLabel.color = new Color(SubtitleColor.r, SubtitleColor.g, SubtitleColor.b, 0.9f);
+        characterChipLabel.raycastTarget = false;
+        characterChipLabel.overflowMode = TextOverflowModes.Ellipsis;
+        characterChipLabel.enableWordWrapping = false;
+
+        RefreshCharacterChip();
+    }
+
+    /// Shows who you are, or invites you to become someone if you are nobody.
+    /// Called on build, whenever a character modal closes, and from
+    /// CharacterStore.Changed.
+    void RefreshCharacterChip()
+    {
+        if (characterChipLabel == null) return;
+
+        var profile = CharacterStore.ActiveProfile;
+        if (profile == null)
+        {
+            characterChipLabel.text = "NO CHARACTER  —  TAP TO CREATE";
+            if (characterChipDot != null) characterChipDot.color = new Color(1f, 1f, 1f, 0.25f);
+            return;
+        }
+
+        characterChipLabel.text = $"PLAYING AS  {profile.name.ToUpperInvariant()}   ▾";
+        if (characterChipDot != null)
+            characterChipDot.color = SuitPalette.ColorAt(profile.swatchIndex);
     }
 
     public void OnCredits()
@@ -1352,4 +1497,15 @@ public class MainMenuController : MonoBehaviour
         float d = Mathf.Sqrt(dx * dx + dy * dy);
         return Mathf.Clamp01(radius - d + 0.5f);
     }
+
+    // ⚠️ Serialized fields are APPENDED AT THE END of the class, never inserted
+    // mid-class — reordering them corrupts existing scene/prefab serialization
+    // (CLAUDE.md coding conventions). Keep new ones below this line.
+
+    [Header("Character system")]
+    [Tooltip("The astronaut model shown spinning on the character create screen. " +
+             "Drag Assets/5 - External Imports/Graphics/Models/Astronaut.fbx here. " +
+             "Leave empty and the create screen falls back to a flat colour plate — " +
+             "everything else still works.")]
+    [SerializeField] GameObject astronautPreviewPrefab;
 }

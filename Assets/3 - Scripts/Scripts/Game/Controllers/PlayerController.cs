@@ -617,7 +617,13 @@ public class PlayerController : GravityObject
 		// controller's left stick would both navigate the menu AND walk the player,
 		// and the right stick would rotate the camera while the player is meant to
 		// be reading a panel.
-		bool uiHasFocus = TutorialGate.UISelectionActive();
+		// PauseState.MenuOpen, not Time.timeScale: in multiplayer the clock keeps
+		// running while the pause menu is up, so the timeScale early-returns at
+		// the top of Update/FixedUpdate never fire and this is the only thing
+		// holding the player still. Feeding it through uiHasFocus gates BOTH the
+		// look block below and the movement block further down, which is why it
+		// goes here rather than at either site.
+		bool uiHasFocus = TutorialGate.UISelectionActive() || PauseState.MenuOpen;
 
 		// Phone home screen explicitly clears EventSystem selection on open, so
 		// uiHasFocus is false even while the phone is up — without this extra
@@ -1014,7 +1020,7 @@ public class PlayerController : GravityObject
 			{
 				Vector3 wishDir = transform.TransformDirection(_moveInputLocal.normalized);
 				Vector3 frameVel;
-				if (_cachedNearestShipInRange != null && !_cachedNearestShipInRange.IsLanded)
+				if (ShipProximityZoneActive)
 				{
 					var frameRb = _cachedNearestShipInRange.GetComponent<Rigidbody>();
 					frameVel = frameRb != null ? frameRb.velocity : Vector3.zero;
@@ -1106,17 +1112,9 @@ public class PlayerController : GravityObject
 				_nextShipProximityCheckTime = Time.fixedTime + ShipProximityCheckInterval;
 				_cachedNearestShipInRange = FindNearestShipInRange();
 			}
-			// Activate damping + rotation alignment only when the cached
-			// ship is in range AND actually orbiting (not landed on a body).
-			// The old altitude-min gate keyed on PLAYER altitude failed in
-			// two ways: (1) on small moons close orbits sit below the gate
-			// and alignment never engaged, and (2) when altitude oscillated
-			// around the threshold the gate flickered and the rotation
-			// blend reversed direction each frame, which looked disorienting.
-			// Ship.IsLanded is the binary, jitter-free signal we actually
-			// want — it asks "is this ship sitting on a body" rather than
-			// "is the player high enough off the ground."
-			if (_cachedNearestShipInRange != null && !_cachedNearestShipInRange.IsLanded)
+			// See ShipProximityZoneActive for why this is space-gated, and why
+			// Ship.IsLanded on its own was not trustworthy.
+			if (ShipProximityZoneActive)
 			{
 				// Mirror the in-range ship into the rotation reference so
 				// the blend-out can continue to read its up-vector after
@@ -1347,12 +1345,66 @@ public class PlayerController : GravityObject
 		return grounded;
 	}
 
+	// True while the player is clear of the nearest body's atmosphere — i.e.
+	// actually in space. Gates the whole ship-proximity zone; see UpdateSpaceGate.
+	bool _playerInSpace;
+
+	/// <summary>
+	/// Recomputes "am I in space" once per physics step, so the velocity damping
+	/// and the camera-up blend can never disagree within a frame.
+	///
+	/// Uses LAST step's referenceBody (the gravity loop below refreshes it after
+	/// HandleMovement has already run). One tick of staleness is nothing against
+	/// an atmosphere hundreds of metres deep.
+	///
+	/// ── Hysteresis is the point ──────────────────────────────────────────
+	/// A bare threshold flickers when altitude oscillates across it, and a
+	/// flickering gate makes the up-blend reverse direction every frame, which
+	/// is genuinely nauseating. Leaving the zone needs a further 8% descent, so
+	/// hovering exactly at the boundary picks a state and stays there.
+	/// </summary>
+	void UpdateSpaceGate()
+	{
+		if (referenceBody == null) { _playerInSpace = true; return; }   // deep space
+
+		float dist = Vector3.Distance(rb.position, referenceBody.Position);
+		float atmo = AtmosphereBounds.Radius(referenceBody);
+		float exit = atmo * 0.92f;
+
+		_playerInSpace = _playerInSpace ? dist > exit : dist > atmo;
+	}
+
+	/// <summary>
+	/// The ship-proximity zone: velocity matching, the movement reference frame,
+	/// and the camera up-blend all key off this ONE predicate so they can never
+	/// disagree (they were three separate copies of the condition before).
+	///
+	/// SPACE ONLY. Ship.IsLanded alone was not enough: it counts live collision
+	/// contacts, and this planet streams terrain in chunks — the chunk under a
+	/// parked ship swapping out fires OnCollisionExit with no matching Enter, so
+	/// the count silently drops to 0 and a grounded ship reports itself as
+	/// orbiting. That is why the slowdown and the camera roll fired next to a
+	/// landed ship. It is kept as a cheap extra guard, but _playerInSpace is the
+	/// actual intent.
+	///
+	/// This also fixes both faults that got the ORIGINAL altitude gate deleted:
+	/// the threshold is proportional to body radius (so close orbits around
+	/// small moons clear it) and it has hysteresis (so it cannot flicker and
+	/// reverse the up-blend frame to frame).
+	/// </summary>
+	bool ShipProximityZoneActive =>
+		_playerInSpace
+		&& _cachedNearestShipInRange != null
+		&& !_cachedNearestShipInRange.IsLanded;
+
 	void FixedUpdate()
 	{
 		if (Time.timeScale == 0)
 		{
 			return;
 		}
+
+		UpdateSpaceGate();
 
 		HandleMovement();
 
@@ -1466,9 +1518,7 @@ public class PlayerController : GravityObject
 		// in the damping block while the player is in range, and persists
 		// through the fade-out after they leave so this slerp endpoint stays
 		// valid for the entire decay.
-		bool zoneActive = !isGrounded
-		               && _cachedNearestShipInRange != null
-		               && !_cachedNearestShipInRange.IsLanded;
+		bool zoneActive = !isGrounded && ShipProximityZoneActive;
 		float blendTarget = zoneActive ? 1f : 0f;
 		float blendStep   = shipUpBlendSeconds > 0.0001f
 			? Time.fixedDeltaTime / shipUpBlendSeconds

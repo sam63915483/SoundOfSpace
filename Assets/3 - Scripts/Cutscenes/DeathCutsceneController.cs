@@ -218,6 +218,15 @@ public class DeathCutsceneController : MonoBehaviour
     void HandleDeath()
     {
         if (_handlingDeath) return;
+
+        // ⚠️ NEVER IN MULTIPLAYER. This cutscene ends in a SAVE RELOAD, which
+        // tears down the NetworkManager and drops the session — one player
+        // dying would end the game for everyone. MultiplayerDeathRespawn takes
+        // over instead and wakes them in the stasis pod without touching the
+        // scene. Bails the same way the no-save case below does.
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        if (nm != null && nm.IsListening) return;
+
         if (SaveSystem.ListSaves().Count == 0)
         {
             Debug.LogWarning("[DeathCutscene] No save on disk — falling back to in-place respawn.");

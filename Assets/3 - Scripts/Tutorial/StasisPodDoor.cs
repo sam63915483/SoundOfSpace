@@ -191,12 +191,32 @@ public class StasisPodDoor : MonoBehaviour
         // update arriving late, or two transitions landing in the same frame,
         // and the "close behind you" edge never fires.
         //
-        // So don't rely on the edge. If the door is open, nobody is anywhere
-        // near it, and no close is pending, schedule one. This also cleans up
-        // after OpenHold(), which deliberately sets no timer and would otherwise
-        // leave the door open indefinitely once its occupant walked away.
-        if (IsOpen && _closeAt <= 0f && eff == Zone.Outside)
-            _closeAt = Time.time + autoCloseDelay;
+        // So don't rely on the edge. If the door is open and no close is
+        // pending, schedule one. This also cleans up after OpenHold(), which
+        // deliberately sets no timer.
+        //
+        // ⚠️ The condition is `eff != Zone.Doorway`, NOT `eff == Zone.Outside`.
+        //
+        // Outside-only was the 2026-08-08 co-op bug: a guest WAKES UP inside the
+        // pod, so the effective zone is already Deep before the door ever opens.
+        // The "sealed behind you" edge at the top needs a transition INTO Deep
+        // and there isn't one — they were already there — and OpenHold leaves
+        // _closeAt at -1. With the net only covering Outside, nothing scheduled
+        // a close until the guest had fully walked away, which is exactly what
+        // Sam saw: the door hanging open the entire time they were near the pod.
+        //
+        // Covering Deep as well means an open door always gets a pending close.
+        // Doorway stays excluded so the leaf never lands on someone standing in
+        // it, and the execute step below re-checks that at close time anyway.
+        //
+        // Deep gets a LONGER grace than Outside. autoCloseDelay is 2s, which is
+        // right for "you already walked out, shut behind me" but nowhere near
+        // enough to cross the pod from a standstill — it would seal a waking
+        // guest back in. DeepExitCloseDelay matches the valve's own 5s, so
+        // being let out by OpenHold feels exactly like pressing the valve, which
+        // is the behaviour Sam asked for.
+        if (IsOpen && _closeAt <= 0f && eff != Zone.Doorway)
+            _closeAt = Time.time + (eff == Zone.Deep ? DeepExitCloseDelay : autoCloseDelay);
 
         // Execute a due close — but never while ANY player straddles the doorway
         // plane, on either machine (the leaf would land on them).
@@ -210,6 +230,13 @@ public class StasisPodDoor : MonoBehaviour
     }
 
     Zone _prevEffective = Zone.Outside;
+
+    /// Grace period for an open door with someone still INSIDE the pod — long
+    /// enough to walk out from a standstill. A const rather than a serialized
+    /// field so it cannot be inserted mid-class and shift the existing
+    /// serialization (CLAUDE.md convention). Kept equal to StasisValveButton's
+    /// default openSeconds, deliberately: both mean "you've been let out".
+    const float DeepExitCloseDelay = 5f;
 
     void AnimateToTarget()
     {

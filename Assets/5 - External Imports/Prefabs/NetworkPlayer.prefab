@@ -337,6 +337,9 @@ GameObject:
   - component: {fileID: 94590855721210870}
   - component: {fileID: 2723476092610829518}
   - component: {fileID: 2263188419154565400}
+  - component: {fileID: 379805781987374313}
+  - component: {fileID: 6917081865068195784}
+  - component: {fileID: 1809821401933410461}
   m_Layer: 0
   m_Name: NetworkPlayer
   m_TagString: Player
@@ -502,7 +505,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d5a57f767e5e46a458fc5d3c628d0cbb, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  GlobalObjectIdHash: 0
+  GlobalObjectIdHash: 1855029188
   InScenePlacedSourceGlobalObjectIdHash: 0
   AlwaysReplicateAsRoot: 0
   SynchronizeTransform: 1
@@ -536,6 +539,42 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dea61281a9fccd04ca2e3ec9651259b3, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &379805781987374313
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5406502976704646146}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 00d8f1be6c2472c4d92a6a77f38b5fbc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &6917081865068195784
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5406502976704646146}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4d23b20b71b77d489fe77786d15fd2a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1809821401933410461
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5406502976704646146}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 15ee4c31fb90a5745903cdd648484ad1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1001 &9074372293224372916

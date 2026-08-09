@@ -315,11 +315,16 @@ public class PlayerPhoneUI : MonoBehaviour
         // conversation is starting, so re-assert the conversation's gate.
         PlayerController.isInDialogue = true;
     }
+    /// True while the main menu is the active scene. Cached here rather than
+    /// string-comparing the scene name every frame in Update.
+    bool _inMainMenu;
+
     void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
         // Abort-safe: returning to the menu clears any intro nag suppression so a
         // later Load isn't left permanently muted.
         if (scene.name == "MainMenu") SuppressFirstNag = false;
+        _inMainMenu = scene.name == "MainMenu";
         ForceCloseNoAnim();
     }
 
@@ -378,6 +383,9 @@ public class PlayerPhoneUI : MonoBehaviour
     void LateUpdate()
     {
         ConsumedEscapeThisFrame = false;
+        // No camera, no recording, no gameplay camera to read from — see the
+        // note in Update about this object riding back into the menu.
+        if (_inMainMenu) return;
         // The phone RT is filled by a CommandBuffer on the main camera â€”
         // LateUpdate runs after the camera renders, so the RT has the
         // current frame by the time we tick the recording loop.
@@ -765,6 +773,13 @@ public class PlayerPhoneUI : MonoBehaviour
     /// </summary>
     public void RequestFirstOpenNag()
     {
+        // RETIRED 2026-08-09 (Sam): the persistent "Press X to open your phone."
+        // prompt is not wanted any more. Kept as a no-op rather than deleted so
+        // its two callers (StoryDirector's first-message beat and
+        // IntroSequenceController) stay wired — remove this line to restore it.
+        return;
+
+#pragma warning disable CS0162 // unreachable — see above
         if (HasEverOpened) return;
         if (SuppressFirstNag) return;   // muted during/just after the wake-up intro
         // Refresh the binding text at show time â€” controller players are told
@@ -772,6 +787,7 @@ public class PlayerPhoneUI : MonoBehaviour
         if (_openNagLabel != null)
             _openNagLabel.text = $"Press {PromptGlyphs.PhoneOpen} to open your phone.";
         if (_openNagGroup != null) _openNagGroup.alpha = 1f;
+#pragma warning restore CS0162
     }
 
     void HideOpenNag()
@@ -840,11 +856,20 @@ public class PlayerPhoneUI : MonoBehaviour
     // any window where this returns true.
     bool ShouldHideHint()
     {
+        // RETIRED 2026-08-09 (Sam): the recurring "Press C for camera" popup is
+        // not wanted any more. Returning true here is the single choke point —
+        // it also drives HideHintNow for anything already on screen, so the
+        // label can never appear. The build/animate code below is left intact
+        // and unreferenced-but-live; delete this line to bring the hint back.
+        return true;
+
+#pragma warning disable CS0162 // unreachable — see above
         if (!IsOpen) return true;
         if (FishingdexManager.Instance != null && FishingdexManager.IsOpen) return true;
         if (BuildMenuUI.Instance != null && BuildMenuUI.IsOpen) return true;
         if (TabbedPauseMenu.Instance != null && TabbedPauseMenu.Instance.IsOpen) return true;
         return false;
+#pragma warning restore CS0162
     }
 
     void HideHintNow()
@@ -1307,6 +1332,17 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void Update()
     {
+        // DEAD IN THE MAIN MENU.
+        //
+        // AutoCreate early-outs on MainMenu, so a fresh boot never has a phone
+        // there — but this object is DontDestroyOnLoad, so once gameplay creates
+        // it, it RIDES BACK INTO THE MENU when you quit to it and keeps polling
+        // input. C and F then opened the phone and the camera over the main menu.
+        //
+        // OnSceneLoaded force-closes it, which is why it looked fine until you
+        // pressed a key. Closing is not enough; it has to stop listening.
+        if (_inMainMenu) return;
+
         if (!_subscribedToResourceManager) TrySubscribeResourceManager();
 
         RefreshStatusBar();

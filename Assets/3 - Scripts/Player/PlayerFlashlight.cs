@@ -407,9 +407,22 @@ public class PlayerFlashlight : MonoBehaviour
         _dyingMultiplier = 1f;
     }
 
-    // Rare hard glitch — 6–10s gaps between events. Only fires while the
-    // flashlight is enabled (skipped otherwise so the player doesn't see
-    // flicker on a powered-off torch). Total event duration ~120ms.
+    /// Floor for the stutter. Below roughly this the beam reads as "the game
+    /// broke" rather than "the bulb struggled" — Sam, 2026-08-09: keep the
+    /// pulse, lose the cut-out.
+    const float StutterFloor = 0.55f;
+
+    // Rare pulse — 6–10s gaps between events. Only fires while the flashlight is
+    // enabled (skipped otherwise so the player doesn't see flicker on a
+    // powered-off torch).
+    //
+    // This used to drop to 0.20 / 0.15 in single-frame steps, which is a hard
+    // cut to near-black and back: at 60fps that is a 16ms black frame, i.e.
+    // exactly what a dropped frame or a rendering bug looks like. The eye reads
+    // sudden total darkness as breakage, not atmosphere.
+    //
+    // Now it dips to StutterFloor and RAMPS rather than stepping, so it reads as
+    // a bulb browning out. Same rhythm and roughly the same duration, no cut.
     IEnumerator PanicStutterLoop()
     {
         while (true)
@@ -418,14 +431,25 @@ public class PlayerFlashlight : MonoBehaviour
             yield return new WaitForSeconds(wait);
             if (!enableFlicker || flashlight == null || !flashlight.enabled) continue;
 
-            // 1f @ 0.20, 1f @ 1.00, 1f @ 0.40, 1f @ 1.00, 2f @ 0.15, then restore.
-            _stutterMultiplier = 0.20f; yield return null;
-            _stutterMultiplier = 1.00f; yield return null;
-            _stutterMultiplier = 0.40f; yield return null;
-            _stutterMultiplier = 1.00f; yield return null;
-            _stutterMultiplier = 0.15f; yield return null; yield return null;
-            _stutterMultiplier = 1.00f;
+            // Two dips of slightly different depth, so it doesn't read as a
+            // metronome. Roughly 340ms total, versus the old ~100ms of strobe.
+            yield return Brownout(StutterFloor + 0.14f, 0.10f);
+            yield return Brownout(StutterFloor, 0.14f);
+            _stutterMultiplier = 1f;
         }
+    }
+
+    /// Smooth dip to `depth` and back over `seconds`, easing at both ends.
+    IEnumerator Brownout(float depth, float seconds)
+    {
+        float t0 = Time.time;
+        while (Time.time - t0 < seconds)
+        {
+            float u = (Time.time - t0) / seconds;               // 0..1
+            _stutterMultiplier = Mathf.Lerp(1f, depth, Mathf.Sin(u * Mathf.PI));
+            yield return null;
+        }
+        _stutterMultiplier = 1f;
     }
 
     // Occasional slow sag toward darkness then recovery — 35–55s gaps.

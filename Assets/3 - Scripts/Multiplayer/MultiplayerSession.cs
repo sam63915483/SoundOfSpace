@@ -63,6 +63,13 @@ public class MultiplayerSession : MonoBehaviour
     const string RelayKey   = "relay";
     const string StartedKey = "started";
 
+    /// Per-PLAYER lobby data (not per-lobby): the character name each member is
+    /// playing as, so the roster can show real names before anyone has spawned.
+    /// In-world identity does not come from here — that rides
+    /// NetworkPlayerIdentity's NetworkVariables — but the lobby screen exists
+    /// before netcode does, so it needs its own copy.
+    const string PlayerNameKey = "charName";
+
     const string GameplayScene = "1.6.7.7.7";
     const int    MaxPlayers    = 4;
     const float  HeartbeatSeconds = 15f;   // lobbies expire after ~30s without one
@@ -199,7 +206,11 @@ public class MultiplayerSession : MonoBehaviour
         {
             Code = "LOCAL";
             _roster.Clear();
-            _roster.Add("You (host)");
+            {
+                string me = CharacterStore.ActiveName;
+                if (string.IsNullOrWhiteSpace(me)) me = "Colonist";
+                _roster.Add(me + " (you) (host)");
+            }
             Current = State.LobbyOpen;
             Status = "Local session — same machine only.";
             return true;
@@ -232,6 +243,7 @@ public class MultiplayerSession : MonoBehaviour
                 {
                     IsPrivate = false,          // discoverable BY CODE only, never browsable
                     Password  = DerivePassword(password),   // null = open session
+                    Player    = MakeLobbyPlayer(),
                     Data = new Dictionary<string, DataObject>
                     {
                         // Indexed + public so a joiner can find it by code.
@@ -359,7 +371,7 @@ public class MultiplayerSession : MonoBehaviour
 
         try
         {
-            var join = new JoinLobbyByIdOptions();
+            var join = new JoinLobbyByIdOptions { Player = MakeLobbyPlayer() };
             if (needsPassword) join.Password = DerivePassword(password);
             _lobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, join);
         }
@@ -766,17 +778,43 @@ public class MultiplayerSession : MonoBehaviour
         }
     }
 
+    /// Stamps our character name onto the lobby member entry we are about to
+    /// create. Public visibility: everyone in the lobby should see who else is
+    /// in it, and the name is not a secret.
+    static Player MakeLobbyPlayer()
+    {
+        string name = CharacterStore.ActiveName;
+        if (string.IsNullOrWhiteSpace(name)) name = "Colonist";
+        return new Player(
+            data: new Dictionary<string, PlayerDataObject>
+            {
+                [PlayerNameKey] = new PlayerDataObject(
+                    PlayerDataObject.VisibilityOptions.Public, name),
+            });
+    }
+
     void RefreshRoster()
     {
         _roster.Clear();
         if (_lobby == null || _lobby.Players == null) return;
         for (int i = 0; i < _lobby.Players.Count; i++)
         {
-            bool isHostPlayer = _lobby.HostId == _lobby.Players[i].Id;
+            var p = _lobby.Players[i];
+            bool isHostPlayer = _lobby.HostId == p.Id;
             bool isYou = AuthenticationService.Instance.IsSignedIn
-                         && _lobby.Players[i].Id == AuthenticationService.Instance.PlayerId;
-            string who = isYou ? "You" : $"Player {i + 1}";
-            _roster.Add(isHostPlayer ? who + " (host)" : who);
+                         && p.Id == AuthenticationService.Instance.PlayerId;
+
+            // Character name, published as lobby player data at create/join.
+            // Falls back only for a member who joined on an older build, or
+            // whose data has not propagated on the first poll after joining.
+            string who = null;
+            if (p.Data != null && p.Data.TryGetValue(PlayerNameKey, out var entry) && entry != null)
+                who = entry.Value;
+            if (string.IsNullOrWhiteSpace(who)) who = $"Colonist {i + 1}";
+
+            if (isYou)        who += " (you)";
+            if (isHostPlayer) who += " (host)";
+            _roster.Add(who);
         }
     }
 
@@ -810,7 +848,9 @@ public class MultiplayerSession : MonoBehaviour
             nm.OnClientDisconnectCallback -= OnClientDisconnect;   // this exit is intentional
             nm.Shutdown();
         }
-        Time.timeScale = 1f;   // we may be leaving straight from the pause menu
+        // We may be leaving straight from the pause menu — clear the menu-open
+        // input block too, not just the clock, or the main menu inherits it.
+        PauseState.Exit();
         SceneManager.LoadScene("MainMenu");
     }
 

@@ -7,13 +7,15 @@ using UnityEngine;
 /// player for publishing).
 public class NetworkPlayerSetup : NetworkBehaviour
 {
-    static readonly Color[] ClientColors =
-    {
-        new Color(0.95f, 0.45f, 0.20f), // orange
-        new Color(0.30f, 0.70f, 1.00f), // blue
-        new Color(0.40f, 0.90f, 0.40f), // green
-        new Color(0.90f, 0.40f, 0.90f), // magenta
-    };
+    // The old hard-coded "Player N" nametag and its four-colour ClientColors
+    // array lived here. Both are gone: NetworkPlayerIdentity now owns the label
+    // and the suit colour, driven by the player's chosen character, so the text
+    // and the colour have a single owner instead of two. The four original
+    // colours survive as SuitPalette entries 1–4, so the look is unchanged for
+    // anyone who picks them.
+    //
+    // This class is back to doing only one thing: stripping a spawned player
+    // down to a puppet.
 
     public override void OnNetworkSpawn()
     {
@@ -60,37 +62,10 @@ public class NetworkPlayerSetup : NetworkBehaviour
             // Invisible too: the real player stands inside it.
             foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = false;
         }
-        else
-        {
-            CreateNametag();
-        }
-    }
-
-    // World-space "Player N" tag above remote avatars (host = Player 1, first
-    // joiner = Player 2, ...). Only on avatars of OTHER players.
-    void CreateNametag()
-    {
-        var go = new GameObject("Nametag");
-        go.transform.SetParent(transform, false);
-        go.transform.localPosition = new Vector3(0f, 2.3f, 0f);
-
-        var tm = go.AddComponent<TextMesh>();
-        tm.text = $"Player {OwnerClientId + 1}";
-        tm.anchor = TextAnchor.MiddleCenter;
-        tm.alignment = TextAlignment.Center;
-        tm.characterSize = 0.12f;
-        tm.fontSize = 64;
-        tm.color = ClientColors[(int)(OwnerClientId % (ulong)ClientColors.Length)];
-        var font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-        if (font != null)
-        {
-            tm.font = font;
-            go.GetComponent<MeshRenderer>().material = font.material;
-        }
-
-        // Hidden until PlanetRelativeSync shows the avatar (its visibility
-        // pass re-collects child renderers, so the tag is included).
-        go.GetComponent<MeshRenderer>().enabled = false;
-        go.AddComponent<NametagBillboard>();
+        // The remote player's nametag is built by NetworkPlayerIdentity, which
+        // also owns its text and colour. Order between the two OnNetworkSpawn
+        // calls does not matter: PlanetRelativeSync.SetRemoteVisible re-collects
+        // child renderers on every visibility transition, so a tag created
+        // either side of this sweep is still picked up when the body appears.
     }
 }

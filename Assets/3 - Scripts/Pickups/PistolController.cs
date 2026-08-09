@@ -222,6 +222,11 @@ public class PistolController : MonoBehaviour
     {
         if (_ship != null && _ship.IsPiloted) return;
         if (_currentPistolInstance == null) return;
+        // Update() runs even at timeScale 0 — only physics stops — so this was
+        // never protected by the pause freeze: with the menu open you could
+        // already reload and fire in single player. Gating on PauseState fixes
+        // that as well as the multiplayer case, where the clock keeps running.
+        if (PauseState.MenuOpen) return;
 
         UpdateAim();
         UpdateRecoil();
@@ -517,6 +522,31 @@ public class PistolController : MonoBehaviour
             if (rends[i] != null) rends[i].enabled = visible;
     }
 
+    /// <summary>Everything a listener needs to reproduce or adjudicate a shot.</summary>
+    public struct ShotInfo
+    {
+        /// Camera position the ray was cast from.
+        public Vector3 RayOrigin;
+        /// Unit direction, AFTER hip-fire spread was applied — so a listener's
+        /// hit test agrees with the one that already happened here.
+        public Vector3 RayDirection;
+        /// Where the visible streak starts (the muzzle, not the camera).
+        public Vector3 MuzzleStart;
+        /// Distance from RayOrigin to whatever the world raycast hit, or `range`
+        /// if it hit nothing. Used to reject shots that struck a wall first.
+        public float WorldHitDistance;
+    }
+
+    /// <summary>
+    /// Raised on THIS machine every time the local player fires. Added for the
+    /// multiplayer layer (NetworkPlayerCombat) to replicate tracers and run a
+    /// player-vs-player hit test; single-player behaviour is untouched.
+    ///
+    /// Static because the listener lives on the network puppet, not the pistol.
+    /// Listeners must unsubscribe — this survives scene loads.
+    /// </summary>
+    public static event System.Action<ShotInfo> OnLocalShotFired;
+
     void TriggerShot()
     {
         _lastShotTime = Time.time;
@@ -660,6 +690,22 @@ public class PistolController : MonoBehaviour
         // The kill-cam draws its own slow bullet along the full path — the normal fast
         // tracer would race ahead of it and read as two bullets.
         if (!killCamTookShot) SpawnTracer(tracerStart, tracerEnd, cam.transform);
+
+        // Announce the shot so multiplayer can replicate the tracer on other
+        // machines and run its own hit test against remote players. Everything
+        // above is unchanged and still authoritative for single player; this is
+        // a read-only notification with no behaviour attached.
+        //
+        // The WORLD hit distance is passed rather than the tracer's, because the
+        // tracer is deliberately capped at maxTracerLength for readability and
+        // would report a wall as much closer than it is.
+        OnLocalShotFired?.Invoke(new ShotInfo
+        {
+            RayOrigin        = origin,
+            RayDirection     = forward,
+            MuzzleStart      = tracerStart,
+            WorldHitDistance = Vector3.Distance(origin, endPoint),
+        });
 
         // Kick the additive recoil. Scale is captured NOW so a shot fired while
         // aimed keeps its softened kick even if the player releases aim mid-recoil.

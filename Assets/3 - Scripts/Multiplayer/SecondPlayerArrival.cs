@@ -150,7 +150,10 @@ public class SecondPlayerArrival : MonoBehaviour
     /// Put the player inside the pod. Positions are body-relative because the
     /// planet is orbiting — a world-space constant would be metres off by the
     /// time it is applied.
-    static void SeatInPod()
+    /// Public because MultiplayerDeathRespawn reuses it: respawning after a
+    /// death and arriving as a guest put the player in exactly the same place,
+    /// and that should stay one implementation.
+    public static void SeatInPod()
     {
         var pc = FindObjectOfType<PlayerController>();
         if (pc == null) return;
