@@ -36,6 +36,10 @@ public class GalaxyTimeHUD : MonoBehaviour
     const float CardWidth = 132f;
 
     // Shared pill palette — the same constants VitalsHUD/WaterFillHUD declare.
+    // Glass rather than the near-opaque PillBgColor: the world should read
+    // through the card, which is what the rest of the UI does.
+    static readonly Color GlassColor      = new Color32(0x0A, 0x18, 0x28, 0x66);
+    static readonly Color ScanlineColor   = new Color32(0x5B, 0xD8, 0xFF, 0x1E);
     static readonly Color PillBgColor     = new Color32(0x0A, 0x18, 0x28, 0xF2);
     static readonly Color PillBorderColor = new Color32(0x78, 0xC8, 0xFF, 0x73);
     static readonly Color HeaderColor     = new Color32(0x5C, 0xC8, 0xFF, 0xD9);
@@ -102,11 +106,25 @@ public class GalaxyTimeHUD : MonoBehaviour
         // Same parallax multiplier the other clusters use, so it drifts in sync.
         HelmetSway.Register(card, 0.85f);
 
+        // Glass, not a panel. The rest of the game's UI reads as a translucent
+        // scanned surface — a solid beveled slab looked like a leftover from an
+        // older UI generation sitting on top of the game.
         var bg = card.gameObject.AddComponent<Image>();
         bg.sprite = UIPanelSprites.GetBeveledPanel();
         bg.type = Image.Type.Sliced;
-        bg.color = PillBgColor;
+        bg.color = GlassColor;
         bg.raycastTarget = false;
+
+        // Scanlines across the glass, matching the DOWNLOADING overlay and the
+        // scanner screens.
+        var scanRT = NewUI("Scanlines", card);
+        Stretch(scanRT);
+        var scan = scanRT.gameObject.AddComponent<RawImage>();
+        scan.texture = ScanlineTexture();
+        scan.uvRect = new Rect(0f, 0f, 1f, 14f);   // tile vertically
+        scan.color = ScanlineColor;
+        scan.raycastTarget = false;
+        scanRT.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
 
         var border = NewUI("Border", card);
         Stretch(border);
@@ -174,6 +192,27 @@ public class GalaxyTimeHUD : MonoBehaviour
             _lastDayShown = day;
             if (_dayText != null) _dayText.text = $"GST · DAY {day}";
         }
+    }
+
+    /// A 1x4 strip — one bright row, three clear — tiled by the RawImage's
+    /// uvRect to make scanlines at any card height. Cached statically; every
+    /// clock shares the one texture.
+    static Texture2D s_scanlines;
+    static Texture2D ScanlineTexture()
+    {
+        if (s_scanlines != null) return s_scanlines;
+        var tex = new Texture2D(1, 4, TextureFormat.ARGB32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode = TextureWrapMode.Repeat,
+        };
+        tex.SetPixel(0, 0, Color.white);
+        tex.SetPixel(0, 1, Color.clear);
+        tex.SetPixel(0, 2, Color.clear);
+        tex.SetPixel(0, 3, Color.clear);
+        tex.Apply();
+        s_scanlines = tex;
+        return tex;
     }
 
     // ── Local copies of the shared build helpers (each HUD declares its own) ──

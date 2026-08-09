@@ -117,6 +117,88 @@ public class GalaxyTime : MonoBehaviour
             _lastDaySeen = day;
             OnDayChanged?.Invoke(day);
         }
+
+        TickNetworkSync();
+    }
+
+    // ── Multiplayer: one clock for everyone ──────────────────────────────
+    //
+    // Both machines run the same rate, so they only drift by whatever their
+    // frame times and pauses differ by — but they START at different moments,
+    // which is the part that actually matters. A guest joining on day 1 must not
+    // be three hours behind the host, or rent, deals and anything else scheduled
+    // against the clock happen at different times for each player.
+    //
+    // The host broadcasts its absolute minute count; clients adopt it. Sent on a
+    // named message rather than a NetworkVariable because GalaxyTime is a plain
+    // DontDestroyOnLoad singleton, not a NetworkBehaviour, and making it one
+    // would mean putting it on a spawned network object.
+
+    const string SyncMessage = "GalaxyTimeSync";
+    const float  SyncInterval = 5f;
+    /// Beyond this the clock snaps rather than eases — a fresh join is a big
+    /// jump and easing through hours of it would look broken.
+    const double SnapThresholdMinutes = 10.0;
+
+    float _syncTimer;
+    bool  _handlerRegistered;
+    ulong _handlerOwner;   // which NetworkManager instance we registered against
+
+    void TickNetworkSync()
+    {
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening)
+        {
+            _handlerRegistered = false;
+            return;
+        }
+
+        // (Re)register against whatever NetworkManager is currently live — the
+        // gameplay scene can be reloaded under us.
+        if (!_handlerRegistered || _handlerOwner != nm.LocalClientId)
+        {
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(SyncMessage, OnSyncMessage);
+            _handlerRegistered = true;
+            _handlerOwner = nm.LocalClientId;
+            // Push immediately so a fresh joiner is corrected on their first
+            // frame rather than after the interval.
+            if (nm.IsServer) _syncTimer = SyncInterval;
+        }
+
+        if (!nm.IsServer) return;
+
+        _syncTimer += Time.deltaTime;
+        if (_syncTimer < SyncInterval) return;
+        _syncTimer = 0f;
+        if (nm.ConnectedClientsIds.Count <= 1) return;   // nobody to tell
+
+        var writer = new Unity.Netcode.FastBufferWriter(sizeof(double), Unity.Collections.Allocator.Temp);
+        try
+        {
+            writer.WriteValueSafe(_minutes);
+            nm.CustomMessagingManager.SendNamedMessageToAll(
+                SyncMessage, writer, Unity.Netcode.NetworkDelivery.ReliableSequenced);
+        }
+        finally { writer.Dispose(); }
+    }
+
+    void OnSyncMessage(ulong senderId, Unity.Netcode.FastBufferReader reader)
+    {
+        var nm = Unity.Netcode.NetworkManager.Singleton;
+        if (nm == null || nm.IsServer) return;   // the host IS the clock
+        reader.ReadValueSafe(out double hostMinutes);
+
+        double delta = hostMinutes - _minutes;
+        if (Math.Abs(delta) > SnapThresholdMinutes)
+        {
+            _minutes = hostMinutes;
+            _lastDaySeen = Day;
+        }
+        else
+        {
+            // Nudge rather than jump, so a second hand never visibly stutters.
+            _minutes += delta * 0.25;
+        }
     }
 
     // ── Save / New Game ──────────────────────────────────────────────────
