@@ -777,6 +777,10 @@ public class GhostPlacement : MonoBehaviour
             var sg = real.GetComponent<SaplingGrowth>();
             if (sg == null) sg = real.AddComponent<SaplingGrowth>();
             sg.Init(parentBody, 0);
+            // Tell the other players. This branch was missed when spores were
+            // wired up, which is why planted mushrooms appeared for both players
+            // and planted TREES did not.
+            WorldSync.ReportSaplingPlanted(sg);
         }
         else if (entry.addBonfireInteractionOnPlace)
         {

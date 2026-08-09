@@ -1817,31 +1817,52 @@ public static class SaveCollector
             return;
         }
 
-        foreach (var save in list)
-        {
-            if (save == null) continue;
-            var body = FindBodyByName(save.bodyName);
-            if (body == null)
-            {
-                Debug.LogWarning($"[SaveCollector] ApplySaplings: parent body '{save.bodyName}' not found — skipping a sapling.");
-                continue;
-            }
-            int idx = Mathf.Clamp(save.prefabIndex, 0, spawner.treePrefabs.Length - 1);
-            var prefab = spawner.treePrefabs[idx];
-            if (prefab == null) continue;
+        foreach (var save in list) SpawnSapling(save);
+    }
 
-            // Mirror GhostPlacement.Place()'s sapling branch: "_Sapling" name (so
-            // the generic building save skips it), WorldProp layer, growth driver.
-            var go = Object.Instantiate(prefab);
-            go.name = prefab.name + "_Sapling";
-            go.transform.SetParent(body.transform, worldPositionStays: false);
-            go.transform.localPosition = save.localPos;
-            go.transform.localRotation = save.localRot;
-            SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
-            var sg = go.GetComponent<SaplingGrowth>();
-            if (sg == null) sg = go.AddComponent<SaplingGrowth>();
-            sg.RestoreGrowth(body, idx, save.growth);   // >= 1 matures instantly
+    /// <summary>
+    /// Rebuilds ONE planted sapling from its save record.
+    ///
+    /// Twin of SpawnPlantedMushroom, and extracted for the same reason: the
+    /// multiplayer layer needs to raise a single sapling somebody else just
+    /// planted without calling the bulk apply, which clears and respawns every
+    /// sapling on the planet and would visibly pop them all.
+    ///
+    /// Both callers share one definition, so a sapling planted over the network
+    /// and one restored from disk cannot drift apart.
+    /// </summary>
+    public static void SpawnSapling(SaplingSave save)
+    {
+        if (save == null) return;
+
+        var spawner = TreeSpawner.Instance != null ? TreeSpawner.Instance : Object.FindObjectOfType<TreeSpawner>();
+        if (spawner == null || spawner.treePrefabs == null || spawner.treePrefabs.Length == 0)
+        {
+            Debug.LogWarning("[SaveCollector] SpawnSapling: no TreeSpawner/prefabs available — skipping.");
+            return;
         }
+
+        var body = FindBodyByName(save.bodyName);
+        if (body == null)
+        {
+            Debug.LogWarning($"[SaveCollector] SpawnSapling: parent body '{save.bodyName}' not found — skipping.");
+            return;
+        }
+        int idx = Mathf.Clamp(save.prefabIndex, 0, spawner.treePrefabs.Length - 1);
+        var prefab = spawner.treePrefabs[idx];
+        if (prefab == null) return;
+
+        // Mirror GhostPlacement.Place()'s sapling branch: "_Sapling" name (so
+        // the generic building save skips it), WorldProp layer, growth driver.
+        var go = Object.Instantiate(prefab);
+        go.name = prefab.name + "_Sapling";
+        go.transform.SetParent(body.transform, worldPositionStays: false);
+        go.transform.localPosition = save.localPos;
+        go.transform.localRotation = save.localRot;
+        SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
+        var sg = go.GetComponent<SaplingGrowth>();
+        if (sg == null) sg = go.AddComponent<SaplingGrowth>();
+        sg.RestoreGrowth(body, idx, save.growth);   // >= 1 matures instantly
     }
 
     // Twin of ApplySaplings for the mushroom economy. Sweeps the live planted

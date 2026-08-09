@@ -52,6 +52,7 @@ public class WorldSync : MonoBehaviour
     // IsServer and by who sent it.
     const byte KindPropHit         = 2;   // propKind + bodyName + cellId + newHp
     const byte KindMushroomPlanted = 4;   // JSON PlantedMushroomSave
+    const byte KindSaplingPlanted  = 5;   // JSON SaplingSave
 
     /// Which streamed, cell-addressed prop a hit refers to. All three share the
     /// same TakeDamage/Break/RemoteHit shape, so one message covers them.
@@ -266,6 +267,7 @@ public class WorldSync : MonoBehaviour
                 break;
 
             case KindMushroomPlanted:
+            case KindSaplingPlanted:
                 HandleJsonDelta(kind, reader, senderId);
                 break;
         }
@@ -528,13 +530,20 @@ public class WorldSync : MonoBehaviour
         ApplyingRemote = true;
         try
         {
-            if (kind != KindMushroomPlanted) return;
-            var save = JsonUtility.FromJson<PlantedMushroomSave>(json);
-            if (save != null) SaveCollector.SpawnPlantedMushroom(save);
+            if (kind == KindMushroomPlanted)
+            {
+                var save = JsonUtility.FromJson<PlantedMushroomSave>(json);
+                if (save != null) SaveCollector.SpawnPlantedMushroom(save);
+            }
+            else if (kind == KindSaplingPlanted)
+            {
+                var save = JsonUtility.FromJson<SaplingSave>(json);
+                if (save != null) SaveCollector.SpawnSapling(save);
+            }
         }
         catch (System.Exception e)
         {
-            Debug.LogError("[WorldSync] Bad planted-mushroom delta: " + e.Message);
+            Debug.LogError("[WorldSync] Bad planted-prop delta: " + e.Message);
         }
         finally { ApplyingRemote = false; }
     }
@@ -558,5 +567,31 @@ public class WorldSync : MonoBehaviour
             sizeMultiplier = mg.SizeMultiplier,
         };
         Instance.SendJsonDelta(KindMushroomPlanted, JsonUtility.ToJson(save), skipClient: ulong.MaxValue);
+    }
+
+    /// <summary>
+    /// A tree sapling was planted here.
+    ///
+    /// Separate from the spore path because a sapling is a different thing on
+    /// disk - SaplingSave carries a prefabIndex into TreeSpawner.treePrefabs
+    /// where a mushroom carries a species key - but the shape is identical:
+    /// send the save record, rebuild it with the save system's own spawner.
+    /// </summary>
+    public static void ReportSaplingPlanted(SaplingGrowth sg)
+    {
+        if (ApplyingRemote || Instance == null || sg == null) return;
+        var body = sg.Body != null ? sg.Body : sg.GetComponentInParent<CelestialBody>();
+        if (body == null) return;
+
+        var bt = body.transform;
+        var save = new SaplingSave
+        {
+            bodyName    = body.bodyName,
+            localPos    = bt.InverseTransformPoint(sg.transform.position),
+            localRot    = Quaternion.Inverse(bt.rotation) * sg.transform.rotation,
+            growth      = sg.IsMature ? 1f : sg.Growth,
+            prefabIndex = sg.PrefabIndex,
+        };
+        Instance.SendJsonDelta(KindSaplingPlanted, JsonUtility.ToJson(save), skipClient: ulong.MaxValue);
     }
 }
