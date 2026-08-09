@@ -88,6 +88,12 @@ public class SecondPlayerArrival : MonoBehaviour
         // connection may not have finished yet.
         StartCoroutine(ReleasePoseHoldWhenSpawned());
 
+        // A guest loads no save, so nothing else would ever clear the inventory
+        // they were carrying when they left the LAST session - every one of
+        // those lives on a DontDestroyOnLoad singleton. Cleared here, before the
+        // wake, so the HUD is already correct as it fades up.
+        NewGameReset.ApplyGuestArrival();
+
         // Hand off to the pod's real ritual rather than a lookalike.
         var pod = FindObjectOfType<StasisPodSave>();
         if (pod != null) pod.PlayDownloadWake();

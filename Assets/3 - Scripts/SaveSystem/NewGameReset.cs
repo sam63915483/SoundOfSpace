@@ -54,6 +54,51 @@ public static class NewGameReset
     // Runs after Start + the first FixedUpdate (the same deferral SaveLoadRunner
     // uses for Apply) so every singleton exists and nothing re-inits over the
     // reset. Each Instance is null-guarded — order doesn't matter here.
+    /// <summary>
+    /// Clears a JOINING GUEST'S personal state, and nothing else.
+    ///
+    /// A guest never loads a save - no PendingLoad, so SaveCollector.Apply never
+    /// runs - and every inventory here lives on a DontDestroyOnLoad singleton.
+    /// So without this, a guest who quit a session carrying a full hotbar walked
+    /// back into the NEXT session still carrying it, having never saved. Exactly
+    /// the leak CLAUDE.md warns about for New Game, arriving through a door that
+    /// did not exist when that warning was written.
+    ///
+    /// ── Deliberately NOT the full New Game reset ─────────────────────────
+    /// Apply() below also clears story progress, HAL, the tutorial and the
+    /// galactic clock, and it AUTOSAVES at the end. A guest must inherit the
+    /// host's world state, not wipe its own copy of it, and must certainly not
+    /// write a save file for somebody else's world. This resets only what
+    /// belongs to the player: what they are carrying and how they feel.
+    ///
+    /// Vitals go to full because arriving is a fresh start, matching the pod
+    /// wake the guest sees.
+    ///
+    /// When the character system grows to carry money and hotbar between worlds
+    /// (the Terraria plan), THIS is the method that changes - it becomes "load
+    /// the character's belongings" instead of "clear them".
+    /// </summary>
+    public static void ApplyGuestArrival()
+    {
+        if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
+        if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);
+        if (WoodInventory.Instance != null) WoodInventory.Instance.SetWood(0);
+        if (CrystalInventory.Instance != null) CrystalInventory.Instance.SetCount(0);
+        if (SpaceDustInventory.Instance != null)
+        {
+            SpaceDustInventory.Instance.SetCount(0);
+            SpaceDustInventory.Instance.SetFilterUnlocked(false);
+        }
+        if (FishInventory.Instance != null) FishInventory.Instance.ClearInventory();
+        if (ResourceManager.Instance != null)
+        {
+            ResourceManager.Instance.ApplyState(100f, 100f, 100f);
+            ResourceManager.Instance.SetTotalDeaths(0);
+        }
+
+        Debug.Log("[NewGameReset] Guest arrival: personal inventory and vitals cleared.");
+    }
+
     public static void Apply()
     {
         // TutorialGate is pure statics, so its state SURVIVES a return to the
