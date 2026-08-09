@@ -103,6 +103,7 @@ public class MultiplayerSession : MonoBehaviour
 
     public static void ClearGuestArrival() => ArrivingAsGuest = false;
 
+
     readonly List<string> _roster = new List<string>();
 
     Lobby _lobby;
@@ -132,12 +133,29 @@ public class MultiplayerSession : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+        SceneManager.sceneLoaded += OnAnySceneLoaded;
+    }
+
+    /// Returning to the main menu ends the session properly.
+    ///
+    /// Without this the guest stays a member of the lobby on the service even
+    /// though their game is over — and Unity refuses to let you join a lobby you
+    /// are already in, which reads back as "wrong code or the session ended"
+    /// when you try to rejoin the same one.
+    void OnAnySceneLoaded(Scene scene, LoadSceneMode mode)
+    {
+        if (scene.name != "MainMenu") return;
+        if (Current == State.Idle) return;
+        var nm = NetworkManager.Singleton;
+        if (nm != null && (nm.IsListening || nm.IsClient || nm.IsServer)) nm.Shutdown();
+        CancelSession();
     }
 
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
         SceneManager.sceneLoaded -= OnSceneLoaded;
+        SceneManager.sceneLoaded -= OnAnySceneLoaded;
     }
 
     // ── Unity Services ───────────────────────────────────────────────────
@@ -608,11 +626,27 @@ public class MultiplayerSession : MonoBehaviour
         if (!IsHost && clientId == nm.LocalClientId)
         {
             string reason = string.IsNullOrEmpty(nm.DisconnectReason)
-                ? "The connection to the host dropped."
+                ? "The host ended the session."
                 : nm.DisconnectReason;
             Fail(reason);
             Debug.LogWarning($"[MultiplayerSession] Disconnected: {reason}");
+
+            // The host's world is gone and this client has no world state of its
+            // own worth standing in, so go back to the menu rather than leaving
+            // the player alone in a half-empty scene.
+            StartCoroutine(ReturnToMenu());
         }
+    }
+
+    /// Sends a dropped guest back to the main menu, after a beat so the reason
+    /// is readable rather than flashing past.
+    IEnumerator ReturnToMenu()
+    {
+        yield return new WaitForSecondsRealtime(2f);
+        var nm = NetworkManager.Singleton;
+        if (nm != null && (nm.IsListening || nm.IsClient)) nm.Shutdown();
+        // OnAnySceneLoaded tears the lobby membership down when MainMenu loads.
+        SceneManager.LoadScene("MainMenu");
     }
 
     // ── lobby upkeep ─────────────────────────────────────────────────────

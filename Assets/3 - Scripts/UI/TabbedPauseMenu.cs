@@ -90,15 +90,6 @@ public class TabbedPauseMenu : MonoBehaviour
 
     class HeaderDef : RowDef { }
 
-    /// A row that DOES something rather than storing a value. The label and the
-    /// button caption are Funcs because this menu builds its rows once, and a
-    /// session row has to read differently depending on whether you are hosting.
-    class ActionDef : RowDef
-    {
-        public Func<string> describe;
-        public Func<string> buttonLabel;
-        public Action onClick;
-    }
 
     class TabDef
     {
@@ -296,6 +287,7 @@ public class TabbedPauseMenu : MonoBehaviour
     void OpenPause()
     {
         _isPaused = true;
+        RefreshMultiplayerButton();
         Time.timeScale = 0f;
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
@@ -455,7 +447,39 @@ public class TabbedPauseMenu : MonoBehaviour
         BuildMenuButton(panelRT, "RESUME",    ClosePause,                            primary: true);
         BuildMenuButton(panelRT, "SAVE GAME", OpenSaveDialog,                        primary: false);
         BuildMenuButton(panelRT, "SETTINGS",  ShowSettingsPanel,                     primary: false);
+        // Its own top-level button, not a settings tab — hosting, joining and
+        // ending a session are things you DO, not preferences you configure.
+        if (FeatureVault.Multiplayer)
+            _multiplayerBtn = BuildMenuButton(panelRT, "MULTIPLAYER", OpenMultiplayerPanel, primary: false);
         BuildMenuButton(panelRT, "MAIN MENU", ReturnToMainMenu,                      primary: false);
+    }
+
+    Button _multiplayerBtn;
+    TextMeshProUGUI _multiplayerBtnLabel;
+
+    void OpenMultiplayerPanel()
+    {
+        ClosePauseDirect();
+        MultiplayerMenuUI.OpenInGame();
+    }
+
+    /// The button says what it will DO — "VIEW SESSION" while one is running,
+    /// "MULTIPLAYER" when there isn't. Refreshed on open, since a session can
+    /// start or end while the pause menu is shut.
+    void RefreshMultiplayerButton()
+    {
+        if (_multiplayerBtn == null) return;
+        if (_multiplayerBtnLabel == null)
+            _multiplayerBtnLabel = _multiplayerBtn.GetComponentInChildren<TextMeshProUGUI>();
+        if (_multiplayerBtnLabel == null) return;
+
+        var s = MultiplayerSession.Instance;
+        bool live = s != null && s.Current != MultiplayerSession.State.Idle
+                              && s.Current != MultiplayerSession.State.Failed;
+        string want = live
+            ? (s.IsHost && !string.IsNullOrEmpty(s.Code) ? $"SESSION · {s.Code}" : "VIEW SESSION")
+            : "MULTIPLAYER";
+        if (_multiplayerBtnLabel.text != want) _multiplayerBtnLabel.text = want;
     }
 
     Button BuildMenuButton(RectTransform parent, string label, Action onClick, bool primary)
@@ -961,51 +985,6 @@ public class TabbedPauseMenu : MonoBehaviour
             },
         };
 
-        // SESSION — only exists when multiplayer isn't vaulted, so with the flag
-        // off the pause menu is exactly the three tabs it has always had.
-        if (FeatureVault.Multiplayer)
-        {
-            _tabs.Add(new TabDef
-            {
-                name = "SESSION",
-                rows = new List<RowDef>
-                {
-                    new HeaderDef { label = "MULTIPLAYER" },
-                    new ActionDef
-                    {
-                        label = "Session",
-                        describe = SessionRowDescription,
-                        buttonLabel = SessionRowButton,
-                        onClick = () =>
-                        {
-                            ClosePauseDirect();
-                            MultiplayerMenuUI.OpenInGame();
-                        },
-                    },
-                },
-            });
-        }
-    }
-
-    /// Reads differently for a host, a guest, and someone playing alone — which
-    /// is why the action row takes Funcs rather than fixed strings.
-    static string SessionRowDescription()
-    {
-        var s = MultiplayerSession.Instance;
-        if (s == null || s.Current == MultiplayerSession.State.Idle)
-            return "Not in a session. Host this world, or join someone else's.";
-        if (s.IsHost)
-            return string.IsNullOrEmpty(s.Code)
-                ? "Hosting."
-                : $"Hosting — code <color=#57C46E>{s.Code}</color>";
-        return "Connected to another player's session.";
-    }
-
-    static string SessionRowButton()
-    {
-        var s = MultiplayerSession.Instance;
-        bool live = s != null && s.Current != MultiplayerSession.State.Idle;
-        return live ? "VIEW SESSION" : "MULTIPLAYER";
     }
 
     // ── Display resolution slider helpers ────────────────────────────
@@ -1187,7 +1166,6 @@ public class TabbedPauseMenu : MonoBehaviour
                     case SliderDef s: BuildSettingRow(tabPanelRT, s); break;
                     case ToggleDef t: BuildToggleRow(tabPanelRT, t); break;
                     case HeaderDef h: BuildHeaderRow(tabPanelRT, h); break;
-                    case ActionDef a: BuildActionRow(tabPanelRT, a); break;
                 }
             }
 
@@ -1778,90 +1756,6 @@ public class TabbedPauseMenu : MonoBehaviour
         lbl.raycastTarget = false;
     }
 
-    /// A description on the left and a single button on the right. Both texts
-    /// re-evaluate every time the row is shown, so one row can read "SESSION
-    /// LIVE — CODE 4821" for a host and "PLAY WITH SOMEONE" for everyone else.
-    void BuildActionRow(RectTransform parent, ActionDef def)
-    {
-        var rowRT = NewUI("Action_" + def.label, parent);
-        var rowLE = rowRT.gameObject.AddComponent<LayoutElement>();
-        rowLE.preferredHeight = 52f;
-        rowLE.flexibleHeight = 0f;
-
-        var lbl = NewText(rowRT, "Label", "", 14f, FontStyles.Bold, LabelColor);
-        var lblRT = lbl.rectTransform;
-        lblRT.anchorMin = new Vector2(0f, 0f); lblRT.anchorMax = new Vector2(1f, 1f);
-        lblRT.offsetMin = new Vector2(0f, 0f); lblRT.offsetMax = new Vector2(-210f, 0f);
-        lbl.alignment = TextAlignmentOptions.MidlineLeft;
-        lbl.enableWordWrapping = false;
-        lbl.raycastTarget = false;
-
-        var btnRT = NewUI("Button", rowRT);
-        btnRT.anchorMin = new Vector2(1f, 0.5f);
-        btnRT.anchorMax = new Vector2(1f, 0.5f);
-        btnRT.pivot = new Vector2(1f, 0.5f);
-        btnRT.anchoredPosition = new Vector2(0f, 0f);
-        btnRT.sizeDelta = new Vector2(196f, 38f);
-
-        var img = btnRT.gameObject.AddComponent<Image>();
-        img.sprite = GalaxyHudKit.RoundedSprite();
-        img.type = Image.Type.Sliced;
-        img.color = new Color32(0x10, 0x08, 0x2E, 0xE0);
-
-        var btn = btnRT.gameObject.AddComponent<Button>();
-        btn.targetGraphic = img;
-        var colors = btn.colors;
-        colors.normalColor = Color.white;
-        colors.highlightedColor = new Color32(0x7A, 0x42, 0xC8, 0xFF);
-        colors.pressedColor = new Color32(0xA0, 0x66, 0xE6, 0xFF);
-        colors.selectedColor = new Color32(0x7A, 0x42, 0xC8, 0xFF);
-        colors.fadeDuration = 0.12f;
-        btn.colors = colors;
-        btn.onClick.AddListener(() => def.onClick?.Invoke());
-        UiSfxPlayer.Attach(btn);
-
-        var btnLbl = NewText(btnRT, "Label", "", 13f, FontStyles.Bold, LabelColor);
-        Stretch(btnLbl.rectTransform);
-        btnLbl.alignment = TextAlignmentOptions.Center;
-        btnLbl.characterSpacing = 4f;
-        btnLbl.raycastTarget = false;
-
-        // Repaint on show — a session can open or close while the menu is shut.
-        var live = rowRT.gameObject.AddComponent<ActionRowRefresher>();
-        live.Init(def.describe, def.buttonLabel, lbl, btnLbl);
-    }
-
-    /// Keeps an action row's two labels current. Cheap: change-detected, and
-    /// only alive while the pause menu is open.
-    class ActionRowRefresher : MonoBehaviour
-    {
-        Func<string> _describe, _button;
-        TextMeshProUGUI _lbl, _btn;
-        string _lastA = null, _lastB = null;
-
-        public void Init(Func<string> describe, Func<string> button, TextMeshProUGUI lbl, TextMeshProUGUI btn)
-        {
-            _describe = describe; _button = button; _lbl = lbl; _btn = btn;
-            Refresh();
-        }
-
-        void OnEnable() { _lastA = _lastB = null; Refresh(); }
-        void Update() => Refresh();
-
-        void Refresh()
-        {
-            if (_describe != null && _lbl != null)
-            {
-                string a = _describe();
-                if (a != _lastA) { _lastA = a; _lbl.text = a; }
-            }
-            if (_button != null && _btn != null)
-            {
-                string b = _button();
-                if (b != _lastB) { _lastB = b; _btn.text = b; }
-            }
-        }
-    }
 
     // ── Panel swap + nav actions ─────────────────────────────────────
 

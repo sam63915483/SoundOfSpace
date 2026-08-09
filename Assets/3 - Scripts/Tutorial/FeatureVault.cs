@@ -74,8 +74,7 @@ public static class FeatureVault
     ///   • MultiplayerSession never auto-creates.
     /// The game boots and plays exactly as it did before any of this existed.
     ///
-    /// It does NOT gate the older in-game MultiplayerTestUI overlay (the raw
-    /// HOST/JOIN/IP box on the NetworkManager) — that is a separate debug tool
-    /// and still works on its own.
+    /// The old raw HOST/JOIN/IP overlay that used to sit on the NetworkManager
+    /// is gone — this is the only way in now.
     public const bool Multiplayer = true;
 }
