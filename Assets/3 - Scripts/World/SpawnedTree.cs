@@ -279,5 +279,9 @@ public class SpawnedTree : MonoBehaviour
         // SaplingGrowth.OnDisable drops it from the planet/local O2 counts.
         if (isPlanted) { Destroy(gameObject); return; }
         if (spawner != null) spawner.MarkCellMined(bodySlot, cellId);
+        // Tell the other players. No-ops in single player, and no-ops when THIS
+        // chop is itself a remote one being applied (or the two machines would
+        // bounce it back and forth forever).
+        WorldSync.ReportTreeMined(bodySlot, cellId);
     }
 }

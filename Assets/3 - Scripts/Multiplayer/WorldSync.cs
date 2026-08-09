@@ -47,6 +47,12 @@ public class WorldSync : MonoBehaviour
     // host -> client
     const byte KindSnapshotChunk   = 1;
 
+    // Deltas. Sent client -> host as a REQUEST, then host -> all as TRUTH.
+    // Same byte in both directions; the handler tells them apart by IsServer.
+    const byte KindTreeMined       = 2;   // bodyName + cellId
+    const byte KindMushroomHarvest = 3;   // bodyName + cellId
+    const byte KindMushroomPlanted = 4;   // JSON PlantedMushroomSave
+
     /// Bytes of JSON per message. Named messages are size-capped, and a world
     /// with a few hundred planted mushrooms comfortably exceeds one packet, so
     /// the snapshot is chunked by hand rather than trusting fragmentation.
@@ -72,6 +78,15 @@ public class WorldSync : MonoBehaviour
     /// True once this client has received and applied the host's world. World
     /// systems can use it to hold off on anything that would be overwritten.
     public static bool WorldReady { get; private set; }
+
+    /// <summary>
+    /// True while a delta from someone else is being applied locally.
+    ///
+    /// Applying a remote chop runs the SAME code a local chop runs, which would
+    /// report it straight back out - a loop that never settles. Every Report*
+    /// below no-ops while this is set.
+    /// </summary>
+    public static bool ApplyingRemote { get; private set; }
 
     bool _registered;
     bool _requested;
@@ -241,6 +256,15 @@ public class WorldSync : MonoBehaviour
             case KindSnapshotChunk when nm != null && !nm.IsServer:
                 ReceiveChunk(reader);
                 break;
+
+            case KindTreeMined:
+            case KindMushroomHarvest:
+                HandleCellDelta(kind, reader, nm != null && nm.IsServer);
+                break;
+
+            case KindMushroomPlanted:
+                HandleJsonDelta(kind, reader, nm != null && nm.IsServer);
+                break;
         }
     }
 
@@ -289,4 +313,151 @@ public class WorldSync : MonoBehaviour
     }
 
     static int Count<T>(System.Collections.Generic.List<T> l) => l != null ? l.Count : 0;
+
+    // -- deltas: report what I just did --------------------------------
+    //
+    // Callers fire these unconditionally; each no-ops in single player, so
+    // gameplay code never has to ask whether a session exists.
+
+    /// A tree was chopped here.
+    public static void ReportTreeMined(int bodySlot, long cellId)
+    {
+        if (ApplyingRemote || Instance == null) return;
+        var sp = TreeSpawner.Instance;
+        if (sp == null) return;
+        string body = sp.BodyNameForSlot(bodySlot);
+        if (string.IsNullOrEmpty(body)) return;
+        Instance.SendCellDelta(KindTreeMined, body, cellId);
+    }
+
+    /// A wild mushroom was harvested here.
+    public static void ReportMushroomHarvested(int bodySlot, long cellId)
+    {
+        if (ApplyingRemote || Instance == null) return;
+        var sp = Object.FindObjectOfType<MushroomSpawner>();
+        if (sp == null) return;
+        string body = sp.BodyNameForSlot(bodySlot);
+        if (string.IsNullOrEmpty(body)) return;
+        Instance.SendCellDelta(KindMushroomHarvest, body, cellId);
+    }
+
+    /// A spore was planted here. Carried as a PlantedMushroomSave so the
+    /// receiver rebuilds it through exactly the code the save system uses.
+    public static void ReportMushroomPlanted(MushroomGrowth mg)
+    {
+        if (ApplyingRemote || Instance == null || mg == null) return;
+        var body = mg.Body != null ? mg.Body : mg.GetComponentInParent<CelestialBody>();
+        if (body == null) return;
+
+        var bt = body.transform;
+        var save = new PlantedMushroomSave
+        {
+            bodyName       = body.bodyName,
+            localPos       = bt.InverseTransformPoint(mg.transform.position),
+            localRot       = Quaternion.Inverse(bt.rotation) * mg.transform.rotation,
+            growth         = mg.IsMature ? 1f : mg.Growth,
+            speciesKey     = mg.SpeciesKey,
+            sizeMultiplier = mg.SizeMultiplier,
+        };
+        Instance.SendJsonDelta(KindMushroomPlanted, JsonUtility.ToJson(save));
+    }
+
+    // -- delta transport -----------------------------------------------
+
+    void SendCellDelta(byte kind, string bodyName, long cellId)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || !_registered) return;
+
+        var w = new FastBufferWriter(bodyName.Length * 4 + 32, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(kind);
+            w.WriteValueSafe(bodyName);
+            w.WriteValueSafe(cellId);
+            if (nm.IsServer)
+                nm.CustomMessagingManager.SendNamedMessageToAll(Msg, w, NetworkDelivery.ReliableSequenced);
+            else
+                nm.CustomMessagingManager.SendNamedMessage(Msg, NetworkManager.ServerClientId, w, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    void SendJsonDelta(byte kind, string json)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || !_registered) return;
+
+        var w = new FastBufferWriter(json.Length * 4 + 32, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(kind);
+            w.WriteValueSafe(json);
+            if (nm.IsServer)
+                nm.CustomMessagingManager.SendNamedMessageToAll(Msg, w, NetworkDelivery.ReliableFragmentedSequenced);
+            else
+                nm.CustomMessagingManager.SendNamedMessage(Msg, NetworkManager.ServerClientId, w, NetworkDelivery.ReliableFragmentedSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    // -- delta application ----------------------------------------------
+
+    void HandleCellDelta(byte kind, FastBufferReader reader, bool iAmServer)
+    {
+        reader.ReadValueSafe(out string bodyName);
+        reader.ReadValueSafe(out long cellId);
+
+        // The host is the arbiter: it applies, then republishes to everyone so
+        // every machine converges on one answer. A client just applies.
+        //
+        // The ApplyingRemote guard matters here because SendNamedMessageToAll
+        // LOOPS BACK to the host (CustomMessageManager.cs:342) - without it the
+        // host would apply its own rebroadcast and report it again. Same trap
+        // that made the stasis door un-closable.
+        ApplyCellDelta(kind, bodyName, cellId);
+        if (iAmServer) SendCellDelta(kind, bodyName, cellId);
+    }
+
+    static void ApplyCellDelta(byte kind, string bodyName, long cellId)
+    {
+        ApplyingRemote = true;
+        try
+        {
+            if (kind == KindTreeMined)
+            {
+                var sp = TreeSpawner.Instance;
+                if (sp != null) sp.RemoteMineCell(bodyName, cellId);
+            }
+            else
+            {
+                var sp = Object.FindObjectOfType<MushroomSpawner>();
+                if (sp != null) sp.RemoteHarvestCell(bodyName, cellId);
+            }
+        }
+        finally { ApplyingRemote = false; }
+    }
+
+    void HandleJsonDelta(byte kind, FastBufferReader reader, bool iAmServer)
+    {
+        reader.ReadValueSafe(out string json);
+        ApplyJsonDelta(kind, json);
+        if (iAmServer) SendJsonDelta(kind, json);
+    }
+
+    static void ApplyJsonDelta(byte kind, string json)
+    {
+        ApplyingRemote = true;
+        try
+        {
+            if (kind != KindMushroomPlanted) return;
+            var save = JsonUtility.FromJson<PlantedMushroomSave>(json);
+            if (save != null) SaveCollector.SpawnPlantedMushroom(save);
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError("[WorldSync] Bad planted-mushroom delta: " + e.Message);
+        }
+        finally { ApplyingRemote = false; }
+    }
 }

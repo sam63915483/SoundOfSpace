@@ -630,6 +630,50 @@ public class MushroomSpawner : MonoBehaviour
         entry.cellPrefabIdx.Remove(cellId);
     }
 
+    // ─── Multiplayer ─────────────────────────────────────────────────────
+    //
+    // Keyed by (bodyName, cellId), never by slot index - slot order depends on
+    // scene enumeration and is not guaranteed to match between machines.
+
+    /// The body name for a slot, for building an outgoing delta.
+    public string BodyNameForSlot(int bodySlot)
+    {
+        if (bodySlot < 0 || bodySlot >= bodies.Count) return null;
+        var b = bodies[bodySlot].body;
+        return b != null ? b.bodyName : null;
+    }
+
+    int SlotForBodyName(string bodyName)
+    {
+        if (string.IsNullOrEmpty(bodyName)) return -1;
+        for (int i = 0; i < bodies.Count; i++)
+            if (bodies[i].body != null && bodies[i].body.bodyName == bodyName) return i;
+        return -1;
+    }
+
+    /// Somebody else harvested this mushroom.
+    ///
+    /// Unlike TreeSpawner.MarkCellMined, MarkCellConsumed only updates the
+    /// spawner's bookkeeping - it does NOT remove the prop (SpawnedMushroom
+    /// .Harvest destroys it separately). So the live instance is hunted down and
+    /// destroyed here, or the cell stops streaming while the cap stays standing.
+    public void RemoteHarvestCell(string bodyName, long cellId)
+    {
+        int slot = SlotForBodyName(bodyName);
+        if (slot < 0) return;
+        MarkCellConsumed(slot, cellId);
+
+        var all = SpawnedMushroom.AllMushrooms;
+        for (int i = all.Count - 1; i >= 0; i--)
+        {
+            var m = all[i];
+            if (m == null || m.IsPlanted) continue;
+            if (m.BodySlot != slot || m.CellId != cellId) continue;
+            Object.Destroy(m.gameObject);
+            break;
+        }
+    }
+
     // ─── Save integration ────────────────────────────────────────────────
 
     public System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, long>> GetConsumedCellsWithBody()

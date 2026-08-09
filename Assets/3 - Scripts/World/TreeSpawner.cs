@@ -426,6 +426,38 @@ public class TreeSpawner : MonoBehaviour
         if (entry.activeTrees.ContainsKey(cellId)) DespawnInternal(entry, cellId);
     }
 
+    // ─── Multiplayer ─────────────────────────────────────────────────────
+    //
+    // Cells are identified by (bodyName, cellId) rather than by slot index:
+    // slot order depends on scene enumeration and is NOT guaranteed to match
+    // between two machines, so sending an index would chop the wrong tree on
+    // the wrong planet.
+
+    /// The body name for a slot, for building an outgoing delta.
+    public string BodyNameForSlot(int bodySlot)
+    {
+        if (bodySlot < 0 || bodySlot >= bodies.Count) return null;
+        var b = bodies[bodySlot].body;
+        return b != null ? b.bodyName : null;
+    }
+
+    int SlotForBodyName(string bodyName)
+    {
+        if (string.IsNullOrEmpty(bodyName)) return -1;
+        for (int i = 0; i < bodies.Count; i++)
+            if (bodies[i].body != null && bodies[i].body.bodyName == bodyName) return i;
+        return -1;
+    }
+
+    /// Somebody else chopped this tree. MarkCellMined already despawns the live
+    /// instance, so marking is the whole job here.
+    public void RemoteMineCell(string bodyName, long cellId)
+    {
+        int slot = SlotForBodyName(bodyName);
+        if (slot < 0) return;
+        MarkCellMined(slot, cellId);
+    }
+
     // ─── Save integration ────────────────────────────────────────────────
 
     public System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, long>> GetMinedCellsWithBody()

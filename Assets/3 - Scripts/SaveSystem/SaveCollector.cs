@@ -1855,34 +1855,49 @@ public static class SaveCollector
 
         if (list == null || list.Count == 0) return;
 
-        foreach (var save in list)
-        {
-            if (save == null) continue;
-            var body = FindBodyByName(save.bodyName);
-            if (body == null)
-            {
-                Debug.LogWarning($"[SaveCollector] ApplyPlantedMushrooms: parent body '{save.bodyName}' not found — skipping one.");
-                continue;
-            }
-            var prefab = MushroomRegistry.PrefabFor(save.speciesKey);
-            if (prefab == null)
-            {
-                Debug.LogWarning($"[SaveCollector] ApplyPlantedMushrooms: no prefab for species '{save.speciesKey}' — skipping one.");
-                continue;
-            }
+        foreach (var save in list) SpawnPlantedMushroom(save);
+    }
 
-            // Mirror GhostPlacement.Place()'s mushroom branch.
-            var go = Object.Instantiate(prefab);
-            go.name = prefab.name + "_MushroomSapling";
-            go.transform.SetParent(body.transform, worldPositionStays: false);
-            go.transform.localPosition = save.localPos;
-            go.transform.localRotation = save.localRot;
-            SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
-            MushroomSpawner.EnsureSolidColliderOn(go);
-            var mg = go.GetComponent<MushroomGrowth>();
-            if (mg == null) mg = go.AddComponent<MushroomGrowth>();
-            mg.RestoreGrowth(body, save.speciesKey, save.growth, save.sizeMultiplier);   // >= 1 matures instantly
+    /// <summary>
+    /// Rebuilds ONE planted mushroom from its save record.
+    ///
+    /// Extracted from ApplyPlantedMushrooms so the multiplayer layer can rebuild
+    /// a single spore somebody else just planted without clearing and respawning
+    /// every mushroom on the planet - which is what calling the bulk apply would
+    /// do, and it would visibly pop every plant on screen.
+    ///
+    /// Both callers therefore share one definition of "what a planted mushroom
+    /// is", which is the point: a spore planted over the network and a spore
+    /// restored from disk cannot drift apart.
+    /// </summary>
+    public static void SpawnPlantedMushroom(PlantedMushroomSave save)
+    {
+        if (save == null) return;
+
+        var body = FindBodyByName(save.bodyName);
+        if (body == null)
+        {
+            Debug.LogWarning($"[SaveCollector] SpawnPlantedMushroom: parent body '{save.bodyName}' not found — skipping.");
+            return;
         }
+        var prefab = MushroomRegistry.PrefabFor(save.speciesKey);
+        if (prefab == null)
+        {
+            Debug.LogWarning($"[SaveCollector] SpawnPlantedMushroom: no prefab for species '{save.speciesKey}' — skipping.");
+            return;
+        }
+
+        // Mirror GhostPlacement.Place()'s mushroom branch.
+        var go = Object.Instantiate(prefab);
+        go.name = prefab.name + "_MushroomSapling";
+        go.transform.SetParent(body.transform, worldPositionStays: false);
+        go.transform.localPosition = save.localPos;
+        go.transform.localRotation = save.localRot;
+        SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
+        MushroomSpawner.EnsureSolidColliderOn(go);
+        var mg = go.GetComponent<MushroomGrowth>();
+        if (mg == null) mg = go.AddComponent<MushroomGrowth>();
+        mg.RestoreGrowth(body, save.speciesKey, save.growth, save.sizeMultiplier);   // >= 1 matures instantly
     }
 
     static void ApplyLooseParts(List<LoosePartSave> list)

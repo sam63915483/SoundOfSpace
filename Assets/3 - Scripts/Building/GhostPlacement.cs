@@ -763,6 +763,9 @@ public class GhostPlacement : MonoBehaviour
             var mg = real.GetComponent<MushroomGrowth>();
             if (mg == null) mg = real.AddComponent<MushroomGrowth>();
             mg.Init(parentBody, entry.mushroomSpecies);
+            // Tell the other players, as a PlantedMushroomSave - so a spore they
+            // receive is rebuilt by exactly the code that restores one from disk.
+            WorldSync.ReportMushroomPlanted(mg);
         }
         else if (entry.isSapling)
         {

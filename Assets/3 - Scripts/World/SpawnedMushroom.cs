@@ -44,6 +44,11 @@ public class SpawnedMushroom : MonoBehaviour
     float mushroomScale = 1f;
 
     public bool IsDead => dead;
+    /// Identity of a streamed (seed-grid) mushroom, so a remote harvest can
+    /// find this exact instance. Meaningless when IsPlanted.
+    public int BodySlot => bodySlot;
+    public long CellId => cellId;
+    public bool IsPlanted => isPlanted;
     public float MushroomScale => mushroomScale;
     public string SpeciesKey => speciesKey;
 
@@ -262,7 +267,13 @@ public class SpawnedMushroom : MonoBehaviour
         // Planted mushrooms aren't cell-based: just remove the instance.
         // Streamed ones ALSO destroy — MarkCellConsumed only drops the cell from
         // the spawner's live/pool bookkeeping so it never streams back in.
-        if (!isPlanted && spawner != null) spawner.MarkCellConsumed(bodySlot, cellId);
+        if (!isPlanted && spawner != null)
+        {
+            spawner.MarkCellConsumed(bodySlot, cellId);
+            // Tell the other players. Planted mushrooms are skipped: they are not
+            // cell-based, so there is no id to send - Phase 3 gives them one.
+            WorldSync.ReportMushroomHarvested(bodySlot, cellId);
+        }
         Destroy(gameObject);
     }
 
