@@ -147,10 +147,40 @@ public class StasisPodSave : MonoBehaviour
         StartCoroutine(Ritual(download: true));
     }
 
+    /// <summary>
+    /// THE POD HEALS ALL WOUNDS. Hunger, thirst, health and suit oxygen all go
+    /// back to full.
+    ///
+    /// Sam's rule: the pod is the safe place, and standing sealed inside it
+    /// always resets you to a baseline. That makes it the one reliable way out
+    /// of a death spiral — bleeding out with no food and an empty suit — and it
+    /// gives the save ritual a second reason to exist beyond writing a file.
+    ///
+    /// Called from Ritual, which is the single choke point every route into the
+    /// pod already passes through: the wake on boot or load, PlayDownloadWake
+    /// (a guest arriving, and dying in co-op), and sealing yourself in to save.
+    ///
+    /// The ship's hull and reserve oxygen are deliberately untouched — those are
+    /// the shuttle's supply, refilled by docking, not by climbing into a pod.
+    /// </summary>
+    public static void RestoreVitalsToFull()
+    {
+        var rm = ResourceManager.Instance;
+        if (rm != null) rm.ApplyState(100f, 100f, 100f);   // hunger, thirst, health
+
+        var ox = OxygenManager.Instance;
+        if (ox != null) ox.RefillSuitToFull();
+    }
+
     IEnumerator Ritual(bool download)
     {
         _running = true;
         _labelBase = download ? "DOWNLOADING" : "UPLOADING";
+
+        // Heal FIRST, and on both halves of the ritual. On an upload that order
+        // matters: the save is written further down, so the file records the
+        // healed state and loading it later puts you back on your feet too.
+        RestoreVitalsToFull();
 
         // Remember the REAL gate state before the cinematic lock. The lock below
         // is transient — it exists to stop the player walking out of the pod

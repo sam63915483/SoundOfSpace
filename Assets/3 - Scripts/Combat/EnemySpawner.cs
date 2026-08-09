@@ -212,6 +212,15 @@ public class EnemySpawner : MonoBehaviour
             }
             if (tooClose) continue;
 
+            // Keep out of the village and the ship school. EnemySpawner was the
+            // ONE spawner that never honoured this — trees, crystals, mushrooms,
+            // grass and the alien NPCs all do — so aliens were the only thing in
+            // the game that could appear standing among the houses. It went
+            // unnoticed while the field only ever built itself around the host;
+            // a second player who spends their time in the village makes it
+            // obvious.
+            if (SpawnExclusionZone.IsExcluded(surfacePos)) continue;
+
             if (LebronLight.IsPositionProtected(surfacePos)) continue;
             if (TorchAura.IsPositionProtected(surfacePos)) continue;
             if (ConcertStageHub.IsBlockedForEnemy(surfacePos)) continue;

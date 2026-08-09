@@ -65,6 +65,7 @@ public class EnemySync : MonoBehaviour
     const byte KindHit          = 6;   // client -> host
     const byte KindPlayerDamage = 7;   // host -> ONE client
     const byte KindGunshot      = 8;   // client -> host   "I fired; wake them up"
+    const byte KindPerception   = 9;   // host -> ONE client: that client's own spot-meters
 
     /// 10 Hz. Fast enough that a guest sees an enemy within a few centimetres of
     /// where the host has it — which is what stops "hit by something I can't
@@ -86,10 +87,6 @@ public class EnemySync : MonoBehaviour
     /// can delete anything on the planet is worth bounding anyway.
     const float MaxReportedDamage = 500f;
 
-    /// "This enemy's target is nobody a byte can name." Client ids are ulong and
-    /// climb with reconnects; a session that somehow reached 255 loses the guest's
-    /// spot-meter and nothing else, which is the right way for it to degrade.
-    const byte NoTargetId = 255;
 
     bool _registered;
 
@@ -98,6 +95,8 @@ public class EnemySync : MonoBehaviour
     readonly HashSet<uint> _reportedDead = new HashSet<uint>();
     readonly List<uint> _sweep = new List<uint>();
     readonly List<EnemyController> _poseBatch = new List<EnemyController>();
+    readonly List<EnemyController> _perceptionBatch = new List<EnemyController>();
+    readonly HashSet<uint> _perceptionSeen = new HashSet<uint>();
     uint _nextNetId = 1;
     float _nextPoseAt;
 
@@ -238,6 +237,60 @@ public class EnemySync : MonoBehaviour
         if (Time.unscaledTime < _nextPoseAt) return;
         _nextPoseAt = Time.unscaledTime + PoseInterval;
         SendPoses(nm);
+        SendPerception(nm);
+    }
+
+    /// <summary>
+    /// Each client's OWN spot-meters.
+    ///
+    /// Suspicion is per player now, so it cannot ride the pose batch — that is
+    /// one broadcast message and every client would receive the same number.
+    /// Sending it per client is what makes a guest's HUD show how close the
+    /// aliens are to noticing THEM rather than how close they are to noticing
+    /// the host.
+    ///
+    /// Only enemies that have actually started noticing that player are listed,
+    /// which in practice is nought to a handful — far smaller than the pose
+    /// stream it rides alongside.
+    /// </summary>
+    void SendPerception(NetworkManager nm)
+    {
+        var ids = nm.ConnectedClientsIds;
+        for (int c = 0; c < ids.Count; c++)
+        {
+            ulong client = ids[c];
+            if (client == nm.LocalClientId) continue;
+
+            _perceptionBatch.Clear();
+            foreach (var kv in _known)
+            {
+                var e = kv.Value;
+                if (e == null || e.IsDying) continue;
+                var v = e.Vision;
+                if (v == null) continue;
+                if (v.SuspicionFor(client) <= 0.004f) continue;   // below one byte of meter
+                _perceptionBatch.Add(e);
+            }
+            if (_perceptionBatch.Count == 0) continue;
+
+            for (int start = 0; start < _perceptionBatch.Count; start += PosesPerMessage)
+            {
+                int count = Mathf.Min(PosesPerMessage, _perceptionBatch.Count - start);
+                int from = start;
+                Write(w =>
+                {
+                    w.WriteValueSafe(KindPerception);
+                    w.WriteValueSafe((ushort)count);
+                    for (int i = 0; i < count; i++)
+                    {
+                        var e = _perceptionBatch[from + i];
+                        w.WriteValueSafe(e.NetId);
+                        w.WriteValueSafe((byte)Mathf.Clamp(
+                            Mathf.RoundToInt(e.Vision.SuspicionFor(client) * 255f), 0, 255));
+                    }
+                }, client, NetworkDelivery.UnreliableSequenced, 8 + count * 6);
+            }
+        }
     }
 
     /// Hand an identity to anything that does not have one yet, and tell
@@ -331,13 +384,6 @@ public class EnemySync : MonoBehaviour
                     WriteQuat(w, Quaternion.Inverse(pt.rotation) * e.transform.rotation);
                     w.WriteValueSafe((byte)Mathf.Clamp(Mathf.RoundToInt(e.CurrentAnimSpeed * 255f), 0, 255));
                     w.WriteValueSafe((byte)e.State);
-                    // How close it is to noticing, and WHO it is noticing. The
-                    // pair is what lets a guest's spot-meter fill for aliens
-                    // looking at them and stay dark for aliens looking at the
-                    // host. NoTargetId when the id will not fit a byte, which
-                    // costs a guest the meter and nothing else.
-                    w.WriteValueSafe((byte)Mathf.Clamp(Mathf.RoundToInt(e.CurrentSuspicion01 * 255f), 0, 255));
-                    w.WriteValueSafe(e.TargetClientId <= 254 ? (byte)e.TargetClientId : NoTargetId);
                 }
             },
             // Unreliable: every pose is an ABSOLUTE position, so a dropped one
@@ -427,6 +473,7 @@ public class EnemySync : MonoBehaviour
             case KindSpawn when !server:        HandleSpawn(reader); break;
             case KindSyncEnd when !server:      _synced = true; break;
             case KindPose when !server:         HandlePoses(reader); break;
+            case KindPerception when !server:   HandlePerception(reader); break;
             case KindDeath when !server:        HandleDeath(reader, nm); break;
             case KindDespawn when !server:      HandleDespawn(reader); break;
             case KindPlayerDamage when !server: HandlePlayerDamage(reader); break;
@@ -465,7 +512,7 @@ public class EnemySync : MonoBehaviour
         _puppets[netId] = ec;
         // Seeded standing still and unaware; the first real pose lands within
         // 100 ms and corrects both.
-        ec.ReceiveNetworkPose(localPos, localRot, 0f, EnemyController.AIState.Docile, 0f, false);
+        ec.ReceiveNetworkPose(localPos, localRot, 0f, EnemyController.AIState.Docile);
     }
 
     void HandlePoses(FastBufferReader reader)
@@ -480,17 +527,13 @@ public class EnemySync : MonoBehaviour
             Quaternion localRot = ReadQuat(reader);
             reader.ReadValueSafe(out byte animByte);
             reader.ReadValueSafe(out byte stateByte);
-            reader.ReadValueSafe(out byte suspicionByte);
-            reader.ReadValueSafe(out byte targetByte);
 
             // Every entry is read whether or not we can use it — bailing early
             // would leave the rest of the batch unparsed and desync the reader
             // for every enemy after it in the same message.
             if (_puppets.TryGetValue(netId, out var ec) && ec != null)
                 ec.ReceiveNetworkPose(localPos, localRot, animByte / 255f,
-                                      (EnemyController.AIState)stateByte,
-                                      suspicionByte / 255f,
-                                      targetByte != NoTargetId && targetByte == LocalClientId);
+                                      (EnemyController.AIState)stateByte);
             else
                 sawUnknown = true;
         }
@@ -504,6 +547,30 @@ public class EnemySync : MonoBehaviour
             _synced = false;
             _nextRequestAt = Time.unscaledTime + 1f;
         }
+    }
+
+    /// <summary>
+    /// Our own spot-meters. Every enemy not named in this message has stopped
+    /// noticing us, so they are cleared — otherwise an arrow would stick on
+    /// screen at whatever value it last heard.
+    /// </summary>
+    void HandlePerception(FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out ushort count);
+
+        _perceptionSeen.Clear();
+        for (int i = 0; i < count; i++)
+        {
+            reader.ReadValueSafe(out uint netId);
+            reader.ReadValueSafe(out byte suspicionByte);
+            _perceptionSeen.Add(netId);
+            if (_puppets.TryGetValue(netId, out var ec) && ec != null)
+                ec.ReceiveNetworkPerception(suspicionByte / 255f);
+        }
+
+        foreach (var kv in _puppets)
+            if (kv.Value != null && !_perceptionSeen.Contains(kv.Key))
+                kv.Value.ReceiveNetworkPerception(0f);
     }
 
     void HandleDeath(FastBufferReader reader, NetworkManager nm)

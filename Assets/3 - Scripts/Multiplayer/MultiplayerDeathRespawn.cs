@@ -30,11 +30,17 @@ public class MultiplayerDeathRespawn : MonoBehaviour
 {
     public static MultiplayerDeathRespawn Instance { get; private set; }
 
-    /// Health handed back on respawn. Matches ResourceManager's own legacy
-    /// respawn so dying feels the same in both modes.
-    const float RespawnHealth = 25f;
-    const float RespawnHunger = 10f;
-    const float RespawnThirst = 10f;
+    /// Vitals handed back on respawn. FULL, because you wake up in the stasis
+    /// pod and the pod heals all wounds (StasisPodSave.RestoreVitalsToFull).
+    ///
+    /// These used to be 25/10/10, matching ResourceManager's legacy respawn. That
+    /// dropped you out of the pod one bad step from dying again, with no food and
+    /// no water — a death spiral you could not climb out of. The pod's own ritual
+    /// restores full anyway; these keep the promise even if the pod is missing
+    /// from the scene, so the two can never disagree.
+    const float RespawnHealth = 100f;
+    const float RespawnHunger = 100f;
+    const float RespawnThirst = 100f;
 
     /// Beat between dying and waking, so death registers as an event rather
     /// than a teleport.
@@ -158,8 +164,12 @@ public class MultiplayerDeathRespawn : MonoBehaviour
         SecondPlayerArrival.SeatInPod();
 
         // Vitals BEFORE the wake, so the HUD is already correct as it fades up.
+        // The pod's own ritual restores these too; doing it here as well means a
+        // scene with no StasisPodSave still keeps the promise.
         var rm = ResourceManager.Instance;
         if (rm != null) rm.ApplyState(RespawnHunger, RespawnThirst, RespawnHealth);
+        var ox = OxygenManager.Instance;
+        if (ox != null) ox.RefillSuitToFull();   // an empty suit would kill you again immediately
 
         // The genuine article — the same DOWNLOADING wake a joining guest gets,
         // not a lookalike.

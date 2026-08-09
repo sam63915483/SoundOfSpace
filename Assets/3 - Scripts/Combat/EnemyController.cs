@@ -1523,6 +1523,10 @@ public class EnemyController : MonoBehaviour, IDamageable
     {
         _killerIsLocal  = false;
         _killerClientId = shooterClientId;
+        // Alert onto the SHOOTER by name. ApplyDamage's generic ForceAlert would
+        // peg whoever is nearest, which in co-op can be the other player — so
+        // shooting from cover used to send the alien at your friend.
+        if (_vision != null) _vision.ForceAlertOn(shooterClientId);
         ApplyDamage(amount, true);
     }
 
@@ -2037,26 +2041,26 @@ public class EnemyController : MonoBehaviour, IDamageable
         }
     }
 
-    /// How close this enemy is to noticing its current target, for the pose
-    /// stream. Paired with TargetClientId, which says who that is.
-    public float CurrentSuspicion01 => _vision != null ? _vision.Suspicion01 : 0f;
-
     /// <summary>
-    /// Host → guest: where this enemy is and what it is doing.
+    /// Host → guest: how close this enemy is to noticing ME, specifically.
     ///
-    /// `suspicion` describes the enemy's feelings about `targetIsMe`'s player, so
-    /// it is only forwarded to the HUD when that target is us — otherwise a guest
-    /// would watch their spot-meter fill because an alien on the far side of the
-    /// planet had noticed the host.
+    /// Arrives separately from the pose because suspicion is PER PLAYER now, and
+    /// the pose batch is one broadcast that every client receives identically —
+    /// a guest reading a shared number would watch their own spot-meter fill
+    /// because an alien across the planet had noticed the host.
     /// </summary>
-    public void ReceiveNetworkPose(Vector3 localPos, Quaternion localRot, float animSpeed,
-                                   AIState state, float suspicion, bool targetIsMe)
+    public void ReceiveNetworkPerception(float suspicionAboutMe)
     {
         if (!_isPuppet || _dying) return;
-
         if (_vision != null)
-            _vision.ApplyNetworkPerception(targetIsMe ? suspicion : 0f,
-                                           targetIsMe && suspicion > 0.001f);
+            _vision.ApplyNetworkPerception(suspicionAboutMe, suspicionAboutMe > 0.001f);
+    }
+
+    /// <summary>Host → guest: where this enemy is and what it is doing.</summary>
+    public void ReceiveNetworkPose(Vector3 localPos, Quaternion localRot, float animSpeed,
+                                   AIState state)
+    {
+        if (!_isPuppet || _dying) return;
 
         _netLocalPos  = localPos;
         _netLocalRot  = localRot;

@@ -183,6 +183,15 @@ public class OxygenManager : MonoBehaviour
 
     public void ResetForNewGame() => ApplyState(suitMax, hullMax, reserveMax, false);
 
+    /// <summary>
+    /// Top the SUIT back up to full, leaving the ship's hull and reserve alone.
+    ///
+    /// For the stasis pod, which restores the person and not the vehicle — the
+    /// hull and reserve are the shuttle's own supply and are refilled by docking,
+    /// not by climbing into the pod.
+    /// </summary>
+    public void RefillSuitToFull() => suitO2 = suitMax;
+
     float Midpoint => atmosphereTopAltitude * 0.5f;
 
     /// <summary>Set true by AirlockController while the player stands in a sealed, pressurized

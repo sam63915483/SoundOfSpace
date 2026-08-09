@@ -48,6 +48,7 @@ public class EnemyVision : MonoBehaviour
     /// seen.
     /// </summary>
     public Transform VisibleTarget { get; private set; }
+    /// The highest meter across all players — what IsAlerted and the HUD read.
     public float Suspicion01 { get; private set; }
     public bool IsAlerted => Suspicion01 >= 1f;
     public bool HasLastSeen { get; private set; }
@@ -74,9 +75,31 @@ public class EnemyVision : MonoBehaviour
         HasLastSeen = true;
     }
 
+    // ── One meter PER PLAYER ─────────────────────────────────────────────
+    //
+    // ⚠️ Suspicion used to be a single float on the enemy. That is fine with one
+    // player and unplayable with two: the enemy could only ever be "onto" one
+    // person, so the other could walk up, stand in its face and be ignored — and
+    // when the nearest player changed, the meter did not drain, it was HANDED to
+    // somebody else. That is exactly the "the red arrow fills and then the alien
+    // turns away" the second playtest reported.
+    //
+    // Each player now fills and decays their own meter on precisely the single
+    // player rules, and the enemy reacts to whoever is furthest along.
+    struct Track
+    {
+        public ulong ClientId;
+        public Transform T;
+        public bool Visible;
+        public float Edge;        // 0 = dead centre of the vision volume, 1 = its boundary
+        public bool Sprinting;
+        public float Suspicion;
+    }
+    readonly System.Collections.Generic.List<Track> _tracks =
+        new System.Collections.Generic.List<Track>(4);
+
     bool _wasSeeing;
-    float _lastEdgeFrac;              // 0 = dead-center of the vision volume, 1 = at its boundary (last sighting)
-    Transform _player;
+    Transform _player;                // nearest of anybody — the fallback to point at
     EnemyController _owner;
     float _nextLosCheck;
     const float LosInterval = 0.15f;
@@ -107,21 +130,72 @@ public class EnemyVision : MonoBehaviour
             ScanForPlayers();
         }
 
-        if (CanSeePlayerNow)
+        IntegrateSuspicion();
+        UpdateDebugCone();
+    }
+
+    /// <summary>
+    /// Advance every player's own meter, then decide who this enemy is onto.
+    ///
+    /// The fill maths per player is byte-for-byte the single-player rule: centre
+    /// of the cone fills in centerSpotSeconds, the boundary in edgeSpotSeconds,
+    /// sprinting multiplies the RATE, searching multiplies it again. With one
+    /// player in the roster this reduces to exactly what it always did.
+    /// </summary>
+    void IntegrateSuspicion()
+    {
+        bool searching = _owner != null && _owner.State == EnemyController.AIState.Searching;
+        float dt = Time.deltaTime;
+
+        bool anyVisible = false;
+        float highest = 0f;
+        int bestIdx = -1;
+        float bestSus = -1f, bestSqr = float.MaxValue;
+
+        for (int i = 0; i < _tracks.Count; i++)
         {
-            // Center → fast (centerSpotSeconds), boundary → slow (edgeSpotSeconds).
-            float spotSeconds = Mathf.Lerp(centerSpotSeconds, edgeSpotSeconds, _lastEdgeFrac);
-            float rate = 1f / Mathf.Max(0.05f, spotSeconds);
-            if (_targetSprinting) rate *= sprintFillMult;
-            if (_owner != null && _owner.State == EnemyController.AIState.Searching) rate *= searchFillMult;
-            Suspicion01 = Mathf.Min(1f, Suspicion01 + rate * Time.deltaTime);
-        }
-        else
-        {
-            Suspicion01 = Mathf.Max(0f, Suspicion01 - suspicionDecayPerSec * Time.deltaTime);
+            var tr = _tracks[i];
+            if (tr.T == null) continue;
+
+            if (tr.Visible)
+            {
+                float spotSeconds = Mathf.Lerp(centerSpotSeconds, edgeSpotSeconds, tr.Edge);
+                float rate = 1f / Mathf.Max(0.05f, spotSeconds);
+                if (tr.Sprinting) rate *= sprintFillMult;
+                if (searching) rate *= searchFillMult;
+                tr.Suspicion = Mathf.Min(1f, tr.Suspicion + rate * dt);
+                anyVisible = true;
+            }
+            else
+            {
+                tr.Suspicion = Mathf.Max(0f, tr.Suspicion - suspicionDecayPerSec * dt);
+            }
+            _tracks[i] = tr;
+
+            if (tr.Suspicion > highest) highest = tr.Suspicion;
+
+            // Who the enemy is dealing with: whoever it is FURTHEST ALONG on,
+            // ties broken by distance. Not simply the nearest — being nearer than
+            // somebody the alien has almost finished noticing should not steal
+            // its attention and reset the encounter.
+            float d2 = (tr.T.position - transform.position).sqrMagnitude;
+            bool better = tr.Suspicion > bestSus + 1e-4f
+                       || (Mathf.Abs(tr.Suspicion - bestSus) <= 1e-4f && d2 < bestSqr);
+            if (tr.Suspicion > 0f && better) { bestSus = tr.Suspicion; bestSqr = d2; bestIdx = i; }
         }
 
-        UpdateDebugCone();
+        Suspicion01     = highest;
+        CanSeePlayerNow = anyVisible;
+        VisibleTarget   = bestIdx >= 0 ? _tracks[bestIdx].T : null;
+    }
+
+    /// This enemy's meter for one specific player — what the sync layer sends a
+    /// guest so their own spot-meter reads true rather than showing the host's.
+    public float SuspicionFor(ulong clientId)
+    {
+        for (int i = 0; i < _tracks.Count; i++)
+            if (_tracks[i].ClientId == clientId) return _tracks[i].Suspicion;
+        return 0f;
     }
 
     /// <summary>
@@ -135,12 +209,11 @@ public class EnemyVision : MonoBehaviour
     /// they briefly did become the nearest, the enemy would glance over and then
     /// switch back to the host, which is the "sees me then looks away" symptom.
     ///
-    /// Among everyone visible, the NEAREST one wins — that keeps Sam's rule that
-    /// stepping in closer pulls a mob off your friend, while making the choice
-    /// out of players the enemy can genuinely see rather than out of all of them.
-    ///
-    /// Suspicion is deliberately NOT reset when the seen player changes. The
-    /// meter means "somebody is over there".
+    /// EVERY player is tested, with no early-out on distance. An earlier attempt
+    /// skipped anyone farther than someone already visible — which is a correct
+    /// way to find the nearest visible player and a catastrophic way to run
+    /// perception, because it silently reproduced the nearest-only bug it was
+    /// meant to fix.
     ///
     /// Cost: the bicone test is cheap and rejects almost everyone before the
     /// raycast, so this is one extra ray per VISIBLE player per 0.15 s, on the
@@ -148,12 +221,13 @@ public class EnemyVision : MonoBehaviour
     /// </summary>
     void ScanForPlayers()
     {
-        Transform seen = null, nearestAny = null;
-        float seenSqr = float.MaxValue, nearestSqr = float.MaxValue;
-        float seenEdge = 0f;
-        bool seenSprinting = false;
-
         var all = PlayerRoster.All();
+
+        Transform nearestAny = null;
+        float nearestSqr = float.MaxValue;
+        bool anyVisible = false;
+        Transform freshestSeen = null;
+
         for (int i = 0; i < all.Count; i++)
         {
             var t = all[i].Transform;
@@ -162,34 +236,47 @@ public class EnemyVision : MonoBehaviour
             float d2 = (t.position - transform.position).sqrMagnitude;
             if (d2 < nearestSqr) { nearestSqr = d2; nearestAny = t; }
 
-            if (d2 >= seenSqr) continue;             // already have someone closer in view
-            if (!CanSee(t, out float edge)) continue;
-            seenSqr = d2; seen = t; seenEdge = edge; seenSprinting = all[i].IsSprinting;
+            bool visible = CanSee(t, out float edge);
+            if (visible) { anyVisible = true; if (freshestSeen == null || d2 < nearestSqr) freshestSeen = t; }
+
+            int slot = TrackIndex(all[i].ClientId);
+            Track tr = slot >= 0 ? _tracks[slot] : new Track { ClientId = all[i].ClientId };
+            tr.T         = t;
+            tr.Sprinting = all[i].IsSprinting;
+            tr.Visible   = visible;
+            if (visible) tr.Edge = edge;    // held from the last sighting otherwise
+            if (slot >= 0) _tracks[slot] = tr; else _tracks.Add(tr);
+        }
+
+        // Drop anybody who left the game, so their meter cannot linger and keep
+        // an enemy alerted at a player who is not here any more.
+        for (int i = _tracks.Count - 1; i >= 0; i--)
+        {
+            bool present = false;
+            for (int j = 0; j < all.Count; j++)
+                if (all[j].Transform != null && all[j].ClientId == _tracks[i].ClientId) { present = true; break; }
+            if (!present) _tracks.RemoveAt(i);
         }
 
         // Kept even with nobody in view: ForceAlert and the investigate facing
         // need someone to point at when an enemy is alerted without seeing.
         _player = nearestAny;
 
-        VisibleTarget   = seen;
-        CanSeePlayerNow = seen != null;
-
-        if (seen != null)
+        if (anyVisible)
         {
-            _lastEdgeFrac    = seenEdge;
-            _targetSprinting = seenSprinting;
             if (!_wasSeeing) SpottingSince = Time.time;
-            RecordLastSeen(seen.position);
+            if (freshestSeen != null) RecordLastSeen(freshestSeen.position);
         }
-        else
-        {
-            SpottingSince = float.MaxValue;
-            _targetSprinting = false;
-        }
-        _wasSeeing = CanSeePlayerNow;
+        else SpottingSince = float.MaxValue;
+        _wasSeeing = anyVisible;
     }
 
-    bool _targetSprinting;
+    int TrackIndex(ulong clientId)
+    {
+        for (int i = 0; i < _tracks.Count; i++)
+            if (_tracks[i].ClientId == clientId) return i;
+        return -1;
+    }
 
     /// Can this enemy see `target` right now? `edgeFrac` reports 0 for dead
     /// centre of the vision volume and 1 at its boundary, which is what decides
@@ -239,27 +326,72 @@ public class EnemyVision : MonoBehaviour
     /// <summary>Force full alert (e.g. the enemy was shot by the player).</summary>
     public void ForceAlert()
     {
-        Suspicion01 = 1f;
-        CanSeePlayerNow = true;
         // An enemy can be alerted (shot, or recruited by a screaming packmate)
-        // in the same frame it spawned, before its first Update has resolved a
-        // target — without this it would alert with no last-seen point and
+        // in the same frame it spawned, before its first Update has resolved
+        // anybody — without this it would alert with no last-seen point and
         // immediately give up.
         if (_player == null) ScanForPlayers();
-        if (_player != null) RecordLastSeen(_player.position);
+        if (_player == null) return;
+
+        AlertTrackNearest(_player.position);
+        RecordLastSeen(_player.position);
     }
 
     /// <summary>
     /// Force full alert toward a SPECIFIC place — a gunshot, whose origin is
     /// known exactly and is not necessarily near whoever this enemy had resolved
     /// as its nearest player. In co-op that distinction is the whole point: a
-    /// guest's shot must send them at the guest.
+    /// guest's shot must send the aliens at the guest, and the player standing
+    /// closest to the bang is the one who fired it.
     /// </summary>
     public void ForceAlert(Vector3 heardAt)
     {
+        if (_tracks.Count == 0) ScanForPlayers();
+        AlertTrackNearest(heardAt);
+        RecordLastSeen(heardAt);
+    }
+
+    /// <summary>
+    /// Force full alert on ONE named player — someone whose bullet just landed.
+    /// The shooter is known exactly here, so there is no need to infer them from
+    /// a position, and a guest shooting from cover must not alert the enemy onto
+    /// whoever happens to be standing nearer.
+    /// </summary>
+    public void ForceAlertOn(ulong clientId)
+    {
+        if (_tracks.Count == 0) ScanForPlayers();
+        int slot = TrackIndex(clientId);
+        if (slot < 0) { ForceAlert(); return; }
+
+        var tr = _tracks[slot];
+        tr.Suspicion = 1f;
+        _tracks[slot] = tr;
         Suspicion01 = 1f;
         CanSeePlayerNow = true;
-        RecordLastSeen(heardAt);
+        VisibleTarget = tr.T;
+        if (tr.T != null) RecordLastSeen(tr.T.position);
+    }
+
+    /// Peg the meter of whichever tracked player is nearest `worldPos`, and make
+    /// them this enemy's target.
+    void AlertTrackNearest(Vector3 worldPos)
+    {
+        int best = -1;
+        float bestSqr = float.MaxValue;
+        for (int i = 0; i < _tracks.Count; i++)
+        {
+            if (_tracks[i].T == null) continue;
+            float d2 = (_tracks[i].T.position - worldPos).sqrMagnitude;
+            if (d2 < bestSqr) { bestSqr = d2; best = i; }
+        }
+        if (best < 0) return;
+
+        var tr = _tracks[best];
+        tr.Suspicion = 1f;
+        _tracks[best] = tr;
+        Suspicion01 = 1f;
+        CanSeePlayerNow = true;
+        VisibleTarget = tr.T;
     }
 
     /// <summary>
