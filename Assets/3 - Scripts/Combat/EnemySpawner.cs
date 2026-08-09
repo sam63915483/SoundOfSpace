@@ -106,11 +106,34 @@ public class EnemySpawner : MonoBehaviour
     // Returns true if an enemy was placed.
     bool TrySpawn()
     {
-        Transform player = playerOverride != null ? playerOverride
-                         : (playerCtl != null ? playerCtl.transform : null);
+        // ── Which player are we populating around? ──
+        //
+        // Round-robin across everyone. The field is built relative to a player,
+        // and anchoring only on the host's own rig means a guest who walks a few
+        // hundred metres away is followed by nothing at all — an empty planet on
+        // one screen and a full one on the other.
+        //
+        // Single player is unchanged by construction: the roster holds exactly
+        // one entry, so the cursor always lands on the local player and every
+        // test below takes the same branch it always did.
+        Transform player = playerOverride;
+        if (player == null)
+        {
+            var roster = PlayerRoster.All();
+            if (roster.Count == 0) return false;
+            _anchorCursor = (_anchorCursor + 1) % roster.Count;
+            player = roster[_anchorCursor].Transform;
+        }
         if (player == null) return false;
+
+        // The camera belongs to the LOCAL player only — there is no such thing as
+        // a remote camera here. When the anchor is somebody else the view-cone
+        // pre-filter simply doesn't apply; the occlusion test below still runs,
+        // for every player, which is the check that actually prevents pop-in.
+        if (playerCtl == null) playerCtl = FindObjectOfType<PlayerController>(true);
         Camera cam = playerCtl != null ? playerCtl.Camera : Camera.main;
-        if (cam == null) return false;
+        bool anchorIsLocal = playerCtl != null && player == playerCtl.transform;
+        if (cam == null && anchorIsLocal) return false;
 
         CelestialBody planet = GetNearestPlanet(player.position);
         CelestialBody sun = GetSun();
@@ -126,7 +149,6 @@ public class EnemySpawner : MonoBehaviour
 
         float halfConeCos = Mathf.Cos(viewConeAngleDeg * 0.5f * Mathf.Deg2Rad);
         Vector3 surfaceUp = playerDir;
-        Vector3 camPos = cam.transform.position;
 
         // Cap the spawn ring to the planet so a small moon isn't ringed out to 120 m (its far side).
         float effMax = Mathf.Min(maxSpawnDistance, planet.radius * spawnRingRadiusFraction);
@@ -152,8 +174,12 @@ public class EnemySpawner : MonoBehaviour
             if (Vector3.Dot(dirFromCenter, sunDir) >= darkSideDotThreshold) continue;
 
             // Cheap pre-filter: reject candidates roughly in front of the camera.
-            Vector3 toCandidate = (candidate - player.position).normalized;
-            if (Vector3.Dot(cam.transform.forward, toCandidate) > halfConeCos) continue;
+            // Only meaningful for the machine's own player — see anchorIsLocal.
+            if (cam != null)
+            {
+                Vector3 toCandidate = (candidate - player.position).normalized;
+                if (Vector3.Dot(cam.transform.forward, toCandidate) > halfConeCos) continue;
+            }
 
             // Find the real terrain height at this column.
             Vector3 rayOrigin = planet.Position + dirFromCenter * (planet.radius + 100f);
@@ -168,10 +194,11 @@ public class EnemySpawner : MonoBehaviour
 
             Vector3 surfacePos = hit.point + dirFromCenter * (CapsuleHalfHeight + spawnSurfaceOffset);
 
-            // NO POP-IN: the spawn point must be occluded from the camera (a hill / the horizon
-            // between it and the player). If the camera has a clear line to it, skip.
-            if (!Physics.Linecast(camPos, surfacePos, SurfaceMask, QueryTriggerInteraction.Ignore))
-                continue;
+            // NO POP-IN: the spawn point must be occluded from EVERY player (a hill / the
+            // horizon between it and them). Testing only the spawning machine's camera
+            // would let an alien wink into existence in plain view on the other screen —
+            // and the whole point of this spawner is that nobody ever sees one arrive.
+            if (!OccludedFromEveryone(surfacePos, cam, planet)) continue;
 
             // Spacing: don't drop a new enemy on top of an existing one — the field
             // should read as scattered individuals, not a clump.
@@ -205,7 +232,81 @@ public class EnemySpawner : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// True when `surfacePos` is hidden from every player on this machine.
+    ///
+    /// The local player is tested from their CAMERA — that is literally what they
+    /// can see. A remote player has no camera here, so they are tested from head
+    /// height on their puppet: we don't know which way they are facing, so we
+    /// assume the worst and require terrain between them and the spawn either way.
+    /// Stricter than the local test, which is the right direction to err.
+    /// </summary>
+    bool OccludedFromEveryone(Vector3 surfacePos, Camera cam, CelestialBody planet)
+    {
+        const float RemoteEyeHeight = 1.6f;
+
+        if (cam != null &&
+            !Physics.Linecast(cam.transform.position, surfacePos, SurfaceMask, QueryTriggerInteraction.Ignore))
+            return false;
+
+        var roster = PlayerRoster.All();
+        for (int i = 0; i < roster.Count; i++)
+        {
+            if (roster[i].IsLocal) continue;             // the camera test above covered them
+            var t = roster[i].Transform;
+            if (t == null) continue;
+
+            Vector3 up = planet != null
+                ? (t.position - planet.Position).normalized : Vector3.up;
+            Vector3 eye = t.position + up * RemoteEyeHeight;
+            if (!Physics.Linecast(eye, surfacePos, SurfaceMask, QueryTriggerInteraction.Ignore))
+                return false;
+        }
+        return true;
+    }
+
+    /// Round-robin cursor over the roster, so successive spawns alternate between
+    /// players instead of piling the whole field around whoever is listed first.
+    int _anchorCursor;
+
     public void OnEnemyDestroyed(EnemyController e) => activeEnemies.Remove(e);
+
+    // ── Multiplayer (Phase 4) ────────────────────────────────────────────────
+
+    /// The prefab a given kind spawns from. EnemySync needs it to rebuild the
+    /// host's enemies on a guest, and the prefab references live here.
+    public GameObject PrefabForKind(EnemyKind kind)
+        => kind == EnemyKind.Elite && enemy2Prefab != null ? enemy2Prefab : enemyPrefab;
+
+    /// <summary>
+    /// Guest side: build one of the host's enemies as a pose-driven puppet.
+    ///
+    /// Deliberately shares the parenting rule with both other spawn paths — the
+    /// enemy is a CHILD of its planet, so orbital motion and floating-origin
+    /// rebases move it for free and the planet-local poses on the wire land
+    /// exactly where the host meant them.
+    ///
+    /// Not added to activeEnemies: that list feeds the population fill loop,
+    /// which is host-only. A guest counting puppets toward a target it never
+    /// evaluates would just be misleading.
+    /// </summary>
+    public EnemyController SpawnNetworkPuppet(EnemyKind kind, CelestialBody planet,
+                                              Vector3 worldPos, Quaternion worldRot, uint netId)
+    {
+        GameObject prefab = PrefabForKind(kind);
+        if (prefab == null || planet == null) return null;
+
+        GameObject go = Instantiate(prefab, worldPos, worldRot);
+        go.transform.SetParent(planet.transform, true);
+
+        var ec = go.GetComponent<EnemyController>();
+        if (ec == null) { Destroy(go); return null; }
+
+        // BEFORE Start runs (Instantiate only got as far as Awake), so Start sees
+        // the flag and skips building the per-bone hit colliders.
+        ec.MarkAsNetworkPuppet(netId);
+        return ec;
+    }
 
     // ── Save / load API (unchanged signatures — SaveCollector depends on these) ──
     public float TimerForSave => _spawnTimer;

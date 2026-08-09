@@ -371,13 +371,18 @@ public class EnemyController : MonoBehaviour, IDamageable
         // capsule. They attach to the kinematic root as a moving compound
         // collider and are torn down in BeginDeath before the ragdoll builds its
         // own. No-op on the unrigged capsule placeholder.
+        //
+        // Skipped entirely on a network puppet: these are enabled colliders, and
+        // the whole point of a puppet is that it has none (MarkAsNetworkPuppet).
+        // Building them here would quietly undo that a frame later.
         Transform hitRig = null;
         for (int i = 0; i < transform.childCount; i++)
         {
             var child = transform.GetChild(i);
             if (child.name.StartsWith("Visual_")) { hitRig = child; break; }
         }
-        if (hitRig != null) _hitColliders = EnemyRagdollBuilder.BuildHitColliders(hitRig, hitboxRadiusScale);
+        if (hitRig != null && !_isPuppet)
+            _hitColliders = EnemyRagdollBuilder.BuildHitColliders(hitRig, hitboxRadiusScale);
     }
 
     System.Collections.IEnumerator SpawnLoopRoutine()
@@ -400,7 +405,27 @@ public class EnemyController : MonoBehaviour, IDamageable
 
     void FixedUpdate()
     {
+        // Corpses tick on EVERY machine — deliberately ABOVE the authority gate.
+        // A guest that stopped here would freeze the ragdoll mid-tumble and the
+        // body would never shrink away. Death is decided by the host and sent;
+        // playing it out afterwards is local, and nobody can tell whether two
+        // ragdolls landed in exactly the same heap.
         if (_dying) { TickDeath(); return; }
+
+        // HOST ONLY. A client running the rest of this would not merely
+        // double-tick — the AI rolls dice and reads its own local player, so two
+        // machines produce DIFFERENT chases. Guests move enemies only from
+        // received poses (ApplyNetworkPose, in LateUpdate).
+        //
+        // This is also why guests get FASTER: the vision cones and LOS raycasts
+        // below stop running on every machine but one.
+        //
+        // Both halves of the test earn their place. _isPuppet is per-object and
+        // is what a received enemy is stamped with at spawn; IsAuthority catches
+        // the other direction — an enemy this machine created BEFORE joining
+        // somebody else's world (a save loaded, then a session joined) is not a
+        // puppet and must still not decide anything.
+        if (_isPuppet || !WorldSync.IsAuthority) return;
 
         // Re-picked every tick, not just when it goes null — see ResolveTarget.
         player = ResolveTarget();
@@ -1163,6 +1188,12 @@ public class EnemyController : MonoBehaviour, IDamageable
     // head. The world-space approach sidesteps that entirely.
     void LateUpdate()
     {
+        // A puppet renders here instead of thinking in FixedUpdate. LateUpdate
+        // rather than FixedUpdate because a 10 Hz stream has to be smoothed at
+        // the RENDER rate to look like walking rather than a slideshow — and the
+        // spit cycle below is a host-only decision a puppet never runs.
+        if (_isPuppet) { ApplyNetworkPose(); return; }
+
         if (!_spitting || _dying) return;
         TryCacheNeckBone();
         if (_neckBone == null || parentPlanet == null) return;
@@ -1389,7 +1420,60 @@ public class EnemyController : MonoBehaviour, IDamageable
     // damage from placed buildings or the ship.
     public void TakeDamage(float amount, bool creditPlayer)
     {
+        // A weapon hit arriving through this entry point is always THIS machine's
+        // player swinging it. Recorded so BeginDeath knows whose killstreak and
+        // whose GANGSTA REP to build; environmental ticks leave it alone, so a
+        // torch grazing a body a guest is shooting cannot steal their kill.
+        if (creditPlayer) { _killerIsLocal = true; _killerClientId = EnemySync.LocalClientId; }
+        ApplyDamage(amount, creditPlayer);
+    }
+
+    /// <summary>
+    /// Host only: a weapon hit reported by another player's machine.
+    ///
+    /// Identical to a local hit in every way except the KILL CREDIT, which
+    /// belongs to the client that fired — their killstreak, their slow-mo, their
+    /// GANGSTA REP. Without this the host would bank the rep for every alien
+    /// either player shot.
+    /// </summary>
+    public void TakeDamageFromRemotePlayer(float amount, ulong shooterClientId)
+    {
+        _killerIsLocal  = false;
+        _killerClientId = shooterClientId;
+        ApplyDamage(amount, true);
+    }
+
+    void ApplyDamage(float amount, bool creditPlayer)
+    {
         if (amount <= 0f || _dying) return;
+
+        // ── PUPPET: this machine does not own this body's health ──
+        //
+        // Only PLAYER-caused damage is reported onward. Environmental auras
+        // (torch, Lebron light, concert speakers — every creditPlayer:false
+        // caller) already run on the HOST as well, off buildings and a ship both
+        // machines have, so the host is applying that damage itself; reporting it
+        // too would double it. They also tick per FRAME, which would be one named
+        // message per enemy per frame — a flood on its own.
+        if (_isPuppet)
+        {
+            if (!creditPlayer) return;
+            EnemySync.ReportHitToHost(this, amount);
+
+            // Cosmetic only. The bar filling and the blood are the feedback that
+            // tells you the shot landed, and waiting for a round trip to show
+            // them feels broken. The host owns the real number and the death:
+            // this value is floored above zero so it can never kill anything,
+            // and the body only drops when the Death message says so.
+            currentHealth = Mathf.Max(1f, currentHealth - amount);
+            if (healthBar != null)
+            {
+                healthBar.Show();
+                healthBar.SetFill(Mathf.Clamp01(currentHealth / maxHealth));
+            }
+            BloodFX.Instance?.SpawnDamageSplash(transform.position, transform, transform.localScale.x);
+            return;
+        }
 
         // Getting shot by the PLAYER always alerts them → chase (even from outside their
         // view cone). Environmental damage (torch aura / Lebron light / concert speakers,
@@ -1424,12 +1508,21 @@ public class EnemyController : MonoBehaviour, IDamageable
     {
         if (_dying) return;
         _dying = true;
-        if (creditPlayer) OnAnyEnemyDeath?.Invoke();
+        _killedByPlayer = creditPlayer;
+
+        // Kill credit is PERSONAL. creditPlayer says "a weapon did this";
+        // _killerIsLocal says "and it was mine". On the host, an alien a GUEST
+        // shot dies with _killerIsLocal false — so the host's killstreak and rep
+        // stay untouched, and the Death message hands the credit to the machine
+        // that earned it. In single player _killerIsLocal is always true, so this
+        // reduces to exactly the old behaviour.
+        bool creditMe = creditPlayer && _killerIsLocal;
+        if (creditMe) OnAnyEnemyDeath?.Invoke();
         // Progression: GANGSTA REP. +1 for a regular, +3 for an Elite. Gated on
         // creditPlayer for the same reason the event is — a sun-death or a fall
         // isn't your kill, so it shouldn't build your rep. Called directly rather
         // than off OnAnyEnemyDeath because that event carries no EnemyKind.
-        if (creditPlayer) PlayerProgress.Instance?.AddEnemyKill(kind);
+        if (creditMe) PlayerProgress.Instance?.AddEnemyKill(kind);
         // Perception dies with the body: stop EnemyVision (its Update would keep filling
         // suspicion / rendering the cone on a 30s ragdoll corpse) and leave the live-enemy
         // list so the detection HUD and separation steering ignore the corpse.
@@ -1764,4 +1857,182 @@ public class EnemyController : MonoBehaviour, IDamageable
     [Header("Stealth — mob mentality")]
     [Tooltip("A chasing enemy WITH visual recruits non-chasing enemies within this radius; chasers within it of a seeing packmate stay locked on without their own visual.")]
     [SerializeField] float mobLinkRadius = 20f;
+
+    // ── Multiplayer (Phase 4): host simulates, guests render puppets ─────────
+    //
+    // Nothing below runs in single player. EnemySync is the only caller.
+
+    /// Host-assigned identity for the sync layer. 0 means "not replicated".
+    /// NOT serialized: it is assigned at spawn and meaningless on disk.
+    [System.NonSerialized] public uint NetId;
+
+    bool _isPuppet;
+    public bool IsNetworkPuppet => _isPuppet;
+
+    // Who to credit for this body. In single player always "me"; on the host,
+    // false whenever a guest reported the hit that did it.
+    bool _killerIsLocal = true;
+    ulong _killerClientId;
+    bool _killedByPlayer;
+    /// True when a WEAPON killed this (as opposed to sunlight or a fall) — read
+    /// by EnemySync so the Death message can carry the credit to the right machine.
+    public bool KilledByPlayer => _killedByPlayer;
+    public ulong KillerClientId => _killerClientId;
+
+    /// The body this enemy walks on. EnemySync sends every pose relative to it,
+    /// because a world coordinate is stale the moment a floating-origin rebase
+    /// fires — which happens while standing still.
+    public CelestialBody ParentPlanet => parentPlanet;
+
+    /// What the animator is being told this frame, for the pose stream. Matches
+    /// the 0 / 0.5 / 1 mapping FixedUpdate uses so a charging Toy3 still reads as
+    /// Run on the far side.
+    public float CurrentAnimSpeed => _anim != null ? _anim.GetFloat(_animSpeedHash) : 0f;
+
+    // Received pose, PLANET-LOCAL, smoothed across frames so 10 Hz renders as
+    // continuous motion.
+    Vector3 _netLocalPos;
+    Quaternion _netLocalRot = Quaternion.identity;
+    Vector3 _netSmoothedPos;
+    Quaternion _netSmoothedRot = Quaternion.identity;
+    bool _netPosePlaced;
+    float _netAnimSpeed;
+
+    const float NetLerpSpeed    = 12f;   // same feel as PlanetRelativeSync
+    const float NetSnapDistance = 25f;   // beyond this, teleport instead of sliding
+
+    /// <summary>
+    /// Turn this enemy into a pose-driven puppet: it renders what the host sends
+    /// and decides nothing. Called by EnemySync immediately after Instantiate,
+    /// which is after Awake and before Start — so Start can see it.
+    /// </summary>
+    public void MarkAsNetworkPuppet(uint netId)
+    {
+        NetId = netId;
+        _isPuppet = true;
+
+        // Resolved defensively rather than trusting Awake to have run. It has, on
+        // the path that matters (Instantiate is synchronous), but a puppet that
+        // silently kept its colliders because a cached reference was null is the
+        // single worst failure this file can have.
+        if (rb == null) rb = GetComponent<Rigidbody>();
+        if (_vision == null) _vision = GetComponent<EnemyVision>();
+
+        // Interpolation is for a body the physics step moves. This one is placed
+        // directly from the network every frame, and interpolating a teleport
+        // just renders it a frame behind its own position.
+        if (rb != null)
+        {
+            rb.isKinematic = true;
+            rb.interpolation = RigidbodyInterpolation.None;
+        }
+
+        // A PUPPET NEVER COLLIDES. A kinematic capsule swept around by network
+        // poses shoves whatever it overlaps out of the way — the "host launched
+        // into space" bug NetworkPlayerSetup documents, and an alien is a much
+        // bigger capsule than an astronaut. Weapons reach it through EnemySync's
+        // analytic capsule test instead, so nothing needs a collider here.
+        var cols = GetComponentsInChildren<Collider>(true);
+        for (int i = 0; i < cols.Length; i++) if (cols[i] != null) cols[i].enabled = false;
+
+        // Perception is the expensive half of the stealth revamp — a bicone test
+        // plus an LOS raycast, per enemy, several times a second. The host
+        // already ran it to produce the pose we are about to render, so running
+        // it again here burns frames to reach a conclusion nobody reads. THIS is
+        // why a guest ends up faster than it was before this phase.
+        if (_vision != null)
+        {
+            _vision.SetConeVisible(false);
+            _vision.enabled = false;
+        }
+    }
+
+    /// <summary>Host → guest: where this enemy is and what it is doing.</summary>
+    public void ReceiveNetworkPose(Vector3 localPos, Quaternion localRot, float animSpeed, AIState state)
+    {
+        if (!_isPuppet || _dying) return;
+
+        _netLocalPos  = localPos;
+        _netLocalRot  = localRot;
+        _netAnimSpeed = animSpeed;
+
+        // Seed the smoothing IN PLANET-LOCAL SPACE, and snap rather than slide on
+        // a big jump. Seeding from the puppet's previous WORLD position is the
+        // mistake PlanetRelativeSync documents at length: the planet moves ~1.6 m
+        // per frame, so a stale world position re-expressed in the fresh planet
+        // frame starts every frame behind, and the lerp settles into a permanent
+        // multi-metre trail opposite the planet's motion.
+        if (!_netPosePlaced ||
+            (_netSmoothedPos - localPos).sqrMagnitude > NetSnapDistance * NetSnapDistance)
+        {
+            _netSmoothedPos = localPos;
+            _netSmoothedRot = localRot;
+            _netPosePlaced  = true;
+        }
+
+        ApplyNetworkState(state);
+    }
+
+    void ApplyNetworkState(AIState state)
+    {
+        if (_state == state) return;
+        var previous = _state;
+        _state = state;
+
+        // The lock-on scream lives in EnterChase, which a puppet never runs.
+        // Fired on the EDGE only, so a ten-second chase screams once here exactly
+        // as it does on the host. (The recurring presence motif needs nothing:
+        // SpawnLoopRoutine already keys off _state, which we just set.)
+        if (state == AIState.Chasing && previous != AIState.Chasing
+            && _oneShotSource != null && spawnLoopClip != null)
+            _oneShotSource.PlayOneShot(spawnLoopClip, spawnLoopVolume);
+    }
+
+    void ApplyNetworkPose()
+    {
+        if (_dying || !_netPosePlaced) return;
+        if (parentPlanet == null)
+        {
+            parentPlanet = GetComponentInParent<CelestialBody>();
+            if (parentPlanet == null) return;
+        }
+        var pt = parentPlanet.transform;
+
+        float t = 1f - Mathf.Exp(-NetLerpSpeed * Time.deltaTime);
+        _netSmoothedPos = Vector3.Lerp(_netSmoothedPos, _netLocalPos, t);
+        _netSmoothedRot = Quaternion.Slerp(_netSmoothedRot, _netLocalRot, t);
+
+        Vector3 worldPos    = pt.TransformPoint(_netSmoothedPos);
+        Quaternion worldRot = pt.rotation * _netSmoothedRot;
+        transform.SetPositionAndRotation(worldPos, worldRot);
+
+        // Keep the (kinematic, collider-less) rigidbody in step with the
+        // transform. BeginDeath reads rb.position and rb.rotation to launch the
+        // ragdoll, and a body left at wherever the puppet was instantiated would
+        // fling the corpse across the planet.
+        if (rb != null) { rb.position = worldPos; rb.rotation = worldRot; }
+
+        if (_anim != null) _anim.SetFloat(_animSpeedHash, _netAnimSpeed);
+
+        // The run grunt tracks the same flag it does on the host — there, the
+        // locomotion sets _walkingThisStep; here, the animator speed IS that flag
+        // after a round trip.
+        if (_runSource != null)
+        {
+            bool walking = _netAnimSpeed > 0.01f;
+            if (walking && !_runSource.isPlaying) _runSource.Play();
+            else if (!walking && _runSource.isPlaying) _runSource.Pause();
+        }
+    }
+
+    /// <summary>
+    /// Host → guest: this one died. `creditMine` is true only on the machine
+    /// whose player actually landed the kill, so exactly one killstreak fires.
+    /// </summary>
+    public void RemoteDeath(bool creditMine)
+    {
+        if (_dying) return;
+        _killerIsLocal = true;          // BeginDeath ANDs the two; creditMine decides
+        BeginDeath(creditMine);
+    }
 }

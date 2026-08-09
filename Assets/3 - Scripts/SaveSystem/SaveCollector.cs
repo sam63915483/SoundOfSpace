@@ -998,8 +998,18 @@ public static class SaveCollector
         ApplySaplings(data.saplings);
         ApplyPlantedMushrooms(data.plantedMushrooms);
 
-        // After the world objects, matching Apply()'s ordering.
-        ApplyEnemies(data);
+        // NO ApplyEnemies HERE, deliberately — unlike Apply(), which does run it.
+        //
+        // Enemies are the one part of the world that is LIVE rather than
+        // restored: EnemySync streams the host's actual bodies, keyed by a
+        // host-assigned NetId, and keeps them pose-synced from then on. Spawning
+        // a second set out of the snapshot would give the guest enemies with no
+        // NetId that no message can ever move, kill or remove — ghosts standing
+        // in the field next to the real ones. EnemySync clears the field itself
+        // before applying the host's list.
+        //
+        // The spawner's timer state is skipped for the same reason: the fill loop
+        // is host-only now, so a guest has no use for it.
 
         // Consumed-prop ledgers last, exactly as Apply() does — these tell the
         // deterministic spawners which seeded cells are already gone.
