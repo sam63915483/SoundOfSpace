@@ -381,6 +381,47 @@ public static class SaveCollector
         return arr;
     }
 
+    /// <summary>
+    /// One slot -> its save record. Public so StorageSync can put a box on the
+    /// wire in exactly the format it takes on disk, rather than a second
+    /// serialiser that could drift from this one.
+    /// </summary>
+    public static HotbarSlotSave SerializeSlotPublic(Hotbar.Slot slot)
+    {
+        return new HotbarSlotSave
+        {
+            itemId = slot.id.ToString(),
+            count = slot.count,
+            fishData = slot.id == Hotbar.ItemId.Fish && slot.fishData != null
+                ? new FishEntrySave
+                  {
+                      fishType  = slot.fishData.fishType,
+                      weightLbs = slot.fishData.weightLbs,
+                      fishColor = slot.fishData.fishColor,
+                  }
+                : null,
+            bagContents = slot.id == Hotbar.ItemId.FishBag && slot.bagContents != null
+                ? SerializeBagContents(slot.bagContents)
+                : null,
+            mushroomSpecies = Hotbar.IsMushroomItem(slot.id) ? slot.mushroomSpecies : null,
+        };
+    }
+
+    /// <summary>
+    /// Overwrites ONE box's slots from a save record - the receiving half of the
+    /// above. Reuses ApplyStorages' per-box logic so a box restored from the
+    /// network and one restored from disk are filled identically.
+    /// </summary>
+    public static void ApplyStorageSlotsPublic(LootBox box, StorageSave save)
+    {
+        if (box == null || save == null) return;
+        // Delegates to ApplyStorages rather than deserialising here. That method
+        // already handles fish entries, bag contents and mushroom species, and a
+        // second copy of that logic would inevitably drift from it.
+        save.boxId = box.BoxId;
+        ApplyStorages(new System.Collections.Generic.List<StorageSave> { save });
+    }
+
     static void CaptureStorages(System.Collections.Generic.List<StorageSave> list)
     {
         if (list == null) return;
@@ -1655,66 +1696,85 @@ public static class SaveCollector
         var menu = Object.FindObjectOfType<BuildMenuUI>();
         if (menu == null || menu.buildables == null) return;
 
-        foreach (var save in list)
+        foreach (var save in list) SpawnPlacedBuilding(save);
+    }
+
+    /// <summary>
+    /// Rebuilds ONE placed building from its save record.
+    ///
+    /// Extracted from ApplyBuildings so the multiplayer layer can raise a single
+    /// building somebody else just placed without calling the bulk apply, which
+    /// destroys every "_Placed" object on every body and rebuilds them - every
+    /// building on the planet would visibly pop.
+    ///
+    /// The "_Placed" suffix and CelestialBody parenting below are load-bearing:
+    /// that exact naming is how the save system finds placed buildings later
+    /// (CLAUDE.md), and how ApplyBuildings knows what to sweep.
+    /// </summary>
+    public static void SpawnPlacedBuilding(PlacedBuildingSave save)
+    {
+        if (save == null) return;
+        var menu = Object.FindObjectOfType<BuildMenuUI>();
+        if (menu == null || menu.buildables == null) return;
+
+        BuildableEntry entry = null;
+        foreach (var be in menu.buildables)
         {
-            BuildableEntry entry = null;
-            foreach (var be in menu.buildables)
+            if (be != null && be.prefab != null && be.prefab.name == save.prefabKey)
             {
-                if (be != null && be.prefab != null && be.prefab.name == save.prefabKey)
+                entry = be;
+                break;
+            }
+        }
+        if (entry == null)
+        {
+            Debug.LogWarning($"[SaveCollector] SpawnPlacedBuilding: no buildable matches prefab key '{save.prefabKey}' — skipping.");
+            return;
+        }
+
+        var body = FindBodyByName(save.parentBodyName);
+        if (body == null)
+        {
+            Debug.LogWarning($"[SaveCollector] SpawnPlacedBuilding: parent body '{save.parentBodyName}' not found — skipping '{save.prefabKey}'.");
+            return;
+        }
+
+        var go = Object.Instantiate(entry.prefab);
+        go.name = entry.prefab.name + "_Placed";
+        go.transform.SetParent(body.transform, worldPositionStays: false);
+        go.transform.localPosition = save.localPos;
+        go.transform.localRotation = save.localRot;
+
+        if (entry.addBonfireInteractionOnPlace)
+        {
+            var bf = go.GetComponent<BonfireInteraction>() ?? go.AddComponent<BonfireInteraction>();
+            if (BonfireUIRegistry.CookPanel != null)
+            {
+                bf.cookPanel  = BonfireUIRegistry.CookPanel;
+                bf.promptText = BonfireUIRegistry.PromptText;
+            }
+            else
+            {
+                var template = FindAnotherBonfire(bf);
+                if (template != null)
                 {
-                    entry = be;
-                    break;
-                }
-            }
-            if (entry == null)
-            {
-                Debug.LogWarning($"[SaveCollector] ApplyBuildings: skipping building — no buildable matches prefab key '{save.prefabKey}'.");
-                continue;
-            }
-
-            var body = FindBodyByName(save.parentBodyName);
-            if (body == null)
-            {
-                Debug.LogWarning($"[SaveCollector] ApplyBuildings: skipping building '{save.prefabKey}' — parent body '{save.parentBodyName}' not found.");
-                continue;
-            }
-
-            var go = Object.Instantiate(entry.prefab);
-            go.name = entry.prefab.name + "_Placed";
-            go.transform.SetParent(body.transform, worldPositionStays: false);
-            go.transform.localPosition = save.localPos;
-            go.transform.localRotation = save.localRot;
-
-            if (entry.addBonfireInteractionOnPlace)
-            {
-                var bf = go.GetComponent<BonfireInteraction>() ?? go.AddComponent<BonfireInteraction>();
-                if (BonfireUIRegistry.CookPanel != null)
-                {
-                    bf.cookPanel  = BonfireUIRegistry.CookPanel;
-                    bf.promptText = BonfireUIRegistry.PromptText;
+                    bf.cookPanel = template.cookPanel;
+                    bf.promptText = template.promptText;
                 }
                 else
                 {
-                    var template = FindAnotherBonfire(bf);
-                    if (template != null)
-                    {
-                        bf.cookPanel = template.cookPanel;
-                        bf.promptText = template.promptText;
-                    }
-                    else
-                    {
-                        Debug.LogWarning($"[SaveCollector] ApplyBuildings: placed bonfire '{go.name}' has no cookPanel — neither registry nor scene template available.");
-                    }
+                    Debug.LogWarning($"[SaveCollector] ApplyBuildings: placed bonfire '{go.name}' has no cookPanel — neither registry nor scene template available.");
                 }
-                if (go.GetComponentInChildren<Collider>() == null)
-                {
-                    var sc = go.AddComponent<SphereCollider>();
-                    sc.isTrigger = true;
-                    sc.radius = 2f;
-                }
+            }
+            if (go.GetComponentInChildren<Collider>() == null)
+            {
+                var sc = go.AddComponent<SphereCollider>();
+                sc.isTrigger = true;
+                sc.radius = 2f;
             }
         }
     }
+
 
     // ── Tree/oxygen ecosystem applies ───────────────────────────────────────
 

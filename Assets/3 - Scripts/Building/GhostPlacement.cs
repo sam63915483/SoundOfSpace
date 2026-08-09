@@ -782,7 +782,14 @@ public class GhostPlacement : MonoBehaviour
             // and planted TREES did not.
             WorldSync.ReportSaplingPlanted(sg);
         }
-        else if (entry.addBonfireInteractionOnPlace)
+        else
+        {
+            // A plain building. Growing props report from their own branches
+            // above, because they carry growth state this does not.
+            WorldSync.ReportBuildingPlaced(real, entry, parentBody);
+        }
+
+        if (entry.addBonfireInteractionOnPlace)
         {
             var bf = real.GetComponent<BonfireInteraction>();
             if (bf == null) bf = real.AddComponent<BonfireInteraction>();

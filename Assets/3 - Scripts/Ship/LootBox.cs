@@ -127,6 +127,11 @@ public class LootBox : MonoBehaviour
             // panel would close then immediately reopen.
             if (StorageUI.ConsumedFThisFrame) return;
             InteractPromptUI.Clear(this);
+            // In co-op only ONE player may have a box open at a time - that lock
+            // is what makes "both grab the same axe" impossible. Returns true
+            // immediately in single player and for the host; a client opens when
+            // the host's grant arrives a frame or so later.
+            if (!StorageSync.TryOpen(this)) return;
             StorageUI.Instance?.Open(this);
         }
     }

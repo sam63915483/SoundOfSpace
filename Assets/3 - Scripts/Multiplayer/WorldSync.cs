@@ -53,6 +53,7 @@ public class WorldSync : MonoBehaviour
     const byte KindPropHit         = 2;   // propKind + bodyName + cellId + newHp
     const byte KindMushroomPlanted = 4;   // JSON PlantedMushroomSave
     const byte KindSaplingPlanted  = 5;   // JSON SaplingSave
+    const byte KindBuildingPlaced  = 6;   // JSON PlacedBuildingSave
 
     /// Which streamed, cell-addressed prop a hit refers to. All three share the
     /// same TakeDamage/Break/RemoteHit shape, so one message covers them.
@@ -158,7 +159,15 @@ public class WorldSync : MonoBehaviour
             _registered = true;
         }
 
-        if (nm.IsServer) { WorldReady = true; return; }   // the host IS the world
+        if (nm.IsServer)
+        {
+            WorldReady = true;
+            // One axe and one water bottle per player. Idempotent per client id.
+            var ids = nm.ConnectedClientsIds;
+            for (int i = 0; i < ids.Count; i++)
+                if (ids[i] != nm.LocalClientId) StorageSync.StockForPlayer(ids[i]);
+            return;
+        }
 
         // ── client: ask for the world, once the scene can receive it ──
         //
@@ -268,6 +277,7 @@ public class WorldSync : MonoBehaviour
 
             case KindMushroomPlanted:
             case KindSaplingPlanted:
+            case KindBuildingPlaced:
                 HandleJsonDelta(kind, reader, senderId);
                 break;
         }
@@ -540,6 +550,11 @@ public class WorldSync : MonoBehaviour
                 var save = JsonUtility.FromJson<SaplingSave>(json);
                 if (save != null) SaveCollector.SpawnSapling(save);
             }
+            else if (kind == KindBuildingPlaced)
+            {
+                var save = JsonUtility.FromJson<PlacedBuildingSave>(json);
+                if (save != null) SaveCollector.SpawnPlacedBuilding(save);
+            }
         }
         catch (System.Exception e)
         {
@@ -567,6 +582,34 @@ public class WorldSync : MonoBehaviour
             sizeMultiplier = mg.SizeMultiplier,
         };
         Instance.SendJsonDelta(KindMushroomPlanted, JsonUtility.ToJson(save), skipClient: ulong.MaxValue);
+    }
+
+    /// <summary>
+    /// A building was placed here.
+    ///
+    /// Travels as a PlacedBuildingSave, matched on the far side by prefab NAME
+    /// against BuildMenuUI.buildables - the same key ApplyBuildings uses, so a
+    /// building placed over the network and one restored from disk are built by
+    /// identical code.
+    ///
+    /// The "_Placed" suffix and CelestialBody parenting are not cosmetic: that
+    /// exact naming is how the save system finds placed buildings later
+    /// (CLAUDE.md), and SpawnPlacedBuilding preserves it.
+    /// </summary>
+    public static void ReportBuildingPlaced(GameObject placed, BuildableEntry entry, CelestialBody body)
+    {
+        if (ApplyingRemote || Instance == null) return;
+        if (placed == null || entry == null || entry.prefab == null || body == null) return;
+
+        var bt = body.transform;
+        var save = new PlacedBuildingSave
+        {
+            prefabKey      = entry.prefab.name,
+            parentBodyName = body.bodyName,
+            localPos       = bt.InverseTransformPoint(placed.transform.position),
+            localRot       = Quaternion.Inverse(bt.rotation) * placed.transform.rotation,
+        };
+        Instance.SendJsonDelta(KindBuildingPlaced, JsonUtility.ToJson(save), skipClient: ulong.MaxValue);
     }
 
     /// <summary>

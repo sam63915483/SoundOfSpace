@@ -104,6 +104,18 @@ public class StorageUI : MonoBehaviour
 
     void OnDestroy() { if (instance == this) instance = null; }
 
+    /// Called by StorageSync when the host grants a client's open request.
+    /// Separate from Open so the lock cannot be bypassed by accident: Open is
+    /// what LootBox calls AFTER TryOpen said yes.
+    public void OpenGranted(LootBox box) => Open(box);
+
+    /// A box we are looking at changed on another machine - redraw it.
+    public void RefreshFromNetwork(LootBox box)
+    {
+        if (!IsOpen || box == null || _active != box) return;
+        RefreshAll();
+    }
+
     public void Open(LootBox box)
     {
         if (IsOpen || box == null) return;
@@ -146,6 +158,10 @@ public class StorageUI : MonoBehaviour
     public void Close()
     {
         if (!IsOpen) return;
+        // Release the co-op lock and publish what is now inside, BEFORE _active
+        // is cleared — the other player cannot open this box until we do, and
+        // they would otherwise be locked out for the rest of the session.
+        StorageSync.NotifyClosed(_active);
         _active = null;
         _cursor = default;
         IsOpen = false;
