@@ -77,4 +77,34 @@ public static class FeatureVault
     /// The old raw HOST/JOIN/IP overlay that used to sit on the NetworkManager
     /// is gone — this is the only way in now.
     public const bool Multiplayer = true;
+
+    /// The CONCERT VENUE — the stage, both AudienceZones, Max Audience, the
+    /// strobe rig, cone beams and the audience spawner.
+    ///
+    /// Vaulted 2026-08-09 at Sam's request: "the concert is pretty heavy on a
+    /// machine", and multiplayer is being built on a deliberately small
+    /// baseline. Nothing failed and nothing is deleted.
+    ///
+    /// ⚠️ The objects are REMOVED FROM THE SCENE rather than merely disabled.
+    /// An inactive GameObject still loads its meshes, textures and audio, which
+    /// defeats vaulting something for performance. The hierarchy is preserved
+    /// as a prefab in Assets/1 - samsPrefabs/_Vaulted/ — see
+    /// docs/VAULTED_SYSTEMS.md for how to put it back.
+    public const bool ConcertVenue = false;
+
+    /// Tev's ship parked outside his cabin and the ambush it triggers on entry.
+    /// Vaulted 2026-08-09: a scripted jumpscare keyed to ONE player walking in
+    /// is ill-defined in co-op, and not worth designing around yet.
+    public const bool TevCabinAmbush = false;
+
+    /// The SHIP SCHOOL in the village (Combined_SHIPSCHOOL_0/1/2) and its
+    /// instructor flow. Vaulted 2026-08-09 while the core co-op loop is built.
+    public const bool ShipSchool = false;
+
+    /// Tev's presence IN THE VILLAGE. Vaulted 2026-08-09.
+    ///
+    /// ⚠️ Tev HIMSELF is not vaulted — he still lives at his cabin and still
+    /// owns rent collection and the mushroom onboarding, both of which are core
+    /// loop. This flag covers only his village appearance.
+    public const bool VillageTev = false;
 }

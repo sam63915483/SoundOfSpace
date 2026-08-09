@@ -1,0 +1,100 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &5069296259326369778
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 8712080946659845043}
+  - component: {fileID: 7555585335833175282}
+  - component: {fileID: 2910541679387552504}
+  m_Layer: 0
+  m_Name: AudienceZone_2
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &8712080946659845043
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5069296259326369778}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0.3815143, y: 0.20686656, z: 0.3795823, w: 0.81704974}
+  m_LocalPosition: {x: -79.96, y: 83.33, z: 165.28}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 27.8, y: 45.2, z: 61.6}
+--- !u!114 &7555585335833175282
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5069296259326369778}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4c488ce4390661640a549b0b9fd36750, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  speaker: {fileID: 0}
+  size: {x: 40, y: 4, z: 24}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  surfaceRayHeight: 50
+  maxSurfaceAngle: 35
+  groundOffset: 0
+  minSpacing: 2.5
+  stragglerFraction: 0.15
+  stragglerReach: 1.4
+--- !u!114 &2910541679387552504
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5069296259326369778}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 189d14dab214fc3439ac8610c1ce710d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  zone: {fileID: 7555585335833175282}
+  alienPrefabs:
+  - {fileID: 2105627422072434884, guid: 9c17d598fae962d40a9da109af76e8b6, type: 3}
+  - {fileID: 2360926955953452282, guid: 149ea22a7ac3727429acc972590383c0, type: 3}
+  - {fileID: 9095809361608879911, guid: 241ebac6832c42c4e893b9c8d8e40470, type: 3}
+  - {fileID: 4933334872984948577, guid: f5d643a5d4ff23644b6c0f59b922ebd5, type: 3}
+  - {fileID: 1393865618682631142, guid: ac4b12f879a6b054dadd6eb0ae8d2fcf, type: 3}
+  - {fileID: 1349039373076865573, guid: aeaee2a2dd149424eb62ddda5047857b, type: 3}
+  - {fileID: 6505876709127693028, guid: 165529a066e497f44a428ea2414b9fa8, type: 3}
+  - {fileID: 1109011958144341824, guid: 6c70dead6c5b491489694036c5ee666a, type: 3}
+  - {fileID: 7071081764616874953, guid: 9cbced948e24eea4cb24ad4f87d69c8c, type: 3}
+  - {fileID: 2803313299738309851, guid: 4dbfe0ad6a0720c448a71793bf626eec, type: 3}
+  inputSettings: {fileID: 11400000, guid: 0e5a06a1eafad4497a5df01f7f393c80, type: 2}
+  fallbackAudienceSize: 25
+  updateInterval: 0.5
+  seed: 13579
+  minScale: 1.5
+  maxScale: 2.5
+  triggerSize: {x: 2.5, y: 4, z: 2.5}
+  triggerCenter: {x: 0, y: 2, z: 0}
+  hitSound: {fileID: 8300000, guid: 787ceaf354d633a4cacdded9ea4f4744, type: 3}
+  hitVolume: 0.7
+  deathSound: {fileID: 8300000, guid: a0e88e2e5305a1640ba23d09ac8c0eda, type: 3}
+  deathVolume: 0.8
+  healthBarWorldHeight: 2.5
+  hitBoxWorldHeight: 2.5
+  hitBoxWorldRadius: 0.9
+  liveKnockbackScale: 0.2
+  groundOffset: 0
+  groundEmbedPerScale: 0.04
