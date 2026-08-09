@@ -207,18 +207,16 @@ public class MultiplayerSession : MonoBehaviour
 
         if (!await EnsureServicesAsync()) return false;
 
-        try
-        {
-            // Relay first: the lobby needs the join code to hand out.
-            _hostAllocation = await RelayService.Instance.CreateAllocationAsync(MaxPlayers);
-            _relayJoinCode  = await RelayService.Instance.GetJoinCodeAsync(_hostAllocation.AllocationId);
-        }
-        catch (Exception e)
-        {
-            Fail("Relay wouldn't allocate. Is Relay switched on in the Unity dashboard?");
-            Debug.LogError($"[MultiplayerSession] Relay allocation failed: {e}");
-            return false;
-        }
+        // NOTE: no Relay allocation here, deliberately — see BeginGame.
+        //
+        // Allocating at this point is the obvious thing and it is WRONG. Unity
+        // heartbeats the LOBBY, not the allocation, and an allocation nobody has
+        // connected to expires on its own. Opening a session, then taking a few
+        // minutes to get the other machine ready, left the host binding to a
+        // dead allocation and the guest's join code resolving to nothing —
+        // "Couldn't connect through Relay", every time, while a quick test
+        // worked fine. The allocation is now made at START, seconds before the
+        // host binds to it, and a bound allocation stays alive for the session.
 
         // Four digits is only 10,000 codes, so a collision is rare but real.
         // Roll a fresh one and try again rather than handing out a code that
@@ -239,8 +237,9 @@ public class MultiplayerSession : MonoBehaviour
                         // Indexed + public so a joiner can find it by code.
                         [CodeKey]  = new DataObject(DataObject.VisibilityOptions.Public,
                                                     candidate, DataObject.IndexOptions.S1),
-                        // Member-only: you must clear the password to read this.
-                        [RelayKey] = new DataObject(DataObject.VisibilityOptions.Member, _relayJoinCode),
+                        // Filled in at START, once the allocation exists.
+                        // Member-only: you must clear the password to read it.
+                        [RelayKey] = new DataObject(DataObject.VisibilityOptions.Member, ""),
                         [StartedKey] = new DataObject(DataObject.VisibilityOptions.Member, "0"),
                     }
                 };
@@ -383,16 +382,9 @@ public class MultiplayerSession : MonoBehaviour
             return false;
         }
 
-        if (_lobby.Data == null || !_lobby.Data.TryGetValue(RelayKey, out var relayData))
-        {
-            Fail("That session didn't hand out a connection. Ask the host to reopen it.");
-            return false;
-        }
-        // Note: we deliberately do NOT join the Relay allocation yet. That
-        // happens at launch (StartNetcodeWhenReady) so it is fresh at the moment
-        // we actually connect, however long the guest sits in the lobby.
-        _relayJoinCode = relayData.Value;
-
+        // The relay code may not exist yet — the host only allocates when they
+        // press START. We re-read it from the lobby at launch, so nothing here
+        // depends on it being present.
         Code = code;
         RefreshRoster();
         _poll = StartCoroutine(PollLoop());
@@ -412,40 +404,34 @@ public class MultiplayerSession : MonoBehaviour
         return true;
     }
 
+    /// Started AND carrying a relay code. Both matter: the flag alone would
+    /// send a guest into the scene with nothing to connect to.
     bool LobbyHasStarted()
+    {
+        if (_lobby == null || _lobby.Data == null) return false;
+        if (!_lobby.Data.TryGetValue(StartedKey, out var started) || started.Value != "1") return false;
+        return _lobby.Data.TryGetValue(RelayKey, out var relay) && !string.IsNullOrEmpty(relay.Value);
+    }
+
+    /// Pull the current relay join code off the lobby.
+    string LobbyRelayCode()
         => _lobby != null && _lobby.Data != null
-           && _lobby.Data.TryGetValue(StartedKey, out var d) && d.Value == "1";
+           && _lobby.Data.TryGetValue(RelayKey, out var d) ? d.Value : null;
 
     // ── starting the game ────────────────────────────────────────────────
 
     /// Host only. Flips the lobby's started flag so anyone waiting follows, then
     /// loads the gameplay scene.
-    public async void BeginGame()
+    public void BeginGame()
     {
         if (!IsHost) return;
         Current = State.Launching;
         Status = "Starting…";
 
-        if (!LocalMode && _lobby != null)
-        {
-            try
-            {
-                _lobby = await LobbyService.Instance.UpdateLobbyAsync(_lobby.Id, new UpdateLobbyOptions
-                {
-                    Data = new Dictionary<string, DataObject>
-                    {
-                        [StartedKey] = new DataObject(DataObject.VisibilityOptions.Member, "1"),
-                    }
-                });
-            }
-            catch (Exception e)
-            {
-                // Not fatal for the host — they can still play; late joiners just
-                // won't be released from the lobby until the next update lands.
-                Debug.LogWarning($"[MultiplayerSession] Couldn't flag lobby as started: {e}");
-            }
-        }
-
+        // No allocating and no lobby update here — both happen in
+        // StartNetcodeWhenReady, back to back with the bind, once the gameplay
+        // scene is up. Anything published from here would be advertising a
+        // connection that doesn't exist for the next twenty seconds of loading.
         LaunchIntoGame();
     }
 
@@ -526,25 +512,84 @@ public class MultiplayerSession : MonoBehaviour
         }
         else if (IsHost)
         {
+            // Allocate HERE, not before the scene load. The scene takes tens of
+            // seconds to come up, and an allocation nobody has connected to
+            // expires — allocating and binding back to back is the only ordering
+            // that can't go stale in between.
+            var allocTask = RelayService.Instance.CreateAllocationAsync(MaxPlayers);
+            while (!allocTask.IsCompleted) yield return null;
+            if (allocTask.IsFaulted || allocTask.Result == null)
+            {
+                Fail("Relay wouldn't allocate. Is Relay switched on in the Unity dashboard?");
+                Debug.LogError($"[MultiplayerSession] Allocation failed: {allocTask.Exception}");
+                yield break;
+            }
+            _hostAllocation = allocTask.Result;
+
+            var codeTask = RelayService.Instance.GetJoinCodeAsync(_hostAllocation.AllocationId);
+            while (!codeTask.IsCompleted) yield return null;
+            if (codeTask.IsFaulted || string.IsNullOrEmpty(codeTask.Result))
+            {
+                Fail("Relay wouldn't issue a join code.");
+                Debug.LogError($"[MultiplayerSession] Join code failed: {codeTask.Exception}");
+                yield break;
+            }
+            _relayJoinCode = codeTask.Result;
+            Debug.Log($"[MultiplayerSession] Relay allocated, join code {_relayJoinCode}");
+
             ApplyRelay(utp, _hostAllocation.ServerEndpoints, _hostAllocation.RelayServer,
                        _hostAllocation.AllocationIdBytes, _hostAllocation.Key,
                        _hostAllocation.ConnectionData, null);
         }
         else
         {
-            // Join the allocation HERE rather than back when the lobby was
-            // joined. A guest can sit in the lobby for minutes waiting for the
-            // host to start, and an allocation fetched that long ago is a
-            // liability; fetching it at the moment we connect is strictly safer.
-            var joinTask = RelayService.Instance.JoinAllocationAsync(_relayJoinCode);
-            while (!joinTask.IsCompleted) yield return null;
-            if (joinTask.IsFaulted || joinTask.Result == null)
+            // Join the allocation HERE, at the moment we actually connect. The
+            // code is re-read from the lobby first: the host only allocates when
+            // they press START, so anything we captured at lobby-join time is
+            // either absent or stale.
+            _guestAllocation = null;
+            for (int attempt = 0; attempt < 2 && _guestAllocation == null; attempt++)
             {
-                Fail("Couldn't connect through Relay.");
-                Debug.LogError($"[MultiplayerSession] Relay join failed: {joinTask.Exception}");
+                // Refresh the lobby to pick up the code the host just published.
+                if (_lobby != null)
+                {
+                    var lobbyTask = LobbyService.Instance.GetLobbyAsync(_lobby.Id);
+                    while (!lobbyTask.IsCompleted) yield return null;
+                    if (!lobbyTask.IsFaulted && lobbyTask.Result != null)
+                    {
+                        _lobby = lobbyTask.Result;
+                        string fresh = LobbyRelayCode();
+                        if (!string.IsNullOrEmpty(fresh)) _relayJoinCode = fresh;
+                    }
+                }
+
+                if (string.IsNullOrEmpty(_relayJoinCode))
+                {
+                    // The host hasn't published one yet — wait a beat and look
+                    // again rather than failing on a race.
+                    yield return new WaitForSecondsRealtime(1.5f);
+                    continue;
+                }
+
+                var joinTask = RelayService.Instance.JoinAllocationAsync(_relayJoinCode);
+                while (!joinTask.IsCompleted) yield return null;
+                if (!joinTask.IsFaulted && joinTask.Result != null)
+                {
+                    _guestAllocation = joinTask.Result;
+                    break;
+                }
+
+                Debug.LogWarning($"[MultiplayerSession] Relay join attempt {attempt + 1} failed "
+                               + $"(code '{_relayJoinCode}'): {joinTask.Exception?.GetBaseException().Message}");
+                _relayJoinCode = null;   // force a re-read on the retry
+                yield return new WaitForSecondsRealtime(1.5f);
+            }
+
+            if (_guestAllocation == null)
+            {
+                Fail("Couldn't connect through Relay — ask the host to restart the session.");
                 yield break;
             }
-            _guestAllocation = joinTask.Result;
 
             ApplyRelay(utp, _guestAllocation.ServerEndpoints, _guestAllocation.RelayServer,
                        _guestAllocation.AllocationIdBytes, _guestAllocation.Key,
@@ -561,6 +606,26 @@ public class MultiplayerSession : MonoBehaviour
         {
             Fail(IsHost ? "Couldn't start hosting." : "Couldn't connect to the host.");
             yield break;
+        }
+
+        // Only NOW tell the lobby we're live, and hand out the code — the host
+        // is bound and listening, so a guest released by this can never arrive
+        // before there is anything to arrive at.
+        if (IsHost && !LocalMode && _lobby != null)
+        {
+            var publish = LobbyService.Instance.UpdateLobbyAsync(_lobby.Id, new UpdateLobbyOptions
+            {
+                Data = new Dictionary<string, DataObject>
+                {
+                    [RelayKey]   = new DataObject(DataObject.VisibilityOptions.Member, _relayJoinCode),
+                    [StartedKey] = new DataObject(DataObject.VisibilityOptions.Member, "1"),
+                }
+            });
+            while (!publish.IsCompleted) yield return null;
+            if (publish.IsFaulted)
+                Debug.LogError($"[MultiplayerSession] Couldn't publish the join code: {publish.Exception}");
+            else
+                _lobby = publish.Result;
         }
 
         Current = State.Launching;
