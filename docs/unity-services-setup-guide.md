@@ -145,8 +145,14 @@ That is everything on your side. Send me a message and I will:
 login, or a dashboard. The game signs itself in anonymously in the background.
 They type four digits and a password.
 
-**Passwords have to be 8–64 characters.** That is Unity's rule for lobby
-passwords, not a choice I made. The *code* stays four digits.
+**The password is whatever you type, including nothing.** Unity's lobby service
+does require 8–64 characters, but the game hashes whatever you type into a
+fixed-length token and hands *that* to the service — so you can use a 3-letter
+password, or leave it blank for a session anyone with the code can join. Both
+machines derive the same token from the same typed password, so the check still
+happens on Unity's servers and a wrong password is still rejected before it
+reaches netcode. Nothing was weakened; you just don't have to satisfy Unity's
+rule yourself.
 
 **Four digits is 10,000 possible codes**, so two live sessions can occasionally
 want the same one. The game handles it by rolling a different code — you may

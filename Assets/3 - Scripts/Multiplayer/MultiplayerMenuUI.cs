@@ -143,8 +143,8 @@ public class MultiplayerMenuUI : MonoBehaviour
                 else
                 {
                     _title.text = "OPEN A SESSION";
-                    _body.text = "Pick a password — at least 8 characters. Your friends "
-                               + "will need it along with the code.";
+                    _body.text = "Set a password if you want one — any length. Leave it "
+                               + "blank and anyone with the code can join.";
                     SetRow(_codeRow, false); SetRow(_passRow, true);
                     SetRow(_codeDisplay, false); SetRow(_rosterBox, false);
                     SetButtons(_busy ? "OPENING…" : "START SESSION", "BACK");
@@ -166,7 +166,8 @@ public class MultiplayerMenuUI : MonoBehaviour
                 else
                 {
                     _title.text = "JOIN A SESSION";
-                    _body.text = "Type the four-digit code and the password the host gave you.";
+                    _body.text = "Type the four-digit code. Leave the password blank if "
+                               + "the host didn't set one.";
                     SetRow(_codeRow, true); SetRow(_passRow, true);
                     SetRow(_codeDisplay, false); SetRow(_rosterBox, false);
                     SetButtons(_busy ? "JOINING…" : "JOIN", "BACK");
@@ -217,12 +218,8 @@ public class MultiplayerMenuUI : MonoBehaviour
 
             case Screen.Host:
                 if (s.Current == MultiplayerSession.State.LobbyOpen) { s.BeginGame(); return; }
-                if (_passInput.text.Length < 8)
-                {
-                    _statusLabel.text = "That password is too short — 8 characters or more.";
-                    _statusLabel.color = BadRed;
-                    return;
-                }
+                // No length rule — whatever you type is the password, and blank
+                // means the session is open to anyone with the code.
                 _busy = true; _lastRendered = ""; Render();
                 await s.CreateSessionAsync(_passInput.text);
                 _busy = false; _lastRendered = ""; Render();
@@ -270,9 +267,13 @@ public class MultiplayerMenuUI : MonoBehaviour
     {
         _canvas = gameObject.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        // Above the save picker (UILayer.SaveDialog = 2000), since this opens
-        // over it after a slot is chosen.
-        _canvas.sortingOrder = 2100;
+        // MUST override sorting. This canvas is a CHILD of the main menu's, and
+        // a nested canvas ignores its own sortingOrder unless it overrides —
+        // without this it silently inherits the menu's 100 and draws BEHIND the
+        // save picker (which does override, at 2000). Same reason the credits
+        // modal sets it.
+        _canvas.overrideSorting = true;
+        _canvas.sortingOrder = 2100;   // above UILayer.SaveDialog (2000)
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
@@ -331,7 +332,7 @@ public class MultiplayerMenuUI : MonoBehaviour
 
         _codeRow = Field(_card, "CODE", new Vector2(0f, -186f), out _codeInput, 4,
                          TMP_InputField.ContentType.IntegerNumber, 44f, 14f);
-        _passRow = Field(_card, "PASSWORD", new Vector2(0f, -286f), out _passInput, 64,
+        _passRow = Field(_card, "PASSWORD  (OPTIONAL)", new Vector2(0f, -286f), out _passInput, 64,
                          TMP_InputField.ContentType.Password, 28f, 4f);
 
         _statusLabel = Text(_card, "Status", "", 19f, FontStyles.Italic, DimColor, TextAlignmentOptions.Center);

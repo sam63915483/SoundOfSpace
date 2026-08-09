@@ -557,7 +557,20 @@ public class MainMenuController : MonoBehaviour
         if (!FeatureVault.Multiplayer) { solo(); return; }
         EnsureMultiplayerUI();
         if (MultiplayerMenuUI.Instance == null) { solo(); return; }
+
+        // The picker has done its job — the save is chosen either way from here,
+        // and leaving it up behind the prompt just gives the player two dialogs
+        // to reason about.
+        CloseSaveSelectionPanel();
+
         MultiplayerMenuUI.Instance.AskPlayTogether(solo);
+    }
+
+    void CloseSaveSelectionPanel()
+    {
+        if (saveSelectionPanel == null) return;
+        Destroy(saveSelectionPanel);
+        saveSelectionPanel = null;
     }
 
     void EnsureMultiplayerUI()

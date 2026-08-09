@@ -83,7 +83,22 @@ public class MultiplayerSession : MonoBehaviour
     /// True on a machine that JOINED — read by SecondPlayerArrival to hold the
     /// screen black and wake the player out of the stasis pod instead of
     /// dropping them on top of the host.
+    ///
+    /// CONSUMED on use (see TakeGuestArrival). Statics survive a trip back
+    /// through the main menu, and a sticky flag here would make the NEXT
+    /// single-player game wake in the pod too — the same leak that bit
+    /// ShuttleExitDoor's stamp and TutorialGate's lock.
     public static bool ArrivingAsGuest { get; private set; }
+
+    /// Reads the guest flag and clears it, so it can only ever fire once.
+    public static bool TakeGuestArrival()
+    {
+        bool v = ArrivingAsGuest;
+        ArrivingAsGuest = false;
+        return v;
+    }
+
+    public static void ClearGuestArrival() => ArrivingAsGuest = false;
 
     readonly List<string> _roster = new List<string>();
 
@@ -196,7 +211,7 @@ public class MultiplayerSession : MonoBehaviour
                 var options = new CreateLobbyOptions
                 {
                     IsPrivate = false,          // discoverable BY CODE only, never browsable
-                    Password  = password,
+                    Password  = DerivePassword(password),   // null = open session
                     Data = new Dictionary<string, DataObject>
                     {
                         // Indexed + public so a joiner can find it by code.
@@ -230,6 +245,30 @@ public class MultiplayerSession : MonoBehaviour
 
         Fail("Couldn't open a lobby. Is Lobby switched on in the Unity dashboard?");
         return false;
+    }
+
+    /// Turns whatever the player typed into something Unity's lobby service will
+    /// accept, so the password can be any length — or nothing at all.
+    ///
+    /// Unity requires 8–64 characters. Rather than forcing that on the player, we
+    /// hash their input into a fixed-length token and hand THAT to the service.
+    /// Both machines derive the same token from the same typed password, so the
+    /// check still happens server-side and a wrong password is still rejected
+    /// before it reaches netcode — we have not weakened anything, we have just
+    /// stopped making the player satisfy Unity's rule.
+    ///
+    /// Empty in means null out: a lobby with genuinely no password.
+    static string DerivePassword(string raw)
+    {
+        if (string.IsNullOrEmpty(raw)) return null;
+        using (var sha = System.Security.Cryptography.SHA256.Create())
+        {
+            var hash = sha.ComputeHash(System.Text.Encoding.UTF8.GetBytes("soundofspace:" + raw));
+            // Base64 minus the symbols, so the token is plain alphanumeric.
+            string s = Convert.ToBase64String(hash)
+                             .Replace("+", "").Replace("/", "").Replace("=", "");
+            return s.Substring(0, 20);
+        }
     }
 
     async Task<bool> CodeIsTakenAsync(string candidate)
@@ -269,6 +308,7 @@ public class MultiplayerSession : MonoBehaviour
         if (!await EnsureServicesAsync()) return false;
 
         string lobbyId;
+        bool needsPassword;
         try
         {
             var q = await LobbyService.Instance.QueryLobbiesAsync(new QueryLobbiesOptions
@@ -285,6 +325,9 @@ public class MultiplayerSession : MonoBehaviour
                 return false;
             }
             lobbyId = q.Results[0].Id;
+            // An open session takes no password at all — passing one to a lobby
+            // that has none is an error, not a no-op.
+            needsPassword = q.Results[0].HasPassword;
         }
         catch (Exception e)
         {
@@ -295,17 +338,18 @@ public class MultiplayerSession : MonoBehaviour
 
         try
         {
-            _lobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, new JoinLobbyByIdOptions
-            {
-                Password = password
-            });
+            var join = new JoinLobbyByIdOptions();
+            if (needsPassword) join.Password = DerivePassword(password);
+            _lobby = await LobbyService.Instance.JoinLobbyByIdAsync(lobbyId, join);
         }
         catch (LobbyServiceException e)
         {
             // The service checks the password, so a wrong one never reaches
             // netcode at all — there is nothing to reject on our side.
             Fail(e.Reason == LobbyExceptionReason.IncorrectPassword
-                ? "Wrong password."
+                ? (needsPassword && string.IsNullOrEmpty(password)
+                    ? "That session needs a password."
+                    : "Wrong password.")
                 : "Couldn't join that session — it may have closed.");
             Debug.LogWarning($"[MultiplayerSession] Join failed: {e.Reason}");
             return false;

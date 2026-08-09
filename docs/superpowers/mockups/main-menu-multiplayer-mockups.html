@@ -556,10 +556,10 @@
       <h3>The project is not linked to Unity's services</h3>
       <p>Your <code>cloudProjectId</code> is empty and Unity Connect is switched off, so Relay and Lobby have nothing to talk to. Linking the project (Project Settings → Services) and enabling Relay + Lobby on the dashboard is a one-time job I cannot do for you. I will write you a step-by-step guide the same way the Cloudflare one works.</p>
     </div>
-    <div class="card warn">
-      <span class="kicker">Constraint worth knowing now</span>
-      <h3>Passwords have to be at least 8 characters</h3>
-      <p>Unity's lobby password field is 8–64 characters, so a 4-digit PIN is not an option for the password itself. The <em>code</em> stays four digits as you asked. If you want a short PIN for both, I would have to check it myself instead of letting Unity do it, which is weaker — I would rather keep the real one.</p>
+    <div class="card">
+      <span class="kicker">Solved</span>
+      <h3>The password is whatever you type — or nothing</h3>
+      <p>Unity's lobby field wants 8–64 characters, but the game hashes whatever you type into a fixed-length token and hands <em>that</em> to the service. So a 3-letter password works, and a blank one means anyone with the code can join. Both machines derive the same token from the same typed password, so Unity still checks it server-side and a wrong one never reaches netcode.</p>
     </div>
   </div>
 

@@ -43,7 +43,8 @@ public class SecondPlayerArrival : MonoBehaviour
         SceneManager.sceneLoaded += (scene, mode) =>
         {
             if (scene.name != GameplayScene) return;
-            if (!MultiplayerSession.ArrivingAsGuest) return;
+            // Consumed, not merely read — see MultiplayerSession.TakeGuestArrival.
+            if (!MultiplayerSession.TakeGuestArrival()) return;
             var go = new GameObject("SecondPlayerArrival");
             go.AddComponent<SecondPlayerArrival>();
         };
