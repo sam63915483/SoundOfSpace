@@ -366,18 +366,10 @@ public class MultiplayerSession : MonoBehaviour
             Fail("That session didn't hand out a connection. Ask the host to reopen it.");
             return false;
         }
+        // Note: we deliberately do NOT join the Relay allocation yet. That
+        // happens at launch (StartNetcodeWhenReady) so it is fresh at the moment
+        // we actually connect, however long the guest sits in the lobby.
         _relayJoinCode = relayData.Value;
-
-        try
-        {
-            _guestAllocation = await RelayService.Instance.JoinAllocationAsync(_relayJoinCode);
-        }
-        catch (Exception e)
-        {
-            Fail("Couldn't connect through Relay.");
-            Debug.LogError($"[MultiplayerSession] Relay join failed: {e}");
-            return false;
-        }
 
         Code = code;
         RefreshRoster();
@@ -497,30 +489,35 @@ public class MultiplayerSession : MonoBehaviour
         }
         else if (IsHost)
         {
-            // The explicit field overload, rather than the RelayServerData
-            // convenience constructor — it is the one guaranteed to exist on the
-            // installed transport, and it keeps this free of assembly-reference
-            // surprises. `true` selects DTLS.
-            utp.SetRelayServerData(
-                _hostAllocation.RelayServer.IpV4,
-                (ushort)_hostAllocation.RelayServer.Port,
-                _hostAllocation.AllocationIdBytes,
-                _hostAllocation.Key,
-                _hostAllocation.ConnectionData,
-                null,
-                true);
+            ApplyRelay(utp, _hostAllocation.ServerEndpoints, _hostAllocation.RelayServer,
+                       _hostAllocation.AllocationIdBytes, _hostAllocation.Key,
+                       _hostAllocation.ConnectionData, null);
         }
         else
         {
-            utp.SetRelayServerData(
-                _guestAllocation.RelayServer.IpV4,
-                (ushort)_guestAllocation.RelayServer.Port,
-                _guestAllocation.AllocationIdBytes,
-                _guestAllocation.Key,
-                _guestAllocation.ConnectionData,
-                _guestAllocation.HostConnectionData,
-                true);
+            // Join the allocation HERE rather than back when the lobby was
+            // joined. A guest can sit in the lobby for minutes waiting for the
+            // host to start, and an allocation fetched that long ago is a
+            // liability; fetching it at the moment we connect is strictly safer.
+            var joinTask = RelayService.Instance.JoinAllocationAsync(_relayJoinCode);
+            while (!joinTask.IsCompleted) yield return null;
+            if (joinTask.IsFaulted || joinTask.Result == null)
+            {
+                Fail("Couldn't connect through Relay.");
+                Debug.LogError($"[MultiplayerSession] Relay join failed: {joinTask.Exception}");
+                yield break;
+            }
+            _guestAllocation = joinTask.Result;
+
+            ApplyRelay(utp, _guestAllocation.ServerEndpoints, _guestAllocation.RelayServer,
+                       _guestAllocation.AllocationIdBytes, _guestAllocation.Key,
+                       _guestAllocation.ConnectionData, _guestAllocation.HostConnectionData);
         }
+
+        // Surface WHY a connection dropped. Without this a failed join is a
+        // silent 60-second timeout and nothing to go on.
+        nm.OnClientDisconnectCallback -= OnClientDisconnect;
+        nm.OnClientDisconnectCallback += OnClientDisconnect;
 
         bool ok = IsHost ? nm.StartHost() : nm.StartClient();
         if (!ok)
@@ -531,6 +528,72 @@ public class MultiplayerSession : MonoBehaviour
 
         Current = State.Launching;
         Status = IsHost ? "Hosting." : "Connected.";
+    }
+
+    /// Point the transport at the right relay endpoint.
+    ///
+    /// THIS IS THE BIT THAT BIT US. `allocation.RelayServer` is the plain UDP
+    /// endpoint — pairing it with isSecure:true makes the transport speak DTLS
+    /// at a port that isn't listening for it, so the connection never completes,
+    /// the client burns its 60 retry attempts and reports a timeout. With no
+    /// connection there are no puppets and no orbit corrections, so both players
+    /// sit in their own unsynced worlds.
+    ///
+    /// The endpoint list carries one entry per protocol. Pick the DTLS one and
+    /// say secure; fall back to UDP and say insecure. Never mix them.
+    static void ApplyRelay(UnityTransport utp, List<RelayServerEndpoint> endpoints, RelayServer fallback,
+                           byte[] allocationId, byte[] key, byte[] connectionData, byte[] hostConnectionData)
+    {
+        RelayServerEndpoint dtls = null, udp = null;
+        if (endpoints != null)
+        {
+            for (int i = 0; i < endpoints.Count; i++)
+            {
+                var e = endpoints[i];
+                if (e == null) continue;
+                if (e.ConnectionType == "dtls") dtls = e;
+                else if (e.ConnectionType == "udp") udp = e;
+            }
+        }
+
+        if (dtls != null)
+        {
+            Debug.Log($"[MultiplayerSession] Relay via DTLS {dtls.Host}:{dtls.Port}");
+            utp.SetRelayServerData(dtls.Host, (ushort)dtls.Port, allocationId, key,
+                                   connectionData, hostConnectionData, true);
+        }
+        else if (udp != null)
+        {
+            Debug.Log($"[MultiplayerSession] Relay via UDP {udp.Host}:{udp.Port}");
+            utp.SetRelayServerData(udp.Host, (ushort)udp.Port, allocationId, key,
+                                   connectionData, hostConnectionData, false);
+        }
+        else if (fallback != null)
+        {
+            Debug.Log($"[MultiplayerSession] Relay via fallback UDP {fallback.IpV4}:{fallback.Port}");
+            utp.SetRelayServerData(fallback.IpV4, (ushort)fallback.Port, allocationId, key,
+                                   connectionData, hostConnectionData, false);
+        }
+        else
+        {
+            Debug.LogError("[MultiplayerSession] Allocation carried no usable relay endpoint.");
+        }
+    }
+
+    void OnClientDisconnect(ulong clientId)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null) return;
+        // Only meaningful for our own connection; the host also gets this for
+        // every guest that leaves.
+        if (!IsHost && clientId == nm.LocalClientId)
+        {
+            string reason = string.IsNullOrEmpty(nm.DisconnectReason)
+                ? "The connection to the host dropped."
+                : nm.DisconnectReason;
+            Fail(reason);
+            Debug.LogWarning($"[MultiplayerSession] Disconnected: {reason}");
+        }
     }
 
     // ── lobby upkeep ─────────────────────────────────────────────────────
