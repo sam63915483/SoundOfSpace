@@ -58,6 +58,12 @@ public class PlanetRelativeSync : NetworkBehaviour
     // place lights the wrong things even when it points the right way.
     readonly NetworkVariable<bool> netLightOn = new NetworkVariable<bool>(
         false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    /// The lamp's live intensity. The flashlight has four modes — off, dim,
+    /// medium, high — and syncing only on/off made every remote beam render at
+    /// whatever brightness the light happened to be built with, which read as
+    /// permanently on full.
+    readonly NetworkVariable<float> netLightIntensity = new NetworkVariable<float>(
+        1f, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     readonly NetworkVariable<Vector3> netLightLocalPos = new NetworkVariable<Vector3>(
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     readonly NetworkVariable<Quaternion> netLightLocalRot = new NetworkVariable<Quaternion>(
@@ -292,6 +298,11 @@ public class PlanetRelativeSync : NetworkBehaviour
         if (netLightOn.Value != on) netLightOn.Value = on;
         if (!on || lamp == null) return;
 
+        // Quantised so a flicker/drift effect on the lamp doesn't spam the
+        // network with imperceptible changes — NetworkVariables send on change.
+        float q = Mathf.Round(lamp.intensity * 20f) / 20f;
+        if (!Mathf.Approximately(netLightIntensity.Value, q)) netLightIntensity.Value = q;
+
         Transform lt = lamp.transform;
         netLightLocalPos.Value = planet.InverseTransformPoint(lt.position);
         netLightLocalRot.Value = Quaternion.Inverse(planet.rotation) * lt.rotation;
@@ -338,8 +349,9 @@ public class PlanetRelativeSync : NetworkBehaviour
             // nothing.
             puppetLight.shadows = LightShadows.None;
             puppetLight.color = src != null ? src.color : Color.white;
-            puppetLight.intensity = src != null ? Mathf.Max(0.25f, src.intensity) : 1f;
             puppetLight.range = src != null ? Mathf.Min(src.range, RemoteMaxRange) : RemoteMaxRange;
+            // Intensity is NOT taken from the local lamp — it is driven per
+            // frame from the owner's actual brightness mode below.
             // Built-in RP demotes lights to vertex when there are many — same
             // reason PlayerFlashlight forces this on its own lamp.
             puppetLight.renderMode = LightRenderMode.ForcePixel;
@@ -347,6 +359,10 @@ public class PlanetRelativeSync : NetworkBehaviour
 
         puppetLight.enabled = on;
         if (!on || planet == null) return;
+
+        // Follow the owner's brightness mode (off / dim / medium / high) rather
+        // than blazing at whatever value the light was created with.
+        puppetLight.intensity = netLightIntensity.Value;
 
         // Position and aim in world space from the planet-local values, so a
         // floating-origin rebase can't leave the beam behind.

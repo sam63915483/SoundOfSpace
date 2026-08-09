@@ -183,6 +183,21 @@ public class StasisPodDoor : MonoBehaviour
         _prevZone = CurrentZone;
         _prevEffective = eff;
 
+        // STEADY-STATE SAFETY NET — this is what makes the door reliable.
+        //
+        // Everything above is edge-triggered: it schedules a close when a zone
+        // TRANSITION is observed. Miss one edge and the door stays open forever,
+        // which is precisely what happened in co-op — a remote player's zone
+        // update arriving late, or two transitions landing in the same frame,
+        // and the "close behind you" edge never fires.
+        //
+        // So don't rely on the edge. If the door is open, nobody is anywhere
+        // near it, and no close is pending, schedule one. This also cleans up
+        // after OpenHold(), which deliberately sets no timer and would otherwise
+        // leave the door open indefinitely once its occupant walked away.
+        if (IsOpen && _closeAt <= 0f && eff == Zone.Outside)
+            _closeAt = Time.time + autoCloseDelay;
+
         // Execute a due close — but never while ANY player straddles the doorway
         // plane, on either machine (the leaf would land on them).
         if (IsOpen && _closeAt > 0f && Time.time >= _closeAt && eff != Zone.Doorway)

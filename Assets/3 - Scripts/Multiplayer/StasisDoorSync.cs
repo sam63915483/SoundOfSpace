@@ -46,9 +46,14 @@ public class StasisDoorSync : MonoBehaviour
     const byte KindOpen  = 4;   // client -> host, "let me out" with no button
 
     const float ResendInterval = 2f;
+    /// Clients re-announce their zone this often even when it hasn't changed.
+    const float ZoneRepeatInterval = 1f;
+    /// Host forgets a remote zone it hasn't heard about in this long.
+    const float ZoneStaleSeconds = 4f;
 
     bool _registered;
-    float _resendTimer;
+    float _resendTimer, _zoneTimer;
+    float _lastZoneHeard;
     StasisPodDoor.Zone _lastSentZone = (StasisPodDoor.Zone)(-1);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -122,14 +127,30 @@ public class StasisDoorSync : MonoBehaviour
                 _resendTimer = 0f;
                 if (nm.ConnectedClientsIds.Count > 1) SendState(door.TargetOpen > 0.5f);
             }
+
+            // A remote zone that stops arriving must DECAY, not persist. A stuck
+            // "someone is deep in the pod" holds the door open forever and is
+            // impossible to tell from a player genuinely standing there.
+            if (StasisPodDoor.RemoteZone != StasisPodDoor.Zone.Outside
+                && Time.unscaledTime - _lastZoneHeard > ZoneStaleSeconds)
+                StasisPodDoor.RemoteZone = StasisPodDoor.Zone.Outside;
+
+            // Nobody connected: there is no remote player to be anywhere.
+            if (nm.ConnectedClientsIds.Count <= 1)
+                StasisPodDoor.RemoteZone = StasisPodDoor.Zone.Outside;
         }
         else
         {
             // Client: the only thing we volunteer is where we're standing.
+            // Re-sent on a timer as well as on change — one dropped or badly
+            // timed update would otherwise leave the host believing we are
+            // still inside the pod for the rest of the session.
             var zone = door.LocalZone;
-            if (zone != _lastSentZone)
+            _zoneTimer += Time.unscaledDeltaTime;
+            if (zone != _lastSentZone || _zoneTimer >= ZoneRepeatInterval)
             {
                 _lastSentZone = zone;
+                _zoneTimer = 0f;
                 SendToHost(KindZone, (byte)zone);
             }
         }
@@ -245,6 +266,7 @@ public class StasisDoorSync : MonoBehaviour
         {
             case KindZone when nm != null && nm.IsServer:
                 StasisPodDoor.RemoteZone = (StasisPodDoor.Zone)payload;
+                _lastZoneHeard = Time.unscaledTime;
                 break;
 
             case KindPress when nm != null && nm.IsServer:
