@@ -136,7 +136,31 @@ public class SpawnedTree : MonoBehaviour
     {
         if (dead || amount <= 0) return;
         hp -= amount;
+        // Report the HIT, not the removal. One message then covers the wobble,
+        // the topple and the despawn, because the far side runs the same code.
+        WorldSync.ReportPropHit(WorldSync.PropKind.Tree, bodySlot, cellId, hp);
         if (hp <= 0) Break();
+        else PlayShake();
+    }
+
+    /// <summary>
+    /// Somebody else hit this. Plays the SAME reaction a local hit plays - the
+    /// wobble, and the topple-and-shrink when it dies - so both screens show the
+    /// same thing rather than the prop silently vanishing.
+    ///
+    /// Takes the resulting HP rather than the damage amount, so a dropped
+    /// message self-corrects on the next hit instead of leaving the two
+    /// machines' health permanently out of step.
+    ///
+    /// awardLoot:false on the break - the drops belong to whoever swung. Your
+    /// friend seeing your logs would let them steal your wood, and it would
+    /// double every progression score.
+    /// </summary>
+    public void RemoteHit(int newHp)
+    {
+        if (dead) return;
+        hp = newHp;
+        if (hp <= 0) Break(awardLoot: false);
         else PlayShake();
     }
 
@@ -164,17 +188,19 @@ public class SpawnedTree : MonoBehaviour
         _shakeRoutine = null;
     }
 
-    void Break()
+    void Break() => Break(true);
+
+    void Break(bool awardLoot)
     {
         if (dead) return;
         dead = true;
         SetCollidersEnabled(false);
 
-        if (isSapling) { BreakSapling(); return; }
+        if (isSapling) { BreakSapling(awardLoot); return; }
 
         // Progression: TREE KILLER. Scored here rather than on the axe hit so a
         // tree only ever counts once, however it came down.
-        PlayerProgress.Instance?.AddTreeFelled();
+        if (awardLoot) PlayerProgress.Instance?.AddTreeFelled();
         // Minecraft-style loot: the wood is no longer handed straight to the
         // hotbar — it scatters as ResourceDrop sprites at the stump that the
         // player walks over to collect. ResourceDrop awards the resource and
@@ -183,11 +209,13 @@ public class SpawnedTree : MonoBehaviour
         Transform bodyParent = transform.parent;
         // TREE KILLER perk: +floor(level/2) wood. Read AFTER AddTreeFelled above,
         // so the tree that levels you up already pays the new rate.
+        if (awardLoot)
         ResourceDrop.Drop(Hotbar.ItemId.Wood, ProgressPerks.WoodPerTree(woodReward),
                           transform.position, bodyParent);
         // Ecosystem loop: every felled tree also yields saplings — 1 guaranteed,
         // +1 at 25%, +1 more at 10% (max 3) — so cutting a tree hands you the
         // means to replant. Applies to seed trees AND matured planted ones.
+        if (awardLoot)
         {
             int saplings = 1;
             if (Random.value < 0.25f) saplings++;
@@ -210,16 +238,16 @@ public class SpawnedTree : MonoBehaviour
     // growing is always the better deal.
     const int MaxSaplingWood = 4;
 
-    void BreakSapling()
+    void BreakSapling(bool awardLoot)
     {
         float growth = saplingSource != null ? saplingSource.Growth : 0f;
         int wood = Mathf.RoundToInt(Mathf.Lerp(0f, MaxSaplingWood, Mathf.Clamp01(growth)));
 
         Transform bodyParent = transform.parent;
-        if (wood > 0) ResourceDrop.Drop(Hotbar.ItemId.Wood, wood, transform.position, bodyParent);
+        if (awardLoot && wood > 0) ResourceDrop.Drop(Hotbar.ItemId.Wood, wood, transform.position, bodyParent);
         // EXACTLY one, never the 1–3 roll a felled tree gets. Uprooting a stick
         // cannot multiply it.
-        ResourceDrop.Drop(Hotbar.ItemId.Sapling, 1, transform.position, bodyParent);
+        if (awardLoot) ResourceDrop.Drop(Hotbar.ItemId.Sapling, 1, transform.position, bodyParent);
 
         // Hand back the Tree Daddy point planting it awarded, so moving a
         // sapling around is progression-neutral. Guarded so a player who somehow
@@ -278,10 +306,10 @@ public class SpawnedTree : MonoBehaviour
         // Planted trees aren't cell-based: just remove the instance. Its
         // SaplingGrowth.OnDisable drops it from the planet/local O2 counts.
         if (isPlanted) { Destroy(gameObject); return; }
+        // No report here: TakeDamage already announced the hit that killed it.
+        // Mine() runs at the END of the fall coroutine, seconds after
+        // ApplyingRemote was cleared, so reporting here would echo every remote
+        // break straight back out.
         if (spawner != null) spawner.MarkCellMined(bodySlot, cellId);
-        // Tell the other players. No-ops in single player, and no-ops when THIS
-        // chop is itself a remote one being applied (or the two machines would
-        // bounce it back and forth forever).
-        WorldSync.ReportTreeMined(bodySlot, cellId);
     }
 }

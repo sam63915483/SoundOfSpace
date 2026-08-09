@@ -449,6 +449,12 @@ public class TreeSpawner : MonoBehaviour
         return -1;
     }
 
+
+    /// Public name->slot, so the sync layer can resolve a delta that names a
+    /// body. Returns -1 for an unknown name - a delta can legitimately name a
+    /// body this machine has not streamed in yet.
+    public int SlotForBodyNamePublic(string bodyName) => SlotForBodyName(bodyName);
+
     /// Somebody else chopped this tree. MarkCellMined already despawns the live
     /// instance, so marking is the whole job here.
     public void RemoteMineCell(string bodyName, long cellId)

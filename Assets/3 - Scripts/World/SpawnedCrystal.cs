@@ -59,10 +59,21 @@ public class SpawnedCrystal : MonoBehaviour
             if (cols[i] != null) cols[i].enabled = on;
     }
 
+    public void RemoteHit(int newHp)
+    {
+        if (dead) return;
+        hp = newHp;
+        if (hp <= 0) Break(awardLoot: false);
+        else PlayShake();
+    }
+
     public void TakeDamage(int amount)
     {
         if (dead || amount <= 0) return;
         hp -= amount;
+        // Report the HIT, not the removal - one message covers the wobble, the
+        // shrink and the despawn, because the far side runs the same code.
+        WorldSync.ReportPropHit(WorldSync.PropKind.Crystal, bodySlot, cellId, hp);
         if (hp <= 0) Break();
         else PlayShake();
     }
@@ -91,7 +102,9 @@ public class SpawnedCrystal : MonoBehaviour
         _shakeRoutine = null;
     }
 
-    void Break()
+    void Break() => Break(true);
+
+    void Break(bool awardLoot)
     {
         if (dead) return;
         dead = true;
@@ -99,6 +112,8 @@ public class SpawnedCrystal : MonoBehaviour
         // Minecraft-style loot — shards scatter on the ground as ResourceDrop
         // sprites and are collected by walking over them. ResourceDrop awards
         // the crystals and fires the +N popup at pickup time.
+        // Skipped on a remote break: the shards belong to whoever swung.
+        if (awardLoot)
         ResourceDrop.Drop(Hotbar.ItemId.Crystal, crystalReward, transform.position, transform.parent);
         PlayBreakSound();
         if (_shakeRoutine != null) { StopCoroutine(_shakeRoutine); _shakeRoutine = null; }

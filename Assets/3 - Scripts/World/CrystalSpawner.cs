@@ -464,6 +464,37 @@ public class CrystalSpawner : MonoBehaviour
 
     // Called by SpawnedCrystal when it breaks. Marks the cell so the streaming
     // loop won't respawn it later (this play session).
+    // ─── Multiplayer ─────────────────────────────────────────────────────
+    //
+    // Keyed by (bodyName, cellId), never by slot index - slot order comes from
+    // scene enumeration and is not guaranteed to match between machines.
+
+    /// The body name for a slot, for building an outgoing delta.
+    public string BodyNameForSlot(int bodySlot)
+    {
+        if (bodySlot < 0 || bodySlot >= bodies.Count) return null;
+        var b = bodies[bodySlot].body;
+        return b != null ? b.bodyName : null;
+    }
+
+    /// Name -> slot. -1 when this machine has not streamed that body in.
+    public int SlotForBodyNamePublic(string bodyName)
+    {
+        if (string.IsNullOrEmpty(bodyName)) return -1;
+        for (int i = 0; i < bodies.Count; i++)
+            if (bodies[i].body != null && bodies[i].body.bodyName == bodyName) return i;
+        return -1;
+    }
+
+    /// Somebody else mined this crystal while it was out of our streaming range,
+    /// so there is no instance to animate - just record the cell.
+    public void RemoteMineCell(string bodyName, long cellId)
+    {
+        int slot = SlotForBodyNamePublic(bodyName);
+        if (slot < 0) return;
+        MarkCellMined(slot, cellId);
+    }
+
     public void MarkCellMined(int bodySlot, long cellId)
     {
         if (bodySlot < 0 || bodySlot >= bodies.Count) return;

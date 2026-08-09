@@ -125,8 +125,34 @@ public class SpawnedMushroom : MonoBehaviour
     {
         if (dead || amount <= 0) return;
         hp -= amount;
+        // Planted mushrooms have no cell id, so only streamed ones can be
+        // addressed over the wire; ReportPropHit ignores a negative slot.
+        WorldSync.ReportPropHit(WorldSync.PropKind.Mushroom,
+                                isPlanted ? -1 : bodySlot, cellId, hp);
         PlayHitSquish();
         if (hp <= 0) Break();
+        else PlayWobble();
+    }
+
+    /// <summary>
+    /// Somebody else hit this. Plays the SAME reaction a local hit plays - the
+    /// wobble, and the topple-and-shrink when it dies - so both screens show the
+    /// same thing rather than the prop silently vanishing.
+    ///
+    /// Takes the resulting HP rather than the damage amount, so a dropped
+    /// message self-corrects on the next hit instead of leaving the two
+    /// machines' health permanently out of step.
+    ///
+    /// awardLoot:false on the break - the drops belong to whoever swung. Your
+    /// friend seeing your logs would let them steal your wood, and it would
+    /// double every progression score.
+    /// </summary>
+    public void RemoteHit(int newHp)
+    {
+        if (dead) return;
+        hp = newHp;
+        PlayHitSquish();
+        if (hp <= 0) Break(awardLoot: false);
         else PlayWobble();
     }
 
@@ -195,7 +221,9 @@ public class SpawnedMushroom : MonoBehaviour
 
     // ── Break ──────────────────────────────────────────────────────────────
 
-    void Break()
+    void Break() => Break(true);
+
+    void Break(bool awardLoot)
     {
         if (dead) return;
         dead = true;
@@ -204,6 +232,7 @@ public class SpawnedMushroom : MonoBehaviour
         Transform bodyParent = transform.parent;
         string species = !string.IsNullOrEmpty(speciesKey) ? speciesKey : MushroomRegistry.AnyKey();
 
+        if (awardLoot)
         ResourceDrop.DropMushrooms(Hotbar.ItemId.Mushroom, species, dropCount,
                                    transform.position, bodyParent);
 
@@ -220,7 +249,7 @@ public class SpawnedMushroom : MonoBehaviour
         // That floor is the whole reason to build one.
         float sizeT = Mathf.Clamp01((mushroomScale - 1f) / 4f);
         int saplings = RollSpores(sizeT);
-        if (saplings > 0)
+        if (awardLoot && saplings > 0)
             ResourceDrop.DropMushrooms(Hotbar.ItemId.MushroomSapling, species, saplings,
                                        transform.position, bodyParent);
 
@@ -267,13 +296,10 @@ public class SpawnedMushroom : MonoBehaviour
         // Planted mushrooms aren't cell-based: just remove the instance.
         // Streamed ones ALSO destroy — MarkCellConsumed only drops the cell from
         // the spawner's live/pool bookkeeping so it never streams back in.
-        if (!isPlanted && spawner != null)
-        {
-            spawner.MarkCellConsumed(bodySlot, cellId);
-            // Tell the other players. Planted mushrooms are skipped: they are not
-            // cell-based, so there is no id to send - Phase 3 gives them one.
-            WorldSync.ReportMushroomHarvested(bodySlot, cellId);
-        }
+        // No report here: TakeDamage already announced the hit that killed it.
+        // Harvest runs at the end of the fall coroutine, long after
+        // ApplyingRemote was cleared.
+        if (!isPlanted && spawner != null) spawner.MarkCellConsumed(bodySlot, cellId);
         Destroy(gameObject);
     }
 
