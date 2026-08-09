@@ -219,6 +219,9 @@ public class BladeSweep : MonoBehaviour
     // OnHitLanded callback disarms AxeSwing).
     bool CastSegment(Vector3 origin, Vector3 dir, float dist, float speed, bool armed)
     {
+        // Co-op only, and a no-op everywhere else — see CastSegmentAgainstPuppets.
+        if (CastSegmentAgainstPuppets(origin, dir, dist, speed, armed)) return true;
+
         var hits = Physics.SphereCastAll(origin, _radius, dir, dist, ~0, QueryTriggerInteraction.Ignore);
         for (int h = 0; h < hits.Length; h++)
         {
@@ -309,6 +312,60 @@ public class BladeSweep : MonoBehaviour
 
             Scrape(id);
         }
+        return false;
+    }
+
+    /// <summary>
+    /// The blade, against enemies that have no colliders.
+    ///
+    /// In co-op a guest's aliens are pose-driven puppets with every collider
+    /// disabled — a kinematic capsule swept by network poses shoves whatever it
+    /// overlaps, which is the "host launched into space" bug. So the SphereCast
+    /// in CastSegment cannot see them, and without this a guest's axe swings
+    /// straight through every alien on the planet.
+    ///
+    /// Tested analytically against the same capsule EnemySync uses for gunfire,
+    /// then fed through the SAME charged / uncharged rules a collider hit takes.
+    ///
+    /// Deliberately a separate pass rather than a refactor of CastSegment. That
+    /// loop is tuned through seven feel iterations and single player must not
+    /// come out one frame different; with no puppets in the scene — which is
+    /// every single-player frame there has ever been — this is one early return.
+    /// </summary>
+    bool CastSegmentAgainstPuppets(Vector3 origin, Vector3 dir, float dist, float speed, bool armed)
+    {
+        if (_axe == null || !EnemySync.AnyPuppets) return false;
+        if (!EnemySync.SweepHitsPuppet(origin, dir, dist, _radius, out var enemy, out float hitDist))
+            return false;
+
+        // Same rule as the collider path: a blade poking through a wall must not
+        // damage what is on the other side.
+        if (_cam != null)
+        {
+            Vector3 contact = origin + dir.normalized * hitDist;
+            if (Physics.Linecast(_cam.position, contact, out RaycastHit block, ~0, QueryTriggerInteraction.Ignore)
+                && block.collider != null
+                && block.collider.transform.root != enemy.transform.root
+                && block.collider.GetComponentInParent<PlayerController>() == null)
+                return false;
+        }
+
+        int id = enemy.GetInstanceID();
+
+        if (armed && speed >= armedMinEdgeSpeed)
+        {
+            float chargeScale = Mathf.Lerp(1f, Mathf.Max(1f, fullChargeChops), Mathf.Clamp01(_currentCharge));
+            // Knockback is applied for symmetry and simply does nothing on a
+            // puppet — the host owns where the body goes. It stays here so the
+            // two paths cannot drift apart if this ever stops being true.
+            enemy.ApplyKnockback(dir, _axe.knockbackDistance, _axe.knockbackDuration);
+            enemy.TakeDamage(_axe.enemyDamagePerSwing * chargeScale);
+            HitFeedback(speed, playClip: true);
+            OnHitLanded?.Invoke();
+            return true;
+        }
+
+        if (speed >= minEdgeSpeed && unchargedHitFraction > 0f) UnchargedEnemyHit(enemy, id);
         return false;
     }
 

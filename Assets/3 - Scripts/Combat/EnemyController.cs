@@ -458,6 +458,12 @@ public class EnemyController : MonoBehaviour, IDamageable
         // keep threatening NPCs even while Docile/Searching, as they always did.
         TryBiteNearbyNPC();
 
+        // Same substitution, for the same reason, against the OTHER player.
+        // Puppet colliders are disabled on every machine, so Unity's collision
+        // events never fire for a remote astronaut and OnCollisionStay below can
+        // only ever reach this machine's own player.
+        TryBiteRemotePlayers();
+
         // ── Stealth state machine ───────────────────────────────────────────
         // Docile / Investigating / Searching run their own cheap locomotion and
         // return inside UpdateAIState; only Chasing falls through to the full
@@ -566,7 +572,13 @@ public class EnemyController : MonoBehaviour, IDamageable
             // Spit cycles only ARM after SpitDelaySeconds (10s); during the
             // pre-arm window everyone still freezes / backs up, but no one
             // fires.
-            if (PlayerTreeContactTracker.IsActive)
+            // ...and only while the enemy is after THIS machine's own player.
+            // The tracker watches the local player's feet and nothing else, and
+            // SpitProjectile lands its damage on the local ResourceManager — so
+            // an enemy chasing the guest must not freeze and spit because the
+            // HOST climbed a tree, and must certainly not shoot the host for it.
+            // Single player is unchanged: the only target there is always local.
+            if (PlayerTreeContactTracker.IsActive && PlayerRoster.IsLocalPlayer(player))
             {
                 if (horizDist < spitStandoffMin)
                     horizDir = -horizDir;              // too close — back up
@@ -1386,6 +1398,53 @@ public class EnemyController : MonoBehaviour, IDamageable
         }
     }
 
+    /// <summary>
+    /// Host only: bite the OTHER player.
+    ///
+    /// The mirror of TryBiteNearbyNPC, and it exists for the same reason that one
+    /// does — the collision events this would otherwise ride never fire. Remote
+    /// astronauts are puppets with their colliders disabled on every machine
+    /// (NetworkPlayerSetup), so OnCollisionStay can only ever reach the player
+    /// sitting at this keyboard, and a guest would be gnawed on by an alien that
+    /// never managed to hurt them.
+    ///
+    /// The host decides and tells that one client. This is the one place a guest
+    /// is not authoritative over its own health, and it is deliberate: the host
+    /// owns the AI, so it is the only machine that knows a swing connected.
+    /// Making the victim authoritative would let a guest simply refuse damage.
+    ///
+    /// Shares nextDamageTime with the player and NPC bites, so one enemy still
+    /// cannot land two attacks in a tick no matter who is standing where.
+    /// </summary>
+    void TryBiteRemotePlayers()
+    {
+        if (_dying) return;
+        if (Time.time < nextDamageTime) return;
+
+        var roster = PlayerRoster.All();
+        if (roster.Count < 2) return;   // single player, or nobody else here yet
+
+        // Scale-aware, exactly as the NPC bite is: an enlarged elite has a bigger
+        // physical capsule, so its reach grows with it.
+        float r = remotePlayerBiteRadius * Mathf.Max(0.5f, transform.localScale.x);
+        float rSqr = r * r;
+        Vector3 myPos = rb.position;
+
+        for (int i = 0; i < roster.Count; i++)
+        {
+            if (roster[i].IsLocal) continue;        // collision events already cover them
+            var t = roster[i].Transform;
+            if (t == null) continue;
+            if ((t.position - myPos).sqrMagnitude > rSqr) continue;
+
+            EnemySync.DamageRemotePlayer(roster[i].ClientId, contactDamage);
+            nextDamageTime = Time.time + contactDamageInterval;
+            if (_oneShotSource != null && attackClip != null)
+                _oneShotSource.PlayOneShot(attackClip, attackVolume);
+            return;
+        }
+    }
+
     public void TakeBobberDamage()
     {
         TakeDamage(damagePerBobberHit);
@@ -1861,6 +1920,13 @@ public class EnemyController : MonoBehaviour, IDamageable
     // ── Multiplayer (Phase 4): host simulates, guests render puppets ─────────
     //
     // Nothing below runs in single player. EnemySync is the only caller.
+
+    // The ONLY new serialized field in this phase, and it is appended after every
+    // existing one — inserting mid-class reorders serialization and corrupts the
+    // enemy prefabs (CLAUDE.md).
+    [Header("Multiplayer")]
+    [Tooltip("Reach, in metres, at which this enemy bites the OTHER player in co-op. Substitutes for the collision events a collider-less remote puppet can never raise, so it should roughly match where the capsules would have touched. Scaled by root scale at runtime. No effect in single player.")]
+    [SerializeField] float remotePlayerBiteRadius = 1.9f;
 
     /// Host-assigned identity for the sync layer. 0 means "not replicated".
     /// NOT serialized: it is assigned at spawn and meaningless on disk.

@@ -119,12 +119,15 @@ public class EnemySync : MonoBehaviour
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         SceneManager.sceneLoaded += OnSceneLoaded;
+        // Static and surviving scene loads, so it MUST be unsubscribed.
+        PistolController.OnLocalShotFired += OnLocalShot;
     }
 
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
         SceneManager.sceneLoaded -= OnSceneLoaded;
+        PistolController.OnLocalShotFired -= OnLocalShot;
     }
 
     void OnSceneLoaded(Scene s, LoadSceneMode m)
@@ -571,6 +574,128 @@ public class EnemySync : MonoBehaviour
             w.WriteValueSafe(KindPlayerDamage);
             w.WriteValueSafe(amount);
         }, clientId, NetworkDelivery.ReliableSequenced, 16);
+    }
+
+    // ── analytic hit tests: reaching a body that has no colliders ────────
+    //
+    // A puppet has no colliders, on purpose (EnemyController.MarkAsNetworkPuppet),
+    // so nothing a weapon does through Physics can ever touch one. Every weapon
+    // on a guest reaches an alien through here instead: the same ray-vs-capsule
+    // test PvP already uses. No colliders, no layers, no collision-matrix edits,
+    // and nothing that can push anybody anywhere.
+
+    /// Cheap enough to call per swing. False on the host and in single player,
+    /// which is what keeps the melee fallback out of the tuned path entirely.
+    public static bool AnyPuppets
+    {
+        get
+        {
+            var live = EnemyController.ActiveEnemies;
+            for (int i = 0; i < live.Count; i++)
+                if (live[i] != null && live[i].IsNetworkPuppet) return true;
+            return false;
+        }
+    }
+
+    /// Generosity on the hitbox, in metres. A puppet's pose is a fraction of a
+    /// second behind the host's, so a pixel-tight capsule would eat honest hits —
+    /// the same reason NetworkPlayerCombat's astronaut capsule is a little fat.
+    const float PuppetHitPadding = 0.15f;
+
+    public static bool RayHitsPuppet(Vector3 origin, Vector3 dir, float maxDistance,
+                                     out EnemyController best, out float bestDistance)
+        => SweepHitsPuppet(origin, dir, maxDistance, 0f, out best, out bestDistance);
+
+    /// <summary>
+    /// A THICK ray — the swept blade of the physics axe. Inflating the target
+    /// capsule by the sweep radius is exactly equivalent to sweeping a sphere
+    /// against the thin one, so this needs no second piece of geometry.
+    /// </summary>
+    public static bool SweepHitsPuppet(Vector3 origin, Vector3 dir, float maxDistance,
+                                       float sweepRadius,
+                                       out EnemyController best, out float bestDistance)
+    {
+        best = null;
+        bestDistance = float.MaxValue;
+        if (dir.sqrMagnitude < 1e-6f) return false;
+
+        var live = EnemyController.ActiveEnemies;
+        for (int i = 0; i < live.Count; i++)
+        {
+            var e = live[i];
+            if (e == null || !e.IsNetworkPuppet || e.IsDying) continue;
+
+            PuppetBodyCapsule(e, out Vector3 a, out Vector3 b, out float radius);
+            if (!NetworkPlayerCombat.RayHitsCapsule(origin, dir, a, b,
+                                                    radius + sweepRadius, out float d)) continue;
+
+            // A wall between us stops it. maxDistance is however far the real
+            // world raycast reached — and since the puppet has no collider it can
+            // never be what that raycast hit, which is exactly what makes this
+            // comparison meaningful.
+            if (d > maxDistance) continue;
+            if (d < bestDistance) { bestDistance = d; best = e; }
+        }
+        return best != null;
+    }
+
+    /// <summary>
+    /// The capsule standing in for an alien's body, in world space.
+    ///
+    /// Read from the enemy's own CapsuleCollider wherever there is one. It is
+    /// DISABLED on a puppet, but a disabled collider's geometry is still intact —
+    /// so the analytic test matches the shape the host is really colliding
+    /// against, including the scaled-up elite, instead of a guessed constant that
+    /// would drift the moment a prefab was retuned.
+    ///
+    /// Public and static purely so it can be exercised directly, for exactly the
+    /// reason RayHitsCapsule is: the first version of THAT had a sign error and
+    /// missed point-blank chest shots, and nothing on screen would have explained
+    /// why. Same risk here — a capsule built along the wrong axis, or scaled by
+    /// the wrong component, aims a whole weapon at empty air.
+    /// </summary>
+    public static void PuppetBodyCapsule(EnemyController e, out Vector3 a, out Vector3 b, out float radius)
+    {
+        var t = e.transform;
+        Vector3 s = t.lossyScale;
+
+        var cap = e.GetComponent<CapsuleCollider>();
+        if (cap != null)
+        {
+            Vector3 axis = cap.direction == 0 ? Vector3.right
+                         : cap.direction == 2 ? Vector3.forward
+                         : Vector3.up;
+            float half = Mathf.Max(0f, cap.height * 0.5f - cap.radius);
+            a = t.TransformPoint(cap.center - axis * half);
+            b = t.TransformPoint(cap.center + axis * half);
+            radius = cap.radius * Mathf.Max(Mathf.Abs(s.x), Mathf.Abs(s.z)) + PuppetHitPadding;
+            return;
+        }
+
+        // No capsule authored: fall back to the 2 m body EnemySpawner assumes
+        // (its CapsuleHalfHeight is 1), measured either side of the root.
+        a = t.TransformPoint(new Vector3(0f, -0.9f, 0f));
+        b = t.TransformPoint(new Vector3(0f,  0.9f, 0f));
+        radius = 0.7f * Mathf.Abs(s.x) + PuppetHitPadding;
+    }
+
+    // ── the guest's own gunfire ──────────────────────────────────────────
+
+    void OnLocalShot(PistolController.ShotInfo shot)
+    {
+        // Guests only. On the host the pistol's own raycast already struck the
+        // enemy's real hit colliders and applied the damage through the ordinary
+        // single-player path; doing it again here would double every shot.
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || nm.IsServer) return;
+
+        if (!RayHitsPuppet(shot.RayOrigin, shot.RayDirection, shot.WorldHitDistance,
+                           out var enemy, out _)) return;
+
+        // Straight into the enemy's ordinary damage entry point, which recognises
+        // a puppet, reports the hit to the host, and paints the local blood and
+        // health bar on the way past. Nothing here has to know about a network.
+        enemy.TakeDamage(shot.Damage);
     }
 
     // ── transport ────────────────────────────────────────────────────────

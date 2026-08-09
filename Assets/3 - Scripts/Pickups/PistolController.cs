@@ -538,6 +538,10 @@ public class PistolController : MonoBehaviour
         /// The firing weapon's tracer cap, carried on the shot so listeners
         /// never have to go looking for the controller that fired.
         public float MaxTracerLength;
+        /// What this shot does to whatever it hits. Carried for the same reason
+        /// as the tracer cap — EnemySync applies it to enemy puppets, whose
+        /// colliders are disabled and so were never touched by the raycast above.
+        public float Damage;
     }
 
     /// <summary>
@@ -709,6 +713,7 @@ public class PistolController : MonoBehaviour
             MuzzleStart      = tracerStart,
             WorldHitDistance = Vector3.Distance(origin, endPoint),
             MaxTracerLength  = maxTracerLength,
+            Damage           = damagePerShot,
         });
 
         // Kick the additive recoil. Scale is captured NOW so a shot fired while
