@@ -72,6 +72,9 @@ public class MultiplayerSession : MonoBehaviour
     public State Current { get; private set; } = State.Idle;
     public string Code { get; private set; } = "";
     public string Status { get; private set; } = "";
+    /// The password the HOST typed, kept so they can read it back out to a
+    /// friend from the pause menu. Never populated on a guest.
+    public string HostPassword { get; private set; } = "";
     public bool IsHost { get; private set; }
     /// Names of everyone currently in the lobby, host first.
     public IReadOnlyList<string> Roster => _roster;
@@ -170,6 +173,7 @@ public class MultiplayerSession : MonoBehaviour
     {
         if (Current == State.Working) return false;
         IsHost = true;
+        HostPassword = password ?? "";
         Current = State.Working;
         Status = "Opening a session…";
 
@@ -429,8 +433,23 @@ public class MultiplayerSession : MonoBehaviour
 
     /// Loads the gameplay scene and arms the handoff that starts netcode once
     /// the NetworkManager in that scene exists.
+    /// Set when the session is opened or joined from INSIDE the game (the pause
+    /// menu) rather than from the main menu. The gameplay scene is already
+    /// loaded, so launching must start netcode where we stand instead of
+    /// reloading the world out from under the player.
+    bool _inPlace;
+    public void SetInPlace(bool v) => _inPlace = v;
+
     void LaunchIntoGame()
     {
+        if (_inPlace)
+        {
+            // Already in the world — no scene load, no pod arrival, just connect.
+            Current = State.Launching;
+            StartCoroutine(StartNetcodeWhenReady());
+            return;
+        }
+
         ArrivingAsGuest = !IsHost;
 
         // A guest must never replay the shuttle intro. This is the same flag the
@@ -664,12 +683,34 @@ public class MultiplayerSession : MonoBehaviour
 
     // ── teardown ─────────────────────────────────────────────────────────
 
+    /// Ends a session that is already IN PROGRESS and drops back to single
+    /// player, without leaving the world.
+    ///
+    /// Shuts netcode down first so the guests are disconnected cleanly, then
+    /// closes the lobby. The host keeps playing exactly where they were — this
+    /// is "make it solo again", not "quit to menu".
+    public void EndSessionAndGoSolo()
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm != null && (nm.IsListening || nm.IsClient || nm.IsServer))
+        {
+            nm.OnClientDisconnectCallback -= OnClientDisconnect;
+            nm.Shutdown();
+        }
+        CancelSession();
+        Status = "Back to single player.";
+    }
+
     /// Closes the lobby (host) or leaves it (guest) and returns to Idle.
     public async void CancelSession()
     {
         StopLoops();
         var lobby = _lobby;
         _lobby = null;
+        // Must clear, or a session started later FROM THE MAIN MENU would skip
+        // its scene load and try to connect in the menu scene.
+        _inPlace = false;
+        ClearGuestArrival();
         Current = State.Idle;
         Status = "";
         Code = "";

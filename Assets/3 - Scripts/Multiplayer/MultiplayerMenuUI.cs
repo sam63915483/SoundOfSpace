@@ -19,7 +19,24 @@ public class MultiplayerMenuUI : MonoBehaviour
 {
     public static MultiplayerMenuUI Instance { get; private set; }
 
-    enum Screen { None, Ask, Host, Join }
+    enum Screen { None, Ask, Host, Join, InGame }
+
+    /// Opens the session panel from inside the game (the pause menu's SESSION
+    /// tab). Creates the panel on demand and keeps it across scene loads, since
+    /// unlike the menu copy there is no menu controller to parent it to.
+    public static void OpenInGame()
+    {
+        if (!FeatureVault.Multiplayer) return;
+        if (Instance == null)
+        {
+            var go = new GameObject("MultiplayerMenuUI");
+            DontDestroyOnLoad(go);
+            go.AddComponent<MultiplayerMenuUI>();
+        }
+        Instance._onSolo = null;
+        Instance._screen = Screen.InGame;
+        Instance.Show();
+    }
 
     // Galaxy palette — same values MainMenuController declares.
     static readonly Color AccentCool  = new Color32(0x5B, 0xD8, 0xFF, 0xFF);
@@ -151,6 +168,51 @@ public class MultiplayerMenuUI : MonoBehaviour
                 }
                 break;
 
+            case Screen.InGame:
+            {
+                bool live = s != null && s.Current != MultiplayerSession.State.Idle
+                                      && s.Current != MultiplayerSession.State.Failed;
+                if (live && s.IsHost)
+                {
+                    _title.text = "YOUR SESSION";
+                    _body.text = "Anyone with this code and password can drop into your "
+                               + "world. Ending it puts you back in single player without "
+                               + "leaving the game.";
+                    SetRow(_codeRow, false); SetRow(_passRow, false);
+                    SetRow(_codeDisplay, true); SetRow(_rosterBox, true);
+                    _codeLabel.text = string.IsNullOrEmpty(s.Code) ? "----" : s.Code;
+                    _codeLabel.color = LiveGreen;
+                    _rosterLabel.text =
+                        (string.IsNullOrEmpty(s.HostPassword)
+                            ? "<color=#A8E6FF>No password — the code is enough.</color>\n\n"
+                            : $"<color=#A8E6FF>Password:</color>  <b>{s.HostPassword}</b>\n\n")
+                        + RosterText(s);
+                    SetButtons("END SESSION", "CLOSE");
+                }
+                else if (live)
+                {
+                    _title.text = "CONNECTED";
+                    _body.text = "You're in someone else's world. Leaving drops you back "
+                               + "into your own game.";
+                    SetRow(_codeRow, false); SetRow(_passRow, false);
+                    SetRow(_codeDisplay, true); SetRow(_rosterBox, true);
+                    _codeLabel.text = string.IsNullOrEmpty(s.Code) ? "----" : s.Code;
+                    _codeLabel.color = LiveGreen;
+                    _rosterLabel.text = RosterText(s);
+                    SetButtons("LEAVE SESSION", "CLOSE");
+                }
+                else
+                {
+                    _title.text = "MULTIPLAYER";
+                    _body.text = "Open this world up so friends can drop in, or join "
+                               + "somebody else's with their code.";
+                    SetRow(_codeRow, false); SetRow(_passRow, true);
+                    SetRow(_codeDisplay, false); SetRow(_rosterBox, false);
+                    SetButtons(_busy ? "OPENING…" : "HOST THIS WORLD", "JOIN WITH A CODE");
+                }
+                break;
+            }
+
             case Screen.Join:
                 if (waiting)
                 {
@@ -225,6 +287,27 @@ public class MultiplayerMenuUI : MonoBehaviour
                 _busy = false; _lastRendered = ""; Render();
                 break;
 
+            case Screen.InGame:
+            {
+                bool live = s.Current != MultiplayerSession.State.Idle
+                         && s.Current != MultiplayerSession.State.Failed;
+                if (live)
+                {
+                    // Host ends it for everyone; a guest just disconnects.
+                    s.EndSessionAndGoSolo();
+                    _lastRendered = ""; Render();
+                    return;
+                }
+                // Hosting mid-game: open the lobby, flag it started (there is no
+                // waiting room when the world is already running), and connect
+                // where we stand.
+                s.SetInPlace(true);
+                _busy = true; _lastRendered = ""; Render();
+                if (await s.CreateSessionAsync(_passInput.text)) s.BeginGame();
+                _busy = false; _lastRendered = ""; Render();
+                return;
+            }
+
             case Screen.Join:
                 if (_codeInput.text.Trim().Length != 4)
                 {
@@ -250,6 +333,19 @@ public class MultiplayerMenuUI : MonoBehaviour
             _onSolo = null;
             Hide();
             go?.Invoke();
+            return;
+        }
+
+        if (_screen == Screen.InGame)
+        {
+            bool live = s != null && s.Current != MultiplayerSession.State.Idle
+                                  && s.Current != MultiplayerSession.State.Failed;
+            // CLOSE while live; otherwise this is "join someone else instead".
+            if (live) { Hide(); return; }
+            s?.SetInPlace(true);
+            _screen = Screen.Join;
+            _lastRendered = "";
+            Render();
             return;
         }
 
