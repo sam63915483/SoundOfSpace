@@ -535,6 +535,9 @@ public class PistolController : MonoBehaviour
         /// Distance from RayOrigin to whatever the world raycast hit, or `range`
         /// if it hit nothing. Used to reject shots that struck a wall first.
         public float WorldHitDistance;
+        /// The firing weapon's tracer cap, carried on the shot so listeners
+        /// never have to go looking for the controller that fired.
+        public float MaxTracerLength;
     }
 
     /// <summary>
@@ -705,6 +708,7 @@ public class PistolController : MonoBehaviour
             RayDirection     = forward,
             MuzzleStart      = tracerStart,
             WorldHitDistance = Vector3.Distance(origin, endPoint),
+            MaxTracerLength  = maxTracerLength,
         });
 
         // Kick the additive recoil. Scale is captured NOW so a shot fired while

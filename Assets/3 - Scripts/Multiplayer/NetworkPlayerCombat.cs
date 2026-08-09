@@ -84,16 +84,10 @@ public class NetworkPlayerCombat : NetworkBehaviour
         // ONLY the length travels. Direction and origin are rebuilt on each
         // receiver from their own copy of this player's gun - see
         // NetworkAvatarDetail.TryGetAimRay for why sending them was wrong.
-        float tracerLen = Mathf.Min(shot.WorldHitDistance, LocalMaxTracerLength());
+        float tracerLen = Mathf.Min(shot.WorldHitDistance, shot.MaxTracerLength);
 
         FireServerRpc(tracerLen);
         TryHitRemotePlayers(shot);
-    }
-
-    static float LocalMaxTracerLength()
-    {
-        var p = Object.FindObjectOfType<PistolController>();
-        return p != null ? p.maxTracerLength : 15f;
     }
 
     [ServerRpc]
@@ -151,7 +145,7 @@ public class NetworkPlayerCombat : NetworkBehaviour
         }
 
         if (best == null) return;
-        ReportHitServerRpc(best.OwnerClientId, DamagePerHit);
+        ReportHitServerRpc(best.OwnerClientId);
     }
 
     /// Analytic ray-vs-capsule against this player's body.
@@ -253,23 +247,26 @@ public class NetworkPlayerCombat : NetworkBehaviour
     // ── damage ───────────────────────────────────────────────────────────
 
     [ServerRpc]
-    void ReportHitServerRpc(ulong victimClientId, float amount)
+    void ReportHitServerRpc(ulong victimClientId)
     {
-        // Forward to the victim alone; nobody else needs to know.
+        // The AMOUNT is deliberately not a parameter. Trusting the shooter for
+        // whether a hit landed is a design choice (see the class comment);
+        // trusting them for how much it hurt is just an unnecessary value on
+        // the wire, and DamagePerHit is a const both builds already share.
         var p = new ClientRpcParams
         {
             Send = new ClientRpcSendParams { TargetClientIds = new[] { victimClientId } }
         };
-        ApplyDamageClientRpc(amount, p);
+        ApplyDamageClientRpc(p);
     }
 
     [ClientRpc]
-    void ApplyDamageClientRpc(float amount, ClientRpcParams clientRpcParams = default)
+    void ApplyDamageClientRpc(ClientRpcParams clientRpcParams = default)
     {
         // Runs on the VICTIM. ResourceManager is scene-placed and owns the death
         // check in its own Update, so simply taking damage is enough to die —
         // MultiplayerDeathRespawn picks it up from there.
         var rm = ResourceManager.Instance;
-        if (rm != null) rm.TakeDamage(amount);
+        if (rm != null) rm.TakeDamage(DamagePerHit);
     }
 }

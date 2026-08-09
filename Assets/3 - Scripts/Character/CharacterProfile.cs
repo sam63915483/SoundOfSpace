@@ -56,6 +56,18 @@ public class CharacterProfile
     /// on the wire with room to spare (32 BYTES, and a name may be non-ASCII).
     public const int MaxNameLength = 16;
 
+    /// Drops a trailing lone high surrogate.
+    ///
+    /// A char is 16 bits, but an emoji is a SURROGATE PAIR of two chars. Cutting
+    /// a string to a char count can land between the halves and leave an
+    /// orphaned high surrogate, which renders as a replacement box. Trimming one
+    /// more char removes the whole character instead of half of it.
+    public static string TrimDanglingSurrogate(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return s;
+        return char.IsHighSurrogate(s[s.Length - 1]) ? s.Substring(0, s.Length - 1) : s;
+    }
+
     /// Trim + length-cap. Returns "" if the input was empty or all whitespace,
     /// which callers treat as invalid rather than saving.
     ///
@@ -64,7 +76,7 @@ public class CharacterProfile
     {
         if (string.IsNullOrEmpty(raw)) return "";
         var s = raw.Trim();
-        if (s.Length > MaxNameLength) s = s.Substring(0, MaxNameLength);
+        if (s.Length > MaxNameLength) s = TrimDanglingSurrogate(s.Substring(0, MaxNameLength));
         return s;
     }
 

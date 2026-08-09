@@ -146,16 +146,22 @@ public class NetworkPlayerIdentity : NetworkBehaviour
     /// Belt-and-braces against a longer name arriving from a future build with a
     /// bigger cap: FixedString32Bytes THROWS if the value does not fit, which
     /// would take the spawn down with it.
-    static string Truncate(string s)
+    ///
+    /// Public so it can be exercised directly. This is the LAST line of defence
+    /// before a value that overflows the buffer kills a player spawn, and the
+    /// failure would surface as "the other player never appeared" — worth a test
+    /// rather than an assumption. Note a 16-character all-emoji name is 32 UTF-8
+    /// bytes, so the byte loop below is load-bearing, not theoretical.
+    public static string Truncate(string s)
     {
         if (string.IsNullOrEmpty(s)) return "";
         // 32-byte buffer, and UTF-8 can spend 4 bytes on one character. Cap at
         // 16 characters (the profile cap) and trust the profile's own sanitise
         // for the common case; this only bites on hand-edited JSON.
         if (s.Length > CharacterProfile.MaxNameLength)
-            s = s.Substring(0, CharacterProfile.MaxNameLength);
+            s = CharacterProfile.TrimDanglingSurrogate(s.Substring(0, CharacterProfile.MaxNameLength));
         while (System.Text.Encoding.UTF8.GetByteCount(s) > 29 && s.Length > 0)
-            s = s.Substring(0, s.Length - 1);
+            s = CharacterProfile.TrimDanglingSurrogate(s.Substring(0, s.Length - 1));
         return s;
     }
 }

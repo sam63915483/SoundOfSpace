@@ -72,6 +72,13 @@ public class MultiplayerDeathRespawn : MonoBehaviour
 
     void OnSceneLoaded(Scene s, LoadSceneMode m)
     {
+        // RespawnInPod sets isInDialogue and clears it after two waits. A scene
+        // change inside those waits kills the coroutine with the flag still set
+        // - and it is a STATIC, so it survives the load and the next session
+        // starts frozen. Nothing else clears it (DeathCutsceneController only
+        // clears it on its own paths), so this is the backstop.
+        if (_handling) PlayerController.isInDialogue = false;
+
         _handling = false;
         // DeathCutsceneController nulls LegacyRespawnSuppressed in its OnDestroy,
         // so a scene change can wipe our chained hook - re-install on next death.

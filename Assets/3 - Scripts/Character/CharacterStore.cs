@@ -254,10 +254,32 @@ public class CharacterStore : MonoBehaviour
         }
         catch (Exception e)
         {
-            // A corrupt characters.json must not brick the main menu. Start
-            // empty; the file is overwritten on the next mutation.
+            // A corrupt characters.json must not brick the main menu - but it
+            // must not be silently DESTROYED either. Starting empty means the
+            // next mutation writes over it, so the file is moved aside first
+            // and the player keeps something a human could hand-repair.
             Debug.LogError($"[CharacterStore] Couldn't read {FilePath}: {e.Message}");
+            Quarantine();
             _book = new CharacterBook();
+        }
+    }
+
+    /// Moves an unreadable characters.json aside so the next Save cannot
+    /// overwrite it. Timestamped, so repeated failures never clobber each other.
+    void Quarantine()
+    {
+        try
+        {
+            string path = FilePath;
+            if (!File.Exists(path)) return;
+            string stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
+            string dest  = path + ".corrupt-" + stamp;
+            File.Move(path, dest);
+            Debug.LogWarning($"[CharacterStore] Unreadable file moved to {dest}");
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[CharacterStore] Couldn't quarantine: {e.Message}");
         }
     }
 
@@ -290,15 +312,39 @@ public class CharacterStore : MonoBehaviour
         c.schemaVersion = CharacterProfile.CurrentSchemaVersion;
     }
 
+    /// <summary>
+    /// Writes via a temp file and swaps it into place, so an interrupted write
+    /// cannot leave a truncated characters.json.
+    ///
+    /// A direct WriteAllText opens the real file and truncates it BEFORE the new
+    /// bytes land - a crash or power cut in that window loses every character.
+    /// The rename is the atomic step: readers see either the whole old file or
+    /// the whole new one, never a half-written one.
+    /// </summary>
     public void Save()
     {
+        string path = FilePath;
+        string tmp  = path + ".tmp";
         try
         {
-            File.WriteAllText(FilePath, JsonUtility.ToJson(_book, true));
+            File.WriteAllText(tmp, JsonUtility.ToJson(_book, true));
+
+            if (File.Exists(path))
+            {
+                // File.Replace is atomic where the platform supports it, and
+                // keeps no backup (null) - the temp file IS the backup until
+                // the swap completes.
+                File.Replace(tmp, path, null);
+            }
+            else
+            {
+                File.Move(tmp, path);
+            }
         }
         catch (Exception e)
         {
-            Debug.LogError($"[CharacterStore] Couldn't write {FilePath}: {e.Message}");
+            Debug.LogError($"[CharacterStore] Couldn't write {path}: {e.Message}");
+            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
         }
         Changed?.Invoke();
     }
