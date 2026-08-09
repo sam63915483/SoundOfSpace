@@ -136,6 +136,8 @@ public class WorldSync : MonoBehaviour
         WorldReady  = false;
         _incoming   = null;
         _nextRequestAt = 0f;
+        // The cached PlayerController belongs to the scene we just left.
+        PlayerRoster.Forget();
     }
 
     void Update()

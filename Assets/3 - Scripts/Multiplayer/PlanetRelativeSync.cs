@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -18,6 +19,12 @@ using UnityEngine;
 /// the same offset.
 public class PlanetRelativeSync : NetworkBehaviour
 {
+    /// Live puppets, for anything that needs "where is every player" — enemy
+    /// targeting, mainly. Maintained in OnNetworkSpawn/OnNetworkDespawn rather
+    /// than by scanning, per the AllInstances convention.
+    static readonly List<PlanetRelativeSync> s_all = new List<PlanetRelativeSync>();
+    public static IReadOnlyList<PlanetRelativeSync> AllPuppets => s_all;
+
     public string planetName = "Humble Abode";
     public float remoteLerpSpeed = 12f;
     public float remoteSnapDistance = 25f;
@@ -132,6 +139,7 @@ public class PlanetRelativeSync : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        if (!s_all.Contains(this)) s_all.Add(this);
         TryResolveRefs();
 
         if (IsOwner)
@@ -159,11 +167,16 @@ public class PlanetRelativeSync : NetworkBehaviour
 
     public override void OnNetworkDespawn()
     {
+        s_all.Remove(this);
         Unsubscribe();
     }
 
     public override void OnDestroy()
     {
+        // Belt-and-braces: a puppet torn down without a clean despawn (session
+        // dropped, scene unloaded) would otherwise leave a dead entry in the
+        // roster, and enemy targeting would chase a null Transform forever.
+        s_all.Remove(this);
         Unsubscribe();
         base.OnDestroy();
     }
