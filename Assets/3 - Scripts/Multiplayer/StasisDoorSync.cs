@@ -4,101 +4,151 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Makes the stasis pod door open on EVERYONE's screen, not just on the machine
-/// whose player is standing in it.
+/// Mirrors the stasis pod door across every machine in a session.
 ///
-/// The pod door is driven by local proximity — it watches "the player" via
-/// FindObjectOfType and opens when they are deep inside. That is correct
-/// single-player behaviour and invisible to everyone else, so without this the
-/// host watches a joining player materialise through a shut door.
+/// The door is driven by LOCAL proximity — it watches "the player" via
+/// FindObjectOfType and opens when they are deep inside. Correct in single
+/// player, invisible to everyone else in co-op: the host watched a joining
+/// player sit in a sealed pod and then walk out through a shut door.
 ///
-/// ── Why a named message rather than an RPC ───────────────────────────────
-/// Same reason SolarSystemSync and the galactic clock use one: there is no
-/// RPC layer in this project yet, and adding one means a NetworkBehaviour on a
-/// spawned NetworkObject. A named message needs neither — any machine can send,
-/// and the handler is registered wherever the NetworkManager is live.
+/// ── Why the first attempt didn't work ────────────────────────────────────
+/// Registration was lazy and only ran on the machine that SENT. The host never
+/// sent, so it never registered a handler, so it silently dropped every message.
+/// Registration now happens on every machine, every frame it isn't already done.
 ///
-/// A client's request is relayed through the host so that everyone hears it;
-/// clients cannot broadcast to each other directly.
+/// ── Why it isn't just "mirror the state" ─────────────────────────────────
+/// Both machines run the proximity rule against their OWN player, so a plain
+/// mirror fights itself: the guest stands in the pod and wants it open, the host
+/// has nobody inside and wants it shut, and the door flickers or shuts on
+/// someone's head. So each machine broadcasts what IT wants and the door opens
+/// if ANYONE wants it open — a union, not an overwrite. Closing only happens
+/// once no one is asking for it.
+///
+/// Uses a named message for the same reason SolarSystemSync and the galactic
+/// clock do: there is still no RPC layer, and a named message needs no
+/// NetworkObject. Clients cannot reach each other, so the host relays.
 /// </summary>
-public static class StasisDoorSync
+public class StasisDoorSync : MonoBehaviour
 {
-    const string MsgOpen = "StasisDoorOpen";
+    public static StasisDoorSync Instance { get; private set; }
 
-    static bool _registered;
+    const string MsgState = "StasisDoorState";
+
+    /// True when some OTHER machine is holding the door open. The door reads
+    /// this and refuses to close while it is set.
+    public static bool RemoteWantsOpen { get; private set; }
+
+    static bool _localWantsOpen;
+    bool _registered;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
-    static void Hook()
+    static void AutoCreate()
     {
         if (!FeatureVault.Multiplayer) return;
-        SceneManager.sceneLoaded += (_, __) => _registered = false;
+        if (Instance != null) return;
+        var go = new GameObject("StasisDoorSync");
+        DontDestroyOnLoad(go);
+        go.AddComponent<StasisDoorSync>();
     }
 
-    /// Registers lazily — the NetworkManager is a scene object and may not exist
-    /// yet, or may have been replaced by a scene reload.
-    static bool EnsureRegistered()
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+        SceneManager.sceneLoaded += OnSceneLoaded;
+    }
+
+    void OnDestroy()
+    {
+        if (Instance == this) Instance = null;
+        SceneManager.sceneLoaded -= OnSceneLoaded;
+    }
+
+    void OnSceneLoaded(Scene s, LoadSceneMode m)
+    {
+        // New scene, new NetworkManager, and nobody is asking for the door yet.
+        _registered = false;
+        RemoteWantsOpen = false;
+        _localWantsOpen = false;
+    }
+
+    /// Registration has to happen on EVERY machine, not just senders — that was
+    /// the bug. Cheap: one bool check per frame once registered.
+    void Update()
     {
         var nm = NetworkManager.Singleton;
-        if (nm == null || !nm.IsListening) { _registered = false; return false; }
-        if (_registered) return true;
-        nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgOpen, OnOpenMessage);
+        if (nm == null || !nm.IsListening)
+        {
+            if (_registered) { _registered = false; RemoteWantsOpen = false; }
+            return;
+        }
+        if (_registered) return;
+        nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgState, OnStateMessage);
         _registered = true;
-        return true;
+        // Announce our current wish so a machine joining mid-session agrees.
+        Send(_localWantsOpen);
     }
 
-    /// Poll point — called from the arrival, and cheap enough to call often.
-    public static void Tick() => EnsureRegistered();
+    /// Called by StasisPodDoor whenever ITS OWN target changes.
+    public static void NotifyLocalTarget(float target)
+    {
+        bool wantsOpen = target > 0.5f;
+        if (wantsOpen == _localWantsOpen) return;
+        _localWantsOpen = wantsOpen;
+        if (Instance != null) Instance.Send(wantsOpen);
+    }
 
-    /// Open this pod's door for every player in the session.
+    /// Convenience for the guest arrival: hold the door open for everyone.
     public static void BroadcastOpen()
     {
-        OpenLocally();   // always do it here, session or not
+        var door = Object.FindObjectOfType<StasisPodDoor>();
+        if (door != null) door.OpenHold();   // this routes through NotifyLocalTarget
+        else NotifyLocalTarget(1f);
+    }
 
-        if (!EnsureRegistered()) return;
+    void Send(bool wantsOpen)
+    {
         var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || !_registered) return;
 
         var writer = new FastBufferWriter(sizeof(byte), Allocator.Temp);
         try
         {
-            writer.WriteValueSafe((byte)1);
+            writer.WriteValueSafe((byte)(wantsOpen ? 1 : 0));
             if (nm.IsServer)
                 nm.CustomMessagingManager.SendNamedMessageToAll(
-                    MsgOpen, writer, NetworkDelivery.ReliableSequenced);
+                    MsgState, writer, NetworkDelivery.ReliableSequenced);
             else
-                // Clients can only talk to the host; it relays.
                 nm.CustomMessagingManager.SendNamedMessage(
-                    MsgOpen, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
+                    MsgState, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
         }
         finally { writer.Dispose(); }
     }
 
-    static void OnOpenMessage(ulong senderId, FastBufferReader reader)
+    void OnStateMessage(ulong senderId, FastBufferReader reader)
     {
-        reader.ReadValueSafe(out byte _);
-        OpenLocally();
+        reader.ReadValueSafe(out byte raw);
+        bool wantsOpen = raw != 0;
+        RemoteWantsOpen = wantsOpen;
 
-        // Host relays a client's request on to everyone else, so all three
-        // machines in a three-player session agree.
+        var door = Object.FindObjectOfType<StasisPodDoor>();
+        if (door != null && wantsOpen) door.ApplyRemoteOpen();
+
+        // Host relays to everyone else so a third machine agrees.
         var nm = NetworkManager.Singleton;
         if (nm == null || !nm.IsServer) return;
 
         var writer = new FastBufferWriter(sizeof(byte), Allocator.Temp);
         try
         {
-            writer.WriteValueSafe((byte)1);
+            writer.WriteValueSafe(raw);
             foreach (var id in nm.ConnectedClientsIds)
             {
                 if (id == senderId || id == NetworkManager.ServerClientId) continue;
                 nm.CustomMessagingManager.SendNamedMessage(
-                    MsgOpen, id, writer, NetworkDelivery.ReliableSequenced);
+                    MsgState, id, writer, NetworkDelivery.ReliableSequenced);
             }
         }
         finally { writer.Dispose(); }
-    }
-
-    static void OpenLocally()
-    {
-        var door = Object.FindObjectOfType<StasisPodDoor>();
-        if (door != null) door.OpenHold();
     }
 }

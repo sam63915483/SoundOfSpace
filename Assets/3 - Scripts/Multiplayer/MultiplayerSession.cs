@@ -735,6 +735,20 @@ public class MultiplayerSession : MonoBehaviour
         Status = "Back to single player.";
     }
 
+    /// A guest deliberately leaving: disconnect and go back to the main menu.
+    /// OnAnySceneLoaded does the lobby cleanup once MainMenu loads.
+    public void LeaveAndReturnToMenu()
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm != null && (nm.IsListening || nm.IsClient))
+        {
+            nm.OnClientDisconnectCallback -= OnClientDisconnect;   // this exit is intentional
+            nm.Shutdown();
+        }
+        Time.timeScale = 1f;   // we may be leaving straight from the pause menu
+        SceneManager.LoadScene("MainMenu");
+    }
+
     /// Closes the lobby (host) or leaves it (guest) and returns to Idle.
     public async void CancelSession()
     {

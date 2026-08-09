@@ -293,9 +293,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0aa13226b151d40ae952589d37a6dd9e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  walkSpeed: 8
-  runSpeed: 12
-  jumpForce: 8
+  walkSpeed: 6.15
+  runSpeed: 9.23
+  jumpForce: 6.15
   vSmoothTime: 0.1
   airSmoothTime: 0.5
   stickToGroundForce: 0.5

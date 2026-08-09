@@ -78,10 +78,24 @@ public class StasisPodDoor : MonoBehaviour
         _closeAt = -1f;
     }
 
+    /// Open because ANOTHER player asked. Suppresses the outgoing notify so two
+    /// machines can't ping-pong the same open back and forth forever.
+    public void ApplyRemoteOpen()
+    {
+        _suppressBroadcast = true;
+        OpenHold();
+        _suppressBroadcast = false;
+    }
+
+    bool _suppressBroadcast;
+
     void SetTarget(float t)
     {
         if (Mathf.Approximately(_target, t)) return;
         _target = t;
+        // Tell the other players what this machine wants, so the door reads the
+        // same on every screen instead of only for whoever is standing in it.
+        if (!_suppressBroadcast) StasisDoorSync.NotifyLocalTarget(t);
         // Passable the moment it starts moving (same rule as the intro).
         if (t > 0.5f && _leafColliders != null)
             foreach (var c in _leafColliders) if (c != null) c.enabled = false;
@@ -123,7 +137,11 @@ public class StasisPodDoor : MonoBehaviour
 
         // Execute a due close — but never while the player straddles the
         // doorway plane (the leaf would land on them).
-        if (IsOpen && _closeAt > 0f && Time.time >= _closeAt && CurrentZone != Zone.Doorway)
+        // ...and never while ANOTHER player is asking for it open, or the host's
+        // "nobody's inside" rule would slam the door on a guest standing in the
+        // pod on their own screen.
+        if (IsOpen && _closeAt > 0f && Time.time >= _closeAt && CurrentZone != Zone.Doorway
+            && !StasisDoorSync.RemoteWantsOpen)
         {
             _closeAt = -1f;
             SetTarget(0f);

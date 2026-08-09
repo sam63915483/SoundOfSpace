@@ -47,6 +47,25 @@ public class PlanetRelativeSync : NetworkBehaviour
     readonly NetworkVariable<bool> netAnimGrounded = new NetworkVariable<bool>(
         true, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
+    // ── Flashlight ───────────────────────────────────────────────────────
+    // The puppet has no flashlight of its own — NetworkPlayerSetup strips every
+    // MonoBehaviour off it — so the beam has to be rebuilt on the remote side
+    // and driven from here.
+    //
+    // Pose is sent PLANET-LOCAL for the same reason the body is: world space is
+    // meaningless across machines whose floating origins rebase independently.
+    // Position as well as rotation, because a beam that starts at the wrong
+    // place lights the wrong things even when it points the right way.
+    readonly NetworkVariable<bool> netLightOn = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    readonly NetworkVariable<Vector3> netLightLocalPos = new NetworkVariable<Vector3>(
+        Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    readonly NetworkVariable<Quaternion> netLightLocalRot = new NetworkVariable<Quaternion>(
+        Quaternion.identity, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+    PlayerFlashlight ownerFlashlight;   // owner side
+    Light puppetLight;                  // remote side
+
     Transform planet;
     CelestialBody planetBody;
     EndlessManager endless;
@@ -220,6 +239,19 @@ public class PlanetRelativeSync : NetworkBehaviour
         TryResolveRefs();
         if (planet == null || realPlayer == null || !ownerPoseReady) return;
 
+        // NEVER publish while paused.
+        //
+        // At timeScale 0 physics stops, so the player's rigidbody is frozen in
+        // world space — but SolarSystemSync keeps applying the host's orbit
+        // corrections on unscaled time, which MOVES THE PLANET out from under
+        // them. Our pose is expressed relative to that planet, so it drifts
+        // further every frame the menu is open and the other player watches us
+        // slide off into nowhere. Unpausing snaps it back, which is exactly the
+        // reported symptom.
+        //
+        // A paused player isn't moving, so freezing the broadcast loses nothing.
+        if (Time.timeScale == 0f) return;
+
         Transform rt = realPlayer.transform;
         netLocalPos.Value = planet.InverseTransformPoint(rt.position);
         netLocalRot.Value = Quaternion.Inverse(planet.rotation) * rt.rotation;
@@ -230,9 +262,83 @@ public class PlanetRelativeSync : NetworkBehaviour
         }
         if (!netPoseValid.Value) netPoseValid.Value = true;
 
+        PublishFlashlight();
+
         // Keep the invisible puppet riding the real player so its transform is
         // never somewhere absurd for anything that might glance at it.
         transform.SetPositionAndRotation(rt.position, rt.rotation);
+    }
+
+    /// Owner side: mirror our own flashlight's on/off state and where it is
+    /// actually pointing. NetworkVariables only send on change, so a light left
+    /// off costs nothing.
+    void PublishFlashlight()
+    {
+        if (ownerFlashlight == null)
+        {
+            ownerFlashlight = realPlayer != null
+                ? realPlayer.GetComponentInChildren<PlayerFlashlight>(true) : null;
+            if (ownerFlashlight == null) return;
+        }
+
+        var lamp = ownerFlashlight.flashlight;
+        bool on = lamp != null && lamp.enabled && lamp.intensity > 0f;
+        if (netLightOn.Value != on) netLightOn.Value = on;
+        if (!on || lamp == null) return;
+
+        Transform lt = lamp.transform;
+        netLightLocalPos.Value = planet.InverseTransformPoint(lt.position);
+        netLightLocalRot.Value = Quaternion.Inverse(planet.rotation) * lt.rotation;
+    }
+
+    /// Remote side: build a matching spot light once, then drive it. Built from
+    /// the LOCAL player's own flashlight settings so both machines agree on cone
+    /// angle, range and colour without sending any of it over the wire.
+    void ApplyRemoteFlashlight()
+    {
+        bool on = netLightOn.Value;
+
+        if (puppetLight == null)
+        {
+            if (!on) return;   // don't build anything until it's actually used
+
+            var go = new GameObject("RemoteFlashlight");
+            go.transform.SetParent(transform, false);
+            puppetLight = go.AddComponent<Light>();
+            puppetLight.type = LightType.Spot;
+
+            // Copy the local flashlight's look so a remote beam is indistinguishable.
+            var local = FindObjectOfType<PlayerFlashlight>();
+            var src = local != null ? local.flashlight : null;
+            if (src != null)
+            {
+                puppetLight.range = src.range;
+                puppetLight.spotAngle = src.spotAngle;
+                puppetLight.innerSpotAngle = src.innerSpotAngle;
+                puppetLight.color = src.color;
+                puppetLight.intensity = src.intensity;
+                puppetLight.cookie = src.cookie;
+                puppetLight.shadows = src.shadows;
+                // Built-in RP demotes lights to vertex when there are many —
+                // same reason PlayerFlashlight forces this on its own lamp.
+                puppetLight.renderMode = LightRenderMode.ForcePixel;
+            }
+            else
+            {
+                puppetLight.range = 200f;
+                puppetLight.spotAngle = 150f;
+                puppetLight.intensity = 1f;
+            }
+        }
+
+        puppetLight.enabled = on;
+        if (!on || planet == null) return;
+
+        // Position and aim in world space from the planet-local values, so a
+        // floating-origin rebase can't leave the beam behind.
+        puppetLight.transform.SetPositionAndRotation(
+            planet.TransformPoint(netLightLocalPos.Value),
+            planet.rotation * netLightLocalRot.Value);
     }
 
     void PlaceRemote()
@@ -268,6 +374,11 @@ public class PlanetRelativeSync : NetworkBehaviour
             puppetAnimator.SetFloat("Speed", netAnimSpeed.Value);
             puppetAnimator.SetBool("Grounded", netAnimGrounded.Value);
         }
+
+        // Driven here rather than in LateUpdate so the beam is placed in the
+        // same pass as the body — a frame of disagreement reads as the light
+        // lagging behind the player carrying it.
+        ApplyRemoteFlashlight();
     }
 
     void SetRemoteVisible(bool visible)

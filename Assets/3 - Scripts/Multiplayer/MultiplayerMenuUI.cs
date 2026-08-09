@@ -337,9 +337,23 @@ public class MultiplayerMenuUI : MonoBehaviour
                          && s.Current != MultiplayerSession.State.Failed;
                 if (live)
                 {
-                    // Host ends it for everyone; a guest just disconnects.
-                    s.EndSessionAndGoSolo();
-                    _lastRendered = ""; Render();
+                    if (s.IsHost)
+                    {
+                        // The host owns this world — ending the session drops
+                        // them back to single player right where they stand.
+                        s.EndSessionAndGoSolo();
+                        _lastRendered = ""; Render();
+                    }
+                    else
+                    {
+                        // A guest has no world of their own to fall back into —
+                        // the one they are standing in belongs to the host. Take
+                        // them out to the menu rather than leaving them in a
+                        // world that just stopped being shared, or bouncing them
+                        // to a "host this world?" prompt they didn't ask for.
+                        CloseAllAndResume();
+                        s.LeaveAndReturnToMenu();
+                    }
                     return;
                 }
                 // Hosting mid-game: open the lobby, flag it started (there is no
