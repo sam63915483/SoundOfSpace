@@ -1,0 +1,262 @@
+# World-State Replication — design
+
+**Date:** 2026-08-09 · **Branch:** `feat/helmet-hud` · **Status:** design, awaiting approval
+
+Phase B proper: two players harvesting mushrooms, cultivating Humble Abode,
+taking texts and closing deals in the same world. Everything up to now has been
+the *front door* (join, identity, poses, PvP). This is the world itself.
+
+---
+
+## 0. The finding that shapes everything
+
+Replicating "all the trees and mushrooms" sounds like thousands of networked
+objects. It is not.
+
+`MushroomSpawner` and `TreeSpawner` are **deterministic cube-face hash
+functions**:
+
+```
+SpawnerCubeface.Hash(seed, face, cellU, cellV, salt)
+```
+
+Existence, jitter, species, scale, colour and rotation are all pure functions of
+`(seed, cell)`. The seed is an authored field, identical in both builds.
+**Both machines already generate a byte-identical world.** Nothing about the
+base world ever needs to cross the wire.
+
+What differs is only the **delta** — what has been harvested, chopped, planted,
+built, killed. And there is already a compact, proven, `JsonUtility`-safe
+vocabulary for precisely that delta, because the save system had to solve the
+same problem: `PlantedMushroomSave`, `SaplingSave`, `PlacedBuildingSave`,
+`EnemySave`, `BuyerLedgerSave`, `WorldPropConsumedSave`.
+
+> **The save schema is the network schema.**
+
+That is the spine of this design. A joining guest is, conceptually, *loading the
+host's save* — and then receiving small incremental edits to it.
+
+### What is NOT deterministic
+
+Two systems roll dice at runtime and would therefore **diverge**, not merely
+double-tick:
+
+- `EnemySpawner` — `Random.Range` for placement angle and distance.
+- `BuyerLedger` / `BuyerDeals` / `BuyerMessageDirector` — `Random.value` for
+  bonds, offer sizes, and text timing.
+
+These cannot be left to run independently. They must be host-owned.
+
+---
+
+## 1. Principles
+
+Three rules, each already paid for in blood elsewhere in this codebase.
+
+**1. One owner for every state machine.** The host owns every timer and every
+dice roll. Clients report *inputs* ("I chopped cell 4,12,7") and render what
+they are told. The stasis pod door cost three attempts to learn this: mirroring
+state, then mirroring each machine's "wish", both failed because every machine
+was still *running the rules*. See `StasisDoorSync`'s class comment.
+
+**2. Never send world coordinates.** Floating-origin rebases fire while standing
+still. Everything is expressed as a **cell id** `(bodyName, face, u, v)` or as
+body-relative position — which is what the save already does, and why saves
+survive orbital motion.
+
+**3. The authority ignores being told its own state.** `SendNamedMessageToAll`
+loops back to the host (`CustomMessageManager.cs:342`). Every handler needs a
+`!IsServer` guard on host→client messages, or the host wipes its own pending
+work every resend. This is the bug that made the pod door un-closable.
+
+---
+
+## 2. Decisions taken
+
+| Decision | Choice | Consequence |
+|---|---|---|
+| Whose save is the world? | **The host's, only.** | Guests bring a character and take it home; their own worlds are untouched. No merge logic anywhere. |
+| Who gets paid for a co-op deal? | **Whoever closes it.** | One player can text the offer while the other sprints to the NPC. Money is personal, consistent with the character-carries-money plan. |
+| Enemy authority | **Host simulates.** | Non-deterministic spawner leaves no alternative. Guests see puppets. |
+| Damage to players | **Shooter-authoritative** (unchanged) | Already shipped for PvP; enemies reuse it in reverse — the host tells the victim. |
+
+---
+
+## 3. Phase 0 — Vault and fix (prerequisite)
+
+Shrink the surface before syncing it. Nothing here is deleted; everything is
+gated so it returns by flipping one flag.
+
+**New `FeatureVault` flags**, each with the same "why it's held, not failed"
+comment style the existing ones use:
+
+- `ConcertVenue` — the stage, `AudienceZone`/`AudienceZone 2`/`Max Audience`,
+  `_StrobeRig`, `_StrobeVisual`, cone beams, `AudienceSpawner`, the whole
+  `Concert/` script folder's runtime entry points.
+- `TevCabinAmbush` — the ship outside Tev's cabin and its jumpscare.
+- `ShipSchool` — `Combined_SHIPSCHOOL_0/1/2` and the instructor flow.
+- `VillageTev` — Tev's village presence, onboarding and dialogue hooks.
+
+Scene objects are deactivated at runtime by a small gate component rather than
+deleted, so the scene file is not rewritten and nothing is lost. Scripts stay
+compiled.
+
+**The five review fixes**, in priority order:
+
+1. `CharacterStore` — atomic `tmp` + `File.Replace` save; quarantine an
+   unreadable `characters.json` to `.corrupt-<timestamp>` instead of letting the
+   next mutation overwrite it. *(Confirmed real: raw `WriteAllText`, and the
+   catch starts an empty book.)*
+2. `NetworkPlayerCombat` — drop the damage amount from the wire; the victim
+   applies the shared `const`.
+3. `PistolController.ShotInfo` gains `MaxTracerLength`; delete the per-shot
+   `FindObjectOfType`.
+4. Surrogate-safe trimming in `CharacterProfile.Sanitize` and
+   `NetworkPlayerIdentity.Truncate`.
+5. `MultiplayerDeathRespawn` — clear `PlayerController.isInDialogue` in
+   `OnSceneLoaded`. *(Confirmed real: nothing else clears it, so an interrupted
+   respawn soft-locks the next session.)*
+
+**Exit criteria:** compiles; concert/school/Tev absent in play; a hand-corrupted
+`characters.json` is quarantined, not destroyed.
+
+---
+
+## 4. Phase 1 — The sync spine
+
+The only phase that is genuinely new architecture. Everything after it is a
+variation.
+
+### `WorldSync` — one transport, one authority model
+
+A `NetworkBehaviour` on a host-owned scene object (not the player), providing:
+
+- **`Report(Delta)`** — client → host. "I did this." The host validates and
+  applies.
+- **`Broadcast(Delta)`** — host → all. Applied by clients, ignored by the host
+  (rule 3).
+- **`Snapshot`** — host → one joining client. The full world delta, sent once.
+
+A `Delta` is a small tagged struct: `kind` byte, `bodyName`, cell id, plus at
+most two payload ints/floats. Deliberately not a general RPC framework —
+enumerable kinds keep it debuggable and keep the wire small.
+
+### The join snapshot
+
+The moment that makes a guest's world match the host's. Reuses `SaveCollector`:
+
+1. Host captures the **world subset** of `SaveData` (planted mushrooms, chopped
+   trees/saplings, placed buildings, buyer ledger, enemies, storage) — the same
+   capture the autosave already performs.
+2. Serialised with `JsonUtility`, chunked over `NetworkDelivery.ReliableFragmentedSequenced`.
+3. Guest applies it through the **existing** `SaveCollector.Apply` paths for
+   those systems, respecting the documented 17-step order for the steps involved.
+
+This is why the save schema being the network schema matters: the snapshot is
+not new code, it is an existing, tested, order-aware code path pointed at a
+socket instead of a file.
+
+### Host-gating the tickers
+
+Every singleton that ticks a timer or rolls dice gets a `if (!WorldSync.IsAuthority) return;`
+early-out on its *decision* path, keeping its *rendering* path alive. Inventory
+of these is produced during implementation; known members: `MushroomSpawner`
+respawn loop, `MushroomGrowth`, `EnemySpawner`, `BuyerMessageDirector`,
+`PlanetOxygen`, dome fuel.
+
+**Exit criteria:** a guest joining an in-progress world sees the host's chopped
+trees, harvested mushrooms and placed buildings. Nothing ticks twice.
+
+---
+
+## 5. Phase 2 — Harvestables
+
+Mushrooms and trees. Pure deltas on the deterministic base.
+
+- **Harvest / chop:** the actor reports the cell id; the host confirms and
+  broadcasts; everyone removes it. Host-confirmed so two players cannot both
+  bank the same mushroom — the classic co-op duplication bug.
+- **Plant:** reported with species + body-relative pose (a planted mushroom is
+  *not* seed-derived, so it needs a real id — `PlantedMushroomSave` already
+  defines one).
+- **Growth and respawn:** host-only timers, broadcast on state change.
+
+**Exit criteria:** both players harvest the same field without duplication;
+respawns appear simultaneously; planted spores mature identically.
+
+---
+
+## 6. Phase 3 — Buildables and the locker
+
+- **Placement:** reported to the host, which owns the canonical list and
+  broadcasts. Naming stays `<prefab>_Placed` parented to a `CelestialBody`, or
+  the save system will not find it.
+- **Shuttle locker / storage:** shared container. Host-authoritative slot
+  mutations — the only safe way to stop two players withdrawing the same stack.
+  Contention here is far more likely than anywhere else, so the host arbitrates
+  every move rather than trusting the client.
+
+---
+
+## 7. Phase 4 — Enemies
+
+Host-simulated, guests see puppets. Reuses the player-puppet architecture:
+non-colliding, pose-synced, animation-parameter driven.
+
+- Spawns, AI decisions, and deaths are host-only and broadcast.
+- Damage **to** a player uses the existing shooter-authoritative channel in
+  reverse: the host tells the victim to apply it.
+- Damage **from** a player already works — the pistol's `IDamageable` path only
+  needs the host to be the one that actually decrements.
+
+The stealth systems (view cones, LOS, sniff/search) run only on the host, which
+also removes their per-client cost.
+
+---
+
+## 8. Phase 5 — Economy: bonds, texts, deals
+
+The most design-sensitive phase, and the reason for the ordering.
+
+- **Bonds and buyer state:** host-owned `BuyerLedger`, broadcast on change.
+- **Texts:** the host rolls and broadcasts the message; **every player receives
+  the identical text** in their Messages app.
+- **Responding:** any player can reply. **First response wins** — the host
+  arbitrates and broadcasts the accepted offer; late responders see it already
+  answered rather than a silent no-op.
+- **Closing:** whoever presses F on the NPC first completes the deal and banks
+  the money. Host arbitrates; the loser gets a clear "already sold" rather than
+  a dead interaction.
+
+Both races resolve on the host, so there is exactly one arbiter and no
+tie-breaking ambiguity.
+
+---
+
+## 9. Risks
+
+- **Snapshot size.** The world delta grows with play. If it exceeds comfortable
+  fragmentation, chunk it across frames. Measure before optimising.
+- **Host-gating misses.** A ticker left ungated double-ticks or diverges
+  silently. Mitigation: audit by grepping `Random.` and `Time.` in singletons,
+  and check divergence with a two-instance test rather than by reading.
+- **`SaveCollector` apply-order.** The snapshot path must respect the documented
+  order. It reuses the existing code specifically so it inherits that ordering
+  rather than reimplementing it.
+- **Guest disconnect mid-deal.** Host owns the ledger, so a dropped guest leaves
+  the world consistent; the deal simply stays open.
+
+## 10. Testing
+
+Each phase ships with a two-instance playtest and, where the logic is invisible
+(hit tests, delta ids, snapshot round-trips), an edit-mode harness — the
+approach that caught the point-blank-chest-shot miss in the PvP work. Behaviour
+that only manifests over a real relay is called out as untested rather than
+assumed.
+
+## 11. Explicitly not in scope
+
+Grind transfer between worlds (levels/money on the character), the concert
+venue, ship school, Tev's village presence and cabin ambush, world-state for
+the backrooms/poolrooms dimensions, and any change to floating origin, n-body
+gravity, or the puppet architecture.
