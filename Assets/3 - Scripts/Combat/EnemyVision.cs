@@ -36,6 +36,18 @@ public class EnemyVision : MonoBehaviour
 
     // ── Perception outputs ──
     public bool CanSeePlayerNow { get; private set; }
+    /// <summary>
+    /// WHICH player this enemy can currently see, or null for nobody.
+    ///
+    /// The whole reason this exists: perception used to evaluate against the
+    /// NEAREST player only. Two co-op players stand near each other, so for most
+    /// enemies the nearest was the host — and the guest was not merely hard to
+    /// spot, they were never a CANDIDATE. They could stand in front of an alien
+    /// and be looked straight through, which is exactly what the first playtest
+    /// reported. Sight now considers everybody; the target is whoever is actually
+    /// seen.
+    /// </summary>
+    public Transform VisibleTarget { get; private set; }
     public float Suspicion01 { get; private set; }
     public bool IsAlerted => Suspicion01 >= 1f;
     public bool HasLastSeen { get; private set; }
@@ -65,7 +77,6 @@ public class EnemyVision : MonoBehaviour
     bool _wasSeeing;
     float _lastEdgeFrac;              // 0 = dead-center of the vision volume, 1 = at its boundary (last sighting)
     Transform _player;
-    PlayerController _playerCtl;
     EnemyController _owner;
     float _nextLosCheck;
     const float LosInterval = 0.15f;
@@ -90,19 +101,10 @@ public class EnemyVision : MonoBehaviour
 
     void Update()
     {
-        EnsurePlayer();
-
-        if (_player != null && Time.time >= _nextLosCheck)
+        if (Time.time >= _nextLosCheck)
         {
             _nextLosCheck = Time.time + LosInterval;
-            CanSeePlayerNow = ComputeCanSee();
-            if (CanSeePlayerNow)
-            {
-                if (!_wasSeeing) SpottingSince = Time.time;
-                RecordLastSeen(_player.position);
-            }
-            else SpottingSince = float.MaxValue;
-            _wasSeeing = CanSeePlayerNow;
+            ScanForPlayers();
         }
 
         if (CanSeePlayerNow)
@@ -110,7 +112,7 @@ public class EnemyVision : MonoBehaviour
             // Center → fast (centerSpotSeconds), boundary → slow (edgeSpotSeconds).
             float spotSeconds = Mathf.Lerp(centerSpotSeconds, edgeSpotSeconds, _lastEdgeFrac);
             float rate = 1f / Mathf.Max(0.05f, spotSeconds);
-            if (_playerCtl != null && _playerCtl.IsSprinting) rate *= sprintFillMult;
+            if (_targetSprinting) rate *= sprintFillMult;
             if (_owner != null && _owner.State == EnemyController.AIState.Searching) rate *= searchFillMult;
             Suspicion01 = Mathf.Min(1f, Suspicion01 + rate * Time.deltaTime);
         }
@@ -123,47 +125,87 @@ public class EnemyVision : MonoBehaviour
     }
 
     /// <summary>
-    /// Look at whoever is CLOSEST, re-picked every frame — the same question
-    /// EnemyController.ResolveTarget asks, through the same roster and from the
-    /// same transform.position, so the two can never disagree about who this
-    /// enemy is dealing with. (They used to be two independent scans; that is
-    /// exactly how an enemy ends up looking at one player and swinging at
-    /// another.)
+    /// Look at EVERYBODY, and see whoever is actually visible.
     ///
-    /// Suspicion is deliberately NOT reset when the nearest player changes. The
-    /// meter means "something is over there", and dumping it every time two
-    /// co-op players swap places would make a pair of friends effectively
-    /// invisible.
+    /// ⚠️ This used to test the NEAREST player and nobody else, which in co-op
+    /// meant an enemy perceived exactly one person. Two players explore together,
+    /// so the nearest was usually the host — and the guest was not just hard to
+    /// notice, they were never considered at all. They could walk up to an alien,
+    /// stand in its face, sprint past it, and be looked straight through. When
+    /// they briefly did become the nearest, the enemy would glance over and then
+    /// switch back to the host, which is the "sees me then looks away" symptom.
+    ///
+    /// Among everyone visible, the NEAREST one wins — that keeps Sam's rule that
+    /// stepping in closer pulls a mob off your friend, while making the choice
+    /// out of players the enemy can genuinely see rather than out of all of them.
+    ///
+    /// Suspicion is deliberately NOT reset when the seen player changes. The
+    /// meter means "somebody is over there".
+    ///
+    /// Cost: the bicone test is cheap and rejects almost everyone before the
+    /// raycast, so this is one extra ray per VISIBLE player per 0.15 s, on the
+    /// host only. Guests run none of it at all.
     /// </summary>
-    void EnsurePlayer()
+    void ScanForPlayers()
     {
-        _player = PlayerRoster.Nearest(transform.position, out _);
+        Transform seen = null, nearestAny = null;
+        float seenSqr = float.MaxValue, nearestSqr = float.MaxValue;
+        float seenEdge = 0f;
+        bool seenSprinting = false;
 
-        // Sprint reads off the REAL local rig only. A remote player is a puppet
-        // and NetworkPlayerSetup strips its PlayerController, so there is no
-        // IsSprinting to read — a sprinting guest fills the meter at the walking
-        // rate. Resolved once per target CHANGE, not per frame, so pointing at a
-        // puppet doesn't run a GetComponent every Update looking for something
-        // that was deleted on purpose.
-        if (_ctlResolvedFor != _player)
+        var all = PlayerRoster.All();
+        for (int i = 0; i < all.Count; i++)
         {
-            _ctlResolvedFor = _player;
-            _playerCtl = _player != null ? _player.GetComponent<PlayerController>() : null;
+            var t = all[i].Transform;
+            if (t == null) continue;
+
+            float d2 = (t.position - transform.position).sqrMagnitude;
+            if (d2 < nearestSqr) { nearestSqr = d2; nearestAny = t; }
+
+            if (d2 >= seenSqr) continue;             // already have someone closer in view
+            if (!CanSee(t, out float edge)) continue;
+            seenSqr = d2; seen = t; seenEdge = edge; seenSprinting = all[i].IsSprinting;
         }
+
+        // Kept even with nobody in view: ForceAlert and the investigate facing
+        // need someone to point at when an enemy is alerted without seeing.
+        _player = nearestAny;
+
+        VisibleTarget   = seen;
+        CanSeePlayerNow = seen != null;
+
+        if (seen != null)
+        {
+            _lastEdgeFrac    = seenEdge;
+            _targetSprinting = seenSprinting;
+            if (!_wasSeeing) SpottingSince = Time.time;
+            RecordLastSeen(seen.position);
+        }
+        else
+        {
+            SpottingSince = float.MaxValue;
+            _targetSprinting = false;
+        }
+        _wasSeeing = CanSeePlayerNow;
     }
 
-    Transform _ctlResolvedFor;
+    bool _targetSprinting;
 
-    bool ComputeCanSee()
+    /// Can this enemy see `target` right now? `edgeFrac` reports 0 for dead
+    /// centre of the vision volume and 1 at its boundary, which is what decides
+    /// how fast suspicion fills for them.
+    bool CanSee(Transform target, out float edgeFrac)
     {
+        edgeFrac = 0f;
+
         // BICONE containment: express the player in axial coords (z along forward, r off-axis)
         // and test against the diamond profile — radius grows linearly to the bulge (z ≤
         // baseDist: near cone) then shrinks linearly to a point at maxR (far cone). Farthest
         // sight is dead-ahead only; the outer angles reach far shorter.
         Vector3 eye = transform.position + transform.up * eyeHeight;
-        Vector3 to = _player.position - eye;
+        Vector3 to = target.position - eye;
         float dist = to.magnitude;
-        if (dist < 0.001f) { _lastEdgeFrac = 0f; return true; }
+        if (dist < 0.001f) return true;
 
         float maxR = EffectiveRange();
         float z = Vector3.Dot(to, transform.forward);
@@ -182,10 +224,15 @@ public class EnemyVision : MonoBehaviour
         if (dist > selfSkip)
         {
             Vector3 origin = eye + dir * selfSkip;
+            // A remote player is collider-less, so this ray simply reaches its
+            // full length and reports nothing — which already counts as clear.
+            // (Measured: the player root sits at the BODY CENTRE, so the ray runs
+            // at chest height and never grazes the ground at their feet. Local
+            // and remote come out identical at every range.)
             if (Physics.Raycast(origin, dir, out RaycastHit hit, dist - selfSkip, LosMask, QueryTriggerInteraction.Ignore))
                 if (hit.collider.GetComponentInParent<PlayerController>() == null) return false;
         }
-        _lastEdgeFrac = Mathf.Clamp01(r / allowed);
+        edgeFrac = Mathf.Clamp01(r / allowed);
         return true;
     }
 
@@ -198,8 +245,21 @@ public class EnemyVision : MonoBehaviour
         // in the same frame it spawned, before its first Update has resolved a
         // target — without this it would alert with no last-seen point and
         // immediately give up.
-        if (_player == null) EnsurePlayer();
+        if (_player == null) ScanForPlayers();
         if (_player != null) RecordLastSeen(_player.position);
+    }
+
+    /// <summary>
+    /// Force full alert toward a SPECIFIC place — a gunshot, whose origin is
+    /// known exactly and is not necessarily near whoever this enemy had resolved
+    /// as its nearest player. In co-op that distinction is the whole point: a
+    /// guest's shot must send them at the guest.
+    /// </summary>
+    public void ForceAlert(Vector3 heardAt)
+    {
+        Suspicion01 = 1f;
+        CanSeePlayerNow = true;
+        RecordLastSeen(heardAt);
     }
 
     /// <summary>

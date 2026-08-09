@@ -46,12 +46,28 @@ public class NetworkPlayerCombat : NetworkBehaviour
     /// so ~11.5 lands per shot and a full-health player takes 9 hits.
     public const float DamagePerHit = 15f;
 
-    /// Capsule approximating an astronaut, in their own local space. Deliberately
-    /// a little generous: a puppet's pose is a few frames behind the owner's
-    /// real position, so a pixel-tight hitbox would eat honest shots.
-    const float BodyRadius     = 0.45f;
-    const float BodyFootHeight = 0.25f;
-    const float BodyHeadHeight = 1.85f;
+    /// <summary>
+    /// Capsule approximating an astronaut, in their own local space.
+    ///
+    /// GENEROUS ON PURPOSE, and more so since the first playtest reported shots
+    /// that visibly connected doing nothing. Two lags stack up and both push the
+    /// target away from where the shooter sees them:
+    ///
+    ///   • the network delay before a pose even arrives, and
+    ///   • PlanetRelativeSync's own exponential smoothing, which at
+    ///     remoteLerpSpeed 12 trails a moving player by roughly speed/12 metres
+    ///     — about half a metre at a sprint, before latency.
+    ///
+    /// Against that, the old 0.45 m radius was thinner than the error, so a
+    /// perfectly aimed shot at a running player missed more often than it hit.
+    /// Widening the capsule is the invisible fix; the alternative is tightening
+    /// the smoothing, which is Sam's playtested feel and costs a visible jitter.
+    ///
+    /// The span is a whole body plus slack, so leg and head shots both land.
+    /// </summary>
+    const float BodyRadius     = 0.75f;
+    const float BodyFootHeight = 0.15f;
+    const float BodyHeadHeight = 2.0f;
 
     /// Live instances, so a shooter can enumerate targets without a scene scan
     /// (the AllInstances convention — CLAUDE.md).
@@ -145,7 +161,34 @@ public class NetworkPlayerCombat : NetworkBehaviour
         }
 
         if (best == null) return;
+
+        // Tell the SHOOTER immediately that they connected, rather than waiting
+        // for a round trip. Without this there was no feedback of any kind on a
+        // player hit — you fired at somebody and nothing whatsoever happened on
+        // screen, which reads exactly like the shot not registering even when it
+        // did.
+        best.SpawnHitSplash();
+
         ReportHitServerRpc(best.OwnerClientId);
+    }
+
+    /// <summary>
+    /// The blood a PLAYER hit produces: a body-centre SPLASH, deliberately not
+    /// the spray.
+    ///
+    /// SpawnSpray is the bullet-hole fountain — a long-lived, bone-attached
+    /// gusher meant for an entry wound on a corpse-to-be. On a living astronaut
+    /// who is going to run off and keep fighting it hangs in the air behind them.
+    /// SpawnDamageSplash is the short, centred puff the whole damage pipeline
+    /// already uses for "that hurt" (EnemyController.TakeDamage, AlienNPCDamageable),
+    /// so a player hit now reads the same as every other hit in the game.
+    /// </summary>
+    void SpawnHitSplash()
+    {
+        var fx = BloodFX.Instance;
+        if (fx == null) return;
+        // Chest height, so it reads as hitting a body rather than the ground.
+        fx.SpawnDamageSplash(transform.TransformPoint(new Vector3(0f, 1.1f, 0f)), transform);
     }
 
     /// Analytic ray-vs-capsule against this player's body.
@@ -268,5 +311,31 @@ public class NetworkPlayerCombat : NetworkBehaviour
         // MultiplayerDeathRespawn picks it up from there.
         var rm = ResourceManager.Instance;
         if (rm != null) rm.TakeDamage(DamagePerHit);
+
+        SpawnLocalPlayerSplash();
+    }
+
+    /// <summary>
+    /// Blood at OUR OWN centre, so being shot is something you can see happening
+    /// to you and not just a health bar quietly dropping.
+    ///
+    /// ⚠️ Deliberately NOT `transform.position`. This RPC was invoked on the
+    /// SHOOTER'S puppet, so on our machine `this` is the person who shot us —
+    /// spraying blood out of them, several metres away, would tell us precisely
+    /// the wrong thing. The roster is how we find our own rig.
+    /// </summary>
+    static void SpawnLocalPlayerSplash()
+    {
+        var fx = BloodFX.Instance;
+        if (fx == null) return;
+
+        var all = PlayerRoster.All();
+        for (int i = 0; i < all.Count; i++)
+        {
+            if (!all[i].IsLocal || all[i].Transform == null) continue;
+            var t = all[i].Transform;
+            fx.SpawnDamageSplash(t.TransformPoint(new Vector3(0f, 1.1f, 0f)), t);
+            return;
+        }
     }
 }

@@ -19,6 +19,10 @@ public static class PlayerRoster
         public Transform Transform;
         public ulong ClientId;      // 0 and meaningless in single player
         public bool IsLocal;
+        /// Sprinting multiplies how fast an enemy's suspicion fills, so it has to
+        /// be answerable for a remote player too — and a puppet has no
+        /// PlayerController to ask.
+        public bool IsSprinting;
     }
 
     static readonly List<Entry> _scratch = new List<Entry>();
@@ -47,9 +51,10 @@ public static class PlayerRoster
             var nm = Unity.Netcode.NetworkManager.Singleton;
             _scratch.Add(new Entry
             {
-                Transform = _localCached.transform,
-                ClientId  = nm != null ? nm.LocalClientId : 0,
-                IsLocal   = true,
+                Transform   = _localCached.transform,
+                ClientId    = nm != null ? nm.LocalClientId : 0,
+                IsLocal     = true,
+                IsSprinting = _localCached.IsSprinting,
             });
         }
 
@@ -65,9 +70,10 @@ public static class PlayerRoster
             if (!p.RemotePlaced) continue;
             _scratch.Add(new Entry
             {
-                Transform = p.transform,
-                ClientId  = p.OwnerClientId,
-                IsLocal   = false,
+                Transform   = p.transform,
+                ClientId    = p.OwnerClientId,
+                IsLocal     = false,
+                IsSprinting = p.RemoteSprinting,
             });
         }
         return _scratch;
@@ -98,8 +104,20 @@ public static class PlayerRoster
     /// The player nearest `point`, or null if there are none.
     public static Transform Nearest(Vector3 point, out ulong clientId)
     {
-        clientId = 0;
-        Transform best = null;
+        bool found = NearestEntry(point, out Entry e);
+        clientId = e.ClientId;
+        return found ? e.Transform : null;
+    }
+
+    /// <summary>
+    /// The nearest player WITH everything known about them — who they are and
+    /// whether they are sprinting. Enemy vision needs both, and resolving them
+    /// separately is how the two end up describing different people.
+    /// </summary>
+    public static bool NearestEntry(Vector3 point, out Entry best)
+    {
+        best = default;
+        bool found = false;
         float bestSqr = float.MaxValue;
 
         var all = All();
@@ -109,9 +127,20 @@ public static class PlayerRoster
             if (t == null) continue;
             float d = (t.position - point).sqrMagnitude;
             if (d >= bestSqr) continue;
-            bestSqr = d; best = t; clientId = all[i].ClientId;
+            bestSqr = d; best = all[i]; found = true;
         }
-        return best;
+        return found;
+    }
+
+    /// Which client `t` belongs to, or 0 if it is not a player we know about.
+    /// Damage decided by the host has to reach the right machine.
+    public static ulong ClientIdFor(Transform t)
+    {
+        if (t == null) return 0;
+        var all = All();
+        for (int i = 0; i < all.Count; i++)
+            if (all[i].Transform == t) return all[i].ClientId;
+        return 0;
     }
 
     /// True when `t` is this machine's own player rig (as opposed to a puppet).

@@ -554,6 +554,10 @@ public class PistolController : MonoBehaviour
     /// </summary>
     public static event System.Action<ShotInfo> OnLocalShotFired;
 
+    /// How far a gunshot carries as an enemy alert, in metres. Shared with
+    /// EnemySync, which has to reproduce this shot on the host when a guest fires.
+    public const float GunshotAlertRadius = 33f;
+
     void TriggerShot()
     {
         _lastShotTime = Time.time;
@@ -680,7 +684,11 @@ public class PistolController : MonoBehaviour
 
         // Gunshot noise: every enemy within earshot locks onto the shooter and charges —
         // guns are LOUD (stealth revamp). Fires per shot, hit or miss.
-        EnemyController.AlertNearby(origin, 33f);
+        //
+        // On a GUEST this reaches nothing: their enemies are puppets whose AI
+        // never runs. EnemySync relays the shot so the host can run it for real,
+        // and shares this constant so the two earshots cannot drift apart.
+        EnemyController.AlertNearby(origin, GunshotAlertRadius);
 
         Transform muzzle = muzzlePoint != null ? muzzlePoint : _resolvedMuzzle;
         Vector3 tracerStart = muzzle != null ? muzzle.position : (origin + forward * 0.5f);

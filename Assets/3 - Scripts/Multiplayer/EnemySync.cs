@@ -64,6 +64,7 @@ public class EnemySync : MonoBehaviour
     const byte KindDespawn      = 5;   // host -> clients
     const byte KindHit          = 6;   // client -> host
     const byte KindPlayerDamage = 7;   // host -> ONE client
+    const byte KindGunshot      = 8;   // client -> host   "I fired; wake them up"
 
     /// 10 Hz. Fast enough that a guest sees an enemy within a few centimetres of
     /// where the host has it — which is what stops "hit by something I can't
@@ -431,6 +432,7 @@ public class EnemySync : MonoBehaviour
             case KindPlayerDamage when !server: HandlePlayerDamage(reader); break;
 
             case KindHit when server:           HandleHit(reader, senderId); break;
+            case KindGunshot when server:       HandleGunshot(reader, senderId); break;
         }
     }
 
@@ -537,6 +539,32 @@ public class EnemySync : MonoBehaviour
         // loot and the kill-cam all run exactly as they do in single player —
         // and the credit is stamped with the client that fired.
         e.TakeDamageFromRemotePlayer(Mathf.Clamp(amount, 0f, MaxReportedDamage), senderId);
+    }
+
+    /// <summary>
+    /// A guest fired. Guns are LOUD — every enemy within earshot should lock on
+    /// and charge, and on a guest that never happened: PistolController calls
+    /// EnemyController.AlertNearby locally, but a guest's enemies are puppets
+    /// whose AI never runs, so it set a flag on twenty bodies that were only
+    /// ever going to render what the host sent.
+    ///
+    /// NO POSITION CROSSES THE WIRE. The host already knows where that player is
+    /// — their puppet is pose-synced right here — so it reads the position off
+    /// its own copy. A world coordinate would have been stale on arrival anyway;
+    /// floating-origin rebases fire while standing still.
+    /// </summary>
+    void HandleGunshot(FastBufferReader reader, ulong senderId)
+    {
+        reader.ReadValueSafe(out float radius);
+
+        var puppets = PlanetRelativeSync.AllPuppets;
+        for (int i = 0; i < puppets.Count; i++)
+        {
+            var p = puppets[i];
+            if (p == null || p.OwnerClientId != senderId) continue;
+            EnemyController.AlertNearby(p.transform.position, Mathf.Clamp(radius, 0f, 200f));
+            return;
+        }
     }
 
     void HandlePlayerDamage(FastBufferReader reader)
@@ -707,6 +735,10 @@ public class EnemySync : MonoBehaviour
         // single-player path; doing it again here would double every shot.
         var nm = NetworkManager.Singleton;
         if (nm == null || !nm.IsListening || nm.IsServer) return;
+
+        // Wake the field up, hit or miss — guns are loud. See HandleGunshot.
+        Write(w => { w.WriteValueSafe(KindGunshot); w.WriteValueSafe(PistolController.GunshotAlertRadius); },
+              NetworkManager.ServerClientId, NetworkDelivery.ReliableSequenced, 16);
 
         if (!RayHitsPuppet(shot.RayOrigin, shot.RayDirection, shot.WorldHitDistance,
                            out var enemy, out _)) return;

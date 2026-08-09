@@ -335,6 +335,17 @@ public class EnemyController : MonoBehaviour, IDamageable
     /// </summary>
     Transform ResolveTarget()
     {
+        // WHOEVER IT CAN ACTUALLY SEE comes first, and only then whoever is
+        // nearest. Those are usually the same person, and in single player they
+        // always are — but when they differ, sight has to win. Targeting purely
+        // by distance is what let an alien chase the host straight past a guest
+        // standing in its face: the guest was closer to being seen, but never
+        // closer, so they were never the target and the AI never reacted to them.
+        if (_vision != null && _vision.VisibleTarget != null)
+        {
+            _targetClientId = PlayerRoster.ClientIdFor(_vision.VisibleTarget);
+            return _vision.VisibleTarget;
+        }
         return PlayerRoster.Nearest(transform.position, out _targetClientId);
     }
 
@@ -814,8 +825,21 @@ public class EnemyController : MonoBehaviour, IDamageable
         return false;
     }
 
-    /// <summary>Loud-noise alert (gunshots): every living enemy within radius locks
-    /// onto the player and charges, regardless of vision.</summary>
+    /// <summary>
+    /// Loud-noise alert (gunshots): every living enemy within radius locks onto
+    /// the shooter and charges, regardless of vision.
+    ///
+    /// They home on `pos` — WHERE THE BANG CAME FROM — rather than on whoever
+    /// each enemy happened to be nearest. In single player those are the same
+    /// place (the shot origin is the player's own camera). In co-op they are not:
+    /// a guest firing used to send every alerted alien charging at the HOST,
+    /// because that was the player their own vision had resolved.
+    ///
+    /// HOST ONLY, and not because of an early-out here — a guest's enemies are
+    /// puppets whose AI never runs, so setting _forceChase on them does nothing
+    /// at all. That is exactly why a guest's gunfire aggroed no one, and why
+    /// EnemySync relays the shot to the host to call this for real.
+    /// </summary>
     public static void AlertNearby(Vector3 pos, float radius)
     {
         float r2 = radius * radius;
@@ -824,7 +848,7 @@ public class EnemyController : MonoBehaviour, IDamageable
             var e = s_active[i];
             if (e == null || e._dying) continue;
             if ((e.rb.position - pos).sqrMagnitude > r2) continue;
-            if (e._vision != null) e._vision.ForceAlert();
+            if (e._vision != null) e._vision.ForceAlert(pos);
             e._forceChase = true;
         }
     }

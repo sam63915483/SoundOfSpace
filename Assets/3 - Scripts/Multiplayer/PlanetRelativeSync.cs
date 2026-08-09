@@ -54,6 +54,18 @@ public class PlanetRelativeSync : NetworkBehaviour
     readonly NetworkVariable<bool> netAnimGrounded = new NetworkVariable<bool>(
         true, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
 
+    /// Are they sprinting? Not cosmetic — EnemyVision multiplies its suspicion
+    /// FILL RATE by sprintFillMult, so this is the difference between "spotted
+    /// instantly" and "spotted in two seconds". A puppet has no PlayerController
+    /// to ask (NetworkPlayerSetup strips it), so without this a sprinting guest
+    /// was detected at the strolling rate and the stealth rules read as broken
+    /// for player two.
+    readonly NetworkVariable<bool> netSprinting = new NetworkVariable<bool>(
+        false, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+
+    /// Is the player this puppet stands for sprinting right now?
+    public bool RemoteSprinting => netSprinting.Value;
+
     // ── Flashlight ───────────────────────────────────────────────────────
     // The puppet has no flashlight of its own — NetworkPlayerSetup strips every
     // MonoBehaviour off it — so the beam has to be rebuilt on the remote side
@@ -299,6 +311,9 @@ public class PlanetRelativeSync : NetworkBehaviour
             netAnimSpeed.Value = realAnimator.GetFloat("Speed");
             netAnimGrounded.Value = realAnimator.GetBool("Grounded");
         }
+        // NetworkVariables only send on change, so a walking player costs nothing.
+        if (netSprinting.Value != realPlayer.IsSprinting)
+            netSprinting.Value = realPlayer.IsSprinting;
         if (!netPoseValid.Value) netPoseValid.Value = true;
 
         PublishFlashlight();
