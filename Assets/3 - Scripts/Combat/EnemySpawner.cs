@@ -70,6 +70,14 @@ public class EnemySpawner : MonoBehaviour
 
     void Update()
     {
+        // HOST ONLY. Placement uses Random.Range, so a client left to run this
+        // would not double-spawn the same enemies - it would invent entirely
+        // DIFFERENT ones, and the two players would be hunted by aliens the
+        // other cannot see. Clients receive enemies through the world snapshot
+        // (and, from Phase 4, live sync). Rendering and existing AI are
+        // untouched; only the decision to spawn is gated.
+        if (!WorldSync.IsAuthority) return;
+
         if (enemyPrefab == null) return;
         if (playerCtl == null) playerCtl = FindObjectOfType<PlayerController>(true);
 

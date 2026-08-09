@@ -152,6 +152,12 @@ public class MushroomSpawner : MonoBehaviour
 
         if (!wildRespawnEnabled || PlanetOxygen.Instance == null) return;
 
+        // HOST ONLY. The roll below is per consumed cell, so a client running it
+        // would respawn a DIFFERENT set of mushrooms than the host - divergence,
+        // not duplication. The host owns which cells come back; clients learn
+        // about them through the snapshot (and Phase 2's deltas).
+        if (!WorldSync.IsAuthority) return;
+
         for (int s = 0; s < bodies.Count; s++)
         {
             var entry = bodies[s];

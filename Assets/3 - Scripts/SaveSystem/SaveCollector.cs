@@ -916,6 +916,57 @@ public static class SaveCollector
 
     // ───────────────────────── Apply ─────────────────────────
 
+    /// <summary>
+    /// Applies ONLY the shared world: what has been chopped, harvested, planted
+    /// and built, plus the buyer ledger and enemies. Used by the multiplayer
+    /// join snapshot, where a guest must adopt the host's world without
+    /// inheriting their body, wallet, hotbar or ship.
+    ///
+    /// ── Why this exists rather than calling Apply ────────────────────────
+    /// Apply() restores a whole SAVE, including the player. A joining guest has
+    /// their own character and their own inventory; overwriting those with the
+    /// host's would be a different bug every session.
+    ///
+    /// ── Why it is a method here and not a caller's checklist ─────────────
+    /// The order below is a strict subsequence of Apply()'s documented order —
+    /// bodies before body-relative content, singletons before the objects that
+    /// read them, buildings before enemies. Keeping it next to Apply() is the
+    /// only way those two stay in step when either changes. If you add a world
+    /// system to Apply(), add it here too.
+    ///
+    /// Safe to call repeatedly: every spawn-type apply below clears what it owns
+    /// before rebuilding, so a re-sent snapshot corrects rather than duplicates.
+    ///
+    /// NOT applied, deliberately: celestial bodies (SolarSystemSync owns orbits
+    /// and would fight this), player transform, hotbar, wallet, equipment, fish,
+    /// ship, storages, held item, tutorial and AI state.
+    /// </summary>
+    public static void ApplyWorldSubset(SaveData data)
+    {
+        if (data == null) return;
+
+        // Singleton world state first — the object restores below read it.
+        BuyerLedger.ApplySave(data.buyerLedger);
+        ApplyPlanetO2(data.planetO2);
+
+        // Legacy saves carry domes inside `buildings`; move them across BEFORE
+        // either apply or they restore twice.
+        MigrateLegacyDomes(data);
+        ApplyBuildings(data.buildings);
+        ApplyDomes(data.domes);
+        ApplySaplings(data.saplings);
+        ApplyPlantedMushrooms(data.plantedMushrooms);
+
+        // After the world objects, matching Apply()'s ordering.
+        ApplyEnemies(data);
+
+        // Consumed-prop ledgers last, exactly as Apply() does — these tell the
+        // deterministic spawners which seeded cells are already gone.
+        ApplyTreesMined(data.treesMined);
+        ApplyMushroomsConsumed(data.mushroomsConsumed);
+        ApplyCrystalsMined(data.crystalsMined);
+    }
+
     public static void Apply(SaveData data)
     {
         if (data == null) return;

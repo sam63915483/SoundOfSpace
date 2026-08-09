@@ -74,6 +74,13 @@ public class BuyerMessageDirector : MonoBehaviour
 
     void Update()
     {
+        // HOST ONLY. Text timing, offer sizes and bond rolls all use Random, so
+        // a client running this would hold its own separate conversation with
+        // the same buyer. Sam's spec is the opposite: "if the host makes a bond
+        // and gets a text, the clients also get the same texts". Phase 5
+        // broadcasts them; until then a client simply does not invent any.
+        if (!WorldSync.IsAuthority) return;
+
         _tickTimer += Time.unscaledDeltaTime;
         if (_tickTimer < TickInterval) return;
         _tickTimer = 0f;
