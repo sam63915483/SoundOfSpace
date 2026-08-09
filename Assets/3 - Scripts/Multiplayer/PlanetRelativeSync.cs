@@ -91,11 +91,19 @@ public class PlanetRelativeSync : NetworkBehaviour
 
         if (IsOwner)
         {
-            // Host: the real player already stands wherever it stands —
-            // publish immediately. Joining client: wait for the server's
-            // planet-local spawn pose, teleport the real player there first
-            // (its own current position is fine meanwhile; nothing freezes).
+            // Host: the real player already stands wherever it stands — publish
+            // immediately. Joining client: hold briefly so the arrival sequence
+            // can seat them in the stasis pod first, otherwise the host watches
+            // them pop from the default spawn into the pod.
+            //
+            // FAILS OPEN, deliberately. This used to wait forever for an
+            // external system to set a flag; when that system was removed the
+            // client published nothing and was permanently invisible to
+            // everyone else, with no error anywhere. Now the hold expires and
+            // the player becomes visible regardless — a small cosmetic pop is
+            // an acceptable worst case, an invisible player is not.
             ownerPoseReady = IsServer;
+            ownerHoldUntil = Time.unscaledTime + OwnerHoldSeconds;
         }
         else
         {
@@ -159,15 +167,25 @@ public class PlanetRelativeSync : NetworkBehaviour
         }
     }
 
+    /// Grace period a joining client holds before publishing, waiting to be
+    /// seated by SecondPlayerArrival. A backstop, not a dependency.
+    const float OwnerHoldSeconds = 12f;
+    float ownerHoldUntil;
+
+    /// Called by the arrival sequence once the local player has been placed.
+    /// Releases the publish hold immediately instead of waiting it out.
+    public void MarkOwnerPlaced()
+    {
+        if (IsOwner) ownerPoseReady = true;
+    }
+
     void Update()
     {
-        // Joining client: poll for the server-written spawn pose, then
-        // teleport the real player beside the host.
-        if (!IsSpawned || !IsOwner || IsServer || ownerPoseReady) return;
+        if (!IsSpawned || !IsOwner || ownerPoseReady) return;
         TryResolveRefs();
-        if (planet == null || realPlayer == null || !netSpawnPoseSet.Value) return;
-
-        TeleportRealPlayer(netSpawnLocalPos.Value, netSpawnLocalRot.Value);
+        if (planet == null || realPlayer == null) return;
+        // Either the arrival released us (MarkOwnerPlaced) or the hold ran out.
+        if (Time.unscaledTime < ownerHoldUntil) return;
         ownerPoseReady = true;
     }
 
@@ -281,8 +299,13 @@ public class PlanetRelativeSync : NetworkBehaviour
         Debug.Log($"[MP] Local player teleported to planet-local {localPos} (joiner spawn beside host)");
     }
 
-    /// Server-side: set the planet-local spawn pose for this (client-owned)
-    /// player. The owning client polls netSpawnPoseSet and teleports itself.
+    /// DEAD — nothing calls this, and nothing should.
+    ///
+    /// This dropped a joiner a few metres above the host. SecondPlayerArrival
+    /// owns placement now (guests wake in the stasis pod), and wiring this back
+    /// up would fight it and win, which is exactly the bug that put guests on
+    /// top of the host. Kept only so the intent is on record; delete it once
+    /// the co-op world sync lands and this file is revisited.
     public void ServerSetSpawnPose(Vector3 localPos, Quaternion localRot)
     {
         if (!IsServer) return;

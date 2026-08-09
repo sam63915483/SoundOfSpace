@@ -250,7 +250,10 @@ public class TabbedPauseMenu : MonoBehaviour
 
         if (TutorialGate.PausePressed())
         {
-            if (_isPaused) ClosePause();
+            // The session panel opens OVER this menu, so its Esc must back out
+            // of it alone rather than also closing the pause menu underneath.
+            if (MultiplayerMenuUI.AnyOpen || MultiplayerMenuUI.ConsumedEscapeThisFrame) { }
+            else if (_isPaused) ClosePause();
             // Don't open over the build menu / fishingdex — both advertise
             // [ESC] CLOSE in their footer and handle their own dismissal.
             // Without this guard, ESC inside either menu would close it AND
@@ -459,9 +462,17 @@ public class TabbedPauseMenu : MonoBehaviour
 
     void OpenMultiplayerPanel()
     {
-        ClosePauseDirect();
+        // Deliberately does NOT close the pause menu. Closing it restores
+        // timeScale and re-locks the cursor, which left the session panel up
+        // over a running game with no pointer to click it with. Leaving the
+        // pause menu open underneath keeps the game frozen and the cursor free,
+        // and gives the panel something to return to.
         MultiplayerMenuUI.OpenInGame();
     }
+
+    /// Lets the session panel dismiss the pause menu once it has actually
+    /// started or joined something, so the player lands back in the game.
+    public void CloseFromExternal() => ClosePauseDirect();
 
     /// The button says what it will DO — "VIEW SESSION" while one is running,
     /// "MULTIPLAYER" when there isn't. Refreshed on open, since a session can

@@ -34,6 +34,7 @@ public class MultiplayerMenuUI : MonoBehaviour
             go.AddComponent<MultiplayerMenuUI>();
         }
         Instance._onSolo = null;
+        Instance._inGameSession = true;
         Instance._screen = Screen.InGame;
         Instance.Show();
     }
@@ -63,6 +64,9 @@ public class MultiplayerMenuUI : MonoBehaviour
     System.Action _onSolo;      // "play on my own" — resumes the normal load
     bool _busy;
     string _lastRendered = "";
+    /// True when this panel was opened from the pause menu rather than the main
+    /// menu. Sticks across the InGame -> Join hop so the cursor claim survives.
+    bool _inGameSession;
 
     void Awake()
     {
@@ -95,6 +99,11 @@ public class MultiplayerMenuUI : MonoBehaviour
 
     public bool IsOpen => _canvas != null && _canvas.enabled;
 
+    /// Modal handshake with TabbedPauseMenu — see its Esc guard.
+    public static bool AnyOpen => Instance != null && Instance.IsOpen;
+    static int s_escFrame = -1;
+    public static bool ConsumedEscapeThisFrame => s_escFrame == Time.frameCount;
+
     void Show()
     {
         if (_canvas != null) _canvas.enabled = true;
@@ -106,6 +115,21 @@ public class MultiplayerMenuUI : MonoBehaviour
     {
         if (_canvas != null) _canvas.enabled = false;
         _screen = Screen.None;
+        // Release the cursor claim, or the player is left unable to look around
+        // after closing the panel.
+        if (_inGameSession)
+        {
+            _inGameSession = false;
+            PlayerController.isInModalSlotUI = false;
+        }
+    }
+
+    /// Closes this panel AND the pause menu behind it — used once a session has
+    /// actually started, so the player lands straight back in the game.
+    void CloseAllAndResume()
+    {
+        Hide();
+        if (TabbedPauseMenu.Instance != null) TabbedPauseMenu.Instance.CloseFromExternal();
     }
 
     // ── rendering ────────────────────────────────────────────────────────
@@ -113,6 +137,26 @@ public class MultiplayerMenuUI : MonoBehaviour
     void Update()
     {
         if (!IsOpen) return;
+
+        // In-game the PlayerController re-locks the cursor every frame unless a
+        // modal claims it, so claim it — otherwise the panel is up but nothing
+        // can be clicked.
+        if (_screen == Screen.InGame || _inGameSession)
+        {
+            PlayerController.isInModalSlotUI = true;
+            if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
+            if (!Cursor.visible) Cursor.visible = true;
+        }
+
+        // Esc / pad-B backs out of this panel only, leaving the pause menu.
+        // Both Updates run in the same frame, so the pause menu is told this
+        // press was already spent — the same handshake MushroomSellUI uses.
+        if (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B))
+        {
+            s_escFrame = Time.frameCount;
+            Hide();
+            return;
+        }
         // Cheap change-detection: the session's state and roster are polled on a
         // timer, so only repaint when something the player can see has moved.
         var s = MultiplayerSession.Instance;
@@ -303,8 +347,14 @@ public class MultiplayerMenuUI : MonoBehaviour
                 // where we stand.
                 s.SetInPlace(true);
                 _busy = true; _lastRendered = ""; Render();
-                if (await s.CreateSessionAsync(_passInput.text)) s.BeginGame();
+                bool opened = await s.CreateSessionAsync(_passInput.text);
                 _busy = false; _lastRendered = ""; Render();
+                if (opened)
+                {
+                    s.BeginGame();
+                    // Show the code for a moment, then drop back into the world.
+                    _screen = Screen.InGame; _lastRendered = ""; Render();
+                }
                 return;
             }
 
@@ -316,8 +366,11 @@ public class MultiplayerMenuUI : MonoBehaviour
                     return;
                 }
                 _busy = true; _lastRendered = ""; Render();
-                await s.JoinSessionAsync(_codeInput.text, _passInput.text);
+                bool joined = await s.JoinSessionAsync(_codeInput.text, _passInput.text);
                 _busy = false; _lastRendered = ""; Render();
+                // Joining from inside the game connects where you stand, so
+                // there is nothing left to wait for — get out of the way.
+                if (joined && _inGameSession) CloseAllAndResume();
                 break;
         }
     }
