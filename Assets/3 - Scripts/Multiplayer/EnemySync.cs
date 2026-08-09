@@ -75,7 +75,7 @@ public class EnemySync : MonoBehaviour
     /// than one message per enemy — twenty separate named messages every tick is
     /// where the bandwidth would actually go. The cap exists because the batch is
     /// sent UNRELIABLY and an unreliable packet must fit inside the MTU:
-    /// 24 × 34 bytes ≈ 816, comfortably under ~1400. A field at maxPopulation
+    /// 24 × 36 bytes ≈ 864, comfortably under ~1400. A field at maxPopulation
     /// (33) simply goes out as two messages.
     const int PosesPerMessage = 24;
 
@@ -84,6 +84,11 @@ public class EnemySync : MonoBehaviour
     /// makes, and there is no competitive stake here — but a single value that
     /// can delete anything on the planet is worth bounding anyway.
     const float MaxReportedDamage = 500f;
+
+    /// "This enemy's target is nobody a byte can name." Client ids are ulong and
+    /// climb with reconnects; a session that somehow reached 255 loses the guest's
+    /// spot-meter and nothing else, which is the right way for it to degrade.
+    const byte NoTargetId = 255;
 
     bool _registered;
 
@@ -325,6 +330,13 @@ public class EnemySync : MonoBehaviour
                     WriteQuat(w, Quaternion.Inverse(pt.rotation) * e.transform.rotation);
                     w.WriteValueSafe((byte)Mathf.Clamp(Mathf.RoundToInt(e.CurrentAnimSpeed * 255f), 0, 255));
                     w.WriteValueSafe((byte)e.State);
+                    // How close it is to noticing, and WHO it is noticing. The
+                    // pair is what lets a guest's spot-meter fill for aliens
+                    // looking at them and stay dark for aliens looking at the
+                    // host. NoTargetId when the id will not fit a byte, which
+                    // costs a guest the meter and nothing else.
+                    w.WriteValueSafe((byte)Mathf.Clamp(Mathf.RoundToInt(e.CurrentSuspicion01 * 255f), 0, 255));
+                    w.WriteValueSafe(e.TargetClientId <= 254 ? (byte)e.TargetClientId : NoTargetId);
                 }
             },
             // Unreliable: every pose is an ABSOLUTE position, so a dropped one
@@ -449,7 +461,9 @@ public class EnemySync : MonoBehaviour
         if (ec == null) return;
 
         _puppets[netId] = ec;
-        ec.ReceiveNetworkPose(localPos, localRot, 0f, EnemyController.AIState.Docile);
+        // Seeded standing still and unaware; the first real pose lands within
+        // 100 ms and corrects both.
+        ec.ReceiveNetworkPose(localPos, localRot, 0f, EnemyController.AIState.Docile, 0f, false);
     }
 
     void HandlePoses(FastBufferReader reader)
@@ -464,12 +478,17 @@ public class EnemySync : MonoBehaviour
             Quaternion localRot = ReadQuat(reader);
             reader.ReadValueSafe(out byte animByte);
             reader.ReadValueSafe(out byte stateByte);
+            reader.ReadValueSafe(out byte suspicionByte);
+            reader.ReadValueSafe(out byte targetByte);
 
             // Every entry is read whether or not we can use it — bailing early
-            // would leave the rest of the batch unparsed and desync the reader.
+            // would leave the rest of the batch unparsed and desync the reader
+            // for every enemy after it in the same message.
             if (_puppets.TryGetValue(netId, out var ec) && ec != null)
                 ec.ReceiveNetworkPose(localPos, localRot, animByte / 255f,
-                                      (EnemyController.AIState)stateByte);
+                                      (EnemyController.AIState)stateByte,
+                                      suspicionByte / 255f,
+                                      targetByte != NoTargetId && targetByte == LocalClientId);
             else
                 sawUnknown = true;
         }

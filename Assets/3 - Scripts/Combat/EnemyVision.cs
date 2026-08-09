@@ -202,6 +202,26 @@ public class EnemyVision : MonoBehaviour
         if (_player != null) RecordLastSeen(_player.position);
     }
 
+    /// <summary>
+    /// Co-op: push the HOST's perception of THIS machine's player onto a puppet.
+    ///
+    /// This component is disabled on a puppet — the whole point is that a guest
+    /// stops paying for bicone tests and LOS raycasts. But EnemyDetectionHUD
+    /// reads Suspicion01 and CanSeePlayerNow to draw the meter that fills while
+    /// you are being noticed, and with nothing driving them a guest would creep
+    /// around with no feedback at all and reasonably conclude stealth was broken.
+    /// A disabled component's fields are still perfectly readable, so the HUD
+    /// works unchanged once these are fed.
+    ///
+    /// Only ever called with the host's suspicion about the LOCAL player. An
+    /// enemy busy noticing the other player must not light up our HUD.
+    /// </summary>
+    public void ApplyNetworkPerception(float suspicion, bool canSee)
+    {
+        Suspicion01 = Mathf.Clamp01(suspicion);
+        CanSeePlayerNow = canSee;
+    }
+
     /// <summary>Show/hide the debug cone renderer (e.g. hidden permanently on death).</summary>
     public void SetConeVisible(bool visible)
     {

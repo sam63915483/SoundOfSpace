@@ -2013,10 +2013,26 @@ public class EnemyController : MonoBehaviour, IDamageable
         }
     }
 
-    /// <summary>Host → guest: where this enemy is and what it is doing.</summary>
-    public void ReceiveNetworkPose(Vector3 localPos, Quaternion localRot, float animSpeed, AIState state)
+    /// How close this enemy is to noticing its current target, for the pose
+    /// stream. Paired with TargetClientId, which says who that is.
+    public float CurrentSuspicion01 => _vision != null ? _vision.Suspicion01 : 0f;
+
+    /// <summary>
+    /// Host → guest: where this enemy is and what it is doing.
+    ///
+    /// `suspicion` describes the enemy's feelings about `targetIsMe`'s player, so
+    /// it is only forwarded to the HUD when that target is us — otherwise a guest
+    /// would watch their spot-meter fill because an alien on the far side of the
+    /// planet had noticed the host.
+    /// </summary>
+    public void ReceiveNetworkPose(Vector3 localPos, Quaternion localRot, float animSpeed,
+                                   AIState state, float suspicion, bool targetIsMe)
     {
         if (!_isPuppet || _dying) return;
+
+        if (_vision != null)
+            _vision.ApplyNetworkPerception(targetIsMe ? suspicion : 0f,
+                                           targetIsMe && suspicion > 0.001f);
 
         _netLocalPos  = localPos;
         _netLocalRot  = localRot;

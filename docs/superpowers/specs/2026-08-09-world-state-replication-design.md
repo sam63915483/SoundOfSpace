@@ -212,6 +212,47 @@ non-colliding, pose-synced, animation-parameter driven.
 The stealth systems (view cones, LOS, sniff/search) run only on the host, which
 also removes their per-client cost.
 
+### Built 2026-08-09 — compiles + edit-mode harnesses pass, TWO-INSTANCE PLAYTEST PENDING
+
+`Multiplayer/EnemySync.cs` + `Multiplayer/PlayerRoster.cs`, per
+`plans/2026-08-09-phase4-enemy-sync.md`. Six things the plan did not anticipate,
+each found by reading the live code rather than by testing:
+
+1. **The join snapshot double-spawned enemies.** `SaveCollector.ApplyWorldSubset`
+   called `ApplyEnemies`, which would have given the guest a second set with no
+   `NetId` that no message could ever move, kill or remove. Removed from the
+   subset; `EnemySync` owns enemies end-to-end and clears the field itself. Full
+   `Apply()` still restores from disk, unchanged.
+2. **Contact damage could not reach a guest.** `OnCollisionStay` needs a collider
+   and player puppets have none, so `EnemyController.TryBiteRemotePlayers` was
+   added, mirroring the existing `TryBiteNearbyNPC` — which exists for exactly
+   the same reason.
+3. **Nothing spawned near a guest.** `EnemySpawner` anchored on the local rig
+   only. It now round-robins the roster, and the no-pop-in occlusion test runs
+   from every player's viewpoint.
+4. **Melee would have been dead in co-op.** `useClassicSwing` is false, so
+   `BladeSweep`'s collider `SphereCastAll` is the only melee path, and a puppet
+   has no colliders. It got a separate analytic pass (not a refactor — that loop
+   is tuned through seven feel iterations, and with no puppets present it is one
+   early return).
+5. **Kill credit went to the host.** The killstreak, the slow-mo and the GANGSTA
+   REP now travel with the Death message to the machine that earned them.
+6. **A guest had no spot-meter.** `Suspicion01` lives on the host, so the stealth
+   loop was invisible on the other screen. The pose stream carries suspicion plus
+   the target's client id, and a guest only fills its meter for aliens actually
+   looking at it.
+
+Deviation from the plan's text: identity is assigned by a per-frame SWEEP over
+`EnemyController.ActiveEnemies`, not by an `EnemySync.NextNetId()` call wired
+into each `Instantiate`. One mechanism covers every creation path; a path that
+forgets to call a hook is how an enemy ends up invisible on the other screen with
+nothing in the log.
+
+Known gaps, deliberate: a guest's spit projectile is never drawn (spit only ever
+arms against the host's own player, because `PlayerTreeContactTracker` watches
+local feet), and a guest's MISSED gunshots do not alert nearby aliens (only the
+enemy actually hit is alerted, via the host's own `TakeDamage`).
+
 ---
 
 ## 8. Phase 5 — Economy: bonds, texts, deals

@@ -1,7 +1,7 @@
 # Phase 4 — Enemy Sync Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement
-> this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 >
 > **Resuming after a `/clear`:** everything needed is in this file plus
 > `docs/superpowers/specs/2026-08-09-world-state-replication-design.md`. Read both, then
@@ -84,7 +84,7 @@ their own scan.
 **Files:**
 - Create: `Assets/3 - Scripts/Multiplayer/PlayerRoster.cs`
 
-- [ ] **Step 1: Write it**
+- [x] **Step 1: Write it**
 
 ```csharp
 using System.Collections.Generic;
@@ -175,7 +175,7 @@ public static class PlayerRoster
 }
 ```
 
-- [ ] **Step 2: Add the puppet list `PlayerRoster` reads**
+- [x] **Step 2: Add the puppet list `PlayerRoster` reads**
 
 `PlanetRelativeSync` needs a static instance list, following the `AllInstances` convention
 already used by `EnemyController.ActiveEnemies` and `SpawnedTree.AllTrees`.
@@ -193,17 +193,17 @@ In `PlanetRelativeSync`, add near the top of the class:
 and in its `OnNetworkSpawn` add `s_all.Add(this);`, in `OnNetworkDespawn` add
 `s_all.Remove(this);`. If either override does not exist yet, create it and call `base`.
 
-- [ ] **Step 3: Clear the cache on scene load**
+- [x] **Step 3: Clear the cache on scene load**
 
 In `WorldSync.OnSceneLoaded`, add `PlayerRoster.Forget();` — the cached `PlayerController`
 belongs to the old scene.
 
-- [ ] **Step 4: Verify it compiles**
+- [x] **Step 4: Verify it compiles**
 
 Run: `mcp__coplay-mcp__check_compile_errors`
 Expected: `No compile errors`
 
-- [ ] **Step 5: Harness**
+- [x] **Step 5: Harness**
 
 Write to `<scratchpad>/TestPlayerRoster.cs` and run via `execute_script`:
 
@@ -239,7 +239,7 @@ public static class TestPlayerRoster
 
 Expected: `ALL PASS`
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add "Assets/3 - Scripts/Multiplayer/PlayerRoster.cs" "Assets/3 - Scripts/Multiplayer/PlayerRoster.cs.meta" "Assets/3 - Scripts/Multiplayer/PlanetRelativeSync.cs" "Assets/3 - Scripts/Multiplayer/WorldSync.cs"
@@ -258,13 +258,13 @@ look at one player while swinging at another."
 - Modify: `Assets/3 - Scripts/Combat/EnemyController.cs`
 - Modify: `Assets/3 - Scripts/Combat/EnemyVision.cs`
 
-- [ ] **Step 1: Find every place the enemy resolves "the player"**
+- [x] **Step 1: Find every place the enemy resolves "the player"**
 
 Run: `grep -n "FindObjectOfType<PlayerController>\|FindWithTag(\"Player\")\|_player\b" "Assets/3 - Scripts/Combat/EnemyController.cs" "Assets/3 - Scripts/Combat/EnemyVision.cs"`
 
 Record each. Each is a place that currently assumes one player.
 
-- [ ] **Step 2: Replace the cached single player with a per-tick nearest lookup**
+- [x] **Step 2: Replace the cached single player with a per-tick nearest lookup**
 
 In `EnemyController`, wherever the player transform is cached, replace the resolution with:
 
@@ -288,11 +288,11 @@ In `EnemyController`, wherever the player transform is cached, replace the resol
 Then call `ResolveTarget()` at the top of the AI tick and use its result in place of the
 cached field. Do NOT change the vision or spot-timer logic — only which transform it looks at.
 
-- [ ] **Step 3: Same in EnemyVision**
+- [x] **Step 3: Same in EnemyVision**
 
 Wherever `EnemyVision` resolves the player, use `PlayerRoster.Nearest(transform.position, out _)`.
 
-- [ ] **Step 4: Verify it compiles, and that single player is unchanged**
+- [x] **Step 4: Verify it compiles, and that single player is unchanged**
 
 Run: `mcp__coplay-mcp__check_compile_errors`
 Expected: `No compile errors`
@@ -301,7 +301,7 @@ Expected: `No compile errors`
 identical by construction. Confirm by playing single player and checking an enemy still
 spots, chases and loses you exactly as before.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "Assets/3 - Scripts/Combat/EnemyController.cs" "Assets/3 - Scripts/Combat/EnemyVision.cs"
@@ -322,7 +322,7 @@ construction: the roster returns exactly one player there."
 - Modify: `Assets/3 - Scripts/Combat/EnemySpawner.cs`
 - Modify: `Assets/3 - Scripts/Combat/EnemyController.cs`
 
-- [ ] **Step 1: Give every enemy a stable network id**
+- [x] **Step 1: Give every enemy a stable network id**
 
 Enemies are runtime-spawned, so there is no cell id to key on. The host assigns an
 incrementing `uint` at spawn; guests key on it.
@@ -342,7 +342,7 @@ In `EnemySpawner`, immediately after each `Instantiate`, assign one:
         if (ec != null) ec.NetId = EnemySync.NextNetId();
 ```
 
-- [ ] **Step 2: Write EnemySync**
+- [x] **Step 2: Write EnemySync**
 
 Create `Assets/3 - Scripts/Multiplayer/EnemySync.cs`, following `StorageSync`'s shape exactly
 (auto-singleton, named messages, explicit client addressing, never `SendNamedMessageToAll`).
@@ -370,7 +370,7 @@ Rules to preserve, each already paid for elsewhere in this codebase:
 Send poses at **10 Hz** and interpolate on the receiving side, exactly as `PlanetRelativeSync`
 does for players. Do not send every frame.
 
-- [ ] **Step 3: Gate the AI**
+- [x] **Step 3: Gate the AI**
 
 At the top of `EnemyController`'s decision tick:
 
@@ -387,12 +387,12 @@ At the top of `EnemyController`'s decision tick:
 Keep animation, audio and rendering outside the gate — a guest still has to see the enemy
 walk.
 
-- [ ] **Step 4: Verify it compiles**
+- [x] **Step 4: Verify it compiles**
 
 Run: `mcp__coplay-mcp__check_compile_errors`
 Expected: `No compile errors`
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add "Assets/3 - Scripts/Multiplayer/EnemySync.cs" "Assets/3 - Scripts/Multiplayer/EnemySync.cs.meta" "Assets/3 - Scripts/Combat/EnemySpawner.cs" "Assets/3 - Scripts/Combat/EnemyController.cs"
@@ -412,7 +412,7 @@ because floating-origin rebases fire while standing still."
 - Modify: `Assets/3 - Scripts/Multiplayer/EnemySync.cs`
 - Modify: `Assets/3 - Scripts/Pickups/PistolController.cs`
 
-- [ ] **Step 1: Guests report hits instead of applying them**
+- [x] **Step 1: Guests report hits instead of applying them**
 
 `PistolController.TriggerShot` already finds `IDamageable` via a raycast. On a guest that
 raycast will miss, because enemy puppet colliders are disabled — so guests test analytically,
@@ -426,7 +426,7 @@ and, on a guest, test the ray against every enemy capsule using
 On the host, apply the damage through the enemy's normal `TakeDamage`, so death, ragdoll,
 loot and the kill-cam all run exactly as they do in single player.
 
-- [ ] **Step 2: Enemy damage to a player**
+- [x] **Step 2: Enemy damage to a player**
 
 When the host's AI lands a hit, it knows the victim's `clientId` from `ResolveTarget`. If that
 is the host, apply locally; otherwise send `PlayerDamage` to that client alone, which applies
@@ -436,37 +436,37 @@ This is the one place the guest is not authoritative over its own health. That i
 the host owns the AI, so it is the only machine that knows a swing connected. The 10 Hz pose
 stream is what stops it feeling unfair — see the design table.
 
-- [ ] **Step 3: Verify it compiles**
+- [x] **Step 3: Verify it compiles**
 
 Run: `mcp__coplay-mcp__check_compile_errors`
 Expected: `No compile errors`
 
-- [ ] **Step 4: Harness the hit test against enemy capsules**
+- [x] **Step 4: Harness the hit test against enemy capsules**
 
 Reuse the approach from `TestCombatMaths.cs` — that harness caught a sign error that made
 point-blank chest shots miss. Same risk here.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ---
 
 ## Task 5: Whole-phase verification
 
-- [ ] **Step 1: Compile**
+- [x] **Step 1: Compile**
 
 Run: `mcp__coplay-mcp__check_compile_errors` → `No compile errors`
 
-- [ ] **Step 2: No editor scripts leaked into the project**
+- [x] **Step 2: No editor scripts leaked into the project**
 
 Run: `grep -rln "using UnityEditor" --include="*.cs" "Assets/3 - Scripts" | grep -v "/Editor/"`
 Expected: no output.
 
-- [ ] **Step 3: No broadcast in any sync file**
+- [x] **Step 3: No broadcast in any sync file**
 
 Run: `grep -n "SendNamedMessageToAll" "Assets/3 - Scripts/Multiplayer/"*.cs`
 Expected: comments only. A live call is the Phase 2 rebroadcast storm.
 
-- [ ] **Step 4: Playtest list for Sam**
+- [x] **Step 4: Playtest list for Sam**
 
 - Both players see the SAME enemies in the SAME places.
 - An enemy chases whoever is closest; walking past your friend pulls it onto you.

@@ -25,8 +25,14 @@ public static class PlayerRoster
     static PlayerController _localCached;
     static float _nextLocalScan;
 
-    /// Rebuilt per call, into a shared list — cheap, and never handed out to be
-    /// held onto. Do not cache the returned list.
+    /// <summary>
+    /// Rebuilt per call, into a SHARED list — cheap, and allocation-free.
+    ///
+    /// ⚠️ The returned list is invalidated by the next call to All() or Nearest().
+    /// Never cache it, and never call either one while iterating it: the second
+    /// call clears the list you are walking. Copy out the Transforms you need
+    /// first if you have to do both.
+    /// </summary>
     public static IReadOnlyList<Entry> All()
     {
         _scratch.Clear();
