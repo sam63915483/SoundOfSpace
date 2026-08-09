@@ -122,14 +122,37 @@ public class EnemyVision : MonoBehaviour
         UpdateDebugCone();
     }
 
+    /// <summary>
+    /// Look at whoever is CLOSEST, re-picked every frame — the same question
+    /// EnemyController.ResolveTarget asks, through the same roster and from the
+    /// same transform.position, so the two can never disagree about who this
+    /// enemy is dealing with. (They used to be two independent scans; that is
+    /// exactly how an enemy ends up looking at one player and swinging at
+    /// another.)
+    ///
+    /// Suspicion is deliberately NOT reset when the nearest player changes. The
+    /// meter means "something is over there", and dumping it every time two
+    /// co-op players swap places would make a pair of friends effectively
+    /// invisible.
+    /// </summary>
     void EnsurePlayer()
     {
-        if (_playerCtl == null)
+        _player = PlayerRoster.Nearest(transform.position, out _);
+
+        // Sprint reads off the REAL local rig only. A remote player is a puppet
+        // and NetworkPlayerSetup strips its PlayerController, so there is no
+        // IsSprinting to read — a sprinting guest fills the meter at the walking
+        // rate. Resolved once per target CHANGE, not per frame, so pointing at a
+        // puppet doesn't run a GetComponent every Update looking for something
+        // that was deleted on purpose.
+        if (_ctlResolvedFor != _player)
         {
-            _playerCtl = FindObjectOfType<PlayerController>(true);
-            _player = _playerCtl != null ? _playerCtl.transform : null;
+            _ctlResolvedFor = _player;
+            _playerCtl = _player != null ? _player.GetComponent<PlayerController>() : null;
         }
     }
+
+    Transform _ctlResolvedFor;
 
     bool ComputeCanSee()
     {
@@ -171,6 +194,11 @@ public class EnemyVision : MonoBehaviour
     {
         Suspicion01 = 1f;
         CanSeePlayerNow = true;
+        // An enemy can be alerted (shot, or recruited by a screaming packmate)
+        // in the same frame it spawned, before its first Update has resolved a
+        // target — without this it would alert with no last-seen point and
+        // immediately give up.
+        if (_player == null) EnsurePlayer();
         if (_player != null) RecordLastSeen(_player.position);
     }
 

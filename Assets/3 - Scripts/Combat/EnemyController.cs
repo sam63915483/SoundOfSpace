@@ -316,21 +316,36 @@ public class EnemyController : MonoBehaviour, IDamageable
         }
     }
 
-    // Shared across ALL enemies. A spawning wave used to have every enemy's
-    // Start() call FindObjectOfType<PlayerController>() independently, batching
-    // into a ~19 ms delayed-Start hitch while being chased. One cached lookup
-    // serves the whole fleet; it re-finds automatically after a scene reload
-    // (the old reference goes Unity-null).
-    static PlayerController _sharedPlayer;
-    static Transform ResolvePlayerTransform()
+    /// <summary>
+    /// Who this enemy is currently after.
+    ///
+    /// Re-evaluated every decision tick, NOT cached: Sam's rule is that an enemy
+    /// chases whoever is CLOSEST, and that has to be able to change mid-chase so
+    /// you can pull a mob off your friend by stepping in.
+    ///
+    /// Only the IDENTITY of the target is re-picked here. The stealth state
+    /// machine (view cone, LOS, the 2s spot, search-and-sniff, sun-death) is
+    /// untouched and simply evaluates against whoever this returns.
+    ///
+    /// Single player is identical by construction: the roster holds exactly one
+    /// player there, so this returns the same Transform it always did. The old
+    /// static _sharedPlayer cache lives on inside PlayerRoster — a spawning wave
+    /// still shares one throttled scan rather than each enemy running its own,
+    /// which is what fixed the ~19 ms delayed-Start hitch.
+    /// </summary>
+    Transform ResolveTarget()
     {
-        if (_sharedPlayer == null) _sharedPlayer = FindObjectOfType<PlayerController>(true);
-        return _sharedPlayer != null ? _sharedPlayer.transform : null;
+        return PlayerRoster.Nearest(transform.position, out _targetClientId);
     }
+
+    /// Which player ResolveTarget last picked. The host needs it to post damage
+    /// to the right machine (EnemySync); meaningless in single player.
+    ulong _targetClientId;
+    public ulong TargetClientId => _targetClientId;
 
     void Start()
     {
-        player = ResolvePlayerTransform();
+        player = ResolveTarget();
 
         parentPlanet = GetComponentInParent<CelestialBody>();
         if (parentPlanet == null) parentPlanet = GetNearestPlanet();
@@ -387,11 +402,9 @@ public class EnemyController : MonoBehaviour, IDamageable
     {
         if (_dying) { TickDeath(); return; }
 
-        if (player == null)
-        {
-            player = ResolvePlayerTransform();
-            if (player == null) return;
-        }
+        // Re-picked every tick, not just when it goes null — see ResolveTarget.
+        player = ResolveTarget();
+        if (player == null) return;
 
         if (parentPlanet == null)
         {
