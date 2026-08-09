@@ -66,6 +66,12 @@ public class PlanetRelativeSync : NetworkBehaviour
     PlayerFlashlight ownerFlashlight;   // owner side
     Light puppetLight;                  // remote side
 
+    // Remote beam shape. Narrower than the real lamp on purpose — see the note
+    // in ApplyRemoteFlashlight.
+    const float RemoteSpotAngle  = 55f;
+    const float RemoteInnerAngle = 22f;
+    const float RemoteMaxRange   = 90f;
+
     Transform planet;
     CelestialBody planetBody;
     EndlessManager endless;
@@ -307,28 +313,36 @@ public class PlanetRelativeSync : NetworkBehaviour
             puppetLight = go.AddComponent<Light>();
             puppetLight.type = LightType.Spot;
 
-            // Copy the local flashlight's look so a remote beam is indistinguishable.
+            // A CLEAN CONE, deliberately not a carbon copy of the local lamp.
+            //
+            // The first version mirrored the real flashlight exactly — a ~150°
+            // spot with a procedural cookie. That looks right to its owner, who
+            // sits at the light's origin and never sees the cone side-on. Viewed
+            // from outside, which only happens in multiplayer, the cookie
+            // projection at that angle degenerates and throws streaks out to the
+            // left and right and a bright band along the ground — the artifacts
+            // Sam saw. They were always there; nobody had ever been in a position
+            // to look at one before.
+            //
+            // So the remote beam takes its COLOUR and BRIGHTNESS from the real
+            // lamp (so it matches, and follows any retune) but uses a sane cone
+            // and no cookie.
             var local = FindObjectOfType<PlayerFlashlight>();
             var src = local != null ? local.flashlight : null;
-            if (src != null)
-            {
-                puppetLight.range = src.range;
-                puppetLight.spotAngle = src.spotAngle;
-                puppetLight.innerSpotAngle = src.innerSpotAngle;
-                puppetLight.color = src.color;
-                puppetLight.intensity = src.intensity;
-                puppetLight.cookie = src.cookie;
-                puppetLight.shadows = src.shadows;
-                // Built-in RP demotes lights to vertex when there are many —
-                // same reason PlayerFlashlight forces this on its own lamp.
-                puppetLight.renderMode = LightRenderMode.ForcePixel;
-            }
-            else
-            {
-                puppetLight.range = 200f;
-                puppetLight.spotAngle = 150f;
-                puppetLight.intensity = 1f;
-            }
+
+            puppetLight.spotAngle = RemoteSpotAngle;
+            puppetLight.innerSpotAngle = RemoteInnerAngle;
+            puppetLight.cookie = null;
+            // Shadows off: several spot lights with shadows is a real cost, and
+            // a shadow-casting beam from a body that is only a puppet buys
+            // nothing.
+            puppetLight.shadows = LightShadows.None;
+            puppetLight.color = src != null ? src.color : Color.white;
+            puppetLight.intensity = src != null ? Mathf.Max(0.25f, src.intensity) : 1f;
+            puppetLight.range = src != null ? Mathf.Min(src.range, RemoteMaxRange) : RemoteMaxRange;
+            // Built-in RP demotes lights to vertex when there are many — same
+            // reason PlayerFlashlight forces this on its own lamp.
+            puppetLight.renderMode = LightRenderMode.ForcePixel;
         }
 
         puppetLight.enabled = on;

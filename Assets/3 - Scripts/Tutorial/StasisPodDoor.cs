@@ -78,13 +78,48 @@ public class StasisPodDoor : MonoBehaviour
         _closeAt = -1f;
     }
 
-    /// Open because ANOTHER player asked. Suppresses the outgoing notify so two
-    /// machines can't ping-pong the same open back and forth forever.
-    public void ApplyRemoteOpen()
+    /// ── Multiplayer: the HOST owns this door ─────────────────────────────
+    ///
+    /// The first attempt mirrored each machine's wishes and let both run their
+    /// own logic. That cannot work: the open/close decisions are driven by
+    /// proximity and a timer, so two machines drift apart and fight — the door
+    /// shut on one screen and stuck open on the other, exactly as reported.
+    ///
+    /// So there is now one state machine, on the host. Clients don't decide
+    /// anything; they report where their player is standing and animate toward
+    /// whatever target the host sends back.
+
+    /// Set on a machine that is a CONNECTED CLIENT (not the host). Such a
+    /// machine skips the decision logic entirely.
+    public static bool ClientDriven;
+
+    /// The most-inside zone any REMOTE player occupies. The host folds this in
+    /// so its own "nobody's in the pod" reading can't slam the door on someone
+    /// standing in it on another screen.
+    public static Zone RemoteZone = Zone.Outside;
+
+    /// Network entry: set the door target without re-broadcasting it.
+    public void NetSetTarget(float t)
     {
         _suppressBroadcast = true;
-        OpenHold();
+        if (t > 0.5f) OpenHold(); else { _closeAt = -1f; SetTarget(0f); }
         _suppressBroadcast = false;
+    }
+
+    /// Current target, for the host's periodic state broadcast.
+    public float TargetOpen => _target;
+
+    /// Local player's zone, for a client to report upstream.
+    public Zone LocalZone => PlayerZone();
+
+    /// Local and remote combined — the deepest wins, because "someone is in the
+    /// pod" has to beat "nobody is in MY copy of the pod".
+    Zone EffectiveZone(Zone local)
+    {
+        Zone remote = RemoteZone;
+        if (local == Zone.Deep || remote == Zone.Deep) return Zone.Deep;
+        if (local == Zone.Doorway || remote == Zone.Doorway) return Zone.Doorway;
+        return Zone.Outside;
     }
 
     bool _suppressBroadcast;
@@ -93,9 +128,8 @@ public class StasisPodDoor : MonoBehaviour
     {
         if (Mathf.Approximately(_target, t)) return;
         _target = t;
-        // Tell the other players what this machine wants, so the door reads the
-        // same on every screen instead of only for whoever is standing in it.
-        if (!_suppressBroadcast) StasisDoorSync.NotifyLocalTarget(t);
+        // Only the authority announces. A client never reaches here on its own.
+        if (!_suppressBroadcast) StasisDoorSync.NotifyAuthoritativeTarget(t);
         // Passable the moment it starts moving (same rule as the intro).
         if (t > 0.5f && _leafColliders != null)
             foreach (var c in _leafColliders) if (c != null) c.enabled = false;
@@ -127,25 +161,43 @@ public class StasisPodDoor : MonoBehaviour
 
         CurrentZone = PlayerZone();
 
+        // A client decides nothing — it reports its zone upstream and animates
+        // toward whatever the host last sent. Running the rules here as well is
+        // what made the door disagree between screens.
+        if (ClientDriven)
+        {
+            _prevZone = CurrentZone;
+            AnimateToTarget();
+            return;
+        }
+
+        // Host (or single player): decide on LOCAL + REMOTE together.
+        Zone eff = EffectiveZone(CurrentZone);
+
         // Entered the pod proper → the door seals behind you (save ritual).
-        if (CurrentZone == Zone.Deep && _prevZone != Zone.Deep && IsOpen)
+        if (eff == Zone.Deep && _prevEffective != Zone.Deep && IsOpen)
             _closeAt = Time.time + autoCloseDelay;
         // Stepped fully out → close behind you.
-        else if (CurrentZone == Zone.Outside && _prevZone != Zone.Outside && IsOpen)
+        else if (eff == Zone.Outside && _prevEffective != Zone.Outside && IsOpen)
             _closeAt = Time.time + autoCloseDelay;
         _prevZone = CurrentZone;
+        _prevEffective = eff;
 
-        // Execute a due close — but never while the player straddles the
-        // doorway plane (the leaf would land on them).
-        // ...and never while ANOTHER player is asking for it open, or the host's
-        // "nobody's inside" rule would slam the door on a guest standing in the
-        // pod on their own screen.
-        if (IsOpen && _closeAt > 0f && Time.time >= _closeAt && CurrentZone != Zone.Doorway
-            && !StasisDoorSync.RemoteWantsOpen)
+        // Execute a due close — but never while ANY player straddles the doorway
+        // plane, on either machine (the leaf would land on them).
+        if (IsOpen && _closeAt > 0f && Time.time >= _closeAt && eff != Zone.Doorway)
         {
             _closeAt = -1f;
             SetTarget(0f);
         }
+
+        AnimateToTarget();
+    }
+
+    Zone _prevEffective = Zone.Outside;
+
+    void AnimateToTarget()
+    {
 
         // Animate toward target.
         if (!Mathf.Approximately(_openT, _target))

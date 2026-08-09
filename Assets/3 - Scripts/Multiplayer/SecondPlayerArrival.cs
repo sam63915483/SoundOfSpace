@@ -103,7 +103,9 @@ public class SecondPlayerArrival : MonoBehaviour
         // broadcasting on arrival instead would swing it open before the
         // player had finished materialising.
         if (pod != null) yield return new WaitForSecondsRealtime(PodWakeSeconds);
-        StasisDoorSync.BroadcastOpen();
+        // Ask the host to open it — a client isn't allowed to decide, and the
+        // host's periodic state broadcast would just shut it again if we did.
+        StasisDoorSync.RequestOpen();
 
         // The pod's ritual calls UnlockAll when it finishes; this is belt and
         // braces for the case where no pod was found at all.

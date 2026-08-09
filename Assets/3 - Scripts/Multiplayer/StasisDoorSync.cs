@@ -4,42 +4,52 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Mirrors the stasis pod door across every machine in a session.
+/// Keeps the stasis pod door and its valve button identical on every screen.
 ///
-/// The door is driven by LOCAL proximity — it watches "the player" via
-/// FindObjectOfType and opens when they are deep inside. Correct in single
-/// player, invisible to everyone else in co-op: the host watched a joining
-/// player sit in a sealed pod and then walk out through a shut door.
+/// ── Why the first two attempts failed ────────────────────────────────────
+/// The door's behaviour is a small state machine — open on a button press,
+/// close after a delay, seal behind you when you step in, re-close if you never
+/// enter. Attempt one mirrored the door's target; attempt two mirrored each
+/// machine's "wish" and took the union. Both fail for the same reason: every
+/// machine was still RUNNING that state machine, against its own local player
+/// and its own timer, so the two copies drifted apart and fought. The door
+/// closed on one screen and stuck open on the other.
 ///
-/// ── Why the first attempt didn't work ────────────────────────────────────
-/// Registration was lazy and only ran on the machine that SENT. The host never
-/// sent, so it never registered a handler, so it silently dropped every message.
-/// Registration now happens on every machine, every frame it isn't already done.
+/// A replicated state machine needs ONE owner. The host has it now:
 ///
-/// ── Why it isn't just "mirror the state" ─────────────────────────────────
-/// Both machines run the proximity rule against their OWN player, so a plain
-/// mirror fights itself: the guest stands in the pod and wants it open, the host
-/// has nobody inside and wants it shut, and the door flickers or shuts on
-/// someone's head. So each machine broadcasts what IT wants and the door opens
-/// if ANYONE wants it open — a union, not an overwrite. Closing only happens
-/// once no one is asking for it.
+///   client -> host : where my player is standing (ZONE), and "I pressed the
+///                    valve" (PRESS). Nothing else. The client's own door logic
+///                    is switched off entirely via StasisPodDoor.ClientDriven.
+///   host -> all    : the door's target (STATE), and "play the button press"
+///                    (ANIM), so the button visibly depresses everywhere.
 ///
-/// Uses a named message for the same reason SolarSystemSync and the galactic
-/// clock do: there is still no RPC layer, and a named message needs no
-/// NetworkObject. Clients cannot reach each other, so the host relays.
+/// The host folds the reported zones into its own so that "nobody is in MY copy
+/// of the pod" can't slam the door on a player standing in it elsewhere.
+///
+/// STATE is also re-sent every couple of seconds. It is one byte, and it means
+/// a late joiner or any dropped update self-corrects instead of leaving the
+/// door wrong until someone touches it again.
+///
+/// Named messages rather than RPCs for the same reason as the orbit and clock
+/// sync: there is no RPC layer here, and a named message needs no NetworkObject.
 /// </summary>
 public class StasisDoorSync : MonoBehaviour
 {
     public static StasisDoorSync Instance { get; private set; }
 
-    const string MsgState = "StasisDoorState";
+    const string Msg = "StasisDoor";
 
-    /// True when some OTHER machine is holding the door open. The door reads
-    /// this and refuses to close while it is set.
-    public static bool RemoteWantsOpen { get; private set; }
+    const byte KindZone  = 0;   // client -> host
+    const byte KindPress = 1;   // client -> host
+    const byte KindState = 2;   // host -> all
+    const byte KindAnim  = 3;   // host -> all
+    const byte KindOpen  = 4;   // client -> host, "let me out" with no button
 
-    static bool _localWantsOpen;
+    const float ResendInterval = 2f;
+
     bool _registered;
+    float _resendTimer;
+    StasisPodDoor.Zone _lastSentZone = (StasisPodDoor.Zone)(-1);
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -66,89 +76,204 @@ public class StasisDoorSync : MonoBehaviour
 
     void OnSceneLoaded(Scene s, LoadSceneMode m)
     {
-        // New scene, new NetworkManager, and nobody is asking for the door yet.
         _registered = false;
-        RemoteWantsOpen = false;
-        _localWantsOpen = false;
+        _lastSentZone = (StasisPodDoor.Zone)(-1);
+        StasisPodDoor.RemoteZone = StasisPodDoor.Zone.Outside;
+        StasisPodDoor.ClientDriven = false;
     }
 
-    /// Registration has to happen on EVERY machine, not just senders — that was
-    /// the bug. Cheap: one bool check per frame once registered.
     void Update()
     {
         var nm = NetworkManager.Singleton;
-        if (nm == null || !nm.IsListening)
+        bool live = nm != null && nm.IsListening;
+
+        if (!live)
         {
-            if (_registered) { _registered = false; RemoteWantsOpen = false; }
+            // Back to single player: the door owns itself again.
+            if (_registered)
+            {
+                _registered = false;
+                StasisPodDoor.ClientDriven = false;
+                StasisPodDoor.RemoteZone = StasisPodDoor.Zone.Outside;
+            }
             return;
         }
-        if (_registered) return;
-        nm.CustomMessagingManager.RegisterNamedMessageHandler(MsgState, OnStateMessage);
-        _registered = true;
-        // Announce our current wish so a machine joining mid-session agrees.
-        Send(_localWantsOpen);
-    }
 
-    /// Called by StasisPodDoor whenever ITS OWN target changes.
-    public static void NotifyLocalTarget(float target)
-    {
-        bool wantsOpen = target > 0.5f;
-        if (wantsOpen == _localWantsOpen) return;
-        _localWantsOpen = wantsOpen;
-        if (Instance != null) Instance.Send(wantsOpen);
-    }
-
-    /// Convenience for the guest arrival: hold the door open for everyone.
-    public static void BroadcastOpen()
-    {
-        var door = Object.FindObjectOfType<StasisPodDoor>();
-        if (door != null) door.OpenHold();   // this routes through NotifyLocalTarget
-        else NotifyLocalTarget(1f);
-    }
-
-    void Send(bool wantsOpen)
-    {
-        var nm = NetworkManager.Singleton;
-        if (nm == null || !nm.IsListening || !_registered) return;
-
-        var writer = new FastBufferWriter(sizeof(byte), Allocator.Temp);
-        try
+        // Registration must happen on EVERY machine, not only senders — a host
+        // that never sent used to never register, and silently dropped
+        // everything a client told it.
+        if (!_registered)
         {
-            writer.WriteValueSafe((byte)(wantsOpen ? 1 : 0));
-            if (nm.IsServer)
-                nm.CustomMessagingManager.SendNamedMessageToAll(
-                    MsgState, writer, NetworkDelivery.ReliableSequenced);
-            else
-                nm.CustomMessagingManager.SendNamedMessage(
-                    MsgState, NetworkManager.ServerClientId, writer, NetworkDelivery.ReliableSequenced);
+            nm.CustomMessagingManager.RegisterNamedMessageHandler(Msg, OnMessage);
+            _registered = true;
         }
-        finally { writer.Dispose(); }
-    }
 
-    void OnStateMessage(ulong senderId, FastBufferReader reader)
-    {
-        reader.ReadValueSafe(out byte raw);
-        bool wantsOpen = raw != 0;
-        RemoteWantsOpen = wantsOpen;
+        StasisPodDoor.ClientDriven = !nm.IsServer;
 
-        var door = Object.FindObjectOfType<StasisPodDoor>();
-        if (door != null && wantsOpen) door.ApplyRemoteOpen();
+        var door = FindDoor();
+        if (door == null) return;
 
-        // Host relays to everyone else so a third machine agrees.
-        var nm = NetworkManager.Singleton;
-        if (nm == null || !nm.IsServer) return;
-
-        var writer = new FastBufferWriter(sizeof(byte), Allocator.Temp);
-        try
+        if (nm.IsServer)
         {
-            writer.WriteValueSafe(raw);
-            foreach (var id in nm.ConnectedClientsIds)
+            // Authority: repeat the truth on a slow tick so nothing stays wrong.
+            _resendTimer += Time.unscaledDeltaTime;
+            if (_resendTimer >= ResendInterval)
             {
-                if (id == senderId || id == NetworkManager.ServerClientId) continue;
-                nm.CustomMessagingManager.SendNamedMessage(
-                    MsgState, id, writer, NetworkDelivery.ReliableSequenced);
+                _resendTimer = 0f;
+                if (nm.ConnectedClientsIds.Count > 1) SendState(door.TargetOpen > 0.5f);
             }
         }
-        finally { writer.Dispose(); }
+        else
+        {
+            // Client: the only thing we volunteer is where we're standing.
+            var zone = door.LocalZone;
+            if (zone != _lastSentZone)
+            {
+                _lastSentZone = zone;
+                SendToHost(KindZone, (byte)zone);
+            }
+        }
+    }
+
+    static StasisPodDoor _door;
+    static StasisPodDoor FindDoor()
+    {
+        if (_door == null) _door = Object.FindObjectOfType<StasisPodDoor>();
+        return _door;
+    }
+
+    // ── outbound ─────────────────────────────────────────────────────────
+
+    /// Called by StasisPodDoor.SetTarget on the AUTHORITY only.
+    public static void NotifyAuthoritativeTarget(float target)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || !nm.IsServer) return;
+        if (Instance == null || !Instance._registered) return;
+        Instance.SendState(target > 0.5f);
+    }
+
+    /// Called by the valve button. On the host it just opens the door; on a
+    /// client it asks the host to, because the client isn't allowed to decide.
+    public static void RequestValvePress(StasisPodDoor door, float openSeconds)
+    {
+        var nm = NetworkManager.Singleton;
+        bool live = nm != null && nm.IsListening;
+
+        if (!live || nm.IsServer)
+        {
+            if (door != null) door.OpenForSeconds(openSeconds);
+            // Tell everyone to play the press so the button moves on their
+            // screen too, not just the door.
+            if (live && Instance != null && Instance._registered) Instance.SendAnim();
+            return;
+        }
+        Instance?.SendToHost(KindPress, 0);
+    }
+
+    /// A joining player waking in the pod needs the door opened so they can get
+    /// out — but no button was pressed, so this asks WITHOUT the press visual.
+    /// On a client the request goes to the host, because only the host may open.
+    public static void RequestOpen()
+    {
+        var nm = NetworkManager.Singleton;
+        bool live = nm != null && nm.IsListening;
+        var door = FindDoor();
+
+        if (!live || nm.IsServer)
+        {
+            if (door != null) door.OpenHold();
+            return;
+        }
+        Instance?.SendToHost(KindOpen, 0);
+    }
+
+    void SendState(bool open)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsServer) return;
+        var w = new FastBufferWriter(2, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(KindState);
+            w.WriteValueSafe((byte)(open ? 1 : 0));
+            nm.CustomMessagingManager.SendNamedMessageToAll(Msg, w, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    void SendAnim()
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsServer) return;
+        var w = new FastBufferWriter(2, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(KindAnim);
+            w.WriteValueSafe((byte)0);
+            nm.CustomMessagingManager.SendNamedMessageToAll(Msg, w, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    void SendToHost(byte kind, byte payload)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || nm.IsServer || !_registered) return;
+        var w = new FastBufferWriter(2, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(kind);
+            w.WriteValueSafe(payload);
+            nm.CustomMessagingManager.SendNamedMessage(
+                Msg, NetworkManager.ServerClientId, w, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    // ── inbound ──────────────────────────────────────────────────────────
+
+    void OnMessage(ulong senderId, FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out byte kind);
+        reader.ReadValueSafe(out byte payload);
+
+        var nm = NetworkManager.Singleton;
+        var door = FindDoor();
+
+        switch (kind)
+        {
+            case KindZone when nm != null && nm.IsServer:
+                StasisPodDoor.RemoteZone = (StasisPodDoor.Zone)payload;
+                break;
+
+            case KindPress when nm != null && nm.IsServer:
+                // A client asked. The host is the one allowed to say yes, and
+                // its SetTarget broadcasts the result back out.
+                if (door != null) door.OpenForSeconds(ValveOpenSeconds(door));
+                SendAnim();
+                break;
+
+            case KindOpen when nm != null && nm.IsServer:
+                if (door != null) door.OpenHold();
+                break;
+
+            case KindState:
+                if (door != null) door.NetSetTarget(payload != 0 ? 1f : 0f);
+                break;
+
+            case KindAnim:
+                var valve = Object.FindObjectOfType<StasisValveButton>();
+                if (valve != null) valve.PlayPressAnim();
+                break;
+        }
+    }
+
+    /// The valve's own openSeconds, so a host-side open triggered by a client
+    /// lasts exactly as long as a local press would.
+    static float ValveOpenSeconds(StasisPodDoor door)
+    {
+        var valve = Object.FindObjectOfType<StasisValveButton>();
+        return valve != null ? valve.OpenSeconds : 6f;
     }
 }

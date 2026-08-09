@@ -79,11 +79,31 @@ public class StasisValveButton : MonoBehaviour
         return true;
     }
 
+    /// How long a press holds the door open — read by the sync layer so a press
+    /// relayed to the host lasts exactly as long as a local one.
+    public float OpenSeconds => openSeconds;
+
+    /// Replay the press VISUAL only, with no door effect. Called on the other
+    /// machines so everyone sees the button go in, not just the door move.
+    public void PlayPressAnim()
+    {
+        if (_pressing) return;
+        StartCoroutine(PressAnim());
+    }
+
     IEnumerator Press()
     {
         _pressing = true;
-        if (_door != null) _door.OpenForSeconds(openSeconds);
+        // Host (or single player) opens the door directly; a client asks the
+        // host, because the door's state machine only runs there.
+        StasisDoorSync.RequestValvePress(_door, openSeconds);
+        yield return PressAnim();
+        _pressing = false;
+    }
 
+    IEnumerator PressAnim()
+    {
+        _pressing = true;
         Vector3 pressed = _restLocal + _pushDirLocal * pressDepth;
         for (float t = 0f; t < pressSeconds; t += Time.deltaTime)
         {
