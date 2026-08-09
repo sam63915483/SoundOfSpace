@@ -36,6 +36,10 @@ ExportedObj/
 *.sln
 *.suo
 *.tmp
+# Unity writes scratch files as Foo.cs.tmp.<pid>.<hash>, so the extension is
+# NOT .tmp and the rule above misses them. They kept showing up as untracked
+# and got swept into a commit by a `git add -A` once already.
+*.tmp.*
 *.user
 *.userprefs
 *.pidb
