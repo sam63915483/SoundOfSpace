@@ -121,6 +121,10 @@ public class PlantedMushroomSave
     // Mature size as a multiple of the prefab scale, rolled from the same 1–5×
     // band wild mushrooms use. 0 on pre-feature saves, which restore at 1×.
     public float sizeMultiplier;
+    // Stable identity for the multiplayer layer: a planted prop has no seed
+    // cell to address, so harvest deltas travel keyed by this instead. Minted
+    // (GUID) at plant time; empty on pre-feature saves, which mint on load.
+    public string plantedId;
 }
 
 // PlayerProgress state. `scores` is indexed by the ProgressTrack enum, so that
@@ -148,6 +152,8 @@ public class SaplingSave
     public Quaternion localRot;
     public float growth;        // 0..1; >= 1 restores as a mature planted tree
     public int prefabIndex;     // index into TreeSpawner.treePrefabs
+    // Same wire identity PlantedMushroomSave carries — see the comment there.
+    public string plantedId;
 }
 
 // A placed bubble dome. Captured separately from PlacedBuildingSave so fuel

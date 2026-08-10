@@ -193,6 +193,7 @@ public class BubbleDome : MonoBehaviour
         _hum.minDistance = 2f;
         _hum.maxDistance = radius * 1.4f;          // audible across the interior, fades past the shell
         _hum.volume = humVolume;
+        GameAudioBus.Register(_hum, GameAudioBus.Bus.Ambience);
         _hum.Play();
     }
 
@@ -200,6 +201,14 @@ public class BubbleDome : MonoBehaviour
     {
         // Fuel drain: a full tank (100%) lasts fuelSeconds (default 3600 = 1 hour,
         // i.e. 20 crystals). At 0 the emitter goes offline (no interior O2, no vent).
+        //
+        // CO-OP: the drain deliberately ticks on every machine rather than being
+        // host-gated — it is a fixed dt-integration with no dice, both machines
+        // start from the same join snapshot (DomeSave carries fuel), so they
+        // agree to within frame noise. The one divergence source is the refuel
+        // EVENT, and DomeRefuel reports that as an absolute % through
+        // WorldSync.ReportDomeFuel. Don't add randomness or per-machine
+        // modifiers to this drain without host-gating it first.
         if (_fuel > 0f)
             _fuel = Mathf.Max(0f, _fuel - (100f / Mathf.Max(1f, fuelSeconds)) * Time.deltaTime);
 

@@ -29,6 +29,14 @@ using UnityEngine.SceneManagement;
 /// never auto-creates in builds. All world reads go through CelestialBody
 /// gameplay accessors + NBodySimulation.Bodies; the forbidden atmosphere/
 /// shader/generation code is never touched.
+///
+/// CO-OP: deliberately NOT host-gated. Every input is either synced state or a
+/// deterministic function of it — tree counts (chop/plant deltas + snapshot),
+/// sapling growth (host-declared maturity), dome state (fuel replicated,
+/// interior a fixed integration), and the vented reserve (seeded by the join
+/// snapshot via ApplyPlanetO2, then integrated at the same fixed vent rate on
+/// both machines). No Random, no per-machine modifiers. If either ever appears
+/// here, host-gate the write and broadcast the value instead.
 /// </summary>
 public class PlanetOxygen : MonoBehaviour
 {

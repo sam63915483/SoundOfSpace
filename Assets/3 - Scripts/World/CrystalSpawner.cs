@@ -98,6 +98,13 @@ public class CrystalSpawner : MonoBehaviour
         public float distSq;
     }
 
+    /// Cached live spawner, mirroring TreeSpawner/MushroomSpawner — WorldSync
+    /// resolves prop-hit deltas per message and must not FindObjectOfType there.
+    public static CrystalSpawner Instance { get; private set; }
+
+    void OnEnable() { if (Instance == null) Instance = this; }
+    void OnDisable() { if (Instance == this) Instance = null; }
+
     void Awake()
     {
         if (crystalPrefab == null)

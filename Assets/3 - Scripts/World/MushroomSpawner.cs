@@ -154,8 +154,9 @@ public class MushroomSpawner : MonoBehaviour
 
         // HOST ONLY. The roll below is per consumed cell, so a client running it
         // would respawn a DIFFERENT set of mushrooms than the host - divergence,
-        // not duplication. The host owns which cells come back; clients learn
-        // about them through the snapshot (and Phase 2's deltas).
+        // not duplication. The host owns which cells come back; connected
+        // clients are told through KindCellsRespawned below (a guest used to
+        // only see respawns by rejoining — the snapshot was the only carrier).
         if (!WorldSync.IsAuthority) return;
 
         for (int s = 0; s < bodies.Count; s++)
@@ -178,6 +179,12 @@ public class MushroomSpawner : MonoBehaviour
 
             for (int i = 0; i < scratchRespawn.Count; i++)
                 entry.consumedCells.Remove(scratchRespawn[i]);
+
+            // Tell the guests these cells are back. Batched per body per tick;
+            // no-ops in single player.
+            if (scratchRespawn.Count > 0)
+                WorldSync.ReportCellsRespawned(WorldSync.PropKind.Mushroom,
+                                               entry.body.bodyName, scratchRespawn);
         }
     }
 
@@ -678,6 +685,24 @@ public class MushroomSpawner : MonoBehaviour
             Object.Destroy(m.gameObject);
             break;
         }
+    }
+
+    /// The host's wild-respawn roll brought this cell back (KindCellsRespawned).
+    /// Dropping it from the consumed set is the whole job — the streaming loop
+    /// rebuilds the mushroom from the seed hash on its next Tick, identical
+    /// species and size, exactly as it does on the host.
+    public void RemoteRespawnCell(string bodyName, long cellId)
+    {
+        int slot = SlotForBodyName(bodyName);
+        if (slot >= 0)
+        {
+            bodies[slot].consumedCells.Remove(cellId);
+            return;
+        }
+        // Body not resolved yet (early join): un-consume the pending ledger too,
+        // or the queued cell re-consumes on resolve and the respawn is lost.
+        if (pendingConsumedCellsByBody.TryGetValue(bodyName, out var set))
+            set.Remove(cellId);
     }
 
     // ─── Save integration ────────────────────────────────────────────────

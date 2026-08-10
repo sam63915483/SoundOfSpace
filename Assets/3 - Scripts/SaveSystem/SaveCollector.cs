@@ -571,6 +571,7 @@ public static class SaveCollector
                 localRot = Quaternion.Inverse(bt.rotation) * s.transform.rotation,
                 growth = s.IsMature ? 1f : s.Growth,
                 prefabIndex = s.PrefabIndex,
+                plantedId = s.PlantedId,
             });
         }
     }
@@ -597,6 +598,7 @@ public static class SaveCollector
                 growth = m.IsMature ? 1f : m.Growth,
                 speciesKey = m.SpeciesKey,
                 sizeMultiplier = m.SizeMultiplier,
+                plantedId = m.PlantedId,
             });
         }
     }
@@ -1932,7 +1934,7 @@ public static class SaveCollector
         SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
         var sg = go.GetComponent<SaplingGrowth>();
         if (sg == null) sg = go.AddComponent<SaplingGrowth>();
-        sg.RestoreGrowth(body, idx, save.growth);   // >= 1 matures instantly
+        sg.RestoreGrowth(body, idx, save.growth, save.plantedId);   // >= 1 matures instantly
     }
 
     // Twin of ApplySaplings for the mushroom economy. Sweeps the live planted
@@ -1988,7 +1990,7 @@ public static class SaveCollector
         MushroomSpawner.EnsureSolidColliderOn(go);
         var mg = go.GetComponent<MushroomGrowth>();
         if (mg == null) mg = go.AddComponent<MushroomGrowth>();
-        mg.RestoreGrowth(body, save.speciesKey, save.growth, save.sizeMultiplier);   // >= 1 matures instantly
+        mg.RestoreGrowth(body, save.speciesKey, save.growth, save.sizeMultiplier, save.plantedId);   // >= 1 matures instantly
     }
 
     static void ApplyLooseParts(List<LoosePartSave> list)

@@ -45,6 +45,12 @@ public class SaplingGrowth : MonoBehaviour
     public CelestialBody Body => body;
     public int PrefabIndex => prefabIndex;   // save capture round-trips this
 
+    // Wire/save identity — planted props have no seed cell, so remote chop
+    // deltas travel keyed by this. Minted at plant time, round-tripped through
+    // SaplingSave, minted on load for pre-feature saves.
+    string plantedId;
+    public string PlantedId => plantedId;
+
     void Awake()
     {
         fullScale = transform.localScale;
@@ -84,18 +90,29 @@ public class SaplingGrowth : MonoBehaviour
     {
         body = plantedBody;
         prefabIndex = prefabIdx;
+        plantedId = System.Guid.NewGuid().ToString("N");
         EnsureSaplingTree();     // re-arm with the body/index now that we have them
         ApplyScale();
     }
 
-    /// Restore a saved sapling's progress (used by the future save hook).
-    public void RestoreGrowth(CelestialBody plantedBody, int prefabIdx, float savedGrowth)
+    /// Restore a saved sapling's progress (used by the save hook and the plant
+    /// delta). A missing savedId is a pre-feature save — mint one on the spot.
+    public void RestoreGrowth(CelestialBody plantedBody, int prefabIdx, float savedGrowth, string savedId = null)
     {
         body = plantedBody;
         prefabIndex = prefabIdx;
+        plantedId = string.IsNullOrEmpty(savedId) ? System.Guid.NewGuid().ToString("N") : savedId;
         growth = Mathf.Clamp01(savedGrowth);
         if (growth >= 1f) Mature();
         else { EnsureSaplingTree(); ApplyScale(); }
+    }
+
+    /// The host declared this sapling mature (KindPlantedMatured). Runs under
+    /// WorldSync.ApplyingRemote, so Mature()'s own report can't echo back out.
+    public void ForceMatureRemote()
+    {
+        growth = 1f;
+        Mature();
     }
 
     void Update()
@@ -118,7 +135,17 @@ public class SaplingGrowth : MonoBehaviour
         if (rate > 0f)
         {
             growth += (rate / Mathf.Max(1f, baseGrowthDuration)) * elapsed;
-            if (growth >= 1f) { growth = 1f; Mature(); return; }
+            if (growth >= 1f)
+            {
+                // MATURITY IS A DECISION, so the host makes it. This matters
+                // more for saplings than mushrooms: the Tree Daddy perk
+                // multiplier above is LOCAL to each machine, so host and guest
+                // genuinely tick at different speeds — without this hold the
+                // faster machine matures a tree the other still calls a stick.
+                // A guest keeps animating scale and waits for KindPlantedMatured.
+                if (WorldSync.IsAuthority) { growth = 1f; Mature(); return; }
+                growth = 0.999f;
+            }
             ApplyScale();
         }
     }
@@ -140,7 +167,11 @@ public class SaplingGrowth : MonoBehaviour
         // harvesting removes the instance instead of marking a seed cell.
         var st = GetComponent<SpawnedTree>();
         if (st == null) st = gameObject.AddComponent<SpawnedTree>();
-        st.InitPlanted(TreeSpawner.Instance, body, prefabIndex);
+        st.InitPlanted(TreeSpawner.Instance, body, prefabIndex, plantedId);
+
+        // Tell the guests it's a tree now. No-ops in single player, under
+        // ApplyingRemote, and on non-authority machines.
+        WorldSync.ReportPlantedMatured(WorldSync.PropKind.Tree, plantedId);
     }
 
     /// How many MATURE planted trees stand on a body — added to the planet's

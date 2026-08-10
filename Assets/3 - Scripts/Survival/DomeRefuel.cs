@@ -85,6 +85,10 @@ public class DomeRefuel : MonoBehaviour
         if (!hb.SpendResource(Hotbar.ItemId.Crystal, take)) return;
 
         dome.AddFuelFromCrystals(take);
+        // Refuel is the one dome-fuel event that must travel: the drain is the
+        // same fixed rate on every machine, but crystals only went in HERE.
+        // Absolute fuel %, so the other machines land exactly where we did.
+        WorldSync.ReportDomeFuel(dome);
         if (feedClip != null && _audio != null) _audio.PlayOneShot(feedClip, feedVolume);
         ReactorPopup.Spawn(transform.position + transform.up * 0.3f, take * dome.FuelPerCrystal);
     }

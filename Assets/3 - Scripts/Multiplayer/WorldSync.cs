@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Text;
 using Unity.Collections;
 using Unity.Netcode;
@@ -54,6 +55,10 @@ public class WorldSync : MonoBehaviour
     const byte KindMushroomPlanted = 4;   // JSON PlantedMushroomSave
     const byte KindSaplingPlanted  = 5;   // JSON SaplingSave
     const byte KindBuildingPlaced  = 6;   // JSON PlacedBuildingSave
+    const byte KindPlantedHit      = 7;   // propKind + plantedId + newHp
+    const byte KindCellsRespawned  = 8;   // host->clients: propKind + bodyName + cellIds
+    const byte KindPlantedMatured  = 9;   // host->clients: propKind + plantedId
+    const byte KindDomeFuel        = 10;  // bodyName + localPos + absolute fuel %
 
     /// Which streamed, cell-addressed prop a hit refers to. All three share the
     /// same TakeDamage/Break/RemoteHit shape, so one message covers them.
@@ -191,8 +196,7 @@ public class WorldSync : MonoBehaviour
     {
         var bodies = NBodySimulation.Bodies;
         if (bodies == null || bodies.Length == 0) return false;
-        return Object.FindObjectOfType<TreeSpawner>() != null
-            || Object.FindObjectOfType<MushroomSpawner>() != null;
+        return TreeSpawner.Instance != null || MushroomSpawner.Instance != null;
     }
 
     // ── outbound ─────────────────────────────────────────────────────────
@@ -277,6 +281,25 @@ public class WorldSync : MonoBehaviour
                 HandlePropHit(reader, senderId);
                 break;
 
+            case KindPlantedHit:
+                HandlePlantedHit(reader, senderId);
+                break;
+
+            case KindDomeFuel:
+                HandleDomeFuel(reader, senderId);
+                break;
+
+            // Host-decided facts. The !IsServer guard is the same one the
+            // snapshot chunk carries: the authority must never be told its own
+            // state, even if a future edit turns these into broadcasts.
+            case KindCellsRespawned when nm != null && !nm.IsServer:
+                HandleCellsRespawned(reader);
+                break;
+
+            case KindPlantedMatured when nm != null && !nm.IsServer:
+                HandlePlantedMatured(reader);
+                break;
+
             case KindMushroomPlanted:
             case KindSaplingPlanted:
             case KindBuildingPlaced:
@@ -359,6 +382,8 @@ public class WorldSync : MonoBehaviour
         Instance.SendPropHit(kind, body, cellId, newHp, skipClient: ulong.MaxValue);
     }
 
+    // All three spawners expose a cached Instance now — this runs per message,
+    // and FindObjectOfType per hit is exactly what CLAUDE.md bans in hot paths.
     static string BodyNameFor(PropKind kind, int bodySlot)
     {
         switch (kind)
@@ -366,15 +391,9 @@ public class WorldSync : MonoBehaviour
             case PropKind.Tree:
                 return TreeSpawner.Instance != null ? TreeSpawner.Instance.BodyNameForSlot(bodySlot) : null;
             case PropKind.Mushroom:
-            {
-                var sp = Object.FindObjectOfType<MushroomSpawner>();
-                return sp != null ? sp.BodyNameForSlot(bodySlot) : null;
-            }
+                return MushroomSpawner.Instance != null ? MushroomSpawner.Instance.BodyNameForSlot(bodySlot) : null;
             default:
-            {
-                var sp = Object.FindObjectOfType<CrystalSpawner>();
-                return sp != null ? sp.BodyNameForSlot(bodySlot) : null;
-            }
+                return CrystalSpawner.Instance != null ? CrystalSpawner.Instance.BodyNameForSlot(bodySlot) : null;
         }
     }
 
@@ -491,7 +510,7 @@ public class WorldSync : MonoBehaviour
                 }
                 case PropKind.Mushroom:
                 {
-                    var sp = Object.FindObjectOfType<MushroomSpawner>();
+                    var sp = MushroomSpawner.Instance;
                     int slot = sp != null ? sp.SlotForBodyNamePublic(bodyName) : -1;
                     if (slot < 0) return;
                     var all = SpawnedMushroom.AllMushrooms;
@@ -508,7 +527,7 @@ public class WorldSync : MonoBehaviour
                 }
                 default:
                 {
-                    var sp = Object.FindObjectOfType<CrystalSpawner>();
+                    var sp = CrystalSpawner.Instance;
                     int slot = sp != null ? sp.SlotForBodyNamePublic(bodyName) : -1;
                     if (slot < 0) return;
                     var all = SpawnedCrystal.AllCrystals;
@@ -565,6 +584,288 @@ public class WorldSync : MonoBehaviour
         finally { ApplyingRemote = false; }
     }
 
+    // ── planted props: hits, maturity ──────────────────────────────────────
+    //
+    // The wild-prop path above addresses a prop by (body, cell) — a pure
+    // function of the seed. A PLANTED prop has no cell, which is why chopping
+    // one used to silently not replicate (ghost farm props, double yield).
+    // They are addressed by the GUID minted at plant time instead, carried in
+    // the plant delta, the snapshot and the save.
+
+    /// <summary>
+    /// A planted mushroom / planted tree / growing sapling was hit here, and
+    /// this is its HP afterwards. Same absolute-HP self-correction as
+    /// ReportPropHit, same RemoteHit path with awardLoot:false on the far side.
+    /// </summary>
+    public static void ReportPlantedHit(PropKind kind, string plantedId, int newHp)
+    {
+        if (ApplyingRemote || Instance == null || string.IsNullOrEmpty(plantedId)) return;
+        Instance.SendPlantedHit(kind, plantedId, newHp, skipClient: ulong.MaxValue);
+    }
+
+    void SendPlantedHit(PropKind kind, string plantedId, int newHp, ulong skipClient)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || !_registered) return;
+
+        var w = new FastBufferWriter(plantedId.Length * 4 + 48, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(KindPlantedHit);
+            w.WriteValueSafe((byte)kind);
+            w.WriteValueSafe(plantedId);
+            w.WriteValueSafe(newHp);
+            Dispatch(w, skipClient, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    void HandlePlantedHit(FastBufferReader reader, ulong senderId)
+    {
+        reader.ReadValueSafe(out byte kindByte);
+        reader.ReadValueSafe(out string plantedId);
+        reader.ReadValueSafe(out int newHp);
+        var kind = (PropKind)kindByte;
+
+        ApplyPlantedHit(kind, plantedId, newHp);
+
+        var nm = NetworkManager.Singleton;
+        if (nm != null && nm.IsServer)
+            SendPlantedHit(kind, plantedId, newHp, skipClient: senderId);
+    }
+
+    static void ApplyPlantedHit(PropKind kind, string plantedId, int newHp)
+    {
+        if (string.IsNullOrEmpty(plantedId)) return;
+        ApplyingRemote = true;
+        try
+        {
+            if (kind == PropKind.Mushroom)
+            {
+                var all = MushroomGrowth.AllPlanted;
+                for (int i = all.Count - 1; i >= 0; i--)
+                {
+                    var mg = all[i];
+                    if (mg == null || mg.PlantedId != plantedId) continue;
+                    // Growth ticks on both machines but only the authority
+                    // DECLARES maturity, so a hit can arrive a beat before our
+                    // copy crossed the line. The hit is proof it was mature.
+                    if (!mg.IsMature) mg.ForceMatureRemote();
+                    var node = mg.GetComponent<SpawnedMushroom>();
+                    if (node != null) node.RemoteHit(newHp);
+                    return;
+                }
+            }
+            else if (kind == PropKind.Tree)
+            {
+                var all = SaplingGrowth.AllSaplings;
+                for (int i = all.Count - 1; i >= 0; i--)
+                {
+                    var sg = all[i];
+                    if (sg == null || sg.PlantedId != plantedId) continue;
+                    // No force-mature here: a still-growing sapling is already
+                    // choppable (SpawnedTree sapling mode), and RemoteHit's
+                    // absolute HP reconciles the sapling/tree HP difference.
+                    var node = sg.GetComponent<SpawnedTree>();
+                    if (node != null) node.RemoteHit(newHp);
+                    return;
+                }
+            }
+            // Not found: the plant delta hasn't landed / prop already gone.
+            // Nothing to mark (there is no cell); the next join snapshot is the
+            // reconciliation path, same as the wild-prop miss case.
+        }
+        finally { ApplyingRemote = false; }
+    }
+
+    /// <summary>
+    /// Host only: this planted prop just matured. Guests hold their local
+    /// growth just under 1.0 (see MushroomGrowth/SaplingGrowth.Update) so both
+    /// machines flip to "harvestable" on the host's word, never by racing —
+    /// the Tree Daddy perk multiplier is per-machine, so the race is real.
+    /// </summary>
+    public static void ReportPlantedMatured(PropKind kind, string plantedId)
+    {
+        if (ApplyingRemote || Instance == null || string.IsNullOrEmpty(plantedId)) return;
+        if (!IsAuthority) return;   // maturity is the host's call alone
+
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening) return;   // single player: nothing to tell
+
+        var w = new FastBufferWriter(plantedId.Length * 4 + 32, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(KindPlantedMatured);
+            w.WriteValueSafe((byte)kind);
+            w.WriteValueSafe(plantedId);
+            Instance.Dispatch(w, ulong.MaxValue, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    void HandlePlantedMatured(FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out byte kindByte);
+        reader.ReadValueSafe(out string plantedId);
+        if (string.IsNullOrEmpty(plantedId)) return;
+
+        ApplyingRemote = true;
+        try
+        {
+            if ((PropKind)kindByte == PropKind.Mushroom)
+            {
+                var all = MushroomGrowth.AllPlanted;
+                for (int i = all.Count - 1; i >= 0; i--)
+                    if (all[i] != null && all[i].PlantedId == plantedId)
+                    { if (!all[i].IsMature) all[i].ForceMatureRemote(); return; }
+            }
+            else
+            {
+                var all = SaplingGrowth.AllSaplings;
+                for (int i = all.Count - 1; i >= 0; i--)
+                    if (all[i] != null && all[i].PlantedId == plantedId)
+                    { if (!all[i].IsMature) all[i].ForceMatureRemote(); return; }
+            }
+        }
+        finally { ApplyingRemote = false; }
+    }
+
+    // ── wild respawn (host-rolled, item: terraforming payoff) ──────────────
+
+    /// <summary>
+    /// Host only: these consumed cells just came back (MushroomSpawner's wild
+    /// respawn roll). Without this a guest only ever saw respawns by rejoining
+    /// — the roll is host-gated and nothing else carried the un-consume.
+    /// Batched per body per tick, so it's one small message every ~30 s at most.
+    /// </summary>
+    public static void ReportCellsRespawned(PropKind kind, string bodyName, List<long> cellIds)
+    {
+        if (Instance == null || !IsAuthority) return;
+        if (string.IsNullOrEmpty(bodyName) || cellIds == null || cellIds.Count == 0) return;
+
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening) return;
+
+        var w = new FastBufferWriter(bodyName.Length * 4 + 32 + cellIds.Count * 8, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(KindCellsRespawned);
+            w.WriteValueSafe((byte)kind);
+            w.WriteValueSafe(bodyName);
+            w.WriteValueSafe(cellIds.Count);
+            for (int i = 0; i < cellIds.Count; i++) w.WriteValueSafe(cellIds[i]);
+            Instance.Dispatch(w, ulong.MaxValue, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    void HandleCellsRespawned(FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out byte kindByte);
+        reader.ReadValueSafe(out string bodyName);
+        reader.ReadValueSafe(out int count);
+        if (count <= 0 || count > 100000) return;
+
+        ApplyingRemote = true;
+        try
+        {
+            // Only mushrooms wild-respawn today; the kind byte is future-proofing
+            // so trees/crystals can reuse the message if they ever grow a tick.
+            var sp = (PropKind)kindByte == PropKind.Mushroom ? MushroomSpawner.Instance : null;
+            for (int i = 0; i < count; i++)
+            {
+                reader.ReadValueSafe(out long cellId);
+                if (sp != null) sp.RemoteRespawnCell(bodyName, cellId);
+            }
+        }
+        finally { ApplyingRemote = false; }
+    }
+
+    // ── dome fuel ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Somebody fed crystals into a dome, and this is its fuel afterwards.
+    ///
+    /// The DRAIN deliberately stays local on every machine: it's a fixed
+    /// dt-integration with no dice, both machines started from the same
+    /// snapshot, so they agree to within frame noise. Only the refuel EVENT
+    /// has to travel — absolute %, so a dropped message self-corrects on the
+    /// next refuel, matching the prop-HP pattern.
+    ///
+    /// A dome is addressed by (bodyName, body-local position): both machines
+    /// built it from the same placement delta / snapshot, so the local
+    /// position is bit-identical or within float noise of it.
+    /// </summary>
+    public static void ReportDomeFuel(BubbleDome dome)
+    {
+        if (ApplyingRemote || Instance == null || dome == null) return;
+        var body = dome.Body != null ? dome.Body : dome.GetComponentInParent<CelestialBody>();
+        if (body == null) return;
+
+        Vector3 localPos = body.transform.InverseTransformPoint(dome.transform.position);
+        Instance.SendDomeFuel(body.bodyName, localPos, dome.FuelPercent, skipClient: ulong.MaxValue);
+    }
+
+    void SendDomeFuel(string bodyName, Vector3 localPos, float fuelPercent, ulong skipClient)
+    {
+        var nm = NetworkManager.Singleton;
+        if (nm == null || !nm.IsListening || !_registered) return;
+
+        var w = new FastBufferWriter(bodyName.Length * 4 + 48, Allocator.Temp);
+        try
+        {
+            w.WriteValueSafe(KindDomeFuel);
+            w.WriteValueSafe(bodyName);
+            w.WriteValueSafe(localPos.x);
+            w.WriteValueSafe(localPos.y);
+            w.WriteValueSafe(localPos.z);
+            w.WriteValueSafe(fuelPercent);
+            Dispatch(w, skipClient, NetworkDelivery.ReliableSequenced);
+        }
+        finally { w.Dispose(); }
+    }
+
+    void HandleDomeFuel(FastBufferReader reader, ulong senderId)
+    {
+        reader.ReadValueSafe(out string bodyName);
+        reader.ReadValueSafe(out float lx);
+        reader.ReadValueSafe(out float ly);
+        reader.ReadValueSafe(out float lz);
+        reader.ReadValueSafe(out float fuelPercent);
+        var localPos = new Vector3(lx, ly, lz);
+
+        ApplyDomeFuel(bodyName, localPos, fuelPercent);
+
+        var nm = NetworkManager.Singleton;
+        if (nm != null && nm.IsServer)
+            SendDomeFuel(bodyName, localPos, fuelPercent, skipClient: senderId);
+    }
+
+    static void ApplyDomeFuel(string bodyName, Vector3 localPos, float fuelPercent)
+    {
+        ApplyingRemote = true;
+        try
+        {
+            // Nearest dome on the named body within a generous tolerance —
+            // domes are metres apart, float noise is millimetres.
+            const float MaxMatchSqr = 4f;   // 2 m
+            BubbleDome best = null;
+            float bestSqr = MaxMatchSqr;
+            var all = BubbleDome.AllDomes;
+            for (int i = 0; i < all.Count; i++)
+            {
+                var d = all[i];
+                if (d == null) continue;
+                var body = d.Body != null ? d.Body : d.GetComponentInParent<CelestialBody>();
+                if (body == null || body.bodyName != bodyName) continue;
+                float sq = (body.transform.InverseTransformPoint(d.transform.position) - localPos).sqrMagnitude;
+                if (sq < bestSqr) { bestSqr = sq; best = d; }
+            }
+            if (best != null) best.SetFuelPercent(fuelPercent);
+        }
+        finally { ApplyingRemote = false; }
+    }
+
     /// A spore was planted here. Carried as a PlantedMushroomSave so the
     /// receiver rebuilds it through exactly the code the save system uses.
     public static void ReportMushroomPlanted(MushroomGrowth mg)
@@ -582,6 +883,7 @@ public class WorldSync : MonoBehaviour
             growth         = mg.IsMature ? 1f : mg.Growth,
             speciesKey     = mg.SpeciesKey,
             sizeMultiplier = mg.SizeMultiplier,
+            plantedId      = mg.PlantedId,   // both machines must share the id
         };
         Instance.SendJsonDelta(KindMushroomPlanted, JsonUtility.ToJson(save), skipClient: ulong.MaxValue);
     }
@@ -636,6 +938,7 @@ public class WorldSync : MonoBehaviour
             localRot    = Quaternion.Inverse(bt.rotation) * sg.transform.rotation,
             growth      = sg.IsMature ? 1f : sg.Growth,
             prefabIndex = sg.PrefabIndex,
+            plantedId   = sg.PlantedId,      // both machines must share the id
         };
         Instance.SendJsonDelta(KindSaplingPlanted, JsonUtility.ToJson(save), skipClient: ulong.MaxValue);
     }

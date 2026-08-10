@@ -30,6 +30,7 @@ public class SpawnedMushroom : MonoBehaviour
     long cellId;
     bool dead;
     bool isPlanted;              // grown from a planted sapling — no seed cell to mark
+    string plantedId;            // wire identity when isPlanted (see MushroomGrowth)
     string speciesKey;
     int hp;
     int dropCount;
@@ -49,6 +50,7 @@ public class SpawnedMushroom : MonoBehaviour
     public int BodySlot => bodySlot;
     public long CellId => cellId;
     public bool IsPlanted => isPlanted;
+    public string PlantedId => plantedId;
     public float MushroomScale => mushroomScale;
     public string SpeciesKey => speciesKey;
 
@@ -63,6 +65,7 @@ public class SpawnedMushroom : MonoBehaviour
         bodySlot = slot;
         cellId = id;
         isPlanted = false;
+        plantedId = null;        // pooled instances can arrive from a planted life
         speciesKey = species;
         mushroomScale = scale;
         RollHarvest();
@@ -75,11 +78,13 @@ public class SpawnedMushroom : MonoBehaviour
 
     /// A player-grown mushroom that has matured. Behaves identically when
     /// chopped, but removes its own instance instead of marking a seed cell.
-    public void InitPlanted(string species, float scale)
+    /// The plantedId is how a hit on it travels (a planted prop has no cell).
+    public void InitPlanted(string species, float scale, string id = null)
     {
         spawner = null;
         bodySlot = -1;
         cellId = 0;
+        plantedId = id;
         isPlanted = true;
         speciesKey = species;
         mushroomScale = scale;
@@ -125,10 +130,13 @@ public class SpawnedMushroom : MonoBehaviour
     {
         if (dead || amount <= 0) return;
         hp -= amount;
-        // Planted mushrooms have no cell id, so only streamed ones can be
-        // addressed over the wire; ReportPropHit ignores a negative slot.
-        WorldSync.ReportPropHit(WorldSync.PropKind.Mushroom,
-                                isPlanted ? -1 : bodySlot, cellId, hp);
+        // Streamed mushrooms travel by (body, cell); planted ones by their
+        // plantedId — without the second path a farmed cap kept standing on
+        // the other player's screen and paid out twice.
+        if (isPlanted)
+            WorldSync.ReportPlantedHit(WorldSync.PropKind.Mushroom, plantedId, hp);
+        else
+            WorldSync.ReportPropHit(WorldSync.PropKind.Mushroom, bodySlot, cellId, hp);
         PlayHitSquish();
         if (hp <= 0) Break();
         else PlayWobble();

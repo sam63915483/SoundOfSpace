@@ -52,6 +52,12 @@ public class MushroomGrowth : MonoBehaviour
     public CelestialBody Body => body;
     public string SpeciesKey => speciesKey;
 
+    // Wire/save identity — a planted prop has no seed cell, so remote harvest
+    // deltas travel keyed by this. Minted at plant time, round-tripped through
+    // PlantedMushroomSave, minted on load for pre-feature saves.
+    string plantedId;
+    public string PlantedId => plantedId;
+
     void Awake()
     {
         fullScale = transform.localScale;
@@ -67,6 +73,7 @@ public class MushroomGrowth : MonoBehaviour
     {
         body = plantedBody;
         speciesKey = species;
+        plantedId = System.Guid.NewGuid().ToString("N");
         // Keep the wild 1-5x roll's DISTRIBUTION, then clamp it by an O2-derived
         // ceiling: barren air can only ever produce runts, rich air can produce
         // monsters. Rolled once, at plant time, because that is when the existing
@@ -108,14 +115,25 @@ public class MushroomGrowth : MonoBehaviour
 
     /// Restore a saved planted mushroom's progress. growth >= 1 matures instantly.
     /// A savedSize of 0 is a pre-feature save — those planted at 1× flat.
-    public void RestoreGrowth(CelestialBody plantedBody, string species, float savedGrowth, float savedSize)
+    /// A missing savedId is also pre-feature — mint one so the prop is
+    /// addressable over the wire from here on.
+    public void RestoreGrowth(CelestialBody plantedBody, string species, float savedGrowth, float savedSize, string savedId = null)
     {
         body = plantedBody;
         speciesKey = species;
         sizeMultiplier = savedSize > 0.01f ? savedSize : 1f;
+        plantedId = string.IsNullOrEmpty(savedId) ? System.Guid.NewGuid().ToString("N") : savedId;
         growth = Mathf.Clamp01(savedGrowth);
         if (growth >= 1f) Mature();
         else ApplyScale();
+    }
+
+    /// The host declared this mushroom mature (KindPlantedMatured). Runs under
+    /// WorldSync.ApplyingRemote, so Mature()'s own report can't echo back out.
+    public void ForceMatureRemote()
+    {
+        growth = 1f;
+        Mature();
     }
 
     void Update()
@@ -140,7 +158,16 @@ public class MushroomGrowth : MonoBehaviour
         if (rate > 0f)
         {
             growth += (rate / Mathf.Max(1f, baseGrowthDuration)) * elapsed;
-            if (growth >= 1f) { growth = 1f; Mature(); return; }
+            if (growth >= 1f)
+            {
+                // MATURITY IS A DECISION, so the host makes it. A guest keeps
+                // animating scale (rendering) but holds just under the line
+                // until KindPlantedMatured arrives — otherwise the two machines
+                // race to mature and disagree about harvestability. Single
+                // player is authority by definition, so nothing changes there.
+                if (WorldSync.IsAuthority) { growth = 1f; Mature(); return; }
+                growth = 0.999f;
+            }
             ApplyScale();
         }
     }
@@ -162,10 +189,16 @@ public class MushroomGrowth : MonoBehaviour
         transform.localScale = fullScale * sizeMultiplier;
 
         // Hand the size across: SpawnedMushroom pays out by scale, so a 5×
-        // cultivated cap is worth the same as a 5× wild one.
+        // cultivated cap is worth the same as a 5× wild one. The id rides along
+        // so a chop on the mature cap can be reported over the wire.
         var node = GetComponent<SpawnedMushroom>();
         if (node == null) node = gameObject.AddComponent<SpawnedMushroom>();
-        node.InitPlanted(speciesKey, sizeMultiplier);
+        node.InitPlanted(speciesKey, sizeMultiplier, plantedId);
+
+        // Tell the guests it's harvestable now. No-ops in single player, while
+        // a snapshot/delta is being applied (ApplyingRemote), and on a guest
+        // (only the authority's Update can reach Mature with growth >= 1).
+        WorldSync.ReportPlantedMatured(WorldSync.PropKind.Mushroom, plantedId);
     }
 
     // ── Tunables ───────────────────────────────────────────────────────────

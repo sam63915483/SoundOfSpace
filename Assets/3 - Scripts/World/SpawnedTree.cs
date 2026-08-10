@@ -28,6 +28,9 @@ public class SpawnedTree : MonoBehaviour
     bool isSapling;
     SaplingGrowth saplingSource;
     CelestialBody plantedBody;
+    // Wire identity when isPlanted/isSapling — planted props have no seed cell,
+    // so a hit travels keyed by this instead (see SaplingGrowth.PlantedId).
+    string plantedId;
     Vector3 _baseScale;
     Quaternion _restRotation;
     Coroutine _shakeRoutine;
@@ -39,6 +42,7 @@ public class SpawnedTree : MonoBehaviour
     public int HP => hp;
     public bool IsDead => dead;
     public bool IsPlanted => isPlanted;
+    public string PlantedId => plantedId;
     /// True while this is a still-growing sapling — i.e. NOT a tree for any
     /// oxygen, progression or forest-count purpose.
     public bool IsSapling => isSapling;
@@ -63,6 +67,7 @@ public class SpawnedTree : MonoBehaviour
         spawner = s;
         bodySlot = slot;
         cellId = id;
+        plantedId = null;        // pooled instances can arrive from a planted life
         prefabIndex = idx;
         hp = Random.Range(4, 9);
         woodReward = Random.Range(8, 21);
@@ -93,6 +98,7 @@ public class SpawnedTree : MonoBehaviour
         saplingSource = source;
         isPlanted = true;              // harvest removes the instance, no seed cell
         plantedBody = body;
+        plantedId = source != null ? source.PlantedId : null;
         bodySlot = -1;
         cellId = 0;
         prefabIndex = idx;
@@ -105,13 +111,14 @@ public class SpawnedTree : MonoBehaviour
         if (_fallRoutine != null) { StopCoroutine(_fallRoutine); _fallRoutine = null; }
     }
 
-    public void InitPlanted(TreeSpawner s, CelestialBody body, int idx)
+    public void InitPlanted(TreeSpawner s, CelestialBody body, int idx, string id = null)
     {
         spawner = s;
         isPlanted = true;
         isSapling = false;             // it grew up — it's a real tree now
         saplingSource = null;
         plantedBody = body;
+        plantedId = id;
         bodySlot = -1;
         cellId = 0;
         prefabIndex = idx;
@@ -138,7 +145,13 @@ public class SpawnedTree : MonoBehaviour
         hp -= amount;
         // Report the HIT, not the removal. One message then covers the wobble,
         // the topple and the despawn, because the far side runs the same code.
-        WorldSync.ReportPropHit(WorldSync.PropKind.Tree, bodySlot, cellId, hp);
+        // Seed trees travel by (body, cell); planted trees AND still-growing
+        // saplings by their plantedId — without the second path a chopped farm
+        // tree kept standing on the other player's screen.
+        if (isPlanted)
+            WorldSync.ReportPlantedHit(WorldSync.PropKind.Tree, plantedId, hp);
+        else
+            WorldSync.ReportPropHit(WorldSync.PropKind.Tree, bodySlot, cellId, hp);
         if (hp <= 0) Break();
         else PlayShake();
     }
