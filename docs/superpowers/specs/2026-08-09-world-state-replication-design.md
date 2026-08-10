@@ -253,6 +253,44 @@ arms against the host's own player, because `PlayerTreeContactTracker` watches
 local feet), and a guest's MISSED gunshots do not alert nearby aliens (only the
 enemy actually hit is alerted, via the host's own `TakeDamage`).
 
+### Three playtest rounds — Phase 4 is now PLAYTESTED GOOD
+
+Sam, round 3: *"the enemies are synced and working now."* What the rounds cost,
+because the lesson generalises to every remaining phase:
+
+**Round 1 — enemies ignored the guest entirely.** Perception evaluated the
+NEAREST player and nobody else. Co-op players travel together, so the nearest was
+usually the host and the guest was never a *candidate*.
+> **Any "nearest/closest player" rule silently becomes "only player" in co-op.
+> Audit every one of them before writing a line of the next phase.**
+
+**Round 2 — the guest's meter filled, then the alien turned away.** Two causes,
+both introduced by the round-1 fix: an `if (d2 >= seenSqr) continue` optimisation
+that reproduced nearest-only, and — the real one — **suspicion was a single float
+per enemy**, so with two players the meter did not drain, it was HANDED to the
+other. Now one meter per player.
+> **State that is per-enemy in single player is often per-enemy-PER-PLAYER in
+> co-op. Suspicion, aggro, interaction locks, quest progress: check each.**
+
+**Round 3 — stepping in front of a chasing mob did nothing**, because the alien
+was pegged at 1.00 on its quarry and the newcomer needed two seconds to tie.
+Suspicion wins while DETECTING, distance wins while CHASING.
+
+Also fixed across the rounds: gunshots from a guest aggroed nothing
+(`AlertNearby` is local, and a guest's enemies are puppets whose AI never runs);
+sprint did not travel; PvP bullets missed (0.45 m capsule against a ~0.5 m
+smoothing trail); a player hit produced no feedback at all; and
+`VillageWard` now makes the village a real safe haven.
+
+**A wrong hypothesis, shipped and backed out.** Round 1 I "fixed" an LOS ray I
+believed grazed the ground at a collider-less player's feet. Measuring said the
+player root is at the BODY CENTRE — the ray runs at chest height and local and
+remote were symmetric all along.
+> **Drive the real method by reflection against real colliders before believing
+> a geometry theory — and test the layer you CHANGED, not the one beneath it.
+> Round 2's hole survived precisely because the harness called `CanSee` directly
+> and never went through `ScanForPlayers`.**
+
 ---
 
 ## 8. Phase 5 — Economy: bonds, texts, deals
