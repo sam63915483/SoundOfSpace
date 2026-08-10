@@ -400,7 +400,15 @@ public class MushroomSellUI : MonoBehaviour
             Hotbar.Instance.AddResource(Hotbar.ItemId.Mushroom, leftover, species);
 
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(credits);
+        // The money and the caps have already changed hands on THIS machine —
+        // that half is personal and has to be instant. The buyer's half is
+        // shared: appetite so your friend finds them full, bond, last paid.
+        // RecordSale is pure arithmetic so it runs here too and the panel
+        // updates immediately; ReportDeal ROLLS for the regular conversion, so
+        // on a guest only the host may run it (see below).
         MushroomDealState.RecordSale(_buyerId, pricePerCap, qty, tier, AppetiteMax);
+        bool sentToHost = EconomySync.ReportSale(_buyerId, pricePerCap, qty, tier,
+                                                 keptAppointment: false, substituted: false);
         // Central hook: ANY alien buying advances Tev's onboarding, so no NPC
         // has to remember to wire it up (no-ops outside the quest).
         MushroomQuest.NotifySold(qty);
@@ -408,8 +416,9 @@ public class MushroomSellUI : MonoBehaviour
         ProgressHooks.NotifyMushroomSale(qty);
         // Persistent ledger: bond, deal count (reveals), regular conversion.
         // Scheduled-mode fulfilment reports through DeliverOrder instead.
-        BuyerLedger.ReportDeal(_buyerId, tier, pricePerCap, qty,
-                               keptAppointment: false, substituted: false);
+        if (!sentToHost)
+            BuyerLedger.ReportDeal(_buyerId, tier, pricePerCap, qty,
+                                   keptAppointment: false, substituted: false);
         _onSold?.Invoke(qty);
 
         SetResult(leftover > 0
@@ -420,9 +429,14 @@ public class MushroomSellUI : MonoBehaviour
 
     void BarBuyer()
     {
+        // Bar locally either way so the row greys out at once; the bond hit is
+        // the host's to apply, so a guest reports instead of double-docking it.
         MushroomDealState.Bar(_buyerId);
-        BuyerLedger.CounterRefused(_buyerId);           // −10 bond, spec §2
-        BuyerLedger.CancelAppointmentQuietly(_buyerId); // barred kills any appointment, no halving (spec §9)
+        if (!EconomySync.ReportBarred(_buyerId))
+        {
+            BuyerLedger.CounterRefused(_buyerId);           // −10 bond, spec §2
+            BuyerLedger.CancelAppointmentQuietly(_buyerId); // barred kills any appointment, no halving (spec §9)
+        }
         _stage = Stage.Open;
         _counter = 0;
         SetResult($"\"Get away from me.\" — {_npcName} won't deal for 5 minutes.", C_Err);
@@ -1081,7 +1095,8 @@ public class MushroomSellUI : MonoBehaviour
         }
         else
         {
-            BuyerLedger.SubstitutionRefused(_buyerId, Mathf.RoundToInt(chance * 100));
+            if (!EconomySync.ReportSubstitutionRefused(_buyerId, Mathf.RoundToInt(chance * 100)))
+                BuyerLedger.SubstitutionRefused(_buyerId, Mathf.RoundToInt(chance * 100));
             // Refused deliveries sting: same 5-minute freeze-out as pushing
             // past an in-person counter, or the walk-up panel becomes a free
             // second attempt at any price.
@@ -1106,10 +1121,13 @@ public class MushroomSellUI : MonoBehaviour
         int credits = perCap * qty;
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(credits);
         MushroomDealState.RecordSale(_buyerId, perCap, qty, tier, AppetiteMax);
+        bool sentToHost = EconomySync.ReportSale(_buyerId, perCap, qty, tier,
+                                                 keptAppointment: true, substituted: substituted);
         MushroomQuest.NotifySold(qty);
         ProgressHooks.NotifyMushroomSale(qty);
-        BuyerLedger.ReportDeal(_buyerId, tier, perCap, qty,
-                               keptAppointment: true, substituted: substituted);
+        if (!sentToHost)
+            BuyerLedger.ReportDeal(_buyerId, tier, perCap, qty,
+                                   keptAppointment: true, substituted: substituted);
         _scheduled = false; _appt = null;
         _onSold?.Invoke(qty);
         SetResult(substituted

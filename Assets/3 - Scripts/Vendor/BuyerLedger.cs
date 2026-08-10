@@ -82,6 +82,20 @@ public static class BuyerLedger
     static readonly Dictionary<string, Buyer> _buyers = new Dictionary<string, Buyer>();
     static float Now => Time.unscaledTime;
 
+    /// <summary>
+    /// Bumped whenever anything a second player would need to see changes.
+    /// EconomySync watches it instead of hooking each mutator, so a path that
+    /// forgets to announce itself cannot exist.
+    ///
+    /// Every conversation change in BuyerMessageDirector writes buyer fields
+    /// DIRECTLY (b.convo, b.offerPerCap, …) rather than through a method here —
+    /// but each one is always accompanied by a Log() call, so bumping there
+    /// catches the lot. `nextTextAt` moves without a Log and deliberately does
+    /// not count: it is host-side pacing that no guest renders.
+    /// </summary>
+    public static int Version { get; private set; }
+    public static void Touch() => Version++;
+
     // Story NPCs never become regulars — their threads belong to story systems.
     static readonly string[] ExcludedIdPrefixes = { "scene:Tev", "scene:Kolb" };
 
@@ -159,6 +173,7 @@ public static class BuyerLedger
     {
         var b = GetOrCreate(id);
         if (b == null) return false;
+        Touch();
 
         b.dealsCompleted++;
         bool fav = tier == NPCMushroomPrice.FavouriteTierOf(id);
@@ -229,6 +244,7 @@ public static class BuyerLedger
 
     static void CloseConversation(Buyer b)
     {
+        Touch();
         b.convo = Convo.None;
         b.counterBackPerCap = 0;
         b.deadline = 0f;
@@ -240,6 +256,7 @@ public static class BuyerLedger
     public static void Log(Buyer b, EvType t, int a, int bb, int tier, bool markUnread = true)
     {
         if (b == null) return;
+        Touch();
         b.events.Add(new Ev { type = (int)t, at = Now, a = a, b = bb, tier = tier });
         if (b.events.Count > MaxEventsPerBuyer) b.events.RemoveAt(0);
         // Player-authored events never count as unread; buyer-authored do.
@@ -251,7 +268,9 @@ public static class BuyerLedger
     public static void MarkRead(string id)
     {
         var b = Get(id);
-        if (b != null) b.unread = 0;
+        if (b == null || b.unread == 0) return;
+        b.unread = 0;
+        Touch();
     }
 
     // ── Hidden-want reveals (spec §6) ──────────────────────────────────────
@@ -289,7 +308,7 @@ public static class BuyerLedger
 
     /// New Game must not inherit another run's regulars (CLAUDE.md: statics
     /// leak across the main menu). Called from NewGameReset.Apply().
-    public static void ResetAll() => _buyers.Clear();
+    public static void ResetAll() { _buyers.Clear(); Touch(); }
 
     /// Serialize into parallel lists (JsonUtility — no dictionaries). Events
     /// are flattened with a per-buyer count list. Times go out RELATIVE.
@@ -327,6 +346,7 @@ public static class BuyerLedger
 
     public static void ApplySave(BuyerLedgerSave s)
     {
+        Touch();
         _buyers.Clear();
         if (s == null || s.ids == null) return;
         float now = Now;

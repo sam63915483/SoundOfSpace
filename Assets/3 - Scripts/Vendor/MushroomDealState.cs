@@ -55,6 +55,11 @@ public static class MushroomDealState
     // Unscaled so a paused game (or a slow-mo effect) can't stretch the ban.
     static float Now => Time.unscaledTime;
 
+    /// Bumped on every mutation, so EconomySync can notice without a hook on
+    /// each one. See BuyerLedger.Version for the same idea.
+    public static int Version { get; private set; }
+    static void Touch() => Version++;
+
     public static bool IsBarred(string id)
     {
         if (string.IsNullOrEmpty(id)) return false;
@@ -71,6 +76,7 @@ public static class MushroomDealState
     public static void Bar(string id)
     {
         if (string.IsNullOrEmpty(id)) return;
+        Touch();
         _barredUntil[id] = Now + BarredSeconds;
         ClearCounter(id);
     }
@@ -89,6 +95,7 @@ public static class MushroomDealState
     public static void SetCounter(string id, string species, int price)
     {
         if (string.IsNullOrEmpty(id)) return;
+        Touch();
         _counterPrice[id] = price;
         _counterSpecies[id] = species;
     }
@@ -96,6 +103,7 @@ public static class MushroomDealState
     public static void ClearCounter(string id)
     {
         if (string.IsNullOrEmpty(id)) return;
+        Touch();
         _counterPrice.Remove(id);
         _counterSpecies.Remove(id);
     }
@@ -174,6 +182,7 @@ public static class MushroomDealState
     public static void RecordSale(string id, int pricePerCap, int qty, MushroomTier tier, int appetiteMax)
     {
         if (string.IsNullOrEmpty(id)) return;
+        Touch();
         _lastPaid[id] = pricePerCap;
         _lastQty[id] = qty;
         // Decay first, THEN add — otherwise a stale `used` from an hour ago
@@ -193,6 +202,94 @@ public static class MushroomDealState
         return _tiersSold.TryGetValue(id, out int mask) && (mask & (1 << (int)tier)) != 0;
     }
 
+    // ── Co-op replication (Phase 5) ────────────────────────────────────────
+    //
+    // ⚠️ EVERY TIME HERE IS RELATIVE ON THE WIRE. Time.unscaledTime counts from
+    // each machine's own process start, so a raw timestamp means something
+    // different on the other end — a five-minute ban could arrive already
+    // expired, or lasting an hour. Same convention BuyerLedger's save uses.
+
+    [System.Serializable]
+    public class Snapshot
+    {
+        public List<string> ids = new List<string>();
+        public List<float> barredSecondsLeft = new List<float>();
+        public List<int> counterPrice = new List<int>();
+        public List<string> counterSpecies = new List<string>();
+        public List<int> lastPaid = new List<int>();
+        public List<int> lastQty = new List<int>();
+        public List<float> used = new List<float>();
+        public List<float> usedSecondsAgo = new List<float>();
+        public List<int> tiersSold = new List<int>();
+    }
+
+    /// Every buyer this machine knows anything about.
+    static void CollectIds(HashSet<string> into)
+    {
+        foreach (var k in _barredUntil.Keys) into.Add(k);
+        foreach (var k in _counterPrice.Keys) into.Add(k);
+        foreach (var k in _lastPaid.Keys) into.Add(k);
+        foreach (var k in _used.Keys) into.Add(k);
+        foreach (var k in _tiersSold.Keys) into.Add(k);
+    }
+
+    public static Snapshot Capture()
+    {
+        var s = new Snapshot();
+        var ids = new HashSet<string>();
+        CollectIds(ids);
+        float now = Now;
+
+        foreach (var id in ids)
+        {
+            s.ids.Add(id);
+            _barredUntil.TryGetValue(id, out float until);
+            s.barredSecondsLeft.Add(Mathf.Max(0f, until - now));
+            _counterPrice.TryGetValue(id, out int cp);      s.counterPrice.Add(cp);
+            _counterSpecies.TryGetValue(id, out string cs); s.counterSpecies.Add(cs ?? "");
+            _lastPaid.TryGetValue(id, out int lp);          s.lastPaid.Add(lp);
+            _lastQty.TryGetValue(id, out int lq);           s.lastQty.Add(lq);
+            _used.TryGetValue(id, out float u);             s.used.Add(u);
+            _usedAt.TryGetValue(id, out float uat);         s.usedSecondsAgo.Add(Mathf.Max(0f, now - uat));
+            _tiersSold.TryGetValue(id, out int ts);         s.tiersSold.Add(ts);
+        }
+        return s;
+    }
+
+    /// <summary>
+    /// Replace everything with the host's version. Wholesale rather than merged:
+    /// the host is the only machine that decides any of this, so a guest holding
+    /// something the host does not have is by definition stale.
+    /// </summary>
+    public static void Apply(Snapshot s)
+    {
+        _barredUntil.Clear(); _counterPrice.Clear(); _counterSpecies.Clear();
+        _lastPaid.Clear(); _lastQty.Clear(); _used.Clear(); _usedAt.Clear(); _tiersSold.Clear();
+        Touch();
+        if (s == null || s.ids == null) return;
+
+        float now = Now;
+        for (int i = 0; i < s.ids.Count; i++)
+        {
+            string id = s.ids[i];
+            if (string.IsNullOrEmpty(id)) continue;
+            if (s.barredSecondsLeft[i] > 0f) _barredUntil[id] = now + s.barredSecondsLeft[i];
+            if (s.counterPrice[i] != 0)
+            {
+                _counterPrice[id] = s.counterPrice[i];
+                _counterSpecies[id] = s.counterSpecies[i];
+            }
+            if (s.lastPaid[i] != 0) _lastPaid[id] = s.lastPaid[i];
+            if (s.lastQty[i] != 0) _lastQty[id] = s.lastQty[i];
+            if (s.used[i] > 0f)
+            {
+                _used[id] = s.used[i];
+                _usedAt[id] = now - s.usedSecondsAgo[i];
+            }
+            if (s.tiersSold[i] != 0) _tiersSold[id] = s.tiersSold[i];
+        }
+    }
+
     /// New Game must not inherit bans or remembered counters from the run the
     /// player just backed out of (CLAUDE.md: statics leak across the main menu).
     public static void ResetAll()
@@ -205,5 +302,6 @@ public static class MushroomDealState
         _used.Clear();
         _usedAt.Clear();
         _tiersSold.Clear();
+        Touch();
     }
 }

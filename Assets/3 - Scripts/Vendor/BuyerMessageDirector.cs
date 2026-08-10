@@ -230,6 +230,11 @@ public class BuyerMessageDirector : MonoBehaviour
 
     public void Accept(BuyerLedger.Buyer b, int windowMinutes)
     {
+        // On a guest this becomes a request to the host, which performs it and
+        // broadcasts the result. Replying locally would be worse than useless:
+        // the reply paths below roll dice, so the two machines would end up
+        // holding different conversations with the same alien.
+        if (b != null && EconomySync.RouteAccept(b.id, windowMinutes)) return;
         if (b == null || (b.convo != BuyerLedger.Convo.AwaitingReply
                        && b.convo != BuyerLedger.Convo.AwaitingCounterBack
                        && b.convo != BuyerLedger.Convo.PriceAgreed)) return;
@@ -249,6 +254,9 @@ public class BuyerMessageDirector : MonoBehaviour
     /// PRICE only: your quantity stands.
     public void Counter(BuyerLedger.Buyer b, int askPerCap, int offerQty)
     {
+        // Guest → host. ResolveCounter below rolls for accept / counter-back /
+        // refuse, so this must happen on exactly one machine.
+        if (b != null && EconomySync.RouteCounter(b.id, askPerCap, offerQty)) return;
         if (b == null || b.convo != BuyerLedger.Convo.AwaitingReply) return;
         askPerCap = Mathf.Max(1, askPerCap);
         offerQty = Mathf.Max(1, offerQty);
@@ -283,6 +291,8 @@ public class BuyerMessageDirector : MonoBehaviour
 
     public void Decline(BuyerLedger.Buyer b)
     {
+        // Guest → host: the sulk timer that follows is a dice roll too.
+        if (b != null && EconomySync.RouteDecline(b.id)) return;
         if (b == null || (b.convo != BuyerLedger.Convo.AwaitingReply
                        && b.convo != BuyerLedger.Convo.AwaitingCounterBack
                        && b.convo != BuyerLedger.Convo.PriceAgreed)) return;

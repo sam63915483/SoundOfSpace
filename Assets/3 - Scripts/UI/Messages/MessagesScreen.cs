@@ -97,6 +97,11 @@ public class MessagesScreen : MonoBehaviour
         ShowIndex();
     }
 
+    /// Called by EconomySync when the host sends fresh economy state.
+    public static void RefreshFromNetwork() => s_netNudge++;
+    static int s_netNudge;
+    int _seenNetNudge;
+
     void Update()
     {
         // Esc / pad-B backs out one level (matches AIChatScreen — the phone
@@ -111,6 +116,13 @@ public class MessagesScreen : MonoBehaviour
 
         ResizeBubblesToFit();
         UpdateSliderReadout();
+
+        // Co-op: a guest's reply is answered by the HOST, so the result arrives
+        // as a state broadcast rather than as a local mutation. The 1 Hz poll
+        // below would find it eventually, but a whole second of a dead-looking
+        // phone after you tap a chip reads as the tap not registering — so a
+        // broadcast forces the very next poll instead of waiting one out.
+        if (_seenNetNudge != s_netNudge) { _seenNetNudge = s_netNudge; _refreshTimer = 1f; }
 
         _refreshTimer += Time.unscaledDeltaTime;
         if (_refreshTimer >= 1f)
@@ -143,7 +155,8 @@ public class MessagesScreen : MonoBehaviour
 
     void ShowIndex()
     {
-        if (!string.IsNullOrEmpty(_openId)) BuyerLedger.MarkRead(_openId);
+        if (!string.IsNullOrEmpty(_openId) && !EconomySync.RouteMarkRead(_openId))
+            BuyerLedger.MarkRead(_openId);
         _openId = null;
         _view = View.Index;
         ClearViews();
@@ -367,7 +380,7 @@ public class MessagesScreen : MonoBehaviour
         _stickToBottom = true;
 
         var b = BuyerLedger.Get(id);
-        BuyerLedger.MarkRead(id);
+        if (!EconomySync.RouteMarkRead(id)) BuyerLedger.MarkRead(id);
         _threadStamp = ThreadStamp(b);
 
         _threadRoot = FullRect("ThreadView", _root);
