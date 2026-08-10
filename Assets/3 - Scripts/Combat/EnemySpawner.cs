@@ -221,6 +221,12 @@ public class EnemySpawner : MonoBehaviour
             // obvious.
             if (SpawnExclusionZone.IsExcluded(surfacePos)) continue;
 
+            // ...and out of the village as a WHOLE. The zones above are
+            // per-building — the largest is under 11 m across, against a ~177 m
+            // village — so they stop an alien materialising inside a roof and do
+            // nothing about one appearing in the street outside it.
+            if (VillageWard.IsPositionProtected(surfacePos)) continue;
+
             if (LebronLight.IsPositionProtected(surfacePos)) continue;
             if (TorchAura.IsPositionProtected(surfacePos)) continue;
             if (ConcertStageHub.IsBlockedForEnemy(surfacePos)) continue;

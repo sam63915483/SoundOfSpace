@@ -152,6 +152,12 @@ public class EnemyVision : MonoBehaviour
         int bestIdx = -1;
         float bestSus = -1f, bestSqr = float.MaxValue;
 
+        // While already CHASING, distance decides instead of suspicion — see the
+        // note where these are consumed.
+        bool chasing = _owner != null && _owner.State == EnemyController.AIState.Chasing;
+        int nearestVisibleIdx = -1;
+        float nearestVisibleSqr = float.MaxValue;
+
         for (int i = 0; i < _tracks.Count; i++)
         {
             var tr = _tracks[i];
@@ -182,11 +188,40 @@ public class EnemyVision : MonoBehaviour
             bool better = tr.Suspicion > bestSus + 1e-4f
                        || (Mathf.Abs(tr.Suspicion - bestSus) <= 1e-4f && d2 < bestSqr);
             if (tr.Suspicion > 0f && better) { bestSus = tr.Suspicion; bestSqr = d2; bestIdx = i; }
+
+            if (tr.Visible && d2 < nearestVisibleSqr) { nearestVisibleSqr = d2; nearestVisibleIdx = i; }
         }
 
         Suspicion01     = highest;
         CanSeePlayerNow = anyVisible;
-        VisibleTarget   = bestIdx >= 0 ? _tracks[bestIdx].T : null;
+
+        // ── Who it goes after ────────────────────────────────────────────
+        //
+        // NOT CHASING: whoever it is furthest along on. During detection that
+        // has to beat distance, or a friend strolling past would steal an alien
+        // that had nearly finished noticing you and reset the encounter.
+        //
+        // ALREADY CHASING: the NEAREST player it can see, outright. This is
+        // Sam's rule — step in front of a mob hunting your friend and it turns
+        // on you — and by suspicion alone it did not work: the alien was pegged
+        // at 1.00 on its current quarry, so a player walking into its face had
+        // to spend two full seconds filling their own meter before the tie-break
+        // would even look at distance. Long enough that it read as the enemy
+        // simply ignoring you, which is exactly what the playtest reported. Once
+        // an alien is hunting it is plainly aware of what is in front of it, so
+        // there is nothing to accumulate.
+        int chosen = (chasing && nearestVisibleIdx >= 0) ? nearestVisibleIdx : bestIdx;
+        VisibleTarget = chosen >= 0 ? _tracks[chosen].T : null;
+
+        // Being chased IS being noticed: peg the quarry's own meter so the HUD
+        // agrees with what is happening, and so a hand-off does not immediately
+        // bounce back on the next frame's comparison. It still drains normally
+        // the moment they break line of sight.
+        if (chasing && chosen >= 0)
+        {
+            var t = _tracks[chosen];
+            if (t.Visible && t.Suspicion < 1f) { t.Suspicion = 1f; _tracks[chosen] = t; Suspicion01 = 1f; }
+        }
     }
 
     /// This enemy's meter for one specific player — what the sync layer sends a
