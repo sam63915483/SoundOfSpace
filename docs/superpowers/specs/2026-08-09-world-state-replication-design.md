@@ -310,6 +310,36 @@ The most design-sensitive phase, and the reason for the ordering.
 Both races resolve on the host, so there is exactly one arbiter and no
 tie-breaking ambiguity.
 
+### Built 2026-08-09 — compiles, harness passes, TWO-INSTANCE PLAYTEST PENDING
+
+`Multiplayer/EconomySync.cs`. The buyer is shared (bond, regular status, open
+conversation, thread, and **how full they are**); the money is personal.
+`PlayerWallet` appears nowhere in the sync layer and a harness asserts it stays
+that way.
+
+Sam's added requirement — *"if you make a deal with an npc and they are full,
+player 2 walks up and tries to sell to the same npc and sees they are full"* —
+is why `MushroomDealState` replicates at all. It was session-only statics with
+no save schema, so it gained `Capture`/`Apply` with **relative** times.
+
+**Whole-snapshot replication, on a version counter.** The host ships the entire
+ledger plus the entire deal state whenever either changes, coalesced behind a
+0.25 s floor. There is then no such thing as a missed delta, so the machines
+cannot drift into disagreeing about a bond and stay that way. The counter is
+*watched* rather than hooked per-mutator because `BuyerMessageDirector` writes
+buyer fields directly (`b.convo`, `b.offerPerCap`) — but always alongside a
+`Log()`, so bumping there catches everything.
+
+**"First response wins" comes for free.** `Accept`/`Counter`/`Decline` each
+refuse to act unless the conversation is still in the right state, so the host
+applies replies in arrival order and the second finds it answered.
+
+Known limits, deliberate: **unread is shared**, so one player opening a thread
+clears the badge for both; and a genuine simultaneous sale to the same buyer
+(both players stood at the same alien, both confirming inside ~250 ms) can
+over-fill them — the appetite just takes longer to recover. Neither is worth
+per-player state or a round trip mid-UI at this stage.
+
 ---
 
 ## 9. Risks
