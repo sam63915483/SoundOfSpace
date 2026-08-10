@@ -68,7 +68,9 @@ public class AirlockController : MonoBehaviour
         _busy = true;
         // Seal the outside first, venting the chamber.
         if (outerDoor != null) outerDoor.Close();
-        if (doorSound != null) AudioSource.PlayClipAtPoint(doorSound, transform.position);
+        // Explicit volume — the no-arg overload plays at 1.0 with a 500 m
+        // log rolloff, i.e. a full-blast door audible across the whole base.
+        if (doorSound != null) AudioSource.PlayClipAtPoint(doorSound, transform.position, doorVolume);
         FireVents();
         yield return new WaitForSeconds(pauseSeconds);
 
@@ -93,7 +95,7 @@ public class AirlockController : MonoBehaviour
 
         // Vent, then open back to the outside.
         FireVents();
-        if (doorSound != null) AudioSource.PlayClipAtPoint(doorSound, transform.position);
+        if (doorSound != null) AudioSource.PlayClipAtPoint(doorSound, transform.position, doorVolume);
         if (outerDoor != null) outerDoor.Open();
 
         _sealed = false;
@@ -183,4 +185,10 @@ public class AirlockController : MonoBehaviour
         rend.material = ConcertParticleAssets.GetAlphaBlendCloudMaterial();
         return ps;
     }
+
+    // -- appended; keep new serialized fields at the END (serialization) --
+
+    [Range(0f, 1f)]
+    [Tooltip("Door/seal clip volume. Was the no-arg PlayClipAtPoint overload = 1.0 at 500 m rolloff.")]
+    public float doorVolume = 0.7f;
 }

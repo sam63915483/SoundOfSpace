@@ -113,7 +113,8 @@ public class MoonBasePowerSwitch : MonoBehaviour
     {
         IsOn = !IsOn;
         InteractPromptUI.Clear(this);
-        if (flipSound != null) AudioSource.PlayClipAtPoint(flipSound, transform.position);
+        // Explicit volume — the no-arg overload is 1.0 with 500 m log rolloff.
+        if (flipSound != null) AudioSource.PlayClipAtPoint(flipSound, transform.position, flipVolume);
         RefreshIndicators();
         if (leverHandle != null) StartCoroutine(SwingLever(IsOn));
     }
@@ -138,4 +139,10 @@ public class MoonBasePowerSwitch : MonoBehaviour
         if (onIndicator != null) onIndicator.SetActive(IsOn);
         if (offIndicator != null) offIndicator.SetActive(!IsOn);
     }
+
+    // -- appended; keep new serialized fields at the END (serialization) --
+
+    [Range(0f, 1f)]
+    [Tooltip("Switch clip volume. Was the no-arg PlayClipAtPoint overload = 1.0 at 500 m rolloff.")]
+    public float flipVolume = 0.7f;
 }

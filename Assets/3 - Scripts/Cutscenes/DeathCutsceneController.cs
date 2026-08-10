@@ -532,6 +532,10 @@ public class DeathCutsceneController : MonoBehaviour
         src.spatialBlend = 0f;            // 2D — position doesn't matter
         src.ignoreListenerVolume = true;  // bypass the cutscene's global mute
         src.ignoreListenerPause = true;
+        // Bypassing the listener also bypassed the user's MASTER VOLUME slider —
+        // at 10% system volume the death boom still hit at full blast. Bake the
+        // saved master into the source instead (PlayOneShot multiplies by it).
+        src.volume = InputSettings.Active != null ? InputSettings.Active.masterVolume : 1f;
         return src;
     }
 
@@ -549,7 +553,8 @@ public class DeathCutsceneController : MonoBehaviour
         if (_audio.ambienceBed != null)
         {
             _ambSource.clip = _audio.ambienceBed;
-            _ambSource.volume = _audio.ambienceVolume;
+            _ambSource.volume = _audio.ambienceVolume
+                * (InputSettings.Active != null ? InputSettings.Active.masterVolume : 1f);
             _ambSource.Play();
         }
     }

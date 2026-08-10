@@ -262,12 +262,19 @@ public class ResourceHUD : MonoBehaviour
         if (percent < urgentThreshold && !warned)
         {
             warned = true;
+            // Explicit volume — the single-arg overload plays at a full 1.0.
             if (warningClip != null)
-                audioSource.PlayOneShot(warningClip);
+                audioSource.PlayOneShot(warningClip, warningVolume);
         }
         else if (percent >= urgentThreshold && warned)
         {
             warned = false;
         }
     }
+
+    // -- appended; keep new serialized fields at the END (serialization) --
+
+    [Range(0f, 1f)]
+    [Tooltip("Low-resource warning volume. Was the volume-less PlayOneShot overload = 1.0.")]
+    public float warningVolume = 0.7f;
 }

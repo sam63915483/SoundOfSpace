@@ -215,8 +215,9 @@ public class VitalsHUD : MonoBehaviour
         if (percent < urgentThreshold && !warned)
         {
             warned = true;
+            // Explicit volume — the single-arg overload plays at a full 1.0.
             if (warningClip != null && _audio != null)
-                _audio.PlayOneShot(warningClip);
+                _audio.PlayOneShot(warningClip, warningVolume);
         }
         else if (percent >= urgentThreshold && warned)
         {
@@ -635,4 +636,10 @@ public class VitalsHUD : MonoBehaviour
         int a = Mathf.RoundToInt(c.a * 255f) & 0xFF;
         return (r << 24) | (g << 16) | (b << 8) | a;
     }
+
+    // -- appended; keep new serialized fields at the END (serialization) --
+
+    [Range(0f, 1f)]
+    [Tooltip("Low-vitals warning volume. Was the volume-less PlayOneShot overload = 1.0.")]
+    public float warningVolume = 0.7f;
 }

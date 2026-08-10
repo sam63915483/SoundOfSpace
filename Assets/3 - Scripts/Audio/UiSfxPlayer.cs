@@ -45,6 +45,7 @@ public class UiSfxPlayer : MonoBehaviour
         _sfx.playOnAwake = false;
         _sfx.spatialBlend = 0f;
         _sfx.ignoreListenerPause = true;   // hover/click still play while paused
+        GameAudioBus.Register(_sfx, GameAudioBus.Bus.UI);
 
         _ambience = gameObject.AddComponent<AudioSource>();
         _ambience.playOnAwake = false;
@@ -52,6 +53,7 @@ public class UiSfxPlayer : MonoBehaviour
         _ambience.spatialBlend = 0f;
         _ambience.ignoreListenerPause = true;
         _ambience.volume = AmbienceVolume;
+        GameAudioBus.Register(_ambience, GameAudioBus.Bus.Music);
 
         StartCoroutine(StreamingAudio.Load("Audio/UIHover.wav",       AudioType.WAV,  c => _hover = c));
         StartCoroutine(StreamingAudio.Load("Audio/UIClick.wav",       AudioType.WAV,  c => _click = c));

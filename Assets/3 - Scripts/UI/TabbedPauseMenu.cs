@@ -626,6 +626,28 @@ public class TabbedPauseMenu : MonoBehaviour
                             AudioListener.volume = v;
                         },
                     },
+                    // Category buses (GameAudioBus): scale registered sources on
+                    // top of master. Live — the change is audible while dragging.
+                    new SliderDef {
+                        label = "MUSIC", min = 0f, max = 1f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.musicVolume : 1f,
+                        set  = v  => { if (_input != null) { _input.musicVolume = v; GameAudioBus.ApplyAll(); } },
+                    },
+                    new SliderDef {
+                        label = "SFX", min = 0f, max = 1f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.sfxVolume : 1f,
+                        set  = v  => { if (_input != null) { _input.sfxVolume = v; GameAudioBus.ApplyAll(); } },
+                    },
+                    new SliderDef {
+                        label = "AMBIENCE", min = 0f, max = 1f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.ambienceVolume : 1f,
+                        set  = v  => { if (_input != null) { _input.ambienceVolume = v; GameAudioBus.ApplyAll(); } },
+                    },
+                    new SliderDef {
+                        label = "UI", min = 0f, max = 1f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.uiVolume : 1f,
+                        set  = v  => { if (_input != null) { _input.uiVolume = v; GameAudioBus.ApplyAll(); } },
+                    },
                 },
             },
             new TabDef

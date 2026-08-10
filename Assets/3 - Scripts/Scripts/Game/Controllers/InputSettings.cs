@@ -89,7 +89,11 @@ public class InputSettings : ScriptableObject {
 
 	const float defaultMouseSensitivity = 100;
 	const float defaultMouseSmoothing = 0.2f;
-	const float defaultMasterVolume = 1f;
+	// 0.5, deliberately: there is no limiter anywhere (no AudioMixer), and the
+	// first minute of the game stacks several full-strength 2D loops — a fresh
+	// install at 1.0 clips hard and blasts first-time players. Public because
+	// MainMenuController needs the same default before Begin() has run.
+	public const float defaultMasterVolume = 0.5f;
 	const int defaultMaxTrees = 20;
 	const int defaultMaxAlienNPCs = 10;
 	const int defaultMaxMushrooms = 40;
@@ -272,11 +276,23 @@ public class InputSettings : ScriptableObject {
 	// drift out of sync.
 	public bool fxPerfOverlay = true;
 
+	// Category volume buses (GameAudioBus). Master stays AudioListener.volume;
+	// these scale registered sources per category. Appended at the END of the
+	// serialized fields (CLAUDE.md serialization rule).
+	[Range(0, 1)] public float musicVolume = 1f;
+	[Range(0, 1)] public float sfxVolume = 1f;
+	[Range(0, 1)] public float ambienceVolume = 1f;
+	[Range(0, 1)] public float uiVolume = 1f;
+
 	// TODO: find better place to call this from
 	public void Begin () {
 		Active = this;
 		LoadSettings ();
+		// Master + buses applied here, BEFORE gameplay sounds start — Begin runs
+		// from GameSetUp ahead of the arrival sequences, so a saved quiet mix is
+		// never preceded by one full-volume frame.
 		AudioListener.volume = masterVolume;
+		GameAudioBus.ApplyAll ();
 
 		// Push controller values onto the static TutorialGate so input call
 		// sites pick up the user's slider values immediately.
@@ -294,6 +310,10 @@ public class InputSettings : ScriptableObject {
 		mouseSensitivity = PlayerPrefs.GetFloat (nameof (mouseSensitivity), defaultMouseSensitivity);
 		mouseSmoothing   = PlayerPrefs.GetFloat (nameof (mouseSmoothing),   defaultMouseSmoothing);
 		masterVolume = PlayerPrefs.GetFloat (nameof (masterVolume), defaultMasterVolume);
+		musicVolume    = PlayerPrefs.GetFloat (nameof (musicVolume),    1f);
+		sfxVolume      = PlayerPrefs.GetFloat (nameof (sfxVolume),      1f);
+		ambienceVolume = PlayerPrefs.GetFloat (nameof (ambienceVolume), 1f);
+		uiVolume       = PlayerPrefs.GetFloat (nameof (uiVolume),       1f);
 		maxTrees = PlayerPrefs.GetInt (nameof (maxTrees), defaultMaxTrees);
 		maxAlienNPCs = PlayerPrefs.GetInt (nameof (maxAlienNPCs), defaultMaxAlienNPCs);
 		maxMushrooms = PlayerPrefs.GetInt (nameof (maxMushrooms), defaultMaxMushrooms);
@@ -407,6 +427,10 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetFloat (nameof (mouseSensitivity), mouseSensitivity);
 		PlayerPrefs.SetFloat (nameof (mouseSmoothing), mouseSmoothing);
 		PlayerPrefs.SetFloat (nameof (masterVolume), masterVolume);
+		PlayerPrefs.SetFloat (nameof (musicVolume),    musicVolume);
+		PlayerPrefs.SetFloat (nameof (sfxVolume),      sfxVolume);
+		PlayerPrefs.SetFloat (nameof (ambienceVolume), ambienceVolume);
+		PlayerPrefs.SetFloat (nameof (uiVolume),       uiVolume);
 		PlayerPrefs.SetInt (nameof (maxTrees), maxTrees);
 		PlayerPrefs.SetInt (nameof (maxAlienNPCs), maxAlienNPCs);
 		PlayerPrefs.SetInt (nameof (maxMushrooms), maxMushrooms);

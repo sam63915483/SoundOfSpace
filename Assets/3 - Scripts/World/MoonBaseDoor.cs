@@ -56,7 +56,8 @@ public class MoonBaseDoor : MonoBehaviour
     {
         _busy = true;
         var clip = closing ? closeSound : openSound;
-        if (clip != null) AudioSource.PlayClipAtPoint(clip, transform.position);
+        // Explicit volume — the no-arg overload is 1.0 with 500 m log rolloff.
+        if (clip != null) AudioSource.PlayClipAtPoint(clip, transform.position, doorVolume);
 
         if (closing) { SetColliders(true); SetRenderers(true); } // solid as it seals
         else SetColliders(false);                                // passable immediately as it opens
@@ -102,4 +103,10 @@ public class MoonBaseDoor : MonoBehaviour
 
     void SetColliders(bool on) { if (_cols != null) foreach (var c in _cols) if (c != null && !c.isTrigger) c.enabled = on; }
     void SetRenderers(bool on) { if (_rends != null) foreach (var r in _rends) if (r != null) r.enabled = on; }
+
+    // -- appended; keep new serialized fields at the END (serialization) --
+
+    [Range(0f, 1f)]
+    [Tooltip("Open/close clip volume. Was the no-arg PlayClipAtPoint overload = 1.0 at 500 m rolloff.")]
+    public float doorVolume = 0.7f;
 }

@@ -60,7 +60,13 @@ public class MainMenuController : MonoBehaviour
         PauseState.Exit();
         Cursor.visible = true;
         Cursor.lockState = CursorLockMode.None;
-        AudioListener.volume = 1f;
+        // The user's saved master volume, NOT 1f — the hardcoded reset here
+        // silently undid the volume slider on every trip to the menu. Read
+        // straight from PlayerPrefs because InputSettings.Begin may not have
+        // run yet in this scene.
+        AudioListener.volume = InputSettings.Active != null
+            ? InputSettings.Active.masterVolume
+            : PlayerPrefs.GetFloat("masterVolume", InputSettings.defaultMasterVolume);
 
         BuildCanvas();
         StartMenuAmbience();
@@ -76,6 +82,7 @@ public class MainMenuController : MonoBehaviour
         _ambienceSource.volume = menuAmbienceVolume;
         _ambienceSource.spatialBlend = 0f;  // 2D
         _ambienceSource.ignoreListenerPause = true;
+        GameAudioBus.Register(_ambienceSource, GameAudioBus.Bus.Music);
         _ambienceSource.Play();
     }
 
