@@ -92,6 +92,9 @@ public class StorageSync : MonoBehaviour
         if (!_registered)
         {
             nm.CustomMessagingManager.RegisterNamedMessageHandler(Msg, OnMessage);
+            // NetworkManager outlives scene loads but _registered doesn't, so
+            // unsubscribe first or every reload stacks another callback.
+            nm.OnClientDisconnectCallback -= OnClientLeft;
             nm.OnClientDisconnectCallback += OnClientLeft;
             _registered = true;
         }
@@ -125,7 +128,14 @@ public class StorageSync : MonoBehaviour
         if (nm == null || !nm.IsListening) return true;          // single player
         if (Instance == null) return true;
 
-        if (nm.IsServer) return Instance.HostTryClaim(box.BoxId, nm.LocalClientId);
+        if (nm.IsServer)
+        {
+            bool ok = Instance.HostTryClaim(box.BoxId, nm.LocalClientId);
+            // The denied CLIENT gets feedback on the reply below; without this
+            // the denied HOST got a silently dead F-press instead.
+            if (!ok) InteractPromptUI.Show(box, "Someone else is in there");
+            return ok;
+        }
 
         Instance.RequestOpen(box);
         return false;   // opens on the reply
