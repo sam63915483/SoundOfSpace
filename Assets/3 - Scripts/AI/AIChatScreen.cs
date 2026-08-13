@@ -24,9 +24,14 @@ public class AIChatScreen : MonoBehaviour
     // as movement input. Every consumer in the codebase reads THIS property,
     // so the Messages app's counter-offer field reports through it too rather
     // than making ~20 call sites check a second flag.
+    // Despite living on this class, this is the project's GLOBAL "a text field
+    // owns the keyboard" flag — some twenty systems consult it (the build menu,
+    // the map, the flashlight, the hotbar, the pause menu, the pistol) to stay
+    // dead while someone is typing. Any new screen with a text field has to
+    // join it here, or typing a name will fire hotkeys as a side effect.
     public static bool IsTypingActive
     {
-        get => _selfTyping || MessagesScreen.IsTypingActive;
+        get => _selfTyping || MessagesScreen.IsTypingActive || ShuttleComputerUI.IsTypingActive;
         private set => _selfTyping = value;
     }
     static bool _selfTyping;

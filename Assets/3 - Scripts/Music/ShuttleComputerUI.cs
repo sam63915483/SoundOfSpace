@@ -98,6 +98,34 @@ public partial class ShuttleComputerUI : MonoBehaviour
     static int s_consumedFFrame = -1;
     public static bool FConsumedThisFrame { get { return s_consumedFFrame == Time.frameCount; } }
 
+    /// <summary>
+    /// Lets TabbedPauseMenu skip opening on the same Escape this screen just
+    /// used to step back. Same idiom as NewspaperReaderUI / MushroomSellUI —
+    /// Update order between the two is undefined, so BOTH this and the IsOpen
+    /// check are needed to cover either order.
+    /// </summary>
+    int _consumedEscapeFrame = -1;
+    public static bool ConsumedEscapeThisFrame
+    {
+        get { return Instance != null && Instance._consumedEscapeFrame == Time.frameCount; }
+    }
+
+    /// <summary>
+    /// TRUE WHILE THE PROJECT-NAME FIELD OWNS THE KEYBOARD.
+    ///
+    /// Feeds <see cref="AIChatScreen.IsTypingActive"/>, which is this project's
+    /// established "a text field is capturing keys" flag — some twenty systems
+    /// already consult it (the build menu, the flashlight, the map, the hotbar,
+    /// the pause menu, the pistol). Joining it is what stops typing DEEP CAVE
+    /// from also opening the build menu on the N.
+    /// </summary>
+    public static bool IsTypingActive
+    {
+        get { return Instance != null && Instance._open && Instance.SaveOpen; }
+    }
+
+    void ConsumeEscape() { _consumedEscapeFrame = Time.frameCount; }
+
     bool _prevModalFlag;
     CursorLockMode _prevCursorLock;
     bool _prevCursorVisible;
@@ -207,7 +235,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // and SPACE must reach the name as a space, not as PLAY.
         if (SaveOpen)
         {
-            if (Input.GetKeyDown(KeyCode.Escape)) CloseSaveDialog();
+            if (Input.GetKeyDown(KeyCode.Escape)) { ConsumeEscape(); CloseSaveDialog(); }
             return;
         }
 
@@ -215,7 +243,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // computer, and the transport shortcut is suppressed while it is up.
         if (PrintOpen)
         {
-            if (Input.GetKeyDown(KeyCode.Escape)) ClosePrint();
+            if (Input.GetKeyDown(KeyCode.Escape)) { ConsumeEscape(); ClosePrint(); }
             return;
         }
 
@@ -224,9 +252,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // F always leaves outright, because F is what opened it.
         if (Time.frameCount > _openedFrame && Input.GetKeyDown(KeyCode.Escape))
         {
-            if (ProjectsOpen && _shelfPane.activeSelf) { ShowMenuPane(); return; }
-            if (_traxView != null && _traxView.activeSelf) { _inst.Stop(); ShowProjects(); return; }
-            if (ProjectsOpen) { ShowHomeFromProjects(); return; }
+            // Every one of these SPENDS the Escape — without saying so, the same
+            // press pops the pause menu on top of the screen you just went back to.
+            if (ProjectsOpen && _shelfPane.activeSelf) { ConsumeEscape(); ShowMenuPane(); return; }
+            if (_traxView != null && _traxView.activeSelf) { ConsumeEscape(); _inst.Stop(); ShowProjects(); return; }
+            if (ProjectsOpen) { ConsumeEscape(); ShowHomeFromProjects(); return; }
         }
 
         // Not on the frame it opened: the terminal opens on F-down, and Update
@@ -238,6 +268,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
             // Tell the terminal this F is spent so its own handler can't
             // reopen us in the same frame. Mirrors StorageUI/LootBox.
             if (Input.GetKeyDown(KeyCode.F)) s_consumedFFrame = Time.frameCount;
+            if (Input.GetKeyDown(KeyCode.Escape)) ConsumeEscape();
             Close();
             return;
         }

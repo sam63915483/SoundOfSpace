@@ -320,6 +320,10 @@ public static class TutorialGate
     // D-pad up/down + RB are reserved for future bindings.
     public static int HotbarSlotPressed(int numSlots)
     {
+        // Dead while a text field owns the keyboard — otherwise naming a track
+        // "TRACK 3" swaps to hotbar slot 3 on the way past. HotbarCycleStep
+        // below already suppresses itself for the same class of reason.
+        if (AIChatScreen.IsTypingActive) return 0;
         for (int i = 0; i < numSlots; i++)
             if (Input.GetKeyDown(KeyCode.Alpha1 + i)) return i + 1;
         return 0;
