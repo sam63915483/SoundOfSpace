@@ -108,6 +108,9 @@ public class ShuttleComputerUI : MonoBehaviour
     readonly List<Image> _stepCells = new List<Image>();
     readonly Dictionary<string, Image> _moduleFrames = new Dictionary<string, Image>();
     readonly Dictionary<string, Image> _moduleLeds = new Dictionary<string, Image>();
+    readonly Dictionary<string, TextMeshProUGUI> _moduleNames = new Dictionary<string, TextMeshProUGUI>();
+    readonly Dictionary<string, TextMeshProUGUI> _moduleDescs = new Dictionary<string, TextMeshProUGUI>();
+    readonly Dictionary<string, string> _moduleDefaultDescs = new Dictionary<string, string>();
     CanvasGroup _toastGroup;
     GameObject _printPanel;
     Stepper _printQty;
@@ -677,16 +680,21 @@ public class ShuttleComputerUI : MonoBehaviour
             var ds = MakeText(crt, "Desc", m.desc, 12, InkGhost, TextAlignmentOptions.Center);
             Box(ds.rectTransform, TopCentre, TopCentre, new Vector2(0, -48), new Vector2(160, 18));
 
-            // PRESET = which part. VARIATION = which roll of that part.
+            // PRESET = which part. VARIATION = which roll of that part. Both are
+            // dead on a module you do not own — they would silently change the
+            // track identity while changing nothing you can hear.
             var preset = MakeStepper(crt, "Preset", -76,
-                () => _inst.PresetName(captured),
-                d => { _inst.CyclePreset(captured, d); AfterPartChange(); }, Ink);
+                () => _inst.IsInstalled(captured) ? _inst.PresetName(captured) : "LOCKED",
+                d => { if (!_inst.IsInstalled(captured)) return; _inst.CyclePreset(captured, d); AfterPartChange(); }, Ink);
             var varn = MakeStepper(crt, "Var", -110,
-                () => "VAR " + (_inst.VariationIndex(captured) + 1),
-                d => { _inst.CycleVariation(captured, d); AfterPartChange(); }, InkDim);
+                () => _inst.IsInstalled(captured) ? "VAR " + (_inst.VariationIndex(captured) + 1) : "--",
+                d => { if (!_inst.IsInstalled(captured)) return; _inst.CycleVariation(captured, d); AfterPartChange(); }, InkDim);
 
             _moduleFrames[m.name] = frame;
             _moduleLeds[m.name] = led;
+            _moduleNames[m.name] = nm;
+            _moduleDescs[m.name] = ds;
+            _moduleDefaultDescs[m.name] = m.desc;
             _steppers.Add(preset);
             _steppers.Add(varn);
         }
@@ -979,7 +987,9 @@ public class ShuttleComputerUI : MonoBehaviour
 
     void ToggleModule(string name)
     {
+        if (!_inst.IsInstalled(name)) return;         // locked slots are dead, not silently clickable
         _inst.SetModuleEnabled(name, !_inst.IsModuleEnabled(name));
+        RefreshReadouts();                            // muting changes the track id
         RefreshRack();
         _lastBarShown = -1;
     }
@@ -988,12 +998,27 @@ public class ShuttleComputerUI : MonoBehaviour
     {
         foreach (var kv in _moduleFrames)
         {
-            bool on = _inst.IsModuleEnabled(kv.Key);
-            kv.Value.color = on ? InkDim : Grid;
+            bool owned = _inst.IsInstalled(kv.Key);
+            bool on = owned && _inst.IsModuleEnabled(kv.Key);
+            kv.Value.color = !owned ? Locked : on ? InkDim : Grid;
+
             Image led;
             if (_moduleLeds.TryGetValue(kv.Key, out led))
-                led.color = on ? Ink : InkGhost;
+                led.color = !owned ? Locked : on ? Ink : InkGhost;
+
+            // A locked slot says it is not installed rather than describing a
+            // part you cannot hear — it is the carrot for Tev's shop.
+            TextMeshProUGUI nm, ds;
+            if (_moduleNames.TryGetValue(kv.Key, out nm))
+                nm.color = owned ? Ink : Locked;
+            if (_moduleDescs.TryGetValue(kv.Key, out ds))
+            {
+                ds.text = owned ? _moduleDefaultDescs[kv.Key] : "NOT INSTALLED";
+                ds.color = owned ? InkGhost : Locked;
+            }
         }
+        // A locked slot's steppers read LOCKED / -- rather than a part name.
+        for (int i = 0; i < _steppers.Count; i++) _steppers[i].Refresh();
     }
 
     void TogglePlay()

@@ -27,8 +27,9 @@ public static class TraxGoldenRunner
         public string[] exact;
         public double[] approx;
         public uint[] hashes;
+        public int activeMask = -1;              // -1 until the ACTIVE line lands
         public Dictionary<string, string> digests = new Dictionary<string, string>();
-        public bool complete { get { return exact != null && approx != null && hashes != null && genre != null; } }
+        public bool complete { get { return exact != null && approx != null && hashes != null && genre != null && activeMask >= 0; } }
     }
 
     static string Bits(double x)
@@ -120,6 +121,10 @@ public static class TraxGoldenRunner
                 case "VAR":
                     for (int i = 0; i < TraxPresets.ModuleCount; i++) c.track.variation[i] = I(f[2 + i]);
                     break;
+                case "ACTIVE":
+                    for (int i = 0; i < TraxPresets.ModuleCount; i++) c.track.active[i] = I(f[2 + i]) != 0;
+                    c.activeMask = I(f[2 + TraxPresets.ModuleCount]);
+                    break;
                 case "ID":
                     c.trackId = uint.Parse(f[2], Inv);
                     c.scaleIdx = I(f[3]);
@@ -160,13 +165,23 @@ public static class TraxGoldenRunner
         TraxPhrase phrase = TraxPhrase.Generate(c.track, p);
         TraxClassifier.Result g = TraxClassifier.Classify(c.track.dials);
 
+        // Checked BEFORE the track id, because the mask feeds it — a mask
+        // disagreement would otherwise surface as a baffling id mismatch.
+        checks++;
+        if (c.track.ActiveMask() != c.activeMask)
+        {
+            failures++;
+            log.AppendLine("case " + c.index + " ACTIVEMASK: got " + c.track.ActiveMask() +
+                           ", want " + c.activeMask + "  — module bit order differs from JS");
+        }
+
         checks++;
         uint id = c.track.TrackId();
         if (id != c.trackId)
         {
             failures++;
             log.AppendLine("case " + c.index + " TRACKID: got " + id + ", want " + c.trackId +
-                           "  — the dial quantizer, key or preset/variation layout differs");
+                           "  — the dial quantizer, key, preset/variation layout or active mask differs");
         }
 
         checks++;

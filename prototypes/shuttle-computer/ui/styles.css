@@ -610,3 +610,9 @@ button.btn.disabled { opacity: .4; cursor: not-allowed; pointer-events: none; }
 #save-note { font-size: 10px; color: var(--ink-ghost); letter-spacing: .08em; min-height: 12px; }
 #save-note.warn { color: var(--warn); }
 #save-row { display: flex; gap: 10px; margin-top: 6px; }
+
+/* A locked slot's part choosers are dead too — stepping them would change the
+   track identity without changing anything you can hear. */
+.module.locked .stepper { opacity: .45; }
+.module.locked .st-arrow { cursor: not-allowed; color: var(--locked); }
+.module.locked .st-label { color: var(--locked); }

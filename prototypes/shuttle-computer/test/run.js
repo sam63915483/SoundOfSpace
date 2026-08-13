@@ -456,6 +456,72 @@ test ('engine/ imports nothing outside engine/', () => {
     }
 });
 
+// ------------------------------------------------------- THE ACTIVE SET ----
+// Muting is a compositional choice that has to print onto a cassette, so it
+// lives on the track and counts toward its identity. What it must NEVER do is
+// disturb the notes — that is the same guarantee that lets a plugin be unlocked
+// later without changing a tape someone already owns.
+
+section ('Active set');
+
+test ('a fresh track has every module playing', () => {
+    const t = T ();
+    for (const m of PRESETS.MODULE_NAMES) assert (t.active[m], m + ' starts muted');
+    eq (TRACK.activeCount (t), 6, 'active count');
+    eq (TRACK.activeMask (t), 63, 'full mask');
+});
+
+test ('the mask is bit 0 = THUMPER, in module order', () => {
+    for (let i = 0; i < PRESETS.MODULE_NAMES.length; i++) {
+        const t = TRACK.setActive (T (), PRESETS.MODULE_NAMES[i], false);
+        eq (TRACK.activeMask (t), 63 & ~(1 << i), 'muting ' + PRESETS.MODULE_NAMES[i]);
+    }
+});
+
+test ('muting a module changes the track identity', () => {
+    const base = TRACK.trackId (T ());
+    const seen = new Set ([base]);
+    for (const m of PRESETS.MODULE_NAMES) {
+        const id = TRACK.trackId (TRACK.setActive (T (), m, false));
+        assert (!seen.has (id), 'muting ' + m + ' did not produce a distinct id');
+        seen.add (id);
+    }
+});
+
+test ('muting a module changes NO voice pattern', () => {
+    // The load-bearing one. Every voice is generated whether or not it is
+    // audible, and each draws from its own constant-keyed stream — so silence
+    // is a mix decision, never a generation decision.
+    const before = gen (T ());
+    for (const m of PRESETS.MODULE_NAMES) {
+        const after = gen (TRACK.setActive (T (), m, false));
+        for (const v of VOICES)
+            deepEq (after[v], before[v], 'muting ' + m + ' moved the ' + v + ' pattern');
+    }
+});
+
+test ('muting never asks for a regeneration', () => {
+    for (const m of PRESETS.MODULE_NAMES)
+        assert (!TRACK.needsRegen (T (), TRACK.setActive (T (), m, false)),
+                'muting ' + m + ' requested a pattern regen');
+});
+
+test ('a track with everything muted still generates a full phrase', () => {
+    let t = T ();
+    for (const m of PRESETS.MODULE_NAMES) t = TRACK.setActive (t, m, false);
+    const p = gen (t);
+    for (const v of VOICES) assert (p[v], v + ' vanished when its module was muted');
+    deepEq (p, gen (T ()), 'silencing the whole rack changed the phrase');
+});
+
+test ('cloning carries the active set', () => {
+    const t = TRACK.setActive (T (), 'MOSS', false);
+    const c = TRACK.cloneTrack (t);
+    eq (c.active.MOSS, false, 'clone lost the mute');
+    c.active.MOSS = true;
+    eq (t.active.MOSS, false, 'clone aliases the original');
+});
+
 // ----------------------------------------------------------------- REPORT --
 console.log ('\n' + '-'.repeat (52));
 console.log (passed + ' passed, ' + failed + ' failed');

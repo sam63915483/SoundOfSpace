@@ -330,6 +330,15 @@ check ('a fresh project reports that it has never been saved', () => {
     assert (/NEVER SAVED/.test (projState ()), 'expected NEVER SAVED, got ' + projState ());
 });
 
+check ('muting a module is a track edit, not a UI preference', () => {
+    // MOSS is index 2 — THUMPER, GLOWORM, MOSS, SIREN, SPINDLE, CAVE.
+    const before = inst.trackId;
+    heads[2].fire ('click');
+    assert (!inst.enabled.MOSS, 'MOSS did not mute');
+    assert (inst.trackId !== before, 'muting did not change the track identity');
+    assert (/UNSAVED|NEVER/.test (projState ()), 'muting did not mark the project dirty');
+});
+
 check ('SAVE PROJECT opens the name dialog, CANCEL closes it without saving', () => {
     btn ('SAVE PROJECT').fire ('click');
     assert (nameField (), 'no name field in the save dialog');
@@ -405,6 +414,10 @@ check ('opening it restores the track that was SAVED, not the one left on screen
             'loaded track ' + inst.trackId + ' but saved ' + savedTrackId);
     assert (/SAVED/.test (projState ()) && !/UNSAVED|NEVER/.test (projState ()),
             'a freshly loaded project should be clean, got ' + projState ());
+    // The mute survived the round trip, and the rack shows it.
+    assert (!inst.enabled.MOSS, 'MOSS came back unmuted');
+    const moss = appView.querySelectorAll ('.module')[2];
+    assert (!moss.classList.contains ('on'), 'the rack shows MOSS as playing');
 });
 
 check ('saving over the same name does not make a second project', () => {

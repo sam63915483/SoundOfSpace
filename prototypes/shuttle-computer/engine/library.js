@@ -113,6 +113,11 @@ export function coerceTrack (raw) {
         const v = Number (raw.variation && raw.variation[m]);
         if (Number.isFinite (p)) t.preset[m] = ((Math.round (p) % PRESET_COUNT) + PRESET_COUNT) % PRESET_COUNT;
         if (Number.isFinite (v)) t.variation[m] = ((Math.round (v) % VARIATION_COUNT) + VARIATION_COUNT) % VARIATION_COUNT;
+        // A record saved before the active set existed has no `active` block.
+        // Defaulting a MISSING module to ON is the only safe answer: it is how
+        // the track sounded when it was saved.
+        if (raw.active && typeof raw.active === 'object' && m in raw.active)
+            t.active[m] = !!raw.active[m];
     }
     return t;
 }

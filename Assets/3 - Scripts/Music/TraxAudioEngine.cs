@@ -159,7 +159,7 @@ public class TraxAudioEngine : MonoBehaviour
         _src = GetComponent<AudioSource>();
         _src.playOnAwake = false;
         _src.loop = true;
-        _src.spatialBlend = 0f;          // 2D — the UI is fullscreen, not in the world
+        _src.spatialBlend = 0f;          // 2D by default — the terminal UI is fullscreen, not in the world
         _src.volume = 1f;                // bus level is multiplied in by hand, see Update
         _src.bypassEffects = false;
         _src.bypassListenerEffects = false;
@@ -188,6 +188,23 @@ public class TraxAudioEngine : MonoBehaviour
     }
 
     // ── main-thread API ──────────────────────────────────────────────────
+
+    /// <summary>
+    /// Make this engine a point in the world rather than a fullscreen UI sound.
+    /// Unity spatialises AFTER OnAudioFilterRead, so the synth is unaffected —
+    /// only where you hear it from changes. Used when an alien plays a cassette
+    /// at you; the terminal stays 2D.
+    /// </summary>
+    public void SetSpatial(bool on, float minDistance = 3f, float maxDistance = 28f)
+    {
+        if (_src == null) _src = GetComponent<AudioSource>();
+        _src.spatialBlend = on ? 1f : 0f;
+        if (!on) return;
+        _src.rolloffMode = AudioRolloffMode.Linear;
+        _src.minDistance = minDistance;
+        _src.maxDistance = maxDistance;
+        _src.dopplerLevel = 0f;          // a tape deck does not warble when you walk past it
+    }
 
     public void Publish(TraxParams p, TraxPhrase phrase, bool atBarBoundary)
     {

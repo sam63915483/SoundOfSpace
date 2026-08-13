@@ -39,7 +39,16 @@ public class TraxInstrument : MonoBehaviour
     public TraxPhrase Phrase { get; private set; }
 
     TraxAudioEngine _engine;
-    readonly System.Collections.Generic.Dictionary<string, bool> _enabled =
+
+    /// WHICH PLUGINS THE COMPUTER OWNS — world state, not track state. Bought
+    /// from Tev, shared by both players in co-op, and only ever grows. A module
+    /// you do not own renders locked in the rack and cannot be switched on.
+    ///
+    /// ⚠️ THIS GATES EDITING ONLY, NEVER PLAYBACK. A track plays exactly as it
+    /// was written, whoever is listening — otherwise the same cassette would
+    /// sound different on two machines and the whole determinism contract is
+    /// dead. The scheduler reads the TRACK, never this.
+    readonly System.Collections.Generic.Dictionary<string, bool> _installed =
         new System.Collections.Generic.Dictionary<string, bool>();
 
     float _masterVolume = 0.5f;
@@ -67,7 +76,9 @@ public class TraxInstrument : MonoBehaviour
         Params = TraxParams.Compute(Track.dials, Track.key);
         Phrase = TraxPhrase.Generate(Track, Params);
 
-        for (int i = 0; i < Modules.Length; i++) _enabled[Modules[i].name] = true;
+        // Everything installed until Tev's shop exists to sell it. Phase 3
+        // narrows this to THUMPER + GLOWORM at world start.
+        for (int i = 0; i < Modules.Length; i++) _installed[Modules[i].name] = true;
 
         var go = new GameObject("TraxAudio");
         go.transform.SetParent(transform, false);
@@ -77,7 +88,8 @@ public class TraxInstrument : MonoBehaviour
         _engine.Publish(Params, Phrase, false);
         _engine.SetMasterVolume(_masterVolume);
         _engine.SetCavePreset(TraxPresets.Cave[Track.PresetOf("CAVE")], Track.VariationOf("CAVE"));
-        foreach (var kv in _enabled) _engine.SetModuleEnabled(kv.Key, kv.Value);
+        for (int i = 0; i < Modules.Length; i++)
+            _engine.SetModuleEnabled(Modules[i].name, Track.active[i]);
     }
 
     void Update()
@@ -103,6 +115,13 @@ public class TraxInstrument : MonoBehaviour
             if (prev.PresetOf("CAVE") != next.PresetOf("CAVE") ||
                 prev.VariationOf("CAVE") != next.VariationOf("CAVE"))
                 _engine.SetCavePreset(TraxPresets.Cave[next.PresetOf("CAVE")], next.VariationOf("CAVE"));
+
+            // LOADING a project changes the active set wholesale, not just when
+            // a toggle is clicked — so the engine syncs here, at the choke
+            // point, rather than in the toggle handler.
+            for (int m = 0; m < Modules.Length; m++)
+                if (prev.active[m] != next.active[m])
+                    _engine.SetModuleEnabled(Modules[m].name, next.active[m]);
         }
 
         if (TraxTrack.NeedsRegen(prev, next))
@@ -141,17 +160,32 @@ public class TraxInstrument : MonoBehaviour
 
     // ── rack ─────────────────────────────────────────────────────────────
 
-    public bool IsModuleEnabled(string name)
+    /// Which modules are PLAYING. Lives on the track now, so it prints onto a
+    /// cassette and comes back when a project is loaded.
+    public bool IsModuleEnabled(string name) { return Track.ActiveOf(name); }
+
+    public bool IsInstalled(string name)
     {
         bool v;
-        return _enabled.TryGetValue(name, out v) && v;
+        return _installed.TryGetValue(name, out v) && v;
     }
 
-    public void SetModuleEnabled(string name, bool on)
+    /// Installing never touches the track, so it cannot change what an already
+    /// printed cassette sounds like.
+    public void SetInstalled(string name, bool on)
     {
-        if (!_enabled.ContainsKey(name)) return;
-        _enabled[name] = on;
-        if (_engine != null) _engine.SetModuleEnabled(name, on);
+        if (_installed.ContainsKey(name)) _installed[name] = on;
+    }
+
+    /// Muting is a track edit, so it goes through the choke point like every
+    /// other one. Switching ON a module you do not own is refused rather than
+    /// silently allowed — the lock is the carrot for Tev's shop.
+    public bool SetModuleEnabled(string name, bool on)
+    {
+        if (!_installed.ContainsKey(name)) return false;
+        if (on && !IsInstalled(name)) return false;
+        SetTrack(Track.WithActive(name, on));
+        return true;
     }
 
     public void SetMasterVolume(float v)

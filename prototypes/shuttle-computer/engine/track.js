@@ -31,7 +31,11 @@ export function defaultTrack () {
         dials: Object.assign ({}, DEFAULT_DIALS),
         key: 0,                                   // semitones above the base root (A)
         preset:    { THUMPER: 0, GLOWORM: 0, MOSS: 0, SIREN: 1, SPINDLE: 0, CAVE: 1 },
-        variation: { THUMPER: 0, GLOWORM: 0, MOSS: 0, SIREN: 0, SPINDLE: 0, CAVE: 0 }
+        variation: { THUMPER: 0, GLOWORM: 0, MOSS: 0, SIREN: 0, SPINDLE: 0, CAVE: 0 },
+        // WHICH MODULES ARE PLAYING. This lives on the track, not on the
+        // instrument, because muting THUMPER is a compositional decision — a
+        // printed cassette of a drumless track has to stay drumless forever.
+        active:    { THUMPER: true, GLOWORM: true, MOSS: true, SIREN: true, SPINDLE: true, CAVE: true }
     };
 }
 
@@ -40,7 +44,8 @@ export function cloneTrack (t) {
         dials: Object.assign ({}, t.dials),
         key: t.key,
         preset: Object.assign ({}, t.preset),
-        variation: Object.assign ({}, t.variation)
+        variation: Object.assign ({}, t.variation),
+        active: Object.assign ({}, t.active)
     };
 }
 
@@ -66,6 +71,27 @@ export function setKey (track, key) {
     return t;
 }
 
+export function setActive (track, module, on) {
+    const t = cloneTrack (track);
+    t.active[module] = !!on;
+    return t;
+}
+
+/// The active set as one byte, MODULE_NAMES order, bit 0 = THUMPER. Used for
+/// identity hashing so the C# port has an unambiguous thing to agree with.
+export function activeMask (track) {
+    let mask = 0;
+    for (let i = 0; i < MODULE_NAMES.length; i++)
+        if (track.active[MODULE_NAMES[i]]) mask |= (1 << i);
+    return mask & 0xff;
+}
+
+export function activeCount (track) {
+    let n = 0;
+    for (const m of MODULE_NAMES) if (track.active[m]) n++;
+    return n;
+}
+
 export function keyName (key) {
     return KEY_NAMES[wrap (key, 12)];
 }
@@ -88,8 +114,9 @@ export function fillSeed (track, voice) {
 }
 
 /// A display/identity hash over EVERYTHING that affects the sound. This is the
-/// value a cassette is keyed on, so it must cover dials, key, presets and
-/// variations — not just the dials the way the old seed did.
+/// value a cassette is keyed on, so it must cover dials, key, presets,
+/// variations AND which modules were playing — a drumless take of the same
+/// arrangement is a different song, and an alien has to be able to tell.
 export function trackId (track) {
     const bytes = [];
     for (const k of ['pulse', 'crunch', 'goo', 'void', 'jitter', 'warp']) {
@@ -103,12 +130,19 @@ export function trackId (track) {
         bytes.push (wrap (track.preset[m], PRESET_COUNT));
         bytes.push (wrap (track.variation[m], VARIATION_COUNT));
     }
+    bytes.push (activeMask (track));
     return fnv1a32 (bytes);
 }
 
 /// Which changes require regenerating patterns. Presets, variations and the
 /// pattern-shaping dials do; key and timbre dials do not — key is applied at
 /// note time and timbre rides live.
+///
+/// The ACTIVE set is deliberately absent. Every voice is generated whether or
+/// not it is audible, and each draws from its own constant-keyed stream, so
+/// muting a module cannot disturb the others. That is the same guarantee that
+/// lets a plugin be unlocked later without changing an already-printed tape —
+/// do not "optimise" it into skipping generation for muted voices.
 export function needsRegen (a, b) {
     for (const k of ['pulse', 'void', 'jitter', 'warp'])
         if (Math.round (a.dials[k] * 2) !== Math.round (b.dials[k] * 2)) return true;

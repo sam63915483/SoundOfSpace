@@ -38,7 +38,18 @@ export class Instrument {
         this.patterns = generatePatterns (this.track, this.params);
         this.pending = null;
 
-        this.enabled = {
+        // WHICH PLUGINS THE COMPUTER OWNS — world state, not track state. Bought
+        // from Tev, shared by both players in co-op, and only ever grows. A
+        // module you do not own renders locked in the rack and cannot be
+        // switched on. The browser prototype ships with everything installed so
+        // the instrument stays fully playable as a dev tool; the game starts
+        // with THUMPER + GLOWORM and sells the rest.
+        //
+        // ⚠️ THIS GATES EDITING ONLY, NEVER PLAYBACK. A track plays exactly as
+        // it was written, whoever is listening — otherwise the same cassette
+        // would sound different on two machines and the whole determinism
+        // contract is dead. _schedule() reads the TRACK, never this.
+        this.installed = {
             THUMPER: true, GLOWORM: true, MOSS: true,
             SIREN: true, SPINDLE: true, CAVE: true
         };
@@ -53,6 +64,9 @@ export class Instrument {
     }
 
     get dials () { return this.track.dials; }
+    /// Which modules are PLAYING. Lives on the track now, so it prints onto a
+    /// cassette and comes back when a project is loaded.
+    get enabled () { return this.track.active; }
     get key () { return this.track.key; }
     get keyName () { return TRACK.keyName (this.track.key); }
     get trackId () { return TRACK.trackId (this.track); }
@@ -106,6 +120,12 @@ export class Instrument {
             if (prev.preset.CAVE !== next.preset.CAVE ||
                 prev.variation.CAVE !== next.variation.CAVE)
                 this.rack.applyCavePreset (PRESETS.CAVE[next.preset.CAVE], next.variation.CAVE);
+            // LOADING a project changes the active set wholesale, not just when
+            // a toggle is clicked — so the rack syncs here, at the choke point,
+            // rather than in the toggle handler.
+            for (const m of PRESETS.MODULE_NAMES)
+                if (prev.active[m] !== next.active[m])
+                    this.rack.setModuleEnabled (m, next.active[m], this.params);
         }
 
         if (TRACK.needsRegen (prev, next)) {
@@ -135,9 +155,22 @@ export class Instrument {
 
     // --- rack ------------------------------------------------------------
 
+    /// Muting is a track edit, so it goes through the choke point like every
+    /// other one. Switching ON a module you do not own is refused rather than
+    /// silently allowed — the lock is the carrot for Tev's shop.
     setModuleEnabled (name, on) {
-        this.enabled[name] = on;
-        if (this.rack) this.rack.setModuleEnabled (name, on, this.params);
+        if (on && !this.installed[name]) return false;
+        this.setTrack (TRACK.setActive (this.track, name, on));
+        return true;
+    }
+
+    isInstalled (name) { return !!this.installed[name]; }
+
+    /// Installing never touches the track, so it cannot change what an already
+    /// printed cassette sounds like. Uninstalling is only for testing the
+    /// locked state; it leaves an active module playing until it is toggled.
+    setInstalled (name, on) {
+        this.installed[name] = !!on;
     }
 
     setMasterVolume (v) {

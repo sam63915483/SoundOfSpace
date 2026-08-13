@@ -26,6 +26,11 @@ public sealed class TraxTrack
     public readonly int[] preset = new int[TraxPresets.ModuleCount];
     public readonly int[] variation = new int[TraxPresets.ModuleCount];
 
+    /// WHICH MODULES ARE PLAYING. This lives on the track, not on the
+    /// instrument, because muting THUMPER is a compositional decision — a
+    /// printed cassette of a drumless track has to stay drumless forever.
+    public readonly bool[] active = new bool[TraxPresets.ModuleCount];
+
     public static readonly string[] KeyNames =
         { "A", "A#", "B", "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#" };
 
@@ -38,6 +43,7 @@ public sealed class TraxTrack
         // hear the instrument with, rather than the first entry in each bank.
         t.preset[TraxPresets.ModuleIndex("SIREN")] = 1;
         t.preset[TraxPresets.ModuleIndex("CAVE")] = 1;
+        for (int m = 0; m < TraxPresets.ModuleCount; m++) t.active[m] = true;
         return t;
     }
 
@@ -48,6 +54,7 @@ public sealed class TraxTrack
         t.key = key;
         Array.Copy(preset, t.preset, preset.Length);
         Array.Copy(variation, t.variation, variation.Length);
+        Array.Copy(active, t.active, active.Length);
         return t;
     }
 
@@ -75,6 +82,32 @@ public sealed class TraxTrack
         var t = Clone();
         t.key = Wrap(k, 12);
         return t;
+    }
+
+    public bool ActiveOf(string module) { return active[TraxPresets.ModuleIndex(module)]; }
+
+    public TraxTrack WithActive(string module, bool on)
+    {
+        var t = Clone();
+        t.active[TraxPresets.ModuleIndex(module)] = on;
+        return t;
+    }
+
+    /// The active set as one byte, module order, bit 0 = THUMPER. Used for
+    /// identity hashing so JS and C# have an unambiguous thing to agree on.
+    public int ActiveMask()
+    {
+        int mask = 0;
+        for (int m = 0; m < TraxPresets.ModuleCount; m++)
+            if (active[m]) mask |= (1 << m);
+        return mask & 0xff;
+    }
+
+    public int ActiveCount()
+    {
+        int n = 0;
+        for (int m = 0; m < TraxPresets.ModuleCount; m++) if (active[m]) n++;
+        return n;
     }
 
     public TraxTrack WithDial(int dialIndex, double value)
@@ -108,12 +141,13 @@ public sealed class TraxTrack
 
     /// <summary>
     /// Identity hash over EVERYTHING that affects the sound. This is what a
-    /// cassette is keyed on, so it must cover dials, key, presets and
-    /// variations — not just the dials the way the old seed did.
+    /// cassette is keyed on, so it must cover dials, key, presets, variations
+    /// AND which modules were playing — a drumless take of the same arrangement
+    /// is a different song, and an alien has to be able to tell.
     /// </summary>
     public uint TrackId()
     {
-        var bytes = new byte[TraxPrng.DialCount + 1 + TraxPresets.ModuleCount * 2];
+        var bytes = new byte[TraxPrng.DialCount + 1 + TraxPresets.ModuleCount * 2 + 1];
         int n = 0;
         for (int i = 0; i < TraxPrng.DialCount; i++)
         {
@@ -128,6 +162,7 @@ public sealed class TraxTrack
             bytes[n++] = (byte)Wrap(preset[m], TraxPresets.PresetCount);
             bytes[n++] = (byte)Wrap(variation[m], TraxPresets.VariationCount);
         }
+        bytes[n++] = (byte)ActiveMask();
         return TraxPrng.Fnv1a32(bytes);
     }
 
@@ -135,6 +170,12 @@ public sealed class TraxTrack
     /// Which changes require regenerating patterns. Presets, variations and the
     /// pattern-shaping dials do; KEY and the timbre dials do not — key is
     /// applied at note time and timbre rides live.
+    ///
+    /// The ACTIVE set is deliberately absent. Every voice is generated whether
+    /// or not it is audible, and each draws from its own constant-keyed stream,
+    /// so muting a module cannot disturb the others. That is the same guarantee
+    /// that lets a plugin be unlocked later without changing an already-printed
+    /// tape — do not "optimise" it into skipping generation for muted voices.
     /// </summary>
     public static bool NeedsRegen(TraxTrack a, TraxTrack b)
     {

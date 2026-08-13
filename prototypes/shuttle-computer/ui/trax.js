@@ -96,8 +96,10 @@ export function mountTrax (root, inst, opts) {
 
     const moduleEls = {};
     for (const m of MODULES) {
+        const owned = inst.isInstalled (m.name);
         const el = document.createElement ('div');
-        el.className = 'module' + (inst.enabled[m.name] ? ' on' : '');
+        el.className = 'module' + (inst.enabled[m.name] && owned ? ' on' : '') +
+                       (owned ? '' : ' locked');
 
         // The on/off toggle is its own click target, so choosing a preset can
         // never accidentally mute the module you are auditioning.
@@ -105,20 +107,25 @@ export function mountTrax (root, inst, opts) {
         head.className = 'm-head';
         const led = document.createElement ('div'); led.className = 'm-led';
         const nm  = document.createElement ('div'); nm.className = 'm-name'; nm.textContent = m.name;
-        const ds  = document.createElement ('div'); ds.className = 'm-desc'; ds.textContent = m.desc;
+        // A locked slot says what it costs to unlock, not just that it is dead.
+        const ds  = document.createElement ('div'); ds.className = 'm-desc';
+        ds.textContent = owned ? m.desc : 'NOT INSTALLED';
         head.append (led, nm, ds);
         head.addEventListener ('click', () => {
+            if (!inst.isInstalled (m.name)) { toast (m.name + ' IS NOT INSTALLED'); return; }
             const on = !inst.enabled[m.name];
             inst.setModuleEnabled (m.name, on);
             el.classList.toggle ('on', on);
-            refreshGrid (true);
+            refreshReadouts ();
         });
 
-        // PRESET = which part. VARIATION = which roll of that part.
-        const preset = stepper ('m-preset', () => inst.presetName (m.name),
-                                d => { inst.cyclePreset (m.name, d); afterPartChange (); });
-        const varn = stepper ('m-var', () => 'VAR ' + (inst.variationIndex (m.name) + 1),
-                              d => { inst.cycleVariation (m.name, d); afterPartChange (); });
+        // PRESET = which part. VARIATION = which roll of that part. Both are
+        // dead on a module you do not own — they would silently change the
+        // track identity while changing nothing you can hear.
+        const preset = stepper ('m-preset', () => owned ? inst.presetName (m.name) : 'LOCKED',
+                                d => { if (!owned) return; inst.cyclePreset (m.name, d); afterPartChange (); });
+        const varn = stepper ('m-var', () => owned ? 'VAR ' + (inst.variationIndex (m.name) + 1) : '--',
+                              d => { if (!owned) return; inst.cycleVariation (m.name, d); afterPartChange (); });
 
         el.append (head, preset.el, varn.el);
         rack.appendChild (el);
