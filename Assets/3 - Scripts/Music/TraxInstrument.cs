@@ -40,17 +40,6 @@ public class TraxInstrument : MonoBehaviour
 
     TraxAudioEngine _engine;
 
-    /// WHICH PLUGINS THE COMPUTER OWNS — world state, not track state. Bought
-    /// from Tev, shared by both players in co-op, and only ever grows. A module
-    /// you do not own renders locked in the rack and cannot be switched on.
-    ///
-    /// ⚠️ THIS GATES EDITING ONLY, NEVER PLAYBACK. A track plays exactly as it
-    /// was written, whoever is listening — otherwise the same cassette would
-    /// sound different on two machines and the whole determinism contract is
-    /// dead. The scheduler reads the TRACK, never this.
-    readonly System.Collections.Generic.Dictionary<string, bool> _installed =
-        new System.Collections.Generic.Dictionary<string, bool>();
-
     float _masterVolume = 0.5f;
 
     public bool IsPlaying { get { return _engine != null && _engine.IsPlaying; } }
@@ -70,15 +59,25 @@ public class TraxInstrument : MonoBehaviour
     /// Raised when a queued pattern actually went live on a bar line.
     public event Action PatternSwapped;
 
+    /// <summary>
+    /// A blank track for a NEW PROJECT: the default, with anything you do not
+    /// own switched off. <see cref="TraxTrack.Default"/> itself deliberately
+    /// stays all-on and ownership-blind — it is the base case of the golden
+    /// vectors, so masking it there would rewrite every one of them.
+    /// </summary>
+    public static TraxTrack NewTrack()
+    {
+        TraxTrack t = TraxTrack.Default();
+        for (int m = 0; m < Modules.Length; m++)
+            if (!TraxLibrary.IsInstalled(Modules[m].name)) t.active[m] = false;
+        return t;
+    }
+
     void Awake()
     {
-        Track = TraxTrack.Default();
+        Track = NewTrack();
         Params = TraxParams.Compute(Track.dials, Track.key);
         Phrase = TraxPhrase.Generate(Track, Params);
-
-        // Everything installed until Tev's shop exists to sell it. Phase 3
-        // narrows this to THUMPER + GLOWORM at world start.
-        for (int i = 0; i < Modules.Length; i++) _installed[Modules[i].name] = true;
 
         var go = new GameObject("TraxAudio");
         go.transform.SetParent(transform, false);
@@ -164,28 +163,27 @@ public class TraxInstrument : MonoBehaviour
     /// cassette and comes back when a project is loaded.
     public bool IsModuleEnabled(string name) { return Track.ActiveOf(name); }
 
-    public bool IsInstalled(string name)
-    {
-        bool v;
-        return _installed.TryGetValue(name, out v) && v;
-    }
-
-    /// Installing never touches the track, so it cannot change what an already
-    /// printed cassette sounds like.
-    public void SetInstalled(string name, bool on)
-    {
-        if (_installed.ContainsKey(name)) _installed[name] = on;
-    }
+    /// Ownership is WORLD state and lives on <see cref="TraxLibrary"/> — the
+    /// shelf and the rack belong to the computer, not to this component, so
+    /// they survive the terminal being rebuilt and are shared in co-op.
+    public bool IsInstalled(string name) { return TraxLibrary.IsInstalled(name); }
 
     /// Muting is a track edit, so it goes through the choke point like every
     /// other one. Switching ON a module you do not own is refused rather than
     /// silently allowed — the lock is the carrot for Tev's shop.
     public bool SetModuleEnabled(string name, bool on)
     {
-        if (!_installed.ContainsKey(name)) return false;
         if (on && !IsInstalled(name)) return false;
         SetTrack(Track.WithActive(name, on));
         return true;
+    }
+
+    /// Load a saved project onto the deck. Goes through the choke point, so the
+    /// audio engine picks up the whole track — dials, key, parts AND which
+    /// modules were playing — in one move.
+    public void LoadTrack(TraxTrack track)
+    {
+        if (track != null) SetTrack(track.Clone());
     }
 
     public void SetMasterVolume(float v)

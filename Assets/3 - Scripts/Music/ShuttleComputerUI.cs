@@ -25,7 +25,10 @@ using UnityEngine.UI;
 /// Entirely client-local. No NetworkBehaviour, no RPCs, 2D audio. A guest using
 /// the computer is invisible to the host and cannot affect sync.
 /// </summary>
-public class ShuttleComputerUI : MonoBehaviour
+// Partial: the PROJECTS screen (the menu TRAX opens on, the shelf behind LOAD,
+// and the save dialog) lives in ShuttleComputerProjectsUI.cs so neither half
+// becomes unreadable.
+public partial class ShuttleComputerUI : MonoBehaviour
 {
     // ── palette (mirrors the CSS tokens in ui/styles.css) ────────────────
     static readonly Color Bg       = Hex("04070aff");
@@ -37,6 +40,7 @@ public class ShuttleComputerUI : MonoBehaviour
     static readonly Color InkGhost = Hex("1d4a3fff");
     static readonly Color Accent   = Hex("ff4fd8ff");
     static readonly Color Locked   = Hex("2a3a40ff");
+    static readonly Color Warn     = Hex("ffc94fff");   // unsaved changes, DELETE, a required name
 
     static Color Hex(string s)
     {
@@ -68,6 +72,7 @@ public class ShuttleComputerUI : MonoBehaviour
     const float StepsY = RackY - RackH - 12f;    // -708
     const float StepsH = 18f;
     const float TransportH = 60f;
+    const float ProjBarH = 26f;      // the project bar above the genre plate
 
     // Resulting column, measured from the top of TraxView (height 878):
     //   status bar   (screen-space)     0 ..  -34
@@ -114,6 +119,7 @@ public class ShuttleComputerUI : MonoBehaviour
     CanvasGroup _toastGroup;
     GameObject _printPanel;
     Stepper _printQty;
+    Image _saveBg;
 
     int _quantity = 1;
     int _lastStepShown = -1;
@@ -196,12 +202,31 @@ public class ShuttleComputerUI : MonoBehaviour
             return;
         }
 
+        // The save dialog is modal AND has a text field: ESC dismisses it, and
+        // every other key belongs to the field. F must not close the computer
+        // and SPACE must reach the name as a space, not as PLAY.
+        if (SaveOpen)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape)) CloseSaveDialog();
+            return;
+        }
+
         // The print dialog is modal: ESC dismisses it rather than the whole
         // computer, and the transport shortcut is suppressed while it is up.
         if (PrintOpen)
         {
             if (Input.GetKeyDown(KeyCode.Escape)) ClosePrint();
             return;
+        }
+
+        // ESC steps back one screen at a time — shelf to menu, instrument to
+        // menu — and only leaves the computer from the menu or the desktop.
+        // F always leaves outright, because F is what opened it.
+        if (Time.frameCount > _openedFrame && Input.GetKeyDown(KeyCode.Escape))
+        {
+            if (ProjectsOpen && _shelfPane.activeSelf) { ShowMenuPane(); return; }
+            if (_traxView != null && _traxView.activeSelf) { _inst.Stop(); ShowProjects(); return; }
+            if (ProjectsOpen) { ShowHomeFromProjects(); return; }
         }
 
         // Not on the frame it opened: the terminal opens on F-down, and Update
@@ -221,6 +246,16 @@ public class ShuttleComputerUI : MonoBehaviour
         {
             if (Input.GetKeyDown(KeyCode.Space)) TogglePlay();
             RefreshPlayhead();
+        }
+
+        // The shelf is world state a co-op partner can change while you are
+        // looking at it, so it rebuilds off the library's version counter
+        // rather than assuming this screen is the only thing that writes.
+        if (ProjectsOpen && _shelfPane.activeSelf && _shelfVersionShown != TraxLibrary.Version)
+        {
+            RebuildShelf();
+            RefreshMenuPane();
+            _shelfVersionShown = TraxLibrary.Version;
         }
 
         if (_toastGroup != null && _toastGroup.alpha > 0f && Time.unscaledTime > _toastUntil)
@@ -279,9 +314,11 @@ public class ShuttleComputerUI : MonoBehaviour
         BuildStatusBar(srt);
         BuildHome(srt);
         BuildTrax(srt);
+        BuildProjects(srt);           // TRAX opens here, not on the dials
         BuildCrtOverlay(srt);         // over the content, under the dialogs
         BuildToast(srt);
         BuildPrintDialog(srt);
+        BuildSaveDialog(srt);
 
         _canvas.gameObject.SetActive(false);
     }
@@ -489,7 +526,7 @@ public class ShuttleComputerUI : MonoBehaviour
                 cb.highlightedColor = new Color(1.6f, 1.6f, 1.6f, 1f);
                 cb.pressedColor = new Color(2f, 2f, 2f, 1f);
                 btn.colors = cb;
-                btn.onClick.AddListener(ShowTrax);
+                btn.onClick.AddListener(ShowProjects);
             }
         }
     }
@@ -504,10 +541,18 @@ public class ShuttleComputerUI : MonoBehaviour
         Stretch(view, SidePad, SidePad, ContentTop, ContentBottom);
         _traxView = view.gameObject;
 
-        BuildGenrePlate(view);
-        BuildDials(view);
-        BuildRack(view);
-        BuildTransport(view);
+        BuildProjectBar(view);
+
+        // Everything below keeps its offsets from the layout budget by hanging
+        // off an inner rect pushed down past the bar, rather than each row
+        // being re-tuned by hand.
+        var inner = MakeRect(view, "Content");
+        Stretch(inner, 0, 0, ProjBarH, 0);
+
+        BuildGenrePlate(inner);
+        BuildDials(inner);
+        BuildRack(inner);
+        BuildTransport(inner);
     }
 
     void BuildGenrePlate(RectTransform parent)
@@ -744,8 +789,9 @@ public class ShuttleComputerUI : MonoBehaviour
 
         // Right-hand cluster, laid out from the right edge inward.
         float rx = 0;
-        MakeButtonRight(row, "Exit", "EXIT", 110, ref rx, PanelHi, InkDim, Close);
+        MakeButtonRight(row, "Exit", "PROJECTS", 150, ref rx, PanelHi, InkDim, ShowProjects);
         BuildPrintCluster(row, ref rx);
+        _saveBg = MakeButtonRight(row, "Save", "SAVE PROJECT", 190, ref rx, PanelHi, Ink, OpenSaveDialog);
         BuildVolume(row, ref rx);
         BuildKey(row, ref rx);
     }
@@ -963,6 +1009,7 @@ public class ShuttleComputerUI : MonoBehaviour
     {
         _homeView.SetActive(true);
         _traxView.SetActive(false);
+        if (_projectsView != null) _projectsView.SetActive(false);
         _statusText.text = "HOME";
         if (_inst != null) _inst.Stop();
         SyncPlayButton();
@@ -971,8 +1018,11 @@ public class ShuttleComputerUI : MonoBehaviour
     void ShowTrax()
     {
         _homeView.SetActive(false);
+        if (_projectsView != null) _projectsView.SetActive(false);
         _traxView.SetActive(true);
-        _statusText.text = "TRAX  •  SYNTH CORE";
+        // The breadcrumb names the project, not the app — saving renames it.
+        _statusText.text = "TRAX  -  " + (_project != null
+            ? _project.name.ToUpperInvariant() : "UNTITLED");
         RefreshReadouts();
         RefreshRack();
         _lastBarShown = -1;
@@ -1050,6 +1100,14 @@ public class ShuttleComputerUI : MonoBehaviour
                           "MARGIN " + (g.d2 - g.d1).ToString("0.00") +
                           (g.blended ? "  BLEND" : "  LOCK");
         UpdateReadoutLine();
+        RefreshProjectBar();
+        if (_saveBg != null)
+        {
+            // The SAVE button carries the warning colour while there is
+            // something unsaved, so the state is visible without reading the bar.
+            var border = _saveBg.transform.Find("Border");
+            if (border != null) border.GetComponent<Image>().color = ProjectDirty ? Warn : InkGhost;
+        }
     }
 
     void UpdateReadoutLine()

@@ -9,6 +9,7 @@
     "test:engine": "node test/run.js",
     "golden": "node test/make-golden.js",
     "verify:port": "python test/verify-port.py",
+    "verify:library": "python test/verify-library.py",
     "verify:unity": "python test/compile-unity.py",
     "serve": "python -m http.server 8080"
   }

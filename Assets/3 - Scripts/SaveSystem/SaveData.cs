@@ -75,6 +75,7 @@ public class SaveData
     /// and their debts are independent. Parallel lists because JsonUtility can't
     /// do dictionaries.
     public TevFrontingSave tevFronting = new TevFrontingSave();
+    public TraxLibrarySave traxLibrary = new TraxLibrarySave();
     // Galactic Standard Time (2026-08-08). Total in-game minutes since day 1
     // 00:00, ABSOLUTE — unlike the buyer deadlines above, which persist a
     // remaining duration. JsonUtility gives pre-feature saves 0, which
@@ -446,6 +447,34 @@ public class LoosePartSave
 
 [Serializable]
 public class CassetteSave { public bool insertedInPlayer = true; }
+
+// The TRAX project shelf on the shuttle computer — WORLD state, not per
+// character, so both players in co-op see the same projects. Parallel lists
+// indexed by module (JsonUtility can't do dictionaries), same shape as the
+// other multi-field rows in this file.
+//
+// This is a NAME plus a whole TRACK, copied — not a reference to one. It has to
+// survive its author deleting some other project, and a cassette printed from
+// it has to keep sounding the same afterwards.
+[Serializable]
+public class TraxProjectSave
+{
+    public string id;
+    public string name;
+    public long savedAt;
+    public int key;
+    public List<float> dials = new List<float>();      // 6, dial order
+    public List<int> preset = new List<int>();         // 6, module order
+    public List<int> variation = new List<int>();      // 6, module order
+    public List<bool> active = new List<bool>();       // 6, module order — which were PLAYING
+}
+
+[Serializable]
+public class TraxLibrarySave
+{
+    public List<TraxProjectSave> projects = new List<TraxProjectSave>();
+    public List<string> installedPlugins = new List<string>();
+}
 
 [Serializable]
 public class EquipmentSave

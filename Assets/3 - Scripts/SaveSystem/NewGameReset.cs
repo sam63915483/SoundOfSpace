@@ -119,6 +119,9 @@ public static class NewGameReset
         // Apply, so a fresh run would inherit the old run's regulars.
         BuyerLedger.ResetAll();
         TevFronting.ResetAll();   // a debt must not survive into a New Game
+        // Static shelf + installed plugins: New Game runs no Apply, so without
+        // this the last world's projects and bought modules leak into the next.
+        TraxLibrary.Clear();
         TevTextDirector.ResetAll();
 
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();

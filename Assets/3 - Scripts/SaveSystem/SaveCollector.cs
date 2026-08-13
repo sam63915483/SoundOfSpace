@@ -59,6 +59,7 @@ public static class SaveCollector
         CaptureSpaceDust(data);
         BuyerLedger.FillSave(data.buyerLedger);
         TevFronting.FillSave(data.tevFronting);
+        data.traxLibrary = TraxLibrary.Capture();
 
         return data;
     }
@@ -992,6 +993,10 @@ public static class SaveCollector
         // Singleton world state first — the object restores below read it.
         BuyerLedger.ApplySave(data.buyerLedger);
         TevFronting.ApplySave(data.tevFronting);
+        // The TRAX shelf + installed plugins are world state on the shuttle
+        // computer, shared by both players. Pure static state, restored with
+        // the other singletons before any terminal reads it.
+        TraxLibrary.Apply(data.traxLibrary);
         ApplyPlanetO2(data.planetO2);
 
         // Legacy saves carry domes inside `buildings`; move them across BEFORE
@@ -1073,6 +1078,10 @@ public static class SaveCollector
         // unscaledTime inside ApplySave.
         BuyerLedger.ApplySave(data.buyerLedger);
         TevFronting.ApplySave(data.tevFronting);
+        // The TRAX shelf + installed plugins are world state on the shuttle
+        // computer, shared by both players. Pure static state, restored with
+        // the other singletons before any terminal reads it.
+        TraxLibrary.Apply(data.traxLibrary);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
         ApplyOxygen(data.oxygen);
