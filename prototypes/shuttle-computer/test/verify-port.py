@@ -26,6 +26,8 @@ ENGINE_FILES = [
     "TraxPrng.cs",
     "TraxScales.cs",
     "TraxParams.cs",
+    "TraxPresets.cs",
+    "TraxTrack.cs",
     "TraxPatterns.cs",
     "TraxClassifier.cs",
 ]

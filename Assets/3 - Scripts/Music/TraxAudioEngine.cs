@@ -117,8 +117,12 @@ public class TraxAudioEngine : MonoBehaviour
 
     float[] _noise;
     float[] _delayA, _delayB;
-    int _writeA, _writeB, _lenA, _lenB;
-    double _dampA, _dampB, _dampCoef;
+    int _writeA, _writeB, _maxDelay;
+    double _dampA, _dampB;
+    // Written by the main thread, read once per buffer by the audio thread.
+    volatile int _tapA = 9120, _tapB = 14880;
+    volatile float _dampCoefF = 0.3f;
+    volatile float _caveFbScale = 0.8f;
 
     int _sr = 48000;
     long _sample;
@@ -145,12 +149,12 @@ public class TraxAudioEngine : MonoBehaviour
         var rnd = new TraxPrng.Rng(0x5eed0135u);
         for (int i = 0; i < noiseLen; i++) _noise[i] = (float)(rnd.Next() * 2.0 - 1.0);
 
-        _lenA = Mathf.CeilToInt(0.19f * _sr);
-        _lenB = Mathf.CeilToInt(0.31f * _sr);
-        _delayA = new float[_lenA];
-        _delayB = new float[_lenB];
-        // ~2.6kHz one-pole damping in the feedback path.
-        _dampCoef = 1.0 - Math.Exp(-2.0 * Math.PI * 2600.0 / _sr);
+        // Sized for the longest CAVE preset (CANYON/VOID) with headroom; the
+        // preset then picks a read distance inside that buffer.
+        _maxDelay = Mathf.CeilToInt(1.2f * _sr);
+        _delayA = new float[_maxDelay];
+        _delayB = new float[_maxDelay];
+        SetCavePreset(TraxPresets.Cave[1], 0);          // HALL, matching the default track
 
         _src = GetComponent<AudioSource>();
         _src.playOnAwake = false;
@@ -227,6 +231,23 @@ public class TraxAudioEngine : MonoBehaviour
 
     public void SetMasterVolume(float v) { _masterVolume = Mathf.Clamp01(v); }
 
+    /// <summary>
+    /// CAVE's preset picks a space: how far back the taps read and how dark
+    /// the feedback path is. VARIATION skews the tap ratio a few percent so
+    /// the control means something on CAVE too rather than sitting inert.
+    /// </summary>
+    public void SetCavePreset(TraxPresets.SpacePreset preset, int variation)
+    {
+        double skew = 1.0 + (variation - 3.5) * 0.03;
+        int a = (int)(preset.timeA * skew * _sr);
+        int b = (int)(preset.timeB / skew * _sr);
+        int max = _maxDelay > 0 ? _maxDelay - 1 : 1;
+        _tapA = Mathf.Clamp(a, 1, max);
+        _tapB = Mathf.Clamp(b, 1, max);
+        _dampCoefF = (float)(1.0 - Math.Exp(-2.0 * Math.PI * preset.damp / _sr));
+        _caveFbScale = (float)preset.fb;
+    }
+
     public void SetModuleEnabled(string module, bool on)
     {
         switch (module)
@@ -283,7 +304,11 @@ public class TraxAudioEngine : MonoBehaviour
 
         double sendTone = p.caveSend;
         double sendDrum = p.caveSend * 0.3;
-        double fb = Math.Min(0.85, p.caveFeedback);
+        // VOID (0.97) times a full VOID dial would run away; the cap is what
+        // keeps the round trip below unity so the tail always decays.
+        double fb = Math.Min(0.9, p.caveFeedback * _caveFbScale * 1.25);
+        int tapA = _tapA, tapB = _tapB;
+        double damp = _dampCoefF;
         double wetMix = _onCave ? p.caveMix : 0.0;
         double outGain = _masterVolume * _busLevel;
 
@@ -327,15 +352,19 @@ public class TraxAudioEngine : MonoBehaviour
             drum = Shape(drum, driveDrum, normDrum, levelsDrum);
 
             // CAVE: two cross-fed delay lines with damping, read before write.
-            double outA = _delayA[_writeA];
-            double outB = _delayB[_writeB];
-            _dampA += _dampCoef * (outA - _dampA);
-            _dampB += _dampCoef * (outB - _dampB);
+            // Read `tap` samples behind the write head. Changing the tap
+            // moves the echo without resizing or clearing the line.
+            int readA = _writeA - tapA; if (readA < 0) readA += _maxDelay;
+            int readB = _writeB - tapB; if (readB < 0) readB += _maxDelay;
+            double outA = _delayA[readA];
+            double outB = _delayB[readB];
+            _dampA += damp * (outA - _dampA);
+            _dampB += damp * (outB - _dampB);
             double send = tone * sendTone + drum * sendDrum;
             _delayA[_writeA] = (float)(send + _dampB * fb);
             _delayB[_writeB] = (float)(send + _dampA * fb);
-            if (++_writeA >= _lenA) _writeA = 0;
-            if (++_writeB >= _lenB) _writeB = 0;
+            if (++_writeA >= _maxDelay) _writeA = 0;
+            if (++_writeB >= _maxDelay) _writeB = 0;
 
             double dry = tone + drum;
             // Ping-pong the two taps for a little width.
@@ -411,7 +440,7 @@ public class TraxAudioEngine : MonoBehaviour
                     int degree = voice == TraxVoice.Moss
                         ? TraxPhrase.ChordToneAt(st.degree, n)
                         : st.degree;
-                    e.freq = TraxScales.DegreeToFreq(degree, p.scaleIdx, TraxScales.OctaveFor(voice));
+                    e.freq = TraxScales.VoiceFreq(degree, p.scaleIdx, voice, p.key);
                     double mult = voice == TraxVoice.Bass ? 0.95
                                 : (voice == TraxVoice.Moss ? 0.98 : 0.9);
                     e.durSec = Math.Max(0.05, st.dur * stepDur * mult);

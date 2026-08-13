@@ -80,9 +80,49 @@ public static class TraxScales
         return 440.0 * Math.Pow(2.0, (midi - 69) / 12.0);
     }
 
-    public static double DegreeToFreq(int degree, int scaleIdx, int octaveOffset)
+    /// `key` transposes by whole semitones. Applied HERE, at note time, rather
+    /// than folded into scale degrees — so turning the key knob can never
+    /// regenerate a pattern, it just moves the same one.
+    public static double DegreeToFreq(int degree, int scaleIdx, int octaveOffset, int key)
     {
-        return MidiToFreq(DegreeToMidi(degree, scaleIdx, octaveOffset));
+        return MidiToFreq(DegreeToMidi(degree, scaleIdx, octaveOffset) + key);
+    }
+
+    /// <summary>
+    /// Register each voice is allowed to occupy, in MIDI notes.
+    ///
+    /// Without this the bass drops to ~22Hz on the CLUSTER scale (its lowest
+    /// degree lands two octaves down in a 6-note table) — inaudible rumble that
+    /// eats headroom and does nothing but make everything else quieter. Folding
+    /// by whole OCTAVES keeps the note in the scale, so this can never introduce
+    /// a wrong pitch, only a wrong-by-an-octave one, and only where the
+    /// alternative was silence.
+    /// </summary>
+    public static void RangeFor(TraxVoice v, out int lo, out int hi)
+    {
+        switch (v)
+        {
+            case TraxVoice.Bass:    lo = 28; hi = 55; return;
+            case TraxVoice.Lead:    lo = 52; hi = 84; return;
+            case TraxVoice.Moss:    lo = 45; hi = 74; return;
+            case TraxVoice.Spindle: lo = 55; hi = 88; return;
+            default:                lo = 0;  hi = 127; return;
+        }
+    }
+
+    public static int VoiceMidi(int degree, int scaleIdx, TraxVoice voice, int key)
+    {
+        int m = DegreeToMidi(degree, scaleIdx, OctaveFor(voice)) + key;
+        int lo, hi;
+        RangeFor(voice, out lo, out hi);
+        while (m < lo) m += 12;
+        while (m > hi) m -= 12;
+        return m;
+    }
+
+    public static double VoiceFreq(int degree, int scaleIdx, TraxVoice voice, int key)
+    {
+        return MidiToFreq(VoiceMidi(degree, scaleIdx, voice, key));
     }
 
     /// True iff a MIDI note belongs to the scale, in any octave.

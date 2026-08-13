@@ -1,25 +1,27 @@
 // Dumps golden vectors from the JS engine for the C# port to verify against.
 //   node test/make-golden.js
-// Writes Assets/StreamingAssets/Trax/trax-golden.json.
+// Writes Assets/StreamingAssets/Trax/trax-golden.txt.
 //
 // WHY BIT PATTERNS, NOT DECIMALS: pattern generation uses only +, -, *, / and
 // comparisons, all of which IEEE-754 requires to be correctly rounded — so JS
-// and C# must agree to the last bit, and anything less than a bit-exact check
-// would hide a real drift. (Math.pow is NOT guaranteed identical across
-// implementations, which is why the pow-derived audio params below are compared
-// with a tolerance instead. None of them feed pattern generation.)
+// and C# must agree to the last bit, and anything less would hide a real drift.
+// (Math.pow is NOT guaranteed identical across implementations, which is why
+// the pow-derived audio params are compared with a tolerance. None of them feed
+// pattern generation.)
 //
-// If this file and the C# engine ever disagree, a cassette printed in the
-// browser prototype would sound different in-game. That is the whole point.
+// A case is a whole TRACK — dials, key, six presets and six variations —
+// because that is what a cassette will store. Covering only the dials would
+// leave the entire part-choosing layer unverified.
 
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { seedFromDials } from '../engine/prng.js';
 import { computeParams } from '../engine/params.js';
-import { generatePatterns, VOICES, BARS, STEPS } from '../engine/patterns.js';
+import { generatePatterns, VOICES, MELODIC, BARS, STEPS } from '../engine/patterns.js';
 import { classify } from '../engine/classifier.js';
+import * as TRACK from '../engine/track.js';
+import * as PRESETS from '../engine/presets.js';
 
 const HERE = dirname (fileURLToPath (import.meta.url));
 const OUT_DIR = join (HERE, '..', '..', '..', 'Assets', 'StreamingAssets', 'Trax');
@@ -32,7 +34,6 @@ function bits (x) {
     return s;
 }
 
-// Same FNV-1a the engine uses, over the ASCII of a digest string.
 function hashString (s) {
     let h = 0x811c9dc5 >>> 0;
     for (let i = 0; i < s.length; i++) {
@@ -42,7 +43,8 @@ function hashString (s) {
     return h >>> 0;
 }
 
-function voiceDigest (bars) {
+function voiceDigest (bars, voice) {
+    const melodic = MELODIC.indexOf (voice) !== -1;
     const parts = [];
     for (let b = 0; b < BARS; b++)
         for (let s = 0; s < STEPS; s++) {
@@ -51,109 +53,102 @@ function voiceDigest (bars) {
             parts.push ([
                 bits (st.vel),
                 bits (st.nudge),
-                st.degree === undefined ? 'x' : String (st.degree),
-                st.dur === undefined ? 'x' : String (st.dur),
+                melodic ? String (st.degree) : 'x',
+                melodic ? String (st.dur) : 'x',
                 st.open ? '1' : '0'
             ].join (','));
         }
-    // ';' not '|' — '|' is the field separator on every line, and a digest that
-    // contained it would silently shift every column to its right.
+    // ';' not '|' — '|' is the field separator on every line.
     return parts.join (';');
 }
 
-// A spread that walks each dial across its range and hits the corners, plus a
-// few awkward interior points.
+// --- cases ---------------------------------------------------------------
+// Walk each dial, then every module preset, a spread of variations, the keys,
+// and a few awkward combinations. Every layer that can change the sound has to
+// appear somewhere here or the port is only half-checked.
 const CASES = [];
-const base = { pulse: 5, crunch: 3, goo: 5, void: 4, jitter: 4, warp: 5 };
-for (const key of ['pulse', 'crunch', 'goo', 'void', 'jitter', 'warp'])
-    for (const v of [0, 3.5, 7, 10])
-        CASES.push (Object.assign ({}, base, { [key]: v }));
-CASES.push ({ pulse: 0, crunch: 0, goo: 0, void: 0, jitter: 0, warp: 0 });
-CASES.push ({ pulse: 10, crunch: 10, goo: 10, void: 10, jitter: 10, warp: 10 });
-CASES.push ({ pulse: 10, crunch: 0, goo: 10, void: 0, jitter: 10, warp: 0 });
-CASES.push ({ pulse: 0, crunch: 10, goo: 0, void: 10, jitter: 0, warp: 10 });
-CASES.push ({ pulse: 6.5, crunch: 2.5, goo: 8.5, void: 1.5, jitter: 9.5, warp: 3.5 });
-CASES.push (Object.assign ({}, base));
+const push = (t) => CASES.push (TRACK.cloneTrack (t));
 
-// Flat, line-based, pipe-separated — NOT JSON. The C# side has to parse this
-// without a JSON library (JsonUtility cannot express arbitrary keys, and a
-// hand-rolled parser is code that can't be compile-tested here). Splitting on
-// '|' cannot go subtly wrong.
+for (const key of ['pulse', 'crunch', 'goo', 'void', 'jitter', 'warp'])
+    for (const v of [0, 3.5, 7, 10]) {
+        const t = TRACK.defaultTrack ();
+        t.dials[key] = v;
+        push (t);
+    }
+
+for (const m of PRESETS.MODULE_NAMES)
+    for (let pi = 0; pi < PRESETS.PRESET_COUNT; pi++)
+        push (TRACK.setPreset (TRACK.defaultTrack (), m, pi));
+
+for (const m of PRESETS.MODULE_NAMES)
+    for (const vi of [1, 4, 7])
+        push (TRACK.setVariation (TRACK.defaultTrack (), m, vi));
+
+for (let k = 0; k < 12; k += 3) push (TRACK.setKey (TRACK.defaultTrack (), k));
+
+{
+    let t = TRACK.defaultTrack ();
+    t.dials = { pulse: 10, crunch: 10, goo: 10, void: 10, jitter: 10, warp: 10 };
+    for (const m of PRESETS.MODULE_NAMES) t = TRACK.setPreset (t, m, 4);
+    for (const m of PRESETS.MODULE_NAMES) t = TRACK.setVariation (t, m, 7);
+    push (TRACK.setKey (t, 11));
+}
+{
+    const t = TRACK.defaultTrack ();
+    t.dials = { pulse: 0, crunch: 0, goo: 0, void: 0, jitter: 0, warp: 0 };
+    push (t);
+}
+{
+    let t = TRACK.defaultTrack ();
+    t.dials = { pulse: 6.5, crunch: 2.5, goo: 8.5, void: 1.5, jitter: 9.5, warp: 3.5 };
+    t = TRACK.setPreset (t, 'THUMPER', 3);
+    t = TRACK.setPreset (t, 'MOSS', 2);
+    t = TRACK.setVariation (t, 'SIREN', 5);
+    push (TRACK.setKey (t, 7));
+}
+push (TRACK.defaultTrack ());
+
 const lines = [
     '# TRAX golden vectors — generated by prototypes/shuttle-computer/test/make-golden.js',
     '# Verifies the C# engine port matches the browser prototype EXACTLY.',
     '# Regenerate whenever engine/ changes. A diff here means every cassette',
     '# printed before the change would sound different after it.',
     '#',
-    '# CASE  |i|pulse|crunch|goo|void|jitter|warp|seed|scaleIdx|genre',
-    '# EXACT |i|density|bpm|syncopation|nudgeSeconds|hatScatter|caveSend|caveFeedback|detuneCents   (IEEE754 bits, big-endian hex — must match bit for bit)',
-    '# APPROX|i|filterBase|filterQ|lfoRate|lfoDepthOct                                             (Math.pow-derived — compare with tolerance)',
+    '# TRACK |i|pulse|crunch|goo|void|jitter|warp|key',
+    '# PRESET|i|<one preset index per module, in META modules order>',
+    '# VAR   |i|<one variation index per module, in META modules order>',
+    '# ID    |i|trackId|scaleIdx|genre',
+    '# EXACT |i|density|bpm|syncopation|nudgeSeconds|hatScatter|caveSend|caveFeedback|detuneCents  (IEEE754 bits, big-endian hex)',
+    '# APPROX|i|filterBase|filterQ|lfoRate|lfoDepthOct                                            (Math.pow-derived, tolerance)',
     '# HASH  |i|<one FNV-1a of the voice digest per voice, in META voices order>',
-    '# DIGEST|i|voice|digest                                                                       (case 0 only, for localising a mismatch)',
+    '# DIGEST|i|voice|digest                                                                      (case 0 only, to localise a mismatch)',
     '#',
-    'META|bars=' + BARS + '|steps=' + STEPS + '|voices=' + VOICES.join (',') + '|cases=' + CASES.length
+    'META|bars=' + BARS + '|steps=' + STEPS + '|voices=' + VOICES.join (',') +
+        '|modules=' + PRESETS.MODULE_NAMES.join (',') + '|cases=' + CASES.length
 ];
 
-const cases = CASES.map ((dials, i) => {
-    const seed = seedFromDials (dials);
-    const p = computeParams (dials);
-    const pat = generatePatterns (seed, p);
-    const g = classify (dials);
+CASES.forEach ((t, i) => {
+    const p = computeParams (t.dials, t.key);
+    const pat = generatePatterns (t, p);
+    const g = classify (t.dials);
+    const d = t.dials;
 
-    const voices = {};
-    for (const v of VOICES) voices[v] = hashString (voiceDigest (pat[v]));
-
-    return {
-        index: i,
-        dials,
-        seed,
-        scaleIdx: p.scaleIdx,
-        genre: g.label,
-        // Pure arithmetic — must match bit for bit.
-        exact: {
-            density: bits (p.density),
-            bpm: bits (p.bpm),
-            syncopation: bits (p.syncopation),
-            nudgeSeconds: bits (p.nudgeSeconds),
-            hatScatter: bits (p.hatScatter),
-            caveSend: bits (p.caveSend),
-            caveFeedback: bits (p.caveFeedback),
-            detuneCents: bits (p.detuneCents)
-        },
-        // Math.pow-derived — compare with a relative tolerance.
-        approx: {
-            filterBase: p.filterBase,
-            filterQ: p.filterQ,
-            lfoRate: p.lfoRate,
-            lfoDepthOct: p.lfoDepthOct
-        },
-        voiceHashes: voices,
-        // One case carries its full digest so a mismatch can be localised
-        // without regenerating anything.
-        digests: i === 0 ? Object.fromEntries (VOICES.map (v => [v, voiceDigest (pat[v])])) : undefined
-    };
+    lines.push ('TRACK|' + i + '|' + d.pulse + '|' + d.crunch + '|' + d.goo + '|' +
+                d.void + '|' + d.jitter + '|' + d.warp + '|' + t.key);
+    lines.push ('PRESET|' + i + '|' + PRESETS.MODULE_NAMES.map (m => t.preset[m]).join ('|'));
+    lines.push ('VAR|' + i + '|' + PRESETS.MODULE_NAMES.map (m => t.variation[m]).join ('|'));
+    lines.push ('ID|' + i + '|' + TRACK.trackId (t) + '|' + p.scaleIdx + '|' + g.label);
+    lines.push ('EXACT|' + i + '|' + [p.density, p.bpm, p.syncopation, p.nudgeSeconds,
+                                      p.hatScatter, p.caveSend, p.caveFeedback, p.detuneCents]
+                                     .map (bits).join ('|'));
+    lines.push ('APPROX|' + i + '|' + [p.filterBase, p.filterQ, p.lfoRate, p.lfoDepthOct].join ('|'));
+    lines.push ('HASH|' + i + '|' + VOICES.map (v => hashString (voiceDigest (pat[v], v))).join ('|'));
+    if (i === 0)
+        for (const v of VOICES) lines.push ('DIGEST|' + i + '|' + v + '|' + voiceDigest (pat[v], v));
 });
-
-for (const c of cases) {
-    const d = c.dials;
-    lines.push ('CASE|' + c.index + '|' + d.pulse + '|' + d.crunch + '|' + d.goo + '|' +
-                d.void + '|' + d.jitter + '|' + d.warp + '|' + c.seed + '|' +
-                c.scaleIdx + '|' + c.genre);
-    const e = c.exact;
-    lines.push ('EXACT|' + c.index + '|' + e.density + '|' + e.bpm + '|' + e.syncopation + '|' +
-                e.nudgeSeconds + '|' + e.hatScatter + '|' + e.caveSend + '|' +
-                e.caveFeedback + '|' + e.detuneCents);
-    const a = c.approx;
-    lines.push ('APPROX|' + c.index + '|' + a.filterBase + '|' + a.filterQ + '|' +
-                a.lfoRate + '|' + a.lfoDepthOct);
-    lines.push ('HASH|' + c.index + '|' +
-                VOICES.map (v => c.voiceHashes[v]).join ('|'));
-    if (c.digests)
-        for (const v of VOICES) lines.push ('DIGEST|' + c.index + '|' + v + '|' + c.digests[v]);
-}
 
 mkdirSync (OUT_DIR, { recursive: true });
 const path = join (OUT_DIR, 'trax-golden.txt');
 writeFileSync (path, lines.join ('\n') + '\n');
 console.log ('wrote ' + path);
-console.log (cases.length + ' cases, ' + VOICES.length + ' voice hashes each, ' + lines.length + ' lines');
+console.log (CASES.length + ' cases, ' + VOICES.length + ' voice hashes each, ' + lines.length + ' lines');

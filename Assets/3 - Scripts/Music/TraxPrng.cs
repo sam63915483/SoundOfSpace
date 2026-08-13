@@ -123,10 +123,10 @@ public static class TraxPrng
         return outv;
     }
 
-    public static uint SeedFromDials(TraxDials d)
-    {
-        return Fnv1a32(QuantizeDials(d));
-    }
+    // NOTE: there is deliberately no SeedFromDials any more. Patterns seed from
+    // TraxTrack.VoiceSeed (preset + variation), NOT from the dials — that
+    // decoupling is what makes a dial shape a groove instead of re-rolling it.
+    // QuantizeDials survives because TraxTrack.TrackId still hashes the dials.
 
     // ── per-voice streams ────────────────────────────────────────────────
 

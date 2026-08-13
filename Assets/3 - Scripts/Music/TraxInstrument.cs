@@ -2,18 +2,16 @@ using System;
 using UnityEngine;
 
 /// <summary>
-/// Owns dial state, drives the engine, feeds the audio backend.
+/// Owns the track, drives the engine, feeds the audio backend.
 /// PORT OF <c>prototypes/shuttle-computer/audio/instrument.js</c>.
 ///
-/// ── This class is the choke point, on purpose ─────────────────────────────
-/// EVERY dial change goes through <see cref="SetDials"/>. Nothing else may
-/// write dial state — not the UI widgets, not the terminal, not a future
-/// preset loader. When full-length track recording is built (spec §9.5), it
-/// becomes "log what passes through SetDials, stamped with
-/// <see cref="TraxAudioEngine.CurrentStep"/>" and nothing else has to change.
-/// Stamp with the STEP INDEX, never seconds: pattern-affecting dials only take
-/// effect on bar boundaries, so a seconds-stamped event replayed at a different
-/// BPM lands in the wrong bar.
+/// ── This class is the choke point, on purpose ────────────────────────────
+/// EVERY change to the track goes through <see cref="SetTrack"/>. Nothing else
+/// may write track state — not the UI widgets, not the terminal, not a future
+/// preset loader. When full-length recording is built (spec §9.5) it becomes
+/// "log what passes through here, stamped with
+/// <see cref="TraxAudioEngine.CurrentStep"/>" and nothing else changes.
+/// Stamp with the STEP INDEX, never seconds.
 /// </summary>
 public class TraxInstrument : MonoBehaviour
 {
@@ -21,23 +19,22 @@ public class TraxInstrument : MonoBehaviour
     {
         public string name;
         public string desc;
-        public bool locked;
-        public ModuleDef(string n, string d, bool l) { name = n; desc = d; locked = l; }
+        public ModuleDef(string n, string d) { name = n; desc = d; }
     }
 
-    // Ordered the way you would read a mix: rhythm, low end, harmony, melody,
-    // motion, space.
+    // Ordered the way you'd read a mix: rhythm, low end, harmony, melody,
+    // motion, space. CAVE has no pattern — its preset picks a space.
     public static readonly ModuleDef[] Modules =
     {
-        new ModuleDef("THUMPER", "drums",  false),
-        new ModuleDef("GLOWORM", "bass",   false),
-        new ModuleDef("MOSS",    "chords", false),
-        new ModuleDef("SIREN",   "lead",   false),
-        new ModuleDef("SPINDLE", "arp",    false),
-        new ModuleDef("CAVE",    "space",  false)
+        new ModuleDef("THUMPER", "drums"),
+        new ModuleDef("GLOWORM", "bass"),
+        new ModuleDef("MOSS",    "chords"),
+        new ModuleDef("SIREN",   "lead"),
+        new ModuleDef("SPINDLE", "arp"),
+        new ModuleDef("CAVE",    "space")
     };
 
-    public TraxDials Dials { get; private set; }
+    public TraxTrack Track { get; private set; }
     public TraxParams Params { get; private set; }
     public TraxPhrase Phrase { get; private set; }
 
@@ -51,20 +48,26 @@ public class TraxInstrument : MonoBehaviour
     public int CurrentStep { get { return _engine != null ? _engine.CurrentStep : -1; } }
     public float MasterVolume { get { return _masterVolume; } }
 
-    public uint Seed { get { return TraxPrng.SeedFromDials(Dials); } }
-    public TraxClassifier.Result Genre { get { return TraxClassifier.Classify(Dials); } }
+    public TraxDials Dials { get { return Track.dials; } }
+    public int Key { get { return Track.key; } }
+    public string KeyName { get { return Track.KeyName; } }
+    public uint TrackId { get { return Track.TrackId(); } }
+    public TraxClassifier.Result Genre { get { return TraxClassifier.Classify(Track.dials); } }
+
+    public int PresetIndex(string module) { return Track.PresetOf(module); }
+    public int VariationIndex(string module) { return Track.VariationOf(module); }
+    public string PresetName(string module) { return TraxPresets.PresetName(module, Track.PresetOf(module)); }
 
     /// Raised when a queued pattern actually went live on a bar line.
     public event Action PatternSwapped;
 
     void Awake()
     {
-        Dials = TraxDials.Default;
-        Params = TraxParams.Compute(Dials);
-        Phrase = TraxPhrase.Generate(TraxPrng.SeedFromDials(Dials), Params);
+        Track = TraxTrack.Default();
+        Params = TraxParams.Compute(Track.dials, Track.key);
+        Phrase = TraxPhrase.Generate(Track, Params);
 
-        for (int i = 0; i < Modules.Length; i++)
-            if (!Modules[i].locked) _enabled[Modules[i].name] = true;
+        for (int i = 0; i < Modules.Length; i++) _enabled[Modules[i].name] = true;
 
         var go = new GameObject("TraxAudio");
         go.transform.SetParent(transform, false);
@@ -73,6 +76,7 @@ public class TraxInstrument : MonoBehaviour
 
         _engine.Publish(Params, Phrase, false);
         _engine.SetMasterVolume(_masterVolume);
+        _engine.SetCavePreset(TraxPresets.Cave[Track.PresetOf("CAVE")], Track.VariationOf("CAVE"));
         foreach (var kv in _enabled) _engine.SetModuleEnabled(kv.Key, kv.Value);
     }
 
@@ -85,34 +89,42 @@ public class TraxInstrument : MonoBehaviour
         }
     }
 
-    // ── dials ────────────────────────────────────────────────────────────
+    // ── the choke point ──────────────────────────────────────────────────
 
-    public void SetDial(int index, double value)
+    public void SetTrack(TraxTrack next)
     {
-        SetDials(Dials.With(index, value));
-    }
+        TraxTrack prev = Track;
+        Track = next;
+        Params = TraxParams.Compute(next.dials, next.key);
 
-    public void SetDials(TraxDials next)
-    {
-        TraxDials prev = Dials;
-        Dials = next;
-        Params = TraxParams.Compute(Dials);
-
-        if (TraxParams.NeedsRegen(prev, Dials))
+        if (_engine != null)
         {
-            // While playing, hold the new phrase until the bar turns over —
-            // swapping mid-bar is audible as a stumble. The engine's step
-            // counter keeps running across the swap, so phrase position and the
-            // bar-3 fill stay where they belong.
-            Phrase = TraxPhrase.Generate(TraxPrng.SeedFromDials(Dials), Params);
+            _engine.PublishParams(Params);
+            if (prev.PresetOf("CAVE") != next.PresetOf("CAVE") ||
+                prev.VariationOf("CAVE") != next.VariationOf("CAVE"))
+                _engine.SetCavePreset(TraxPresets.Cave[next.PresetOf("CAVE")], next.VariationOf("CAVE"));
+        }
+
+        if (TraxTrack.NeedsRegen(prev, next))
+        {
+            // Swap on a bar line while playing — mid-bar is audible as a stumble.
+            Phrase = TraxPhrase.Generate(next, Params);
             if (_engine != null) _engine.Publish(Params, Phrase, IsPlaying);
         }
-        else
-        {
-            // Timbre and tempo ride live — BPM should feel attached to your hand.
-            if (_engine != null) _engine.PublishParams(Params);
-        }
     }
+
+    public void SetDial(int index, double value) { SetTrack(Track.WithDial(index, value)); }
+
+    public void SetPreset(string module, int index) { SetTrack(Track.WithPreset(module, index)); }
+    public void CyclePreset(string module, int delta) { SetPreset(module, Track.PresetOf(module) + delta); }
+
+    public void SetVariation(string module, int index) { SetTrack(Track.WithVariation(module, index)); }
+    public void CycleVariation(string module, int delta) { SetVariation(module, Track.VariationOf(module) + delta); }
+
+    // Key never regenerates anything — it is applied when a degree becomes a
+    // frequency, so the same phrase just moves.
+    public void SetKey(int key) { SetTrack(Track.WithKey(key)); }
+    public void CycleKey(int delta) { SetKey(Track.key + delta); }
 
     // ── transport ────────────────────────────────────────────────────────
 
@@ -123,15 +135,9 @@ public class TraxInstrument : MonoBehaviour
         _engine.StartTransport();
     }
 
-    public void Stop()
-    {
-        if (_engine != null) _engine.StopTransport();
-    }
+    public void Stop() { if (_engine != null) _engine.StopTransport(); }
 
-    public void Toggle()
-    {
-        if (IsPlaying) Stop(); else Play();
-    }
+    public void Toggle() { if (IsPlaying) Stop(); else Play(); }
 
     // ── rack ─────────────────────────────────────────────────────────────
 
@@ -154,20 +160,9 @@ public class TraxInstrument : MonoBehaviour
         if (_engine != null) _engine.SetMasterVolume(_masterVolume);
     }
 
-    /// True if this voice's rack module is currently on — used by the UI's step grid.
+    /// True if this voice's rack module is on — used by the UI's step grid.
     public bool VoiceAudible(TraxVoice v)
     {
-        switch (v)
-        {
-            case TraxVoice.Kick:
-            case TraxVoice.Snare:
-            case TraxVoice.Hat:
-                return IsModuleEnabled("THUMPER");
-            case TraxVoice.Bass:    return IsModuleEnabled("GLOWORM");
-            case TraxVoice.Lead:    return IsModuleEnabled("SIREN");
-            case TraxVoice.Moss:    return IsModuleEnabled("MOSS");
-            case TraxVoice.Spindle: return IsModuleEnabled("SPINDLE");
-        }
-        return false;
+        return IsModuleEnabled(TraxModules.For(v));
     }
 }

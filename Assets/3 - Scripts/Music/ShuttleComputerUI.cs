@@ -60,11 +60,11 @@ public class ShuttleComputerUI : MonoBehaviour
 
     const float PlateH = 116f;
     const float DialsY = -(PlateH + 14f);        // -130
-    const float DialsH = 336f;
+    const float DialsH = 318f;
     const float RackLabelY = DialsY - DialsH - 16f;   // -482
     const float RackLabelH = 24f;
     const float RackY = RackLabelY - RackLabelH - 4f; // -510
-    const float RackH = 186f;
+    const float RackH = 200f;
     const float StepsY = RackY - RackH - 12f;    // -708
     const float StepsH = 18f;
     const float TransportH = 60f;
@@ -568,49 +568,55 @@ public class ShuttleComputerUI : MonoBehaviour
         for (int i = 0; i < mods.Length; i++)
         {
             var m = mods[i];
+            string captured = m.name;
             float w = 1f / mods.Length;
-            var cell = MakePanel(row, "Mod_" + i, m.locked ? Panel : PanelHi);
-            cell.raycastTarget = !m.locked;
+
+            var cell = MakePanel(row, "Mod_" + i, PanelHi);
             var crt = cell.rectTransform;
             crt.anchorMin = new Vector2(i * w, 0);
             crt.anchorMax = new Vector2((i + 1) * w, 1);
             crt.offsetMin = new Vector2(5, 0);
             crt.offsetMax = new Vector2(-5, 0);
 
-            var frame = Outline(cell.transform, m.locked ? Hex("17242aff") : InkDim);
+            var frame = Outline(cell.transform, InkDim);
 
-            var led = MakeSprite(crt, "Led", TraxUISprites.Disc,
-                                 m.locked ? Locked : Ink);
-            var lrt2 = led.rectTransform;
-            lrt2.anchorMin = new Vector2(0.5f, 1);
-            lrt2.anchorMax = new Vector2(0.5f, 1);
-            lrt2.pivot = new Vector2(0.5f, 1);
-            lrt2.sizeDelta = new Vector2(16, 16);
-            lrt2.anchoredPosition = new Vector2(0, -22);
+            // The on/off toggle is its own click target covering only the head,
+            // so choosing a preset can never accidentally mute the module you
+            // are auditioning.
+            var head = MakePanel(crt, "Head", new Color(0, 0, 0, 0));
+            head.raycastTarget = true;
+            var hrt = head.rectTransform;
+            hrt.anchorMin = new Vector2(0, 1);
+            hrt.anchorMax = new Vector2(1, 1);
+            hrt.pivot = new Vector2(0.5f, 1);
+            hrt.sizeDelta = new Vector2(0, 74);
+            hrt.anchoredPosition = Vector2.zero;
+            var headBtn = head.gameObject.AddComponent<Button>();
+            headBtn.targetGraphic = head;
+            headBtn.onClick.AddListener(delegate { ToggleModule(captured); });
 
-            var nm = MakeText(crt, "Name", m.name, 18, m.locked ? Locked : Ink,
-                              TextAlignmentOptions.Center);
-            Stretch(nm.rectTransform, 0, 0, 52, 34);
-            nm.characterSpacing = 12;
+            var led = MakeSprite(crt, "Led", TraxUISprites.Disc, Ink);
+            Box(led.rectTransform, TopCentre, TopCentre, new Vector2(0, -10), new Vector2(14, 14));
 
-            var ds = MakeText(crt, "Desc", m.desc, 12, m.locked ? Locked : InkGhost,
-                              TextAlignmentOptions.Bottom);
-            var drt = ds.rectTransform;
-            drt.anchorMin = new Vector2(0, 0);
-            drt.anchorMax = new Vector2(1, 0);
-            drt.pivot = new Vector2(0.5f, 0);
-            drt.sizeDelta = new Vector2(0, 26);
-            drt.anchoredPosition = new Vector2(0, 12);
+            var nm = MakeText(crt, "Name", m.name, 17, Ink, TextAlignmentOptions.Center);
+            Box(nm.rectTransform, TopCentre, TopCentre, new Vector2(0, -26), new Vector2(160, 22));
+            nm.characterSpacing = 10;
 
-            if (!m.locked)
-            {
-                _moduleFrames[m.name] = frame;
-                _moduleLeds[m.name] = led;
-                string captured = m.name;
-                var btn = cell.gameObject.AddComponent<Button>();
-                btn.targetGraphic = cell;
-                btn.onClick.AddListener(delegate { ToggleModule(captured); });
-            }
+            var ds = MakeText(crt, "Desc", m.desc, 12, InkGhost, TextAlignmentOptions.Center);
+            Box(ds.rectTransform, TopCentre, TopCentre, new Vector2(0, -48), new Vector2(160, 18));
+
+            // PRESET = which part. VARIATION = which roll of that part.
+            var preset = MakeStepper(crt, "Preset", -76,
+                () => _inst.PresetName(captured),
+                d => { _inst.CyclePreset(captured, d); AfterPartChange(); }, Ink);
+            var varn = MakeStepper(crt, "Var", -110,
+                () => "VAR " + (_inst.VariationIndex(captured) + 1),
+                d => { _inst.CycleVariation(captured, d); AfterPartChange(); }, InkDim);
+
+            _moduleFrames[m.name] = frame;
+            _moduleLeds[m.name] = led;
+            _steppers.Add(preset);
+            _steppers.Add(varn);
         }
 
         // Step lights.
@@ -661,6 +667,7 @@ public class ShuttleComputerUI : MonoBehaviour
         MakeButtonRight(row, "Exit", "EXIT", 110, ref rx, PanelHi, InkDim, Close);
         BuildPrintCluster(row, ref rx);
         BuildVolume(row, ref rx);
+        BuildKey(row, ref rx);
     }
 
     void BuildPrintCluster(RectTransform row, ref float rx)
@@ -750,6 +757,34 @@ public class ShuttleComputerUI : MonoBehaviour
         slider.onValueChanged.AddListener(delegate (float v) { _inst.SetMasterVolume(v); });
     }
 
+    /// KEY — one control that moves everything, and regenerates nothing.
+    void BuildKey(RectTransform row, ref float rx)
+    {
+        rx += 14;
+        var holder = MakeRect(row, "Key");
+        holder.anchorMin = new Vector2(1, 0.5f);
+        holder.anchorMax = new Vector2(1, 0.5f);
+        holder.pivot = new Vector2(1, 0.5f);
+        holder.sizeDelta = new Vector2(140, 30);
+        holder.anchoredPosition = new Vector2(-rx, 0);
+        rx += 140;
+
+        var lbl = MakeText(holder, "Label", "KEY", 13, InkGhost, TextAlignmentOptions.Left);
+        Box(lbl.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), Vector2.zero, new Vector2(36, 20));
+
+        var box = MakeRect(holder, "Box");
+        box.anchorMin = new Vector2(0, 0);
+        box.anchorMax = new Vector2(1, 1);
+        box.offsetMin = new Vector2(38, 0);
+        box.offsetMax = new Vector2(0, 0);
+
+        var st = MakeStepper(box, "Key", 0,
+            () => _inst.KeyName,
+            d => { _inst.CycleKey(d); AfterPartChange(); }, Accent);
+        st.label.fontSize = 16;
+        _steppers.Add(st);
+    }
+
     void BuildToast(RectTransform parent)
     {
         var go = MakePanel(parent, "Toast", Hex("040a0cf5"));
@@ -801,7 +836,7 @@ public class ShuttleComputerUI : MonoBehaviour
     {
         _inst.SetDial(index, value);
         RefreshReadouts();
-        _lastBarShown = -1;          // pattern may have changed; redraw the grid
+        _lastBarShown = -1;          // optional hits may have moved; redraw the grid
     }
 
     void ToggleModule(string name)
@@ -848,7 +883,7 @@ public class ShuttleComputerUI : MonoBehaviour
         var g = _inst.Genre;
         _genreLabel.text = g.label;
         _genreVibe.text = g.primary.vibe;
-        _genreMeta.text = "SEED " + _inst.Seed.ToString("X8") + "\n" +
+        _genreMeta.text = "TRACK " + _inst.TrackId.ToString("X8") + "\n" +
                           "MARGIN " + (g.d2 - g.d1).ToString("0.00") +
                           (g.blended ? "  BLEND" : "  LOCK");
         UpdateReadoutLine();
@@ -927,6 +962,71 @@ public class ShuttleComputerUI : MonoBehaviour
         rt.offsetMax = new Vector2(-right, -top);
     }
 
+    /// <summary>
+    /// A left arrow, a label and a right arrow. That is the entire vocabulary
+    /// for choosing a part — which is the point: there are no wrong answers to
+    /// pick from, so the player cannot make it sound bad.
+    /// </summary>
+    class Stepper
+    {
+        public TextMeshProUGUI label;
+        public Func<string> read;
+        public void Refresh() { if (label != null) label.text = read(); }
+    }
+
+    readonly List<Stepper> _steppers = new List<Stepper>();
+
+    Stepper MakeStepper(RectTransform parent, string name, float y,
+                        Func<string> read, Action<int> onStep, Color textColor)
+    {
+        var holder = MakePanel(parent, "Step_" + name, Hex("08161aff"));
+        var rt = holder.rectTransform;
+        rt.anchorMin = new Vector2(0, 1);
+        rt.anchorMax = new Vector2(1, 1);
+        rt.pivot = new Vector2(0.5f, 1);
+        rt.sizeDelta = new Vector2(-10, 28);
+        rt.anchoredPosition = new Vector2(0, y);
+        Outline(holder.transform, Grid);
+
+        MakeArrow(rt, "Back", "\u25C0", true, onStep);
+        MakeArrow(rt, "Fwd", "\u25B6", false, onStep);
+
+        var label = MakeText(rt, "Label", "", 13, textColor, TextAlignmentOptions.Center);
+        Stretch(label.rectTransform, 18, 18, 0, 0);
+
+        var st = new Stepper { label = label, read = read };
+        st.Refresh();
+        return st;
+    }
+
+    void MakeArrow(RectTransform parent, string name, string glyph, bool left, Action<int> onStep)
+    {
+        var img = MakePanel(parent, name, new Color(0, 0, 0, 0));
+        img.raycastTarget = true;
+        var rt = img.rectTransform;
+        rt.anchorMin = new Vector2(left ? 0 : 1, 0);
+        rt.anchorMax = new Vector2(left ? 0 : 1, 1);
+        rt.pivot = new Vector2(left ? 0 : 1, 0.5f);
+        rt.sizeDelta = new Vector2(20, 0);
+        rt.anchoredPosition = Vector2.zero;
+
+        var t = MakeText(rt, "G", glyph, 12, InkDim, TextAlignmentOptions.Center);
+        Stretch(t.rectTransform, 0, 0, 0, 0);
+
+        int delta = left ? -1 : 1;
+        var btn = img.gameObject.AddComponent<Button>();
+        btn.targetGraphic = img;
+        btn.onClick.AddListener(delegate { onStep(delta); });
+    }
+
+    void AfterPartChange()
+    {
+        for (int i = 0; i < _steppers.Count; i++) _steppers[i].Refresh();
+        RefreshReadouts();
+        _lastBarShown = -1;          // the pattern moved; redraw the step grid
+    }
+
+    static readonly Vector2 TopCentre = new Vector2(0.5f, 1);
     static readonly Vector2 TopLeft = new Vector2(0, 1);
     static readonly Vector2 TopRight = new Vector2(1, 1);
     static readonly Vector2 BottomLeft = new Vector2(0, 0);

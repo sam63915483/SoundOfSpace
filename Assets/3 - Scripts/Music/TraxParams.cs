@@ -95,9 +95,15 @@ public struct TraxParams
     public int scaleIdx;
     public double detuneCents;
 
+    /// Transposition in semitones. Applied at note time, not baked into
+    /// degrees — so changing key never regenerates a pattern.
+    public int key;
+
     public TraxDials dials;
 
-    public static TraxParams Compute(TraxDials d)
+    public static TraxParams Compute(TraxDials d) { return Compute(d, 0); }
+
+    public static TraxParams Compute(TraxDials d, int key)
     {
         double pulse    = d.pulse    / 10.0;
         double crunch   = d.crunch   / 10.0;
@@ -138,25 +144,13 @@ public struct TraxParams
         p.scaleIdx = TraxScales.ScaleIndexFor(10 - d.warp);
         p.detuneCents = warp * 35;                                  // warped = detuned
 
+        p.key = key;
         p.dials = d;
         return p;
     }
 
-    /// <summary>
-    /// Which dials require regenerating the pattern (applied at the next bar
-    /// boundary) rather than ramping live on the running voices. PULSE is in
-    /// both camps — BPM rides live, but its density term needs a regen.
-    /// </summary>
-    public static bool NeedsRegen(TraxDials a, TraxDials b)
-    {
-        // Compared at seed resolution — a sub-quantum wiggle isn't a new pattern.
-        return Q(a.pulse)    != Q(b.pulse)
-            || Q(a.voidness) != Q(b.voidness)
-            || Q(a.jitter)   != Q(b.jitter)
-            || Q(a.warp)     != Q(b.warp);
-    }
-
-    static int Q(double v) { return (int)TraxPrng.JsRound(v * 2.0); }
+    // NeedsRegen lives on TraxTrack now: presets and variations regenerate too,
+    // so the decision has to consider the whole track, not just the dials.
 }
 
 /// UI metadata for the dials. Order matches the seed's dial order.
