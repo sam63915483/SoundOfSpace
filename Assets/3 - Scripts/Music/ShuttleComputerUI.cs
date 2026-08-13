@@ -45,6 +45,42 @@ public class ShuttleComputerUI : MonoBehaviour
         return c;
     }
 
+    // ── layout budget ────────────────────────────────────────────────────
+    // Every row's position derives from these. The first version hand-tuned
+    // each offset independently and the genre plate ended up underneath the
+    // status bar; keeping the whole column in one place makes that kind of
+    // collision visible instead of something you only find by looking at it.
+    const float ScreenW = 1500f;
+    const float ScreenH = 940f;
+    const float BezelPad = 22f;
+    const float StatusH = 34f;
+    const float ContentTop = StatusH + 12f;      // content starts BELOW the status bar
+    const float ContentBottom = 16f;
+    const float SidePad = 22f;
+
+    const float PlateH = 116f;
+    const float DialsY = -(PlateH + 14f);        // -130
+    const float DialsH = 336f;
+    const float RackLabelY = DialsY - DialsH - 16f;   // -482
+    const float RackLabelH = 24f;
+    const float RackY = RackLabelY - RackLabelH - 4f; // -510
+    const float RackH = 186f;
+    const float StepsY = RackY - RackH - 12f;    // -708
+    const float StepsH = 18f;
+    const float TransportH = 60f;
+
+    // Resulting column, measured from the top of TraxView (height 878):
+    //   status bar   (screen-space)     0 ..  -34
+    //   TraxView starts at             -46          <- clears the status bar
+    //   genre plate                      0 .. -116
+    //   dials                         -130 .. -466
+    //   rack label                    -482 .. -506
+    //   rack                          -510 .. -696
+    //   steps                         -708 .. -726
+    //   transport (anchored bottom)   -818 .. -878
+    // No overlaps, ~92px of breathing room above the transport. If you change a
+    // height here, re-check the whole column — the rows are consecutive.
+
     public static ShuttleComputerUI Instance { get; private set; }
     public static bool IsOpen { get { return Instance != null && Instance._open; } }
 
@@ -206,22 +242,30 @@ public class ShuttleComputerUI : MonoBehaviour
         scaler.matchWidthOrHeight = 0.5f;
         canvasGo.AddComponent<GraphicRaycaster>();
 
-        var bg = MakePanel(canvasGo.transform, "Backdrop", Bg);
+        var bg = MakePanel(canvasGo.transform, "Backdrop", Hex("000000ff"));
         Stretch(bg.rectTransform, 0, 0, 0, 0);
+        bg.raycastTarget = true;      // swallow clicks that miss a control
 
-        // The screen area. 4:3-ish, centred, so it reads as a monitor rather
-        // than as a game menu that happens to be fullscreen.
-        var screen = MakePanel(bg.transform, "Screen", Bg);
+        // Monitor shell. The bezel is what makes this read as a screen in the
+        // world rather than a game menu that happens to be fullscreen — the
+        // browser build got that for free from the browser window.
+        var bezel = MakePanel(bg.transform, "Bezel", Hex("0d1418ff"));
+        var brt = bezel.rectTransform;
+        brt.anchorMin = new Vector2(0.5f, 0.5f);
+        brt.anchorMax = new Vector2(0.5f, 0.5f);
+        brt.pivot = new Vector2(0.5f, 0.5f);
+        brt.sizeDelta = new Vector2(ScreenW + BezelPad * 2, ScreenH + BezelPad * 2);
+        brt.anchoredPosition = Vector2.zero;
+        Outline(bezel.transform, Hex("1b2a30ff"));
+
+        var screen = MakePanel(bezel.transform, "Screen", Bg);
         var srt = screen.rectTransform;
-        srt.anchorMin = new Vector2(0.5f, 0.5f);
-        srt.anchorMax = new Vector2(0.5f, 0.5f);
-        srt.pivot = new Vector2(0.5f, 0.5f);
-        srt.sizeDelta = new Vector2(1500, 940);
-        srt.anchoredPosition = Vector2.zero;
+        Stretch(srt, BezelPad, BezelPad, BezelPad, BezelPad);
 
         BuildStatusBar(srt);
         BuildHome(srt);
         BuildTrax(srt);
+        BuildCrtOverlay(srt);         // over the content, under the toast
         BuildToast(srt);
 
         _canvas.gameObject.SetActive(false);
@@ -235,21 +279,47 @@ public class ShuttleComputerUI : MonoBehaviour
         es.AddComponent<StandaloneInputModule>();
     }
 
+    void BuildCrtOverlay(RectTransform parent)
+    {
+        // Scanlines. RawImage rather than Image because tiling via uvRect is
+        // exact — an Image with type=Tiled would quantise to whole sprites.
+        var scan = new GameObject("Scanlines", typeof(RectTransform));
+        scan.transform.SetParent(parent, false);
+        var raw = scan.AddComponent<RawImage>();
+        raw.texture = TraxUISprites.Scanlines;
+        raw.uvRect = new Rect(0, 0, 1, ScreenH / 4f);   // one cell per 4 reference px
+        raw.raycastTarget = false;
+        Stretch((RectTransform)scan.transform, 0, 0, 0, 0);
+
+        var vig = MakeSprite(parent, "Vignette", TraxUISprites.Vignette, Color.white);
+        Stretch(vig.rectTransform, 0, 0, 0, 0);
+
+        // Faint phosphor wash down from the top edge, matching #screen::before.
+        var wash = MakePanel(parent, "Wash", new Color(Ink.r, Ink.g, Ink.b, 0.035f));
+        var wrt = wash.rectTransform;
+        wrt.anchorMin = new Vector2(0, 1);
+        wrt.anchorMax = new Vector2(1, 1);
+        wrt.pivot = new Vector2(0.5f, 1);
+        wrt.sizeDelta = new Vector2(0, 220);
+        wrt.anchoredPosition = Vector2.zero;
+    }
+
     void BuildStatusBar(RectTransform parent)
     {
         var bar = MakeRect(parent, "StatusBar");
-        Stretch(bar, 0, 0, 0, 0);
         bar.anchorMin = new Vector2(0, 1);
         bar.anchorMax = new Vector2(1, 1);
         bar.pivot = new Vector2(0.5f, 1);
-        bar.sizeDelta = new Vector2(0, 34);
+        bar.sizeDelta = new Vector2(0, StatusH);
         bar.anchoredPosition = Vector2.zero;
 
-        _statusText = MakeText(bar, "Left", "HOME", 16, InkDim, TextAlignmentOptions.Left);
-        Stretch(_statusText.rectTransform, 16, 0, 0, 0);
+        _statusText = MakeText(bar, "Left", "HOME", 15, InkDim, TextAlignmentOptions.Left);
+        Stretch(_statusText.rectTransform, SidePad, 0, 0, 0);
+        _statusText.characterSpacing = 14;
 
-        var right = MakeText(bar, "Right", "SYS NOMINAL", 16, InkGhost, TextAlignmentOptions.Right);
-        Stretch(right.rectTransform, 0, 16, 0, 0);
+        var right = MakeText(bar, "Right", "SYS NOMINAL", 15, InkGhost, TextAlignmentOptions.Right);
+        Stretch(right.rectTransform, 0, SidePad, 0, 0);
+        right.characterSpacing = 14;
 
         var rule = MakePanel(bar, "Rule", Grid);
         var rr = rule.rectTransform;
@@ -279,7 +349,7 @@ public class ShuttleComputerUI : MonoBehaviour
     void BuildHome(RectTransform parent)
     {
         var view = MakeRect(parent, "HomeView");
-        Stretch(view, 0, 0, 0, 44);
+        Stretch(view, SidePad, SidePad, ContentTop, ContentBottom);
         _homeView = view.gameObject;
 
         var title = MakeText(view, "Title", "APPLICATIONS", 18, InkGhost, TextAlignmentOptions.Center);
@@ -354,7 +424,9 @@ public class ShuttleComputerUI : MonoBehaviour
     void BuildTrax(RectTransform parent)
     {
         var view = MakeRect(parent, "TraxView");
-        Stretch(view, 12, 12, 12, 44);
+        // ContentTop clears the status bar. The first version used 12 here and
+        // the genre plate rendered on top of it.
+        Stretch(view, SidePad, SidePad, ContentTop, ContentBottom);
         _traxView = view.gameObject;
 
         BuildGenrePlate(view);
@@ -370,24 +442,28 @@ public class ShuttleComputerUI : MonoBehaviour
         rt.anchorMin = new Vector2(0, 1);
         rt.anchorMax = new Vector2(1, 1);
         rt.pivot = new Vector2(0.5f, 1);
-        rt.sizeDelta = new Vector2(0, 104);
+        rt.sizeDelta = new Vector2(0, PlateH);
         rt.anchoredPosition = Vector2.zero;
         Outline(plate.transform, Grid);
 
-        // The caption Sam asked for — without it the big magenta word is just a
-        // word changing on screen with nothing saying what it means.
+        // Explicit boxes rather than stretched-with-padding: four labels sharing
+        // one rect via offsets is exactly how the caption and the vibe line
+        // ended up on top of each other.
         var cap = MakeText(rt, "Caption", "GENRE", 14, InkGhost, TextAlignmentOptions.TopLeft);
-        Stretch(cap.rectTransform, 18, 0, 10, 0);
-        cap.characterSpacing = 30;
+        Box(cap.rectTransform, TopLeft, TopLeft, new Vector2(20, -10), new Vector2(320, 18));
+        cap.characterSpacing = 32;
 
-        _genreLabel = MakeText(rt, "Label", "—", 46, Accent, TextAlignmentOptions.TopLeft);
-        Stretch(_genreLabel.rectTransform, 16, 0, 30, 0);
+        _genreLabel = MakeText(rt, "Label", "—", 52, Accent, TextAlignmentOptions.TopLeft);
+        Box(_genreLabel.rectTransform, TopLeft, TopLeft, new Vector2(18, -26), new Vector2(940, 66));
+        _genreLabel.characterSpacing = 6;
 
         _genreVibe = MakeText(rt, "Vibe", "", 16, InkDim, TextAlignmentOptions.BottomLeft);
-        Stretch(_genreVibe.rectTransform, 18, 0, 0, 12);
+        Box(_genreVibe.rectTransform, BottomLeft, BottomLeft, new Vector2(20, 10), new Vector2(760, 22));
+        _genreVibe.characterSpacing = 8;
 
-        _genreMeta = MakeText(rt, "Meta", "", 14, InkGhost, TextAlignmentOptions.BottomRight);
-        Stretch(_genreMeta.rectTransform, 0, 18, 0, 12);
+        _genreMeta = MakeText(rt, "Meta", "", 14, InkGhost, TextAlignmentOptions.TopRight);
+        Box(_genreMeta.rectTransform, TopRight, TopRight, new Vector2(-20, -12), new Vector2(420, 50));
+        _genreMeta.lineSpacing = 8;
     }
 
     void BuildDials(RectTransform parent)
@@ -396,8 +472,8 @@ public class ShuttleComputerUI : MonoBehaviour
         row.anchorMin = new Vector2(0, 1);
         row.anchorMax = new Vector2(1, 1);
         row.pivot = new Vector2(0.5f, 1);
-        row.sizeDelta = new Vector2(0, 250);
-        row.anchoredPosition = new Vector2(0, -114);
+        row.sizeDelta = new Vector2(0, DialsH);
+        row.anchoredPosition = new Vector2(0, DialsY);
 
         var defs = TraxDialDefs.All;
         for (int i = 0; i < defs.Length; i++)
@@ -412,13 +488,13 @@ public class ShuttleComputerUI : MonoBehaviour
             crt.offsetMax = new Vector2(-5, 0);
             Outline(cell.transform, Grid);
 
-            var name = MakeText(crt, "Name", defs[i].label, 16, Ink, TextAlignmentOptions.Top);
-            Stretch(name.rectTransform, 0, 0, 10, 0);
-            name.characterSpacing = 14;
+            var name = MakeText(crt, "Name", defs[i].label, 17, Ink, TextAlignmentOptions.Top);
+            Stretch(name.rectTransform, 0, 0, 14, 0);
+            name.characterSpacing = 16;
 
             // Arc track + fill. Rotated -135° so the sweep starts lower-left.
             var track = MakeSprite(crt, "Track", TraxUISprites.Ring, Grid);
-            CentreSquare(track.rectTransform, 128, 6);
+            CentreSquare(track.rectTransform, 168, 20);
             track.type = Image.Type.Filled;
             track.fillMethod = Image.FillMethod.Radial360;
             track.fillOrigin = (int)Image.Origin360.Top;
@@ -427,7 +503,7 @@ public class ShuttleComputerUI : MonoBehaviour
             track.rectTransform.localEulerAngles = new Vector3(0, 0, -TraxKnob.StartAngle);
 
             var fill = MakeSprite(crt, "Fill", TraxUISprites.Ring, Ink);
-            CentreSquare(fill.rectTransform, 128, 6);
+            CentreSquare(fill.rectTransform, 168, 20);
             fill.type = Image.Type.Filled;
             fill.fillMethod = Image.FillMethod.Radial360;
             fill.fillOrigin = (int)Image.Origin360.Top;
@@ -436,7 +512,7 @@ public class ShuttleComputerUI : MonoBehaviour
             fill.rectTransform.localEulerAngles = new Vector3(0, 0, -TraxKnob.StartAngle);
 
             var hub = MakeSprite(crt, "Hub", TraxUISprites.Disc, PanelHi);
-            CentreSquare(hub.rectTransform, 74, 6);
+            CentreSquare(hub.rectTransform, 96, 20);
 
             // Pointer pivots at its bottom so rotation swings it around the hub.
             var pointer = MakeSprite(crt, "Pointer", TraxUISprites.White, Accent);
@@ -444,24 +520,24 @@ public class ShuttleComputerUI : MonoBehaviour
             prt.anchorMin = new Vector2(0.5f, 0.5f);
             prt.anchorMax = new Vector2(0.5f, 0.5f);
             prt.pivot = new Vector2(0.5f, 0f);
-            prt.sizeDelta = new Vector2(3, 34);
-            prt.anchoredPosition = new Vector2(0, 6);
+            prt.sizeDelta = new Vector2(3, 46);
+            prt.anchoredPosition = new Vector2(0, 20);
 
-            var val = MakeText(crt, "Value", "0.0", 20, Ink, TextAlignmentOptions.Bottom);
+            var val = MakeText(crt, "Value", "0.0", 23, Ink, TextAlignmentOptions.Bottom);
             var vrt = val.rectTransform;
             vrt.anchorMin = new Vector2(0, 0);
             vrt.anchorMax = new Vector2(1, 0);
             vrt.pivot = new Vector2(0.5f, 0);
-            vrt.sizeDelta = new Vector2(0, 26);
-            vrt.anchoredPosition = new Vector2(0, 34);
+            vrt.sizeDelta = new Vector2(0, 30);
+            vrt.anchoredPosition = new Vector2(0, 48);
 
             var flav = MakeText(crt, "Flavor", defs[i].flavor, 12, InkGhost, TextAlignmentOptions.Bottom);
             var frt = flav.rectTransform;
             frt.anchorMin = new Vector2(0, 0);
             frt.anchorMax = new Vector2(1, 0);
             frt.pivot = new Vector2(0.5f, 0);
-            frt.sizeDelta = new Vector2(-8, 32);
-            frt.anchoredPosition = new Vector2(0, 4);
+            frt.sizeDelta = new Vector2(-10, 36);
+            frt.anchoredPosition = new Vector2(0, 8);
 
             var knob = cell.gameObject.AddComponent<TraxKnob>();
             knob.Init(defs[i].index, _inst.Dials.Get(defs[i].index), cell, fill, prt, val,
@@ -477,16 +553,16 @@ public class ShuttleComputerUI : MonoBehaviour
         lrt.anchorMin = new Vector2(0, 1);
         lrt.anchorMax = new Vector2(1, 1);
         lrt.pivot = new Vector2(0.5f, 1);
-        lrt.sizeDelta = new Vector2(0, 22);
-        lrt.anchoredPosition = new Vector2(0, -372);
+        lrt.sizeDelta = new Vector2(0, RackLabelH);
+        lrt.anchoredPosition = new Vector2(0, RackLabelY);
         label.characterSpacing = 24;
 
         var row = MakeRect(parent, "Rack");
         row.anchorMin = new Vector2(0, 1);
         row.anchorMax = new Vector2(1, 1);
         row.pivot = new Vector2(0.5f, 1);
-        row.sizeDelta = new Vector2(0, 116);
-        row.anchoredPosition = new Vector2(0, -396);
+        row.sizeDelta = new Vector2(0, RackH);
+        row.anchoredPosition = new Vector2(0, RackY);
 
         var mods = TraxInstrument.Modules;
         for (int i = 0; i < mods.Length; i++)
@@ -509,12 +585,12 @@ public class ShuttleComputerUI : MonoBehaviour
             lrt2.anchorMin = new Vector2(0.5f, 1);
             lrt2.anchorMax = new Vector2(0.5f, 1);
             lrt2.pivot = new Vector2(0.5f, 1);
-            lrt2.sizeDelta = new Vector2(14, 14);
-            lrt2.anchoredPosition = new Vector2(0, -16);
+            lrt2.sizeDelta = new Vector2(16, 16);
+            lrt2.anchoredPosition = new Vector2(0, -22);
 
-            var nm = MakeText(crt, "Name", m.name, 16, m.locked ? Locked : Ink,
+            var nm = MakeText(crt, "Name", m.name, 18, m.locked ? Locked : Ink,
                               TextAlignmentOptions.Center);
-            Stretch(nm.rectTransform, 0, 0, 40, 30);
+            Stretch(nm.rectTransform, 0, 0, 52, 34);
             nm.characterSpacing = 12;
 
             var ds = MakeText(crt, "Desc", m.desc, 12, m.locked ? Locked : InkGhost,
@@ -523,8 +599,8 @@ public class ShuttleComputerUI : MonoBehaviour
             drt.anchorMin = new Vector2(0, 0);
             drt.anchorMax = new Vector2(1, 0);
             drt.pivot = new Vector2(0.5f, 0);
-            drt.sizeDelta = new Vector2(0, 24);
-            drt.anchoredPosition = new Vector2(0, 8);
+            drt.sizeDelta = new Vector2(0, 26);
+            drt.anchoredPosition = new Vector2(0, 12);
 
             if (!m.locked)
             {
@@ -542,8 +618,8 @@ public class ShuttleComputerUI : MonoBehaviour
         steps.anchorMin = new Vector2(0, 1);
         steps.anchorMax = new Vector2(1, 1);
         steps.pivot = new Vector2(0.5f, 1);
-        steps.sizeDelta = new Vector2(0, 14);
-        steps.anchoredPosition = new Vector2(0, -520);
+        steps.sizeDelta = new Vector2(0, StepsH);
+        steps.anchoredPosition = new Vector2(0, StepsY);
 
         for (int i = 0; i < TraxPhrase.Steps; i++)
         {
@@ -564,7 +640,7 @@ public class ShuttleComputerUI : MonoBehaviour
         row.anchorMin = new Vector2(0, 0);
         row.anchorMax = new Vector2(1, 0);
         row.pivot = new Vector2(0.5f, 0);
-        row.sizeDelta = new Vector2(0, 56);
+        row.sizeDelta = new Vector2(0, TransportH);
         row.anchoredPosition = Vector2.zero;
 
         float x = 0;
@@ -849,6 +925,21 @@ public class ShuttleComputerUI : MonoBehaviour
         rt.pivot = new Vector2(0.5f, 0.5f);
         rt.offsetMin = new Vector2(left, bottom);
         rt.offsetMax = new Vector2(-right, -top);
+    }
+
+    static readonly Vector2 TopLeft = new Vector2(0, 1);
+    static readonly Vector2 TopRight = new Vector2(1, 1);
+    static readonly Vector2 BottomLeft = new Vector2(0, 0);
+
+    /// Place a fixed-size box against one corner. Unambiguous about where a
+    /// label actually sits, unlike stretching four labels across one rect.
+    static void Box(RectTransform rt, Vector2 anchor, Vector2 pivot, Vector2 pos, Vector2 size)
+    {
+        rt.anchorMin = anchor;
+        rt.anchorMax = anchor;
+        rt.pivot = pivot;
+        rt.sizeDelta = size;
+        rt.anchoredPosition = pos;
     }
 
     static void CentreSquare(RectTransform rt, float size, float yOffset)

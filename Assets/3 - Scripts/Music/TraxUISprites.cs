@@ -90,6 +90,74 @@ public static class TraxUISprites
         }
     }
 
+    /// <summary>
+    /// 4px scanline cell: two clear rows, two dark. Tiled over the whole screen
+    /// with a RawImage. This plus the vignette is most of why the browser build
+    /// reads as a CRT and a plain UGUI panel doesn't.
+    /// wrapMode is Repeat and filtering is Point, or the lines blur to mush.
+    /// </summary>
+    public static Texture2D Scanlines
+    {
+        get
+        {
+            if (_scanlines == null)
+            {
+                var tex = new Texture2D(1, 4, TextureFormat.RGBA32, false);
+                tex.filterMode = FilterMode.Point;
+                tex.wrapMode = TextureWrapMode.Repeat;
+                tex.hideFlags = HideFlags.HideAndDontSave;
+                tex.SetPixels32(new Color32[]
+                {
+                    new Color32(0, 0, 0, 0),
+                    new Color32(0, 0, 0, 0),
+                    new Color32(0, 0, 0, 72),
+                    new Color32(0, 0, 0, 72)
+                });
+                tex.Apply();
+                _scanlines = tex;
+            }
+            return _scanlines;
+        }
+    }
+
+    static Texture2D _scanlines;
+
+    /// Radial darkening for the screen corners. Clear through the middle so it
+    /// never dims the content you are actually reading.
+    public static Sprite Vignette
+    {
+        get
+        {
+            if (_vignette == null) _vignette = MakeVignette(128);
+            return _vignette;
+        }
+    }
+
+    static Sprite _vignette;
+
+    static Sprite MakeVignette(int size)
+    {
+        var tex = NewTex(size);
+        var px = new Color32[size * size];
+        float c = (size - 1) * 0.5f;
+        float maxD = Mathf.Sqrt(2f) * c;
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = x - c, dy = y - c;
+                float d = Mathf.Sqrt(dx * dx + dy * dy) / maxD;   // 0 centre .. 1 corner
+                // Flat until 55%, then ramp — mirrors the CSS radial-gradient.
+                float t = Mathf.InverseLerp(0.55f, 1f, d);
+                px[y * size + x] = new Color32(0, 0, 0, (byte)(t * t * 150f));
+            }
+        }
+
+        tex.SetPixels32(px);
+        return Finish(tex, size);
+    }
+
     static Texture2D NewTex(int size)
     {
         var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
