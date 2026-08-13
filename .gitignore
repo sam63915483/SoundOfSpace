@@ -121,3 +121,6 @@ Assets/2 - Materials/HelmetHUD/helmet_thin_raw.png*
 # meta is ignored too so a fresh clone doesn't get a dangling reference.
 Assets/1 - sam3d/video.mp4
 Assets/1 - sam3d/video.mp4.meta
+
+# Roslyn scratch dir used by prototypes/shuttle-computer/test/verify-port.py
+/build/

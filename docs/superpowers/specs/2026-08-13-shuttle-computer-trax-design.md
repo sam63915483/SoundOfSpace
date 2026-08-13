@@ -152,6 +152,31 @@ Master output defaults to **0.5**, not 1.0 — same courtesy as `GameAudioBus`.
 No Unity build/test exists in this repo, so this is the only automated coverage; the
 real gate is Sam's ears.
 
+## 8.5 Status
+
+- **Step 1 (browser prototype): DONE.** Sam played it 2026-08-13 — "working really
+  well". One change requested and made: a GENRE caption over the live readout.
+- **Steps 2 + 3 (Unity interaction + audio): BUILT** 2026-08-13, compile-verified,
+  engine port verified bit-exact. **Not playtested — nothing has been heard in-game.**
+
+Two deviations from §9 as written, both deliberate:
+
+1. **The audio backend renders in `OnAudioFilterRead` rather than using
+   `AudioClip.Create` + filter components.** Still "Option A" in the sense that
+   matters (pure Unity, no asset purchase, ships with the game), but the
+   AudioSource route cannot reproduce sample-accurate envelopes, a continuous
+   osc morph, a resonant LFO-swept filter, or per-note filter state — all four
+   are audible, and matching the browser was the stated bar.
+2. **The UI is built in code, not authored as a prefab** — same choice
+   `NewspaperReaderUI` made, and for the same reasons.
+
+Verification that exists (`prototypes/shuttle-computer/`):
+`npm run verify:port` compiles the five C# engine files standalone with zero
+Unity references and runs them against golden vectors dumped from the JS engine —
+600 checks over 30 dial settings, all bit-exact. `npm run verify:unity`
+compile-checks both Unity assemblies without opening the Editor. Neither says
+anything about how it sounds.
+
 ## 9. Steps 2 and 3 (context only — do not build)
 
 - **Step 2:** `ConsoleScreen` in `Assets/1 - samsPrefabs/Shuttle_Lander.prefab` already

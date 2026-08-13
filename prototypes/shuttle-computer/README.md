@@ -53,11 +53,43 @@ Same dials always produce the same loop, on every machine — the dial vector is
 hashed to a seed, and each voice draws from its own stream so unlocking a new
 plugin later can't change what an already-printed cassette sounds like.
 
+## The Unity port
+
+Built. Lives in `Assets/3 - Scripts/Music/`:
+
+| | |
+|---|---|
+| `TraxPrng/Scales/Params/Patterns/Classifier.cs` | the engine, transliterated 1:1 from `engine/`. No Unity API at all. |
+| `TraxAudioEngine.cs` | the synth, rendered in `OnAudioFilterRead`. Replaces `audio/`. |
+| `TraxInstrument.cs` | the choke point every dial change flows through. |
+| `ShuttleComputerUI.cs`, `TraxKnob.cs`, `TraxUISprites.cs` | the screen, built in code. Replaces `ui/`. |
+| `ShuttleComputerTerminal.cs` | look at ConsoleScreen, press F. |
+
+Attach it to the shuttle with **Tools ▸ TRAX ▸ Add Computer Terminal To Shuttle Prefab**
+(patches via `LoadPrefabContents` — the shuttle prefab is hand-maintained and must
+never be regenerated).
+
 ## Tests
 
 ```
-npm test          # all three suites
+npm test           # all three JS suites
+npm run golden     # regenerate golden vectors from the JS engine
+npm run verify:port    # prove the C# engine matches them, bit for bit
+npm run verify:unity   # compile-check the whole Unity project, no Editor needed
 ```
+
+**`verify:port` is the important one.** It compiles the five C# engine files
+standalone — with *zero* Unity references, which also proves the port boundary
+hasn't eroded — and runs them against vectors dumped from the JS engine.
+Currently 600 checks across 30 dial settings, all exact.
+
+Run `npm run golden` and re-run `verify:port` after ANY change to `engine/`. A
+diff there means every cassette printed before the change would sound different
+after it. There is also an in-Editor version: **Tools ▸ TRAX ▸ Verify Engine Port**.
+
+`verify:unity` and `verify:port` use the Roslyn compiler and .NET runtime that
+ship inside the Unity install, so there is nothing extra to install. Neither one
+tells you whether anything *sounds* right.
 
 - `test/run.js` — the engine maths that must survive the C# port: determinism,
   scale safety, classifier, purity.
