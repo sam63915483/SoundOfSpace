@@ -1,0 +1,363 @@
+/* Shuttle computer — CRT terminal look.
+   DRAFT. Sam art-directs at the review gate; every colour is a token below so
+   the whole palette can be re-skinned from one block. */
+
+:root {
+    --bg:        #04070a;
+    --bezel:     #0d1418;
+    --bezel-hi:  #1b2a30;
+    --panel:     #071014;
+    --panel-hi:  #0c1c22;
+    --grid:      #12303a;
+
+    --ink:       #79ffd0;   /* phosphor */
+    --ink-dim:   #3d8f78;
+    --ink-ghost: #1d4a3f;
+    --accent:    #ff4fd8;   /* alien magenta */
+    --accent-dim:#8a2b76;
+    --warn:      #ffc94f;
+    --locked:    #2a3a40;
+
+    --glow: 0 0 6px currentColor;
+    --mono: ui-monospace, 'Cascadia Mono', 'Consolas', 'DejaVu Sans Mono', monospace;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+    height: 100%;
+    background: #000;
+    font-family: var(--mono);
+    color: var(--ink);
+    overflow: hidden;
+    -webkit-font-smoothing: none;
+}
+
+/* ---------- monitor shell (4:3, matches the shuttle's ConsoleScreen) ------ */
+
+#shell {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background:
+        radial-gradient(ellipse at 50% 40%, #0a1418 0%, #000 75%);
+    padding: 16px;
+}
+
+#bezel {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    height: min(96vh, 75vw);
+    max-width: 100%;
+    background: linear-gradient(160deg, var(--bezel-hi), var(--bezel) 40%);
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow:
+        0 0 0 2px #000,
+        0 30px 80px rgba(0,0,0,.9),
+        inset 0 1px 0 rgba(255,255,255,.06);
+}
+
+#screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow:
+        inset 0 0 60px rgba(0,0,0,.9),
+        inset 0 0 140px rgba(0, 40, 30, .25);
+}
+
+/* scanlines + phosphor bloom + vignette, all non-interactive */
+#screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background:
+        repeating-linear-gradient(
+            to bottom,
+            rgba(0,0,0,0) 0px,
+            rgba(0,0,0,0) 2px,
+            rgba(0,0,0,.28) 3px,
+            rgba(0,0,0,.28) 4px),
+        radial-gradient(ellipse at 50% 50%, rgba(0,0,0,0) 55%, rgba(0,0,0,.55) 100%);
+    mix-blend-mode: multiply;
+    z-index: 90;
+}
+#screen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(to bottom, rgba(120,255,208,.05), rgba(120,255,208,0) 30%);
+    z-index: 89;
+}
+
+.view {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    padding: 14px 18px;
+}
+.view.active { display: flex; }
+
+/* ---------- status bar --------------------------------------------------- */
+
+.statusbar {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    font-size: 11px;
+    letter-spacing: .14em;
+    color: var(--ink-dim);
+    border-bottom: 1px solid var(--grid);
+    padding-bottom: 7px;
+    flex: 0 0 auto;
+}
+.statusbar .sep { flex: 1; }
+.statusbar b { color: var(--ink); font-weight: 400; text-shadow: var(--glow); }
+
+/* ---------- boot --------------------------------------------------------- */
+
+#boot {
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--ink-dim);
+    white-space: pre-wrap;
+    padding: 26px 24px;
+}
+#boot .ok { color: var(--ink); }
+#boot .hot { color: var(--accent); }
+#boot .cursor { animation: blink 1s steps(1) infinite; color: var(--ink); }
+@keyframes blink { 50% { opacity: 0; } }
+
+/* ---------- home --------------------------------------------------------- */
+
+#home-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 26px;
+}
+#home-title {
+    text-align: center;
+    letter-spacing: .5em;
+    font-size: 12px;
+    color: var(--ink-ghost);
+}
+#apps {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    padding: 0 6%;
+}
+.app {
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    border-radius: 8px;
+    aspect-ratio: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    cursor: pointer;
+    transition: background .12s, border-color .12s, transform .12s;
+}
+.app .glyph { font-size: 30px; line-height: 1; color: var(--ink); text-shadow: var(--glow); }
+.app .name  { font-size: 11px; letter-spacing: .22em; }
+.app:hover:not(.disabled) {
+    background: var(--panel-hi);
+    border-color: var(--ink-dim);
+    transform: translateY(-2px);
+}
+.app.disabled {
+    cursor: not-allowed;
+    color: var(--locked);
+    border-color: #141d21;
+}
+.app.disabled .glyph { color: var(--locked); text-shadow: none; }
+.app.disabled::after {
+    content: 'NO LICENCE';
+    font-size: 8px;
+    letter-spacing: .16em;
+    color: var(--locked);
+}
+
+/* ---------- trax layout -------------------------------------------------- */
+
+#trax-body {
+    flex: 1;
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    gap: 10px;
+    min-height: 0;
+    padding-top: 10px;
+}
+
+.genre-plate {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border: 1px solid var(--grid);
+    background: linear-gradient(180deg, var(--panel-hi), var(--panel));
+    border-radius: 6px;
+    padding: 8px 14px;
+}
+#genre-label {
+    font-size: 30px;
+    letter-spacing: .1em;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent-dim);
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+#genre-vibe { font-size: 11px; color: var(--ink-dim); letter-spacing: .1em; flex: 1; }
+#genre-meta { font-size: 10px; color: var(--ink-ghost); text-align: right; white-space: pre; }
+
+/* dials */
+#dials {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+}
+.knob {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 8px 2px 6px;
+    border: 1px solid var(--grid);
+    border-radius: 6px;
+    background: var(--panel);
+    cursor: ns-resize;
+    user-select: none;
+    touch-action: none;
+}
+.knob:focus-visible { outline: 1px solid var(--accent); }
+.knob.live { border-color: var(--ink-dim); background: var(--panel-hi); }
+.knob svg { display: block; }
+.knob .k-name  { font-size: 10px; letter-spacing: .16em; }
+.knob .k-val   { font-size: 13px; color: var(--ink); text-shadow: var(--glow); }
+.knob .k-flav  { font-size: 8px; color: var(--ink-ghost); text-align: center; letter-spacing: .04em; height: 1.6em; }
+
+/* rack */
+#rack-wrap { display: grid; grid-template-rows: auto 1fr; gap: 6px; min-height: 0; }
+.section-label { font-size: 10px; letter-spacing: .24em; color: var(--ink-ghost); }
+#rack {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 8px;
+    align-content: start;
+}
+.module {
+    border: 1px solid var(--grid);
+    border-radius: 6px;
+    background: var(--panel);
+    padding: 8px 6px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    cursor: pointer;
+    user-select: none;
+    transition: border-color .12s, background .12s;
+}
+.module .m-led {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--ink-ghost);
+    box-shadow: none;
+    transition: background .12s, box-shadow .12s;
+}
+.module .m-name { font-size: 10px; letter-spacing: .14em; }
+.module .m-desc { font-size: 8px; color: var(--ink-ghost); letter-spacing: .1em; }
+.module.on { border-color: var(--ink-dim); background: var(--panel-hi); }
+.module.on .m-led { background: var(--ink); box-shadow: 0 0 8px var(--ink); }
+.module.locked {
+    cursor: not-allowed;
+    border-style: dashed;
+    border-color: #17242a;
+    color: var(--locked);
+}
+.module.locked .m-name, .module.locked .m-desc { color: var(--locked); }
+.module.locked .m-led { background: transparent; border: 1px solid var(--locked); }
+
+/* step grid */
+#steps {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    gap: 3px;
+    margin-top: 2px;
+}
+#steps .st {
+    height: 7px;
+    border-radius: 2px;
+    background: #0d1a1f;
+    border: 1px solid #14262c;
+}
+#steps .st.hit { background: var(--ink-ghost); }
+#steps .st.now { background: var(--accent); box-shadow: 0 0 7px var(--accent); }
+
+/* transport */
+#transport {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-top: 1px solid var(--grid);
+    padding-top: 9px;
+}
+button.btn {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .16em;
+    color: var(--ink);
+    background: var(--panel-hi);
+    border: 1px solid var(--ink-ghost);
+    border-radius: 5px;
+    padding: 7px 16px;
+    cursor: pointer;
+    transition: background .12s, border-color .12s, color .12s;
+}
+button.btn:hover { border-color: var(--ink-dim); background: #103038; }
+button.btn.primary { color: #04120e; background: var(--ink); border-color: var(--ink); font-weight: 700; }
+button.btn.primary:hover { background: #9dffe0; }
+button.btn.ghost { color: var(--ink-dim); }
+button.btn:disabled { opacity: .4; cursor: not-allowed; }
+button.btn.tiny { padding: 4px 9px; font-size: 12px; letter-spacing: 0; }
+
+#readout { font-size: 11px; color: var(--ink-dim); letter-spacing: .1em; white-space: pre; }
+#transport .sep { flex: 1; }
+
+#vol { width: 92px; accent-color: var(--ink); }
+.vol-wrap { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--ink-ghost); }
+
+#print-wrap { display: flex; align-items: center; gap: 6px; }
+#qty { font-size: 12px; min-width: 2ch; text-align: center; color: var(--ink); }
+.hint { font-size: 9px; color: var(--ink-ghost); letter-spacing: .08em; }
+
+/* toast for the not-yet-real PRINT */
+#toast {
+    position: absolute;
+    left: 50%; bottom: 14%;
+    transform: translateX(-50%) translateY(8px);
+    background: rgba(4,10,12,.95);
+    border: 1px solid var(--accent-dim);
+    color: var(--accent);
+    padding: 9px 18px;
+    border-radius: 5px;
+    font-size: 11px;
+    letter-spacing: .14em;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s, transform .18s;
+    z-index: 95;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }

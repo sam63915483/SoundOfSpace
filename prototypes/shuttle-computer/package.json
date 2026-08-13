@@ -1,0 +1,12 @@
+{
+  "name": "shuttle-computer-prototype",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "TRAX — browser prototype of the shuttle computer music instrument. Reference implementation for the eventual Unity/C# port.",
+  "scripts": {
+    "test": "node test/run.js && node test/smoke-audio.js && node test/smoke-ui.js",
+    "test:engine": "node test/run.js",
+    "serve": "python -m http.server 8080"
+  }
+}
