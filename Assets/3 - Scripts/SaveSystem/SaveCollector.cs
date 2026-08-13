@@ -58,6 +58,7 @@ public static class SaveCollector
         CaptureEnemies(data);
         CaptureSpaceDust(data);
         BuyerLedger.FillSave(data.buyerLedger);
+        TevFronting.FillSave(data.tevFronting);
 
         return data;
     }
@@ -990,6 +991,7 @@ public static class SaveCollector
 
         // Singleton world state first — the object restores below read it.
         BuyerLedger.ApplySave(data.buyerLedger);
+        TevFronting.ApplySave(data.tevFronting);
         ApplyPlanetO2(data.planetO2);
 
         // Legacy saves carry domes inside `buildings`; move them across BEFORE
@@ -1070,6 +1072,7 @@ public static class SaveCollector
         // else reads it during apply. Deadlines re-anchor to this session's
         // unscaledTime inside ApplySave.
         BuyerLedger.ApplySave(data.buyerLedger);
+        TevFronting.ApplySave(data.tevFronting);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
         ApplyOxygen(data.oxygen);

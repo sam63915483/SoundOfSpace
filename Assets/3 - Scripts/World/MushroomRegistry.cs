@@ -81,6 +81,26 @@ public static class MushroomRegistry
         return _keys[i];
     }
 
+    /// A random species at or below <paramref name="maxTier"/>.
+    ///
+    /// Tev's fronts use this to scale what he hands over with how many cycles
+    /// you've completed — early fronts are cheap commons, late ones can be
+    /// rares worth ten times as much. Falls back to any key at all if the
+    /// registry has nothing in the requested band, so a caller can never be
+    /// handed an empty string because of an unlucky prefab set.
+    public static string RandomKeyUpToTier(MushroomTier maxTier)
+    {
+        Resolve();
+        if (_keys == null || _keys.Length == 0) return null;
+
+        var pool = new System.Collections.Generic.List<string>(_keys.Length);
+        for (int i = 0; i < _keys.Length; i++)
+            if (MushroomSpecies.Tier(_keys[i]) <= maxTier) pool.Add(_keys[i]);
+
+        if (pool.Count == 0) return _keys[Random.Range(0, _keys.Length)];
+        return pool[Random.Range(0, pool.Count)];
+    }
+
     /// The species' STREET NAME ("Amanita_big" → "Fly Agaric"), from
     /// <see cref="MushroomSpecies"/>. Species with no authored row fall back to
     /// the old prettifier, so an unlisted prefab still reads sensibly.

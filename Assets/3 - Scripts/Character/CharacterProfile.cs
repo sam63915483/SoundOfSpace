@@ -47,9 +47,22 @@ public class CharacterProfile
     /// ISO-8601 (round-trip "o" format). Display/sort only.
     public string createdAt;
 
+    /// Which orientation-whiteboard objectives this character has completed, as
+    /// a bitmask over <see cref="OrientationObjectives.Objective"/>.
+    ///
+    /// On the CHARACTER, not the save, and that's Sam's call: the board is a
+    /// non-invasive tutorial for first-timers, so once you've done it you should
+    /// never see it uncrossed again — including in someone else's world, as long
+    /// as it's the same character. A brand-new character joining a finished world
+    /// gets a blank board, which is exactly the intent.
+    ///
+    /// A mask rather than seven bools so adding an eighth objective is one enum
+    /// value and no migration.
+    public int orientationMask;
+
     /// Current schema. Bump when you add a field, and add a matching step to
     /// CharacterStore.Migrate.
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     /// Hard cap on a character name. Chosen so the overhead nameplate stays
     /// readable at distance without scaling, and so it fits a FixedString32Bytes

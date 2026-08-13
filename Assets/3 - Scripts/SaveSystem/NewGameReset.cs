@@ -118,6 +118,8 @@ public static class NewGameReset
         // threads) — statics leak across the main menu and New Game runs no
         // Apply, so a fresh run would inherit the old run's regulars.
         BuyerLedger.ResetAll();
+        TevFronting.ResetAll();   // a debt must not survive into a New Game
+        TevTextDirector.ResetAll();
 
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);

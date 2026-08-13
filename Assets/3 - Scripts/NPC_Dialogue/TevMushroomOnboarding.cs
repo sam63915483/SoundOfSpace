@@ -413,7 +413,10 @@ public class TevMushroomOnboarding : MonoBehaviour
         {
             case MushroomQuest.Stage.NotMet:  yield return RunFirstTalk(); break;
             case MushroomQuest.Stage.Given:   yield return RunReturnTalk(); break;
-            default:                          yield return SpeakOne(OneOf(doneLines)); break;
+            // Complete = the free onboarding is over, by EITHER route, and Tev
+            // becomes a dealer you can work with. doneLines are vaulted; the
+            // fronting loop owns every conversation from here.
+            default:                          yield return RunFrontingTalk(); break;
         }
         StopConversation();
     }
@@ -432,8 +435,8 @@ public class TevMushroomOnboarding : MonoBehaviour
             if (!_playerInRange) yield break;
         }
 
-        // The rest of the lead-in, ending on the offer of three caps.
-        yield return SpeakLinesRange(firstTalkLines, rentAfterLineIndex, int.MaxValue);
+        // The rest of the lead-in, ending on the offer of three shrooms.
+        yield return SpeakFirstTalkRange(rentAfterLineIndex, int.MaxValue);
         if (!_playerInRange) yield break;
 
         int given = MushroomQuest.GrantBatch();
@@ -507,6 +510,127 @@ public class TevMushroomOnboarding : MonoBehaviour
         yield return SpeakLines(refrontLines);
     }
 
+    // ── The fronting loop (handoff Parts 4–5) ─────────────────────────────
+    //
+    // Everything Tev is from here on is PER PLAYER — own bond, own front, own
+    // debt — so it all reads and writes TevFronting.Local rather than
+    // StoryDirector, which is world state shared by both players.
+    //
+    // Three states, and which one you get is decided entirely by the data:
+    //   • no front, never pitched → the pitch
+    //   • no front, already pitched → the short "ready for more" greeting
+    //   • debt open → he wants paying, and nothing else is on offer
+    IEnumerator RunFrontingTalk()
+    {
+        var s = TevFronting.Local;
+
+        // Debt first: while you owe him, there is no other conversation.
+        if (TevFronting.HasDebt(s))
+        {
+            yield return SpeakOne(Fill(frontDebtGreetingLine, s));
+            if (!_playerInRange) yield break;
+
+            yield return AskChoice(
+                new PostGreetingChoicePanel.Row("Yeah, I've got it.", true),
+                new PostGreetingChoicePanel.Row("Not yet.", true));
+            if (!_playerInRange) yield break;
+
+            if (_choice == 0)
+            {
+                // Eating the product doesn't clear the debt — wild shrooms are
+                // always harvestable, so it's a grind, never a softlock. He just
+                // gets to enjoy it.
+                if (PlayerWallet.Instance == null || PlayerWallet.Instance.Money <= 0)
+                {
+                    yield return SpeakLines(frontBrokeLines);
+                    yield break;
+                }
+                yield return OpenPaymentPanel(s);
+                yield break;
+            }
+
+            yield return SpeakOne(frontRefusedLine);
+            yield break;
+        }
+
+        // No debt. Pitch once, then use the short greeting forever after.
+        if (!s.pitched)
+        {
+            yield return SpeakLines(frontPitchLines);
+            if (!_playerInRange) yield break;
+            s.pitched = true;
+
+            yield return AskChoice(
+                new PostGreetingChoicePanel.Row("I'm ready, give me what you got.", true),
+                new PostGreetingChoicePanel.Row("Sounds good, I'll be back soon.", true));
+        }
+        else
+        {
+            yield return SpeakOne(frontIdleGreetingLine);
+            if (!_playerInRange) yield break;
+            yield return AskChoice(
+                new PostGreetingChoicePanel.Row("Go on then.", true),
+                new PostGreetingChoicePanel.Row("Not right now.", true));
+        }
+        if (!_playerInRange) yield break;
+
+        if (_choice != 0)
+        {
+            yield return SpeakOne(s.frontsCompleted > 0 ? frontDeclineRepeatLine : frontDeclineFirstLine);
+            yield break;
+        }
+
+        // HOST ONLY rolls the front — house rules, and the strain/quantity are
+        // dice. A guest asking gets the host to roll and hand the result back.
+        if (!TevFronting.IssueFront(s, out string strain, out int qty, out int owed))
+        {
+            yield return SpeakLines(packFullLines);
+            yield break;
+        }
+
+        int perCap = MushroomRegistry.BaseValue(strain);
+        string line = frontIssueLine
+            .Replace("{qty}", qty.ToString())
+            .Replace("{strain}", MushroomRegistry.DisplayName(strain))
+            .Replace("{price}", perCap.ToString())
+            .Replace("{owed}", owed.ToString());
+        yield return SpeakOne(line);
+    }
+
+    /// Hand off to the payment panel and wait for it to close. The panel owns
+    /// the money movement; this just reports what he says about the result.
+    IEnumerator OpenPaymentPanel(TevFronting.PlayerState s)
+    {
+        if (TevPaymentUI.Instance == null)
+        {
+            // No panel in the scene — pay the whole debt outright rather than
+            // stranding the player with a debt they can't clear.
+            int owed = s.owed;
+            if (PlayerWallet.Instance != null && PlayerWallet.Instance.SpendMoney(owed))
+                TevFronting.Pay(s, owed);
+            yield return SpeakOne(Fill(frontPaidExactLine, s));
+            yield break;
+        }
+
+        int before = s.owed;
+        bool done = false;
+        int paid = 0;
+        TevPaymentUI.Instance.Open(s, p => { paid = p; done = true; });
+        yield return new WaitUntil(() => done);
+        if (!_playerInRange) yield break;
+
+        if (paid <= 0) yield break;                       // cancelled — nothing said
+
+        if (s.owed > 0)  yield return SpeakOne(Fill(frontPaidShortLine, s));
+        else if (paid > before) yield return SpeakOne(frontPaidOverLine);
+        else yield return SpeakOne(frontPaidExactLine);
+    }
+
+    /// Token swap shared by the fronting lines. {owed} is the live remaining
+    /// balance, so "you're still ${owed} short" can never quote a stale number.
+    string Fill(string line, TevFronting.PlayerState s) =>
+        string.IsNullOrEmpty(line) ? "" : line.Replace("{owed}", (s != null ? s.owed : 0).ToString());
+
     /// The lawn-rent haggle. Tev opens high, folds once, then folds completely —
     /// the joke is that every "no" costs him money and he never actually minds.
     ///
@@ -558,6 +682,32 @@ public class TevMushroomOnboarding : MonoBehaviour
         {
             if (!_playerInRange) yield break;
             string line = lines[i] != null ? lines[i].Replace("{rent}", amount.ToString()) : string.Empty;
+            yield return SpeakOne(line);
+        }
+    }
+
+    /// The first-talk slice, with ONE line swapped when the player agreed to pay
+    /// rent: the free-loader gets "Three shrooms, on the house", and anyone who
+    /// just signed up for a weekly bill gets the same offer framed as a way to
+    /// cover it. Tev has just taken money off them — handing over the shrooms
+    /// without acknowledging that reads like he forgot.
+    ///
+    /// Done as a swap rather than a second full array so there is exactly one
+    /// place to edit the other five lines.
+    IEnumerator SpeakFirstTalkRange(int from, int to)
+    {
+        if (firstTalkLines == null) yield break;
+        int start = Mathf.Clamp(from, 0, firstTalkLines.Length);
+        int end = Mathf.Clamp(to, start, firstTalkLines.Length);
+        bool payingRent = MushroomQuest.RentSettled && MushroomQuest.RentPerWeek > 0;
+
+        for (int i = start; i < end; i++)
+        {
+            if (!_playerInRange) yield break;
+            string line = (i == rentPaidOfferLineIndex && payingRent
+                           && !string.IsNullOrEmpty(firstTalkOfferRentPaid))
+                ? firstTalkOfferRentPaid
+                : firstTalkLines[i];
             yield return SpeakOne(line);
         }
     }
@@ -682,4 +832,69 @@ public class TevMushroomOnboarding : MonoBehaviour
         "You drive a hard bargain for a man with nothing in his pockets.",
         "I'm busting your balls. Park it wherever. Costs me nothing.",
     };
+
+    [Header("Rent-conditional offer line (2026-08-10)")]
+    [Tooltip("Index into firstTalkLines of the 'three shrooms, on the house' offer. When the player agreed to ANY rent, firstTalkOfferRentPaid is spoken instead of this line.")]
+    [SerializeField] int rentPaidOfferLineIndex = 4;
+
+    [Tooltip("Replaces firstTalkLines[rentPaidOfferLineIndex] when the player agreed to pay rent. Leave empty to always use the normal line.")]
+    [TextArea(2, 5)]
+    public string firstTalkOfferRentPaid =
+        "To help make money for rent, take these three shrooms, on the house. Find a buyer — everyone's got different prices and preferences, so don't be afraid to shop around.";
+
+    // ── Fronting loop copy (2026-08-10) — ALL DRAFT, for Sam to rewrite ───
+    // These are new serialized fields, so they take the values below until they
+    // are edited in the Inspector. After that the Inspector wins and editing
+    // this file changes nothing that ships.
+
+    [Header("Fronting — the pitch (first time only)")]
+    [TextArea(2, 5)]
+    public string[] frontPitchLines = new[]
+    {
+        "Now. You've seen how it works — you found a buyer, you got a price.",
+        "Anytime you're after a bit of cash, come see me. I'll front you the shrooms and we split it fifty-fifty.",
+        "One rule: my half comes home before you get another front.",
+    };
+
+    [Tooltip("Short greeting once he's pitched and you owe nothing. The full pitch never repeats.")]
+    public string frontIdleGreetingLine = "ready for more big boy?";
+
+    [Tooltip("Turning down the FIRST pitch. Verbatim, Sam's line.")]
+    public string frontDeclineFirstLine = "alright pussy";
+
+    [Tooltip("Turning down a later offer. Verbatim, Sam's line.")]
+    public string frontDeclineRepeatLine = "good things come to those who grind";
+
+    [Header("Fronting — handing product over")]
+    [Tooltip("Tokens: {qty} {strain} {price} {owed}. Saying the market price out loud is DELIBERATE — it teaches the word 'market', which is what lets the player later work out they can sell above it.")]
+    [TextArea(2, 5)]
+    public string frontIssueLine =
+        "Splendid. {qty} {strain}, then. They go for ${price} a cap at market, so bring me back ${owed} and we're square.";
+
+    [Header("Fronting — the debt")]
+    [Tooltip("Token: {owed}.")]
+    public string frontDebtGreetingLine = "Wonderful to see you. Do you have my ${owed}?";
+
+    [Tooltip("Said when the player answers No.")]
+    public string frontRefusedLine = "then get back out there and get it!";
+
+    [Tooltip("Ridicule for turning up with a debt and nothing in your pockets — consistent with the ate-all-three joke.")]
+    [TextArea(2, 5)]
+    public string[] frontBrokeLines = new[]
+    {
+        "You said you had it. You've got lint and a nice smile.",
+        "Ate them, didn't you. I can tell. You've got the look.",
+        "They grow WILD out there. Go and pick some. I'll wait — I'm very good at waiting.",
+    };
+
+    [Header("Fronting — payment outcomes")]
+    [Tooltip("Token: {owed} — the remaining balance AFTER the underpayment.")]
+    public string frontPaidShortLine =
+        "I'll take it. But you're still ${owed} short, and there's no more fronts till I'm square.";
+
+    public string frontPaidExactLine =
+        "Pleasure doing business. Come back whenever — there's plenty more where that came from.";
+
+    public string frontPaidOverLine =
+        "Well now. Over the odds, and you didn't have to. I'll remember that, friend.";
 }

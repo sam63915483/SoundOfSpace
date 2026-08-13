@@ -817,6 +817,12 @@ public class MainMenuController : MonoBehaviour
 
         if (PlayerWallet.Instance == null) { var go = new GameObject("PlayerWallet"); DontDestroyOnLoad(go); go.AddComponent<PlayerWallet>(); }
         tick("wallet");           yield return null;
+        // Trap #1: this skips MainMenu in its own AutoCreate, so without seeding
+        // here it would never exist in a BUILD and paying Tev would silently
+        // fall back to the no-panel path.
+        if (TevPaymentUI.Instance == null) { var go = new GameObject("TevPaymentUI"); DontDestroyOnLoad(go); go.AddComponent<TevPaymentUI>(); }
+        if (TevTextDirector.Instance == null) { var go = new GameObject("TevTextDirector"); DontDestroyOnLoad(go); go.AddComponent<TevTextDirector>(); }
+        tick("Tev payment");      yield return null;
         if (TutorialUI.Instance == null) { var go = new GameObject("TutorialUI"); DontDestroyOnLoad(go); go.AddComponent<TutorialUI>(); }
         tick("tutorial UI");      yield return null;
         if (WoodInventory.Instance == null) { var go = new GameObject("WoodInventory"); DontDestroyOnLoad(go); go.AddComponent<WoodInventory>(); }

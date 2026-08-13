@@ -214,6 +214,10 @@ public class SpawnedTree : MonoBehaviour
         // Progression: TREE KILLER. Scored here rather than on the axe hit so a
         // tree only ever counts once, however it came down.
         if (awardLoot) PlayerProgress.Instance?.AddTreeFelled();
+        // Orientation board line 5. Same gate as the progression score, so a
+        // tree that came down without crediting the player doesn't tick it.
+        if (awardLoot)
+            OrientationObjectives.Complete(OrientationObjectives.Objective.ChopTree);
         // Minecraft-style loot: the wood is no longer handed straight to the
         // hotbar — it scatters as ResourceDrop sprites at the stump that the
         // player walks over to collect. ResourceDrop awards the resource and

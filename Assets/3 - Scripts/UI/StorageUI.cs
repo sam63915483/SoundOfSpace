@@ -27,7 +27,10 @@ public class StorageUI : MonoBehaviour
 
     const int   StorageCols = 5;
     const int   StorageRows = 4;
-    const int   HotbarSlots = 7;
+    // Mirrors the real hotbar so the panel's bottom row shows every slot the
+    // player has, money slot included — dragging cash into a locker is the whole
+    // co-op sharing story and it needs a slot to drag FROM.
+    const int   HotbarSlots = Hotbar.TotalSlots;
     const float SlotSize    = 84f;
     const float SlotGap     = 6f;
     const float PanelPad    = 32f;
@@ -221,6 +224,28 @@ public class StorageUI : MonoBehaviour
                     button = PointerEventData.InputButton.Right });
         }
 
+        // Scroll-wheel split. With a stack on the cursor the wheel shuttles
+        // amount between the cursor and the slot it came from, both counts
+        // updating live — pick up 1000 credits, scroll down to 500, drop, and
+        // the other 500 stays in the locker. Shift steps by 10 so a four-figure
+        // stack doesn't need a hundred clicks; pad triggers mirror the wheel.
+        if (_cursor.IsHeld)
+        {
+            int step = 0;
+            float wheel = Input.mouseScrollDelta.y;
+            if (wheel > 0.01f) step = 1;
+            else if (wheel < -0.01f) step = -1;
+            if (step != 0)
+            {
+                bool fast = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                if (SlotOps.AdjustCursorAmount(ref _cursor, step * (fast ? 10 : 1)))
+                {
+                    RefreshAll();
+                    RefreshCursorVisual();
+                }
+            }
+        }
+
         // Track the cursor follower: mouse position on KBM; on pad, snap to
         // the focused slot (offset toward its lower-right so the slot's own
         // contents stay readable under the held item).
@@ -393,10 +418,12 @@ public class StorageUI : MonoBehaviour
             }
         }
 
-        if (IsStackable(_cursor.id) && _cursor.count > 1)
+        // Money always shows its number, even at 1 — a lone credit on the cursor
+        // that renders as a bare icon looks like an empty drag.
+        if (IsStackable(_cursor.id) && (_cursor.count > 1 || _cursor.id == Hotbar.ItemId.Money))
         {
             _cursorCount.enabled = true;
-            _cursorCount.text = _cursor.count.ToString();
+            _cursorCount.text = CountLabel(_cursor.id, _cursor.count);
         }
         else _cursorCount.enabled = false;
     }
@@ -469,13 +496,19 @@ public class StorageUI : MonoBehaviour
         else
         {
             v.countText.enabled = !empty && IsStackable(s.id);
-            if (v.countText.enabled) v.countText.text = s.count.ToString();
+            if (v.countText.enabled) v.countText.text = CountLabel(s.id, s.count);
         }
     }
 
     static bool IsStackable(Hotbar.ItemId id) =>
         id == Hotbar.ItemId.Wood || id == Hotbar.ItemId.Crystal || id == Hotbar.ItemId.SpaceDust
-        || id == Hotbar.ItemId.Sapling || Hotbar.IsMushroomItem(id);
+        || id == Hotbar.ItemId.Sapling || Hotbar.IsMushroomItem(id) || id == Hotbar.ItemId.Money;
+
+    /// Count badge text. Money reads as currency everywhere it appears — the
+    /// whole point of the scroll-split is watching the two numbers move, and
+    /// "500" next to "1000" is ambiguous in a panel that also counts mushrooms.
+    static string CountLabel(Hotbar.ItemId id, int count) =>
+        id == Hotbar.ItemId.Money ? "$" + count.ToString("N0") : count.ToString();
 
     // Icon sprites are session-stable (Resources assets + controller.hotbarIcon).
     // PaintSlot runs every frame per populated slot while the panel is open, so the
@@ -505,6 +538,9 @@ public class StorageUI : MonoBehaviour
             // crystal shape — single-instance constraint makes the slot
             // unambiguous; the side panel is the real interaction.
             case Hotbar.ItemId.FishBag:   return Resources.Load<Sprite>("HotbarIcons/TransparentCrystalShards");
+            // Same cash-stack sprite the hotbar draws, so a stack in the locker
+            // and the stack it came from are visibly the same thing.
+            case Hotbar.ItemId.Money:     return Hotbar.ResourceIcon(Hotbar.ItemId.Money);
         }
         switch (id)
         {

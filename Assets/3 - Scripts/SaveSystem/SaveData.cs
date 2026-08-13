@@ -70,12 +70,34 @@ public class SaveData
     // Messages app / repeat buyers (2026-08-07). JsonUtility gives pre-feature
     // saves an empty ledger — no regulars, no threads — the correct default.
     public BuyerLedgerSave buyerLedger = new BuyerLedgerSave();
+    /// Tev's fronting loop, one row per character. Unlike buyerLedger (shared
+    /// world state) this is PER PLAYER — both players can carry a front at once
+    /// and their debts are independent. Parallel lists because JsonUtility can't
+    /// do dictionaries.
+    public TevFrontingSave tevFronting = new TevFrontingSave();
     // Galactic Standard Time (2026-08-08). Total in-game minutes since day 1
     // 00:00, ABSOLUTE — unlike the buyer deadlines above, which persist a
     // remaining duration. JsonUtility gives pre-feature saves 0, which
     // GalaxyTime.RestoreMinutes reads as "start a fresh day 1", so old saves
     // open on the same morning a new game does.
     public double galaxyTimeMinutes;
+}
+
+// Tev's fronting loop, one row per CHARACTER — see TevFronting. Parallel lists
+// keyed by index (JsonUtility can't do dictionaries). No relative-time fields
+// here: a debt doesn't expire, so there is no clock to re-anchor.
+[Serializable]
+public class TevFrontingSave
+{
+    public List<string> characterIds = new List<string>();
+    public List<int> bond = new List<int>();
+    public List<int> frontsCompleted = new List<int>();
+    public List<string> activeStrain = new List<string>();
+    public List<int> activeQty = new List<int>();
+    public List<int> owed = new List<int>();
+    public List<int> totalRepaid = new List<int>();
+    public List<bool> isContact = new List<bool>();
+    public List<bool> pitched = new List<bool>();
 }
 
 // Persistent per-buyer state for the Messages app (BuyerLedger). Parallel

@@ -162,6 +162,9 @@ public class WaterBottleController : MonoBehaviour
             float consumed = Mathf.Min(consumeRate * Time.deltaTime, fillPercent);
             fillPercent -= consumed;
             ResourceManager.Instance?.DrinkWater((consumed / 100f) * drinkAmount);
+            // Orientation board line 2. Fires on every frame of drinking; the
+            // objective is idempotent so only the first one does anything.
+            OrientationObjectives.Complete(OrientationObjectives.Objective.DrinkWater);
         }
 
         if (drinkSource != null)

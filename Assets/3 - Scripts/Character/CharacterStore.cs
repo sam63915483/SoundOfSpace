@@ -308,7 +308,10 @@ public class CharacterStore : MonoBehaviour
     static void Migrate(CharacterProfile c)
     {
         if (c.schemaVersion < 1) c.schemaVersion = 1;
-        // if (c.schemaVersion < 2) { ...defaults for the v2 fields...; c.schemaVersion = 2; }
+        // v2 (2026-08-10) added orientationMask. JsonUtility leaves an absent int
+        // at 0, which is already "nothing completed" — the right answer for a
+        // character made before the whiteboard existed, since they never saw it.
+        if (c.schemaVersion < 2) { c.orientationMask = 0; c.schemaVersion = 2; }
         c.schemaVersion = CharacterProfile.CurrentSchemaVersion;
     }
 
@@ -321,8 +324,34 @@ public class CharacterStore : MonoBehaviour
     /// The rename is the atomic step: readers see either the whole old file or
     /// the whole new one, never a half-written one.
     /// </summary>
+    // ── In-run progress vs. menu edits ───────────────────────────────────
+    //
+    // Creating, renaming, deleting or picking a character writes to disk at
+    // once — those are menu actions and the player expects them to stick.
+    //
+    // Progress earned DURING a run (the orientation objectives today; levels,
+    // money and the hotbar if they ever move onto the character) does NOT.
+    // Sam's rule: the stasis pod is the only save point, and it commits the
+    // character and the world together. So in-run changes only mark the book
+    // dirty, and StasisPodSave flushes it beside SaveSystem.Save. Quit without
+    // uploading and that progress is gone, exactly like world progress.
+    bool _dirty;
+
+    /// Record that in-run character progress changed, without touching disk.
+    public void MarkDirty() => _dirty = true;
+
+    /// Flush in-run character progress. Called by the stasis pod upload.
+    /// No-op when nothing changed, so it costs nothing on a save with no
+    /// character progress in it.
+    public void SaveIfDirty()
+    {
+        if (!_dirty) return;
+        Save();
+    }
+
     public void Save()
     {
+        _dirty = false;
         string path = FilePath;
         string tmp  = path + ".tmp";
         try

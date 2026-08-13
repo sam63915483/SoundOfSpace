@@ -64,7 +64,14 @@ public class ProgressHooks : MonoBehaviour
     void HandlePlaced(BuildableEntry entry)
     {
         var p = PlayerProgress.Instance;
-        if (p == null || entry == null) return;
+        if (entry == null) return;
+        // Orientation board line 6. Checked BEFORE the PlayerProgress null-guard
+        // — the board is a tutorial and must tick even if the progression
+        // singleton hasn't spawned yet. Spores ride the same placement flow but
+        // aren't saplings, so they're excluded here exactly as below.
+        if (entry.isSapling && !entry.isMushroomSapling)
+            OrientationObjectives.Complete(OrientationObjectives.Objective.PlantSapling);
+        if (p == null) return;
         // Mushroom spores ride the sapling placement flow but are NOT trees:
         // they make no oxygen, so they must not score the Tree Daddy track
         // (and they aren't a structure either — they score nothing).

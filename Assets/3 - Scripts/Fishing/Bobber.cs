@@ -272,6 +272,9 @@ public class Bobber : MonoBehaviour
                 (Hotbar.Instance != null && Hotbar.Instance.TryAddFish(entry));
             if (!placed) InventoryFullPopup.Show();
         }
+        // Orientation board line 3. On the CATCH, not on keeping it — a full
+        // pack shouldn't cost the player the tick when they did the thing.
+        OrientationObjectives.Complete(OrientationObjectives.Objective.CatchFish);
         if (FishCatchUI.Instance != null)
             FishCatchUI.Instance.ShowFishCaught(currentFishType, weight, spinDegrees, spinCombo);
         return true;

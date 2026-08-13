@@ -227,6 +227,17 @@ public class StasisPodSave : MonoBehaviour
             // temporary lock — then re-lock for the rest of the ritual.
             TutorialGate.ApplyState(gateWasEnabled, gateWasUnlocked);
             SaveSystem.Save(ActiveSlotName);
+            // Orientation board line 7. Only on the UPLOAD path — DOWNLOAD is
+            // the wake-from-load playback and never writes a save, so ticking it
+            // there would credit the player for loading rather than for saving.
+            OrientationObjectives.Complete(OrientationObjectives.Objective.SaveInStasisPod);
+            // The pod is the ONLY save point for the character too. In-run
+            // character progress (the objectives board today) has been sitting
+            // dirty in memory until now; this is what commits it, so world and
+            // character always advance together and never disagree about how far
+            // the player got. Must come AFTER the Complete above, or this very
+            // upload's own tick would miss the flush.
+            CharacterStore.Instance?.SaveIfDirty();
             TutorialGate.LockAll();
             TutorialGate.Unlock(TutorialAbility.MouseLook);
         }

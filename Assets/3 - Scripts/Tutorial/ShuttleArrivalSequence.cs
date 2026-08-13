@@ -251,6 +251,10 @@ public class ShuttleArrivalSequence : MonoBehaviour
     {
         _skip = false;
         if (!Setup()) yield break;
+        // The arrival is actually running, so the film owns the TV until
+        // StopFilm hands it back. Cleared here rather than in Setup so a failed
+        // Setup can't leave the objectives hidden forever.
+        OrientationFilmFinished = false;
 
         // Eyes-shut wake-up: "Wake up" loops and the player clicks their eyes
         // open. The shuttle HOLDS at start altitude until the eyes are fully
@@ -1147,9 +1151,21 @@ public class ShuttleArrivalSequence : MonoBehaviour
         _filmStarted = true;
     }
 
+    /// True once the orientation film is off the TV and the screen is the
+    /// player's again. OrientationObjectivesScreen waits on this before it puts
+    /// the objective list up — the film owns that screen while it's running.
+    ///
+    /// Static and one-way, same shape as ShuttleExitDoor.HasOpened. It starts
+    /// TRUE so that every boot which never plays the film — loading a save,
+    /// pressing Play straight into the gameplay scene, a dev spawn — shows the
+    /// objectives immediately instead of waiting forever for a film that isn't
+    /// coming. Play() clears it when it actually schedules one.
+    public static bool OrientationFilmFinished { get; private set; } = true;
+
     void StopFilm()
     {
         _filmEnded = true;
+        OrientationFilmFinished = true;
         if (_video != null) { _video.Stop(); Destroy(_video); _video = null; }
         if (_videoAudio != null) { Destroy(_videoAudio); _videoAudio = null; }
         if (_screenRenderer != null && _screenOriginalMat != null)

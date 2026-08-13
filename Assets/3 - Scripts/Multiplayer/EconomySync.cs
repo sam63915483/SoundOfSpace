@@ -73,6 +73,7 @@ public class EconomySync : MonoBehaviour
     // host
     int _lastLedgerVersion = -1;
     int _lastDealVersion = -1;
+    int _lastTevVersion = -1;
     float _nextBroadcastAt;
 
     // client
@@ -92,6 +93,11 @@ public class EconomySync : MonoBehaviour
     {
         public BuyerLedgerSave ledger = new BuyerLedgerSave();
         public MushroomDealState.Snapshot deals = new MushroomDealState.Snapshot();
+        // Tev's fronting rides along even though it is PER PLAYER rather than
+        // shared: it is host-owned economy state on the same clock, and keeping
+        // it in this message means a guest can never see a bond change arrive
+        // before the repayment that caused it.
+        public TevFrontingSave tev = new TevFrontingSave();
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -127,6 +133,7 @@ public class EconomySync : MonoBehaviour
         _incoming = null;
         _lastLedgerVersion = -1;
         _lastDealVersion = -1;
+        _lastTevVersion = -1;
     }
 
     /// True when this machine may run economy dice — the host, or single player.
@@ -155,11 +162,13 @@ public class EconomySync : MonoBehaviour
     {
         int lv = BuyerLedger.Version;
         int dv = MushroomDealState.Version;
-        if (lv == _lastLedgerVersion && dv == _lastDealVersion) return;
+        int tv = TevFronting.Version;
+        if (lv == _lastLedgerVersion && dv == _lastDealVersion && tv == _lastTevVersion) return;
         if (Time.unscaledTime < _nextBroadcastAt) return;
 
         _lastLedgerVersion = lv;
         _lastDealVersion = dv;
+        _lastTevVersion = tv;
         _nextBroadcastAt = Time.unscaledTime + MinBroadcastInterval;
 
         var ids = nm.ConnectedClientsIds;
@@ -174,6 +183,7 @@ public class EconomySync : MonoBehaviour
 
         var state = new EconomyState();
         BuyerLedger.FillSave(state.ledger);
+        TevFronting.FillSave(state.tev);
         state.deals = MushroomDealState.Capture();
 
         string json = JsonUtility.ToJson(state);
@@ -264,6 +274,7 @@ public class EconomySync : MonoBehaviour
         if (state == null) return;
 
         BuyerLedger.ApplySave(state.ledger);
+        TevFronting.ApplySave(state.tev);
         MushroomDealState.Apply(state.deals);
         _synced = true;
 

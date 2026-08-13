@@ -323,6 +323,11 @@ public class BonfireInteraction : MonoBehaviour
         if (eatClip != null && sfxSource != null)
             sfxSource.PlayOneShot(eatClip, eatVolume);
         ResourceManager.Instance?.ConsumeFood(pendingHungerRestore);
+        // Orientation board line 4. This button only exists once a fish has been
+        // staged and cooked here, so reaching it IS "cook a fish and eat it" —
+        // and any bonfire counts, placed or pre-existing, because they all run
+        // this same component.
+        OrientationObjectives.Complete(OrientationObjectives.Objective.EatCookedFish);
         OnEat?.Invoke();
         foodReady            = false;
         pendingHungerRestore = 0f;

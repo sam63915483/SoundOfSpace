@@ -52,10 +52,20 @@ public static class SlotOps
         a.id == b.id
         && (!Hotbar.IsMushroomItem(a.id) || a.mushroomSpecies == b.mushroomSpecies);
 
+    /// Money-slot rule, applied at every write into a container. The hotbar's
+    /// money slot takes money and nothing else, and money can't sit in any other
+    /// hotbar slot; storage containers are unrestricted, so a locker full of cash
+    /// is fine. Enforcing it here rather than in each caller means the rule holds
+    /// for click, right-click, shift-quick-move AND return-on-close — miss one and
+    /// that's the path a player finds.
+    static bool Accepts(Hotbar.Slot[] container, int idx, Hotbar.ItemId id) =>
+        Hotbar.SlotAccepts(container, idx, id);
+
     // LMB on a slot: pick up the entire stack (or deposit/swap/merge if held).
     public static void HandleLeftClick(Hotbar.Slot[] container, int idx, ref CursorState cursor)
     {
         if (container == null || idx < 0 || idx >= container.Length) return;
+        if (cursor.IsHeld && !Accepts(container, idx, cursor.id)) return;
         if (cursor.IsHeld) Deposit(container, idx, ref cursor);
         else               PickUpFull(container, idx, ref cursor);
     }
@@ -64,6 +74,7 @@ public static class SlotOps
     public static void HandleRightClick(Hotbar.Slot[] container, int idx, ref CursorState cursor)
     {
         if (container == null || idx < 0 || idx >= container.Length) return;
+        if (cursor.IsHeld && !Accepts(container, idx, cursor.id)) return;
         if (cursor.IsHeld) DepositOne(container, idx, ref cursor);
         else               PickUpOne(container, idx, ref cursor);
     }
@@ -84,6 +95,7 @@ public static class SlotOps
             for (int i = 0; i < dest.Length && remaining > 0; i++)
             {
                 if (!CanStack(dest[i], s)) continue;
+                if (!Accepts(dest, i, s.id)) continue;
                 int room = cap - dest[i].count;
                 if (room <= 0) continue;
                 int take = Mathf.Min(room, remaining);
@@ -96,6 +108,7 @@ public static class SlotOps
         for (int i = 0; i < dest.Length && remaining > 0; i++)
         {
             if (dest[i].id != Hotbar.ItemId.None) continue;
+            if (!Accepts(dest, i, s.id)) continue;
             int take = Mathf.Min(cap, remaining);
             dest[i] = new Hotbar.Slot { id = s.id, count = take, fishData = s.fishData, bagContents = s.bagContents, mushroomSpecies = s.mushroomSpecies };
             remaining -= take;
@@ -198,6 +211,64 @@ public static class SlotOps
         if (cursor.count <= 0) ClearCursor(ref cursor);
     }
 
+    /// Scroll-wheel split. With a stack on the cursor, this shuttles
+    /// <paramref name="delta"/> between the cursor and the slot it came from:
+    /// positive takes more, negative puts some back. Both numbers stay live, so
+    /// "click the 1000 in the locker, scroll down to 500, walk off with half" is
+    /// one gesture with no dialog.
+    ///
+    /// Built generic rather than money-only — it costs nothing to let the player
+    /// do the same with a stack of mushrooms, and Tev's payment panel is then
+    /// just this mechanic pointed at his slot.
+    ///
+    /// Returns true if anything moved (so the caller can play a tick and repaint).
+    public static bool AdjustCursorAmount(ref CursorState cursor, int delta)
+    {
+        if (!cursor.IsHeld || delta == 0) return false;
+        var src = cursor.sourceContainer;
+        int idx = cursor.sourceIndex;
+        if (src == null || idx < 0 || idx >= src.Length) return false;
+
+        // Single-item stacks (fish, bags, tools) have nothing to split.
+        int cap = Hotbar.StackMax(cursor.id);
+        if (cap <= 1) return false;
+
+        var s = src[idx];
+        // The source slot must be empty or hold the same thing — if the player
+        // dropped something else there mid-drag, there's nothing to split against.
+        bool srcEmpty = s.id == Hotbar.ItemId.None || s.count <= 0;
+        if (!srcEmpty && !CanStack(s, cursor)) return false;
+
+        if (delta > 0)
+        {
+            // Take from the source slot onto the cursor.
+            if (srcEmpty) return false;
+            int take = Mathf.Min(delta, s.count);
+            if (take <= 0) return false;
+            s.count -= take;
+            src[idx] = s.count > 0 ? s : default;
+            cursor.count += take;
+            return true;
+        }
+
+        // Put back — never empty the cursor entirely, or the player loses the
+        // drag with nothing to show for it. One always stays on the cursor.
+        int give = Mathf.Min(-delta, cursor.count - 1);
+        if (give <= 0) return false;
+        if (!Accepts(src, idx, cursor.id)) return false;
+        if (srcEmpty) src[idx] = NewSlotFrom(cursor, give);
+        else
+        {
+            int room = cap - s.count;
+            give = Mathf.Min(give, room);
+            if (give <= 0) return false;
+            s.count += give;
+            src[idx] = s;
+        }
+        cursor.count -= give;
+        return true;
+    }
+
     static void ClearCursor(ref CursorState cursor)
     {
         cursor.id = Hotbar.ItemId.None;
@@ -252,6 +323,7 @@ public static class SlotOps
         for (int i = 0; i < src.Length; i++)
         {
             if (src[i].id != Hotbar.ItemId.None) continue;
+            if (!Accepts(src, i, cursor.id)) continue;
             src[i] = NewSlotFrom(cursor, cursor.count);
             ClearCursor(ref cursor);
             return true;

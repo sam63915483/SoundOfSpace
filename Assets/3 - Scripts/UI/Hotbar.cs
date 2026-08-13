@@ -8,7 +8,11 @@ public class Hotbar : MonoBehaviour
 {
     // Append-only (JsonUtility serializes enums by name in the hotbar save, but
     // keep new values at the END so nothing shifts).
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling }
+    // APPEND ONLY. Slots persist as the enum's NAME (SaveData stores a string and
+    // parses it back), so reordering wouldn't corrupt saves — but ItemId is
+    // serialized by VALUE on scene/prefab components, so inserting mid-enum
+    // silently rewires those. New ids go on the end.
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money }
 
     public struct Slot
     {
@@ -35,7 +39,25 @@ public class Hotbar : MonoBehaviour
     public static bool IsMushroomItem(ItemId id) =>
         id == ItemId.Mushroom || id == ItemId.MushroomSapling;
 
+    // ── Slot layout ────────────────────────────────────────────────────────
+    //
+    // NumSlots is the ITEM range. Every generic loop in this file — AddResource,
+    // SpendResource, TryAddFish, DetectAcquisitions, the equippable registry —
+    // is bounded by it and therefore can never see, fill, or drain the money
+    // slot. That's the whole reason money is index 7 and NOT part of NumSlots:
+    // one stray `for (i < NumSlots)` that reached the money slot would let the
+    // build system spend your cash as if it were wood.
+    //
+    // TotalSlots is what the player SEES and can select: seven item slots plus
+    // the money slot. Rendering, hotkeys, cycling and the drag/drop layer use
+    // this bound.
     const int NumSlots = 7;
+    /// The money slot. Holds ItemId.Money and nothing else, and no other slot
+    /// may hold money — see <see cref="SlotAccepts"/>. Its count IS the
+    /// player's balance; PlayerWallet is a thin view over it.
+    public const int MoneySlotIndex = 7;
+    /// Item slots + the money slot. Array length, UI cell count, select range.
+    public const int TotalSlots = NumSlots + 1;
     const float SlotSize = 64f;
     const float ActiveSize = 80f;       // size when slot is the equipped/cursor active slot
 
@@ -108,7 +130,7 @@ public class Hotbar : MonoBehaviour
         instance = go.AddComponent<Hotbar>();
     }
 
-    readonly Slot[] slots = new Slot[NumSlots];
+    readonly Slot[] slots = new Slot[TotalSlots];
 
     // ── Equippable registry ──────────────────────────────────────
     // One row per item. Adding a new equippable is an entry in BuildRegistry()
@@ -139,7 +161,7 @@ public class Hotbar : MonoBehaviour
     bool _wasPhoneOpen;
 
     int _animatedActiveIdx = -1;
-    Coroutine[] _slotAnimRoutines = new Coroutine[NumSlots];
+    Coroutine[] _slotAnimRoutines = new Coroutine[TotalSlots];
 
     // Phase 2: hold-LMB-eat state. _eatProgressSlot is the slot index the
     // player is currently holding LMB on (must be the equipped Fish slot).
@@ -158,7 +180,7 @@ public class Hotbar : MonoBehaviour
 
     Canvas canvas;
     CanvasGroup _canvasGroup;   // cached at build time; Refresh() ran GetComponent every frame otherwise
-    SlotVisuals[] slotViews = new SlotVisuals[NumSlots];
+    SlotVisuals[] slotViews = new SlotVisuals[TotalSlots];
 
     RectTransform _namePlateRT;
     Image _namePlateBg;
@@ -288,12 +310,12 @@ public class Hotbar : MonoBehaviour
     void TickEatHold()
     {
         int eq = _equippedSlot;
-        bool fishEquipped = eq >= 0 && eq < NumSlots
+        bool fishEquipped = eq >= 0 && eq < TotalSlots
                          && slots[eq].id == ItemId.Fish
                          && slots[eq].fishData != null;
         // Handoff §3: eating a mushroom is a HELD-ITEM action now, not an
         // interact on the world prop. Same hold-fire ring the raw fish uses.
-        bool mushroomEquipped = eq >= 0 && eq < NumSlots
+        bool mushroomEquipped = eq >= 0 && eq < TotalSlots
                              && slots[eq].id == ItemId.Mushroom
                              && slots[eq].count > 0;
         if ((!fishEquipped && !mushroomEquipped) || !TutorialGate.FireHeld())
@@ -317,7 +339,7 @@ public class Hotbar : MonoBehaviour
     void ConsumeEquippedMushroom()
     {
         int eq = _equippedSlot;
-        if (eq < 0 || eq >= NumSlots) return;
+        if (eq < 0 || eq >= TotalSlots) return;
         var slot = slots[eq];
         if (slot.id != ItemId.Mushroom || slot.count <= 0) return;
 
@@ -332,7 +354,7 @@ public class Hotbar : MonoBehaviour
     void ConsumeEquippedFish()
     {
         int eq = _equippedSlot;
-        if (eq < 0 || eq >= NumSlots) return;
+        if (eq < 0 || eq >= TotalSlots) return;
         var slot = slots[eq];
         if (slot.id != ItemId.Fish || slot.fishData == null) return;
 
@@ -418,6 +440,11 @@ public class Hotbar : MonoBehaviour
             // Handoff §3: 20 per stack, species-pure.
             ItemId.Mushroom => 20,
             ItemId.MushroomSapling => 20,
+            // Money is UNCAPPED — the stack count is the balance, so a cap here
+            // would silently be a cap on how rich the player may be, and any
+            // spill logic would need somewhere to spill to. There isn't one:
+            // money lives in exactly one hotbar slot.
+            ItemId.Money => int.MaxValue,
             _ => 1,
         };
     }
@@ -671,7 +698,10 @@ public class Hotbar : MonoBehaviour
     // report locked; this covers the select-only items that have no controller.
     public void ResetForNewGame()
     {
-        for (int i = 0; i < NumSlots; i++) slots[i] = default;
+        // TotalSlots, not NumSlots: the money slot has to be wiped too, or the
+        // previous session's balance rides across the main menu into New Game
+        // (the Hotbar is DontDestroyOnLoad — CLAUDE.md's statics-leak trap).
+        for (int i = 0; i < TotalSlots; i++) slots[i] = default;
         _equippedSlot = -1;
         _cycleCursor = -1;
         OnResourceChanged?.Invoke(ItemId.Wood);
@@ -680,10 +710,78 @@ public class Hotbar : MonoBehaviour
         OnResourceChanged?.Invoke(ItemId.Sapling);
         OnResourceChanged?.Invoke(ItemId.Mushroom);
         OnResourceChanged?.Invoke(ItemId.MushroomSapling);
+        OnResourceChanged?.Invoke(ItemId.Money);
+    }
+
+    /// Is this item in the player's hotbar right now? Item slots only — asking
+    /// after ItemId.Money would be asking "is the money in the money slot", so
+    /// use <see cref="Money"/> for that instead.
+    public bool HasItem(ItemId id)
+    {
+        if (id == ItemId.None) return false;
+        for (int i = 0; i < NumSlots; i++)
+            if (slots[i].id == id) return true;
+        return false;
+    }
+
+    // ── Money slot ───────────────────────────────────────────────────
+    //
+    // The slot IS the wallet. There is no second number anywhere: PlayerWallet
+    // reads and writes through here, and every existing caller
+    // (vendors, fish market, rent collector, mission payouts, cheats) keeps
+    // talking to PlayerWallet and never learns this moved.
+    //
+    // Money is not an ItemId.Money "resource" — see IsResource. These two
+    // methods are the ONLY way the count changes from gameplay code; the
+    // drag/drop layer moves it as an item and is bounded by SlotAccepts.
+
+    /// The player's balance. Reading a slot count, not a mirrored field.
+    public int Money => slots[MoneySlotIndex].id == ItemId.Money
+        ? slots[MoneySlotIndex].count
+        : 0;
+
+    /// Set the balance outright. Clamped at 0; a zero balance empties the slot
+    /// rather than leaving an ItemId.Money stack of count 0, so the slot renders
+    /// empty and the drag layer can't pick up nothing.
+    public void SetMoney(int amount)
+    {
+        int v = Mathf.Max(0, amount);
+        slots[MoneySlotIndex] = v > 0
+            ? new Slot { id = ItemId.Money, count = v }
+            : default;
+        OnResourceChanged?.Invoke(ItemId.Money);
+    }
+
+    /// Add (or, with a negative amount, subtract) — never below zero.
+    public void AddMoney(int delta) => SetMoney(Money + delta);
+
+    /// True when the slot can legally hold this id.
+    ///
+    /// Two rules, and they are the reason a dupe can't happen: the money slot
+    /// takes money and nothing else, and money can't sit in any other hotbar
+    /// slot. Storage containers (lockers, bags) are unrestricted — money in a
+    /// locker is a feature, and it rides the existing StorageSync lock so co-op
+    /// sharing needs no new netcode.
+    public static bool SlotAccepts(Slot[] container, int idx, ItemId id)
+    {
+        if (container == null || idx < 0 || idx >= container.Length) return false;
+        // Only the hotbar's own array is restricted. Everything else is storage.
+        if (instance == null || !ReferenceEquals(container, instance.slots)) return true;
+        return idx == MoneySlotIndex ? id == ItemId.Money : id != ItemId.Money;
     }
 
     // ── Save / load access ───────────────────────────────────────────
-    public IReadOnlyList<Slot> GetSlotsForSave() => slots;
+    //
+    // Only the ITEM slots round-trip through the slot list. The balance keeps
+    // its own long-standing SaveData.money field, applied via PlayerWallet — so
+    // the save schema is untouched, old saves load with no migration, and the
+    // money slot can't end up described twice in one file.
+    public IReadOnlyList<Slot> GetSlotsForSave()
+    {
+        var list = new List<Slot>(NumSlots);
+        for (int i = 0; i < NumSlots; i++) list.Add(slots[i]);
+        return list;
+    }
 
     // Direct mutable access to the slot array — for the storage UI's
     // drag-and-drop flow. GetSlotsForSave returns IReadOnlyList<Slot>
@@ -734,6 +832,10 @@ public class Hotbar : MonoBehaviour
         OnResourceChanged?.Invoke(ItemId.MushroomSapling);
     }
 
+    // NOTE Money is deliberately NOT a resource. Resources flow through
+    // AddResource / SpendResource, which spill across slots and drain
+    // leftmost-first; money must never do either. Every balance change goes
+    // through PlayerWallet, which is the single writer for the money slot.
     static bool IsResource(ItemId id)
     {
         return id is ItemId.Wood or ItemId.Crystal or ItemId.SpaceDust or ItemId.Sapling
@@ -745,7 +847,7 @@ public class Hotbar : MonoBehaviour
     // any of them). GetEquipped/UnequipAll/ToggleSlot/CycleSlot use this to
     // skip the registry lookup for these slots.
     static bool IsSelectOnly(ItemId id) =>
-        IsResource(id) || id == ItemId.Fish || id == ItemId.FishBag;
+        IsResource(id) || id == ItemId.Fish || id == ItemId.FishBag || id == ItemId.Money;
 
     // Procedurally-generated thin circular ring sprite used by the hold-LMB-eat
     // progress overlay. Image's Radial360 fillMethod sweeps an angular wedge of
@@ -840,6 +942,7 @@ public class Hotbar : MonoBehaviour
             case ItemId.Sapling:   return "SAPLINGS";
             case ItemId.Mushroom:  return "MUSHROOM";
             case ItemId.MushroomSapling: return "SPORES";
+            case ItemId.Money:     return "MONEY";
             default: return "—";
         }
     }
@@ -869,8 +972,63 @@ public class Hotbar : MonoBehaviour
             case ItemId.Crystal:   return _crystalIcon;
             case ItemId.SpaceDust: return _dustIcon;
             case ItemId.Sapling:   return _saplingIcon;
+            case ItemId.Money:     return MoneyIcon();
             default: return null;
         }
+    }
+
+    // Cash-stack icon. Drawn in code rather than shipped as a PNG because the
+    // Hotbar auto-creates with no inspector and there is no art for money yet —
+    // drop a sprite at Resources/HotbarIcons/TransparentMoney and it wins
+    // automatically, no code change.
+    static Sprite _moneyIcon;
+    static bool _moneyIconTried;
+    static Sprite MoneyIcon()
+    {
+        if (_moneyIconTried) return _moneyIcon;
+        _moneyIconTried = true;
+
+        _moneyIcon = Resources.Load<Sprite>("HotbarIcons/TransparentMoney");
+        if (_moneyIcon != null) return _moneyIcon;
+
+        const int size = 96;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color32[size * size];   // starts fully transparent
+
+        // Three offset notes, back to front, so the stack reads at 64 px.
+        var noteFill   = new Color32(0x4E, 0xA8, 0x6B, 0xFF);
+        var noteEdge   = new Color32(0x2C, 0x6B, 0x43, 0xFF);
+        var bandFill   = new Color32(0x9F, 0xE3, 0xB4, 0xFF);
+        const int noteW = 62, noteH = 34;
+
+        for (int n = 2; n >= 0; n--)
+        {
+            int x0 = 10 + n * 5;
+            int y0 = 22 + n * 9;
+            for (int y = 0; y < noteH; y++)
+            {
+                for (int x = 0; x < noteW; x++)
+                {
+                    int gx = x0 + x, gy = y0 + y;
+                    if (gx < 0 || gx >= size || gy < 0 || gy >= size) continue;
+                    bool edge = x < 2 || x >= noteW - 2 || y < 2 || y >= noteH - 2;
+                    // Centre oval = the portrait window on a banknote.
+                    float dx = (x - noteW * 0.5f) / (noteW * 0.22f);
+                    float dy = (y - noteH * 0.5f) / (noteH * 0.42f);
+                    bool band = dx * dx + dy * dy <= 1f;
+                    px[gy * size + gx] = edge ? noteEdge : band ? bandFill : noteFill;
+                }
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.Apply();
+        _moneyIcon = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        return _moneyIcon;
     }
 
     void BuildRegistry()
@@ -977,7 +1135,7 @@ public class Hotbar : MonoBehaviour
     // ItemId.None when no slot is selected or the selected slot is empty.
     public ItemId GetEquippedSlotId()
     {
-        if (_equippedSlot < 0 || _equippedSlot >= NumSlots) return ItemId.None;
+        if (_equippedSlot < 0 || _equippedSlot >= TotalSlots) return ItemId.None;
         return slots[_equippedSlot].id;
     }
 
@@ -985,7 +1143,7 @@ public class Hotbar : MonoBehaviour
     /// fishData (weight/colour/tier) and bagContents to build the held model.
     public Slot GetEquippedSlot()
     {
-        if (_equippedSlot < 0 || _equippedSlot >= NumSlots) return default;
+        if (_equippedSlot < 0 || _equippedSlot >= TotalSlots) return default;
         return slots[_equippedSlot];
     }
 
@@ -1002,7 +1160,7 @@ public class Hotbar : MonoBehaviour
         if (PlayerPhoneUI.IsCameraMode) return;
 
         // Number keys 1..N for direct slot select.
-        int slot = TutorialGate.HotbarSlotPressed(NumSlots);
+        int slot = TutorialGate.HotbarSlotPressed(TotalSlots);
         if (slot > 0) { ToggleSlot(slot - 1); return; }
 
         // D-pad left / right cycles through slots with wrap. Skips when a UI
@@ -1034,12 +1192,12 @@ public class Hotbar : MonoBehaviour
         // not the actually-equipped slot.
         if (_cycleCursor < 0)
         {
-            if (_equippedSlot >= 0 && _equippedSlot < NumSlots && slots[_equippedSlot].id != ItemId.None)
+            if (_equippedSlot >= 0 && _equippedSlot < TotalSlots && slots[_equippedSlot].id != ItemId.None)
                 _cycleCursor = _equippedSlot;
         }
         int next = _cycleCursor < 0
-            ? (step > 0 ? 0 : NumSlots - 1)
-            : ((_cycleCursor + step) % NumSlots + NumSlots) % NumSlots;
+            ? (step > 0 ? 0 : TotalSlots - 1)
+            : ((_cycleCursor + step) % TotalSlots + TotalSlots) % TotalSlots;
         _cycleCursor = next;
         UnequipAll();
         var slot = slots[next];
@@ -1077,7 +1235,7 @@ public class Hotbar : MonoBehaviour
     ItemId GetEquipped()
     {
         // Prefer the slot-driven answer (covers resources).
-        if (_equippedSlot >= 0 && _equippedSlot < NumSlots)
+        if (_equippedSlot >= 0 && _equippedSlot < TotalSlots)
         {
             var sid = slots[_equippedSlot].id;
             if (sid != ItemId.None)
@@ -1129,7 +1287,7 @@ public class Hotbar : MonoBehaviour
         }
         // Clear select-only highlight too (resources + fish) — caller sets
         // _equippedSlot if a new slot is being selected immediately after.
-        if (_equippedSlot >= 0 && _equippedSlot < NumSlots && IsSelectOnly(slots[_equippedSlot].id))
+        if (_equippedSlot >= 0 && _equippedSlot < TotalSlots && IsSelectOnly(slots[_equippedSlot].id))
             _equippedSlot = -1;
     }
 
@@ -1160,7 +1318,7 @@ public class Hotbar : MonoBehaviour
         // so the player can see which empty slot they just landed on while
         // scrolling with D-pad / number keys (otherwise empty slots looked
         // identical and the player couldn't tell where the cursor was).
-        for (int i = 0; i < NumSlots; i++)
+        for (int i = 0; i < TotalSlots; i++)
         {
             var v = slotViews[i];
             ItemId id = slots[i].id;
@@ -1168,7 +1326,7 @@ public class Hotbar : MonoBehaviour
             // Phase 3 fix: active = exact-slot match, not id match. id-based
             // matching glowed every slot with the same id (problem for fish
             // and any resource with multiple stacks).
-            bool active = (_equippedSlot >= 0 && _equippedSlot < NumSlots)
+            bool active = (_equippedSlot >= 0 && _equippedSlot < TotalSlots)
                 ? (i == _equippedSlot && !empty)
                 : (i == _cycleCursor);
 
@@ -1218,7 +1376,7 @@ public class Hotbar : MonoBehaviour
                         isProceduralSwatch = true;
                     }
                 }
-                else if (isRes)
+                else if (isRes || id == ItemId.Money)
                 {
                     sprite = ResourceIcon(id);
                     if (sprite == null)
@@ -1280,12 +1438,16 @@ public class Hotbar : MonoBehaviour
             if (iconRT != null && !Mathf.Approximately(iconRT.localScale.x, iconScale))
                 iconRT.localScale = new Vector3(iconScale, iconScale, 1f);
 
-            // Stack count text — resource only.
+            // Stack count text — resources, and money (whose "count" is the
+            // balance, so it gets a $ and thousands separators; 12450 as a bare
+            // number in a 14 px corner label is unreadable at a glance).
             if (v.countText != null)
             {
-                if (isRes && !empty)
+                if ((isRes || id == ItemId.Money) && !empty)
                 {
-                    string countStr = slots[i].count.ToString();
+                    string countStr = id == ItemId.Money
+                        ? "$" + slots[i].count.ToString("N0")
+                        : slots[i].count.ToString();
                     if (v.countText.text != countStr) v.countText.text = countStr;
                     v.countText.enabled = true;
                 }
@@ -1349,18 +1511,18 @@ public class Hotbar : MonoBehaviour
 
         // Slot lift/scale animation — only fire on active-index change.
         int newActive = -1;
-        for (int i = 0; i < NumSlots; i++)
+        for (int i = 0; i < TotalSlots; i++)
         {
             ItemId id = slots[i].id;
             bool empty = id == ItemId.None;
-            bool active = (_equippedSlot >= 0 && _equippedSlot < NumSlots)
+            bool active = (_equippedSlot >= 0 && _equippedSlot < TotalSlots)
                 ? (i == _equippedSlot && !empty)
                 : (i == _cycleCursor);
             if (active) newActive = i;
         }
         if (newActive != _animatedActiveIdx)
         {
-            if (_animatedActiveIdx >= 0 && _animatedActiveIdx < NumSlots)
+            if (_animatedActiveIdx >= 0 && _animatedActiveIdx < TotalSlots)
             {
                 if (_slotAnimRoutines[_animatedActiveIdx] != null) StopCoroutine(_slotAnimRoutines[_animatedActiveIdx]);
                 _slotAnimRoutines[_animatedActiveIdx] = StartCoroutine(AnimateSlotState(_animatedActiveIdx, false));
@@ -1586,7 +1748,7 @@ public class Hotbar : MonoBehaviour
         canvasGo.AddComponent<GraphicRaycaster>();
         _canvasGroup = canvasGo.AddComponent<CanvasGroup>();
 
-        float totalWidth = NumSlots * SlotSize + (NumSlots - 1) * SlotSpacing;
+        float totalWidth = TotalSlots * SlotSize + (TotalSlots - 1) * SlotSpacing;
         var bar = NewRT("HotbarRoot", canvasGo.transform);
         HudVisibility.RegisterHideable(bar.gameObject.AddComponent<CanvasGroup>());   // hide for HIDE HUD / pod, independent of the dim group on the canvas
         bar.anchorMin = new Vector2(0.5f, 0f);
@@ -1615,7 +1777,7 @@ public class Hotbar : MonoBehaviour
                                   GalaxyHudKit.BorderCool.b, 0.85f);
         baseImg.raycastTarget = false;
 
-        for (int i = 0; i < NumSlots; i++)
+        for (int i = 0; i < TotalSlots; i++)
         {
             slotViews[i] = BuildSlot(bar, i, totalWidth);
         }
