@@ -12,11 +12,11 @@ export const DIAL_DEFS = [
     { key: 'goo',      label: 'GOO',      flavor: 'how wet and squelchy' },
     { key: 'void',     label: 'VOID',     flavor: 'how much empty space' },
     { key: 'jitter',   label: 'JITTER',   flavor: 'how twitchy the rhythm' },
-    { key: 'homesick', label: 'HOMESICK', flavor: 'how human it feels' }
+    { key: 'warp',     label: 'WARP',     flavor: 'how warped the pitch is' }
 ];
 
 export const DEFAULT_DIALS = {
-    pulse: 5, crunch: 3, goo: 5, void: 4, jitter: 4, homesick: 5
+    pulse: 5, crunch: 3, goo: 5, void: 4, jitter: 4, warp: 5
 };
 
 export function computeParams (dials) {
@@ -25,7 +25,7 @@ export function computeParams (dials) {
     const goo      = dials.goo      / 10;
     const voidness = dials.void     / 10;
     const jitter   = dials.jitter   / 10;
-    const homesick = dials.homesick / 10;
+    const warp     = dials.warp     / 10;
 
     // VOID eats note density — empty space is partly just fewer events.
     const density = (0.25 + pulse * 0.5) * (1 - voidness * 0.5);
@@ -60,9 +60,12 @@ export function computeParams (dials) {
         nudgeSeconds: jitter * 0.02,          // max off-grid push, 0..20ms
         hatScatter: jitter,
 
-        // --- pitch (HOMESICK) ---
-        scaleIdx: scaleIndexFor (dials.homesick),
-        detuneCents: (1 - homesick) * 35,     // alien = detuned
+        // --- pitch (WARP) ---
+        // WARP runs the opposite way to the other five: 0 is straight and
+        // melodic, 10 is maximally warped. The scale table is still ordered
+        // alien-first, so the dial is inverted HERE and nowhere else.
+        scaleIdx: scaleIndexFor (10 - dials.warp),
+        detuneCents: warp * 35,               // warped = detuned
 
         // Kept so backends and the classifier readout can see the raw vector.
         dials: Object.assign ({}, dials)
@@ -72,7 +75,7 @@ export function computeParams (dials) {
 // Which parameters require regenerating the pattern (applied at the next bar
 // boundary) vs. which can ramp live on the running nodes. PULSE is in both
 // camps — BPM rides live, but its density term needs a regen.
-export const PATTERN_KEYS = ['pulse', 'void', 'jitter', 'homesick'];
+export const PATTERN_KEYS = ['pulse', 'void', 'jitter', 'warp'];
 
 export function needsRegen (a, b) {
     for (let i = 0; i < PATTERN_KEYS.length; i++) {

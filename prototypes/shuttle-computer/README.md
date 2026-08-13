@@ -34,7 +34,7 @@ Boot screen → click/press any key to skip → **TRAX**.
 - Does the genre label match what your ear says? (centres are in
   `engine/classifier.js`, one table)
 - Is the 4-bar turnaround audible without being annoying?
-- Does HOMESICK feel like a smooth alien→human sweep, or does it lurch?
+- Does WARP feel like a smooth alien→human sweep, or does it lurch?
 
 Everything visual is a draft — colours are all tokens at the top of
 `ui/styles.css`.

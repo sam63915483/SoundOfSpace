@@ -20,6 +20,7 @@ centres by ear, art-directs the UI. No Unity work until he approves.
 
 | Question | Decision |
 |---|---|
+| Dial name | **WARP** replaced HOMESICK (2026-08-13). HOMESICK named a feeling, not a sensation, so it sat oddly beside PULSE/CRUNCH/GOO/VOID/JITTER. WARP runs the opposite way — 0 straight, 10 alien — so the dial semantics and all ten genre centres inverted with it. |
 | Loop length | **4-bar phrase (64 steps)**. Bars 0–2 hold the pattern; bar 3 gets a seeded fill in its last 4 steps. |
 | Plugin rack | **Working on/off toggles** per voice. Needed so Sam can solo a voice while tuning dials by ear. |
 | Today's scope | Audio engine + TRAX **first**, then the OS shell. Both land today. |
@@ -64,7 +65,7 @@ radio playback, on every machine.
 1. Dials are continuous `0–10` in the UI. For seeding they quantize to **0.5 steps →
    six ints `0–20`**.
 2. Seed = **FNV-1a 32-bit** over those six bytes, in dial order
-   `[PULSE, CRUNCH, GOO, VOID, JITTER, HOMESICK]`.
+   `[PULSE, CRUNCH, GOO, VOID, JITTER, WARP]`.
 3. Each voice draws from **its own stream**: `mulberry32(seed ^ VOICE_CONST)`. Adding a
    7th plugin later must not shift the drum pattern of any cassette already printed.
 4. **No `Math.random()`, no `Date.now()`** anywhere in `engine/`. Enforced by test.
@@ -86,15 +87,20 @@ Range 0–10 continuous. `p = dial/10`.
 | **GOO** | lowpass base `400 * 2^((1-p)*3)` Hz (open→squelchy), resonance `Q = 1 + p*18`, filter LFO rate `0.2–3 Hz` and depth up to 2 octaves |
 | **VOID** | CAVE send `p*0.8`, feedback `0.2 + p*0.65`; pattern sparseness `density *= (1 - p*0.5)` |
 | **JITTER** | syncopation probability `p`; off-grid nudge up to 20 ms; hat scatter `p` |
-| **HOMESICK** | scale-table index (0 = alien, 5 = familiar); detune `(1-p)*35` cents |
+| **WARP** | scale-table index, INVERTED (0 = familiar, 10 = alien); detune `p*35` cents |
 
-Scale tables, low→high HOMESICK: `chromatic-cluster [0,1,2,6,7,8]`, `whole-tone
-[0,2,4,6,8,10]`, `Hirajoshi [0,2,3,7,8]`, `Phrygian [0,1,3,5,7,8,10]`, `minor pentatonic
-[0,3,5,7,10]`, `natural minor [0,2,3,5,7,8,10]`. Master key fixed (root A, MIDI 45).
+Scale tables, ordered by FAMILIARITY (alien first): `chromatic-cluster [0,1,2,6,7,8]`,
+`whole-tone [0,2,4,6,8,10]`, `Hirajoshi [0,2,3,7,8]`, `Phrygian [0,1,3,5,7,8,10]`,
+`minor pentatonic [0,3,5,7,10]`, `natural minor [0,2,3,5,7,8,10]`. Master key fixed
+(root A, MIDI 45).
+
+**WARP is the one dial that runs backwards** — 0 is straight and melodic, 10 is
+maximally warped — so it is inverted (`10 - warp`) exactly once, where the scale
+index is computed, and nowhere else. The scale table itself stays alien-first.
 
 *Note:* the handoff listed whole-tone before chromatic-cluster. Swapped so alienness
-decreases monotonically as HOMESICK rises — otherwise the dial feels broken mid-sweep.
-One-line change in `scales.js` if Sam disagrees at the gate.
+increases monotonically as WARP rises — otherwise the dial feels broken mid-sweep.
+One-line change in `scales.js` if Sam disagrees (and the golden file regenerated).
 
 ## 5. Voices and patterns
 
@@ -118,6 +124,11 @@ running underneath, so unmuting lands in time and nothing clicks.
 
 Ten genre centres in 6-D dial space (values from handoff §5, placeholders for tuning).
 Track vector → euclidean distance to each centre → nearest wins.
+
+⚠️ **The handoff's §5 table is superseded on its last column.** Its HOMESICK values
+are the old direction; every centre's 6th coordinate was inverted to `10 - old` when
+the dial became WARP. `engine/classifier.js` and `TraxClassifier.cs` are the source
+of truth, and they agree.
 
 If `d2 - d1 <= BLEND_THRESHOLD` (start **1.5**, tunable live), show a blend label:
 adjective of second-nearest + noun of nearest, e.g. **"Sludjy Glorp"**. Adjectives:
@@ -230,4 +241,4 @@ free-form or quantized to bars, and whether the player can punch in/out.
 - App name (TRAX is a placeholder), genre names and centres, dial names, home-screen
   app list, the whole visual direction.
 - `BLEND_THRESHOLD` value.
-- HOMESICK scale ordering (see §4 note).
+- WARP scale ordering (see §4 note).

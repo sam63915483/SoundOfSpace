@@ -104,7 +104,7 @@ function tonalVoice (rack, p, t, vel, freq, len, opts) {
     const oscB = ctx.createOscillator (); oscB.type = typeB;
     oscA.frequency.value = freq;
     oscB.frequency.value = freq;
-    // HOMESICK low = detuned = alien. The two oscs beat against each other.
+    // WARP high = detuned = alien. The two oscs beat against each other.
     oscA.detune.value = -p.detuneCents * 0.5;
     oscB.detune.value =  p.detuneCents * 0.5;
 

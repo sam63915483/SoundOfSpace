@@ -16,7 +16,7 @@ public static class TraxClassifier
         public string name;
         public string adj;
         public string vibe;
-        public double[] c;      // [PULSE, CRUNCH, GOO, VOID, JITTER, HOMESICK]
+        public double[] c;      // [PULSE, CRUNCH, GOO, VOID, JITTER, WARP]
 
         public Genre(string name, string adj, string vibe, double[] c)
         {
@@ -26,16 +26,16 @@ public static class TraxClassifier
 
     public static readonly Genre[] Genres =
     {
-        new Genre("GLORP",    "Glorpy",   "wet squelchy bass funk",      new double[] { 6, 3, 9, 3, 5, 4 }),
-        new Genre("DRIFT",    "Drifty",   "weightless space drone",      new double[] { 1, 1, 3, 9, 1, 6 }),
-        new Genre("SKITTER",  "Skittish", "fast twitchy scatter-beats",  new double[] { 9, 4, 3, 3, 9, 3 }),
-        new Genre("SLUDJ",    "Sludjy",   "slow crushing heaviness",     new double[] { 2, 9, 6, 5, 2, 2 }),
-        new Genre("CHIRP",    "Chirpy",   "bright bouncy cute",          new double[] { 7, 2, 2, 2, 4, 9 }),
-        new Genre("NULLGAZE", "Null",     "hazy sad washed-out",         new double[] { 3, 5, 3, 8, 1, 8 }),
-        new Genre("THRUM",    "Thrummy",  "hypnotic ritual percussion",  new double[] { 5, 3, 5, 4, 7, 1 }),
+        new Genre("GLORP",    "Glorpy",   "wet squelchy bass funk",      new double[] { 6, 3, 9, 3, 5, 6 }),
+        new Genre("DRIFT",    "Drifty",   "weightless space drone",      new double[] { 1, 1, 3, 9, 1, 4 }),
+        new Genre("SKITTER",  "Skittish", "fast twitchy scatter-beats",  new double[] { 9, 4, 3, 3, 9, 7 }),
+        new Genre("SLUDJ",    "Sludjy",   "slow crushing heaviness",     new double[] { 2, 9, 6, 5, 2, 8 }),
+        new Genre("CHIRP",    "Chirpy",   "bright bouncy cute",          new double[] { 7, 2, 2, 2, 4, 1 }),
+        new Genre("NULLGAZE", "Null",     "hazy sad washed-out",         new double[] { 3, 5, 3, 8, 1, 2 }),
+        new Genre("THRUM",    "Thrummy",  "hypnotic ritual percussion",  new double[] { 5, 3, 5, 4, 7, 9 }),
         new Genre("VOLT",     "Volted",   "aggressive electric dance",   new double[] { 8, 7, 4, 2, 5, 5 }),
-        new Genre("WARBLE",   "Warbly",   "woozy detuned seasick psych", new double[] { 4, 4, 7, 6, 3, 7 }),
-        new Genre("CLANG",    "Clangin'", "metallic industrial banger",  new double[] { 6, 8, 2, 5, 8, 1 })
+        new Genre("WARBLE",   "Warbly",   "woozy detuned seasick psych", new double[] { 4, 4, 7, 6, 3, 3 }),
+        new Genre("CLANG",    "Clangin'", "metallic industrial banger",  new double[] { 6, 8, 2, 5, 8, 9 })
     };
 
     /// <summary>

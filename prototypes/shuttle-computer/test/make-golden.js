@@ -64,15 +64,15 @@ function voiceDigest (bars) {
 // A spread that walks each dial across its range and hits the corners, plus a
 // few awkward interior points.
 const CASES = [];
-const base = { pulse: 5, crunch: 3, goo: 5, void: 4, jitter: 4, homesick: 5 };
-for (const key of ['pulse', 'crunch', 'goo', 'void', 'jitter', 'homesick'])
+const base = { pulse: 5, crunch: 3, goo: 5, void: 4, jitter: 4, warp: 5 };
+for (const key of ['pulse', 'crunch', 'goo', 'void', 'jitter', 'warp'])
     for (const v of [0, 3.5, 7, 10])
         CASES.push (Object.assign ({}, base, { [key]: v }));
-CASES.push ({ pulse: 0, crunch: 0, goo: 0, void: 0, jitter: 0, homesick: 0 });
-CASES.push ({ pulse: 10, crunch: 10, goo: 10, void: 10, jitter: 10, homesick: 10 });
-CASES.push ({ pulse: 10, crunch: 0, goo: 10, void: 0, jitter: 10, homesick: 0 });
-CASES.push ({ pulse: 0, crunch: 10, goo: 0, void: 10, jitter: 0, homesick: 10 });
-CASES.push ({ pulse: 6.5, crunch: 2.5, goo: 8.5, void: 1.5, jitter: 9.5, homesick: 3.5 });
+CASES.push ({ pulse: 0, crunch: 0, goo: 0, void: 0, jitter: 0, warp: 0 });
+CASES.push ({ pulse: 10, crunch: 10, goo: 10, void: 10, jitter: 10, warp: 10 });
+CASES.push ({ pulse: 10, crunch: 0, goo: 10, void: 0, jitter: 10, warp: 0 });
+CASES.push ({ pulse: 0, crunch: 10, goo: 0, void: 10, jitter: 0, warp: 10 });
+CASES.push ({ pulse: 6.5, crunch: 2.5, goo: 8.5, void: 1.5, jitter: 9.5, warp: 3.5 });
 CASES.push (Object.assign ({}, base));
 
 // Flat, line-based, pipe-separated — NOT JSON. The C# side has to parse this
@@ -85,7 +85,7 @@ const lines = [
     '# Regenerate whenever engine/ changes. A diff here means every cassette',
     '# printed before the change would sound different after it.',
     '#',
-    '# CASE  |i|pulse|crunch|goo|void|jitter|homesick|seed|scaleIdx|genre',
+    '# CASE  |i|pulse|crunch|goo|void|jitter|warp|seed|scaleIdx|genre',
     '# EXACT |i|density|bpm|syncopation|nudgeSeconds|hatScatter|caveSend|caveFeedback|detuneCents   (IEEE754 bits, big-endian hex — must match bit for bit)',
     '# APPROX|i|filterBase|filterQ|lfoRate|lfoDepthOct                                             (Math.pow-derived — compare with tolerance)',
     '# HASH  |i|kick|snare|hat|bass|lead                                                           (FNV-1a of the voice digest)',
@@ -137,7 +137,7 @@ const cases = CASES.map ((dials, i) => {
 for (const c of cases) {
     const d = c.dials;
     lines.push ('CASE|' + c.index + '|' + d.pulse + '|' + d.crunch + '|' + d.goo + '|' +
-                d.void + '|' + d.jitter + '|' + d.homesick + '|' + c.seed + '|' +
+                d.void + '|' + d.jitter + '|' + d.warp + '|' + c.seed + '|' +
                 c.scaleIdx + '|' + c.genre);
     const e = c.exact;
     lines.push ('EXACT|' + c.index + '|' + e.density + '|' + e.bpm + '|' + e.syncopation + '|' +

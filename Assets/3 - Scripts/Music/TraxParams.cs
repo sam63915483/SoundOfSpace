@@ -13,12 +13,12 @@ public struct TraxDials
     public double goo;
     public double voidness;
     public double jitter;
-    public double homesick;
+    public double warp;
 
-    public TraxDials(double pulse, double crunch, double goo, double voidness, double jitter, double homesick)
+    public TraxDials(double pulse, double crunch, double goo, double voidness, double jitter, double warp)
     {
         this.pulse = pulse; this.crunch = crunch; this.goo = goo;
-        this.voidness = voidness; this.jitter = jitter; this.homesick = homesick;
+        this.voidness = voidness; this.jitter = jitter; this.warp = warp;
     }
 
     /// Fixed dial order — this ordering is baked into the seed hash. Never reorder.
@@ -31,7 +31,7 @@ public struct TraxDials
             case 2: return goo;
             case 3: return voidness;
             case 4: return jitter;
-            case 5: return homesick;
+            case 5: return warp;
             default: return 0;
         }
     }
@@ -46,7 +46,7 @@ public struct TraxDials
             case 2: d.goo = v; break;
             case 3: d.voidness = v; break;
             case 4: d.jitter = v; break;
-            case 5: d.homesick = v; break;
+            case 5: d.warp = v; break;
         }
         return d;
     }
@@ -91,7 +91,7 @@ public struct TraxParams
     public double nudgeSeconds;
     public double hatScatter;
 
-    // pitch (HOMESICK)
+    // pitch (WARP)
     public int scaleIdx;
     public double detuneCents;
 
@@ -104,7 +104,7 @@ public struct TraxParams
         double goo      = d.goo      / 10.0;
         double voidness = d.voidness / 10.0;
         double jitter   = d.jitter   / 10.0;
-        double homesick = d.homesick / 10.0;
+        double warp     = d.warp     / 10.0;
 
         TraxParams p = new TraxParams();
 
@@ -132,8 +132,11 @@ public struct TraxParams
         p.nudgeSeconds = jitter * 0.02;
         p.hatScatter = jitter;
 
-        p.scaleIdx = TraxScales.ScaleIndexFor(d.homesick);
-        p.detuneCents = (1 - homesick) * 35;                        // alien = detuned
+        // WARP runs the opposite way to the other five: 0 is straight and
+        // melodic, 10 is maximally warped. The scale table is still ordered
+        // alien-first, so the dial is inverted HERE and nowhere else.
+        p.scaleIdx = TraxScales.ScaleIndexFor(10 - d.warp);
+        p.detuneCents = warp * 35;                                  // warped = detuned
 
         p.dials = d;
         return p;
@@ -150,7 +153,7 @@ public struct TraxParams
         return Q(a.pulse)    != Q(b.pulse)
             || Q(a.voidness) != Q(b.voidness)
             || Q(a.jitter)   != Q(b.jitter)
-            || Q(a.homesick) != Q(b.homesick);
+            || Q(a.warp)     != Q(b.warp);
     }
 
     static int Q(double v) { return (int)TraxPrng.JsRound(v * 2.0); }
@@ -174,6 +177,6 @@ public static class TraxDialDefs
         new Def(2, "GOO",      "how wet and squelchy"),
         new Def(3, "VOID",     "how much empty space"),
         new Def(4, "JITTER",   "how twitchy the rhythm"),
-        new Def(5, "HOMESICK", "how human it feels")
+        new Def(5, "WARP",     "how warped the pitch is")
     };
 }

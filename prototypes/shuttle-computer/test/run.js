@@ -54,10 +54,10 @@ test ('mulberry32 is stable and in range', () => {
 });
 
 test ('dials quantize to 0.5 steps and clamp to 0..20', () => {
-    deepEq (quantizeDials ({ pulse: 0, crunch: 10, goo: 5, void: 2.4, jitter: 2.3, homesick: 7.5 }),
+    deepEq (quantizeDials ({ pulse: 0, crunch: 10, goo: 5, void: 2.4, jitter: 2.3, warp: 7.5 }),
             [0, 20, 10, 5, 5, 15]);
-    deepEq (quantizeDials ({ pulse: -3, crunch: 99, goo: 0, void: 0, jitter: 0, homesick: 0 })[0], 0);
-    eq (quantizeDials ({ pulse: 99, crunch: 0, goo: 0, void: 0, jitter: 0, homesick: 0 })[0], 20);
+    deepEq (quantizeDials ({ pulse: -3, crunch: 99, goo: 0, void: 0, jitter: 0, warp: 0 })[0], 0);
+    eq (quantizeDials ({ pulse: 99, crunch: 0, goo: 0, void: 0, jitter: 0, warp: 0 })[0], 20);
 });
 
 test ('sub-quantum dial wiggle does not change the seed', () => {
@@ -75,7 +75,7 @@ test ('voice constants are distinct', () => {
 section ('Determinism');
 
 test ('same dials generate a byte-identical phrase, twice', () => {
-    const d = dialsOf ({ pulse: 7, crunch: 4, goo: 8, void: 2, jitter: 6, homesick: 3 });
+    const d = dialsOf ({ pulse: 7, crunch: 4, goo: 8, void: 2, jitter: 6, warp: 3 });
     const a = generatePatterns (seedFromDials (d), computeParams (d));
     const b = generatePatterns (seedFromDials (d), computeParams (d));
     deepEq (a, b);
@@ -135,13 +135,13 @@ test ('stepAt wraps across the phrase in both directions', () => {
 // ---------------------------------------------------------------- SCALES --
 section ('Pitch safety');
 
-test ('HOMESICK sweeps the scale table monotonically, ends inclusive', () => {
+test ('familiarity sweeps the scale table monotonically, ends inclusive', () => {
     eq (scaleIndexFor (0), 0);
     eq (scaleIndexFor (10), SCALES.length - 1);
     let prev = -1;
     for (let h = 0; h <= 10; h += 0.25) {
         const i = scaleIndexFor (h);
-        assert (i >= prev, 'scale index went backwards at homesick=' + h);
+        assert (i >= prev, 'scale index went backwards at familiarity=' + h);
         prev = i;
     }
 });
@@ -166,7 +166,7 @@ test ('degrees rise monotonically and octaves are exactly 12 semitones', () => {
 test ('every pitch any voice can play is in the active scale, across the dial space', () => {
     for (let h = 0; h <= 10; h += 1)
         for (let p = 0; p <= 10; p += 2.5) {
-            const d = dialsOf ({ homesick: h, pulse: p, void: 0 });
+            const d = dialsOf ({ warp: h, pulse: p, void: 0 });
             const params = computeParams (d);
             const pat = generatePatterns (seedFromDials (d), params);
             for (const v of ['bass', 'lead'])
@@ -174,7 +174,7 @@ test ('every pitch any voice can play is in the active scale, across the dial sp
                     for (const st of bar) {
                         if (!st) continue;
                         assert (isInScale (degreeToMidi (st.degree, params.scaleIdx, VOICE_OCTAVE[v]), params.scaleIdx),
-                                v + ' played out of scale at homesick=' + h);
+                                v + ' played out of scale at warp=' + h);
                     }
         }
 });
@@ -213,10 +213,14 @@ test ('VOID thins the pattern and opens the CAVE', () => {
     assert (wet.caveFeedback < 1, 'CAVE feedback must stay below unity or it runs away');
 });
 
-test ('HOMESICK removes detune as it rises', () => {
-    assert (computeParams (dialsOf ({ homesick: 0 })).detuneCents >
-            computeParams (dialsOf ({ homesick: 10 })).detuneCents, 'alien should be more detuned');
-    eq (computeParams (dialsOf ({ homesick: 10 })).detuneCents, 0);
+test ('WARP adds detune as it rises, and goes alien at the top', () => {
+    // WARP is the one dial that runs the other way: 0 is straight, 10 is warped.
+    assert (computeParams (dialsOf ({ warp: 10 })).detuneCents >
+            computeParams (dialsOf ({ warp: 0 })).detuneCents, 'warped should be more detuned');
+    eq (computeParams (dialsOf ({ warp: 0 })).detuneCents, 0);
+    // ...and it must reach both ends of the scale table, inverted.
+    eq (computeParams (dialsOf ({ warp: 0 })).scaleIdx, SCALES.length - 1);
+    eq (computeParams (dialsOf ({ warp: 10 })).scaleIdx, 0);
 });
 
 test ('density stays positive across the whole dial space', () => {
@@ -240,7 +244,7 @@ section ('Classifier');
 
 test ('every genre centre classifies as itself', () => {
     for (const g of GENRES) {
-        const dials = { pulse: g.c[0], crunch: g.c[1], goo: g.c[2], void: g.c[3], jitter: g.c[4], homesick: g.c[5] };
+        const dials = { pulse: g.c[0], crunch: g.c[1], goo: g.c[2], void: g.c[3], jitter: g.c[4], warp: g.c[5] };
         eq (classify (dials).primary.name, g.name, 'centre of ' + g.name + ' misclassified');
     }
 });
@@ -248,7 +252,7 @@ test ('every genre centre classifies as itself', () => {
 test ('a point midway between two centres reports a blend', () => {
     const a = GENRES[0].c, b = GENRES[8].c;      // GLORP <-> WARBLE
     const mid = a.map ((v, i) => (v + b[i]) / 2);
-    const r = classify ({ pulse: mid[0], crunch: mid[1], goo: mid[2], void: mid[3], jitter: mid[4], homesick: mid[5] });
+    const r = classify ({ pulse: mid[0], crunch: mid[1], goo: mid[2], void: mid[3], jitter: mid[4], warp: mid[5] });
     assert (r.blended, 'midpoint should blend, d1=' + r.d1.toFixed (2) + ' d2=' + r.d2.toFixed (2));
     assert (r.label.indexOf (' ') > 0, 'blend label should be two words, got ' + r.label);
 });
@@ -257,7 +261,7 @@ test ('a genre centre far from its neighbours reports a single word', () => {
     // DRIFT sits alone in the corner of the space; at its exact centre nothing
     // else should be within the threshold.
     const g = GENRES[1];
-    const r = classify ({ pulse: g.c[0], crunch: g.c[1], goo: g.c[2], void: g.c[3], jitter: g.c[4], homesick: g.c[5] });
+    const r = classify ({ pulse: g.c[0], crunch: g.c[1], goo: g.c[2], void: g.c[3], jitter: g.c[4], warp: g.c[5] });
     eq (r.label, 'DRIFT');
     assert (!r.blended, 'DRIFT centre should not blend (runner-up at ' + r.d2.toFixed (2) + ')');
 });

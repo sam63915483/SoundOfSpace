@@ -6,18 +6,18 @@
 
 import { DIAL_ORDER } from './prng.js';
 
-// [PULSE, CRUNCH, GOO, VOID, JITTER, HOMESICK]
+// [PULSE, CRUNCH, GOO, VOID, JITTER, WARP]
 export const GENRES = [
-    { name: 'GLORP',    adj: 'Glorpy',   vibe: 'wet squelchy bass funk',     c: [6, 3, 9, 3, 5, 4] },
-    { name: 'DRIFT',    adj: 'Drifty',   vibe: 'weightless space drone',     c: [1, 1, 3, 9, 1, 6] },
-    { name: 'SKITTER',  adj: 'Skittish', vibe: 'fast twitchy scatter-beats', c: [9, 4, 3, 3, 9, 3] },
-    { name: 'SLUDJ',    adj: 'Sludjy',   vibe: 'slow crushing heaviness',    c: [2, 9, 6, 5, 2, 2] },
-    { name: 'CHIRP',    adj: 'Chirpy',   vibe: 'bright bouncy cute',         c: [7, 2, 2, 2, 4, 9] },
-    { name: 'NULLGAZE', adj: 'Null',     vibe: 'hazy sad washed-out',        c: [3, 5, 3, 8, 1, 8] },
-    { name: 'THRUM',    adj: 'Thrummy',  vibe: 'hypnotic ritual percussion', c: [5, 3, 5, 4, 7, 1] },
+    { name: 'GLORP',    adj: 'Glorpy',   vibe: 'wet squelchy bass funk',     c: [6, 3, 9, 3, 5, 6] },
+    { name: 'DRIFT',    adj: 'Drifty',   vibe: 'weightless space drone',     c: [1, 1, 3, 9, 1, 4] },
+    { name: 'SKITTER',  adj: 'Skittish', vibe: 'fast twitchy scatter-beats', c: [9, 4, 3, 3, 9, 7] },
+    { name: 'SLUDJ',    adj: 'Sludjy',   vibe: 'slow crushing heaviness',    c: [2, 9, 6, 5, 2, 8] },
+    { name: 'CHIRP',    adj: 'Chirpy',   vibe: 'bright bouncy cute',         c: [7, 2, 2, 2, 4, 1] },
+    { name: 'NULLGAZE', adj: 'Null',     vibe: 'hazy sad washed-out',        c: [3, 5, 3, 8, 1, 2] },
+    { name: 'THRUM',    adj: 'Thrummy',  vibe: 'hypnotic ritual percussion', c: [5, 3, 5, 4, 7, 9] },
     { name: 'VOLT',     adj: 'Volted',   vibe: 'aggressive electric dance',  c: [8, 7, 4, 2, 5, 5] },
-    { name: 'WARBLE',   adj: 'Warbly',   vibe: 'woozy detuned seasick psych', c: [4, 4, 7, 6, 3, 7] },
-    { name: 'CLANG',    adj: "Clangin'", vibe: 'metallic industrial banger', c: [6, 8, 2, 5, 8, 1] }
+    { name: 'WARBLE',   adj: 'Warbly',   vibe: 'woozy detuned seasick psych', c: [4, 4, 7, 6, 3, 3] },
+    { name: 'CLANG',    adj: "Clangin'", vibe: 'metallic industrial banger', c: [6, 8, 2, 5, 8, 9] }
 ];
 
 // A blend label shows when the runner-up is within this distance OF THE WINNER

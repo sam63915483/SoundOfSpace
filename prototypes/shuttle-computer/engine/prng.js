@@ -33,7 +33,7 @@ export function mulberry32 (seed) {
 // Dials are continuous 0-10 in the UI but quantize to 0.5 steps for seeding, so
 // nudging a knob by a hair doesn't silently reroll the whole pattern. Six ints
 // in 0..20, in fixed dial order.
-export const DIAL_ORDER = ['pulse', 'crunch', 'goo', 'void', 'jitter', 'homesick'];
+export const DIAL_ORDER = ['pulse', 'crunch', 'goo', 'void', 'jitter', 'warp'];
 
 export function quantizeDials (dials) {
     const out = new Array (DIAL_ORDER.length);

@@ -30,14 +30,14 @@ log ('rack built: ' + ctx.nodeCount + ' nodes');
 // each dial across its range against a moving background, which is what a
 // person actually does to an instrument.
 const presets = [];
-for (const key of ['pulse', 'crunch', 'goo', 'void', 'jitter', 'homesick'])
+for (const key of ['pulse', 'crunch', 'goo', 'void', 'jitter', 'warp'])
     for (let v = 0; v <= 10; v += 2.5)
         presets.push (Object.assign ({}, DEFAULT_DIALS, { [key]: v }));
 // The extremes, where clipping and divide-by-zero live.
-presets.push ({ pulse: 0, crunch: 0, goo: 0, void: 0, jitter: 0, homesick: 0 });
-presets.push ({ pulse: 10, crunch: 10, goo: 10, void: 10, jitter: 10, homesick: 10 });
-presets.push ({ pulse: 10, crunch: 10, goo: 0, void: 10, jitter: 10, homesick: 0 });
-presets.push ({ pulse: 0, crunch: 10, goo: 10, void: 0, jitter: 0, homesick: 10 });
+presets.push ({ pulse: 0, crunch: 0, goo: 0, void: 0, jitter: 0, warp: 0 });
+presets.push ({ pulse: 10, crunch: 10, goo: 10, void: 10, jitter: 10, warp: 10 });
+presets.push ({ pulse: 10, crunch: 10, goo: 0, void: 10, jitter: 10, warp: 0 });
+presets.push ({ pulse: 0, crunch: 10, goo: 10, void: 0, jitter: 0, warp: 10 });
 
 let scheduled = 0;
 let t = 0.1;

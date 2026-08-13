@@ -5,11 +5,13 @@ using System;
 /// PORT OF <c>prototypes/shuttle-computer/engine/scales.js</c>. See TraxPrng for
 /// the porting rules.
 ///
-/// Ordered by HOMESICK: index 0 is maximally alien, index 5 is familiar and
-/// melancholic. (The handoff listed whole-tone before chromatic-cluster; they're
-/// swapped here so alienness falls monotonically across the sweep, otherwise the
-/// dial feels broken in the middle. Sam can flip them back in one line — but the
-/// same edit must be made in scales.js and the golden file regenerated.)
+/// Ordered by FAMILIARITY: index 0 is maximally alien, index 5 is familiar and
+/// melancholic. The WARP dial runs the other way (10 = alien), so TraxParams
+/// inverts it before indexing here — this table is NOT the dial.
+/// (The handoff listed whole-tone before chromatic-cluster; they're swapped here
+/// so alienness falls monotonically across the sweep, otherwise the dial feels
+/// broken in the middle. Sam can flip them back in one line — but the same edit
+/// must be made in scales.js and the golden file regenerated.)
 /// </summary>
 public static class TraxScales
 {
@@ -27,7 +29,7 @@ public static class TraxScales
         new ScaleDef("HIRAJOSHI", new[] { 0, 2, 3, 7, 8 }),         // alien but pretty
         new ScaleDef("PHRYGIAN",  new[] { 0, 1, 3, 5, 7, 8, 10 }),  // flat-2 darkness
         new ScaleDef("MINORPENT", new[] { 0, 3, 5, 7, 10 }),        // familiar, safe
-        new ScaleDef("NATMINOR",  new[] { 0, 2, 3, 5, 7, 8, 10 })   // fully homesick
+        new ScaleDef("NATMINOR",  new[] { 0, 2, 3, 5, 7, 8, 10 })   // fully familiar
     };
 
     /// Master key, fixed for the whole game. A2.
@@ -42,9 +44,10 @@ public static class TraxScales
     public const int BassOctave = -1;
     public const int LeadOctave = 1;
 
-    public static int ScaleIndexFor(double homesick)
+    /// Takes FAMILIARITY (0 = alien, 10 = familiar), not the WARP dial value.
+    public static int ScaleIndexFor(double familiarity)
     {
-        int i = (int)Math.Floor((homesick / 10.0) * Scales.Length);
+        int i = (int)Math.Floor((familiarity / 10.0) * Scales.Length);
         if (i < 0) i = 0;
         if (i >= Scales.Length) i = Scales.Length - 1;
         return i;
