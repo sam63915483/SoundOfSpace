@@ -1,35 +1,41 @@
-// The instrument: owns dial state, drives the engine, feeds the backend.
+// The instrument: owns the track, drives the engine, feeds the backend.
 //
 // The UI talks only to this. Step 2 (Unity UGUI) reimplements the UI against
-// this same surface; Step 3 swaps fx.js/voices.js/clock.js underneath it. The
-// engine/ imports below are the parts that must not change in either step.
+// this same surface; Step 3 swaps fx.js/voices.js/clock.js underneath it.
+//
+// ── This class is the choke point, on purpose ────────────────────────────
+// EVERY change to the track goes through setTrack(). Nothing else may write
+// track state — not the UI widgets, not the terminal, not a future preset
+// loader. When full-length recording is built (spec §9.5) it becomes "log what
+// passes through here, stamped with the step index" and nothing else changes.
 
-import { seedFromDials } from '../engine/prng.js';
-import { computeParams, DEFAULT_DIALS, needsRegen } from '../engine/params.js';
+import { computeParams } from '../engine/params.js';
 import { generatePatterns, stepAt, chordTonesFor, STEPS, TOTAL_STEPS } from '../engine/patterns.js';
-import { degreeToFreq, VOICE_OCTAVE } from '../engine/scales.js';
+import { voiceFreq } from '../engine/scales.js';
 import { classify } from '../engine/classifier.js';
+import * as TRACK from '../engine/track.js';
+import * as PRESETS from '../engine/presets.js';
 import { createRack } from './fx.js';
 import { Clock } from './clock.js';
 import { triggerKick, triggerSnare, triggerHat, triggerBass, triggerLead,
          triggerMoss, triggerSpindle } from './voices.js';
 
 // Ordered the way you'd read a mix: rhythm, low end, harmony, melody, motion,
-// space.
+// space. CAVE has no pattern — its preset picks a space.
 export const MODULES = [
-    { name: 'THUMPER', desc: 'drums',  locked: false },
-    { name: 'GLOWORM', desc: 'bass',   locked: false },
-    { name: 'MOSS',    desc: 'chords', locked: false },
-    { name: 'SIREN',   desc: 'lead',   locked: false },
-    { name: 'SPINDLE', desc: 'arp',    locked: false },
-    { name: 'CAVE',    desc: 'space',  locked: false }
+    { name: 'THUMPER', desc: 'drums'  },
+    { name: 'GLOWORM', desc: 'bass'   },
+    { name: 'MOSS',    desc: 'chords' },
+    { name: 'SIREN',   desc: 'lead'   },
+    { name: 'SPINDLE', desc: 'arp'    },
+    { name: 'CAVE',    desc: 'space'  }
 ];
 
 export class Instrument {
     constructor () {
-        this.dials = Object.assign ({}, DEFAULT_DIALS);
-        this.params = computeParams (this.dials);
-        this.patterns = generatePatterns (seedFromDials (this.dials), this.params);
+        this.track = TRACK.defaultTrack ();
+        this.params = computeParams (this.track.dials, this.track.key);
+        this.patterns = generatePatterns (this.track, this.params);
         this.pending = null;
 
         this.enabled = {
@@ -42,13 +48,20 @@ export class Instrument {
         this.rack = null;
         this.clock = null;
 
-        // UI hooks.
-        this.onStepScheduled = null;   // (step, time)
-        this.onPatternSwap = null;     // ()
+        this.onStepScheduled = null;
+        this.onPatternSwap = null;
     }
 
-    // Must be called from a user gesture — browsers refuse to start audio
-    // otherwise, and a silently-suspended context looks exactly like a bug.
+    get dials () { return this.track.dials; }
+    get key () { return this.track.key; }
+    get keyName () { return TRACK.keyName (this.track.key); }
+    get trackId () { return TRACK.trackId (this.track); }
+    get genre () { return classify (this.track.dials); }
+
+    presetIndex (module) { return this.track.preset[module]; }
+    variationIndex (module) { return this.track.variation[module]; }
+    presetName (module) { return PRESETS.presetName (module, this.track.preset[module]); }
+
     async init () {
         if (this.ctx) {
             if (this.ctx.state === 'suspended') await this.ctx.resume ();
@@ -61,15 +74,14 @@ export class Instrument {
         this.rack = createRack (this.ctx);
         this.rack.setMasterVolume (this.masterVolume);
         this.rack.apply (this.params);
+        this.rack.applyCavePreset (PRESETS.CAVE[this.track.preset.CAVE], this.track.variation.CAVE);
         for (const k in this.enabled) this.rack.setModuleEnabled (k, this.enabled[k], this.params);
 
         this.clock = new Clock (this.ctx, this._schedule.bind (this));
         this.clock.bpm = this.params.bpm;
     }
 
-    get playing () {
-        return this.clock != null && this.clock.running;
-    }
+    get playing () { return this.clock != null && this.clock.running; }
 
     async play () {
         await this.init ();
@@ -77,51 +89,51 @@ export class Instrument {
         this.clock.start ();
     }
 
-    stop () {
-        if (this.clock) this.clock.stop ();
-    }
+    stop () { if (this.clock) this.clock.stop (); }
 
-    async toggle () {
-        if (this.playing) this.stop (); else await this.play ();
-    }
+    async toggle () { if (this.playing) this.stop (); else await this.play (); }
 
-    // --- dials ---
+    // --- the choke point -------------------------------------------------
 
-    setDial (key, value) {
-        const next = Object.assign ({}, this.dials);
-        next[key] = value;
-        this.setDials (next);
-    }
+    setTrack (next) {
+        const prev = this.track;
+        this.track = next;
+        this.params = computeParams (next.dials, next.key);
 
-    setDials (next) {
-        const prev = this.dials;
-        this.dials = Object.assign ({}, next);
-        this.params = computeParams (this.dials);
-
-        // BPM rides live — tempo should feel attached to your hand.
         if (this.clock) this.clock.bpm = this.params.bpm;
-        // Timbre/FX ramp live; never hard-jumped.
-        if (this.rack) this.rack.apply (this.params);
+        if (this.rack) {
+            this.rack.apply (this.params);
+            if (prev.preset.CAVE !== next.preset.CAVE ||
+                prev.variation.CAVE !== next.variation.CAVE)
+                this.rack.applyCavePreset (PRESETS.CAVE[next.preset.CAVE], next.variation.CAVE);
+        }
 
-        if (needsRegen (prev, this.dials)) {
-            const fresh = generatePatterns (seedFromDials (this.dials), this.params);
-            // While playing, hold it until the bar turns over — swapping
-            // mid-bar is audible as a stumble. The global step counter keeps
-            // running, so the phrase position is preserved across the swap.
+        if (TRACK.needsRegen (prev, next)) {
+            const fresh = generatePatterns (next, this.params);
+            // Swap on a bar line while playing — mid-bar is audible as a stumble.
             if (this.playing) this.pending = fresh;
             else this.patterns = fresh;
         }
     }
 
-    get genre () {
-        return classify (this.dials);
+    setDial (key, value) {
+        const t = TRACK.cloneTrack (this.track);
+        t.dials[key] = value;
+        this.setTrack (t);
     }
 
-    get seed () {
-        return seedFromDials (this.dials);
-    }
+    setPreset (module, index) { this.setTrack (TRACK.setPreset (this.track, module, index)); }
+    cyclePreset (module, delta) { this.setPreset (module, this.track.preset[module] + delta); }
 
-    // --- rack ---
+    setVariation (module, index) { this.setTrack (TRACK.setVariation (this.track, module, index)); }
+    cycleVariation (module, delta) { this.setVariation (module, this.track.variation[module] + delta); }
+
+    // Key never regenerates anything — it is applied when a degree becomes a
+    // frequency, so the same phrase just moves.
+    setKey (key) { this.setTrack (TRACK.setKey (this.track, key)); }
+    cycleKey (delta) { this.setKey (this.track.key + delta); }
+
+    // --- rack ------------------------------------------------------------
 
     setModuleEnabled (name, on) {
         this.enabled[name] = on;
@@ -133,10 +145,9 @@ export class Instrument {
         if (this.rack) this.rack.setMasterVolume (v);
     }
 
-    // --- scheduling ---
+    // --- scheduling ------------------------------------------------------
 
     _schedule (step, time, stepDur) {
-        // Pattern swaps land on bar boundaries only.
         if (step % STEPS === 0 && this.pending) {
             this.patterns = this.pending;
             this.pending = null;
@@ -146,6 +157,7 @@ export class Instrument {
         const p = this.params;
         const ctxNow = this.ctx.currentTime;
         const at = (st) => Math.max (time + (st.nudge || 0), ctxNow + 0.005);
+        const freq = (deg, voice) => voiceFreq (deg, p.scaleIdx, voice, p.key);
 
         if (this.enabled.THUMPER) {
             const k = stepAt (this.patterns, 'kick', step);
@@ -157,38 +169,32 @@ export class Instrument {
         }
         if (this.enabled.GLOWORM) {
             const b = stepAt (this.patterns, 'bass', step);
-            if (b) triggerBass (this.rack, p, at (b), b.vel,
-                degreeToFreq (b.degree, p.scaleIdx, VOICE_OCTAVE.bass),
+            if (b) triggerBass (this.rack, p, at (b), b.vel, freq (b.degree, 'bass'),
                 Math.max (0.05, b.dur * stepDur * 0.95));
         }
         if (this.enabled.SIREN) {
             const l = stepAt (this.patterns, 'lead', step);
-            if (l) triggerLead (this.rack, p, at (l), l.vel,
-                degreeToFreq (l.degree, p.scaleIdx, VOICE_OCTAVE.lead),
+            if (l) triggerLead (this.rack, p, at (l), l.vel, freq (l.degree, 'lead'),
                 Math.max (0.05, l.dur * stepDur * 0.9));
         }
-
         if (this.enabled.MOSS) {
             const m = stepAt (this.patterns, 'moss', step);
             if (m) {
                 const tones = chordTonesFor (m.degree);
                 const freqs = new Array (tones.length);
-                for (let i = 0; i < tones.length; i++)
-                    freqs[i] = degreeToFreq (tones[i], p.scaleIdx, VOICE_OCTAVE.moss);
+                for (let i = 0; i < tones.length; i++) freqs[i] = freq (tones[i], 'moss');
                 triggerMoss (this.rack, p, at (m), m.vel, freqs, m.dur * stepDur * 0.98);
             }
         }
         if (this.enabled.SPINDLE) {
             const a = stepAt (this.patterns, 'spindle', step);
-            if (a) triggerSpindle (this.rack, p, at (a), a.vel,
-                degreeToFreq (a.degree, p.scaleIdx, VOICE_OCTAVE.spindle),
+            if (a) triggerSpindle (this.rack, p, at (a), a.vel, freq (a.degree, 'spindle'),
                 Math.max (0.05, a.dur * stepDur * 0.9));
         }
 
         if (this.onStepScheduled) this.onStepScheduled (step, time);
     }
 
-    // Read-only snapshot for the UI's step grid.
     gridFor (voice) {
         const rows = [];
         for (let i = 0; i < TOTAL_STEPS; i++) rows.push (stepAt (this.patterns, voice, i) != null);

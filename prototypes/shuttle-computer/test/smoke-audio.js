@@ -10,6 +10,8 @@
 import { Instrument, MODULES } from '../audio/instrument.js';
 import { DEFAULT_DIALS } from '../engine/params.js';
 import { STEPS } from '../engine/patterns.js';
+import * as TRACK from '../engine/track.js';
+import * as PRESETS from '../engine/presets.js';
 import { FakeAudioContext, stats, problems, bad } from './mock-webaudio.js';
 
 
@@ -43,7 +45,11 @@ let scheduled = 0;
 let t = 0.1;
 
 for (const preset of presets) {
-    inst.setDials (preset);
+    // NB: not `t` — that is the running schedule time in this file, and
+    // shadowing it silently passes a track object where a timestamp goes.
+    const tr = TRACK.cloneTrack (inst.track);
+    tr.dials = preset;
+    inst.setTrack (tr);
     const stepDur = 60 / inst.params.bpm / 4;
     for (let step = 0; step < 64; step++) {
         ctx.currentTime = t - 0.1 < 0 ? 0 : t - 0.1;
@@ -55,10 +61,42 @@ for (const preset of presets) {
 }
 log ('scheduled ' + scheduled + ' steps across ' + presets.length + ' dial settings');
 
+// Every part choice, so no preset or variation path throws.
+let parts = 0;
+for (const m of PRESETS.MODULE_NAMES)
+    for (let pi = 0; pi < PRESETS.PRESET_COUNT; pi++)
+        for (let vi = 0; vi < PRESETS.VARIATION_COUNT; vi++) {
+            inst.setPreset (m, pi);
+            inst.setVariation (m, vi);
+            const stepDur = 60 / inst.params.bpm / 4;
+            for (let step = 0; step < STEPS; step++) {
+                ctx.currentTime = t - 0.1;
+                inst._schedule (step, t, stepDur);
+                ctx.flushEnded ();
+                t += stepDur;
+            }
+            parts++;
+        }
+log ('exercised ' + parts + ' preset/variation combinations');
+
+// Every key, since key changes pitch on live voices.
+for (let k = 0; k < 12; k++) {
+    inst.setKey (k);
+    const stepDur = 60 / inst.params.bpm / 4;
+    for (let step = 0; step < STEPS; step++) {
+        ctx.currentTime = t - 0.1;
+        inst._schedule (step, t, stepDur);
+        ctx.flushEnded ();
+        t += stepDur;
+    }
+}
+inst.setKey (0);
+log ('exercised all 12 keys');
+
 // Every rack combination, so no module toggle path throws.
 let combos = 0;
 for (let mask = 0; mask < 16; mask++) {
-    const names = MODULES.filter (m => !m.locked).map (m => m.name);
+    const names = MODULES.map (m => m.name);
     names.forEach ((n, i) => inst.setModuleEnabled (n, (mask >> i) & 1 ? true : false));
     const stepDur = 60 / inst.params.bpm / 4;
     for (let step = 0; step < STEPS; step++) {
@@ -69,13 +107,13 @@ for (let mask = 0; mask < 16; mask++) {
     }
     combos++;
 }
-for (const m of MODULES) if (!m.locked) inst.setModuleEnabled (m.name, true);
+for (const m of MODULES) inst.setModuleEnabled (m.name, true);
 log ('exercised ' + combos + ' rack combinations');
 
 // Pattern swaps must land on a bar line, never mid-bar.
 inst.clock.timer = 1;                                  // pretend the transport is running
 const before = JSON.stringify (inst.patterns);
-inst.setDials (Object.assign ({}, DEFAULT_DIALS, { jitter: 9.5, pulse: 9 }));
+inst.setVariation ('THUMPER', 5);
 if (!inst.pending) bad ('a pattern-affecting dial move while playing did not queue a swap');
 if (JSON.stringify (inst.patterns) !== before) bad ('pattern swapped mid-bar');
 inst._schedule (5, t, 0.1);                            // mid-bar: must NOT swap
@@ -88,9 +126,16 @@ log ('bar-boundary swap: deferred mid-bar, applied on the bar line');
 
 // A timbre-only move must not disturb the pattern at all.
 const held = JSON.stringify (inst.patterns);
-inst.setDials (Object.assign ({}, inst.dials, { crunch: 10, goo: 9 }));
+inst.setDial ('crunch', 10);
+inst.setDial ('goo', 9);
 if (JSON.stringify (inst.patterns) !== held || inst.pending) bad ('CRUNCH/GOO should be timbre-only');
 log ('timbre dials leave the pattern untouched');
+
+// ...and neither must the key, which is applied at note time.
+inst.setKey (7);
+if (JSON.stringify (inst.patterns) !== held || inst.pending) bad ('KEY must not regenerate');
+inst.setKey (0);
+log ('key changes leave the pattern untouched');
 
 // Node hygiene: a long session must not grow the graph without bound. Every
 // tonal note wires its filter to the shared LFO, so if the unwire-on-ended is
@@ -116,6 +161,7 @@ inst.setMasterVolume (1);
 inst.setMasterVolume (0.5);
 inst.setModuleEnabled ('CAVE', false);
 inst.setModuleEnabled ('CAVE', true);
+for (let i = 0; i < PRESETS.PRESET_COUNT; i++) inst.setPreset ('CAVE', i);
 log ('master volume + CAVE mute paths ok');
 
 log ('\n' + '-'.repeat (52));

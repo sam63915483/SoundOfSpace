@@ -98,6 +98,8 @@ check ('opening TRAX switches view and warms the audio context', () => {
 const appView = doc.getElementById ('view-app');
 const knobs = appView.querySelectorAll ('.knob');
 const modules = appView.querySelectorAll ('.module');
+const heads = appView.querySelectorAll ('.m-head');
+const steppers = appView.querySelectorAll ('.stepper');
 const stepCells = appView.querySelectorAll ('.st');
 
 check ('six dials, six live rack slots, 16 step lights', () => {
@@ -155,13 +157,60 @@ check ('knob clamps at both ends', () => {
 });
 
 check ('every rack toggle flips and flips back', () => {
-    for (const m of modules) {
+    for (let i = 0; i < heads.length; i++) {
+        const m = modules[i];
         const was = m.classList.contains ('on');
-        m.fire ('click');
+        heads[i].fire ('click');
         assert (m.classList.contains ('on') !== was, 'toggle did not flip ' + m.textContent);
-        m.fire ('click');
+        heads[i].fire ('click');
         assert (m.classList.contains ('on') === was, 'toggle did not flip back');
     }
+});
+
+check ('every module has a PRESET and a VARIATION stepper', () => {
+    // 6 modules x 2 steppers, plus the key stepper in the transport.
+    assert (steppers.length >= 13,
+            'expected at least 13 steppers, got ' + steppers.length);
+});
+
+check ('stepping a preset changes its label and cycles back around', () => {
+    const preset = appView.querySelectorAll ('.m-preset')[0];
+    const label = preset.querySelectorAll ('.st-label')[0];
+    const fwd = preset.querySelectorAll ('button')[1];
+    const seen = new Set ([label.textContent]);
+    for (let i = 0; i < 5; i++) { fwd.fire ('click'); seen.add (label.textContent); }
+    assert (seen.size === 5, 'expected 5 distinct preset names, saw ' + seen.size +
+            ': ' + [...seen].join (','));
+});
+
+check ('stepping a variation changes its number and wraps at 8', () => {
+    const varn = appView.querySelectorAll ('.m-var')[0];
+    const label = varn.querySelectorAll ('.st-label')[0];
+    const fwd = varn.querySelectorAll ('button')[1];
+    const first = label.textContent;
+    fwd.fire ('click');
+    assert (label.textContent !== first, 'variation did not change');
+    for (let i = 0; i < 7; i++) fwd.fire ('click');
+    assert (label.textContent === first, 'variation did not wrap back after 8');
+});
+
+check ('a preset stepper click does not mute its module', () => {
+    const wasOn = modules[0].classList.contains ('on');
+    appView.querySelectorAll ('.m-preset')[0].querySelectorAll ('button')[1].fire ('click');
+    assert (modules[0].classList.contains ('on') === wasOn,
+            'choosing a preset toggled the module off');
+});
+
+check ('the key stepper walks all twelve keys and returns', () => {
+    const key = appView.querySelectorAll ('.key-step')[0];
+    assert (key, 'no key stepper found');
+    const label = key.querySelectorAll ('.st-label')[0];
+    const fwd = key.querySelectorAll ('button')[1];
+    const first = label.textContent;
+    const seen = new Set ([first]);
+    for (let i = 0; i < 12; i++) { fwd.fire ('click'); seen.add (label.textContent); }
+    assert (seen.size === 12, 'expected 12 key names, saw ' + seen.size);
+    assert (label.textContent === first, 'key did not wrap back to ' + first);
 });
 
 // ------------------------------------------------------------- transport ----

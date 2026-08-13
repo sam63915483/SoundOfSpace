@@ -268,15 +268,55 @@ html, body {
     border: 1px solid var(--grid);
     border-radius: 6px;
     background: var(--panel);
-    padding: 8px 6px;
+    padding: 7px 5px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 5px;
-    cursor: pointer;
+    gap: 4px;
     user-select: none;
     transition: border-color .12s, background .12s;
 }
+.module .m-head {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+}
+.stepper {
+    display: flex;
+    align-items: center;
+    gap: 1px;
+    width: 100%;
+    background: #08161a;
+    border: 1px solid var(--grid);
+    border-radius: 4px;
+}
+.stepper .st-arrow {
+    font-family: var(--mono);
+    font-size: 9px;
+    line-height: 1;
+    color: var(--ink-dim);
+    background: none;
+    border: none;
+    padding: 3px 4px;
+    cursor: pointer;
+}
+.stepper .st-arrow:hover { color: var(--ink); }
+.stepper .st-label {
+    flex: 1;
+    text-align: center;
+    font-size: 10px;
+    letter-spacing: .06em;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+}
+.m-var .st-label { color: var(--ink-dim); }
+.key-wrap { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--ink-ghost); }
+.key-wrap .stepper { width: 82px; }
+.key-wrap .st-label { color: var(--accent); font-size: 13px; }
+
 .module .m-led {
     width: 9px; height: 9px; border-radius: 50%;
     background: var(--ink-ghost);

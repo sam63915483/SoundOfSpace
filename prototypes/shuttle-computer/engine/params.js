@@ -19,7 +19,7 @@ export const DEFAULT_DIALS = {
     pulse: 5, crunch: 3, goo: 5, void: 4, jitter: 4, warp: 5
 };
 
-export function computeParams (dials) {
+export function computeParams (dials, key) {
     const pulse    = dials.pulse    / 10;
     const crunch   = dials.crunch   / 10;
     const goo      = dials.goo      / 10;
@@ -67,21 +67,19 @@ export function computeParams (dials) {
         scaleIdx: scaleIndexFor (10 - dials.warp),
         detuneCents: warp * 35,               // warped = detuned
 
+        // Transposition, in semitones. Applied at note time, not baked into
+        // degrees — so changing key never regenerates a pattern.
+        key: key === undefined ? 0 : key,
+
         // Kept so backends and the classifier readout can see the raw vector.
         dials: Object.assign ({}, dials)
     };
 }
 
-// Which parameters require regenerating the pattern (applied at the next bar
-// boundary) vs. which can ramp live on the running nodes. PULSE is in both
-// camps — BPM rides live, but its density term needs a regen.
+// Which dials reshape the pattern (applied at the next bar boundary) vs. which
+// ride live. PULSE is in both camps — BPM follows your hand, but its density
+// term changes which optional hits land.
+//
+// needsRegen now lives in track.js, because presets and variations regenerate
+// too and the decision has to consider the whole track, not just the dials.
 export const PATTERN_KEYS = ['pulse', 'void', 'jitter', 'warp'];
-
-export function needsRegen (a, b) {
-    for (let i = 0; i < PATTERN_KEYS.length; i++) {
-        const k = PATTERN_KEYS[i];
-        // Compare at seed resolution — a sub-quantum wiggle isn't a new pattern.
-        if (Math.round (a[k] * 2) !== Math.round (b[k] * 2)) return true;
-    }
-    return false;
-}

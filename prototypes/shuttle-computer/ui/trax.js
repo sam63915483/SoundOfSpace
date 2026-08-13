@@ -58,22 +58,62 @@ export function mountTrax (root, inst, onExit) {
     const rack = document.createElement ('div');
     rack.id = 'rack';
 
+    const moduleEls = {};
     for (const m of MODULES) {
         const el = document.createElement ('div');
-        el.className = 'module' + (m.locked ? ' locked' : (inst.enabled[m.name] ? ' on' : ''));
+        el.className = 'module' + (inst.enabled[m.name] ? ' on' : '');
+
+        // The on/off toggle is its own click target, so choosing a preset can
+        // never accidentally mute the module you are auditioning.
+        const head = document.createElement ('div');
+        head.className = 'm-head';
         const led = document.createElement ('div'); led.className = 'm-led';
         const nm  = document.createElement ('div'); nm.className = 'm-name'; nm.textContent = m.name;
         const ds  = document.createElement ('div'); ds.className = 'm-desc'; ds.textContent = m.desc;
-        el.append (led, nm, ds);
-        if (!m.locked) {
-            el.addEventListener ('click', () => {
-                const on = !inst.enabled[m.name];
-                inst.setModuleEnabled (m.name, on);
-                el.classList.toggle ('on', on);
-                refreshGrid (true);
-            });
-        }
+        head.append (led, nm, ds);
+        head.addEventListener ('click', () => {
+            const on = !inst.enabled[m.name];
+            inst.setModuleEnabled (m.name, on);
+            el.classList.toggle ('on', on);
+            refreshGrid (true);
+        });
+
+        // PRESET = which part. VARIATION = which roll of that part.
+        const preset = stepper ('m-preset', () => inst.presetName (m.name),
+                                d => { inst.cyclePreset (m.name, d); afterPartChange (); });
+        const varn = stepper ('m-var', () => 'VAR ' + (inst.variationIndex (m.name) + 1),
+                              d => { inst.cycleVariation (m.name, d); afterPartChange (); });
+
+        el.append (head, preset.el, varn.el);
         rack.appendChild (el);
+        moduleEls[m.name] = { el, preset, varn };
+    }
+
+    function afterPartChange () {
+        for (const k in moduleEls) { moduleEls[k].preset.refresh (); moduleEls[k].varn.refresh (); }
+        refreshReadouts ();
+        refreshGrid (true);
+    }
+
+    // A left arrow, a label and a right arrow. That is the entire vocabulary
+    // for choosing a part, which is the point: no wrong answers to pick from.
+    function stepper (cls, label, onStep) {
+        const el = document.createElement ('div');
+        el.className = 'stepper ' + cls;
+        const back = document.createElement ('button');
+        back.className = 'st-arrow';
+        back.textContent = '\u25C0';
+        const text = document.createElement ('div');
+        text.className = 'st-label';
+        const fwd = document.createElement ('button');
+        fwd.className = 'st-arrow';
+        fwd.textContent = '\u25B6';
+        back.addEventListener ('click', e => { e.stopPropagation (); onStep (-1); });
+        fwd.addEventListener ('click', e => { e.stopPropagation (); onStep (1); });
+        el.append (back, text, fwd);
+        const api = { el, refresh: () => { text.textContent = label (); } };
+        api.refresh ();
+        return api;
     }
 
     const steps = document.createElement ('div');
@@ -118,6 +158,14 @@ export function mountTrax (root, inst, onExit) {
     });
     printWrap.append (minus, qty, plus, printBtn);
 
+    // KEY — one control that moves everything, and regenerates nothing.
+    const keyWrap = document.createElement ('div');
+    keyWrap.className = 'key-wrap';
+    const keyLabel = document.createElement ('span'); keyLabel.textContent = 'KEY';
+    const keyStep = stepper ('key-step', () => inst.keyName,
+                             d => { inst.cycleKey (d); keyStep.refresh (); });
+    keyWrap.append (keyLabel, keyStep.el);
+
     const volWrap = document.createElement ('div');
     volWrap.className = 'vol-wrap';
     const volLabel = document.createElement ('span'); volLabel.textContent = 'VOL';
@@ -132,7 +180,7 @@ export function mountTrax (root, inst, onExit) {
     exitBtn.textContent = 'EXIT';
     exitBtn.addEventListener ('click', () => onExit ());
 
-    transport.append (playBtn, readout, sep, volWrap, printWrap, exitBtn);
+    transport.append (playBtn, readout, sep, keyWrap, volWrap, printWrap, exitBtn);
     body.appendChild (transport);
 
     // ---------- toast ----------
@@ -153,7 +201,7 @@ export function mountTrax (root, inst, onExit) {
         gLabel.textContent = g.label;
         gVibe.textContent = g.primary.vibe;
         gMeta.textContent =
-            'SEED ' + inst.seed.toString (16).toUpperCase ().padStart (8, '0') +
+            'TRACK ' + inst.trackId.toString (16).toUpperCase ().padStart (8, '0') +
             '\nMARGIN ' + (g.d2 - g.d1).toFixed (2) + (g.blended ? '  BLEND' : '  LOCK');
         readout.textContent =
             Math.round (inst.params.bpm) + ' BPM   BAR ' + (currentBar + 1) + '/' + BARS;

@@ -52,8 +52,39 @@ export function midiToFreq (midi) {
     return 440 * Math.pow (2, (midi - 69) / 12);
 }
 
-export function degreeToFreq (degree, scaleIdx, octaveOffset) {
-    return midiToFreq (degreeToMidi (degree, scaleIdx, octaveOffset));
+// `key` transposes everything by whole semitones. It is applied HERE, at note
+// time, rather than being folded into scale degrees — so turning the key knob
+// can never regenerate a pattern, it just moves the same one.
+export function degreeToFreq (degree, scaleIdx, octaveOffset, key) {
+    return midiToFreq (degreeToMidi (degree, scaleIdx, octaveOffset) + (key || 0));
+}
+
+// Register each voice is allowed to occupy, in MIDI notes.
+//
+// Without this the bass drops to ~22Hz on the CLUSTER scale (its lowest degree
+// lands two octaves down in a 6-note table) — inaudible rumble that eats
+// headroom and does nothing but make everything else quieter. Folding by whole
+// OCTAVES keeps the note in the scale, so this can never introduce a wrong
+// pitch, only a wrong-by-an-octave one, and only where the alternative was
+// silence.
+export const VOICE_RANGE = {
+    bass:    [28, 55],
+    lead:    [52, 84],
+    moss:    [45, 74],
+    spindle: [55, 88]
+};
+
+export function voiceMidi (degree, scaleIdx, voice, key) {
+    let m = degreeToMidi (degree, scaleIdx, VOICE_OCTAVE[voice]) + (key || 0);
+    const r = VOICE_RANGE[voice];
+    if (!r) return m;
+    while (m < r[0]) m += 12;
+    while (m > r[1]) m -= 12;
+    return m;
+}
+
+export function voiceFreq (degree, scaleIdx, voice, key) {
+    return midiToFreq (voiceMidi (degree, scaleIdx, voice, key));
 }
 
 // True iff a MIDI note is a member of the scale, in any octave. Used by the

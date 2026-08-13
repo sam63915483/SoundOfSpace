@@ -65,8 +65,9 @@ export function createRack (ctx) {
 
     // --- CAVE: two cross-fed delay lines with damping ---
     const caveIn = ctx.createGain ();
-    const dA = ctx.createDelay (1.0); dA.delayTime.value = 0.19;
-    const dB = ctx.createDelay (1.0); dB.delayTime.value = 0.31;
+    // Max delay covers the longest CAVE preset (CANYON / VOID) with headroom.
+    const dA = ctx.createDelay (2.0); dA.delayTime.value = 0.19;
+    const dB = ctx.createDelay (2.0); dB.delayTime.value = 0.31;
     const dampA = ctx.createBiquadFilter (); dampA.type = 'lowpass'; dampA.frequency.value = 2800;
     const dampB = ctx.createBiquadFilter (); dampB.type = 'lowpass'; dampB.frequency.value = 2400;
     const fbA = ctx.createGain (); fbA.gain.value = 0.4;
@@ -142,8 +143,11 @@ export function createRack (ctx) {
 
             sendDrums.gain.setTargetAtTime (p.caveSend * 0.3, t, R);
             sendTone.gain.setTargetAtTime (p.caveSend, t, R);
-            fbA.gain.setTargetAtTime (p.caveFeedback, t, R);
-            fbB.gain.setTargetAtTime (p.caveFeedback, t, R);
+            // VOID (0.97) times a full VOID dial would run away; the cap is
+            // what keeps the round trip below unity so it always decays.
+            const fb = Math.min (0.9, p.caveFeedback * this.caveFbScale * 1.25);
+            fbA.gain.setTargetAtTime (fb, t, R);
+            fbB.gain.setTargetAtTime (fb, t, R);
             caveWet.gain.setTargetAtTime (this.caveMuted ? 0 : p.caveMix, t, R);
 
             lfo.frequency.setTargetAtTime (p.lfoRate, t, R);
@@ -151,6 +155,22 @@ export function createRack (ctx) {
         },
 
         caveMuted: false,
+        caveFbScale: 0.8,
+
+        // CAVE's preset picks a space: how long the taps are and how dark the
+        // feedback path is. Ramped, because jumping a delay time on a running
+        // line pitch-shifts whatever is already in it.
+        applyCavePreset (preset, variation) {
+            const t = ctx.currentTime, R = 0.05;
+            // VARIATION skews the tap ratio a few percent, so the control
+            // means something on CAVE too rather than sitting there inert.
+            const skew = 1 + ((variation === undefined ? 0 : variation) - 3.5) * 0.03;
+            dA.delayTime.setTargetAtTime (preset.timeA * skew, t, R);
+            dB.delayTime.setTargetAtTime (preset.timeB / skew, t, R);
+            dampA.frequency.setTargetAtTime (preset.damp, t, R);
+            dampB.frequency.setTargetAtTime (preset.damp * 0.85, t, R);
+            this.caveFbScale = preset.fb;
+        },
 
         setMasterVolume (v) {
             master.gain.setTargetAtTime (v, ctx.currentTime, 0.02);

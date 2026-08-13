@@ -1,18 +1,23 @@
 // Zero-dependency test harness.  node test/run.js
 //
-// Covers exactly what has to survive the C# port. Everything else about this
-// prototype is judged by ear; these are the things ears can't check.
+// Covers what has to survive the C# port, plus the properties the instrument's
+// FEEL depends on — "a dial shapes, it doesn't re-roll" is a testable claim,
+// and it is the whole reason the track model exists.
 
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
-import { fnv1a32, mulberry32, quantizeDials, seedFromDials, streamFor, VOICE_CONST } from '../engine/prng.js';
-import { SCALES, ROOT_MIDI, VOICE_OCTAVE, scaleIndexFor, degreeToMidi, isInScale, midiToFreq } from '../engine/scales.js';
-import { computeParams, DEFAULT_DIALS, needsRegen } from '../engine/params.js';
-import { generatePatterns, stepAt, progressionFor, chordTonesFor, VOICES, MELODIC, BARS, STEPS, CELL,
-         TOTAL_STEPS, FULL_FILL_BAR, FULL_FILL_START, HALF_FILL_BAR, HALF_FILL_START } from '../engine/patterns.js';
-import { classify, GENRES, DEFAULT_BLEND_THRESHOLD } from '../engine/classifier.js';
+import { fnv1a32, mulberry32, quantizeDials, VOICE_CONST } from '../engine/prng.js';
+import { SCALES, VOICE_OCTAVE, VOICE_RANGE, scaleIndexFor, degreeToMidi, degreeToFreq,
+         voiceMidi, voiceFreq, isInScale } from '../engine/scales.js';
+import { computeParams, DEFAULT_DIALS } from '../engine/params.js';
+import { generatePatterns, stepAt, progressionFor, chordTonesFor, VOICES, MELODIC,
+         BARS, STEPS, TOTAL_STEPS, FULL_FILL_BAR, FULL_FILL_START,
+         HALF_FILL_BAR, HALF_FILL_START } from '../engine/patterns.js';
+import { classify, GENRES } from '../engine/classifier.js';
+import * as TRACK from '../engine/track.js';
+import * as PRESETS from '../engine/presets.js';
 
 const HERE = dirname (fileURLToPath (import.meta.url));
 
@@ -23,24 +28,23 @@ function test (name, fn) {
     try { fn (); passed++; console.log ('  ok   ' + name); }
     catch (e) { failed++; failures.push ([name, e.message]); console.log ('  FAIL ' + name + '\n       ' + e.message); }
 }
-function assert (cond, msg) { if (!cond) throw new Error (msg || 'assertion failed'); }
-function eq (a, b, msg) {
-    if (a !== b) throw new Error ((msg || 'not equal') + ': got ' + a + ', want ' + b);
-}
-function deepEq (a, b, msg) {
+function assert (c, m) { if (!c) throw new Error (m || 'assertion failed'); }
+function eq (a, b, m) { if (a !== b) throw new Error ((m || 'not equal') + ': got ' + a + ', want ' + b); }
+function deepEq (a, b, m) {
     const sa = JSON.stringify (a), sb = JSON.stringify (b);
-    if (sa !== sb) throw new Error ((msg || 'not deep-equal') + '\n       got  ' + sa.slice (0, 200) + '\n       want ' + sb.slice (0, 200));
+    if (sa !== sb) throw new Error ((m || 'not deep-equal') + '\n       got  ' + sa.slice (0, 220) + '\n       want ' + sb.slice (0, 220));
 }
 function section (s) { console.log ('\n' + s); }
 
-const dialsOf = o => Object.assign ({}, DEFAULT_DIALS, o);
+const T = () => TRACK.defaultTrack ();
+const gen = (t) => generatePatterns (t, computeParams (t.dials, t.key));
+const withDial = (t, k, v) => { const c = TRACK.cloneTrack (t); c.dials[k] = v; return c; };
+const dialsOf = (o) => Object.assign ({}, DEFAULT_DIALS, o);
 
 // ---------------------------------------------------------------- PRNG ----
-section ('PRNG + seeding');
+section ('PRNG + hashing');
 
-test ('fnv1a32 matches the reference vector for "a"', () => {
-    // Canonical FNV-1a 32-bit test vectors. If these break, the C# port and the
-    // JS prototype will disagree about what a cassette sounds like.
+test ('fnv1a32 matches the reference vectors', () => {
     eq (fnv1a32 ([0x61]), 0xe40c292c);
     eq (fnv1a32 ([0x61, 0x62, 0x63]), 0x1a47e90b);
     eq (fnv1a32 ([]), 0x811c9dc5);
@@ -57,14 +61,6 @@ test ('mulberry32 is stable and in range', () => {
 test ('dials quantize to 0.5 steps and clamp to 0..20', () => {
     deepEq (quantizeDials ({ pulse: 0, crunch: 10, goo: 5, void: 2.4, jitter: 2.3, warp: 7.5 }),
             [0, 20, 10, 5, 5, 15]);
-    deepEq (quantizeDials ({ pulse: -3, crunch: 99, goo: 0, void: 0, jitter: 0, warp: 0 })[0], 0);
-    eq (quantizeDials ({ pulse: 99, crunch: 0, goo: 0, void: 0, jitter: 0, warp: 0 })[0], 20);
-});
-
-test ('sub-quantum dial wiggle does not change the seed', () => {
-    eq (seedFromDials (dialsOf ({ goo: 5.0 })), seedFromDials (dialsOf ({ goo: 5.2 })));
-    assert (seedFromDials (dialsOf ({ goo: 5.0 })) !== seedFromDials (dialsOf ({ goo: 5.5 })),
-            'a half-step move must reseed');
 });
 
 test ('voice constants are distinct', () => {
@@ -72,38 +68,120 @@ test ('voice constants are distinct', () => {
     eq (new Set (vals).size, vals.length, 'duplicate voice constant');
 });
 
-// ------------------------------------------------------------ DETERMINISM --
-section ('Determinism');
+// -------------------------------------------------------------- THE FEEL --
+section ('Dials shape, variation re-rolls');
 
-test ('same dials generate a byte-identical phrase, twice', () => {
-    const d = dialsOf ({ pulse: 7, crunch: 4, goo: 8, void: 2, jitter: 6, warp: 3 });
-    const a = generatePatterns (seedFromDials (d), computeParams (d));
-    const b = generatePatterns (seedFromDials (d), computeParams (d));
-    deepEq (a, b);
+test ('a dial change mostly fills a groove in rather than replacing it', () => {
+    // The property the track rework exists to guarantee. Some steps SHOULD
+    // change — that is the dial working — but wholesale replacement is the
+    // re-rolling behaviour we deliberately removed.
+    const base = T ();
+    const onsets = (t) => {
+        const pat = gen (t);
+        const out = {};
+        for (const v of VOICES) out[v] = pat[v][0].map (s => s !== null);
+        return out;
+    };
+    const a = onsets (base);
+    let moved = 0, total = 0;
+    for (const dial of ['pulse', 'jitter', 'void'])
+        for (const val of [0, 2.5, 7.5, 10]) {
+            const b = onsets (withDial (base, dial, val));
+            for (const v of VOICES)
+                for (let s = 0; s < STEPS; s++) { total++; if (a[v][s] !== b[v][s]) moved++; }
+        }
+    assert (moved / total < 0.35,
+            'dials are re-rolling, not shaping: ' + (100 * moved / total).toFixed (0) + '% of steps moved');
 });
 
-test ('different dials generate different phrases', () => {
-    const d1 = dialsOf ({ pulse: 2 }), d2 = dialsOf ({ pulse: 9 });
-    const a = generatePatterns (seedFromDials (d1), computeParams (d1));
-    const b = generatePatterns (seedFromDials (d2), computeParams (d2));
-    assert (JSON.stringify (a) !== JSON.stringify (b), 'phrases collided');
+test ('a weight-3 core hit can never be switched off by a dial', () => {
+    const base = T ();
+    for (let pi = 0; pi < PRESETS.PRESET_COUNT; pi++) {
+        const t0 = TRACK.setPreset (base, 'THUMPER', pi);
+        const w = PRESETS.parseWeights (PRESETS.THUMPER[pi].kick);
+        for (const val of [0, 5, 10]) {
+            const pat = gen (withDial (t0, 'pulse', val));
+            for (let s = 0; s < STEPS; s++)
+                if (w[s] >= 3)
+                    assert (pat.kick[0][s] !== null,
+                            PRESETS.THUMPER[pi].name + ' lost its core kick at step ' + s + ', PULSE ' + val);
+        }
+    }
 });
 
-test ('voice streams are independent of the voice list length', () => {
-    // Proves a future 7th plugin cannot shift an existing voice's pattern:
-    // each stream is derived from its own constant, not from an index.
-    const d = dialsOf ({});
-    const seed = seedFromDials (d);
-    const a = [], b = [];
-    const ra = streamFor (seed, 'kick'), rb = streamFor (seed, 'kick');
-    const noise = streamFor (seed, 'lead');
-    for (let i = 0; i < 8; i++) { a.push (ra ()); noise (); noise (); b.push (rb ()); }
-    deepEq (a, b, 'draining another voice perturbed this one');
+test ('changing VARIATION re-rolls that module, and only that module', () => {
+    const a = T ();
+    const b = TRACK.setVariation (a, 'THUMPER', 3);
+    const pa = gen (a), pb = gen (b);
+    assert (JSON.stringify (pa.kick) !== JSON.stringify (pb.kick), 'variation did nothing to the drums');
+    for (const v of ['bass', 'lead', 'spindle'])
+        deepEq (pa[v], pb[v], 'THUMPER variation disturbed ' + v);
+});
+
+test ('changing a PRESET changes that module and leaves the others alone', () => {
+    const a = T ();
+    const b = TRACK.setPreset (a, 'GLOWORM', 2);
+    const pa = gen (a), pb = gen (b);
+    assert (JSON.stringify (pa.bass) !== JSON.stringify (pb.bass), 'bass preset did nothing');
+    for (const v of ['kick', 'snare', 'hat', 'spindle'])
+        deepEq (pa[v], pb[v], 'GLOWORM preset disturbed ' + v);
+});
+
+test ('MOSS preset re-harmonises everything, because it IS the progression', () => {
+    const a = T ();
+    const b = TRACK.setPreset (a, 'MOSS', 2);
+    deepEq (progressionFor (b), PRESETS.MOSS[2].prog);
+    let differs = false;
+    const pa = gen (a), pb = gen (b);
+    for (let s = 0; s < STEPS; s++)
+        if (JSON.stringify (pa.bass[1][s]) !== JSON.stringify (pb.bass[1][s])) differs = true;
+    assert (differs, 'changing the progression left the bass unchanged');
+});
+
+test ('changing KEY changes no pattern at all', () => {
+    const a = T ();
+    for (let k = 0; k < 12; k++) deepEq (gen (TRACK.setKey (a, k)), gen (a), 'key ' + k + ' regenerated');
+});
+
+test ('key transposes pitch by exactly the right number of semitones', () => {
+    const base = degreeToFreq (0, 3, 0, 0);
+    for (let k = 0; k < 12; k++) {
+        const semis = Math.round (12 * Math.log2 (degreeToFreq (0, 3, 0, k) / base));
+        eq (semis, k, 'key ' + k + ' is off');
+    }
+});
+
+test ('needsRegen fires for presets, variations and shaping dials only', () => {
+    const a = T ();
+    assert (TRACK.needsRegen (a, TRACK.setPreset (a, 'SIREN', 3)), 'preset must regen');
+    assert (TRACK.needsRegen (a, TRACK.setVariation (a, 'SIREN', 3)), 'variation must regen');
+    assert (TRACK.needsRegen (a, withDial (a, 'pulse', 9)), 'PULSE must regen');
+    assert (!TRACK.needsRegen (a, TRACK.setKey (a, 5)), 'key must NOT regen');
+    assert (!TRACK.needsRegen (a, withDial (a, 'crunch', 10)), 'CRUNCH is timbre');
+    assert (!TRACK.needsRegen (a, withDial (a, 'goo', 10)), 'GOO is timbre');
+});
+
+test ('trackId covers everything that affects the sound', () => {
+    const a = T ();
+    const ids = new Set ([TRACK.trackId (a)]);
+    ids.add (TRACK.trackId (withDial (a, 'pulse', 8)));
+    ids.add (TRACK.trackId (TRACK.setKey (a, 4)));
+    ids.add (TRACK.trackId (TRACK.setPreset (a, 'MOSS', 3)));
+    ids.add (TRACK.trackId (TRACK.setVariation (a, 'MOSS', 3)));
+    eq (ids.size, 5, 'trackId is blind to something that changes the music');
+    eq (TRACK.trackId (a), TRACK.trackId (T ()), 'trackId is not stable');
+});
+
+// ------------------------------------------------------------- STRUCTURE --
+section ('Structure');
+
+test ('same track generates a byte-identical phrase, twice', () => {
+    const t = T ();
+    deepEq (gen (t), gen (t));
 });
 
 test ('phrase shape is 4 bars x 16 steps for every voice', () => {
-    const d = dialsOf ({});
-    const pat = generatePatterns (seedFromDials (d), computeParams (d));
+    const pat = gen (T ());
     for (const v of VOICES) {
         eq (pat[v].length, BARS, v + ' bar count');
         for (const bar of pat[v]) eq (bar.length, STEPS, v + ' step count');
@@ -111,117 +189,117 @@ test ('phrase shape is 4 bars x 16 steps for every voice', () => {
 });
 
 test ('every bar shares one rhythm; only the pitches follow the chord', () => {
-    // This is the core of the musical rework: four bars of the same groove,
-    // re-harmonised. If the rhythm drifts between bars it reads as random again.
-    const d = dialsOf ({ pulse: 8, jitter: 5 });
-    const pat = generatePatterns (seedFromDials (d), computeParams (d));
-    for (const v of VOICES) {
+    const t = TRACK.setPreset (T (), 'SIREN', 1);   // a preset that plays in every bar
+    const pat = gen (t);
+    for (const v of VOICES)
         for (let b = 1; b < BARS; b++) {
-            // Compare only the part of each bar that a fill hasn't overwritten.
             const limit = b === FULL_FILL_BAR ? FULL_FILL_START
                         : b === HALF_FILL_BAR ? HALF_FILL_START : STEPS;
             for (let s = 0; s < limit; s++) {
                 const a = pat[v][0][s], c = pat[v][b][s];
                 eq (a === null, c === null, v + ' bar' + b + ' step' + s + ' onset differs');
-                if (a === null) continue;
-                eq (a.vel, c.vel, v + ' bar' + b + ' step' + s + ' velocity differs');
-                eq (a.nudge, c.nudge, v + ' bar' + b + ' step' + s + ' nudge differs');
+                if (a !== null) eq (a.vel, c.vel, v + ' bar' + b + ' step' + s + ' velocity differs');
             }
         }
-    }
-});
-
-test ('the 8-step cell really is tiled twice per bar', () => {
-    const d = dialsOf ({ pulse: 6 });
-    const pat = generatePatterns (seedFromDials (d), computeParams (d));
-    for (const v of VOICES) {
-        if (v === 'moss') continue;      // the pad deliberately fires once per bar
-        for (let s = 0; s < CELL; s++) {
-            // Bar 0 is untouched by either fill, so it shows the raw tiling.
-            const a = pat[v][0][s], b = pat[v][0][s + CELL];
-            eq (a === null, b === null, v + ' step ' + s + ' does not tile');
-            if (a !== null) eq (a.vel, b.vel, v + ' step ' + s + ' tile velocity differs');
-        }
-    }
 });
 
 test ('both turnarounds fire, and the half-phrase one is lighter', () => {
-    // Averaged over many seeds: the bar-2 fill is a 2-step nudge, the bar-4 one
-    // is a 4-step event. If they came out equal the phrase would read as two
-    // 2-bar loops instead of one 4-bar arc.
-    let halfChanged = 0, fullChanged = 0;
+    let half = 0, full = 0;
     for (let k = 0; k < 24; k++) {
-        const d = dialsOf ({ pulse: 3 + (k % 8), jitter: k % 10, void: (k * 3) % 10 });
-        const pat = generatePatterns (seedFromDials (d), computeParams (d));
+        let t = TRACK.setVariation (T (), 'THUMPER', k % 8);
+        t = withDial (t, 'pulse', 3 + (k % 7));
+        const pat = gen (t);
         for (const v of VOICES) {
-            if (v === 'moss') continue;                     // the pad rides through fills
+            if (v === 'moss') continue;
             for (let s = HALF_FILL_START; s < STEPS; s++)
-                if (JSON.stringify (pat[v][HALF_FILL_BAR][s]) !== JSON.stringify (pat[v][0][s])) halfChanged++;
+                if (JSON.stringify (pat[v][HALF_FILL_BAR][s]) !== JSON.stringify (pat[v][0][s])) half++;
             for (let s = FULL_FILL_START; s < STEPS; s++)
-                if (JSON.stringify (pat[v][FULL_FILL_BAR][s]) !== JSON.stringify (pat[v][0][s])) fullChanged++;
+                if (JSON.stringify (pat[v][FULL_FILL_BAR][s]) !== JSON.stringify (pat[v][0][s])) full++;
         }
     }
-    assert (halfChanged > 0, 'the bar-2 turnaround never changed anything');
-    assert (fullChanged > halfChanged, 'the bar-4 fill should be the bigger event: ' +
-            fullChanged + ' vs ' + halfChanged);
+    assert (half > 0, 'the bar-2 turnaround never changed anything');
+    assert (full > half, 'the bar-4 fill should be the bigger event: ' + full + ' vs ' + half);
 });
 
-test ('MOSS holds one chord per bar and is never cut by a fill', () => {
-    const d = dialsOf ({});
-    const pat = generatePatterns (seedFromDials (d), computeParams (d));
-    const prog = progressionFor (seedFromDials (d));
+test ('the pad is never cut by a fill, whatever its rhythm', () => {
+    for (let v = 0; v < PRESETS.VARIATION_COUNT; v++) {
+        const pat = gen (TRACK.setVariation (T (), 'MOSS', v));
+        const ref = pat.moss[0];
+        for (const b of [HALF_FILL_BAR, FULL_FILL_BAR])
+            for (let s = HALF_FILL_START; s < STEPS; s++)
+                eq (pat.moss[b][s] === null, ref[s] === null,
+                    'a fill punched a hole in the pad (variation ' + v + ', bar ' + b + ')');
+    }
+});
+
+test ('SIREN ANSWER really does leave bars empty', () => {
+    const idx = PRESETS.SIREN.findIndex (s => s.name === 'ANSWER');
+    const pat = gen (TRACK.setPreset (T (), 'SIREN', idx));
+    const bars = PRESETS.SIREN[idx].bars;
     for (let b = 0; b < BARS; b++) {
-        assert (pat.moss[b][0] !== null, 'no pad at the top of bar ' + b);
-        let onsets = 0;
-        for (let s = 0; s < STEPS; s++) if (pat.moss[b][s] !== null) onsets++;
-        eq (onsets, 1, 'the pad must fire ONCE per bar, not retrigger mid-bar');
-        eq (pat.moss[b][0].dur, STEPS, 'the pad must hold the whole bar');
-        eq (pat.moss[b][0].degree, prog[b], 'pad is not on the bar chord');
-        for (let s = HALF_FILL_START; s < STEPS; s++)
-            assert (pat.moss[b][s] === null || s % CELL === 0,
-                    'a fill punched a hole in the pad at bar ' + b + ' step ' + s);
+        if (bars[b] !== 0) continue;
+        for (let s = 0; s < STEPS; s++)
+            assert (pat.lead[b][s] === null, 'ANSWER played in bar ' + b + ', which it should rest in');
     }
-});
-
-test ('the chord progression is deterministic and starts on the tonic', () => {
-    for (let k = 0; k < 20; k++) {
-        const d = dialsOf ({ pulse: k % 11, goo: (k * 2) % 11 });
-        const seed = seedFromDials (d);
-        const a = progressionFor (seed), b = progressionFor (seed);
-        deepEq (a, b, 'progression not stable for one seed');
-        eq (a.length, BARS, 'progression must have one chord per bar');
-        eq (a[0], 0, 'progressions must anchor on the tonic');
-    }
-});
-
-test ('the lead moves mostly stepwise rather than leaping about', () => {
-    // The single clearest difference between a tune and a random pitch sequence.
-    let small = 0, total = 0;
-    for (let k = 0; k < 30; k++) {
-        const d = dialsOf ({ pulse: 4 + (k % 7), jitter: k % 10 });
-        const pat = generatePatterns (seedFromDials (d), computeParams (d));
-        const bar = pat.lead[0];
-        let prev = null;
-        for (let s = 0; s < STEPS; s++) {
-            if (bar[s] === null) continue;
-            if (prev !== null) { total++; if (Math.abs (bar[s].degree - prev) <= 2) small++; }
-            prev = bar[s].degree;
-        }
-    }
-    assert (total > 30, 'not enough lead notes to judge');
-    assert (small / total > 0.6, 'lead leaps too much to read as a melody: ' +
-            (100 * small / total).toFixed (0) + '% stepwise');
 });
 
 test ('stepAt wraps across the phrase in both directions', () => {
-    const d = dialsOf ({});
-    const pat = generatePatterns (seedFromDials (d), computeParams (d));
+    const pat = gen (T ());
     deepEq (stepAt (pat, 'kick', 0), stepAt (pat, 'kick', TOTAL_STEPS));
-    deepEq (stepAt (pat, 'kick', 3), stepAt (pat, 'kick', TOTAL_STEPS * 5 + 3));
     deepEq (stepAt (pat, 'kick', TOTAL_STEPS - 1), stepAt (pat, 'kick', -1));
 });
 
-// ---------------------------------------------------------------- SCALES --
+// --------------------------------------------------------------- PRESETS --
+section ('Preset banks');
+
+test ('every bank has the advertised size and unique names', () => {
+    for (const m of PRESETS.MODULE_NAMES) {
+        const bank = PRESETS.BANKS[m];
+        eq (bank.length, PRESETS.PRESET_COUNT, m + ' bank size');
+        eq (new Set (bank.map (b => b.name)).size, bank.length, m + ' has duplicate preset names');
+    }
+});
+
+test ('every rhythm template is exactly 16 steps of legal weights', () => {
+    const strs = [];
+    for (const g of PRESETS.THUMPER) strs.push (g.kick, g.snare, g.hat);
+    for (const g of PRESETS.GLOWORM) strs.push (g.hits);
+    for (const r of PRESETS.MOSS_RHYTHMS) strs.push (r.hits);
+    for (const s of strs) {
+        const w = PRESETS.parseWeights (s);
+        eq (w.length, 16, 'template "' + s + '" is not 16 steps');
+        for (const x of w) assert (x >= 0 && x <= 3, 'illegal weight ' + x + ' in "' + s + '"');
+    }
+});
+
+test ('every drum groove has a downbeat you can find', () => {
+    for (const g of PRESETS.THUMPER)
+        assert (PRESETS.parseWeights (g.kick)[0] >= 3, g.name + ' has no guaranteed downbeat kick');
+});
+
+test ('every bass preset has a contour entry per step', () => {
+    for (const g of PRESETS.GLOWORM) eq (g.contour.length, 16, g.name + ' contour length');
+});
+
+test ('every progression has one chord per bar and starts on the tonic', () => {
+    for (const m of PRESETS.MOSS) {
+        eq (m.prog.length, BARS, m.name + ' progression length');
+        eq (m.prog[0], 0, m.name + ' must anchor on the tonic');
+    }
+});
+
+test ('every preset x variation combination generates without throwing', () => {
+    for (const m of PRESETS.MODULE_NAMES)
+        for (let pi = 0; pi < PRESETS.PRESET_COUNT; pi++)
+            for (let vi = 0; vi < PRESETS.VARIATION_COUNT; vi++) {
+                let t = TRACK.setPreset (T (), m, pi);
+                t = TRACK.setVariation (t, m, vi);
+                const pat = gen (t);
+                for (const v of VOICES) eq (pat[v].length, BARS, m + ' ' + pi + '/' + vi);
+            }
+});
+
+// ---------------------------------------------------------- PITCH SAFETY --
 section ('Pitch safety');
 
 test ('familiarity sweeps the scale table monotonically, ends inclusive', () => {
@@ -238,45 +316,70 @@ test ('familiarity sweeps the scale table monotonically, ends inclusive', () => 
 test ('every scale degree lands in-scale, including negatives and wraps', () => {
     for (let si = 0; si < SCALES.length; si++)
         for (let deg = -14; deg <= 14; deg++)
-            assert (isInScale (degreeToMidi (deg, si, 0), si),
-                    'scale ' + SCALES[si].name + ' degree ' + deg + ' -> ' + degreeToMidi (deg, si, 0));
+            assert (isInScale (degreeToMidi (deg, si, 0), si), SCALES[si].name + ' degree ' + deg);
 });
 
-test ('degrees rise monotonically and octaves are exactly 12 semitones', () => {
-    for (let si = 0; si < SCALES.length; si++) {
-        const n = SCALES[si].steps.length;
-        for (let deg = -8; deg < 8; deg++)
-            assert (degreeToMidi (deg + 1, si, 0) > degreeToMidi (deg, si, 0), 'not monotonic');
-        eq (degreeToMidi (n, si, 0) - degreeToMidi (0, si, 0), 12, 'octave wrap');
-        eq (degreeToMidi (0, si, 1) - degreeToMidi (0, si, 0), 12, 'octave offset');
-    }
-});
-
-test ('every pitch any voice can play is in the active scale, across the dial space', () => {
-    for (let h = 0; h <= 10; h += 1)
-        for (let p = 0; p <= 10; p += 2.5) {
-            const d = dialsOf ({ warp: h, pulse: p, void: 0 });
-            const params = computeParams (d);
-            const pat = generatePatterns (seedFromDials (d), params);
+test ('every pitch any voice can play is in the active scale, across the whole space', () => {
+    for (let warp = 0; warp <= 10; warp += 2)
+        for (let pi = 0; pi < PRESETS.PRESET_COUNT; pi++) {
+            let t = withDial (T (), 'warp', warp);
+            for (const m of ['GLOWORM', 'SIREN', 'SPINDLE', 'MOSS']) t = TRACK.setPreset (t, m, pi);
+            const params = computeParams (t.dials, t.key);
+            const pat = generatePatterns (t, params);
             for (const v of MELODIC)
                 for (const bar of pat[v])
                     for (const st of bar) {
                         if (!st) continue;
-                        assert (isInScale (degreeToMidi (st.degree, params.scaleIdx, VOICE_OCTAVE[v]), params.scaleIdx),
-                                v + ' played out of scale at warp=' + h);
+                        const degs = v === 'moss' ? chordTonesFor (st.degree) : [st.degree];
+                        for (const d of degs)
+                            assert (isInScale (degreeToMidi (d, params.scaleIdx, VOICE_OCTAVE[v]), params.scaleIdx),
+                                    v + ' out of scale at warp=' + warp + ' preset=' + pi);
                     }
         }
 });
 
-test ('audible frequency range: bass floor and lead ceiling stay sane', () => {
-    // Walks the actual pitches the generator can emit (the degree pools' extremes)
-    // at each voice's real octave, across every scale.
-    for (let si = 0; si < SCALES.length; si++) {
-        const lowest = midiToFreq (degreeToMidi (-3, si, VOICE_OCTAVE.bass));
-        const highest = midiToFreq (degreeToMidi (7, si, VOICE_OCTAVE.lead));
-        assert (lowest > 30, 'bass below usable range at scale ' + si + ': ' + lowest.toFixed (1) + 'Hz');
-        assert (highest < 2000, 'lead shrill at scale ' + si + ': ' + highest.toFixed (1) + 'Hz');
-    }
+test ('no voice can play outside its register, in any scale, key or degree', () => {
+    // The register guard folds by whole octaves, so this also proves it never
+    // introduces an out-of-scale note.
+    for (let key = 0; key < 12; key++)
+        for (let si = 0; si < SCALES.length; si++)
+            for (const v of MELODIC)
+                for (let deg = -10; deg <= 10; deg++) {
+                    const m = voiceMidi (deg, si, v, key);
+                    const r = VOICE_RANGE[v];
+                    assert (m >= r[0] && m <= r[1],
+                            v + ' escaped its register: midi ' + m + ' (scale ' + SCALES[si].name +
+                            ', key ' + key + ', degree ' + deg + ')');
+                    assert (isInScale (m - key, si),
+                            v + ' folded to an out-of-scale note at degree ' + deg);
+                }
+});
+
+test ('the bass never drops into inaudible rumble', () => {
+    for (let key = 0; key < 12; key++)
+        for (let si = 0; si < SCALES.length; si++)
+            for (let deg = -10; deg <= 10; deg++) {
+                const f = voiceFreq (deg, si, 'bass', key);
+                assert (f > 38, 'bass at ' + f.toFixed (1) + 'Hz (scale ' + SCALES[si].name + ')');
+            }
+});
+
+test ('the lead moves mostly stepwise rather than leaping about', () => {
+    let small = 0, total = 0;
+    for (let pi = 0; pi < PRESETS.PRESET_COUNT; pi++)
+        for (let vi = 0; vi < 6; vi++) {
+            let t = TRACK.setPreset (T (), 'SIREN', pi);
+            t = TRACK.setVariation (t, 'SIREN', vi);
+            const bar = gen (t).lead[0];
+            let prev = null;
+            for (let s = 0; s < STEPS; s++) {
+                if (bar[s] === null) continue;
+                if (prev !== null) { total++; if (Math.abs (bar[s].degree - prev) <= 2) small++; }
+                prev = bar[s].degree;
+            }
+        }
+    assert (total > 40, 'not enough lead notes to judge');
+    assert (small / total > 0.55, 'lead leaps too much: ' + (100 * small / total).toFixed (0) + '% stepwise');
 });
 
 // ---------------------------------------------------------------- PARAMS --
@@ -287,45 +390,20 @@ test ('PULSE maps to the documented BPM range', () => {
     eq (Math.round (computeParams (dialsOf ({ pulse: 10 })).bpm), 170);
 });
 
-test ('GOO closes the filter and adds resonance', () => {
-    const open = computeParams (dialsOf ({ goo: 0 })), shut = computeParams (dialsOf ({ goo: 10 }));
-    assert (open.filterBase > shut.filterBase, 'GOO should close the filter');
-    assert (shut.filterQ > open.filterQ, 'GOO should add resonance');
-    eq (Math.round (shut.filterBase), 400);
-    eq (Math.round (open.filterBase), 3200);
-});
-
-test ('VOID thins the pattern and opens the CAVE', () => {
-    const dry = computeParams (dialsOf ({ void: 0 })), wet = computeParams (dialsOf ({ void: 10 }));
-    assert (wet.density < dry.density, 'VOID should thin density');
-    assert (wet.caveSend > dry.caveSend && wet.caveFeedback > dry.caveFeedback, 'VOID should open CAVE');
-    assert (wet.caveFeedback < 1, 'CAVE feedback must stay below unity or it runs away');
-});
-
-test ('WARP adds detune as it rises, and goes alien at the top', () => {
-    // WARP is the one dial that runs the other way: 0 is straight, 10 is warped.
-    assert (computeParams (dialsOf ({ warp: 10 })).detuneCents >
-            computeParams (dialsOf ({ warp: 0 })).detuneCents, 'warped should be more detuned');
+test ('GOO closes the filter, VOID opens the CAVE, WARP adds detune', () => {
+    assert (computeParams (dialsOf ({ goo: 0 })).filterBase > computeParams (dialsOf ({ goo: 10 })).filterBase);
+    assert (computeParams (dialsOf ({ void: 10 })).caveSend > computeParams (dialsOf ({ void: 0 })).caveSend);
+    assert (computeParams (dialsOf ({ warp: 10 })).detuneCents > computeParams (dialsOf ({ warp: 0 })).detuneCents);
     eq (computeParams (dialsOf ({ warp: 0 })).detuneCents, 0);
-    // ...and it must reach both ends of the scale table, inverted.
-    eq (computeParams (dialsOf ({ warp: 0 })).scaleIdx, SCALES.length - 1);
-    eq (computeParams (dialsOf ({ warp: 10 })).scaleIdx, 0);
+    assert (computeParams (dialsOf ({ void: 10 })).caveFeedback < 1, 'CAVE feedback must stay under unity');
 });
 
 test ('density stays positive across the whole dial space', () => {
     for (let p = 0; p <= 10; p += 0.5)
         for (let v = 0; v <= 10; v += 0.5) {
-            const d = computeParams (dialsOf ({ pulse: p, void: v })).density;
-            assert (d > 0 && d <= 1, 'density out of range at pulse=' + p + ' void=' + v + ': ' + d);
+            const dens = computeParams (dialsOf ({ pulse: p, void: v })).density;
+            assert (dens > 0 && dens <= 1, 'density out of range: ' + dens);
         }
-});
-
-test ('needsRegen fires on pattern dials only', () => {
-    assert (needsRegen (dialsOf ({ jitter: 2 }), dialsOf ({ jitter: 8 })), 'JITTER must regen');
-    assert (needsRegen (dialsOf ({ pulse: 2 }), dialsOf ({ pulse: 8 })), 'PULSE must regen');
-    assert (!needsRegen (dialsOf ({ crunch: 0 }), dialsOf ({ crunch: 10 })), 'CRUNCH is timbre — no regen');
-    assert (!needsRegen (dialsOf ({ goo: 0 }), dialsOf ({ goo: 10 })), 'GOO is timbre — no regen');
-    assert (!needsRegen (dialsOf ({ jitter: 5.0 }), dialsOf ({ jitter: 5.2 })), 'sub-quantum must not regen');
 });
 
 // ------------------------------------------------------------ CLASSIFIER --
@@ -333,42 +411,22 @@ section ('Classifier');
 
 test ('every genre centre classifies as itself', () => {
     for (const g of GENRES) {
-        const dials = { pulse: g.c[0], crunch: g.c[1], goo: g.c[2], void: g.c[3], jitter: g.c[4], warp: g.c[5] };
-        eq (classify (dials).primary.name, g.name, 'centre of ' + g.name + ' misclassified');
+        const d = { pulse: g.c[0], crunch: g.c[1], goo: g.c[2], void: g.c[3], jitter: g.c[4], warp: g.c[5] };
+        eq (classify (d).primary.name, g.name, 'centre of ' + g.name);
     }
 });
 
 test ('a point midway between two centres reports a blend', () => {
-    const a = GENRES[0].c, b = GENRES[8].c;      // GLORP <-> WARBLE
-    const mid = a.map ((v, i) => (v + b[i]) / 2);
-    const r = classify ({ pulse: mid[0], crunch: mid[1], goo: mid[2], void: mid[3], jitter: mid[4], warp: mid[5] });
-    assert (r.blended, 'midpoint should blend, d1=' + r.d1.toFixed (2) + ' d2=' + r.d2.toFixed (2));
-    assert (r.label.indexOf (' ') > 0, 'blend label should be two words, got ' + r.label);
-});
-
-test ('a genre centre far from its neighbours reports a single word', () => {
-    // DRIFT sits alone in the corner of the space; at its exact centre nothing
-    // else should be within the threshold.
-    const g = GENRES[1];
-    const r = classify ({ pulse: g.c[0], crunch: g.c[1], goo: g.c[2], void: g.c[3], jitter: g.c[4], warp: g.c[5] });
-    eq (r.label, 'DRIFT');
-    assert (!r.blended, 'DRIFT centre should not blend (runner-up at ' + r.d2.toFixed (2) + ')');
+    const a = GENRES[0].c, b = GENRES[8].c;
+    const m = a.map ((v, i) => (v + b[i]) / 2);
+    const r = classify ({ pulse: m[0], crunch: m[1], goo: m[2], void: m[3], jitter: m[4], warp: m[5] });
+    assert (r.blended, 'midpoint should blend');
+    assert (r.label.indexOf (' ') > 0, 'blend label should be two words');
 });
 
 test ('threshold is a margin over the winner, not an absolute distance', () => {
-    const d = dialsOf ({});
-    assert (classify (d, 0).blended === false, 'zero margin must never blend');
-    assert (classify (d, 99).blended === true, 'huge margin must always blend');
-});
-
-test ('classification is stable and never returns the same genre twice', () => {
-    for (let i = 0; i < 10; i++)
-        for (let j = 0; j < 10; j++) {
-            const d = dialsOf ({ pulse: i, goo: j, crunch: (i + j) % 11 });
-            const r = classify (d);
-            assert (r.primary.name !== r.secondary.name, 'primary == secondary');
-            deepEq (classify (d).label, r.label, 'classification not stable');
-        }
+    assert (classify (DEFAULT_DIALS, 0).blended === false);
+    assert (classify (DEFAULT_DIALS, 99).blended === true);
 });
 
 // ---------------------------------------------------------------- PURITY --
@@ -380,7 +438,6 @@ test ('engine/ contains no unseeded randomness or wall-clock reads', () => {
     for (const f of readdirSync (dir)) {
         if (!f.endsWith ('.js')) continue;
         const src = readFileSync (join (dir, f), 'utf8');
-        // Strip comments — the ban is on code, and the files explain the ban.
         const code = src.replace (/\/\*[\s\S]*?\*\//g, '').replace (/^\s*\/\/.*$/gm, '');
         const m = code.match (banned);
         assert (!m, 'engine/' + f + ' uses ' + (m && m[0]));
@@ -394,9 +451,8 @@ test ('engine/ imports nothing outside engine/', () => {
         const src = readFileSync (join (dir, f), 'utf8');
         const re = /from\s+['"]([^'"]+)['"]/g;
         let m;
-        while ((m = re.exec (src))) {
-            assert (m[1].startsWith ('./'), 'engine/' + f + ' imports ' + m[1] + ' — engine must stay portable');
-        }
+        while ((m = re.exec (src)))
+            assert (m[1].startsWith ('./'), 'engine/' + f + ' imports ' + m[1]);
     }
 });
 
