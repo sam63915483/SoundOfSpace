@@ -247,16 +247,40 @@ check ('STOP returns the label to PLAY', () => {
     assert (playBtn.textContent === 'PLAY', 'label did not return to PLAY');
 });
 
-check ('PRINT stepper clamps and the button shows a toast', () => {
-    const minus = buttons.find (b => b.textContent === '-');
-    const plus  = buttons.find (b => b.textContent === '+');
-    const print = buttons.find (b => b.textContent === 'PRINT');
-    const qty = doc.getElementById ('qty');
-    for (let i = 0; i < 5; i++) minus.fire ('click');
-    assert (qty.textContent === '1', 'quantity went below 1, got ' + qty.textContent);
-    for (let i = 0; i < 3; i++) plus.fire ('click');
-    assert (qty.textContent === '4', 'quantity did not step up, got ' + qty.textContent);
-    print.fire ('click');
+check ('PRINT DEMO opens a modal, and CANCEL closes it without printing', () => {
+    const scrim = doc.getElementById ('print-scrim');
+    assert (scrim, 'no print dialog was built');
+    assert (!scrim.classList.contains ('show'), 'the dialog starts open');
+
+    buttons.find (b => b.textContent === 'PRINT DEMO').fire ('click');
+    assert (scrim.classList.contains ('show'), 'PRINT DEMO did not open the dialog');
+
+    doc.getElementById ('toast').classList.remove ('show');
+    buttons.find (b => b.textContent === 'CANCEL').fire ('click');
+    assert (!scrim.classList.contains ('show'), 'CANCEL did not close the dialog');
+    assert (!doc.getElementById ('toast').classList.contains ('show'),
+            'CANCEL should not print anything');
+});
+
+check ('the copies stepper clamps between 1 and 99', () => {
+    buttons.find (b => b.textContent === 'PRINT DEMO').fire ('click');
+    const qty = appView.querySelectorAll ('.print-qty')[0];
+    const label = qty.querySelectorAll ('.st-label')[0];
+    const back = qty.querySelectorAll ('button')[0];
+    const fwd = qty.querySelectorAll ('button')[1];
+
+    for (let i = 0; i < 5; i++) back.fire ('click');
+    assert (label.textContent === '1', 'went below 1, got ' + label.textContent);
+    for (let i = 0; i < 3; i++) fwd.fire ('click');
+    assert (label.textContent === '4', 'did not step up, got ' + label.textContent);
+    for (let i = 0; i < 120; i++) fwd.fire ('click');
+    assert (label.textContent === '99', 'went above 99, got ' + label.textContent);
+});
+
+check ('confirming closes the dialog and says the deck is missing', () => {
+    buttons.find (b => b.textContent === 'PRINT').fire ('click');
+    const scrim = doc.getElementById ('print-scrim');
+    assert (!scrim.classList.contains ('show'), 'PRINT did not close the dialog');
     const toast = doc.getElementById ('toast');
     assert (toast.classList.contains ('show'), 'no toast shown');
     assert (/NO TAPE DECK/.test (toast.textContent), 'toast should say PRINT is not wired yet');

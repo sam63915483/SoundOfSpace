@@ -102,13 +102,15 @@ public class ShuttleComputerUI : MonoBehaviour
     GameObject _homeView, _traxView;
 
     TextMeshProUGUI _genreLabel, _genreVibe, _genreMeta, _readout, _statusText;
-    TextMeshProUGUI _playLabel, _qtyLabel, _toastLabel;
+    TextMeshProUGUI _playLabel, _toastLabel;
     Image _playBg;
     readonly List<TraxKnob> _knobs = new List<TraxKnob>();
     readonly List<Image> _stepCells = new List<Image>();
     readonly Dictionary<string, Image> _moduleFrames = new Dictionary<string, Image>();
     readonly Dictionary<string, Image> _moduleLeds = new Dictionary<string, Image>();
     CanvasGroup _toastGroup;
+    GameObject _printPanel;
+    Stepper _printQty;
 
     int _quantity = 1;
     int _lastStepShown = -1;
@@ -155,6 +157,7 @@ public class ShuttleComputerUI : MonoBehaviour
         _open = false;
 
         if (_inst != null) _inst.Stop();
+        ClosePrint();
         _canvas.gameObject.SetActive(false);
 
         // Restore rather than force-clear: another modal UI may have been up
@@ -187,6 +190,14 @@ public class ShuttleComputerUI : MonoBehaviour
             || PlayerPhoneUI.IsOpen || Ship.AnyShipPiloted)
         {
             Close();
+            return;
+        }
+
+        // The print dialog is modal: ESC dismisses it rather than the whole
+        // computer, and the transport shortcut is suppressed while it is up.
+        if (PrintOpen)
+        {
+            if (Input.GetKeyDown(KeyCode.Escape)) ClosePrint();
             return;
         }
 
@@ -265,8 +276,9 @@ public class ShuttleComputerUI : MonoBehaviour
         BuildStatusBar(srt);
         BuildHome(srt);
         BuildTrax(srt);
-        BuildCrtOverlay(srt);         // over the content, under the toast
+        BuildCrtOverlay(srt);         // over the content, under the dialogs
         BuildToast(srt);
+        BuildPrintDialog(srt);
 
         _canvas.gameObject.SetActive(false);
     }
@@ -338,13 +350,77 @@ public class ShuttleComputerUI : MonoBehaviour
         public AppDef(string n, string g, bool e) { name = n; glyph = g; enabled = e; }
     }
 
+    // No glyph strings: ♫ ✉ ▤ ◉ are missing from the TMP atlas for the same
+    // reason the arrows were, so each icon is composed from the generated
+    // sprites instead.
     static readonly AppDef[] Apps =
     {
-        new AppDef("TRAX",  "♫", true),
-        new AppDef("MAIL",  "✉", false),
-        new AppDef("BANK",  "▤", false),
-        new AppDef("RADIO", "◉", false)
+        new AppDef("TRAX",  "note",  true),
+        new AppDef("MAIL",  "mail",  false),
+        new AppDef("BANK",  "bars",  false),
+        new AppDef("RADIO", "radio", false)
     };
+
+    /// <summary>
+    /// App icons built out of rectangles, discs and rings. Crude, but they
+    /// actually draw — which the Unicode glyphs did not.
+    /// </summary>
+    void MakeAppIcon(RectTransform parent, string kind, Color tint)
+    {
+        var holder = MakeRect(parent, "Icon");
+        holder.anchorMin = new Vector2(0.5f, 0.5f);
+        holder.anchorMax = new Vector2(0.5f, 0.5f);
+        holder.pivot = new Vector2(0.5f, 0.5f);
+        holder.sizeDelta = new Vector2(56, 56);
+        holder.anchoredPosition = new Vector2(0, 18);
+
+        switch (kind)
+        {
+            case "note":
+            {
+                var head = MakeSprite(holder, "Head", TraxUISprites.Disc, tint);
+                Box(head.rectTransform, Centre, Centre, new Vector2(-9, -14), new Vector2(20, 15));
+                var stem = MakeSprite(holder, "Stem", TraxUISprites.White, tint);
+                Box(stem.rectTransform, Centre, Centre, new Vector2(1, 2), new Vector2(4, 36));
+                var flag = MakeSprite(holder, "Flag", TraxUISprites.White, tint);
+                Box(flag.rectTransform, Centre, Centre, new Vector2(9, 16), new Vector2(18, 5));
+                break;
+            }
+            case "mail":
+            {
+                var body = MakeSprite(holder, "Body", TraxUISprites.Border, tint);
+                body.type = Image.Type.Sliced;
+                Box(body.rectTransform, Centre, Centre, Vector2.zero, new Vector2(48, 32));
+                var l = MakeSprite(holder, "FlapL", TraxUISprites.White, tint);
+                Box(l.rectTransform, Centre, Centre, new Vector2(-12, 6), new Vector2(28, 2));
+                l.rectTransform.localEulerAngles = new Vector3(0, 0, -28);
+                var r = MakeSprite(holder, "FlapR", TraxUISprites.White, tint);
+                Box(r.rectTransform, Centre, Centre, new Vector2(12, 6), new Vector2(28, 2));
+                r.rectTransform.localEulerAngles = new Vector3(0, 0, 28);
+                break;
+            }
+            case "bars":
+            {
+                for (int i = 0; i < 3; i++)
+                {
+                    var bar = MakeSprite(holder, "Bar" + i, TraxUISprites.White, tint);
+                    Box(bar.rectTransform, Centre, Centre,
+                        new Vector2(0, 14 - i * 14), new Vector2(44 - i * 8, 6));
+                }
+                break;
+            }
+            default:
+            {
+                var ring = MakeSprite(holder, "Ring", TraxUISprites.Ring, tint);
+                Box(ring.rectTransform, Centre, Centre, Vector2.zero, new Vector2(50, 50));
+                var dot = MakeSprite(holder, "Dot", TraxUISprites.Disc, tint);
+                Box(dot.rectTransform, Centre, Centre, Vector2.zero, new Vector2(16, 16));
+                break;
+            }
+        }
+    }
+
+    static readonly Vector2 Centre = new Vector2(0.5f, 0.5f);
 
     void BuildHome(RectTransform parent)
     {
@@ -378,11 +454,7 @@ public class ShuttleComputerUI : MonoBehaviour
 
             Outline(frame.transform, app.enabled ? Grid : Hex("141d21ff"));
 
-            var glyph = MakeText(frame.rectTransform, "Glyph", app.glyph, 54,
-                                 app.enabled ? Ink : Locked, TextAlignmentOptions.Center);
-            var grt = glyph.rectTransform;
-            Stretch(grt, 0, 0, 0, 0);
-            grt.anchoredPosition = new Vector2(0, 20);
+            MakeAppIcon(frame.rectTransform, app.glyph, app.enabled ? Ink : Locked);
 
             var label = MakeText(frame.rectTransform, "Name", app.name, 17,
                                  app.enabled ? Ink : Locked, TextAlignmentOptions.Center);
@@ -672,34 +744,9 @@ public class ShuttleComputerUI : MonoBehaviour
 
     void BuildPrintCluster(RectTransform row, ref float rx)
     {
-        MakeButtonRight(row, "Print", "PRINT", 120, ref rx, PanelHi, Ink, delegate
-        {
-            // Deliberately inert — cassettes are a later phase. Saying so is
-            // better than a dead button.
-            Toast("PRINT x" + _quantity + " — NO TAPE DECK INSTALLED");
-        });
-
-        MakeButtonRight(row, "Plus", "+", 42, ref rx, PanelHi, InkDim, delegate
-        {
-            _quantity = Mathf.Min(99, _quantity + 1);
-            _qtyLabel.text = _quantity.ToString();
-        });
-
-        var qty = MakeText(row, "Qty", "1", 20, Ink, TextAlignmentOptions.Center);
-        var qrt = qty.rectTransform;
-        qrt.anchorMin = new Vector2(1, 0);
-        qrt.anchorMax = new Vector2(1, 1);
-        qrt.pivot = new Vector2(1, 0.5f);
-        qrt.sizeDelta = new Vector2(44, 0);
-        qrt.anchoredPosition = new Vector2(-rx, 0);
-        rx += 44;
-        _qtyLabel = qty;
-
-        MakeButtonRight(row, "Minus", "-", 42, ref rx, PanelHi, InkDim, delegate
-        {
-            _quantity = Mathf.Max(1, _quantity - 1);
-            _qtyLabel.text = _quantity.ToString();
-        });
+        // One button. The quantity lives in the dialog it opens, so the
+        // transport row is not carrying a stepper for something you press once.
+        MakeButtonRight(row, "PrintDemo", "PRINT DEMO", 170, ref rx, PanelHi, Ink, OpenPrint);
     }
 
     void BuildVolume(RectTransform row, ref float rx)
@@ -803,6 +850,97 @@ public class ShuttleComputerUI : MonoBehaviour
         _toastGroup.alpha = 0f;
         _toastGroup.blocksRaycasts = false;
     }
+
+    /// <summary>
+    /// PRINT DEMO's dialog. Deliberately inert beyond choosing a number —
+    /// cassettes are a later phase — but it is a real modal so the shape of the
+    /// interaction is right when it does get wired up.
+    /// </summary>
+    void BuildPrintDialog(RectTransform parent)
+    {
+        // Full-bleed scrim: dims the screen AND swallows clicks, so the
+        // controls behind it can't be nudged while the dialog is up.
+        var scrim = MakePanel(parent, "PrintScrim", new Color(0, 0, 0, 0.72f));
+        scrim.raycastTarget = true;
+        Stretch(scrim.rectTransform, 0, 0, 0, 0);
+        _printPanel = scrim.gameObject;
+
+        var panel = MakePanel(scrim.rectTransform, "Panel", PanelHi);
+        var prt = panel.rectTransform;
+        prt.anchorMin = Centre;
+        prt.anchorMax = Centre;
+        prt.pivot = Centre;
+        prt.sizeDelta = new Vector2(560, 300);
+        prt.anchoredPosition = Vector2.zero;
+        Outline(panel.transform, Accent);
+
+        var title = MakeText(prt, "Title", "PRINT DEMO", 30, Accent, TextAlignmentOptions.Top);
+        Box(title.rectTransform, TopCentre, TopCentre, new Vector2(0, -26), new Vector2(520, 38));
+        title.characterSpacing = 14;
+
+        var sub = MakeText(prt, "Sub", "HOW MANY COPIES?", 15, InkDim, TextAlignmentOptions.Top);
+        Box(sub.rectTransform, TopCentre, TopCentre, new Vector2(0, -68), new Vector2(520, 22));
+        sub.characterSpacing = 18;
+
+        var qtyBox = MakeRect(prt, "QtyBox");
+        qtyBox.anchorMin = TopCentre;
+        qtyBox.anchorMax = TopCentre;
+        qtyBox.pivot = TopCentre;
+        qtyBox.sizeDelta = new Vector2(240, 60);
+        qtyBox.anchoredPosition = new Vector2(0, -104);
+
+        _printQty = MakeStepper(qtyBox, "Qty", 0,
+            () => _quantity.ToString(),
+            d => { _quantity = Mathf.Clamp(_quantity + d, 1, 99); _printQty.Refresh(); },
+            Ink);
+        _printQty.label.fontSize = 30;
+
+        var note = MakeText(prt, "Note", "no tape deck installed", 13, InkGhost,
+                            TextAlignmentOptions.Center);
+        Box(note.rectTransform, TopCentre, TopCentre, new Vector2(0, -178), new Vector2(520, 20));
+
+        // Buttons, laid out from the centre outward.
+        var cancel = MakePanel(prt, "Cancel", Panel);
+        cancel.raycastTarget = true;
+        Box(cancel.rectTransform, Centre, Centre, new Vector2(-92, -104), new Vector2(160, 44));
+        Outline(cancel.transform, InkGhost);
+        var cancelTxt = MakeText(cancel.rectTransform, "Label", "CANCEL", 17, InkDim,
+                                 TextAlignmentOptions.Center);
+        Stretch(cancelTxt.rectTransform, 0, 0, 0, 0);
+        var cancelBtn = cancel.gameObject.AddComponent<Button>();
+        cancelBtn.targetGraphic = cancel;
+        cancelBtn.onClick.AddListener(ClosePrint);
+
+        var ok = MakePanel(prt, "Confirm", Ink);
+        ok.raycastTarget = true;
+        Box(ok.rectTransform, Centre, Centre, new Vector2(92, -104), new Vector2(160, 44));
+        var okTxt = MakeText(ok.rectTransform, "Label", "PRINT", 17, Hex("04120eff"),
+                             TextAlignmentOptions.Center);
+        Stretch(okTxt.rectTransform, 0, 0, 0, 0);
+        var okBtn = ok.gameObject.AddComponent<Button>();
+        okBtn.targetGraphic = ok;
+        okBtn.onClick.AddListener(delegate
+        {
+            ClosePrint();
+            Toast("PRINT x" + _quantity + " QUEUED — NO TAPE DECK INSTALLED");
+        });
+
+        _printPanel.SetActive(false);
+    }
+
+    void OpenPrint()
+    {
+        if (_printPanel == null) return;
+        _printQty.Refresh();
+        _printPanel.SetActive(true);
+    }
+
+    void ClosePrint()
+    {
+        if (_printPanel != null) _printPanel.SetActive(false);
+    }
+
+    public bool PrintOpen { get { return _printPanel != null && _printPanel.activeSelf; } }
 
     void Toast(string msg)
     {
@@ -988,8 +1126,8 @@ public class ShuttleComputerUI : MonoBehaviour
         rt.anchoredPosition = new Vector2(0, y);
         Outline(holder.transform, Grid);
 
-        MakeArrow(rt, "Back", "\u25C0", true, onStep);
-        MakeArrow(rt, "Fwd", "\u25B6", false, onStep);
+        MakeArrow(rt, "Back", true, onStep);
+        MakeArrow(rt, "Fwd", false, onStep);
 
         var label = MakeText(rt, "Label", "", 13, textColor, TextAlignmentOptions.Center);
         Stretch(label.rectTransform, 18, 18, 0, 0);
@@ -999,19 +1137,33 @@ public class ShuttleComputerUI : MonoBehaviour
         return st;
     }
 
-    void MakeArrow(RectTransform parent, string name, string glyph, bool left, Action<int> onStep)
+    /// <summary>
+    /// Arrow drawn as a rotated triangle SPRITE, not a text glyph.
+    /// ◀ and ▶ are missing from this project's TMP atlas, so as characters they
+    /// rendered as the missing-glyph box — two squares where the arrows should
+    /// be. Geometry has no font dependency.
+    /// </summary>
+    void MakeArrow(RectTransform parent, string name, bool left, Action<int> onStep)
     {
+        // Transparent hit area, sized for a comfortable click target...
         var img = MakePanel(parent, name, new Color(0, 0, 0, 0));
         img.raycastTarget = true;
         var rt = img.rectTransform;
         rt.anchorMin = new Vector2(left ? 0 : 1, 0);
         rt.anchorMax = new Vector2(left ? 0 : 1, 1);
         rt.pivot = new Vector2(left ? 0 : 1, 0.5f);
-        rt.sizeDelta = new Vector2(20, 0);
+        rt.sizeDelta = new Vector2(22, 0);
         rt.anchoredPosition = Vector2.zero;
 
-        var t = MakeText(rt, "G", glyph, 12, InkDim, TextAlignmentOptions.Center);
-        Stretch(t.rectTransform, 0, 0, 0, 0);
+        // ...with a smaller triangle drawn inside it.
+        var tri = MakeSprite(rt, "Tri", TraxUISprites.Triangle, InkDim);
+        var trt = tri.rectTransform;
+        trt.anchorMin = new Vector2(0.5f, 0.5f);
+        trt.anchorMax = new Vector2(0.5f, 0.5f);
+        trt.pivot = new Vector2(0.5f, 0.5f);
+        trt.sizeDelta = new Vector2(9, 11);
+        trt.anchoredPosition = Vector2.zero;
+        if (left) trt.localEulerAngles = new Vector3(0, 0, 180);
 
         int delta = left ? -1 : 1;
         var btn = img.gameObject.AddComponent<Button>();

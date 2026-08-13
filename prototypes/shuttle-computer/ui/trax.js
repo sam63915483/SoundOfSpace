@@ -143,20 +143,18 @@ export function mountTrax (root, inst, onExit) {
     const sep = document.createElement ('div');
     sep.className = 'sep';
 
-    // PRINT — visual only today. The stepper and button work, nothing is saved.
+    // PRINT DEMO - one button that opens a dialog. The quantity lives in there,
+    // so the transport row is not carrying a stepper for something you press
+    // once. Deliberately inert beyond choosing a number; cassettes are a later
+    // phase, but the shape of the interaction is right for when it is wired up.
+    let quantity = 1;
     const printWrap = document.createElement ('div');
     printWrap.id = 'print-wrap';
-    const minus = document.createElement ('button'); minus.className = 'btn tiny ghost'; minus.textContent = '-';
-    const qty   = document.createElement ('div');    qty.id = 'qty'; qty.textContent = '1';
-    const plus  = document.createElement ('button'); plus.className = 'btn tiny ghost'; plus.textContent = '+';
-    const printBtn = document.createElement ('button'); printBtn.className = 'btn'; printBtn.textContent = 'PRINT';
-    let quantity = 1;
-    minus.addEventListener ('click', () => { quantity = Math.max (1, quantity - 1); qty.textContent = quantity; });
-    plus.addEventListener  ('click', () => { quantity = Math.min (99, quantity + 1); qty.textContent = quantity; });
-    printBtn.addEventListener ('click', () => {
-        toast ('PRINT x' + quantity + ' — NO TAPE DECK INSTALLED');
-    });
-    printWrap.append (minus, qty, plus, printBtn);
+    const printBtn = document.createElement ('button');
+    printBtn.className = 'btn';
+    printBtn.textContent = 'PRINT DEMO';
+    printBtn.addEventListener ('click', () => openPrint ());
+    printWrap.append (printBtn);
 
     // KEY — one control that moves everything, and regenerates nothing.
     const keyWrap = document.createElement ('div');
@@ -182,6 +180,33 @@ export function mountTrax (root, inst, onExit) {
 
     transport.append (playBtn, readout, sep, keyWrap, volWrap, printWrap, exitBtn);
     body.appendChild (transport);
+
+    // ---------- print dialog ----------
+    const printScrim = document.createElement ('div');
+    printScrim.id = 'print-scrim';
+    const printPanel = document.createElement ('div');
+    printPanel.id = 'print-panel';
+    const pTitle = document.createElement ('div'); pTitle.id = 'print-title'; pTitle.textContent = 'PRINT DEMO';
+    const pSub   = document.createElement ('div'); pSub.id = 'print-sub';   pSub.textContent = 'HOW MANY COPIES?';
+    const pQty = stepper ('print-qty', () => String (quantity),
+                          d => { quantity = Math.min (99, Math.max (1, quantity + d)); pQty.refresh (); });
+    const pNote = document.createElement ('div'); pNote.id = 'print-note'; pNote.textContent = 'no tape deck installed';
+    const pRow = document.createElement ('div'); pRow.id = 'print-row';
+    const pCancel = document.createElement ('button'); pCancel.className = 'btn ghost'; pCancel.textContent = 'CANCEL';
+    const pOk = document.createElement ('button'); pOk.className = 'btn primary'; pOk.textContent = 'PRINT';
+    pCancel.addEventListener ('click', () => closePrint ());
+    pOk.addEventListener ('click', () => {
+        closePrint ();
+        toast ('PRINT x' + quantity + ' QUEUED \u2014 NO TAPE DECK INSTALLED');
+    });
+    pRow.append (pCancel, pOk);
+    printPanel.append (pTitle, pSub, pQty.el, pNote, pRow);
+    printScrim.appendChild (printPanel);
+    root.appendChild (printScrim);
+
+    function openPrint () { pQty.refresh (); printScrim.classList.add ('show'); }
+    function closePrint () { printScrim.classList.remove ('show'); }
+    function printOpen () { return printScrim.classList.contains ('show'); }
 
     // ---------- toast ----------
     const toastEl = document.createElement ('div');
@@ -277,6 +302,12 @@ export function mountTrax (root, inst, onExit) {
     playBtn.addEventListener ('click', togglePlay);
 
     function onKey (e) {
+        // The print dialog is modal: ESC dismisses it rather than leaving TRAX,
+        // and the transport shortcut is suppressed while it is up.
+        if (printOpen ()) {
+            if (e.key === 'Escape') { e.preventDefault (); closePrint (); }
+            return;
+        }
         if (e.target && e.target.classList && e.target.classList.contains ('knob')) {
             if (e.key !== ' ' && e.key !== 'Escape') return;
         }

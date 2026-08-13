@@ -389,6 +389,34 @@ button.btn.tiny { padding: 4px 9px; font-size: 12px; letter-spacing: 0; }
 #qty { font-size: 12px; min-width: 2ch; text-align: center; color: var(--ink); }
 .hint { font-size: 9px; color: var(--ink-ghost); letter-spacing: .08em; }
 
+/* print dialog */
+#print-scrim {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,.72);
+    display: none;
+    place-items: center;
+    z-index: 94;
+}
+#print-scrim.show { display: grid; }
+#print-panel {
+    width: 420px;
+    background: var(--panel-hi);
+    border: 1px solid var(--accent);
+    border-radius: 8px;
+    padding: 20px 24px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+#print-title { font-size: 22px; letter-spacing: .18em; color: var(--accent); }
+#print-sub   { font-size: 11px; letter-spacing: .24em; color: var(--ink-dim); }
+#print-qty   { width: 160px; }
+#print-qty .st-label { font-size: 26px; color: var(--ink); }
+#print-note  { font-size: 10px; color: var(--ink-ghost); letter-spacing: .08em; }
+#print-row   { display: flex; gap: 10px; margin-top: 6px; }
+
 /* toast for the not-yet-real PRINT */
 #toast {
     position: absolute;

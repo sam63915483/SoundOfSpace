@@ -80,6 +80,52 @@ public static class TraxUISprites
         return s;
     }
 
+    /// <summary>
+    /// Right-pointing triangle, for stepper arrows. Rotate the RectTransform
+    /// 180° for a left arrow.
+    ///
+    /// ⚠️ These exist because ◀ and ▶ (U+25C0/U+25B6) are NOT in the
+    /// LiberationSans SDF atlas this project uses, so TMP drew the
+    /// missing-glyph box instead and every stepper looked like two squares.
+    /// A browser has font fallback and hid the problem; Unity does not.
+    /// Rule of thumb for this codebase: text is ASCII, anything else is a
+    /// sprite. See also the note about the &lt;s&gt; tag drawing nothing.
+    /// </summary>
+    public static Sprite Triangle
+    {
+        get
+        {
+            if (_triangle == null) _triangle = MakeTriangle(64);
+            return _triangle;
+        }
+    }
+
+    static Sprite _triangle;
+
+    static Sprite MakeTriangle(int size)
+    {
+        var tex = NewTex(size);
+        var px = new Color32[size * size];
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                // Normalised, with a small inset so the tip isn't clipped.
+                float nx = (x + 0.5f) / size;
+                float ny = (y + 0.5f) / size;
+                // Inside when x + |2y-1| <= 1: a triangle from the full-height
+                // left edge to an apex at the right-hand mid-point.
+                float d = 1f - (nx + Mathf.Abs(2f * ny - 1f));
+                float a = Mathf.Clamp01(d * size * 0.6f);
+                px[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255f));
+            }
+        }
+
+        tex.SetPixels32(px);
+        return Finish(tex, size);
+    }
+
     /// Solid circle for the knob hub.
     public static Sprite Disc
     {
