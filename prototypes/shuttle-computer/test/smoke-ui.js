@@ -84,18 +84,50 @@ check ('the disabled apps do nothing when clicked', () => {
     }
 });
 
-// ------------------------------------------------------------------ trax ----
+// -------------------------------------------------------------- projects ----
+//
+// The mock's getElementById registry is permanent — a detached element with an
+// id is still returned after a re-render. So everything below queries live
+// elements out of #view-app by class and picks them by their text.
 
-console.log ('\ntrax');
+const appView = doc.getElementById ('view-app');
+const byText = (root, cls, text) => root.querySelectorAll (cls).find (e => e.textContent.indexOf (text) >= 0);
+const projBtn = (text) => byText (appView, '.proj-btn', text);
+const btn     = (text) => appView.querySelectorAll ('button').find (b => b.textContent === text);
+
+console.log ('\ntrax project menu');
 apps.find (a => !a.classList.contains ('disabled')).fire ('click');
 await sleep (60);
 
-const inst = global.window.TRAX || null;
-check ('opening TRAX switches view and warms the audio context', () => {
-    assert (doc.getElementById ('view-app').classList.contains ('active'), 'app view not active');
+check ('opening TRAX lands on the project menu, not the instrument', () => {
+    assert (appView.classList.contains ('active'), 'app view not active');
+    assert (projBtn ('NEW PROJECT'), 'no NEW PROJECT button');
+    assert (projBtn ('LOAD PROJECT'), 'no LOAD PROJECT button');
+    assert (appView.querySelectorAll ('.knob').length === 0,
+            'the instrument mounted before a project was chosen');
 });
 
-const appView = doc.getElementById ('view-app');
+check ('LOAD PROJECT is dead while the shelf is empty', () => {
+    const load = projBtn ('LOAD PROJECT');
+    assert (load.classList.contains ('disabled'), 'LOAD should be disabled with nothing saved');
+    load.fire ('click');
+    assert (!appView.querySelector ('.proj-pane').parentNode.classList.contains ('showing-list'),
+            'LOAD opened the shelf with nothing on it');
+});
+
+// ------------------------------------------------------------------ trax ----
+
+console.log ('\ntrax instrument');
+projBtn ('NEW PROJECT').fire ('click');
+await sleep (60);
+
+const inst = global.window.TRAX || null;
+check ('NEW PROJECT opens the instrument on a blank track', () => {
+    assert (appView.querySelectorAll ('.knob').length === 6, 'instrument did not mount');
+    const state = appView.querySelectorAll ('.pb-label').length;
+    assert (state > 0, 'no project bar on the instrument screen');
+});
+
 const knobs = appView.querySelectorAll ('.knob');
 const modules = appView.querySelectorAll ('.module');
 const heads = appView.querySelectorAll ('.m-head');
@@ -256,7 +288,8 @@ check ('PRINT DEMO opens a modal, and CANCEL closes it without printing', () => 
     assert (scrim.classList.contains ('show'), 'PRINT DEMO did not open the dialog');
 
     doc.getElementById ('toast').classList.remove ('show');
-    buttons.find (b => b.textContent === 'CANCEL').fire ('click');
+    // Scoped to this dialog on purpose — the save dialog has a CANCEL too.
+    scrim.querySelectorAll ('button').find (b => b.textContent === 'CANCEL').fire ('click');
     assert (!scrim.classList.contains ('show'), 'CANCEL did not close the dialog');
     assert (!doc.getElementById ('toast').classList.contains ('show'),
             'CANCEL should not print anything');
@@ -286,17 +319,113 @@ check ('confirming closes the dialog and says the deck is missing', () => {
     assert (/NO TAPE DECK/.test (toast.textContent), 'toast should say PRINT is not wired yet');
 });
 
-check ('ESC leaves TRAX and stops playback', () => {
-    playBtn.fire ('click');                    // start again
+// ------------------------------------------------------------ save + load ----
+
+console.log ('\nsave + load');
+
+const nameField = () => appView.querySelectorAll ('input').find (i => i.id === 'save-name');
+const projState = () => appView.querySelectorAll ('.pb-label')[0].parentNode.childNodes[2].textContent;
+
+check ('a fresh project reports that it has never been saved', () => {
+    assert (/NEVER SAVED/.test (projState ()), 'expected NEVER SAVED, got ' + projState ());
+});
+
+check ('SAVE PROJECT opens the name dialog, CANCEL closes it without saving', () => {
+    btn ('SAVE PROJECT').fire ('click');
+    assert (nameField (), 'no name field in the save dialog');
+    btn ('CANCEL').fire ('click');
+    assert (/NEVER SAVED/.test (projState ()), 'CANCEL saved the project anyway');
+});
+
+check ('an empty name is refused', () => {
+    btn ('SAVE PROJECT').fire ('click');
+    const f = nameField ();
+    f.value = '   ';
+    f.fire ('input');
+    btn ('SAVE').fire ('click');
+    assert (/NEVER SAVED/.test (projState ()), 'a blank name was accepted');
+});
+
+let savedTrackId = 0;
+check ('naming it and saving puts it on the shelf', () => {
+    const f = nameField ();
+    f.value = 'DEEP CAVE';
+    f.fire ('input');
+    btn ('SAVE').fire ('click');
+    savedTrackId = inst.trackId;
+    assert (/SAVED/.test (projState ()) && !/UNSAVED|NEVER/.test (projState ()),
+            'project bar did not go clean after saving, got ' + projState ());
+    const nm = appView.querySelectorAll ('.pb-label')[0].parentNode.childNodes[1].textContent;
+    assert (nm === 'DEEP CAVE', 'project bar shows ' + nm);
+});
+
+check ('editing after a save marks the project dirty', () => {
+    const k = knobs[3];                        // VOID
+    k.fire ('pointerdown', { clientY: 400 });
+    k.fire ('pointermove', { clientY: 250 });
+    k.fire ('pointerup', {});
+    assert (inst.trackId !== savedTrackId, 'the edit did not change the track identity');
+    assert (/UNSAVED CHANGES/.test (projState ()), 'expected UNSAVED CHANGES, got ' + projState ());
+});
+
+playBtn.fire ('click');                        // start again — leaving must stop it
+await sleep (40);
+check ('ESC steps back to the project menu, not out of the app', () => {
+    fireWindow ('keydown', { key: 'Escape' });
+    assert (appView.classList.contains ('active'), 'ESC left the app entirely');
+    assert (projBtn ('NEW PROJECT'), 'ESC did not land on the project menu');
+    assert (!inst.playing, 'leaving the instrument did not stop playback');
+});
+
+check ('a second ESC leaves TRAX for the desktop', () => {
     fireWindow ('keydown', { key: 'Escape' });
     assert (doc.getElementById ('view-home').classList.contains ('active'), 'ESC did not return home');
 });
 
-check ('re-entering TRAX rebuilds cleanly', () => {
+check ('re-entering TRAX rebuilds the menu, and LOAD is now live', () => {
     apps.find (a => !a.classList.contains ('disabled')).fire ('click');
-    assert (doc.getElementById ('view-app').classList.contains ('active'), 'could not re-enter TRAX');
-    assert (doc.getElementById ('view-app').querySelectorAll ('.knob').length === 6,
-            'rebuilt screen does not have exactly 6 knobs');
+    assert (appView.classList.contains ('active'), 'could not re-enter TRAX');
+    const load = projBtn ('LOAD PROJECT');
+    assert (load, 'no LOAD PROJECT button');
+    assert (!load.classList.contains ('disabled'), 'LOAD still disabled after saving one project');
+    assert (/1 project/.test (load.textContent), 'LOAD does not report the shelf count: ' + load.textContent);
+});
+
+check ('the shelf lists the saved project', () => {
+    projBtn ('LOAD PROJECT').fire ('click');
+    const rows = appView.querySelectorAll ('.proj-row');
+    assert (rows.length === 1, 'expected 1 row on the shelf, got ' + rows.length);
+    assert (rows[0].textContent.indexOf ('DEEP CAVE') >= 0, 'row does not name the project');
+});
+
+check ('opening it restores the track that was SAVED, not the one left on screen', () => {
+    appView.querySelectorAll ('.proj-row')[0].fire ('click');
+    assert (appView.querySelectorAll ('.knob').length === 6, 'the instrument did not mount');
+    assert (inst.trackId === savedTrackId,
+            'loaded track ' + inst.trackId + ' but saved ' + savedTrackId);
+    assert (/SAVED/.test (projState ()) && !/UNSAVED|NEVER/.test (projState ()),
+            'a freshly loaded project should be clean, got ' + projState ());
+});
+
+check ('saving over the same name does not make a second project', () => {
+    btn ('SAVE PROJECT').fire ('click');
+    const f = nameField ();
+    f.value = 'DEEP CAVE';
+    f.fire ('input');
+    btn ('SAVE').fire ('click');
+    fireWindow ('keydown', { key: 'Escape' });          // back to the menu
+    projBtn ('LOAD PROJECT').fire ('click');
+    const rows = appView.querySelectorAll ('.proj-row');
+    assert (rows.length === 1, 'overwriting made a duplicate: ' + rows.length + ' rows');
+});
+
+check ('DELETE takes two presses and then empties the shelf', () => {
+    const del = appView.querySelectorAll ('.pr-del')[0];
+    assert (del.textContent === 'DELETE', 'delete button starts armed');
+    del.fire ('click');
+    assert (del.textContent === 'SURE?', 'first press did not arm the confirm');
+    del.fire ('click');
+    assert (appView.querySelectorAll ('.proj-row').length === 0, 'the project was not deleted');
 });
 
 // ---------------------------------------------------------------- report ----

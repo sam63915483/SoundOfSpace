@@ -6,6 +6,10 @@
 
 import { Instrument } from '../audio/instrument.js';
 import { mountTrax } from './trax.js';
+import { mountProjects } from './projects.js';
+import { defaultTrack, cloneTrack } from '../engine/track.js';
+import { makeRecord, upsert, remove } from '../engine/library.js';
+import * as store from './store.js';
 
 const BOOT_LINES = [
     ['  SHUTTLE COMPUTER', 'ok'],
@@ -31,6 +35,11 @@ const APPS = [
 
 const inst = new Instrument ();
 let traxHandle = null;
+let projectsHandle = null;
+
+// The shelf, held in memory for the session and written through to storage on
+// every change. In Unity this is the world save, shared by both players.
+let projects = store.load ();
 
 function statusbar (left) {
     const bar = document.createElement ('div');
@@ -115,18 +124,65 @@ function buildHome () {
 }
 
 // ---------- app ----------
+//
+// TRAX is a two-screen app: the project menu, then the instrument. Both mount
+// into the same host inside #view-app, so the OS still only knows about three
+// views and the app owns its own navigation.
 
-async function openTrax () {
+let setCrumb = () => {};
+
+function appHost (crumb) {
     const view = document.getElementById ('view-app');
     view.innerHTML = '';
-    view.appendChild (statusbar ('<b>TRAX</b> • SYNTH CORE'));
-
+    const bar = statusbar ('<b>TRAX</b> • ' + crumb);
+    view.appendChild (bar);
+    // Saving renames the screen you are on, so the breadcrumb has to be able to
+    // change after mount — otherwise it sits on UNTITLED forever.
+    setCrumb = (text) => { bar.firstChild.innerHTML = '<b>TRAX</b> • ' + text; };
     const host = document.createElement ('div');
     host.style.cssText = 'flex:1; display:flex; flex-direction:column; min-height:0; position:relative;';
     view.appendChild (host);
+    return host;
+}
 
-    if (traxHandle) traxHandle.dispose ();
-    traxHandle = mountTrax (host, inst, closeTrax);
+function teardown () {
+    if (traxHandle) { traxHandle.stop (); traxHandle.dispose (); traxHandle = null; }
+    if (projectsHandle) { projectsHandle.dispose (); projectsHandle = null; }
+}
+
+/// The project menu — where TRAX now opens.
+function openTrax (startOnList) {
+    teardown ();
+    const host = appHost ('PROJECTS');
+    projectsHandle = mountProjects (host, {
+        records: projects,
+        persistent: store.isPersistent (),
+        startOnList: !!startOnList,
+        onNew:    () => openInstrument (null),
+        onOpen:   rec => openInstrument (rec),
+        onDelete: rec => {
+            projects = remove (projects, rec.id);
+            store.save (projects);
+            openTrax (projects.length > 0);        // rebuild the shelf in place
+        },
+        onHome:   () => { teardown (); show ('view-home'); }
+    });
+    show ('view-app');
+}
+
+/// The instrument. A null record means an unsaved new project, which starts
+/// from a blank track rather than whatever was last loaded.
+async function openInstrument (rec) {
+    teardown ();
+    inst.setTrack (rec ? cloneTrack (rec.track) : defaultTrack ());
+
+    const host = appHost (rec ? rec.name.toUpperCase () : 'UNTITLED');
+    traxHandle = mountTrax (host, inst, {
+        project: rec,
+        existingNames: () => projects.map (p => p.name),
+        onExit: () => openTrax (),
+        onSave: name => saveProject (name)
+    });
     show ('view-app');
 
     // This click IS the user gesture, so warm the AudioContext now — otherwise
@@ -135,9 +191,15 @@ async function openTrax () {
     catch (e) { console.warn ('audio init failed', e); }
 }
 
-function closeTrax () {
-    if (traxHandle) traxHandle.stop ();
-    show ('view-home');
+/// Writes the current track to the shelf under `name`. Same name overwrites,
+/// new name appends — the rule lives in engine/library.js, not here.
+function saveProject (name) {
+    const rec = makeRecord (name, inst.track, Date.now (), store.nextSeq ());
+    const res = upsert (projects, rec);
+    projects = res.list;
+    store.save (projects);
+    setCrumb (res.record.name.toUpperCase ());
+    return res.record;
 }
 
 // ---------- go ----------

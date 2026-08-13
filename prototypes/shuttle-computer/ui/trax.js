@@ -14,11 +14,47 @@ const VOICE_MODULE = {
     moss: 'MOSS', spindle: 'SPINDLE'
 };
 
-export function mountTrax (root, inst, onExit) {
+// opts: { project, existingNames, onExit, onSave }
+//   project       — the record this screen is editing, or null for an unsaved
+//                   new one. Only { name } is read.
+//   existingNames — names already on the shelf, so SAVE can warn about an
+//                   overwrite before it happens.
+//   onSave(name)  — hands the name up; the owner writes the shelf and returns
+//                   the stored record (or null if it refused).
+export function mountTrax (root, inst, opts) {
+    opts = opts || {};
+    const onExit = opts.onExit || function () {};
     root.innerHTML = '';
     const body = document.createElement ('div');
     body.id = 'trax-body';
     root.appendChild (body);
+
+    // ---------- project bar ----------
+    // Which project you are editing, and whether what you can hear right now is
+    // actually on the shelf. Dirtiness is derived from the track identity hash
+    // rather than bookkept, so undoing an edit correctly goes back to CLEAN.
+    let project = opts.project || null;
+    let savedTrackId = project ? inst.trackId : -1;
+
+    const projBar = document.createElement ('div');
+    projBar.id = 'proj-bar';
+    const pbLabel = document.createElement ('div'); pbLabel.className = 'pb-label'; pbLabel.textContent = 'PROJECT';
+    const pbName  = document.createElement ('div'); pbName.id = 'proj-bar-name';
+    const pbState = document.createElement ('div'); pbState.id = 'proj-bar-state';
+    projBar.append (pbLabel, pbName, pbState);
+    body.appendChild (projBar);
+
+    let saveBtn = null;                       // built with the transport, below
+    function isDirty () { return inst.trackId !== savedTrackId; }
+
+    function refreshProjBar () {
+        pbName.textContent = project ? project.name.toUpperCase () : 'UNTITLED';
+        pbName.classList.toggle ('untitled', !project);
+        const dirty = isDirty ();
+        pbState.textContent = !project ? 'NEVER SAVED' : dirty ? 'UNSAVED CHANGES' : 'SAVED';
+        pbState.classList.toggle ('dirty', dirty);
+        if (saveBtn) saveBtn.classList.toggle ('attn', dirty);
+    }
 
     // ---------- genre plate ----------
     const plate = document.createElement ('div');
@@ -173,13 +209,92 @@ export function mountTrax (root, inst, onExit) {
     vol.addEventListener ('input', () => inst.setMasterVolume (parseFloat (vol.value)));
     volWrap.append (volLabel, vol);
 
+    // SAVE PROJECT sits next to PRINT because they are the two things you do
+    // WITH a finished track, as opposed to the controls that shape it.
+    saveBtn = document.createElement ('button');
+    saveBtn.className = 'btn';
+    saveBtn.id = 'save-btn';
+    saveBtn.textContent = 'SAVE PROJECT';
+    saveBtn.addEventListener ('click', () => openSave ());
+
+    // Leaves the instrument for the project menu, not for the desktop — the
+    // menu is one level up, and HOME lives there.
     const exitBtn = document.createElement ('button');
     exitBtn.className = 'btn ghost';
-    exitBtn.textContent = 'EXIT';
+    exitBtn.id = 'exit-btn';
+    exitBtn.textContent = 'PROJECTS';
     exitBtn.addEventListener ('click', () => onExit ());
 
-    transport.append (playBtn, readout, sep, keyWrap, volWrap, printWrap, exitBtn);
+    transport.append (playBtn, readout, sep, keyWrap, volWrap, saveBtn, printWrap, exitBtn);
     body.appendChild (transport);
+
+    // ---------- save dialog ----------
+    const saveScrim = document.createElement ('div');
+    saveScrim.id = 'save-scrim';
+    const savePanel = document.createElement ('div');
+    savePanel.id = 'save-panel';
+    const sTitle = document.createElement ('div'); sTitle.id = 'save-title'; sTitle.textContent = 'SAVE PROJECT';
+    const sSub   = document.createElement ('div'); sSub.id = 'save-sub';     sSub.textContent = 'NAME THIS TRACK';
+    const sInput = document.createElement ('input');
+    sInput.id = 'save-name';
+    sInput.type = 'text';
+    sInput.maxLength = 24;
+    sInput.placeholder = 'UNTITLED';
+    const sNote  = document.createElement ('div'); sNote.id = 'save-note';
+    const sRow   = document.createElement ('div'); sRow.id = 'save-row';
+    const sCancel = document.createElement ('button'); sCancel.className = 'btn ghost';   sCancel.textContent = 'CANCEL';
+    const sOk     = document.createElement ('button'); sOk.className = 'btn primary';     sOk.textContent = 'SAVE';
+    sRow.append (sCancel, sOk);
+    savePanel.append (sTitle, sSub, sInput, sNote, sRow);
+    saveScrim.appendChild (savePanel);
+    root.appendChild (saveScrim);
+
+    // Asked for fresh each time the dialog opens — saving under a new name grows
+    // the shelf, and the overwrite warning has to know about it.
+    function otherNames () {
+        const all = typeof opts.existingNames === 'function' ? opts.existingNames ()
+                  : (opts.existingNames || []);
+        const mine = project ? project.name.toLowerCase () : null;
+        return all.filter (n => n.toLowerCase () !== mine);
+    }
+
+    function refreshSaveNote () {
+        const typed = (sInput.value || '').trim ();
+        if (!typed) { sNote.textContent = 'a name is required'; sNote.className = 'warn'; sOk.classList.add ('disabled'); return; }
+        sOk.classList.remove ('disabled');
+        const clash = otherNames ().some (n => n.toLowerCase () === typed.toLowerCase ());
+        if (clash) { sNote.textContent = 'overwrites the project already called that'; sNote.className = 'warn'; }
+        else if (project && typed.toLowerCase () === project.name.toLowerCase ()) { sNote.textContent = 'saves over this project'; sNote.className = ''; }
+        else { sNote.textContent = 'saves as a new project'; sNote.className = ''; }
+    }
+    sInput.addEventListener ('input', refreshSaveNote);
+
+    function openSave () {
+        sInput.value = project ? project.name : '';
+        refreshSaveNote ();
+        saveScrim.classList.add ('show');
+        if (sInput.focus) sInput.focus ();
+        if (sInput.select) sInput.select ();
+    }
+    function closeSave () { saveScrim.classList.remove ('show'); }
+    function saveOpen () { return saveScrim.classList.contains ('show'); }
+
+    function commitSave () {
+        const typed = (sInput.value || '').trim ();
+        if (!typed) return;
+        const rec = opts.onSave ? opts.onSave (typed) : null;
+        if (!rec) return;
+        project = rec;
+        savedTrackId = inst.trackId;
+        closeSave ();
+        refreshProjBar ();
+        toast ('SAVED - ' + rec.name.toUpperCase ());
+    }
+    sCancel.addEventListener ('click', () => closeSave ());
+    sOk.addEventListener ('click', () => commitSave ());
+    sInput.addEventListener ('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault (); commitSave (); }
+    });
 
     // ---------- print dialog ----------
     const printScrim = document.createElement ('div');
@@ -230,6 +345,7 @@ export function mountTrax (root, inst, onExit) {
             '\nMARGIN ' + (g.d2 - g.d1).toFixed (2) + (g.blended ? '  BLEND' : '  LOCK');
         readout.textContent =
             Math.round (inst.params.bpm) + ' BPM   BAR ' + (currentBar + 1) + '/' + BARS;
+        refreshProjBar ();
         refreshGrid (true);
     }
 
@@ -302,8 +418,13 @@ export function mountTrax (root, inst, onExit) {
     playBtn.addEventListener ('click', togglePlay);
 
     function onKey (e) {
-        // The print dialog is modal: ESC dismisses it rather than leaving TRAX,
-        // and the transport shortcut is suppressed while it is up.
+        // Both dialogs are modal: ESC dismisses them rather than leaving TRAX,
+        // and the transport shortcut is suppressed while one is up — SPACE has
+        // to reach the name field as a space, not as PLAY.
+        if (saveOpen ()) {
+            if (e.key === 'Escape') { e.preventDefault (); closeSave (); }
+            return;
+        }
         if (printOpen ()) {
             if (e.key === 'Escape') { e.preventDefault (); closePrint (); }
             return;
@@ -316,6 +437,7 @@ export function mountTrax (root, inst, onExit) {
     }
     window.addEventListener ('keydown', onKey);
 
+    refreshProjBar ();
     refreshReadouts ();
     drawGrid ();
 
