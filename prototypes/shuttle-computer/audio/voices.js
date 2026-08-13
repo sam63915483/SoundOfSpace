@@ -119,7 +119,8 @@ function tonalVoice (rack, p, t, vel, freq, len, opts) {
     rack.lfoDepth.connect (filter.detune);
 
     const vca = ctx.createGain ();
-    ampEnv (vca.gain, t, vel * opts.level * resComp (p.filterQ), len, 0.012);
+    ampEnv (vca.gain, t, vel * opts.level * resComp (p.filterQ), len,
+            opts.attack === undefined ? 0.012 : opts.attack);
 
     oscA.connect (gA); gA.connect (filter);
     oscB.connect (gB); gB.connect (filter);
@@ -146,5 +147,28 @@ export function triggerBass (rack, p, t, vel, freq, len) {
 export function triggerLead (rack, p, t, vel, freq, len) {
     tonalVoice (rack, p, t, vel, freq, len, {
         out: rack.siren, filterScale: 2.2, level: 0.5
+    });
+}
+
+// ------------------------------------------------------- MOSS / SPINDLE ----
+
+// MOSS: the chord, held. Slow attack so it swells in under everything rather
+// than announcing itself, and a darker filter so it never competes with the
+// lead for the top end.
+export function triggerMoss (rack, p, t, vel, freqs, len) {
+    for (let i = 0; i < freqs.length; i++) {
+        tonalVoice (rack, p, t, vel, freqs[i], len, {
+            out: rack.moss,
+            filterScale: 0.8,
+            level: 0.22,          // three notes at once; each one has to be quiet
+            attack: 0.12
+        });
+    }
+}
+
+// SPINDLE: plucked, short, bright. Always a chord tone, so it can't be wrong.
+export function triggerSpindle (rack, p, t, vel, freq, len) {
+    tonalVoice (rack, p, t, vel, freq, Math.min (len, 0.22), {
+        out: rack.spindle, filterScale: 3.0, level: 0.34, attack: 0.004
     });
 }

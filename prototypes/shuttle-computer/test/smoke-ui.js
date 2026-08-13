@@ -100,12 +100,20 @@ const knobs = appView.querySelectorAll ('.knob');
 const modules = appView.querySelectorAll ('.module');
 const stepCells = appView.querySelectorAll ('.st');
 
-check ('six dials, six rack slots (2 locked), 16 step lights', () => {
+check ('six dials, six live rack slots, 16 step lights', () => {
     assert (knobs.length === 6, 'expected 6 knobs, got ' + knobs.length);
     assert (modules.length === 6, 'expected 6 rack slots, got ' + modules.length);
-    assert (modules.filter (m => m.classList.contains ('locked')).length === 2,
-            'expected 2 locked slots');
+    // MOSS and SPINDLE filled the two previously-locked slots, so every module
+    // is now playable. A future plugin shop would add slots, not unlock these.
+    assert (modules.filter (m => m.classList.contains ('locked')).length === 0,
+            'no rack slot should still be locked');
     assert (stepCells.length === 16, 'expected 16 step lights, got ' + stepCells.length);
+});
+
+check ('the rack names the full band', () => {
+    const names = modules.map (m => m.textContent).join (' ');
+    for (const n of ['THUMPER', 'GLOWORM', 'MOSS', 'SIREN', 'SPINDLE', 'CAVE'])
+        assert (names.indexOf (n) >= 0, 'rack is missing ' + n);
 });
 
 check ('the genre readout is populated', () => {
@@ -146,20 +154,13 @@ check ('knob clamps at both ends', () => {
     assert (parseFloat (k.getAttribute ('aria-valuenow')) === 0, 'did not clamp at 0');
 });
 
-check ('rack toggles flip state; locked slots are inert', () => {
-    const live = modules.filter (m => !m.classList.contains ('locked'));
-    for (const m of live) {
+check ('every rack toggle flips and flips back', () => {
+    for (const m of modules) {
         const was = m.classList.contains ('on');
         m.fire ('click');
         assert (m.classList.contains ('on') !== was, 'toggle did not flip ' + m.textContent);
         m.fire ('click');
         assert (m.classList.contains ('on') === was, 'toggle did not flip back');
-    }
-    const locked = modules.filter (m => m.classList.contains ('locked'));
-    for (const m of locked) {
-        m.fire ('click');
-        assert (m.classList.contains ('locked'), 'a locked slot changed');
-        assert (!m.classList.contains ('on'), 'a locked slot switched on');
     }
 });
 

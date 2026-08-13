@@ -55,14 +55,19 @@ export function seedFromDials (dials) {
 // constant is simply a new entry — every existing voice's pattern is unchanged,
 // so cassettes printed before the unlock still sound the same.
 export const VOICE_CONST = {
-    kick:  0x9e3779b1,
-    snare: 0x85ebca6b,
-    hat:   0xc2b2ae35,
-    bass:  0x27d4eb2f,
-    lead:  0x165667b1,
-    // Fills draw from a separate stream so bar 3's variation is independent of
-    // the pattern it decorates.
-    fill:  0xd3a2646c
+    kick:    0x9e3779b1,
+    snare:   0x85ebca6b,
+    hat:     0xc2b2ae35,
+    bass:    0x27d4eb2f,
+    lead:    0x165667b1,
+    moss:    0x7feb352d,
+    spindle: 0x846ca68b,
+    // Fills draw from a separate stream so the turnarounds are independent of
+    // the pattern they decorate.
+    fill:    0xd3a2646c,
+    // The chord progression gets its own stream too, so adding or reordering
+    // voices can never change which progression a seed selects.
+    chord:   0x5bd1e995
 };
 
 export function streamFor (seed, voice) {

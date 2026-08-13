@@ -135,12 +135,17 @@ public static class TraxPrng
     // untouched, so cassettes printed before the unlock still sound the same.
     // These values are load-bearing: changing one re-rolls every cassette ever
     // made with that voice.
-    public const uint VoiceKick  = 0x9e3779b1u;
-    public const uint VoiceSnare = 0x85ebca6bu;
-    public const uint VoiceHat   = 0xc2b2ae35u;
-    public const uint VoiceBass  = 0x27d4eb2fu;
-    public const uint VoiceLead  = 0x165667b1u;
-    public const uint VoiceFill  = 0xd3a2646cu;
+    public const uint VoiceKick    = 0x9e3779b1u;
+    public const uint VoiceSnare   = 0x85ebca6bu;
+    public const uint VoiceHat     = 0xc2b2ae35u;
+    public const uint VoiceBass    = 0x27d4eb2fu;
+    public const uint VoiceLead    = 0x165667b1u;
+    public const uint VoiceMoss    = 0x7feb352du;
+    public const uint VoiceSpindle = 0x846ca68bu;
+    public const uint VoiceFill    = 0xd3a2646cu;
+    /// The chord progression gets its own stream, so adding or reordering
+    /// voices can never change which progression a seed selects.
+    public const uint VoiceChord   = 0x5bd1e995u;
 
     public static uint ConstFor(TraxVoice v)
     {
@@ -150,7 +155,9 @@ public static class TraxPrng
             case TraxVoice.Snare: return VoiceSnare;
             case TraxVoice.Hat:   return VoiceHat;
             case TraxVoice.Bass:  return VoiceBass;
-            case TraxVoice.Lead:  return VoiceLead;
+            case TraxVoice.Lead:    return VoiceLead;
+            case TraxVoice.Moss:    return VoiceMoss;
+            case TraxVoice.Spindle: return VoiceSpindle;
             default: throw new ArgumentOutOfRangeException("v");
         }
     }

@@ -47,7 +47,14 @@ class El {
     get id () { return this._id; }
     set id (v) { this._id = v; if (v) this.ownerDocument._byId.set (v, this); }
 
-    get textContent () { return this._text; }
+    // Real textContent is the concatenation of every descendant's text, not
+    // just this node's own. Tests that ask a container what it says depend on
+    // that, so the mock has to do it too.
+    get textContent () {
+        let s = this._text;
+        for (const c of this.childNodes) if (c instanceof El) s += c.textContent;
+        return s;
+    }
     set textContent (v) { this._text = String (v); this.childNodes = []; }
 
     get innerHTML () { return this._html || ''; }

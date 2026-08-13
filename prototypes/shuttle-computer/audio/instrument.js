@@ -6,20 +6,23 @@
 
 import { seedFromDials } from '../engine/prng.js';
 import { computeParams, DEFAULT_DIALS, needsRegen } from '../engine/params.js';
-import { generatePatterns, stepAt, STEPS, TOTAL_STEPS } from '../engine/patterns.js';
+import { generatePatterns, stepAt, chordTonesFor, STEPS, TOTAL_STEPS } from '../engine/patterns.js';
 import { degreeToFreq, VOICE_OCTAVE } from '../engine/scales.js';
 import { classify } from '../engine/classifier.js';
 import { createRack } from './fx.js';
 import { Clock } from './clock.js';
-import { triggerKick, triggerSnare, triggerHat, triggerBass, triggerLead } from './voices.js';
+import { triggerKick, triggerSnare, triggerHat, triggerBass, triggerLead,
+         triggerMoss, triggerSpindle } from './voices.js';
 
+// Ordered the way you'd read a mix: rhythm, low end, harmony, melody, motion,
+// space.
 export const MODULES = [
     { name: 'THUMPER', desc: 'drums',  locked: false },
     { name: 'GLOWORM', desc: 'bass',   locked: false },
+    { name: 'MOSS',    desc: 'chords', locked: false },
     { name: 'SIREN',   desc: 'lead',   locked: false },
-    { name: 'CAVE',    desc: 'space',  locked: false },
-    { name: '??????',  desc: 'locked', locked: true },
-    { name: '??????',  desc: 'locked', locked: true }
+    { name: 'SPINDLE', desc: 'arp',    locked: false },
+    { name: 'CAVE',    desc: 'space',  locked: false }
 ];
 
 export class Instrument {
@@ -29,7 +32,10 @@ export class Instrument {
         this.patterns = generatePatterns (seedFromDials (this.dials), this.params);
         this.pending = null;
 
-        this.enabled = { THUMPER: true, GLOWORM: true, SIREN: true, CAVE: true };
+        this.enabled = {
+            THUMPER: true, GLOWORM: true, MOSS: true,
+            SIREN: true, SPINDLE: true, CAVE: true
+        };
         this.masterVolume = 0.5;
 
         this.ctx = null;
@@ -160,6 +166,23 @@ export class Instrument {
             if (l) triggerLead (this.rack, p, at (l), l.vel,
                 degreeToFreq (l.degree, p.scaleIdx, VOICE_OCTAVE.lead),
                 Math.max (0.05, l.dur * stepDur * 0.9));
+        }
+
+        if (this.enabled.MOSS) {
+            const m = stepAt (this.patterns, 'moss', step);
+            if (m) {
+                const tones = chordTonesFor (m.degree);
+                const freqs = new Array (tones.length);
+                for (let i = 0; i < tones.length; i++)
+                    freqs[i] = degreeToFreq (tones[i], p.scaleIdx, VOICE_OCTAVE.moss);
+                triggerMoss (this.rack, p, at (m), m.vel, freqs, m.dur * stepDur * 0.98);
+            }
+        }
+        if (this.enabled.SPINDLE) {
+            const a = stepAt (this.patterns, 'spindle', step);
+            if (a) triggerSpindle (this.rack, p, at (a), a.vel,
+                degreeToFreq (a.degree, p.scaleIdx, VOICE_OCTAVE.spindle),
+                Math.max (0.05, a.dur * stepDur * 0.9));
         }
 
         if (this.onStepScheduled) this.onStepScheduled (step, time);

@@ -22,7 +22,7 @@ Boot screen → click/press any key to skip → **TRAX**.
 |---|---|
 | Knobs | drag up/down. **Shift** = fine. Wheel works. Double-click resets. Arrow keys / Home / End when focused. |
 | **PLAY** | or **Space** |
-| Plugin rack | click a module to mute/unmute it — the pattern keeps running underneath, so it drops back in time |
+| Plugin rack | six modules — THUMPER (drums), GLOWORM (bass), MOSS (chords), SIREN (lead), SPINDLE (arp), CAVE (space). Click to mute/unmute; the pattern keeps running underneath so it drops back in time |
 | **ESC** | back to the home screen |
 | PRINT | deliberately does nothing yet (Step 4) |
 
@@ -33,7 +33,8 @@ Boot screen → click/press any key to skip → **TRAX**.
 - Does each dial do what its name says, across its whole range?
 - Does the genre label match what your ear says? (centres are in
   `engine/classifier.js`, one table)
-- Is the 4-bar turnaround audible without being annoying?
+- Are both turnarounds audible — the light one ending bar 2, the bigger one ending bar 4?
+- Does the chord progression come through? MOSS is the easiest way to hear it.
 - Does WARP feel like a smooth alien→human sweep, or does it lurch?
 
 Everything visual is a draft — colours are all tokens at the top of

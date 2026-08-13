@@ -20,6 +20,7 @@ centres by ear, art-directs the UI. No Unity work until he approves.
 
 | Question | Decision |
 |---|---|
+| Plugin slots | **MOSS** (chord pad) and **SPINDLE** (arpeggiator) fill the two previously-locked slots, 2026-08-13. They complete the band — drums, bass, chords, lead, arp, space — and are the audible face of the new harmony. A future plugin shop adds slots rather than unlocking these. |
 | Dial name | **WARP** replaced HOMESICK (2026-08-13). HOMESICK named a feeling, not a sensation, so it sat oddly beside PULSE/CRUNCH/GOO/VOID/JITTER. WARP runs the opposite way — 0 straight, 10 alien — so the dial semantics and all ten genre centres inverted with it. |
 | Loop length | **4-bar phrase (64 steps)**. Bars 0–2 hold the pattern; bar 3 gets a seeded fill in its last 4 steps. |
 | Plugin rack | **Working on/off toggles** per voice. Needed so Sam can solo a voice while tuning dials by ear. |
@@ -111,11 +112,43 @@ One-line change in `scales.js` if Sam disagrees (and the golden file regenerated
 | **THUMPER** hat | highpassed noise, 40 ms (120 ms on accents) | every 1–2 steps by density; scatter drops/adds by jitter |
 | **GLOWORM** bass | morphing osc → resonant lowpass → gain env, low octave | root/fifth biased, occasional scale wander |
 | **SIREN** lead | morphing osc → filter → dry + CAVE send, high octave | sparse, longer notes |
+| **MOSS** chords | three morphing oscs (a triad) → dark filter, 120 ms swell | ONE chord per bar, held, never cut by a fill |
+| **SPINDLE** arp | morphing osc → bright filter, 4 ms pluck, capped at 220 ms | climbs the bar's chord, 8ths or 16ths by density |
 | **CAVE** space | dual feedback delay (0.19 s / 0.31 s) + damping lowpass, shared send bus | n/a — an effect, but rack-toggleable |
 
-**Bar 3 fill:** bars 0–2 are pattern `P`. Bar 3 is `P` with its **last 4 steps** replaced
-by hits drawn from a separate `FILL` substream (drums denser and scattered, bass/lead
-re-pitched). Reads as a fill rather than a different bar.
+## 5.5 Musicality (reworked 2026-08-13, after Sam played it)
+
+Sam: *"I find the music to be a bit random… people aren't like me, they need to be
+able to turn dials and create good sounding tunes without tweaking for hours."*
+
+The first generator drew every step and every pitch as an independent coin flip.
+Five changes fix that, **all under the hood — still six dials**. The structure is
+what stops a non-musician being able to make something bad:
+
+1. **Harmony.** A 4-bar chord progression from a table of 8, one chord per bar,
+   on its own PRNG stream. Chords are scale-thirds (`[0,2,4]` in scale degrees),
+   so they stay in-scale for every scale table and go appropriately strange on
+   the alien ones. Bass plays roots, MOSS holds the triad, SPINDLE arpeggiates
+   it, the lead snaps to chord tones on strong beats.
+2. **Rhythm cells.** One 8-step cell per voice, tiled twice per bar, instead of
+   16 independent probabilities. Repetition is what makes a groove sound meant.
+   (Bonus: the snare's cell step 4 tiles onto bar steps 4 and 12 — a backbeat for
+   free.)
+3. **A melodic motif.** The lead is one 8-step figure that walks mostly ±1–2
+   scale degrees with occasional leaps, repeated and re-harmonised per bar.
+4. **Interlock.** Bass onsets are pulled toward the kick; the lead backs off
+   where the snare lands.
+5. **Two turnarounds.** A light 2-step fill ends bar 2, the full 4-step fill ends
+   bar 4. The half-phrase one is deliberately smaller — two equal fills would
+   split the phrase into two 2-bar loops and lose the longer arc.
+
+**Bars share their RHYTHM but not their PITCH** — each bar re-harmonises against
+its own chord. MOSS is the one exception to tiling: it fires once per bar and
+holds, because tiling would retrigger the pad mid-bar and overlap it with itself.
+
+**Timing note:** this rewrote every pattern. That was free only because nothing
+persists yet (PRINT inert, dials unsaved). Once cassettes are savable it becomes
+a breaking change — see §3.
 
 **Rack toggles** mute at the voice's output gain with a short ramp — the pattern keeps
 running underneath, so unmuting lands in time and nothing clicks.

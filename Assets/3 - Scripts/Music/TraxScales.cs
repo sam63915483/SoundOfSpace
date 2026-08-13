@@ -41,8 +41,12 @@ public static class TraxScales
     //
     // Bass sits at -1, not -2: at -2 the low end of the CLUSTER scale reaches
     // ~19Hz, below hearing, doing nothing but eating headroom.
+    // MOSS sits in the middle where a pad belongs — under the lead, above the
+    // bass, so the triad fills the gap instead of fighting either.
     public const int BassOctave = -1;
     public const int LeadOctave = 1;
+    public const int MossOctave = 0;
+    public const int SpindleOctave = 1;
 
     /// Takes FAMILIARITY (0 = alien, 10 = familiar), not the WARP dial value.
     public static int ScaleIndexFor(double familiarity)
@@ -93,6 +97,12 @@ public static class TraxScales
 
     public static int OctaveFor(TraxVoice v)
     {
-        return v == TraxVoice.Bass ? BassOctave : LeadOctave;
+        switch (v)
+        {
+            case TraxVoice.Bass:    return BassOctave;
+            case TraxVoice.Moss:    return MossOctave;
+            case TraxVoice.Spindle: return SpindleOctave;
+            default:                return LeadOctave;
+        }
     }
 }

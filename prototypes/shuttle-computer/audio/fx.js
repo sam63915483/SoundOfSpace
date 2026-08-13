@@ -87,10 +87,17 @@ export function createRack (ctx) {
     const thumper = ctx.createGain ();
     const gloworm = ctx.createGain ();
     const siren   = ctx.createGain ();
+    const moss    = ctx.createGain ();
+    const spindle = ctx.createGain ();
 
     thumper.connect (drumShaper);
     gloworm.connect (toneShaper);
     siren.connect (toneShaper);
+    // The pad and the arp go through the same drive stage as the other tonal
+    // voices, so CRUNCH glues the whole harmony together rather than leaving
+    // two clean voices sitting on top of a dirty mix.
+    moss.connect (toneShaper);
+    spindle.connect (toneShaper);
     drumShaper.connect (master);
     toneShaper.connect (master);
 
@@ -112,7 +119,7 @@ export function createRack (ctx) {
     lfo.start ();
 
     const rack = {
-        ctx, master, limiter, thumper, gloworm, siren,
+        ctx, master, limiter, thumper, gloworm, siren, moss, spindle,
         caveWet, caveIn, toneShaper, drumShaper,
         lfo, lfoDepth,
         noise: makeNoiseBuffer (ctx),
@@ -156,6 +163,8 @@ export function createRack (ctx) {
             if (name === 'THUMPER') thumper.gain.setTargetAtTime (on ? 1 : 0, t, R);
             else if (name === 'GLOWORM') gloworm.gain.setTargetAtTime (on ? 1 : 0, t, R);
             else if (name === 'SIREN') siren.gain.setTargetAtTime (on ? 1 : 0, t, R);
+            else if (name === 'MOSS') moss.gain.setTargetAtTime (on ? 1 : 0, t, R);
+            else if (name === 'SPINDLE') spindle.gain.setTargetAtTime (on ? 1 : 0, t, R);
             else if (name === 'CAVE') {
                 this.caveMuted = !on;
                 caveWet.gain.setTargetAtTime (on ? (p ? p.caveMix : 0.4) : 0, t, R);

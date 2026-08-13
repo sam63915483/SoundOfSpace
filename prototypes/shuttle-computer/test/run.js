@@ -10,7 +10,8 @@ import { dirname, join } from 'node:path';
 import { fnv1a32, mulberry32, quantizeDials, seedFromDials, streamFor, VOICE_CONST } from '../engine/prng.js';
 import { SCALES, ROOT_MIDI, VOICE_OCTAVE, scaleIndexFor, degreeToMidi, isInScale, midiToFreq } from '../engine/scales.js';
 import { computeParams, DEFAULT_DIALS, needsRegen } from '../engine/params.js';
-import { generatePatterns, stepAt, VOICES, BARS, STEPS, TOTAL_STEPS, FILL_BAR, FILL_START } from '../engine/patterns.js';
+import { generatePatterns, stepAt, progressionFor, chordTonesFor, VOICES, MELODIC, BARS, STEPS, CELL,
+         TOTAL_STEPS, FULL_FILL_BAR, FULL_FILL_START, HALF_FILL_BAR, HALF_FILL_START } from '../engine/patterns.js';
 import { classify, GENRES, DEFAULT_BLEND_THRESHOLD } from '../engine/classifier.js';
 
 const HERE = dirname (fileURLToPath (import.meta.url));
@@ -109,19 +110,107 @@ test ('phrase shape is 4 bars x 16 steps for every voice', () => {
     }
 });
 
-test ('bars 0-2 are identical; bar 3 differs only in its last 4 steps', () => {
+test ('every bar shares one rhythm; only the pitches follow the chord', () => {
+    // This is the core of the musical rework: four bars of the same groove,
+    // re-harmonised. If the rhythm drifts between bars it reads as random again.
     const d = dialsOf ({ pulse: 8, jitter: 5 });
     const pat = generatePatterns (seedFromDials (d), computeParams (d));
-    let anyFillDiff = false;
     for (const v of VOICES) {
-        deepEq (pat[v][0], pat[v][1], v + ' bar0 vs bar1');
-        deepEq (pat[v][0], pat[v][2], v + ' bar1 vs bar2');
-        for (let s = 0; s < FILL_START; s++)
-            deepEq (pat[v][FILL_BAR][s], pat[v][0][s], v + ' fill bar leaked into step ' + s);
-        for (let s = FILL_START; s < STEPS; s++)
-            if (JSON.stringify (pat[v][FILL_BAR][s]) !== JSON.stringify (pat[v][0][s])) anyFillDiff = true;
+        for (let b = 1; b < BARS; b++) {
+            // Compare only the part of each bar that a fill hasn't overwritten.
+            const limit = b === FULL_FILL_BAR ? FULL_FILL_START
+                        : b === HALF_FILL_BAR ? HALF_FILL_START : STEPS;
+            for (let s = 0; s < limit; s++) {
+                const a = pat[v][0][s], c = pat[v][b][s];
+                eq (a === null, c === null, v + ' bar' + b + ' step' + s + ' onset differs');
+                if (a === null) continue;
+                eq (a.vel, c.vel, v + ' bar' + b + ' step' + s + ' velocity differs');
+                eq (a.nudge, c.nudge, v + ' bar' + b + ' step' + s + ' nudge differs');
+            }
+        }
     }
-    assert (anyFillDiff, 'the fill changed nothing at all — bar 3 is a plain repeat');
+});
+
+test ('the 8-step cell really is tiled twice per bar', () => {
+    const d = dialsOf ({ pulse: 6 });
+    const pat = generatePatterns (seedFromDials (d), computeParams (d));
+    for (const v of VOICES) {
+        if (v === 'moss') continue;      // the pad deliberately fires once per bar
+        for (let s = 0; s < CELL; s++) {
+            // Bar 0 is untouched by either fill, so it shows the raw tiling.
+            const a = pat[v][0][s], b = pat[v][0][s + CELL];
+            eq (a === null, b === null, v + ' step ' + s + ' does not tile');
+            if (a !== null) eq (a.vel, b.vel, v + ' step ' + s + ' tile velocity differs');
+        }
+    }
+});
+
+test ('both turnarounds fire, and the half-phrase one is lighter', () => {
+    // Averaged over many seeds: the bar-2 fill is a 2-step nudge, the bar-4 one
+    // is a 4-step event. If they came out equal the phrase would read as two
+    // 2-bar loops instead of one 4-bar arc.
+    let halfChanged = 0, fullChanged = 0;
+    for (let k = 0; k < 24; k++) {
+        const d = dialsOf ({ pulse: 3 + (k % 8), jitter: k % 10, void: (k * 3) % 10 });
+        const pat = generatePatterns (seedFromDials (d), computeParams (d));
+        for (const v of VOICES) {
+            if (v === 'moss') continue;                     // the pad rides through fills
+            for (let s = HALF_FILL_START; s < STEPS; s++)
+                if (JSON.stringify (pat[v][HALF_FILL_BAR][s]) !== JSON.stringify (pat[v][0][s])) halfChanged++;
+            for (let s = FULL_FILL_START; s < STEPS; s++)
+                if (JSON.stringify (pat[v][FULL_FILL_BAR][s]) !== JSON.stringify (pat[v][0][s])) fullChanged++;
+        }
+    }
+    assert (halfChanged > 0, 'the bar-2 turnaround never changed anything');
+    assert (fullChanged > halfChanged, 'the bar-4 fill should be the bigger event: ' +
+            fullChanged + ' vs ' + halfChanged);
+});
+
+test ('MOSS holds one chord per bar and is never cut by a fill', () => {
+    const d = dialsOf ({});
+    const pat = generatePatterns (seedFromDials (d), computeParams (d));
+    const prog = progressionFor (seedFromDials (d));
+    for (let b = 0; b < BARS; b++) {
+        assert (pat.moss[b][0] !== null, 'no pad at the top of bar ' + b);
+        let onsets = 0;
+        for (let s = 0; s < STEPS; s++) if (pat.moss[b][s] !== null) onsets++;
+        eq (onsets, 1, 'the pad must fire ONCE per bar, not retrigger mid-bar');
+        eq (pat.moss[b][0].dur, STEPS, 'the pad must hold the whole bar');
+        eq (pat.moss[b][0].degree, prog[b], 'pad is not on the bar chord');
+        for (let s = HALF_FILL_START; s < STEPS; s++)
+            assert (pat.moss[b][s] === null || s % CELL === 0,
+                    'a fill punched a hole in the pad at bar ' + b + ' step ' + s);
+    }
+});
+
+test ('the chord progression is deterministic and starts on the tonic', () => {
+    for (let k = 0; k < 20; k++) {
+        const d = dialsOf ({ pulse: k % 11, goo: (k * 2) % 11 });
+        const seed = seedFromDials (d);
+        const a = progressionFor (seed), b = progressionFor (seed);
+        deepEq (a, b, 'progression not stable for one seed');
+        eq (a.length, BARS, 'progression must have one chord per bar');
+        eq (a[0], 0, 'progressions must anchor on the tonic');
+    }
+});
+
+test ('the lead moves mostly stepwise rather than leaping about', () => {
+    // The single clearest difference between a tune and a random pitch sequence.
+    let small = 0, total = 0;
+    for (let k = 0; k < 30; k++) {
+        const d = dialsOf ({ pulse: 4 + (k % 7), jitter: k % 10 });
+        const pat = generatePatterns (seedFromDials (d), computeParams (d));
+        const bar = pat.lead[0];
+        let prev = null;
+        for (let s = 0; s < STEPS; s++) {
+            if (bar[s] === null) continue;
+            if (prev !== null) { total++; if (Math.abs (bar[s].degree - prev) <= 2) small++; }
+            prev = bar[s].degree;
+        }
+    }
+    assert (total > 30, 'not enough lead notes to judge');
+    assert (small / total > 0.6, 'lead leaps too much to read as a melody: ' +
+            (100 * small / total).toFixed (0) + '% stepwise');
 });
 
 test ('stepAt wraps across the phrase in both directions', () => {
@@ -169,7 +258,7 @@ test ('every pitch any voice can play is in the active scale, across the dial sp
             const d = dialsOf ({ warp: h, pulse: p, void: 0 });
             const params = computeParams (d);
             const pat = generatePatterns (seedFromDials (d), params);
-            for (const v of ['bass', 'lead'])
+            for (const v of MELODIC)
                 for (const bar of pat[v])
                     for (const st of bar) {
                         if (!st) continue;

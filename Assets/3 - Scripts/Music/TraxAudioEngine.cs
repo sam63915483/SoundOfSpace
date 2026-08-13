@@ -49,6 +49,7 @@ public class TraxAudioEngine : MonoBehaviour
     volatile float _masterVolume = 0.5f;
     volatile float _busLevel = 1f;
     volatile bool _onThumper = true, _onGloworm = true, _onSiren = true, _onCave = true;
+    volatile bool _onMoss = true, _onSpindle = true;
     volatile int _uiStep = -1;
     volatile bool _swapFlag;
 
@@ -101,6 +102,18 @@ public class TraxAudioEngine : MonoBehaviour
 
     Evt[] _events;
     int _evtCount;
+
+    // Per-buffer filter coefficients, one set per voice, indexed by (int)TraxVoice.
+    // Arrays rather than a pile of out-parameters: four melodic voices at three
+    // coefficients each is twelve arguments to thread through the render loop.
+    // Preallocated, because the render path must not allocate.
+    readonly double[] _ca1 = new double[TraxPhrase.VoiceCount];
+    readonly double[] _ca2 = new double[TraxPhrase.VoiceCount];
+    readonly double[] _ca3 = new double[TraxPhrase.VoiceCount];
+
+    // How far each melodic voice sits above the base cutoff. MOSS is darkest so
+    // the pad never competes with the lead; SPINDLE is brightest so the arp cuts.
+    static readonly double[] FilterScale = { 1, 1, 1, 1.0, 2.2, 0.8, 3.0 };
 
     float[] _noise;
     float[] _delayA, _delayB;
@@ -221,6 +234,8 @@ public class TraxAudioEngine : MonoBehaviour
             case "THUMPER": _onThumper = on; break;
             case "GLOWORM": _onGloworm = on; break;
             case "SIREN":   _onSiren = on; break;
+            case "MOSS":    _onMoss = on; break;
+            case "SPINDLE": _onSpindle = on; break;
             case "CAVE":    _onCave = on; break;
         }
     }
@@ -251,10 +266,13 @@ public class TraxAudioEngine : MonoBehaviour
         double lfo = Math.Sin(_lfoPhase * 2.0 * Math.PI);
         double lfoMul = Math.Pow(2.0, lfo * p.lfoDepthOct);
 
-        double bassA1, bassA2, bassA3, leadA1, leadA2, leadA3;
         double k = 1.0 / Math.Max(0.5, p.filterQ);
-        SvfCoef(p.filterBase * 1.0 * lfoMul, k, out bassA1, out bassA2, out bassA3);
-        SvfCoef(p.filterBase * 2.2 * lfoMul, k, out leadA1, out leadA2, out leadA3);
+        for (int v = (int)TraxVoice.Bass; v < TraxPhrase.VoiceCount; v++)
+        {
+            double a1, a2, a3;
+            SvfCoef(p.filterBase * FilterScale[v] * lfoMul, k, out a1, out a2, out a3);
+            _ca1[v] = a1; _ca2[v] = a2; _ca3[v] = a3;
+        }
 
         double driveTone = 1.0 + p.drive * 30.0;
         double driveDrum = 1.0 + p.drive * 0.5 * 30.0;
@@ -298,9 +316,8 @@ public class TraxAudioEngine : MonoBehaviour
             for (int v = 0; v < _vox.Length; v++)
             {
                 if (!_vox[v].active) continue;
-                double s = RenderVoice(ref _vox[v], now, p,
-                                       bassA1, bassA2, bassA3, leadA1, leadA2, leadA3);
-                if (_vox[v].kind == TraxVoice.Bass || _vox[v].kind == TraxVoice.Lead) tone += s;
+                double s = RenderVoice(ref _vox[v], now, p);
+                if (TraxPhrase.IsMelodic(_vox[v].kind)) tone += s;
                 else drum += s;
             }
 
@@ -377,19 +394,30 @@ public class TraxAudioEngine : MonoBehaviour
             TraxStep st = phrase.At(voice, step);
             if (!st.on) continue;
 
-            if (_evtCount >= MaxEvents) return;
-
-            Evt e = new Evt();
-            e.at = baseSample + lat + (long)(st.nudge * _sr);
-            e.voice = voice;
-            e.st = st;
-            if (voice == TraxVoice.Bass || voice == TraxVoice.Lead)
+            // MOSS is a chord, so it emits one event per triad note. Three
+            // events rather than an array on the Evt keeps the render path
+            // allocation-free.
+            int notes = voice == TraxVoice.Moss ? TraxPhrase.ChordToneCount : 1;
+            for (int n = 0; n < notes; n++)
             {
-                e.freq = TraxScales.DegreeToFreq(st.degree, p.scaleIdx, TraxScales.OctaveFor(voice));
-                double mult = voice == TraxVoice.Bass ? 0.95 : 0.9;
-                e.durSec = Math.Max(0.05, st.dur * stepDur * mult);
+                if (_evtCount >= MaxEvents) return;
+
+                Evt e = new Evt();
+                e.at = baseSample + lat + (long)(st.nudge * _sr);
+                e.voice = voice;
+                e.st = st;
+                if (TraxPhrase.IsMelodic(voice))
+                {
+                    int degree = voice == TraxVoice.Moss
+                        ? TraxPhrase.ChordToneAt(st.degree, n)
+                        : st.degree;
+                    e.freq = TraxScales.DegreeToFreq(degree, p.scaleIdx, TraxScales.OctaveFor(voice));
+                    double mult = voice == TraxVoice.Bass ? 0.95
+                                : (voice == TraxVoice.Moss ? 0.98 : 0.9);
+                    e.durSec = Math.Max(0.05, st.dur * stepDur * mult);
+                }
+                _events[_evtCount++] = e;
             }
-            _events[_evtCount++] = e;
         }
     }
 
@@ -403,6 +431,8 @@ public class TraxAudioEngine : MonoBehaviour
                 return _onThumper;
             case TraxVoice.Bass: return _onGloworm;
             case TraxVoice.Lead: return _onSiren;
+            case TraxVoice.Moss: return _onMoss;
+            case TraxVoice.Spindle: return _onSpindle;
         }
         return true;
     }
@@ -469,10 +499,29 @@ public class TraxAudioEngine : MonoBehaviour
 
             case TraxVoice.Bass:
             case TraxVoice.Lead:
+            case TraxVoice.Moss:
+            case TraxVoice.Spindle:
                 {
-                    atk = 0.012;
-                    len = e.durSec;
-                    tau = Math.Max(0.05, len * (e.voice == TraxVoice.Bass ? 0.5 : 0.6));
+                    if (e.voice == TraxVoice.Moss)
+                    {
+                        // Swells in under everything rather than announcing itself.
+                        atk = 0.12;
+                        len = e.durSec;
+                        tau = Math.Max(0.4, len);
+                    }
+                    else if (e.voice == TraxVoice.Spindle)
+                    {
+                        // Plucked and short, or the arp turns into a drone.
+                        atk = 0.004;
+                        len = Math.Min(e.durSec, 0.22);
+                        tau = 0.09;
+                    }
+                    else
+                    {
+                        atk = 0.012;
+                        len = e.durSec;
+                        tau = Math.Max(0.05, len * (e.voice == TraxVoice.Bass ? 0.5 : 0.6));
+                    }
 
                     // sine -> saw -> square, crossfaded. Matches morphPair() in
                     // the browser's voices.js.
@@ -483,7 +532,15 @@ public class TraxAudioEngine : MonoBehaviour
                     double det = p.detuneCents * 0.5;
                     v.inc  = e.freq * Math.Pow(2.0, -det / 1200.0) / _sr;
                     v.inc2 = e.freq * Math.Pow(2.0,  det / 1200.0) / _sr;
-                    v.amp = e.st.vel * (e.voice == TraxVoice.Bass ? 0.85 : 0.5) * ResComp(p.filterQ);
+                    double level;
+                    switch (e.voice)
+                    {
+                        case TraxVoice.Bass:    level = 0.85; break;
+                        case TraxVoice.Moss:    level = 0.22; break;   // three notes at once
+                        case TraxVoice.Spindle: level = 0.34; break;
+                        default:                level = 0.5;  break;
+                    }
+                    v.amp = e.st.vel * level * ResComp(p.filterQ);
                     break;
                 }
 
@@ -507,9 +564,7 @@ public class TraxAudioEngine : MonoBehaviour
         return 1.0 / (1.0 + q * 0.06);
     }
 
-    double RenderVoice(ref Vox v, long now, TraxParams p,
-                       double bA1, double bA2, double bA3,
-                       double lA1, double lA2, double lA3)
+    double RenderVoice(ref Vox v, long now, TraxParams p)
     {
         if (now >= v.endAt) { v.active = false; return 0; }
 
@@ -566,15 +621,15 @@ public class TraxAudioEngine : MonoBehaviour
 
             case TraxVoice.Bass:
             case TraxVoice.Lead:
+            case TraxVoice.Moss:
+            case TraxVoice.Spindle:
                 {
                     double a = Osc(ref v.phase, v.inc, p.oscMorph, false);
                     double b = Osc(ref v.phase2, v.inc2, p.oscMorph, true);
                     double raw = a * v.morphA + b * v.morphB;
 
-                    bool bass = v.kind == TraxVoice.Bass;
-                    double a1 = bass ? bA1 : lA1;
-                    double a2 = bass ? bA2 : lA2;
-                    double a3 = bass ? bA3 : lA3;
+                    int ki = (int)v.kind;
+                    double a1 = _ca1[ki], a2 = _ca2[ki], a3 = _ca3[ki];
 
                     // TPT state-variable filter, lowpass tap.
                     double v3 = raw - v.ic2;

@@ -88,7 +88,7 @@ const lines = [
     '# CASE  |i|pulse|crunch|goo|void|jitter|warp|seed|scaleIdx|genre',
     '# EXACT |i|density|bpm|syncopation|nudgeSeconds|hatScatter|caveSend|caveFeedback|detuneCents   (IEEE754 bits, big-endian hex — must match bit for bit)',
     '# APPROX|i|filterBase|filterQ|lfoRate|lfoDepthOct                                             (Math.pow-derived — compare with tolerance)',
-    '# HASH  |i|kick|snare|hat|bass|lead                                                           (FNV-1a of the voice digest)',
+    '# HASH  |i|<one FNV-1a of the voice digest per voice, in META voices order>',
     '# DIGEST|i|voice|digest                                                                       (case 0 only, for localising a mismatch)',
     '#',
     'META|bars=' + BARS + '|steps=' + STEPS + '|voices=' + VOICES.join (',') + '|cases=' + CASES.length
@@ -146,9 +146,8 @@ for (const c of cases) {
     const a = c.approx;
     lines.push ('APPROX|' + c.index + '|' + a.filterBase + '|' + a.filterQ + '|' +
                 a.lfoRate + '|' + a.lfoDepthOct);
-    const h = c.voiceHashes;
-    lines.push ('HASH|' + c.index + '|' + h.kick + '|' + h.snare + '|' + h.hat + '|' +
-                h.bass + '|' + h.lead);
+    lines.push ('HASH|' + c.index + '|' +
+                VOICES.map (v => c.voiceHashes[v]).join ('|'));
     if (c.digests)
         for (const v of VOICES) lines.push ('DIGEST|' + c.index + '|' + v + '|' + c.digests[v]);
 }

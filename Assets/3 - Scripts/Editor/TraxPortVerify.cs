@@ -42,7 +42,7 @@ public static class TraxPortVerify
         public string genre;
         public string[] exact;                       // 8 hex bit strings
         public double[] approx;                      // 4 values
-        public uint[] hashes;                        // 5 voice hashes
+        public uint[] hashes;                        // one per voice
         public Dictionary<string, string> digests = new Dictionary<string, string>();
     }
 
@@ -181,7 +181,10 @@ public static class TraxPortVerify
             if (a[i] == b[i]) continue;
             int bar = i / TraxPhrase.Steps, step = i % TraxPhrase.Steps;
             return "first difference at bar " + bar + " step " + step +
-                   (bar == TraxPhrase.FillBar && step >= TraxPhrase.FillStart ? "  (INSIDE THE FILL)" : "") +
+                   (bar == TraxPhrase.HalfFillBar && step >= TraxPhrase.HalfFillStart
+                       ? "  (INSIDE THE BAR-2 TURNAROUND)"
+                    : bar == TraxPhrase.FullFillBar && step >= TraxPhrase.FullFillStart
+                       ? "  (INSIDE THE BAR-4 FILL)" : "") +
                    "\n      got  " + a[i] + "\n      want " + b[i];
         }
         if (a.Length != b.Length)
@@ -199,7 +202,7 @@ public static class TraxPortVerify
     /// in JS, and 0 in C# — so the placeholder is what makes them comparable).
     static string Digest(TraxPhrase phrase, TraxVoice voice)
     {
-        bool melodic = voice == TraxVoice.Bass || voice == TraxVoice.Lead;
+        bool melodic = TraxPhrase.IsMelodic(voice);
         var sb = new StringBuilder();
 
         for (int b = 0; b < TraxPhrase.Bars; b++)
@@ -267,8 +270,9 @@ public static class TraxPortVerify
                     break;
 
                 case "HASH":
-                    c.hashes = new uint[5];
-                    for (int i = 0; i < 5; i++) c.hashes[i] = uint.Parse(f[2 + i], Inv);
+                    c.hashes = new uint[TraxPhrase.VoiceCount];
+                    for (int i = 0; i < TraxPhrase.VoiceCount; i++)
+                        c.hashes[i] = uint.Parse(f[2 + i], Inv);
                     break;
 
                 case "DIGEST":

@@ -25,7 +25,9 @@ export const ROOT_MIDI = 45;
 //
 // Bass sits at -1, not -2: at -2 the low end of the CLUSTER scale reaches
 // ~19Hz, which is below hearing and does nothing but eat headroom.
-export const VOICE_OCTAVE = { bass: -1, lead: 1 };
+// MOSS sits in the middle where a pad belongs — under the lead, above the bass,
+// so the triad fills the gap between them instead of fighting either.
+export const VOICE_OCTAVE = { bass: -1, lead: 1, moss: 0, spindle: 1 };
 
 // Takes FAMILIARITY (0 = alien, 10 = familiar), not the WARP dial value.
 export function scaleIndexFor (familiarity) {

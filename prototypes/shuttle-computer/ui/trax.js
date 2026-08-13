@@ -10,7 +10,8 @@ import { createKnob } from './knob.js';
 
 const VOICE_MODULE = {
     kick: 'THUMPER', snare: 'THUMPER', hat: 'THUMPER',
-    bass: 'GLOWORM', lead: 'SIREN'
+    bass: 'GLOWORM', lead: 'SIREN',
+    moss: 'MOSS', spindle: 'SPINDLE'
 };
 
 export function mountTrax (root, inst, onExit) {

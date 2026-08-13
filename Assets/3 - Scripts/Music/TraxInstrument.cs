@@ -25,14 +25,16 @@ public class TraxInstrument : MonoBehaviour
         public ModuleDef(string n, string d, bool l) { name = n; desc = d; locked = l; }
     }
 
+    // Ordered the way you would read a mix: rhythm, low end, harmony, melody,
+    // motion, space.
     public static readonly ModuleDef[] Modules =
     {
         new ModuleDef("THUMPER", "drums",  false),
         new ModuleDef("GLOWORM", "bass",   false),
+        new ModuleDef("MOSS",    "chords", false),
         new ModuleDef("SIREN",   "lead",   false),
-        new ModuleDef("CAVE",    "space",  false),
-        new ModuleDef("??????",  "locked", true),
-        new ModuleDef("??????",  "locked", true)
+        new ModuleDef("SPINDLE", "arp",    false),
+        new ModuleDef("CAVE",    "space",  false)
     };
 
     public TraxDials Dials { get; private set; }
@@ -161,8 +163,10 @@ public class TraxInstrument : MonoBehaviour
             case TraxVoice.Snare:
             case TraxVoice.Hat:
                 return IsModuleEnabled("THUMPER");
-            case TraxVoice.Bass: return IsModuleEnabled("GLOWORM");
-            case TraxVoice.Lead: return IsModuleEnabled("SIREN");
+            case TraxVoice.Bass:    return IsModuleEnabled("GLOWORM");
+            case TraxVoice.Lead:    return IsModuleEnabled("SIREN");
+            case TraxVoice.Moss:    return IsModuleEnabled("MOSS");
+            case TraxVoice.Spindle: return IsModuleEnabled("SPINDLE");
         }
         return false;
     }
