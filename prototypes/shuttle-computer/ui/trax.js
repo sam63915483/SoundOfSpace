@@ -22,10 +22,16 @@ export function mountTrax (root, inst, onExit) {
     // ---------- genre plate ----------
     const plate = document.createElement ('div');
     plate.className = 'genre-plate';
+    // The big magenta word is meaningless without this caption — a new player
+    // has no way to know the readout is naming a genre.
+    const gStack = document.createElement ('div'); gStack.className = 'genre-stack';
+    const gCap   = document.createElement ('div'); gCap.className = 'genre-cap';
+    gCap.textContent = 'GENRE';
     const gLabel = document.createElement ('div'); gLabel.id = 'genre-label';
+    gStack.append (gCap, gLabel);
     const gVibe  = document.createElement ('div'); gVibe.id  = 'genre-vibe';
     const gMeta  = document.createElement ('div'); gMeta.id  = 'genre-meta';
-    plate.append (gLabel, gVibe, gMeta);
+    plate.append (gStack, gVibe, gMeta);
     body.appendChild (plate);
 
     // ---------- dials ----------

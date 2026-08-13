@@ -164,6 +164,42 @@ real gate is Sam's ears.
   `AudioClip.Create` + `AudioSource.PlayScheduled` on the DSP clock + built-in
   `AudioLowPassFilter` / `AudioDistortionFilter` / `AudioEchoFilter` / `AudioReverbFilter`.
 
+## 9.5 Later: full-length track recording (Sam's idea, 2026-08-13 — DO NOT BUILD YET)
+
+Today a cassette is a **loop**. Sam wants a later mode where you hit RECORD, the
+transport keeps running, and you perform the track live — twisting dials to build
+tension, drop out, bring the drums back — then STOP and have a **full-length
+track** rather than a demo loop. Shareable.
+
+**Why this fits the existing architecture unusually well:** because `engine/` is
+fully deterministic, a full track does not need audio recording at all. It is:
+
+```
+{ seed, durationSteps, automation: [ { step, dial, value }, ... ] }
+```
+
+Replay that against the same engine and you get the identical performance, every
+time, on every machine. That means a full track is a few KB of JSON — cheap to
+save in the existing save system, cheap to send over the wire in co-op, and the
+per-planet radio milestone can re-render it live through the same synth instead
+of streaming audio. Rendering to an actual waveform is then only needed if tracks
+ever leave the game.
+
+**Two implementation notes to protect now, at zero cost:**
+
+1. **Stamp automation events with the global step index, not wall-clock seconds.**
+   Pattern-affecting dials only take effect on bar boundaries (§3.5), so a
+   seconds-stamped event replayed at a different BPM lands in a different bar and
+   the performance drifts. Step index is BPM-independent and exact.
+2. **Keep every dial change going through one choke point.** In the prototype
+   that is `Instrument.setDials()`; the Unity port must mirror that rather than
+   letting UI widgets write dial state directly. Recording then becomes "log
+   what passes through this function", and nothing else has to change.
+
+Open questions for when it's built: what genre label a track gets when the vector
+moves during the performance (dominant? modal? a sequence?), whether recording is
+free-form or quantized to bars, and whether the player can punch in/out.
+
 ## 10. Open (Sam decides at the gate)
 
 - App name (TRAX is a placeholder), genre names and centres, dial names, home-screen

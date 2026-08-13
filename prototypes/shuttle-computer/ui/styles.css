@@ -203,12 +203,18 @@ html, body {
 
 .genre-plate {
     display: flex;
-    align-items: baseline;
+    align-items: flex-end;   /* the caption+label stack sits left; vibe/meta ride its bottom edge */
     gap: 14px;
     border: 1px solid var(--grid);
     background: linear-gradient(180deg, var(--panel-hi), var(--panel));
     border-radius: 6px;
     padding: 8px 14px;
+}
+.genre-stack { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.genre-cap {
+    font-size: 9px;
+    letter-spacing: .32em;
+    color: var(--ink-ghost);
 }
 #genre-label {
     font-size: 30px;
