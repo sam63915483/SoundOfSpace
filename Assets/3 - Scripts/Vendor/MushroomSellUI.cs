@@ -605,11 +605,7 @@ public class MushroomSellUI : MonoBehaviour
         // the buyer deciding what it is worth without hearing it would be
         // absurd — and because the player should hear what they are selling at
         // the moment they are pricing it.
-        if (wasEmpty)
-        {
-            var dropped = TraxPrints.Get(_offerSpecies);
-            if (dropped != null) TraxTapePlayer.TogglePersonal(null, _offerSpecies);
-        }
+        if (wasEmpty) PlayOnTable(_offerSpecies);
         _offerCountN += _cursor.count;
         _cursor = default;
 
@@ -637,9 +633,30 @@ public class MushroomSellUI : MonoBehaviour
     }
 
     /// Pick the whole table back up onto the cursor.
+    /// <summary>
+    /// Put THIS tape on, rather than toggling it.
+    ///
+    /// TraxTapePlayer.TogglePersonal STOPS the tape when the print asked for is
+    /// already the one playing — correct for the hotbar's hold-LMB walkman,
+    /// where one button has to do both jobs, and wrong here. Lifting a tape off
+    /// the table and dropping it straight back would have silenced it instead
+    /// of replaying it, which reads as "sometimes the tape just doesn't play".
+    /// </summary>
+    static void PlayOnTable(string printId)
+    {
+        if (string.IsNullOrEmpty(printId)) return;
+        if (TraxTapePlayer.IsPlayingPrint(printId)) return;
+        if (TraxPrints.Get(printId) == null) return;
+        TraxTapePlayer.TogglePersonal(null, printId);
+    }
+
     void LiftOffer()
     {
         if (_cursor.IsHeld || !HasOffer) return;
+        // Off the table, off the speakers. The tape plays BECAUSE it is sitting
+        // in front of the buyer, so it has no business carrying on once it is
+        // in your hand.
+        if (TraxTapePlayer.IsPlayingPrint(_offerSpecies)) TraxTapePlayer.StopAll();
         _cursor = new SlotOps.CursorState
         {
             id = Hotbar.ItemId.Cassette,
@@ -764,6 +781,24 @@ public class MushroomSellUI : MonoBehaviour
     {
         var bar = Bar;
         if (bar == null || i < 0 || i >= bar.Length) return;
+
+        // HOLDING A TAPE? Then this is a PUT, not a pick.
+        //
+        // Sam dragged a tape off the table onto an empty tile and the shelf
+        // refused it. This handler is wired to the tile's drop as well as its
+        // click, and it used to fall straight through to the select path below
+        // — which bails on an empty slot, so the drop silently bounced back to
+        // the table. Deferring to SlotOps means the shelf follows the same
+        // deposit / merge / swap rules as every other container in the game,
+        // cassette variants included, rather than inventing its own.
+        if (_cursor.IsHeld)
+        {
+            if (rightClick) SlotOps.HandleRightClick(bar, i, ref _cursor);
+            else            SlotOps.HandleLeftClick(bar, i, ref _cursor);
+            Refresh();
+            return;
+        }
+
         if (Barred) { SetResult($"{_npcName} isn't dealing with you right now.", C_Err); return; }
 
         Hotbar.Slot slot = bar[i];
@@ -785,7 +820,7 @@ public class MushroomSellUI : MonoBehaviour
 
         // Put it on. The buyer pricing a song without hearing it would be
         // absurd, and the player should hear what they are pricing.
-        TraxTapePlayer.TogglePersonal(null, _offerSpecies);
+        PlayOnTable(_offerSpecies);
 
         _ask = Mathf.Max(1, Market);   // seed at market so the slider starts honest
         SetResult("", C_Ok);
@@ -893,9 +928,18 @@ public class MushroomSellUI : MonoBehaviour
             // also removed the only place to PUT CAPS BACK: you could swap a
             // carried stack with another stack, but there was nowhere to drop it
             // so that nothing was selected. This is that somewhere.
+            // Must be a slot that would actually TAKE a tape. The money slot
+            // is empty until you earn anything and takes money only, so the
+            // naive "first empty" search could point this tile at a slot that
+            // silently refuses every drop.
             int free = -1;
             for (int i = 0; i < bar.Length; i++)
-                if (bar[i].id == Hotbar.ItemId.None || bar[i].count <= 0) { free = i; break; }
+            {
+                if (bar[i].id != Hotbar.ItemId.None && bar[i].count > 0) continue;
+                if (!Hotbar.SlotAccepts(bar, i, Hotbar.ItemId.Cassette)) continue;
+                free = i;
+                break;
+            }
             if (free >= 0 && tile < _barSlots.Length)
             {
                 var w = _barSlots[tile++];
