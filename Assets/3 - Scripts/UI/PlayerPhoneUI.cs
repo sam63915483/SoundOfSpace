@@ -93,7 +93,7 @@ public class PlayerPhoneUI : MonoBehaviour
     static readonly Color TileBg        = new Color32(0x0F, 0x19, 0x2A, 0xD9);
     static readonly Color ButtonGrey    = new Color32(0x2A, 0x40, 0x60, 0xFF);
 
-    public enum AppKind { Fishingdex, Build, Settings, Map, Photos, Contacts }
+    public enum AppKind { Fishingdex, Build, Settings, Map, Photos }
 
     // â”€â”€ Runtime UI refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     Canvas        _canvas;
@@ -148,9 +148,9 @@ public class PlayerPhoneUI : MonoBehaviour
     Button        _putAwayBtn;
     /// Columns in the app grid. The grid layout, the pad navigation and the
     /// page-arrow wiring all derive from this — they used to hardcode 3
-    /// independently, so adding a seventh app silently broke two of them.
-    const int AppGridCols = 4;
-    Button[]      _appButtons = new Button[7];
+    /// independently, and a seventh app silently broke two of them.
+    const int AppGridCols = 3;
+    Button[]      _appButtons = new Button[6];
 
     // â”€â”€ Home-screen page navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Swappable pages live inside _pageHostRT. Only one is active at
@@ -2324,12 +2324,13 @@ public class PlayerPhoneUI : MonoBehaviour
         _appGridRT.offsetMin = Vector2.zero; _appGridRT.offsetMax = Vector2.zero;
 
         var grid = _appGridRT.gameObject.AddComponent<GridLayoutGroup>();
-        // 7 tiles -> 4 columns x 2 rows on the 4:3 landscape screen.
+        // 6 tiles -> 3 columns x 2 rows on the 4:3 landscape screen. Width
+        // budget: 3*110 + 2*10 + 8 = 358 (centered in ~546); height budget
+        // 170 px: 2*66 + 10 + 8 = 150.
         //
-        // It was 3 columns when there were 6 tiles. A seventh would have
-        // started a THIRD row, and three rows do not fit: 3*66 + 2*10 + 8 = 226
-        // against a height budget of ~170. Widening instead keeps the tiles the
-        // same size and stays inside the width: 4*110 + 3*10 + 8 = 478 of ~546.
+        // A seventh tile briefly lived here for tape contacts. It was the wrong
+        // call twice over: it cluttered the home screen, and MESSAGES already
+        // existed for exactly that job. Contacts are threads now.
         grid.padding = new RectOffset(4, 4, 4, 4);
         grid.spacing = new Vector2(10f, 10f);
         grid.cellSize = new Vector2(110f, 66f);
@@ -2347,8 +2348,6 @@ public class PlayerPhoneUI : MonoBehaviour
         _appButtons[3] = BuildAppTile(AppKind.Map,        "M", "Map");
         _appButtons[4] = BuildAppTile(AppKind.Photos,     "P", "Photos");
         _appButtons[5] = BuildAITile(_appGridRT);   // AI chat â€” 6th tile, 3Ã—2 grid
-        // Who buys your music, what they like, and what they are asking for.
-        _appButtons[6] = BuildAppTile(AppKind.Contacts, "C", "Contacts");
     }
 
     // Unread-notification badge on the AI app tile + the count of lines the
@@ -2944,8 +2943,7 @@ public class PlayerPhoneUI : MonoBehaviour
         if (kind == AppKind.Photos) { OpenPhotosApp(); return; }
         // Build + Fishingdex run INSIDE the tablet screen (the AI-chat
         // model) â€” no more separate fullscreen panels.
-        if (kind == AppKind.Build || kind == AppKind.Fishingdex
-            || kind == AppKind.Contacts) { OpenPhoneApp(kind); return; }
+        if (kind == AppKind.Build || kind == AppKind.Fishingdex) { OpenPhoneApp(kind); return; }
         // Everything else (Settings / Map): slide the phone out, THEN open
         // the target UI â€” like tapping an app on a real phone.
         StartCoroutine(CloseThenOpen(kind));
@@ -2956,7 +2954,6 @@ public class PlayerPhoneUI : MonoBehaviour
     PhoneAppBase _activeApp;
     PhoneBuildApp _buildApp;
     PhoneFishdexApp _fishdexApp;
-    PhoneContactsApp _contactsApp;
 
     /// True while an in-phone app (Build / Fishingdex) covers the home screen.
     public bool AppViewOpen => _activeApp != null;
@@ -2975,10 +2972,6 @@ public class PlayerPhoneUI : MonoBehaviour
             case AppKind.Fishingdex:
                 if (_fishdexApp == null) _fishdexApp = _appHostRT.gameObject.AddComponent<PhoneFishdexApp>();
                 _activeApp = _fishdexApp;
-                break;
-            case AppKind.Contacts:
-                if (_contactsApp == null) _contactsApp = _appHostRT.gameObject.AddComponent<PhoneContactsApp>();
-                _activeApp = _contactsApp;
                 break;
             default:
                 _appHostRT.gameObject.SetActive(false);

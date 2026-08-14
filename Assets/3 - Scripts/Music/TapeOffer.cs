@@ -61,11 +61,14 @@ public static class TapeOffer
     /// What this tape is worth to this alien right now — the number every other
     /// figure in the negotiation is built from.
     /// </summary>
+    /// <param name="bond">Passed IN rather than looked up: bond lives on
+    /// BuyerLedger, which is a Unity class, and reaching for it from here would
+    /// cost this file the ability to be run headlessly.</param>
     public static int Value(string alienId, int activeModules, int tier,
-                            double satisfaction, bool matchesRequest)
+                            double satisfaction, bool matchesRequest, int bond)
     {
         return TapeValue.For(activeModules, tier, satisfaction,
-                             TapeMemory.Bond(alienId), matchesRequest,
+                             bond, matchesRequest,
                              AlienTaste.PayFactor(alienId));
     }
 

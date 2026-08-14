@@ -109,8 +109,9 @@ public class BuyerMessageDirector : MonoBehaviour
             if (!b.isRegular || b.convo != BuyerLedger.Convo.None) continue;
             if (openWants >= MaxOpenWants) break;
             if (now < b.nextTextAt) continue;
-            int appetite = NPCMushroomPrice.AppetiteMaxOf(b.id);
-            if (MushroomDealState.SecondsUntilHungry(b.id, appetite) > 0) continue;
+            // No appetite/saturation gate for tapes: a song is not produce,
+            // and "they are full of music" is not a thing. nextTextAt above is
+            // the whole pacing rule, and it already scales with bond.
 
             SendWantText(b);
             openWants++;
@@ -217,10 +218,12 @@ public class BuyerMessageDirector : MonoBehaviour
 
     void SendWantText(BuyerLedger.Buyer b)
     {
-        var tier = BuyerDeals.PickAskTier(b.id);
-        b.askTier = (int)tier;
-        b.askQty = BuyerDeals.PickAskQty(b.id);
-        b.offerPerCap = BuyerDeals.OpeningOffer(b.id, tier);
+        // askTier holds a GENRE INDEX and offerPerCap a price per TAPE — the
+        // field names are legacy, kept so the save schema does not move.
+        int genre = TapeTrade.PickAskGenre(b.id);
+        b.askTier = genre;
+        b.askQty = TapeTrade.PickAskQty(b.id);
+        b.offerPerCap = TapeTrade.OpeningOffer(b.id, genre);
         b.convo = BuyerLedger.Convo.AwaitingReply;
         BuyerLedger.Log(b, BuyerLedger.EvType.WantText, b.offerPerCap, b.askQty, b.askTier);
         Notify($"{AlienNames.For(b.id)} sent you a message");
@@ -261,7 +264,7 @@ public class BuyerMessageDirector : MonoBehaviour
         askPerCap = Mathf.Max(1, askPerCap);
         offerQty = Mathf.Max(1, offerQty);
         BuyerLedger.Log(b, BuyerLedger.EvType.PlayerCountered, askPerCap, offerQty, b.askTier, markUnread: false);
-        var res = BuyerDeals.ResolveCounter(b.id, (MushroomTier)b.askTier, askPerCap,
+        var res = TapeTrade.ResolveCounter(b.id, b.askTier, askPerCap,
                                             b.askQty, offerQty, out int counterBack);
         switch (res)
         {

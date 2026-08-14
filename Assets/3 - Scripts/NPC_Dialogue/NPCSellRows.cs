@@ -70,8 +70,32 @@ public static class NPCSellRows
                 var slot = Hotbar.Instance.SlotAt(i);
                 if (slot.id == Hotbar.ItemId.Cassette) tapes += slot.count;
             }
-        rows.Add(new PostGreetingChoicePanel.Row(
-            tapes > 0 ? "Offer them a tape" : "Offer them a tape (none on you)", tapes > 0));
+        // A live text order outranks a cold offer: they are standing here
+        // WAITING for a specific thing, and burying that under a generic row
+        // would make the appointment card on the phone a lie.
+        var tapeLedger = id != null ? BuyerLedger.Get(id) : null;
+        bool tapeScheduled = tapeLedger != null
+                          && tapeLedger.convo == BuyerLedger.Convo.Scheduled
+                          && Time.unscaledTime <= tapeLedger.deadline + BuyerDeals.GraceSeconds;
+
+        string tapeLabel;
+        bool tapeEnabled;
+        if (tapeScheduled)
+        {
+            int matching = TapeTrade.HeldMatching(tapeLedger.askTier);
+            string want = TapeTrade.GenreName(tapeLedger.askTier);
+            tapeLabel = matching > 0
+                ? $"Deliver order — {tapeLedger.askQty} {want} @ {tapeLedger.offerPerCap}"
+                : $"Deliver order — {want} (none on you)";
+            tapeEnabled = matching > 0;
+        }
+        else
+        {
+            tapeLabel = tapes > 0 ? "Offer them a tape" : "Offer them a tape (none on you)";
+            tapeEnabled = tapes > 0;
+        }
+
+        rows.Add(new PostGreetingChoicePanel.Row(tapeLabel, tapeEnabled));
         actions.Add(SellAction.Tape);
 
         if (FeatureVault.SpaceDustSelling)

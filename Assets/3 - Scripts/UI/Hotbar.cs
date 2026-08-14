@@ -297,7 +297,6 @@ public class Hotbar : MonoBehaviour
     {
         if (!ResolveRefs()) return;
         DevGrantBlankTapes();
-        TickTapeRequests();
         DetectAcquisitions();
         // Piloted state: pull from "is any ship piloted" — the cached
         // `ship` reference might be the wrong instance now that the player
@@ -387,18 +386,6 @@ public class Hotbar : MonoBehaviour
         }
     }
 
-    // Contacts getting hungry. Ticked from here rather than from a new
-    // auto-singleton because this component is already guaranteed to run in
-    // gameplay and never in the main menu — which is exactly the trap a new
-    // RuntimeInitializeOnLoadMethod singleton would have had to dodge.
-    float _nextRequestTick;
-    void TickTapeRequests()
-    {
-        if (Time.unscaledTime < _nextRequestTick) return;
-        _nextRequestTick = Time.unscaledTime + 5f;
-        TapeRequests.Tick();
-    }
-
     // ── TEMPORARY: dev stock ─────────────────────────────────────────────
     //
     // T = five Blank Tape I, Shift+T = five Blank Tape II. Tev sells these in
@@ -414,15 +401,6 @@ public class Hotbar : MonoBehaviour
     void DevGrantBlankTapes()
     {
         if (Input.GetKeyDown(KeyCode.U)) { DevSellTevTape(); return; }
-        // Z = make a contact place an order now, instead of waiting out the
-        // 90-300s timer. TEMPORARY, for playtests.
-        if (Input.GetKeyDown(KeyCode.Z) && !AIChatScreen.IsTypingActive
-            && !PlayerController.isInDialogue)
-        {
-            string who = TapeRequests.ForceAsk();
-            Debug.Log(who != null ? "[DEV] " + who : "[DEV] No contacts without an open order.");
-            return;
-        }
         // L = dump the tape-sale report for every alien alive right now.
         // Sam's idea after nine sales out of nine: measure the REAL world
         // rather than trusting a headless model that invents alien ids.

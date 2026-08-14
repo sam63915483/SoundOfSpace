@@ -77,7 +77,6 @@ public class SaveData
     public TevFrontingSave tevFronting = new TevFrontingSave();
     public TraxLibrarySave traxLibrary = new TraxLibrarySave();
     public TapeMemorySave tapeMemory = new TapeMemorySave();
-    public TapeRequestSave tapeRequests = new TapeRequestSave();
     // Galactic Standard Time (2026-08-08). Total in-game minutes since day 1
     // 00:00, ABSOLUTE — unlike the buyer deadlines above, which persist a
     // remaining duration. JsonUtility gives pre-feature saves 0, which

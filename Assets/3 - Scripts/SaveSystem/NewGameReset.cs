@@ -124,7 +124,6 @@ public static class NewGameReset
         TraxLibrary.Clear();
         TraxPrints.Clear();       // and the pressings made from them
         TapeMemory.Clear();       // and who remembers hearing what
-        TapeRequests.Clear();     // and what they were waiting for
         TevTextDirector.ResetAll();
 
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();

@@ -123,7 +123,7 @@ public class TapeSellFlow
         if (reaction == TapeOffer.Reaction.AlreadyHeard)
         {
             yield return _speak(AlienFeedback.ForRepeat(variant));
-            TapeMemory.AddBond(alienId, TapeOffer.BondOnRepeatOffer);
+            AddBond(alienId, TapeOffer.BondOnRepeatOffer);
             yield break;
         }
 
@@ -147,15 +147,55 @@ public class TapeSellFlow
         yield return _speak(AlienFeedback.ForLiked(satisfaction, variant));
         if (!_stillTalking()) yield break;
 
-        // Did they ORDER this? Matched on the classifier's answer, so the label
-        // the computer showed the player is the label the order is judged
-        // against — anything else would be marking its own homework.
-        bool fillsOrder = TapeRequests.Satisfies(alienId, press.track);
+        // Did they ORDER this? A live appointment in the ledger, and a tape
+        // whose CLASSIFIED genre matches what they asked for — so the label the
+        // computer showed the player is the label the order is judged against.
+        BuyerLedger.Buyer led = BuyerLedger.Get(alienId);
+        bool hasOrder = led != null && led.convo == BuyerLedger.Convo.Scheduled
+                     && Time.unscaledTime <= led.deadline + BuyerDeals.GraceSeconds;
+        bool fillsOrder = hasOrder && TapeTrade.Fills(press.track, led.askTier);
+        int bond = led != null ? led.bond : 0;
         int value = TapeOffer.Value(alienId, press.track.ActiveCount(), press.tier,
-                                    satisfaction, fillsOrder);
+                                    satisfaction, fillsOrder, bond);
         if (fillsOrder)
             yield return _speak("That's the one I was after. Good.");
         if (!_stillTalking()) yield break;
+
+        // A DELIVERY is a different conversation from a cold sale: the price
+        // was already agreed over text, so the honest move is offered first and
+        // pushing past it is the risk. Same shape as the mushroom handover.
+        if (fillsOrder)
+        {
+            int agreed = led.offerPerCap;
+            int pushed = Mathf.RoundToInt(agreed * 1.35f);
+            yield return _ask(new[]
+            {
+                new PostGreetingChoicePanel.Row("As agreed - $" + agreed, true),
+                new PostGreetingChoicePanel.Row("Actually, make it $" + pushed, true),
+                new PostGreetingChoicePanel.Row("Keep it.", true),
+            });
+            if (!_stillTalking()) yield break;
+
+            int dPick = _choice();
+            if (dPick == 0) { yield return Complete(alienId, alienName, printId, value, agreed, true); yield break; }
+            if (dPick != 1) { yield return _speak("Suit yourself."); yield break; }
+
+            // Re-trading an agreed price is exactly the overcharge rule the
+            // mushroom flow uses, so it reads the same and costs the same.
+            float odds = BuyerDeals.OverchargeFactor(pushed, agreed);
+            if (Random.value <= odds)
+            {
+                yield return _speak("...you're pushing it. Fine.");
+                yield return Complete(alienId, alienName, printId, value, pushed, true);
+            }
+            else
+            {
+                yield return _speak("We agreed a price. Forget it.");
+                BuyerLedger.CounterRefused(alienId);
+            }
+            yield break;
+        }
+
         int marketBase = Mathf.Max(1, Mathf.RoundToInt(
             (float)TapeValue.Base(press.track.ActiveCount(), press.tier)));
 
@@ -222,8 +262,8 @@ public class TapeSellFlow
 
         // They still liked the SONG, so the number is still yours — you just
         // wasted their afternoon getting it.
-        TapeMemory.AddBond(alienId, TapeOffer.BondOnRefusedFinal);
-        TapeMemory.MakeContact(alienId);
+        AddBond(alienId, TapeOffer.BondOnRefusedFinal);
+        MakeContact(alienId);
         yield return _speak("Then we're done. ...Here, take my number anyway. I liked the song.");
     }
 
@@ -234,9 +274,18 @@ public class TapeSellFlow
         Hotbar.Instance.SpendResource(Hotbar.ItemId.Cassette, 1, printId);
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(paid);
 
-        TapeMemory.AddBond(alienId, TapeOffer.BondForSale(value, paid));
-        bool newContact = !TapeMemory.IsContact(alienId);
-        TapeMemory.MakeContact(alienId);
+        // Was this what they actually like? That is the tape economy's
+        // equivalent of hitting a buyer's favourite tier, and it decides both
+        // the bond bump and the odds of them becoming a regular.
+        int genreIndex = AlienTaste.FavouriteGenreIndex(alienId);
+        TraxPrints.Record sold = TraxPrints.Get(printId);
+        bool matchedTaste = sold != null && TapeTrade.Fills(sold.track, genreIndex);
+
+        bool wasRegular = IsContact(alienId);
+        BuyerLedger.ReportTapeDeal(alienId, genreIndex, paid, 1,
+                                   keptAppointment: filledOrder,
+                                   matchedTaste: matchedTaste);
+        bool newContact = !wasRegular && IsContact(alienId);
 
         // Tev's tapes count toward the lawn, and toward the debt he is owed.
         if (TevDemoTapes.IsTevTape(printId))
@@ -245,15 +294,38 @@ public class TapeSellFlow
             MushroomQuest.NotifyTevTapeSold();
         }
 
-        // Only a tape that actually MATCHED the order clears it. Selling them
-        // something else is a sale, not a delivery, and quietly cancelling
-        // their order for it would lose the player work they had not done yet.
-        if (filledOrder) TapeRequests.Fulfil(alienId);
 
         yield return _speak("Done. $" + paid + ".");
         if (!_stillTalking()) yield break;
         if (newContact)
             yield return _speak("Here - take my number. Bring me something else sometime.");
+    }
+
+    // ── bond + contact live on the ledger ────────────────────────────────
+    // Thin wrappers so this file reads naturally, and so there is exactly one
+    // place that knows tape relationships and mushroom relationships are the
+    // same relationship.
+
+    static void AddBond(string alienId, int delta)
+    {
+        var b = BuyerLedger.GetOrCreate(alienId);
+        if (b == null) return;
+        b.bond = Mathf.Clamp(b.bond + delta, 0, 100);
+        BuyerLedger.Touch();
+    }
+
+    static bool IsContact(string alienId)
+    {
+        var b = BuyerLedger.Get(alienId);
+        return b != null && b.isRegular;
+    }
+
+    static void MakeContact(string alienId)
+    {
+        var b = BuyerLedger.GetOrCreate(alienId);
+        if (b == null || b.isRegular) return;
+        b.isRegular = true;
+        BuyerLedger.Touch();
     }
 
     /// The six dials as a plain array, which is what the taste model speaks.

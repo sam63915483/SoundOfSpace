@@ -65,22 +65,15 @@ public static class TapeOfferTests
         TapeMemory.Remember(id, song);
         Eq(TapeMemory.HeardCount(id), 1, "remembering the same song twice does not double it");
 
-        Eq(TapeMemory.Bond(id), 0, "bond starts at nothing");
-        TapeMemory.AddBond(id, 8);
-        Eq(TapeMemory.Bond(id), 8, "bond accrues");
-        TapeMemory.AddBond(id, -100);
-        Eq(TapeMemory.Bond(id), 0, "bond floors at 0");
-        TapeMemory.AddBond(id, 500);
-        Eq(TapeMemory.Bond(id), 100, "bond caps at 100");
-
-        Check(!TapeMemory.IsContact(id), "not a contact until they hand over the number");
-        TapeMemory.MakeContact(id);
-        Check(TapeMemory.IsContact(id), "and then they are");
+        // Bond and contact are NOT tested here any more: they moved to
+        // BuyerLedger, which owns the message threads too, and BuyerLedger is a
+        // Unity class. Reaching for it would cost this whole suite the ability
+        // to run headlessly — the purity rule is what caught the duplication in
+        // the first place.
 
         // Round trip. The flattened dial list is the risky part.
         TapeMemory.Remember(id, rewritten);
         TapeMemory.Remember("scene:Skell", song);
-        TapeMemory.AddBond("scene:Skell", 30);
         int before = TapeMemory.HeardCount(id);
 
         TapeMemorySave blob = TapeMemory.Capture();
@@ -89,10 +82,7 @@ public static class TapeOfferTests
         TapeMemory.Apply(blob);
 
         Eq(TapeMemory.HeardCount(id), before, "history survived the save file");
-        Eq(TapeMemory.Bond(id), 100, "bond survived");
-        Check(TapeMemory.IsContact(id), "contact survived");
         Check(TapeMemory.HasHeard(id, song), "the right alien still remembers the right song");
-        Eq(TapeMemory.Bond("scene:Skell"), 30, "the second alien's bond did not get crossed");
         Check(!TapeMemory.HasHeard("scene:Skell", rewritten),
               "AND THEIR HISTORIES DID NOT GET CROSSED - the flat list realigned correctly");
 
@@ -102,12 +92,13 @@ public static class TapeOfferTests
         broken.ids.Add("scene:Liar");
         broken.bond.Add(50);
         broken.contact.Add(true);
-        broken.heardCounts.Add(99);
+        broken.heardCounts.Add(99);          // claims 99 songs, supplies none
         TapeMemory.Apply(broken);
-        Eq(TapeMemory.Bond("scene:Liar"), 50, "a truncated file still loads what it can");
+        Eq(TapeMemory.HeardCount("scene:Liar"), 0,
+           "a file claiming more history than it supplies loses history rather than throwing");
 
         TapeMemory.Apply(null);
-        Eq(TapeMemory.ContactCount, 0, "a null save leaves nobody");
+        Eq(TapeMemory.HeardCount(id), 0, "a null save leaves no history");
     }
 
     // ── the negotiation ──────────────────────────────────────────────────
@@ -135,7 +126,7 @@ public static class TapeOfferTests
            "the same song again is caught before taste is considered");
         TapeMemory.Clear();
 
-        int value = TapeOffer.Value(id, 6, 1, 100, false);
+        int value = TapeOffer.Value(id, 6, 1, 100, false, 0);
         int ceiling = TapeOffer.Ceiling(id, value);
         Check(ceiling >= value, "their ceiling is at or above their own valuation");
 
@@ -164,7 +155,7 @@ public static class TapeOfferTests
         // would be a dead end the player has no way to diagnose.
         foreach (string a in Ids())
         {
-            int v = TapeOffer.Value(a, 6, 1, 100, false);
+            int v = TapeOffer.Value(a, 6, 1, 100, false, 0);
             if (TapeOffer.Ceiling(a, v) < 1) { Check(false, "unsellable alien: " + a); return; }
         }
         Check(true, "every alien in a sample of 200 can be sold to");
@@ -173,7 +164,7 @@ public static class TapeOfferTests
         // reads as a poor price rather than as a broken interaction.
         foreach (string a in Ids())
         {
-            if (TapeOffer.Value(a, 2, 1, 5, false) >= 1) continue;
+            if (TapeOffer.Value(a, 2, 1, 5, false, 0) >= 1) continue;
             Check(false, "a poor tape priced at zero for " + a);
             return;
         }

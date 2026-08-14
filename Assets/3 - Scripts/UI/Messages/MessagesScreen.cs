@@ -467,7 +467,7 @@ public class MessagesScreen : MonoBehaviour
         // System lines: in-person deals show as centered dim notes, not bubbles.
         if (t == BuyerLedger.EvType.WalkUpDeal)
         {
-            AddSystemLine($"— sold {e.b} {MushroomSpecies.TierName((MushroomTier)e.tier).ToLowerInvariant()} @ {e.a} a cap —");
+            AddSystemLine($"— sold {e.b} {TapeTrade.TapeWord(e.b)} @ {e.a} each —");
             return;
         }
 
@@ -480,7 +480,7 @@ public class MessagesScreen : MonoBehaviour
         MakeBubble(text, player);
 
         if (t == BuyerLedger.EvType.FulfilledExact || t == BuyerLedger.EvType.FulfilledSub)
-            AddSystemLine($"— deal done: {e.b} caps @ {e.a} each = {e.a * e.b} —");
+            AddSystemLine($"— deal done: {e.b} {TapeTrade.TapeWord(e.b)} @ {e.a} each = {e.a * e.b} —");
     }
 
     void AddSystemLine(string text)
@@ -586,7 +586,8 @@ public class MessagesScreen : MonoBehaviour
         string clock = left > 0f
             ? $"{Mathf.FloorToInt(left / 60f)}:{Mathf.FloorToInt(left % 60f):00}"
             : "0:00 — they're about to leave";
-        string tierWord = MushroomSpecies.TierName((MushroomTier)b.askTier).ToLowerInvariant();
+        // askTier carries a GENRE INDEX for tapes — legacy field name.
+        string wantWord = TapeTrade.GenreName(b.askTier);
 
         string where = "";
         var dir = BuyerMessageDirector.Instance;
@@ -598,7 +599,7 @@ public class MessagesScreen : MonoBehaviour
                 where = string.IsNullOrEmpty(body) ? $" · ~{dist} m" : $" · {body}, ~{dist} m";
             }
         }
-        string line = $"MEETUP — {b.askQty} {tierWord} @ {b.offerPerCap} · {clock}{where}";
+        string line = $"MEETUP — {b.askQty} {wantWord} @ {b.offerPerCap} · {clock}{where}";
         if (_apptText.text != line) _apptText.text = line;
         var col = left < 60f ? WarnAmber : OkGreen;
         if (_apptText.color != col) _apptText.color = col;
@@ -704,9 +705,10 @@ public class MessagesScreen : MonoBehaviour
         int priceMax = Mathf.Max(_priceMin + 10, Mathf.RoundToInt(b.offerPerCap * 1.55f));
         int priceStart = Mathf.RoundToInt(b.offerPerCap * 1.1f);
         _askQtyAtBuild = Mathf.Max(1, b.askQty);
-        // Quantity range: 1 up to double their ask (or their full appetite if
-        // that's bigger) — shorting AND overselling are both on the table.
-        int qtyMax = Mathf.Max(_askQtyAtBuild * 2, NPCMushroomPrice.AppetiteMaxOf(b.id));
+        // Quantity range: 1 up to double their ask — shorting AND overselling
+        // are both on the table. No appetite term: a tape is a specific song,
+        // so "how many can they stomach" is not a question that applies.
+        int qtyMax = Mathf.Max(2, _askQtyAtBuild * 2);
 
         // Readout block (deal line / total / risk).
         _sliderPrice = MakeText(_chipsRow, "", 20, TextMain, TextAlignmentOptions.Center);
@@ -808,7 +810,7 @@ public class MessagesScreen : MonoBehaviour
         if (p == _lastPriceVal && q == _lastQtyVal) return;
         _lastPriceVal = p;
         _lastQtyVal = q;
-        _sliderPrice.text = $"{q} <size=10><color=#8B95A3>caps @</color></size> {p} <size=10><color=#8B95A3>each</color></size>";
+        _sliderPrice.text = $"{q} <size=10><color=#8B95A3>{TapeTrade.TapeWord(q)} @</color></size> {p} <size=10><color=#8B95A3>each</color></size>";
         _sliderTotal.text = $"= <color=#FFD732>{p * q}</color> credits  <color=#8B95A3>(they asked for {_askQtyAtBuild})</color>";
         RiskFor(p, _priceMin, out string risk, out Color col);
         _sliderRisk.text = risk;

@@ -99,7 +99,8 @@ public static class TapeSaleDebug
                 totalOffers += Trials;
                 totalAccepted += accepted;
 
-                int value = TapeOffer.Value(id, tracks[d].ActiveCount(), 1, sat, false);
+                int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
+                int value = TapeOffer.Value(id, tracks[d].ActiveCount(), 1, sat, false, bond);
 
                 sb.AppendLine("      " + demos[d].name.PadRight(22) +
                               " dist " + dist.ToString("00.0") +

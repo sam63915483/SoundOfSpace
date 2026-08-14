@@ -9,7 +9,12 @@ using UnityEngine;
 public static class BuyerTexts
 {
     static int Voice(string id) => (int)(AlienIdentity.Hash(id + ":voice") % 3u);
-    static string TierWord(int tier) => MushroomSpecies.TierName((MushroomTier)tier).ToLowerInvariant();
+    // `tier` on an event now carries a GENRE INDEX — the field name is legacy
+    // and kept so the save schema does not move. Genres are shouted in caps
+    // everywhere else in the game (the console readout, the classifier), so
+    // they stay uppercase here even though the buyers text in lowercase.
+    static string Genre(int genreIndex) => TapeTrade.GenreName(genreIndex);
+    static string Tapes(int qty) => TapeTrade.TapeWord(qty);
 
     public static string Render(string id, BuyerLedger.Ev e)
     {
@@ -19,20 +24,20 @@ public static class BuyerTexts
             case BuyerLedger.EvType.WantText:
                 switch (v)
                 {
-                    case 0:  return $"after {e.b} {TierWord(e.tier)} caps. I'll do {e.a} a cap if you can get here.";
-                    case 1:  return $"got room for {e.b} more {TierWord(e.tier)}. {e.a} each, come find me.";
-                    default: return $"running low. {e.b} {TierWord(e.tier)} caps, {e.a} a cap — you in?";
+                    case 0:  return $"after {e.b} {Genre(e.tier)} {Tapes(e.b)}. I'll do {e.a} each if you can get here.";
+                    case 1:  return $"in the mood for something {Genre(e.tier)}. {e.b} of them, {e.a} each. come find me.";
+                    default: return $"nothing new to listen to. {e.b} {Genre(e.tier)} {Tapes(e.b)}, {e.a} each — you in?";
                 }
             case BuyerLedger.EvType.PlayerAccepted:
                 return $"on my way — give me {e.a} minutes.";
             case BuyerLedger.EvType.PlayerCountered:
                 // b carries the countered quantity (0 on pre-quantity-slider
                 // saves — fall back to the old price-only wording).
-                return e.b > 0 ? $"I'll do {e.b} caps — {e.a} each." : $"make it {e.a} a cap.";
+                return e.b > 0 ? $"I'll do {e.b} — {e.a} each." : $"make it {e.a} a tape.";
             case BuyerLedger.EvType.BuyerCounterBack:
                 // b == 1 flags the grudging-acceptance flavor (their counter
                 // resolved as Accept at the player's number).
-                if (e.b == 1) return $"...fine. {e.a} a cap. don't be late.";
+                if (e.b == 1) return $"...fine. {e.a} a tape. don't be late.";
                 switch (v)
                 {
                     case 0:  return $"steep. {e.a} and we're done talking.";
@@ -51,9 +56,9 @@ public static class BuyerTexts
             case BuyerLedger.EvType.Scheduled:
                 switch (v)
                 {
-                    case 0:  return $"good. {e.b} {TierWord(e.tier)} at {e.a} a cap. I'll be waiting.";
-                    case 1:  return $"deal — {e.b} {TierWord(e.tier)}, {e.a} each. don't dawdle.";
-                    default: return $"see you soon then. {e.b} {TierWord(e.tier)} at {e.a}.";
+                    case 0:  return $"good. {e.b} {Genre(e.tier)} at {e.a} each. I'll be waiting.";
+                    case 1:  return $"deal — {e.b} {Genre(e.tier)}, {e.a} each. don't dawdle.";
+                    default: return $"see you soon then. {e.b} {Genre(e.tier)} at {e.a}.";
                 }
             case BuyerLedger.EvType.FulfilledExact:
                 switch (v)
@@ -63,7 +68,7 @@ public static class BuyerTexts
                     default: return "quality. I'll be in touch.";
                 }
             case BuyerLedger.EvType.FulfilledSub:
-                return $"not what we agreed... but fine. I'll take the {TierWord(e.tier)}.";
+                return $"not what I asked for... but it's alright. I'll take it.";
             case BuyerLedger.EvType.SubRefused:
                 switch (v)
                 {

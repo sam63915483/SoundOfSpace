@@ -30,6 +30,9 @@ public static class TapeMemory
 
     sealed class Entry
     {
+        // bond/contact are read from OLD saves and written back out so a file
+        // that predates the consolidation still round-trips; nothing reads them
+        // for gameplay any more.
         public int bond;
         public bool contact;
         public readonly List<double[]> heard = new List<double[]>();
@@ -54,58 +57,17 @@ public static class TapeMemory
 
     // ── bond ─────────────────────────────────────────────────────────────
 
-    public static int Bond(string id)
-    {
-        Entry e = Get(id, false);
-        return e == null ? 0 : e.bond;
-    }
-
-    public static void AddBond(string id, int delta)
-    {
-        Entry e = Get(id, true);
-        if (e == null) return;
-        e.bond += delta;
-        if (e.bond < 0) e.bond = 0;
-        if (e.bond > 100) e.bond = 100;
-        Version++;
-    }
-
-    public static bool IsContact(string id)
-    {
-        Entry e = Get(id, false);
-        return e != null && e.contact;
-    }
-
-    /// Becoming a contact is one-way: a burned deal costs bond, never the
-    /// number. Losing a contact would quietly delete a thread the player had
-    /// been building, which is punishment out of proportion to a haggle.
-    public static void MakeContact(string id)
-    {
-        Entry e = Get(id, true);
-        if (e == null || e.contact) return;
-        e.contact = true;
-        Version++;
-    }
-
-    /// Every alien whose number the player has. Used by the request director
-    /// and the contacts app.
-    public static IEnumerable<string> Contacts
-    {
-        get
-        {
-            foreach (var kv in _byAlien) if (kv.Value.contact) yield return kv.Key;
-        }
-    }
-
-    public static int ContactCount
-    {
-        get
-        {
-            int n = 0;
-            foreach (var kv in _byAlien) if (kv.Value.contact) n++;
-            return n;
-        }
-    }
+    // ── bond and contact are NOT here, on purpose ────────────────────────
+    //
+    // They live on BuyerLedger, which also owns the message threads, the unread
+    // counts and the regular-conversion roll. There were briefly TWO bond
+    // numbers for the same alien and that is a bug waiting to happen: the phone
+    // would show one figure while the price used the other.
+    //
+    // This class keeps ONLY the song history, which is the part BuyerLedger has
+    // no concept of — and keeping it Unity-free is what lets the whole taste
+    // model be executed headlessly. Forwarding to BuyerLedger from here would
+    // have cost exactly that, which is how the mistake was caught.
 
     // ── song history ─────────────────────────────────────────────────────
 

@@ -61,7 +61,6 @@ public static class SaveCollector
         TevFronting.FillSave(data.tevFronting);
         data.traxLibrary = TraxLibrary.Capture();
         data.tapeMemory = TapeMemory.Capture();
-        data.tapeRequests = TapeRequests.Capture();
 
         return data;
     }
@@ -1005,7 +1004,6 @@ public static class SaveCollector
         // the other singletons before any terminal reads it.
         TraxLibrary.Apply(data.traxLibrary);
         TapeMemory.Apply(data.tapeMemory);
-        TapeRequests.Apply(data.tapeRequests);
         ApplyPlanetO2(data.planetO2);
 
         // Legacy saves carry domes inside `buildings`; move them across BEFORE
@@ -1092,7 +1090,6 @@ public static class SaveCollector
         // the other singletons before any terminal reads it.
         TraxLibrary.Apply(data.traxLibrary);
         TapeMemory.Apply(data.tapeMemory);
-        TapeRequests.Apply(data.tapeRequests);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
         ApplyOxygen(data.oxygen);

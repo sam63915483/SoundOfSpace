@@ -168,6 +168,48 @@ public static class BuyerLedger
     /// <param name="keptAppointment">deal fulfilled a Scheduled appointment in-window</param>
     /// <param name="substituted">fulfilled but not exact (tier differed / qty short)</param>
     /// <returns>true if this deal converted the buyer into a regular.</returns>
+    /// <summary>
+    /// A TAPE sale. The same ledger, the same bond curve, the same
+    /// regular-conversion roll — only "did it match their taste" is asked
+    /// differently, because a tape's equivalent of a favourite tier is the
+    /// genre they actually like.
+    ///
+    /// `genreIndex` lands in the event's legacy `tier` slot, which is what
+    /// BuyerTexts reads back to name the genre.
+    /// </summary>
+    public static bool ReportTapeDeal(string id, int genreIndex, int price, int qty,
+                                      bool keptAppointment, bool matchedTaste)
+    {
+        var b = GetOrCreate(id);
+        if (b == null) return false;
+        Touch();
+
+        b.dealsCompleted++;
+        int gain = BondPerDeal
+                 + (keptAppointment ? BondKeptAppointment : 0)
+                 + (matchedTaste ? BondFavouriteTier : 0);
+        b.bond = Mathf.Clamp(b.bond + gain, 0, 100);
+
+        if (keptAppointment) Log(b, EvType.FulfilledExact, price, qty, genreIndex, markUnread: false);
+        else                 Log(b, EvType.WalkUpDeal, price, qty, genreIndex, markUnread: false);
+
+        if (keptAppointment) CloseConversation(b);
+
+        bool converted = false;
+        if (!b.isRegular && Eligible(id))
+        {
+            // Same rule as mushrooms: guaranteed when you hit what they like,
+            // otherwise one in three. Hitting their genre is the tape economy's
+            // version of hitting their favourite tier.
+            if (matchedTaste || Random.value < 1f / 3f)
+            {
+                b.isRegular = true;
+                converted = true;
+            }
+        }
+        return converted;
+    }
+
     public static bool ReportDeal(string id, MushroomTier tier, int pricePerCap, int qty,
                                   bool keptAppointment, bool substituted)
     {
