@@ -33,6 +33,32 @@ public static class TasteDiagnostic
         const int N = 500;
         string[] ids = Ids(N);
 
+        // ── FIRST: is this diagnostic even measuring the real thing? ─────
+        // The arrays above are hand-copied. Build the track the way
+        // TevDemoTapes actually builds it and read the dials back out, so a
+        // mismatch between intent and reality cannot hide behind a plausible
+        // looking number.
+        Console.WriteLine("=== REAL TRACK CONSTRUCTION vs THE ARRAYS ABOVE ===");
+        for (int d = 0; d < Demos.Length; d++)
+        {
+            TraxTrack t = TraxTrack.Default();
+            for (int i = 0; i < Demos[d].Length && i < TraxPrng.DialCount; i++)
+                t = t.WithDial(i, Demos[d][i]);
+
+            Console.Write("  " + Names[d].PadRight(22) + " intended [");
+            for (int i = 0; i < Demos[d].Length; i++) Console.Write(Demos[d][i].ToString("0") + " ");
+            Console.Write("]  actual [");
+            bool same = true;
+            for (int i = 0; i < TraxPrng.DialCount; i++)
+            {
+                double got = t.dials.Get(i);
+                Console.Write(got.ToString("0") + " ");
+                if (i < Demos[d].Length && Math.Abs(got - Demos[d][i]) > 1e-9) same = false;
+            }
+            Console.WriteLine("]  " + (same ? "MATCH" : "*** MISMATCH ***"));
+        }
+        Console.WriteLine();
+
         Console.WriteLine("=== WHERE ALIEN EARS ACTUALLY SIT (" + N + " aliens) ===");
         var mean = new double[AlienTaste.DialCount];
         foreach (string id in ids)

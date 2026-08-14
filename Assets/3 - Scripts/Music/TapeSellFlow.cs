@@ -109,6 +109,17 @@ public class TapeSellFlow
         TapeOffer.Reaction reaction = TapeOffer.Listen(
             alienId, dials, Random.value < 0.5f, out satisfaction);
 
+        // TEMPORARY, while the 9-out-of-9 discrepancy is open. One line per
+        // offer, so a normal playtest is also a measurement — the alien's real
+        // identity is the piece the headless diagnostic cannot see.
+        Debug.Log("[TapeOffer] " + alienName + " [" + alienId + "] likes " +
+                  AlienTaste.FavouriteGenre(alienId) +
+                  " | tape " + TraxPrints.DisplayName(printId) +
+                  " | dist " + AlienTaste.Distance(dials, AlienTaste.TastePoint(alienId)).ToString("0.0") +
+                  " | sat " + satisfaction.ToString("0.0") +
+                  " | gate " + AlienTaste.Gate(satisfaction) +
+                  " -> " + reaction);
+
         if (reaction == TapeOffer.Reaction.AlreadyHeard)
         {
             yield return _speak(AlienFeedback.ForRepeat(variant));

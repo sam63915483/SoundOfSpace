@@ -401,6 +401,12 @@ public class Hotbar : MonoBehaviour
     void DevGrantBlankTapes()
     {
         if (Input.GetKeyDown(KeyCode.U)) { DevSellTevTape(); return; }
+        // L = dump the tape-sale report for every alien alive right now.
+        // Sam's idea after nine sales out of nine: measure the REAL world
+        // rather than trusting a headless model that invents alien ids.
+        if (Input.GetKeyDown(KeyCode.L) && !AIChatScreen.IsTypingActive
+            && !PlayerController.isInDialogue)
+        { TapeSaleDebug.RunReport(); return; }
         if (!Input.GetKeyDown(KeyCode.T)) return;
         // Never while a text field owns the keyboard, or naming a project
         // "TAPE" hands you fifteen blanks on the way past.
