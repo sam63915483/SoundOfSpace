@@ -564,8 +564,15 @@ public class TevMushroomOnboarding : MonoBehaviour
 
         // No debt. Pitch once, then use the short greeting forever after.
         // The shop opens on the FIRST visit after the onboarding, then lives on
-        // a row — he's a bloke on a lawn, not a storefront, so it stays inside
-        // the conversation rather than becoming another fullscreen panel.
+        // a row.
+        //
+        // It USED to argue that a bloke on a lawn is not a storefront, and so
+        // stayed inside the conversation as a list of choice rows. That was a
+        // fair call when he sold two things and stopped being one at six: every
+        // purchase cost a click and a spoken line, so ten blanks meant ten of
+        // each, and a $180 permanent unlock got the same row as a $5 blank.
+        // TevShopUI is that list as a panel; he still speaks, on the way in and
+        // on the way out.
         if (!_shopIntroduced)
         {
             _shopIntroduced = true;
@@ -637,83 +644,26 @@ public class TevMushroomOnboarding : MonoBehaviour
     // Plugins install to the COMPUTER (TraxLibrary), so in co-op one player
     // buying SIREN unlocks it for both. Blanks go to the buyer's hotbar.
 
-    struct ShopEntry
-    {
-        public string label;
-        public int price;
-        public string plugin;              // non-null for a rack module
-        public Hotbar.ItemId item;         // used when plugin is null
-    }
 
-    static readonly ShopEntry[] ShopStock =
-    {
-        new ShopEntry { label = "Blank Tape Type 1", price = 5,   item = Hotbar.ItemId.BlankTapeT1 },
-        new ShopEntry { label = "Blank Tape Type 2", price = 15,  item = Hotbar.ItemId.BlankTapeT2 },
-        // A RISING LADDER, not four flat prices (docs/Plan_MoneyRevamp_v1.md).
-        // Each rung costs about EIGHT TAPES at the income the previous one
-        // unlocks, so the pace never sags and never trivialises. Four flat
-        // prices would be 13 tapes for the first - a discouraging start - and
-        // 5 for the last, by which point it is not a decision.
-        //
-        // Cheapest first is the natural buy order, which is what makes the
-        // eight-tape rhythm hold; do not reorder these without re-checking it.
-        new ShopEntry { label = "SIREN",             price = 60,  plugin = "SIREN" },
-        new ShopEntry { label = "MOSS",              price = 90,  plugin = "MOSS" },
-        new ShopEntry { label = "SPINDLE",           price = 130, plugin = "SPINDLE" },
-        new ShopEntry { label = "CAVE",              price = 180, plugin = "CAVE" },
-    };
-
+    /// <summary>
+    /// Hand off to the shop PANEL and wait for it to close.
+    ///
+    /// The catalogue moved to <see cref="TevShopUI.Stock"/> — "what does Tev
+    /// sell" now has exactly one answer, and it lives with the UI that draws it
+    /// rather than in the middle of his conversation script.
+    ///
+    /// Two of his authored lines travel with him: the plugin-bought line and the
+    /// no-room line, both of which are still true of a panel. The blank-bought
+    /// line does not, because it reads "One {item}" and a row now buys a stack;
+    /// the panel counts for itself.
+    /// </summary>
     IEnumerator RunShop()
     {
-        while (_playerInRange)
-        {
-            int money = PlayerWallet.Instance != null ? PlayerWallet.Instance.Money : 0;
+        if (TevShopUI.Instance == null) yield break;
 
-            var rows = new List<PostGreetingChoicePanel.Row>();
-            var offered = new List<int>();          // index into ShopStock per row
-            for (int i = 0; i < ShopStock.Length; i++)
-            {
-                ShopEntry e = ShopStock[i];
-                bool owned = e.plugin != null && TraxLibrary.IsInstalled(e.plugin);
-                // An owned module still SHOWS, marked, so the rack reads as a
-                // set you are completing rather than a list that shrinks.
-                string label = owned
-                    ? e.label + " - installed"
-                    : e.label + " - $" + e.price;
-                rows.Add(new PostGreetingChoicePanel.Row(label, !owned && money >= e.price));
-                offered.Add(i);
-            }
-            rows.Add(new PostGreetingChoicePanel.Row("That's all for now.", true));
-
-            yield return AskChoice(rows.ToArray());
-            if (!_playerInRange) yield break;
-            if (_choice < 0 || _choice >= offered.Count) yield break;   // the leave row
-
-            ShopEntry pick = ShopStock[offered[_choice]];
-            if (PlayerWallet.Instance == null || PlayerWallet.Instance.Money < pick.price) continue;
-
-            if (pick.plugin != null)
-            {
-                PlayerWallet.Instance.AddMoney(-pick.price);
-                TraxLibrary.Install(pick.plugin);
-                yield return SpeakOne(shopPluginBoughtLine.Replace("{item}", pick.plugin));
-            }
-            else
-            {
-                // Charge only for what fits, so a full hotbar cannot take money
-                // and give nothing back.
-                int leftover = Hotbar.Instance != null
-                    ? Hotbar.Instance.AddResource(pick.item, 1) : 1;
-                if (leftover > 0)
-                {
-                    yield return SpeakOne(shopNoRoomLine);
-                    continue;
-                }
-                PlayerWallet.Instance.AddMoney(-pick.price);
-                yield return SpeakOne(shopBlankBoughtLine.Replace("{item}", pick.label));
-            }
-            if (!_playerInRange) yield break;
-        }
+        bool closed = false;
+        TevShopUI.Instance.Open(() => closed = true, shopPluginBoughtLine, shopNoRoomLine);
+        while (!closed) yield return null;
     }
 
     /// Hand off to the payment panel and wait for it to close. The panel owns
@@ -970,7 +920,14 @@ public class TevMushroomOnboarding : MonoBehaviour
     [TextArea(2, 5)]
     public string shopPluginBoughtLine = "{item}. Wire it in and try not to deafen anyone.";
 
-    [Tooltip("Spoken after buying blanks. {item} = what was bought.")]
+    // UNUSED SINCE THE SHOP BECAME A PANEL, and kept on purpose. It reads
+    // "One {item}", which was true when a purchase was one tape and is wrong now
+    // that a row buys a stack - so TevShopUI counts for itself instead of
+    // speaking this. The field stays because it is SCENE-SERIALIZED: deleting it
+    // throws away whatever Sam actually typed into the inspector, which no C#
+    // default can give back. Re-word it in the scene and wire it up if the shop
+    // should say something quantity-aware.
+    [Tooltip("UNUSED - the shop panel writes its own quantity-aware line.")]
     [TextArea(2, 5)]
     public string shopBlankBoughtLine = "One {item}. Don't waste it.";
 

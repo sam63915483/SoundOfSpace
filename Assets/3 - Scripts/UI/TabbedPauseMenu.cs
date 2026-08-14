@@ -265,6 +265,7 @@ public class TabbedPauseMenu : MonoBehaviour
                   && !PlayerPhoneUI.IsOpen && !PlayerPhoneUI.ConsumedEscapeThisFrame
                   && !PhotoGalleryUI.IsOpen && !PhotoGalleryUI.ConsumedEscapeThisFrame
                   && !MushroomSellUI.AnyOpen && !MushroomSellUI.ConsumedEscapeThisFrame
+                  && !TevShopUI.AnyOpen && !TevShopUI.ConsumedEscapeThisFrame
                   // The shuttle computer walks BACK a screen on Escape (shelf ->
                   // menu -> instrument) before it finally closes, so every one of
                   // those presses would otherwise also pop this menu on top.
