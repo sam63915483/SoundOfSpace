@@ -115,6 +115,22 @@ public static class AlienTaste
         return MinPay + (MaxPay - MinPay) * t;
     }
 
+    /// <summary>
+    /// How far over their own number you can push before they stop playing
+    /// along. Its own salt, so a fussy ear does not imply a hard bargainer —
+    /// the interesting customer is the one who is picky AND patient.
+    ///
+    /// Derived here rather than borrowed from NPCMushroomPrice.PatienceOf so
+    /// this file keeps zero Unity dependencies and stays runnable headlessly.
+    /// </summary>
+    public const double MinPatience = 1.05;
+    public const double MaxPatience = 1.45;
+
+    public static double Patience(string id)
+    {
+        return MinPatience + (MaxPatience - MinPatience) * Unit(H(id, ":patience"));
+    }
+
     // ── Satisfaction ─────────────────────────────────────────────────────
 
     /// Euclidean distance between a track's dials and a taste point.

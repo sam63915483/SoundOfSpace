@@ -76,6 +76,7 @@ public class SaveData
     /// do dictionaries.
     public TevFrontingSave tevFronting = new TevFrontingSave();
     public TraxLibrarySave traxLibrary = new TraxLibrarySave();
+    public TapeMemorySave tapeMemory = new TapeMemorySave();
     // Galactic Standard Time (2026-08-08). Total in-game minutes since day 1
     // 00:00, ABSOLUTE — unlike the buyer deadlines above, which persist a
     // remaining duration. JsonUtility gives pre-feature saves 0, which
@@ -487,6 +488,22 @@ public class TraxPrintSave
     public List<int> preset = new List<int>();
     public List<int> variation = new List<int>();
     public List<bool> active = new List<bool>();
+}
+
+// What each alien remembers about you. WORLD state — an alien who has heard a
+// song has heard it, whichever co-op partner played it.
+//
+// heardDials is FLATTENED: alien i owns the next heardCounts[i] * 6 floats, in
+// order. Parallel lists because JsonUtility can't do dictionaries, and the flat
+// list because it can't do jagged arrays either.
+[Serializable]
+public class TapeMemorySave
+{
+    public List<string> ids = new List<string>();
+    public List<int> bond = new List<int>();
+    public List<bool> contact = new List<bool>();
+    public List<int> heardCounts = new List<int>();
+    public List<float> heardDials = new List<float>();
 }
 
 [Serializable]

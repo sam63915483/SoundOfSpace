@@ -123,6 +123,7 @@ public static class NewGameReset
         // this the last world's projects and bought modules leak into the next.
         TraxLibrary.Clear();
         TraxPrints.Clear();       // and the pressings made from them
+        TapeMemory.Clear();       // and who remembers hearing what
         TevTextDirector.ResetAll();
 
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();

@@ -27,6 +27,9 @@ BUILD = os.path.join(ROOT, "build", "taste")
 SOURCES = [
     "AlienTaste.cs",
     "TapeValue.cs",
+    "TapeMemory.cs",
+    "TapeOffer.cs",
+    "AlienFeedback.cs",
 ]
 
 
@@ -63,6 +66,8 @@ def main():
 
     src = [os.path.join(ROOT, "Assets", "3 - Scripts", "Music", f) for f in SOURCES]
     src.append(os.path.join(HERE, "AlienTasteTests.cs"))
+    src.append(os.path.join(HERE, "TapeOfferTests.cs"))
+    src.append(os.path.join(HERE, "SaveStubs.cs"))
     for s in src:
         if not os.path.isfile(s):
             print("missing source: " + s)

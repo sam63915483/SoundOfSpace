@@ -17,7 +17,7 @@ using UnityEngine;
 /// </summary>
 public static class NPCSellRows
 {
-    public enum SellAction { Mushrooms, Dust }
+    public enum SellAction { Mushrooms, Dust, Tape }
 
     /// Appends every sell row this build offers to <paramref name="rows"/>, and
     /// the matching action to <paramref name="actions"/> (parallel lists).
@@ -61,6 +61,19 @@ public static class NPCSellRows
         rows.Add(new PostGreetingChoicePanel.Row(label, scheduled || (!barred && !full && mushrooms > 0)));
         actions.Add(SellAction.Mushrooms);
 
+        // TAPES. Offered first because it is the live economy — the mushroom
+        // row above it is on its way to being vaulted (Phase 6).
+        int tapes = 0;
+        if (Hotbar.Instance != null)
+            for (int i = 0; i < Hotbar.TotalSlots; i++)
+            {
+                var slot = Hotbar.Instance.SlotAt(i);
+                if (slot.id == Hotbar.ItemId.Cassette) tapes += slot.count;
+            }
+        rows.Add(new PostGreetingChoicePanel.Row(
+            tapes > 0 ? "Offer them a tape" : "Offer them a tape (none on you)", tapes > 0));
+        actions.Add(SellAction.Tape);
+
         if (FeatureVault.SpaceDustSelling)
         {
             bool hasDust = SpaceDustInventory.Instance != null && SpaceDustInventory.Instance.Count > 0;
@@ -102,6 +115,14 @@ public static class NPCSellRows
                 price: price,
                 onClose: onClose,
                 onSold: onMushroomsSold);
+            return;
+        }
+
+        if (action == SellAction.Tape)
+        {
+            // Driven by the NPC's own dialogue coroutine rather than a panel —
+            // the caller passes the flow in. Nothing to open here.
+            onClose?.Invoke();
             return;
         }
 

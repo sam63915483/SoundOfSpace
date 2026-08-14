@@ -1424,6 +1424,14 @@ public class Hotbar : MonoBehaviour
 
     /// The whole selected slot, not just its id — HeldItemViewmodel needs
     /// fishData (weight/colour/tier) and bagContents to build the held model.
+    /// Read one slot. Used by the sell flow to list distinct cassettes without
+    /// copying the whole array.
+    public Slot SlotAt(int index)
+    {
+        if (slots == null || index < 0 || index >= slots.Length) return default;
+        return slots[index];
+    }
+
     public Slot GetEquippedSlot()
     {
         if (_equippedSlot < 0 || _equippedSlot >= TotalSlots) return default;

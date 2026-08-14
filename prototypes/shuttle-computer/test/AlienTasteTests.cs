@@ -54,6 +54,9 @@ public static class AlienTasteTests
         Gate();
         Feedback();
         Pricing();
+        TapeOfferTests.RunAll();
+        _checks += TapeOfferTests.Checks;
+        _failures += TapeOfferTests.Failures;
 
         Console.WriteLine();
         if (_failures == 0)

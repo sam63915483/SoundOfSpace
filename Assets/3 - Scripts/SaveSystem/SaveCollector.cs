@@ -60,6 +60,7 @@ public static class SaveCollector
         BuyerLedger.FillSave(data.buyerLedger);
         TevFronting.FillSave(data.tevFronting);
         data.traxLibrary = TraxLibrary.Capture();
+        data.tapeMemory = TapeMemory.Capture();
 
         return data;
     }
@@ -1002,6 +1003,7 @@ public static class SaveCollector
         // computer, shared by both players. Pure static state, restored with
         // the other singletons before any terminal reads it.
         TraxLibrary.Apply(data.traxLibrary);
+        TapeMemory.Apply(data.tapeMemory);
         ApplyPlanetO2(data.planetO2);
 
         // Legacy saves carry domes inside `buildings`; move them across BEFORE
@@ -1087,6 +1089,7 @@ public static class SaveCollector
         // computer, shared by both players. Pure static state, restored with
         // the other singletons before any terminal reads it.
         TraxLibrary.Apply(data.traxLibrary);
+        TapeMemory.Apply(data.tapeMemory);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);
         ApplyOxygen(data.oxygen);
