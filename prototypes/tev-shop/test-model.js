@@ -1,5 +1,5 @@
-// Runs the shop's PURE MODEL (prices, basket, stack caps, affordability) with
-// no DOM, the same trick the shuttle-computer prototype uses on its engine.
+// Runs the shop's PURE MODEL (prices, stepper bounds, stack caps, affordability)
+// with no DOM, the same trick the shuttle-computer prototype uses on its engine.
 // The model is the half that can be wrong in a way you would not see by looking.
 //
 //   node prototypes/tev-shop/test-model.js
@@ -9,86 +9,91 @@ const path = require('path');
 
 const src = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
 const js = src.split('<script>')[1].split('</script>')[0];
-const model = js.split('// ── A — THE COUNTER')[0];
+const model = js.split('// ── row builders')[0];
 
 // new Function rather than eval: a bare eval leaks its `function` declarations
 // into this module's scope, where they collide with the names below.
-const M = new Function(
-  model + ';return {cartTotal,canAdd,pick,pay,newState,MODULES,BLANKS,STACK_MAX};')();
-const { cartTotal, canAdd, pick, pay, newState, MODULES, BLANKS, STACK_MAX } = M;
+const M = new Function(model +
+  ';return {canAdd,buyTapes,buyPlugin,newState,lineCost,MODULES,BLANKS,STACK_MAX};')();
+const { canAdd, buyTapes, buyPlugin, newState, lineCost, MODULES, BLANKS, STACK_MAX } = M;
 
 let checks = 0, failed = 0;
 const ck = (cond, what) => {
   checks++;
   if (!cond) { failed++; console.log('  FAIL  ' + what); }
 };
-const mod = id => MODULES.find(m => m.id === id);
+const T1 = BLANKS[0], T2 = BLANKS[1];
 
+// ── the purse ────────────────────────────────────────────────────────────
 let s = newState();
 ck(s.money === 240, 'starts with $240');
-ck(cartTotal(s) === 0, 'an empty basket costs nothing');
+ck(lineCost(s, T1) === 0, 'an untouched row costs nothing');
 
-s.cart.T1 = 4;
-ck(cartTotal(s) === 20, '4 x T1 is $20');
-s.cart.T2 = 2;
-ck(cartTotal(s) === 50, 'plus 2 x T2 is $50');
-
-// A module joins the SAME basket, so one PAY settles both kinds.
-pick(s, mod('SIREN'));
-ck(cartTotal(s) === 110, 'SIREN adds $60 to the same basket');
-pick(s, mod('SIREN'));
-ck(cartTotal(s) === 50, 'clicking it again takes it back out');
-
-// THE BUG A SPLIT UI INVITES: tapes and modules are added in different places,
-// so each half can look affordable while the total is not.
+// ── the stepper is bounded by BOTH the stack cap and the purse ───────────
 s = newState();
-s.cart.T2 = 12;                       // $180 of tape
-pick(s, mod('CAVE'));                 // + $180 = $360, over the $240 purse
-ck(!s.picked.has('CAVE'), 'a module you cannot afford ALONGSIDE the tapes is refused');
-ck(cartTotal(s) === 180, 'and the basket is unchanged by the refusal');
+s.qty.T1 = STACK_MAX;
+ck(!canAdd(s, T1), 'the stepper stops at the ' + STACK_MAX + ' stack cap');
+ck(s.money > lineCost(s, T1), 'even with money to spare');
 
 s = newState();
-pick(s, mod('CAVE'));                 // $180 of the $240
-ck(s.picked.has('CAVE'), 'the same module IS affordable on its own');
-s.cart.T1 = 12;                       // $60 -> exactly $240
-ck(cartTotal(s) === 240, 'a basket can be filled to the last credit');
-ck(!canAdd(s, BLANKS[0]), 'and one more tape is refused for money, not stack room');
+s.money = 12;                       // $12 buys two Type 1 at $5, not three
+s.qty.T1 = 2;
+ck(!canAdd(s, T1), 'and stops early when the money runs out first');
+ck(lineCost(s, T1) === 10, 'leaving a line you can actually pay');
 
-// Stack cap, independent of money.
+// ── buying tapes ─────────────────────────────────────────────────────────
 s = newState();
-s.cart.T1 = STACK_MAX;
-ck(!canAdd(s, BLANKS[0]), 'blanks stop at the ' + STACK_MAX + ' stack cap');
-ck(s.money > cartTotal(s), 'even with money to spare');
+s.qty.T1 = 4;
+ck(buyTapes(s, 'T1'), 'buying a filled row succeeds');
+ck(s.money === 220, '4 x $5 came out of the purse');
+ck(s.qty.T1 === 0, 'and the row resets to zero');
 
-// Paying.
+ck(!buyTapes(s, 'T1'), 'buying an empty row does nothing');
+ck(s.money === 220, 'and costs nothing');
+
+// Type 2 is three times Type 1 - the thing the rebalance leans on.
 s = newState();
-s.cart.T1 = 4;
-pick(s, mod('SIREN'));
-const owed = cartTotal(s);
-pay(s);
-ck(s.money === 240 - owed, 'paying debits exactly the basket total');
-ck(s.owned.has('SIREN'), 'and installs the module');
-ck(cartTotal(s) === 0 && s.cart.T1 === 0, 'and empties the basket');
+s.qty.T2 = 1;
+buyTapes(s, 'T2');
+ck(s.money === 225, 'a Type 2 blank is $15');
 
-pick(s, mod('SIREN'));
-ck(cartTotal(s) === 0, 'an installed module cannot be bought a second time');
-
-// The two you land with are not stock.
+// ── buying plugins ───────────────────────────────────────────────────────
 s = newState();
-pick(s, mod('THUMPER'));
-pick(s, mod('GLOWORM'));
-ck(cartTotal(s) === 0, 'the two modules you start with are not for sale');
+ck(buyPlugin(s, 'SIREN'), 'SIREN is for sale');
+ck(s.money === 180 && s.owned.has('SIREN'), 'it costs $60 and installs');
+ck(!buyPlugin(s, 'SIREN'), 'and cannot be bought twice');
+ck(s.money === 180, 'a refused second purchase costs nothing');
 
-// Paying for nothing must not be possible.
+ck(!buyPlugin(s, 'THUMPER'), 'the modules you land with are not for sale');
+ck(!buyPlugin(s, 'GLOWORM'), 'neither of them');
+ck(s.money === 180, 'and neither charged you');
+
+// CAVE is $180 - affordable at exactly the purse, not a credit less.
 s = newState();
-const before = s.money;
-pay(s);
-ck(s.money === before, 'paying an empty basket costs nothing');
+s.money = 180;
+ck(buyPlugin(s, 'CAVE'), 'a plugin costing exactly your balance is affordable');
+ck(s.money === 0, 'and empties the purse');
+s = newState();
+s.money = 179;
+ck(!buyPlugin(s, 'CAVE'), 'one credit short is refused');
 
-// The ladder, as shipped.
+// ── no cart means no cross-row overspend ─────────────────────────────────
+// The v1 mockup had a basket, where tapes and plugins were added in different
+// places and each half could look affordable while the total was not. Buying
+// per row removes that failure entirely - this pins it shut.
+s = newState();
+s.qty.T1 = 20;                      // $100 pending, NOT yet paid
+ck(buyPlugin(s, 'CAVE'), 'a pending tape row does not block a plugin...');
+ck(s.money === 60, '...because nothing is owed until the row is bought');
+ck(!canAdd(s, T1), 'and the stepper immediately re-bounds to the smaller purse');
+ck(!buyTapes(s, 'T1'), 'a row that is now unaffordable refuses rather than overdrawing');
+ck(s.money === 60, 'and the purse never goes negative');
+
+// ── the catalogue, as shipped ────────────────────────────────────────────
 ck(MODULES.filter(m => !m.start).reduce((a, m) => a + m.price, 0) === 460,
    'the four plugins total $460');
 ck(MODULES.length === 6, 'the rack is a set of six');
+ck(T1.price === 5 && T2.price === 15, 'blanks are $5 and $15');
 
 console.log(failed
   ? '\nshop model FAILED - ' + failed + ' of ' + checks + ' checks'
