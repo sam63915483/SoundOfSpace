@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TAPE SELL UI — mockups</title>
+<style>
+/* Palette lifted straight from MushroomSellUI's constants so these read as the
+   same game, not as a web page about the game. */
+:root{
+  --bg:#0a1828; --slot-bg:#08131f; --slot-edge:#24425f;
+  --border:#78c8ff; --label:#eaf6ff; --dim:#7fa0bd; --value:#ffd732;
+  --header:#e2787e; --ok:#6edc82; --err:#ff6e6e;
+  --sell:#3c9146; --take:#2f6f8c; --back:#8c3c3c;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,'DejaVu Sans Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050b12;color:var(--label);font-family:var(--mono);padding:24px;
+     display:flex;flex-direction:column;align-items:center;gap:20px}
+h1{font-size:15px;letter-spacing:.24em;color:var(--dim);font-weight:400}
+.note{max-width:900px;font-size:12px;line-height:1.65;color:var(--dim)}
+.note b{color:var(--label)}
+.tabs{display:flex;gap:8px}
+.tab{font-family:var(--mono);font-size:12px;letter-spacing:.14em;padding:8px 18px;
+     background:#0c1c2c;color:var(--dim);border:1px solid var(--slot-edge);
+     border-radius:5px;cursor:pointer}
+.tab.on{background:var(--border);color:#05101a;border-color:var(--border);font-weight:700}
+
+/* ---- the panel ---- */
+.panel{width:880px;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+       padding:18px 20px 16px;display:none;flex-direction:column;gap:14px}
+.panel.on{display:flex}
+.hdr{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid #1b3450;padding-bottom:10px}
+.hdr .who{font-size:19px;letter-spacing:.16em;color:var(--header)}
+.hdr .bond{font-size:12px;color:var(--dim)}
+.hdr .memo{margin-left:auto;font-size:12px;color:var(--dim)}
+.val{color:var(--value)}
+
+/* the table */
+.table{background:var(--slot-bg);border:1px solid var(--slot-edge);border-radius:6px;
+       padding:14px;display:flex;gap:14px;align-items:center;min-height:104px}
+.cass{width:104px;height:64px;border-radius:4px;position:relative;flex:none;
+      display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}
+.cass .lbl{background:#eef4f8;color:#0b1620;font-size:8px;letter-spacing:.06em;
+           width:76%;text-align:center;padding:2px 0;border-radius:1px;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cass .hub{position:absolute;width:11px;height:11px;border-radius:50%;background:rgba(0,0,0,.45);top:16px}
+.cass .h1{left:26px} .cass .h2{right:26px}
+.t1{background:#79ffd0} .t2{background:#ff4fd8} .blank{background:#5a5f66}
+.table .info{flex:1;display:flex;flex-direction:column;gap:5px}
+.table .title{font-size:17px;letter-spacing:.1em}
+.table .sub{font-size:12px;color:var(--dim)}
+.genre{color:#79ffd0;letter-spacing:.1em}
+.empty{color:#43668a;font-size:13px;letter-spacing:.14em}
+.playing{font-size:11px;color:var(--ok);letter-spacing:.12em}
+.bars{display:inline-flex;gap:2px;vertical-align:middle;margin-left:6px}
+.bars i{display:block;width:2px;background:var(--ok);animation:eq .9s ease-in-out infinite}
+.bars i:nth-child(2){animation-delay:.15s} .bars i:nth-child(3){animation-delay:.3s}
+.bars i:nth-child(4){animation-delay:.45s}
+@keyframes eq{0%,100%{height:4px}50%{height:11px}}
+
+/* price row */
+.price{display:flex;align-items:center;gap:14px}
+.price .cap{font-size:11px;letter-spacing:.18em;color:var(--dim);width:62px}
+.slider{flex:1;height:8px;background:#0c2036;border:1px solid var(--slot-edge);
+        border-radius:4px;position:relative}
+.slider .fill{position:absolute;inset:0 auto 0 0;background:linear-gradient(90deg,#2f6f8c,#78c8ff);
+              border-radius:3px}
+.slider .knob{position:absolute;top:-5px;width:14px;height:18px;background:var(--label);
+              border-radius:3px;transform:translateX(-50%)}
+.price .num{font-size:22px;color:var(--value);width:92px;text-align:right}
+.risk{font-size:12px;letter-spacing:.06em}
+
+/* your tapes */
+.rack-cap{font-size:11px;letter-spacing:.2em;color:var(--dim)}
+.rack{display:flex;gap:8px;flex-wrap:wrap}
+.tile{width:132px;background:var(--slot-bg);border:1px solid var(--slot-edge);
+      border-radius:5px;padding:8px;display:flex;flex-direction:column;gap:6px;cursor:pointer}
+.tile:hover{border-color:var(--border)}
+.tile.sel{border-color:var(--border);background:#0e2236}
+.tile .art{height:44px;border-radius:3px;position:relative;
+           display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px}
+.tile .art .lbl{background:#eef4f8;color:#0b1620;font-size:7px;width:76%;text-align:center;
+                border-radius:1px;white-space:nowrap;overflow:hidden}
+.tile .nm{font-size:11px;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .mt{font-size:9px;color:var(--dim);display:flex;justify-content:space-between}
+.tile .qty{position:absolute;right:4px;top:3px;font-size:11px;color:var(--label);
+           background:rgba(4,12,20,.8);padding:0 4px;border-radius:3px}
+
+/* rows variant */
+.rows{display:flex;flex-direction:column;gap:4px;max-height:210px;overflow:auto}
+.row{display:flex;align-items:center;gap:10px;padding:7px 9px;background:var(--slot-bg);
+     border:1px solid transparent;border-left:3px solid var(--slot-edge);border-radius:4px;cursor:pointer}
+.row:hover{background:#0e2236}
+.row.sel{border-color:var(--border);border-left-color:var(--border);background:#0e2236}
+.row .mini{width:38px;height:24px;border-radius:2px;flex:none;position:relative}
+.row .rn{flex:1;font-size:13px;letter-spacing:.05em}
+.row .rg{font-size:11px;letter-spacing:.1em;width:92px}
+.row .rt{font-size:10px;color:var(--dim);width:58px}
+.row .rq{font-size:13px;color:var(--label);width:34px;text-align:right}
+
+/* buttons */
+.btns{display:flex;gap:10px;justify-content:flex-end}
+.btn{font-family:var(--mono);font-size:13px;letter-spacing:.14em;padding:10px 22px;
+     border:none;border-radius:5px;color:#eaf6ff;cursor:pointer}
+.b-sell{background:var(--sell)} .b-take{background:var(--take)} .b-back{background:var(--back)}
+.result{font-size:13px;min-height:18px;color:var(--ok)}
+.order{background:#122c1c;border:1px solid #2f6f45;border-radius:5px;padding:8px 12px;font-size:12px}
+</style>
+</head>
+<body>
+
+<h1>TAPE SELL UI — THREE LAYOUTS</h1>
+<div class="note">
+Same palette and controls as the panel we already have. Every layout fixes the three
+things you hit: <b>cassette art actually draws in the slot</b>, <b>names are readable
+without dragging anything</b>, and <b>nothing says "caps"</b>. Click a tape to put it on
+the table. Pick a layout and I'll build that one.
+</div>
+
+<div class="tabs">
+  <button class="tab on" data-p="a">A · TILES</button>
+  <button class="tab" data-p="b">B · LIST</button>
+  <button class="tab" data-p="c">C · ORDER</button>
+</div>
+
+<!-- ═══════════════ A — TILES ═══════════════ -->
+<div class="panel on" id="pa">
+  <div class="hdr">
+    <div class="who">// VESS</div>
+    <div class="bond">BOND ●●●○○</div>
+    <div class="memo">you remember: paid <span class="val">62</span> for <span class="val">SOUTHERN EXPOSURE</span></div>
+  </div>
+
+  <div class="table" id="ta-table">
+    <div class="cass t1"><div class="hub h1"></div><div class="hub h2"></div><div class="lbl">DEEP CAVE</div></div>
+    <div class="info">
+      <div class="title">DEEP CAVE <span class="genre">· SLUDJ</span></div>
+      <div class="sub">TYPE 1 · market value <span class="val">58</span> a tape — what VESS pays is up to VESS</div>
+      <div class="playing">NOW PLAYING<span class="bars"><i></i><i></i><i></i><i></i></span></div>
+    </div>
+    <div style="font-size:34px;color:var(--label)">×2</div>
+  </div>
+
+  <div class="price">
+    <div class="cap">ASK</div>
+    <div class="slider"><div class="fill" style="width:46%"></div><div class="knob" style="left:46%"></div></div>
+    <div class="num">64</div>
+  </div>
+  <div class="risk" style="color:var(--value)">a bit cheeky — they might counter</div>
+
+  <div class="rack-cap">YOUR TAPES</div>
+  <div class="rack">
+    <div class="tile sel"><div class="art t1"><div class="qty">2</div><div class="lbl">DEEP CAVE</div></div>
+      <div class="nm">DEEP CAVE</div><div class="mt"><span class="genre">SLUDJ</span><span>T1</span></div></div>
+    <div class="tile"><div class="art t2"><div class="qty">1</div><div class="lbl">NIGHT BUS</div></div>
+      <div class="nm">NIGHT BUS</div><div class="mt"><span style="color:#ff4fd8">DRIFT</span><span>T2</span></div></div>
+    <div class="tile"><div class="art t1"><div class="qty">4</div><div class="lbl">SOUTHERN EXP</div></div>
+      <div class="nm">SOUTHERN EXPOSURE</div><div class="mt"><span class="genre">SLUDJ</span><span>T1</span></div></div>
+    <div class="tile"><div class="art t1"><div class="qty">3</div><div class="lbl">LAWN ORNAMENT</div></div>
+      <div class="nm">LAWN ORNAMENT</div><div class="mt"><span class="genre">CHIRP</span><span>T1</span></div></div>
+  </div>
+
+  <div class="result">&nbsp;</div>
+  <div class="btns">
+    <button class="btn b-back">CLOSE</button>
+    <button class="btn b-take">TAKE BACK</button>
+    <button class="btn b-sell">OFFER IT</button>
+  </div>
+</div>
+
+<!-- ═══════════════ B — LIST ═══════════════ -->
+<div class="panel" id="pb">
+  <div class="hdr">
+    <div class="who">// VESS</div>
+    <div class="bond">BOND ●●●○○</div>
+    <div class="memo">likes <span class="genre">SLUDJ</span> · heard 3 of your songs</div>
+  </div>
+
+  <div class="table">
+    <div class="cass t1"><div class="hub h1"></div><div class="hub h2"></div><div class="lbl">DEEP CAVE</div></div>
+    <div class="info">
+      <div class="title">DEEP CAVE <span class="genre">· SLUDJ</span></div>
+      <div class="sub">TYPE 1 · market <span class="val">58</span> · offering <span class="val">2</span></div>
+      <div class="playing">NOW PLAYING<span class="bars"><i></i><i></i><i></i><i></i></span></div>
+    </div>
+    <div class="price" style="flex:1;max-width:330px">
+      <div class="cap">ASK</div>
+      <div class="slider"><div class="fill" style="width:46%"></div><div class="knob" style="left:46%"></div></div>
+      <div class="num">64</div>
+    </div>
+  </div>
+
+  <div class="rack-cap">YOUR TAPES — CLICK TO PUT ON THE TABLE</div>
+  <div class="rows">
+    <div class="row sel"><div class="mini t1"></div><div class="rn">DEEP CAVE</div>
+      <div class="rg genre">SLUDJ</div><div class="rt">TYPE 1</div><div class="rq">×2</div></div>
+    <div class="row"><div class="mini t2"></div><div class="rn">NIGHT BUS</div>
+      <div class="rg" style="color:#ff4fd8">DRIFT</div><div class="rt">TYPE 2</div><div class="rq">×1</div></div>
+    <div class="row"><div class="mini t1"></div><div class="rn">SOUTHERN EXPOSURE</div>
+      <div class="rg genre">SLUDJ</div><div class="rt">TYPE 1</div><div class="rq">×4</div></div>
+    <div class="row"><div class="mini t1"></div><div class="rn">LAWN ORNAMENT</div>
+      <div class="rg genre">CHIRP</div><div class="rt">TYPE 1</div><div class="rq">×3</div></div>
+    <div class="row"><div class="mini blank"></div><div class="rn" style="color:var(--dim)">BLANK TAPE</div>
+      <div class="rg" style="color:var(--dim)">—</div><div class="rt">TYPE 1</div><div class="rq">×5</div></div>
+  </div>
+
+  <div class="risk" style="color:var(--value)">a bit cheeky — they might counter</div>
+  <div class="result">&nbsp;</div>
+  <div class="btns">
+    <button class="btn b-back">CLOSE</button>
+    <button class="btn b-take">TAKE BACK</button>
+    <button class="btn b-sell">OFFER IT</button>
+  </div>
+</div>
+
+<!-- ═══════════════ C — ORDER ═══════════════ -->
+<div class="panel" id="pc">
+  <div class="hdr">
+    <div class="who">// VESS</div>
+    <div class="bond">BOND ●●●●○</div>
+    <div class="memo">order placed 4 min ago · <span style="color:var(--ok)">6:12 left</span></div>
+  </div>
+
+  <div class="order">
+    <b>ORDER</b> — 2 <span class="genre">SLUDJ</span> @ <span class="val">41</span> each agreed
+    <span style="color:var(--ok)">· on time (+10%)</span>
+  </div>
+
+  <div class="table">
+    <div class="cass t1"><div class="hub h1"></div><div class="hub h2"></div><div class="lbl">DEEP CAVE</div></div>
+    <div class="info">
+      <div class="title">DEEP CAVE <span class="genre">· SLUDJ</span> <span style="color:var(--ok);font-size:12px">✓ MATCHES</span></div>
+      <div class="sub">TYPE 1 · offering <span class="val">2</span> of <span class="val">2</span> asked</div>
+      <div class="playing">NOW PLAYING<span class="bars"><i></i><i></i><i></i><i></i></span></div>
+    </div>
+    <div style="font-size:34px;color:var(--label)">×2</div>
+  </div>
+
+  <div class="price">
+    <div class="cap">ASK</div>
+    <div class="slider"><div class="fill" style="width:33%"></div><div class="knob" style="left:33%"></div></div>
+    <div class="num">41</div>
+  </div>
+  <div class="risk" style="color:var(--ok)">exactly as agreed</div>
+
+  <div class="rack-cap">YOUR TAPES — <span class="genre">SLUDJ</span> FILLS THIS ORDER</div>
+  <div class="rows">
+    <div class="row sel"><div class="mini t1"></div><div class="rn">DEEP CAVE</div>
+      <div class="rg genre">SLUDJ ✓</div><div class="rt">TYPE 1</div><div class="rq">×2</div></div>
+    <div class="row" style="opacity:.5"><div class="mini t2"></div><div class="rn">NIGHT BUS</div>
+      <div class="rg" style="color:var(--dim)">DRIFT</div><div class="rt">TYPE 2</div><div class="rq">×1</div></div>
+    <div class="row"><div class="mini t1"></div><div class="rn">SOUTHERN EXPOSURE</div>
+      <div class="rg genre">SLUDJ ✓</div><div class="rt">TYPE 1</div><div class="rq">×4</div></div>
+  </div>
+
+  <div class="result" style="color:var(--ok)">&nbsp;</div>
+  <div class="btns">
+    <button class="btn b-back">CLOSE</button>
+    <button class="btn b-take">TAKE BACK</button>
+    <button class="btn b-sell">DELIVER</button>
+  </div>
+</div>
+
+<div class="note" style="margin-top:4px">
+<b>What each one is arguing.</b><br>
+<b>A · TILES</b> — closest to the panel now. Art is big, but a long name gets cut and
+five songs is already a wide shelf.<br>
+<b>B · LIST</b> — name, genre, type and count all readable at once, and it scrolls, so
+twenty songs is fine. Art shrinks to a colour chip. Price moves up next to the table.<br>
+<b>C · ORDER</b> — B in delivery mode: what they asked for pinned at the top, a ✓ on
+every tape that fills it, wrong-genre tapes dimmed but still sellable.<br><br>
+My pick is <b>B</b>, with <b>C</b> as the same screen when an order is live — a catalogue
+grows and a tile shelf stops working at about six songs, and the name is the thing you
+are actually choosing between.
+</div>
+
+<script>
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  ['a','b','c'].forEach(k => document.getElementById('p'+k).classList.toggle('on', k === t.dataset.p));
+});
+// Clicking a tape moves it to the table, so the flow is real enough to judge.
+document.querySelectorAll('.tile,.row').forEach(el => el.onclick = () => {
+  const scope = el.closest('.panel');
+  scope.querySelectorAll('.tile,.row').forEach(x => x.classList.remove('sel'));
+  el.classList.add('sel');
+  const name = (el.querySelector('.nm') || el.querySelector('.rn')).textContent;
+  const gEl = el.querySelector('.mt span') || el.querySelector('.rg');
+  const t = scope.querySelector('.table .title');
+  if (t) t.innerHTML = name + ' <span class="genre">· ' + gEl.textContent.replace(' ✓','') + '</span>';
+  const lbl = scope.querySelector('.table .cass .lbl');
+  if (lbl) lbl.textContent = name;
+});
+</script>
+</body>
+</html>
