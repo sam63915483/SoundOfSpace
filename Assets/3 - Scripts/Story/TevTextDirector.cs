@@ -44,7 +44,7 @@ public class TevTextDirector : MonoBehaviour
     // ── Content — ALL DRAFT, for Sam to cut and rewrite ───────────────────
     //
     // Brief: short, in Tev's voice, and every one of them touching something
-    // that actually exists in this world — the shrooms, the aliens, the village,
+    // that actually exists in this world — the tapes, the aliens, the village,
     // oxygen and trees, the black hole, his revoked pilot licence, and the fact
     // that you parked a shuttle on his lawn.
 
@@ -54,19 +54,19 @@ public class TevTextDirector : MonoBehaviour
         "grass'll never grow back there. not that it grew before",
         "saw one of the aliens staring at a rock for forty minutes today. living the dream",
         "do you ever think about how the sky's got a hole in it. anyway",
-        "plant more trees. the air's thin and you're breathing MY oxygen",
+        "made something myself once. it was terrible. you'll do better",
         "they took my pilot licence for something I still say wasn't my fault",
         "it WAS my fault. but it wasn't ONLY my fault",
-        "if a shroom grows in a cave and nobody sells it, did it even happen",
+        "if a song plays in a cave and nobody buys it, did it even happen",
         "one of the village lot tried to haggle me down. me. incredible",
-        "reminder: don't eat the product. I shouldn't have to keep saying this",
+        "reminder: don't tape over the product. I shouldn't have to keep saying this",
         "you'd get more for those if you walked another 200 metres. just saying",
         "woke up thinking about the black hole again. back to sleep now",
         "the trick with aliens is they all think they're getting a deal",
         "I had a garden once. then a man parked a shuttle on it",
         "some of them pay double for the ugly ones. no idea why. don't question it",
-        "if you find any Phalloides don't eat those either. especially those",
-        "everything out here is dying slowly. shrooms grow great in that",
+        "some of them only like the slow ones. miserable bunch",
+        "everything out here is dying slowly. makes for good listening",
         "check your oxygen. I'm not carrying you back",
         "business tip: the first price is never the price",
         "anyway. that's all I had. carry on",
@@ -105,8 +105,8 @@ public class TevTextDirector : MonoBehaviour
     /// The message that makes him a contact — sent once, the moment the free
     /// onboarding completes.
     public const string ContactIntroText =
-        "it's Tev. swing by anytime and I'll front you some shrooms — "
-        + "you sell them, we split it fifty-fifty. easiest money you'll make out here";
+        "shop's open whenever. and if you're ever short on stock, I've always got "
+        + "a stack of my old stuff — same deal, half comes back to me";
 
     void Update()
     {

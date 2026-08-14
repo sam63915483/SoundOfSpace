@@ -146,6 +146,7 @@ public class TevMushroomOnboarding : MonoBehaviour
     bool _bootedFromLoad;
 
     bool _playerInRange;
+    bool _shopIntroduced;
     bool _conversationActive;
     bool _isTyping;
     bool _skipTyping;
@@ -437,7 +438,7 @@ public class TevMushroomOnboarding : MonoBehaviour
             if (!_playerInRange) yield break;
         }
 
-        // The rest of the lead-in, ending on the offer of three shrooms.
+        // The rest of the lead-in, ending on the offer of his tapes.
         yield return SpeakFirstTalkRange(rentAfterLineIndex, int.MaxValue);
         if (!_playerInRange) yield break;
 
@@ -562,6 +563,18 @@ public class TevMushroomOnboarding : MonoBehaviour
         }
 
         // No debt. Pitch once, then use the short greeting forever after.
+        // The shop opens on the FIRST visit after the onboarding, then lives on
+        // a row — he's a bloke on a lawn, not a storefront, so it stays inside
+        // the conversation rather than becoming another fullscreen panel.
+        if (!_shopIntroduced)
+        {
+            _shopIntroduced = true;
+            yield return SpeakLines(shopOpenLines);
+            if (!_playerInRange) yield break;
+            yield return RunShop();
+            if (!_playerInRange) yield break;
+        }
+
         if (!s.pitched)
         {
             yield return SpeakLines(frontPitchLines);
@@ -570,6 +583,7 @@ public class TevMushroomOnboarding : MonoBehaviour
 
             yield return AskChoice(
                 new PostGreetingChoicePanel.Row("I'm ready, give me what you got.", true),
+                new PostGreetingChoicePanel.Row("What are you selling?", true),
                 new PostGreetingChoicePanel.Row("Sounds good, I'll be back soon.", true));
         }
         else
@@ -578,9 +592,16 @@ public class TevMushroomOnboarding : MonoBehaviour
             if (!_playerInRange) yield break;
             yield return AskChoice(
                 new PostGreetingChoicePanel.Row("Go on then.", true),
+                new PostGreetingChoicePanel.Row("What are you selling?", true),
                 new PostGreetingChoicePanel.Row("Not right now.", true));
         }
         if (!_playerInRange) yield break;
+
+        if (_choice == 1)
+        {
+            yield return RunShop();
+            yield break;
+        }
 
         if (_choice != 0)
         {
@@ -596,13 +617,95 @@ public class TevMushroomOnboarding : MonoBehaviour
             yield break;
         }
 
-        int perCap = MushroomRegistry.BaseValue(strain);
+        // No strain name: a batch is spread across his catalogue, so there is no
+        // single title to quote. He quotes the COUNT and his cut, and nothing
+        // else — the number he expects is his market half, and he has no way of
+        // knowing what the player actually took. That is the skim.
         string line = frontIssueLine
             .Replace("{qty}", qty.ToString())
-            .Replace("{strain}", MushroomRegistry.DisplayName(strain))
-            .Replace("{price}", perCap.ToString())
             .Replace("{owed}", owed.ToString());
         yield return SpeakOne(line);
+    }
+
+    // ── The shop ─────────────────────────────────────────────────────────
+    //
+    // Deliberately a conversation, not a storefront panel: rows in the same
+    // choice UI everything else here uses. It needs no scene wiring, it cannot
+    // drift out of sync with a prefab, and it suits a man selling gear off his
+    // own lawn.
+    //
+    // Plugins install to the COMPUTER (TraxLibrary), so in co-op one player
+    // buying SIREN unlocks it for both. Blanks go to the buyer's hotbar.
+
+    struct ShopEntry
+    {
+        public string label;
+        public int price;
+        public string plugin;              // non-null for a rack module
+        public Hotbar.ItemId item;         // used when plugin is null
+    }
+
+    static readonly ShopEntry[] ShopStock =
+    {
+        new ShopEntry { label = "Blank Tape Type 1", price = 10,  item = Hotbar.ItemId.BlankTapeT1 },
+        new ShopEntry { label = "Blank Tape Type 2", price = 20,  item = Hotbar.ItemId.BlankTapeT2 },
+        new ShopEntry { label = "SIREN",             price = 200, plugin = "SIREN" },
+        new ShopEntry { label = "MOSS",              price = 200, plugin = "MOSS" },
+        new ShopEntry { label = "SPINDLE",           price = 200, plugin = "SPINDLE" },
+        new ShopEntry { label = "CAVE",              price = 200, plugin = "CAVE" },
+    };
+
+    IEnumerator RunShop()
+    {
+        while (_playerInRange)
+        {
+            int money = PlayerWallet.Instance != null ? PlayerWallet.Instance.Money : 0;
+
+            var rows = new List<PostGreetingChoicePanel.Row>();
+            var offered = new List<int>();          // index into ShopStock per row
+            for (int i = 0; i < ShopStock.Length; i++)
+            {
+                ShopEntry e = ShopStock[i];
+                bool owned = e.plugin != null && TraxLibrary.IsInstalled(e.plugin);
+                // An owned module still SHOWS, marked, so the rack reads as a
+                // set you are completing rather than a list that shrinks.
+                string label = owned
+                    ? e.label + " - installed"
+                    : e.label + " - $" + e.price;
+                rows.Add(new PostGreetingChoicePanel.Row(label, !owned && money >= e.price));
+                offered.Add(i);
+            }
+            rows.Add(new PostGreetingChoicePanel.Row("That's all for now.", true));
+
+            yield return AskChoice(rows.ToArray());
+            if (!_playerInRange) yield break;
+            if (_choice < 0 || _choice >= offered.Count) yield break;   // the leave row
+
+            ShopEntry pick = ShopStock[offered[_choice]];
+            if (PlayerWallet.Instance == null || PlayerWallet.Instance.Money < pick.price) continue;
+
+            if (pick.plugin != null)
+            {
+                PlayerWallet.Instance.AddMoney(-pick.price);
+                TraxLibrary.Install(pick.plugin);
+                yield return SpeakOne(shopPluginBoughtLine.Replace("{item}", pick.plugin));
+            }
+            else
+            {
+                // Charge only for what fits, so a full hotbar cannot take money
+                // and give nothing back.
+                int leftover = Hotbar.Instance != null
+                    ? Hotbar.Instance.AddResource(pick.item, 1) : 1;
+                if (leftover > 0)
+                {
+                    yield return SpeakOne(shopNoRoomLine);
+                    continue;
+                }
+                PlayerWallet.Instance.AddMoney(-pick.price);
+                yield return SpeakOne(shopBlankBoughtLine.Replace("{item}", pick.label));
+            }
+            if (!_playerInRange) yield break;
+        }
     }
 
     /// Hand off to the payment panel and wait for it to close. The panel owns
@@ -847,6 +950,25 @@ public class TevMushroomOnboarding : MonoBehaviour
     // says can never drift from the number he books. The counts themselves
     // live in MushroomQuest.LawnTapeRungs.
 
+    [Header("Lines — the shop")]
+    [TextArea(2, 5)]
+    public string[] shopOpenLines = new[]
+    {
+        "Right. Since you're in the business now.",
+        "Blanks, if you're pressing your own. And gear, if you've got the money — I know a guy who knows a guy.",
+    };
+
+    [Tooltip("Spoken after buying a rack module. {item} = the module name.")]
+    [TextArea(2, 5)]
+    public string shopPluginBoughtLine = "{item}. Wire it in and try not to deafen anyone.";
+
+    [Tooltip("Spoken after buying blanks. {item} = what was bought.")]
+    [TextArea(2, 5)]
+    public string shopBlankBoughtLine = "One {item}. Don't waste it.";
+
+    [TextArea(2, 5)]
+    public string shopNoRoomLine = "You've nowhere to put it, friend.";
+
     [TextArea(2, 5)]
     public string[] lawnDemandLines = new[]
     {
@@ -916,7 +1038,7 @@ public class TevMushroomOnboarding : MonoBehaviour
     public string[] frontPitchLines = new[]
     {
         "Now. You've seen how it works — you found a buyer, you got a price.",
-        "Anytime you're after a bit of cash, come see me. I'll front you the shrooms and we split it fifty-fifty.",
+        "Got a stack of my old stuff going nowhere. Anytime you're after a bit of cash, come see me and we'll split it fifty-fifty.",
         "One rule: my half comes home before you get another front.",
     };
 
@@ -933,7 +1055,7 @@ public class TevMushroomOnboarding : MonoBehaviour
     [Tooltip("Tokens: {qty} {strain} {price} {owed}. Saying the market price out loud is DELIBERATE — it teaches the word 'market', which is what lets the player later work out they can sell above it.")]
     [TextArea(2, 5)]
     public string frontIssueLine =
-        "Splendid. {qty} {strain}, then. They go for ${price} a cap at market, so bring me back ${owed} and we're square.";
+        "Splendid. {qty} tapes, then. Half of what they're worth comes back to me, so call it ${owed}.";
 
     [Header("Fronting — the debt")]
     [Tooltip("Token: {owed}.")]
@@ -947,7 +1069,7 @@ public class TevMushroomOnboarding : MonoBehaviour
     public string[] frontBrokeLines = new[]
     {
         "You said you had it. You've got lint and a nice smile.",
-        "Ate them, didn't you. I can tell. You've got the look.",
+        "Sat on them, didn't you. I can tell. You've got the look.",
         "They grow WILD out there. Go and pick some. I'll wait — I'm very good at waiting.",
     };
 

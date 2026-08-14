@@ -136,10 +136,26 @@ public static class TevFronting
         return MushroomTier.Common;
     }
 
-    /// What a front of this strain and size costs the player to clear.
+    /// <summary>
+    /// Rough market value of one pressing, using the same shape as the Phase 5
+    /// pricing formula: a floor plus what the arrangement is worth. Tev quotes
+    /// from THIS, never from what the player actually gets — which is the whole
+    /// reason the skim works. He expects his half of the market and has no way
+    /// of knowing you talked an alien into more.
+    /// </summary>
+    public static int TapeMarketValue(string printId)
+    {
+        TraxPrints.Record rec = TraxPrints.Get(printId);
+        if (rec == null) return 10;
+        int modules = rec.track.ActiveCount();
+        float tierMult = rec.tier >= 2 ? 1.5f : 1f;
+        return Mathf.Max(1, Mathf.RoundToInt((10 + 8 * modules) * tierMult));
+    }
+
+    /// What a front of this size costs the player to clear.
     /// ceil, not round: Tev never rounds in your favour.
-    public static int OwedFor(string speciesKey, int qty) =>
-        Mathf.Max(1, Mathf.CeilToInt(TevShare * MushroomRegistry.BaseValue(speciesKey) * qty));
+    public static int OwedFor(string printId, int qty) =>
+        Mathf.Max(1, Mathf.CeilToInt(TevShare * TapeMarketValue(printId) * qty));
 
     /// Roll and issue a front. HOST ONLY — the caller is responsible for that;
     /// this is where the dice are, so a guest rolling here would desync.
@@ -149,14 +165,16 @@ public static class TevFronting
         strain = ""; qty = 0; owed = 0;
         if (s == null || HasDebt(s)) return false;
 
-        strain = MushroomRegistry.RandomKeyUpToTier(MaxTier(s));
-        if (string.IsNullOrEmpty(strain)) return false;
+        // `strain` is now a PRINT ID. The field keeps its old name so the save
+        // schema does not move; it is what he fronted, whatever that is.
+        var ids = TevDemoTapes.EnsurePressed();
+        if (ids.Count == 0) return false;
+        strain = ids[0];
         qty = NextQty(s);
 
-        int leftover = Hotbar.Instance != null
-            ? Hotbar.Instance.AddResource(Hotbar.ItemId.Mushroom, qty, strain)
-            : qty;
-        int given = qty - leftover;
+        // Spread across the catalogue, as the intro batch is: a stack of one
+        // song would hit the per-alien repeat rule and strand the player.
+        int given = TevDemoTapes.Grant(qty);
         if (given <= 0) return false;    // no room — caller says so, state unchanged
 
         qty = given;
