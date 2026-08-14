@@ -1030,36 +1030,6 @@ public partial class ShuttleComputerUI : MonoBehaviour
         okBtn.targetGraphic = _printConfirm;
         okBtn.onClick.AddListener(DoPrint);
 
-        // ── TEMPORARY: dev stock ─────────────────────────────────────────
-        // Tev sells blanks in Phase 3. Until then there is no way to get any,
-        // so there is no way to test printing at all. This lives ON THE PRINT
-        // DIALOG rather than on a hotkey because CheatCodes — the obvious home
-        // for it — is not actually in the gameplay scene, so its keys have
-        // never fired.
-        //
-        // NOT gated on Application.isEditor: playtesting happens in BUILDS, and
-        // gating it there is exactly why the first attempt was invisible. Delete
-        // the whole block when the shop lands.
-        {
-            var dev = MakePanel(prt, "DevBlanks", Panel);
-            dev.raycastTarget = true;
-            Box(dev.rectTransform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(14, 14),
-                new Vector2(150, 32));
-            Outline(dev.transform, Warn);
-            var devTxt = MakeText(dev.rectTransform, "Label", "+5 BLANKS", 13, Warn,
-                                  TextAlignmentOptions.Center);
-            Stretch(devTxt.rectTransform, 0, 0, 0, 0);
-            var devBtn = dev.gameObject.AddComponent<Button>();
-            devBtn.targetGraphic = dev;
-            devBtn.onClick.AddListener(delegate
-            {
-                if (Hotbar.Instance == null) return;
-                int left = Hotbar.Instance.AddResource(BlankIdFor(_tier), 5);
-                RefreshPrintDialog();
-                Toast("DEV: +" + (5 - left) + " BLANK " + (_tier >= 2 ? "TAPE II" : "TAPE I"));
-            });
-        }
-
         _printPanel.SetActive(false);
     }
 
