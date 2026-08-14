@@ -1035,8 +1035,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // so there is no way to test printing at all. This lives ON THE PRINT
         // DIALOG rather than on a hotkey because CheatCodes — the obvious home
         // for it — is not actually in the gameplay scene, so its keys have
-        // never fired. Editor only; delete the whole block when the shop lands.
-        if (Application.isEditor)
+        // never fired.
+        //
+        // NOT gated on Application.isEditor: playtesting happens in BUILDS, and
+        // gating it there is exactly why the first attempt was invisible. Delete
+        // the whole block when the shop lands.
         {
             var dev = MakePanel(prt, "DevBlanks", Panel);
             dev.raycastTarget = true;

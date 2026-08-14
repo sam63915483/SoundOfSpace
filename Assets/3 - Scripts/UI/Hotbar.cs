@@ -296,6 +296,7 @@ public class Hotbar : MonoBehaviour
     void Update()
     {
         if (!ResolveRefs()) return;
+        DevGrantBlankTapes();
         DetectAcquisitions();
         // Piloted state: pull from "is any ship piloted" — the cached
         // `ship` reference might be the wrong instance now that the player
@@ -383,6 +384,33 @@ public class Hotbar : MonoBehaviour
             _eatProgressSlot = -1;
             _eatHeldSeconds = 0f;
         }
+    }
+
+    // ── TEMPORARY: dev stock ─────────────────────────────────────────────
+    //
+    // T = five Blank Tape I, Shift+T = five Blank Tape II. Tev sells these in
+    // Phase 3 and this whole method goes with him.
+    //
+    // It lives HERE, on an auto-created singleton, and NOT on CheatCodes,
+    // because CheatCodes is not in the gameplay scene at all (its GUID appears
+    // zero times in 1.6.7.7.7.unity) and additionally disables itself in
+    // builds. Playtesting happens in builds, so both of those had to go.
+    //
+    // T was picked because it is one of the few letters this project does not
+    // already bind, and because function keys were not reaching the game at all.
+    void DevGrantBlankTapes()
+    {
+        if (!Input.GetKeyDown(KeyCode.T)) return;
+        // Never while a text field owns the keyboard, or naming a project
+        // "TAPE" hands you fifteen blanks on the way past.
+        if (AIChatScreen.IsTypingActive) return;
+        if (PlayerController.isInDialogue) return;
+
+        bool tier2 = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        ItemId id = tier2 ? ItemId.BlankTapeT2 : ItemId.BlankTapeT1;
+        int leftover = AddResource(id, 5);
+        Debug.Log($"[DEV] Granted {5 - leftover} x {id}" +
+                  (leftover > 0 ? $" ({leftover} did not fit)" : ""));
     }
 
     /// <summary>
