@@ -31,9 +31,35 @@ public static class AlienTaste
 
     // ── Tuning. Every one of these is a knob Sam turns by ear. ───────────
 
-    /// Falloff range. LOW = broad listener who likes most things; HIGH = fussy.
-    public const double MinFalloff = 0.55;
-    public const double MaxFalloff = 1.70;
+    /// <summary>
+    /// Falloff range. LOW = broad listener; HIGH = fussy.
+    ///
+    /// ── The floor was 0.55 and that was the nine-for-nine bug ────────────
+    /// An in-game report over 23 real aliens confirmed the model was working:
+    /// 37% of offers accepted, matching the headless prediction, with 23 of 23
+    /// distinct identities. The AVERAGE was never the problem. The DISTRIBUTION
+    /// was — a third of all aliens would accept 9 or more of the 10 genre
+    /// archetypes. That is not a broad listener, it is a vending machine, and
+    /// meeting three of them in a row is exactly what nine sales out of nine
+    /// looks like from the player's side.
+    ///
+    /// Measured, sweeping the floor (fans always buy their own genre):
+    ///   0.55  others 42%   pushovers 33%   <- shipped, and wrong
+    ///   0.70  others 35%   pushovers 22%
+    ///   0.80  others 30%   pushovers 15%
+    ///   0.90  others 25%   pushovers  7%   <- here
+    ///   1.00  others 21%   pushovers  3%
+    ///
+    /// 0.90 kills the archetype without making everyone fussy: 7% still buy
+    /// almost anything, which is a nice thing to stumble across, and 18% buy
+    /// almost nothing, which is a nice thing to learn to avoid.
+    /// </summary>
+    public const double MinFalloff = 0.90;
+    /// Widened from 1.70 when the floor rose to 0.90 — otherwise the whole
+    /// population squeezes into a 0.80 band and every alien is much the same
+    /// customer. A test catches exactly that ("falloff spans a real range"),
+    /// which is why it is a real range rather than a relaxed assertion.
+    public const double MaxFalloff = 1.75;
 
     /// <summary>
     /// How fast satisfaction drops per unit of dial distance, before falloff.

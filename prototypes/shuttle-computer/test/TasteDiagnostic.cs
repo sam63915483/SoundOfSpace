@@ -187,6 +187,27 @@ public static class TasteDiagnostic
                                    SweepRaw(ids, k, g[0], g[1], false)).ToString("0") + " pts");
 
         Console.WriteLine();
+        Console.WriteLine("=== PUSHOVERS: aliens who buy almost anything ===");
+        // A listener broad enough to accept a track from the far side of the
+        // space is not a broad listener, they are a vending machine. Meeting
+        // three in a row is what a run of nine-for-nine looks like.
+        int pushover = 0, picky = 0;
+        foreach (string id in ids)
+        {
+            int accepts = 0;
+            var genres2 = TraxClassifier.Genres;
+            for (int g = 0; g < genres2.Length; g++)
+                if (AlienTaste.Gate(AlienTaste.Satisfaction(id, genres2[g].c)) != AlienTaste.Verdict.Rejected)
+                    accepts++;
+            if (accepts >= genres2.Length - 1) pushover++;     // takes 9 or 10 of 10 genres
+            if (accepts <= 2) picky++;
+        }
+        Console.WriteLine("  buy 9+ of the 10 genre archetypes: " + Pct(pushover, N) + "  <- the problem");
+        Console.WriteLine("  buy 2 or fewer:                    " + Pct(picky, N));
+        Console.WriteLine("  falloff range " + AlienTaste.MinFalloff.ToString("0.00") +
+                          " .. " + AlienTaste.MaxFalloff.ToString("0.00"));
+
+        Console.WriteLine();
         Console.WriteLine("=== ARE FAVOURITE GENRES SPREAD? ===");
         var byGenre = new int[TraxClassifier.Genres.Length];
         foreach (string id in ids) byGenre[AlienTaste.FavouriteGenreIndex(id)]++;
