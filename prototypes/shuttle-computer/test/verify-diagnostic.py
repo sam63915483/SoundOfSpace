@@ -21,7 +21,7 @@ import io
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 HERE = os.path.dirname(os.path.abspath(__file__))
-BUILD = os.path.join(ROOT, "build", "taste")
+BUILD = os.path.join(ROOT, "build", "diag")
 
 # The engine files the shelf leans on, plus the shelf itself.
 SOURCES = [
@@ -72,22 +72,21 @@ def main():
         os.makedirs(BUILD)
 
     src = [os.path.join(ROOT, "Assets", "3 - Scripts", "Music", f) for f in SOURCES]
-    src.append(os.path.join(HERE, "AlienTasteTests.cs"))
-    src.append(os.path.join(HERE, "TapeOfferTests.cs"))
+    src.append(os.path.join(HERE, "TasteDiagnostic.cs"))
     src.append(os.path.join(HERE, "SaveStubs.cs"))
     for s in src:
         if not os.path.isfile(s):
             print("missing source: " + s)
             return 3
 
-    exe = os.path.join(BUILD, "AlienTasteTests.dll")
+    exe = os.path.join(BUILD, "TasteDiagnostic.dll")
     rsp = os.path.join(BUILD, "library.rsp")
     with io.open(rsp, "w", encoding="utf-8") as f:
         f.write("-target:exe" + chr(10))
         f.write("-nologo" + chr(10))
         f.write("-nostdlib+" + chr(10))
         f.write("-langversion:9.0" + chr(10))
-        f.write("-main:AlienTasteTests" + chr(10))
+        f.write("-main:TasteDiagnostic" + chr(10))
         f.write('-out:"' + exe + '"' + chr(10))
         # The runtime folder mixes managed assemblies with native ones;
         # referencing a native DLL is a hard error, so take only the managed set.
@@ -115,7 +114,7 @@ def main():
         return 1
     print("  ok - AlienTaste + TapeValue compile with zero Unity dependencies")
 
-    cfg = os.path.join(BUILD, "AlienTasteTests.runtimeconfig.json")
+    cfg = os.path.join(BUILD, "TasteDiagnostic.runtimeconfig.json")
     ver = os.path.basename(refdir)
     with io.open(cfg, "w", encoding="utf-8") as f:
         f.write('{"runtimeOptions":{"tfm":"net6.0","framework":' +

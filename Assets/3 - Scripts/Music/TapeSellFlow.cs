@@ -122,7 +122,12 @@ public class TapeSellFlow
 
         if (reaction == TapeOffer.Reaction.Rejected)
         {
-            string genre = TraxClassifier.Classify(press.track.dials).label;
+            // THEIR favourite genre, not the tape's. Passing the tape's label
+            // here made every alien announce they were "more of a DRIFT
+            // listener" whenever they were played a DRIFT track — Sam caught it
+            // in play, three aliens in a row agreeing about a taste none of
+            // them had.
+            string genre = AlienTaste.FavouriteGenre(alienId);
             yield return _speak(AlienFeedback.ForRejection(alienId, dials, genre, variant));
             yield break;   // tape stays in the player's hands
         }

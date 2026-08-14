@@ -35,10 +35,24 @@ public static class AlienTaste
     public const double MinFalloff = 0.55;
     public const double MaxFalloff = 1.70;
 
+    /// <summary>
     /// How fast satisfaction drops per unit of dial distance, before falloff.
-    /// Distance in this space runs 0..~24 for opposite corners, so k=7 puts a
-    /// typical miss in the interesting middle rather than pinning it at 0.
-    public const double SatisfactionK = 7.0;
+    ///
+    /// ── Tuned DOWN from 7.0 after measuring, 2026-08-14 ──────────────────
+    /// At 7.0 the mean satisfaction across 500 aliens was ~30 and roughly 60%
+    /// of every tape was refused outright, which made the first hour a wall of
+    /// no. Worse, it put the discrimination in the WRONG PLACE: because
+    /// distance-based satisfaction is minimised at the centroid, a bland
+    /// centre-of-the-space track was accepted by ~79% of aliens while a
+    /// characterful one was accepted by ~17%. That quietly makes "write
+    /// centrist music" the winning strategy, which is the opposite of the game.
+    ///
+    /// At 4.0 most tapes find a buyer, and the difference between a great match
+    /// and a poor one is expressed in the PRICE instead (the value formula
+    /// spans 0.4x to 1.3x on satisfaction alone). Being paid badly for a tape
+    /// nobody loves is a far better lesson than being refused six times.
+    /// </summary>
+    public const double SatisfactionK = 4.0;
 
     /// Pay factor scales INVERSELY with breadth: an alien who likes almost
     /// nothing pays a premium when you finally hit it, and one who likes
@@ -77,16 +91,59 @@ public static class AlienTaste
 
     static uint H(string id, string salt) { return Hash(id + salt); }
 
+    /// How far an ear may sit from the genre it loves, per dial. Enough that
+    /// two fans of the same genre are not the same customer; small enough that
+    /// they are still recognisably fans of it.
+    public const double GenreJitter = 1.8;
+
+    /// <summary>
+    /// The genre this alien is a fan of, as an index into TraxClassifier.Genres.
+    /// </summary>
+    public static int FavouriteGenreIndex(string id)
+    {
+        int n = TraxClassifier.Genres.Length;
+        return n <= 0 ? 0 : (int)(H(id, ":genre") % (uint)n);
+    }
+
+    public static string FavouriteGenre(string id)
+    {
+        int i = FavouriteGenreIndex(id);
+        var g = TraxClassifier.Genres;
+        return (i >= 0 && i < g.Length) ? g[i].name : "";
+    }
+
     /// <summary>
     /// Where this alien's ear sits, one coordinate per dial, each 0..10.
-    /// Written into <paramref name="into"/> to keep this allocation-free — it
-    /// is called for every alien in a sell panel.
+    ///
+    /// ── Ears sit near GENRE CENTRES, not anywhere in the cube ────────────
+    /// The first version scattered them uniformly, and measurement killed it:
+    /// in six dimensions a uniform scatter puts almost every alien at a similar
+    /// middling distance from everything, so satisfaction was dominated by HOW
+    /// EXTREME THE TRACK WAS rather than by whether this listener matched it. A
+    /// dead-centre track was accepted by 70% of aliens and an extreme one by
+    /// 13% — which quietly makes the winning strategy "write centrist music"
+    /// instead of "find the right customer", and flattens the whole design.
+    ///
+    /// Anchoring each ear to a genre centre plus jitter fixes it at the root:
+    /// a SLUDJ track now delights SLUDJ fans and is refused by everyone else,
+    /// which is the fantasy the game is selling. It also makes "I'm more of a
+    /// GLORP listener" literally true rather than a label bolted on afterwards.
+    ///
+    /// Written into <paramref name="into"/> to stay allocation-free.
     /// </summary>
     public static void TastePoint(string id, double[] into)
     {
         if (into == null) return;
+        var genres = TraxClassifier.Genres;
+        double[] centre = genres.Length > 0 ? genres[FavouriteGenreIndex(id)].c : null;
+
         for (int i = 0; i < DialCount && i < into.Length; i++)
-            into[i] = Unit(H(id, ":taste" + i)) * 10.0;
+        {
+            double baseline = (centre != null && i < centre.Length) ? centre[i] : 5.0;
+            double jitter = (Unit(H(id, ":jitter" + i)) * 2.0 - 1.0) * GenreJitter;
+            double v = baseline + jitter;
+            into[i] = v < 0 ? 0 : v > 10 ? 10 : v;
+        }
     }
 
     public static double[] TastePoint(string id)

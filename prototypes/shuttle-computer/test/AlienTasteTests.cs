@@ -164,15 +164,24 @@ public static class AlienTasteTests
         Eq(AlienTaste.Satisfaction(id, taste), 100.0, "a tape dead on their ear scores 100");
 
         // Moving away from their point must never INCREASE satisfaction.
+        //
+        // The walk has to be genuinely monotonic or the test is measuring its
+        // own path, not the model. An earlier version added `step` to each dial
+        // and FLIPPED to subtracting once it passed 10 — which moves some dials
+        // back toward the taste point at some steps. It only passed because
+        // K=7 saturated satisfaction at zero before the flip mattered; lowering
+        // K to 4 exposed the flaw in the test, not a regression in the model.
+        //
+        // Each dial now travels toward ITS far end, so distance rises with t.
         double prev = 100.0;
         for (int step = 0; step <= 10; step++)
         {
+            double t = step / 10.0;
             var dials = new double[AlienTaste.DialCount];
             for (int i = 0; i < dials.Length; i++)
             {
-                double v = taste[i] + step;             // walk away along every axis
-                dials[i] = v > 10 ? taste[i] - step : v;
-                if (dials[i] < 0) dials[i] = 0;
+                double farEnd = taste[i] > 5 ? 0.0 : 10.0;
+                dials[i] = taste[i] + (farEnd - taste[i]) * t;
             }
             double s = AlienTaste.Satisfaction(id, dials);
             Check(s <= prev + 1e-9, "satisfaction never rises as the track moves away (step " + step + ")");
