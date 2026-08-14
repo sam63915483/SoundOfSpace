@@ -85,8 +85,9 @@ input[type=range]{flex:1;accent-color:#78c8ff;height:18px}
 <h1>LAYOUT A — PLAYABLE</h1>
 <div class="note">
 Real maths behind it: the same taste points, satisfaction curve, like gate, value
-formula and patience the game uses. <b>Click a tape</b> to put one on the table, then use
-<b>HOW MANY</b> to move more across. <b>NEXT BUYER</b> rerolls the alien so you can feel how
+formula and patience the game uses. <b>Click a tape</b> and exactly one goes on the table —
+a tape is one specific song, so nobody buys two copies of it. Copies are for selling the
+same song to <b>different</b> people. <b>NEXT BUYER</b> rerolls the alien so you can feel how
 differently two of them treat the same tape. The grey box at the bottom shows the hidden
 numbers — that is a debug aid, not part of the screen.
 </div>
@@ -105,19 +106,13 @@ numbers — that is a debug aid, not part of the screen.
   </div>
 
   <div class="ctl">
-    <div class="cap">HOW MANY</div>
-    <input type="range" id="qty" min="0" max="1" value="0" step="1" disabled>
-    <div class="num" id="qtyNum">—</div>
-  </div>
-
-  <div class="ctl">
     <div class="cap">ASK</div>
     <input type="range" id="ask" min="1" max="200" value="58" step="1" disabled>
     <div class="num" id="askNum">—</div>
   </div>
   <div class="risk" id="risk">&nbsp;</div>
 
-  <div class="rack-cap">YOUR TAPES <span id="rackHint" style="color:#43668a"></span></div>
+  <div class="rack-cap">YOUR TAPES <span style="color:#43668a">— ONE PER CUSTOMER; THEY WON'T BUY A SONG TWICE</span></div>
   <div class="rack" id="rack"></div>
 
   <div class="btns">
@@ -189,19 +184,16 @@ function drawRack(){
   });
 }
 
+// ONE tape on the table, always. A tape is a specific song — an alien buying
+// two copies of it makes no sense, and the quantity control was a mushroom idea
+// that survived the conversion because caps are fungible and songs are not.
+// Copies exist to sell the SAME song to DIFFERENT people, which the per-alien
+// repeat rule is what makes necessary.
 function pick(i){
-  if(sel!==null&&sel!==i&&onTable>0){ msg('Take the other one back first.','var(--err)'); return; }
-  if(sel===i){ setQty(Math.min(tapes[i].count,onTable+1)); return; }
-  sel=i; onTable=0; stage='open'; counter=0;
-  setQty(1);
-  msg(`<span class="playing">NOW PLAYING — ${tapes[i].name}<span class="bars"><i></i><i></i><i></i><i></i></span></span>`,'');
-}
-
-function setQty(n){
-  const t=tapes[sel]; onTable=Math.max(0,Math.min(t.count,n));
-  if(onTable===0){ sel=null; }
-  stage='open'; counter=0;
+  if(sel===i){ return; }             // already on the table
+  sel=i; onTable=1; stage='open'; counter=0;
   draw();
+  msg(`<span class="playing">NOW PLAYING — ${tapes[i].name}<span class="bars"><i></i><i></i><i></i><i></i></span></span>`,'');
 }
 
 function draw(){
@@ -213,8 +205,8 @@ function draw(){
 
   if(!t||onTable===0){
     $('tableEmpty').style.display='';$('tableFull').style.display='none';
-    $('qty').disabled=true;$('ask').disabled=true;
-    $('qtyNum').textContent='—';$('askNum').textContent='—';
+    $('ask').disabled=true;
+    $('askNum').textContent='—';
     $('risk').innerHTML='&nbsp;';$('btnSell').disabled=true;$('btnTake').disabled=true;
   }else{
     $('tableEmpty').style.display='none';
@@ -227,11 +219,9 @@ function draw(){
           <span class="val">${market(t)}</span> a tape — what ${buyer.name.toUpperCase()} pays is up to them</div>
         <div class="playing">NOW PLAYING<span class="bars"><i></i><i></i><i></i><i></i></span></div>
       </div>
-      <div class="bigq">×${onTable}</div>`;
-    $('qty').disabled=false;$('qty').max=t.count;$('qty').value=onTable;
-    $('qtyNum').textContent=`${onTable} of ${t.count}`;
+      <div class="bigq" style="font-size:13px;color:var(--dim);min-width:74px">${t.count-1} more<br>in your bag</div>`;
     $('ask').disabled=false;
-    $('askNum').innerHTML=`${$('ask').value} <span style="font-size:12px;color:#7fa0bd">each · ${$('ask').value*onTable} total</span>`;
+    $('askNum').textContent=$('ask').value;
     drawRisk(t);
     $('btnSell').disabled=false;$('btnTake').disabled=false;
     $('btnSell').textContent = stage==='countered' ? `TAKE ${counter}` : 'OFFER IT';
@@ -253,7 +243,6 @@ function drawRisk(t){
 
 function msg(html,col){ $('result').innerHTML=html; $('result').style.color=col||'var(--label)'; }
 
-$('qty').oninput=e=>setQty(+e.target.value);
 $('ask').oninput=()=>draw();
 $('btnTake').onclick=()=>{ sel=null;onTable=0;stage='open';msg('&nbsp;');draw(); };
 $('btnNext').onclick=()=>{ buyer=makeBuyer(); sel=null;onTable=0;stage='open';heard=new Set();
@@ -295,11 +284,13 @@ $('btnSell').onclick=()=>{
 };
 
 function close(per){
-  const t=tapes[sel], total=per*onTable;
+  const t=tapes[sel];
   heard.add(buyer.name+'|'+t.name);
-  t.count-=onTable;
+  t.count-=1;
   buyer.lastPaid=per; buyer.bond=Math.min(100,buyer.bond+8+(t.genre===buyer.fav?4:0));
-  msg(`${buyer.name.toUpperCase()} paid <span class="val">${total}</span> credits for ${onTable}.`,'var(--ok)');
+  msg(`${buyer.name.toUpperCase()} paid <span class="val">${per}</span> credits.` +
+      (t.count>0?` <span style="color:var(--dim)">${t.count} more in your bag for someone else.</span>`
+                :` <span style="color:var(--dim)">That was your last copy.</span>`),'var(--ok)');
   tapes=tapes.filter(x=>x.count>0);
   sel=null;onTable=0;stage='open';
   draw();

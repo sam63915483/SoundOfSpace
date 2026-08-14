@@ -21,11 +21,18 @@ using UnityEngine;
 /// </summary>
 public static class TapeTrade
 {
-    /// How many tapes a contact asks for at once. Small on purpose — a tape is
-    /// a specific song, not a sack of produce, and asking for eight of them
-    /// would mean eight tracks the player has to write.
-    public const int MinAskQty = 1;
-    public const int MaxAskQty = 3;
+    /// <summary>
+    /// ONE. A tape is a specific song, so an alien wanting two copies of it
+    /// makes no sense — Sam's call, and it is the right one.
+    ///
+    /// Copies still matter, just not here: you print five of a good song to
+    /// sell to five DIFFERENT people, which the per-alien repeat rule is
+    /// exactly what forces. Breadth, not depth.
+    ///
+    /// Kept as a constant rather than inlined so the quantity is one number to
+    /// change if a "boxed set" idea ever turns up.
+    /// </summary>
+    public const int AskQty = 1;
 
     // ── vocabulary ───────────────────────────────────────────────────────
 
@@ -61,14 +68,7 @@ public static class TapeTrade
         return AlienTaste.FavouriteGenreIndex(id);
     }
 
-    public static int PickAskQty(string id)
-    {
-        // Bigger orders from people who like you, so a regular is worth more
-        // per trip rather than merely more often.
-        int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
-        int max = bond >= 60 ? MaxAskQty : bond >= 25 ? 2 : 1;
-        return Random.Range(MinAskQty, max + 1);
-    }
+    public static int PickAskQty(string id) { return AskQty; }
 
     // ── what it is worth to them ─────────────────────────────────────────
 
@@ -95,18 +95,11 @@ public static class TapeTrade
     }
 
     /// <summary>
-    /// How the quantity the player proposes shifts what they will tolerate
-    /// paying, mirroring BuyerDeals.QtyMood so both economies haggle the same
-    /// way. Short of the ask: still interested, no premium. Over it: they will
-    /// take them, but they cool on it.
+    /// Kept at 1: orders are always for a single tape, so there is no quantity
+    /// to be short or long on. The mushroom economy needed this because caps
+    /// are fungible and a buyer has an appetite; a song has neither.
     /// </summary>
-    public static float QtyMood(int wantQty, int offerQty)
-    {
-        if (wantQty <= 0 || offerQty == wantQty) return 1f;
-        float ratio = (float)offerQty / wantQty;
-        if (ratio < 1f) return Mathf.Lerp(0.85f, 1f, ratio);
-        return 1f - 0.15f * Mathf.Min(1f, ratio - 1f);
-    }
+    public static float QtyMood(int wantQty, int offerQty) { return 1f; }
 
     /// <summary>
     /// The player counters at <paramref name="ask"/> per tape. One exchange
