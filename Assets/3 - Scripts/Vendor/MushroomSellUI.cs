@@ -59,6 +59,14 @@ public class MushroomSellUI : MonoBehaviour
     const float SlotSize  = 72f;
     const float SlotGap   = 6f;
 
+    // A tape TILE, not a square slot. A mushroom stack was identified by a live
+    // species render, so a 72px square was enough; a tape is identified by its
+    // NAME, which needs room to be read without picking it up first.
+    // 7 x 112 + 6 x 6 = 820, exactly the panel's inner width.
+    const float TileW = 112f;
+    const float TileH = 96f;
+    const float TileArtH = 42f;
+
     enum Stage { Open, Countered }
 
     // ── scene refs ────────────────────────────────────────────────────────
@@ -68,13 +76,14 @@ public class MushroomSellUI : MonoBehaviour
     TextMeshProUGUI _header, _memoText, _offerText, _totalText, _resultText, _riskText, _cdText, _counterText;
     RectTransform _offerSlotRT, _counterPanel;
     RawImage _offerPreview;
+    Image _offerArt;
     TextMeshProUGUI _offerCount;
     Image _offerTier;
     // CAPS + PRICE sliders — the same control the Messages app haggles with,
     // built from DealSliderKit so the two negotiation screens stay identical in
     // feel. They replaced a TMP_InputField + four ± steppers.
-    UnityEngine.UI.Slider _qtySlider, _askSlider;
-    TextMeshProUGUI _qtyHandleLabel, _askHandleLabel;
+    UnityEngine.UI.Slider _askSlider;
+    TextMeshProUGUI _askHandleLabel;
     Button _primaryBtn, _takeBtn, _secondaryBtn;
     TextMeshProUGUI _primaryLabel, _takeLabel, _secondaryLabel;
     SlotWidget[] _barSlots = new SlotWidget[HotbarSlots];
@@ -109,6 +118,11 @@ public class MushroomSellUI : MonoBehaviour
         public RectTransform root;
         public Image bg, border, tier;
         public RawImage preview;
+        // The cassette shell. An Image, not the RawImage above: the art is a
+        // generated SPRITE and RawImage only speaks Texture — which is exactly
+        // why the slots drew empty on the first conversion.
+        public Image art;
+        public TextMeshProUGUI nameLbl, genreLbl;
         public TextMeshProUGUI count;
         // Which HOTBAR slot this tile is showing. The panel lists ONLY mushroom
         // stacks, packed left, so tile N is not hotbar slot N — showing the
@@ -193,7 +207,7 @@ public class MushroomSellUI : MonoBehaviour
     }
 
     /// <param name="price">This buyer's hidden rate + patience. Never rendered.</param>
-    /// <param name="onSold">Number of caps sold, each time a deal closes.</param>
+    /// <param name="onSold">Number of tapes sold, each time a deal closes.</param>
     /// <summary>
     /// Open the sell table for an alien. Takes their IDENTITY rather than a
     /// mushroom price component — the tape economy prices from AlienTaste, and
@@ -605,7 +619,7 @@ public class MushroomSellUI : MonoBehaviour
             {
                 _counter = parked;
                 _stage = Stage.Countered;
-                SetResult($"{_npcName} is still offering {parked} a cap.", C_Dim);
+                SetResult($"{_npcName} is still offering {parked}.", C_Dim);
             }
         }
         Refresh();
@@ -727,12 +741,43 @@ public class MushroomSellUI : MonoBehaviour
         if (_offerCountN <= 0) { _offerSpecies = null; _stage = Stage.Open; }
     }
 
+    /// <summary>
+    /// Click a tile and exactly ONE of that tape goes on the table.
+    ///
+    /// No dragging and no quantity: a tape is a specific song, so an alien
+    /// buying two copies of it is meaningless (Sam's call). Copies exist to
+    /// sell the same song to DIFFERENT people, which the per-alien repeat rule
+    /// is what forces — so the shelf is a chooser, not a stack you portion out.
+    /// </summary>
     void OnBarSlotClicked(int i, bool rightClick)
     {
         var bar = Bar;
         if (bar == null || i < 0 || i >= bar.Length) return;
-        if (rightClick) SlotOps.HandleRightClick(bar, i, ref _cursor);
-        else            SlotOps.HandleLeftClick(bar, i, ref _cursor);
+        if (Barred) { SetResult($"{_npcName} isn't dealing with you right now.", C_Err); return; }
+
+        Hotbar.Slot slot = bar[i];
+        if (slot.id != Hotbar.ItemId.Cassette || slot.count <= 0) return;
+
+        // Clicking the one already on the table is a no-op rather than a
+        // second copy — there is no second copy to want.
+        if (_offerSpecies == slot.cassetteId && _offerCountN > 0) return;
+
+        // Swap: whatever was on the table goes home first, so the player never
+        // has to clear it manually to look at something else.
+        if (HasOffer) ReturnOfferToBar();
+
+        _offerSpecies = slot.cassetteId;
+        _offerCountN = 0;
+        _stage = Stage.Open;
+        _counter = 0;
+        if (!OfferPlusOne()) { _offerSpecies = null; Refresh(); return; }
+
+        // Put it on. The buyer pricing a song without hearing it would be
+        // absurd, and the player should hear what they are pricing.
+        TraxTapePlayer.TogglePersonal(null, _offerSpecies);
+
+        _ask = Mathf.Max(1, Market);   // seed at market so the slider starts honest
+        SetResult("", C_Ok);
         Refresh();
     }
 
@@ -751,7 +796,7 @@ public class MushroomSellUI : MonoBehaviour
             if (last > 0)
             {
                 int qty = MushroomDealState.LastQty(_buyerId);
-                string line = $"you remember: paid <color=#FFD732>{last}</color> a cap, took <color=#FFD732>{qty}</color>";
+                string line = $"you remember: paid <color=#FFD732>{last}</color> for a tape";
                 // Earned notes come from the ledger's reveal schedule: one
                 // hidden want per completed deal, fixed order (spec §6). The
                 // memo fits the taste pair (fav + disliked); the full list
@@ -790,10 +835,15 @@ public class MushroomSellUI : MonoBehaviour
             else
             _offerText.text =
                 $"<b>{title}</b>  <size=13><color=#{tierHex}>{genre} · {typeWord}</color></size>\n" +
-                $"<size=13><color=#7FA0BD>market value <color=#FFD732>{Market}</color> a tape — what {_npcName} pays is up to {_npcName}</color></size>";
-            // No live render for a cassette: the shell sprite IS the art, and it
-            // already carries the tier colour.
+                $"<size=13><color=#7FA0BD>market value <color=#FFD732>{Market}</color> a tape — what {_npcName} pays is up to {_npcName}</color></size>\n" +
+                $"<size=12><color=#6EDC82>NOW PLAYING</color></size>";
+            // No live render for a cassette: the shell sprite IS the art.
             _offerPreview.enabled = false;
+            if (_offerArt != null)
+            {
+                _offerArt.enabled = true;
+                _offerArt.sprite = Hotbar.CassetteSpriteFor(_offerSpecies);
+            }
             _offerCount.enabled = true;
             _offerCount.text = _offerCountN.ToString();
             _offerTier.color = tc;
@@ -803,9 +853,10 @@ public class MushroomSellUI : MonoBehaviour
         {
             _offerText.text = _scheduled && _appt != null
                 ? $"<b>ORDER</b> — {_appt.askQty} {TapeTrade.GenreName(_appt.askTier)} @ <color=#FFD732>{_appt.offerPerCap}</color> each agreed\n" +
-                  "<color=#4D6F90>DRAG THE TAPES ONTO THE TABLE</color>"
-                : "<color=#4D6F90>DRAG ONE SONG ONTO THE TABLE</color>";
+                  "<color=#4D6F90>CLICK THE TAPE TO PUT IT ON THE TABLE</color>"
+                : "<color=#4D6F90>CLICK A TAPE TO PUT IT ON THE TABLE</color>";
             _offerPreview.enabled = false;
+            if (_offerArt != null) _offerArt.enabled = false;
             _offerCount.enabled = false;
             _offerTier.enabled = false;
         }
@@ -934,18 +985,9 @@ public class MushroomSellUI : MonoBehaviour
     /// onValueChanged, which would re-enter SetOfferCount mid-Refresh.
     void RefreshSliders(bool barred)
     {
-        if (_qtySlider == null || _askSlider == null) return;
+        if (_askSlider == null) return;
 
         _suppressInput = true;
-
-        // ── CAPS ──
-        int stock = BarStockOfOfferSpecies();
-        int qtyMax = Mathf.Max(1, _offerCountN + stock);
-        _qtySlider.minValue = 0;
-        _qtySlider.maxValue = qtyMax;
-        _qtySlider.SetValueWithoutNotify(Mathf.Clamp(_offerCountN, 0, qtyMax));
-        _qtySlider.interactable = HasOffer && !barred;
-        if (_qtyHandleLabel != null) _qtyHandleLabel.text = _offerCountN.ToString();
 
         // ── PRICE ──
         // Anchored on MARKET in a walk-up (which is what the risk wording below
@@ -980,17 +1022,41 @@ public class MushroomSellUI : MonoBehaviour
     {
         if (w == null) return;
         bool empty = s.id == Hotbar.ItemId.None || s.count <= 0;
-        // A cassette has no live render — its shell sprite is the art, and the
-        // pip below carries the tier colour.
         bool tape = !empty && s.id == Hotbar.ItemId.Cassette;
-        RenderTexture tex = null;
 
         w.bg.color = empty ? new Color32(6, 14, 24, 255) : C_SlotBg;
         w.border.color = empty ? C_SlotEdge : C_Border;
-        w.preview.texture = tex;
-        w.preview.enabled = tex != null;
+        if (w.preview != null) w.preview.enabled = false;   // tiles draw a sprite, not a render
+
+        // THE SHELL. This is the bug Sam hit: the art is a generated SPRITE,
+        // and the old slot drew through a RawImage, which only speaks Texture.
+        if (w.art != null)
+        {
+            w.art.enabled = tape;
+            if (tape) w.art.sprite = Hotbar.CassetteSpriteFor(s.cassetteId);
+        }
+
+        // NAME AND GENRE, always visible. The whole reason a tape needs a tile
+        // rather than a square: you choose between songs by name, and having to
+        // pick one up to find out which it was made the shelf unreadable.
+        if (w.nameLbl != null)
+        {
+            w.nameLbl.enabled = tape;
+            if (tape) w.nameLbl.text = TraxPrints.DisplayName(s.cassetteId).ToUpperInvariant();
+        }
+        if (w.genreLbl != null)
+        {
+            w.genreLbl.enabled = tape;
+            if (tape)
+            {
+                var rec = TraxPrints.Get(s.cassetteId);
+                string g = rec != null ? TraxClassifier.Classify(rec.track.dials).primary.name : "";
+                w.genreLbl.text = g + (rec != null && rec.tier >= 2 ? "   T2" : "   T1");
+            }
+        }
+
         w.count.enabled = !empty && s.count > 0;
-        if (w.count.enabled) w.count.text = s.count.ToString();
+        if (w.count.enabled) w.count.text = "x" + s.count;
 
         // Tier pip: Type 1 phosphor vs Type 2 magenta, which is what teaches
         // the two shells apart at a glance.
@@ -1074,6 +1140,12 @@ public class MushroomSellUI : MonoBehaviour
         var zone = Panel(_panelRT, "OfferZone", new Vector2(0, -84), new Vector2(820, 118), new Color32(6, 16, 27, 255));
         Outline(zone, C_SlotEdge);
         _offerSlotRT = SlotFrame(zone, new Vector2(-820 * 0.5f + 62, 0), 84f, out _offerPreview, out _offerCount, out _offerTier);
+        // The shell on the table. Same reason as the tiles: the art is a
+        // generated sprite, and the RawImage above cannot draw one.
+        var offerArtRT = Panel(_offerSlotRT, "Art", Vector2.zero, new Vector2(72, 46), Color.white);
+        _offerArt = offerArtRT.GetComponent<Image>();
+        _offerArt.raycastTarget = false;
+        _offerArt.preserveAspect = true;
         _offerText = Txt(zone, "", new Vector2(70, -26), 600, 76, 17, C_Label, FontStyles.Normal, TextAlignmentOptions.Left);
         var zoneDrag = zone.gameObject.AddComponent<SlotDragProxy>();
         zoneDrag.canBeginDrag = () => !_cursor.IsHeld && HasOffer;
@@ -1087,21 +1159,21 @@ public class MushroomSellUI : MonoBehaviour
         // The ± minis that used to sit against the slot's right edge are gone —
         // the CAPS slider below does that job now, and does it in one drag.
 
-        Txt(_panelRT, "YOUR MUSHROOMS", new Vector2(0, -212), 820, 18, 12, C_Dim, FontStyles.Bold, TextAlignmentOptions.Center);
+        Txt(_panelRT, "YOUR TAPES", new Vector2(0, -286), 820, 18, 12, C_Dim, FontStyles.Bold, TextAlignmentOptions.Center);
 
-        // ── the bar: mushroom stacks only ──
-        float rowW = HotbarSlots * SlotSize + (HotbarSlots - 1) * SlotGap;
-        var row = Panel(_panelRT, "BarRow", new Vector2(0, -234), new Vector2(rowW, SlotSize), new Color(0, 0, 0, 0));
+        // ── the shelf: one tile per tape you are carrying ──
+        float rowW = HotbarSlots * TileW + (HotbarSlots - 1) * SlotGap;
+        var row = Panel(_panelRT, "BarRow", new Vector2(0, -342), new Vector2(rowW, TileH), new Color(0, 0, 0, 0));
         for (int i = 0; i < HotbarSlots; i++)
         {
-            float x = -rowW * 0.5f + i * (SlotSize + SlotGap) + SlotSize * 0.5f;
+            float x = -rowW * 0.5f + i * (TileW + SlotGap) + TileW * 0.5f;
             _barSlots[i] = BuildBarSlot(row, i, new Vector2(x, 0));
         }
-        // No "you're not carrying any mushrooms" line — an empty row already
-        // says that, and the table's own prompt says what to do about it.
+        // No "you're not carrying any tapes" line — an empty row already says
+        // that, and the table's own prompt says what to do about it.
 
         // ── counter banner ──
-        _counterPanel = Panel(_panelRT, "Counter", new Vector2(0, -340), new Vector2(820, 78), new Color32(14, 39, 64, 255));
+        _counterPanel = Panel(_panelRT, "Counter", new Vector2(0, -196), new Vector2(820, 66), new Color32(14, 39, 64, 255));
         Outline(_counterPanel, new Color32(47, 111, 140, 255));
         _counterText = Txt(_counterPanel, "", new Vector2(0, -8), 780, 66, 14, C_Label, FontStyles.Normal, TextAlignmentOptions.Left);
         _counterPanel.gameObject.SetActive(false);
@@ -1120,18 +1192,15 @@ public class MushroomSellUI : MonoBehaviour
         // palette rather than the phone's greys.
         var sliderStyle = DealSliderKit.Style.VendorPanel();
 
-        _qtySlider = DealSliderKit.BuildSliderRow(
-            _panelRT, "CAPS", -424f, 0, 1, 0, null, out _qtyHandleLabel, sliderStyle);
-        _qtySlider.onValueChanged.AddListener(v =>
-        {
-            if (_suppressInput) return;
-            SetOfferCount(Mathf.RoundToInt(v));
-        });
+        // NO QUANTITY SLIDER. It was a mushroom control: caps are fungible and
+        // a buyer has an appetite, so "how many" was the interesting question.
+        // A tape is one specific song and nobody wants two copies of it, so the
+        // shelf is a chooser and the only number left to set is the price.
 
         // PRICE rides the green→amber→red risk gradient — position on the track
         // IS the risk read, same as the phone.
         _askSlider = DealSliderKit.BuildSliderRow(
-            _panelRT, "PRICE", -462f, 0, 1, 0, DealSliderKit.RiskGradient(), out _askHandleLabel, sliderStyle);
+            _panelRT, "ASK", -252f, 0, 1, 0, DealSliderKit.RiskGradient(), out _askHandleLabel, sliderStyle);
         _askSlider.onValueChanged.AddListener(v =>
         {
             if (_suppressInput) return;
@@ -1267,10 +1336,45 @@ public class MushroomSellUI : MonoBehaviour
         else Close();
     }
 
+    /// <summary>
+    /// One tape in the shelf: shell art, NAME, genre and how many you carry.
+    /// A mushroom stack got a bare 72px square because a live species render
+    /// identified it; a tape is identified by its name, so the tile is wider
+    /// and carries text.
+    /// </summary>
     SlotWidget BuildBarSlot(RectTransform parent, int index, Vector2 pos)
     {
         var w = new SlotWidget();
-        w.root = SlotFrame(parent, pos, SlotSize, out w.preview, out w.count, out w.tier, out w.bg, out w.border);
+        w.root = Panel(parent, "Tile", pos, new Vector2(TileW, TileH), C_SlotEdge);
+        w.border = w.root.GetComponent<Image>();
+        w.border.raycastTarget = true;
+
+        var fill = Panel(w.root, "Fill", Vector2.zero, new Vector2(TileW - 2, TileH - 2), C_SlotBg);
+        w.bg = fill.GetComponent<Image>();
+        w.bg.raycastTarget = false;
+
+        // Shell art across the top.
+        var artRT = Panel(w.root, "Art", new Vector2(0, (TileH - TileArtH) * 0.5f - 5f),
+                          new Vector2(TileW - 12f, TileArtH), Color.white);
+        w.art = artRT.GetComponent<Image>();
+        w.art.raycastTarget = false;
+        w.art.preserveAspect = true;
+
+        // Count sits ON the art, top-right, so it never competes with the name.
+        w.count = Txt(w.root, "", new Vector2(TileW * 0.5f - 16f, TileH * 0.5f - 10f),
+                      28, 16, 12, C_Label, FontStyles.Bold, TextAlignmentOptions.Right);
+
+        w.nameLbl = Txt(w.root, "", new Vector2(0, -6f), TileW - 10f, 16, 11,
+                        C_Label, FontStyles.Normal, TextAlignmentOptions.Left);
+        w.nameLbl.overflowMode = TextOverflowModes.Ellipsis;
+        w.genreLbl = Txt(w.root, "", new Vector2(0, -24f), TileW - 10f, 14, 10,
+                         C_Dim, FontStyles.Normal, TextAlignmentOptions.Left);
+
+        // Tier pip in the corner: Type 1 phosphor, Type 2 magenta.
+        var pip = Panel(w.root, "Pip", new Vector2(-TileW * 0.5f + 8f, -TileH * 0.5f + 8f),
+                        new Vector2(8, 8), Color.white);
+        w.tier = pip.GetComponent<Image>();
+        w.tier.raycastTarget = false;
 
         // Closures read w.realIndex at CALL time, not a captured constant —
         // the tile→hotbar mapping is rebuilt every Refresh as stacks empty out.

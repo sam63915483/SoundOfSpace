@@ -112,7 +112,7 @@ numbers — that is a debug aid, not part of the screen.
   </div>
   <div class="risk" id="risk">&nbsp;</div>
 
-  <div class="rack-cap">YOUR TAPES <span style="color:#43668a">— ONE PER CUSTOMER; THEY WON'T BUY A SONG TWICE</span></div>
+  <div class="rack-cap">YOUR TAPES</div>
   <div class="rack" id="rack"></div>
 
   <div class="btns">
@@ -192,8 +192,8 @@ function drawRack(){
 function pick(i){
   if(sel===i){ return; }             // already on the table
   sel=i; onTable=1; stage='open'; counter=0;
+  msg('&nbsp;');
   draw();
-  msg(`<span class="playing">NOW PLAYING — ${tapes[i].name}<span class="bars"><i></i><i></i><i></i><i></i></span></span>`,'');
 }
 
 function draw(){
@@ -219,7 +219,7 @@ function draw(){
           <span class="val">${market(t)}</span> a tape — what ${buyer.name.toUpperCase()} pays is up to them</div>
         <div class="playing">NOW PLAYING<span class="bars"><i></i><i></i><i></i><i></i></span></div>
       </div>
-      <div class="bigq" style="font-size:13px;color:var(--dim);min-width:74px">${t.count-1} more<br>in your bag</div>`;
+      `;
     $('ask').disabled=false;
     $('askNum').textContent=$('ask').value;
     drawRisk(t);
@@ -288,9 +288,7 @@ function close(per){
   heard.add(buyer.name+'|'+t.name);
   t.count-=1;
   buyer.lastPaid=per; buyer.bond=Math.min(100,buyer.bond+8+(t.genre===buyer.fav?4:0));
-  msg(`${buyer.name.toUpperCase()} paid <span class="val">${per}</span> credits.` +
-      (t.count>0?` <span style="color:var(--dim)">${t.count} more in your bag for someone else.</span>`
-                :` <span style="color:var(--dim)">That was your last copy.</span>`),'var(--ok)');
+  msg(`${buyer.name.toUpperCase()} paid <span class="val">${per}</span> credits.`,'var(--ok)');
   tapes=tapes.filter(x=>x.count>0);
   sel=null;onTable=0;stage='open';
   draw();
