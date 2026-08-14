@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: SpaceNetLeft
   m_EditorClassIdentifier: 
   displayName: Space Net (Left)
-  price: 200
+  price: 100
   description: A square dust-gathering net that mounts on top of a ship's left side.
     Walk up to a SHIP44 with this in hand and press F at the matching mount point
     to install it. Once installed, the net passively gathers space dust whenever

@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Ship44_Hull
   m_EditorClassIdentifier: 
   displayName: SHIP44 (Hull Only)
-  price: 1000
+  price: 500
   description: Just the hull. Buy the thrusters separately and install them before
     flying.
   previewPrefab: {fileID: 8396349935191231225, guid: 88733c224fd6f6d468f98556d81bc0ff,

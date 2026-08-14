@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Part_LeftThruster
   m_EditorClassIdentifier: 
   displayName: Left Thruster
-  price: 150
+  price: 75
   description: "Left thruster module. Auto-equips on purchase \u2014 walk it back
     to the ship and mount it."
   previewPrefab: {fileID: 87371114704250253, guid: 64c002baa47f5c24c84ddf02fedc7801,

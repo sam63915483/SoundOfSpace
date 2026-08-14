@@ -5,9 +5,9 @@
 /// number an alien will go up to, and the number a text order names can never
 /// drift apart:
 ///
-///   value = (10 + 8*activeModules)
-///         * tapeMult(T1 1.0, T2 1.5)
-///         * (0.4 + 0.9 * sat/100)
+///   value = (3 + 4*activeModules)
+///         * tapeMult(T1 1.0, T2 2.0)
+///         * (0.35 + 0.95 * sat/100)
 ///         * bondMult(1.0 .. 1.4)
 ///         * requestBonus(1.25 on a match)
 ///         * payFactor
@@ -22,22 +22,37 @@
 /// somebody merely tolerates is still worth something, and a floor of zero
 /// would make a bad match feel like a bug.
 ///
-/// ⚠️ EARLY-GAME MARGIN IS THIN AND THAT IS KNOWN. Two modules at low
-/// satisfaction lands near the $10 a blank costs. Sam has the numbers; this is
-/// the file to retune.
+/// ── 2026-08-14 REBALANCE (docs/Plan_MoneyRevamp_v1.md, Sam approved) ─────
+/// Every constant below was roughly halved. The money felt inflated because a
+/// single tape - two minutes at the computer - paid $31 to $69 against a $10
+/// blank, a 3x to 7x return on the only consumable in the loop with no failure
+/// case that costs money. The whole price list moved with it, so the RATIOS the
+/// player feels are mostly unchanged; the numbers are just legible now.
+///
+/// The unit is a tape: a mid-game one (4 modules, T1) sells for about $20, and
+/// every other price in the game is cut against that. One four-digit price
+/// survives anywhere - the ship, at $1000.
+///
+/// TierTwoMult went UP, 1.5 to 2.0, because a Type 2 blank costs 3x a Type 1
+/// ($15 vs $5) in the new prices. The effect is a rule worth learning: a Type 2
+/// shell pays in proportion to how good the tape already is, so it is a waste
+/// on a two-voice sketch and transformative on a finished one.
+///
+/// Measured, not derived: prototypes/shuttle-computer/test/verify-diagnostic.py
+/// prints the in-person and text-order price at every module count.
 ///
 /// PURE — no Unity types, so it runs headlessly with the taste model.
 /// </summary>
 public static class TapeValue
 {
-    public const double Floor = 10.0;
-    public const double PerModule = 8.0;
+    public const double Floor = 3.0;
+    public const double PerModule = 4.0;
 
     public const double TierOneMult = 1.0;
-    public const double TierTwoMult = 1.5;
+    public const double TierTwoMult = 2.0;
 
-    public const double SatFloor = 0.4;      // what a barely-tolerated tape keeps
-    public const double SatRange = 0.9;
+    public const double SatFloor = 0.35;     // what a barely-tolerated tape keeps
+    public const double SatRange = 0.95;
 
     public const double BondMultMin = 1.0;
     public const double BondMultMax = 1.4;

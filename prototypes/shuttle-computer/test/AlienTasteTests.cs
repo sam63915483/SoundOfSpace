@@ -260,10 +260,23 @@ public static class AlienTasteTests
     {
         Console.WriteLine("pricing");
 
-        // The shape Sam has to be able to reason about.
-        Eq(TapeValue.Base(2, 1), 26.0, "two modules, type 1");
-        Eq(TapeValue.Base(6, 1), 58.0, "six modules, type 1");
-        Eq(TapeValue.Base(6, 2), 87.0, "six modules, type 2 is 1.5x");
+        // The SHAPE Sam has to be able to reason about, expressed against the
+        // constants rather than against their current values. These three used
+        // to be the literals 26 / 58 / 87, and the 2026-08-14 rebalance broke
+        // all three without a single one of them describing a real defect - a
+        // test that pins tuning values by literal fights the tuning instead of
+        // protecting it. What must stay true is the shape: a floor plus a
+        // per-module term, multiplied by the tier.
+        Eq(TapeValue.Base(2, 1), TapeValue.Floor + 2 * TapeValue.PerModule,
+           "type 1 is floor plus per-module");
+        Eq(TapeValue.Base(6, 1), TapeValue.Floor + 6 * TapeValue.PerModule,
+           "and stays linear in the module count");
+        Eq(TapeValue.Base(6, 2), (TapeValue.Floor + 6 * TapeValue.PerModule) * TapeValue.TierTwoMult,
+           "type 2 multiplies the whole base");
+        Check(TapeValue.Base(6, 1) > TapeValue.Base(2, 1), "more modules is worth more");
+        Check(TapeValue.Base(2, 2) > TapeValue.Base(2, 1), "type 2 beats type 1 at equal modules");
+        Check(TapeValue.PerModule > 0 && TapeValue.Floor > 0,
+              "both terms are positive - a free tape or a worthless module breaks the shop");
 
         Check(TapeValue.SatisfactionMult(0) == TapeValue.SatFloor,
               "a barely-tolerated tape keeps the floor, not zero");

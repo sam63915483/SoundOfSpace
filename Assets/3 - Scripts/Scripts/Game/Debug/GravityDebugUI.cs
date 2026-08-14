@@ -15,7 +15,7 @@ public class GravityDebugUI : MonoBehaviour {
 
 	[Header("Debug Money Button")]
 	[Tooltip("Amount granted when the green +Money button is clicked. Toggled on/off with the gravity panel via the backtick key.")]
-	public int debugMoneyAmount = 2000;
+	public int debugMoneyAmount = 500;
 
 	[Header("Debug Wood Button")]
 	[Tooltip("Wood granted when the brown +Wood button is clicked.")]

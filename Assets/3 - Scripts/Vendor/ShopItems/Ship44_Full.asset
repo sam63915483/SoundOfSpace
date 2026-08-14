@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Ship44_Full
   m_EditorClassIdentifier: 
   displayName: SHIP44 (Full)
-  price: 2000
+  price: 1000
   description: 'All four parts attached: both thrusters, satellite dish, solar panel.
 
 

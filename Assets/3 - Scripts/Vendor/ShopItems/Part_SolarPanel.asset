@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Part_SolarPanel
   m_EditorClassIdentifier: 
   displayName: Solar Panel
-  price: 100
+  price: 50
   description: Solar panel. Bolts to the ship for cosmetic + power gain (no flight
     effect).
   previewPrefab: {fileID: 2888545007160614275, guid: 3f224e0adb4c2094ea7380ad5a08d8a8,

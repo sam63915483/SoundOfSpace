@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ShopItem_FishingRod
   m_EditorClassIdentifier: 
   displayName: Fishing Rod
-  price: 50
+  price: 25
   description: Cast bait, reel in fish. Required to harvest the planet's seas.
   previewPrefab: {fileID: 0}
   previewRotationEuler: {x: 0, y: 90, z: 0}

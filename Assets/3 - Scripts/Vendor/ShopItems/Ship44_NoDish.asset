@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Ship44_NoDish
   m_EditorClassIdentifier: 
   displayName: SHIP44 (No Dish)
-  price: 1500
+  price: 750
   description: "Both thrusters + solar panel. Missing the satellite dish \u2014 flies
     fine but the map can't track it."
   previewPrefab: {fileID: 8396349935191231225, guid: 88733c224fd6f6d468f98556d81bc0ff,

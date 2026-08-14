@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Part_Dish
   m_EditorClassIdentifier: 
   displayName: Satellite Dish
-  price: 250
+  price: 125
   description: Satellite uplink dish. Install on a ship to make it visible on the
     map.
   previewPrefab: {fileID: 3534938369291163723, guid: 152b4fa7ceb52c441925da1722d25a91,

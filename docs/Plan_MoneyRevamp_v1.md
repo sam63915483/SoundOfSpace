@@ -1,6 +1,8 @@
 # Money & Prices Revamp — proposal v1
 
-**Status:** proposal, nothing implemented. Sam reads, approves or redirects.
+**Status: BUILT 2026-08-14.** Sam approved all five decisions, choosing Type 2
+at **2.0x** rather than 1.8x, and a fresh save rather than a conversion.
+Compiles; not yet playtested.
 **Date:** 2026-08-14
 **Measured with:** `prototypes/shuttle-computer/test/verify-diagnostic.py` (500 aliens)
 
@@ -48,7 +50,7 @@ anything having to explain that it is.
 |---|---|---|---|
 | `Floor` | 10.0 | **3.0** | The "just for existing" money. At 10, a one-voice tape was already worth a blank and a half before anyone heard it. |
 | `PerModule` | 8.0 | **4.0** | Halved with the floor, so arrangement stays the dominant term. |
-| `TierTwoMult` | 1.5 | **1.8** | Type 2 costs 3x a Type 1 blank in the new prices, so it has to pay more than 1.5x back. |
+| `TierTwoMult` | 1.5 | **2.0** | Type 2 costs 3x a Type 1 blank in the new prices, so it has to pay more than 1.5x back. Sam picked 2.0 over 1.8 "for drama". |
 | `SatFloor` | 0.4 | **0.35** | Widens the gap between a careless tape and a good one. |
 | `SatRange` | 0.9 | **0.95** | Same. |
 | `RequestBonus` | 1.25 | 1.25 | Unchanged — this is the commission premium, fixed last commit. |
@@ -69,7 +71,7 @@ Type 1, no bond.
 | 5 | $60 | **$27** | $82 | **$38** |
 | 6 (maxed) | $69 | **$32** | $95 | **$44** |
 
-Type 2 multiplies those by 1.8 — a maxed Type 2 tape is **$57** in person.
+Type 2 multiplies those by 2.0 — a maxed Type 2 tape is **$64** in person.
 
 ---
 
@@ -83,6 +85,15 @@ Type 2 multiplies those by 1.8 — a maxed Type 2 tape is **$57** in person.
 | Water bottle | $30 | **$15** | ¾ |
 | Fishing rod | $50 | **$25** | 1¼ |
 | Fish bag | $100 | **$50** | 2½ |
+| Solar Panel | $100 | **$50** | 2½ |
+| Axe | $150 | **$75** | 3¾ |
+| Left / Right Thruster | $150 | **$75** | 3¾ |
+| Space Net (L / R) | $200 | **$100** | 5 |
+| Pistol | $250 | **$125** | 6¼ |
+| Satellite Dish | $250 | **$125** | 6¼ |
+| Jetpack | $1000 | **$500** | 25 |
+| SHIP44 (Hull Only) | $1000 | **$500** | 25 |
+| SHIP44 (No Dish) | $1500 | **$750** | 37½ |
 | Plugin — 1st | $200 | **$60** | 3 |
 | Plugin — 2nd | $200 | **$90** | 4½ |
 | Plugin — 3rd | $200 | **$130** | 6½ |
@@ -125,10 +136,11 @@ Total plugin spend $460, against $800 now.
 
 ### Type 2's rule
 
-Extra blank cost is $10. Extra revenue is 0.8 x the Type 1 price. So Type 2
-roughly breaks even at 2 modules and pulls clearly ahead from 3 up — **Type 2
-pays in proportion to how good the tape already is.** That is a rule a player can
-learn by playing, which is worth more than a flat "better tape, better shell".
+Extra blank cost is $10. Extra revenue is 1.0 x the Type 1 price. So at 2
+modules a Type 2 shell earns $13 for $10 — barely worth it — and at 6 modules it
+earns $32 for the same $10. **Type 2 pays in proportion to how good the tape
+already is.** That is a rule a player can learn by playing, which is worth more
+than a flat "better tape, better shell".
 
 ---
 
@@ -140,26 +152,37 @@ by hand instead of calling `TapeValue.Base`. Retune `TapeValue` and Tev's 50%
 cut silently keeps charging the old prices. It should call `TapeValue.Base`
 whether or not this proposal lands.
 
-**2. The ship price is defined twice.**
-`ColdCompany.ShipPrice = 2000` and the `ShopItem` asset the ship vendor sells.
-Both have to change or the beat and the shop disagree.
+**2. The ship price is defined twice.** — DONE.
+`ColdCompany.ShipPrice` and the `SHIP44` / `SHIP44_Full` ShopItem assets, all
+now $1000, with a comment on the constant saying they must match.
 
-**3. Existing saves.**
-Money already banked keeps its old face value, so a mid-game save becomes about
-2.4x richer overnight. Cleanest is to land this on a fresh save. If any save has
-to survive it, divide stored money by 2 on load behind a save-version check.
+**2b. The proposal undercounted the shop.** It listed three ShopItem assets;
+there are SIXTEEN, in two directories (`Assets/3 - Scripts/Vendor/ShopItems/`
+and `Assets/1 - samsPrefabs/ShopItems/`). All sixteen were repriced. Anything
+looking for "every price in the game" must check both directories.
+
+**2c. Dialogue quotes prices as text.** `conv_b1_ticket.json` said "The fine is
+$200" while the code charged it — changed to $80 alongside `fineAmount`. Any
+future price change has to grep `Assets/StreamingAssets/Story/*.json` too, or an
+NPC will name a number the game does not charge.
+
+**3. Existing saves.** — Sam's call: **fresh save.** No conversion was written,
+so any save from before 2026-08-14 will play with roughly 2.4x too much money.
 
 ---
 
-## Decisions for Sam
+## Decisions — all answered
 
-1. **The ship at $1000?** It is deliberately the only four-digit number. Lower
-   makes the endgame closer; higher and it stops being reachable by tapes alone.
-2. **Type 2 at 1.8x, or 2.0x for drama?** 1.8 makes it a steady edge; 2.0 makes a
-   maxed Type 2 tape $64 and a genuine event.
-3. **Plugin ladder, or flat $100 as you suggested?**
-4. **Fishing cut to a third** — right, or too harsh for a system with its own dex?
-5. **Fresh save, or a conversion on load?**
+1. **Ship at $1000.** Yes. The only four-digit price in the game.
+2. **Type 2 at 2.0x**, not 1.8x — Sam picked drama.
+3. **Plugin ladder** 60 / 90 / 130 / 180.
+4. **Fishing cut to a third.** Yes, it was too profitable.
+5. **Fresh save.** Sam starts a new game before the next playtest.
 
-Nothing here is written yet. Say which parts match the vision and I will build
-exactly those.
+## What to watch in the playtest
+
+The absolute early-game figures are the thin part. Two modules, a $5 blank and a
+$13 sale is a $8 margin, so the first plugin is eight tapes away. If that reads
+as a grind rather than a goal, the lever is `TapeValue.Floor` (raises every tape
+equally) or the first plugin's price — NOT `PerModule`, which would flatten the
+progression the ladder is built on.

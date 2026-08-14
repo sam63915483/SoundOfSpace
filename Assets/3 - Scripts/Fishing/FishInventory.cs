@@ -22,8 +22,12 @@ public class FishEntry
 
     public int GetValue()
     {
+        // Cut to a third on 2026-08-14. At the old rate a 50 lb rare was $150,
+        // more than DOUBLE the best tape in the game - the side activity paid
+        // better than the loop everything else was rebuilt around. The same
+        // fish is now $50, still a good haul, roughly one maxed Type 2 tape.
         int pricePerLb = fishType == "Rare" ? 3 : fishType == "Uncommon" ? 2 : 1;
-        return weightLbs * pricePerLb;
+        return Mathf.Max(1, Mathf.RoundToInt(weightLbs * pricePerLb / 3f));
     }
 
     public static float GetXScaleFromWeight(int weightLbs)

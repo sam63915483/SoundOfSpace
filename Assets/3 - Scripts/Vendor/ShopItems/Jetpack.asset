@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Jetpack
   m_EditorClassIdentifier: 
   displayName: Jetpack
-  price: 1000
+  price: 500
   description: Personal thrust system. Unlocks upward jetpack (Space), downward thrust
     (Ctrl), and directional thrust (Shift + WASD while airborne). Required for traversal
     across uneven terrain.

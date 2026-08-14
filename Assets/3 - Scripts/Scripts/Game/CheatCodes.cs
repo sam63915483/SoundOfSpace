@@ -63,7 +63,7 @@ public class CheatCodes : MonoBehaviour {
         // Tools + money so everything's testable (axe/pistol/jetpack + cash for the $20 test).
         var axe = FindObjectOfType<AxeController>();    if (axe != null)    axe.Unlock();
         var pistol = FindObjectOfType<PistolController>(); if (pistol != null) pistol.Unlock();
-        if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(500);
+        if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(100);
 
         Debug.Log("[CheatCodes] Skipped to Pilot School — Pilot branch active, briefed, $500 granted. Head to the ship school.");
     }

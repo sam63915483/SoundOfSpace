@@ -146,10 +146,13 @@ public static class TevFronting
     public static int TapeMarketValue(string printId)
     {
         TraxPrints.Record rec = TraxPrints.Get(printId);
-        if (rec == null) return 10;
-        int modules = rec.track.ActiveCount();
-        float tierMult = rec.tier >= 2 ? 1.5f : 1f;
-        return Mathf.Max(1, Mathf.RoundToInt((10 + 8 * modules) * tierMult));
+        if (rec == null) return (int)TapeValue.Floor;
+        // DEFER TO TapeValue. This used to recompute (10 + 8 * modules) * tierMult
+        // by hand, which is the same formula written down twice - so the
+        // 2026-08-14 rebalance halved every price in the game while Tev's 50%
+        // cut quietly went on charging the old ones. A duplicated formula does
+        // not fail loudly; it just disagrees.
+        return Mathf.Max(1, Mathf.RoundToInt((float)TapeValue.Base(rec.track.ActiveCount(), rec.tier)));
     }
 
     /// What a front of this size costs the player to clear.

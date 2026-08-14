@@ -21,7 +21,7 @@ public class ShipInstructorDialogue : MonoBehaviour
     public TextMeshProUGUI talkPromptText;
 
     [Header("Cost")]
-    public int testCost = 20;
+    public int testCost = 10;
 
     [Header("Lines — greeting")]
     [TextArea(2, 5)]

@@ -40,7 +40,10 @@ public static class ColdCompany
     // ── Tuning ──────────────────────────────────────────────────────────────
     // The full ship (Ship44_Full.asset) costs exactly this. Tev's gift bag is stocked to
     // clear it with a little slack: 5 Rare trophy fish x 150 lb x $3/lb = $2,250.
-    public const int ShipPrice           = 2000;
+    // MUST MATCH the SHIP44 ShopItem assets - the price lives in two places,
+    // and if they drift the story beat and the vendor quote different numbers
+    // for the same purchase. The one four-digit price in the game.
+    public const int ShipPrice           = 1000;
     public const string RewardFishTier   = "Rare";
     public const int RewardFishCount     = 5;
     public const int RewardFishWeightLbs = 150;

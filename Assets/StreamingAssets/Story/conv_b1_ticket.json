@@ -8,10 +8,10 @@
         "Your answers were... partially satisfactory.",
         "I'm not going to tell you which ones. You know which ones.",
         "Citation issued: one (1) count of corridor speeding.",
-        "The fine is $200. Payable immediately."
+        "The fine is $80. Payable immediately."
       ],
       "responses": [
-        { "buttonText": "Pay the $200.", "nextNodeId": "paid_cop", "effects": [ { "kind": "SetFlag", "strArg": "b1_pay", "boolArg": true } ] },
+        { "buttonText": "Pay the $80.", "nextNodeId": "paid_cop", "effects": [ { "kind": "SetFlag", "strArg": "b1_pay", "boolArg": true } ] },
         { "buttonText": "I'm not paying that.", "nextNodeId": "refused_cop", "effects": [ { "kind": "SetFlag", "strArg": "b1_run", "boolArg": true } ] }
       ]
     },

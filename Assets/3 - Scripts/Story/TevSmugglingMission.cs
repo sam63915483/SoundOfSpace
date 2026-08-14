@@ -33,8 +33,8 @@ public class TevSmugglingMission : MonoBehaviour
     [Header("Tuning")]
     public float scareTurnSeconds = 0.5f;
     public float arrivalBuffer = 800f;       // arrival = within destBody.radius + this
-    public int fineAmount = 200;
-    public int payoutAmount = 500;
+    public int fineAmount = 80;
+    public int payoutAmount = 200;
     public string homeBodyName = "Humble";
     public string destBodyName = "Fiery";
     [Tooltip("How long after scene load the parked ship stays kinematically pinned to its authored spot. Long enough to ride out startup origin shifts, then it's handed to real gravity and settles onto the terrain.")]

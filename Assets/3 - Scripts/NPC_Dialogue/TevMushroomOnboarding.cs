@@ -647,12 +647,20 @@ public class TevMushroomOnboarding : MonoBehaviour
 
     static readonly ShopEntry[] ShopStock =
     {
-        new ShopEntry { label = "Blank Tape Type 1", price = 10,  item = Hotbar.ItemId.BlankTapeT1 },
-        new ShopEntry { label = "Blank Tape Type 2", price = 20,  item = Hotbar.ItemId.BlankTapeT2 },
-        new ShopEntry { label = "SIREN",             price = 200, plugin = "SIREN" },
-        new ShopEntry { label = "MOSS",              price = 200, plugin = "MOSS" },
-        new ShopEntry { label = "SPINDLE",           price = 200, plugin = "SPINDLE" },
-        new ShopEntry { label = "CAVE",              price = 200, plugin = "CAVE" },
+        new ShopEntry { label = "Blank Tape Type 1", price = 5,   item = Hotbar.ItemId.BlankTapeT1 },
+        new ShopEntry { label = "Blank Tape Type 2", price = 15,  item = Hotbar.ItemId.BlankTapeT2 },
+        // A RISING LADDER, not four flat prices (docs/Plan_MoneyRevamp_v1.md).
+        // Each rung costs about EIGHT TAPES at the income the previous one
+        // unlocks, so the pace never sags and never trivialises. Four flat
+        // prices would be 13 tapes for the first - a discouraging start - and
+        // 5 for the last, by which point it is not a decision.
+        //
+        // Cheapest first is the natural buy order, which is what makes the
+        // eight-tape rhythm hold; do not reorder these without re-checking it.
+        new ShopEntry { label = "SIREN",             price = 60,  plugin = "SIREN" },
+        new ShopEntry { label = "MOSS",              price = 90,  plugin = "MOSS" },
+        new ShopEntry { label = "SPINDLE",           price = 130, plugin = "SPINDLE" },
+        new ShopEntry { label = "CAVE",              price = 180, plugin = "CAVE" },
     };
 
     IEnumerator RunShop()

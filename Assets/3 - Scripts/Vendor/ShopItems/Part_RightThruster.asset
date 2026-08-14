@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Part_RightThruster
   m_EditorClassIdentifier: 
   displayName: Right Thruster
-  price: 150
+  price: 75
   description: Right thruster module. Auto-equips on purchase.
   previewPrefab: {fileID: 1027447375331399825, guid: 6e19e2b117c7df041929f6e76c226cf7,
     type: 3}

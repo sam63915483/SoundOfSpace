@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ShopItem_WaterBottle
   m_EditorClassIdentifier: 
   displayName: Water Bottle
-  price: 30
+  price: 15
   description: A reusable canteen. Refills at any water source. Drink to restore
     thirst.
   previewPrefab: {fileID: 0}

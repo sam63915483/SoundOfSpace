@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: ShopItem_FishBag
   m_EditorClassIdentifier: 
   displayName: Fish Bag
-  price: 100
+  price: 50
   description: Holds 5 fish in addition to your hotbar. Caught fish go into the bag
     first.
   previewPrefab: {fileID: 0}

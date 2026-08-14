@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: Ship44
   m_EditorClassIdentifier:
   displayName: SHIP44
-  price: 2000
+  price: 1000
   description: A solid hull with thrusters in working order. Spawns parked 10 meters
     behind the market when purchased.
   previewPrefab: {fileID: 8396349935191231225, guid: 88733c224fd6f6d468f98556d81bc0ff,
