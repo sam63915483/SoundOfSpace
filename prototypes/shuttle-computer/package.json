@@ -10,6 +10,7 @@
     "golden": "node test/make-golden.js",
     "verify:port": "python test/verify-port.py",
     "verify:library": "python test/verify-library.py",
+    "verify:taste": "python test/verify-taste.py",
     "verify:unity": "python test/compile-unity.py",
     "serve": "python -m http.server 8080"
   }
