@@ -93,7 +93,7 @@ public class PlayerPhoneUI : MonoBehaviour
     static readonly Color TileBg        = new Color32(0x0F, 0x19, 0x2A, 0xD9);
     static readonly Color ButtonGrey    = new Color32(0x2A, 0x40, 0x60, 0xFF);
 
-    public enum AppKind { Fishingdex, Build, Settings, Map, Photos }
+    public enum AppKind { Fishingdex, Build, Settings, Map, Photos, Contacts }
 
     // â”€â”€ Runtime UI refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     Canvas        _canvas;
@@ -146,7 +146,7 @@ public class PlayerPhoneUI : MonoBehaviour
     RectTransform _appGridRT;
     RectTransform _reservedZoneRT;
     Button        _putAwayBtn;
-    Button[]      _appButtons = new Button[6];
+    Button[]      _appButtons = new Button[7];
 
     // â”€â”€ Home-screen page navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Swappable pages live inside _pageHostRT. Only one is active at
@@ -2340,6 +2340,8 @@ public class PlayerPhoneUI : MonoBehaviour
         _appButtons[3] = BuildAppTile(AppKind.Map,        "M", "Map");
         _appButtons[4] = BuildAppTile(AppKind.Photos,     "P", "Photos");
         _appButtons[5] = BuildAITile(_appGridRT);   // AI chat â€” 6th tile, 3Ã—2 grid
+        // Who buys your music, what they like, and what they are asking for.
+        _appButtons[6] = BuildAppTile(AppKind.Contacts, "C", "Contacts");
     }
 
     // Unread-notification badge on the AI app tile + the count of lines the
@@ -2909,7 +2911,8 @@ public class PlayerPhoneUI : MonoBehaviour
         if (kind == AppKind.Photos) { OpenPhotosApp(); return; }
         // Build + Fishingdex run INSIDE the tablet screen (the AI-chat
         // model) â€” no more separate fullscreen panels.
-        if (kind == AppKind.Build || kind == AppKind.Fishingdex) { OpenPhoneApp(kind); return; }
+        if (kind == AppKind.Build || kind == AppKind.Fishingdex
+            || kind == AppKind.Contacts) { OpenPhoneApp(kind); return; }
         // Everything else (Settings / Map): slide the phone out, THEN open
         // the target UI â€” like tapping an app on a real phone.
         StartCoroutine(CloseThenOpen(kind));
@@ -2920,6 +2923,7 @@ public class PlayerPhoneUI : MonoBehaviour
     PhoneAppBase _activeApp;
     PhoneBuildApp _buildApp;
     PhoneFishdexApp _fishdexApp;
+    PhoneContactsApp _contactsApp;
 
     /// True while an in-phone app (Build / Fishingdex) covers the home screen.
     public bool AppViewOpen => _activeApp != null;
@@ -2938,6 +2942,10 @@ public class PlayerPhoneUI : MonoBehaviour
             case AppKind.Fishingdex:
                 if (_fishdexApp == null) _fishdexApp = _appHostRT.gameObject.AddComponent<PhoneFishdexApp>();
                 _activeApp = _fishdexApp;
+                break;
+            case AppKind.Contacts:
+                if (_contactsApp == null) _contactsApp = _appHostRT.gameObject.AddComponent<PhoneContactsApp>();
+                _activeApp = _contactsApp;
                 break;
             default:
                 _appHostRT.gameObject.SetActive(false);

@@ -77,6 +77,7 @@ public class SaveData
     public TevFrontingSave tevFronting = new TevFrontingSave();
     public TraxLibrarySave traxLibrary = new TraxLibrarySave();
     public TapeMemorySave tapeMemory = new TapeMemorySave();
+    public TapeRequestSave tapeRequests = new TapeRequestSave();
     // Galactic Standard Time (2026-08-08). Total in-game minutes since day 1
     // 00:00, ABSOLUTE — unlike the buyer deadlines above, which persist a
     // remaining duration. JsonUtility gives pre-feature saves 0, which
@@ -496,6 +497,17 @@ public class TraxPrintSave
 // heardDials is FLATTENED: alien i owns the next heardCounts[i] * 6 floats, in
 // order. Parallel lists because JsonUtility can't do dictionaries, and the flat
 // list because it can't do jagged arrays either.
+// Open genre requests from contacts. Times are RELATIVE (seconds-ago),
+// re-anchored on load like every other timed thing in this file.
+[Serializable]
+public class TapeRequestSave
+{
+    public List<string> ids = new List<string>();
+    public List<string> genres = new List<string>();
+    public List<float> secondsAgo = new List<float>();
+    public List<bool> seen = new List<bool>();
+}
+
 [Serializable]
 public class TapeMemorySave
 {

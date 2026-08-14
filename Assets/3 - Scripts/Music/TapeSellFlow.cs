@@ -147,8 +147,15 @@ public class TapeSellFlow
         yield return _speak(AlienFeedback.ForLiked(satisfaction, variant));
         if (!_stillTalking()) yield break;
 
+        // Did they ORDER this? Matched on the classifier's answer, so the label
+        // the computer showed the player is the label the order is judged
+        // against — anything else would be marking its own homework.
+        bool fillsOrder = TapeRequests.Satisfies(alienId, press.track);
         int value = TapeOffer.Value(alienId, press.track.ActiveCount(), press.tier,
-                                    satisfaction, false);
+                                    satisfaction, fillsOrder);
+        if (fillsOrder)
+            yield return _speak("That's the one I was after. Good.");
+        if (!_stillTalking()) yield break;
         int marketBase = Mathf.Max(1, Mathf.RoundToInt(
             (float)TapeValue.Base(press.track.ActiveCount(), press.tier)));
 
@@ -177,7 +184,7 @@ public class TapeSellFlow
 
         if (response == TapeOffer.Response.Accepted)
         {
-            yield return Complete(alienId, alienName, printId, value, asked);
+            yield return Complete(alienId, alienName, printId, value, asked, fillsOrder);
             yield break;
         }
 
@@ -191,7 +198,7 @@ public class TapeSellFlow
                 new PostGreetingChoicePanel.Row("Forget it.", true),
             });
             if (!_stillTalking()) yield break;
-            if (_choice() == 0) yield return Complete(alienId, alienName, printId, value, counter);
+            if (_choice() == 0) yield return Complete(alienId, alienName, printId, value, counter, fillsOrder);
             else yield return _speak("Your loss.");
             yield break;
         }
@@ -209,7 +216,7 @@ public class TapeSellFlow
 
         if (_choice() == 0)
         {
-            yield return Complete(alienId, alienName, printId, value, counter);
+            yield return Complete(alienId, alienName, printId, value, counter, fillsOrder);
             yield break;
         }
 
@@ -221,7 +228,8 @@ public class TapeSellFlow
     }
 
     /// Money changes hands, the tape leaves, and they become a contact.
-    IEnumerator Complete(string alienId, string alienName, string printId, int value, int paid)
+    IEnumerator Complete(string alienId, string alienName, string printId, int value, int paid,
+                         bool filledOrder)
     {
         Hotbar.Instance.SpendResource(Hotbar.ItemId.Cassette, 1, printId);
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(paid);
@@ -236,6 +244,11 @@ public class TapeSellFlow
             MushroomQuest.SoldCount++;
             MushroomQuest.NotifyTevTapeSold();
         }
+
+        // Only a tape that actually MATCHED the order clears it. Selling them
+        // something else is a sale, not a delivery, and quietly cancelling
+        // their order for it would lose the player work they had not done yet.
+        if (filledOrder) TapeRequests.Fulfil(alienId);
 
         yield return _speak("Done. $" + paid + ".");
         if (!_stillTalking()) yield break;

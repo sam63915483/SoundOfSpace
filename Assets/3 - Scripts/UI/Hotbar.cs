@@ -297,6 +297,7 @@ public class Hotbar : MonoBehaviour
     {
         if (!ResolveRefs()) return;
         DevGrantBlankTapes();
+        TickTapeRequests();
         DetectAcquisitions();
         // Piloted state: pull from "is any ship piloted" — the cached
         // `ship` reference might be the wrong instance now that the player
@@ -384,6 +385,18 @@ public class Hotbar : MonoBehaviour
             _eatProgressSlot = -1;
             _eatHeldSeconds = 0f;
         }
+    }
+
+    // Contacts getting hungry. Ticked from here rather than from a new
+    // auto-singleton because this component is already guaranteed to run in
+    // gameplay and never in the main menu — which is exactly the trap a new
+    // RuntimeInitializeOnLoadMethod singleton would have had to dodge.
+    float _nextRequestTick;
+    void TickTapeRequests()
+    {
+        if (Time.unscaledTime < _nextRequestTick) return;
+        _nextRequestTick = Time.unscaledTime + 5f;
+        TapeRequests.Tick();
     }
 
     // ── TEMPORARY: dev stock ─────────────────────────────────────────────

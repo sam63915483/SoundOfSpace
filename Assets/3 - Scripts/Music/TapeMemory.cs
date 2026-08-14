@@ -87,6 +87,16 @@ public static class TapeMemory
         Version++;
     }
 
+    /// Every alien whose number the player has. Used by the request director
+    /// and the contacts app.
+    public static IEnumerable<string> Contacts
+    {
+        get
+        {
+            foreach (var kv in _byAlien) if (kv.Value.contact) yield return kv.Key;
+        }
+    }
+
     public static int ContactCount
     {
         get
