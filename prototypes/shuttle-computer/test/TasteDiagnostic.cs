@@ -59,6 +59,49 @@ public static class TasteDiagnostic
         }
         Console.WriteLine();
 
+        // ── THE IN-PERSON vs TEXT-ORDER GAP ──────────────────────────────
+        // Sam sold a hand-made tape for $29 in person, then filled a text
+        // order from the same alien for $100. Both prices come from
+        // TapeValue, so one of the two call sites is feeding it a fiction.
+        Console.WriteLine("=== IN-PERSON vs TEXT-ORDER PRICE (" + N + " aliens) ===");
+        for (int Modules = 2; Modules <= 6; Modules++)
+        {
+            // A realistic early-game tape: three modules, and dials aimed at
+            // the alien's own genre but not landed perfectly - which is what a
+            // player actually makes before they own many plugins.
+            double inPersonSum = 0, textSum = 0, satSum = 0;
+            foreach (string id in ids)
+            {
+                double[] ear = AlienTaste.TastePoint(id);
+                var aimed = new double[AlienTaste.DialCount];
+                for (int i = 0; i < ear.Length; i++)
+                {
+                    // Miss each dial by about 1.5 - a decent but imperfect read.
+                    double off = (i % 2 == 0) ? 1.5 : -1.5;
+                    double v = ear[i] + off;
+                    aimed[i] = v < 0 ? 0 : v > 10 ? 10 : v;
+                }
+                double sat = AlienTaste.Satisfaction(id, aimed);
+                satSum += sat;
+
+                // What the walk-up panel would price it at (matchesRequest false).
+                int inPerson = TapeValue.For(Modules, 1, sat, 0, false, AlienTaste.PayFactor(id));
+                // What a text order quotes. TapeTrade imports Unity, so the
+                // formula is mirrored here - it prices against the modules the
+                // computer OWNS at OrderSatisfaction, plus the request bonus.
+                int text = TapeValue.For(Modules, 1, 85.0, 0, true, AlienTaste.PayFactor(id));
+
+                inPersonSum += inPerson;
+                textSum += text;
+            }
+            Console.WriteLine("  " + Modules + " modules owned:  in-person $"
+                              + (inPersonSum / N).ToString("00.0")
+                              + "   order $" + (textSum / N).ToString("00.0")
+                              + "   ratio " + (textSum / inPersonSum).ToString("0.00") + "x"
+                              + "   (sat " + (satSum / N).ToString("0") + ")");
+        }
+        Console.WriteLine();
+
         Console.WriteLine("=== WHERE ALIEN EARS ACTUALLY SIT (" + N + " aliens) ===");
         var mean = new double[AlienTaste.DialCount];
         foreach (string id in ids)

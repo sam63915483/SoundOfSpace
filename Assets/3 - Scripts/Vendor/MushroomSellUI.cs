@@ -1336,6 +1336,21 @@ public class MushroomSellUI : MonoBehaviour
         {
             int perCap;
             int qty;
+            // WHAT YOU ACTUALLY BROUGHT still matters. The agreed number is
+            // quoted for a tape built from the kit the computer owns, delivered
+            // well — so a one-voice sketch that happens to CLASSIFY as the right
+            // genre used to collect the full amount, and the agreed price was a
+            // formality. They honour the deal up to what the tape is genuinely
+            // worth to them and not a credit past it. Deliberately a smaller
+            // payout and a remark rather than a refusal: the deal was made in
+            // good faith, and freezing the player out for five minutes over a
+            // thin arrangement would punish experimenting.
+            var ledger = BuyerLedger.Get(_buyerId);
+            int worth = delivered == null ? 0
+                : TapeValue.For(delivered.track.ActiveCount(), delivered.tier, Satisfaction,
+                                ledger != null ? ledger.bond : 0, true,
+                                AlienTaste.PayFactor(_buyerId));
+            bool thin = false;
             if (exactGoods)
             {
                 // Gratitude bump only when the deal is honoured as written.
@@ -1350,7 +1365,8 @@ public class MushroomSellUI : MonoBehaviour
                 qty = Mathf.Min(_offerCountN, RemainingAppetite);
                 if (qty <= 0) { SetResult("\"I'm full up. Come back later.\"", C_Err); return; }
             }
-            CompleteScheduled(perCap, qty, substituted: !(exactGoods && exactPrice));
+            if (perCap > worth) { perCap = Mathf.Max(1, worth); thin = true; }
+            CompleteScheduled(perCap, qty, substituted: !(exactGoods && exactPrice), thin: thin);
         }
         else
         {
@@ -1369,7 +1385,7 @@ public class MushroomSellUI : MonoBehaviour
         }
     }
 
-    void CompleteScheduled(int perCap, int qty, bool substituted)
+    void CompleteScheduled(int perCap, int qty, bool substituted, bool thin = false)
     {
         int leftover = _offerCountN - qty;
         var soldRec = Press;
@@ -1386,9 +1402,11 @@ public class MushroomSellUI : MonoBehaviour
                                    keptAppointment: true, matchedTaste: matchedTaste);
         _scheduled = false; _appt = null;
         _onSold?.Invoke(qty);
-        SetResult(substituted
+        SetResult(thin
+            ? $"\"This isn't the track I was picturing.\" — {_npcName} paid {credits}, not what you agreed."
+            : substituted
             ? $"{_npcName} grumbled, but took {qty} for {credits}."
-            : $"Order delivered. {_npcName} paid {credits} credits.", C_Ok);
+            : $"Order delivered. {_npcName} paid {credits} credits.", thin ? C_Err : C_Ok);
         Refresh();
     }
 

@@ -65,6 +65,21 @@ public static class TraxLibrary
 
     public static IEnumerable<string> InstalledPlugins { get { return _installed; } }
 
+    /// <summary>
+    /// How many voices the computer can actually put on a tape right now.
+    ///
+    /// This is the honest ceiling on what the player can DELIVER, which is why
+    /// the text-order economy prices against it: an alien commissioning a track
+    /// quotes for a tape you could plausibly make, not for the six-module one
+    /// you cannot build until you have bought every plugin Tev sells. Buying a
+    /// plugin therefore raises what orders are worth, which is the whole point
+    /// of a $200 module.
+    /// </summary>
+    public static int InstalledCount
+    {
+        get { return _installed.Count > TraxPresets.ModuleCount ? TraxPresets.ModuleCount : _installed.Count; }
+    }
+
     /// Bumped on every mutation. The UI watches it instead of rebuilding the
     /// shelf every frame, and multiplayer can watch it to replicate — the same
     /// version-counter shape the economy sync already uses.

@@ -73,18 +73,36 @@ public static class TapeTrade
     // ── what it is worth to them ─────────────────────────────────────────
 
     /// <summary>
+    /// The satisfaction an order is quoted against: a GOOD delivery, not a
+    /// flawless one. Quoting at 100 assumed the player would land every dial
+    /// dead on their ear, which nobody does.
+    /// </summary>
+    public const double OrderSatisfaction = 85.0;
+
+    /// <summary>
     /// What this contact genuinely values one tape of <paramref name="genreIndex"/>
     /// at. Built from the SAME formula as an in-person sale, so a price quoted
     /// over text cannot drift from what the alien would have paid face to face.
     ///
-    /// Assumes a full six-module arrangement at satisfaction 100, because the
-    /// order is for their own genre — this is what a GOOD delivery is worth,
-    /// and under-delivering is priced down at the handover instead.
+    /// ── Why this is priced against YOUR kit ──────────────────────────────
+    /// It used to assume a full six-module arrangement at satisfaction 100 and
+    /// collect the request bonus on top. Every one of those three is a best
+    /// case, and they MULTIPLY: Sam sold a hand-made tape in person for $29 and
+    /// was offered $90 over text for the same kind of tape. Measured across 500
+    /// aliens the gap was 2.62x, which made walking up to anyone a mistake.
+    ///
+    /// A commission SHOULD pay a premium — that is what makes the Messages app
+    /// worth reading. So the request bonus stays and the fiction goes: the
+    /// quote assumes a tape built from the plugins the computer actually owns,
+    /// delivered well. That leaves orders paying about 1.35x an in-person sale,
+    /// and it ties order income to plugin investment, so Tev's $200 modules pay
+    /// for themselves twice.
     /// </summary>
     public static int TruePricePerTape(string id, int genreIndex)
     {
         int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
-        return TapeValue.For(6, 1, 100.0, bond, true, AlienTaste.PayFactor(id));
+        return TapeValue.For(Mathf.Max(1, TraxLibrary.InstalledCount), 1, OrderSatisfaction,
+                             bond, true, AlienTaste.PayFactor(id));
     }
 
     /// Their opening number. They lowball a little — that gap is what the
