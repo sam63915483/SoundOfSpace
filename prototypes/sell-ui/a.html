@@ -1,0 +1,319 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TAPE SELL UI — layout A, playable</title>
+<style>
+:root{
+  --bg:#0a1828; --slot-bg:#08131f; --slot-edge:#24425f;
+  --border:#78c8ff; --label:#eaf6ff; --dim:#7fa0bd; --value:#ffd732;
+  --header:#e2787e; --ok:#6edc82; --warn:#ff9a3c; --err:#ff6e6e;
+  --sell:#3c9146; --take:#2f6f8c; --back:#8c3c3c;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,'DejaVu Sans Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050b12;color:var(--label);font-family:var(--mono);padding:22px;
+     display:flex;flex-direction:column;align-items:center;gap:16px}
+h1{font-size:14px;letter-spacing:.24em;color:var(--dim);font-weight:400}
+.note{max-width:900px;font-size:12px;line-height:1.6;color:var(--dim)}
+.note b{color:var(--label)}
+.panel{width:900px;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+       padding:16px 20px 14px;display:flex;flex-direction:column;gap:12px}
+.hdr{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid #1b3450;padding-bottom:9px}
+.who{font-size:19px;letter-spacing:.16em;color:var(--header)}
+.bond{font-size:12px;color:var(--dim)}
+.memo{margin-left:auto;font-size:12px;color:var(--dim)}
+.val{color:var(--value)}
+.genre{color:#79ffd0;letter-spacing:.1em}
+
+.table{background:var(--slot-bg);border:1px solid var(--slot-edge);border-radius:6px;
+       padding:12px 14px;display:flex;gap:14px;align-items:center;min-height:96px}
+.cass{width:104px;height:64px;border-radius:4px;position:relative;flex:none;
+      display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}
+.cass .lbl{background:#eef4f8;color:#0b1620;font-size:8px;width:78%;text-align:center;
+           padding:2px 0;border-radius:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cass .hub{position:absolute;width:11px;height:11px;border-radius:50%;background:rgba(0,0,0,.45);top:16px}
+.cass .h1{left:26px} .cass .h2{right:26px}
+.t1{background:#79ffd0} .t2{background:#ff4fd8}
+.tinfo{flex:1;display:flex;flex-direction:column;gap:4px}
+.ttitle{font-size:17px;letter-spacing:.1em}
+.tsub{font-size:12px;color:var(--dim)}
+.empty{color:#43668a;font-size:13px;letter-spacing:.14em;flex:1;text-align:center}
+.playing{font-size:11px;color:var(--ok);letter-spacing:.12em}
+.bars{display:inline-flex;gap:2px;align-items:flex-end;height:11px;margin-left:6px}
+.bars i{display:block;width:2px;background:var(--ok);animation:eq .9s ease-in-out infinite}
+.bars i:nth-child(2){animation-delay:.15s}.bars i:nth-child(3){animation-delay:.3s}
+.bars i:nth-child(4){animation-delay:.45s}
+@keyframes eq{0%,100%{height:3px}50%{height:11px}}
+.bigq{font-size:32px;color:var(--label);min-width:56px;text-align:right}
+
+.ctl{display:flex;align-items:center;gap:12px}
+.cap{font-size:11px;letter-spacing:.18em;color:var(--dim);width:58px}
+input[type=range]{flex:1;accent-color:#78c8ff;height:18px}
+.num{font-size:20px;color:var(--value);width:120px;text-align:right}
+.risk{font-size:12px;letter-spacing:.04em;min-height:16px}
+
+.rack-cap{font-size:11px;letter-spacing:.2em;color:var(--dim);display:flex;gap:10px;align-items:baseline}
+.rack{display:flex;gap:8px;flex-wrap:wrap}
+.tile{width:136px;background:var(--slot-bg);border:1px solid var(--slot-edge);
+      border-radius:5px;padding:8px;display:flex;flex-direction:column;gap:6px;cursor:pointer}
+.tile:hover{border-color:var(--border)}
+.tile.sel{border-color:var(--border);background:#0e2236}
+.tile.out{opacity:.35;cursor:default}
+.art{height:44px;border-radius:3px;position:relative;display:flex;align-items:flex-end;
+     justify-content:center;padding-bottom:4px}
+.art .lbl{background:#eef4f8;color:#0b1620;font-size:7px;width:78%;text-align:center;
+          border-radius:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.qty{position:absolute;right:4px;top:3px;font-size:11px;background:rgba(4,12,20,.85);
+     padding:0 5px;border-radius:3px}
+.nm{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt{font-size:9px;color:var(--dim);display:flex;justify-content:space-between}
+
+.btns{display:flex;gap:10px;justify-content:flex-end;align-items:center}
+.btn{font-family:var(--mono);font-size:13px;letter-spacing:.14em;padding:10px 22px;
+     border:none;border-radius:5px;color:#eaf6ff;cursor:pointer}
+.btn:disabled{opacity:.35;cursor:default}
+.b-sell{background:var(--sell)}.b-take{background:var(--take)}.b-back{background:var(--back)}
+.result{font-size:13px;min-height:34px;line-height:1.4;flex:1}
+.dbg{width:900px;font-size:11px;color:#5d7f9e;line-height:1.7;background:#070f18;
+     border:1px solid #16293c;border-radius:6px;padding:10px 14px}
+.dbg b{color:var(--dim)}
+</style>
+</head>
+<body>
+
+<h1>LAYOUT A — PLAYABLE</h1>
+<div class="note">
+Real maths behind it: the same taste points, satisfaction curve, like gate, value
+formula and patience the game uses. <b>Click a tape</b> to put one on the table, then use
+<b>HOW MANY</b> to move more across. <b>NEXT BUYER</b> rerolls the alien so you can feel how
+differently two of them treat the same tape. The grey box at the bottom shows the hidden
+numbers — that is a debug aid, not part of the screen.
+</div>
+
+<div class="panel">
+  <div class="hdr">
+    <div class="who" id="who">// VESS</div>
+    <div class="bond" id="bondPips">BOND ●●○○○</div>
+    <div class="memo" id="memo">you've never dealt with them</div>
+  </div>
+
+  <div class="table" id="table">
+    <div class="empty" id="tableEmpty">CLICK A TAPE TO PUT IT ON THE TABLE</div>
+    <div id="tableFull" style="display:none;flex:1;gap:14px;align-items:center" class="table" >
+    </div>
+  </div>
+
+  <div class="ctl">
+    <div class="cap">HOW MANY</div>
+    <input type="range" id="qty" min="0" max="1" value="0" step="1" disabled>
+    <div class="num" id="qtyNum">—</div>
+  </div>
+
+  <div class="ctl">
+    <div class="cap">ASK</div>
+    <input type="range" id="ask" min="1" max="200" value="58" step="1" disabled>
+    <div class="num" id="askNum">—</div>
+  </div>
+  <div class="risk" id="risk">&nbsp;</div>
+
+  <div class="rack-cap">YOUR TAPES <span id="rackHint" style="color:#43668a"></span></div>
+  <div class="rack" id="rack"></div>
+
+  <div class="btns">
+    <div class="result" id="result">&nbsp;</div>
+    <button class="btn b-back" id="btnNext">NEXT BUYER</button>
+    <button class="btn b-take" id="btnTake" disabled>TAKE BACK</button>
+    <button class="btn b-sell" id="btnSell" disabled>OFFER IT</button>
+  </div>
+</div>
+
+<div class="dbg" id="dbg"></div>
+
+<script>
+// ── the model, matching the game ────────────────────────────────────────
+const GENRES = {
+  GLORP:[6,3,9,3,5,6], DRIFT:[1,1,3,9,1,4], SKITTER:[9,4,3,3,9,7],
+  SLUDJ:[2,9,6,5,2,8], CHIRP:[7,2,2,2,4,1], NULLGAZE:[3,5,3,8,1,2],
+  THRUM:[5,3,5,4,7,9], VOLT:[8,7,4,2,5,5], WARBLE:[4,4,7,6,3,3], CLANG:[6,8,2,5,8,9],
+};
+const NAMES=['Vess','Skell','Draa','Muun','Ryx','Talvo','Grek','Nyra','Osk','Pell'];
+const K=5.5, LIKE=60, MAYBE=42;
+
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const dist=(a,b)=>Math.sqrt(a.reduce((s,v,i)=>s+(v-b[i])**2,0));
+
+function makeBuyer(){
+  const keys=Object.keys(GENRES);
+  const fav=keys[Math.floor(Math.random()*keys.length)];
+  const ear=GENRES[fav].map(v=>Math.max(0,Math.min(10,v+rnd(-1.8,1.8))));
+  const falloff=rnd(0.90,1.75);
+  const t=(falloff-0.90)/0.85;
+  return{ name:NAMES[Math.floor(Math.random()*NAMES.length)], fav, ear, falloff,
+          pay:0.80+0.65*t, patience:rnd(1.05,1.45), bond:Math.floor(rnd(0,45)), lastPaid:0 };
+}
+const sat=(b,t)=>Math.max(0,Math.min(100,100-K*b.falloff*dist(t.dials,b.ear)));
+const market=t=>Math.round((10+8*t.modules)*(t.type===2?1.5:1));
+const value=(b,t)=>{
+  const s=sat(b,t);
+  return Math.max(1,Math.round(market(t)*(0.4+0.9*s/100)*(1+0.4*b.bond/100)*b.pay));
+};
+const ceiling=(b,t)=>Math.max(1,Math.round(value(b,t)*b.patience));
+
+// ── the player's shelf ──────────────────────────────────────────────────
+let tapes=[
+  {name:'DEEP CAVE',        genre:'SLUDJ', type:1, modules:6, count:3, dials:GENRES.SLUDJ.slice()},
+  {name:'NIGHT BUS',        genre:'DRIFT', type:2, modules:5, count:1, dials:GENRES.DRIFT.slice()},
+  {name:'SOUTHERN EXPOSURE',genre:'SLUDJ', type:1, modules:6, count:4, dials:GENRES.SLUDJ.map(v=>v+rnd(-1,1))},
+  {name:'LAWN ORNAMENT',    genre:'CHIRP', type:1, modules:4, count:2, dials:GENRES.CHIRP.slice()},
+];
+let buyer=makeBuyer(), sel=null, onTable=0, stage='open', counter=0, heard=new Set();
+
+const $=id=>document.getElementById(id);
+const shell=t=>t.type===2?'t2':'t1';
+
+function pips(n){const f=Math.round(n/20);return'BOND '+'●'.repeat(f)+'○'.repeat(5-f);}
+
+function drawRack(){
+  $('rack').innerHTML='';
+  tapes.forEach((t,i)=>{
+    const left=t.count-(sel===i?onTable:0);
+    const d=document.createElement('div');
+    d.className='tile'+(sel===i?' sel':'')+(left<=0&&sel!==i?' out':'');
+    d.innerHTML=`<div class="art ${shell(t)}"><div class="qty">${left}</div>
+        <div class="lbl">${t.name}</div></div>
+      <div class="nm">${t.name}</div>
+      <div class="mt"><span style="color:${t.type===2?'#ff4fd8':'#79ffd0'}">${t.genre}</span><span>T${t.type}</span></div>`;
+    if(left>0||sel===i) d.onclick=()=>pick(i);
+    $('rack').appendChild(d);
+  });
+}
+
+function pick(i){
+  if(sel!==null&&sel!==i&&onTable>0){ msg('Take the other one back first.','var(--err)'); return; }
+  if(sel===i){ setQty(Math.min(tapes[i].count,onTable+1)); return; }
+  sel=i; onTable=0; stage='open'; counter=0;
+  setQty(1);
+  msg(`<span class="playing">NOW PLAYING — ${tapes[i].name}<span class="bars"><i></i><i></i><i></i><i></i></span></span>`,'');
+}
+
+function setQty(n){
+  const t=tapes[sel]; onTable=Math.max(0,Math.min(t.count,n));
+  if(onTable===0){ sel=null; }
+  stage='open'; counter=0;
+  draw();
+}
+
+function draw(){
+  $('who').textContent='// '+buyer.name.toUpperCase();
+  $('bondPips').textContent=pips(buyer.bond);
+  $('memo').innerHTML=buyer.lastPaid?`you remember: paid <span class="val">${buyer.lastPaid}</span> a tape`
+                                    :"you've never dealt with them";
+  const t=sel!==null?tapes[sel]:null;
+
+  if(!t||onTable===0){
+    $('tableEmpty').style.display='';$('tableFull').style.display='none';
+    $('qty').disabled=true;$('ask').disabled=true;
+    $('qtyNum').textContent='—';$('askNum').textContent='—';
+    $('risk').innerHTML='&nbsp;';$('btnSell').disabled=true;$('btnTake').disabled=true;
+  }else{
+    $('tableEmpty').style.display='none';
+    const f=$('tableFull'); f.style.display='flex'; f.style.border='none'; f.style.padding='0';
+    f.innerHTML=`<div class="cass ${shell(t)}"><div class="hub h1"></div><div class="hub h2"></div>
+        <div class="lbl">${t.name}</div></div>
+      <div class="tinfo">
+        <div class="ttitle">${t.name} <span class="genre">· ${t.genre}</span></div>
+        <div class="tsub">TYPE ${t.type} · ${t.modules} modules · market
+          <span class="val">${market(t)}</span> a tape — what ${buyer.name.toUpperCase()} pays is up to them</div>
+        <div class="playing">NOW PLAYING<span class="bars"><i></i><i></i><i></i><i></i></span></div>
+      </div>
+      <div class="bigq">×${onTable}</div>`;
+    $('qty').disabled=false;$('qty').max=t.count;$('qty').value=onTable;
+    $('qtyNum').textContent=`${onTable} of ${t.count}`;
+    $('ask').disabled=false;
+    $('askNum').innerHTML=`${$('ask').value} <span style="font-size:12px;color:#7fa0bd">each · ${$('ask').value*onTable} total</span>`;
+    drawRisk(t);
+    $('btnSell').disabled=false;$('btnTake').disabled=false;
+    $('btnSell').textContent = stage==='countered' ? `TAKE ${counter}` : 'OFFER IT';
+  }
+  drawRack(); drawDbg();
+}
+
+function drawRisk(t){
+  const ask=+$('ask').value, m=market(t), over=ask/m;
+  let s,c;
+  if(stage==='countered'){ s=`they countered at ${counter} — TAKE ${counter}, or push your ${ask}`; c='var(--warn)'; }
+  else if(over<=0.75){ s='well under market — they will bite your hand off'; c='var(--ok)'; }
+  else if(over<=1.05){ s='about market'; c='var(--ok)'; }
+  else if(over<=1.45){ s='a bit cheeky — they might counter'; c='var(--value)'; }
+  else if(over<=2.0){  s='pushing it'; c='var(--warn)'; }
+  else{ s='taking the piss — they may walk off'; c='var(--err)'; }
+  $('risk').textContent=s; $('risk').style.color=c;
+}
+
+function msg(html,col){ $('result').innerHTML=html; $('result').style.color=col||'var(--label)'; }
+
+$('qty').oninput=e=>setQty(+e.target.value);
+$('ask').oninput=()=>draw();
+$('btnTake').onclick=()=>{ sel=null;onTable=0;stage='open';msg('&nbsp;');draw(); };
+$('btnNext').onclick=()=>{ buyer=makeBuyer(); sel=null;onTable=0;stage='open';heard=new Set();
+                           msg('A different alien wanders over.','var(--dim)');draw(); };
+
+$('btnSell').onclick=()=>{
+  const t=tapes[sel], ask=+$('ask').value;
+  if(stage==='countered'){ close(counter); return; }
+
+  const key=buyer.name+'|'+t.name;
+  if(heard.has(key)){ msg(`"You've played me this one."`,'var(--err)'); return; }
+
+  const s=sat(buyer,t);
+  const liked = s>=LIKE || (s>=MAYBE && Math.random()<0.5);
+  if(!liked){
+    heard.add(key);
+    const gaps=t.dials.map((v,i)=>({i,d:buyer.ear[i]-v}))
+                      .sort((a,b)=>Math.abs(b.d)-Math.abs(a.d));
+    const D=['PULSE','CRUNCH','GOO','VOID','JITTER','WARP'];
+    const g=gaps[0];
+    msg(`"${Math.abs(g.d)>=5?(g.d>0?'Nowhere near enough ':'Way too much '):(g.d>0?'Could do with more ':'Bit heavy on the ')}${D[g.i]}.
+         I'm more of a ${buyer.fav} listener." <span style="color:var(--dim)">— tape handed back</span>`,'var(--err)');
+    draw(); return;
+  }
+
+  const v=value(buyer,t), ceil=ceiling(buyer,t);
+  if(ask<=ceil){ close(ask); return; }
+  if(ask<=ceil*1.35){
+    counter=Math.max(1,Math.round((Math.round(v*0.9)+ask)/2));
+    if(counter>ceil) counter=ceil;
+    stage='countered';
+    msg(`"${ask} a tape? Not a chance. I'll do ${counter}."`,'var(--value)');
+    draw(); return;
+  }
+  const fin=Math.max(1,Math.round(v*0.6));
+  counter=fin; stage='countered';
+  msg(`"You're having a laugh. ${fin}. Take it or don't."`,'var(--err)');
+  draw();
+};
+
+function close(per){
+  const t=tapes[sel], total=per*onTable;
+  heard.add(buyer.name+'|'+t.name);
+  t.count-=onTable;
+  buyer.lastPaid=per; buyer.bond=Math.min(100,buyer.bond+8+(t.genre===buyer.fav?4:0));
+  msg(`${buyer.name.toUpperCase()} paid <span class="val">${total}</span> credits for ${onTable}.`,'var(--ok)');
+  tapes=tapes.filter(x=>x.count>0);
+  sel=null;onTable=0;stage='open';
+  draw();
+}
+
+function drawDbg(){
+  const t=sel!==null?tapes[sel]:null;
+  let s=`<b>HIDDEN (debug only):</b> ${buyer.name} likes <b>${buyer.fav}</b> · falloff ${buyer.falloff.toFixed(2)} · pay ${buyer.pay.toFixed(2)} · patience ${buyer.patience.toFixed(2)} · bond ${buyer.bond}`;
+  if(t) s+=`<br>on the table: <b>${t.name}</b> — satisfaction <b>${sat(buyer,t).toFixed(0)}</b> (${sat(buyer,t)>=LIKE?'LIKED':sat(buyer,t)>=MAYBE?'COIN FLIP':'REJECTED'}) · they value it at <b>${value(buyer,t)}</b> · will pay up to <b>${ceiling(buyer,t)}</b> · market ${market(t)}`;
+  else s+=`<br>nothing on the table`;
+  $('dbg').innerHTML=s;
+}
+
+draw();
+</script>
+</body>
+</html>
