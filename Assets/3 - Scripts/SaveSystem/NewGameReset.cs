@@ -122,6 +122,7 @@ public static class NewGameReset
         // Static shelf + installed plugins: New Game runs no Apply, so without
         // this the last world's projects and bought modules leak into the next.
         TraxLibrary.Clear();
+        TraxPrints.Clear();       // and the pressings made from them
         TevTextDirector.ResetAll();
 
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();

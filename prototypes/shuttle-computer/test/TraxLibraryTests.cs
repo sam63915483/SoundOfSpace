@@ -41,6 +41,7 @@ public static class TraxLibraryTests
         RoundTrip();
         CorruptRows();
         Plugins();
+        Pressings();
 
         Console.WriteLine();
         if (_failures == 0)
@@ -241,6 +242,87 @@ public static class TraxLibraryTests
         TraxLibrary.Clear();
         Check(!TraxLibrary.IsInstalled("CAVE"), "New Game forgets what the last world bought");
     }
+
+    // ── pressings ────────────────────────────────────────────────────────
+    // The promise being tested: a cassette in your pocket NEVER changes song.
+
+    static void Pressings()
+    {
+        Console.WriteLine("pressings");
+        TraxLibrary.Clear();
+        TraxPrints.Clear();
+
+        TraxTrack t = TraxTrack.Default().WithKey(4).WithActive("SIREN", false);
+        TraxPrints.Record a = TraxPrints.Register("Deep Cave", t, 1);
+        Check(a != null, "a track can be pressed");
+        Eq(a.tier, 1, "tier recorded");
+        Eq(a.trackId, t.TrackId(), "the pressing carries the track identity");
+
+        // Same song, same tier, pressed again -> the SAME record, so the tapes
+        // stack rather than fragmenting into one id per print run.
+        TraxPrints.Record again = TraxPrints.Register("Deep Cave", t, 1);
+        Eq(again.id, a.id, "re-pressing the same song at the same tier reuses the id");
+        Eq(TraxPrints.Count, 1, "and does not add a second record");
+
+        // A different tier is a different product and must not stack with it.
+        TraxPrints.Record t2 = TraxPrints.Register("Deep Cave", t, 2);
+        Check(t2.id != a.id, "a T2 pressing is its own id");
+        Eq(TraxPrints.Count, 2, "both pressings exist");
+        Eq(TraxPrints.TierOf(t2.id), 2, "tier resolves from the id");
+
+        // Renaming the project cannot rewrite a tape someone already has.
+        TraxPrints.Register("A Different Name", t, 1);
+        Eq(TraxPrints.DisplayName(a.id), "Deep Cave", "the first pressing's name sticks");
+
+        // Editing the caller's track afterwards must not reach into the record.
+        TraxTrack mutable = TraxTrack.Default();
+        TraxPrints.Record frozen = TraxPrints.Register("Frozen", mutable, 1);
+        uint before = frozen.trackId;
+        mutable.active[0] = false;
+        mutable.key = 9;
+        Eq(frozen.trackId, before, "THE PRESSING IS FROZEN - editing the source track did not reach it");
+        Check(frozen.track.active[0], "and its active set is untouched");
+        Eq(frozen.track.key, 0, "and its key is untouched");
+
+        // Deleting the PROJECT must leave the pressing alone — this is the whole
+        // reason prints are a separate table from the shelf.
+        TraxLibrary.Record proj = TraxLibrary.Save("Deep Cave", t, 100);
+        TraxLibrary.Delete(proj.id);
+        Eq(TraxLibrary.Count, 0, "the project is gone");
+        Check(TraxPrints.Get(a.id) != null, "the tape printed from it still exists");
+        Eq(TraxPrints.DisplayName(a.id), "Deep Cave", "and still knows its name");
+
+        // Round trip.
+        var blob = new TraxLibrarySave();
+        TraxPrints.Capture(blob);
+        // THREE, not four: "A Different Name" was the same song at the same
+        // tier as the first pressing, so it reused that record rather than
+        // making one. Only Deep Cave T1, Deep Cave T2 and Frozen T1 exist.
+        Eq(blob.prints.Count, 3, "every distinct pressing was captured");
+        TraxPrints.Clear();
+        Eq(TraxPrints.Count, 0, "cleared");
+        TraxPrints.Apply(blob);
+        Eq(TraxPrints.Count, 3, "every pressing came back");
+        TraxPrints.Record reloaded = TraxPrints.Get(a.id);
+        Check(reloaded != null, "the tape resolves by the id its stack is keyed on");
+        Eq(reloaded.trackId, a.trackId, "THE SONG SURVIVED THE SAVE FILE BYTE-FOR-BYTE");
+        Eq(reloaded.tier, 1, "tier survived");
+        Check(!reloaded.track.ActiveOf("SIREN"), "the mute survived");
+        Eq(reloaded.track.key, 4, "key survived");
+
+        // A hand-edited file that files a song under the wrong id must not
+        // produce a tape that sounds like neither.
+        var lying = new TraxLibrarySave();
+        lying.prints.Add(new TraxPrintSave { id = "t1-deadbeef", name = "Liar", tier = 1 });
+        TraxPrints.Apply(lying);
+        Check(TraxPrints.Get("t1-deadbeef") == null, "a wrong id was not trusted");
+        Eq(TraxPrints.Count, 1, "the row still loaded, under its re-derived id");
+
+        TraxPrints.Apply(null);
+        Eq(TraxPrints.Count, 0, "a null save leaves no pressings");
+
+        Eq(TraxPrints.DisplayName("nope"), "CASSETTE", "an unknown tape still reads as something");
+    }
 }
 
 // ── stubs of the real save DTOs (SaveData.cs pulls in UnityEngine) ────────
@@ -258,8 +340,21 @@ public class TraxProjectSave
     public List<bool> active = new List<bool>();
 }
 
+public class TraxPrintSave
+{
+    public string id;
+    public string name;
+    public int tier;
+    public int key;
+    public List<float> dials = new List<float>();
+    public List<int> preset = new List<int>();
+    public List<int> variation = new List<int>();
+    public List<bool> active = new List<bool>();
+}
+
 public class TraxLibrarySave
 {
     public List<TraxProjectSave> projects = new List<TraxProjectSave>();
     public List<string> installedPlugins = new List<string>();
+    public List<TraxPrintSave> prints = new List<TraxPrintSave>();
 }

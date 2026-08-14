@@ -212,6 +212,7 @@ public static class TraxLibrary
             save.projects.Add(row);
         }
         foreach (string m in _installed) save.installedPlugins.Add(m);
+        TraxPrints.Capture(save);
         return save;
     }
 
@@ -224,6 +225,7 @@ public static class TraxLibrary
     public static void Apply(TraxLibrarySave save)
     {
         Clear();
+        TraxPrints.Apply(save);      // frozen pressings, restored before anything resolves a tape
         if (save == null) return;
 
         // An old save with no plugin list keeps the starting two rather than

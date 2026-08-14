@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette }
 
     public struct Slot
     {
@@ -32,12 +32,36 @@ public class Hotbar : MonoBehaviour
         // SPECIES-PURE: two different species never merge into one stack, so
         // every add/spend path has to match on this as well as the id.
         public string mushroomSpecies;
+        // Populated only when id == Cassette. The PRINT id — see TraxPrints.
+        // Like species, stacks are PURE: two different songs never merge, so
+        // every add/spend path matches on this as well as the id.
+        public string cassetteId;
     }
 
     /// True for the two species-carrying item ids. Their stacks match on
     /// <see cref="Slot.mushroomSpecies"/> as well as the id.
     public static bool IsMushroomItem(ItemId id) =>
         id == ItemId.Mushroom || id == ItemId.MushroomSapling;
+
+    /// <summary>
+    /// True for every id whose stacks are keyed on more than the id itself.
+    /// Mushrooms carry a species, cassettes carry a song. Both need the same
+    /// "these two stacks are not interchangeable" rule, so the add/spend paths
+    /// below talk about a VARIANT rather than about mushrooms specifically.
+    /// </summary>
+    public static bool CarriesVariant(ItemId id) => IsMushroomItem(id) || id == ItemId.Cassette;
+
+    /// The variant a slot is carrying, or null if its id does not use one.
+    public static string VariantOf(Slot s) =>
+        s.id == ItemId.Cassette ? s.cassetteId : IsMushroomItem(s.id) ? s.mushroomSpecies : null;
+
+    static Slot MakeSlot(ItemId id, int count, string variant)
+    {
+        var slot = new Slot { id = id, count = count };
+        if (id == ItemId.Cassette) slot.cassetteId = variant;
+        else if (IsMushroomItem(id)) slot.mushroomSpecies = variant;
+        return slot;
+    }
 
     // ── Slot layout ────────────────────────────────────────────────────────
     //
@@ -440,6 +464,12 @@ public class Hotbar : MonoBehaviour
             // Handoff §3: 20 per stack, species-pure.
             ItemId.Mushroom => 20,
             ItemId.MushroomSapling => 20,
+            // Blanks are cheap bulk stock you carry to the computer; printed
+            // tapes stack per SONG, so a big cap would just hide how many
+            // different tracks you are hauling.
+            ItemId.BlankTapeT1 => 20,
+            ItemId.BlankTapeT2 => 20,
+            ItemId.Cassette => 10,
             // Money is UNCAPPED — the stack count is the balance, so a cap here
             // would silently be a cap on how rich the player may be, and any
             // spill logic would need somewhere to spill to. There isn't one:
@@ -463,13 +493,18 @@ public class Hotbar : MonoBehaviour
     }
 
     /// Total of ONE mushroom species. Pass a null/empty species to match any.
-    public int GetMushroomTotal(ItemId resource, string species)
+    public int GetMushroomTotal(ItemId resource, string species) =>
+        GetVariantTotal(resource, species);
+
+    /// Total of ONE variant — a mushroom species or a cassette's song. Pass a
+    /// null/empty variant to match any.
+    public int GetVariantTotal(ItemId resource, string variant)
     {
-        if (!IsMushroomItem(resource)) return 0;
-        bool anySpecies = string.IsNullOrEmpty(species);
+        if (!CarriesVariant(resource)) return 0;
+        bool any = string.IsNullOrEmpty(variant);
         int sum = 0;
         for (int i = 0; i < NumSlots; i++)
-            if (slots[i].id == resource && (anySpecies || slots[i].mushroomSpecies == species))
+            if (slots[i].id == resource && (any || VariantOf(slots[i]) == variant))
                 sum += slots[i].count;
         return sum;
     }
@@ -493,9 +528,9 @@ public class Hotbar : MonoBehaviour
     public int AddResource(ItemId resource, int amount, string species)
     {
         if (!IsResource(resource) || amount <= 0) return amount > 0 ? amount : 0;
-        bool mushroom = IsMushroomItem(resource);
-        if (mushroom && string.IsNullOrEmpty(species)) species = MushroomRegistry.AnyKey();
-        if (!mushroom) species = null;
+        bool variant = CarriesVariant(resource);
+        if (IsMushroomItem(resource) && string.IsNullOrEmpty(species)) species = MushroomRegistry.AnyKey();
+        if (!variant) species = null;
 
         int cap = StackMax(resource);
         int remaining = amount;
@@ -505,7 +540,7 @@ public class Hotbar : MonoBehaviour
         for (int i = 0; i < NumSlots && remaining > 0; i++)
         {
             if (slots[i].id != resource) continue;
-            if (mushroom && slots[i].mushroomSpecies != species) continue;
+            if (variant && VariantOf(slots[i]) != species) continue;
             int room = cap - slots[i].count;
             if (room <= 0) continue;
             int take = Mathf.Min(room, remaining);
@@ -519,13 +554,41 @@ public class Hotbar : MonoBehaviour
         {
             if (slots[i].id != ItemId.None) continue;
             int take = Mathf.Min(cap, remaining);
-            slots[i] = new Slot { id = resource, count = take, mushroomSpecies = species };
+            slots[i] = MakeSlot(resource, take, species);
             remaining -= take;
             changed = true;
         }
 
         if (changed) OnResourceChanged?.Invoke(resource);
         return remaining;
+    }
+
+    /// <summary>
+    /// Add printed cassettes of one song. Returns HOW MANY ACTUALLY FIT, which
+    /// the printer needs before it spends any blanks — otherwise a full hotbar
+    /// would eat the stock and hand back nothing.
+    ///
+    /// Stacks are song-pure: two different tracks never merge, and a T2 pressing
+    /// is a different print id from the T1 of the same song, so they separate
+    /// too. That falls out of the variant rule rather than needing its own path.
+    /// </summary>
+    public int AddCassette(string printId, int amount)
+    {
+        if (string.IsNullOrEmpty(printId) || amount <= 0) return 0;
+        int leftover = AddResource(ItemId.Cassette, amount, printId);
+        return amount - leftover;
+    }
+
+    /// How many tapes of one song the player is carrying.
+    public int GetCassetteTotal(string printId) => GetVariantTotal(ItemId.Cassette, printId);
+
+    /// The song in the first cassette stack found, or null. The sell flow uses
+    /// this to know what it is offering without asking the player to pick.
+    public string FirstCassetteId()
+    {
+        for (int i = 0; i < NumSlots; i++)
+            if (slots[i].id == ItemId.Cassette && slots[i].count > 0) return slots[i].cassetteId;
+        return null;
     }
 
     // All-or-nothing: drain leftmost stacks first, return false if total insufficient.
@@ -537,18 +600,18 @@ public class Hotbar : MonoBehaviour
     {
         if (!IsResource(resource)) return false;
         if (amount <= 0) return true;
-        bool mushroom = IsMushroomItem(resource);
-        if (!mushroom) species = null;
-        bool anySpecies = !mushroom || string.IsNullOrEmpty(species);
+        bool variant = CarriesVariant(resource);
+        if (!variant) species = null;
+        bool anySpecies = !variant || string.IsNullOrEmpty(species);
 
-        int have = anySpecies ? GetResourceTotal(resource) : GetMushroomTotal(resource, species);
+        int have = anySpecies ? GetResourceTotal(resource) : GetVariantTotal(resource, species);
         if (have < amount) return false;
 
         int remaining = amount;
         for (int i = 0; i < NumSlots && remaining > 0; i++)
         {
             if (slots[i].id != resource) continue;
-            if (!anySpecies && slots[i].mushroomSpecies != species) continue;
+            if (!anySpecies && VariantOf(slots[i]) != species) continue;
             int take = Mathf.Min(slots[i].count, remaining);
             slots[i].count -= take;
             remaining -= take;
@@ -821,6 +884,7 @@ public class Hotbar : MonoBehaviour
                 fishData = fish,
                 bagContents = bag,
                 mushroomSpecies = IsMushroomItem(id) ? entry.mushroomSpecies : null,
+                cassetteId = id == ItemId.Cassette ? entry.cassetteId : null,
             };
         }
         // Notify subscribers (facades) so their OnChanged fires once each.
@@ -839,7 +903,8 @@ public class Hotbar : MonoBehaviour
     static bool IsResource(ItemId id)
     {
         return id is ItemId.Wood or ItemId.Crystal or ItemId.SpaceDust or ItemId.Sapling
-                  or ItemId.Mushroom or ItemId.MushroomSapling;
+                  or ItemId.Mushroom or ItemId.MushroomSapling
+                  or ItemId.BlankTapeT1 or ItemId.BlankTapeT2 or ItemId.Cassette;
     }
 
     // Slot-only items: selected via number key but have no controller to equip.
@@ -915,6 +980,17 @@ public class Hotbar : MonoBehaviour
         return hasFish ? _bagFullIcon : _bagEmptyIcon;
     }
 
+    // Blanks are drab, printed tapes glow — you should be able to tell stock
+    // from product without reading. T2 is the premium shell.
+    static readonly Color BlankT1SwatchColor   = new Color32(0x5A, 0x5F, 0x66, 0xFF);   // grey shell
+    static readonly Color BlankT2SwatchColor   = new Color32(0x8C, 0x7A, 0x3F, 0xFF);   // gold shell
+    static readonly Color CassetteT1Swatch     = new Color32(0x79, 0xFF, 0xD0, 0xFF);   // TRAX phosphor
+    static readonly Color CassetteT2Swatch     = new Color32(0xFF, 0x4F, 0xD8, 0xFF);   // TRAX magenta
+
+    /// A printed tape's colour comes from its tier. Null id falls back to T1.
+    static Color CassetteSwatch(string cassetteId) =>
+        TraxPrints.TierOf(cassetteId) >= 2 ? CassetteT2Swatch : CassetteT1Swatch;
+
     static readonly Color MushroomSwatchColor  = new Color32(0xE0, 0x6C, 0x75, 0xFF);   // cap red
     static readonly Color MushSaplingSwatchCol = new Color32(0xC8, 0x9B, 0xE6, 0xFF);   // spore violet
 
@@ -928,6 +1004,11 @@ public class Hotbar : MonoBehaviour
             case ItemId.Sapling:   return SaplingSwatchColor;
             case ItemId.Mushroom:  return MushroomSwatchColor;
             case ItemId.MushroomSapling: return MushSaplingSwatchCol;
+            case ItemId.BlankTapeT1: return BlankT1SwatchColor;
+            case ItemId.BlankTapeT2: return BlankT2SwatchColor;
+            // A printed tape takes the colour of its TIER, so a shelf of them
+            // reads at a glance even before you check the names.
+            case ItemId.Cassette:  return CassetteSwatch(null);
             default: return Color.white;
         }
     }
@@ -942,6 +1023,9 @@ public class Hotbar : MonoBehaviour
             case ItemId.Sapling:   return "SAPLINGS";
             case ItemId.Mushroom:  return "MUSHROOM";
             case ItemId.MushroomSapling: return "SPORES";
+            case ItemId.BlankTapeT1: return "BLANK TAPE";
+            case ItemId.BlankTapeT2: return "BLANK TAPE II";
+            case ItemId.Cassette:  return "CASSETTE";
             case ItemId.Money:     return "MONEY";
             default: return "—";
         }
@@ -973,6 +1057,13 @@ public class Hotbar : MonoBehaviour
             case ItemId.SpaceDust: return _dustIcon;
             case ItemId.Sapling:   return _saplingIcon;
             case ItemId.Money:     return MoneyIcon();
+            case ItemId.BlankTapeT1: return CassetteSprite(BlankT1SwatchColor);
+            case ItemId.BlankTapeT2: return CassetteSprite(BlankT2SwatchColor);
+            // A PRINTED tape's colour is its tier, which the id alone does not
+            // give us — the slot renderer calls CassetteSpriteFor instead. This
+            // generic shell is the fallback for callers that only have the id
+            // (a remote player's held item, a world drop).
+            case ItemId.Cassette:  return CassetteSprite(CassetteT1Swatch);
             default: return null;
         }
     }
@@ -1030,6 +1121,92 @@ public class Hotbar : MonoBehaviour
         _moneyIcon = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
         return _moneyIcon;
     }
+
+    // ── cassette art (placeholder, drawn in code) ────────────────────────
+    //
+    // There is no cassette art yet and the Hotbar auto-creates with no
+    // inspector, so the shell is drawn once per colour and cached — exactly the
+    // approach MoneyIcon takes above. Drop a real sprite at
+    // Resources/HotbarIcons/TransparentCassette and it wins automatically.
+    static readonly Dictionary<uint, Sprite> _cassetteSprites = new Dictionary<uint, Sprite>();
+    static Sprite _authoredCassette;
+    static bool _authoredCassetteTried;
+
+    /// <summary>A cassette shell in <paramref name="shell"/>: body, label strip
+    /// and two hubs. Readable at 64 px, which is all a hotbar slot gives it.</summary>
+    public static Sprite CassetteSprite(Color shell)
+    {
+        if (!_authoredCassetteTried)
+        {
+            _authoredCassetteTried = true;
+            _authoredCassette = Resources.Load<Sprite>("HotbarIcons/TransparentCassette");
+        }
+        if (_authoredCassette != null) return _authoredCassette;
+
+        var key32 = (Color32)shell;
+        uint key = (uint)(key32.r << 16 | key32.g << 8 | key32.b);
+        Sprite cached;
+        if (_cassetteSprites.TryGetValue(key, out cached) && cached != null) return cached;
+
+        const int size = 96;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color32[size * size];        // starts fully transparent
+
+        Color32 body  = key32;
+        Color32 edge  = Mul(key32, 0.45f);
+        Color32 label = new Color32(0xEC, 0xF2, 0xF6, 0xFF);
+        Color32 hub   = Mul(key32, 0.25f);
+
+        const int bx = 10, by = 24, bw = 76, bh = 48;   // the shell
+        for (int y = 0; y < bh; y++)
+            for (int x = 0; x < bw; x++)
+            {
+                int gx = bx + x, gy = by + y;
+                // Clipped corners, so it reads as a cassette and not a brick.
+                int cut = 5;
+                if ((x < cut && y < cut) || (x >= bw - cut && y < cut)) continue;
+                bool border = x < 3 || x >= bw - 3 || y < 3 || y >= bh - 3;
+                px[gy * size + gx] = border ? edge : body;
+            }
+
+        // Label strip across the top two thirds.
+        for (int y = by + 26; y < by + 42; y++)
+            for (int x = bx + 8; x < bx + bw - 8; x++)
+                px[y * size + x] = label;
+
+        // Two hubs in the tape window.
+        DrawDisc(px, size, bx + 26, by + 17, 7, hub);
+        DrawDisc(px, size, bx + bw - 26, by + 17, 7, hub);
+
+        tex.SetPixels32(px);
+        tex.Apply();
+        var sprite = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        _cassetteSprites[key] = sprite;
+        return sprite;
+    }
+
+    static Color32 Mul(Color32 c, float f) =>
+        new Color32((byte)(c.r * f), (byte)(c.g * f), (byte)(c.b * f), c.a);
+
+    static void DrawDisc(Color32[] px, int size, int cx, int cy, int r, Color32 c)
+    {
+        for (int y = -r; y <= r; y++)
+            for (int x = -r; x <= r; x++)
+            {
+                if (x * x + y * y > r * r) continue;
+                int gx = cx + x, gy = cy + y;
+                if (gx < 0 || gx >= size || gy < 0 || gy >= size) continue;
+                px[gy * size + gx] = c;
+            }
+    }
+
+    /// The shell colour a printed tape should wear, from its print id.
+    public static Sprite CassetteSpriteFor(string cassetteId) =>
+        CassetteSprite(CassetteSwatch(cassetteId));
 
     void BuildRegistry()
     {
@@ -1376,6 +1553,12 @@ public class Hotbar : MonoBehaviour
                         isProceduralSwatch = true;
                     }
                 }
+                else if (id == ItemId.Cassette)
+                {
+                    // Tier colour is per-slot, not per-id, so this one resolves
+                    // from the stack's print rather than through ResourceIcon.
+                    sprite = CassetteSpriteFor(slots[i].cassetteId);
+                }
                 else if (isRes || id == ItemId.Money)
                 {
                     sprite = ResourceIcon(id);
@@ -1384,7 +1567,11 @@ public class Hotbar : MonoBehaviour
                         // Fallback: keep the original colored-square placeholder
                         // so the slot isn't blank if the PNG is missing.
                         sprite = HotbarResourceSwatch.GetSprite();
-                        iconTint = ResourceSwatchColor(id);
+                        // A cassette's colour is its TIER, which only this slot
+                        // knows — ResourceSwatchColor sees the id alone.
+                        iconTint = id == ItemId.Cassette
+                            ? CassetteSwatch(slots[i].cassetteId)
+                            : ResourceSwatchColor(id);
                         isProceduralSwatch = true;
                     }
                 }
@@ -1560,6 +1747,14 @@ public class Hotbar : MonoBehaviour
                 string sp = MushroomRegistry.DisplayName(slots[newActive].mushroomSpecies).ToUpperInvariant();
                 string suffix = activeId == ItemId.MushroomSapling ? " SPORES" : "";
                 label = $"{sp}{suffix} ×{slots[newActive].count}";
+            }
+            else if (activeId == ItemId.Cassette)
+            {
+                // Name the SONG, not the object. The whole point of printing a
+                // tape is that it is a specific thing you made.
+                string song = TraxPrints.DisplayName(slots[newActive].cassetteId).ToUpperInvariant();
+                string tier = TraxPrints.TierOf(slots[newActive].cassetteId) >= 2 ? " II" : "";
+                label = $"{song}{tier} ×{slots[newActive].count}";
             }
             else if (IsResource(activeId))
             {

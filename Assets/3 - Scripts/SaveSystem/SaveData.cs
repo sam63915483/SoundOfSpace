@@ -218,6 +218,10 @@ public class HotbarSlotSave
     // load with bagContents = null. Recursive but only one level deep —
     // bags can't contain bags by current design.
     public List<HotbarSlotSave> bagContents;
+    // Populated only when itemId is "Cassette": the PRINT id (see TraxPrints).
+    // Like a species this IS part of the stack's identity — losing it would
+    // merge two different songs into one stack on load.
+    public string cassetteId;
     // Populated only when itemId is "Mushroom" / "MushroomSapling": the species
     // key (source prefab name). Stacks are species-pure, so this IS part of the
     // stack's identity — losing it would merge two species on load.
@@ -469,11 +473,28 @@ public class TraxProjectSave
     public List<bool> active = new List<bool>();       // 6, module order — which were PLAYING
 }
 
+// One PRESSING. Frozen at print time and never edited, so a cassette in a
+// pocket cannot change song when its project is edited or deleted. Same
+// per-module parallel lists as a project row.
+[Serializable]
+public class TraxPrintSave
+{
+    public string id;
+    public string name;
+    public int tier;                                   // 1 or 2
+    public int key;
+    public List<float> dials = new List<float>();
+    public List<int> preset = new List<int>();
+    public List<int> variation = new List<int>();
+    public List<bool> active = new List<bool>();
+}
+
 [Serializable]
 public class TraxLibrarySave
 {
     public List<TraxProjectSave> projects = new List<TraxProjectSave>();
     public List<string> installedPlugins = new List<string>();
+    public List<TraxPrintSave> prints = new List<TraxPrintSave>();
 }
 
 [Serializable]

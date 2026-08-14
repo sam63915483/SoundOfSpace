@@ -60,6 +60,7 @@ public class HeldItemViewmodel : MonoBehaviour
     Hotbar.ItemId _shownId = Hotbar.ItemId.None;
     FishEntry _shownFish;
     string _shownSpecies;
+    string _shownCassette;
     float _spin;
     Transform _holdParent;
     float _nextHoldSearch;
@@ -107,7 +108,11 @@ public class HeldItemViewmodel : MonoBehaviour
         // Same for mushroom SPECIES: two stacks share the id but not the model.
         bool fishChanged = id == Hotbar.ItemId.Fish && !ReferenceEquals(slot.fishData, _shownFish);
         bool speciesChanged = Hotbar.IsMushroomItem(id) && slot.mushroomSpecies != _shownSpecies;
-        if (id != _shownId || fishChanged || speciesChanged || _motor == null || _content == null)
+        // And the same again for a cassette's SONG: two tapes share the id but
+        // not the shell colour, so switching stacks has to rebuild the model.
+        bool songChanged = id == Hotbar.ItemId.Cassette && slot.cassetteId != _shownCassette;
+        if (id != _shownId || fishChanged || speciesChanged || songChanged
+            || _motor == null || _content == null)
         {
             if (!Rebuild(slot)) { Clear(); return; }
         }
@@ -252,6 +257,7 @@ public class HeldItemViewmodel : MonoBehaviour
         _shownId = slot.id;
         _shownFish = slot.fishData;
         _shownSpecies = slot.mushroomSpecies;
+        _shownCassette = slot.cassetteId;
         _spin = 0f;
         return true;
     }
@@ -277,6 +283,9 @@ public class HeldItemViewmodel : MonoBehaviour
         // hotbar rather than the flat resource-icon table.
         Sprite icon = slot.id == Hotbar.ItemId.FishBag
             ? Hotbar.ResolveFishBagSprite(slot.bagContents)
+            // A tape's shell is its TIER, which only this stack knows.
+            : slot.id == Hotbar.ItemId.Cassette
+            ? Hotbar.CassetteSpriteFor(slot.cassetteId)
             : Hotbar.ResourceIcon(slot.id);
         if (icon == null) return null;
 

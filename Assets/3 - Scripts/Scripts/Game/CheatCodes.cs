@@ -16,6 +16,12 @@ public class CheatCodes : MonoBehaviour {
     // docs/superpowers/plans/2026-05-23-ai-companion-knowledge-gating-and-org-placeholder.md).
     public KeyCode toggleORGReveal = KeyCode.F9;
 
+    // TEMPORARY, Phase 2 only. Tev sells blank tapes in Phase 3; until his shop
+    // exists there is no way to get stock, so there would be no way to test
+    // printing at all. Delete this (and grantBlankTapes) once the shop lands.
+    // F10 = five Tape I, Shift+F10 = five Tape II.
+    public KeyCode grantBlankTapes = KeyCode.F10;
+
     // Skips the entire opening loop (survive → village → Tev → vendors → report → fork) and
     // drops you straight into the Pilot branch, ready to take the flight test — so you don't
     // have to replay the start every time. Sets the story/mission flags, picks the Pilot fork,
@@ -33,6 +39,12 @@ public class CheatCodes : MonoBehaviour {
             }
             if (Input.GetKeyDown(skipToPilotSchool)) {
                 SkipToPilotSchool();
+            }
+            if (Input.GetKeyDown(grantBlankTapes) && Hotbar.Instance != null) {
+                bool tier2 = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+                var id = tier2 ? Hotbar.ItemId.BlankTapeT2 : Hotbar.ItemId.BlankTapeT1;
+                int leftover = Hotbar.Instance.AddResource(id, 5);
+                Debug.Log($"[CheatCodes] Granted {5 - leftover} x {id} (hotbar full? leftover {leftover})");
             }
         }
     }

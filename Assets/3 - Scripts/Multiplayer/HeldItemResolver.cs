@@ -92,6 +92,10 @@ public static class HeldItemResolver
         if (Ship.AnyShipPiloted) return Hotbar.ItemId.None;
 
         if (Hotbar.IsMushroomItem(slot.id)) variant = slot.mushroomSpecies ?? "";
+        // A cassette's variant is its PRINT id, which both machines can resolve
+        // through TraxPrints — the shelf and its pressings are world state, so a
+        // tape handed across is still the same song on the other screen.
+        else if (slot.id == Hotbar.ItemId.Cassette) variant = slot.cassetteId ?? "";
         else if (slot.id == Hotbar.ItemId.Fish && slot.fishData != null)
             variant = slot.fishData.fishType ?? "";
 
@@ -139,6 +143,10 @@ public static class HeldItemResolver
         // looking at.
         Sprite icon = id == Hotbar.ItemId.FishBag
             ? Hotbar.ResolveFishBagSprite(null)
+            // The variant IS the print id, and pressings are world state, so a
+            // remote player's tape wears its real tier colour rather than a
+            // generic shell.
+            : id == Hotbar.ItemId.Cassette ? Hotbar.CassetteSpriteFor(variant)
             : Hotbar.ResourceIcon(id);
         if (icon == null) return null;
         return SpriteSlab.Build(icon, "RemoteHeld_" + id);

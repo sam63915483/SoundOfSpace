@@ -150,6 +150,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
     Image _saveBg;
 
     int _quantity = 1;
+    int _tier = 1;                   // which shell the next press uses
+    TextMeshProUGUI _printSub, _printNote, _printConfirmLabel;
+    Image _printConfirm;
+    Stepper _printTier;
     int _lastStepShown = -1;
     int _lastBarShown = -1;
     float _toastUntil;
@@ -963,26 +967,42 @@ public partial class ShuttleComputerUI : MonoBehaviour
         Box(title.rectTransform, TopCentre, TopCentre, new Vector2(0, -26), new Vector2(520, 38));
         title.characterSpacing = 14;
 
-        var sub = MakeText(prt, "Sub", "HOW MANY COPIES?", 15, InkDim, TextAlignmentOptions.Top);
-        Box(sub.rectTransform, TopCentre, TopCentre, new Vector2(0, -68), new Vector2(520, 22));
-        sub.characterSpacing = 18;
+        _printSub = MakeText(prt, "Sub", "", 15, InkDim, TextAlignmentOptions.Top);
+        Box(_printSub.rectTransform, TopCentre, TopCentre, new Vector2(0, -66), new Vector2(520, 22));
+        _printSub.characterSpacing = 18;
+
+        // WHICH SHELL. Tier is chosen at print time rather than being a property
+        // of the project, because the same song is worth pressing on both.
+        var tierBox = MakeRect(prt, "TierBox");
+        tierBox.anchorMin = TopCentre;
+        tierBox.anchorMax = TopCentre;
+        tierBox.pivot = TopCentre;
+        tierBox.sizeDelta = new Vector2(300, 40);
+        tierBox.anchoredPosition = new Vector2(0, -94);
+        _printTier = MakeStepper(tierBox, "Tier", 0,
+            () => _tier >= 2 ? "TAPE II" : "TAPE I",
+            d => { _tier = _tier == 1 ? 2 : 1; _printTier.Refresh(); RefreshPrintDialog(); },
+            Accent);
+        _printTier.label.fontSize = 20;
 
         var qtyBox = MakeRect(prt, "QtyBox");
         qtyBox.anchorMin = TopCentre;
         qtyBox.anchorMax = TopCentre;
         qtyBox.pivot = TopCentre;
-        qtyBox.sizeDelta = new Vector2(240, 60);
-        qtyBox.anchoredPosition = new Vector2(0, -104);
+        qtyBox.sizeDelta = new Vector2(240, 54);
+        qtyBox.anchoredPosition = new Vector2(0, -134);
 
+        // Clamped to the blanks you are CARRYING, so the number on screen is
+        // always a number you can actually press.
         _printQty = MakeStepper(qtyBox, "Qty", 0,
             () => _quantity.ToString(),
-            d => { _quantity = Mathf.Clamp(_quantity + d, 1, 99); _printQty.Refresh(); },
+            d => { _quantity = Mathf.Clamp(_quantity + d, 1, Mathf.Max(1, BlanksHeld(_tier)));
+                   _printQty.Refresh(); RefreshPrintDialog(); },
             Ink);
         _printQty.label.fontSize = 30;
 
-        var note = MakeText(prt, "Note", "no tape deck installed", 13, InkGhost,
-                            TextAlignmentOptions.Center);
-        Box(note.rectTransform, TopCentre, TopCentre, new Vector2(0, -178), new Vector2(520, 20));
+        _printNote = MakeText(prt, "Note", "", 13, InkGhost, TextAlignmentOptions.Center);
+        Box(_printNote.rectTransform, TopCentre, TopCentre, new Vector2(0, -190), new Vector2(520, 20));
 
         // Buttons, laid out from the centre outward.
         var cancel = MakePanel(prt, "Cancel", Panel);
@@ -996,28 +1016,124 @@ public partial class ShuttleComputerUI : MonoBehaviour
         cancelBtn.targetGraphic = cancel;
         cancelBtn.onClick.AddListener(ClosePrint);
 
-        var ok = MakePanel(prt, "Confirm", Ink);
-        ok.raycastTarget = true;
-        Box(ok.rectTransform, Centre, Centre, new Vector2(92, -104), new Vector2(160, 44));
-        var okTxt = MakeText(ok.rectTransform, "Label", "PRINT", 17, Hex("04120eff"),
-                             TextAlignmentOptions.Center);
-        Stretch(okTxt.rectTransform, 0, 0, 0, 0);
-        var okBtn = ok.gameObject.AddComponent<Button>();
-        okBtn.targetGraphic = ok;
-        okBtn.onClick.AddListener(delegate
-        {
-            ClosePrint();
-            Toast("PRINT x" + _quantity + " QUEUED — NO TAPE DECK INSTALLED");
-        });
+        _printConfirm = MakePanel(prt, "Confirm", Ink);
+        _printConfirm.raycastTarget = true;
+        Box(_printConfirm.rectTransform, Centre, Centre, new Vector2(92, -104), new Vector2(160, 44));
+        _printConfirmLabel = MakeText(_printConfirm.rectTransform, "Label", "PRINT", 17,
+                                      Hex("04120eff"), TextAlignmentOptions.Center);
+        Stretch(_printConfirmLabel.rectTransform, 0, 0, 0, 0);
+        var okBtn = _printConfirm.gameObject.AddComponent<Button>();
+        okBtn.targetGraphic = _printConfirm;
+        okBtn.onClick.AddListener(DoPrint);
 
         _printPanel.SetActive(false);
+    }
+
+    // ── printing ─────────────────────────────────────────────────────────
+
+    static Hotbar.ItemId BlankIdFor(int tier)
+    {
+        return tier >= 2 ? Hotbar.ItemId.BlankTapeT2 : Hotbar.ItemId.BlankTapeT1;
+    }
+
+    /// <summary>
+    /// Blanks IN THE HOTBAR only. Stock in a locker deliberately does not count
+    /// — carrying your blanks to the computer is the point, and it is what makes
+    /// a print run a decision rather than a formality.
+    /// </summary>
+    static int BlanksHeld(int tier)
+    {
+        return Hotbar.Instance == null ? 0 : Hotbar.Instance.GetResourceTotal(BlankIdFor(tier));
     }
 
     void OpenPrint()
     {
         if (_printPanel == null) return;
-        _printQty.Refresh();
+        _quantity = 1;
         _printPanel.SetActive(true);
+        _printTier.Refresh();
+        _printQty.Refresh();
+        RefreshPrintDialog();
+    }
+
+    /// Everything the dialog says derives from two facts: whether this track has
+    /// a name yet, and how many blanks of the chosen tier you are carrying.
+    void RefreshPrintDialog()
+    {
+        if (_printSub == null) return;
+
+        bool named = _project != null;
+        int blanks = BlanksHeld(_tier);
+        if (_quantity > blanks) _quantity = Mathf.Max(1, blanks);
+        _printQty.Refresh();
+
+        _printSub.text = named ? _project.name.ToUpperInvariant() : "UNNAMED TRACK";
+        _printSub.color = named ? InkDim : Warn;
+
+        if (!named)
+        {
+            // A tape has to carry a name — that is what the alien remembers and
+            // what shows in your hand. So saving comes first, always.
+            _printNote.text = "save this project before pressing it to tape";
+            _printNote.color = Warn;
+        }
+        else if (blanks <= 0)
+        {
+            _printNote.text = "no blank " + (_tier >= 2 ? "TAPE II" : "TAPE I") + " in your hotbar";
+            _printNote.color = Warn;
+        }
+        else if (ProjectDirty)
+        {
+            // Not a blocker: pressing what is on the deck is legitimate. But it
+            // will not be what the shelf holds, and you should know that.
+            _printNote.text = blanks + " blank in hotbar - pressing UNSAVED changes";
+            _printNote.color = Warn;
+        }
+        else
+        {
+            _printNote.text = blanks + " blank " + (blanks == 1 ? "tape" : "tapes") + " in your hotbar";
+            _printNote.color = InkGhost;
+        }
+
+        bool canPrint = named && blanks > 0;
+        _printConfirm.color = canPrint ? Ink : Locked;
+        _printConfirmLabel.color = canPrint ? Hex("04120eff") : InkGhost;
+    }
+
+    /// <summary>
+    /// Consume blanks, freeze the track, hand over the tapes.
+    ///
+    /// The track pressed is WHAT IS ON THE DECK, not what the shelf holds — if
+    /// they differ the dialog says so first. Freezing is what makes the tape
+    /// independent of the project forever after.
+    /// </summary>
+    void DoPrint()
+    {
+        if (_project == null) { Toast("SAVE THE PROJECT FIRST"); return; }
+        if (Hotbar.Instance == null) return;
+
+        Hotbar.ItemId blankId = BlankIdFor(_tier);
+        int blanks = BlanksHeld(_tier);
+        int want = Mathf.Clamp(_quantity, 1, blanks);
+        if (want <= 0) { Toast("NO BLANK TAPES IN YOUR HOTBAR"); return; }
+
+        TraxPrints.Record press = TraxPrints.Register(_project.name, _inst.Track, _tier);
+        if (press == null) return;
+
+        // Make room BEFORE spending, so a full hotbar can never eat the blanks
+        // and hand back nothing.
+        int placed = Hotbar.Instance.AddCassette(press.id, want);
+        if (placed <= 0)
+        {
+            Toast("NO ROOM IN YOUR HOTBAR");
+            return;
+        }
+        Hotbar.Instance.SpendResource(blankId, placed);
+
+        ClosePrint();
+        string tierTxt = _tier >= 2 ? " II" : "";
+        Toast("PRESSED x" + placed + "  " + press.name.ToUpperInvariant() + tierTxt +
+              (placed < want ? "  (HOTBAR FULL)" : ""));
     }
 
     void ClosePrint()

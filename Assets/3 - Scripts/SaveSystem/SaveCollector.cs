@@ -316,6 +316,7 @@ public static class SaveCollector
                 // Species is part of a mushroom stack's identity (stacks are
                 // species-pure) — drop it and two species merge on load.
                 mushroomSpecies = Hotbar.IsMushroomItem(slot.id) ? slot.mushroomSpecies : null,
+                    cassetteId = slot.id == Hotbar.ItemId.Cassette ? slot.cassetteId : null,
             });
         }
     }
@@ -344,6 +345,7 @@ public static class SaveCollector
                     : null,
                 bagContents = null,   // no nested bags
                 mushroomSpecies = Hotbar.IsMushroomItem(s.id) ? s.mushroomSpecies : null,
+                    cassetteId = s.id == Hotbar.ItemId.Cassette ? s.cassetteId : null,
             });
         }
         return list;
@@ -378,6 +380,7 @@ public static class SaveCollector
                 count = count,
                 fishData = fish,
                 mushroomSpecies = Hotbar.IsMushroomItem(id) ? e.mushroomSpecies : null,
+                    cassetteId = id == Hotbar.ItemId.Cassette ? e.cassetteId : null,
             };
         }
         return arr;
@@ -406,6 +409,7 @@ public static class SaveCollector
                 ? SerializeBagContents(slot.bagContents)
                 : null,
             mushroomSpecies = Hotbar.IsMushroomItem(slot.id) ? slot.mushroomSpecies : null,
+                    cassetteId = slot.id == Hotbar.ItemId.Cassette ? slot.cassetteId : null,
         };
     }
 
@@ -454,6 +458,7 @@ public static class SaveCollector
                         ? SerializeBagContents(slot.bagContents)
                         : null,
                     mushroomSpecies = Hotbar.IsMushroomItem(slot.id) ? slot.mushroomSpecies : null,
+                    cassetteId = slot.id == Hotbar.ItemId.Cassette ? slot.cassetteId : null,
                 });
             }
             list.Add(entry);
@@ -1350,6 +1355,7 @@ public static class SaveCollector
                     fishData = fish,
                     bagContents = bag,
                     mushroomSpecies = Hotbar.IsMushroomItem(id) ? e.mushroomSpecies : null,
+                    cassetteId = id == Hotbar.ItemId.Cassette ? e.cassetteId : null,
                 };
             }
         }
