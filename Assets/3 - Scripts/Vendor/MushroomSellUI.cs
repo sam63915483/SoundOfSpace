@@ -63,9 +63,18 @@ public class MushroomSellUI : MonoBehaviour
     // species render, so a 72px square was enough; a tape is identified by its
     // NAME, which needs room to be read without picking it up first.
     // 7 x 112 + 6 x 6 = 820, exactly the panel's inner width.
+    //
+    // COORDINATE CONVENTION - the trap this layout fell into once. Panel() and
+    // Txt() both anchor to the parent's TOP edge with pivot top-centre, so a
+    // child's y is "pixels DOWN from the top of the parent" and is therefore
+    // NEGATIVE. Positioning tile children with centre-relative maths
+    // (TileH * 0.5f - 10f = +38) put them 38 px ABOVE the tile instead of just
+    // inside it, which is why the counts and the shell art floated free of
+    // their tiles. Every y below is negative and measured from the tile top.
     const float TileW = 112f;
     const float TileH = 96f;
-    const float TileArtH = 42f;
+    const float TilePad = 8f;
+    const float TileArtH = 44f;
 
     enum Stage { Open, Countered }
 
@@ -261,7 +270,9 @@ public class MushroomSellUI : MonoBehaviour
         {
             var hb = Hotbar.Instance;
             if (hb != null)
-                hb.AddResource(_cursor.id, _cursor.count, _cursor.mushroomSpecies);
+                hb.AddResource(_cursor.id, _cursor.count,
+                               _cursor.id == Hotbar.ItemId.Cassette ? _cursor.cassetteId
+                                                                    : _cursor.mushroomSpecies);
             _cursor = default;
         }
 
@@ -657,7 +668,7 @@ public class MushroomSellUI : MonoBehaviour
         int n = 0;
         for (int i = 0; i < bar.Length; i++)
             if (bar[i].id == Hotbar.ItemId.Cassette
-                && bar[i].mushroomSpecies == _offerSpecies && bar[i].count > 0)
+                && bar[i].cassetteId == _offerSpecies && bar[i].count > 0)
                 n += bar[i].count;
         return n;
     }
@@ -672,7 +683,7 @@ public class MushroomSellUI : MonoBehaviour
         for (int i = 0; i < bar.Length; i++)
         {
             if (bar[i].id != Hotbar.ItemId.Cassette) continue;
-            if (bar[i].mushroomSpecies != _offerSpecies || bar[i].count <= 0) continue;
+            if (bar[i].cassetteId != _offerSpecies || bar[i].count <= 0) continue;
             var s = bar[i];
             s.count -= 1;
             bar[i] = s.count > 0 ? s : default;
@@ -842,7 +853,7 @@ public class MushroomSellUI : MonoBehaviour
             if (_offerArt != null)
             {
                 _offerArt.enabled = true;
-                _offerArt.sprite = Hotbar.CassetteSpriteFor(_offerSpecies);
+                _offerArt.sprite = Hotbar.CassetteSpriteWideFor(_offerSpecies);
             }
             _offerCount.enabled = true;
             _offerCount.text = _offerCountN.ToString();
@@ -863,8 +874,8 @@ public class MushroomSellUI : MonoBehaviour
 
         RefreshSliders(barred);
 
-        // The bar — MUSHROOM STACKS ONLY, packed left. Showing the axe and the
-        // water bottle in a mushroom deal implied you could drag them in.
+        // The shelf — TAPES ONLY, packed left. Showing the axe and the water
+        // bottle in a tape deal implied you could drag them in.
         var bar = Bar;
         int tile = 0;
         if (bar != null)
@@ -1033,7 +1044,7 @@ public class MushroomSellUI : MonoBehaviour
         if (w.art != null)
         {
             w.art.enabled = tape;
-            if (tape) w.art.sprite = Hotbar.CassetteSpriteFor(s.cassetteId);
+            if (tape) w.art.sprite = Hotbar.CassetteSpriteWideFor(s.cassetteId);
         }
 
         // NAME AND GENRE, always visible. The whole reason a tape needs a tile
@@ -1128,7 +1139,7 @@ public class MushroomSellUI : MonoBehaviour
         panel.transform.SetParent(transform, false);
         _panelRT = (RectTransform)panel.transform;
         _panelRT.anchorMin = _panelRT.anchorMax = _panelRT.pivot = new Vector2(0.5f, 0.5f);
-        _panelRT.sizeDelta = new Vector2(880, 720);
+        _panelRT.sizeDelta = new Vector2(880, 646);
         var bg = panel.AddComponent<Image>();
         bg.color = C_Bg;
         Outline(_panelRT, C_Border);
@@ -1142,7 +1153,7 @@ public class MushroomSellUI : MonoBehaviour
         _offerSlotRT = SlotFrame(zone, new Vector2(-820 * 0.5f + 62, 0), 84f, out _offerPreview, out _offerCount, out _offerTier);
         // The shell on the table. Same reason as the tiles: the art is a
         // generated sprite, and the RawImage above cannot draw one.
-        var offerArtRT = Panel(_offerSlotRT, "Art", Vector2.zero, new Vector2(72, 46), Color.white);
+        var offerArtRT = Panel(_offerSlotRT, "Art", new Vector2(0, -18f), new Vector2(74, 48), Color.white);
         _offerArt = offerArtRT.GetComponent<Image>();
         _offerArt.raycastTarget = false;
         _offerArt.preserveAspect = true;
@@ -1159,11 +1170,11 @@ public class MushroomSellUI : MonoBehaviour
         // The ± minis that used to sit against the slot's right edge are gone —
         // the CAPS slider below does that job now, and does it in one drag.
 
-        Txt(_panelRT, "YOUR TAPES", new Vector2(0, -286), 820, 18, 12, C_Dim, FontStyles.Bold, TextAlignmentOptions.Center);
+        Txt(_panelRT, "YOUR TAPES", new Vector2(0, -356), 820, 18, 12, C_Dim, FontStyles.Bold, TextAlignmentOptions.Center);
 
         // ── the shelf: one tile per tape you are carrying ──
         float rowW = HotbarSlots * TileW + (HotbarSlots - 1) * SlotGap;
-        var row = Panel(_panelRT, "BarRow", new Vector2(0, -342), new Vector2(rowW, TileH), new Color(0, 0, 0, 0));
+        var row = Panel(_panelRT, "BarRow", new Vector2(0, -380), new Vector2(rowW, TileH), new Color(0, 0, 0, 0));
         for (int i = 0; i < HotbarSlots; i++)
         {
             float x = -rowW * 0.5f + i * (TileW + SlotGap) + TileW * 0.5f;
@@ -1173,7 +1184,7 @@ public class MushroomSellUI : MonoBehaviour
         // that, and the table's own prompt says what to do about it.
 
         // ── counter banner ──
-        _counterPanel = Panel(_panelRT, "Counter", new Vector2(0, -196), new Vector2(820, 66), new Color32(14, 39, 64, 255));
+        _counterPanel = Panel(_panelRT, "Counter", new Vector2(0, -208), new Vector2(820, 66), new Color32(14, 39, 64, 255));
         Outline(_counterPanel, new Color32(47, 111, 140, 255));
         _counterText = Txt(_counterPanel, "", new Vector2(0, -8), 780, 66, 14, C_Label, FontStyles.Normal, TextAlignmentOptions.Left);
         _counterPanel.gameObject.SetActive(false);
@@ -1191,6 +1202,10 @@ public class MushroomSellUI : MonoBehaviour
         // The rows come from DealSliderKit, skinned to this panel's blue-teal
         // palette rather than the phone's greys.
         var sliderStyle = DealSliderKit.Style.VendorPanel();
+        // Widen the inset so the track stops short of the panel edge. The kit
+        // stretches the track to the row's right edge, so the only way to make
+        // room for the price readout beside it is to make the row narrower.
+        sliderStyle.sideInset = 320f;
 
         // NO QUANTITY SLIDER. It was a mushroom control: caps are fungible and
         // a buyer has an appetite, so "how many" was the interesting question.
@@ -1200,7 +1215,7 @@ public class MushroomSellUI : MonoBehaviour
         // PRICE rides the green→amber→red risk gradient — position on the track
         // IS the risk read, same as the phone.
         _askSlider = DealSliderKit.BuildSliderRow(
-            _panelRT, "ASK", -252f, 0, 1, 0, DealSliderKit.RiskGradient(), out _askHandleLabel, sliderStyle);
+            _panelRT, "ASK", -284f, 0, 1, 0, DealSliderKit.RiskGradient(), out _askHandleLabel, sliderStyle);
         _askSlider.onValueChanged.AddListener(v =>
         {
             if (_suppressInput) return;
@@ -1213,20 +1228,25 @@ public class MushroomSellUI : MonoBehaviour
         // has to ask what it does, a new player has no chance. Same information,
         // still measured against MARKET (never against the buyer's hidden rate),
         // now readable at a glance.
-        _riskText = Txt(_panelRT, "", new Vector2(0, -510), 820, 22, 15, C_Ok, FontStyles.Bold, TextAlignmentOptions.Center);
+        // The price you are asking, beside its own slider. It used to be a big
+        // centred number under the caption "TOTAL FOR THE LOT" - wrong on both
+        // counts once a sale is one tape: there is no lot, and a second copy of
+        // a number the slider thumb already shows is the kind of redundancy Sam
+        // has flagged three times now. Here it reads as the row's value.
+        _totalText = Txt(_panelRT, "0", new Vector2(352, -288), 150, 30, 24,
+                         C_Value, FontStyles.Bold, TextAlignmentOptions.Right);
 
-        Txt(_panelRT, "TOTAL FOR THE LOT", new Vector2(0, -538), 820, 16, 11, C_Dim, FontStyles.Bold, TextAlignmentOptions.Center);
-        _totalText = Txt(_panelRT, "0", new Vector2(0, -556), 820, 38, 30, C_Value, FontStyles.Bold, TextAlignmentOptions.Center);
+        _riskText = Txt(_panelRT, "", new Vector2(0, -324), 820, 22, 15, C_Ok, FontStyles.Bold, TextAlignmentOptions.Center);
 
         // result and cooldown BOTH show while barred, so they must not overlap.
-        _resultText = Txt(_panelRT, "", new Vector2(0, -596), 820, 26, 17, C_Ok, FontStyles.Bold, TextAlignmentOptions.Center);
-        _cdText = Txt(_panelRT, "", new Vector2(0, -624), 820, 22, 14, C_Err, FontStyles.Bold, TextAlignmentOptions.Center);
+        _resultText = Txt(_panelRT, "", new Vector2(0, -488), 820, 26, 17, C_Ok, FontStyles.Bold, TextAlignmentOptions.Center);
+        _cdText = Txt(_panelRT, "", new Vector2(0, -516), 820, 22, 14, C_Err, FontStyles.Bold, TextAlignmentOptions.Center);
         _cdText.gameObject.SetActive(false);
 
         // ── buttons ──
-        _takeBtn      = MkBtn(_panelRT, "TakeBtn",  new Vector2(-258, -652), new Vector2(246, 54), C_BtnTake, TakeCounter, out _takeLabel);
-        _primaryBtn   = MkBtn(_panelRT, "MainBtn",  new Vector2(0,    -652), new Vector2(246, 54), C_BtnSell, OnPrimary,  out _primaryLabel);
-        _secondaryBtn = MkBtn(_panelRT, "BackBtn",  new Vector2(258,  -652), new Vector2(246, 54), C_BtnBack, OnSecondary,out _secondaryLabel);
+        _takeBtn      = MkBtn(_panelRT, "TakeBtn",  new Vector2(-258, -558), new Vector2(246, 54), C_BtnTake, TakeCounter, out _takeLabel);
+        _primaryBtn   = MkBtn(_panelRT, "MainBtn",  new Vector2(0,    -558), new Vector2(246, 54), C_BtnSell, OnPrimary,  out _primaryLabel);
+        _secondaryBtn = MkBtn(_panelRT, "BackBtn",  new Vector2(258,  -558), new Vector2(246, 54), C_BtnBack, OnSecondary,out _secondaryLabel);
 
         VendorMoneyBadge.Attach(_panelRT);
         BuildCursor();
@@ -1349,29 +1369,34 @@ public class MushroomSellUI : MonoBehaviour
         w.border = w.root.GetComponent<Image>();
         w.border.raycastTarget = true;
 
-        var fill = Panel(w.root, "Fill", Vector2.zero, new Vector2(TileW - 2, TileH - 2), C_SlotBg);
+        var fill = Panel(w.root, "Fill", new Vector2(0, -1f), new Vector2(TileW - 2, TileH - 2), C_SlotBg);
         w.bg = fill.GetComponent<Image>();
         w.bg.raycastTarget = false;
 
-        // Shell art across the top.
-        var artRT = Panel(w.root, "Art", new Vector2(0, (TileH - TileArtH) * 0.5f - 5f),
-                          new Vector2(TileW - 12f, TileArtH), Color.white);
+        // Shell art across the top: 8 px pad, then a 44 px band, mirroring the
+        // mockup's .art. Fed the WIDE sprite - the square hotbar art is a small
+        // shell inside a mostly-transparent 96x96 texture, and preserveAspect
+        // fits those transparent bounds, so the tape came out a third size.
+        var artRT = Panel(w.root, "Art", new Vector2(0, -TilePad),
+                          new Vector2(TileW - TilePad * 2f, TileArtH), Color.white);
         w.art = artRT.GetComponent<Image>();
         w.art.raycastTarget = false;
         w.art.preserveAspect = true;
 
         // Count sits ON the art, top-right, so it never competes with the name.
-        w.count = Txt(w.root, "", new Vector2(TileW * 0.5f - 16f, TileH * 0.5f - 10f),
-                      28, 16, 12, C_Label, FontStyles.Bold, TextAlignmentOptions.Right);
+        w.count = Txt(w.root, "", new Vector2(TileW * 0.5f - 22f, -TilePad - 2f),
+                      32, 16, 12, C_Label, FontStyles.Bold, TextAlignmentOptions.Right);
 
-        w.nameLbl = Txt(w.root, "", new Vector2(0, -6f), TileW - 10f, 16, 11,
+        // Name, then genre - the two things you used to have to pick the tape
+        // up to find out.
+        w.nameLbl = Txt(w.root, "", new Vector2(0, -(TilePad + TileArtH + 4f)), TileW - TilePad * 2f, 16, 11,
                         C_Label, FontStyles.Normal, TextAlignmentOptions.Left);
         w.nameLbl.overflowMode = TextOverflowModes.Ellipsis;
-        w.genreLbl = Txt(w.root, "", new Vector2(0, -24f), TileW - 10f, 14, 10,
+        w.genreLbl = Txt(w.root, "", new Vector2(0, -(TilePad + TileArtH + 22f)), TileW - TilePad * 2f, 14, 10,
                          C_Dim, FontStyles.Normal, TextAlignmentOptions.Left);
 
-        // Tier pip in the corner: Type 1 phosphor, Type 2 magenta.
-        var pip = Panel(w.root, "Pip", new Vector2(-TileW * 0.5f + 8f, -TileH * 0.5f + 8f),
+        // Tier pip on the meta row's right: Type 1 phosphor, Type 2 magenta.
+        var pip = Panel(w.root, "Pip", new Vector2(TileW * 0.5f - TilePad - 4f, -(TilePad + TileArtH + 25f)),
                         new Vector2(8, 8), Color.white);
         w.tier = pip.GetComponent<Image>();
         w.tier.raycastTarget = false;

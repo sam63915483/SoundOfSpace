@@ -1320,6 +1320,39 @@ public class Hotbar : MonoBehaviour
     public static Sprite CassetteSpriteFor(string cassetteId) =>
         CassetteSprite(CassetteSwatch(cassetteId));
 
+    static readonly Dictionary<uint, Sprite> _cassetteWide = new Dictionary<uint, Sprite>();
+
+    /// <summary>
+    /// The same cassette art, cropped to the shell itself.
+    ///
+    /// CassetteSprite draws a 76x48 shell inside a 96x96 texture. That framing
+    /// is right for a SQUARE hotbar slot, but it wastes a wide box: preserveAspect
+    /// fits the full 96x96 bounds, transparent margins included, so in a 120x44
+    /// tile the tape renders about 35x22 and reads as a stamp rather than a
+    /// cassette. This returns a sub-rect sprite over the IDENTICAL texture, so a
+    /// wide slot fills properly and not one extra pixel is generated.
+    /// </summary>
+    public static Sprite CassetteSpriteWide(Color shell)
+    {
+        Sprite full = CassetteSprite(shell);
+        if (full == null) return null;
+        // An authored sprite is framed however the artist framed it - cropping
+        // to coordinates that describe the GENERATED art would mangle it.
+        if (_authoredCassette != null) return full;
+
+        var key32 = (Color32)shell;
+        uint key = (uint)(key32.r << 16 | key32.g << 8 | key32.b);
+        Sprite cached;
+        if (_cassetteWide.TryGetValue(key, out cached) && cached != null) return cached;
+
+        var wide = Sprite.Create(full.texture, new Rect(10, 24, 76, 48), new Vector2(0.5f, 0.5f));
+        _cassetteWide[key] = wide;
+        return wide;
+    }
+
+    public static Sprite CassetteSpriteWideFor(string cassetteId) =>
+        CassetteSpriteWide(CassetteSwatch(cassetteId));
+
     void BuildRegistry()
     {
         _registry = new[]
