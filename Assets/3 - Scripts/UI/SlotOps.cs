@@ -39,18 +39,29 @@ public static class SlotOps
         // stack dropped onto a blue one would merge and silently take the
         // destination's species.
         public string mushroomSpecies;
+        // For Cassette cursors: the PRINT id travels with the cursor, for
+        // exactly the reason the species does. Without it, dragging a tape into
+        // a locker would drop which SONG it was and leave a nameless cassette.
+        public string cassetteId;
         public bool IsHeld => id != Hotbar.ItemId.None && count > 0;
     }
+
+    /// The variant a cursor is carrying — a mushroom species or a cassette's
+    /// song — or null. Mirrors <see cref="Hotbar.VariantOf(Hotbar.Slot)"/> so
+    /// the two sides of a drag agree on what makes two stacks incompatible.
+    static string VariantOf(in CursorState c) =>
+        c.id == Hotbar.ItemId.Cassette ? c.cassetteId
+        : Hotbar.IsMushroomItem(c.id) ? c.mushroomSpecies : null;
 
     /// Can these two stack together? Same id, and for mushrooms the same
     /// species as well — the whole point of species-pure stacks.
     static bool CanStack(Hotbar.Slot slot, in CursorState cursor) =>
         slot.id == cursor.id
-        && (!Hotbar.IsMushroomItem(slot.id) || slot.mushroomSpecies == cursor.mushroomSpecies);
+        && (!Hotbar.CarriesVariant(slot.id) || Hotbar.VariantOf(slot) == VariantOf(cursor));
 
     static bool CanStack(Hotbar.Slot a, Hotbar.Slot b) =>
         a.id == b.id
-        && (!Hotbar.IsMushroomItem(a.id) || a.mushroomSpecies == b.mushroomSpecies);
+        && (!Hotbar.CarriesVariant(a.id) || Hotbar.VariantOf(a) == Hotbar.VariantOf(b));
 
     /// Money-slot rule, applied at every write into a container. The hotbar's
     /// money slot takes money and nothing else, and money can't sit in any other
@@ -110,12 +121,12 @@ public static class SlotOps
             if (dest[i].id != Hotbar.ItemId.None) continue;
             if (!Accepts(dest, i, s.id)) continue;
             int take = Mathf.Min(cap, remaining);
-            dest[i] = new Hotbar.Slot { id = s.id, count = take, fishData = s.fishData, bagContents = s.bagContents, mushroomSpecies = s.mushroomSpecies };
+            dest[i] = new Hotbar.Slot { id = s.id, count = take, fishData = s.fishData, bagContents = s.bagContents, mushroomSpecies = s.mushroomSpecies, cassetteId = s.cassetteId };
             remaining -= take;
         }
 
         if (remaining == 0) source[idx] = default;
-        else                source[idx] = new Hotbar.Slot { id = s.id, count = remaining, fishData = s.fishData, bagContents = s.bagContents, mushroomSpecies = s.mushroomSpecies };
+        else                source[idx] = new Hotbar.Slot { id = s.id, count = remaining, fishData = s.fishData, bagContents = s.bagContents, mushroomSpecies = s.mushroomSpecies, cassetteId = s.cassetteId };
     }
 
     static void PickUpFull(Hotbar.Slot[] container, int idx, ref CursorState cursor)
@@ -129,6 +140,7 @@ public static class SlotOps
         cursor.fishData = s.fishData;       // carry fish payload onto cursor
         cursor.bagContents = s.bagContents; // carry bag's 5-slot array onto cursor
         cursor.mushroomSpecies = s.mushroomSpecies;
+        cursor.cassetteId = s.cassetteId;
         container[idx] = default;
     }
 
@@ -143,6 +155,7 @@ public static class SlotOps
         cursor.fishData = s.fishData;       // single-fish slots: payload moves to cursor
         cursor.bagContents = s.bagContents; // single-bag slots: contents move to cursor
         cursor.mushroomSpecies = s.mushroomSpecies;
+        cursor.cassetteId = s.cassetteId;
         s.count -= 1;
         if (s.count <= 0) container[idx] = default;
         else              container[idx] = s;
@@ -182,6 +195,7 @@ public static class SlotOps
         cursor.fishData = temp.fishData;        // swap pulls slot payload onto cursor
         cursor.bagContents = temp.bagContents;  // same for bag contents
         cursor.mushroomSpecies = temp.mushroomSpecies;
+        cursor.cassetteId = temp.cassetteId;
         // sourceContainer/sourceIndex stay as the original pickup origin —
         // that's where return-on-close should put it.
     }
@@ -278,6 +292,7 @@ public static class SlotOps
         cursor.fishData = null;
         cursor.bagContents = null;
         cursor.mushroomSpecies = null;
+        cursor.cassetteId = null;
     }
 
     static Hotbar.Slot NewSlotFrom(in CursorState cursor, int count) => new Hotbar.Slot
@@ -287,6 +302,7 @@ public static class SlotOps
         fishData = cursor.fishData,
         bagContents = cursor.bagContents,
         mushroomSpecies = cursor.mushroomSpecies,
+        cassetteId = cursor.cassetteId,
     };
 
     // Return-to-source on close. Best-effort: if source slot is now occupied

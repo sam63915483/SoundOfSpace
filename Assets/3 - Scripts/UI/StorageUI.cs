@@ -392,6 +392,13 @@ public class StorageUI : MonoBehaviour
             _cursorIcon.enabled = false;
             _cursorIcon.sprite = null;
         }
+        else if (_cursor.id == Hotbar.ItemId.Cassette)
+        {
+            if (_cursorFishPreview != null) _cursorFishPreview.enabled = false;
+            _cursorIcon.sprite = Hotbar.CassetteSpriteFor(_cursor.cassetteId);
+            _cursorIcon.color = Color.white;
+            _cursorIcon.enabled = _cursorIcon.sprite != null;
+        }
         else if (_cursor.id == Hotbar.ItemId.Fish && _cursor.fishData != null)
         {
             // Use the cached preview (or render now if first display).
@@ -451,6 +458,10 @@ public class StorageUI : MonoBehaviour
         {
             resolvedSprite = s.id == Hotbar.ItemId.FishBag
                 ? Hotbar.ResolveFishBagSprite(s.bagContents)
+                // A cassette's shell colour is its TIER, which only this stack
+                // knows — so it cannot go through the id-keyed icon cache.
+                : s.id == Hotbar.ItemId.Cassette
+                ? Hotbar.CassetteSpriteFor(s.cassetteId)
                 : ResolveIcon(s.id);
         }
         bool standardIcon = resolvedSprite != null;
@@ -502,7 +513,9 @@ public class StorageUI : MonoBehaviour
 
     static bool IsStackable(Hotbar.ItemId id) =>
         id == Hotbar.ItemId.Wood || id == Hotbar.ItemId.Crystal || id == Hotbar.ItemId.SpaceDust
-        || id == Hotbar.ItemId.Sapling || Hotbar.IsMushroomItem(id) || id == Hotbar.ItemId.Money;
+        || id == Hotbar.ItemId.Sapling || Hotbar.IsMushroomItem(id) || id == Hotbar.ItemId.Money
+        || id == Hotbar.ItemId.BlankTapeT1 || id == Hotbar.ItemId.BlankTapeT2
+        || id == Hotbar.ItemId.Cassette;
 
     /// Count badge text. Money reads as currency everywhere it appears — the
     /// whole point of the scroll-split is watching the two numbers move, and
@@ -541,6 +554,10 @@ public class StorageUI : MonoBehaviour
             // Same cash-stack sprite the hotbar draws, so a stack in the locker
             // and the stack it came from are visibly the same thing.
             case Hotbar.ItemId.Money:     return Hotbar.ResourceIcon(Hotbar.ItemId.Money);
+            // Blanks are one shell per tier, so the id-keyed cache suits them.
+            // Printed tapes are NOT here on purpose — see PaintSlot.
+            case Hotbar.ItemId.BlankTapeT1:
+            case Hotbar.ItemId.BlankTapeT2: return Hotbar.ResourceIcon(id);
         }
         switch (id)
         {
