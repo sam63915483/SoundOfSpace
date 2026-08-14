@@ -1,0 +1,451 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>TEV'S SHOP — mockups</title>
+<style>
+/* Palette lifted straight from MushroomSellUI's constants so these read as the
+   same game, not as a web page about the game. Same as the sell-ui mockups. */
+:root{
+  --bg:#0a1828; --slot-bg:#08131f; --slot-edge:#24425f;
+  --border:#78c8ff; --label:#eaf6ff; --dim:#7fa0bd; --value:#ffd732;
+  --header:#e2787e; --ok:#6edc82; --err:#ff6e6e;
+  --sell:#3c9146; --take:#2f6f8c; --back:#8c3c3c;
+  --phos:#79ffd0; --mag:#ff4fd8;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,'DejaVu Sans Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050b12;color:var(--label);font-family:var(--mono);padding:24px;
+     display:flex;flex-direction:column;align-items:center;gap:20px}
+h1{font-size:15px;letter-spacing:.24em;color:var(--dim);font-weight:400}
+.note{max-width:940px;font-size:12px;line-height:1.7;color:var(--dim)}
+.note b{color:var(--label);font-weight:400}
+.note .hi{color:var(--phos)}
+
+/* ── tabs ─────────────────────────────────────────────────────────────── */
+.tabs{display:flex;gap:8px}
+.tab{font-family:var(--mono);font-size:12px;letter-spacing:.14em;padding:9px 20px;
+     background:var(--slot-bg);border:1px solid var(--slot-edge);color:var(--dim);
+     cursor:pointer;border-radius:4px}
+.tab:hover{border-color:var(--border)}
+.tab.on{background:#0e2236;border-color:var(--border);color:var(--label)}
+.pane{display:none}
+.pane.on{display:block}
+
+/* ── shared panel chrome ──────────────────────────────────────────────── */
+.panel{width:900px;background:var(--bg);border:1px solid var(--border);border-radius:8px;
+       padding:22px 26px;display:flex;flex-direction:column;gap:16px}
+.hdr{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid #1b3450;padding-bottom:10px}
+.who{font-size:19px;letter-spacing:.16em;color:var(--header)}
+.sub{font-size:12px;color:var(--dim)}
+.purse{margin-left:auto;font-size:13px;color:var(--dim);letter-spacing:.1em}
+.purse b{color:var(--value);font-size:17px;font-weight:400}
+.cap{font-size:11px;letter-spacing:.2em;color:var(--dim);display:flex;align-items:baseline;gap:10px}
+.cap .of{color:#4b6d8c}
+
+/* ── stock rows (blanks) ──────────────────────────────────────────────── */
+.stock{display:flex;flex-direction:column;gap:8px}
+.srow{display:flex;align-items:center;gap:14px;background:var(--slot-bg);
+      border:1px solid var(--slot-edge);border-radius:5px;padding:10px 14px}
+.shell{width:52px;height:32px;border-radius:3px;flex:none;position:relative;
+       display:flex;align-items:flex-end;justify-content:center;padding-bottom:3px}
+.shell .lbl{background:#eef4f8;width:74%;height:8px;border-radius:1px}
+.shell .hub{position:absolute;top:8px;width:7px;height:7px;border-radius:50%;background:rgba(0,0,0,.45)}
+.shell .h1{left:12px}.shell .h2{right:12px}
+.sname{flex:1;font-size:13px}
+.sname .meta{font-size:10px;color:var(--dim);letter-spacing:.08em;margin-top:2px}
+.unit{font-size:13px;color:var(--value);width:44px;text-align:right}
+.step{display:flex;align-items:center;gap:0}
+.step button{font-family:var(--mono);width:28px;height:28px;font-size:15px;
+             background:#12283e;border:1px solid var(--slot-edge);color:var(--label);cursor:pointer}
+.step button:hover:not(:disabled){border-color:var(--border)}
+.step button:disabled{opacity:.3;cursor:default}
+.step .qty{width:40px;text-align:center;font-size:15px;
+           border-top:1px solid var(--slot-edge);border-bottom:1px solid var(--slot-edge);
+           height:28px;line-height:28px;background:#0b1a29}
+.line{width:62px;text-align:right;font-size:13px;color:var(--value)}
+.line.zero{color:#3f5f7d}
+
+/* ── the rack (plugins) ───────────────────────────────────────────────── */
+.rack{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.mod{background:var(--slot-bg);border:1px solid var(--slot-edge);border-radius:5px;
+     padding:11px 10px;display:flex;flex-direction:column;gap:6px;cursor:pointer;min-height:96px}
+.mod:hover:not(.owned):not(.cant){border-color:var(--border)}
+.mod .mname{font-size:12px;letter-spacing:.1em}
+.mod .role{font-size:9.5px;color:var(--dim);line-height:1.35;flex:1}
+.mod .tag{font-size:11px;color:var(--value)}
+.mod.owned{border-color:#1d5f4a;background:#08231b}
+.mod.owned .mname{color:var(--phos)}
+.mod.owned .tag{color:var(--phos)}
+.mod.cant{opacity:.45;cursor:default}
+.mod.cant .tag{color:var(--err)}
+.mod.picked{border-color:var(--value);background:#1d1a08}
+.mod.picked .tag{color:var(--value)}
+
+/* ── tev's voice ──────────────────────────────────────────────────────── */
+.say{background:#0b1a29;border-left:3px solid var(--header);border-radius:3px;
+     padding:10px 14px;font-size:12.5px;color:var(--dim);min-height:38px;line-height:1.5}
+.say b{color:var(--label);font-weight:400}
+
+/* ── footer ───────────────────────────────────────────────────────────── */
+.foot{display:flex;align-items:center;gap:14px;border-top:1px solid #1b3450;padding-top:14px}
+.total{font-size:12px;color:var(--dim);letter-spacing:.14em}
+.total b{color:var(--value);font-size:22px;font-weight:400;margin-left:8px}
+.btns{margin-left:auto;display:flex;gap:10px}
+.btn{font-family:var(--mono);font-size:13px;letter-spacing:.14em;padding:11px 24px;
+     border:none;border-radius:4px;color:#fff;cursor:pointer}
+.btn:disabled{opacity:.35;cursor:default}
+.b-pay{background:var(--sell)}.b-done{background:var(--back)}.b-reset{background:var(--take)}
+
+/* ── B: the plain list ────────────────────────────────────────────────── */
+.list{display:flex;flex-direction:column;gap:4px}
+.lrow{display:flex;align-items:center;gap:14px;background:var(--slot-bg);
+      border:1px solid var(--slot-edge);border-radius:4px;padding:9px 14px}
+.lrow.own{opacity:.5}
+.lname{flex:1;font-size:13px}
+
+/* ── C: rack forward ──────────────────────────────────────────────────── */
+.restock{display:flex;align-items:center;gap:16px;background:var(--slot-bg);
+         border:1px solid var(--slot-edge);border-radius:5px;padding:10px 16px}
+.restock .rl{font-size:11px;letter-spacing:.18em;color:var(--dim)}
+.bigrack{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.bigmod{background:var(--slot-bg);border:1px solid var(--slot-edge);border-radius:6px;
+        padding:14px 16px;display:flex;gap:14px;align-items:flex-start;cursor:pointer}
+.bigmod:hover:not(.owned):not(.cant){border-color:var(--border)}
+.bigmod .dial{width:44px;height:44px;border-radius:50%;border:2px solid var(--slot-edge);
+              flex:none;position:relative;background:#0b1a29}
+.bigmod .dial::after{content:'';position:absolute;left:50%;top:5px;width:2px;height:13px;
+                     background:var(--dim);transform-origin:50% 100%;transform:translateX(-50%) rotate(38deg)}
+.bigmod.owned{border-color:#1d5f4a;background:#08231b}
+.bigmod.owned .dial{border-color:var(--phos)}
+.bigmod.owned .dial::after{background:var(--phos)}
+.bigmod.owned .bname{color:var(--phos)}
+.bigmod.cant{opacity:.45;cursor:default}
+.bigmod.picked{border-color:var(--value);background:#1d1a08}
+.bbody{flex:1}
+.bname{font-size:14px;letter-spacing:.12em;margin-bottom:3px}
+.brole{font-size:11px;color:var(--dim);line-height:1.5}
+.bprice{font-size:15px;color:var(--value);text-align:right;min-width:56px}
+.bprice.own{color:var(--phos);font-size:11px;letter-spacing:.1em}
+.bprice.no{color:var(--err)}
+</style>
+</head>
+<body>
+
+<h1>TEV'S SHOP — THREE LAYOUTS</h1>
+
+<div class="note">
+  <b>The problem with the dialogue tree.</b> Today the shop is a list of dialogue
+  choices. Every purchase is one click plus one spoken line, so buying ten blanks
+  is ten clicks and ten lines of Tev talking. It also gives a <b>$180 permanent
+  unlock</b> and a <b>$5 consumable</b> exactly the same row.
+  <br><br>
+  All three layouts below are live and use the real numbers: T1 $5, T2 $15,
+  SIREN $60, MOSS $90, SPINDLE $130, CAVE $180, blanks capped at 20 a stack.
+  You start with $240 and with THUMPER + GLOWORM already installed.
+  <span class="hi">Click the modules, use the steppers, press PAY TEV.</span>
+</div>
+
+<div class="tabs">
+  <button class="tab on" data-p="A">A — THE COUNTER</button>
+  <button class="tab" data-p="B">B — ONE PLAIN LIST</button>
+  <button class="tab" data-p="C">C — THE RACK, FRONT AND CENTRE</button>
+</div>
+
+<div class="pane on" id="pA"></div>
+<div class="pane" id="pB"></div>
+<div class="pane" id="pC"></div>
+
+<div class="note" id="why"></div>
+
+<script>
+// ── the real catalogue ────────────────────────────────────────────────────
+// Prices are the ones now live in TevMushroomOnboarding.ShopStock.
+const BLANKS = [
+  { id:'T1', name:'Blank Tape Type 1', price:5,  shell:'#79ffd0', meta:'ORDINARY STOCK · STACKS TO 20' },
+  { id:'T2', name:'Blank Tape Type 2', price:15, shell:'#ff4fd8', meta:'DOUBLE VALUE PRESSING · STACKS TO 20' },
+];
+// role text comes from TraxPresets' own comments about what each module does
+const MODULES = [
+  { id:'THUMPER', price:0,   role:'Drums. Kick, snare and hat grooves.',            start:true },
+  { id:'GLOWORM', price:0,   role:'Bass. The line under everything.',               start:true },
+  { id:'SIREN',   price:60,  role:'Lead. A generated melody; the preset sets its character.' },
+  { id:'MOSS',    price:90,  role:'Pads and chords. Sets what the bass, lead and arp all harmonise to.' },
+  { id:'SPINDLE', price:130, role:'Arp. Exact sequences rather than a fast random melody.' },
+  { id:'CAVE',    price:180, role:'Space. Reverb and delay across the whole rack.' },
+];
+const STACK_MAX = 20;
+
+const LINES = {
+  idle:   'Take your time. It\'s all good stock.',
+  blank:  'Tapes are tapes. What you put on them is your problem.',
+  plugin: 'That one\'ll open things up. Don\'t waste it.',
+  broke:  'Come back when you\'ve got it.',
+  none:   'You didn\'t pick anything.',
+};
+
+function newState(){
+  return { money:240, owned:new Set(['THUMPER','GLOWORM']), cart:{T1:0,T2:0}, picked:new Set(), say:LINES.idle };
+}
+
+const cartTotal = s =>
+  BLANKS.reduce((t,b) => t + b.price * s.cart[b.id], 0) +
+  [...s.picked].reduce((t,id) => t + MODULES.find(m=>m.id===id).price, 0);
+
+const canAdd = (s,b) => s.cart[b.id] < STACK_MAX && cartTotal(s) + b.price <= s.money;
+
+function pick(s, m){
+  if (s.owned.has(m.id) || m.start) return;
+  if (s.picked.has(m.id)) { s.picked.delete(m.id); return; }
+  if (cartTotal(s) + m.price > s.money) { s.say = LINES.broke; return; }
+  s.picked.add(m.id);
+}
+
+function pay(s){
+  const t = cartTotal(s);
+  if (t <= 0) { s.say = LINES.none; return; }
+  if (t > s.money) { s.say = LINES.broke; return; }
+  s.money -= t;
+  const gotPlugin = s.picked.size > 0;
+  s.picked.forEach(id => s.owned.add(id));
+  s.picked.clear();
+  s.cart = { T1:0, T2:0 };
+  s.say = gotPlugin ? LINES.plugin : LINES.blank;
+}
+
+const money = n => '$' + n.toLocaleString();
+
+function shellSVG(colour){
+  return `<span class="shell" style="background:${colour}">
+            <span class="hub h1"></span><span class="hub h2"></span><span class="lbl"></span>
+          </span>`;
+}
+
+// ── A — THE COUNTER ───────────────────────────────────────────────────────
+function renderA(s, root){
+  const t = cartTotal(s);
+  const ownedCount = MODULES.filter(m => s.owned.has(m.id)).length;
+  root.innerHTML = `
+  <div class="panel">
+    <div class="hdr">
+      <span class="who">// TEV</span>
+      <span class="sub">blank stock &amp; rack modules</span>
+      <span class="purse">YOU HAVE <b>${money(s.money)}</b></span>
+    </div>
+
+    <div class="cap">STOCK <span class="of">· bought by the handful</span></div>
+    <div class="stock">
+      ${BLANKS.map(b => {
+        const q = s.cart[b.id];
+        return `<div class="srow">
+          ${shellSVG(b.shell)}
+          <span class="sname">${b.name}<div class="meta">${b.meta}</div></span>
+          <span class="unit">${money(b.price)}</span>
+          <span class="step">
+            <button data-dec="${b.id}" ${q<=0?'disabled':''}>−</button>
+            <span class="qty">${q}</span>
+            <button data-inc="${b.id}" ${canAdd(s,b)?'':'disabled'}>+</button>
+          </span>
+          <span class="line ${q?'':'zero'}">${q ? money(b.price*q) : '—'}</span>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="cap">THE RACK <span class="of">· ${ownedCount} of ${MODULES.length} installed</span></div>
+    <div class="rack">
+      ${MODULES.map(m => {
+        const own = s.owned.has(m.id);
+        const picked = s.picked.has(m.id);
+        const cant = !own && !picked && (cartTotal(s) + m.price > s.money);
+        const tag = own ? 'INSTALLED' : money(m.price);
+        return `<div class="mod ${own?'owned':''} ${picked?'picked':''} ${cant?'cant':''}" data-mod="${m.id}">
+          <span class="mname">${m.id}</span>
+          <span class="role">${m.role}</span>
+          <span class="tag">${tag}</span>
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="say"><b>Tev:</b> ${s.say}</div>
+
+    <div class="foot">
+      <span class="total">BASKET<b>${money(t)}</b></span>
+      <span class="btns">
+        <button class="btn b-reset" data-reset>RESET</button>
+        <button class="btn b-pay" data-pay ${t<=0?'disabled':''}>PAY TEV</button>
+        <button class="btn b-done">THAT'S ALL</button>
+      </span>
+    </div>
+  </div>`;
+}
+
+// ── B — ONE PLAIN LIST ────────────────────────────────────────────────────
+function renderB(s, root){
+  const t = cartTotal(s);
+  root.innerHTML = `
+  <div class="panel">
+    <div class="hdr">
+      <span class="who">// TEV</span>
+      <span class="sub">everything he sells</span>
+      <span class="purse">YOU HAVE <b>${money(s.money)}</b></span>
+    </div>
+    <div class="list">
+      ${BLANKS.map(b => {
+        const q = s.cart[b.id];
+        return `<div class="lrow">
+          <span class="lname">${b.name}</span>
+          <span class="unit">${money(b.price)}</span>
+          <span class="step">
+            <button data-dec="${b.id}" ${q<=0?'disabled':''}>−</button>
+            <span class="qty">${q}</span>
+            <button data-inc="${b.id}" ${canAdd(s,b)?'':'disabled'}>+</button>
+          </span>
+          <span class="line ${q?'':'zero'}">${q ? money(b.price*q) : '—'}</span>
+        </div>`;
+      }).join('')}
+      ${MODULES.filter(m=>!m.start).map(m => {
+        const own = s.owned.has(m.id);
+        const picked = s.picked.has(m.id);
+        const q = picked ? 1 : 0;
+        const cant = !own && !picked && (cartTotal(s) + m.price > s.money);
+        return `<div class="lrow ${own?'own':''}">
+          <span class="lname">${m.id}</span>
+          <span class="unit">${own ? '' : money(m.price)}</span>
+          <span class="step">
+            <button data-mod="${m.id}" ${own||(!picked&&cant)?'disabled':''}>−</button>
+            <span class="qty">${own ? '✓' : q}</span>
+            <button data-mod="${m.id}" ${own||(!picked&&cant)?'disabled':''}>+</button>
+          </span>
+          <span class="line ${q?'':'zero'}">${own ? 'OWNED' : q ? money(m.price) : '—'}</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="foot">
+      <span class="total">CART<b>${money(t)}</b></span>
+      <span class="btns">
+        <button class="btn b-reset" data-reset>RESET</button>
+        <button class="btn b-pay" data-pay ${t<=0?'disabled':''}>BUY</button>
+        <button class="btn b-done">CLOSE</button>
+      </span>
+    </div>
+  </div>`;
+}
+
+// ── C — THE RACK, FRONT AND CENTRE ────────────────────────────────────────
+function renderC(s, root){
+  const t = cartTotal(s);
+  const ownedCount = MODULES.filter(m => s.owned.has(m.id)).length;
+  root.innerHTML = `
+  <div class="panel">
+    <div class="hdr">
+      <span class="who">// TEV</span>
+      <span class="sub">${ownedCount} of ${MODULES.length} modules installed</span>
+      <span class="purse">YOU HAVE <b>${money(s.money)}</b></span>
+    </div>
+
+    <div class="restock">
+      <span class="rl">RESTOCK</span>
+      ${BLANKS.map(b => {
+        const q = s.cart[b.id];
+        return `${shellSVG(b.shell)}
+        <span class="sname" style="flex:none;width:64px">${b.id}<div class="meta">${money(b.price)}</div></span>
+        <span class="step">
+          <button data-dec="${b.id}" ${q<=0?'disabled':''}>−</button>
+          <span class="qty">${q}</span>
+          <button data-inc="${b.id}" ${canAdd(s,b)?'':'disabled'}>+</button>
+        </span>`;
+      }).join('<span style="width:22px"></span>')}
+      <span class="line ${t?'':'zero'}" style="margin-left:auto;width:auto">${
+        BLANKS.some(b=>s.cart[b.id]) ? money(BLANKS.reduce((a,b)=>a+b.price*s.cart[b.id],0)) : 'no tapes'
+      }</span>
+    </div>
+
+    <div class="cap">THE RACK <span class="of">· what you can actually put on a tape</span></div>
+    <div class="bigrack">
+      ${MODULES.map(m => {
+        const own = s.owned.has(m.id);
+        const picked = s.picked.has(m.id);
+        const cant = !own && !picked && (cartTotal(s) + m.price > s.money);
+        const price = own
+          ? '<span class="bprice own">INSTALLED</span>'
+          : `<span class="bprice ${cant?'no':''}">${money(m.price)}</span>`;
+        return `<div class="bigmod ${own?'owned':''} ${picked?'picked':''} ${cant?'cant':''}" data-mod="${m.id}">
+          <span class="dial"></span>
+          <span class="bbody"><div class="bname">${m.id}</div><div class="brole">${m.role}</div></span>
+          ${price}
+        </div>`;
+      }).join('')}
+    </div>
+
+    <div class="say"><b>Tev:</b> ${s.say}</div>
+
+    <div class="foot">
+      <span class="total">TOTAL<b>${money(t)}</b></span>
+      <span class="btns">
+        <button class="btn b-reset" data-reset>RESET</button>
+        <button class="btn b-pay" data-pay ${t<=0?'disabled':''}>PAY TEV</button>
+        <button class="btn b-done">THAT'S ALL</button>
+      </span>
+    </div>
+  </div>`;
+}
+
+// ── wiring: each pane keeps its own state so the three can be compared ───
+const PANES = [
+  { key:'A', el:document.getElementById('pA'), render:renderA, state:newState() },
+  { key:'B', el:document.getElementById('pB'), render:renderB, state:newState() },
+  { key:'C', el:document.getElementById('pC'), render:renderC, state:newState() },
+];
+
+function draw(p){
+  p.render(p.state, p.el);
+  p.el.querySelectorAll('[data-inc]').forEach(b => b.onclick = () => {
+    const blank = BLANKS.find(x => x.id === b.dataset.inc);
+    if (canAdd(p.state, blank)) p.state.cart[blank.id]++;
+    else p.state.say = LINES.broke;
+    draw(p);
+  });
+  p.el.querySelectorAll('[data-dec]').forEach(b => b.onclick = () => {
+    p.state.cart[b.dataset.dec] = Math.max(0, p.state.cart[b.dataset.dec] - 1);
+    draw(p);
+  });
+  p.el.querySelectorAll('[data-mod]').forEach(b => b.onclick = () => {
+    pick(p.state, MODULES.find(m => m.id === b.dataset.mod));
+    draw(p);
+  });
+  const payBtn = p.el.querySelector('[data-pay]');
+  if (payBtn) payBtn.onclick = () => { pay(p.state); draw(p); };
+  const rst = p.el.querySelector('[data-reset]');
+  if (rst) rst.onclick = () => { p.state = newState(); draw(p); };
+}
+PANES.forEach(draw);
+
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
+  document.querySelectorAll('.pane').forEach(x =>
+    x.classList.toggle('on', x.id === 'p' + t.dataset.p));
+});
+
+document.getElementById('why').innerHTML = `
+  <b>What separates them.</b><br><br>
+  <b>A — THE COUNTER</b> splits the two kinds of goods, because they are not the
+  same kind of decision. Blanks are a handful you grab on the way out; the rack
+  is a set of six you are completing, and showing all six (including the two you
+  landed with) makes the gap visible. Compact enough that the whole shop fits
+  without scrolling.<br><br>
+  <b>B — ONE PLAIN LIST</b> is the honest control. It is closest to the dialogue
+  tree, just faster. It also shows the flaw clearly: a $180 permanent unlock and
+  a $5 consumable get an identical row, and a stepper on a thing you can only own
+  once reads as a bug.<br><br>
+  <b>C — THE RACK, FRONT AND CENTRE</b> bets that the interesting decision is
+  <i>which module</i>, so it gives each one room to say what it does and demotes
+  blanks to a restock strip. Costs vertical space, and makes the routine purchase
+  the fiddly one.<br><br>
+  <span class="hi">My pick is A</span> — it is the only one that treats the two
+  kinds of goods differently while keeping the routine purchase (blanks) to two
+  clicks. If you want the module descriptions from C, they fit in A's cards on
+  hover, or as a line under the rack.
+`;
+</script>
+</body>
+</html>
