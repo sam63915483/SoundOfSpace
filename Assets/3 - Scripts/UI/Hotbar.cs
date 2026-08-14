@@ -414,6 +414,15 @@ public class Hotbar : MonoBehaviour
     void DevGrantBlankTapes()
     {
         if (Input.GetKeyDown(KeyCode.U)) { DevSellTevTape(); return; }
+        // Z = make a contact place an order now, instead of waiting out the
+        // 90-300s timer. TEMPORARY, for playtests.
+        if (Input.GetKeyDown(KeyCode.Z) && !AIChatScreen.IsTypingActive
+            && !PlayerController.isInDialogue)
+        {
+            string who = TapeRequests.ForceAsk();
+            Debug.Log(who != null ? "[DEV] " + who : "[DEV] No contacts without an open order.");
+            return;
+        }
         // L = dump the tape-sale report for every alien alive right now.
         // Sam's idea after nine sales out of nine: measure the REAL world
         // rather than trusting a headless model that invents alien ids.

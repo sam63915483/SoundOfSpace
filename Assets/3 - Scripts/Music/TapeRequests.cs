@@ -146,6 +146,32 @@ public static class TapeRequests
         }
     }
 
+    /// <summary>
+    /// TEMPORARY: make a contact place an order RIGHT NOW.
+    ///
+    /// Requests arrive on a 90-300 second timer, which is correct for play and
+    /// useless for a playtest — without this the feature can simply fail to
+    /// appear during the session that was meant to check it. Returns the name
+    /// asked, or null if there is nobody to ask.
+    /// </summary>
+    public static string ForceAsk()
+    {
+        foreach (string id in TapeMemory.Contacts)
+        {
+            if (_open.ContainsKey(id)) continue;
+            _open[id] = new Request
+            {
+                alienId = id,
+                genre = AlienTaste.FavouriteGenre(id),
+                askedAt = Time.unscaledTime,
+                seen = false,
+            };
+            Version++;
+            return AlienNames.For(id) + " wants " + _open[id].genre;
+        }
+        return null;
+    }
+
     public static void Clear()
     {
         _open.Clear();
