@@ -52,7 +52,7 @@ public static class AlienTaste
     /// spans 0.4x to 1.3x on satisfaction alone). Being paid badly for a tape
     /// nobody loves is a far better lesson than being refused six times.
     /// </summary>
-    public const double SatisfactionK = 4.0;
+    public const double SatisfactionK = 5.5;
 
     /// Pay factor scales INVERSELY with breadth: an alien who likes almost
     /// nothing pays a premium when you finally hit it, and one who likes
@@ -60,9 +60,25 @@ public static class AlienTaste
     public const double MinPay = 0.80;
     public const double MaxPay = 1.45;
 
-    // Like gate (handoff §5).
-    public const double LikeCertain = 50.0;   // >= this: liked outright
-    public const double LikeMaybe   = 35.0;   // in between: a coin flip
+    // ── Like gate ────────────────────────────────────────────────────────
+    //
+    // Raised from the handoff's 50/35 after measuring the only number that
+    // actually decides whether taste matters: what share of a genre's FANS buy
+    // a track of that genre, versus what share of everyone else does.
+    //
+    //   K 4.0, gate 50/35  ->  fans 100%, others 82%   (18 pt gap)
+    //   K 5.5, gate 60/42  ->  fans 100%, others 42%   (58 pt gap)
+    //
+    // At an 18-point gap taste is decorative and the player may as well sell to
+    // whoever is nearest — Sam hit exactly that, nine offers in a row accepted.
+    // At 58 the shape is right: find your audience and they always take it,
+    // sell to a stranger and it lands about two times in five.
+    //
+    // Since only 1 alien in 10 is a fan of any given genre, that works out at
+    // roughly half of all blind offers landing — often enough to keep moving,
+    // rarely enough that walking to the right customer is worth doing.
+    public const double LikeCertain = 60.0;   // >= this: liked outright
+    public const double LikeMaybe   = 42.0;   // in between: a coin flip
 
     // ── Derived traits ───────────────────────────────────────────────────
 

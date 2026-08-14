@@ -206,12 +206,18 @@ public static class AlienTasteTests
     static void Gate()
     {
         Console.WriteLine("like gate");
+        // Expressed against the CONSTANTS, not against literals. The first
+        // version hardcoded 50 and 35 and started failing the moment the gate
+        // was retuned — a test that pins tuning values by literal is a test
+        // that fights tuning instead of protecting behaviour.
+        double certain = AlienTaste.LikeCertain, maybe = AlienTaste.LikeMaybe;
         Eq(AlienTaste.Gate(100), AlienTaste.Verdict.Liked, "100 is liked");
-        Eq(AlienTaste.Gate(50), AlienTaste.Verdict.Liked, "exactly 50 is liked");
-        Eq(AlienTaste.Gate(49.9), AlienTaste.Verdict.CoinFlip, "just under 50 is a coin flip");
-        Eq(AlienTaste.Gate(35), AlienTaste.Verdict.CoinFlip, "exactly 35 is a coin flip");
-        Eq(AlienTaste.Gate(34.9), AlienTaste.Verdict.Rejected, "just under 35 is rejected");
+        Eq(AlienTaste.Gate(certain), AlienTaste.Verdict.Liked, "exactly the like threshold is liked");
+        Eq(AlienTaste.Gate(certain - 0.1), AlienTaste.Verdict.CoinFlip, "just under it is a coin flip");
+        Eq(AlienTaste.Gate(maybe), AlienTaste.Verdict.CoinFlip, "exactly the maybe threshold is a coin flip");
+        Eq(AlienTaste.Gate(maybe - 0.1), AlienTaste.Verdict.Rejected, "just under it is rejected");
         Eq(AlienTaste.Gate(0), AlienTaste.Verdict.Rejected, "0 is rejected");
+        Check(certain > maybe, "the bands are the right way round");
     }
 
     static void Feedback()

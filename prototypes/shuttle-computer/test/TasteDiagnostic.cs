@@ -142,6 +142,25 @@ public static class TasteDiagnostic
         Console.WriteLine("  (if that spread is small, finding the right buyer is not worth walking for)");
 
         Console.WriteLine();
+        Console.WriteLine("=== THE NUMBER THAT ACTUALLY MATTERS ===");
+        Console.WriteLine("  For a track sitting ON a genre centre: what share of that genre's");
+        Console.WriteLine("  FANS accept it, versus everyone else? If those two numbers are");
+        Console.WriteLine("  close, taste is decorative and the player may as well sell to");
+        Console.WriteLine("  whoever is nearest.");
+        Console.WriteLine();
+        Console.WriteLine("  K     gate    fans accept   others accept   gap");
+        double[] ks = { 4.0, 5.0, 5.5, 6.0, 7.0 };
+        double[][] gates = { new[] { 50.0, 35.0 }, new[] { 60.0, 42.0 }, new[] { 65.0, 45.0 } };
+        foreach (double k in ks)
+            foreach (double[] g in gates)
+                Console.WriteLine("  " + k.ToString("0.0") + "   " +
+                                  g[0].ToString("0") + "/" + g[1].ToString("0") + "   " +
+                                  Sweep(ids, k, g[0], g[1], true) + "          " +
+                                  Sweep(ids, k, g[0], g[1], false) + "           " +
+                                  (SweepRaw(ids, k, g[0], g[1], true) -
+                                   SweepRaw(ids, k, g[0], g[1], false)).ToString("0") + " pts");
+
+        Console.WriteLine();
         Console.WriteLine("=== ARE FAVOURITE GENRES SPREAD? ===");
         var byGenre = new int[TraxClassifier.Genres.Length];
         foreach (string id in ids) byGenre[AlienTaste.FavouriteGenreIndex(id)]++;
@@ -155,5 +174,38 @@ public static class TasteDiagnostic
     static string Pct(int n, int total)
     {
         return (100.0 * n / total).ToString("0") + "%";
+    }
+
+    /// Share of aliens who would NOT reject a track sitting on genre centre G,
+    /// counting only fans of G (matching=true) or only everyone else.
+    /// Recomputes satisfaction locally so a candidate K and gate can be tried
+    /// without editing the model.
+    static double SweepRaw(string[] ids, double k, double likeCertain, double likeMaybe,
+                           bool matching)
+    {
+        int considered = 0, accepted = 0;
+        var genres = TraxClassifier.Genres;
+        for (int g = 0; g < genres.Length; g++)
+        {
+            double[] track = genres[g].c;
+            foreach (string id in ids)
+            {
+                bool isFan = AlienTaste.FavouriteGenreIndex(id) == g;
+                if (isFan != matching) continue;
+                considered++;
+                double dist = AlienTaste.Distance(track, AlienTaste.TastePoint(id));
+                double sat = 100.0 - k * AlienTaste.Falloff(id) * dist;
+                if (sat < 0) sat = 0;
+                // A coin flip counts as half an acceptance.
+                if (sat >= likeCertain) accepted += 2;
+                else if (sat >= likeMaybe) accepted += 1;
+            }
+        }
+        return considered == 0 ? 0 : 100.0 * accepted / (2.0 * considered);
+    }
+
+    static string Sweep(string[] ids, double k, double a, double b, bool matching)
+    {
+        return SweepRaw(ids, k, a, b, matching).ToString("0") + "%";
     }
 }
