@@ -32,9 +32,69 @@ public static class MushroomQuest
     const string FlagRentSet = "tevRentSettled";      // flag — the haggle has happened
     const string KeyArrears  = "tevRentArrears";      // counter — unpaid rent owed
     const string KeyNextDue  = "tevRentNextDueDay";   // counter — GalaxyTime day the next bill lands
+    const string KeyLawnOwed = "tevLawnTapesOwed";    // counter — HIS tapes still to sell to clear the lawn
+    const string FlagLawnDone= "tevLawnCleared";      // flag — the lawn is paid off for good
 
     /// Mushrooms in a batch Tev hands over.
     public const int BatchSize = 3;
+
+    // ── The lawn, paid in tape sales ─────────────────────────────────────
+    //
+    // The cassette pivot retires the weekly money rent. Tev knows the player is
+    // broke, so he makes them work it off: sell N of HIS tapes and the lawn is
+    // settled, once, forever. The haggle is over N — 10 / 8 / 5 / 3 — and it
+    // never reaches zero, so the stubborn haggler carries the lightest load
+    // rather than getting it free.
+    //
+    // The money rent system is NOT deleted. Settling calls SettleRent(0), and
+    // TevRentCollector already early-returns on a rate of 0 ("Tev waived it"),
+    // so no weekly charge can ever fire. Everything about it stays one line
+    // away from coming back.
+
+    /// The four rungs of the work-off haggle. Never reaches free.
+    public static readonly int[] LawnTapeRungs = { 10, 8, 5, 3 };
+
+    /// How many of Tev's tapes are still to be sold before the lawn is square.
+    public static int LawnTapesOwed
+    {
+        get => StoryDirector.Instance != null ? StoryDirector.Instance.GetCounter(KeyLawnOwed) : 0;
+        set { StoryDirector.Instance?.SetCounter(KeyLawnOwed, Mathf.Max(0, value)); }
+    }
+
+    /// True once the debt has been worked off. Distinct from "owes 0" — a
+    /// player who has not been through the haggle also owes 0.
+    public static bool LawnCleared
+    {
+        get => StoryDirector.Instance != null && StoryDirector.Instance.GetFlag(FlagLawnDone);
+        set { StoryDirector.Instance?.SetFlag(FlagLawnDone, value); }
+    }
+
+    /// <summary>
+    /// Lock in the haggled tape count. Also settles the MONEY rent at zero, so
+    /// the weekly collector stays permanently quiet without anything being
+    /// deleted — see the note above.
+    /// </summary>
+    public static void SettleLawn(int tapes)
+    {
+        LawnTapesOwed = Mathf.Max(0, tapes);
+        LawnCleared = tapes <= 0;
+        SettleRent(0);
+    }
+
+    /// <summary>
+    /// Called when one of TEV'S tapes is sold. Counts down the lawn debt and
+    /// returns true on the sale that clears it, so the caller can say so.
+    /// </summary>
+    public static bool NotifyTevTapeSold(int count = 1)
+    {
+        if (count <= 0 || LawnCleared) return false;
+        int before = LawnTapesOwed;
+        if (before <= 0) return false;
+        LawnTapesOwed = before - count;
+        if (LawnTapesOwed > 0) return false;
+        LawnCleared = true;
+        return true;
+    }
     /// How many EXTRA batches he'll front after the first one before he gives up.
     public const int MaxRefronts = 5;
 

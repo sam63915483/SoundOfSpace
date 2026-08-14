@@ -60,11 +60,12 @@ public class TevMushroomOnboarding : MonoBehaviour
     public string[] firstTalkLines = new[]
     {
         "Most people knock, y'know. You parked a shuttle on my lawn.",
-        "Relax — I'm not sore about it. Nothing much happens out here worth being sore about.",
+        "Truth be told I've been hoping someone'd land on it. Nothing much happens out here worth being sore about.",
         "Fresh off the pod, then. No money, no plan, and a suit that'll want feeding.",
         "Lucky for you there's exactly one business worth being in around here.",
-        "Three caps, on the house. Find a buyer — anyone out here will take them, and they'll all quote you different.",
-        "And hey. Don't eat the inventory.",
+        "{n} tapes. My stuff, so don't laugh. Find someone who likes it — everyone out here's got different taste, so don't be afraid to shop around.",
+        "Whatever you get for 'em, half comes back to me. That's the deal and it's a generous one.",
+        "And hey. Don't tape over 'em.",
     };
 
     [Header("Lines — pack too full to take the batch")]
@@ -86,9 +87,9 @@ public class TevMushroomOnboarding : MonoBehaviour
     [TextArea(2, 5)]
     public string[] ridiculeLines = new[]
     {
-        "Wait. All three? Gone?",
+        "Wait. All of them? Gone?",
         "I hand you the easiest money in the system and you come back with lint.",
-        "…Lesson one: never eat the product.",
+        "…Lesson one, friend: don't fall in love with your own supply.",
     };
 
     [Header("Lines — handing over a REFRONT batch")]
@@ -103,8 +104,8 @@ public class TevMushroomOnboarding : MonoBehaviour
     [TextArea(2, 5)]
     public string[] outOfPatienceLines = new[]
     {
-        "No. I'm done handing you groceries.",
-        "They grow wild out there — go find your own. Take the axe to them, they come apart easy enough.",
+        "No. I'm done handing you my back catalogue.",
+        "You want tapes, make your own. There's a machine in that shuttle — go press something.",
     };
 
     [Header("Lines — outcome B: sold some, teaches the loop (completes)")]
@@ -112,9 +113,10 @@ public class TevMushroomOnboarding : MonoBehaviour
     public string[] teachLines = new[]
     {
         "Not bad. You've got a buyer and you've got a price. That's a business.",
-        "Alright — trade secret. Those caps grow wild around here, and they like oxygen.",
-        "More trees, richer air, faster shrooms. You want product? Start planting.",
-        "Chop one and you'll get spores off it. Put them in the ground and the same cap comes back.",
+        "Alright — trade secret. You don't want to be selling my stuff forever.",
+        "That shuttle you parked on my lawn has a music machine in it. Most folks never even switch the thing on.",
+        "Make something. Press it to tape. Sell it. And you keep all of that, seeing as it's yours.",
+        "And when you get sick of the two machines it came with, come see me. I've got all your music needs.",
     };
 
     [Header("Lines — after the onboarding is done")]
@@ -122,7 +124,7 @@ public class TevMushroomOnboarding : MonoBehaviour
     public string[] doneLines = new[]
     {
         "Still at it? Good. Keep an eye on who's paying what.",
-        "Plant more than you pick. That's the whole trick.",
+        "Make something people haven't heard. That's the whole trick.",
         "Quiet day. Quiet year, really.",
     };
 
@@ -431,7 +433,7 @@ public class TevMushroomOnboarding : MonoBehaviour
         // below doesn't let him charge rent twice.
         if (!MushroomQuest.RentSettled)
         {
-            yield return RunRentHaggle();
+            yield return RunLawnHaggle();
             if (!_playerInRange) yield break;
         }
 
@@ -439,11 +441,12 @@ public class TevMushroomOnboarding : MonoBehaviour
         yield return SpeakFirstTalkRange(rentAfterLineIndex, int.MaxValue);
         if (!_playerInRange) yield break;
 
-        int given = MushroomQuest.GrantBatch();
+        int given = TevDemoTapes.Grant(MushroomQuest.LawnTapesOwed);
         if (given <= 0)
         {
-            // Pack full (or no mushroom species resolved yet): say so and leave
-            // the stage at NotMet so the whole beat re-offers next talk.
+            // Pack full: say so and leave the stage at NotMet so the whole beat
+            // re-offers next talk. The haggle is skipped on the replay, so he
+            // cannot re-negotiate the number upward.
             yield return SpeakLines(packFullLines);
             yield break;
         }
@@ -466,7 +469,10 @@ public class TevMushroomOnboarding : MonoBehaviour
         // Q2 — "Got any left?"  Exactly one of these is ever selectable; both are
         // always SHOWN, because seeing the greyed one is how the player learns he
         // can tell. (The panel dims disabled rows and refuses their input.)
-        int held = MushroomQuest.HeldCount;
+        // His tapes, across all three demos — hotbar only, never the locker,
+        // which is what preserves the deliberate stash-and-claim-you-lost-them
+        // exploit the mushroom version had.
+        int held = TevDemoTapes.HeldCount();
         yield return SpeakOne("Got any left?");
         if (!_playerInRange) yield break;
         yield return AskChoice(
@@ -500,7 +506,9 @@ public class TevMushroomOnboarding : MonoBehaviour
             yield break;
         }
 
-        int given = MushroomQuest.GrantBatch();
+        // Refills stay at three regardless of the number haggled — the ladder
+        // set the DEBT, not the batch size.
+        int given = TevDemoTapes.Grant(MushroomQuest.BatchSize);
         if (given <= 0)
         {
             yield return SpeakLines(packFullLines);
@@ -638,50 +646,83 @@ public class TevMushroomOnboarding : MonoBehaviour
     /// AskChoice leaves _choice at -1 if PostGreetingChoicePanel is missing, and
     /// -1 must fall through to the FREE outcome rather than silently billing a
     /// player who was never shown a prompt.
-    IEnumerator RunRentHaggle()
+    /// <summary>
+    /// The work-off haggle. He knows the player is broke, so the lawn is paid
+    /// in labour: sell N of HIS tapes and it is settled, once.
+    ///
+    /// The ladder is 10 → 8 → 5 → 3 and IT NEVER REACHES FREE — the last rung
+    /// has no refusal row. That inverts the old money joke: the stubborn
+    /// haggler now walks away with the LIGHTEST load rather than with nothing
+    /// to pay, so pushing back is rewarded without being free.
+    /// </summary>
+    IEnumerator RunLawnHaggle()
     {
-        yield return SpeakRentLines(rentDemandLines, rentHighPerWeek);
-        if (!_playerInRange) yield break;
-        yield return AskChoice(
-            new PostGreetingChoicePanel.Row($"Fine. {rentHighPerWeek} a week.", true),
-            new PostGreetingChoicePanel.Row("Not a chance.", true));
-        if (!_playerInRange) yield break;
-
-        if (_choice == 0)
+        int[] rungs = MushroomQuest.LawnTapeRungs;
+        for (int i = 0; i < rungs.Length; i++)
         {
-            MushroomQuest.SettleRent(rentHighPerWeek);
-            yield return SpeakLines(rentAcceptedHighLines);
-            yield break;
+            int n = rungs[i];
+            bool last = i == rungs.Length - 1;
+
+            yield return SpeakTapeLines(LawnDemandLines(i), n);
+            if (!_playerInRange) yield break;
+
+            if (last)
+            {
+                // One row. There is no way out of the last rung, and showing a
+                // dead refusal row would only advertise a door that isn't there.
+                yield return AskChoice(
+                    new PostGreetingChoicePanel.Row($"Fine. {n} tapes.", true));
+            }
+            else
+            {
+                yield return AskChoice(
+                    new PostGreetingChoicePanel.Row($"Deal. {n} tapes.", true),
+                    new PostGreetingChoicePanel.Row(i == 0 ? $"{n}? Not a chance." : "Still no.", true));
+            }
+            if (!_playerInRange) yield break;
+
+            if (last || _choice == 0)
+            {
+                // Settles the MONEY rent at zero as well, which is what keeps
+                // the weekly collector permanently quiet — see MushroomQuest.
+                MushroomQuest.SettleLawn(n);
+                yield return SpeakTapeLines(LawnAcceptLines(i), n);
+                yield break;
+            }
         }
-
-        yield return SpeakRentLines(rentClimbdownLines, rentLowPerWeek);
-        if (!_playerInRange) yield break;
-        yield return AskChoice(
-            new PostGreetingChoicePanel.Row($"{rentLowPerWeek} a week. Done.", true),
-            new PostGreetingChoicePanel.Row("Still no.", true));
-        if (!_playerInRange) yield break;
-
-        if (_choice == 0)
-        {
-            MushroomQuest.SettleRent(rentLowPerWeek);
-            yield return SpeakLines(rentAcceptedLowLines);
-            yield break;
-        }
-
-        MushroomQuest.SettleRent(0);
-        yield return SpeakLines(rentWaivedLines);
     }
 
-    /// SpeakLines with "{rent}" swapped for the actual figure, so the spoken
-    /// price can never drift from the rate the player is charged when the
-    /// tunables are retuned.
-    IEnumerator SpeakRentLines(string[] lines, int amount)
+    string[] LawnDemandLines(int rung)
+    {
+        switch (rung)
+        {
+            case 0:  return lawnDemandLines;
+            case 1:  return lawnClimbdownLines;
+            case 2:  return lawnThirdOfferLines;
+            default: return lawnFinalOfferLines;
+        }
+    }
+
+    string[] LawnAcceptLines(int rung)
+    {
+        switch (rung)
+        {
+            case 0:  return lawnAccept10Lines;
+            case 1:  return lawnAccept8Lines;
+            case 2:  return lawnAccept5Lines;
+            default: return lawnAccept3Lines;
+        }
+    }
+
+    /// SpeakLines with "{n}" swapped for the actual tape count, so the number
+    /// he says can never drift from the number he actually books.
+    IEnumerator SpeakTapeLines(string[] lines, int amount)
     {
         if (lines == null) yield break;
         for (int i = 0; i < lines.Length; i++)
         {
             if (!_playerInRange) yield break;
-            string line = lines[i] != null ? lines[i].Replace("{rent}", amount.ToString()) : string.Empty;
+            string line = lines[i] != null ? lines[i].Replace("{n}", amount.ToString()) : string.Empty;
             yield return SpeakOne(line);
         }
     }
@@ -694,20 +735,27 @@ public class TevMushroomOnboarding : MonoBehaviour
     ///
     /// Done as a swap rather than a second full array so there is exactly one
     /// place to edit the other five lines.
+    /// <summary>
+    /// The first-talk slice after the haggle. "{n}" is swapped for the number
+    /// of tapes he just booked, so the offer line always matches what actually
+    /// lands in the player's hands.
+    ///
+    /// The old rent-conditional swap is gone: there is no "paying rent" state
+    /// any more, because the lawn is worked off in tape sales rather than
+    /// charged weekly. One line, one version.
+    /// </summary>
     IEnumerator SpeakFirstTalkRange(int from, int to)
     {
         if (firstTalkLines == null) yield break;
         int start = Mathf.Clamp(from, 0, firstTalkLines.Length);
         int end = Mathf.Clamp(to, start, firstTalkLines.Length);
-        bool payingRent = MushroomQuest.RentSettled && MushroomQuest.RentPerWeek > 0;
+        string n = MushroomQuest.LawnTapesOwed.ToString();
 
         for (int i = start; i < end; i++)
         {
             if (!_playerInRange) yield break;
-            string line = (i == rentPaidOfferLineIndex && payingRent
-                           && !string.IsNullOrEmpty(firstTalkOfferRentPaid))
-                ? firstTalkOfferRentPaid
-                : firstTalkLines[i];
+            string line = firstTalkLines[i] != null
+                ? firstTalkLines[i].Replace("{n}", n) : string.Empty;
             yield return SpeakOne(line);
         }
     }
@@ -795,42 +843,58 @@ public class TevMushroomOnboarding : MonoBehaviour
     [Tooltip("Index into firstTalkLines where the rent shakedown is inserted. 1 = straight after the 'you parked a shuttle on my lawn' line. Everything from this index on is spoken AFTER the haggle resolves.")]
     [SerializeField] int rentAfterLineIndex = 1;
 
-    [Tooltip("Tev's opening ask, in credits per galactic week (a week is 7 in-game days = 2h48m of play at the default clock rate).")]
-    [SerializeField] int rentHighPerWeek = 500;
-    [Tooltip("What he climbs down to when the player refuses the opening ask.")]
-    [SerializeField] int rentLowPerWeek = 100;
+    // The four rungs. "{n}" is swapped for the tape count so the number he
+    // says can never drift from the number he books. The counts themselves
+    // live in MushroomQuest.LawnTapeRungs.
 
     [TextArea(2, 5)]
-    public string[] rentDemandLines = new[]
+    public string[] lawnDemandLines = new[]
     {
         "Course, a berth like that isn't free. Prime lawn, southern exposure.",
-        "{rent} a week and we'll say no more about it.",
+        "And we both know you can't pay. So you'll work it off. {n} of my tapes, sold — and we're square.",
     };
 
     [TextArea(2, 5)]
-    public string[] rentAcceptedHighLines = new[]
+    public string[] lawnAccept10Lines = new[]
     {
-        "Well now. A man who pays his way. Don't see many of those out here.",
+        "A man who takes the first offer. This is going to be a beautiful arrangement.",
     };
 
     [TextArea(2, 5)]
-    public string[] rentClimbdownLines = new[]
+    public string[] lawnClimbdownLines = new[]
     {
         "Ha! Alright, alright — I was messing with ya.",
-        "{rent} a week. That's me being generous, mind.",
+        "{n}. And I'm already regretting it.",
     };
 
     [TextArea(2, 5)]
-    public string[] rentAcceptedLowLines = new[]
+    public string[] lawnAccept8Lines = new[]
     {
         "There we go. Neighbourly.",
     };
 
     [TextArea(2, 5)]
-    public string[] rentWaivedLines = new[]
+    public string[] lawnThirdOfferLines = new[]
     {
-        "You drive a hard bargain for a man with nothing in his pockets.",
-        "I'm busting your balls. Park it wherever. Costs me nothing.",
+        "{n}, then. You're haggling a man on his own lawn, you know that?",
+    };
+
+    [TextArea(2, 5)]
+    public string[] lawnAccept5Lines = new[]
+    {
+        "{n} it is. You'd have made a decent salesman already.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] lawnFinalOfferLines = new[]
+    {
+        "{n}. Final offer, and I'm robbing myself.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] lawnAccept3Lines = new[]
+    {
+        "Good. See? Painless.",
     };
 
     [Header("Rent-conditional offer line (2026-08-10)")]
