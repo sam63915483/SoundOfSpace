@@ -146,6 +146,10 @@ public class PlayerPhoneUI : MonoBehaviour
     RectTransform _appGridRT;
     RectTransform _reservedZoneRT;
     Button        _putAwayBtn;
+    /// Columns in the app grid. The grid layout, the pad navigation and the
+    /// page-arrow wiring all derive from this — they used to hardcode 3
+    /// independently, so adding a seventh app silently broke two of them.
+    const int AppGridCols = 4;
     Button[]      _appButtons = new Button[7];
 
     // â”€â”€ Home-screen page navigation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -2320,15 +2324,18 @@ public class PlayerPhoneUI : MonoBehaviour
         _appGridRT.offsetMin = Vector2.zero; _appGridRT.offsetMax = Vector2.zero;
 
         var grid = _appGridRT.gameObject.AddComponent<GridLayoutGroup>();
-        // 6 tiles â†’ 3 columns Ã— 2 rows on the 4:3 landscape screen. Width
-        // budget: 3*110 + 2*10 + 8 = 358 (centered in ~546); height budget
-        // 170 px: 2*66 + 10 + 8 = 150.
+        // 7 tiles -> 4 columns x 2 rows on the 4:3 landscape screen.
+        //
+        // It was 3 columns when there were 6 tiles. A seventh would have
+        // started a THIRD row, and three rows do not fit: 3*66 + 2*10 + 8 = 226
+        // against a height budget of ~170. Widening instead keeps the tiles the
+        // same size and stays inside the width: 4*110 + 3*10 + 8 = 478 of ~546.
         grid.padding = new RectOffset(4, 4, 4, 4);
         grid.spacing = new Vector2(10f, 10f);
         grid.cellSize = new Vector2(110f, 66f);
         grid.childAlignment = TextAnchor.MiddleCenter;
         grid.constraint = GridLayoutGroup.Constraint.FixedColumnCount;
-        grid.constraintCount = 3;
+        grid.constraintCount = AppGridCols;
 
         // Glyphs are uppercase ASCII letters â€” the bundled LiberationSans SDF
         // doesn't include the unicode-block symbols (âŒ¬ â–¦ âš™ â—Ž) that were here
@@ -2782,8 +2789,11 @@ public class PlayerPhoneUI : MonoBehaviour
         Selectable upForPrev = null, upForNext = null;
         if (_currentPage == 0)
         {
-            upForPrev = _appButtons[3];   // bottom-left tile (Map â€” 3-col grid)
-            upForNext = _appButtons[5];   // bottom-right tile (AI)
+            // Bottom row starts one full row in; the last tile is whatever
+            // the array ends on. Derived rather than hardcoded — these were
+            // literal 3 and 5, which the fourth column silently invalidated.
+            upForPrev = At(AppGridCols);
+            upForNext = At(_appButtons.Length - 1) ?? upForPrev;
             WireAppGridNav();
         }
         else
@@ -2817,24 +2827,47 @@ public class PlayerPhoneUI : MonoBehaviour
     // old two-column layout, which made stick focus hop to tiles that
     // didn't match the visual grid at all â€” the "controller layout feels
     // broken" bug. Bottom row falls through to the page arrows.
+    /// <summary>
+    /// Pad navigation across the app grid.
+    ///
+    /// Every neighbour is BOUNDS-CHECKED rather than inferred from an assumed
+    /// 3x2 shape. The first version trusted exactly six tiles, so adding a
+    /// seventh — which lands alone on a third row — made the last tile reach
+    /// for _appButtons[7] and throw. That exception fired inside Awake, which
+    /// took the whole phone down with it: X stopped opening anything at all,
+    /// with no clue on screen as to why.
+    ///
+    /// Written so ANY tile count is safe, because the next person to add an app
+    /// should not have to know this function exists.
+    /// </summary>
     void WireAppGridNav()
     {
+        const int Cols = AppGridCols;
         for (int i = 0; i < _appButtons.Length; i++)
         {
             var b = _appButtons[i];
             if (b == null) continue;
-            int row = i / 3, col = i % 3;
-            Selectable down;
-            if (row < 1)  down = _appButtons[i + 3];
-            else          down = col == 2 ? (Selectable)_nextPageBtn : (Selectable)_prevPageBtn;
+            int row = i / Cols, col = i % Cols;
+
+            Selectable down = At(i + Cols);
+            if (down == null)
+                down = col == Cols - 1 ? (Selectable)_nextPageBtn : (Selectable)_prevPageBtn;
+
             b.navigation = new Navigation {
                 mode          = Navigation.Mode.Explicit,
-                selectOnLeft  = col > 0 ? _appButtons[i - 1] : null,
-                selectOnRight = col < 2 ? _appButtons[i + 1] : null,
-                selectOnUp    = row > 0 ? _appButtons[i - 3] : null,
+                selectOnLeft  = col > 0 ? At(i - 1) : null,
+                selectOnRight = col < Cols - 1 ? At(i + 1) : null,
+                selectOnUp    = row > 0 ? At(i - Cols) : null,
                 selectOnDown  = down,
             };
         }
+    }
+
+    /// A grid neighbour, or null if that slot does not exist.
+    Selectable At(int index)
+    {
+        if (_appButtons == null || index < 0 || index >= _appButtons.Length) return null;
+        return _appButtons[index];
     }
 
     void RefreshDots()
