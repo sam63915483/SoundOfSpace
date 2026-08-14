@@ -101,6 +101,20 @@ public static class FeatureVault
     /// instructor flow. Vaulted 2026-08-09 while the core co-op loop is built.
     public const bool ShipSchool = false;
 
+    /// SELLING MUSHROOMS to NPCs. Vaulted 2026-08-14 for the cassette pivot,
+    /// which is Sam's call from the Phase 6 plan: "aliens do not buy mushrooms
+    /// anymore, but just vault it so if we wanna bring it back later its easy."
+    ///
+    /// This gates the SELL OPTION ONLY, exactly like SpaceDustSelling above.
+    /// Finding, chopping, replanting and reharvesting mushrooms all still work,
+    /// and so does eating them. The species registry, the grow pots and every
+    /// save field are untouched.
+    ///
+    /// It also frees the SELL PANEL, which now serves tapes: rebuilding that
+    /// 1350-line screen for cassettes would have been the expensive way to get
+    /// a worse version of something that already works.
+    public const bool MushroomSelling = false;
+
     /// Tev's presence IN THE VILLAGE. Vaulted 2026-08-09.
     ///
     /// ⚠️ Tev HIMSELF is not vaulted — he still lives at his cabin and still

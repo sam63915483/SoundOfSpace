@@ -40,6 +40,15 @@ public static class TapeTrade
     /// "tape" / "tapes", so the text lines read naturally at any quantity.
     public static string TapeWord(int qty) { return qty == 1 ? "tape" : "tapes"; }
 
+    /// The six dials as a plain array, which is what the taste model speaks.
+    public static double[] DialsOf(TraxTrack track)
+    {
+        var d = new double[AlienTaste.DialCount];
+        if (track == null) return d;
+        for (int i = 0; i < d.Length && i < TraxPrng.DialCount; i++) d[i] = track.dials.Get(i);
+        return d;
+    }
+
     // ── what they want ───────────────────────────────────────────────────
 
     /// <summary>

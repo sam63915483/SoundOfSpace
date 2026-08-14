@@ -45,7 +45,7 @@ public static class TapeSaleDebug
         for (int i = 0; i < demos.Length; i++)
         {
             tracks[i] = TevDemoTapes.TrackFor(demos[i]);
-            dials[i] = TapeSellFlow.DialsOf(tracks[i]);
+            dials[i] = TapeTrade.DialsOf(tracks[i]);
         }
 
         sb.AppendLine("Aliens alive: " + aliens.Count);

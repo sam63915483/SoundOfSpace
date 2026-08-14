@@ -84,7 +84,6 @@ public class MushroomSellUI : MonoBehaviour
 
     // ── deal state ────────────────────────────────────────────────────────
     string _npcName;
-    NPCMushroomPrice _price;
     string _buyerId;
     Action _onClose;
     Action<int> _onSold;
@@ -177,7 +176,6 @@ public class MushroomSellUI : MonoBehaviour
         _open = false;
         _onClose = null;
         _onSold = null;
-        _price = null;
         _offerSpecies = null;
         _offerCountN = 0;
         _cursor = default;
@@ -196,11 +194,15 @@ public class MushroomSellUI : MonoBehaviour
 
     /// <param name="price">This buyer's hidden rate + patience. Never rendered.</param>
     /// <param name="onSold">Number of caps sold, each time a deal closes.</param>
-    public void Open(string npcName, NPCMushroomPrice price, Action onClose, Action<int> onSold = null)
+    /// <summary>
+    /// Open the sell table for an alien. Takes their IDENTITY rather than a
+    /// mushroom price component — the tape economy prices from AlienTaste, and
+    /// the panel no longer knows what a strain is.
+    /// </summary>
+    public void Open(string npcName, string alienId, Action onClose, Action<int> onSold = null)
     {
         _npcName = string.IsNullOrEmpty(npcName) ? "Buyer" : npcName;
-        _price = price;
-        _buyerId = price != null ? price.Identity : _npcName;
+        _buyerId = string.IsNullOrEmpty(alienId) ? _npcName : alienId;
         _onClose = onClose;
         _onSold = onSold;
         _open = true;
@@ -236,6 +238,7 @@ public class MushroomSellUI : MonoBehaviour
     public void Close()
     {
         if (!_open) return;
+        TraxTapePlayer.StopAll();
 
         // Never eat the player's stock. Anything on the table or on the cursor
         // goes back in the bar before the panel closes.
@@ -257,7 +260,6 @@ public class MushroomSellUI : MonoBehaviour
         var cb = _onClose;
         _onClose = null;
         _onSold = null;
-        _price = null;
         _scheduled = false;
         _appt = null;
         cb?.Invoke();
@@ -296,9 +298,49 @@ public class MushroomSellUI : MonoBehaviour
     // Market is PUBLIC (a property of the strain). Fair and patience are the
     // buyer's and never leave this file.
 
-    int Market => _offerSpecies != null ? MushroomRegistry.BaseValue(_offerSpecies) : 0;
-    int Fair   => (_price != null && _offerSpecies != null) ? _price.PriceFor(_offerSpecies) : Market;
-    float Patience => _price != null ? _price.Patience : 1.25f;
+    /// The tape on the table, or null.
+    TraxPrints.Record Press => _offerSpecies != null ? TraxPrints.Get(_offerSpecies) : null;
+
+    /// How well THIS buyer's ear matches what is on the table. Everything below
+    /// hangs off it, exactly as the in-person offer flow does.
+    double Satisfaction
+    {
+        get
+        {
+            var rec = Press;
+            return rec == null ? 0.0
+                 : AlienTaste.Satisfaction(_buyerId, TapeTrade.DialsOf(rec.track));
+        }
+    }
+
+    /// PUBLIC value — floor plus arrangement. The player can work this out from
+    /// the console, which is what makes naming a price a judgement rather than
+    /// a guess.
+    int Market
+    {
+        get
+        {
+            var rec = Press;
+            return rec == null ? 0
+                 : Mathf.Max(1, Mathf.RoundToInt((float)TapeValue.Base(rec.track.ActiveCount(), rec.tier)));
+        }
+    }
+
+    /// What this buyer privately thinks it is worth. Never leaves this file.
+    int Fair
+    {
+        get
+        {
+            var rec = Press;
+            if (rec == null) return Market;
+            var led = BuyerLedger.Get(_buyerId);
+            return TapeValue.For(rec.track.ActiveCount(), rec.tier, Satisfaction,
+                                 led != null ? led.bond : 0, false,
+                                 AlienTaste.PayFactor(_buyerId));
+        }
+    }
+
+    float Patience => (float)AlienTaste.Patience(_buyerId);
     int Total  => _ask * _offerCountN;
     bool Barred => MushroomDealState.IsBarred(_buyerId);
     bool HasOffer => _offerSpecies != null && _offerCountN > 0;
@@ -308,12 +350,40 @@ public class MushroomSellUI : MonoBehaviour
     void MakeOffer()
     {
         if (!HasOffer || Barred || _ask <= 0) return;
-        if (RemainingAppetite <= 0)
+
+        // ── DO THEY EVEN WANT IT? ────────────────────────────────────────
+        // Price is the second question. The first is whether this song is for
+        // them at all, and it is the same gate the taste model applies
+        // everywhere else — without it the panel would haggle happily over a
+        // track the buyer hates, and the whole genre system would only ever
+        // move the price rather than decide the sale.
+        var rec = Press;
+        if (rec != null)
         {
-            int wait = MushroomDealState.SecondsUntilHungry(_buyerId, AppetiteMax);
-            SetResult($"\"I'm full up. Try me in {Mathf.CeilToInt(wait / 60f)} minutes.\"", C_Err);
-            return;
+            double[] dials = TapeTrade.DialsOf(rec.track);
+            uint variant = StableHash(_buyerId + ":" + _offerSpecies);
+
+            if (TapeMemory.HasHeard(_buyerId, dials))
+            {
+                SetResult($"\"{AlienFeedback.ForRepeat(variant)}\"", C_Err);
+                return;
+            }
+
+            double sat = Satisfaction;
+            var verdict = AlienTaste.Gate(sat);
+            bool liked = verdict == AlienTaste.Verdict.Liked
+                      || (verdict == AlienTaste.Verdict.CoinFlip && UnityEngine.Random.value < 0.5f);
+            if (!liked)
+            {
+                // They have now heard it, so re-offering the same song is a
+                // repeat even though no money changed hands.
+                TapeMemory.Remember(_buyerId, dials);
+                SetResult($"\"{AlienFeedback.ForRejection(_buyerId, dials, AlienTaste.FavouriteGenre(_buyerId), variant)}\"", C_Err);
+                Refresh();
+                return;
+            }
         }
+
         int fair = Mathf.Max(1, Fair);
         float m = (float)_ask / fair;
 
@@ -328,7 +398,7 @@ public class MushroomSellUI : MonoBehaviour
             _counter = Mathf.Max(1, Mathf.RoundToInt(fair * (1f + (h % 6u) / 100f)));
             _stage = Stage.Countered;
             MushroomDealState.SetCounter(_buyerId, _offerSpecies, _counter);
-            SetResult($"\"{_ask} a cap? Not a chance. I'll do {_counter}.\"", C_Label);
+            SetResult($"\"{_ask} a tape? Not a chance. I'll do {_counter}.\"", C_Label);
             Refresh();
             return;
         }
@@ -366,7 +436,8 @@ public class MushroomSellUI : MonoBehaviour
         Refresh();
     }
 
-    int AppetiteMax => _price != null ? _price.AppetiteMax : 999;
+    // Tapes have no appetite: a song is not produce and nobody fills up on it.
+    int AppetiteMax => 999;
     int RemainingAppetite => MushroomDealState.Remaining(_buyerId, AppetiteMax);
 
     void CloseSale(int pricePerCap)
@@ -386,7 +457,9 @@ public class MushroomSellUI : MonoBehaviour
         }
 
         int leftover = _offerCountN - qty;
-        var tier = MushroomRegistry.Tier(_offerSpecies);
+        var soldRec = Press;
+        int soldGenre = GenreIndexOf(soldRec);
+        bool matchedTaste = soldGenre == AlienTaste.FavouriteGenreIndex(_buyerId);
         string species = _offerSpecies;
         int credits = pricePerCap * qty;
 
@@ -397,7 +470,7 @@ public class MushroomSellUI : MonoBehaviour
         _ask = 0;
 
         if (leftover > 0 && Hotbar.Instance != null)
-            Hotbar.Instance.AddResource(Hotbar.ItemId.Mushroom, leftover, species);
+            Hotbar.Instance.AddResource(Hotbar.ItemId.Cassette, leftover, species);
 
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(credits);
         // The money and the caps have already changed hands on THIS machine —
@@ -406,25 +479,49 @@ public class MushroomSellUI : MonoBehaviour
         // RecordSale is pure arithmetic so it runs here too and the panel
         // updates immediately; ReportDeal ROLLS for the regular conversion, so
         // on a guest only the host may run it (see below).
-        MushroomDealState.RecordSale(_buyerId, pricePerCap, qty, tier, AppetiteMax);
-        bool sentToHost = EconomySync.ReportSale(_buyerId, pricePerCap, qty, tier,
-                                                 keptAppointment: false, substituted: false);
+        // Tapes have no appetite, so there is no saturation to record.
+        bool sentToHost = false;
         // Central hook: ANY alien buying advances Tev's onboarding, so no NPC
         // has to remember to wire it up (no-ops outside the quest).
-        MushroomQuest.NotifySold(qty);
-        // Progression: dealing is what GANGSTA REP tracks now, not just kills.
-        ProgressHooks.NotifyMushroomSale(qty);
+        NotifyTapeSold(species, soldRec, qty);
         // Persistent ledger: bond, deal count (reveals), regular conversion.
         // Scheduled-mode fulfilment reports through DeliverOrder instead.
         if (!sentToHost)
-            BuyerLedger.ReportDeal(_buyerId, tier, pricePerCap, qty,
-                                   keptAppointment: false, substituted: false);
+            BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, pricePerCap, qty,
+                                       keptAppointment: false, matchedTaste: matchedTaste);
         _onSold?.Invoke(qty);
 
         SetResult(leftover > 0
             ? $"{_npcName} took {qty} and paid {credits}. They didn't want the other {leftover}."
             : $"{_npcName} paid {credits} credits.", C_Ok);
         Refresh();
+    }
+
+    /// Which genre a pressing classifies as, as an index. Resolved BY NAME
+    /// against the same table TapeTrade.Fills compares on, so an order check
+    /// and a bond award can never disagree about what a song is.
+    static int GenreIndexOf(TraxPrints.Record rec)
+    {
+        if (rec == null) return 0;
+        string name = TraxClassifier.Classify(rec.track.dials).primary.name;
+        var g = TraxClassifier.Genres;
+        for (int i = 0; i < g.Length; i++) if (g[i].name == name) return i;
+        return 0;
+    }
+
+    /// Everything that has to happen when a tape changes hands, wherever the
+    /// sale came from — so the walk-up path and the delivery path cannot drift.
+    void NotifyTapeSold(string printId, TraxPrints.Record rec, int qty)
+    {
+        // Selling one of TEV'S tapes advances his onboarding and works the lawn
+        // off. Central, so no NPC has to remember to wire it up.
+        if (TevDemoTapes.IsTevTape(printId))
+        {
+            MushroomQuest.SoldCount += qty;
+            for (int i = 0; i < qty; i++) MushroomQuest.NotifyTevTapeSold();
+        }
+        // A song they have heard is a song they will not buy again.
+        if (rec != null) TapeMemory.Remember(_buyerId, TapeTrade.DialsOf(rec.track));
     }
 
     void BarBuyer()
@@ -464,20 +561,30 @@ public class MushroomSellUI : MonoBehaviour
     void DepositToOffer()
     {
         if (!_cursor.IsHeld) return;
-        if (_cursor.id != Hotbar.ItemId.Mushroom)
+        if (_cursor.id != Hotbar.ItemId.Cassette)
         {
-            SetResult("They only want mushrooms.", C_Err);
+            SetResult("They only want tapes.", C_Err);
             return;
         }
         if (Barred) { SetResult($"{_npcName} isn't dealing with you right now.", C_Err); return; }
-        if (_offerSpecies != null && _cursor.mushroomSpecies != _offerSpecies)
+        if (_offerSpecies != null && _cursor.cassetteId != _offerSpecies)
         {
-            SetResult($"One kind at a time — take the {MushroomRegistry.DisplayName(_offerSpecies)} back first.", C_Err);
+            SetResult($"One song at a time — take {TraxPrints.DisplayName(_offerSpecies)} back first.", C_Err);
             return;
         }
 
         bool wasEmpty = _offerSpecies == null;
-        _offerSpecies = _cursor.mushroomSpecies;
+        _offerSpecies = _cursor.cassetteId;
+
+        // PUT IT ON AND LISTEN. Dropping a tape on the table plays it, because
+        // the buyer deciding what it is worth without hearing it would be
+        // absurd — and because the player should hear what they are selling at
+        // the moment they are pricing it.
+        if (wasEmpty)
+        {
+            var dropped = TraxPrints.Get(_offerSpecies);
+            if (dropped != null) TraxTapePlayer.TogglePersonal(null, _offerSpecies);
+        }
         _offerCountN += _cursor.count;
         _cursor = default;
 
@@ -510,9 +617,9 @@ public class MushroomSellUI : MonoBehaviour
         if (_cursor.IsHeld || !HasOffer) return;
         _cursor = new SlotOps.CursorState
         {
-            id = Hotbar.ItemId.Mushroom,
+            id = Hotbar.ItemId.Cassette,
             count = _offerCountN,
-            mushroomSpecies = _offerSpecies,
+            cassetteId = _offerSpecies,
             sourceContainer = Bar,
             sourceIndex = -1,        // no exact origin — ReturnHeldToSource spills to the first empty slot
         };
@@ -535,7 +642,7 @@ public class MushroomSellUI : MonoBehaviour
         if (bar == null || _offerSpecies == null) return 0;
         int n = 0;
         for (int i = 0; i < bar.Length; i++)
-            if (bar[i].id == Hotbar.ItemId.Mushroom
+            if (bar[i].id == Hotbar.ItemId.Cassette
                 && bar[i].mushroomSpecies == _offerSpecies && bar[i].count > 0)
                 n += bar[i].count;
         return n;
@@ -550,7 +657,7 @@ public class MushroomSellUI : MonoBehaviour
         if (bar == null) return false;
         for (int i = 0; i < bar.Length; i++)
         {
-            if (bar[i].id != Hotbar.ItemId.Mushroom) continue;
+            if (bar[i].id != Hotbar.ItemId.Cassette) continue;
             if (bar[i].mushroomSpecies != _offerSpecies || bar[i].count <= 0) continue;
             var s = bar[i];
             s.count -= 1;
@@ -567,7 +674,7 @@ public class MushroomSellUI : MonoBehaviour
     {
         if (!HasOffer) return false;
         var hb = Hotbar.Instance;
-        if (hb != null && hb.AddResource(Hotbar.ItemId.Mushroom, 1, _offerSpecies) > 0)
+        if (hb != null && hb.AddResource(Hotbar.ItemId.Cassette, 1, _offerSpecies) > 0)
             return false;
         _offerCountN -= 1;
         if (_offerCountN <= 0)
@@ -615,7 +722,7 @@ public class MushroomSellUI : MonoBehaviour
     {
         if (!HasOffer) return;
         var hb = Hotbar.Instance;
-        int leftover = hb != null ? hb.AddResource(Hotbar.ItemId.Mushroom, _offerCountN, _offerSpecies) : _offerCountN;
+        int leftover = hb != null ? hb.AddResource(Hotbar.ItemId.Cassette, _offerCountN, _offerSpecies) : _offerCountN;
         _offerCountN = leftover;
         if (_offerCountN <= 0) { _offerSpecies = null; _stage = Stage.Open; }
     }
@@ -660,25 +767,33 @@ public class MushroomSellUI : MonoBehaviour
         // The table.
         if (HasOffer)
         {
-            var tier = MushroomRegistry.Tier(_offerSpecies);
-            Color32 tc = MushroomSpecies.TierColor(tier);
+            var rec = Press;
+            // The GENRE is a tape's tier: it is what the buyer cares about and
+            // what the console already told the player this song is.
+            string genre = rec != null
+                ? TraxClassifier.Classify(rec.track.dials).primary.name : "";
+            Color32 tc = rec != null && rec.tier >= 2
+                ? new Color32(0xFF, 0x4F, 0xD8, 0xFF)     // Type 2 shell
+                : new Color32(0x79, 0xFF, 0xD0, 0xFF);    // Type 1
             string tierHex = ColorUtility.ToHtmlStringRGB(tc);
+            string title = TraxPrints.DisplayName(_offerSpecies).ToUpperInvariant();
+            string typeWord = rec != null && rec.tier >= 2 ? "TYPE 2" : "TYPE 1";
             if (_scheduled && _appt != null)
             {
-                var at = (MushroomTier)_appt.askTier;
-                string atHex = ColorUtility.ToHtmlStringRGB(MushroomSpecies.TierColor(at));
+                string want = TapeTrade.GenreName(_appt.askTier);
                 int bump = Mathf.RoundToInt((BuyerDeals.GratitudeBonus(_appt.windowMinutes) - 1f) * 100f);
                 _offerText.text =
-                    $"<b>ORDER</b> — {_appt.askQty} <color=#{atHex}>{MushroomSpecies.TierName(at).ToLowerInvariant()}</color> @ <color=#FFD732>{_appt.offerPerCap}</color> a cap agreed" +
+                    $"<b>ORDER</b> — {_appt.askQty} <color=#{tierHex}>{want}</color> @ <color=#FFD732>{_appt.offerPerCap}</color> each agreed" +
                     $"  <size=13><color=#6EDC82>on time (+{bump}%)</color></size>\n" +
-                    $"<size=13><color=#7FA0BD>on the table: {MushroomRegistry.DisplayName(_offerSpecies).ToUpperInvariant()}  <color=#{tierHex}>{MushroomSpecies.TierName(tier)}</color></color></size>";
+                    $"<size=13><color=#7FA0BD>on the table: {title}  <color=#{tierHex}>{genre}</color></color></size>";
             }
             else
             _offerText.text =
-                $"<b>{MushroomRegistry.DisplayName(_offerSpecies).ToUpperInvariant()}</b>  <size=13><color=#{tierHex}>{MushroomSpecies.TierName(tier)}</color></size>\n" +
-                $"<size=13><color=#7FA0BD>market value <color=#FFD732>{Market}</color> a cap — what {_npcName} pays is up to {_npcName}</color></size>";
-            _offerPreview.texture = MushroomRegistry.Preview(_offerSpecies);
-            _offerPreview.enabled = _offerPreview.texture != null;
+                $"<b>{title}</b>  <size=13><color=#{tierHex}>{genre} · {typeWord}</color></size>\n" +
+                $"<size=13><color=#7FA0BD>market value <color=#FFD732>{Market}</color> a tape — what {_npcName} pays is up to {_npcName}</color></size>";
+            // No live render for a cassette: the shell sprite IS the art, and it
+            // already carries the tier colour.
+            _offerPreview.enabled = false;
             _offerCount.enabled = true;
             _offerCount.text = _offerCountN.ToString();
             _offerTier.color = tc;
@@ -687,9 +802,9 @@ public class MushroomSellUI : MonoBehaviour
         else
         {
             _offerText.text = _scheduled && _appt != null
-                ? $"<b>ORDER</b> — {_appt.askQty} {MushroomSpecies.TierName((MushroomTier)_appt.askTier).ToLowerInvariant()} @ <color=#FFD732>{_appt.offerPerCap}</color> a cap agreed\n" +
-                  "<color=#4D6F90>DRAG THE CAPS ONTO THE TABLE</color>"
-                : "<color=#4D6F90>DRAG ONE KIND OF MUSHROOM ONTO THE TABLE</color>";
+                ? $"<b>ORDER</b> — {_appt.askQty} {TapeTrade.GenreName(_appt.askTier)} @ <color=#FFD732>{_appt.offerPerCap}</color> each agreed\n" +
+                  "<color=#4D6F90>DRAG THE TAPES ONTO THE TABLE</color>"
+                : "<color=#4D6F90>DRAG ONE SONG ONTO THE TABLE</color>";
             _offerPreview.enabled = false;
             _offerCount.enabled = false;
             _offerTier.enabled = false;
@@ -705,7 +820,7 @@ public class MushroomSellUI : MonoBehaviour
         {
             for (int i = 0; i < bar.Length && tile < _barSlots.Length; i++)
             {
-                if (bar[i].id != Hotbar.ItemId.Mushroom || bar[i].count <= 0) continue;
+                if (bar[i].id != Hotbar.ItemId.Cassette || bar[i].count <= 0) continue;
                 var w = _barSlots[tile++];
                 w.realIndex = i;
                 w.root.gameObject.SetActive(true);
@@ -756,8 +871,10 @@ public class MushroomSellUI : MonoBehaviour
         {
             // Delivery read instead: does the table (and the price) match
             // the order?
-            var at = (MushroomTier)_appt.askTier;
-            bool goodsOk = HasOffer && BuyerDeals.IsExact(at, _appt.askQty, MushroomRegistry.Tier(_offerSpecies), _offerCountN);
+            var rec2 = Press;
+            bool goodsOk = HasOffer && rec2 != null
+                        && TapeTrade.Fills(rec2.track, _appt.askTier)
+                        && _offerCountN >= _appt.askQty;
             bool priceOk = _ask <= _appt.offerPerCap;
             if (!HasOffer) { band = ""; bandCol = C_Dim; }
             else if (goodsOk && _ask == _appt.offerPerCap)
@@ -863,8 +980,10 @@ public class MushroomSellUI : MonoBehaviour
     {
         if (w == null) return;
         bool empty = s.id == Hotbar.ItemId.None || s.count <= 0;
-        bool mush = !empty && Hotbar.IsMushroomItem(s.id);
-        var tex = mush ? MushroomRegistry.Preview(s.mushroomSpecies) : null;
+        // A cassette has no live render — its shell sprite is the art, and the
+        // pip below carries the tier colour.
+        bool tape = !empty && s.id == Hotbar.ItemId.Cassette;
+        RenderTexture tex = null;
 
         w.bg.color = empty ? new Color32(6, 14, 24, 255) : C_SlotBg;
         w.border.color = empty ? C_SlotEdge : C_Border;
@@ -873,11 +992,14 @@ public class MushroomSellUI : MonoBehaviour
         w.count.enabled = !empty && s.count > 0;
         if (w.count.enabled) w.count.text = s.count.ToString();
 
-        // Rarity pip: the thing that actually teaches the tiers.
-        if (mush)
+        // Tier pip: Type 1 phosphor vs Type 2 magenta, which is what teaches
+        // the two shells apart at a glance.
+        if (tape)
         {
             w.tier.enabled = true;
-            w.tier.color = MushroomSpecies.TierColor(MushroomRegistry.Tier(s.mushroomSpecies));
+            w.tier.color = TraxPrints.TierOf(s.cassetteId) >= 2
+                ? new Color32(0xFF, 0x4F, 0xD8, 0xFF)
+                : new Color32(0x79, 0xFF, 0xD0, 0xFF);
         }
         else w.tier.enabled = false;
     }
@@ -887,7 +1009,7 @@ public class MushroomSellUI : MonoBehaviour
         if (_cursorRT == null) return;
         if (!_cursor.IsHeld) { _cursorRT.gameObject.SetActive(false); return; }
         _cursorRT.gameObject.SetActive(true);
-        var tex = Hotbar.IsMushroomItem(_cursor.id) ? MushroomRegistry.Preview(_cursor.mushroomSpecies) : null;
+        RenderTexture tex = null;   // cassettes render as their shell sprite, not a preview
         _cursorPreview.texture = tex;
         _cursorPreview.enabled = tex != null;
         _cursorCount.enabled = _cursor.count > 1;
@@ -1063,14 +1185,18 @@ public class MushroomSellUI : MonoBehaviour
     void DeliverOrder()
     {
         if (!_scheduled || _appt == null || !HasOffer) return;
-        var offeredTier = MushroomRegistry.Tier(_offerSpecies);
-        var agreedTier = (MushroomTier)_appt.askTier;
+        var delivered = Press;
         int agreed = _appt.offerPerCap;
         int ask = Mathf.Max(1, _ask);
 
-        bool exactGoods = BuyerDeals.IsExact(agreedTier, _appt.askQty, offeredTier, _offerCountN);
+        // "Exact" for a tape means the right GENRE and enough of them. There is
+        // no tier ladder to substitute along, so a wrong-genre delivery is one
+        // flat gamble rather than a graded one.
+        bool exactGoods = delivered != null
+                       && TapeTrade.Fills(delivered.track, _appt.askTier)
+                       && _offerCountN >= _appt.askQty;
         bool exactPrice = ask <= agreed;
-        float chance = (exactGoods ? 1f : BuyerDeals.SubstitutionChance(agreedTier, _appt.askQty, offeredTier, _offerCountN))
+        float chance = (exactGoods ? 1f : 0.45f)
                      * BuyerDeals.OverchargeFactor(ask, agreed);
 
         if (chance >= 0.999f || UnityEngine.Random.value <= chance)
@@ -1113,21 +1239,18 @@ public class MushroomSellUI : MonoBehaviour
     void CompleteScheduled(int perCap, int qty, bool substituted)
     {
         int leftover = _offerCountN - qty;
-        var tier = MushroomRegistry.Tier(_offerSpecies);
+        var soldRec = Press;
+        int soldGenre = GenreIndexOf(soldRec);
+        bool matchedTaste = soldGenre == AlienTaste.FavouriteGenreIndex(_buyerId);
         string species = _offerSpecies;
         _offerSpecies = null; _offerCountN = 0; _stage = Stage.Open; _counter = 0; _ask = 0;
         if (leftover > 0 && Hotbar.Instance != null)
-            Hotbar.Instance.AddResource(Hotbar.ItemId.Mushroom, leftover, species);
+            Hotbar.Instance.AddResource(Hotbar.ItemId.Cassette, leftover, species);
         int credits = perCap * qty;
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(credits);
-        MushroomDealState.RecordSale(_buyerId, perCap, qty, tier, AppetiteMax);
-        bool sentToHost = EconomySync.ReportSale(_buyerId, perCap, qty, tier,
-                                                 keptAppointment: true, substituted: substituted);
-        MushroomQuest.NotifySold(qty);
-        ProgressHooks.NotifyMushroomSale(qty);
-        if (!sentToHost)
-            BuyerLedger.ReportDeal(_buyerId, tier, perCap, qty,
-                                   keptAppointment: true, substituted: substituted);
+        NotifyTapeSold(species, soldRec, qty);
+        BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, perCap, qty,
+                                   keptAppointment: true, matchedTaste: matchedTaste);
         _scheduled = false; _appt = null;
         _onSold?.Invoke(qty);
         SetResult(substituted

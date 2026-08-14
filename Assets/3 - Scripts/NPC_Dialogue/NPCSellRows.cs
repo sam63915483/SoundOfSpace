@@ -58,8 +58,11 @@ public static class NPCSellRows
         else if (full)    label = $"Sell mushrooms (they're full — {FormatWait(MushroomDealState.SecondsUntilHungry(id, price.AppetiteMax))})";
         else              label = mushrooms > 0 ? "Sell mushrooms" : "Sell mushrooms (none on you)";
 
-        rows.Add(new PostGreetingChoicePanel.Row(label, scheduled || (!barred && !full && mushrooms > 0)));
-        actions.Add(SellAction.Mushrooms);
+        if (FeatureVault.MushroomSelling)
+        {
+            rows.Add(new PostGreetingChoicePanel.Row(label, scheduled || (!barred && !full && mushrooms > 0)));
+            actions.Add(SellAction.Mushrooms);
+        }
 
         // TAPES. Offered first because it is the live economy — the mushroom
         // row above it is on its way to being vaulted (Phase 6).
@@ -127,26 +130,17 @@ public static class NPCSellRows
                             NPCSellDustOption dustOption, System.Action onClose,
                             System.Action<int> onMushroomsSold = null)
     {
-        if (action == SellAction.Mushrooms)
+        if (action == SellAction.Tape || action == SellAction.Mushrooms)
         {
             if (MushroomSellUI.Instance == null) { onClose?.Invoke(); return; }
-            // The whole NPCMushroomPrice goes across, not a single number: the
-            // panel needs this buyer's multiplier AND patience to run the
-            // haggle, and its identity to look up any parked counter-offer.
-            var price = NPCMushroomPrice.GetOrAdd(npc);
+            // The panel prices tapes from the buyer's IDENTITY now — taste, pay
+            // factor and patience all derive from it, so there is no price
+            // component to hand across any more.
             MushroomSellUI.Instance.Open(
                 npcName: npcName,
-                price: price,
+                alienId: AlienIdentity.Of(npc),
                 onClose: onClose,
                 onSold: onMushroomsSold);
-            return;
-        }
-
-        if (action == SellAction.Tape)
-        {
-            // Driven by the NPC's own dialogue coroutine rather than a panel —
-            // the caller passes the flow in. Nothing to open here.
-            onClose?.Invoke();
             return;
         }
 

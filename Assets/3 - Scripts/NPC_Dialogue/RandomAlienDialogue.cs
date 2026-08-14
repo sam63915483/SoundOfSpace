@@ -255,48 +255,13 @@ public class RandomAlienDialogue : MonoBehaviour
     {
         if (NPCSellRows.ActionAt(_sellActions, 0, index, out var action))
         {
-            // Tapes run as a CONVERSATION rather than a panel, so they stay in
-            // this coroutine and use the same typewriter and choice rows as
-            // everything else this alien says.
-            if (action == NPCSellRows.SellAction.Tape)
-            {
-                StartCoroutine(RunTapeOffer());
-                return;
-            }
+            // Tapes go through the SELL PANEL now — the drag-a-stack-onto-the
+            // -table screen with the ask slider, the risk read and the delivery
+            // mode. The dialogue-row version was a stopgap and read as one.
             NPCSellRows.Open(action, this, AlienNames.For(this), _sellDustOption, ShowPostGreetingChoice);
             return;
         }
         StopConversation();
     }
 
-    int _tapeChoice = -1;
-
-    IEnumerator RunTapeOffer()
-    {
-        var flow = new TapeSellFlow(
-            speak:  SpeakAndWait,
-            ask:    AskRows,
-            choice: () => _tapeChoice,
-            stillTalking: () => _playerInRange);
-
-        yield return flow.Run(AlienIdentity.Of(this), AlienNames.For(this), transform);
-
-        if (_playerInRange) ShowPostGreetingChoice();
-        else StopConversation();
-    }
-
-    IEnumerator SpeakAndWait(string line)
-    {
-        yield return StartCoroutine(TypewriterLine(line));
-        if (!_playerInRange) yield break;
-        yield return StartCoroutine(WaitForPlayerClick());
-    }
-
-    IEnumerator AskRows(PostGreetingChoicePanel.Row[] rows)
-    {
-        _tapeChoice = -1;
-        if (PostGreetingChoicePanel.Instance == null) yield break;
-        PostGreetingChoicePanel.Instance.Show(rows, i => _tapeChoice = i);
-        yield return new WaitUntil(() => _tapeChoice >= 0 || !_playerInRange);
-    }
 }
