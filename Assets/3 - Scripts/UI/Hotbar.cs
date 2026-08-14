@@ -193,14 +193,25 @@ public class Hotbar : MonoBehaviour
     int _eatProgressSlot = -1;
     float _eatHeldSeconds = 0f;
     const float EatHoldDuration = 1.0f;
+    /// Winding up a tape is TWICE as fast as eating. Eating is a deliberate
+    /// commitment (it consumes the thing); pressing play is not, and at the
+    /// food speed it felt like the tape was refusing to start.
+    const float TapeHoldDuration = 0.5f;
+    /// Which duration the CURRENT hold is running to. The progress ring reads
+    /// this rather than a constant, or a tape's ring would only ever fill half
+    /// way before firing.
+    float _holdDuration = EatHoldDuration;
+    bool _holdIsTape;
 
     /// True while the player is holding fire on a selected raw fish.
     /// HeldItemViewmodel reads this to raise the fish to the mouth and run the
     /// chewing loop for exactly as long as the progress ring is filling.
-    public bool IsEatingHeldItem => _eatProgressSlot >= 0;
+    /// Food only — HeldItemViewmodel uses this to raise the item to the mouth
+    /// and run the chewing loop, which a cassette should very much not do.
+    public bool IsEatingHeldItem => _eatProgressSlot >= 0 && !_holdIsTape;
     /// 0..1 fill of the eat progress ring — the same value the ring renders.
     public float EatProgress01 =>
-        _eatProgressSlot < 0 ? 0f : Mathf.Clamp01(_eatHeldSeconds / EatHoldDuration);
+        _eatProgressSlot < 0 ? 0f : Mathf.Clamp01(_eatHeldSeconds / _holdDuration);
 
     Canvas canvas;
     CanvasGroup _canvasGroup;   // cached at build time; Refresh() ran GetComponent every frame otherwise
@@ -342,22 +353,59 @@ public class Hotbar : MonoBehaviour
         bool mushroomEquipped = eq >= 0 && eq < TotalSlots
                              && slots[eq].id == ItemId.Mushroom
                              && slots[eq].count > 0;
-        if ((!fishEquipped && !mushroomEquipped) || !TutorialGate.FireHeld())
+        // A printed tape uses the same wind-up ring, but it PLAYS rather than
+        // being eaten — nothing is consumed, and holding again stops it.
+        bool tapeEquipped = eq >= 0 && eq < TotalSlots
+                          && slots[eq].id == ItemId.Cassette
+                          && slots[eq].count > 0
+                          && !string.IsNullOrEmpty(slots[eq].cassetteId);
+
+        if ((!fishEquipped && !mushroomEquipped && !tapeEquipped) || !TutorialGate.FireHeld())
         {
             if (_eatProgressSlot != -1) { _eatProgressSlot = -1; _eatHeldSeconds = 0f; }
             return;
         }
 
-        if (_eatProgressSlot != eq) { _eatProgressSlot = eq; _eatHeldSeconds = 0f; }
+        if (_eatProgressSlot != eq)
+        {
+            _eatProgressSlot = eq;
+            _eatHeldSeconds = 0f;
+            _holdIsTape = tapeEquipped;
+            _holdDuration = tapeEquipped ? TapeHoldDuration : EatHoldDuration;
+        }
         _eatHeldSeconds += Time.deltaTime;
 
-        if (_eatHeldSeconds >= EatHoldDuration)
+        if (_eatHeldSeconds >= _holdDuration)
         {
-            if (fishEquipped) ConsumeEquippedFish();
+            if (tapeEquipped) ToggleEquippedTape();
+            else if (fishEquipped) ConsumeEquippedFish();
             else ConsumeEquippedMushroom();
             _eatProgressSlot = -1;
             _eatHeldSeconds = 0f;
         }
+    }
+
+    /// <summary>
+    /// Press play on the tape in hand, or stop it if it is already the one
+    /// playing. Nothing is consumed — a cassette is reusable, which is the
+    /// whole difference between this and eating.
+    ///
+    /// Playback deliberately CONTINUES when you put the tape away: it is a
+    /// walkman, not a held-button. Re-select the tape and hold again to stop.
+    /// </summary>
+    void ToggleEquippedTape()
+    {
+        int eq = _equippedSlot;
+        if (eq < 0 || eq >= TotalSlots) return;
+        string printId = slots[eq].cassetteId;
+        if (string.IsNullOrEmpty(printId)) return;
+
+        // No transform to follow: the walkman is 2D, so where the emitter sits
+        // is irrelevant. Only the world-positioned case (an alien auditioning a
+        // tape in front of you) needs one.
+        bool started = TraxTapePlayer.TogglePersonal(null, printId);
+        string song = TraxPrints.DisplayName(printId).ToUpperInvariant();
+        Debug.Log(started ? "[Tape] PLAYING " + song : "[Tape] STOPPED " + song);
     }
 
     void ConsumeEquippedMushroom()
@@ -1785,7 +1833,7 @@ public class Hotbar : MonoBehaviour
             bool ringActive = _eatProgressSlot >= 0;
             _centerProgressRing.enabled = ringActive;
             _centerProgressRing.fillAmount = ringActive
-                ? Mathf.Clamp01(_eatHeldSeconds / EatHoldDuration)
+                ? Mathf.Clamp01(_eatHeldSeconds / _holdDuration)
                 : 0f;
         }
     }

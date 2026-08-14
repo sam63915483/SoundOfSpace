@@ -76,9 +76,56 @@ public class TraxTapePlayer : MonoBehaviour
         var p = Ensure();
         p.transform.SetParent(at, false);
         p.transform.localPosition = Vector3.zero;
+        p._engine.SetSpatial(true);
         p.Play(track, seconds);
         return p;
     }
+
+    /// <summary>Which pressing is on the deck right now, or null.</summary>
+    public static string CurrentPrintId
+    {
+        get { return Instance != null && Instance.IsPlaying ? Instance._printId : null; }
+    }
+
+    public static bool IsPlayingPrint(string printId)
+    {
+        return !string.IsNullOrEmpty(printId) && CurrentPrintId == printId;
+    }
+
+    /// <summary>
+    /// The walkman: hold a tape, hear it, hold again to stop. Returns true if
+    /// it STARTED playing, false if it stopped.
+    ///
+    /// Deliberately 2D and not spatial — this one is in the player's own ears,
+    /// where an alien auditioning a tape in front of you is a point in the
+    /// world. Same engine, different presentation.
+    ///
+    /// Not replicated: a co-op partner does not hear your walkman yet. Worth
+    /// doing later, but it needs the print id on the wire and a remote engine,
+    /// which is Phase 4's problem.
+    /// </summary>
+    public static bool TogglePersonal(Transform follow, string printId)
+    {
+        TraxPrints.Record rec = TraxPrints.Get(printId);
+        if (rec == null) return false;
+
+        if (IsPlayingPrint(printId)) { Instance.Stop(); return false; }
+
+        var p = Ensure();
+        if (follow != null)
+        {
+            p.transform.SetParent(follow, false);
+            p.transform.localPosition = Vector3.zero;
+        }
+        p._engine.SetSpatial(false);
+        p._printId = printId;
+        p.Play(rec.track, 0f);          // 0 = loop until told otherwise
+        return true;
+    }
+
+    public static void StopAll() { if (Instance != null) Instance.Stop(); }
+
+    string _printId;
 
     public void Play(TraxTrack track, float seconds)
     {
@@ -107,6 +154,7 @@ public class TraxTapePlayer : MonoBehaviour
         StopAutoStop();
         if (_engine != null) _engine.StopTransport();
         Current = null;
+        _printId = null;
         // Let go of the speaker so a destroyed NPC cannot take the player with
         // it — this object outlives any single scene.
         transform.SetParent(null, true);
