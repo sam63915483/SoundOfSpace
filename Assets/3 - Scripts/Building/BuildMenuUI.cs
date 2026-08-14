@@ -178,6 +178,12 @@ public class BuildMenuUI : MonoBehaviour
 
     public void Open()
     {
+        // VAULTED (FeatureVault.FreeformBuilding). One guard here catches every
+        // route in — the N key, the phone's Build app, and anything that calls
+        // Open() directly. StartPlacementFromPhone is deliberately NOT gated:
+        // the sapling and mushroom planters drive placement through it without
+        // ever opening this menu, and the plan keeps replanting working.
+        if (!FeatureVault.FreeformBuilding) return;
         if (isOpen || menuRoot == null) return;
         isOpen = true;
         prevLockMode = Cursor.lockState;

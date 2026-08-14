@@ -53,6 +53,9 @@ public class GrowPotRegistrar : MonoBehaviour
     void Update()
     {
         if (_done) return;
+        // Vaulted with the build menu it injects into — an entry in a menu
+        // that never opens is dead weight, and the plan pairs them explicitly.
+        if (!FeatureVault.FreeformBuilding) return;
         var menu = BuildMenuUI.Instance;
         if (menu == null) return;   // wait for the scene's build menu to exist
 

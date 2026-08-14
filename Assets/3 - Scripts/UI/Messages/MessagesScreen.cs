@@ -73,12 +73,12 @@ public class MessagesScreen : MonoBehaviour
 
     // Counter tray state — TWO sliders (Sam's spec): price per cap on the
     // risk gradient, and how many caps you're offering against their ask.
-    Slider _priceSlider, _qtySlider;
+    Slider _priceSlider;
     TextMeshProUGUI _sliderPrice, _sliderTotal, _sliderRisk, _sliderSendLabel;
-    TextMeshProUGUI _priceHandleLabel, _qtyHandleLabel;
+    TextMeshProUGUI _priceHandleLabel;
     int _priceMin;
     int _askQtyAtBuild;
-    int _lastPriceVal = -1, _lastQtyVal = -1;
+    int _lastPriceVal = -1;
 
     struct BubbleEntry { public RectTransform Row; public LayoutElement RowLE; public TextMeshProUGUI Label; public int LastShownLen; public float LastWidth; }
     readonly List<BubbleEntry> _bubbles = new List<BubbleEntry>();
@@ -374,7 +374,7 @@ public class MessagesScreen : MonoBehaviour
         _openId = id;
         _view = View.Thread;
         _chipMode = ChipMode.Main;
-        _priceSlider = null; _qtySlider = null;
+        _priceSlider = null;
         ClearViews();
         _bubbles.Clear();
         _stickToBottom = true;
@@ -612,7 +612,7 @@ public class MessagesScreen : MonoBehaviour
         if (_chipsRow == null) return;
         for (int i = _chipsRow.childCount - 1; i >= 0; i--)
             Destroy(_chipsRow.GetChild(i).gameObject);
-        _priceSlider = null; _qtySlider = null;
+        _priceSlider = null;
 
         var trayLE = _chipsRow.gameObject.GetComponent<LayoutElement>();
         if (trayLE == null) trayLE = _chipsRow.gameObject.AddComponent<LayoutElement>();
@@ -704,11 +704,12 @@ public class MessagesScreen : MonoBehaviour
         _priceMin = b.offerPerCap;
         int priceMax = Mathf.Max(_priceMin + 10, Mathf.RoundToInt(b.offerPerCap * 1.55f));
         int priceStart = Mathf.RoundToInt(b.offerPerCap * 1.1f);
-        _askQtyAtBuild = Mathf.Max(1, b.askQty);
-        // Quantity range: 1 up to double their ask — shorting AND overselling
-        // are both on the table. No appetite term: a tape is a specific song,
-        // so "how many can they stomach" is not a question that applies.
-        int qtyMax = Mathf.Max(2, _askQtyAtBuild * 2);
+        // NO QUANTITY SLIDER. It was a mushroom control: caps are fungible
+        // and a buyer has an appetite, so "how many" was the interesting
+        // question. An order is for ONE tape (TapeTrade.AskQty), which left a
+        // slider ranging 1..2 - still wearing the label CAPS - that could only
+        // ever make the deal worse. Price is the one number left to argue over.
+        _askQtyAtBuild = TapeTrade.AskQty;
 
         // Readout block (deal line / total / risk).
         _sliderPrice = MakeText(_chipsRow, "", 20, TextMain, TextAlignmentOptions.Center);
@@ -734,11 +735,9 @@ public class MessagesScreen : MonoBehaviour
         rRT.anchoredPosition = new Vector2(0f, -39f);
         _sliderRisk.fontStyle = FontStyles.Bold;
 
-        // PRICE slider on the risk gradient; CAPS slider on a plain track.
+        // PRICE on the risk gradient, and nothing else to set.
         _priceSlider = BuildSliderRow(_chipsRow, "PRICE", -55f, _priceMin, priceMax, priceStart,
                                       RiskGradient(), out _priceHandleLabel);
-        _qtySlider = BuildSliderRow(_chipsRow, "CAPS", -79f, 1, qtyMax, _askQtyAtBuild,
-                                    null, out _qtyHandleLabel);
 
         // SEND / BACK buttons along the bottom.
         var btnRow = NewUI("Btns", _chipsRow);
@@ -762,8 +761,8 @@ public class MessagesScreen : MonoBehaviour
         var sendBtn = sendRT.gameObject.AddComponent<Button>();
         sendBtn.onClick.AddListener(() =>
         {
-            if (_priceSlider == null || _qtySlider == null) return;
-            dir.Counter(b, Mathf.RoundToInt(_priceSlider.value), Mathf.RoundToInt(_qtySlider.value));
+            if (_priceSlider == null) return;
+            dir.Counter(b, Mathf.RoundToInt(_priceSlider.value), _askQtyAtBuild);
             AfterChipAction();
         });
         _sliderSendLabel = MakeText(sendRT, "", 11, WarnAmber, TextAlignmentOptions.Center);
@@ -784,7 +783,6 @@ public class MessagesScreen : MonoBehaviour
         backT.fontStyle = FontStyles.Bold;
 
         _lastPriceVal = -1;
-        _lastQtyVal = -1;
         UpdateSliderReadout();
     }
 
@@ -804,20 +802,18 @@ public class MessagesScreen : MonoBehaviour
     /// Sliders' drag paths plus click-to-jump both land here.
     void UpdateSliderReadout()
     {
-        if (_priceSlider == null || _qtySlider == null) return;
+        if (_priceSlider == null) return;
         int p = Mathf.RoundToInt(_priceSlider.value);
-        int q = Mathf.RoundToInt(_qtySlider.value);
-        if (p == _lastPriceVal && q == _lastQtyVal) return;
+        int q = _askQtyAtBuild;
+        if (p == _lastPriceVal) return;
         _lastPriceVal = p;
-        _lastQtyVal = q;
-        _sliderPrice.text = $"{q} <size=10><color=#8B95A3>{TapeTrade.TapeWord(q)} @</color></size> {p} <size=10><color=#8B95A3>each</color></size>";
-        _sliderTotal.text = $"= <color=#FFD732>{p * q}</color> credits  <color=#8B95A3>(they asked for {_askQtyAtBuild})</color>";
+        _sliderPrice.text = $"<size=10><color=#8B95A3>ONE {TapeTrade.TapeWord(q).ToUpperInvariant()} FOR</color></size> {p}";
+        _sliderTotal.text = $"<color=#8B95A3>they offered</color> <color=#FFD732>{_priceMin}</color>";
         RiskFor(p, _priceMin, out string risk, out Color col);
         _sliderRisk.text = risk;
         _sliderRisk.color = col;
         if (_priceHandleLabel != null) _priceHandleLabel.text = p.ToString();
-        if (_qtyHandleLabel != null) _qtyHandleLabel.text = q.ToString();
-        if (_sliderSendLabel != null) _sliderSendLabel.text = $"SEND {q} @ {p}";
+        if (_sliderSendLabel != null) _sliderSendLabel.text = $"SEND {p}";
     }
 
     // ══ Contact card ═══════════════════════════════════════════════════════
@@ -932,7 +928,7 @@ public class MessagesScreen : MonoBehaviour
     void ClearViews()
     {
         if (_indexRoot != null) { Destroy(_indexRoot.gameObject); _indexRoot = null; _indexContent = null; }
-        if (_threadRoot != null) { Destroy(_threadRoot.gameObject); _threadRoot = null; _threadContent = null; _threadScroll = null; _chipsRow = null; _apptCard = null; _apptText = null; _priceSlider = null; _qtySlider = null; }
+        if (_threadRoot != null) { Destroy(_threadRoot.gameObject); _threadRoot = null; _threadContent = null; _threadScroll = null; _chipsRow = null; _apptCard = null; _apptText = null; _priceSlider = null; }
         if (_cardRoot != null) { Destroy(_cardRoot.gameObject); _cardRoot = null; }
         _bubbles.Clear();
     }

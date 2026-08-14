@@ -296,7 +296,6 @@ public class Hotbar : MonoBehaviour
     void Update()
     {
         if (!ResolveRefs()) return;
-        DevGrantBlankTapes();
         DetectAcquisitions();
         // Piloted state: pull from "is any ship piloted" — the cached
         // `ship` reference might be the wrong instance now that the player
@@ -384,69 +383,6 @@ public class Hotbar : MonoBehaviour
             _eatProgressSlot = -1;
             _eatHeldSeconds = 0f;
         }
-    }
-
-    // ── TEMPORARY: dev stock ─────────────────────────────────────────────
-    //
-    // T = five Blank Tape I, Shift+T = five Blank Tape II. Tev sells these in
-    // Phase 3 and this whole method goes with him.
-    //
-    // It lives HERE, on an auto-created singleton, and NOT on CheatCodes,
-    // because CheatCodes is not in the gameplay scene at all (its GUID appears
-    // zero times in 1.6.7.7.7.unity) and additionally disables itself in
-    // builds. Playtesting happens in builds, so both of those had to go.
-    //
-    // T was picked because it is one of the few letters this project does not
-    // already bind, and because function keys were not reaching the game at all.
-    void DevGrantBlankTapes()
-    {
-        if (Input.GetKeyDown(KeyCode.U)) { DevSellTevTape(); return; }
-        // L = dump the tape-sale report for every alien alive right now.
-        // Sam's idea after nine sales out of nine: measure the REAL world
-        // rather than trusting a headless model that invents alien ids.
-        if (Input.GetKeyDown(KeyCode.L) && !AIChatScreen.IsTypingActive
-            && !PlayerController.isInDialogue)
-        { TapeSaleDebug.RunReport(); return; }
-        if (!Input.GetKeyDown(KeyCode.T)) return;
-        // Never while a text field owns the keyboard, or naming a project
-        // "TAPE" hands you fifteen blanks on the way past.
-        if (AIChatScreen.IsTypingActive) return;
-        if (PlayerController.isInDialogue) return;
-
-        bool tier2 = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
-        ItemId id = tier2 ? ItemId.BlankTapeT2 : ItemId.BlankTapeT1;
-        int leftover = AddResource(id, 5);
-        Debug.Log($"[DEV] Granted {5 - leftover} x {id}" +
-                  (leftover > 0 ? $" ({leftover} did not fit)" : ""));
-    }
-
-    // TEMPORARY: U simulates ONE alien buying one of Tev's tapes.
-    //
-    // The real thing is Phase 4 (offer -> listen -> negotiate). Until that
-    // exists nothing can sell a tape, so the whole point of Tev's intro — work
-    // the lawn off by selling N of his — would be untestable. Deleted the day
-    // the alien interaction lands.
-    void DevSellTevTape()
-    {
-        if (AIChatScreen.IsTypingActive || PlayerController.isInDialogue) return;
-
-        for (int i = 0; i < NumSlots; i++)
-        {
-            if (slots[i].id != ItemId.Cassette || slots[i].count <= 0) continue;
-            string printId = slots[i].cassetteId;
-            if (!TevDemoTapes.IsTevTape(printId)) continue;
-
-            SpendResource(ItemId.Cassette, 1, printId);
-            const int DevPrice = 30;
-            if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(DevPrice);
-
-            MushroomQuest.SoldCount++;
-            bool cleared = MushroomQuest.NotifyTevTapeSold();
-            Debug.Log($"[DEV] Sold {TraxPrints.DisplayName(printId)} for {DevPrice}. " +
-                      $"Lawn owes {MushroomQuest.LawnTapesOwed}" + (cleared ? " - LAWN CLEARED" : ""));
-            return;
-        }
-        Debug.Log("[DEV] No Tev tapes in the hotbar to sell.");
     }
 
     /// <summary>

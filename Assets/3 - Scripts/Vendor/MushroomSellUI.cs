@@ -961,8 +961,10 @@ public class MushroomSellUI : MonoBehaviour
             if (countered)
                 _counterText.text =
                     $"<size=13><color=#7CC4EE>{_npcName.ToUpperInvariant()} COUNTERS</color></size>\n" +
-                    $"<size=30><b><color=#7CC4EE>{_counter}</color></b></size><size=13><color=#7FA0BD>  per cap  ·  " +
-                    $"<color=#FFD732>{_counter * _offerCountN}</color> for the lot</color></size>";
+                    $"<size=30><b><color=#7CC4EE>{_counter}</color></b></size>" +
+                    (_offerCountN > 1
+                        ? $"<size=13><color=#7FA0BD>  a tape  ·  <color=#FFD732>{_counter * _offerCountN}</color> for the lot</color></size>"
+                        : "");
         }
 
         _totalText.text = $"{Total}";

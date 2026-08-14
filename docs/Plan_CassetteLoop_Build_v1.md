@@ -167,7 +167,11 @@ bonus. Identical tape re-offer refused.
 
 ---
 
-## Phase 6 — The vault pass (LAST)
+## Phase 6 — The vault pass (LAST) — **DONE 2026-08-14**
+
+> All six phases are built. Flags and gating points are documented in
+> `docs/VAULTED_SYSTEMS.md`; the two soft-lock traps found while doing it
+> (the cabin tutorial step, and placement-vs-menu) are written up there too.
 
 Only once the loop above works end to end. Everything here uses the `_Vaulted` pattern
 — flags, not deletions.

@@ -160,7 +160,10 @@ public class PlayerPhoneUI : MonoBehaviour
     //   1 = Levels
     // (Vitals + Quests pages removed 2026-08-07 per Sam â€” the survival HUD
     // already shows vitals and the tutorial quest list was stale.)
-    const int PageCount = 2;
+    // Two pages when levels exist, one when they are vaulted. Computed rather
+    // than a literal so the dots, the wrap arithmetic and the page arrows all
+    // follow from the same number instead of each needing its own guard.
+    static readonly int PageCount = FeatureVault.LevelSystem ? 2 : 1;
     RectTransform _pageHostRT;
     RectTransform[] _pageRoots = new RectTransform[PageCount];
     int _currentPage; // 0=Apps (incl. Messages), 1=Levels
@@ -2310,8 +2313,10 @@ public class PlayerPhoneUI : MonoBehaviour
         _pageHostRT = NewUI("PageHost", _screenRT);
         _pageHostRT.gameObject.AddComponent<LayoutElement>().preferredHeight = 170f;
 
-        BuildAppsPage();    // _pageRoots[0] â€” 6 tiles incl. Messages
-        BuildLevelsPage();  // _pageRoots[1]
+        BuildAppsPage();    // _pageRoots[0]
+        // Vaulted with the level system: with PageCount at 1 there is no
+        // _pageRoots[1] to write into, so this must not run.
+        if (FeatureVault.LevelSystem) BuildLevelsPage();
     }
 
     void BuildAppsPage()
@@ -2342,12 +2347,22 @@ public class PlayerPhoneUI : MonoBehaviour
         // doesn't include the unicode-block symbols (âŒ¬ â–¦ âš™ â—Ž) that were here
         // originally, so they rendered as missing-character squares. Letters
         // are universally supported and read clearly at this size.
-        _appButtons[0] = BuildAppTile(AppKind.Fishingdex, "F", "Fishingdex");
-        _appButtons[1] = BuildAppTile(AppKind.Build,      "B", "Build");
-        _appButtons[2] = BuildAppTile(AppKind.Settings,   "S", "Settings");
-        _appButtons[3] = BuildAppTile(AppKind.Map,        "M", "Map");
-        _appButtons[4] = BuildAppTile(AppKind.Photos,     "P", "Photos");
-        _appButtons[5] = BuildAITile(_appGridRT);   // AI chat â€” 6th tile, 3Ã—2 grid
+        // Built into a list and packed, rather than assigned to fixed indices.
+        // A vaulted Build app has to CLOSE THE GAP, not leave a null in the
+        // middle: WireAppGridNav walks this array as a grid, so a hole would
+        // make left/right skip a tile and the layout would show a blank cell.
+        var tiles = new System.Collections.Generic.List<Button>(6)
+        {
+            BuildAppTile(AppKind.Fishingdex, "F", "Fishingdex"),
+        };
+        // VAULTED with the freeform building system.
+        if (FeatureVault.FreeformBuilding)
+            tiles.Add(BuildAppTile(AppKind.Build, "B", "Build"));
+        tiles.Add(BuildAppTile(AppKind.Settings, "S", "Settings"));
+        tiles.Add(BuildAppTile(AppKind.Map,      "M", "Map"));
+        tiles.Add(BuildAppTile(AppKind.Photos,   "P", "Photos"));
+        tiles.Add(BuildAITile(_appGridRT));
+        _appButtons = tiles.ToArray();
     }
 
     // Unread-notification badge on the AI app tile + the count of lines the
@@ -3247,6 +3262,11 @@ public class PlayerPhoneUI : MonoBehaviour
         triImg.raycastTarget = false;
 
         var btn = rt.gameObject.AddComponent<Button>();
+        // With the levels page vaulted there is only one page, so an arrow that
+        // wraps to the page you are already on is a control that does nothing.
+        // Left non-interactable rather than not built, so WirePageNavExplicit
+        // still has something to point the pad navigation at.
+        if (PageCount <= 1) btn.interactable = false;
         // Hover/press tints â€” Unity's ColorBlock multiplies these against
         // bg.color (TileBg), so the brightened states show as a slight cyan
         // wash without us needing to wire pointer-enter events ourselves.
@@ -3269,6 +3289,8 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void BuildPageNavDots()
     {
+        // One page needs no dots to tell you which page you are on.
+        if (PageCount <= 1) return;
         var dotsRT = NewUI("Dots", _reservedZoneRT);
         var dotsLE = dotsRT.gameObject.AddComponent<LayoutElement>();
         // Width = N dots Ã— 9 px + (N-1) gaps Ã— 11 px. Computed from PageCount

@@ -47,6 +47,43 @@ mission with it; they are one hierarchy. That was implicit in "remove Tev's ship
 outside his cabin", but it is a bigger feature than the jumpscare alone, so it
 is called out here rather than being a surprise later.
 
+## Code-only vaults (2026-08-14, cassette-loop Phase 6)
+
+Unlike the scene objects above, these are switched off by a flag alone — nothing
+was removed from the scene, so restoring them is one `bool`.
+
+| System | Flag | Gated at |
+|---|---|---|
+| Freeform building — menu, catalogue, phone Build app | `FreeformBuilding` | `BuildMenuUI.Open()`, `PlayerPhoneUI.BuildAppsPage()` |
+| Grow Pot + Bubble Dome build entries | `FreeformBuilding` | `GrowPotRegistrar` / `DomeBuildRegistrar` |
+| The cabin tutorial step | `FreeformBuilding` | `TutorialSteps.BuildStepList()` |
+| Every level track, its toast, ceremony and phone page | `LevelSystem` | `PlayerProgress.Add()`, `PlayerPhoneUI.PageCount` |
+
+### ⚠️ Building's vault does NOT gate placement, on purpose
+
+`GhostPlacement` and `BuildMenuUI.StartPlacementFromPhone` stay live. Planting a
+sapling or a mushroom never opens the build menu — both planters call
+`StartPlacementFromPhone` directly off the hotbar selection and drive the ghost
+themselves. **Gate the ghost and you silently kill replanting**, which the plan
+explicitly keeps. `BuildMenuUI` also still holds its `buildables` list, because
+that is where the planters resolve their prefabs from.
+
+### ⚠️ The cabin tutorial step had to go with it
+
+`OpenAndBuildCabinStep` waits on `BuildMenuUI.OnOpened`, which can never fire
+once the menu's `Open()` early-returns. Left in the active list it is a hard
+soft-lock — the tutorial stops on "Press N to open the build menu" and no key
+will do it. It is re-inserted after `ChopWoodStep` by search, not by index, if
+the flag ever goes back on.
+
+### Levels are gated at one choke point
+
+`PlayerProgress.Add` returns early. All ~50 `AddTreeFelled` / `AddEnemyKill` /
+`AddStructurePlaced` call sites still compile and still run — they just score
+nothing, so no track moves, no toast fires and no ceremony queues. **The save
+fields are untouched**, so a vaulted run and an unvaulted one round-trip through
+the same schema and un-vaulting invalidates nobody's file.
+
 ## Explicitly NOT vaulted
 
 - **Tev himself**, at his cabin (`TEV`, 9 m away) — he carries

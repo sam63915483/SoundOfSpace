@@ -115,6 +115,42 @@ public static class FeatureVault
     /// a worse version of something that already works.
     public const bool MushroomSelling = false;
 
+    /// THE FREEFORM BUILDING SYSTEM — the build menu, its catalogue of
+    /// structures, and the phone's Build app. Vaulted 2026-08-14, the last item
+    /// of the cassette-loop plan (docs/Plan_CassetteLoop_Build_v1.md Phase 6).
+    ///
+    /// ⚠️ THIS GATES THE MENU AND ITS CATALOGUE, NOT THE PLACEMENT MACHINERY.
+    /// That distinction is the whole reason this is safe: planting a sapling or
+    /// a mushroom does NOT open the build menu. Both planters call
+    /// BuildMenuUI.StartPlacementFromPhone directly off the hotbar selection and
+    /// drive GhostPlacement themselves. Gate the ghost and you silently kill
+    /// replanting, which the plan explicitly keeps.
+    ///
+    /// So with this false: the menu never opens, the Build app tile is not built,
+    /// and the Grow Pot / Bubble Dome registrars never inject their entries.
+    /// BuildMenuUI itself still exists and still holds `buildables`, because the
+    /// planters resolve their prefabs out of that list.
+    ///
+    /// Kept working, per the plan: tree chopping, saplings, fishing, bonfire
+    /// cooking, and mushroom planting.
+    public const bool FreeformBuilding = false;
+
+    /// THE LEVEL SYSTEM — the general level, Colonizer, Tree Killer, Tree Daddy,
+    /// Gangsta Rep, their phone page, the level-up toast, the grand ceremony and
+    /// every level-gated unlock. Vaulted 2026-08-14 with the building system,
+    /// same plan item: "nothing in the new loop may reference levels."
+    ///
+    /// Gated at ONE choke point — PlayerProgress.Add — rather than at the ~50
+    /// call sites that award score. Every AddTreeFelled / AddEnemyKill /
+    /// AddStructurePlaced still compiles and still runs; it just scores nothing,
+    /// so no track ever moves, no toast fires and no ceremony queues. The save
+    /// fields are untouched, so a vaulted run and an unvaulted one round-trip
+    /// through the same schema.
+    ///
+    /// The phone drops from two pages to one. PageCount is computed from this
+    /// flag, so the dots, the wrap and the arrows all follow automatically.
+    public const bool LevelSystem = false;
+
     /// Tev's presence IN THE VILLAGE. Vaulted 2026-08-09.
     ///
     /// ⚠️ Tev HIMSELF is not vaulted — he still lives at his cabin and still

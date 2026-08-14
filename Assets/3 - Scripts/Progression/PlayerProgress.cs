@@ -247,6 +247,16 @@ public class PlayerProgress : MonoBehaviour
     /// that decides whether an action produced a level-up.
     public void Add(ProgressTrack t, int delta)
     {
+        // VAULTED (FeatureVault.LevelSystem). Gated HERE rather than at the ~50
+        // call sites that award score: every AddTreeFelled / AddEnemyKill /
+        // AddStructurePlaced still compiles and still runs, it just scores
+        // nothing. No track moves, so no toast fires and no ceremony queues —
+        // both of those are driven by the events below.
+        //
+        // The save fields are untouched on purpose, so a vaulted run and an
+        // unvaulted one round-trip through the same schema and un-vaulting does
+        // not invalidate anyone's file.
+        if (!FeatureVault.LevelSystem) return;
         if (delta == 0) return;
         int before = LevelOf(t);
         int generalBefore = GeneralLevel;

@@ -323,25 +323,46 @@ public static class BuyerLedger
         return b == null ? 0 : Mathf.Min(b.dealsCompleted, RevealCap);
     }
 
+    /// <summary>
     /// Worded, never numeric. Index 0-4 = the reveal unlocked by deal #1-#5.
+    ///
+    /// Rewritten for tapes 2026-08-14. Three of the five used to describe a
+    /// MUSHROOM buyer: how many caps they could stomach before they were full,
+    /// and which tiers they liked. A tape has no tier ladder and an order is for
+    /// exactly one tape, so "takes about 12 caps before they're full" was
+    /// describing a mechanic that no longer exists.
+    ///
+    /// These are the one sanctioned leak of a buyer's hidden numbers, and they
+    /// stay worded rather than numeric on purpose: the panel deliberately prints
+    /// nothing about a buyer, so what the player earns by dealing five times is a
+    /// FEEL for them, not a stat block.
+    /// </summary>
     public static string RevealLine(string id, int index)
     {
         switch (index)
         {
-            case 0: return $"takes about {NPCMushroomPrice.AppetiteMaxOf(id)} caps before they're full";
-            case 1: return $"keen on {MushroomSpecies.TierName(NPCMushroomPrice.FavouriteTierOf(id)).ToLowerInvariant()}";
-            case 2: return $"won't pay much for {MushroomSpecies.TierName(NPCMushroomPrice.DislikedTierOf(id)).ToLowerInvariant()}";
-            case 3:
+            case 0:
+                return $"has a soft spot for {AlienTaste.FavouriteGenre(id)}";
+            case 1:
             {
-                float m = NPCMushroomPrice.MultiplierOf(id);
-                if (m > 1.15f) return "pays generously";
-                if (m < 0.95f) return "a bit stingy";
+                double f = AlienTaste.Falloff(id);
+                if (f >= 1.45) return "fussy - it has to be close";
+                if (f <= 1.05) return "easy to please";
+                return "knows what they like";
+            }
+            case 2:
+            {
+                double m = AlienTaste.PayFactor(id);
+                if (m > 1.15) return "pays generously";
+                if (m < 0.95) return "a bit stingy";
                 return "an average payer";
             }
-            case 4:
-                return NPCMushroomPrice.PatienceOf(id) >= 1.26f
+            case 3:
+                return AlienTaste.Patience(id) >= 1.26
                     ? "doesn't mind a cheeky ask"
                     : "walks fast if you push";
+            case 4:
+                return $"never wants the same song twice";
             default: return "";
         }
     }

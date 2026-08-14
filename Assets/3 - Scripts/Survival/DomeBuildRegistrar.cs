@@ -58,6 +58,8 @@ public class DomeBuildRegistrar : MonoBehaviour
     void Update()
     {
         if (_done) return;
+        // Vaulted with the build menu it injects into — see GrowPotRegistrar.
+        if (!FeatureVault.FreeformBuilding) return;
         var menu = BuildMenuUI.Instance;
         if (menu == null) return;   // wait for the scene's build menu to exist
 

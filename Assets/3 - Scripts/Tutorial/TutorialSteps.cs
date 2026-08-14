@@ -18,7 +18,7 @@ public static class TutorialSteps
         // further down in this file. They're not in the active list any more, but
         // TutorialManager.ApplyState resolves saved steps by type name — keeping
         // the classes around lets older saves load without errors.
-        return new List<TutorialStep>
+        var steps = new List<TutorialStep>
         {
             // Phase 1 — wake in cabin. WakeUpLookStep + WakeUpWalkStep were
             // removed; mouse-look / move / jump are now unlocked at tutorial
@@ -40,15 +40,31 @@ public static class TutorialSteps
             new DrinkBottleStep(),
             // Phase 5 — return home, talk to Tev (axe unlock)
             new ReturnAndTalkToTevStep(),
-            // Phase 6 — chop wood, build a cabin, talk to Tev again
+            // Phase 6 - chop wood, build a cabin, talk to Tev again.
+            //
+            // OpenAndBuildCabinStep WAITS ON BuildMenuUI.OnOpened, which can
+            // never fire once FeatureVault.FreeformBuilding is off - the menu's
+            // Open() early-returns. Left in the list it is a hard soft-lock: the
+            // tutorial stops on "Press N to open the build menu" and there is no
+            // key that will do it. ChopWoodStep stays either way; chopping is
+            // kept by the plan and the wood still has other uses.
             new ChopWoodStep(),
-            new OpenAndBuildCabinStep(),
             new TalkToTevAgainStep(),
             // Phase 7 — travel to the village, meet the vendors, finish
             new TravelToVillageStep(),
             new MeetVendorsStep(),
             new TutorialFinaleStep(),
         };
+
+        // Put the cabin build back exactly where it was if the building system
+        // is ever un-vaulted. Insert-by-search rather than a hardcoded index so
+        // reordering the list above cannot silently move it somewhere wrong.
+        if (FeatureVault.FreeformBuilding)
+        {
+            int after = steps.FindIndex(x => x is ChopWoodStep);
+            if (after >= 0) steps.Insert(after + 1, new OpenAndBuildCabinStep());
+        }
+        return steps;
     }
 }
 
