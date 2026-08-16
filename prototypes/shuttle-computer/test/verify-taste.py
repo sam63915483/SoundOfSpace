@@ -37,6 +37,7 @@ SOURCES = [
     "TapeMemory.cs",
     "TapeOffer.cs",
     "AlienFeedback.cs",
+    "DealTerms.cs",
 ]
 
 
@@ -74,6 +75,7 @@ def main():
     src = [os.path.join(ROOT, "Assets", "3 - Scripts", "Music", f) for f in SOURCES]
     src.append(os.path.join(HERE, "AlienTasteTests.cs"))
     src.append(os.path.join(HERE, "TapeOfferTests.cs"))
+    src.append(os.path.join(HERE, "DealTests.cs"))
     src.append(os.path.join(HERE, "SaveStubs.cs"))
     for s in src:
         if not os.path.isfile(s):

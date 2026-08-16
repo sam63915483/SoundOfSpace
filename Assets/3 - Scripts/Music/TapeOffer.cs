@@ -5,9 +5,11 @@
 ///   offer -> they LISTEN to it -> like gate -> "how much?" -> you name a price
 ///   -> accept / final offer / walk
 ///
-/// This is the ONE interaction for every in-person sale: your tapes, Tev's
-/// fronted tapes, and (Phase 5) handing over a tape somebody ordered by text.
-/// One flow means one place where the feel lives.
+/// This is the ONE interaction for every in-person WALK-UP sale, and as of
+/// 2026-08-16 the sell panel actually routes through it (it spent a while as
+/// a documented-but-uncalled rulebook while the panel ran a harsher copy —
+/// the review caught it). Text-order deliveries are graded by their own pure
+/// rulebook, TapeDeal.Grade, against the recorded DealTerms.
 ///
 /// ── Greed does not end the deal, it costs you ────────────────────────────
 /// Push too far and they do not simply walk. They issue a FINAL OFFER,
@@ -43,8 +45,23 @@ public static class TapeOffer
     /// </summary>
     public static Reaction Listen(string alienId, double[] dials, bool coinFlip,
                                   out double satisfaction)
+        => Listen(alienId, dials, 1, coinFlip, out satisfaction);
+
+    /// Tier-aware listen: a shell-preference mismatch (a Type 1 handed to a
+    /// Type 2 snob) downgrades the verdict one step via GateFor's overload.
+    public static Reaction Listen(string alienId, double[] dials, int tapeTier, bool coinFlip,
+                                  out double satisfaction)
+        => Listen(alienId, dials, tapeTier, coinFlip, out satisfaction, out _);
+
+    /// <param name="verdict">The RAW taste verdict, exposed so the caller can
+    /// distinguish an outright rejection (burns the song into TapeMemory)
+    /// from a lost coin flip (does not — bad luck must never permanently burn
+    /// a song on a buyer).</param>
+    public static Reaction Listen(string alienId, double[] dials, int tapeTier, bool coinFlip,
+                                  out double satisfaction, out AlienTaste.Verdict verdict)
     {
         satisfaction = AlienTaste.Satisfaction(alienId, dials);
+        verdict = AlienTaste.Verdict.Rejected;
 
         // Checked BEFORE taste: being played the same song twice is a social
         // failure, not a musical one, and they notice it whether they liked it
@@ -53,9 +70,9 @@ public static class TapeOffer
 
         // GateFor, not Gate: an on-genre tape is never refused by that genre's
         // fan — the hint contract (see AlienTaste.GateFor).
-        AlienTaste.Verdict v = AlienTaste.GateFor(alienId, dials, satisfaction);
-        if (v == AlienTaste.Verdict.Liked) return Reaction.Liked;
-        if (v == AlienTaste.Verdict.CoinFlip) return coinFlip ? Reaction.Liked : Reaction.Rejected;
+        verdict = AlienTaste.GateFor(alienId, dials, satisfaction, tapeTier);
+        if (verdict == AlienTaste.Verdict.Liked) return Reaction.Liked;
+        if (verdict == AlienTaste.Verdict.CoinFlip) return coinFlip ? Reaction.Liked : Reaction.Rejected;
         return Reaction.Rejected;
     }
 
@@ -69,9 +86,12 @@ public static class TapeOffer
     public static int Value(string alienId, int activeModules, int tier,
                             double satisfaction, bool matchesRequest, int bond)
     {
+        // TierPayFactor: a mismatched shell (Type 1 to a Type 2 snob, or the
+        // pricey Type 2 to a dedicated cheapskate) is worth less TO THEM.
         return TapeValue.For(activeModules, tier, satisfaction,
                              bond, matchesRequest,
-                             AlienTaste.PayFactor(alienId));
+                             AlienTaste.PayFactor(alienId)
+                             * AlienTaste.TierPayFactor(alienId, tier));
     }
 
     /// The most they will pay without complaint. Patience is per-alien, so two

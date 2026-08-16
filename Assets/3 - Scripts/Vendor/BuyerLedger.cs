@@ -396,7 +396,15 @@ public static class BuyerLedger
                     ? "doesn't mind a cheeky ask"
                     : "walks fast if you push";
             case 4:
-                return $"never wants the same song twice";
+            {
+                // Tier preference (2026-08-16). Replaced "never wants the same
+                // song twice", which was true of EVERY buyer — a reveal that
+                // teaches nothing about THIS one isn't a reveal.
+                int p = AlienTaste.TierPreference(id);
+                if (p > 0) return "only really rates Type 2 shells";
+                if (p < 0) return "sticks to cheap Type 1s";
+                return "doesn't care what shell it's on";
+            }
             default: return "";
         }
     }

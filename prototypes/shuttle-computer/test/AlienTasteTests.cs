@@ -115,6 +115,9 @@ public static class AlienTasteTests
         TapeOfferTests.RunAll();
         _checks += TapeOfferTests.Checks;
         _failures += TapeOfferTests.Failures;
+        DealTests.RunAll();
+        _checks += DealTests.Checks;
+        _failures += DealTests.Failures;
 
         Console.WriteLine();
         if (_failures == 0)

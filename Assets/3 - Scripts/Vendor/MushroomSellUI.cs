@@ -356,9 +356,8 @@ public class MushroomSellUI : MonoBehaviour
     }
 
     /// What this buyer privately thinks it is worth. Never leaves this file.
-    /// Includes the shell-preference discount: a Type 2 offered to a
-    /// dedicated Type 1 buyer is worth less TO THEM (too dear), and vice
-    /// versa for a snob handed the cheap shell.
+    /// Computed by the RULEBOOK (TapeOffer.Value — includes the shell
+    /// preference discount), never re-derived here: one place for the number.
     int Fair
     {
         get
@@ -366,10 +365,8 @@ public class MushroomSellUI : MonoBehaviour
             var rec = Press;
             if (rec == null) return Market;
             var led = BuyerLedger.Get(_buyerId);
-            return TapeValue.For(rec.track.ActiveCount(), rec.tier, Satisfaction,
-                                 led != null ? led.bond : 0, false,
-                                 AlienTaste.PayFactor(_buyerId)
-                                 * AlienTaste.TierPayFactor(_buyerId, rec.tier));
+            return TapeOffer.Value(_buyerId, rec.track.ActiveCount(), rec.tier,
+                                   Satisfaction, false, led != null ? led.bond : 0);
         }
     }
 
@@ -418,21 +415,18 @@ public class MushroomSellUI : MonoBehaviour
             double[] dials = TapeTrade.DialsOf(rec.track);
             uint variant = StableHash(_buyerId + ":" + _offerSpecies);
 
-            if (TapeMemory.HasHeard(_buyerId, dials))
+            // THE RULEBOOK LISTENS (TapeOffer.Listen): memory check, hint
+            // contract, tier downgrade, coin flip — one implementation, shared
+            // with the headless suite, never re-derived here.
+            var reaction = TapeOffer.Listen(_buyerId, dials, rec.tier,
+                                            UnityEngine.Random.value < 0.5f,
+                                            out _, out var verdict);
+            if (reaction == TapeOffer.Reaction.AlreadyHeard)
             {
                 SetResult($"\"{AlienFeedback.ForRepeat(variant)}\"", C_Err);
                 return;
             }
-
-            double sat = Satisfaction;
-            // GateFor, not Gate: an on-genre tape is never refused by that
-            // genre's fan — the hint contract (see AlienTaste.GateFor). The
-            // tier-aware overload lets a shell-preference mismatch (a Type 1
-            // played to a Type 2 snob) downgrade the verdict one step.
-            var verdict = AlienTaste.GateFor(_buyerId, dials, sat, rec.tier);
-            bool liked = verdict == AlienTaste.Verdict.Liked
-                      || (verdict == AlienTaste.Verdict.CoinFlip && UnityEngine.Random.value < 0.5f);
-            if (!liked)
+            if (reaction == TapeOffer.Reaction.Rejected)
             {
                 // Only an OUTRIGHT rejection burns the song into their memory.
                 // A lost coin flip used to as well, which meant a track refused
@@ -452,33 +446,32 @@ public class MushroomSellUI : MonoBehaviour
             }
         }
 
+        // ── THE RULEBOOK JUDGES (TapeOffer.Judge, wired 2026-08-16) ──────────
+        // Sam's locked call, confirmed again today: anything at or under their
+        // ceiling (fair × patience) is paid AT YOUR PRICE — a patient buyer
+        // quietly overpays, and learning who tolerates a cheeky ask is a skill
+        // worth money. Over the ceiling: a counter. Outrageous: a declared
+        // FINAL OFFER (never the old hard bar — they liked the song; overreach
+        // converts into the most valuable datum in the game, roughly where
+        // their ceiling sits, plus a live decision).
         int fair = Mathf.Max(1, Fair);
-        float m = (float)_ask / fair;
-
-        if (m <= 1.02f) { CloseSale(_ask); return; }
-
-        if (m <= Patience)
+        switch (TapeOffer.Judge(_buyerId, fair, _ask, out int counter))
         {
-            // Anchored on THEIR value, not on the ask — see the class comment.
-            // The 0–5% wobble is derived from the buyer id so the same alien
-            // always counters at the same number for the same strain.
-            uint h = StableHash(_buyerId + ":" + _offerSpecies);
-            _counter = Mathf.Max(1, Mathf.RoundToInt(fair * (1f + (h % 6u) / 100f)));
-            _stage = Stage.Countered;
-            _finalOffer = false;
-            MushroomDealState.SetCounter(_buyerId, _offerSpecies, _counter);
-            SetResult($"\"{_ask} a tape? Not a chance. I'll do {_counter}.\"", C_Label);
-            Refresh();
-            return;
+            case TapeOffer.Response.Accepted:
+                CloseSale(_ask);
+                return;
+            case TapeOffer.Response.TooLow:
+                _counter = Mathf.Max(1, counter);
+                _stage = Stage.Countered;
+                _finalOffer = false;
+                MushroomDealState.SetCounter(_buyerId, _offerSpecies, _counter);
+                SetResult($"\"{_ask} a tape? Not a chance. I'll do {_counter}.\"", C_Label);
+                Refresh();
+                return;
+            default:
+                DeclareFinalOffer(fair);
+                return;
         }
-
-        // ── FINAL OFFER, not a bar (2026-08-16, review + Sam's Aug 13 call) ──
-        // Pushing past their patience used to hard-bar: 5-minute lockout, −10
-        // bond, no counter, no lesson — "get away from me" out of nowhere,
-        // constantly, because cheap buyers have low ceilings. They LIKED the
-        // song; overreach now converts into the most valuable datum in the
-        // game (roughly where their ceiling is) plus a live decision.
-        DeclareFinalOffer(fair);
     }
 
     void DeclareFinalOffer(int fair)
@@ -499,12 +492,16 @@ public class MushroomSellUI : MonoBehaviour
         // Asking at or under their counter is just taking it.
         if (_ask <= _counter) { CloseSale(_counter); return; }
 
-        float over = (float)_ask / Mathf.Max(1, _counter);
-        bool accept = over <= 1.15f
-                   && UnityEngine.Random.value < 1f - (over - 1f) / 0.15f * 0.8f;
-        if (accept) { SetResult($"\"...fine. {_ask}.\"", C_Ok); CloseSale(_ask); return; }
-
-        // Pushing past a counter earns the take-it-or-leave-it, not a bar.
+        // One more round through the same rulebook: a pushed ask that lands
+        // under their ceiling is paid (they'd have taken it first time), and
+        // anything beyond earns the take-it-or-leave-it. One exchange each,
+        // no counter loops — same rule the phone uses.
+        if (TapeOffer.Judge(_buyerId, Mathf.Max(1, Fair), _ask, out _) == TapeOffer.Response.Accepted)
+        {
+            SetResult($"\"...fine. {_ask}.\"", C_Ok);
+            CloseSale(_ask);
+            return;
+        }
         DeclareFinalOffer(Mathf.Max(1, Fair));
     }
 
@@ -1480,8 +1477,9 @@ public class MushroomSellUI : MonoBehaviour
     ///           else runs the substitution chance
     ///   price — at or under the agreed number is a certainty; re-asking OVER
     ///           it decays fast (agree 20, demand 30 → they almost walk)
-    /// Untouched price + exact goods pays agreed × gratitude with full bond.
-    /// Any deviation that lands pays YOUR ask, but bond gains are halved.
+    /// The MONEY is decided entirely by TapeDeal.Grade against the recorded
+    /// DealTerms (agreed price sacred for exact goods, objective pro-rata for
+    /// tier/kit shortfalls, worth-clamp only for wrong goods) — see that file.
     /// A refusal is −5 bond, kills the appointment AND bars them for 5 min —
     /// no instant re-deal through the walk-up panel (Sam found that exploit).
     void DeliverOrder()
@@ -1491,12 +1489,42 @@ public class MushroomSellUI : MonoBehaviour
         int agreed = _appt.offerPerCap;
         int ask = Mathf.Max(1, _ask);
 
-        // "A CLANG tape" plainly means one they haven't heard — filling an
-        // order with a burned song is a silent term violation (review trap
-        // B2). Refuse with the social-failure framing, but the appointment
-        // STAYS OPEN within its window: the player brought the wrong tape,
-        // they didn't no-show.
-        if (delivered != null && TapeMemory.HasHeard(_buyerId, TapeTrade.DialsOf(delivered.track)))
+        // ── THE DEAL SLIP IS GRADED BY ONE RULEBOOK (TapeDeal.Grade) ─────────
+        // This method used to compute the payout inline — which is exactly how
+        // the agreed-price-vs-worth-clamp bug shipped. Now it only assembles
+        // the contract terms and the delivered facts; the pure, parity-tested
+        // grader decides the money. Nothing here re-derives a price.
+        var terms = new DealTerms
+        {
+            buyerId       = _buyerId,
+            genreIndex    = _appt.askTier,
+            qty           = _appt.askQty,
+            tapeTier      = _appt.askTapeTier,
+            modulesBasis  = _appt.modulesBasis,
+            pricePerTape  = agreed,
+            windowMinutes = _appt.windowMinutes,
+        };
+        var ledger = BuyerLedger.Get(_buyerId);
+        int substituteWorth = delivered == null ? 0
+            : TapeOffer.Value(_buyerId, delivered.track.ActiveCount(), delivered.tier,
+                              Satisfaction, true, ledger != null ? ledger.bond : 0);
+        bool fillsGenre = delivered != null && TapeTrade.Fills(delivered.track, _appt.askTier);
+        var g = TapeDeal.Grade(terms,
+                               contractModsFallback: Mathf.Max(1, TraxLibrary.InstalledCount),
+                               deliveredModules: delivered != null ? delivered.track.ActiveCount() : 0,
+                               deliveredTier: delivered != null ? delivered.tier : 1,
+                               fillsGenre: fillsGenre,
+                               deliveredQty: _offerCountN,
+                               alreadyHeard: delivered != null
+                                             && TapeMemory.HasHeard(_buyerId, TapeTrade.DialsOf(delivered.track)),
+                               ask: ask,
+                               gratitudeMult: BuyerDeals.GratitudeBonus(_appt.windowMinutes),
+                               substituteWorth: substituteWorth);
+
+        // "A CLANG tape" plainly means one they haven't heard. Refuse with the
+        // social-failure framing, but the appointment STAYS OPEN within its
+        // window: the player brought the wrong tape, they didn't no-show.
+        if (g.kind == TapeDeal.GradeKind.RefusedHeard)
         {
             uint rv = StableHash(_buyerId + ":" + _offerSpecies);
             SetResult($"\"{AlienFeedback.ForRepeat(rv)} Bring me one I haven't heard.\"", C_Err);
@@ -1504,80 +1532,17 @@ public class MushroomSellUI : MonoBehaviour
             return;
         }
 
-        // "Exact" for a tape means the right GENRE and enough of them. There is
-        // no tier ladder to substitute along, so a wrong-genre delivery is one
-        // flat gamble rather than a graded one.
-        bool exactGoods = delivered != null
-                       && TapeTrade.Fills(delivered.track, _appt.askTier)
-                       && _offerCountN >= _appt.askQty;
-        bool exactPrice = ask <= agreed;
-        float chance = (exactGoods ? 1f : 0.45f)
-                     * BuyerDeals.OverchargeFactor(ask, agreed);
-
+        float chance = (float)g.acceptChance;
         if (chance >= 0.999f || UnityEngine.Random.value <= chance)
         {
-            int perCap;
-            int qty;
-            bool thin = false;
-            string thinLine = null;
-            if (exactGoods)
-            {
-                // ── THE AGREED PRICE IS THE CONTRACT (2026-08-16) ────────────
-                // This used to clamp the payout to the tape's real "worth" —
-                // the full value formula with true satisfaction. But the phone
-                // quotes at a fixed satisfaction of 85 (SatMult 1.1575) while
-                // SatMult caps at 1.30, so worth could NEVER exceed 1.12x the
-                // quote — every haggled price (up to patience 1.45x) and the
-                // advertised on-time bonus were mathematically unpayable, under
-                // a green "exactly as agreed" banner. A written agreement the
-                // buyer can renege on for a perfect delivery destroys trust in
-                // every number the phone shows.
-                //
-                // The anti-farm intent survives as ONE OBJECTIVE goods rule
-                // (review C1/C4 + Sam's tier design): the agreed number was
-                // quoted for a specific tier and a tape built from the plugin
-                // kit recorded on the agreement. Delivering a lower tier or a
-                // thinner arrangement pays pro-rata to the goods-spec ratio —
-                // Type 1 on a Type 2 deal at the same kit is exactly half —
-                // and a HIGHER tier or fatter kit is the player's generosity
-                // (ratio capped at 1, paid the agreed number).
-                perCap = (ask == agreed)
-                    ? Mathf.RoundToInt(agreed * BuyerDeals.GratitudeBonus(_appt.windowMinutes))
-                    : ask;
-                qty = Mathf.Min(_offerCountN, _appt.askQty);
-
-                int contractTier = _appt.askTapeTier >= 1 ? _appt.askTapeTier : 1;
-                int contractMods = _appt.modulesBasis >= 1 ? _appt.modulesBasis
-                                                           : Mathf.Max(1, TraxLibrary.InstalledCount);
-                double contractGoods = TapeValue.Base(contractMods, contractTier);
-                double deliveredGoods = TapeValue.Base(delivered.track.ActiveCount(), delivered.tier);
-                if (contractGoods > 0 && deliveredGoods < contractGoods)
-                {
-                    perCap = Mathf.Max(1, (int)System.Math.Round(perCap * (deliveredGoods / contractGoods)));
-                    thin = true;
-                    thinLine = delivered.tier < contractTier
-                        ? $"\"This isn't a Type {contractTier}.\" — {_npcName} paid {{0}}, about half the agreed rate."
-                        : $"\"Thinner than what we talked about.\" — {_npcName} paid {{0}}, not the full rate.";
-                }
-            }
-            else
-            {
-                // Wrong goods: the deal's number never covered this tape, so
-                // they honour it only up to what it is genuinely worth to them.
-                // Deliberately a smaller payout and a remark rather than a
-                // refusal: the substitution was offered in good faith.
-                perCap = ask;
-                qty = Mathf.Min(_offerCountN, RemainingAppetite);
-                if (qty <= 0) { SetResult("\"I'm full up. Come back later.\"", C_Err); return; }
-
-                var ledger = BuyerLedger.Get(_buyerId);
-                int worth = delivered == null ? 0
-                    : TapeValue.For(delivered.track.ActiveCount(), delivered.tier, Satisfaction,
-                                    ledger != null ? ledger.bond : 0, true,
-                                    AlienTaste.PayFactor(_buyerId));
-                if (perCap > worth) { perCap = Mathf.Max(1, worth); thin = true; }
-            }
-            CompleteScheduled(perCap, qty, substituted: !(exactGoods && exactPrice), thin: thin, thinLine: thinLine);
+            int contractTier = terms.tapeTier >= 1 ? terms.tapeTier : 1;
+            // The specific shortfall lines only apply to right-genre goods —
+            // a wrong-genre clamp keeps the generic "not what I was picturing".
+            string thinLine = !g.thin || !fillsGenre ? null
+                : g.tierShort
+                ? $"\"This isn't a Type {contractTier}.\" — {_npcName} paid {{0}}, about half the agreed rate."
+                : $"\"Thinner than what we talked about.\" — {_npcName} paid {{0}}, not the full rate.";
+            CompleteScheduled(g.perCap, g.qty, substituted: g.substituted, thin: g.thin, thinLine: thinLine);
         }
         else
         {

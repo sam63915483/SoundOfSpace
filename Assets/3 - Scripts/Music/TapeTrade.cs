@@ -79,9 +79,11 @@ public static class TapeTrade
     /// <summary>
     /// The satisfaction an order is quoted against: a GOOD delivery, not a
     /// flawless one. Quoting at 100 assumed the player would land every dial
-    /// dead on their ear, which nobody does.
+    /// dead on their ear, which nobody does. The number itself lives on the
+    /// pure quote core (TapeDeal) so the headless suite exercises the real
+    /// figure; this forward exists for older call sites.
     /// </summary>
-    public const double OrderSatisfaction = 85.0;
+    public const double OrderSatisfaction = TapeDeal.OrderSatisfaction;
 
     /// <summary>
     /// What this contact genuinely values one tape of <paramref name="genreIndex"/>
@@ -105,17 +107,13 @@ public static class TapeTrade
     public static int TruePricePerTape(string id, int genreIndex)
         => TruePricePerTape(id, genreIndex, 1);
 
-    /// Tier-aware quote (2026-08-16): the same value formula an in-person
-    /// sale uses, at the given cassette tier. The tier multiplier lives in
-    /// TapeValue.Base; a shell-preference mismatch (a Type 1 quoted to a
-    /// Type 2 snob) additionally discounts through TierPayFactor — so a
-    /// buyer's two tier prices are honest about which one they'd rather have.
+    /// Tier-aware quote: thin Unity wrapper over the PURE quote core
+    /// (TapeDeal.TruePrice) — this method only supplies the live kit size and
+    /// bond. All price maths live in one parity-tested place.
     public static int TruePricePerTape(string id, int genreIndex, int tapeTier)
     {
         int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
-        return TapeValue.For(Mathf.Max(1, TraxLibrary.InstalledCount), tapeTier, OrderSatisfaction,
-                             bond, true,
-                             AlienTaste.PayFactor(id) * AlienTaste.TierPayFactor(id, tapeTier));
+        return TapeDeal.TruePrice(id, tapeTier, TraxLibrary.InstalledCount, bond);
     }
 
     /// Their opening number. They lowball a little — that gap is what the
@@ -125,7 +123,8 @@ public static class TapeTrade
 
     public static int OpeningOffer(string id, int genreIndex, int tapeTier)
     {
-        return Mathf.Max(1, Mathf.RoundToInt(TruePricePerTape(id, genreIndex, tapeTier) * 0.9f));
+        int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
+        return TapeDeal.OpeningOffer(id, tapeTier, TraxLibrary.InstalledCount, bond);
     }
 
     /// <summary>
