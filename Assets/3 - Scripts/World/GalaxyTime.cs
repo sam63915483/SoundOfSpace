@@ -214,6 +214,26 @@ public class GalaxyTime : MonoBehaviour
         _lastDaySeen = Day;
     }
 
+    /// <summary>
+    /// DEV ONLY (CheatCodes) — jump the clock forward whole days.
+    ///
+    /// Deliberately does NOT touch <c>_lastDaySeen</c>, unlike RestoreMinutes:
+    /// the next Update must see the rollover and fire OnDayChanged, or nothing
+    /// billed against the clock would notice the jump. Jumping several days
+    /// fires the event ONCE with the final day, which is correct — everything
+    /// that bills per day (rent) works out the elapsed span itself rather than
+    /// counting events.
+    ///
+    /// Exists because rent is daily and a day is 24 real minutes: reaching the
+    /// five-day plugin lockout by waiting is a two-hour play session.
+    /// </summary>
+    public void DevAdvanceDays(int days)
+    {
+        if (days == 0) return;
+        _minutes += days * MinutesPerDay;
+        if (_minutes < 0.0) _minutes = 0.0;
+    }
+
     /// New Game must reset this explicitly — the clock lives on a
     /// DontDestroyOnLoad singleton, and New Game runs no Apply, so without this
     /// the previous run's date leaks straight through the main menu.

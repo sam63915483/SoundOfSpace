@@ -151,6 +151,32 @@ public static class FeatureVault
     /// flag, so the dots, the wrap and the arrows all follow automatically.
     public const bool LevelSystem = false;
 
+    /// TEV'S FRONTING ECONOMY — the repeatable 50/50 front, the skim quote, the
+    /// per-player debt ledger, and the three demo tapes (SLUDJ / CHIRP / DRIFT)
+    /// he used to hand over. Vaulted 2026-08-14 per the rent revamp handoff.
+    ///
+    /// Why: the customers were HIS. BuyerLedger bond, threads and "songs heard"
+    /// all accrue from what a contact bought, so under fronting every early
+    /// buyer's taste was shaped by Tev's demos and the player's own career was
+    /// being steered toward someone else's sound. 50/50 was mushroom logic —
+    /// caps are fungible, songs are not.
+    ///
+    /// Gates the DIALOGUE PATH only. TevFronting.cs, TevDemoTapes.cs and every
+    /// save field they use still compile and still round-trip; flip this true
+    /// and RunFrontingTalk is reachable again exactly as it was.
+    public const bool TevFrontingEconomy = false;
+
+    /// THE LAWN WORK-OFF HAGGLE — "sell 10 / 8 / 5 / 3 of my tapes and we're
+    /// square", the one-off debt it created, and MushroomQuest.SettleLawn.
+    /// Vaulted 2026-08-14 with the fronting economy it depended on: the tapes
+    /// being worked off were Tev's demos.
+    ///
+    /// Replaced by the DAILY MONEY RENT haggle ($50 → $30 → $20 → $10), which
+    /// is the reactivated Aug 8 system rather than anything new. The lawn
+    /// counters (tevLawnTapesOwed / tevLawnCleared) are left in the schema so a
+    /// save written under either rule still loads.
+    public const bool TevLawnWorkOff = false;
+
     /// Tev's presence IN THE VILLAGE. Vaulted 2026-08-09.
     ///
     /// ⚠️ Tev HIMSELF is not vaulted — he still lives at his cabin and still

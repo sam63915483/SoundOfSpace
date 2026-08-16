@@ -60,6 +60,11 @@ public static class SaveCollector
         BuyerLedger.FillSave(data.buyerLedger);
         TevFronting.FillSave(data.tevFronting);
         data.traxLibrary = TraxLibrary.Capture();
+        // The computer's cassette machine rides the same blob. Filled in here
+        // rather than inside TraxLibrary.Capture because CassetteDeck reads the
+        // Hotbar, and TraxLibrary is compiled standalone with no Unity
+        // references by the library test suite.
+        CassetteDeck.Capture(data.traxLibrary);
         data.tapeMemory = TapeMemory.Capture();
 
         return data;
@@ -1003,6 +1008,10 @@ public static class SaveCollector
         // computer, shared by both players. Pure static state, restored with
         // the other singletons before any terminal reads it.
         TraxLibrary.Apply(data.traxLibrary);
+        // Strictly AFTER TraxLibrary.Apply, which restores TraxPrints: the deck
+        // validates its ejected tape against the print table, and an empty
+        // table would silently drop the tape off the machine.
+        CassetteDeck.Apply(data.traxLibrary);
         TapeMemory.Apply(data.tapeMemory);
         ApplyPlanetO2(data.planetO2);
 
@@ -1089,6 +1098,10 @@ public static class SaveCollector
         // computer, shared by both players. Pure static state, restored with
         // the other singletons before any terminal reads it.
         TraxLibrary.Apply(data.traxLibrary);
+        // Strictly AFTER TraxLibrary.Apply, which restores TraxPrints: the deck
+        // validates its ejected tape against the print table, and an empty
+        // table would silently drop the tape off the machine.
+        CassetteDeck.Apply(data.traxLibrary);
         TapeMemory.Apply(data.tapeMemory);
         ApplyCompass(data.compass);
         ApplyResources(data.resources);

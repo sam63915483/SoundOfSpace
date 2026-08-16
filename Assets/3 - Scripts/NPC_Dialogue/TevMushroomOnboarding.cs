@@ -410,21 +410,99 @@ public class TevMushroomOnboarding : MonoBehaviour
 
     // ── The conversation ───────────────────────────────────────────────────
 
+    /// <summary>
+    /// Who Tev is on this talk.
+    ///
+    /// Since the rent revamp there are only two answers: the FIRST talk (lawn →
+    /// rent haggle → three free blanks) and every talk after it (nag if you owe,
+    /// then the shop). The Given stage — "did you sell any of my tapes?" — went
+    /// with the fronting economy it was asking about, and the new first talk
+    /// jumps straight to Complete, so Given is only ever reached by an old save.
+    /// It falls through to the same place, which is the right landing for it.
+    /// </summary>
     IEnumerator PlaySequence()
     {
-        switch (MushroomQuest.CurrentStage)
+        if (MushroomQuest.CurrentStage == MushroomQuest.Stage.NotMet)
         {
-            case MushroomQuest.Stage.NotMet:  yield return RunFirstTalk(); break;
-            case MushroomQuest.Stage.Given:   yield return RunReturnTalk(); break;
-            // Complete = the free onboarding is over, by EITHER route, and Tev
-            // becomes a dealer you can work with. doneLines are vaulted; the
-            // fronting loop owns every conversation from here.
-            default:                          yield return RunFrontingTalk(); break;
+            if (FeatureVault.TevLawnWorkOff) yield return RunFirstTalkWorkOff();
+            else                             yield return RunFirstTalk();
+        }
+        else if (FeatureVault.TevFrontingEconomy)
+        {
+            if (MushroomQuest.CurrentStage == MushroomQuest.Stage.Given)
+                yield return RunReturnTalk();
+            else
+                yield return RunFrontingTalk();
+        }
+        else
+        {
+            yield return RunLandlordTalk();
         }
         StopConversation();
     }
 
+    /// <summary>
+    /// The first talk, as the rent revamp specifies it: you're parked on his
+    /// lawn, he wants rent for it, you haggle him down a ladder that never
+    /// reaches free, he clocks that you're broke, and he gives you three blanks
+    /// to get started. From here the loop is entirely yours — buy tapes, record,
+    /// sell, pay him.
+    ///
+    /// The blanks are GENUINELY free. The debt isn't them, it's the rent, and
+    /// the rent starts ticking from this conversation.
+    ///
+    /// Stage goes straight to Complete: there is no middle stage any more,
+    /// because there is nothing of his to come back and report on.
+    /// </summary>
     IEnumerator RunFirstTalk()
+    {
+        // "You parked a shuttle on my lawn." Still the right opener, and still
+        // the scene's copy — Sam edited it in the Inspector and that wins.
+        yield return SpeakLinesRange(firstTalkLines, 0, rentAfterLineIndex);
+        if (!_playerInRange) yield break;
+
+        // Skipped once settled, so the pack-full replay below can't re-open a
+        // negotiation he already won.
+        if (!MushroomQuest.RentSettled)
+        {
+            yield return RunRentHaggle();
+            if (!_playerInRange) yield break;
+        }
+
+        // He looks at you, works out you have nothing, and hands over the
+        // starter blanks. The last of these lines is locked verbatim.
+        yield return SpeakLines(brokeGiftLines);
+        if (!_playerInRange) yield break;
+
+        int given = GrantStarterBlanks();
+        if (given <= 0)
+        {
+            // Pack full: say so and leave the stage at NotMet so the beat
+            // replays. The haggle is skipped on the replay (RentSettled), so he
+            // cannot re-negotiate the rate upward.
+            yield return SpeakLines(packFullLines);
+            yield break;
+        }
+
+        MushroomQuest.CurrentStage = MushroomQuest.Stage.Complete;
+    }
+
+    /// <summary>
+    /// Three Blank Tape I into the hotbar. Returns how many actually fit — 0
+    /// means the caller should say so rather than silently eat them.
+    /// </summary>
+    int GrantStarterBlanks()
+    {
+        if (Hotbar.Instance == null) return 0;
+        int leftover = Hotbar.Instance.AddResource(Hotbar.ItemId.BlankTapeT1, StarterBlanks);
+        return StarterBlanks - leftover;
+    }
+
+    /// <summary>
+    /// VAULTED (FeatureVault.TevLawnWorkOff) — the first talk as it stood when
+    /// the lawn was paid off in sales of HIS tapes.
+    /// </summary>
+    IEnumerator RunFirstTalkWorkOff()
     {
         // Lead-in, up to and including the "you parked on my lawn" line.
         yield return SpeakLinesRange(firstTalkLines, 0, rentAfterLineIndex);
@@ -456,6 +534,236 @@ public class TevMushroomOnboarding : MonoBehaviour
         MushroomQuest.CurrentStage = MushroomQuest.Stage.Given;
     }
 
+    // ── The landlord loop (rent revamp, 2026-08-14) ───────────────────────
+    //
+    // Every talk after the first. Two beats, in this order and no other:
+    //
+    //   1. THE DEBT, if there is one. He leads with it, escalating in tone with
+    //      the size of it, and offers the payment panel. Leading with the shop
+    //      instead would let a player five days deep in arrears browse a locked
+    //      plugin tab with no idea why it's refusing them.
+    //   2. THE SHOP. Always — including while locked out, because the BLANKS
+    //      tab is never locked and that is the loop's escape hatch.
+
+    IEnumerator RunLandlordTalk()
+    {
+        if (MushroomQuest.RentBalance > 0)
+        {
+            yield return RunRentNag();
+            if (!_playerInRange) yield break;
+        }
+
+        // The full "since you're in the business now" pitch is a one-off; after
+        // that he just grunts and opens the shelf.
+        if (!ShopPitched)
+        {
+            yield return SpeakLines(shopOpenLines);
+            if (!_playerInRange) yield break;
+            ShopPitched = true;
+        }
+        else
+        {
+            yield return SpeakOne(OneOf(shopGreetingLines));
+            if (!_playerInRange) yield break;
+        }
+
+        yield return RunShop();
+    }
+
+    /// <summary>
+    /// "Where's my money." Tone tracks the number of days behind rather than the
+    /// raw balance, so the escalation reads the same whether the player haggled
+    /// to $50 or to $10.
+    /// </summary>
+    IEnumerator RunRentNag()
+    {
+        yield return SpeakTokens(NagLinesForDebt());
+        if (!_playerInRange) yield break;
+
+        int owed = MushroomQuest.RentBalance;
+        int money = PlayerWallet.Instance != null ? PlayerWallet.Instance.Money : 0;
+
+        // The pay row is greyed when the player is genuinely skint — the same
+        // "he can tell" grammar the old return talk used. Seeing the dead row is
+        // how you learn the debt is real and the game knows you can't cover it.
+        yield return AskChoice(
+            new PostGreetingChoicePanel.Row($"Pay him. (${owed})", money > 0),
+            new PostGreetingChoicePanel.Row("Not right now.", true));
+        if (!_playerInRange) yield break;
+
+        if (_choice != 0)
+        {
+            yield return SpeakOne(SwapRentTokens(rentRefusedLine));
+            yield break;
+        }
+
+        yield return OpenRentPayment();
+    }
+
+    /// Hand off to the payment panel and report what he says about the result.
+    /// The panel owns the money movement; this only speaks.
+    IEnumerator OpenRentPayment()
+    {
+        int before = MushroomQuest.RentBalance;
+
+        if (TevPaymentUI.Instance == null)
+        {
+            // No panel — settle what the player can afford outright rather than
+            // stranding them with a debt they have no way to clear.
+            int paidFallback = MushroomQuest.PayRent(before);
+            if (paidFallback > 0)
+                yield return SpeakOne(SwapRentTokens(
+                    MushroomQuest.RentBalance > 0 ? rentPaidShortLine : rentPaidFullLine));
+            yield break;
+        }
+
+        bool done = false;
+        int paid = 0;
+        TevPaymentUI.Instance.OpenForRent(p => { paid = p; done = true; });
+        yield return new WaitUntil(() => done);
+        if (!_playerInRange) yield break;
+
+        if (paid <= 0) yield break;                       // cancelled — nothing said
+
+        // Clearing the balance lifts the plugin embargo immediately; there is no
+        // cooling-off period and he says so.
+        bool clearedLockout = before >= MushroomQuest.RentPerDay * MushroomQuest.LockoutDays
+                              && MushroomQuest.RentBalance <= 0;
+
+        if (MushroomQuest.RentBalance > 0) yield return SpeakOne(SwapRentTokens(rentPaidShortLine));
+        else if (clearedLockout)           yield return SpeakOne(SwapRentTokens(rentLockoutClearedLine));
+        else                               yield return SpeakOne(SwapRentTokens(rentPaidFullLine));
+    }
+
+    string[] NagLinesForDebt()
+    {
+        int days = MushroomQuest.UnpaidDays;
+        if (days >= MushroomQuest.LockoutDays) return rentNagLockedLines;
+        if (days >= 3) return rentNagSternLines;
+        return rentNagLightLines;
+    }
+
+    /// SpeakLines with the rent tokens swapped, so no line can ever quote a
+    /// stale figure.
+    IEnumerator SpeakTokens(string[] lines)
+    {
+        if (lines == null) yield break;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (!_playerInRange) yield break;
+            yield return SpeakOne(SwapRentTokens(lines[i]));
+        }
+    }
+
+    /// {owed} = the live balance, {days} = days behind, {rate} = the haggled
+    /// daily rate.
+    string SwapRentTokens(string line)
+    {
+        if (string.IsNullOrEmpty(line)) return "";
+        return line
+            .Replace("{owed}", MushroomQuest.RentBalance.ToString())
+            .Replace("{days}", MushroomQuest.UnpaidDays.ToString())
+            .Replace("{rate}", MushroomQuest.RentPerDay.ToString());
+    }
+
+    /// Has he given the "since you're in the business now" shop pitch? A
+    /// StoryDirector flag rather than a field, so it survives a reload — hearing
+    /// the full pitch again every time you load would be maddening.
+    static bool ShopPitched
+    {
+        get => StoryDirector.Instance != null && StoryDirector.Instance.GetFlag("tevShopPitched");
+        set { StoryDirector.Instance?.SetFlag("tevShopPitched", value); }
+    }
+
+    /// <summary>
+    /// The rent haggle. Four rungs — $50 → $30 → $20 → $10 per day — each a real
+    /// refusal with a real counter, and THE LAST ONE HAS NO WAY OUT.
+    ///
+    /// This is deliberately the player's first negotiation in the whole game. It
+    /// tutorialises the push-your-luck instinct every alien sale later depends
+    /// on: refusing is rewarded, four times, and then it isn't.
+    ///
+    /// Branching is on `_choice == 0` (accept) rather than `!= 1` because
+    /// AskChoice leaves _choice at -1 if PostGreetingChoicePanel is missing, and
+    /// -1 must fall through to the NEXT RUNG rather than silently booking a rate
+    /// the player was never shown.
+    /// </summary>
+    IEnumerator RunRentHaggle()
+    {
+        int[] rungs = MushroomQuest.RentRungs;
+        for (int i = 0; i < rungs.Length; i++)
+        {
+            int n = rungs[i];
+            bool last = i == rungs.Length - 1;
+
+            yield return SpeakRentLines(RentDemandLines(i), n);
+            if (!_playerInRange) yield break;
+
+            if (last)
+            {
+                // One row. There is no way off the last rung, and showing a dead
+                // refusal row would only advertise a door that isn't there.
+                yield return AskChoice(
+                    new PostGreetingChoicePanel.Row($"Fine. ${n} a day.", true));
+            }
+            else
+            {
+                yield return AskChoice(
+                    new PostGreetingChoicePanel.Row($"Deal. ${n} a day.", true),
+                    new PostGreetingChoicePanel.Row(i == 0 ? $"${n}? Not a chance." : "Still no.", true));
+            }
+            if (!_playerInRange) yield break;
+
+            if (last || _choice == 0)
+            {
+                // Starts the clock: today is marked billed, so the first charge
+                // lands on the next day roll.
+                MushroomQuest.SettleRent(n);
+                yield return SpeakRentLines(RentAcceptLines(i), n);
+                yield break;
+            }
+        }
+    }
+
+    string[] RentDemandLines(int rung)
+    {
+        switch (rung)
+        {
+            case 0:  return rentDemandLines;
+            case 1:  return rentClimbdownLines;
+            case 2:  return rentThirdOfferLines;
+            default: return rentFinalOfferLines;
+        }
+    }
+
+    string[] RentAcceptLines(int rung)
+    {
+        switch (rung)
+        {
+            case 0:  return rentAccept50Lines;
+            case 1:  return rentAccept30Lines;
+            case 2:  return rentAccept20Lines;
+            default: return rentAccept10Lines;
+        }
+    }
+
+    /// SpeakLines with "{n}" swapped for the daily rate on offer, so the number
+    /// he says can never drift from the number he books.
+    IEnumerator SpeakRentLines(string[] lines, int rate)
+    {
+        if (lines == null) yield break;
+        for (int i = 0; i < lines.Length; i++)
+        {
+            if (!_playerInRange) yield break;
+            string line = lines[i] != null ? lines[i].Replace("{n}", rate.ToString()) : string.Empty;
+            yield return SpeakOne(line);
+        }
+    }
+
+    /// <summary>
+    /// VAULTED (FeatureVault.TevFrontingEconomy) — "did you sell any of my
+    /// tapes?". Unreachable while the flag is false.
+    /// </summary>
     IEnumerator RunReturnTalk()
     {
         // Q1 — "So — did you sell any?"  [Yes] needs a real sale; [No] always open.
@@ -1048,4 +1356,134 @@ public class TevMushroomOnboarding : MonoBehaviour
 
     public string frontPaidOverLine =
         "Well now. Over the odds, and you didn't have to. I'll remember that, friend.";
+
+    // ── RENT REVAMP COPY (2026-08-14) — DRAFT, for Sam to rewrite ─────────
+    //
+    // These are NEW serialized keys, so they ship the C# values written here
+    // until somebody edits them on the scene's TEV object. After that the
+    // Inspector wins and editing this file changes nothing — same trap as
+    // firstTalkLines above.
+    //
+    // Token vocabulary:
+    //   {n}     the daily rate being offered on THIS rung (haggle lines only)
+    //   {owed}  the live outstanding balance
+    //   {days}  days behind
+    //   {rate}  the agreed daily rate
+
+    /// Blanks he hands over on the first talk. Not a rung, not a debt — free.
+    public const int StarterBlanks = 3;
+
+    [Header("Rent haggle — $50 → $30 → $20 → $10 per day")]
+    [TextArea(2, 5)]
+    public string[] rentDemandLines = new[]
+    {
+        "Course, a berth like that isn't free. Prime lawn, southern exposure.",
+        "${n} a day and we'll say no more about it.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentAccept50Lines = new[]
+    {
+        "A man who takes the first offer. This is going to be a beautiful arrangement.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentClimbdownLines = new[]
+    {
+        "Ha! Alright, alright — I was messing with ya.",
+        "${n} a day. That's me being generous, mind you.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentAccept30Lines = new[]
+    {
+        "There we go. Neighbourly.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentThirdOfferLines = new[]
+    {
+        "${n}, then. You're haggling a man on his own lawn, you know that?",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentAccept20Lines = new[]
+    {
+        "${n} it is. You'd have made a decent salesman already.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentFinalOfferLines = new[]
+    {
+        "${n} a day. Final offer, and I'm robbing myself.",
+    };
+
+    [TextArea(2, 5)]
+    public string[] rentAccept10Lines = new[]
+    {
+        "Good. See? Painless. Every day, mind — I keep count.",
+    };
+
+    [Header("The gift — LAST LINE IS LOCKED VERBATIM")]
+    [Tooltip("Spoken right before the three free blanks. The final line is Sam's, word for word — don't paraphrase it.")]
+    [TextArea(2, 5)]
+    public string[] brokeGiftLines = new[]
+    {
+        "Now. You've got nothing on you, have you. I can always tell.",
+        "Big dreams, empty pockets. Seen it a hundred times. Here's three blanks to get you started — the rest you're buying.",
+    };
+
+    [Header("Shop — the return greeting")]
+    [Tooltip("One at random once the full shop pitch has been heard. The pitch itself never repeats.")]
+    [TextArea(2, 5)]
+    public string[] shopGreetingLines = new[]
+    {
+        "Back again. Go on, have a look.",
+        "Shelf's the same as it was. Help yourself.",
+        "Quiet day. Quiet year, really. What do you need?",
+    };
+
+    [Header("Rent — the nag, escalating with the debt")]
+    [Tooltip("1–2 days behind. He's reminding you, not threatening you.")]
+    [TextArea(2, 5)]
+    public string[] rentNagLightLines = new[]
+    {
+        "Before you start — ${owed} on the lawn. Whenever you've got it.",
+    };
+
+    [Tooltip("3–4 days behind. The joke has gone out of it.")]
+    [TextArea(2, 5)]
+    public string[] rentNagSternLines = new[]
+    {
+        "{days} days now. ${owed}.",
+        "I'm not a charity, and that shuttle's not getting any smaller.",
+    };
+
+    [Tooltip("5+ days behind — the plugin lockout is live. He says so plainly.")]
+    [TextArea(2, 5)]
+    public string[] rentNagLockedLines = new[]
+    {
+        "{days} days. ${owed}. No.",
+        "Blanks you can have — I'm not going to watch you starve over it. But the gear stays behind the counter till I'm square.",
+    };
+
+    [Header("Rent — payment outcomes")]
+    [Tooltip("Token: {owed} — the balance REMAINING after a part payment.")]
+    [TextArea(2, 5)]
+    public string rentPaidShortLine =
+        "I'll take it. Still ${owed} on the tab, mind.";
+
+    [TextArea(2, 5)]
+    public string rentPaidFullLine =
+        "Square. Pleasure doing business with a man who pays his way.";
+
+    [Tooltip("Paying off a debt that had the plugin tab locked. He lifts it on the spot.")]
+    [TextArea(2, 5)]
+    public string rentLockoutClearedLine =
+        "Well now. All of it. Shelf's open again — go and spend it back with me.";
+
+    [Tooltip("Turning him down. He doesn't push; the debt does that for him.")]
+    [TextArea(2, 5)]
+    public string rentRefusedLine =
+        "It keeps counting either way, friend.";
 }

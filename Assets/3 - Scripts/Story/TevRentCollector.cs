@@ -2,26 +2,39 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Charges Tev's lawn rent once a galactic week.
+/// Adds Tev's lawn rent to the tab once per game day.
 ///
-/// The rate is whatever the player haggled him down to in the first-talk beat
-/// (500 / 100 / free — see MushroomQuest.SettleRent). This class only collects.
+/// The rate is whatever the player haggled him down to on the first talk
+/// ($50 / $30 / $20 / $10 per day — see MushroomQuest.RentRungs). This class
+/// only bills.
 ///
 /// It listens to GalaxyTime.OnDayChanged rather than running its own timer, so
-/// the bill is tied to the same clock the player can see in the corner: if the
-/// HUD says DAY 8, rent has been taken for the week.
+/// the tab is tied to the same clock the player can see in the corner: if the
+/// HUD says DAY 8, seven days of rent have been charged.
 ///
-/// ── Deliberately not an eviction system ──────────────────────────────────
-/// A player who can't pay accrues ARREARS and gets a nagging notice. Nothing
-/// repossesses the shuttle, locks them out, or fails the run. Eviction would
-/// need somewhere to evict them TO, a way to earn back in, and a story beat for
-/// Tev turning on them — none of which exist, and a demo that can soft-lock a
-/// broke player on their first week is worse than one that just nags.
-/// Arrears are collected on top of the next bill when they can afford it.
+/// ── It does NOT take your money ──────────────────────────────────────────
+/// The old weekly version reached into the wallet on its own. This one only
+/// grows a balance; nothing is deducted until the player walks up to Tev and
+/// hands it over through TevPaymentUI. That is deliberate, and it is what makes
+/// the five-day plugin lockout mean something: a rich player who never visits
+/// his landlord gets locked out exactly like a broke one, which an auto-
+/// deducting collector could never express.
+///
+/// ── Still deliberately not an eviction system ────────────────────────────
+/// A player who can't (or won't) pay accrues a balance, gets nagged, and loses
+/// access to PLUGINS — never to blank tapes. Nothing repossesses the shuttle,
+/// locks them out of the world, or fails the run. Eviction would need somewhere
+/// to evict them TO, a way to earn back in, and a story beat for Tev turning on
+/// them — none of which exist, and a demo that can soft-lock a broke player is
+/// worse than one that just nags.
 /// </summary>
 public class TevRentCollector : MonoBehaviour
 {
     public static TevRentCollector Instance { get; private set; }
+
+    /// Balance at which the notice starts sounding like a threat rather than a
+    /// reminder. Expressed in days so it tracks the haggled rate.
+    const int SternAfterDays = 3;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
@@ -48,47 +61,29 @@ public class TevRentCollector : MonoBehaviour
     void HandleDayChanged(int day)
     {
         if (!MushroomQuest.RentSettled) return;
-        if (MushroomQuest.RentPerWeek <= 0) return;      // Tev waived it
 
-        int due = MushroomQuest.RentNextDueDay;
-        if (due <= 0 || day < due) return;
+        // AccrueRentTo owns the "which days are still unbilled" question, so a
+        // load that skipped several days lands as one linear charge rather than
+        // a stack of separate ones — or, worse, a double bill for one day.
+        int charged = MushroomQuest.AccrueRentTo(day);
+        if (charged <= 0) return;
 
-        // Roll the schedule forward first, so a long absence (or a save that
-        // skipped several due days at once) can't bill the player twice for the
-        // same week — it lands as one bill plus arrears, not a stack of them.
-        int next = due;
-        while (next <= day) next += GalaxyTime.DaysPerWeek;
-        MushroomQuest.RentNextDueDay = next;
+        int owed = MushroomQuest.RentBalance;
+        int unpaid = MushroomQuest.UnpaidDays;
 
-        Charge();
-    }
-
-    void Charge()
-    {
-        int owed = MushroomQuest.RentPerWeek + MushroomQuest.RentArrears;
-        if (owed <= 0) return;
-
-        var wallet = PlayerWallet.Instance;
-        int have = wallet != null ? wallet.Money : 0;
-        int paid = Mathf.Clamp(owed, 0, have);
-        if (paid > 0 && wallet != null) wallet.SpendMoney(paid);
-
-        int shortfall = owed - paid;
-        MushroomQuest.RentArrears = shortfall;
-
-        if (shortfall <= 0)
-        {
-            StoryImpactNotice.Show($"RENT PAID — {paid} credits to Tev.", 5f);
-        }
-        else if (paid > 0)
+        if (unpaid >= MushroomQuest.LockoutDays)
         {
             StoryImpactNotice.Show(
-                $"RENT — paid {paid}, still owe Tev {shortfall}.", 6f);
+                $"RENT — ${owed} owed. Tev has stopped selling you plugins.", 6f);
+        }
+        else if (unpaid >= SternAfterDays)
+        {
+            StoryImpactNotice.Show(
+                $"RENT — ${owed} owed to Tev. {unpaid} days behind.", 6f);
         }
         else
         {
-            StoryImpactNotice.Show(
-                $"RENT OVERDUE — you owe Tev {shortfall} credits.", 6f);
+            StoryImpactNotice.Show($"RENT — ${owed} owed to Tev.", 5f);
         }
     }
 }

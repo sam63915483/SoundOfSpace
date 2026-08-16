@@ -23,6 +23,12 @@ public class CheatCodes : MonoBehaviour {
     // grants tools + money for the test.
     public KeyCode skipToPilotSchool = KeyCode.F8;
 
+    // Jumps the galactic clock forward one day, or a whole week with SHIFT.
+    // Rent is charged per day and a day is 24 REAL MINUTES, so testing Tev's
+    // five-day plugin lockout by waiting is a two-hour session. The jump goes
+    // through the normal rollover, so rent accrues exactly as it would have.
+    public KeyCode skipGameDay = KeyCode.F7;
+
     void Update () {
         if ((Application.isEditor || !disableInBuild) && Application.isPlaying && cheatsEnabled) {
             if (Input.GetKeyDown (flyShip)) {
@@ -35,7 +41,30 @@ public class CheatCodes : MonoBehaviour {
             if (Input.GetKeyDown(skipToPilotSchool)) {
                 SkipToPilotSchool();
             }
+            if (Input.GetKeyDown(skipGameDay)) {
+                SkipGameDay();
+            }
         }
+    }
+
+    void SkipGameDay() {
+        var clock = GalaxyTime.Instance;
+        if (clock == null) {
+            Debug.LogWarning("[CheatCodes] No GalaxyTime in the scene — nothing to advance.");
+            return;
+        }
+
+        bool week = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        int days = week ? GalaxyTime.DaysPerWeek : 1;
+        clock.DevAdvanceDays(days);
+
+        // Reported from the ledger rather than predicted, so this log is a
+        // reading of what actually happened and not a second implementation of
+        // the rent rules.
+        Debug.Log($"[CheatCodes] Clock +{days} day(s) → DAY {clock.Day}. " +
+                  $"Rent bills on the rollover next frame; currently ${MushroomQuest.RentBalance} owed, " +
+                  $"{MushroomQuest.UnpaidDays} day(s) behind, plugins " +
+                  (MushroomQuest.PluginsLocked ? "LOCKED" : "open") + ".");
     }
 
     void SkipToPilotSchool() {

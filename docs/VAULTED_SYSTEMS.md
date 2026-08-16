@@ -76,6 +76,43 @@ soft-lock — the tutorial stops on "Press N to open the build menu" and no key
 will do it. It is re-inserted after `ChopWoodStep` by search, not by index, if
 the flag ever goes back on.
 
+## Code-only vaults (2026-08-14, the rent revamp)
+
+`Handoff_RentRevamp_PhysicalPrint_v1.md` cut Tev down to two jobs — landlord and
+music store. Everything that made him a *supplier* is vaulted, not deleted.
+
+| System | Flag | Gated at |
+|---|---|---|
+| The 50/50 fronting loop — pitch, front, skim, per-player debt | `TevFrontingEconomy` | `TevMushroomOnboarding.PlaySequence()` |
+| "Did you sell any of my tapes?" return talk + the refront ladder | `TevFrontingEconomy` | same switch |
+| Tev's 3 demo prints (SLUDJ / CHIRP / DRIFT) | `TevFrontingEconomy` | nothing calls `TevDemoTapes.Grant` on a live path |
+| The lawn work-off haggle (10 / 8 / 5 / 3 tapes) | `TevLawnWorkOff` | `TevMushroomOnboarding.PlaySequence()` → `RunFirstTalkWorkOff` |
+
+### Why fronting went
+
+The customers were **his**. `BuyerLedger` bond, threads and "songs heard" all
+accrue from what a contact bought, so under fronting every early buyer's taste
+was shaped by Tev's demos — the player's own career was being steered toward
+someone else's sound before they had written a note. And 50/50 was mushroom
+logic: caps are fungible, songs are not.
+
+### What replaced it
+
+The **daily money rent** from Aug 8, reactivated rather than rebuilt:
+`$50 → $30 → $20 → $10` per game day, haggled on the first talk, floor never
+reaches free. `MushroomQuest` owns the ledger, `TevRentCollector` bills it once
+per `GalaxyTime` day, and **nothing is auto-deducted** — the player pays through
+`TevPaymentUI`. Five days behind and `TevShopUI` refuses the PLUGINS tab while
+BLANK TAPES stays open, so the loop can never soft-lock.
+
+`TevFronting.cs`, `TevDemoTapes.cs` and every save field they use still compile
+and still round-trip. `TevPaymentUI` keeps its `TevFronting.PlayerState`
+overload as a thin wrapper over the debt-agnostic one, so restoring the flag
+needs no change there either.
+
+The lawn counters (`tevLawnTapesOwed` / `tevLawnCleared`) stay in the schema, so
+a save written under either rule still loads.
+
 ### Levels are gated at one choke point
 
 `PlayerProgress.Add` returns early. All ~50 `AddTreeFelled` / `AddEnemyKill` /
@@ -87,9 +124,13 @@ the same schema and un-vaulting invalidates nobody's file.
 ## Explicitly NOT vaulted
 
 - **Tev himself**, at his cabin (`TEV`, 9 m away) — he carries
-  `TevMushroomOnboarding`, the entry point to the mushroom economy, and owns
-  weekly rent collection. Only `TEV2` (203 m from the cabin, 67 m from the
-  village) was vaulted. The two were told apart by distance, not by name.
+  `TevMushroomOnboarding`, which since 2026-08-14 is the **rent haggle + the
+  shop**, and he owns daily rent collection. Only `TEV2` (203 m from the cabin,
+  67 m from the village) was vaulted. The two were told apart by distance, not
+  by name.
+- **The blank-tape shop.** `TevShopUI`'s BLANK TAPES tab is never gated by
+  anything, at any debt level. That asymmetry is the design: the ladder freezes,
+  the treadmill doesn't.
 - **`TevFamilyPhoto_Prop`** inside `StartCabin` — cabin dressing.
 - **The village** — kept as scenery; it will be given a purpose later.
 - **`Max Audience`** in the settings UI — an inactive settings row costing

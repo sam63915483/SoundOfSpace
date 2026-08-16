@@ -124,3 +124,7 @@ Assets/1 - sam3d/video.mp4.meta
 
 # Roslyn scratch dir used by prototypes/shuttle-computer/test/verify-port.py
 /build/
+
+# Local prefab backups written by Tools > TRAX > Shuttle (outside Assets so Unity
+# never imports them as second copies of the prefab).
+backups/

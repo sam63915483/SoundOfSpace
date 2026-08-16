@@ -1039,6 +1039,13 @@ public class Hotbar : MonoBehaviour
     static Color CassetteSwatch(string cassetteId) =>
         TraxPrints.TierOf(cassetteId) >= 2 ? CassetteT2Swatch : CassetteT1Swatch;
 
+    // Public faces of the two swatch lookups, so world props (the cassette in
+    // the computer's slot, the tape on its eject) are tinted from the SAME
+    // table the hotbar slot uses. Two places deciding what colour a TAPE II is
+    // would drift the moment either was retuned.
+    public static Color SwatchFor(ItemId id) => ResourceSwatchColor(id);
+    public static Color CassetteSwatchFor(string cassetteId) => CassetteSwatch(cassetteId);
+
     static readonly Color MushroomSwatchColor  = new Color32(0xE0, 0x6C, 0x75, 0xFF);   // cap red
     static readonly Color MushSaplingSwatchCol = new Color32(0xC8, 0x9B, 0xE6, 0xFF);   // spore violet
 

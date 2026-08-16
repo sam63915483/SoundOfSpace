@@ -46,10 +46,11 @@ public static class MushroomQuest
     // never reaches zero, so the stubborn haggler carries the lightest load
     // rather than getting it free.
     //
-    // The money rent system is NOT deleted. Settling calls SettleRent(0), and
-    // TevRentCollector already early-returns on a rate of 0 ("Tev waived it"),
-    // so no weekly charge can ever fire. Everything about it stays one line
-    // away from coming back.
+    // ⚠️ VAULTED 2026-08-14 — FeatureVault.TevLawnWorkOff. The rent revamp put
+    // the daily money rent back in its place. Nothing here is deleted and the
+    // counters stay in the schema; SettleLawn still silences the rent by
+    // settling it at a rate of 0, which is exactly what a restored work-off
+    // haggle would want.
 
     /// The four rungs of the work-off haggle. Never reaches free.
     public static readonly int[] LawnTapeRungs = { 10, 8, 5, 3 };
@@ -125,53 +126,139 @@ public static class MushroomQuest
 
     public static bool CanRefront => Refronts < MaxRefronts;
 
-    // ── Lawn rent (the Tev haggle) ───────────────────────────────────────
+    // ── Lawn rent — DAILY, and never free ────────────────────────────────
     //
-    // Tev opens at 500/week for the shuttle on his lawn, drops to 100 if you
-    // push back, and waives it entirely if you push back twice. The amount is
-    // whatever the player talked him down to; 0 is a legitimate settled value,
-    // which is why "has this been negotiated at all" needs its own flag rather
-    // than being inferred from the counter.
+    // Reactivated 2026-08-14 (Handoff_RentRevamp_PhysicalPrint_v1) as the money
+    // pressure the cassette loop runs on. Three rules, all Sam's, all load-
+    // bearing:
+    //
+    //   1. PER GAME DAY, not per week. A GalaxyTime day is 24 real minutes, so
+    //      the bill lands roughly every 24 minutes of play — often enough that
+    //      a player who ignores it feels it inside one session.
+    //   2. THE FLOOR IS $10 AND IT NEVER REACHES ZERO. Haggling rent away would
+    //      delete the pressure the whole loop is built on, so the last rung has
+    //      no refusal row (same shape the lawn work-off used).
+    //   3. ARREARS STACK LINEARLY. owed = rate × unpaid days. No compounding,
+    //      no interest, ever.
+    //
+    // NOTHING IS AUTO-DEDUCTED. The balance only moves when the player walks up
+    // to Tev and hands money over through TevPaymentUI. That is what gives the
+    // 5-day plugin lockout teeth: you can be rich and still locked out for
+    // ignoring your landlord, which an auto-deducting collector could never do.
+    //
+    // World state, not per player: in co-op there is one lawn and one ledger.
+    // StoryDirector counters are world-scoped, so this is household-shared for
+    // free — either player can pay it down, and the lockout hits both.
 
-    /// True once the player has been through the rent haggle. A counter of 0
-    /// means FREE, not "unasked" — don't infer settlement from the amount.
+    /// The four rungs of the rent haggle, in credits PER GAME DAY. The last one
+    /// is the floor and has no way out — see rule 2 above.
+    public static readonly int[] RentRungs = { 50, 30, 20, 10 };
+
+    /// Unpaid days that trigger Tev's plugin embargo.
+    public const int LockoutDays = 5;
+
+    /// True once the player has been through the rent haggle. A rate of 0 means
+    /// "never negotiated", not "free" — the ladder cannot land on zero.
     public static bool RentSettled
     {
         get => StoryDirector.Instance != null && StoryDirector.Instance.GetFlag(FlagRentSet);
         set { StoryDirector.Instance?.SetFlag(FlagRentSet, value); }
     }
 
-    /// Credits owed per galactic week. 0 = Tev waived it.
-    public static int RentPerWeek
+    /// Credits owed per galactic DAY, as haggled. (Key name still says "week" —
+    /// it is a save key, and renaming it would orphan existing saves for no
+    /// gain.)
+    public static int RentPerDay
     {
         get => StoryDirector.Instance != null ? StoryDirector.Instance.GetCounter(KeyRent) : 0;
         set { StoryDirector.Instance?.SetCounter(KeyRent, Mathf.Max(0, value)); }
     }
 
-    /// Rent the player owed but couldn't cover. Accrues; never evicts.
-    public static int RentArrears
+    /// Everything currently owed. Grows by RentPerDay each game day, shrinks
+    /// only when the player pays. Never evicts.
+    public static int RentBalance
     {
         get => StoryDirector.Instance != null ? StoryDirector.Instance.GetCounter(KeyArrears) : 0;
         set { StoryDirector.Instance?.SetCounter(KeyArrears, Mathf.Max(0, value)); }
     }
 
-    /// GalaxyTime day number the next rent bill falls due on. 0 = not scheduled
-    /// (either the haggle hasn't happened or Tev waived the rent).
-    public static int RentNextDueDay
+    /// The last GalaxyTime day that has been billed. Stored rather than derived
+    /// so a save that skipped several days bills each of them exactly once.
+    public static int RentLastBilledDay
     {
         get => StoryDirector.Instance != null ? StoryDirector.Instance.GetCounter(KeyNextDue) : 0;
         set { StoryDirector.Instance?.SetCounter(KeyNextDue, Mathf.Max(0, value)); }
     }
 
-    /// Lock in the negotiated rate and schedule the first bill one full week
-    /// out, so the player never gets charged on the day they land.
-    public static void SettleRent(int perWeek)
+    /// How many days' rent is outstanding, rounded UP: a partial payment that
+    /// leaves $1 on a $10 rate is still a day in arrears, which is the honest
+    /// reading of "you haven't paid for that day".
+    public static int UnpaidDays
     {
-        RentPerWeek = Mathf.Max(0, perWeek);
+        get
+        {
+            int rate = RentPerDay;
+            if (rate <= 0) return 0;
+            return (RentBalance + rate - 1) / rate;
+        }
+    }
+
+    /// Tev's embargo. Plugins only — blanks are ALWAYS purchasable, because the
+    /// loop must never be able to soft-lock. The ladder freezes; the treadmill
+    /// doesn't.
+    public static bool PluginsLocked => UnpaidDays >= LockoutDays;
+
+    /// <summary>
+    /// Lock in the negotiated daily rate. Rent accrues FROM THE CONFRONTATION —
+    /// today is marked billed, so the first charge lands on the next day roll,
+    /// which is what makes the three gift blanks genuinely free while still
+    /// starting the clock.
+    /// </summary>
+    public static void SettleRent(int perDay)
+    {
+        RentPerDay = Mathf.Max(0, perDay);
         RentSettled = true;
-        RentArrears = 0;
-        int today = GalaxyTime.Instance != null ? GalaxyTime.Instance.Day : 1;
-        RentNextDueDay = perWeek > 0 ? today + GalaxyTime.DaysPerWeek : 0;
+        RentBalance = 0;
+        RentLastBilledDay = GalaxyTime.Instance != null ? GalaxyTime.Instance.Day : 1;
+    }
+
+    /// <summary>
+    /// Bill every day that has elapsed since the last one charged, and return
+    /// how much was added. Linear: three missed days at $10 is $30, full stop.
+    ///
+    /// Safe to call repeatedly and safe to call after a long absence — the
+    /// last-billed day is advanced first, so no day is ever billed twice.
+    /// </summary>
+    public static int AccrueRentTo(int day)
+    {
+        if (!RentSettled) return 0;
+        int rate = RentPerDay;
+        if (rate <= 0) return 0;
+
+        int last = RentLastBilledDay;
+        if (last <= 0) { RentLastBilledDay = day; return 0; }
+        if (day <= last) return 0;
+
+        int days = day - last;
+        RentLastBilledDay = day;
+        int charge = rate * days;
+        RentBalance += charge;
+        return charge;
+    }
+
+    /// Pay Tev. Returns what actually came out of the wallet — capped at the
+    /// balance, so the player can never overpay their way into credit.
+    public static int PayRent(int amount)
+    {
+        if (amount <= 0) return 0;
+        int pay = Mathf.Min(amount, RentBalance);
+        if (pay <= 0) return 0;
+
+        var wallet = PlayerWallet.Instance;
+        if (wallet == null || !wallet.SpendMoney(pay)) return 0;
+
+        RentBalance -= pay;
+        return pay;
     }
 
     /// Mushrooms of ANY species currently in the player's HOTBAR. Not the locker

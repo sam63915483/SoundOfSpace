@@ -24,7 +24,25 @@ public class ShuttleComputerTerminal : Interactable
     {
         // While the screen is up it owns the input; showing "press F to use the
         // computer" over the top of the open computer would be nonsense.
-        return !ShuttleComputerUI.IsOpen;
+        if (ShuttleComputerUI.IsOpen) return false;
+
+        // ── The screen yields to the machine ─────────────────────────────
+        // The cassette insert and the eject sit right under this screen, and
+        // this screen is a far bigger gaze target than it looks: the crosshair
+        // cast is a 0.1 m sphere and there is a near-miss forgiveness pass on
+        // top. So when the player aims at the insert, BOTH pass the look-at
+        // test, both call GameUI.ShowInteractionPrompt every frame, and the
+        // prompt flips between "use the computer" and "insert blank cassette"
+        // depending on script execution order. That reads as the prompt
+        // strobing, and it makes the insert feel broken.
+        //
+        // The rule: the small, specific control beats the big panel behind it.
+        // Standing down entirely (rather than fighting over ownership) is what
+        // makes it deterministic — this asserts nothing at all while a machine
+        // part is being looked at.
+        if (CassetteSlot.AnyGazed) return false;
+
+        return true;
     }
 
     protected override void Interact()

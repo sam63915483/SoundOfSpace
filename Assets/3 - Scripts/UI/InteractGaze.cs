@@ -81,7 +81,46 @@ public static class InteractGaze
         return _cam;
     }
 
+    /// <summary>
+    /// OPT-IN ANTI-STROBE, added 2026-08-14 for the cassette slot.
+    ///
+    /// The crosshair cast is a 0.1 m sphere and takes the FIRST thing it
+    /// touches. Aim at a small control that sits just below a big panel — the
+    /// cassette insert under the console screen — and the fat sphere grazes the
+    /// panel on some frames and the control on others. Both objects then flip
+    /// between "looked at" and "not", the prompt changes owner every frame, and
+    /// it visibly strobes.
+    ///
+    /// An Interactable with `gazeLatchSeconds > 0` HOLDS a true result for that
+    /// long after the raw test stops agreeing. It only ever extends a YES; it
+    /// can never invent one, so nothing becomes interactable that wasn't.
+    ///
+    /// Default is 0 — every existing interactable behaves exactly as before.
+    /// </summary>
+    static readonly Dictionary<int, float> _gazeLatch = new Dictionary<int, float>();
+
     public static bool IsLookingAt(Object target)
+    {
+        bool now = Evaluate(target);
+
+        if (!(target is Interactable latched) || latched.gazeLatchSeconds <= 0f) return now;
+
+        int key = target.GetInstanceID();
+        if (now)
+        {
+            _gazeLatch[key] = Time.unscaledTime;
+            return true;
+        }
+
+        // The dictionary only ever holds interactables the player has actually
+        // looked at, but a long session shouldn't grow it without bound.
+        if (_gazeLatch.Count > 64) _gazeLatch.Clear();
+
+        return _gazeLatch.TryGetValue(key, out float last)
+            && Time.unscaledTime - last <= latched.gazeLatchSeconds;
+    }
+
+    static bool Evaluate(Object target)
     {
         if (!RequireGaze) return true;
         if (target is Interactable ex && !ex.requireGazeToInteract) return true;

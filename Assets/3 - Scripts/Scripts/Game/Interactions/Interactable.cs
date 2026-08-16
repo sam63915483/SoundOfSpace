@@ -145,4 +145,7 @@ public class Interactable : MonoBehaviour {
     [Tooltip("If true, the look-at raycast ignores occluders (e.g. the hull) and only tests the gaze target's own colliders. Used to open the hatch from outside while standing under the closed ship.")]
     public bool gazeThroughWalls = false;
 
+    [Tooltip("Hold a positive look-at result this long after the raycast stops agreeing (seconds). 0 = off, and off is right for almost everything.\n\nOnly needed for a SMALL control sitting right in front of a BIG one — the crosshair cast is a fat sphere and takes the first thing it touches, so it can flip between the two on tiny head movements and make the prompt strobe. Extends a yes; never invents one.")]
+    public float gazeLatchSeconds = 0f;
+
 }

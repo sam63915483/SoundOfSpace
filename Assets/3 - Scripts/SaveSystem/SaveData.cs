@@ -523,6 +523,16 @@ public class TraxLibrarySave
     public List<TraxProjectSave> projects = new List<TraxProjectSave>();
     public List<string> installedPlugins = new List<string>();
     public List<TraxPrintSave> prints = new List<TraxPrintSave>();
+
+    // The computer's cassette machine (CassetteDeck). World state, like the
+    // shelf and the print table: one computer, one slot, one eject.
+    //
+    // 0 = the slot is empty, 1 or 2 = an UNPRINTED blank of that tier is seated.
+    // A printed tape is never in the slot — printing moves it to the eject.
+    public int deckInsertedTier;
+
+    // Print id of a finished tape left unclaimed on the eject, or "" for none.
+    public string deckEjectedPrintId = "";
 }
 
 [Serializable]

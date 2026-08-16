@@ -208,7 +208,10 @@ public class TevShopUI : MonoBehaviour
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
 
-        SetStatus("Take your time.", C_Dimmer);
+        // He leads with the debt if there is one. The player should never have
+        // to work out WHY the plugin tab is refusing them.
+        if (PluginsLocked) SetStatus(LockedMessage(), C_Err);
+        else SetStatus("Take your time.", C_Dimmer);
         Refresh();
     }
 
@@ -310,10 +313,27 @@ public class TevShopUI : MonoBehaviour
         Refresh();
     }
 
+    /// <summary>
+    /// Tev's embargo: five days behind on rent and the ladder is closed to you.
+    ///
+    /// PLUGINS ONLY, and that asymmetry is the entire design — blanks stay on
+    /// sale at every debt level, so a player deep in arrears can always buy a
+    /// tape, print a track and sell it back into the money that clears the
+    /// debt. Locking blanks too would be a soft-lock with extra steps.
+    /// </summary>
+    static bool PluginsLocked => MushroomQuest.PluginsLocked;
+
+    static string LockedMessage()
+    {
+        return $"\"Five days on my lawn without paying. ${MushroomQuest.RentBalance} first, " +
+               "then we'll talk about gear.\"";
+    }
+
     void BuyPlugin(int i)
     {
         Entry e = Stock[i];
         if (e.plugin == null || e.preInstalled || TraxLibrary.IsInstalled(e.plugin)) return;
+        if (PluginsLocked) { SetStatus(LockedMessage(), C_Err); return; }
         if (PlayerWallet.Instance == null || Money < e.price) return;
         if (!PlayerWallet.Instance.SpendMoney(e.price)) return;
 
@@ -349,7 +369,10 @@ public class TevShopUI : MonoBehaviour
         _pluginsUnderline.enabled = !tapes;
         _tapesTabLabel.color = tapes ? (Color)C_Label : (Color)C_Dimmer;
         _pluginsTabLabel.color = tapes ? (Color)C_Dimmer : (Color)C_Label;
-        _tally.text = tapes ? "" : $"{owned} OF {total} INSTALLED";
+        _tally.text = tapes ? ""
+            : PluginsLocked ? $"LOCKED — ${MushroomQuest.RentBalance} RENT OWED"
+            : $"{owned} OF {total} INSTALLED";
+        _tally.color = !tapes && PluginsLocked ? (Color)C_Err : (Color)C_Dimmer;
 
         // Which Stock rows this tab shows. Modules already installed sink below
         // the ones still for sale, so the top of the list is always what you can
@@ -412,12 +435,16 @@ public class TevShopUI : MonoBehaviour
         }
         else if (!own)
         {
+            // A locked row still shows its price. The player is meant to see
+            // exactly what the debt is costing them, not to have the ladder
+            // quietly disappear.
+            bool locked = PluginsLocked;
             bool afford = Money >= e.price;
             w.price.text = $"${e.price}";
-            w.buy.interactable = afford;
-            w.buy.targetGraphic.color = afford ? C_Buy : C_BuyOff;
-            w.buyLabel.text = afford ? "BUY" : "TOO DEAR";
-            w.buyLabel.color = afford ? Color.white : (Color)C_Err;
+            w.buy.interactable = !locked && afford;
+            w.buy.targetGraphic.color = !locked && afford ? C_Buy : C_BuyOff;
+            w.buyLabel.text = locked ? "RENT OWED" : afford ? "BUY" : "TOO DEAR";
+            w.buyLabel.color = locked || !afford ? (Color)C_Err : Color.white;
         }
         else
         {

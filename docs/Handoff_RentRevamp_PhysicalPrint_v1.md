@@ -2,6 +2,95 @@
 
 **Date:** 2026-08-14
 **Follows:** the Aug 13–14 cassette loop build (Plan_CassetteLoop_Build_v1.md, Phases 1–5) and the money revamp (Plan_MoneyRevamp_v1.md).
+
+---
+
+## STATUS — BUILT 2026-08-14, PLAY-TEST PENDING
+
+Parts A and B are implemented. Both assemblies compile; `verify-port` (2024
+checks, goldens byte-identical), `verify-library` (97), `verify-taste` (113) and
+the new `verify-rent` (101) all pass.
+
+**Sam's two decisions on the OPEN items, taken before the build:**
+
+1. **Rent is paid BY HAND, never auto-deducted.** The balance grows every game
+   day and only moves when the player opens `TevPaymentUI` and hands money over.
+   That is what gives the 5-day lockout teeth — you can be rich and locked out
+   for ignoring your landlord, which an auto-deducting collector could not say.
+2. **The old "did you sell any of my tapes?" return talk is dead.** First talk =
+   lawn → haggle → gift line → 3 blanks. Every talk after = nag (if owed) →
+   shop. The lines are vaulted, not deleted.
+
+Doc defaults taken as-written: the held item must be the **selected** hotbar
+slot; F on an occupied slot ejects an unprinted blank; arrears do not touch bond.
+
+### What Sam has to do
+
+1. Add **`CassetteSlot`** to the cassette-insert mesh on the console stand.
+   That is the whole setup — one component handles insert, print and eject.
+2. Tune `approachOffset` so the tape flies in along the axis pointing OUT of
+   the insert, and `tapeEuler` so it lines up with the mouth. Both are live in
+   Play mode: drag them while a tape is in the slot and it moves as you drag.
+3. **Ctrl+S.** Play mode uses the Inspector's in-memory value; a BUILD reads the
+   scene file. An unsaved tweak works in the Editor and is wrong in the build,
+   which is exactly what happened once already.
+4. Fresh save, play.
+
+### The eject is the same slot (2026-08-14, Sam's call after playtest)
+
+Originally the printed tape moved to a SEPARATE object that you then looked at
+and picked up. Sam's revision, which is better and is what ships:
+
+> press print → the computer closes → the cassette slides back OUT of the slot
+> it went into → it lands in your hotbar
+
+So there is no second object to place and no manual pickup step. `ShuttleComputerUI`
+closes BEFORE it touches the deck — that ordering is the feature, since the
+player has to be looking at the machine to see the tape emerge. `PrintedTapePickup`
+was deleted; `CassetteSlot` owns both directions.
+
+The tape is only added to the hotbar AFTER the slide finishes — the movement is
+the receipt. If the hotbar is full it stays sticking out of the mouth and F takes
+it once room is made. It is never destroyed.
+
+### ⚠️ The editor-tool version of this was REPLACED (2026-08-14, second pass)
+
+The first build generated the slot and eject into the shuttle prefab from an
+editor tool. **It did not work in play**, and the reason is worth keeping:
+
+> The generated objects were invisible, carried only a **trigger** collider, and
+> had `gazeTarget` pointed at `ConsoleScreen`. `InteractGaze` is a crosshair
+> SphereCast that **ignores triggers** and requires a hit on geometry belonging
+> to the aim target — so aiming at the slot on the stand meant aiming at the
+> *stand*, and the prompt never appeared.
+
+Two rules came out of it, enforced in code rather than documented:
+`CassetteSlot`/`PrintedTapePickup` force `gazeTarget = null` in `Awake` (so the
+gaze test falls through to the object's own mesh silhouette), and the spawned
+cassette is **stripped of every collider** so it can't eat the crosshair cast to
+the slot behind it.
+
+The prefab was reverted (the diff was 550 pure insertions, nothing of Sam's
+touched). `Tools ▸ TRAX ▸ Remove Generated Cassette Slot Objects` remains as a
+sweep-up; **there is deliberately no "add" menu item any more** — placement is
+Sam's, not a script's.
+
+### Known gaps
+
+- The tape model is Sam's existing `Assets/1 - samsPrefabs/CasettePickup.prefab`,
+  instantiated and stripped to pure geometry by `CassetteVisual` (it ships with
+  `GravityObjectSimple`, `CassettePickup`, `PickupHoldOffset`, a Rigidbody and
+  two colliders — all destroyed at spawn, or the tape would fall through the
+  shuttle and offer its own pickup prompt).
+- **If no `PrintedTapePickup` exists in the world, printing falls back to putting
+  the tape straight in the hotbar** rather than blocking. Deliberate, so the loop
+  is never gated on level dressing being positioned.
+- **Co-op replication of the slot/eject is NOT implemented.** State is world-
+  scoped and rides the world save (so the host's machine is what persists), but
+  a guest will not see the host's tape appear in real time. The handoff calls
+  host-authoritative "fine for v1"; this is the piece of that still outstanding.
+- Tev's new lines are **drafts in Tev's voice** — they ship from C# because the
+  fields are new, so editing them in the Inspector wins from then on.
 **Process (non-negotiable):** State your full build plan FIRST and wait for Sam's correction before implementing (GDD_StoryBible_v2.md §0 rule 4). Report Tev's CURRENT conversation flow back to Sam before touching any dialogue — he cuts/changes lines first. Report the names of any objects Sam needs to place or reposition.
 
 ---

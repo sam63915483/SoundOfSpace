@@ -228,6 +228,10 @@ public static class TraxLibrary
         }
         foreach (string m in _installed) save.installedPlugins.Add(m);
         TraxPrints.Capture(save);
+        // The cassette machine's own two fields ride this same blob, but they
+        // are filled in by SaveCollector rather than here: CassetteDeck talks to
+        // the Hotbar, and this file is compiled STANDALONE WITH NO UNITY
+        // REFERENCES by the library test suite. One import would break that.
         return save;
     }
 

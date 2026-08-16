@@ -146,14 +146,13 @@ public partial class ShuttleComputerUI : MonoBehaviour
     readonly Dictionary<string, string> _moduleDefaultDescs = new Dictionary<string, string>();
     CanvasGroup _toastGroup;
     GameObject _printPanel;
-    Stepper _printQty;
     Image _saveBg;
 
-    int _quantity = 1;
-    int _tier = 1;                   // which shell the next press uses
-    TextMeshProUGUI _printSub, _printNote, _printConfirmLabel;
+    // The tier and quantity steppers went with the physical slot — see
+    // BuildPrintDialog. The dialog now reports the machine rather than
+    // configuring it.
+    TextMeshProUGUI _printSub, _printNote, _printConfirmLabel, _printSlotState;
     Image _printConfirm;
-    Stepper _printTier;
     int _lastStepShown = -1;
     int _lastBarShown = -1;
     float _toastUntil;
@@ -839,7 +838,9 @@ public partial class ShuttleComputerUI : MonoBehaviour
     {
         // One button. The quantity lives in the dialog it opens, so the
         // transport row is not carrying a stepper for something you press once.
-        MakeButtonRight(row, "PrintDemo", "PRINT DEMO", 170, ref rx, PanelHi, Ink, OpenPrint);
+        // "PRINT DEMO" was the name when this pressed a demo of the track. It
+        // presses THE tape now, off the blank in the slot.
+        MakeButtonRight(row, "PrintDemo", "PRINT", 170, ref rx, PanelHi, Ink, OpenPrint);
     }
 
     void BuildVolume(RectTransform row, ref float rx)
@@ -945,9 +946,21 @@ public partial class ShuttleComputerUI : MonoBehaviour
     }
 
     /// <summary>
-    /// PRINT DEMO's dialog. Deliberately inert beyond choosing a number —
-    /// cassettes are a later phase — but it is a real modal so the shape of the
-    /// interaction is right when it does get wired up.
+    /// The PRINT dialog.
+    ///
+    /// ── What used to be here, and why it's gone ──────────────────────────
+    /// A tier stepper and a quantity stepper. Both were removed on 2026-08-14
+    /// when the machine grew a physical slot:
+    ///
+    ///   • TIER is now a property of the blank you physically put in. Choosing
+    ///     "TAPE II" from a menu while holding no TAPE II was always a lie the
+    ///     dialog had to apologise for afterwards.
+    ///   • QUANTITY was only ever a way to skip the ritual. One insert, one
+    ///     tape. If you want ten, you feed it ten times — and that is the point
+    ///     of it being a machine.
+    ///
+    /// What's left is a confirmation with two states: PLEASE INSERT CASSETTE, or
+    /// READY TO PRINT. The slot is the gate now, not the hotbar count.
     /// </summary>
     void BuildPrintDialog(RectTransform parent)
     {
@@ -967,7 +980,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         prt.anchoredPosition = Vector2.zero;
         Outline(panel.transform, Accent);
 
-        var title = MakeText(prt, "Title", "PRINT DEMO", 30, Accent, TextAlignmentOptions.Top);
+        var title = MakeText(prt, "Title", "PRINT TO TAPE", 30, Accent, TextAlignmentOptions.Top);
         Box(title.rectTransform, TopCentre, TopCentre, new Vector2(0, -26), new Vector2(520, 38));
         title.characterSpacing = 14;
 
@@ -975,35 +988,13 @@ public partial class ShuttleComputerUI : MonoBehaviour
         Box(_printSub.rectTransform, TopCentre, TopCentre, new Vector2(0, -66), new Vector2(520, 22));
         _printSub.characterSpacing = 18;
 
-        // WHICH SHELL. Tier is chosen at print time rather than being a property
-        // of the project, because the same song is worth pressing on both.
-        var tierBox = MakeRect(prt, "TierBox");
-        tierBox.anchorMin = TopCentre;
-        tierBox.anchorMax = TopCentre;
-        tierBox.pivot = TopCentre;
-        tierBox.sizeDelta = new Vector2(300, 40);
-        tierBox.anchoredPosition = new Vector2(0, -94);
-        _printTier = MakeStepper(tierBox, "Tier", 0,
-            () => _tier >= 2 ? "TAPE II" : "TAPE I",
-            d => { _tier = _tier == 1 ? 2 : 1; _printTier.Refresh(); RefreshPrintDialog(); },
-            Accent);
-        _printTier.label.fontSize = 20;
-
-        var qtyBox = MakeRect(prt, "QtyBox");
-        qtyBox.anchorMin = TopCentre;
-        qtyBox.anchorMax = TopCentre;
-        qtyBox.pivot = TopCentre;
-        qtyBox.sizeDelta = new Vector2(240, 54);
-        qtyBox.anchoredPosition = new Vector2(0, -134);
-
-        // Clamped to the blanks you are CARRYING, so the number on screen is
-        // always a number you can actually press.
-        _printQty = MakeStepper(qtyBox, "Qty", 0,
-            () => _quantity.ToString(),
-            d => { _quantity = Mathf.Clamp(_quantity + d, 1, Mathf.Max(1, BlanksHeld(_tier)));
-                   _printQty.Refresh(); RefreshPrintDialog(); },
-            Ink);
-        _printQty.label.fontSize = 30;
+        // THE MACHINE'S STATE, in one big line. This is the whole dialog now:
+        // either there is a cassette in the slot or there isn't, and the player
+        // reads which from here without going back out to look at the deck.
+        _printSlotState = MakeText(prt, "SlotState", "", 26, Accent, TextAlignmentOptions.Center);
+        Box(_printSlotState.rectTransform, TopCentre, TopCentre,
+            new Vector2(0, -108), new Vector2(520, 40));
+        _printSlotState.characterSpacing = 6;
 
         _printNote = MakeText(prt, "Note", "", 13, InkGhost, TextAlignmentOptions.Center);
         Box(_printNote.rectTransform, TopCentre, TopCentre, new Vector2(0, -190), new Vector2(520, 20));
@@ -1035,44 +1026,43 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
     // ── printing ─────────────────────────────────────────────────────────
 
-    static Hotbar.ItemId BlankIdFor(int tier)
-    {
-        return tier >= 2 ? Hotbar.ItemId.BlankTapeT2 : Hotbar.ItemId.BlankTapeT1;
-    }
-
-    /// <summary>
-    /// Blanks IN THE HOTBAR only. Stock in a locker deliberately does not count
-    /// — carrying your blanks to the computer is the point, and it is what makes
-    /// a print run a decision rather than a formality.
-    /// </summary>
-    static int BlanksHeld(int tier)
-    {
-        return Hotbar.Instance == null ? 0 : Hotbar.Instance.GetResourceTotal(BlankIdFor(tier));
-    }
-
     void OpenPrint()
     {
         if (_printPanel == null) return;
-        _quantity = 1;
         _printPanel.SetActive(true);
-        _printTier.Refresh();
-        _printQty.Refresh();
         RefreshPrintDialog();
     }
 
-    /// Everything the dialog says derives from two facts: whether this track has
-    /// a name yet, and how many blanks of the chosen tier you are carrying.
+    /// <summary>
+    /// Everything the dialog says derives from three facts: whether the track
+    /// has a name, what is in the SLOT, and whether the last tape is still
+    /// sitting on the eject.
+    ///
+    /// Note the order of the checks — naming first, then the slot. A player who
+    /// has neither should be told to save first, because that's the one they can
+    /// fix without walking away from the screen.
+    /// </summary>
     void RefreshPrintDialog()
     {
         if (_printSub == null) return;
 
         bool named = _project != null;
-        int blanks = BlanksHeld(_tier);
-        if (_quantity > blanks) _quantity = Mathf.Max(1, blanks);
-        _printQty.Refresh();
+        bool loaded = CassetteDeck.HasCassette;
+        bool blocked = CassetteDeck.HasEjected;
 
         _printSub.text = named ? _project.name.ToUpperInvariant() : "UNNAMED TRACK";
         _printSub.color = named ? InkDim : Warn;
+
+        if (!loaded)
+        {
+            _printSlotState.text = "PLEASE INSERT CASSETTE";
+            _printSlotState.color = Warn;
+        }
+        else
+        {
+            _printSlotState.text = "READY TO PRINT" + (CassetteDeck.InsertedTier >= 2 ? "  —  TAPE II" : "");
+            _printSlotState.color = Accent;
+        }
 
         if (!named)
         {
@@ -1081,63 +1071,75 @@ public partial class ShuttleComputerUI : MonoBehaviour
             _printNote.text = "save this project before pressing it to tape";
             _printNote.color = Warn;
         }
-        else if (blanks <= 0)
+        else if (!loaded)
         {
-            _printNote.text = "no blank " + (_tier >= 2 ? "TAPE II" : "TAPE I") + " in your hotbar";
+            _printNote.text = "put a blank in the slot on the machine";
+            _printNote.color = Warn;
+        }
+        else if (blocked)
+        {
+            _printNote.text = "take the last tape off the machine first";
             _printNote.color = Warn;
         }
         else if (ProjectDirty)
         {
             // Not a blocker: pressing what is on the deck is legitimate. But it
             // will not be what the shelf holds, and you should know that.
-            _printNote.text = blanks + " blank in hotbar - pressing UNSAVED changes";
+            _printNote.text = "pressing UNSAVED changes";
             _printNote.color = Warn;
         }
         else
         {
-            _printNote.text = blanks + " blank " + (blanks == 1 ? "tape" : "tapes") + " in your hotbar";
+            _printNote.text = "one tape, then it ejects";
             _printNote.color = InkGhost;
         }
 
-        bool canPrint = named && blanks > 0;
+        bool canPrint = named && loaded && !blocked;
         _printConfirm.color = canPrint ? Ink : Locked;
         _printConfirmLabel.color = canPrint ? Hex("04120eff") : InkGhost;
     }
 
     /// <summary>
-    /// Consume blanks, freeze the track, hand over the tapes.
+    /// Freeze the track onto the seated blank and spit it out.
     ///
     /// The track pressed is WHAT IS ON THE DECK, not what the shelf holds — if
     /// they differ the dialog says so first. Freezing is what makes the tape
     /// independent of the project forever after.
+    ///
+    /// THE TIER COMES FROM THE SLOT. Nothing else is consulted: the blank was
+    /// already spent when it went in, so there is no hotbar count to reconcile
+    /// and no way for the number on screen to disagree with what's in the
+    /// machine.
+    ///
+    /// On success the WHOLE COMPUTER CLOSES. That is deliberate — the tape is
+    /// now a thing in the world, and the player has to look up from the screen
+    /// and take it.
     /// </summary>
     void DoPrint()
     {
         if (_project == null) { Toast("SAVE THE PROJECT FIRST"); return; }
-        if (Hotbar.Instance == null) return;
+        if (!CassetteDeck.HasCassette) { Toast("PLEASE INSERT CASSETTE"); return; }
+        if (CassetteDeck.HasEjected) { Toast("TAKE THE LAST TAPE OFF THE MACHINE"); return; }
 
-        Hotbar.ItemId blankId = BlankIdFor(_tier);
-        int blanks = BlanksHeld(_tier);
-        int want = Mathf.Clamp(_quantity, 1, blanks);
-        if (want <= 0) { Toast("NO BLANK TAPES IN YOUR HOTBAR"); return; }
-
-        TraxPrints.Record press = TraxPrints.Register(_project.name, _inst.Track, _tier);
+        TraxPrints.Record press = TraxPrints.Register(_project.name, _inst.Track,
+                                                      CassetteDeck.InsertedTier);
         if (press == null) return;
 
-        // Make room BEFORE spending, so a full hotbar can never eat the blanks
-        // and hand back nothing.
-        int placed = Hotbar.Instance.AddCassette(press.id, want);
-        if (placed <= 0)
-        {
-            Toast("NO ROOM IN YOUR HOTBAR");
-            return;
-        }
-        Hotbar.Instance.SpendResource(blankId, placed);
-
+        // CLOSE FIRST, THEN PRINT. The order is the feature: CassetteSlot plays
+        // the tape sliding back out the moment the deck changes, and the player
+        // has to be looking at the machine to see it. Printing first would run
+        // the ejection behind a full-screen computer UI and the tape would just
+        // turn up in their pocket.
+        //
+        // Nothing can fail between here and the deck call — both refusal cases
+        // are checked above — so closing early cannot strand the UI.
         ClosePrint();
-        string tierTxt = _tier >= 2 ? " II" : "";
-        Toast("PRESSED x" + placed + "  " + press.name.ToUpperInvariant() + tierTxt +
-              (placed < want ? "  (HOTBAR FULL)" : ""));
+        Close();
+
+        // PrintTo owns the transition: the slot empties and the tape becomes the
+        // pending ejection in one step, so there is no frame in which the blank
+        // has been consumed and no tape exists.
+        CassetteDeck.PrintTo(press.id);
     }
 
     void ClosePrint()

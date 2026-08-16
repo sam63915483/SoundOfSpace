@@ -37,7 +37,15 @@ public class TevPaymentUI : MonoBehaviour
         go.AddComponent<TevPaymentUI>();
     }
 
-    TevFronting.PlayerState _state;
+    // The panel does not know WHAT the debt is — only how to read it and how to
+    // settle it. That indirection is what let the rent revamp point it at the
+    // lawn ledger without touching a line of the layout below, and it is what
+    // keeps the vaulted fronting path one call away from working again.
+    Func<int> _owed;
+    Func<int, int> _pay;      // takes an amount, OWNS the money movement, returns what actually moved
+    bool _allowOverpay;
+    string _title = "OUTSTANDING";
+
     Action<int> _onClosed;
     int _give;
     int _walletAtOpen;
@@ -61,15 +69,52 @@ public class TevPaymentUI : MonoBehaviour
 
     void OnDestroy() { if (Instance == this) Instance = null; }
 
+    /// <summary>
+    /// Pay the RENT. No overpaying: unlike a dealer's tab there is no bond to
+    /// build by slipping him extra, and a landlord holding your credit is a
+    /// ledger nobody asked for. MushroomQuest.PayRent caps at the balance too,
+    /// so this is belt and braces.
+    /// </summary>
+    /// <param name="onClosed">Paid amount, or 0 if cancelled.</param>
+    public void OpenForRent(Action<int> onClosed)
+    {
+        Open(() => MushroomQuest.RentBalance,
+             MushroomQuest.PayRent,
+             false, "RENT DUE", onClosed);
+    }
+
+    /// <summary>
+    /// VAULTED PATH — paying down a fronting debt (FeatureVault.TevFrontingEconomy).
+    /// Kept as a thin wrapper so restoring the flag needs no change here.
+    /// </summary>
     /// <param name="onClosed">Paid amount, or 0 if cancelled.</param>
     public void Open(TevFronting.PlayerState state, Action<int> onClosed)
     {
         if (state == null) { onClosed?.Invoke(0); return; }
-        _state = state;
+        Open(() => state.owed,
+             amount =>
+             {
+                 if (PlayerWallet.Instance == null) return 0;
+                 if (!PlayerWallet.Instance.SpendMoney(amount)) return 0;
+                 TevFronting.Pay(state, amount);
+                 return amount;
+             },
+             true, "OUTSTANDING", onClosed);
+    }
+
+    /// <param name="onClosed">Paid amount, or 0 if cancelled.</param>
+    public void Open(Func<int> owed, Func<int, int> pay, bool allowOverpay, string title,
+                     Action<int> onClosed)
+    {
+        if (owed == null || pay == null) { onClosed?.Invoke(0); return; }
+        _owed = owed;
+        _pay = pay;
+        _allowOverpay = allowOverpay;
+        _title = string.IsNullOrEmpty(title) ? "OUTSTANDING" : title;
         _onClosed = onClosed;
         _walletAtOpen = PlayerWallet.Instance != null ? PlayerWallet.Instance.Money : 0;
         // Pre-fill to the debt, capped by what you actually have.
-        _give = Mathf.Clamp(state.owed, 0, _walletAtOpen);
+        _give = Mathf.Clamp(owed(), 0, _walletAtOpen);
 
         Build();
         _root.SetActive(true);
@@ -106,18 +151,23 @@ public class TevPaymentUI : MonoBehaviour
 
     void SetGive(int v)
     {
-        // Never more than you're carrying. You CAN go over the debt — that's the
-        // overpay path and it builds bond faster.
-        _give = Mathf.Clamp(v, 0, _walletAtOpen);
+        // Never more than you're carrying. On the fronting path you CAN go over
+        // the debt — that's the overpay path and it builds bond faster. Rent
+        // stops at the balance.
+        int ceiling = _walletAtOpen;
+        if (!_allowOverpay) ceiling = Mathf.Min(ceiling, _owed != null ? _owed() : 0);
+        _give = Mathf.Clamp(v, 0, ceiling);
         Refresh();
     }
 
     void Commit()
     {
         if (_give <= 0) { Close(0); return; }
-        if (PlayerWallet.Instance == null || !PlayerWallet.Instance.SpendMoney(_give)) { Close(0); return; }
-        TevFronting.Pay(_state, _give);
-        Close(_give);
+        // The pay delegate owns the wallet, so a rejected payment leaves both
+        // sides untouched rather than debiting money into a debt that didn't
+        // move.
+        int paid = _pay != null ? _pay(_give) : 0;
+        Close(paid);
     }
 
     void Close(int paid)
@@ -134,10 +184,10 @@ public class TevPaymentUI : MonoBehaviour
     void Refresh()
     {
         if (_owedText == null) return;
-        int owed = _state != null ? _state.owed : 0;
+        int owed = _owed != null ? _owed() : 0;
         int keep = Mathf.Max(0, _walletAtOpen - _give);
 
-        _owedText.text = owed > 0 ? $"OUTSTANDING  ${owed:N0}" : "SETTLED";
+        _owedText.text = owed > 0 ? $"{_title}  ${owed:N0}" : "SETTLED";
         _yoursText.text = $"YOU KEEP\n${keep:N0}";
         _theirsText.text = $"TEV GETS\n${_give:N0}";
 
