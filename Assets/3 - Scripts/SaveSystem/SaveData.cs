@@ -124,9 +124,14 @@ public class BuyerLedgerSave
     public List<float> deadlineSecondsLeft = new List<float>();
     public List<int> eventCounts = new List<int>();
     public List<EvSave> events = new List<EvSave>();
+    // 2026-08-16 contract terms (tier-aware orders). ABSENT (empty) on older
+    // saves — BuyerLedger.ApplySave reads these two defensively by Count,
+    // unlike the always-written-together lists above.
+    public List<int> askTapeTier = new List<int>();
+    public List<int> modulesBasis = new List<int>();
 
     [Serializable]
-    public class EvSave { public int type; public float secondsAgo; public int a; public int b; public int tier; }
+    public class EvSave { public int type; public float secondsAgo; public int a; public int b; public int tier; public int c; }
 }
 
 // A planted mushroom sapling OR the mushroom it matured into (the MushroomGrowth

@@ -70,6 +70,10 @@ public static class TapeTrade
 
     public static int PickAskQty(string id) { return AskQty; }
 
+    /// The cassette tier a contact's order quotes: their preferred shell
+    /// (Type 2 snobs ask for Type 2; everyone else asks for the cheap one).
+    public static int PickAskTier(string id) { return AlienTaste.PreferredTier(id); }
+
     // ── what it is worth to them ─────────────────────────────────────────
 
     /// <summary>
@@ -99,17 +103,29 @@ public static class TapeTrade
     /// for themselves twice.
     /// </summary>
     public static int TruePricePerTape(string id, int genreIndex)
+        => TruePricePerTape(id, genreIndex, 1);
+
+    /// Tier-aware quote (2026-08-16): the same value formula an in-person
+    /// sale uses, at the given cassette tier. The tier multiplier lives in
+    /// TapeValue.Base; a shell-preference mismatch (a Type 1 quoted to a
+    /// Type 2 snob) additionally discounts through TierPayFactor — so a
+    /// buyer's two tier prices are honest about which one they'd rather have.
+    public static int TruePricePerTape(string id, int genreIndex, int tapeTier)
     {
         int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
-        return TapeValue.For(Mathf.Max(1, TraxLibrary.InstalledCount), 1, OrderSatisfaction,
-                             bond, true, AlienTaste.PayFactor(id));
+        return TapeValue.For(Mathf.Max(1, TraxLibrary.InstalledCount), tapeTier, OrderSatisfaction,
+                             bond, true,
+                             AlienTaste.PayFactor(id) * AlienTaste.TierPayFactor(id, tapeTier));
     }
 
     /// Their opening number. They lowball a little — that gap is what the
     /// player's counter is for.
     public static int OpeningOffer(string id, int genreIndex)
+        => OpeningOffer(id, genreIndex, 1);
+
+    public static int OpeningOffer(string id, int genreIndex, int tapeTier)
     {
-        return Mathf.Max(1, Mathf.RoundToInt(TruePricePerTape(id, genreIndex) * 0.9f));
+        return Mathf.Max(1, Mathf.RoundToInt(TruePricePerTape(id, genreIndex, tapeTier) * 0.9f));
     }
 
     /// <summary>
@@ -127,9 +143,14 @@ public static class TapeTrade
     public static BuyerDeals.CounterResult ResolveCounter(string id, int genreIndex, int ask,
                                                           int wantQty, int offerQty,
                                                           out int counterBack)
+        => ResolveCounter(id, genreIndex, ask, wantQty, offerQty, 1, out counterBack);
+
+    public static BuyerDeals.CounterResult ResolveCounter(string id, int genreIndex, int ask,
+                                                          int wantQty, int offerQty, int tapeTier,
+                                                          out int counterBack)
     {
         counterBack = 0;
-        int truePrice = TruePricePerTape(id, genreIndex);
+        int truePrice = TruePricePerTape(id, genreIndex, tapeTier);
         float patience = (float)AlienTaste.Patience(id);
         float ceiling = truePrice * patience * QtyMood(wantQty, offerQty);
 
@@ -137,7 +158,7 @@ public static class TapeTrade
 
         if (ask <= ceiling * 1.25f)
         {
-            int opening = OpeningOffer(id, genreIndex);
+            int opening = OpeningOffer(id, genreIndex, tapeTier);
             counterBack = Mathf.Min(Mathf.RoundToInt((opening + ask) / 2f), Mathf.FloorToInt(ceiling));
             counterBack = Mathf.Max(counterBack, 1);
             return BuyerDeals.CounterResult.CounterBack;

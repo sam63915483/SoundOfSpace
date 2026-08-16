@@ -75,6 +75,25 @@ public static class AlienFeedback
         return char.ToUpperInvariant(line[0]) + line.Substring(1);
     }
 
+    /// <summary>
+    /// Tier-aware rejection: same line as above, plus a shell-preference note
+    /// when the tape's tier sits wrong with this buyer — so "why didn't they
+    /// want it" is never a mystery when the tier contributed (Sam's rule:
+    /// they must be able to TELL you they prefer Type 1 or Type 2).
+    /// </summary>
+    public static string ForRejection(string alienId, double[] dials, string nearestGenre,
+                                      uint variant, int tapeTier)
+    {
+        string line = ForRejection(alienId, dials, nearestGenre, variant);
+        if (AlienTaste.TierMismatch(alienId, tapeTier))
+        {
+            line += AlienTaste.TierPreference(alienId) > 0
+                ? " And I only really rate Type 2 tapes."
+                : " And Type 2s cost too much — I stick to Type 1s.";
+        }
+        return line;
+    }
+
     /// Said when they are handed a song they have already been played.
     public static string ForRepeat(uint variant)
     {

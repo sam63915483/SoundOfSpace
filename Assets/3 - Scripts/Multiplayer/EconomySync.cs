@@ -305,6 +305,7 @@ public class EconomySync : MonoBehaviour
         reader.ReadValueSafe(out string buyerId);
         reader.ReadValueSafe(out int a);
         reader.ReadValueSafe(out int b);
+        reader.ReadValueSafe(out int c);   // cassette tier (0 = unset)
 
         var dir = BuyerMessageDirector.Instance;
         var buyer = BuyerLedger.Get(buyerId);
@@ -317,8 +318,8 @@ public class EconomySync : MonoBehaviour
         // with, rather than their tap vanishing silently.
         switch (replyKind)
         {
-            case ReplyAccept:  dir.Accept(buyer, a); break;
-            case ReplyCounter: dir.Counter(buyer, a, b); break;
+            case ReplyAccept:  dir.Accept(buyer, a, c); break;
+            case ReplyCounter: dir.Counter(buyer, a, b, c); break;
             case ReplyDecline: dir.Decline(buyer); break;
         }
     }
@@ -372,6 +373,7 @@ public class EconomySync : MonoBehaviour
         reader.ReadValueSafe(out int qty);
         reader.ReadValueSafe(out byte keptAppointment);
         reader.ReadValueSafe(out byte matchedTaste);
+        reader.ReadValueSafe(out int bondBonus);
         reader.ReadValueSafe(out byte hasDials);
         var dials = ReadDials(reader, hasDials);
         if (string.IsNullOrEmpty(buyerId) || qty <= 0) return;
@@ -381,7 +383,7 @@ public class EconomySync : MonoBehaviour
         // this the host's deadline sweep fired "you never showed" after a
         // guest's successful, paid delivery.
         BuyerLedger.ReportTapeDeal(buyerId, genreIndex, pricePerCap, qty,
-                                   keptAppointment != 0, matchedTaste != 0);
+                                   keptAppointment != 0, matchedTaste != 0, bondBonus);
         if (dials != null) TapeMemory.Remember(buyerId, dials);
     }
 
@@ -424,16 +426,16 @@ public class EconomySync : MonoBehaviour
     /// — the two machines would hold different conversations with the same
     /// alien. Sent as a request; the answer arrives as a state broadcast.
     /// </summary>
-    public static bool RouteAccept(string buyerId, int windowMinutes)
-        => SendReply(ReplyAccept, buyerId, windowMinutes, 0);
+    public static bool RouteAccept(string buyerId, int windowMinutes, int tapeTier = 0)
+        => SendReply(ReplyAccept, buyerId, windowMinutes, 0, tapeTier);
 
-    public static bool RouteCounter(string buyerId, int askPerCap, int offerQty)
-        => SendReply(ReplyCounter, buyerId, askPerCap, offerQty);
+    public static bool RouteCounter(string buyerId, int askPerCap, int offerQty, int tapeTier = 0)
+        => SendReply(ReplyCounter, buyerId, askPerCap, offerQty, tapeTier);
 
     public static bool RouteDecline(string buyerId)
-        => SendReply(ReplyDecline, buyerId, 0, 0);
+        => SendReply(ReplyDecline, buyerId, 0, 0, 0);
 
-    static bool SendReply(byte replyKind, string buyerId, int a, int b)
+    static bool SendReply(byte replyKind, string buyerId, int a, int b, int c)
     {
         if (!ShouldRoute() || string.IsNullOrEmpty(buyerId)) return false;
         Instance.Send(w =>
@@ -443,6 +445,7 @@ public class EconomySync : MonoBehaviour
             w.WriteValueSafe(buyerId);
             w.WriteValueSafe(a);
             w.WriteValueSafe(b);
+            w.WriteValueSafe(c);
         });
         return true;
     }
@@ -478,7 +481,8 @@ public class EconomySync : MonoBehaviour
     /// writes, or the next snapshot wipes them anyway.
     /// </summary>
     public static bool ReportTapeSale(string buyerId, int genreIndex, int pricePerCap, int qty,
-                                      bool keptAppointment, bool matchedTaste, double[] heardDials)
+                                      bool keptAppointment, bool matchedTaste, double[] heardDials,
+                                      int bondBonus = 0)
     {
         if (!ShouldRoute() || string.IsNullOrEmpty(buyerId)) return false;
         Instance.Send(w =>
@@ -490,6 +494,7 @@ public class EconomySync : MonoBehaviour
             w.WriteValueSafe(qty);
             w.WriteValueSafe((byte)(keptAppointment ? 1 : 0));
             w.WriteValueSafe((byte)(matchedTaste ? 1 : 0));
+            w.WriteValueSafe(bondBonus);
             WriteDials(w, heardDials);
         });
         return true;

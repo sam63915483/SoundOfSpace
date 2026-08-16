@@ -45,7 +45,13 @@ public class MessagesScreen : MonoBehaviour
     static readonly Color ApptBg     = new Color32(0x20, 0x30, 0x1F, 0xFF);
 
     enum View { Index, Thread, Card }
-    enum ChipMode { Main, WindowPick, CounterSlider }
+    enum ChipMode { Main, TierPick, WindowPick, CounterSlider }
+
+    // Tier-aware deals (2026-08-16): the tier chosen on the accept path
+    // (carried into dir.Accept) and the tier the counter slider is currently
+    // priced against.
+    int _tierPicked = 0;
+    int _tierAtBuild = 1;
 
     System.Action _onExit;
     System.Action _openHalChat;
@@ -599,7 +605,8 @@ public class MessagesScreen : MonoBehaviour
                 where = string.IsNullOrEmpty(body) ? $" · ~{dist} m" : $" · {body}, ~{dist} m";
             }
         }
-        string line = $"MEETUP — {b.askQty} {wantWord} @ {b.offerPerCap} · {clock}{where}";
+        string tierWord = b.askTapeTier >= 1 ? $" T{b.askTapeTier}" : "";
+        string line = $"MEETUP — {b.askQty} {wantWord}{tierWord} @ {b.offerPerCap} · {clock}{where}";
         if (_apptText.text != line) _apptText.text = line;
         var col = left < 60f ? WarnAmber : OkGreen;
         if (_apptText.color != col) _apptText.color = col;
@@ -627,7 +634,7 @@ public class MessagesScreen : MonoBehaviour
 
         if (_chipMode == ChipMode.CounterSlider && b.convo == BuyerLedger.Convo.AwaitingReply)
         {
-            trayLE.preferredHeight = 150f;
+            trayLE.preferredHeight = 172f;   // +22 for the tier toggle row
             BuildCounterSlider(b, dir);
             return;
         }
@@ -646,27 +653,54 @@ public class MessagesScreen : MonoBehaviour
         if (b.convo == BuyerLedger.Convo.PriceAgreed || _chipMode == ChipMode.WindowPick)
         {
             bool agreed = b.convo == BuyerLedger.Convo.PriceAgreed;
+            // Tier only travels on the fresh-accept path; a negotiated price
+            // (counter-back / price-agreed) already belongs to a tier.
+            int tierArg = agreed ? 0 : _tierPicked;
             foreach (int w in BuyerDeals.WindowMinutes)
             {
                 int captured = w;
                 int pct = Mathf.RoundToInt((BuyerDeals.GratitudeBonus(w) - 1f) * 100f);
-                Chip($"~{w} MIN +{pct}%", OkGreen, OkGreenBg, () => { dir.Accept(b, captured); AfterChipAction(); });
+                Chip($"~{w} MIN +{pct}%", OkGreen, OkGreenBg, () => { dir.Accept(b, captured, tierArg); AfterChipAction(); });
             }
             if (agreed) Chip("NOT NOW", TextDim, DimBtnBg, () => { dir.Decline(b); AfterChipAction(); });
             else Chip("BACK", TextDim, DimBtnBg, () => { _chipMode = ChipMode.Main; RebuildChips(b); });
             return;
         }
 
+        // Accepting: first say WHICH SHELL you'll bring — their order named a
+        // tier, but a player who only stocks Type 2s can offer those instead
+        // (the price is the buyer's own quote for that tier).
+        if (_chipMode == ChipMode.TierPick)
+        {
+            int t1 = TapeTrade.OpeningOffer(b.id, b.askTier, 1);
+            int t2 = TapeTrade.OpeningOffer(b.id, b.askTier, 2);
+            int want = b.askTapeTier >= 1 ? b.askTapeTier : 1;
+            Chip($"TYPE 1 · {t1}" + (want == 1 ? " ◄" : ""), OkGreen, OkGreenBg,
+                 () => { _tierPicked = 1; _chipMode = ChipMode.WindowPick; RebuildChips(b); });
+            Chip($"TYPE 2 · {t2}" + (want == 2 ? " ◄" : ""), OkGreen, OkGreenBg,
+                 () => { _tierPicked = 2; _chipMode = ChipMode.WindowPick; RebuildChips(b); });
+            Chip("BACK", TextDim, DimBtnBg, () => { _chipMode = ChipMode.Main; RebuildChips(b); });
+            return;
+        }
+
         if (b.convo == BuyerLedger.Convo.AwaitingCounterBack)
         {
-            Chip($"TAKE {b.counterBackPerCap}", OkGreen, OkGreenBg, () => { _chipMode = ChipMode.WindowPick; RebuildChips(b); });
+            Chip($"TAKE {b.counterBackPerCap}", OkGreen, OkGreenBg, () => { _tierPicked = 0; _chipMode = ChipMode.WindowPick; RebuildChips(b); });
             Chip("DECLINE", BadRed, DimBtnBg, () => { dir.Decline(b); AfterChipAction(); });
             return;
         }
 
         // AwaitingReply.
-        Chip("ACCEPT", OkGreen, OkGreenBg, () => { _chipMode = ChipMode.WindowPick; RebuildChips(b); });
-        Chip("COUNTER", WarnAmber, WarnBg, () => { _chipMode = ChipMode.CounterSlider; RebuildChips(b); });
+        Chip("ACCEPT", OkGreen, OkGreenBg, () =>
+        {
+            _tierPicked = b.askTapeTier >= 1 ? b.askTapeTier : 1;
+            _chipMode = ChipMode.TierPick; RebuildChips(b);
+        });
+        Chip("COUNTER", WarnAmber, WarnBg, () =>
+        {
+            _tierAtBuild = b.askTapeTier >= 1 ? b.askTapeTier : 1;
+            _chipMode = ChipMode.CounterSlider; RebuildChips(b);
+        });
         Chip("NOT NOW", TextDim, DimBtnBg, () => { dir.Decline(b); AfterChipAction(); });
     }
 
@@ -701,9 +735,43 @@ public class MessagesScreen : MonoBehaviour
         var hlg = _chipsRow.gameObject.GetComponent<HorizontalLayoutGroup>();
         if (hlg != null) hlg.enabled = false;   // manual layout in this mode
 
-        _priceMin = b.offerPerCap;
-        int priceMax = Mathf.Max(_priceMin + 10, Mathf.RoundToInt(b.offerPerCap * 1.55f));
-        int priceStart = Mathf.RoundToInt(b.offerPerCap * 1.1f);
+        // The floor is THEIR quote for the tier being argued: the order's own
+        // number when countering at their tier, the re-derived quote when the
+        // player toggles to the other shell ("I only sell Type 2s").
+        int orderTier = b.askTapeTier >= 1 ? b.askTapeTier : 1;
+        if (_tierAtBuild != 1 && _tierAtBuild != 2) _tierAtBuild = orderTier;
+        _priceMin = _tierAtBuild == orderTier
+            ? b.offerPerCap
+            : TapeTrade.OpeningOffer(b.id, b.askTier, _tierAtBuild);
+        int priceMax = Mathf.Max(_priceMin + 10, Mathf.RoundToInt(_priceMin * 1.55f));
+        int priceStart = Mathf.RoundToInt(_priceMin * 1.1f);
+
+        // Tier toggle row along the top.
+        var tierRow = NewUI("TierRow", _chipsRow);
+        tierRow.anchorMin = new Vector2(0f, 1f); tierRow.anchorMax = new Vector2(1f, 1f);
+        tierRow.pivot = new Vector2(0.5f, 1f);
+        tierRow.sizeDelta = new Vector2(-10f, 18f);
+        tierRow.anchoredPosition = new Vector2(0f, -2f);
+        var thlg = tierRow.gameObject.AddComponent<HorizontalLayoutGroup>();
+        thlg.spacing = 6f;
+        thlg.childControlWidth = true; thlg.childControlHeight = true;
+        thlg.childForceExpandWidth = true; thlg.childForceExpandHeight = true;
+        for (int tier = 1; tier <= 2; tier++)
+        {
+            int captured = tier;
+            bool active = _tierAtBuild == tier;
+            var tRT2 = NewUI($"Tier{tier}", tierRow);
+            var tBg = tRT2.gameObject.AddComponent<Image>();
+            tBg.sprite = Rounded(8);
+            tBg.type = Image.Type.Sliced;
+            tBg.color = active ? OkGreenBg : DimBtnBg;
+            tBg.raycastTarget = true;
+            var tBtn = tRT2.gameObject.AddComponent<Button>();
+            tBtn.onClick.AddListener(() => { _tierAtBuild = captured; RebuildChips(b); });
+            var tTxt = MakeText(tRT2, $"TYPE {tier}", 9, active ? OkGreen : TextDim, TextAlignmentOptions.Center);
+            Fill(tTxt.rectTransform);
+            tTxt.fontStyle = FontStyles.Bold;
+        }
         // NO QUANTITY SLIDER. It was a mushroom control: caps are fungible
         // and a buyer has an appetite, so "how many" was the interesting
         // question. An order is for ONE tape (TapeTrade.AskQty), which left a
@@ -711,13 +779,14 @@ public class MessagesScreen : MonoBehaviour
         // ever make the deal worse. Price is the one number left to argue over.
         _askQtyAtBuild = TapeTrade.AskQty;
 
-        // Readout block (deal line / total / risk).
+        // Readout block (deal line / total / risk), shifted down 22 px for the
+        // tier row above.
         _sliderPrice = MakeText(_chipsRow, "", 20, TextMain, TextAlignmentOptions.Center);
         var pRT = _sliderPrice.rectTransform;
         pRT.anchorMin = new Vector2(0f, 1f); pRT.anchorMax = new Vector2(1f, 1f);
         pRT.pivot = new Vector2(0.5f, 1f);
         pRT.sizeDelta = new Vector2(0f, 24f);
-        pRT.anchoredPosition = new Vector2(0f, -3f);
+        pRT.anchoredPosition = new Vector2(0f, -25f);
         _sliderPrice.fontStyle = FontStyles.Bold;
 
         _sliderTotal = MakeText(_chipsRow, "", 9, TextDim, TextAlignmentOptions.Center);
@@ -725,18 +794,18 @@ public class MessagesScreen : MonoBehaviour
         tRT.anchorMin = new Vector2(0f, 1f); tRT.anchorMax = new Vector2(1f, 1f);
         tRT.pivot = new Vector2(0.5f, 1f);
         tRT.sizeDelta = new Vector2(0f, 11f);
-        tRT.anchoredPosition = new Vector2(0f, -27f);
+        tRT.anchoredPosition = new Vector2(0f, -49f);
 
         _sliderRisk = MakeText(_chipsRow, "", 9, OkGreen, TextAlignmentOptions.Center);
         var rRT = _sliderRisk.rectTransform;
         rRT.anchorMin = new Vector2(0f, 1f); rRT.anchorMax = new Vector2(1f, 1f);
         rRT.pivot = new Vector2(0.5f, 1f);
         rRT.sizeDelta = new Vector2(0f, 12f);
-        rRT.anchoredPosition = new Vector2(0f, -39f);
+        rRT.anchoredPosition = new Vector2(0f, -61f);
         _sliderRisk.fontStyle = FontStyles.Bold;
 
         // PRICE on the risk gradient, and nothing else to set.
-        _priceSlider = BuildSliderRow(_chipsRow, "PRICE", -55f, _priceMin, priceMax, priceStart,
+        _priceSlider = BuildSliderRow(_chipsRow, "PRICE", -77f, _priceMin, priceMax, priceStart,
                                       RiskGradient(), out _priceHandleLabel);
 
         // SEND / BACK buttons along the bottom.
@@ -762,7 +831,7 @@ public class MessagesScreen : MonoBehaviour
         sendBtn.onClick.AddListener(() =>
         {
             if (_priceSlider == null) return;
-            dir.Counter(b, Mathf.RoundToInt(_priceSlider.value), _askQtyAtBuild);
+            dir.Counter(b, Mathf.RoundToInt(_priceSlider.value), _askQtyAtBuild, _tierAtBuild);
             AfterChipAction();
         });
         _sliderSendLabel = MakeText(sendRT, "", 11, WarnAmber, TextAlignmentOptions.Center);
@@ -807,7 +876,7 @@ public class MessagesScreen : MonoBehaviour
         int q = _askQtyAtBuild;
         if (p == _lastPriceVal) return;
         _lastPriceVal = p;
-        _sliderPrice.text = $"<size=10><color=#8B95A3>ONE {TapeTrade.TapeWord(q).ToUpperInvariant()} FOR</color></size> {p}";
+        _sliderPrice.text = $"<size=10><color=#8B95A3>ONE TYPE {_tierAtBuild} {TapeTrade.TapeWord(q).ToUpperInvariant()} FOR</color></size> {p}";
         _sliderTotal.text = $"<color=#8B95A3>they offered</color> <color=#FFD732>{_priceMin}</color>";
         RiskFor(p, _priceMin, out string risk, out Color col);
         _sliderRisk.text = risk;

@@ -36,6 +36,63 @@ public static class AlienTasteTests
               what + ": got " + got.ToString("0.###") + ", want ~" + want.ToString("0.###"));
     }
 
+    // ── tape-tier preferences (2026-08-16, Sam's design) ─────────────────
+    static void TierPreferences()
+    {
+        Console.WriteLine("tier preferences");
+        var ids = Ids();
+
+        int snobs = 0, cheap = 0, neutral = 0;
+        foreach (var id in ids)
+        {
+            int p = AlienTaste.TierPreference(id);
+            Check(p >= -1 && p <= 1, "preference in range for " + id);
+            Eq(AlienTaste.TierPreference(id), p, "preference is stable for " + id);
+            if (p > 0) snobs++; else if (p < 0) cheap++; else neutral++;
+
+            // Preferred tier never mismatches; the other tier mismatches iff
+            // the buyer has a preference at all.
+            int pref = AlienTaste.PreferredTier(id);
+            Check(!AlienTaste.TierMismatch(id, pref), "preferred tier never mismatches");
+            Eq(AlienTaste.TierPayFactor(id, pref), 1.0, "preferred tier pays full");
+            if (p != 0)
+            {
+                int other = pref == 2 ? 1 : 2;
+                Check(AlienTaste.TierMismatch(id, other), "the other shell mismatches a preferring buyer");
+                Eq(AlienTaste.TierPayFactor(id, other), AlienTaste.TierMismatchPay, "mismatch discounts the pay");
+            }
+        }
+        // Shares roughly match the tuning consts over 200 ids (loose bands —
+        // this asserts the shape, not the sample noise).
+        Check(snobs > 30 && snobs < 90, "a real Type 2 snob population exists (" + snobs + "/200)");
+        Check(cheap > 30 && cheap < 90, "a real Type 1 cheapskate population exists (" + cheap + "/200)");
+        Check(neutral > 40, "most-ish buyers don't care (" + neutral + "/200)");
+
+        // The verdict downgrade: a mismatched tier turns a certain like into a
+        // coin flip and a coin flip into a no — never a hard block on its own.
+        string snob = null, indifferent = null;
+        foreach (var id in ids)
+        {
+            if (snob == null && AlienTaste.TierPreference(id) > 0) snob = id;
+            if (indifferent == null && AlienTaste.TierPreference(id) == 0) indifferent = id;
+        }
+        Check(snob != null && indifferent != null, "found a snob and an indifferent buyer to test");
+        if (snob != null)
+        {
+            double[] perfect = AlienTaste.TastePoint(snob);   // sat 100 -> Liked
+            Eq(AlienTaste.GateFor(snob, perfect, AlienTaste.Satisfaction(snob, perfect), 2),
+               AlienTaste.Verdict.Liked, "a snob likes a perfect Type 2 outright");
+            Eq(AlienTaste.GateFor(snob, perfect, AlienTaste.Satisfaction(snob, perfect), 1),
+               AlienTaste.Verdict.CoinFlip, "the same perfect song on a Type 1 drops to a coin flip");
+        }
+        if (indifferent != null)
+        {
+            double[] perfect = AlienTaste.TastePoint(indifferent);
+            Eq(AlienTaste.GateFor(indifferent, perfect, AlienTaste.Satisfaction(indifferent, perfect), 1),
+               AlienTaste.Verdict.Liked, "an indifferent buyer ignores the shell");
+        }
+    }
+
     // A spread of realistic ids: streamed aliens are "cell:slot:cellid",
     // hand-placed ones are "scene:Name".
     static string[] Ids()
@@ -54,6 +111,7 @@ public static class AlienTasteTests
         Gate();
         Feedback();
         Pricing();
+        TierPreferences();
         TapeOfferTests.RunAll();
         _checks += TapeOfferTests.Checks;
         _failures += TapeOfferTests.Failures;

@@ -57,6 +57,11 @@ public static class BuyerLedger
         public int type;
         public float at;      // Time.unscaledTime when it happened
         public int a, b, tier;
+        // Fourth slot (2026-08-16): the CASSETTE tier (1/2) on order events —
+        // `tier` was already taken by the genre index (legacy name). 0 on
+        // events from before the field existed; renderers treat 0 as "unknown,
+        // say nothing".
+        public int c;
     }
 
     public class Buyer
@@ -77,6 +82,17 @@ public static class BuyerLedger
         public int windowMinutes;     // 5 / 10 / 15 once Scheduled
         public float deadline;        // unscaledTime; Scheduled only (grace added by the director)
         public float nextTextAt;      // director pacing: earliest next want-text
+
+        // ── Contract terms (2026-08-16, appended for save-order stability) ──
+        // The cassette tier the order is FOR (1 or 2). 0 on old saves = treat
+        // as 1. Part of the goods spec — a Type 1 delivered on a Type 2 deal
+        // pays pro-rata (about half), never a surprise refusal.
+        public int askTapeTier;
+        // How many plugins the quote was priced against (TraxLibrary
+        // .InstalledCount at quote time). The other objective contract term:
+        // a 2-module sketch delivered on a 4-plugin quote pays pro-rata.
+        // 0 on old saves = fall back to the live InstalledCount.
+        public int modulesBasis;
     }
 
     static readonly Dictionary<string, Buyer> _buyers = new Dictionary<string, Buyer>();
@@ -178,7 +194,7 @@ public static class BuyerLedger
     /// BuyerTexts reads back to name the genre.
     /// </summary>
     public static bool ReportTapeDeal(string id, int genreIndex, int price, int qty,
-                                      bool keptAppointment, bool matchedTaste)
+                                      bool keptAppointment, bool matchedTaste, int bondBonus = 0)
     {
         var b = GetOrCreate(id);
         if (b == null) return false;
@@ -187,7 +203,8 @@ public static class BuyerLedger
         b.dealsCompleted++;
         int gain = BondPerDeal
                  + (keptAppointment ? BondKeptAppointment : 0)
-                 + (matchedTaste ? BondFavouriteTier : 0);
+                 + (matchedTaste ? BondFavouriteTier : 0)
+                 + bondBonus;   // e.g. TapeOffer.BondOnGenerousDeal for asking under their value
         b.bond = Mathf.Clamp(b.bond + gain, 0, 100);
 
         if (keptAppointment) Log(b, EvType.FulfilledExact, price, qty, genreIndex, markUnread: false);
@@ -295,16 +312,28 @@ public static class BuyerLedger
 
     // ── Events / thread ────────────────────────────────────────────────────
 
-    public static void Log(Buyer b, EvType t, int a, int bb, int tier, bool markUnread = true)
+    public static void Log(Buyer b, EvType t, int a, int bb, int tier, bool markUnread = true, int c = 0)
     {
         if (b == null) return;
         Touch();
-        b.events.Add(new Ev { type = (int)t, at = Now, a = a, b = bb, tier = tier });
+        b.events.Add(new Ev { type = (int)t, at = Now, a = a, b = bb, tier = tier, c = c });
         if (b.events.Count > MaxEventsPerBuyer) b.events.RemoveAt(0);
         // Player-authored events never count as unread; buyer-authored do.
         if (markUnread && t != EvType.PlayerAccepted && t != EvType.PlayerCountered
                        && t != EvType.PlayerDeclined && t != EvType.Scheduled)
             b.unread++;
+    }
+
+    /// Walking away from a declared FINAL OFFER. A smaller sting than a
+    /// refused counter (they liked the song — you only wasted their time),
+    /// and deliberately no 5-minute bar: the final-offer flow's whole point
+    /// is that probing a ceiling teaches instead of punishing.
+    public static void FinalOfferRefused(string id)
+    {
+        var b = Get(id);
+        if (b == null) return;
+        Touch();
+        b.bond = Mathf.Clamp(b.bond - 4, 0, 100);
     }
 
     public static void MarkRead(string id)
@@ -387,6 +416,7 @@ public static class BuyerLedger
         s.unread.Clear(); s.convo.Clear(); s.askTier.Clear(); s.askQty.Clear();
         s.offerPerCap.Clear(); s.counterBack.Clear(); s.windowMinutes.Clear();
         s.deadlineSecondsLeft.Clear(); s.eventCounts.Clear(); s.events.Clear();
+        s.askTapeTier.Clear(); s.modulesBasis.Clear();
         float now = Now;
         foreach (var b in _buyers.Values)
         {
@@ -402,12 +432,14 @@ public static class BuyerLedger
             s.counterBack.Add(b.counterBackPerCap);
             s.windowMinutes.Add(b.windowMinutes);
             s.deadlineSecondsLeft.Add(b.convo == Convo.Scheduled ? Mathf.Max(0f, b.deadline - now) : 0f);
+            s.askTapeTier.Add(b.askTapeTier);
+            s.modulesBasis.Add(b.modulesBasis);
             s.eventCounts.Add(b.events.Count);
             for (int i = 0; i < b.events.Count; i++)
             {
                 var e = b.events[i];
                 s.events.Add(new BuyerLedgerSave.EvSave
-                    { type = e.type, secondsAgo = Mathf.Max(0f, now - e.at), a = e.a, b = e.b, tier = e.tier });
+                    { type = e.type, secondsAgo = Mathf.Max(0f, now - e.at), a = e.a, b = e.b, tier = e.tier, c = e.c });
             }
         }
     }
@@ -435,12 +467,17 @@ public static class BuyerLedger
                 counterBackPerCap = s.counterBack[i],
                 windowMinutes = s.windowMinutes[i],
                 deadline = (Convo)s.convo[i] == Convo.Scheduled ? now + s.deadlineSecondsLeft[i] : 0f,
+                // New lists are absent (empty) on pre-feature saves — every
+                // other list here has always been written together, but these
+                // two must carry their own guard or old saves throw.
+                askTapeTier = (s.askTapeTier != null && i < s.askTapeTier.Count) ? s.askTapeTier[i] : 0,
+                modulesBasis = (s.modulesBasis != null && i < s.modulesBasis.Count) ? s.modulesBasis[i] : 0,
             };
             int n = s.eventCounts[i];
             for (int e = 0; e < n && evCursor < s.events.Count; e++, evCursor++)
             {
                 var es = s.events[evCursor];
-                b.events.Add(new Ev { type = es.type, at = now - es.secondsAgo, a = es.a, b = es.b, tier = es.tier });
+                b.events.Add(new Ev { type = es.type, at = now - es.secondsAgo, a = es.a, b = es.b, tier = es.tier, c = es.c });
             }
             _buyers[b.id] = b;
         }

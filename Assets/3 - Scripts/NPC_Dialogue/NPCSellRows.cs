@@ -87,9 +87,10 @@ public static class NPCSellRows
         {
             int matching = TapeTrade.HeldMatching(tapeLedger.askTier);
             string want = TapeTrade.GenreName(tapeLedger.askTier);
+            string ordTier = tapeLedger.askTapeTier >= 1 ? $" T{tapeLedger.askTapeTier}" : "";
             tapeLabel = matching > 0
-                ? $"Deliver order — {tapeLedger.askQty} {want} @ {tapeLedger.offerPerCap}"
-                : $"Deliver order — {want} (none on you)";
+                ? $"Deliver order — {tapeLedger.askQty} {want}{ordTier} @ {tapeLedger.offerPerCap}"
+                : $"Deliver order — {want}{ordTier} (none on you)";
             tapeEnabled = matching > 0;
         }
         else

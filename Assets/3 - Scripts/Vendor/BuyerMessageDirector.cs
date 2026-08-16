@@ -223,24 +223,42 @@ public class BuyerMessageDirector : MonoBehaviour
         int genre = TapeTrade.PickAskGenre(b.id);
         b.askTier = genre;
         b.askQty = TapeTrade.PickAskQty(b.id);
-        b.offerPerCap = TapeTrade.OpeningOffer(b.id, genre);
+        // Contract terms (2026-08-16): the order names its CASSETTE TIER
+        // (their preferred shell) and records the plugin count the quote was
+        // priced against — both are goods-spec terms the delivery is graded on.
+        b.askTapeTier = TapeTrade.PickAskTier(b.id);
+        b.modulesBasis = Mathf.Max(1, TraxLibrary.InstalledCount);
+        b.offerPerCap = TapeTrade.OpeningOffer(b.id, genre, b.askTapeTier);
         b.convo = BuyerLedger.Convo.AwaitingReply;
-        BuyerLedger.Log(b, BuyerLedger.EvType.WantText, b.offerPerCap, b.askQty, b.askTier);
+        BuyerLedger.Log(b, BuyerLedger.EvType.WantText, b.offerPerCap, b.askQty, b.askTier, c: b.askTapeTier);
         Notify($"{AlienNames.For(b.id)} sent you a message");
     }
 
     // ── Player replies (called by MessagesScreen) ──────────────────────────
 
-    public void Accept(BuyerLedger.Buyer b, int windowMinutes)
+    /// <param name="tapeTier">1/2 = the player chose a cassette tier on the
+    /// accept path ("I'll bring a Type 2 instead") — the price re-derives at
+    /// that tier before scheduling. 0 = keep the order's tier (counter-back
+    /// and price-agreed accepts, where the number was negotiated already).</param>
+    public void Accept(BuyerLedger.Buyer b, int windowMinutes, int tapeTier = 0)
     {
         // On a guest this becomes a request to the host, which performs it and
         // broadcasts the result. Replying locally would be worse than useless:
         // the reply paths below roll dice, so the two machines would end up
         // holding different conversations with the same alien.
-        if (b != null && EconomySync.RouteAccept(b.id, windowMinutes)) return;
+        if (b != null && EconomySync.RouteAccept(b.id, windowMinutes, tapeTier)) return;
         if (b == null || (b.convo != BuyerLedger.Convo.AwaitingReply
                        && b.convo != BuyerLedger.Convo.AwaitingCounterBack
                        && b.convo != BuyerLedger.Convo.PriceAgreed)) return;
+        if ((tapeTier == 1 || tapeTier == 2)
+            && b.convo == BuyerLedger.Convo.AwaitingReply && tapeTier != b.askTapeTier)
+        {
+            // Deterministic re-quote at the chosen tier — the same number the
+            // TierPick chip displayed, so the player accepts exactly what they
+            // saw (guest and host derive it identically).
+            b.askTapeTier = tapeTier;
+            b.offerPerCap = TapeTrade.OpeningOffer(b.id, b.askTier, tapeTier);
+        }
         int agreed = b.convo == BuyerLedger.Convo.AwaitingCounterBack ? b.counterBackPerCap : b.offerPerCap;
         b.offerPerCap = agreed;
         b.counterBackPerCap = 0;
@@ -248,24 +266,29 @@ public class BuyerMessageDirector : MonoBehaviour
         b.deadline = Time.unscaledTime + windowMinutes * 60f;
         b.convo = BuyerLedger.Convo.Scheduled;
         BuyerLedger.Log(b, BuyerLedger.EvType.PlayerAccepted, windowMinutes, 0, b.askTier, markUnread: false);
-        BuyerLedger.Log(b, BuyerLedger.EvType.Scheduled, agreed, b.askQty, b.askTier, markUnread: false);
+        BuyerLedger.Log(b, BuyerLedger.EvType.Scheduled, agreed, b.askQty, b.askTier, markUnread: false, c: b.askTapeTier);
     }
 
     /// Player counters with a price AND a quantity (Sam's rule: you can
     /// short their ask — they buy but pay no premium — or oversupply, which
     /// cools them; BuyerDeals.QtyMood does the math). A counter-back is on
     /// PRICE only: your quantity stands.
-    public void Counter(BuyerLedger.Buyer b, int askPerCap, int offerQty)
+    public void Counter(BuyerLedger.Buyer b, int askPerCap, int offerQty, int tapeTier = 0)
     {
         // Guest → host. ResolveCounter below rolls for accept / counter-back /
         // refuse, so this must happen on exactly one machine.
-        if (b != null && EconomySync.RouteCounter(b.id, askPerCap, offerQty)) return;
+        if (b != null && EconomySync.RouteCounter(b.id, askPerCap, offerQty, tapeTier)) return;
         if (b == null || b.convo != BuyerLedger.Convo.AwaitingReply) return;
         askPerCap = Mathf.Max(1, askPerCap);
         offerQty = Mathf.Max(1, offerQty);
-        BuyerLedger.Log(b, BuyerLedger.EvType.PlayerCountered, askPerCap, offerQty, b.askTier, markUnread: false);
+        // The counter may propose a different cassette tier ("I only sell
+        // Type 2s — 30"): the tier becomes part of the deal being argued and
+        // the buyer's ceiling re-derives against it.
+        if (tapeTier == 1 || tapeTier == 2) b.askTapeTier = tapeTier;
+        int dealTier = b.askTapeTier >= 1 ? b.askTapeTier : 1;
+        BuyerLedger.Log(b, BuyerLedger.EvType.PlayerCountered, askPerCap, offerQty, b.askTier, markUnread: false, c: dealTier);
         var res = TapeTrade.ResolveCounter(b.id, b.askTier, askPerCap,
-                                            b.askQty, offerQty, out int counterBack);
+                                            b.askQty, offerQty, dealTier, out int counterBack);
         switch (res)
         {
             case BuyerDeals.CounterResult.Accept:

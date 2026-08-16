@@ -76,8 +76,9 @@ public static class AlienTaste
 
     /// Population shape: Unit^skew. 1 = uniform (the old behaviour); >1 piles
     /// the population at the tolerant end and leaves a fussy tail. At 2.5,
-    /// roughly 55% of aliens sit in the bottom quarter of the falloff band
-    /// (broad, cheap) and ~19% in the top third (fussy, premium).
+    /// ~57% of aliens sit in the bottom quarter of the falloff band (broad,
+    /// cheap) and ~15% in the top third (fussy, premium) — exact: bottom
+    /// quarter = 0.25^(1/2.5), top third = 1 − (2/3)^(1/2.5).
     public const double FalloffSkew = 2.5;
 
     /// <summary>
@@ -257,6 +258,57 @@ public static class AlienTaste
         return MinPatience + (MaxPatience - MinPatience) * Unit(H(id, ":patience"));
     }
 
+    // ── Tape-tier preference (2026-08-16, Sam's design) ──────────────────
+    //
+    // Some buyers rate the Type 2 shell (quality snobs), some stick to Type 1
+    // because Type 2s cost more than they'll ever pay, and the rest don't
+    // care. Its own salt — a fussy ear is not therefore a shell snob.
+    //
+    // A mismatched tier NEVER hard-blocks a sale on its own: it downgrades
+    // the verdict one step (Liked → CoinFlip → Rejected) and discounts what
+    // they pay, and the rejection line names it — so the player learns "this
+    // one only rates Type 2s" the same way they learn a favourite genre.
+
+    /// Share of the population that prefers Type 2 / Type 1. The remainder
+    /// (~40%) is tier-neutral.
+    public const double TierSnobShare  = 0.30;
+    public const double TierCheapShare = 0.30;
+
+    /// Pay multiplier when the tape's tier is not the one they prefer.
+    public const double TierMismatchPay = 0.75;
+
+    /// -1 = prefers Type 1 (cheap), 0 = doesn't care, +1 = prefers Type 2.
+    public static int TierPreference(string id)
+    {
+        double u = Unit(H(id, ":tierpref"));
+        if (u < TierCheapShare) return -1;
+        if (u > 1.0 - TierSnobShare) return 1;
+        return 0;
+    }
+
+    /// The tier this buyer's text orders quote. Neutral buyers order the
+    /// cheap shell — the player can counter-propose a Type 2.
+    public static int PreferredTier(string id)
+    {
+        return TierPreference(id) > 0 ? 2 : 1;
+    }
+
+    /// Does this tape's tier sit wrong with this buyer? Neutral buyers never
+    /// mismatch.
+    public static bool TierMismatch(string id, int tapeTier)
+    {
+        int pref = TierPreference(id);
+        if (pref == 0) return false;
+        return tapeTier != (pref > 0 ? 2 : 1);
+    }
+
+    /// Multiply into PayFactor wherever a specific tape is priced for a
+    /// specific buyer.
+    public static double TierPayFactor(string id, int tapeTier)
+    {
+        return TierMismatch(id, tapeTier) ? TierMismatchPay : 1.0;
+    }
+
     // ── Satisfaction ─────────────────────────────────────────────────────
 
     /// Euclidean distance between a track's dials and a taste point.
@@ -319,6 +371,21 @@ public static class AlienTaste
         if (satisfaction < LikeCertain && MatchesFavourite(id, dials))
             return Verdict.Liked;
         return Gate(satisfaction);
+    }
+
+    /// <summary>
+    /// Tier-aware verdict: a buyer with a shell preference downgrades a
+    /// mismatched-tier tape one step (Liked → CoinFlip → Rejected). Runs on
+    /// top of the hint contract — the genre promise gets them to Liked first,
+    /// then the tier bites — so an on-genre tape can at worst become a coin
+    /// flip, never a silent hard no. The feedback line is what names the tier
+    /// as the reason (AlienFeedback.ForRejection tier overload).
+    /// </summary>
+    public static Verdict GateFor(string id, double[] dials, double satisfaction, int tapeTier)
+    {
+        Verdict v = GateFor(id, dials, satisfaction);
+        if (v == Verdict.Rejected || !TierMismatch(id, tapeTier)) return v;
+        return v == Verdict.Liked ? Verdict.CoinFlip : Verdict.Rejected;
     }
 
     /// Does the classifier file this track under the alien's favourite genre,

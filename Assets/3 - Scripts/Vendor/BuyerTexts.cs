@@ -15,6 +15,9 @@ public static class BuyerTexts
     // they stay uppercase here even though the buyers text in lowercase.
     static string Genre(int genreIndex) => TapeTrade.GenreName(genreIndex);
     static string Tapes(int qty) => TapeTrade.TapeWord(qty);
+    // The CASSETTE tier rides the event's fourth slot (`c`); 0 = event from
+    // before tiers existed — say nothing rather than guess.
+    static string TierWord(int c) => c >= 1 ? $" (Type {c})" : "";
 
     public static string Render(string id, BuyerLedger.Ev e)
     {
@@ -24,9 +27,9 @@ public static class BuyerTexts
             case BuyerLedger.EvType.WantText:
                 switch (v)
                 {
-                    case 0:  return $"after {e.b} {Genre(e.tier)} {Tapes(e.b)}. I'll do {e.a} each if you can get here.";
-                    case 1:  return $"in the mood for something {Genre(e.tier)}. {e.b} of them, {e.a} each. come find me.";
-                    default: return $"nothing new to listen to. {e.b} {Genre(e.tier)} {Tapes(e.b)}, {e.a} each — you in?";
+                    case 0:  return $"after {e.b} {Genre(e.tier)} {Tapes(e.b)}{TierWord(e.c)}. I'll do {e.a} each if you can get here.";
+                    case 1:  return $"in the mood for something {Genre(e.tier)}. {e.b} of them{TierWord(e.c)}, {e.a} each. come find me.";
+                    default: return $"nothing new to listen to. {e.b} {Genre(e.tier)} {Tapes(e.b)}{TierWord(e.c)}, {e.a} each — you in?";
                 }
             case BuyerLedger.EvType.PlayerAccepted:
                 return $"on my way — give me {e.a} minutes.";
@@ -56,9 +59,9 @@ public static class BuyerTexts
             case BuyerLedger.EvType.Scheduled:
                 switch (v)
                 {
-                    case 0:  return $"good. {e.b} {Genre(e.tier)} at {e.a} each. I'll be waiting.";
-                    case 1:  return $"deal — {e.b} {Genre(e.tier)}, {e.a} each. don't dawdle.";
-                    default: return $"see you soon then. {e.b} {Genre(e.tier)} at {e.a}.";
+                    case 0:  return $"good. {e.b} {Genre(e.tier)}{TierWord(e.c)} at {e.a} each. I'll be waiting.";
+                    case 1:  return $"deal — {e.b} {Genre(e.tier)}{TierWord(e.c)}, {e.a} each. don't dawdle.";
+                    default: return $"see you soon then. {e.b} {Genre(e.tier)}{TierWord(e.c)} at {e.a}.";
                 }
             case BuyerLedger.EvType.FulfilledExact:
                 switch (v)
