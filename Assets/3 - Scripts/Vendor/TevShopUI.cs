@@ -91,7 +91,10 @@ public class TevShopUI : MonoBehaviour
     {
         new Entry { name = "Type 1", desc = "Ordinary stock.", price = 5,
                     item = Hotbar.ItemId.BlankTapeT1, chip = new Color32(0x79, 0xFF, 0xD0, 0xFF) },
-        new Entry { name = "Type 2", desc = "Worth double when you sell it.", price = 15,
+        // "Worth double when you sell it" overpromised: the x2 applies to the
+        // BASE, and a cheap buyer's pay factor can eat the whole premium at
+        // low plugin counts. Honest copy, same maths.
+        new Entry { name = "Type 2", desc = "Doubles a tape's base value. Best with more plugins.", price = 15,
                     item = Hotbar.ItemId.BlankTapeT2, chip = new Color32(0xFF, 0x4F, 0xD8, 0xFF) },
 
         new Entry { name = "THUMPER", desc = "Drums. Kick, snare and hat.",   plugin = "THUMPER", preInstalled = true },

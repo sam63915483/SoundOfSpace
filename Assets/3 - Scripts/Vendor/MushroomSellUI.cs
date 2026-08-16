@@ -406,7 +406,10 @@ public class MushroomSellUI : MonoBehaviour
                 // A lost coin flip used to as well, which meant a track refused
                 // purely by Random.value could never be offered to that alien
                 // again — doubling how harsh the early game felt.
-                if (verdict == AlienTaste.Verdict.Rejected)
+                // Memory is WORLD state: a guest routes the write to the host
+                // (which owns TapeMemory and rebroadcasts it in the snapshot).
+                if (verdict == AlienTaste.Verdict.Rejected
+                    && !EconomySync.ReportTapeHeard(_buyerId, dials))
                     TapeMemory.Remember(_buyerId, dials);
                 SetResult($"\"{AlienFeedback.ForRejection(_buyerId, dials, AlienTaste.FavouriteGenre(_buyerId), variant)}\"", C_Err);
                 Refresh();
@@ -489,7 +492,13 @@ public class MushroomSellUI : MonoBehaviour
         int leftover = _offerCountN - qty;
         var soldRec = Press;
         int soldGenre = GenreIndexOf(soldRec);
-        bool matchedTaste = soldGenre == AlienTaste.FavouriteGenreIndex(_buyerId);
+        // Blend-aware, matching the order gate and the hint contract: a
+        // "Clangin' VOLT" sold to a CLANG fan counts as hitting their taste
+        // here too — this bool drives the +4 favourite-genre bond and the
+        // GUARANTEED regular conversion, and it used to compare the primary
+        // label only, so a hint-following blend seller never became a regular.
+        double[] soldDials = soldRec != null ? TapeTrade.DialsOf(soldRec.track) : null;
+        bool matchedTaste = soldDials != null && AlienTaste.MatchesFavourite(_buyerId, soldDials);
         string species = _offerSpecies;
         int credits = pricePerCap * qty;
 
@@ -510,15 +519,27 @@ public class MushroomSellUI : MonoBehaviour
         // updates immediately; ReportDeal ROLLS for the regular conversion, so
         // on a guest only the host may run it (see below).
         // Tapes have no appetite, so there is no saturation to record.
-        bool sentToHost = false;
+        // On a guest the buyer's half routes to the host (which rolls the
+        // regular conversion and owns TapeMemory); the next snapshot brings
+        // the result back. Locally-applied ledger writes used to be wiped by
+        // that snapshot, losing the guest's bond/deal progress entirely.
+        bool sentToHost = EconomySync.ReportTapeSale(_buyerId, soldGenre, pricePerCap, qty,
+                                                     keptAppointment: false, matchedTaste: matchedTaste,
+                                                     heardDials: soldDials);
         // Central hook: ANY alien buying advances Tev's onboarding, so no NPC
         // has to remember to wire it up (no-ops outside the quest).
         NotifyTapeSold(species, soldRec, qty);
         // Persistent ledger: bond, deal count (reveals), regular conversion.
         // Scheduled-mode fulfilment reports through DeliverOrder instead.
         if (!sentToHost)
+        {
             BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, pricePerCap, qty,
                                        keptAppointment: false, matchedTaste: matchedTaste);
+            // A bought song is a heard song — without this the same track could
+            // be re-sold to the same buyer forever, and the "same song twice is
+            // a social failure" rule only ever fired on rejections.
+            if (soldDials != null) TapeMemory.Remember(_buyerId, soldDials);
+        }
         _onSold?.Invoke(qty);
 
         SetResult(leftover > 0
@@ -851,10 +872,26 @@ public class MushroomSellUI : MonoBehaviour
         // because the player earned it by selling to them.
         if (_memoText != null)
         {
-            int last = MushroomDealState.LastPaid(_buyerId);
+            // Read the last paid price from the LEDGER's event log — the
+            // tape path never wrote MushroomDealState.RecordSale, so LastPaid
+            // was permanently 0 and this line told five-time regulars
+            // "you've never dealt with them" (and the reveal notes below
+            // never rendered here at all).
+            int last = 0;
+            var memoLed = BuyerLedger.Get(_buyerId);
+            if (memoLed != null)
+            {
+                for (int i = memoLed.events.Count - 1; i >= 0; i--)
+                {
+                    int t = memoLed.events[i].type;
+                    if (t == (int)BuyerLedger.EvType.FulfilledExact
+                        || t == (int)BuyerLedger.EvType.FulfilledSub
+                        || t == (int)BuyerLedger.EvType.WalkUpDeal)
+                    { last = memoLed.events[i].a; break; }
+                }
+            }
             if (last > 0)
             {
-                int qty = MushroomDealState.LastQty(_buyerId);
                 string line = $"you remember: paid <color=#FFD732>{last}</color> for a tape";
                 // Earned notes come from the ledger's reveal schedule: one
                 // hidden want per completed deal, fixed order (spec §6). The
@@ -1011,13 +1048,19 @@ public class MushroomSellUI : MonoBehaviour
             else
             { band = "wrong goods AND over the agreed price — long odds"; bandCol = new Color32(255, 110, 110, 255); }
         }
+        // The wording is deliberately about WHICH BUYERS would take this, not
+        // a promise of safety: market here is floor + arrangement only, and
+        // what a given buyer pays swings 0.55x..3.0x around it on their hidden
+        // pay factor. The old copy called "exactly market value" a green
+        // certainty — and a bottom-third payer barred you for exactly that.
         else if (!HasOffer)     { band = ""; bandCol = C_Dim; }
-        else if (pct == 0)      { band = "asking exactly market value";                bandCol = new Color32(110, 220, 130, 255); }
-        else if (over < 1f)     { band = $"asking {pct}% UNDER market value";           bandCol = new Color32(110, 220, 130, 255); }
-        else if (over <= 1.25f) { band = $"asking {pct}% over market value";            bandCol = new Color32(159, 216, 110, 255); }
-        else if (over <= 1.60f) { band = $"asking {pct}% over market value — pushing it"; bandCol = new Color32(255, 215, 50, 255); }
-        else if (over <= 2.00f) { band = $"asking {pct}% over market value — chancing it"; bandCol = new Color32(255, 154, 60, 255); }
-        else                    { band = $"asking {pct}% over market value — absurd";   bandCol = new Color32(255, 110, 110, 255); }
+        else if (over < 0.7f)   { band = $"asking {pct}% UNDER market — an easy yes for almost anyone"; bandCol = new Color32(110, 220, 130, 255); }
+        else if (over < 1f)     { band = $"asking {pct}% under market — most will take it";             bandCol = new Color32(110, 220, 130, 255); }
+        else if (pct == 0)      { band = "at market — the stingy will counter";                         bandCol = new Color32(159, 216, 110, 255); }
+        else if (over <= 1.4f)  { band = $"asking {pct}% over market — needs a decent match";           bandCol = new Color32(255, 215, 50, 255); }
+        else if (over <= 2.5f)  { band = $"asking {pct}% over market — needs a fan";                    bandCol = new Color32(255, 154, 60, 255); }
+        else if (over <= 4.0f)  { band = $"asking {pct}% over market — superfan money";                 bandCol = new Color32(255, 130, 90, 255); }
+        else                    { band = $"asking {pct}% over market — only a bonded superfan would ever pay this"; bandCol = new Color32(255, 110, 110, 255); }
         _riskText.text = band;
         _riskText.color = bandCol;
 
@@ -1062,14 +1105,22 @@ public class MushroomSellUI : MonoBehaviour
         _suppressInput = true;
 
         // ── PRICE ──
-        // Anchored on MARKET in a walk-up (which is what the risk wording below
-        // is measured against, so the thumb's position and the sentence agree),
+        // Anchored on MARKET in a walk-up (which is what the risk wording is
+        // measured against, so the thumb's position and the sentence agree),
         // and on the AGREED price in scheduled mode, where over-asking is what
-        // risks the delivery. Half market to double it spans the whole existing
-        // band table, from "asking N% UNDER market" to "absurd".
+        // risks the delivery.
+        //
+        // Walk-up range is 0.4x..6x market (was 0.5x..2x): a buyer's true
+        // number spans 0.55x..3.0x of market on pay factor alone, times
+        // satisfaction and bond. The old 2x cap made the fussy superfan's
+        // premium — the whole point of finding them — physically unreachable,
+        // and the 0.5x floor sat ABOVE what the cheapest third would pay, so
+        // their counters landed below the slider's own minimum.
         int anchor = (_scheduled && _appt != null) ? Mathf.Max(1, _appt.offerPerCap) : Mathf.Max(1, Market);
-        int askMin = HasOffer ? Mathf.Max(1, Mathf.RoundToInt(anchor * 0.5f)) : 0;
-        int askMax = HasOffer ? Mathf.Max(askMin + 1, Mathf.RoundToInt(anchor * 2f)) : 1;
+        float lo = (_scheduled && _appt != null) ? 0.5f : 0.4f;
+        float hi = (_scheduled && _appt != null) ? 2f : 6f;
+        int askMin = HasOffer ? Mathf.Max(1, Mathf.RoundToInt(anchor * lo)) : 0;
+        int askMax = HasOffer ? Mathf.Max(askMin + 1, Mathf.RoundToInt(anchor * hi)) : 1;
         _askSlider.minValue = askMin;
         _askSlider.maxValue = askMax;
         _askSlider.SetValueWithoutNotify(Mathf.Clamp(_ask, askMin, askMax));
@@ -1354,36 +1405,54 @@ public class MushroomSellUI : MonoBehaviour
         {
             int perCap;
             int qty;
-            // WHAT YOU ACTUALLY BROUGHT still matters. The agreed number is
-            // quoted for a tape built from the kit the computer owns, delivered
-            // well — so a one-voice sketch that happens to CLASSIFY as the right
-            // genre used to collect the full amount, and the agreed price was a
-            // formality. They honour the deal up to what the tape is genuinely
-            // worth to them and not a credit past it. Deliberately a smaller
-            // payout and a remark rather than a refusal: the deal was made in
-            // good faith, and freezing the player out for five minutes over a
-            // thin arrangement would punish experimenting.
-            var ledger = BuyerLedger.Get(_buyerId);
-            int worth = delivered == null ? 0
-                : TapeValue.For(delivered.track.ActiveCount(), delivered.tier, Satisfaction,
-                                ledger != null ? ledger.bond : 0, true,
-                                AlienTaste.PayFactor(_buyerId));
             bool thin = false;
             if (exactGoods)
             {
-                // Gratitude bump only when the deal is honoured as written.
+                // ── THE AGREED PRICE IS THE CONTRACT (2026-08-16) ────────────
+                // This used to clamp the payout to the tape's real "worth" —
+                // the full value formula with true satisfaction. But the phone
+                // quotes at a fixed satisfaction of 85 (SatMult 1.1575) while
+                // SatMult caps at 1.30, so worth could NEVER exceed 1.12x the
+                // quote — every haggled price (up to patience 1.45x) and the
+                // advertised on-time bonus were mathematically unpayable, under
+                // a green "exactly as agreed" banner. A written agreement the
+                // buyer can renege on for a perfect delivery destroys trust in
+                // every number the phone shows.
+                //
+                // The anti-farm intent survives as an ARRANGEMENT check: the
+                // quote priced a tape built from the full kit the computer
+                // owns, so a one-voice sketch that merely classifies right is
+                // paid pro-rata to how much of the kit it actually uses.
                 perCap = (ask == agreed)
                     ? Mathf.RoundToInt(agreed * BuyerDeals.GratitudeBonus(_appt.windowMinutes))
                     : ask;
                 qty = Mathf.Min(_offerCountN, _appt.askQty);
+
+                double kitFull = TapeValue.Floor + TapeValue.PerModule * Mathf.Max(1, TraxLibrary.InstalledCount);
+                double kitUsed = TapeValue.Floor + TapeValue.PerModule * delivered.track.ActiveCount();
+                if (kitUsed < kitFull)
+                {
+                    perCap = Mathf.Max(1, (int)System.Math.Round(perCap * (kitUsed / kitFull)));
+                    thin = true;
+                }
             }
             else
             {
+                // Wrong goods: the deal's number never covered this tape, so
+                // they honour it only up to what it is genuinely worth to them.
+                // Deliberately a smaller payout and a remark rather than a
+                // refusal: the substitution was offered in good faith.
                 perCap = ask;
                 qty = Mathf.Min(_offerCountN, RemainingAppetite);
                 if (qty <= 0) { SetResult("\"I'm full up. Come back later.\"", C_Err); return; }
+
+                var ledger = BuyerLedger.Get(_buyerId);
+                int worth = delivered == null ? 0
+                    : TapeValue.For(delivered.track.ActiveCount(), delivered.tier, Satisfaction,
+                                    ledger != null ? ledger.bond : 0, true,
+                                    AlienTaste.PayFactor(_buyerId));
+                if (perCap > worth) { perCap = Mathf.Max(1, worth); thin = true; }
             }
-            if (perCap > worth) { perCap = Mathf.Max(1, worth); thin = true; }
             CompleteScheduled(perCap, qty, substituted: !(exactGoods && exactPrice), thin: thin);
         }
         else
@@ -1408,7 +1477,9 @@ public class MushroomSellUI : MonoBehaviour
         int leftover = _offerCountN - qty;
         var soldRec = Press;
         int soldGenre = GenreIndexOf(soldRec);
-        bool matchedTaste = soldGenre == AlienTaste.FavouriteGenreIndex(_buyerId);
+        // Blend-aware taste match — see the matching note in CloseSale.
+        double[] soldDials = soldRec != null ? TapeTrade.DialsOf(soldRec.track) : null;
+        bool matchedTaste = soldDials != null && AlienTaste.MatchesFavourite(_buyerId, soldDials);
         string species = _offerSpecies;
         _offerSpecies = null; _offerCountN = 0; _stage = Stage.Open; _counter = 0; _ask = 0;
         if (leftover > 0 && Hotbar.Instance != null)
@@ -1416,8 +1487,17 @@ public class MushroomSellUI : MonoBehaviour
         int credits = perCap * qty;
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(credits);
         NotifyTapeSold(species, soldRec, qty);
-        BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, perCap, qty,
-                                   keptAppointment: true, matchedTaste: matchedTaste);
+        // Guest deliveries MUST reach the host: it holds the Scheduled
+        // appointment, and without this report its deadline sweep fired
+        // "you never showed" (bond halved) after a successful, paid delivery.
+        if (!EconomySync.ReportTapeSale(_buyerId, soldGenre, perCap, qty,
+                                        keptAppointment: true, matchedTaste: matchedTaste,
+                                        heardDials: soldDials))
+        {
+            BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, perCap, qty,
+                                       keptAppointment: true, matchedTaste: matchedTaste);
+            if (soldDials != null) TapeMemory.Remember(_buyerId, soldDials);
+        }
         _scheduled = false; _appt = null;
         _onSold?.Invoke(qty);
         SetResult(thin

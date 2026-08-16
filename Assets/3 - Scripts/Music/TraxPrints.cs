@@ -48,9 +48,11 @@ public static class TraxPrints
 
     /// <summary>
     /// Freeze a track as a printable tape and return its record. Printing the
-    /// same song at the same tier again returns the EXISTING record rather than
-    /// overwriting it — the first pressing's name is the one that sticks, so a
-    /// tape you already sold cannot be renamed out from under the buyer.
+    /// same song at the same tier again returns the EXISTING record (the track
+    /// data is identical by construction) but REFRESHES its display name —
+    /// renaming a project and reprinting used to show the old title on every
+    /// sell surface while the console showed the new one, and one tape must
+    /// never have two names.
     /// </summary>
     public static Record Register(string name, TraxTrack track, int tier)
     {
@@ -62,7 +64,12 @@ public static class TraxPrints
         string id = MakeId(tid, tier);
 
         Record existing;
-        if (_byId.TryGetValue(id, out existing)) return existing;
+        if (_byId.TryGetValue(id, out existing))
+        {
+            string fresh = TraxLibrary.NormalizeName(name);
+            if (!string.IsNullOrEmpty(fresh)) existing.name = fresh;
+            return existing;
+        }
 
         var rec = new Record
         {

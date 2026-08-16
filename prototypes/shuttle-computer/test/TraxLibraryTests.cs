@@ -270,9 +270,15 @@ public static class TraxLibraryTests
         Eq(TraxPrints.Count, 2, "both pressings exist");
         Eq(TraxPrints.TierOf(t2.id), 2, "tier resolves from the id");
 
-        // Renaming the project cannot rewrite a tape someone already has.
+        // Renaming and reprinting REFRESHES the display name (2026-08-16):
+        // the old "first pressing's name sticks" rule meant a renamed project
+        // showed its old title on every sell surface while the console showed
+        // the new one. One tape, one name, everywhere — latest name wins.
         TraxPrints.Register("A Different Name", t, 1);
-        Eq(TraxPrints.DisplayName(a.id), "Deep Cave", "the first pressing's name sticks");
+        Eq(TraxPrints.DisplayName(a.id), "A Different Name", "a reprint refreshes the tape's name");
+        // Rename it back so the later checks read naturally.
+        TraxPrints.Register("Deep Cave", t, 1);
+        Eq(TraxPrints.DisplayName(a.id), "Deep Cave", "and refreshes again on the next reprint");
 
         // Editing the caller's track afterwards must not reach into the record.
         TraxTrack mutable = TraxTrack.Default();

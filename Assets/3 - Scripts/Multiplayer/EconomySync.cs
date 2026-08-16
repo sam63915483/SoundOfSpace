@@ -50,10 +50,12 @@ public class EconomySync : MonoBehaviour
     const byte KindRequestState = 0;   // client -> host
     const byte KindStateChunk   = 1;   // host -> client   (ledger + deal state)
     const byte KindReply        = 2;   // client -> host   accept / counter / decline
-    const byte KindSaleReport   = 3;   // client -> host   "I closed a deal"
+    const byte KindSaleReport   = 3;   // client -> host   "I closed a deal" (mushrooms)
     const byte KindBarReport    = 4;   // client -> host   "I pushed them too far"
     const byte KindSubRefused   = 5;   // client -> host   they refused my substitute
     const byte KindMarkRead     = 6;   // client -> host   thread opened
+    const byte KindTapeSale     = 7;   // client -> host   "I sold/delivered a tape"
+    const byte KindTapeHeard    = 8;   // client -> host   "they heard this song" (memory only)
 
     /// Reply kinds inside KindReply.
     const byte ReplyAccept  = 0;
@@ -74,6 +76,7 @@ public class EconomySync : MonoBehaviour
     int _lastLedgerVersion = -1;
     int _lastDealVersion = -1;
     int _lastTevVersion = -1;
+    int _lastMemoryVersion = -1;
     float _nextBroadcastAt;
 
     // client
@@ -98,6 +101,10 @@ public class EconomySync : MonoBehaviour
         // it in this message means a guest can never see a bond change arrive
         // before the repayment that caused it.
         public TevFrontingSave tev = new TevFrontingSave();
+        // Song memory is WORLD state ("an alien who has heard a song has heard
+        // it, whichever partner played it") — it rides the same snapshot so
+        // both machines agree on what counts as a repeat.
+        public TapeMemorySave memory = new TapeMemorySave();
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -134,6 +141,7 @@ public class EconomySync : MonoBehaviour
         _lastLedgerVersion = -1;
         _lastDealVersion = -1;
         _lastTevVersion = -1;
+        _lastMemoryVersion = -1;
     }
 
     /// True when this machine may run economy dice — the host, or single player.
@@ -163,12 +171,15 @@ public class EconomySync : MonoBehaviour
         int lv = BuyerLedger.Version;
         int dv = MushroomDealState.Version;
         int tv = TevFronting.Version;
-        if (lv == _lastLedgerVersion && dv == _lastDealVersion && tv == _lastTevVersion) return;
+        int mv = TapeMemory.Version;
+        if (lv == _lastLedgerVersion && dv == _lastDealVersion
+            && tv == _lastTevVersion && mv == _lastMemoryVersion) return;
         if (Time.unscaledTime < _nextBroadcastAt) return;
 
         _lastLedgerVersion = lv;
         _lastDealVersion = dv;
         _lastTevVersion = tv;
+        _lastMemoryVersion = mv;
         _nextBroadcastAt = Time.unscaledTime + MinBroadcastInterval;
 
         var ids = nm.ConnectedClientsIds;
@@ -185,6 +196,7 @@ public class EconomySync : MonoBehaviour
         BuyerLedger.FillSave(state.ledger);
         TevFronting.FillSave(state.tev);
         state.deals = MushroomDealState.Capture();
+        state.memory = TapeMemory.Capture();
 
         string json = JsonUtility.ToJson(state);
         int total = Mathf.Max(1, Mathf.CeilToInt(json.Length / (float)ChunkBytes));
@@ -242,6 +254,8 @@ public class EconomySync : MonoBehaviour
             case KindBarReport when server:  HandleBarReport(reader); break;
             case KindSubRefused when server: HandleSubRefused(reader); break;
             case KindMarkRead when server:   HandleMarkRead(reader); break;
+            case KindTapeSale when server:   HandleTapeSale(reader); break;
+            case KindTapeHeard when server:  HandleTapeHeard(reader); break;
         }
     }
 
@@ -276,6 +290,7 @@ public class EconomySync : MonoBehaviour
         BuyerLedger.ApplySave(state.ledger);
         TevFronting.ApplySave(state.tev);
         MushroomDealState.Apply(state.deals);
+        TapeMemory.Apply(state.memory);
         _synced = true;
 
         // The phone is very likely open — the player just tapped a reply and is
@@ -349,6 +364,48 @@ public class EconomySync : MonoBehaviour
         if (!string.IsNullOrEmpty(buyerId)) BuyerLedger.MarkRead(buyerId);
     }
 
+    void HandleTapeSale(FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out string buyerId);
+        reader.ReadValueSafe(out int genreIndex);
+        reader.ReadValueSafe(out int pricePerCap);
+        reader.ReadValueSafe(out int qty);
+        reader.ReadValueSafe(out byte keptAppointment);
+        reader.ReadValueSafe(out byte matchedTaste);
+        reader.ReadValueSafe(out byte hasDials);
+        var dials = ReadDials(reader, hasDials);
+        if (string.IsNullOrEmpty(buyerId) || qty <= 0) return;
+
+        // ReportTapeDeal rolls the regular conversion and (for deliveries)
+        // closes the Scheduled conversation — both host-only jobs. Without
+        // this the host's deadline sweep fired "you never showed" after a
+        // guest's successful, paid delivery.
+        BuyerLedger.ReportTapeDeal(buyerId, genreIndex, pricePerCap, qty,
+                                   keptAppointment != 0, matchedTaste != 0);
+        if (dials != null) TapeMemory.Remember(buyerId, dials);
+    }
+
+    void HandleTapeHeard(FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out string buyerId);
+        reader.ReadValueSafe(out byte hasDials);
+        var dials = ReadDials(reader, hasDials);
+        if (string.IsNullOrEmpty(buyerId) || dials == null) return;
+        TapeMemory.Remember(buyerId, dials);
+    }
+
+    static double[] ReadDials(FastBufferReader reader, byte hasDials)
+    {
+        if (hasDials == 0) return null;
+        var dials = new double[AlienTaste.DialCount];
+        for (int i = 0; i < dials.Length; i++)
+        {
+            reader.ReadValueSafe(out float v);
+            dials[i] = v;
+        }
+        return dials;
+    }
+
     // ── outbound API, called from the vendor code ────────────────────────
     //
     // Each returns TRUE when it handled the action by sending it to the host,
@@ -411,6 +468,57 @@ public class EconomySync : MonoBehaviour
             w.WriteValueSafe((byte)(substituted ? 1 : 0));
         });
         return true;
+    }
+
+    /// <summary>
+    /// A guest sold or delivered a TAPE. Money/tape changed hands locally; the
+    /// buyer's half (bond, deal count, regular roll, appointment closure, song
+    /// memory) belongs to the host, which applies it and rebroadcasts. Returns
+    /// true when routed — the caller must then skip its local ledger/memory
+    /// writes, or the next snapshot wipes them anyway.
+    /// </summary>
+    public static bool ReportTapeSale(string buyerId, int genreIndex, int pricePerCap, int qty,
+                                      bool keptAppointment, bool matchedTaste, double[] heardDials)
+    {
+        if (!ShouldRoute() || string.IsNullOrEmpty(buyerId)) return false;
+        Instance.Send(w =>
+        {
+            w.WriteValueSafe(KindTapeSale);
+            w.WriteValueSafe(buyerId);
+            w.WriteValueSafe(genreIndex);
+            w.WriteValueSafe(pricePerCap);
+            w.WriteValueSafe(qty);
+            w.WriteValueSafe((byte)(keptAppointment ? 1 : 0));
+            w.WriteValueSafe((byte)(matchedTaste ? 1 : 0));
+            WriteDials(w, heardDials);
+        });
+        return true;
+    }
+
+    /// A guest played a buyer a song that got rejected outright — the "heard"
+    /// memory is world state and the host owns it.
+    public static bool ReportTapeHeard(string buyerId, double[] dials)
+    {
+        if (!ShouldRoute() || string.IsNullOrEmpty(buyerId) || dials == null) return false;
+        Instance.Send(w =>
+        {
+            w.WriteValueSafe(KindTapeHeard);
+            w.WriteValueSafe(buyerId);
+            WriteDials(w, dials);
+        });
+        return true;
+    }
+
+    static void WriteDials(FastBufferWriter w, double[] dials)
+    {
+        if (dials == null || dials.Length < AlienTaste.DialCount)
+        {
+            w.WriteValueSafe((byte)0);
+            return;
+        }
+        w.WriteValueSafe((byte)1);
+        for (int i = 0; i < AlienTaste.DialCount; i++)
+            w.WriteValueSafe((float)dials[i]);
     }
 
     public static bool ReportBarred(string buyerId)
