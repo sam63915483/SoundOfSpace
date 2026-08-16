@@ -51,7 +51,9 @@ public static class TapeOffer
         // the first time or not.
         if (TapeMemory.HasHeard(alienId, dials)) return Reaction.AlreadyHeard;
 
-        AlienTaste.Verdict v = AlienTaste.Gate(satisfaction);
+        // GateFor, not Gate: an on-genre tape is never refused by that genre's
+        // fan — the hint contract (see AlienTaste.GateFor).
+        AlienTaste.Verdict v = AlienTaste.GateFor(alienId, dials, satisfaction);
         if (v == AlienTaste.Verdict.Liked) return Reaction.Liked;
         if (v == AlienTaste.Verdict.CoinFlip) return coinFlip ? Reaction.Liked : Reaction.Rejected;
         return Reaction.Rejected;

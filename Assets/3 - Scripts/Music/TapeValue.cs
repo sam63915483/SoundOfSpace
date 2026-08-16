@@ -45,7 +45,10 @@
 /// </summary>
 public static class TapeValue
 {
-    public const double Floor = 3.0;
+    // Floor raised 3 -> 6 (2026-08-16): at the starting 2 plugins the whole
+    // base was $11 and a typical early sale netted ~$4 over the $5 blank
+    // against $50 day-one rent. Additive, so the late game barely notices.
+    public const double Floor = 6.0;
     public const double PerModule = 4.0;
 
     public const double TierOneMult = 1.0;

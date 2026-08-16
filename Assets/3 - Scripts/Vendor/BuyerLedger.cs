@@ -345,16 +345,21 @@ public static class BuyerLedger
                 return $"has a soft spot for {AlienTaste.FavouriteGenre(id)}";
             case 1:
             {
+                // Thresholds sit against the SKEWED falloff distribution
+                // (AlienTaste.FalloffSkew): the median alien is ~1.04, so
+                // "easy to please" is the common read and "fussy" is the
+                // rare one worth remembering.
                 double f = AlienTaste.Falloff(id);
-                if (f >= 1.45) return "fussy - it has to be close";
-                if (f <= 1.05) return "easy to please";
+                if (f >= 1.40) return "fussy - it has to be close";
+                if (f <= 1.00) return "easy to please";
                 return "knows what they like";
             }
             case 2:
             {
+                // Bands rebased for the widened 0.55..3.0 pay range.
                 double m = AlienTaste.PayFactor(id);
-                if (m > 1.15) return "pays generously";
-                if (m < 0.95) return "a bit stingy";
+                if (m > 1.6) return "pays generously";
+                if (m < 0.85) return "a bit stingy";
                 return "an average payer";
             }
             case 3:

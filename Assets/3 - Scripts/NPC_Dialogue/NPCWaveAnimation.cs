@@ -57,6 +57,9 @@ public class NPCWaveAnimation : MonoBehaviour
     private bool  _waving;
     private float _waveProgress;
     private float _timer;
+    // Lower-arm/head rest poses are captured exactly once per GameObject (see
+    // InitRestPose) — re-capturing on pool reuse random-walks them.
+    private bool  _restCapturedOnce;
 
     private void Start()
     {
@@ -115,17 +118,57 @@ public class NPCWaveAnimation : MonoBehaviour
             bodyDown = -transform.up;
         }
 
-        // Rotate each upper arm so its shaft points straight down.
-        // Also store the axis of that rotation — negating it is the raise axis.
+        // Rotate each upper arm so its shaft points straight down, and derive
+        // the raise axis from the SHOULDER SOCKETS, not the arm shaft.
+        //
+        // The shaft is only horizontal in the T-pose. These alien prefabs have
+        // no Animator controller, so after the first LateUpdate parks the arm
+        // at the side NOTHING ever restores the T-pose — on every pool-reuse
+        // re-init the shaft is parallel to bodyDown and cross(shaft, bodyDown)
+        // collapses to pure float noise (amplified by SpawnFade's 5% start
+        // scale and ~1 km world coordinates), giving a RANDOM raise axis that
+        // varies by planet position. The shoulder sockets never move when the
+        // arms rotate, so upperR−upperL is pose-invariant, 2–4× longer than
+        // the shaft on every rig, and exactly reproduces the old T-pose axis
+        // on a fresh spawn.
         if (_upperArmR != null && _lowerArmR != null)
         {
-            Vector3 shaftR = (_lowerArmR.position - _upperArmR.position).normalized;
-            // cross(T-pose shaft, bodyDown) gives the axis that swings the arm downward.
-            // Its negation swings the arm upward from the sides position.
-            Vector3 worldAxis = -Vector3.Cross(shaftR, bodyDown).normalized;
-            _armRaiseAxisLocal = Quaternion.Inverse(_upperArmR.parent.rotation) * worldAxis;
-            _upperArmRRest = ArmAtSideLocalRot(_upperArmR, _lowerArmR, bodyDown);
-            _upperArmR.localRotation = _upperArmRRest;
+            Vector3 bodyRight = _upperArmL != null
+                ? (_upperArmR.position - _upperArmL.position)
+                : Vector3.Cross(bodyDown, _upperArmR.parent.forward); // one-armed fallback
+
+            // Project out any bodyDown component so the axis sits exactly in
+            // the coronal plane.
+            bodyRight -= Vector3.Dot(bodyRight, bodyDown) * bodyDown;
+
+            float cond = bodyRight.magnitude;
+            if (cond < 1e-4f)
+            {
+                // Keep whatever axis the previous life derived — a garbage
+                // recapture is worse than a stale one.
+                Debug.LogWarning("[NPCWaveAnimation] degenerate rest capture on " + name +
+                                 " (|bodyRight|=" + cond.ToString("E2") + "); keeping previous raise axis");
+                _upperArmRRest = ArmAtSideLocalRot(_upperArmR, _lowerArmR, bodyDown);
+                _upperArmR.localRotation = _upperArmRRest;
+            }
+            else
+            {
+                bodyRight /= cond;
+                Vector3 worldAxis = -Vector3.Cross(bodyRight, bodyDown).normalized; // == body forward
+
+                // Sign self-test: the rest shaft points along bodyDown (that is
+                // ArmAtSideLocalRot's definition), and raising by +armRaiseAngle
+                // must swing the RIGHT arm OUTWARD — toward bodyRight — not
+                // across the torso. (Testing against bodyDown would be blind:
+                // ±armRaiseAngle land equally far from down, on opposite sides.)
+                Vector3 upShaft = Quaternion.AngleAxis(armRaiseAngle, worldAxis) * bodyDown;
+                if (Vector3.Dot(upShaft, bodyRight) < 0f)
+                    worldAxis = -worldAxis;
+
+                _armRaiseAxisLocal = Quaternion.Inverse(_upperArmR.parent.rotation) * worldAxis;
+                _upperArmRRest = ArmAtSideLocalRot(_upperArmR, _lowerArmR, bodyDown);
+                _upperArmR.localRotation = _upperArmRRest;
+            }
         }
         if (_upperArmL != null && _lowerArmL != null)
         {
@@ -133,18 +176,35 @@ public class NPCWaveAnimation : MonoBehaviour
             _upperArmL.localRotation = _upperArmLRest;
         }
 
-        // Let one more frame settle, then capture lower-arm rest rotations
+        // Let one more frame settle, then capture lower-arm rest rotations —
+        // ONCE per GameObject, ever. Despawn fades out over 0.3 s with
+        // LateUpdate still swinging the forearm, so recapturing on pool reuse
+        // baked up to ±waveSwingAngle of mid-wave pose into the new "rest" and
+        // random-walked it worse every reuse cycle.
         yield return null;
-        if (_lowerArmR != null) _lowerArmRRest = _lowerArmR.localRotation;
-        if (_lowerArmL != null) _lowerArmLRest = _lowerArmL.localRotation;
-
-        if (_headBone != null)
+        if (!_restCapturedOnce)
         {
-            _headRestLocal = _headBone.localRotation;
-            _headSmoothed  = _headRestLocal;
+            if (_lowerArmR != null) _lowerArmRRest = _lowerArmR.localRotation;
+            if (_lowerArmL != null) _lowerArmLRest = _lowerArmL.localRotation;
+            if (_headBone  != null) _headRestLocal = _headBone.localRotation;
+            _restCapturedOnce = true;
         }
+        _headSmoothed = _headRestLocal;
 
         _ready = true;
+    }
+
+    // Park every bone this component writes back at rest before the object is
+    // pooled, so the next life re-initialises from a clean pose instead of
+    // whatever instant of the wave the despawn fade happened to freeze.
+    private void OnDisable()
+    {
+        if (!_restCapturedOnce) return;
+        if (_upperArmR != null) _upperArmR.localRotation = _upperArmRRest;
+        if (_upperArmL != null) _upperArmL.localRotation = _upperArmLRest;
+        if (_lowerArmR != null) _lowerArmR.localRotation = _lowerArmRRest;
+        if (_lowerArmL != null) _lowerArmL.localRotation = _lowerArmLRest;
+        if (_headBone  != null) _headBone.localRotation  = _headRestLocal;
     }
 
     /// <summary>

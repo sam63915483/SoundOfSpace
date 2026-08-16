@@ -395,14 +395,19 @@ public class MushroomSellUI : MonoBehaviour
             }
 
             double sat = Satisfaction;
-            var verdict = AlienTaste.Gate(sat);
+            // GateFor, not Gate: an on-genre tape is never refused by that
+            // genre's fan — the hint contract (see AlienTaste.GateFor).
+            var verdict = AlienTaste.GateFor(_buyerId, dials, sat);
             bool liked = verdict == AlienTaste.Verdict.Liked
                       || (verdict == AlienTaste.Verdict.CoinFlip && UnityEngine.Random.value < 0.5f);
             if (!liked)
             {
-                // They have now heard it, so re-offering the same song is a
-                // repeat even though no money changed hands.
-                TapeMemory.Remember(_buyerId, dials);
+                // Only an OUTRIGHT rejection burns the song into their memory.
+                // A lost coin flip used to as well, which meant a track refused
+                // purely by Random.value could never be offered to that alien
+                // again — doubling how harsh the early game felt.
+                if (verdict == AlienTaste.Verdict.Rejected)
+                    TapeMemory.Remember(_buyerId, dials);
                 SetResult($"\"{AlienFeedback.ForRejection(_buyerId, dials, AlienTaste.FavouriteGenre(_buyerId), variant)}\"", C_Err);
                 Refresh();
                 return;
@@ -860,9 +865,11 @@ public class MushroomSellUI : MonoBehaviour
         {
             var rec = Press;
             // The GENRE is a tape's tier: it is what the buyer cares about and
-            // what the console already told the player this song is.
+            // what the console already told the player this song is. Full
+            // classifier label ("Clangin' VOLT"), not just the primary — the
+            // player must never see two different names for one tape.
             string genre = rec != null
-                ? TraxClassifier.Classify(rec.track.dials).primary.name : "";
+                ? TraxClassifier.Classify(rec.track.dials).label : "";
             Color32 tc = rec != null && rec.tier >= 2
                 ? new Color32(0xFF, 0x4F, 0xD8, 0xFF)     // Type 2 shell
                 : new Color32(0x79, 0xFF, 0xD0, 0xFF);    // Type 1
@@ -1107,7 +1114,8 @@ public class MushroomSellUI : MonoBehaviour
             if (tape)
             {
                 var rec = TraxPrints.Get(s.cassetteId);
-                string g = rec != null ? TraxClassifier.Classify(rec.track.dials).primary.name : "";
+                // Full classifier label, matching the console — see above.
+                string g = rec != null ? TraxClassifier.Classify(rec.track.dials).label : "";
                 w.genreLbl.text = g + (rec != null && rec.tier >= 2 ? "   T2" : "   T1");
             }
         }

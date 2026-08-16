@@ -53,13 +53,32 @@ public static class AlienTaste
     /// 0.90 kills the archetype without making everyone fussy: 7% still buy
     /// almost anything, which is a nice thing to stumble across, and 18% buy
     /// almost nothing, which is a nice thing to learn to avoid.
+    ///
+    /// ── 2026-08-16: the design pivoted, and so did this knob ─────────────
+    /// Sam's playtest verdict: the early game is a wall of no ("I find it too
+    /// hard when starting out to make demos and sell them"). New intent:
+    /// TOLERANCE AND PAYOUT are inversely linked and the POPULATION SKEWS
+    /// TOLERANT — most aliens take most reasonable tapes and pay peanuts;
+    /// the rare fussy ear is the jackpot. The pushover archetype the 0.90
+    /// floor was raised to kill is now the intended COMMON customer — what
+    /// changed is that they no longer pay enough to be an exploit (MinPay
+    /// dropped, MaxPay tripled). Floor eased to 0.85 and the DISTRIBUTION
+    /// skewed via FalloffSkew, rather than lowering the floor further:
+    /// at 0.85 a maximally tolerant alien still refuses a truly hopeless
+    /// tape (opposite-corner distance ~13 → satisfaction ~38 < LikeMaybe).
     /// </summary>
-    public const double MinFalloff = 0.90;
+    public const double MinFalloff = 0.85;
     /// Widened from 1.70 when the floor rose to 0.90 — otherwise the whole
     /// population squeezes into a 0.80 band and every alien is much the same
     /// customer. A test catches exactly that ("falloff spans a real range"),
     /// which is why it is a real range rather than a relaxed assertion.
     public const double MaxFalloff = 1.75;
+
+    /// Population shape: Unit^skew. 1 = uniform (the old behaviour); >1 piles
+    /// the population at the tolerant end and leaves a fussy tail. At 2.5,
+    /// roughly 55% of aliens sit in the bottom quarter of the falloff band
+    /// (broad, cheap) and ~19% in the top third (fussy, premium).
+    public const double FalloffSkew = 2.5;
 
     /// <summary>
     /// How fast satisfaction drops per unit of dial distance, before falloff.
@@ -83,8 +102,13 @@ public static class AlienTaste
     /// Pay factor scales INVERSELY with breadth: an alien who likes almost
     /// nothing pays a premium when you finally hit it, and one who likes
     /// everything is not worth walking across a planet for.
-    public const double MinPay = 0.80;
-    public const double MaxPay = 1.45;
+    ///
+    /// Widened from 0.80..1.45 (2026-08-16): an 81% spread was too small to
+    /// feel, so buyer identity barely mattered. At 0.55..3.0 the tolerant
+    /// majority pays roughly half market and a superfan pays ~5x what the
+    /// easiest customer does — finding them IS the payday.
+    public const double MinPay = 0.55;
+    public const double MaxPay = 3.0;
 
     // ── Like gate ────────────────────────────────────────────────────────
     //
@@ -195,10 +219,13 @@ public static class AlienTaste
         return p;
     }
 
-    /// How steeply they fall out of love with a miss.
+    /// How steeply they fall out of love with a miss. Skewed tolerant — see
+    /// FalloffSkew. PayFactor derives from this, so the skew automatically
+    /// makes the fussy alien both rare AND the top payer.
     public static double Falloff(string id)
     {
-        return MinFalloff + (MaxFalloff - MinFalloff) * Unit(H(id, ":falloff"));
+        double t = System.Math.Pow(Unit(H(id, ":falloff")), FalloffSkew);
+        return MinFalloff + (MaxFalloff - MinFalloff) * t;
     }
 
     /// <summary>
@@ -273,6 +300,38 @@ public static class AlienTaste
         if (satisfaction >= LikeCertain) return Verdict.Liked;
         if (satisfaction >= LikeMaybe) return Verdict.CoinFlip;
         return Verdict.Rejected;
+    }
+
+    /// <summary>
+    /// The HINT CONTRACT (2026-08-16, from Sam's playtest): every hint in the
+    /// game — text orders, ledger reveals, "I'm more of a CLANG listener" —
+    /// names the alien's favourite GENRE. So a tape the classifier files under
+    /// that genre (or a blend whose second name it is: "Clangin' VOLT") must
+    /// NEVER be refused by that alien, or the hint was a lie. Measured, an
+    /// on-centre tape already passed 100% of its genre's fans; this makes that
+    /// a contract at the genre-cell edges too, instead of a coincidence.
+    ///
+    /// Verdict only — the PRICE still follows true satisfaction, so hitting
+    /// the genre buys the sale and hitting the ear buys the money.
+    /// </summary>
+    public static Verdict GateFor(string id, double[] dials, double satisfaction)
+    {
+        if (satisfaction < LikeCertain && MatchesFavourite(id, dials))
+            return Verdict.Liked;
+        return Gate(satisfaction);
+    }
+
+    /// Does the classifier file this track under the alien's favourite genre,
+    /// either as the primary label or as the named half of a blend?
+    public static bool MatchesFavourite(string id, double[] dials)
+    {
+        if (dials == null || dials.Length < DialCount) return false;
+        var g = TraxClassifier.Classify(new TraxDials(
+            dials[0], dials[1], dials[2], dials[3], dials[4], dials[5]));
+        string fav = FavouriteGenre(id);
+        if (string.IsNullOrEmpty(fav)) return false;
+        if (g.primary.name == fav) return true;
+        return g.blended && g.secondary.name == fav;
     }
 
     // ── Feedback ─────────────────────────────────────────────────────────

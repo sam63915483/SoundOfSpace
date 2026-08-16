@@ -154,7 +154,13 @@ public static class TapeTrade
     public static bool Fills(TraxTrack track, int genreIndex)
     {
         if (track == null) return false;
-        return TraxClassifier.Classify(track.dials).primary.name == GenreName(genreIndex);
+        var g = TraxClassifier.Classify(track.dials);
+        string want = GenreName(genreIndex);
+        if (g.primary.name == want) return true;
+        // A blend counts for either of its names: the console labels a track
+        // "Clangin' VOLT" and a CLANG order must accept the tape the computer
+        // itself called clangy — the player has no other vocabulary to go by.
+        return g.blended && g.secondary.name == want;
     }
 
     /// How many tapes of the right genre the player is carrying, for the
