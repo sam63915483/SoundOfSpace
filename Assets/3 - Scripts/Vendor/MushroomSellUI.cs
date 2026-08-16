@@ -827,7 +827,15 @@ public class MushroomSellUI : MonoBehaviour
         // absurd, and the player should hear what they are pricing.
         PlayOnTable(_offerSpecies);
 
-        _ask = Mathf.Max(1, Market);   // seed at market so the slider starts honest
+        // Seed at market so the slider starts honest — UNLESS this is a
+        // scheduled delivery, where the ask must stay at the AGREED number.
+        // This path missed the guard the wasEmpty path has: putting a tape on
+        // the table re-seeded the slider at the tape's market value ($28 for a
+        // Type 2 on a $20 deal), silently walking the player into the
+        // overcharge gamble they never chose (Sam's 2026-08-16 playtest).
+        _ask = _scheduled && _appt != null
+            ? Mathf.Max(1, _appt.offerPerCap)
+            : Mathf.Max(1, Market);
         SetResult("", C_Ok);
         Refresh();
     }
