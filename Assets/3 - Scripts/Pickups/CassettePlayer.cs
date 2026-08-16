@@ -124,7 +124,10 @@ public class CassettePlayer : MonoBehaviour
                 if (promptText != null)
                 {
                     promptText.gameObject.SetActive(true);
-                    promptText.text = $"Press {PromptGlyphs.Interact} to Insert Cassette";
+                    // Match the minimalist [glyph] VERB style of the shared
+                    // interact prompt — this world-space text was the last
+                    // surface still speaking full sentences.
+                    promptText.text = $"[{PromptGlyphs.InteractPlain}] INSERT";
                 }
                 if (TutorialGate.GetKeyDown(interactKey, TutorialAbility.Pickup) ||
                     TutorialGate.InteractPressed(TutorialAbility.Pickup))
@@ -147,8 +150,8 @@ public class CassettePlayer : MonoBehaviour
         if (!playerInRange || promptText == null) return;
         if (hasCassette)
         {
-            string status = (audioSource != null && audioSource.isPlaying) ? "Playing" : "Stopped";
-            promptText.text = $"Press {PromptGlyphs.Interact} to Play/Stop | Hold {PromptGlyphs.Interact} to Eject\nStatus: {status}";
+            string status = (audioSource != null && audioSource.isPlaying) ? "PLAYING" : "STOPPED";
+            promptText.text = $"[{PromptGlyphs.InteractPlain}] PLAY/STOP · HOLD TO EJECT\n{status}";
             promptText.gameObject.SetActive(true);
         }
     }

@@ -86,11 +86,17 @@ public static class NPCSellRows
         if (tapeScheduled)
         {
             int matching = TapeTrade.HeldMatching(tapeLedger.askTier);
+            int ordShell = tapeLedger.askTapeTier >= 1 ? tapeLedger.askTapeTier : 1;
+            int rightShell = TapeTrade.HeldMatchingTier(tapeLedger.askTier, ordShell);
             string want = TapeTrade.GenreName(tapeLedger.askTier);
             string ordTier = tapeLedger.askTapeTier >= 1 ? $" T{tapeLedger.askTapeTier}" : "";
-            tapeLabel = matching > 0
-                ? $"Deliver order — {tapeLedger.askQty} {want}{ordTier} @ {tapeLedger.offerPerCap}"
-                : $"Deliver order — {want}{ordTier} (none on you)";
+            // Right genre in the wrong shell still delivers, but pro-rata —
+            // the row must say so instead of reading like a full-price sale.
+            tapeLabel = matching <= 0
+                ? $"Deliver order — {want}{ordTier} (none on you)"
+                : rightShell <= 0
+                ? $"Deliver order — {tapeLedger.askQty} {want}{ordTier} (wrong shell on you — pays less)"
+                : $"Deliver order — {tapeLedger.askQty} {want}{ordTier} @ {tapeLedger.offerPerCap}";
             tapeEnabled = matching > 0;
         }
         else

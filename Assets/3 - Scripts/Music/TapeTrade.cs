@@ -183,6 +183,22 @@ public static class TapeTrade
         return g.blended && g.secondary.name == want;
     }
 
+    /// Right genre AND at least the ordered shell — the count that pays the
+    /// full agreed price (a lower tier delivers, but pro-rata).
+    public static int HeldMatchingTier(int genreIndex, int minTapeTier)
+    {
+        if (Hotbar.Instance == null) return 0;
+        int n = 0;
+        for (int i = 0; i < Hotbar.TotalSlots; i++)
+        {
+            Hotbar.Slot slot = Hotbar.Instance.SlotAt(i);
+            if (slot.id != Hotbar.ItemId.Cassette || slot.count <= 0) continue;
+            TraxPrints.Record rec = TraxPrints.Get(slot.cassetteId);
+            if (rec != null && rec.tier >= minTapeTier && Fills(rec.track, genreIndex)) n += slot.count;
+        }
+        return n;
+    }
+
     /// How many tapes of the right genre the player is carrying, for the
     /// "deliver order" row and the sell panel's gating.
     public static int HeldMatching(int genreIndex)
