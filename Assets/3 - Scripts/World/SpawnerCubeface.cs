@@ -40,11 +40,53 @@ public static class SpawnerCubeface
     public const int ShipLayer = 9;
     public const int ShipLayerMask = 1 << ShipLayer;
 
+    // Water (builtin 4), Sun (11) and FishPreview (12) are never valid ground
+    // for a surface prop either — a ray landing on any of them would seat the
+    // prop on a false surface the same way a low-flying ship hull does.
+    public const int WaterLayer = 4;
+    public const int SunLayer = 11;
+    public const int FishPreviewLayer = 12;
+
     /// Combined mask of layers the four world-prop spawners must NEVER hit
     /// with their surface raycast. WorldProp keeps spawners from stacking on
     /// each other's instances; Ship keeps low-flying ships from acting as a
-    /// false surface.
-    public const int WorldSpawnExcludeMask = WorldPropLayerMask | ShipLayerMask;
+    /// false surface. NOTE: buildings must stay HITTABLE — GrassSpawner rejects
+    /// spots whose hit sits under a GrassBlocker, which only works if the ray
+    /// can land on the building at all. Never add Default (0) or Body (10) here.
+    public const int WorldSpawnExcludeMask = WorldPropLayerMask | ShipLayerMask
+        | (1 << WaterLayer) | (1 << SunLayer) | (1 << FishPreviewLayer);
+
+    // ── Physics-frame parenting ───────────────────────────────────────────
+
+    /// Parent a freshly placed prop to its planet using the planet's PHYSICS
+    /// pose, not the interpolated render transform.
+    ///
+    /// Every CelestialBody rigidbody is kinematic + Interpolate, so during
+    /// Update() `body.transform` lags `rb.position` by up to one fixed step —
+    /// ~2.0 m on Humble Abode at 99 m/s orbital speed. The spawners' surface
+    /// raycasts resolve against the COLLIDER, which sits at the physics pose,
+    /// so the prop's world position is physics-frame too. A plain
+    /// SetParent(body.transform, worldPositionStays: true) would convert that
+    /// position through the lagging render pose and freeze a per-spawn-random
+    /// 0..2 m world-space offset into the prop's local position — buried where
+    /// the terrain rises toward the planet's velocity vector, floating where
+    /// it falls away. Converting through rb.position/rb.rotation instead puts
+    /// the prop exactly on the rendered terrain, permanently.
+    ///
+    /// Assumes the planet transform has unit scale (all celestial bodies do).
+    public static void ParentToBodyPhysicsFrame(Transform t, CelestialBody body)
+    {
+        if (t == null || body == null) return;
+        var rb = body.Rigidbody;
+        if (rb == null) { t.SetParent(body.transform, true); return; }
+
+        Vector3 worldPos = t.position;
+        Quaternion worldRot = t.rotation;
+        Quaternion inv = Quaternion.Inverse(rb.rotation);
+        t.SetParent(body.transform, false);
+        t.localPosition = inv * (worldPos - rb.position);
+        t.localRotation = inv * worldRot;
+    }
 
     /// Set the layer of `go` and every child, grandchild, etc. Spawned props
     /// often have child renderers/colliders that ship with their own layer

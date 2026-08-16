@@ -50,8 +50,10 @@ public static class InteractGaze
     /// <summary>How far in front of the target something solid may sit before it
     /// counts as blocking the view. Covers clutter pressed against the target (a
     /// locker's own door handle, a bottle's table top) without letting a real
-    /// occluder — a wall, the ship hull — be seen through.</summary>
-    public static float ForgiveDepth = 0.25f;
+    /// occluder — a wall, the ship hull — be seen through. Overwritten every
+    /// frame by CrosshairReticle, which caps it at 0.2 m: the old 0.5 let the
+    /// shuttle's neighbouring lockers claim each other's gaze.</summary>
+    public static float ForgiveDepth = 0.2f;
 
     /// <summary>Tight fallback cone (degrees) for invisible trigger-only zones.</summary>
     const float InvisibleConeDeg = 6f;
@@ -99,11 +101,20 @@ public static class InteractGaze
     /// </summary>
     static readonly Dictionary<int, float> _gazeLatch = new Dictionary<int, float>();
 
+    /// <summary>Minimum latch applied to EVERY gaze target (2026-08-16). The prompt
+    /// system's ownership arbitration (InteractPromptUI.Show) let a neighbour steal
+    /// the prompt on a single frame of gaze jitter, which read as strobing. Holding
+    /// a YES for a fraction of a second damps that for all ~40 prompt owners without
+    /// per-object opt-in. Only ever extends a YES; never invents one.</summary>
+    const float DefaultLatchSeconds = 0.12f;
+
     public static bool IsLookingAt(Object target)
     {
         bool now = Evaluate(target);
 
-        if (!(target is Interactable latched) || latched.gazeLatchSeconds <= 0f) return now;
+        float latchSecs = target is Interactable latched
+            ? Mathf.Max(latched.gazeLatchSeconds, DefaultLatchSeconds)
+            : DefaultLatchSeconds;
 
         int key = target.GetInstanceID();
         if (now)
@@ -112,12 +123,19 @@ public static class InteractGaze
             return true;
         }
 
-        // The dictionary only ever holds interactables the player has actually
-        // looked at, but a long session shouldn't grow it without bound.
-        if (_gazeLatch.Count > 64) _gazeLatch.Clear();
+        // The dictionary only ever holds targets the player has actually looked
+        // at, but a long session shouldn't grow it without bound. Keep the entry
+        // being queried alive across the purge so an overflow can't drop an
+        // active latch mid-look.
+        if (_gazeLatch.Count > 64)
+        {
+            bool had = _gazeLatch.TryGetValue(key, out float keep);
+            _gazeLatch.Clear();
+            if (had) _gazeLatch[key] = keep;
+        }
 
         return _gazeLatch.TryGetValue(key, out float last)
-            && Time.unscaledTime - last <= latched.gazeLatchSeconds;
+            && Time.unscaledTime - last <= latchSecs;
     }
 
     static bool Evaluate(Object target)
@@ -155,10 +173,38 @@ public static class InteractGaze
         // pointing NEAR it isn't enough. (This used to use the sphere around the
         // object's world axis-aligned box, which for a long thin prop is vastly
         // bigger than the prop and felt sloppy.)
+        //
+        // 2026-08-16: this path now also checks occlusion. It used to return on
+        // the silhouette test alone, so a collider-less prop (the fishing rod,
+        // any Alien NPC) was gazeable straight through walls and floors.
         Vector3 camPos = cam.transform.position;
         Ray meshRay = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-        int overlap = CrosshairOverlap(aim, meshRay, out _);
-        if (overlap >= 0) return overlap == 1;
+        int overlap = CrosshairOverlap(aim, meshRay, out float meshEntry);
+        if (overlap >= 0)
+        {
+            if (overlap != 1) return false;
+            float meshBlocker = (_hasHit && _hitDist > 0.001f) ? _hitDist : float.MaxValue;
+            return meshBlocker >= meshEntry - ForgiveDepth;
+        }
+
+        // The aim itself has no mesh — a script sitting on a mesh-less trigger
+        // child (the bonfire's ProximityTrigger). Before falling to the blind
+        // cone, measure the PARENT's geometry: for those props the visible mesh
+        // is one level up, and the flat cone both fired from any angle within
+        // 6 degrees (prompt while looking near, not at) and refused the actual
+        // flames from up close (25 degrees off the trigger's centre = nothing).
+        // One level only — climbing further risks adopting a whole vehicle's
+        // silhouette for a small control point.
+        if (aim.parent != null)
+        {
+            int pOverlap = CrosshairOverlap(aim.parent, meshRay, out float pEntry);
+            if (pOverlap >= 0)
+            {
+                if (pOverlap != 1) return false;
+                float pBlocker = (_hasHit && _hitDist > 0.001f) ? _hitDist : float.MaxValue;
+                return pBlocker >= pEntry - ForgiveDepth;
+            }
+        }
 
         // No mesh geometry at all. World-space UI (the note's paper canvas) still
         // has a silhouette worth aiming at.

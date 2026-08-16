@@ -433,7 +433,7 @@ public class GrassSpawner : MonoBehaviour
             }
         }
 
-        blade.transform.SetParent(entry.body.transform, true);
+        SpawnerCubeface.ParentToBodyPhysicsFrame(blade.transform, entry.body);
         SpawnerCubeface.SetLayerRecursively(blade, SpawnerCubeface.WorldPropLayer);
         ApplyTint(blade);
 

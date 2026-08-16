@@ -39,9 +39,13 @@ public class NPCWaveAnimation : MonoBehaviour
     private Quaternion _upperArmLRest;
     private Quaternion _lowerArmLRest;
 
-    // World-space axis used to rotate the arm from T-pose down to sides.
-    // Negating it and applying from the sides position raises the arm up for the wave.
-    private Vector3 _armRaiseAxis;
+    // Axis used to raise the arm for the wave, stored in the upper arm's
+    // PARENT-local space so it stays correct at any orientation. It used to be
+    // cached in world space at Start — which froze the planet-surface
+    // orientation of wherever the alien FIRST spawned. Pooled aliens reused on
+    // the far side of the planet (or another planet) then swung the arm around
+    // a stale world axis: through the torso, into the ground, backwards.
+    private Vector3 _armRaiseAxisLocal;
 
     // Head look-at
     private Transform _headBone;
@@ -73,6 +77,21 @@ public class NPCWaveAnimation : MonoBehaviour
         StartCoroutine(InitRestPose());
     }
 
+    // Pooled aliens are deactivated and reused elsewhere on (or off) the
+    // planet without Start re-running. Re-capture the rest pose so nothing
+    // from the previous placement leaks; the Animator re-applies its initial
+    // pose on the first frame after re-activation, which InitRestPose waits
+    // for. On the very first activation _ready is still false and Start owns
+    // the init, so this is a no-op then.
+    private void OnEnable()
+    {
+        if (!_ready) return;
+        _ready  = false;
+        _waving = false;
+        _timer  = waveInterval;
+        StartCoroutine(InitRestPose());
+    }
+
     private IEnumerator InitRestPose()
     {
         // Wait one frame so the Animator has applied its initial pose
@@ -82,9 +101,19 @@ public class NPCWaveAnimation : MonoBehaviour
         // robust against any root rotation on this character.
         Transform pelvis = FindDeepChild("pelvis", "Hips");
         Transform spine  = FindDeepChild("spine_01", "Spine");
-        Vector3 bodyDown = Vector3.down;
+        Vector3 bodyDown;
         if (pelvis != null && spine != null)
+        {
             bodyDown = (pelvis.position - spine.position).normalized;
+        }
+        else
+        {
+            // -transform.up, NOT Vector3.down — on a planet surface world-down
+            // points anywhere from sideways to straight up depending on where
+            // the NPC stands.
+            Debug.LogWarning("[NPCWaveAnimation] no pelvis/spine bones on " + name + "; using -transform.up as body down");
+            bodyDown = -transform.up;
+        }
 
         // Rotate each upper arm so its shaft points straight down.
         // Also store the axis of that rotation — negating it is the raise axis.
@@ -93,7 +122,8 @@ public class NPCWaveAnimation : MonoBehaviour
             Vector3 shaftR = (_lowerArmR.position - _upperArmR.position).normalized;
             // cross(T-pose shaft, bodyDown) gives the axis that swings the arm downward.
             // Its negation swings the arm upward from the sides position.
-            _armRaiseAxis  = -Vector3.Cross(shaftR, bodyDown).normalized;
+            Vector3 worldAxis = -Vector3.Cross(shaftR, bodyDown).normalized;
+            _armRaiseAxisLocal = Quaternion.Inverse(_upperArmR.parent.rotation) * worldAxis;
             _upperArmRRest = ArmAtSideLocalRot(_upperArmR, _lowerArmR, bodyDown);
             _upperArmR.localRotation = _upperArmRRest;
         }
@@ -187,8 +217,9 @@ public class NPCWaveAnimation : MonoBehaviour
         // so the motion is always along the correct plane regardless of bone orientation.
         if (_upperArmR != null)
         {
+            Vector3 axisWorld      = _upperArmR.parent.rotation * _armRaiseAxisLocal;
             Quaternion worldRest   = _upperArmR.parent.rotation * _upperArmRRest;
-            Quaternion worldRaised = Quaternion.AngleAxis(armRaiseAngle, _armRaiseAxis) * worldRest;
+            Quaternion worldRaised = Quaternion.AngleAxis(armRaiseAngle, axisWorld) * worldRest;
             Quaternion raisedRot   = Quaternion.Inverse(_upperArmR.parent.rotation) * worldRaised;
             _upperArmR.localRotation = Quaternion.Slerp(_upperArmRRest, raisedRot, armBlend);
         }
@@ -232,7 +263,11 @@ public class NPCWaveAnimation : MonoBehaviour
 
             // Build the desired world-space rotation, then convert to neck_01 local space.
             // This is the same as setting the rotation numbers you see in the inspector.
-            Quaternion worldRot = Quaternion.LookRotation(dir, transform.up);
+            // Guard the degenerate case: player directly above/below the NPC makes
+            // dir parallel to transform.up and LookRotation's result unstable.
+            Vector3 lookUp = Mathf.Abs(Vector3.Dot(dir, transform.up)) > 0.99f
+                ? transform.forward : transform.up;
+            Quaternion worldRot = Quaternion.LookRotation(dir, lookUp);
             Quaternion localRot = Quaternion.Inverse(_headBone.parent.rotation) * worldRot
                                   * Quaternion.Euler(headRotationOffset);
 

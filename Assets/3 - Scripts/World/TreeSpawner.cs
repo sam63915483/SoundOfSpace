@@ -375,7 +375,7 @@ public class TreeSpawner : MonoBehaviour
         {
             tree = Instantiate(prefab, pos, rot);
         }
-        tree.transform.SetParent(entry.body.transform, true);
+        SpawnerCubeface.ParentToBodyPhysicsFrame(tree.transform, entry.body);
         SpawnerCubeface.SetLayerRecursively(tree, SpawnerCubeface.WorldPropLayer);
 
         var st = tree.GetComponent<SpawnedTree>();

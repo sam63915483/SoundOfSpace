@@ -44,6 +44,18 @@ public class EnemySpawner : MonoBehaviour
     [Tooltip("New spawns must land at least this far from every existing enemy — keeps the field spread out instead of clumped.")]
     public float minEnemySpacing = 15f;
 
+    // Day ramp — appended AFTER the fields above (scene-serialized order). These
+    // fields are new, so the C# defaults apply until the scene is re-saved.
+    [Header("Day Ramp")]
+    [Tooltip("Enemies on night 1 of a fresh save. The planet-size target is ramped up to from here.")]
+    public int night1Count = 3;
+    [Tooltip("Extra enemies added per elapsed galactic day (1 in-game day = 24 real minutes).")]
+    public float perDayGrowth = 2.5f;
+    [Tooltip("Galactic day (1-based) at which the full planet-size density is reached.")]
+    public int fullDensityDay = 10;
+    [Tooltip("Absolute ceiling regardless of day. 0 = no extra cap (the planet-size target still applies).")]
+    public int dayRampCap = 0;
+
     PlayerController playerCtl;
     readonly List<EnemyController> activeEnemies = new List<EnemyController>();
     float _spawnTimer;
@@ -91,7 +103,8 @@ public class EnemySpawner : MonoBehaviour
         // Target scales with the planet you're on — a small moon gets far fewer than a big planet.
         Transform p = playerOverride != null ? playerOverride : (playerCtl != null ? playerCtl.transform : null);
         CelestialBody homePlanet = p != null ? GetNearestPlanet(p.position) : null;
-        int target = homePlanet != null ? EffectiveTarget(homePlanet.radius) : populationTarget;
+        int fullTarget = homePlanet != null ? EffectiveTarget(homePlanet.radius) : populationTarget;
+        int target = DayRampedTarget(fullTarget);
 
         if (activeEnemies.Count >= target) return;
 
@@ -102,6 +115,26 @@ public class EnemySpawner : MonoBehaviour
 
     int EffectiveTarget(float planetRadius)
         => Mathf.Clamp(Mathf.RoundToInt(planetRadius * enemiesPerRadius), minPopulation, maxPopulation);
+
+    // Early nights are quiet: night 1 fields only night1Count enemies, growing by
+    // perDayGrowth per galactic day until the planet-size target is reached on
+    // fullDensityDay. Applied OUTSIDE EffectiveTarget — its minPopulation clamp
+    // (floor 5) would silently undo any night-1 value below 5. Day comes from
+    // GalaxyTime (host-synced, restored from the save), so the ramp needs no new
+    // replication or SaveData fields. Loads made at an older, denser day never
+    // cull — the fill loop just stops topping up and the excess bleeds off via
+    // range-despawn and sunburn.
+    int DayRampedTarget(int fullTarget)
+    {
+        var clock = GalaxyTime.Instance;
+        int day = clock != null ? clock.Day : fullDensityDay;  // no clock → today's behavior
+        if (day >= fullDensityDay)
+            return dayRampCap > 0 ? Mathf.Min(fullTarget, dayRampCap) : fullTarget;
+
+        int ramped = Mathf.RoundToInt(night1Count + perDayGrowth * (day - 1));
+        if (dayRampCap > 0) ramped = Mathf.Min(ramped, dayRampCap);
+        return Mathf.Clamp(ramped, 1, fullTarget);
+    }
 
     // Returns true if an enemy was placed.
     bool TrySpawn()
@@ -237,7 +270,7 @@ public class EnemySpawner : MonoBehaviour
             Quaternion rot = Quaternion.LookRotation(forwardLook.normalized, dirFromCenter);
 
             GameObject go = Instantiate(targetPrefab, surfacePos, rot);
-            go.transform.SetParent(planet.transform, true);   // ride orbital motion + floating origin
+            SpawnerCubeface.ParentToBodyPhysicsFrame(go.transform, planet);   // ride orbital motion + floating origin
             var ec = go.GetComponent<EnemyController>();
             if (ec != null) activeEnemies.Add(ec);
             if (spawnElite) _regularsSinceLastEnemy2 = 0;
@@ -312,7 +345,7 @@ public class EnemySpawner : MonoBehaviour
         if (prefab == null || planet == null) return null;
 
         GameObject go = Instantiate(prefab, worldPos, worldRot);
-        go.transform.SetParent(planet.transform, true);
+        SpawnerCubeface.ParentToBodyPhysicsFrame(go.transform, planet);
 
         var ec = go.GetComponent<EnemyController>();
         if (ec == null) { Destroy(go); return null; }
@@ -355,7 +388,7 @@ public class EnemySpawner : MonoBehaviour
         }
 
         GameObject go = Instantiate(prefab, worldPos, worldRot);
-        go.transform.SetParent(planet.transform, true);
+        SpawnerCubeface.ParentToBodyPhysicsFrame(go.transform, planet);
         var ec = go.GetComponent<EnemyController>();
         if (ec != null)
         {

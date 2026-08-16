@@ -208,7 +208,7 @@ public class AudienceSpawner : MonoBehaviour
         // Parent to the planet so floating-origin shifts carry the crowd
         // along with the rest of the world.
         var body = zone.Body;
-        if (body != null) alien.transform.SetParent(body.transform, true);
+        if (body != null) SpawnerCubeface.ParentToBodyPhysicsFrame(alien.transform, body);
 
         // Replace any pre-attached NPCWaveAnimation with AudienceMember —
         // they fight over the same bones.

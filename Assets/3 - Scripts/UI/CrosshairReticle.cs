@@ -162,7 +162,12 @@ public class CrosshairReticle : MonoBehaviour
         InteractGaze.RequireGaze = requireLookToInteract;
         InteractGaze.AimRadius = aimRadius;
         InteractGaze.ExtraAimMargin = extraAimMargin;
-        InteractGaze.ForgiveDepth = forgiveDepth;
+        // Capped at 0.2 m in code (2026-08-16): the scene serializes 0.5, which
+        // let the shuttle's three side-by-side lockers (0.85 m apart) claim each
+        // other's gaze — aim at one, the neighbour's entry face sat inside the
+        // forgiveness and the wrong prompt showed. 0.2 still covers real clutter
+        // pressed against a target (the locker's own door handles are cm proud).
+        InteractGaze.ForgiveDepth = Mathf.Min(forgiveDepth, 0.2f);
 
         bool active = Application.isPlaying && InteractPromptUI.IsPromptVisible;
         float target = active ? 1f : 0f;
@@ -322,7 +327,7 @@ public class CrosshairReticle : MonoBehaviour
     [Tooltip("Extra world-space slack around a target's silhouette, ON TOP of the crosshair radius above. 0 = the near-miss test is exactly as tight as the crosshair itself. Raise only if aiming feels fussy.")]
     [Range(0f, 0.5f)]
     public float extraAimMargin = 0f;
-    [Tooltip("How much further away than the nearest thing the crosshair touched the target may sit and still count as looked-at. Keeps real occluders (walls, the ship hull) blocking.")]
+    [Tooltip("How much further away than the nearest thing the crosshair touched the target may sit and still count as looked-at. Keeps real occluders (walls, the ship hull) blocking. Values above 0.2 are capped in code — 0.5 let neighbouring lockers claim each other's gaze.")]
     [Range(0f, 2f)]
-    public float forgiveDepth = 0.5f;
+    public float forgiveDepth = 0.2f;
 }

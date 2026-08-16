@@ -447,7 +447,7 @@ public class CrystalSpawner : MonoBehaviour
                 crystal.AddComponent<SpawnedCrystal>();
         }
 
-        crystal.transform.SetParent(entry.body.transform, true);
+        SpawnerCubeface.ParentToBodyPhysicsFrame(crystal.transform, entry.body);
         entry.activeCrystals[cellId] = crystal;
 
         // Set the whole hierarchy to the WorldProp layer so other spawners'

@@ -124,7 +124,13 @@ public class MainMenuController : MonoBehaviour
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
-        scaler.matchWidthOrHeight = 0.5f;
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        // Height-matched: every vertical offset in this file is budgeted against a
+        // 1080 logical height (title -160, accent -364, chip -392, column top at
+        // H/2-84 — see BuildCharacterChip). match=0.5 shrank the logical height on
+        // ultrawide (935 at 21:9, 764 at 32:9), driving the center-anchored button
+        // column up into the title and EXIT GAME off the bottom of the screen.
+        scaler.matchWidthOrHeight = 1f;
 
         gameObject.AddComponent<GraphicRaycaster>();
 
@@ -141,15 +147,24 @@ public class MainMenuController : MonoBehaviour
 
         // Title block
         var titleRT = NewUI("Title", transform);
-        titleRT.anchorMin = new Vector2(0.5f, 1f);
-        titleRT.anchorMax = new Vector2(0.5f, 1f);
+        // Stretch across the full width (was a fixed 1600) so the rect never
+        // overhangs on aspects narrower than 16:9; auto-sizing below shrinks the
+        // text to fit. Vertical placement unchanged: top edge at -160, 220 tall.
+        titleRT.anchorMin = new Vector2(0f, 1f);
+        titleRT.anchorMax = new Vector2(1f, 1f);
         titleRT.pivot     = new Vector2(0.5f, 1f);
         titleRT.anchoredPosition = new Vector2(0f, -160f);
-        titleRT.sizeDelta = new Vector2(1600f, 220f);
+        titleRT.sizeDelta = new Vector2(-160f, 220f);
         titleText = titleRT.gameObject.AddComponent<TextMeshProUGUI>();
         ApplyDefaultFont(titleText);
         titleText.text = "SOUND OF SPACE";
         titleText.fontSize = 132f;
+        // Height-matched scaling means logical width drops below 1920 on aspects
+        // narrower than 16:9 (1440 at 4:3); auto-size lets the 1600-wide title
+        // shrink instead of overhanging. At 16:9+ it stays at 132.
+        titleText.enableAutoSizing = true;
+        titleText.fontSizeMin = 60f;
+        titleText.fontSizeMax = 132f;
         titleText.fontStyle = FontStyles.Bold;
         titleText.alignment = TextAlignmentOptions.Center;
         titleText.characterSpacing = 14f;

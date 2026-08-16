@@ -223,27 +223,43 @@ public class AudienceMember : MonoBehaviour
         // Wait one frame so the Animator has applied its initial pose.
         yield return new WaitForEndOfFrame();
 
-        // Body-down direction from skeleton geometry (same as NPCWaveAnimation:80-84).
-        Vector3 bodyDown = Vector3.down;
+        // Body-down direction from skeleton geometry (same as NPCWaveAnimation).
+        Vector3 bodyDown;
         if (_pelvis != null && _spine != null)
+        {
             bodyDown = (_pelvis.position - _spine.position).normalized;
+        }
+        else
+        {
+            // -transform.up, NOT Vector3.down — on a planet surface world-down
+            // points anywhere from sideways to straight up depending on where
+            // the audience member stands.
+            Debug.LogWarning("[AudienceMember] no pelvis/spine bones on " + name + "; using -transform.up as body down");
+            bodyDown = -transform.up;
+        }
 
         // Capture rest rotations and rotate the upper arms down to the sides
         // (T-pose alien rigs ship with arms out). Each arm gets its own raise
         // axis from its own shaft direction so the rotation goes OUTWARD on
         // both sides (same pattern NPCWaveAnimation uses, but we need both
         // arms — that script only ever waved the right).
+        // Axes are stored in each arm's PARENT-local space (LocalRaiseRotation
+        // converts back to world per use). Caching them in world space froze
+        // the orientation of wherever the alien stood when this ran — wrong as
+        // soon as the crowd is placed elsewhere on the sphere.
         if (_upperArmR != null && _lowerArmR != null)
         {
             Vector3 shaftR = (_lowerArmR.position - _upperArmR.position).normalized;
-            _armRaiseAxisR = -Vector3.Cross(shaftR, bodyDown).normalized;
+            _armRaiseAxisR = Quaternion.Inverse(_upperArmR.parent.rotation)
+                             * (-Vector3.Cross(shaftR, bodyDown).normalized);
             _upperArmRRest = ArmAtSideLocalRot(_upperArmR, _lowerArmR, bodyDown);
             _upperArmR.localRotation = _upperArmRRest;
         }
         if (_upperArmL != null && _lowerArmL != null)
         {
             Vector3 shaftL = (_lowerArmL.position - _upperArmL.position).normalized;
-            _armRaiseAxisL = -Vector3.Cross(shaftL, bodyDown).normalized;
+            _armRaiseAxisL = Quaternion.Inverse(_upperArmL.parent.rotation)
+                             * (-Vector3.Cross(shaftL, bodyDown).normalized);
             _upperArmLRest = ArmAtSideLocalRot(_upperArmL, _lowerArmL, bodyDown);
             _upperArmL.localRotation = _upperArmLRest;
         }
@@ -790,7 +806,11 @@ public class AudienceMember : MonoBehaviour
         if (dist <= kIdleHeadTrackDist)
         {
             Vector3 dir = (_idlePlayer.position - _neck.position).normalized;
-            Quaternion worldRot = Quaternion.LookRotation(dir, transform.up);
+            // Guard the degenerate case: player directly above/below makes dir
+            // parallel to transform.up and LookRotation's result unstable.
+            Vector3 lookUp = Mathf.Abs(Vector3.Dot(dir, transform.up)) > 0.99f
+                ? transform.forward : transform.up;
+            Quaternion worldRot = Quaternion.LookRotation(dir, lookUp);
             target = Quaternion.Inverse(_neck.parent.rotation) * worldRot * Quaternion.Euler(kIdleHeadRotationOffset);
         }
 
@@ -820,10 +840,12 @@ public class AudienceMember : MonoBehaviour
     // raise axis appropriate to that arm. Caller passes the per-arm axis
     // because the left and right shafts mirror each other and need opposite
     // rotation axes to both swing OUT to their sides.
-    Quaternion LocalRaiseRotation(Transform arm, Quaternion restLocal, float angleDeg, Vector3 raiseAxis)
+    Quaternion LocalRaiseRotation(Transform arm, Quaternion restLocal, float angleDeg, Vector3 raiseAxisLocal)
     {
+        // raiseAxisLocal is stored in the arm's parent-local space; convert to
+        // world at use time so it follows the alien's current orientation.
         Quaternion worldRest   = arm.parent.rotation * restLocal;
-        Quaternion worldRaised = Quaternion.AngleAxis(angleDeg, raiseAxis) * worldRest;
+        Quaternion worldRaised = Quaternion.AngleAxis(angleDeg, arm.parent.rotation * raiseAxisLocal) * worldRest;
         return Quaternion.Inverse(arm.parent.rotation) * worldRaised;
     }
 

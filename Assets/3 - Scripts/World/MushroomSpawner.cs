@@ -522,7 +522,7 @@ public class MushroomSpawner : MonoBehaviour
             if (legacy != null) Destroy(legacy);
         }
 
-        mushroom.transform.SetParent(entry.body.transform, true);
+        SpawnerCubeface.ParentToBodyPhysicsFrame(mushroom.transform, entry.body);
         SpawnerCubeface.SetLayerRecursively(mushroom, SpawnerCubeface.WorldPropLayer);
         entry.activeMushrooms[cellId] = mushroom;
         entry.cellPrefabIdx[cellId] = prefabIdx;

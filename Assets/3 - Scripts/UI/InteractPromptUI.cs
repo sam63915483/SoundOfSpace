@@ -1,54 +1,45 @@
 using System;
 using System.Collections;
+using System.Text.RegularExpressions;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
-// Shared "Press F to ..." prompt. One pill at bottom-center. Owner-based
-// sticky API matching what GameUI.ShowInteractionPrompt did; replaces every
-// per-NPC talkPromptText and the cook/sell panel close-hint texts. Visual is
-// TutorialUI's pill 1:1 (clipped corners, cyan LED bar, dark navy fill,
-// bracketed [F] keycap).
+// Shared interact prompt. Minimalist helmet-HUD style (2026-08-16 redesign,
+// Sam picked it from four mockups): an amber [F] key glyph framed by thin
+// corner brackets + ONE or two words, uppercase and letterspaced, sitting just
+// below the crosshair at a constant screen size. Callers still pass full
+// sentences ("Press <b>F</b> to insert blank cassette") — ToVerb() reduces
+// them to the short form here, so every existing call site works unchanged.
+// Owner-based sticky API matching what GameUI.ShowInteractionPrompt did.
 public class InteractPromptUI : MonoBehaviour
 {
     public static InteractPromptUI Instance { get; private set; }
 
-    /// <summary>True while a "Press [F] …" prompt is on screen. Read by
-    /// CrosshairReticle to morph the center reticle into its lock-on state.
-    /// Tracks the logical shown/hidden state (flips at the start of the
-    /// slide-in / slide-out), not the animation midpoint.</summary>
+    /// <summary>True while a prompt is on screen. Read by CrosshairReticle to
+    /// morph the center reticle into its lock-on state. Tracks the logical
+    /// shown/hidden state (flips at the start of the fade-in / fade-out),
+    /// not the animation midpoint.</summary>
     public static bool IsPromptVisible { get; private set; }
 
-    [Tooltip("Seconds for the slide-in / slide-out animation.")]
-    public float slideDuration = 0.25f;
-    [Tooltip("Pixels the pill slides up from when first revealed.")]
-    public float slideOffset = 40f;
-    [Tooltip("Vertical anchor — pixels above the bottom edge of the screen at rest. Sits above the WaterFillHUD pill, which moved up to y=236 to clear the hotbar — so this moved up with it.")]
-    public float bottomMargin = 320f;
-    [Tooltip("Diagonal cut on top-left and bottom-right corners (pixels).")]
-    public float bevelSize = 14f;
+    [Tooltip("Seconds for the flicker-in / fade-out animation.")]
+    public float slideDuration = 0.14f;
+    [Tooltip("Pixels the prompt drifts up from when first revealed.")]
+    public float slideOffset = 8f;
+    [Tooltip("Vertical anchor — pixels BELOW the screen centre (the crosshair) at rest, so the eye never has to leave the reticle.")]
+    public float belowCrosshair = 40f;
 
-    // ── Palette (matches TutorialUI exactly) ─────────────────────────
-    static readonly Color PillBgBottomColor = new Color32(0x0A, 0x18, 0x28, 0xEB);
-    static readonly Color PillBorderColor   = new Color32(0x78, 0xC8, 0xFF, 0x73);
-    static readonly Color AccentColor       = new Color32(0x5C, 0xC8, 0xFF, 0xFF);
-    static readonly Color TipColor          = new Color32(0xEA, 0xF6, 0xFF, 0xFF);
-    static readonly Color TipGlowColor      = new Color(0.38f, 0.78f, 1f, 0.45f);
-
-    // ── Sprite cache (panel + outline). Generated lazily, kept static
-    //    so multiple promptUIs share the same texture. ─────────────────
-    static Sprite beveledPanelSprite;
-    static Sprite beveledOutlineSprite;
+    // ── Palette — helmet-HUD amber ───────────────────────────────────
+    static readonly Color HudAmber     = new Color32(0xFF, 0xC4, 0x6B, 0xFF);
+    static readonly Color HudAmberGlow = new Color(1f, 0.77f, 0.42f, 0.5f);
 
     // ── Internal refs ────────────────────────────────────────────────
     Canvas _canvas;
     CanvasGroup _group;
     RectTransform _pillRoot;
-    RectTransform _pillRect;
-    Image _pillBg;
-    Image _pillBorder;
-    Image _accentBar;
+    GameObject _keyBadge;
+    TextMeshProUGUI _keyText;
     TextMeshProUGUI _bodyText;
 
     Coroutine _slideRoutine;
@@ -127,8 +118,8 @@ public class InteractPromptUI : MonoBehaviour
         }
     }
 
-    Vector2 RestPos()      => new Vector2(0f, bottomMargin);
-    Vector2 OffScreenPos() => new Vector2(0f, bottomMargin - slideOffset);
+    Vector2 RestPos()      => new Vector2(0f, -belowCrosshair);
+    Vector2 OffScreenPos() => new Vector2(0f, -belowCrosshair - slideOffset);
 
     // ── Public API ───────────────────────────────────────────────────
 
@@ -184,7 +175,15 @@ public class InteractPromptUI : MonoBehaviour
         // Update() re-asserts "Press F" each frame would override the cook
         // panel's Clear(this) and the prompt would keep pulsing in.
         if (PlayerController.isInDialogue) return;
-        if (_bodyText != null) _bodyText.text = DecorateKeyGlyphs(text ?? "");
+
+        string verb = ToVerb(text ?? "", out bool hasKey);
+        if (_bodyText != null) _bodyText.text = verb;
+        // Status lines with no key ("Someone else is in there") drop the badge.
+        if (_keyBadge != null && _keyBadge.activeSelf != hasKey) _keyBadge.SetActive(hasKey);
+        // Refresh the glyph every show — the player can switch between
+        // keyboard and pad mid-session.
+        if (hasKey && _keyText != null) _keyText.text = PromptGlyphs.InteractPlain;
+
         if (_shown) return;
         _shown = true;
         IsPromptVisible = true;
@@ -221,8 +220,13 @@ public class InteractPromptUI : MonoBehaviour
             t += Time.unscaledDeltaTime;
             float u = Mathf.Clamp01(t / dur);
             float k = show ? 1f - Mathf.Pow(1f - u, 3f) : u * u * u;
+            float alpha = Mathf.Lerp(fromAlpha, toAlpha, k);
+            // Visor-readout flicker on the way IN: two dark steps in the first
+            // 60% of the animation, then solid. Fade-out stays a plain fade.
+            if (show && u < 0.6f)
+                alpha *= (Mathf.FloorToInt(u * 8f) % 2 == 0) ? 0.35f : 1f;
             if (_pillRoot != null) _pillRoot.anchoredPosition = Vector2.Lerp(from, to, k);
-            if (_group != null) _group.alpha = Mathf.Lerp(fromAlpha, toAlpha, k);
+            if (_group != null) _group.alpha = alpha;
             yield return null;
         }
         if (_pillRoot != null) _pillRoot.anchoredPosition = to;
@@ -242,80 +246,89 @@ public class InteractPromptUI : MonoBehaviour
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
-        scaler.matchWidthOrHeight = 0.5f;
+        // Height-matched so the prompt is the same physical size at any aspect
+        // ratio — one of the redesign's requirements was a constant-size prompt.
+        scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
+        scaler.matchWidthOrHeight = 1f;
         gameObject.AddComponent<GraphicRaycaster>();
         _group = gameObject.AddComponent<CanvasGroup>();
         _group.interactable = false;
         _group.blocksRaycasts = false;
 
-        // Root anchored at bottom-centre, sized by content.
+        // Root hangs just below the crosshair (screen centre), sized by content.
         _pillRoot = NewUI("PromptRoot", transform);
-        _pillRoot.anchorMin = new Vector2(0.5f, 0f);
-        _pillRoot.anchorMax = new Vector2(0.5f, 0f);
-        _pillRoot.pivot = new Vector2(0.5f, 0f);
+        _pillRoot.anchorMin = new Vector2(0.5f, 0.5f);
+        _pillRoot.anchorMax = new Vector2(0.5f, 0.5f);
+        _pillRoot.pivot = new Vector2(0.5f, 1f);
         _pillRoot.anchoredPosition = RestPos();
         var rootFitter = _pillRoot.gameObject.AddComponent<ContentSizeFitter>();
         rootFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
         rootFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+        var hlg = _pillRoot.gameObject.AddComponent<HorizontalLayoutGroup>();
+        hlg.childAlignment = TextAnchor.MiddleLeft;
+        hlg.childControlWidth = true;
+        hlg.childControlHeight = true;
+        hlg.childForceExpandWidth = false;
+        hlg.childForceExpandHeight = false;
+        hlg.spacing = 10f;
 
-        // Pill body — beveled clipped panel.
-        var pillRT = NewUI("Pill", _pillRoot);
-        pillRT.anchorMin = new Vector2(0f, 0f);
-        pillRT.anchorMax = new Vector2(1f, 0f);
-        pillRT.pivot = new Vector2(0.5f, 0f);
-        _pillRect = pillRT;
+        // Key badge: the bare glyph framed by two thin corner brackets
+        // (top-left and bottom-right), visor-readout style. No panel, no fill.
+        var badgeRT = NewUI("KeyBadge", _pillRoot);
+        _keyBadge = badgeRT.gameObject;
+        var badgeLE = _keyBadge.AddComponent<LayoutElement>();
+        badgeLE.preferredWidth = 26f;
+        badgeLE.preferredHeight = 26f;
 
-        _pillBg = pillRT.gameObject.AddComponent<Image>();
-        _pillBg.sprite = GetBeveledPanelSprite();
-        _pillBg.type = Image.Type.Sliced;
-        _pillBg.color = PillBgBottomColor;
-        _pillBg.raycastTarget = false;
+        _keyText = NewText(badgeRT, "Glyph", "F", 15f, FontStyles.Bold, HudAmber);
+        Stretch(_keyText.rectTransform);
+        _keyText.alignment = TextAlignmentOptions.Center;
+        _keyText.enableWordWrapping = false;
+        var glyphGlow = _keyText.gameObject.AddComponent<Shadow>();
+        glyphGlow.effectColor = HudAmberGlow;
+        glyphGlow.effectDistance = new Vector2(0f, 0f);
 
-        // Cyan LED accent bar — anchored to left edge.
-        var accentRT = NewUI("AccentBar", pillRT);
-        accentRT.anchorMin = new Vector2(0f, 0f);
-        accentRT.anchorMax = new Vector2(0f, 1f);
-        accentRT.pivot = new Vector2(0f, 0.5f);
-        accentRT.anchoredPosition = new Vector2(8f, 0f);
-        accentRT.sizeDelta = new Vector2(3f, -16f);
-        accentRT.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
-        _accentBar = accentRT.gameObject.AddComponent<Image>();
-        _accentBar.color = AccentColor;
-        _accentBar.raycastTarget = false;
+        AddCornerBracket(badgeRT, true);   // top-left
+        AddCornerBracket(badgeRT, false);  // bottom-right
 
-        // Border outline.
-        var border = NewUI("Border", pillRT);
-        Stretch(border);
-        border.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
-        _pillBorder = border.gameObject.AddComponent<Image>();
-        _pillBorder.sprite = GetBeveledOutlineSprite();
-        _pillBorder.type = Image.Type.Sliced;
-        _pillBorder.color = PillBorderColor;
-        _pillBorder.raycastTarget = false;
-
-        var pillVlg = pillRT.gameObject.AddComponent<HorizontalLayoutGroup>();
-        pillVlg.childAlignment = TextAnchor.MiddleLeft;
-        pillVlg.childControlWidth = true;
-        pillVlg.childControlHeight = true;
-        pillVlg.childForceExpandWidth = false;
-        pillVlg.childForceExpandHeight = false;
-        pillVlg.padding = new RectOffset(22, 18, 10, 10);
-
-        var pillFitter = pillRT.gameObject.AddComponent<ContentSizeFitter>();
-        pillFitter.horizontalFit = ContentSizeFitter.FitMode.PreferredSize;
-        pillFitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
-
-        // Body text — single-line "[F] Pick up bottle".
-        _bodyText = NewText(pillRT, "Body", "", 14f, FontStyles.Bold, TipColor);
+        // Verb — one or two words, uppercase, letterspaced.
+        _bodyText = NewText(_pillRoot, "Body", "", 13f, FontStyles.Bold, HudAmber);
         _bodyText.alignment = TextAlignmentOptions.MidlineLeft;
-        _bodyText.characterSpacing = 1f;
+        _bodyText.characterSpacing = 10f;
         _bodyText.enableWordWrapping = false;
         var bodyGlow = _bodyText.gameObject.AddComponent<Shadow>();
-        bodyGlow.effectColor = TipGlowColor;
+        bodyGlow.effectColor = HudAmberGlow;
         bodyGlow.effectDistance = new Vector2(0f, 0f);
         var bodyShadow = _bodyText.gameObject.AddComponent<Shadow>();
         bodyShadow.effectColor = new Color(0f, 0f, 0f, 0.85f);
         bodyShadow.effectDistance = new Vector2(0f, -2f);
+    }
+
+    // Two thin amber lines forming an L in the badge's corner.
+    void AddCornerBracket(RectTransform badge, bool topLeft)
+    {
+        const float len = 9f, thick = 1.6f;
+        Vector2 corner = topLeft ? new Vector2(0f, 1f) : new Vector2(1f, 0f);
+
+        var h = NewUI(topLeft ? "BracketTL_H" : "BracketBR_H", badge);
+        h.anchorMin = h.anchorMax = corner;
+        h.pivot = corner;
+        h.sizeDelta = new Vector2(len, thick);
+        h.anchoredPosition = Vector2.zero;
+        var hImg = h.gameObject.AddComponent<Image>();
+        hImg.color = HudAmber;
+        hImg.raycastTarget = false;
+        h.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+
+        var v = NewUI(topLeft ? "BracketTL_V" : "BracketBR_V", badge);
+        v.anchorMin = v.anchorMax = corner;
+        v.pivot = corner;
+        v.sizeDelta = new Vector2(thick, len);
+        v.anchoredPosition = Vector2.zero;
+        var vImg = v.gameObject.AddComponent<Image>();
+        vImg.color = HudAmber;
+        vImg.raycastTarget = false;
+        v.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────
@@ -349,120 +362,69 @@ public class InteractPromptUI : MonoBehaviour
         return t;
     }
 
-    // ── Procedural sprite generation (copied from TutorialUI; one extra
-    //    caller doesn't justify a refactor of the existing component). ──
+    // ── Sentence → verb normaliser ───────────────────────────────────
+    //
+    // Every prompt owner in the project still passes a full sentence —
+    // "Press <b>F</b> to insert blank cassette", "Hold F to Eject", the three
+    // ship prefabs' serialized "Press F to fly". Reducing them HERE means all
+    // ~40 call sites get the minimalist form with zero edits and no site can
+    // be missed. Strings that don't match the Press/Hold shape are status
+    // lines ("Someone else is in there") and pass through key-less.
 
-    static Sprite GetBeveledPanelSprite()
-    {
-        if (beveledPanelSprite != null) return beveledPanelSprite;
-        var tex = MakeBeveledPanelTexture(64, 14, true);
-        beveledPanelSprite = Sprite.Create(tex, new Rect(0, 0, 64, 64), new Vector2(0.5f, 0.5f),
-                                            100f, 0u, SpriteMeshType.FullRect, new Vector4(18, 18, 18, 18));
-        beveledPanelSprite.name = "InteractPromptBeveledPanel";
-        return beveledPanelSprite;
-    }
+    static readonly Regex PressToRx = new Regex(
+        @"^\s*(?:press|hold)\s+.*?\s+to\s+(.+)$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled);
+    static readonly Regex TagRx = new Regex(@"<[^>]+>", RegexOptions.Compiled);
 
-    static Sprite GetBeveledOutlineSprite()
-    {
-        if (beveledOutlineSprite != null) return beveledOutlineSprite;
-        var tex = MakeBeveledOutlineTexture(64, 14, 2);
-        beveledOutlineSprite = Sprite.Create(tex, new Rect(0, 0, 64, 64), new Vector2(0.5f, 0.5f),
-                                              100f, 0u, SpriteMeshType.FullRect, new Vector4(18, 18, 18, 18));
-        beveledOutlineSprite.name = "InteractPromptBeveledOutline";
-        return beveledOutlineSprite;
-    }
+    // First words that read wrong alone and keep their second word instead
+    // ("PICK UP", "CUT POWER", "RESTORE POWER").
+    static readonly string[] TwoWordFirsts = { "pick", "cut", "restore" };
 
-    static Texture2D MakeBeveledPanelTexture(int size, int bevel, bool verticalGradient)
+    static string ToVerb(string source, out bool hasKey)
     {
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        tex.wrapMode = TextureWrapMode.Clamp;
-        var pixels = new Color[size * size];
-        int s = size - 1;
-        for (int y = 0; y < size; y++)
+        hasKey = false;
+        if (string.IsNullOrEmpty(source)) return "";
+
+        // Only the part before any newline / pipe — multi-clause prompts keep
+        // their first action.
+        int cut = source.IndexOfAny(new[] { '\n', '|' });
+        string head = cut >= 0 ? source.Substring(0, cut) : source;
+
+        var m = PressToRx.Match(TagRx.Replace(head, ""));
+        if (!m.Success)
         {
-            float v = (float)y / s;
-            float vAlpha = verticalGradient ? Mathf.Lerp(0.85f, 1.0f, v) : 1.0f;
-            for (int x = 0; x < size; x++)
-            {
-                int distTL = x + (s - y);
-                int distBR = (s - x) + y;
-                float a = 1f;
-                if (distTL < bevel) a = Mathf.Clamp01(distTL - (bevel - 1) + 0.5f);
-                else if (distBR < bevel) a = Mathf.Clamp01(distBR - (bevel - 1) + 0.5f);
-                pixels[y * size + x] = new Color(1f, 1f, 1f, a * vAlpha);
-            }
+            // Status line — show as-is, minus markup, capped so the prompt
+            // stays small.
+            string plain = TagRx.Replace(head, "").Trim();
+            return plain.Length > 28 ? plain.Substring(0, 28) : plain;
         }
-        tex.SetPixels(pixels);
-        tex.Apply();
-        return tex;
-    }
 
-    static Texture2D MakeBeveledOutlineTexture(int size, int bevel, int thickness)
-    {
-        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false);
-        tex.filterMode = FilterMode.Bilinear;
-        tex.wrapMode = TextureWrapMode.Clamp;
-        var pixels = new Color[size * size];
-        int s = size - 1;
-        int innerBevel = Mathf.Max(0, bevel - thickness);
-        int innerSize = size - 2 * thickness;
-        for (int y = 0; y < size; y++)
+        hasKey = true;
+        string rest = m.Groups[1].Value;
+        int stop = rest.IndexOfAny(new[] { '"', '(' });
+        if (stop >= 0) rest = rest.Substring(0, stop);
+
+        var words = rest.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        int i = 0;
+        if (words.Length > 1 && (words[0].Equals("the", StringComparison.OrdinalIgnoreCase)
+                              || words[0].Equals("a", StringComparison.OrdinalIgnoreCase)
+                              || words[0].Equals("an", StringComparison.OrdinalIgnoreCase)))
+            i = 1;
+        if (i >= words.Length) return "INTERACT";
+
+        string first = words[i];
+        string result = first;
+        if (i + 1 < words.Length)
         {
-            for (int x = 0; x < size; x++)
+            for (int k = 0; k < TwoWordFirsts.Length; k++)
             {
-                int distTL = x + (s - y);
-                int distBR = (s - x) + y;
-                float outerA = 1f;
-                if (distTL < bevel) outerA = Mathf.Clamp01(distTL - (bevel - 1) + 0.5f);
-                else if (distBR < bevel) outerA = Mathf.Clamp01(distBR - (bevel - 1) + 0.5f);
-
-                int ix = x - thickness;
-                int iy = y - thickness;
-                float innerA = 0f;
-                if (ix >= 0 && iy >= 0 && ix < innerSize && iy < innerSize)
+                if (first.Equals(TwoWordFirsts[k], StringComparison.OrdinalIgnoreCase))
                 {
-                    int innerS = innerSize - 1;
-                    int iDistTL = ix + (innerS - iy);
-                    int iDistBR = (innerS - ix) + iy;
-                    innerA = 1f;
-                    if (iDistTL < innerBevel) innerA = Mathf.Clamp01(iDistTL - (innerBevel - 1) + 0.5f);
-                    else if (iDistBR < innerBevel) innerA = Mathf.Clamp01(iDistBR - (innerBevel - 1) + 0.5f);
+                    result = first + " " + words[i + 1];
+                    break;
                 }
-                float ringA = Mathf.Clamp01(outerA - innerA);
-                pixels[y * size + x] = new Color(1f, 1f, 1f, ringA);
             }
         }
-        tex.SetPixels(pixels);
-        tex.Apply();
-        return tex;
-    }
-
-    // ── Keycap glyph wrapping ────────────────────────────────────────
-    // Mirrors TutorialUI.DecorateKeyGlyphs — wraps `<b>F</b>` etc. in a
-    // bracketed cyan badge so it reads as a discrete keycap instead of bold text.
-    static readonly string[] KbdLabels = new[]
-    {
-        "WASD + Shift",
-        "left click", "Left click",
-        "Space", "Shift", "Ctrl", "WASD", "mouse", "Mouse",
-        "TAB", "Esc", "LMB", "RMB",
-        "F", "E", "G", "M", "N", "B", "Q",
-    };
-
-    static string DecorateKeyGlyphs(string source)
-    {
-        if (string.IsNullOrEmpty(source)) return source;
-        string result = source;
-        for (int i = 0; i < KbdLabels.Length; i++)
-        {
-            string label = KbdLabels[i];
-            string needle = "<b>" + label + "</b>";
-            if (result.IndexOf(needle, System.StringComparison.Ordinal) < 0) continue;
-            string replacement =
-                "<color=#5CC8FF><size=115%>[</size><b>" + label + "</b><size=115%>]</size></color>";
-            result = result.Replace(needle, replacement);
-        }
-        return result;
+        return result.ToUpperInvariant();
     }
 }

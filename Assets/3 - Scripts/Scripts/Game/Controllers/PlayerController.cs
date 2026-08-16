@@ -315,6 +315,13 @@ public class PlayerController : GravityObject
 	// Directional Thrust
 	float dirThrustFuelPercent = 1;
 	float lastDirThrustUseTime;
+	// Set when the tank runs dry so the drain block stops re-entering while the
+	// keys stay held. Without it, one frame of trickle-charge makes the fuel gate
+	// pass again, the drain re-stamps lastDirThrustUseTime, and the refuel delay
+	// resets forever — the bar never fills until the player releases the keys.
+	// (Up boost gets the same behavior for free from the usingJetpack latch.)
+	// Cleared at full charge, so thrust auto-resumes when the bar refills.
+	bool dirThrustExhausted;
 
 	CelestialBody referenceBody;
 
@@ -529,13 +536,14 @@ public class PlayerController : GravityObject
 		// Refuel downward thrust
 		if (Time.time - lastDownThrustUseTime > downThrustRefuelDelay)
 		{
-			downThrustFuelPercent = Mathf.Clamp01(downThrustFuelPercent + Time.deltaTime / downThrustDuration);
+			downThrustFuelPercent = Mathf.Clamp01(downThrustFuelPercent + Time.deltaTime / downThrustRefuelTime);
 		}
 
 		// Refuel directional thrust
 		if (Time.time - lastDirThrustUseTime > dirThrustRefuelDelay)
 		{
 			dirThrustFuelPercent = Mathf.Clamp01(dirThrustFuelPercent + Time.deltaTime / dirThrustRefuelTime);
+			if (dirThrustExhausted && dirThrustFuelPercent >= 1f) dirThrustExhausted = false;
 		}
 
 		if (upThrustFillRect) upThrustFillRect.localScale = new Vector3(jetpackFuelPercent, 1, 1);
@@ -1071,7 +1079,7 @@ public class PlayerController : GravityObject
 
 		// Directional Thrust (airborne + Shift OR Right-Trigger + WASD/left-stick) — gated by jetpackUnlocked.
 		bool dirThrustHeld = !typing && TutorialGate.DirectionalThrustHeld(TutorialAbility.DirectionalThrust);
-		if (jetpackUnlocked && !isGrounded && dirThrustHeld && dirThrustFuelPercent > 0)
+		if (jetpackUnlocked && !isGrounded && dirThrustHeld && !dirThrustExhausted && dirThrustFuelPercent > 0)
 		{
 			// Left stick + keyboard only — the legacy Horizontal/Vertical axes
 			// leak the D-pad / right stick via a stray InputManager axis-5/6 map.
@@ -1083,6 +1091,7 @@ public class PlayerController : GravityObject
 			{
 				lastDirThrustUseTime = Time.time;
 				dirThrustFuelPercent -= Time.deltaTime / dirThrustDuration;
+				if (dirThrustFuelPercent <= 0f) { dirThrustFuelPercent = 0f; dirThrustExhausted = true; }
 				rb.AddForce(transform.TransformDirection(inputVec.normalized) * dirThrustForce, ForceMode.Acceleration);
 				dirBoostActive = true;
 			}
@@ -1152,7 +1161,7 @@ public class PlayerController : GravityObject
 		// Gate the orbit-match O key on chat typing — the user pressing 'o'
 		// while writing a message must NOT engage circularize.
 		bool oHeld = Input.GetKey(KeyCode.O) && !AIChatScreen.IsTypingActive;
-		if (_hasGravitySim && jetpackUnlocked && !isGrounded && oHeld && dirThrustFuelPercent > 0f)
+		if (_hasGravitySim && jetpackUnlocked && !isGrounded && oHeld && !dirThrustExhausted && dirThrustFuelPercent > 0f)
 		{
 			// Pick the closest body the player is in valid orbit-match range
 			// of (rangeMul × radius outer, 1.05 × radius inner). The two-pass
@@ -1209,6 +1218,7 @@ public class PlayerController : GravityObject
 					{
 						lastDirThrustUseTime = Time.time;
 						dirThrustFuelPercent -= Time.deltaTime / dirThrustDuration;
+						if (dirThrustFuelPercent <= 0f) { dirThrustFuelPercent = 0f; dirThrustExhausted = true; }
 						Vector3 force = needed.normalized * dirThrustForce;
 						// Clamp so we don't overshoot zero in a single tick.
 						float plannedDV = force.magnitude * Time.deltaTime;
@@ -1939,5 +1949,6 @@ public class PlayerController : GravityObject
 		jetpackFuelPercent = Mathf.Clamp01(jetpack);
 		downThrustFuelPercent = Mathf.Clamp01(downThrust);
 		dirThrustFuelPercent = Mathf.Clamp01(dirThrust);
+		dirThrustExhausted = false;
 	}
 }

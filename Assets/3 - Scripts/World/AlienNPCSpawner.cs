@@ -479,7 +479,7 @@ public class AlienNPCSpawner : MonoBehaviour
         var dlg = alien.GetComponent<RandomAlienDialogue>();
         if (dlg != null) dlg.SetVoice(voiceClip, voiceVolume);
 
-        alien.transform.SetParent(entry.body.transform, true);
+        SpawnerCubeface.ParentToBodyPhysicsFrame(alien.transform, entry.body);
         SpawnerCubeface.SetLayerRecursively(alien, SpawnerCubeface.WorldPropLayer);
 
         var marker = alien.GetComponent<SpawnedAlienNPC>();
