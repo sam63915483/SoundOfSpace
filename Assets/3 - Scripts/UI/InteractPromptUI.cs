@@ -23,6 +23,13 @@ public class InteractPromptUI : MonoBehaviour
     /// not the animation midpoint.</summary>
     public static bool IsPromptVisible { get; private set; }
 
+    /// <summary>The object whose prompt is on screen RIGHT NOW (null while
+    /// hidden, and for owner-less one-shots). GazeHighlight outlines exactly
+    /// this — one source, so the rim glow and the [F] prompt can never
+    /// disagree about what the player is looking at.</summary>
+    public static UnityEngine.Object CurrentOwner
+        => Instance != null && Instance._shown && Instance._stickyOwner ? Instance._owner : null;
+
     [Tooltip("Seconds for the flicker-in / fade-out animation.")]
     public float slideDuration = 0.14f;
     [Tooltip("Pixels the prompt drifts up from when first revealed.")]

@@ -865,6 +865,7 @@ public class MainMenuController : MonoBehaviour
         if (NoteReadUI.Instance == null) { var go = new GameObject("NoteReadUI"); DontDestroyOnLoad(go); go.AddComponent<NoteReadUI>(); }
         tick("note UI");          yield return null;
         if (InteractPromptUI.Instance == null) { var go = new GameObject("InteractPromptUI"); DontDestroyOnLoad(go); go.AddComponent<InteractPromptUI>(); }
+        if (GazeHighlight.Instance == null) { var go = new GameObject("GazeHighlight"); DontDestroyOnLoad(go); go.AddComponent<GazeHighlight>(); }
         tick("interact prompt");  yield return null;
         if (NewspaperReaderUI.Instance == null) { var go = new GameObject("NewspaperReaderUI"); DontDestroyOnLoad(go); go.AddComponent<NewspaperReaderUI>(); }
         if (MonumentLinkPopupUI.Instance == null) { var go = new GameObject("MonumentLinkPopupUI"); DontDestroyOnLoad(go); go.AddComponent<MonumentLinkPopupUI>(); }
