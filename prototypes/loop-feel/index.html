@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LOOP FEEL — S1 Flywheel pass, design mockups</title>
+<style>
+:root{
+  --bg:#0a1828; --slot-bg:#08131f; --slot-edge:#24425f;
+  --border:#78c8ff; --label:#eaf6ff; --dim:#7fa0bd; --value:#ffd732;
+  --header:#e2787e; --ok:#6edc82; --warn:#ff9a3c; --err:#ff6e6e;
+  --sell:#3c9146; --take:#2f6f8c; --back:#8c3c3c; --purple:#c792ea;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,'DejaVu Sans Mono',monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#050b12;color:var(--label);font-family:var(--mono);padding:22px;
+     display:flex;flex-direction:column;align-items:center;gap:26px}
+h1{font-size:14px;letter-spacing:.24em;color:var(--dim);font-weight:400}
+h2{font-size:13px;letter-spacing:.2em;color:var(--header);font-weight:400;
+   border-bottom:1px solid #1b3450;padding-bottom:7px;margin-bottom:4px}
+.note{max-width:940px;font-size:12px;line-height:1.65;color:var(--dim)}
+.note b{color:var(--label)}
+.sec{width:940px;background:var(--bg);border:1px solid var(--slot-edge);border-radius:8px;
+     padding:18px 22px;display:flex;flex-direction:column;gap:12px}
+.sec .why{font-size:11px;line-height:1.6;color:var(--dim)}
+.sec .why b{color:var(--label)}
+.val{color:var(--value)} .okc{color:var(--ok)} .errc{color:var(--err)} .warnc{color:var(--warn)}
+.dimc{color:var(--dim)}
+.row2{display:flex;gap:16px;align-items:stretch}
+.half{flex:1;display:flex;flex-direction:column;gap:8px}
+.cap{font-size:10px;letter-spacing:.22em;color:var(--dim)}
+.cap.old{color:var(--err)} .cap.new{color:var(--ok)}
+.panel{background:var(--slot-bg);border:1px solid var(--slot-edge);border-radius:6px;
+       padding:14px;display:flex;flex-direction:column;gap:9px;flex:1}
+.hdrline{display:flex;align-items:baseline;gap:10px}
+.who{font-size:16px;letter-spacing:.14em;color:var(--header)}
+.bond{font-size:11px;color:var(--dim)}
+.small{font-size:11px;color:var(--dim);line-height:1.55}
+.big{font-size:15px;letter-spacing:.06em}
+input[type=range]{width:100%;accent-color:#78c8ff;height:18px}
+.sliderwrap{position:relative;padding-top:12px}
+.tick{position:absolute;top:0;width:2px;height:9px;background:var(--value)}
+.ticklbl{position:absolute;top:-2px;transform:translateX(-50%);font-size:9px;color:var(--value);
+         letter-spacing:.08em;white-space:nowrap;margin-top:-11px}
+.asknum{font-size:22px;color:var(--value);text-align:right;min-width:80px}
+.ctl{display:flex;align-items:center;gap:12px}
+.ctl .lab{font-size:11px;letter-spacing:.18em;color:var(--dim);width:44px}
+.react{min-height:40px;font-size:13px;line-height:1.5}
+.btn{font-family:var(--mono);font-size:12px;letter-spacing:.14em;padding:8px 18px;
+     border:none;border-radius:5px;color:#eaf6ff;cursor:pointer;align-self:flex-start}
+.b-sell{background:var(--sell)}.b-take{background:var(--take)}.b-back{background:var(--back)}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap}
+.ladder{display:flex;gap:0;border:1px solid var(--slot-edge);border-radius:5px;overflow:hidden}
+.ladder div{flex:1;text-align:center;padding:9px 4px;font-size:11px;letter-spacing:.1em;
+            border-right:1px solid var(--slot-edge);color:var(--dim)}
+.ladder div:last-child{border-right:none}
+.ladder div.on{color:#0b1620;font-weight:bold}
+.l0.on{background:var(--err)} .l1.on{background:var(--warn)} .l2.on{background:#9fd86e}
+.l3.on{background:var(--ok)} .l4.on{background:var(--purple)}
+.quote{font-size:13px;line-height:1.55;padding:10px 12px;background:#0e2236;border-left:3px solid var(--border);
+       border-radius:0 5px 5px 0}
+.bandedge{display:flex;justify-content:space-between;font-size:9px;color:#43668a;letter-spacing:.08em}
+.phone{width:390px;background:#060d16;border:1px solid var(--slot-edge);border-radius:14px;
+       padding:14px;display:flex;flex-direction:column;gap:9px;align-self:center}
+.phdr{font-size:11px;letter-spacing:.2em;color:var(--dim);text-align:center;
+      border-bottom:1px solid #16293c;padding-bottom:8px}
+.bubble{background:#0e2236;border-radius:9px 9px 9px 2px;padding:10px 12px;font-size:12px;
+        line-height:1.6;max-width:96%}
+.bubble .from{font-size:9px;letter-spacing:.18em;color:var(--header);margin-bottom:5px}
+.bubble.player{background:#173a2a;border-radius:9px 9px 2px 9px;align-self:flex-end}
+.recap-line{display:flex;justify-content:space-between;gap:10px}
+.recap-line span:first-child{color:var(--dim)}
+.card{background:var(--slot-bg);border:1px solid var(--slot-edge);border-radius:6px;padding:14px;
+      width:360px;display:flex;flex-direction:column;gap:8px;align-self:center}
+.card .cname{font-size:16px;letter-spacing:.14em;color:var(--header)}
+.card .crow{font-size:11px;line-height:1.7;color:var(--dim)}
+.card .crow b{color:var(--label);font-weight:normal}
+.crave{display:flex;align-items:baseline;gap:8px;font-size:11px}
+.crave .word{font-size:13px;letter-spacing:.12em}
+.c0{color:#43668a}.c1{color:var(--dim)}.c2{color:var(--warn)}.c3{color:var(--err)}
+.simrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.simlog{font-size:11px;line-height:1.7;color:var(--dim);min-height:64px;background:#070f18;
+        border:1px solid #16293c;border-radius:5px;padding:9px 12px}
+.simlog b{color:var(--label);font-weight:normal}
+.simlog .hot{color:var(--warn)}
+ul.lines{list-style:none;display:flex;flex-direction:column;gap:7px}
+ul.lines li{font-size:12px;line-height:1.5;padding-left:14px;position:relative}
+ul.lines li:before{content:'»';position:absolute;left:0;color:var(--dim)}
+.shoprow{display:flex;align-items:center;gap:12px;background:var(--slot-bg);
+         border:1px solid var(--slot-edge);border-radius:6px;padding:10px 14px}
+.shoprow .pname{font-size:13px;letter-spacing:.1em;flex:1}
+.shoprow .price{font-size:14px;color:var(--value)}
+.sbtn{font-family:var(--mono);font-size:10px;letter-spacing:.14em;padding:6px 12px;
+      border:1px solid var(--slot-edge);background:transparent;color:var(--dim);
+      border-radius:4px;cursor:pointer}
+.sbtn:hover{border-color:var(--border);color:var(--label)}
+.sbtn.playing{border-color:var(--ok);color:var(--ok)}
+.bars{display:inline-flex;gap:2px;align-items:flex-end;height:9px;margin-left:5px}
+.bars i{display:block;width:2px;background:var(--ok);animation:eq .9s ease-in-out infinite}
+.bars i:nth-child(2){animation-delay:.15s}.bars i:nth-child(3){animation-delay:.3s}
+@keyframes eq{0%,100%{height:3px}50%{height:9px}}
+.strike{color:#5d7f9e;text-decoration:line-through}
+.chips{display:flex;gap:8px}
+.chip{font-size:11px;letter-spacing:.1em;padding:7px 13px;border:1px solid var(--slot-edge);
+      border-radius:4px;color:var(--label);background:#0e2236}
+.tag{font-size:9px;letter-spacing:.16em;padding:2px 7px;border-radius:3px;align-self:flex-start}
+.tag.cut{background:#3a1518;color:var(--err)}
+.tag.keep{background:#12301b;color:var(--ok)}
+.tag.new{background:#152b3f;color:var(--border)}
+</style>
+</head>
+<body>
+
+<h1>LOOP FEEL — SCHEDULE 1 FLYWHEEL PASS · DESIGN MOCKUPS</h1>
+<div class="note">
+One section per phase. Everything here is <b>copy and UI only</b> — the taste math, prices,
+ceilings and tier rules shipped this week are untouched underneath. Interactive bits use the
+real gate numbers (42 / 60 coin-flip band etc.) so the feel is honest.
+Yellow = your calls already locked. Anything marked <b>DRAFT</b> is placeholder wording for you to edit.
+</div>
+
+<!-- ============ A1 ============ -->
+<div class="sec">
+<h2>A1 — ONE SATISFACTION VOCABULARY (the word ladder)</h2>
+<div class="why">Today the game only speaks on <b>rejection</b> — a liked tape goes silently to the
+price step. This adds one 5-word scale used <b>everywhere</b> an alien describes a tape: the listen
+reaction, texts after a delivery, the contact card. Players learn one scale. Drag the slider —
+this is the alien's hidden satisfaction; the player only ever sees the word.</div>
+
+<div class="ctl"><div class="lab">SAT</div><input type="range" id="satS" min="0" max="100" value="71"><div class="asknum" id="satN">71</div></div>
+<div class="bandedge"><span>0</span><span>42 · flip band</span><span>60 · liked</span><span>78</span><span>92</span><span>100</span></div>
+<div class="ladder" id="ladder">
+  <div class="l0">JUNK</div><div class="l1">NOT FOR ME</div><div class="l2">DECENT</div>
+  <div class="l3">LOVE IT</div><div class="l4">MASTERPIECE</div>
+</div>
+<div class="quote" id="satLine">…</div>
+<div class="small" id="flipNote"></div>
+<div class="why"><b>DRAFT ladder:</b> junk / not for me / decent / love it / MASTERPIECE — yours to
+rename. The flip band (42–60) speaks its true feeling even when the flip goes your way:
+<i>"not really for me… but fine, I'll take it"</i> — so a won flip still teaches you the taste was off.</div>
+</div>
+
+<!-- ============ A2 ============ -->
+<div class="sec">
+<h2>A2 — THE STRIPPED WALK-UP SLIDER</h2>
+<div class="why">Left is the live game today. Right is the S1 version: <b>your number and their
+face</b>. Same math, same 0.5–4.5× range underneath — only the labels go. The one aid kept (your
+call): a small yellow tick at what <b>this buyer</b> paid last time. Try the right panel: set an
+ask, hit OFFER, read the reaction. That reaction is now the only information channel.</div>
+
+<div class="row2">
+ <div class="half">
+  <div class="cap old">TODAY (band text exposes the math)</div>
+  <div class="panel">
+    <div class="hdrline"><div class="who">// KRIB</div><div class="bond">BOND ●●●○○</div></div>
+    <div class="small"><b style="color:var(--label)">GORP SLIME</b> <span style="color:#79ffd0">VOLT · TYPE 2</span><br>
+      market value <span class="val">18</span> a tape — what Krib pays is up to Krib</div>
+    <div class="ctl"><div class="lab">ASK</div><input type="range" min="12" max="108" value="52" disabled><div class="asknum">52</div></div>
+    <div class="small" style="color:var(--warn)">116% over street — only a devotee pays this</div>
+    <div class="small dimc">you remember: paid <span class="val">38</span> for a tape</div>
+  </div>
+ </div>
+ <div class="half">
+  <div class="cap new">THE PASS (your ask, their reaction, one remembered tick)</div>
+  <div class="panel">
+    <div class="hdrline"><div class="who">// KRIB</div><div class="bond">BOND ●●●○○</div></div>
+    <div class="small"><b style="color:var(--label)">GORP SLIME</b> <span style="color:#79ffd0">VOLT · TYPE 2</span> <span class="okc" style="font-size:10px">NOW PLAYING</span><span class="bars"><i></i><i></i><i></i></span></div>
+    <div class="quote" id="a2word" style="padding:6px 12px;font-size:12px">"yeah… I'd play that."</div>
+    <div class="ctl"><div class="lab">ASK</div>
+      <div class="sliderwrap" style="flex:1">
+        <div class="tick" id="a2tick"></div><div class="ticklbl" id="a2ticklbl">paid 38</div>
+        <input type="range" id="a2S" min="12" max="108" value="52">
+      </div>
+      <div class="asknum" id="a2N">52</div></div>
+    <button class="btn b-sell" id="a2Offer">MAKE THE OFFER</button>
+    <div class="react" id="a2React">&nbsp;</div>
+  </div>
+ </div>
+</div>
+<div class="why">Under the hood this demo buyer's real ceiling is hidden (like the game). Push past
+it and you get the <b>final offer</b>, not a lockout — exactly the shipped rulebook.</div>
+</div>
+
+<!-- ============ A3 ============ -->
+<div class="sec">
+<h2>A3 — THIN KITS GET A VOICE</h2>
+<div class="why">When low module count is what's dragging a price or grade down, the alien says
+so in-world instead of the UI noting "thinner than the kit it was priced for". <b>DRAFT lines</b>
+(wired wherever the pro-rata shortfall bites):</div>
+<ul class="lines">
+  <li>"Sounds empty. Needs more machines in it."</li>
+  <li>"Where's the rest of it? This is half a band."</li>
+  <li>"One box and a drum. I can hear the gaps."</li>
+  <li>"Thin. You've got more gear than this, I've heard it."</li>
+  <li>"It's a sketch, not a song. Come back when it's crowded."</li>
+</ul>
+</div>
+
+<!-- ============ A4 ============ -->
+<div class="sec">
+<h2>A4 — HEAR A PLUGIN BEFORE YOU BUY IT</h2>
+<div class="why">Each row in Tev's PLUGINS tab gets a LISTEN action — a short demo loop of that
+module (over a THUMPER beat) through the shop's tape player. Click LISTEN below to see the state
+change. Stops on tab switch, purchase, or closing the shop.</div>
+<div class="shoprow"><div class="pname">WOBBLETRON</div><div class="price">$45</div>
+  <button class="sbtn" data-listen>LISTEN</button><button class="sbtn">BUY</button></div>
+<div class="shoprow"><div class="pname">GLASS ORGAN</div><div class="price">$60</div>
+  <button class="sbtn" data-listen>LISTEN</button><button class="sbtn">BUY</button></div>
+</div>
+
+<!-- ============ B ============ -->
+<div class="sec">
+<h2>B — THE DAY RECAP (a phone message, your call)</h2>
+<div class="why">At each day tick, one message from <b>HAL</b> in the existing thread stack.
+Purely informational — rent still only moves through Tev's payment screen. Once craving exists,
+the "getting hungry" line joins it. This is the S1 "one more day" ledger moment.</div>
+<div class="phone">
+  <div class="phdr">MESSAGES — HAL</div>
+  <div class="bubble"><div class="from">HAL</div>
+    <b>DAY 12 WRAP</b><br>
+    <div class="recap-line"><span>tapes sold</span><span class="val">4</span></div>
+    <div class="recap-line"><span>earned</span><span class="val">$63</span></div>
+    <div class="recap-line"><span>rent</span><span class="warnc">owes $20 — 3 days to plugin lockout</span></div>
+    <div class="recap-line"><span>bond up</span><span>KRIB, VESS</span></div>
+    <div class="recap-line"><span>open orders</span><span class="warnc">1 expiring — SLUDJ for MOTH</span></div>
+    <div class="recap-line"><span>word is</span><span class="errc">Krib's been asking around for you</span></div>
+  </div>
+</div>
+</div>
+
+<!-- ============ C ============ -->
+<div class="sec">
+<h2>C — CRAVING, THE FLYWHEEL (behind a FeatureVault flag)</h2>
+<div class="why">Every buyer gets a hidden hunger stat: feeds when you sell them something good,
+decays when ignored. It <b>never</b> touches price — it drives <b>how often they come to you</b>:
+more want-texts, and past a threshold they physically walk up to you with a hungry line.
+Run the sim: sell tapes or skip days and watch the contact card word + what the world does.</div>
+
+<div class="row2">
+ <div class="half">
+  <div class="card">
+    <div class="cname">// KRIB</div>
+    <div class="crow">deals done: <b>3</b> · BOND ●●●○○</div>
+    <div class="crave"><span class="dimc">craving:</span><span class="word c1" id="crWord">interested</span></div>
+    <div class="crow">WHAT YOU'VE LEARNED <span style="font-size:9px">(one per deal)</span><br>
+      » has a soft spot for VOLT<br>» pays generously<br>» only really rates Type 2 shells</div>
+  </div>
+ </div>
+ <div class="half">
+  <div class="simrow">
+    <button class="btn b-sell" id="crSell">SELL — "LOVE IT"</button>
+    <button class="btn b-take" id="crMaster">SELL — "MASTERPIECE"</button>
+    <button class="btn b-back" id="crSkip">SKIP A DAY</button>
+  </div>
+  <div class="simlog" id="crLog">Krib is <b>interested</b>. Orders come at the normal pace.</div>
+ </div>
+</div>
+<div class="why"><b>Ladder (DRAFT):</b> curious / interested / hooked / obsessed — no numbers
+anywhere. <b>Hooked (60+)</b> and a day without a sale → they can <b>ambush walk-up</b> (max one
+ambush per day in the whole world): <i>"been humming that VOLT tape all week — got anything
+new?"</i> then the completely normal sell flow. <b>Obsessed (90+)</b> → at least one order text
+every day. Numbers (+18/+12/+7/+3 per sale by ladder word, −8 per ignored day) are tuning
+targets, not promises.</div>
+</div>
+
+<!-- ============ D ============ -->
+<div class="sec">
+<h2>D — REQUESTS THAT NAME YOUR CATALOG</h2>
+<div class="why">Word of mouth: a buyer hears about a specific track of yours from someone who
+owns it, and texts for it <b>by name</b> (naming the gossiper — your call). Only fires for tracks
+they haven't heard, whose project is still on your shelf — so the "already heard" refusal can
+never trip on it. Delivering any pressing of that track counts as exact goods. ~30% of orders
+when a track qualifies.</div>
+<div class="phone">
+  <div class="phdr">MESSAGES — MOTH</div>
+  <div class="bubble"><div class="from">MOTH</div>
+    heard <b>GORP SLIME</b> at Krib's place. that's yours, right?<br>
+    press me a copy — <span class="val">$29</span>. I'm around the dome.</div>
+  <div class="bubble player">on my way — give me 10 minutes.</div>
+</div>
+<div class="why">The $29 is the normal request quote — the buyer asking for something specific
+simply <b>offers more up front</b> (the 1.25× lives inside the texted number, per your call), so
+the agreed number is still exactly what gets paid.</div>
+</div>
+
+<!-- ============ E ============ -->
+<div class="sec">
+<h2>E — THE AGREED NUMBER IS THE PAID NUMBER</h2>
+<div class="why">The +15/10/5% on-time bonus leaves the money path and becomes <b>bond + a spoken
+thanks</b>. Windows become pure scheduling. Every surface that promised a percentage changes:</div>
+<div class="row2">
+ <div class="half">
+  <div class="cap old">TODAY</div>
+  <div class="panel">
+    <div class="small"><span class="tag cut">CUT</span></div>
+    <div class="chips"><div class="chip">~5 MIN <span class="okc">+15%</span></div>
+      <div class="chip">~10 MIN <span class="okc">+10%</span></div>
+      <div class="chip">~15 MIN <span class="okc">+5%</span></div></div>
+    <div class="small"><b>ORDER</b> — 1 <span style="color:#79ffd0">VOLT TYPE 2</span> @ <span class="val">20</span> each agreed <span class="okc">on time (+15%)</span></div>
+    <div class="small dimc">delivered untouched → pays 23 (the promise needed fine print)</div>
+  </div>
+ </div>
+ <div class="half">
+  <div class="cap new">THE PASS</div>
+  <div class="panel">
+    <div class="small"><span class="tag keep">KEEP</span> windows are just deadlines now</div>
+    <div class="chips"><div class="chip">~5 MIN</div><div class="chip">~10 MIN</div><div class="chip">~15 MIN</div></div>
+    <div class="small"><b>ORDER</b> — 1 <span style="color:#79ffd0">VOLT TYPE 2</span> @ <span class="val">20</span> each agreed</div>
+    <div class="small">delivered on time → pays <span class="val">20</span> exactly, plus:<br>
+      <span class="quote" style="display:inline-block;margin-top:6px;padding:5px 10px">"quick. I like quick."</span> <span class="okc">BOND ▲</span></div>
+  </div>
+ </div>
+</div>
+<div class="why">Tighter window = same money, <b>faster friendship</b> — the relationship is the
+reward, which is the S1 shape. The parity test gets simpler and stronger: delivered-as-promised
+at the untouched ask pays exactly the number on every surface, no multiplier fine print.</div>
+</div>
+
+<div class="note" style="padding-bottom:30px">
+That's the whole pass. Everything else in the handoff is plumbing (save fields, co-op posture,
+tests) with no visible surface. — reply with change requests, or a GO.
+</div>
+
+<script>
+// ---------- A1 ladder ----------
+const words = ['JUNK','NOT FOR ME','DECENT','LOVE IT','MASTERPIECE'];
+const cuts  = [42,60,78,92];
+const lines = [
+ '"Turn it off. Junk."',
+ '"Not for me. Close, though."',
+ '"That was decent, I guess. What do you want for it?"',
+ '"Yeah. Yeah, I\'d play that. How much?"',
+ '"Where did you GET this? Name a price."'
+];
+function band(s){ let b=0; for(const c of cuts){ if(s>=c) b++; } return b; }
+const satS=document.getElementById('satS'), satN=document.getElementById('satN'),
+      satLine=document.getElementById('satLine'), flipNote=document.getElementById('flipNote');
+function updSat(){
+  const s=+satS.value; satN.textContent=s;
+  const b=band(s);
+  document.querySelectorAll('#ladder div').forEach((d,i)=>d.classList.toggle('on',i===b));
+  satLine.textContent=lines[b];
+  flipNote.innerHTML=(s>=42&&s<60)
+    ?'<span class="warnc">flip band:</span> the SALE is a coin toss, but the word stays honest — on a won flip: <i>"not really for me… but fine, I\'ll take it."</i>'
+    :'&nbsp;';
+}
+satS.addEventListener('input',updSat); updSat();
+
+// ---------- A2 stripped slider ----------
+const FAIR=42, PATIENCE=1.3, CEIL=Math.round(FAIR*PATIENCE); // hidden, like the game
+const a2S=document.getElementById('a2S'), a2N=document.getElementById('a2N'),
+      a2React=document.getElementById('a2React'), a2tick=document.getElementById('a2tick'),
+      a2lbl=document.getElementById('a2ticklbl');
+function placeTick(){
+  const min=+a2S.min,max=+a2S.max,v=38;
+  const pct=(v-min)/(max-min)*100;
+  a2tick.style.left=pct+'%'; a2lbl.style.left=pct+'%';
+}
+placeTick();
+a2S.addEventListener('input',()=>{a2N.textContent=a2S.value; a2React.innerHTML='&nbsp;';});
+document.getElementById('a2Offer').addEventListener('click',()=>{
+  const ask=+a2S.value;
+  if(ask<=CEIL) a2React.innerHTML=`<span class="okc">"…done. ${ask}."</span> — Krib paid <span class="val">${ask}</span>. That's all you learn: it was under his ceiling.`;
+  else if(ask<=Math.round(CEIL*1.35)){
+    const counter=Math.min(Math.round((FAIR*0.9+ask)/2),CEIL);
+    a2React.innerHTML=`<span class="warnc">"${ask} a tape? Not a chance. I'll do ${counter}."</span> — a counter. His ceiling is somewhere below ${ask}.`;
+  } else a2React.innerHTML=`<span class="errc">"Don't try it. ${Math.round(FAIR*0.6)}, and that's me being kind now."</span> — FINAL OFFER. You just found his limit — take it or walk.`;
+});
+
+// ---------- A4 listen ----------
+document.querySelectorAll('[data-listen]').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('[data-listen]').forEach(x=>{x.classList.remove('playing');x.innerHTML='LISTEN';});
+    b.classList.add('playing'); b.innerHTML='PLAYING<span class="bars"><i></i><i></i><i></i></span>';
+  });
+});
+
+// ---------- C craving sim ----------
+let crave=25, day=12;
+const crWord=document.getElementById('crWord'), crLog=document.getElementById('crLog');
+const cWords=['curious','interested','hooked','obsessed'], cCuts=[20,60,90];
+function cBand(v){let b=0;for(const c of cCuts){if(v>=c)b++;}return b;}
+function crUpd(msg){
+  const b=cBand(crave);
+  crWord.textContent=cWords[b]; crWord.className='word c'+b;
+  let world;
+  if(crave>=90) world='at least one order text from Krib <b>every day</b>.';
+  else if(crave>=60) world='orders come faster — and tomorrow <span class="hot">Krib may come find YOU</span>: <i>"been humming that VOLT tape all week — got anything new?"</i>';
+  else if(crave>=20) world='orders come at a warmer pace.';
+  else world='orders come at the normal pace.';
+  crLog.innerHTML=`<b>day ${day}</b> — ${msg}<br>Krib is <b>${cWords[b]}</b>. ${world}`;
+}
+document.getElementById('crSell').addEventListener('click',()=>{crave=Math.min(100,crave+12);day++;crUpd('sold him a tape he <b>loved</b> (+)');});
+document.getElementById('crMaster').addEventListener('click',()=>{crave=Math.min(100,crave+18);day++;crUpd('sold him a <b>MASTERPIECE</b> (++)');});
+document.getElementById('crSkip').addEventListener('click',()=>{crave=Math.max(0,crave-8);day++;crUpd('no sale today — the hunger fades (−)');});
+crUpd('starting point.');
+</script>
+</body>
+</html>

@@ -235,6 +235,7 @@ public class AlienNPCDamageable : MonoBehaviour, IDamageable
         // ones (RandomAlienDialogue).
         DisableIfPresent<Animator>();
         DisableIfPresent<NPCWaveAnimation>();
+        DisableIfPresent<AlienWander>();
         DisableIfPresent<AudienceMember>();
         DisableIfPresent<RandomAlienDialogue>();
         DisableIfPresent<NPCDialogue>();

@@ -82,6 +82,20 @@ public class AlienNPCSpawner : MonoBehaviour
     [Tooltip("Height above the planet surface where the downward raycast originates.")]
     public float surfaceRayHeight = 100f;
 
+    [Header("Wander (walking NPCs)")]
+    [Tooltip("Master switch for alien wandering. Off = the old behavior, statues that head-track.")]
+    public bool wanderEnabled = true;
+    [Tooltip("Max distance (m) an alien strolls from its spawn point. The leash centre is the spawn cell, so despawn/respawn always brings them home.")]
+    public float wanderRadius = 20f;
+    [Tooltip("Walk speed in m/s. Constant across scales — big aliens lumber, small ones scurry, because stride length scales but speed doesn't.")]
+    public float wanderSpeed = 1.6f;
+    [Tooltip("Seconds an alien stands still between strolls (min).")]
+    public float wanderIdleMin = 4f;
+    [Tooltip("Seconds an alien stands still between strolls (max).")]
+    public float wanderIdleMax = 12f;
+    [Tooltip("Base distance (m) at which a nearby player freezes the wander so talking/selling never chases a moving target. 2.5m per scale unit is added on top, matching the trigger box growth.")]
+    public float wanderPauseDistance = 6f;
+
     // Per-body streaming + kill state. Slot index is the position in `bodies`.
     class BodyState
     {
@@ -490,6 +504,27 @@ public class AlienNPCSpawner : MonoBehaviour
         var fade = alien.GetComponent<SpawnFade>();
         if (fade == null) fade = alien.AddComponent<SpawnFade>();
         fade.BeginFadeIn();
+
+        // Wander must be configured AFTER ParentToBodyPhysicsFrame — it
+        // captures the planet-local spawn position as its leash centre.
+        var wander = alien.GetComponent<AlienWander>();
+        if (wanderEnabled)
+        {
+            if (wander == null) wander = alien.AddComponent<AlienWander>();
+            wander.enabled = true;   // pool reuse may hand back a disabled one
+            float bottomY = (_prefabLocalBottomY != null && prefabIdx < _prefabLocalBottomY.Length)
+                ? _prefabLocalBottomY[prefabIdx] : 0f;
+            float scaleNow = alien.transform.localScale.x;
+            float seatDepth = bottomY * scaleNow + groundOffset + groundEmbedPerScale * scaleNow;
+            float oceanR = entry.gen != null ? entry.gen.GetOceanRadius() : 0f;
+            wander.Configure(entry.body, oceanR, groundMask, seatDepth, maxSurfaceAngle,
+                             wanderRadius, wanderSpeed, wanderIdleMin, wanderIdleMax,
+                             wanderPauseDistance + 2.5f * scaleNow, scaleNow);
+        }
+        else if (wander != null)
+        {
+            wander.enabled = false;
+        }
     }
 
     public void MarkCellKilled(int bodySlot, long cellId)
