@@ -162,16 +162,28 @@ public static class InteractGaze
         if (target is Interactable itw && itw.gazeThroughWalls && AimRayHit(aim, cam))
             return true;
 
+        // strictGaze targets (small controls inside a bigger panel's
+        // forgiveness — the cassette slot): OWN geometry only. No near-miss,
+        // no parent-silhouette walk, no fallback cone — those are exactly the
+        // paths that let the slot count as "looked at" whenever the player
+        // faced the console at all, locking the screen out (Sam's playtest;
+        // the slot has no solid collider, so the first strict guard sat on a
+        // branch it never reached).
+        if (target is Interactable strict && strict.strictGaze)
+        {
+            if (HasSolidCollider(aim)) return false;    // cast was authoritative and it wasn't us
+            Ray strictRay = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            int ov = CrosshairOverlap(aim, strictRay, out float strictEntry);
+            if (ov != 1) return false;                  // own mesh silhouette or nothing
+            float strictBlocker = (_hasHit && _hitDist > 0.001f) ? _hitDist : float.MaxValue;
+            return strictBlocker >= strictEntry - ForgiveDepth;
+        }
+
         // Has a real collider the cast could have hit? Then the cast is
         // authoritative about WHAT is in front of us — but not about whether the
         // player meant to point at us. Give it one forgiving near-miss pass first
         // (see NearMissHitsAim); if that fails too, we're genuinely not looked at.
-        // strictGaze targets (small controls inside a bigger panel's forgiveness,
-        // e.g. the cassette slot) get NO near-miss: direct hit or nothing.
-        if (HasSolidCollider(aim))
-            return (target is Interactable strict && strict.strictGaze)
-                ? false
-                : NearMissHitsAim(aim, cam);
+        if (HasSolidCollider(aim)) return NearMissHitsAim(aim, cam);
 
         // No solid collider to raycast. Point at its actual silhouette — so a
         // long fishing rod works end-to-end rather than only dead-centre, but

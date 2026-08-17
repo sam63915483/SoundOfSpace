@@ -187,44 +187,22 @@ public partial class ShuttleComputerUI : MonoBehaviour
         }
     }
 
-    void SnapshotToMirror()
+    System.Collections.IEnumerator CaptureMirrorThenHide()
     {
-        if (_canvas == null || !_canvas.gameObject.activeInHierarchy) return;
-
-        // A canvas can only be camera-rendered in ScreenSpaceCamera mode, and
-        // a camera can only isolate it by layer — so the canvas hierarchy
-        // lives on the UI layer (5) and flips modes for exactly one render.
-        SetLayerDeep(_canvas.transform, 5);
-
-        var camGo = new GameObject("MirrorCam");
-        var cam = camGo.AddComponent<Camera>();
-        cam.enabled = false;                       // manual Render() only
-        cam.clearFlags = CameraClearFlags.SolidColor;
-        cam.backgroundColor = new Color(0.02f, 0.05f, 0.08f, 1f);
-        cam.cullingMask = 1 << 5;
-        cam.orthographic = true;
-        cam.nearClipPlane = 0.1f;
-        cam.farClipPlane = 10f;
-        cam.targetTexture = ScreenMirror;
-        cam.transform.position = new Vector3(0f, -9000f, 0f);   // far from the world; mask isolates anyway
-
-        var prevMode = _canvas.renderMode;
-        var prevCam = _canvas.worldCamera;
-        _canvas.renderMode = RenderMode.ScreenSpaceCamera;
-        _canvas.worldCamera = cam;
-        _canvas.planeDistance = 1f;
-        Canvas.ForceUpdateCanvases();
-        cam.Render();
-        _canvas.renderMode = prevMode;
-        _canvas.worldCamera = prevCam;
-
-        Destroy(camGo);
-    }
-
-    static void SetLayerDeep(Transform t, int layer)
-    {
-        if (t.gameObject.layer != layer) t.gameObject.layer = layer;
-        for (int i = 0; i < t.childCount; i++) SetLayerDeep(t.GetChild(i), layer);
+        yield return new WaitForEndOfFrame();
+        // Reopened in the same frame (F closes and the terminal reopens)?
+        // Then the canvas must stay — and the capture would be right anyway.
+        if (_open) yield break;
+        if (_canvas != null && _canvas.gameObject.activeInHierarchy)
+        {
+            var shot = ScreenCapture.CaptureScreenshotAsTexture();
+            if (shot != null)
+            {
+                Graphics.Blit(shot, ScreenMirror);
+                Destroy(shot);
+            }
+            _canvas.gameObject.SetActive(false);
+        }
     }
 
     // ── open / close ─────────────────────────────────────────────────────
@@ -270,11 +248,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
         if (_inst != null) _inst.Stop();
         ClosePrint();
-        // Freeze what's on screen onto the world console mesh BEFORE hiding
-        // the canvas — leave it in TRAX and the shuttle screen keeps showing
-        // TRAX (loop-feel polish, Sam's request).
-        SnapshotToMirror();
-        _canvas.gameObject.SetActive(false);
+        // The canvas stays up ONE more frame: at end of frame the backbuffer
+        // — which IS the computer UI, pixel for pixel — is copied onto the
+        // world screen's mirror texture, then the canvas hides. An exact
+        // freeze-frame of what the player was just looking at.
+        StartCoroutine(CaptureMirrorThenHide());
 
         // Restore rather than force-clear: another modal UI may have been up
         // when this one opened, and clobbering its flag would strand the player.

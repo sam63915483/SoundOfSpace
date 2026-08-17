@@ -27,8 +27,13 @@ public class ShuttleComputerTerminal : Interactable
         if (rend == null) rend = screen.GetComponentInChildren<Renderer>();
         if (rend == null || rend.sharedMaterial == null) return;
 
-        var mat = new Material(rend.sharedMaterial);
+        // Unlit first — a screen should show its pixels, not lighting. The
+        // original material's shader may have no _MainTex at all (the flat
+        // cyan was a colour-only material, which is why the first mirror
+        // attempt changed nothing on it).
         var mirror = ShuttleComputerUI.ScreenMirror;
+        Shader unlit = Shader.Find("Unlit/Texture");
+        Material mat = unlit != null ? new Material(unlit) : new Material(rend.sharedMaterial);
         if (mat.HasProperty("_Color")) mat.color = Color.white;
         mat.mainTexture = mirror;
         if (mat.HasProperty("_EmissionColor"))
