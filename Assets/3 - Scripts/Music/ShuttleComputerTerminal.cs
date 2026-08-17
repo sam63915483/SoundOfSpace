@@ -37,9 +37,25 @@ public class ShuttleComputerTerminal : Interactable
         if (mat.HasProperty("_Color")) mat.color = Color.white;
         mat.mainTexture = mirror;
         // The screen mesh's UVs run top-down AND right-to-left — both axes
-        // flip so the capture reads like the real UI (Sam's playtests).
-        mat.mainTextureScale = new Vector2(-1f, -1f);
-        mat.mainTextureOffset = new Vector2(1f, 1f);
+        // flip so the capture reads like the real UI. And the mesh is NOT the
+        // game window's aspect, so the capture is centre-CROPPED to the
+        // mesh's real proportions instead of squashing (Sam's playtests).
+        float sx = 1f, sy = 1f;
+        var mf = rend.GetComponent<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null)
+        {
+            Vector3 d = Vector3.Scale(mf.sharedMesh.bounds.size, rend.transform.lossyScale);
+            float a = Mathf.Abs(d.x), b = Mathf.Abs(d.y), c = Mathf.Abs(d.z);
+            // The two largest dimensions are the screen face; thickness drops.
+            float hi = Mathf.Max(a, Mathf.Max(b, c));
+            float mid = a + b + c - hi - Mathf.Min(a, Mathf.Min(b, c));
+            float meshAspect = mid > 1e-4f ? hi / mid : 16f / 9f;
+            float capAspect = (float)Screen.width / Mathf.Max(1, Screen.height);
+            if (meshAspect < capAspect) sx = meshAspect / capAspect;   // narrower screen: crop sides
+            else if (capAspect > 1e-4f) sy = capAspect / meshAspect;   // shorter screen: crop top/bottom
+        }
+        mat.mainTextureScale = new Vector2(-sx, -sy);
+        mat.mainTextureOffset = new Vector2((1f + sx) * 0.5f, (1f + sy) * 0.5f);
         if (mat.HasProperty("_EmissionColor"))
         {
             mat.EnableKeyword("_EMISSION");
