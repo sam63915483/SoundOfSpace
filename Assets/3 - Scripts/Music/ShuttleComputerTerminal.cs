@@ -36,10 +36,10 @@ public class ShuttleComputerTerminal : Interactable
         Material mat = unlit != null ? new Material(unlit) : new Material(rend.sharedMaterial);
         if (mat.HasProperty("_Color")) mat.color = Color.white;
         mat.mainTexture = mirror;
-        // The screen mesh's UVs run top-down — unflipped, the capture drew
-        // upside-down (Sam's playtest).
-        mat.mainTextureScale = new Vector2(1f, -1f);
-        mat.mainTextureOffset = new Vector2(0f, 1f);
+        // The screen mesh's UVs run top-down AND right-to-left — both axes
+        // flip so the capture reads like the real UI (Sam's playtests).
+        mat.mainTextureScale = new Vector2(-1f, -1f);
+        mat.mainTextureOffset = new Vector2(1f, 1f);
         if (mat.HasProperty("_EmissionColor"))
         {
             mat.EnableKeyword("_EMISSION");

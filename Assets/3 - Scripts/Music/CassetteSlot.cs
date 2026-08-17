@@ -102,6 +102,12 @@ public class CassetteSlot : Interactable
         // (CassetteSlot.AnyGazed), the slot stayed "selected" and the screen
         // became uninteractable (Sam's playtest).
         strictGaze = true;
+
+        // Code-enforced like gazeTarget above: with this UNCHECKED in the
+        // inspector, InteractGaze fails open and the slot counts as looked-at
+        // from anywhere in the zone — which is exactly what kept it stuck
+        // "selected" through three rounds of gaze fixes.
+        requireGazeToInteract = true;
     }
 
     /// <summary>

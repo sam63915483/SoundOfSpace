@@ -141,6 +141,28 @@ public static class InteractGaze
     static bool Evaluate(Object target)
     {
         if (!RequireGaze) return true;
+
+        // strictGaze outranks EVERYTHING — including the per-object gaze
+        // opt-out below. The cassette slot's requireGazeToInteract was off in
+        // the inspector, which made IsLookingAt return true unconditionally
+        // and turned every previous strict fix into dead code (three rounds
+        // of Sam's playtests). The rule itself is deliberately primitive: the
+        // crosshair ray must pass within a small fixed radius of the control,
+        // or it is not selected. No meshes, colliders, parents or cones.
+        if (target is Interactable sg && sg.strictGaze)
+        {
+            var scam = Cam();
+            var scomp = target as Component;
+            if (scam == null || scomp == null) return false;
+            Transform saim = sg.gazeTarget != null ? sg.gazeTarget : scomp.transform;
+            const float StrictAimRadius = 0.25f;
+            Ray sray = scam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+            Vector3 toAim = AimCenter(saim) - sray.origin;
+            float along = Vector3.Dot(toAim, sray.direction);
+            if (along < 0f || along > MaxDistance) return false;
+            return Vector3.Cross(sray.direction, toAim).magnitude <= StrictAimRadius;
+        }
+
         if (target is Interactable ex && !ex.requireGazeToInteract) return true;
         if (!PlayerActive()) return true;          // piloting / cutscene
         var comp = target as Component;
@@ -169,21 +191,6 @@ public static class InteractGaze
         // faced the console at all, locking the screen out (Sam's playtest;
         // the slot has no solid collider, so the first strict guard sat on a
         // branch it never reached).
-        if (target is Interactable strict && strict.strictGaze)
-        {
-            // DEAD SIMPLE by design (third attempt; the first two leaned on
-            // colliders and silhouettes, and both quietly adopted the whole
-            // console's geometry): the crosshair RAY must pass within a small
-            // fixed radius of the control's own position. Point at the slot
-            // and it's yours; point at the screen above it and it never is.
-            const float StrictAimRadius = 0.25f;
-            Ray strictRay = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-            Vector3 toAim = AimCenter(aim) - strictRay.origin;
-            float along = Vector3.Dot(toAim, strictRay.direction);
-            if (along < 0f || along > MaxDistance) return false;
-            return Vector3.Cross(strictRay.direction, toAim).magnitude <= StrictAimRadius;
-        }
-
         // Has a real collider the cast could have hit? Then the cast is
         // authoritative about WHAT is in front of us — but not about whether the
         // player meant to point at us. Give it one forgiving near-miss pass first
