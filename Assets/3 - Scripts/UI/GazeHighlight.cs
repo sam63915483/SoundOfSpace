@@ -120,7 +120,12 @@ public class GazeHighlight : MonoBehaviour
                 var mf = r.GetComponent<MeshFilter>();
                 if (mf == null || mf.sharedMesh == null) continue;
                 var go = NewOutlineChild(r.transform, mf.sharedMesh.subMeshCount);
-                go.AddComponent<MeshFilter>().sharedMesh = mf.sharedMesh;
+                // Smoothed-normal copy: on hard-edged meshes (the console
+                // screen box) the corner vertices are DUPLICATED with split
+                // normals, so inflating along them pushes each face apart and
+                // the outline's corners never meet (Sam's screenshot).
+                // Averaging normals across position-duplicates closes them.
+                go.AddComponent<MeshFilter>().sharedMesh = SmoothedOutlineMesh(mf.sharedMesh);
                 Configure(go.AddComponent<MeshRenderer>(), mf.sharedMesh.subMeshCount);
                 made++;
             }
@@ -177,5 +182,40 @@ public class GazeHighlight : MonoBehaviour
         for (int i = 0; i < _outlines.Count; i++)
             if (_outlines[i] != null) Destroy(_outlines[i]);
         _outlines.Clear();
+    }
+
+    // ── smoothed-normal outline meshes, cached per source mesh ───────────
+    // Skinned aliens keep their (already smooth) shared mesh; only static
+    // MeshRenderers get the bake. Cost: one bake per unique mesh, ever.
+
+    static readonly Dictionary<Mesh, Mesh> s_smoothed = new Dictionary<Mesh, Mesh>();
+
+    static Mesh SmoothedOutlineMesh(Mesh src)
+    {
+        if (s_smoothed.TryGetValue(src, out var cached) && cached != null) return cached;
+        if (!src.isReadable) { s_smoothed[src] = src; return src; }   // can't bake — keep the gap over an exception
+
+        var verts = src.vertices;
+        var norms = src.normals;
+        if (norms == null || norms.Length != verts.Length) { s_smoothed[src] = src; return src; }
+
+        // Average normals across vertices that share a POSITION (the split
+        // corners), quantised so float noise still buckets together.
+        var sum = new Dictionary<Vector3, Vector3>(verts.Length);
+        Vector3 Key(Vector3 p) => new Vector3(Mathf.Round(p.x * 1000f), Mathf.Round(p.y * 1000f), Mathf.Round(p.z * 1000f));
+        for (int i = 0; i < verts.Length; i++)
+        {
+            var k = Key(verts[i]);
+            sum[k] = sum.TryGetValue(k, out var n) ? n + norms[i] : norms[i];
+        }
+        var outNorms = new Vector3[norms.Length];
+        for (int i = 0; i < verts.Length; i++)
+            outNorms[i] = sum[Key(verts[i])].normalized;
+
+        var m = Object.Instantiate(src);
+        m.name = src.name + "_outline";
+        m.normals = outNorms;
+        s_smoothed[src] = m;
+        return m;
     }
 }

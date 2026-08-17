@@ -148,4 +148,13 @@ public class Interactable : MonoBehaviour {
     [Tooltip("Hold a positive look-at result this long after the raycast stops agreeing (seconds). 0 = off, and off is right for almost everything.\n\nOnly needed for a SMALL control sitting right in front of a BIG one — the crosshair cast is a fat sphere and takes the first thing it touches, so it can flip between the two on tiny head movements and make the prompt strobe. Extends a yes; never invents one.")]
     public float gazeLatchSeconds = 0f;
 
+    /// STRICT gaze: only a direct crosshair hit counts — no near-miss
+    /// forgiveness pass. For small controls mounted ON a bigger interactable
+    /// (the cassette slot under the console screen): the forgiving sweep let
+    /// the slot claim gaze while the player aimed at the screen above it,
+    /// which locked the screen out entirely. Runtime-set, deliberately NOT
+    /// serialized (adding a serialized field to this base class would shift
+    /// every subclass's saved data).
+    [System.NonSerialized] public bool strictGaze = false;
+
 }

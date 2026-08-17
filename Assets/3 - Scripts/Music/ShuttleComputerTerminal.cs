@@ -15,6 +15,31 @@ using UnityEngine;
 /// </summary>
 public class ShuttleComputerTerminal : Interactable
 {
+    void Start()
+    {
+        // The screen SHOWS the computer (Sam's request): the mesh gets the
+        // mirror texture the UI snapshots itself into on every close. An
+        // instance of the screen's OWN material (shader guaranteed in the
+        // build) with the mirror as its texture — dark navy until first use.
+        Transform screen = gazeTarget != null ? gazeTarget : transform.parent;
+        if (screen == null) return;
+        var rend = screen.GetComponent<Renderer>();
+        if (rend == null) rend = screen.GetComponentInChildren<Renderer>();
+        if (rend == null || rend.sharedMaterial == null) return;
+
+        var mat = new Material(rend.sharedMaterial);
+        var mirror = ShuttleComputerUI.ScreenMirror;
+        if (mat.HasProperty("_Color")) mat.color = Color.white;
+        mat.mainTexture = mirror;
+        if (mat.HasProperty("_EmissionColor"))
+        {
+            mat.EnableKeyword("_EMISSION");
+            mat.SetColor("_EmissionColor", Color.white);
+            mat.SetTexture("_EmissionMap", mirror);
+        }
+        rend.material = mat;
+    }
+
     protected override string BuildInteractMessage()
     {
         return "Press " + PromptGlyphs.Interact + " to use the computer";

@@ -571,16 +571,32 @@ public class MushroomSellUI : MonoBehaviour
         if (_ask <= _counter) { CloseSale(_counter); return; }
 
         // One more round through the same rulebook: a pushed ask that lands
-        // under their ceiling is paid (they'd have taken it first time), and
-        // anything beyond earns the take-it-or-leave-it. One exchange each,
-        // no counter loops — same rule the phone uses.
-        if (TapeOffer.Judge(_buyerId, Mathf.Max(1, Fair), _ask, out _) == TapeOffer.Response.Accepted)
+        // under their ceiling is paid (they'd have taken it first time). One
+        // exchange each, no counter loops — same rule the phone uses.
+        switch (TapeOffer.Judge(_buyerId, Mathf.Max(1, Fair), _ask, out _))
         {
-            SetResult($"\"...fine. {_ask}.\"", C_Ok);
-            CloseSale(_ask);
-            return;
+            case TapeOffer.Response.Accepted:
+                SetResult($"\"...fine. {_ask}.\"", C_Ok);
+                CloseSale(_ask);
+                return;
+            case TapeOffer.Response.TooLow:
+                // A reasonable push they still won't pay: their STANDING
+                // counter becomes the final word. It used to fall through to
+                // the punitive 0.6x final offer — so a buyer who'd offered 18
+                // answered a 22 with "10, final", which read as pettiness,
+                // not negotiation (Sam's playtest). They never bid BELOW a
+                // number they already put on the table unless you insult them.
+                _finalOffer = true;
+                MushroomDealState.SetCounter(_buyerId, _offerSpecies, _counter);
+                SetResult($"\"{_counter}. That's the number. Take it or don't.\"", C_Label);
+                Refresh();
+                return;
+            default:
+                // An outrageous push IS an insult — the punitive final offer
+                // stands, even below their old counter. That's the cost.
+                DeclareFinalOffer(Mathf.Max(1, Fair));
+                return;
         }
-        DeclareFinalOffer(Mathf.Max(1, Fair));
     }
 
     void TakeCounter()

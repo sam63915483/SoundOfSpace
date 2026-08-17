@@ -166,7 +166,12 @@ public static class InteractGaze
         // authoritative about WHAT is in front of us — but not about whether the
         // player meant to point at us. Give it one forgiving near-miss pass first
         // (see NearMissHitsAim); if that fails too, we're genuinely not looked at.
-        if (HasSolidCollider(aim)) return NearMissHitsAim(aim, cam);
+        // strictGaze targets (small controls inside a bigger panel's forgiveness,
+        // e.g. the cassette slot) get NO near-miss: direct hit or nothing.
+        if (HasSolidCollider(aim))
+            return (target is Interactable strict && strict.strictGaze)
+                ? false
+                : NearMissHitsAim(aim, cam);
 
         // No solid collider to raycast. Point at its actual silhouette — so a
         // long fishing rod works end-to-end rather than only dead-centre, but

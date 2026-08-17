@@ -95,6 +95,13 @@ public class CassetteSlot : Interactable
         // in the game. Only the machine needs it — it is the only place a small
         // control sits inside a big one's forgiveness.
         if (gazeLatchSeconds <= 0f) gazeLatchSeconds = 0.25f;
+
+        // Direct crosshair hit ONLY. The near-miss forgiveness pass let this
+        // slot claim gaze while the player aimed at the console SCREEN above
+        // it — and since the screen stands down whenever a slot is gazed
+        // (CassetteSlot.AnyGazed), the slot stayed "selected" and the screen
+        // became uninteractable (Sam's playtest).
+        strictGaze = true;
     }
 
     /// <summary>

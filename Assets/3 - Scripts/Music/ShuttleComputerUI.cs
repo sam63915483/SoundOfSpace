@@ -159,6 +159,74 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
     static TMP_FontAsset _font;
 
+    // ── the world-screen mirror ──────────────────────────────────────────
+    //
+    // The ConsoleScreen mesh shows whatever the computer UI last displayed:
+    // a SNAPSHOT of the canvas is rendered into this texture every time the
+    // computer closes (nothing changes while nobody's using it, so a frozen
+    // frame IS the live picture). ShuttleComputerTerminal puts it on the
+    // screen material. Dark until the computer is first used — reads as off.
+
+    static RenderTexture s_mirror;
+
+    public static RenderTexture ScreenMirror
+    {
+        get
+        {
+            if (s_mirror == null)
+            {
+                s_mirror = new RenderTexture(1024, 576, 0, RenderTextureFormat.ARGB32);
+                s_mirror.name = "ShuttleScreenMirror";
+                s_mirror.Create();
+                var prev = RenderTexture.active;
+                RenderTexture.active = s_mirror;
+                GL.Clear(true, true, new Color(0.02f, 0.05f, 0.08f, 1f));   // powered-off navy
+                RenderTexture.active = prev;
+            }
+            return s_mirror;
+        }
+    }
+
+    void SnapshotToMirror()
+    {
+        if (_canvas == null || !_canvas.gameObject.activeInHierarchy) return;
+
+        // A canvas can only be camera-rendered in ScreenSpaceCamera mode, and
+        // a camera can only isolate it by layer — so the canvas hierarchy
+        // lives on the UI layer (5) and flips modes for exactly one render.
+        SetLayerDeep(_canvas.transform, 5);
+
+        var camGo = new GameObject("MirrorCam");
+        var cam = camGo.AddComponent<Camera>();
+        cam.enabled = false;                       // manual Render() only
+        cam.clearFlags = CameraClearFlags.SolidColor;
+        cam.backgroundColor = new Color(0.02f, 0.05f, 0.08f, 1f);
+        cam.cullingMask = 1 << 5;
+        cam.orthographic = true;
+        cam.nearClipPlane = 0.1f;
+        cam.farClipPlane = 10f;
+        cam.targetTexture = ScreenMirror;
+        cam.transform.position = new Vector3(0f, -9000f, 0f);   // far from the world; mask isolates anyway
+
+        var prevMode = _canvas.renderMode;
+        var prevCam = _canvas.worldCamera;
+        _canvas.renderMode = RenderMode.ScreenSpaceCamera;
+        _canvas.worldCamera = cam;
+        _canvas.planeDistance = 1f;
+        Canvas.ForceUpdateCanvases();
+        cam.Render();
+        _canvas.renderMode = prevMode;
+        _canvas.worldCamera = prevCam;
+
+        Destroy(camGo);
+    }
+
+    static void SetLayerDeep(Transform t, int layer)
+    {
+        if (t.gameObject.layer != layer) t.gameObject.layer = layer;
+        for (int i = 0; i < t.childCount; i++) SetLayerDeep(t.GetChild(i), layer);
+    }
+
     // ── open / close ─────────────────────────────────────────────────────
 
     /// <summary>Open the computer. Creates the UI on first use.</summary>
@@ -202,6 +270,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
         if (_inst != null) _inst.Stop();
         ClosePrint();
+        // Freeze what's on screen onto the world console mesh BEFORE hiding
+        // the canvas — leave it in TRAX and the shuttle screen keeps showing
+        // TRAX (loop-feel polish, Sam's request).
+        SnapshotToMirror();
         _canvas.gameObject.SetActive(false);
 
         // Restore rather than force-clear: another modal UI may have been up
