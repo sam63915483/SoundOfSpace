@@ -199,6 +199,53 @@ public static class TapeTrade
         return n;
     }
 
+    // ── named requests (loop-feel D) ─────────────────────────────────────
+
+    /// The genre index a track classifies as — the same primary-label lookup
+    /// the sell panel uses, so a named request's contract genre can never
+    /// disagree with what the console called the song.
+    public static int GenreIndexOf(TraxTrack track)
+    {
+        if (track == null) return 0;
+        string name = TraxClassifier.Classify(track.dials).primary.name;
+        var g = TraxClassifier.Genres;
+        for (int i = 0; i < g.Length; i++) if (g[i].name == name) return i;
+        return 0;
+    }
+
+    /// The hex lineage id a named request stores (TraxTrack.TrackId, tier-
+    /// independent — "any pressing of that track" is the promise).
+    public static string TrackHex(uint trackId) => trackId.ToString("x8");
+
+    /// The live shelf project behind a named request, or null if it was
+    /// deleted since (the request then grades as a plain genre order).
+    public static TraxLibrary.Record FindProjectByTrackHex(string hex)
+    {
+        if (string.IsNullOrEmpty(hex)) return null;
+        var projects = TraxLibrary.Projects;
+        for (int i = 0; i < projects.Count; i++)
+            if (projects[i] != null && TrackHex(projects[i].trackId) == hex) return projects[i];
+        return null;
+    }
+
+    /// Display name for a requested track, for order headers and the
+    /// appointment card. Falls back readably if the project is gone.
+    public static string RequestTrackName(string hex)
+    {
+        var rec = FindProjectByTrackHex(hex);
+        return rec != null && !string.IsNullOrEmpty(rec.name)
+            ? rec.name.ToUpperInvariant() : "THAT TRACK OF YOURS";
+    }
+
+    /// Does this delivered pressing match a named request? Lineage by track
+    /// id, ANY tier — a Type 2 pressing of the requested song still is the
+    /// requested song (tier shortfalls pro-rate separately).
+    public static bool MatchesRequest(TraxPrints.Record delivered, string requestHex)
+    {
+        return delivered != null && !string.IsNullOrEmpty(requestHex)
+            && TrackHex(delivered.trackId) == requestHex;
+    }
+
     /// How many tapes of the right genre the player is carrying, for the
     /// "deliver order" row and the sell panel's gating.
     public static int HeldMatching(int genreIndex)

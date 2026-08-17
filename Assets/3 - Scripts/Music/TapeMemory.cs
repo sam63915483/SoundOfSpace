@@ -36,6 +36,11 @@ public static class TapeMemory
         public int bond;
         public bool contact;
         public readonly List<double[]> heard = new List<double[]>();
+        // Which TRACKS (TraxTrack.TrackId, tier-independent lineage) this
+        // alien has BOUGHT — word-of-mouth source data for named requests
+        // (loop-feel D): "heard GORP SLIME at Krib's" needs to know Krib owns
+        // it. A subset of heard, but by identity rather than by closeness.
+        public readonly List<uint> bought = new List<uint>();
     }
 
     static readonly Dictionary<string, Entry> _byAlien = new Dictionary<string, Entry>();
@@ -100,6 +105,40 @@ public static class TapeMemory
         return e == null ? 0 : e.heard.Count;
     }
 
+    // ── purchases, by track lineage (loop-feel D) ────────────────────────
+
+    /// This alien bought a pressing of this track (any tier).
+    public static void RememberBought(string id, uint trackId)
+    {
+        Entry e = Get(id, true);
+        if (e == null || trackId == 0) return;
+        if (e.bought.Contains(trackId)) return;
+        e.bought.Add(trackId);
+        if (e.bought.Count > MaxSongsRemembered) e.bought.RemoveAt(0);
+        Version++;
+    }
+
+    public static bool HasBought(string id, uint trackId)
+    {
+        Entry e = Get(id, false);
+        return e != null && trackId != 0 && e.bought.Contains(trackId);
+    }
+
+    /// Does any alien OTHER than <paramref name="exceptId"/> own a pressing of
+    /// this track? Returns the first such owner (the gossiper in the want
+    /// text). Deterministic enough — dictionary order is stable within a run.
+    public static bool AnyoneElseBought(uint trackId, string exceptId, out string ownerId)
+    {
+        ownerId = null;
+        if (trackId == 0) return false;
+        foreach (var kv in _byAlien)
+        {
+            if (kv.Key == exceptId) continue;
+            if (kv.Value.bought.Contains(trackId)) { ownerId = kv.Key; return true; }
+        }
+        return false;
+    }
+
     /// New Game runs no Apply, so without this the last world's customers
     /// remember songs from a world that no longer exists.
     public static void Clear()
@@ -118,7 +157,7 @@ public static class TapeMemory
             Entry e = kv.Value;
             // Skip aliens with nothing worth remembering, so a world the player
             // has walked across does not accumulate empty rows forever.
-            if (e.bond == 0 && !e.contact && e.heard.Count == 0) continue;
+            if (e.bond == 0 && !e.contact && e.heard.Count == 0 && e.bought.Count == 0) continue;
 
             save.ids.Add(kv.Key);
             save.bond.Add(e.bond);
@@ -127,6 +166,9 @@ public static class TapeMemory
             for (int i = 0; i < e.heard.Count; i++)
                 for (int d = 0; d < AlienTaste.DialCount; d++)
                     save.heardDials.Add((float)e.heard[i][d]);
+            save.boughtCounts.Add(e.bought.Count);
+            for (int i = 0; i < e.bought.Count; i++)
+                save.boughtTracks.Add(e.bought[i]);
         }
         return save;
     }
@@ -171,6 +213,24 @@ public static class TapeMemory
             }
 
             _byAlien[id] = e;
+        }
+
+        // Bought-track lineage (loop-feel D) — its own cursor, count-guarded
+        // the same way; absent entirely on pre-feature saves.
+        if (save.boughtCounts != null && save.boughtTracks != null)
+        {
+            int bCursor = 0;
+            for (int i = 0; i < save.ids.Count && i < save.boughtCounts.Count; i++)
+            {
+                Entry e = Get(save.ids[i], false);
+                int count = save.boughtCounts[i];
+                for (int t = 0; t < count && bCursor < save.boughtTracks.Count; t++, bCursor++)
+                {
+                    if (e == null) continue;
+                    uint tid = (uint)save.boughtTracks[bCursor];
+                    if (tid != 0 && !e.bought.Contains(tid)) e.bought.Add(tid);
+                }
+            }
         }
         Version++;
     }

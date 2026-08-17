@@ -303,8 +303,40 @@ public class BuyerMessageDirector : MonoBehaviour
         return _playerCached;
     }
 
+    /// Share of orders that NAME a specific track (loop-feel D) when at least
+    /// one is eligible for this buyer.
+    const float NamedRequestChance = 0.30f;
+
     void SendWantText(BuyerLedger.Buyer b)
     {
+        b.requestTrackId = "";
+
+        // ── word of mouth (loop-feel D): sometimes they ask for a specific
+        //    track of yours they heard about. Eligible = sold to someone
+        //    ELSE, unheard by THIS buyer, project still on the shelf (so a
+        //    reprint is possible) — which is also why the already-heard
+        //    refusal can never trip on it, by construction.
+        if (Random.value < NamedRequestChance
+            && TryPickNamedRequest(b.id, out TraxLibrary.Record wanted, out string gossiper))
+        {
+            int gIdx = TapeTrade.GenreIndexOf(wanted.track);
+            b.askTier = gIdx;
+            b.askQty = TapeTrade.PickAskQty(b.id);
+            b.askTapeTier = TapeTrade.PickAskTier(b.id);
+            b.modulesBasis = Mathf.Max(1, TraxLibrary.InstalledCount);
+            // Same quote path as every order — the 1.25x request bonus is
+            // already baked into the texted number (Sam's call: a buyer who
+            // asks for something specific simply OFFERS more; agreed = paid).
+            b.offerPerCap = TapeTrade.OpeningOffer(b.id, gIdx, b.askTapeTier);
+            b.requestTrackId = TapeTrade.TrackHex(wanted.trackId);
+            b.convo = BuyerLedger.Convo.AwaitingReply;
+            BuyerLedger.Log(b, BuyerLedger.EvType.NamedRequest, b.offerPerCap, b.askQty, b.askTier,
+                            c: b.askTapeTier,
+                            s: $"{b.requestTrackId}|{wanted.name.ToUpperInvariant()}|{AlienNames.For(gossiper)}");
+            Notify($"{AlienNames.For(b.id)} sent you a message");
+            return;
+        }
+
         // askTier holds a GENRE INDEX and offerPerCap a price per TAPE — the
         // field names are legacy, kept so the save schema does not move.
         int genre = TapeTrade.PickAskGenre(b.id);
@@ -319,6 +351,27 @@ public class BuyerMessageDirector : MonoBehaviour
         b.convo = BuyerLedger.Convo.AwaitingReply;
         BuyerLedger.Log(b, BuyerLedger.EvType.WantText, b.offerPerCap, b.askQty, b.askTier, c: b.askTapeTier);
         Notify($"{AlienNames.For(b.id)} sent you a message");
+    }
+
+    /// A shelf project sold to at least one OTHER buyer that this one hasn't
+    /// heard. Random among candidates so the same track isn't everyone's
+    /// obsession.
+    static bool TryPickNamedRequest(string buyerId, out TraxLibrary.Record wanted, out string gossiper)
+    {
+        wanted = null; gossiper = null;
+        var projects = TraxLibrary.Projects;
+        int seen = 0;
+        for (int i = 0; i < projects.Count; i++)
+        {
+            var rec = projects[i];
+            if (rec == null || rec.trackId == 0) continue;
+            if (!TapeMemory.AnyoneElseBought(rec.trackId, buyerId, out string owner)) continue;
+            if (TapeMemory.HasHeard(buyerId, TapeTrade.DialsOf(rec.track))) continue;
+            // Reservoir pick: k-th candidate replaces with probability 1/k.
+            seen++;
+            if (Random.Range(0, seen) == 0) { wanted = rec; gossiper = owner; }
+        }
+        return wanted != null;
     }
 
     // ── Player replies (called by MessagesScreen) ──────────────────────────
@@ -353,7 +406,13 @@ public class BuyerMessageDirector : MonoBehaviour
         b.deadline = Time.unscaledTime + windowMinutes * 60f;
         b.convo = BuyerLedger.Convo.Scheduled;
         BuyerLedger.Log(b, BuyerLedger.EvType.PlayerAccepted, windowMinutes, 0, b.askTier, markUnread: false);
-        BuyerLedger.Log(b, BuyerLedger.EvType.Scheduled, agreed, b.askQty, b.askTier, markUnread: false, c: b.askTapeTier);
+        // A named request's confirmation must repeat the NAME — a genre-only
+        // "1 VOLT at 29" here would promise something looser than what the
+        // delivery grades (the promise/grade law).
+        string namedPayload = string.IsNullOrEmpty(b.requestTrackId) ? null
+            : $"{b.requestTrackId}|{TapeTrade.RequestTrackName(b.requestTrackId)}|";
+        BuyerLedger.Log(b, BuyerLedger.EvType.Scheduled, agreed, b.askQty, b.askTier, markUnread: false,
+                        c: b.askTapeTier, s: namedPayload);
     }
 
     /// Player counters with a price AND a quantity (Sam's rule: you can

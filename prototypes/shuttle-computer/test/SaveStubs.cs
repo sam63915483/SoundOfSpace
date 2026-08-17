@@ -11,4 +11,7 @@ public class TapeMemorySave
     public List<bool> contact = new List<bool>();
     public List<int> heardCounts = new List<int>();
     public List<float> heardDials = new List<float>();
+    // loop-feel D: bought-track lineage (mirrors SaveData.cs)
+    public List<int> boughtCounts = new List<int>();
+    public List<long> boughtTracks = new List<long>();
 }

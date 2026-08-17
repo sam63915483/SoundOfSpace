@@ -57,12 +57,22 @@ public static class BuyerTexts
             case BuyerLedger.EvType.PlayerDeclined:
                 return "can't right now.";
             case BuyerLedger.EvType.Scheduled:
+            {
+                // Named request (s = "trackId|TRACK NAME|…"): the confirmation
+                // repeats the NAME, matching what the delivery is graded on.
+                string goods = $"{e.b} {Genre(e.tier)}";
+                if (!string.IsNullOrEmpty(e.s))
+                {
+                    var parts = e.s.Split('|');
+                    if (parts.Length > 1 && parts[1].Length > 0) goods = parts[1];
+                }
                 switch (v)
                 {
-                    case 0:  return $"good. {e.b} {Genre(e.tier)}{TierWord(e.c)} at {e.a} each. I'll be waiting.";
-                    case 1:  return $"deal — {e.b} {Genre(e.tier)}{TierWord(e.c)}, {e.a} each. don't dawdle.";
-                    default: return $"see you soon then. {e.b} {Genre(e.tier)}{TierWord(e.c)} at {e.a}.";
+                    case 0:  return $"good. {goods}{TierWord(e.c)} at {e.a} each. I'll be waiting.";
+                    case 1:  return $"deal — {goods}{TierWord(e.c)}, {e.a} each. don't dawdle.";
+                    default: return $"see you soon then. {goods}{TierWord(e.c)} at {e.a}.";
                 }
+            }
             case BuyerLedger.EvType.FulfilledExact:
                 switch (v)
                 {

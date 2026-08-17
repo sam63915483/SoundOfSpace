@@ -698,6 +698,11 @@ public class MushroomSellUI : MonoBehaviour
         }
         // A song they have heard is a song they will not buy again.
         if (rec != null) TapeMemory.Remember(_buyerId, TapeTrade.DialsOf(rec.track));
+        // ...and a song they BOUGHT is one they can gossip about (loop-feel D:
+        // named requests source from other buyers' purchases). Guest sales in
+        // co-op miss this registry (the wire carries dials, not the print) —
+        // fewer named requests there, nothing breaks.
+        if (rec != null) TapeMemory.RememberBought(_buyerId, rec.trackId);
     }
 
     void BarBuyer()
@@ -1033,12 +1038,14 @@ public class MushroomSellUI : MonoBehaviour
             string typeWord = rec != null && rec.tier >= 2 ? "TYPE 2" : "TYPE 1";
             if (_scheduled && _appt != null)
             {
-                string want = TapeTrade.GenreName(_appt.askTier);
+                // Named request: the header names the TRACK — the goods spec
+                // the grader actually checks (loop-feel D).
+                string want = string.IsNullOrEmpty(_appt.requestTrackId)
+                    ? TapeTrade.GenreName(_appt.askTier)
+                    : TapeTrade.RequestTrackName(_appt.requestTrackId);
                 string ordTier = _appt.askTapeTier >= 1 ? $" TYPE {_appt.askTapeTier}" : "";
-                int bump = Mathf.RoundToInt((BuyerDeals.GratitudeBonus(_appt.windowMinutes) - 1f) * 100f);
                 _offerText.text =
-                    $"<b>ORDER</b> — {_appt.askQty} <color=#{tierHex}>{want}{ordTier}</color> @ <color=#FFD732>{_appt.offerPerCap}</color> each agreed" +
-                    $"  <size=13><color=#6EDC82>on time (+{bump}%)</color></size>\n" +
+                    $"<b>ORDER</b> — {_appt.askQty} <color=#{tierHex}>{want}{ordTier}</color> @ <color=#FFD732>{_appt.offerPerCap}</color> each agreed\n" +
                     $"<size=13><color=#7FA0BD>on the table: {title}  <color=#{tierHex}>{genre}</color></color></size>";
             }
             else
@@ -1061,8 +1068,11 @@ public class MushroomSellUI : MonoBehaviour
         }
         else
         {
+            string emptyWant = _appt != null && !string.IsNullOrEmpty(_appt.requestTrackId)
+                ? TapeTrade.RequestTrackName(_appt.requestTrackId)
+                : _appt != null ? TapeTrade.GenreName(_appt.askTier) : "";
             _offerText.text = _scheduled && _appt != null
-                ? $"<b>ORDER</b> — {_appt.askQty} {TapeTrade.GenreName(_appt.askTier)}{(_appt.askTapeTier >= 1 ? $" TYPE {_appt.askTapeTier}" : "")} @ <color=#FFD732>{_appt.offerPerCap}</color> each agreed\n" +
+                ? $"<b>ORDER</b> — {_appt.askQty} {emptyWant}{(_appt.askTapeTier >= 1 ? $" TYPE {_appt.askTapeTier}" : "")} @ <color=#FFD732>{_appt.offerPerCap}</color> each agreed\n" +
                   "<color=#4D6F90>CLICK THE TAPE TO PUT IT ON THE TABLE</color>"
                 : "<color=#4D6F90>CLICK A TAPE TO PUT IT ON THE TABLE</color>";
             _offerPreview.enabled = false;
@@ -1142,11 +1152,14 @@ public class MushroomSellUI : MonoBehaviour
         if (_scheduled && _appt != null)
         {
             // Delivery read instead: does the table (and the price) match
-            // the order?
+            // the order? For a NAMED request the goods check is the track
+            // itself — the band must agree with the grader, always.
             var rec2 = Press;
-            bool goodsOk = HasOffer && rec2 != null
-                        && TapeTrade.Fills(rec2.track, _appt.askTier)
-                        && _offerCountN >= _appt.askQty;
+            bool goodsRight = rec2 != null
+                && (string.IsNullOrEmpty(_appt.requestTrackId)
+                    ? TapeTrade.Fills(rec2.track, _appt.askTier)
+                    : TapeTrade.MatchesRequest(rec2, _appt.requestTrackId));
+            bool goodsOk = HasOffer && goodsRight && _offerCountN >= _appt.askQty;
             bool priceOk = _ask <= _appt.offerPerCap;
             // Objective goods shortfall (lower tier / thinner kit than the
             // contract) — pays pro-rata, and the band says so up front.
@@ -1564,17 +1577,25 @@ public class MushroomSellUI : MonoBehaviour
         int substituteWorth = delivered == null ? 0
             : TapeOffer.Value(_buyerId, delivered.track.ActiveCount(), delivered.tier,
                               Satisfaction, true, ledger != null ? ledger.bond : 0);
-        bool fillsGenre = delivered != null && TapeTrade.Fills(delivered.track, _appt.askTier);
+        // Named request (loop-feel D): "exact goods" means A PRESSING OF THAT
+        // TRACK (any tier — lineage), not merely the right genre. A different
+        // track runs the wrong-goods path exactly as it does today.
+        bool named = !string.IsNullOrEmpty(_appt.requestTrackId);
+        bool namedMatch = named && TapeTrade.MatchesRequest(delivered, _appt.requestTrackId);
+        bool fillsGenre = named ? namedMatch
+            : delivered != null && TapeTrade.Fills(delivered.track, _appt.askTier);
+        // They asked for THIS track by name — knowing full well whether
+        // they've heard it — so the named track never refuses on memory.
+        bool alreadyHeard = !namedMatch && delivered != null
+            && TapeMemory.HasHeard(_buyerId, TapeTrade.DialsOf(delivered.track));
         var g = TapeDeal.Grade(terms,
                                contractModsFallback: Mathf.Max(1, TraxLibrary.InstalledCount),
                                deliveredModules: delivered != null ? delivered.track.ActiveCount() : 0,
                                deliveredTier: delivered != null ? delivered.tier : 1,
                                fillsGenre: fillsGenre,
                                deliveredQty: _offerCountN,
-                               alreadyHeard: delivered != null
-                                             && TapeMemory.HasHeard(_buyerId, TapeTrade.DialsOf(delivered.track)),
+                               alreadyHeard: alreadyHeard,
                                ask: ask,
-                               gratitudeMult: BuyerDeals.GratitudeBonus(_appt.windowMinutes),
                                substituteWorth: substituteWorth);
 
         // "A CLANG tape" plainly means one they haven't heard. Refuse with the
@@ -1665,7 +1686,7 @@ public class MushroomSellUI : MonoBehaviour
                 : $"\"This isn't the track I was picturing.\" — {_npcName} paid {credits}, not what you agreed.")
             : substituted
             ? $"{_npcName} grumbled, but took {qty} for {credits}."
-            : $"\"{AlienFeedback.AfterListen(deliveredSat, satVariant)}\" — order delivered, {_npcName} paid {credits}.", thin ? C_Err : C_Ok);
+            : $"\"{AlienFeedback.AfterListen(deliveredSat, satVariant)}\" — order delivered, {_npcName} paid {credits}.  <color=#6EDC82>BOND +</color>", thin ? C_Err : C_Ok);
         Refresh();
     }
 

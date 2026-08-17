@@ -599,8 +599,11 @@ public class MessagesScreen : MonoBehaviour
         string clock = left > 0f
             ? $"{Mathf.FloorToInt(left / 60f)}:{Mathf.FloorToInt(left % 60f):00}"
             : "0:00 — they're about to leave";
-        // askTier carries a GENRE INDEX for tapes — legacy field name.
-        string wantWord = TapeTrade.GenreName(b.askTier);
+        // askTier carries a GENRE INDEX for tapes — legacy field name. A
+        // named request shows its TRACK NAME (that's what's graded).
+        string wantWord = string.IsNullOrEmpty(b.requestTrackId)
+            ? TapeTrade.GenreName(b.askTier)
+            : TapeTrade.RequestTrackName(b.requestTrackId);
 
         string where = "";
         var dir = BuyerMessageDirector.Instance;
@@ -663,11 +666,12 @@ public class MessagesScreen : MonoBehaviour
             // Tier only travels on the fresh-accept path; a negotiated price
             // (counter-back / price-agreed) already belongs to a tier.
             int tierArg = agreed ? 0 : _tierPicked;
+            // Windows are pure scheduling now (loop-feel E): no % promises —
+            // a tighter window pays in bond and a thanks, never in money.
             foreach (int w in BuyerDeals.WindowMinutes)
             {
                 int captured = w;
-                int pct = Mathf.RoundToInt((BuyerDeals.GratitudeBonus(w) - 1f) * 100f);
-                Chip($"~{w} MIN +{pct}%", OkGreen, OkGreenBg, () => { dir.Accept(b, captured, tierArg); AfterChipAction(); });
+                Chip($"~{w} MIN", OkGreen, OkGreenBg, () => { dir.Accept(b, captured, tierArg); AfterChipAction(); });
             }
             if (agreed) Chip("NOT NOW", TextDim, DimBtnBg, () => { dir.Decline(b); AfterChipAction(); });
             else Chip("BACK", TextDim, DimBtnBg, () => { _chipMode = ChipMode.Main; RebuildChips(b); });

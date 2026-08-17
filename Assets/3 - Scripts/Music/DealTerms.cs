@@ -14,7 +14,8 @@
 ///
 /// The parity test (test/DealTests.cs) holds the contract: across randomized
 /// buyers × terms, delivering exactly-promised goods at an untouched ask pays
-/// EXACTLY agreed × gratitude — the number every surface displayed.
+/// EXACTLY the agreed number — the figure every surface displayed (loop-feel
+/// E: the old gratitude multiplier left the money path; on-time pays in bond).
 ///
 /// Walk-up sales have their own single rulebook: TapeOffer (Listen / Value /
 /// Judge), which the sell panel routes through as of the same date.
@@ -104,13 +105,17 @@ public static class TapeDeal
     /// <summary>
     /// THE one place delivery money is decided.
     ///
-    /// Exact goods (right genre, enough tapes): the agreed price is sacred
-    /// against taste — the buyer commissioned sight-unseen and that risk is
-    /// theirs. It scales ONLY on the objective goods ratio
-    /// Base(deliveredMods, deliveredTier) / Base(contractMods, contractTier):
-    /// a Type 1 on a Type 2 deal at the same kit is exactly half; a thinner
-    /// arrangement pays pro-rata; BETTER goods cap at 1 (the player's
-    /// generosity). An untouched ask earns the gratitude bump in full.
+    /// Exact goods (right genre — or the named track, on a named request —
+    /// and enough tapes): THE AGREED NUMBER IS THE PAID NUMBER (loop-feel E,
+    /// Sam's GO). The agreed price is sacred against taste — the buyer
+    /// commissioned sight-unseen and that risk is theirs — and no multiplier
+    /// touches it any more: the old +15/10/5% gratitude bump left the money
+    /// path entirely (on-time delivery pays in RELATIONSHIP: the existing +4
+    /// kept-appointment bond and a thanks line). Money scales ONLY on the
+    /// objective goods ratio Base(deliveredMods, deliveredTier) /
+    /// Base(contractMods, contractTier): a Type 1 on a Type 2 deal at the
+    /// same kit is exactly half; a thinner arrangement pays pro-rata; BETTER
+    /// goods cap at 1 (the player's generosity).
     ///
     /// Wrong goods: the agreed number never covered this tape, so they honour
     /// it only up to <paramref name="substituteWorth"/> — what it is
@@ -120,7 +125,7 @@ public static class TapeDeal
     public static GradeResult Grade(DealTerms terms, int contractModsFallback,
                                     int deliveredModules, int deliveredTier,
                                     bool fillsGenre, int deliveredQty, bool alreadyHeard,
-                                    int ask, double gratitudeMult, int substituteWorth)
+                                    int ask, int substituteWorth)
     {
         var r = new GradeResult();
         if (alreadyHeard) { r.kind = GradeKind.RefusedHeard; return r; }
@@ -136,9 +141,7 @@ public static class TapeDeal
 
         if (exactGoods)
         {
-            r.perCap = ask == agreed
-                ? (int)System.Math.Round(agreed * gratitudeMult, System.MidpointRounding.AwayFromZero)
-                : ask;
+            r.perCap = ask;   // your number — untouched, lowered or pushed
             r.qty = deliveredQty < terms.qty ? deliveredQty : terms.qty;
 
             int contractTier = terms.tapeTier >= 1 ? terms.tapeTier : 1;

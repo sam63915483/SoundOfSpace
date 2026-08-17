@@ -109,6 +109,10 @@ public static class BuyerDeals
     public const float GraceSeconds = 60f;
 
     /// +15% / +10% / +5% for the 5 / 10 / 15 minute promise.
+    /// RETIRED from the tape money path (loop-feel E, 2026-08-17): the
+    /// agreed number is the paid number, and on-time delivery pays in bond
+    /// (BuyerLedger.BondKeptAppointment) plus a thanks line. Kept compiled
+    /// for the vaulted mushroom flow and old call-site archaeology.
     public static float GratitudeBonus(int windowMinutes)
     {
         if (windowMinutes <= 5) return 1.15f;

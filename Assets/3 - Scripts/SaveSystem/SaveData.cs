@@ -535,6 +535,11 @@ public class TapeMemorySave
     public List<bool> contact = new List<bool>();
     public List<int> heardCounts = new List<int>();
     public List<float> heardDials = new List<float>();
+    // 2026-08-17 loop-feel D: which tracks (TraxTrack.TrackId lineage, stored
+    // as long — JsonUtility has no uint) each alien has BOUGHT. Count-guarded
+    // on read; absent on older saves.
+    public List<int> boughtCounts = new List<int>();
+    public List<long> boughtTracks = new List<long>();
 }
 
 [Serializable]

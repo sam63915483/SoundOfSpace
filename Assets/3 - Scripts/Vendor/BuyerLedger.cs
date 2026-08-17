@@ -377,6 +377,7 @@ public static class BuyerLedger
         b.convo = Convo.None;
         b.counterBackPerCap = 0;
         b.deadline = 0f;
+        b.requestTrackId = "";   // a named request dies with its conversation
         // nextTextAt is the director's business (it sets pacing on send).
     }
 
