@@ -3,6 +3,13 @@
 **Date:** 2026-08-16 · **From:** external design review (Claude chat) · **For:** Claude Code
 **Builds on:** the Aug 16 selling push (DealTerms, TapeOffer live, tier deals, C1–C5) — this handoff does NOT undo any of it.
 
+> **STATUS 2026-08-17 — ALL FIVE PHASES BUILT (Sam GO'd A–E), playtest pending.**
+> Commits `4cb820f6` (A), `81a253ec` (B+C), `305c0cc3` (D+E); mockups Sam approved live at `prototypes/loop-feel/` (:8083).
+> Sam's locked [OPEN] answers: keep the last-paid slider tick · recap = phone message (system:wrap thread, speaks as the shuttle AI) · 1.25× request bonus stays baked into the quote · gossiper is NAMED · rejected-but-heard = +2 craving.
+> Two [EXISTS] claims were false and are recorded here for honesty: (1) there was NO bond-scaled want-text cadence — Phase C *introduced* post-deal pacing (BuyerLedger.ReportTapeDeal writes nextTextAt from craving); (2) alien buyers had no locomotion at all — the wander system (AlienWander, built first at Sam's call, `e3b63f4d`+`f6889d13`) is what the ambush walks on.
+> Phase E went further than "leave gratitude out of the money": `TapeDeal.Grade` lost the parameter entirely, and the parity test now asserts paid == agreed with no multiplier.
+> Known co-op edges (solo-first per rule 6): the ambush walk renders host-side only (the hungry text is shared); guest sales don't feed the bought-track registry (wire carries dials, not prints) — fewer named requests for guests, nothing breaks.
+
 ## §0 — Ground rules (Sam's standing process)
 
 1. **State current behavior first.** For every item, report what the code does today before proposing the change. If reality differs from what this doc assumes, say so and stop.
