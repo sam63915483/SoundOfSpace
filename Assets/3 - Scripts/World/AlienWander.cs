@@ -35,6 +35,8 @@ public class AlienWander : MonoBehaviour
 
     const float WaterMargin = 0.5f;      // stay this far above the ocean radius
     const float ArriveDistance = 0.5f;
+    const float MinStroll = 6f;          // playtest: targets a metre away read as twitching, not walking
+    const float ChainChance = 0.45f;     // odds of strolling again immediately instead of idling
     const float ProbeUp = 3f;            // cast origin height above current feet
     const float ProbeRange = 9f;
     const float TurnSpeed = 4f;          // slerp rate toward walk direction
@@ -215,7 +217,14 @@ public class AlienWander : MonoBehaviour
             Mathf.Abs(Vector3.Dot(homeUp, Vector3.right)) < 0.9f ? Vector3.right : Vector3.forward).normalized;
         Vector3 t2 = Vector3.Cross(homeUp, t1);
 
-        for (int attempt = 0; attempt < 6; attempt++)
+        // Prefer proper strolls (>= MinStroll from where we're standing); keep
+        // the first merely-valid candidate as a fallback so a cramped patch
+        // (peninsula, cliff pocket) still produces SOME movement.
+        bool haveFallback = false;
+        Vector3 fallback = default;
+        Vector3 curLocal = transform.localPosition;
+
+        for (int attempt = 0; attempt < 10; attempt++)
         {
             Vector2 r = Random.insideUnitCircle * _leashRadius;
             Vector3 cand = (_homeLocal + t1 * r.x + t2 * r.y).normalized * homeR;
@@ -225,7 +234,22 @@ public class AlienWander : MonoBehaviour
             if (Vector3.Angle(normalLocal, cand.normalized) > _maxSurfaceAngle) continue;
             if (SpawnExclusionZone.IsExcluded(WorldOfLocal(groundLocal))) continue;
 
+            Vector3 curUp = curLocal.normalized;
+            float strollDist = Vector3.ProjectOnPlane(groundLocal - curLocal, curUp).magnitude;
+            if (strollDist < MinStroll)
+            {
+                if (!haveFallback) { haveFallback = true; fallback = groundLocal; }
+                continue;
+            }
+
             _targetLocal = groundLocal;
+            _walkingState = true;
+            return;
+        }
+
+        if (haveFallback)
+        {
+            _targetLocal = fallback;
             _walkingState = true;
             return;
         }
@@ -271,6 +295,13 @@ public class AlienWander : MonoBehaviour
     void Arrive()
     {
         _walkingState = false;
+        // Playtest feedback: they stood around too much. Often roll straight
+        // into the next stroll — an errand-runner, not a statue with hobbies.
+        if (Random.value < ChainChance)
+        {
+            PickNewTarget();
+            if (_walkingState) return;
+        }
         _idleUntil = Time.time + Random.Range(_idleMin, _idleMax);
     }
 

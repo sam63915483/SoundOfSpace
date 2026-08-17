@@ -90,9 +90,9 @@ public class AlienNPCSpawner : MonoBehaviour
     [Tooltip("Walk speed in m/s. Constant across scales — big aliens lumber, small ones scurry, because stride length scales but speed doesn't.")]
     public float wanderSpeed = 1.6f;
     [Tooltip("Seconds an alien stands still between strolls (min).")]
-    public float wanderIdleMin = 4f;
+    public float wanderIdleMin = 2f;
     [Tooltip("Seconds an alien stands still between strolls (max).")]
-    public float wanderIdleMax = 12f;
+    public float wanderIdleMax = 6f;
     [Tooltip("Base distance (m) at which a nearby player freezes the wander so talking/selling never chases a moving target. 2.5m per scale unit is added on top, matching the trigger box growth.")]
     public float wanderPauseDistance = 6f;
 
