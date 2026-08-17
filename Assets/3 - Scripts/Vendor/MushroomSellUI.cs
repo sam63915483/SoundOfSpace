@@ -127,10 +127,17 @@ public class MushroomSellUI : MonoBehaviour
     // haggle is off, and DELIVER runs the exact/substitution flow instead.
     bool _scheduled;
     BuyerLedger.Buyer _appt;
-    // The ladder line spoken when the buyer liked the listen (loop-feel A1).
-    // Set by MakeOffer, consumed by whichever outcome line follows it —
-    // "Love it. 52 a tape? Not a chance. I'll do 38." reads as one speech.
-    string _listenOpinion;
+    // ── The table listen (loop-feel A1, fixed after Sam's playtest) ──────
+    // The buyer reacts the MOMENT the tape plays on the table — that word is
+    // the player's only pricing information now the band text is gone, so it
+    // must land before the slider, not merged into the offer outcome. The
+    // reaction (and the coin flip) is rolled ONCE per placement and stored;
+    // MAKE THE OFFER reuses it rather than re-rolling.
+    string _listenOpinion;                      // liked-line prefix for outcome lines
+    bool _tableListened;
+    TapeOffer.Reaction _tableReaction;
+    double _tableSat;
+    string _tableLine;                          // what they said, re-shown on a futile offer
 
     class SlotWidget
     {
@@ -214,6 +221,7 @@ public class MushroomSellUI : MonoBehaviour
         _cursor = default;
         _stage = Stage.Open;
         _counter = 0;
+        ClearTableListen();
         if (_dim != null) _dim.SetActive(false);
         if (_panelRT != null) _panelRT.gameObject.SetActive(false);
         if (_cursorRT != null) _cursorRT.gameObject.SetActive(false);
@@ -246,7 +254,7 @@ public class MushroomSellUI : MonoBehaviour
         _stage = Stage.Open;
         _counter = 0;
         _finalOffer = false;
-        _listenOpinion = null;
+        ClearTableListen();
 
         // A live appointment flips the panel into delivery mode. The ask is
         // seeded at the AGREED price but stays editable — you can re-ask at
@@ -426,65 +434,85 @@ public class MushroomSellUI : MonoBehaviour
 
     // ══ the deal ══════════════════════════════════════════════════════════
 
+    /// <summary>
+    /// THE RULEBOOK LISTENS, at the moment the tape starts playing on the
+    /// table (TapeOffer.Listen: memory check, hint contract, tier downgrade,
+    /// coin flip — one implementation, shared with the headless suite).
+    /// Speaks the verdict immediately: the ladder word before the slider is
+    /// what the player prices against. Rolled once per placement; the offer
+    /// reuses this result rather than re-rolling.
+    /// </summary>
+    void ListenOnTable()
+    {
+        _tableListened = false;
+        _listenOpinion = null;
+        _tableLine = null;
+        if (_scheduled) return;                 // delivery mode grades at DELIVER
+        var rec = Press;
+        if (rec == null) return;
+
+        double[] dials = TapeTrade.DialsOf(rec.track);
+        uint variant = StableHash(_buyerId + ":" + _offerSpecies);
+        _tableReaction = TapeOffer.Listen(_buyerId, dials, rec.tier,
+                                          UnityEngine.Random.value < 0.5f,
+                                          out _tableSat, out var verdict);
+        _tableListened = true;
+
+        if (_tableReaction == TapeOffer.Reaction.AlreadyHeard)
+        {
+            _tableLine = $"\"{AlienFeedback.ForRepeat(variant)}\"";
+            SetResult(_tableLine, C_Err, sticky: true);
+            return;
+        }
+        if (_tableReaction == TapeOffer.Reaction.Rejected)
+        {
+            // Only an OUTRIGHT rejection burns the song into their memory —
+            // a lost coin flip does not (bad luck must never permanently burn
+            // a song on a buyer). They HEARD it either way: it just played.
+            // Memory is WORLD state: a guest routes the write to the host.
+            if (verdict == AlienTaste.Verdict.Rejected
+                && !EconomySync.ReportTapeHeard(_buyerId, dials))
+            {
+                TapeMemory.Remember(_buyerId, dials);
+                // They still got music out of you — a little craving
+                // (routed listens get theirs in EconomySync's handler).
+                BuyerLedger.AddCraving(_buyerId, CravingRules.GainHeardOnly);
+            }
+            // The tier overload appends "I only really rate Type 2 tapes" /
+            // "I stick to Type 1s" whenever the shell preference sat wrong,
+            // so a tier-caused no is never a mystery.
+            _tableLine = $"\"{AlienFeedback.ForRejection(_buyerId, dials, AlienTaste.FavouriteGenre(_buyerId), variant, rec.tier)}\"";
+            SetResult(_tableLine, C_Err, sticky: true);
+            return;
+        }
+
+        // They LIKED it — say so, in the one satisfaction vocabulary
+        // (loop-feel A1). A won coin flip speaks its true feeling ("not
+        // really for me... but fine") — the sale is luck, the word is honest.
+        _listenOpinion = AlienFeedback.ForLiked(
+            _tableSat, verdict == AlienTaste.Verdict.CoinFlip, variant);
+        _tableLine = $"\"{_listenOpinion}\"";
+        SetResult(_tableLine, AlienFeedback.SatBand(_tableSat) >= 3 ? C_Ok : C_Label, sticky: true);
+    }
+
+    void ClearTableListen()
+    {
+        _tableListened = false;
+        _listenOpinion = null;
+        _tableLine = null;
+    }
+
     void MakeOffer()
     {
         if (!HasOffer || Barred || _ask <= 0) return;
 
-        // ── DO THEY EVEN WANT IT? ────────────────────────────────────────
-        // Price is the second question. The first is whether this song is for
-        // them at all, and it is the same gate the taste model applies
-        // everywhere else — without it the panel would haggle happily over a
-        // track the buyer hates, and the whole genre system would only ever
-        // move the price rather than decide the sale.
-        var rec = Press;
-        if (rec != null)
+        // The listen happened when the tape hit the table; a futile offer
+        // just gets the same answer again (no re-roll, no second burn).
+        if (!_tableListened) ListenOnTable();
+        if (_tableListened && _tableReaction != TapeOffer.Reaction.Liked)
         {
-            double[] dials = TapeTrade.DialsOf(rec.track);
-            uint variant = StableHash(_buyerId + ":" + _offerSpecies);
-
-            // THE RULEBOOK LISTENS (TapeOffer.Listen): memory check, hint
-            // contract, tier downgrade, coin flip — one implementation, shared
-            // with the headless suite, never re-derived here.
-            var reaction = TapeOffer.Listen(_buyerId, dials, rec.tier,
-                                            UnityEngine.Random.value < 0.5f,
-                                            out double trueSat, out var verdict);
-            if (reaction == TapeOffer.Reaction.AlreadyHeard)
-            {
-                SetResult($"\"{AlienFeedback.ForRepeat(variant)}\"", C_Err);
-                return;
-            }
-            if (reaction == TapeOffer.Reaction.Rejected)
-            {
-                // Only an OUTRIGHT rejection burns the song into their memory.
-                // A lost coin flip used to as well, which meant a track refused
-                // purely by Random.value could never be offered to that alien
-                // again — doubling how harsh the early game felt.
-                // Memory is WORLD state: a guest routes the write to the host
-                // (which owns TapeMemory and rebroadcasts it in the snapshot).
-                if (verdict == AlienTaste.Verdict.Rejected
-                    && !EconomySync.ReportTapeHeard(_buyerId, dials))
-                {
-                    TapeMemory.Remember(_buyerId, dials);
-                    // They still got music out of you — a little craving
-                    // (routed listens get theirs in EconomySync's handler).
-                    BuyerLedger.AddCraving(_buyerId, CravingRules.GainHeardOnly);
-                }
-                // The tier overload appends "I only really rate Type 2 tapes" /
-                // "I stick to Type 1s" whenever the shell preference sat wrong,
-                // so a tier-caused no is never a mystery.
-                SetResult($"\"{AlienFeedback.ForRejection(_buyerId, dials, AlienTaste.FavouriteGenre(_buyerId), variant, rec.tier)}\"", C_Err);
-                Refresh();
-                return;
-            }
-
-            // They LIKED it — say so, in the one satisfaction vocabulary
-            // (loop-feel A1). This used to be silent: a buyer who loved a
-            // tape went straight to the price step without a word, so the
-            // ladder line is new information the game was withholding. A won
-            // coin flip speaks its true feeling ("not really for me... but
-            // fine") — the sale was luck and the word stays honest.
-            _listenOpinion = AlienFeedback.ForLiked(
-                trueSat, verdict == AlienTaste.Verdict.CoinFlip, variant);
+            if (_tableLine != null) SetResult(_tableLine, C_Err, sticky: true);
+            return;
         }
 
         // ── THE RULEBOOK JUDGES (TapeOffer.Judge, wired 2026-08-16) ──────────
@@ -666,10 +694,12 @@ public class MushroomSellUI : MonoBehaviour
         }
         _onSold?.Invoke(qty);
 
-        string said = Opinion();
+        // The reaction already played out loud when the tape hit the table —
+        // the close is just the money now.
+        ClearTableListen();
         SetResult(leftover > 0
-            ? $"{(said == "" ? "" : $"\"{said.TrimEnd()}\" — ")}{_npcName} took {qty} and paid {credits}. They didn't want the other {leftover}."
-            : $"{(said == "" ? "" : $"\"{said.TrimEnd()}\" — ")}{_npcName} paid {credits} credits.", C_Ok);
+            ? $"{_npcName} took {qty} and paid {credits}. They didn't want the other {leftover}."
+            : $"{_npcName} paid {credits} credits.", C_Ok);
         Refresh();
     }
 
@@ -777,6 +807,9 @@ public class MushroomSellUI : MonoBehaviour
             // the buyer's hidden rate — that would hand over the number the
             // player is meant to learn.
             _ask = StreetValue;
+            // THE BUYER REACTS as the tape starts (loop-feel A1) — before
+            // any parked counter note, which outranks it below.
+            ListenOnTable();
             // A counter this buyer already made on this strain is still live.
             int parked = MushroomDealState.Counter(_buyerId, _offerSpecies);
             if (parked > 0)
@@ -825,6 +858,8 @@ public class MushroomSellUI : MonoBehaviour
         _offerSpecies = null;
         _offerCountN = 0;
         _stage = Stage.Open;
+        ClearTableListen();
+        SetResult("", C_Ok);         // the reaction belonged to the tape that just left
         Refresh();
     }
 
@@ -886,6 +921,7 @@ public class MushroomSellUI : MonoBehaviour
             _counter = 0;
             _finalOffer = false;
             _ask = 0;
+            ClearTableListen();
         }
         return true;
     }
@@ -990,6 +1026,9 @@ public class MushroomSellUI : MonoBehaviour
             ? Mathf.Max(1, _appt.offerPerCap)
             : Mathf.Max(1, StreetValue);
         SetResult("", C_Ok);
+        // The buyer reacts as the tape starts (loop-feel A1) — walk-up only;
+        // ListenOnTable no-ops in delivery mode.
+        ListenOnTable();
         Refresh();
     }
 
@@ -1359,13 +1398,15 @@ public class MushroomSellUI : MonoBehaviour
         if (_cursorCount.enabled) _cursorCount.text = _cursor.count.ToString();
     }
 
-    void SetResult(string text, Color32 color)
+    /// <param name="sticky">Listen reactions stay up while the tape is on the
+    /// table — they're the pricing information now — instead of fading.</param>
+    void SetResult(string text, Color32 color, bool sticky = false)
     {
         if (_resultText == null) return;
         if (_resultRoutine != null) { StopCoroutine(_resultRoutine); _resultRoutine = null; }
         _resultText.text = text;
         _resultText.color = color;
-        if (!string.IsNullOrEmpty(text)) _resultRoutine = StartCoroutine(FadeResult());
+        if (!sticky && !string.IsNullOrEmpty(text)) _resultRoutine = StartCoroutine(FadeResult());
     }
 
     IEnumerator FadeResult()

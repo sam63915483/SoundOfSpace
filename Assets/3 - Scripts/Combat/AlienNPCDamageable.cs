@@ -252,7 +252,10 @@ public class AlienNPCDamageable : MonoBehaviour, IDamageable
         // screen if the player was inside the talk zone at kill time. Other
         // alive NPCs whose Update is still running will reactivate it next
         // frame if the player is also in their range.
-        InteractPromptUI.Clear(this);
+        // MUST be the GameObject-wide clear: the prompt's owner is whichever
+        // DIALOGUE component claimed it, never this damageable — Clear(this)
+        // was an owner-mismatched no-op and the corpse kept a stuck prompt.
+        InteractPromptUI.ClearIfOwnedBy(gameObject);
 
         // Resolve the planet *before* unparenting (after unparenting,
         // GetComponentInParent<CelestialBody> returns null).

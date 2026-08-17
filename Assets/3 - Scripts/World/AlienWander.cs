@@ -37,6 +37,12 @@ public class AlienWander : MonoBehaviour
     const float ArriveDistance = 0.5f;
     const float MinStroll = 6f;          // playtest: targets a metre away read as twitching, not walking
     const float ChainChance = 0.45f;     // odds of strolling again immediately instead of idling
+    // Walking tolerates steeper ground than SPAWN placement does. The spawner
+    // rejects cells over maxSurfaceAngle (35°) so nobody APPEARS on a cliff,
+    // but a hillside leash contains plenty of ground steeper than that — and
+    // reusing the strict limit froze every hill-spawned alien solid (Sam's
+    // playtest): 10 target candidates, all rejected, forever.
+    const float WalkSlopeSlack = 18f;
     const float ProbeUp = 3f;            // cast origin height above current feet
     const float ProbeRange = 9f;
     const float TurnSpeed = 4f;          // slerp rate toward walk direction
@@ -279,7 +285,7 @@ public class AlienWander : MonoBehaviour
 
         if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal)
             || (_oceanRadius > 0f && groundR < _oceanRadius + WaterMargin)
-            || Vector3.Angle(normalLocal, groundLocal.normalized) > _maxSurfaceAngle)
+            || Vector3.Angle(normalLocal, groundLocal.normalized) > _maxSurfaceAngle + WalkSlopeSlack)
         {
             // Water or a cliff between us — can't get there. Report it; the
             // director sends the hungry text instead.
@@ -321,7 +327,7 @@ public class AlienWander : MonoBehaviour
             if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal))
                 continue;
             if (_oceanRadius > 0f && groundR < _oceanRadius + WaterMargin) continue;   // land-locked
-            if (Vector3.Angle(normalLocal, cand.normalized) > _maxSurfaceAngle) continue;
+            if (Vector3.Angle(normalLocal, cand.normalized) > _maxSurfaceAngle + WalkSlopeSlack) continue;
             if (SpawnExclusionZone.IsExcluded(WorldOfLocal(groundLocal))) continue;
 
             Vector3 curUp = curLocal.normalized;
@@ -363,7 +369,7 @@ public class AlienWander : MonoBehaviour
         { Arrive(); return; }                                     // lost the ground — stop here
         if (_oceanRadius > 0f && groundR < _oceanRadius + WaterMargin) { Arrive(); return; }
         Vector3 candUp = groundLocal.normalized;
-        if (Vector3.Angle(normalLocal, candUp) > _maxSurfaceAngle) { Arrive(); return; }
+        if (Vector3.Angle(normalLocal, candUp) > _maxSurfaceAngle + WalkSlopeSlack) { Arrive(); return; }
 
         // Seat the feet with the exact spawner formula so there's no height
         // pop between "just spawned" and "took one step".

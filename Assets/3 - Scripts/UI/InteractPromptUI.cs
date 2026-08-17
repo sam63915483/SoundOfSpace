@@ -164,6 +164,24 @@ public class InteractPromptUI : MonoBehaviour
         Instance.HideInternal();
     }
 
+    /// <summary>
+    /// Clears when the current owner is ANY component on <paramref name="go"/>.
+    /// For teardown paths that don't know which component claimed the prompt —
+    /// the canonical case is killing an alien: AlienNPCDamageable.Die used to
+    /// call Clear(this), but the prompt's owner was the RandomAlienDialogue
+    /// component, so the owner check made the clear a silent no-op and the
+    /// corpse kept a stuck "Press F to talk" (Sam's playtest).
+    /// </summary>
+    public static void ClearIfOwnedBy(GameObject go)
+    {
+        if (Instance == null || go == null) return;
+        var owner = Instance._owner;
+        if (owner == null) return;
+        var comp = owner as Component;
+        if ((comp != null && comp.gameObject == go) || ReferenceEquals(owner, go))
+            Clear(owner);
+    }
+
     /// <summary>Legacy: 3 s self-clearing prompt. Used by GameUI.DisplayInteractionInfo.</summary>
     public static void ShowOneShot(string text, float seconds = 3f)
     {
