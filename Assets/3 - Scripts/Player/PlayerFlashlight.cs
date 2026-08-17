@@ -1,6 +1,15 @@
 using System.Collections;
 using UnityEngine;
 
+// Execution order 150: the grass-lighting uniforms below (LateUpdate) must be
+// written AFTER EndlessManager's floating-origin shift (order 0, LateUpdate).
+// At the default order the two raced, and whenever this ran first the grass
+// shader lit from a _FlashlightPos a full origin-shift (~1000m) stale — the
+// beam's grass went BLACK for exactly one frame on every shift, flashlight on
+// (Sam isolated it). The instanced grass itself already draws at order 100
+// for the same reason; shader globals apply at GPU render time, so 150 still
+// lands within this frame.
+[DefaultExecutionOrder(150)]
 public class PlayerFlashlight : MonoBehaviour
 {
     [Header("Light")]
