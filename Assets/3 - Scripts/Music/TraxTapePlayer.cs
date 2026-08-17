@@ -123,6 +123,21 @@ public class TraxTapePlayer : MonoBehaviour
         return true;
     }
 
+    /// <summary>
+    /// Play a raw TRACK in the player's own ears (2D, like the walkman) —
+    /// Tev's shop plugin demos (loop-feel A4). seconds &lt;= 0 loops until
+    /// StopAll; the shop stops it on tab switch, purchase and close.
+    /// </summary>
+    public static TraxTapePlayer PlayPersonalTrack(TraxTrack track, float seconds)
+    {
+        if (track == null) return null;
+        var p = Ensure();
+        p._engine.SetSpatial(false);
+        p._printId = null;
+        p.Play(track, seconds);
+        return p;
+    }
+
     public static void StopAll() { if (Instance != null) Instance.Stop(); }
 
     string _printId;

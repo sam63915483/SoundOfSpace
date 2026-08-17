@@ -106,21 +106,120 @@ public static class AlienFeedback
         return bank[variant % (uint)bank.Length];
     }
 
-    /// Said on the way into the price question, scaled by how much they liked it.
-    public static string ForLiked(double satisfaction, uint variant)
+    // ── The satisfaction word ladder (loop-feel pass A1) ─────────────────
+    //
+    // ONE five-word vocabulary for "how much did they like it", used by every
+    // player-facing surface — the listen reaction, delivery results, the
+    // craving maths. Players learn one scale. The bottom two cuts are the
+    // taste gates themselves (LikeMaybe / LikeCertain) so the words can never
+    // disagree with the verdict; the top two are presentation-only.
+    //
+    // DRAFT words — Sam's edit pass applies, same as every string here.
+    public const double SatCutFlip  = AlienTaste.LikeMaybe;    // 42
+    public const double SatCutLiked = AlienTaste.LikeCertain;  // 60
+    public const double SatCutLove  = 78.0;
+    public const double SatCutPeak  = 92.0;
+
+    /// 0 junk · 1 not-for-me (the flip band) · 2 decent · 3 love it · 4 MASTERPIECE
+    public static int SatBand(double s)
     {
-        if (satisfaction >= 85)
+        if (s >= SatCutPeak) return 4;
+        if (s >= SatCutLove) return 3;
+        if (s >= SatCutLiked) return 2;
+        if (s >= SatCutFlip) return 1;
+        return 0;
+    }
+
+    static readonly string[] SatWords = { "junk", "not for me", "decent", "love it", "MASTERPIECE" };
+
+    /// The bare ladder word for a band (see SatBand).
+    public static string SatWord(int band)
+        => SatWords[band < 0 ? 0 : band >= SatWords.Length ? SatWords.Length - 1 : band];
+
+    /// <summary>
+    /// Said on the way into the price question, scaled by how much they liked
+    /// it. Every line carries its ladder word so the player learns the scale.
+    /// <paramref name="wonCoinFlip"/>: a flip-band tape they happened to take —
+    /// the SALE was luck but the spoken word stays honest.
+    /// </summary>
+    public static string ForLiked(double satisfaction, uint variant)
+        => ForLiked(satisfaction, false, variant);
+
+    public static string ForLiked(double satisfaction, bool wonCoinFlip, uint variant)
+    {
+        if (wonCoinFlip || SatBand(satisfaction) <= 1)
         {
-            string[] bank = { "Where did you get this?", "Oh, that's the one. How much?" };
-            return bank[variant % (uint)bank.Length];
+            string[] flip = { "Not really for me... but fine, I'll take it. How much?",
+                              "Hm. Not my thing, exactly. But go on — how much?" };
+            return flip[variant % (uint)flip.Length];
         }
-        if (satisfaction >= 65)
+        switch (SatBand(satisfaction))
         {
-            string[] bank = { "Yeah. Yeah, I'd play that.", "That'll do nicely. How much?" };
-            return bank[variant % (uint)bank.Length];
+            case 4:
+            {
+                string[] bank = { "A MASTERPIECE. Where did you GET this?",
+                                  "Oh, that's the one. A MASTERPIECE. Name a price." };
+                return bank[variant % (uint)bank.Length];
+            }
+            case 3:
+            {
+                string[] bank = { "Love it. How much?",
+                                  "Yeah — love it, I'd play that. How much?" };
+                return bank[variant % (uint)bank.Length];
+            }
+            default:
+            {
+                string[] bank = { "Decent, I guess. What do you want for it?",
+                                  "That's decent. Go on then — how much?" };
+                return bank[variant % (uint)bank.Length];
+            }
         }
-        string[] mild = { "It's alright. What do you want for it?", "I could live with that one." };
-        return mild[variant % (uint)mild.Length];
+    }
+
+    /// Their verdict spoken AFTER a delivery is paid — no price question, just
+    /// the ladder word, which is what makes taste legible on the order path.
+    public static string AfterListen(double satisfaction, uint variant)
+    {
+        switch (SatBand(satisfaction))
+        {
+            case 4:
+            {
+                string[] bank = { "This is a MASTERPIECE.", "A MASTERPIECE. I mean it." };
+                return bank[variant % (uint)bank.Length];
+            }
+            case 3:
+            {
+                string[] bank = { "I love this.", "Love it. Exactly right." };
+                return bank[variant % (uint)bank.Length];
+            }
+            case 2:
+            {
+                string[] bank = { "It's decent.", "Decent. I'll play it." };
+                return bank[variant % (uint)bank.Length];
+            }
+            default:
+            {
+                string[] bank = { "...not really for me. But a deal's a deal.",
+                                  "Not my thing. Still — we had a deal." };
+                return bank[variant % (uint)bank.Length];
+            }
+        }
+    }
+
+    /// Said when a thin arrangement is what's dragging the money down — the
+    /// alien names the problem in-world instead of a UI caption doing it
+    /// (loop-feel pass A3). DRAFT lines, Sam edits.
+    public static string ForThinKit(uint variant)
+    {
+        string[] bank =
+        {
+            "Sounds empty. Needs more machines in it.",
+            "Where's the rest of it? This is half a band.",
+            "One box and a drum. I can hear the gaps.",
+            "Thin. You've got more gear than this, I've heard it.",
+            "It's a sketch, not a song. Come back when it's crowded.",
+        };
+        return bank[variant % (uint)bank.Length];
     }
 
     /// Said when a greedy ask provokes the take-it-or-leave-it.

@@ -136,7 +136,14 @@ public class TevShopUI : MonoBehaviour
         public Button minus, plus, buy;
         public RectTransform stepper;
         public int stockIndex = -1;
+        // Loop-feel A4: hear a plugin before buying it. Plugin rows only —
+        // it sits where the blank rows put their quantity stepper.
+        public Button listen;
+        public TextMeshProUGUI listenLabel;
     }
+
+    /// Which plugin's demo is looping right now, or null.
+    string _listeningPlugin;
 
     // ── lifecycle ─────────────────────────────────────────────────────────
     //
@@ -221,6 +228,7 @@ public class TevShopUI : MonoBehaviour
     public void Close()
     {
         if (!_open) return;
+        StopListen();
         _open = false;
         if (_dim != null) _dim.SetActive(false);
         _panelRT.gameObject.SetActive(false);
@@ -252,6 +260,7 @@ public class TevShopUI : MonoBehaviour
         if (TutorialGate.PadPressed(TutorialGate.PadButton.LB)
          || TutorialGate.PadPressed(TutorialGate.PadButton.RB))
         {
+            StopListen();   // a demo belongs to the tab it started on
             _tab = _tab == Tab.Tapes ? Tab.Plugins : Tab.Tapes;
             Refresh();
         }
@@ -340,6 +349,7 @@ public class TevShopUI : MonoBehaviour
         if (PlayerWallet.Instance == null || Money < e.price) return;
         if (!PlayerWallet.Instance.SpendMoney(e.price)) return;
 
+        StopListen();   // you bought it — the demo's job is done
         TraxLibrary.Install(e.plugin);
         SetStatus(string.IsNullOrEmpty(_pluginLine)
             ? $"{e.plugin} installed. It's on the computer next time you open it."
@@ -423,6 +433,21 @@ public class TevShopUI : MonoBehaviour
         w.stepper.gameObject.SetActive(tape);
         w.installed.gameObject.SetActive(own);
         w.buy.gameObject.SetActive(!own);
+
+        // LISTEN on every plugin row — including installed ones; hearing what
+        // you already own costs nothing and re-sells the next rung.
+        if (w.listen != null)
+        {
+            w.listen.gameObject.SetActive(!tape);
+            if (!tape)
+            {
+                bool playing = _listeningPlugin == e.plugin;
+                w.listenLabel.text = playing ? "PLAYING" : "LISTEN";
+                w.listenLabel.color = playing ? (Color)C_Phos : (Color)C_Dim;
+                w.listen.targetGraphic.color = playing
+                    ? new Color32(29, 95, 74, 255) : C_BuyOff;
+            }
+        }
 
         if (tape)
         {
@@ -525,7 +550,7 @@ public class TevShopUI : MonoBehaviour
         var btn = rt.gameObject.AddComponent<Button>();
         btn.targetGraphic = img;
         btn.transition = Selectable.Transition.None;
-        btn.onClick.AddListener(() => { _tab = tab; Refresh(); });
+        btn.onClick.AddListener(() => { StopListen(); _tab = tab; Refresh(); });
 
         var label = Txt(rt, text, new Vector2(0, -7f), 184, 20, 13,
                         C_Dimmer, FontStyles.Bold, TextAlignmentOptions.Center);
@@ -600,8 +625,40 @@ public class TevShopUI : MonoBehaviour
         w.installed = Txt(w.root, "INSTALLED", new Vector2(buyX, -14f), 112, 20, 11,
                           C_Phos, FontStyles.Bold, TextAlignmentOptions.Center);
 
+        // ── listen (plugin rows; sits in the stepper's slot, which plugin
+        //    rows never show) ──
+        w.listen = MkBtn(w.root, "Listen", new Vector2(stepX, -8f), new Vector2(96, 30), C_BuyOff, () => {
+            int i = _rows[captured].stockIndex;
+            if (i >= 0 && !IsTape(Stock[i])) ToggleListen(i);
+        }, out w.listenLabel);
+        w.listenLabel.fontSize = 12;
+        w.listen.gameObject.SetActive(false);
+
         w.root.gameObject.SetActive(false);
         return w;
+    }
+
+    // ── plugin demos (loop-feel A4) ───────────────────────────────────────
+
+    void ToggleListen(int i)
+    {
+        Entry e = Stock[i];
+        if (e.plugin == null) return;
+        if (_listeningPlugin == e.plugin) { StopListen(); Refresh(); return; }
+
+        var track = PluginDemos.TrackFor(e.plugin);
+        if (track == null) return;
+        TraxTapePlayer.PlayPersonalTrack(track, 0f);   // loop until stopped
+        _listeningPlugin = e.plugin;
+        SetStatus($"{e.plugin}, over the house drums. Buying it puts this in YOUR rack.", C_Dimmer);
+        Refresh();
+    }
+
+    void StopListen()
+    {
+        if (_listeningPlugin == null) return;
+        _listeningPlugin = null;
+        TraxTapePlayer.StopAll();
     }
 
     Button StepBtn(RectTransform parent, string glyph, float x, Action onClick)

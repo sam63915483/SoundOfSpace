@@ -163,6 +163,42 @@ public static class DealTests
             Eq(at, ceiling, "…at YOUR price, not theirs, for " + id);
         }
 
+        // ── the satisfaction word ladder (loop-feel A1) ──────────────────────
+        // One vocabulary, band edges pinned to the taste gates so the word can
+        // never disagree with the verdict.
+        {
+            Eq(AlienFeedback.SatBand(0), 0, "sat 0 is junk");
+            Eq(AlienFeedback.SatBand(41.99), 0, "just under the flip gate is junk");
+            Eq(AlienFeedback.SatBand(42), 1, "the flip gate opens not-for-me");
+            Eq(AlienFeedback.SatBand(59.99), 1, "just under liked stays not-for-me");
+            Eq(AlienFeedback.SatBand(60), 2, "the like gate opens decent");
+            Eq(AlienFeedback.SatBand(77.99), 2, "just under love stays decent");
+            Eq(AlienFeedback.SatBand(78), 3, "78 opens love-it");
+            Eq(AlienFeedback.SatBand(91.99), 3, "just under peak stays love-it");
+            Eq(AlienFeedback.SatBand(92), 4, "92 opens MASTERPIECE");
+            Eq(AlienFeedback.SatBand(100), 4, "100 is MASTERPIECE");
+            for (int b = 0; b < 5; b++)
+                Check(!string.IsNullOrEmpty(AlienFeedback.SatWord(b)), "ladder word " + b + " exists");
+
+            // The hard rule for the whole pass: no player-visible percentages
+            // or multipliers on any spoken selling line.
+            for (uint v = 0; v < 6; v++)
+            {
+                foreach (double s in new[] { 10.0, 50.0, 70.0, 85.0, 95.0 })
+                {
+                    Check(!AlienFeedback.ForLiked(s, v).Contains("%"), "ForLiked speaks no percentages");
+                    Check(!AlienFeedback.AfterListen(s, v).Contains("%"), "AfterListen speaks no percentages");
+                }
+                Check(!string.IsNullOrEmpty(AlienFeedback.AfterListen(70, v)), "AfterListen produces a line");
+                Check(!string.IsNullOrEmpty(AlienFeedback.ForThinKit(v)), "ForThinKit produces a line");
+                Check(!AlienFeedback.ForThinKit(v).Contains("%"), "ForThinKit speaks no percentages");
+                Check(!string.IsNullOrEmpty(AlienFeedback.ForLiked(50, true, v)),
+                      "a won coin flip still gets a spoken line");
+            }
+            Check(AlienFeedback.ForLiked(50, true, 0).ToLowerInvariant().Contains("not"),
+                  "a won flip speaks its true feeling, not fake enthusiasm");
+        }
+
         Console.WriteLine(Failures == 0 ? "  parity holds" : "  PARITY BROKEN");
     }
 }

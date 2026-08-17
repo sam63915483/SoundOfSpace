@@ -93,6 +93,9 @@ public class MushroomSellUI : MonoBehaviour
     // feel. They replaced a TMP_InputField + four ± steppers.
     UnityEngine.UI.Slider _askSlider;
     TextMeshProUGUI _askHandleLabel;
+    // Loop-feel A2: the one aid on the stripped slider — a small tick at what
+    // THIS buyer paid last time (ledger knowledge the player earned).
+    RectTransform _lastPaidTick;
     Button _primaryBtn, _takeBtn, _secondaryBtn;
     TextMeshProUGUI _primaryLabel, _takeLabel, _secondaryLabel;
     SlotWidget[] _barSlots = new SlotWidget[HotbarSlots];
@@ -124,6 +127,10 @@ public class MushroomSellUI : MonoBehaviour
     // haggle is off, and DELIVER runs the exact/substitution flow instead.
     bool _scheduled;
     BuyerLedger.Buyer _appt;
+    // The ladder line spoken when the buyer liked the listen (loop-feel A1).
+    // Set by MakeOffer, consumed by whichever outcome line follows it —
+    // "Love it. 52 a tape? Not a chance. I'll do 38." reads as one speech.
+    string _listenOpinion;
 
     class SlotWidget
     {
@@ -239,6 +246,7 @@ public class MushroomSellUI : MonoBehaviour
         _stage = Stage.Open;
         _counter = 0;
         _finalOffer = false;
+        _listenOpinion = null;
 
         // A live appointment flips the panel into delivery mode. The ask is
         // seeded at the AGREED price but stays editable — you can re-ask at
@@ -392,6 +400,25 @@ public class MushroomSellUI : MonoBehaviour
         }
     }
 
+    /// What this buyer last paid for a tape, from the ledger's event log — the
+    /// tape path never wrote MushroomDealState.RecordSale, so LastPaid there
+    /// was permanently 0 and five-time regulars read "you've never dealt with
+    /// them". 0 = never dealt.
+    int LastPaid()
+    {
+        var led = BuyerLedger.Get(_buyerId);
+        if (led == null) return 0;
+        for (int i = led.events.Count - 1; i >= 0; i--)
+        {
+            int t = led.events[i].type;
+            if (t == (int)BuyerLedger.EvType.FulfilledExact
+                || t == (int)BuyerLedger.EvType.FulfilledSub
+                || t == (int)BuyerLedger.EvType.WalkUpDeal)
+                return led.events[i].a;
+        }
+        return 0;
+    }
+
     float Patience => (float)AlienTaste.Patience(_buyerId);
     int Total  => _ask * _offerCountN;
     bool Barred => MushroomDealState.IsBarred(_buyerId);
@@ -420,7 +447,7 @@ public class MushroomSellUI : MonoBehaviour
             // with the headless suite, never re-derived here.
             var reaction = TapeOffer.Listen(_buyerId, dials, rec.tier,
                                             UnityEngine.Random.value < 0.5f,
-                                            out _, out var verdict);
+                                            out double trueSat, out var verdict);
             if (reaction == TapeOffer.Reaction.AlreadyHeard)
             {
                 SetResult($"\"{AlienFeedback.ForRepeat(variant)}\"", C_Err);
@@ -444,6 +471,15 @@ public class MushroomSellUI : MonoBehaviour
                 Refresh();
                 return;
             }
+
+            // They LIKED it — say so, in the one satisfaction vocabulary
+            // (loop-feel A1). This used to be silent: a buyer who loved a
+            // tape went straight to the price step without a word, so the
+            // ladder line is new information the game was withholding. A won
+            // coin flip speaks its true feeling ("not really for me... but
+            // fine") — the sale was luck and the word stays honest.
+            _listenOpinion = AlienFeedback.ForLiked(
+                trueSat, verdict == AlienTaste.Verdict.CoinFlip, variant);
         }
 
         // ── THE RULEBOOK JUDGES (TapeOffer.Judge, wired 2026-08-16) ──────────
@@ -465,13 +501,22 @@ public class MushroomSellUI : MonoBehaviour
                 _stage = Stage.Countered;
                 _finalOffer = false;
                 MushroomDealState.SetCounter(_buyerId, _offerSpecies, _counter);
-                SetResult($"\"{_ask} a tape? Not a chance. I'll do {_counter}.\"", C_Label);
+                SetResult($"\"{Opinion()}{_ask} a tape? Not a chance. I'll do {_counter}.\"", C_Label);
                 Refresh();
                 return;
             default:
                 DeclareFinalOffer(fair);
                 return;
         }
+    }
+
+    /// The pending listen line plus a joining space, or "". Consumed on read
+    /// so it decorates exactly one outcome sentence.
+    string Opinion()
+    {
+        string o = _listenOpinion;
+        _listenOpinion = null;
+        return string.IsNullOrEmpty(o) ? "" : o + " ";
     }
 
     void DeclareFinalOffer(int fair)
@@ -481,7 +526,7 @@ public class MushroomSellUI : MonoBehaviour
         _stage = Stage.Countered;
         _finalOffer = true;
         MushroomDealState.SetCounter(_buyerId, _offerSpecies, _counter);
-        SetResult($"\"{AlienFeedback.ForFinalOffer(_counter, variant)}\"", C_Label);
+        SetResult($"\"{Opinion()}{AlienFeedback.ForFinalOffer(_counter, variant)}\"", C_Label);
         Refresh();
     }
 
@@ -614,9 +659,10 @@ public class MushroomSellUI : MonoBehaviour
         }
         _onSold?.Invoke(qty);
 
+        string said = Opinion();
         SetResult(leftover > 0
-            ? $"{_npcName} took {qty} and paid {credits}. They didn't want the other {leftover}."
-            : $"{_npcName} paid {credits} credits.", C_Ok);
+            ? $"{(said == "" ? "" : $"\"{said.TrimEnd()}\" — ")}{_npcName} took {qty} and paid {credits}. They didn't want the other {leftover}."
+            : $"{(said == "" ? "" : $"\"{said.TrimEnd()}\" — ")}{_npcName} paid {credits} credits.", C_Ok);
         Refresh();
     }
 
@@ -946,24 +992,7 @@ public class MushroomSellUI : MonoBehaviour
         // because the player earned it by selling to them.
         if (_memoText != null)
         {
-            // Read the last paid price from the LEDGER's event log — the
-            // tape path never wrote MushroomDealState.RecordSale, so LastPaid
-            // was permanently 0 and this line told five-time regulars
-            // "you've never dealt with them" (and the reveal notes below
-            // never rendered here at all).
-            int last = 0;
-            var memoLed = BuyerLedger.Get(_buyerId);
-            if (memoLed != null)
-            {
-                for (int i = memoLed.events.Count - 1; i >= 0; i--)
-                {
-                    int t = memoLed.events[i].type;
-                    if (t == (int)BuyerLedger.EvType.FulfilledExact
-                        || t == (int)BuyerLedger.EvType.FulfilledSub
-                        || t == (int)BuyerLedger.EvType.WalkUpDeal)
-                    { last = memoLed.events[i].a; break; }
-                }
-            }
+            int last = LastPaid();
             if (last > 0)
             {
                 string line = $"you remember: paid <color=#FFD732>{last}</color> for a tape";
@@ -1006,9 +1035,10 @@ public class MushroomSellUI : MonoBehaviour
                     $"<size=13><color=#7FA0BD>on the table: {title}  <color=#{tierHex}>{genre}</color></color></size>";
             }
             else
+            // Loop-feel A2: no market/street dollar label. Your tape, their
+            // face — the buyer's REACTION is the information channel now.
             _offerText.text =
                 $"<b>{title}</b>  <size=13><color=#{tierHex}>{genre} · {typeWord}</color></size>\n" +
-                $"<size=13><color=#7FA0BD>market value <color=#FFD732>{Market}</color> a tape — what {_npcName} pays is up to {_npcName}</color></size>\n" +
                 $"<size=12><color=#6EDC82>NOW PLAYING</color></size>";
             // No live render for a cassette: the shell sprite IS the art.
             _offerPreview.enabled = false;
@@ -1096,15 +1126,11 @@ public class MushroomSellUI : MonoBehaviour
 
         _totalText.text = $"{Total}";
 
-        // The greed read, in words. Measured against STREET VALUE (goods ×
-        // how much they enjoyed the listen × relationship) — everything the
-        // player already knows or just watched. What it deliberately hides is
-        // this buyer's PayFactor and Patience: learning who pays over street
-        // IS the game. The bands speak in population terms because the same
-        // ask genuinely is an easy yes to one buyer and an insult to another.
-        int street = HasOffer ? StreetValue : 0;
-        float over = (HasOffer && street > 0) ? (float)_ask / street : 1f;
-        int pct = Mathf.RoundToInt(Mathf.Abs(over - 1f) * 100f);
+        // Loop-feel A2: the walk-up band text is GONE — no population wording,
+        // no percentages. The slider still spans 0.5x..4.5x street value (the
+        // maths is untouched), but the only feedback is what the buyer says
+        // and does. Delivery mode keeps its read: that's a contract check
+        // against a number both parties agreed, not leaked system knowledge.
         string band; Color32 bandCol;
         if (_scheduled && _appt != null)
         {
@@ -1140,16 +1166,9 @@ public class MushroomSellUI : MonoBehaviour
             else
             { band = "wrong goods AND over the agreed price — long odds"; bandCol = new Color32(255, 110, 110, 255); }
         }
-        // Population wording: which buyers would take this ask. The red zone
-        // means "you'd better know who you're talking to", not "impossible" —
-        // a bonded superfan's real number reaches ~4.5x street.
-        else if (!HasOffer)     { band = ""; bandCol = C_Dim; }
-        else if (over < 0.7f)   { band = $"{pct}% under street value — almost anyone would take this"; bandCol = new Color32(110, 220, 130, 255); }
-        else if (over < 1f)     { band = $"{pct}% under street value — most take it";                  bandCol = new Color32(110, 220, 130, 255); }
-        else if (pct == 0)      { band = "street value — cheap buyers will counter";                   bandCol = new Color32(159, 216, 110, 255); }
-        else if (over <= 1.5f)  { band = $"{pct}% over street — a decent payer's range";               bandCol = new Color32(255, 215, 50, 255); }
-        else if (over <= 2.5f)  { band = $"{pct}% over street — only a devotee pays this";             bandCol = new Color32(255, 154, 60, 255); }
-        else                    { band = $"{pct}% over street — only a superfan pays this";            bandCol = new Color32(255, 110, 110, 255); }
+        // Walk-up: silence. The buyer's counter/final-offer/acceptance is the
+        // only price feedback (loop-feel A2).
+        else { band = ""; bandCol = C_Dim; }
         _riskText.text = band;
         _riskText.color = bandCol;
 
@@ -1223,6 +1242,23 @@ public class MushroomSellUI : MonoBehaviour
         _askSlider.SetValueWithoutNotify(Mathf.Clamp(_ask, askMin, askMax));
         _askSlider.interactable = HasOffer && !barred;
         if (_askHandleLabel != null) _askHandleLabel.text = _ask.ToString();
+
+        // Last-paid tick (loop-feel A2): remembered knowledge, not system
+        // knowledge — appears only once you've actually sold to this buyer,
+        // and only in a walk-up (delivery anchors on the agreed price).
+        if (_lastPaidTick != null)
+        {
+            int last = (!_scheduled && HasOffer) ? LastPaid() : 0;
+            bool show = last > 0 && askMax > askMin && last >= askMin && last <= askMax;
+            _lastPaidTick.gameObject.SetActive(show);
+            if (show)
+            {
+                float frac = Mathf.InverseLerp(askMin, askMax, last);
+                _lastPaidTick.anchorMin = new Vector2(frac, 0.1f);
+                _lastPaidTick.anchorMax = new Vector2(frac, 0.9f);
+                _lastPaidTick.anchoredPosition = Vector2.zero;
+            }
+        }
 
         _suppressInput = false;
     }
@@ -1433,6 +1469,19 @@ public class MushroomSellUI : MonoBehaviour
             Refresh();
         });
 
+        // The last-paid tick lives in the slider's HandleArea, whose anchors
+        // map value-fraction to position exactly the way the thumb's do — so
+        // anchoring the tick at `frac` puts it at that price on the track.
+        var tickGO = new GameObject("LastPaidTick", typeof(RectTransform));
+        _lastPaidTick = (RectTransform)tickGO.transform;
+        _lastPaidTick.SetParent(_askSlider.handleRect.parent, false);
+        _lastPaidTick.sizeDelta = new Vector2(3f, 0f);
+        var tickImg = tickGO.AddComponent<Image>();
+        tickImg.color = C_Value;
+        tickImg.raycastTarget = false;
+        _lastPaidTick.SetAsFirstSibling();   // the thumb draws over it
+        tickGO.SetActive(false);
+
         // The greed read, as a SENTENCE rather than an unlabelled coloured bar.
         // The bar said nothing on its own — if the person who commissioned it
         // has to ask what it does, a new player has no chance. Same information,
@@ -1536,12 +1585,15 @@ public class MushroomSellUI : MonoBehaviour
         if (chance >= 0.999f || UnityEngine.Random.value <= chance)
         {
             int contractTier = terms.tapeTier >= 1 ? terms.tapeTier : 1;
+            uint tv = StableHash(_buyerId + ":" + _offerSpecies);
             // The specific shortfall lines only apply to right-genre goods —
             // a wrong-genre clamp keeps the generic "not what I was picturing".
+            // A thin KIT speaks in the alien's own voice (loop-feel A3): low
+            // module count is what's holding the money down, so they say so.
             string thinLine = !g.thin || !fillsGenre ? null
                 : g.tierShort
                 ? $"\"This isn't a Type {contractTier}.\" — {_npcName} paid {{0}}, about half the agreed rate."
-                : $"\"Thinner than what we talked about.\" — {_npcName} paid {{0}}, not the full rate.";
+                : $"\"{AlienFeedback.ForThinKit(tv)}\" — {_npcName} paid {{0}}, not the full rate.";
             CompleteScheduled(g.perCap, g.qty, substituted: g.substituted, thin: g.thin, thinLine: thinLine);
         }
         else
@@ -1566,6 +1618,12 @@ public class MushroomSellUI : MonoBehaviour
         int leftover = _offerCountN - qty;
         var soldRec = Press;
         int soldGenre = GenreIndexOf(soldRec);
+        // Their verdict on the LISTEN, in the one ladder vocabulary (A1) —
+        // captured before the table is cleared. On the order path this is
+        // pure information: the pay is the agreed number regardless, so the
+        // word teaches taste without touching money.
+        double deliveredSat = Satisfaction;
+        uint satVariant = StableHash(_buyerId + ":" + _offerSpecies + ":heard");
         // Blend-aware taste match — see the matching note in CloseSale.
         double[] soldDials = soldRec != null ? TapeTrade.DialsOf(soldRec.track) : null;
         bool matchedTaste = soldDials != null && AlienTaste.MatchesFavourite(_buyerId, soldDials);
@@ -1595,7 +1653,7 @@ public class MushroomSellUI : MonoBehaviour
                 : $"\"This isn't the track I was picturing.\" — {_npcName} paid {credits}, not what you agreed.")
             : substituted
             ? $"{_npcName} grumbled, but took {qty} for {credits}."
-            : $"Order delivered. {_npcName} paid {credits} credits.", thin ? C_Err : C_Ok);
+            : $"\"{AlienFeedback.AfterListen(deliveredSat, satVariant)}\" — order delivered, {_npcName} paid {credits}.", thin ? C_Err : C_Ok);
         Refresh();
     }
 
