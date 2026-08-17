@@ -363,6 +363,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         if (!Resolve()) return;
         ApplyRenderScale();
         InjectGrassPointLights(_player.transform.position);
+        InjectGrassSunLight();
         if (spawnRadius <= 0.01f)            // grass turned all the way down → none
         {
             ClearActive();
@@ -482,6 +483,50 @@ public class InstancedGrassRenderer : MonoBehaviour
         for (int i = 0; i < n; i++)
             if (_gplDir[i].w > 0.5f) { spotCenter += new Vector3(_gplPos[i].x, _gplPos[i].y, _gplPos[i].z); spotCount++; }
         if (spotCount > 0) Shader.SetGlobalVector(_grassSpotCenterId, spotCenter / spotCount);
+    }
+
+    // ── faked sun point-light injection (sunrise/sunset grass fill) ─────────
+    // The Sun carries an UNSHADOWED point light ("Point Light (Sun)") that lights
+    // the ground through a ForwardAdd pass the DrawMeshInstanced grass never
+    // receives. At sunrise/sunset that light is most of the ground's
+    // illumination (the shadowed directional collapses at grazing angles), so
+    // the ground glowed warm while the grass stayed dark. Hand the shader its
+    // position/colour/range so it can fake it — same trick as the lanterns.
+    // Cached once; re-find throttled (2s) so a missing sun (main menu,
+    // dimensions) costs one scan every couple of seconds, not one per frame.
+    static readonly int _grassSunPosId   = Shader.PropertyToID("_GrassSunPos");
+    static readonly int _grassSunColorId = Shader.PropertyToID("_GrassSunColor");
+    static readonly int _grassSunRangeId = Shader.PropertyToID("_GrassSunRange");
+    static Light _sunPointLight;
+    static float _sunFindCooldown;
+
+    static void InjectGrassSunLight()
+    {
+        if (_sunPointLight == null)
+        {
+            _sunFindCooldown -= Time.deltaTime;
+            if (_sunFindCooldown > 0f) { Shader.SetGlobalColor(_grassSunColorId, Color.black); return; }
+            _sunFindCooldown = 2f;
+            var lights = FindObjectsOfType<Light>();
+            for (int i = 0; i < lights.Length; i++)
+            {
+                var l = lights[i];
+                if (l.type != LightType.Point) continue;
+                var parent = l.transform.parent;
+                if (parent != null && parent.name == "Sun") { _sunPointLight = l; break; }
+            }
+            if (_sunPointLight == null) { Shader.SetGlobalColor(_grassSunColorId, Color.black); return; }
+        }
+        // Respect the light being toggled off (LightingDebugToolbox F8, etc.) —
+        // black colour = the shader's fill contributes exactly zero.
+        if (!_sunPointLight.isActiveAndEnabled)
+        {
+            Shader.SetGlobalColor(_grassSunColorId, Color.black);
+            return;
+        }
+        Shader.SetGlobalVector(_grassSunPosId, _sunPointLight.transform.position);
+        Shader.SetGlobalColor(_grassSunColorId, _sunPointLight.color * _sunPointLight.intensity);
+        Shader.SetGlobalFloat(_grassSunRangeId, _sunPointLight.range);
     }
 
     void Stream()

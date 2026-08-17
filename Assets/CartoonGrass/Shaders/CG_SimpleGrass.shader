@@ -30,6 +30,7 @@ Shader "CartoonGrass/SimpleGrass"
         _SpotGrassReach ("Concert light reach on grass (m)", Range(5, 250)) = 50
         _LanternGrassRadius ("Lantern grass radius (x range)", Range(0.1, 1.5)) = 0.5
         _LanternGrassTail ("Lantern grass far-reach tail", Range(0, 1)) = 0.35
+        _SunFillResponse ("Sunrise/sunset sun fill on grass", Range(0, 2)) = 1.0
     }
     SubShader
     {
@@ -65,6 +66,16 @@ Shader "CartoonGrass/SimpleGrass"
         float _LanternGrassRadius;   // shrinks the lantern/torch grass falloff distance (x the light's range; 0.5 = half)
         float _LanternGrassTail;     // brightness of the dim extended tail that carries lantern grass light out to ~full range (0 = old short cutoff)
         float3 _GrassPlanetCenter;   // set globally by InstancedGrassRenderer (per-patch colour hash)
+        float _SunFillResponse;      // scales the faked sun point-light fill (sunrise/sunset grass warm-up)
+
+        // The Sun's UNSHADOWED point light ("Point Light (Sun)"), injected
+        // globally by InstancedGrassRenderer. The ground receives it as a real
+        // ForwardAdd light; the instanced grass can't (same as every other
+        // additive light), so it's faked below. Black colour = no sun in this
+        // scene (main menu / dimensions) → exactly zero effect.
+        float3 _GrassSunPos;
+        float3 _GrassSunColor;       // colour * intensity (black = off)
+        float _GrassSunRange;
 
         // Player flashlight, injected globally by PlayerFlashlight. The grass is
         // drawn with Graphics.DrawMeshInstanced, which does NOT receive Unity's
@@ -158,6 +169,31 @@ Shader "CartoonGrass/SimpleGrass"
             // to read as a night-time glow. Set _AmbientBoost to 0 on the
             // material to kill it entirely.
             o.Emission = c * _AmbientBoost * 0.06;
+
+            // FAKED SUN POINT LIGHT — the sunrise/sunset fill. The Sun carries
+            // TWO lights: the shadowed directional AND an unshadowed point light
+            // ("Point Light (Sun)") the ground receives via a ForwardAdd pass.
+            // DrawMeshInstanced grass never gets additive lights, so at sunrise/
+            // sunset — where the directional collapses on the grass (grazing
+            // N·L, long terrain shadows crushing atten, and the day factor
+            // dropping the wrap floor above to true Lambert) — the ground glowed
+            // warm while the grass stayed black. This fakes the point sun the
+            // same way the lanterns/flashlight are faked. Gated by
+            // (1 - dayFactor): at local noon the 0.5 wrap floor already stands
+            // in for the missing point sun (the tuned, user-approved daytime
+            // look — left pixel-identical), and this fill ramps in exactly as
+            // that floor fades out toward the terminator. Lambert on bladeUp so
+            // hillsides facing the sunrise light up like the ground under them;
+            // plain saturate (no wrap floor) so the night side stays at exactly
+            // 0 — no glow. Unshadowed on purpose: the real point sun casts no
+            // shadows either, which is precisely why the ground lights up first.
+            float3 toSun  = _GrassSunPos - IN.worldPos;
+            float  sdist  = length(toSun);
+            float3 sdir   = toSun / max(sdist, 1e-4);
+            float  sdn    = sdist / max(_GrassSunRange, 0.001);
+            float  satten = saturate(1.0 - sdn * sdn) / (1.0 + 25.0 * sdn * sdn);
+            half   sndl   = saturate(dot(IN.bladeUp, sdir));
+            o.Emission += c * _GrassSunColor * (sndl * satten * (1.0 - o.Specular) * _SunFillResponse);
 
             // Flashlight (added as emission because the instanced grass can't
             // receive the real additive spot light — see the uniform block
