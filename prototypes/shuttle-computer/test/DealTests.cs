@@ -199,6 +199,67 @@ public static class DealTests
                   "a won flip speaks its true feeling, not fake enthusiasm");
         }
 
+        // ── craving: the flywheel's arithmetic (loop-feel C) ─────────────────
+        {
+            Eq(CravingRules.Gain(4, false), CravingRules.GainMasterpiece, "masterpiece feeds hardest");
+            Eq(CravingRules.Gain(3, false), CravingRules.GainLove, "love-it feeds");
+            Eq(CravingRules.Gain(2, false), CravingRules.GainDecent, "decent feeds a little");
+            Eq(CravingRules.Gain(1, false), CravingRules.GainBelow, "a tolerated sale still feeds");
+            Eq(CravingRules.Gain(0, false), CravingRules.GainBelow, "junk-band sale feeds the floor amount");
+            Eq(CravingRules.Gain(2, true), CravingRules.GainDecent + CravingRules.GainNamedRequest,
+               "a named request adds its bump");
+
+            Eq(CravingRules.AfterIdleDay(50), 50 - CravingRules.DecayPerIdleDay, "idle day decays");
+            Eq(CravingRules.AfterIdleDay(5), 0, "decay floors at zero");
+            Eq(CravingRules.Clamp(120), CravingRules.Cap, "craving caps at 100");
+            Eq(CravingRules.Clamp(-3), 0, "craving floors at 0");
+
+            Check(Math.Abs(CravingRules.FrequencyMult(0) - 1.0) < 1e-9, "cold buyer texts at base pace");
+            Check(Math.Abs(CravingRules.FrequencyMult(100) - 2.5) < 1e-9, "obsessed buyer texts 2.5x as often");
+            Check(CravingRules.FrequencyMult(60) > CravingRules.FrequencyMult(30),
+                  "frequency rises with craving");
+
+            Eq(CravingRules.LadderBand(0), 0, "0 is curious");
+            Eq(CravingRules.LadderBand(19), 0, "19 is curious");
+            Eq(CravingRules.LadderBand(20), 1, "20 is interested");
+            Eq(CravingRules.LadderBand(59), 1, "59 is interested");
+            Eq(CravingRules.LadderBand(60), 2, "60 is hooked (ambush gate)");
+            Eq(CravingRules.LadderBand(89), 2, "89 is hooked");
+            Eq(CravingRules.LadderBand(90), 3, "90 is obsessed (daily-order gate)");
+            for (int c = 0; c <= 100; c += 10)
+                Check(!string.IsNullOrEmpty(CravingRules.LadderWord(c)), "craving word exists at " + c);
+
+            Check(CravingRules.AmbushEligible(60, 1, 2), "hooked + a day ignored = ambush");
+            Check(!CravingRules.AmbushEligible(59, 1, 2), "under the gate never ambushes");
+            Check(!CravingRules.AmbushEligible(80, 2, 2), "bought today = no ambush");
+            Check(!CravingRules.AmbushEligible(80, 0, 5), "never bought = no ambush");
+        }
+
+        // ── the day wrap composes honestly (loop-feel B) ─────────────────────
+        {
+            string t = DayRecap.Compose(3, 4, 63, 20, 3, false, "Krib, Vess", "Krib");
+            Check(t.Contains("DAY 3 WRAP"), "wrap names its day");
+            Check(t.Contains("sold 4 tapes") && t.Contains("$63"), "wrap reports sales and money");
+            Check(t.Contains("owes $20") && t.Contains("3 days to plugin lockout"), "wrap reports arrears");
+            Check(t.Contains("Krib, Vess"), "wrap names who warmed");
+            Check(t.Contains("asking around for more"), "wrap names the hungry");
+            Check(!t.Contains("%"), "the wrap speaks no percentages");
+
+            string paid = DayRecap.Compose(1, 1, 8, 0, 0, false, "", "");
+            Check(paid.Contains("sold 1 tape ") || paid.Contains("sold 1 tape—")
+                  || paid.Contains("sold 1 tape —"), "singular tape reads right");
+            Check(paid.Contains("rent: paid up"), "clean rent reads as paid up");
+            Check(!paid.Contains("warmer") && !paid.Contains("asking around"),
+                  "empty sections are omitted");
+
+            string locked = DayRecap.Compose(9, 0, 0, 50, 0, true, "", "");
+            Check(locked.Contains("no tapes sold today"), "a dry day says so");
+            Check(locked.Contains("CLOSED"), "the lockout is loud");
+
+            string preRent = DayRecap.Compose(1, 2, 12, -1, 0, false, "", "");
+            Check(!preRent.Contains("rent"), "no rent arrangement, no rent line");
+        }
+
         Console.WriteLine(Failures == 0 ? "  parity holds" : "  PARITY BROKEN");
     }
 }

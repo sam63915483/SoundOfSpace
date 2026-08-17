@@ -463,7 +463,12 @@ public class MushroomSellUI : MonoBehaviour
                 // (which owns TapeMemory and rebroadcasts it in the snapshot).
                 if (verdict == AlienTaste.Verdict.Rejected
                     && !EconomySync.ReportTapeHeard(_buyerId, dials))
+                {
                     TapeMemory.Remember(_buyerId, dials);
+                    // They still got music out of you — a little craving
+                    // (routed listens get theirs in EconomySync's handler).
+                    BuyerLedger.AddCraving(_buyerId, CravingRules.GainHeardOnly);
+                }
                 // The tier overload appends "I only really rate Type 2 tapes" /
                 // "I stick to Type 1s" whenever the shell preference sat wrong,
                 // so a tier-caused no is never a mystery.
@@ -614,6 +619,8 @@ public class MushroomSellUI : MonoBehaviour
         // choose generosity — rewarded in bond (TapeOffer's rule, finally
         // wired in): undersell early, harvest BondMult from a regular later.
         int bondBonus = pricePerCap < Fair ? TapeOffer.BondOnGenerousDeal : 0;
+        // How much they liked it, on the one ladder — feeds craving.
+        int satBand = AlienFeedback.SatBand(Satisfaction);
         string species = _offerSpecies;
         int credits = pricePerCap * qty;
 
@@ -651,7 +658,7 @@ public class MushroomSellUI : MonoBehaviour
         {
             BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, pricePerCap, qty,
                                        keptAppointment: false, matchedTaste: matchedTaste,
-                                       bondBonus: bondBonus);
+                                       bondBonus: bondBonus, satBand: satBand);
             // A bought song is a heard song — without this the same track could
             // be re-sold to the same buyer forever, and the "same song twice is
             // a social failure" rule only ever fired on rejections.
@@ -1637,12 +1644,17 @@ public class MushroomSellUI : MonoBehaviour
         // Guest deliveries MUST reach the host: it holds the Scheduled
         // appointment, and without this report its deadline sweep fired
         // "you never showed" (bond halved) after a successful, paid delivery.
+        // Was this delivery filling a NAMED track request (loop-feel D)?
+        // Extra craving — being handed the exact thing you asked around for.
+        bool namedRequest = _appt != null && !string.IsNullOrEmpty(_appt.requestTrackId);
         if (!EconomySync.ReportTapeSale(_buyerId, soldGenre, perCap, qty,
                                         keptAppointment: true, matchedTaste: matchedTaste,
                                         heardDials: soldDials))
         {
             BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, perCap, qty,
-                                       keptAppointment: true, matchedTaste: matchedTaste);
+                                       keptAppointment: true, matchedTaste: matchedTaste,
+                                       satBand: AlienFeedback.SatBand(deliveredSat),
+                                       namedRequest: namedRequest);
             if (soldDials != null) TapeMemory.Remember(_buyerId, soldDials);
         }
         _scheduled = false; _appt = null;

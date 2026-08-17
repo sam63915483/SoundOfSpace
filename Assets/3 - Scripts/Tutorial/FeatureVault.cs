@@ -183,4 +183,16 @@ public static class FeatureVault
     /// owns rent collection and the mushroom onboarding, both of which are core
     /// loop. This flag covers only his village appearance.
     public const bool VillageTev = false;
+
+    /// CRAVING — the demand flywheel (loop-feel pass C, 2026-08-17, Sam GO'd
+    /// the whole handoff). Per-buyer 0..100 hunger: feeds on good sales,
+    /// decays when ignored, drives want-text frequency, the guaranteed daily
+    /// order at 90+, the ambush walk-up at 60+, and the contact-card ladder
+    /// word (curious / interested / hooked / obsessed).
+    ///
+    /// Gates BEHAVIOR only, never data: the craving field still saves and
+    /// loads with this off (it just never changes), so flipping the flag
+    /// either way is safe mid-save. It must NEVER touch price or block a
+    /// sale — demand, not a gate.
+    public const bool CravingSystem = true;
 }

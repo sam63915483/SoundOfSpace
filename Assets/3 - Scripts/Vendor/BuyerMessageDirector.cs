@@ -117,7 +117,94 @@ public class BuyerMessageDirector : MonoBehaviour
             openWants++;
         }
 
+        AmbushSweep(now);
         UpdateCompassMarkers();
+    }
+
+    // ── The ambush walk-up (loop-feel C) ──────────────────────────────────
+    //
+    // A hooked buyer (craving 60+, nothing bought for a day) whose alien is
+    // streamed in near the player physically comes to find them, then wants
+    // something — the world pursuing the player, which is the whole flywheel.
+    // At most ONE ambush per galaxy day. Craving never touches the price:
+    // whatever happens next is the completely normal walk-up/sell flow.
+    //
+    // The walk itself is local theatre on this machine (aliens aren't
+    // position-synced); in co-op only the host sees the stroll, but the want
+    // text that lands is shared state like every other text.
+
+    const float AmbushScanRange = 60f;
+    const float AmbushStopDistance = 3.5f;
+    const float AmbushMaxSeconds = 90f;
+
+    string _ambushBuyerId;
+    AlienWander _ambushWander;
+    float _ambushStartedAt;
+    int _lastAmbushDay;
+
+    void AmbushSweep(float now)
+    {
+        if (!FeatureVault.CravingSystem) return;
+        var gt = GalaxyTime.Instance;
+        if (gt == null) return;
+        int today = gt.Day;
+
+        // A live ambush: watch it run its course.
+        if (_ambushWander != null)
+        {
+            bool done = !_ambushWander.isActiveAndEnabled          // despawned/killed
+                        || _ambushWander.ApproachBlocked           // water/cliff in the way
+                        || _ambushWander.ApproachArrived           // made it — speak
+                        || now - _ambushStartedAt > AmbushMaxSeconds;
+            if (done) FinishAmbush();
+            return;
+        }
+        if (_ambushBuyerId != null) { FinishAmbush(); return; }    // wander component vanished
+
+        if (_lastAmbushDay == today) return;
+        var player = Player();
+        if (player == null) return;
+
+        var aliens = SpawnedAlienNPC.AllAliens;
+        for (int i = 0; i < aliens.Count; i++)
+        {
+            var alien = aliens[i];
+            if (alien == null) continue;
+            if ((alien.transform.position - player.transform.position).sqrMagnitude
+                > AmbushScanRange * AmbushScanRange) continue;
+
+            string id = AlienIdentity.Of(alien);
+            var b = BuyerLedger.Get(id);
+            if (b == null || b.convo != BuyerLedger.Convo.None) continue;
+            if (!CravingRules.AmbushEligible(b.craving, b.lastPurchaseDay, today)) continue;
+
+            var wander = alien.GetComponent<AlienWander>();
+            if (wander == null || !wander.enabled || wander.Approaching) continue;
+
+            _ambushBuyerId = id;
+            _ambushWander = wander;
+            _ambushStartedAt = now;
+            _lastAmbushDay = today;   // the day's ambush is spent even if it fails
+            wander.BeginApproach(player.transform, AmbushStopDistance);
+            return;
+        }
+    }
+
+    /// Whatever ended the approach — arrival, blockage or timeout — the hunger
+    /// SPEAKS: the hungry line flashes and a normal want text lands, so the
+    /// moment always produces something actionable. Arrival just adds the
+    /// theatre of them standing in front of you when it does.
+    void FinishAmbush()
+    {
+        var b = BuyerLedger.Get(_ambushBuyerId);
+        if (_ambushWander != null) _ambushWander.EndApproach();
+        _ambushWander = null;
+        string id = _ambushBuyerId;
+        _ambushBuyerId = null;
+
+        if (b == null || b.convo != BuyerLedger.Convo.None) return;
+        Notify($"{AlienNames.For(id)}: \"been humming that {AlienTaste.FavouriteGenre(id)} tape all week — got anything new?\"");
+        SendWantText(b);
     }
 
     /// One compass waypoint per Scheduled appointment, present only while the

@@ -129,9 +129,24 @@ public class BuyerLedgerSave
     // unlike the always-written-together lists above.
     public List<int> askTapeTier = new List<int>();
     public List<int> modulesBasis = new List<int>();
+    // 2026-08-17 loop-feel: today's running totals for the day-wrap message
+    // (reset at each day tick) and per-buyer craving. Scalars default to 0 and
+    // the list is count-guarded, so old saves load clean.
+    public int dayTapesSold;
+    public int dayEarned;
+    public List<string> dayBondUps = new List<string>();
+    public List<int> craving = new List<int>();
+    public List<int> lastPurchaseDay = new List<int>();
+    public List<string> requestTrackId = new List<string>();
 
     [Serializable]
-    public class EvSave { public int type; public float secondsAgo; public int a; public int b; public int tier; public int c; }
+    public class EvSave
+    {
+        public int type; public float secondsAgo; public int a; public int b; public int tier; public int c;
+        // 2026-08-17: frozen text for snapshot-style events (the day wrap).
+        // null/"" on every event from before the field existed.
+        public string s;
+    }
 }
 
 // A planted mushroom sapling OR the mushroom it matured into (the MushroomGrowth

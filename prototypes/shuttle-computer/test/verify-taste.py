@@ -38,6 +38,8 @@ SOURCES = [
     "TapeOffer.cs",
     "AlienFeedback.cs",
     "DealTerms.cs",
+    "CravingRules.cs",
+    "DayRecap.cs",
 ]
 
 

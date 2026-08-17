@@ -47,6 +47,36 @@ public class AlienWander : MonoBehaviour
     float _idleUntil;
     bool _ready;
 
+    // ── Approach mode (craving ambush, loop-feel C) ──────────────────────
+    // Overrides the leash: walk toward a live target (the player), stop at a
+    // conversational distance, face them. Same water/slope rules — an alien
+    // that can't reach you reports Blocked and the director falls back to a
+    // phone text instead.
+    Transform _approachTarget;
+    float _approachStop;
+    float _approachGiveUpAt;
+    public bool Approaching => _approachTarget != null;
+    public bool ApproachArrived { get; private set; }
+    public bool ApproachBlocked { get; private set; }
+
+    public void BeginApproach(Transform target, float stopDistance, float giveUpSeconds = 60f)
+    {
+        _approachTarget = target;
+        _approachStop = stopDistance;
+        _approachGiveUpAt = Time.time + giveUpSeconds;
+        ApproachArrived = false;
+        ApproachBlocked = false;
+        _walkingState = false;   // drop any stroll in progress
+    }
+
+    public void EndApproach()
+    {
+        _approachTarget = null;
+        ApproachArrived = false;
+        ApproachBlocked = false;
+        _idleUntil = Time.time + Random.Range(_idleMin, _idleMax);
+    }
+
     AlienNPCDamageable _damageable;
     Transform _player;
 
@@ -90,6 +120,9 @@ public class AlienWander : MonoBehaviour
 
         _homeLocal = transform.localPosition;
         _walkingState = false;
+        _approachTarget = null;
+        ApproachArrived = false;
+        ApproachBlocked = false;
         _idleUntil = Time.time + Random.Range(idleMin * 0.25f, idleMax * 0.5f);
         _stridePhase = 0f;
         _legBlend = 0f;
@@ -187,6 +220,11 @@ public class AlienWander : MonoBehaviour
         if (!_ready || _planet == null) return;
         if (_damageable != null && _damageable.IsDying) return;
 
+        // Approach outranks everything — including the player-proximity
+        // pause, which exists so shopkeepers don't stroll away; an ambusher
+        // is SUPPOSED to close the distance.
+        if (_approachTarget != null) { StepApproach(); return; }
+
         // Hold still while the player is close — a shopkeeper that strolls
         // away mid-deal (or mid-typewriter-line) reads as broken. Same lazy
         // player lookup as NPCWaveAnimation.
@@ -206,6 +244,58 @@ public class AlienWander : MonoBehaviour
         }
 
         StepTowardTarget();
+    }
+
+    void StepApproach()
+    {
+        if (Time.time > _approachGiveUpAt) { ApproachBlocked = true; return; }
+
+        Vector3 targetLocal;
+        var rb = _planet.Rigidbody;
+        targetLocal = rb != null
+            ? Quaternion.Inverse(rb.rotation) * (_approachTarget.position - rb.position)
+            : _planet.transform.InverseTransformPoint(_approachTarget.position);
+
+        Vector3 cur = transform.localPosition;
+        Vector3 up = cur.normalized;
+        Vector3 flat = Vector3.ProjectOnPlane(targetLocal - cur, up);
+        float dist = flat.magnitude;
+
+        if (dist <= _approachStop)
+        {
+            ApproachArrived = true;
+            // Face them while standing there — the head already tracks; the
+            // body turning too is what sells "I came here for YOU".
+            Vector3 face = Vector3.ProjectOnPlane(flat, up);
+            if (face.sqrMagnitude > 1e-6f)
+                transform.localRotation = Quaternion.Slerp(transform.localRotation,
+                    Quaternion.LookRotation(face.normalized, up), TurnSpeed * Time.deltaTime);
+            return;
+        }
+
+        Vector3 stepDir = flat / dist;
+        float stepLen = Mathf.Min(_speed * 1.35f * Time.deltaTime, dist);   // a little urgency
+        Vector3 cand = cur + stepDir * stepLen;
+
+        if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal)
+            || (_oceanRadius > 0f && groundR < _oceanRadius + WaterMargin)
+            || Vector3.Angle(normalLocal, groundLocal.normalized) > _maxSurfaceAngle)
+        {
+            // Water or a cliff between us — can't get there. Report it; the
+            // director sends the hungry text instead.
+            ApproachBlocked = true;
+            return;
+        }
+
+        Vector3 candUp = groundLocal.normalized;
+        transform.localPosition = groundLocal - candUp * _seatDepth;
+        Vector3 fwd = Vector3.ProjectOnPlane(stepDir, candUp);
+        if (fwd.sqrMagnitude > 1e-6f)
+            transform.localRotation = Quaternion.Slerp(transform.localRotation,
+                Quaternion.LookRotation(fwd.normalized, candUp), TurnSpeed * Time.deltaTime);
+
+        _stridePhase += (stepLen / _scaledStride) * Mathf.PI * 2f;
+        _movedThisFrame = true;
     }
 
     void PickNewTarget()

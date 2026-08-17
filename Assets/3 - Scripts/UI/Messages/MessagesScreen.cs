@@ -237,11 +237,15 @@ public class MessagesScreen : MonoBehaviour
         {
             var last = b.events[b.events.Count - 1];
             string captured = b.id;
+            // The day-wrap pseudo-thread (loop-feel B) speaks as the shuttle
+            // AI: no alien behind it, so no bond pips and the guide tint.
+            bool wrap = b.id == BuyerLedger.WrapThreadId;
             BuildIndexRow(_indexContent,
-                AlienNames.For(b.id), BuyerTexts.Preview(b.id, last),
-                pips: BuyerLedger.PipCount(b.id), unread: b.unread > 0,
+                wrap ? NameStore.ResolvedAIName : AlienNames.For(b.id),
+                BuyerTexts.Preview(b.id, last),
+                pips: wrap ? -1 : BuyerLedger.PipCount(b.id), unread: b.unread > 0,
                 time: Ago(last.at), onTap: () => ShowThread(captured),
-                guide: false, id: b.id);
+                guide: wrap, id: b.id);
         }
 
         if (buyers.Count == 0)
@@ -397,8 +401,11 @@ public class MessagesScreen : MonoBehaviour
         vlg.childForceExpandWidth = true; vlg.childForceExpandHeight = false;
 
         string captured = id;
-        BuildHeaderBar(_threadRoot, AlienNames.For(id), $"BOND {BuyerLedger.BondPips(id)}",
-                       ShowIndex, () => ShowCard(captured));
+        bool wrapThread = id == BuyerLedger.WrapThreadId;
+        BuildHeaderBar(_threadRoot,
+                       wrapThread ? NameStore.ResolvedAIName : AlienNames.For(id),
+                       wrapThread ? "" : $"BOND {BuyerLedger.BondPips(id)}",
+                       ShowIndex, wrapThread ? (System.Action)null : () => ShowCard(captured));
 
         // Appointment card (only while Scheduled).
         _apptCard = NewUI("ApptCard", _threadRoot);
@@ -906,6 +913,13 @@ public class MessagesScreen : MonoBehaviour
         var b = BuyerLedger.Get(id);
         int deals = b != null ? b.dealsCompleted : 0;
         AddCardLine($"deals done: {deals}", TextDim, known: false, plain: true);
+
+        // Craving ladder word (loop-feel C) — worded, never numeric, same
+        // rule as the reveals. "" while the system is vaulted.
+        string cravingWord = BuyerLedger.CravingWord(id);
+        if (!string.IsNullOrEmpty(cravingWord))
+            AddCardLine($"craving: <b>{cravingWord}</b>", WarnAmber, known: false, plain: true);
+
         AddCardLine("WHAT YOU'VE LEARNED  <size=8>(one per deal)</size>", AccentCyan, known: false, plain: true);
 
         int reveals = BuyerLedger.RevealCount(id);

@@ -88,6 +88,30 @@ public static class BuyerTexts
                 }
             case BuyerLedger.EvType.WalkUpDeal:
                 return ""; // rendered as a system line by the thread view, not a bubble
+            case BuyerLedger.EvType.DayRecap:
+                // A wrap is a frozen snapshot of its day — composed once by
+                // DayRecap.Compose and stored, deliberately NOT re-rendered
+                // against live state (yesterday's rent line must stay
+                // yesterday's).
+                return e.s ?? "";
+            case BuyerLedger.EvType.NamedRequest:
+            {
+                // s = "trackId|TRACK NAME|GOSSIPER" (see BuyerMessageDirector).
+                string track = "a tape of yours", from = "";
+                if (!string.IsNullOrEmpty(e.s))
+                {
+                    var parts = e.s.Split('|');
+                    if (parts.Length > 1 && parts[1].Length > 0) track = parts[1];
+                    if (parts.Length > 2) from = parts[2];
+                }
+                string at = string.IsNullOrEmpty(from) ? "around" : $"at {from}'s";
+                switch (v)
+                {
+                    case 0:  return $"heard {track} {at}. that's yours, right? press me a copy — {e.a} each. come find me.";
+                    case 1:  return $"someone played me {track} {at}. I want my own. {e.a} each if you can get here.";
+                    default: return $"can't stop thinking about {track} — heard it {at}. {e.a} for a copy? you in?";
+                }
+            }
             default: return "";
         }
     }
@@ -97,6 +121,7 @@ public static class BuyerTexts
     {
         string s = Render(id, e);
         if (string.IsNullOrEmpty(s)) return "made a deal in person";
+        s = s.Replace('\n', ' ');   // the day wrap is multi-line; the index row isn't
         return s.Length <= 40 ? s : s.Substring(0, 38) + "…";
     }
 }

@@ -50,6 +50,8 @@ public static class BuyerLedger
         SubRefused = 9,      // a: rolled chance 0-100
         Missed = 10,         // (negative text renders from this)
         WalkUpDeal = 11,     // a: paidPerCap, b: qty, tier — non-scheduled sale
+        DayRecap = 12,       // a: tapesSold, b: earned, tier: day — text in s
+        NamedRequest = 13,   // a: offerPerCap, b: qty, tier: genre, c: cassette tier — s: "trackId|TRACK NAME|GOSSIPER"
     }
 
     public class Ev
@@ -62,6 +64,11 @@ public static class BuyerLedger
         // events from before the field existed; renderers treat 0 as "unknown,
         // say nothing".
         public int c;
+        // Fifth slot (2026-08-17 loop-feel): frozen text for snapshot events
+        // (the day wrap composes once and must not re-render against live
+        // state) and the track/gossiper payload on named requests. ""/null on
+        // every event that predates the field.
+        public string s;
     }
 
     public class Buyer
@@ -93,6 +100,20 @@ public static class BuyerLedger
         // a 2-module sketch delivered on a 4-plugin quote pays pro-rata.
         // 0 on old saves = fall back to the live InstalledCount.
         public int modulesBasis;
+
+        // ── Craving (loop-feel C, 2026-08-17, appended for save order) ──
+        // 0..100 demand stat: feeds on good sales, decays when ignored.
+        // NEVER touches price or gates a sale — it drives how often this
+        // buyer texts and whether they come find the player. 0 on old saves.
+        public int craving;
+        // GalaxyTime day of their last completed purchase (0 = never) —
+        // drives the no-purchase-today decay and ambush eligibility.
+        public int lastPurchaseDay;
+        // The trackId of an open NAMED request (loop-feel D), "" when the
+        // open order is a plain genre want. Saved: dropping it on reload
+        // would quietly turn "bring me GORP SLIME" into "bring me a VOLT",
+        // and displayed promises must never drift from what's graded.
+        public string requestTrackId;
     }
 
     static readonly Dictionary<string, Buyer> _buyers = new Dictionary<string, Buyer>();
@@ -112,8 +133,36 @@ public static class BuyerLedger
     public static int Version { get; private set; }
     public static void Touch() => Version++;
 
-    // Story NPCs never become regulars — their threads belong to story systems.
-    static readonly string[] ExcludedIdPrefixes = { "scene:Tev", "scene:Kolb" };
+    // Story NPCs never become regulars — their threads belong to story
+    // systems. system: is the day-wrap pseudo-thread (loop-feel B).
+    static readonly string[] ExcludedIdPrefixes = { "scene:Tev", "scene:Kolb", "system:" };
+
+    /// The day-wrap pseudo-buyer: a thread with no alien behind it, so the
+    /// recap rides the existing event/save/snapshot machinery for free.
+    public const string WrapThreadId = "system:wrap";
+
+    // ── Today's running totals (loop-feel B) ──────────────────────────────
+    // World-scoped like everything else here: saved on BuyerLedgerSave and
+    // carried by the economy snapshot. Reset at each day tick by the recap.
+    public static int DayTapesSold { get; private set; }
+    public static int DayEarned { get; private set; }
+    static readonly List<string> _dayBondUps = new List<string>();
+    public static IReadOnlyList<string> DayBondUps => _dayBondUps;
+
+    public static void ResetDayTotals()
+    {
+        DayTapesSold = 0;
+        DayEarned = 0;
+        _dayBondUps.Clear();
+        Touch();
+    }
+
+    static void CountDaySale(string id, int price, int qty, int bondGain)
+    {
+        DayTapesSold += qty;
+        DayEarned += price * qty;
+        if (bondGain > 0 && !_dayBondUps.Contains(id)) _dayBondUps.Add(id);
+    }
 
     public static bool Eligible(string id)
     {
@@ -193,8 +242,13 @@ public static class BuyerLedger
     /// `genreIndex` lands in the event's legacy `tier` slot, which is what
     /// BuyerTexts reads back to name the genre.
     /// </summary>
+    /// <param name="satBand">AlienFeedback.SatBand of how the buyer rated the
+    /// tape (feeds craving); -1 = unknown, treated as "decent".</param>
+    /// <param name="namedRequest">the sale filled a NAMED track request
+    /// (loop-feel D) — extra craving.</param>
     public static bool ReportTapeDeal(string id, int genreIndex, int price, int qty,
-                                      bool keptAppointment, bool matchedTaste, int bondBonus = 0)
+                                      bool keptAppointment, bool matchedTaste, int bondBonus = 0,
+                                      int satBand = -1, bool namedRequest = false)
     {
         var b = GetOrCreate(id);
         if (b == null) return false;
@@ -206,6 +260,22 @@ public static class BuyerLedger
                  + (matchedTaste ? BondFavouriteTier : 0)
                  + bondBonus;   // e.g. TapeOffer.BondOnGenerousDeal for asking under their value
         b.bond = Mathf.Clamp(b.bond + gain, 0, 100);
+        CountDaySale(id, price, qty, gain);
+        if (GalaxyTime.Instance != null) b.lastPurchaseDay = GalaxyTime.Instance.Day;
+
+        if (FeatureVault.CravingSystem)
+        {
+            // Feed the flywheel, then pace the NEXT want-text from the new
+            // hunger. This is the cadence rule the loop never had: before it,
+            // a completed deal left nextTextAt stale-in-the-past and the
+            // buyer re-texted on the next 2-second tick, bounded only by the
+            // open-wants cap.
+            b.craving = CravingRules.Clamp(
+                b.craving + CravingRules.Gain(satBand < 0 ? 2 : satBand, namedRequest));
+            b.nextTextAt = Now + Random.Range(CravingRules.BaseDelayMinSeconds,
+                                              CravingRules.BaseDelayMaxSeconds)
+                               / (float)CravingRules.FrequencyMult(b.craving);
+        }
 
         if (keptAppointment) Log(b, EvType.FulfilledExact, price, qty, genreIndex, markUnread: false);
         else                 Log(b, EvType.WalkUpDeal, price, qty, genreIndex, markUnread: false);
@@ -312,16 +382,38 @@ public static class BuyerLedger
 
     // ── Events / thread ────────────────────────────────────────────────────
 
-    public static void Log(Buyer b, EvType t, int a, int bb, int tier, bool markUnread = true, int c = 0)
+    public static void Log(Buyer b, EvType t, int a, int bb, int tier, bool markUnread = true, int c = 0, string s = null)
     {
         if (b == null) return;
         Touch();
-        b.events.Add(new Ev { type = (int)t, at = Now, a = a, b = bb, tier = tier, c = c });
+        b.events.Add(new Ev { type = (int)t, at = Now, a = a, b = bb, tier = tier, c = c, s = s });
         if (b.events.Count > MaxEventsPerBuyer) b.events.RemoveAt(0);
         // Player-authored events never count as unread; buyer-authored do.
         if (markUnread && t != EvType.PlayerAccepted && t != EvType.PlayerCountered
                        && t != EvType.PlayerDeclined && t != EvType.Scheduled)
             b.unread++;
+    }
+
+    /// Craving delta from anywhere that isn't a completed sale (the +2
+    /// heard-only listen, day decay). Clamped; no-op with the vault flag off.
+    public static void AddCraving(string id, int amount)
+    {
+        if (!FeatureVault.CravingSystem) return;
+        var b = Get(id);
+        if (b == null) return;
+        int next = CravingRules.Clamp(b.craving + amount);
+        if (next == b.craving) return;
+        b.craving = next;
+        Touch();
+    }
+
+    /// The contact-card craving word, or "" when the system is vaulted or the
+    /// buyer is unknown.
+    public static string CravingWord(string id)
+    {
+        if (!FeatureVault.CravingSystem) return "";
+        var b = Get(id);
+        return b == null ? "" : CravingRules.LadderWord(b.craving);
     }
 
     /// Walking away from a declared FINAL OFFER. A smaller sting than a
@@ -413,7 +505,14 @@ public static class BuyerLedger
 
     /// New Game must not inherit another run's regulars (CLAUDE.md: statics
     /// leak across the main menu). Called from NewGameReset.Apply().
-    public static void ResetAll() { _buyers.Clear(); Touch(); }
+    public static void ResetAll()
+    {
+        _buyers.Clear();
+        DayTapesSold = 0;
+        DayEarned = 0;
+        _dayBondUps.Clear();
+        Touch();
+    }
 
     /// Serialize into parallel lists (JsonUtility — no dictionaries). Events
     /// are flattened with a per-buyer count list. Times go out RELATIVE.
@@ -425,6 +524,11 @@ public static class BuyerLedger
         s.offerPerCap.Clear(); s.counterBack.Clear(); s.windowMinutes.Clear();
         s.deadlineSecondsLeft.Clear(); s.eventCounts.Clear(); s.events.Clear();
         s.askTapeTier.Clear(); s.modulesBasis.Clear();
+        s.craving.Clear(); s.lastPurchaseDay.Clear(); s.requestTrackId.Clear();
+        s.dayTapesSold = DayTapesSold;
+        s.dayEarned = DayEarned;
+        s.dayBondUps.Clear();
+        s.dayBondUps.AddRange(_dayBondUps);
         float now = Now;
         foreach (var b in _buyers.Values)
         {
@@ -442,12 +546,15 @@ public static class BuyerLedger
             s.deadlineSecondsLeft.Add(b.convo == Convo.Scheduled ? Mathf.Max(0f, b.deadline - now) : 0f);
             s.askTapeTier.Add(b.askTapeTier);
             s.modulesBasis.Add(b.modulesBasis);
+            s.craving.Add(b.craving);
+            s.lastPurchaseDay.Add(b.lastPurchaseDay);
+            s.requestTrackId.Add(b.requestTrackId ?? "");
             s.eventCounts.Add(b.events.Count);
             for (int i = 0; i < b.events.Count; i++)
             {
                 var e = b.events[i];
                 s.events.Add(new BuyerLedgerSave.EvSave
-                    { type = e.type, secondsAgo = Mathf.Max(0f, now - e.at), a = e.a, b = e.b, tier = e.tier, c = e.c });
+                    { type = e.type, secondsAgo = Mathf.Max(0f, now - e.at), a = e.a, b = e.b, tier = e.tier, c = e.c, s = e.s });
             }
         }
     }
@@ -480,14 +587,21 @@ public static class BuyerLedger
                 // two must carry their own guard or old saves throw.
                 askTapeTier = (s.askTapeTier != null && i < s.askTapeTier.Count) ? s.askTapeTier[i] : 0,
                 modulesBasis = (s.modulesBasis != null && i < s.modulesBasis.Count) ? s.modulesBasis[i] : 0,
+                craving = (s.craving != null && i < s.craving.Count) ? s.craving[i] : 0,
+                lastPurchaseDay = (s.lastPurchaseDay != null && i < s.lastPurchaseDay.Count) ? s.lastPurchaseDay[i] : 0,
+                requestTrackId = (s.requestTrackId != null && i < s.requestTrackId.Count) ? s.requestTrackId[i] : "",
             };
             int n = s.eventCounts[i];
             for (int e = 0; e < n && evCursor < s.events.Count; e++, evCursor++)
             {
                 var es = s.events[evCursor];
-                b.events.Add(new Ev { type = es.type, at = now - es.secondsAgo, a = es.a, b = es.b, tier = es.tier, c = es.c });
+                b.events.Add(new Ev { type = es.type, at = now - es.secondsAgo, a = es.a, b = es.b, tier = es.tier, c = es.c, s = es.s });
             }
             _buyers[b.id] = b;
         }
+        DayTapesSold = s.dayTapesSold;
+        DayEarned = s.dayEarned;
+        _dayBondUps.Clear();
+        if (s.dayBondUps != null) _dayBondUps.AddRange(s.dayBondUps);
     }
 }

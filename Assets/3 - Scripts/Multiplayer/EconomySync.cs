@@ -382,8 +382,16 @@ public class EconomySync : MonoBehaviour
         // closes the Scheduled conversation — both host-only jobs. Without
         // this the host's deadline sweep fired "you never showed" after a
         // guest's successful, paid delivery.
+        // Craving inputs are derived HOST-side rather than wired: the sat
+        // band recomputes from the dials, and "was this the named request"
+        // reads off the still-open appointment.
+        int satBand = dials != null
+            ? AlienFeedback.SatBand(AlienTaste.Satisfaction(buyerId, dials)) : -1;
+        var lb = BuyerLedger.Get(buyerId);
+        bool named = keptAppointment != 0 && lb != null && !string.IsNullOrEmpty(lb.requestTrackId);
         BuyerLedger.ReportTapeDeal(buyerId, genreIndex, pricePerCap, qty,
-                                   keptAppointment != 0, matchedTaste != 0, bondBonus);
+                                   keptAppointment != 0, matchedTaste != 0, bondBonus,
+                                   satBand, named);
         if (dials != null) TapeMemory.Remember(buyerId, dials);
     }
 
@@ -394,6 +402,8 @@ public class EconomySync : MonoBehaviour
         var dials = ReadDials(reader, hasDials);
         if (string.IsNullOrEmpty(buyerId) || dials == null) return;
         TapeMemory.Remember(buyerId, dials);
+        // A listen fed the hunger a little even though it didn't sell.
+        BuyerLedger.AddCraving(buyerId, CravingRules.GainHeardOnly);
     }
 
     static double[] ReadDials(FastBufferReader reader, byte hasDials)
