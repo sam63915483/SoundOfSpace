@@ -31,6 +31,8 @@ Shader "CartoonGrass/SimpleGrass"
         _LanternGrassRadius ("Lantern grass radius (x range)", Range(0.1, 1.5)) = 0.5
         _LanternGrassTail ("Lantern grass far-reach tail", Range(0, 1)) = 0.35
         _SunFillResponse ("Sunrise/sunset sun fill on grass", Range(0, 2)) = 1.0
+        _TerminatorGlow ("Sunset backlight on grass", Range(0, 1)) = 0.5
+        _TipSunlight ("Sunset tip shadow-lift", Range(0, 1)) = 0.85
     }
     SubShader
     {
@@ -67,6 +69,8 @@ Shader "CartoonGrass/SimpleGrass"
         float _LanternGrassTail;     // brightness of the dim extended tail that carries lantern grass light out to ~full range (0 = old short cutoff)
         float3 _GrassPlanetCenter;   // set globally by InstancedGrassRenderer (per-patch colour hash)
         float _SunFillResponse;      // scales the faked sun point-light fill (sunrise/sunset grass warm-up)
+        float _TerminatorGlow;       // low-sun backlight: blades at the terminator read as translucent/side-lit instead of near-black Lambert
+        float _TipSunlight;          // low-sun shadow-lift at blade TIPS — tall grass pokes out of ground-level shadows at grazing sun
 
         // The Sun's UNSHADOWED point light ("Point Light (Sun)"), injected
         // globally by InstancedGrassRenderer. The ground receives it as a real
@@ -119,6 +123,14 @@ Shader "CartoonGrass/SimpleGrass"
             // instead of staying lit by the wrap and looking brighter than the terrain.
             half floorAmt = 0.5 * s.Specular;
             half wrapped = max(0, ndl * (1.0 - floorAmt) + floorAmt);
+            // Sunset backlight: near the terminator thin blades are side-lit and
+            // translucent — real grass glows when backlit by a horizon sun. The
+            // plain Lambert above goes ~black there, so floor the wrap with the
+            // SUNSET BOOST factor surf packed into s.Gloss (see surf: windowed to
+            // low sun elevations, off at night, off on away-facing slopes, and
+            // scaled along the blade so tips glow more than bases). Zero at noon
+            // → the tuned daytime look is untouched.
+            wrapped = max(wrapped, s.Gloss * _TerminatorGlow);
             // Floor the SHADOW attenuation so grass sitting in the directional sun's
             // shadow — the planet eclipse, or under a tree — keeps a little sun-coloured
             // light instead of dropping to black. The GROUND stays lit there via the
@@ -127,6 +139,15 @@ Shader "CartoonGrass/SimpleGrass"
             // sunny side is unchanged. The wrap term is ~0 facing away from the sun, so
             // the night side stays dark — no constant glow.
             half lit = max(atten, _ShadowFill);
+            // Tip shadow-lift: at grazing sun a shadow edge on the GROUND leaves
+            // blade tips sunlit for metres past it (a 30cm blade clears a 5°-sun
+            // shadow ~3.5m beyond its ground edge), but the shadow map samples at
+            // ground level and shades the whole blade. Lift the shadow toward the
+            // tip using the same height-scaled SUNSET BOOST (s.Gloss). Bases keep
+            // the ground's shadow → dark-base/lit-tip gradient instead of whole
+            // patches of grass snapping black as terrain shadows sweep at sunset.
+            // Zero at noon, so tree/NPC shadows on grass stay exactly as tuned.
+            lit = max(lit, s.Gloss * _TipSunlight);
             half4 c;
             c.rgb = s.Albedo * _LightColor0.rgb * (wrapped * lit);
             c.a = s.Alpha;
@@ -162,7 +183,30 @@ Shader "CartoonGrass/SimpleGrass"
             // set globally by InstancedGrassRenderer; _WorldSpaceLightPos0.xyz is the
             // main directional sun's direction in the forward base pass.
             float3 radialUp = normalize(IN.worldPos - _GrassPlanetCenter);
-            o.Specular = saturate(dot(radialUp, _WorldSpaceLightPos0.xyz));
+            float sunUpSigned = dot(radialUp, _WorldSpaceLightPos0.xyz);   // signed sin(sun elevation): + day, - night
+            o.Specular = saturate(sunUpSigned);
+
+            // SUNSET BOOST factor for the lighting function (stashed in o.Gloss —
+            // unused by our custom lighting otherwise). At grazing sun the shadow
+            // map goes bad on grass: cascade texels stretch across metres of ground
+            // and the bias pushes thin near-surface geometry into shadow, so a
+            // ground-level shadow smears over blades whose TIPS are really still
+            // in sunlight (the grass is taller than the ground). The lighting
+            // function uses this factor to (a) lift shadow atten toward the blade
+            // tip and (b) backlight terminator blades. Windowed three ways:
+            //   • lowSun — full through sunrise/sunset, gone by ~20° elevation
+            //     (noon look + tree/NPC shadows stay pixel-identical), and gone
+            //     below the local horizon (night stays dark).
+            //   • slopeFacing — fades on slopes tilted AWAY from the sun (bladeUp
+            //     vs radial comparison), so the backs of hills don't glow where
+            //     the ground beside the grass is dark.
+            //   • blade height — bases keep only 35% of the boost, tips 100%, so
+            //     shadowed grass shows a natural dark-base/lit-tip gradient.
+            float lowSun = smoothstep(-0.06, 0.02, sunUpSigned)
+                         * smoothstep(0.35, 0.08, o.Specular);
+            float slopeFacing = smoothstep(-0.12, 0.04,
+                dot(IN.bladeUp, _WorldSpaceLightPos0.xyz) - sunUpSigned);
+            o.Gloss = lowSun * slopeFacing * lerp(0.35, 1.0, IN.gradT);
 
             // Only a whisper of self-emission (scaled WAY down from the old
             // constant floor) so deep shadow isn't pure black — far too small
