@@ -171,12 +171,17 @@ public static class InteractGaze
         // branch it never reached).
         if (target is Interactable strict && strict.strictGaze)
         {
-            if (HasSolidCollider(aim)) return false;    // cast was authoritative and it wasn't us
+            // DEAD SIMPLE by design (third attempt; the first two leaned on
+            // colliders and silhouettes, and both quietly adopted the whole
+            // console's geometry): the crosshair RAY must pass within a small
+            // fixed radius of the control's own position. Point at the slot
+            // and it's yours; point at the screen above it and it never is.
+            const float StrictAimRadius = 0.25f;
             Ray strictRay = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-            int ov = CrosshairOverlap(aim, strictRay, out float strictEntry);
-            if (ov != 1) return false;                  // own mesh silhouette or nothing
-            float strictBlocker = (_hasHit && _hitDist > 0.001f) ? _hitDist : float.MaxValue;
-            return strictBlocker >= strictEntry - ForgiveDepth;
+            Vector3 toAim = AimCenter(aim) - strictRay.origin;
+            float along = Vector3.Dot(toAim, strictRay.direction);
+            if (along < 0f || along > MaxDistance) return false;
+            return Vector3.Cross(strictRay.direction, toAim).magnitude <= StrictAimRadius;
         }
 
         // Has a real collider the cast could have hit? Then the cast is
