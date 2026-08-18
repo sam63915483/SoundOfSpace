@@ -13,6 +13,7 @@ import { computeParams } from '../engine/params.js';
 import { generatePatterns, stepAt, chordTonesFor, STEPS, TOTAL_STEPS } from '../engine/patterns.js';
 import { voiceFreq } from '../engine/scales.js';
 import { classify } from '../engine/classifier.js';
+import { totalSteps as songTotalSteps, sectionAtStep } from '../engine/song.js';
 import * as TRACK from '../engine/track.js';
 import * as PRESETS from '../engine/presets.js';
 import { createRack } from './fx.js';
@@ -61,6 +62,19 @@ export class Instrument {
 
         this.onStepScheduled = null;
         this.onPatternSwap = null;
+
+        // ── Song mode (the arrangement layer) ────────────────────────────
+        // When songMode is on, the scheduler ignores this.track/this.patterns
+        // and walks the SONG: each section has its own compiled params +
+        // patterns, applied to the rack as the playhead crosses into it. The
+        // track/patterns pair above stays what it always was — the loop of the
+        // section being EDITED — so loop playback and the whole edit surface
+        // are untouched.
+        this.song = null;           // { sections: [{ bars, track }] }
+        this.songCompiled = null;   // per section: { params, patterns }
+        this.songMode = false;
+        this._songIdx = -1;         // which section's params the rack last got
+        this._caveApplied = null;   // 'preset:variation' the rack last got
     }
 
     get dials () { return this.track.dials; }
@@ -89,6 +103,7 @@ export class Instrument {
         this.rack.setMasterVolume (this.masterVolume);
         this.rack.apply (this.params);
         this.rack.applyCavePreset (PRESETS.CAVE[this.track.preset.CAVE], this.track.variation.CAVE);
+        this._caveApplied = this.track.preset.CAVE + ':' + this.track.variation.CAVE;
         for (const k in this.enabled) this.rack.setModuleEnabled (k, this.enabled[k], this.params);
 
         this.clock = new Clock (this.ctx, this._schedule.bind (this));
@@ -96,9 +111,14 @@ export class Instrument {
     }
 
     get playing () { return this.clock != null && this.clock.running; }
+    get playingSong () { return this.playing && this.songMode; }
+    get playingLoop () { return this.playing && !this.songMode; }
 
     async play () {
         await this.init ();
+        this.songMode = false;
+        // Song playback may have left the rack on some other section's params.
+        this._syncRackToTrack ();
         if (this.pending) { this.patterns = this.pending; this.pending = null; }
         this.clock.start ();
     }
@@ -106,6 +126,44 @@ export class Instrument {
     stop () { if (this.clock) this.clock.stop (); }
 
     async toggle () { if (this.playing) this.stop (); else await this.play (); }
+
+    // --- song mode --------------------------------------------------------
+
+    /// Hand the instrument the whole song. Cheap enough to call after every
+    /// edit — a handful of sections regenerate in well under a millisecond —
+    /// which keeps one code path instead of a per-section patch API.
+    setSong (song) {
+        this.song = song;
+        this.songCompiled = song.sections.map (s => {
+            const params = computeParams (s.track.dials, s.track.key);
+            return { params, patterns: generatePatterns (s.track, params) };
+        });
+        this._songIdx = -1;                   // force a rack re-apply next step
+    }
+
+    async playSong () {
+        await this.init ();
+        this.songMode = true;
+        this._songIdx = -1;
+        this.clock.start ();
+    }
+
+    async toggleSong () { if (this.playing) this.stop (); else await this.playSong (); }
+
+    /// Rack + clock back to the edited track's settings — used when loop
+    /// playback (or plain editing) resumes after song playback moved them.
+    _syncRackToTrack () {
+        if (this.clock) this.clock.bpm = this.params.bpm;
+        if (!this.rack) return;
+        this.rack.apply (this.params);
+        const caveKey = this.track.preset.CAVE + ':' + this.track.variation.CAVE;
+        if (caveKey !== this._caveApplied) {
+            this.rack.applyCavePreset (PRESETS.CAVE[this.track.preset.CAVE], this.track.variation.CAVE);
+            this._caveApplied = caveKey;
+        }
+        for (const m of PRESETS.MODULE_NAMES)
+            this.rack.setModuleEnabled (m, this.enabled[m], this.params);
+    }
 
     // --- the choke point -------------------------------------------------
 
@@ -118,8 +176,10 @@ export class Instrument {
         if (this.rack) {
             this.rack.apply (this.params);
             if (prev.preset.CAVE !== next.preset.CAVE ||
-                prev.variation.CAVE !== next.variation.CAVE)
+                prev.variation.CAVE !== next.variation.CAVE) {
                 this.rack.applyCavePreset (PRESETS.CAVE[next.preset.CAVE], next.variation.CAVE);
+                this._caveApplied = next.preset.CAVE + ':' + next.variation.CAVE;
+            }
             // LOADING a project changes the active set wholesale, not just when
             // a toggle is clicked — so the rack syncs here, at the choke point,
             // rather than in the toggle handler.
@@ -181,37 +241,83 @@ export class Instrument {
     // --- scheduling ------------------------------------------------------
 
     _schedule (step, time, stepDur) {
+        if (this.songMode && this.song && this.songCompiled) {
+            this._scheduleSong (step, time, stepDur);
+            return;
+        }
+
         if (step % STEPS === 0 && this.pending) {
             this.patterns = this.pending;
             this.pending = null;
             if (this.onPatternSwap) this.onPatternSwap ();
         }
 
-        const p = this.params;
+        this._trigger (this.patterns, this.params, this.enabled, step, time, stepDur);
+        if (this.onStepScheduled) this.onStepScheduled (step, time);
+    }
+
+    /// One step of song playback. The song loops top-to-tail; the position the
+    /// UI hears about is SONG-relative (0..totalSteps-1), so the arranger
+    /// playhead needs no knowledge of how long the clock has been running.
+    _scheduleSong (step, time, stepDur) {
+        const total = songTotalSteps (this.song);
+        const pos = step % total;
+        const loc = sectionAtStep (this.song, pos);
+
+        if (loc.index !== this._songIdx) this._applySection (loc.index);
+
+        const sec = this.songCompiled[loc.index];
+        const track = this.song.sections[loc.index].track;
+        // A section longer than the 4-bar phrase repeats it; stepAt wraps.
+        this._trigger (sec.patterns, sec.params, track.active, loc.stepInSection, time, stepDur);
+        if (this.onStepScheduled) this.onStepScheduled (pos, time);
+    }
+
+    /// Point the rack + clock at a section. Applied the moment the scheduler
+    /// crosses the boundary, which runs ~100ms ahead of the speakers — close
+    /// enough for the prototype; the Unity build can crossfade if it ever
+    /// reads as a click.
+    _applySection (i) {
+        this._songIdx = i;
+        const sec = this.songCompiled[i];
+        const track = this.song.sections[i].track;
+        if (this.clock) this.clock.bpm = sec.params.bpm;
+        if (!this.rack) return;
+        this.rack.apply (sec.params);
+        const caveKey = track.preset.CAVE + ':' + track.variation.CAVE;
+        if (caveKey !== this._caveApplied) {
+            this.rack.applyCavePreset (PRESETS.CAVE[track.preset.CAVE], track.variation.CAVE);
+            this._caveApplied = caveKey;
+        }
+        for (const m of PRESETS.MODULE_NAMES)
+            this.rack.setModuleEnabled (m, track.active[m], sec.params);
+    }
+
+    _trigger (patterns, p, active, step, time, stepDur) {
         const ctxNow = this.ctx.currentTime;
         const at = (st) => Math.max (time + (st.nudge || 0), ctxNow + 0.005);
         const freq = (deg, voice) => voiceFreq (deg, p.scaleIdx, voice, p.key);
 
-        if (this.enabled.THUMPER) {
-            const k = stepAt (this.patterns, 'kick', step);
+        if (active.THUMPER) {
+            const k = stepAt (patterns, 'kick', step);
             if (k) triggerKick (this.rack, p, at (k), k.vel);
-            const s = stepAt (this.patterns, 'snare', step);
+            const s = stepAt (patterns, 'snare', step);
             if (s) triggerSnare (this.rack, p, at (s), s.vel);
-            const h = stepAt (this.patterns, 'hat', step);
+            const h = stepAt (patterns, 'hat', step);
             if (h) triggerHat (this.rack, p, at (h), h.vel, h.open);
         }
-        if (this.enabled.GLOWORM) {
-            const b = stepAt (this.patterns, 'bass', step);
+        if (active.GLOWORM) {
+            const b = stepAt (patterns, 'bass', step);
             if (b) triggerBass (this.rack, p, at (b), b.vel, freq (b.degree, 'bass'),
                 Math.max (0.05, b.dur * stepDur * 0.95));
         }
-        if (this.enabled.SIREN) {
-            const l = stepAt (this.patterns, 'lead', step);
+        if (active.SIREN) {
+            const l = stepAt (patterns, 'lead', step);
             if (l) triggerLead (this.rack, p, at (l), l.vel, freq (l.degree, 'lead'),
                 Math.max (0.05, l.dur * stepDur * 0.9));
         }
-        if (this.enabled.MOSS) {
-            const m = stepAt (this.patterns, 'moss', step);
+        if (active.MOSS) {
+            const m = stepAt (patterns, 'moss', step);
             if (m) {
                 const tones = chordTonesFor (m.degree);
                 const freqs = new Array (tones.length);
@@ -219,13 +325,11 @@ export class Instrument {
                 triggerMoss (this.rack, p, at (m), m.vel, freqs, m.dur * stepDur * 0.98);
             }
         }
-        if (this.enabled.SPINDLE) {
-            const a = stepAt (this.patterns, 'spindle', step);
+        if (active.SPINDLE) {
+            const a = stepAt (patterns, 'spindle', step);
             if (a) triggerSpindle (this.rack, p, at (a), a.vel, freq (a.degree, 'spindle'),
                 Math.max (0.05, a.dur * stepDur * 0.9));
         }
-
-        if (this.onStepScheduled) this.onStepScheduled (step, time);
     }
 
     gridFor (voice) {

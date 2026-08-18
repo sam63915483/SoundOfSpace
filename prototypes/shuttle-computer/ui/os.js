@@ -7,7 +7,7 @@
 import { Instrument } from '../audio/instrument.js';
 import { mountTrax } from './trax.js';
 import { mountProjects } from './projects.js';
-import { defaultTrack, cloneTrack } from '../engine/track.js';
+import { defaultSong, songFromTrack, cloneSong } from '../engine/song.js';
 import { makeRecord, upsert, remove } from '../engine/library.js';
 import * as store from './store.js';
 
@@ -171,17 +171,23 @@ function openTrax (startOnList) {
 }
 
 /// The instrument. A null record means an unsaved new project, which starts
-/// from a blank track rather than whatever was last loaded.
+/// from a blank one-section song rather than whatever was last loaded.
 async function openInstrument (rec) {
     teardown ();
-    inst.setTrack (rec ? cloneTrack (rec.track) : defaultTrack ());
+    // The working song is OWNED by the TRAX screen; this copy is what its
+    // arranger mutates. Old records without a song block become one section.
+    const song = rec ? (rec.song ? cloneSong (rec.song) : songFromTrack (rec.track))
+                     : defaultSong ();
+    inst.setTrack (song.sections[0].track);
+    inst.setSong (song);
 
     const host = appHost (rec ? rec.name.toUpperCase () : 'UNTITLED');
     traxHandle = mountTrax (host, inst, {
         project: rec,
+        song: song,
         existingNames: () => projects.map (p => p.name),
         onExit: () => openTrax (),
-        onSave: name => saveProject (name)
+        onSave: (name, currentSong) => saveProject (name, currentSong)
     });
     show ('view-app');
 
@@ -191,10 +197,10 @@ async function openInstrument (rec) {
     catch (e) { console.warn ('audio init failed', e); }
 }
 
-/// Writes the current track to the shelf under `name`. Same name overwrites,
+/// Writes the current song to the shelf under `name`. Same name overwrites,
 /// new name appends — the rule lives in engine/library.js, not here.
-function saveProject (name) {
-    const rec = makeRecord (name, inst.track, Date.now (), store.nextSeq ());
+function saveProject (name, song) {
+    const rec = makeRecord (name, song.sections[0].track, Date.now (), store.nextSeq (), song);
     const res = upsert (projects, rec);
     projects = res.list;
     store.save (projects);

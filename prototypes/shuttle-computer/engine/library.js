@@ -12,6 +12,7 @@
 import { cloneTrack, trackId, defaultTrack } from './track.js';
 import { DEFAULT_DIALS, DIAL_DEFS } from './params.js';
 import { MODULE_NAMES, PRESET_COUNT, VARIATION_COUNT } from './presets.js';
+import { cloneSong, songFromTrack, songId, coerceSong } from './song.js';
 
 export const NAME_MAX = 24;
 
@@ -42,13 +43,20 @@ export function makeId (now, seq) {
     return 'p' + Number (now).toString (36) + '-' + Number (seq).toString (36);
 }
 
-export function makeRecord (name, track, now, seq) {
-    const t = cloneTrack (track);
+/// `song` is optional: records made before the arrangement layer existed (and
+/// tests that predate it) pass a bare track and get a one-section song. The
+/// legacy `track` field stays on the record — it is the FIRST section, so
+/// every old reader (project list genre badge, demo printing) keeps working.
+export function makeRecord (name, track, now, seq, song) {
+    const s = song ? cloneSong (song) : songFromTrack (track);
+    const t = cloneTrack (s.sections[0].track);
     return {
         id: makeId (now, seq),
         name: normalizeName (name),
         track: t,
         trackId: trackId (t),
+        song: s,
+        songId: songId (s),
         savedAt: now
     };
 }
@@ -127,9 +135,12 @@ function coerceRecord (raw, fallbackNow, seq) {
     const name = normalizeName (raw.name);
     if (!name) return null;
     const track = coerceTrack (raw.track);
+    // A pre-song record has no `song` block; it becomes a one-section song of
+    // its track, which is exactly how it always played.
+    const song = coerceSong (raw.song, coerceTrack) || songFromTrack (track);
     const savedAt = Number.isFinite (Number (raw.savedAt)) ? Number (raw.savedAt) : fallbackNow;
     const id = typeof raw.id === 'string' && raw.id ? raw.id : makeId (savedAt, seq);
-    return { id, name, track, trackId: trackId (track), savedAt };
+    return { id, name, track, trackId: trackId (track), song, songId: songId (song), savedAt };
 }
 
 export function serialize (list) {

@@ -2,10 +2,18 @@
 //
 // Talks only to the Instrument. Step 2 rebuilds this exact surface in UGUI, so
 // keep the interaction vocabulary simple: knobs, toggles, transport.
+//
+// ── The arrangement layer ────────────────────────────────────────────────
+// The screen now edits a SONG (engine/song.js): an ordered strip of sections,
+// each owning a whole track. Everything below the strip — dials, rack, grid —
+// is the editor for the SELECTED section, and is exactly the old single-loop
+// surface. Two transports: PLAY TRACK chains the sections, LOOP SEC loops the
+// selected one while you shape it.
 
 import { DIAL_DEFS } from '../engine/params.js';
 import { MODULES } from '../audio/instrument.js';
-import { STEPS, BARS } from '../engine/patterns.js';
+import { STEPS, BARS, TOTAL_STEPS } from '../engine/patterns.js';
+import * as SONG from '../engine/song.js';
 import { createKnob } from './knob.js';
 
 const VOICE_MODULE = {
@@ -14,13 +22,23 @@ const VOICE_MODULE = {
     moss: 'MOSS', spindle: 'SPINDLE'
 };
 
-// opts: { project, existingNames, onExit, onSave }
-//   project       — the record this screen is editing, or null for an unsaved
-//                   new one. Only { name } is read.
-//   existingNames — names already on the shelf, so SAVE can warn about an
-//                   overwrite before it happens.
-//   onSave(name)  — hands the name up; the owner writes the shelf and returns
-//                   the stored record (or null if it refused).
+// One fixed colour per genre so a section's block, the mix meter and the offer
+// chips all agree. UI concern only — the engine never sees colours.
+const GENRE_COLORS = {
+    GLORP: '#46d17a', DRIFT: '#6f86ff', SKITTER: '#ff9f45', SLUDJ: '#9a6a4a',
+    CHIRP: '#ffd94f', NULLGAZE: '#8fa3b5', THRUM: '#b06fff', VOLT: '#3ae0ff',
+    WARBLE: '#2fb59a', CLANG: '#ff5a5a'
+};
+
+// opts: { project, song, existingNames, onExit, onSave }
+//   project           — the record this screen is editing, or null for an
+//                       unsaved new one. Only { name } is read.
+//   song              — the working song. Owned and mutated by this screen;
+//                       the instrument's selected track is section `sel`.
+//   existingNames     — names already on the shelf, so SAVE can warn about an
+//                       overwrite before it happens.
+//   onSave(name,song) — hands both up; the owner writes the shelf and returns
+//                       the stored record (or null if it refused).
 export function mountTrax (root, inst, opts) {
     opts = opts || {};
     const onExit = opts.onExit || function () {};
@@ -29,12 +47,19 @@ export function mountTrax (root, inst, opts) {
     body.id = 'trax-body';
     root.appendChild (body);
 
+    let song = opts.song || SONG.defaultSong ();
+    let sel = 0;
+    // The compiled song inside the instrument only matters during song
+    // playback, so edits just mark it stale instead of recompiling on every
+    // knob tick of a drag.
+    let songStale = false;
+
     // ---------- project bar ----------
     // Which project you are editing, and whether what you can hear right now is
-    // actually on the shelf. Dirtiness is derived from the track identity hash
+    // actually on the shelf. Dirtiness is derived from the song identity hash
     // rather than bookkept, so undoing an edit correctly goes back to CLEAN.
     let project = opts.project || null;
-    let savedTrackId = project ? inst.trackId : -1;
+    let savedSongId = project ? SONG.songId (song) : -1;
 
     const projBar = document.createElement ('div');
     projBar.id = 'proj-bar';
@@ -45,7 +70,7 @@ export function mountTrax (root, inst, opts) {
     body.appendChild (projBar);
 
     let saveBtn = null;                       // built with the transport, below
-    function isDirty () { return inst.trackId !== savedTrackId; }
+    function isDirty () { return SONG.songId (song) !== savedSongId; }
 
     function refreshProjBar () {
         pbName.textContent = project ? project.name.toUpperCase () : 'UNTITLED';
@@ -56,6 +81,183 @@ export function mountTrax (root, inst, opts) {
         if (saveBtn) saveBtn.classList.toggle ('attn', dirty);
     }
 
+    // ---------- arranger ----------
+    // The song as a strip of blocks, width proportional to bars, coloured by
+    // genre. Click a block to edit that section below. The row underneath is
+    // split: section surgery on the left, the song's worth on the right.
+    const arranger = document.createElement ('div');
+    arranger.id = 'arranger';
+
+    const arrHead = document.createElement ('div');
+    arrHead.id = 'arr-head';
+    const arrLabel = document.createElement ('div');
+    arrLabel.className = 'section-label';
+    arrLabel.textContent = 'SONG';
+    const arrStats = document.createElement ('div');
+    arrStats.id = 'arr-stats';
+    arrHead.append (arrLabel, arrStats);
+
+    const strip = document.createElement ('div');
+    strip.id = 'arr-strip';
+
+    const arrRow = document.createElement ('div');
+    arrRow.id = 'arr-row';
+    const arrCtl = document.createElement ('div');
+    arrCtl.id = 'arr-ctl';
+    const arrInfo = document.createElement ('div');
+    arrInfo.id = 'arr-info';
+    arrRow.append (arrCtl, arrInfo);
+
+    arranger.append (arrHead, strip, arrRow);
+    body.appendChild (arranger);
+
+    let playingSec = -1;              // section under the audible playhead
+
+    function refreshStrip () {
+        strip.innerHTML = '';
+        song.sections.forEach ((s, i) => {
+            const g = SONG.genreMix ({ sections: [s] })[0];
+            const color = GENRE_COLORS[g.name] || '#79ffd0';
+            const el = document.createElement ('div');
+            el.className = 'arr-sec' + (i === sel ? ' sel' : '') + (i === playingSec ? ' playing' : '');
+            el.style.flexGrow = s.bars;
+            el.style.borderColor = color;
+            el.style.background = color + (i === sel ? '2e' : '14');
+            const top = document.createElement ('div');
+            top.className = 'as-top';
+            top.textContent = SONG.sectionLabel (i) + ' · ' + s.bars;
+            const bot = document.createElement ('div');
+            bot.className = 'as-bot';
+            bot.style.color = color;
+            bot.textContent = g.name;
+            el.append (top, bot);
+            el.addEventListener ('click', () => selectSection (i));
+            strip.appendChild (el);
+        });
+        const add = document.createElement ('button');
+        add.id = 'arr-add';
+        add.textContent = '+';
+        add.title = 'add a section (copies the selected one)';
+        add.disabled = song.sections.length >= SONG.MAX_SECTIONS;
+        add.addEventListener ('click', () => {
+            const next = SONG.addSection (song, sel);
+            if (next === song) return;
+            song = next;
+            songEdited ();
+            selectSection (sel + 1);
+        });
+        strip.appendChild (add);
+        arrStats.textContent = song.sections.length + ' SEC · ' + SONG.totalBars (song) + ' BARS';
+    }
+
+    function refreshCtl () {
+        arrCtl.innerHTML = '';
+        const tag = document.createElement ('div');
+        tag.id = 'arr-sec-tag';
+        tag.textContent = 'SEC ' + SONG.sectionLabel (sel);
+        arrCtl.appendChild (tag);
+
+        const barsStep = stepper ('arr-bars', () => song.sections[sel].bars + ' BARS', d => {
+            const next = SONG.setSectionBars (song, sel, song.sections[sel].bars + d);
+            if (next === song) return;
+            song = next;
+            songEdited ();
+            refreshStrip (); refreshCtl (); refreshSummary (); refreshProjBar ();
+        });
+        arrCtl.appendChild (barsStep.el);
+
+        const mk = (txt, title, fn, disabled) => {
+            const b = document.createElement ('button');
+            b.className = 'btn tiny';
+            b.textContent = txt;
+            b.title = title;
+            b.disabled = !!disabled;
+            b.addEventListener ('click', fn);
+            arrCtl.appendChild (b);
+            return b;
+        };
+        mk ('◀', 'move section earlier', () => {
+            const next = SONG.moveSection (song, sel, -1);
+            if (next === song) return;
+            song = next; songEdited (); selectSection (sel - 1);
+        }, sel === 0);
+        mk ('▶', 'move section later', () => {
+            const next = SONG.moveSection (song, sel, 1);
+            if (next === song) return;
+            song = next; songEdited (); selectSection (sel + 1);
+        }, sel === song.sections.length - 1);
+        mk ('DEL', 'delete this section', () => {
+            const next = SONG.removeSection (song, sel);
+            if (next === song) return;
+            song = next; songEdited ();
+            selectSection (Math.min (sel, song.sections.length - 1));
+            toast ('SECTION DELETED');
+        }, song.sections.length <= 1);
+    }
+
+    // The economy readout. Numbers are engine/song.js placeholders — the SHAPE
+    // is what's being playtested: demos unchanged, a full track worth a
+    // multiple that grows with sections and length, and each alien's offer
+    // diluted to their genre's share of the bars.
+    function refreshSummary () {
+        arrInfo.innerHTML = '';
+        const mix = SONG.genreMix (song);
+
+        const meter = document.createElement ('div');
+        meter.id = 'arr-meter';
+        for (const m of mix) {
+            const seg = document.createElement ('div');
+            seg.style.flexGrow = m.bars;
+            seg.style.background = GENRE_COLORS[m.name] || '#79ffd0';
+            seg.title = m.name + ' ' + Math.round (m.share * 100) + '%';
+            meter.appendChild (seg);
+        }
+
+        const value = document.createElement ('div');
+        value.id = 'arr-value';
+        const mult = SONG.songValueMult (song);
+        value.textContent = 'FULL TRACK ×' + mult.toFixed (2) + ' DEMO';
+
+        const offers = document.createElement ('div');
+        offers.id = 'arr-offers';
+        for (const m of mix.slice (0, 4)) {
+            const chip = document.createElement ('span');
+            chip.className = 'offer-chip';
+            chip.style.color = GENRE_COLORS[m.name] || '#79ffd0';
+            chip.textContent = m.name + ' FAN ×' + (mult * m.share).toFixed (2);
+            offers.appendChild (chip);
+        }
+
+        arrInfo.append (meter, value, offers);
+    }
+
+    /// Every edit that changes the song funnels through here: the instrument's
+    /// compiled copy goes stale, and if the song is audible right now it is
+    /// recompiled immediately so you hear what you did.
+    function songEdited () {
+        songStale = true;
+        if (inst.playingSong) { inst.setSong (song); songStale = false; }
+    }
+
+    /// inst.track is replaced (immutably) on every editor edit; pull it back
+    /// into the selected section. Called from refreshReadouts, which every
+    /// editing path already funnels through. The reference is SHARED, not
+    /// cloned — inst.track is never mutated in place, and sharing is what
+    /// lets the !== check converge instead of re-flagging every refresh.
+    function syncSection () {
+        if (song.sections[sel].track !== inst.track) {
+            song = { sections: song.sections.map ((s, i) =>
+                i === sel ? { bars: s.bars, track: inst.track } : s) };
+            songEdited ();
+        }
+    }
+
+    function selectSection (i) {
+        sel = Math.min (Math.max (i, 0), song.sections.length - 1);
+        inst.setTrack (song.sections[sel].track);
+        refreshAllControls ();
+    }
+
     // ---------- genre plate ----------
     const plate = document.createElement ('div');
     plate.className = 'genre-plate';
@@ -63,7 +265,6 @@ export function mountTrax (root, inst, opts) {
     // has no way to know the readout is naming a genre.
     const gStack = document.createElement ('div'); gStack.className = 'genre-stack';
     const gCap   = document.createElement ('div'); gCap.className = 'genre-cap';
-    gCap.textContent = 'GENRE';
     const gLabel = document.createElement ('div'); gLabel.id = 'genre-label';
     gStack.append (gCap, gLabel);
     const gVibe  = document.createElement ('div'); gVibe.id  = 'genre-vibe';
@@ -138,6 +339,22 @@ export function mountTrax (root, inst, opts) {
         refreshGrid (true);
     }
 
+    /// Everything the editor shows about the selected section, refreshed in
+    /// one sweep — used when the selection changes and the whole surface has
+    /// to snap to a different track.
+    function refreshAllControls () {
+        for (const def of DIAL_DEFS) knobs[def.key].set (inst.dials[def.key]);
+        for (const m of MODULES) {
+            const owned = inst.isInstalled (m.name);
+            moduleEls[m.name].el.classList.toggle ('on', owned && inst.enabled[m.name]);
+            moduleEls[m.name].preset.refresh ();
+            moduleEls[m.name].varn.refresh ();
+        }
+        if (keyStep) keyStep.refresh ();
+        refreshReadouts ();
+        refreshGrid (true);
+    }
+
     // A left arrow, a label and a right arrow. That is the entire vocabulary
     // for choosing a part, which is the point: no wrong answers to pick from.
     function stepper (cls, label, onStep) {
@@ -145,12 +362,12 @@ export function mountTrax (root, inst, opts) {
         el.className = 'stepper ' + cls;
         const back = document.createElement ('button');
         back.className = 'st-arrow';
-        back.textContent = '\u25C0';
+        back.textContent = '◀';
         const text = document.createElement ('div');
         text.className = 'st-label';
         const fwd = document.createElement ('button');
         fwd.className = 'st-arrow';
-        fwd.textContent = '\u25B6';
+        fwd.textContent = '▶';
         back.addEventListener ('click', e => { e.stopPropagation (); onStep (-1); });
         fwd.addEventListener ('click', e => { e.stopPropagation (); onStep (1); });
         el.append (back, text, fwd);
@@ -176,9 +393,15 @@ export function mountTrax (root, inst, opts) {
     const transport = document.createElement ('div');
     transport.id = 'transport';
 
+    // PLAY TRACK chains the whole song; LOOP SEC is the old behaviour — loop
+    // the selected section forever while you shape it.
     const playBtn = document.createElement ('button');
     playBtn.className = 'btn primary';
-    playBtn.textContent = 'PLAY';
+    playBtn.textContent = 'PLAY TRACK';
+
+    const loopBtn = document.createElement ('button');
+    loopBtn.className = 'btn';
+    loopBtn.textContent = 'LOOP SEC';
 
     const readout = document.createElement ('div');
     readout.id = 'readout';
@@ -195,7 +418,7 @@ export function mountTrax (root, inst, opts) {
     printWrap.id = 'print-wrap';
     const printBtn = document.createElement ('button');
     printBtn.className = 'btn';
-    printBtn.textContent = 'PRINT DEMO';
+    printBtn.textContent = 'PRINT TAPE';
     printBtn.addEventListener ('click', () => openPrint ());
     printWrap.append (printBtn);
 
@@ -204,7 +427,7 @@ export function mountTrax (root, inst, opts) {
     keyWrap.className = 'key-wrap';
     const keyLabel = document.createElement ('span'); keyLabel.textContent = 'KEY';
     const keyStep = stepper ('key-step', () => inst.keyName,
-                             d => { inst.cycleKey (d); keyStep.refresh (); });
+                             d => { inst.cycleKey (d); keyStep.refresh (); refreshReadouts (); });
     keyWrap.append (keyLabel, keyStep.el);
 
     const volWrap = document.createElement ('div');
@@ -232,7 +455,7 @@ export function mountTrax (root, inst, opts) {
     exitBtn.textContent = 'PROJECTS';
     exitBtn.addEventListener ('click', () => onExit ());
 
-    transport.append (playBtn, readout, sep, keyWrap, volWrap, saveBtn, printWrap, exitBtn);
+    transport.append (playBtn, loopBtn, readout, sep, keyWrap, volWrap, saveBtn, printWrap, exitBtn);
     body.appendChild (transport);
 
     // ---------- save dialog ----------
@@ -289,10 +512,10 @@ export function mountTrax (root, inst, opts) {
     function commitSave () {
         const typed = (sInput.value || '').trim ();
         if (!typed) return;
-        const rec = opts.onSave ? opts.onSave (typed) : null;
+        const rec = opts.onSave ? opts.onSave (typed, song) : null;
         if (!rec) return;
         project = rec;
-        savedTrackId = inst.trackId;
+        savedSongId = SONG.songId (song);
         closeSave ();
         refreshProjBar ();
         toast ('SAVED - ' + rec.name.toUpperCase ());
@@ -304,12 +527,18 @@ export function mountTrax (root, inst, opts) {
     });
 
     // ---------- print dialog ----------
+    // Two things can go to tape: a DEMO of the selected section's loop (the
+    // old, unchanged product) or the FULL TRACK — every section, worth the
+    // arranger's multiplier. Both stay inert until the tape deck exists.
     const printScrim = document.createElement ('div');
     printScrim.id = 'print-scrim';
     const printPanel = document.createElement ('div');
     printPanel.id = 'print-panel';
-    const pTitle = document.createElement ('div'); pTitle.id = 'print-title'; pTitle.textContent = 'PRINT DEMO';
-    const pSub   = document.createElement ('div'); pSub.id = 'print-sub';   pSub.textContent = 'HOW MANY COPIES?';
+    const pTitle = document.createElement ('div'); pTitle.id = 'print-title'; pTitle.textContent = 'PRINT';
+    const pSub   = document.createElement ('div'); pSub.id = 'print-sub';
+    let printFull = false;
+    const pMode = stepper ('print-mode', () => printFull ? 'FULL TRACK' : 'DEMO · SEC ' + SONG.sectionLabel (sel),
+                           () => { printFull = !printFull; pMode.refresh (); refreshPrintSub (); });
     const pQty = stepper ('print-qty', () => String (quantity),
                           d => { quantity = Math.min (99, Math.max (1, quantity + d)); pQty.refresh (); });
     const pNote = document.createElement ('div'); pNote.id = 'print-note'; pNote.textContent = 'no tape deck installed';
@@ -319,14 +548,20 @@ export function mountTrax (root, inst, opts) {
     pCancel.addEventListener ('click', () => closePrint ());
     pOk.addEventListener ('click', () => {
         closePrint ();
-        toast ('PRINT x' + quantity + ' QUEUED \u2014 NO TAPE DECK INSTALLED');
+        const what = printFull ? 'FULL TRACK' : 'DEMO';
+        toast ('PRINT ' + what + ' x' + quantity + ' QUEUED — NO TAPE DECK INSTALLED');
     });
     pRow.append (pCancel, pOk);
-    printPanel.append (pTitle, pSub, pQty.el, pNote, pRow);
+    printPanel.append (pTitle, pSub, pMode.el, pQty.el, pNote, pRow);
     printScrim.appendChild (printPanel);
     root.appendChild (printScrim);
 
-    function openPrint () { pQty.refresh (); printScrim.classList.add ('show'); }
+    function refreshPrintSub () {
+        pSub.textContent = printFull
+            ? 'ALL SECTIONS · WORTH ×' + SONG.songValueMult (song).toFixed (2) + ' DEMO'
+            : 'JUST THIS SECTION’S LOOP · STANDARD DEMO PRICE';
+    }
+    function openPrint () { pMode.refresh (); pQty.refresh (); refreshPrintSub (); printScrim.classList.add ('show'); }
     function closePrint () { printScrim.classList.remove ('show'); }
     function printOpen () { return printScrim.classList.contains ('show'); }
 
@@ -344,14 +579,19 @@ export function mountTrax (root, inst, opts) {
 
     // ---------- live readouts ----------
     function refreshReadouts () {
+        syncSection ();
         const g = inst.genre;
+        gCap.textContent = 'SEC ' + SONG.sectionLabel (sel) + ' GENRE';
         gLabel.textContent = g.label;
         gVibe.textContent = g.primary.vibe;
         gMeta.textContent =
             'TRACK ' + inst.trackId.toString (16).toUpperCase ().padStart (8, '0') +
             '\nMARGIN ' + (g.d2 - g.d1).toFixed (2) + (g.blended ? '  BLEND' : '  LOCK');
-        readout.textContent =
-            Math.round (inst.params.bpm) + ' BPM   BAR ' + (currentBar + 1) + '/' + BARS;
+        if (!inst.playing)
+            readout.textContent = Math.round (inst.params.bpm) + ' BPM';
+        refreshStrip ();
+        refreshCtl ();
+        refreshSummary ();
         refreshProjBar ();
         refreshGrid (true);
     }
@@ -383,26 +623,79 @@ export function mountTrax (root, inst, opts) {
 
     // The scheduler runs ~100ms ahead of what you hear, so the playhead can't
     // just follow it — queue the scheduled steps and light them up when the
-    // audio clock actually reaches them.
+    // audio clock actually reaches them. In song mode the queued step is
+    // song-relative; sectionAtStep maps it to a block in the strip.
     const queue = [];
     inst.onStepScheduled = (step, time) => { queue.push ([step, time]); };
     inst.onPatternSwap = () => refreshGrid (true);
 
+    function setPlayingSec (i) {
+        if (i === playingSec) return;
+        playingSec = i;
+        // Class flips only — rebuilding the strip 8 times a bar would fight
+        // the click targets under the cursor.
+        const blocks = strip.querySelectorAll ('.arr-sec');
+        blocks.forEach ((b, j) => b.classList.toggle ('playing', j === playingSec));
+    }
+
+    function clearPlayhead () {
+        queue.length = 0;
+        if (currentStep >= 0) stepEls[currentStep].classList.remove ('now');
+        currentStep = -1;
+        setPlayingSec (-1);
+        readout.textContent = Math.round (inst.params.bpm) + ' BPM';
+    }
+
     function frame () {
-        if (inst.ctx) {
+        if (inst.ctx && inst.playing) {
             const now = inst.ctx.currentTime;
             let shown = -1;
             while (queue.length && queue[0][1] <= now) shown = queue.shift ()[0];
             if (shown >= 0) {
-                const bar = Math.floor ((shown % (STEPS * BARS)) / STEPS);
-                const s = shown % STEPS;
-                if (bar !== currentBar) { currentBar = bar; gridDirty = true; }
-                if (s !== currentStep) {
-                    if (currentStep >= 0) stepEls[currentStep].classList.remove ('now');
-                    currentStep = s;
-                    stepEls[s].classList.add ('now');
+                if (inst.songMode) {
+                    // Guard: the song may have been edited after this step was
+                    // queued; clamp rather than crash on a stale position.
+                    const total = SONG.totalSteps (song);
+                    const loc = SONG.sectionAtStep (song, shown % total);
+                    setPlayingSec (loc.index);
+                    const sec = song.sections[loc.index];
+                    const patStep = loc.stepInSection % TOTAL_STEPS;
+                    const bar = Math.floor (patStep / STEPS);
+                    const s = patStep % STEPS;
+                    // The grid is the SELECTED section's editor — only show the
+                    // playhead when the song is actually inside it.
+                    if (loc.index === sel) {
+                        if (bar !== currentBar) { currentBar = bar; gridDirty = true; }
+                        if (s !== currentStep) {
+                            if (currentStep >= 0) stepEls[currentStep].classList.remove ('now');
+                            currentStep = s;
+                            stepEls[s].classList.add ('now');
+                        }
+                    } else if (currentStep >= 0) {
+                        stepEls[currentStep].classList.remove ('now');
+                        currentStep = -1;
+                    }
+                    // The clock's bpm runs ~100ms ahead of the speakers (it is
+                    // already on the NEXT section at a boundary) — show the
+                    // tempo of the section under the audible playhead instead.
+                    const heardBpm = inst.songCompiled && inst.songCompiled[loc.index]
+                        ? inst.songCompiled[loc.index].params.bpm : inst.clock.bpm;
                     readout.textContent =
-                        Math.round (inst.params.bpm) + ' BPM   BAR ' + (currentBar + 1) + '/' + BARS;
+                        Math.round (heardBpm) + ' BPM   SEC ' + SONG.sectionLabel (loc.index) +
+                        '  BAR ' + (loc.barInSection + 1) + '/' + sec.bars;
+                } else {
+                    setPlayingSec (-1);
+                    const bar = Math.floor ((shown % (STEPS * BARS)) / STEPS);
+                    const s = shown % STEPS;
+                    if (bar !== currentBar) { currentBar = bar; gridDirty = true; }
+                    if (s !== currentStep) {
+                        if (currentStep >= 0) stepEls[currentStep].classList.remove ('now');
+                        currentStep = s;
+                        stepEls[s].classList.add ('now');
+                        readout.textContent =
+                            Math.round (inst.params.bpm) + ' BPM   BAR ' + (currentBar + 1) + '/' + BARS +
+                            '   LOOP SEC ' + SONG.sectionLabel (sel);
+                    }
                 }
             }
         }
@@ -412,17 +705,35 @@ export function mountTrax (root, inst, opts) {
     requestAnimationFrame (frame);
 
     // ---------- transport wiring ----------
-    async function togglePlay () {
-        await inst.toggle ();
-        playBtn.textContent = inst.playing ? 'STOP' : 'PLAY';
-        playBtn.classList.toggle ('primary', !inst.playing);
-        if (!inst.playing) {
-            queue.length = 0;
-            if (currentStep >= 0) stepEls[currentStep].classList.remove ('now');
-            currentStep = -1;
-        }
+    function refreshTransport () {
+        playBtn.textContent = inst.playingSong ? 'STOP' : 'PLAY TRACK';
+        playBtn.classList.toggle ('primary', !inst.playing || inst.playingSong);
+        loopBtn.textContent = inst.playingLoop ? 'STOP' : 'LOOP SEC';
     }
-    playBtn.addEventListener ('click', togglePlay);
+
+    async function togglePlaySong () {
+        if (inst.playingSong) { inst.stop (); clearPlayhead (); }
+        else {
+            inst.stop ();
+            clearPlayhead ();
+            if (songStale) { inst.setSong (song); songStale = false; }
+            await inst.playSong ();
+        }
+        refreshTransport ();
+    }
+
+    async function togglePlayLoop () {
+        if (inst.playingLoop) { inst.stop (); clearPlayhead (); }
+        else {
+            inst.stop ();
+            clearPlayhead ();
+            await inst.play ();
+        }
+        refreshTransport ();
+    }
+
+    playBtn.addEventListener ('click', togglePlaySong);
+    loopBtn.addEventListener ('click', togglePlayLoop);
 
     function onKey (e) {
         // Both dialogs are modal: ESC dismisses them rather than leaving TRAX,
@@ -439,20 +750,21 @@ export function mountTrax (root, inst, opts) {
         if (e.target && e.target.classList && e.target.classList.contains ('knob')) {
             if (e.key !== ' ' && e.key !== 'Escape') return;
         }
-        if (e.code === 'Space') { e.preventDefault (); togglePlay (); }
+        if (e.code === 'Space') { e.preventDefault (); togglePlaySong (); }
         else if (e.key === 'Escape') { onExit (); }
     }
     window.addEventListener ('keydown', onKey);
 
     refreshProjBar ();
     refreshReadouts ();
+    refreshTransport ();
     drawGrid ();
 
     return {
         stop () {
             inst.stop ();
-            playBtn.textContent = 'PLAY';
-            playBtn.classList.add ('primary');
+            clearPlayhead ();
+            refreshTransport ();
         },
         dispose () {
             window.removeEventListener ('keydown', onKey);

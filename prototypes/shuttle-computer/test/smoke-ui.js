@@ -249,7 +249,7 @@ check ('the key stepper walks all twelve keys and returns', () => {
 
 console.log ('\ntransport');
 const buttons = appView.querySelectorAll ('button');
-const playBtn = buttons.find (b => b.textContent === 'PLAY' || b.textContent === 'STOP');
+const playBtn = buttons.find (b => b.textContent === 'PLAY TRACK' || b.textContent === 'STOP');
 
 check ('PLAY starts the transport and the label becomes STOP', async () => {
     assert (playBtn, 'no play button found');
@@ -275,17 +275,17 @@ check ('dials still respond while playing (swap is queued, not applied mid-bar)'
 
 playBtn.fire ('click');
 await sleep (30);
-check ('STOP returns the label to PLAY', () => {
-    assert (playBtn.textContent === 'PLAY', 'label did not return to PLAY');
+check ('STOP returns the label to PLAY TRACK', () => {
+    assert (playBtn.textContent === 'PLAY TRACK', 'label did not return to PLAY TRACK');
 });
 
-check ('PRINT DEMO opens a modal, and CANCEL closes it without printing', () => {
+check ('PRINT TAPE opens a modal, and CANCEL closes it without printing', () => {
     const scrim = doc.getElementById ('print-scrim');
     assert (scrim, 'no print dialog was built');
     assert (!scrim.classList.contains ('show'), 'the dialog starts open');
 
-    buttons.find (b => b.textContent === 'PRINT DEMO').fire ('click');
-    assert (scrim.classList.contains ('show'), 'PRINT DEMO did not open the dialog');
+    buttons.find (b => b.textContent === 'PRINT TAPE').fire ('click');
+    assert (scrim.classList.contains ('show'), 'PRINT TAPE did not open the dialog');
 
     doc.getElementById ('toast').classList.remove ('show');
     // Scoped to this dialog on purpose — the save dialog has a CANCEL too.
@@ -296,7 +296,7 @@ check ('PRINT DEMO opens a modal, and CANCEL closes it without printing', () => 
 });
 
 check ('the copies stepper clamps between 1 and 99', () => {
-    buttons.find (b => b.textContent === 'PRINT DEMO').fire ('click');
+    buttons.find (b => b.textContent === 'PRINT TAPE').fire ('click');
     const qty = appView.querySelectorAll ('.print-qty')[0];
     const label = qty.querySelectorAll ('.st-label')[0];
     const back = qty.querySelectorAll ('button')[0];
@@ -439,6 +439,77 @@ check ('DELETE takes two presses and then empties the shelf', () => {
     assert (del.textContent === 'SURE?', 'first press did not arm the confirm');
     del.fire ('click');
     assert (appView.querySelectorAll ('.proj-row').length === 0, 'the project was not deleted');
+});
+
+// ------------------------------------------------------------- arranger ----
+
+console.log ('\narranger');
+
+projBtn ('NEW PROJECT').fire ('click');
+const secs = () => appView.querySelectorAll ('.arr-sec');
+
+check ('a new project starts as one 4-bar selected section', () => {
+    assert (secs ().length === 1, 'expected 1 section, got ' + secs ().length);
+    assert (secs ()[0].classList.contains ('sel'), 'the only section is not selected');
+    assert (/1 SEC · 4 BARS/.test (doc.getElementById ('arr-stats').textContent),
+            'stats read ' + doc.getElementById ('arr-stats').textContent);
+});
+
+check ('+ adds a copy of the selected section and selects it', () => {
+    doc.getElementById ('arr-add').fire ('click');
+    assert (secs ().length === 2, 'expected 2 sections, got ' + secs ().length);
+    assert (secs ()[1].classList.contains ('sel'), 'the new section is not selected');
+});
+
+check ('the bars stepper stretches only the selected section', () => {
+    appView.querySelectorAll ('.arr-bars')[0].querySelectorAll ('button')[1].fire ('click');
+    // The control row is rebuilt on every arrangement change — re-query.
+    const bars = appView.querySelectorAll ('.arr-bars')[0];
+    assert (bars.querySelectorAll ('.st-label')[0].textContent === '5 BARS',
+            'bars did not step to 5, reads ' + bars.querySelectorAll ('.st-label')[0].textContent);
+    assert (/2 SEC · 9 BARS/.test (doc.getElementById ('arr-stats').textContent),
+            'stats read ' + doc.getElementById ('arr-stats').textContent);
+});
+
+check ('editing section B never reaches into section A', () => {
+    const before = inst.dials.pulse;
+    const k = appView.querySelectorAll ('.knob')[0];       // PULSE
+    k.fire ('pointerdown', { clientY: 300 });
+    k.fire ('pointermove', { clientY: 220 });
+    k.fire ('pointerup', {});
+    assert (inst.dials.pulse !== before, 'the drag did not move PULSE');
+    secs ()[0].fire ('click');                             // back to section A
+    assert (inst.dials.pulse === before,
+            'section A now has B\'s PULSE: ' + inst.dials.pulse + ' vs ' + before);
+});
+
+check ('selecting a section snaps the knobs to its dials', () => {
+    secs ()[1].fire ('click');
+    const val = appView.querySelectorAll ('.knob')[0].querySelectorAll ('.k-val')[0];
+    assert (val.textContent === inst.dials.pulse.toFixed (1),
+            'knob shows ' + val.textContent + ' but the dial is ' + inst.dials.pulse);
+});
+
+check ('the song value grows with the arrangement', () => {
+    const v = doc.getElementById ('arr-value').textContent;
+    // 2 sections, 9 bars -> 1.5 + 0.5 + 0.05*5 = ×2.25
+    assert (/×2\.25/.test (v), 'value reads ' + v);
+});
+
+check ('PLAY TRACK chains sections without throwing', async () => {
+    btn ('PLAY TRACK').fire ('click');
+    await sleep (60);
+    pump (30);
+    assert (inst.playing && inst.songMode, 'song playback did not start');
+    btn ('STOP').fire ('click');
+    assert (!inst.playing, 'STOP did not stop the song');
+});
+
+check ('DEL removes the selected section and refuses the last one', () => {
+    const del = () => appView.querySelectorAll ('button').find (b => b.textContent === 'DEL');
+    del ().fire ('click');
+    assert (secs ().length === 1, 'DEL did not remove the section');
+    assert (del ().disabled, 'DEL is not disabled on the last section');
 });
 
 // ---------------------------------------------------------------- report ----

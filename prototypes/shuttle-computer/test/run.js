@@ -18,6 +18,7 @@ import { generatePatterns, stepAt, progressionFor, chordTonesFor, VOICES, MELODI
 import { classify, GENRES } from '../engine/classifier.js';
 import * as TRACK from '../engine/track.js';
 import * as PRESETS from '../engine/presets.js';
+import * as SONGMOD from '../engine/song.js';
 
 const HERE = dirname (fileURLToPath (import.meta.url));
 
@@ -520,6 +521,89 @@ test ('cloning carries the active set', () => {
     eq (c.active.MOSS, false, 'clone lost the mute');
     c.active.MOSS = true;
     eq (t.active.MOSS, false, 'clone aliases the original');
+});
+
+// ------------------------------------------------------------------ SONG ----
+section ('song (arrangement layer)');
+
+test ('a default song is one 4-bar section of the default track', () => {
+    const s = SONGMOD.defaultSong ();
+    eq (s.sections.length, 1);
+    eq (s.sections[0].bars, 4);
+    eq (TRACK.trackId (s.sections[0].track), TRACK.trackId (T ()));
+});
+
+test ('songId is stable, and covers order, bars and section tracks', () => {
+    const base = SONGMOD.addSection (SONGMOD.defaultSong (), 0);
+    eq (SONGMOD.songId (base), SONGMOD.songId (SONGMOD.cloneSong (base)), 'clone must hash identically');
+    assert (SONGMOD.songId (SONGMOD.setSectionBars (base, 0, 8)) !== SONGMOD.songId (base),
+            'stretching a section must change the song');
+    const reordered = SONGMOD.moveSection (SONGMOD.setSectionBars (base, 0, 8), 0, 1);
+    assert (SONGMOD.songId (reordered) !== SONGMOD.songId (SONGMOD.setSectionBars (base, 0, 8)),
+            'reordering sections must change the song');
+    const edited = SONGMOD.setSectionTrack (base, 1, withDial (T (), 'pulse', 9));
+    assert (SONGMOD.songId (edited) !== SONGMOD.songId (base),
+            'editing a section track must change the song');
+});
+
+test ('sections own their tracks — duplicating never aliases', () => {
+    const s = SONGMOD.addSection (SONGMOD.defaultSong (), 0);
+    s.sections[1].track.dials.pulse = 9.5;
+    assert (s.sections[0].track.dials.pulse !== 9.5, 'section B reached into section A');
+});
+
+test ('sectionAtStep walks the arrangement the way playback does', () => {
+    let s = SONGMOD.defaultSong ();                       // A: 4 bars
+    s = SONGMOD.addSection (s, 0);                        // + B: 4 bars
+    s = SONGMOD.setSectionBars (s, 0, 2);                 // A: 2 bars
+    eq (SONGMOD.totalBars (s), 6);
+    eq (SONGMOD.sectionAtStep (s, 0).index, 0);
+    eq (SONGMOD.sectionAtStep (s, 2 * STEPS - 1).index, 0, 'last step of A');
+    const b = SONGMOD.sectionAtStep (s, 2 * STEPS);
+    eq (b.index, 1, 'first step of B');
+    eq (b.stepInSection, 0);
+    eq (SONGMOD.sectionAtStep (s, 5 * STEPS + 3).barInSection, 3, 'bar within B');
+});
+
+test ('genre mix weights by bars and sums to one', () => {
+    let s = SONGMOD.defaultSong ();
+    s = SONGMOD.addSection (s, 0);
+    s = SONGMOD.setSectionTrack (s, 1, { ...TRACK.cloneTrack (T ()), dials: dialsOf ({ pulse: 1, void: 9, crunch: 1 }) });
+    s = SONGMOD.setSectionBars (s, 0, 6);
+    s = SONGMOD.setSectionBars (s, 1, 2);
+    const mix = SONGMOD.genreMix (s);
+    let total = 0;
+    for (const m of mix) total += m.share;
+    assert (Math.abs (total - 1) < 1e-9, 'shares must sum to 1');
+    assert (mix[0].share >= mix[mix.length - 1].share, 'sorted biggest first');
+});
+
+test ('value grows with sections and with bars; offers dilute by share', () => {
+    const one = SONGMOD.defaultSong ();
+    const two = SONGMOD.addSection (one, 0);
+    assert (SONGMOD.songValueMult (two) > SONGMOD.songValueMult (one), 'more sections must pay more');
+    assert (SONGMOD.songValueMult (SONGMOD.setSectionBars (one, 0, 12)) > SONGMOD.songValueMult (one),
+            'longer must pay more');
+    // A pure single-genre song: the fan of that genre gets the whole value.
+    const g = classify (one.sections[0].track.dials).primary.name;
+    assert (Math.abs (SONGMOD.offerMult (one, g) - SONGMOD.songValueMult (one)) < 1e-9);
+    eq (SONGMOD.offerMult (one, g === 'CLANG' ? 'CHIRP' : 'CLANG'), 0, 'absent genre offers nothing');
+});
+
+test ('a song never loses its last section and clamps bars', () => {
+    let s = SONGMOD.defaultSong ();
+    eq (SONGMOD.removeSection (s, 0), s, 'removing the only section must be refused');
+    eq (SONGMOD.setSectionBars (s, 0, 99).sections[0].bars, SONGMOD.SECTION_MAX_BARS);
+    eq (SONGMOD.setSectionBars (s, 0, 0).sections[0].bars, SONGMOD.SECTION_MIN_BARS);
+});
+
+test ('coerceSong salvages what it can and rejects garbage', () => {
+    const ct = (raw) => TRACK.defaultTrack ();
+    eq (SONGMOD.coerceSong (null, ct), null);
+    eq (SONGMOD.coerceSong ({ sections: [] }, ct), null);
+    const ok = SONGMOD.coerceSong ({ sections: [{ bars: '8', track: {} }, null] }, ct);
+    eq (ok.sections.length, 1);
+    eq (ok.sections[0].bars, 8);
 });
 
 // ----------------------------------------------------------------- REPORT --
