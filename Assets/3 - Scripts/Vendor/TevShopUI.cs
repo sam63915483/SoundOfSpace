@@ -76,6 +76,7 @@ public class TevShopUI : MonoBehaviour
         public Hotbar.ItemId item;   // used when plugin is null
         public Color32 chip;
         public bool preInstalled;    // the two you land with; shown, never sold
+        public int tapeKind;         // TraxKind.* for blank rows (Demo default)
     }
 
     /// <summary>
@@ -89,13 +90,30 @@ public class TevShopUI : MonoBehaviour
     /// </summary>
     public static readonly Entry[] Stock =
     {
-        new Entry { name = "Type 1", desc = "Ordinary stock.", price = 5,
-                    item = Hotbar.ItemId.BlankTapeT1, chip = new Color32(0x79, 0xFF, 0xD0, 0xFF) },
+        // Six blanks: three FORMATS (what a tape can hold) × two TIERS (what
+        // the shell is worth). Half/Full rows are milestone-locked — visible
+        // padlocks, never hidden (KindLocked below). Prices live on TraxKind.
+        new Entry { name = "DEMO 1", desc = "One section on a cheap shell.", price = TraxKind.DemoT1Price,
+                    item = Hotbar.ItemId.BlankTapeT1, tapeKind = TraxKind.Demo,
+                    chip = new Color32(0x79, 0xFF, 0xD0, 0xFF) },
         // "Worth double when you sell it" overpromised: the x2 applies to the
         // BASE, and a cheap buyer's pay factor can eat the whole premium at
         // low plugin counts. Honest copy, same maths.
-        new Entry { name = "Type 2", desc = "Doubles a tape's base value. Best with more plugins.", price = 15,
-                    item = Hotbar.ItemId.BlankTapeT2, chip = new Color32(0xFF, 0x4F, 0xD8, 0xFF) },
+        new Entry { name = "DEMO 2", desc = "Doubles a tape's base value. Best with more plugins.", price = TraxKind.DemoT2Price,
+                    item = Hotbar.ItemId.BlankTapeT2, tapeKind = TraxKind.Demo,
+                    chip = new Color32(0xFF, 0x4F, 0xD8, 0xFF) },
+        new Entry { name = "HALF-LENGTH 1", desc = "A whole song, up to 50 bars.", price = TraxKind.HalfT1Price,
+                    item = Hotbar.ItemId.BlankTapeHalfT1, tapeKind = TraxKind.Half,
+                    chip = new Color32(0x4F, 0x6B, 0x8A, 0xFF) },
+        new Entry { name = "HALF-LENGTH 2", desc = "50 bars on the premium shell.", price = TraxKind.HalfT2Price,
+                    item = Hotbar.ItemId.BlankTapeHalfT2, tapeKind = TraxKind.Half,
+                    chip = new Color32(0x9A, 0x6B, 0x3F, 0xFF) },
+        new Entry { name = "FULL-LENGTH 1", desc = "The whole record - up to 100 bars.", price = TraxKind.FullT1Price,
+                    item = Hotbar.ItemId.BlankTapeFullT1, tapeKind = TraxKind.Full,
+                    chip = new Color32(0x3F, 0x8A, 0x6B, 0xFF) },
+        new Entry { name = "FULL-LENGTH 2", desc = "100 bars, premium shell. The main event.", price = TraxKind.FullT2Price,
+                    item = Hotbar.ItemId.BlankTapeFullT2, tapeKind = TraxKind.Full,
+                    chip = new Color32(0xA8, 0x4F, 0x8A, 0xFF) },
 
         new Entry { name = "THUMPER", desc = "Drums. Kick, snare and hat.",   plugin = "THUMPER", preInstalled = true },
         new Entry { name = "GLOWORM", desc = "Bass. The line under it all.",  plugin = "GLOWORM", preInstalled = true },
@@ -106,6 +124,23 @@ public class TevShopUI : MonoBehaviour
     };
 
     static bool IsTape(in Entry e) => e.plugin == null;
+
+    /// Visible-padlock rule (the Colonizer-level philosophy): a locked format
+    /// shows its row and names the distance, it never quietly disappears.
+    static bool KindLocked(in Entry e)
+    {
+        if (e.plugin != null) return false;
+        if (e.tapeKind == TraxKind.Half) return !TapeCareer.HalfUnlocked;
+        if (e.tapeKind == TraxKind.Full) return !TapeCareer.FullUnlocked;
+        return false;
+    }
+
+    static int KindSalesLeft(in Entry e)
+    {
+        int need = e.tapeKind == TraxKind.Full ? TraxKind.FullUnlockSales : TraxKind.HalfUnlockSales;
+        int left = need - TapeCareer.TapesSold;
+        return left < 0 ? 0 : left;
+    }
 
     enum Tab { Tapes, Plugins }
 
@@ -126,7 +161,7 @@ public class TevShopUI : MonoBehaviour
     /// Pending quantity per BLANK, keyed by index into Stock. Not a basket —
     /// nothing is owed until the row's own BUY is pressed, which is exactly why
     /// there is no way to overdraw across the two tabs.
-    readonly int[] _qty = new int[8];
+    readonly int[] _qty = new int[Stock.Length];
 
     class RowWidget
     {
@@ -277,7 +312,7 @@ public class TevShopUI : MonoBehaviour
     bool CanAdd(int i)
     {
         Entry e = Stock[i];
-        if (!IsTape(e)) return false;
+        if (!IsTape(e) || KindLocked(e)) return false;
         int cap = Hotbar.StackMax(e.item);
         return _qty[i] < cap && (_qty[i] + 1) * e.price <= Money;
     }
@@ -289,6 +324,11 @@ public class TevShopUI : MonoBehaviour
     void BuyTapes(int i)
     {
         Entry e = Stock[i];
+        if (KindLocked(e))
+        {
+            SetStatus($"\"Sell {KindSalesLeft(e)} more tapes and we'll talk {e.name}s.\"", C_Err);
+            return;
+        }
         int want = _qty[i];
         if (want <= 0) return;
 
@@ -449,7 +489,19 @@ public class TevShopUI : MonoBehaviour
             }
         }
 
-        if (tape)
+        if (tape && KindLocked(e))
+        {
+            // Milestone-locked format: the row stays visible with its price
+            // and names exactly how far away it is (the visible padlock).
+            w.stepper.gameObject.SetActive(false);
+            w.price.text = $"${e.price}";
+            w.buy.interactable = false;
+            w.buy.targetGraphic.color = C_BuyOff;
+            w.buyLabel.text = $"SELL {KindSalesLeft(e)} MORE";
+            w.buyLabel.color = C_Dimmer;
+            w.root.GetComponent<CanvasGroup>().alpha = 0.55f;
+        }
+        else if (tape)
         {
             int q = _qty[i];
             w.price.text = $"${e.price}";

@@ -86,6 +86,22 @@ public class BuyerMessageDirector : MonoBehaviour
         _tickTimer = 0f;
         float now = Time.unscaledTime;
 
+        // Tev restocks when the career crosses a milestone — announced ONCE
+        // per milestone, guarded by a StoryDirector counter so it survives
+        // saves and is shared in co-op (tape formats, 2026-08-18).
+        var sd = StoryDirector.Instance;
+        if (sd != null)
+        {
+            int unlocked = TapeCareer.UnlockedKind();
+            if (unlocked > sd.GetCounter("tapesUnlockAnnounced"))
+            {
+                sd.SetCounter("tapesUnlockAnnounced", unlocked);
+                Notify(unlocked == TraxKind.Full
+                    ? "TEV: \"Full-length blanks just came in. You've earned the shelf space.\""
+                    : "TEV: \"New stock - half-length blanks. Your demos are selling; time for real songs.\"");
+            }
+        }
+
         int openWants = 0;
         foreach (var b in BuyerLedger.All())
             if (b.convo == BuyerLedger.Convo.AwaitingReply
