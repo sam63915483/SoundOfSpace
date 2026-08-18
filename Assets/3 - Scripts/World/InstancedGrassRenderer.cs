@@ -412,9 +412,23 @@ public class InstancedGrassRenderer : MonoBehaviour
     static readonly Vector4[] _gplDir    = new Vector4[GrassMaxPointLights];
     static readonly float[]   _gplDistSq = new float[GrassMaxPointLights];
 
+    // ── DIAGNOSTIC (Sam's brightness-pulse hunt, 2026-08-18) ────────────────
+    // Grass "suddenly a bit brighter, then dimmer" while moving: the honest
+    // suspects are lights entering/leaving this injection set. Log the DELTA
+    // whenever set membership changes — names, intensity, range, distance —
+    // so the build's Player.log names the culprit instead of us guessing.
+    // Cheap: two reused hash sets, logs only on actual change, rate-limited.
+    // DELETE (or gate off) once the pulse is explained.
+    static readonly HashSet<int> _dbgPrev = new HashSet<int>();
+    static readonly HashSet<int> _dbgNow = new HashSet<int>();
+    static readonly Dictionary<int, string> _dbgNames = new Dictionary<int, string>();
+    static readonly int[] _gplWho = new int[GrassMaxPointLights];
+    float _dbgNextLog;
+
     void InjectGrassPointLights(Vector3 viewer)
     {
         int n = 0;
+        _dbgNow.Clear();
         var all = GrassPointLight.All;
         for (int i = 0; i < all.Count; i++)
         {
@@ -452,6 +466,9 @@ public class InstancedGrassRenderer : MonoBehaviour
             Color c = lt.color * (lt.intensity * Mathf.Max(0f, gp.grassStrength));
             _gplColor[slot] = new Vector4(c.r, c.g, c.b, 1f);
             _gplDistSq[slot] = dsq;
+            _gplWho[slot] = lt.GetInstanceID();
+            _dbgNames[_gplWho[slot]] =
+                $"{lt.transform.root.name}/{lt.name} ({lt.type}, int={lt.intensity:0.##}, range={reach:0}, dist={Mathf.Sqrt(dsq):0}m)";
 
             // Spot lights (concert cone/strobe/blinder) only light grass inside their
             // beam; point lights (lanterns/torches) are omnidirectional. Pass the spot
@@ -477,6 +494,25 @@ public class InstancedGrassRenderer : MonoBehaviour
             Shader.SetGlobalVectorArray(_gplColorId, _gplColor);
             Shader.SetGlobalVectorArray(_gplParamsId, _gplParams);
             Shader.SetGlobalVectorArray(_gplDirId, _gplDir);
+        }
+
+        // DIAGNOSTIC (see the note above InjectGrassPointLights): only the
+        // lights that SURVIVED slot eviction count as injected this frame.
+        for (int i = 0; i < n; i++) _dbgNow.Add(_gplWho[i]);
+        if (!_dbgNow.SetEquals(_dbgPrev) && Time.unscaledTime >= _dbgNextLog)
+        {
+            _dbgNextLog = Time.unscaledTime + 0.25f;
+            var sb = new System.Text.StringBuilder("[GrassLights] set changed (");
+            sb.Append(n).Append(" injected):");
+            foreach (int id in _dbgNow)
+                if (!_dbgPrev.Contains(id))
+                    sb.Append("\n  + ").Append(_dbgNames.TryGetValue(id, out var nm) ? nm : id.ToString());
+            foreach (int id in _dbgPrev)
+                if (!_dbgNow.Contains(id))
+                    sb.Append("\n  - ").Append(_dbgNames.TryGetValue(id, out var nm) ? nm : id.ToString());
+            Debug.Log(sb.ToString());
+            _dbgPrev.Clear();
+            _dbgPrev.UnionWith(_dbgNow);
         }
 
         // Concert centre = centroid of the injected SPOT lights (w=1). The shader fades
