@@ -191,22 +191,36 @@ public partial class ShuttleComputerUI : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Leave the monitor showing the screen as it was left.
+    ///
+    /// This used to SCREENSHOT THE BACKBUFFER, which was the only way to catch a
+    /// ScreenSpaceOverlay canvas — and was fine while the picture only ever
+    /// needed updating once, on close. It cannot work per-frame (a full GPU
+    /// readback every frame) and it cannot work at all on a machine whose player
+    /// never opened the computer, which is exactly the machine that now needs a
+    /// live picture.
+    ///
+    /// So the render goes through the private camera instead, and this is
+    /// reduced to the one final frame after a close. If a PARTNER is still using
+    /// the machine, DriveMachine takes over on the next frame and keeps it live,
+    /// so this is skipped rather than fighting it.
+    /// </summary>
     System.Collections.IEnumerator CaptureMirrorThenHide()
     {
         yield return new WaitForEndOfFrame();
         // Reopened in the same frame (F closes and the terminal reopens)?
         // Then the canvas must stay — and the capture would be right anyway.
         if (_open) yield break;
-        if (_canvas != null && _canvas.gameObject.activeInHierarchy)
-        {
-            var shot = ScreenCapture.CaptureScreenshotAsTexture();
-            if (shot != null)
-            {
-                Graphics.Blit(shot, ScreenMirror);
-                Destroy(shot);
-            }
+        if (TraxSessionSync.RemoteOpen) yield break;   // they're still on it; live render owns the mesh
+
+        yield return RenderMirrorOnce();
+
+        // Re-check: a whole frame passed inside that, and it is long enough for
+        // the terminal to be reopened or a partner to sit down.
+        if (_open || TraxSessionSync.RemoteOpen) yield break;
+        if (_canvas != null && _canvas.gameObject.activeSelf)
             _canvas.gameObject.SetActive(false);
-        }
     }
 
     // ── open / close ─────────────────────────────────────────────────────
@@ -246,6 +260,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // made the mirror a liar (Sam's playtest note). Build() initialises
         // the view state to HOME for the very first open.
         SyncPlayButton();
+        // Straight back to the fullscreen overlay if the canvas was quietly
+        // mirroring a partner onto the world monitor — done here rather than
+        // waiting for DriveMachine so there is no frame where sitting down at
+        // the terminal shows nothing.
+        LeaveRtMode();
         _canvas.gameObject.SetActive(true);
 
         // Tell a co-op partner we've sat down, so their ghost cursor and status
@@ -273,7 +292,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _lastPresenceView = TraxSessionSync.ViewNone;
         TraxSessionSync.PublishPresence(false, TraxSessionSync.ViewNone);
 
-        if (_inst != null) _inst.Stop();
+        // ⚠️ Only stop the music if nobody else is driving it. Walking away from
+        // a machine your partner is still working on must not cut their beat —
+        // it keeps playing, out of the console, and you keep hearing it from
+        // wherever you are in the shuttle. In single player this is unchanged.
+        if (_inst != null && !TraxSessionSync.RemoteOpen) _inst.Stop();
         // The freeze-frame and the resumed screen must both show a stopped
         // transport, or the PLAY button lies twice.
         SyncPlayButton();
@@ -306,6 +329,17 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
     void Update()
     {
+        // ── the machine, whether or not this player is at it ──
+        //
+        // The computer is an object in the world now: it keeps a picture on its
+        // monitor and a sound coming out of it while a PARTNER is using it, and
+        // that means the synced state has to keep landing even with the
+        // fullscreen UI closed. CoopUpdate applies their screen, their song and
+        // their transport; DriveMachine decides where the picture renders and
+        // where the sound comes from.
+        CoopUpdate();
+        DriveMachine();
+
         if (!_open) return;
 
         // Safety net, same as StorageUI's: if anything else grabs the player
@@ -317,14 +351,6 @@ public partial class ShuttleComputerUI : MonoBehaviour
             Close();
             return;
         }
-
-        // BEFORE the modal early-returns below. A partner's edits have to keep
-        // landing, and their pointer has to keep moving, while this player is
-        // staring at the save or print dialog — the alternative is a screen
-        // that silently freezes the other person for as long as a dialog is up.
-        // Publishing is coalesced, so running this before the local input
-        // handling only ever costs a frame of latency.
-        CoopUpdate();
 
         // The save dialog is modal AND has a text field: ESC dismisses it, and
         // every other key belongs to the field. F must not close the computer
@@ -460,6 +486,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // person. Also stashes the screen rect the cursor is normalised into.
         _screenRT = srt;
         BuildRemoteCursor(srt);
+
+        // The private camera that puts this canvas on the world monitor when a
+        // partner is the one using it. Built last, so the canvas it renders
+        // already exists.
+        BuildWorldScreenCam();
 
         // Initialise the view state once — every view GameObject is born
         // active, and DoOpen resumes rather than resets.

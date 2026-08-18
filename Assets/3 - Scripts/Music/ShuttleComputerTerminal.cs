@@ -37,9 +37,15 @@ public class ShuttleComputerTerminal : Interactable
         if (mat.HasProperty("_Color")) mat.color = Color.white;
         mat.mainTexture = mirror;
         // The screen mesh's UVs run top-down AND right-to-left — both axes
-        // flip so the capture reads like the real UI. And the mesh is NOT the
-        // game window's aspect, so the capture is centre-CROPPED to the
-        // mesh's real proportions instead of squashing (Sam's playtests).
+        // flip so the picture reads like the real UI. And the mesh is NOT the
+        // source's aspect, so the picture is centre-CROPPED to the mesh's real
+        // proportions instead of squashing (Sam's playtests).
+        //
+        // ⚠️ The source aspect comes from the MIRROR TEXTURE, not from
+        // Screen.width/height. It used to be a backbuffer screenshot, so the
+        // window's aspect was the right answer; since 2026-08-18 a private
+        // camera renders the UI into a fixed-size texture instead, and reading
+        // the window would crop the picture wrong on any non-16:9 display.
         float sx = 1f, sy = 1f;
         var mf = rend.GetComponent<MeshFilter>();
         if (mf != null && mf.sharedMesh != null)
@@ -50,7 +56,7 @@ public class ShuttleComputerTerminal : Interactable
             float hi = Mathf.Max(a, Mathf.Max(b, c));
             float mid = a + b + c - hi - Mathf.Min(a, Mathf.Min(b, c));
             float meshAspect = mid > 1e-4f ? hi / mid : 16f / 9f;
-            float capAspect = (float)Screen.width / Mathf.Max(1, Screen.height);
+            float capAspect = (float)mirror.width / Mathf.Max(1, mirror.height);
             if (meshAspect < capAspect) sx = meshAspect / capAspect;   // narrower screen: crop sides
             else if (capAspect > 1e-4f) sy = capAspect / meshAspect;   // shorter screen: crop top/bottom
         }

@@ -85,6 +85,9 @@ public class TraxInstrument : MonoBehaviour
         _engine = go.AddComponent<TraxAudioEngine>();
 
         _engine.Publish(Params, Phrase, false);
+        // Referenced rather than parented to the console: the shuttle moves and
+        // gets floating-origin rebased, and the screen drives this transform to
+        // the console every frame instead (see ShuttleComputerUI.DriveAudioPosition).
         _engine.SetMasterVolume(_masterVolume);
         _engine.SetCavePreset(TraxPresets.Cave[Track.PresetOf("CAVE")], Track.VariationOf("CAVE"));
         for (int i = 0; i < Modules.Length; i++)
@@ -225,6 +228,16 @@ public class TraxInstrument : MonoBehaviour
     public void LoadTrack(TraxTrack track)
     {
         if (track != null) SetTrack(track.Clone());
+    }
+
+    /// <summary>
+    /// Where the sound is, and how far it carries. Forwarded to the engine's
+    /// AudioSource — see TraxAudioEngine.SetSpatial for why a fullscreen UI's
+    /// synth now lives in the world.
+    /// </summary>
+    public void SetSpatial(bool worldly, float fullDistance, float fadeDistance)
+    {
+        if (_engine != null) _engine.SetSpatial(worldly, fullDistance, fadeDistance);
     }
 
     public void SetMasterVolume(float v)

@@ -271,7 +271,7 @@ public class TraxAudioEngine : MonoBehaviour
         _src = GetComponent<AudioSource>();
         _src.playOnAwake = false;
         _src.loop = true;
-        _src.spatialBlend = 0f;          // 2D by default — the terminal UI is fullscreen, not in the world
+        _src.spatialBlend = 0f;          // 2D until somebody tells us where the machine is (SetSpatial)
         _src.volume = 1f;                // bus level is multiplied in by hand, see Update
         _src.bypassEffects = false;
         _src.bypassListenerEffects = false;
@@ -304,8 +304,13 @@ public class TraxAudioEngine : MonoBehaviour
     /// <summary>
     /// Make this engine a point in the world rather than a fullscreen UI sound.
     /// Unity spatialises AFTER OnAudioFilterRead, so the synth is unaffected —
-    /// only where you hear it from changes. Used when an alien plays a cassette
-    /// at you; the terminal stays 2D.
+    /// only where you hear it from changes.
+    ///
+    /// Two callers now. An alien playing a cassette at you was the first. The
+    /// second is the shuttle computer itself (2026-08-18): in co-op the beat has
+    /// to come OUT of the console, so a partner working the machine is something
+    /// you hear from across the shuttle and can tell apart from your own
+    /// playback. It stays 2D only when the console cannot be found.
     /// </summary>
     public void SetSpatial(bool on, float minDistance = 3f, float maxDistance = 28f)
     {

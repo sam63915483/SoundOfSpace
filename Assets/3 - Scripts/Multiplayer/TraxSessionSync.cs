@@ -248,6 +248,13 @@ public class TraxSessionSync : MonoBehaviour
 
         if (RemoteOpen && Time.unscaledTime - _remoteHeardAt > PresenceTimeout) ClearRemote();
 
+        // Somebody is at the machine. Make sure THIS player's copy of the
+        // computer exists even though they have never walked up to it — it is
+        // what draws the picture on the world monitor and makes the sound come
+        // out of the console, and without it a partner's session would be
+        // invisible and silent to anybody who had not used the terminal.
+        if (RemoteOpen) ShuttleComputerUI.EnsureExists();
+
         // Coalesced song publish. Held rather than sent on the edit itself so a
         // knob drag is four messages a second instead of sixty.
         if (_songPending && Time.unscaledTime >= _nextSongAt)

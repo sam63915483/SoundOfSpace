@@ -71,12 +71,19 @@ public partial class ShuttleComputerUI
     const float PresenceHeartbeat = 2f;
     float _nextPresenceAt;
 
-    /// Which screen the computer is on, in the sync layer's vocabulary.
-    byte CurrentViewId
+    /// <summary>
+    /// What the CANVAS is showing, whether or not this player is looking at it.
+    ///
+    /// Separate from CurrentViewId because the canvas keeps running with the
+    /// fullscreen UI closed — that is what draws the partner's session onto the
+    /// world monitor — so "what is on screen" and "am I the one at the machine"
+    /// stopped being the same question.
+    /// </summary>
+    byte CanvasViewId
     {
         get
         {
-            if (!_open) return TraxSessionSync.ViewNone;
+            if (_canvas == null) return TraxSessionSync.ViewNone;
             if (_traxView != null && _traxView.activeSelf) return TraxSessionSync.ViewArranger;
             if (ProjectsOpen)
                 return _shelfPane != null && _shelfPane.activeSelf
@@ -84,6 +91,11 @@ public partial class ShuttleComputerUI
             return TraxSessionSync.ViewHome;
         }
     }
+
+    /// What to TELL people we are looking at. ViewNone unless this player has
+    /// actually walked up and opened it — a machine quietly mirroring a
+    /// partner's session must never advertise itself as somebody sitting there.
+    byte CurrentViewId => _open ? CanvasViewId : TraxSessionSync.ViewNone;
 
     /// <summary>
     /// Everything about what the machine is showing right now, read straight off
@@ -94,7 +106,7 @@ public partial class ShuttleComputerUI
     {
         return new TraxSessionSync.Screen
         {
-            view      = CurrentViewId,
+            view      = CanvasViewId,
             projectId = _project != null ? _project.id : "",
             section   = _sel,
             saveOpen  = SaveOpen,
@@ -158,11 +170,29 @@ public partial class ShuttleComputerUI
     /// Called from Update AFTER the local input handling, so an edit made this
     /// frame is already in _song when the publish below reads it.
     /// </summary>
+    /// <summary>
+    /// Runs every frame, open or not.
+    ///
+    /// APPLYING is unconditional: a partner's screen, song and transport have to
+    /// keep landing on this machine even with the fullscreen UI closed, because
+    /// that is what the world monitor is rendering and what the console is
+    /// playing.
+    ///
+    /// PUBLISHING is not. A machine quietly mirroring someone else's session
+    /// has no cursor to report and no navigation of its own, and saying
+    /// otherwise would have it announce itself as a second person at the
+    /// terminal.
+    /// </summary>
     void CoopUpdate()
     {
-        PublishLocalCursor();
         ApplyIncoming();
-        ReconcileScreen();
+
+        if (_open)
+        {
+            PublishLocalCursor();
+            ReconcileScreen();
+        }
+
         DrawPartner();
     }
 
@@ -194,6 +224,14 @@ public partial class ShuttleComputerUI
         if (!_screenPrimed) { _screenPrimed = true; return; }
 
         TraxSessionSync.PublishScreen(now);
+
+        // Send the song with any move onto the arranger. It normally ships on
+        // an EDIT, which leaves a partner mirroring a project you opened but
+        // haven't touched with nothing to play or draw. Coalesced like every
+        // other song publish, so navigating around costs at most one extra
+        // message every quarter second.
+        if (now.view == TraxSessionSync.ViewArranger && _song != null)
+            TraxSessionSync.PublishSong(_song);
     }
 
     /// <summary>
@@ -233,7 +271,13 @@ public partial class ShuttleComputerUI
         }
 
         // ── the view ──
-        if (CurrentViewId != s.view)
+        // ⚠️ CanvasViewId, not CurrentViewId. CurrentViewId reports ViewNone
+        // whenever this player is not the one at the machine, so on a mirroring
+        // screen this test would be true every single time — and the host
+        // re-states the screen every 1.5s, which would mean rebuilding the whole
+        // shelf, closing any open save dialog and stopping the music forty times
+        // a minute.
+        if (CanvasViewId != s.view)
         {
             switch (s.view)
             {
@@ -360,7 +404,21 @@ public partial class ShuttleComputerUI
 
         if (structural) RebuildArranger();
         RefreshAllControls();
+
+        // A play we could not honour because there was no song yet. Now there is.
+        if (_wantsPlay && !_inst.IsPlayingSong)
+        {
+            _wantsPlay = false;
+            EnsureSongFresh();
+            _inst.PlaySong();
+            if (_pendingPlayStep > 0) _inst.SeekSong(_pendingPlayStep);
+            SyncPlayButton();
+        }
     }
+
+    /// A PLAY that arrived before the song did — see ApplyRemoteTransport.
+    bool _wantsPlay;
+    int _pendingPlayStep;
 
     void ApplyRemoteTransport(byte mode, int step)
     {
@@ -368,6 +426,7 @@ public partial class ShuttleComputerUI
         switch (mode)
         {
             case TraxSessionSync.TransportStop:
+                _wantsPlay = false;
                 _inst.Stop();
                 ClearPlayhead();
                 _lastStepShown = -1;
@@ -376,6 +435,13 @@ public partial class ShuttleComputerUI
             case TraxSessionSync.TransportPlaySong:
                 _inst.Stop();
                 ClearPlayhead();
+                // ⚠️ A machine that has only ever MIRRORED the computer may not
+                // have the song yet: it ships on an edit, so a partner who
+                // opened a fresh project and pressed play immediately has sent
+                // nothing to play. Remember the request and honour it the moment
+                // the song lands, or the monitor shows a running transport with
+                // no sound and no way back except a stop/play cycle.
+                if (_song == null) { _pendingPlayStep = Mathf.Max(0, step); _wantsPlay = true; break; }
                 EnsureSongFresh();
                 _inst.PlaySong();
                 // Start where they started, so the two machines are in the same
@@ -402,11 +468,15 @@ public partial class ShuttleComputerUI
     {
         bool here = TraxSessionSync.RemoteOpen;
         byte theirView = TraxSessionSync.RemoteView;
+        // Against the CANVAS view, not this player's — with the UI closed the
+        // canvas is mirroring their session onto the world monitor, and their
+        // pointer moving across it is most of what makes that worth watching.
+        //
         // With the screen shared these agree almost always; the mismatch window
         // is the fraction of a second between one of you navigating and the
         // other's screen catching up, and hiding the pointer through it stops
         // it appearing to point at the wrong thing.
-        bool sameScreen = here && theirView == CurrentViewId && theirView != TraxSessionSync.ViewNone;
+        bool sameScreen = here && theirView == CanvasViewId && theirView != TraxSessionSync.ViewNone;
 
         if (_ghostRT != null && _ghostRT.gameObject.activeSelf != sameScreen)
             _ghostRT.gameObject.SetActive(sameScreen);

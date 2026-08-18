@@ -72,6 +72,35 @@ Both players sit at the shuttle computer at the same time.
       music must keep playing, their screen must not change, and the ghost
       cursor must vanish (within 5s at worst).
 
+### 1b. The physical monitor and the sound of the machine
+
+The computer is now an object in the world, not just a fullscreen menu. The
+mesh shows the LIVE screen and the synth comes out of the console.
+
+- [ ] **Live monitor.** One player uses the computer; the other stands in the
+      shuttle looking at the console screen. The mesh should show what their
+      partner is doing, updating in real time — menus, the arranger, knobs
+      moving. Not a frozen picture.
+- [ ] **Their cursor is on the mesh.** You should see their pointer moving
+      across the physical screen too.
+- [ ] **Sound from the console.** Partner presses PLAY; you hear the beat
+      coming FROM the machine. Walk away — it should fade out, and get louder
+      as you come back. Walk behind it — it should sound like it's in front.
+- [ ] **Walking away mid-beat.** Start playback, then close the computer while
+      your partner is still on it. Your music must NOT cut out — it should
+      switch to coming out of the console.
+- [ ] **Never used it yourself.** On a fresh join, DON'T open the computer at
+      all. Your partner uses it. You should still see the live screen and hear
+      the audio — the machine builds itself on your side when it's needed.
+- [ ] **Nobody using it.** With both of you away from the computer, the mesh
+      should hold the last picture and make no sound.
+- [ ] **Single player still right.** Alone: open the computer, do something,
+      close it. The mesh should show the screen as you left it, and the music
+      should stop on close as it always did.
+- [ ] **No stray rendering.** Look around the shuttle and out at space — no
+      giant floating UI panel anywhere, no black rectangle, no flicker on the
+      main view when the partner is using the computer.
+
 ## 2. The shelf, the rack and the machine (Phase A)
 
 - [ ] **Save a project as the guest.** It appears on the host's shelf. Then save
@@ -183,6 +212,10 @@ and `[WorldSync]` cover the new paths. The most likely failure shapes:
 |---|---|
 | Edits go one way only | the host relay skipping the wrong client |
 | Screens drift apart and stay apart | the screen reconcile pass or the host heartbeat |
+| World monitor frozen while they work | the private render camera never entered RT mode |
+| UI mis-scaled / cropped on the mesh | the canvas scaler sizing against the render texture |
+| A giant UI panel visible in the world | the private layer isn't excluded from that camera |
+| No sound from the console | the instrument's transform isn't following the screen mesh |
 | Screens flip-flop between two states | the host-authority tiebreak |
 | Their cursor turns a knob that doesn't move | the section is out of sync |
 | Cursor offset from where they're pointing | the normalisation rect |

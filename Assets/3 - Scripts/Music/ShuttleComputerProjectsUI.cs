@@ -540,6 +540,11 @@ public partial class ShuttleComputerUI
         _savePanel.SetActive(true);
         _saveField.text = _project != null ? _project.name : "";
         RefreshSaveNote();
+        // ⚠️ Only take the keyboard if THIS player is actually at the machine.
+        // The dialog also opens on a partner's word — that is what puts it on
+        // the world monitor — and grabbing the input field there would swallow
+        // the keystrokes of somebody walking around the shuttle.
+        if (!_open) return;
         _saveField.Select();
         _saveField.ActivateInputField();
     }
