@@ -141,6 +141,11 @@ export function mountTrax (root, inst, opts) {
                 const tick = document.createElement ('div');
                 tick.className = 'arr-tick';
                 if (b % 4 === 0) tick.textContent = String (barNo);
+                // Every tick is a seek target: click a bar to put the playhead
+                // there — live jump while playing, cursor move while stopped.
+                const stepPos = (barNo - 1) * STEPS;
+                tick.title = 'play from bar ' + barNo;
+                tick.addEventListener ('click', () => seekToStep (stepPos));
                 barNo++;
                 cell.appendChild (tick);
             }
@@ -173,7 +178,7 @@ export function mountTrax (root, inst, opts) {
             bot.style.color = color;
             bot.textContent = g.name;
             el.append (top, bot);
-            el.addEventListener ('click', () => selectSection (i));
+            el.addEventListener ('click', () => sectionClicked (i));
             strip.appendChild (el);
         });
         const add = document.createElement ('button');
@@ -191,6 +196,9 @@ export function mountTrax (root, inst, opts) {
         strip.appendChild (add);
         arrStats.textContent = song.sections.length + ' SEC · ' + SONG.totalBars (song) + ' BARS';
         refreshRuler ();
+        // The blocks were just rebuilt — put the idle cursor back on the new
+        // geometry (live playback repositions itself every frame anyway).
+        updateIdleCursor ();
     }
 
     function refreshCtl () {
@@ -229,7 +237,7 @@ export function mountTrax (root, inst, opts) {
             if (next === song) return;
             song = next; songEdited (); selectSection (sel + 1);
         }, sel === song.sections.length - 1);
-        mk ('DEL', 'delete this section', () => {
+        mk ('DELETE', 'delete this section', () => {
             const next = SONG.removeSection (song, sel);
             if (next === song) return;
             song = next; songEdited ();
@@ -299,6 +307,36 @@ export function mountTrax (root, inst, opts) {
         sel = Math.min (Math.max (i, 0), song.sections.length - 1);
         inst.setTrack (song.sections[sel].track);
         refreshAllControls ();
+    }
+
+    function sectionStartStep (i) {
+        let start = 0;
+        for (let j = 0; j < i; j++) start += song.sections[j].bars * STEPS;
+        return start;
+    }
+
+    /// Clicking a block selects it for editing AND auditions it: the song
+    /// playhead jumps to the section's first bar, starting playback if it
+    /// wasn't running (Sam's call — hearing it beats silence every time).
+    async function sectionClicked (i) {
+        selectSection (i);
+        if (songStale) { inst.setSong (song); songStale = false; }
+        inst.seekSong (sectionStartStep (sel));
+        if (!inst.playingSong) {
+            inst.stop ();                     // a running LOOP SEC yields
+            clearPlayhead ();
+            await inst.playSong ();
+            refreshTransport ();
+        }
+        updateIdleCursor ();
+    }
+
+    /// Ruler seek. Live jump while the song plays; while stopped it just
+    /// moves the cursor PLAY TRACK will start from.
+    function seekToStep (stepPos) {
+        if (songStale && inst.playingSong) { inst.setSong (song); songStale = false; }
+        inst.seekSong (stepPos);
+        updateIdleCursor ();
     }
 
     // ---------- genre plate ----------
@@ -687,7 +725,7 @@ export function mountTrax (root, inst, opts) {
         currentStep = -1;
         setPlayingSec (-1);
         phLast = null;
-        playheadEl.style.display = 'none';
+        updateIdleCursor ();
         readout.textContent = Math.round (inst.params.bpm) + ' BPM';
     }
 
@@ -696,21 +734,38 @@ export function mountTrax (root, inst, opts) {
     // so it glides instead of ticking sixteen times a bar.
     let phLast = null;
 
+    /// Put the line at a song step (+ a fraction of one step). `idle` is the
+    /// dimmer where-play-will-start look; live playback uses the hot one.
+    function placeLine (songStep, fracWithinStep, idle) {
+        const total = SONG.totalSteps (song);
+        const p = ((songStep % total) + total) % total;
+        const loc = SONG.sectionAtStep (song, p);
+        const bl = strip.querySelectorAll ('.arr-sec')[loc.index];
+        // offsetWidth is 0 before layout (and absent in the test DOM) — no
+        // geometry, no line.
+        if (!bl || !bl.offsetWidth) { playheadEl.style.display = 'none'; return; }
+        const f = (loc.stepInSection + fracWithinStep) / (song.sections[loc.index].bars * STEPS);
+        playheadEl.style.display = 'block';
+        playheadEl.classList.toggle ('idle', !!idle);
+        playheadEl.style.transform =
+            'translateX(' + (bl.offsetLeft + f * bl.offsetWidth).toFixed (1) + 'px)';
+    }
+
+    /// While stopped, the line still shows — dimmed — where PLAY TRACK will
+    /// start, so a ruler click has visible effect before you hit play.
+    function updateIdleCursor () {
+        if (inst.playingSong) return;
+        placeLine (inst.songCursor, 0, true);
+    }
+
     function updatePlayhead (now) {
-        if (!inst.playingSong || !phLast) { playheadEl.style.display = 'none'; return; }
+        if (!inst.playingSong || !phLast) { updateIdleCursor (); return; }
         const total = SONG.totalSteps (song);
         const loc = SONG.sectionAtStep (song, phLast.pos % total);
         const comp = inst.songCompiled && inst.songCompiled[loc.index];
         const stepDur = comp ? (60 / comp.params.bpm / 4) : 0.125;
         const frac = Math.min (Math.max ((now - phLast.time) / stepDur, 0), 1);
-        const bl = strip.querySelectorAll ('.arr-sec')[loc.index];
-        // offsetWidth is 0 before layout (and absent in the test DOM) — no
-        // geometry, no line.
-        if (!bl || !bl.offsetWidth) { playheadEl.style.display = 'none'; return; }
-        const f = (loc.stepInSection + frac) / (song.sections[loc.index].bars * STEPS);
-        playheadEl.style.display = 'block';
-        playheadEl.style.transform =
-            'translateX(' + (bl.offsetLeft + f * bl.offsetWidth).toFixed (1) + 'px)';
+        placeLine (phLast.pos, frac, false);
     }
 
     function frame () {

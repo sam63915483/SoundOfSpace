@@ -75,6 +75,10 @@ export class Instrument {
         this.songMode = false;
         this._songIdx = -1;         // which section's params the rack last got
         this._caveApplied = null;   // 'preset:variation' the rack last got
+        // Where in the song (in steps) the clock's step 0 lands. This is the
+        // play cursor: PLAY TRACK starts here, and seeking while playing just
+        // rewrites it against the running clock.
+        this.songOffset = 0;
     }
 
     get dials () { return this.track.dials; }
@@ -123,7 +127,18 @@ export class Instrument {
         this.clock.start ();
     }
 
-    stop () { if (this.clock) this.clock.stop (); }
+    stop () {
+        if (!this.clock) return;
+        // Freeze the song position into the cursor: while playing, songOffset
+        // is relative to the running clock, which is about to reset — bake the
+        // absolute position in so the idle cursor shows where you stopped and
+        // PLAY TRACK resumes there.
+        if (this.songMode && this.song && this.clock.running) {
+            const total = songTotalSteps (this.song);
+            this.songOffset = (((this.clock.step + this.songOffset) % total) + total) % total;
+        }
+        this.clock.stop ();
+    }
 
     async toggle () { if (this.playing) this.stop (); else await this.play (); }
 
@@ -149,6 +164,25 @@ export class Instrument {
     }
 
     async toggleSong () { if (this.playing) this.stop (); else await this.playSong (); }
+
+    /// Move the song playhead to an absolute song step. While playing, the
+    /// jump lands on the very next scheduled step (the ~100ms already handed
+    /// to the audio clock plays out first — inaudible as anything but a snap).
+    /// While stopped, it just moves the cursor PLAY TRACK will start from.
+    seekSong (stepPos) {
+        if (!this.song) return;
+        const total = songTotalSteps (this.song);
+        const t = ((Math.round (stepPos) % total) + total) % total;
+        if (this.playingSong && this.clock)
+            this.songOffset = ((t - this.clock.step) % total + total) % total;
+        else
+            this.songOffset = t;
+        this._songIdx = -1;               // the rack must re-apply on landing
+    }
+
+    /// The cursor as a song step — where playback would start (or, while
+    /// playing, the offset the running clock is mapped through).
+    get songCursor () { return this.songOffset; }
 
     /// Rack + clock back to the edited track's settings — used when loop
     /// playback (or plain editing) resumes after song playback moved them.
@@ -261,7 +295,7 @@ export class Instrument {
     /// playhead needs no knowledge of how long the clock has been running.
     _scheduleSong (step, time, stepDur) {
         const total = songTotalSteps (this.song);
-        const pos = step % total;
+        const pos = (step + this.songOffset) % total;
         const loc = sectionAtStep (this.song, pos);
 
         if (loc.index !== this._songIdx) this._applySection (loc.index);

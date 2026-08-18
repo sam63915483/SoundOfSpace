@@ -496,20 +496,27 @@ check ('the song value grows with the arrangement', () => {
     assert (/×2\.25/.test (v), 'value reads ' + v);
 });
 
-check ('PLAY TRACK chains sections without throwing', async () => {
-    btn ('PLAY TRACK').fire ('click');
+check ('clicking a section starts song playback from its start', async () => {
+    // The section clicks above should already have started song playback.
     await sleep (60);
     pump (30);
-    assert (inst.playing && inst.songMode, 'song playback did not start');
+    assert (inst.playing && inst.songMode, 'song playback did not start on section click');
     btn ('STOP').fire ('click');
     assert (!inst.playing, 'STOP did not stop the song');
 });
 
-check ('DEL removes the selected section and refuses the last one', () => {
-    const del = () => appView.querySelectorAll ('button').find (b => b.textContent === 'DEL');
+check ('clicking a ruler tick moves the play cursor to that bar', () => {
+    const ticks = appView.querySelectorAll ('.arr-tick');
+    assert (ticks.length === 9, 'expected 9 bar ticks (4+5), got ' + ticks.length);
+    ticks[2].fire ('click');                       // bar 3 -> step 32
+    assert (inst.songCursor === 32, 'cursor should be 32, got ' + inst.songCursor);
+});
+
+check ('DELETE removes the selected section and refuses the last one', () => {
+    const del = () => appView.querySelectorAll ('button').find (b => b.textContent === 'DELETE');
     del ().fire ('click');
-    assert (secs ().length === 1, 'DEL did not remove the section');
-    assert (del ().disabled, 'DEL is not disabled on the last section');
+    assert (secs ().length === 1, 'DELETE did not remove the section');
+    assert (del ().disabled, 'DELETE is not disabled on the last section');
 });
 
 // ---------------------------------------------------------------- report ----

@@ -213,19 +213,25 @@ html, body {
 
 /* The ruler mirrors the strip's flex maths (grow = bars, same gap, phantom
    end spacer the width of the [+] button) so ticks sit over their bars. */
-#arr-ruler { display: flex; gap: 4px; height: 12px; }
+#arr-ruler { display: flex; gap: 4px; height: 15px; }
 .arr-ruler-cell { flex-basis: 0; min-width: 34px; display: flex; overflow: hidden; }
 .arr-tick {
     flex: 1 1 0;
     min-width: 0;
     border-left: 1px solid var(--grid);
     font-size: 7px;
-    line-height: 12px;
+    line-height: 15px;
     padding-left: 2px;
     color: var(--ink-ghost);
     letter-spacing: .08em;
     white-space: nowrap;
     overflow: hidden;
+    cursor: pointer;
+}
+.arr-tick:hover {
+    color: var(--ink);
+    border-left-color: var(--ink-dim);
+    background: rgba(121, 255, 208, .06);
 }
 .arr-ruler-end { width: 34px; flex: none; }
 
@@ -240,6 +246,12 @@ html, body {
     pointer-events: none;
     display: none;
     z-index: 2;
+}
+/* Stopped: the same line, dimmed — where PLAY TRACK will start. */
+#arr-playhead.idle {
+    background: var(--ink-dim);
+    box-shadow: none;
+    opacity: .85;
 }
 
 #arr-strip { display: flex; gap: 4px; height: 38px; }
@@ -277,11 +289,16 @@ html, body {
 #arr-add:hover:not(:disabled) { color: var(--accent); border-color: var(--accent-dim); }
 #arr-add:disabled { opacity: .3; cursor: not-allowed; }
 
-#arr-row { display: flex; gap: 10px; align-items: center; min-height: 22px; }
-#arr-ctl { display: flex; gap: 6px; align-items: center; }
-#arr-sec-tag { font-size: 10px; letter-spacing: .2em; color: var(--accent); }
-.btn.tiny { padding: 2px 8px; font-size: 9px; letter-spacing: .1em; }
+#arr-row { display: flex; gap: 12px; align-items: center; min-height: 34px; margin-top: 2px; }
+#arr-ctl { display: flex; gap: 8px; align-items: center; }
+#arr-sec-tag { font-size: 13px; letter-spacing: .2em; color: var(--accent); white-space: nowrap; }
+.btn.tiny { padding: 6px 12px; font-size: 10px; letter-spacing: .1em; }
 .btn.tiny:disabled { opacity: .3; cursor: not-allowed; }
+/* The bars stepper is a primary control now — key-stepper sized, not
+   rack-stepper sized. */
+#arr-ctl .stepper { width: auto; }
+#arr-ctl .st-arrow { font-size: 12px; padding: 6px 9px; }
+#arr-ctl .st-label { font-size: 12px; min-width: 64px; padding: 0 4px; color: var(--ink); }
 
 #arr-info { margin-left: auto; display: flex; gap: 10px; align-items: center; min-width: 0; }
 #arr-meter {
