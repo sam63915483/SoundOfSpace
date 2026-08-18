@@ -59,12 +59,13 @@ public class TevShopUI : MonoBehaviour
     // child's y is "pixels DOWN from the top of the parent" and is NEGATIVE.
     // Centre-relative maths here puts things ABOVE the box they belong to.
     const float PanelW   = 760f;
-    const float PanelH   = 500f;
+    const float PanelH   = 590f;           // tall enough for six rows + one open detail card
     const float RowW     = PanelW - 48f;   // 712
     const float RowH     = 46f;
     const float RowPitch = 51f;
     const float RowTop   = 104f;           // y of the first row, downward
     const int   MaxRows  = 6;              // the rack is the longest tab
+    const float DetailH  = 84f;            // the expanded detail card under a clicked row
 
     /// <summary>What Tev sells. One entry per row, in the order they appear.</summary>
     public struct Entry
@@ -77,6 +78,7 @@ public class TevShopUI : MonoBehaviour
         public Color32 chip;
         public bool preInstalled;    // the two you land with; shown, never sold
         public int tapeKind;         // TraxKind.* for blank rows (Demo default)
+        public string longDesc;      // the full story, shown when the row is clicked open
     }
 
     /// <summary>
@@ -93,34 +95,77 @@ public class TevShopUI : MonoBehaviour
         // Six blanks: three FORMATS (what a tape can hold) × two TIERS (what
         // the shell is worth). Half/Full rows are milestone-locked — visible
         // padlocks, never hidden (KindLocked below). Prices live on TraxKind.
-        new Entry { name = "DEMO 1", desc = "One section on a cheap shell.", price = TraxKind.DemoT1Price,
+        // Names match the hotbar's item names — ONE vocabulary — and the row
+        // shows only a teaser; clicking the row opens longDesc (Sam,
+        // 2026-08-18: "DEMO 1 / DEMO 2 are terrible names").
+        new Entry { name = "DEMO TAPE", desc = "One section, cheap shell.", price = TraxKind.DemoT1Price,
                     item = Hotbar.ItemId.BlankTapeT1, tapeKind = TraxKind.Demo,
-                    chip = new Color32(0x79, 0xFF, 0xD0, 0xFF) },
+                    chip = new Color32(0x79, 0xFF, 0xD0, 0xFF),
+                    longDesc = "Records ONE section of a project - up to 16 bars, fill ending and all. "
+                             + "The cheap way to get an idea into someone's hands.\n"
+                             + "Standard Type 1 shell - everyday stock, nothing fancy." },
         // "Worth double when you sell it" overpromised: the x2 applies to the
         // BASE, and a cheap buyer's pay factor can eat the whole premium at
         // low plugin counts. Honest copy, same maths.
-        new Entry { name = "DEMO 2", desc = "Doubles a tape's base value. Best with more plugins.", price = TraxKind.DemoT2Price,
+        new Entry { name = "DEMO TAPE II", desc = "Premium shell, x2 base value.", price = TraxKind.DemoT2Price,
                     item = Hotbar.ItemId.BlankTapeT2, tapeKind = TraxKind.Demo,
-                    chip = new Color32(0xFF, 0x4F, 0xD8, 0xFF) },
-        new Entry { name = "HALF-LENGTH 1", desc = "A whole song, up to 50 bars.", price = TraxKind.HalfT1Price,
+                    chip = new Color32(0xFF, 0x4F, 0xD8, 0xFF),
+                    longDesc = "The same one-section demo on the Type 2 premium shell, which DOUBLES the "
+                             + "tape's base value.\n"
+                             + "Wasted on a two-voice sketch, transformative on a finished section with a "
+                             + "full rack. Some buyers only rate Type 2s; some stick to Type 1s." },
+        new Entry { name = "HALF-LENGTH", desc = "A whole song, 50 bars.", price = TraxKind.HalfT1Price,
                     item = Hotbar.ItemId.BlankTapeHalfT1, tapeKind = TraxKind.Half,
-                    chip = new Color32(0x4F, 0x6B, 0x8A, 0xFF) },
-        new Entry { name = "HALF-LENGTH 2", desc = "50 bars on the premium shell.", price = TraxKind.HalfT2Price,
+                    chip = new Color32(0x4F, 0x6B, 0x8A, 0xFF),
+                    longDesc = "Records a WHOLE ARRANGEMENT - every section in order, up to 50 bars, "
+                             + "transitions included.\n"
+                             + "Sells as a real song: worth grows with section count and length, and a "
+                             + "multi-genre arrangement finds far more buyers than any demo.\n"
+                             + "Standard Type 1 shell." },
+        new Entry { name = "HALF-LENGTH II", desc = "50 bars, premium shell.", price = TraxKind.HalfT2Price,
                     item = Hotbar.ItemId.BlankTapeHalfT2, tapeKind = TraxKind.Half,
-                    chip = new Color32(0x9A, 0x6B, 0x3F, 0xFF) },
-        new Entry { name = "FULL-LENGTH 1", desc = "The whole record - up to 100 bars.", price = TraxKind.FullT1Price,
+                    chip = new Color32(0x9A, 0x6B, 0x3F, 0xFF),
+                    longDesc = "A whole arrangement, up to 50 bars, on the Type 2 premium shell - "
+                             + "DOUBLE the base value on top of the song's own worth.\n"
+                             + "The serious mid-career pressing: a good multi-section song on this shell "
+                             + "out-earns a stack of demos." },
+        new Entry { name = "FULL-LENGTH", desc = "The full record, 100 bars.", price = TraxKind.FullT1Price,
                     item = Hotbar.ItemId.BlankTapeFullT1, tapeKind = TraxKind.Full,
-                    chip = new Color32(0x3F, 0x8A, 0x6B, 0xFF) },
-        new Entry { name = "FULL-LENGTH 2", desc = "100 bars, premium shell. The main event.", price = TraxKind.FullT2Price,
+                    chip = new Color32(0x3F, 0x8A, 0x6B, 0xFF),
+                    longDesc = "The FULL RECORD - every section, up to 100 bars. The biggest canvas there "
+                             + "is: cram it with genres to sell to everyone, or keep it pure and cash in "
+                             + "on the superfans.\n"
+                             + "Standard Type 1 shell." },
+        new Entry { name = "FULL-LENGTH II", desc = "100 bars, premium shell.", price = TraxKind.FullT2Price,
                     item = Hotbar.ItemId.BlankTapeFullT2, tapeKind = TraxKind.Full,
-                    chip = new Color32(0xA8, 0x4F, 0x8A, 0xFF) },
+                    chip = new Color32(0xA8, 0x4F, 0x8A, 0xFF),
+                    longDesc = "Up to 100 bars on the Type 2 premium shell - double base value on the "
+                             + "biggest format. The main event.\n"
+                             + "This is what a finished record ships on when the right ears are paying." },
 
-        new Entry { name = "THUMPER", desc = "Drums. Kick, snare and hat.",   plugin = "THUMPER", preInstalled = true },
-        new Entry { name = "GLOWORM", desc = "Bass. The line under it all.",  plugin = "GLOWORM", preInstalled = true },
-        new Entry { name = "SIREN",   desc = "Lead. A generated melody.",     plugin = "SIREN",   price = 60 },
-        new Entry { name = "MOSS",    desc = "Pads. Sets what else follows.", plugin = "MOSS",    price = 90 },
-        new Entry { name = "SPINDLE", desc = "Arp. Rolling sequences.",       plugin = "SPINDLE", price = 130 },
-        new Entry { name = "CAVE",    desc = "Space. Reverb and delay.",      plugin = "CAVE",    price = 180 },
+        new Entry { name = "THUMPER", desc = "Drums. Kick, snare and hat.",   plugin = "THUMPER", preInstalled = true,
+                    longDesc = "The drum machine: kick, snare and hat patterns with five preset banks and "
+                             + "eight variations each.\nAlready installed on your computer." },
+        new Entry { name = "GLOWORM", desc = "Bass. The line under it all.",  plugin = "GLOWORM", preInstalled = true,
+                    longDesc = "The bassline module - the low end everything else sits on.\n"
+                             + "Already installed on your computer." },
+        new Entry { name = "SIREN",   desc = "Lead. A generated melody.",     plugin = "SIREN",   price = 60,
+                    longDesc = "The lead voice: a generated melody that walks the scale.\n"
+                             + "One purchase, permanent - it's on the computer's rack next time you open "
+                             + "it, and every module you own raises what your tapes are worth.\n"
+                             + "Press LISTEN to hear it over the house drums first." },
+        new Entry { name = "MOSS",    desc = "Pads. Sets what else follows.", plugin = "MOSS",    price = 90,
+                    longDesc = "The chord pad - the harmony the other voices follow.\n"
+                             + "One purchase, permanent, raises tape value like every module.\n"
+                             + "Press LISTEN to hear it over the house drums first." },
+        new Entry { name = "SPINDLE", desc = "Arp. Rolling sequences.",       plugin = "SPINDLE", price = 130,
+                    longDesc = "The arpeggiator: rolling note sequences that make anything sound "
+                             + "deliberate.\nOne purchase, permanent, raises tape value like every module.\n"
+                             + "Press LISTEN to hear it over the house drums first." },
+        new Entry { name = "CAVE",    desc = "Space. Reverb and delay.",      plugin = "CAVE",    price = 180,
+                    longDesc = "The space box: reverb and delay, from a small room to a void.\n"
+                             + "One purchase, permanent, raises tape value like every module.\n"
+                             + "Press LISTEN to hear it over the house drums first." },
     };
 
     static bool IsTape(in Entry e) => e.plugin == null;
@@ -157,6 +202,13 @@ public class TevShopUI : MonoBehaviour
     Tab _tab = Tab.Tapes;
     Action _onClose;
     string _pluginLine, _noRoomLine;
+
+    /// Stock index of the row clicked open (the accordion), -1 = none. One at
+    /// a time: the detail card is a single reusable widget the open row
+    /// borrows, and rows below it slide down to make room.
+    int _expanded = -1;
+    RectTransform _detailRT;
+    TextMeshProUGUI _detailText;
 
     /// Pending quantity per BLANK, keyed by index into Stock. Not a basket —
     /// nothing is owed until the row's own BUY is pressed, which is exactly why
@@ -245,6 +297,7 @@ public class TevShopUI : MonoBehaviour
         _noRoomLine = noRoomLine;
         _open = true;
         _tab = Tab.Tapes;
+        _expanded = -1;
         for (int i = 0; i < _qty.Length; i++) _qty[i] = 0;
 
         if (_dim != null) _dim.SetActive(true);
@@ -297,6 +350,7 @@ public class TevShopUI : MonoBehaviour
         {
             StopListen();   // a demo belongs to the tab it started on
             _tab = _tab == Tab.Tapes ? Tab.Plugins : Tab.Tapes;
+            _expanded = -1;   // the open card belongs to the tab it was on
             Refresh();
         }
 
@@ -326,7 +380,7 @@ public class TevShopUI : MonoBehaviour
         Entry e = Stock[i];
         if (KindLocked(e))
         {
-            SetStatus($"\"Sell {KindSalesLeft(e)} more tapes and we'll talk {e.name}s.\"", C_Err);
+            SetStatus($"\"Sell {KindSalesLeft(e)} more tapes and the {e.name} blanks are yours.\"", C_Err);
             return;
         }
         int want = _qty[i];
@@ -446,14 +500,41 @@ public class TevShopUI : MonoBehaviour
                     order.Add(i);
         }
 
+        // Rows flow downward; the clicked-open row lends its underside to the
+        // detail card and everything after it slides down by DetailH.
+        float y = RowTop;
+        bool detailPlaced = false;
         for (int r = 0; r < _rows.Length; r++)
         {
             RowWidget w = _rows[r];
             if (r >= order.Count) { w.root.gameObject.SetActive(false); w.stockIndex = -1; continue; }
             w.root.gameObject.SetActive(true);
             w.stockIndex = order[r];
+            w.root.anchoredPosition = new Vector2(0, -y);
+            y += RowPitch;
+            if (order[r] == _expanded && _detailRT != null)
+            {
+                _detailRT.anchoredPosition = new Vector2(0, -(y - 4f));
+                _detailText.text = DetailTextFor(Stock[order[r]]);
+                y += DetailH;
+                detailPlaced = true;
+            }
             PaintRow(w, order[r]);
         }
+        if (_detailRT != null) _detailRT.gameObject.SetActive(detailPlaced);
+        if (!detailPlaced) _expanded = -1;   // the open row left this tab
+    }
+
+    /// The full story for a clicked-open row: the authored longDesc plus the
+    /// live facts (unlock distance, installed state) so the card never lies.
+    string DetailTextFor(in Entry e)
+    {
+        string text = string.IsNullOrEmpty(e.longDesc) ? e.desc : e.longDesc;
+        if (KindLocked(e))
+            text += $"\n<color=#FF6E6E>TEV STOCKS THESE ONCE YOU'VE SOLD {KindSalesLeft(e)} MORE {(KindSalesLeft(e) == 1 ? "TAPE" : "TAPES")}.</color>";
+        else if (e.plugin != null && !e.preInstalled && TraxLibrary.IsInstalled(e.plugin))
+            text += "\n<color=#79FFD0>INSTALLED.</color>";
+        return text;
     }
 
     void PaintRow(RowWidget w, int i)
@@ -467,7 +548,9 @@ public class TevShopUI : MonoBehaviour
         w.chip.color = tape ? e.chip : own ? new Color32(29, 95, 74, 255) : new Color32(47, 88, 120, 255);
         w.name.color = own ? (Color)C_Phos : (Color)C_Label;
         w.bg.color = C_SlotBg;
-        w.border.color = C_SlotEdge;
+        // The open row wears the panel border so the card below visibly
+        // belongs to it.
+        w.border.color = i == _expanded ? C_Border : C_SlotEdge;
         w.root.GetComponent<CanvasGroup>().alpha = own ? 0.55f : 1f;
 
         w.stepper.gameObject.SetActive(tape);
@@ -582,12 +665,24 @@ public class TevShopUI : MonoBehaviour
         for (int r = 0; r < _rows.Length; r++)
             _rows[r] = BuildRow(r);
 
-        Panel(_panelRT, "FootRule", new Vector2(0, -414f), new Vector2(RowW, 1f), C_SlotEdge);
+        // The detail card the clicked-open row borrows (see Refresh). Built
+        // once, repositioned per open row, hidden while nothing is open.
+        _detailRT = Panel(_panelRT, "Detail", new Vector2(0, -(RowTop + RowPitch)),
+                          new Vector2(RowW - 8f, DetailH - 8f), C_SlotBg);
+        _detailRT.GetComponent<Image>().raycastTarget = false;
+        Outline(_detailRT, C_SlotEdge);
+        _detailText = Txt(_detailRT, "", new Vector2(0, -8f), RowW - 56f, DetailH - 20f, 12,
+                          C_Dim, FontStyles.Normal, TextAlignmentOptions.TopLeft);
+        _detailText.richText = true;
+        _detailRT.gameObject.SetActive(false);
 
-        _status = Txt(_panelRT, "", new Vector2(left + 230f, -428f), 460, 22, 13,
+        // Footer sits below six rows PLUS one open detail card.
+        Panel(_panelRT, "FootRule", new Vector2(0, -502f), new Vector2(RowW, 1f), C_SlotEdge);
+
+        _status = Txt(_panelRT, "", new Vector2(left + 230f, -516f), 460, 22, 13,
                       C_Dimmer, FontStyles.Normal, TextAlignmentOptions.Left);
 
-        MkBtn(_panelRT, "DoneBtn", new Vector2(PanelW * 0.5f - 24f - 90f, -424f),
+        MkBtn(_panelRT, "DoneBtn", new Vector2(PanelW * 0.5f - 24f - 90f, -512f),
               new Vector2(180, 42), C_Back, Close, out var doneLabel);
         doneLabel.text = "THAT'S ALL";
 
@@ -602,7 +697,7 @@ public class TevShopUI : MonoBehaviour
         var btn = rt.gameObject.AddComponent<Button>();
         btn.targetGraphic = img;
         btn.transition = Selectable.Transition.None;
-        btn.onClick.AddListener(() => { StopListen(); _tab = tab; Refresh(); });
+        btn.onClick.AddListener(() => { StopListen(); _tab = tab; _expanded = -1; Refresh(); });
 
         var label = Txt(rt, text, new Vector2(0, -7f), 184, 20, 13,
                         C_Dimmer, FontStyles.Bold, TextAlignmentOptions.Center);
@@ -627,6 +722,22 @@ public class TevShopUI : MonoBehaviour
         w.border = w.root.GetComponent<Image>();
         w.root.gameObject.AddComponent<CanvasGroup>();
 
+        // The whole row is clickable: anywhere that isn't a child button
+        // (stepper / BUY / LISTEN sit on top and eat their own clicks) opens
+        // or closes the detail card. Sam, 2026-08-18: the one-line desc was
+        // never enough to know what a blank actually does.
+        int rowIdx = r;
+        var expandBtn = w.root.gameObject.AddComponent<Button>();
+        expandBtn.targetGraphic = w.border;
+        expandBtn.transition = Selectable.Transition.None;
+        expandBtn.onClick.AddListener(() =>
+        {
+            int i = _rows[rowIdx].stockIndex;
+            if (i < 0) return;
+            _expanded = _expanded == i ? -1 : i;
+            Refresh();
+        });
+
         var fill = Panel(w.root, "Fill", new Vector2(0, -1f), new Vector2(RowW - 2, RowH - 2), C_SlotBg);
         w.bg = fill.GetComponent<Image>();
         w.bg.raycastTarget = false;
@@ -635,7 +746,9 @@ public class TevShopUI : MonoBehaviour
                  .GetComponent<Image>();
         w.chip.raycastTarget = false;
 
-        w.name = Txt(w.root, "", new Vector2(-half + 40f + 48f, -14f), 96, 20, 14,
+        // 150 wide (was 96): "HALF-LENGTH II" has to fit — the name carries
+        // the identity now that the desc is just a teaser for the click-open.
+        w.name = Txt(w.root, "", new Vector2(-half + 40f + 75f, -14f), 150, 20, 14,
                      C_Label, FontStyles.Bold, TextAlignmentOptions.Left);
 
         // Right-to-left: BUY 112 wide against the right pad, stepper 96, price 64.
@@ -643,7 +756,7 @@ public class TevShopUI : MonoBehaviour
         float stepX = half - 14f - 112f - 14f - 48f;
         float priceX= stepX - 48f - 14f - 32f;
 
-        w.desc = Txt(w.root, "", new Vector2(-half + 40f + 96f + 8f + 110f, -15f), 220, 20, 12,
+        w.desc = Txt(w.root, "", new Vector2(-half + 40f + 150f + 8f + 90f, -15f), 180, 20, 12,
                      C_Dim, FontStyles.Normal, TextAlignmentOptions.Left);
         w.desc.overflowMode = TextOverflowModes.Ellipsis;
 
