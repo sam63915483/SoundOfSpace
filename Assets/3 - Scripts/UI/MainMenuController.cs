@@ -839,6 +839,7 @@ public class MainMenuController : MonoBehaviour
         if (TevTextDirector.Instance == null) { var go = new GameObject("TevTextDirector"); DontDestroyOnLoad(go); go.AddComponent<TevTextDirector>(); }
         if (DayRecapDirector.Instance == null) { var go = new GameObject("[DayRecapDirector]"); DontDestroyOnLoad(go); go.AddComponent<DayRecapDirector>(); }
         if (PlayerLightToggle.Instance == null) { var go = new GameObject("[PlayerLightToggle]"); DontDestroyOnLoad(go); go.AddComponent<PlayerLightToggle>(); }
+        if (GrassLightAutoMarker.Instance == null) { var go = new GameObject("[GrassLightAutoMarker]"); DontDestroyOnLoad(go); go.AddComponent<GrassLightAutoMarker>(); }
         tick("Tev payment");      yield return null;
         if (TutorialUI.Instance == null) { var go = new GameObject("TutorialUI"); DontDestroyOnLoad(go); go.AddComponent<TutorialUI>(); }
         tick("tutorial UI");      yield return null;

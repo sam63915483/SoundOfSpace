@@ -174,6 +174,7 @@ public class TevShopUI : MonoBehaviour
     /// shows its row and names the distance, it never quietly disappears.
     static bool KindLocked(in Entry e)
     {
+        if (!FeatureVault.TapeCareerGate) return false;   // vaulted for the format playtest
         if (e.plugin != null) return false;
         if (e.tapeKind == TraxKind.Half) return !TapeCareer.HalfUnlocked;
         if (e.tapeKind == TraxKind.Full) return !TapeCareer.FullUnlocked;

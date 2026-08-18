@@ -421,6 +421,10 @@ public class InstancedGrassRenderer : MonoBehaviour
             var gp = all[i];
             if (gp == null || gp.Light == null || !gp.isActiveAndEnabled) continue;
             var lt = gp.Light;
+            // A switched-off or zeroed light must not glow on the grass —
+            // matters now that toggleable player/shuttle lights carry markers
+            // (GrassLightAutoMarker, 2026-08-18); harmless for lanterns.
+            if (!lt.enabled || lt.intensity <= 0f) continue;
             float reach = lt.range;
             // Only inject lights whose reach can touch grass near the viewer — keeps
             // the per-fragment loop empty (and free) everywhere but the lit area.

@@ -88,8 +88,9 @@ public class BuyerMessageDirector : MonoBehaviour
 
         // Tev restocks when the career crosses a milestone — announced ONCE
         // per milestone, guarded by a StoryDirector counter so it survives
-        // saves and is shared in co-op (tape formats, 2026-08-18).
-        var sd = StoryDirector.Instance;
+        // saves and is shared in co-op (tape formats, 2026-08-18). Silent
+        // while the gate is vaulted — everything is already in stock.
+        var sd = FeatureVault.TapeCareerGate ? StoryDirector.Instance : null;
         if (sd != null)
         {
             int unlocked = TapeCareer.UnlockedKind();

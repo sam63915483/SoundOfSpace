@@ -80,6 +80,7 @@ public static class TapeTrade
     public static int PickAskKind(string id)
     {
         int pref = AlienTaste.KindPreference(id);
+        if (!FeatureVault.TapeCareerGate) return pref;   // gate vaulted: full range
         int unlocked = TapeCareer.UnlockedKind();
         return pref < unlocked ? pref : unlocked;
     }

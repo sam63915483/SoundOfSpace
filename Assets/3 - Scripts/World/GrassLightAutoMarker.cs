@@ -1,0 +1,107 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+/// <summary>
+/// Gives the PLAYER's own lights and the home SHUTTLE's lights a say in the
+/// grass (Sam, 2026-08-18: "the player's light that illuminates stuff near
+/// them, and the lights on the shuttle, should also light up the grass").
+///
+/// The instanced grass never receives Unity's additive lights — every light
+/// is faked through <see cref="GrassPointLight"/> markers that
+/// InstancedGrassRenderer injects as shader globals. Lanterns, torches and the
+/// concert rig add their own markers in their own Awakes; the player rig and
+/// the shuttle are HAND-AUTHORED objects (the Shuttle_Lander prefab is Sam's,
+/// never regenerated), so their lights get marked here at runtime instead of
+/// by editing the prefab.
+///
+/// A throttled sweep (never per-frame — CLAUDE.md convention) finds:
+///   • every point/spot light under the local player, EXCEPT the flashlight —
+///     that one already lights grass through its own _Flashlight* shader path
+///     and marking it too would double it up;
+///   • every point/spot light under the home shuttle (found via its computer
+///     terminal, the one component that uniquely lives on it).
+/// Directional lights are never marked (the sun has its own paths), and
+/// anything already carrying a marker is left alone. Lights that are toggled
+/// OFF stay dark on the grass — the injector skips disabled/zeroed lights.
+///
+/// Auto-singleton per the SpaceDustInventory pattern; ALSO seeded in
+/// MainMenuController.EnsureGameplaySingletonsAsync (CLAUDE.md trap #1: the
+/// MainMenu early-return below means a build would otherwise never create it).
+/// </summary>
+public class GrassLightAutoMarker : MonoBehaviour
+{
+    public static GrassLightAutoMarker Instance { get; private set; }
+
+    /// Matches the lantern default: with the material's _PointLightBoost 2.0
+    /// this lands at ~1.0 effective, so grass answers these lights about as
+    /// strongly as the real ground does.
+    const float GrassStrength = 0.5f;
+
+    /// Lights appear late (the shuttle streams in, held items spawn, the
+    /// thrust FX builds its own lights), so sweep on a slow clock forever
+    /// rather than once. Cheap: two throttled finds + a child scan.
+    const float SweepInterval = 3f;
+
+    float _nextSweep;
+    ShuttleComputerTerminal _terminal;
+    static readonly List<Light> _scratch = new List<Light>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void AutoCreate()
+    {
+        if (Instance != null) return;
+        if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;
+        var go = new GameObject("[GrassLightAutoMarker]");
+        DontDestroyOnLoad(go);
+        go.AddComponent<GrassLightAutoMarker>();
+    }
+
+    void Awake()
+    {
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
+    }
+
+    void OnDestroy() { if (Instance == this) Instance = null; }
+
+    void Update()
+    {
+        if (Time.unscaledTime < _nextSweep) return;
+        _nextSweep = Time.unscaledTime + SweepInterval;
+
+        // ── the player's own lights (fill light, viewmodel light, …) ──
+        var player = GameObject.FindWithTag("Player");
+        if (player != null)
+        {
+            // The flashlight's Light is excluded by REFERENCE — its grass
+            // response already ships through PlayerFlashlight's _Flashlight*
+            // globals, and a marker on top would light the beam twice.
+            var torch = player.GetComponentInChildren<PlayerFlashlight>(true);
+            Light torchLight = torch != null ? torch.flashlight : null;
+            MarkLightsUnder(player.transform, torchLight);
+        }
+
+        // ── the home shuttle's lights ──
+        // Found via the computer terminal: the one component that uniquely
+        // lives on the Shuttle_Lander, so a bought second ship or a random
+        // lit prop can never be mistaken for it. Lazy, throttled refind.
+        if (_terminal == null) _terminal = FindObjectOfType<ShuttleComputerTerminal>();
+        if (_terminal != null) MarkLightsUnder(_terminal.transform.root, null);
+    }
+
+    static void MarkLightsUnder(Transform root, Light exclude)
+    {
+        _scratch.Clear();
+        root.GetComponentsInChildren(true, _scratch);
+        for (int i = 0; i < _scratch.Count; i++)
+        {
+            Light l = _scratch[i];
+            if (l == null || l == exclude) continue;
+            if (l.type == LightType.Directional) continue;
+            if (l.GetComponent<GrassPointLight>() != null) continue;
+
+            var marker = l.gameObject.AddComponent<GrassPointLight>();
+            marker.grassStrength = GrassStrength;
+        }
+    }
+}

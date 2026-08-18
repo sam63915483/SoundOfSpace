@@ -28,6 +28,17 @@ public static class FeatureVault
     /// briefing on the way down. The briefing stays.
     public const bool DescentBriefing = true;
 
+    /// The tape-career SHOP GATE: Half/Full-Length blanks locked until 10/25
+    /// total tapes sold, and fan orders clamped to the unlocked formats.
+    /// Vaulted OFF 2026-08-18 so Sam can playtest all six blanks and song
+    /// orders from a fresh save without grinding the milestones first.
+    ///
+    /// This gates the LOCK ONLY. TapeCareer.TapesSold still counts every sale
+    /// (so flipping this back on later lands mid-career, not at zero), the
+    /// locked-row UI, the "SELL N MORE" copy and Tev's restock text all come
+    /// back exactly as built. Flip to true once the loop is verified.
+    public const bool TapeCareerGate = false;
+
     /// SELLING space dust to NPCs. Vaulted 2026-08-04 at Sam's request while the
     /// mushroom economy is the focus — "vault space dust for right now, make it
     /// so you can still get it and collect it and have it in your hotbar, but
