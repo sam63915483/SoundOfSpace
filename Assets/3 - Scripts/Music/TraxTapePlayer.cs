@@ -174,6 +174,19 @@ public class TraxTapePlayer : MonoBehaviour
             bars[i] = sec.bars;
         }
         Current = song.sections[0].track.Clone();
+
+        // THE LOOP SNAPSHOT MUST EXIST OR SONG MODE IS SILENT. The render
+        // loop bails to cleared buffers while `_live` is null (its glide
+        // fallback reads snap.p), and only Publish() sets it. The computer
+        // never hits this because the instrument publishes its loop
+        // constantly; a fresh walkman engine does — this was the "printed a
+        // tape, held LMB, nothing" bug (Sam, 2026-08-18). Seed it with
+        // section 0, exactly what the old single-track path published.
+        _engine.Publish(ps[0], phrases[0], false);
+        _engine.SetCavePreset(TraxPresets.Cave[Current.PresetOf("CAVE")], Current.VariationOf("CAVE"));
+        for (int m = 0; m < TraxInstrument.Modules.Length; m++)
+            _engine.SetModuleEnabled(TraxInstrument.Modules[m].name, Current.active[m]);
+
         _engine.PublishSong(ps, phrases, tracks, bars);
         _engine.SeekSong(0);
         _engine.StartSongTransport();
