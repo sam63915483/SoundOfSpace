@@ -13,8 +13,7 @@ import { computeParams } from '../engine/params.js';
 import { generatePatterns, stepAt, chordTonesFor, STEPS, TOTAL_STEPS } from '../engine/patterns.js';
 import { voiceFreq } from '../engine/scales.js';
 import { classify } from '../engine/classifier.js';
-import { totalSteps as songTotalSteps, sectionAtStep, patternStepFor,
-         transitionIntensity, TRANSITION_FX_MIN } from '../engine/song.js';
+import { totalSteps as songTotalSteps, sectionAtStep, patternStepFor } from '../engine/song.js';
 import * as TRACK from '../engine/track.js';
 import * as PRESETS from '../engine/presets.js';
 import { createRack } from './fx.js';
@@ -311,23 +310,17 @@ export class Instrument {
         const patStep = patternStepFor (section, loc.stepInSection);
         this._trigger (sec.patterns, sec.params, section.track.active, patStep, time, stepDur);
 
-        // Boundary FX, gated on how different the neighbouring section is.
+        // Boundary FX on EVERY section change, at a fixed strength — the
+        // intensity gate is off (Sam's call, 2026-08-17: hear it ungated
+        // first; engine/song.js transitionIntensity stays for if it returns).
         // The song is circular, so the tail rises back into the head too.
         if (n > 1 && this.rack) {
-            if (loc.stepInSection === secSteps - 8) {           // 2 beats out
-                const next = this.song.sections[(loc.index + 1) % n];
-                const heat = transitionIntensity (section, next);
-                if (heat >= TRANSITION_FX_MIN)
-                    triggerRiser (this.rack, time, 8 * stepDur, heat);
-            }
+            if (loc.stepInSection === secSteps - 8)             // 2 beats out
+                triggerRiser (this.rack, time, 8 * stepDur, 0.8);
             // step > 0: the very first downbeat of a play is a start, not an
             // arrival — no impact for it.
-            if (loc.stepInSection === 0 && step > 0) {
-                const prev = this.song.sections[(loc.index + n - 1) % n];
-                const heat = transitionIntensity (prev, section);
-                if (heat >= TRANSITION_FX_MIN)
-                    triggerImpact (this.rack, time, heat);
-            }
+            if (loc.stepInSection === 0 && step > 0)
+                triggerImpact (this.rack, time, 0.8);
         }
 
         if (this.onStepScheduled) this.onStepScheduled (pos, time);
@@ -338,15 +331,11 @@ export class Instrument {
     /// enough for the prototype; the Unity build can crossfade if it ever
     /// reads as a click.
     _applySection (i) {
-        // How hard the character changes decides how fast the timbre morphs:
-        // a near-identical neighbour snaps (0.02s constant), a genre jump
-        // glides in over roughly the first beat. BPM always snaps — tempo
-        // glides sound like a dying turntable. After a seek (_songIdx == -1)
-        // there is no "previous" section, so it snaps too.
-        const prev = this._songIdx >= 0 && this._songIdx < this.song.sections.length
-            ? this.song.sections[this._songIdx] : null;
-        const glide = prev
-            ? transitionIntensity (prev, this.song.sections[i]) * 0.18 : 0;
+        // Timbre/FX morph in over roughly the first beat at every boundary
+        // (fixed, no intensity scaling — see the ungated-FX note above). BPM
+        // always snaps — tempo glides sound like a dying turntable. After a
+        // seek (_songIdx == -1) there is no "previous" section, so it snaps.
+        const glide = this._songIdx >= 0 ? 0.12 : 0;
 
         this._songIdx = i;
         const sec = this.songCompiled[i];
