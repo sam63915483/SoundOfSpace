@@ -41,6 +41,11 @@ public static class TapeMemory
         // (loop-feel D): "heard GORP SLIME at Krib's" needs to know Krib owns
         // it. A subset of heard, but by identity rather than by closeness.
         public readonly List<uint> bought = new List<uint>();
+        // Half/Full SONGS heard/bought, by SongId (2026-08-18 tape formats).
+        // Songs are a different product from their sections' demos, so they
+        // get identity matching, not closeness — see the note below.
+        public readonly List<uint> heardSongs = new List<uint>();
+        public readonly List<uint> boughtSongs = new List<uint>();
     }
 
     static readonly Dictionary<string, Entry> _byAlien = new Dictionary<string, Entry>();
@@ -103,6 +108,45 @@ public static class TapeMemory
     {
         Entry e = Get(id, false);
         return e == null ? 0 : e.heard.Count;
+    }
+
+    // ── song history by IDENTITY (2026-08-18 tape formats) ───────────────
+    //
+    // Half/Full pressings are remembered by SongId, not by dial closeness:
+    // a full song is a DIFFERENT PRODUCT from its section's demo — an alien
+    // who bought the demo can still buy the song (that is the growth moment)
+    // — but the same song can never be sold to them twice. Known soft spot,
+    // accepted v1: nudging one variation changes SongId, so songs lack the
+    // demo path's closeness guard; revisit if playtests show farming.
+
+    public static bool HasHeardSong(string id, uint songId)
+    {
+        Entry e = Get(id, false);
+        return e != null && songId != 0 && e.heardSongs.Contains(songId);
+    }
+
+    public static void RememberSong(string id, uint songId)
+    {
+        Entry e = Get(id, true);
+        if (e == null || songId == 0 || e.heardSongs.Contains(songId)) return;
+        e.heardSongs.Add(songId);
+        if (e.heardSongs.Count > MaxSongsRemembered) e.heardSongs.RemoveAt(0);
+        Version++;
+    }
+
+    public static void RememberBoughtSong(string id, uint songId)
+    {
+        Entry e = Get(id, true);
+        if (e == null || songId == 0 || e.boughtSongs.Contains(songId)) return;
+        e.boughtSongs.Add(songId);
+        if (e.boughtSongs.Count > MaxSongsRemembered) e.boughtSongs.RemoveAt(0);
+        Version++;
+    }
+
+    public static bool HasBoughtSong(string id, uint songId)
+    {
+        Entry e = Get(id, false);
+        return e != null && songId != 0 && e.boughtSongs.Contains(songId);
     }
 
     // ── purchases, by track lineage (loop-feel D) ────────────────────────

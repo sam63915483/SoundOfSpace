@@ -37,6 +37,43 @@ public static class TapeOfferTests
         Memory();
         Negotiation();
         Feedback();
+        FormatMultChecks();
+    }
+
+    // ── tape formats (2026-08-18) ────────────────────────────────────────
+
+    static void FormatMultChecks()
+    {
+        Console.WriteLine("format multiplier");
+
+        // FormatMult scales Base linearly and never below 1×.
+        Check(Math.Abs(TapeValue.Base(4, 1, 2.0) - TapeValue.Base(4, 1) * 2.0) < 1e-9, "mult scales base");
+        Check(Math.Abs(TapeValue.Base(4, 1, 0.5) - TapeValue.Base(4, 1)) < 1e-9, "mult clamps at 1");
+        Check(TapeValue.For(4, 1, 2.0, 85.0, 0, false, 1.0) > TapeValue.For(4, 1, 85.0, 0, false, 1.0),
+              "format-aware For pays more than the demo For");
+
+        // Song Listen: memory keys on songId for Half/Full, dials for Demo.
+        TapeMemory.Clear();
+        var t = TraxTrack.Default();
+        var song = new TraxSong();
+        song.sections.Add(new TraxSection(t, 4));
+        string id = "alien:songmem";
+        uint sid = song.SongId();
+        TapeMemory.RememberSong(id, sid);
+        double sat; AlienTaste.Verdict v;
+        Eq(TapeOffer.Listen(id, song, sid, TraxKind.Half, 1, true, out sat, out v),
+           TapeOffer.Reaction.AlreadyHeard, "half tape blocked by songId memory");
+        Check(TapeOffer.Listen(id, song, sid, TraxKind.Demo, 1, true, out sat, out v)
+              != TapeOffer.Reaction.AlreadyHeard, "demo unaffected by songId memory");
+
+        // ...and the other way round: a heard DEMO does not block the song.
+        TapeMemory.Clear();
+        TapeMemory.Remember(id, SongEval.DialsOf(t));
+        Eq(TapeOffer.Listen(id, song, sid, TraxKind.Demo, 1, true, out sat, out v),
+           TapeOffer.Reaction.AlreadyHeard, "demo blocked by dial memory");
+        Check(TapeOffer.Listen(id, song, sid, TraxKind.Full, 1, true, out sat, out v)
+              != TapeOffer.Reaction.AlreadyHeard, "full song survives the demo having been heard");
+        TapeMemory.Clear();
     }
 
     // ── what an alien remembers ──────────────────────────────────────────

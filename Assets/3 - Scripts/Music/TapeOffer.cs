@@ -77,6 +77,32 @@ public static class TapeOffer
     }
 
     /// <summary>
+    /// Song-aware listen — the ONE walk-up entry for a pressed tape of any
+    /// kind. Memory keys on the PRODUCT: a demo is matched by dial closeness
+    /// (a re-roll is the same demo), a Half/Full song by its SongId — so an
+    /// alien who bought a section's demo can still buy the full song (the
+    /// growth moment), but never the same song twice.
+    /// </summary>
+    public static Reaction Listen(string alienId, TraxSong song, uint songId, int kind,
+                                  int tapeTier, bool coinFlip,
+                                  out double satisfaction, out AlienTaste.Verdict verdict)
+    {
+        satisfaction = SongEval.Satisfaction(alienId, song);
+        verdict = AlienTaste.Verdict.Rejected;
+        if (song == null || song.sections.Count == 0) return Reaction.Rejected;
+
+        bool heard = kind == TraxKind.Demo
+            ? TapeMemory.HasHeard(alienId, SongEval.DialsOf(song.sections[0].track))
+            : TapeMemory.HasHeardSong(alienId, songId);
+        if (heard) return Reaction.AlreadyHeard;
+
+        verdict = SongEval.GateFor(alienId, song, tapeTier);   // GateFor rule, per-section
+        if (verdict == AlienTaste.Verdict.Liked) return Reaction.Liked;
+        if (verdict == AlienTaste.Verdict.CoinFlip) return coinFlip ? Reaction.Liked : Reaction.Rejected;
+        return Reaction.Rejected;
+    }
+
+    /// <summary>
     /// What this tape is worth to this alien right now — the number every other
     /// figure in the negotiation is built from.
     /// </summary>
@@ -89,6 +115,16 @@ public static class TapeOffer
         // TierPayFactor: a mismatched shell (Type 1 to a Type 2 snob, or the
         // pricey Type 2 to a dedicated cheapskate) is worth less TO THEM.
         return TapeValue.For(activeModules, tier, satisfaction,
+                             bond, matchesRequest,
+                             AlienTaste.PayFactor(alienId)
+                             * AlienTaste.TierPayFactor(alienId, tier));
+    }
+
+    /// Format-aware value — the song path's twin of Value().
+    public static int Value(string alienId, int activeModules, int tier, double formatMult,
+                            double satisfaction, bool matchesRequest, int bond)
+    {
+        return TapeValue.For(activeModules, tier, formatMult, satisfaction,
                              bond, matchesRequest,
                              AlienTaste.PayFactor(alienId)
                              * AlienTaste.TierPayFactor(alienId, tier));

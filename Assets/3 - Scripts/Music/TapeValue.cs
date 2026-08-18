@@ -70,6 +70,16 @@ public static class TapeValue
         return (Floor + PerModule * activeModules) * t;
     }
 
+    /// <summary>
+    /// Base with the tape-format multiplier (TraxKind.FormatMult): a demo is
+    /// ×1.0, a pressed song grows with sections and length. Clamped at 1 so a
+    /// malformed record can never make a song WORSE than its own demo.
+    /// </summary>
+    public static double Base(int activeModules, int tier, double formatMult)
+    {
+        return Base(activeModules, tier) * (formatMult < 1.0 ? 1.0 : formatMult);
+    }
+
     public static double SatisfactionMult(double satisfaction)
     {
         double s = satisfaction;
@@ -96,6 +106,19 @@ public static class TapeValue
                           int bond, bool matchesRequest, double payFactor)
     {
         double v = Base(activeModules, tier)
+                 * SatisfactionMult(satisfaction)
+                 * BondMult(bond)
+                 * (matchesRequest ? RequestBonus : 1.0)
+                 * payFactor;
+        int rounded = (int)System.Math.Round(v, System.MidpointRounding.AwayFromZero);
+        return rounded < 1 ? 1 : rounded;
+    }
+
+    /// Format-aware full figure — the song path's twin of For().
+    public static int For(int activeModules, int tier, double formatMult, double satisfaction,
+                          int bond, bool matchesRequest, double payFactor)
+    {
+        double v = Base(activeModules, tier, formatMult)
                  * SatisfactionMult(satisfaction)
                  * BondMult(bond)
                  * (matchesRequest ? RequestBonus : 1.0)
