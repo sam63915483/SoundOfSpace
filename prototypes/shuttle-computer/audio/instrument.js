@@ -32,6 +32,13 @@ export const MODULES = [
     { name: 'CAVE',    desc: 'space'  }
 ];
 
+// The transition snare roll: which steps of a section's LAST bar get an extra
+// snare, and how hard. Doubles the phrase's own fill and accelerates into the
+// downbeat — eighth notes for two beats, then sixteenths.
+const SNARE_ROLL = {
+    8: 0.45, 10: 0.55, 12: 0.65, 13: 0.75, 14: 0.85, 15: 1.0
+};
+
 export class Instrument {
     constructor () {
         this.track = TRACK.defaultTrack ();
@@ -315,8 +322,17 @@ export class Instrument {
         // first; engine/song.js transitionIntensity stays for if it returns).
         // The song is circular, so the tail rises back into the head too.
         if (n > 1 && this.rack) {
-            if (loc.stepInSection === secSteps - 8)             // 2 beats out
-                triggerRiser (this.rack, time, 8 * stepDur, 0.8);
+            const inLastBar = loc.stepInSection >= secSteps - STEPS;
+            if (loc.stepInSection === secSteps - STEPS)         // one bar out
+                triggerRiser (this.rack, time, STEPS * stepDur, 0.8);
+            // Accelerating snare roll through the back half of the last bar,
+            // on top of the pattern's own fill. Routed through the THUMPER
+            // bus, so a deliberately drumless section stays drumless.
+            if (inLastBar && section.track.active.THUMPER) {
+                const stepInBar = loc.stepInSection % STEPS;
+                const rollVel = SNARE_ROLL[stepInBar];
+                if (rollVel) triggerSnare (this.rack, sec.params, time, rollVel);
+            }
             // step > 0: the very first downbeat of a play is a start, not an
             // arrival — no impact for it.
             if (loc.stepInSection === 0 && step > 0)

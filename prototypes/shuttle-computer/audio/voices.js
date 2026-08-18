@@ -178,23 +178,25 @@ export function triggerSpindle (rack, p, t, vel, freq, len) {
 // gains, on purpose: they belong to the SONG, not to any rack module, so a
 // muted THUMPER can't silence the transition that announces it.
 
-// RISER: a band-passed noise sweep climbing through the last two beats of a
-// section. Peaks just before the downbeat, then cuts — the silence gap IS the
-// hand-off.
+// RISER: a band-passed noise sweep climbing through the last bar of a
+// section. LINEAR gain build on purpose — an exponential ramp from silence
+// stays inaudible for most of its length and only pops at the very end,
+// which reads as nothing at all. Peaks just before the downbeat, then cuts —
+// the cut IS the hand-off.
 export function triggerRiser (rack, t, dur, intensity) {
     const ctx = rack.ctx;
     const src = noiseSource (rack, t, dur);
 
     const bp = ctx.createBiquadFilter ();
     bp.type = 'bandpass';
-    bp.Q.value = 1.2;
-    bp.frequency.setValueAtTime (300, t);
-    bp.frequency.exponentialRampToValueAtTime (5500, t + dur);
+    bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime (200, t);
+    bp.frequency.exponentialRampToValueAtTime (7000, t + dur);
 
     const g = ctx.createGain ();
-    g.gain.setValueAtTime (EPS, t);
-    g.gain.exponentialRampToValueAtTime (Math.max (0.22 * intensity, EPS), t + dur * 0.92);
-    g.gain.exponentialRampToValueAtTime (EPS, t + dur);
+    g.gain.setValueAtTime (0.002, t);
+    g.gain.linearRampToValueAtTime (Math.max (0.4 * intensity, EPS), t + dur * 0.95);
+    g.gain.linearRampToValueAtTime (0, t + dur);
 
     src.connect (bp); bp.connect (g); g.connect (rack.drumShaper);
 }
@@ -203,23 +205,23 @@ export function triggerRiser (rack, t, dur, intensity) {
 // exactly on the new section's first step.
 export function triggerImpact (rack, t, intensity) {
     const ctx = rack.ctx;
-    const dur = 0.45;
+    const dur = 0.6;
 
     const src = noiseSource (rack, t, dur);
     const lp = ctx.createBiquadFilter ();
     lp.type = 'lowpass';
-    lp.frequency.setValueAtTime (7000, t);
-    lp.frequency.exponentialRampToValueAtTime (500, t + dur);
+    lp.frequency.setValueAtTime (9000, t);
+    lp.frequency.exponentialRampToValueAtTime (400, t + dur);
     const ng = ctx.createGain ();
-    ampEnv (ng.gain, t, 0.4 * intensity, dur, 0.002);
+    ampEnv (ng.gain, t, 0.6 * intensity, dur, 0.002);
     src.connect (lp); lp.connect (ng); ng.connect (rack.drumShaper);
 
     const osc = ctx.createOscillator ();
     osc.type = 'sine';
     osc.frequency.setValueAtTime (110, t);
-    osc.frequency.exponentialRampToValueAtTime (38, t + 0.14);
+    osc.frequency.exponentialRampToValueAtTime (36, t + 0.15);
     const og = ctx.createGain ();
-    ampEnv (og.gain, t, 0.55 * intensity, 0.28, 0.003);
+    ampEnv (og.gain, t, 0.85 * intensity, 0.32, 0.003);
     osc.connect (og); og.connect (rack.drumShaper);
-    osc.start (t); osc.stop (t + 0.32);
+    osc.start (t); osc.stop (t + 0.36);
 }
