@@ -309,6 +309,28 @@ public static class AlienTaste
         return TierMismatch(id, tapeTier) ? TierMismatchPay : 1.0;
     }
 
+    // ── Tape-format preference (2026-08-18, tape formats) ─────────────────
+    //
+    // Which blank a buyer's text orders ask for once the career has unlocked
+    // it. Its own salt — a shell snob is not therefore a full-length head.
+    // Demo-preferring buyers keep the early game's texture; full-length fans
+    // are the premium commissions (TraxKind.NominalMult makes their orders
+    // pay). The career clamp lives in TapeTrade.PickAskKind, not here — this
+    // file stays free of world state.
+
+    public const double KindFullShare = 0.25;
+    public const double KindHalfShare = 0.35;   // remainder ~40% sticks to demos
+
+    /// TraxKind.Demo / Half / Full — what this buyer WOULD order, before the
+    /// career gate clamps it.
+    public static int KindPreference(string id)
+    {
+        double u = Unit(H(id, ":kindpref"));
+        if (u < KindFullShare) return TraxKind.Full;
+        if (u < KindFullShare + KindHalfShare) return TraxKind.Half;
+        return TraxKind.Demo;
+    }
+
     // ── Satisfaction ─────────────────────────────────────────────────────
 
     /// Euclidean distance between a track's dials and a taste point.

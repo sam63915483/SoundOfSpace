@@ -95,6 +95,80 @@ public static class AlienTasteTests
 
     // A spread of realistic ids: streamed aliens are "cell:slot:cellid",
     // hand-placed ones are "scene:Name".
+    // ── songs through the taste model (2026-08-18, tape formats) ─────────
+    static TraxSong OneSectionSong(TraxTrack t, int bars)
+    {
+        var s = new TraxSong();
+        s.sections.Add(new TraxSection(t, bars));
+        return s;
+    }
+
+    static TraxTrack TrackAt(double[] dials)
+    {
+        var t = TraxTrack.Default();
+        for (int d = 0; d < AlienTaste.DialCount; d++)
+        {
+            double v = dials[d];
+            t.dials = t.dials.With(d, v < 0 ? 0 : v > 10 ? 10 : v);
+        }
+        return t;
+    }
+
+    static void SongEvalChecks()
+    {
+        Console.WriteLine("song evaluation");
+
+        // Demo parity: a one-section song scores EXACTLY like the bare track.
+        var t = TrackAt(new double[] { 8, 2, 5, 3, 7, 1 });
+        string id = "alien:parity";
+        double bare = AlienTaste.Satisfaction(id, SongEval.DialsOf(t));
+        double one = SongEval.Satisfaction(id, OneSectionSong(t, 4));
+        Near(one, bare, 1e-9, "demo parity: satisfaction identical");
+        Eq(SongEval.GateFor(id, OneSectionSong(t, 4), 1),
+           AlienTaste.GateFor(id, SongEval.DialsOf(t), bare, 1), "demo parity: gate identical");
+
+        // Weighted sat sits between the extremes and is weighted by BARS.
+        string fan = "alien:weighted";
+        double[] taste = AlienTaste.TastePoint(fan);
+        var loved = TrackAt(taste);
+        var awful = new double[AlienTaste.DialCount];
+        for (int d = 0; d < AlienTaste.DialCount; d++) awful[d] = taste[d] > 5 ? 0 : 10;
+        var hated = TrackAt(awful);
+        var two = new TraxSong();
+        two.sections.Add(new TraxSection(loved, 12));
+        two.sections.Add(new TraxSection(hated, 4));
+        double satLoved = AlienTaste.Satisfaction(fan, SongEval.DialsOf(loved));
+        double satHated = AlienTaste.Satisfaction(fan, SongEval.DialsOf(hated));
+        double w = SongEval.Satisfaction(fan, two);
+        Check(w < satLoved && w > satHated, "weighted sat between extremes");
+        Near(w, (satLoved * 12 + satHated * 4) / 16.0, 1e-9, "weighted by bars exactly");
+
+        // Best-section gate + hint contract: a song CONTAINING the fan's
+        // favourite genre is never Rejected, however much filler surrounds it.
+        int gi = AlienTaste.FavouriteGenreIndex(fan);
+        var onGenre = TrackAt(TraxClassifier.Genres[gi].c);
+        var mixed = new TraxSong();
+        mixed.sections.Add(new TraxSection(hated, 16));
+        mixed.sections.Add(new TraxSection(onGenre, 2));
+        Check(SongEval.GateFor(fan, mixed, 1) != AlienTaste.Verdict.Rejected,
+              "hint contract holds per-section in a song");
+        Check(SongEval.MatchesFavourite(fan, mixed), "MatchesFavourite sees any section");
+        double bs;
+        Eq(SongEval.BestSection(fan, mixed, out bs), 1, "best section found");
+        Check(bs >= w || mixed.sections.Count == 1, "best section sat is the peak");
+
+        // Kind preference partitions the population deterministically.
+        int nd = 0, nh = 0, nf = 0;
+        for (int i = 0; i < 500; i++)
+        {
+            int k = AlienTaste.KindPreference("alien:" + i);
+            if (k == TraxKind.Demo) nd++; else if (k == TraxKind.Half) nh++; else nf++;
+        }
+        Check(nd > 100 && nh > 100 && nf > 60,
+              "kind preference spans the population (" + nd + "/" + nh + "/" + nf + ")");
+        Eq(AlienTaste.KindPreference("alien:1"), AlienTaste.KindPreference("alien:1"), "kind preference stable");
+    }
+
     static string[] Ids()
     {
         var ids = new string[200];
@@ -112,6 +186,7 @@ public static class AlienTasteTests
         Feedback();
         Pricing();
         TierPreferences();
+        SongEvalChecks();
         TapeOfferTests.RunAll();
         _checks += TapeOfferTests.Checks;
         _failures += TapeOfferTests.Failures;
