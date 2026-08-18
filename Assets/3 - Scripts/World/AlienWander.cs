@@ -86,6 +86,46 @@ public class AlienWander : MonoBehaviour
     AlienNPCDamageable _damageable;
     Transform _player;
 
+    // ── Remote drive (co-op) ─────────────────────────────────────────────
+    //
+    // The aliens themselves need no replication: AlienNPCSpawner is a
+    // deterministic hash of (seed, body, cell), so both machines already spawn
+    // the same aliens in the same cells. Only where they have WALKED TO differs,
+    // and that is what AlienSync streams — planet-local, which this component
+    // already works in, so nothing has to be converted.
+    //
+    // A guest stops deciding while poses are arriving. It does NOT stop
+    // deciding forever: each machine streams aliens around ITS OWN player, so
+    // the host may walk away from an alien the guest is still standing next to
+    // and stop sending for it. Rather than leave that alien frozen, the drive
+    // EXPIRES — no pose for RemoteHoldSeconds and it goes back to strolling on
+    // its own, which is also exactly right when the guest is somewhere the host
+    // has never been.
+    const float RemoteHoldSeconds = 2f;
+    float _remoteUntil;
+    bool _remoteMoved;
+
+    /// True while somebody else is deciding where this alien walks.
+    public bool RemoteDriven => Time.time < _remoteUntil;
+
+    /// <summary>
+    /// Where the authority says this alien is standing. Planet-local, absolute
+    /// rather than a delta, so a dropped packet self-corrects on the next one
+    /// instead of leaving the two machines permanently out of step.
+    ///
+    /// `moved` drives the leg swing: the sender knows whether it took a step
+    /// this tick, and deriving that from successive positions here would make
+    /// the legs stutter whenever a packet was late.
+    /// </summary>
+    public void RemotePose(Vector3 localPos, Quaternion localRot, bool moved)
+    {
+        transform.localPosition = localPos;
+        transform.localRotation = localRot;
+        _remoteMoved = moved;
+        _remoteUntil = Time.time + RemoteHoldSeconds;
+        if (moved) _stridePhase += Mathf.PI * 0.5f;   // keep the stride advancing between packets
+    }
+
     // ── Procedural leg swing ─────────────────────────────────────────────
     [Header("Leg Animation")]
     [SerializeField] float legSwingAngle = 26f;   // thigh forward/back, degrees
@@ -226,22 +266,26 @@ public class AlienWander : MonoBehaviour
         if (!_ready || _planet == null) return;
         if (_damageable != null && _damageable.IsDying) return;
 
+        // Somebody else is walking this one. Render only — the legs still swing
+        // (that is the rendering path, and it must keep running) but nothing
+        // here decides where the alien goes.
+        if (RemoteDriven) { _movedThisFrame = _remoteMoved; return; }
+
         // Approach outranks everything — including the player-proximity
         // pause, which exists so shopkeepers don't stroll away; an ambusher
         // is SUPPOSED to close the distance.
         if (_approachTarget != null) { StepApproach(); return; }
 
-        // Hold still while the player is close — a shopkeeper that strolls
-        // away mid-deal (or mid-typewriter-line) reads as broken. Same lazy
-        // player lookup as NPCWaveAnimation.
-        if (_player == null)
-        {
-            GameObject p = GameObject.FindWithTag("Player");
-            if (p != null) _player = p.transform;
-        }
-        if (_player != null &&
-            (_player.position - transform.position).sqrMagnitude < _pauseDistance * _pauseDistance)
-            return;
+        // Hold still while A player is close — a shopkeeper that strolls away
+        // mid-deal (or mid-typewriter-line) reads as broken.
+        //
+        // ⚠️ CO-OP: "the player" silently means "the only player" in a co-op
+        // rule, which is the trap this codebase has already paid for twice.
+        // Aliens are walked by the host, so a check against the host's own body
+        // would stroll this one away from a guest mid-sentence. The roster
+        // covers everybody; it falls back to the tagged local player in single
+        // player, which is the same lazy lookup as before.
+        if (AnyPlayerWithin(_pauseDistance)) return;
 
         if (!_walkingState)
         {
@@ -250,6 +294,29 @@ public class AlienWander : MonoBehaviour
         }
 
         StepTowardTarget();
+    }
+
+    /// Is anybody standing this close? Every player, not just ours.
+    bool AnyPlayerWithin(float distance)
+    {
+        float sqr = distance * distance;
+        var all = PlayerRoster.All();
+        for (int i = 0; i < all.Count; i++)
+        {
+            var t = all[i].Transform;
+            if (t == null) continue;
+            if ((t.position - transform.position).sqrMagnitude < sqr) return true;
+        }
+        if (all.Count > 0) return false;
+
+        // No roster at all (single player before it has cached anything).
+        if (_player == null)
+        {
+            GameObject p = GameObject.FindWithTag("Player");
+            if (p != null) _player = p.transform;
+        }
+        return _player != null
+            && (_player.position - transform.position).sqrMagnitude < sqr;
     }
 
     void StepApproach()

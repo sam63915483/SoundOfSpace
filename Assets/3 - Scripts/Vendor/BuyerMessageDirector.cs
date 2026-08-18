@@ -146,9 +146,12 @@ public class BuyerMessageDirector : MonoBehaviour
     // At most ONE ambush per galaxy day. Craving never touches the price:
     // whatever happens next is the completely normal walk-up/sell flow.
     //
-    // The walk itself is local theatre on this machine (aliens aren't
-    // position-synced); in co-op only the host sees the stroll, but the want
-    // text that lands is shared state like every other text.
+    // ⚠️ CO-OP: the sweep runs on the host, but it ambushes ANY player. It used
+    // to scan around "the player", which in co-op silently means "the only
+    // player" — the trap this codebase has paid for before — so a guest could
+    // never be walked up to. It now scans around everyone on the roster and
+    // approaches whoever the eligible alien is nearest, and AlienSync streams
+    // the walk so both players watch it happen.
 
     const float AmbushScanRange = 60f;
     const float AmbushStopDistance = 3.5f;
@@ -179,16 +182,17 @@ public class BuyerMessageDirector : MonoBehaviour
         if (_ambushBuyerId != null) { FinishAmbush(); return; }    // wander component vanished
 
         if (_lastAmbushDay == today) return;
-        var player = Player();
-        if (player == null) return;
 
         var aliens = SpawnedAlienNPC.AllAliens;
         for (int i = 0; i < aliens.Count; i++)
         {
             var alien = aliens[i];
             if (alien == null) continue;
-            if ((alien.transform.position - player.transform.position).sqrMagnitude
-                > AmbushScanRange * AmbushScanRange) continue;
+
+            // Whoever this one is nearest — either player will do, and the
+            // alien walks to the one it could actually reach.
+            Transform victim = NearestPlayerWithin(alien.transform.position, AmbushScanRange);
+            if (victim == null) continue;
 
             string id = AlienIdentity.Of(alien);
             var b = BuyerLedger.Get(id);
@@ -202,9 +206,34 @@ public class BuyerMessageDirector : MonoBehaviour
             _ambushWander = wander;
             _ambushStartedAt = now;
             _lastAmbushDay = today;   // the day's ambush is spent even if it fails
-            wander.BeginApproach(player.transform, AmbushStopDistance);
+            wander.BeginApproach(victim, AmbushStopDistance);
             return;
         }
+    }
+
+    /// <summary>
+    /// The closest player to a point, or null if nobody is within range.
+    ///
+    /// Goes through PlayerRoster rather than the local PlayerController: in
+    /// co-op the remote player is a puppet with no controller on it, so the
+    /// obvious lookup would find only ourselves and half the household would be
+    /// invisible to the flywheel.
+    /// </summary>
+    static Transform NearestPlayerWithin(Vector3 point, float range)
+    {
+        float bestSqr = range * range;
+        Transform best = null;
+        var all = PlayerRoster.All();
+        for (int i = 0; i < all.Count; i++)
+        {
+            var t = all[i].Transform;
+            if (t == null) continue;
+            float sqr = (t.position - point).sqrMagnitude;
+            if (sqr > bestSqr) continue;
+            bestSqr = sqr;
+            best = t;
+        }
+        return best;
     }
 
     /// Whatever ended the approach — arrival, blockage or timeout — the hunger
