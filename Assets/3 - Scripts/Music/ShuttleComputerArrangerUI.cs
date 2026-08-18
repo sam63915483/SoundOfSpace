@@ -23,11 +23,14 @@ using UnityEngine.UI;
 public partial class ShuttleComputerUI
 {
     // ── arranger layout (heights; Y positions live in the main budget) ───
+    // The header is its own row — the SONG label used to overlay the ruler
+    // and sat on top of bar number 1 (Sam's playtest note).
+    const float ArrHeaderH = 16f;
     const float ArrRulerH = 16f;
     const float ArrStripH = 44f;
     const float ArrCtlH = 34f;
     const float ArrGap = 4f;
-    const float ArrH = ArrRulerH + ArrStripH + ArrCtlH + ArrGap * 2;   // 102
+    const float ArrH = ArrHeaderH + ArrRulerH + ArrStripH + ArrCtlH + ArrGap * 3;   // 122
     const float ArrAddW = 44f;
     const float ArrBlockGap = 4f;
 
@@ -94,12 +97,15 @@ public partial class ShuttleComputerUI
         holder.sizeDelta = new Vector2(0, ArrH);
         holder.anchoredPosition = new Vector2(0, ArrY);
 
+        const float rulerY = -(ArrHeaderH + ArrGap);
+        const float stripY = rulerY - ArrRulerH - ArrGap;
+
         var label = MakeText(holder, "Label", "SONG", 12, InkGhost, TextAlignmentOptions.TopLeft);
-        Box(label.rectTransform, TopLeft, TopLeft, new Vector2(2, 0), new Vector2(90, 14));
+        Box(label.rectTransform, TopLeft, TopLeft, new Vector2(2, 0), new Vector2(90, ArrHeaderH));
         label.characterSpacing = 24;
 
         _arrStats = MakeText(holder, "Stats", "", 12, InkGhost, TextAlignmentOptions.TopRight);
-        Box(_arrStats.rectTransform, TopRight, TopRight, new Vector2(-2, 0), new Vector2(360, 14));
+        Box(_arrStats.rectTransform, TopRight, TopRight, new Vector2(-2, 0), new Vector2(360, ArrHeaderH));
         _arrStats.characterSpacing = 12;
 
         _arrRuler = MakeRect(holder, "Ruler");
@@ -107,21 +113,21 @@ public partial class ShuttleComputerUI
         _arrRuler.anchorMax = new Vector2(1, 1);
         _arrRuler.pivot = new Vector2(0.5f, 1);
         _arrRuler.sizeDelta = new Vector2(0, ArrRulerH);
-        _arrRuler.anchoredPosition = new Vector2(0, -ArrGap * 0.5f);
+        _arrRuler.anchoredPosition = new Vector2(0, rulerY);
 
         _arrStrip = MakeRect(holder, "Strip");
         _arrStrip.anchorMin = new Vector2(0, 1);
         _arrStrip.anchorMax = new Vector2(1, 1);
         _arrStrip.pivot = new Vector2(0.5f, 1);
         _arrStrip.sizeDelta = new Vector2(0, ArrStripH);
-        _arrStrip.anchoredPosition = new Vector2(0, -(ArrRulerH + ArrGap));
+        _arrStrip.anchoredPosition = new Vector2(0, stripY);
 
         // The [+] add button sits at the strip's right edge, outside the
         // proportional block area so it never squeezes the last section.
         _arrAddBg = MakePanel(holder, "Add", Panel);
         _arrAddBg.raycastTarget = true;
         Box(_arrAddBg.rectTransform, TopRight, TopRight,
-            new Vector2(0, -(ArrRulerH + ArrGap)), new Vector2(ArrAddW, ArrStripH));
+            new Vector2(0, stripY), new Vector2(ArrAddW, ArrStripH));
         Outline(_arrAddBg.transform, InkGhost);
         _arrAddLabel = MakeText(_arrAddBg.rectTransform, "Label", "+", 26, InkDim,
                                 TextAlignmentOptions.Center);
@@ -138,7 +144,7 @@ public partial class ShuttleComputerUI
         pr.anchorMax = new Vector2(0, 1);
         pr.pivot = new Vector2(0.5f, 1);
         pr.sizeDelta = new Vector2(3, ArrRulerH + ArrGap + ArrStripH);
-        pr.anchoredPosition = new Vector2(0, 0);
+        pr.anchoredPosition = new Vector2(0, rulerY);
         _arrPlayhead.gameObject.SetActive(false);
 
         BuildArrangerCtl(holder);
@@ -151,7 +157,8 @@ public partial class ShuttleComputerUI
         row.anchorMax = new Vector2(1, 1);
         row.pivot = new Vector2(0.5f, 1);
         row.sizeDelta = new Vector2(0, ArrCtlH);
-        row.anchoredPosition = new Vector2(0, -(ArrRulerH + ArrGap + ArrStripH + ArrGap));
+        row.anchoredPosition = new Vector2(0,
+            -(ArrHeaderH + ArrGap + ArrRulerH + ArrGap + ArrStripH + ArrGap));
 
         _arrSecTag = MakeText(row, "SecTag", "SEC A", 18, Accent, TextAlignmentOptions.Left);
         Box(_arrSecTag.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f),
@@ -579,7 +586,7 @@ public partial class ShuttleComputerUI
         _arrPlayhead.gameObject.SetActive(true);
         _arrPlayhead.color = live ? Accent : InkDim;
         _arrPlayhead.rectTransform.anchoredPosition =
-            new Vector2(lineX, -ArrGap * 0.5f);
+            new Vector2(lineX, -(ArrHeaderH + ArrGap));
 
         SetPlayingSec(live ? idx : -1);
     }

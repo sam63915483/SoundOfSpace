@@ -82,12 +82,12 @@ public partial class ShuttleComputerUI : MonoBehaviour
     // after the project bar; the status bar is gone):
     //   genre plate                      0 ..  -92
     //   dials                         -106 .. -394
-    //   arranger (ruler+strip+ctl)    -414 .. -516   <- mid-screen, Sam's call
-    //   rack label                    -536 .. -556
-    //   rack                          -560 .. -742
-    //   steps                         -754 .. -772
+    //   arranger (hdr+ruler+strip+ctl)-414 .. -536   <- mid-screen, Sam's call
+    //   rack label                    -556 .. -576
+    //   rack                          -580 .. -762
+    //   steps                         -774 .. -792
     //   transport (anchored bottom)   -826 .. -886
-    // No overlaps, ~54px of breathing room above the transport. If you change a
+    // No overlaps, ~34px of breathing room above the transport. If you change a
     // height here, re-check the whole column — the rows are consecutive.
 
     public static ShuttleComputerUI Instance { get; private set; }
@@ -439,12 +439,15 @@ public partial class ShuttleComputerUI : MonoBehaviour
         Stretch(vig.rectTransform, 0, 0, 0, 0);
 
         // Faint phosphor wash down from the top edge, matching #screen::before.
+        // Ends where the genre plate does (content top 12 + project bar 26 +
+        // plate 92) — running it down behind the knobs read as a grey band
+        // cutting through the dials (Sam's playtest note).
         var wash = MakePanel(parent, "Wash", new Color(Ink.r, Ink.g, Ink.b, 0.035f));
         var wrt = wash.rectTransform;
         wrt.anchorMin = new Vector2(0, 1);
         wrt.anchorMax = new Vector2(1, 1);
         wrt.pivot = new Vector2(0.5f, 1);
-        wrt.sizeDelta = new Vector2(0, 220);
+        wrt.sizeDelta = new Vector2(0, ContentTop + ProjBarH + PlateH);
         wrt.anchoredPosition = Vector2.zero;
     }
 
@@ -846,22 +849,26 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
         // Two transports: PLAY TRACK chains the sections from the play cursor;
         // LOOP SECTION is the old behaviour — loop the selected section
-        // forever while you shape it.
-        _playBg = MakeButton(row, "Play", "PLAY TRACK", 180, ref x, Ink, Hex("04120eff"), TogglePlay);
+        // forever while you shape it. Sized so the readout between them and
+        // the right-hand cluster never collides with the VOL label — the row
+        // has ~575px of left-side room before the cluster starts.
+        _playBg = MakeButton(row, "Play", "PLAY TRACK", 150, ref x, Ink, Hex("04120eff"), TogglePlay);
         _playLabel = _playBg.GetComponentInChildren<TextMeshProUGUI>();
+        _playLabel.fontSize = 15;
 
         x += 8;
-        _loopBg = MakeButton(row, "Loop", "LOOP SECTION", 200, ref x, PanelHi, Ink, ToggleLoop);
+        _loopBg = MakeButton(row, "Loop", "LOOP SECTION", 175, ref x, PanelHi, Ink, ToggleLoop);
         _loopLabel = _loopBg.GetComponentInChildren<TextMeshProUGUI>();
+        _loopLabel.fontSize = 15;
         Outline(_loopBg.transform, InkGhost);
 
-        _readout = MakeText(row, "Readout", "", 16, InkDim, TextAlignmentOptions.Left);
+        _readout = MakeText(row, "Readout", "", 14, InkDim, TextAlignmentOptions.Left);
         var rrt = _readout.rectTransform;
         rrt.anchorMin = new Vector2(0, 0);
         rrt.anchorMax = new Vector2(0, 1);
         rrt.pivot = new Vector2(0, 0.5f);
-        rrt.sizeDelta = new Vector2(300, 0);
-        rrt.anchoredPosition = new Vector2(x + 14, 0);
+        rrt.sizeDelta = new Vector2(220, 0);
+        rrt.anchoredPosition = new Vector2(x + 12, 0);
 
         // Right-hand cluster, laid out from the right edge inward.
         float rx = 0;
