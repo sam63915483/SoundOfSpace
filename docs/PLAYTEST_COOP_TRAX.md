@@ -25,31 +25,52 @@ If the guest never wakes or the world is empty, stop — nothing below will work
 
 ## 1. The shared computer (Phase B — the new and risky one)
 
+**ONE COMPUTER.** Whatever it shows, it shows to both of you. This was reworked
+after the first playtest: screens used to drift apart, and you could each sit on
+a different section watching the other's cursor turn knobs that did nothing.
+
 Both players sit at the shuttle computer at the same time.
 
 - [ ] **Ghost cursor.** Each of you sees the other's pointer moving, tinted with
       their suit colour, with their name beside it. It should land on the same
       knob they're actually touching, not offset.
-- [ ] **Different screens.** One goes to the shelf, one stays on the arranger:
-      the pointer disappears and a chip appears bottom-right saying
-      "NAME IS BROWSING THE SHELF".
-- [ ] **Live editing.** Guest turns a dial → host sees it move within ~a quarter
-      second. Then host turns one → guest sees it. Try it both directions; the
-      host→guest direction goes through a different code path than guest→host.
+- [ ] **Navigation is shared.** One clicks TRAX → both go to the TRAX menu. One
+      clicks LOAD → both see the shelf. One opens a project → both land in the
+      arranger on that project.
+- [ ] **ESC is shared.** Press ESC on either machine; both go back one screen.
+      This was the specific thing that didn't work before.
+- [ ] **One section at a time.** Click section C on one machine — the OTHER
+      machine's selection moves to C too. You must not be able to sit on
+      different sections. Try it from both sides.
+- [ ] **Add a section and click it.** Both of you end up editing the new one.
+- [ ] **Knobs actually move.** Because you're always on the same section now,
+      every dial your partner turns should visibly move on your screen. If you
+      see their cursor dragging a knob that isn't moving, the section sync is
+      broken.
+- [ ] **Walk up mid-session.** One player uses the computer alone and navigates
+      somewhere specific (say, the arranger on a saved project). The other then
+      walks up and opens it — they should land on *that* screen, not resume
+      their own. Test with the host walking up to the guest, and vice versa.
+- [ ] **Dialogs are shared.** One opens the SAVE dialog → both see it. Type in
+      it → the letters appear on both. Same for the PRINT dialog.
 - [ ] **Same knob at once.** Both grab the same dial and drag. Expect the value
       to fight and settle on whoever moved last. It should NOT lock up, snap
       back and forth forever, or desync permanently — let go and both screens
       must agree.
-- [ ] **Sections.** Add a section, delete a section, change a section's length.
-      The other screen's strip should rebuild to match.
-- [ ] **Selection is yours.** While your partner edits, the section YOU have
-      selected must not jump. This is the thing most likely to be wrong.
+- [ ] **Navigate at the same instant.** Both press ESC (or click different
+      buttons) in the same moment. You may briefly disagree, but within about a
+      second and a half you must both settle on the SAME screen — the host's.
+      A permanent flip-flop is a bug.
+- [ ] **Sections.** Add one, delete one, change a length. The other strip
+      rebuilds to match.
 - [ ] **Shared playback.** One presses PLAY TRACK — both hear it, starting in
       the same bar. One presses STOP — both stop. Try LOOP SECTION too.
 - [ ] **Ruler seek.** One clicks a bar in the ruler while playing → both jump.
+- [ ] **Volume stays yours.** Move the volume slider on one machine — the
+      other's volume must NOT change. It's the one deliberate exception.
 - [ ] **Close one side.** One player walks away from the computer; the other's
-      music must keep playing and their ghost cursor must vanish (within 5s at
-      worst).
+      music must keep playing, their screen must not change, and the ghost
+      cursor must vanish (within 5s at worst).
 
 ## 2. The shelf, the rack and the machine (Phase A)
 
@@ -146,7 +167,10 @@ Back up `%AppData%\..\LocalLow\DefaultCompany\Solar System 2\saves\` first.
 - A guest's save is a copy of the host's world at that moment. If the host is
   mid-fight, that's what gets written.
 - Editing the same knob simultaneously settles on last-write-wins by design —
-  no locks, per your call.
+  no locks, per your call. Two people on one track WILL get in each other's way;
+  that's the intended pressure to agree who drives, or to split into one maker
+  and one seller.
+- Opening the save dialog takes the keyboard on both machines. One computer.
 - Money stays personal everywhere. Only the rent DEBT is shared.
 - Unread message counts are still shared, not per-player (pre-existing).
 
@@ -158,6 +182,9 @@ and `[WorldSync]` cover the new paths. The most likely failure shapes:
 | Symptom | First suspect |
 |---|---|
 | Edits go one way only | the host relay skipping the wrong client |
+| Screens drift apart and stay apart | the screen reconcile pass or the host heartbeat |
+| Screens flip-flop between two states | the host-authority tiebreak |
+| Their cursor turns a knob that doesn't move | the section is out of sync |
 | Cursor offset from where they're pointing | the normalisation rect |
 | A blank tape vanished | the insert refusal/refund round trip |
 | Guest's save has the host's pockets | `SelectPersonalBlock` picking the wrong id |

@@ -13,12 +13,34 @@ using UnityEngine.SceneManagement;
 /// pressed SAVE, are true only while both of you are sitting at the terminal.
 /// The moment somebody saves, that IS world state and TraxSync owns it.
 ///
+/// ── ONE COMPUTER (Sam, 2026-08-18, after the first playtest) ─────────────
+/// Not two synchronised copies of a computer — one computer, with two people
+/// leaning over it. Whatever screen it is showing, it is showing to both of
+/// you: press ESC and it goes back for both, open a project and you are both in
+/// it, select section C and you are both editing C.
+///
+/// The first pass only replicated the SONG, which produced the worst of both
+/// worlds: you could each be on a different screen, or on different sections of
+/// the same song, watching each other's cursors turn knobs that visibly did
+/// nothing. The machine has one screen and edits one section at a time, so
+/// pretending otherwise was the bug.
+///
+/// The whole SCREEN STATE therefore travels — which view, which project, which
+/// section, which dialog, even what is typed into the save box. It is sent as
+/// an absolute snapshot and reconciled rather than replayed as navigation
+/// events, so a late joiner walking up to the terminal simply adopts whatever
+/// it is showing, and a dropped packet corrects on the next change.
+///
+/// Deliberately NOT shared: where each mouse is (drawn as ghost cursors, since
+/// there are genuinely two people), and the volume slider, which is about this
+/// player's ears rather than about the machine.
+///
 /// ── Free-for-all, last write wins (Sam's call) ───────────────────────────
 /// No locks, no per-section ownership, no operational transforms. Either player
 /// can turn any knob at any time; if you both grab the same one the last change
-/// sticks. It reads like two people leaning over one machine, which is what it
-/// is, and the failure mode — a knob twitching once — is cheap and obvious
-/// rather than a mysterious refusal.
+/// sticks. Two people trying to work on one track will get in each other's way,
+/// and that is the intended social pressure: agree who is driving, or split up
+/// and let one of you make tapes while the other sells them.
 ///
 /// The whole song travels rather than a delta. It is at most eight sections of
 /// six modules and six dials, coalesced to four messages a second, and it makes
@@ -50,14 +72,16 @@ public class TraxSessionSync : MonoBehaviour
     const byte KindSong      = 1;   // the whole working song
     const byte KindTransport = 2;   // play / stop / seek
     const byte KindPresence  = 3;   // opened or closed the computer
+    const byte KindScreen    = 4;   // WHICH SCREEN the computer is showing
 
-    /// Which screen somebody is looking at. Only used to decide whether a ghost
-    /// cursor makes sense — pointing at a shelf row while your partner is on the
-    /// arranger would be nonsense.
-    public const byte ViewNone     = 0;
-    public const byte ViewHome     = 1;
-    public const byte ViewProjects = 2;
-    public const byte ViewArranger = 3;
+    /// Which screen the computer is on. Both a presence hint and the first
+    /// field of the shared screen state — they are the same question, because
+    /// there is only one screen.
+    public const byte ViewNone         = 0;
+    public const byte ViewHome         = 1;
+    public const byte ViewProjectsMenu = 2;   // the TRAX menu (NEW / LOAD)
+    public const byte ViewShelf        = 3;   // the project list
+    public const byte ViewArranger     = 4;
 
     public const byte TransportStop     = 0;
     public const byte TransportPlaySong = 1;
@@ -99,6 +123,41 @@ public class TraxSessionSync : MonoBehaviour
     public static int IncomingTransportRev { get; private set; }
     public static byte IncomingTransportMode { get; private set; }
     public static int IncomingTransportStep { get; private set; }
+
+    /// <summary>
+    /// What the one computer is showing. An absolute snapshot, reconciled
+    /// rather than replayed: the screen compares this against what it is
+    /// actually displaying and moves itself to match, so there is no navigation
+    /// event to miss and no ordering to get wrong.
+    /// </summary>
+    public struct Screen
+    {
+        public byte view;        // ViewHome / ViewProjectsMenu / ViewShelf / ViewArranger
+        public string projectId; // which shelf record is open ("" = never saved)
+        public int section;      // the section being edited — one at a time, by design
+        public bool saveOpen;
+        public string saveText;
+        public bool printOpen;
+
+        public bool Same(Screen o)
+        {
+            return view == o.view
+                && section == o.section
+                && saveOpen == o.saveOpen
+                && printOpen == o.printOpen
+                && (projectId ?? "") == (o.projectId ?? "")
+                && (saveText ?? "") == (o.saveText ?? "");
+        }
+    }
+
+    public static int IncomingScreenRev { get; private set; }
+    public static Screen IncomingScreen { get; private set; }
+
+    /// True once we have heard what the computer is showing at least once this
+    /// session. Walking up to a terminal a partner is already using adopts that
+    /// screen rather than resuming our own — one computer, one screen — and this
+    /// is how the screen knows there is something to adopt.
+    public static bool HasScreen { get; private set; }
 
     /// <summary>
     /// True while an inbound song or transport event is being applied to the
@@ -150,6 +209,25 @@ public class TraxSessionSync : MonoBehaviour
         RemoteView = ViewNone;
         RemoteClicking = false;
         IncomingSong = null;
+        HasScreen = false;
+    }
+
+    /// <summary>
+    /// True when this machine is the one whose screen settles an argument.
+    ///
+    /// If both players navigate in the same instant they would otherwise swap
+    /// screens and then keep swapping, each heartbeat undoing the other. The
+    /// host applying both changes in arrival order and re-stating the result
+    /// gives that a single, deterministic answer — the same reason the host owns
+    /// every other timer and dice roll here.
+    /// </summary>
+    static bool ScreenAuthority
+    {
+        get
+        {
+            var nm = NetworkManager.Singleton;
+            return nm != null && nm.IsListening && nm.IsServer;
+        }
     }
 
     void Update()
@@ -253,6 +331,55 @@ public class TraxSessionSync : MonoBehaviour
         }, ulong.MaxValue, NetworkDelivery.ReliableSequenced, 32);
     }
 
+    /// <summary>
+    /// The computer moved to a different screen — a click, an ESC, a dialog, a
+    /// section select, a character typed into the save box.
+    ///
+    /// Reliable, because there is no periodic re-statement to recover from a
+    /// dropped one and a lost ESC would leave the two of you looking at
+    /// different things indefinitely.
+    /// </summary>
+    public static void PublishScreen(Screen s)
+    {
+        if (!Live || ApplyingRemote) return;
+        Instance._nextScreenBeatAt = Time.unscaledTime + ScreenHeartbeat;
+        Instance.SendScreen(s);
+    }
+
+    /// <summary>
+    /// The host re-states the screen every so often, so a partner who walks up
+    /// mid-session adopts it, and so a simultaneous change on both machines
+    /// converges on the host's answer within a beat instead of flip-flopping.
+    /// Only the host does this — two machines re-stating would be the argument,
+    /// not the fix.
+    /// </summary>
+    const float ScreenHeartbeat = 1.5f;
+    float _nextScreenBeatAt;
+
+    public static void HeartbeatScreen(Screen s)
+    {
+        if (!Live || ApplyingRemote || !ScreenAuthority) return;
+        if (Time.unscaledTime < Instance._nextScreenBeatAt) return;
+        Instance._nextScreenBeatAt = Time.unscaledTime + ScreenHeartbeat;
+        Instance.SendScreen(s);
+    }
+
+    void SendScreen(Screen s)
+    {
+        Dispatch(w =>
+        {
+            w.WriteValueSafe(KindScreen);
+            w.WriteValueSafe(s.view);
+            w.WriteValueSafe(s.projectId ?? "");
+            w.WriteValueSafe(s.section);
+            w.WriteValueSafe((byte)(s.saveOpen ? 1 : 0));
+            w.WriteValueSafe(s.saveText ?? "");
+            w.WriteValueSafe((byte)(s.printOpen ? 1 : 0));
+        }, ulong.MaxValue, NetworkDelivery.ReliableSequenced,
+           (s.projectId != null ? s.projectId.Length : 0) * 4
+         + (s.saveText != null ? s.saveText.Length : 0) * 4 + 96);
+    }
+
     /// Opened or closed the computer. Carries the name and suit colour so the
     /// ghost cursor can be labelled and tinted without a second lookup.
     public static void PublishPresence(bool open, byte view)
@@ -333,6 +460,38 @@ public class TraxSessionSync : MonoBehaviour
                     w.WriteValueSafe(KindTransport);
                     w.WriteValueSafe(mode); w.WriteValueSafe(step);
                 }, 32);
+                break;
+            }
+
+            case KindScreen:
+            {
+                reader.ReadValueSafe(out byte view);
+                reader.ReadValueSafe(out string projectId);
+                reader.ReadValueSafe(out int section);
+                reader.ReadValueSafe(out byte saveOpen);
+                reader.ReadValueSafe(out string saveText);
+                reader.ReadValueSafe(out byte printOpen);
+
+                IncomingScreen = new Screen
+                {
+                    view = view, projectId = projectId, section = section,
+                    saveOpen = saveOpen != 0, saveText = saveText, printOpen = printOpen != 0,
+                };
+                IncomingScreenRev++;
+                HasScreen = view != ViewNone;
+                RemoteView = view;
+                RemoteOpen = view != ViewNone;
+                _remoteHeardAt = Time.unscaledTime;
+
+                if (server) Relay(senderId, NetworkDelivery.ReliableSequenced, w =>
+                {
+                    w.WriteValueSafe(KindScreen);
+                    w.WriteValueSafe(view); w.WriteValueSafe(projectId ?? "");
+                    w.WriteValueSafe(section);
+                    w.WriteValueSafe(saveOpen); w.WriteValueSafe(saveText ?? "");
+                    w.WriteValueSafe(printOpen);
+                }, (projectId != null ? projectId.Length : 0) * 4
+                 + (saveText != null ? saveText.Length : 0) * 4 + 96);
                 break;
             }
 

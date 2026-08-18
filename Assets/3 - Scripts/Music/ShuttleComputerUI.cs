@@ -253,6 +253,13 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // stops CoopUpdate reading it as a change and sending it twice.
         _lastPresenceView = CurrentViewId;
         TraxSessionSync.PublishPresence(true, _lastPresenceView);
+
+        // ONE COMPUTER: if a partner is already using it, we walk up to THEIR
+        // screen rather than resuming ours. Un-priming and rewinding the seen
+        // revision makes the first CoopUpdate adopt the last state we heard
+        // instead of publishing ours over the top.
+        _screenPrimed = false;
+        if (TraxSessionSync.HasScreen) _screenRevSeen = -1;
     }
 
     public void Close()
@@ -934,6 +941,18 @@ public partial class ShuttleComputerUI : MonoBehaviour
         MakeButtonRight(row, "PrintDemo", "PRINT", 170, ref rx, PanelHi, Ink, OpenPrint);
     }
 
+    /// <summary>
+    /// ⚠️ THE ONE CONTROL THAT STAYS PER-PLAYER (Sam, 2026-08-18).
+    ///
+    /// Everything else on this computer is shared in co-op — the screen, the
+    /// project, the selected section, every knob — because it is one machine
+    /// with two people at it. Volume is the exception: it is about how loud this
+    /// is in YOUR ears, not about the machine, and it is not part of the song,
+    /// so a tape sounds identical however either of you had the slider set.
+    ///
+    /// It gets that for free by living on TraxInstrument rather than in the
+    /// track. Don't move it into the song.
+    /// </summary>
     void BuildVolume(RectTransform row, ref float rx)
     {
         rx += 18;
