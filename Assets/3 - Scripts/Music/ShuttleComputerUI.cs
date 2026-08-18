@@ -1106,6 +1106,12 @@ public partial class ShuttleComputerUI : MonoBehaviour
         bool named = _project != null;
         bool loaded = CassetteDeck.HasCassette;
         bool blocked = CassetteDeck.HasEjected;
+        int kind = CassetteDeck.InsertedKind;
+
+        // The blank in the slot decides what gets pressed; a song longer than
+        // the blank's bar cap is a hard blocker, not a fine-print surprise.
+        int totalBars = _song != null ? _song.TotalBars() : 4;
+        bool overCap = loaded && kind != TraxKind.Demo && totalBars > TraxKind.BarCap(kind);
 
         _printSub.text = named ? _project.name.ToUpperInvariant() : "UNNAMED TRACK";
         _printSub.color = named ? InkDim : Warn;
@@ -1117,7 +1123,8 @@ public partial class ShuttleComputerUI : MonoBehaviour
         }
         else
         {
-            _printSlotState.text = "READY TO PRINT" + (CassetteDeck.InsertedTier >= 2 ? "  —  TAPE II" : "");
+            _printSlotState.text = "READY TO PRINT  —  " + TraxKind.Label(kind) + " TAPE"
+                                 + (CassetteDeck.InsertedTier >= 2 ? " II" : "");
             _printSlotState.color = Accent;
         }
 
@@ -1138,6 +1145,12 @@ public partial class ShuttleComputerUI : MonoBehaviour
             _printNote.text = "take the last tape off the machine first";
             _printNote.color = Warn;
         }
+        else if (overCap)
+        {
+            _printNote.text = "TRACK TOO LONG FOR THIS TAPE - " + totalBars + "/"
+                            + TraxKind.BarCap(kind) + " BARS";
+            _printNote.color = Warn;
+        }
         else if (ProjectDirty)
         {
             // Not a blocker: pressing what is on the deck is legitimate. But it
@@ -1145,21 +1158,22 @@ public partial class ShuttleComputerUI : MonoBehaviour
             _printNote.text = "pressing UNSAVED changes";
             _printNote.color = Warn;
         }
-        else if (_song != null && _song.sections.Count > 1)
+        else if (kind == TraxKind.Demo)
         {
-            // Cassettes still carry ONE loop. Honest label so the promise on
-            // screen matches what the grader will hear (the trap class).
-            _printNote.text = "presses SEC " + TraxSong.SectionLabel(_sel)
-                            + "'s loop as a demo - full-track tapes come later";
+            _printNote.text = _song != null && _song.sections.Count > 1
+                ? "DEMO blank - presses only SEC " + TraxSong.SectionLabel(_sel)
+                  + " (" + _song.sections[_sel].bars + " bars)"
+                : "one tape, then it ejects";
             _printNote.color = InkGhost;
         }
         else
         {
-            _printNote.text = "one tape, then it ejects";
+            _printNote.text = "presses the FULL TRACK - " + totalBars + "/"
+                            + TraxKind.BarCap(kind) + " bars";
             _printNote.color = InkGhost;
         }
 
-        bool canPrint = named && loaded && !blocked;
+        bool canPrint = named && loaded && !blocked && !overCap;
         _printConfirm.color = canPrint ? Ink : Locked;
         _printConfirmLabel.color = canPrint ? Hex("04120eff") : InkGhost;
     }
@@ -1186,8 +1200,24 @@ public partial class ShuttleComputerUI : MonoBehaviour
         if (!CassetteDeck.HasCassette) { Toast("PLEASE INSERT CASSETTE"); return; }
         if (CassetteDeck.HasEjected) { Toast("TAKE THE LAST TAPE OFF THE MACHINE"); return; }
 
-        TraxPrints.Record press = TraxPrints.Register(_project.name, _inst.Track,
-                                                      CassetteDeck.InsertedTier);
+        int kind = CassetteDeck.InsertedKind;
+        TraxPrints.Record press;
+        if (kind == TraxKind.Demo)
+        {
+            // The whole selected SECTION — its bar length, fill-bar ending —
+            // not just the raw 4-bar loop (Sam, 2026-08-18).
+            var demoSong = new TraxSong();
+            int bars = _song != null ? _song.sections[_sel].bars : 4;
+            demoSong.sections.Add(new TraxSection(_inst.Track, bars));
+            press = TraxPrints.Register(_project.name, demoSong, TraxKind.Demo,
+                                        CassetteDeck.InsertedTier);
+        }
+        else
+        {
+            if (_song == null || _song.TotalBars() > TraxKind.BarCap(kind))
+            { Toast("TRACK TOO LONG FOR THIS TAPE"); return; }
+            press = TraxPrints.Register(_project.name, _song, kind, CassetteDeck.InsertedTier);
+        }
         if (press == null) return;
 
         // CLOSE FIRST, THEN PRINT. The order is the feature: CassetteSlot plays
