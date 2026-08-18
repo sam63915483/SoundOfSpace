@@ -165,11 +165,14 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
     // ── the world-screen mirror ──────────────────────────────────────────
     //
-    // The ConsoleScreen mesh shows whatever the computer UI last displayed:
-    // a SNAPSHOT of the canvas is rendered into this texture every time the
-    // computer closes (nothing changes while nobody's using it, so a frozen
-    // frame IS the live picture). ShuttleComputerTerminal puts it on the
-    // screen material. Dark until the computer is first used — reads as off.
+    // What the ConsoleScreen mesh shows. ShuttleComputerTerminal puts it on the
+    // screen material; dark until the computer is first used, which reads as
+    // off.
+    //
+    // LIVE while a co-op partner is using the machine — a private camera draws
+    // this player's own copy of the UI into it every frame (see
+    // ShuttleComputerWorldScreen) — and a held last frame the rest of the time,
+    // which is right, because a screen nobody is at is not changing.
 
     static RenderTexture s_mirror;
 
@@ -179,8 +182,16 @@ public partial class ShuttleComputerUI : MonoBehaviour
         {
             if (s_mirror == null)
             {
-                s_mirror = new RenderTexture(1024, 576, 0, RenderTextureFormat.ARGB32);
+                // 1920×1080 — the canvas scaler's REFERENCE resolution, so the
+                // UI renders at a scale factor of exactly 1 and every glyph
+                // lands on a whole pixel. At 1024×576 the scaler shrank the
+                // 1500-wide screen to about 800 and the text on the mesh came
+                // out mushy; at 1:1 it is as sharp as the fullscreen version.
+                // 8 MB, once, for the one surface both players read over each
+                // other's shoulders.
+                s_mirror = new RenderTexture(1920, 1080, 0, RenderTextureFormat.ARGB32);
                 s_mirror.name = "ShuttleScreenMirror";
+                s_mirror.filterMode = FilterMode.Bilinear;
                 s_mirror.Create();
                 var prev = RenderTexture.active;
                 RenderTexture.active = s_mirror;
@@ -1374,6 +1385,13 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _inst.SetDial(index, value);
         RefreshReadouts();
         _lastBarShown = -1;          // optional hits may have moved; redraw the grid
+
+        // A knob drag is the one continuous gesture on this screen. The whole
+        // song ships behind this at four a second, which is right for a section
+        // being added and far too slow for a fader being swept — so the dial
+        // gets its own tiny message at screen rate. No-ops when this value came
+        // FROM the partner in the first place.
+        TraxSessionSync.PublishDial(index, value);
     }
 
     void ToggleModule(string name)

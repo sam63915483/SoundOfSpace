@@ -126,6 +126,91 @@ public static class TraxUISprites
         return Finish(tex, size);
     }
 
+    /// <summary>
+    /// A real mouse pointer, for showing a co-op partner's cursor on the screen.
+    ///
+    /// Drawn rather than assembled from rectangles: the first attempt was a
+    /// rotated bar with a square on the end, which read as debug scaffolding
+    /// rather than as somebody's hand. This is the familiar arrow silhouette,
+    /// supersampled 4×4 so the diagonals are clean at any size, with its PIVOT
+    /// AT THE TIP — so the point of the arrow sits exactly on the coordinate it
+    /// was given, and an outline copy behind it can be scaled up without the
+    /// tip drifting off target.
+    /// </summary>
+    public static Sprite Pointer
+    {
+        get
+        {
+            if (_pointer == null) _pointer = MakePointer(96);
+            return _pointer;
+        }
+    }
+
+    static Sprite _pointer;
+
+    /// The classic arrow, as a closed polygon in 0..1 with y running DOWN from
+    /// the tip. Kept as data so the shape is legible and tweakable.
+    static readonly Vector2[] PointerShape =
+    {
+        new Vector2(0.00f, 0.00f),   // the tip
+        new Vector2(0.00f, 0.76f),
+        new Vector2(0.21f, 0.58f),
+        new Vector2(0.34f, 0.92f),
+        new Vector2(0.50f, 0.85f),
+        new Vector2(0.36f, 0.53f),
+        new Vector2(0.60f, 0.51f),
+    };
+
+    static Sprite MakePointer(int size)
+    {
+        var tex = NewTex(size);
+        var px = new Color32[size * size];
+        const int SS = 4;                       // supersamples per axis
+
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                int hits = 0;
+                for (int sy = 0; sy < SS; sy++)
+                {
+                    for (int sx = 0; sx < SS; sx++)
+                    {
+                        float nx = (x + (sx + 0.5f) / SS) / size;
+                        // Texture rows run bottom-up; the shape is authored
+                        // top-down from the tip, so flip here rather than in
+                        // the polygon.
+                        float ny = 1f - (y + (sy + 0.5f) / SS) / size;
+                        if (InPolygon(PointerShape, nx, ny)) hits++;
+                    }
+                }
+                byte a = (byte)(255 * hits / (SS * SS));
+                px[y * size + x] = new Color32(255, 255, 255, a);
+            }
+        }
+
+        tex.SetPixels32(px);
+        tex.Apply();
+        // Pivot at the tip — the polygon's (0,0), which is the TOP-left of the
+        // texture once flipped.
+        var s = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0f, 1f), 100f);
+        s.hideFlags = HideFlags.HideAndDontSave;
+        return s;
+    }
+
+    /// Standard even-odd crossing test.
+    static bool InPolygon(Vector2[] poly, float x, float y)
+    {
+        bool inside = false;
+        for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+        {
+            if ((poly[i].y > y) == (poly[j].y > y)) continue;
+            float t = (y - poly[i].y) / (poly[j].y - poly[i].y);
+            if (x < poly[i].x + t * (poly[j].x - poly[i].x)) inside = !inside;
+        }
+        return inside;
+    }
+
     /// Solid circle for the knob hub.
     public static Sprite Disc
     {

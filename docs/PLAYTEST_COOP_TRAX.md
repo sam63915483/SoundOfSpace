@@ -32,8 +32,21 @@ a different section watching the other's cursor turn knobs that did nothing.
 Both players sit at the shuttle computer at the same time.
 
 - [ ] **Ghost cursor.** Each of you sees the other's pointer moving, tinted with
-      their suit colour, with their name beside it. It should land on the same
-      knob they're actually touching, not offset.
+      their suit colour, with their name on a dark pill beside it. It should be
+      a proper arrow with a clean dark outline — readable over the green text —
+      and it should land on the same knob they're actually touching, not offset.
+- [ ] **Smooth, not steppy.** Move your mouse in slow circles; your partner
+      should see a smooth arc, not a series of jumps. Then move it fast — it
+      should keep up without rubber-banding badly behind you.
+- [ ] **Click feedback.** Click and hold: the pointer flashes brighter and
+      presses in slightly on their screen, and eases back when you let go.
+      A quick single click should still be visible, not a one-frame blip.
+- [ ] **Knobs sweep smoothly.** Slowly drag a dial through its full range. On
+      the other machine it should sweep, not tick through four positions a
+      second. Do it while the track is playing — the SOUND should change
+      continuously too.
+- [ ] **Two knobs at once.** One player drags two dials in quick alternation;
+      both should stay smooth (they're throttled per-dial, not globally).
 - [ ] **Navigation is shared.** One clicks TRAX → both go to the TRAX menu. One
       clicks LOAD → both see the shelf. One opens a project → both land in the
       arranger on that project.
@@ -82,7 +95,10 @@ mesh shows the LIVE screen and the synth comes out of the console.
       partner is doing, updating in real time — menus, the arranger, knobs
       moving. Not a frozen picture.
 - [ ] **Their cursor is on the mesh.** You should see their pointer moving
-      across the physical screen too.
+      across the physical screen too, and just as smoothly as in the fullscreen
+      view.
+- [ ] **The mesh is sharp.** Text on the physical screen should be readable, not
+      mushy — it renders at 1920×1080 now, 1:1 with the UI's design resolution.
 - [ ] **Sound from the console.** Partner presses PLAY; you hear the beat
       coming FROM the machine. Walk away — it should fade out, and get louder
       as you come back. Walk behind it — it should sound like it's in front.

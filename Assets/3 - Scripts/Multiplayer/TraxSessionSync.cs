@@ -73,6 +73,7 @@ public class TraxSessionSync : MonoBehaviour
     const byte KindTransport = 2;   // play / stop / seek
     const byte KindPresence  = 3;   // opened or closed the computer
     const byte KindScreen    = 4;   // WHICH SCREEN the computer is showing
+    const byte KindDial      = 5;   // one knob, mid-drag, at screen rate
 
     /// Which screen the computer is on. Both a presence hint and the first
     /// field of the shared screen state — they are the same question, because
@@ -88,9 +89,28 @@ public class TraxSessionSync : MonoBehaviour
     public const byte TransportPlayLoop = 2;
     public const byte TransportSeek     = 3;
 
-    /// Cursor rate. Fast enough to read as a moving pointer, slow enough that a
-    /// relayed stream is nothing next to the pose traffic already flowing.
-    const float CursorInterval = 1f / 12f;
+    /// <summary>
+    /// Cursor rate. Ten bytes a packet, so the honest constraint is packet
+    /// count rather than bandwidth — 25/s is well under what the enemy pose
+    /// stream already sends and is enough that the receiver's smoothing has
+    /// something to smooth BETWEEN rather than something to invent.
+    ///
+    /// 12/s was the first guess and it read as a bad connection: a hand moving
+    /// smoothly arrived as twelve discrete jumps a second.
+    /// </summary>
+    const float CursorInterval = 1f / 25f;
+
+    /// <summary>
+    /// Dial rate. A knob drag is the one CONTINUOUS thing on this screen, and
+    /// the whole-song publish below is coalesced to four a second — fine for a
+    /// section being added, hopeless for a fader being swept, which arrived as
+    /// four visible steps.
+    ///
+    /// So a dial gets its own tiny message (an index and a float) at screen
+    /// rate, and the song publish stays as the periodic reconciler behind it.
+    /// Absolute values, so a dropped one is corrected by the next.
+    /// </summary>
+    const float DialInterval = 1f / 30f;
 
     /// Floor between song publishes. Dragging a knob fires an edit every frame;
     /// without this each one would ship the arrangement.
@@ -323,6 +343,35 @@ public class TraxSessionSync : MonoBehaviour
     }
 
     /// <summary>
+    /// One knob, being turned right now.
+    ///
+    /// Unreliable and absolute: the next packet supersedes this one, and the
+    /// whole-song publish behind it is the thing that guarantees the two
+    /// machines agree once the hand stops moving. Throttled per DIAL rather
+    /// than globally, so turning two at once does not halve either one's rate.
+    /// </summary>
+    public static void PublishDial(int index, double value)
+    {
+        if (!Live || ApplyingRemote) return;
+        if (index < 0 || index >= 8) return;
+        if (Time.unscaledTime < Instance._nextDialAt[index]) return;
+        Instance._nextDialAt[index] = Time.unscaledTime + DialInterval;
+
+        Instance.Dispatch(w =>
+        {
+            w.WriteValueSafe(KindDial);
+            w.WriteValueSafe(index);
+            w.WriteValueSafe((float)value);
+        }, ulong.MaxValue, NetworkDelivery.UnreliableSequenced, 32);
+    }
+
+    readonly float[] _nextDialAt = new float[8];
+
+    public static int IncomingDialRev { get; private set; }
+    public static int IncomingDialIndex { get; private set; }
+    public static float IncomingDialValue { get; private set; }
+
+    /// <summary>
     /// Somebody pressed play, stop, or clicked the ruler. Reliable — a missed
     /// stop would leave one machine playing alone, and there is no periodic
     /// re-statement to recover from that.
@@ -466,6 +515,23 @@ public class TraxSessionSync : MonoBehaviour
                 {
                     w.WriteValueSafe(KindTransport);
                     w.WriteValueSafe(mode); w.WriteValueSafe(step);
+                }, 32);
+                break;
+            }
+
+            case KindDial:
+            {
+                reader.ReadValueSafe(out int index);
+                reader.ReadValueSafe(out float value);
+                IncomingDialIndex = index;
+                IncomingDialValue = value;
+                IncomingDialRev++;
+                _remoteHeardAt = Time.unscaledTime;
+
+                if (server) Relay(senderId, NetworkDelivery.UnreliableSequenced, w =>
+                {
+                    w.WriteValueSafe(KindDial);
+                    w.WriteValueSafe(index); w.WriteValueSafe(value);
                 }, 32);
                 break;
             }

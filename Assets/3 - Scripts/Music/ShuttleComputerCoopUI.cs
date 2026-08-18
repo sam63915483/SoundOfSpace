@@ -49,13 +49,37 @@ public partial class ShuttleComputerUI
 
     RectTransform _ghostRT;
     Image _ghostArrow;
-    Image _ghostDot;
+    Image _ghostOutline;
+    Image _ghostChip;
     TextMeshProUGUI _ghostLabel;
+
+    /// Pointer height in virtual screen units. Sized against the 1500×940
+    /// screen, not the window, so it looks the same fullscreen and on the mesh.
+    const float PointerSize = 26f;
+
+    /// <summary>
+    /// Where the ghost is being drawn, chasing where it was last heard to be.
+    ///
+    /// Packets arrive at a fixed rate and frames do not, so snapping straight to
+    /// each one makes a perfectly smooth hand look like a slideshow — the
+    /// cursor visibly steps. Smoothing between them costs nothing and is the
+    /// difference between "the netcode is bad" and "somebody is moving a mouse".
+    /// </summary>
+    Vector2 _ghostShown;
+    bool _ghostPlaced;
+
+    /// How fast the drawn position converges on the received one. Framerate
+    /// independent (exponential), tuned to settle inside about two packets so
+    /// it reads as smooth without feeling like it lags behind their clicks.
+    const float GhostFollow = 28f;
+
+    float _clickFlash;
     RectTransform _elsewhereRT;
     TextMeshProUGUI _elsewhereLabel;
 
     int _songRevSeen;
     int _transportRevSeen;
+    int _dialRevSeen;
     byte _lastPresenceView = TraxSessionSync.ViewNone;
 
     /// <summary>
@@ -122,32 +146,43 @@ public partial class ShuttleComputerUI
     void BuildRemoteCursor(RectTransform parent)
     {
         // ── the pointer ──
+        //
+        // Two copies of the same arrow: a dark one behind, scaled up from the
+        // tip, and the tinted one in front. That is what gives it a crisp
+        // outline against a CRT full of green text — a single flat shape
+        // disappears into the interface it is pointing at.
         _ghostRT = MakeRect(parent, "PartnerCursor");
         _ghostRT.anchorMin = _ghostRT.anchorMax = new Vector2(0.5f, 0.5f);
-        _ghostRT.pivot = new Vector2(0.5f, 0.5f);
-        _ghostRT.sizeDelta = new Vector2(120, 40);
+        _ghostRT.pivot = new Vector2(0f, 1f);           // the tip
+        _ghostRT.sizeDelta = new Vector2(PointerSize, PointerSize);
 
-        // A chunky two-part arrow: a solid wedge with a bright dot at the tip,
-        // so it stays findable against the CRT noise without needing a sprite.
-        _ghostArrow = MakePanel(_ghostRT, "Arrow", Ink);
+        _ghostOutline = MakeSprite(_ghostRT, "Outline", TraxUISprites.Pointer, Hex("04120ecc"));
+        var ort = _ghostOutline.rectTransform;
+        ort.anchorMin = ort.anchorMax = new Vector2(0f, 1f);
+        ort.pivot = new Vector2(0f, 1f);
+        ort.anchoredPosition = Vector2.zero;
+        ort.sizeDelta = new Vector2(PointerSize, PointerSize);
+        ort.localScale = new Vector3(1.22f, 1.22f, 1f);
+
+        _ghostArrow = MakeSprite(_ghostRT, "Arrow", TraxUISprites.Pointer, Ink);
         var art = _ghostArrow.rectTransform;
-        art.anchorMin = art.anchorMax = new Vector2(0.5f, 0.5f);
-        art.pivot = new Vector2(0.5f, 0.5f);
-        art.sizeDelta = new Vector2(3, 16);
-        art.anchoredPosition = new Vector2(0, -8);
-        art.localRotation = Quaternion.Euler(0, 0, 28f);
+        art.anchorMin = art.anchorMax = new Vector2(0f, 1f);
+        art.pivot = new Vector2(0f, 1f);
+        art.anchoredPosition = Vector2.zero;
+        art.sizeDelta = new Vector2(PointerSize, PointerSize);
 
-        _ghostDot = MakePanel(_ghostRT, "Tip", Ink);
-        var drt = _ghostDot.rectTransform;
-        drt.anchorMin = drt.anchorMax = new Vector2(0.5f, 0.5f);
-        drt.pivot = new Vector2(0.5f, 0.5f);
-        drt.sizeDelta = new Vector2(7, 7);
-        drt.anchoredPosition = Vector2.zero;
+        // Name on a dark pill, so it stays readable whatever it is over.
+        _ghostChip = MakePanel(_ghostRT, "NameChip", Hex("04120ee0"));
+        var crt = _ghostChip.rectTransform;
+        crt.anchorMin = crt.anchorMax = new Vector2(0f, 1f);
+        crt.pivot = new Vector2(0f, 1f);
+        crt.anchoredPosition = new Vector2(PointerSize * 0.62f, -PointerSize * 0.68f);
+        crt.sizeDelta = new Vector2(10, 15);            // width fitted to the name
 
-        _ghostLabel = MakeText(_ghostRT, "Name", "", 11, Ink, TextAlignmentOptions.TopLeft);
-        Box(_ghostLabel.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0, 1),
-            new Vector2(8, -14), new Vector2(140, 14));
-        _ghostLabel.characterSpacing = 8;
+        _ghostLabel = MakeText(_ghostChip.rectTransform, "Name", "", 10, Ink,
+                               TextAlignmentOptions.Center);
+        Stretch(_ghostLabel.rectTransform, 4, 4, 1, 1);
+        _ghostLabel.characterSpacing = 6;
 
         _ghostRT.gameObject.SetActive(false);
 
@@ -351,6 +386,17 @@ public partial class ShuttleComputerUI
             }
         }
 
+        // Before the song, so a stale whole-song snapshot arriving in the same
+        // frame as a fresher dial value doesn't undo it for a beat.
+        if (TraxSessionSync.IncomingDialRev != _dialRevSeen)
+        {
+            _dialRevSeen = TraxSessionSync.IncomingDialRev;
+            TraxSessionSync.ApplyingRemote = true;
+            try { ApplyRemoteDial(TraxSessionSync.IncomingDialIndex,
+                                  TraxSessionSync.IncomingDialValue); }
+            finally { TraxSessionSync.ApplyingRemote = false; }
+        }
+
         if (TraxSessionSync.IncomingTransportRev != _transportRevSeen)
         {
             _transportRevSeen = TraxSessionSync.IncomingTransportRev;
@@ -419,6 +465,26 @@ public partial class ShuttleComputerUI
     /// A PLAY that arrived before the song did — see ApplyRemoteTransport.
     bool _wantsPlay;
     int _pendingPlayStep;
+
+    /// <summary>
+    /// One knob, moved by the other player. Runs the same path a local turn
+    /// does — engine, readouts, and the knob widget itself — so the dial ends up
+    /// exactly where a local drag would have left it, and the sound changes with
+    /// the picture.
+    ///
+    /// SetSilent on the widget rather than driving it through its own callback:
+    /// the callback is what publishes, and echoing a partner's turn back at them
+    /// is a loop.
+    /// </summary>
+    void ApplyRemoteDial(int index, float value)
+    {
+        if (_inst == null || index < 0) return;
+
+        for (int i = 0; i < _knobs.Count; i++)
+            if (_knobs[i] != null && _knobs[i].DialIndex == index) { _knobs[i].SetSilent(value); break; }
+
+        OnKnobChanged(index, value);
+    }
 
     void ApplyRemoteTransport(byte mode, int step)
     {
@@ -489,25 +555,56 @@ public partial class ShuttleComputerUI
             _elsewhereLabel.text = (TraxSessionSync.RemoteName ?? "SOMEONE").ToUpperInvariant()
                                  + " IS " + ViewWord(theirView);
 
-        if (!sameScreen || _ghostRT == null || _screenRT == null) return;
+        if (!sameScreen || _ghostRT == null || _screenRT == null) { _ghostPlaced = false; return; }
 
         Rect r = _screenRT.rect;
         Vector2 n = TraxSessionSync.RemoteCursor;
-        _ghostRT.anchoredPosition = new Vector2(r.xMin + n.x * r.width, r.yMin + n.y * r.height);
+        var target = new Vector2(r.xMin + n.x * r.width, r.yMin + n.y * r.height);
+
+        // Snap the first time it appears — easing in from wherever it was last
+        // seen would send it sliding across the screen — then chase.
+        if (!_ghostPlaced) { _ghostShown = target; _ghostPlaced = true; }
+        else
+        {
+            float k = 1f - Mathf.Exp(-GhostFollow * Time.unscaledDeltaTime);
+            _ghostShown = Vector2.Lerp(_ghostShown, target, k);
+        }
+        _ghostRT.anchoredPosition = _ghostShown;
 
         // Their suit colour, so two people at one terminal are told apart the
         // same way they are told apart in the world.
         Color tint = SuitPalette.ColorAt(TraxSessionSync.RemoteSwatch);
-        // A click flashes the pointer bright — the one moment where knowing
-        // they touched something, rather than merely hovered, matters.
-        Color lit = TraxSessionSync.RemoteClicking ? Color.Lerp(tint, Color.white, 0.6f) : tint;
+
+        // A click flashes the pointer and gives it a small press — knowing they
+        // TOUCHED something rather than hovered is most of what you are
+        // watching for. Decays rather than snapping back, or a quick click is a
+        // single frame nobody sees.
+        _clickFlash = TraxSessionSync.RemoteClicking
+            ? 1f
+            : Mathf.MoveTowards(_clickFlash, 0f, Time.unscaledDeltaTime * 5f);
+
+        Color lit = Color.Lerp(tint, Color.white, _clickFlash * 0.65f);
         if (_ghostArrow != null) _ghostArrow.color = lit;
-        if (_ghostDot != null) _ghostDot.color = lit;
+        if (_ghostRT != null)
+        {
+            float squash = 1f - _clickFlash * 0.14f;
+            _ghostRT.localScale = new Vector3(squash, squash, 1f);
+        }
+
         if (_ghostLabel != null)
         {
             _ghostLabel.color = tint;
             string want = (TraxSessionSync.RemoteName ?? "").ToUpperInvariant();
-            if (_ghostLabel.text != want) _ghostLabel.text = want;
+            if (_ghostLabel.text != want)
+            {
+                _ghostLabel.text = want;
+                // Fit the pill to the name rather than leaving a fixed slab with
+                // a short name rattling around inside it.
+                if (_ghostChip != null)
+                    _ghostChip.rectTransform.sizeDelta =
+                        new Vector2(_ghostLabel.preferredWidth + 10f, 15f);
+            }
+            if (_ghostChip != null) _ghostChip.gameObject.SetActive(want.Length > 0);
         }
     }
 
