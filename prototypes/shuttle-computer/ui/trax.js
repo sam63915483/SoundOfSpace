@@ -500,7 +500,8 @@ export function mountTrax (root, inst, opts) {
 
     const loopBtn = document.createElement ('button');
     loopBtn.className = 'btn';
-    loopBtn.textContent = 'LOOP SEC';
+    loopBtn.id = 'loop-btn';
+    loopBtn.textContent = 'LOOP SECTION';
 
     const readout = document.createElement ('div');
     readout.id = 'readout';
@@ -839,7 +840,7 @@ export function mountTrax (root, inst, opts) {
                         stepEls[s].classList.add ('now');
                         readout.textContent =
                             Math.round (inst.params.bpm) + ' BPM   BAR ' + (currentBar + 1) + '/' + BARS +
-                            '   LOOP SEC ' + SONG.sectionLabel (sel);
+                            '   LOOP SECTION ' + SONG.sectionLabel (sel);
                     }
                 }
             }
@@ -854,7 +855,7 @@ export function mountTrax (root, inst, opts) {
     function refreshTransport () {
         playBtn.textContent = inst.playingSong ? 'STOP' : 'PLAY TRACK';
         playBtn.classList.toggle ('primary', !inst.playing || inst.playingSong);
-        loopBtn.textContent = inst.playingLoop ? 'STOP' : 'LOOP SEC';
+        loopBtn.textContent = inst.playingLoop ? 'STOP' : 'LOOP SECTION';
     }
 
     async function togglePlaySong () {

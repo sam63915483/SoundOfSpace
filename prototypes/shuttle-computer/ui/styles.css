@@ -510,6 +510,9 @@ button.btn.ghost { color: var(--ink-dim); }
 button.btn:disabled { opacity: .4; cursor: not-allowed; }
 button.btn.tiny { padding: 4px 9px; font-size: 12px; letter-spacing: 0; }
 
+/* The section-loop transport sits next to PLAY TRACK — same visual weight. */
+#loop-btn { font-size: 13px; padding: 9px 18px; }
+
 #readout { font-size: 11px; color: var(--ink-dim); letter-spacing: .1em; white-space: pre; }
 #transport .sep { flex: 1; }
 
