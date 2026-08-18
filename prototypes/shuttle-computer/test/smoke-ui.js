@@ -496,20 +496,22 @@ check ('the song value grows with the arrangement', () => {
     assert (/×2\.25/.test (v), 'value reads ' + v);
 });
 
-check ('clicking a section starts song playback from its start', async () => {
-    // The section clicks above should already have started song playback.
-    await sleep (60);
-    pump (30);
-    assert (inst.playing && inst.songMode, 'song playback did not start on section click');
-    btn ('STOP').fire ('click');
-    assert (!inst.playing, 'STOP did not stop the song');
+check ('clicking a section only selects it — playback is untouched', () => {
+    assert (!inst.playing, 'nothing should be playing before the click');
+    secs ()[0].fire ('click');
+    assert (!inst.playing, 'selecting a section must not start playback');
+    assert (secs ()[0].classList.contains ('sel'), 'the click did not select');
+    secs ()[1].fire ('click');                     // back to B for the rest
+    assert (secs ()[1].classList.contains ('sel'), 'reselecting B failed');
 });
 
-check ('clicking a ruler tick moves the play cursor to that bar', () => {
-    const ticks = appView.querySelectorAll ('.arr-tick');
-    assert (ticks.length === 9, 'expected 9 bar ticks (4+5), got ' + ticks.length);
-    ticks[2].fire ('click');                       // bar 3 -> step 32
-    assert (inst.songCursor === 32, 'cursor should be 32, got ' + inst.songCursor);
+check ('the ruler has a clickable cell per beat, and seeks land on the beat', () => {
+    const beats = appView.querySelectorAll ('.arr-beat');
+    assert (beats.length === 36, 'expected 36 beat cells (9 bars x 4), got ' + beats.length);
+    beats[8].fire ('click');                       // bar 3, beat 1 -> step 32
+    assert (inst.songCursor === 32, 'bar seek should be 32, got ' + inst.songCursor);
+    beats[9].fire ('click');                       // bar 3, beat 2 -> step 36
+    assert (inst.songCursor === 36, 'beat seek should be 36, got ' + inst.songCursor);
 });
 
 check ('dragging a block reorders the sections and swallows the click', () => {

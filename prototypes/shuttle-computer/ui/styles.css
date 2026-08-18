@@ -213,25 +213,36 @@ html, body {
 
 /* The ruler mirrors the strip's flex maths (grow = bars, same gap, phantom
    end spacer the width of the [+] button) so ticks sit over their bars. */
-#arr-ruler { display: flex; gap: 4px; height: 15px; }
+#arr-ruler { display: flex; gap: 4px; height: 24px; }
 .arr-ruler-cell { flex-basis: 0; min-width: 34px; display: flex; overflow: hidden; }
-.arr-tick {
+/* One cell per BEAT: bar lines full height, beat ticks short, every cell a
+   seek target — playback can start on the exact beat. */
+.arr-beat {
     flex: 1 1 0;
     min-width: 0;
-    border-left: 1px solid var(--grid);
-    font-size: 7px;
-    line-height: 15px;
-    padding-left: 2px;
+    position: relative;
+    font-size: 8px;
+    line-height: 24px;
+    padding-left: 3px;
     color: var(--ink-ghost);
-    letter-spacing: .08em;
+    letter-spacing: .06em;
     white-space: nowrap;
     overflow: hidden;
     cursor: pointer;
 }
-.arr-tick:hover {
+.arr-beat::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 1px;
+    height: 40%;
+    background: var(--grid);
+}
+.arr-beat.bar::before { height: 100%; background: var(--ink-ghost); }
+.arr-beat:hover {
     color: var(--ink);
-    border-left-color: var(--ink-dim);
-    background: rgba(121, 255, 208, .06);
+    background: rgba(121, 255, 208, .07);
 }
 .arr-ruler-end { width: 34px; flex: none; }
 

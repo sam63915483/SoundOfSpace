@@ -131,10 +131,12 @@ export function mountTrax (root, inst, opts) {
     arranger.append (arrHead, timeline, arrRow);
     body.appendChild (arranger);
 
-    /// Bar ticks above the strip, numbered song-wide (1-based, cumulative) so
-    /// "bar 9" means the same thing whichever section it lands in. Labels sit
-    /// on a section's first bar and every 4th after; the rest stay bare ticks
-    /// so a 2-bar section never has to fit two numbers.
+    /// The timescale above the strip: one clickable cell per BEAT (four per
+    /// bar), numbered song-wide by bar so "bar 9" means the same thing
+    /// whichever section it lands in. Bar lines run full height, beat ticks
+    /// short — and every cell is a seek target, so playback can start on the
+    /// exact beat. This is THE way to move the playhead; section blocks only
+    /// select (Sam's call, 2026-08-17).
     function refreshRuler () {
         ruler.innerHTML = '';
         let barNo = 1;
@@ -143,16 +145,16 @@ export function mountTrax (root, inst, opts) {
             cell.className = 'arr-ruler-cell';
             cell.style.flexGrow = s.bars;
             for (let b = 0; b < s.bars; b++) {
-                const tick = document.createElement ('div');
-                tick.className = 'arr-tick';
-                if (b % 4 === 0) tick.textContent = String (barNo);
-                // Every tick is a seek target: click a bar to put the playhead
-                // there — live jump while playing, cursor move while stopped.
-                const stepPos = (barNo - 1) * STEPS;
-                tick.title = 'play from bar ' + barNo;
-                tick.addEventListener ('click', () => seekToStep (stepPos));
+                for (let q = 0; q < 4; q++) {
+                    const beat = document.createElement ('div');
+                    beat.className = 'arr-beat' + (q === 0 ? ' bar' : '');
+                    if (q === 0 && b % 4 === 0) beat.textContent = String (barNo);
+                    const stepPos = (barNo - 1) * STEPS + q * 4;
+                    beat.title = 'play from bar ' + barNo + ', beat ' + (q + 1);
+                    beat.addEventListener ('click', () => seekToStep (stepPos));
+                    cell.appendChild (beat);
+                }
                 barNo++;
-                cell.appendChild (tick);
             }
             ruler.appendChild (cell);
         }
@@ -233,7 +235,7 @@ export function mountTrax (root, inst, opts) {
             el.append (top, bot);
             el.addEventListener ('click', () => {
                 if (suppressClick) { suppressClick = false; return; }
-                sectionClicked (i);
+                selectSection (i);
             });
             el.addEventListener ('pointerdown', e => {
                 if (e.button !== 0) return;
@@ -404,27 +406,10 @@ export function mountTrax (root, inst, opts) {
         refreshAllControls ();
     }
 
-    function sectionStartStep (i) {
-        let start = 0;
-        for (let j = 0; j < i; j++) start += song.sections[j].bars * STEPS;
-        return start;
-    }
-
-    /// Clicking a block selects it for editing AND auditions it: the song
-    /// playhead jumps to the section's first bar, starting playback if it
-    /// wasn't running (Sam's call — hearing it beats silence every time).
-    async function sectionClicked (i) {
-        selectSection (i);
-        if (songStale) { inst.setSong (song); songStale = false; }
-        inst.seekSong (sectionStartStep (sel));
-        if (!inst.playingSong) {
-            inst.stop ();                     // a running LOOP SEC yields
-            clearPlayhead ();
-            await inst.playSong ();
-            refreshTransport ();
-        }
-        updateIdleCursor ();
-    }
+    // Clicking a block only SELECTS it for editing — the song keeps playing
+    // wherever it is, so you can tweak section C while the music is still in
+    // A. Reverted from click-auditions (Sam, 2026-08-17): the ruler is the
+    // one and only way to move the playhead.
 
     /// Ruler seek. Live jump while the song plays; while stopped it just
     /// moves the cursor PLAY TRACK will start from.

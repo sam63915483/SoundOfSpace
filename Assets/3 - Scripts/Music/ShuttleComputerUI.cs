@@ -241,7 +241,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // at once is mush. Sitting down at the computer stops the tape.
         TraxTapePlayer.StopAll();
 
-        ShowHome();
+        // RESUME the screen you left, don't reset to HOME — the world monitor
+        // shows a freeze-frame of that screen, so coming back anywhere else
+        // made the mirror a liar (Sam's playtest note). Build() initialises
+        // the view state to HOME for the very first open.
+        SyncPlayButton();
         _canvas.gameObject.SetActive(true);
     }
 
@@ -251,6 +255,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _open = false;
 
         if (_inst != null) _inst.Stop();
+        // The freeze-frame and the resumed screen must both show a stopped
+        // transport, or the PLAY button lies twice.
+        SyncPlayButton();
+        ClearPlayhead();
         ClosePrint();
         // The canvas stays up ONE more frame: at end of frame the backbuffer
         // — which IS the computer UI, pixel for pixel — is copied onto the
@@ -411,6 +419,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
         BuildToast(srt);
         BuildPrintDialog(srt);
         BuildSaveDialog(srt);
+
+        // Initialise the view state once — every view GameObject is born
+        // active, and DoOpen resumes rather than resets.
+        ShowHome();
 
         _canvas.gameObject.SetActive(false);
     }

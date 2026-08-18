@@ -27,7 +27,7 @@ public partial class ShuttleComputerUI
     // The header is its own row — the SONG label used to overlay the ruler
     // and sat on top of bar number 1 (Sam's playtest note).
     const float ArrHeaderH = 16f;
-    const float ArrRulerH = 16f;
+    const float ArrRulerH = 24f;
     const float ArrStripH = 44f;
     const float ArrCtlH = 34f;
     const float ArrGap = 4f;
@@ -293,22 +293,10 @@ public partial class ShuttleComputerUI
         RefreshAllControls();
     }
 
-    /// Clicking a block selects it for editing AND auditions it: the song
-    /// playhead jumps to the section's first bar, starting playback if it
-    /// wasn't running.
-    void SectionClicked(int i)
-    {
-        SelectSection(i);
-        EnsureSongFresh();
-        _inst.SeekSong(_song.SectionStartStep(_sel));
-        if (!_inst.IsPlayingSong)
-        {
-            _inst.Stop();                   // a running LOOP SECTION yields
-            ClearPlayhead();
-            _inst.PlaySong();
-            SyncPlayButton();
-        }
-    }
+    // Clicking a block only SELECTS it for editing — the song keeps playing
+    // wherever it is, so you can tweak section C while the music is still in
+    // A. Reverted from click-auditions (Sam, 2026-08-17): the ruler is the
+    // one and only way to move the playhead.
 
     /// Ruler seek: live jump while the song plays; while stopped it just moves
     /// the cursor PLAY TRACK will start from.
@@ -437,43 +425,50 @@ public partial class ShuttleComputerUI
             _arrBlockX.Add(x);
             _arrBlockW.Add(w);
 
-            // Ruler cells over this block: one clickable cell per bar, a tick
-            // on its left edge, numbered song-wide on the section's first bar
-            // and every 4th after.
+            // The timescale over this block: one clickable cell per BEAT
+            // (four per bar), so playback can start on the exact beat. Bar
+            // lines run full height and carry the song-wide number (section
+            // start + every 4th bar); beat ticks sit short and dim.
             float barW = w / sec.bars;
+            float beatW = barW / 4f;
             for (int b = 0; b < sec.bars; b++)
             {
-                int stepPos = (barNo - 1) * TraxPhrase.Steps;
-                var cell = MakePanel(_arrRuler, "Bar" + barNo, new Color(0, 0, 0, 0));
-                cell.raycastTarget = true;
-                var crt = cell.rectTransform;
-                crt.anchorMin = new Vector2(0, 0);
-                crt.anchorMax = new Vector2(0, 1);
-                crt.pivot = new Vector2(0, 0.5f);
-                crt.sizeDelta = new Vector2(barW, 0);
-                crt.anchoredPosition = new Vector2(x + b * barW, 0);
-
-                var tick = MakePanel(crt, "Tick", Grid);
-                var tkrt = tick.rectTransform;
-                tkrt.anchorMin = new Vector2(0, 0);
-                tkrt.anchorMax = new Vector2(0, 1);
-                tkrt.pivot = new Vector2(0, 0.5f);
-                tkrt.sizeDelta = new Vector2(1, 0);
-                tkrt.anchoredPosition = Vector2.zero;
-
-                if (b % 4 == 0)
+                for (int q = 0; q < 4; q++)
                 {
-                    var num = MakeText(crt, "Num", barNo.ToString(), 10, InkGhost,
-                                       TextAlignmentOptions.Left);
-                    Box(num.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f),
-                        new Vector2(4, 0), new Vector2(40, 14));
+                    int stepPos = (barNo - 1) * TraxPhrase.Steps + q * 4;
+                    bool isBar = q == 0;
+
+                    var cell = MakePanel(_arrRuler, "Beat", new Color(0, 0, 0, 0));
+                    cell.raycastTarget = true;
+                    var crt = cell.rectTransform;
+                    crt.anchorMin = new Vector2(0, 0);
+                    crt.anchorMax = new Vector2(0, 1);
+                    crt.pivot = new Vector2(0, 0.5f);
+                    crt.sizeDelta = new Vector2(beatW, 0);
+                    crt.anchoredPosition = new Vector2(x + b * barW + q * beatW, 0);
+
+                    var tick = MakePanel(crt, "Tick", isBar ? InkGhost : Grid);
+                    var tkrt = tick.rectTransform;
+                    tkrt.anchorMin = new Vector2(0, 0);
+                    tkrt.anchorMax = isBar ? new Vector2(0, 1) : new Vector2(0, 0.4f);
+                    tkrt.pivot = new Vector2(0, 0);
+                    tkrt.sizeDelta = new Vector2(1, 0);
+                    tkrt.anchoredPosition = Vector2.zero;
+
+                    if (isBar && b % 4 == 0)
+                    {
+                        var num = MakeText(crt, "Num", barNo.ToString(), 10, InkGhost,
+                                           TextAlignmentOptions.Left);
+                        Box(num.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f),
+                            new Vector2(4, 0), new Vector2(40, 14));
+                    }
+
+                    var cellBtn = cell.gameObject.AddComponent<Button>();
+                    cellBtn.targetGraphic = cell;
+                    cellBtn.onClick.AddListener(delegate { SeekToStep(stepPos); });
+
+                    _arrRulerObjs.Add(cell.gameObject);
                 }
-
-                var cellBtn = cell.gameObject.AddComponent<Button>();
-                cellBtn.targetGraphic = cell;
-                cellBtn.onClick.AddListener(delegate { SeekToStep(stepPos); });
-
-                _arrRulerObjs.Add(cell.gameObject);
                 barNo++;
             }
 
@@ -586,7 +581,7 @@ public partial class ShuttleComputerUI
     {
         // A real drag never lands here — the EventSystem clears
         // eligibleForClick once the drag threshold is crossed.
-        SectionClicked(i);
+        SelectSection(i);
     }
 
     void OnSectionBeginDrag(int i, PointerEventData e)
