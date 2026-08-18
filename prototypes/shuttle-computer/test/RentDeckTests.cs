@@ -34,6 +34,54 @@ public static class RentDeckTests
         Console.WriteLine(name);
     }
 
+    // ── tape formats (2026-08-18) ────────────────────────────────────────
+
+    static void DeckKindChecks()
+    {
+        Section("deck kinds");
+        NewWorld(0, 0);
+
+        Hotbar.Instance.AddResource(Hotbar.ItemId.BlankTapeFullT2, 1);
+        Hotbar.Instance.EquippedId = Hotbar.ItemId.BlankTapeFullT2;
+        Check(CassetteDeck.Insert(), "full T2 blank inserts");
+        Check(CassetteDeck.InsertedTier == 2 && CassetteDeck.InsertedKind == TraxKind.Full,
+              "kind+tier seated");
+        Check(CassetteDeck.EjectBlank(), "ejects back");
+        Eq(Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.BlankTapeFullT2), 1, "same blank returned");
+        Eq(CassetteDeck.InsertedKind, 0, "kind cleared on eject");
+
+        // Save round trip carries the kind; old saves (field absent = 0)
+        // load as a Demo blank.
+        Hotbar.Instance.AddResource(Hotbar.ItemId.BlankTapeHalfT1, 1);
+        Hotbar.Instance.EquippedId = Hotbar.ItemId.BlankTapeHalfT1;
+        Check(CassetteDeck.Insert(), "half T1 inserts");
+        var save = new TraxLibrarySave();
+        CassetteDeck.Capture(save);
+        CassetteDeck.Clear();
+        CassetteDeck.Apply(save);
+        Check(CassetteDeck.InsertedTier == 1 && CassetteDeck.InsertedKind == TraxKind.Half,
+              "deck kind round-trips");
+
+        var old = new TraxLibrarySave { deckInsertedTier = 2, deckInsertedKind = 0 };
+        CassetteDeck.Apply(old);
+        Check(CassetteDeck.InsertedTier == 2 && CassetteDeck.InsertedKind == TraxKind.Demo,
+              "pre-format save reads as a seated demo blank");
+        CassetteDeck.Clear();
+    }
+
+    static void CareerChecks()
+    {
+        Section("tape career");
+        StoryDirector.Reset();
+        Eq(TapeCareer.UnlockedKind(), TraxKind.Demo, "career starts demo-only");
+        TapeCareer.TapesSold = TraxKind.HalfUnlockSales;
+        Check(TapeCareer.HalfUnlocked && !TapeCareer.FullUnlocked, "half unlocks at the milestone");
+        TapeCareer.TapesSold = TraxKind.FullUnlockSales;
+        Eq(TapeCareer.UnlockedKind(), TraxKind.Full, "full unlocks at the milestone");
+        TapeCareer.TapesSold = -5;
+        Eq(TapeCareer.TapesSold, 0, "counter never goes negative");
+    }
+
     /// Fresh world, rent haggled to `rate`, standing on day 1 with `money`.
     static void NewWorld(int rate, int money)
     {
@@ -63,6 +111,8 @@ public static class RentDeckTests
         Eject();
         Printing();
         Persistence();
+        DeckKindChecks();
+        CareerChecks();
 
         Console.WriteLine();
         if (_failures > 0)

@@ -179,9 +179,9 @@ public class CassetteSlot : Interactable
         if (CassetteDeck.HasCassette)
             return "Press " + PromptGlyphs.Interact + " to take the blank back";
 
-        int held = CassetteDeck.HeldBlankTier();
-        return "Press " + PromptGlyphs.Interact + " to insert blank cassette" +
-               (held >= 2 ? " II" : "");
+        CassetteDeck.HeldBlank(out int heldKind, out int heldTier);
+        return "Press " + PromptGlyphs.Interact + " to insert " +
+               TraxKind.Label(heldKind) + " tape" + (heldTier >= 2 ? " II" : "");
     }
 
     protected override void Interact()

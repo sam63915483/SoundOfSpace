@@ -34,6 +34,10 @@ public static class CassetteDeck
     /// printing moves it straight to the eject.
     public static int InsertedTier { get; private set; }
 
+    /// Format of the seated blank (TraxKind.Demo/Half/Full — 2026-08-18 tape
+    /// formats). Meaningful only while InsertedTier > 0; Demo otherwise.
+    public static int InsertedKind { get; private set; }
+
     /// The print id of a finished tape sitting on the eject, unclaimed.
     /// Null/empty when the eject is clear.
     public static string EjectedPrintId { get; private set; }
@@ -45,19 +49,42 @@ public static class CassetteDeck
     public static bool HasCassette => InsertedTier > 0;
     public static bool HasEjected  => !string.IsNullOrEmpty(EjectedPrintId);
 
-    static Hotbar.ItemId BlankIdFor(int tier) =>
-        tier >= 2 ? Hotbar.ItemId.BlankTapeT2 : Hotbar.ItemId.BlankTapeT1;
+    static Hotbar.ItemId BlankIdFor(int kind, int tier)
+    {
+        if (kind == TraxKind.Full)
+            return tier >= 2 ? Hotbar.ItemId.BlankTapeFullT2 : Hotbar.ItemId.BlankTapeFullT1;
+        if (kind == TraxKind.Half)
+            return tier >= 2 ? Hotbar.ItemId.BlankTapeHalfT2 : Hotbar.ItemId.BlankTapeHalfT1;
+        return tier >= 2 ? Hotbar.ItemId.BlankTapeT2 : Hotbar.ItemId.BlankTapeT1;
+    }
 
+    /// <summary>
     /// The blank the player is HOLDING — the selected hotbar slot, not merely
     /// somewhere in the pack. Sam's call: you should see the cassette go in, and
-    /// that only reads if it left your hand.
+    /// that only reads if it left your hand. Kind and tier travel together —
+    /// a lone tier can no longer identify a blank.
+    /// </summary>
+    public static bool HeldBlank(out int kind, out int tier)
+    {
+        kind = TraxKind.Demo;
+        tier = 0;
+        if (Hotbar.Instance == null) return false;
+        switch (Hotbar.Instance.GetEquippedSlotId())
+        {
+            case Hotbar.ItemId.BlankTapeT1:     kind = TraxKind.Demo; tier = 1; return true;
+            case Hotbar.ItemId.BlankTapeT2:     kind = TraxKind.Demo; tier = 2; return true;
+            case Hotbar.ItemId.BlankTapeHalfT1: kind = TraxKind.Half; tier = 1; return true;
+            case Hotbar.ItemId.BlankTapeHalfT2: kind = TraxKind.Half; tier = 2; return true;
+            case Hotbar.ItemId.BlankTapeFullT1: kind = TraxKind.Full; tier = 1; return true;
+            case Hotbar.ItemId.BlankTapeFullT2: kind = TraxKind.Full; tier = 2; return true;
+        }
+        return false;
+    }
+
     public static int HeldBlankTier()
     {
-        if (Hotbar.Instance == null) return 0;
-        Hotbar.ItemId id = Hotbar.Instance.GetEquippedSlotId();
-        if (id == Hotbar.ItemId.BlankTapeT1) return 1;
-        if (id == Hotbar.ItemId.BlankTapeT2) return 2;
-        return 0;
+        int kind, tier;
+        return HeldBlank(out kind, out tier) ? tier : 0;
     }
 
     /// <summary>
@@ -67,12 +94,12 @@ public static class CassetteDeck
     public static bool Insert()
     {
         if (HasCassette) return false;
-        int tier = HeldBlankTier();
-        if (tier <= 0) return false;
+        if (!HeldBlank(out int kind, out int tier)) return false;
         if (Hotbar.Instance == null) return false;
-        if (!Hotbar.Instance.SpendResource(BlankIdFor(tier), 1)) return false;
+        if (!Hotbar.Instance.SpendResource(BlankIdFor(kind, tier), 1)) return false;
 
         InsertedTier = tier;
+        InsertedKind = kind;
         OnChanged?.Invoke();
         return true;
     }
@@ -88,10 +115,11 @@ public static class CassetteDeck
     {
         if (!HasCassette) return false;
         if (Hotbar.Instance == null) return false;
-        int leftover = Hotbar.Instance.AddResource(BlankIdFor(InsertedTier), 1);
+        int leftover = Hotbar.Instance.AddResource(BlankIdFor(InsertedKind, InsertedTier), 1);
         if (leftover > 0) return false;
 
         InsertedTier = 0;
+        InsertedKind = 0;
         OnChanged?.Invoke();
         return true;
     }
@@ -107,6 +135,7 @@ public static class CassetteDeck
         if (string.IsNullOrEmpty(printId)) return false;
 
         InsertedTier = 0;
+        InsertedKind = 0;
         EjectedPrintId = printId;
         OnChanged?.Invoke();
         return true;
@@ -135,6 +164,7 @@ public static class CassetteDeck
     public static void Clear()
     {
         InsertedTier = 0;
+        InsertedKind = 0;
         EjectedPrintId = null;
         OnChanged?.Invoke();
     }
@@ -143,6 +173,7 @@ public static class CassetteDeck
     {
         if (save == null) return;
         save.deckInsertedTier = InsertedTier;
+        save.deckInsertedKind = InsertedKind;
         save.deckEjectedPrintId = EjectedPrintId ?? "";
     }
 
@@ -156,11 +187,14 @@ public static class CassetteDeck
     public static void Apply(TraxLibrarySave save)
     {
         InsertedTier = 0;
+        InsertedKind = 0;
         EjectedPrintId = null;
 
         if (save != null)
         {
             InsertedTier = Mathf.Clamp(save.deckInsertedTier, 0, 2);
+            // Field absent on old saves (0) correctly reads as a Demo blank.
+            InsertedKind = InsertedTier > 0 ? TraxKind.Clamp(save.deckInsertedKind) : 0;
             string id = save.deckEjectedPrintId;
             if (!string.IsNullOrEmpty(id) && TraxPrints.Get(id) != null) EjectedPrintId = id;
         }

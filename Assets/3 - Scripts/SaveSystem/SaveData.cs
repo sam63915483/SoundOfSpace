@@ -587,6 +587,10 @@ public class TraxLibrarySave
 
     // Print id of a finished tape left unclaimed on the eject, or "" for none.
     public string deckEjectedPrintId = "";
+
+    // 2026-08-18 tape formats: the seated blank's FORMAT (TraxKind). 0 on
+    // older saves — with a tier seated that correctly reads as a Demo blank.
+    public int deckInsertedKind;
 }
 
 [Serializable]

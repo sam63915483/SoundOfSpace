@@ -215,4 +215,5 @@ public class TraxLibrarySave
     public List<TraxPrintSave> prints = new List<TraxPrintSave>();
     public int deckInsertedTier;
     public string deckEjectedPrintId = "";
+    public int deckInsertedKind;
 }

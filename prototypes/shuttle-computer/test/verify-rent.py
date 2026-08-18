@@ -41,6 +41,7 @@ SOURCES = [
     os.path.join(SCRIPTS, "Music", "TraxLibrary.cs"),
     os.path.join(SCRIPTS, "Music", "TraxPrints.cs"),
     os.path.join(SCRIPTS, "Music", "CassetteDeck.cs"),
+    os.path.join(SCRIPTS, "Music", "TapeCareer.cs"),
     os.path.join(SCRIPTS, "Story", "MushroomQuest.cs"),
 ]
 
