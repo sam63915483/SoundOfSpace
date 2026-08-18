@@ -74,6 +74,16 @@ public static class TapeTrade
     /// (Type 2 snobs ask for Type 2; everyone else asks for the cheap one).
     public static int PickAskTier(string id) { return AlienTaste.PreferredTier(id); }
 
+    /// The format a contact's order asks for: their derived preference,
+    /// clamped to what the career has unlocked (no full-length requests while
+    /// Tev doesn't even sell the blanks — the ask must always be fillable).
+    public static int PickAskKind(string id)
+    {
+        int pref = AlienTaste.KindPreference(id);
+        int unlocked = TapeCareer.UnlockedKind();
+        return pref < unlocked ? pref : unlocked;
+    }
+
     // ── what it is worth to them ─────────────────────────────────────────
 
     /// <summary>
@@ -122,9 +132,12 @@ public static class TapeTrade
         => OpeningOffer(id, genreIndex, 1);
 
     public static int OpeningOffer(string id, int genreIndex, int tapeTier)
+        => OpeningOffer(id, genreIndex, tapeTier, TraxKind.Demo);
+
+    public static int OpeningOffer(string id, int genreIndex, int tapeTier, int kind)
     {
         int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
-        return TapeDeal.OpeningOffer(id, tapeTier, TraxLibrary.InstalledCount, bond);
+        return TapeDeal.OpeningOffer(id, tapeTier, kind, TraxLibrary.InstalledCount, bond);
     }
 
     /// <summary>
@@ -183,6 +196,16 @@ public static class TapeTrade
         return g.blended && g.secondary.name == want;
     }
 
+    /// Does any SECTION of this pressing fill an order for the genre? A song
+    /// with one CLANG stretch IS a CLANG-carrying tape.
+    public static bool Fills(TraxSong song, int genreIndex)
+    {
+        if (song == null) return false;
+        for (int i = 0; i < song.sections.Count; i++)
+            if (Fills(song.sections[i].track, genreIndex)) return true;
+        return false;
+    }
+
     /// Right genre AND at least the ordered shell — the count that pays the
     /// full agreed price (a lower tier delivers, but pro-rata).
     public static int HeldMatchingTier(int genreIndex, int minTapeTier)
@@ -194,7 +217,24 @@ public static class TapeTrade
             Hotbar.Slot slot = Hotbar.Instance.SlotAt(i);
             if (slot.id != Hotbar.ItemId.Cassette || slot.count <= 0) continue;
             TraxPrints.Record rec = TraxPrints.Get(slot.cassetteId);
-            if (rec != null && rec.tier >= minTapeTier && Fills(rec.track, genreIndex)) n += slot.count;
+            if (rec != null && rec.tier >= minTapeTier && Fills(rec.song, genreIndex)) n += slot.count;
+        }
+        return n;
+    }
+
+    /// Right genre, at least the ordered shell AND format — the count that
+    /// pays the full agreed price on a kind-aware order.
+    public static int HeldMatchingOrder(int genreIndex, int minTapeTier, int minKind)
+    {
+        if (Hotbar.Instance == null) return 0;
+        int n = 0;
+        for (int i = 0; i < Hotbar.TotalSlots; i++)
+        {
+            Hotbar.Slot slot = Hotbar.Instance.SlotAt(i);
+            if (slot.id != Hotbar.ItemId.Cassette || slot.count <= 0) continue;
+            TraxPrints.Record rec = TraxPrints.Get(slot.cassetteId);
+            if (rec != null && rec.tier >= minTapeTier && rec.kind >= minKind
+                && Fills(rec.song, genreIndex)) n += slot.count;
         }
         return n;
     }
@@ -257,7 +297,7 @@ public static class TapeTrade
             Hotbar.Slot slot = Hotbar.Instance.SlotAt(i);
             if (slot.id != Hotbar.ItemId.Cassette || slot.count <= 0) continue;
             TraxPrints.Record rec = TraxPrints.Get(slot.cassetteId);
-            if (rec != null && Fills(rec.track, genreIndex)) n += slot.count;
+            if (rec != null && Fills(rec.song, genreIndex)) n += slot.count;
         }
         return n;
     }

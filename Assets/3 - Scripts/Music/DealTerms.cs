@@ -32,6 +32,7 @@ public class DealTerms
     public int modulesBasis;    // plugin count the quote priced; 0 = legacy, use fallback
     public int pricePerTape;    // the agreed number — THE contract price
     public int windowMinutes;   // promised meetup window
+    public int kind;            // TraxKind ordered (2026-08-18); 0 = legacy save = Demo
 }
 
 public static class TapeDeal
@@ -56,16 +57,26 @@ public static class TapeDeal
     /// .Value at OrderSatisfaction with the request bonus), so a texted
     /// number can never drift from a face-to-face one.
     public static int TruePrice(string buyerId, int tapeTier, int installedModules, int bond)
+        => TruePrice(buyerId, tapeTier, TraxKind.Demo, installedModules, bond);
+
+    /// Kind-aware quote: the song does not exist at quote time, so the order
+    /// prices against the FORMAT's nominal multiplier (TraxKind.NominalMult) —
+    /// a full-length commission simply offers more.
+    public static int TruePrice(string buyerId, int tapeTier, int kind, int installedModules, int bond)
     {
         int mods = installedModules < 1 ? 1 : installedModules;
-        return TapeValue.For(mods, tapeTier, OrderSatisfaction, bond, true,
+        return TapeValue.For(mods, tapeTier, TraxKind.NominalMult(TraxKind.Clamp(kind)),
+                             OrderSatisfaction, bond, true,
                              AlienTaste.PayFactor(buyerId)
                              * AlienTaste.TierPayFactor(buyerId, tapeTier));
     }
 
     public static int OpeningOffer(string buyerId, int tapeTier, int installedModules, int bond)
+        => OpeningOffer(buyerId, tapeTier, TraxKind.Demo, installedModules, bond);
+
+    public static int OpeningOffer(string buyerId, int tapeTier, int kind, int installedModules, int bond)
     {
-        int p = (int)System.Math.Round(TruePrice(buyerId, tapeTier, installedModules, bond) * OpeningLowball,
+        int p = (int)System.Math.Round(TruePrice(buyerId, tapeTier, kind, installedModules, bond) * OpeningLowball,
                                        System.MidpointRounding.AwayFromZero);
         return p < 1 ? 1 : p;
     }
@@ -100,6 +111,7 @@ public static class TapeDeal
         public bool substituted;      // goods or price deviated from the terms
         public bool thin;             // paid under the asked number (shortfall)
         public bool tierShort;        // specifically: delivered a lower tier
+        public bool kindShort;        // specifically: delivered a lesser format
     }
 
     /// <summary>
@@ -126,6 +138,19 @@ public static class TapeDeal
                                     int deliveredModules, int deliveredTier,
                                     bool fillsGenre, int deliveredQty, bool alreadyHeard,
                                     int ask, int substituteWorth)
+        => Grade(terms, contractModsFallback, deliveredModules, deliveredTier, 1.0,
+                 fillsGenre, deliveredQty, alreadyHeard, ask, substituteWorth);
+
+    /// <param name="deliveredFormatMult">The delivered pressing's actual
+    /// format multiplier (Record.FormatMult; 1.0 for demos). The contract
+    /// side uses the ordered kind's NOMINAL multiplier — same asymmetry as
+    /// modulesBasis: the quote froze a number, the delivery is the real
+    /// thing.</param>
+    public static GradeResult Grade(DealTerms terms, int contractModsFallback,
+                                    int deliveredModules, int deliveredTier,
+                                    double deliveredFormatMult,
+                                    bool fillsGenre, int deliveredQty, bool alreadyHeard,
+                                    int ask, int substituteWorth)
     {
         var r = new GradeResult();
         if (alreadyHeard) { r.kind = GradeKind.RefusedHeard; return r; }
@@ -147,8 +172,11 @@ public static class TapeDeal
             int contractTier = terms.tapeTier >= 1 ? terms.tapeTier : 1;
             int contractMods = terms.modulesBasis >= 1 ? terms.modulesBasis
                              : (contractModsFallback < 1 ? 1 : contractModsFallback);
-            double contractGoods = TapeValue.Base(contractMods, contractTier);
-            double deliveredGoods = TapeValue.Base(deliveredModules, deliveredTier);
+            int contractKind = TraxKind.Clamp(terms.kind);
+            double contractGoods = TapeValue.Base(contractMods, contractTier)
+                                 * TraxKind.NominalMult(contractKind);
+            double deliveredGoods = TapeValue.Base(deliveredModules, deliveredTier)
+                                  * (deliveredFormatMult < 1.0 ? 1.0 : deliveredFormatMult);
             if (contractGoods > 0 && deliveredGoods < contractGoods)
             {
                 r.perCap = (int)System.Math.Round(r.perCap * (deliveredGoods / contractGoods),
@@ -156,6 +184,7 @@ public static class TapeDeal
                 if (r.perCap < 1) r.perCap = 1;
                 r.thin = true;
                 r.tierShort = deliveredTier < contractTier;
+                r.kindShort = deliveredFormatMult < TraxKind.NominalMult(contractKind) - 1e-9;
             }
         }
         else

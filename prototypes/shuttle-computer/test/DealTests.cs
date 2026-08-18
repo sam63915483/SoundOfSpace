@@ -22,6 +22,56 @@ public static class DealTests
         Console.WriteLine("  FAIL  " + what);
     }
 
+    // ── kind-aware grading (2026-08-18 tape formats) ─────────────────────
+
+    static void KindGradeChecks()
+    {
+        Console.WriteLine("kind grading");
+
+        // Exact kind at the agreed price pays EXACTLY the agreed number.
+        var terms = new DealTerms { buyerId = "b", genreIndex = 0, qty = 1, tapeTier = 1,
+                                    modulesBasis = 4, pricePerTape = 40, windowMinutes = 10,
+                                    kind = TraxKind.Full };
+        var g = TapeDeal.Grade(terms, 4, deliveredModules: 4, deliveredTier: 1,
+                               deliveredFormatMult: TraxKind.FullNominalMult,
+                               fillsGenre: true, deliveredQty: 1, alreadyHeard: false,
+                               ask: 40, substituteWorth: 999);
+        Check(g.perCap == 40 && !g.thin, "exact kind pays the contract");
+
+        // A demo delivered on a Full order pays pro-rata (1.0 / 3.5) and flags it.
+        g = TapeDeal.Grade(terms, 4, deliveredModules: 4, deliveredTier: 1,
+                           deliveredFormatMult: 1.0,
+                           fillsGenre: true, deliveredQty: 1, alreadyHeard: false,
+                           ask: 40, substituteWorth: 999);
+        Check(g.thin && g.kindShort, "demo on a full order is a shortfall");
+        Check(g.perCap == (int)Math.Round(40 * (1.0 / TraxKind.FullNominalMult),
+              MidpointRounding.AwayFromZero), "kind pro-rata is the nominal ratio, got " + g.perCap);
+
+        // A song BETTER than ordered caps at the agreed price (generosity).
+        g = TapeDeal.Grade(new DealTerms { buyerId = "b", qty = 1, tapeTier = 1, modulesBasis = 4,
+                                           pricePerTape = 20, kind = TraxKind.Demo },
+                           4, deliveredModules: 4, deliveredTier: 1,
+                           deliveredFormatMult: 4.0,
+                           fillsGenre: true, deliveredQty: 1, alreadyHeard: false,
+                           ask: 20, substituteWorth: 999);
+        Check(g.perCap == 20 && !g.thin, "over-delivery caps at the contract");
+
+        // The demo-only overload is unchanged behaviour (formatMult 1 vs 1).
+        g = TapeDeal.Grade(new DealTerms { buyerId = "b", qty = 1, tapeTier = 1, modulesBasis = 4,
+                                           pricePerTape = 20 },
+                           4, deliveredModules: 4, deliveredTier: 1,
+                           fillsGenre: true, deliveredQty: 1, alreadyHeard: false,
+                           ask: 20, substituteWorth: 999);
+        Check(g.perCap == 20 && !g.thin && !g.kindShort, "legacy overload grades as before");
+
+        // Quotes scale with the ordered kind.
+        int demoQ = TapeDeal.TruePrice("b", 1, TraxKind.Demo, 4, 0);
+        int fullQ = TapeDeal.TruePrice("b", 1, TraxKind.Full, 4, 0);
+        Check(fullQ > demoQ * 3, "full orders quote at the nominal multiple ("
+              + demoQ + " -> " + fullQ + ")");
+        Check(TapeDeal.TruePrice("b", 1, 4, 0) == demoQ, "legacy TruePrice = demo kind");
+    }
+
     static void Eq(object got, object want, string what)
     {
         Check(Equals(got, want), what + ": got " + got + ", want " + want);
@@ -43,6 +93,7 @@ public static class DealTests
 
     public static void RunAll()
     {
+        KindGradeChecks();
         Console.WriteLine("deal parity");
         var ids = Ids();
 
