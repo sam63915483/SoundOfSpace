@@ -43,6 +43,7 @@ public static class TraxLibraryTests
         CorruptRows();
         Plugins();
         Pressings();
+        PrintSongChecks();
 
         Console.WriteLine();
         if (_failures == 0)
@@ -379,6 +380,63 @@ public static class TraxLibraryTests
 
         Eq(TraxPrints.DisplayName("nope"), "CASSETTE", "an unknown tape still reads as something");
     }
+
+    // ── song pressings (2026-08-18 tape formats) ─────────────────────────
+
+    static void PrintSongChecks()
+    {
+        Console.WriteLine("song pressings");
+        TraxPrints.Clear();
+
+        var a = TraxTrack.Default();
+        var b = TraxTrack.Default();
+        b.dials = b.dials.With(0, 9.0);
+        var song = new TraxSong();
+        song.sections.Add(new TraxSection(a, 8));
+        song.sections.Add(new TraxSection(b, 4));
+
+        var rec = TraxPrints.Register("EPIC", song, TraxKind.Half, 2);
+        Eq(rec.kind, TraxKind.Half, "kind stored");
+        Check(rec.id[0] == 'h' && rec.id[1] == '2', "kind-prefixed id: " + rec.id);
+        Eq(rec.songId, song.SongId(), "songId derived");
+        Eq(rec.song.sections.Count, 2, "sections frozen");
+        Check(ReferenceEquals(rec.track, rec.song.sections[0].track), "track aliases section 0");
+        Eq(rec.trackId, rec.track.TrackId(), "trackId is section-0 lineage");
+        Check(System.Math.Abs(rec.FormatMult - song.ValueMult()) < 1e-9, "record carries its mult");
+        Eq(TraxPrints.KindOf(rec.id), TraxKind.Half, "KindOf resolves");
+
+        // Demo register (legacy shim) is a 1-section 4-bar song, d-prefixed.
+        var demo = TraxPrints.Register("LOOP", a, 1);
+        Check(demo.kind == TraxKind.Demo && demo.song.sections.Count == 1
+              && demo.song.sections[0].bars == 4 && demo.id[0] == 'd', "legacy shim = demo: " + demo.id);
+        Check(System.Math.Abs(demo.FormatMult - 1.0) < 1e-9, "demo mult is 1");
+
+        // Round-trip: sections and kind survive; ids re-derive identically.
+        var save = new TraxLibrarySave();
+        TraxPrints.Capture(save);
+        TraxPrints.Apply(save);
+        var back = TraxPrints.Get(rec.id);
+        Check(back != null && back.kind == TraxKind.Half && back.song.sections.Count == 2
+              && back.song.sections[0].bars == 8, "song round-trips");
+        Check(TraxPrints.Get(demo.id) != null, "demo round-trips under the same id");
+
+        // A LEGACY row (no sections, no kind) keeps its old t-prefixed id.
+        var legacyRow = new TraxPrintSave { id = "ignored", name = "OLD", tier = 1, key = a.key };
+        for (int d = 0; d < TraxPrng.DialCount; d++) legacyRow.dials.Add((float)a.dials.Get(d));
+        for (int m = 0; m < TraxPresets.ModuleCount; m++)
+        {
+            legacyRow.preset.Add(a.preset[m]);
+            legacyRow.variation.Add(a.variation[m]);
+            legacyRow.active.Add(a.active[m]);
+        }
+        var legacySave = new TraxLibrarySave();
+        legacySave.prints.Add(legacyRow);
+        TraxPrints.Apply(legacySave);
+        var old = TraxPrints.Get("t1-" + a.TrackId().ToString("x8"));
+        Check(old != null && old.kind == TraxKind.Demo && old.song.sections.Count == 1,
+              "legacy row loads as demo under its old id");
+        TraxPrints.Clear();
+    }
 }
 
 // ── stubs of the real save DTOs (SaveData.cs pulls in UnityEngine) ────────
@@ -417,6 +475,8 @@ public class TraxPrintSave
     public List<int> preset = new List<int>();
     public List<int> variation = new List<int>();
     public List<bool> active = new List<bool>();
+    public int kind;
+    public List<TraxSectionSave> sections = new List<TraxSectionSave>();
 }
 
 public class TraxLibrarySave

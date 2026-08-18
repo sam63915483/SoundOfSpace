@@ -525,6 +525,12 @@ public class TraxPrintSave
     public List<int> preset = new List<int>();
     public List<int> variation = new List<int>();
     public List<bool> active = new List<bool>();
+    // 2026-08-18 tape formats: the FORMAT (TraxKind: 0 demo / 1 half / 2 full)
+    // and the arrangement — one row per section, exactly the TraxProjectSave
+    // precedent. Empty list = a pre-format row: loads as a demo of the legacy
+    // track fields above, under its old "t"-prefixed id.
+    public int kind;
+    public List<TraxSectionSave> sections = new List<TraxSectionSave>();
 }
 
 // What each alien remembers about you. WORLD state — an alien who has heard a
