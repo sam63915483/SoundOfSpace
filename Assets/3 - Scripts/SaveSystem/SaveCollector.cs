@@ -181,15 +181,29 @@ public static class SaveCollector
 
         if (block == null)
         {
-            // Somebody else's world. Keep everything world-shaped and let the
-            // personal half start clean.
-            data.playerBlocks.Add(new PlayerBlockSave
+            // A NEW character walking into an established world. The top-level
+            // fields belong to whoever saved it, so handing them over would mean
+            // arriving in someone else's suit with their money in your pocket.
+            //
+            // ⚠️ Blanking has to happen HERE, in the data, rather than by
+            // clearing the singletons: the ordered apply below runs either way
+            // and would restore the other player's belongings straight over the
+            // top of anything cleared in advance.
+            //
+            // `player` is deliberately NOT blanked. It is the only clue this
+            // file holds about where in the world it is reasonable to stand, and
+            // a default PlayerSave would drop a new arrival at the origin —
+            // which on a planetary scale is the middle of the sun.
+            block = new PlayerBlockSave
             {
                 characterId   = id ?? "",
                 characterName = profile != null ? profile.name : "",
-            });
-            NewGameReset.ApplyGuestArrival();
-            return;
+                player        = data.player,
+            };
+            data.playerBlocks.Add(block);
+            // Everything else falls through to the copy below, which lands the
+            // blank block's defaults — empty pockets, full vitals, nothing
+            // unlocked, and a fresh orientation board.
         }
 
         float shipPower = data.resources != null ? data.resources.shipPower : 100f;

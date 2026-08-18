@@ -41,6 +41,19 @@ public partial class ShuttleComputerUI
     int _transportRevSeen;
     byte _lastPresenceView = TraxSessionSync.ViewNone;
 
+    /// <summary>
+    /// Presence is re-stated every couple of seconds while the computer is open,
+    /// the same way StasisDoorSync re-sends the door.
+    ///
+    /// Cursor packets carry the view, so a late joiner learns somebody is HERE
+    /// within a twelfth of a second — but the name and the suit colour only ride
+    /// presence. Without a heartbeat, joining while your partner is already
+    /// sitting at the terminal gives you an anonymous, default-tinted ghost
+    /// until they happen to change screens.
+    /// </summary>
+    const float PresenceHeartbeat = 2f;
+    float _nextPresenceAt;
+
     /// Which screen this player is looking at, in the sync layer's vocabulary.
     byte CurrentViewId
     {
@@ -114,9 +127,10 @@ public partial class ShuttleComputerUI
     void PublishLocalCursor()
     {
         byte view = CurrentViewId;
-        if (view != _lastPresenceView)
+        if (view != _lastPresenceView || Time.unscaledTime >= _nextPresenceAt)
         {
             _lastPresenceView = view;
+            _nextPresenceAt = Time.unscaledTime + PresenceHeartbeat;
             TraxSessionSync.PublishPresence(true, view);
         }
 
