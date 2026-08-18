@@ -33,6 +33,7 @@ SOURCES = [
     "TraxPatterns.cs",
     "TraxClassifier.cs",
     "TraxSong.cs",
+    "TraxKind.cs",
     "TraxLibrary.cs",
     "TraxPrints.cs",
 ]

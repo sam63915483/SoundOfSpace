@@ -554,19 +554,22 @@ public partial class ShuttleComputerUI
             else _meterSegs[i].gameObject.SetActive(false);
         }
 
-        _arrValue.text = "FULL TRACK x" + _song.ValueMult().ToString("0.00") + " DEMO";
+        _arrValue.text = "FULL TRACK x" + _song.ValueMult().ToString("0.00") + " DEMO BASE";
 
+        // Per-fan ×N previews died with OfferMult: under the weighted-sat
+        // model the real number depends on the listener, and a number we
+        // cannot keep is a promise we must not print. Names only.
         var sb = new System.Text.StringBuilder();
-        double mult = _song.ValueMult();
+        sb.Append("SELLS TO ");
         int shown = mix.Count < 3 ? mix.Count : 3;
         for (int i = 0; i < shown; i++)
         {
-            if (i > 0) sb.Append("   ");
+            if (i > 0) sb.Append(" · ");
             Color gc = GenreColorOf(mix[i].name);
             sb.Append("<color=#").Append(ColorUtility.ToHtmlStringRGB(gc)).Append('>');
-            sb.Append(mix[i].name).Append(" FAN x").Append((mult * mix[i].share).ToString("0.00"));
-            sb.Append("</color>");
+            sb.Append(mix[i].name).Append(" FANS</color>");
         }
+        if (mix.Count > 3) sb.Append(" +").Append(mix.Count - 3);
         _arrOffers.text = sb.ToString();
     }
 

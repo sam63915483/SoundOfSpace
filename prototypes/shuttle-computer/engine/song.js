@@ -214,35 +214,22 @@ export function genreMix (song) {
 }
 
 // -------------------------------------------------------------- economy ----
-// ⚠️ TUNING PLACEHOLDERS — Sam sets the real numbers at the review gate. The
-// SHAPE is the design decision:
-//
-//   demo price      — unchanged (a demo is one section's loop; existing rule).
-//   full track      — worth a multiple of the demo price, growing with section
-//                     count and with length.
-//   per-alien offer — full value × the share of the song that is THEIR genre.
-//                     An all-genre "super track" therefore sells to everyone
-//                     but pays each fan only their slice — broad appeal and
-//                     top price cannot both be had. That trade-off is the
-//                     whole point; do not add a floor that erases it.
+// ⚠️ TUNING PLACEHOLDERS — Sam sets the real numbers. Option 1 (2026-08-18):
+// an alien's satisfaction with a song is the BAR-WEIGHTED mean of their
+// per-section satisfaction (SongEval.cs, Unity side), so dilution happens in
+// the satisfaction term; this multiplier is what makes a full song beat a
+// demo outright. Do not add a per-genre share multiplier back — that was the
+// old offerMult model and it made the spoken verdict disagree with the money
+// (the promise/grade trap class). Must match TraxSong.ValueMult exactly.
 
 export const DEMO_MULT = 1.0;
 
 /// Full-track value as a multiple of the demo price for the same loop.
-/// 1 section / 4 bars → 1.5x (a finished track beats a demo even at the same
-/// length). Each extra section +0.5x, each bar past four +0.05x.
+/// Max Full-Length (8 sections, 100 bars) ≈ 4.9x; max Half ≈ 3.9x.
 export function songValueMult (song) {
     const sections = song.sections.length;
     const bars = totalBars (song);
-    return 1.5 + 0.5 * (sections - 1) + 0.05 * (bars - 4);
-}
-
-/// What a fan of `genreName` offers, as a multiple of the demo price.
-/// Zero if their genre isn't in the song at all.
-export function offerMult (song, genreName) {
-    const mix = genreMix (song);
-    for (const m of mix) if (m.name === genreName) return songValueMult (song) * m.share;
-    return 0;
+    return 1.25 + 0.25 * (sections - 1) + 0.02 * (bars - 4);
 }
 
 // --------------------------------------------------------------- schema ----

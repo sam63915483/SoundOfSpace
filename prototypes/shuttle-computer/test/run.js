@@ -578,16 +578,14 @@ test ('genre mix weights by bars and sums to one', () => {
     assert (mix[0].share >= mix[mix.length - 1].share, 'sorted biggest first');
 });
 
-test ('value grows with sections and with bars; offers dilute by share', () => {
+test ('value grows with sections and with bars', () => {
     const one = SONGMOD.defaultSong ();
     const two = SONGMOD.addSection (one, 0);
     assert (SONGMOD.songValueMult (two) > SONGMOD.songValueMult (one), 'more sections must pay more');
     assert (SONGMOD.songValueMult (SONGMOD.setSectionBars (one, 0, 12)) > SONGMOD.songValueMult (one),
             'longer must pay more');
-    // A pure single-genre song: the fan of that genre gets the whole value.
-    const g = classify (one.sections[0].track.dials).primary.name;
-    assert (Math.abs (SONGMOD.offerMult (one, g) - SONGMOD.songValueMult (one)) < 1e-9);
-    eq (SONGMOD.offerMult (one, g === 'CLANG' ? 'CHIRP' : 'CLANG'), 0, 'absent genre offers nothing');
+    // Per-genre share dilution moved into the SATISFACTION term (SongEval.cs,
+    // Unity side) — offerMult is gone on purpose; see the economy comment.
 });
 
 test ('moveSectionTo drops a section into an insertion slot', () => {

@@ -271,26 +271,18 @@ public sealed class TraxSong
     }
 
     // ── economy ──────────────────────────────────────────────────────────
-    // ⚠️ TUNING PLACEHOLDERS — Sam sets the real numbers. The SHAPE is the
-    // design decision: demos unchanged; a full track worth a multiple growing
-    // with section count and length; each alien's offer diluted to their
-    // genre's share of the bars — an all-genre "super track" sells to
-    // everyone but pays each fan only their slice. Do not add a floor that
-    // erases that trade-off.
+    // ⚠️ TUNING PLACEHOLDERS — Sam sets the real numbers. Option 1 (2026-08-18):
+    // an alien's satisfaction with a song is the BAR-WEIGHTED mean of their
+    // per-section satisfaction (SongEval), so dilution happens in the
+    // satisfaction term; this multiplier is what makes a full song beat a demo
+    // outright. Do not add a per-genre share multiplier back — that was the
+    // old OfferMult model and it made the spoken verdict disagree with the
+    // money (the promise/grade trap class).
 
     /// Full-track value as a multiple of the demo price for the same loop.
+    /// Max Full-Length (8 sections, 100 bars) ≈ 4.9×; max Half ≈ 3.9×.
     public double ValueMult()
     {
-        return 1.5 + 0.5 * (sections.Count - 1) + 0.05 * (TotalBars() - 4);
-    }
-
-    /// What a fan of the given genre offers, as a multiple of the demo price.
-    /// Zero if their genre isn't in the song at all.
-    public double OfferMult(int genreIndex)
-    {
-        List<MixEntry> mix = GenreMix();
-        for (int i = 0; i < mix.Count; i++)
-            if (mix[i].genreIndex == genreIndex) return ValueMult() * mix[i].share;
-        return 0;
+        return 1.25 + 0.25 * (sections.Count - 1) + 0.02 * (TotalBars() - 4);
     }
 }

@@ -492,8 +492,8 @@ check ('selecting a section snaps the knobs to its dials', () => {
 
 check ('the song value grows with the arrangement', () => {
     const v = doc.getElementById ('arr-value').textContent;
-    // 2 sections, 9 bars -> 1.5 + 0.5 + 0.05*5 = ×2.25
-    assert (/×2\.25/.test (v), 'value reads ' + v);
+    // 2 sections, 9 bars -> 1.25 + 0.25 + 0.02*5 = ×1.60 (2026-08-18 retune)
+    assert (/×1\.60/.test (v), 'value reads ' + v);
 });
 
 check ('clicking a section only selects it — playback is untouched', () => {

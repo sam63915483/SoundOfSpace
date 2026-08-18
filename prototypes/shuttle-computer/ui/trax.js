@@ -343,8 +343,9 @@ export function mountTrax (root, inst, opts) {
 
     // The economy readout. Numbers are engine/song.js placeholders — the SHAPE
     // is what's being playtested: demos unchanged, a full track worth a
-    // multiple that grows with sections and length, and each alien's offer
-    // diluted to their genre's share of the bars.
+    // multiple that grows with sections and length. Per-fan dilution lives in
+    // the SATISFACTION term now (bar-weighted, SongEval.cs) — no per-fan
+    // numbers here, only who the song can sell to.
     function refreshSummary () {
         arrInfo.innerHTML = '';
         const mix = SONG.genreMix (song);
@@ -362,16 +363,29 @@ export function mountTrax (root, inst, opts) {
         const value = document.createElement ('div');
         value.id = 'arr-value';
         const mult = SONG.songValueMult (song);
-        value.textContent = 'FULL TRACK ×' + mult.toFixed (2) + ' DEMO';
+        value.textContent = 'FULL TRACK ×' + mult.toFixed (2) + ' DEMO BASE';
 
+        // Per-fan ×N previews died with offerMult: under the weighted-sat
+        // model the real number depends on the listener, and a number we
+        // cannot keep is a promise we must not print. Names only.
         const offers = document.createElement ('div');
         offers.id = 'arr-offers';
-        for (const m of mix.slice (0, 4)) {
+        const label = document.createElement ('span');
+        label.className = 'offer-chip';
+        label.textContent = 'SELLS TO';
+        offers.appendChild (label);
+        for (const m of mix.slice (0, 3)) {
             const chip = document.createElement ('span');
             chip.className = 'offer-chip';
             chip.style.color = GENRE_COLORS[m.name] || '#79ffd0';
-            chip.textContent = m.name + ' FAN ×' + (mult * m.share).toFixed (2);
+            chip.textContent = m.name + ' FANS';
             offers.appendChild (chip);
+        }
+        if (mix.length > 3) {
+            const more = document.createElement ('span');
+            more.className = 'offer-chip';
+            more.textContent = '+' + (mix.length - 3);
+            offers.appendChild (more);
         }
 
         arrInfo.append (meter, value, offers);
