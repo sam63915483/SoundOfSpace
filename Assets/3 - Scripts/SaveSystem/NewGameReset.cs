@@ -138,6 +138,10 @@ public static class NewGameReset
         // character trophy, so a new world means a fresh board — even for a
         // character who has crossed every line off before.
         OrientationObjectives.ResetForNewWorld();
+        // A world nobody has ever played in remembers nobody's belongings.
+        // Without this the last world's blocks would ride into the first save
+        // of this one, handing a fresh start somebody else's pockets.
+        SaveCollector.ForgetPersonalBlocks();
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);
         if (WoodInventory.Instance != null) WoodInventory.Instance.SetWood(0);
         if (CrystalInventory.Instance != null) CrystalInventory.Instance.SetCount(0);

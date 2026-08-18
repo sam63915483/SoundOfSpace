@@ -118,6 +118,15 @@ Back up `%AppData%\..\LocalLow\DefaultCompany\Solar System 2\saves\` first.
 - [ ] **Second character.** Make a new character and load an existing world with
       it. You should start empty-handed with a blank orientation board, and NOT
       be handed the other character's hotbar.
+- [ ] **Two characters share one world (the big one).** As character A, save
+      world W with a distinctive hotbar. Load W as character B, collect
+      something different, save. Now load W as A again — **A's original stuff
+      must still be there.** A save must never delete the other character's
+      belongings from the file. Same test in co-op: host saves, guest
+      disconnects, host saves again, guest rejoins — the guest's pockets survive.
+- [ ] **Guest's save chain.** Guest saves at the pod twice in a row. Both
+      uploads must go to the SAME file (the guest's own slot), not split across
+      two files.
 - [ ] **Old saves still load.** Load a save from before today. Everything should
       restore exactly as it used to.
 - [ ] **Orientation board.** It's world progress now: a character who finished

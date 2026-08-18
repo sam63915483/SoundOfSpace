@@ -136,58 +136,93 @@ public class PersonalSync : MonoBehaviour
     // ── the save itself ──────────────────────────────────────────────────
 
     /// <summary>
-    /// Write the world to `slotName` from this machine, whichever machine it is.
-    /// Yields until the file is on disk (or the attempt has given up).
+    /// Capture the world RIGHT NOW, synchronously, and start asking anyone else
+    /// for their belongings. Returns what was captured, to be handed back to
+    /// <see cref="CompleteSave"/>.
     ///
-    /// Single player falls straight through to the ordinary local save on the
-    /// first frame, so the pod ritual is unchanged when nobody else is here.
+    /// ⚠️ The split into two calls is not ceremony. The pod ritual briefly
+    /// restores the real tutorial-gate state so the file records the game's
+    /// actual progression rather than the cinematic's temporary lock, and it
+    /// re-locks straight afterwards. When the whole save was one coroutine, the
+    /// network wait happened BETWEEN those two — handing the player full
+    /// control for up to twelve seconds while sealed inside the pod overlay,
+    /// and capturing the world seconds after the moment the upload claimed to
+    /// happen. Capturing here, before anything yields, closes both.
+    ///
+    /// Returns null on a guest, which captures nothing: this machine's world is
+    /// a rendering of the host's, not a copy of it.
     /// </summary>
-    public static IEnumerator SaveWorld(string slotName)
+    public static SaveData BeginSave(string slotName)
     {
-        if (!InSession) { SaveSystem.Save(slotName); yield break; }
+        if (!InSession) return SaveCollector.Capture(slotName);
 
         var nm = NetworkManager.Singleton;
-        if (nm.IsServer) yield return Instance.HostSave(slotName);
-        else             yield return Instance.GuestSave(slotName);
-    }
+        if (!nm.IsServer)
+        {
+            // Only our own pockets. The host captures the world for us.
+            Instance._pendingBlockJson = JsonUtility.ToJson(SaveCollector.CapturePersonalBlock());
+            return null;
+        }
 
-    IEnumerator HostSave(string slotName)
-    {
-        var nm = NetworkManager.Singleton;
-        _blocks.Clear();
-
-        int expected = 0;
+        Instance._blocks.Clear();
+        Instance._expectedBlocks = 0;
         var ids = nm.ConnectedClientsIds;
         for (int i = 0; i < ids.Count; i++)
         {
             if (ids[i] == nm.LocalClientId) continue;
-            expected++;
-            SendTo(ids[i], w => w.WriteValueSafe(KindRequestBlocks), 8);
+            Instance._expectedBlocks++;
+            Instance.SendTo(ids[i], w => w.WriteValueSafe(KindRequestBlocks), 8);
+        }
+        return SaveCollector.Capture(slotName);
+    }
+
+    /// <summary>
+    /// Finish the save started by <see cref="BeginSave"/>: wait for the other
+    /// machine, then write. Yields until the file is on disk or the attempt has
+    /// given up.
+    ///
+    /// Single player writes on the first frame and never yields at all, so the
+    /// pod ritual is unchanged when nobody else is here.
+    /// </summary>
+    public static IEnumerator CompleteSave(SaveData captured, string slotName)
+    {
+        if (!InSession)
+        {
+            SaveSystem.Write(captured, slotName);
+            yield break;
         }
 
+        var nm = NetworkManager.Singleton;
+        if (nm.IsServer) yield return Instance.HostSave(captured, slotName);
+        else             yield return Instance.GuestSave(slotName);
+    }
+
+    int _expectedBlocks;
+    string _pendingBlockJson;
+
+    IEnumerator HostSave(SaveData captured, string slotName)
+    {
         float deadline = Time.realtimeSinceStartup + BlockTimeout;
-        while (_blocks.Count < expected && Time.realtimeSinceStartup < deadline)
+        while (_blocks.Count < _expectedBlocks && Time.realtimeSinceStartup < deadline)
             yield return null;
 
-        if (_blocks.Count < expected)
-            Debug.LogWarning($"[PersonalSync] {expected - _blocks.Count} player(s) didn't send their " +
+        if (_blocks.Count < _expectedBlocks)
+            Debug.LogWarning($"[PersonalSync] {_expectedBlocks - _blocks.Count} player(s) didn't send their " +
                              "belongings in time — saving with whatever this world already had for them.");
 
-        WriteWithBlocks(slotName);
+        FileBlocks(captured);
+        SaveSystem.Write(captured, slotName);
     }
 
-    /// Capture and file, on the host. Split out because the guest path needs
-    /// exactly the same thing done on its behalf.
-    SaveData BuildWorld(string slotName)
+    /// Everyone who answered, filed into the capture. Each is also remembered,
+    /// so a partner who disconnects before the NEXT save still survives it.
+    void FileBlocks(SaveData data)
     {
-        var data = SaveCollector.Capture(slotName);
-        foreach (var kv in _blocks) SaveCollector.UpsertPersonalBlock(data, kv.Value);
-        return data;
-    }
-
-    void WriteWithBlocks(string slotName)
-    {
-        SaveSystem.Write(BuildWorld(slotName), slotName);
+        foreach (var kv in _blocks)
+        {
+            SaveCollector.UpsertPersonalBlock(data, kv.Value);
+            SaveCollector.Remember(kv.Value);
+        }
     }
 
     IEnumerator GuestSave(string slotName)
@@ -195,7 +230,9 @@ public class PersonalSync : MonoBehaviour
         _receivedWorld = null;
         _incoming = null;
 
-        string json = JsonUtility.ToJson(SaveCollector.CapturePersonalBlock());
+        string json = _pendingBlockJson
+                   ?? JsonUtility.ToJson(SaveCollector.CapturePersonalBlock());
+        _pendingBlockJson = null;
         Send(w =>
         {
             w.WriteValueSafe(KindRequestSave);
@@ -217,6 +254,12 @@ public class PersonalSync : MonoBehaviour
             StoryImpactNotice.Show("UPLOAD FAILED — THE HOST DIDN'T ANSWER.", 4f);
             yield break;
         }
+
+        // ⚠️ The pod slot came off the HOST's capture and names the HOST's file.
+        // Left alone, loading this save would point our own pod at their slot
+        // and every upload after it would land in a different file, orphaning
+        // this save chain. This file lives here, under our name.
+        _receivedWorld.podSlotName = slotName;
 
         SaveSystem.Write(_receivedWorld, slotName);
         _receivedWorld = null;
@@ -252,7 +295,9 @@ public class PersonalSync : MonoBehaviour
     {
         reader.ReadValueSafe(out string json);
         var block = ParseBlock(json);
-        if (block != null) _blocks[senderId] = block;
+        if (block == null) return;
+        _blocks[senderId] = block;
+        SaveCollector.Remember(block);
     }
 
     /// <summary>
@@ -266,12 +311,19 @@ public class PersonalSync : MonoBehaviour
         reader.ReadValueSafe(out string blockJson);
 
         var block = ParseBlock(blockJson);
-        if (block != null) _blocks[senderId] = block;
+        if (block != null)
+        {
+            _blocks[senderId] = block;
+            // Remembered as well as filed, so the host's OWN next save still
+            // contains this player even if they have disconnected by then.
+            SaveCollector.Remember(block);
+        }
 
         // The slot name is the GUEST's, and the file lands on the GUEST's disk.
         // The host's own save keeps its own name — two machines, two files, one
         // world.
-        var data = BuildWorld(string.IsNullOrEmpty(slotName) ? "coop" : slotName);
+        var data = SaveCollector.Capture(string.IsNullOrEmpty(slotName) ? "coop" : slotName);
+        FileBlocks(data);
         SendWorldTo(senderId, JsonUtility.ToJson(data));
     }
 

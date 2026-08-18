@@ -67,6 +67,7 @@ public class TraxSync : MonoBehaviour
 
     const byte KindGrantBlank    = 10;  // host -> client   here is a blank (kind + tier)
     const byte KindGrantTape     = 11;  // host -> client   here is a printed tape (print id)
+    const byte KindDeckPutBack   = 14;  // client -> host   "no room, seat it" — NEVER granted back
 
     const byte KindRentPay       = 12;  // client -> host   credits already spent locally
 
@@ -289,6 +290,7 @@ public class TraxSync : MonoBehaviour
             case KindDeckTake      when server: HandleDeckTake(senderId); break;
             case KindDeckPrint     when server: HandleDeckPrint(reader); break;
             case KindDeckReturn    when server: HandleDeckReturn(reader); break;
+            case KindDeckPutBack   when server: HandleDeckPutBack(reader); break;
             case KindRentPay       when server: HandleRentPay(reader); break;
         }
     }
@@ -426,6 +428,24 @@ public class TraxSync : MonoBehaviour
         if (!string.IsNullOrEmpty(printId)) CassetteDeck.ReturnToEject(printId);
     }
 
+    /// <summary>
+    /// A blank coming back because the player it was granted to had no room.
+    ///
+    /// ⚠️ TERMINAL. Unlike an insert, this never grants anything back on
+    /// failure — that mutual hand-off is exactly the loop this message exists
+    /// to break. If the slot has been filled in the meantime the blank is
+    /// genuinely gone, which is worth a line in the log and is far better than
+    /// two machines volleying the whole shelf at each other forever.
+    /// </summary>
+    void HandleDeckPutBack(FastBufferReader reader)
+    {
+        reader.ReadValueSafe(out int kind);
+        reader.ReadValueSafe(out int tier);
+        if (tier <= 0) return;
+        if (!CassetteDeck.InsertRemote(kind, tier))
+            Debug.LogWarning("[TraxSync] A blank came back to a full machine and a full pack — lost.");
+    }
+
     void HandleRentPay(FastBufferReader reader)
     {
         reader.ReadValueSafe(out int amount);
@@ -444,9 +464,25 @@ public class TraxSync : MonoBehaviour
 
         var id = BlankIdFor(kind, tier);
         int leftover = Hotbar.Instance.AddResource(id, 1);
+        if (leftover <= 0) return;
+
         // No room: put it back in the machine rather than letting a TAPE II
-        // evaporate. The slot is empty by construction — we just emptied it.
-        if (leftover > 0) RouteDeckInsertRaw(kind, tier);
+        // evaporate — which is also exactly what single player does when the
+        // pack is full ("the blank STAYS IN THE MACHINE").
+        //
+        // ⚠️ A PUT-BACK, not another insert. An insert that the host refuses is
+        // granted straight back, and a grant that this full pack refuses would
+        // insert again — a message that bounces forever at round-trip rate,
+        // shipping the whole shelf every cycle. The put-back is terminal by
+        // construction: the host seats it or reports it, and never hands it
+        // back a second time.
+        Send(w =>
+        {
+            w.WriteValueSafe(KindDeckPutBack);
+            w.WriteValueSafe(kind);
+            w.WriteValueSafe(tier);
+        });
+        StoryImpactNotice.Show("NO ROOM — THE BLANK STAYED IN THE MACHINE.", 3f);
     }
 
     void HandleGrantTape(FastBufferReader reader)

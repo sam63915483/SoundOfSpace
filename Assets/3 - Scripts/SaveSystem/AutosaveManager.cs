@@ -80,15 +80,15 @@ public class AutosaveManager : MonoBehaviour
     /// </summary>
     public void Autosave()
     {
-        // In co-op only the host holds a world worth writing (a guest's copy has
-        // pose-puppet enemies and no timer state), and the portal round trip is
-        // single-player scene plumbing anyway.
-        if (!WorldSync.IsAuthority)
-        {
-            Debug.LogWarning("[Autosave] Skipped on a guest — the host owns the world.");
-            return;
-        }
-
+        // ⚠️ NOT gated on being the host, deliberately. This slot is the far
+        // half of a one-way trip: PortalManager writes it on the way into the
+        // backrooms and reads it back on the way out. A guest that skipped the
+        // write would return from the poolrooms into a stale world from some
+        // previous session, or into nothing at all.
+        //
+        // The protection this used to provide is already covered elsewhere: the
+        // periodic timer and the pause-menu button are gone, so nothing writes a
+        // player-facing save except the pod, which has its own host handshake.
         Debug.Log($"[Autosave] Writing the transfer slot '{AutosaveSlotName}'.");
         var path = SaveSystem.Save(AutosaveSlotName);
         lastAutosaveTime = Time.realtimeSinceStartup;

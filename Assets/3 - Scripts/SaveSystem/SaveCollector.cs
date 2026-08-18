@@ -68,10 +68,21 @@ public static class SaveCollector
         data.tapeMemory = TapeMemory.Capture();
 
         // Everything above stays exactly where it was; this file is still a
-        // complete, loadable save on its own. The block is an addition that
-        // says WHOSE personal half those top-level fields are, so a second
+        // complete, loadable save on its own. The blocks are an addition that
+        // say WHOSE personal half those top-level fields are, so a second
         // character opening the same world finds their own pockets instead.
-        UpsertPersonalBlock(data, CapturePersonalBlock());
+        //
+        // ⚠️ THE OTHER CHARACTERS' BLOCKS COME FIRST. A capture builds a fresh
+        // SaveData, so without carrying the known blocks forward, every save
+        // would write a file containing only the saver — and the moment your
+        // partner uploaded, YOUR belongings would be gone from that world for
+        // good. They are remembered from the last load (or the last join
+        // snapshot) and re-filed here; the local block then overwrites its own
+        // row and leaves everyone else's alone.
+        for (int i = 0; i < _knownBlocks.Count; i++) UpsertPersonalBlock(data, _knownBlocks[i]);
+        var mine = CapturePersonalBlock();
+        UpsertPersonalBlock(data, mine);
+        Remember(mine);
 
         return data;
     }
@@ -88,6 +99,45 @@ public static class SaveCollector
     // runs. Nothing in the 15-step apply order moves, no apply method learns
     // about blocks, and a save with no blocks at all restores exactly as it
     // always did.
+
+    /// <summary>
+    /// Every character this world is known to have seen, so a capture can put
+    /// them all back.
+    ///
+    /// A SaveData is built from scratch each time, and the machine doing the
+    /// building only knows about the person sitting at it. Without this, saving
+    /// would silently delete everybody else from the world: your partner uploads
+    /// at the pod, and your hotbar, equipment and orientation board are gone
+    /// from that file forever.
+    ///
+    /// Filled from whatever was loaded (or, on a guest, from the host's join
+    /// snapshot) and topped up on every capture. Cleared by New Game, because a
+    /// fresh world has never seen anybody.
+    /// </summary>
+    static readonly List<PlayerBlockSave> _knownBlocks = new List<PlayerBlockSave>();
+
+    /// Take note of a block so the next capture writes it back out. Public for
+    /// PersonalSync, which collects the other players' blocks over the wire.
+    public static void Remember(PlayerBlockSave block)
+    {
+        if (block == null || string.IsNullOrEmpty(block.characterId)) return;
+        for (int i = 0; i < _knownBlocks.Count; i++)
+        {
+            if (_knownBlocks[i] == null || _knownBlocks[i].characterId != block.characterId) continue;
+            _knownBlocks[i] = block;
+            return;
+        }
+        _knownBlocks.Add(block);
+    }
+
+    static void RememberAll(SaveData data)
+    {
+        if (data == null || data.playerBlocks == null) return;
+        for (int i = 0; i < data.playerBlocks.Count; i++) Remember(data.playerBlocks[i]);
+    }
+
+    /// New Game: a world nobody has ever played in remembers nobody.
+    public static void ForgetPersonalBlocks() { _knownBlocks.Clear(); }
 
     /// <summary>
     /// This machine's player, as a block. Public because the pod save in co-op
@@ -173,7 +223,21 @@ public static class SaveCollector
     static void SelectPersonalBlock(SaveData data)
     {
         if (data == null) return;
-        if (data.playerBlocks == null || data.playerBlocks.Count == 0) return;
+
+        // Whoever this world has seen, so the next capture can put them back.
+        RememberAll(data);
+
+        if (data.playerBlocks == null || data.playerBlocks.Count == 0)
+        {
+            // A save from before blocks existed. The top-level fields are the
+            // only personal state it has and they are left exactly as they are
+            // — but the BOARD still has to be cleared. It is a bare static now,
+            // so it survives a trip through the main menu, and a legacy file
+            // carries no mask to overwrite it with: without this, ticking lines
+            // in one run and then loading an old save shows them still crossed.
+            OrientationObjectives.ResetForNewWorld();
+            return;
+        }
 
         var profile = CharacterStore.ActiveProfile;
         string id = profile != null ? profile.id : null;
@@ -1225,6 +1289,12 @@ public static class SaveCollector
     public static void ApplyWorldSubset(SaveData data)
     {
         if (data == null) return;
+
+        // Everyone this world has seen — including US, if we have played here
+        // before. Remembering them all matters even on a guest: this machine
+        // may be the one that saves later, and it would otherwise write a world
+        // containing nobody but itself.
+        RememberAll(data);
 
         // This guest's own belongings, if this world has seen them before. NOT
         // applied here — the arrival ritual clears out the last session a

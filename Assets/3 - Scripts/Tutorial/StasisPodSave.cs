@@ -222,12 +222,7 @@ public class StasisPodSave : MonoBehaviour
             if (string.IsNullOrEmpty(ActiveSlotName))
                 ActiveSlotName = string.IsNullOrEmpty(saveSlotName) ? NextFreeSlotName() : saveSlotName;
 
-            // Put the real gate state back JUST for the capture, so the file
-            // records the game's actual progression rather than this cinematic's
-            // temporary lock — then re-lock for the rest of the ritual.
-            TutorialGate.ApplyState(gateWasEnabled, gateWasUnlocked);
-
-            // Orientation board line 7, ticked BEFORE the write rather than
+            // Orientation board line 7, ticked BEFORE the capture rather than
             // after. The mask lives in this character's block in the world save
             // now (it used to live on the character file, which the pod flushed
             // separately a moment later) — so a tick that lands after the
@@ -238,12 +233,24 @@ public class StasisPodSave : MonoBehaviour
             // player for loading rather than for saving.
             OrientationObjectives.Complete(OrientationObjectives.Objective.SaveInStasisPod);
 
-            // In co-op this is a handshake rather than a write: whichever
-            // machine is at the pod, the HOST captures the world (its copy is
-            // the real one) and both players' belongings are gathered into it
-            // first. Single player falls straight through to the ordinary save
-            // on the first frame.
-            yield return PersonalSync.SaveWorld(ActiveSlotName);
+            // Put the real gate state back JUST for the capture, so the file
+            // records the game's actual progression rather than this cinematic's
+            // temporary lock — then re-lock immediately.
+            //
+            // ⚠️ BeginSave captures synchronously, before anything yields, and
+            // that is the whole reason it is separate from CompleteSave. In
+            // co-op the write waits on the other machine for up to twelve
+            // seconds; if that wait sat between these two lines the player would
+            // have full control while sealed inside the pod overlay, and the
+            // file would record a world seconds after the upload it claims to be.
+            TutorialGate.ApplyState(gateWasEnabled, gateWasUnlocked);
+            var captured = PersonalSync.BeginSave(ActiveSlotName);
+            TutorialGate.LockAll();
+            TutorialGate.Unlock(TutorialAbility.MouseLook);
+
+            // Now the slow half: gather the other player's belongings (or, on a
+            // guest, ask the host for the world outright) and write the file.
+            yield return PersonalSync.CompleteSave(captured, ActiveSlotName);
 
             TutorialGate.LockAll();
             TutorialGate.Unlock(TutorialAbility.MouseLook);
