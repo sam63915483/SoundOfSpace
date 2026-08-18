@@ -438,7 +438,12 @@ public partial class ShuttleComputerUI
                     int stepPos = (barNo - 1) * TraxPhrase.Steps + q * 4;
                     bool isBar = q == 0;
 
-                    var cell = MakePanel(_arrRuler, "Beat", new Color(0, 0, 0, 0));
+                    // The cell's colour IS the hover highlight (faint phosphor
+                    // wash, matching the browser's :hover). A Button's tint
+                    // MULTIPLIES the image colour, so a transparent image can
+                    // never light up — instead the image carries the highlight
+                    // and the NORMAL tint is the invisible state.
+                    var cell = MakePanel(_arrRuler, "Beat", new Color(Ink.r, Ink.g, Ink.b, 0.10f));
                     cell.raycastTarget = true;
                     var crt = cell.rectTransform;
                     crt.anchorMin = new Vector2(0, 0);
@@ -465,6 +470,12 @@ public partial class ShuttleComputerUI
 
                     var cellBtn = cell.gameObject.AddComponent<Button>();
                     cellBtn.targetGraphic = cell;
+                    var cb = cellBtn.colors;
+                    cb.normalColor = new Color(1, 1, 1, 0);        // invisible at rest
+                    cb.highlightedColor = Color.white;             // the wash shows
+                    cb.pressedColor = new Color(1.8f, 1.8f, 1.8f, 1f);
+                    cb.selectedColor = new Color(1, 1, 1, 0);      // don't stay lit after a click
+                    cellBtn.colors = cb;
                     cellBtn.onClick.AddListener(delegate { SeekToStep(stepPos); });
 
                     _arrRulerObjs.Add(cell.gameObject);
