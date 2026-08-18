@@ -201,7 +201,8 @@ public static class TapeMemory
             Entry e = kv.Value;
             // Skip aliens with nothing worth remembering, so a world the player
             // has walked across does not accumulate empty rows forever.
-            if (e.bond == 0 && !e.contact && e.heard.Count == 0 && e.bought.Count == 0) continue;
+            if (e.bond == 0 && !e.contact && e.heard.Count == 0 && e.bought.Count == 0
+                && e.heardSongs.Count == 0 && e.boughtSongs.Count == 0) continue;
 
             save.ids.Add(kv.Key);
             save.bond.Add(e.bond);
@@ -213,6 +214,12 @@ public static class TapeMemory
             save.boughtCounts.Add(e.bought.Count);
             for (int i = 0; i < e.bought.Count; i++)
                 save.boughtTracks.Add(e.bought[i]);
+            save.heardSongCounts.Add(e.heardSongs.Count);
+            for (int i = 0; i < e.heardSongs.Count; i++)
+                save.heardSongs.Add(e.heardSongs[i]);
+            save.boughtSongCounts.Add(e.boughtSongs.Count);
+            for (int i = 0; i < e.boughtSongs.Count; i++)
+                save.boughtSongs.Add(e.boughtSongs[i]);
         }
         return save;
     }
@@ -273,6 +280,39 @@ public static class TapeMemory
                     if (e == null) continue;
                     uint tid = (uint)save.boughtTracks[bCursor];
                     if (tid != 0 && !e.bought.Contains(tid)) e.bought.Add(tid);
+                }
+            }
+        }
+
+        // Song identity history (2026-08-18 tape formats) — same shape, own
+        // cursors; absent entirely on pre-format saves.
+        if (save.heardSongCounts != null && save.heardSongs != null)
+        {
+            int hCursor = 0;
+            for (int i = 0; i < save.ids.Count && i < save.heardSongCounts.Count; i++)
+            {
+                Entry e = Get(save.ids[i], false);
+                int count = save.heardSongCounts[i];
+                for (int t = 0; t < count && hCursor < save.heardSongs.Count; t++, hCursor++)
+                {
+                    if (e == null) continue;
+                    uint sid = (uint)save.heardSongs[hCursor];
+                    if (sid != 0 && !e.heardSongs.Contains(sid)) e.heardSongs.Add(sid);
+                }
+            }
+        }
+        if (save.boughtSongCounts != null && save.boughtSongs != null)
+        {
+            int sCursor = 0;
+            for (int i = 0; i < save.ids.Count && i < save.boughtSongCounts.Count; i++)
+            {
+                Entry e = Get(save.ids[i], false);
+                int count = save.boughtSongCounts[i];
+                for (int t = 0; t < count && sCursor < save.boughtSongs.Count; t++, sCursor++)
+                {
+                    if (e == null) continue;
+                    uint sid = (uint)save.boughtSongs[sCursor];
+                    if (sid != 0 && !e.boughtSongs.Contains(sid)) e.boughtSongs.Add(sid);
                 }
             }
         }

@@ -74,6 +74,32 @@ public static class TapeOfferTests
         Check(TapeOffer.Listen(id, song, sid, TraxKind.Full, 1, true, out sat, out v)
               != TapeOffer.Reaction.AlreadyHeard, "full song survives the demo having been heard");
         TapeMemory.Clear();
+
+        // Song memory rides the save, count-guarded like everything else.
+        TapeMemory.RememberSong("alien:a", 111);
+        TapeMemory.RememberBoughtSong("alien:a", 111);
+        TapeMemory.RememberSong("alien:b", 222);
+        var ms = TapeMemory.Capture();
+        TapeMemory.Clear();
+        TapeMemory.Apply(ms);
+        Check(TapeMemory.HasHeardSong("alien:a", 111), "heard song round-trips");
+        Check(TapeMemory.HasBoughtSong("alien:a", 111), "bought song round-trips");
+        Check(TapeMemory.HasHeardSong("alien:b", 222), "second alien's song round-trips");
+        Check(!TapeMemory.HasHeardSong("alien:b", 111), "no cross-alien bleed");
+
+        // An old save (song lists absent) loads clean.
+        var old = new TapeMemorySave();
+        old.ids.Add("alien:c");
+        old.bond.Add(0);
+        old.contact.Add(false);
+        old.heardCounts.Add(0);
+        old.heardSongCounts = null;
+        old.heardSongs = null;
+        old.boughtSongCounts = null;
+        old.boughtSongs = null;
+        TapeMemory.Apply(old);
+        Check(!TapeMemory.HasHeardSong("alien:c", 1), "pre-format save loads without song history");
+        TapeMemory.Clear();
     }
 
     // ── what an alien remembers ──────────────────────────────────────────

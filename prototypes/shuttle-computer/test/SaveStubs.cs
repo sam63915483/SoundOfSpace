@@ -14,4 +14,9 @@ public class TapeMemorySave
     // loop-feel D: bought-track lineage (mirrors SaveData.cs)
     public List<int> boughtCounts = new List<int>();
     public List<long> boughtTracks = new List<long>();
+    // 2026-08-18 tape formats: song identity history (mirrors SaveData.cs)
+    public List<int> heardSongCounts = new List<int>();
+    public List<long> heardSongs = new List<long>();
+    public List<int> boughtSongCounts = new List<int>();
+    public List<long> boughtSongs = new List<long>();
 }
