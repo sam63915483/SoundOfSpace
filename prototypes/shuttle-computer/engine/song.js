@@ -89,6 +89,22 @@ export function moveSection (song, index, delta) {
     return s;
 }
 
+/// Drag-reorder: lift the section at `from` and drop it at insertion slot
+/// `to` (0 = before the first section, length = after the last, both counted
+/// in the ORIGINAL order). Dropping a section back where it came from is a
+/// no-op and returns the input unchanged, so it never dirties the song.
+export function moveSectionTo (song, from, to) {
+    if (from < 0 || from >= song.sections.length) return song;
+    if (to < 0) to = 0;
+    if (to > song.sections.length) to = song.sections.length;
+    const dest = to > from ? to - 1 : to;
+    if (dest === from) return song;
+    const s = cloneSong (song);
+    const [sec] = s.sections.splice (from, 1);
+    s.sections.splice (dest, 0, sec);
+    return s;
+}
+
 export function setSectionBars (song, index, bars) {
     if (index < 0 || index >= song.sections.length) return song;
     const s = cloneSong (song);

@@ -590,6 +590,27 @@ test ('value grows with sections and with bars; offers dilute by share', () => {
     eq (SONGMOD.offerMult (one, g === 'CLANG' ? 'CHIRP' : 'CLANG'), 0, 'absent genre offers nothing');
 });
 
+test ('moveSectionTo drops a section into an insertion slot', () => {
+    // A(4), B(8), C(2) — distinguishable by bars.
+    let s = SONGMOD.defaultSong ();
+    s = SONGMOD.addSection (s, 0);
+    s = SONGMOD.setSectionBars (s, 1, 8);
+    s = SONGMOD.addSection (s, 1);
+    s = SONGMOD.setSectionBars (s, 2, 2);
+
+    // Sam's example: grab C (index 2), drop between A and B (slot 1) -> A C B.
+    const moved = SONGMOD.moveSectionTo (s, 2, 1);
+    deepEq (moved.sections.map (x => x.bars), [4, 2, 8], 'expected A C B');
+
+    // Dropping back where it came from is a no-op that returns the input.
+    eq (SONGMOD.moveSectionTo (s, 2, 2), s, 'same slot must not clone');
+    eq (SONGMOD.moveSectionTo (s, 2, 3), s, 'the slot after itself is the same place');
+
+    // First section to the very end.
+    deepEq (SONGMOD.moveSectionTo (s, 0, 3).sections.map (x => x.bars), [8, 2, 4]);
+    assert (SONGMOD.songId (moved) !== SONGMOD.songId (s), 'reorder changes the song identity');
+});
+
 test ('a song never loses its last section and clamps bars', () => {
     let s = SONGMOD.defaultSong ();
     eq (SONGMOD.removeSection (s, 0), s, 'removing the only section must be refused');

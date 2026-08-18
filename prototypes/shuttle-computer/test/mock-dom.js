@@ -95,6 +95,10 @@ class El {
     // Pointer capture is a no-op here; the knob only needs it not to throw.
     setPointerCapture () {}
     releasePointerCapture () {}
+    // No layout in the mock: every rect is a point at the origin. Geometry
+    // consumers (drag-reorder's drop index) must behave sanely on zeros —
+    // any positive clientX therefore maps to "after the last block".
+    getBoundingClientRect () { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; }
     focus () {}
 
     // Test helper — synthesise an event.

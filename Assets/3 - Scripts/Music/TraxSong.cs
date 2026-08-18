@@ -97,6 +97,26 @@ public sealed class TraxSong
         return true;
     }
 
+    /// <summary>
+    /// Drag-reorder: lift the section at `from` and drop it at insertion slot
+    /// `to` (0 = before the first section, Count = after the last, both
+    /// counted in the ORIGINAL order). Dropping a section back where it came
+    /// from returns false and changes nothing, so it never dirties the song.
+    /// Mirrors moveSectionTo() in engine/song.js.
+    /// </summary>
+    public bool MoveSection(int from, int to)
+    {
+        if (from < 0 || from >= sections.Count) return false;
+        if (to < 0) to = 0;
+        if (to > sections.Count) to = sections.Count;
+        int dest = to > from ? to - 1 : to;
+        if (dest == from) return false;
+        TraxSection sec = sections[from];
+        sections.RemoveAt(from);
+        sections.Insert(dest, sec);
+        return true;
+    }
+
     public bool SetSectionBars(int index, int bars)
     {
         if (index < 0 || index >= sections.Count) return false;

@@ -512,6 +512,21 @@ check ('clicking a ruler tick moves the play cursor to that bar', () => {
     assert (inst.songCursor === 32, 'cursor should be 32, got ' + inst.songCursor);
 });
 
+check ('dragging a block reorders the sections and swallows the click', () => {
+    // A(4), B(5). Grab A and drag right; the mock has no layout, so every
+    // rect is a zero-point and any positive x maps to "after the last block"
+    // -> the order becomes B, A.
+    const a = secs ()[0];
+    a.fire ('pointerdown', { button: 0, clientX: 100 });
+    a.fire ('pointermove', { clientX: 300 });
+    a.fire ('pointerup', {});
+    const tops = secs ().map (b => b.querySelectorAll ('.as-top')[0].textContent);
+    assert (/5/.test (tops[0]) && /4/.test (tops[1]),
+            'expected B(5) then A(4), got ' + tops.join (' | '));
+    assert (!inst.playing, 'the click after a drag must be swallowed, not start playback');
+    assert (secs ()[1].classList.contains ('sel'), 'selection should follow the moved section');
+});
+
 check ('DELETE names its section and takes two presses', () => {
     const del = () => appView.querySelectorAll ('button')
         .find (b => /^(DELETE SEC|SURE)/.test (b.textContent));

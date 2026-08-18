@@ -113,7 +113,12 @@ export function mountTrax (root, inst, opts) {
     const playheadEl = document.createElement ('div');
     playheadEl.id = 'arr-playhead';
 
-    timeline.append (ruler, strip, playheadEl);
+    // Drag-reorder drop indicator: a warm line at the slot the grabbed
+    // section will land in.
+    const dropLine = document.createElement ('div');
+    dropLine.id = 'arr-drop';
+
+    timeline.append (ruler, strip, playheadEl, dropLine);
 
     const arrRow = document.createElement ('div');
     arrRow.id = 'arr-row';
@@ -160,6 +165,54 @@ export function mountTrax (root, inst, opts) {
 
     let playingSec = -1;              // section under the audible playhead
 
+    // ---------- drag-reorder ----------
+    // Grab a block, drop it in a new slot: 1-2-3, grab 3, drop between 1 and
+    // 2, get 1-3-2. Pointer-based (not HTML5 dnd) so the same block can still
+    // be a plain click target — a press only becomes a drag past 6px of
+    // travel, and the click that follows a real drag is swallowed.
+    let drag = null;                  // { from, startX, el, dest, active }
+    let suppressClick = false;
+
+    function dropIndexAt (clientX) {
+        const blocks = strip.querySelectorAll ('.arr-sec');
+        for (let i = 0; i < blocks.length; i++) {
+            const r = blocks[i].getBoundingClientRect ();
+            if (clientX < r.left + r.width / 2) return i;
+        }
+        return blocks.length;
+    }
+
+    function showDropLine (dest) {
+        const blocks = strip.querySelectorAll ('.arr-sec');
+        if (!blocks.length) return;
+        const stripR = strip.getBoundingClientRect ();
+        const tlR = timeline.getBoundingClientRect ();
+        let x;
+        if (dest < blocks.length) x = blocks[dest].getBoundingClientRect ().left - 2;
+        else x = blocks[blocks.length - 1].getBoundingClientRect ().right + 2;
+        dropLine.style.left = (x - tlR.left) + 'px';
+        dropLine.style.top = (stripR.top - tlR.top) + 'px';
+        dropLine.style.height = stripR.height + 'px';
+        dropLine.style.display = 'block';
+    }
+
+    function hideDropLine () { dropLine.style.display = 'none'; }
+
+    function endBlockDrag (el, commit) {
+        const d = drag;
+        drag = null;
+        hideDropLine ();
+        el.classList.remove ('dragging');
+        if (!d || !d.active || !commit) return;
+        suppressClick = true;             // the click after a drag is spent
+        const next = SONG.moveSectionTo (song, d.from, d.dest);
+        if (next === song) return;
+        song = next;
+        songEdited ();
+        // Selection follows the grabbed section to where it landed.
+        selectSection (d.dest > d.from ? d.dest - 1 : d.dest);
+    }
+
     function refreshStrip () {
         strip.innerHTML = '';
         song.sections.forEach ((s, i) => {
@@ -178,7 +231,31 @@ export function mountTrax (root, inst, opts) {
             bot.style.color = color;
             bot.textContent = g.name;
             el.append (top, bot);
-            el.addEventListener ('click', () => sectionClicked (i));
+            el.addEventListener ('click', () => {
+                if (suppressClick) { suppressClick = false; return; }
+                sectionClicked (i);
+            });
+            el.addEventListener ('pointerdown', e => {
+                if (e.button !== 0) return;
+                drag = { from: i, startX: e.clientX, el, dest: i, active: false };
+                try { el.setPointerCapture (e.pointerId); } catch (err) { /* mock DOM */ }
+            });
+            el.addEventListener ('pointermove', e => {
+                if (!drag || drag.el !== el) return;
+                if (!drag.active) {
+                    if (Math.abs (e.clientX - drag.startX) < 6) return;
+                    drag.active = true;
+                    el.classList.add ('dragging');
+                }
+                drag.dest = dropIndexAt (e.clientX);
+                showDropLine (drag.dest);
+            });
+            el.addEventListener ('pointerup', () => {
+                if (drag && drag.el === el) endBlockDrag (el, true);
+            });
+            el.addEventListener ('pointercancel', () => {
+                if (drag && drag.el === el) endBlockDrag (el, false);
+            });
             strip.appendChild (el);
         });
         const add = document.createElement ('button');

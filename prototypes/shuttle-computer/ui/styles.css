@@ -261,7 +261,7 @@ html, body {
     border-radius: 4px;
     min-width: 34px;
     flex-basis: 0;
-    cursor: pointer;
+    cursor: grab;
     display: flex;
     flex-direction: column;
     justify-content: center;
@@ -269,6 +269,19 @@ html, body {
     gap: 1px;
     overflow: hidden;
     user-select: none;
+    touch-action: none;      /* pointer-capture dragging */
+}
+.arr-sec.dragging { opacity: .45; cursor: grabbing; }
+
+/* Drag-reorder drop indicator — the slot the grabbed section lands in. */
+#arr-drop {
+    position: absolute;
+    width: 3px;
+    background: var(--warn);
+    box-shadow: 0 0 6px var(--warn);
+    display: none;
+    pointer-events: none;
+    z-index: 3;
 }
 .arr-sec .as-top { font-size: 11px; letter-spacing: .12em; color: var(--ink); }
 .arr-sec .as-bot { font-size: 7px; letter-spacing: .14em; }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
@@ -33,6 +34,8 @@ public partial class ShuttleComputerUI
     const float ArrH = ArrHeaderH + ArrRulerH + ArrStripH + ArrCtlH + ArrGap * 3;   // 122
     const float ArrAddW = 44f;
     const float ArrBlockGap = 4f;
+    const float ArrRulerY = -(ArrHeaderH + ArrGap);
+    const float ArrStripY = ArrRulerY - ArrRulerH - ArrGap;
 
     /// One fixed colour per genre so a section's block, the mix meter and the
     /// offer line all agree. UI concern only — the engine never sees colours.
@@ -97,8 +100,8 @@ public partial class ShuttleComputerUI
         holder.sizeDelta = new Vector2(0, ArrH);
         holder.anchoredPosition = new Vector2(0, ArrY);
 
-        const float rulerY = -(ArrHeaderH + ArrGap);
-        const float stripY = rulerY - ArrRulerH - ArrGap;
+        const float rulerY = ArrRulerY;
+        const float stripY = ArrStripY;
 
         var label = MakeText(holder, "Label", "SONG", 12, InkGhost, TextAlignmentOptions.TopLeft);
         Box(label.rectTransform, TopLeft, TopLeft, new Vector2(2, 0), new Vector2(90, ArrHeaderH));
@@ -146,6 +149,16 @@ public partial class ShuttleComputerUI
         pr.sizeDelta = new Vector2(3, ArrRulerH + ArrGap + ArrStripH);
         pr.anchoredPosition = new Vector2(0, rulerY);
         _arrPlayhead.gameObject.SetActive(false);
+
+        // Drag-reorder drop indicator: a warm line at the slot the grabbed
+        // section will land in.
+        _arrDropLine = MakePanel(holder, "DropLine", Warn);
+        var dl = _arrDropLine.rectTransform;
+        dl.anchorMin = new Vector2(0, 1);
+        dl.anchorMax = new Vector2(0, 1);
+        dl.pivot = new Vector2(0.5f, 1);
+        dl.sizeDelta = new Vector2(3, ArrStripH);
+        _arrDropLine.gameObject.SetActive(false);
 
         BuildArrangerCtl(holder);
     }
@@ -408,9 +421,13 @@ public partial class ShuttleComputerUI
             btrt.offsetMax = Vector2.zero;
             bot.characterSpacing = 10;
 
-            var btn = block.gameObject.AddComponent<Button>();
-            btn.targetGraphic = block;
-            btn.onClick.AddListener(delegate { SectionClicked(captured); });
+            // Click AND drag on the same block: a plain click selects +
+            // auditions; past the EventSystem's drag threshold it becomes a
+            // reorder drag (which suppresses the click automatically —
+            // eligibleForClick clears when the threshold is crossed).
+            var handle = block.gameObject.AddComponent<SectionDragHandler>();
+            handle.owner = this;
+            handle.index = captured;
 
             _arrBlockObjs.Add(block.gameObject);
             _arrBlockBgs.Add(block);
@@ -545,6 +562,85 @@ public partial class ShuttleComputerUI
             sb.Append("</color>");
         }
         _arrOffers.text = sb.ToString();
+    }
+
+    // ── drag-reorder ─────────────────────────────────────────────────────
+    // Grab a block, drop it in a new slot: 1-2-3, grab 3, drop between 1 and
+    // 2, get 1-3-2. Same behaviour as the browser prototype.
+
+    class SectionDragHandler : MonoBehaviour, IPointerClickHandler,
+        IBeginDragHandler, IDragHandler, IEndDragHandler
+    {
+        public ShuttleComputerUI owner;
+        public int index;
+        public void OnPointerClick(PointerEventData e) { owner.OnSectionPointerClick(index); }
+        public void OnBeginDrag(PointerEventData e) { owner.OnSectionBeginDrag(index, e); }
+        public void OnDrag(PointerEventData e) { owner.OnSectionDrag(e); }
+        public void OnEndDrag(PointerEventData e) { owner.OnSectionEndDrag(); }
+    }
+
+    int _dragFrom = -1, _dragDest = -1;
+    Image _arrDropLine;
+
+    void OnSectionPointerClick(int i)
+    {
+        // A real drag never lands here — the EventSystem clears
+        // eligibleForClick once the drag threshold is crossed.
+        SectionClicked(i);
+    }
+
+    void OnSectionBeginDrag(int i, PointerEventData e)
+    {
+        if (_song == null || _song.sections.Count < 2) return;
+        _dragFrom = i;
+        _dragDest = i;
+        if (i < _arrBlockBgs.Count)
+        {
+            Color c = _arrBlockBgs[i].color;
+            c.a = 0.5f;
+            _arrBlockBgs[i].color = c;
+        }
+        OnSectionDrag(e);
+    }
+
+    void OnSectionDrag(PointerEventData e)
+    {
+        if (_dragFrom < 0 || _arrDropLine == null || _song == null) return;
+        Vector2 local;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
+                _arrStrip, e.position, e.pressEventCamera, out local)) return;
+        float xLeft = local.x + _arrStrip.rect.width * 0.5f;
+
+        int dest = _song.sections.Count;
+        for (int i = 0; i < _arrBlockX.Count; i++)
+            if (xLeft < _arrBlockX[i] + _arrBlockW[i] * 0.5f) { dest = i; break; }
+        _dragDest = dest;
+
+        float lineX = dest < _arrBlockX.Count
+            ? _arrBlockX[dest] - ArrBlockGap * 0.5f
+            : _arrBlockX[_arrBlockX.Count - 1] + _arrBlockW[_arrBlockW.Count - 1] + ArrBlockGap * 0.5f;
+        _arrDropLine.gameObject.SetActive(true);
+        _arrDropLine.rectTransform.anchoredPosition = new Vector2(lineX, ArrStripY);
+    }
+
+    void OnSectionEndDrag()
+    {
+        if (_dragFrom < 0) return;
+        int from = _dragFrom, to = _dragDest;
+        _dragFrom = -1;
+        _dragDest = -1;
+        if (_arrDropLine != null) _arrDropLine.gameObject.SetActive(false);
+
+        if (_song != null && _song.MoveSection(from, to))
+        {
+            SongEdited();
+            RebuildArranger();
+            // Selection follows the grabbed section to where it landed —
+            // an edit, not an audition, so no seek and no autoplay.
+            SelectSection(to > from ? to - 1 : to);
+            RefreshReadouts();
+        }
+        else RefreshArranger();          // restore the dimmed block
     }
 
     // ── playhead ─────────────────────────────────────────────────────────
