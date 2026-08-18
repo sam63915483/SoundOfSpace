@@ -322,7 +322,6 @@ public partial class ShuttleComputerUI
         _traxView.SetActive(false);
         _projectsView.SetActive(true);
         CloseSaveDialog();
-        _statusText.text = "TRAX  -  PROJECTS";
         ShowMenuPane();
     }
 
@@ -565,7 +564,6 @@ public partial class ShuttleComputerUI
         _savedSongId = _song.SongId();
         CloseSaveDialog();
         RefreshProjectBar();
-        _statusText.text = "TRAX  -  " + rec.name.ToUpperInvariant();
         Toast("SAVED - " + rec.name.ToUpperInvariant());
     }
 

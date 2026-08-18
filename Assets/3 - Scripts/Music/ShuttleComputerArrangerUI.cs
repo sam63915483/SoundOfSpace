@@ -92,7 +92,7 @@ public partial class ShuttleComputerUI
         holder.anchorMax = new Vector2(1, 1);
         holder.pivot = new Vector2(0.5f, 1);
         holder.sizeDelta = new Vector2(0, ArrH);
-        holder.anchoredPosition = Vector2.zero;
+        holder.anchoredPosition = new Vector2(0, ArrY);
 
         var label = MakeText(holder, "Label", "SONG", 12, InkGhost, TextAlignmentOptions.TopLeft);
         Box(label.rectTransform, TopLeft, TopLeft, new Vector2(2, 0), new Vector2(90, 14));

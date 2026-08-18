@@ -57,34 +57,37 @@ public partial class ShuttleComputerUI : MonoBehaviour
     const float ScreenW = 1500f;
     const float ScreenH = 940f;
     const float BezelPad = 22f;
-    const float StatusH = 34f;
-    const float ContentTop = StatusH + 12f;      // content starts BELOW the status bar
+    // The status bar ("TRAX - UNTITLED / SYS NOMINAL") is GONE — Sam's call,
+    // 2026-08-17: it repeated the project bar and squeezed the timeline. The
+    // breadcrumb strings it showed live on the project bar already.
+    const float ContentTop = 12f;
     const float ContentBottom = 16f;
     const float SidePad = 22f;
 
     const float PlateH = 92f;
-    const float PlateY = -(ArrH + 10f);               // -112 (ArrH: arranger partial)
-    const float DialsY = PlateY - PlateH - 12f;       // -216
+    const float PlateY = 0f;
+    const float DialsY = PlateY - PlateH - 14f;       // -106
     const float DialsH = 288f;
-    const float RackLabelY = DialsY - DialsH - 12f;   // -516
+    const float ArrY = DialsY - DialsH - 20f;         // -414 (ArrH: arranger partial)
+    const float RackLabelY = ArrY - ArrH - 20f;       // -536
     const float RackLabelH = 20f;
-    const float RackY = RackLabelY - RackLabelH - 4f; // -540
+    const float RackY = RackLabelY - RackLabelH - 4f; // -560
     const float RackH = 182f;
-    const float StepsY = RackY - RackH - 12f;         // -734
+    const float StepsY = RackY - RackH - 12f;         // -754
     const float StepsH = 18f;
     const float TransportH = 60f;
-    const float ProjBarH = 26f;      // the project bar above the arranger
+    const float ProjBarH = 26f;      // the project bar above the genre plate
 
-    // Resulting column, measured from the top of TraxView's Content (852 high
-    // after the project bar):
-    //   arranger (ruler+strip+ctl)       0 .. -102
-    //   genre plate                   -112 .. -204
-    //   dials                         -216 .. -504
-    //   rack label                    -516 .. -536
-    //   rack                          -540 .. -722
-    //   steps                         -734 .. -752
-    //   transport (anchored bottom)   -792 .. -852
-    // No overlaps, ~40px of breathing room above the transport. If you change a
+    // Resulting column, measured from the top of TraxView's Content (886 high
+    // after the project bar; the status bar is gone):
+    //   genre plate                      0 ..  -92
+    //   dials                         -106 .. -394
+    //   arranger (ruler+strip+ctl)    -414 .. -516   <- mid-screen, Sam's call
+    //   rack label                    -536 .. -556
+    //   rack                          -560 .. -742
+    //   steps                         -754 .. -772
+    //   transport (anchored bottom)   -826 .. -886
+    // No overlaps, ~54px of breathing room above the transport. If you change a
     // height here, re-check the whole column — the rows are consecutive.
 
     public static ShuttleComputerUI Instance { get; private set; }
@@ -135,7 +138,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
     Canvas _canvas;
     GameObject _homeView, _traxView;
 
-    TextMeshProUGUI _genreLabel, _genreVibe, _genreMeta, _readout, _statusText;
+    TextMeshProUGUI _genreLabel, _genreVibe, _genreMeta, _readout;
     TextMeshProUGUI _playLabel, _loopLabel, _toastLabel;
     Image _playBg, _loopBg;
     readonly List<TraxKnob> _knobs = new List<TraxKnob>();
@@ -401,7 +404,6 @@ public partial class ShuttleComputerUI : MonoBehaviour
         var srt = screen.rectTransform;
         Stretch(srt, BezelPad, BezelPad, BezelPad, BezelPad);
 
-        BuildStatusBar(srt);
         BuildHome(srt);
         BuildTrax(srt);
         BuildProjects(srt);           // TRAX opens here, not on the dials
@@ -444,32 +446,6 @@ public partial class ShuttleComputerUI : MonoBehaviour
         wrt.pivot = new Vector2(0.5f, 1);
         wrt.sizeDelta = new Vector2(0, 220);
         wrt.anchoredPosition = Vector2.zero;
-    }
-
-    void BuildStatusBar(RectTransform parent)
-    {
-        var bar = MakeRect(parent, "StatusBar");
-        bar.anchorMin = new Vector2(0, 1);
-        bar.anchorMax = new Vector2(1, 1);
-        bar.pivot = new Vector2(0.5f, 1);
-        bar.sizeDelta = new Vector2(0, StatusH);
-        bar.anchoredPosition = Vector2.zero;
-
-        _statusText = MakeText(bar, "Left", "HOME", 15, InkDim, TextAlignmentOptions.Left);
-        Stretch(_statusText.rectTransform, SidePad, 0, 0, 0);
-        _statusText.characterSpacing = 14;
-
-        var right = MakeText(bar, "Right", "SYS NOMINAL", 15, InkGhost, TextAlignmentOptions.Right);
-        Stretch(right.rectTransform, 0, SidePad, 0, 0);
-        right.characterSpacing = 14;
-
-        var rule = MakePanel(bar, "Rule", Grid);
-        var rr = rule.rectTransform;
-        rr.anchorMin = new Vector2(0, 0);
-        rr.anchorMax = new Vector2(1, 0);
-        rr.pivot = new Vector2(0.5f, 0);
-        rr.sizeDelta = new Vector2(0, 1);
-        rr.anchoredPosition = Vector2.zero;
     }
 
     // ── home ─────────────────────────────────────────────────────────────
@@ -1233,7 +1209,6 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _homeView.SetActive(true);
         _traxView.SetActive(false);
         if (_projectsView != null) _projectsView.SetActive(false);
-        _statusText.text = "HOME";
         if (_inst != null) _inst.Stop();
         SyncPlayButton();
     }
@@ -1243,9 +1218,6 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _homeView.SetActive(false);
         if (_projectsView != null) _projectsView.SetActive(false);
         _traxView.SetActive(true);
-        // The breadcrumb names the project, not the app — saving renames it.
-        _statusText.text = "TRAX  -  " + (_project != null
-            ? _project.name.ToUpperInvariant() : "UNTITLED");
         RefreshReadouts();
         RefreshRack();
         _lastBarShown = -1;
