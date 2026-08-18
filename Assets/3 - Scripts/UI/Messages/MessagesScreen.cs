@@ -683,8 +683,8 @@ public class MessagesScreen : MonoBehaviour
         // (the price is the buyer's own quote for that tier).
         if (_chipMode == ChipMode.TierPick)
         {
-            int t1 = TapeTrade.OpeningOffer(b.id, b.askTier, 1);
-            int t2 = TapeTrade.OpeningOffer(b.id, b.askTier, 2);
+            int t1 = TapeTrade.OpeningOffer(b.id, b.askTier, 1, b.askKind);
+            int t2 = TapeTrade.OpeningOffer(b.id, b.askTier, 2, b.askKind);
             int want = b.askTapeTier >= 1 ? b.askTapeTier : 1;
             Chip($"TYPE 1 · {t1}" + (want == 1 ? " ◄" : ""), OkGreen, OkGreenBg,
                  () => { _tierPicked = 1; _chipMode = ChipMode.WindowPick; RebuildChips(b); });
@@ -753,7 +753,7 @@ public class MessagesScreen : MonoBehaviour
         if (_tierAtBuild != 1 && _tierAtBuild != 2) _tierAtBuild = orderTier;
         _priceMin = _tierAtBuild == orderTier
             ? b.offerPerCap
-            : TapeTrade.OpeningOffer(b.id, b.askTier, _tierAtBuild);
+            : TapeTrade.OpeningOffer(b.id, b.askTier, _tierAtBuild, b.askKind);
         int priceMax = Mathf.Max(_priceMin + 10, Mathf.RoundToInt(_priceMin * 1.55f));
         int priceStart = Mathf.RoundToInt(_priceMin * 1.1f);
 

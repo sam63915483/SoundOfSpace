@@ -339,6 +339,9 @@ public class BuyerMessageDirector : MonoBehaviour
             b.askTier = gIdx;
             b.askQty = TapeTrade.PickAskQty(b.id);
             b.askTapeTier = TapeTrade.PickAskTier(b.id);
+            // A named request is for THAT track — demo lineage, never a
+            // format ask (any pressing of the track fills it).
+            b.askKind = TraxKind.Demo;
             b.modulesBasis = Mathf.Max(1, TraxLibrary.InstalledCount);
             // Same quote path as every order — the 1.25x request bonus is
             // already baked into the texted number (Sam's call: a buyer who
@@ -362,10 +365,15 @@ public class BuyerMessageDirector : MonoBehaviour
         // (their preferred shell) and records the plugin count the quote was
         // priced against — both are goods-spec terms the delivery is graded on.
         b.askTapeTier = TapeTrade.PickAskTier(b.id);
+        // The FORMAT they want (2026-08-18): their derived preference, clamped
+        // to what the career has unlocked — so full-length commissions start
+        // arriving exactly when Tev starts selling the blanks for them.
+        b.askKind = TapeTrade.PickAskKind(b.id);
         b.modulesBasis = Mathf.Max(1, TraxLibrary.InstalledCount);
-        b.offerPerCap = TapeTrade.OpeningOffer(b.id, genre, b.askTapeTier);
+        b.offerPerCap = TapeTrade.OpeningOffer(b.id, genre, b.askTapeTier, b.askKind);
         b.convo = BuyerLedger.Convo.AwaitingReply;
-        BuyerLedger.Log(b, BuyerLedger.EvType.WantText, b.offerPerCap, b.askQty, b.askTier, c: b.askTapeTier);
+        BuyerLedger.Log(b, BuyerLedger.EvType.WantText, b.offerPerCap, b.askQty, b.askTier,
+                        c: b.askTapeTier, k: b.askKind + 1);
         Notify($"{AlienNames.For(b.id)} sent you a message");
     }
 
@@ -413,7 +421,7 @@ public class BuyerMessageDirector : MonoBehaviour
             // TierPick chip displayed, so the player accepts exactly what they
             // saw (guest and host derive it identically).
             b.askTapeTier = tapeTier;
-            b.offerPerCap = TapeTrade.OpeningOffer(b.id, b.askTier, tapeTier);
+            b.offerPerCap = TapeTrade.OpeningOffer(b.id, b.askTier, tapeTier, b.askKind);
         }
         int agreed = b.convo == BuyerLedger.Convo.AwaitingCounterBack ? b.counterBackPerCap : b.offerPerCap;
         b.offerPerCap = agreed;
@@ -428,7 +436,7 @@ public class BuyerMessageDirector : MonoBehaviour
         string namedPayload = string.IsNullOrEmpty(b.requestTrackId) ? null
             : $"{b.requestTrackId}|{TapeTrade.RequestTrackName(b.requestTrackId)}|";
         BuyerLedger.Log(b, BuyerLedger.EvType.Scheduled, agreed, b.askQty, b.askTier, markUnread: false,
-                        c: b.askTapeTier, s: namedPayload);
+                        c: b.askTapeTier, s: namedPayload, k: b.askKind + 1);
     }
 
     /// Player counters with a price AND a quantity (Sam's rule: you can
@@ -450,7 +458,7 @@ public class BuyerMessageDirector : MonoBehaviour
         int dealTier = b.askTapeTier >= 1 ? b.askTapeTier : 1;
         BuyerLedger.Log(b, BuyerLedger.EvType.PlayerCountered, askPerCap, offerQty, b.askTier, markUnread: false, c: dealTier);
         var res = TapeTrade.ResolveCounter(b.id, b.askTier, askPerCap,
-                                            b.askQty, offerQty, dealTier, out int counterBack);
+                                            b.askQty, offerQty, dealTier, b.askKind, out int counterBack);
         switch (res)
         {
             case BuyerDeals.CounterResult.Accept:

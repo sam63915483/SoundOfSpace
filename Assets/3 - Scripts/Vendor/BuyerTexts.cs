@@ -19,6 +19,12 @@ public static class BuyerTexts
     // before tiers existed — say nothing rather than guess.
     static string TierWord(int c) => c >= 1 ? $" (Type {c})" : "";
 
+    // The tape FORMAT rides the sixth slot (`k`) as kind+1; 0 = pre-feature
+    // event, and a plain demo ask (k=1) also says nothing — demos are the
+    // unmarked default, only the bigger formats get named.
+    static string KindWord(int k) =>
+        k == TraxKind.Full + 1 ? " full-length" : k == TraxKind.Half + 1 ? " half-length" : "";
+
     public static string Render(string id, BuyerLedger.Ev e)
     {
         int v = Voice(id);
@@ -27,9 +33,9 @@ public static class BuyerTexts
             case BuyerLedger.EvType.WantText:
                 switch (v)
                 {
-                    case 0:  return $"after {e.b} {Genre(e.tier)} {Tapes(e.b)}{TierWord(e.c)}. I'll do {e.a} each if you can get here.";
-                    case 1:  return $"in the mood for something {Genre(e.tier)}. {e.b} of them{TierWord(e.c)}, {e.a} each. come find me.";
-                    default: return $"nothing new to listen to. {e.b} {Genre(e.tier)} {Tapes(e.b)}{TierWord(e.c)}, {e.a} each — you in?";
+                    case 0:  return $"after {e.b}{KindWord(e.k)} {Genre(e.tier)} {Tapes(e.b)}{TierWord(e.c)}. I'll do {e.a} each if you can get here.";
+                    case 1:  return $"in the mood for something {Genre(e.tier)}{(KindWord(e.k) == "" ? "" : " -" + KindWord(e.k) + " please")}. {e.b} of them{TierWord(e.c)}, {e.a} each. come find me.";
+                    default: return $"nothing new to listen to. {e.b}{KindWord(e.k)} {Genre(e.tier)} {Tapes(e.b)}{TierWord(e.c)}, {e.a} each — you in?";
                 }
             case BuyerLedger.EvType.PlayerAccepted:
                 return $"on my way — give me {e.a} minutes.";

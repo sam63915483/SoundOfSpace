@@ -121,9 +121,12 @@ public static class TapeTrade
     /// (TapeDeal.TruePrice) — this method only supplies the live kit size and
     /// bond. All price maths live in one parity-tested place.
     public static int TruePricePerTape(string id, int genreIndex, int tapeTier)
+        => TruePricePerTape(id, genreIndex, tapeTier, TraxKind.Demo);
+
+    public static int TruePricePerTape(string id, int genreIndex, int tapeTier, int kind)
     {
         int bond = BuyerLedger.Get(id) != null ? BuyerLedger.Get(id).bond : 0;
-        return TapeDeal.TruePrice(id, tapeTier, TraxLibrary.InstalledCount, bond);
+        return TapeDeal.TruePrice(id, tapeTier, kind, TraxLibrary.InstalledCount, bond);
     }
 
     /// Their opening number. They lowball a little — that gap is what the
@@ -160,9 +163,14 @@ public static class TapeTrade
     public static BuyerDeals.CounterResult ResolveCounter(string id, int genreIndex, int ask,
                                                           int wantQty, int offerQty, int tapeTier,
                                                           out int counterBack)
+        => ResolveCounter(id, genreIndex, ask, wantQty, offerQty, tapeTier, TraxKind.Demo, out counterBack);
+
+    public static BuyerDeals.CounterResult ResolveCounter(string id, int genreIndex, int ask,
+                                                          int wantQty, int offerQty, int tapeTier, int kind,
+                                                          out int counterBack)
     {
         counterBack = 0;
-        int truePrice = TruePricePerTape(id, genreIndex, tapeTier);
+        int truePrice = TruePricePerTape(id, genreIndex, tapeTier, kind);
         float patience = (float)AlienTaste.Patience(id);
         float ceiling = truePrice * patience * QtyMood(wantQty, offerQty);
 
@@ -170,7 +178,7 @@ public static class TapeTrade
 
         if (ask <= ceiling * 1.25f)
         {
-            int opening = OpeningOffer(id, genreIndex, tapeTier);
+            int opening = OpeningOffer(id, genreIndex, tapeTier, kind);
             counterBack = Mathf.Min(Mathf.RoundToInt((opening + ask) / 2f), Mathf.FloorToInt(ceiling));
             counterBack = Mathf.Max(counterBack, 1);
             return BuyerDeals.CounterResult.CounterBack;

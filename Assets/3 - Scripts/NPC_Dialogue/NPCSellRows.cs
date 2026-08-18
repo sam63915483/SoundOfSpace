@@ -87,16 +87,20 @@ public static class NPCSellRows
         {
             int matching = TapeTrade.HeldMatching(tapeLedger.askTier);
             int ordShell = tapeLedger.askTapeTier >= 1 ? tapeLedger.askTapeTier : 1;
-            int rightShell = TapeTrade.HeldMatchingTier(tapeLedger.askTier, ordShell);
+            int ordKind = TraxKind.Clamp(tapeLedger.askKind);
+            int rightGoods = TapeTrade.HeldMatchingOrder(tapeLedger.askTier, ordShell, ordKind);
             string want = TapeTrade.GenreName(tapeLedger.askTier);
             string ordTier = tapeLedger.askTapeTier >= 1 ? $" T{tapeLedger.askTapeTier}" : "";
-            // Right genre in the wrong shell still delivers, but pro-rata —
-            // the row must say so instead of reading like a full-price sale.
+            // The order names its FORMAT too (demo is the unmarked default).
+            string ordKindWord = ordKind > TraxKind.Demo
+                ? " " + TraxKind.Label(ordKind).ToLowerInvariant() + "-length" : "";
+            // Right genre in the wrong shell or format still delivers, but
+            // pro-rata — the row must say so, not read like a full-price sale.
             tapeLabel = matching <= 0
-                ? $"Deliver order — {want}{ordTier} (none on you)"
-                : rightShell <= 0
-                ? $"Deliver order — {tapeLedger.askQty} {want}{ordTier} (wrong shell on you — pays less)"
-                : $"Deliver order — {tapeLedger.askQty} {want}{ordTier} @ {tapeLedger.offerPerCap}";
+                ? $"Deliver order — {want}{ordKindWord}{ordTier} (none on you)"
+                : rightGoods <= 0
+                ? $"Deliver order — {tapeLedger.askQty} {want}{ordKindWord}{ordTier} (lesser goods on you — pays less)"
+                : $"Deliver order — {tapeLedger.askQty} {want}{ordKindWord}{ordTier} @ {tapeLedger.offerPerCap}";
             tapeEnabled = matching > 0;
         }
         else
