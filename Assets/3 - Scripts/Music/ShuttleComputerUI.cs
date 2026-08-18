@@ -247,12 +247,24 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // the view state to HOME for the very first open.
         SyncPlayButton();
         _canvas.gameObject.SetActive(true);
+
+        // Tell a co-op partner we've sat down, so their ghost cursor and status
+        // chip know there is somebody here to draw. Recording the view here too
+        // stops CoopUpdate reading it as a change and sending it twice.
+        _lastPresenceView = CurrentViewId;
+        TraxSessionSync.PublishPresence(true, _lastPresenceView);
     }
 
     public void Close()
     {
         if (!_open) return;
         _open = false;
+
+        // Say we've got up BEFORE stopping the instrument: Stop() below is a
+        // local tidy-up, not a transport decision, and publishing it would stop
+        // the music under a partner who is still sitting there.
+        _lastPresenceView = TraxSessionSync.ViewNone;
+        TraxSessionSync.PublishPresence(false, TraxSessionSync.ViewNone);
 
         if (_inst != null) _inst.Stop();
         // The freeze-frame and the resumed screen must both show a stopped
@@ -298,6 +310,14 @@ public partial class ShuttleComputerUI : MonoBehaviour
             Close();
             return;
         }
+
+        // BEFORE the modal early-returns below. A partner's edits have to keep
+        // landing, and their pointer has to keep moving, while this player is
+        // staring at the save or print dialog — the alternative is a screen
+        // that silently freezes the other person for as long as a dialog is up.
+        // Publishing is coalesced, so running this before the local input
+        // handling only ever costs a frame of latency.
+        CoopUpdate();
 
         // The save dialog is modal AND has a text field: ESC dismisses it, and
         // every other key belongs to the field. F must not close the computer
@@ -428,6 +448,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         BuildToast(srt);
         BuildPrintDialog(srt);
         BuildSaveDialog(srt);
+        // LAST, so it draws over every one of them — a partner's pointer that
+        // slid under the print dialog would look like a bug rather than a
+        // person. Also stashes the screen rect the cursor is normalised into.
+        _screenRT = srt;
+        BuildRemoteCursor(srt);
 
         // Initialise the view state once — every view GameObject is born
         // active, and DoOpen resumes rather than resets.
@@ -1337,7 +1362,15 @@ public partial class ShuttleComputerUI : MonoBehaviour
         for (int i = 0; i < _steppers.Count; i++) _steppers[i].Refresh();
     }
 
+    /// <summary>
     /// PLAY TRACK — the whole arrangement, from the play cursor.
+    ///
+    /// Playback is SHARED in co-op (Sam's call): either of you can press it and
+    /// both hear it. Only the button press travels — nine bytes — and each
+    /// machine drives its own audio engine from its own copy of the song, which
+    /// is identical because the song itself replicates. Streaming the audio
+    /// would be absurd; streaming the decision costs nothing and sounds the same.
+    /// </summary>
     void TogglePlay()
     {
         if (_inst.IsPlayingSong)
@@ -1345,6 +1378,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
             _inst.Stop();
             ClearPlayhead();
             _lastStepShown = -1;
+            TraxSessionSync.PublishTransport(TraxSessionSync.TransportStop, 0);
         }
         else
         {
@@ -1352,6 +1386,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
             ClearPlayhead();
             EnsureSongFresh();
             _inst.PlaySong();
+            // The step goes with it so both machines start in the same bar
+            // rather than merely both starting.
+            TraxSessionSync.PublishTransport(TraxSessionSync.TransportPlaySong,
+                                             _inst.CurrentStep < 0 ? 0 : _inst.CurrentStep);
         }
         SyncPlayButton();
     }
@@ -1364,12 +1402,14 @@ public partial class ShuttleComputerUI : MonoBehaviour
             _inst.Stop();
             ClearPlayhead();
             _lastStepShown = -1;
+            TraxSessionSync.PublishTransport(TraxSessionSync.TransportStop, 0);
         }
         else
         {
             _inst.Stop();
             ClearPlayhead();
             _inst.Play();
+            TraxSessionSync.PublishTransport(TraxSessionSync.TransportPlayLoop, 0);
         }
         SyncPlayButton();
     }

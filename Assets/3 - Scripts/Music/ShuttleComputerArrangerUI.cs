@@ -270,10 +270,22 @@ public partial class ShuttleComputerUI
         }
     }
 
+    /// <summary>
+    /// THE edit choke point. Every knob turn, section add, delete and length
+    /// change lands here, which is why it is also where a co-op partner is told
+    /// about it — a publish at each individual call site is a publish somebody
+    /// forgets to add the next time an edit is invented.
+    ///
+    /// The publish is queued and coalesced (four a second), so a knob drag is a
+    /// handful of messages rather than one per frame, and it no-ops entirely
+    /// while an inbound edit is being applied — otherwise the two machines would
+    /// bounce the same song back and forth forever.
+    /// </summary>
     void SongEdited()
     {
         _songStale = true;
         if (_inst.IsPlayingSong) { _inst.SetSong(_song); _songStale = false; }
+        TraxSessionSync.PublishSong(_song);
     }
 
     void EnsureSongFresh()
@@ -306,6 +318,9 @@ public partial class ShuttleComputerUI
         if (_songStale && _inst.IsPlayingSong) EnsureSongFresh();
         _inst.SeekSong(stepPos);
         UpdateArrPlayhead();
+        // Playback is shared, so the playhead is too — otherwise one of you
+        // would drag the cursor and the other would keep hearing the old bar.
+        TraxSessionSync.PublishTransport(TraxSessionSync.TransportSeek, stepPos);
     }
 
     // ── section surgery ──────────────────────────────────────────────────
