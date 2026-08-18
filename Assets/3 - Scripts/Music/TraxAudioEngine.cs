@@ -109,12 +109,17 @@ public class TraxAudioEngine : MonoBehaviour
         public double morphA, morphB;             // crossfade gains
         public double env;                        // 0..1
         public double attackStep;                 // per-sample rise during attack
-        public double decayCoef;                  // per-sample multiply after attack
+        public double decayCoef;                  // per-sample multiply during RELEASE
         public int attackLeft;
+        // Browser ampEnv() parity: rise, HOLD at peak until ~70% of the note,
+        // then exponential release. Decaying straight after the attack (the
+        // first port) thinned every note's body audibly.
+        public long holdUntil;
         public double amp;
         public long endAt;                        // hard stop sample
         public long fadeFrom;                     // start of the anti-click fade
         public double ic1, ic2;                   // TPT state-variable filter memory
+        public double bqX1, bqX2, bqY1, bqY2;     // RBJ biquad memory (snare/hat)
         public double noiseIdx;
         public double bodyPhase, bodyInc, bodyEnv, bodyCoef;
         public double freqEnv, freqCoef, freqFloor, freqSpan;   // kick pitch drop
@@ -200,6 +205,28 @@ public class TraxAudioEngine : MonoBehaviour
     bool _smInit;
     double _smFilterBase, _smLfoRate, _smLfoDepth, _smDrive, _smCrush, _smSend, _smFb, _smMix;
 
+    // ── browser-parity DSP (2026-08-17, "the build sounds worse") ────────
+
+    /// The GOO wobble recomputes the melodic filter coefficients every this
+    /// many samples. Once per buffer (~21ms) stepped audibly; 32 samples
+    /// (0.7ms) is indistinguishable from the browser's per-sample modulation
+    /// and costs a handful of tan() calls per buffer.
+    const int LfoBlock = 32;
+
+    // Master compressor — port of the browser's DynamicsCompressor (threshold
+    // -6dB, knee 6, ratio 12, attack 3ms, release 120ms) INCLUDING Chrome's
+    // automatic makeup gain, which is a real part of why the browser mix
+    // sounds glued and fat. Sits after the volume, before the safety clip,
+    // exactly where the browser's node sits.
+    const double CompThresholdDb = -6.0, CompKneeDb = 6.0, CompRatio = 12.0;
+    double _compEnv, _compAtk, _compRel, _compMakeup;
+
+    // Snare bandpass (1800Hz, Q 0.9) and hat highpass (7kHz) as real RBJ
+    // biquads, matching the browser's BiquadFilterNodes. The one-pole
+    // stand-ins of the first port read as a woolly snare and a dull hat.
+    double _snB0, _snB1, _snB2, _snA1, _snA2;
+    double _htB0, _htB1, _htB2, _htA1, _htA2;
+
     AudioSource _src;
 
     // ── lifecycle ────────────────────────────────────────────────────────
@@ -228,6 +255,17 @@ public class TraxAudioEngine : MonoBehaviour
         _impactEnvCoef = DecayCoefFor(0.18, _sr);
         _impactThumpCoef = DecayCoefFor(0.09, _sr);
         _impactFreqCoef = DecayCoefFor(0.05, _sr);
+
+        // Compressor time constants + Chrome-style makeup: gain reduction at
+        // full scale is (0 - threshold) * (1 - 1/ratio); Chrome's makeup is
+        // (1 / gainAtFullScale)^0.6.
+        _compAtk = 1.0 - Math.Exp(-1.0 / (0.003 * _sr));
+        _compRel = 1.0 - Math.Exp(-1.0 / (0.120 * _sr));
+        double fullScaleReductionDb = -CompThresholdDb * (1.0 - 1.0 / CompRatio);
+        _compMakeup = Math.Pow(Math.Pow(10.0, fullScaleReductionDb / 20.0), 0.6);
+
+        BiquadBandpass(1800.0, 0.9, out _snB0, out _snB1, out _snB2, out _snA1, out _snA2);
+        BiquadHighpass(7000.0, 0.707, out _htB0, out _htB1, out _htB2, out _htA1, out _htA2);
         SetCavePreset(TraxPresets.Cave[1], 0);          // HALL, matching the default track
 
         _src = GetComponent<AudioSource>();
@@ -489,22 +527,10 @@ public class TraxAudioEngine : MonoBehaviour
             gDrive = _smDrive; gCrush = _smCrush; gSend = _smSend; gFb = _smFb; gMix = _smMix;
         }
 
-        // ── per-buffer coefficients ──
-        // The LFO advances once per buffer rather than per sample. At <= 3Hz and
-        // a 5-20ms buffer that is far finer than the ear can hear, and it keeps
-        // tan() out of the inner loop.
-        _lfoPhase += (gLfoRate * frames) / _sr;
-        if (_lfoPhase > 1.0) _lfoPhase -= Math.Floor(_lfoPhase);
-        double lfo = Math.Sin(_lfoPhase * 2.0 * Math.PI);
-        double lfoMul = Math.Pow(2.0, lfo * gLfoDepth);
-
+        // Filter resonance for the sub-block coefficient updates below. The
+        // LFO itself advances per 32-sample sub-block, not per buffer — per
+        // buffer the GOO wobble stepped audibly (browser parity note).
         double k = 1.0 / Math.Max(0.5, p.filterQ);
-        for (int v = (int)TraxVoice.Bass; v < TraxPhrase.VoiceCount; v++)
-        {
-            double a1, a2, a3;
-            SvfCoef(gFilterBase * FilterScale[v] * lfoMul, k, out a1, out a2, out a3);
-            _ca1[v] = a1; _ca2[v] = a2; _ca3[v] = a3;
-        }
 
         double driveTone = 1.0 + gDrive * 30.0;
         double driveDrum = 1.0 + gDrive * 0.5 * 30.0;
@@ -545,7 +571,25 @@ public class TraxAudioEngine : MonoBehaviour
         }
 
         // ── render ──
-        for (int i = 0; i < frames; i++)
+        int i = 0;
+        while (i < frames)
+        {
+            // Sub-block: advance the GOO LFO and refresh the melodic filter
+            // coefficients every 32 samples, so the wobble sweeps instead of
+            // stepping. A handful of tan() calls per buffer — negligible.
+            int blockEnd = i + LfoBlock;
+            if (blockEnd > frames) blockEnd = frames;
+            _lfoPhase += (gLfoRate * (blockEnd - i)) / _sr;
+            if (_lfoPhase > 1.0) _lfoPhase -= Math.Floor(_lfoPhase);
+            double lfoMul = Math.Pow(2.0, Math.Sin(_lfoPhase * 2.0 * Math.PI) * gLfoDepth);
+            for (int v = (int)TraxVoice.Bass; v < TraxPhrase.VoiceCount; v++)
+            {
+                double ca1, ca2, ca3;
+                SvfCoef(gFilterBase * FilterScale[v] * lfoMul, k, out ca1, out ca2, out ca3);
+                _ca1[v] = ca1; _ca2[v] = ca2; _ca3[v] = ca3;
+            }
+
+        for (; i < blockEnd; i++)
         {
             long now = _sample + i;
 
@@ -598,8 +642,28 @@ public class TraxAudioEngine : MonoBehaviour
             double l = dry + outA * wetMix;
             double r = dry + outB * wetMix;
 
-            l = SoftClip(l * outGain);
-            r = SoftClip(r * outGain);
+            l *= outGain;
+            r *= outGain;
+
+            // Master compressor, linked stereo — the browser's glue. Envelope
+            // follows the louder channel; soft knee in dB; makeup restores the
+            // level the reduction took (Chrome does the same automatically).
+            double lvl = Math.Abs(l) > Math.Abs(r) ? Math.Abs(l) : Math.Abs(r);
+            _compEnv += (lvl > _compEnv ? _compAtk : _compRel) * (lvl - _compEnv);
+            double envDb = 20.0 * Math.Log10(_compEnv > 1e-6 ? _compEnv : 1e-6);
+            double over = envDb - CompThresholdDb;
+            double redDb;
+            if (over <= -CompKneeDb * 0.5) redDb = 0.0;
+            else if (over < CompKneeDb * 0.5)
+            {
+                double t = over + CompKneeDb * 0.5;
+                redDb = t * t / (2.0 * CompKneeDb) * (1.0 - 1.0 / CompRatio);
+            }
+            else redDb = over * (1.0 - 1.0 / CompRatio);
+            double cg = Math.Pow(10.0, -redDb / 20.0) * _compMakeup;
+
+            l = SoftClip(l * cg);
+            r = SoftClip(r * cg);
 
             int idx = i * channels;
             if (channels == 1)
@@ -612,6 +676,7 @@ public class TraxAudioEngine : MonoBehaviour
                 data[idx + 1] = (float)r;
                 for (int c = 2; c < channels; c++) data[idx + c] = 0f;
             }
+        }
         }
 
         _sample += frames;
@@ -869,12 +934,12 @@ public class TraxAudioEngine : MonoBehaviour
         v.amp = e.st.vel;
         v.ic1 = 0; v.ic2 = 0;
 
-        double atk, tau, len;
+        double atk, len;
 
         switch (e.voice)
         {
             case TraxVoice.Kick:
-                atk = 0.004; tau = 0.060; len = 0.30;
+                atk = 0.004; len = 0.25;
                 // 150 -> 45Hz. The drop IS the kick.
                 v.freqFloor = 45.0;
                 v.freqSpan = 105.0;
@@ -883,7 +948,7 @@ public class TraxAudioEngine : MonoBehaviour
                 break;
 
             case TraxVoice.Snare:
-                atk = 0.002; tau = 0.045; len = 0.18;
+                atk = 0.002; len = 0.18;
                 v.noiseIdx = (now * 7) % (_noise.Length - 4);
                 v.bodyPhase = 0;
                 v.bodyInc = 190.0 / _sr;
@@ -893,7 +958,7 @@ public class TraxAudioEngine : MonoBehaviour
 
             case TraxVoice.Hat:
                 v.open = e.st.open;
-                atk = 0.001; tau = v.open ? 0.045 : 0.012; len = v.open ? 0.14 : 0.04;
+                atk = 0.001; len = v.open ? 0.14 : 0.04;
                 v.noiseIdx = (now * 13) % (_noise.Length - 4);
                 break;
 
@@ -907,20 +972,17 @@ public class TraxAudioEngine : MonoBehaviour
                         // Swells in under everything rather than announcing itself.
                         atk = 0.12;
                         len = e.durSec;
-                        tau = Math.Max(0.4, len);
                     }
                     else if (e.voice == TraxVoice.Spindle)
                     {
                         // Plucked and short, or the arp turns into a drone.
                         atk = 0.004;
                         len = Math.Min(e.durSec, 0.22);
-                        tau = 0.09;
                     }
                     else
                     {
                         atk = 0.012;
                         len = e.durSec;
-                        tau = Math.Max(0.05, len * (e.voice == TraxVoice.Bass ? 0.5 : 0.6));
                     }
 
                     // sine -> saw -> square, crossfaded. Matches morphPair() in
@@ -945,13 +1007,20 @@ public class TraxAudioEngine : MonoBehaviour
                 }
 
             default:
-                atk = 0.005; tau = 0.1; len = 0.1;
+                atk = 0.005; len = 0.1;
                 break;
         }
 
-        v.attackLeft = Math.Max(1, (int)(atk * _sr));
+        // Browser ampEnv() parity: attack (capped at half the note), HOLD at
+        // peak until ~70% of the note, then exponential release to silence at
+        // its end. The old tau-decay-from-the-attack shape thinned every note.
+        double a = Math.Min(atk, len * 0.5);
+        v.attackLeft = Math.Max(1, (int)(a * _sr));
         v.attackStep = 1.0 / v.attackLeft;
-        v.decayCoef = DecayCoefFor(tau, _sr);
+        long holdSamples = (long)(Math.Max(a, len * 0.7) * _sr);
+        v.holdUntil = now + holdSamples;
+        double relSamples = len * _sr - holdSamples;
+        v.decayCoef = relSamples > 1 ? Math.Exp(Math.Log(1e-4) / relSamples) : 0.0;
         v.endAt = now + (long)(len * _sr);
         // Last 6ms is a linear fade so a hard stop can never click.
         v.fadeFrom = v.endAt - Math.Max(1, (long)(0.006 * _sr));
@@ -968,9 +1037,9 @@ public class TraxAudioEngine : MonoBehaviour
     {
         if (now >= v.endAt) { v.active = false; return 0; }
 
-        // envelope
+        // envelope: attack, hold at peak, then release (ampEnv parity)
         if (v.attackLeft > 0) { v.env += v.attackStep; v.attackLeft--; if (v.env > 1) v.env = 1; }
-        else v.env *= v.decayCoef;
+        else if (now >= v.holdUntil) v.env *= v.decayCoef;
 
         double env = v.env;
         if (now >= v.fadeFrom)
@@ -996,12 +1065,9 @@ public class TraxAudioEngine : MonoBehaviour
             case TraxVoice.Snare:
                 {
                     double n = Noise(ref v.noiseIdx);
-                    // Cheap bandpass: highpass the noise by subtracting a
-                    // one-pole lowpass, then lowpass the result.
-                    v.ic1 += 0.35 * (n - v.ic1);           // ~lowpass
-                    double hp = n - v.ic1;
-                    v.ic2 += 0.45 * (hp - v.ic2);          // band
-                    s = v.ic2 * 0.8;
+                    // Real RBJ bandpass (1800Hz, Q 0.9) — what the browser's
+                    // BiquadFilterNode is. The one-pole stand-in was woolly.
+                    s = Biquad(ref v, n, _snB0, _snB1, _snB2, _snA1, _snA2) * 0.8;
 
                     v.bodyEnv *= v.bodyCoef;
                     v.bodyPhase += (120.0 + 70.0 * v.bodyEnv) / _sr;
@@ -1014,8 +1080,8 @@ public class TraxAudioEngine : MonoBehaviour
             case TraxVoice.Hat:
                 {
                     double n = Noise(ref v.noiseIdx);
-                    v.ic1 += 0.75 * (n - v.ic1);
-                    s = (n - v.ic1) * 0.7;                 // highpass ≈ 7kHz
+                    // Real RBJ highpass at 7kHz, matching the browser's node.
+                    s = Biquad(ref v, n, _htB0, _htB1, _htB2, _htA1, _htA2) * 0.7;
                     break;
                 }
 
@@ -1104,6 +1170,44 @@ public class TraxAudioEngine : MonoBehaviour
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
+
+    /// RBJ cookbook bandpass, constant 0dB peak — what a BiquadFilterNode
+    /// "bandpass" is.
+    void BiquadBandpass(double fc, double q, out double b0, out double b1, out double b2,
+                        out double a1, out double a2)
+    {
+        double w0 = 2.0 * Math.PI * fc / _sr;
+        double alpha = Math.Sin(w0) / (2.0 * q);
+        double a0 = 1.0 + alpha;
+        b0 = alpha / a0;
+        b1 = 0.0;
+        b2 = -alpha / a0;
+        a1 = -2.0 * Math.Cos(w0) / a0;
+        a2 = (1.0 - alpha) / a0;
+    }
+
+    void BiquadHighpass(double fc, double q, out double b0, out double b1, out double b2,
+                        out double a1, out double a2)
+    {
+        double w0 = 2.0 * Math.PI * fc / _sr;
+        double cosw = Math.Cos(w0);
+        double alpha = Math.Sin(w0) / (2.0 * q);
+        double a0 = 1.0 + alpha;
+        b0 = (1.0 + cosw) / 2.0 / a0;
+        b1 = -(1.0 + cosw) / a0;
+        b2 = (1.0 + cosw) / 2.0 / a0;
+        a1 = -2.0 * cosw / a0;
+        a2 = (1.0 - alpha) / a0;
+    }
+
+    static double Biquad(ref Vox v, double x,
+                         double b0, double b1, double b2, double a1, double a2)
+    {
+        double y = b0 * x + b1 * v.bqX1 + b2 * v.bqX2 - a1 * v.bqY1 - a2 * v.bqY2;
+        v.bqX2 = v.bqX1; v.bqX1 = x;
+        v.bqY2 = v.bqY1; v.bqY1 = y;
+        return y;
+    }
 
     void SvfCoef(double cutoffHz, double k, out double a1, out double a2, out double a3)
     {
