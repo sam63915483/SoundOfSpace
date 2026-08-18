@@ -97,8 +97,23 @@ export function mountTrax (root, inst, opts) {
     arrStats.id = 'arr-stats';
     arrHead.append (arrLabel, arrStats);
 
+    // Ruler + strip share one positioned wrapper so the playhead line can run
+    // down through both. The ruler mirrors the strip's flex maths exactly
+    // (same grow factors, gap and end spacer), which is what keeps a tick and
+    // the bar it names vertically aligned.
+    const timeline = document.createElement ('div');
+    timeline.id = 'arr-timeline';
+
+    const ruler = document.createElement ('div');
+    ruler.id = 'arr-ruler';
+
     const strip = document.createElement ('div');
     strip.id = 'arr-strip';
+
+    const playheadEl = document.createElement ('div');
+    playheadEl.id = 'arr-playhead';
+
+    timeline.append (ruler, strip, playheadEl);
 
     const arrRow = document.createElement ('div');
     arrRow.id = 'arr-row';
@@ -108,8 +123,35 @@ export function mountTrax (root, inst, opts) {
     arrInfo.id = 'arr-info';
     arrRow.append (arrCtl, arrInfo);
 
-    arranger.append (arrHead, strip, arrRow);
+    arranger.append (arrHead, timeline, arrRow);
     body.appendChild (arranger);
+
+    /// Bar ticks above the strip, numbered song-wide (1-based, cumulative) so
+    /// "bar 9" means the same thing whichever section it lands in. Labels sit
+    /// on a section's first bar and every 4th after; the rest stay bare ticks
+    /// so a 2-bar section never has to fit two numbers.
+    function refreshRuler () {
+        ruler.innerHTML = '';
+        let barNo = 1;
+        for (const s of song.sections) {
+            const cell = document.createElement ('div');
+            cell.className = 'arr-ruler-cell';
+            cell.style.flexGrow = s.bars;
+            for (let b = 0; b < s.bars; b++) {
+                const tick = document.createElement ('div');
+                tick.className = 'arr-tick';
+                if (b % 4 === 0) tick.textContent = String (barNo);
+                barNo++;
+                cell.appendChild (tick);
+            }
+            ruler.appendChild (cell);
+        }
+        // Phantom spacer matching the [+] button, so the last bar's width is
+        // the same as its block below.
+        const end = document.createElement ('div');
+        end.className = 'arr-ruler-end';
+        ruler.appendChild (end);
+    }
 
     let playingSec = -1;              // section under the audible playhead
 
@@ -148,6 +190,7 @@ export function mountTrax (root, inst, opts) {
         });
         strip.appendChild (add);
         arrStats.textContent = song.sections.length + ' SEC · ' + SONG.totalBars (song) + ' BARS';
+        refreshRuler ();
     }
 
     function refreshCtl () {
@@ -643,15 +686,44 @@ export function mountTrax (root, inst, opts) {
         if (currentStep >= 0) stepEls[currentStep].classList.remove ('now');
         currentStep = -1;
         setPlayingSec (-1);
+        phLast = null;
+        playheadEl.style.display = 'none';
         readout.textContent = Math.round (inst.params.bpm) + ' BPM';
+    }
+
+    // The last step the SPEAKERS reached (position + its audio-clock time).
+    // The ruler line interpolates between this step and the next each frame,
+    // so it glides instead of ticking sixteen times a bar.
+    let phLast = null;
+
+    function updatePlayhead (now) {
+        if (!inst.playingSong || !phLast) { playheadEl.style.display = 'none'; return; }
+        const total = SONG.totalSteps (song);
+        const loc = SONG.sectionAtStep (song, phLast.pos % total);
+        const comp = inst.songCompiled && inst.songCompiled[loc.index];
+        const stepDur = comp ? (60 / comp.params.bpm / 4) : 0.125;
+        const frac = Math.min (Math.max ((now - phLast.time) / stepDur, 0), 1);
+        const bl = strip.querySelectorAll ('.arr-sec')[loc.index];
+        // offsetWidth is 0 before layout (and absent in the test DOM) — no
+        // geometry, no line.
+        if (!bl || !bl.offsetWidth) { playheadEl.style.display = 'none'; return; }
+        const f = (loc.stepInSection + frac) / (song.sections[loc.index].bars * STEPS);
+        playheadEl.style.display = 'block';
+        playheadEl.style.transform =
+            'translateX(' + (bl.offsetLeft + f * bl.offsetWidth).toFixed (1) + 'px)';
     }
 
     function frame () {
         if (inst.ctx && inst.playing) {
             const now = inst.ctx.currentTime;
-            let shown = -1;
-            while (queue.length && queue[0][1] <= now) shown = queue.shift ()[0];
+            let shown = -1, shownTime = 0;
+            while (queue.length && queue[0][1] <= now) {
+                shown = queue[0][0];
+                shownTime = queue[0][1];
+                queue.shift ();
+            }
             if (shown >= 0) {
+                if (inst.songMode) phLast = { pos: shown, time: shownTime };
                 if (inst.songMode) {
                     // Guard: the song may have been edited after this step was
                     // queued; clamp rather than crash on a stale position.
@@ -698,6 +770,7 @@ export function mountTrax (root, inst, opts) {
                     }
                 }
             }
+            updatePlayhead (now);
         }
         if (gridDirty) drawGrid ();
         requestAnimationFrame (frame);

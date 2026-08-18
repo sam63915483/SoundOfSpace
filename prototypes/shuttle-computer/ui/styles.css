@@ -209,6 +209,39 @@ html, body {
 #arr-head { display: flex; align-items: baseline; }
 #arr-stats { font-size: 9px; letter-spacing: .18em; color: var(--ink-ghost); margin-left: auto; }
 
+#arr-timeline { position: relative; display: flex; flex-direction: column; gap: 2px; }
+
+/* The ruler mirrors the strip's flex maths (grow = bars, same gap, phantom
+   end spacer the width of the [+] button) so ticks sit over their bars. */
+#arr-ruler { display: flex; gap: 4px; height: 12px; }
+.arr-ruler-cell { flex-basis: 0; min-width: 34px; display: flex; overflow: hidden; }
+.arr-tick {
+    flex: 1 1 0;
+    min-width: 0;
+    border-left: 1px solid var(--grid);
+    font-size: 7px;
+    line-height: 12px;
+    padding-left: 2px;
+    color: var(--ink-ghost);
+    letter-spacing: .08em;
+    white-space: nowrap;
+    overflow: hidden;
+}
+.arr-ruler-end { width: 34px; flex: none; }
+
+#arr-playhead {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+    pointer-events: none;
+    display: none;
+    z-index: 2;
+}
+
 #arr-strip { display: flex; gap: 4px; height: 38px; }
 
 .arr-sec {
