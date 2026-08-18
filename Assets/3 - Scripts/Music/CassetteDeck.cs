@@ -46,6 +46,20 @@ public static class CassetteDeck
     /// hide their cassette without polling in Update.
     public static event Action OnChanged;
 
+    /// Bumped on every mutation, exactly like TraxLibrary.Version. TraxSync
+    /// watches it to replicate the machine — the counter lives here, inside the
+    /// store, rather than at the call sites, so a new way to move a tape can't
+    /// forget to announce itself (the "watched, not hooked" EconomySync lesson).
+    public static int Version { get; private set; }
+
+    /// The one place state changes are announced. Every mutation below routes
+    /// through it so the version and the event can never disagree.
+    static void Fire()
+    {
+        Version++;
+        OnChanged?.Invoke();
+    }
+
     public static bool HasCassette => InsertedTier > 0;
     public static bool HasEjected  => !string.IsNullOrEmpty(EjectedPrintId);
 
@@ -100,7 +114,13 @@ public static class CassetteDeck
 
         InsertedTier = tier;
         InsertedKind = kind;
-        OnChanged?.Invoke();
+        Fire();
+        // CO-OP: the blank has left this player's pack — that half is personal
+        // and already done — so tell the host to seat it. The local state above
+        // is optimistic: it makes the cassette slide in on THIS screen right
+        // now, and the host's snapshot either confirms it or corrects it (a
+        // refusal always ships a fresh snapshot back, so the two can't stick).
+        TraxSync.RouteDeckInsert(kind, tier);
         return true;
     }
 
@@ -115,12 +135,25 @@ public static class CassetteDeck
     {
         if (!HasCassette) return false;
         if (Hotbar.Instance == null) return false;
+
+        // CO-OP: the machine is the host's, so the blank comes back as a GRANT
+        // rather than being handed over here. The slot is emptied optimistically
+        // so the cassette slides out on this screen immediately; if the host had
+        // already emptied it, its next snapshot says so.
+        if (TraxSync.RouteDeckEject())
+        {
+            InsertedTier = 0;
+            InsertedKind = 0;
+            Fire();
+            return true;
+        }
+
         int leftover = Hotbar.Instance.AddResource(BlankIdFor(InsertedKind, InsertedTier), 1);
         if (leftover > 0) return false;
 
         InsertedTier = 0;
         InsertedKind = 0;
-        OnChanged?.Invoke();
+        Fire();
         return true;
     }
 
@@ -137,7 +170,7 @@ public static class CassetteDeck
         InsertedTier = 0;
         InsertedKind = 0;
         EjectedPrintId = printId;
-        OnChanged?.Invoke();
+        Fire();
         return true;
     }
 
@@ -150,10 +183,21 @@ public static class CassetteDeck
     {
         if (!HasEjected) return false;
         if (Hotbar.Instance == null) return false;
+
+        // CO-OP: whoever asks first gets it. The eject clears optimistically so
+        // the tape comes off this screen at once; the host hands the actual tape
+        // over as a grant, and puts it back if this pack turns out to be full.
+        if (TraxSync.RouteDeckTake())
+        {
+            EjectedPrintId = null;
+            Fire();
+            return true;
+        }
+
         if (Hotbar.Instance.AddCassette(EjectedPrintId, 1) <= 0) return false;
 
         EjectedPrintId = null;
-        OnChanged?.Invoke();
+        Fire();
         return true;
     }
 
@@ -166,7 +210,7 @@ public static class CassetteDeck
         InsertedTier = 0;
         InsertedKind = 0;
         EjectedPrintId = null;
-        OnChanged?.Invoke();
+        Fire();
     }
 
     public static void Capture(TraxLibrarySave save)
@@ -199,6 +243,75 @@ public static class CassetteDeck
             if (!string.IsNullOrEmpty(id) && TraxPrints.Get(id) != null) EjectedPrintId = id;
         }
 
-        OnChanged?.Invoke();
+        Fire();
+    }
+
+    // ── multiplayer ──────────────────────────────────────────────────────
+    //
+    // The machine is HOST-AUTHORITATIVE: only the host's copy of these three
+    // fields is real, and it reaches the guest inside TraxSync's snapshot
+    // (through Apply above, which is also the save path — the save schema is
+    // the network schema).
+    //
+    // What a guest does locally is move ITEMS, which are personal: it spends
+    // its own blank, or pockets its own tape. The two halves meet in TraxSync,
+    // which asks the host to change the machine and hands the guest back
+    // whatever the machine gave up.
+
+    /// <summary>
+    /// Host-side seat with no hotbar involved — the blank was already spent on
+    /// the guest's machine, so charging anyone here would take a second one.
+    /// Refused if the slot is occupied, which is what makes the refund path in
+    /// TraxSync necessary rather than theoretical.
+    /// </summary>
+    public static bool InsertRemote(int kind, int tier)
+    {
+        if (HasCassette || tier <= 0) return false;
+        InsertedTier = Mathf.Clamp(tier, 1, 2);
+        InsertedKind = TraxKind.Clamp(kind);
+        Fire();
+        return true;
+    }
+
+    /// <summary>
+    /// Host-side eject with no hotbar involved: empties the slot and reports
+    /// what came out, so TraxSync can hand that blank to whoever asked.
+    /// </summary>
+    public static bool EjectBlankRemote(out int kind, out int tier)
+    {
+        kind = InsertedKind;
+        tier = InsertedTier;
+        if (!HasCassette) return false;
+        InsertedTier = 0;
+        InsertedKind = 0;
+        Fire();
+        return true;
+    }
+
+    /// <summary>
+    /// Host-side take with no hotbar involved: clears the eject and reports the
+    /// print id, which TraxSync gives to the asking player.
+    /// </summary>
+    public static bool TakeEjectedRemote(out string printId)
+    {
+        printId = EjectedPrintId;
+        if (!HasEjected) return false;
+        EjectedPrintId = null;
+        Fire();
+        return true;
+    }
+
+    /// <summary>
+    /// Put a tape back on the eject because the player who asked for it had no
+    /// room. Only used by TraxSync's return path — a tape must never evaporate
+    /// between the machine and a full pack.
+    /// </summary>
+    public static bool ReturnToEject(string printId)
+    {
+        if (HasEjected || string.IsNullOrEmpty(printId)) return false;
+        if (TraxPrints.Get(printId) == null) return false;
+        EjectedPrintId = printId;
+        Fire();
+        return true;
     }
 }

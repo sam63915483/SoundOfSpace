@@ -1013,6 +1013,11 @@ public static class SaveCollector
         // table would silently drop the tape off the machine.
         CassetteDeck.Apply(data.traxLibrary);
         TapeMemory.Apply(data.tapeMemory);
+        // The story director carries RENT (rate, arrears, last-billed day) and
+        // the tape-career total alongside every story flag — all of it world
+        // state. Without this a joining guest started on a paid-up, storyless
+        // world and only learned about the debt when the next day rolled.
+        ApplyStoryDirector(data.storyDirector);
         ApplyPlanetO2(data.planetO2);
 
         // Legacy saves carry domes inside `buildings`; move them across BEFORE

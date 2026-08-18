@@ -359,6 +359,15 @@ public partial class ShuttleComputerUI : MonoBehaviour
             _shelfVersionShown = TraxLibrary.Version;
         }
 
+        // A host snapshot replaces every Record object on the shelf, so the one
+        // this screen is holding becomes a detached copy that no longer matches
+        // anything. Re-point it at the real record by name.
+        if (_remoteRevShown != TraxSync.RemoteRevision)
+        {
+            _remoteRevShown = TraxSync.RemoteRevision;
+            RelinkProjectAfterSync();
+        }
+
         if (_toastGroup != null && _toastGroup.alpha > 0f && Time.unscaledTime > _toastUntil)
             _toastGroup.alpha = Mathf.MoveTowards(_toastGroup.alpha, 0f, Time.unscaledDeltaTime * 4f);
     }
@@ -1201,23 +1210,36 @@ public partial class ShuttleComputerUI : MonoBehaviour
         if (CassetteDeck.HasEjected) { Toast("TAKE THE LAST TAPE OFF THE MACHINE"); return; }
 
         int kind = CassetteDeck.InsertedKind;
-        TraxPrints.Record press;
+        // What actually gets pressed, built the same way whoever is at the
+        // machine — the guest sends this song to the host rather than a shelf
+        // id, so an unsaved edit prints exactly as it sounds.
+        TraxSong pressSong;
         if (kind == TraxKind.Demo)
         {
             // The whole selected SECTION — its bar length, fill-bar ending —
             // not just the raw 4-bar loop (Sam, 2026-08-18).
-            var demoSong = new TraxSong();
+            pressSong = new TraxSong();
             int bars = _song != null ? _song.sections[_sel].bars : 4;
-            demoSong.sections.Add(new TraxSection(_inst.Track, bars));
-            press = TraxPrints.Register(_project.name, demoSong, TraxKind.Demo,
-                                        CassetteDeck.InsertedTier);
+            pressSong.sections.Add(new TraxSection(_inst.Track, bars));
         }
         else
         {
             if (_song == null || _song.TotalBars() > TraxKind.BarCap(kind))
             { Toast("TRACK TOO LONG FOR THIS TAPE"); return; }
-            press = TraxPrints.Register(_project.name, _song, kind, CassetteDeck.InsertedTier);
+            pressSong = _song;
         }
+
+        // CO-OP: the machine is the host's. Close the screen either way so the
+        // player looks up at it — the tape slides out when the deck state lands.
+        if (TraxSync.RouteDeckPrint(_project.name, kind, pressSong))
+        {
+            ClosePrint();
+            Close();
+            return;
+        }
+
+        TraxPrints.Record press = TraxPrints.Register(_project.name, pressSong, kind,
+                                                      CassetteDeck.InsertedTier);
         if (press == null) return;
 
         // CLOSE FIRST, THEN PRINT. The order is the feature: CassetteSlot plays

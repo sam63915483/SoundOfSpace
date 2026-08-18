@@ -62,6 +62,16 @@ public class TevRentCollector : MonoBehaviour
     {
         if (!MushroomQuest.RentSettled) return;
 
+        // ⚠️ CO-OP: ONE household, ONE bill. The clock is synced, so this fires
+        // on both machines within a frame of each other — a guest that also
+        // accrued would double-charge the debt until the host's snapshot
+        // overwrote it, and the player would watch the number jump.
+        //
+        // The guest still needs to SEE the bill, so it waits for the host's
+        // number to land and then reads it off. Decision path host-only,
+        // rendering path both — the usual split.
+        if (!WorldSync.IsAuthority) { StartCoroutine(ShowRemoteBill()); return; }
+
         // AccrueRentTo owns the "which days are still unbilled" question, so a
         // load that skipped several days lands as one linear charge rather than
         // a stack of separate ones — or, worse, a double bill for one day.
@@ -85,5 +95,30 @@ public class TevRentCollector : MonoBehaviour
         {
             StoryImpactNotice.Show($"RENT — ${owed} owed to Tev.", 5f);
         }
+    }
+
+    /// <summary>
+    /// The guest's copy of the bill. The host charges on its own day roll and
+    /// broadcasts within a quarter-second; two seconds is comfortably past that
+    /// even on a bad relay, and the notice reads the replicated numbers rather
+    /// than computing anything of its own.
+    ///
+    /// Says nothing if the balance is clear — a guest who joined a paid-up
+    /// household shouldn't be told about a bill that never landed.
+    /// </summary>
+    System.Collections.IEnumerator ShowRemoteBill()
+    {
+        yield return new WaitForSecondsRealtime(2f);
+
+        int owed = MushroomQuest.RentBalance;
+        if (owed <= 0) yield break;
+
+        int unpaid = MushroomQuest.UnpaidDays;
+        if (unpaid >= MushroomQuest.LockoutDays)
+            StoryImpactNotice.Show($"RENT — ${owed} owed. Tev has stopped selling you plugins.", 6f);
+        else if (unpaid >= SternAfterDays)
+            StoryImpactNotice.Show($"RENT — ${owed} owed to Tev. {unpaid} days behind.", 6f);
+        else
+            StoryImpactNotice.Show($"RENT — ${owed} owed to Tev.", 5f);
     }
 }

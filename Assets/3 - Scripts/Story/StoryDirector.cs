@@ -58,6 +58,22 @@ public class StoryDirector : MonoBehaviour
     /// <summary>Raised whenever step/trust/flags/objectives/questions change, so UI can refresh.</summary>
     public event Action OnStoryStateChanged;
 
+    /// <summary>
+    /// Bumped on every mutation, the same shape TraxLibrary and BuyerLedger use.
+    /// TraxSync watches it to replicate the whole director to guests.
+    ///
+    /// Static rather than an instance field so a sync can read it without
+    /// null-checking a singleton that may not exist yet, and so it survives the
+    /// director being rebuilt on a scene load — a rebuilt director IS a change.
+    ///
+    /// Why the WHOLE director rather than just the rent counters Sam asked for:
+    /// rent lives in `_counters` next to the tape-career total and every story
+    /// flag, and a whitelist of "the shared ones" is exactly the kind of second
+    /// schema that drifts out of step with the first. The save already describes
+    /// all of it, so the save is what travels.
+    /// </summary>
+    public static int Version { get; private set; }
+
     // ---- step ----
     public StoryStep CurrentStoryStep => _step;
     public void SetStoryStep(StoryStep s) { if (_step == s) return; _step = s; Changed(); }
@@ -134,6 +150,7 @@ public class StoryDirector : MonoBehaviour
     {
         _pendingConversationId = conversationId;
         _pendingNodeId = nodeId;
+        Version++;
         OnPendingConversationChanged?.Invoke();
     }
 
@@ -141,10 +158,15 @@ public class StoryDirector : MonoBehaviour
     {
         _pendingConversationId = null;
         _pendingNodeId = null;
+        Version++;
         OnPendingConversationChanged?.Invoke();
     }
 
-    void Changed() => OnStoryStateChanged?.Invoke();
+    void Changed()
+    {
+        Version++;
+        OnStoryStateChanged?.Invoke();
+    }
 
     /// <summary>Force an immediate gate reconciliation — e.g. the moment an authored
     /// conversation ends — instead of waiting up to GateCheckInterval for the catch-up
@@ -278,6 +300,13 @@ public class StoryDirector : MonoBehaviour
     void Update()
     {
         if (SceneManager.GetActiveScene().name == "MainMenu") { HoldColdOpen = false; return; }
+
+        // ⚠️ CO-OP: the story is world state and the host owns it. A guest that
+        // ran its own cold-open timer and its own gate cascade would advance the
+        // step locally, only to have the host's next snapshot overwrite it —
+        // and it would fire a second "Incoming transmission" into the bargain.
+        // Decision path only: everything that RENDERS the story still runs.
+        if (!WorldSync.IsAuthority) return;
 
         // First-contact discoverability timer — ColdOpen only, fires once (GDD cue).
         if (!_firstContactQueued)

@@ -246,8 +246,21 @@ public static class MushroomQuest
         return charge;
     }
 
+    /// <summary>
     /// Pay Tev. Returns what actually came out of the wallet — capped at the
     /// balance, so the player can never overpay their way into credit.
+    ///
+    /// ── Two halves, two owners (co-op) ───────────────────────────────────
+    /// The MONEY is personal: it leaves the wallet of whoever walked up to Tev,
+    /// immediately, on their own machine. The BALANCE is world state owned by
+    /// the host, because both players pay down one household debt and a guest
+    /// subtracting locally would be overwritten by the next snapshot — the
+    /// payment would appear to bounce.
+    ///
+    /// So the wallet is charged here and the balance is asked for over there.
+    /// In single player and on the host the route is a no-op and both halves
+    /// happen inline, exactly as before.
+    /// </summary>
     public static int PayRent(int amount)
     {
         if (amount <= 0) return 0;
@@ -257,8 +270,19 @@ public static class MushroomQuest
         var wallet = PlayerWallet.Instance;
         if (wallet == null || !wallet.SpendMoney(pay)) return 0;
 
-        RentBalance -= pay;
+        if (!TraxSync.RouteRentPay(pay)) ApplyRentPayment(pay);
         return pay;
+    }
+
+    /// <summary>
+    /// The balance half of a payment, with no wallet involved — the host runs
+    /// this for a guest whose money has already changed hands. Never charges
+    /// anyone, so it is safe to call on a machine that isn't paying.
+    /// </summary>
+    public static void ApplyRentPayment(int amount)
+    {
+        if (amount <= 0) return;
+        RentBalance = Mathf.Max(0, RentBalance - amount);
     }
 
     /// Mushrooms of ANY species currently in the player's HOTBAR. Not the locker

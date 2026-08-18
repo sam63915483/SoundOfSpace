@@ -36,6 +36,26 @@ public partial class ShuttleComputerUI
     TraxLibrary.Record _project;
     uint _savedSongId;
     int _shelfVersionShown = -1;
+    int _remoteRevShown = -1;
+
+    /// <summary>
+    /// A host snapshot rebuilds the shelf from scratch, so every Record object
+    /// in it is new and the one this screen kept a reference to is a detached
+    /// orphan — its id matches nothing, DELETE arms the wrong row, and PRINT
+    /// stamps a name that is no longer on the shelf.
+    ///
+    /// Re-point it by NAME, which is what survives a round trip (ids are minted
+    /// per machine, names are the project's identity — same-name saves overwrite
+    /// in place on both machines by design). A project that was deleted by the
+    /// other player while this screen was open correctly resolves to null, and
+    /// the bar goes back to reading UNTITLED.
+    /// </summary>
+    void RelinkProjectAfterSync()
+    {
+        if (_project == null) return;
+        _project = TraxLibrary.FindByName(_project.name);
+        RefreshProjectBar();
+    }
 
     public bool SaveOpen { get { return _savePanel != null && _savePanel.activeSelf; } }
     public bool ProjectsOpen { get { return _projectsView != null && _projectsView.activeSelf; } }
@@ -275,7 +295,10 @@ public partial class ShuttleComputerUI
                 RefreshDeleteLabels();
                 return;
             }
-            TraxLibrary.Delete(captured.id);
+            // The shelf is the computer's, so a guest asks the host to delete
+            // and the row disappears when the shelf lands. Dropping the local
+            // _project either way keeps the screen honest in the meantime.
+            if (!TraxSync.RouteProjectDelete(captured.id)) TraxLibrary.Delete(captured.id);
             if (_project != null && _project.id == captured.id) _project = null;
             RebuildShelf();
             RefreshMenuPane();
@@ -557,6 +580,14 @@ public partial class ShuttleComputerUI
         if (typed.Length == 0) return;
 
         SyncSection();                    // the selected section must hold the latest edits
+
+        // CO-OP: the shelf is the host's, but the save has to READ as done
+        // immediately or the screen lies about what it is holding. So save
+        // locally either way and tell the host as well; its shelf lands a beat
+        // later and RelinkProjectAfterSync re-points _project at the real
+        // record. Same name overwrites the same slot on both machines, so the
+        // two agree on everything except the id.
+        TraxSync.RouteProjectSave(typed, _song);
         TraxLibrary.Record rec = TraxLibrary.Save(typed, _inst.Track, NowUnix(), _song);
         if (rec == null) return;
 

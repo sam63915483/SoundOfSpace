@@ -200,6 +200,8 @@ public class TevShopUI : MonoBehaviour
     RowWidget[] _rows = new RowWidget[MaxRows];
 
     bool _open;
+    int _rackVersionShown = -1;
+    int _rentVersionShown = -1;
     Tab _tab = Tab.Tapes;
     Action _onClose;
     string _pluginLine, _noRoomLine;
@@ -355,6 +357,17 @@ public class TevShopUI : MonoBehaviour
             Refresh();
         }
 
+        // The rack and the rent are world state a co-op partner can move while
+        // this panel is open — they buy CAVE, or they pay the arrears off and
+        // the embargo lifts. Both ride version counters, so redraw off those
+        // rather than assuming this panel is the only thing that writes.
+        if (_rackVersionShown != TraxLibrary.Version || _rentVersionShown != StoryDirector.Version)
+        {
+            _rackVersionShown = TraxLibrary.Version;
+            _rentVersionShown = StoryDirector.Version;
+            Refresh();
+        }
+
         if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
         if (!Cursor.visible) Cursor.visible = true;
     }
@@ -445,6 +458,11 @@ public class TevShopUI : MonoBehaviour
         if (!PlayerWallet.Instance.SpendMoney(e.price)) return;
 
         StopListen();   // you bought it — the demo's job is done
+        // The money was personal and has already gone; the rack is world state,
+        // so one player buying SIREN puts it on the computer for both. Installed
+        // locally as well so the confirmation below isn't a promise about the
+        // future — the host's snapshot agrees a beat later.
+        TraxSync.RoutePluginInstall(e.plugin);
         TraxLibrary.Install(e.plugin);
         SetStatus(string.IsNullOrEmpty(_pluginLine)
             ? $"{e.plugin} installed. It's on the computer next time you open it."
