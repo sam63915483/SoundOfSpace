@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2 }
 
     public struct Slot
     {
@@ -517,6 +517,10 @@ public class Hotbar : MonoBehaviour
             // different tracks you are hauling.
             ItemId.BlankTapeT1 => 20,
             ItemId.BlankTapeT2 => 20,
+            ItemId.BlankTapeHalfT1 => 20,
+            ItemId.BlankTapeHalfT2 => 20,
+            ItemId.BlankTapeFullT1 => 20,
+            ItemId.BlankTapeFullT2 => 20,
             ItemId.Cassette => 10,
             // Money is UNCAPPED — the stack count is the balance, so a cap here
             // would silently be a cap on how rich the player may be, and any
@@ -952,7 +956,10 @@ public class Hotbar : MonoBehaviour
     {
         return id is ItemId.Wood or ItemId.Crystal or ItemId.SpaceDust or ItemId.Sapling
                   or ItemId.Mushroom or ItemId.MushroomSapling
-                  or ItemId.BlankTapeT1 or ItemId.BlankTapeT2 or ItemId.Cassette;
+                  or ItemId.BlankTapeT1 or ItemId.BlankTapeT2
+                  or ItemId.BlankTapeHalfT1 or ItemId.BlankTapeHalfT2
+                  or ItemId.BlankTapeFullT1 or ItemId.BlankTapeFullT2
+                  or ItemId.Cassette;
     }
 
     // Slot-only items: selected via number key but have no controller to equip.
@@ -1032,6 +1039,12 @@ public class Hotbar : MonoBehaviour
     // from product without reading. T2 is the premium shell.
     static readonly Color BlankT1SwatchColor   = new Color32(0x5A, 0x5F, 0x66, 0xFF);   // grey shell
     static readonly Color BlankT2SwatchColor   = new Color32(0x8C, 0x7A, 0x3F, 0xFF);   // gold shell
+    // The bigger formats get their own shell families so DEMO/HALF/FULL read
+    // apart at a glance, with T2 always the warmer/richer of the pair.
+    static readonly Color BlankHalfT1Swatch    = new Color32(0x4F, 0x6B, 0x8A, 0xFF);   // slate-blue shell
+    static readonly Color BlankHalfT2Swatch    = new Color32(0x9A, 0x6B, 0x3F, 0xFF);   // bronze shell
+    static readonly Color BlankFullT1Swatch    = new Color32(0x3F, 0x8A, 0x6B, 0xFF);   // green shell
+    static readonly Color BlankFullT2Swatch    = new Color32(0xA8, 0x4F, 0x8A, 0xFF);   // violet shell
     static readonly Color CassetteT1Swatch     = new Color32(0x79, 0xFF, 0xD0, 0xFF);   // TRAX phosphor
     static readonly Color CassetteT2Swatch     = new Color32(0xFF, 0x4F, 0xD8, 0xFF);   // TRAX magenta
 
@@ -1061,6 +1074,10 @@ public class Hotbar : MonoBehaviour
             case ItemId.MushroomSapling: return MushSaplingSwatchCol;
             case ItemId.BlankTapeT1: return BlankT1SwatchColor;
             case ItemId.BlankTapeT2: return BlankT2SwatchColor;
+            case ItemId.BlankTapeHalfT1: return BlankHalfT1Swatch;
+            case ItemId.BlankTapeHalfT2: return BlankHalfT2Swatch;
+            case ItemId.BlankTapeFullT1: return BlankFullT1Swatch;
+            case ItemId.BlankTapeFullT2: return BlankFullT2Swatch;
             // A printed tape takes the colour of its TIER, so a shelf of them
             // reads at a glance even before you check the names.
             case ItemId.Cassette:  return CassetteSwatch(null);
@@ -1078,8 +1095,12 @@ public class Hotbar : MonoBehaviour
             case ItemId.Sapling:   return "SAPLINGS";
             case ItemId.Mushroom:  return "MUSHROOM";
             case ItemId.MushroomSapling: return "SPORES";
-            case ItemId.BlankTapeT1: return "BLANK TAPE";
-            case ItemId.BlankTapeT2: return "BLANK TAPE II";
+            case ItemId.BlankTapeT1: return "DEMO TAPE";
+            case ItemId.BlankTapeT2: return "DEMO TAPE II";
+            case ItemId.BlankTapeHalfT1: return "HALF TAPE";
+            case ItemId.BlankTapeHalfT2: return "HALF TAPE II";
+            case ItemId.BlankTapeFullT1: return "FULL TAPE";
+            case ItemId.BlankTapeFullT2: return "FULL TAPE II";
             case ItemId.Cassette:  return "CASSETTE";
             case ItemId.Money:     return "MONEY";
             default: return "—";
@@ -1114,6 +1135,10 @@ public class Hotbar : MonoBehaviour
             case ItemId.Money:     return MoneyIcon();
             case ItemId.BlankTapeT1: return CassetteSprite(BlankT1SwatchColor);
             case ItemId.BlankTapeT2: return CassetteSprite(BlankT2SwatchColor);
+            case ItemId.BlankTapeHalfT1: return CassetteSprite(BlankHalfT1Swatch);
+            case ItemId.BlankTapeHalfT2: return CassetteSprite(BlankHalfT2Swatch);
+            case ItemId.BlankTapeFullT1: return CassetteSprite(BlankFullT1Swatch);
+            case ItemId.BlankTapeFullT2: return CassetteSprite(BlankFullT2Swatch);
             // A PRINTED tape's colour is its tier, which the id alone does not
             // give us — the slot renderer calls CassetteSpriteFor instead. This
             // generic shell is the fallback for callers that only have the id
@@ -1849,8 +1874,9 @@ public class Hotbar : MonoBehaviour
                 // Name the SONG, not the object. The whole point of printing a
                 // tape is that it is a specific thing you made.
                 string song = TraxPrints.DisplayName(slots[newActive].cassetteId).ToUpperInvariant();
+                string kind = " · " + TraxKind.Label(TraxPrints.KindOf(slots[newActive].cassetteId));
                 string tier = TraxPrints.TierOf(slots[newActive].cassetteId) >= 2 ? " II" : "";
-                label = $"{song}{tier} ×{slots[newActive].count}";
+                label = $"{song}{kind}{tier} ×{slots[newActive].count}";
             }
             else if (IsResource(activeId))
             {

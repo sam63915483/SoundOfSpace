@@ -68,7 +68,7 @@ public class PlayerWallet
 /// "there was no room" is a state the tests can actually reach.
 public class Hotbar
 {
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2 }
 
     public static Hotbar Instance;
 

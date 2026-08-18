@@ -515,6 +515,8 @@ public class StorageUI : MonoBehaviour
         id == Hotbar.ItemId.Wood || id == Hotbar.ItemId.Crystal || id == Hotbar.ItemId.SpaceDust
         || id == Hotbar.ItemId.Sapling || Hotbar.IsMushroomItem(id) || id == Hotbar.ItemId.Money
         || id == Hotbar.ItemId.BlankTapeT1 || id == Hotbar.ItemId.BlankTapeT2
+        || id == Hotbar.ItemId.BlankTapeHalfT1 || id == Hotbar.ItemId.BlankTapeHalfT2
+        || id == Hotbar.ItemId.BlankTapeFullT1 || id == Hotbar.ItemId.BlankTapeFullT2
         || id == Hotbar.ItemId.Cassette;
 
     /// Count badge text. Money reads as currency everywhere it appears — the
@@ -557,7 +559,11 @@ public class StorageUI : MonoBehaviour
             // Blanks are one shell per tier, so the id-keyed cache suits them.
             // Printed tapes are NOT here on purpose — see PaintSlot.
             case Hotbar.ItemId.BlankTapeT1:
-            case Hotbar.ItemId.BlankTapeT2: return Hotbar.ResourceIcon(id);
+            case Hotbar.ItemId.BlankTapeT2:
+            case Hotbar.ItemId.BlankTapeHalfT1:
+            case Hotbar.ItemId.BlankTapeHalfT2:
+            case Hotbar.ItemId.BlankTapeFullT1:
+            case Hotbar.ItemId.BlankTapeFullT2: return Hotbar.ResourceIcon(id);
         }
         switch (id)
         {
