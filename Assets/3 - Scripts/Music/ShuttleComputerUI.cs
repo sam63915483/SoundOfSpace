@@ -62,28 +62,29 @@ public partial class ShuttleComputerUI : MonoBehaviour
     const float ContentBottom = 16f;
     const float SidePad = 22f;
 
-    const float PlateH = 116f;
-    const float DialsY = -(PlateH + 14f);        // -130
-    const float DialsH = 318f;
-    const float RackLabelY = DialsY - DialsH - 16f;   // -482
-    const float RackLabelH = 24f;
-    const float RackY = RackLabelY - RackLabelH - 4f; // -510
-    const float RackH = 200f;
-    const float StepsY = RackY - RackH - 12f;    // -708
+    const float PlateH = 92f;
+    const float PlateY = -(ArrH + 10f);               // -112 (ArrH: arranger partial)
+    const float DialsY = PlateY - PlateH - 12f;       // -216
+    const float DialsH = 288f;
+    const float RackLabelY = DialsY - DialsH - 12f;   // -516
+    const float RackLabelH = 20f;
+    const float RackY = RackLabelY - RackLabelH - 4f; // -540
+    const float RackH = 182f;
+    const float StepsY = RackY - RackH - 12f;         // -734
     const float StepsH = 18f;
     const float TransportH = 60f;
-    const float ProjBarH = 26f;      // the project bar above the genre plate
+    const float ProjBarH = 26f;      // the project bar above the arranger
 
-    // Resulting column, measured from the top of TraxView (height 878):
-    //   status bar   (screen-space)     0 ..  -34
-    //   TraxView starts at             -46          <- clears the status bar
-    //   genre plate                      0 .. -116
-    //   dials                         -130 .. -466
-    //   rack label                    -482 .. -506
-    //   rack                          -510 .. -696
-    //   steps                         -708 .. -726
-    //   transport (anchored bottom)   -818 .. -878
-    // No overlaps, ~92px of breathing room above the transport. If you change a
+    // Resulting column, measured from the top of TraxView's Content (852 high
+    // after the project bar):
+    //   arranger (ruler+strip+ctl)       0 .. -102
+    //   genre plate                   -112 .. -204
+    //   dials                         -216 .. -504
+    //   rack label                    -516 .. -536
+    //   rack                          -540 .. -722
+    //   steps                         -734 .. -752
+    //   transport (anchored bottom)   -792 .. -852
+    // No overlaps, ~40px of breathing room above the transport. If you change a
     // height here, re-check the whole column — the rows are consecutive.
 
     public static ShuttleComputerUI Instance { get; private set; }
@@ -135,8 +136,8 @@ public partial class ShuttleComputerUI : MonoBehaviour
     GameObject _homeView, _traxView;
 
     TextMeshProUGUI _genreLabel, _genreVibe, _genreMeta, _readout, _statusText;
-    TextMeshProUGUI _playLabel, _toastLabel;
-    Image _playBg;
+    TextMeshProUGUI _playLabel, _loopLabel, _toastLabel;
+    Image _playBg, _loopBg;
     readonly List<TraxKnob> _knobs = new List<TraxKnob>();
     readonly List<Image> _stepCells = new List<Image>();
     readonly Dictionary<string, Image> _moduleFrames = new Dictionary<string, Image>();
@@ -334,6 +335,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         {
             if (Input.GetKeyDown(KeyCode.Space)) TogglePlay();
             RefreshPlayhead();
+            ArrangerUpdate();
         }
 
         // The shelf is world state a co-op partner can change while you are
@@ -637,6 +639,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         var inner = MakeRect(view, "Content");
         Stretch(inner, 0, 0, ProjBarH, 0);
 
+        BuildArranger(inner);
         BuildGenrePlate(inner);
         BuildDials(inner);
         BuildRack(inner);
@@ -651,22 +654,23 @@ public partial class ShuttleComputerUI : MonoBehaviour
         rt.anchorMax = new Vector2(1, 1);
         rt.pivot = new Vector2(0.5f, 1);
         rt.sizeDelta = new Vector2(0, PlateH);
-        rt.anchoredPosition = Vector2.zero;
+        rt.anchoredPosition = new Vector2(0, PlateY);
         Outline(plate.transform, Grid);
 
         // Explicit boxes rather than stretched-with-padding: four labels sharing
         // one rect via offsets is exactly how the caption and the vibe line
-        // ended up on top of each other.
-        var cap = MakeText(rt, "Caption", "GENRE", 14, InkGhost, TextAlignmentOptions.TopLeft);
-        Box(cap.rectTransform, TopLeft, TopLeft, new Vector2(20, -10), new Vector2(320, 18));
+        // ended up on top of each other. Compressed since the arranger landed
+        // above — the plate reads the SELECTED SECTION now.
+        var cap = MakeText(rt, "Caption", "SECTION GENRE", 12, InkGhost, TextAlignmentOptions.TopLeft);
+        Box(cap.rectTransform, TopLeft, TopLeft, new Vector2(20, -8), new Vector2(320, 16));
         cap.characterSpacing = 32;
 
-        _genreLabel = MakeText(rt, "Label", "—", 52, Accent, TextAlignmentOptions.TopLeft);
-        Box(_genreLabel.rectTransform, TopLeft, TopLeft, new Vector2(18, -26), new Vector2(940, 66));
+        _genreLabel = MakeText(rt, "Label", "—", 42, Accent, TextAlignmentOptions.TopLeft);
+        Box(_genreLabel.rectTransform, TopLeft, TopLeft, new Vector2(18, -22), new Vector2(940, 50));
         _genreLabel.characterSpacing = 6;
 
-        _genreVibe = MakeText(rt, "Vibe", "", 16, InkDim, TextAlignmentOptions.BottomLeft);
-        Box(_genreVibe.rectTransform, BottomLeft, BottomLeft, new Vector2(20, 10), new Vector2(760, 22));
+        _genreVibe = MakeText(rt, "Vibe", "", 14, InkDim, TextAlignmentOptions.BottomLeft);
+        Box(_genreVibe.rectTransform, BottomLeft, BottomLeft, new Vector2(20, 8), new Vector2(760, 20));
         _genreVibe.characterSpacing = 8;
 
         _genreMeta = MakeText(rt, "Meta", "", 14, InkGhost, TextAlignmentOptions.TopRight);
@@ -864,15 +868,23 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
         float x = 0;
 
-        _playBg = MakeButton(row, "Play", "PLAY", 130, ref x, Ink, Hex("04120eff"), TogglePlay);
+        // Two transports: PLAY TRACK chains the sections from the play cursor;
+        // LOOP SECTION is the old behaviour — loop the selected section
+        // forever while you shape it.
+        _playBg = MakeButton(row, "Play", "PLAY TRACK", 180, ref x, Ink, Hex("04120eff"), TogglePlay);
         _playLabel = _playBg.GetComponentInChildren<TextMeshProUGUI>();
+
+        x += 8;
+        _loopBg = MakeButton(row, "Loop", "LOOP SECTION", 200, ref x, PanelHi, Ink, ToggleLoop);
+        _loopLabel = _loopBg.GetComponentInChildren<TextMeshProUGUI>();
+        Outline(_loopBg.transform, InkGhost);
 
         _readout = MakeText(row, "Readout", "", 16, InkDim, TextAlignmentOptions.Left);
         var rrt = _readout.rectTransform;
         rrt.anchorMin = new Vector2(0, 0);
         rrt.anchorMax = new Vector2(0, 1);
         rrt.pivot = new Vector2(0, 0.5f);
-        rrt.sizeDelta = new Vector2(260, 0);
+        rrt.sizeDelta = new Vector2(300, 0);
         rrt.anchoredPosition = new Vector2(x + 14, 0);
 
         // Right-hand cluster, laid out from the right edge inward.
@@ -1138,6 +1150,14 @@ public partial class ShuttleComputerUI : MonoBehaviour
             _printNote.text = "pressing UNSAVED changes";
             _printNote.color = Warn;
         }
+        else if (_song != null && _song.sections.Count > 1)
+        {
+            // Cassettes still carry ONE loop. Honest label so the promise on
+            // screen matches what the grader will hear (the trap class).
+            _printNote.text = "presses SEC " + TraxSong.SectionLabel(_sel)
+                            + "'s loop as a demo - full-track tapes come later";
+            _printNote.color = InkGhost;
+        }
         else
         {
             _printNote.text = "one tape, then it ejects";
@@ -1274,28 +1294,66 @@ public partial class ShuttleComputerUI : MonoBehaviour
         for (int i = 0; i < _steppers.Count; i++) _steppers[i].Refresh();
     }
 
+    /// PLAY TRACK — the whole arrangement, from the play cursor.
     void TogglePlay()
     {
-        _inst.Toggle();
-        SyncPlayButton();
-        if (!_inst.IsPlaying)
+        if (_inst.IsPlayingSong)
         {
+            _inst.Stop();
             ClearPlayhead();
             _lastStepShown = -1;
         }
+        else
+        {
+            _inst.Stop();                 // a running LOOP SECTION yields
+            ClearPlayhead();
+            EnsureSongFresh();
+            _inst.PlaySong();
+        }
+        SyncPlayButton();
+    }
+
+    /// LOOP SECTION — the selected section's 4-bar phrase, forever.
+    void ToggleLoop()
+    {
+        if (_inst.IsPlayingLoop)
+        {
+            _inst.Stop();
+            ClearPlayhead();
+            _lastStepShown = -1;
+        }
+        else
+        {
+            _inst.Stop();
+            ClearPlayhead();
+            _inst.Play();
+        }
+        SyncPlayButton();
     }
 
     void SyncPlayButton()
     {
         if (_playLabel == null) return;
-        bool playing = _inst != null && _inst.IsPlaying;
-        _playLabel.text = playing ? "STOP" : "PLAY";
-        _playBg.color = playing ? PanelHi : Ink;
-        _playLabel.color = playing ? Ink : Hex("04120eff");
+        bool song = _inst != null && _inst.IsPlayingSong;
+        bool loop = _inst != null && _inst.IsPlayingLoop;
+        _playLabel.text = song ? "STOP" : "PLAY TRACK";
+        _playBg.color = song ? PanelHi : Ink;
+        _playLabel.color = song ? Ink : Hex("04120eff");
+        if (_loopLabel != null)
+        {
+            _loopLabel.text = loop ? "STOP" : "LOOP SECTION";
+            _loopBg.color = loop ? Ink : PanelHi;
+            _loopLabel.color = loop ? Hex("04120eff") : Ink;
+        }
     }
 
     void RefreshReadouts()
     {
+        // Every editing path funnels through here, so this is where the
+        // selected section learns about the edit and the arranger recolours.
+        SyncSection();
+        RefreshArranger();
+
         var g = _inst.Genre;
         _genreLabel.text = g.label;
         _genreVibe.text = g.primary.vibe;
@@ -1320,11 +1378,15 @@ public partial class ShuttleComputerUI : MonoBehaviour
                         (bar + 1) + "/" + TraxPhrase.Bars;
     }
 
+    int _roSec = -1, _roBar = -1;      // song-readout change detection
+
     void ClearPlayhead()
     {
         for (int i = 0; i < _stepCells.Count; i++)
             _stepCells[i].color = Hex("0d1a1fff");
         _lastBarShown = -1;
+        _roSec = -1; _roBar = -1;
+        SetPlayingSec(-1);
     }
 
     void RefreshPlayhead()
@@ -1332,8 +1394,59 @@ public partial class ShuttleComputerUI : MonoBehaviour
         int gstep = _inst.CurrentStep;
         if (gstep < 0) return;
 
-        int bar = (gstep % TraxPhrase.TotalSteps) / TraxPhrase.Steps;
-        int step = gstep % TraxPhrase.Steps;
+        int bar, step;
+        if (_inst.IsPlayingSong && _song != null)
+        {
+            // Song position -> section -> the phrase bar actually sounding
+            // (the last bar of a section remaps onto the fill bar).
+            int total = _song.TotalSteps();
+            int pos = total > 0 ? ((gstep % total) + total) % total : 0;
+            int idx, stepInSection, barInSection;
+            _song.SectionAtStep(pos, out idx, out stepInSection, out barInSection);
+            TraxSection sec = _song.sections[idx];
+            int patStep = TraxSong.PatternStepFor(sec, stepInSection);
+            bar = patStep / TraxPhrase.Steps;
+            step = patStep % TraxPhrase.Steps;
+
+            // The grid is the SELECTED section's editor — only light it when
+            // the song is actually inside that section.
+            bool inSelected = idx == _sel;
+
+            if (bar != _lastBarShown && inSelected)
+            {
+                _lastBarShown = bar;
+                _lastStepShown = -1;
+                DrawBarHits(bar);
+            }
+
+            if (inSelected)
+            {
+                if (step != _lastStepShown)
+                {
+                    if (_lastStepShown >= 0) _stepCells[_lastStepShown].color = HitColor(bar, _lastStepShown);
+                    _lastStepShown = step;
+                    _stepCells[step].color = Accent;
+                }
+            }
+            else if (_lastStepShown >= 0)
+            {
+                _stepCells[_lastStepShown].color = HitColor(_lastBarShown < 0 ? 0 : _lastBarShown, _lastStepShown);
+                _lastStepShown = -1;
+            }
+
+            // Per-frame UI string, gated behind change detection (house rule).
+            if (idx != _roSec || barInSection != _roBar)
+            {
+                _roSec = idx; _roBar = barInSection;
+                _readout.text = Mathf.RoundToInt((float)TraxParams.Compute(sec.track.dials, sec.track.key).bpm)
+                                + " BPM    SEC " + TraxSong.SectionLabel(idx)
+                                + "  BAR " + (barInSection + 1) + "/" + sec.bars;
+            }
+            return;
+        }
+
+        bar = (gstep % TraxPhrase.TotalSteps) / TraxPhrase.Steps;
+        step = gstep % TraxPhrase.Steps;
 
         if (bar != _lastBarShown)
         {

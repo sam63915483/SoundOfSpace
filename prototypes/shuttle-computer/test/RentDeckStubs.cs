@@ -181,6 +181,17 @@ public class TraxProjectSave
     public List<int> preset = new List<int>();
     public List<int> variation = new List<int>();
     public List<bool> active = new List<bool>();
+    public List<TraxSectionSave> sections = new List<TraxSectionSave>();
+}
+
+public class TraxSectionSave
+{
+    public int bars;
+    public int key;
+    public List<float> dials = new List<float>();
+    public List<int> preset = new List<int>();
+    public List<int> variation = new List<int>();
+    public List<bool> active = new List<bool>();
 }
 
 public class TraxPrintSave

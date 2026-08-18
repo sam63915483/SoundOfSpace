@@ -34,7 +34,7 @@ public partial class ShuttleComputerUI
     /// The record being edited, or null for a project that has never been
     /// saved. Only its name and id are read.
     TraxLibrary.Record _project;
-    uint _savedTrackId;
+    uint _savedSongId;
     int _shelfVersionShown = -1;
 
     public bool SaveOpen { get { return _savePanel != null && _savePanel.activeSelf; } }
@@ -235,7 +235,10 @@ public partial class ShuttleComputerUI
 
         // Genre, identity and when it was saved — the same three facts the
         // browser row shows, so the screens read as the same product.
+        int secCount = rec.song != null ? rec.song.sections.Count : 1;
         string meta = TraxClassifier.Classify(rec.track.dials).label +
+                      (secCount > 1 ? "   " + secCount + " SEC - " +
+                       (rec.song.TotalBars()) + " BARS" : "") +
                       "   ID " + rec.trackId.ToString("X8") +
                       "   " + StampOf(rec.savedAt);
         var mt = MakeText(rt, "Meta", meta, 12, InkGhost, TextAlignmentOptions.Left);
@@ -356,8 +359,8 @@ public partial class ShuttleComputerUI
     void OnNewProject()
     {
         _project = null;
-        _inst.LoadTrack(TraxInstrument.NewTrack());
-        _savedTrackId = 0;                       // "never saved", not "clean"
+        ResetSong(TraxSong.FromTrack(TraxInstrument.NewTrack()));
+        _savedSongId = 0;                        // "never saved", not "clean"
         ShowTrax();
     }
 
@@ -371,8 +374,9 @@ public partial class ShuttleComputerUI
     {
         if (rec == null) return;
         _project = rec;
-        _inst.LoadTrack(rec.track);
-        _savedTrackId = _inst.TrackId;
+        // The record's song is cloned — editing must never reach the shelf.
+        ResetSong(rec.song != null ? rec.song.Clone() : TraxSong.FromTrack(rec.track));
+        _savedSongId = _song.SongId();
         ShowTrax();
     }
 
@@ -408,9 +412,12 @@ public partial class ShuttleComputerUI
         rule.rectTransform.anchoredPosition = Vector2.zero;
     }
 
-    /// Dirtiness is DERIVED from the track identity, not bookkept — so undoing
+    /// Dirtiness is DERIVED from the song identity, not bookkept — so undoing
     /// an edit correctly goes back to SAVED instead of staying dirty forever.
-    bool ProjectDirty { get { return _project == null || _inst.TrackId != _savedTrackId; } }
+    bool ProjectDirty
+    {
+        get { return _project == null || _song == null || _song.SongId() != _savedSongId; }
+    }
 
     void RefreshProjectBar()
     {
@@ -550,11 +557,12 @@ public partial class ShuttleComputerUI
         string typed = TraxLibrary.NormalizeName(_saveField.text);
         if (typed.Length == 0) return;
 
-        TraxLibrary.Record rec = TraxLibrary.Save(typed, _inst.Track, NowUnix());
+        SyncSection();                    // the selected section must hold the latest edits
+        TraxLibrary.Record rec = TraxLibrary.Save(typed, _inst.Track, NowUnix(), _song);
         if (rec == null) return;
 
         _project = rec;
-        _savedTrackId = _inst.TrackId;
+        _savedSongId = _song.SongId();
         CloseSaveDialog();
         RefreshProjectBar();
         _statusText.text = "TRAX  -  " + rec.name.ToUpperInvariant();

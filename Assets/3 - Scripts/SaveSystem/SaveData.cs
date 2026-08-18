@@ -492,6 +492,23 @@ public class TraxProjectSave
     public List<int> preset = new List<int>();         // 6, module order
     public List<int> variation = new List<int>();      // 6, module order
     public List<bool> active = new List<bool>();       // 6, module order — which were PLAYING
+    // The arrangement (2026-08-17): one row per section, in play order. The
+    // legacy track fields above stay — they are the FIRST section, so every
+    // old reader keeps working, and a record saved before songs existed
+    // (empty list) loads as a one-section song of that track.
+    public List<TraxSectionSave> sections = new List<TraxSectionSave>();
+}
+
+// One section of a song: a length in bars plus a whole track, copied.
+[Serializable]
+public class TraxSectionSave
+{
+    public int bars;
+    public int key;
+    public List<float> dials = new List<float>();      // 6, dial order
+    public List<int> preset = new List<int>();         // 6, module order
+    public List<int> variation = new List<int>();      // 6, module order
+    public List<bool> active = new List<bool>();       // 6, module order
 }
 
 // One PRESSING. Frozen at print time and never edited, so a cassette in a

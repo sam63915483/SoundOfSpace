@@ -45,6 +45,38 @@ public class TraxAudioEngine : MonoBehaviour
     Snapshot _live;
     Snapshot _pending;
 
+    // ── song mode (the arrangement layer) ────────────────────────────────
+    // When a song snapshot is live and _songMode is set, the sequencer walks
+    // SECTIONS — each with its own params, phrase, active set and CAVE space —
+    // instead of looping the single live phrase. Loop mode is untouched.
+
+    /// One section, fully compiled for the audio thread. Immutable after
+    /// publish.
+    public sealed class SongSec
+    {
+        public TraxParams p;
+        public TraxPhrase phrase;
+        public bool[] active;        // module order, TraxPresets indices
+        public int bars;
+        public int startStep;
+        public int tapA, tapB;       // CAVE reads, in samples
+        public float dampCoef, fbScale;
+    }
+
+    sealed class SongSnap
+    {
+        public SongSec[] secs;
+        public int totalSteps;
+    }
+
+    SongSnap _songLive;
+    volatile bool _songMode;
+    /// Where in the song the clock's step 0 lands — the play cursor. While
+    /// playing, a seek rewrites it against the running clock.
+    volatile int _songOffset;
+    volatile int _rawStep;           // the clock's raw step, for seek maths
+    volatile int _songSecIdx = -1;   // section under the scheduler, for the UI + per-buffer params
+
     volatile bool _playing;
     volatile float _masterVolume = 0.5f;
     volatile float _busLevel = 1f;
@@ -130,6 +162,44 @@ public class TraxAudioEngine : MonoBehaviour
     double _nextStepSample;
     double _lfoPhase;
 
+    // ── transition FX + glide state (audio thread only) ──────────────────
+
+    // Which rack module owns which voice, as indices — string lookups have no
+    // place in the sequencer path.
+    static readonly int[] VoiceModuleIdx = BuildVoiceModuleIdx();
+    static int[] BuildVoiceModuleIdx()
+    {
+        var a = new int[TraxPhrase.VoiceCount];
+        for (int v = 0; v < TraxPhrase.VoiceCount; v++)
+            a[v] = TraxPresets.ModuleIndex(TraxModules.For((TraxVoice)v));
+        return a;
+    }
+    static readonly int ThumperModuleIdx = TraxPresets.ModuleIndex("THUMPER");
+    static readonly int CaveModuleIdx = TraxPresets.ModuleIndex("CAVE");
+
+    // The transition snare roll: which steps of a section's LAST bar get an
+    // extra snare, and how hard — eighths for two beats, then sixteenths into
+    // the downbeat. Doubles the phrase's own fill.
+    static readonly double[] SnareRoll =
+        { 0, 0, 0, 0, 0, 0, 0, 0, 0.45, 0, 0.55, 0, 0.65, 0.75, 0.85, 1.0 };
+
+    // RISER: band-passed noise climbing linearly through a section's last bar.
+    bool _riserOn;
+    long _riserStart, _riserEnd;
+    double _riserIdx, _riserLp;
+
+    // IMPACT: darkening noise splash + low sine thump on the new downbeat.
+    bool _impactOn;
+    long _impactStart, _impactEnd;
+    double _impactIdx, _impactLp, _impactEnv, _impactPhase, _impactFreqEnv, _impactThumpEnv;
+    double _impactEnvCoef, _impactThumpCoef, _impactFreqCoef;
+
+    // Glide: in song mode the continuous params one-pole toward the current
+    // section's targets (~0.12s), so a boundary morphs instead of snapping.
+    // BPM is NOT smoothed — tempo glides sound like a dying turntable.
+    bool _smInit;
+    double _smFilterBase, _smLfoRate, _smLfoDepth, _smDrive, _smCrush, _smSend, _smFb, _smMix;
+
     AudioSource _src;
 
     // ── lifecycle ────────────────────────────────────────────────────────
@@ -154,6 +224,10 @@ public class TraxAudioEngine : MonoBehaviour
         _maxDelay = Mathf.CeilToInt(1.2f * _sr);
         _delayA = new float[_maxDelay];
         _delayB = new float[_maxDelay];
+
+        _impactEnvCoef = DecayCoefFor(0.18, _sr);
+        _impactThumpCoef = DecayCoefFor(0.09, _sr);
+        _impactFreqCoef = DecayCoefFor(0.05, _sr);
         SetCavePreset(TraxPresets.Cave[1], 0);          // HALL, matching the default track
 
         _src = GetComponent<AudioSource>();
@@ -229,10 +303,21 @@ public class TraxAudioEngine : MonoBehaviour
     public void StartTransport()
     {
         if (Volatile.Read(ref _live) == null) return;
+        _songMode = false;
+        StartClock();
+    }
+
+    void StartClock()
+    {
         _sample = 0;
         _step = 0;
+        _rawStep = 0;
         _nextStepSample = 0;
         _evtCount = 0;
+        _songSecIdx = -1;
+        _riserOn = false;
+        _impactOn = false;
+        _smInit = false;
         for (int i = 0; i < _vox.Length; i++) _vox[i].active = false;
         Array.Clear(_delayA, 0, _delayA.Length);
         Array.Clear(_delayB, 0, _delayB.Length);
@@ -242,8 +327,79 @@ public class TraxAudioEngine : MonoBehaviour
 
     public void StopTransport()
     {
+        // Freeze the song position into the cursor, so the idle line shows
+        // where playback stopped and PLAY TRACK resumes there.
+        var song = Volatile.Read(ref _songLive);
+        if (_playing && _songMode && song != null && _uiStep >= 0)
+            _songOffset = _uiStep % song.totalSteps;
         _playing = false;
         _uiStep = -1;
+        _songSecIdx = -1;
+    }
+
+    // ── song-mode API ────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Publish the whole compiled song. Sections arrive as parallel arrays
+    /// from the instrument (which owns pattern generation); the engine adds
+    /// the CAVE numbers, which depend on the output sample rate.
+    /// </summary>
+    public void PublishSong(TraxParams[] ps, TraxPhrase[] phrases, TraxTrack[] tracks, int[] bars)
+    {
+        if (ps == null || ps.Length == 0) { Interlocked.Exchange(ref _songLive, null); return; }
+        var secs = new SongSec[ps.Length];
+        int start = 0;
+        int caveIdx = TraxPresets.ModuleIndex("CAVE");
+        for (int i = 0; i < ps.Length; i++)
+        {
+            var preset = TraxPresets.Cave[tracks[i].preset[caveIdx]];
+            double skew = 1.0 + (tracks[i].variation[caveIdx] - 3.5) * 0.03;
+            int max = _maxDelay > 0 ? _maxDelay - 1 : 1;
+            var active = new bool[tracks[i].active.Length];
+            Array.Copy(tracks[i].active, active, active.Length);
+            secs[i] = new SongSec
+            {
+                p = ps[i],
+                phrase = phrases[i],
+                active = active,
+                bars = bars[i],
+                startStep = start,
+                tapA = Mathf.Clamp((int)(preset.timeA * skew * _sr), 1, max),
+                tapB = Mathf.Clamp((int)(preset.timeB / skew * _sr), 1, max),
+                dampCoef = (float)(1.0 - Math.Exp(-2.0 * Math.PI * preset.damp / _sr)),
+                fbScale = (float)preset.fb
+            };
+            start += bars[i] * TraxPhrase.Steps;
+        }
+        Interlocked.Exchange(ref _songLive, new SongSnap { secs = secs, totalSteps = start });
+    }
+
+    public void StartSongTransport()
+    {
+        if (Volatile.Read(ref _songLive) == null) return;
+        _songMode = true;
+        StartClock();
+    }
+
+    public bool IsSongMode { get { return _songMode; } }
+
+    /// The play cursor as an absolute song step — meaningful while stopped.
+    public int SongCursor { get { return _songOffset; } }
+
+    /// Jump the song playhead. While playing the jump lands within a step or
+    /// two (the seek races the scheduler by design — bar-level precision is
+    /// all the ruler offers anyway); while stopped it just moves the cursor.
+    public void SeekSong(int stepPos)
+    {
+        var song = Volatile.Read(ref _songLive);
+        if (song == null || song.totalSteps <= 0) return;
+        int total = song.totalSteps;
+        int t = ((stepPos % total) + total) % total;
+        if (_playing && _songMode)
+            _songOffset = (((t - _rawStep) % total) + total) % total;
+        else
+            _songOffset = t;
+        _songSecIdx = -1;                // re-apply section state on landing
     }
 
     public void SetMasterVolume(float v) { _masterVolume = Mathf.Clamp01(v); }
@@ -291,49 +447,99 @@ public class TraxAudioEngine : MonoBehaviour
             return;
         }
 
-        TraxParams p = snap.p;
-        double samplesPerStep = _sr * 60.0 / p.bpm / 4.0;
-        if (samplesPerStep < 1) samplesPerStep = 1;
+        // In song mode the buffer's character comes from the section under the
+        // scheduler, and CAVE space / module set ride the sections too.
+        SongSnap song = _songMode ? Volatile.Read(ref _songLive) : null;
+        SongSec bufSec = null;
+        if (song != null)
+        {
+            int si = _songSecIdx;
+            if (si < 0 || si >= song.secs.Length) si = 0;
+            bufSec = song.secs[si];
+        }
+        TraxParams p = bufSec != null ? bufSec.p : snap.p;
+
+        // Glide: the continuous params morph toward the section's targets over
+        // ~0.12s at every boundary. Discrete things (patterns, taps, module
+        // set) still switch exactly on the bar line.
+        double gFilterBase = p.filterBase, gLfoRate = p.lfoRate, gLfoDepth = p.lfoDepthOct;
+        double gDrive = p.drive, gCrush = p.crushLevels;
+        double gSend = p.caveSend, gFb = p.caveFeedback, gMix = p.caveMix;
+        if (song != null)
+        {
+            if (!_smInit)
+            {
+                _smInit = true;
+                _smFilterBase = gFilterBase; _smLfoRate = gLfoRate; _smLfoDepth = gLfoDepth;
+                _smDrive = gDrive; _smCrush = gCrush; _smSend = gSend; _smFb = gFb; _smMix = gMix;
+            }
+            else
+            {
+                double a = 1.0 - Math.Exp(-((double)frames / _sr) / 0.12);
+                _smFilterBase += (gFilterBase - _smFilterBase) * a;
+                _smLfoRate += (gLfoRate - _smLfoRate) * a;
+                _smLfoDepth += (gLfoDepth - _smLfoDepth) * a;
+                _smDrive += (gDrive - _smDrive) * a;
+                _smCrush += (gCrush - _smCrush) * a;
+                _smSend += (gSend - _smSend) * a;
+                _smFb += (gFb - _smFb) * a;
+                _smMix += (gMix - _smMix) * a;
+            }
+            gFilterBase = _smFilterBase; gLfoRate = _smLfoRate; gLfoDepth = _smLfoDepth;
+            gDrive = _smDrive; gCrush = _smCrush; gSend = _smSend; gFb = _smFb; gMix = _smMix;
+        }
 
         // ── per-buffer coefficients ──
         // The LFO advances once per buffer rather than per sample. At <= 3Hz and
         // a 5-20ms buffer that is far finer than the ear can hear, and it keeps
         // tan() out of the inner loop.
-        _lfoPhase += (p.lfoRate * frames) / _sr;
+        _lfoPhase += (gLfoRate * frames) / _sr;
         if (_lfoPhase > 1.0) _lfoPhase -= Math.Floor(_lfoPhase);
         double lfo = Math.Sin(_lfoPhase * 2.0 * Math.PI);
-        double lfoMul = Math.Pow(2.0, lfo * p.lfoDepthOct);
+        double lfoMul = Math.Pow(2.0, lfo * gLfoDepth);
 
         double k = 1.0 / Math.Max(0.5, p.filterQ);
         for (int v = (int)TraxVoice.Bass; v < TraxPhrase.VoiceCount; v++)
         {
             double a1, a2, a3;
-            SvfCoef(p.filterBase * FilterScale[v] * lfoMul, k, out a1, out a2, out a3);
+            SvfCoef(gFilterBase * FilterScale[v] * lfoMul, k, out a1, out a2, out a3);
             _ca1[v] = a1; _ca2[v] = a2; _ca3[v] = a3;
         }
 
-        double driveTone = 1.0 + p.drive * 30.0;
-        double driveDrum = 1.0 + p.drive * 0.5 * 30.0;
+        double driveTone = 1.0 + gDrive * 30.0;
+        double driveDrum = 1.0 + gDrive * 0.5 * 30.0;
         double normTone = FastTanh(driveTone);
         double normDrum = FastTanh(driveDrum);
-        int levelsTone = p.crushLevels;
-        int levelsDrum = Math.Min(64, p.crushLevels * 2);
+        int crushNow = (int)Math.Round(gCrush);
+        int levelsTone = crushNow;
+        int levelsDrum = Math.Min(64, crushNow * 2);
 
-        double sendTone = p.caveSend;
-        double sendDrum = p.caveSend * 0.3;
+        double sendTone = gSend;
+        double sendDrum = gSend * 0.3;
         // VOID (0.97) times a full VOID dial would run away; the cap is what
         // keeps the round trip below unity so the tail always decays.
-        double fb = Math.Min(0.9, p.caveFeedback * _caveFbScale * 1.25);
-        int tapA = _tapA, tapB = _tapB;
-        double damp = _dampCoefF;
-        double wetMix = _onCave ? p.caveMix : 0.0;
+        double fb = Math.Min(0.9, gFb * (bufSec != null ? bufSec.fbScale : _caveFbScale) * 1.25);
+        int tapA = bufSec != null ? bufSec.tapA : _tapA;
+        int tapB = bufSec != null ? bufSec.tapB : _tapB;
+        double damp = bufSec != null ? bufSec.dampCoef : _dampCoefF;
+        bool caveOn = bufSec != null ? bufSec.active[CaveModuleIdx] : _onCave;
+        double wetMix = caveOn ? gMix : 0.0;
         double outGain = _masterVolume * _busLevel;
 
         // ── schedule any steps that begin inside this buffer ──
+        // Loop mode: one tempo for the whole buffer. Song mode: each step's
+        // duration comes from the section that owns it, so tempo changes land
+        // exactly on section boundaries.
+        double samplesPerStep = _sr * 60.0 / p.bpm / 4.0;
+        if (samplesPerStep < 1) samplesPerStep = 1;
         long bufEnd = _sample + frames;
         while (_nextStepSample < bufEnd)
         {
-            EvaluateStep(snap, _step, (long)_nextStepSample, samplesPerStep);
+            if (song != null)
+                samplesPerStep = EvaluateStepSong(song, _step, (long)_nextStepSample);
+            else
+                EvaluateStep(snap, _step, (long)_nextStepSample, samplesPerStep);
+            if (samplesPerStep < 1) samplesPerStep = 1;
             _step++;
             _nextStepSample += samplesPerStep;
         }
@@ -362,6 +568,10 @@ public class TraxAudioEngine : MonoBehaviour
                 if (TraxPhrase.IsMelodic(_vox[v].kind)) tone += s;
                 else drum += s;
             }
+
+            // Section-transition one-shots ride the drum bus, so they share
+            // its crunch and cannot be silenced by a muted module.
+            if (_riserOn || _impactOn) drum += TransitionFxSample(now);
 
             // Drive + amplitude quantization (CRUNCH). Quantizing the shaped
             // signal IS bit-crushing; no worklet or extra pass needed.
@@ -426,18 +636,105 @@ public class TraxAudioEngine : MonoBehaviour
         }
 
         _uiStep = step;
+        _rawStep = step;
 
-        TraxPhrase phrase = snap.phrase;
-        TraxParams p = snap.p;
+        EmitStepEvents(snap.phrase, snap.p, null, step, baseSample);
+    }
+
+    /// <summary>
+    /// One step of SONG playback. Walks the arrangement: the section under the
+    /// step supplies params, phrase and active set, the LAST bar of a section
+    /// remaps onto the phrase's fill bar, and the boundary FX (riser, snare
+    /// roll, impact) arm here. Returns this step's duration in samples, so
+    /// tempo changes land exactly on section boundaries.
+    /// </summary>
+    double EvaluateStepSong(SongSnap song, int step, long baseSample)
+    {
+        int total = song.totalSteps;
+        int pos = (((step + _songOffset) % total) + total) % total;
+
+        int si = 0;
+        for (int i = 1; i < song.secs.Length; i++)
+            if (pos >= song.secs[i].startStep) si = i; else break;
+        SongSec sec = song.secs[si];
+        int stepInSection = pos - sec.startStep;
+        int secSteps = sec.bars * TraxPhrase.Steps;
+
+        _songSecIdx = si;
+        _rawStep = step;
+        _uiStep = pos;
+
+        // Fill into the boundary: the last bar always plays the fill bar.
+        int barInSection = stepInSection / TraxPhrase.Steps;
+        int patBar = barInSection == sec.bars - 1
+            ? TraxPhrase.FullFillBar : barInSection % TraxPhrase.Bars;
+        int patStep = patBar * TraxPhrase.Steps + (stepInSection % TraxPhrase.Steps);
+
+        EmitStepEvents(sec.phrase, sec.p, sec.active, patStep, baseSample);
+
+        // Boundary FX on EVERY section change, at fixed strength — the
+        // smart-intensity gate is off (Sam, 2026-08-17; TraxSong keeps the
+        // measure for if it returns). The song is circular, so the tail
+        // rises back into the head too.
+        if (song.secs.Length > 1)
+        {
+            long lat = (long)(NudgeLatency * _sr);
+            double stepDurSamples = _sr * 60.0 / sec.p.bpm / 4.0;
+
+            if (stepInSection == secSteps - TraxPhrase.Steps)      // one bar out
+            {
+                _riserStart = baseSample + lat;
+                _riserEnd = _riserStart + (long)(TraxPhrase.Steps * stepDurSamples);
+                _riserIdx = (baseSample * 11) % (_noise.Length - 4);
+                _riserLp = 0;
+                _riserOn = true;
+            }
+
+            // Accelerating snare roll through the back half of the last bar,
+            // via the THUMPER path so a drumless section stays drumless.
+            if (stepInSection >= secSteps - TraxPhrase.Steps && sec.active[ThumperModuleIdx])
+            {
+                double rv = SnareRoll[stepInSection % TraxPhrase.Steps];
+                if (rv > 0 && _evtCount < MaxEvents)
+                {
+                    Evt e = new Evt();
+                    e.at = baseSample + lat;
+                    e.voice = TraxVoice.Snare;
+                    e.st = new TraxStep { on = true, vel = rv };
+                    _events[_evtCount++] = e;
+                }
+            }
+
+            // step > 0: the very first downbeat of a play is a start, not an
+            // arrival — no impact for it.
+            if (stepInSection == 0 && step > 0)
+            {
+                _impactStart = baseSample + lat;
+                _impactEnd = _impactStart + (long)(0.6 * _sr);
+                _impactIdx = (baseSample * 5) % (_noise.Length - 4);
+                _impactLp = 0;
+                _impactEnv = 1; _impactThumpEnv = 1; _impactFreqEnv = 1; _impactPhase = 0;
+                _impactOn = true;
+            }
+        }
+
+        return _sr * 60.0 / sec.p.bpm / 4.0;
+    }
+
+    /// The shared event builder: schedule every audible voice's hit at this
+    /// phrase step. `active == null` means loop mode (the volatile module
+    /// flags decide); otherwise the SECTION's active set decides.
+    void EmitStepEvents(TraxPhrase phrase, TraxParams p, bool[] active, int patStep, long baseSample)
+    {
         double stepDur = 60.0 / p.bpm / 4.0;
         long lat = (long)(NudgeLatency * _sr);
 
         for (int v = 0; v < TraxPhrase.VoiceCount; v++)
         {
             TraxVoice voice = (TraxVoice)v;
-            if (!ModuleOn(voice)) continue;
+            if (active == null ? !ModuleOn(voice) : !active[VoiceModuleIdx[v]]) continue;
 
-            TraxStep st = phrase.At(voice, step);
+            TraxStep st = phrase.At(voice, patStep);
             if (!st.on) continue;
 
             // MOSS is a chord, so it emits one event per triad note. Three
@@ -465,6 +762,63 @@ public class TraxAudioEngine : MonoBehaviour
                 _events[_evtCount++] = e;
             }
         }
+    }
+
+    /// <summary>
+    /// The riser + impact, rendered a sample at a time into the drum bus.
+    ///
+    /// RISER: noise through a rising crude band (one-pole highpass whose
+    /// corner sweeps up), gain building LINEARLY over the bar — an exponential
+    /// ramp from silence stays inaudible for most of its length — peaking just
+    /// before the downbeat, then cutting.
+    ///
+    /// IMPACT: a darkening noise splash (one-pole lowpass whose corner falls)
+    /// over a low sine thump, both decaying exponentially.
+    /// </summary>
+    double TransitionFxSample(long now)
+    {
+        double s = 0;
+
+        if (_riserOn && now >= _riserStart)
+        {
+            if (now >= _riserEnd) _riserOn = false;
+            else
+            {
+                double u = (now - _riserStart) / (double)(_riserEnd - _riserStart);
+                double n = Noise(ref _riserIdx);
+                double c = 0.03 + u * u * 0.7;                 // corner sweeps up
+                _riserLp += c * (n - _riserLp);
+                double band = n - _riserLp;
+                const double peak = 0.32;                      // 0.4 * 0.8 fixed strength
+                double gain = u < 0.95
+                    ? 0.002 + (peak - 0.002) * (u / 0.95)
+                    : peak * (1.0 - (u - 0.95) / 0.05);
+                s += band * gain;
+            }
+        }
+
+        if (_impactOn && now >= _impactStart)
+        {
+            if (now >= _impactEnd) _impactOn = false;
+            else
+            {
+                double u = (now - _impactStart) / (double)(_impactEnd - _impactStart);
+                double n = Noise(ref _impactIdx);
+                double c = 0.55 - u * 0.5;                     // corner falls: bright -> dark
+                _impactLp += c * (n - _impactLp);
+                _impactEnv *= _impactEnvCoef;
+                s += _impactLp * 0.48 * _impactEnv;            // 0.6 * 0.8
+
+                _impactFreqEnv *= _impactFreqCoef;
+                double f = 36.0 + 74.0 * _impactFreqEnv;       // 110Hz -> 36Hz
+                _impactPhase += f / _sr;
+                if (_impactPhase >= 1) _impactPhase -= 1;
+                _impactThumpEnv *= _impactThumpCoef;
+                s += Math.Sin(_impactPhase * 2.0 * Math.PI) * 0.68 * _impactThumpEnv;   // 0.85 * 0.8
+            }
+        }
+
+        return s;
     }
 
     bool ModuleOn(TraxVoice v)

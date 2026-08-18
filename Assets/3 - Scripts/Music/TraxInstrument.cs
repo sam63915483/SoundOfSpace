@@ -157,6 +157,47 @@ public class TraxInstrument : MonoBehaviour
 
     public void Toggle() { if (IsPlaying) Stop(); else Play(); }
 
+    // ── song mode (the arrangement layer) ────────────────────────────────
+
+    public bool IsPlayingSong { get { return IsPlaying && _engine.IsSongMode; } }
+    public bool IsPlayingLoop { get { return IsPlaying && !_engine.IsSongMode; } }
+    /// The play cursor as an absolute song step — where PLAY TRACK starts.
+    public int SongCursor { get { return _engine != null ? _engine.SongCursor : 0; } }
+
+    /// <summary>
+    /// Compile and publish the whole song: one params + phrase pair per
+    /// section. Cheap enough to call after any edit — a handful of sections
+    /// generate in well under a millisecond — which keeps one code path
+    /// instead of a per-section patch API.
+    /// </summary>
+    public void SetSong(TraxSong song)
+    {
+        if (_engine == null || song == null || song.sections.Count == 0) return;
+        int n = song.sections.Count;
+        var ps = new TraxParams[n];
+        var phrases = new TraxPhrase[n];
+        var tracks = new TraxTrack[n];
+        var bars = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            TraxSection sec = song.sections[i];
+            ps[i] = TraxParams.Compute(sec.track.dials, sec.track.key);
+            phrases[i] = TraxPhrase.Generate(sec.track, ps[i]);
+            tracks[i] = sec.track;
+            bars[i] = sec.bars;
+        }
+        _engine.PublishSong(ps, phrases, tracks, bars);
+    }
+
+    /// Starts from the play cursor (SeekSong sets it; STOP freezes it).
+    public void PlaySong()
+    {
+        if (_engine == null) return;
+        _engine.StartSongTransport();
+    }
+
+    public void SeekSong(int stepPos) { if (_engine != null) _engine.SeekSong(stepPos); }
+
     // ── rack ─────────────────────────────────────────────────────────────
 
     /// Which modules are PLAYING. Lives on the track now, so it prints onto a

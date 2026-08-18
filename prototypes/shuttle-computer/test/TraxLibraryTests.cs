@@ -39,6 +39,7 @@ public static class TraxLibraryTests
         SaveAndOverwrite();
         Deleting();
         RoundTrip();
+        SongRoundTrip();
         CorruptRows();
         Plugins();
         Pressings();
@@ -51,6 +52,55 @@ public static class TraxLibraryTests
         }
         Console.WriteLine("library FAILED - " + _failures + " of " + _checks + " checks.");
         return 1;
+    }
+
+    // ── the arrangement round trip ───────────────────────────────────────
+
+    static void SongRoundTrip()
+    {
+        Console.WriteLine("song round trip");
+        TraxLibrary.Clear();
+
+        // A three-section song: default, faster, stretched.
+        var song = TraxSong.FromTrack(TraxTrack.Default());
+        int b = song.AddSection(0);
+        song.sections[b].track = song.sections[b].track.WithDial(0, 9.0);   // PULSE
+        song.AddSection(b);
+        song.SetSectionBars(1, 8);
+        uint songId = song.SongId();
+
+        TraxLibrary.Record rec = TraxLibrary.Save("Swamp Anthem", null, 100, song);
+        Check(rec != null, "a song with no bare track still saves");
+        Eq(rec.song.sections.Count, 3, "record keeps its three sections");
+        Eq(rec.songId, songId, "saving does not change the song identity");
+        Eq(rec.trackId, rec.song.sections[0].track.TrackId(),
+           "the legacy track view is the first section");
+
+        // Editing the caller's song after saving must not reach the shelf.
+        song.SetSectionBars(0, 2);
+        Eq(rec.song.sections[0].bars, 4, "the record's song is a copy, not a reference");
+
+        var blob = TraxLibrary.Capture();
+        Eq(blob.projects[0].sections.Count, 3, "capture writes one row per section");
+        TraxLibrary.Apply(blob);
+
+        TraxLibrary.Record back = TraxLibrary.FindByName("Swamp Anthem");
+        Check(back != null, "the song survives the save file");
+        Eq(back.song.sections.Count, 3, "sections survive the round trip");
+        Eq(back.song.sections[1].bars, 8, "a stretched section keeps its bars");
+        Eq(back.songId, songId, "the song identity survives the round trip EXACTLY");
+
+        // A pre-song row (no sections) loads as a one-section song of its track.
+        var legacy = new TraxLibrarySave();
+        var row = new TraxProjectSave { id = "pOld", name = "Old One", savedAt = 5, key = 2 };
+        for (int d = 0; d < 6; d++) row.dials.Add(5f);
+        legacy.projects.Add(row);
+        TraxLibrary.Apply(legacy);
+        TraxLibrary.Record old = TraxLibrary.FindByName("Old One");
+        Check(old != null && old.song != null, "a legacy row still gets a song");
+        Eq(old.song.sections.Count, 1, "a legacy row is a one-section song");
+        Eq(old.song.sections[0].track.TrackId(), old.trackId,
+           "the legacy song wraps exactly the saved track");
     }
 
     // ── name handling ────────────────────────────────────────────────────
@@ -339,6 +389,17 @@ public class TraxProjectSave
     public string id;
     public string name;
     public long savedAt;
+    public int key;
+    public List<float> dials = new List<float>();
+    public List<int> preset = new List<int>();
+    public List<int> variation = new List<int>();
+    public List<bool> active = new List<bool>();
+    public List<TraxSectionSave> sections = new List<TraxSectionSave>();
+}
+
+public class TraxSectionSave
+{
+    public int bars;
     public int key;
     public List<float> dials = new List<float>();
     public List<int> preset = new List<int>();

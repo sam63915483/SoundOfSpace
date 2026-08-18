@@ -27,8 +27,10 @@ public static class TraxLibrary
     {
         public string id;
         public string name;
-        public TraxTrack track;
+        public TraxTrack track;      // the FIRST section — legacy readers' view
         public uint trackId;
+        public TraxSong song;        // the whole arrangement; never null
+        public uint songId;
         public long savedAt;
     }
 
@@ -167,14 +169,25 @@ public static class TraxLibrary
     /// </summary>
     public static Record Save(string name, TraxTrack track, long nowUnix)
     {
+        return Save(name, track, nowUnix, null);
+    }
+
+    /// `song` may be null — legacy callers (and the tests) save a bare track,
+    /// which becomes a one-section song. The record's `track` is always the
+    /// FIRST section so old readers (shelf badge, demo printing) agree with
+    /// what the arranger shows.
+    public static Record Save(string name, TraxTrack track, long nowUnix, TraxSong song)
+    {
         string clean = NormalizeName(name);
-        if (clean.Length == 0 || track == null) return null;
+        if (clean.Length == 0 || (track == null && song == null)) return null;
 
         Record existing = FindByName(clean);
         Record rec = existing ?? new Record { id = MakeId(nowUnix, _seq++) };
         rec.name = clean;
-        rec.track = track.Clone();
+        rec.song = song != null ? song.Clone() : TraxSong.FromTrack(track);
+        rec.track = rec.song.sections[0].track.Clone();
         rec.trackId = rec.track.TrackId();
+        rec.songId = rec.song.SongId();
         rec.savedAt = nowUnix;
         if (existing == null) _projects.Add(rec);
         Version++;
@@ -224,6 +237,20 @@ public static class TraxLibrary
                 row.variation.Add(r.track.variation[m]);
                 row.active.Add(r.track.active[m]);
             }
+            TraxSong song = r.song ?? TraxSong.FromTrack(r.track);
+            for (int s = 0; s < song.sections.Count; s++)
+            {
+                TraxSection sec = song.sections[s];
+                var srow = new TraxSectionSave { bars = sec.bars, key = sec.track.key };
+                for (int d = 0; d < TraxPrng.DialCount; d++) srow.dials.Add((float)sec.track.dials.Get(d));
+                for (int m = 0; m < TraxPresets.ModuleCount; m++)
+                {
+                    srow.preset.Add(sec.track.preset[m]);
+                    srow.variation.Add(sec.track.variation[m]);
+                    srow.active.Add(sec.track.active[m]);
+                }
+                row.sections.Add(srow);
+            }
             save.projects.Add(row);
         }
         foreach (string m in _installed) save.installedPlugins.Add(m);
@@ -233,6 +260,31 @@ public static class TraxLibrary
         // the Hotbar, and this file is compiled STANDALONE WITH NO UNITY
         // REFERENCES by the library test suite. One import would break that.
         return save;
+    }
+
+    /// One track's worth of saved fields back into a valid track. Shared by
+    /// the project row and its sections so both coerce by the same rules.
+    static TraxTrack CoerceTrack(List<float> dials, int key, List<int> preset,
+                                 List<int> variation, List<bool> active)
+    {
+        var t = TraxTrack.Default();
+        if (dials != null)
+            for (int d = 0; d < TraxPrng.DialCount && d < dials.Count; d++)
+            {
+                double v = dials[d];
+                if (double.IsNaN(v) || double.IsInfinity(v)) continue;
+                t.dials = t.dials.With(d, v < 0 ? 0 : v > 10 ? 10 : v);
+            }
+        t.key = ((key % 12) + 12) % 12;
+        for (int m = 0; m < TraxPresets.ModuleCount; m++)
+        {
+            if (preset != null && m < preset.Count)
+                t.preset[m] = ((preset[m] % TraxPresets.PresetCount) + TraxPresets.PresetCount) % TraxPresets.PresetCount;
+            if (variation != null && m < variation.Count)
+                t.variation[m] = ((variation[m] % TraxPresets.VariationCount) + TraxPresets.VariationCount) % TraxPresets.VariationCount;
+            t.active[m] = active == null || m >= active.Count || active[m];
+        }
+        return t;
     }
 
     /// <summary>
@@ -266,23 +318,26 @@ public static class TraxLibrary
             string clean = NormalizeName(row.name);
             if (clean.Length == 0) continue;
 
-            var t = TraxTrack.Default();
-            if (row.dials != null)
-                for (int d = 0; d < TraxPrng.DialCount && d < row.dials.Count; d++)
-                {
-                    double v = row.dials[d];
-                    if (double.IsNaN(v) || double.IsInfinity(v)) continue;
-                    t.dials = t.dials.With(d, v < 0 ? 0 : v > 10 ? 10 : v);
-                }
-            t.key = ((row.key % 12) + 12) % 12;
-            for (int m = 0; m < TraxPresets.ModuleCount; m++)
+            TraxTrack t = CoerceTrack(row.dials, row.key, row.preset, row.variation, row.active);
+
+            // The song: one coerced section per saved row, capped; a pre-song
+            // record (empty list) becomes a one-section song of its track —
+            // exactly how it always played.
+            TraxSong song = null;
+            if (row.sections != null && row.sections.Count > 0)
             {
-                if (row.preset != null && m < row.preset.Count)
-                    t.preset[m] = ((row.preset[m] % TraxPresets.PresetCount) + TraxPresets.PresetCount) % TraxPresets.PresetCount;
-                if (row.variation != null && m < row.variation.Count)
-                    t.variation[m] = ((row.variation[m] % TraxPresets.VariationCount) + TraxPresets.VariationCount) % TraxPresets.VariationCount;
-                t.active[m] = row.active == null || m >= row.active.Count || row.active[m];
+                song = new TraxSong();
+                for (int s = 0; s < row.sections.Count && s < TraxSong.MaxSections; s++)
+                {
+                    TraxSectionSave srow = row.sections[s];
+                    if (srow == null) continue;
+                    TraxTrack st = CoerceTrack(srow.dials, srow.key, srow.preset, srow.variation, srow.active);
+                    song.sections.Add(new TraxSection(st, srow.bars));
+                }
+                if (song.sections.Count == 0) song = null;
             }
+            if (song == null) song = TraxSong.FromTrack(t);
+            else t = song.sections[0].track.Clone();    // the legacy view must agree with the song
 
             string id = string.IsNullOrEmpty(row.id) ? MakeId(row.savedAt, _seq++) : row.id;
             if (FindById(id) != null) id = MakeId(row.savedAt, _seq++);   // duplicate ids in a hand-edited file
@@ -293,6 +348,8 @@ public static class TraxLibrary
                 name = clean,
                 track = t,
                 trackId = t.TrackId(),
+                song = song,
+                songId = song.SongId(),
                 savedAt = row.savedAt
             });
             if (_seq <= _projects.Count) _seq = _projects.Count + 1;
