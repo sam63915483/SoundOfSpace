@@ -111,6 +111,23 @@ Walk up to any alien, open the sell panel (the file is named `MushroomSellUI` fo
 
 ## 9. CONFIRMED OPEN ISSUES (each traced to code; ranked)
 
+> **STATUS UPDATE 4 (tape formats, 2026-08-18):** the goods model grew a third
+> axis — **FORMAT** (`TraxKind`: Demo / Half-Length / Full-Length; blanks $5/12,
+> $15/25, $22/35; Half caps a song at 50 bars, Full at 100). Every print is now
+> a frozen **TraxSong** (a demo = the whole selected SECTION, bars included);
+> §4's value gains `× FormatMult` (`TraxSong.ValueMult`, ~×2–×4.9 placeholder);
+> §3's satisfaction for a song is the **bar-weighted mean** of per-section
+> satisfaction (`SongEval`) with the verdict = best section through `GateFor`
+> (hint contract holds per-section), so a multi-genre song sells to more aliens
+> at a diluted price — measured distribution in `verify-diagnostic.py`. Orders
+> carry `askKind` (derived preference clamped by the **TapeCareer** milestones:
+> Tev stocks Half at 10 tapes sold, Full at 25) and quote/grade at the format's
+> nominal multiplier, pro-rata on shortfall (`kindShort`). Song memory keys on
+> SongId (buying a section's demo never blocks the full song — that first liked
+> song after ≥3 demo deals triggers the `ForGrowth` line + bond). Guest wire
+> carries songId+kind. Suites: taste 2654 / library 124 / rent 119, all green.
+> Spec: `docs/superpowers/specs/2026-08-18-tape-formats-design.md`.
+>
 > **STATUS UPDATE 3 (C5 pass, `78587322`):** the structural item is done. Pure `Music/DealTerms.cs` holds the deal slip + `TapeDeal.Grade` (the single delivery grader; the panel assembles terms and computes no money), quote math lives in one core wrapped by `TapeTrade`, and the **parity test** (`test/DealTests.cs`, in `verify-taste.py` — suite now 2469 checks) enforces "delivered-as-promised pays exactly-as-displayed" across randomized buyers × terms. `TapeOffer` is no longer a ghost rulebook: the walk-up panel routes through Listen/Value/Judge, with Sam's confirmed semantics — an ask at or under the buyer's ceiling is paid at YOUR price; over it, a counter; outrageous, a final offer. Tier preference is now contact-card reveal #5.
 >
 > **STATUS UPDATE 2 (after the review came back — `REVIEW_HANDOFF_SellingSystem_v1`):** the review's recommendations are now largely BUILT: **C1/C4/B1** (the agreed price is the contract; tier + modulesBasis recorded on the agreement, shown on the ORDER header and appointment card, delivery pays pro-rata on the objective goods ratio `Base(deliveredMods, deliveredTier)/Base(contractMods, contractTier)` — Type 1 on a Type 2 deal is exactly half; the satisfaction clamp on exact goods is gone); **C2** (walk-up anchor is "street value" = Base × SatMult × BondMult, slider 0.5×–4.5×, population-worded bands); **C3** (final offer replaces the hard bar for over-patience asks and failed pushes; walking from a final offer costs −4 bond, no lockout; the +3 generosity bond for asking under value is wired); **B2** (deliveries refuse already-heard tapes, appointment stays open); §10's tier-aware negotiation is built, PLUS Sam's addition: per-alien **tier preference** (~30% prefer T2, ~30% prefer T1, verdict downgrade + ×0.75 pay on mismatch, named in rejection lines, orders quote the preferred tier). Doc corrections A1–A9 applied throughout. **Not done:** the full C5 `DealTerms` refactor (UI still calls TapeValue/TapeTrade directly at ~25 sites; the parity property-test therefore doesn't exist yet) — the contract fields and single grading site capture its spirit, the structural enforcement is future work. `TapeOffer.cs` remains uncalled as a module (its final-offer/generosity/freshness RULES now ship via the panel) — unify or delete in the C5 pass.

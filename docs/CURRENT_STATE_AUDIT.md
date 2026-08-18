@@ -910,3 +910,27 @@ What this audit did NOT verify (don't fully trust):
 4. **`_Archive/` decision** (5 minutes — purely emotional): keep or delete the 400 MB of historical snapshots.
 5. **Scene hierarchy sanity check** (10 minutes): open `1.6.7.7.7.unity` in Editor and verify that the root section organizers are what CLAUDE.md says (`--- World ---`, `--- Lighting ---`, `--- NPCs ---` were not findable in this audit). If they don't exist, update CLAUDE.md or add them; if they do exist under different names, update CLAUDE.md.
 6. **Third-party pack audit** (30+ minutes): for each pack with "unclear" or "likely unused" status, do a real GUID grep before deletion.
+
+## ADDENDUM 2026-08-18 - Tape formats (cassette economy)
+
+The cassette economy (post-mushroom pivot) is documented in
+`docs/SELLING_SYSTEM_HANDOFF.md` (status block in its section 9), not in the
+body of this audit. As of 2026-08-18 the goods model has THREE axes:
+
+- **Format** (`TraxKind`): Demo (one section, its bar length) / Half-Length
+  (whole song, 50-bar cap) / Full-Length (100-bar cap). Six blank ItemIds,
+  prices $5/12, $15/25, $22/35, all in Tev's shop; Half/Full rows are
+  milestone-locked (visible padlock) until 10 / 25 total tapes sold
+  (`TapeCareer`, StoryDirector counter).
+- **Tier** (1/2) unchanged; **modules** unchanged.
+- Every print (`TraxPrints.Record`) is a frozen `TraxSong` + kind; ids are
+  kind-prefixed over SongId, legacy `t{tier}-` ids preserved on load.
+- Alien evaluation of songs = `SongEval` (bar-weighted satisfaction, verdict =
+  best section through GateFor); value = `TapeValue.Base x FormatMult`.
+- Orders carry `askKind`; delivery grades pro-rata at the format nominal.
+- Song memory keys on SongId; first liked song after 3+ demo deals fires the
+  `AlienFeedback.ForGrowth` fan-progression line.
+- Headless suites: verify-taste / verify-library / verify-rent cover all of it.
+
+Spec: `docs/superpowers/specs/2026-08-18-tape-formats-design.md`. Plan:
+`docs/superpowers/plans/2026-08-18-tape-formats.md`.

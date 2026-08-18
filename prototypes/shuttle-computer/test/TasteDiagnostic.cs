@@ -258,7 +258,76 @@ public static class TasteDiagnostic
             Console.Write(TraxClassifier.Genres[i].name + " " + Pct(byGenre[i], N) + "  ");
         Console.WriteLine();
 
+        SongFormats(ids);
+
         return 0;
+    }
+
+    // ── tape formats (2026-08-18): what a SONG does across the population ──
+    //
+    // The DISTRIBUTION, not the mean — the numbers Sam tunes ValueMult and
+    // the NominalMults against. Three archetypes vs their own loop as a demo:
+    //   PURE FULL   one genre, 8x12 bars     (the superfan jackpot)
+    //   MIXED FULL  4 genres, ~100 bars      (the crowd-pleaser)
+    //   HALF        2 sections, 50 bars      (the mid rung)
+    static void SongFormats(string[] ids)
+    {
+        const int Modules = 4, Tier = 1;
+
+        // Anchor everything on a SLUDJ loop (Tev demo 0's dials).
+        TraxTrack baseTrack = TraxTrack.Default();
+        for (int i = 0; i < Demos[0].Length && i < TraxPrng.DialCount; i++)
+            baseTrack = baseTrack.WithDial(i, Demos[0][i]);
+
+        var pure = new TraxSong();
+        for (int s = 0; s < 8; s++) pure.sections.Add(new TraxSection(baseTrack, 12));
+
+        // Four spread genre centres, 25 bars each.
+        var mixed = new TraxSong();
+        int[] centres = { 0, 3, 6, 9 };
+        for (int s = 0; s < 4; s++)
+        {
+            TraxTrack t = TraxTrack.Default();
+            double[] c = TraxClassifier.Genres[centres[s]].c;
+            for (int i = 0; i < TraxPrng.DialCount; i++) t = t.WithDial(i, c[i]);
+            mixed.sections.Add(new TraxSection(t, 25));
+        }
+
+        var half = new TraxSong();
+        half.sections.Add(new TraxSection(baseTrack, 34));
+        half.sections.Add(new TraxSection(baseTrack, 16));
+
+        Console.WriteLine();
+        Console.WriteLine("=== SONG FORMATS ACROSS " + ids.Length + " ALIENS (modules "
+                          + Modules + ", T" + Tier + ") ===");
+        Report("DEMO (loop)", TraxSong.FromTrack(baseTrack), 1.0, ids, Modules, Tier);
+        Report("HALF 50bar", half, half.ValueMult(), ids, Modules, Tier);
+        Report("PURE FULL 96bar", pure, pure.ValueMult(), ids, Modules, Tier);
+        Report("MIXED FULL 100bar", mixed, mixed.ValueMult(), ids, Modules, Tier);
+    }
+
+    static void Report(string label, TraxSong song, double mult, string[] ids, int modules, int tier)
+    {
+        int liked = 0, flip = 0, rejected = 0;
+        var prices = new System.Collections.Generic.List<int>();
+        foreach (string id in ids)
+        {
+            double sat = SongEval.Satisfaction(id, song);
+            var v = SongEval.GateFor(id, song, tier);
+            if (v == AlienTaste.Verdict.Liked) liked++;
+            else if (v == AlienTaste.Verdict.CoinFlip) flip++;
+            else { rejected++; continue; }
+            prices.Add(TapeOffer.Value(id, modules, tier, mult, sat, false, 0));
+        }
+        prices.Sort();
+        int n = prices.Count;
+        Console.WriteLine("  " + label.PadRight(18)
+            + " x" + mult.ToString("0.00").PadRight(6)
+            + " liked " + Pct(liked, ids.Length).PadLeft(4)
+            + "  flip " + Pct(flip, ids.Length).PadLeft(4)
+            + "  no " + Pct(rejected, ids.Length).PadLeft(4)
+            + (n == 0 ? "  (no buyers)"
+               : "  price p10/p50/p90  " + prices[n / 10] + "/" + prices[n / 2] + "/" + prices[n * 9 / 10]));
     }
 
     static string Pct(int n, int total)
