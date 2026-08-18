@@ -83,6 +83,68 @@ public class SaveData
     // GalaxyTime.RestoreMinutes reads as "start a fresh day 1", so old saves
     // open on the same morning a new game does.
     public double galaxyTimeMinutes;
+    /// <summary>
+    /// EVERYTHING IS A WORLD SAVE NOW (Sam, 2026-08-18). A character carries a
+    /// name and a suit colour and nothing else; belongings, vitals, equipment
+    /// and the orientation board all live in the world, one block per character
+    /// who has played in it.
+    ///
+    /// The top-level personal fields above are still written and still read —
+    /// they are the block of whoever pressed save, kept as-is so single player
+    /// and every existing save file behave exactly as before. The blocks are an
+    /// ADDITION on top: SaveCollector copies the matching block over the
+    /// top-level fields before applying, so restoring is the same ordered pass
+    /// it has always been, just pointed at your own belongings rather than your
+    /// partner's.
+    ///
+    /// Empty on pre-feature saves, which reads as "no blocks, use the top-level
+    /// fields" — the old behaviour exactly.
+    /// </summary>
+    public List<PlayerBlockSave> playerBlocks = new List<PlayerBlockSave>();
+}
+
+/// <summary>
+/// One character's personal half of a world: what they were carrying, wearing,
+/// standing on and how alive they were.
+///
+/// Keyed by <see cref="CharacterProfile.id"/>, the same key TevFrontingSave
+/// already uses for per-character debt — so a world remembers each player
+/// separately and two people can share one save file without trampling each
+/// other's pockets.
+///
+/// The sub-structures are the SAME types the top-level fields use. Nothing is
+/// re-serialised into a second shape, so a block and a legacy top-level save
+/// are interchangeable by construction and there is no second schema to drift.
+/// </summary>
+[Serializable]
+public class PlayerBlockSave
+{
+    public string characterId;
+    /// Display only — which name this block belonged to, so a save file is
+    /// readable and a future "whose stuff is this?" screen has something to show.
+    public string characterName;
+
+    public PlayerSave player = new PlayerSave();
+    public ResourcesSave resources = new ResourcesSave();
+    public O2Save oxygen = new O2Save();
+    public WalletSave wallet = new WalletSave();
+    public WoodSave wood = new WoodSave();
+    public CrystalSave crystal = new CrystalSave();
+    public FishInventorySave fishInventory = new FishInventorySave();
+    public EquipmentSave equipment = new EquipmentSave();
+    public HotbarSave hotbar = new HotbarSave();
+
+    /// Space dust is stored as the two PERSONAL scalars rather than the whole
+    /// SpaceDustSave, because that struct also carries the collector nets bolted
+    /// to ships — world state that must not be duplicated per character.
+    public int spaceDust;
+    public bool dustFilter;
+
+    /// Which orientation-whiteboard objectives this character has ticked off.
+    /// MOVED HERE from CharacterProfile (2026-08-18): the board is world
+    /// progress like everything else now, so a fresh world starts with a blank
+    /// one even for a veteran character.
+    public int orientationMask;
 }
 
 // Tev's fronting loop, one row per CHARACTER — see TevFronting. Parallel lists

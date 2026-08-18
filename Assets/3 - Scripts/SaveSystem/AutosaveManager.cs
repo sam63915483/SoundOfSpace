@@ -58,42 +58,38 @@ public class AutosaveManager : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
-    void Start()
-    {
-        // Reset the timer on entry so we don't fire immediately after a fresh load.
-        lastAutosaveTime = Time.realtimeSinceStartup;
-        StartCoroutine(AutosaveLoop());
-    }
+    // ⚠️ THE PERIODIC AUTOSAVE IS GONE (Sam, 2026-08-18).
+    //
+    // The stasis pod is the only save point. A timer writing the world every few
+    // minutes contradicted that outright — you could die and reload into a state
+    // you never chose — and in co-op it was worse than untidy: nothing gated it
+    // on being the host, so a guest idling for five minutes wrote a full capture
+    // of a world it only renders, enemies as pose puppets and all.
+    //
+    // What survives is the SLOT and the one-shot below, because the backrooms
+    // round trip uses them as a TRANSFER: PortalManager writes the world on the
+    // way out and reads it back on the way in. That is scene plumbing, not a
+    // save point, and losing it would strand the player in the poolrooms.
 
-    IEnumerator AutosaveLoop()
-    {
-        while (true)
-        {
-            // Wake every 5s to check — finer granularity than the interval itself
-            // so that the moment a non-eligible state ends (e.g. pause closes),
-            // we save promptly rather than waiting another full interval.
-            yield return new WaitForSecondsRealtime(5f);
-            if (ShouldAutosave()) Autosave();
-        }
-    }
-
-    bool ShouldAutosave()
-    {
-        var sceneName = SceneManager.GetActiveScene().name;
-        if (sceneName == "MainMenu") return false;
-        if (sceneName.StartsWith("Cutscene") || sceneName.StartsWith("Flashback")) return false;
-        // Pause menu open or any other timestop — don't capture a frozen state.
-        if (Time.timeScale == 0) return false;
-        // PendingLoad has scheduled but un-applied data — capture would race the apply.
-        if (PendingLoad.Data != null) return false;
-
-        float elapsed = Time.realtimeSinceStartup - lastAutosaveTime;
-        return elapsed >= IntervalMinutes * 60f;
-    }
-
+    /// <summary>
+    /// Write the world to the transfer slot, right now.
+    ///
+    /// Only PortalManager should call this, and only as one half of a scene
+    /// round trip. Anything that wants to record player progress belongs in the
+    /// stasis pod ritual instead.
+    /// </summary>
     public void Autosave()
     {
-        Debug.Log($"[Autosave] Saving to slot '{AutosaveSlotName}'.");
+        // In co-op only the host holds a world worth writing (a guest's copy has
+        // pose-puppet enemies and no timer state), and the portal round trip is
+        // single-player scene plumbing anyway.
+        if (!WorldSync.IsAuthority)
+        {
+            Debug.LogWarning("[Autosave] Skipped on a guest — the host owns the world.");
+            return;
+        }
+
+        Debug.Log($"[Autosave] Writing the transfer slot '{AutosaveSlotName}'.");
         var path = SaveSystem.Save(AutosaveSlotName);
         lastAutosaveTime = Time.realtimeSinceStartup;
         if (path != null) ShowToast();

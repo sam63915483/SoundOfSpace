@@ -9,19 +9,21 @@ using System.Collections.Generic;
 /// progress. A character owns YOU. Terraria's model: you pick a character, then
 /// pick a world, and the character is the same person in every one of them.
 ///
-/// Today that identity is a name and a suit colour. Levels, money, hotbar and
-/// upgrades are intended to move in here later, so this type is built to grow:
+/// ── A character is a NAME and a SUIT COLOUR, and nothing else ────────────
+/// Sam's call, 2026-08-18: everything else is a world save. Belongings,
+/// equipment, vitals, levels and the orientation board all live in the world,
+/// in a PlayerBlockSave keyed by the `id` below — so two people can share one
+/// save file without trampling each other's pockets, and the same character
+/// starting a new world starts it properly empty-handed. It is the cleaner
+/// arrangement to develop against; a Terraria-style grind that travels between
+/// worlds can be layered back on later if the finished game wants one.
 ///
-///   • `id` is the stable key. Everything a later grind-transfer hangs off will
-///     reference this, never the name — names are editable and duplicable.
-///   • `schemaVersion` gates migration when fields are added.
+///   • `id` is the stable key. Every per-character row in the world save
+///     references it — the personal blocks, and Tev's fronting debt — never the
+///     name, which is editable and duplicable.
+///   • `schemaVersion` gates migration when fields are added or removed.
 ///   • Loading tolerates missing/unknown fields (JsonUtility skips what it does
 ///     not recognise, and CharacterStore.Normalise fills blanks).
-///
-/// Deliberately NOT added yet: level, money, hotbar, inventory. Those are still
-/// owned by SaveCollector per-world; moving them is its own pass with its own
-/// save migration, because SaveCollector must stop capturing them and
-/// NewGameReset must stop clearing them at the same time.
 ///
 /// JsonUtility rules apply — plain public fields only, no dictionaries, no
 /// polymorphism, no properties.
@@ -47,22 +49,14 @@ public class CharacterProfile
     /// ISO-8601 (round-trip "o" format). Display/sort only.
     public string createdAt;
 
-    /// Which orientation-whiteboard objectives this character has completed, as
-    /// a bitmask over <see cref="OrientationObjectives.Objective"/>.
-    ///
-    /// On the CHARACTER, not the save, and that's Sam's call: the board is a
-    /// non-invasive tutorial for first-timers, so once you've done it you should
-    /// never see it uncrossed again — including in someone else's world, as long
-    /// as it's the same character. A brand-new character joining a finished world
-    /// gets a blank board, which is exactly the intent.
-    ///
-    /// A mask rather than seven bools so adding an eighth objective is one enum
-    /// value and no migration.
-    public int orientationMask;
-
     /// Current schema. Bump when you add a field, and add a matching step to
     /// CharacterStore.Migrate.
-    public const int CurrentSchemaVersion = 2;
+    ///
+    /// v3 (2026-08-18) REMOVED orientationMask. It moved into the world save's
+    /// per-character block along with everything else earned in a run — see the
+    /// class summary. Old files still parse: JsonUtility ignores the field it no
+    /// longer knows about.
+    public const int CurrentSchemaVersion = 3;
 
     /// Hard cap on a character name. Chosen so the overhead nameplate stays
     /// readable at distance without scaling, and so it fits a FixedString32Bytes

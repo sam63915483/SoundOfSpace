@@ -67,7 +67,218 @@ public static class SaveCollector
         CassetteDeck.Capture(data.traxLibrary);
         data.tapeMemory = TapeMemory.Capture();
 
+        // Everything above stays exactly where it was; this file is still a
+        // complete, loadable save on its own. The block is an addition that
+        // says WHOSE personal half those top-level fields are, so a second
+        // character opening the same world finds their own pockets instead.
+        UpsertPersonalBlock(data, CapturePersonalBlock());
+
         return data;
+    }
+
+    // ───────────────────── per-character personal state ─────────────────────
+    //
+    // EVERYTHING IS A WORLD SAVE NOW (Sam, 2026-08-18). A character is a name
+    // and a suit colour; belongings live in the world, one block per character
+    // who has played in it.
+    //
+    // The mechanism is deliberately boring: capture writes the local player's
+    // block alongside the unchanged top-level fields, and apply COPIES the
+    // matching block over those fields before the ordinary ordered restore
+    // runs. Nothing in the 15-step apply order moves, no apply method learns
+    // about blocks, and a save with no blocks at all restores exactly as it
+    // always did.
+
+    /// <summary>
+    /// This machine's player, as a block. Public because the pod save in co-op
+    /// asks the OTHER player for theirs over the network — a world written by
+    /// one player must still contain the other player's pockets, or their
+    /// progress is quietly lost on load.
+    /// </summary>
+    public static PlayerBlockSave CapturePersonalBlock()
+    {
+        var b = new PlayerBlockSave();
+        var profile = CharacterStore.ActiveProfile;
+        b.characterId   = profile != null ? profile.id : "";
+        b.characterName = profile != null ? profile.name : "";
+
+        CapturePlayer(b.player);
+        CaptureResources(b.resources);
+        CaptureOxygen(b.oxygen);
+        CaptureWallet(b.wallet);
+        CaptureWood(b.wood);
+        CaptureCrystals(b.crystal);
+        CaptureFishInventory(b.fishInventory);
+        CaptureEquipment(b.equipment);
+        CaptureHotbar(b.hotbar);
+        b.spaceDust  = SpaceDustInventory.Instance != null ? SpaceDustInventory.Instance.Count : 0;
+        b.dustFilter = SpaceDustInventory.Instance != null && SpaceDustInventory.Instance.HasFilter;
+        b.orientationMask = OrientationObjectives.CurrentMask;
+        return b;
+    }
+
+    /// <summary>
+    /// File a block into the save, replacing any older one for the same
+    /// character. A block with no character id is dropped rather than stored
+    /// under an empty key, where it would later be handed to whichever
+    /// characterless player loaded next.
+    /// </summary>
+    public static void UpsertPersonalBlock(SaveData data, PlayerBlockSave block)
+    {
+        if (data == null || block == null || string.IsNullOrEmpty(block.characterId)) return;
+        if (data.playerBlocks == null) data.playerBlocks = new List<PlayerBlockSave>();
+
+        for (int i = 0; i < data.playerBlocks.Count; i++)
+        {
+            if (data.playerBlocks[i] == null) continue;
+            if (data.playerBlocks[i].characterId != block.characterId) continue;
+            data.playerBlocks[i] = block;
+            return;
+        }
+        data.playerBlocks.Add(block);
+    }
+
+    static PlayerBlockSave FindPersonalBlock(SaveData data, string characterId)
+    {
+        if (data == null || data.playerBlocks == null || string.IsNullOrEmpty(characterId)) return null;
+        for (int i = 0; i < data.playerBlocks.Count; i++)
+        {
+            var b = data.playerBlocks[i];
+            if (b != null && b.characterId == characterId) return b;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Point the top-level personal fields at THIS character's belongings, so
+    /// the ordered apply below restores the right player's half.
+    ///
+    /// Three cases, and the fallbacks are the whole reason this is safe:
+    ///   • a block for me exists  → use it.
+    ///   • no blocks at all       → an old save, or a save written before this
+    ///                              character existed as a concept. The
+    ///                              top-level fields are somebody's real state
+    ///                              and are left exactly as they are, which is
+    ///                              the pre-feature behaviour.
+    ///   • blocks exist but none is mine → a NEW character walking into an
+    ///                              established world. Taking the top-level
+    ///                              fields would hand them the other player's
+    ///                              pockets, so they start fresh instead — the
+    ///                              same deal a joining guest already gets.
+    ///
+    /// Fields that describe the WORLD rather than a person are preserved out of
+    /// the top-level copy even when a block wins: the ship's power reading and
+    /// the hull's oxygen belong to the shuttle, not to whoever last sat in it.
+    /// </summary>
+    static void SelectPersonalBlock(SaveData data)
+    {
+        if (data == null) return;
+        if (data.playerBlocks == null || data.playerBlocks.Count == 0) return;
+
+        var profile = CharacterStore.ActiveProfile;
+        string id = profile != null ? profile.id : null;
+        var block = FindPersonalBlock(data, id);
+
+        if (block == null)
+        {
+            // Somebody else's world. Keep everything world-shaped and let the
+            // personal half start clean.
+            data.playerBlocks.Add(new PlayerBlockSave
+            {
+                characterId   = id ?? "",
+                characterName = profile != null ? profile.name : "",
+            });
+            NewGameReset.ApplyGuestArrival();
+            return;
+        }
+
+        float shipPower = data.resources != null ? data.resources.shipPower : 100f;
+        float hullO2    = data.oxygen != null ? data.oxygen.hullO2 : 300f;
+
+        data.player        = block.player;
+        data.resources     = block.resources;
+        data.oxygen        = block.oxygen;
+        data.wallet        = block.wallet;
+        data.wood          = block.wood;
+        data.crystal       = block.crystal;
+        data.fishInventory = block.fishInventory;
+        data.equipment     = block.equipment;
+        data.hotbar        = block.hotbar;
+
+        if (data.resources != null) data.resources.shipPower = shipPower;
+        if (data.oxygen != null)    data.oxygen.hullO2       = hullO2;
+
+        if (data.spaceDust != null)
+        {
+            data.spaceDust.playerDust = block.spaceDust;
+            data.spaceDust.hasFilter  = block.dustFilter;
+        }
+
+        OrientationObjectives.RestoreMask(block.orientationMask);
+    }
+
+    /// <summary>
+    /// A guest's own belongings, waiting for the arrival ritual to be ready for
+    /// them. Set when the host's world snapshot lands and consumed once, right
+    /// after ApplyGuestArrival clears out the last session — otherwise that wipe
+    /// would take the restored pockets with it.
+    /// </summary>
+    public static PlayerBlockSave PendingPersonalBlock { get; private set; }
+
+    /// <summary>
+    /// Restore this character's personal half WITHOUT touching where they are
+    /// standing. A guest wakes in the stasis pod as part of the arrival ritual;
+    /// putting them back where they logged out would drop them mid-air on the
+    /// far side of the planet, and the pod is what they are physically inside.
+    ///
+    /// The hull's oxygen is likewise left alone — that reading belongs to the
+    /// shuttle, which is shared, and the guest's block only speaks for its suit.
+    /// </summary>
+    public static void ApplyPendingPersonalBlock()
+    {
+        var b = PendingPersonalBlock;
+        PendingPersonalBlock = null;
+        if (b == null) return;
+
+        var om = OxygenManager.Instance;
+        var suitOnly = new O2Save
+        {
+            suitO2                   = b.oxygen != null ? b.oxygen.suitO2 : 120f,
+            hullO2                   = om != null ? om.HullO2 : (b.oxygen != null ? b.oxygen.hullO2 : 300f),
+            reserveO2                = b.oxygen != null ? b.oxygen.reserveO2 : -1f,
+            cyclopsCheckpointReached = b.oxygen != null && b.oxygen.cyclopsCheckpointReached,
+        };
+
+        ApplyResources(b.resources);
+        ApplyOxygen(suitOnly);
+        ApplyWallet(b.wallet);
+        ApplyWood(b.wood);
+        ApplyCrystals(b.crystal);
+        ApplyFishInventory(b.fishInventory);
+        ApplyEquipment(b.equipment);
+
+        if (SpaceDustInventory.Instance != null)
+        {
+            SpaceDustInventory.Instance.SetCount(b.spaceDust);
+            SpaceDustInventory.Instance.SetFilterUnlocked(b.dustFilter);
+        }
+
+        // ApplyHotbar reads a whole SaveData (it falls back to the legacy
+        // wood/crystal/dust totals when no slot layout was saved), so it gets a
+        // throwaway one carrying exactly this block's fields — the same code
+        // path a disk load runs, with none of the world attached.
+        var shim = new SaveData
+        {
+            hotbar  = b.hotbar,
+            wallet  = b.wallet,
+            wood    = b.wood,
+            crystal = b.crystal,
+        };
+        shim.spaceDust.playerDust = b.spaceDust;
+        shim.spaceDust.hasFilter  = b.dustFilter;
+        ApplyHotbar(shim);
+
+        OrientationObjectives.RestoreMask(b.orientationMask);
     }
 
     static void CaptureAlienKills(AlienKillsSave s)
@@ -1001,6 +1212,13 @@ public static class SaveCollector
     {
         if (data == null) return;
 
+        // This guest's own belongings, if this world has seen them before. NOT
+        // applied here — the arrival ritual clears out the last session a
+        // moment later and would wipe them straight back off. SecondPlayerArrival
+        // consumes it immediately after that wipe.
+        var profile = CharacterStore.ActiveProfile;
+        if (profile != null) PendingPersonalBlock = FindPersonalBlock(data, profile.id);
+
         // Singleton world state first — the object restores below read it.
         BuyerLedger.ApplySave(data.buyerLedger);
         TevFronting.ApplySave(data.tevFronting);
@@ -1051,6 +1269,11 @@ public static class SaveCollector
     public static void Apply(SaveData data)
     {
         if (data == null) return;
+
+        // FIRST, before anything reads a personal field: swap in this
+        // character's belongings. Everything below is unchanged and does not
+        // know blocks exist.
+        SelectPersonalBlock(data);
 
         // Apply order matters — this is the real call sequence:
         //   1. Celestial bodies — restore orbital state first; everything

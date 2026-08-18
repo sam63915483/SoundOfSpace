@@ -141,46 +141,17 @@ public class SettingsMenu : MonoBehaviour {
 
 	GameObject saveDialogRoot;
 
+	/// <summary>
+	/// ⚠️ NO LONGER SAVES (Sam, 2026-08-18). The stasis pod is the only save
+	/// point, so this legacy menu hook tells the player where to go instead of
+	/// writing the world from a settings screen.
+	///
+	/// Kept as a method rather than deleted because it is a public hook that
+	/// scene UnityEvents may still be wired to — removing it would leave a
+	/// silently dead button rather than one that explains itself.
+	/// </summary>
 	public void OpenSaveDialog () {
-		Debug.Log("[SettingsMenu] OpenSaveDialog invoked.");
-		if (saveDialogRoot != null) { Debug.Log("[SettingsMenu] Save dialog already open; ignoring."); return; }
-
-		// Parent under the pause-menu styler's GameObject if present (so it shares that
-		// sub-canvas's sortingOrder), else fall back to the menuPanel itself, else any
-		// active scene Canvas. The save panel adds its own Canvas + GraphicRaycaster
-		// with overrideSorting=true so it works regardless.
-		Transform parent = null;
-		var styler = FindObjectOfType<GalaxyPauseMenuStyler>();
-		if (styler != null) parent = styler.transform;
-		if (parent == null && menuPanel != null) parent = menuPanel.transform;
-		if (parent == null)
-		{
-			var anyCanvas = FindObjectOfType<Canvas>();
-			if (anyCanvas != null) parent = anyCanvas.transform;
-		}
-		if (parent == null)
-		{
-			Debug.LogError("[SettingsMenu] No parent transform available for the save dialog.");
-			return;
-		}
-
-		Debug.Log($"[SettingsMenu] Building save dialog under '{parent.name}'.");
-		var panel = SaveLoadUI.Build(
-			parent,
-			SaveLoadMode.Save,
-			onSelect: () => CloseSaveDialog(),
-			onPickSlot: (saveName) =>
-			{
-				Debug.Log($"[SettingsMenu] Overwriting save '{saveName}'.");
-				SaveSystem.Save(saveName);
-			},
-			onCreateOrNew: (name) =>
-			{
-				Debug.Log($"[SettingsMenu] Creating new save '{name}'.");
-				SaveSystem.Save(name);
-			},
-			onClose: CloseSaveDialog);
-		saveDialogRoot = panel.root;
+		StoryImpactNotice.Show("SAVE IN THE STASIS POD.", 3f);
 	}
 
 	void CloseSaveDialog () {

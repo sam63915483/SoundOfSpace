@@ -516,12 +516,14 @@ public class OxygenManager : MonoBehaviour
             }
         }
 
-        // ── Cyclops checkpoint (autosave once on first breathable arrival) ─
+        // ── Cyclops checkpoint (first breathable arrival) ──────────────────
+        // The flag still latches — it is saved state and other things read it —
+        // but it no longer writes a save behind the player's back. The stasis
+        // pod is the only save point (Sam, 2026-08-18).
         if (!cyclopsCheckpointReached && playerBody != null
             && playerBody.bodyName == cyclopsName && playerInRefill)
         {
             cyclopsCheckpointReached = true;
-            if (AutosaveManager.Instance != null) AutosaveManager.Instance.Autosave();
         }
 
         SetFootState(insideShip, piloting, onFoot);

@@ -18,8 +18,32 @@ public static class SaveSystem
     {
         try
         {
+            return Write(SaveCollector.Capture(saveName), saveName);
+        }
+        catch (Exception e)
+        {
+            Debug.LogError($"[SaveSystem] Save failed: {e}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Write a SaveData that has already been captured.
+    ///
+    /// Split out for co-op: a guest's pod asks the HOST to capture the world
+    /// (only the host's copy is authoritative — its enemies are real bodies
+    /// rather than pose puppets, and it owns every timer), receives the finished
+    /// SaveData over the wire, and writes it to its own disk under its own slot
+    /// name. There is no second serialisation path; both machines end up calling
+    /// this.
+    /// </summary>
+    public static string Write(SaveData data, string saveName)
+    {
+        if (data == null) return null;
+        try
+        {
             Directory.CreateDirectory(SavesDir);
-            var data = SaveCollector.Capture(saveName);
+            data.saveName = saveName;
             var path = Path.Combine(SavesDir, saveName + ".json");
             File.WriteAllText(path, JsonUtility.ToJson(data, prettyPrint: true));
             Debug.Log($"[SaveSystem] Saved → {path}");

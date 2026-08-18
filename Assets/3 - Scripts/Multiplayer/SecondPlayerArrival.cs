@@ -80,6 +80,14 @@ public class SecondPlayerArrival : MonoBehaviour
         while (!WorldIsWalkable() && Time.realtimeSinceStartup < deadline)
             yield return null;
 
+        // ...and then for the host's world itself, so this guest's own pockets
+        // are known before the wipe below decides what to clear. Same deadline,
+        // so a snapshot that never arrives costs nothing extra — the guest just
+        // starts empty-handed, exactly as they did before worlds remembered
+        // people. WorldReady is set the moment the snapshot has been applied.
+        while (!WorldSync.WorldReady && Time.realtimeSinceStartup < deadline)
+            yield return null;
+
         SeatInPod();
 
         // Tell the sync layer we're placed, so it starts publishing our position
@@ -93,6 +101,15 @@ public class SecondPlayerArrival : MonoBehaviour
         // those lives on a DontDestroyOnLoad singleton. Cleared here, before the
         // wake, so the HUD is already correct as it fades up.
         NewGameReset.ApplyGuestArrival();
+
+        // ...and then hand back whatever this character left in THIS world, if
+        // they have been here before. Everything is a world save now (Sam,
+        // 2026-08-18): a character carries a name and a suit colour, and their
+        // belongings live in the world they were dropped in. Strictly after the
+        // wipe above, which would otherwise take them straight back off. No
+        // block — a first visit — leaves the clean-slate arrival exactly as it
+        // was.
+        SaveCollector.ApplyPendingPersonalBlock();
 
         // Hand off to the pod's real ritual rather than a lookalike.
         var pod = FindObjectOfType<StasisPodSave>();

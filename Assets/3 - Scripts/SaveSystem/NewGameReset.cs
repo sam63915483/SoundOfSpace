@@ -74,12 +74,18 @@ public static class NewGameReset
     /// Vitals go to full because arriving is a fresh start, matching the pod
     /// wake the guest sees.
     ///
-    /// When the character system grows to carry money and hotbar between worlds
-    /// (the Terraria plan), THIS is the method that changes - it becomes "load
-    /// the character's belongings" instead of "clear them".
+    /// Since 2026-08-18 this is the FALLBACK rather than the whole story: if the
+    /// world already knows this character, SecondPlayerArrival hands their
+    /// belongings back immediately afterwards from their PlayerBlockSave. This
+    /// still runs first, so a returning player is restored onto a clean slate
+    /// rather than on top of the last session's leftovers, and a first-time
+    /// visitor keeps the clean slate they always got.
     /// </summary>
     public static void ApplyGuestArrival()
     {
+        // A world this character has never played in means a blank board — the
+        // mask is world progress now, not a character trophy.
+        OrientationObjectives.ResetForNewWorld();
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);
         if (WoodInventory.Instance != null) WoodInventory.Instance.SetWood(0);
@@ -128,6 +134,10 @@ public static class NewGameReset
         TevTextDirector.ResetAll();
 
         if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
+        // The whiteboard is world progress now (2026-08-18) rather than a
+        // character trophy, so a new world means a fresh board — even for a
+        // character who has crossed every line off before.
+        OrientationObjectives.ResetForNewWorld();
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);
         if (WoodInventory.Instance != null) WoodInventory.Instance.SetWood(0);
         if (CrystalInventory.Instance != null) CrystalInventory.Instance.SetCount(0);
@@ -200,11 +210,18 @@ public static class NewGameReset
         StasisPodSave.ActiveSlotName = StasisPodSave.NextFreeSlotName();
 
         // Death reloads the newest save. New Game doesn't touch disk, so a stale
-        // autosave from a previous run could be the newest file — dying early in a
-        // fresh game would then reload the OLD run. Force a snapshot of this fresh
-        // start so the new run owns the newest save (also covers first-ever launch
-        // where no save exists yet). DeathCutsceneController relies on this.
-        if (AutosaveManager.Instance != null) AutosaveManager.Instance.Autosave();
+        // file from a previous run could be the newest one — dying early in a
+        // fresh game would then reload the OLD run. Force a snapshot of this
+        // fresh start so the new run owns the newest save (also covers
+        // first-ever launch where no save exists yet). DeathCutsceneController
+        // relies on this.
+        //
+        // Written to THIS RUN'S POD SLOT, claimed a few lines above, rather than
+        // to the old shared autosave slot: the pod is the only save point now,
+        // and death respawn targets ActiveSlotName first. Sending the seed save
+        // anywhere else would leave the pod slot empty until the first upload,
+        // which is exactly the window this exists to cover.
+        SaveSystem.Save(StasisPodSave.ActiveSlotName);
     }
 }
 

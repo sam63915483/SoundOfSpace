@@ -226,18 +226,25 @@ public class StasisPodSave : MonoBehaviour
             // records the game's actual progression rather than this cinematic's
             // temporary lock — then re-lock for the rest of the ritual.
             TutorialGate.ApplyState(gateWasEnabled, gateWasUnlocked);
-            SaveSystem.Save(ActiveSlotName);
-            // Orientation board line 7. Only on the UPLOAD path — DOWNLOAD is
-            // the wake-from-load playback and never writes a save, so ticking it
-            // there would credit the player for loading rather than for saving.
+
+            // Orientation board line 7, ticked BEFORE the write rather than
+            // after. The mask lives in this character's block in the world save
+            // now (it used to live on the character file, which the pod flushed
+            // separately a moment later) — so a tick that lands after the
+            // capture would miss the very save that earned it.
+            //
+            // Only on the UPLOAD path: DOWNLOAD is the wake-from-load playback
+            // and never writes a save, so ticking it there would credit the
+            // player for loading rather than for saving.
             OrientationObjectives.Complete(OrientationObjectives.Objective.SaveInStasisPod);
-            // The pod is the ONLY save point for the character too. In-run
-            // character progress (the objectives board today) has been sitting
-            // dirty in memory until now; this is what commits it, so world and
-            // character always advance together and never disagree about how far
-            // the player got. Must come AFTER the Complete above, or this very
-            // upload's own tick would miss the flush.
-            CharacterStore.Instance?.SaveIfDirty();
+
+            // In co-op this is a handshake rather than a write: whichever
+            // machine is at the pod, the HOST captures the world (its copy is
+            // the real one) and both players' belongings are gathered into it
+            // first. Single player falls straight through to the ordinary save
+            // on the first frame.
+            yield return PersonalSync.SaveWorld(ActiveSlotName);
+
             TutorialGate.LockAll();
             TutorialGate.Unlock(TutorialAbility.MouseLook);
         }

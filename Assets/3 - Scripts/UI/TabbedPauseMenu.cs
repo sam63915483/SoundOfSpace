@@ -455,7 +455,11 @@ public class TabbedPauseMenu : MonoBehaviour
         vlg.childForceExpandHeight = false;
 
         BuildMenuButton(panelRT, "RESUME",    ClosePause,                            primary: true);
-        BuildMenuButton(panelRT, "SAVE GAME", OpenSaveDialog,                        primary: false);
+        // ⚠️ NO SAVE GAME BUTTON (Sam, 2026-08-18). The stasis pod is the only
+        // save point: you seal yourself in and upload. A menu that could write
+        // the world from anywhere undercut that completely, and in co-op it let
+        // a guest write a world it doesn't own. The pod is the ritual; this is
+        // just a pause screen.
         BuildMenuButton(panelRT, "SETTINGS",  ShowSettingsPanel,                     primary: false);
         // Its own top-level button, not a settings tab — hosting, joining and
         // ending a session are things you DO, not preferences you configure.
@@ -1960,20 +1964,6 @@ public class TabbedPauseMenu : MonoBehaviour
         // ScrollRect sees the final sizes.
         var settingsRT = _settingsPanel != null ? _settingsPanel.transform as RectTransform : null;
         if (settingsRT != null) LayoutRebuilder.ForceRebuildLayoutImmediate(settingsRT);
-    }
-
-    void OpenSaveDialog()
-    {
-        if (_saveDialogRoot != null) return;
-        // Save panel needs a parent transform; the card itself works.
-        var panel = SaveLoadUI.Build(
-            _cardRT,
-            SaveLoadMode.Save,
-            onSelect: () => CloseSaveDialog(),
-            onPickSlot: (saveName) => SaveSystem.Save(saveName),
-            onCreateOrNew: (name) => SaveSystem.Save(name),
-            onClose: CloseSaveDialog);
-        _saveDialogRoot = panel.root;
     }
 
     void CloseSaveDialog()
