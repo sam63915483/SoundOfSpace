@@ -106,6 +106,36 @@ public static class AlienFeedback
         return bank[variant % (uint)bank.Length];
     }
 
+    /// Said about a multi-genre song when one stretch clearly carried it for
+    /// this listener — names the slice so the mixed verdict is legible.
+    /// DRAFT lines, Sam edits.
+    public static string ForSlice(string genre, uint variant)
+    {
+        string[] bank =
+        {
+            "The " + genre + " parts are the good bit.",
+            "Mostly here for the " + genre + " stretch.",
+            "The " + genre + " bits carry it.",
+        };
+        return bank[variant % (uint)bank.Length];
+    }
+
+    /// Said the first time a demo-days regular buys a full song they like —
+    /// the career becoming visible in someone else's voice. DRAFT, Sam edits.
+    public static string ForGrowth(uint variant)
+    {
+        string[] bank =
+        {
+            "You've come a long way from those demos. Keep up the good music.",
+            "A whole song. I remember when you only had sketches. Keep going.",
+            "From demo tapes to this? I'll be telling people I bought early.",
+            "This is a real record. Don't stop now.",
+            "I liked the demos. I like this more. Keep making them longer.",
+            "Look at you - full songs now. I want the next one too.",
+        };
+        return bank[variant % (uint)bank.Length];
+    }
+
     // ── The satisfaction word ladder (loop-feel pass A1) ─────────────────
     //
     // ONE five-word vocabulary for "how much did they like it", used by every

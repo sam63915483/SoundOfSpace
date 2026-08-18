@@ -69,6 +69,10 @@ public static class BuyerLedger
         // state) and the track/gossiper payload on named requests. ""/null on
         // every event that predates the field.
         public string s;
+        // Sixth slot (2026-08-18 tape formats): the tape FORMAT + 1 on order
+        // and deal events (0 = pre-feature event — renderers say nothing,
+        // exactly the `c` convention).
+        public int k;
     }
 
     public class Buyer
@@ -114,6 +118,13 @@ public static class BuyerLedger
         // would quietly turn "bring me GORP SLIME" into "bring me a VOLT",
         // and displayed promises must never drift from what's graded.
         public string requestTrackId;
+
+        // ── Tape formats (2026-08-18, appended for save order) ──
+        // The FORMAT the open order asks for (TraxKind). 0 on old saves = Demo.
+        public int askKind;
+        // Completed deals that were Half/Full songs — drives the "grown from
+        // demos" moment (first liked song after >=3 prior deals).
+        public int songsBought;
     }
 
     static readonly Dictionary<string, Buyer> _buyers = new Dictionary<string, Buyer>();
@@ -246,18 +257,33 @@ public static class BuyerLedger
     /// tape (feeds craving); -1 = unknown, treated as "decent".</param>
     /// <param name="namedRequest">the sale filled a NAMED track request
     /// (loop-feel D) — extra craving.</param>
+    /// <param name="kind">TraxKind of the sold tape (0 = demo). Half/Full
+    /// sales advance songsBought and can fire the growth moment.</param>
     public static bool ReportTapeDeal(string id, int genreIndex, int price, int qty,
                                       bool keptAppointment, bool matchedTaste, int bondBonus = 0,
-                                      int satBand = -1, bool namedRequest = false)
+                                      int satBand = -1, bool namedRequest = false, int kind = 0)
     {
         var b = GetOrCreate(id);
         if (b == null) return false;
         Touch();
 
+        // The demos-to-songs growth moment: their first Half/Full purchase
+        // after a real demo history, and they at least rated it decent. Reads
+        // PRE-increment state — the same predicate the sell panel uses to
+        // decide whether to speak the ForGrowth line.
+        bool firstSong = kind > TraxKind.Demo && b.songsBought == 0
+                      && b.dealsCompleted >= 3 && satBand >= 2;
+
         b.dealsCompleted++;
+        if (kind > TraxKind.Demo) b.songsBought++;
+        // The career counter — every tape sale lands here (walk-ups,
+        // deliveries and routed guest sales), so this is TapeCareer's one
+        // choke point. World-scoped via StoryDirector.
+        TapeCareer.TapesSold += qty;
         int gain = BondPerDeal
                  + (keptAppointment ? BondKeptAppointment : 0)
                  + (matchedTaste ? BondFavouriteTier : 0)
+                 + (firstSong ? 3 : 0)   // the growth moment pays in bond
                  + bondBonus;   // e.g. TapeOffer.BondOnGenerousDeal for asking under their value
         b.bond = Mathf.Clamp(b.bond + gain, 0, 100);
         CountDaySale(id, price, qty, gain);
@@ -277,8 +303,8 @@ public static class BuyerLedger
                                / (float)CravingRules.FrequencyMult(b.craving);
         }
 
-        if (keptAppointment) Log(b, EvType.FulfilledExact, price, qty, genreIndex, markUnread: false);
-        else                 Log(b, EvType.WalkUpDeal, price, qty, genreIndex, markUnread: false);
+        if (keptAppointment) Log(b, EvType.FulfilledExact, price, qty, genreIndex, markUnread: false, k: kind + 1);
+        else                 Log(b, EvType.WalkUpDeal, price, qty, genreIndex, markUnread: false, k: kind + 1);
 
         if (keptAppointment) CloseConversation(b);
 
@@ -383,11 +409,11 @@ public static class BuyerLedger
 
     // ── Events / thread ────────────────────────────────────────────────────
 
-    public static void Log(Buyer b, EvType t, int a, int bb, int tier, bool markUnread = true, int c = 0, string s = null)
+    public static void Log(Buyer b, EvType t, int a, int bb, int tier, bool markUnread = true, int c = 0, string s = null, int k = 0)
     {
         if (b == null) return;
         Touch();
-        b.events.Add(new Ev { type = (int)t, at = Now, a = a, b = bb, tier = tier, c = c, s = s });
+        b.events.Add(new Ev { type = (int)t, at = Now, a = a, b = bb, tier = tier, c = c, s = s, k = k });
         if (b.events.Count > MaxEventsPerBuyer) b.events.RemoveAt(0);
         // Player-authored events never count as unread; buyer-authored do.
         if (markUnread && t != EvType.PlayerAccepted && t != EvType.PlayerCountered
@@ -526,6 +552,7 @@ public static class BuyerLedger
         s.deadlineSecondsLeft.Clear(); s.eventCounts.Clear(); s.events.Clear();
         s.askTapeTier.Clear(); s.modulesBasis.Clear();
         s.craving.Clear(); s.lastPurchaseDay.Clear(); s.requestTrackId.Clear();
+        s.askKind.Clear(); s.songsBought.Clear();
         s.dayTapesSold = DayTapesSold;
         s.dayEarned = DayEarned;
         s.dayBondUps.Clear();
@@ -550,12 +577,14 @@ public static class BuyerLedger
             s.craving.Add(b.craving);
             s.lastPurchaseDay.Add(b.lastPurchaseDay);
             s.requestTrackId.Add(b.requestTrackId ?? "");
+            s.askKind.Add(b.askKind);
+            s.songsBought.Add(b.songsBought);
             s.eventCounts.Add(b.events.Count);
             for (int i = 0; i < b.events.Count; i++)
             {
                 var e = b.events[i];
                 s.events.Add(new BuyerLedgerSave.EvSave
-                    { type = e.type, secondsAgo = Mathf.Max(0f, now - e.at), a = e.a, b = e.b, tier = e.tier, c = e.c, s = e.s });
+                    { type = e.type, secondsAgo = Mathf.Max(0f, now - e.at), a = e.a, b = e.b, tier = e.tier, c = e.c, s = e.s, k = e.k });
             }
         }
     }
@@ -591,12 +620,14 @@ public static class BuyerLedger
                 craving = (s.craving != null && i < s.craving.Count) ? s.craving[i] : 0,
                 lastPurchaseDay = (s.lastPurchaseDay != null && i < s.lastPurchaseDay.Count) ? s.lastPurchaseDay[i] : 0,
                 requestTrackId = (s.requestTrackId != null && i < s.requestTrackId.Count) ? s.requestTrackId[i] : "",
+                askKind = (s.askKind != null && i < s.askKind.Count) ? s.askKind[i] : 0,
+                songsBought = (s.songsBought != null && i < s.songsBought.Count) ? s.songsBought[i] : 0,
             };
             int n = s.eventCounts[i];
             for (int e = 0; e < n && evCursor < s.events.Count; e++, evCursor++)
             {
                 var es = s.events[evCursor];
-                b.events.Add(new Ev { type = es.type, at = now - es.secondsAgo, a = es.a, b = es.b, tier = es.tier, c = es.c, s = es.s });
+                b.events.Add(new Ev { type = es.type, at = now - es.secondsAgo, a = es.a, b = es.b, tier = es.tier, c = es.c, s = es.s, k = es.k });
             }
             _buyers[b.id] = b;
         }

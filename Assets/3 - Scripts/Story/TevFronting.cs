@@ -152,7 +152,7 @@ public static class TevFronting
         // 2026-08-14 rebalance halved every price in the game while Tev's 50%
         // cut quietly went on charging the old ones. A duplicated formula does
         // not fail loudly; it just disagrees.
-        return Mathf.Max(1, Mathf.RoundToInt((float)TapeValue.Base(rec.track.ActiveCount(), rec.tier)));
+        return Mathf.Max(1, Mathf.RoundToInt((float)TapeValue.Base(rec.track.ActiveCount(), rec.tier, rec.FormatMult)));
     }
 
     /// What a front of this size costs the player to clear.

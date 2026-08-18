@@ -346,28 +346,28 @@ public class MushroomSellUI : MonoBehaviour
     /// The tape on the table, or null.
     TraxPrints.Record Press => _offerSpecies != null ? TraxPrints.Get(_offerSpecies) : null;
 
-    /// How well THIS buyer's ear matches what is on the table. Everything below
-    /// hangs off it, exactly as the in-person offer flow does.
+    /// How well THIS buyer's ear matches what is on the table — bar-weighted
+    /// across the song's sections (SongEval; one section = the old number
+    /// exactly). Everything below hangs off it.
     double Satisfaction
     {
         get
         {
             var rec = Press;
-            return rec == null ? 0.0
-                 : AlienTaste.Satisfaction(_buyerId, TapeTrade.DialsOf(rec.track));
+            return rec == null ? 0.0 : SongEval.Satisfaction(_buyerId, rec.song);
         }
     }
 
-    /// PUBLIC value — floor plus arrangement. The player can work this out from
-    /// the console, which is what makes naming a price a judgement rather than
-    /// a guess.
+    /// PUBLIC value — floor plus arrangement plus the tape's format. The
+    /// player can work this out from the console, which is what makes naming
+    /// a price a judgement rather than a guess.
     int Market
     {
         get
         {
             var rec = Press;
             return rec == null ? 0
-                 : Mathf.Max(1, Mathf.RoundToInt((float)TapeValue.Base(rec.track.ActiveCount(), rec.tier)));
+                 : Mathf.Max(1, Mathf.RoundToInt((float)TapeValue.Base(rec.track.ActiveCount(), rec.tier, rec.FormatMult)));
         }
     }
 
@@ -381,7 +381,7 @@ public class MushroomSellUI : MonoBehaviour
             var rec = Press;
             if (rec == null) return Market;
             var led = BuyerLedger.Get(_buyerId);
-            return TapeOffer.Value(_buyerId, rec.track.ActiveCount(), rec.tier,
+            return TapeOffer.Value(_buyerId, rec.track.ActiveCount(), rec.tier, rec.FormatMult,
                                    Satisfaction, false, led != null ? led.bond : 0);
         }
     }
@@ -402,7 +402,7 @@ public class MushroomSellUI : MonoBehaviour
             if (rec == null) return 0;
             var led = BuyerLedger.Get(_buyerId);
             return Mathf.Max(1, Mathf.RoundToInt(
-                (float)(TapeValue.Base(rec.track.ActiveCount(), rec.tier)
+                (float)(TapeValue.Base(rec.track.ActiveCount(), rec.tier, rec.FormatMult)
                         * TapeValue.SatisfactionMult(Satisfaction)
                         * TapeValue.BondMult(led != null ? led.bond : 0))));
         }
@@ -451,9 +451,13 @@ public class MushroomSellUI : MonoBehaviour
         var rec = Press;
         if (rec == null) return;
 
-        double[] dials = TapeTrade.DialsOf(rec.track);
+        // The dials a complaint or a demo-memory write should talk about: the
+        // section this alien liked MOST (their nearest miss). One section =
+        // exactly the old behaviour.
+        int bestSec = SongEval.BestSection(_buyerId, rec.song, out double bestSat);
+        double[] dials = TapeTrade.DialsOf(rec.song.sections[bestSec].track);
         uint variant = StableHash(_buyerId + ":" + _offerSpecies);
-        _tableReaction = TapeOffer.Listen(_buyerId, dials, rec.tier,
+        _tableReaction = TapeOffer.Listen(_buyerId, rec.song, rec.songId, rec.kind, rec.tier,
                                           UnityEngine.Random.value < 0.5f,
                                           out _tableSat, out var verdict);
         _tableListened = true;
@@ -471,9 +475,10 @@ public class MushroomSellUI : MonoBehaviour
             // a song on a buyer). They HEARD it either way: it just played.
             // Memory is WORLD state: a guest routes the write to the host.
             if (verdict == AlienTaste.Verdict.Rejected
-                && !EconomySync.ReportTapeHeard(_buyerId, dials))
+                && !EconomySync.ReportTapeHeard(_buyerId, dials, rec.songId, rec.kind))
             {
-                TapeMemory.Remember(_buyerId, dials);
+                if (rec.kind == TraxKind.Demo) TapeMemory.Remember(_buyerId, dials);
+                else TapeMemory.RememberSong(_buyerId, rec.songId);
                 // They still got music out of you — a little craving
                 // (routed listens get theirs in EconomySync's handler).
                 BuyerLedger.AddCraving(_buyerId, CravingRules.GainHeardOnly);
@@ -491,6 +496,11 @@ public class MushroomSellUI : MonoBehaviour
         // really for me... but fine") — the sale is luck, the word is honest.
         _listenOpinion = AlienFeedback.ForLiked(
             _tableSat, verdict == AlienTaste.Verdict.CoinFlip, variant);
+        // A multi-genre song with one stretch that clearly carried it for
+        // this listener gets the slice named — the mixed verdict stays legible.
+        if (rec.song.sections.Count > 1 && bestSat - _tableSat > 15.0)
+            _listenOpinion += " " + AlienFeedback.ForSlice(
+                TraxClassifier.Classify(rec.song.sections[bestSec].track.dials).primary.name, variant);
         _tableLine = $"\"{_listenOpinion}\"";
         SetResult(_tableLine, AlienFeedback.SatBand(_tableSat) >= 3 ? C_Ok : C_Label, sticky: true);
     }
@@ -658,13 +668,22 @@ public class MushroomSellUI : MonoBehaviour
         // GUARANTEED regular conversion, and it used to compare the primary
         // label only, so a hint-following blend seller never became a regular.
         double[] soldDials = soldRec != null ? TapeTrade.DialsOf(soldRec.track) : null;
-        bool matchedTaste = soldDials != null && AlienTaste.MatchesFavourite(_buyerId, soldDials);
+        // Blend-aware AND section-aware: any section hitting their favourite
+        // genre counts (SongEval; one section = the old rule exactly).
+        bool matchedTaste = soldRec != null && SongEval.MatchesFavourite(_buyerId, soldRec.song);
         // Asking UNDER what they privately value it at is the one way to
         // choose generosity — rewarded in bond (TapeOffer's rule, finally
         // wired in): undersell early, harvest BondMult from a regular later.
         int bondBonus = pricePerCap < Fair ? TapeOffer.BondOnGenerousDeal : 0;
         // How much they liked it, on the one ladder — feeds craving.
         int satBand = AlienFeedback.SatBand(Satisfaction);
+        // The demos-to-songs growth moment (computed pre-clear: Press still
+        // resolves). First Half/Full song they rate at least decent, after a
+        // real demo history — the line surfaces below, the bond lands in
+        // BuyerLedger.ReportTapeDeal from the same pre-report state.
+        var led0 = BuyerLedger.Get(_buyerId);
+        bool growth = soldRec != null && soldRec.kind > TraxKind.Demo && satBand >= 2
+                   && led0 != null && led0.songsBought == 0 && led0.dealsCompleted >= 3;
         string species = _offerSpecies;
         int credits = pricePerCap * qty;
 
@@ -692,7 +711,9 @@ public class MushroomSellUI : MonoBehaviour
         // that snapshot, losing the guest's bond/deal progress entirely.
         bool sentToHost = EconomySync.ReportTapeSale(_buyerId, soldGenre, pricePerCap, qty,
                                                      keptAppointment: false, matchedTaste: matchedTaste,
-                                                     heardDials: soldDials, bondBonus: bondBonus);
+                                                     heardDials: soldDials, bondBonus: bondBonus,
+                                                     songId: soldRec != null ? soldRec.songId : 0,
+                                                     kind: soldRec != null ? soldRec.kind : 0);
         // Central hook: ANY alien buying advances Tev's onboarding, so no NPC
         // has to remember to wire it up (no-ops outside the quest).
         NotifyTapeSold(species, soldRec, qty);
@@ -702,33 +723,38 @@ public class MushroomSellUI : MonoBehaviour
         {
             BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, pricePerCap, qty,
                                        keptAppointment: false, matchedTaste: matchedTaste,
-                                       bondBonus: bondBonus, satBand: satBand);
+                                       bondBonus: bondBonus, satBand: satBand,
+                                       kind: soldRec != null ? soldRec.kind : 0);
             // A bought song is a heard song — without this the same track could
             // be re-sold to the same buyer forever, and the "same song twice is
             // a social failure" rule only ever fired on rejections.
-            if (soldDials != null) TapeMemory.Remember(_buyerId, soldDials);
+            if (soldRec != null && soldRec.kind != TraxKind.Demo)
+                TapeMemory.RememberSong(_buyerId, soldRec.songId);
+            else if (soldDials != null) TapeMemory.Remember(_buyerId, soldDials);
         }
         _onSold?.Invoke(qty);
 
         // The reaction already played out loud when the tape hit the table —
         // the close is just the money now.
         ClearTableListen();
-        SetResult(leftover > 0
+        string closeLine = leftover > 0
             ? $"{_npcName} took {qty} and paid {credits}. They didn't want the other {leftover}."
-            : $"{_npcName} paid {credits} credits.", C_Ok);
+            : $"{_npcName} paid {credits} credits.";
+        // The growth moment: the first full song a demo-days regular takes home.
+        if (growth)
+            closeLine += $"\n\"{AlienFeedback.ForGrowth(StableHash(_buyerId + ":growth"))}\"";
+        SetResult(closeLine, C_Ok);
         Refresh();
     }
 
-    /// Which genre a pressing classifies as, as an index. Resolved BY NAME
-    /// against the same table TapeTrade.Fills compares on, so an order check
-    /// and a bond award can never disagree about what a song is.
+    /// Which genre a pressing files under, as an index — the DOMINANT genre
+    /// by bars for a song, which for a one-section demo is exactly the old
+    /// primary-label lookup. Ledger events and bond awards key on this.
     static int GenreIndexOf(TraxPrints.Record rec)
     {
         if (rec == null) return 0;
-        string name = TraxClassifier.Classify(rec.track.dials).primary.name;
-        var g = TraxClassifier.Genres;
-        for (int i = 0; i < g.Length; i++) if (g[i].name == name) return i;
-        return 0;
+        var mix = rec.song.GenreMix();
+        return mix.Count > 0 ? mix[0].genreIndex : 0;
     }
 
     /// Everything that has to happen when a tape changes hands, wherever the
@@ -742,13 +768,22 @@ public class MushroomSellUI : MonoBehaviour
             MushroomQuest.SoldCount += qty;
             for (int i = 0; i < qty; i++) MushroomQuest.NotifyTevTapeSold();
         }
-        // A song they have heard is a song they will not buy again.
-        if (rec != null) TapeMemory.Remember(_buyerId, TapeTrade.DialsOf(rec.track));
+        // A song they have heard is a song they will not buy again — demos by
+        // dial closeness, Half/Full songs by identity (see TapeMemory).
+        if (rec != null)
+        {
+            if (rec.kind == TraxKind.Demo) TapeMemory.Remember(_buyerId, TapeTrade.DialsOf(rec.track));
+            else TapeMemory.RememberSong(_buyerId, rec.songId);
+        }
         // ...and a song they BOUGHT is one they can gossip about (loop-feel D:
         // named requests source from other buyers' purchases). Guest sales in
         // co-op miss this registry (the wire carries dials, not the print) —
         // fewer named requests there, nothing breaks.
-        if (rec != null) TapeMemory.RememberBought(_buyerId, rec.trackId);
+        if (rec != null)
+        {
+            TapeMemory.RememberBought(_buyerId, rec.trackId);
+            if (rec.kind != TraxKind.Demo) TapeMemory.RememberBoughtSong(_buyerId, rec.songId);
+        }
     }
 
     void BarBuyer()
@@ -1212,7 +1247,7 @@ public class MushroomSellUI : MonoBehaviour
             var rec2 = Press;
             bool goodsRight = rec2 != null
                 && (string.IsNullOrEmpty(_appt.requestTrackId)
-                    ? TapeTrade.Fills(rec2.track, _appt.askTier)
+                    ? TapeTrade.Fills(rec2.song, _appt.askTier)
                     : TapeTrade.MatchesRequest(rec2, _appt.requestTrackId));
             bool goodsOk = HasOffer && goodsRight && _offerCountN >= _appt.askQty;
             bool priceOk = _ask <= _appt.offerPerCap;
@@ -1224,10 +1259,14 @@ public class MushroomSellUI : MonoBehaviour
                 int cTier = _appt.askTapeTier >= 1 ? _appt.askTapeTier : 1;
                 int cMods = _appt.modulesBasis >= 1 ? _appt.modulesBasis
                                                     : Mathf.Max(1, TraxLibrary.InstalledCount);
-                if (rec2.tier < cTier)
+                int cKind = TraxKind.Clamp(_appt.askKind);
+                if (rec2.kind < cKind)
+                    shortNote = $" — a {TraxKind.Label(rec2.kind)} tape on a {TraxKind.Label(cKind)}-length order pays pro-rata";
+                else if (rec2.tier < cTier)
                     shortNote = $" — a Type {rec2.tier} on a Type {cTier} order pays about half";
-                else if (TapeValue.Base(rec2.track.ActiveCount(), rec2.tier) < TapeValue.Base(cMods, cTier))
-                    shortNote = " — thinner than the kit it was priced for, pays less";
+                else if (TapeValue.Base(rec2.track.ActiveCount(), rec2.tier, rec2.FormatMult)
+                         < TapeValue.Base(cMods, cTier) * TraxKind.NominalMult(cKind))
+                    shortNote = " — thinner than the goods it was priced for, pays less";
             }
             if (!HasOffer) { band = ""; bandCol = C_Dim; }
             else if (goodsOk && _ask == _appt.offerPerCap)
@@ -1381,9 +1420,19 @@ public class MushroomSellUI : MonoBehaviour
             if (tape)
             {
                 var rec = TraxPrints.Get(s.cassetteId);
-                // Full classifier label, matching the console — see above.
-                string g = rec != null ? TraxClassifier.Classify(rec.track.dials).label : "";
-                w.genreLbl.text = g + (rec != null && rec.tier >= 2 ? "   T2" : "   T1");
+                string g = "";
+                if (rec != null)
+                {
+                    // A one-genre tape keeps the full classifier label (the
+                    // console's vocabulary); a multi-genre song names its
+                    // dominant genre plus how many more it carries.
+                    var mix = rec.song.GenreMix();
+                    g = mix.Count > 1
+                        ? mix[0].name + " +" + (mix.Count - 1)
+                        : TraxClassifier.Classify(rec.track.dials).label;
+                    g += "   " + TraxKind.Label(rec.kind) + " T" + rec.tier;
+                }
+                w.genreLbl.text = g;
             }
         }
 
@@ -1629,26 +1678,31 @@ public class MushroomSellUI : MonoBehaviour
             modulesBasis  = _appt.modulesBasis,
             pricePerTape  = agreed,
             windowMinutes = _appt.windowMinutes,
+            kind          = _appt.askKind,
         };
         var ledger = BuyerLedger.Get(_buyerId);
         int substituteWorth = delivered == null ? 0
             : TapeOffer.Value(_buyerId, delivered.track.ActiveCount(), delivered.tier,
-                              Satisfaction, true, ledger != null ? ledger.bond : 0);
+                              delivered.FormatMult, Satisfaction, true,
+                              ledger != null ? ledger.bond : 0);
         // Named request (loop-feel D): "exact goods" means A PRESSING OF THAT
         // TRACK (any tier — lineage), not merely the right genre. A different
         // track runs the wrong-goods path exactly as it does today.
         bool named = !string.IsNullOrEmpty(_appt.requestTrackId);
         bool namedMatch = named && TapeTrade.MatchesRequest(delivered, _appt.requestTrackId);
         bool fillsGenre = named ? namedMatch
-            : delivered != null && TapeTrade.Fills(delivered.track, _appt.askTier);
+            : delivered != null && TapeTrade.Fills(delivered.song, _appt.askTier);
         // They asked for THIS track by name — knowing full well whether
         // they've heard it — so the named track never refuses on memory.
         bool alreadyHeard = !namedMatch && delivered != null
-            && TapeMemory.HasHeard(_buyerId, TapeTrade.DialsOf(delivered.track));
+            && (delivered.kind == TraxKind.Demo
+                ? TapeMemory.HasHeard(_buyerId, TapeTrade.DialsOf(delivered.track))
+                : TapeMemory.HasHeardSong(_buyerId, delivered.songId));
         var g = TapeDeal.Grade(terms,
                                contractModsFallback: Mathf.Max(1, TraxLibrary.InstalledCount),
                                deliveredModules: delivered != null ? delivered.track.ActiveCount() : 0,
                                deliveredTier: delivered != null ? delivered.tier : 1,
+                               deliveredFormatMult: delivered != null ? delivered.FormatMult : 1.0,
                                fillsGenre: fillsGenre,
                                deliveredQty: _offerCountN,
                                alreadyHeard: alreadyHeard,
@@ -1676,6 +1730,8 @@ public class MushroomSellUI : MonoBehaviour
             // A thin KIT speaks in the alien's own voice (loop-feel A3): low
             // module count is what's holding the money down, so they say so.
             string thinLine = !g.thin || !fillsGenre ? null
+                : g.kindShort
+                ? $"\"I ordered a {TraxKind.Label(TraxKind.Clamp(_appt.askKind)).ToLowerInvariant()}-length.\" — {_npcName} paid {{0}}, pro-rata."
                 : g.tierShort
                 ? $"\"This isn't a Type {contractTier}.\" — {_npcName} paid {{0}}, about half the agreed rate."
                 : $"\"{AlienFeedback.ForThinKit(tv)}\" — {_npcName} paid {{0}}, not the full rate.";
@@ -1709,9 +1765,14 @@ public class MushroomSellUI : MonoBehaviour
         // word teaches taste without touching money.
         double deliveredSat = Satisfaction;
         uint satVariant = StableHash(_buyerId + ":" + _offerSpecies + ":heard");
-        // Blend-aware taste match — see the matching note in CloseSale.
+        // Blend-aware AND section-aware taste match — see CloseSale.
         double[] soldDials = soldRec != null ? TapeTrade.DialsOf(soldRec.track) : null;
-        bool matchedTaste = soldDials != null && AlienTaste.MatchesFavourite(_buyerId, soldDials);
+        bool matchedTaste = soldRec != null && SongEval.MatchesFavourite(_buyerId, soldRec.song);
+        // The growth moment, same predicate as CloseSale (pre-clear state).
+        var led0 = BuyerLedger.Get(_buyerId);
+        bool growth = soldRec != null && soldRec.kind > TraxKind.Demo
+                   && AlienFeedback.SatBand(deliveredSat) >= 2
+                   && led0 != null && led0.songsBought == 0 && led0.dealsCompleted >= 3;
         string species = _offerSpecies;
         _offerSpecies = null; _offerCountN = 0; _stage = Stage.Open; _counter = 0; _finalOffer = false; _ask = 0;
         if (leftover > 0 && Hotbar.Instance != null)
@@ -1727,23 +1788,31 @@ public class MushroomSellUI : MonoBehaviour
         bool namedRequest = _appt != null && !string.IsNullOrEmpty(_appt.requestTrackId);
         if (!EconomySync.ReportTapeSale(_buyerId, soldGenre, perCap, qty,
                                         keptAppointment: true, matchedTaste: matchedTaste,
-                                        heardDials: soldDials))
+                                        heardDials: soldDials,
+                                        songId: soldRec != null ? soldRec.songId : 0,
+                                        kind: soldRec != null ? soldRec.kind : 0))
         {
             BuyerLedger.ReportTapeDeal(_buyerId, soldGenre, perCap, qty,
                                        keptAppointment: true, matchedTaste: matchedTaste,
                                        satBand: AlienFeedback.SatBand(deliveredSat),
-                                       namedRequest: namedRequest);
-            if (soldDials != null) TapeMemory.Remember(_buyerId, soldDials);
+                                       namedRequest: namedRequest,
+                                       kind: soldRec != null ? soldRec.kind : 0);
+            if (soldRec != null && soldRec.kind != TraxKind.Demo)
+                TapeMemory.RememberSong(_buyerId, soldRec.songId);
+            else if (soldDials != null) TapeMemory.Remember(_buyerId, soldDials);
         }
         _scheduled = false; _appt = null;
         _onSold?.Invoke(qty);
-        SetResult(thin
+        string deliverLine = thin
             ? (thinLine != null
                 ? string.Format(thinLine, credits)
                 : $"\"This isn't the track I was picturing.\" — {_npcName} paid {credits}, not what you agreed.")
             : substituted
             ? $"{_npcName} grumbled, but took {qty} for {credits}."
-            : $"\"{AlienFeedback.AfterListen(deliveredSat, satVariant)}\" — order delivered, {_npcName} paid {credits}.  <color=#6EDC82>BOND +</color>", thin ? C_Err : C_Ok);
+            : $"\"{AlienFeedback.AfterListen(deliveredSat, satVariant)}\" — order delivered, {_npcName} paid {credits}.  <color=#6EDC82>BOND +</color>";
+        if (growth && !thin)
+            deliverLine += $"\n\"{AlienFeedback.ForGrowth(StableHash(_buyerId + ":growth"))}\"";
+        SetResult(deliverLine, thin ? C_Err : C_Ok);
         Refresh();
     }
 

@@ -138,6 +138,9 @@ public class BuyerLedgerSave
     public List<int> craving = new List<int>();
     public List<int> lastPurchaseDay = new List<int>();
     public List<string> requestTrackId = new List<string>();
+    // 2026-08-18 tape formats. Count-guarded like askTapeTier; absent on old saves.
+    public List<int> askKind = new List<int>();
+    public List<int> songsBought = new List<int>();
 
     [Serializable]
     public class EvSave
@@ -146,6 +149,8 @@ public class BuyerLedgerSave
         // 2026-08-17: frozen text for snapshot-style events (the day wrap).
         // null/"" on every event from before the field existed.
         public string s;
+        // 2026-08-18 tape formats: the tape FORMAT + 1 (0 = pre-feature event).
+        public int k;
     }
 }
 

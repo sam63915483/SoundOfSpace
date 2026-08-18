@@ -376,6 +376,10 @@ public class EconomySync : MonoBehaviour
         reader.ReadValueSafe(out int bondBonus);
         reader.ReadValueSafe(out byte hasDials);
         var dials = ReadDials(reader, hasDials);
+        // Tape formats (2026-08-18): the song identity and format ride after
+        // the dials — always written, so no version flag is needed.
+        reader.ReadValueSafe(out uint songId);
+        reader.ReadValueSafe(out int kind);
         if (string.IsNullOrEmpty(buyerId) || qty <= 0) return;
 
         // ReportTapeDeal rolls the regular conversion and (for deliveries)
@@ -391,8 +395,10 @@ public class EconomySync : MonoBehaviour
         bool named = keptAppointment != 0 && lb != null && !string.IsNullOrEmpty(lb.requestTrackId);
         BuyerLedger.ReportTapeDeal(buyerId, genreIndex, pricePerCap, qty,
                                    keptAppointment != 0, matchedTaste != 0, bondBonus,
-                                   satBand, named);
-        if (dials != null) TapeMemory.Remember(buyerId, dials);
+                                   satBand, named, kind);
+        // Memory keys on the product: demos by dials, songs by identity.
+        if (kind != TraxKind.Demo && songId != 0) TapeMemory.RememberSong(buyerId, songId);
+        else if (dials != null) TapeMemory.Remember(buyerId, dials);
     }
 
     void HandleTapeHeard(FastBufferReader reader)
@@ -400,8 +406,11 @@ public class EconomySync : MonoBehaviour
         reader.ReadValueSafe(out string buyerId);
         reader.ReadValueSafe(out byte hasDials);
         var dials = ReadDials(reader, hasDials);
+        reader.ReadValueSafe(out uint songId);
+        reader.ReadValueSafe(out int kind);
         if (string.IsNullOrEmpty(buyerId) || dials == null) return;
-        TapeMemory.Remember(buyerId, dials);
+        if (kind != TraxKind.Demo && songId != 0) TapeMemory.RememberSong(buyerId, songId);
+        else TapeMemory.Remember(buyerId, dials);
         // A listen fed the hunger a little even though it didn't sell.
         BuyerLedger.AddCraving(buyerId, CravingRules.GainHeardOnly);
     }
@@ -492,7 +501,7 @@ public class EconomySync : MonoBehaviour
     /// </summary>
     public static bool ReportTapeSale(string buyerId, int genreIndex, int pricePerCap, int qty,
                                       bool keptAppointment, bool matchedTaste, double[] heardDials,
-                                      int bondBonus = 0)
+                                      int bondBonus = 0, uint songId = 0, int kind = 0)
     {
         if (!ShouldRoute() || string.IsNullOrEmpty(buyerId)) return false;
         Instance.Send(w =>
@@ -506,13 +515,16 @@ public class EconomySync : MonoBehaviour
             w.WriteValueSafe((byte)(matchedTaste ? 1 : 0));
             w.WriteValueSafe(bondBonus);
             WriteDials(w, heardDials);
+            // Tape formats: song identity + format, host keys memory on them.
+            w.WriteValueSafe(songId);
+            w.WriteValueSafe(kind);
         });
         return true;
     }
 
     /// A guest played a buyer a song that got rejected outright — the "heard"
     /// memory is world state and the host owns it.
-    public static bool ReportTapeHeard(string buyerId, double[] dials)
+    public static bool ReportTapeHeard(string buyerId, double[] dials, uint songId = 0, int kind = 0)
     {
         if (!ShouldRoute() || string.IsNullOrEmpty(buyerId) || dials == null) return false;
         Instance.Send(w =>
@@ -520,6 +532,8 @@ public class EconomySync : MonoBehaviour
             w.WriteValueSafe(KindTapeHeard);
             w.WriteValueSafe(buyerId);
             WriteDials(w, dials);
+            w.WriteValueSafe(songId);
+            w.WriteValueSafe(kind);
         });
         return true;
     }
