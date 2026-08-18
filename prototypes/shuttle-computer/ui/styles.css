@@ -294,11 +294,28 @@ html, body {
 #arr-sec-tag { font-size: 13px; letter-spacing: .2em; color: var(--accent); white-space: nowrap; }
 .btn.tiny { padding: 6px 12px; font-size: 10px; letter-spacing: .1em; }
 .btn.tiny:disabled { opacity: .3; cursor: not-allowed; }
-/* The bars stepper is a primary control now — key-stepper sized, not
-   rack-stepper sized. */
+/* LENGTH group — same shape as the transport's KEY control, so the player
+   already knows how to read it: a name, then arrows around a value. */
+.arr-len-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    letter-spacing: .14em;
+    color: var(--ink-ghost);
+}
 #arr-ctl .stepper { width: auto; }
-#arr-ctl .st-arrow { font-size: 12px; padding: 6px 9px; }
-#arr-ctl .st-label { font-size: 12px; min-width: 64px; padding: 0 4px; color: var(--ink); }
+#arr-ctl .st-arrow { font-size: 13px; padding: 7px 11px; }
+#arr-ctl .st-label {
+    font-size: 14px;
+    min-width: 84px;
+    padding: 0 6px;
+    color: var(--accent);
+    letter-spacing: .1em;
+}
+
+/* Armed section delete — same SURE? vocabulary as the project shelf. */
+#arr-ctl .btn.arm { color: var(--warn); border-color: var(--warn); }
 
 #arr-info { margin-left: auto; display: flex; gap: 10px; align-items: center; min-width: 0; }
 #arr-meter {

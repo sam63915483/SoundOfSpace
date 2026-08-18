@@ -201,49 +201,65 @@ export function mountTrax (root, inst, opts) {
         updateIdleCursor ();
     }
 
+    // Two-press arm for section delete, same vocabulary as the project
+    // shelf's DELETE → SURE?. Lives at mount level so the armed state survives
+    // the row being rebuilt by unrelated refreshes; anything that changes the
+    // selection or the song disarms it.
+    let delArmed = false, delArmTimer = null;
+    function disarmDelete () {
+        delArmed = false;
+        clearTimeout (delArmTimer);
+    }
+
     function refreshCtl () {
         arrCtl.innerHTML = '';
+        const label = SONG.sectionLabel (sel);
+
         const tag = document.createElement ('div');
         tag.id = 'arr-sec-tag';
-        tag.textContent = 'SEC ' + SONG.sectionLabel (sel);
+        tag.textContent = 'SEC ' + label;
         arrCtl.appendChild (tag);
 
+        // LENGTH mirrors the transport's KEY control — a named group around a
+        // stepper — so the player already knows how to read it.
+        const lenWrap = document.createElement ('div');
+        lenWrap.className = 'arr-len-wrap';
+        lenWrap.title = 'how many bars section ' + label + ' plays for';
+        const lenLabel = document.createElement ('span');
+        lenLabel.textContent = 'LENGTH';
         const barsStep = stepper ('arr-bars', () => song.sections[sel].bars + ' BARS', d => {
             const next = SONG.setSectionBars (song, sel, song.sections[sel].bars + d);
             if (next === song) return;
             song = next;
             songEdited ();
+            disarmDelete ();
             refreshStrip (); refreshCtl (); refreshSummary (); refreshProjBar ();
         });
-        arrCtl.appendChild (barsStep.el);
+        lenWrap.append (lenLabel, barsStep.el);
+        arrCtl.appendChild (lenWrap);
 
-        const mk = (txt, title, fn, disabled) => {
-            const b = document.createElement ('button');
-            b.className = 'btn tiny';
-            b.textContent = txt;
-            b.title = title;
-            b.disabled = !!disabled;
-            b.addEventListener ('click', fn);
-            arrCtl.appendChild (b);
-            return b;
-        };
-        mk ('◀', 'move section earlier', () => {
-            const next = SONG.moveSection (song, sel, -1);
-            if (next === song) return;
-            song = next; songEdited (); selectSection (sel - 1);
-        }, sel === 0);
-        mk ('▶', 'move section later', () => {
-            const next = SONG.moveSection (song, sel, 1);
-            if (next === song) return;
-            song = next; songEdited (); selectSection (sel + 1);
-        }, sel === song.sections.length - 1);
-        mk ('DELETE', 'delete this section', () => {
+        const del = document.createElement ('button');
+        del.className = 'btn tiny' + (delArmed ? ' arm' : '');
+        del.textContent = delArmed ? 'SURE?' : 'DELETE SEC ' + label;
+        del.disabled = song.sections.length <= 1;
+        del.title = del.disabled ? 'a song needs at least one section'
+                                 : 'remove section ' + label + ' and its loop from the song';
+        del.addEventListener ('click', () => {
+            if (!delArmed) {
+                delArmed = true;
+                clearTimeout (delArmTimer);
+                delArmTimer = setTimeout (() => { delArmed = false; refreshCtl (); }, 3500);
+                refreshCtl ();
+                return;
+            }
+            disarmDelete ();
             const next = SONG.removeSection (song, sel);
             if (next === song) return;
             song = next; songEdited ();
             selectSection (Math.min (sel, song.sections.length - 1));
-            toast ('SECTION DELETED');
-        }, song.sections.length <= 1);
+            toast ('SEC ' + label + ' DELETED');
+        });
+        arrCtl.appendChild (del);
     }
 
     // The economy readout. Numbers are engine/song.js placeholders — the SHAPE
@@ -305,6 +321,8 @@ export function mountTrax (root, inst, opts) {
 
     function selectSection (i) {
         sel = Math.min (Math.max (i, 0), song.sections.length - 1);
+        // An armed SURE? must never survive onto a different section.
+        disarmDelete ();
         inst.setTrack (song.sections[sel].track);
         refreshAllControls ();
     }

@@ -512,11 +512,29 @@ check ('clicking a ruler tick moves the play cursor to that bar', () => {
     assert (inst.songCursor === 32, 'cursor should be 32, got ' + inst.songCursor);
 });
 
-check ('DELETE removes the selected section and refuses the last one', () => {
-    const del = () => appView.querySelectorAll ('button').find (b => b.textContent === 'DELETE');
+check ('DELETE names its section and takes two presses', () => {
+    const del = () => appView.querySelectorAll ('button')
+        .find (b => /^(DELETE SEC|SURE)/.test (b.textContent));
+    assert (del ().textContent === 'DELETE SEC B',
+            'delete should name section B, reads ' + del ().textContent);
     del ().fire ('click');
-    assert (secs ().length === 1, 'DELETE did not remove the section');
-    assert (del ().disabled, 'DELETE is not disabled on the last section');
+    assert (del ().textContent === 'SURE?', 'first press did not arm the confirm');
+    assert (secs ().length === 2, 'arming must not delete anything yet');
+    del ().fire ('click');
+    assert (secs ().length === 1, 'second press did not remove the section');
+    assert (del ().textContent === 'DELETE SEC A', 'button should now name section A');
+    assert (del ().disabled, 'delete is not disabled on the last section');
+});
+
+check ('the reorder arrows are gone from the section controls', () => {
+    const ctl = doc.getElementById ('arr-ctl');
+    const arrowBtns = ctl.querySelectorAll ('button')
+        .filter (b => b.textContent === '◀' || b.textContent === '▶');
+    // Only the LENGTH stepper's arrows remain (inside .stepper), no bare
+    // move buttons.
+    for (const b of arrowBtns)
+        assert (b.className.indexOf ('st-arrow') >= 0,
+                'found a bare arrow button outside the LENGTH stepper');
 });
 
 // ---------------------------------------------------------------- report ----
