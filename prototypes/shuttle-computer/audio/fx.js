@@ -127,10 +127,12 @@ export function createRack (ctx) {
         _crunchBucket: -1,
 
         // Live parameter update. Called on every dial move — must never hard-jump
-        // a running node or it clicks.
-        apply (p, when) {
+        // a running node or it clicks. `glide` stretches the ramp constant for
+        // section transitions: a big character change morphs in over ~a beat
+        // instead of snapping.
+        apply (p, when, glide) {
             const t = when == null ? ctx.currentTime : when;
-            const R = 0.02;                                // setTargetAtTime constant
+            const R = glide == null ? 0.02 : Math.max (0.02, glide);
 
             // Rebuild shaper curves only when crunch actually moved a bucket —
             // allocating a 1024-float curve per mousemove would be silly.

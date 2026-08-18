@@ -13,13 +13,14 @@ import { computeParams } from '../engine/params.js';
 import { generatePatterns, stepAt, chordTonesFor, STEPS, TOTAL_STEPS } from '../engine/patterns.js';
 import { voiceFreq } from '../engine/scales.js';
 import { classify } from '../engine/classifier.js';
-import { totalSteps as songTotalSteps, sectionAtStep } from '../engine/song.js';
+import { totalSteps as songTotalSteps, sectionAtStep, patternStepFor,
+         transitionIntensity, TRANSITION_FX_MIN } from '../engine/song.js';
 import * as TRACK from '../engine/track.js';
 import * as PRESETS from '../engine/presets.js';
 import { createRack } from './fx.js';
 import { Clock } from './clock.js';
 import { triggerKick, triggerSnare, triggerHat, triggerBass, triggerLead,
-         triggerMoss, triggerSpindle } from './voices.js';
+         triggerMoss, triggerSpindle, triggerRiser, triggerImpact } from './voices.js';
 
 // Ordered the way you'd read a mix: rhythm, low end, harmony, melody, motion,
 // space. CAVE has no pattern — its preset picks a space.
@@ -295,15 +296,40 @@ export class Instrument {
     /// playhead needs no knowledge of how long the clock has been running.
     _scheduleSong (step, time, stepDur) {
         const total = songTotalSteps (this.song);
+        const n = this.song.sections.length;
         const pos = (step + this.songOffset) % total;
         const loc = sectionAtStep (this.song, pos);
+        const section = this.song.sections[loc.index];
+        const secSteps = section.bars * STEPS;
 
         if (loc.index !== this._songIdx) this._applySection (loc.index);
 
         const sec = this.songCompiled[loc.index];
-        const track = this.song.sections[loc.index].track;
-        // A section longer than the 4-bar phrase repeats it; stepAt wraps.
-        this._trigger (sec.patterns, sec.params, track.active, loc.stepInSection, time, stepDur);
+        // A section longer than the 4-bar phrase repeats it — and its LAST bar
+        // is remapped onto the phrase's fill bar (engine/song.js), so every
+        // section ends on a turnaround.
+        const patStep = patternStepFor (section, loc.stepInSection);
+        this._trigger (sec.patterns, sec.params, section.track.active, patStep, time, stepDur);
+
+        // Boundary FX, gated on how different the neighbouring section is.
+        // The song is circular, so the tail rises back into the head too.
+        if (n > 1 && this.rack) {
+            if (loc.stepInSection === secSteps - 8) {           // 2 beats out
+                const next = this.song.sections[(loc.index + 1) % n];
+                const heat = transitionIntensity (section, next);
+                if (heat >= TRANSITION_FX_MIN)
+                    triggerRiser (this.rack, time, 8 * stepDur, heat);
+            }
+            // step > 0: the very first downbeat of a play is a start, not an
+            // arrival — no impact for it.
+            if (loc.stepInSection === 0 && step > 0) {
+                const prev = this.song.sections[(loc.index + n - 1) % n];
+                const heat = transitionIntensity (prev, section);
+                if (heat >= TRANSITION_FX_MIN)
+                    triggerImpact (this.rack, time, heat);
+            }
+        }
+
         if (this.onStepScheduled) this.onStepScheduled (pos, time);
     }
 
@@ -312,12 +338,22 @@ export class Instrument {
     /// enough for the prototype; the Unity build can crossfade if it ever
     /// reads as a click.
     _applySection (i) {
+        // How hard the character changes decides how fast the timbre morphs:
+        // a near-identical neighbour snaps (0.02s constant), a genre jump
+        // glides in over roughly the first beat. BPM always snaps — tempo
+        // glides sound like a dying turntable. After a seek (_songIdx == -1)
+        // there is no "previous" section, so it snaps too.
+        const prev = this._songIdx >= 0 && this._songIdx < this.song.sections.length
+            ? this.song.sections[this._songIdx] : null;
+        const glide = prev
+            ? transitionIntensity (prev, this.song.sections[i]) * 0.18 : 0;
+
         this._songIdx = i;
         const sec = this.songCompiled[i];
         const track = this.song.sections[i].track;
         if (this.clock) this.clock.bpm = sec.params.bpm;
         if (!this.rack) return;
-        this.rack.apply (sec.params);
+        this.rack.apply (sec.params, undefined, glide);
         const caveKey = track.preset.CAVE + ':' + track.variation.CAVE;
         if (caveKey !== this._caveApplied) {
             this.rack.applyCavePreset (PRESETS.CAVE[track.preset.CAVE], track.variation.CAVE);

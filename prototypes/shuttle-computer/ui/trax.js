@@ -805,7 +805,9 @@ export function mountTrax (root, inst, opts) {
                     const loc = SONG.sectionAtStep (song, shown % total);
                     setPlayingSec (loc.index);
                     const sec = song.sections[loc.index];
-                    const patStep = loc.stepInSection % TOTAL_STEPS;
+                    // Same fill-bar remap the scheduler uses, so the grid
+                    // lights the bar that is actually sounding.
+                    const patStep = SONG.patternStepFor (sec, loc.stepInSection);
                     const bar = Math.floor (patStep / STEPS);
                     const s = patStep % STEPS;
                     // The grid is the SELECTED section's editor — only show the

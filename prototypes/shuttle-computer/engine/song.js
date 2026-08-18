@@ -19,8 +19,8 @@
 
 import { cloneTrack, trackId, defaultTrack } from './track.js';
 import { classify } from './classifier.js';
-import { fnv1a32 } from './prng.js';
-import { STEPS } from './patterns.js';
+import { fnv1a32, DIAL_ORDER } from './prng.js';
+import { STEPS, BARS, FULL_FILL_BAR } from './patterns.js';
 
 export const SECTION_MIN_BARS = 1;
 export const SECTION_MAX_BARS = 16;
@@ -141,6 +141,43 @@ export function sectionAtStep (song, step) {
     }
     return { index: 0, stepInSection: 0, barInSection: 0 };
 }
+
+// ---------------------------------------------------------- transitions ----
+// The section boundary treatment. All of it derives purely from the two
+// adjacent sections, so a printed cassette transitions identically on every
+// machine — same determinism contract as the patterns themselves.
+
+/// Which bar of the generated 4-bar phrase sounds at this bar of the section.
+/// The LAST bar of a section always plays the phrase's fill bar, so every
+/// section hands off with a turnaround, whatever its length. (For 4/8/12/16
+/// bar sections this is a no-op — their last bar lands on the fill bar
+/// naturally.)
+export function patternBarFor (section, barInSection) {
+    if (barInSection === section.bars - 1) return FULL_FILL_BAR;
+    return barInSection % BARS;
+}
+
+export function patternStepFor (section, stepInSection) {
+    const bar = Math.floor (stepInSection / STEPS);
+    return patternBarFor (section, bar) * STEPS + (stepInSection % STEPS);
+}
+
+/// How different two sections sound, 0..1 — distance in dial space, since the
+/// dials carry tempo, timbre and mood. Identical dials = 0 even if the parts
+/// differ (same groove-feel needs no announcement). /8 because ~8 units of
+/// 6-D dial distance is already "different genre".
+export function transitionIntensity (a, b) {
+    let sum = 0;
+    for (const k of DIAL_ORDER) {
+        const d = a.track.dials[k] - b.track.dials[k];
+        sum += d * d;
+    }
+    return Math.min (1, Math.sqrt (sum) / 8);
+}
+
+/// Below this, sections just hand off on the fill; at or above it, the riser
+/// announces the change and the impact lands the arrival.
+export const TRANSITION_FX_MIN = 0.25;
 
 // ------------------------------------------------------------ genre mix ----
 

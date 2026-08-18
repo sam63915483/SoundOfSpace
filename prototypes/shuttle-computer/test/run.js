@@ -597,6 +597,30 @@ test ('a song never loses its last section and clamps bars', () => {
     eq (SONGMOD.setSectionBars (s, 0, 0).sections[0].bars, SONGMOD.SECTION_MIN_BARS);
 });
 
+test ('the last bar of a section always plays the fill bar', () => {
+    const five = SONGMOD.makeSection (T (), 5);
+    eq (SONGMOD.patternBarFor (five, 4), FULL_FILL_BAR, 'last bar of 5 must remap to the fill');
+    eq (SONGMOD.patternBarFor (five, 1), 1, 'inner bars are untouched');
+    const four = SONGMOD.makeSection (T (), 4);
+    eq (SONGMOD.patternBarFor (four, 3), FULL_FILL_BAR, '4-bar sections land on it naturally');
+    eq (SONGMOD.patternStepFor (five, 4 * STEPS + 5), FULL_FILL_BAR * STEPS + 5,
+        'step remap keeps the position within the bar');
+});
+
+test ('transition intensity is zero for identical sections and grows with distance', () => {
+    const a = SONGMOD.makeSection (T (), 4);
+    eq (SONGMOD.transitionIntensity (a, a), 0);
+    const near = SONGMOD.makeSection (Object.assign (TRACK.cloneTrack (T ()),
+        { dials: dialsOf ({ pulse: 5.5 }) }), 4);
+    const far = SONGMOD.makeSection (Object.assign (TRACK.cloneTrack (T ()),
+        { dials: dialsOf ({ pulse: 10, crunch: 9 }) }), 4);
+    assert (SONGMOD.transitionIntensity (a, near) < SONGMOD.TRANSITION_FX_MIN,
+            'a hair of dial movement must not trigger boundary FX');
+    assert (SONGMOD.transitionIntensity (a, far) >= SONGMOD.TRANSITION_FX_MIN,
+            'a genre jump must trigger boundary FX');
+    assert (SONGMOD.transitionIntensity (a, far) <= 1, 'clamped to 1');
+});
+
 test ('coerceSong salvages what it can and rejects garbage', () => {
     const ct = (raw) => TRACK.defaultTrack ();
     eq (SONGMOD.coerceSong (null, ct), null);
