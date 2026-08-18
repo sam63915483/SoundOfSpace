@@ -119,7 +119,7 @@ public class TraxTapePlayer : MonoBehaviour
         }
         p._engine.SetSpatial(false);
         p._printId = printId;
-        p.Play(rec.track, 0f);          // 0 = loop until told otherwise
+        p.PlayRecord(rec, 0f);          // 0 = loop until told otherwise
         return true;
     }
 
@@ -141,6 +141,44 @@ public class TraxTapePlayer : MonoBehaviour
     public static void StopAll() { if (Instance != null) Instance.Stop(); }
 
     string _printId;
+
+    /// <summary>
+    /// Play a PRESSED TAPE — the whole song, section hand-offs, fill-bar
+    /// endings and all, looping. Every pressing routes through here (the
+    /// walkman and the sell-table listen both come via TogglePersonal), so a
+    /// full-length tape actually PLAYS full-length — the audio-form
+    /// promise/grade match. A demo is a one-section song, which also gives
+    /// demos their whole-section playback (bars included). Raw-track callers
+    /// (plugin demos) keep Play(track, seconds).
+    /// </summary>
+    public void PlayRecord(TraxPrints.Record rec, float seconds)
+    {
+        if (rec == null || rec.song == null || _engine == null) return;
+        StopAutoStop();
+
+        TraxSong song = rec.song;
+        int n = song.sections.Count;
+        var ps = new TraxParams[n];
+        var phrases = new TraxPhrase[n];
+        var tracks = new TraxTrack[n];
+        var bars = new int[n];
+        for (int i = 0; i < n; i++)
+        {
+            // Same compile the arranger does (TraxInstrument.SetSong): the
+            // engine owns per-section actives and CAVE, so a tape sounds
+            // identical here and on the computer.
+            TraxSection sec = song.sections[i];
+            ps[i] = TraxParams.Compute(sec.track.dials, sec.track.key);
+            phrases[i] = TraxPhrase.Generate(sec.track, ps[i]);
+            tracks[i] = sec.track;
+            bars[i] = sec.bars;
+        }
+        Current = song.sections[0].track.Clone();
+        _engine.PublishSong(ps, phrases, tracks, bars);
+        _engine.SeekSong(0);
+        _engine.StartSongTransport();
+        if (seconds > 0f) _autoStop = StartCoroutine(StopAfter(seconds));
+    }
 
     public void Play(TraxTrack track, float seconds)
     {
