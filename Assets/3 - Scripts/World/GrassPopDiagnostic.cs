@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -141,6 +142,8 @@ public class GrassPopDiagnostic : MonoBehaviour
         "grass depth PRE-PASS off",
         "sun SHADOWS off",
         "NON-SUN directional lights off",
+        "ALL camera image effects off",
+        "CAVE cutout off",
     };
 
     /// How many objects the CURRENT step actually touched. Shown in the panel:
@@ -178,6 +181,8 @@ public class GrassPopDiagnostic : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Keypad2)) { _bisect = _bisect == 2 ? 0 : 2; changed = true; }
         if (Input.GetKeyDown(KeyCode.Keypad3)) { _bisect = _bisect == 3 ? 0 : 3; changed = true; }
         if (Input.GetKeyDown(KeyCode.Keypad4)) { _bisect = _bisect == 4 ? 0 : 4; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad5)) { _bisect = _bisect == 5 ? 0 : 5; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad6)) { _bisect = _bisect == 6 ? 0 : 6; changed = true; }
         if (!changed) return;
 
         // Always restore everything, then disable exactly one — so the state can
@@ -189,6 +194,8 @@ public class GrassPopDiagnostic : MonoBehaviour
         InstancedGrassRenderer.DepthPrePassEnabled = _bisect != 2;
         int suns = ApplySunShadows(_bisect != 3);
         int dirs = ApplyExtraDirectionals(_bisect != 4);
+        int fx = ApplyAllImageEffects(_bisect != 5);
+        CaveOceanCutout.CutoutEnabled = _bisect != 6;
 
         switch (_bisect)
         {
@@ -199,6 +206,8 @@ public class GrassPopDiagnostic : MonoBehaviour
             case 3: _affected = suns; _affectedNote = suns > 0
                         ? "sun shadows -> None" : "NO SunShadowCaster light FOUND"; break;
             case 4: _affected = dirs; _affectedNote = $"{dirs} non-sun directional light(s)"; break;
+            case 5: _affected = fx; _affectedNote = fx > 0 ? _imgFxNames : "NO image-effect components on Camera.main"; break;
+            case 6: _affected = 1; _affectedNote = "_NumCaveCapsules forced to 0"; break;
         }
 
         Log($"BISECT -> {BisectNames[_bisect]}  [affected {_affected}: {_affectedNote}]");
@@ -248,6 +257,39 @@ public class GrassPopDiagnostic : MonoBehaviour
         return _extraDir.Count;
     }
 
+    string _imgFxNames = "";
+
+    /// EVERY component on the main camera that implements OnRenderImage.
+    ///
+    /// ⚠️ "ATMOSPHERE OFF" IS NOT "POST OFF". Disabling CustomPostProcessing
+    /// only removes the atmosphere and ocean; this project has ten separate
+    /// image-effect components (BlackHoleVignetteEffect,
+    /// ChromaticAberrationEffect, GrogginessImageEffect, RadialMotionBlurEffect,
+    /// UnderwaterImageEffect, FXAATest, HelmetBezelKit, CameraEffectsManager,
+    /// PortalManager...) which run AFTER it and any of which can tint the whole
+    /// screen. Several are position- or depth-driven. Found by reflection so the
+    /// list can never go stale as effects are added.
+    int ApplyAllImageEffects(bool on)
+    {
+        var cam = Camera.main;
+        if (cam == null) { _imgFxNames = "no Camera.main"; return 0; }
+        var sb = new StringBuilder();
+        int n = 0;
+        foreach (var mb in cam.GetComponents<MonoBehaviour>())
+        {
+            if (mb == null) continue;
+            var t = mb.GetType();
+            if (t.GetMethod("OnRenderImage", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public) == null)
+                continue;
+            mb.enabled = on;
+            n++;
+            if (sb.Length > 0) sb.Append(", ");
+            sb.Append(t.Name);
+        }
+        _imgFxNames = sb.ToString();
+        return n;
+    }
+
     /// Put everything back if the watcher is closed mid-test, so a disabled
     /// system can never be left off and mistaken for a real change later.
     void RestoreAll()
@@ -257,6 +299,8 @@ public class GrassPopDiagnostic : MonoBehaviour
         InstancedGrassRenderer.DepthPrePassEnabled = true;
         ApplySunShadows(true);
         ApplyExtraDirectionals(true);
+        ApplyAllImageEffects(true);
+        CaveOceanCutout.CutoutEnabled = true;
     }
 
     void Log(string msg)

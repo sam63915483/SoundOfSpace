@@ -37,6 +37,13 @@ public class CaveOceanCutout : MonoBehaviour
     /// Must match MAX_CAVE_CAPSULES in OceanEffect.shader.
     public const int MaxCapsules = 32;
 
+    /// <summary>Bisect switch for GrassPopDiagnostic. False publishes zero
+    /// capsules, which CLAUDE.md documents as making both cave-aware shaders
+    /// behave EXACTLY as they did before the cave feature existed — so it is a
+    /// complete, zero-risk test of "is the cave cutout involved?" without
+    /// deleting anything.</summary>
+    public static bool CutoutEnabled = true;
+
     static readonly int NumId = Shader.PropertyToID("_NumCaveCapsules");
     static readonly int AId = Shader.PropertyToID("_CaveCapsuleA");
     static readonly int BId = Shader.PropertyToID("_CaveCapsuleB");
@@ -102,7 +109,7 @@ public class CaveOceanCutout : MonoBehaviour
 
         Shader.SetGlobalVectorArray(AId, _a);
         Shader.SetGlobalVectorArray(BId, _b);
-        Shader.SetGlobalInt(NumId, n);
+        Shader.SetGlobalInt(NumId, CutoutEnabled ? n : 0);
 
         if (n >= MaxCapsules && _lastCount < MaxCapsules)
             Debug.LogWarning($"[CaveOceanCutout] Hit the {MaxCapsules}-capsule limit — " +
