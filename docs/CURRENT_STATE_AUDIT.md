@@ -934,3 +934,41 @@ body of this audit. As of 2026-08-18 the goods model has THREE axes:
 
 Spec: `docs/superpowers/specs/2026-08-18-tape-formats-design.md`. Plan:
 `docs/superpowers/plans/2026-08-18-tape-formats.md`.
+
+## ADDENDUM 2026-08-22 - Village house doors (openable)
+
+The ten LowPolyFantasyVillage buildings under
+`Humble Abode/TOWN-VILLAGE` (House_01 x3, House_02/03/05/06/07, Mill_01 x2)
+now have doors you can open with **F** and walk through.
+
+- **`VillageDoor`** (`World/VillageDoor.cs`) subclasses `Interactable`, so the
+  prompt, gaze gate and controller-X parity are inherited; it adds only the
+  swing. Rotates the leaf about its **local Y**, which is orientation-agnostic
+  and therefore correct on a sphere. The leaf swings **away from whoever opened
+  it** (`swingRule` can force a direction per instance if a door ever clips its
+  frame).
+- **The pack was already rigged for this.** Both leaf meshes (`Door1_02`,
+  `Door2_02`) run from local x = 0 out to x ~ 1.10 with handles at x = 0.946 —
+  the pivot is on the hinge edge. House bodies ray-test as real ~0.9 x 1.9 m
+  doorway holes with 8 cm solid walls and non-convex colliders, so interiors
+  are enterable and render. There is an upper floor at y ~ 2.6 m and no stairs.
+- ⚠️ **The ghost-door trap.** `MeshCombineTool` used to bake the door leaves
+  into `__CombinedMeshes` and disable their own MeshRenderers, so a door swung
+  its COLLIDER open while a welded copy stayed rendered shut. The tool now
+  skips anything with a `VillageDoor` or a `DoorPart*` name (alongside the
+  existing `_Placed` rule). A scene combined before that rule needs
+  **Tools ▸ Optimize ▸ Un-bake Village Doors** (`Editor/VillageDoorSetup.cs`)
+  run once: it stamps the shared `DoorPart_01/02` prefabs, then reverts and
+  re-combines **only** clusters containing a door. `VillageDoor.Start` detects
+  the baked state and names that command in a warning.
+- **`VillageDoorSync`** (`Multiplayer/VillageDoorSync.cs`) replicates doors in
+  co-op. Absolute open/closed on the wire, never a toggle, so a duplicated
+  message cannot invert a door; the presser swings immediately and the host's
+  broadcast corrects. A full snapshot every ~2 s (and on join) covers late
+  joiners and dropped packets, and yields to a local press for 1.5 s so an
+  in-flight request is never stomped. Auto-singleton that deliberately does not
+  skip MainMenu — the trap-#1 dodge `WorldSync`/`StorageSync`/`EnemySync` use,
+  so no `EnsureGameplaySingletons` entry is needed.
+- **Not saved.** Doors reset closed on load; `SaveCollector` is untouched.
+
+Spec: `docs/superpowers/specs/2026-08-22-village-doors-design.md`.
