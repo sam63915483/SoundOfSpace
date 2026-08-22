@@ -32,7 +32,7 @@ Shader "CartoonGrass/SimpleGrass"
         _LanternGrassTail ("Lantern grass far-reach tail", Range(0, 1)) = 0.35
         _SunFillResponse ("Sunrise/sunset sun fill on grass", Range(0, 2)) = 1.0
         _TerminatorGlow ("Sunset backlight on grass", Range(0, 1)) = 0.5
-        _TipSunlight ("Sunset tip shadow-lift", Range(0, 1)) = 0.85
+        _TipSunlight ("Sunset tip shadow-lift (fights real shadows - keep low)", Range(0, 1)) = 0.35
     }
     SubShader
     {
@@ -147,7 +147,24 @@ Shader "CartoonGrass/SimpleGrass"
             // the ground's shadow → dark-base/lit-tip gradient instead of whole
             // patches of grass snapping black as terrain shadows sweep at sunset.
             // Zero at noon, so tree/NPC shadows on grass stay exactly as tuned.
-            lit = max(lit, s.Gloss * _TipSunlight);
+            //
+            // ⚠️ "Zero at noon" was not nearly strict enough. s.Gloss's own
+            // window (lowSun) only closes around 20° of sun elevation, and this
+            // term is the one thing here that fights a REAL shadow — so between
+            // the horizon and 20° a tree, NPC or house shadow was being lifted
+            // to ~70% of full sunlight and the grass under it read as barely
+            // shaded at all. The justification only ever held NEAR a shadow
+            // EDGE (a 30 cm blade clears a 5°-sun ground shadow ~3.4 m past it);
+            // deep inside a tree's shadow the tip clears nothing, and this term
+            // cannot tell the two apart. So keep it, but small and confined to
+            // genuinely grazing sun: gone by ~10° instead of ~20°, and at a
+            // third of the strength. Above that, shadowed grass falls back to
+            // _ShadowFill — exactly the tuned look from before this existed.
+            //
+            // Deliberately a SEPARATE window from s.Gloss's, so the sunset
+            // backlight (_TerminatorGlow, which shares s.Gloss) is untouched.
+            half tipWindow = smoothstep(0.18, 0.04, s.Specular);
+            lit = max(lit, s.Gloss * _TipSunlight * tipWindow);
             half4 c;
             c.rgb = s.Albedo * _LightColor0.rgb * (wrapped * lit);
             c.a = s.Alpha;
