@@ -974,27 +974,52 @@ now have doors you can open with **F** and walk through.
 ### Window glass through the atmosphere (fixed 2026-08-22)
 
 Once you could get *inside* a house, the windows showed a world with no
-atmosphere and no ocean. Root cause was **not** the glass shader:
+atmosphere: **by day the sky was dark through the glass** (the blue IS the
+post-process — there is no blue skybox behind it), and **by night the ground and
+trees looked grey and lit** through the glass while being black outside.
 
-`MeshCombineTool.CombineOneRoot` forced `shadowCastingMode = On` on every
-combined output, discarding what the sources authored. The pack authors the
-village panes **Cast Shadows = Off** on purpose, because Built-in RP builds
-`_CameraDepthTexture` from the ShadowCaster pass of renderers at queue <= 2500
-and skips any with casting off. `AtmosphereGlass.shader` bakes the panes to
-queue 2450, so once the bake forced casting on, each pane wrote depth about a
-centimetre from the camera — and `Atmosphere.shader` / `OceanEffect.shader`
-(both `[ImageEffectOpaque]`, both sampling that texture) computed ~zero
-thickness for every window pixel.
+Root cause: `Atmosphere.shader` does
 
-The shuttle's windows were unaffected because `Shuttle_PodGlass.mat` sits at
-queue 3000 (excluded by queue, not by shadow mode) and the ship is skipped by
-`IsProtectedCluster` anyway. `StasisPodGlass.shader`'s header documents the same
-symptom from the other direction.
+    dstToSurface         = min(sceneDepth, dstToOcean);
+    dstThroughAtmosphere = min(hitInfo.y, dstToSurface - dstToAtmosphere);
+    if (dstThroughAtmosphere > 0) { ...scatter... }   // else originalCol, untouched
+    ...
+    reflectedLight = originalCol * reflectedLightStrength;   // the night darkening
 
-Fix: the combine now groups by **material AND shadow mode** and preserves the
-authored mode. **Tools ▸ Optimize ▸ Re-bake Clusters With Lost Shadow Settings**
-repairs clusters baked before that (it detects them by finding disabled source
-renderers whose mode isn't On). Costs no extra draw calls here — panes and walls
-already differ by material.
+A glass pane at queue <= 2500 lands in `_CameraDepthTexture` at arm's length, so
+`sceneDepth ~ 0` for every window pixel, the branch is skipped, and the pixel
+keeps its RAW colour. That single fact explains both symptoms — including the
+night one, because the post is also what multiplies the night side down to
+black.
+
+`AtmosphereGlass.shader` deliberately bakes glass to queue 2450 so the composite
+paints the pane itself (it fixed windows "glowing" at night seen from OUTSIDE).
+That premise is correct for a pane you look AT and wrong for one you look
+THROUGH.
+
+**Two fixes were tried; only the second worked:**
+
+1. ✗ *Preserve `Cast Shadows = Off` through the mesh combine.* `MeshCombineTool`
+   was forcing `shadowCastingMode = On` on all combined output, discarding what
+   sources authored. Fixing that was a real bug fix — it also restored the
+   lantern flame glows — but it did **not** fix the windows. `ZWrite Off` and
+   `Cast Shadows = Off` do not keep a queue-2450 pane out of the depth texture.
+2. ✓ *Queue 3000.* `Custom/WindowGlass` — a copy of `AtmosphereGlass` with
+   `Queue"="Transparent"` and nothing else changed — now backs
+   `FantasyVillage_Glass.mat`. It draws after the composite and tints the
+   finished planet image. This matches the only two panes in the project that
+   already behaved correctly: `Shuttle_PodGlass.mat` (queue 3000) and
+   `StasisPodGlass.shader`, whose header records the identical finding.
+
+`AtmosphereGlass` is untouched and still backs `M_SpaceNet_Mesh.mat`.
+
+Trade-off accepted: at queue 3000 the pane is no longer tinted by the
+atmosphere, so at night it reads as a faint tint rather than going dark with the
+walls — exactly how the shuttle's windows already behave. Lower the material's
+`_Color` alpha (currently 0.27) if it reads too strongly.
+
+The combine tool's shadow-mode fix was kept: it groups by **material AND shadow
+mode** now, and **Tools ▸ Optimize ▸ Re-bake Clusters With Lost Shadow
+Settings** repairs clusters baked before it.
 
 Spec: `docs/superpowers/specs/2026-08-22-village-doors-design.md`.
