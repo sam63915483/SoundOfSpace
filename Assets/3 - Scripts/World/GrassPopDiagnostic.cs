@@ -144,6 +144,9 @@ public class GrassPopDiagnostic : MonoBehaviour
         "NON-SUN directional lights off",
         "ALL camera image effects off",
         "CAVE cutout off",
+        "grass SUN FILL off (unshadowed emission)",
+        "grass SHADOW LIFTS off (tip/terminator/fill)",
+        "grass AMBIENT+LANTERN emission off",
     };
 
     /// How many objects the CURRENT step actually touched. Shown in the panel:
@@ -183,6 +186,9 @@ public class GrassPopDiagnostic : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.Keypad4)) { _bisect = _bisect == 4 ? 0 : 4; changed = true; }
         if (Input.GetKeyDown(KeyCode.Keypad5)) { _bisect = _bisect == 5 ? 0 : 5; changed = true; }
         if (Input.GetKeyDown(KeyCode.Keypad6)) { _bisect = _bisect == 6 ? 0 : 6; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad7)) { _bisect = _bisect == 7 ? 0 : 7; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad8)) { _bisect = _bisect == 8 ? 0 : 8; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad9)) { _bisect = _bisect == 9 ? 0 : 9; changed = true; }
         if (!changed) return;
 
         // Always restore everything, then disable exactly one — so the state can
@@ -196,6 +202,7 @@ public class GrassPopDiagnostic : MonoBehaviour
         int dirs = ApplyExtraDirectionals(_bisect != 4);
         int fx = ApplyAllImageEffects(_bisect != 5);
         CaveOceanCutout.CutoutEnabled = _bisect != 6;
+        int mats = ApplyGrassTerms();
 
         switch (_bisect)
         {
@@ -208,6 +215,11 @@ public class GrassPopDiagnostic : MonoBehaviour
             case 4: _affected = dirs; _affectedNote = $"{dirs} non-sun directional light(s)"; break;
             case 5: _affected = fx; _affectedNote = fx > 0 ? _imgFxNames : "NO image-effect components on Camera.main"; break;
             case 6: _affected = 1; _affectedNote = "_NumCaveCapsules forced to 0"; break;
+            case 7: _affected = mats; _affectedNote = mats > 0 ? "_SunFillResponse = 0" : "NO grass material"; break;
+            case 8: _affected = mats; _affectedNote = mats > 0
+                        ? "_TipSunlight / _TerminatorGlow / _ShadowFill = 0" : "NO grass material"; break;
+            case 9: _affected = mats; _affectedNote = mats > 0
+                        ? "_AmbientBoost / _PointLightBoost = 0" : "NO grass material"; break;
         }
 
         Log($"BISECT -> {BisectNames[_bisect]}  [affected {_affected}: {_affectedNote}]");
@@ -259,6 +271,68 @@ public class GrassPopDiagnostic : MonoBehaviour
 
     string _imgFxNames = "";
 
+    // ── grass shading terms that ADD LIGHT REGARDLESS OF SHADOW ─────────────
+    //
+    // Sam, after every system-level test came back negative: "when the grass is
+    // in its brighter state, that's what's making the grass in the shadows of
+    // trees and buildings look brighter than it should; in the dimmer state the
+    // shadows look normal."
+    //
+    // That is a much sharper clue than "it gets brighter". Shadowed grass can
+    // only be lifted by terms that do not respect `atten`, and CG_SimpleGrass
+    // has exactly three families of them — none of which any previous step
+    // could disable, because they are inside the grass's own base pass:
+    //
+    //   [7] the faked SUN FILL. Added as o.Emission, so it ignores shadows
+    //       completely, and it is gated by (1 - dayFactor) — i.e. it ramps UP
+    //       at low sun. Prime suspect: it brightens shadowed grass by design.
+    //   [8] the SHADOW LIFTS — _TipSunlight, _TerminatorGlow and _ShadowFill
+    //       exist precisely to raise light in shadow.
+    //   [9] the ambient/lantern EMISSION floor.
+    //
+    // Zeroing one at a time says which family carries the difference.
+    static readonly string[] GrassFloatNames =
+        { "_SunFillResponse", "_TipSunlight", "_TerminatorGlow", "_ShadowFill", "_AmbientBoost", "_PointLightBoost" };
+    readonly Dictionary<string, float> _grassOriginals = new Dictionary<string, float>();
+
+    int ApplyGrassTerms()
+    {
+        var m = _grass != null ? _grass.grassMaterial : null;
+        if (m == null) return 0;
+
+        // Capture authored values ONCE. In the editor a play-mode SetFloat on a
+        // shared material asset PERSISTS into the asset, so these must always be
+        // put back (RestoreAll, and on every step change).
+        if (_grassOriginals.Count == 0)
+            foreach (var n in GrassFloatNames)
+                if (m.HasProperty(n)) _grassOriginals[n] = m.GetFloat(n);
+
+        foreach (var kv in _grassOriginals) m.SetFloat(kv.Key, kv.Value);   // restore all first
+
+        switch (_bisect)
+        {
+            case 7:
+                Zero(m, "_SunFillResponse");
+                break;
+            case 8:
+                Zero(m, "_TipSunlight"); Zero(m, "_TerminatorGlow"); Zero(m, "_ShadowFill");
+                break;
+            case 9:
+                Zero(m, "_AmbientBoost"); Zero(m, "_PointLightBoost");
+                break;
+        }
+        return 1;
+    }
+
+    static void Zero(Material m, string prop) { if (m.HasProperty(prop)) m.SetFloat(prop, 0f); }
+
+    void RestoreGrassTerms()
+    {
+        var m = _grass != null ? _grass.grassMaterial : null;
+        if (m == null) return;
+        foreach (var kv in _grassOriginals) m.SetFloat(kv.Key, kv.Value);
+    }
+
     /// EVERY component on the main camera that implements OnRenderImage.
     ///
     /// ⚠️ "ATMOSPHERE OFF" IS NOT "POST OFF". Disabling CustomPostProcessing
@@ -301,6 +375,7 @@ public class GrassPopDiagnostic : MonoBehaviour
         ApplyExtraDirectionals(true);
         ApplyAllImageEffects(true);
         CaveOceanCutout.CutoutEnabled = true;
+        RestoreGrassTerms();
     }
 
     void Log(string msg)
