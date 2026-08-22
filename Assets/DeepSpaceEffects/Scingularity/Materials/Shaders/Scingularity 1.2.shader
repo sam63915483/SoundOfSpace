@@ -21,7 +21,7 @@ Properties {
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
 	[HideInInspector] _OceanRadius("Ocean Radius (driven by SpaceDustField)", Float) = 0
-	_WaterOpacityDist("Water opacity distance (metres of sea for ~63% absorption)", Float) = 80
+	_WaterOpacityDist("Water opacity distance (metres of sea for ~63% absorption)", Float) = 30
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -60,7 +60,7 @@ SubShader {
 		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
 		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
 		uniform float _OceanRadius;   // 0 = no ocean nearby / disabled
-		uniform float _WaterOpacityDist; // Beer-Lambert length for looking THROUGH the sea. Bigger = softer edge but more see-through; smaller = opaque sooner but a tighter gradient.
+		uniform float _WaterOpacityDist; // Beer-Lambert length for looking THROUGH the sea. Owns the DEPTHS; the Fresnel term below owns the horizon. Bigger = more see-through into deep water.
 		uniform sampler2D_float _CameraDepthTexture;
 
 		struct vertexOutput {
@@ -284,10 +284,29 @@ SubShader {
 					float closest2 = oc2 - bproj * bproj;
 					if(bproj > 0 && closest2 < rr){
 						float halfChord = sqrt(rr - closest2);
-						float tEnter = max(bproj - halfChord, 0.0);
-						float tExit  = min(bproj + halfChord, (float)viewDistance);
-						float chord  = max(tExit - tEnter, 0.0);
-						result.a *= exp(-chord / max(1.0, _WaterOpacityDist));
+						// Camera is outside the sphere and the black hole is
+						// always far beyond a planet, so the whole chord lies
+						// between the two. (Deliberately not clamped against
+						// viewDistance — that is a `half`, and at solar-system
+						// range it saturates.)
+						float chord = 2.0 * halfChord;
+
+						// ── Fresnel at the entry point ───────────────────────
+						// Beer-Lambert alone CANNOT hide the horizon: the chord
+						// goes to zero at the tangent, so the sliver right on the
+						// waterline stays fully lit no matter how opaque you make
+						// the water. That is the bug — and it is also physically
+						// backwards, because a grazing water surface is a MIRROR,
+						// not a window. Reflectance climbs to ~100% exactly where
+						// the chord vanishes, so the two terms cover for each
+						// other perfectly: Fresnel owns the horizon, absorption
+						// owns the depths.
+						float3 entry = _WorldSpaceCameraPos + viewDirection * (bproj - halfChord);
+						float3 nrm   = normalize(entry - _OceanCenter);
+						float cosT   = saturate(dot(-viewDirection, nrm));
+						float f      = 1.0 - cosT;
+						float fres   = 0.02 + 0.98 * (f*f*f*f*f);   // Schlick, R0 = 0.02 for water
+						result.a *= (1.0 - fres) * exp(-chord / max(1.0, _WaterOpacityDist));
 					}
 				}
 			}
