@@ -28,6 +28,12 @@ public class CompassHUD : MonoBehaviour
     [Tooltip("Top margin from the screen top edge.")]
     public float topMargin = 32f;
 
+    /// Vertical gap between the heading badge and the strip, in unscaled
+    /// reference units. Scales with the rest of the stack.
+    const float kStackGap = 4f;
+    /// Breathing room left inside the painted glass, top and bottom.
+    const float kHousingPad = 3f;
+
     [Header("Bearing")]
     [Tooltip("Half-angle (degrees) of the visible compass field. ±90° = 180° total. Waypoints outside this range clamp to the edges.")]
     public float visibleHalfAngle = 90f;
@@ -399,21 +405,42 @@ public class CompassHUD : MonoBehaviour
     public void SeatInArtHousing(HelmetOverlayHUD.HousingRect h)
     {
         if (_strip == null || _badgeRT == null) return;
-        float cs = h.contentScale;
-        stripWidth = Mathf.Min(612f, h.sizeRef.x - 44f);   // clear of the glass' rounded ends
+
+        // ── Fit the badge + strip into the glass as ONE stack ──────────────
+        //
+        // These used to be pinned independently — badge hung down from the top
+        // edge, strip sat up from the bottom edge — and nothing checked that
+        // they still cleared each other. They didn't: at browContentScale 0.7 x
+        // CompassScaleMul 1.8 the content needs 82.6 reference units of housing
+        // and the painted brow glass is 64.8, so the badge ended up 70% buried
+        // in the strip. The strip was overflowing the glass horizontally too
+        // (612 x 1.26 = 771 wide in a 731-wide housing).
+        //
+        // Measuring the stack and scaling it to fit makes overlap impossible at
+        // ANY scale, so the same bug can't come back by turning a knob up.
+        float badgeH = _badgeRT.sizeDelta.y;
+        float stackUnscaled = badgeH + kStackGap + stripHeight;
+        float availH = h.sizeRef.y - kHousingPad * 2f;
+        float cs = Mathf.Min(h.contentScale, availH / Mathf.Max(1f, stackUnscaled));
+
+        // Width picked so the SCALED strip still clears the glass' rounded ends.
+        stripWidth = Mathf.Min(612f, (h.sizeRef.x - 44f) / Mathf.Max(0.01f, cs));
+
         _strip.anchorMin = _strip.anchorMax = h.anchorFrac;
         _strip.pivot = new Vector2(0.5f, 0.5f);
         _strip.sizeDelta = new Vector2(stripWidth, stripHeight);
         _strip.localScale = new Vector3(cs, cs, 1f);
-        _badgeRT.localScale = new Vector3(cs, cs, 1f);
-        // Strip rides the lower half of the glass; the heading badge tucks
-        // into the upper half so the WHOLE instrument lives inside the glass
-        // (the badge used to dangle below onto the brow padding).
-        // contentOffset = the browContentOffset nudge, moving both together.
-        _strip.anchoredPosition = new Vector2(0f, -(h.sizeRef.y * 0.5f - stripHeight * cs * 0.5f - 9f)) + h.contentOffset;
         _badgeRT.anchorMin = _badgeRT.anchorMax = h.anchorFrac;
         _badgeRT.pivot = new Vector2(0.5f, 1f);
-        _badgeRT.anchoredPosition = new Vector2(0f, h.sizeRef.y * 0.5f - 3f) + h.contentOffset;
+        _badgeRT.localScale = new Vector3(cs, cs, 1f);
+
+        // Centre the stack in the glass: badge on top (top pivot, so it grows
+        // downward), strip below it. contentOffset = the browContentOffset
+        // nudge, moving both together.
+        float stackTop = stackUnscaled * cs * 0.5f;
+        _badgeRT.anchoredPosition = new Vector2(0f, stackTop) + h.contentOffset;
+        _strip.anchoredPosition =
+            new Vector2(0f, stackTop - (badgeH + kStackGap) * cs - stripHeight * cs * 0.5f) + h.contentOffset;
         SetImageEnabled(_strip, false);
         var top = _strip.Find("TopSheen");
         if (top != null) SetImageEnabled(top, false);
