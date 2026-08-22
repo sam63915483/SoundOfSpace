@@ -140,7 +140,7 @@ public class GrassPopDiagnostic : MonoBehaviour
         "atmosphere/ocean POST off",
         "grass depth PRE-PASS off",
         "sun SHADOWS off",
-        "GRASS off",
+        "NON-SUN directional lights off",
     };
 
     void Bisect()
@@ -170,9 +170,38 @@ public class GrassPopDiagnostic : MonoBehaviour
         if (_post != null) _post.enabled = _bisect != 1;
         InstancedGrassRenderer.DepthPrePassEnabled = _bisect != 2;
         if (_sunDir != null) _sunDir.shadows = _bisect == 3 ? LightShadows.None : _sunShadowsOriginal;
-        if (_grass != null) _grass.enabled = _bisect != 4;
+        ApplyExtraDirectionals(_bisect != 4);
 
         Log($"BISECT -> {BisectNames[_bisect]}");
+    }
+
+    /// Every DIRECTIONAL light that is NOT the sun shadow caster.
+    ///
+    /// ⚠️ THIS SCENE HAS TWO: "Sun Shadow Caster" (intensity 1.0) and
+    /// "AstronautReflectLight" (intensity 1.3 — BRIGHTER), both RenderMode Auto.
+    /// In forward rendering only ONE directional gets the BASE PASS, and
+    /// DrawMeshInstanced grass never receives the ForwardAdd pass (the whole
+    /// reason every other light in CG_SimpleGrass is faked by hand). So the
+    /// grass is lit by whichever directional wins that slot — and the shader
+    /// reads _WorldSpaceLightPos0 as "the sun" to derive the day factor, the
+    /// wrap floor, the terminator glow and the tip shadow-lift.
+    ///
+    /// If that pick ever flips, every blade changes brightness AND hue at once,
+    /// it survives shadows-off and post-off, and it shows up in NO uniform the
+    /// watcher samples — which is exactly the reported bug and exactly why the
+    /// watcher came back clean.
+    readonly List<Light> _extraDir = new List<Light>();
+
+    void ApplyExtraDirectionals(bool on)
+    {
+        _extraDir.Clear();
+        foreach (var l in FindObjectsOfType<Light>())
+        {
+            if (l == null || l.type != LightType.Directional) continue;
+            if (_sunDir != null && l == _sunDir) continue;
+            _extraDir.Add(l);
+            l.enabled = on;
+        }
     }
 
     /// Put everything back if the watcher is closed mid-test, so a disabled
@@ -183,7 +212,7 @@ public class GrassPopDiagnostic : MonoBehaviour
         if (_post != null) _post.enabled = true;
         InstancedGrassRenderer.DepthPrePassEnabled = true;
         if (_sunDir != null && _capturedSunShadows) _sunDir.shadows = _sunShadowsOriginal;
-        if (_grass != null) _grass.enabled = true;
+        ApplyExtraDirectionals(true);
     }
 
     void Log(string msg)
@@ -234,6 +263,23 @@ public class GrassPopDiagnostic : MonoBehaviour
             Put("sun/cullingMask", _sunDir.cullingMask.ToString("X"));
             Put("sun/fwdRot", Fmt(_sunDir.transform.forward));
         }
+
+        // EVERY directional light, not just the sun caster. Only one of them can
+        // hold the forward BASE PASS, which is the only light instanced grass
+        // ever sees, so a change here repaints the entire field.
+        int dirCount = 0;
+        var sb2 = new StringBuilder();
+        foreach (var l in FindObjectsOfType<Light>())
+        {
+            if (l == null || l.type != LightType.Directional) continue;
+            dirCount++;
+            if (sb2.Length > 0) sb2.Append(" | ");
+            sb2.Append(l.name).Append(l.enabled ? "=on" : "=OFF")
+               .Append(' ').Append(l.intensity.ToString("0.##"))
+               .Append(' ').Append(l.renderMode);
+        }
+        Put("directional/count", dirCount.ToString());
+        Put("directional/all", sb2.ToString());
 
         // Shadow settings — a cascade/distance change re-fits the whole map.
         Put("quality/shadowDistance", QualitySettings.shadowDistance.ToString("0.#"));
