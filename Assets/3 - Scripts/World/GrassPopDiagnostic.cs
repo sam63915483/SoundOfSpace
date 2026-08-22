@@ -143,9 +143,24 @@ public class GrassPopDiagnostic : MonoBehaviour
         "NON-SUN directional lights off",
     };
 
+    /// How many objects the CURRENT step actually touched. Shown in the panel:
+    /// a step reporting 0 did NOTHING and its result must be thrown away.
+    ///
+    /// ⚠️ THIS EXISTS BECAUSE A STEP SILENTLY DID NOTHING. Step 1 used
+    /// FindObjectOfType<CustomPostProcessing>() — singular. That component
+    /// lives on the PLAYER PREFAB's camera and there are several instances
+    /// alive (player cam, map cam, network players), so the single find
+    /// returned some other camera's chain and toggling it changed nothing on
+    /// screen. Sam spotted it — "turning off the atmosphere doesn't remove the
+    /// atmosphere" — and the whole test result was void.
+    ///
+    /// A bisect step that cannot prove it did something is worse than no test,
+    /// because a false "no change" retires a suspect that was never tried.
+    int _affected;
+    string _affectedNote = "";
+
     void Bisect()
     {
-        if (_post == null) _post = FindObjectOfType<CustomPostProcessing>();
         if (_sunDir != null && !_capturedSunShadows)
         {
             _sunShadowsOriginal = _sunDir.shadows;
@@ -167,12 +182,45 @@ public class GrassPopDiagnostic : MonoBehaviour
 
         // Always restore everything, then disable exactly one — so the state can
         // never drift into "two things off and I forgot which".
-        if (_post != null) _post.enabled = _bisect != 1;
-        InstancedGrassRenderer.DepthPrePassEnabled = _bisect != 2;
-        if (_sunDir != null) _sunDir.shadows = _bisect == 3 ? LightShadows.None : _sunShadowsOriginal;
-        ApplyExtraDirectionals(_bisect != 4);
+        _affected = 0;
+        _affectedNote = "";
 
-        Log($"BISECT -> {BisectNames[_bisect]}");
+        int posts = ApplyPost(_bisect != 1);
+        InstancedGrassRenderer.DepthPrePassEnabled = _bisect != 2;
+        int suns = ApplySunShadows(_bisect != 3);
+        int dirs = ApplyExtraDirectionals(_bisect != 4);
+
+        switch (_bisect)
+        {
+            case 0: _affected = 1; _affectedNote = "everything restored"; break;
+            case 1: _affected = posts; _affectedNote = $"{posts} CustomPostProcessing component(s)"; break;
+            case 2: _affected = _grass != null ? 1 : 0; _affectedNote = _grass != null
+                        ? "grass depth CommandBuffer detached" : "NO InstancedGrassRenderer FOUND"; break;
+            case 3: _affected = suns; _affectedNote = suns > 0
+                        ? "sun shadows -> None" : "NO SunShadowCaster light FOUND"; break;
+            case 4: _affected = dirs; _affectedNote = $"{dirs} non-sun directional light(s)"; break;
+        }
+
+        Log($"BISECT -> {BisectNames[_bisect]}  [affected {_affected}: {_affectedNote}]");
+    }
+
+    /// EVERY post-process chain, including ones on inactive objects.
+    /// FindObjectOfType (singular) is the trap that voided step 1 — see _affected.
+    int ApplyPost(bool on)
+    {
+        var all = FindObjectsOfType<CustomPostProcessing>(true);
+        int n = 0;
+        for (int i = 0; i < all.Length; i++)
+            if (all[i] != null) { all[i].enabled = on; n++; }
+        _post = all.Length > 0 ? all[0] : null;
+        return n;
+    }
+
+    int ApplySunShadows(bool on)
+    {
+        if (_sunDir == null) return 0;
+        _sunDir.shadows = on ? _sunShadowsOriginal : LightShadows.None;
+        return 1;
     }
 
     /// Every DIRECTIONAL light that is NOT the sun shadow caster.
@@ -185,23 +233,19 @@ public class GrassPopDiagnostic : MonoBehaviour
     /// grass is lit by whichever directional wins that slot — and the shader
     /// reads _WorldSpaceLightPos0 as "the sun" to derive the day factor, the
     /// wrap floor, the terminator glow and the tip shadow-lift.
-    ///
-    /// If that pick ever flips, every blade changes brightness AND hue at once,
-    /// it survives shadows-off and post-off, and it shows up in NO uniform the
-    /// watcher samples — which is exactly the reported bug and exactly why the
-    /// watcher came back clean.
     readonly List<Light> _extraDir = new List<Light>();
 
-    void ApplyExtraDirectionals(bool on)
+    int ApplyExtraDirectionals(bool on)
     {
         _extraDir.Clear();
-        foreach (var l in FindObjectsOfType<Light>())
+        foreach (var l in FindObjectsOfType<Light>(true))
         {
             if (l == null || l.type != LightType.Directional) continue;
             if (_sunDir != null && l == _sunDir) continue;
             _extraDir.Add(l);
             l.enabled = on;
         }
+        return _extraDir.Count;
     }
 
     /// Put everything back if the watcher is closed mid-test, so a disabled
@@ -209,9 +253,9 @@ public class GrassPopDiagnostic : MonoBehaviour
     void RestoreAll()
     {
         _bisect = 0;
-        if (_post != null) _post.enabled = true;
+        ApplyPost(true);
         InstancedGrassRenderer.DepthPrePassEnabled = true;
-        if (_sunDir != null && _capturedSunShadows) _sunDir.shadows = _sunShadowsOriginal;
+        ApplySunShadows(true);
         ApplyExtraDirectionals(true);
     }
 
@@ -223,10 +267,11 @@ public class GrassPopDiagnostic : MonoBehaviour
 
     string BisectLine()
     {
-        string state = _bisect == 0
-            ? "<color=#9AA0A6>nothing disabled</color>"
-            : $"<color=#FF6B6B>{BisectNames[_bisect]}</color>";
-        return $"BISECT  [F1] cycle  →  {state}";
+        if (_bisect == 0) return "BISECT  [F1] cycle  →  <color=#9AA0A6>nothing disabled</color>";
+        string proof = _affected > 0
+            ? $"<color=#7BD88F>affected {_affected} — {_affectedNote}</color>"
+            : $"<color=#FF6B6B>DID NOTHING ({_affectedNote}) — this test is VOID</color>";
+        return $"BISECT  [F1] cycle  →  <color=#FF6B6B>{BisectNames[_bisect]}</color>   {proof}";
     }
 
     // ── every global that can change grass shading, in one place ────────────
