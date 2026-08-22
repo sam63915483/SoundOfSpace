@@ -17,8 +17,8 @@ using UnityEngine.Rendering;
 /// let the spot name its own culprit.
 ///
 /// ── How to use ───────────────────────────────────────────────────────────
-///   1. Press F8 in play mode. A panel appears listing every global that can
-///      change grass shading.
+///   1. Press F2 (works in a BUILD too, not just the editor). A panel appears
+///      listing every global that can change grass shading.
 ///   2. Walk back and forth across the spot.
 ///   3. Whatever flips is highlighted YELLOW and holds "was -> now" for a few
 ///      seconds. That line is the bug. It is also written to the Console (and
@@ -29,6 +29,12 @@ using UnityEngine.Rendering;
 /// depth pre-pass feeding _CameraDepthTexture, or shadow cascade fitting)
 /// rather than a uniform.
 ///
+/// BUILD NOTES: auto-creates without skipping MainMenu, so it exists in builds
+/// (CLAUDE.md trap #1); Assembly-CSharp is preserve="all" in link.xml so the
+/// stripper cannot drop it; and every change is Debug.Log'd, so a build records
+/// it in
+///   %AppData%\..\LocalLow\DefaultCompany\Solar System 2\Player.log
+///
 /// Delete once the pulse is explained — same contract as the 2026-08-18
 /// grass-light logger this replaces.
 /// </summary>
@@ -36,7 +42,11 @@ public class GrassPopDiagnostic : MonoBehaviour
 {
     public static GrassPopDiagnostic Instance { get; private set; }
 
-    const KeyCode ToggleKey = KeyCode.F8;
+    // F2 because it is one of only two unclaimed function keys. NOT F8 — that
+    // is already LightingDebugToolbox.ToggleSunPointLight (which changes grass
+    // brightness, i.e. it would confound the very measurement) and
+    // CheatCodes.skipToPilotSchool.
+    const KeyCode ToggleKey = KeyCode.F2;
     /// How long a changed row stays highlighted.
     const float HoldSeconds = 4f;
     /// Body-renderer shadow scan is the only costly probe; throttle it.
@@ -157,6 +167,15 @@ public class GrassPopDiagnostic : MonoBehaviour
             Put("grassRenderer/receiveShadows", _grass.receiveShadows.ToString());
         }
 
+        // Position context: a spatial threshold usually correlates with one of
+        // these, so seeing them beside the flipping row places it immediately.
+        var camT = Camera.main != null ? Camera.main.transform : null;
+        if (camT != null && _grass != null && _grass.transform != null)
+        {
+            Vector3 bodyPos = Shader.GetGlobalVector("_GrassPlanetCenter");
+            Put("pos/altitudeFromBodyCentre", (camT.position - bodyPos).magnitude.ToString("0.0"));
+        }
+
         // Camera state that changes how the atmosphere composites the grass.
         var cam = Camera.main;
         if (cam != null)
@@ -230,6 +249,12 @@ public class GrassPopDiagnostic : MonoBehaviour
             _styleHead = new GUIStyle(_styleNormal) { fontStyle = FontStyle.Bold };
         }
 
+        // Builds run at whatever the monitor is; at 1440p/4K an unscaled IMGUI
+        // panel is unreadable. Scale with height so it stays legible.
+        float scale = Mathf.Max(1f, Screen.height / 1080f);
+        Matrix4x4 oldMatrix = GUI.matrix;
+        GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
+
         float w = 560f, lh = 13f;
         GUI.Box(new Rect(8, 8, w, lh * (_order.Count + 3) + 12), GUIContent.none);
         GUI.Label(new Rect(14, 12, w, lh + 4),
@@ -251,5 +276,7 @@ public class GrassPopDiagnostic : MonoBehaviour
         GUI.Label(new Rect(14, y + 2, w - 12, lh + 2),
             "<color=#9AA0A6>nothing highlights while the grass changes? then it is NOT a uniform — "
             + "look at the depth pre-pass / cascade fitting.</color>", _styleNormal);
+
+        GUI.matrix = oldMatrix;
     }
 }
