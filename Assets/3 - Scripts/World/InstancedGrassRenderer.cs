@@ -573,6 +573,20 @@ public class InstancedGrassRenderer : MonoBehaviour
             _gplColor[weakest] *= t * t * (3f - 2f * t);   // smoothstep
         }
 
+        if (DbgCollectInjected)
+        {
+            _dbgSb.Clear();
+            for (int i = 0; i < n; i++)
+            {
+                if (i > 0) _dbgSb.Append(',');
+                // Position is a stable enough identity for static lanterns and
+                // shows movement for the player/shuttle ones.
+                _dbgSb.Append(Mathf.RoundToInt(_gplPos[i].x)).Append('/')
+                      .Append(Mathf.RoundToInt(_gplPos[i].z));
+            }
+            DbgInjectedLights = _dbgSb.ToString();
+        }
+
         Shader.SetGlobalFloat(_gplCountId, n);
         if (n > 0)
         {
@@ -924,6 +938,19 @@ public class InstancedGrassRenderer : MonoBehaviour
     /// failing. Flipping this at a bug spot tells you instantly whether the
     /// pre-pass is involved.</summary>
     public static bool DepthPrePassEnabled = true;
+
+    /// <summary>Set true by GrassPopDiagnostic. Makes the injector publish WHICH
+    /// lights it chose, below.</summary>
+    public static bool DbgCollectInjected;
+
+    /// <summary>Names of the lights actually injected this frame.
+    ///
+    /// ⚠️ WATCHING _GrassPointLightCount IS NOT ENOUGH. Swap one light for
+    /// another and the count stays identical, so a count-only watcher shows
+    /// nothing while every blade in the world changes. That is exactly why the
+    /// grass-pop watcher came back clean for days. The SET is the signal.</summary>
+    public static string DbgInjectedLights = "";
+    static readonly System.Text.StringBuilder _dbgSb = new System.Text.StringBuilder();
 
     CommandBuffer EnsureDepthCB(Camera cam)
     {

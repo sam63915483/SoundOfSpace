@@ -146,7 +146,8 @@ public class GrassPopDiagnostic : MonoBehaviour
         "CAVE cutout off",
         "grass SUN FILL off (unshadowed emission)",
         "grass SHADOW LIFTS off (tip/terminator/fill)",
-        "grass AMBIENT+LANTERN emission off",
+        "grass LANTERN emission off (_PointLightBoost)",
+        "grass AMBIENT floor off (_AmbientBoost)",
     };
 
     /// How many objects the CURRENT step actually touched. Shown in the panel:
@@ -218,8 +219,8 @@ public class GrassPopDiagnostic : MonoBehaviour
             case 7: _affected = mats; _affectedNote = mats > 0 ? "_SunFillResponse = 0" : "NO grass material"; break;
             case 8: _affected = mats; _affectedNote = mats > 0
                         ? "_TipSunlight / _TerminatorGlow / _ShadowFill = 0" : "NO grass material"; break;
-            case 9: _affected = mats; _affectedNote = mats > 0
-                        ? "_AmbientBoost / _PointLightBoost = 0" : "NO grass material"; break;
+            case 9: _affected = mats; _affectedNote = mats > 0 ? "_PointLightBoost = 0" : "NO grass material"; break;
+            case 10: _affected = mats; _affectedNote = mats > 0 ? "_AmbientBoost = 0" : "NO grass material"; break;
         }
 
         Log($"BISECT -> {BisectNames[_bisect]}  [affected {_affected}: {_affectedNote}]");
@@ -318,7 +319,10 @@ public class GrassPopDiagnostic : MonoBehaviour
                 Zero(m, "_TipSunlight"); Zero(m, "_TerminatorGlow"); Zero(m, "_ShadowFill");
                 break;
             case 9:
-                Zero(m, "_AmbientBoost"); Zero(m, "_PointLightBoost");
+                Zero(m, "_PointLightBoost");
+                break;
+            case 10:
+                Zero(m, "_AmbientBoost");
                 break;
         }
         return 1;
@@ -399,6 +403,11 @@ public class GrassPopDiagnostic : MonoBehaviour
     {
         // Shader globals the grass shader actually reads.
         Put("grass/_GrassPointLightCount", Shader.GetGlobalFloat("_GrassPointLightCount").ToString("0"));
+        // ⚠️ The COUNT is not the signal — the SET is. Swapping one light for
+        // another leaves the count identical while every blade changes, which is
+        // why this panel read clean for days.
+        InstancedGrassRenderer.DbgCollectInjected = true;
+        Put("grass/injectedLightSET", InstancedGrassRenderer.DbgInjectedLights);
         Put("grass/_GrassSunColor", Fmt(Shader.GetGlobalVector("_GrassSunColor")));
         Put("grass/_GrassSunRange", Shader.GetGlobalFloat("_GrassSunRange").ToString("0.#"));
         Put("grass/_FlashlightColor", Fmt(Shader.GetGlobalVector("_FlashlightColor")));
