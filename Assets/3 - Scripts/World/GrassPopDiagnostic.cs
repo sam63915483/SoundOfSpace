@@ -60,6 +60,7 @@ public class GrassPopDiagnostic : MonoBehaviour
 
     InstancedGrassRenderer _grass;
     Light _sunDir;
+    CustomPostProcessing _post;
     float _nextHeavy;
     string _casterSummary = "?";
     GUIStyle _styleNormal, _styleHot, _styleHead;
@@ -94,6 +95,8 @@ public class GrassPopDiagnostic : MonoBehaviour
         }
         if (!_on) return;
 
+        Bisect();
+
         if (_grass == null) _grass = FindObjectOfType<InstancedGrassRenderer>();
         if (_sunDir == null)
         {
@@ -103,6 +106,66 @@ public class GrassPopDiagnostic : MonoBehaviour
         if (Time.unscaledTime >= _nextHeavy) { _nextHeavy = Time.unscaledTime + HeavyInterval; ScanCasters(); }
 
         Sample();
+    }
+
+    // ── bisect: turn ONE system off and see if the pop survives ─────────────
+    //
+    // The watcher above proved no uniform changes at the spot, which rules out
+    // that whole class and leaves per-pixel / per-object state. There is no way
+    // to read that off a number, so bisect it instead: kill one system at a
+    // time at the spot and see which removal makes the pop STOP. That one is at
+    // fault. Keypad 1-9 are the only unclaimed keys in the project.
+    //
+    // Suggested order — 1 halves the problem on its own:
+    //   [1] atmosphere/ocean post-process. It is what tints everything from the
+    //       depth texture. Pop gone with it off => the bug is depth-driven
+    //       post-processing. Pop still there => it is the grass shading itself.
+    //   [2] grass depth pre-pass. Grass missing from _CameraDepthTexture gets
+    //       washed to SKY COLOUR by the atmosphere — brighter and bluer, which
+    //       is exactly the reported symptom. If toggling this REPRODUCES the pop
+    //       on demand, the bug is the pre-pass dropping out at that spot.
+    //   [3] sun shadows. Removes every cast shadow, incl. terrain self-shadowing.
+    //   [4] grass entirely. Confirms the change is even in the grass and not
+    //       something behind it.
+    void Bisect()
+    {
+        if (_post == null) _post = FindObjectOfType<CustomPostProcessing>();
+
+        if (Input.GetKeyDown(KeyCode.Keypad1) && _post != null)
+        {
+            _post.enabled = !_post.enabled;
+            Log($"[1] atmosphere/ocean post-process = {(_post.enabled ? "ON" : "OFF")}");
+        }
+        if (Input.GetKeyDown(KeyCode.Keypad2))
+        {
+            InstancedGrassRenderer.DepthPrePassEnabled = !InstancedGrassRenderer.DepthPrePassEnabled;
+            Log($"[2] grass depth pre-pass = {(InstancedGrassRenderer.DepthPrePassEnabled ? "ON" : "OFF")}");
+        }
+        if (Input.GetKeyDown(KeyCode.Keypad3) && _sunDir != null)
+        {
+            _sunDir.shadows = _sunDir.shadows == LightShadows.None ? LightShadows.Soft : LightShadows.None;
+            Log($"[3] sun shadows = {_sunDir.shadows}");
+        }
+        if (Input.GetKeyDown(KeyCode.Keypad4) && _grass != null)
+        {
+            _grass.enabled = !_grass.enabled;
+            Log($"[4] grass renderer = {(_grass.enabled ? "ON" : "OFF")}");
+        }
+    }
+
+    void Log(string msg)
+    {
+        var p = Camera.main != null ? Camera.main.transform.position : Vector3.zero;
+        Debug.Log($"[GrassPop] {msg}    (camera {p.x:0.#},{p.y:0.#},{p.z:0.#})");
+    }
+
+    string BisectLine()
+    {
+        string post = _post == null ? "?" : (_post.enabled ? "ON" : "<color=#FF6B6B>OFF</color>");
+        string pre = InstancedGrassRenderer.DepthPrePassEnabled ? "ON" : "<color=#FF6B6B>OFF</color>";
+        string sh = _sunDir == null ? "?" : (_sunDir.shadows == LightShadows.None ? "<color=#FF6B6B>OFF</color>" : "ON");
+        string gr = _grass == null ? "?" : (_grass.enabled ? "ON" : "<color=#FF6B6B>OFF</color>");
+        return $"BISECT  [KP1] atmo-post {post}   [KP2] grass depth prepass {pre}   [KP3] sun shadows {sh}   [KP4] grass {gr}";
     }
 
     // ── every global that can change grass shading, in one place ────────────
@@ -256,7 +319,7 @@ public class GrassPopDiagnostic : MonoBehaviour
         GUI.matrix = Matrix4x4.Scale(new Vector3(scale, scale, 1f));
 
         float w = 560f, lh = 13f;
-        GUI.Box(new Rect(8, 8, w, lh * (_order.Count + 3) + 12), GUIContent.none);
+        GUI.Box(new Rect(8, 8, w, lh * (_order.Count + 5) + 12), GUIContent.none);
         GUI.Label(new Rect(14, 12, w, lh + 4),
             "[F8] grass-pop watcher — walk the spot; the YELLOW row is the culprit", _styleHead);
 
@@ -274,8 +337,12 @@ public class GrassPopDiagnostic : MonoBehaviour
         }
 
         GUI.Label(new Rect(14, y + 2, w - 12, lh + 2),
-            "<color=#9AA0A6>nothing highlights while the grass changes? then it is NOT a uniform — "
-            + "look at the depth pre-pass / cascade fitting.</color>", _styleNormal);
+            "<color=#9AA0A6>no row flips while the grass changes? then it is NOT a uniform. "
+            + "Use the bisect keys below.</color>", _styleNormal);
+        GUI.Label(new Rect(14, y + 2 + lh, w - 12, lh + 2), BisectLine(), _styleHead);
+        GUI.Label(new Rect(14, y + 2 + lh * 2, w - 12, lh + 2),
+            "<color=#9AA0A6>turn ONE off, redo the spot. Whichever removal makes the pop STOP is the cause.</color>",
+            _styleNormal);
 
         GUI.matrix = oldMatrix;
     }

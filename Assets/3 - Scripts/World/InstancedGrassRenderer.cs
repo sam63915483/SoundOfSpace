@@ -918,9 +918,23 @@ public class InstancedGrassRenderer : MonoBehaviour
     static readonly int _depthDilateId = Shader.PropertyToID("_DepthDilatePixels");
     bool _warnedNoDepthShader;   // gates the one-time "shader stripped" error
 
+    /// <summary>Bisect switch for GrassPopDiagnostic. False detaches the depth
+    /// pre-pass, so grass stops appearing in _CameraDepthTexture and the
+    /// atmosphere washes it to sky colour — the known symptom of that pre-pass
+    /// failing. Flipping this at a bug spot tells you instantly whether the
+    /// pre-pass is involved.</summary>
+    public static bool DepthPrePassEnabled = true;
+
     CommandBuffer EnsureDepthCB(Camera cam)
     {
         if (cam == null) return null;
+        if (!DepthPrePassEnabled)
+        {
+            if (_depthCBCam != null && _depthCB != null)
+                _depthCBCam.RemoveCommandBuffer(CameraEvent.AfterDepthTexture, _depthCB);
+            _depthCBCam = null;
+            return null;
+        }
         if (_depthMat == null)
         {
             // Use the assigned depth MATERIAL ASSET's shader when present. That asset
