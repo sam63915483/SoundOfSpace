@@ -19,7 +19,8 @@ using UnityEngine.Rendering;
 /// ── How to use ───────────────────────────────────────────────────────────
 ///   1. Press F2 (works in a BUILD too, not just the editor). A panel appears
 ///      listing every global that can change grass shading.
-///   2. Walk back and forth across the spot.
+///   2. Walk back and forth across the spot. F1 steps through the bisect
+///      states (see Bisect) when no uniform flips.
 ///   3. Whatever flips is highlighted YELLOW and holds "was -> now" for a few
 ///      seconds. That line is the bug. It is also written to the Console (and
 ///      so to Player.log in a build) with your position.
@@ -90,6 +91,7 @@ public class GrassPopDiagnostic : MonoBehaviour
         if (Input.GetKeyDown(ToggleKey))
         {
             _on = !_on;
+            if (!_on) RestoreAll();
             _last.Clear(); _changedAt.Clear(); _prevValue.Clear(); _order.Clear();
             Debug.Log($"[GrassPop] watcher {(_on ? "ON" : "off")} — walk across the spot and read the yellow row.");
         }
@@ -127,30 +129,61 @@ public class GrassPopDiagnostic : MonoBehaviour
     //   [3] sun shadows. Removes every cast shadow, incl. terrain self-shadowing.
     //   [4] grass entirely. Confirms the change is even in the grass and not
     //       something behind it.
+    /// 0 = everything on. 1..4 = that one system disabled, the rest restored.
+    int _bisect;
+    LightShadows _sunShadowsOriginal = LightShadows.Soft;
+    bool _capturedSunShadows;
+
+    static readonly string[] BisectNames =
+    {
+        "nothing disabled",
+        "atmosphere/ocean POST off",
+        "grass depth PRE-PASS off",
+        "sun SHADOWS off",
+        "GRASS off",
+    };
+
     void Bisect()
     {
         if (_post == null) _post = FindObjectOfType<CustomPostProcessing>();
+        if (_sunDir != null && !_capturedSunShadows)
+        {
+            _sunShadowsOriginal = _sunDir.shadows;
+            _capturedSunShadows = true;
+        }
 
-        if (Input.GetKeyDown(KeyCode.Keypad1) && _post != null)
-        {
-            _post.enabled = !_post.enabled;
-            Log($"[1] atmosphere/ocean post-process = {(_post.enabled ? "ON" : "OFF")}");
-        }
-        if (Input.GetKeyDown(KeyCode.Keypad2))
-        {
-            InstancedGrassRenderer.DepthPrePassEnabled = !InstancedGrassRenderer.DepthPrePassEnabled;
-            Log($"[2] grass depth pre-pass = {(InstancedGrassRenderer.DepthPrePassEnabled ? "ON" : "OFF")}");
-        }
-        if (Input.GetKeyDown(KeyCode.Keypad3) && _sunDir != null)
-        {
-            _sunDir.shadows = _sunDir.shadows == LightShadows.None ? LightShadows.Soft : LightShadows.None;
-            Log($"[3] sun shadows = {_sunDir.shadows}");
-        }
-        if (Input.GetKeyDown(KeyCode.Keypad4) && _grass != null)
-        {
-            _grass.enabled = !_grass.enabled;
-            Log($"[4] grass renderer = {(_grass.enabled ? "ON" : "OFF")}");
-        }
+        // F1 CYCLES. One key, no numpad, no modifiers — the keypad aliases below
+        // need a numpad and every modifier in this project is already bound
+        // (Ctrl is held by gameplay, top-row 1-4 are the hotbar and dialogue
+        // choices). F1 is the only other unclaimed key, so it carries this.
+        bool changed = false;
+        if (Input.GetKeyDown(KeyCode.F1)) { _bisect = (_bisect + 1) % BisectNames.Length; changed = true; }
+        // Direct aliases for anyone who does have a numpad.
+        if (Input.GetKeyDown(KeyCode.Keypad1)) { _bisect = _bisect == 1 ? 0 : 1; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad2)) { _bisect = _bisect == 2 ? 0 : 2; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad3)) { _bisect = _bisect == 3 ? 0 : 3; changed = true; }
+        if (Input.GetKeyDown(KeyCode.Keypad4)) { _bisect = _bisect == 4 ? 0 : 4; changed = true; }
+        if (!changed) return;
+
+        // Always restore everything, then disable exactly one — so the state can
+        // never drift into "two things off and I forgot which".
+        if (_post != null) _post.enabled = _bisect != 1;
+        InstancedGrassRenderer.DepthPrePassEnabled = _bisect != 2;
+        if (_sunDir != null) _sunDir.shadows = _bisect == 3 ? LightShadows.None : _sunShadowsOriginal;
+        if (_grass != null) _grass.enabled = _bisect != 4;
+
+        Log($"BISECT -> {BisectNames[_bisect]}");
+    }
+
+    /// Put everything back if the watcher is closed mid-test, so a disabled
+    /// system can never be left off and mistaken for a real change later.
+    void RestoreAll()
+    {
+        _bisect = 0;
+        if (_post != null) _post.enabled = true;
+        InstancedGrassRenderer.DepthPrePassEnabled = true;
+        if (_sunDir != null && _capturedSunShadows) _sunDir.shadows = _sunShadowsOriginal;
+        if (_grass != null) _grass.enabled = true;
     }
 
     void Log(string msg)
@@ -161,11 +194,10 @@ public class GrassPopDiagnostic : MonoBehaviour
 
     string BisectLine()
     {
-        string post = _post == null ? "?" : (_post.enabled ? "ON" : "<color=#FF6B6B>OFF</color>");
-        string pre = InstancedGrassRenderer.DepthPrePassEnabled ? "ON" : "<color=#FF6B6B>OFF</color>";
-        string sh = _sunDir == null ? "?" : (_sunDir.shadows == LightShadows.None ? "<color=#FF6B6B>OFF</color>" : "ON");
-        string gr = _grass == null ? "?" : (_grass.enabled ? "ON" : "<color=#FF6B6B>OFF</color>");
-        return $"BISECT  [KP1] atmo-post {post}   [KP2] grass depth prepass {pre}   [KP3] sun shadows {sh}   [KP4] grass {gr}";
+        string state = _bisect == 0
+            ? "<color=#9AA0A6>nothing disabled</color>"
+            : $"<color=#FF6B6B>{BisectNames[_bisect]}</color>";
+        return $"BISECT  [F1] cycle  →  {state}";
     }
 
     // ── every global that can change grass shading, in one place ────────────
@@ -341,7 +373,8 @@ public class GrassPopDiagnostic : MonoBehaviour
             + "Use the bisect keys below.</color>", _styleNormal);
         GUI.Label(new Rect(14, y + 2 + lh, w - 12, lh + 2), BisectLine(), _styleHead);
         GUI.Label(new Rect(14, y + 2 + lh * 2, w - 12, lh + 2),
-            "<color=#9AA0A6>turn ONE off, redo the spot. Whichever removal makes the pop STOP is the cause.</color>",
+            "<color=#9AA0A6>press F1 to step through them; redo the spot each time. "
+            + "Whichever removal makes the pop STOP is the cause.</color>",
             _styleNormal);
 
         GUI.matrix = oldMatrix;
