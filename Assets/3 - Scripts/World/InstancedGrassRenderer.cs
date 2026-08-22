@@ -420,6 +420,11 @@ public class InstancedGrassRenderer : MonoBehaviour
     /// The weakest held light fades out below this multiple of the best rejected
     /// contribution, so an exchange happens at zero on both sides.
     const float GrassLightSwapFadeBand = 1.6f;
+    /// Must mirror CG_SimpleGrass.shader's _LanternGrassRadius / _LanternGrassTail
+    /// defaults. Used only to ORDER the injection list, so a drift from the
+    /// material costs ranking nicety, never the continuity of the fade-in.
+    const float GrassLanternRadiusFrac = 0.5f;
+    const float GrassLanternTailAmount = 0.35f;
 
     void InjectGrassPointLights(Vector3 viewer)
     {
@@ -464,16 +469,58 @@ public class InstancedGrassRenderer : MonoBehaviour
             // Ranking on the contribution the shader will actually compute fixes
             // it: an invisible light can never displace a visible one, and
             // whatever does get dropped is by definition the dimmest.
+            // ⚠️ SCORE THE LIGHT AT THE NEAREST GRASS THAT IS ACTUALLY DRAWN,
+            // not at the player. Both the old nearest-N rule and the first pass
+            // at this measured the light's strength AT THE VIEWER — but the
+            // shader evaluates it PER BLADE, and grass is drawn out to
+            // spawnRadius (80 m). A lantern 60 m away lights the grass around
+            // its own base, which the player can plainly see, yet scores zero
+            // at the player and was dropped entirely. Walk closer and it
+            // crossed the threshold and switched on at FULL strength over
+            // grass that was already on screen. That is exactly the "lights
+            // turn on when you get close enough" pop:
+            //
+            //   lantern range 15, scored at the player: 0 until ~15 m, then snaps
+            //   scored at nearest drawn grass: 0 at 95 m, rising smoothly to full at 80 m
+            //
+            // The nearest drawn grass to a light D away is max(0, D - spawnRadius)
+            // from it, so a light reaches zero score exactly as its reach stops
+            // touching the drawn field — admission and eviction both happen at
+            // zero visible effect, which is what makes them invisible.
             float dist = Mathf.Sqrt(dsq);
-            float dn = dist / Mathf.Max(reach, 1e-4f);
-            float falloff = Mathf.Max(0f, 1f - dn * dn) / (1f + 25f * dn * dn);
+            float dEff = Mathf.Max(0f, dist - spawnRadius);
+            float pdn = dEff / Mathf.Max(reach, 1e-4f);
+            // Mirrors the falloff in CG_SimpleGrass.shader. Only has to agree at
+            // the OUTER EDGE (both curves hit 0 at pdn = 1) — that is what makes
+            // the fade-in continuous; the mid-range shape only orders the list.
+            float patten;
+            if (lt.type == LightType.Spot)
+            {
+                float e = Mathf.InverseLerp(1f, 0.85f, pdn);
+                patten = (1f / (1f + 15f * pdn * pdn)) * (e * e * (3f - 2f * e));
+            }
+            else
+            {
+                float pt = pdn / GrassLanternRadiusFrac;
+                float core = Mathf.Clamp01(1f - pt * pt) / (1f + 25f * pt * pt);
+                float tail = Mathf.Clamp01(1f - pdn * pdn) / (1f + 8f * pdn * pdn);
+                patten = Mathf.Max(core, tail * GrassLanternTailAmount);
+            }
             Color lc = lt.color;
-            float w = falloff * lt.intensity * Mathf.Max(0f, gp.grassStrength)
-                      * (lc.r + lc.g + lc.b) * (1f / 3f);
-            // Below this a light is invisible on grass anyway, so it must not
-            // hold a slot -- and it means set membership changes at a
-            // contribution of ~zero, i.e. invisibly.
-            if (w <= GrassLightMinContribution) continue;
+            float vis = patten * lt.intensity * Mathf.Max(0f, gp.grassStrength)
+                        * (lc.r + lc.g + lc.b) * (1f / 3f);
+            // Gate on the light's REAL visible effect. Below this it cannot be
+            // seen on the grass, so it must not hold a slot — and membership
+            // changes land at ~zero effect.
+            if (vis <= GrassLightMinContribution) continue;
+
+            // Rank on that, nudged toward lights near the player: once several
+            // lanterns are all inside spawnRadius they score an identical 1.0,
+            // and the tie would otherwise be broken by registration order —
+            // which is the original "drop the lantern right next to the player"
+            // bug. Never affects the zero crossing, so continuity is untouched.
+            float dv = dist / Mathf.Max(spawnRadius, 1f);
+            float w = vis / (1f + dv * dv);
 
             int slot;
             if (n < GrassMaxPointLights) { slot = n; n++; }
