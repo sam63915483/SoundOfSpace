@@ -21,7 +21,7 @@ Properties {
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
 	[HideInInspector] _OceanRadius("Ocean Radius (driven by SpaceDustField)", Float) = 0
-	_WaterOpacityDist("Water opacity distance (metres of sea for ~63% absorption)", Float) = 30
+	_WaterOpacityDist("Water opacity distance (metres of sea for ~63% absorption)", Float) = 12
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -306,6 +306,12 @@ SubShader {
 						float cosT   = saturate(dot(-viewDirection, nrm));
 						float f      = 1.0 - cosT;
 						float fres   = 0.02 + 0.98 * (f*f*f*f*f);   // Schlick, R0 = 0.02 for water
+						// The two curves cross, leaving a small residual bump
+						// just under the waterline (Fresnel rising faster than
+						// absorption falls). _WaterOpacityDist is sized by that
+						// PEAK, not by any single sightline: 12 caps it near 5%,
+						// 30 leaves 12%, 80 leaves 26% — which is what was still
+						// plainly visible on the horizon.
 						result.a *= (1.0 - fres) * exp(-chord / max(1.0, _WaterOpacityDist));
 					}
 				}
