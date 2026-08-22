@@ -410,25 +410,21 @@ public class InstancedGrassRenderer : MonoBehaviour
     static readonly Vector4[] _gplColor  = new Vector4[GrassMaxPointLights];
     static readonly Vector4[] _gplParams = new Vector4[GrassMaxPointLights];
     static readonly Vector4[] _gplDir    = new Vector4[GrassMaxPointLights];
-    static readonly float[]   _gplDistSq = new float[GrassMaxPointLights];
-
-    // ── DIAGNOSTIC (Sam's brightness-pulse hunt, 2026-08-18) ────────────────
-    // Grass "suddenly a bit brighter, then dimmer" while moving: the honest
-    // suspects are lights entering/leaving this injection set. Log the DELTA
-    // whenever set membership changes — names, intensity, range, distance —
-    // so the build's Player.log names the culprit instead of us guessing.
-    // Cheap: two reused hash sets, logs only on actual change, rate-limited.
-    // DELETE (or gate off) once the pulse is explained.
-    static readonly HashSet<int> _dbgPrev = new HashSet<int>();
-    static readonly HashSet<int> _dbgNow = new HashSet<int>();
-    static readonly Dictionary<int, string> _dbgNames = new Dictionary<int, string>();
-    static readonly int[] _gplWho = new int[GrassMaxPointLights];
-    float _dbgNextLog;
+    // Per-slot CONTRIBUTION (not distance) -- what the ranking evicts on.
+    static readonly float[]   _gplW = new float[GrassMaxPointLights];
+    /// Best contribution among lights that did NOT make the cut this frame.
+    float _wRejectMax;
+    /// A light dimmer than this is invisible on grass, so it must never hold a
+    /// slot -- and it makes membership changes happen at ~zero contribution.
+    const float GrassLightMinContribution = 0.002f;
+    /// The weakest held light fades out below this multiple of the best rejected
+    /// contribution, so an exchange happens at zero on both sides.
+    const float GrassLightSwapFadeBand = 1.6f;
 
     void InjectGrassPointLights(Vector3 viewer)
     {
         int n = 0;
-        _dbgNow.Clear();
+        _wRejectMax = 0f;
         var all = GrassPointLight.All;
         for (int i = 0; i < all.Count; i++)
         {
@@ -446,29 +442,55 @@ public class InstancedGrassRenderer : MonoBehaviour
             float dsq = (lt.transform.position - viewer).sqrMagnitude;
             if (dsq > gate * gate) continue;
 
-            // Keep the NEAREST GrassMaxPointLights to the viewer. A dense village has
-            // far more than 8 lanterns + torches in range; taking the first 8 in list
-            // (registration) order would drop the lantern right next to the player, so
-            // its grass gets no fill and the sun's shadow looks like it "wins". When
-            // the slots are full, replace the current farthest if this one is nearer.
+            // Keep the GrassMaxPointLights that actually CONTRIBUTE most. A dense
+            // village has far more lanterns + torches in range than there are
+            // slots, so something must be dropped; the question is what.
+            //
+            // This used to keep the NEAREST, which is wrong the moment ranges
+            // differ -- and they differ a lot now that shuttle floods and player
+            // lights share the pool with 10 m torches. Worked example, using the
+            // shader's own falloff:
+            //
+            //   torch,         dist 12, range  10  ->  contributes 0.0000
+            //   shuttle flood, dist 40, range 100  ->  contributes 0.3360
+            //
+            // By distance the flood is "farthest", so it was evicted FIRST -- by
+            // a torch contributing exactly nothing, because it is past its own
+            // range. Which lights survived depended on precisely where the
+            // player stood, so stepping back and forth across a spot swapped
+            // them and the whole field jumped in brightness and hue. That is the
+            // "certain spots get brighter" pulse.
+            //
+            // Ranking on the contribution the shader will actually compute fixes
+            // it: an invisible light can never displace a visible one, and
+            // whatever does get dropped is by definition the dimmest.
+            float dist = Mathf.Sqrt(dsq);
+            float dn = dist / Mathf.Max(reach, 1e-4f);
+            float falloff = Mathf.Max(0f, 1f - dn * dn) / (1f + 25f * dn * dn);
+            Color lc = lt.color;
+            float w = falloff * lt.intensity * Mathf.Max(0f, gp.grassStrength)
+                      * (lc.r + lc.g + lc.b) * (1f / 3f);
+            // Below this a light is invisible on grass anyway, so it must not
+            // hold a slot -- and it means set membership changes at a
+            // contribution of ~zero, i.e. invisibly.
+            if (w <= GrassLightMinContribution) continue;
+
             int slot;
             if (n < GrassMaxPointLights) { slot = n; n++; }
             else
             {
-                int farthest = 0;
+                int weakest = 0;
                 for (int k = 1; k < GrassMaxPointLights; k++)
-                    if (_gplDistSq[k] > _gplDistSq[farthest]) farthest = k;
-                if (dsq >= _gplDistSq[farthest]) continue;   // not nearer than any held light
-                slot = farthest;
+                    if (_gplW[k] < _gplW[weakest]) weakest = k;
+                if (w <= _gplW[weakest]) { if (w > _wRejectMax) _wRejectMax = w; continue; }
+                if (_gplW[weakest] > _wRejectMax) _wRejectMax = _gplW[weakest];
+                slot = weakest;
             }
 
             _gplPos[slot] = lt.transform.position;
             Color c = lt.color * (lt.intensity * Mathf.Max(0f, gp.grassStrength));
             _gplColor[slot] = new Vector4(c.r, c.g, c.b, 1f);
-            _gplDistSq[slot] = dsq;
-            _gplWho[slot] = lt.GetInstanceID();
-            _dbgNames[_gplWho[slot]] =
-                $"{lt.transform.root.name}/{lt.name} ({lt.type}, int={lt.intensity:0.##}, range={reach:0}, dist={Mathf.Sqrt(dsq):0}m)";
+            _gplW[slot] = w;
 
             // Spot lights (concert cone/strobe/blinder) only light grass inside their
             // beam; point lights (lanterns/torches) are omnidirectional. Pass the spot
@@ -487,6 +509,23 @@ public class InstancedGrassRenderer : MonoBehaviour
                 _gplDir[slot] = new Vector4(0f, 0f, 0f, 0f);
             }
         }
+        // Make the exchange itself continuous. Contribution ranking guarantees
+        // the light dropped is the dimmest, but in a village of near-identical
+        // lanterns the winner and loser can be almost equal, and a straight swap
+        // would still step. So fade the single WEAKEST held light out as its
+        // contribution approaches the best REJECTED one: at the moment they
+        // cross, the outgoing light is already at zero and the incoming one
+        // arrives at zero, so the exchange cannot be seen. Touches one light,
+        // and only while it is both the weakest AND close to being displaced --
+        // so a dense village keeps every lantern at full strength.
+        if (n == GrassMaxPointLights && _wRejectMax > 0f)
+        {
+            int weakest = 0;
+            for (int k = 1; k < n; k++) if (_gplW[k] < _gplW[weakest]) weakest = k;
+            float t = Mathf.InverseLerp(_wRejectMax, _wRejectMax * GrassLightSwapFadeBand, _gplW[weakest]);
+            _gplColor[weakest] *= t * t * (3f - 2f * t);   // smoothstep
+        }
+
         Shader.SetGlobalFloat(_gplCountId, n);
         if (n > 0)
         {
@@ -494,25 +533,6 @@ public class InstancedGrassRenderer : MonoBehaviour
             Shader.SetGlobalVectorArray(_gplColorId, _gplColor);
             Shader.SetGlobalVectorArray(_gplParamsId, _gplParams);
             Shader.SetGlobalVectorArray(_gplDirId, _gplDir);
-        }
-
-        // DIAGNOSTIC (see the note above InjectGrassPointLights): only the
-        // lights that SURVIVED slot eviction count as injected this frame.
-        for (int i = 0; i < n; i++) _dbgNow.Add(_gplWho[i]);
-        if (!_dbgNow.SetEquals(_dbgPrev) && Time.unscaledTime >= _dbgNextLog)
-        {
-            _dbgNextLog = Time.unscaledTime + 0.25f;
-            var sb = new System.Text.StringBuilder("[GrassLights] set changed (");
-            sb.Append(n).Append(" injected):");
-            foreach (int id in _dbgNow)
-                if (!_dbgPrev.Contains(id))
-                    sb.Append("\n  + ").Append(_dbgNames.TryGetValue(id, out var nm) ? nm : id.ToString());
-            foreach (int id in _dbgPrev)
-                if (!_dbgNow.Contains(id))
-                    sb.Append("\n  - ").Append(_dbgNames.TryGetValue(id, out var nm) ? nm : id.ToString());
-            Debug.Log(sb.ToString());
-            _dbgPrev.Clear();
-            _dbgPrev.UnionWith(_dbgNow);
         }
 
         // Concert centre = centroid of the injected SPOT lights (w=1). The shader fades
