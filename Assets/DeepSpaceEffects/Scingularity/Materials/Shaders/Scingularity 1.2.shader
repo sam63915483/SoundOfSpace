@@ -21,6 +21,7 @@ Properties {
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
 	[HideInInspector] _OceanRadius("Ocean Radius (driven by SpaceDustField)", Float) = 0
+	_WaterOpacityDist("Water opacity distance (metres of sea for ~63% absorption)", Float) = 80
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -59,6 +60,7 @@ SubShader {
 		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
 		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
 		uniform float _OceanRadius;   // 0 = no ocean nearby / disabled
+		uniform float _WaterOpacityDist; // Beer-Lambert length for looking THROUGH the sea. Bigger = softer edge but more see-through; smaller = opaque sooner but a tighter gradient.
 		uniform sampler2D_float _CameraDepthTexture;
 
 		struct vertexOutput {
@@ -255,19 +257,37 @@ SubShader {
 			// footprint is huge — a single scalar can't handle "centre above
 			// the horizon but the outer ring overlapping the sea", which let
 			// the lensed galaxy show through the water. Soft edge at the rim.
+			// ── How much WATER does this ray actually cross? ──────────────
+			// This was once a smoothstep on the ray's CLOSEST APPROACH to the
+			// ocean sphere. That is a razor-thin analytic waterline — the alpha
+			// went 1 -> 0 across a hair's width of closest-approach distance —
+			// so it painted a hard horizontal seam straight across the hole and
+			// got switched off, leaving the black hole and its ring of Milky Way
+			// plainly visible through hundreds of metres of sea.
+			//
+			// Keying on the CHORD LENGTH through the sphere instead fixes both
+			// halves. Physically it is just Beer-Lambert: water swallows light
+			// in proportion to how far you look through it. Geometrically the
+			// chord grows continuously from zero at the tangent, so the falloff
+			// is an inherently soft gradient — the hole sinks INTO the sea
+			// instead of being sliced by a line — and a ray crossing hundreds
+			// of metres is gone by many orders of magnitude rather than merely
+			// "past the smoothstep edge".
 			if(_OceanRadius > 0){
 				float3 oc = _OceanCenter - _WorldSpaceCameraPos;
 				float rr = _OceanRadius * _OceanRadius;
 				float oc2 = dot(oc, oc);
 				// Only while the camera is ABOVE the water. Submerged, the
-				// uniform _OceanFade ramp owns the whole effect — running this
-				// ray test from inside the sphere painted a hazy horizontal
-				// seam across the hole at the analytic waterline.
+				// uniform _OceanFade ramp owns the whole effect.
 				if(oc2 > rr){
 					float bproj = dot(viewDirection, oc);
-					if(bproj > 0 && bproj < viewDistance){
-						float closest2 = oc2 - bproj * bproj;
-						result.a *= smoothstep(rr * 0.98, rr * 1.04, closest2);
+					float closest2 = oc2 - bproj * bproj;
+					if(bproj > 0 && closest2 < rr){
+						float halfChord = sqrt(rr - closest2);
+						float tEnter = max(bproj - halfChord, 0.0);
+						float tExit  = min(bproj + halfChord, (float)viewDistance);
+						float chord  = max(tExit - tEnter, 0.0);
+						result.a *= exp(-chord / max(1.0, _WaterOpacityDist));
 					}
 				}
 			}

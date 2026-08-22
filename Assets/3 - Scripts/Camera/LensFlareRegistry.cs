@@ -63,6 +63,15 @@ public class LensFlareRegistry : MonoBehaviour
     // gone. That is the whole point: a sliver of limb behind a tree must NOT
     // keep the flare alive, because the flare comes out of the middle.
     const float kCoreWeight           = 0.8f;
+
+    // ─── Underwater ──────────────────────────────────────────────────────
+    // Strength right AT the waterline. Near 1 on purpose: dipping under should
+    // barely change the flare, because the sun disc barely changes either.
+    const float kUnderwaterSurfaceDim = 0.95f;
+    // Depth (world units) at which the flare is fully gone. Set to outlast the
+    // sun disc — if the flare vanishes while the sun is still plainly visible,
+    // the shallows look like the effects were switched off.
+    const float kUnderwaterFadeDepth  = 4f;
     // Temporal smoothing for the visibility fraction so per-sample steps
     // don't read as a flicker when an obstacle's edge sweeps past samples.
     // 0.25s (was 0.08s): single-sample flips at a partially-covered sun were
@@ -624,6 +633,18 @@ public class LensFlareRegistry : MonoBehaviour
     }
 
     // 1 above water; 0.5 the moment the camera submerges; 0 by ~2.5m down.
+    /// Dim the flare as the camera sinks below a water surface.
+    ///
+    /// This used to open with an INSTANT halving — `0.5f * (1 - depth/2.5)` —
+    /// so the flare lost more than half its strength the moment your head went
+    /// under, while the sun disc itself stayed clearly visible for several more
+    /// feet. Ducking a foot into the sea read as "all the sun effects switched
+    /// off", which is exactly what it was.
+    ///
+    /// Now it leaves the waterline almost untouched and falls away on a
+    /// 1 - t² curve that holds up in the shallows, reaching nothing at
+    /// kUnderwaterFadeDepth — chosen to outlast the sun disc rather than
+    /// undercut it.
     float UnderwaterFlareDim(Vector3 camPos)
     {
         var bodies = NBodySimulation.Bodies;
@@ -635,7 +656,11 @@ public class LensFlareRegistry : MonoBehaviour
             float r = OceanRadiusOf(b);
             if (r <= 0f) continue;
             float depth = r - (b.Position - camPos).magnitude;
-            if (depth > 0f) return 0.5f * (1f - Mathf.Clamp01(depth / 2.5f));
+            if (depth > 0f)
+            {
+                float t = Mathf.Clamp01(depth / kUnderwaterFadeDepth);
+                return kUnderwaterSurfaceDim * (1f - t * t);
+            }
         }
         return 1f;
     }

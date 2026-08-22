@@ -284,11 +284,18 @@ public class SpaceDustField : MonoBehaviour
         _bhMaterial.SetFloat(_AtmoFadeID, fade);
         _bhMaterial.SetFloat(_OceanFadeID, oceanFade);
         _bhMaterial.SetVector(_OceanCenterID, nearestOceanPos);
-        // Per-pixel water cut DISABLED for playtest (Sam kept noticing its
-        // horizontal boundary across the hole). With the far-field falloff the
-        // lens footprint is tight, so the see-through-water case is much
-        // smaller now. Re-enable by feeding nearestOceanR again.
-        _bhMaterial.SetFloat(_OceanRadiusID, 0f);
+        // Per-pixel water cut, RE-ENABLED. It was switched off because the old
+        // implementation keyed on the ray's CLOSEST APPROACH to the ocean
+        // sphere, which is a razor-thin analytic waterline and drew a hard
+        // horizontal seam across the hole. Switching it off then let the black
+        // hole — and its ring of lensed Milky Way — read clearly through
+        // hundreds of metres of sea whenever it sat near an ocean horizon.
+        // The shader now attenuates by the CHORD LENGTH of water the ray
+        // actually crosses (Beer-Lambert), which grows continuously from zero
+        // at the tangent: no seam, and deep water is opaque by orders of
+        // magnitude. Softness/opacity is tunable on the material via
+        // _WaterOpacityDist.
+        _bhMaterial.SetFloat(_OceanRadiusID, nearestOceanR);
     }
 
     // Metres below the water surface at which the BH/sky effect is fully gone.

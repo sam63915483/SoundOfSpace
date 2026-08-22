@@ -1023,3 +1023,40 @@ mode** now, and **Tools ▸ Optimize ▸ Re-bake Clusters With Lost Shadow
 Settings** repairs clusters baked before it.
 
 Spec: `docs/superpowers/specs/2026-08-22-village-doors-design.md`.
+
+
+## ADDENDUM 2026-08-22b - Water vs screen-space effects (flare + black hole)
+
+Two fixes in the same family: effects drawn outside the depth-tested scene do
+not know about water, and both had been papered over with a scalar.
+
+**Sun flare in the shallows.** `LensFlareRegistry.UnderwaterFlareDim` opened
+with an INSTANT halving (`0.5 * (1 - depth/2.5)`), so the flare lost more than
+half its strength the moment the camera went under while the sun disc stayed
+plainly visible for several more feet — ducking a foot into the sea read as
+"all the sun effects switched off". Now it leaves the waterline nearly
+untouched (`kUnderwaterSurfaceDim` 0.95) and falls on `1 - t^2` to nothing at
+`kUnderwaterFadeDepth` (4), chosen to OUTLAST the sun disc. 1 ft under: 44% →
+94%.
+
+**Black hole seen through an ocean.** The per-pixel ray-vs-ocean cut in
+`Scingularity 1.2.shader` had been DISABLED (`_OceanRadius` forced to 0 in
+`SpaceDustField`) because it drew a hard horizontal seam across the hole. With
+it off, the black hole and its ring of lensed Milky Way were plainly visible
+through hundreds of metres of sea whenever it sat near an ocean horizon.
+
+Root cause of the seam: it keyed on the ray's CLOSEST APPROACH to the ocean
+sphere, `smoothstep(rr*0.98, rr*1.04, closest2)` — a razor-thin analytic
+waterline that was already at 25% alpha AT the tangent and hit 0 within ~2 m of
+horizon dip. That step IS the seam.
+
+It now attenuates by the CHORD LENGTH of water the ray actually crosses
+(Beer-Lambert, `exp(-chord / _WaterOpacityDist)`). The chord grows continuously
+from zero at the tangent, so the falloff is inherently soft — the hole sinks
+into the sea rather than being sliced — and deep water is opaque by orders of
+magnitude. Measured at ocean radius 200: 6 m of water 93%, 56 m 49%, 211 m 7%,
+346 m 1%. `_WaterOpacityDist` (default 80) is exposed on the material: bigger =
+softer edge but more see-through, smaller = opaque sooner but tighter gradient.
+
+Camera-submerged handling is unchanged — the uniform `_OceanFade` ramp still
+owns that, and the per-pixel test stays gated to camera-above-water.
