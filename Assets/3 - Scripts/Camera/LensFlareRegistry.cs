@@ -51,6 +51,18 @@ public class LensFlareRegistry : MonoBehaviour
     // 12 (was 8): 1/13 steps instead of 1/9 — partial cover fades in finer
     // increments, so a planet limb sweeping the silhouette pulses less.
     const int   kOcclusionEdgeSamples = 12;
+    // Core sampling: the flare radiates from the sun's CENTRE, so the centre is
+    // what must be visible for a flare to exist. Sampled as a tight ring plus
+    // the centre ray (5 samples) rather than one ray, so an obstacle edge
+    // crossing the middle grades in fifths instead of popping.
+    const int   kCoreRingSamples      = 4;
+    const float kCoreRingRadiusFrac   = 0.30f;   // of the sun's radius
+    // How much of the visibility vote the core carries. 0.8 means a fully
+    // covered core scores at most 0.2 even with a perfectly clear limb — under
+    // kVisibilityThreshold (0.25), so it remaps to a hard 0 and the flare is
+    // gone. That is the whole point: a sliver of limb behind a tree must NOT
+    // keep the flare alive, because the flare comes out of the middle.
+    const float kCoreWeight           = 0.8f;
     // Temporal smoothing for the visibility fraction so per-sample steps
     // don't read as a flicker when an obstacle's edge sweeps past samples.
     // 0.25s (was 0.08s): single-sample flips at a partially-covered sun were
@@ -504,31 +516,62 @@ public class LensFlareRegistry : MonoBehaviour
         }
     }
 
-    // Returns 0..1 — fraction of sample points around the sun's silhouette
-    // (plus one at the centre) that aren't blocked by world geometry.
-    // 0 = fully occluded, 1 = fully clear, intermediate = partial cover.
+    // Returns 0..1 visibility, weighted so the sun's CORE dominates.
+    //
+    // ── Why not a flat fraction of samples ──────────────────────────────
+    // It used to be (centre + 12 limb samples) / 13, all weighted equally. So
+    // a tree trunk covering the middle of the sun while the limb stayed clear
+    // scored 12/13 — a near-full-strength flare. But every element of this
+    // flare (halo, spikes, ghost chain) radiates from the sun's CENTRE, so the
+    // result read as the flare being drawn IN FRONT of the trunk. That is also
+    // physically backwards: the flare is scattering from the bright core, and
+    // an occluded core produces no flare no matter how much limb is showing.
+    //
+    // We cannot depth-sort our way out of it — this flare is a screen-space UI
+    // overlay drawn after all post-processing, precisely because the atmosphere
+    // blit erases anything drawn earlier (see the class summary). There is no
+    // depth to sort against. Gating on core visibility is the fix.
+    //
+    // So: an inner disc (centre + a small ring) carries kCoreWeight of the
+    // vote, the limb ring carries the rest. Fully-blocked core with a totally
+    // clear limb lands at 1 - kCoreWeight = 0.2, which is under
+    // kVisibilityThreshold (0.25) and therefore remaps to a hard 0 — gone.
+    // Sampling the core as a small RING rather than a single ray keeps it
+    // graded, so a branch edge sweeping the centre steps down in fifths
+    // instead of popping; kVisibilitySmoothTime then glides across those steps.
     float ComputeOcclusionVisibility(Vector3 camPos, Vector3 sunPos, float sunRadius, Vector3 toSunDir, Vector3 camUp)
     {
-        int total = kOcclusionEdgeSamples + 1;
-        int clearCount = 0;
-
-        // Centre sample.
-        if (!IsSampleBlocked(camPos, sunPos)) clearCount++;
-
-        // Edge samples on the great-circle perpendicular to the view
-        // direction. At solar-system distances this is indistinguishable
-        // from the true silhouette circle and is cheaper to compute.
+        // Basis on the great-circle perpendicular to the view direction. At
+        // solar-system distances this is indistinguishable from the true
+        // silhouette circle and is cheaper to compute.
         Vector3 right = Vector3.Cross(toSunDir, camUp);
         if (right.sqrMagnitude < 1e-6f) right = Vector3.Cross(toSunDir, Vector3.up);
         right.Normalize();
         Vector3 up = Vector3.Cross(right, toSunDir).normalized;
+
+        // ── Core: centre ray + a tight ring just around it ──
+        int coreClear = 0;
+        if (!IsSampleBlocked(camPos, sunPos)) coreClear++;
+        for (int i = 0; i < kCoreRingSamples; i++)
+        {
+            float a = (i / (float)kCoreRingSamples) * Mathf.PI * 2f;
+            Vector3 sample = sunPos + (right * Mathf.Cos(a) + up * Mathf.Sin(a))
+                                      * (sunRadius * kCoreRingRadiusFrac);
+            if (!IsSampleBlocked(camPos, sample)) coreClear++;
+        }
+        float coreFrac = coreClear / (float)(kCoreRingSamples + 1);
+
+        // ── Limb: the silhouette edge ──
+        int limbClear = 0;
         for (int i = 0; i < kOcclusionEdgeSamples; i++)
         {
             float a = (i / (float)kOcclusionEdgeSamples) * Mathf.PI * 2f;
             Vector3 sample = sunPos + (right * Mathf.Cos(a) + up * Mathf.Sin(a)) * sunRadius;
-            if (!IsSampleBlocked(camPos, sample)) clearCount++;
+            if (!IsSampleBlocked(camPos, sample)) limbClear++;
         }
-        return clearCount / (float)total;
+        float limbFrac = limbClear / (float)kOcclusionEdgeSamples;
+
+        return kCoreWeight * coreFrac + (1f - kCoreWeight) * limbFrac;
     }
 
     // True if the ray from origin to target hits anything that isn't the
