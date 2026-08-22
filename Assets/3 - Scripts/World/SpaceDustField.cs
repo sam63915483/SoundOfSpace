@@ -89,6 +89,7 @@ public class SpaceDustField : MonoBehaviour
         _planets.Clear();
         _bhMaterial = null;           // the cached Scingularity material is stale after a reload
         _oceanRadius.Clear();         // ocean radii belong to destroyed bodies after a reload
+        _oceanGen.Clear();
         if (_local != null)
         {
             float half = boxSize * 0.5f;
@@ -147,6 +148,9 @@ public class SpaceDustField : MonoBehaviour
     // Ocean radii per body (world units; 0 = no ocean), cached like _atmoRadius.
     // Cleared in ReseedField on scene load.
     readonly Dictionary<CelestialBody, float> _oceanRadius = new Dictionary<CelestialBody, float>();
+    // The generator whose transform the ocean is actually drawn around — see OceanDrawCentre.
+    readonly Dictionary<CelestialBody, CelestialBodyGenerator> _oceanGen =
+        new Dictionary<CelestialBody, CelestialBodyGenerator>();
 
     // Per-frame ocean shortlist for the per-speck occlusion test (planets whose ocean
     // sphere can actually sit between the camera and a speck in the box).
@@ -172,7 +176,36 @@ public class SpaceDustField : MonoBehaviour
         var gen = p.GetComponentInChildren<CelestialBodyGenerator>();
         r = gen != null ? gen.GetOceanRadius() : 0f;
         _oceanRadius[p] = r;
+        _oceanGen[p] = gen;
         return r;
+    }
+
+    /// <summary>The exact point the ocean is DRAWN around.
+    ///
+    /// ⚠️ NOT <see cref="CelestialBody.Position"/>. That returns rb.position —
+    /// the physics position — while OceanEffect.UpdateSettings renders the water
+    /// around <c>generator.transform.position</c>. Every celestial rigidbody in
+    /// this scene has Interpolate ON, which by design makes the transform lag
+    /// the body by a varying fraction of a physics step, so the two differ by a
+    /// different amount every frame.
+    ///
+    /// Feeding rb.position to the black hole's ocean cut therefore put its
+    /// waterline a wobbling distance away from the waterline actually on screen
+    /// — and at the horizon the cut moves ~1 px per 0.04 world units, so a
+    /// fraction of a step of orbital motion is several pixels of jitter, every
+    /// frame. THAT is the "glitching line at the horizon" that killed this
+    /// feature three separate times; it was never the shader maths.
+    ///
+    /// Matching OceanEffect's source exactly is the whole fix.</summary>
+    Vector3 OceanDrawCentre(CelestialBody p)
+    {
+        if (p == null) return Vector3.zero;
+        if (!_oceanGen.TryGetValue(p, out var gen))
+        {
+            gen = p.GetComponentInChildren<CelestialBodyGenerator>();
+            _oceanGen[p] = gen;
+        }
+        return gen != null ? gen.transform.position : p.Position;
     }
 
     // ---- per-frame relevant-planet shortlist (perf: avoids dict lookups + far planets in the hot loop) ----
@@ -251,7 +284,7 @@ public class SpaceDustField : MonoBehaviour
                 if (distP < nearestOceanDist)
                 {
                     nearestOceanDist = distP;
-                    nearestOceanPos = p.Position;
+                    nearestOceanPos = OceanDrawCentre(p);   // NOT p.Position — see OceanDrawCentre
                     nearestOceanR = oceanR;
                 }
             }
