@@ -26,6 +26,10 @@ using UnityEngine.Rendering;
 ///   • SkinnedMeshRenderers and anything under an Animator / Rigidbody (the
 ///     waving market NPCs, ragdolls, dynamic props).
 ///   • "_Placed" objects (player-built, save-tracked).
+///   • Swinging doors (a VillageDoor component, or a "DoorPart*" name) — baking
+///     one leaves a welded copy in the doorway while the real leaf opens
+///     invisibly. Run Tools ▸ Optimize ▸ Un-bake Village Doors on a scene that
+///     was combined before this rule existed.
 ///   • Generated planet geometry by name ("Mesh Holder", "Terrain", ...).
 ///   • Whole protected clusters by name in the all-clusters pass (concert
 ///     STAGEs — their light/laser meshes move via script — atmosphere, ocean,
@@ -92,13 +96,26 @@ public static class MeshCombineTool
         var root = Selection.activeGameObject;
         if (root == null) return;
 
-        var combinedRoots = new List<Transform>();
-        FindCombinedRoots(root.transform, combinedRoots);
-        if (combinedRoots.Count == 0)
+        int n = RevertUnder(root);
+        if (n == 0)
         {
             EditorUtility.DisplayDialog("Revert", $"No combined meshes found under '{root.name}'.", "OK");
             return;
         }
+        Debug.Log($"[MeshCombineTool] Reverted {n} cluster(s) under '{root.name}': originals re-enabled, combined meshes removed.");
+    }
+
+    /// <summary>Revert every combined cluster under <paramref name="root"/>:
+    /// re-enable the originals and delete the combined output. Returns how many
+    /// clusters were undone (0 = nothing was combined here). Extracted from the
+    /// menu command so the door un-baker can reuse it.</summary>
+    internal static int RevertUnder(GameObject root)
+    {
+        if (root == null) return 0;
+
+        var combinedRoots = new List<Transform>();
+        FindCombinedRoots(root.transform, combinedRoots);
+        if (combinedRoots.Count == 0) return 0;
 
         Undo.SetCurrentGroupName("Revert Combined Meshes");
         int group = Undo.GetCurrentGroup();
@@ -119,7 +136,30 @@ public static class MeshCombineTool
 
         Undo.CollapseUndoOperations(group);
         MarkDirty(root);
-        Debug.Log($"[MeshCombineTool] Reverted {combinedRoots.Count} cluster(s) under '{root.name}': originals re-enabled, combined meshes removed.");
+        return combinedRoots.Count;
+    }
+
+    /// <summary>Re-combine one already-reverted cluster root, honouring the
+    /// current skip rules. Returns the resulting draw-call count, or -1 if the
+    /// cluster had nothing eligible (or a mesh that isn't Read/Write enabled).
+    /// Used by the door un-baker, which must revert and re-bake a single cluster
+    /// without disturbing the other nineteen on the planet.</summary>
+    internal static int RecombineOne(GameObject root)
+    {
+        if (root == null) return -1;
+        if (root.transform.Find(CombinedRootName) != null) return -1;   // still combined
+
+        var rends = new List<MeshRenderer>();
+        var unreadable = new HashSet<Mesh>();
+        CollectEligible(root.transform, root.transform, rends, unreadable);
+        if (rends.Count == 0 || unreadable.Count > 0) return -1;
+
+        Undo.SetCurrentGroupName("Combine Static Meshes");
+        int group = Undo.GetCurrentGroup();
+        int draws = CombineOneRoot(root, rends);
+        Undo.CollapseUndoOperations(group);
+        MarkDirty(root);
+        return draws;
     }
 
     // ── Core ─────────────────────────────────────────────────────────────────
@@ -262,6 +302,14 @@ public static class MeshCombineTool
     {
         if (t.name == CombinedRootName) return;          // never recombine our own output
         if (t.name.Contains("_Placed")) return;          // save-tracked player builds — skip subtree
+        // Doors that swing. Baking one welds a copy of it into the combined mesh
+        // and disables its own renderer, so the leaf opens its COLLIDER while a
+        // ghost door stays rendered shut in the doorway. Returning (not just
+        // skipping this renderer) drops the whole subtree, keeping the handles
+        // with their leaf. The name check catches doors not yet stamped with the
+        // component — see VillageDoorSetup.
+        if (t.GetComponent<VillageDoor>() != null) return;
+        if (t.name.StartsWith("DoorPart")) return;
         // Generated planet surface — forbidden to touch and pointless to combine.
         if (t.name.Contains("Mesh Holder") || t.name.Contains("Terrain Mesh")) return;
 
