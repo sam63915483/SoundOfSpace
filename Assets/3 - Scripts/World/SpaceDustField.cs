@@ -138,6 +138,17 @@ public class SpaceDustField : MonoBehaviour
     static readonly int _OceanFadeID = Shader.PropertyToID("_OceanFade");
     static readonly int _OceanCenterID = Shader.PropertyToID("_OceanCenter");
     static readonly int _OceanRadiusID = Shader.PropertyToID("_OceanRadius");
+    static readonly int _OceanMaskID   = Shader.PropertyToID("_OceanMask");
+    static readonly int _OceanMaskOnID = Shader.PropertyToID("_OceanMaskOn");
+
+    /// <summary>Master switch for hiding the black hole behind sea water. If the
+    /// horizon edge ever misbehaves again, set this false and the effect goes
+    /// back to the long-standing "visible through the ocean" behaviour with no
+    /// artifact of any kind.</summary>
+    public static bool OceanMaskOcclusion = true;
+
+    OceanMaskRenderer _oceanMask;
+    int _oceanMaskRefindCooldown;
 
     // Ocean radii per body (world units; 0 = no ocean), cached like _atmoRadius.
     // Cleared in ReseedField on scene load.
@@ -284,18 +295,44 @@ public class SpaceDustField : MonoBehaviour
         _bhMaterial.SetFloat(_AtmoFadeID, fade);
         _bhMaterial.SetFloat(_OceanFadeID, oceanFade);
         _bhMaterial.SetVector(_OceanCenterID, nearestOceanPos);
-        // Per-pixel water cut, RE-ENABLED. It was switched off because the old
-        // implementation keyed on the ray's CLOSEST APPROACH to the ocean
-        // sphere, which is a razor-thin analytic waterline and drew a hard
-        // horizontal seam across the hole. Switching it off then let the black
-        // hole — and its ring of lensed Milky Way — read clearly through
-        // hundreds of metres of sea whenever it sat near an ocean horizon.
-        // The shader now attenuates by the CHORD LENGTH of water the ray
-        // actually crosses (Beer-Lambert), which grows continuously from zero
-        // at the tangent: no seam, and deep water is opaque by orders of
-        // magnitude. Softness/opacity is tunable on the material via
-        // _WaterOpacityDist.
-        _bhMaterial.SetFloat(_OceanRadiusID, nearestOceanR);
+        // ── Water occlusion: use the ocean's OWN mask, don't re-derive it ────
+        //
+        // Every previous attempt re-derived the waterline inside the
+        // Scingularity shader (closest-approach smoothstep, then chord length,
+        // then chord × Fresnel) and every one of them glitched along the
+        // horizon. The cause is numerical, not aesthetic: that shader's
+        // viewDirection is `half`, and the test needs
+        // `closest2 = oc2 - bproj²` — two values around 42 000 whose difference
+        // at the tangent is ~0. Catastrophic cancellation at ~11 bits of
+        // mantissa puts an error of tens of units on a signal that is near zero
+        // exactly at the horizon, so the edge pixels flicker frame to frame.
+        // No amount of tuning fixes an ill-conditioned expression.
+        //
+        // OceanMaskRenderer already renders a full-screen ocean mask every
+        // frame, in FLOAT, with the same raySphere() the ocean and atmosphere
+        // use — so its edge IS the ocean's edge, by construction. Sampling it
+        // costs one texture read and cannot disagree with the water that's
+        // actually drawn. It runs at onPostProcessingBegin and the black hole
+        // draws in the transparent queue afterwards, so it's the current frame.
+        //
+        // The analytic path stays compiled but is fed 0 (disabled).
+        _bhMaterial.SetFloat(_OceanRadiusID, 0f);
+
+        if (_oceanMask == null && --_oceanMaskRefindCooldown <= 0)
+        {
+            _oceanMaskRefindCooldown = 120;              // throttle: may never exist off-planet
+            _oceanMask = FindObjectOfType<OceanMaskRenderer>();
+        }
+        var maskTex = _oceanMask != null ? _oceanMask.oceanMaskTexture : null;
+        // Submerged, the uniform _OceanFade depth ramp owns the effect — the
+        // mask would read 1 everywhere and pop it off at the waterline instead.
+        bool aboveWater = oceanFade <= 0f;
+        if (OceanMaskOcclusion && maskTex != null && aboveWater)
+        {
+            _bhMaterial.SetTexture(_OceanMaskID, maskTex);
+            _bhMaterial.SetFloat(_OceanMaskOnID, 1f);
+        }
+        else _bhMaterial.SetFloat(_OceanMaskOnID, 0f);
     }
 
     // Metres below the water surface at which the BH/sky effect is fully gone.

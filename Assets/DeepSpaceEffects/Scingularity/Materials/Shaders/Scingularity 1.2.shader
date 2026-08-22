@@ -21,7 +21,9 @@ Properties {
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
 	[HideInInspector] _OceanRadius("Ocean Radius (driven by SpaceDustField)", Float) = 0
-	_WaterOpacityDist("Water opacity distance (metres of sea for ~63% absorption)", Float) = 12
+	_WaterOpacityDist("Water opacity distance (legacy analytic path; unused while _OceanMaskOn)", Float) = 12
+	[HideInInspector] _OceanMask("Ocean Mask (screen-space, from OceanMaskRenderer)", 2D) = "black" {}
+	[HideInInspector] _OceanMaskOn("Use the ocean mask (driven by SpaceDustField)", Float) = 0
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -60,6 +62,8 @@ SubShader {
 		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
 		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
 		uniform float _OceanRadius;   // 0 = no ocean nearby / disabled
+		uniform sampler2D _OceanMask;   // screen-space 0/1 ocean coverage, rendered by OceanMaskRenderer with the SAME raySphere the ocean itself uses
+		uniform float _OceanMaskOn;     // 1 = use it (camera above water), 0 = leave it to _OceanFade
 		uniform float _WaterOpacityDist; // Beer-Lambert length for looking THROUGH the sea. Owns the DEPTHS; the Fresnel term below owns the horizon. Bigger = more see-through into deep water.
 		uniform sampler2D_float _CameraDepthTexture;
 
@@ -257,61 +261,40 @@ SubShader {
 			// footprint is huge — a single scalar can't handle "centre above
 			// the horizon but the outer ring overlapping the sea", which let
 			// the lensed galaxy show through the water. Soft edge at the rim.
-			// ── How much WATER does this ray actually cross? ──────────────
-			// This was once a smoothstep on the ray's CLOSEST APPROACH to the
-			// ocean sphere. That is a razor-thin analytic waterline — the alpha
-			// went 1 -> 0 across a hair's width of closest-approach distance —
-			// so it painted a hard horizontal seam straight across the hole and
-			// got switched off, leaving the black hole and its ring of Milky Way
-			// plainly visible through hundreds of metres of sea.
+			// ── Water occlusion: sample the ocean's OWN screen-space mask ──
+			// Do NOT re-derive the waterline here. Three attempts did
+			// (closest-approach smoothstep, chord length, chord x Fresnel) and
+			// every one glitched along the horizon, because `viewDirection`
+			// above is a `half` and the test needs oc2 - bproj*bproj — two
+			// values near 42,000 whose difference at the tangent is ~0.
+			// Catastrophic cancellation at 11 bits of mantissa leaves an error
+			// of tens of units on a signal that is zero exactly at the horizon,
+			// so the edge pixels flicker. That is an ill-conditioned
+			// expression, not a tuning problem, and no constant fixes it.
 			//
-			// Keying on the CHORD LENGTH through the sphere instead fixes both
-			// halves. Physically it is just Beer-Lambert: water swallows light
-			// in proportion to how far you look through it. Geometrically the
-			// chord grows continuously from zero at the tangent, so the falloff
-			// is an inherently soft gradient — the hole sinks INTO the sea
-			// instead of being sliced by a line — and a ray crossing hundreds
-			// of metres is gone by many orders of magnitude rather than merely
-			// "past the smoothstep edge".
-			if(_OceanRadius > 0){
+			// OceanMaskRenderer already rasterises a full-screen ocean mask
+			// every frame in FLOAT, using the same raySphere() the ocean and
+			// atmosphere use. Its edge IS the drawn ocean's edge by
+			// construction, so this can never disagree with the water on
+			// screen, and it costs one texture fetch.
+			if(_OceanMaskOn > 0.5){
+				result.a *= 1.0 - saturate(tex2D(_OceanMask, bhScrUV).r);
+			}
+			// Legacy analytic path — kept compiled but fed _OceanRadius = 0.
+			else if(_OceanRadius > 0){
 				float3 oc = _OceanCenter - _WorldSpaceCameraPos;
 				float rr = _OceanRadius * _OceanRadius;
 				float oc2 = dot(oc, oc);
-				// Only while the camera is ABOVE the water. Submerged, the
-				// uniform _OceanFade ramp owns the whole effect.
 				if(oc2 > rr){
 					float bproj = dot(viewDirection, oc);
 					float closest2 = oc2 - bproj * bproj;
 					if(bproj > 0 && closest2 < rr){
-						float halfChord = sqrt(rr - closest2);
-						// Camera is outside the sphere and the black hole is
-						// always far beyond a planet, so the whole chord lies
-						// between the two. (Deliberately not clamped against
-						// viewDistance — that is a `half`, and at solar-system
-						// range it saturates.)
-						float chord = 2.0 * halfChord;
-
-						// ── Fresnel at the entry point ───────────────────────
-						// Beer-Lambert alone CANNOT hide the horizon: the chord
-						// goes to zero at the tangent, so the sliver right on the
-						// waterline stays fully lit no matter how opaque you make
-						// the water. That is the bug — and it is also physically
-						// backwards, because a grazing water surface is a MIRROR,
-						// not a window. Reflectance climbs to ~100% exactly where
-						// the chord vanishes, so the two terms cover for each
-						// other perfectly: Fresnel owns the horizon, absorption
-						// owns the depths.
-						float3 entry = _WorldSpaceCameraPos + viewDirection * (bproj - halfChord);
+						float chord = 2.0 * sqrt(rr - closest2);
+						float3 entry = _WorldSpaceCameraPos + viewDirection * (bproj - chord * 0.5);
 						float3 nrm   = normalize(entry - _OceanCenter);
 						float cosT   = saturate(dot(-viewDirection, nrm));
 						float f      = 1.0 - cosT;
-						float fres   = 0.02 + 0.98 * (f*f*f*f*f);   // Schlick, R0 = 0.02 for water
-						// The two curves cross, leaving a small residual bump
-						// just under the waterline (Fresnel rising faster than
-						// absorption falls). _WaterOpacityDist is sized by that
-						// PEAK, not by any single sightline: 12 caps it near 5%,
-						// 30 leaves 12%, 80 leaves 26% — which is what was still
-						// plainly visible on the horizon.
+						float fres   = 0.02 + 0.98 * (f*f*f*f*f);
 						result.a *= (1.0 - fres) * exp(-chord / max(1.0, _WaterOpacityDist));
 					}
 				}
