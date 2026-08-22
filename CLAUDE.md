@@ -82,6 +82,7 @@ as before, so every scene without a cave is unaffected. Revert with
 - **Runtime-spawned physics objects must call `EndlessManager.RegisterPhysicsObject(transform)`** or floating origin desyncs them.
 - **NPC bone manipulation must run in `LateUpdate`** (the Animator overwrites `Update`/`OnAnimatorIK`). Don't animate the right arm to "reach" held items — that experiment was ripped out; items float at their hold position.
 - **Transparent queue gotcha:** materials must have render queue ≤ 2500 to be hidden behind atmosphere/ocean (`[ImageEffectOpaque]`). See `sFuture Modules Pro/Materials/Glass_EarlyQueue.shader`.
+- **…and its corollary — glass you LOOK THROUGH must not cast shadows.** Built-in RP builds `_CameraDepthTexture` from the ShadowCaster pass of renderers at queue ≤ 2500, **skipping any with Cast Shadows = Off**, and the atmosphere/ocean posts read that texture. So a queue-≤2500 pane that casts shadows writes depth centimetres from the camera and both effects compute ~zero thickness: you look out the window at a world with no atmosphere and no ocean. Village windows are authored Cast Shadows = Off for exactly this reason — `MeshCombineTool` used to override it and broke them. Alternative (what the shuttle + stasis pod do): put the pane at queue 3000 so it's excluded by queue instead.
 
 ---
 

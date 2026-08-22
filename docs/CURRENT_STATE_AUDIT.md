@@ -971,4 +971,30 @@ now have doors you can open with **F** and walk through.
   so no `EnsureGameplaySingletons` entry is needed.
 - **Not saved.** Doors reset closed on load; `SaveCollector` is untouched.
 
+### Window glass through the atmosphere (fixed 2026-08-22)
+
+Once you could get *inside* a house, the windows showed a world with no
+atmosphere and no ocean. Root cause was **not** the glass shader:
+
+`MeshCombineTool.CombineOneRoot` forced `shadowCastingMode = On` on every
+combined output, discarding what the sources authored. The pack authors the
+village panes **Cast Shadows = Off** on purpose, because Built-in RP builds
+`_CameraDepthTexture` from the ShadowCaster pass of renderers at queue <= 2500
+and skips any with casting off. `AtmosphereGlass.shader` bakes the panes to
+queue 2450, so once the bake forced casting on, each pane wrote depth about a
+centimetre from the camera — and `Atmosphere.shader` / `OceanEffect.shader`
+(both `[ImageEffectOpaque]`, both sampling that texture) computed ~zero
+thickness for every window pixel.
+
+The shuttle's windows were unaffected because `Shuttle_PodGlass.mat` sits at
+queue 3000 (excluded by queue, not by shadow mode) and the ship is skipped by
+`IsProtectedCluster` anyway. `StasisPodGlass.shader`'s header documents the same
+symptom from the other direction.
+
+Fix: the combine now groups by **material AND shadow mode** and preserves the
+authored mode. **Tools ▸ Optimize ▸ Re-bake Clusters With Lost Shadow Settings**
+repairs clusters baked before that (it detects them by finding disabled source
+renderers whose mode isn't On). Costs no extra draw calls here — panes and walls
+already differ by material.
+
 Spec: `docs/superpowers/specs/2026-08-22-village-doors-design.md`.

@@ -47,6 +47,18 @@ using UnityEngine.Rendering;
 ///     the planet root (e.g. Humble Abode); it combines each safe child cluster
 ///     separately (preserving per-cluster frustum culling).
 ///   • Tools ▸ Optimize ▸ Revert Combined Meshes Under Selection — undoes either.
+///   • Tools ▸ Optimize ▸ Re-bake Clusters With Lost Shadow Settings — repairs
+///     clusters baked before shadow modes were preserved (see below).
+///
+/// ⚠️ SHADOW MODE IS LOAD-BEARING, NOT COSMETIC. Combined output keeps each
+/// source's shadowCastingMode, because Built-in RP builds _CameraDepthTexture
+/// from the ShadowCaster pass of renderers at queue <= 2500 and SKIPS any with
+/// Cast Shadows = Off — and the atmosphere/ocean are [ImageEffectOpaque] posts
+/// that read that texture. Forcing every combined mesh to cast shadows once
+/// broke the village windows: their panes are authored Cast Shadows = Off
+/// exactly so their queue-2450 glass stays out of the depth texture, and with it
+/// forced on each pane wrote depth a centimetre from the camera, so looking out
+/// a window showed a world with no atmosphere and no ocean.
 /// </summary>
 public static class MeshCombineTool
 {
@@ -88,6 +100,64 @@ public static class MeshCombineTool
             return;
         }
         RunCombine(clusters);
+    }
+
+    [MenuItem("Tools/Optimize/Re-bake Clusters With Lost Shadow Settings")]
+    static void RebakeLostShadowSettings()
+    {
+        // Any cluster baked before the shadow-mode fix has a combined output
+        // forced to Cast Shadows = On, regardless of what its sources said. The
+        // sources themselves are untouched (the bake only DISABLES them), so
+        // their authored modes are still on disk and the damage is detectable:
+        // a disabled source asking for anything other than On was overridden.
+        var victims = new List<GameObject>();
+        var why = new StringBuilder();
+
+        foreach (var rootGo in UnityEngine.SceneManagement.SceneManager.GetActiveScene().GetRootGameObjects())
+        foreach (var t in rootGo.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.Find(CombinedRootName) == null) continue;               // not a cluster root
+            var combined = t.Find(CombinedRootName);
+
+            int lost = 0;
+            foreach (var mr in t.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (mr.transform.IsChildOf(combined)) continue;           // the output, not a source
+                if (mr.enabled) continue;                                 // not baked away
+                if (mr.shadowCastingMode != ShadowCastingMode.On) lost++;
+            }
+            if (lost > 0)
+            {
+                victims.Add(t.gameObject);
+                why.AppendLine($"  • {t.name}: {lost} source renderer(s) whose shadow mode was overridden");
+            }
+        }
+
+        if (victims.Count == 0)
+        {
+            EditorUtility.DisplayDialog("Re-bake",
+                "No combined cluster is carrying overridden shadow settings. Nothing to do.", "OK");
+            return;
+        }
+
+        if (!EditorUtility.DisplayDialog("Re-bake clusters",
+                $"{victims.Count} cluster(s) were baked with their shadow settings overridden:\n\n{why}\n" +
+                "Re-baking restores the authored modes. This is the fix for glass that kills the " +
+                "atmosphere/ocean when you look through it.\n\nRe-bake them now?", "Re-bake", "Cancel"))
+            return;
+
+        var report = new StringBuilder();
+        foreach (var v in victims)
+        {
+            int reverted = MeshCombineTool.RevertUnder(v);
+            int draws = MeshCombineTool.RecombineOne(v);
+            report.AppendLine(draws < 0
+                ? $"  • {v.name}: reverted {reverted}, re-combine REFUSED (nothing eligible / mesh not Read-Write) — scene is correct but un-optimised"
+                : $"  • {v.name}: re-baked to {draws} draw call(s), shadow modes preserved");
+        }
+        Debug.Log($"[MeshCombineTool] Re-baked {victims.Count} cluster(s) with lost shadow settings.\n{report}");
+        EditorUtility.DisplayDialog("Re-bake",
+            $"Re-baked {victims.Count} cluster(s). Save the scene.\n\nDetails in the Console.", "OK");
     }
 
     [MenuItem("Tools/Optimize/Revert Combined Meshes Under Selection")]
@@ -224,13 +294,34 @@ public static class MeshCombineTool
                   $"Originals disabled (reversible via Tools ▸ Optimize ▸ Revert).\n{report}");
     }
 
-    // Combine one cluster's eligible renderers, grouped by material, into meshes
-    // parented under a __CombinedMeshes child. Returns the draw-call count (= the
-    // number of unique materials).
+    // Combine one cluster's eligible renderers, grouped by material AND shadow
+    // mode, into meshes parented under a __CombinedMeshes child. Returns the
+    // draw-call count (= the number of distinct material/shadow-mode groups).
     static int CombineOneRoot(GameObject root, List<MeshRenderer> eligible)
     {
-        var byMaterial = new Dictionary<Material, List<CombineInstance>>();
-        var layerByMaterial = new Dictionary<Material, int>();
+        // Keyed by material AND shadow-casting mode.
+        //
+        // ⚠️ SHADOW MODE IS NOT COSMETIC — it decides what lands in
+        // _CameraDepthTexture. Built-in RP builds that texture from the
+        // ShadowCaster pass of renderers at queue <= 2500, skipping any renderer
+        // with Cast Shadows = Off. The atmosphere and ocean are
+        // [ImageEffectOpaque] post-processes that read it.
+        //
+        // This used to force ShadowCastingMode.On on every combined output. That
+        // ate the village window glass: the pack authors those panes Cast
+        // Shadows = Off precisely so their queue-2450 material stays OUT of the
+        // depth texture. Forced on, each pane wrote depth about a centimetre
+        // from the camera, so the atmosphere and ocean computed ~zero thickness
+        // for every window pixel and you looked out at a bare, un-atmosphered,
+        // un-oceaned world. (The shuttle's windows escaped it by sitting at
+        // queue 3000 and by the ship being excluded from the combine.)
+        //
+        // Grouping by the mode instead of overriding it keeps the authored
+        // intent. Panes and walls already differ by material, so in practice
+        // this costs no extra draw calls.
+        var byGroup = new Dictionary<(Material mat, ShadowCastingMode shadows), List<CombineInstance>>();
+        var layerByGroup = new Dictionary<(Material, ShadowCastingMode), int>();
+        var receiveByGroup = new Dictionary<(Material, ShadowCastingMode), bool>();
         Matrix4x4 rootW2L = root.transform.worldToLocalMatrix;
 
         foreach (var mr in eligible)
@@ -245,11 +336,13 @@ public static class MeshCombineTool
             {
                 Material mat = s < mats.Length ? mats[s] : null;
                 if (mat == null) continue;
-                if (!byMaterial.TryGetValue(mat, out var list))
+                var key = (mat, mr.shadowCastingMode);
+                if (!byGroup.TryGetValue(key, out var list))
                 {
                     list = new List<CombineInstance>();
-                    byMaterial[mat] = list;
-                    layerByMaterial[mat] = mr.gameObject.layer;
+                    byGroup[key] = list;
+                    layerByGroup[key] = mr.gameObject.layer;
+                    receiveByGroup[key] = mr.receiveShadows;
                 }
                 list.Add(new CombineInstance { mesh = mesh, subMeshIndex = s, transform = local });
             }
@@ -264,9 +357,9 @@ public static class MeshCombineTool
         combinedRoot.isStatic = false; // moves with the planet — must NOT be static
 
         int matIndex = 0;
-        foreach (var kv in byMaterial)
+        foreach (var kv in byGroup)
         {
-            var mat = kv.Key;
+            var mat = kv.Key.mat;
             var instances = kv.Value;
 
             var mesh = new Mesh { name = $"Combined_{root.name}_{matIndex}", indexFormat = IndexFormat.UInt32 };
@@ -276,12 +369,12 @@ public static class MeshCombineTool
             var go = new GameObject($"Combined_{(mat != null ? mat.name : "mat")}_{matIndex}");
             Undo.RegisterCreatedObjectUndo(go, "Combine Static Meshes");
             go.transform.SetParent(combinedRoot.transform, false);
-            go.layer = layerByMaterial[mat];
+            go.layer = layerByGroup[kv.Key];
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var rend = go.AddComponent<MeshRenderer>();
             rend.sharedMaterial = mat;
-            rend.shadowCastingMode = ShadowCastingMode.On;
-            rend.receiveShadows = true;
+            rend.shadowCastingMode = kv.Key.shadows;      // authored, never overridden
+            rend.receiveShadows = receiveByGroup[kv.Key];
             matIndex++;
         }
 
@@ -293,7 +386,7 @@ public static class MeshCombineTool
             EditorUtility.SetDirty(mr);
         }
 
-        return byMaterial.Count;
+        return byGroup.Count;
     }
 
     // ── Collection / filtering ────────────────────────────────────────────────
