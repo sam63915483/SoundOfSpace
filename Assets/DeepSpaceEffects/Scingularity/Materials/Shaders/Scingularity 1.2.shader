@@ -21,9 +21,6 @@ Properties {
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
 	[HideInInspector] _OceanRadius("Ocean Radius (driven by SpaceDustField)", Float) = 0
-	_WaterOpacityDist("Water opacity distance (legacy analytic path; unused while _OceanMaskOn)", Float) = 12
-	[HideInInspector] _OceanMask("Ocean Mask (screen-space, from OceanMaskRenderer)", 2D) = "black" {}
-	[HideInInspector] _OceanMaskOn("Use the ocean mask (driven by SpaceDustField)", Float) = 0
 }
 SubShader {
 	Tags{"PreviewType" = "Plane" "RenderType" = "Transparent" "Queue" = "Transparent" "IgnoreProjector"="True" "DisableBatching" = "True" "ForceNoShadowCasting" = "True"}
@@ -62,9 +59,6 @@ SubShader {
 		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
 		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
 		uniform float _OceanRadius;   // 0 = no ocean nearby / disabled
-		uniform sampler2D _OceanMask;   // screen-space 0/1 ocean coverage, rendered by OceanMaskRenderer with the SAME raySphere the ocean itself uses
-		uniform float _OceanMaskOn;     // 1 = use it (camera above water), 0 = leave it to _OceanFade
-		uniform float _WaterOpacityDist; // Beer-Lambert length for looking THROUGH the sea. Owns the DEPTHS; the Fresnel term below owns the horizon. Bigger = more see-through into deep water.
 		uniform sampler2D_float _CameraDepthTexture;
 
 		struct vertexOutput {
@@ -261,42 +255,52 @@ SubShader {
 			// footprint is huge — a single scalar can't handle "centre above
 			// the horizon but the outer ring overlapping the sea", which let
 			// the lensed galaxy show through the water. Soft edge at the rim.
-			// ── Water occlusion: sample the ocean's OWN screen-space mask ──
-			// Do NOT re-derive the waterline here. Three attempts did
-			// (closest-approach smoothstep, chord length, chord x Fresnel) and
-			// every one glitched along the horizon, because `viewDirection`
-			// above is a `half` and the test needs oc2 - bproj*bproj — two
-			// values near 42,000 whose difference at the tangent is ~0.
-			// Catastrophic cancellation at 11 bits of mantissa leaves an error
-			// of tens of units on a signal that is zero exactly at the horizon,
-			// so the edge pixels flicker. That is an ill-conditioned
-			// expression, not a tuning problem, and no constant fixes it.
+			// ── Water occlusion: does this ray enter the sea? ────────────────
 			//
-			// OceanMaskRenderer already rasterises a full-screen ocean mask
-			// every frame in FLOAT, using the same raySphere() the ocean and
-			// atmosphere use. Its edge IS the drawn ocean's edge by
-			// construction, so this can never disagree with the water on
-			// screen, and it costs one texture fetch.
-			if(_OceanMaskOn > 0.5){
-				result.a *= 1.0 - saturate(tex2D(_OceanMask, bhScrUV).r);
-			}
-			// Legacy analytic path — kept compiled but fed _OceanRadius = 0.
-			else if(_OceanRadius > 0){
+			// THE BUG IN EVERY PREVIOUS ATTEMPT WAS PRECISION, NOT THE METHOD.
+			// `viewDirection` above is a half3 (10-bit mantissa). Against an
+			// |oc| of ~205 that puts ~0.1 of error into bproj and ~41 into
+			// oc2 - bproj*bproj — a quantity that is ZERO at the tangent. The
+			// waterline therefore jittered ~4 px frame to frame, which is the
+			// "glitching line at the horizon" that got this feature switched
+			// off twice. In float the same error is 0.005, i.e. none.
+			//
+			// The proof that analytic is fine: OceanMask.shader and
+			// OceanEffect.shader run this identical ray-sphere test in float
+			// and their horizon is rock steady. So recompute the view ray in
+			// FLOAT here (the lensing above can keep its half — it does not
+			// difference large squares) and use the well-conditioned
+			// perpendicular form rather than oc2 - bproj*bproj.
+			//
+			// The cut is BINARY on purpose. The sea's own edge is a hard line;
+			// matching it exactly reads as "the ocean is in front of the black
+			// hole", which is the truth. Soft gradients were tried three times
+			// and every one of them had a band wide enough to notice.
+			if(_OceanRadius > 0){
 				float3 oc = _OceanCenter - _WorldSpaceCameraPos;
 				float rr = _OceanRadius * _OceanRadius;
 				float oc2 = dot(oc, oc);
+				// Camera above the water only; submerged belongs to _OceanFade.
 				if(oc2 > rr){
-					float bproj = dot(viewDirection, oc);
-					float closest2 = oc2 - bproj * bproj;
-					if(bproj > 0 && closest2 < rr){
-						float chord = 2.0 * sqrt(rr - closest2);
-						float3 entry = _WorldSpaceCameraPos + viewDirection * (bproj - chord * 0.5);
-						float3 nrm   = normalize(entry - _OceanCenter);
-						float cosT   = saturate(dot(-viewDirection, nrm));
-						float f      = 1.0 - cosT;
-						float fres   = 0.02 + 0.98 * (f*f*f*f*f);
-						result.a *= (1.0 - fres) * exp(-chord / max(1.0, _WaterOpacityDist));
-					}
+					// Same construction as viewDirection above, in float.
+					float3 vdir = float3(input.position.x / _ScreenParams.x,
+					                     input.position.y / _ScreenParams.y, -1);
+					vdir.xy = vdir.xy * 2 - 1;
+					vdir.xy /= float2(UNITY_MATRIX_P[0][0], UNITY_MATRIX_P[1][1]);
+					if(_Flip > 0 && _ProjectionParams.x <= 0)	vdir.y *= -1;
+					vdir = mul(vdir, (float3x3)UNITY_MATRIX_V);
+					vdir = normalize(vdir);
+
+					float bproj = dot(vdir, oc);
+					// Perpendicular from the ocean centre to the ray. Its length
+					// is the closest approach, computed WITHOUT differencing two
+					// ~42,000 squares.
+					float3 perp = oc - vdir * bproj;
+					float closest2 = dot(perp, perp);
+					// Cut a hair above the true waterline (r x 1.0001, ~2 cm at
+					// r = 200, well under a pixel) so rounding can never leave a
+					// bright sliver of accretion disk sitting on the sea edge.
+					if(bproj > 0 && closest2 < rr * 1.0002)	return half4(0, 0, 0, 0);
 				}
 			}
 
