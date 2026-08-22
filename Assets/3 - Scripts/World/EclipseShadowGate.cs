@@ -41,6 +41,13 @@ public class EclipseShadowGate : MonoBehaviour
     const float SweepInterval = 0.5f;
 
     float _nextSweep;
+
+    /// Fraction of our own orbital distance a body must clearly cross before its
+    /// casting decision flips. Purely anti-chatter — see the note in Update.
+    const float EclipseHysteresis = 0.02f;
+
+    /// Last casting decision per body, for that hysteresis.
+    readonly Dictionary<CelestialBody, bool> _castingState = new Dictionary<CelestialBody, bool>();
     Transform _sun;         // the SunShadowCaster light's transform (sits at the sun)
     Transform _camera;      // lazy, throttled refind — never per-frame
     readonly Dictionary<Renderer, ShadowCastingMode> _original = new Dictionary<Renderer, ShadowCastingMode>();
@@ -74,6 +81,7 @@ public class EclipseShadowGate : MonoBehaviour
     void OnSceneLoaded(UnityEngine.SceneManagement.Scene s, UnityEngine.SceneManagement.LoadSceneMode m)
     {
         _original.Clear();
+        _castingState.Clear();
         _sun = null;
         _camera = null;
     }
@@ -100,8 +108,6 @@ public class EclipseShadowGate : MonoBehaviour
         }
 
         Vector3 sunPos = _sun.position;
-        Vector3 sunToPlayer = _camera.position - sunPos;
-        float playerDistSq = sunToPlayer.sqrMagnitude;
 
         // The body the player is nearest to keeps its authored casting —
         // that's the ground underfoot and its terrain shadows.
@@ -115,6 +121,30 @@ public class EclipseShadowGate : MonoBehaviour
             if (d < nearestSq) { nearestSq = d; nearest = b; }
         }
 
+        // ⚠️ MEASURE FROM THE BODY UNDERFOOT, NOT FROM THE CAMERA.
+        //
+        // This used to compare each body's distance-to-sun against the CAMERA's.
+        // But walking around a planet changes your own distance to the sun by up
+        // to a planet radius, while the question being asked — "is that body
+        // between my world and the sun?" — is pure orbital geometry and has
+        // nothing to do with where you stand on the surface.
+        //
+        // The consequence was ugly and hard to place: any body whose orbit sits
+        // near your own distance from the sun (a moon like Constant Companion
+        // spends its whole orbit there) had this test flip as the player walked.
+        // Flipping it toggles that body's shadow CASTING, so its eclipse blinked
+        // on and off and EVERY lit surface in the world — all the grass at once —
+        // jumped in brightness and hue. The trigger was an iso-distance surface
+        // draped over the terrain, which is why it reproduced at unrelated spots
+        // (a village edge, an empty field) with nothing in common but standing on
+        // that line.
+        //
+        // Referencing the body's centre makes the test depend only on orbital
+        // motion, which is slow and real. Walking can no longer change it at all.
+        Vector3 refPos = nearest != null ? nearest.transform.position : _camera.position;
+        Vector3 sunToRef = refPos - sunPos;
+        float refDist = sunToRef.magnitude;
+
         for (int i = 0; i < bodies.Length; i++)
         {
             var b = bodies[i];
@@ -122,13 +152,25 @@ public class EclipseShadowGate : MonoBehaviour
 
             bool exempt = b == nearest || b.transform == _sun.root || _sun.IsChildOf(b.transform);
             Vector3 sunToBody = b.transform.position - sunPos;
-            // Between = on the player's side of the sun AND nearer to it than
-            // the player. A body farther out than your own orbit can never
-            // block your sun; a body behind the sun (negative dot) never can.
-            bool canEclipse = Vector3.Dot(sunToBody, sunToPlayer) > 0f
-                           && sunToBody.sqrMagnitude < playerDistSq;
 
-            ApplyCasting(b, exempt || canEclipse);
+            // Between = on our side of the sun AND nearer to it than we are. A
+            // body farther out than our own orbit can never block our sun; a
+            // body behind the sun (negative dot) never can.
+            //
+            // Hysteresis on the distance half: a body orbiting at almost exactly
+            // our own radius would otherwise chatter across the boundary as the
+            // two drift past each other, and a shadow caster switching on and off
+            // repeatedly is far worse to look at than one that commits. Once
+            // casting it must get CLEARLY farther out to stop; once stopped it
+            // must come CLEARLY inside to resume.
+            bool wasCasting = !_castingState.TryGetValue(b, out bool prev) || prev;
+            float limit = refDist * (wasCasting ? 1f + EclipseHysteresis : 1f - EclipseHysteresis);
+            bool canEclipse = Vector3.Dot(sunToBody, sunToRef) > 0f
+                           && sunToBody.magnitude < limit;
+
+            bool casting = exempt || canEclipse;
+            _castingState[b] = casting;
+            ApplyCasting(b, casting);
         }
     }
 
