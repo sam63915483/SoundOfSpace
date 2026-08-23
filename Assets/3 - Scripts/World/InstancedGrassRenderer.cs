@@ -419,7 +419,10 @@ public class InstancedGrassRenderer : MonoBehaviour
     const float GrassLightMinContribution = 0.002f;
     /// The weakest held light fades out below this multiple of the best rejected
     /// contribution, so an exchange happens at zero on both sides.
-    const float GrassLightSwapFadeBand = 1.6f;
+    /// A held light fades out below this multiple of the best rejected
+    /// contribution. Tighter than it looks: with the nearest lanterns scoring
+    /// far above the cut, only the few genuinely marginal ones are affected.
+    const float GrassLightSwapFadeBand = 1.35f;
     /// Must mirror CG_SimpleGrass.shader's _LanternGrassRadius / _LanternGrassTail
     /// defaults. Used only to ORDER the injection list, so a drift from the
     /// material costs ranking nicety, never the continuity of the fade-in.
@@ -556,21 +559,35 @@ public class InstancedGrassRenderer : MonoBehaviour
                 _gplDir[slot] = new Vector4(0f, 0f, 0f, 0f);
             }
         }
-        // Make the exchange itself continuous. Contribution ranking guarantees
-        // the light dropped is the dimmest, but in a village of near-identical
-        // lanterns the winner and loser can be almost equal, and a straight swap
-        // would still step. So fade the single WEAKEST held light out as its
-        // contribution approaches the best REJECTED one: at the moment they
-        // cross, the outgoing light is already at zero and the incoming one
-        // arrives at zero, so the exchange cannot be seen. Touches one light,
-        // and only while it is both the weakest AND close to being displaced --
-        // so a dense village keeps every lantern at full strength.
+        // Make the exchange itself continuous.
+        //
+        // Contribution ranking guarantees the light dropped is the dimmest, but
+        // in a village of near-identical lanterns the winner and loser can be
+        // almost equal, so a straight swap still steps. The cure is to fade a
+        // light out as its contribution approaches the best REJECTED one: at the
+        // moment they cross, the outgoing light is already at zero and the
+        // incoming one arrives at zero, so the exchange cannot be seen.
+        //
+        // ⚠️ THIS USED TO FADE ONLY THE SINGLE WEAKEST HELD LIGHT, which is
+        // where the residual pop lived. One frame of walking can reorder several
+        // near-tied lanterns at once, and every light that crossed the cut
+        // except the one weakest still snapped. Fading EVERY light near the cut
+        // is what actually makes an arbitrary reshuffle invisible.
+        //
+        // Cost is bounded and self-limiting: a light well clear of the cut gets
+        // factor 1 and is untouched, so the nearest lanterns — the ones you
+        // actually look at — stay at full strength. Only the marginal few dim,
+        // and they are the ones about to leave anyway.
         if (n == GrassMaxPointLights && _wRejectMax > 0f)
         {
-            int weakest = 0;
-            for (int k = 1; k < n; k++) if (_gplW[k] < _gplW[weakest]) weakest = k;
-            float t = Mathf.InverseLerp(_wRejectMax, _wRejectMax * GrassLightSwapFadeBand, _gplW[weakest]);
-            _gplColor[weakest] *= t * t * (3f - 2f * t);   // smoothstep
+            float lo = _wRejectMax;
+            float hi = _wRejectMax * GrassLightSwapFadeBand;
+            for (int k = 0; k < n; k++)
+            {
+                float t = Mathf.InverseLerp(lo, hi, _gplW[k]);
+                if (t >= 1f) continue;                       // clear of the cut — untouched
+                _gplColor[k] *= t * t * (3f - 2f * t);       // smoothstep
+            }
         }
 
         if (DbgCollectInjected)
