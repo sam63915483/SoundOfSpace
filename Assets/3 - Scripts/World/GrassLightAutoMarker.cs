@@ -37,6 +37,23 @@ public class GrassLightAutoMarker : MonoBehaviour
     /// strongly as the real ground does.
     const float GrassStrength = 0.5f;
 
+    /// <summary>Grass response for the PLAYER's own lights, separate from the
+    /// shuttle's.
+    ///
+    /// The player's fill light (ViewmodelFillLight) is deliberately tiny —
+    /// intensity 0.55 over a 4.5 m range — because its job is lighting the held
+    /// item, and its header explicitly wants "the world past the player's hands
+    /// untouched". At the shared 0.5 strength that came out as roughly 12% on
+    /// grass a metre away at night and ~2% in daylight: technically working,
+    /// practically invisible, which is exactly what Sam reported.
+    ///
+    /// He wants the blades right around him to pick it up, so the player's
+    /// lights get their own multiplier. It only scales the FAKED grass response
+    /// — the real light is untouched, so held items, the world and stealth all
+    /// behave exactly as before. Turn it down if the pool of light around your
+    /// feet reads too strongly at night.</summary>
+    public static float PlayerLightGrassStrength = 1.5f;
+
     /// Lights appear late (the shuttle streams in, held items spawn, the
     /// thrust FX builds its own lights), so sweep on a slow clock forever
     /// rather than once. Cheap: two throttled finds + a child scan.
@@ -78,7 +95,7 @@ public class GrassLightAutoMarker : MonoBehaviour
             // globals, and a marker on top would light the beam twice.
             var torch = player.GetComponentInChildren<PlayerFlashlight>(true);
             Light torchLight = torch != null ? torch.flashlight : null;
-            MarkLightsUnder(player.transform, torchLight);
+            MarkLightsUnder(player.transform, torchLight, PlayerLightGrassStrength);
         }
 
         // ── the home shuttle's lights ──
@@ -86,10 +103,10 @@ public class GrassLightAutoMarker : MonoBehaviour
         // lives on the Shuttle_Lander, so a bought second ship or a random
         // lit prop can never be mistaken for it. Lazy, throttled refind.
         if (_terminal == null) _terminal = FindObjectOfType<ShuttleComputerTerminal>();
-        if (_terminal != null) MarkLightsUnder(_terminal.transform.root, null);
+        if (_terminal != null) MarkLightsUnder(_terminal.transform.root, null, GrassStrength);
     }
 
-    static void MarkLightsUnder(Transform root, Light exclude)
+    static void MarkLightsUnder(Transform root, Light exclude, float strength)
     {
         _scratch.Clear();
         root.GetComponentsInChildren(true, _scratch);
@@ -101,7 +118,7 @@ public class GrassLightAutoMarker : MonoBehaviour
             if (l.GetComponent<GrassPointLight>() != null) continue;
 
             var marker = l.gameObject.AddComponent<GrassPointLight>();
-            marker.grassStrength = GrassStrength;
+            marker.grassStrength = strength;
         }
     }
 }
