@@ -34,6 +34,8 @@ Shader "CartoonGrass/SimpleGrass"
         _TerminatorGlow ("Sunset backlight on grass", Range(0, 1)) = 0.5
         _TipSunlight ("Sunset tip shadow-lift (fights real shadows - keep low)", Range(0, 1)) = 0.35
         _LampDaylightResponse ("Lantern/torch strength on grass at NOON", Range(0, 1)) = 0.15
+        _GrassFillColor ("Always-on grass fill TINT", Color) = (1, 0.97, 0.9, 1)
+        _GrassFillStrength ("Always-on grass fill STRENGTH", Range(0, 0.5)) = 0.06
     }
     SubShader
     {
@@ -72,6 +74,8 @@ Shader "CartoonGrass/SimpleGrass"
         float _SunFillResponse;      // scales the faked sun point-light fill (sunrise/sunset grass warm-up)
         float _TerminatorGlow;       // low-sun backlight: blades at the terminator read as translucent/side-lit instead of near-black Lambert
         float _LampDaylightResponse; // how much of a lantern's grass glow survives at local noon (1 = old behaviour: full strength in daylight)
+        fixed4 _GrassFillColor;      // constant grass tint — see the note in surf
+        float _GrassFillStrength;
         float _TipSunlight;          // low-sun shadow-lift at blade TIPS — tall grass pokes out of ground-level shadows at grazing sun
 
         // The Sun's UNSHADOWED point light ("Point Light (Sun)"), injected
@@ -232,6 +236,23 @@ Shader "CartoonGrass/SimpleGrass"
             // to read as a night-time glow. Set _AmbientBoost to 0 on the
             // material to kill it entirely.
             o.Emission = c * _AmbientBoost * 0.06;
+
+            // ── Always-on grass fill ────────────────────────────────────────
+            //
+            // Sam noticed that walking within range of a lamp faintly lifted ALL
+            // visible grass and, in his words, "tints all the grass to match the
+            // ground better" -- he LIKED the look and only disliked it switching
+            // off when he left the radius. So make the look permanent and stop it
+            // depending on a light at all: with no radius, no light and no set
+            // membership, there is nothing left to fade in or out.
+            //
+            // Scaled by the DAY FACTOR (o.Specular: 1 at local noon, 0 at the
+            // terminator and through the night). That is what keeps it honest --
+            // it lifts grass while the sun is lifting the ground, and it can
+            // never read as glowing grass in the dark, which is the trap the
+            // tiny _AmbientBoost floor above is deliberately kept small to
+            // avoid. It varies smoothly with the sun and never steps.
+            o.Emission += c * _GrassFillColor.rgb * (_GrassFillStrength * o.Specular);
 
             // FAKED SUN POINT LIGHT — the sunrise/sunset fill. The Sun carries
             // TWO lights: the shadowed directional AND an unshadowed point light
