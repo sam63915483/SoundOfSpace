@@ -423,6 +423,34 @@ public class InstancedGrassRenderer : MonoBehaviour
     /// contribution. Tighter than it looks: with the nearest lanterns scoring
     /// far above the cut, only the few genuinely marginal ones are affected.
     const float GrassLightSwapFadeBand = 1.35f;
+
+    // ── temporal fade: this channel may never SNAP, whatever the reason ─────
+    //
+    // Every structural fix so far removed one CAUSE of a discontinuity —
+    // ranking by contribution, scoring at the drawn grass, fading lights near
+    // the eviction cut. Sam still gets a step, and the bisect proved it travels
+    // through this channel (zeroing _PointLightBoost stops it). Chasing the next
+    // cause is a losing game: the set can change for reasons I have not thought
+    // of, and each one snaps.
+    //
+    // So stop trying to enumerate causes and make the SYMPTOM impossible. Each
+    // light carries a weight that can only move at a bounded rate. Qualifying
+    // ramps it toward 1, dropping out ramps it toward 0, and a light that has
+    // stopped qualifying KEEPS ITS SLOT until its weight reaches zero — so it
+    // fades out instead of disappearing. Any membership change, from any cause,
+    // becomes a 0.35 s ramp.
+    //
+    // Steady state is bit-identical: a light that stays qualified sits at weight
+    // 1 and is multiplied by 1. This cannot dim the look Sam likes; it can only
+    // soften transitions.
+    const float GrassLightFadeSeconds = 0.35f;
+    static readonly int[] _gplId = new int[GrassMaxPointLights];
+    struct GplCache { public Vector4 pos, color, prms, dir; }
+    readonly Dictionary<int, float> _gplFade = new Dictionary<int, float>();
+    readonly Dictionary<int, GplCache> _gplCache = new Dictionary<int, GplCache>();
+    readonly HashSet<int> _gplQual = new HashSet<int>();
+    readonly List<int> _gplDrop = new List<int>();
+    readonly Dictionary<int, float> _gplPending = new Dictionary<int, float>();
     /// Must mirror CG_SimpleGrass.shader's _LanternGrassRadius / _LanternGrassTail
     /// defaults. Used only to ORDER the injection list, so a drift from the
     /// material costs ranking nicety, never the continuity of the fade-in.
@@ -541,6 +569,7 @@ public class InstancedGrassRenderer : MonoBehaviour
             Color c = lt.color * (lt.intensity * Mathf.Max(0f, gp.grassStrength));
             _gplColor[slot] = new Vector4(c.r, c.g, c.b, 1f);
             _gplW[slot] = w;
+            _gplId[slot] = lt.GetInstanceID();
 
             // Spot lights (concert cone/strobe/blinder) only light grass inside their
             // beam; point lights (lanterns/torches) are omnidirectional. Pass the spot
@@ -589,6 +618,63 @@ public class InstancedGrassRenderer : MonoBehaviour
                 _gplColor[k] *= t * t * (3f - 2f * t);       // smoothstep
             }
         }
+
+        // ── temporal fade (see GrassLightFadeSeconds) ───────────────────────
+        float dtFade = Mathf.Max(Time.deltaTime, 1e-4f) / GrassLightFadeSeconds;
+
+        _gplQual.Clear();
+        for (int i = 0; i < n; i++) _gplQual.Add(_gplId[i]);
+
+        // Qualifying lights ramp UP, and their full data is cached so they can
+        // still be drawn later while fading out.
+        for (int i = 0; i < n; i++)
+        {
+            int id = _gplId[i];
+            _gplFade.TryGetValue(id, out float wgt);
+            wgt = Mathf.MoveTowards(wgt, 1f, dtFade);
+            _gplFade[id] = wgt;
+            _gplCache[id] = new GplCache
+            {
+                pos = _gplPos[i],
+                color = _gplColor[i],      // pre-weight, so the fade is applied once
+                prms = _gplParams[i],
+                dir = _gplDir[i],
+            };
+            _gplColor[i] *= wgt;
+        }
+
+        // Lights that stopped qualifying keep emitting, from cached data, while
+        // their weight decays to zero. This is what turns an eviction into a
+        // fade — without it the light is simply gone the frame it loses.
+        _gplDrop.Clear();
+        foreach (var kv in _gplFade)
+        {
+            int id = kv.Key;
+            if (_gplQual.Contains(id)) continue;
+            float wgt = Mathf.MoveTowards(kv.Value, 0f, dtFade);
+            if (wgt <= 0.002f || !_gplCache.ContainsKey(id)) { _gplDrop.Add(id); continue; }
+            _gplDrop.Add(id);                       // rewritten below with the new weight
+            if (n < GrassMaxPointLights)
+            {
+                var c = _gplCache[id];
+                _gplPos[n] = c.pos;
+                _gplColor[n] = c.color * wgt;
+                _gplParams[n] = c.prms;
+                _gplDir[n] = c.dir;
+                _gplW[n] = 0f;
+                _gplId[n] = id;
+                n++;
+                _gplPending[id] = wgt;
+            }
+            else _gplPending[id] = wgt;             // no slot free; keep decaying anyway
+        }
+        for (int i = 0; i < _gplDrop.Count; i++)
+        {
+            int id = _gplDrop[i];
+            if (_gplPending.TryGetValue(id, out float wgt)) _gplFade[id] = wgt;
+            else { _gplFade.Remove(id); _gplCache.Remove(id); }
+        }
+        _gplPending.Clear();
 
         if (DbgCollectInjected)
         {
