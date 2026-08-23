@@ -33,6 +33,7 @@ Shader "CartoonGrass/SimpleGrass"
         _SunFillResponse ("Sunrise/sunset sun fill on grass", Range(0, 2)) = 1.0
         _TerminatorGlow ("Sunset backlight on grass", Range(0, 1)) = 0.5
         _TipSunlight ("Sunset tip shadow-lift (fights real shadows - keep low)", Range(0, 1)) = 0.35
+        _LampDaylightResponse ("Lantern/torch strength on grass at NOON", Range(0, 1)) = 0.15
     }
     SubShader
     {
@@ -70,6 +71,7 @@ Shader "CartoonGrass/SimpleGrass"
         float3 _GrassPlanetCenter;   // set globally by InstancedGrassRenderer (per-patch colour hash)
         float _SunFillResponse;      // scales the faked sun point-light fill (sunrise/sunset grass warm-up)
         float _TerminatorGlow;       // low-sun backlight: blades at the terminator read as translucent/side-lit instead of near-black Lambert
+        float _LampDaylightResponse; // how much of a lantern's grass glow survives at local noon (1 = old behaviour: full strength in daylight)
         float _TipSunlight;          // low-sun shadow-lift at blade TIPS — tall grass pokes out of ground-level shadows at grazing sun
 
         // The Sun's UNSHADOWED point light ("Point Light (Sun)"), injected
@@ -288,6 +290,32 @@ Shader "CartoonGrass/SimpleGrass"
             // (omni) are unaffected.
             float spotDistFade = smoothstep(_SpotGrassReach, _SpotGrassReach * 0.3,
                                             distance(IN.worldPos, _GrassSpotCenter));
+            // ⚠️ LANTERNS MUST NOT OUT-SHINE THE SUN.
+            //
+            // This loop is o.Emission, so it is unshadowed AND ungated: a
+            // lantern lit grass at full strength in broad daylight, where the
+            // sun already supplies everything. The faked sun fill immediately
+            // above is gated by (1 - dayFactor); this was not, and that
+            // asymmetry is the bug.
+            //
+            // It matters because the falloff has a long TAIL. With the live
+            // material values (_LanternGrassRadius 0.5, _LanternGrassTail 0.28,
+            // _PointLightBoost 4.5) a 30 m lantern adds, on top of grass the sun
+            // has ALREADY fully lit:
+            //
+            //     15 m -> +17%      20 m -> +8.5%      25 m -> +3%
+            //
+            // At night that reads as a soft, wanted glow. At noon it is a
+            // brighter patch tens of metres across that should not exist -- and
+            // when the light later drops out of the injected set the whole patch
+            // changes at once. That is the "grass pops brighter/dimmer in random
+            // spots, only during the day" bug: the pop was the symptom, this
+            // ungated daylight glow was the cause.
+            //
+            // dayFactor is o.Specular (1 at local noon, 0 at the terminator), so
+            // night behaviour is EXACTLY unchanged -- lamps still own the grass
+            // when they are the only light around.
+            float lampDay = lerp(1.0, _LampDaylightResponse, o.Specular);
             int gplCount = (int)_GrassPointLightCount;
             for (int li = 0; li < gplCount; li++)
             {
@@ -336,7 +364,7 @@ Shader "CartoonGrass/SimpleGrass"
                 float spotF  = lerp(1.0, smoothstep(_GrassPointLightParams[li].y, _GrassPointLightParams[li].z, cosA), _GrassPointLightDir[li].w);
                 // Apply the concert-distance dimmer to spots only (w=1); lanterns (w=0) keep full reach.
                 float distFade = lerp(1.0, spotDistFade, _GrassPointLightDir[li].w);
-                o.Emission  += c * _GrassPointLightColor[li].rgb * (patten * pwrap * spotF * _PointLightBoost * distFade);
+                o.Emission  += c * _GrassPointLightColor[li].rgb * (patten * pwrap * spotF * _PointLightBoost * distFade * lampDay);
             }
 
             o.Alpha = 1;
