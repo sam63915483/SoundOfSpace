@@ -36,6 +36,9 @@ Material:
     - _PointLightBoost: 4.5
     - _ShadowFill: 0.15
     - _SpotGrassReach: 50
+    - _SunFillResponse: 1
+    - _TerminatorGlow: 0.5
+    - _TipSunlight: 0.35
     m_Colors:
     - _BottomColor: {r: 0.32, g: 0.45, b: 0.17, a: 1}
     - _TopColor: {r: 0.64, g: 0.81, b: 0.17, a: 1}
