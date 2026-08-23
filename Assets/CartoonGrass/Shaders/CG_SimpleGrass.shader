@@ -33,7 +33,7 @@ Shader "CartoonGrass/SimpleGrass"
         _SunFillResponse ("Sunrise/sunset sun fill on grass", Range(0, 2)) = 1.0
         _TerminatorGlow ("Sunset backlight on grass", Range(0, 1)) = 0.5
         _TipSunlight ("Sunset tip shadow-lift (fights real shadows - keep low)", Range(0, 1)) = 0.35
-        _LampDaylightResponse ("Lantern/torch strength on grass at NOON", Range(0, 1)) = 0.15
+        _LampDaylightResponse ("Lantern/torch strength on grass at NOON (0 = none, no daytime fades)", Range(0, 1)) = 0
         _GrassFillColor ("Always-on grass fill TINT", Color) = (1, 0.97, 0.9, 1)
         _GrassFillStrength ("Always-on grass fill STRENGTH", Range(0, 0.5)) = 0.06
     }
@@ -336,6 +336,15 @@ Shader "CartoonGrass/SimpleGrass"
             // dayFactor is o.Specular (1 at local noon, 0 at the terminator), so
             // night behaviour is EXACTLY unchanged -- lamps still own the grass
             // when they are the only light around.
+            //
+            // DEFAULT IS 0, i.e. lamps do NOTHING to grass at local noon. That is
+            // deliberate and it is what Sam asked for: every remaining "walk in,
+            // grass brightens; walk out, it snaps back" was a lamp still being
+            // allowed a slice of daylight influence. At 0 there is no daytime
+            // lamp contribution at all, so there is nothing to fade in or out --
+            // the constant _GrassFillStrength lift below is the only daytime
+            // tint, and it depends on nothing but the sun. Raise this only if
+            // you want daytime lamps back, and accept the switching with it.
             float lampDay = lerp(1.0, _LampDaylightResponse, o.Specular);
             int gplCount = (int)_GrassPointLightCount;
             for (int li = 0; li < gplCount; li++)
