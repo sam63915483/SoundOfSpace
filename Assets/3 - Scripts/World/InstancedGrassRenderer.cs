@@ -451,6 +451,21 @@ public class InstancedGrassRenderer : MonoBehaviour
     readonly HashSet<int> _gplQual = new HashSet<int>();
     readonly List<int> _gplDrop = new List<int>();
     readonly Dictionary<int, float> _gplPending = new Dictionary<int, float>();
+
+    /// Slots held back for lights that are FADING OUT.
+    ///
+    /// ⚠️ A fade-out needs a slot to fade IN. Without this reserve an evicted
+    /// light had nowhere to go -- eviction happens precisely when the set is
+    /// full -- so it vanished the same frame while a newcomer faded in smoothly.
+    /// Sam: "when i pass the threshold the grass fades and gets brighter, then
+    /// when i back up it doesn't fade out, it just flicks back to darker green."
+    /// That asymmetry is exactly this.
+    ///
+    /// Fading OUT wins the slot, because its removal is what you can see; a
+    /// light fading IN starts at weight 0 and is invisible anyway, so it can
+    /// afford to wait a frame. Carried from the previous frame (the count is
+    /// not known until selection has run), which is close enough at 0.35 s.
+    int _fadeReserve;
     /// Must mirror CG_SimpleGrass.shader's _LanternGrassRadius / _LanternGrassTail
     /// defaults. Used only to ORDER the injection list, so a drift from the
     /// material costs ranking nicety, never the continuity of the fade-in.
@@ -461,6 +476,10 @@ public class InstancedGrassRenderer : MonoBehaviour
     {
         int n = 0;
         _wRejectMax = 0f;
+        // Leave room for whatever is still fading out (see _fadeReserve). Never
+        // starve the qualifying set below half the budget.
+        int qualifyCap = Mathf.Clamp(GrassMaxPointLights - _fadeReserve,
+                                     GrassMaxPointLights / 2, GrassMaxPointLights);
         var all = GrassPointLight.All;
         for (int i = 0; i < all.Count; i++)
         {
@@ -554,11 +573,11 @@ public class InstancedGrassRenderer : MonoBehaviour
             float w = vis / (1f + dv * dv);
 
             int slot;
-            if (n < GrassMaxPointLights) { slot = n; n++; }
+            if (n < qualifyCap) { slot = n; n++; }
             else
             {
                 int weakest = 0;
-                for (int k = 1; k < GrassMaxPointLights; k++)
+                for (int k = 1; k < n; k++)
                     if (_gplW[k] < _gplW[weakest]) weakest = k;
                 if (w <= _gplW[weakest]) { if (w > _wRejectMax) _wRejectMax = w; continue; }
                 if (_gplW[weakest] > _wRejectMax) _wRejectMax = _gplW[weakest];
@@ -607,7 +626,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         // factor 1 and is untouched, so the nearest lanterns — the ones you
         // actually look at — stay at full strength. Only the marginal few dim,
         // and they are the ones about to leave anyway.
-        if (n == GrassMaxPointLights && _wRejectMax > 0f)
+        if (n >= qualifyCap && _wRejectMax > 0f)
         {
             float lo = _wRejectMax;
             float hi = _wRejectMax * GrassLightSwapFadeBand;
@@ -668,6 +687,7 @@ public class InstancedGrassRenderer : MonoBehaviour
             }
             else _gplPending[id] = wgt;             // no slot free; keep decaying anyway
         }
+        _fadeReserve = _gplPending.Count;
         for (int i = 0; i < _gplDrop.Count; i++)
         {
             int id = _gplDrop[i];
