@@ -785,6 +785,28 @@ public class PlayerController : GravityObject
 	// setter MUST clear it when done.
 	[System.NonSerialized] public static Transform UpOverrideTransform;
 
+	// ── Shuttle-travel rider mode (2026-08-25, ShuttleRiderFrame) ────────────
+	// While the autopilot flies the shuttle, the player rides INSIDE it: the
+	// rigidbody is kinematic (which no-ops the whole n-body/AddForce pipeline,
+	// exactly like the intro's stasis ride), the transform is parented under
+	// the shuttle, and RiderFixedTick below runs a minimal local-space walk —
+	// reusing IsGrounded/ResolveWallSlide/ResolveWallOverlap, which are pure
+	// queries and work fine on a kinematic body. Set/cleared ONLY by
+	// ShuttleRiderFrame.CaptureRiders/ReleaseRiders.
+	[System.NonSerialized] public static bool RiderMode;
+	[System.NonSerialized] public static Transform RiderPlatform;
+
+	// Cabin-local vertical velocity (m/s along the shuttle's up). The rb is
+	// kinematic, so gravity/jump are integrated by hand while riding.
+	float _riderVertVel;
+	// Fixed-step local poses for render-rate smoothing of the rider's own walk
+	// (the shuttle's motion is smoothed by ShuttleRenderSmoother; this covers
+	// the 50 Hz stepping of the player's local movement).
+	Vector3 _riderPrevLocalPos, _riderCurrLocalPos;
+	bool _riderSmoothInit;
+	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
+	const float RiderJumpSpeed = 6f;   // low cabin ceiling — a hop, not a launch
+
 	// Snaps the look so the camera aims at a world point. Used by the Mission 1
 	// wake-up intro to hold the player's gaze on the cabin photo while look is
 	// locked. Horizontal heading rotates the body; vertical is the camera pitch.
@@ -1305,6 +1327,10 @@ public class PlayerController : GravityObject
 		{
 			Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
 			var relativeVelocity = rb.velocity - refVel;
+			// Shuttle ride: the rb is kinematic (velocity always zero) and the
+			// planet-relative frame is meaningless inside the cabin — the only
+			// vertical motion is the hand-integrated rider fall/jump.
+			if (RiderMode) relativeVelocity = transform.up * _riderVertVel;
 			// Don't cast ray down if player is jumping up from surface
 			if (Vector3.Dot(relativeVelocity, transform.up) <= jumpForce * .5f)
 			{
@@ -1413,6 +1439,16 @@ public class PlayerController : GravityObject
 		{
 			return;
 		}
+
+		// Shuttle-travel ride: the rider tick fully replaces movement/gravity —
+		// the kinematic rb ignores forces anyway, and MovePosition/grip would
+		// fight the parented frame. Everything below stays untouched.
+		if (RiderMode)
+		{
+			RiderFixedTick();
+			return;
+		}
+		_riderSmoothInit = false;
 
 		UpdateSpaceGate();
 
@@ -1802,6 +1838,101 @@ public class PlayerController : GravityObject
 				debug_playerFrozen = !debug_playerFrozen;
 			}
 		}
+	}
+
+	// ── Shuttle-travel rider tick (see the RiderMode field comment) ──────────
+	// Runs INSTEAD of the movement/gravity pipeline while riding. The shuttle's
+	// fixed pose (and Physics.SyncTransforms) committed at execution order -50,
+	// so every query here sees the floor exactly where the transform says it is.
+	void RiderFixedTick()
+	{
+		// Restore the authoritative local pose — LateUpdate below writes a
+		// render-interpolated one, and this tick's math must start from the
+		// fixed-step truth.
+		if (_riderSmoothInit) transform.localPosition = _riderCurrLocalPos;
+
+		// Look-apply (mirrors HandleMovement's first block — pitch to the
+		// camera, accumulated yaw to the body).
+		if (!debug_playerFrozen && Time.timeScale > 0)
+		{
+			cam.transform.localEulerAngles = Vector3.right * smoothPitch;
+			transform.Rotate(Vector3.up * Mathf.DeltaAngle(_yawAppliedToTransform, smoothYaw), Space.Self);
+			_yawAppliedToTransform = smoothYaw;
+		}
+
+		// The ride owns the up (intro recipe): align to the shuttle every step.
+		Vector3 up = UpOverrideTransform != null ? UpOverrideTransform.up
+			: (RiderPlatform != null ? RiderPlatform.up : transform.up);
+		transform.rotation = Quaternion.FromToRotation(transform.up, up) * transform.rotation;
+
+		if (isInDialogue)
+		{
+			smoothVelocity = Vector3.zero;
+			rb.position = transform.position;
+			rb.rotation = transform.rotation;
+			return;
+		}
+
+		float dt = Time.fixedDeltaTime;
+
+		// Hand-integrated cabin gravity + jump (the kinematic rb ignores forces).
+		if (jumpQueued && isGrounded)
+		{
+			PlayerSuitAudio.Instance?.PlayJump();
+			_riderVertVel = RiderJumpSpeed;
+			isGrounded = false;
+		}
+		jumpQueued = false;
+		jetpackQueued = false;   // no thrusters inside the cabin
+		if (isGrounded && _riderVertVel < 0f) _riderVertVel = 0f;
+		else if (!isGrounded) _riderVertVel -= RiderGravity * dt;
+
+		Vector3 move = smoothVelocity * dt + up * (_riderVertVel * dt);
+		float wantedUpMove = _riderVertVel * dt;
+		move = ResolveWallSlide(move);
+		move += ResolveWallOverlap();
+		// Head bump: rising motion the wall slide clipped means we hit the
+		// ceiling — stop the ascent instead of grinding against it.
+		if (_riderVertVel > 0f && Vector3.Dot(move, up) < wantedUpMove * 0.5f)
+			_riderVertVel = 0f;
+
+		Vector3 pos = transform.position + move;
+
+		// Ground clamp: while descending, settle the feet onto the floor and
+		// zero the fall — there are no physics contacts to do it for us.
+		if (_riderVertVel <= 0f && feet != null)
+		{
+			Vector3 offsetToFeet = feet.position - transform.position;
+			Vector3 castOrigin = pos + offsetToFeet + up * 0.3f;
+			if (Physics.SphereCast(castOrigin, 0.25f, -up, out RaycastHit hit, 0.6f,
+					walkableMask, QueryTriggerInteraction.Ignore))
+			{
+				pos += up * (0.3f - hit.distance);
+				_riderVertVel = 0f;
+			}
+		}
+
+		transform.position = pos;
+		rb.position = pos;              // keep the kinematic rb in step for next frame's queries
+		rb.rotation = transform.rotation;
+
+		// Record the fixed-step local pose pair for LateUpdate smoothing.
+		_riderPrevLocalPos = _riderSmoothInit ? _riderCurrLocalPos : transform.localPosition;
+		_riderCurrLocalPos = transform.localPosition;
+		_riderSmoothInit = true;
+		_wasGroundedPhys = isGrounded;
+	}
+
+	// Render-rate interpolation of the rider's own local movement (order 0 —
+	// before ShuttleRenderSmoother at 50 moves the parent, which is fine: local
+	// and parent poses compose independently; CameraTransformFX at 100 last).
+	void LateUpdate()
+	{
+		if (!RiderMode || !_riderSmoothInit || transform.parent == null) return;
+		float t = Time.fixedDeltaTime > 0f
+			? Mathf.Clamp01((Time.time - Time.fixedTime) / Time.fixedDeltaTime)
+			: 1f;
+		transform.localPosition = Vector3.Lerp(_riderPrevLocalPos, _riderCurrLocalPos, t);
 	}
 
 	public void SetVelocity(Vector3 velocity)

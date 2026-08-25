@@ -85,6 +85,17 @@ public class ShuttleExitDoor : MonoBehaviour
 
     void Update()
     {
+        // Shuttle-travel flight seal: fold the ramp back up into a solid wall.
+        if (_closing)
+        {
+            _closeT += Time.deltaTime;
+            float cu = Mathf.Clamp01(_closeT / Mathf.Max(0.01f, openTime));
+            float ck = Mathf.Pow(1f - cu, 3f);   // fast lift, soft seat — hydraulics in reverse
+            transform.localRotation = _restRot * Quaternion.AngleAxis(openAngle * ck, Vector3.right);
+            if (cu >= 1f) _closing = false;
+            return;
+        }
+
         if (!_opening) return;
         _t += Time.deltaTime;
         float u = Mathf.Clamp01(_t / Mathf.Max(0.01f, openTime));
@@ -94,8 +105,33 @@ public class ShuttleExitDoor : MonoBehaviour
         if (u >= 1f) { _opening = false; _open = true; }
     }
 
+    /// Shuttle-travel (2026-08-25): seal the ramp for the flight. Reversible —
+    /// ReopenAfterFlight (or a plain Open()) deploys it again on landing; the
+    /// load-path auto-open in Awake/Start is untouched, so a PARKED save still
+    /// reloads with the ramp down.
+    public void CloseForFlight()
+    {
+        if (_closing) return;
+        _opening = false;
+        _open = false;
+        _closing = true;
+        _closeT = 0f;
+        if (openSound != null) AudioSource.PlayClipAtPoint(openSound, transform.position, 0.9f);
+    }
+
+    public void ReopenAfterFlight()
+    {
+        _closing = false;
+        Open();
+    }
+
     // -- appended after initial release; keep order (serialization) --
 
     [Tooltip("Hydraulic ramp-deploy sound played when the door starts folding open.")]
     public AudioClip openSound;
+
+    // Shuttle-travel flight seal (2026-08-25). Private runtime state — safe to
+    // append; nothing serialized.
+    bool _closing;
+    float _closeT;
 }

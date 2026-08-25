@@ -276,6 +276,12 @@ public class PlayerPickup : MonoBehaviour
         if (endlessManager != null)
             endlessManager.RegisterPhysicsObject(heldObject.transform);
 
+        // Dropped inside a flying shuttle (2026-08-25 travel): freeze it onto
+        // the shuttle frame or it stays behind in world space the moment the
+        // cabin moves. Re-thawed with this same seat-then-sync recipe on landing.
+        if (PlayerController.RiderMode && rb != null)
+            ShuttleRiderFrame.AdoptDroppedItem(rb);
+
         heldObject = null;
         heldObjectOffset = null;
     }
