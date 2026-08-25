@@ -76,6 +76,9 @@ public class StasisValveButton : MonoBehaviour
         if (PlayerController.isMapOpen) return false;
         if (PlayerPhoneUI.IsOpen) return false;
         if (Ship.FindPilotedShip() != null) return false;
+        // Shuttle-travel: the pod (the only save point) is off-limits while the
+        // shuttle is flying — a save must always be a PARKED save.
+        if (ShuttleAutopilot.Instance != null && ShuttleAutopilot.Instance.FlightActive) return false;
         return true;
     }
 

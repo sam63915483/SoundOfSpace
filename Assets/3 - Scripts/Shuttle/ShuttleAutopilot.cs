@@ -130,6 +130,15 @@ public class ShuttleAutopilot : MonoBehaviour
         TryAttach();
     }
 
+    /// Save-load entry point: the apply order may run before this scene's
+    /// sceneLoaded hook — attach on demand. ApplyParkedPose is Start-order
+    /// safe (it initialises the frame fields itself).
+    public static ShuttleAutopilot EnsureAttached()
+    {
+        TryAttach();
+        return Instance;
+    }
+
     static void TryAttach()
     {
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;

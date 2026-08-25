@@ -44,6 +44,30 @@ public static class ShuttleRiderFrame
 
     public static bool Riding => s_riding;
 
+    // Statics survive scene loads and the main menu — a run that ended
+    // mid-flight would otherwise leak RiderMode into the next run and the
+    // player would load with no movement pipeline (the ShuttleExitDoor
+    // OpenedAtTime lesson). A ride never survives a scene load, so reset on
+    // EVERY load; NewGameReset calls ResetStatics too.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
+    static void HookRunReset()
+    {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded += (scene, mode) => ResetStatics();
+    }
+
+    public static void ResetStatics()
+    {
+        s_riding = false;
+        s_player = null;
+        s_items.Clear();
+        s_volume = null;
+        s_volumeShuttle = null;
+        s_fallbackComputed = false;
+        PlayerController.RiderMode = false;
+        PlayerController.RiderPlatform = null;
+        ShuttleAutopilot.ClientDriven = false;
+    }
+
     // ── Occupancy ────────────────────────────────────────────────────────────
     public static bool AnyoneInside(ShuttleAutopilot pilot)
     {

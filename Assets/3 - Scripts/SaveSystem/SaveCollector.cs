@@ -21,6 +21,7 @@ public static class SaveCollector
         CaptureCelestialBodies(data.celestialBodies);
         CapturePlayer(data.player);
         CaptureShip(data.ship);
+        CaptureShuttle(data.shuttle);
         CaptureExtraShips(data.extraShips);
         CaptureResources(data.resources);
         CaptureOxygen(data.oxygen);
@@ -483,6 +484,24 @@ public static class SaveCollector
         foreach (var s in ships)
             if (s != null && s.GetComponent<BoughtShip>() == null) return s;
         return ships[0];
+    }
+
+    // Shuttle-travel (2026-08-25). Always the PARKED pose: the stasis pod (the
+    // only save point) is unreachable mid-flight, and GetParkedPose falls back
+    // to the departure pad on any defensive mid-flight capture. Body-relative
+    // by construction — the shuttle is a scene child of its planet.
+    static void CaptureShuttle(ShuttleSave s)
+    {
+        var pilot = ShuttleAutopilot.Instance;
+        if (pilot == null) return;   // bodyName stays "" = leave scene pose on load
+        pilot.GetParkedPose(out s.bodyName, out s.localPos, out s.localRot);
+    }
+
+    static void ApplyShuttle(ShuttleSave s)
+    {
+        if (s == null || string.IsNullOrEmpty(s.bodyName)) return;
+        var pilot = ShuttleAutopilot.EnsureAttached();
+        if (pilot != null) pilot.ApplyParkedPose(s.bodyName, s.localPos, s.localRot);
     }
 
     static void CaptureShip(ShipSave s)
@@ -1330,6 +1349,11 @@ public static class SaveCollector
         ApplySaplings(data.saplings);
         ApplyPlantedMushrooms(data.plantedMushrooms);
 
+        // NO ApplyShuttle HERE, deliberately — the shuttle's pose reaches a
+        // joining guest LIVE through ShuttleSync (the EnemySync route: phase +
+        // pose are streamed and heartbeat-restated, so the join snapshot would
+        // only race it). Same reasoning as enemies below.
+
         // NO ApplyEnemies HERE, deliberately — unlike Apply(), which does run it.
         //
         // Enemies are the one part of the world that is LIVE rather than
@@ -1371,6 +1395,9 @@ public static class SaveCollector
         //      WorldFlags — singleton state.
         //   7. ShipDamage — synchronous prefab swap; may replace the ship.
         //   8. ShipTransform — after the damage swap (positions the new rb).
+        //   8.5. Shuttle — reparent/pose the shuttle on its saved planet
+        //      BEFORE the player apply, so a player saved standing in a
+        //      relocated shuttle lands inside it, not where it used to be.
         //   9. ExtraShips — spawned before the player apply so a saved
         //      isPiloted=true extra exists when player placement reads it.
         //  10. PlayerTransform — after ship damage so the player isn't
@@ -1431,6 +1458,7 @@ public static class SaveCollector
 
         ApplyShipDamage(data.ship);
         ApplyShipTransform(data.ship);
+        ApplyShuttle(data.shuttle);
         // Spawn purchased extras before the player apply, so a saved
         // isPiloted=true extra exists when player placement reads pilot state.
         ApplyExtraShips(data.extraShips);

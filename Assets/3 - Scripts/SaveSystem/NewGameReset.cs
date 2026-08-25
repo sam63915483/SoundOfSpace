@@ -115,6 +115,11 @@ public static class NewGameReset
         TutorialGate.UnlockAll();
         // Same class of leak: the ramp's "when did it open" stamp is static.
         ShuttleExitDoor.ResetOpenedStamp();
+        // Shuttle-travel rider statics (RiderMode etc.) — a run abandoned
+        // mid-flight must not leave the next run's player frozen kinematic.
+        // (The shuttle's own pose is scene-authored, so a fresh scene load
+        // already parks it on Humble Abode; no pose reset needed.)
+        ShuttleRiderFrame.ResetStatics();
 
         // Same class of leak: buyer bans and remembered counter-offers are pure
         // statics, so a New Game would otherwise start with an alien still

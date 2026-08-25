@@ -44,6 +44,10 @@ public class SaveData
     // main ship is still saved separately in `ship` above; this list only
     // covers runtime-spawned extras so the player's fleet round-trips.
     public List<ExtraShipSave> extraShips = new List<ExtraShipSave>();
+    // Shuttle-travel parked pose (2026-08-25). Pre-feature saves deserialize
+    // this with an empty bodyName, which ApplyShuttle reads as "the shuttle
+    // never moved — leave the scene-authored pose alone", the correct fallback.
+    public ShuttleSave shuttle = new ShuttleSave();
     public SpaceDustSave spaceDust = new SpaceDustSave();
     public HotbarSave hotbar = new HotbarSave();
     public List<StorageSave> storages = new List<StorageSave>();
@@ -445,6 +449,20 @@ public class ShipSave
     public bool rightAttached = true;
     public bool dishAttached = true;
     public bool solarAttached = true;
+}
+
+[Serializable]
+public class ShuttleSave
+{
+    // 2026-08-25 shuttle-travel. Always a PARKED pose (the stasis pod — the
+    // only save point — is unreachable mid-flight; a defensive mid-flight
+    // capture falls back to the departure pad). Body-relative by construction:
+    // the shuttle is a child of its planet, so local pose + bodyName is the
+    // whole truth. Empty bodyName = pre-feature save or never travelled →
+    // ApplyShuttle leaves the scene-authored pose untouched.
+    public string bodyName = "";
+    public Vector3 localPos;
+    public Quaternion localRot = Quaternion.identity;
 }
 
 [Serializable]
