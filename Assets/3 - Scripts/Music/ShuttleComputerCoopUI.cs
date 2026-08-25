@@ -108,6 +108,7 @@ public partial class ShuttleComputerUI
         get
         {
             if (_canvas == null) return TraxSessionSync.ViewNone;
+            if (_navView != null && _navView.activeSelf) return TraxSessionSync.ViewNav;
             if (_traxView != null && _traxView.activeSelf) return TraxSessionSync.ViewArranger;
             if (ProjectsOpen)
                 return _shelfPane != null && _shelfPane.activeSelf
@@ -136,6 +137,7 @@ public partial class ShuttleComputerUI
             saveOpen  = SaveOpen,
             saveText  = SaveOpen && _saveField != null ? _saveField.text : "",
             printOpen = PrintOpen,
+            navTarget = _navSelected,
         };
     }
 
@@ -320,7 +322,15 @@ public partial class ShuttleComputerUI
                 case TraxSessionSync.ViewProjectsMenu: ShowProjects(); break;
                 case TraxSessionSync.ViewShelf:        ShowProjects(); ShowShelfPane(); break;
                 case TraxSessionSync.ViewArranger:     ShowTrax(); break;
+                case TraxSessionSync.ViewNav:          ShowNav(); break;
             }
+        }
+
+        // ── NAV's selected planet (the flight itself rides ShuttleSync) ──
+        if (s.view == TraxSessionSync.ViewNav && (s.navTarget ?? "") != _navSelected)
+        {
+            _navSelected = s.navTarget ?? "";
+            NavApplySelection();
         }
 
         // ── the section, one at a time by design ──

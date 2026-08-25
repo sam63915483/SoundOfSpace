@@ -288,9 +288,12 @@ public partial class ShuttleComputerUI
                 Color border = landing ? Warn : (pilot.LandingValid ? new Color(0.2f, 1f, 0.35f) : new Color(1f, 0.2f, 0.15f));
                 if (Time.unscaledTime < _navRedFlashUntil) border = Color.red;
                 if (_navFeedBorder.color != border) _navFeedBorder.color = border;
-                SetTextIfChanged(_navHoverPrompt, landing
-                    ? "LANDING…"
-                    : (Time.unscaledTime < _navRedFlashUntil ? "NO CLEAR GROUND" : "WASD POSITION · Q/E YAW · SPACE LAND"));
+                string prompt;
+                if (landing) prompt = "LANDING…";
+                else if (Time.unscaledTime < _navRedFlashUntil) prompt = "NO CLEAR GROUND";
+                else if (!ShuttleSync.LocalCanSteer) prompt = "PILOT: " + ShuttleSync.PilotName;
+                else prompt = "WASD POSITION · Q/E YAW · SPACE LAND";
+                SetTextIfChanged(_navHoverPrompt, prompt);
                 SetTextIfChanged(_navAltReadout, "ALT " + Mathf.RoundToInt(pilot.CurrentGroundAltitude) + " M");
                 break;
             }
@@ -304,6 +307,11 @@ public partial class ShuttleComputerUI
         var pilot = ShuttleAutopilot.Instance;
         if (pilot == null) return;
         if (pilot.CurrentPhase != ShuttleAutopilot.Phase.Hover) return;
+
+        // D-3: first NAV user during HOVER owns the stick; everyone else
+        // watches the same feed with a "PILOT:" chip instead of the prompt.
+        ShuttleSync.TryClaimPilot();
+        if (!ShuttleSync.LocalCanSteer) return;
 
         Vector2 move = new Vector2(
             (Input.GetKey(KeyCode.D) ? 1f : 0f) - (Input.GetKey(KeyCode.A) ? 1f : 0f),

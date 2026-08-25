@@ -83,6 +83,7 @@ public class TraxSessionSync : MonoBehaviour
     public const byte ViewProjectsMenu = 2;   // the TRAX menu (NEW / LOAD)
     public const byte ViewShelf        = 3;   // the project list
     public const byte ViewArranger     = 4;
+    public const byte ViewNav          = 5;   // shuttle travel (2026-08-25) — append-only, raw byte on the wire
 
     public const byte TransportStop     = 0;
     public const byte TransportPlaySong = 1;
@@ -152,12 +153,13 @@ public class TraxSessionSync : MonoBehaviour
     /// </summary>
     public struct Screen
     {
-        public byte view;        // ViewHome / ViewProjectsMenu / ViewShelf / ViewArranger
+        public byte view;        // ViewHome / ViewProjectsMenu / ViewShelf / ViewArranger / ViewNav
         public string projectId; // which shelf record is open ("" = never saved)
         public int section;      // the section being edited — one at a time, by design
         public bool saveOpen;
         public string saveText;
         public bool printOpen;
+        public string navTarget; // NAV's selected planet ("" = none) — shuttle travel 2026-08-25
 
         public bool Same(Screen o)
         {
@@ -166,7 +168,8 @@ public class TraxSessionSync : MonoBehaviour
                 && saveOpen == o.saveOpen
                 && printOpen == o.printOpen
                 && (projectId ?? "") == (o.projectId ?? "")
-                && (saveText ?? "") == (o.saveText ?? "");
+                && (saveText ?? "") == (o.saveText ?? "")
+                && (navTarget ?? "") == (o.navTarget ?? "");   // forgetting Same() = spam or stuck
         }
     }
 
@@ -431,9 +434,11 @@ public class TraxSessionSync : MonoBehaviour
             w.WriteValueSafe((byte)(s.saveOpen ? 1 : 0));
             w.WriteValueSafe(s.saveText ?? "");
             w.WriteValueSafe((byte)(s.printOpen ? 1 : 0));
+            w.WriteValueSafe(s.navTarget ?? "");   // appended — reader/relay must match this order
         }, ulong.MaxValue, NetworkDelivery.ReliableSequenced,
            (s.projectId != null ? s.projectId.Length : 0) * 4
-         + (s.saveText != null ? s.saveText.Length : 0) * 4 + 96);
+         + (s.saveText != null ? s.saveText.Length : 0) * 4
+         + (s.navTarget != null ? s.navTarget.Length : 0) * 4 + 112);
     }
 
     /// Opened or closed the computer. Carries the name and suit colour so the
@@ -544,11 +549,13 @@ public class TraxSessionSync : MonoBehaviour
                 reader.ReadValueSafe(out byte saveOpen);
                 reader.ReadValueSafe(out string saveText);
                 reader.ReadValueSafe(out byte printOpen);
+                reader.ReadValueSafe(out string navTarget);
 
                 IncomingScreen = new Screen
                 {
                     view = view, projectId = projectId, section = section,
                     saveOpen = saveOpen != 0, saveText = saveText, printOpen = printOpen != 0,
+                    navTarget = navTarget,
                 };
                 IncomingScreenRev++;
                 HasScreen = view != ViewNone;
@@ -563,8 +570,10 @@ public class TraxSessionSync : MonoBehaviour
                     w.WriteValueSafe(section);
                     w.WriteValueSafe(saveOpen); w.WriteValueSafe(saveText ?? "");
                     w.WriteValueSafe(printOpen);
+                    w.WriteValueSafe(navTarget ?? "");
                 }, (projectId != null ? projectId.Length : 0) * 4
-                 + (saveText != null ? saveText.Length : 0) * 4 + 96);
+                 + (saveText != null ? saveText.Length : 0) * 4
+                 + (navTarget != null ? navTarget.Length : 0) * 4 + 112);
                 break;
             }
 

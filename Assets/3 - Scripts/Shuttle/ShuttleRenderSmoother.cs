@@ -34,13 +34,18 @@ public class ShuttleRenderSmoother : MonoBehaviour
         {
             transform.localPosition = curPos;
             transform.localRotation = curRot;
-            return;
+        }
+        else
+        {
+            float t = Time.fixedDeltaTime > 0f
+                ? Mathf.Clamp01((Time.time - _lastFixedTime) / Time.fixedDeltaTime)
+                : 1f;
+            transform.localPosition = Vector3.Lerp(prevPos, curPos, t);
+            transform.localRotation = Quaternion.Slerp(prevRot, curRot, t);
         }
 
-        float t = Time.fixedDeltaTime > 0f
-            ? Mathf.Clamp01((Time.time - _lastFixedTime) / Time.fixedDeltaTime)
-            : 1f;
-        transform.localPosition = Vector3.Lerp(prevPos, curPos, t);
-        transform.localRotation = Quaternion.Slerp(prevRot, curRot, t);
+        // Rider puppets are placed in the shuttle frame — re-place them from
+        // the freshly smoothed pose or they trail the cabin by a whole step.
+        PlanetRelativeSync.ReplaceShuttleFramePuppets();
     }
 }

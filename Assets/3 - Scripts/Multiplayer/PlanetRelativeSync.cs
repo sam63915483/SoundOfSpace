@@ -29,6 +29,25 @@ public class PlanetRelativeSync : NetworkBehaviour
     public float remoteLerpSpeed = 12f;
     public float remoteSnapDistance = 25f;
 
+    // ── Reference frame (2026-08-25 shuttle travel) ──────────────────────
+    // The frame the local pose is expressed in now TRAVELS ON THE WIRE. It was
+    // a hard-wired inspector string, which broke the moment a player left
+    // Humble Abode — and breaks completely once the shuttle can fly. The owner
+    // elects its frame every publish: the shuttle while riding (RiderMode),
+    // else the gravity reference body by name. The remote side resolves the
+    // same frame locally and SNAPS its smoothing on every frame change —
+    // lerping between two coordinate systems is garbage.
+    const byte FrameKindPlanet = 0;
+    const byte FrameKindShuttle = 1;
+    readonly NetworkVariable<byte> netFrameKind = new NetworkVariable<byte>(
+        FrameKindPlanet, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    readonly NetworkVariable<Unity.Collections.FixedString64Bytes> netFrameName =
+        new NetworkVariable<Unity.Collections.FixedString64Bytes>(
+            default, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
+    Transform ownerFrame;          // owner side: the frame this publish used
+    byte appliedFrameKind = 255;   // remote side: frame the smoothing lives in
+    string appliedFrameName = "";
+
     readonly NetworkVariable<Vector3> netLocalPos = new NetworkVariable<Vector3>(
         Vector3.zero, NetworkVariableReadPermission.Everyone, NetworkVariableWritePermission.Owner);
     readonly NetworkVariable<Quaternion> netLocalRot = new NetworkVariable<Quaternion>(
@@ -303,9 +322,38 @@ public class PlanetRelativeSync : NetworkBehaviour
         // A paused player isn't moving, so freezing the broadcast loses nothing.
         if (Time.timeScale == 0f) return;
 
+        // Frame election — see the netFrameKind comment. The shuttle sample is
+        // taken against its FIXED-step pose (both this LateUpdate at order 0
+        // and the player's parented transform precede ShuttleRenderSmoother at
+        // 50), so the local pose is exact regardless of render smoothing.
+        byte kind = FrameKindPlanet;
+        Transform frame = planet;
+        string fname = planetBody != null ? planetBody.bodyName : planetName;
+        if (PlayerController.RiderMode && ShuttleAutopilot.Instance != null)
+        {
+            kind = FrameKindShuttle;
+            frame = ShuttleAutopilot.Instance.transform;
+            fname = "";
+        }
+        else
+        {
+            var refBody = realPlayer.ReferenceBody;
+            if (refBody != null)
+            {
+                frame = refBody.transform;
+                fname = refBody.bodyName;
+                planet = frame;         // keep the cached pair current for the
+                planetBody = refBody;   // flashlight + debug readouts
+            }
+        }
+        if (frame == null) return;
+        ownerFrame = frame;
+        if (netFrameKind.Value != kind) netFrameKind.Value = kind;
+        if (netFrameName.Value.ToString() != fname) netFrameName.Value = fname;
+
         Transform rt = realPlayer.transform;
-        netLocalPos.Value = planet.InverseTransformPoint(rt.position);
-        netLocalRot.Value = Quaternion.Inverse(planet.rotation) * rt.rotation;
+        netLocalPos.Value = frame.InverseTransformPoint(rt.position);
+        netLocalRot.Value = Quaternion.Inverse(frame.rotation) * rt.rotation;
         if (realAnimator != null)
         {
             netAnimSpeed.Value = realAnimator.GetFloat("Speed");
@@ -345,15 +393,17 @@ public class PlanetRelativeSync : NetworkBehaviour
         float q = Mathf.Round(lamp.intensity * 20f) / 20f;
         if (!Mathf.Approximately(netLightIntensity.Value, q)) netLightIntensity.Value = q;
 
+        // Same frame as the body — a rider's beam is shuttle-local.
+        Transform lframe = ownerFrame != null ? ownerFrame : planet;
         Transform lt = lamp.transform;
-        netLightLocalPos.Value = planet.InverseTransformPoint(lt.position);
-        netLightLocalRot.Value = Quaternion.Inverse(planet.rotation) * lt.rotation;
+        netLightLocalPos.Value = lframe.InverseTransformPoint(lt.position);
+        netLightLocalRot.Value = Quaternion.Inverse(lframe.rotation) * lt.rotation;
     }
 
     /// Remote side: build a matching spot light once, then drive it. Built from
     /// the LOCAL player's own flashlight settings so both machines agree on cone
     /// angle, range and colour without sending any of it over the wire.
-    void ApplyRemoteFlashlight()
+    void ApplyRemoteFlashlight(Transform frame)
     {
         bool on = netLightOn.Value;
 
@@ -400,7 +450,7 @@ public class PlanetRelativeSync : NetworkBehaviour
         }
 
         puppetLight.enabled = on;
-        if (!on || planet == null) return;
+        if (!on || frame == null) return;
 
         // Follow the owner's brightness mode (off / dim / medium / high) rather
         // than blazing at whatever value the light was created with — scaled
@@ -410,14 +460,60 @@ public class PlanetRelativeSync : NetworkBehaviour
         // Position and aim in world space from the planet-local values, so a
         // floating-origin rebase can't leave the beam behind.
         puppetLight.transform.SetPositionAndRotation(
-            planet.TransformPoint(netLightLocalPos.Value),
-            planet.rotation * netLightLocalRot.Value);
+            frame.TransformPoint(netLightLocalPos.Value),
+            frame.rotation * netLightLocalRot.Value);
+    }
+
+    /// Resolve the frame the OWNER published in, on this machine. Shuttle-kind
+    /// resolves to the one shuttle; planet-kind by replicated body name (with
+    /// the legacy inspector default for pre-write values).
+    Transform ResolveRemoteFrame()
+    {
+        if (netFrameKind.Value == FrameKindShuttle)
+            return ShuttleAutopilot.Instance != null ? ShuttleAutopilot.Instance.transform : null;
+
+        string name = netFrameName.Value.ToString();
+        if (string.IsNullOrEmpty(name)) name = planetName;
+        if (planet == null || planetBody == null || planetBody.bodyName != name)
+        {
+            planet = null;
+            planetBody = null;
+            foreach (var b in NBodySimulation.Bodies)
+                if (b != null && b.bodyName == name) { planet = b.transform; planetBody = b; break; }
+        }
+        return planet;
+    }
+
+    /// Re-place every shuttle-frame puppet AFTER ShuttleRenderSmoother has
+    /// written the shuttle's render pose (order 50 — the PostFloatingOrigin
+    /// placement at order 0 saw the fixed pose, which lags the smoothed cabin
+    /// by up to a whole step at cruise speed). Called by the smoother.
+    public static void ReplaceShuttleFramePuppets()
+    {
+        for (int i = 0; i < s_all.Count; i++)
+        {
+            var p = s_all[i];
+            if (p == null || p.IsOwner || !p.IsSpawned) continue;
+            if (p.netFrameKind.Value != FrameKindShuttle) continue;
+            p.PlaceRemote();
+        }
     }
 
     void PlaceRemote()
     {
         if (this == null || !IsSpawned || IsOwner) return;
-        if (planet == null || !netPoseValid.Value) return;
+        Transform frame = ResolveRemoteFrame();
+        if (frame == null || !netPoseValid.Value) return;
+
+        // A frame switch means the smoothed pose lives in the WRONG coordinate
+        // system — force the snap branch rather than lerping across frames.
+        string fname = netFrameName.Value.ToString();
+        if (appliedFrameKind != netFrameKind.Value || appliedFrameName != fname)
+        {
+            appliedFrameKind = netFrameKind.Value;
+            appliedFrameName = fname;
+            remoteEverPlaced = false;
+        }
 
         Vector3 targetLocal = netLocalPos.Value;
         Quaternion targetLocalRot = netLocalRot.Value;
@@ -444,7 +540,7 @@ public class PlanetRelativeSync : NetworkBehaviour
         }
 
         transform.SetPositionAndRotation(
-            planet.TransformPoint(smoothedLocalPos), planet.rotation * smoothedLocalRot);
+            frame.TransformPoint(smoothedLocalPos), frame.rotation * smoothedLocalRot);
 
         if (puppetAnimator != null)
         {
@@ -455,7 +551,7 @@ public class PlanetRelativeSync : NetworkBehaviour
         // Driven here rather than in LateUpdate so the beam is placed in the
         // same pass as the body — a frame of disagreement reads as the light
         // lagging behind the player carrying it.
-        ApplyRemoteFlashlight();
+        ApplyRemoteFlashlight(frame);
     }
 
     void SetRemoteVisible(bool visible)

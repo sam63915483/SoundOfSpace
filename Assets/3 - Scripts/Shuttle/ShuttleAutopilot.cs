@@ -110,14 +110,33 @@ public class ShuttleAutopilot : MonoBehaviour
     LandingLamp _lamp;
     Coroutine _upBlendOut;
 
+    // Guest-side replication state (ShuttleSync). Pose arrives at 10 Hz and is
+    // eased toward between updates; progress arrives on the pose message.
+    Vector3 _remoteTargetPos;
+    Quaternion _remoteTargetRot = Quaternion.identity;
+    bool _hasRemoteTarget;
+    float _remoteProgress;
+
     public Phase CurrentPhase => _phase;
     public CelestialBody CurrentBody => _body;
     public CelestialBody TargetBody => _targetBody;
     public float CountdownRemaining => _phase == Phase.Countdown ? Mathf.Max(0f, CountdownSeconds - _phaseT) : 0f;
-    public float TransitProgress => _phase == Phase.Transit && _transitDuration > 0f ? Mathf.Clamp01(_phaseT / _transitDuration) : 0f;
+    public float TransitProgress => ClientDriven
+        ? (_phase == Phase.Transit ? _remoteProgress : 0f)
+        : (_phase == Phase.Transit && _transitDuration > 0f ? Mathf.Clamp01(_phaseT / _transitDuration) : 0f);
     public bool LandingValid => _sensor != null && _sensor.Valid;
     /// Held altitude above ground during HOVER (the NAV feed's readout).
     public float CurrentGroundAltitude => _hoverAlt;
+    /// Seconds into the current phase (ShuttleSync's heartbeat payload).
+    public float PhaseElapsed => _phaseT;
+
+    /// Guest-side: the host's replicated landing-validity bool.
+    public void ApplyRemoteValid(bool valid)
+    {
+        if (_sensor != null) _sensor.SetRemoteValid(valid);
+        if (_lamp != null && (_phase == Phase.Hover || _phase == Phase.Landing))
+            _lamp.SetPhase(_phase, valid);
+    }
     public ShuttleLandingCamera LandingCamera => _landingCamera;
 
     /// True in any phase where the shuttle is off the ground (riders captured,
@@ -268,6 +287,9 @@ public class ShuttleAutopilot : MonoBehaviour
 
     public bool RequestTravelByName(string bodyName)
     {
+        // Guest: forward the click to the host, which validates and answers
+        // with the replicated COUNTDOWN phase. Optimistically true.
+        if (ClientDriven) { ShuttleSync.SendTravelRequest(bodyName); return true; }
         foreach (var b in NBodySimulation.Bodies)
             if (b != null && b.bodyName == bodyName) return RequestTravel(b);
         return false;
@@ -278,6 +300,9 @@ public class ShuttleAutopilot : MonoBehaviour
     /// re-supplied within PilotInputStaleSeconds.
     public void SetPilotInput(Vector2 move, float yawAxis)
     {
+        // Guest pilot: input streams to the host (~30 Hz, unreliable absolute)
+        // and the host applies it to its kinematic hover.
+        if (ClientDriven) { ShuttleSync.SendPilotInput(move, yawAxis); return; }
         _pilotMove = Vector2.ClampMagnitude(move, 1f);
         _pilotYaw = Mathf.Clamp(yawAxis, -1f, 1f);
         _pilotInputStamp = Time.unscaledTime;
@@ -287,8 +312,16 @@ public class ShuttleAutopilot : MonoBehaviour
     /// returns whether the landing actually started (NAV flashes red if not).
     public bool RequestLand()
     {
-        if (ClientDriven) return false;
         if (_phase != Phase.Hover) return false;
+        // Guest: pre-check against the replicated bool for the instant red
+        // flash, then a reliable one-shot to the host (a dropped land press is
+        // not self-correcting — TraxSessionSync's transport lesson).
+        if (ClientDriven)
+        {
+            if (!LandingValid) return false;
+            ShuttleSync.SendLandRequest();
+            return true;
+        }
         if (!LandingValid || _sensor == null) return false;
         BeginLanding();
         return true;
@@ -312,21 +345,40 @@ public class ShuttleAutopilot : MonoBehaviour
         _phaseT = phaseElapsed;
     }
 
-    public void ApplyRemotePose(string frameBodyName, Vector3 localPos, Quaternion localRot)
+    public void ApplyRemotePose(string frameBodyName, Vector3 localPos, Quaternion localRot, float transitProgress)
     {
         if (!ClientDriven) return;
+        _remoteProgress = transitProgress;
         CelestialBody frame = null;
         foreach (var b in NBodySimulation.Bodies)
             if (b != null && b.bodyName == frameBodyName) { frame = b; break; }
         if (frame == null) return;
+        bool snap = false;
         if (frame != _body)
         {
             transform.SetParent(frame.transform, false);
             _body = frame;
             _poseJumped = true;
+            snap = true;   // never ease across a frame switch
         }
-        _localPos = localPos;
-        _localRot = localRot;
+        _remoteTargetPos = localPos;
+        _remoteTargetRot = localRot;
+        _hasRemoteTarget = true;
+        if (snap || (_localPos - localPos).sqrMagnitude > 25f * 25f)
+        {
+            _localPos = localPos;
+            _localRot = localRot;
+            _prevLocalPos = localPos;
+            _prevLocalRot = localRot;
+        }
+    }
+
+    /// Host-side pose read for ShuttleSync's 10 Hz stream.
+    public void GetPoseForSync(out string bodyName, out Vector3 localPos, out Quaternion localRot)
+    {
+        bodyName = _body != null ? _body.bodyName : "";
+        localPos = _localPos;
+        localRot = _localRot;
     }
 
     // ── State machine ────────────────────────────────────────────────────────
@@ -421,9 +473,11 @@ public class ShuttleAutopilot : MonoBehaviour
         _prevLocalPos = _localPos;
         _prevLocalRot = _localRot;
 
+        // The timer advances on EVERY machine so a guest's countdown ticks
+        // smoothly between the host's 2 s phase heartbeats (which re-sync it).
+        _phaseT += Time.fixedDeltaTime;
         if (!ClientDriven)
         {
-            _phaseT += Time.fixedDeltaTime;
             switch (_phase)
             {
                 case Phase.Countdown: TickCountdown(); break;
@@ -432,6 +486,14 @@ public class ShuttleAutopilot : MonoBehaviour
                 case Phase.Hover:     TickHover();     break;
                 case Phase.Landing:   TickLanding();   break;
             }
+        }
+        else if (_hasRemoteTarget && _phase != Phase.Parked)
+        {
+            // Ease toward the host's 10 Hz pose — absolute values, so a
+            // dropped packet self-corrects on the next one.
+            float t = 1f - Mathf.Exp(-12f * Time.fixedDeltaTime);
+            _localPos = Vector3.Lerp(_localPos, _remoteTargetPos, t);
+            _localRot = Quaternion.Slerp(_localRot, _remoteTargetRot, t);
         }
 
         // A reparent this step leaves _prevLocal* in the OLD body's frame —
