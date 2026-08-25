@@ -343,6 +343,7 @@ public partial class ShuttleComputerUI
     {
         _homeView.SetActive(false);
         _traxView.SetActive(false);
+        if (_navView != null) _navView.SetActive(false);
         _projectsView.SetActive(true);
         CloseSaveDialog();
         ShowMenuPane();

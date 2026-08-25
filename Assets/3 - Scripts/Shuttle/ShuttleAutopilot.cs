@@ -116,6 +116,8 @@ public class ShuttleAutopilot : MonoBehaviour
     public float CountdownRemaining => _phase == Phase.Countdown ? Mathf.Max(0f, CountdownSeconds - _phaseT) : 0f;
     public float TransitProgress => _phase == Phase.Transit && _transitDuration > 0f ? Mathf.Clamp01(_phaseT / _transitDuration) : 0f;
     public bool LandingValid => _sensor != null && _sensor.Valid;
+    /// Held altitude above ground during HOVER (the NAV feed's readout).
+    public float CurrentGroundAltitude => _hoverAlt;
     public ShuttleLandingCamera LandingCamera => _landingCamera;
 
     /// True in any phase where the shuttle is off the ground (riders captured,

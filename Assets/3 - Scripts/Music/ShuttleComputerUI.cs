@@ -350,6 +350,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // where the sound comes from.
         CoopUpdate();
         DriveMachine();
+        // NAV ticks whether or not THIS player is at the machine — the world
+        // monitor mirrors this canvas, and a frozen countdown/feed on it is
+        // the exact failure DriveMachine's playhead tick exists to prevent.
+        NavDrive();
 
         if (!_open) return;
 
@@ -390,6 +394,9 @@ public partial class ShuttleComputerUI : MonoBehaviour
             if (ProjectsOpen && _shelfPane.activeSelf) { ConsumeEscape(); ShowMenuPane(); return; }
             if (_traxView != null && _traxView.activeSelf) { ConsumeEscape(); _inst.Stop(); ShowProjects(); return; }
             if (ProjectsOpen) { ConsumeEscape(); ShowHomeFromProjects(); return; }
+            // NAV steps back to the desktop; the flight itself carries on (the
+            // hover holds altitude with the app closed — handoff §6).
+            if (NavOpen) { ConsumeEscape(); ShowHome(); return; }
         }
 
         // Not on the frame it opened: the terminal opens on F-down, and Update
@@ -412,6 +419,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
             RefreshPlayhead();
             ArrangerUpdate();
         }
+
+        // NAV hover steering — WASD/QE/SPACE go to the shuttle while this
+        // player is fullscreen on the app (movement is already modal-blocked).
+        if (NavOpen) NavInput();
 
         // The shelf is world state a co-op partner can change while you are
         // looking at it, so it rebuilds off the library's version counter
@@ -488,6 +499,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         BuildHome(srt);
         BuildTrax(srt);
         BuildProjects(srt);           // TRAX opens here, not on the dials
+        BuildNav(srt);                // shuttle travel (partial: ShuttleComputerNavUI)
         BuildCrtOverlay(srt);         // over the content, under the dialogs
         BuildToast(srt);
         BuildPrintDialog(srt);
@@ -560,6 +572,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
     static readonly AppDef[] Apps =
     {
         new AppDef("TRAX",  "note",  true),
+        new AppDef("NAV",   "nav",   true),    // shuttle travel (2026-08-25)
         new AppDef("MAIL",  "mail",  false),
         new AppDef("BANK",  "bars",  false),
         new AppDef("RADIO", "radio", false)
@@ -601,6 +614,17 @@ public partial class ShuttleComputerUI : MonoBehaviour
                 var r = MakeSprite(holder, "FlapR", TraxUISprites.White, tint);
                 Box(r.rectTransform, Centre, Centre, new Vector2(12, 6), new Vector2(28, 2));
                 r.rectTransform.localEulerAngles = new Vector3(0, 0, 28);
+                break;
+            }
+            case "nav":
+            {
+                // A planet with an orbit line — ring, disc, and a thin track.
+                var orbit = MakeSprite(holder, "Orbit", TraxUISprites.Ring, tint);
+                Box(orbit.rectTransform, Centre, Centre, Vector2.zero, new Vector2(54, 54));
+                var planet = MakeSprite(holder, "Planet", TraxUISprites.Disc, tint);
+                Box(planet.rectTransform, Centre, Centre, new Vector2(0, -2), new Vector2(22, 22));
+                var moon = MakeSprite(holder, "Moon", TraxUISprites.Disc, tint);
+                Box(moon.rectTransform, Centre, Centre, new Vector2(19, 19), new Vector2(9, 9));
                 break;
             }
             case "bars":
@@ -690,7 +714,10 @@ public partial class ShuttleComputerUI : MonoBehaviour
                 cb.highlightedColor = new Color(1.6f, 1.6f, 1.6f, 1f);
                 cb.pressedColor = new Color(2f, 2f, 2f, 1f);
                 btn.colors = cb;
-                btn.onClick.AddListener(ShowProjects);
+                // Dispatch per app — a single hardcoded listener silently sent
+                // every future tile to the TRAX projects screen (the NAV bug).
+                string appName = app.name;
+                btn.onClick.AddListener(() => OnAppTileClicked(appName));
             }
         }
     }
@@ -1366,6 +1393,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _homeView.SetActive(true);
         _traxView.SetActive(false);
         if (_projectsView != null) _projectsView.SetActive(false);
+        if (_navView != null) _navView.SetActive(false);
         if (_inst != null) _inst.Stop();
         SyncPlayButton();
     }
@@ -1374,6 +1402,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
     {
         _homeView.SetActive(false);
         if (_projectsView != null) _projectsView.SetActive(false);
+        if (_navView != null) _navView.SetActive(false);
         _traxView.SetActive(true);
         RefreshReadouts();
         RefreshRack();
