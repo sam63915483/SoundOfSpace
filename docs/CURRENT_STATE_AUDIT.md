@@ -871,6 +871,40 @@ test 2026-08-07; UI eyeball pass pending.
 
 ---
 
+## §34 Shuttle Autopilot Travel — NEW 2026-08-25 (playtest pending)
+
+The parked shuttle flies between planets via a **NAV** app on the shuttle
+computer. PARKED→COUNTDOWN(10s)→LIFTOFF→TRANSIT→HOVER(100 m, WASD/QE, 9-ray
+landing validity)→LANDING→PARKED. Spec + decisions:
+`docs/Handoff_ShuttleAutopilot_Travel_v1.md`; build plan:
+`docs/superpowers/plans/2026-08-25-shuttle-autopilot-travel.md`; checklist:
+`docs/PLAYTEST_ShuttleAutopilot_v1.md`.
+
+- **`3 - Scripts/Shuttle/`** — `ShuttleAutopilot` (runtime-attached to
+  Shuttle_Lander, exec order −50, physics-frame math; shuttle stays a
+  CelestialBody child the whole flight, reparents at transit midpoint),
+  `ShuttleRenderSmoother` (order 50 local-pose lerp), `ShuttleRiderFrame`
+  (riders = intro's kinematic-freeze recipe + parenting + EndlessManager
+  unregister; statics reset every scene load), `ShuttleLandingSensor` +
+  Unity-free `ShuttleLandingLogic` (suite:
+  `python prototypes/shuttle-autopilot/test/verify-shuttle.py`),
+  `ShuttleLandingCamera` (CCTV 15 fps, dust-safe), `LandingLamp`.
+- **PlayerController** grew a self-contained rider block (`RiderMode` static,
+  `RiderFixedTick` local walk reusing the sweep helpers) — existing movement
+  math untouched.
+- **NAV app**: `ShuttleComputerNavUI.cs` partial; home tiles now dispatch
+  per-app (was hardcoded to TRAX). Debug: F6 leg, Alt+WASD/Space hover.
+- **Save**: `ShuttleSave` (bodyName+local pose, empty ⇒ scene-authored) at
+  apply step 8.5; stasis valve refuses mid-flight so saves are always PARKED.
+- **MP**: `ShuttleSync` (host phase/pose/valid, pilot lease D-3, guest input
+  stream); `PlanetRelativeSync` reference frame now replicated (planet-by-name
+  or shuttle) — was hard-wired to Humble Abode; NAV selection rides the
+  TraxSessionSync `Screen` struct (`ViewNav=5`, `navTarget`).
+- **Editor**: `Tools → Shuttle Travel → Add Interior Volume + Landing Lamp To
+  Prefab` (LoadPrefabContents patch; both objects optional at runtime).
+
+---
+
 # Appendix
 
 ## §A Verification Notes
