@@ -1886,6 +1886,11 @@ public class PlayerController : GravityObject
 		jetpackQueued = false;   // no thrusters inside the cabin
 		if (isGrounded && _riderVertVel < 0f) _riderVertVel = 0f;
 		else if (!isGrounded) _riderVertVel -= RiderGravity * dt;
+		// Cabin terminal velocity: at 50 Hz a faster fall moves >0.1 m per step,
+		// which can cross the ground clamp's snap window AND bury the seat cast's
+		// start inside the floor (casts from inside a collider see nothing) in a
+		// single step — i.e. fall through the floor. 5 m/s caps the step at 0.1 m.
+		if (_riderVertVel < -5f) _riderVertVel = -5f;
 
 		Vector3 move = smoothVelocity * dt + up * (_riderVertVel * dt);
 		float wantedUpMove = _riderVertVel * dt;
@@ -1900,15 +1905,28 @@ public class PlayerController : GravityObject
 
 		// Ground clamp: while descending, settle the feet onto the floor and
 		// zero the fall — there are no physics contacts to do it for us.
+		// ⚠️ The correction goes through RiderSeatCorrection (headless-tested):
+		// the v1 inline formula forgot the sphere radius and seated the feet
+		// 0.25 m up — past IsGrounded's 0.2 m reach, so grounded read false
+		// all flight and the grounded-gated walk input stayed zeroed (the
+		// playtest-1 "stuck in one spot" bug).
 		if (_riderVertVel <= 0f && feet != null)
 		{
+			const float kSeatCastUp = 0.3f, kSeatRadius = 0.25f, kSeatSkin = 0.02f;
 			Vector3 offsetToFeet = feet.position - transform.position;
-			Vector3 castOrigin = pos + offsetToFeet + up * 0.3f;
-			if (Physics.SphereCast(castOrigin, 0.25f, -up, out RaycastHit hit, 0.6f,
+			Vector3 castOrigin = pos + offsetToFeet + up * kSeatCastUp;
+			if (Physics.SphereCast(castOrigin, kSeatRadius, -up, out RaycastHit hit, 0.6f,
 					walkableMask, QueryTriggerInteraction.Ignore))
 			{
-				pos += up * (0.3f - hit.distance);
-				_riderVertVel = 0f;
+				// Snap only when the feet are actually near the floor — the
+				// cast reaches ~0.55 m down, and snapping from that high would
+				// cut every jump's fall short with a visible teleport.
+				float feetGap = hit.distance - (kSeatCastUp - kSeatRadius);
+				if (feetGap <= 0.15f)
+				{
+					pos += up * ShuttleLandingLogic.RiderSeatCorrection(kSeatCastUp, kSeatRadius, hit.distance, kSeatSkin);
+					_riderVertVel = 0f;
+				}
 			}
 		}
 

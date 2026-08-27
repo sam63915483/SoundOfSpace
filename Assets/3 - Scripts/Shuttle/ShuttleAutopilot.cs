@@ -47,9 +47,15 @@ public class ShuttleAutopilot : MonoBehaviour
     public const float CountdownSeconds = 10f;
     const float LiftoffHeight   = 300f;   // metres above the parked pose
     const float LiftoffSeconds  = 10f;
-    const float TransitCruiseSpeed = 400f; // m/s used to derive duration…
-    const float TransitMinSeconds  = 20f;  // …clamped into this window
-    const float TransitMaxSeconds  = 40f;
+    // Transit profile (retuned after playtest 1 — the old dist/400 with a 20 s
+    // floor made every short hop a ~100 m/s crawl): the smoothstep ease gives
+    // a bell-shaped velocity (build up → cruise → brake into the hover), and
+    // the duration is picked so the mid-flight PEAK (1.5 × dist / duration)
+    // lands at TransitPeakFor(dist) — faster the farther the hop.
+    const float TransitPeakMin  = 80f;    // m/s — even the shortest hop feels like flying
+    const float TransitPeakMax  = 500f;   // Sam's ceiling for a far hop
+    const float TransitMinSeconds = 10f;
+    const float TransitMaxSeconds = 30f;  // hard cap — beyond it a far leg just peaks faster than 500
     public const float HoverAltitude = 100f;
     const float HoverMaxSpeed   = 15f;    // WASD tangential speed (m/s)
     const float HoverAccel      = 8f;     // m/s² toward the input direction (heavy vehicle)
@@ -129,6 +135,11 @@ public class ShuttleAutopilot : MonoBehaviour
     public float CurrentGroundAltitude => _hoverAlt;
     /// Seconds into the current phase (ShuttleSync's heartbeat payload).
     public float PhaseElapsed => _phaseT;
+
+    // Body-relative speed this fixed step (bodies don't spin, so a local-pose
+    // delta is rebase-proof and orbit-proof). Drives the NAV velocity readout.
+    float _speed;
+    public float CurrentSpeed => _speed;
 
     /// Guest-side: the host's replicated landing-validity bool.
     public void ApplyRemoteValid(bool valid)
@@ -407,7 +418,8 @@ public class ShuttleAutopilot : MonoBehaviour
                 _reparented = false;
                 float dist = Vector3.Distance(FrameWorldPos(_departBody, _departAnchorLocal),
                                               FrameWorldPos(_targetBody, _arriveAnchorLocal));
-                _transitDuration = Mathf.Clamp(dist / TransitCruiseSpeed, TransitMinSeconds, TransitMaxSeconds);
+                float peak = Mathf.Clamp(dist / 10f, TransitPeakMin, TransitPeakMax);
+                _transitDuration = Mathf.Clamp(1.5f * dist / peak, TransitMinSeconds, TransitMaxSeconds);
                 break;
 
             case Phase.Hover:
@@ -506,12 +518,18 @@ public class ShuttleAutopilot : MonoBehaviour
 
         if (_phase != Phase.Parked)
         {
+            _speed = _poseJumped ? _speed
+                : (_localPos - _prevLocalPos).magnitude / Mathf.Max(0.0001f, Time.fixedDeltaTime);
             transform.localPosition = _localPos;
             transform.localRotation = _localRot;
             // autoSyncTransforms is off project-wide — commit the moved shuttle
             // colliders (part of the planet rb's compound) before the riders'
             // ground/wall queries this step.
             Physics.SyncTransforms();
+        }
+        else
+        {
+            _speed = 0f;
         }
 
         if (_lamp != null && (_phase == Phase.Hover || _phase == Phase.Landing))

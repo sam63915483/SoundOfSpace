@@ -25,4 +25,22 @@ public static class ShuttleLandingLogic
         }
         return max - min <= maxSpread;
     }
+
+    /// Rider ground-clamp seat correction (fix for the playtest-1 "stuck in
+    /// one spot" bug). The clamp SphereCasts from castUpOffset above the feet
+    /// with sphereRadius — so the sphere's bottom starts (castUpOffset −
+    /// sphereRadius) above the feet, and after travelling hitDistance the
+    /// floor sits at feet + castUpOffset − sphereRadius − hitDistance.
+    ///
+    /// Returns the along-up delta that seats the feet exactly `skin` above
+    /// that floor. The v1 formula (castUpOffset − hitDistance) forgot the
+    /// radius term and seated the rider at floor + radius = 0.25 m — past
+    /// IsGrounded's 0.2 m reach, so grounded read false for the whole flight
+    /// and the grounded-gated walk input stayed zeroed.
+    public static float RiderSeatCorrection(float castUpOffset, float sphereRadius, float hitDistance, float skin)
+    {
+        // Feet sit (hitDistance − (castUpOffset − sphereRadius)) above the
+        // floor right now; move so that height becomes exactly `skin`.
+        return (castUpOffset - sphereRadius) - hitDistance + skin;
+    }
 }

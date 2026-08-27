@@ -274,10 +274,15 @@ public partial class ShuttleComputerUI
                 break;
 
             case ShuttleAutopilot.Phase.Transit:
+            {
                 SetTextIfChanged(_navStatusBig, pilot.TargetBody != null ? "EN ROUTE TO " + pilot.TargetBody.bodyName.ToUpperInvariant() : "EN ROUTE");
-                SetTextIfChanged(_navStatusSub, "AUTOPILOT ENGAGED");
+                // Rounded to 5 m/s so the readout counts up cleanly instead of
+                // flickering every frame — the build-up/brake is the point.
+                int vel = Mathf.RoundToInt(pilot.CurrentSpeed / 5f) * 5;
+                SetTextIfChanged(_navStatusSub, "AUTOPILOT ENGAGED · VEL " + vel + " M/S");
                 SetProgress(pilot.TransitProgress);
                 break;
+            }
 
             case ShuttleAutopilot.Phase.Hover:
             case ShuttleAutopilot.Phase.Landing:

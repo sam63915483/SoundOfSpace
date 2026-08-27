@@ -69,6 +69,38 @@ public static class ShuttleTravelTests
         Check("spread exactly 1.5 m is valid",
             ShuttleLandingLogic.EvaluateRays(edge, Fill(1f), CosMax, MaxSpread), true);
 
+        // ── rider ground-clamp seat math (playtest-1 bug) ────────────────
+        // The clamp's cast: sphere centre starts CastUp above the feet with
+        // radius R (bottom at feet + CastUp − R); after travelling
+        // hitDistance it touches the floor. The correction must seat the
+        // feet at exactly Skin above the floor — the shipped v1 formula
+        // (CastUp − hitDistance) forgot the radius and seated them at
+        // floor + R = 0.25 m, just past IsGrounded's 0.2 m reach, which
+        // zeroed all walk input for the whole flight.
+        const float CastUp = 0.3f, Radius = 0.25f, Skin = 0.02f;
+
+        // Standing exactly on the floor at capture: bottom is 0.05 above it,
+        // so the cast travels 0.05 — the correction must be the tiny skin
+        // lift, not a 25 cm pop.
+        Check("seat: capture moment lifts only by skin",
+            Math.Abs(ShuttleLandingLogic.RiderSeatCorrection(CastUp, Radius, 0.05f, Skin) - Skin) < 1e-5f, true);
+
+        // The equilibrium (correction == 0) must leave the feet at skin
+        // height — for any starting gap, applying the correction lands there.
+        bool seatInvariant = true;
+        foreach (float d in new[] { 0.02f, 0.05f, 0.07f, 0.15f, 0.3f, 0.55f })
+        {
+            float gapBefore = d - (CastUp - Radius);            // feet height above floor
+            float gapAfter = gapBefore + ShuttleLandingLogic.RiderSeatCorrection(CastUp, Radius, d, Skin);
+            if (Math.Abs(gapAfter - Skin) > 1e-5f) seatInvariant = false;
+        }
+        Check("seat: any hit distance settles feet at skin height", seatInvariant, true);
+
+        // And skin height must be comfortably inside IsGrounded's 0.2 m
+        // grounded-cast reach, or walking dies again.
+        Check("seat: settled height is within the grounded cast's reach",
+            Skin < 0.2f * 0.5f, true);
+
         // Degenerate inputs are red, never a crash.
         Check("null arrays are invalid",
             ShuttleLandingLogic.EvaluateRays(null, null, CosMax, MaxSpread), false);
