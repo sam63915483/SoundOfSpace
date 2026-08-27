@@ -78,8 +78,10 @@ public class ShuttleLandingSensor : MonoBehaviour
                 float a = (i - 1) * (2f * Mathf.PI / RingRays);
                 offset = (fwd * Mathf.Cos(a) + right * Mathf.Sin(a)) * FootprintRadius;
             }
-            if (Physics.Raycast(origin + offset, -up, out RaycastHit hit, MaxRayDistance,
-                                ShuttleAutopilot.GroundMask, QueryTriggerInteraction.Ignore))
+            // Through the pilot's self-ignoring ray — the shuttle's own hull
+            // and landing gear live on the terrain layer and used to be what
+            // these rays hit (permanent red SLOPE from our own skirt).
+            if (pilot != null && pilot.GroundRay(origin + offset, -up, MaxRayDistance, out RaycastHit hit))
             {
                 _distances[i] = hit.distance;
                 _slopeDots[i] = Vector3.Dot(hit.normal, up);
@@ -97,12 +99,21 @@ public class ShuttleLandingSensor : MonoBehaviour
         {
             // Which sub-check failed, for the overlay: a miss beats slope
             // beats spread (the same priority EvaluateRays rejects in).
-            FailReason = "UNEVEN";   // spread over the limit, unless a ray says otherwise:
+            // Name the failing sub-check WITH the measured number, so tuning
+            // the thresholds is done from evidence, not another blind guess.
+            bool miss = false;
+            float worstSlopeDeg = 0f, minD = float.MaxValue, maxD = float.MinValue;
             for (int i = 0; i < _distances.Length; i++)
             {
-                if (float.IsNaN(_distances[i])) { FailReason = "NO GROUND"; break; }
-                if (_slopeDots[i] < Mathf.Cos(MaxSlopeDeg * Mathf.Deg2Rad)) { FailReason = "SLOPE"; break; }
+                if (float.IsNaN(_distances[i])) { miss = true; continue; }
+                float deg = Mathf.Acos(Mathf.Clamp(_slopeDots[i], -1f, 1f)) * Mathf.Rad2Deg;
+                if (deg > worstSlopeDeg) worstSlopeDeg = deg;
+                if (_distances[i] < minD) minD = _distances[i];
+                if (_distances[i] > maxD) maxD = _distances[i];
             }
+            if (miss) FailReason = "NO GROUND";
+            else if (worstSlopeDeg > MaxSlopeDeg) FailReason = "SLOPE " + worstSlopeDeg.ToString("0") + "deg";
+            else FailReason = "UNEVEN " + (maxD - minD).ToString("0.0") + "m";
             return false;
         }
 

@@ -89,49 +89,66 @@ public static class ShuttleRiderFrame
     public static bool IsInside(ShuttleAutopilot pilot, Vector3 worldPos)
     {
         ResolveVolume(pilot);
+
+        // The stasis pod counts as aboard REGARDLESS of the volume — it's its
+        // own top-level group outside the Interior box, and a player standing
+        // in it at countdown 0 was launching uncaptured (flight-recorder run 2:
+        // physically bulldozed along by the moving hull, never parented).
+        if (s_pod != null && (worldPos - s_pod.position).sqrMagnitude <= 3.5f * 3.5f)
+            return true;
+
         if (s_volume != null)
         {
             Vector3 local = s_volume.transform.InverseTransformPoint(worldPos) - s_volume.center;
             Vector3 half = s_volume.size * 0.55f;   // 10% slack so a jump mid-count doesn't strand you
             return Mathf.Abs(local.x) <= half.x && Mathf.Abs(local.y) <= half.y && Mathf.Abs(local.z) <= half.z;
         }
-        // Fallback: local-space AABB of the Interior group.
+        // Fallback: local-space AABB of the cabin groups.
         Vector3 lp = pilot.transform.InverseTransformPoint(worldPos);
         return s_fallbackLocalBounds.Contains(lp);
     }
 
+    static Transform s_pod;
+
     static void ResolveVolume(ShuttleAutopilot pilot)
     {
-        if (s_volume != null && s_volumeShuttle == pilot.transform) return;
+        if (s_volumeShuttle == pilot.transform && (s_volume != null || s_fallbackComputed)) return;
         s_volumeShuttle = pilot.transform;
         s_volume = null;
+        s_pod = null;
         foreach (var t in pilot.GetComponentsInChildren<Transform>(true))
         {
-            if (t.name == "ShuttleInteriorVolume")
-            {
+            if (t.name == "ShuttleInteriorVolume" && s_volume == null)
                 s_volume = t.GetComponent<BoxCollider>();
-                break;
-            }
+            if (t.name == "StasisPod" && s_pod == null)
+                s_pod = t;
         }
         if (s_volume != null || s_fallbackComputed) return;
 
-        // Fallback bounds: renderers under "Interior", in shuttle-local space,
-        // grown a little so standing by a wall still counts.
+        // Fallback bounds: FULL renderer bounds (corners, not centres — run 2
+        // proved centre-only bounds miss real cabin space) of the Interior AND
+        // StasisPod groups, in shuttle-local space, grown for wall clearance.
         s_fallbackComputed = true;
         var b = new Bounds(Vector3.zero, Vector3.one * 4f);
         bool first = true;
         foreach (var t in pilot.GetComponentsInChildren<Transform>(true))
         {
-            if (t.name != "Interior") continue;
+            if (t.name != "Interior" && t.name != "StasisPod") continue;
             foreach (var r in t.GetComponentsInChildren<Renderer>(true))
             {
-                Vector3 lp = pilot.transform.InverseTransformPoint(r.bounds.center);
-                if (first) { b = new Bounds(lp, Vector3.zero); first = false; }
-                else b.Encapsulate(lp);
+                Bounds wb = r.bounds;
+                for (int cx = -1; cx <= 1; cx += 2)
+                for (int cy = -1; cy <= 1; cy += 2)
+                for (int cz = -1; cz <= 1; cz += 2)
+                {
+                    Vector3 corner = wb.center + Vector3.Scale(wb.extents, new Vector3(cx, cy, cz));
+                    Vector3 lp = pilot.transform.InverseTransformPoint(corner);
+                    if (first) { b = new Bounds(lp, Vector3.zero); first = false; }
+                    else b.Encapsulate(lp);
+                }
             }
-            break;
         }
-        b.Expand(2.5f);
+        b.Expand(1.5f);
         s_fallbackLocalBounds = b;
     }
 

@@ -35,6 +35,10 @@ public class ShuttleAutopilot : MonoBehaviour
     /// renders the pose/phase ShuttleSync applies. Set by ShuttleSync.
     public static bool ClientDriven;
 
+    /// ShuttleTravelSelfTest only: lets the flight recorder fly a crewless leg
+    /// (the D-1 empty-shuttle abort would otherwise cancel at countdown 0).
+    public static bool DebugSkipCrewCheck;
+
     /// Fired on every phase transition — door, NAV, lamp, rider frame, sync and
     /// the world screen all subscribe. Never poll.
     public event System.Action<Phase> OnPhaseChanged;
@@ -140,6 +144,7 @@ public class ShuttleAutopilot : MonoBehaviour
         ? (_phase == Phase.Transit ? _remoteProgress : 0f)
         : (_phase == Phase.Transit && _transitDuration > 0f ? Mathf.Clamp01(_phaseT / _transitDuration) : 0f);
     public bool LandingValid => _sensor != null && _sensor.Valid;
+    public string LandingFailReason => _sensor != null ? _sensor.FailReason : "";
     /// Held altitude above ground during HOVER (the NAV feed's readout).
     public float CurrentGroundAltitude => _hoverAlt;
     /// Seconds into the current phase (ShuttleSync's heartbeat payload).
@@ -239,7 +244,7 @@ public class ShuttleAutopilot : MonoBehaviour
         if (_body == null) return;
         Vector3 worldPos = FrameWorldPos(_body, _localPos);
         Vector3 up = (worldPos - _body.Position).normalized;
-        if (Physics.Raycast(worldPos + up * 2f, -up, out RaycastHit hit, 30f, GroundMask, QueryTriggerInteraction.Ignore))
+        if (GroundRay(worldPos + up * 2f, -up, 30f, out RaycastHit hit))
             _gearHeight = hit.distance - 2f;
         _gearHeight = Mathf.Clamp(_gearHeight, 0.5f, 10f);
     }
@@ -274,6 +279,30 @@ public class ShuttleAutopilot : MonoBehaviour
     Vector3 WorldPos => FrameWorldPos(_body, _localPos);
     Quaternion WorldRot => FrameWorldRot(_body, _localRot);
     Vector3 UpFromBody => (WorldPos - _body.Position).normalized;
+
+    // ── Ground raycast that ignores the shuttle itself ───────────────────
+    // ⚠️ THE WHOLE PREFAB IS ON LAYER 10 ("Body") — THE TERRAIN LAYER. A
+    // plain masked ray from anywhere near the shuttle hits our own hull/gear
+    // first. That was the flight-recorder-caught runaway: the altitude hold
+    // measured "ground" 0.3 m below its origin (our own roof), chased 80 m
+    // above a roof that rises with the shuttle, and accelerated away — and
+    // the validity rays read our own curved skirt as unlandable SLOPE.
+    // Every autopilot/sensor ground query MUST go through this.
+    static readonly RaycastHit[] s_groundHits = new RaycastHit[16];
+    public bool GroundRay(Vector3 origin, Vector3 dir, float maxDist, out RaycastHit best)
+    {
+        best = default;
+        int n = Physics.RaycastNonAlloc(origin, dir, s_groundHits, maxDist, GroundMask, QueryTriggerInteraction.Ignore);
+        float bestD = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            var h = s_groundHits[i];
+            if (h.collider == null) continue;
+            if (h.collider.transform.IsChildOf(transform)) continue;   // our own hull
+            if (h.distance < bestD) { bestD = h.distance; best = h; }
+        }
+        return bestD != float.MaxValue;
+    }
 
     // ── Public API ───────────────────────────────────────────────────────────
 
@@ -474,7 +503,7 @@ public class ShuttleAutopilot : MonoBehaviour
         Vector3 dir = (_departBody.Position - _targetBody.Position).normalized;
         Vector3 origin = _targetBody.Position + dir * (_targetBody.radius * 1.5f + 200f);
         Vector3 surface;
-        if (Physics.Raycast(origin, -dir, out RaycastHit hit, _targetBody.radius * 2f, GroundMask, QueryTriggerInteraction.Ignore))
+        if (GroundRay(origin, -dir, _targetBody.radius * 2f, out RaycastHit hit))
             surface = hit.point;
         else
             surface = _targetBody.Position + dir * _targetBody.radius;
@@ -550,7 +579,7 @@ public class ShuttleAutopilot : MonoBehaviour
         if (_phaseT < CountdownSeconds) return;
 
         // D-1: leave with whoever is inside; abort (only) if NOBODY is.
-        if (!ShuttleRiderFrame.AnyoneInside(this))
+        if (!ShuttleRiderFrame.AnyoneInside(this) && !DebugSkipCrewCheck)
         {
             SetPhase(Phase.Parked);
             OnLaunchAborted?.Invoke();
@@ -643,7 +672,7 @@ public class ShuttleAutopilot : MonoBehaviour
         Vector3 upW = FrameWorldRot(_body, Quaternion.identity) * radial;
         Vector3 castFromW = FrameWorldPos(_body, radial * r) + upW * 5f;
         float terrainR;
-        if (Physics.Raycast(castFromW, -upW, out RaycastHit hit, 400f, GroundMask, QueryTriggerInteraction.Ignore))
+        if (GroundRay(castFromW, -upW, 400f, out RaycastHit hit))
             terrainR = r - (hit.distance - 5f);
         else
             terrainR = r - _hoverAlt;   // no ground under us — hold the current shell
@@ -664,7 +693,7 @@ public class ShuttleAutopilot : MonoBehaviour
     {
         Vector3 worldPos = WorldPos;
         Vector3 up = UpFromBody;
-        if (!Physics.Raycast(worldPos + up * 5f, -up, out RaycastHit hit, 400f, GroundMask, QueryTriggerInteraction.Ignore))
+        if (!GroundRay(worldPos + up * 5f, -up, 400f, out RaycastHit hit))
             return;   // no ground below — refuse (validity should already be red)
         _landStartLocal = _localPos;
         _landTargetLocal = FrameLocalPos(_body, hit.point + up * _gearHeight);

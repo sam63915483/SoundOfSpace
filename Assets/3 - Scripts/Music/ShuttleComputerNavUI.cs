@@ -91,6 +91,7 @@ public partial class ShuttleComputerUI
 
         // TRAVEL — enabled only with a non-current planet selected.
         var btn = MakePanel(pane, "TravelBtn", Panel);
+        btn.raycastTarget = true;   // MakePanel defaults raycasts OFF — every clickable re-enables
         _navTravelBg = btn;
         var brt = btn.rectTransform;
         brt.anchorMin = new Vector2(0.5f, 0); brt.anchorMax = new Vector2(0.5f, 0);
@@ -373,6 +374,10 @@ public partial class ShuttleComputerUI
             float rowW = inThisRow * cell + (inThisRow - 1) * gap;
 
             var frame = MakePanel(_navTileRow, "Planet_" + body.bodyName, isHere ? Hex("0a1418ff") : Panel);
+            // ⚠️ MakePanel creates images with raycastTarget = FALSE (so the CRT
+            // overlay never blocks) — a Button on one is dead until this line.
+            // Missing it is why no planet was clickable in playtests 1–3.
+            frame.raycastTarget = !isHere;
             var rt = frame.rectTransform;
             rt.anchorMin = new Vector2(0.5f, 1); rt.anchorMax = new Vector2(0.5f, 1);
             rt.pivot = new Vector2(0.5f, 1);

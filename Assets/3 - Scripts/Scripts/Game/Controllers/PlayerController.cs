@@ -688,8 +688,14 @@ public class PlayerController : GravityObject
 		if (!debug_playerFrozen && Time.timeScale > 0 && cam != null)
 			cam.transform.localEulerAngles = Vector3.right * smoothPitch;
 
-		// Movement input — blocked during dialogue
-		isGrounded = IsGrounded();
+		// Movement input — blocked during dialogue.
+		// Shuttle ride: grounding is owned by RiderFixedTick, which casts at
+		// the physics-aligned moment right after the autopilot commits the
+		// floor's pose. Re-running IsGrounded here (render time, against
+		// whatever mix of fixed/render poses the frame happens to hold while
+		// the cabin moves at hundreds of m/s) flickered false a few times a
+		// second — the playtest-3 "randomly can't walk or jump" bug.
+		if (!RiderMode) isGrounded = IsGrounded();
 
 		// Landing SFX: only when transitioning from airborne to grounded after >= threshold airborne time.
 		// Suppressed when touching water — jumping in from the bank registers as a
@@ -1880,6 +1886,21 @@ public class PlayerController : GravityObject
 		}
 
 		float dt = Time.fixedDeltaTime;
+
+		// Grounding, physics-aligned: ONE cast from the restored fixed pose —
+		// the autopilot committed the floor colliders at order -50 this same
+		// step, so this cannot race the moving cabin the way the Update-time
+		// IsGrounded did. Grounded = feet within 8 cm of the floor and not
+		// on the way up (a jump stays airborne until the arc comes down).
+		if (feet != null)
+		{
+			Vector3 offsetToFeetG = feet.position - transform.position;
+			Vector3 gOrigin = transform.position + offsetToFeetG + up * 0.3f;
+			bool nearFloor = Physics.SphereCast(gOrigin, 0.25f, -up, out RaycastHit gHit, 0.6f,
+					walkableMask, QueryTriggerInteraction.Ignore)
+				&& gHit.distance - (0.3f - 0.25f) <= 0.08f;
+			isGrounded = _riderVertVel > 0.01f ? false : nearFloor;
+		}
 
 		// Hand-integrated cabin gravity + jump (the kinematic rb ignores forces).
 		if (jumpQueued && isGrounded)
