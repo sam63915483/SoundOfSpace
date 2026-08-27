@@ -68,6 +68,7 @@ public class ShuttleAutopilot : MonoBehaviour
     const float LandingMinSeconds = 5f;
     const float LandingMaxSeconds = 8f;
     const float SettleSeconds   = 0.5f;
+    const float ReleaseSettleSeconds = 2.5f;    // rider cage held after touchdown (door-open time)
     const float PilotInputStaleSeconds = 0.5f;  // decay to zero on silence (guest-drop safety)
 
     // Ground = terrain only. Layer 10 ("Body") is the terrain layer; every cast
@@ -126,6 +127,7 @@ public class ShuttleAutopilot : MonoBehaviour
 
     PlayerController _healPlayer;
     float _nextHealScanAt;
+    float _releaseRidersAt = -1f;   // deferred post-touchdown release; -1 = idle
 
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
@@ -498,21 +500,20 @@ public class ShuttleAutopilot : MonoBehaviour
                 if (prev != Phase.Countdown)   // a real landing, not an abort
                 {
                     // Commit the authoritative pose into the transform + PhysX
-                    // BEFORE releasing riders — the per-step write below is
+                    // BEFORE anything reads it — the per-step write below is
                     // skipped once the phase is Parked, and the transform still
                     // holds last frame's render pose at this moment.
                     transform.localPosition = _localPos;
                     transform.localRotation = _localRot;
                     Physics.SyncTransforms();
                     RememberParkedPose();
-                    // ReleaseRiders STARTS the up-override blend-out — do not
-                    // stop coroutines after it. (Playtest 5: a StopCoroutine
-                    // here killed the blend on the very frame it started, so
-                    // UpOverrideTransform stayed locked to the landing pose
-                    // FOREVER — the player kept that up on every planet, lay
-                    // on their back walking around, and grounding cast the
-                    // wrong way. BlendRiderUpOut stops its own predecessor.)
-                    ShuttleRiderFrame.ReleaseRiders(this);
+                    // DEFERRED release (playtest 7): becoming a physics body on
+                    // the exact touchdown tick was the violent moment — the
+                    // cabin stays a rider-mode safe cage for a beat while the
+                    // world settles (the door takes 2.5 s to fold open anyway,
+                    // so the handover is invisible). The deferral is cancelled
+                    // if a new launch starts first — riders just keep riding.
+                    _releaseRidersAt = Time.fixedTime + ReleaseSettleSeconds;
                     if (_door != null) _door.ReopenAfterFlight();
                 }
                 if (_sensor != null) _sensor.SetActive(false);
@@ -554,6 +555,18 @@ public class ShuttleAutopilot : MonoBehaviour
     void FixedUpdate()
     {
         if (_body == null) return;
+
+        // Deferred post-touchdown release (see SetPhase Parked). Runs on every
+        // machine; cancelled by a new launch (phase left Parked first).
+        if (_releaseRidersAt >= 0f)
+        {
+            if (_phase != Phase.Parked) _releaseRidersAt = -1f;   // relaunched — keep riding
+            else if (Time.fixedTime >= _releaseRidersAt)
+            {
+                _releaseRidersAt = -1f;
+                ShuttleRiderFrame.ReleaseRiders(this);
+            }
+        }
 
         _prevLocalPos = _localPos;
         _prevLocalRot = _localRot;
@@ -760,8 +773,12 @@ public class ShuttleAutopilot : MonoBehaviour
         Vector3 n = _sensor != null && _sensor.Valid ? _sensor.PlaneNormal : up;
         if (n.sqrMagnitude < 0.5f || Vector3.Dot(n, up) < 0.7f) n = up;   // sanity — never land sideways
 
+        // Clearance: settle high enough that the tallest bump in the footprint
+        // can never intrude through the cabin floor (see MaxAboveDeviation).
+        float clearance = _sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation + 0.35f : 0.35f;
+
         _landStartLocal = _localPos;
-        _landTargetLocal = FrameLocalPos(_body, hit.point + n * _gearHeight);
+        _landTargetLocal = FrameLocalPos(_body, hit.point + n * (_gearHeight + clearance));
         _landStartLocalRot = _localRot;
         Quaternion curW = FrameWorldRot(_body, _localRot);
         _landTargetLocalRot = FrameLocalRot(_body, Quaternion.FromToRotation(curW * Vector3.up, n) * curW);

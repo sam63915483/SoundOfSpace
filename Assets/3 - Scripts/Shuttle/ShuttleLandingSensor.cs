@@ -51,6 +51,13 @@ public class ShuttleLandingSensor : MonoBehaviour
     /// are landable. Only meaningful while Valid.
     public Vector3 PlaneNormal { get; private set; } = Vector3.up;
 
+    /// Highest bump ABOVE the fitted plane inside the footprint (m). The
+    /// landing settles the gear this much higher so a spike can never end up
+    /// inside the cabin — a rock through the floor squeezes the released
+    /// player between two colliders and PhysX ejects them violently (the
+    /// Icey Twin touchdown fling, playtest 7).
+    public float MaxAboveDeviation { get; private set; }
+
     public void SetActive(bool active)
     {
         _active = active;
@@ -123,8 +130,13 @@ public class ShuttleLandingSensor : MonoBehaviour
             avgP /= RingRays + 1;
             avgN = avgN.sqrMagnitude > 0.001f ? avgN.normalized : up;
             PlaneNormal = avgN;
+            float maxAbove = 0f;
             for (int i = 0; i <= RingRays; i++)
+            {
                 _deviations[i] = Vector3.Dot(_points[i] - avgP, avgN);
+                if (_deviations[i] > maxAbove) maxAbove = _deviations[i];
+            }
+            MaxAboveDeviation = maxAbove;
         }
         else
         {
