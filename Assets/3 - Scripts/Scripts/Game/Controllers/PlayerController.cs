@@ -799,7 +799,23 @@ public class PlayerController : GravityObject
 	// reusing IsGrounded/ResolveWallSlide/ResolveWallOverlap, which are pure
 	// queries and work fine on a kinematic body. Set/cleared ONLY by
 	// ShuttleRiderFrame.CaptureRiders/ReleaseRiders.
-	[System.NonSerialized] public static bool RiderMode;
+	static bool s_riderMode;
+	public static bool RiderMode
+	{
+		get { return s_riderMode; }
+		set
+		{
+			if (s_riderMode == value) return;
+			s_riderMode = value;
+			// Transition log WITH STACK: playtest 6 had this cleared mid-flight
+			// by an unknown caller — the rb stayed kinematic while the normal
+			// movement path ran (warning spam, walk-lock) and the landing then
+			// flung the player with zero orbital velocity. The trace below
+			// names whoever flips it.
+			Debug.Log("[RiderMode] -> " + value + " t=" + Time.time.ToString("0.00") + "\n"
+				+ StackTraceUtility.ExtractStackTrace());
+		}
+	}
 	[System.NonSerialized] public static Transform RiderPlatform;
 
 	// Cabin-local vertical velocity (m/s along the shuttle's up). The rb is

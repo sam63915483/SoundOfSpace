@@ -254,7 +254,20 @@ public static class ShuttleRiderFrame
     // ── Release (LANDING → PARKED) ───────────────────────────────────────────
     public static void ReleaseRiders(ShuttleAutopilot pilot)
     {
-        if (!s_riding) return;
+        // Release on EVIDENCE, not bookkeeping: playtest 6 had s_riding
+        // cleared mid-flight by an outside caller, so the early-return here
+        // left the player parented+kinematic inside the parked shuttle — and
+        // whatever unfroze them later never gave them the planet's orbital
+        // velocity (the "landed, then launched into space a second later").
+        var evidencePc = s_player != null ? s_player : Object.FindObjectOfType<PlayerController>();
+        bool playerRiding = evidencePc != null
+            && (PlayerController.RiderMode || evidencePc.transform.IsChildOf(pilot.transform));
+        if (!s_riding && !playerRiding) return;
+        if (s_player == null && playerRiding)
+        {
+            s_player = evidencePc;
+            s_playerInterpolation = RigidbodyInterpolation.Interpolate;   // the player's standard mode
+        }
         s_riding = false;
 
         var body = pilot.CurrentBody;

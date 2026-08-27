@@ -124,6 +124,9 @@ public class ShuttleAutopilot : MonoBehaviour
     float _landDuration;
     float _settleT;
 
+    PlayerController _healPlayer;
+    float _nextHealScanAt;
+
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
     ShuttleLandingCamera _landingCamera;
@@ -576,6 +579,28 @@ public class ShuttleAutopilot : MonoBehaviour
             float t = 1f - Mathf.Exp(-12f * Time.fixedDeltaTime);
             _localPos = Vector3.Lerp(_localPos, _remoteTargetPos, t);
             _localRot = Quaternion.Slerp(_localRot, _remoteTargetRot, t);
+        }
+
+        // Self-heal (playtest 6): if some outside system clears the rider
+        // statics mid-flight, the player is left kinematic+parented while the
+        // NORMAL movement path runs — walk-lock now, a zero-orbital-velocity
+        // fling at landing. Re-assert every step; the [RiderMode] transition
+        // log names the culprit.
+        if (!ClientDriven && _phase != Phase.Parked && _phase != Phase.Countdown)
+        {
+            if (_healPlayer == null && Time.unscaledTime >= _nextHealScanAt)
+            {
+                _nextHealScanAt = Time.unscaledTime + 1f;
+                _healPlayer = FindObjectOfType<PlayerController>();
+            }
+            if (_healPlayer != null && !PlayerController.RiderMode
+                && _healPlayer.transform.IsChildOf(transform))
+            {
+                Debug.LogWarning("[ShuttleAutopilot] rider state was cleared mid-flight — re-asserting");
+                PlayerController.RiderMode = true;
+                PlayerController.RiderPlatform = transform;
+                PlayerController.UpOverrideTransform = transform;
+            }
         }
 
         // A reparent this step leaves _prevLocal* in the OLD body's frame —
