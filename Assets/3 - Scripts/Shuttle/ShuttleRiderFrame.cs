@@ -315,6 +315,13 @@ public static class ShuttleRiderFrame
             rb.rotation = seatRot;
             rb.angularVelocity = Vector3.zero;
             pc.SetVelocity(bodyVel);               // inherit the new planet's orbit
+            // Hand the controller the LANDING planet before physics resumes —
+            // its reference body froze at departure for the whole flight, and
+            // one stale step poisoned FallDamage (~100 m/s phantom impact),
+            // the grip and the twin exception (playtest 13). The load-grace
+            // covers the transition frames the same way save-loads use it.
+            pc.SetReferenceBodyOnRelease(body);
+            FallDamage.LoadGraceUntil = Mathf.Max(FallDamage.LoadGraceUntil, Time.unscaledTime + 2f);
             Physics.SyncTransforms();
             if (endless != null) endless.RegisterPhysicsObject(pc.transform);
             // NO SnapToCurrentPlayer here (playtest 10's release hitch): the

@@ -830,6 +830,20 @@ public class PlayerController : GravityObject
 	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
 	const float RiderJumpSpeed = 6f;   // low cabin ceiling — a hop, not a launch
 
+	/// Shuttle release (2026-08-27): the reference body is FROZEN for the whole
+	/// flight (the gravity loop doesn't run in rider mode), so the first
+	/// released step otherwise runs the grip / FallDamage / twin logic against
+	/// the DEPARTURE planet — RelativeVelocity read as a ~100 m/s "impact" the
+	/// moment you landed somewhere else (playtest 13's fall damage + hitch +
+	/// orientation snap at the release moment).
+	public void SetReferenceBodyOnRelease(CelestialBody body)
+	{
+		if (body == null) return;
+		referenceBody = body;
+		_lastReferenceBody = body;
+		_smoothedGravityUpInit = false;   // reseed the up-blend from here — no snap
+	}
+
 	/// Shuttle safety net: re-seat the rider at a cabin spot after they
 	/// slipped out of the cage (missed floor clamp during heavy arrival pose
 	/// changes — playtest 9). Zeroes the cabin fall and the smoothing pair.
@@ -1536,10 +1550,12 @@ public class PlayerController : GravityObject
 				// apart ALONG the shared orbit, so standing on one member the
 				// sibling pulls >1 m/s² sideways — on Icey Twin's steep ground
 				// that read as a constant slide against the orbit. Skip ONLY
-				// the FORCE, only while GROUNDED on the sibling's partner —
-				// the nearest-body election below always sees every body, and
-				// airborne flight between the twins keeps full physics.
-				bool skipTwinForce = isGrounded && prevAnchor != null && body != prevAnchor
+				// the FORCE, whenever the player is ANCHORED to the sibling's
+				// partner (not gated on grounded — Icey's jagged ground makes
+				// grounded flicker every micro-hop and the pull snuck back in,
+				// playtest 13's residual slide). The nearest-body election
+				// below always sees every body.
+				bool skipTwinForce = prevAnchor != null && body != prevAnchor
 					&& !string.IsNullOrEmpty(body.orbitGroup)
 					&& body.orbitGroup == prevAnchor.orbitGroup;
 				// Shell-theorem-aware: inverse-square outside the body, but

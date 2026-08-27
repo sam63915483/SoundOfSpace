@@ -742,18 +742,32 @@ public class ShuttleAutopilot : MonoBehaviour
         Vector3 upB = (bWorld - _targetBody.Position).normalized;
         Vector3 upW = Vector3.Slerp(upA, upB, ease).normalized;
 
-        // Reparent to the arrival frame at the midpoint. Local pose is
-        // recomputed from the same world pose, so nothing moves.
+        // Reparent to the arrival frame at the midpoint.
         if (!_reparented && ease >= 0.5f)
         {
             _reparented = true;
+            // ⚠️ Convert the stored ROTATION through its WORLD value first
+            // (playtest 13 — Sam called it: not floating origin). _localRot
+            // was relative to the DEPART body; reading it under the arrival
+            // body's different authored rotation really did rotate the whole
+            // shuttle + rider by the difference, at the exact midpoint.
+            // Position was always immune (recomputed fresh from the anchors).
+            Quaternion worldRotAtSwitch = FrameWorldRot(_body, _localRot);
             transform.SetParent(_targetBody.transform, false);
             _body = _targetBody;
+            _localRot = FrameLocalRot(_body, worldRotAtSwitch);
             _poseJumped = true;
         }
 
         Quaternion curW = FrameWorldRot(_body, _localRot);
-        Quaternion rotW = Quaternion.FromToRotation(curW * Vector3.up, upW) * curW;
+        // Rate-limited route alignment (playtest 13): the shuttle leaves a
+        // TILTED pad now (surface-conforming landings), and a full
+        // FromToRotation snapped the tilt away on the first transit step —
+        // the visible hitch+rotate right after leaving Icey. 45°/s shrugs it
+        // off smoothly in the first second of cruise.
+        Vector3 curUp = curW * Vector3.up;
+        Vector3 alignedUp = Vector3.RotateTowards(curUp, upW, 45f * Mathf.Deg2Rad * Time.fixedDeltaTime, 0f);
+        Quaternion rotW = Quaternion.FromToRotation(curUp, alignedUp) * curW;
 
         _localPos = FrameLocalPos(_body, posW);
         _localRot = FrameLocalRot(_body, rotW);
