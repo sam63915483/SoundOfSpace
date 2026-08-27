@@ -489,12 +489,12 @@ public class ShuttleAutopilot : MonoBehaviour
                 if (_endless != null && _savedRebaseThreshold < 0f)
                 {
                     _savedRebaseThreshold = _endless.distanceThreshold;
-                    // 12 km: the longest leg (HA to the twins, ~19 km) now
-                    // rebases at most once mid-flight — each rebase is a 1-2
-                    // frame engine stutter and they were the residual transit
-                    // hitches (playtest 12). Still well inside float precision
-                    // (~1 mm at 12 km).
-                    _endless.distanceThreshold = 12000f;
+                    // 3.5 km, DOWN from the 12 km experiment: that far from
+                    // the origin, float precision degrades to millimetres and
+                    // every transform composition jitters — playtest 14's
+                    // "chunky, clunky" flight. 3.5 km keeps precision clean
+                    // and still cuts a long leg from ~15 rebases to a few.
+                    _endless.distanceThreshold = 3500f;
                 }
                 // Flight horizon: the ocean post-effect is capped by scene
                 // depth, so a planet beyond the camera's far plane loses its
@@ -550,14 +550,19 @@ public class ShuttleAutopilot : MonoBehaviour
                     // if a new launch starts first — riders just keep riding.
                     _releaseRidersAt = Time.fixedTime + ReleaseSettleSeconds;
                     if (_door != null) _door.ReopenAfterFlight();
+                    // Start the up re-orientation NOW (playtest 14): waiting
+                    // for the physical release made the player visibly rotate
+                    // upright seconds AFTER the door opened. Blending during
+                    // the door's own fold-open finishes before they can step
+                    // out — and the release then has no rotation event at all.
+                    BlendRiderUpOut(2f);
                 }
                 if (_sensor != null) _sensor.SetActive(false);
                 if (_landingCamera != null) { _landingCamera.Teardown(); _landingCamera = null; }
-                if (_endless != null && _savedRebaseThreshold >= 0f)
-                {
-                    _endless.distanceThreshold = _savedRebaseThreshold;
-                    _savedRebaseThreshold = -1f;
-                }
+                // NOTE: the rebase threshold is deliberately NOT restored here
+                // — restoring at touchdown fired a large catch-up rebase right
+                // at door-open (playtest 14's landing hitch). It's restored in
+                // the deferred-release block, ~2.5 s later, standing still.
                 if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip >= 0f)
                 {
                     _healPlayer.Camera.farClipPlane = _savedFarClip;
@@ -610,6 +615,14 @@ public class ShuttleAutopilot : MonoBehaviour
             {
                 _releaseRidersAt = -1f;
                 ShuttleRiderFrame.ReleaseRiders(this);
+                // Restore the widened rebase threshold NOW — the catch-up
+                // rebase (if one is due) fires while everyone stands still,
+                // instead of stacking onto the door-open moment.
+                if (_endless != null && _savedRebaseThreshold >= 0f)
+                {
+                    _endless.distanceThreshold = _savedRebaseThreshold;
+                    _savedRebaseThreshold = -1f;
+                }
             }
         }
 
@@ -893,6 +906,40 @@ public class ShuttleAutopilot : MonoBehaviour
     {
         if (_upBlendOut != null) StopCoroutine(_upBlendOut);
         _upBlendOut = StartCoroutine(BlendUpOverrideOut(seconds));
+    }
+
+    /// Blend INTO the ride (playtest 14: handing UpOverrideTransform straight
+    /// to the shuttle at door-close snapped the player from planet-up to the
+    /// parked shuttle's tilted up in one step). Proxy eases from the player's
+    /// current up to the LIVE shuttle up, then hands over to the shuttle.
+    public void BlendRiderUpIn(float seconds)
+    {
+        if (_upBlendOut != null) StopCoroutine(_upBlendOut);
+        _upBlendOut = StartCoroutine(BlendUpOverrideIn(seconds));
+    }
+
+    IEnumerator BlendUpOverrideIn(float seconds)
+    {
+        var pc = FindObjectOfType<PlayerController>();
+        var proxy = new GameObject("ShuttleTravelUpBlendProxy").transform;
+        proxy.SetParent(transform, false);
+        Vector3 fromUp = pc != null ? pc.transform.up : transform.up;
+        proxy.rotation = Quaternion.FromToRotation(Vector3.up, fromUp);
+        PlayerController.UpOverrideTransform = proxy;
+
+        float t = 0f;
+        while (t < seconds && pc != null)
+        {
+            t += Time.deltaTime;
+            // Live shuttle up — it may already be moving (liftoff starts).
+            Vector3 upNow = Vector3.Slerp(fromUp, transform.up, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / seconds)));
+            proxy.rotation = Quaternion.FromToRotation(Vector3.up, upNow);
+            yield return null;
+        }
+        if (PlayerController.UpOverrideTransform == proxy)
+            PlayerController.UpOverrideTransform = transform;   // the ride owns the up from here
+        Destroy(proxy.gameObject);
+        _upBlendOut = null;
     }
 
     IEnumerator BlendUpOverrideOut(float seconds)

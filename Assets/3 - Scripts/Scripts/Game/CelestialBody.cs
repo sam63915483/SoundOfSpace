@@ -163,9 +163,16 @@ public class CelestialBody : GravityObject {
         if ((worldPos - rb.position).sqrMagnitude > 50f * 50f) {
             rb.position = worldPos;
             transform.position = worldPos;
+            velocity = worldVel;
         } else {
+            // velocity = the ACTUAL sweep this step will perform, not the
+            // leader-derived estimate (2026-08-27, playtest 14): the estimate
+            // differs from the true sweep by one step of orbital curvature
+            // (~3 cm/s on the twins), and everything that velocity-matches the
+            // ground — the player's grounded grip above all — inherited that
+            // bias as a permanent visible slide on Icey Twin.
+            velocity = (worldPos - rb.position) / Universe.physicsTimeStep;
             rb.MovePosition (worldPos);
         }
-        velocity = worldVel;
     }
 }

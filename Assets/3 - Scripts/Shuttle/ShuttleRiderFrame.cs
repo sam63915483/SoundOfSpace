@@ -189,7 +189,7 @@ public static class ShuttleRiderFrame
             var endless = Object.FindObjectOfType<EndlessManager>();
             if (endless != null) endless.UnregisterPhysicsObject(pc.transform);
 
-            PlayerController.UpOverrideTransform = pilot.transform;
+            pilot.BlendRiderUpIn(1.2f);   // ease planet-up -> shuttle-up (no door-close snap)
             PlayerController.RiderMode = true;
             PlayerController.RiderPlatform = pilot.transform;
             FallDamage.Suppressed = true;
@@ -330,7 +330,11 @@ public static class ShuttleRiderFrame
             // the camera interpolation buffer only added a visible blip.
 
             FallDamage.Suppressed = false;
-            pilot.BlendRiderUpOut(1.5f);           // never snap the up-frame (intro proxy recipe)
+            // The up blend-out normally started at TOUCHDOWN (SetPhase Parked)
+            // and has already finished — only start one here if some edge path
+            // released with the override still parked on the shuttle itself.
+            if (PlayerController.UpOverrideTransform == pilot.transform)
+                pilot.BlendRiderUpOut(1.5f);
             s_player = null;
         }
 
