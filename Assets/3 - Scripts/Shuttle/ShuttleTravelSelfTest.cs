@@ -56,6 +56,32 @@ public class ShuttleTravelSelfTest : MonoBehaviour
         if (pilot == null) { Log("ABORT: no ShuttleAutopilot after 20s"); yield break; }
         yield return new WaitForSeconds(3f);   // let the scene settle
 
+        // ⚠️ THE INTRO RUNS ON EDITOR PLAY (Sam has said this repeatedly): the
+        // arrival sequence freezes the player kinematic and pins them to the
+        // pod. Teleporting/flying while it owns the player produced every
+        // "player floating in space" recorder run. Skip it via its own test
+        // hook and wait for the release before touching anything.
+        var intro = FindObjectOfType<ShuttleArrivalSequence>();
+        float introGuard = 0f;
+        while (intro != null && !ShuttleArrivalSequence.IsPlaying && introGuard < 6f)
+        {
+            introGuard += Time.deltaTime;
+            yield return null;
+        }
+        if (intro != null && ShuttleArrivalSequence.IsPlaying)
+        {
+            Log("intro sequence playing — SkipNow()");
+            intro.SkipNow();
+            float w = 0f;
+            while (ShuttleArrivalSequence.IsPlaying && w < 30f) { w += Time.deltaTime; yield return null; }
+            Log("intro done (IsPlaying=" + ShuttleArrivalSequence.IsPlaying + ")");
+            yield return new WaitForSeconds(2f);
+        }
+        else
+        {
+            Log("no intro playing (intro=" + (intro != null) + ")");
+        }
+
         string target = "Icey Twin";
         try
         {
@@ -83,6 +109,8 @@ public class ShuttleTravelSelfTest : MonoBehaviour
             Physics.SyncTransforms();
             Log("player seated in cabin at " + seat);
             yield return new WaitForSeconds(1f);
+            Log("post-seat: cabinLocal=" + pilot.transform.InverseTransformPoint(pc.transform.position).ToString("F2")
+                + " IsInside=" + ShuttleRiderFrame.IsInside(pilot, pc.transform.position));
         }
 
         ShuttleAutopilot.DebugSkipCrewCheck = true;
@@ -126,14 +154,31 @@ public class ShuttleTravelSelfTest : MonoBehaviour
                 lastPhase = phase;
             }
 
+            if (phase == ShuttleAutopilot.Phase.Countdown)
+            {
+                var pcC = FindObjectOfType<PlayerController>();
+                if (pcC != null)
+                    Log("  countdown: cabinLocal=" + pilot.transform.InverseTransformPoint(pcC.transform.position).ToString("F2")
+                        + " IsInside=" + ShuttleRiderFrame.IsInside(pilot, pcC.transform.position));
+            }
+
             if (phase == ShuttleAutopilot.Phase.Hover)
             {
                 if (hoverSince < 0f) hoverSince = t;
-                if (!landRequested && t - hoverSince >= 5f && pilot.LandingValid)
+                if (!landRequested)
                 {
-                    landRequested = true;
-                    bool landed = pilot.RequestLand();
-                    Log(">>> RequestLand -> " + landed);
+                    if (pilot.LandingValid && t - hoverSince >= 2f)
+                    {
+                        landRequested = true;
+                        bool landed = pilot.RequestLand();
+                        Log(">>> RequestLand -> " + landed);
+                    }
+                    else
+                    {
+                        // Wander forward hunting a green spot — what a player
+                        // does with WASD (also exercises the hover steering).
+                        pilot.SetPilotInput(new Vector2(0f, 1f), 0f);
+                    }
                 }
             }
 
@@ -142,6 +187,21 @@ public class ShuttleTravelSelfTest : MonoBehaviour
                 Log("=== PARKED — leg complete. body=" +
                     (pilot.CurrentBody != null ? pilot.CurrentBody.bodyName : "?") +
                     " localMag=" + pilot.transform.localPosition.magnitude.ToString("0.0"));
+                // Release aftermath — the playtest-6 clip/launch window. The
+                // player's cabin-local position must stay put and the body-
+                // relative speed must stay walking-scale.
+                var pc2 = FindObjectOfType<PlayerController>();
+                var body2 = pilot.CurrentBody;
+                for (int s = 0; s < 30; s++)
+                {
+                    yield return new WaitForSeconds(0.1f);
+                    if (pc2 == null || pc2.Rigidbody == null) break;
+                    Vector3 cabinLocal = pilot.transform.InverseTransformPoint(pc2.transform.position);
+                    float relSpeed = (pc2.Rigidbody.velocity - (body2 != null ? body2.velocity : Vector3.zero)).magnitude;
+                    Log("release+" + (s * 0.1f).ToString("0.0") + "s cabinLocal=" + cabinLocal.ToString("F2")
+                        + " relSpeed=" + relSpeed.ToString("0.0")
+                        + " grounded=" + (pc2.IsOnGround ? "Y" : "n"));
+                }
                 break;
             }
         }

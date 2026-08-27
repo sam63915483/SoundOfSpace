@@ -268,13 +268,25 @@ public static class ShuttleRiderFrame
             PlayerController.RiderMode = false;
             PlayerController.RiderPlatform = null;
 
+            // Seat from AUTHORITATIVE state, not the transform: the player's
+            // shuttle-LOCAL pose (exact — locals are never stale) composed
+            // with the autopilot's physics-frame shuttle pose. Reading
+            // pc.transform.position here grabbed last frame's RENDER pose —
+            // harmless on simulated planets, but a co-orbit follower (Icey)
+            // teleports ~2.7 m per tick, so the stale seat landed inside the
+            // floor/walls and PhysX blasted the player out (playtest 6).
+            Vector3 seatLocal = pc.transform.localPosition;
+            Quaternion seatLocalRot = pc.transform.localRotation;
+            pilot.GetWorldPose(out Vector3 shuttleW, out Quaternion shuttleR);
+            Vector3 seat = shuttleW + shuttleR * seatLocal;
+            Quaternion seatRot = shuttleR * seatLocalRot;
+
             pc.transform.SetParent(null, true);
+            pc.transform.SetPositionAndRotation(seat, seatRot);
             rb.isKinematic = false;
             rb.interpolation = s_playerInterpolation;
-            // Seat from the LIVE pose, then commit into PhysX — the intro's
-            // release recipe (autoSyncTransforms is off).
-            rb.position = pc.transform.position;
-            rb.rotation = pc.transform.rotation;
+            rb.position = seat;
+            rb.rotation = seatRot;
             rb.angularVelocity = Vector3.zero;
             pc.SetVelocity(bodyVel);               // inherit the new planet's orbit
             Physics.SyncTransforms();

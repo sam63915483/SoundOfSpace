@@ -290,7 +290,13 @@ public class ShuttleAutopilot : MonoBehaviour
     // above a roof that rises with the shuttle, and accelerated away — and
     // the validity rays read our own curved skirt as unlandable SLOPE.
     // Every autopilot/sensor ground query MUST go through this.
-    static readonly RaycastHit[] s_groundHits = new RaycastHit[16];
+    // 64, not 16: a downward ray from the shuttle's centre passes through
+    // DOZENS of the shuttle's own colliders before reaching terrain, and
+    // RaycastNonAlloc returns an UNSORTED buffer — at 16 the self-hits
+    // crowded the real ground hit out entirely and the sensor read
+    // "NO GROUND" over perfectly good terrain (recorder lap of Icey Twin:
+    // 443 consecutive NO GROUND samples at 100 m altitude).
+    static readonly RaycastHit[] s_groundHits = new RaycastHit[64];
     public bool GroundRay(Vector3 origin, Vector3 dir, float maxDist, out RaycastHit best)
     {
         best = default;
@@ -424,6 +430,17 @@ public class ShuttleAutopilot : MonoBehaviour
         }
     }
 
+    /// Authoritative physics-frame WORLD pose — for seating riders on release.
+    /// Never read transform for this: at release time it still holds last
+    /// frame's render pose, and on a co-orbit follower (teleported ~2.7 m per
+    /// tick, no interpolation) that one-tick error seats the player inside
+    /// the floor or a wall (the playtest-6 Icey Twin launch/clip-through).
+    public void GetWorldPose(out Vector3 pos, out Quaternion rot)
+    {
+        pos = WorldPos;
+        rot = WorldRot;
+    }
+
     /// Host-side pose read for ShuttleSync's 10 Hz stream.
     public void GetPoseForSync(out string bodyName, out Vector3 localPos, out Quaternion localRot)
     {
@@ -477,6 +494,13 @@ public class ShuttleAutopilot : MonoBehaviour
             case Phase.Parked:
                 if (prev != Phase.Countdown)   // a real landing, not an abort
                 {
+                    // Commit the authoritative pose into the transform + PhysX
+                    // BEFORE releasing riders — the per-step write below is
+                    // skipped once the phase is Parked, and the transform still
+                    // holds last frame's render pose at this moment.
+                    transform.localPosition = _localPos;
+                    transform.localRotation = _localRot;
+                    Physics.SyncTransforms();
                     RememberParkedPose();
                     // ReleaseRiders STARTS the up-override blend-out — do not
                     // stop coroutines after it. (Playtest 5: a StopCoroutine
