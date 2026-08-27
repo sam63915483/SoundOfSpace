@@ -32,6 +32,16 @@ public static class ShuttleRiderFrame
     static bool s_riding;
     static PlayerController s_player;
     static RigidbodyInterpolation s_playerInterpolation;
+    // Where (shuttle-local) the player stood at capture — the safety-net
+    // re-seat spot if they ever slip below the cabin floor mid-flight.
+    static Vector3 s_playerCaptureLocal;
+    static bool s_hasCaptureLocal;
+
+    public static bool TryGetPlayerCaptureLocal(out Vector3 local)
+    {
+        local = s_playerCaptureLocal;
+        return s_hasCaptureLocal;
+    }
     static readonly List<FrozenItem> s_items = new List<FrozenItem>();
 
     // Interior volume: the ShuttleInteriorVolume trigger box if Sam has run the
@@ -63,6 +73,7 @@ public static class ShuttleRiderFrame
         s_volume = null;
         s_volumeShuttle = null;
         s_fallbackComputed = false;
+        s_hasCaptureLocal = false;
         PlayerController.RiderMode = false;
         PlayerController.RiderPlatform = null;
         ShuttleAutopilot.ClientDriven = false;
@@ -182,6 +193,8 @@ public static class ShuttleRiderFrame
             PlayerController.RiderMode = true;
             PlayerController.RiderPlatform = pilot.transform;
             FallDamage.Suppressed = true;
+            s_playerCaptureLocal = pc.transform.localPosition;
+            s_hasCaptureLocal = true;
         }
 
         CaptureLooseItems(pilot);

@@ -38,9 +38,25 @@ public class ShuttleRenderSmoother : MonoBehaviour
         if (!_pilot.GetSmoothingPose(out Vector3 prevPos, out Quaternion prevRot,
                                      out Vector3 curPos, out Quaternion curRot, out bool jumped))
         {
-            _hasLastRenderWorld = false;
+            // Parked. SETTLE onto the final pose instead of snapping — the
+            // last rendered pose is mid-interpolation (+ any world offset),
+            // and jumping straight to the committed parked pose was a visible
+            // blip on every touchdown (playtest 9's landing hitch).
+            if (_hasLastRenderWorld)
+            {
+                float k = 1f - Mathf.Exp(-10f * Time.deltaTime);
+                transform.localPosition = Vector3.Lerp(transform.localPosition, curPos, k);
+                transform.localRotation = Quaternion.Slerp(transform.localRotation, curRot, k);
+                if ((transform.localPosition - curPos).sqrMagnitude < 0.0004f)
+                {
+                    transform.localPosition = curPos;
+                    transform.localRotation = curRot;
+                    _hasLastRenderWorld = false;   // settled — go idle
+                }
+                PlanetRelativeSync.ReplaceShuttleFramePuppets();
+            }
             _worldOffset = Vector3.zero;
-            return;   // parked — the authored pose stands, nothing to smooth
+            return;
         }
 
         if (jumped)
@@ -69,7 +85,9 @@ public class ShuttleRenderSmoother : MonoBehaviour
         }
         if (_worldOffset.sqrMagnitude > 1e-8f)
         {
-            _worldOffset *= Mathf.Exp(-14f * Time.deltaTime);
+            // Gentler bleed than the first cut (14): at ~70 ms half-life the
+            // reparent correction itself read as a blip (playtest 9).
+            _worldOffset *= Mathf.Exp(-8f * Time.deltaTime);
             transform.position = world + _worldOffset;
         }
         _lastRenderWorld = transform.position;

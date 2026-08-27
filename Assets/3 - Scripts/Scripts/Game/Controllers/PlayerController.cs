@@ -829,6 +829,22 @@ public class PlayerController : GravityObject
 	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
 	const float RiderJumpSpeed = 6f;   // low cabin ceiling — a hop, not a launch
 
+	// Grip velocity extrapolation for placed follower bodies (see the grip).
+	CelestialBody _gripRefBody;
+	Vector3 _gripPrevRefVel;
+
+	/// Shuttle safety net: re-seat the rider at a cabin spot after they
+	/// slipped out of the cage (missed floor clamp during heavy arrival pose
+	/// changes — playtest 9). Zeroes the cabin fall and the smoothing pair.
+	public void RiderReseat(Vector3 worldPos)
+	{
+		transform.position = worldPos;
+		rb.position = worldPos;
+		rb.rotation = transform.rotation;
+		_riderVertVel = 0f;
+		_riderPrevLocalPos = _riderCurrLocalPos = transform.localPosition;
+	}
+
 	// Playtest telemetry, read by ShuttleAutopilot's cheats-only overlay so a
 	// "can't walk" report names its gate instead of needing a repro session.
 	[System.NonSerialized] public static bool DbgRiderGrounded;
@@ -1032,6 +1048,20 @@ public class PlayerController : GravityObject
 				if (slopeAngle <= slopeLimitAngle && !_groundIsSlick && gravityGrip > 0.001f)
 				{
 					Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
+					// Co-orbit FOLLOWERS (Icey Twin) are PLACED each step, so
+					// their velocity property is one step stale against the
+					// contact motion their MovePosition sweep imparts — on
+					// Icey's tight orbit (~3 m/s² centripetal) that residual
+					// read as a slow slide against the orbit (playtest 9).
+					// One-step extrapolation cancels it; simulated bodies are
+					// untouched.
+					if (referenceBody != null && referenceBody.coOrbitLeader != null)
+					{
+						if (_gripRefBody == referenceBody)
+							refVel += referenceBody.velocity - _gripPrevRefVel;
+						_gripPrevRefVel = referenceBody.velocity;
+						_gripRefBody = referenceBody;
+					}
 					Vector3 relVel = rb.velocity - refVel;
 					// Split into into-surface (normal) and along-slope (tangential).
 					Vector3 normalComp = Vector3.Project(relVel, _groundNormal);

@@ -614,6 +614,20 @@ public class ShuttleAutopilot : MonoBehaviour
                 PlayerController.RiderPlatform = transform;
                 PlayerController.UpOverrideTransform = transform;
             }
+
+            // Cabin safety net (playtest 9): a rider must never end up below
+            // the cabin — a missed floor clamp during heavy arrival pose
+            // changes occasionally dropped players through onto the planet.
+            // Re-seat at the capture spot and log what we saw.
+            if (_healPlayer != null && PlayerController.RiderMode
+                && _healPlayer.transform.IsChildOf(transform)
+                && ShuttleRiderFrame.TryGetPlayerCaptureLocal(out Vector3 capLocal)
+                && _healPlayer.transform.localPosition.y < capLocal.y - 3f)
+            {
+                Debug.LogWarning("[ShuttleAutopilot] rider slipped below the cabin at local "
+                    + _healPlayer.transform.localPosition.ToString("F2") + " (phase " + _phase + ") — re-seating");
+                _healPlayer.RiderReseat(transform.TransformPoint(capLocal));
+            }
         }
 
         // A reparent this step leaves _prevLocal* in the OLD body's frame —
@@ -775,7 +789,10 @@ public class ShuttleAutopilot : MonoBehaviour
 
         // Clearance: settle high enough that the tallest bump in the footprint
         // can never intrude through the cabin floor (see MaxAboveDeviation).
-        float clearance = _sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation + 0.35f : 0.35f;
+        // 0.15 margin, down from 0.35 — the fatter margin read as the shuttle
+        // "floating a foot off the ground" on bumpy pads (playtest 9); on the
+        // roughest legal spot the lowest gear now rests on the tallest bump.
+        float clearance = _sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation + 0.15f : 0.15f;
 
         _landStartLocal = _localPos;
         _landTargetLocal = FrameLocalPos(_body, hit.point + n * (_gearHeight + clearance));
