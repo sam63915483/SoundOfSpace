@@ -130,6 +130,7 @@ public class ShuttleAutopilot : MonoBehaviour
     float _releaseRidersAt = -1f;   // deferred post-touchdown release; -1 = idle
     EndlessManager _endless;
     float _savedRebaseThreshold = -1f;   // widened during flight; -1 = not touched
+    float _savedFarClip = -1f;           // extended during flight; -1 = not touched
 
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
@@ -215,6 +216,8 @@ public class ShuttleAutopilot : MonoBehaviour
         // Never leave a widened rebase threshold behind (scene change mid-flight).
         if (_endless != null && _savedRebaseThreshold >= 0f)
             _endless.distanceThreshold = _savedRebaseThreshold;
+        if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip >= 0f)
+            _healPlayer.Camera.farClipPlane = _savedFarClip;
     }
 
     void Start()
@@ -488,6 +491,16 @@ public class ShuttleAutopilot : MonoBehaviour
                     _savedRebaseThreshold = _endless.distanceThreshold;
                     _endless.distanceThreshold = 5000f;
                 }
+                // Flight horizon: the ocean post-effect is capped by scene
+                // depth, so a planet beyond the camera's far plane loses its
+                // water first (playtest 11: HA's ocean vanishing mid-transit).
+                // Extend for the flight, restore on landing.
+                if (_healPlayer == null) _healPlayer = FindObjectOfType<PlayerController>();
+                if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip < 0f)
+                {
+                    _savedFarClip = _healPlayer.Camera.farClipPlane;
+                    if (_savedFarClip < 30000f) _healPlayer.Camera.farClipPlane = 30000f;
+                }
                 _departBody = _body;
                 _departAnchorLocal = _localPos + _localPos.normalized * LiftoffHeight;
                 if (!ClientDriven) ComputeArrivalAnchor();
@@ -539,6 +552,11 @@ public class ShuttleAutopilot : MonoBehaviour
                 {
                     _endless.distanceThreshold = _savedRebaseThreshold;
                     _savedRebaseThreshold = -1f;
+                }
+                if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip >= 0f)
+                {
+                    _healPlayer.Camera.farClipPlane = _savedFarClip;
+                    _savedFarClip = -1f;
                 }
                 _targetBody = null;
                 break;

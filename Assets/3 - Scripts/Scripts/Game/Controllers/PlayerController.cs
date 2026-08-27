@@ -826,6 +826,7 @@ public class PlayerController : GravityObject
 	// the 50 Hz stepping of the player's local movement).
 	Vector3 _riderPrevLocalPos, _riderCurrLocalPos;
 	bool _riderSmoothInit;
+	float _riderAirTime;   // seconds since the rider's feet left the cabin floor
 	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
 	const float RiderJumpSpeed = 6f;   // low cabin ceiling — a hop, not a launch
 
@@ -1521,6 +1522,18 @@ public class PlayerController : GravityObject
 			// Gravity
 			foreach (CelestialBody body in bodies)
 			{
+				// Co-orbital twin exception (2026-08-27): the pair sits ~1 km
+				// apart ALONG the shared orbit, so standing on one member the
+				// sibling pulls >1 m/s² sideways — on Icey Twin's steep ground
+				// that read as a constant slide against the orbit the moment
+				// the shuttle released the rider (playtest 11). The twins
+				// already ignore each other's gravity (orbitGroup); a player
+				// standing on one now does too. Off-planet flight (nearest
+				// body not in the group... referenceBody is the standing
+				// anchor) keeps feeling both.
+				if (referenceBody != null && body != referenceBody
+					&& !string.IsNullOrEmpty(body.orbitGroup)
+					&& referenceBody.orbitGroup == body.orbitGroup) continue;
 				// Shell-theorem-aware: inverse-square outside the body, but
 				// falling linearly to ZERO at its centre once you're inside.
 				// The old inline 1/r² diverged as sqrDst -> 0, so walking down a
@@ -1951,6 +1964,7 @@ public class PlayerController : GravityObject
 		// start inside the floor (casts from inside a collider see nothing) in a
 		// single step — i.e. fall through the floor. 5 m/s caps the step at 0.1 m.
 		if (_riderVertVel < -5f) _riderVertVel = -5f;
+		_riderAirTime = isGrounded ? 0f : _riderAirTime + dt;
 
 		Vector3 move = smoothVelocity * dt + up * (_riderVertVel * dt);
 		float wantedUpMove = _riderVertVel * dt;
@@ -1980,11 +1994,13 @@ public class PlayerController : GravityObject
 			{
 				float feetGap = hit.distance - (kSeatCastUp - kSeatRadius);
 				// Tier 1: near the floor — normal seat (a jump's fall lands
-				// naturally; snapping from higher would cut it visibly short).
-				// Tier 2 (playtest 9's fall-through): already falling FAST —
-				// that's never a fresh jump, so rescue from up to 1.2 m before
-				// the fall becomes visible instead of after.
-				if (feetGap <= 0.15f || (_riderVertVel <= -2f && feetGap <= 0.6f))
+				// naturally; snapping from higher cuts it visibly short).
+				// Tier 2 rescue keys on TIME AIRBORNE, not fall speed — a
+				// normal jump reaches rescue speeds before landing, so the
+				// speed version yanked every transit jump down early
+				// (playtest 11's "snapped back to the ground"). No jump lasts
+				// 0.8 s at cabin gravity; a real fall-through does.
+				if (feetGap <= 0.15f || (_riderAirTime > 0.8f && feetGap <= 0.6f))
 				{
 					pos += up * ShuttleLandingLogic.RiderSeatCorrection(kSeatCastUp, kSeatRadius, hit.distance, kSeatSkin);
 					_riderVertVel = 0f;

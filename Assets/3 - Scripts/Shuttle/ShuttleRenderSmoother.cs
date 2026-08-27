@@ -22,8 +22,10 @@ public class ShuttleRenderSmoother : MonoBehaviour
     // interpolation offset (~1-2 m at orbital speed) on the switch frame —
     // the "big hitch" of playtest 5. Capture that difference and bleed it out.
     Vector3 _lastRenderWorld;
+    Quaternion _lastRenderRot = Quaternion.identity;
     bool _hasLastRenderWorld;
     Vector3 _worldOffset;
+    Quaternion _rotOffset = Quaternion.identity;   // rotation continuity across the reparent
 
     public void Init(ShuttleAutopilot pilot) { _pilot = pilot; }
 
@@ -56,6 +58,7 @@ public class ShuttleRenderSmoother : MonoBehaviour
                 PlanetRelativeSync.ReplaceShuttleFramePuppets();
             }
             _worldOffset = Vector3.zero;
+            _rotOffset = Quaternion.identity;
             return;
         }
 
@@ -82,6 +85,11 @@ public class ShuttleRenderSmoother : MonoBehaviour
         {
             Vector3 snap = _lastRenderWorld - world;
             if (snap.sqrMagnitude < 20f * 20f) _worldOffset = snap;
+            // Rotation too (playtest 11's mid-flight rotation snap): the
+            // composed render rotation shifts by the parents' interpolation
+            // difference on the switch frame — carry it and bleed it out.
+            Quaternion rotSnap = _lastRenderRot * Quaternion.Inverse(transform.rotation);
+            if (Quaternion.Angle(Quaternion.identity, rotSnap) < 30f) _rotOffset = rotSnap;
         }
         if (_worldOffset.sqrMagnitude > 1e-8f)
         {
@@ -90,7 +98,13 @@ public class ShuttleRenderSmoother : MonoBehaviour
             _worldOffset *= Mathf.Exp(-8f * Time.deltaTime);
             transform.position = world + _worldOffset;
         }
+        if (Quaternion.Angle(Quaternion.identity, _rotOffset) > 0.01f)
+        {
+            _rotOffset = Quaternion.Slerp(_rotOffset, Quaternion.identity, 1f - Mathf.Exp(-8f * Time.deltaTime));
+            transform.rotation = _rotOffset * transform.rotation;
+        }
         _lastRenderWorld = transform.position;
+        _lastRenderRot = transform.rotation;
         _hasLastRenderWorld = true;
 
         // Rider puppets are placed in the shuttle frame — re-place them from
