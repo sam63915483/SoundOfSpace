@@ -16,6 +16,15 @@ public class ShuttleRenderSmoother : MonoBehaviour
     ShuttleAutopilot _pilot;
     float _lastFixedTime;
 
+    // World-continuity across the mid-transit reparent: the old parent's
+    // transform is INTERPOLATED (simulated body) while the new local pose was
+    // computed in the physics frame, so the composed render pose snaps by the
+    // interpolation offset (~1-2 m at orbital speed) on the switch frame —
+    // the "big hitch" of playtest 5. Capture that difference and bleed it out.
+    Vector3 _lastRenderWorld;
+    bool _hasLastRenderWorld;
+    Vector3 _worldOffset;
+
     public void Init(ShuttleAutopilot pilot) { _pilot = pilot; }
 
     void FixedUpdate()
@@ -28,7 +37,11 @@ public class ShuttleRenderSmoother : MonoBehaviour
         if (_pilot == null) return;
         if (!_pilot.GetSmoothingPose(out Vector3 prevPos, out Quaternion prevRot,
                                      out Vector3 curPos, out Quaternion curRot, out bool jumped))
+        {
+            _hasLastRenderWorld = false;
+            _worldOffset = Vector3.zero;
             return;   // parked — the authored pose stands, nothing to smooth
+        }
 
         if (jumped)
         {
@@ -43,6 +56,24 @@ public class ShuttleRenderSmoother : MonoBehaviour
             transform.localPosition = Vector3.Lerp(prevPos, curPos, t);
             transform.localRotation = Quaternion.Slerp(prevRot, curRot, t);
         }
+
+        // Reparent hitch removal (see the field comment): on the switch frame,
+        // remember how far the composed render pose jumped and cancel it,
+        // bleeding the correction to zero over ~a quarter second. Guarded so a
+        // same-frame origin rebase (a ~1000 m legitimate jump) never feeds in.
+        Vector3 world = transform.position;
+        if (jumped && _hasLastRenderWorld)
+        {
+            Vector3 snap = _lastRenderWorld - world;
+            if (snap.sqrMagnitude < 20f * 20f) _worldOffset = snap;
+        }
+        if (_worldOffset.sqrMagnitude > 1e-8f)
+        {
+            _worldOffset *= Mathf.Exp(-14f * Time.deltaTime);
+            transform.position = world + _worldOffset;
+        }
+        _lastRenderWorld = transform.position;
+        _hasLastRenderWorld = true;
 
         // Rider puppets are placed in the shuttle frame — re-place them from
         // the freshly smoothed pose or they trail the cabin by a whole step.

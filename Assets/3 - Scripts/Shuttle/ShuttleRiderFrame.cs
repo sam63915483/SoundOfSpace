@@ -66,6 +66,12 @@ public static class ShuttleRiderFrame
         PlayerController.RiderMode = false;
         PlayerController.RiderPlatform = null;
         ShuttleAutopilot.ClientDriven = false;
+        // Belt + braces for the stuck-up-override class: a shuttle-owned
+        // override (the shuttle itself or its blend proxy) must never survive
+        // a scene load. The intro re-sets its own after load, so this is safe.
+        var over = PlayerController.UpOverrideTransform;
+        if (over != null && (over.name == "ShuttleTravelUpBlendProxy" || over.GetComponent<ShuttleAutopilot>() != null))
+            PlayerController.UpOverrideTransform = null;
     }
 
     // ── Occupancy ────────────────────────────────────────────────────────────

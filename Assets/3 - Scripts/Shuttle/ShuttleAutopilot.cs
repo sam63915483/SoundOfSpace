@@ -478,9 +478,15 @@ public class ShuttleAutopilot : MonoBehaviour
                 if (prev != Phase.Countdown)   // a real landing, not an abort
                 {
                     RememberParkedPose();
+                    // ReleaseRiders STARTS the up-override blend-out — do not
+                    // stop coroutines after it. (Playtest 5: a StopCoroutine
+                    // here killed the blend on the very frame it started, so
+                    // UpOverrideTransform stayed locked to the landing pose
+                    // FOREVER — the player kept that up on every planet, lay
+                    // on their back walking around, and grounding cast the
+                    // wrong way. BlendRiderUpOut stops its own predecessor.)
                     ShuttleRiderFrame.ReleaseRiders(this);
                     if (_door != null) _door.ReopenAfterFlight();
-                    if (_upBlendOut != null) StopCoroutine(_upBlendOut);
                 }
                 if (_sensor != null) _sensor.SetActive(false);
                 if (_landingCamera != null) { _landingCamera.Teardown(); _landingCamera = null; }
