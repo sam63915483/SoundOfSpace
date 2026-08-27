@@ -54,11 +54,15 @@ public class NBodySimulation : MonoBehaviour {
                                 + tangentAxis * Mathf.Sin (f.satellitePhase)) * f.satelliteOrbitRadius;
                 Vector3 offsetVel = (-radialAxis * Mathf.Sin (f.satellitePhase)
                                    + tangentAxis * Mathf.Cos (f.satellitePhase)) * (f.satelliteOrbitRadius * w);
-                f.ApplySavedState (lead.Position + offset, f.transform.rotation, lead.velocity + offsetVel);
+                // ApplyPlacedState (2026-08-27, Sam's call): MovePosition sweep,
+                // not a teleport — a teleported follower's surface has zero
+                // contact velocity and physics players standing on it get
+                // ejected. See the method's comment in CelestialBody.
+                f.ApplyPlacedState (lead.Position + offset, lead.velocity + offsetVel);
             } else {
                 // CO-ORBITAL lock: same solar radius, fixed angle around the orbit.
                 var rot = Quaternion.AngleAxis (f.coOrbitAngle, normal);
-                f.ApplySavedState (origin + rot * r, f.transform.rotation, rot * v);
+                f.ApplyPlacedState (origin + rot * r, rot * v);
             }
         }
     }

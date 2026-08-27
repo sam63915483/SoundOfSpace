@@ -146,4 +146,26 @@ public class CelestialBody : GravityObject {
         transform.rotation = worldRot;
         velocity = worldVel;
     }
+
+    // Per-step placement for co-orbit/satellite FOLLOWERS (2026-08-27, Sam's
+    // call after the Icey Twin landings): a kinematic MovePosition SWEEP, not
+    // a teleport. The old rb.position write gave the follower's surface ZERO
+    // contact velocity, so a physics player standing on Icey Twin was swept
+    // ~2.7 m through the step-frozen terrain every tick at orbital speed and
+    // PhysX ejected them — the planet was simply unwalkable. MovePosition
+    // carries contact velocity exactly like every SIMULATED body's
+    // UpdatePosition already does, and with Interpolate the follower also
+    // renders smoothly for the first time. The teleport survives only for
+    // genuinely large jumps (first placement after a load/warp), where a
+    // sweep would plough through the world.
+    public void ApplyPlacedState (Vector3 worldPos, Vector3 worldVel) {
+        if (rb == null) rb = GetComponent<Rigidbody> ();
+        if ((worldPos - rb.position).sqrMagnitude > 50f * 50f) {
+            rb.position = worldPos;
+            transform.position = worldPos;
+        } else {
+            rb.MovePosition (worldPos);
+        }
+        velocity = worldVel;
+    }
 }
