@@ -33,6 +33,10 @@ public class ShuttleLandingSensor : MonoBehaviour
 
     public bool Valid => _valid;
 
+    /// Why the last check failed ("" while valid) — the playtest debug
+    /// overlay's line, so "can't land" is never a mystery again.
+    public string FailReason { get; private set; } = "";
+
     public void SetActive(bool active)
     {
         _active = active;
@@ -55,7 +59,7 @@ public class ShuttleLandingSensor : MonoBehaviour
     {
         var pilot = ShuttleAutopilot.Instance;
         var body = pilot != null ? pilot.CurrentBody : GetComponentInParent<CelestialBody>();
-        if (body == null) return false;
+        if (body == null) { FailReason = "NO BODY"; return false; }
 
         Vector3 origin = transform.position;
         Vector3 up = (origin - body.Position).normalized;
@@ -90,36 +94,64 @@ public class ShuttleLandingSensor : MonoBehaviour
 
         if (!ShuttleLandingLogic.EvaluateRays(_distances, _slopeDots,
                 Mathf.Cos(MaxSlopeDeg * Mathf.Deg2Rad), MaxFootprintHeightDelta))
+        {
+            // Which sub-check failed, for the overlay: a miss beats slope
+            // beats spread (the same priority EvaluateRays rejects in).
+            FailReason = "UNEVEN";   // spread over the limit, unless a ray says otherwise:
+            for (int i = 0; i < _distances.Length; i++)
+            {
+                if (float.IsNaN(_distances[i])) { FailReason = "NO GROUND"; break; }
+                if (_slopeDots[i] < Mathf.Cos(MaxSlopeDeg * Mathf.Deg2Rad)) { FailReason = "SLOPE"; break; }
+            }
             return false;
+        }
 
-        // No water: the touchdown point must sit above the analytic ocean
-        // sphere (the ocean is a post effect — there's no collider to hit).
+        // No water: the touchdown point must sit clearly BELOW the analytic
+        // ocean sphere to be rejected (the ocean is a post effect — no
+        // collider). Strictly below, minus a margin: an icy planet's walkable
+        // frozen-sea sheet has its collider AT the ocean radius, and the old
+        // `+ 0.5` margin made every spot on it read as water (playtest 2 —
+        // couldn't land anywhere on Icey Twin).
         float oceanR = OceanRadiusFor(body);
-        if (oceanR > 0f && (centreHit - body.Position).magnitude < oceanR + 0.5f)
+        if (oceanR > 0f && (centreHit - body.Position).magnitude < oceanR - 0.5f)
+        {
+            FailReason = "WATER";
             return false;
+        }
 
         // Blockers in the footprint: trees, buildings, NPCs, props (all on
         // WorldProp) — triggers included, spawner props keep solid colliders
         // but pickups can be trigger-only.
         int count = Physics.OverlapSphereNonAlloc(centreHit + up * 2f, FootprintRadius + 1f,
                                                   _overlapHits, BlockerMask, QueryTriggerInteraction.Collide);
-        if (count > 0) return false;
+        if (count > 0)
+        {
+            FailReason = "BLOCKED: " + (_overlapHits[0] != null ? _overlapHits[0].name : "?");
+            return false;
+        }
 
         // Players (no player layer exists — distance test). Riders are inside
-        // the shuttle 100 m up, so they never trip this.
+        // the shuttle 80 m up, so they never trip this.
         var pc = FindObjectOfType<PlayerController>();
         if (pc != null && !PlayerController.RiderMode
             && (pc.transform.position - centreHit).sqrMagnitude < (FootprintRadius + 1f) * (FootprintRadius + 1f))
+        {
+            FailReason = "PLAYER BELOW";
             return false;
+        }
         var puppets = PlanetRelativeSync.AllPuppets;
         for (int i = 0; i < puppets.Count; i++)
         {
             var p = puppets[i];
             if (p == null || p.IsOwner) continue;
             if ((p.transform.position - centreHit).sqrMagnitude < (FootprintRadius + 1f) * (FootprintRadius + 1f))
+            {
+                FailReason = "PLAYER BELOW";
                 return false;
+            }
         }
 
+        FailReason = "";
         return true;
     }
 

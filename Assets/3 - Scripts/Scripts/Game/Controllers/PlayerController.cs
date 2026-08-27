@@ -807,6 +807,12 @@ public class PlayerController : GravityObject
 	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
 	const float RiderJumpSpeed = 6f;   // low cabin ceiling — a hop, not a launch
 
+	// Playtest telemetry, read by ShuttleAutopilot's cheats-only overlay so a
+	// "can't walk" report names its gate instead of needing a repro session.
+	[System.NonSerialized] public static bool DbgRiderGrounded;
+	[System.NonSerialized] public static float DbgRiderVertVel;
+	[System.NonSerialized] public static float DbgRiderWalkSpeed;
+
 	// Snaps the look so the camera aims at a world point. Used by the Mission 1
 	// wake-up intro to hold the player's gaze on the cabin photo while look is
 	// locked. Horizontal heading rotates the body; vertical is the camera pitch.
@@ -1939,6 +1945,10 @@ public class PlayerController : GravityObject
 		_riderCurrLocalPos = transform.localPosition;
 		_riderSmoothInit = true;
 		_wasGroundedPhys = isGrounded;
+
+		DbgRiderGrounded = isGrounded;
+		DbgRiderVertVel = _riderVertVel;
+		DbgRiderWalkSpeed = smoothVelocity.magnitude;
 	}
 
 	// Render-rate interpolation of the rider's own local movement (order 0 —

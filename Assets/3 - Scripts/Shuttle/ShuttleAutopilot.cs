@@ -56,7 +56,7 @@ public class ShuttleAutopilot : MonoBehaviour
     const float TransitPeakMax  = 500f;   // Sam's ceiling for a far hop
     const float TransitMinSeconds = 10f;
     const float TransitMaxSeconds = 30f;  // hard cap — beyond it a far leg just peaks faster than 500
-    public const float HoverAltitude = 100f;
+    public const float HoverAltitude = 80f;   // Sam, playtest 2: "like 80m off the surface"
     const float HoverMaxSpeed   = 15f;    // WASD tangential speed (m/s)
     const float HoverAccel      = 8f;     // m/s² toward the input direction (heavy vehicle)
     const float HoverYawDegSec  = 40f;    // Q/E
@@ -94,9 +94,18 @@ public class ShuttleAutopilot : MonoBehaviour
     Quaternion _parkedLocalRot;
     float _gearHeight = 2.5f;         // shuttle-origin height above ground when parked
 
-    // Hover state
-    Vector3 _hoverVelLocal;           // tangential velocity in body-local space
-    float _hoverAltVel;               // SmoothDamp ref for the altitude hold
+    // Hover state — PLANET-LOCKED (rewritten after playtest 2). The whole
+    // state lives in the target body's local frame: a radial direction, a
+    // held altitude, and a smoothed tangential velocity. WASD rotates the
+    // radial direction around the sphere (the shuttle slides around the
+    // planet, bottom always facing the core — Sam's spec); the altitude
+    // springs to HoverAltitude above whatever terrain is under it. Bounded
+    // by construction: no world-space integration, so it cannot drift or
+    // overshoot however the body itself moves (Icey Twin is a co-orbit
+    // follower that gets teleported into place every physics step — the old
+    // world-velocity hover fell apart exactly there).
+    Vector2 _hoverVel;                // smoothed WASD velocity (x=right, y=fwd), m/s
+    float _hoverAltVel;               // SmoothDamp ref for the altitude spring
     float _hoverAlt;                  // current held altitude above ground
     Vector2 _pilotMove;               // WASD, [-1,1] each axis
     float _pilotYaw;                  // Q/E, [-1,1]
@@ -423,7 +432,7 @@ public class ShuttleAutopilot : MonoBehaviour
                 break;
 
             case Phase.Hover:
-                _hoverVelLocal = Vector3.zero;
+                _hoverVel = Vector2.zero;
                 _hoverAltVel = 0f;
                 _hoverAlt = HoverAltitude;
                 _landRequested = false;
@@ -594,45 +603,61 @@ public class ShuttleAutopilot : MonoBehaviour
         if (u >= 1f) SetPhase(Phase.Hover);
     }
 
+    // Planet-locked hover — every quantity below is in the target body's LOCAL
+    // frame (bodies never spin, so local directions are stable). See the
+    // _hoverVel field comment for why.
     void TickHover()
     {
         float dt = Time.fixedDeltaTime;
-        Vector3 worldPos = WorldPos;
-        Vector3 up = (worldPos - _body.Position).normalized;
+        float r = _localPos.magnitude;
+        if (r < 1f) return;   // degenerate — never true in practice
+        Vector3 radial = _localPos / r;
 
         // Pilot input decays to zero on silence (guest pilot dropped, NAV closed).
-        Vector2 move = Time.unscaledTime - _pilotInputStamp <= PilotInputStaleSeconds ? _pilotMove : Vector2.zero;
-        float yawIn = Time.unscaledTime - _pilotInputStamp <= PilotInputStaleSeconds ? _pilotYaw : 0f;
+        bool fresh = Time.unscaledTime - _pilotInputStamp <= PilotInputStaleSeconds;
+        Vector2 move = fresh ? _pilotMove : Vector2.zero;
+        float yawIn = fresh ? _pilotYaw : 0f;
 
-        // Upright: shuttle up = radial out, yaw preserved (incremental).
-        Quaternion curW = FrameWorldRot(_body, _localRot);
-        Quaternion uprightW = Quaternion.FromToRotation(curW * Vector3.up, up) * curW;
-        if (Mathf.Abs(yawIn) > 0.001f)
-            uprightW = Quaternion.AngleAxis(yawIn * HoverYawDegSec * dt, up) * uprightW;
+        // Heavy-vehicle smoothing on the tangential velocity.
+        _hoverVel = Vector2.MoveTowards(_hoverVel, move * HoverMaxSpeed, HoverAccel * dt);
 
-        // Tangential move relative to shuttle yaw, heavy-vehicle smoothing.
-        Vector3 fwd = Vector3.ProjectOnPlane(uprightW * Vector3.forward, up).normalized;
-        if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.ProjectOnPlane(uprightW * Vector3.right, up).normalized;
-        Vector3 right = Vector3.Cross(up, fwd);
-        Vector3 wishVel = (fwd * move.y + right * move.x) * HoverMaxSpeed;
-        Vector3 curVel = FrameWorldRot(_body, Quaternion.identity) * _hoverVelLocal;
-        curVel = Vector3.MoveTowards(curVel, wishVel, HoverAccel * dt);
-        _hoverVelLocal = Quaternion.Inverse(FrameWorldRot(_body, Quaternion.identity)) * curVel;
+        // Yaw frame on the sphere's surface, from the shuttle's own heading.
+        Vector3 fwd = Vector3.ProjectOnPlane(_localRot * Vector3.forward, radial).normalized;
+        if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.ProjectOnPlane(_localRot * Vector3.right, radial).normalized;
+        Vector3 right = Vector3.Cross(radial, fwd);   // up × fwd = right (Unity handedness)
 
-        worldPos += curVel * dt;
+        // Slide AROUND the planet: the tangential velocity becomes a rotation
+        // of the radial direction about the core, so the shuttle orbits the
+        // surface instead of integrating a straight line off into space.
+        Vector3 tangential = fwd * _hoverVel.y + right * _hoverVel.x;
+        float speed = tangential.magnitude;
+        if (speed > 0.001f)
+        {
+            Vector3 axis = Vector3.Cross(radial, tangential / speed);
+            float angDeg = (speed * dt / r) * Mathf.Rad2Deg;
+            radial = (Quaternion.AngleAxis(angDeg, axis) * radial).normalized;
+        }
 
-        // Altitude hold: ray straight down on the ground mask; hold the last
-        // altitude over a hole.
-        float groundDist;
-        if (Physics.Raycast(worldPos + up * 5f, -up, out RaycastHit hit, 400f, GroundMask, QueryTriggerInteraction.Ignore))
-            groundDist = hit.distance - 5f;
+        // Altitude spring to HoverAltitude above the terrain under the new
+        // spot (radial raycast in world — colliders live in the rb frame).
+        Vector3 upW = FrameWorldRot(_body, Quaternion.identity) * radial;
+        Vector3 castFromW = FrameWorldPos(_body, radial * r) + upW * 5f;
+        float terrainR;
+        if (Physics.Raycast(castFromW, -upW, out RaycastHit hit, 400f, GroundMask, QueryTriggerInteraction.Ignore))
+            terrainR = r - (hit.distance - 5f);
         else
-            groundDist = _hoverAlt;
-        _hoverAlt = Mathf.SmoothDamp(groundDist, HoverAltitude, ref _hoverAltVel, HoverAltSmooth, Mathf.Infinity, dt);
-        worldPos += up * (_hoverAlt - groundDist);
+            terrainR = r - _hoverAlt;   // no ground under us — hold the current shell
+        // Ease the MEASURED altitude toward the target — this both converges
+        // to 80 m and low-passes terrain bumps sliding underneath at 15 m/s.
+        float measuredAlt = r - terrainR;
+        _hoverAlt = Mathf.SmoothDamp(measuredAlt, HoverAltitude, ref _hoverAltVel, HoverAltSmooth, Mathf.Infinity, dt);
+        _localPos = radial * (terrainR + _hoverAlt);
 
-        _localPos = FrameLocalPos(_body, worldPos);
-        _localRot = FrameLocalRot(_body, uprightW);
+        // Bottom always faces the core: up = radial, yaw preserved + Q/E.
+        Quaternion upright = Quaternion.FromToRotation(_localRot * Vector3.up, radial) * _localRot;
+        if (Mathf.Abs(yawIn) > 0.001f)
+            upright = Quaternion.AngleAxis(yawIn * HoverYawDegSec * dt, radial) * upright;
+        _localRot = upright;
     }
 
     void BeginLanding()
@@ -774,6 +799,35 @@ public class ShuttleAutopilot : MonoBehaviour
             SetPilotInput(move, yaw);
             if (Input.GetKeyDown(KeyCode.Space)) RequestLand();
         }
+    }
+
+    // Cheats/editor-only playtest overlay: names the exact gate behind any
+    // "can't walk" or "can't land" moment so a bug report is one screenshot.
+    void OnGUI()
+    {
+        if (!Application.isEditor && !Universe.cheatsEnabled) return;
+        if (_phase == Phase.Parked && !PlayerController.RiderMode) return;
+
+        string valid = _sensor != null
+            ? (_sensor.Valid ? "GREEN" : "RED " + _sensor.FailReason)
+            : "-";
+        string text =
+            "SHUTTLE  phase " + _phase +
+            "  vel " + Mathf.RoundToInt(_speed) + " m/s" +
+            "  alt " + Mathf.RoundToInt(_hoverAlt) + " m" +
+            "  landing " + valid + "\n" +
+            "RIDER  grounded " + (PlayerController.DbgRiderGrounded ? "YES" : "NO") +
+            "  vert " + PlayerController.DbgRiderVertVel.ToString("0.0") +
+            "  walk " + PlayerController.DbgRiderWalkSpeed.ToString("0.0") + "\n" +
+            "GATES  modal " + (PlayerController.isInModalSlotUI ? "ON" : "off") +
+            "  uiFocus " + (TutorialGate.UISelectionActive() ? "ON" : "off") +
+            "  menu " + (PauseState.MenuOpen ? "ON" : "off") +
+            "  typing " + (AIChatScreen.IsTypingActive ? "ON" : "off");
+
+        GUI.color = Color.black;
+        GUI.Label(new Rect(13f, 13f, 900f, 70f), text);
+        GUI.color = Color.white;
+        GUI.Label(new Rect(12f, 12f, 900f, 70f), text);
     }
 
     static Transform FindDeepChild(Transform t, string name)
