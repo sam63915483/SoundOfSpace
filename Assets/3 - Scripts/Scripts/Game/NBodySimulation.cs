@@ -2,6 +2,13 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+// -10 (2026-08-27, with the follower MovePosition change): the sim must run
+// BEFORE PlayerController (default 0) reads body velocities. The order used
+// to be undefined, so the grounded grip's reference velocity was randomly one
+// step stale — a standing player drifted against the orbit at a·dt, visible
+// on Icey Twin's tight orbit (~3 cm/s), latent everywhere else. Deterministic
+// ordering makes the grip's read exact and the drift zero on every body.
+[DefaultExecutionOrder(-10)]
 public class NBodySimulation : MonoBehaviour {
     CelestialBody[] bodies;
     static NBodySimulation instance;

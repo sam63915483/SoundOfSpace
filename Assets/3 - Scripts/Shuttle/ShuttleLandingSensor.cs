@@ -33,6 +33,7 @@ public class ShuttleLandingSensor : MonoBehaviour
     bool _valid;
     CelestialBody _oceanBody;
     float _oceanRadius;
+    PlayerController _pcCache;
     readonly float[] _distances = new float[RingRays + 1];
     readonly float[] _slopeDots = new float[RingRays + 1];
     readonly float[] _deviations = new float[RingRays + 1];   // heights off the fitted plane
@@ -190,8 +191,10 @@ public class ShuttleLandingSensor : MonoBehaviour
         }
 
         // Players (no player layer exists — distance test). Riders are inside
-        // the shuttle 80 m up, so they never trip this.
-        var pc = FindObjectOfType<PlayerController>();
+        // the shuttle 100 m up, so they never trip this. Cached — this used to
+        // FindObjectOfType ten times a second (playtest 10 hitch hygiene).
+        if (_pcCache == null) _pcCache = FindObjectOfType<PlayerController>();
+        var pc = _pcCache;
         if (pc != null && !PlayerController.RiderMode
             && (pc.transform.position - centreHit).sqrMagnitude < (FootprintRadius + 1f) * (FootprintRadius + 1f))
         {

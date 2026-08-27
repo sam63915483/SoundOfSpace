@@ -128,6 +128,8 @@ public class ShuttleAutopilot : MonoBehaviour
     PlayerController _healPlayer;
     float _nextHealScanAt;
     float _releaseRidersAt = -1f;   // deferred post-touchdown release; -1 = idle
+    EndlessManager _endless;
+    float _savedRebaseThreshold = -1f;   // widened during flight; -1 = not touched
 
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
@@ -210,6 +212,9 @@ public class ShuttleAutopilot : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        // Never leave a widened rebase threshold behind (scene change mid-flight).
+        if (_endless != null && _savedRebaseThreshold >= 0f)
+            _endless.distanceThreshold = _savedRebaseThreshold;
     }
 
     void Start()
@@ -471,6 +476,18 @@ public class ShuttleAutopilot : MonoBehaviour
             case Phase.Liftoff:
                 if (_door != null) _door.CloseForFlight();
                 ShuttleRiderFrame.CaptureRiders(this);
+                // Origin rebases cost a 1-2 frame global stutter (the
+                // interpolation strip/restore machinery), and at cruise the
+                // rider crosses the 1000 m threshold every couple of seconds —
+                // playtest 10's "hitches while flying". Widen the threshold
+                // for the flight (5 km is still comfortably inside float
+                // precision) and restore it on landing.
+                if (_endless == null) _endless = FindObjectOfType<EndlessManager>();
+                if (_endless != null && _savedRebaseThreshold < 0f)
+                {
+                    _savedRebaseThreshold = _endless.distanceThreshold;
+                    _endless.distanceThreshold = 5000f;
+                }
                 _departBody = _body;
                 _departAnchorLocal = _localPos + _localPos.normalized * LiftoffHeight;
                 if (!ClientDriven) ComputeArrivalAnchor();
@@ -518,6 +535,11 @@ public class ShuttleAutopilot : MonoBehaviour
                 }
                 if (_sensor != null) _sensor.SetActive(false);
                 if (_landingCamera != null) { _landingCamera.Teardown(); _landingCamera = null; }
+                if (_endless != null && _savedRebaseThreshold >= 0f)
+                {
+                    _endless.distanceThreshold = _savedRebaseThreshold;
+                    _savedRebaseThreshold = -1f;
+                }
                 _targetBody = null;
                 break;
         }
@@ -622,7 +644,7 @@ public class ShuttleAutopilot : MonoBehaviour
             if (_healPlayer != null && PlayerController.RiderMode
                 && _healPlayer.transform.IsChildOf(transform)
                 && ShuttleRiderFrame.TryGetPlayerCaptureLocal(out Vector3 capLocal)
-                && _healPlayer.transform.localPosition.y < capLocal.y - 3f)
+                && _healPlayer.transform.localPosition.y < capLocal.y - 2f)
             {
                 Debug.LogWarning("[ShuttleAutopilot] rider slipped below the cabin at local "
                     + _healPlayer.transform.localPosition.ToString("F2") + " (phase " + _phase + ") — re-seating");
@@ -787,12 +809,11 @@ public class ShuttleAutopilot : MonoBehaviour
         Vector3 n = _sensor != null && _sensor.Valid ? _sensor.PlaneNormal : up;
         if (n.sqrMagnitude < 0.5f || Vector3.Dot(n, up) < 0.7f) n = up;   // sanity — never land sideways
 
-        // Clearance: settle high enough that the tallest bump in the footprint
-        // can never intrude through the cabin floor (see MaxAboveDeviation).
-        // 0.15 margin, down from 0.35 — the fatter margin read as the shuttle
-        // "floating a foot off the ground" on bumpy pads (playtest 9); on the
-        // roughest legal spot the lowest gear now rests on the tallest bump.
-        float clearance = _sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation + 0.15f : 0.15f;
+        // Clearance vs bumps, half-weighted (playtest 10): full bump clearance
+        // still read as floating on rough pads. Half the bump plus 5 cm means
+        // smooth pads sit flush and the roughest legal pad trades a slight
+        // gear-into-rock (static colliders, no physics response) for hover.
+        float clearance = _sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation * 0.5f + 0.05f : 0.1f;
 
         _landStartLocal = _localPos;
         _landTargetLocal = FrameLocalPos(_body, hit.point + n * (_gearHeight + clearance));

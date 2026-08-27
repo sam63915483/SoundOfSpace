@@ -317,8 +317,10 @@ public static class ShuttleRiderFrame
             pc.SetVelocity(bodyVel);               // inherit the new planet's orbit
             Physics.SyncTransforms();
             if (endless != null) endless.RegisterPhysicsObject(pc.transform);
-            if (CameraEffectsManager.Instance != null && CameraEffectsManager.Instance.TransformFX != null)
-                CameraEffectsManager.Instance.TransformFX.SnapToCurrentPlayer();
+            // NO SnapToCurrentPlayer here (playtest 10's release hitch): the
+            // intro needed it because its release TELEPORTS the seat; ours
+            // seats the player exactly where they already stand, so resetting
+            // the camera interpolation buffer only added a visible blip.
 
             FallDamage.Suppressed = false;
             pilot.BlendRiderUpOut(1.5f);           // never snap the up-frame (intro proxy recipe)

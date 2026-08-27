@@ -829,10 +829,6 @@ public class PlayerController : GravityObject
 	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
 	const float RiderJumpSpeed = 6f;   // low cabin ceiling — a hop, not a launch
 
-	// Grip velocity extrapolation for placed follower bodies (see the grip).
-	CelestialBody _gripRefBody;
-	Vector3 _gripPrevRefVel;
-
 	/// Shuttle safety net: re-seat the rider at a cabin spot after they
 	/// slipped out of the cage (missed floor clamp during heavy arrival pose
 	/// changes — playtest 9). Zeroes the cabin fall and the smoothing pair.
@@ -1047,21 +1043,12 @@ public class PlayerController : GravityObject
 				float slopeAngle = Vector3.Angle(_groundNormal, transform.up);
 				if (slopeAngle <= slopeLimitAngle && !_groundIsSlick && gravityGrip > 0.001f)
 				{
+					// NBodySimulation now runs at order -10, so this read is
+					// EXACTLY the velocity the ground's sweep will use this
+					// step — no drift on any body. (The playtest-9 one-step
+					// extrapolation guess is gone: the order used to be
+					// undefined, so it was right or doubly-wrong at random.)
 					Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
-					// Co-orbit FOLLOWERS (Icey Twin) are PLACED each step, so
-					// their velocity property is one step stale against the
-					// contact motion their MovePosition sweep imparts — on
-					// Icey's tight orbit (~3 m/s² centripetal) that residual
-					// read as a slow slide against the orbit (playtest 9).
-					// One-step extrapolation cancels it; simulated bodies are
-					// untouched.
-					if (referenceBody != null && referenceBody.coOrbitLeader != null)
-					{
-						if (_gripRefBody == referenceBody)
-							refVel += referenceBody.velocity - _gripPrevRefVel;
-						_gripPrevRefVel = referenceBody.velocity;
-						_gripRefBody = referenceBody;
-					}
 					Vector3 relVel = rb.velocity - refVel;
 					// Split into into-surface (normal) and along-slope (tangential).
 					Vector3 normalComp = Vector3.Project(relVel, _groundNormal);
@@ -1988,14 +1975,16 @@ public class PlayerController : GravityObject
 			const float kSeatCastUp = 0.3f, kSeatRadius = 0.25f, kSeatSkin = 0.02f;
 			Vector3 offsetToFeet = feet.position - transform.position;
 			Vector3 castOrigin = pos + offsetToFeet + up * kSeatCastUp;
-			if (Physics.SphereCast(castOrigin, kSeatRadius, -up, out RaycastHit hit, 0.6f,
+			if (Physics.SphereCast(castOrigin, kSeatRadius, -up, out RaycastHit hit, 3f,
 					walkableMask, QueryTriggerInteraction.Ignore))
 			{
-				// Snap only when the feet are actually near the floor — the
-				// cast reaches ~0.55 m down, and snapping from that high would
-				// cut every jump's fall short with a visible teleport.
 				float feetGap = hit.distance - (kSeatCastUp - kSeatRadius);
-				if (feetGap <= 0.15f)
+				// Tier 1: near the floor — normal seat (a jump's fall lands
+				// naturally; snapping from higher would cut it visibly short).
+				// Tier 2 (playtest 9's fall-through): already falling FAST —
+				// that's never a fresh jump, so rescue from up to 1.2 m before
+				// the fall becomes visible instead of after.
+				if (feetGap <= 0.15f || (_riderVertVel <= -2f && feetGap <= 0.6f))
 				{
 					pos += up * ShuttleLandingLogic.RiderSeatCorrection(kSeatCastUp, kSeatRadius, hit.distance, kSeatSkin);
 					_riderVertVel = 0f;
