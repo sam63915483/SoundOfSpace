@@ -60,9 +60,9 @@ public class ShuttleAutopilot : MonoBehaviour
     const float TransitPeakMax  = 500f;   // Sam's ceiling for a far hop
     const float TransitMinSeconds = 10f;
     const float TransitMaxSeconds = 30f;  // hard cap — beyond it a far leg just peaks faster than 500
-    public const float HoverAltitude = 80f;   // Sam, playtest 2: "like 80m off the surface"
-    const float HoverMaxSpeed   = 15f;    // WASD tangential speed (m/s)
-    const float HoverAccel      = 8f;     // m/s² toward the input direction (heavy vehicle)
+    public const float HoverAltitude = 100f;  // Sam, playtest 4: back up to 100
+    const float HoverMaxSpeed   = 30f;    // WASD tangential speed (playtest 4: 15 was "really slow")
+    const float HoverAccel      = 14f;    // m/s² toward the input direction (heavy vehicle)
     const float HoverYawDegSec  = 40f;    // Q/E
     const float HoverAltSmooth  = 1.2f;   // SmoothDamp time for the altitude hold
     const float LandingMinSeconds = 5f;
@@ -119,6 +119,8 @@ public class ShuttleAutopilot : MonoBehaviour
     // Landing state
     Vector3 _landStartLocal;
     Vector3 _landTargetLocal;
+    Quaternion _landStartLocalRot = Quaternion.identity;
+    Quaternion _landTargetLocalRot = Quaternion.identity;
     float _landDuration;
     float _settleT;
 
@@ -695,8 +697,19 @@ public class ShuttleAutopilot : MonoBehaviour
         Vector3 up = UpFromBody;
         if (!GroundRay(worldPos + up * 5f, -up, 400f, out RaycastHit hit))
             return;   // no ground below — refuse (validity should already be red)
+
+        // Land CONFORMING to the hillside (playtest 4: demanding flat ground
+        // made green spots a treasure hunt). The sensor's fitted plane says
+        // which way the slope faces; the shuttle tilts to it during the
+        // descent and the gear settles along the surface normal.
+        Vector3 n = _sensor != null && _sensor.Valid ? _sensor.PlaneNormal : up;
+        if (n.sqrMagnitude < 0.5f || Vector3.Dot(n, up) < 0.7f) n = up;   // sanity — never land sideways
+
         _landStartLocal = _localPos;
-        _landTargetLocal = FrameLocalPos(_body, hit.point + up * _gearHeight);
+        _landTargetLocal = FrameLocalPos(_body, hit.point + n * _gearHeight);
+        _landStartLocalRot = _localRot;
+        Quaternion curW = FrameWorldRot(_body, _localRot);
+        _landTargetLocalRot = FrameLocalRot(_body, Quaternion.FromToRotation(curW * Vector3.up, n) * curW);
         float height = Vector3.Distance(_landStartLocal, _landTargetLocal);
         _landDuration = Mathf.Clamp(height / 15f, LandingMinSeconds, LandingMaxSeconds);
         _settleT = 0f;
@@ -708,12 +721,8 @@ public class ShuttleAutopilot : MonoBehaviour
         float u = Mathf.Clamp01(_phaseT / _landDuration);
         float ease = u * u * (3f - 2f * u);   // at rest at both ends — a soft set-down
         _localPos = Vector3.Lerp(_landStartLocal, _landTargetLocal, ease);
-
-        // Stay upright through the descent.
-        Vector3 up = UpFromBody;
-        Quaternion curW = FrameWorldRot(_body, _localRot);
-        Quaternion uprightW = Quaternion.FromToRotation(curW * Vector3.up, up) * curW;
-        _localRot = FrameLocalRot(_body, uprightW);
+        // Ease from hover-upright into the surface-conforming tilt.
+        _localRot = Quaternion.Slerp(_landStartLocalRot, _landTargetLocalRot, ease);
 
         if (u >= 1f)
         {

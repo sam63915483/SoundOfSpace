@@ -14,7 +14,13 @@ using UnityEngine;
 public class ShuttleLandingSensor : MonoBehaviour
 {
     public const float FootprintRadius = 6f;    // Sam to confirm (handoff §5)
-    const float MaxSlopeDeg = 12f;
+    // 20°, up from the handoff's 12 (playtest 4: green spots were a 1% treasure
+    // hunt on these craggy planets). The shuttle now LANDS TILTED along the
+    // fitted plane, so a clean hillside is genuinely fine to sit on.
+    const float MaxSlopeDeg = 20f;
+    // Measured RELATIVE TO THE FITTED PLANE, not raw ray lengths — a uniform
+    // slope has a huge raw spread but zero plane deviation; only real rocks,
+    // ridges and cliff lips should trip this.
     const float MaxFootprintHeightDelta = 1.5f;
     const float MaxRayDistance = 200f;
     const float CheckInterval = 0.1f;
@@ -29,6 +35,9 @@ public class ShuttleLandingSensor : MonoBehaviour
     float _oceanRadius;
     readonly float[] _distances = new float[RingRays + 1];
     readonly float[] _slopeDots = new float[RingRays + 1];
+    readonly float[] _deviations = new float[RingRays + 1];   // heights off the fitted plane
+    readonly Vector3[] _points = new Vector3[RingRays + 1];
+    readonly Vector3[] _normals = new Vector3[RingRays + 1];
     readonly Collider[] _overlapHits = new Collider[8];
 
     public bool Valid => _valid;
@@ -36,6 +45,11 @@ public class ShuttleLandingSensor : MonoBehaviour
     /// Why the last check failed ("" while valid) — the playtest debug
     /// overlay's line, so "can't land" is never a mystery again.
     public string FailReason { get; private set; } = "";
+
+    /// World-space normal of the plane fitted through the 9 hits (average of
+    /// the hit normals). The landing tilts the shuttle to this so hillsides
+    /// are landable. Only meaningful while Valid.
+    public Vector3 PlaneNormal { get; private set; } = Vector3.up;
 
     public void SetActive(bool active)
     {
@@ -70,6 +84,7 @@ public class ShuttleLandingSensor : MonoBehaviour
         Vector3 right = Vector3.Cross(up, fwd);
 
         Vector3 centreHit = Vector3.zero;
+        bool anyMiss = false;
         for (int i = 0; i <= RingRays; i++)
         {
             Vector3 offset = Vector3.zero;
@@ -85,33 +100,54 @@ public class ShuttleLandingSensor : MonoBehaviour
             {
                 _distances[i] = hit.distance;
                 _slopeDots[i] = Vector3.Dot(hit.normal, up);
+                _points[i] = hit.point;
+                _normals[i] = hit.normal;
                 if (i == 0) centreHit = hit.point;
             }
             else
             {
                 _distances[i] = float.NaN;
                 _slopeDots[i] = 0f;
+                anyMiss = true;
             }
         }
 
-        if (!ShuttleLandingLogic.EvaluateRays(_distances, _slopeDots,
+        // Fit a plane through the hits (average point + average normal) and
+        // measure each hit's height OFF that plane. A uniform hillside has a
+        // large raw-distance spread but near-zero plane deviation — and the
+        // shuttle lands tilted along the plane, so it's genuinely landable.
+        if (!anyMiss)
+        {
+            Vector3 avgP = Vector3.zero, avgN = Vector3.zero;
+            for (int i = 0; i <= RingRays; i++) { avgP += _points[i]; avgN += _normals[i]; }
+            avgP /= RingRays + 1;
+            avgN = avgN.sqrMagnitude > 0.001f ? avgN.normalized : up;
+            PlaneNormal = avgN;
+            for (int i = 0; i <= RingRays; i++)
+                _deviations[i] = Vector3.Dot(_points[i] - avgP, avgN);
+        }
+        else
+        {
+            for (int i = 0; i <= RingRays; i++) _deviations[i] = float.NaN;
+        }
+
+        if (!ShuttleLandingLogic.EvaluateRays(_deviations, _slopeDots,
                 Mathf.Cos(MaxSlopeDeg * Mathf.Deg2Rad), MaxFootprintHeightDelta))
         {
             // Which sub-check failed, for the overlay: a miss beats slope
             // beats spread (the same priority EvaluateRays rejects in).
             // Name the failing sub-check WITH the measured number, so tuning
             // the thresholds is done from evidence, not another blind guess.
-            bool miss = false;
             float worstSlopeDeg = 0f, minD = float.MaxValue, maxD = float.MinValue;
-            for (int i = 0; i < _distances.Length; i++)
+            for (int i = 0; i < _deviations.Length; i++)
             {
-                if (float.IsNaN(_distances[i])) { miss = true; continue; }
+                if (float.IsNaN(_deviations[i])) continue;
                 float deg = Mathf.Acos(Mathf.Clamp(_slopeDots[i], -1f, 1f)) * Mathf.Rad2Deg;
                 if (deg > worstSlopeDeg) worstSlopeDeg = deg;
-                if (_distances[i] < minD) minD = _distances[i];
-                if (_distances[i] > maxD) maxD = _distances[i];
+                if (_deviations[i] < minD) minD = _deviations[i];
+                if (_deviations[i] > maxD) maxD = _deviations[i];
             }
-            if (miss) FailReason = "NO GROUND";
+            if (anyMiss) FailReason = "NO GROUND";
             else if (worstSlopeDeg > MaxSlopeDeg) FailReason = "SLOPE " + worstSlopeDeg.ToString("0") + "deg";
             else FailReason = "UNEVEN " + (maxD - minD).ToString("0.0") + "m";
             return false;
