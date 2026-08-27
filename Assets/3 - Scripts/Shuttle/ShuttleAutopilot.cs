@@ -489,7 +489,12 @@ public class ShuttleAutopilot : MonoBehaviour
                 if (_endless != null && _savedRebaseThreshold < 0f)
                 {
                     _savedRebaseThreshold = _endless.distanceThreshold;
-                    _endless.distanceThreshold = 5000f;
+                    // 12 km: the longest leg (HA to the twins, ~19 km) now
+                    // rebases at most once mid-flight — each rebase is a 1-2
+                    // frame engine stutter and they were the residual transit
+                    // hitches (playtest 12). Still well inside float precision
+                    // (~1 mm at 12 km).
+                    _endless.distanceThreshold = 12000f;
                 }
                 // Flight horizon: the ocean post-effect is capped by scene
                 // depth, so a planet beyond the camera's far plane loses its

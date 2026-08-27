@@ -1519,21 +1519,29 @@ public class PlayerController : GravityObject
 		{
 			CelestialBody[] bodies = NBodySimulation.Bodies;
 
+			// Frozen LAST-step anchor for the twin exception below. ⚠️ Never
+			// use the live `referenceBody` inside this loop for skip decisions:
+			// it is reassigned mid-election, and (playtest 12) whenever the
+			// scan visited Fiery before Icey from a neutral anchor, Fiery
+			// latched as nearest-so-far and its sibling Icey got skipped
+			// BEFORE it could be considered — permanently anchoring a player
+			// standing on Icey to Fiery (weak floaty gravity, feet slowly
+			// turning toward the wrong twin).
+			CelestialBody prevAnchor = referenceBody;
+
 			// Gravity
 			foreach (CelestialBody body in bodies)
 			{
 				// Co-orbital twin exception (2026-08-27): the pair sits ~1 km
 				// apart ALONG the shared orbit, so standing on one member the
 				// sibling pulls >1 m/s² sideways — on Icey Twin's steep ground
-				// that read as a constant slide against the orbit the moment
-				// the shuttle released the rider (playtest 11). The twins
-				// already ignore each other's gravity (orbitGroup); a player
-				// standing on one now does too. Off-planet flight (nearest
-				// body not in the group... referenceBody is the standing
-				// anchor) keeps feeling both.
-				if (referenceBody != null && body != referenceBody
+				// that read as a constant slide against the orbit. Skip ONLY
+				// the FORCE, only while GROUNDED on the sibling's partner —
+				// the nearest-body election below always sees every body, and
+				// airborne flight between the twins keeps full physics.
+				bool skipTwinForce = isGrounded && prevAnchor != null && body != prevAnchor
 					&& !string.IsNullOrEmpty(body.orbitGroup)
-					&& referenceBody.orbitGroup == body.orbitGroup) continue;
+					&& body.orbitGroup == prevAnchor.orbitGroup;
 				// Shell-theorem-aware: inverse-square outside the body, but
 				// falling linearly to ZERO at its centre once you're inside.
 				// The old inline 1/r² diverged as sqrDst -> 0, so walking down a
@@ -1541,7 +1549,7 @@ public class PlayerController : GravityObject
 				// is also what makes gravity fade as you descend into a cave.
 				// See Universe.GravityAcceleration.
 				Vector3 acceleration = Universe.GravityAcceleration(rb.position, body);
-				rb.AddForce(acceleration, ForceMode.Acceleration);
+				if (!skipTwinForce) rb.AddForce(acceleration, ForceMode.Acceleration);
 
 				float dstToSurface = (body.Position - rb.position).magnitude - body.radius;
 
