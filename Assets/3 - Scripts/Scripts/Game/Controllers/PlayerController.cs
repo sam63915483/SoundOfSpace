@@ -2051,6 +2051,17 @@ public class PlayerController : GravityObject
 		{
 			apilot.GetWorldPose(out Vector3 shuttlePhys, out _);
 			rbPos = pos + (shuttlePhys - apilot.transform.position);
+			// POST-step alignment (playtest 30, probe log 7): the planet moves
+			// via rb.MovePosition, which only advances rb.position AT the
+			// physics step — so the compose above reads the PRE-step planet
+			// pose and leaves the capsule one full step of orbital motion
+			// (~2.7 m) behind where the floor lands after this step. Every
+			// body advances by exactly velocity·dt (followers publish the
+			// equivalent sweep velocity), so adding it aligns the rb with the
+			// planet's POST-step pose: genuinely resting on the floor, and
+			// the release's fresh seat then matches it to the millimetre.
+			var rideBody = apilot.CurrentBody;
+			if (rideBody != null) rbPos += rideBody.velocity * dt;
 		}
 		rb.position = rbPos;
 		rb.rotation = transform.rotation;

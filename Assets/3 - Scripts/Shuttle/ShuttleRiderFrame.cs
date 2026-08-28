@@ -360,24 +360,16 @@ public static class ShuttleRiderFrame
             Quaternion seatLocalRot = pc.transform.localRotation;
             pilot.GetWorldPose(out Vector3 shuttleW, out Quaternion shuttleR);
             Vector3 seatFresh = shuttleW + shuttleR * seatLocal;
-            // Seat AT THE RIGIDBODY, not at a freshly computed pose (playtest
-            // 29, probe log 6): the release runs at execution order -50 —
-            // BEFORE this step's planet motion applies — so a fresh compose is
-            // one physics step (~2.7 m of orbital motion) NEWER than the pose
-            // the rb legitimately carries, and seating it there teleported the
-            // capsule ~1 m (the -100cm rbAlt drop, the last visible piece of
-            // the landing pop). The rb has tracked the physics-frame cabin
-            // spot all ride (RiderFixedTick) at the same vintage as its own
-            // contacts; SetVelocity(bodyVel) below carries it forward in step
-            // with the planet from here. The fresh compose survives only as a
-            // sanity net for a genuinely displaced rb (heals, follower warps).
-            Vector3 seat = rb.position;
-            Quaternion seatRot = rb.rotation;
-            if ((seat - seatFresh).sqrMagnitude > 25f)
-            {
-                seat = seatFresh;
-                seatRot = shuttleR * seatLocalRot;
-            }
+            // Playtest 30 (probe log 7 post-mortem): seating AT the rb was
+            // wrong — the rb's vintage was one planet-step behind, and
+            // trusting it released the player 62 cm in the air ("the pop was
+            // terrible"). RiderFixedTick now aligns the rb with the planet's
+            // POST-step pose (velocity·dt prediction), which is exactly the
+            // vintage this fresh compose reads at order -50 — so seat and rb
+            // agree to the millimetre and the write below never fires on a
+            // normal release (no teleport, no interpolation reset).
+            Vector3 seat = seatFresh;
+            Quaternion seatRot = shuttleR * seatLocalRot;
 
             pc.transform.SetParent(null, true);
             pc.transform.SetPositionAndRotation(seat, seatRot);
