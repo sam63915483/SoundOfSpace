@@ -2015,7 +2015,13 @@ public class PlayerController : GravityObject
 		Vector3 move = smoothVelocity * dt + up * (_riderVertVel * dt);
 		float wantedUpMove = _riderVertVel * dt;
 		move = ResolveWallSlide(move);
-		move += ResolveWallOverlap();
+		// Overlap rescue ONLY while actually walking (2026-08-28 — the pod
+		// slide): standing still, millimetre-scale contact with snug geometry
+		// (the stasis pod walls!) fed a depenetration nudge every tick — a
+		// slow permanent slide that squeezed the player out through the pod
+		// and drifted them across the cabin during manoeuvres. The rescue
+		// exists to stop walk-tunneling; idle, it is pure harm.
+		if (smoothVelocity.sqrMagnitude > 0.01f) move += ResolveWallOverlap();
 		// Head bump: rising motion the wall slide clipped means we hit the
 		// ceiling — stop the ascent instead of grinding against it.
 		if (_riderVertVel > 0f && Vector3.Dot(move, up) < wantedUpMove * 0.5f)
