@@ -837,6 +837,14 @@ public class PlayerController : GravityObject
 	// (the shuttle's motion is smoothed by ShuttleRenderSmoother; this covers
 	// the 50 Hz stepping of the player's local movement).
 	Vector3 _riderPrevLocalPos, _riderCurrLocalPos;
+	// Local ROTATION pair, pinned exactly like position (2026-08-28, the
+	// in-flight slide): IntroWatch stage counters proved something external
+	// re-tilts the body off cabin-up every tick (al climbed ~8 cm/s on a
+	// PARKED shuttle with zero input), and the feet-pivot up-alignment then
+	// converted each per-tick correction into a lateral translation — ~half
+	// the flight slide, and the original unpinned pod slide. The cage owns
+	// BOTH components of the rider's local pose.
+	Quaternion _riderPrevLocalRot, _riderCurrLocalRot;
 	bool _riderSmoothInit;
 	float _riderAirTime;   // seconds since the rider's feet left the cabin floor
 	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
@@ -866,6 +874,7 @@ public class PlayerController : GravityObject
 		rb.rotation = transform.rotation;
 		_riderVertVel = 0f;
 		_riderPrevLocalPos = _riderCurrLocalPos = transform.localPosition;
+		_riderPrevLocalRot = _riderCurrLocalRot = transform.localRotation;
 	}
 
 	// IntroWatch stage accumulators (2026-08-28, the in-flight slide hunt):
@@ -1805,7 +1814,12 @@ public class PlayerController : GravityObject
 
 	Vector3 ResolveWallSlide(Vector3 desiredMove)
 	{
-		if (desiredMove.sqrMagnitude < 1e-6f) return desiredMove;
+		// Epsilon is 1 cm, not 1 mm (2026-08-28, the rider mv-channel slide):
+		// mm-scale moves (a single tick of rider cabin gravity is 2 mm) hit a
+		// steep surface and get ProjectOnPlane'd into a LATERAL push — a
+		// per-tick ratchet with zero walk input. Real movement is far above
+		// this floor: walking is 4-5 cm per tick, jumps/falls 5-6 cm.
+		if (desiredMove.sqrMagnitude < 1e-4f) return desiredMove;
 
 		const int kMaxIterations = 4;
 		Vector3 result = Vector3.zero;
@@ -1953,7 +1967,16 @@ public class PlayerController : GravityObject
 		// Restore the authoritative local pose — LateUpdate below writes a
 		// render-interpolated one, and this tick's math must start from the
 		// fixed-step truth.
-		if (_riderSmoothInit) transform.localPosition = _riderCurrLocalPos;
+		if (_riderSmoothInit)
+		{
+			transform.localPosition = _riderCurrLocalPos;
+			// Rotation restore: whatever tilted the body since last tick is
+			// overwritten here, so the up-alignment below sees an already-
+			// aligned body (identity delta) instead of translating the centre
+			// about the feet every tick. Look-yaw survives — it is applied
+			// after this and recorded into the pair at tick end.
+			transform.localRotation = _riderCurrLocalRot;
+		}
 
 		// IntroWatch stage bookkeeping: local pose after the restore, before
 		// any of this tick's writers touch it.
@@ -2012,6 +2035,11 @@ public class PlayerController : GravityObject
 				_riderSmoothInit = true;
 			}
 			transform.localPosition = _riderCurrLocalPos;
+			// Rotation: RECORD rather than pin — the up-blend proxy converges
+			// the eyes-shut body toward cabin-up through the align above, and
+			// that progress must persist tick to tick.
+			_riderCurrLocalRot = transform.localRotation;
+			_riderPrevLocalRot = _riderCurrLocalRot;
 			rb.position = transform.position;
 			rb.rotation = transform.rotation;
 			return;
@@ -2166,6 +2194,8 @@ public class PlayerController : GravityObject
 		// Record the fixed-step local pose pair for LateUpdate smoothing.
 		_riderPrevLocalPos = _riderSmoothInit ? _riderCurrLocalPos : transform.localPosition;
 		_riderCurrLocalPos = transform.localPosition;
+		_riderPrevLocalRot = _riderSmoothInit ? _riderCurrLocalRot : transform.localRotation;
+		_riderCurrLocalRot = transform.localRotation;
 		_riderSmoothInit = true;
 		_wasGroundedPhys = isGrounded;
 
@@ -2184,6 +2214,10 @@ public class PlayerController : GravityObject
 			? Mathf.Clamp01((Time.time - Time.fixedTime) / Time.fixedDeltaTime)
 			: 1f;
 		transform.localPosition = Vector3.Lerp(_riderPrevLocalPos, _riderCurrLocalPos, t);
+		// Rotation hold: without this, the external per-frame tilter owns the
+		// RENDER pose between physics ticks even though the tick-start restore
+		// discards it — a visible wobble and the seed of the next tick's tilt.
+		transform.localRotation = Quaternion.Slerp(_riderPrevLocalRot, _riderCurrLocalRot, t);
 	}
 
 	public void SetVelocity(Vector3 velocity)
