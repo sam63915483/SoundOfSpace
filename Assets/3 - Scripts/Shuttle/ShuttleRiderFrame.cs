@@ -572,14 +572,18 @@ public class RiderReleaseBleed : MonoBehaviour
         // (the pt-18 trap). Over before the door lets the player walk.
         if (_holdArmed && _releaseT >= 0f && _cam != null && _body != null)
         {
-            float u = (since - _releaseT) / 0.6f;
+            // 1.2 s window (playtest 32): the 0.6 s version held perfectly
+            // through the seam (probe log 8: view-vs-cabin stable, corr
+            // 0.4→15 cm) but released its accumulated correction over just
+            // 0.27 s — a visible glide. Full hold for 0.6 s, then the
+            // correction bleeds out over 0.6 s (<25 cm/s — sub-noticeable).
+            float u = (since - _releaseT) / 1.2f;
             if (u >= 0f && u < 1f)
             {
                 Vector3 held = _body.transform.TransformPoint(_heldCamLocal);
                 if ((held - _cam.position).sqrMagnitude < 25f)   // rebase/teleport abort
                 {
-                    // Full hold for the first ~0.33 s, blend out by 0.6 s.
-                    float w = 1f - Mathf.SmoothStep(0.55f, 1f, u);
+                    float w = 1f - Mathf.SmoothStep(0.5f, 1f, u);
                     Vector3 before = _cam.position;
                     _cam.position = Vector3.Lerp(_cam.position, held, w);
                     _lastCorrCm = (_cam.position - before).magnitude * 100f;
