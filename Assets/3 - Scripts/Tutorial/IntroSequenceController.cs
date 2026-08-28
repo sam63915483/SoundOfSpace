@@ -86,6 +86,11 @@ public class IntroSequenceController : MonoBehaviour
     // modules can read it without a reference. Cleared at full handoff + OnDestroy.
     public static bool SuppressGroggyCameraFx;
 
+    // True while the SHUTTLE wake intro owns the pod (2026-08-28): gates
+    // StasisPodSave's "sealed-deep-at-boot = save-load" inference, which
+    // otherwise fires the DOWNLOADING ritual + early door over the eyelids.
+    public static bool ShuttleWakeActive;
+
     // ── Runtime ────────────────────────────────────────────────────────────
     Canvas _canvas;
     Image _veil;          // full-screen blackout behind the lids; lifts to clear as the eyes open
@@ -135,6 +140,7 @@ public class IntroSequenceController : MonoBehaviour
         // The shuttle wake holds isInDialogue while the eyes are shut — same
         // leak class if torn down mid-wake.
         if (_running) PlayerController.isInDialogue = false;
+        ShuttleWakeActive = false;
     }
 
     IEnumerator Start()
@@ -340,6 +346,7 @@ public class IntroSequenceController : MonoBehaviour
     IEnumerator RunShuttleWakeIntro(ShuttleAutopilot pilot)
     {
         _running = true;
+        ShuttleWakeActive = true;
 
         // Under the blackout: shuttle to the approach start (15 km up),
         // player into the stasis pod, rider cage on (free cabin walking on a
@@ -367,14 +374,18 @@ public class IntroSequenceController : MonoBehaviour
         pilot.CaptureIntroRiders();
         PlayerController.isInDialogue = true;   // eyes shut — look yes, walk no
 
-        // Click-to-wake on the classic eyelids. Prompt up immediately.
-        if (_prompt != null)
-        {
-            _prompt.text = "OPEN YOUR EYES — " + PromptGlyphs.PrimaryAction;
-            _prompt.gameObject.SetActive(true);
-        }
+        // Click-to-wake on the classic eyelids. Pure black first; the prompt
+        // fades up after 3 s ONLY if they haven't clicked yet (Sam's timing).
+        if (_prompt != null) _prompt.text = "OPEN YOUR EYES — " + PromptGlyphs.PrimaryAction;
         _clicksArmed = true;
-        yield return new WaitUntil(() => _clicks >= 1);
+        float promptWait = 0f;
+        while (_clicks < 1)
+        {
+            promptWait += Time.unscaledDeltaTime;
+            if (promptWait >= 3f && _prompt != null && !_prompt.gameObject.activeSelf)
+                _prompt.gameObject.SetActive(true);
+            yield return null;
+        }
         pilot.LaunchIntroApproach(30f);         // first blink = engines light, HA approach begins
         yield return new WaitUntil(() => _clicks >= clicksToWake);
         _clicksArmed = false;
@@ -382,12 +393,15 @@ public class IntroSequenceController : MonoBehaviour
         if (_prompt != null) _prompt.gameObject.SetActive(false);
         yield return new WaitUntil(() => _openness >= 0.995f);
 
-        // Eyes open: pod releases the player into the (flying) cabin. From
-        // here it is the normal travel flow — the hover arrives ~30 s after
-        // the first blink, the cockpit monitor is already on the landing
-        // screen, and the player walks over, presses F, and sets it down.
+        // Eyes fully open: a 3 s quiet beat inside the pod (Sam's timing),
+        // then it releases the player into the (flying) cabin. From here it
+        // is the normal travel flow — the hover arrives ~30 s after the
+        // first blink, the cockpit monitor is already on the landing screen,
+        // and the player walks over, presses F, and sets it down.
         PlayerController.isInDialogue = false;
+        yield return new WaitForSeconds(3f);
         if (podDoor != null) podDoor.OpenHold();
+        ShuttleWakeActive = false;   // pod systems resume once the door is open
         _running = false;
     }
 

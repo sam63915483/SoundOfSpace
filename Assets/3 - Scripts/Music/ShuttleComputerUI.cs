@@ -248,6 +248,21 @@ public partial class ShuttleComputerUI : MonoBehaviour
         Instance.DoOpen();
     }
 
+    /// Cockpit display fix (2026-08-28, intro playtest 1: the monitor stayed
+    /// black through the whole approach): the entire machine was built lazily
+    /// on the first F-press — before that there was no Instance, no Update,
+    /// no DriveMachine, so the in-flight mirror had nothing to render. Build
+    /// WITHOUT opening; DriveMachine then owns the canvas (mirror in flight,
+    /// off when idle, overlay when the player actually sits down).
+    public static void EnsureBuilt()
+    {
+        if (Instance != null) return;
+        var go = new GameObject("ShuttleComputerUI");
+        Instance = go.AddComponent<ShuttleComputerUI>();
+        Instance.Build();
+        if (Instance._canvas != null) Instance._canvas.gameObject.SetActive(false);
+    }
+
     void DoOpen()
     {
         if (_open) return;

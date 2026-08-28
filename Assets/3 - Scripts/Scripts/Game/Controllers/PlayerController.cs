@@ -1957,7 +1957,17 @@ public class PlayerController : GravityObject
 		// The ride owns the up (intro recipe): align to the shuttle every step.
 		Vector3 up = UpOverrideTransform != null ? UpOverrideTransform.up
 			: (RiderPlatform != null ? RiderPlatform.up : transform.up);
-		transform.rotation = Quaternion.FromToRotation(transform.up, up) * transform.rotation;
+		// FEET-PIVOT alignment (2026-08-28 — Sam: "sliding slowly on the
+		// floor when the shuttle makes big turns or goes fast"): rotating
+		// about the transform origin (capsule centre) swept the feet through
+		// an arc on every attitude change — and the rocket flight model turns
+		// a LOT now (180° flip mid-transit). The ground clamp ratcheted those
+		// arcs into a slow lateral slide. Pivot about the FEET instead: the
+		// contact point stays planted while the body tilts around it.
+		Quaternion upDelta = Quaternion.FromToRotation(transform.up, up);
+		Vector3 upPivot = feet != null ? feet.position : transform.position;
+		transform.rotation = upDelta * transform.rotation;
+		transform.position = upPivot + upDelta * (transform.position - upPivot);
 
 		if (isInDialogue)
 		{

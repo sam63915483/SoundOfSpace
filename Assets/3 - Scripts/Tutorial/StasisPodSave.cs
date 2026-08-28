@@ -107,7 +107,12 @@ public class StasisPodSave : MonoBehaviour
         if (_door == null || _running) return;
 
         var seq = GetComponentInParent<ShuttleArrivalSequence>();
-        if (seq != null && seq.IsActive) return;   // never during the intro
+        if (seq != null && seq.IsActive) return;   // never during the (old) intro
+        // The NEW shuttle wake intro (2026-08-28) also pods the player at
+        // level start — without this gate, "Deep inside a sealed pod within
+        // 3s of load" read as a save-load and fired the DOWNLOADING wake
+        // ritual over the black eyelids (and opened the pod door early).
+        if (IntroSequenceController.ShuttleWakeActive) return;
 
         // Boot window: while the save restore is still settling, "Outside"
         // readings are untrusted (the player may simply not be teleported yet)

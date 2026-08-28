@@ -528,6 +528,7 @@ public class ShuttleAutopilot : MonoBehaviour
         if (_door != null) _door.CloseForFlight();
         EnsureFx();
         _fx.SetSpurts(true);
+        ShuttleComputerUI.EnsureBuilt();   // cockpit monitor live for the approach
     }
 
     /// Rider-cage the player (called by the intro after podding them).
@@ -689,6 +690,9 @@ public class ShuttleAutopilot : MonoBehaviour
                 _fx.SetSpurts(true);
                 _fx.SetEngine(true);
                 _fx.SetAltitude(30f);
+                // The cockpit monitor must be able to light up during the
+                // flight even if the player never opened the terminal.
+                ShuttleComputerUI.EnsureBuilt();
                 // Origin rebases cost a 1-2 frame global stutter (the
                 // interpolation strip/restore machinery), and at cruise the
                 // rider crosses the 1000 m threshold every couple of seconds —
