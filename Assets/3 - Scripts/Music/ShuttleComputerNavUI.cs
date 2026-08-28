@@ -366,7 +366,7 @@ public partial class ShuttleComputerUI
             NavRebuildTiles(pilot, here);
         }
 
-        bool canTravel = !string.IsNullOrEmpty(_navSelected) && _navSelected != here;
+        bool canTravel = !string.IsNullOrEmpty(_navSelected);   // here included — relocation
         _navTravelLabel.color = canTravel ? Ink : Locked;
         _navTravelBg.color = canTravel ? PanelHi : Panel;
 
@@ -397,7 +397,7 @@ public partial class ShuttleComputerUI
         {
             bool stillThere = false;
             foreach (var p in planets) if (p.bodyName == _navSelected) { stillThere = true; break; }
-            if (!stillThere || _navSelected == here) _navSelected = "";
+            if (!stillThere) _navSelected = "";   // selecting `here` is valid now — relocation
         }
 
         // Grid: up to 4 per row, centred — same hand-packed style as the home row.
@@ -415,7 +415,9 @@ public partial class ShuttleComputerUI
             // ⚠️ MakePanel creates images with raycastTarget = FALSE (so the CRT
             // overlay never blocks) — a Button on one is dead until this line.
             // Missing it is why no planet was clickable in playtests 1–3.
-            frame.raycastTarget = !isHere;
+            // The here-tile is clickable too now (playtest 33): selecting your
+            // current planet relocates — rise to hover, fly, land elsewhere.
+            frame.raycastTarget = true;
             var rt = frame.rectTransform;
             rt.anchorMin = new Vector2(0.5f, 1); rt.anchorMax = new Vector2(0.5f, 1);
             rt.pivot = new Vector2(0.5f, 1);
@@ -433,42 +435,28 @@ public partial class ShuttleComputerUI
             lrt.anchoredPosition = new Vector2(0, 14);   // name high, distance/'here' below
             label.characterSpacing = 10;
 
-            if (isHere)
-            {
-                var hereLbl = MakeText(rt, "Here", "YOU ARE HERE", 12, Locked, TextAlignmentOptions.Center);
-                var hrt2 = hereLbl.rectTransform;
-                hrt2.anchorMin = new Vector2(0, 0.5f); hrt2.anchorMax = new Vector2(1, 0.5f);
-                hrt2.pivot = new Vector2(0.5f, 0.5f);
-                hrt2.sizeDelta = new Vector2(0, 20);
-                hrt2.anchoredPosition = new Vector2(0, -16);
-                hereLbl.characterSpacing = 16;
-            }
-            else
-            {
-                // Distance readout (playtest 24, Sam's ask): pick the closest
-                // or the furthest hop at a glance. Values live-update in
-                // NavRefreshList — planets orbit.
-                var distLbl = MakeText(rt, "Dist", "", 13, Locked, TextAlignmentOptions.Center);
-                var drt = distLbl.rectTransform;
-                drt.anchorMin = new Vector2(0, 0.5f); drt.anchorMax = new Vector2(1, 0.5f);
-                drt.pivot = new Vector2(0.5f, 0.5f);
-                drt.sizeDelta = new Vector2(0, 20);
-                drt.anchoredPosition = new Vector2(0, -16);
-                distLbl.characterSpacing = 12;
+            // Sub-label: distance for other planets, RELOCATE for the current
+            // one (playtest 33 — same-planet travel to find a new pad).
+            var distLbl = MakeText(rt, "Dist", isHere ? "HERE · RELOCATE" : "", 13, Locked, TextAlignmentOptions.Center);
+            var drt = distLbl.rectTransform;
+            drt.anchorMin = new Vector2(0, 0.5f); drt.anchorMax = new Vector2(1, 0.5f);
+            drt.pivot = new Vector2(0.5f, 0.5f);
+            drt.sizeDelta = new Vector2(0, 20);
+            drt.anchoredPosition = new Vector2(0, -16);
+            distLbl.characterSpacing = isHere ? 16 : 12;
 
-                var tile = new NavTile { body = body.bodyName, frame = frame, label = label, here = false,
-                                         dist = distLbl, bodyRef = body };
-                _navTiles.Add(tile);
-                var btn = frame.gameObject.AddComponent<Button>();
-                btn.targetGraphic = frame;
-                var cb = btn.colors;
-                cb.normalColor = Color.white;
-                cb.highlightedColor = new Color(1.6f, 1.6f, 1.6f, 1f);
-                cb.pressedColor = new Color(2f, 2f, 2f, 1f);
-                btn.colors = cb;
-                string captured = body.bodyName;
-                btn.onClick.AddListener(() => OnNavPlanetClicked(captured));
-            }
+            var tile = new NavTile { body = body.bodyName, frame = frame, label = label, here = isHere,
+                                     dist = isHere ? null : distLbl, bodyRef = body };
+            _navTiles.Add(tile);
+            var btn = frame.gameObject.AddComponent<Button>();
+            btn.targetGraphic = frame;
+            var cb = btn.colors;
+            cb.normalColor = Color.white;
+            cb.highlightedColor = new Color(1.6f, 1.6f, 1.6f, 1f);
+            cb.pressedColor = new Color(2f, 2f, 2f, 1f);
+            btn.colors = cb;
+            string captured = body.bodyName;
+            btn.onClick.AddListener(() => OnNavPlanetClicked(captured));
         }
         NavApplySelection();
     }

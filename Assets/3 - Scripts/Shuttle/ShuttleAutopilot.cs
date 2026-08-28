@@ -462,7 +462,10 @@ public class ShuttleAutopilot : MonoBehaviour
     {
         if (ClientDriven) return false;
         if (_phase != Phase.Parked) return false;
-        if (!CanLandOn(target) || target == _body) return false;
+        // target == _body is ALLOWED (playtest 33, Sam's ask): same-planet
+        // relocation — countdown, rise to hover altitude, fly to a new spot,
+        // land. Same crew/door/capture flow; just no transit leg.
+        if (!CanLandOn(target)) return false;
         _targetBody = target;
         SetPhase(Phase.Countdown);
         return true;
@@ -630,7 +633,9 @@ public class ShuttleAutopilot : MonoBehaviour
                     _healPlayer.Camera.farClipPlane = 30000f;
                 _departBody = _body;
                 _departAnchorLocal = _localPos;   // the PAD — the bezier starts here
-                if (!ClientDriven) ComputeArrivalAnchor();
+                // Same-planet relocation has no transit leg — no anchor needed
+                // (and the facing-direction math degenerates for body==body).
+                if (!ClientDriven && _targetBody != _body) ComputeArrivalAnchor();
                 break;
 
             case Phase.Transit:
@@ -884,7 +889,13 @@ public class ShuttleAutopilot : MonoBehaviour
         // is now one continuous bezier flown by TickTransit, which leaves
         // the pad radially anyway; this phase just seals the door (the fold
         // takes ~2.5 s) and lets the engines spool.
-        if (_phaseT >= LiftoffSeconds) SetPhase(Phase.Transit);
+        //
+        // Same-planet relocation (playtest 33): no transit leg — straight to
+        // HOVER, whose altitude spring flies the shuttle smoothly up from
+        // the pad to hover altitude; the pilot then relocates with WASD and
+        // lands wherever the light goes green.
+        if (_phaseT >= LiftoffSeconds)
+            SetPhase(_targetBody == _body ? Phase.Hover : Phase.Transit);
     }
 
     // The flight curve: quadratic bezier pad → (radially above the pad) →
