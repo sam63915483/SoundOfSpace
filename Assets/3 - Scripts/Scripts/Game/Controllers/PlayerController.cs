@@ -503,6 +503,18 @@ public class PlayerController : GravityObject
 		rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 		rb.mass = mass;
 		rb.velocity = Vector3.zero;
+		// THE release pop, finally (playtest 34 — Sam's decisive clue: the
+		// intro's pod release has the SAME pop at the SAME stage, in code
+		// that predates the whole shuttle system). When a freshly-freed
+		// capsule overlaps the moving floor by even a centimetre on its
+		// first dynamic tick, PhysX ejects it at up to the DEFAULT
+		// maxDepenetrationVelocity of 10 m/s — a 20-33 cm hop in one or two
+		// steps (the probe's +33 cm alt/rbAlt jump; EndlessManager's old
+		// "~6-inch upward pop / depenetration correction" is the same
+		// mechanism). Clamped, overlaps resolve at ≤2 cm per step — the
+		// same correction spread invisibly over a few frames. Also softens
+		// every "PhysX blasted the player out" ejection class (Icey flings).
+		rb.maxDepenetrationVelocity = 1f;
 	}
 
 	void Start()
