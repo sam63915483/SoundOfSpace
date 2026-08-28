@@ -102,7 +102,7 @@ public class ShuttleExitDoor : MonoBehaviour
         // Ease-out with a soft settle at the end — reads as hydraulics, not a hinge flop.
         float k = 1f - Mathf.Pow(1f - u, 3f);
         transform.localRotation = _restRot * Quaternion.AngleAxis(openAngle * k, Vector3.right);
-        if (u >= 1f) { _opening = false; _open = true; }
+        if (u >= 1f) { _opening = false; _open = true; RiderReleaseBleed.Mark("door-open-complete"); }
     }
 
     /// Shuttle-travel (2026-08-25): seal the ramp for the flight. Reversible —

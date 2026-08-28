@@ -1394,6 +1394,7 @@ public class ShuttleAutopilot : MonoBehaviour
             PlayerController.UpOverrideTransform = (_phase != Phase.Parked && PlayerController.RiderMode)
                 ? transform : null;
         }
+        RiderReleaseBleed.Mark("upblend-end");
         Destroy(proxy.gameObject);
         _upBlendOut = null;
     }

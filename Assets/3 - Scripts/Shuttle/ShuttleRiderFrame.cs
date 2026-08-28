@@ -433,10 +433,17 @@ public static class ShuttleRiderFrame
 [DefaultExecutionOrder(300)]   // last in LateUpdate — sees the final camera pose
 public class RiderReleaseBleed : MonoBehaviour
 {
-    struct Sample { public float t, dtMs, camStep, lagCm, corrCm, rotDeg; public int gc; }
+    struct Sample { public float t, dtMs, camStep, lagCm, corrCm, rotDeg, altDeltaCm, rbAltDeltaCm; public int gc; }
     Quaternion _lastCamRot = Quaternion.identity;
     int _lastGcCount;
     int _gcTotal;
+    // Altitude tracking (playtest 27, Sam: "snapped UP 2-3 inches"): the
+    // orbital camera motion (~1.3 m/frame) drowns a 6 cm hop, but the
+    // player's distance from the planet core is dead steady standing still —
+    // a radial snap shows as a crisp altitude step. Tracked for BOTH the
+    // rendered transform and the physics body: rb moved too = a physics
+    // kick (depenetration/impulse); transform only = a render-side jump.
+    float _lastAlt = -1f, _lastRbAlt = -1f;
 
     PlayerController _pc;
     CelestialBody _body;
@@ -467,6 +474,8 @@ public class RiderReleaseBleed : MonoBehaviour
         b._releaseT = -1f;
         b._lastGcCount = System.GC.CollectionCount(0);
         b._gcTotal = 0;
+        b._lastAlt = -1f;
+        b._lastRbAlt = -1f;
         b._samples.Clear();
         s_marks.Clear();
         s_active = b;
@@ -573,8 +582,20 @@ public class RiderReleaseBleed : MonoBehaviour
             int gcD = gcNow - _lastGcCount;
             _lastGcCount = gcNow;
             _gcTotal += gcD;
+
+            float altDelta = 0f, rbAltDelta = 0f;
+            if (_body != null && _pc != null && _pc.Rigidbody != null)
+            {
+                float alt = (_pc.transform.position - _body.transform.position).magnitude;
+                float rbAlt = (_pc.Rigidbody.position - _body.Position).magnitude;
+                if (_lastAlt >= 0f) altDelta = (alt - _lastAlt) * 100f;
+                if (_lastRbAlt >= 0f) rbAltDelta = (rbAlt - _lastRbAlt) * 100f;
+                _lastAlt = alt;
+                _lastRbAlt = rbAlt;
+            }
+
             if (_samples.Count < 500)
-                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm, rotDeg = rotDeg, gc = gcD });
+                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm, rotDeg = rotDeg, altDeltaCm = altDelta, rbAltDeltaCm = rbAltDelta, gc = gcD });
         }
 
         if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the sensitive window
@@ -605,8 +626,17 @@ public class RiderReleaseBleed : MonoBehaviour
           .Append("ms · worst camera pop ").Append((worstCamDev * 100f).ToString("0.0"))
           .Append("cm at t+").Append((_samples[worstCamI].t * 1000f).ToString("0"))
           .Append("ms · GC collections in window: ").Append(_gcTotal).AppendLine();
-        AppendAround(sb, "frames around the camera pop:", worstCamI, avgPerMs);
-        if (Mathf.Abs(worstDtI - worstCamI) > 8)
+        // The vertical snap has its own dedicated window: biggest single-frame
+        // altitude step (radial — immune to the orbital motion's noise).
+        int worstAltI = 1;
+        for (int i = 2; i < _samples.Count; i++)
+            if (Mathf.Abs(_samples[i].altDeltaCm) > Mathf.Abs(_samples[worstAltI].altDeltaCm)) worstAltI = i;
+        sb.Append("worst ALTITUDE step ").Append(_samples[worstAltI].altDeltaCm.ToString("+0.0;-0.0"))
+          .Append("cm at t+").Append((_samples[worstAltI].t * 1000f).ToString("0")).AppendLine("ms");
+        AppendAround(sb, "frames around the ALTITUDE step:", worstAltI, avgPerMs);
+        if (Mathf.Abs(worstCamI - worstAltI) > 8)
+            AppendAround(sb, "frames around the camera pop:", worstCamI, avgPerMs);
+        if (Mathf.Abs(worstDtI - worstCamI) > 8 && Mathf.Abs(worstDtI - worstAltI) > 8)
             AppendAround(sb, "frames around the slow frame:", worstDtI, avgPerMs);
         // ALWAYS show the release moment (playtest 20 lesson: the felt pop
         // hid outside the two "worst" windows and never got printed).
@@ -634,7 +664,9 @@ public class RiderReleaseBleed : MonoBehaviour
               .Append("cm (expected ").Append((avgPerMs * s.dtMs * 100f).ToString("000.0"))
               .Append(")  lag ").Append(s.lagCm.ToString("0.0"))
               .Append("cm  corr ").Append(s.corrCm.ToString("0.0"))
-              .Append("cm  rot ").Append(s.rotDeg.ToString("0.00")).Append("deg")
+              .Append("cm  rot ").Append(s.rotDeg.ToString("0.00"))
+              .Append("deg  alt ").Append(s.altDeltaCm.ToString("+0.0;-0.0"))
+              .Append("cm  rbAlt ").Append(s.rbAltDeltaCm.ToString("+0.0;-0.0")).Append("cm")
               .AppendLine(s.gc > 0 ? "  <-- GC RAN THIS FRAME" : "");
         }
     }
