@@ -1972,6 +1972,22 @@ public class PlayerController : GravityObject
 		if (isInDialogue)
 		{
 			smoothVelocity = Vector3.zero;
+			// PIN the local pose (2026-08-28 — the intro pod slide, caught by
+			// IntroWatch run 1: a perfectly linear ~12 cm/s drift with ZERO
+			// input, only while isInDialogue, wedging the player through the
+			// closed pod door). This early return used to skip the per-tick
+			// local-pose restore that normally pins a rider to the cabin, so
+			// any small per-frame external writer (animator root drift, FX)
+			// accumulated unopposed. Seed the pin on the first dialogue tick
+			// and re-assert it every tick; the render-rate LateUpdate lerp
+			// (armed by _riderSmoothInit) then pins the frames in between.
+			if (!_riderSmoothInit)
+			{
+				_riderCurrLocalPos = transform.localPosition;
+				_riderPrevLocalPos = _riderCurrLocalPos;
+				_riderSmoothInit = true;
+			}
+			transform.localPosition = _riderCurrLocalPos;
 			rb.position = transform.position;
 			rb.rotation = transform.rotation;
 			return;
