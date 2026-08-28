@@ -751,6 +751,11 @@ public class ShuttleAutopilot : MonoBehaviour
                 _upAlignVel = 0f;
                 _avoidOffset = Vector3.zero;
                 _avoidOffsetVel = Vector3.zero;
+                // The INTRO enters Transit directly (no Liftoff), so the
+                // en-route feed camera must also be created here — the
+                // normal path already has one and this is a no-op.
+                if (_transitCamera == null)
+                    _transitCamera = ShuttleLandingCamera.Create(this, ShuttleLandingCamera.FeedMode.Up);
                 Vector3 aW = FrameWorldPos(_departBody, _departAnchorLocal);
                 Vector3 bW = FrameWorldPos(_targetBody, _arriveAnchorLocal);
                 float arcLen = BezierLength(aW, BendControl(aW, bW), bW);

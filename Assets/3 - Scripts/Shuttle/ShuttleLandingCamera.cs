@@ -47,9 +47,11 @@ public class ShuttleLandingCamera : MonoBehaviour
     public void SetMode(FeedMode mode)
     {
         Mode = mode;
-        // Up: above the dome so the near plane clears the hull; Down: just
-        // under the belly (the original landing-cam mount).
-        transform.localPosition = mode == FeedMode.Up ? Vector3.up * 7f : Vector3.down * 0.5f;
+        // Up: above the WHOLE roof mast — the red Beacon sits dead-centre at
+        // y 7.8 and the antenna tips reach 8.45; a 7 m mount stared straight
+        // at the beacon (Sam's "red circle" in the feed). Down: just under
+        // the belly (the original landing-cam mount).
+        transform.localPosition = mode == FeedMode.Up ? Vector3.up * 9f : Vector3.down * 0.5f;
     }
 
     void Build(Transform shuttle)
