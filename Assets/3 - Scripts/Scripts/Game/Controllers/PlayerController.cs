@@ -2041,10 +2041,21 @@ public class PlayerController : GravityObject
 		// a LOT now (180° flip mid-transit). The ground clamp ratcheted those
 		// arcs into a slow lateral slide. Pivot about the FEET instead: the
 		// contact point stays planted while the body tilts around it.
-		Quaternion upDelta = Quaternion.FromToRotation(transform.up, up);
-		Vector3 upPivot = feet != null ? feet.position : transform.position;
-		transform.rotation = upDelta * transform.rotation;
-		transform.position = upPivot + upDelta * (transform.position - upPivot);
+		// ALIGN GATE (2026-08-28, watch v5): with the rotation pinned and the
+		// up owned by the platform this block is a per-tick no-op — but its
+		// world-space position write still round-trips ~15 km coordinates
+		// through the parent matrix every tick, and the error it re-absorbs
+		// each tick was HALF the in-flight slide (nA tracked ply 1:1 with
+		// ang 0.00: float-conversion ratchet, not geometry). Only touch the
+		// transform when there is a real angle to correct (the up-blend
+		// window and genuine disturbances).
+		if (Vector3.Angle(transform.up, up) > 0.05f)
+		{
+			Quaternion upDelta = Quaternion.FromToRotation(transform.up, up);
+			Vector3 upPivot = feet != null ? feet.position : transform.position;
+			transform.rotation = upDelta * transform.rotation;
+			transform.position = upPivot + upDelta * (transform.position - upPivot);
+		}
 
 		// IntroWatch: lateral cm the yaw/align block just wrote (it bypasses
 		// collision, so any real signal here is the through-walls suspect).
@@ -2146,6 +2157,7 @@ public class PlayerController : GravityObject
 		// 0.25 m up — past IsGrounded's 0.2 m reach, so grounded read false
 		// all flight and the grounded-gated walk input stayed zeroed (the
 		// playtest-1 "stuck in one spot" bug).
+		float seatCorr = 0f;
 		if (_riderVertVel <= 0f && feet != null)
 		{
 			const float kSeatCastUp = 0.3f, kSeatRadius = 0.25f, kSeatSkin = 0.02f;
@@ -2164,13 +2176,38 @@ public class PlayerController : GravityObject
 				// 0.8 s at cabin gravity; a real fall-through does.
 				if (feetGap <= 0.15f || (_riderAirTime > 0.8f && feetGap <= 0.6f))
 				{
-					pos += up * ShuttleLandingLogic.RiderSeatCorrection(kSeatCastUp, kSeatRadius, hit.distance, kSeatSkin);
+					seatCorr = ShuttleLandingLogic.RiderSeatCorrection(kSeatCastUp, kSeatRadius, hit.distance, kSeatSkin);
+					pos += up * seatCorr;
 					_riderVertVel = 0f;
 				}
 			}
 		}
 
-		transform.position = pos;
+		// LOCAL AUTHORITY (2026-08-28, watch v5 — THE in-flight slide):
+		// `transform.position = pos` re-derived localPosition through the
+		// parent matrix at ~15 km world coordinates, and the tick record then
+		// adopted that lossy conversion as truth — a fresh sub-mm error every
+		// tick the coordinates moved, compounding at 100 Hz into a directed
+		// slide (nM tracked ply with zero walk intent; frozen at hover where
+		// the coordinates stop changing — a conversion fixed point; direction
+		// flipped with the 180° attitude flip — the error is world-anchored).
+		// The stored local pose is now advanced ONLY by intended deltas —
+		// the walk/wall move rotated into the parent frame once, plus the
+		// vertical seat component written directly on local Y (up == parent
+		// up by construction) — and the transform is written FROM it as a
+		// local assignment, which Unity stores verbatim. World state is
+		// never read back into the authority. `pos` lives on for the casts
+		// above and the rb conversion below, where physics-frame tolerance
+		// is fine.
+		{
+			Quaternion parentInvRot = transform.parent != null
+				? Quaternion.Inverse(transform.parent.rotation) : Quaternion.identity;
+			Vector3 moveLocal = parentInvRot * move;
+			Vector3 pls = transform.parent != null ? transform.parent.lossyScale : Vector3.one;
+			moveLocal = new Vector3(moveLocal.x / pls.x, moveLocal.y / pls.y, moveLocal.z / pls.z);
+			moveLocal.y += seatCorr / pls.y;
+			transform.localPosition = dbgLp1 + moveLocal;
+		}
 		// IntroWatch: lateral cm the move/wall/seat write actually applied.
 		{
 			Vector3 dbgM = transform.localPosition - dbgLp1; dbgM.y = 0f;
