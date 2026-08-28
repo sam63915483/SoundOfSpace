@@ -412,8 +412,10 @@ public static class ShuttleRiderFrame
 [DefaultExecutionOrder(300)]   // last in LateUpdate — sees the final camera pose
 public class RiderReleaseBleed : MonoBehaviour
 {
-    struct Sample { public float t, dtMs, camStep, lagCm, corrCm, rotDeg; }
+    struct Sample { public float t, dtMs, camStep, lagCm, corrCm, rotDeg; public int gc; }
     Quaternion _lastCamRot = Quaternion.identity;
+    int _lastGcCount;
+    int _gcTotal;
 
     PlayerController _pc;
     CelestialBody _body;
@@ -442,6 +444,8 @@ public class RiderReleaseBleed : MonoBehaviour
         b._hasLastCam = false;
         b._reportAt = -1f;
         b._releaseT = -1f;
+        b._lastGcCount = System.GC.CollectionCount(0);
+        b._gcTotal = 0;
         b._samples.Clear();
         s_marks.Clear();
         s_active = b;
@@ -524,8 +528,12 @@ public class RiderReleaseBleed : MonoBehaviour
                 Vector3 playerLag = _pc.transform.position - _pc.Rigidbody.position;
                 lagCm = (planetLag - playerLag).magnitude * 100f;
             }
+            int gcNow = System.GC.CollectionCount(0);
+            int gcD = gcNow - _lastGcCount;
+            _lastGcCount = gcNow;
+            _gcTotal += gcD;
             if (_samples.Count < 500)
-                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm, rotDeg = rotDeg });
+                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm, rotDeg = rotDeg, gc = gcD });
         }
 
         if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the sensitive window
@@ -554,7 +562,8 @@ public class RiderReleaseBleed : MonoBehaviour
         sb.Append("worst frame time ").Append(_samples[worstDtI].dtMs.ToString("0.0"))
           .Append("ms at t+").Append((_samples[worstDtI].t * 1000f).ToString("0"))
           .Append("ms · worst camera pop ").Append((worstCamDev * 100f).ToString("0.0"))
-          .Append("cm at t+").Append((_samples[worstCamI].t * 1000f).ToString("0")).AppendLine("ms");
+          .Append("cm at t+").Append((_samples[worstCamI].t * 1000f).ToString("0"))
+          .Append("ms · GC collections in window: ").Append(_gcTotal).AppendLine();
         AppendAround(sb, "frames around the camera pop:", worstCamI, avgPerMs);
         if (Mathf.Abs(worstDtI - worstCamI) > 8)
             AppendAround(sb, "frames around the slow frame:", worstDtI, avgPerMs);
@@ -584,7 +593,8 @@ public class RiderReleaseBleed : MonoBehaviour
               .Append("cm (expected ").Append((avgPerMs * s.dtMs * 100f).ToString("000.0"))
               .Append(")  lag ").Append(s.lagCm.ToString("0.0"))
               .Append("cm  corr ").Append(s.corrCm.ToString("0.0"))
-              .Append("cm  rot ").Append(s.rotDeg.ToString("0.00")).AppendLine("deg");
+              .Append("cm  rot ").Append(s.rotDeg.ToString("0.00")).Append("deg")
+              .AppendLine(s.gc > 0 ? "  <-- GC RAN THIS FRAME" : "");
         }
     }
 }

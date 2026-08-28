@@ -1454,10 +1454,23 @@ public class ShuttleAutopilot : MonoBehaviour
 
     // Cheats/editor-only playtest overlay: names the exact gate behind any
     // "can't walk" or "can't land" moment so a bug report is one screenshot.
+    float _nextOverlayBuildAt;
+    string _overlayText = "";
+
     void OnGUI()
     {
         if (!Application.isEditor && !Universe.cheatsEnabled) return;
         if (_phase == Phase.Parked && !PlayerController.RiderMode) return;
+
+        // Rebuild at 4 Hz, not per OnGUI call (playtest 23 GC hygiene: this
+        // string build ran twice per frame in the editor for the whole
+        // flight — steady garbage feeding the GC spikes the probe hunts).
+        if (Time.unscaledTime < _nextOverlayBuildAt)
+        {
+            DrawOverlay();
+            return;
+        }
+        _nextOverlayBuildAt = Time.unscaledTime + 0.25f;
 
         string valid = _sensor != null
             ? (_sensor.Valid ? "GREEN" : "RED " + _sensor.FailReason)
@@ -1474,11 +1487,16 @@ public class ShuttleAutopilot : MonoBehaviour
             "  uiFocus " + (TutorialGate.UISelectionActive() ? "ON" : "off") +
             "  menu " + (PauseState.MenuOpen ? "ON" : "off") +
             "  typing " + (AIChatScreen.IsTypingActive ? "ON" : "off");
+        _overlayText = text;
+        DrawOverlay();
+    }
 
+    void DrawOverlay()
+    {
         GUI.color = Color.black;
-        GUI.Label(new Rect(13f, 13f, 900f, 70f), text);
+        GUI.Label(new Rect(13f, 13f, 900f, 70f), _overlayText);
         GUI.color = Color.white;
-        GUI.Label(new Rect(12f, 12f, 900f, 70f), text);
+        GUI.Label(new Rect(12f, 12f, 900f, 70f), _overlayText);
     }
 
     static Transform FindDeepChild(Transform t, string name)

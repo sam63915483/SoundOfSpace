@@ -279,8 +279,14 @@ public partial class ShuttleComputerUI
                 SetTextIfChanged(_navStatusBig, pilot.TargetBody != null ? "EN ROUTE TO " + pilot.TargetBody.bodyName.ToUpperInvariant() : "EN ROUTE");
                 // Rounded to 5 m/s so the readout counts up cleanly instead of
                 // flickering every frame — the build-up/brake is the point.
+                // Concat only when the value CHANGES: the old per-frame string
+                // build was steady GC pressure through the whole flight.
                 int vel = Mathf.RoundToInt(pilot.CurrentSpeed / 5f) * 5;
-                SetTextIfChanged(_navStatusSub, "AUTOPILOT ENGAGED · VEL " + vel + " M/S");
+                if (vel != _lastVelShown)
+                {
+                    _lastVelShown = vel;
+                    SetTextIfChanged(_navStatusSub, "AUTOPILOT ENGAGED · VEL " + vel + " M/S");
+                }
                 SetProgress(pilot.TransitProgress);
                 break;
             }
@@ -308,7 +314,12 @@ public partial class ShuttleComputerUI
                 SetTextIfChanged(_navHoverPrompt, prompt);
                 if (_navHoverPrompt != null && _navHoverPrompt.color != promptColor)
                     _navHoverPrompt.color = promptColor;
-                SetTextIfChanged(_navAltReadout, "ALT " + Mathf.RoundToInt(pilot.CurrentGroundAltitude) + " M");
+                int altM = Mathf.RoundToInt(pilot.CurrentGroundAltitude);
+                if (altM != _lastAltShown)
+                {
+                    _lastAltShown = altM;
+                    SetTextIfChanged(_navAltReadout, "ALT " + altM + " M");
+                }
                 break;
             }
         }
@@ -482,4 +493,9 @@ public partial class ShuttleComputerUI
     {
         if (label != null && label.text != text) label.text = text;
     }
+
+    // Change-gates for the per-frame readouts (playtest 23 GC hygiene) —
+    // appended at the end per house serialization convention.
+    int _lastVelShown = int.MinValue;
+    int _lastAltShown = int.MinValue;
 }
