@@ -494,7 +494,7 @@ public class RiderReleaseBleed : MonoBehaviour
     // starting spot — a slow slide hides in per-frame deltas but is
     // unmissable as accumulated drift. Rows carry phase + grounded/rider/
     // dialogue flags; Marks timestamp the intro events.
-    struct DSample { public float t; public Vector3 plyCab, camCab, rbCab; public byte phase; public bool gnd, rider, dlg; public float alignCm, walkCm, moveCm, yawDeg; public Vector3 recCab, netTick, netOut; }
+    struct DSample { public float t; public Vector3 plyCab, camCab, rbCab; public byte phase; public bool gnd, rider, dlg; public float alignCm, walkCm, moveCm, yawDeg; public Vector3 recCab, netTick, netOut; public Vector3 netAlign, netMove; public int upOwner; public float upDeg; }
     bool _introMode;
     float _nextDriftAt;
     Vector3 _lastRbCab;
@@ -516,6 +516,8 @@ public class RiderReleaseBleed : MonoBehaviour
             PlayerController.DbgRiderYawDeg = 0f;
             PlayerController.DbgRiderNetTick = Vector3.zero;
             PlayerController.DbgRiderNetOut = Vector3.zero;
+            PlayerController.DbgRiderNetAlign = Vector3.zero;
+            PlayerController.DbgRiderNetMove = Vector3.zero;
         }
     }
 
@@ -663,6 +665,10 @@ public class RiderReleaseBleed : MonoBehaviour
                             recCab = _pc.RiderRecordLocalPos,
                             netTick = PlayerController.DbgRiderNetTick,
                             netOut = PlayerController.DbgRiderNetOut,
+                            netAlign = PlayerController.DbgRiderNetAlign,
+                            netMove = PlayerController.DbgRiderNetMove,
+                            upOwner = PlayerController.DbgRiderUpOwner,
+                            upDeg = PlayerController.DbgRiderUpOffAxisDeg,
                         });
                     }
                 }
@@ -690,27 +696,26 @@ public class RiderReleaseBleed : MonoBehaviour
         if (_drift.Count < 2) return;
         var b0 = _drift[0];
         var sb = new System.Text.StringBuilder(8192);
-        sb.Append("[IntroWatch v4] ").Append(_drift.Count).Append(" samples / ").Append(_window)
+        sb.Append("[IntroWatch v5] ").Append(_drift.Count).Append(" samples / ").Append(_window)
           .Append("s.  Events: ").Append(s_marks.Count > 0 ? string.Join(", ", s_marks) : "none").AppendLine();
         sb.AppendLine("cumulative CABIN-relative drift from the start pose (cm);");
         sb.AppendLine("ph 0=Parked 1=Countdown 2=Liftoff 3=Transit 4=Hover 5=Landing; g=grounded r=riding d=dialogue");
-        sb.AppendLine("rec = drift of the tick-authoritative pinned pose; nt = NET cm the rider pipeline wrote; ot = NET cm external writers pushed between ticks (discarded); wk = walk intent; yw = look-yaw deg");
+        sb.AppendLine("nA/nM = NET cm written by the yaw+up-align stage / the move+wall+seat stage (nA+nM = the pipeline's whole output); ov = up owner (0 none, 1 shuttle/own proxy, 3 FOREIGN); ang = chosen-up angle off cabin-up (deg); wk = walk intent");
         for (int i = 1; i < _drift.Count; i++)
         {
             var s = _drift[i];
             Vector3 dp = s.plyCab - b0.plyCab;
-            Vector3 dr2 = s.recCab - b0.recCab;
             sb.Append("  t+").Append(s.t.ToString("00.0"))
               .Append("s ply ").Append((dp.magnitude * 100f).ToString("0.0"))
               .Append(" (Y ").Append((dp.y * 100f).ToString("+0.0;-0.0"))
-              .Append(") rec ").Append((dr2.magnitude * 100f).ToString("0.0"))
-              .Append(" nt ").Append((s.netTick.magnitude * 100f).ToString("0.0"))
+              .Append(") nA ").Append((s.netAlign.magnitude * 100f).ToString("0.0"))
+              .Append(" nM ").Append((s.netMove.magnitude * 100f).ToString("0.0"))
               .Append(" ot ").Append((s.netOut.magnitude * 100f).ToString("0.0"))
+              .Append(" ov").Append(s.upOwner)
+              .Append(" ang ").Append(s.upDeg.ToString("0.00"))
               .Append(" wk ").Append(s.walkCm.ToString("0.0"))
-              .Append(" yw ").Append(s.yawDeg.ToString("0"))
               .Append(" ph").Append(s.phase)
               .Append(" g").Append(s.gnd ? "1" : "0")
-              .Append(" r").Append(s.rider ? "1" : "0")
               .Append(" d").Append(s.dlg ? "1" : "0")
               .AppendLine();
         }

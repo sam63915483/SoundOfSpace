@@ -894,6 +894,12 @@ public class PlayerController : GravityObject
 	// pipeline itself wrote. NetOut = Σ(pre-restore local − last record):
 	// what external writers did between ticks (discarded by the restore).
 	[System.NonSerialized] public static Vector3 DbgRiderNetTick, DbgRiderNetOut;
+	// Watch v5: nt split by stage (component-wise nt == NetAlign + NetMove),
+	// plus the chosen up's provenance — owner 0=none 1=platform/own-proxy
+	// 3=FOREIGN (the thief), and its angle off the cabin's up.
+	[System.NonSerialized] public static Vector3 DbgRiderNetAlign, DbgRiderNetMove;
+	[System.NonSerialized] public static int DbgRiderUpOwner;
+	[System.NonSerialized] public static float DbgRiderUpOffAxisDeg;
 	/// The tick-authoritative pinned local pose, for the watch's rec channel.
 	public Vector3 RiderRecordLocalPos => _riderCurrLocalPos;
 
@@ -2006,8 +2012,28 @@ public class PlayerController : GravityObject
 		}
 
 		// The ride owns the up (intro recipe): align to the shuttle every step.
-		Vector3 up = UpOverrideTransform != null ? UpOverrideTransform.up
-			: (RiderPlatform != null ? RiderPlatform.up : transform.up);
+		// FOREIGN-OVERRIDE GUARD (2026-08-28, IntroWatch v4: nt tracked ply
+		// 1:1 — the tick's own writes produced the whole in-flight slide, and
+		// with zero walk/yaw every lateral writer in this tick reduces to
+		// "the chosen up is not the cabin's up"). While rider-caged, ONLY the
+		// platform itself or a transform parented under it (its up-blend
+		// proxy) may steer the up. Anything else — e.g. the bypassed old
+		// intro's shuttle setting UpOverrideTransform to a world-anchored
+		// object — would make align/gravity/seat chase a world-fixed axis
+		// that rotates in cabin frame with every attitude change: drift
+		// during the burn, spike at the flip, reversal under retro, frozen
+		// at hover. The cage ignores foreign overrides outright.
+		Vector3 up;
+		{
+			Transform over = UpOverrideTransform;
+			bool overOwned = over != null && RiderPlatform != null
+				&& (over == RiderPlatform || over.IsChildOf(RiderPlatform));
+			if (overOwned) up = over.up;
+			else if (RiderPlatform != null) up = RiderPlatform.up;
+			else up = over != null ? over.up : transform.up;
+			DbgRiderUpOwner = over == null ? 0 : (overOwned ? 1 : 3);
+			DbgRiderUpOffAxisDeg = RiderPlatform != null ? Vector3.Angle(RiderPlatform.up, up) : 0f;
+		}
 		// FEET-PIVOT alignment (2026-08-28 — Sam: "sliding slowly on the
 		// floor when the shuttle makes big turns or goes fast"): rotating
 		// about the transform origin (capsule centre) swept the feet through
@@ -2211,8 +2237,10 @@ public class PlayerController : GravityObject
 		_riderCurrLocalRot = transform.localRotation;
 		_riderSmoothInit = true;
 		// Watch v4: net displacement this tick's pipeline wrote (record minus
-		// the restored base it started from).
+		// the restored base it started from). v5 splits it by stage.
 		DbgRiderNetTick += _riderCurrLocalPos - dbgLp0;
+		DbgRiderNetAlign += dbgLp1 - dbgLp0;
+		DbgRiderNetMove += _riderCurrLocalPos - dbgLp1;
 		_wasGroundedPhys = isGrounded;
 
 		DbgRiderGrounded = isGrounded;
