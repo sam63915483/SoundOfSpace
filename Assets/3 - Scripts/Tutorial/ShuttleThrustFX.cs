@@ -422,6 +422,12 @@ public class ShuttleThrustFX : MonoBehaviour
         // the interior straight through the hull. With shadows the hull
         // occludes them; descent-only cost.
         l.shadows = LightShadows.Hard;
+        // Round 2 (Sam: the 4 pod lights still shine through the side walls):
+        // the default shadow bias (~0.05) is comparable to the hull's wall
+        // thickness, so short-range point-light shadows leaked straight
+        // through. Near-zero bias is safe here — these lights only touch
+        // large flat hull/ground surfaces, no self-shadow acne risk.
+        l.shadowBias = 0.01f;
         return l;
     }
 
