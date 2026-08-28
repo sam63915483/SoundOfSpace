@@ -387,7 +387,14 @@ public static class ShuttleRiderFrame
                 Vector3 castOrigin = seat + toFeet + upAxis * 0.3f;
                 if (Physics.SphereCast(castOrigin, 0.25f, -upAxis, out RaycastHit footHit, 2f,
                         ShuttleAutopilot.GroundMask, QueryTriggerInteraction.Ignore))
-                    seat += upAxis * ShuttleLandingLogic.RiderSeatCorrection(0.3f, 0.25f, footHit.distance, 0.02f);
+                {
+                    float corrAmt = ShuttleLandingLogic.RiderSeatCorrection(0.3f, 0.25f, footHit.distance, 0.02f);
+                    // Trim only — this exists for cm-scale residue. A large
+                    // correction means the cast slipped past the real floor
+                    // (e.g. through the open doorway to the ground below,
+                    // MegaTracker log 11's ~50 cm burial) — never apply it.
+                    if (Mathf.Abs(corrAmt) < 0.25f) seat += upAxis * corrAmt;
+                }
             }
 
             pc.transform.SetParent(null, true);

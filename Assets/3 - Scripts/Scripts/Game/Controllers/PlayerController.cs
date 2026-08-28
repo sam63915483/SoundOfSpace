@@ -838,10 +838,6 @@ public class PlayerController : GravityObject
 	// the 50 Hz stepping of the player's local movement).
 	Vector3 _riderPrevLocalPos, _riderCurrLocalPos;
 	bool _riderSmoothInit;
-	// Rider rb outlier guard (playtest 32): last written rb pose + timestamp;
-	// stale (>0.5 s) means a fresh ride — the guard re-seeds itself.
-	Vector3 _riderRbGuardPos;
-	float _riderRbGuardTime = -10f;
 	float _riderAirTime;   // seconds since the rider's feet left the cabin floor
 	const float RiderGravity = 20f;    // matches the flat-gravity interior feel
 	const float RiderJumpSpeed = 6f;   // low cabin ceiling — a hop, not a launch
@@ -2078,18 +2074,16 @@ public class PlayerController : GravityObject
 			// the release's fresh seat then matches it to the millimetre.
 			var rideBody = apilot.CurrentBody;
 			if (rideBody != null) rbPos += rideBody.velocity * dt;
-			// Outlier guard (playtest 32): probe logs showed occasional
-			// one-frame ±1.35 m rb excursions right after touchdown — the
-			// prediction misfiring on odd step/frame alignments. A rider rb
-			// never legitimately leaves its carried path by >1 m in one tick;
-			// hold the carried path instead of writing the outlier.
-			if (Time.time - _riderRbGuardTime < 0.5f)
-			{
-				Vector3 expectedCarry = _riderRbGuardPos + (rideBody != null ? rideBody.velocity * dt : Vector3.zero);
-				if ((rbPos - expectedCarry).sqrMagnitude > 1f) rbPos = expectedCarry;
-			}
-			_riderRbGuardPos = rbPos;
-			_riderRbGuardTime = Time.time;
+			// ⚠️ The playtest-32 "outlier guard" that lived here was a RATCHET
+			// BUG (MegaTracker log 11: the rb rode 1.7-4.9 KM from the cabin
+			// all flight): it re-seeded its expectation from its own CLAMPED
+			// output, so the moment the true path moved >1 m from the phantom
+			// path — i.e. the moment the shuttle flew anywhere — every correct
+			// update was rejected forever. That voided the contact prewarm,
+			// forced a km-scale seat teleport at release, and buried the
+			// capsule ~50 cm into the floor (the 1 cm/tick crawl-out = the
+			// depenetration clamp) — the surviving landing pop. REMOVED; the
+			// ±1.35 m one-tick bookkeeping blips it targeted are cosmetic.
 		}
 		rb.position = rbPos;
 		rb.rotation = transform.rotation;
