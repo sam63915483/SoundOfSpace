@@ -157,7 +157,6 @@ public class ShuttleAutopilot : MonoBehaviour
     float _nextHealScanAt;
     float _releaseRidersAt = -1f;   // deferred post-touchdown release; -1 = idle
     EndlessManager _endless;
-    float _savedRebaseThreshold = -1f;   // widened during flight; -1 = not touched
 
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
@@ -240,9 +239,9 @@ public class ShuttleAutopilot : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
-        // Never leave a widened rebase threshold behind (scene change mid-flight).
-        if (_endless != null && _savedRebaseThreshold >= 0f)
-            _endless.distanceThreshold = _savedRebaseThreshold;
+        // (No threshold restore — the 3.5 km threshold is session-permanent,
+        // playtest 19; a scene reload re-creates EndlessManager at its
+        // serialized default anyway.)
     }
 
     void Start()
@@ -600,16 +599,14 @@ public class ShuttleAutopilot : MonoBehaviour
                 // for the flight (5 km is still comfortably inside float
                 // precision) and restore it on landing.
                 if (_endless == null) _endless = FindObjectOfType<EndlessManager>();
-                if (_endless != null && _savedRebaseThreshold < 0f)
-                {
-                    _savedRebaseThreshold = _endless.distanceThreshold;
-                    // 3.5 km, DOWN from the 12 km experiment: that far from
-                    // the origin, float precision degrades to millimetres and
-                    // every transform composition jitters — playtest 14's
-                    // "chunky, clunky" flight. 3.5 km keeps precision clean
-                    // and still cuts a long leg from ~15 rebases to a few.
+                // 3.5 km (playtest 14: 12 km = mm-level float jitter, 1 km =
+                // rebase spam), now PERMANENT (playtest 19): every restore of
+                // the 1 km threshold was really SCHEDULING a catch-up rebase,
+                // and wherever the restore went, the pop followed it. At
+                // 3.5 km the ambient rebase cadence just drops ~3.5x and each
+                // shift fires wherever it naturally lands, usually mid-motion.
+                if (_endless != null && _endless.distanceThreshold < 3500f)
                     _endless.distanceThreshold = 3500f;
-                }
                 // Flight horizon, now PERMANENT (playtest 17): the ocean post
                 // effect is capped by scene depth, so a planet beyond the far
                 // plane loses its water first (playtest 11). It used to be
@@ -650,20 +647,20 @@ public class ShuttleAutopilot : MonoBehaviour
                 break;
 
             case Phase.Landing:
-                // Restore the widened rebase threshold at DESCENT START
-                // (playtest 15's "slight hitch after the smooth orient"): the
-                // catch-up origin shift is a known 1-2 frame stutter, and the
-                // deferred-release restore fired it while the player stood
-                // still, freshly uprighted — a clean pop out of nowhere. Fired
-                // here instead, the whole screen is already moving with the
-                // descent and the shift disappears into it; by release the
-                // origin is at the player and nothing is left to fire. The
-                // release-time restore stays as the safety net for edge paths.
-                if (_endless != null && _savedRebaseThreshold >= 0f)
-                {
-                    _endless.distanceThreshold = _savedRebaseThreshold;
-                    _savedRebaseThreshold = -1f;
-                }
+                // THE landing pop, finally probe-diagnosed (playtest 19's
+                // [ReleaseProbe]: a ~1000 m camera step at touchdown+1.6 s):
+                // an origin rebase strips rigidbody interpolation for ~3
+                // frames — a visible lurch that scales with orbital speed
+                // (~1.4 m on a 135 m/s body) — and restoring the 1000 m
+                // threshold at descent start RESET THE REBASE CLOCK, so on a
+                // fast planet (1000 m / 135 m/s ≈ 7.4 s ≈ descent+door time)
+                // the next shift landed in the post-touchdown stillness on
+                // EVERY landing. Instead: spend one forced shift NOW, masked
+                // by the descent motion, and leave the threshold at 3500 —
+                // the next natural shift is then ~26 s away, far past the
+                // walk-out, and fires while the player is moving normally.
+                if (_endless != null) _endless.ForceOriginShift();
+                RiderReleaseBleed.Mark("forced-rebase-at-descent");
                 break;
 
             case Phase.Parked:
@@ -700,12 +697,11 @@ public class ShuttleAutopilot : MonoBehaviour
                 // + releasing its RenderTexture ON the touchdown frame stacked
                 // straight onto the door-open moment. Disable now, free later.
                 if (_landingCamera != null) { _landingCamera.TeardownDeferred(6f); _landingCamera = null; }
-                // NOTE: the rebase threshold is deliberately NOT restored here
-                // — restoring at touchdown fired a large catch-up rebase right
-                // at door-open (playtest 14's landing hitch). It's restored at
-                // LANDING start (descent motion masks the shift, playtest 15);
-                // the deferred-release restore below is only the safety net.
-                // (farClipPlane is deliberately NOT restored — playtest 17.)
+                // NOTE: neither the rebase threshold nor farClipPlane is ever
+                // restored (playtests 17/19): every "restore on landing" was
+                // really scheduling a visible catch-up event into the
+                // post-touchdown stillness. Threshold stays 3.5 km; the one
+                // pending shift was spent at descent start, masked by motion.
                 _targetBody = null;
                 break;
         }
@@ -753,16 +749,11 @@ public class ShuttleAutopilot : MonoBehaviour
             {
                 _releaseRidersAt = -1f;
                 ShuttleRiderFrame.ReleaseRiders(this);
-                // Safety-net restore only: the real restore moved to LANDING
-                // start (playtest 15 — a catch-up shift here, standing still,
-                // was the "slight hitch" after the smooth uprighting). This
-                // covers any path that reached Parked without a Landing phase.
-                if (_endless != null && _savedRebaseThreshold >= 0f)
-                {
-                    _endless.distanceThreshold = _savedRebaseThreshold;
-                    _savedRebaseThreshold = -1f;
-                    RiderReleaseBleed.Mark("rebase-threshold-restore");
-                }
+                // No threshold restore here or ANYWHERE post-landing
+                // (playtest 19): restoring the 1 km threshold IS scheduling a
+                // catch-up rebase, and it popped wherever it was put. The
+                // threshold stays at 3.5 km for the session; the one pending
+                // shift is spent at descent start, masked by motion.
             }
         }
 

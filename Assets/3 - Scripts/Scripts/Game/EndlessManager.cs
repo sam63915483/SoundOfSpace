@@ -268,6 +268,21 @@ public class EndlessManager : MonoBehaviour
         if (VerboseLog) Debug.Log($"[EndlessManager] Origin shift complete. Shifted {shifted} objects by {originOffset}. {_bonesRestorePending.Count} bones pending kinematic restore.");
     }
 
+    /// Fire an origin shift NOW regardless of the threshold (if the player is
+    /// meaningfully off-origin at all). The shuttle landing calls this at
+    /// descent start: a shift visibly disturbs interpolated rendering for a
+    /// couple of frames (an unavoidable lurch that scales with orbital
+    /// speed), so it's spent while the whole screen is already moving with
+    /// the descent — leaving the post-touchdown stillness shift-free.
+    public void ForceOriginShift()
+    {
+        if (playerRigidbody == null || playerRigidbody.position.magnitude < 300f) return;
+        float saved = distanceThreshold;
+        distanceThreshold = 1f;
+        UpdateFloatingOrigin();
+        distanceThreshold = saved;
+    }
+
     public void RegisterPhysicsObject(Transform t)
     {
         if (t == null) return;
