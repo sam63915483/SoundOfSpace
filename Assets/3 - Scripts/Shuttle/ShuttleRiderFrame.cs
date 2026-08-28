@@ -349,81 +349,50 @@ public static class ShuttleRiderFrame
             PlayerController.RiderMode = false;
             PlayerController.RiderPlatform = null;
 
-            // Seat from AUTHORITATIVE state, not the transform: the player's
-            // shuttle-LOCAL pose (exact — locals are never stale) composed
-            // with the autopilot's physics-frame shuttle pose. Reading
-            // pc.transform.position here grabbed last frame's RENDER pose —
-            // harmless on simulated planets, but a co-orbit follower (Icey)
-            // teleports ~2.7 m per tick, so the stale seat landed inside the
-            // floor/walls and PhysX blasted the player out (playtest 6).
-            Vector3 seatLocal = pc.transform.localPosition;
-            Quaternion seatLocalRot = pc.transform.localRotation;
-            pilot.GetWorldPose(out Vector3 shuttleW, out Quaternion shuttleR);
-            Vector3 seatFresh = shuttleW + shuttleR * seatLocal;
-            // ⚠️ VINTAGE (MegaTracker log 12 — the final piece): the rider rb
-            // carries the planet's POST-step pose (RiderFixedTick adds
-            // velocity·dt, playtest 30), but this fresh compose reads the
-            // planet's rb pose at order -50 = PRE-step. The pt-30 comment
-            // that claimed these vintages matched was WRONG by exactly one
-            // planet step: the seat write dragged the correctly-placed rb
-            // ~1 m backward (dRb 114.7cm, dRbY -30/-72cm = into the floor),
-            // and the depenetration clamp then crawled it out at 1 cm/tick
-            // for 0.3 s — the last surviving pop. The foot trim below runs
-            // in THIS pre-step frame (the colliders also sit at pre-step
-            // poses until the step executes); the post-step prediction is
-            // added AFTER it, so seat and rb finally share one vintage and
-            // the conditional write becomes a true no-op.
-            Vector3 seat = seatFresh;
-            Quaternion seatRot = shuttleR * seatLocalRot;
+            // ═══ RENDER-POSE SEAT (playtest 41 — the philosophy inversion
+            // that ends the frame wars). Fourteen tracker logs proved the
+            // bookkeeping frames (planet rb pose, MovePosition target,
+            // render pose, rider local, PhysX shape poses) cannot be
+            // reconciled blind: every "authoritative" compose painted its
+            // error either onto the screen (a one-step render flash) or
+            // into the floor (burial + 1 cm/tick crawl-out). So stop
+            // reconstructing and seat the player WHERE THEY ARE ALREADY
+            // DRAWN: the interpolation then seeds at the pose the previous
+            // frame rendered — zero visual snap BY CONSTRUCTION — and
+            // physics adapts to the render instead of the reverse: a
+            // vertical foot trim against the colliders PhysX actually has
+            // puts the feet flush (no burial, no hover, no clamp crawl),
+            // and velocity (= bodyVel) carries the body in lockstep with
+            // the floor's sweep. The residual is a sub-metre ALONG-FLOOR
+            // offset from the bookkeeping's idea of the spot — flat cabin
+            // floor, no penetration, invisible. (Playtest 6's objection to
+            // render-pose seating predates the foot trim, the depenetration
+            // clamp and the contact prewarm, which together cover it.)
+            Vector3 seat = pc.transform.position;      // parented RENDER pose
+            Quaternion seatRot = pc.transform.rotation;
 
-            // FOOT-EXACT SEAT (playtest 35 — Sam watched his feet: at release
-            // the character dips into the floor or drops onto it and the
-            // animator flips to the airborne pose, i.e. whatever bookkeeping
-            // residue remains, the capsule leaves the release slightly above
-            // or inside the floor). End the residue here mechanically: one
-            // spherecast with the rider grounding's own proven convention
-            // (0.3 up / 0.25 radius / seat at skin) pins the feet exactly on
-            // the floor the physics engine actually has, whatever frame or
-            // vintage error preceded it.
             if (pc.feet != null)
             {
                 Vector3 upAxis = seatRot * Vector3.up;
                 Vector3 toFeet = pc.feet.position - pc.transform.position;
-                Vector3 castOrigin = seat + toFeet + upAxis * 0.3f;
-                if (Physics.SphereCast(castOrigin, 0.25f, -upAxis, out RaycastHit footHit, 2f,
+                Vector3 castOrigin = seat + toFeet + upAxis * 1.0f;
+                if (Physics.SphereCast(castOrigin, 0.25f, -upAxis, out RaycastHit footHit, 4f,
                         ShuttleAutopilot.GroundMask, QueryTriggerInteraction.Ignore))
                 {
-                    float corrAmt = ShuttleLandingLogic.RiderSeatCorrection(0.3f, 0.25f, footHit.distance, 0.02f);
-                    // Trim only — this exists for cm-scale residue. A large
-                    // correction means the cast slipped past the real floor
-                    // (e.g. through the open doorway to the ground below,
-                    // MegaTracker log 11's ~50 cm burial) — never apply it.
-                    if (Mathf.Abs(corrAmt) < 0.25f) seat += upAxis * corrAmt;
+                    float corrAmt = ShuttleLandingLogic.RiderSeatCorrection(1.0f, 0.25f, footHit.distance, 0.02f);
+                    // The render pose's vertical error vs the PhysX floor can
+                    // be tens of cm (the render lag's vertical component) —
+                    // generous cap, vertical only. Beyond it the cast missed
+                    // the real floor (open doorway) — don't apply.
+                    if (Mathf.Abs(corrAmt) < 1.0f) seat += upAxis * corrAmt;
                 }
             }
 
-            // ⚠️ FRAME DISCIPLINE AT THE HANDOVER (MegaTracker log 13, the
-            // 82 cm one-frame flash): the rider rb rides PRE-POSITIONED at
-            // the planet's post-step pose (needed for contacts while its
-            // velocity is zeroed). But a body crossing the release must NOT
-            // carry that lead: the rendered world sits at the CURRENT step,
-            // so an interpolation seed at the post-step pose draws the
-            // player one full planet-step (~1 m) ahead of the cabin for a
-            // frame — and adding the prediction to the seat (pt-39) also
-            // shifted the foot-trimmed height by v·dt's vertical component,
-            // burying/hovering the capsule ±30 cm at random pad angles.
-            // The handover frame is the PRE-step one, everywhere: seat,
-            // foot trim, colliders, interpolation seed. From here VELOCITY
-            // (= bodyVel, set below) carries the body forward in lockstep
-            // with the floor's sweep — same physics, flush render.
             pc.transform.SetParent(null, true);
             pc.transform.SetPositionAndRotation(seat, seatRot);
             rb.isKinematic = false;
             rb.interpolation = s_playerInterpolation;
-            // Unconditional: the rb deliberately differs from the seat by
-            // exactly the one-step lead it rode with — pull it back to the
-            // pre-step pose the render and colliders agree on.
-            rb.position = seat;
+            rb.position = seat;    // interp seeds at the drawn pose = flush
             rb.rotation = seatRot;
             rb.angularVelocity = Vector3.zero;
             pc.SetVelocity(bodyVel);               // inherit the new planet's orbit
