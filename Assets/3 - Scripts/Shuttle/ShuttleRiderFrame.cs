@@ -480,9 +480,19 @@ public class RiderReleaseBleed : MonoBehaviour
         {
             float t = Time.time - s_active._t0;
             s_marks.Add("t+" + (t * 1000f).ToString("0") + "ms " + label);
-            if (label == "release") s_active._releaseT = t;
+            if (label == "release")
+            {
+                s_active._releaseT = t;
+                // Planet-relative seat, so orbital motion never counts as walking.
+                if (s_active._pc != null && s_active._body != null)
+                    s_active._seatPos = s_active._pc.transform.position - s_active._body.transform.position;
+                s_active._walkMarked = 0;
+            }
         }
     }
+
+    Vector3 _seatPos;
+    int _walkMarked;
 
     void LateUpdate()
     {
@@ -549,6 +559,16 @@ public class RiderReleaseBleed : MonoBehaviour
                 Vector3 playerLag = _pc.transform.position - _pc.Rigidbody.position;
                 lagCm = (planetLag - playerLag).magnitude * 100f;
             }
+            // Walk-out breadcrumbs: does the spike track how far the player
+            // has walked from the seat (streamers/cell systems), or the clock?
+            if (_releaseT >= 0f && _walkMarked < 3 && _pc != null && _body != null)
+            {
+                float walked = ((_pc.transform.position - _body.transform.position) - _seatPos).magnitude;
+                if (_walkMarked == 0 && walked > 1.5f) { _walkMarked = 1; Mark("walked-1.5m"); }
+                else if (_walkMarked == 1 && walked > 5f) { _walkMarked = 2; Mark("walked-5m"); }
+                else if (_walkMarked == 2 && walked > 10f) { _walkMarked = 3; Mark("walked-10m"); }
+            }
+
             int gcNow = System.GC.CollectionCount(0);
             int gcD = gcNow - _lastGcCount;
             _lastGcCount = gcNow;

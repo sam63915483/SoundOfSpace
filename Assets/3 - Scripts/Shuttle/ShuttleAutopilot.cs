@@ -698,7 +698,7 @@ public class ShuttleAutopilot : MonoBehaviour
                     // interpolation-warmup bridge at the release (all builds)
                     // and the frame recorder (editor/cheats, reports 3 s
                     // after the window closes).
-                    RiderReleaseBleed.BeginWindow(_healPlayer, _body, 6f);
+                    RiderReleaseBleed.BeginWindow(_healPlayer, _body, 8f);
                     // Start the up re-orientation NOW (playtest 14): waiting
                     // for the physical release made the player visibly rotate
                     // upright seconds AFTER the door opened. Blending during

@@ -98,6 +98,7 @@ public class ShuttleLandingCamera : MonoBehaviour
 
     void OnDestroy()
     {
+        RiderReleaseBleed.Mark("landing-cam-destroyed");
         if (_rt != null) { _rt.Release(); Destroy(_rt); _rt = null; }
     }
 }
