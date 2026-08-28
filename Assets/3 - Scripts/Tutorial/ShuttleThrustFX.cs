@@ -417,7 +417,11 @@ public class ShuttleThrustFX : MonoBehaviour
         var l = go.AddComponent<Light>();
         l.type = type;
         l.intensity = 0f;
-        l.shadows = LightShadows.None;
+        // Hard shadows (2026-08-28, Sam: thruster fire turned the CABIN walls
+        // orange): shadowless lights ignore geometry, so the plume lights lit
+        // the interior straight through the hull. With shadows the hull
+        // occludes them; descent-only cost.
+        l.shadows = LightShadows.Hard;
         return l;
     }
 

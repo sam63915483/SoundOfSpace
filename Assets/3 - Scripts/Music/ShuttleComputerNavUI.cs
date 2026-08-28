@@ -41,6 +41,9 @@ public partial class ShuttleComputerUI
     // status pane
     TextMeshProUGUI _navStatusBig, _navStatusSub;
     Image _navProgressFill;
+    RawImage _navEnRouteFeed;      // live cam behind the EN ROUTE status
+    Image _navEnRouteScrim;
+    TextMeshProUGUI _navCamHint;
 
     // hover pane
     RawImage _navFeed;
@@ -129,6 +132,24 @@ public partial class ShuttleComputerUI
         Stretch(pane, 0, 0, 34, 0);
         _navStatusPane = pane.gameObject;
 
+        // En-route camera feed (2026-08-28, Sam's ask): the whole status pane
+        // background is a live view — top cam showing what we fly at, left
+        // click flips to the bottom cam looking back. Built FIRST so every
+        // label renders on top; a dark scrim keeps the text readable over a
+        // bright sky.
+        var feedGo = new GameObject("EnRouteFeed", typeof(RectTransform));
+        feedGo.transform.SetParent(pane, false);
+        _navEnRouteFeed = feedGo.AddComponent<RawImage>();
+        _navEnRouteFeed.raycastTarget = false;
+        _navEnRouteFeed.color = Color.white;
+        Stretch((RectTransform)feedGo.transform, 8, 8, 8, 8);
+        feedGo.SetActive(false);
+
+        _navEnRouteScrim = MakePanel(pane, "EnRouteScrim", new Color(0f, 0f, 0f, 0.38f));
+        _navEnRouteScrim.raycastTarget = false;
+        Stretch(_navEnRouteScrim.rectTransform, 8, 8, 8, 8);
+        _navEnRouteScrim.gameObject.SetActive(false);
+
         _navStatusBig = MakeText(pane, "Big", "", 64, Accent, TextAlignmentOptions.Center);
         var brt = _navStatusBig.rectTransform;
         brt.anchorMin = new Vector2(0, 0.5f); brt.anchorMax = new Vector2(1, 0.5f);
@@ -184,6 +205,16 @@ public partial class ShuttleComputerUI
         skb.colors = skc;
         skb.onClick.AddListener(() => { ShuttleAutopilot.Instance?.SkipCountdown(); });
         skip.gameObject.SetActive(false);
+
+        // Cam-switch hint, en-route only.
+        _navCamHint = MakeText(pane, "CamHint", "LEFT CLICK — SWITCH CAM", 16, InkDim, TextAlignmentOptions.Center);
+        var chrt = _navCamHint.rectTransform;
+        chrt.anchorMin = new Vector2(0, 0); chrt.anchorMax = new Vector2(1, 0);
+        chrt.pivot = new Vector2(0.5f, 0);
+        chrt.sizeDelta = new Vector2(0, 24);
+        chrt.anchoredPosition = new Vector2(0, 22);
+        _navCamHint.characterSpacing = 16;
+        _navCamHint.gameObject.SetActive(false);
     }
 
     void BuildNavHoverPane(RectTransform parent)
@@ -299,6 +330,7 @@ public partial class ShuttleComputerUI
                 SetProgress(1f - pilot.CountdownRemaining / ShuttleAutopilot.CountdownSeconds);
                 if (_navSkipBg != null && !_navSkipBg.gameObject.activeSelf && !ShuttleAutopilot.ClientDriven)
                     _navSkipBg.gameObject.SetActive(true);
+                HideEnRouteFeed();
                 break;
             }
 
@@ -306,10 +338,12 @@ public partial class ShuttleComputerUI
                 SetTextIfChanged(_navStatusBig, "LIFTOFF");
                 SetTextIfChanged(_navStatusSub, pilot.TargetBody != null ? "DESTINATION: " + pilot.TargetBody.bodyName : "");
                 SetProgress(0f);
+                DriveEnRouteFeed(pilot);
                 break;
 
             case ShuttleAutopilot.Phase.Transit:
             {
+                DriveEnRouteFeed(pilot);
                 SetTextIfChanged(_navStatusBig, pilot.TargetBody != null ? "EN ROUTE TO " + pilot.TargetBody.bodyName.ToUpperInvariant() : "EN ROUTE");
                 // Rounded to 5 m/s so the readout counts up cleanly instead of
                 // flickering every frame — the build-up/brake is the point.
@@ -357,6 +391,36 @@ public partial class ShuttleComputerUI
                 break;
             }
         }
+    }
+
+    // En-route live feed (2026-08-28, Sam's ask): the status pane background
+    // is the transit camera — top cam by default (what you're flying at),
+    // left click flips to the bottom cam looking back.
+    void DriveEnRouteFeed(ShuttleAutopilot pilot)
+    {
+        var cam = pilot.TransitCamera;
+        bool show = cam != null;
+        if (_navEnRouteFeed == null) return;
+        if (_navEnRouteFeed.gameObject.activeSelf != show)
+        {
+            _navEnRouteFeed.gameObject.SetActive(show);
+            _navEnRouteScrim.gameObject.SetActive(show);
+            _navCamHint.gameObject.SetActive(show);
+        }
+        if (!show) return;
+        if (_navEnRouteFeed.texture != cam.Texture) _navEnRouteFeed.texture = cam.Texture;
+        // Only while THIS player has the terminal open — mirror viewers on
+        // the cockpit screen just watch whatever the pilot picked.
+        if (ShuttleComputerUI.IsOpen && Input.GetMouseButtonDown(0))
+            pilot.ToggleTransitFeed();
+    }
+
+    void HideEnRouteFeed()
+    {
+        if (_navEnRouteFeed == null || !_navEnRouteFeed.gameObject.activeSelf) return;
+        _navEnRouteFeed.gameObject.SetActive(false);
+        _navEnRouteScrim.gameObject.SetActive(false);
+        _navCamHint.gameObject.SetActive(false);
     }
 
     // Hover steering — only while THIS player has the NAV app open fullscreen

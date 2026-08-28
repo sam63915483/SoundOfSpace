@@ -14,6 +14,14 @@ public class ShuttleLandingCamera : MonoBehaviour
 {
     const float FeedFps = 15f;
 
+    // Feed direction (2026-08-28, Sam's en-route screen): Down is the classic
+    // landing view; Up mounts the camera above the dome looking along the
+    // thrust axis — during a burn that is the direction of travel, so the
+    // en-route screen shows what you are flying at. "Bottom camera looking
+    // back" is exactly Down.
+    public enum FeedMode { Down, Up }
+    public FeedMode Mode { get; private set; } = FeedMode.Down;
+
     Camera _cam;
     RenderTexture _rt;
     Transform _shuttle;
@@ -23,12 +31,25 @@ public class ShuttleLandingCamera : MonoBehaviour
 
     public static ShuttleLandingCamera Create(ShuttleAutopilot pilot)
     {
-        var go = new GameObject("TravelLandingCam");
+        return Create(pilot, FeedMode.Down);
+    }
+
+    public static ShuttleLandingCamera Create(ShuttleAutopilot pilot, FeedMode mode)
+    {
+        var go = new GameObject(mode == FeedMode.Up ? "TravelTransitCam" : "TravelLandingCam");
         go.transform.SetParent(pilot.transform, false);
-        go.transform.localPosition = Vector3.down * 0.5f;
         var feed = go.AddComponent<ShuttleLandingCamera>();
         feed.Build(pilot.transform);
+        feed.SetMode(mode);
         return feed;
+    }
+
+    public void SetMode(FeedMode mode)
+    {
+        Mode = mode;
+        // Up: above the dome so the near plane clears the hull; Down: just
+        // under the belly (the original landing-cam mount).
+        transform.localPosition = mode == FeedMode.Up ? Vector3.up * 7f : Vector3.down * 0.5f;
     }
 
     void Build(Transform shuttle)
@@ -50,6 +71,12 @@ public class ShuttleLandingCamera : MonoBehaviour
             CopyCamEffect(mainCam, "OceanMaskRenderer");
             CopyCamEffect(mainCam, "CustomPostProcessing");
         }
+
+        // Inherit the flight horizon: the main camera's far plane was raised
+        // for transit (planets stay visible from 15 km out) — the en-route
+        // Up feed needs the same reach or the destination pops in late.
+        if (mainCam != null && mainCam.farClipPlane > _cam.farClipPlane)
+            _cam.farClipPlane = mainCam.farClipPlane;
 
         _rt = new RenderTexture(512, 384, 16);
         _cam.targetTexture = _rt;
@@ -74,7 +101,9 @@ public class ShuttleLandingCamera : MonoBehaviour
     void LateUpdate()
     {
         if (_cam == null || _shuttle == null) return;
-        transform.rotation = Quaternion.LookRotation(-_shuttle.up, _shuttle.forward);
+        transform.rotation = Mode == FeedMode.Up
+            ? Quaternion.LookRotation(_shuttle.up, -_shuttle.forward)
+            : Quaternion.LookRotation(-_shuttle.up, _shuttle.forward);
         bool due = Time.unscaledTime >= _nextFrameAt;
         if (due) _nextFrameAt = Time.unscaledTime + 1f / FeedFps;
         _cam.enabled = due;

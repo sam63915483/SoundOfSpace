@@ -183,6 +183,7 @@ public class ShuttleAutopilot : MonoBehaviour
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
     ShuttleLandingCamera _landingCamera;
+    ShuttleLandingCamera _transitCamera;   // en-route feed (2026-08-28, Sam's ask)
     ShuttleExitDoor _door;
     LandingLamp _lamp;
     Coroutine _upBlendOut;
@@ -221,6 +222,16 @@ public class ShuttleAutopilot : MonoBehaviour
             _lamp.SetPhase(_phase, valid);
     }
     public ShuttleLandingCamera LandingCamera => _landingCamera;
+    public ShuttleLandingCamera TransitCamera => _transitCamera;
+
+    /// En-route screen cam switch (left click): top cam looking where you fly
+    /// vs bottom cam looking back.
+    public void ToggleTransitFeed()
+    {
+        if (_transitCamera == null) return;
+        _transitCamera.SetMode(_transitCamera.Mode == ShuttleLandingCamera.FeedMode.Up
+            ? ShuttleLandingCamera.FeedMode.Down : ShuttleLandingCamera.FeedMode.Up);
+    }
 
     /// True in any phase where the shuttle is off the ground (riders captured,
     /// door sealed, pod save unavailable).
@@ -693,6 +704,10 @@ public class ShuttleAutopilot : MonoBehaviour
                 // The cockpit monitor must be able to light up during the
                 // flight even if the player never opened the terminal.
                 ShuttleComputerUI.EnsureBuilt();
+                // En-route feed (2026-08-28): top cam looking where we fly;
+                // the NAV screen draws it behind the EN ROUTE status.
+                if (_transitCamera == null)
+                    _transitCamera = ShuttleLandingCamera.Create(this, ShuttleLandingCamera.FeedMode.Up);
                 // Origin rebases cost a 1-2 frame global stutter (the
                 // interpolation strip/restore machinery), and at cruise the
                 // rider crosses the 1000 m threshold every couple of seconds —
@@ -750,6 +765,8 @@ public class ShuttleAutopilot : MonoBehaviour
                 if (_fx != null) { _fx.SetEngine(false); _fx.SetSpurts(true); }
                 if (_sensor != null) _sensor.SetActive(true);
                 if (_landingCamera == null) _landingCamera = ShuttleLandingCamera.Create(this);
+                // The hover feed takes the screen over; free the en-route cam.
+                if (_transitCamera != null) { _transitCamera.TeardownDeferred(2f); _transitCamera = null; }
                 break;
 
             case Phase.Landing:
@@ -808,6 +825,7 @@ public class ShuttleAutopilot : MonoBehaviour
                 // + releasing its RenderTexture ON the touchdown frame stacked
                 // straight onto the door-open moment. Disable now, free later.
                 if (_landingCamera != null) { _landingCamera.TeardownDeferred(6f); _landingCamera = null; }
+                if (_transitCamera != null) { _transitCamera.TeardownDeferred(6f); _transitCamera = null; }
                 // NOTE: neither the rebase threshold nor farClipPlane is ever
                 // restored (playtests 17/19): every "restore on landing" was
                 // really scheduling a visible catch-up event into the
