@@ -682,8 +682,10 @@ public class ShuttleAutopilot : MonoBehaviour
                     // if a new launch starts first — riders just keep riding.
                     _releaseRidersAt = Time.fixedTime + ReleaseSettleSeconds;
                     if (_door != null) _door.ReopenAfterFlight();
-                    // Passive frame recorder over the whole handover window
-                    // (editor/cheats only; reports 3 s AFTER it closes).
+                    // Handover window watcher: carries the camera-side
+                    // interpolation-warmup bridge at the release (all builds)
+                    // and the frame recorder (editor/cheats, reports 3 s
+                    // after the window closes).
                     RiderReleaseBleed.BeginWindow(_healPlayer, _body, 6f);
                     // Start the up re-orientation NOW (playtest 14): waiting
                     // for the physical release made the player visibly rotate

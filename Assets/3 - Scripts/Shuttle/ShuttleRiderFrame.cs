@@ -412,7 +412,7 @@ public static class ShuttleRiderFrame
 [DefaultExecutionOrder(300)]   // last in LateUpdate — sees the final camera pose
 public class RiderReleaseBleed : MonoBehaviour
 {
-    struct Sample { public float t, dtMs, camStep, lagCm; }
+    struct Sample { public float t, dtMs, camStep, lagCm, corrCm; }
 
     PlayerController _pc;
     CelestialBody _body;
@@ -422,6 +422,7 @@ public class RiderReleaseBleed : MonoBehaviour
     Vector3 _lastCamPos;
     bool _hasLastCam;
     float _reportAt = -1f;
+    float _releaseT = -1f;   // window-relative time of the release mark
     readonly List<Sample> _samples = new List<Sample>(512);
     static readonly List<string> s_marks = new List<string>(16);
     static RiderReleaseBleed s_active;
@@ -429,7 +430,6 @@ public class RiderReleaseBleed : MonoBehaviour
     public static void BeginWindow(PlayerController pc, CelestialBody body, float seconds)
     {
         if (pc == null) return;
-        if (!Application.isEditor && !Universe.cheatsEnabled) return;
         var b = pc.GetComponent<RiderReleaseBleed>();
         if (b == null) b = pc.gameObject.AddComponent<RiderReleaseBleed>();
         b._pc = pc;
@@ -440,6 +440,7 @@ public class RiderReleaseBleed : MonoBehaviour
         b._lastRealtime = Time.realtimeSinceStartup;
         b._hasLastCam = false;
         b._reportAt = -1f;
+        b._releaseT = -1f;
         b._samples.Clear();
         s_marks.Clear();
         s_active = b;
@@ -450,7 +451,11 @@ public class RiderReleaseBleed : MonoBehaviour
     public static void Mark(string label)
     {
         if (s_active != null && s_active.enabled && s_active._reportAt < 0f)
-            s_marks.Add("t+" + ((Time.time - s_active._t0) * 1000f).ToString("0") + "ms " + label);
+        {
+            float t = Time.time - s_active._t0;
+            s_marks.Add("t+" + (t * 1000f).ToString("0") + "ms " + label);
+            if (label == "release") s_active._releaseT = t;
+        }
     }
 
     void LateUpdate()
@@ -464,25 +469,59 @@ public class RiderReleaseBleed : MonoBehaviour
         float dtMs = (Time.realtimeSinceStartup - _lastRealtime) * 1000f;
         _lastRealtime = Time.realtimeSinceStartup;
 
-        float camStep = 0f;
-        if (_cam != null)
+        // ── THE FIX (playtest 21) — camera-side warmup bridge ────────────────
+        // At the release, the player's render source switches from the
+        // shuttle hierarchy (drawn in the planet's interpolated frame) to
+        // their own rigidbody interpolation — which has NO history for the
+        // first frame or two, so Unity draws the player at the RAW physics
+        // pose while the ground is still drawn ~v·dt behind it: an apparent
+        // forward-and-back step of up to a metre-plus against the cabin,
+        // like clockwork, scaling with orbital speed. The player's correct
+        // ground-consistent render pose is always rb.position + the ground's
+        // own render lag — so for a short window after release, nudge the
+        // CAMERA (order 300, after CameraTransformFX re-set it at 100 — so
+        // this can never accumulate) by the measured difference. The term is
+        // identically zero once interpolation is warm and in sync, touches
+        // no rigidbody or player transform (the playtest-18 trap), and runs
+        // in every build.
+        if (_releaseT >= 0f && since - _releaseT < 0.6f && _cam != null
+            && _pc != null && _pc.Rigidbody != null && _body != null && !PlayerController.RiderMode)
         {
-            if (_hasLastCam) camStep = (_cam.position - _lastCamPos).magnitude;
-            _lastCamPos = _cam.position;
-            _hasLastCam = true;
+            Vector3 groundLag = _body.transform.position - _body.Position;
+            Vector3 corr = (_pc.Rigidbody.position + groundLag) - _pc.transform.position;
+            if (corr.sqrMagnitude < 16f)   // rebase/teleport guard
+            {
+                _cam.position += corr;
+                _lastCorrCm = corr.magnitude * 100f;
+            }
         }
-        float lagCm = 0f;
-        if (_body != null && _pc != null && _pc.Rigidbody != null)
+        else _lastCorrCm = 0f;
+
+        bool probe = Application.isEditor || Universe.cheatsEnabled;
+        if (probe)
         {
-            Vector3 planetLag = _body.transform.position - _body.Position;
-            Vector3 playerLag = _pc.transform.position - _pc.Rigidbody.position;
-            lagCm = (planetLag - playerLag).magnitude * 100f;
+            float camStep = 0f;
+            if (_cam != null)
+            {
+                if (_hasLastCam) camStep = (_cam.position - _lastCamPos).magnitude;
+                _lastCamPos = _cam.position;
+                _hasLastCam = true;
+            }
+            float lagCm = 0f;
+            if (_body != null && _pc != null && _pc.Rigidbody != null)
+            {
+                Vector3 planetLag = _body.transform.position - _body.Position;
+                Vector3 playerLag = _pc.transform.position - _pc.Rigidbody.position;
+                lagCm = (planetLag - playerLag).magnitude * 100f;
+            }
+            if (_samples.Count < 500)
+                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm });
         }
-        if (_samples.Count < 500)
-            _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm });
 
         if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the sensitive window
     }
+
+    float _lastCorrCm;
 
     void Report()
     {
@@ -509,6 +548,16 @@ public class RiderReleaseBleed : MonoBehaviour
         AppendAround(sb, "frames around the camera pop:", worstCamI, avgPerMs);
         if (Mathf.Abs(worstDtI - worstCamI) > 8)
             AppendAround(sb, "frames around the slow frame:", worstDtI, avgPerMs);
+        // ALWAYS show the release moment (playtest 20 lesson: the felt pop
+        // hid outside the two "worst" windows and never got printed).
+        if (_releaseT >= 0f)
+        {
+            int relI = 1;
+            for (int i = 1; i < _samples.Count; i++)
+                if (Mathf.Abs(_samples[i].t - _releaseT) < Mathf.Abs(_samples[relI].t - _releaseT)) relI = i;
+            if (Mathf.Abs(relI - worstCamI) > 8 && Mathf.Abs(relI - worstDtI) > 8)
+                AppendAround(sb, "frames around the RELEASE:", relI, avgPerMs);
+        }
         Debug.Log(sb.ToString());
     }
 
@@ -523,7 +572,8 @@ public class RiderReleaseBleed : MonoBehaviour
               .Append("ms  dt ").Append(s.dtMs.ToString("00.0"))
               .Append("ms  cam ").Append((s.camStep * 100f).ToString("000.0"))
               .Append("cm (expected ").Append((avgPerMs * s.dtMs * 100f).ToString("000.0"))
-              .Append(")  lag ").Append(s.lagCm.ToString("0.0")).AppendLine("cm");
+              .Append(")  lag ").Append(s.lagCm.ToString("0.0"))
+              .Append("cm  corr ").Append(s.corrCm.ToString("0.0")).AppendLine("cm");
         }
     }
 }
