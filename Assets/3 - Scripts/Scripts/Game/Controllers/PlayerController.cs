@@ -886,6 +886,16 @@ public class PlayerController : GravityObject
 	// applied, to correlate drift with mouse look. Whichever counter tracks
 	// the ply drift slope names the writer.
 	[System.NonSerialized] public static float DbgRiderAlignCm, DbgRiderWalkCm, DbgRiderMoveCm, DbgRiderYawDeg;
+	// NET-vector accumulators (watch v4): the magnitude counters above are
+	// unusable at 15 km from origin — every world↔local conversion carries
+	// ~1 mm of float noise per tick, which integrates to a fat fake slope.
+	// Net vectors let noise cancel (random walk) while real directed drift
+	// survives. NetTick = Σ(tick record − restored base): what the rider
+	// pipeline itself wrote. NetOut = Σ(pre-restore local − last record):
+	// what external writers did between ticks (discarded by the restore).
+	[System.NonSerialized] public static Vector3 DbgRiderNetTick, DbgRiderNetOut;
+	/// The tick-authoritative pinned local pose, for the watch's rec channel.
+	public Vector3 RiderRecordLocalPos => _riderCurrLocalPos;
 
 	// Playtest telemetry, read by ShuttleAutopilot's cheats-only overlay so a
 	// "can't walk" report names its gate instead of needing a repro session.
@@ -1969,6 +1979,9 @@ public class PlayerController : GravityObject
 		// fixed-step truth.
 		if (_riderSmoothInit)
 		{
+			// Watch v4: net external displacement since our last write — what
+			// the restore below is about to discard.
+			DbgRiderNetOut += transform.localPosition - _riderCurrLocalPos;
 			transform.localPosition = _riderCurrLocalPos;
 			// Rotation restore: whatever tilted the body since last tick is
 			// overwritten here, so the up-alignment below sees an already-
@@ -2197,6 +2210,9 @@ public class PlayerController : GravityObject
 		_riderPrevLocalRot = _riderSmoothInit ? _riderCurrLocalRot : transform.localRotation;
 		_riderCurrLocalRot = transform.localRotation;
 		_riderSmoothInit = true;
+		// Watch v4: net displacement this tick's pipeline wrote (record minus
+		// the restored base it started from).
+		DbgRiderNetTick += _riderCurrLocalPos - dbgLp0;
 		_wasGroundedPhys = isGrounded;
 
 		DbgRiderGrounded = isGrounded;
