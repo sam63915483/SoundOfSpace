@@ -402,26 +402,29 @@ public static class ShuttleRiderFrame
                 }
             }
 
-            // Post-step prediction — the SAME velocity·dt the rider rb
-            // tracking applies every tick, added after the (pre-step-frame)
-            // foot trim. This is what makes rb.position and `seat` agree.
-            seat += bodyVel * Time.fixedDeltaTime;
-
+            // ⚠️ FRAME DISCIPLINE AT THE HANDOVER (MegaTracker log 13, the
+            // 82 cm one-frame flash): the rider rb rides PRE-POSITIONED at
+            // the planet's post-step pose (needed for contacts while its
+            // velocity is zeroed). But a body crossing the release must NOT
+            // carry that lead: the rendered world sits at the CURRENT step,
+            // so an interpolation seed at the post-step pose draws the
+            // player one full planet-step (~1 m) ahead of the cabin for a
+            // frame — and adding the prediction to the seat (pt-39) also
+            // shifted the foot-trimmed height by v·dt's vertical component,
+            // burying/hovering the capsule ±30 cm at random pad angles.
+            // The handover frame is the PRE-step one, everywhere: seat,
+            // foot trim, colliders, interpolation seed. From here VELOCITY
+            // (= bodyVel, set below) carries the body forward in lockstep
+            // with the floor's sweep — same physics, flush render.
             pc.transform.SetParent(null, true);
             pc.transform.SetPositionAndRotation(seat, seatRot);
             rb.isKinematic = false;
             rb.interpolation = s_playerInterpolation;
-            // The rb has tracked the PHYSICS-frame pose for the whole ride
-            // (RiderFixedTick converts through the shuttle's render→physics
-            // offset — playtest 28), so the seat normally matches to the
-            // millimetre and writing it again would only teleport-reset the
-            // interpolation for nothing. Seat only a genuinely displaced rb
-            // (edge paths: heals, reseats).
-            if ((rb.position - seat).sqrMagnitude > 0.0025f)
-            {
-                rb.position = seat;
-                rb.rotation = seatRot;
-            }
+            // Unconditional: the rb deliberately differs from the seat by
+            // exactly the one-step lead it rode with — pull it back to the
+            // pre-step pose the render and colliders agree on.
+            rb.position = seat;
+            rb.rotation = seatRot;
             rb.angularVelocity = Vector3.zero;
             pc.SetVelocity(bodyVel);               // inherit the new planet's orbit
             // Hand the controller the LANDING planet before physics resumes —
