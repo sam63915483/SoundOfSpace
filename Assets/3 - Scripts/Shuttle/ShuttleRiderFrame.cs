@@ -366,8 +366,17 @@ public static class ShuttleRiderFrame
             pc.transform.SetPositionAndRotation(seat, seatRot);
             rb.isKinematic = false;
             rb.interpolation = s_playerInterpolation;
-            rb.position = seat;
-            rb.rotation = seatRot;
+            // The rb has tracked the PHYSICS-frame pose for the whole ride
+            // (RiderFixedTick converts through the shuttle's render→physics
+            // offset — playtest 28), so the seat normally matches to the
+            // millimetre and writing it again would only teleport-reset the
+            // interpolation for nothing. Seat only a genuinely displaced rb
+            // (edge paths: heals, reseats).
+            if ((rb.position - seat).sqrMagnitude > 0.0025f)
+            {
+                rb.position = seat;
+                rb.rotation = seatRot;
+            }
             rb.angularVelocity = Vector3.zero;
             pc.SetVelocity(bodyVel);               // inherit the new planet's orbit
             // Hand the controller the LANDING planet before physics resumes —

@@ -2033,7 +2033,26 @@ public class PlayerController : GravityObject
 		}
 
 		transform.position = pos;
-		rb.position = pos;              // keep the caged rb in step for next frame's queries
+		// ── THE landing-pop root cause (playtest 28, probe log 5) ────────────
+		// `pos` is composed through the parent chain's RENDER pose — the
+		// planet transform is interpolated, up to a whole fixed step of
+		// orbital motion behind the physics pose. Writing it raw into
+		// rb.position parked the physics capsule ~1.4 m away from the
+		// physics-frame cabin (straight UP on pads facing the orbit
+		// direction): no real floor contacts all ride, and the release's
+		// corrective seat then teleported it 1.38 m onto the floor in one
+		// step — the dip-and-recover pop the probe finally caught in the
+		// altitude columns. Convert through the shuttle's render→physics
+		// offset so the rb tracks the TRUE physics pose and the release has
+		// nothing left to correct.
+		Vector3 rbPos = pos;
+		var apilot = ShuttleAutopilot.Instance;
+		if (apilot != null && RiderPlatform == apilot.transform)
+		{
+			apilot.GetWorldPose(out Vector3 shuttlePhys, out _);
+			rbPos = pos + (shuttlePhys - apilot.transform.position);
+		}
+		rb.position = rbPos;
 		rb.rotation = transform.rotation;
 		// Dynamic-cage window (shuttle landing prewarm): the rb may already
 		// be DYNAMIC during the final descent — its planet-mesh contact pairs
