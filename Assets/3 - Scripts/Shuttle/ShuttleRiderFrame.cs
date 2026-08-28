@@ -359,8 +359,25 @@ public static class ShuttleRiderFrame
             Vector3 seatLocal = pc.transform.localPosition;
             Quaternion seatLocalRot = pc.transform.localRotation;
             pilot.GetWorldPose(out Vector3 shuttleW, out Quaternion shuttleR);
-            Vector3 seat = shuttleW + shuttleR * seatLocal;
-            Quaternion seatRot = shuttleR * seatLocalRot;
+            Vector3 seatFresh = shuttleW + shuttleR * seatLocal;
+            // Seat AT THE RIGIDBODY, not at a freshly computed pose (playtest
+            // 29, probe log 6): the release runs at execution order -50 —
+            // BEFORE this step's planet motion applies — so a fresh compose is
+            // one physics step (~2.7 m of orbital motion) NEWER than the pose
+            // the rb legitimately carries, and seating it there teleported the
+            // capsule ~1 m (the -100cm rbAlt drop, the last visible piece of
+            // the landing pop). The rb has tracked the physics-frame cabin
+            // spot all ride (RiderFixedTick) at the same vintage as its own
+            // contacts; SetVelocity(bodyVel) below carries it forward in step
+            // with the planet from here. The fresh compose survives only as a
+            // sanity net for a genuinely displaced rb (heals, follower warps).
+            Vector3 seat = rb.position;
+            Quaternion seatRot = rb.rotation;
+            if ((seat - seatFresh).sqrMagnitude > 25f)
+            {
+                seat = seatFresh;
+                seatRot = shuttleR * seatLocalRot;
+            }
 
             pc.transform.SetParent(null, true);
             pc.transform.SetPositionAndRotation(seat, seatRot);
