@@ -91,6 +91,11 @@ public class ShuttleAutopilot : MonoBehaviour
     Vector3 _arriveAnchorLocal;       // hover point over the arrival site, in target-body local
     float _transitDuration;
     bool _reparented;
+    float _upAlignVel;                // deg/s state for the transit up alignment (SmoothDamp)
+    // Transit obstacle avoidance (playtest 15) — a smooth-damped DELTA of
+    // world positions, so origin rebases cancel out of it.
+    Vector3 _avoidOffset;
+    Vector3 _avoidOffsetVel;
 
     // Parked pose memory — what the save system captures, and what a mid-flight
     // save falls back to (you can't reach the pod mid-flight, but belt+braces).
@@ -228,9 +233,9 @@ public class ShuttleAutopilot : MonoBehaviour
         _prevLocalPos = _localPos;
         _prevLocalRot = _localRot;
         RememberParkedPose();
-        MeasureGearHeight();
 
         _door = GetComponentInChildren<ShuttleExitDoor>(true);
+        MeasureGearHeight();   // after _door — it excludes the door's colliders
         _sensor = gameObject.GetComponent<ShuttleLandingSensor>();
         if (_sensor == null) _sensor = gameObject.AddComponent<ShuttleLandingSensor>();
         _smoother = gameObject.GetComponent<ShuttleRenderSmoother>();
@@ -251,16 +256,62 @@ public class ShuttleAutopilot : MonoBehaviour
         _parkedLocalRot = _localRot;
     }
 
-    // Gear height = distance from the shuttle origin to the ground under it at
-    // the parked pose. Used to seat the landing so the pads (not the origin)
-    // touch down. Falls back to 2.5 m over a hole.
+    // Gear height = distance from the shuttle origin to the pads' contact
+    // plane. Two independent estimates, take the LOWER:
+    //  - own collider geometry (lowest non-trigger collider point in
+    //    shuttle-local space) — pose-independent, but an unexpected
+    //    low-hanging collider would inflate it;
+    //  - a downward raycast at the current pose — exact when sitting flush,
+    //    inflated by any float in the pose it's measured at.
+    // The old raycast-only version re-ran inside ApplyParkedPose, at a pose
+    // that itself carries the previous landing's bump clearance (plus a slope
+    // tilt vs the radial ray), so a save/load inflated the gear height and
+    // every later landing floated by that much — playtest 15's "sometimes a
+    // foot or two off the ground". min() is immune to either failure mode.
     void MeasureGearHeight()
     {
-        if (_body == null) return;
-        Vector3 worldPos = FrameWorldPos(_body, _localPos);
-        Vector3 up = (worldPos - _body.Position).normalized;
-        if (GroundRay(worldPos + up * 2f, -up, 30f, out RaycastHit hit))
-            _gearHeight = hit.distance - 2f;
+        float rayGear = float.MaxValue;
+        if (_body != null)
+        {
+            Vector3 worldPos = FrameWorldPos(_body, _localPos);
+            Vector3 up = (worldPos - _body.Position).normalized;
+            if (GroundRay(worldPos + up * 2f, -up, 30f, out RaycastHit hit))
+                rayGear = hit.distance - 2f;
+        }
+
+        float minLocalY = float.MaxValue;
+        foreach (var c in GetComponentsInChildren<Collider>())
+        {
+            if (c == null || !c.enabled || c.isTrigger) continue;
+            // The exit door folds down past the gear when open — never the
+            // contact point.
+            if (_door != null && c.transform.IsChildOf(_door.transform)) continue;
+            Bounds b;
+            if (c is BoxCollider box) b = new Bounds(box.center, box.size);
+            else if (c is SphereCollider sph) b = new Bounds(sph.center, Vector3.one * (sph.radius * 2f));
+            else if (c is CapsuleCollider cap)
+            {
+                Vector3 size = Vector3.one * (cap.radius * 2f);
+                float h = Mathf.Max(cap.height, cap.radius * 2f);
+                if (cap.direction == 0) size.x = h;
+                else if (cap.direction == 1) size.y = h;
+                else size.z = h;
+                b = new Bounds(cap.center, size);
+            }
+            else if (c is MeshCollider mesh && mesh.sharedMesh != null) b = mesh.sharedMesh.bounds;
+            else continue;
+            for (int ci = 0; ci < 8; ci++)
+            {
+                Vector3 corner = b.center + Vector3.Scale(b.extents,
+                    new Vector3((ci & 1) == 0 ? -1f : 1f, (ci & 2) == 0 ? -1f : 1f, (ci & 4) == 0 ? -1f : 1f));
+                float y = transform.InverseTransformPoint(c.transform.TransformPoint(corner)).y;
+                if (y < minLocalY) minLocalY = y;
+            }
+        }
+        float colliderGear = minLocalY != float.MaxValue ? -minLocalY : float.MaxValue;
+
+        float gear = Mathf.Min(rayGear, colliderGear);
+        if (gear != float.MaxValue) _gearHeight = gear;
         _gearHeight = Mathf.Clamp(_gearHeight, 0.5f, 10f);
     }
 
@@ -513,6 +564,9 @@ public class ShuttleAutopilot : MonoBehaviour
 
             case Phase.Transit:
                 _reparented = false;
+                _upAlignVel = 0f;
+                _avoidOffset = Vector3.zero;
+                _avoidOffsetVel = Vector3.zero;
                 float dist = Vector3.Distance(FrameWorldPos(_departBody, _departAnchorLocal),
                                               FrameWorldPos(_targetBody, _arriveAnchorLocal));
                 float peak = Mathf.Clamp(dist / 10f, TransitPeakMin, TransitPeakMax);
@@ -749,7 +803,7 @@ public class ShuttleAutopilot : MonoBehaviour
         // orbiting bodies and origin rebases (handoff §4 — never cache world).
         Vector3 aWorld = FrameWorldPos(_departBody, _departAnchorLocal);
         Vector3 bWorld = FrameWorldPos(_targetBody, _arriveAnchorLocal);
-        Vector3 posW = Vector3.Lerp(aWorld, bWorld, ease);
+        Vector3 posW = ApplyTransitAvoidance(Vector3.Lerp(aWorld, bWorld, ease), aWorld, bWorld, ease);
 
         Vector3 upA = (aWorld - _departBody.Position).normalized;
         Vector3 upB = (bWorld - _targetBody.Position).normalized;
@@ -773,19 +827,85 @@ public class ShuttleAutopilot : MonoBehaviour
         }
 
         Quaternion curW = FrameWorldRot(_body, _localRot);
-        // Rate-limited route alignment (playtest 13): the shuttle leaves a
-        // TILTED pad now (surface-conforming landings), and a full
-        // FromToRotation snapped the tilt away on the first transit step —
-        // the visible hitch+rotate right after leaving Icey. 45°/s shrugs it
-        // off smoothly in the first second of cruise.
+        // C1-continuous up alignment (playtest 15's "choppy when it rotates
+        // after takeoff"): playtest 13's fixed 45°/s RotateTowards jumped from
+        // rest to full rate on the first transit step and stopped dead on
+        // convergence — both angular-velocity cliffs read as hitches, worst on
+        // tilted-pad departures (biggest initial error). SmoothDamp ramps the
+        // rate up from zero and eases it out; the hover's own upright catches
+        // any residual at the far seam.
         Vector3 curUp = curW * Vector3.up;
-        Vector3 alignedUp = Vector3.RotateTowards(curUp, upW, 45f * Mathf.Deg2Rad * Time.fixedDeltaTime, 0f);
+        float misDeg = Vector3.Angle(curUp, upW);
+        float easedDeg = Mathf.SmoothDamp(misDeg, 0f, ref _upAlignVel, 1.2f, Mathf.Infinity, Time.fixedDeltaTime);
+        Vector3 alignedUp = Vector3.RotateTowards(curUp, upW, Mathf.Max(0f, misDeg - easedDeg) * Mathf.Deg2Rad, 0f);
         Quaternion rotW = Quaternion.FromToRotation(curUp, alignedUp) * curW;
 
         _localPos = FrameLocalPos(_body, posW);
         _localRot = FrameLocalRot(_body, rotW);
 
         if (u >= 1f) SetPhase(Phase.Hover);
+    }
+
+    // ── Transit obstacle avoidance (playtest 15) ─────────────────────────────
+    // The straight A→B lerp happily flew through moons, other planets and the
+    // sun. Analytic, evaluated fresh from live body positions every step like
+    // the rest of the path math (never integrated — rebase- and orbit-proof):
+    //  - every body except the departure planet contributes a LATERAL push
+    //    that keeps the path outside its safe sphere (radius*1.35 + 250 m),
+    //    faded out for the target planet on final approach (its arrival
+    //    anchor sits inside its own safe sphere by design). The summed push
+    //    is smooth-damped so entering/leaving an influence region is a
+    //    swerve, not a kink.
+    //  - the departure planet instead gets a hard radial altitude floor at
+    //    the liftoff-top shell: a pad on its far side sends the base path
+    //    straight through the planet, and a lateral push can't help while
+    //    the start anchor itself sits deep inside the safe sphere.
+    Vector3 ApplyTransitAvoidance(Vector3 posW, Vector3 aWorld, Vector3 bWorld, float ease)
+    {
+        Vector3 travel = bWorld - aWorld;
+        float travelLen = travel.magnitude;
+        if (travelLen < 1f) return posW;
+        Vector3 travelDir = travel / travelLen;
+
+        Vector3 wanted = Vector3.zero;
+        foreach (var obstacle in NBodySimulation.Bodies)
+        {
+            if (obstacle == null || obstacle == _departBody) continue;
+            float w = obstacle == _targetBody ? 1f - Mathf.SmoothStep(0.55f, 0.8f, ease) : 1f;
+            if (w <= 0f) continue;
+            float safeR = obstacle.radius * 1.35f + 250f;
+            Vector3 toPos = posW - obstacle.Position;
+            float along = Vector3.Dot(toPos, travelDir);
+            if (Mathf.Abs(along) >= safeR) continue;
+            Vector3 lateral = toPos - travelDir * along;
+            float lat = lateral.magnitude;
+            float needed = Mathf.Sqrt(safeR * safeR - along * along);
+            if (lat >= needed) continue;
+            // Dead-centre pass: no meaningful lateral direction — pick a
+            // stable perpendicular so the detour side can't flip mid-flight.
+            Vector3 latDir = lat > 1f ? lateral / lat : StablePerpendicular(travelDir);
+            wanted += latDir * ((needed - lat) * w);
+        }
+
+        _avoidOffset = Vector3.SmoothDamp(_avoidOffset, wanted, ref _avoidOffsetVel, 0.6f, Mathf.Infinity, Time.fixedDeltaTime);
+        Vector3 result = posW + _avoidOffset;
+
+        if (_departBody != null)
+        {
+            Vector3 toDep = result - _departBody.Position;
+            float d = toDep.magnitude;
+            float minR = (aWorld - _departBody.Position).magnitude - 5f;   // the liftoff-top shell
+            if (d > 1f && d < minR)
+                result = _departBody.Position + toDep * (minR / d);
+        }
+        return result;
+    }
+
+    static Vector3 StablePerpendicular(Vector3 dir)
+    {
+        Vector3 p = Vector3.Cross(dir, Vector3.up);
+        if (p.sqrMagnitude < 0.01f) p = Vector3.Cross(dir, Vector3.right);
+        return p.normalized;
     }
 
     // Planet-locked hover — every quantity below is in the target body's LOCAL
@@ -838,8 +958,14 @@ public class ShuttleAutopilot : MonoBehaviour
         _hoverAlt = Mathf.SmoothDamp(measuredAlt, HoverAltitude, ref _hoverAltVel, HoverAltSmooth, Mathf.Infinity, dt);
         _localPos = radial * (terrainR + _hoverAlt);
 
-        // Bottom always faces the core: up = radial, yaw preserved + Q/E.
-        Quaternion upright = Quaternion.FromToRotation(_localRot * Vector3.up, radial) * _localRot;
+        // Bottom always faces the core: up -> radial, yaw preserved + Q/E.
+        // Rate-limited (playtest 15): the transit's eased alignment can end a
+        // few degrees short, and the old one-step FromToRotation snapped that
+        // residual at the hover seam. 60°/s catches it in a blink and is
+        // invisible in steady state (the radial drifts ~2°/s at full stick).
+        Vector3 hoverUp = _localRot * Vector3.up;
+        Vector3 hoverUpTo = Vector3.RotateTowards(hoverUp, radial, 60f * Mathf.Deg2Rad * dt, 0f);
+        Quaternion upright = Quaternion.FromToRotation(hoverUp, hoverUpTo) * _localRot;
         if (Mathf.Abs(yawIn) > 0.001f)
             upright = Quaternion.AngleAxis(yawIn * HoverYawDegSec * dt, radial) * upright;
         _localRot = upright;
@@ -865,8 +991,17 @@ public class ShuttleAutopilot : MonoBehaviour
         // gear-into-rock (static colliders, no physics response) for hover.
         float clearance = _sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation * 0.5f + 0.05f : 0.1f;
 
+        // Seat on the FITTED PLANE, not the raw centre hit (playtest 15): the
+        // centre ray can land in a dip or on a bump inside the footprint, and
+        // that deviation went straight into the parked height — floating on a
+        // bump, gear-in-ground over a dip. The shuttle tilts to the plane, so
+        // the plane is where the pads actually rest.
+        Vector3 touch = hit.point;
+        if (_sensor != null && _sensor.Valid && !float.IsNaN(_sensor.CenterDeviation))
+            touch -= n * _sensor.CenterDeviation;
+
         _landStartLocal = _localPos;
-        _landTargetLocal = FrameLocalPos(_body, hit.point + n * (_gearHeight + clearance));
+        _landTargetLocal = FrameLocalPos(_body, touch + n * (_gearHeight + clearance));
         _landStartLocalRot = _localRot;
         Quaternion curW = FrameWorldRot(_body, _localRot);
         _landTargetLocalRot = FrameLocalRot(_body, Quaternion.FromToRotation(curW * Vector3.up, n) * curW);
@@ -961,8 +1096,27 @@ public class ShuttleAutopilot : MonoBehaviour
             proxy.rotation = Quaternion.FromToRotation(Vector3.up, upNow);
             yield return null;
         }
+        // HOLD gravity-up until the physical release (playtest 15's landing
+        // double-hitch): nulling the override here, with ~0.5 s of rider cage
+        // still to run, handed the up back to RiderPlatform — the TILTED
+        // parked shuttle — so the freshly-uprighted player snapped back to
+        // shuttle-up, then snapped upright AGAIN when the release reseeded
+        // the gravity blend. Track live gravity-up until RiderMode ends.
+        while (pc != null && PlayerController.RiderMode
+               && PlayerController.UpOverrideTransform == proxy
+               && _phase == Phase.Parked)
+        {
+            Vector3 gUp = body != null ? (pc.transform.position - body.Position).normalized : proxy.up;
+            proxy.rotation = Quaternion.FromToRotation(Vector3.up, gUp);
+            yield return null;
+        }
         if (PlayerController.UpOverrideTransform == proxy)
-            PlayerController.UpOverrideTransform = null;
+        {
+            // Relaunched while holding (release deferral cancelled): the ride
+            // owns the up again. Otherwise released — clear it.
+            PlayerController.UpOverrideTransform = (_phase != Phase.Parked && PlayerController.RiderMode)
+                ? transform : null;
+        }
         Destroy(proxy.gameObject);
         _upBlendOut = null;
     }

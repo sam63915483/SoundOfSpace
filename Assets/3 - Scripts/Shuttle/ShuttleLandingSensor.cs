@@ -59,6 +59,12 @@ public class ShuttleLandingSensor : MonoBehaviour
     /// Icey Twin touchdown fling, playtest 7).
     public float MaxAboveDeviation { get; private set; }
 
+    /// Centre ray's height OFF the fitted plane (signed; + = bump). The
+    /// landing seats the gear on the PLANE, so this must be subtracted from
+    /// the raw centre hit — seating straight from the centre hit floated the
+    /// shuttle by a bump (or sank it by a dip) a foot or two (playtest 15).
+    public float CenterDeviation { get; private set; }
+
     public void SetActive(bool active)
     {
         _active = active;
@@ -138,10 +144,12 @@ public class ShuttleLandingSensor : MonoBehaviour
                 if (_deviations[i] > maxAbove) maxAbove = _deviations[i];
             }
             MaxAboveDeviation = maxAbove;
+            CenterDeviation = _deviations[0];
         }
         else
         {
             for (int i = 0; i <= RingRays; i++) _deviations[i] = float.NaN;
+            CenterDeviation = 0f;
         }
 
         if (!ShuttleLandingLogic.EvaluateRays(_deviations, _slopeDots,
