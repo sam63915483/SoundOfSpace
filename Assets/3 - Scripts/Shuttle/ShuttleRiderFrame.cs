@@ -360,14 +360,19 @@ public static class ShuttleRiderFrame
             Quaternion seatLocalRot = pc.transform.localRotation;
             pilot.GetWorldPose(out Vector3 shuttleW, out Quaternion shuttleR);
             Vector3 seatFresh = shuttleW + shuttleR * seatLocal;
-            // Playtest 30 (probe log 7 post-mortem): seating AT the rb was
-            // wrong — the rb's vintage was one planet-step behind, and
-            // trusting it released the player 62 cm in the air ("the pop was
-            // terrible"). RiderFixedTick now aligns the rb with the planet's
-            // POST-step pose (velocity·dt prediction), which is exactly the
-            // vintage this fresh compose reads at order -50 — so seat and rb
-            // agree to the millimetre and the write below never fires on a
-            // normal release (no teleport, no interpolation reset).
+            // ⚠️ VINTAGE (MegaTracker log 12 — the final piece): the rider rb
+            // carries the planet's POST-step pose (RiderFixedTick adds
+            // velocity·dt, playtest 30), but this fresh compose reads the
+            // planet's rb pose at order -50 = PRE-step. The pt-30 comment
+            // that claimed these vintages matched was WRONG by exactly one
+            // planet step: the seat write dragged the correctly-placed rb
+            // ~1 m backward (dRb 114.7cm, dRbY -30/-72cm = into the floor),
+            // and the depenetration clamp then crawled it out at 1 cm/tick
+            // for 0.3 s — the last surviving pop. The foot trim below runs
+            // in THIS pre-step frame (the colliders also sit at pre-step
+            // poses until the step executes); the post-step prediction is
+            // added AFTER it, so seat and rb finally share one vintage and
+            // the conditional write becomes a true no-op.
             Vector3 seat = seatFresh;
             Quaternion seatRot = shuttleR * seatLocalRot;
 
@@ -396,6 +401,11 @@ public static class ShuttleRiderFrame
                     if (Mathf.Abs(corrAmt) < 0.25f) seat += upAxis * corrAmt;
                 }
             }
+
+            // Post-step prediction — the SAME velocity·dt the rider rb
+            // tracking applies every tick, added after the (pre-step-frame)
+            // foot trim. This is what makes rb.position and `seat` agree.
+            seat += bodyVel * Time.fixedDeltaTime;
 
             pc.transform.SetParent(null, true);
             pc.transform.SetPositionAndRotation(seat, seatRot);
