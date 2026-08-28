@@ -54,6 +54,37 @@ public static class ShuttleRiderFrame
 
     public static bool Riding => s_riding;
 
+    // ── Prefetched scene refs (playtest 17) ─────────────────────────────────
+    // The capture frame (door close) ran FindObjectsOfType<Rigidbody> plus
+    // several FindObjectOfType scans, and the release frame ran two more — a
+    // deterministic multi-ms frame spike at exactly the two handover moments
+    // the landing hitch was felt. Everything is prefetched at COUNTDOWN
+    // (a button-press moment) instead; the finds below are cold fallbacks.
+    static PlayerController s_pcCache;
+    static EndlessManager s_endlessCache;
+    static readonly List<Rigidbody> s_rbCandidates = new List<Rigidbody>();
+
+    public static void Prefetch()
+    {
+        s_pcCache = Object.FindObjectOfType<PlayerController>();
+        s_endlessCache = Object.FindObjectOfType<EndlessManager>();
+        s_rbCandidates.Clear();
+        foreach (var rb in Object.FindObjectsOfType<Rigidbody>())
+        {
+            if (rb == null || rb.isKinematic) continue;
+            if (rb.GetComponent<CelestialBody>() != null) continue;
+            if (rb.GetComponentInParent<Ship>() != null) continue;
+            if (rb.GetComponentInParent<PlayerController>() != null) continue;
+            s_rbCandidates.Add(rb);
+        }
+    }
+
+    static PlayerController CachedPc()
+        => s_pcCache != null ? s_pcCache : (s_pcCache = Object.FindObjectOfType<PlayerController>());
+
+    static EndlessManager CachedEndless()
+        => s_endlessCache != null ? s_endlessCache : (s_endlessCache = Object.FindObjectOfType<EndlessManager>());
+
     // Statics survive scene loads and the main menu — a run that ended
     // mid-flight would otherwise leak RiderMode into the next run and the
     // player would load with no movement pipeline (the ShuttleExitDoor
@@ -74,6 +105,9 @@ public static class ShuttleRiderFrame
         s_volumeShuttle = null;
         s_fallbackComputed = false;
         s_hasCaptureLocal = false;
+        s_pcCache = null;
+        s_endlessCache = null;
+        s_rbCandidates.Clear();
         PlayerController.RiderMode = false;
         PlayerController.RiderPlatform = null;
         ShuttleAutopilot.ClientDriven = false;
@@ -88,7 +122,7 @@ public static class ShuttleRiderFrame
     // ── Occupancy ────────────────────────────────────────────────────────────
     public static bool AnyoneInside(ShuttleAutopilot pilot)
     {
-        var pc = Object.FindObjectOfType<PlayerController>();
+        var pc = CachedPc();
         if (pc != null && IsInside(pilot, pc.transform.position)) return true;
 
         // Remote players: puppets never have enabled colliders, so a trigger
@@ -174,7 +208,7 @@ public static class ShuttleRiderFrame
     {
         if (s_riding) return;
 
-        var pc = Object.FindObjectOfType<PlayerController>();
+        var pc = CachedPc();
         if (pc != null && IsInside(pilot, pc.transform.position))
         {
             s_player = pc;
@@ -186,7 +220,7 @@ public static class ShuttleRiderFrame
             rb.isKinematic = true;                     // no n-body gravity in the cabin (intro recipe)
             pc.transform.SetParent(pilot.transform, true);
 
-            var endless = Object.FindObjectOfType<EndlessManager>();
+            var endless = CachedEndless();
             if (endless != null) endless.UnregisterPhysicsObject(pc.transform);
 
             pilot.BlendRiderUpIn(1.2f);   // ease planet-up -> shuttle-up (no door-close snap)
@@ -204,13 +238,14 @@ public static class ShuttleRiderFrame
     static void CaptureLooseItems(ShuttleAutopilot pilot)
     {
         s_items.Clear();
-        foreach (var rb in Object.FindObjectsOfType<Rigidbody>())
+        // Prefetched at countdown — a rigidbody spawned during the 10 s count
+        // is missed (it just gets left on the pad), which beats the guaranteed
+        // whole-scene scan spike on the door-close frame.
+        var endless = CachedEndless();
+        foreach (var rb in s_rbCandidates)
         {
             if (rb == null || rb.isKinematic) continue;
             if (s_player != null && rb == s_player.Rigidbody) continue;
-            if (rb.GetComponent<CelestialBody>() != null) continue;
-            if (rb.GetComponentInParent<Ship>() != null) continue;
-            if (rb.GetComponentInParent<PlayerController>() != null) continue;
             if (!IsInside(pilot, rb.position)) continue;
 
             var item = new FrozenItem
@@ -225,7 +260,6 @@ public static class ShuttleRiderFrame
             rb.angularVelocity = Vector3.zero;
             rb.isKinematic = true;
             rb.transform.SetParent(pilot.transform, true);
-            var endless = Object.FindObjectOfType<EndlessManager>();
             if (endless != null) endless.UnregisterPhysicsObject(rb.transform);
             s_items.Add(item);
         }
@@ -259,7 +293,7 @@ public static class ShuttleRiderFrame
             rb.transform.position = hit.point + up * 0.15f;
 
         rb.transform.SetParent(pilot.transform, true);
-        var endless = Object.FindObjectOfType<EndlessManager>();
+        var endless = CachedEndless();
         if (endless != null) endless.UnregisterPhysicsObject(rb.transform);
         s_items.Add(item);
     }
@@ -272,7 +306,7 @@ public static class ShuttleRiderFrame
         // left the player parented+kinematic inside the parked shuttle — and
         // whatever unfroze them later never gave them the planet's orbital
         // velocity (the "landed, then launched into space a second later").
-        var evidencePc = s_player != null ? s_player : Object.FindObjectOfType<PlayerController>();
+        var evidencePc = s_player != null ? s_player : CachedPc();
         bool playerRiding = evidencePc != null
             && (PlayerController.RiderMode || evidencePc.transform.IsChildOf(pilot.transform));
         if (!s_riding && !playerRiding) return;
@@ -285,18 +319,12 @@ public static class ShuttleRiderFrame
 
         var body = pilot.CurrentBody;
         Vector3 bodyVel = body != null ? body.velocity : Vector3.zero;
-        var endless = Object.FindObjectOfType<EndlessManager>();
+        var endless = CachedEndless();
 
         if (s_player != null)
         {
             var pc = s_player;
             var rb = pc.Rigidbody;
-            // Last DRAWN pose, before anything moves: we're in FixedUpdate,
-            // so the parent chain still holds last frame's render state —
-            // the planet's interpolated transform composed with the rider's
-            // smoothed local pose. RiderReleaseBleed below measures how far
-            // the visible player jumps across the handover and cancels it.
-            Vector3 renderedBefore = pc.transform.position;
             PlayerController.RiderMode = false;
             PlayerController.RiderPlatform = null;
 
@@ -341,7 +369,7 @@ public static class ShuttleRiderFrame
             // released with the override still parked on the shuttle itself.
             if (PlayerController.UpOverrideTransform == pilot.transform)
                 pilot.BlendRiderUpOut(1.5f);
-            RiderReleaseBleed.Begin(pc, renderedBefore, bodyVel);
+            RiderReleaseBleed.Begin(pc, body);
             s_player = null;
         }
 
@@ -368,57 +396,94 @@ public static class ShuttleRiderFrame
     }
 }
 
-// Visual continuity for the physical release (playtest 16's "position snap a
-// second or two after the door opens"): while riding, the player renders
-// through the PLANET's interpolated transform; the release seats the
-// rigidbody in the PHYSICS frame (it must — the colliders live there), and a
-// freshly teleported rigidbody renders AT that physics pose on its first
-// frame. The difference — the planet's render-interpolation offset, metres
-// at orbital speed — was the residual hitch. Measure the ACTUAL rendered
-// jump on the release frame and cancel it on the CAMERA, bleeding it out —
-// the same trick ShuttleRenderSmoother uses for the shuttle's mid-transit
-// reparent. Camera-only: physics and the player rigidbody are untouched.
+// Post-release handover guard (rewritten, playtest 17 — the one-shot
+// measure-and-decay version demonstrably didn't kill the hitch). Two jobs,
+// both measurement-based so they are no-ops when nothing is wrong:
+//
+//  1. RENDER-LAG EQUALIZER. Every interpolated rigidbody is drawn at
+//     (transform − rb.position) behind its physics pose. While the player
+//     and the planet lag in step, their difference is ~zero; right after
+//     the release teleport the player's interpolation has no history and
+//     any imbalance is exactly the visible pop. Each frame the imbalance is
+//     recomputed FRESH from the live transforms and added to the player's
+//     RENDER transform only — next frame's interpolation rewrites the
+//     transform, so nothing accumulates, and physics never sees it
+//     (autoSyncTransforms is off; rb pose untouched).
+//
+//  2. RELEASE PROBE (editor / cheats only). Records every frame in the 1 s
+//     window — real frame time and the measured lag imbalance — and prints
+//     one summary log. If a hitch survives this round, the log names the
+//     guilty frame instead of another theory.
+//
 // Lives in this file so no new .meta is needed (AddComponent-only class).
-[DefaultExecutionOrder(300)]   // after CameraTransformFX (100) — last writer
+[DefaultExecutionOrder(60)]   // LateUpdate after ShuttleRenderSmoother (50), before CameraTransformFX (100)
 public class RiderReleaseBleed : MonoBehaviour
 {
-    Transform _camT;
-    PlayerController _pc;
-    Vector3 _expectedRendered;   // pre-release drawn pose (advanced by ground motion)
-    Vector3 _groundVel;
-    Vector3 _offset;
-    bool _armed;
+    const float WindowSeconds = 1f;
 
-    public static void Begin(PlayerController pc, Vector3 renderedBefore, Vector3 groundVel)
+    PlayerController _pc;
+    CelestialBody _body;
+    float _t0;
+    float _lastRealtime;
+    float _worstDt, _worstOffset;
+    int _frames;
+    static readonly System.Text.StringBuilder s_log = new System.Text.StringBuilder(2048);
+
+    public static void Begin(PlayerController pc, CelestialBody body)
     {
-        if (pc == null || pc.Camera == null) return;
-        var b = pc.Camera.GetComponent<RiderReleaseBleed>();
-        if (b == null) b = pc.Camera.gameObject.AddComponent<RiderReleaseBleed>();
+        if (pc == null) return;
+        var b = pc.GetComponent<RiderReleaseBleed>();
+        if (b == null) b = pc.gameObject.AddComponent<RiderReleaseBleed>();
         b._pc = pc;
-        b._camT = pc.Camera.transform;
-        b._expectedRendered = renderedBefore;
-        b._groundVel = groundVel;
-        b._offset = Vector3.zero;
-        b._armed = true;
+        b._body = body;
+        b._t0 = Time.time;
+        b._lastRealtime = Time.realtimeSinceStartup;
+        b._worstDt = 0f;
+        b._worstOffset = 0f;
+        b._frames = 0;
+        s_log.Clear();
         b.enabled = true;
     }
 
     void LateUpdate()
     {
-        if (_armed)
+        if (_pc == null || _pc.Rigidbody == null) { enabled = false; return; }
+        float since = Time.time - _t0;
+        float dtMs = (Time.realtimeSinceStartup - _lastRealtime) * 1000f;
+        _lastRealtime = Time.realtimeSinceStartup;
+
+        Vector3 offset = Vector3.zero;
+        if (_body != null && !PlayerController.RiderMode)
         {
-            _armed = false;
-            if (_pc == null) { enabled = false; return; }
-            // Where the player WOULD have been drawn this frame had nothing
-            // switched: last frame's drawn pose carried along by the ground.
-            Vector3 expected = _expectedRendered + _groundVel * Time.deltaTime;
-            Vector3 jump = expected - _pc.transform.position;
-            // Guard: a same-frame origin rebase or a real teleport is not
-            // ours to hide — only swallow handover-sized jumps.
-            if (jump.sqrMagnitude < 6f * 6f) _offset = jump;
+            Vector3 planetLag = _body.transform.position - _body.Position;
+            Vector3 playerLag = _pc.transform.position - _pc.Rigidbody.position;
+            offset = planetLag - playerLag;
+            // Fade authority near the window's end; reject rebase-sized jumps.
+            float w = 1f - Mathf.SmoothStep(0.7f, 1f, since / WindowSeconds);
+            if (offset.sqrMagnitude < 9f)
+                _pc.transform.position += offset * w;
         }
-        if (_offset.sqrMagnitude < 1e-6f) { enabled = false; return; }
-        _camT.position += _offset;
-        _offset *= Mathf.Exp(-10f * Time.deltaTime);
+
+        bool probe = Application.isEditor || Universe.cheatsEnabled;
+        if (probe)
+        {
+            _frames++;
+            float offM = offset.magnitude;
+            if (dtMs > _worstDt) _worstDt = dtMs;
+            if (offM > _worstOffset) _worstOffset = offM;
+            if (dtMs > 25f || offM > 0.02f)
+                s_log.AppendLine("  t+" + (since * 1000f).ToString("0") + "ms  frame "
+                    + dtMs.ToString("0.0") + "ms  lagImbalance " + (offM * 100f).ToString("0.0") + "cm");
+        }
+
+        if (since >= WindowSeconds)
+        {
+            if (probe)
+                Debug.Log("[ReleaseProbe] " + _frames + " frames / " + WindowSeconds + "s — worst frame "
+                    + _worstDt.ToString("0.0") + "ms, worst lag imbalance "
+                    + (_worstOffset * 100f).ToString("0.0") + "cm\n"
+                    + (s_log.Length > 0 ? s_log.ToString() : "  (no anomalous frames)"));
+            enabled = false;
+        }
     }
 }

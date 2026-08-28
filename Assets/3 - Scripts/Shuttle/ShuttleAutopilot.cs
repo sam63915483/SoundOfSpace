@@ -75,6 +75,12 @@ public class ShuttleAutopilot : MonoBehaviour
     const float HoverAltSmooth  = 1.2f;   // SmoothDamp time for the altitude hold
     const float LandingMinSeconds = 5f;
     const float LandingMaxSeconds = 8f;
+    // Deepest a gear leg may sink so every OTHER leg reaches the ground.
+    // Sam's call (playtest 17): a half-buried pad reads as "settled", a
+    // hovering one reads as broken — bias hard toward grounded. Legal pads
+    // cap the plane-relative spread at 1.5 m, so worst residual air ≈ 0.3 m
+    // on the most extreme terrain that still validates green.
+    const float MaxLegBury = 1.2f;
     const float SettleSeconds   = 0.5f;
     const float ReleaseSettleSeconds = 2.5f;    // rider cage held after touchdown (door-open time)
     const float PilotInputStaleSeconds = 0.5f;  // decay to zero on silence (guest-drop safety)
@@ -116,6 +122,10 @@ public class ShuttleAutopilot : MonoBehaviour
     // landing casts down from these EXACT points at the target pose and
     // seats the lowest one onto the terrain — no more estimating.
     readonly List<Vector3> _feetLocal = new List<Vector3>();
+    // Foot points clustered into LEGS (one lowest point per gear leg) —
+    // the landing tilts to the terrain UNDER these and sinks until every
+    // leg touches (playtest 17's "all 4 feet on the ground").
+    readonly List<Vector3> _legsLocal = new List<Vector3>();
 
     // Hover state — PLANET-LOCKED (rewritten after playtest 2). The whole
     // state lives in the target body's local frame: a radial direction, a
@@ -148,7 +158,6 @@ public class ShuttleAutopilot : MonoBehaviour
     float _releaseRidersAt = -1f;   // deferred post-touchdown release; -1 = idle
     EndlessManager _endless;
     float _savedRebaseThreshold = -1f;   // widened during flight; -1 = not touched
-    float _savedFarClip = -1f;           // extended during flight; -1 = not touched
 
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
@@ -234,8 +243,6 @@ public class ShuttleAutopilot : MonoBehaviour
         // Never leave a widened rebase threshold behind (scene change mid-flight).
         if (_endless != null && _savedRebaseThreshold >= 0f)
             _endless.distanceThreshold = _savedRebaseThreshold;
-        if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip >= 0f)
-            _healPlayer.Camera.farClipPlane = _savedFarClip;
     }
 
     void Start()
@@ -345,6 +352,21 @@ public class ShuttleAutopilot : MonoBehaviour
         foreach (var lp in samples)
             if (lp.y <= lowest + 0.2f && _feetLocal.Count < 48)
                 _feetLocal.Add(lp);
+
+        // Cluster the band into LEGS (greedy xz grouping), keeping each
+        // leg's lowest point — its true contact point.
+        _legsLocal.Clear();
+        foreach (var f in _feetLocal)
+        {
+            int found = -1;
+            for (int i = 0; i < _legsLocal.Count; i++)
+            {
+                Vector3 d = _legsLocal[i] - f;
+                if (d.x * d.x + d.z * d.z < 1.2f * 1.2f) { found = i; break; }
+            }
+            if (found < 0) { if (_legsLocal.Count < 8) _legsLocal.Add(f); }
+            else if (f.y < _legsLocal[found].y) _legsLocal[found] = f;
+        }
     }
 
     // ── Frame helpers (physics frame — see header) ───────────────────────────
@@ -557,6 +579,15 @@ public class ShuttleAutopilot : MonoBehaviour
             case Phase.Countdown:
                 // Door stays usable for the whole 10 s (people can get in/out);
                 // riders are decided at 0.
+                // Prefetch every scene scan the flight will need (playtest 17):
+                // the capture frame (door close) ran FindObjectsOfType<Rigidbody>
+                // + several FindObjectOfType calls, and the release frame ran
+                // two more — a deterministic frame spike at exactly the moments
+                // the landing hitch was felt. The countdown button-press is
+                // where a one-off cost is invisible.
+                if (_healPlayer == null) _healPlayer = FindObjectOfType<PlayerController>();
+                if (_endless == null) _endless = FindObjectOfType<EndlessManager>();
+                ShuttleRiderFrame.Prefetch();
                 break;
 
             case Phase.Liftoff:
@@ -579,16 +610,18 @@ public class ShuttleAutopilot : MonoBehaviour
                     // and still cuts a long leg from ~15 rebases to a few.
                     _endless.distanceThreshold = 3500f;
                 }
-                // Flight horizon: the ocean post-effect is capped by scene
-                // depth, so a planet beyond the camera's far plane loses its
-                // water first (playtest 11: HA's ocean vanishing mid-transit).
-                // Extend for the flight, restore on landing.
+                // Flight horizon, now PERMANENT (playtest 17): the ocean post
+                // effect is capped by scene depth, so a planet beyond the far
+                // plane loses its water first (playtest 11). It used to be
+                // extended for the flight and RESTORED on landing — which is
+                // exactly when you stand on a far planet looking back at
+                // Humble Abode with no ocean ("far away the planet has no
+                // water"). 30 km ran through every flight of playtests 11-16
+                // with no depth artifacts, so keep it for the whole session.
                 if (_healPlayer == null) _healPlayer = FindObjectOfType<PlayerController>();
-                if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip < 0f)
-                {
-                    _savedFarClip = _healPlayer.Camera.farClipPlane;
-                    if (_savedFarClip < 30000f) _healPlayer.Camera.farClipPlane = 30000f;
-                }
+                if (_healPlayer != null && _healPlayer.Camera != null
+                    && _healPlayer.Camera.farClipPlane < 30000f)
+                    _healPlayer.Camera.farClipPlane = 30000f;
                 _departBody = _body;
                 _departAnchorLocal = _localPos;   // the PAD — the bezier starts here
                 if (!ClientDriven) ComputeArrivalAnchor();
@@ -666,11 +699,7 @@ public class ShuttleAutopilot : MonoBehaviour
                 // at door-open (playtest 14's landing hitch). It's restored at
                 // LANDING start (descent motion masks the shift, playtest 15);
                 // the deferred-release restore below is only the safety net.
-                if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip >= 0f)
-                {
-                    _healPlayer.Camera.farClipPlane = _savedFarClip;
-                    _savedFarClip = -1f;
-                }
+                // (farClipPlane is deliberately NOT restored — playtest 17.)
                 _targetBody = null;
                 break;
         }
@@ -1153,15 +1182,56 @@ public class ShuttleAutopilot : MonoBehaviour
 
         Vector3 tgtW = touch + n * (_gearHeight + clearance);
 
-        // EXACT foot seat (playtest 16 — "still floats a foot or two"): the
-        // plane target above is only a first guess (estimated gear height,
-        // fitted plane vs the real mesh). Cast down from each measured
-        // foot-bottom point AT the target pose and shift along the normal
-        // until the lowest-clearance foot actually touches the terrain — a
-        // rigid seat: on uneven ground the other feet may hover by the
-        // terrain's own unevenness, like a chair on a rocky floor.
-        if (_feetLocal.Count > 0)
+        // ALL-FEET SEAT (playtest 17 — "1 leg touching, 3 floating"): the
+        // sensor's 9-ray plane spans the whole 12 m footprint, but what the
+        // eye judges is the terrain under the four gear legs. Two passes:
+        //   1. cast down from each leg at the guess pose, least-squares fit
+        //      the CONTACT plane through those terrain points, and retilt
+        //      the shuttle to it — the legs now agree with the ground;
+        //   2. recast and SINK until every leg touches (bury capped so freak
+        //      terrain can't swallow a leg — a slightly buried pad reads as
+        //      "settled", a hovering one reads as broken).
+        if (_legsLocal.Count >= 3)
         {
+            for (int pass = 0; pass < 2; pass++)
+            {
+                int hits = 0;
+                for (int i = 0; i < _legsLocal.Count && i < 8; i++)
+                {
+                    Vector3 footW = tgtW + tgtRotW * _legsLocal[i];
+                    if (GroundRay(footW + n * 2f, -n, 30f, out RaycastHit fh))
+                    {
+                        s_legHits[hits] = fh.point;
+                        s_legGaps[hits] = fh.distance - 2f;
+                        hits++;
+                    }
+                }
+                if (hits < 3) break;
+                if (pass == 0)
+                {
+                    Vector3 fitN = FitPlaneNormal(s_legHits, hits, n);
+                    if (Vector3.Dot(fitN, up) >= 0.82f)   // sanity: ≤ ~35° tilt
+                    {
+                        tgtRotW = Quaternion.FromToRotation(n, fitN) * tgtRotW;
+                        n = fitN;
+                        _landTargetLocalRot = FrameLocalRot(_body, tgtRotW);
+                    }
+                }
+                else
+                {
+                    float minGap = float.MaxValue, maxGap = float.MinValue;
+                    for (int i = 0; i < hits; i++)
+                    {
+                        if (s_legGaps[i] < minGap) minGap = s_legGaps[i];
+                        if (s_legGaps[i] > maxGap) maxGap = s_legGaps[i];
+                    }
+                    tgtW -= n * (Mathf.Min(maxGap, minGap + MaxLegBury) + 0.02f);
+                }
+            }
+        }
+        else if (_feetLocal.Count > 0)
+        {
+            // Legs not identified — old rigid lowest-touch seat.
             float minGap = float.MaxValue;
             for (int i = 0; i < _feetLocal.Count; i++)
             {
@@ -1178,6 +1248,32 @@ public class ShuttleAutopilot : MonoBehaviour
         _landDuration = Mathf.Clamp(height / 15f, LandingMinSeconds, LandingMaxSeconds);
         _settleT = 0f;
         SetPhase(Phase.Landing);
+    }
+
+    // Least-squares plane through up-to-8 leg contact points, expressed as a
+    // normal near refN (solves the 2x2 normal equations for the height field
+    // y = a·x + b·z in the tangent frame around refN; normal ∝ refN − a·tx − b·tz).
+    static readonly Vector3[] s_legHits = new Vector3[8];
+    static readonly float[] s_legGaps = new float[8];
+    static Vector3 FitPlaneNormal(Vector3[] pts, int count, Vector3 refN)
+    {
+        Vector3 c = Vector3.zero;
+        for (int i = 0; i < count; i++) c += pts[i];
+        c /= count;
+        Vector3 tx = Vector3.Cross(refN, Mathf.Abs(refN.y) < 0.9f ? Vector3.up : Vector3.right).normalized;
+        Vector3 tz = Vector3.Cross(refN, tx);
+        float sxx = 0f, sxz = 0f, szz = 0f, sxy = 0f, szy = 0f;
+        for (int i = 0; i < count; i++)
+        {
+            Vector3 d = pts[i] - c;
+            float x = Vector3.Dot(d, tx), z = Vector3.Dot(d, tz), y = Vector3.Dot(d, refN);
+            sxx += x * x; sxz += x * z; szz += z * z; sxy += x * y; szy += z * y;
+        }
+        float det = sxx * szz - sxz * sxz;
+        if (Mathf.Abs(det) < 0.001f) return refN;
+        float a = (sxy * szz - szy * sxz) / det;
+        float b = (szy * sxx - sxy * sxz) / det;
+        return (refN - tx * a - tz * b).normalized;
     }
 
     void TickLanding()
@@ -1224,7 +1320,7 @@ public class ShuttleAutopilot : MonoBehaviour
 
     IEnumerator BlendUpOverrideIn(float seconds)
     {
-        var pc = FindObjectOfType<PlayerController>();
+        var pc = _healPlayer != null ? _healPlayer : (_healPlayer = FindObjectOfType<PlayerController>());
         var proxy = new GameObject("ShuttleTravelUpBlendProxy").transform;
         proxy.SetParent(transform, false);
         Vector3 fromUp = pc != null ? pc.transform.up : transform.up;
@@ -1248,7 +1344,7 @@ public class ShuttleAutopilot : MonoBehaviour
 
     IEnumerator BlendUpOverrideOut(float seconds)
     {
-        var pc = FindObjectOfType<PlayerController>();
+        var pc = _healPlayer != null ? _healPlayer : (_healPlayer = FindObjectOfType<PlayerController>());
         var body = _body;
         var proxy = new GameObject("ShuttleTravelUpBlendProxy").transform;
         proxy.SetParent(transform, false);

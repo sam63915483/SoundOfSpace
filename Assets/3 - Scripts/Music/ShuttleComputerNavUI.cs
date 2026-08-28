@@ -291,15 +291,23 @@ public partial class ShuttleComputerUI
                 if (pilot.LandingCamera != null && _navFeed.texture != pilot.LandingCamera.Texture)
                     _navFeed.texture = pilot.LandingCamera.Texture;
                 bool landing = phase == ShuttleAutopilot.Phase.Landing;
-                Color border = landing ? Warn : (pilot.LandingValid ? new Color(0.2f, 1f, 0.35f) : new Color(1f, 0.2f, 0.15f));
+                Color green = new Color(0.2f, 1f, 0.35f), red = new Color(1f, 0.2f, 0.15f);
+                Color border = landing ? Warn : (pilot.LandingValid ? green : red);
                 if (Time.unscaledTime < _navRedFlashUntil) border = Color.red;
                 if (_navFeedBorder.color != border) _navFeedBorder.color = border;
+                // Explicit go/no-go indicator (playtest 17, Sam's ask): the
+                // prompt doubles as the landing light — green "LANDING ZONE
+                // CLEAR" when the validity check passes, red guidance when not.
                 string prompt;
+                Color promptColor = Ink;
                 if (landing) prompt = "LANDING…";
-                else if (Time.unscaledTime < _navRedFlashUntil) prompt = "NO CLEAR GROUND";
+                else if (Time.unscaledTime < _navRedFlashUntil) { prompt = "● NO CLEAR GROUND"; promptColor = red; }
                 else if (!ShuttleSync.LocalCanSteer) prompt = "PILOT: " + ShuttleSync.PilotName;
-                else prompt = "WASD POSITION · Q/E YAW · SPACE LAND";
+                else if (pilot.LandingValid) { prompt = "● LANDING ZONE CLEAR · SPACE TO LAND"; promptColor = green; }
+                else { prompt = "● NO LANDING ZONE · WASD POSITION · Q/E YAW"; promptColor = red; }
                 SetTextIfChanged(_navHoverPrompt, prompt);
+                if (_navHoverPrompt != null && _navHoverPrompt.color != promptColor)
+                    _navHoverPrompt.color = promptColor;
                 SetTextIfChanged(_navAltReadout, "ALT " + Mathf.RoundToInt(pilot.CurrentGroundAltitude) + " M");
                 break;
             }
