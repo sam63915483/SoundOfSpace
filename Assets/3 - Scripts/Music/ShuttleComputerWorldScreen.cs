@@ -152,7 +152,13 @@ public partial class ShuttleComputerUI
     void DriveMachine()
     {
         bool remoteLive = TraxSessionSync.RemoteOpen;
-        bool live = _open || remoteLive;
+        // Cockpit display (playtest 24, Sam's ask): during a flight the
+        // monitor stays LIVE with the NAV — countdown, en-route velocity,
+        // the hover feed — even with nobody at the machine, instead of a
+        // freeze-frame of whatever was last open.
+        var pilot = ShuttleAutopilot.Instance;
+        bool flightLive = pilot != null && pilot.CurrentPhase != ShuttleAutopilot.Phase.Parked;
+        bool live = _open || remoteLive || flightLive;
 
         if (!live)
         {
@@ -179,7 +185,15 @@ public partial class ShuttleComputerUI
         }
 
         if (_open) { if (_rtMode) LeaveRtMode(); }
-        else       { if (!_rtMode) EnterRtMode(); }
+        else
+        {
+            if (!_rtMode) EnterRtMode();
+            // Flight with nobody at the machine: the cockpit display shows
+            // NAV, not whatever app was left open. Never steals the view
+            // from a partner who is actually using the computer.
+            if (flightLive && !remoteLive && (_navView == null || !_navView.activeSelf))
+                ShowNav();
+        }
 
         // The picture has to MOVE to be worth showing: without this the monitor
         // renders a static screen with a beat coming out of it, playhead and

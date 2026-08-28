@@ -24,7 +24,11 @@ public partial class ShuttleComputerUI
     GameObject _navListPane, _navStatusPane, _navHoverPane;
 
     // list pane
-    class NavTile { public string body; public Image frame; public TextMeshProUGUI label; public bool here; }
+    class NavTile
+    {
+        public string body; public Image frame; public TextMeshProUGUI label; public bool here;
+        public TextMeshProUGUI dist; public CelestialBody bodyRef; public int lastKm10;
+    }
     readonly List<NavTile> _navTiles = new List<NavTile>();
     RectTransform _navTileRow;
     string _navListBuiltFor = null;
@@ -365,6 +369,21 @@ public partial class ShuttleComputerUI
         bool canTravel = !string.IsNullOrEmpty(_navSelected) && _navSelected != here;
         _navTravelLabel.color = canTravel ? Ink : Locked;
         _navTravelBg.color = canTravel ? PanelHi : Panel;
+
+        // Live distance refresh (change-gated — no per-frame string garbage).
+        if (Time.unscaledTime >= _navNextDistAt && pilot.CurrentBody != null)
+        {
+            _navNextDistAt = Time.unscaledTime + 0.5f;
+            Vector3 hereP = pilot.CurrentBody.Position;
+            foreach (var t in _navTiles)
+            {
+                if (t.dist == null || t.bodyRef == null) continue;
+                int km10 = Mathf.RoundToInt(Vector3.Distance(t.bodyRef.Position, hereP) / 100f);
+                if (km10 == t.lastKm10) continue;
+                t.lastKm10 = km10;
+                t.dist.text = (km10 / 10f).ToString("0.0") + " KM";
+            }
+        }
     }
 
     void NavRebuildTiles(ShuttleAutopilot pilot, string here)
@@ -411,7 +430,7 @@ public partial class ShuttleComputerUI
             lrt.anchorMin = new Vector2(0, 0.5f); lrt.anchorMax = new Vector2(1, 0.5f);
             lrt.pivot = new Vector2(0.5f, 0.5f);
             lrt.sizeDelta = new Vector2(0, 30);
-            lrt.anchoredPosition = new Vector2(0, isHere ? 14 : 0);
+            lrt.anchoredPosition = new Vector2(0, 14);   // name high, distance/'here' below
             label.characterSpacing = 10;
 
             if (isHere)
@@ -426,7 +445,19 @@ public partial class ShuttleComputerUI
             }
             else
             {
-                var tile = new NavTile { body = body.bodyName, frame = frame, label = label, here = false };
+                // Distance readout (playtest 24, Sam's ask): pick the closest
+                // or the furthest hop at a glance. Values live-update in
+                // NavRefreshList — planets orbit.
+                var distLbl = MakeText(rt, "Dist", "", 13, Locked, TextAlignmentOptions.Center);
+                var drt = distLbl.rectTransform;
+                drt.anchorMin = new Vector2(0, 0.5f); drt.anchorMax = new Vector2(1, 0.5f);
+                drt.pivot = new Vector2(0.5f, 0.5f);
+                drt.sizeDelta = new Vector2(0, 20);
+                drt.anchoredPosition = new Vector2(0, -16);
+                distLbl.characterSpacing = 12;
+
+                var tile = new NavTile { body = body.bodyName, frame = frame, label = label, here = false,
+                                         dist = distLbl, bodyRef = body };
                 _navTiles.Add(tile);
                 var btn = frame.gameObject.AddComponent<Button>();
                 btn.targetGraphic = frame;
@@ -498,4 +529,5 @@ public partial class ShuttleComputerUI
     // appended at the end per house serialization convention.
     int _lastVelShown = int.MinValue;
     int _lastAltShown = int.MinValue;
+    float _navNextDistAt;
 }

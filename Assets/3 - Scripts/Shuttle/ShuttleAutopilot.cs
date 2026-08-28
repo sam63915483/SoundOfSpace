@@ -82,7 +82,16 @@ public class ShuttleAutopilot : MonoBehaviour
     // on the most extreme terrain that still validates green.
     const float MaxLegBury = 1.2f;
     const float SettleSeconds   = 0.5f;
-    const float ReleaseSettleSeconds = 2.5f;    // rider cage held after touchdown (door-open time)
+    // Rider cage held after touchdown. 1.2 s, DOWN from 2.5 (playtest 24):
+    // the release's one-time physics cost — the freshly-dynamic capsule
+    // falling its 2 cm seat gap and making FIRST CONTACT with the planet's
+    // 2M-triangle mesh collider — fires ~0.1 s after release as a single
+    // ~24 ms frame (probe log 3: t+2620, GC acquitted at 0 collections; in
+    // editor AND build). At 2.5 s that spike landed in maximum stillness,
+    // door finished, blend finished — a naked hitch. At 1.2 s it lands
+    // mid door-fold and mid up-blend, the same motion that already masks
+    // every in-flight cost. The door still gates the walk-out at 2.5 s.
+    const float ReleaseSettleSeconds = 1.2f;
     const float PilotInputStaleSeconds = 0.5f;  // decay to zero on silence (guest-drop safety)
 
     // Ground = terrain only. Layer 10 ("Body") is the terrain layer; every cast
