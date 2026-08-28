@@ -82,7 +82,22 @@ public class ShuttleLandingCamera : MonoBehaviour
 
     public void Teardown()
     {
+        Destroy(gameObject);   // RT freed in OnDestroy
+    }
+
+    /// Deferred teardown (playtest 19): destroying the camera + releasing the
+    /// RenderTexture on the touchdown frame stacked onto the door-open
+    /// moment. Disable rendering immediately, free the objects well after
+    /// the rider handover window has passed.
+    public void TeardownDeferred(float delay)
+    {
+        if (_cam != null) _cam.enabled = false;
+        _shuttle = null;   // stops LateUpdate work until the destroy lands
+        Destroy(gameObject, delay);
+    }
+
+    void OnDestroy()
+    {
         if (_rt != null) { _rt.Release(); Destroy(_rt); _rt = null; }
-        Destroy(gameObject);
     }
 }

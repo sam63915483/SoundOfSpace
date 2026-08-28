@@ -685,6 +685,9 @@ public class ShuttleAutopilot : MonoBehaviour
                     // if a new launch starts first — riders just keep riding.
                     _releaseRidersAt = Time.fixedTime + ReleaseSettleSeconds;
                     if (_door != null) _door.ReopenAfterFlight();
+                    // Passive frame recorder over the whole handover window
+                    // (editor/cheats only; reports 3 s AFTER it closes).
+                    RiderReleaseBleed.BeginWindow(_healPlayer, _body, 6f);
                     // Start the up re-orientation NOW (playtest 14): waiting
                     // for the physical release made the player visibly rotate
                     // upright seconds AFTER the door opened. Blending during
@@ -693,7 +696,10 @@ public class ShuttleAutopilot : MonoBehaviour
                     BlendRiderUpOut(2f);
                 }
                 if (_sensor != null) _sensor.SetActive(false);
-                if (_landingCamera != null) { _landingCamera.Teardown(); _landingCamera = null; }
+                // Deferred teardown (playtest 19): destroying the feed camera
+                // + releasing its RenderTexture ON the touchdown frame stacked
+                // straight onto the door-open moment. Disable now, free later.
+                if (_landingCamera != null) { _landingCamera.TeardownDeferred(6f); _landingCamera = null; }
                 // NOTE: the rebase threshold is deliberately NOT restored here
                 // — restoring at touchdown fired a large catch-up rebase right
                 // at door-open (playtest 14's landing hitch). It's restored at
@@ -755,6 +761,7 @@ public class ShuttleAutopilot : MonoBehaviour
                 {
                     _endless.distanceThreshold = _savedRebaseThreshold;
                     _savedRebaseThreshold = -1f;
+                    RiderReleaseBleed.Mark("rebase-threshold-restore");
                 }
             }
         }

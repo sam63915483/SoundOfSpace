@@ -369,7 +369,7 @@ public static class ShuttleRiderFrame
             // released with the override still parked on the shuttle itself.
             if (PlayerController.UpOverrideTransform == pilot.transform)
                 pilot.BlendRiderUpOut(1.5f);
-            RiderReleaseBleed.Begin(pc, body);
+            RiderReleaseBleed.Mark("release");
             s_player = null;
         }
 
@@ -396,94 +396,134 @@ public static class ShuttleRiderFrame
     }
 }
 
-// Post-release handover guard (rewritten, playtest 17 — the one-shot
-// measure-and-decay version demonstrably didn't kill the hitch). Two jobs,
-// both measurement-based so they are no-ops when nothing is wrong:
+// Passive landing probe (playtest 19). The playtest-18 "equalizer" WROTE the
+// player's transform every frame — but writing the transform of an
+// interpolated rigidbody makes Unity treat it as externally moved and restart
+// the very interpolation being measured, so the "fix" itself stuttered the
+// player for its whole window (Sam: "worse than ever"). Lesson burned in:
+// NEVER write per-frame to an interpolated rigidbody's transform.
 //
-//  1. RENDER-LAG EQUALIZER. Every interpolated rigidbody is drawn at
-//     (transform − rb.position) behind its physics pose. While the player
-//     and the planet lag in step, their difference is ~zero; right after
-//     the release teleport the player's interpolation has no history and
-//     any imbalance is exactly the visible pop. Each frame the imbalance is
-//     recomputed FRESH from the live transforms and added to the player's
-//     RENDER transform only — next frame's interpolation rewrites the
-//     transform, so nothing accumulates, and physics never sees it
-//     (autoSyncTransforms is off; rb pose untouched).
-//
-//  2. RELEASE PROBE (editor / cheats only). Records every frame in the 1 s
-//     window — real frame time and the measured lag imbalance — and prints
-//     one summary log. If a hitch survives this round, the log names the
-//     guilty frame instead of another theory.
-//
-// Lives in this file so no new .meta is needed (AddComponent-only class).
-[DefaultExecutionOrder(60)]   // LateUpdate after ShuttleRenderSmoother (50), before CameraTransformFX (100)
+// This component now only OBSERVES. From touchdown until past the release it
+// records every rendered frame — real frame time, the camera's world step,
+// the planet-vs-player render-lag imbalance — plus event marks (release,
+// teardown, threshold restore), and prints ONE summary log 3 s AFTER the
+// window closes, so the report cannot hitch the moment it measures.
+// Editor / cheats only; inert in normal play.
+[DefaultExecutionOrder(300)]   // last in LateUpdate — sees the final camera pose
 public class RiderReleaseBleed : MonoBehaviour
 {
-    const float WindowSeconds = 1f;
+    struct Sample { public float t, dtMs, camStep, lagCm; }
 
     PlayerController _pc;
     CelestialBody _body;
-    float _t0;
+    Transform _cam;
+    float _t0, _window;
     float _lastRealtime;
-    float _worstDt, _worstOffset;
-    int _frames;
-    static readonly System.Text.StringBuilder s_log = new System.Text.StringBuilder(2048);
+    Vector3 _lastCamPos;
+    bool _hasLastCam;
+    float _reportAt = -1f;
+    readonly List<Sample> _samples = new List<Sample>(512);
+    static readonly List<string> s_marks = new List<string>(16);
+    static RiderReleaseBleed s_active;
 
-    public static void Begin(PlayerController pc, CelestialBody body)
+    public static void BeginWindow(PlayerController pc, CelestialBody body, float seconds)
     {
         if (pc == null) return;
+        if (!Application.isEditor && !Universe.cheatsEnabled) return;
         var b = pc.GetComponent<RiderReleaseBleed>();
         if (b == null) b = pc.gameObject.AddComponent<RiderReleaseBleed>();
         b._pc = pc;
         b._body = body;
+        b._cam = pc.Camera != null ? pc.Camera.transform : null;
         b._t0 = Time.time;
+        b._window = seconds;
         b._lastRealtime = Time.realtimeSinceStartup;
-        b._worstDt = 0f;
-        b._worstOffset = 0f;
-        b._frames = 0;
-        s_log.Clear();
+        b._hasLastCam = false;
+        b._reportAt = -1f;
+        b._samples.Clear();
+        s_marks.Clear();
+        s_active = b;
         b.enabled = true;
+    }
+
+    /// Timestamp a discrete event into the current window (no-op without one).
+    public static void Mark(string label)
+    {
+        if (s_active != null && s_active.enabled && s_active._reportAt < 0f)
+            s_marks.Add("t+" + ((Time.time - s_active._t0) * 1000f).ToString("0") + "ms " + label);
     }
 
     void LateUpdate()
     {
-        if (_pc == null || _pc.Rigidbody == null) { enabled = false; return; }
+        if (_reportAt > 0f)
+        {
+            if (Time.time >= _reportAt) { Report(); enabled = false; }
+            return;
+        }
         float since = Time.time - _t0;
         float dtMs = (Time.realtimeSinceStartup - _lastRealtime) * 1000f;
         _lastRealtime = Time.realtimeSinceStartup;
 
-        Vector3 offset = Vector3.zero;
-        if (_body != null && !PlayerController.RiderMode)
+        float camStep = 0f;
+        if (_cam != null)
+        {
+            if (_hasLastCam) camStep = (_cam.position - _lastCamPos).magnitude;
+            _lastCamPos = _cam.position;
+            _hasLastCam = true;
+        }
+        float lagCm = 0f;
+        if (_body != null && _pc != null && _pc.Rigidbody != null)
         {
             Vector3 planetLag = _body.transform.position - _body.Position;
             Vector3 playerLag = _pc.transform.position - _pc.Rigidbody.position;
-            offset = planetLag - playerLag;
-            // Fade authority near the window's end; reject rebase-sized jumps.
-            float w = 1f - Mathf.SmoothStep(0.7f, 1f, since / WindowSeconds);
-            if (offset.sqrMagnitude < 9f)
-                _pc.transform.position += offset * w;
+            lagCm = (planetLag - playerLag).magnitude * 100f;
         }
+        if (_samples.Count < 500)
+            _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm });
 
-        bool probe = Application.isEditor || Universe.cheatsEnabled;
-        if (probe)
+        if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the sensitive window
+    }
+
+    void Report()
+    {
+        if (_samples.Count < 5) return;
+        float sumStep = 0f, sumDt = 0f;
+        for (int i = 1; i < _samples.Count; i++) { sumStep += _samples[i].camStep; sumDt += _samples[i].dtMs; }
+        float avgPerMs = sumDt > 0.01f ? sumStep / sumDt : 0f;   // camera speed baseline (per real ms)
+        int worstCamI = 1, worstDtI = 1;
+        float worstCamDev = 0f;
+        for (int i = 1; i < _samples.Count; i++)
         {
-            _frames++;
-            float offM = offset.magnitude;
-            if (dtMs > _worstDt) _worstDt = dtMs;
-            if (offM > _worstOffset) _worstOffset = offM;
-            if (dtMs > 25f || offM > 0.02f)
-                s_log.AppendLine("  t+" + (since * 1000f).ToString("0") + "ms  frame "
-                    + dtMs.ToString("0.0") + "ms  lagImbalance " + (offM * 100f).ToString("0.0") + "cm");
+            float dev = Mathf.Abs(_samples[i].camStep - avgPerMs * _samples[i].dtMs);
+            if (dev > worstCamDev) { worstCamDev = dev; worstCamI = i; }
+            if (_samples[i].dtMs > _samples[worstDtI].dtMs) worstDtI = i;
         }
+        var sb = new System.Text.StringBuilder(2048);
+        sb.Append("[ReleaseProbe] ").Append(_samples.Count).Append(" frames / ").Append(_window)
+          .Append("s from touchdown.  Events: ")
+          .Append(s_marks.Count > 0 ? string.Join(", ", s_marks) : "none").AppendLine();
+        sb.Append("worst frame time ").Append(_samples[worstDtI].dtMs.ToString("0.0"))
+          .Append("ms at t+").Append((_samples[worstDtI].t * 1000f).ToString("0"))
+          .Append("ms · worst camera pop ").Append((worstCamDev * 100f).ToString("0.0"))
+          .Append("cm at t+").Append((_samples[worstCamI].t * 1000f).ToString("0")).AppendLine("ms");
+        AppendAround(sb, "frames around the camera pop:", worstCamI, avgPerMs);
+        if (Mathf.Abs(worstDtI - worstCamI) > 8)
+            AppendAround(sb, "frames around the slow frame:", worstDtI, avgPerMs);
+        Debug.Log(sb.ToString());
+    }
 
-        if (since >= WindowSeconds)
+    void AppendAround(System.Text.StringBuilder sb, string title, int center, float avgPerMs)
+    {
+        sb.AppendLine(title);
+        for (int i = Mathf.Max(1, center - 8); i < Mathf.Min(_samples.Count, center + 9); i++)
         {
-            if (probe)
-                Debug.Log("[ReleaseProbe] " + _frames + " frames / " + WindowSeconds + "s — worst frame "
-                    + _worstDt.ToString("0.0") + "ms, worst lag imbalance "
-                    + (_worstOffset * 100f).ToString("0.0") + "cm\n"
-                    + (s_log.Length > 0 ? s_log.ToString() : "  (no anomalous frames)"));
-            enabled = false;
+            var s = _samples[i];
+            sb.Append(i == center ? "> " : "  ")
+              .Append("t+").Append((s.t * 1000f).ToString("0000"))
+              .Append("ms  dt ").Append(s.dtMs.ToString("00.0"))
+              .Append("ms  cam ").Append((s.camStep * 100f).ToString("000.0"))
+              .Append("cm (expected ").Append((avgPerMs * s.dtMs * 100f).ToString("000.0"))
+              .Append(")  lag ").Append(s.lagCm.ToString("0.0")).AppendLine("cm");
         }
     }
 }
