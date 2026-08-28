@@ -51,15 +51,20 @@ public class ShuttleAutopilot : MonoBehaviour
     public const float CountdownSeconds = 10f;
     const float LiftoffHeight   = 300f;   // metres above the parked pose
     const float LiftoffSeconds  = 10f;
-    // Transit profile (retuned after playtest 1 — the old dist/400 with a 20 s
-    // floor made every short hop a ~100 m/s crawl): the smoothstep ease gives
-    // a bell-shaped velocity (build up → cruise → brake into the hover), and
-    // the duration is picked so the mid-flight PEAK (1.5 × dist / duration)
-    // lands at TransitPeakFor(dist) — faster the farther the hop.
-    const float TransitPeakMin  = 80f;    // m/s — even the shortest hop feels like flying
-    const float TransitPeakMax  = 500f;   // Sam's ceiling for a far hop
-    const float TransitMinSeconds = 10f;
-    const float TransitMaxSeconds = 30f;  // hard cap — beyond it a far leg just peaks faster than 500
+    // Transit profile (rebuilt after playtest 15 — "accel/decel way too fast,
+    // jerked around in alien ways"): an S-curve TRAPEZOID. Smoothstep-shaped
+    // velocity ramps over the first and last TransitRampFrac of the leg
+    // around a constant cruise — thrust builds from zero, peaks mid-burn and
+    // dies off before the coast (jerk-free at every joint), instead of the
+    // old smoothstep bell that slammed max acceleration on the very first
+    // and very last step. Duration is picked from an ACCELERATION budget
+    // (peak burn = 1.5·d / (f·(1−f)·T²), solved for T) so every hop pulls
+    // the same believable burn, with a cruise-speed ceiling for far legs.
+    const float TransitAccelMax   = 25f;   // m/s² peak of the s-curve burn (~2.5g)
+    const float TransitCruiseMax  = 450f;  // m/s coast ceiling for far legs
+    const float TransitRampFrac   = 0.4f;  // burn/brake fraction of the leg, each side
+    const float TransitMinSeconds = 12f;
+    const float TransitMaxSeconds = 45f;   // hard cap — beyond it a far leg just burns harder
     public const float HoverAltitude = 100f;  // Sam, playtest 4: back up to 100
     const float HoverMaxSpeed   = 30f;    // WASD tangential speed (playtest 4: 15 was "really slow")
     const float HoverAccel      = 14f;    // m/s² toward the input direction (heavy vehicle)
@@ -569,8 +574,10 @@ public class ShuttleAutopilot : MonoBehaviour
                 _avoidOffsetVel = Vector3.zero;
                 float dist = Vector3.Distance(FrameWorldPos(_departBody, _departAnchorLocal),
                                               FrameWorldPos(_targetBody, _arriveAnchorLocal));
-                float peak = Mathf.Clamp(dist / 10f, TransitPeakMin, TransitPeakMax);
-                _transitDuration = Mathf.Clamp(1.5f * dist / peak, TransitMinSeconds, TransitMaxSeconds);
+                float rf = TransitRampFrac;
+                float tBurn  = Mathf.Sqrt(1.5f * dist / (rf * (1f - rf) * TransitAccelMax));
+                float tCoast = dist / ((1f - rf) * TransitCruiseMax);
+                _transitDuration = Mathf.Clamp(Mathf.Max(tBurn, tCoast), TransitMinSeconds, TransitMaxSeconds);
                 break;
 
             case Phase.Hover:
@@ -583,6 +590,20 @@ public class ShuttleAutopilot : MonoBehaviour
                 break;
 
             case Phase.Landing:
+                // Restore the widened rebase threshold at DESCENT START
+                // (playtest 15's "slight hitch after the smooth orient"): the
+                // catch-up origin shift is a known 1-2 frame stutter, and the
+                // deferred-release restore fired it while the player stood
+                // still, freshly uprighted — a clean pop out of nowhere. Fired
+                // here instead, the whole screen is already moving with the
+                // descent and the shift disappears into it; by release the
+                // origin is at the player and nothing is left to fire. The
+                // release-time restore stays as the safety net for edge paths.
+                if (_endless != null && _savedRebaseThreshold >= 0f)
+                {
+                    _endless.distanceThreshold = _savedRebaseThreshold;
+                    _savedRebaseThreshold = -1f;
+                }
                 break;
 
             case Phase.Parked:
@@ -615,8 +636,9 @@ public class ShuttleAutopilot : MonoBehaviour
                 if (_landingCamera != null) { _landingCamera.Teardown(); _landingCamera = null; }
                 // NOTE: the rebase threshold is deliberately NOT restored here
                 // — restoring at touchdown fired a large catch-up rebase right
-                // at door-open (playtest 14's landing hitch). It's restored in
-                // the deferred-release block, ~2.5 s later, standing still.
+                // at door-open (playtest 14's landing hitch). It's restored at
+                // LANDING start (descent motion masks the shift, playtest 15);
+                // the deferred-release restore below is only the safety net.
                 if (_healPlayer != null && _healPlayer.Camera != null && _savedFarClip >= 0f)
                 {
                     _healPlayer.Camera.farClipPlane = _savedFarClip;
@@ -669,9 +691,10 @@ public class ShuttleAutopilot : MonoBehaviour
             {
                 _releaseRidersAt = -1f;
                 ShuttleRiderFrame.ReleaseRiders(this);
-                // Restore the widened rebase threshold NOW — the catch-up
-                // rebase (if one is due) fires while everyone stands still,
-                // instead of stacking onto the door-open moment.
+                // Safety-net restore only: the real restore moved to LANDING
+                // start (playtest 15 — a catch-up shift here, standing still,
+                // was the "slight hitch" after the smooth uprighting). This
+                // covers any path that reached Parked without a Landing phase.
                 if (_endless != null && _savedRebaseThreshold >= 0f)
                 {
                     _endless.distanceThreshold = _savedRebaseThreshold;
@@ -787,17 +810,41 @@ public class ShuttleAutopilot : MonoBehaviour
     void TickLiftoff()
     {
         float u = Mathf.Clamp01(_phaseT / LiftoffSeconds);
-        // Smooth vertical rise: 0 -> LiftoffHeight, at rest at both ends.
-        float alt = Mathf.SmoothStep(0f, LiftoffHeight, u);
+        // Smootherstep vertical rise (playtest 15's feel pass): 0 ->
+        // LiftoffHeight with zero velocity AND zero acceleration at both
+        // ends — plain smoothstep applied its maximum thrust on the very
+        // first frame off the pad, part of the "jerked around" feel.
+        float alt = LiftoffHeight * (u * u * u * (u * (6f * u - 15f) + 10f));
         Vector3 localUp = _parkedLocalPos.sqrMagnitude > 0.001f ? _parkedLocalPos.normalized : Vector3.up;
         _localPos = _parkedLocalPos + localUp * alt;
         if (u >= 1f) SetPhase(Phase.Transit);
     }
 
+    // S-curve trapezoid ease (see the transit-profile constants): position
+    // fraction covered at time fraction u. Velocity is a smoothstep ramp up
+    // over [0, f], constant cruise, smoothstep ramp down over [1−f, 1] —
+    // velocity AND acceleration are zero at both endpoints and continuous
+    // everywhere. Ramp branch is the closed-form ∫smoothstep = t³ − t⁴/2.
+    static float TransitEase(float u, float f)
+    {
+        float vc = 1f / (1f - f);   // normalised cruise speed (area under v = 1)
+        if (u < f)
+        {
+            float t = u / f;
+            return vc * f * (t * t * t - 0.5f * t * t * t * t);
+        }
+        if (u > 1f - f)
+        {
+            float t = (1f - u) / f;
+            return 1f - vc * f * (t * t * t - 0.5f * t * t * t * t);
+        }
+        return vc * (u - 0.5f * f);
+    }
+
     void TickTransit()
     {
         float u = Mathf.Clamp01(_phaseT / _transitDuration);
-        float ease = u * u * (3f - 2f * u);   // smoothstep: velocity-continuous at both seams
+        float ease = TransitEase(u, TransitRampFrac);
 
         // Both anchors evaluated FRESH every step so the path tracks the
         // orbiting bodies and origin rebases (handoff §4 — never cache world).
