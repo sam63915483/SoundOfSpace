@@ -291,6 +291,12 @@ public static class ShuttleRiderFrame
         {
             var pc = s_player;
             var rb = pc.Rigidbody;
+            // Last DRAWN pose, before anything moves: we're in FixedUpdate,
+            // so the parent chain still holds last frame's render state —
+            // the planet's interpolated transform composed with the rider's
+            // smoothed local pose. RiderReleaseBleed below measures how far
+            // the visible player jumps across the handover and cancels it.
+            Vector3 renderedBefore = pc.transform.position;
             PlayerController.RiderMode = false;
             PlayerController.RiderPlatform = null;
 
@@ -335,6 +341,7 @@ public static class ShuttleRiderFrame
             // released with the override still parked on the shuttle itself.
             if (PlayerController.UpOverrideTransform == pilot.transform)
                 pilot.BlendRiderUpOut(1.5f);
+            RiderReleaseBleed.Begin(pc, renderedBefore, bodyVel);
             s_player = null;
         }
 
@@ -358,5 +365,60 @@ public static class ShuttleRiderFrame
         }
         if (s_items.Count > 0) Physics.SyncTransforms();
         s_items.Clear();
+    }
+}
+
+// Visual continuity for the physical release (playtest 16's "position snap a
+// second or two after the door opens"): while riding, the player renders
+// through the PLANET's interpolated transform; the release seats the
+// rigidbody in the PHYSICS frame (it must — the colliders live there), and a
+// freshly teleported rigidbody renders AT that physics pose on its first
+// frame. The difference — the planet's render-interpolation offset, metres
+// at orbital speed — was the residual hitch. Measure the ACTUAL rendered
+// jump on the release frame and cancel it on the CAMERA, bleeding it out —
+// the same trick ShuttleRenderSmoother uses for the shuttle's mid-transit
+// reparent. Camera-only: physics and the player rigidbody are untouched.
+// Lives in this file so no new .meta is needed (AddComponent-only class).
+[DefaultExecutionOrder(300)]   // after CameraTransformFX (100) — last writer
+public class RiderReleaseBleed : MonoBehaviour
+{
+    Transform _camT;
+    PlayerController _pc;
+    Vector3 _expectedRendered;   // pre-release drawn pose (advanced by ground motion)
+    Vector3 _groundVel;
+    Vector3 _offset;
+    bool _armed;
+
+    public static void Begin(PlayerController pc, Vector3 renderedBefore, Vector3 groundVel)
+    {
+        if (pc == null || pc.Camera == null) return;
+        var b = pc.Camera.GetComponent<RiderReleaseBleed>();
+        if (b == null) b = pc.Camera.gameObject.AddComponent<RiderReleaseBleed>();
+        b._pc = pc;
+        b._camT = pc.Camera.transform;
+        b._expectedRendered = renderedBefore;
+        b._groundVel = groundVel;
+        b._offset = Vector3.zero;
+        b._armed = true;
+        b.enabled = true;
+    }
+
+    void LateUpdate()
+    {
+        if (_armed)
+        {
+            _armed = false;
+            if (_pc == null) { enabled = false; return; }
+            // Where the player WOULD have been drawn this frame had nothing
+            // switched: last frame's drawn pose carried along by the ground.
+            Vector3 expected = _expectedRendered + _groundVel * Time.deltaTime;
+            Vector3 jump = expected - _pc.transform.position;
+            // Guard: a same-frame origin rebase or a real teleport is not
+            // ours to hide — only swallow handover-sized jumps.
+            if (jump.sqrMagnitude < 6f * 6f) _offset = jump;
+        }
+        if (_offset.sqrMagnitude < 1e-6f) { enabled = false; return; }
+        _camT.position += _offset;
+        _offset *= Mathf.Exp(-10f * Time.deltaTime);
     }
 }

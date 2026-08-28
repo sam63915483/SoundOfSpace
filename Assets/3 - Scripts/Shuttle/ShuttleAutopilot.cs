@@ -49,22 +49,25 @@ public class ShuttleAutopilot : MonoBehaviour
 
     // ── Tuning (constants, house style — no serialized fields on a runtime-attached component) ──
     public const float CountdownSeconds = 10f;
-    const float LiftoffHeight   = 300f;   // metres above the parked pose
-    const float LiftoffSeconds  = 10f;
-    // Transit profile (rebuilt after playtest 15 — "accel/decel way too fast,
-    // jerked around in alien ways"): an S-curve TRAPEZOID. Smoothstep-shaped
-    // velocity ramps over the first and last TransitRampFrac of the leg
-    // around a constant cruise — thrust builds from zero, peaks mid-burn and
-    // dies off before the coast (jerk-free at every joint), instead of the
-    // old smoothstep bell that slammed max acceleration on the very first
-    // and very last step. Duration is picked from an ACCELERATION budget
-    // (peak burn = 1.5·d / (f·(1−f)·T²), solved for T) so every hop pulls
-    // the same believable burn, with a cruise-speed ceiling for far legs.
-    const float TransitAccelMax   = 25f;   // m/s² peak of the s-curve burn (~2.5g)
-    const float TransitCruiseMax  = 450f;  // m/s coast ceiling for far legs
-    const float TransitRampFrac   = 0.4f;  // burn/brake fraction of the leg, each side
+    const float LiftoffSeconds  = 4f;     // ignition hold — door seals, engines spool, NO motion
+    // Flight profile (rebuilt again after playtest 16 — "in real space flight
+    // you don't slow down like that: keep accelerating to the midpoint, then
+    // slow to a stop ~100 m off the destination"): ONE continuous quadratic
+    // bezier from the PAD to the arrival hover anchor. The control point sits
+    // radially above the pad, so the path leaves straight up and bends over
+    // toward the target — the old separate 300 m climb ENDED AT REST before
+    // the transit re-accelerated sideways (the "goes up, slows down, then
+    // starts moving at the destination" alien seam). The ease is smootherstep:
+    // a single velocity bell (accelerate to the midpoint, decelerate to rest
+    // at the anchor) with zero velocity AND acceleration at both endpoints.
+    // Duration comes from an acceleration budget (smootherstep peak accel =
+    // 5.77·L/T², solved for T) with a midpoint-speed ceiling.
+    const float TransitAccelMax   = 25f;   // m/s² peak burn (~2.5g), smooth onset
+    const float TransitPeakMax    = 450f;  // m/s ceiling at the midpoint
     const float TransitMinSeconds = 12f;
-    const float TransitMaxSeconds = 45f;   // hard cap — beyond it a far leg just burns harder
+    const float TransitMaxSeconds = 50f;   // hard cap — beyond it a far leg just burns harder
+    const float TransitBendMin    = 300f;  // radial rise of the bezier control point
+    const float TransitBendMax    = 3000f;
     public const float HoverAltitude = 100f;  // Sam, playtest 4: back up to 100
     const float HoverMaxSpeed   = 30f;    // WASD tangential speed (playtest 4: 15 was "really slow")
     const float HoverAccel      = 14f;    // m/s² toward the input direction (heavy vehicle)
@@ -107,7 +110,12 @@ public class ShuttleAutopilot : MonoBehaviour
     CelestialBody _parkedBody;
     Vector3 _parkedLocalPos;
     Quaternion _parkedLocalRot;
-    float _gearHeight = 2.5f;         // shuttle-origin height above ground when parked
+    float _gearHeight = 2.5f;         // shuttle-origin height above the gear pads' contact points
+    // Measured foot-bottom points in shuttle-local space (the lowest own-
+    // collider surface, found by MeasureGearHeight's upward ray grid). The
+    // landing casts down from these EXACT points at the target pose and
+    // seats the lowest one onto the terrain — no more estimating.
+    readonly List<Vector3> _feetLocal = new List<Vector3>();
 
     // Hover state — PLANET-LOCKED (rewritten after playtest 2). The whole
     // state lives in the target body's local frame: a radial direction, a
@@ -261,63 +269,82 @@ public class ShuttleAutopilot : MonoBehaviour
         _parkedLocalRot = _localRot;
     }
 
-    // Gear height = distance from the shuttle origin to the pads' contact
-    // plane. Two independent estimates, take the LOWER:
-    //  - own collider geometry (lowest non-trigger collider point in
-    //    shuttle-local space) — pose-independent, but an unexpected
-    //    low-hanging collider would inflate it;
-    //  - a downward raycast at the current pose — exact when sitting flush,
-    //    inflated by any float in the pose it's measured at.
-    // The old raycast-only version re-ran inside ApplyParkedPose, at a pose
-    // that itself carries the previous landing's bump clearance (plus a slope
-    // tilt vs the radial ray), so a save/load inflated the gear height and
-    // every later landing floated by that much — playtest 15's "sometimes a
-    // foot or two off the ground". min() is immune to either failure mode.
+    // Gear geometry, measured from the shuttle's own colliders with an
+    // UPWARD ray grid — pose-independent, and exact where the earlier
+    // estimates both failed (playtest 16's "still floats a foot or two"):
+    // pose-raycasts inherit any float in whatever pose they're measured at
+    // (ApplyParkedPose restores landing clearance + tilt), and collider AABB
+    // corners overestimate splayed gear legs by up to ~0.7 m. The grid casts
+    // up from below the hull and keeps the lowest own-collider hit points —
+    // the actual foot bottoms, in shuttle-local space. _gearHeight is the
+    // origin's height above them; the landing then seats those exact points
+    // onto the terrain (see BeginLanding's foot refinement).
     void MeasureGearHeight()
     {
-        float rayGear = float.MaxValue;
-        if (_body != null)
-        {
-            Vector3 worldPos = FrameWorldPos(_body, _localPos);
-            Vector3 up = (worldPos - _body.Position).normalized;
-            if (GroundRay(worldPos + up * 2f, -up, 30f, out RaycastHit hit))
-                rayGear = hit.distance - 2f;
-        }
+        _feetLocal.Clear();
 
-        float minLocalY = float.MaxValue;
+        Bounds worldB = default;
+        bool hasB = false;
         foreach (var c in GetComponentsInChildren<Collider>())
         {
             if (c == null || !c.enabled || c.isTrigger) continue;
             // The exit door folds down past the gear when open — never the
             // contact point.
             if (_door != null && c.transform.IsChildOf(_door.transform)) continue;
-            Bounds b;
-            if (c is BoxCollider box) b = new Bounds(box.center, box.size);
-            else if (c is SphereCollider sph) b = new Bounds(sph.center, Vector3.one * (sph.radius * 2f));
-            else if (c is CapsuleCollider cap)
-            {
-                Vector3 size = Vector3.one * (cap.radius * 2f);
-                float h = Mathf.Max(cap.height, cap.radius * 2f);
-                if (cap.direction == 0) size.x = h;
-                else if (cap.direction == 1) size.y = h;
-                else size.z = h;
-                b = new Bounds(cap.center, size);
-            }
-            else if (c is MeshCollider mesh && mesh.sharedMesh != null) b = mesh.sharedMesh.bounds;
-            else continue;
-            for (int ci = 0; ci < 8; ci++)
-            {
-                Vector3 corner = b.center + Vector3.Scale(b.extents,
-                    new Vector3((ci & 1) == 0 ? -1f : 1f, (ci & 2) == 0 ? -1f : 1f, (ci & 4) == 0 ? -1f : 1f));
-                float y = transform.InverseTransformPoint(c.transform.TransformPoint(corner)).y;
-                if (y < minLocalY) minLocalY = y;
-            }
+            if (!hasB) { worldB = c.bounds; hasB = true; }
+            else worldB.Encapsulate(c.bounds);
         }
-        float colliderGear = minLocalY != float.MaxValue ? -minLocalY : float.MaxValue;
+        if (!hasB) return;   // keep the 2.5 m default
 
-        float gear = Mathf.Min(rayGear, colliderGear);
-        if (gear != float.MaxValue) _gearHeight = gear;
-        _gearHeight = Mathf.Clamp(_gearHeight, 0.5f, 10f);
+        // Scan region: the combined collider AABB in shuttle-local space
+        // (conservative is fine here — it only sizes the grid).
+        Vector3 lmin = Vector3.one * float.MaxValue, lmax = Vector3.one * float.MinValue;
+        for (int ci = 0; ci < 8; ci++)
+        {
+            Vector3 corner = worldB.center + Vector3.Scale(worldB.extents,
+                new Vector3((ci & 1) == 0 ? -1f : 1f, (ci & 2) == 0 ? -1f : 1f, (ci & 4) == 0 ? -1f : 1f));
+            Vector3 lp = transform.InverseTransformPoint(corner);
+            lmin = Vector3.Min(lmin, lp);
+            lmax = Vector3.Max(lmax, lp);
+        }
+
+        // Upward rays hit the downward-facing surfaces (foot pads, hull
+        // underside). Starting below the terrain is fine: mesh raycasts
+        // ignore backfaces, and non-shuttle hits are filtered out anyway.
+        const int GridN = 24;
+        float lowest = float.MaxValue;
+        var samples = new List<Vector3>(128);
+        for (int ix = 0; ix < GridN; ix++)
+        for (int iz = 0; iz < GridN; iz++)
+        {
+            Vector3 lo = new Vector3(
+                Mathf.Lerp(lmin.x, lmax.x, ix / (GridN - 1f)),
+                lmin.y - 1f,
+                Mathf.Lerp(lmin.z, lmax.z, iz / (GridN - 1f)));
+            int n = Physics.RaycastNonAlloc(transform.TransformPoint(lo), transform.up,
+                s_groundHits, (lmax.y - lmin.y) + 2f, GroundMask, QueryTriggerInteraction.Ignore);
+            float bestD = float.MaxValue;
+            Vector3 bestP = default;
+            for (int i = 0; i < n; i++)
+            {
+                var h = s_groundHits[i];
+                if (h.collider == null || !h.collider.transform.IsChildOf(transform)) continue;
+                if (_door != null && h.collider.transform.IsChildOf(_door.transform)) continue;
+                if (h.distance < bestD) { bestD = h.distance; bestP = h.point; }
+            }
+            if (bestD == float.MaxValue) continue;
+            Vector3 lp = transform.InverseTransformPoint(bestP);
+            samples.Add(lp);
+            if (lp.y < lowest) lowest = lp.y;
+        }
+        if (lowest == float.MaxValue) return;   // keep the 2.5 m default
+
+        _gearHeight = Mathf.Clamp(-lowest, 0.5f, 10f);
+        // The foot-bottom band: every sampled point within 20 cm of the
+        // lowest — the surfaces that actually meet the ground.
+        foreach (var lp in samples)
+            if (lp.y <= lowest + 0.2f && _feetLocal.Count < 48)
+                _feetLocal.Add(lp);
     }
 
     // ── Frame helpers (physics frame — see header) ───────────────────────────
@@ -563,7 +590,7 @@ public class ShuttleAutopilot : MonoBehaviour
                     if (_savedFarClip < 30000f) _healPlayer.Camera.farClipPlane = 30000f;
                 }
                 _departBody = _body;
-                _departAnchorLocal = _localPos + _localPos.normalized * LiftoffHeight;
+                _departAnchorLocal = _localPos;   // the PAD — the bezier starts here
                 if (!ClientDriven) ComputeArrivalAnchor();
                 break;
 
@@ -572,12 +599,12 @@ public class ShuttleAutopilot : MonoBehaviour
                 _upAlignVel = 0f;
                 _avoidOffset = Vector3.zero;
                 _avoidOffsetVel = Vector3.zero;
-                float dist = Vector3.Distance(FrameWorldPos(_departBody, _departAnchorLocal),
-                                              FrameWorldPos(_targetBody, _arriveAnchorLocal));
-                float rf = TransitRampFrac;
-                float tBurn  = Mathf.Sqrt(1.5f * dist / (rf * (1f - rf) * TransitAccelMax));
-                float tCoast = dist / ((1f - rf) * TransitCruiseMax);
-                _transitDuration = Mathf.Clamp(Mathf.Max(tBurn, tCoast), TransitMinSeconds, TransitMaxSeconds);
+                Vector3 aW = FrameWorldPos(_departBody, _departAnchorLocal);
+                Vector3 bW = FrameWorldPos(_targetBody, _arriveAnchorLocal);
+                float arcLen = BezierLength(aW, BendControl(aW, bW), bW);
+                float tBurn  = Mathf.Sqrt(5.77f * arcLen / TransitAccelMax);
+                float tSpeed = 1.875f * arcLen / TransitPeakMax;
+                _transitDuration = Mathf.Clamp(Mathf.Max(tBurn, tSpeed), TransitMinSeconds, TransitMaxSeconds);
                 break;
 
             case Phase.Hover:
@@ -809,48 +836,113 @@ public class ShuttleAutopilot : MonoBehaviour
 
     void TickLiftoff()
     {
-        float u = Mathf.Clamp01(_phaseT / LiftoffSeconds);
-        // Smootherstep vertical rise (playtest 15's feel pass): 0 ->
-        // LiftoffHeight with zero velocity AND zero acceleration at both
-        // ends — plain smoothstep applied its maximum thrust on the very
-        // first frame off the pad, part of the "jerked around" feel.
-        float alt = LiftoffHeight * (u * u * u * (u * (6f * u - 15f) + 10f));
-        Vector3 localUp = _parkedLocalPos.sqrMagnitude > 0.001f ? _parkedLocalPos.normalized : Vector3.up;
-        _localPos = _parkedLocalPos + localUp * alt;
-        if (u >= 1f) SetPhase(Phase.Transit);
+        // Ignition hold — NO motion (playtest 16). The old separate 300 m
+        // vertical rise ended AT REST before the transit re-accelerated
+        // toward the target — the "goes up, slows down, then starts moving
+        // in the direction of the destination" alien seam. The whole journey
+        // is now one continuous bezier flown by TickTransit, which leaves
+        // the pad radially anyway; this phase just seals the door (the fold
+        // takes ~2.5 s) and lets the engines spool.
+        if (_phaseT >= LiftoffSeconds) SetPhase(Phase.Transit);
     }
 
-    // S-curve trapezoid ease (see the transit-profile constants): position
-    // fraction covered at time fraction u. Velocity is a smoothstep ramp up
-    // over [0, f], constant cruise, smoothstep ramp down over [1−f, 1] —
-    // velocity AND acceleration are zero at both endpoints and continuous
-    // everywhere. Ramp branch is the closed-form ∫smoothstep = t³ − t⁴/2.
-    static float TransitEase(float u, float f)
+    // The flight curve: quadratic bezier pad → (radially above the pad) →
+    // arrival anchor. See the flight-profile constants for why.
+    Vector3 BendControl(Vector3 aWorld, Vector3 bWorld)
     {
-        float vc = 1f / (1f - f);   // normalised cruise speed (area under v = 1)
-        if (u < f)
+        Vector3 upA = (aWorld - _departBody.Position).normalized;
+        Vector3 dirT = (bWorld - aWorld).normalized;
+        float bend = Mathf.Clamp(0.15f * Vector3.Distance(aWorld, bWorld), TransitBendMin, TransitBendMax);
+        // Far-side departures: a target BELOW the pad's horizon would fold
+        // the bezier into a hairpin (a derivative cusp — the shuttle would
+        // climb, stop mid-air and reverse, and the arc-length map spikes).
+        // Lean the climb direction toward the target's side of the sky just
+        // enough to turn the hairpin into an up-and-around arc; targets in
+        // the open sky keep the pure radial rocket departure.
+        float facing = Vector3.Dot(dirT, upA);
+        float lean = Mathf.InverseLerp(0.3f, -0.8f, facing) * 0.6f;
+        if (lean > 0f)
         {
-            float t = u / f;
-            return vc * f * (t * t * t - 0.5f * t * t * t * t);
+            Vector3 tan = dirT - upA * facing;
+            Vector3 tanDir = tan.sqrMagnitude > 0.01f ? tan.normalized : StablePerpendicular(upA);
+            return aWorld + Vector3.Slerp(upA, tanDir, lean) * bend;
         }
-        if (u > 1f - f)
+        return aWorld + upA * bend;
+    }
+
+    static Vector3 QuadBezier(Vector3 a, Vector3 c, Vector3 b, float t)
+    {
+        float m = 1f - t;
+        return m * m * a + 2f * m * t * c + t * t * b;
+    }
+
+    // 16-segment cumulative arc-length table, rebuilt per call — the
+    // endpoints orbit, so the curve is different every step.
+    static readonly float[] s_arcLen = new float[17];
+    static float BezierLength(Vector3 a, Vector3 c, Vector3 b)
+    {
+        Vector3 prev = a;
+        float total = 0f;
+        s_arcLen[0] = 0f;
+        for (int i = 1; i <= 16; i++)
         {
-            float t = (1f - u) / f;
-            return 1f - vc * f * (t * t * t - 0.5f * t * t * t * t);
+            Vector3 p = QuadBezier(a, c, b, i / 16f);
+            total += Vector3.Distance(prev, p);
+            s_arcLen[i] = total;
+            prev = p;
         }
-        return vc * (u - 0.5f * f);
+        return total;
+    }
+
+    // Map an ARC-LENGTH fraction to the bezier parameter — the raw parameter
+    // moves ~2:1 faster over the bent part, which would corrupt the speed
+    // profile the ease was built for. The inverse is interpolated with C1
+    // Hermite (Catmull-Rom) across the table: plain linear interpolation has
+    // slope kinks at the 16 segment seams that surfaced as ~20% world-speed
+    // steps mid-flight (caught by the profile sim before it shipped).
+    static float BezierArcParam(Vector3 a, Vector3 c, Vector3 b, float frac)
+    {
+        float total = BezierLength(a, c, b);
+        if (total < 0.01f) return frac;
+        float target = Mathf.Clamp(frac, 0f, 1f) * total;
+        for (int i = 1; i <= 16; i++)
+        {
+            if (s_arcLen[i] < target) continue;
+            float L0 = s_arcLen[i - 1], L1 = s_arcLen[i];
+            float h = L1 - L0;
+            if (h < 0.0001f) return i / 16f;
+            float t0 = (i - 1) / 16f, t1 = i / 16f;
+            float m0 = ArcSlope(i - 1), m1 = ArcSlope(i);
+            float x = (target - L0) / h;
+            float x2 = x * x, x3 = x2 * x;
+            return (2f * x3 - 3f * x2 + 1f) * t0 + (x3 - 2f * x2 + x) * h * m0
+                 + (-2f * x3 + 3f * x2) * t1 + (x3 - x2) * h * m1;
+        }
+        return 1f;
+    }
+
+    // dt/dL at table node i (central difference over the neighbours).
+    static float ArcSlope(int i)
+    {
+        int lo = i > 0 ? i - 1 : 0, hi = i < 16 ? i + 1 : 16;
+        float dL = s_arcLen[hi] - s_arcLen[lo];
+        return dL > 0.0001f ? ((hi - lo) / 16f) / dL : 0f;
     }
 
     void TickTransit()
     {
         float u = Mathf.Clamp01(_phaseT / _transitDuration);
-        float ease = TransitEase(u, TransitRampFrac);
+        // Smootherstep: one velocity bell — accelerate to the midpoint,
+        // decelerate to rest at the anchor — zero accel at both endpoints.
+        float ease = u * u * u * (u * (6f * u - 15f) + 10f);
 
-        // Both anchors evaluated FRESH every step so the path tracks the
+        // Everything evaluated FRESH every step so the path tracks the
         // orbiting bodies and origin rebases (handoff §4 — never cache world).
         Vector3 aWorld = FrameWorldPos(_departBody, _departAnchorLocal);
         Vector3 bWorld = FrameWorldPos(_targetBody, _arriveAnchorLocal);
-        Vector3 posW = ApplyTransitAvoidance(Vector3.Lerp(aWorld, bWorld, ease), aWorld, bWorld, ease);
+        Vector3 c1 = BendControl(aWorld, bWorld);
+        float s = BezierArcParam(aWorld, c1, bWorld, ease);
+        Vector3 posW = ApplyTransitAvoidance(QuadBezier(aWorld, c1, bWorld, s), aWorld, bWorld, ease);
 
         Vector3 upA = (aWorld - _departBody.Position).normalized;
         Vector3 upB = (bWorld - _targetBody.Position).normalized;
@@ -941,7 +1033,12 @@ public class ShuttleAutopilot : MonoBehaviour
         {
             Vector3 toDep = result - _departBody.Position;
             float d = toDep.magnitude;
-            float minR = (aWorld - _departBody.Position).magnitude - 5f;   // the liftoff-top shell
+            // The path now STARTS on the pad, so the floor ramps up from pad
+            // altitude to pad+250 m over the first ~1/6 of the leg — by then
+            // the bezier's own radial climb is far above it. The floor only
+            // binds when a far-side pad sends the base path back around (or
+            // through) the departure planet.
+            float minR = (aWorld - _departBody.Position).magnitude - 5f + Mathf.Min(ease * 6f, 1f) * 250f;
             if (d > 1f && d < minR)
                 result = _departBody.Position + toDep * (minR / d);
         }
@@ -1032,11 +1129,12 @@ public class ShuttleAutopilot : MonoBehaviour
         Vector3 n = _sensor != null && _sensor.Valid ? _sensor.PlaneNormal : up;
         if (n.sqrMagnitude < 0.5f || Vector3.Dot(n, up) < 0.7f) n = up;   // sanity — never land sideways
 
-        // Clearance vs bumps, half-weighted (playtest 10): full bump clearance
-        // still read as floating on rough pads. Half the bump plus 5 cm means
-        // smooth pads sit flush and the roughest legal pad trades a slight
-        // gear-into-rock (static colliders, no physics response) for hover.
-        float clearance = _sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation * 0.5f + 0.05f : 0.1f;
+        // With measured feet the seat is refined exactly below — the bump
+        // clearance heuristic only survives as the no-feet fallback
+        // (playtest 10's half-bump compromise).
+        float clearance = _feetLocal.Count > 0
+            ? 0.02f
+            : (_sensor != null && _sensor.Valid ? _sensor.MaxAboveDeviation * 0.5f + 0.05f : 0.1f);
 
         // Seat on the FITTED PLANE, not the raw centre hit (playtest 15): the
         // centre ray can land in a dip or on a bump inside the footprint, and
@@ -1048,10 +1146,34 @@ public class ShuttleAutopilot : MonoBehaviour
             touch -= n * _sensor.CenterDeviation;
 
         _landStartLocal = _localPos;
-        _landTargetLocal = FrameLocalPos(_body, touch + n * (_gearHeight + clearance));
         _landStartLocalRot = _localRot;
         Quaternion curW = FrameWorldRot(_body, _localRot);
-        _landTargetLocalRot = FrameLocalRot(_body, Quaternion.FromToRotation(curW * Vector3.up, n) * curW);
+        Quaternion tgtRotW = Quaternion.FromToRotation(curW * Vector3.up, n) * curW;
+        _landTargetLocalRot = FrameLocalRot(_body, tgtRotW);
+
+        Vector3 tgtW = touch + n * (_gearHeight + clearance);
+
+        // EXACT foot seat (playtest 16 — "still floats a foot or two"): the
+        // plane target above is only a first guess (estimated gear height,
+        // fitted plane vs the real mesh). Cast down from each measured
+        // foot-bottom point AT the target pose and shift along the normal
+        // until the lowest-clearance foot actually touches the terrain — a
+        // rigid seat: on uneven ground the other feet may hover by the
+        // terrain's own unevenness, like a chair on a rocky floor.
+        if (_feetLocal.Count > 0)
+        {
+            float minGap = float.MaxValue;
+            for (int i = 0; i < _feetLocal.Count; i++)
+            {
+                Vector3 footW = tgtW + tgtRotW * _feetLocal[i];
+                if (GroundRay(footW + n * 2f, -n, 30f, out RaycastHit fh))
+                    minGap = Mathf.Min(minGap, fh.distance - 2f);
+            }
+            if (minGap != float.MaxValue)
+                tgtW -= n * (minGap - 0.02f);
+        }
+
+        _landTargetLocal = FrameLocalPos(_body, tgtW);
         float height = Vector3.Distance(_landStartLocal, _landTargetLocal);
         _landDuration = Mathf.Clamp(height / 15f, LandingMinSeconds, LandingMaxSeconds);
         _settleT = 0f;
