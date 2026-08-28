@@ -488,6 +488,29 @@ public class RiderReleaseBleed : MonoBehaviour
     bool _holdArmed;
     float _lastHoldCm;
 
+    // ── Intro watch mode (2026-08-28, the pod slide hunt) ────────────────────
+    // Arms at intro start and samples the player's CABIN-relative position
+    // every 0.5 s for the whole window, reporting CUMULATIVE drift from the
+    // starting spot — a slow slide hides in per-frame deltas but is
+    // unmissable as accumulated drift. Rows carry phase + grounded/rider/
+    // dialogue flags; Marks timestamp the intro events.
+    struct DSample { public float t; public Vector3 plyCab, camCab, rbCab; public byte phase; public bool gnd, rider, dlg; }
+    bool _introMode;
+    float _nextDriftAt;
+    Vector3 _lastRbCab;
+    readonly List<DSample> _drift = new List<DSample>(120);
+
+    public static void BeginIntroWatch(PlayerController pc, CelestialBody body, float seconds)
+    {
+        BeginWindow(pc, body, seconds);
+        if (s_active != null)
+        {
+            s_active._introMode = true;
+            s_active._nextDriftAt = 0f;
+            s_active._drift.Clear();
+        }
+    }
+
     public static void BeginWindow(PlayerController pc, CelestialBody body, float seconds)
     {
         if (pc == null) return;
@@ -508,6 +531,7 @@ public class RiderReleaseBleed : MonoBehaviour
         b._worstDtT = 0f;
         b._r.Clear();
         b._f.Clear();
+        b._introMode = false;
         s_marks.Clear();
         s_active = b;
         b.enabled = true;
@@ -545,10 +569,12 @@ public class RiderReleaseBleed : MonoBehaviour
         if (ap == null) return;
         ap.GetWorldPose(out Vector3 sw, out Quaternion sr);
         Vector3 bodyVel = _body != null ? _body.velocity : Vector3.zero;
-        if (_f.Count < 480)
+        Vector3 rbCab = Quaternion.Inverse(sr) * (_pc.Rigidbody.position - sw);
+        _lastRbCab = rbCab;
+        if (!_introMode && _f.Count < 480)
             _f.Add(new FSample {
                 t = since,
-                rbCab = Quaternion.Inverse(sr) * (_pc.Rigidbody.position - sw),
+                rbCab = rbCab,
                 velDiffCm = (_pc.Rigidbody.velocity - bodyVel).magnitude * 100f,
                 gnd = _pc.GroundedNow,
                 rider = PlayerController.RiderMode,
@@ -605,28 +631,78 @@ public class RiderReleaseBleed : MonoBehaviour
             if (dtMs > _worstDt) { _worstDt = dtMs; _worstDtT = since; }
 
             var ap = ShuttleAutopilot.Instance;
-            if (ap != null && _pc != null && _cam != null && _r.Count < 680)
+            if (ap != null && _pc != null && _cam != null)
             {
                 Transform shT = ap.transform;
-                _r.Add(new RSample {
-                    t = since,
-                    dtMs = dtMs,
-                    holdCm = _lastHoldCm,
-                    camCab = shT.InverseTransformPoint(_cam.position),
-                    plyCab = shT.InverseTransformPoint(_pc.transform.position),
-                    gnd = _pc.GroundedNow,
-                    rider = PlayerController.RiderMode,
-                    gc = gcD,
-                });
+                if (_introMode)
+                {
+                    if (since >= _nextDriftAt && _drift.Count < 110)
+                    {
+                        _nextDriftAt = since + 0.5f;
+                        _drift.Add(new DSample {
+                            t = since,
+                            plyCab = shT.InverseTransformPoint(_pc.transform.position),
+                            camCab = shT.InverseTransformPoint(_cam.position),
+                            rbCab = _lastRbCab,
+                            phase = (byte)ap.CurrentPhase,
+                            gnd = _pc.GroundedNow,
+                            rider = PlayerController.RiderMode,
+                            dlg = PlayerController.isInDialogue,
+                        });
+                    }
+                }
+                else if (_r.Count < 680)
+                {
+                    _r.Add(new RSample {
+                        t = since,
+                        dtMs = dtMs,
+                        holdCm = _lastHoldCm,
+                        camCab = shT.InverseTransformPoint(_cam.position),
+                        plyCab = shT.InverseTransformPoint(_pc.transform.position),
+                        gnd = _pc.GroundedNow,
+                        rider = PlayerController.RiderMode,
+                        gc = gcD,
+                    });
+                }
             }
         }
 
         if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the window
     }
 
+    void ReportIntro()
+    {
+        if (_drift.Count < 2) return;
+        var b0 = _drift[0];
+        var sb = new System.Text.StringBuilder(8192);
+        sb.Append("[IntroWatch] ").Append(_drift.Count).Append(" samples / ").Append(_window)
+          .Append("s.  Events: ").Append(s_marks.Count > 0 ? string.Join(", ", s_marks) : "none").AppendLine();
+        sb.AppendLine("cumulative CABIN-relative drift from the start pose (cm);");
+        sb.AppendLine("ph 0=Parked 1=Countdown 2=Liftoff 3=Transit 4=Hover 5=Landing; g=grounded r=riding d=dialogue");
+        for (int i = 1; i < _drift.Count; i++)
+        {
+            var s = _drift[i];
+            Vector3 dp = s.plyCab - b0.plyCab;
+            Vector3 dc = s.camCab - b0.camCab;
+            Vector3 dr = s.rbCab - b0.rbCab;
+            sb.Append("  t+").Append(s.t.ToString("00.0"))
+              .Append("s ply ").Append((dp.magnitude * 100f).ToString("0.0"))
+              .Append(" (Y ").Append((dp.y * 100f).ToString("+0.0;-0.0"))
+              .Append(") cam ").Append((dc.magnitude * 100f).ToString("0.0"))
+              .Append(" rb ").Append((dr.magnitude * 100f).ToString("0.0"))
+              .Append(" ph").Append(s.phase)
+              .Append(" g").Append(s.gnd ? "1" : "0")
+              .Append(" r").Append(s.rider ? "1" : "0")
+              .Append(" d").Append(s.dlg ? "1" : "0")
+              .AppendLine();
+        }
+        Debug.Log(sb.ToString());
+    }
+
     void Report()
     {
         if (!(Application.isEditor || Universe.cheatsEnabled)) return;
+        if (_introMode) { ReportIntro(); return; }
         if (_r.Count < 5) return;
         var sb = new System.Text.StringBuilder(8192);
         sb.Append("[MegaTracker] ").Append(_r.Count).Append(" render frames / ")
