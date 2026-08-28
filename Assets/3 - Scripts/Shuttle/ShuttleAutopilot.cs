@@ -82,16 +82,20 @@ public class ShuttleAutopilot : MonoBehaviour
     // on the most extreme terrain that still validates green.
     const float MaxLegBury = 1.2f;
     const float SettleSeconds   = 0.5f;
-    // Rider cage held after touchdown. 1.2 s, DOWN from 2.5 (playtest 24):
-    // the release's one-time physics cost — the freshly-dynamic capsule
-    // falling its 2 cm seat gap and making FIRST CONTACT with the planet's
-    // 2M-triangle mesh collider — fires ~0.1 s after release as a single
-    // ~24 ms frame (probe log 3: t+2620, GC acquitted at 0 collections; in
-    // editor AND build). At 2.5 s that spike landed in maximum stillness,
-    // door finished, blend finished — a naked hitch. At 1.2 s it lands
-    // mid door-fold and mid up-blend, the same motion that already masks
-    // every in-flight cost. The door still gates the walk-out at 2.5 s.
-    const float ReleaseSettleSeconds = 1.2f;
+    // Rider cage held after touchdown. 2.2 s (playtest 36 — SAM'S ROOT-CAUSE
+    // CALL, and the mechanics agree): the up-blend runs 0→2 s, and releasing
+    // at 1.2 s put the player into the normal pipeline MID-ROTATION. The
+    // body rotates about its CENTRE, so a tilt correction sweeps the feet
+    // through an arc (~25 cm at 15°); while riding, the rider clamp re-seats
+    // the feet every step, but after release nothing does — the continuing
+    // rotation ground the capsule into the floor (or lifted it off) and
+    // physics corrected it back: the "snapped down then up" residual hitch.
+    // At 2.2 s the rotation is DONE (the blend ends at 2.0, the proxy then
+    // holds steady gravity-up), the foot-exact seat pins the feet at the
+    // FINAL orientation, and the release carries zero pending rotation. The
+    // old 1.2 s spike-masking rationale is obsolete — the contact prewarm
+    // and depenetration clamp defused that spike. Door still opens at 2.5 s.
+    const float ReleaseSettleSeconds = 2.2f;
     const float PilotInputStaleSeconds = 0.5f;  // decay to zero on silence (guest-drop safety)
 
     // Ground = terrain only. Layer 10 ("Body") is the terrain layer; every cast
