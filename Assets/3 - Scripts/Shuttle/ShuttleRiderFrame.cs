@@ -490,6 +490,7 @@ public class RiderReleaseBleed : MonoBehaviour
         b._hasLastCam = false;
         b._reportAt = -1f;
         b._releaseT = -1f;
+        b._holdArmed = false;
         b._lastGcCount = System.GC.CollectionCount(0);
         b._gcTotal = 0;
         b._lastAlt = -1f;
@@ -513,6 +514,13 @@ public class RiderReleaseBleed : MonoBehaviour
                 // Planet-relative seat, so orbital motion never counts as walking.
                 if (s_active._pc != null && s_active._body != null)
                     s_active._seatPos = s_active._pc.transform.position - s_active._body.transform.position;
+                // Camera hold anchor (playtest 31): where the camera sits
+                // RELATIVE TO THE PLANET on the last pre-release frame.
+                if (s_active._cam != null && s_active._body != null)
+                {
+                    s_active._heldCamLocal = s_active._body.transform.InverseTransformPoint(s_active._cam.position);
+                    s_active._holdArmed = true;
+                }
                 s_active._walkMarked = 0;
             }
         }
@@ -520,6 +528,8 @@ public class RiderReleaseBleed : MonoBehaviour
 
     Vector3 _seatPos;
     int _walkMarked;
+    Vector3 _heldCamLocal;
+    bool _holdArmed;
 
     void LateUpdate()
     {
@@ -548,20 +558,35 @@ public class RiderReleaseBleed : MonoBehaviour
         // no rigidbody or player transform (the playtest-18 trap), and runs
         // in every build.
         _lastCorrCm = 0f;
-        if (_releaseT >= 0f && since - _releaseT < 1.0f && _cam != null
-            && _pc != null && _pc.Rigidbody != null && _body != null && !PlayerController.RiderMode)
+        // ── CAMERA HOLD across the release seam (playtest 31) ───────────────
+        // Three probe logs proved the final truth: the ~20-30 cm one-frame
+        // render dip at release is IDENTICAL whether the rigidbody seat moves
+        // 13 cm or 150 cm — it is the render-path switch itself (parent
+        // compose → rigidbody interpolation), and no bookkeeping fix renders
+        // the seam frame cleanly. So stop accounting and PIN the view: hold
+        // the camera at its pre-release pose RELATIVE TO THE RENDERED PLANET
+        // (rock-solid against the cabin by construction) while the handover
+        // turbulence plays out underneath, then ease to the live camera.
+        // Absolute lerp-to-target — cannot compound (unlike the old additive
+        // nudge), touches no rigidbody, no player transform, no interpolation
+        // (the pt-18 trap). Over before the door lets the player walk.
+        if (_holdArmed && _releaseT >= 0f && _cam != null && _body != null)
         {
-            Vector3 groundLag = _body.transform.position - _body.Position;
-            Vector3 corr = (_pc.Rigidbody.position + groundLag) - _pc.transform.position;
-            // FADE out (playtest 22): the first cut ended with a hard cutoff
-            // at +0.6 s — any residual correction at that instant became its
-            // own camera step, right at the time the pop is felt.
-            float w = 1f - Mathf.SmoothStep(0.5f, 1.0f, since - _releaseT);
-            if (corr.sqrMagnitude < 16f)   // rebase/teleport guard
+            float u = (since - _releaseT) / 0.6f;
+            if (u >= 0f && u < 1f)
             {
-                _cam.position += corr * w;
-                _lastCorrCm = corr.magnitude * w * 100f;
+                Vector3 held = _body.transform.TransformPoint(_heldCamLocal);
+                if ((held - _cam.position).sqrMagnitude < 25f)   // rebase/teleport abort
+                {
+                    // Full hold for the first ~0.33 s, blend out by 0.6 s.
+                    float w = 1f - Mathf.SmoothStep(0.55f, 1f, u);
+                    Vector3 before = _cam.position;
+                    _cam.position = Vector3.Lerp(_cam.position, held, w);
+                    _lastCorrCm = (_cam.position - before).magnitude * 100f;
+                }
+                else _holdArmed = false;
             }
+            else if (u >= 1f) _holdArmed = false;
         }
 
         bool probe = Application.isEditor || Universe.cheatsEnabled;
