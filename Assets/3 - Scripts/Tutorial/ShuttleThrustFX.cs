@@ -140,6 +140,14 @@ public class ShuttleThrustFX : MonoBehaviour
         _ignited = true;
     }
 
+    // ── Shuttle-travel wiring (2026-08-28): the travel autopilot reuses these
+    // plumes across repeated liftoffs/landings/hovers, so the one-shot
+    // Ignite/Shutdown lifecycle gains re-usable toggles. Clearing a pending
+    // die-out revives the systems.
+    public bool Initialized => _root != null;
+    public void SetEngine(bool on) { if (on) _dying = false; _ignited = on; }
+    public void SetSpurts(bool on) { if (on) _dying = false; _stabOn = on; }
+
     public void SetAltitude(float altitude) { _altitude = altitude; }
 
     public void Shutdown()

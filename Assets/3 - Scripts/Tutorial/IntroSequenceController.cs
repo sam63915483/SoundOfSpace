@@ -132,6 +132,9 @@ public class IntroSequenceController : MonoBehaviour
         // both are statics that would otherwise leak into the next run.
         SuppressGroggyCameraFx = false;
         NotePickup.ReadableDuringIntro = false;
+        // The shuttle wake holds isInDialogue while the eyes are shut — same
+        // leak class if torn down mid-wake.
+        if (_running) PlayerController.isInDialogue = false;
     }
 
     IEnumerator Start()
@@ -150,20 +153,23 @@ public class IntroSequenceController : MonoBehaviour
 
         EarlyGameProgress.IntroPlayed = true;
 
-        // Shuttle landing intro (2026-07 opening redesign): when the landed
-        // Shuttle_Lander carries a ShuttleArrivalSequence, it supersedes BOTH
-        // the pod crash and this cabin wake-up. The player wakes in the
-        // shuttle's stasis chamber, rides the landing, and is released at
-        // touchdown — no crash, no cabin. The pod + wake-up path below is kept
-        // intact (archived) and runs only when no shuttle sequence is present.
-        var shuttleArrival = FindObjectOfType<ShuttleArrivalSequence>();
-        if (shuttleArrival != null)
+        // ── SHUTTLE WAKE INTRO (2026-08-28, the travel system IS the intro) ──
+        // Supersedes BOTH the old HAL-briefing descent film
+        // (ShuttleArrivalSequence — video, voiced lines, scripted landing) AND
+        // the pod-crash + cabin wake-up below. Sam's design: black screen,
+        // "open your eyes", clicks prise the eyelids open; the FIRST click
+        // lights the engines and starts a 30 s approach to Humble Abode; the
+        // last click opens the stasis pod so the player walks the moving
+        // cabin; the approach ends at the 100 m hover and the player lands
+        // the shuttle themselves at the NAV computer (the cockpit monitor is
+        // already live with the landing screen). The old intro paths remain
+        // in the codebase but are unreachable from a fresh game.
+        var wakePilot = ShuttleAutopilot.EnsureAttached();
+        if (wakePilot != null)
         {
-            // The CABIN room tone started in Awake has no place in the shuttle
-            // (and nothing on this path would ever stop the loop).
             if (_roomTone != null) { _roomTone.Stop(); Destroy(_roomTone); _roomTone = null; }
-            if (_canvas != null) _canvas.enabled = false;   // the shuttle owns the screen fade
-            yield return shuttleArrival.Play();
+            yield return RunShuttleWakeIntro(wakePilot);
+            SuppressGroggyCameraFx = false;
             if (_canvas != null) Destroy(_canvas.gameObject);
             StartCoroutine(ReleaseFirstContact());          // phone first-contact beat still fires ~a minute in
             yield break;
@@ -328,6 +334,61 @@ public class IntroSequenceController : MonoBehaviour
             if (_pc != null && _pc.ForceLookAtSmooth(lookTarget.position, lookPanSpeed))
                 GrantGroggyControl();   // gaze landed = cursor unlocks: hand back look + movement (15%) together
         }
+    }
+
+    // ── The shuttle wake intro (2026-08-28) ────────────────────────────────
+    IEnumerator RunShuttleWakeIntro(ShuttleAutopilot pilot)
+    {
+        _running = true;
+
+        // Under the blackout: shuttle to the approach start (15 km up),
+        // player into the stasis pod, rider cage on (free cabin walking on a
+        // moving shuttle — the proven travel recipe).
+        pilot.PrepareIntroApproach();
+        if (_pc == null) _pc = FindObjectOfType<PlayerController>();
+        Transform podT = null;
+        foreach (var t in pilot.GetComponentsInChildren<Transform>(true))
+            if (t.name == "StasisPod") { podT = t; break; }
+        var podDoor = pilot.GetComponentInChildren<StasisPodDoor>(true);
+        if (_pc != null && podT != null)
+        {
+            var prb = _pc.Rigidbody;
+            prb.velocity = Vector3.zero;
+            prb.angularVelocity = Vector3.zero;
+            // Same pod-local stand offset the old sequence tuned (feet ~3 cm
+            // above the plinth — no overlap, no depenetration kick).
+            Vector3 pos = podT.TransformPoint(new Vector3(0f, 1.02f, 0f));
+            Quaternion rot = Quaternion.LookRotation(podT.forward, podT.up);
+            prb.position = pos;
+            prb.rotation = rot;
+            _pc.transform.SetPositionAndRotation(pos, rot);
+            Physics.SyncTransforms();
+        }
+        pilot.CaptureIntroRiders();
+        PlayerController.isInDialogue = true;   // eyes shut — look yes, walk no
+
+        // Click-to-wake on the classic eyelids. Prompt up immediately.
+        if (_prompt != null)
+        {
+            _prompt.text = "OPEN YOUR EYES — " + PromptGlyphs.PrimaryAction;
+            _prompt.gameObject.SetActive(true);
+        }
+        _clicksArmed = true;
+        yield return new WaitUntil(() => _clicks >= 1);
+        pilot.LaunchIntroApproach(30f);         // first blink = engines light, HA approach begins
+        yield return new WaitUntil(() => _clicks >= clicksToWake);
+        _clicksArmed = false;
+        _opennessTarget = 1f;
+        if (_prompt != null) _prompt.gameObject.SetActive(false);
+        yield return new WaitUntil(() => _openness >= 0.995f);
+
+        // Eyes open: pod releases the player into the (flying) cabin. From
+        // here it is the normal travel flow — the hover arrives ~30 s after
+        // the first blink, the cockpit monitor is already on the landing
+        // screen, and the player walks over, presses F, and sets it down.
+        PlayerController.isInDialogue = false;
+        if (podDoor != null) podDoor.OpenHold();
+        _running = false;
     }
 
     // ── The sequence ───────────────────────────────────────────────────────

@@ -171,6 +171,15 @@ public class ShuttleAutopilot : MonoBehaviour
     float _releaseRidersAt = -1f;   // deferred post-touchdown release; -1 = idle
     EndlessManager _endless;
 
+    // New-game intro approach (2026-08-28): scripted straight-in descent to
+    // the authored pad's hover point — avoidance and the depart-floor are
+    // meaningless for an inbound leg and are skipped while this is set.
+    bool _introApproach;
+    // Thruster fire (Sam: engines on liftoff/landing/hover spurts — reuses the
+    // intro's runtime-built ShuttleThrustFX plumes).
+    ShuttleThrustFX _fx;
+    float _landHeight;
+
     ShuttleLandingSensor _sensor;
     ShuttleRenderSmoother _smoother;
     ShuttleLandingCamera _landingCamera;
@@ -475,6 +484,64 @@ public class ShuttleAutopilot : MonoBehaviour
         return true;
     }
 
+    // ── Thruster fire ────────────────────────────────────────────────────────
+    void EnsureFx()
+    {
+        if (_fx == null)
+        {
+            _fx = GetComponent<ShuttleThrustFX>();
+            if (_fx == null) _fx = gameObject.AddComponent<ShuttleThrustFX>();
+        }
+        if (!_fx.Initialized) _fx.Initialize(transform);
+    }
+
+    // ── New-game intro approach (2026-08-28) ─────────────────────────────────
+    // The travel system IS the intro now (Sam's call): the player wakes in the
+    // stasis pod of the shuttle already inbound; the intro controller runs the
+    // eyelid wake, then this flies a 30 s approach into the normal HOVER →
+    // player-lands flow. Prepare places the shuttle 15 km above its authored
+    // pad UNDER the intro's blackout; Launch fires on the player's first click.
+    public void PrepareIntroApproach()
+    {
+        if (_body == null) return;
+        _targetBody = _body;
+        _departBody = _body;
+        Vector3 upL = _localPos.sqrMagnitude > 1f ? _localPos.normalized : Vector3.up;
+        _arriveAnchorLocal = _localPos + upL * HoverAltitude;
+        _departAnchorLocal = upL * (_localPos.magnitude + 15000f);
+        _introApproach = true;
+        _localPos = _departAnchorLocal;
+        _prevLocalPos = _localPos;
+        _prevLocalRot = _localRot;
+        _poseJumped = true;
+        transform.localPosition = _localPos;
+        transform.localRotation = _localRot;
+        Physics.SyncTransforms();
+        // The flight prep that Countdown/Liftoff would normally do:
+        if (_healPlayer == null) _healPlayer = FindObjectOfType<PlayerController>();
+        if (_endless == null) _endless = FindObjectOfType<EndlessManager>();
+        ShuttleRiderFrame.Prefetch();
+        if (_endless != null && _endless.distanceThreshold < 3500f) _endless.distanceThreshold = 3500f;
+        if (_healPlayer != null && _healPlayer.Camera != null && _healPlayer.Camera.farClipPlane < 30000f)
+            _healPlayer.Camera.farClipPlane = 30000f;
+        if (_door == null) _door = GetComponentInChildren<ShuttleExitDoor>(true);
+        if (_door != null) _door.CloseForFlight();
+        EnsureFx();
+        _fx.SetSpurts(true);
+    }
+
+    /// Rider-cage the player (called by the intro after podding them).
+    public void CaptureIntroRiders() { ShuttleRiderFrame.CaptureRiders(this); }
+
+    /// First wake click: the engines light and the approach begins.
+    public void LaunchIntroApproach(float seconds)
+    {
+        if (_phase != Phase.Parked) return;
+        SetPhase(Phase.Transit);
+        _transitDuration = Mathf.Max(5f, seconds);
+        if (_fx != null) _fx.SetEngine(true);
+    }
+
     /// NAV's SKIP button (playtest 35): jump the countdown to zero — the
     /// crew check and liftoff then run exactly as if the timer expired.
     public void SkipCountdown()
@@ -616,6 +683,12 @@ public class ShuttleAutopilot : MonoBehaviour
             case Phase.Liftoff:
                 if (_door != null) _door.CloseForFlight();
                 ShuttleRiderFrame.CaptureRiders(this);
+                // Engines light with the ignition hold (Sam: thruster fire on
+                // every liftoff, not just the intro) — spurts + main plume.
+                EnsureFx();
+                _fx.SetSpurts(true);
+                _fx.SetEngine(true);
+                _fx.SetAltitude(30f);
                 // Origin rebases cost a 1-2 frame global stutter (the
                 // interpolation strip/restore machinery), and at cruise the
                 // rider crosses the 1000 m threshold every couple of seconds —
@@ -668,6 +741,9 @@ public class ShuttleAutopilot : MonoBehaviour
                 _hoverAltVel = 0f;
                 _hoverAlt = HoverAltitude;
                 _landRequested = false;
+                // Hover: main engine off, stabiliser SPURTS keep firing (Sam:
+                // "little spurts so it looks like you're being held up").
+                if (_fx != null) { _fx.SetEngine(false); _fx.SetSpurts(true); }
                 if (_sensor != null) _sensor.SetActive(true);
                 if (_landingCamera == null) _landingCamera = ShuttleLandingCamera.Create(this);
                 break;
@@ -733,6 +809,8 @@ public class ShuttleAutopilot : MonoBehaviour
                 // really scheduling a visible catch-up event into the
                 // post-touchdown stillness. Threshold stays 3.5 km; the one
                 // pending shift was spent at descent start, masked by motion.
+                _introApproach = false;
+                if (_fx != null) _fx.Shutdown();   // engines collapse at touchdown
                 _targetBody = null;
                 break;
         }
@@ -1010,7 +1088,29 @@ public class ShuttleAutopilot : MonoBehaviour
 
         Vector3 upA = (aWorld - _departBody.Position).normalized;
         Vector3 upB = (bWorld - _targetBody.Position).normalized;
-        Vector3 upW = Vector3.Slerp(upA, upB, ease).normalized;
+        // ROCKET ATTITUDE (playtest 42, Sam's spec — no more UFO gliding):
+        // the thrust axis is the ship's UP. Rise radially off the pad, pitch
+        // the nose (ship top) onto the destination for the main burn, flip
+        // 180° around a stable side axis at the coast, retro-burn tail-first,
+        // then settle to the arrival radial for the hover. The SmoothDamp
+        // alignment below chases this target, so every attitude change ramps.
+        Vector3 travelDir = (bWorld - aWorld).normalized;
+        Vector3 flipSide = Vector3.Cross(travelDir, upB);
+        flipSide = flipSide.sqrMagnitude < 0.01f ? StablePerpendicular(travelDir) : flipSide.normalized;
+        Vector3 upW;
+        if (ease < 0.12f)      upW = Vector3.Slerp(upA, travelDir, Mathf.SmoothStep(0f, 1f, ease / 0.12f));
+        else if (ease < 0.45f) upW = travelDir;
+        else if (ease < 0.60f) upW = Quaternion.AngleAxis(180f * Mathf.SmoothStep(0f, 1f, (ease - 0.45f) / 0.15f), flipSide) * travelDir;
+        else if (ease < 0.90f) upW = -travelDir;
+        else                   upW = Vector3.Slerp(-travelDir, upB, Mathf.SmoothStep(0f, 1f, (ease - 0.90f) / 0.10f));
+
+        // Engine fire follows the burns: main burn nose-first, silent coast
+        // through the flip, retro burn tail-first into the hover.
+        if (_fx != null)
+        {
+            _fx.SetEngine(ease < 0.45f || (ease >= 0.60f && ease < 0.92f));
+            _fx.SetAltitude(150f);
+        }
 
         // Reparent to the arrival frame at the midpoint.
         if (!_reparented && ease >= 0.5f)
@@ -1065,6 +1165,10 @@ public class ShuttleAutopilot : MonoBehaviour
     //    the start anchor itself sits deep inside the safe sphere.
     Vector3 ApplyTransitAvoidance(Vector3 posW, Vector3 aWorld, Vector3 bWorld, float ease)
     {
+        // Intro approach: a scripted straight-in descent to the authored pad
+        // — avoidance and the depart floor are meaningless inbound.
+        if (_introApproach) return posW;
+
         Vector3 travel = bWorld - aWorld;
         float travelLen = travel.magnitude;
         if (travelLen < 1f) return posW;
@@ -1165,6 +1269,7 @@ public class ShuttleAutopilot : MonoBehaviour
         float measuredAlt = r - terrainR;
         _hoverAlt = Mathf.SmoothDamp(measuredAlt, HoverAltitude, ref _hoverAltVel, HoverAltSmooth, Mathf.Infinity, dt);
         _localPos = radial * (terrainR + _hoverAlt);
+        if (_fx != null) _fx.SetAltitude(_hoverAlt);   // spurt/light power
 
         // Bottom always faces the core: up -> radial, yaw preserved + Q/E.
         // Rate-limited (playtest 15): the transit's eased alignment can end a
@@ -1280,6 +1385,7 @@ public class ShuttleAutopilot : MonoBehaviour
 
         _landTargetLocal = FrameLocalPos(_body, tgtW);
         float height = Vector3.Distance(_landStartLocal, _landTargetLocal);
+        _landHeight = height;
         _landDuration = Mathf.Clamp(height / 15f, LandingMinSeconds, LandingMaxSeconds);
         _settleT = 0f;
         SetPhase(Phase.Landing);
@@ -1311,10 +1417,32 @@ public class ShuttleAutopilot : MonoBehaviour
         return (refN - tx * a - tz * b).normalized;
     }
 
+    // Fall-then-brake set-down (playtest 42, Sam's spec: "lets you fall down,
+    // then applies the reverse thrust to make your impact soft"): velocity
+    // ramps up linearly over the first 55% of the descent (free fall), then a
+    // smoothstep retro-burn kills it to zero at touchdown. Area-normalised so
+    // ease(1) = 1.
+    static float LandingEase(float u)
+    {
+        const float k = 0.55f;   // free-fall fraction
+        const float vp = 2f;     // normalised peak sink rate
+        if (u <= k) return 0.5f * vp * u * u / k;
+        float t = (u - k) / (1f - k);
+        float integ = t - t * t * t + 0.5f * t * t * t * t;   // ∫(1 − smoothstep)
+        return 0.5f * vp * k + vp * (1f - k) * integ;
+    }
+
     void TickLanding()
     {
         float u = Mathf.Clamp01(_phaseT / _landDuration);
-        float ease = u * u * (3f - 2f * u);   // at rest at both ends — a soft set-down
+        float ease = LandingEase(u);
+        // Engines: silent free fall, then the retro-burn — plume power ramps
+        // to the fireball as the ground nears (SetAltitude drives it).
+        if (_fx != null)
+        {
+            _fx.SetEngine(u >= 0.5f);
+            _fx.SetAltitude(Mathf.Max(0f, (1f - ease) * _landHeight));
+        }
         _localPos = Vector3.Lerp(_landStartLocal, _landTargetLocal, ease);
         // Ease from hover-upright into the surface-conforming tilt.
         _localRot = Quaternion.Slerp(_landStartLocalRot, _landTargetLocalRot, ease);
