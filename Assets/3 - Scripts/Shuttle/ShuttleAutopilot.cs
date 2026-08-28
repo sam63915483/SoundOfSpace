@@ -510,7 +510,7 @@ public class ShuttleAutopilot : MonoBehaviour
     // The travel system IS the intro now (Sam's call): the player wakes in the
     // stasis pod of the shuttle already inbound; the intro controller runs the
     // eyelid wake, then this flies a 30 s approach into the normal HOVER →
-    // player-lands flow. Prepare places the shuttle 15 km above its authored
+    // player-lands flow. Prepare places the shuttle 4 km above its authored
     // pad UNDER the intro's blackout; Launch fires on the player's first click.
     public void PrepareIntroApproach()
     {
@@ -519,7 +519,11 @@ public class ShuttleAutopilot : MonoBehaviour
         _departBody = _body;
         Vector3 upL = _localPos.sqrMagnitude > 1f ? _localPos.normalized : Vector3.up;
         _arriveAnchorLocal = _localPos + upL * HoverAltitude;
-        _departAnchorLocal = upL * (_localPos.magnitude + 15000f);
+        // 4 km, not 15 km (2026-08-28, Sam: the long inbound leg swung the
+        // player right past the sun — "i dont wanna force them to fly so
+        // close to the sun right away"). Same 30 s flight over a quarter of
+        // the distance = a slower, closer, planet-local approach.
+        _departAnchorLocal = upL * (_localPos.magnitude + 4000f);
         _introApproach = true;
         _localPos = _departAnchorLocal;
         _prevLocalPos = _localPos;
