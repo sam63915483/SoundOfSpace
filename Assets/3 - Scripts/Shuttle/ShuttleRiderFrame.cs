@@ -494,7 +494,7 @@ public class RiderReleaseBleed : MonoBehaviour
     // starting spot — a slow slide hides in per-frame deltas but is
     // unmissable as accumulated drift. Rows carry phase + grounded/rider/
     // dialogue flags; Marks timestamp the intro events.
-    struct DSample { public float t; public Vector3 plyCab, camCab, rbCab; public byte phase; public bool gnd, rider, dlg; }
+    struct DSample { public float t; public Vector3 plyCab, camCab, rbCab; public byte phase; public bool gnd, rider, dlg; public float alignCm, walkCm, moveCm, yawDeg; }
     bool _introMode;
     float _nextDriftAt;
     Vector3 _lastRbCab;
@@ -508,6 +508,12 @@ public class RiderReleaseBleed : MonoBehaviour
             s_active._introMode = true;
             s_active._nextDriftAt = 0f;
             s_active._drift.Clear();
+            // Zero the per-stage writer accumulators — each drift row carries
+            // their cumulative values, so slope-matching names the writer.
+            PlayerController.DbgRiderAlignCm = 0f;
+            PlayerController.DbgRiderWalkCm = 0f;
+            PlayerController.DbgRiderMoveCm = 0f;
+            PlayerController.DbgRiderYawDeg = 0f;
         }
     }
 
@@ -648,6 +654,10 @@ public class RiderReleaseBleed : MonoBehaviour
                             gnd = _pc.GroundedNow,
                             rider = PlayerController.RiderMode,
                             dlg = PlayerController.isInDialogue,
+                            alignCm = PlayerController.DbgRiderAlignCm,
+                            walkCm = PlayerController.DbgRiderWalkCm,
+                            moveCm = PlayerController.DbgRiderMoveCm,
+                            yawDeg = PlayerController.DbgRiderYawDeg,
                         });
                     }
                 }
@@ -679,6 +689,7 @@ public class RiderReleaseBleed : MonoBehaviour
           .Append("s.  Events: ").Append(s_marks.Count > 0 ? string.Join(", ", s_marks) : "none").AppendLine();
         sb.AppendLine("cumulative CABIN-relative drift from the start pose (cm);");
         sb.AppendLine("ph 0=Parked 1=Countdown 2=Liftoff 3=Transit 4=Hover 5=Landing; g=grounded r=riding d=dialogue");
+        sb.AppendLine("al/wk/mv = cumulative LATERAL cm written by the yaw+up-align block / the walk intent / the applied move+wall+seat; yw = cumulative look-yaw deg");
         for (int i = 1; i < _drift.Count; i++)
         {
             var s = _drift[i];
@@ -694,6 +705,10 @@ public class RiderReleaseBleed : MonoBehaviour
               .Append(" g").Append(s.gnd ? "1" : "0")
               .Append(" r").Append(s.rider ? "1" : "0")
               .Append(" d").Append(s.dlg ? "1" : "0")
+              .Append(" al ").Append(s.alignCm.ToString("0.0"))
+              .Append(" wk ").Append(s.walkCm.ToString("0.0"))
+              .Append(" mv ").Append(s.moveCm.ToString("0.0"))
+              .Append(" yw ").Append(s.yawDeg.ToString("0"))
               .AppendLine();
         }
         Debug.Log(sb.ToString());

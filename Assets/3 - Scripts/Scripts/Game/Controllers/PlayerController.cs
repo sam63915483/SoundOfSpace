@@ -868,6 +868,16 @@ public class PlayerController : GravityObject
 		_riderPrevLocalPos = _riderCurrLocalPos = transform.localPosition;
 	}
 
+	// IntroWatch stage accumulators (2026-08-28, the in-flight slide hunt):
+	// cumulative cabin-LATERAL centimetres contributed by each rider-tick
+	// stage since the watch zeroed them. Align = the yaw/up-alignment block's
+	// translation (bypasses collision!); Walk = the walk intent
+	// (smoothVelocity·dt — catches input leaks); Move = lateral actually
+	// applied by the move/wall/seat write. YawDeg = cumulative look-yaw
+	// applied, to correlate drift with mouse look. Whichever counter tracks
+	// the ply drift slope names the writer.
+	[System.NonSerialized] public static float DbgRiderAlignCm, DbgRiderWalkCm, DbgRiderMoveCm, DbgRiderYawDeg;
+
 	// Playtest telemetry, read by ShuttleAutopilot's cheats-only overlay so a
 	// "can't walk" report names its gate instead of needing a repro session.
 	[System.NonSerialized] public static bool DbgRiderGrounded;
@@ -1945,6 +1955,11 @@ public class PlayerController : GravityObject
 		// fixed-step truth.
 		if (_riderSmoothInit) transform.localPosition = _riderCurrLocalPos;
 
+		// IntroWatch stage bookkeeping: local pose after the restore, before
+		// any of this tick's writers touch it.
+		Vector3 dbgLp0 = transform.localPosition;
+		float dbgYaw0 = _yawAppliedToTransform;
+
 		// Look-apply (mirrors HandleMovement's first block — pitch to the
 		// camera, accumulated yaw to the body).
 		if (!debug_playerFrozen && Time.timeScale > 0)
@@ -1968,6 +1983,15 @@ public class PlayerController : GravityObject
 		Vector3 upPivot = feet != null ? feet.position : transform.position;
 		transform.rotation = upDelta * transform.rotation;
 		transform.position = upPivot + upDelta * (transform.position - upPivot);
+
+		// IntroWatch: lateral cm the yaw/align block just wrote (it bypasses
+		// collision, so any real signal here is the through-walls suspect).
+		Vector3 dbgLp1 = transform.localPosition;
+		{
+			Vector3 dbgA = dbgLp1 - dbgLp0; dbgA.y = 0f;
+			DbgRiderAlignCm += dbgA.magnitude * 100f;
+			DbgRiderYawDeg += Mathf.Abs(Mathf.DeltaAngle(dbgYaw0, _yawAppliedToTransform));
+		}
 
 		if (isInDialogue)
 		{
@@ -2029,6 +2053,9 @@ public class PlayerController : GravityObject
 		_riderAirTime = isGrounded ? 0f : _riderAirTime + dt;
 
 		Vector3 move = smoothVelocity * dt + up * (_riderVertVel * dt);
+		// IntroWatch: the walk INTENT — non-zero with no keys pressed means an
+		// input leak (stick drift / crosstalk), not a physics push.
+		DbgRiderWalkCm += smoothVelocity.magnitude * dt * 100f;
 		float wantedUpMove = _riderVertVel * dt;
 		move = ResolveWallSlide(move);
 		// Overlap rescue ONLY while actually walking (2026-08-28 — the pod
@@ -2077,6 +2104,11 @@ public class PlayerController : GravityObject
 		}
 
 		transform.position = pos;
+		// IntroWatch: lateral cm the move/wall/seat write actually applied.
+		{
+			Vector3 dbgM = transform.localPosition - dbgLp1; dbgM.y = 0f;
+			DbgRiderMoveCm += dbgM.magnitude * 100f;
+		}
 		// ── THE landing-pop root cause (playtest 28, probe log 5) ────────────
 		// `pos` is composed through the parent chain's RENDER pose — the
 		// planet transform is interpolated, up to a whole fixed step of
