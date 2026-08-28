@@ -2133,6 +2133,9 @@ public class PlayerController : GravityObject
 		rb.velocity = velocity;
 	}
 
+	/// MegaTracker (playtest 37): read-only grounded state for the landing probe.
+	public bool GroundedNow => isGrounded;
+
 	/// Shuttle/pod release (playtest 35): the player WAS standing on the
 	/// cabin floor the whole ride — hand the grounded state over as GROUNDED
 	/// so the first free tick can't run the airborne branch (walk momentum

@@ -455,46 +455,49 @@ public static class ShuttleRiderFrame
     }
 }
 
-// Passive landing probe (playtest 19). The playtest-18 "equalizer" WROTE the
-// player's transform every frame — but writing the transform of an
-// interpolated rigidbody makes Unity treat it as externally moved and restart
-// the very interpolation being measured, so the "fix" itself stuttered the
-// player for its whole window (Sam: "worse than ever"). Lesson burned in:
-// NEVER write per-frame to an interpolated rigidbody's transform.
-//
-// This component now only OBSERVES. From touchdown until past the release it
-// records every rendered frame — real frame time, the camera's world step,
-// the planet-vs-player render-lag imbalance — plus event marks (release,
-// teardown, threshold restore), and prints ONE summary log 3 s AFTER the
-// window closes, so the report cannot hitch the moment it measures.
-// Editor / cheats only; inert in normal play.
-[DefaultExecutionOrder(300)]   // last in LateUpdate — sees the final camera pose
+// MEGA-TRACKER (playtest 37, Sam's ask: "track the player relative to the
+// planet and relative to the shuttle and anything else"). The key design
+// realization after 10 probe logs: every earlier column was PLANET-relative
+// or absolute, but the player's EYES judge motion relative to the CABIN they
+// are standing in. This version records, per render frame AND per physics
+// tick, the camera / player transform / player rigidbody expressed in the
+// SHUTTLE'S OWN FRAME (render frame for rendered things, physics frame for
+// the rigidbody), plus grounded/rider flags. Standing still, every
+// cabin-relative delta must be ~0.0 cm; the pop is the row where a channel
+// is not, and WHICH channel names the culprit:
+//   dPly moves, dRb still  -> render-side jump (interpolation/camera path)
+//   dRb moves too          -> a genuine physics kick on that tick
+//   g flips 1-0-1          -> grounded loss (airborne pose/branch)
+//   only dCam moves        -> camera pipeline (FX arm, hold, look)
+// Cabin-frame numbers are also intrinsically origin-shift-proof (player and
+// shuttle shift together). One summary log, 3 s AFTER the window closes.
+// The camera HOLD from playtests 31/32 still runs here (it is behavior, not
+// diagnostics). Editor/cheats gate the recording only.
+[DefaultExecutionOrder(300)]   // after CameraTransformFX (100) — final poses
 public class RiderReleaseBleed : MonoBehaviour
 {
-    struct Sample { public float t, dtMs, camStep, lagCm, corrCm, rotDeg, altDeltaCm, rbAltDeltaCm; public int gc; }
-    Quaternion _lastCamRot = Quaternion.identity;
-    int _lastGcCount;
-    int _gcTotal;
-    // Altitude tracking (playtest 27, Sam: "snapped UP 2-3 inches"): the
-    // orbital camera motion (~1.3 m/frame) drowns a 6 cm hop, but the
-    // player's distance from the planet core is dead steady standing still —
-    // a radial snap shows as a crisp altitude step. Tracked for BOTH the
-    // rendered transform and the physics body: rb moved too = a physics
-    // kick (depenetration/impulse); transform only = a render-side jump.
-    float _lastAlt = -1f, _lastRbAlt = -1f;
+    struct RSample { public float t, dtMs, holdCm; public Vector3 camCab, plyCab; public bool gnd, rider; public int gc; }
+    struct FSample { public float t; public Vector3 rbCab; public float velDiffCm; public bool gnd, rider; }
 
     PlayerController _pc;
     CelestialBody _body;
     Transform _cam;
     float _t0, _window;
     float _lastRealtime;
-    Vector3 _lastCamPos;
-    bool _hasLastCam;
     float _reportAt = -1f;
-    float _releaseT = -1f;   // window-relative time of the release mark
-    readonly List<Sample> _samples = new List<Sample>(512);
+    float _releaseT = -1f;
+    int _lastGcCount, _gcTotal;
+    float _worstDt, _worstDtT;
+    readonly List<RSample> _r = new List<RSample>(700);
+    readonly List<FSample> _f = new List<FSample>(500);
     static readonly List<string> s_marks = new List<string>(16);
     static RiderReleaseBleed s_active;
+
+    Vector3 _seatPos;
+    int _walkMarked;
+    Vector3 _heldCamLocal;
+    bool _holdArmed;
+    float _lastHoldCm;
 
     public static void BeginWindow(PlayerController pc, CelestialBody body, float seconds)
     {
@@ -507,15 +510,15 @@ public class RiderReleaseBleed : MonoBehaviour
         b._t0 = Time.time;
         b._window = seconds;
         b._lastRealtime = Time.realtimeSinceStartup;
-        b._hasLastCam = false;
         b._reportAt = -1f;
         b._releaseT = -1f;
         b._holdArmed = false;
         b._lastGcCount = System.GC.CollectionCount(0);
         b._gcTotal = 0;
-        b._lastAlt = -1f;
-        b._lastRbAlt = -1f;
-        b._samples.Clear();
+        b._worstDt = 0f;
+        b._worstDtT = 0f;
+        b._r.Clear();
+        b._f.Clear();
         s_marks.Clear();
         s_active = b;
         b.enabled = true;
@@ -524,32 +527,44 @@ public class RiderReleaseBleed : MonoBehaviour
     /// Timestamp a discrete event into the current window (no-op without one).
     public static void Mark(string label)
     {
-        if (s_active != null && s_active.enabled && s_active._reportAt < 0f)
+        if (s_active == null || !s_active.enabled || s_active._reportAt >= 0f) return;
+        float t = Time.time - s_active._t0;
+        s_marks.Add("t+" + (t * 1000f).ToString("0") + "ms " + label);
+        if (label == "release")
         {
-            float t = Time.time - s_active._t0;
-            s_marks.Add("t+" + (t * 1000f).ToString("0") + "ms " + label);
-            if (label == "release")
+            s_active._releaseT = t;
+            if (s_active._pc != null && s_active._body != null)
+                s_active._seatPos = s_active._pc.transform.position - s_active._body.transform.position;
+            if (s_active._cam != null && s_active._body != null)
             {
-                s_active._releaseT = t;
-                // Planet-relative seat, so orbital motion never counts as walking.
-                if (s_active._pc != null && s_active._body != null)
-                    s_active._seatPos = s_active._pc.transform.position - s_active._body.transform.position;
-                // Camera hold anchor (playtest 31): where the camera sits
-                // RELATIVE TO THE PLANET on the last pre-release frame.
-                if (s_active._cam != null && s_active._body != null)
-                {
-                    s_active._heldCamLocal = s_active._body.transform.InverseTransformPoint(s_active._cam.position);
-                    s_active._holdArmed = true;
-                }
-                s_active._walkMarked = 0;
+                s_active._heldCamLocal = s_active._body.transform.InverseTransformPoint(s_active._cam.position);
+                s_active._holdArmed = true;
             }
+            s_active._walkMarked = 0;
         }
     }
 
-    Vector3 _seatPos;
-    int _walkMarked;
-    Vector3 _heldCamLocal;
-    bool _holdArmed;
+    // Physics-tick channel: the rigidbody in the shuttle's PHYSICS frame.
+    // Order 300 puts this after the autopilot (-50), NBodySim (-10) and the
+    // player (0) — the settled state of the tick.
+    void FixedUpdate()
+    {
+        if (_reportAt >= 0f || _pc == null || _pc.Rigidbody == null) return;
+        float since = Time.time - _t0;
+        if (since > _window) return;
+        var ap = ShuttleAutopilot.Instance;
+        if (ap == null) return;
+        ap.GetWorldPose(out Vector3 sw, out Quaternion sr);
+        Vector3 bodyVel = _body != null ? _body.velocity : Vector3.zero;
+        if (_f.Count < 480)
+            _f.Add(new FSample {
+                t = since,
+                rbCab = Quaternion.Inverse(sr) * (_pc.Rigidbody.position - sw),
+                velDiffCm = (_pc.Rigidbody.velocity - bodyVel).magnitude * 100f,
+                gnd = _pc.GroundedNow,
+                rider = PlayerController.RiderMode,
+            });
+    }
 
     void LateUpdate()
     {
@@ -562,51 +577,20 @@ public class RiderReleaseBleed : MonoBehaviour
         float dtMs = (Time.realtimeSinceStartup - _lastRealtime) * 1000f;
         _lastRealtime = Time.realtimeSinceStartup;
 
-        // ── THE FIX (playtest 21) — camera-side warmup bridge ────────────────
-        // At the release, the player's render source switches from the
-        // shuttle hierarchy (drawn in the planet's interpolated frame) to
-        // their own rigidbody interpolation — which has NO history for the
-        // first frame or two, so Unity draws the player at the RAW physics
-        // pose while the ground is still drawn ~v·dt behind it: an apparent
-        // forward-and-back step of up to a metre-plus against the cabin,
-        // like clockwork, scaling with orbital speed. The player's correct
-        // ground-consistent render pose is always rb.position + the ground's
-        // own render lag — so for a short window after release, nudge the
-        // CAMERA (order 300, after CameraTransformFX re-set it at 100 — so
-        // this can never accumulate) by the measured difference. The term is
-        // identically zero once interpolation is warm and in sync, touches
-        // no rigidbody or player transform (the playtest-18 trap), and runs
-        // in every build.
-        _lastCorrCm = 0f;
-        // ── CAMERA HOLD across the release seam (playtest 31) ───────────────
-        // Three probe logs proved the final truth: the ~20-30 cm one-frame
-        // render dip at release is IDENTICAL whether the rigidbody seat moves
-        // 13 cm or 150 cm — it is the render-path switch itself (parent
-        // compose → rigidbody interpolation), and no bookkeeping fix renders
-        // the seam frame cleanly. So stop accounting and PIN the view: hold
-        // the camera at its pre-release pose RELATIVE TO THE RENDERED PLANET
-        // (rock-solid against the cabin by construction) while the handover
-        // turbulence plays out underneath, then ease to the live camera.
-        // Absolute lerp-to-target — cannot compound (unlike the old additive
-        // nudge), touches no rigidbody, no player transform, no interpolation
-        // (the pt-18 trap). Over before the door lets the player walk.
+        // Camera hold across the release seam (playtests 31/32) — behavior.
+        _lastHoldCm = 0f;
         if (_holdArmed && _releaseT >= 0f && _cam != null && _body != null)
         {
-            // 1.2 s window (playtest 32): the 0.6 s version held perfectly
-            // through the seam (probe log 8: view-vs-cabin stable, corr
-            // 0.4→15 cm) but released its accumulated correction over just
-            // 0.27 s — a visible glide. Full hold for 0.6 s, then the
-            // correction bleeds out over 0.6 s (<25 cm/s — sub-noticeable).
             float u = (since - _releaseT) / 1.2f;
             if (u >= 0f && u < 1f)
             {
                 Vector3 held = _body.transform.TransformPoint(_heldCamLocal);
-                if ((held - _cam.position).sqrMagnitude < 25f)   // rebase/teleport abort
+                if ((held - _cam.position).sqrMagnitude < 25f)
                 {
                     float w = 1f - Mathf.SmoothStep(0.5f, 1f, u);
                     Vector3 before = _cam.position;
                     _cam.position = Vector3.Lerp(_cam.position, held, w);
-                    _lastCorrCm = (_cam.position - before).magnitude * 100f;
+                    _lastHoldCm = (_cam.position - before).magnitude * 100f;
                 }
                 else _holdArmed = false;
             }
@@ -616,27 +600,7 @@ public class RiderReleaseBleed : MonoBehaviour
         bool probe = Application.isEditor || Universe.cheatsEnabled;
         if (probe)
         {
-            float camStep = 0f, rotDeg = 0f;
-            if (_cam != null)
-            {
-                if (_hasLastCam)
-                {
-                    camStep = (_cam.position - _lastCamPos).magnitude;
-                    rotDeg = Quaternion.Angle(_lastCamRot, _cam.rotation);
-                }
-                _lastCamPos = _cam.position;
-                _lastCamRot = _cam.rotation;
-                _hasLastCam = true;
-            }
-            float lagCm = 0f;
-            if (_body != null && _pc != null && _pc.Rigidbody != null)
-            {
-                Vector3 planetLag = _body.transform.position - _body.Position;
-                Vector3 playerLag = _pc.transform.position - _pc.Rigidbody.position;
-                lagCm = (planetLag - playerLag).magnitude * 100f;
-            }
-            // Walk-out breadcrumbs: does the spike track how far the player
-            // has walked from the seat (streamers/cell systems), or the clock?
+            // Walk-out breadcrumbs (planet-relative so orbit never counts).
             if (_releaseT >= 0f && _walkMarked < 3 && _pc != null && _body != null)
             {
                 float walked = ((_pc.transform.position - _body.transform.position) - _seatPos).magnitude;
@@ -649,92 +613,116 @@ public class RiderReleaseBleed : MonoBehaviour
             int gcD = gcNow - _lastGcCount;
             _lastGcCount = gcNow;
             _gcTotal += gcD;
+            if (dtMs > _worstDt) { _worstDt = dtMs; _worstDtT = since; }
 
-            float altDelta = 0f, rbAltDelta = 0f;
-            if (_body != null && _pc != null && _pc.Rigidbody != null)
+            var ap = ShuttleAutopilot.Instance;
+            if (ap != null && _pc != null && _cam != null && _r.Count < 680)
             {
-                float alt = (_pc.transform.position - _body.transform.position).magnitude;
-                float rbAlt = (_pc.Rigidbody.position - _body.Position).magnitude;
-                if (_lastAlt >= 0f) altDelta = (alt - _lastAlt) * 100f;
-                if (_lastRbAlt >= 0f) rbAltDelta = (rbAlt - _lastRbAlt) * 100f;
-                _lastAlt = alt;
-                _lastRbAlt = rbAlt;
+                Transform shT = ap.transform;
+                _r.Add(new RSample {
+                    t = since,
+                    dtMs = dtMs,
+                    holdCm = _lastHoldCm,
+                    camCab = shT.InverseTransformPoint(_cam.position),
+                    plyCab = shT.InverseTransformPoint(_pc.transform.position),
+                    gnd = _pc.GroundedNow,
+                    rider = PlayerController.RiderMode,
+                    gc = gcD,
+                });
             }
-
-            if (_samples.Count < 500)
-                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm, rotDeg = rotDeg, altDeltaCm = altDelta, rbAltDeltaCm = rbAltDelta, gc = gcD });
         }
 
-        if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the sensitive window
+        if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the window
     }
-
-    float _lastCorrCm;
 
     void Report()
     {
-        if (_samples.Count < 5) return;
-        float sumStep = 0f, sumDt = 0f;
-        for (int i = 1; i < _samples.Count; i++) { sumStep += _samples[i].camStep; sumDt += _samples[i].dtMs; }
-        float avgPerMs = sumDt > 0.01f ? sumStep / sumDt : 0f;   // camera speed baseline (per real ms)
-        int worstCamI = 1, worstDtI = 1;
-        float worstCamDev = 0f;
-        for (int i = 1; i < _samples.Count; i++)
-        {
-            float dev = Mathf.Abs(_samples[i].camStep - avgPerMs * _samples[i].dtMs);
-            if (dev > worstCamDev) { worstCamDev = dev; worstCamI = i; }
-            if (_samples[i].dtMs > _samples[worstDtI].dtMs) worstDtI = i;
-        }
-        var sb = new System.Text.StringBuilder(2048);
-        sb.Append("[ReleaseProbe] ").Append(_samples.Count).Append(" frames / ").Append(_window)
+        if (!(Application.isEditor || Universe.cheatsEnabled)) return;
+        if (_r.Count < 5) return;
+        var sb = new System.Text.StringBuilder(8192);
+        sb.Append("[MegaTracker] ").Append(_r.Count).Append(" render frames / ")
+          .Append(_f.Count).Append(" physics ticks / ").Append(_window)
           .Append("s from touchdown.  Events: ")
           .Append(s_marks.Count > 0 ? string.Join(", ", s_marks) : "none").AppendLine();
-        sb.Append("worst frame time ").Append(_samples[worstDtI].dtMs.ToString("0.0"))
-          .Append("ms at t+").Append((_samples[worstDtI].t * 1000f).ToString("0"))
-          .Append("ms · worst camera pop ").Append((worstCamDev * 100f).ToString("0.0"))
-          .Append("cm at t+").Append((_samples[worstCamI].t * 1000f).ToString("0"))
-          .Append("ms · GC collections in window: ").Append(_gcTotal).AppendLine();
-        // The vertical snap has its own dedicated window: biggest single-frame
-        // altitude step (radial — immune to the orbital motion's noise).
-        int worstAltI = 1;
-        for (int i = 2; i < _samples.Count; i++)
-            if (Mathf.Abs(_samples[i].altDeltaCm) > Mathf.Abs(_samples[worstAltI].altDeltaCm)) worstAltI = i;
-        sb.Append("worst ALTITUDE step ").Append(_samples[worstAltI].altDeltaCm.ToString("+0.0;-0.0"))
-          .Append("cm at t+").Append((_samples[worstAltI].t * 1000f).ToString("0")).AppendLine("ms");
-        AppendAround(sb, "frames around the ALTITUDE step:", worstAltI, avgPerMs);
-        if (Mathf.Abs(worstCamI - worstAltI) > 8)
-            AppendAround(sb, "frames around the camera pop:", worstCamI, avgPerMs);
-        if (Mathf.Abs(worstDtI - worstCamI) > 8 && Mathf.Abs(worstDtI - worstAltI) > 8)
-            AppendAround(sb, "frames around the slow frame:", worstDtI, avgPerMs);
-        // ALWAYS show the release moment (playtest 20 lesson: the felt pop
-        // hid outside the two "worst" windows and never got printed).
+        sb.Append("worst frame time ").Append(_worstDt.ToString("0.0")).Append("ms at t+")
+          .Append((_worstDtT * 1000f).ToString("0")).Append("ms  GC in window: ")
+          .Append(_gcTotal).AppendLine();
+        sb.AppendLine("cols: cam/ply = CABIN-relative movement per frame in cm (~0 when standing still);");
+        sb.AppendLine("plyY = cabin-vertical part; hold = camera-hold applied; g=grounded r=riding");
+
+        // Worst cabin-relative player jump anywhere in the window.
+        int worstI = 1;
+        float worstD = 0f;
+        for (int i = 1; i < _r.Count; i++)
+        {
+            float d = (_r[i].plyCab - _r[i - 1].plyCab).magnitude;
+            if (d > worstD) { worstD = d; worstI = i; }
+        }
+        sb.Append("worst cabin-relative player jump ").Append((worstD * 100f).ToString("0.0"))
+          .Append("cm at t+").Append((_r[worstI].t * 1000f).ToString("0")).AppendLine("ms");
+
         if (_releaseT >= 0f)
         {
-            int relI = 1;
-            for (int i = 1; i < _samples.Count; i++)
-                if (Mathf.Abs(_samples[i].t - _releaseT) < Mathf.Abs(_samples[relI].t - _releaseT)) relI = i;
-            if (Mathf.Abs(relI - worstCamI) > 8 && Mathf.Abs(relI - worstDtI) > 8)
-                AppendAround(sb, "frames around the RELEASE:", relI, avgPerMs);
+            sb.AppendLine("RENDER frames, release-0.25s to release+1.0s:");
+            PrintRRange(sb, _releaseT - 0.25f, _releaseT + 1.0f);
+            if (_r[worstI].t < _releaseT - 0.3f || _r[worstI].t > _releaseT + 1.1f)
+            {
+                sb.AppendLine("RENDER frames around the worst player jump:");
+                PrintRRange(sb, _r[worstI].t - 0.12f, _r[worstI].t + 0.12f);
+            }
+            sb.AppendLine("PHYSICS ticks, release-0.2s to release+0.6s (dRbY = cabin-vertical rb step cm; vd = |rbVel-bodyVel| cm/s):");
+            PrintFRange(sb, _releaseT - 0.2f, _releaseT + 0.6f);
+        }
+        else
+        {
+            sb.AppendLine("RENDER frames around the worst player jump:");
+            PrintRRange(sb, _r[worstI].t - 0.15f, _r[worstI].t + 0.15f);
         }
         Debug.Log(sb.ToString());
     }
 
-    void AppendAround(System.Text.StringBuilder sb, string title, int center, float avgPerMs)
+    void PrintRRange(System.Text.StringBuilder sb, float tMin, float tMax)
     {
-        sb.AppendLine(title);
-        for (int i = Mathf.Max(1, center - 8); i < Mathf.Min(_samples.Count, center + 9); i++)
+        for (int i = 1; i < _r.Count; i++)
         {
-            var s = _samples[i];
-            sb.Append(i == center ? "> " : "  ")
+            var s = _r[i];
+            if (s.t < tMin || s.t > tMax) continue;
+            var p = _r[i - 1];
+            float dCam = (s.camCab - p.camCab).magnitude * 100f;
+            float dPly = (s.plyCab - p.plyCab).magnitude * 100f;
+            float dPlyY = (s.plyCab.y - p.plyCab.y) * 100f;
+            bool isRel = _releaseT >= 0f && p.t < _releaseT && s.t >= _releaseT;
+            sb.Append(isRel ? "> " : "  ")
               .Append("t+").Append((s.t * 1000f).ToString("0000"))
-              .Append("ms  dt ").Append(s.dtMs.ToString("00.0"))
-              .Append("ms  cam ").Append((s.camStep * 100f).ToString("000.0"))
-              .Append("cm (expected ").Append((avgPerMs * s.dtMs * 100f).ToString("000.0"))
-              .Append(")  lag ").Append(s.lagCm.ToString("0.0"))
-              .Append("cm  corr ").Append(s.corrCm.ToString("0.0"))
-              .Append("cm  rot ").Append(s.rotDeg.ToString("0.00"))
-              .Append("deg  alt ").Append(s.altDeltaCm.ToString("+0.0;-0.0"))
-              .Append("cm  rbAlt ").Append(s.rbAltDeltaCm.ToString("+0.0;-0.0")).Append("cm")
-              .AppendLine(s.gc > 0 ? "  <-- GC RAN THIS FRAME" : "");
+              .Append(" dt").Append(s.dtMs.ToString("00.0"))
+              .Append(" cam ").Append(dCam.ToString("0.0"))
+              .Append(" ply ").Append(dPly.ToString("0.0"))
+              .Append(" plyY ").Append(dPlyY.ToString("+0.0;-0.0"))
+              .Append(" hold ").Append(s.holdCm.ToString("0.0"))
+              .Append(" g").Append(s.gnd ? "1" : "0")
+              .Append(" r").Append(s.rider ? "1" : "0")
+              .AppendLine(s.gc > 0 ? "  <-- GC" : "");
+        }
+    }
+
+    void PrintFRange(System.Text.StringBuilder sb, float tMin, float tMax)
+    {
+        for (int i = 1; i < _f.Count; i++)
+        {
+            var s = _f[i];
+            if (s.t < tMin || s.t > tMax) continue;
+            var p = _f[i - 1];
+            float dRb = (s.rbCab - p.rbCab).magnitude * 100f;
+            float dRbY = (s.rbCab.y - p.rbCab.y) * 100f;
+            bool isRel = _releaseT >= 0f && p.t < _releaseT && s.t >= _releaseT;
+            sb.Append(isRel ? "> " : "  ")
+              .Append("T+").Append((s.t * 1000f).ToString("0000"))
+              .Append(" dRb ").Append(dRb.ToString("0.0"))
+              .Append(" dRbY ").Append(dRbY.ToString("+0.0;-0.0"))
+              .Append(" vd ").Append(s.velDiffCm.ToString("0"))
+              .Append(" g").Append(s.gnd ? "1" : "0")
+              .Append(" r").Append(s.rider ? "1" : "0")
+              .AppendLine();
         }
     }
 }
