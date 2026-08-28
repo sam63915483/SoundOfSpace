@@ -670,6 +670,9 @@ public class ShuttleAutopilot : MonoBehaviour
                 // walk-out, and fires while the player is moving normally.
                 if (_endless != null) _endless.ForceOriginShift();
                 RiderReleaseBleed.Mark("forced-rebase-at-descent");
+                // Pre-pay the release's contact-generation cost here too —
+                // the descent is the designated spend-it-under-motion moment.
+                ShuttleRiderFrame.PrewarmPhysicalRelease();
                 break;
 
             case Phase.Parked:

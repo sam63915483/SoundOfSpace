@@ -2033,8 +2033,19 @@ public class PlayerController : GravityObject
 		}
 
 		transform.position = pos;
-		rb.position = pos;              // keep the kinematic rb in step for next frame's queries
+		rb.position = pos;              // keep the caged rb in step for next frame's queries
 		rb.rotation = transform.rotation;
+		// Dynamic-cage window (shuttle landing prewarm): the rb may already
+		// be DYNAMIC during the final descent — its planet-mesh contact pairs
+		// are deliberately created early, under motion, so the release frame
+		// has no one-time physics cost left. Zero the integrator every step
+		// so solver/gravity impulses can't accumulate under the per-step
+		// position overwrite above.
+		if (!rb.isKinematic)
+		{
+			rb.velocity = Vector3.zero;
+			rb.angularVelocity = Vector3.zero;
+		}
 
 		// Record the fixed-step local pose pair for LateUpdate smoothing.
 		_riderPrevLocalPos = _riderSmoothInit ? _riderCurrLocalPos : transform.localPosition;

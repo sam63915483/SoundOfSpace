@@ -298,6 +298,27 @@ public static class ShuttleRiderFrame
         s_items.Add(item);
     }
 
+    /// Playtest 25 — PRE-PAY the release's one-time physics cost UNDER MOTION.
+    /// The probe cornered the felt pop to a single ~24 ms frame ~0.1 s after
+    /// release: the freshly-dynamic capsule's FIRST CONTACT with the planet's
+    /// 2M-triangle mesh collider (kinematic bodies keep no contact pairs, so
+    /// the pair-creation + midphase work all lands in one frame). Moving WHEN
+    /// the release fired moved the pop with it — causation proven — so now
+    /// the rigidbody goes dynamic at DESCENT START instead: the contact pairs
+    /// get built while the whole screen is moving, the rider cage still owns
+    /// the pose (RiderFixedTick overwrites position and zeroes the integrator
+    /// every step while dynamic), and the actual release then changes nothing
+    /// PhysX has to pay for.
+    public static void PrewarmPhysicalRelease()
+    {
+        if (s_player == null) return;
+        var rb = s_player.Rigidbody;
+        if (rb == null || !rb.isKinematic) return;
+        rb.isKinematic = false;
+        rb.velocity = Vector3.zero;
+        rb.angularVelocity = Vector3.zero;
+    }
+
     // ── Release (LANDING → PARKED) ───────────────────────────────────────────
     public static void ReleaseRiders(ShuttleAutopilot pilot)
     {
