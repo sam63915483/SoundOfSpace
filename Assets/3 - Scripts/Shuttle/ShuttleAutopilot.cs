@@ -471,6 +471,14 @@ public class ShuttleAutopilot : MonoBehaviour
         return true;
     }
 
+    /// NAV's SKIP button (playtest 35): jump the countdown to zero — the
+    /// crew check and liftoff then run exactly as if the timer expired.
+    public void SkipCountdown()
+    {
+        if (ClientDriven) return;
+        if (_phase == Phase.Countdown) _phaseT = CountdownSeconds;
+    }
+
     public bool RequestTravelByName(string bodyName)
     {
         // Guest: forward the click to the host, which validates and answers

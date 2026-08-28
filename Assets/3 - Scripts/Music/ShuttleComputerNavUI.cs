@@ -160,6 +160,30 @@ public partial class ShuttleComputerUI
         frt.pivot = new Vector2(0, 0.5f);
         frt.offsetMin = Vector2.zero;
         frt.offsetMax = Vector2.zero;
+
+        // SKIP — countdown only (playtest 35, Sam's ask): jump the 10 s
+        // launch timer. Hidden in every other status phase.
+        var skip = MakePanel(pane, "SkipBtn", Panel);
+        skip.raycastTarget = true;   // MakePanel defaults raycasts OFF
+        _navSkipBg = skip;
+        var skrt = skip.rectTransform;
+        skrt.anchorMin = new Vector2(0.5f, 0.5f); skrt.anchorMax = new Vector2(0.5f, 0.5f);
+        skrt.pivot = new Vector2(0.5f, 0.5f);
+        skrt.sizeDelta = new Vector2(260, 52);
+        skrt.anchoredPosition = new Vector2(0, -130);
+        Outline(skip.transform, Grid);
+        var skl = MakeText(skrt, "Label", "SKIP ▸", 22, Ink, TextAlignmentOptions.Center);
+        Stretch(skl.rectTransform, 0, 0, 0, 0);
+        skl.characterSpacing = 20;
+        var skb = skip.gameObject.AddComponent<Button>();
+        skb.targetGraphic = skip;
+        var skc = skb.colors;
+        skc.normalColor = Color.white;
+        skc.highlightedColor = new Color(1.6f, 1.6f, 1.6f, 1f);
+        skc.pressedColor = new Color(2f, 2f, 2f, 1f);
+        skb.colors = skc;
+        skb.onClick.AddListener(() => { ShuttleAutopilot.Instance?.SkipCountdown(); });
+        skip.gameObject.SetActive(false);
     }
 
     void BuildNavHoverPane(RectTransform parent)
@@ -255,6 +279,10 @@ public partial class ShuttleComputerUI
 
         if (pilot == null) return;
 
+        // SKIP lives only on the countdown screen.
+        if (phase != ShuttleAutopilot.Phase.Countdown && _navSkipBg != null && _navSkipBg.gameObject.activeSelf)
+            _navSkipBg.gameObject.SetActive(false);
+
         switch (phase)
         {
             case ShuttleAutopilot.Phase.Parked:
@@ -269,6 +297,8 @@ public partial class ShuttleComputerUI
                 SetTextIfChanged(_navStatusBig, "TAKING OFF IN " + n);
                 SetTextIfChanged(_navStatusSub, pilot.TargetBody != null ? "DESTINATION: " + pilot.TargetBody.bodyName : "");
                 SetProgress(1f - pilot.CountdownRemaining / ShuttleAutopilot.CountdownSeconds);
+                if (_navSkipBg != null && !_navSkipBg.gameObject.activeSelf && !ShuttleAutopilot.ClientDriven)
+                    _navSkipBg.gameObject.SetActive(true);
                 break;
             }
 
@@ -518,4 +548,5 @@ public partial class ShuttleComputerUI
     int _lastVelShown = int.MinValue;
     int _lastAltShown = int.MinValue;
     float _navNextDistAt;
+    Image _navSkipBg;
 }

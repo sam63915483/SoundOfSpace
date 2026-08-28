@@ -2133,6 +2133,19 @@ public class PlayerController : GravityObject
 		rb.velocity = velocity;
 	}
 
+	/// Shuttle/pod release (playtest 35): the player WAS standing on the
+	/// cabin floor the whole ride — hand the grounded state over as GROUNDED
+	/// so the first free tick can't run the airborne branch (walk momentum
+	/// dump + falling-pose flip; Sam's feet-watching caught the animator
+	/// snapping to the jump pose during the hitch).
+	public void ForceGroundedOnRelease()
+	{
+		isGrounded = true;
+		_wasGroundedPhys = true;
+		_riderVertVel = 0f;
+		_riderAirTime = 0f;
+	}
+
 	// Auto-yaw (e.g. the black hole dragging you into a spin): feeds the look yaw so the
 	// existing smoothing turns the body + camera naturally — exactly like mouse-look right.
 	public void AddAutoYaw(float degrees)

@@ -371,6 +371,25 @@ public static class ShuttleRiderFrame
             Vector3 seat = seatFresh;
             Quaternion seatRot = shuttleR * seatLocalRot;
 
+            // FOOT-EXACT SEAT (playtest 35 — Sam watched his feet: at release
+            // the character dips into the floor or drops onto it and the
+            // animator flips to the airborne pose, i.e. whatever bookkeeping
+            // residue remains, the capsule leaves the release slightly above
+            // or inside the floor). End the residue here mechanically: one
+            // spherecast with the rider grounding's own proven convention
+            // (0.3 up / 0.25 radius / seat at skin) pins the feet exactly on
+            // the floor the physics engine actually has, whatever frame or
+            // vintage error preceded it.
+            if (pc.feet != null)
+            {
+                Vector3 upAxis = seatRot * Vector3.up;
+                Vector3 toFeet = pc.feet.position - pc.transform.position;
+                Vector3 castOrigin = seat + toFeet + upAxis * 0.3f;
+                if (Physics.SphereCast(castOrigin, 0.25f, -upAxis, out RaycastHit footHit, 2f,
+                        ShuttleAutopilot.GroundMask, QueryTriggerInteraction.Ignore))
+                    seat += upAxis * ShuttleLandingLogic.RiderSeatCorrection(0.3f, 0.25f, footHit.distance, 0.02f);
+            }
+
             pc.transform.SetParent(null, true);
             pc.transform.SetPositionAndRotation(seat, seatRot);
             rb.isKinematic = false;
@@ -394,6 +413,7 @@ public static class ShuttleRiderFrame
             // the grip and the twin exception (playtest 13). The load-grace
             // covers the transition frames the same way save-loads use it.
             pc.SetReferenceBodyOnRelease(body);
+            pc.ForceGroundedOnRelease();   // they WERE standing — no airborne-pose frame
             FallDamage.LoadGraceUntil = Mathf.Max(FallDamage.LoadGraceUntil, Time.unscaledTime + 2f);
             Physics.SyncTransforms();
             if (endless != null) endless.RegisterPhysicsObject(pc.transform);
