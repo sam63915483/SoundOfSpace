@@ -412,7 +412,8 @@ public static class ShuttleRiderFrame
 [DefaultExecutionOrder(300)]   // last in LateUpdate — sees the final camera pose
 public class RiderReleaseBleed : MonoBehaviour
 {
-    struct Sample { public float t, dtMs, camStep, lagCm, corrCm; }
+    struct Sample { public float t, dtMs, camStep, lagCm, corrCm, rotDeg; }
+    Quaternion _lastCamRot = Quaternion.identity;
 
     PlayerController _pc;
     CelestialBody _body;
@@ -484,27 +485,36 @@ public class RiderReleaseBleed : MonoBehaviour
         // identically zero once interpolation is warm and in sync, touches
         // no rigidbody or player transform (the playtest-18 trap), and runs
         // in every build.
-        if (_releaseT >= 0f && since - _releaseT < 0.6f && _cam != null
+        _lastCorrCm = 0f;
+        if (_releaseT >= 0f && since - _releaseT < 1.0f && _cam != null
             && _pc != null && _pc.Rigidbody != null && _body != null && !PlayerController.RiderMode)
         {
             Vector3 groundLag = _body.transform.position - _body.Position;
             Vector3 corr = (_pc.Rigidbody.position + groundLag) - _pc.transform.position;
+            // FADE out (playtest 22): the first cut ended with a hard cutoff
+            // at +0.6 s — any residual correction at that instant became its
+            // own camera step, right at the time the pop is felt.
+            float w = 1f - Mathf.SmoothStep(0.5f, 1.0f, since - _releaseT);
             if (corr.sqrMagnitude < 16f)   // rebase/teleport guard
             {
-                _cam.position += corr;
-                _lastCorrCm = corr.magnitude * 100f;
+                _cam.position += corr * w;
+                _lastCorrCm = corr.magnitude * w * 100f;
             }
         }
-        else _lastCorrCm = 0f;
 
         bool probe = Application.isEditor || Universe.cheatsEnabled;
         if (probe)
         {
-            float camStep = 0f;
+            float camStep = 0f, rotDeg = 0f;
             if (_cam != null)
             {
-                if (_hasLastCam) camStep = (_cam.position - _lastCamPos).magnitude;
+                if (_hasLastCam)
+                {
+                    camStep = (_cam.position - _lastCamPos).magnitude;
+                    rotDeg = Quaternion.Angle(_lastCamRot, _cam.rotation);
+                }
                 _lastCamPos = _cam.position;
+                _lastCamRot = _cam.rotation;
                 _hasLastCam = true;
             }
             float lagCm = 0f;
@@ -515,7 +525,7 @@ public class RiderReleaseBleed : MonoBehaviour
                 lagCm = (planetLag - playerLag).magnitude * 100f;
             }
             if (_samples.Count < 500)
-                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm });
+                _samples.Add(new Sample { t = since, dtMs = dtMs, camStep = camStep, lagCm = lagCm, corrCm = _lastCorrCm, rotDeg = rotDeg });
         }
 
         if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the sensitive window
@@ -573,7 +583,8 @@ public class RiderReleaseBleed : MonoBehaviour
               .Append("ms  cam ").Append((s.camStep * 100f).ToString("000.0"))
               .Append("cm (expected ").Append((avgPerMs * s.dtMs * 100f).ToString("000.0"))
               .Append(")  lag ").Append(s.lagCm.ToString("0.0"))
-              .Append("cm  corr ").Append(s.corrCm.ToString("0.0")).AppendLine("cm");
+              .Append("cm  corr ").Append(s.corrCm.ToString("0.0"))
+              .Append("cm  rot ").Append(s.rotDeg.ToString("0.00")).AppendLine("deg");
         }
     }
 }
