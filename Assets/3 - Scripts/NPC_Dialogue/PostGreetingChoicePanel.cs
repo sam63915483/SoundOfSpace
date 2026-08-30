@@ -6,9 +6,16 @@ using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 /// <summary>
-/// Shared numbered-choice panel used by every NPC after their greeting line.
-/// Each row is "<n>. <label>". Player presses the digit key 1-9 OR clicks the
-/// row. Closed automatically after a selection or when Hide() is called.
+/// Shared choice panel used by every NPC after their greeting line, restyled
+/// 2026-08-30 to the PHOSPHOR terminal look (Sam's pick from the four mockups
+/// in prototypes/dialogue-ui/index.html — palette and builders live in
+/// PhosphorUI, shared with PhosphorDialogueBox so the spoken line and the
+/// choices read as one machine).
+///
+/// Rows are label-only — Sam: numbers on the options are redundant. The 1-9
+/// digit hotkeys still work as an invisible affordance; the row is chosen by
+/// click or by key, never by reading an index off the screen. Rows fade in
+/// with a small stagger and light up phosphor-green on hover.
 ///
 /// Singleton — built procedurally on first use, lives on a DontDestroyOnLoad
 /// canvas at sortingOrder 900 (above gameplay, below pause menu).
@@ -23,13 +30,6 @@ public class PostGreetingChoicePanel : MonoBehaviour
         public bool enabled;
         public Row(string label, bool enabled = true) { this.label = label; this.enabled = enabled; }
     }
-
-    static readonly Color PanelBg     = new Color32(10, 24, 40, 240);
-    static readonly Color RowBg       = new Color32(20, 40, 60, 230);
-    static readonly Color RowBgHover  = new Color32(40, 70, 100, 240);
-    static readonly Color RowText     = new Color32(234, 246, 255, 255);
-    static readonly Color RowTextDim  = new Color32(120, 140, 160, 200);
-    static readonly Color BorderColor = new Color32(120, 200, 255, 180);
 
     Canvas _canvas;
     RectTransform _panelRT;
@@ -77,19 +77,24 @@ public class PostGreetingChoicePanel : MonoBehaviour
         var panel = new GameObject("Panel", typeof(RectTransform));
         panel.transform.SetParent(transform, false);
         _panelRT = (RectTransform)panel.transform;
+        // Same footprint as PhosphorDialogueBox's plate — the choices replace
+        // the spoken line in place, so the two must sit identically.
         _panelRT.anchorMin = new Vector2(0.5f, 0f);
         _panelRT.anchorMax = new Vector2(0.5f, 0f);
         _panelRT.pivot     = new Vector2(0.5f, 0f);
-        _panelRT.anchoredPosition = new Vector2(0f, 220f);
-        _panelRT.sizeDelta = new Vector2(520f, 200f);
+        _panelRT.anchoredPosition = new Vector2(0f, 150f);
+        _panelRT.sizeDelta = new Vector2(720f, 200f);
         var bg = panel.AddComponent<Image>();
-        bg.color = PanelBg;
+        bg.color = PhosphorUI.Plate;
         bg.raycastTarget = true;
+
+        PhosphorUI.AddBorder(_panelRT);
+        _scan = PhosphorUI.AddScanlines(_panelRT);
 
         var vlg = panel.AddComponent<VerticalLayoutGroup>();
         vlg.childAlignment = TextAnchor.UpperCenter;
-        vlg.spacing = 6f;
-        vlg.padding = new RectOffset(12, 12, 12, 12);
+        vlg.spacing = 4f;
+        vlg.padding = new RectOffset(14, 14, 14, 14);
         vlg.childControlWidth = true;
         vlg.childControlHeight = true;
         vlg.childForceExpandWidth = true;
@@ -115,6 +120,7 @@ public class PostGreetingChoicePanel : MonoBehaviour
         }
         _panelRT.gameObject.SetActive(true);
         _visible = true;
+        _crtT = 0f;                 // CRT turn-on, mirrors PhosphorDialogueBox
         HideSpokenLine();
         // Free the cursor so the player can click rows with the mouse in
         // addition to the 1-9 hotkeys. NPCDialogue locks the cursor again
@@ -184,44 +190,133 @@ public class PostGreetingChoicePanel : MonoBehaviour
     {
         var go = new GameObject($"Row{index}", typeof(RectTransform));
         go.transform.SetParent(_panelRT, false);
+        var rt = (RectTransform)go.transform;
+
+        // Flat until hovered — the PHOSPHOR look is text-first, not buttons.
         var img = go.AddComponent<Image>();
-        img.color = RowBg;
+        img.color = Color.clear;
 
         var le = go.AddComponent<LayoutElement>();
-        le.preferredHeight = 42f;
+        le.preferredHeight = 40f;
 
         var btn = go.AddComponent<Button>();
+        btn.transition = Selectable.Transition.None;   // PhosphorRow paints all states
         btn.interactable = row.enabled;
-        var colors = btn.colors;
-        colors.normalColor = RowBg;
-        colors.highlightedColor = RowBgHover;
-        colors.pressedColor = new Color(BorderColor.r, BorderColor.g, BorderColor.b, 0.4f);
-        colors.disabledColor = new Color(RowBg.r * 0.6f, RowBg.g * 0.6f, RowBg.b * 0.6f, RowBg.a);
-        btn.colors = colors;
         int captured = index;
         btn.onClick.AddListener(() => HandleSelect(captured));
 
-        var lblGO = new GameObject("Label", typeof(RectTransform));
-        lblGO.transform.SetParent(go.transform, false);
-        var lblRT = (RectTransform)lblGO.transform;
+        // Left accent bar, lit on hover only.
+        var barGO = new GameObject("Accent", typeof(RectTransform));
+        barGO.transform.SetParent(go.transform, false);
+        var barRT = (RectTransform)barGO.transform;
+        barRT.anchorMin = new Vector2(0, 0);
+        barRT.anchorMax = new Vector2(0, 1);
+        barRT.offsetMin = Vector2.zero;
+        barRT.offsetMax = new Vector2(2.5f, 0);
+        var bar = barGO.AddComponent<Image>();
+        bar.color = PhosphorUI.Phosphor;
+        bar.raycastTarget = false;
+        bar.enabled = false;
+
+        // "> " marker — the mockup's prompt glyph, NOT a number (Sam: numbers
+        // on the options are redundant; the digit hotkeys still work unseen).
+        var pre = PhosphorUI.MakeLabel(rt, "Prefix", ">", 19f, PhosphorUI.Border);
+        var prt = pre.rectTransform;
+        prt.anchorMin = new Vector2(0, 0);
+        prt.anchorMax = new Vector2(0, 1);
+        prt.offsetMin = new Vector2(12, 0);
+        prt.offsetMax = new Vector2(32, 0);
+        pre.alignment = TextAlignmentOptions.MidlineLeft;
+
+        var tmp = PhosphorUI.MakeLabel(rt, "Label", row.label, 19f,
+                                       row.enabled ? PhosphorUI.RowText : PhosphorUI.RowDim);
+        var lblRT = tmp.rectTransform;
         lblRT.anchorMin = Vector2.zero;
         lblRT.anchorMax = Vector2.one;
-        lblRT.offsetMin = new Vector2(16, 0);
-        lblRT.offsetMax = new Vector2(-16, 0);
-        var tmp = lblGO.AddComponent<TextMeshProUGUI>();
-        tmp.text = $"{index + 1}. {row.label}";
-        tmp.fontSize = 22f;
-        tmp.color = row.enabled ? RowText : RowTextDim;
+        lblRT.offsetMin = new Vector2(34, 0);
+        lblRT.offsetMax = new Vector2(-14, 0);
         tmp.alignment = TextAlignmentOptions.MidlineLeft;
-        tmp.fontStyle = FontStyles.Bold;
-        tmp.raycastTarget = false;
+        tmp.enableWordWrapping = true;      // a long option wraps instead of clipping
 
+        go.AddComponent<PhosphorRow>().Init(img, bar, pre, tmp, row.enabled, index * 0.07f);
         _rowGOs.Add(go);
     }
+
+    /// <summary>
+    /// One choice row's look: staggered fade-in on birth, phosphor light-up on
+    /// hover. Owns every visual state so the Button's tint machinery (which
+    /// can't touch children) stays off.
+    /// </summary>
+    class PhosphorRow : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        Image _bg, _bar;
+        TextMeshProUGUI _pre, _label;
+        bool _rowEnabled;
+        float _delay, _born;
+        CanvasGroup _cg;
+
+        public void Init(Image bg, Image bar, TextMeshProUGUI pre, TextMeshProUGUI label,
+                         bool rowEnabled, float delay)
+        {
+            _bg = bg; _bar = bar; _pre = pre; _label = label;
+            _rowEnabled = rowEnabled;
+            _delay = delay;
+            _born = Time.unscaledTime;
+            _cg = gameObject.AddComponent<CanvasGroup>();
+            _cg.alpha = 0f;
+        }
+
+        void Update()
+        {
+            if (_cg == null) return;
+            float t = (Time.unscaledTime - _born - _delay) / 0.22f;
+            _cg.alpha = Mathf.Clamp01(t);
+            if (t >= 1f) enabled = false;   // settled; nothing left to animate
+        }
+
+        public void OnPointerEnter(PointerEventData e)
+        {
+            if (!_rowEnabled) return;
+            _bg.color = PhosphorUI.RowHoverBg;
+            _bar.enabled = true;
+            _pre.color = PhosphorUI.Phosphor;
+            _label.color = PhosphorUI.RowHot;
+        }
+
+        public void OnPointerExit(PointerEventData e)
+        {
+            if (!_rowEnabled) return;
+            _bg.color = Color.clear;
+            _bar.enabled = false;
+            _pre.color = PhosphorUI.Border;
+            _label.color = PhosphorUI.RowText;
+        }
+    }
+
+    UnityEngine.UI.RawImage _scan;
+    float _crtT = 1f;
+    float _scanH = -1f;
 
     void Update()
     {
         if (!_visible) return;
+
+        // CRT turn-on: same curve as the dialogue plate.
+        if (_crtT < 1f)
+        {
+            _crtT = Mathf.Min(1f, _crtT + Time.unscaledDeltaTime / 0.28f);
+            float y = _crtT < 0.55f
+                ? Mathf.Lerp(0.06f, 1.02f, _crtT / 0.55f)
+                : Mathf.Lerp(1.02f, 1f, (_crtT - 0.55f) / 0.45f);
+            _panelRT.localScale = new Vector3(1f, y, 1f);
+        }
+
+        // Keep the scanline tiling matched to the layout-driven height.
+        if (_scan != null && !Mathf.Approximately(_panelRT.rect.height, _scanH))
+        {
+            _scanH = _panelRT.rect.height;
+            _scan.uvRect = new Rect(0, 0, 1, _scanH / 3f);
+        }
         // Re-assert cursor unlock every frame while visible — NPC dialogue
         // scripts can re-lock the cursor when their typewriter completes or
         // their typewriter coroutine ticks, so a one-shot unlock in Show

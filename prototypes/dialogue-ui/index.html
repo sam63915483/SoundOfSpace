@@ -1,0 +1,402 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dialogue UI Mockups</title>
+<style>
+  /* ── page chrome ─────────────────────────────────────────────── */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    background: #06080d; color: #eaf6ff; overflow: hidden;
+  }
+  #tabs {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 50;
+    display: flex; gap: 8px; padding: 10px 14px;
+    background: linear-gradient(#0b1018ee, #0b101800);
+  }
+  #tabs button {
+    font: 600 13px/1 "Segoe UI", sans-serif; letter-spacing: 1px;
+    color: #9fb4c8; background: #101823cc; border: 1px solid #24354a;
+    border-radius: 6px; padding: 9px 16px; cursor: pointer;
+    transition: all .18s ease;
+  }
+  #tabs button:hover { color: #eaf6ff; border-color: #4a6a8a; }
+  #tabs button.on { color: #06121a; background: #79d0ff; border-color: #79d0ff; }
+  #tabs .hint { margin-left: auto; align-self: center; font-size: 12px; color: #5a708a; }
+
+  .stage { position: absolute; inset: 0; display: none; }
+  .stage.on { display: block; }
+
+  /* fake game backdrop shared by all stages */
+  .world {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(1200px 500px at 50% 118%, #1d3a2a 0%, #0e2418 34%, transparent 62%),
+      radial-gradient(2px 2px at 18% 22%, #ffffffcc 40%, transparent 60%),
+      radial-gradient(2px 2px at 71% 12%, #ffffff99 40%, transparent 60%),
+      radial-gradient(1.5px 1.5px at 84% 33%, #ffffffaa 40%, transparent 60%),
+      radial-gradient(2px 2px at 39% 8%, #ffffff88 40%, transparent 60%),
+      radial-gradient(1.5px 1.5px at 8% 45%, #ffffff77 40%, transparent 60%),
+      radial-gradient(2.5px 2.5px at 58% 28%, #ffffffbb 40%, transparent 60%),
+      radial-gradient(900px 340px at 78% -12%, #23133a88 0%, transparent 70%),
+      linear-gradient(#070b13 0%, #0a1220 55%, #0d1a16 100%);
+  }
+  .npc-hint {
+    position: absolute; left: 50%; top: 34%; transform: translateX(-50%);
+    font-size: 12px; letter-spacing: 3px; color: #ffffff2e; user-select: none;
+  }
+
+  /* continue chevron shared */
+  @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(4px)} }
+  .more { display:inline-block; animation: bob 1.1s ease-in-out infinite; }
+
+  /* ══ A · PHOSPHOR ═════════════════════════════════════════════ */
+  #a .box {
+    position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%);
+    width: min(860px, 92vw);
+    background: #05120dee; border: 1px solid #1d4d38;
+    box-shadow: 0 0 0 1px #05120d, 0 0 34px #22cc8822 inset, 0 8px 40px #000c;
+    padding: 18px 26px 16px; border-radius: 4px;
+    font-family: Consolas, "Cascadia Mono", monospace;
+  }
+  #a .box::after {   /* scanlines */
+    content:""; position:absolute; inset:0; pointer-events:none; border-radius:4px;
+    background: repeating-linear-gradient(0deg, transparent 0 2px, #00000026 2px 3px);
+  }
+  @keyframes crtOn { 0%{opacity:0; transform:translateX(-50%) scaleY(.06)} 55%{opacity:1; transform:translateX(-50%) scaleY(1.02)} 100%{transform:translateX(-50%) scaleY(1)} }
+  #a .box.enter { animation: crtOn .28s ease-out; }
+  #a .who { color:#39e08b; font-size:12px; letter-spacing:4px; margin-bottom:8px; text-shadow:0 0 8px #39e08b66; }
+  #a .who::before { content:"▮ "; animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50%{opacity:0} }
+  #a .line { color:#c9ffe6; font-size:17px; line-height:1.55; min-height:1.5em;
+             text-shadow: 0 0 6px #39e08b33; word-wrap: break-word; }
+  #a .line .caret { display:inline-block; width:9px; height:1.1em; vertical-align:-3px;
+                    background:#39e08b; animation: blink .8s steps(1) infinite; }
+  #a .choices { margin-top:14px; display:flex; flex-direction:column; gap:4px; }
+  #a .choice {
+    text-align:left; font:15px Consolas, monospace; color:#7ddba9;
+    background:transparent; border:none; border-left:2px solid transparent;
+    padding:7px 10px; cursor:pointer; opacity:0; transform:translateX(-8px);
+    transition: background .12s, color .12s, border-color .12s;
+  }
+  #a .choice::before { content:"> "; color:#1d4d38; transition: color .12s; }
+  #a .choice:hover { background:#0d2a1e; color:#eafff3; border-left-color:#39e08b; }
+  #a .choice:hover::before { color:#39e08b; }
+  @keyframes rowIn { to { opacity:1; transform:none } }
+  #a .choice.in { animation: rowIn .22s ease-out forwards; }
+
+  /* ══ B · LETTERBOX ════════════════════════════════════════════ */
+  #b .band {
+    position:absolute; left:0; right:0; bottom:0; padding: 68px 0 40px;
+    background: linear-gradient(#0000, #000a 28%, #000e);
+  }
+  #b .inner { width:min(760px, 90vw); margin:0 auto; }
+  #b .who {
+    display:inline-block; font-size:13px; font-weight:700; letter-spacing:5px;
+    color:#f5c96b; border-bottom:1px solid #f5c96b55; padding-bottom:5px; margin-bottom:12px;
+  }
+  #b .line {
+    font-size:20px; line-height:1.6; color:#f4f0e6; font-weight:350;
+    text-shadow: 0 2px 12px #000; min-height:1.6em;
+  }
+  #b .line em { color:#f5c96b; font-style: italic; }
+  #b .choices { margin-top:22px; display:flex; flex-direction:column; gap:9px; align-items:flex-start; }
+  #b .choice {
+    font:16px/1.3 "Segoe UI", sans-serif; color:#e8e2d4;
+    background:#ffffff0f; border:1px solid #ffffff22; border-radius:999px;
+    padding:11px 22px; cursor:pointer; backdrop-filter: blur(3px);
+    opacity:0; transform:translateY(10px);
+    transition: background .16s, border-color .16s, color .16s, box-shadow .16s;
+  }
+  #b .choice:hover {
+    background:#f5c96b; border-color:#f5c96b; color:#211a08;
+    box-shadow: 0 4px 22px #f5c96b44;
+  }
+  #b .choice.in { animation: rowIn .32s cubic-bezier(.2,.9,.3,1.2) forwards; }
+  @keyframes fadeUp { from{opacity:0; transform:translateY(14px)} to{opacity:1; transform:none} }
+  #b .band.enter { animation: fadeUp .3s ease-out; }
+
+  /* ══ C · HOLO-HUD ═════════════════════════════════════════════ */
+  #c .frame {
+    position:absolute; left:50%; bottom:52px; transform:translateX(-50%);
+    width:min(880px, 93vw); padding:20px 30px 18px;
+    background: linear-gradient(160deg, #07202edd, #051622ee);
+    border:1px solid #2a7ba644; border-radius:3px;
+    box-shadow: 0 10px 44px #000d, 0 0 26px #35c4ff14 inset;
+    clip-path: polygon(0 0, calc(100% - 22px) 0, 100% 22px, 100% 100%, 22px 100%, 0 calc(100% - 22px));
+  }
+  #c .frame::before, #c .frame::after {  /* corner brackets */
+    content:""; position:absolute; width:26px; height:26px; border:2px solid #35c4ff;
+  }
+  #c .frame::before { top:-2px; left:-2px; border-right:none; border-bottom:none; }
+  #c .frame::after  { bottom:-2px; right:-2px; border-left:none; border-top:none; }
+  @keyframes sweep { from{left:-30%} to{left:110%} }
+  #c .sweep { position:absolute; top:0; bottom:0; width:26%; pointer-events:none;
+              background: linear-gradient(100deg, transparent, #35c4ff0e, transparent); }
+  #c .frame.enter .sweep { animation: sweep .8s ease-out; }
+  @keyframes holoIn { from{opacity:0; transform:translateX(-50%) translateY(16px) skewX(-2deg)} to{opacity:1; transform:translateX(-50%)} }
+  #c .frame.enter { animation: holoIn .26s ease-out; }
+  #c .who { font-size:12px; letter-spacing:6px; color:#35c4ff; margin-bottom:9px; }
+  #c .who small { color:#35c4ff66; letter-spacing:2px; margin-left:10px; }
+  #c .line { font-size:17.5px; line-height:1.58; color:#dff4ff; min-height:1.58em; }
+  #c .line b, #c .line em { color:#ffb454; font-style:normal; font-weight:600; }
+  #c .choices { margin-top:16px; display:flex; flex-direction:column; gap:6px; }
+  #c .choice {
+    position:relative; text-align:left; font:15.5px "Segoe UI", sans-serif; color:#9fd4ee;
+    background:#0a2a3c66; border:1px solid #1e4a63; border-radius:2px;
+    padding:10px 16px 10px 22px; cursor:pointer; overflow:hidden;
+    opacity:0; transform:translateX(-12px);
+    transition: color .14s, background .14s, border-color .14s, padding-left .14s;
+  }
+  #c .choice::before {
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:#35c4ff; transform:scaleY(0); transition: transform .16s;
+  }
+  #c .choice:hover { color:#fff; background:#0f3c55aa; border-color:#35c4ff; padding-left:28px; }
+  #c .choice:hover::before { transform:none; }
+  #c .choice.in { animation: rowIn .2s ease-out forwards; }
+
+  /* ══ D · STORYBOOK ════════════════════════════════════════════ */
+  #d .card {
+    position:absolute; left:50%; bottom:44px; transform:translateX(-50%);
+    width:min(800px, 92vw);
+    background:#161226f2; border:3px solid #4a3f7a; border-radius:20px;
+    box-shadow: 0 14px 0 #0b0916, 0 22px 50px #000b;
+    padding: 20px 26px 20px;
+  }
+  @keyframes popIn { 0%{opacity:0; transform:translateX(-50%) translateY(26px) scale(.96)} 70%{opacity:1; transform:translateX(-50%) translateY(-4px) scale(1.008)} 100%{transform:translateX(-50%)} }
+  #d .card.enter { animation: popIn .34s cubic-bezier(.2,.9,.3,1.15); }
+  #d .head { display:flex; align-items:center; gap:12px; margin-bottom:10px; }
+  #d .pfp {
+    width:46px; height:46px; border-radius:14px; flex:none;
+    background: radial-gradient(circle at 32% 28%, #b48cff, #6a4fd0 62%, #46308f);
+    border:2px solid #8f78e8; display:grid; place-items:center;
+    font-weight:800; font-size:19px; color:#fff; text-shadow:0 2px 0 #0006;
+  }
+  #d .who { font-weight:800; font-size:16px; color:#cdbcff; letter-spacing:1px; }
+  #d .who small { display:block; font-weight:500; font-size:11px; color:#8577b8; letter-spacing:2px; }
+  #d .line { font-size:18px; line-height:1.6; color:#f3efff; min-height:1.6em; }
+  #d .line em { color:#ffd166; font-style:normal; font-weight:600; }
+  #d .choices { margin-top:16px; display:grid; gap:8px; }
+  #d .choice {
+    display:flex; align-items:center; gap:12px; text-align:left;
+    font:600 15.5px "Segoe UI", sans-serif; color:#efeaff;
+    background:#241d3f; border:2px solid #3b3167; border-radius:14px;
+    padding:12px 16px; cursor:pointer;
+    opacity:0; transform:scale(.94);
+    transition: transform .14s cubic-bezier(.2,.9,.3,1.4), border-color .14s, background .14s;
+  }
+  #d .choice .arrow { margin-left:auto; color:#6a5aab; transition: transform .14s, color .14s; }
+  #d .choice:hover { transform:scale(1.015); background:#2e2553; border-color:#b48cff; }
+  #d .choice:hover .arrow { transform:translateX(4px); color:#ffd166; }
+  #d .choice:nth-child(3n+1):hover { border-color:#79d0ff; }
+  #d .choice:nth-child(3n+3):hover { border-color:#7ce8a9; }
+  @keyframes cardIn { to{opacity:1; transform:none} }
+  #d .choice.in { animation: cardIn .22s cubic-bezier(.2,.9,.3,1.3) forwards; }
+
+  /* replay chip shared */
+  .replay {
+    position:absolute; top:64px; left:50%; transform:translateX(-50%);
+    font:600 13px "Segoe UI", sans-serif; letter-spacing:1px;
+    color:#eaf6ff; background:#18324a; border:1px solid #35638a; border-radius:8px;
+    padding:9px 18px; cursor:pointer; display:none;
+  }
+  .replay:hover { background:#224a6e; }
+</style>
+</head>
+<body>
+
+<div id="tabs">
+  <button data-t="a" class="on">A · PHOSPHOR</button>
+  <button data-t="b">B · LETTERBOX</button>
+  <button data-t="c">C · HOLO-HUD</button>
+  <button data-t="d">D · STORYBOOK</button>
+  <span class="hint">click a style, then click through the Tev demo — includes the longest line in the game</span>
+</div>
+
+<!-- A -->
+<div class="stage on" id="a">
+  <div class="world"></div><div class="npc-hint">[ TEV STANDS HERE ]</div>
+  <button class="replay">↺ REPLAY</button>
+  <div class="box enter">
+    <div class="who">TEV</div>
+    <div class="line"></div>
+    <div class="choices"></div>
+  </div>
+</div>
+
+<!-- B -->
+<div class="stage" id="b">
+  <div class="world"></div><div class="npc-hint">[ TEV STANDS HERE ]</div>
+  <button class="replay">↺ REPLAY</button>
+  <div class="band enter">
+    <div class="inner">
+      <div class="who">TEV</div>
+      <div class="line"></div>
+      <div class="choices"></div>
+    </div>
+  </div>
+</div>
+
+<!-- C -->
+<div class="stage" id="c">
+  <div class="world"></div><div class="npc-hint">[ TEV STANDS HERE ]</div>
+  <button class="replay">↺ REPLAY</button>
+  <div class="frame enter"><div class="sweep"></div>
+    <div class="who">TEV <small>· HUMBLE ABODE · MERCHANT</small></div>
+    <div class="line"></div>
+    <div class="choices"></div>
+  </div>
+</div>
+
+<!-- D -->
+<div class="stage" id="d">
+  <div class="world"></div><div class="npc-hint">[ TEV STANDS HERE ]</div>
+  <button class="replay">↺ REPLAY</button>
+  <div class="card enter">
+    <div class="head">
+      <div class="pfp">T</div>
+      <div class="who">Tev<small>MUSIC SHOP · HUMBLE ABODE</small></div>
+    </div>
+    <div class="line"></div>
+    <div class="choices"></div>
+  </div>
+</div>
+
+<script>
+/* ── the demo scene: real Tev lines, incl. the longest one in the game ── */
+const SCENE = {
+  start: "greet",
+  nodes: {
+    greet: {
+      say: "Salutations, lost traveller!",
+      choices: [
+        ["I'm not lost. I just haven't found what I'm looking for.", "deep"],
+        ["So what do you sell?", "sell"],
+        ["Where am I?", "where"],
+      ],
+    },
+    deep: {
+      say: "Ohhh, <em>deep</em>. Okay. So what is it you're looking for?",
+      choices: [
+        ["A way back home.", "home"],
+        ["I'm interested in making music.", "music"],
+        ["I don't know.", "festival"],
+      ],
+    },
+    home:  { say: "Sure, easy. Where's home?", choices: [["...", "lost"]] },
+    lost:  { say: "Ahhh. See, that right there? That's what lost sounds like. Lucky for you — lost folks make the <em>best</em> music. Interested?", choices: [["Yes","yes"],["No","no"]] },
+    music: { say: "Now we're talkin'! You're standing in the only music shop this side of the event horizon. TRAX engine, blank tapes, plugins when you've earned 'em. Interested in gettin' set up?", choices: [["Yes","yes"],["No","no"]] },
+    festival: {
+      /* the overflow torture test — the longest line in the game */
+      say: "...Yeah. Honestly? Me neither. That's kinda why I'm throwin' the festival — last day, big send-off, everybody dancin' while the sky eats itself. Give folks somethin' good to hold. Between you and me though... I got no clue how it's gonna go.",
+      next: "festival2",
+    },
+    festival2: { say: "Anyway! Enough of that. You look like a music-maker to me. Interested?", choices: [["Yes","yes"],["No","no"]] },
+    sell:  { say: "Isn't it obvious? Anything music, baby! With that big hungry nothin' loomin' over us, music's the only business still turnin' a profit. ...Like that matters anyways. S'why I'm throwin' the festival. — You interested in gettin' set up?", choices: [["Yes","yes"],["No","no"]] },
+    where: { say: "You're on Humble Abode! Third planet from the sun, home to 'the aliens.' Yes, that's really what we call ourselves. No, we're not changin' it. — You interested in making music?", choices: [["Yes","yes"],["No","no"]] },
+    yes:   { say: "That's what I like to hear! TRAX music engine, twenty bucks. And 'cause I like your face — three blank demo tapes, on the house. Go make somethin' ugly.", end: true },
+    no:    { say: "Ah. A shame. Well — you know where to find me. Everybody does. It's the only shop with a roof.", end: true },
+  },
+};
+
+/* ── one tiny engine drives whichever stage is visible ── */
+const CHAR_MS = 16;
+let timer = null, advance = null;
+
+function stageEls(id) {
+  const s = document.getElementById(id);
+  return { s, line: s.querySelector(".line"), choices: s.querySelector(".choices"),
+           replay: s.querySelector(".replay"),
+           box: s.querySelector(".box, .band, .frame, .card") };
+}
+
+function typewrite(el, html, useCaret, done) {
+  clearInterval(timer);
+  // Split into tokens so <em>/<b> spans survive the reveal.
+  const parts = html.split(/(<[^>]+>)/).filter(Boolean);
+  const flat = [];
+  let open = [];
+  for (const p of parts) {
+    if (p.startsWith("</")) open.pop();
+    else if (p.startsWith("<")) open.push(p);
+    else for (const ch of p) flat.push({ ch, open: [...open] });
+  }
+  let i = 0;
+  const caret = useCaret ? '<span class="caret"></span>' : "";
+  const closeTag = o => "</" + o.replace(/[<>/]/g, "").split(" ")[0] + ">";
+  function render() {
+    let out = "", prevOpen = [];
+    for (let k = 0; k < i; k++) {
+      const t = flat[k];
+      if (t.open.join() !== prevOpen.join()) {
+        out += prevOpen.slice().reverse().map(closeTag).join("");
+        out += t.open.join("");
+        prevOpen = t.open;
+      }
+      out += t.ch;
+    }
+    out += prevOpen.slice().reverse().map(closeTag).join("");
+    el.innerHTML = out + (i < flat.length ? caret : "");
+  }
+  timer = setInterval(() => {
+    i++;
+    render();
+    if (i >= flat.length) { clearInterval(timer); timer = null; done(); }
+  }, CHAR_MS);
+  // click-to-skip
+  advance = () => { if (timer) { clearInterval(timer); timer = null; i = flat.length; render(); done(); } };
+}
+
+function run(id) {
+  const E = stageEls(id);
+  E.replay.style.display = "none";
+  playNode(E, SCENE.start);
+}
+
+function playNode(E, key) {
+  const node = SCENE.nodes[key];
+  E.choices.innerHTML = "";
+  E.box.classList.remove("enter"); void E.box.offsetWidth; E.box.classList.add("enter");
+  typewrite(E.line, node.say, E.s.id === "a", () => {
+    advance = null;
+    if (node.choices) {
+      node.choices.forEach(([label, next], i) => {
+        const b = document.createElement("button");
+        b.className = "choice";
+        if (E.s.id === "d") b.innerHTML = label + '<span class="arrow">➜</span>';
+        else b.textContent = label;
+        b.style.animationDelay = (i * 70) + "ms";
+        b.classList.add("in");
+        b.onclick = ev => { ev.stopPropagation(); playNode(E, next); };
+        E.choices.appendChild(b);
+      });
+    } else if (node.next) {
+      E.line.innerHTML += ' <span class="more">▾</span>';
+      advance = () => playNode(E, node.next);
+    } else if (node.end) {
+      E.replay.style.display = "block";
+    }
+  });
+}
+
+document.body.addEventListener("click", () => { if (advance) { const a = advance; advance = null; a(); } });
+document.querySelectorAll(".replay").forEach(r => r.onclick = ev => { ev.stopPropagation(); run(r.parentElement.id); });
+
+/* tabs */
+document.querySelectorAll("#tabs button[data-t]").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b === btn));
+    document.querySelectorAll(".stage").forEach(s => s.classList.toggle("on", s.id === btn.dataset.t));
+    clearInterval(timer); timer = null; advance = null;
+    run(btn.dataset.t);
+  };
+});
+
+run("a");
+</script>
+</body>
+</html>

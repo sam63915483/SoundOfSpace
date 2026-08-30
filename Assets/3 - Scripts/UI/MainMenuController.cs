@@ -822,7 +822,7 @@ public class MainMenuController : MonoBehaviour
     // label. Pass null when draining synchronously.
     public static System.Collections.IEnumerator EnsureGameplaySingletonsAsync(System.Action<float, string> report)
     {
-        const int Total = 60; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
+        const int Total = 61; // keep in sync with the number of tick() calls below or the loading bar over/undershoots
         int step = 0;
         System.Action<string> tick = (label) =>
         {
@@ -885,6 +885,8 @@ public class MainMenuController : MonoBehaviour
         tick("clock HUD");        yield return null;
         if (TevRentCollector.Instance == null) { var go = new GameObject("TevRentCollector"); DontDestroyOnLoad(go); go.AddComponent<TevRentCollector>(); }
         tick("rent collector");   yield return null;
+        if (PhosphorDialogueBox.Instance == null) { var go = new GameObject("PhosphorDialogueBox"); DontDestroyOnLoad(go); go.AddComponent<PhosphorDialogueBox>(); }
+        tick("dialogue box");     yield return null;
         if (SaplingPlanter.Instance == null) { var go = new GameObject("SaplingPlanter"); DontDestroyOnLoad(go); go.AddComponent<SaplingPlanter>(); }
         if (MushroomPlanter.Instance == null) { var go = new GameObject("MushroomPlanter"); DontDestroyOnLoad(go); go.AddComponent<MushroomPlanter>(); }
         tick("sapling planter");  yield return null;

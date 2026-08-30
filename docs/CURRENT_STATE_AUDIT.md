@@ -1136,3 +1136,23 @@ LoadPrefabContents). Fishing remains the intended top-up toward the $20.
 it now stubs `FeatureVault.TevRent = true` deliberately, testing the vaulted
 arithmetic as documentation. rent 119 / library 124 / taste 2654 / port 2024
 all pass.
+
+## 2026-08-30 — PHOSPHOR dialogue UI
+
+Sam picked style A of four browser mockups (`prototypes/dialogue-ui/index.html`,
+kept as reference; serve with `python -m http.server` from that folder). The
+shared HUD dialogue label used to be a 1000×100 rect on the 800×600 reference
+canvas with vertical Overflow — wider than the reference screen AND spilling on
+tall lines.
+
+`NPC_Dialogue/PhosphorDialogueBox.cs` (auto-singleton, seeded in
+EnsureGameplaySingletons) now ADOPTS `NPCDialogue.dialogueText` at runtime:
+reparents it into a 720-wide CRT plate (border, scanlines, blinking speaker
+header via NPCConversationTracker — story names verbatim, wanderers via
+AlienNames), enforces the phosphor body style change-gated over the old
+ApplyOutline calls, sizes the plate to the wrapped line, and mirrors the
+label's activeSelf. Zero changes to the ten NPC scripts that speak through it.
+`PostGreetingChoicePanel` was restyled in place to match (PhosphorUI palette,
+label-only "> " rows — no numbers, digit hotkeys still work unseen — hover
+light-up, staggered fade-in, CRT turn-on). Shared palette/builders:
+`PhosphorUI` in PhosphorDialogueBox.cs.
