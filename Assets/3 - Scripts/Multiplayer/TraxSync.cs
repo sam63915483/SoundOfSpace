@@ -71,6 +71,8 @@ public class TraxSync : MonoBehaviour
 
     const byte KindRentPay       = 12;  // client -> host   credits already spent locally
 
+    const byte KindTraxAppInstall = 15; // client -> host   USB stick already consumed locally
+
     /// Same chunk size WorldSync and EconomySync use. Named messages are
     /// size-capped and a full shelf of eight-section songs exceeds one packet.
     const int ChunkBytes = 8 * 1024;
@@ -292,7 +294,16 @@ public class TraxSync : MonoBehaviour
             case KindDeckReturn    when server: HandleDeckReturn(reader); break;
             case KindDeckPutBack   when server: HandleDeckPutBack(reader); break;
             case KindRentPay       when server: HandleRentPay(reader); break;
+            case KindTraxAppInstall when server: HandleTraxAppInstall(); break;
         }
+    }
+
+    /// The guest's stick has already been consumed on its own machine; the app
+    /// install is world state, so the host performs it and the next snapshot
+    /// carries it to everyone. Idempotent, so a double-send costs nothing.
+    void HandleTraxAppInstall()
+    {
+        TraxLibrary.InstallApp();
     }
 
     void ReceiveChunk(FastBufferReader reader)
@@ -554,6 +565,18 @@ public class TraxSync : MonoBehaviour
         if (!ShouldRoute() || string.IsNullOrEmpty(module)) return false;
         Instance.Send(w => { w.WriteValueSafe(KindPluginInstall); w.WriteValueSafe(module); },
                       module.Length * 4 + 64);
+        return true;
+    }
+
+    /// <summary>
+    /// The TRAX app was installed off a USB stick. The stick has already been
+    /// consumed locally — it was personal, like the wallet — and the install
+    /// is world state, so only that travels. Mirrors RoutePluginInstall.
+    /// </summary>
+    public static bool RouteTraxAppInstall()
+    {
+        if (!ShouldRoute()) return false;
+        Instance.Send(w => w.WriteValueSafe(KindTraxAppInstall), 64);
         return true;
     }
 

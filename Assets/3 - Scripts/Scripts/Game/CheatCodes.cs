@@ -61,10 +61,12 @@ public class CheatCodes : MonoBehaviour {
         // Reported from the ledger rather than predicted, so this log is a
         // reading of what actually happened and not a second implementation of
         // the rent rules.
-        Debug.Log($"[CheatCodes] Clock +{days} day(s) → DAY {clock.Day}. " +
-                  $"Rent bills on the rollover next frame; currently ${MushroomQuest.RentBalance} owed, " +
-                  $"{MushroomQuest.UnpaidDays} day(s) behind, plugins " +
-                  (MushroomQuest.PluginsLocked ? "LOCKED" : "open") + ".");
+        string rent = FeatureVault.TevRent
+            ? $"Rent bills on the rollover next frame; currently ${MushroomQuest.RentBalance} owed, " +
+              $"{MushroomQuest.UnpaidDays} day(s) behind, plugins " +
+              (MushroomQuest.PluginsLocked ? "LOCKED" : "open") + "."
+            : "Rent is vaulted (FeatureVault.TevRent) — nothing bills.";
+        Debug.Log($"[CheatCodes] Clock +{days} day(s) → DAY {clock.Day}. " + rent);
     }
 
     void SkipToPilotSchool() {

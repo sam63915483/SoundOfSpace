@@ -121,6 +121,41 @@ nothing, so no track moves, no toast fires and no ceremony queues. **The save
 fields are untouched**, so a vaulted run and an unvaulted one round-trip through
 the same schema and un-vaulting invalidates nobody's file.
 
+## Code-only vault (2026-08-30, the first-meeting revamp)
+
+`Handoff_TevDialogue_FirstMeeting_v1 (1).md` retired Tev's landlord job: he is a
+music-store owner who sells the TRAX engine for $20 through the new
+first-meeting tree. **The entire rent system is vaulted behind
+`FeatureVault.TevRent`**, not deleted.
+
+| System | Gated at |
+|---|---|
+| First-talk lawn opener + the $50→$30→$20→$10 rent haggle | `TevMushroomOnboarding.PlaySequence()` — `!TevRent` routes to `RunFirstMeeting`/`RunMeetingHub` instead |
+| Landlord loop: rent nag tiers, pay/refuse choice, `TevPaymentUI.OpenForRent` handoff, payment-outcome lines | same switch (`RunLandlordTalk` unreachable) |
+| Daily accrual + "RENT — $N owed" notices | `TevRentCollector.HandleDayChanged` early-outs (gated at the handler, so the `EnsureGameplaySingletons` seeding path in builds is covered too) |
+| The 5-day PLUGINS-tab lockout | `MushroomQuest.PluginsLocked` hard-false — the single choke point all four `TevShopUI` lockout sites read through |
+| Day-recap "rent: …" line | `DayRecapDirector` passes `rentOwed = -1`, which `DayRecap.Compose` already omits |
+
+Traps for whoever restores it:
+
+- **`verify-rent` stubs `FeatureVault.TevRent = true` on purpose**
+  (`prototypes/shuttle-computer/test/RentDeckStubs.cs`) — the suite is the
+  living documentation of the rent arithmetic, so it tests the system AS BUILT,
+  not the shipping flag. Don't "fix" the stub to match FeatureVault.
+- The rent counters stay in `StoryDirector`'s save lists; old saves load fine.
+- The new tree never advances `MushroomQuest.Stage` — `TevMet` (StoryDirector
+  flag `tevMet`, plus a legacy clause reading old saves' stage) replaced it. If
+  you restore rent, the stage machinery resumes exactly where the old code left
+  it.
+- `TevMushroomOnboarding.ShouldBeVisible` gained a `tevMet` clause mirroring
+  the old stage check — keep both or a warm reload re-hides a met Tev.
+
+What replaced rent as the money sink: nothing yet — TRAX itself is the first
+purchase ($20, USB stick, installed at the shuttle computer; see
+`TraxLibrary.IsAppInstalled` and the DOWNLOADING flow in `ShuttleComputerUI`).
+Starting funds: $25 seeded into the shuttle locker (`LootBoxStarterItem` on
+`Locker_2`, patched into `Shuttle_Lander.prefab`).
+
 ## Explicitly NOT vaulted
 
 - **Tev himself**, at his cabin (`TEV`, 9 m away) — he carries

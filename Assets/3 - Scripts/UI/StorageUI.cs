@@ -517,7 +517,7 @@ public class StorageUI : MonoBehaviour
         || id == Hotbar.ItemId.BlankTapeT1 || id == Hotbar.ItemId.BlankTapeT2
         || id == Hotbar.ItemId.BlankTapeHalfT1 || id == Hotbar.ItemId.BlankTapeHalfT2
         || id == Hotbar.ItemId.BlankTapeFullT1 || id == Hotbar.ItemId.BlankTapeFullT2
-        || id == Hotbar.ItemId.Cassette;
+        || id == Hotbar.ItemId.Cassette || id == Hotbar.ItemId.TraxUsbStick;
 
     /// Count badge text. Money reads as currency everywhere it appears — the
     /// whole point of the scroll-split is watching the two numbers move, and
@@ -563,7 +563,8 @@ public class StorageUI : MonoBehaviour
             case Hotbar.ItemId.BlankTapeHalfT1:
             case Hotbar.ItemId.BlankTapeHalfT2:
             case Hotbar.ItemId.BlankTapeFullT1:
-            case Hotbar.ItemId.BlankTapeFullT2: return Hotbar.ResourceIcon(id);
+            case Hotbar.ItemId.BlankTapeFullT2:
+            case Hotbar.ItemId.TraxUsbStick: return Hotbar.ResourceIcon(id);
         }
         switch (id)
         {

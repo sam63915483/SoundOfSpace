@@ -1094,3 +1094,45 @@ softer edge but more see-through, smaller = opaque sooner but tighter gradient.
 
 Camera-submerged handling is unchanged — the uniform `_OceanFade` ramp still
 owns that, and the per-pixel test stays gated to camera-above-water.
+
+---
+
+## 2026-08-30 — Tev first-meeting revamp: rent OUT, TRAX-for-sale IN
+
+Per `docs/Handoff_TevDialogue_FirstMeeting_v1 (1).md`. Tev is a music-store
+owner now, not a landlord.
+
+**Rent is VAULTED, not deleted** — `FeatureVault.TevRent = false` gates it at
+five choke points (PlaySequence routing, `MushroomQuest.PluginsLocked` hard
+false, `TevRentCollector.HandleDayChanged`, `DayRecapDirector` passing -1,
+CheatCodes). Full restore notes + traps: `docs/VAULTED_SYSTEMS.md` §2026-08-30.
+The plugins tab can no longer lock; `TevPaymentUI` is never opened from
+dialogue.
+
+**The new tree** lives in `TevMushroomOnboarding.RunFirstMeeting` /
+`RunMeetingHub` (the `meet*` serialized fields at the end of the class carry
+the handoff's verbatim copy). Met-state is StoryDirector flag `tevMet`
+(world-scoped, saved, synced); legacy saves' `MushroomQuest.Stage != NotMet`
+reads as met. `RadioImpression.cs` is the §7 greeting-prefix stub — nothing
+sets it.
+
+**TRAX is no longer pre-installed.** Buying YES at the pitch costs $20
+(`TevMushroomOnboarding.TraxPrice`), grants `Hotbar.ItemId.TraxUsbStick` (new
+enum tail entry, generic save) + 3 blank demo tapes. Opening the shuttle
+computer with the stick anywhere in the pack consumes it →
+`TraxLibrary.InstallApp()` (world state in `TraxLibrarySave.traxAppInstalled`;
+`traxAppEra` marker grandfathers pre-stick saves as installed; co-op guests
+route via `TraxSync.KindTraxAppInstall`, snapshot replicates back). The app
+tile is ABSENT until installed (home row re-centres), then shows ~6 s of
+DOWNLOADING (greyed veil + progress bar, ticks with the terminal closed,
+cosmetic only — a save mid-download loads installed) — all in
+`ShuttleComputerUI` (SetupTraxTile / RefreshTraxTile / TickTraxDownload).
+
+**Starting money:** $25 seeded into the shuttle locker (third
+`LootBoxStarterItem` on `Locker_2`, `Shuttle_Lander.prefab`, patched via
+LoadPrefabContents). Fishing remains the intended top-up toward the $20.
+
+**Suites:** verify-rent had been silently broken (no `TraxSync` stub) — fixed;
+it now stubs `FeatureVault.TevRent = true` deliberately, testing the vaulted
+arithmetic as documentation. rent 119 / library 124 / taste 2654 / port 2024
+all pass.

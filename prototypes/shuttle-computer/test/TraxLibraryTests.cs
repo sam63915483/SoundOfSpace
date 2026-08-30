@@ -484,4 +484,6 @@ public class TraxLibrarySave
     public List<TraxProjectSave> projects = new List<TraxProjectSave>();
     public List<string> installedPlugins = new List<string>();
     public List<TraxPrintSave> prints = new List<TraxPrintSave>();
+    public bool traxAppInstalled;
+    public bool traxAppEra;
 }

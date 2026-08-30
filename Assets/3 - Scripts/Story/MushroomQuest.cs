@@ -206,7 +206,11 @@ public static class MushroomQuest
     /// Tev's embargo. Plugins only — blanks are ALWAYS purchasable, because the
     /// loop must never be able to soft-lock. The ladder freezes; the treadmill
     /// doesn't.
-    public static bool PluginsLocked => UnpaidDays >= LockoutDays;
+    /// Hard false while rent is vaulted (FeatureVault.TevRent): with no rent
+    /// there is no arrears state, so the ladder must never close. This is the
+    /// single choke point every TevShopUI lockout site reads through.
+    public static bool PluginsLocked =>
+        FeatureVault.TevRent && UnpaidDays >= LockoutDays;
 
     /// <summary>
     /// Lock in the negotiated daily rate. Rent accrues FROM THE CONFRONTATION —

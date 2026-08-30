@@ -160,11 +160,30 @@ public static class MushroomRegistry
     public static string KeyForSeed(int seed) { return "mush" + seed; }
 }
 
+/// Single-player TraxSync: every route declines, so the caller does its own
+/// local mutation — exactly what the real ShouldRoute() returns off-network.
+/// (Added 2026-08-30: the suite had been broken since multiplayer wired these
+/// calls into MushroomQuest/CassetteDeck without a stub.)
+public static class TraxSync
+{
+    public static bool RouteRentPay(int amount) { return false; }
+    public static bool RouteDeckInsert(int kind, int tier) { return false; }
+    public static bool RouteDeckEject() { return false; }
+    public static bool RouteDeckTake() { return false; }
+}
+
 /// Only the flags the two files under test read.
 public static class FeatureVault
 {
     public const bool TevFrontingEconomy = false;
     public const bool TevLawnWorkOff = false;
+
+    // TRUE here, FALSE in the shipping FeatureVault (rent vaulted 2026-08-30,
+    // first-meeting revamp). Deliberate: this suite is the living documentation
+    // of the vaulted rent arithmetic, so it tests the system AS BUILT. The
+    // shipping value only hard-falses PluginsLocked; the ledger under test is
+    // unchanged.
+    public const bool TevRent = true;
 }
 
 // ── save DTOs (SaveData.cs pulls in UnityEngine) ──────────────────────────
@@ -216,4 +235,6 @@ public class TraxLibrarySave
     public int deckInsertedTier;
     public string deckEjectedPrintId = "";
     public int deckInsertedKind;
+    public bool traxAppInstalled;
+    public bool traxAppEra;
 }

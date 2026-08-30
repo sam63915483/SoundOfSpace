@@ -676,6 +676,13 @@ public class TraxLibrarySave
     // 2026-08-18 tape formats: the seated blank's FORMAT (TraxKind). 0 on
     // older saves — with a tier seated that correctly reads as a Demo blank.
     public int deckInsertedKind;
+
+    // 2026-08-30 first-meeting revamp: is the TRAX app itself on the computer?
+    // traxAppEra marks a save written by USB-stick-era code — on older saves
+    // both read false and TraxLibrary.Apply grandfathers the app in, because
+    // TRAX used to ship with the shuttle.
+    public bool traxAppInstalled;
+    public bool traxAppEra;
 }
 
 [Serializable]

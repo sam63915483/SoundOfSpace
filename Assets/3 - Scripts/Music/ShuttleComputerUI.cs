@@ -281,6 +281,20 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // at once is mush. Sitting down at the computer stops the tape.
         TraxTapePlayer.StopAll();
 
+        // USB stick → TRAX install (first-meeting revamp §6). Anywhere in the
+        // pack counts; the stick is consumed the moment the computer wakes.
+        // Route + local install unconditionally, same shape as TevShopUI's
+        // plugin buy — the local flip means the DOWNLOADING theatre starts on
+        // this frame, and the host's snapshot agrees a beat later.
+        if (!TraxLibrary.IsAppInstalled && Hotbar.Instance != null
+            && Hotbar.Instance.SpendResource(Hotbar.ItemId.TraxUsbStick, 1))
+        {
+            TraxSync.RouteTraxAppInstall();
+            TraxLibrary.InstallApp();
+            _downloadRemaining = DownloadSeconds;
+            RefreshTraxTile();
+        }
+
         // RESUME the screen you left, don't reset to HOME — the world monitor
         // shows a freeze-frame of that screen, so coming back anywhere else
         // made the mirror a liar (Sam's playtest note). Build() initialises
@@ -369,6 +383,8 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // monitor mirrors this canvas, and a frozen countdown/feed on it is
         // the exact failure DriveMachine's playhead tick exists to prevent.
         NavDrive();
+        // Same rule for the TRAX download: it finishes with the lid closed.
+        TickTraxDownload();
 
         if (!_open) return;
 
@@ -680,9 +696,9 @@ public partial class ShuttleComputerUI : MonoBehaviour
         trt.anchoredPosition = new Vector2(0, 130);
         title.characterSpacing = 22;
 
-        const float cell = 190f, gap = 26f;
-        float total = Apps.Length * cell + (Apps.Length - 1) * gap;
+        float total = Apps.Length * HomeCell + (Apps.Length - 1) * HomeGap;
 
+        _homeTileRects.Clear();
         for (int i = 0; i < Apps.Length; i++)
         {
             AppDef app = Apps[i];
@@ -692,8 +708,9 @@ public partial class ShuttleComputerUI : MonoBehaviour
             rt.anchorMin = new Vector2(0.5f, 0.5f);
             rt.anchorMax = new Vector2(0.5f, 0.5f);
             rt.pivot = new Vector2(0.5f, 0.5f);
-            rt.sizeDelta = new Vector2(cell, cell);
-            rt.anchoredPosition = new Vector2(-total * 0.5f + cell * 0.5f + i * (cell + gap), -10);
+            rt.sizeDelta = new Vector2(HomeCell, HomeCell);
+            rt.anchoredPosition = new Vector2(-total * 0.5f + HomeCell * 0.5f + i * (HomeCell + HomeGap), -10);
+            _homeTileRects.Add(rt);
 
             Outline(frame.transform, app.enabled ? Grid : Hex("141d21ff"));
 
@@ -734,7 +751,140 @@ public partial class ShuttleComputerUI : MonoBehaviour
                 string appName = app.name;
                 btn.onClick.AddListener(() => OnAppTileClicked(appName));
             }
+
+            if (app.name == "TRAX") SetupTraxTile(frame);
         }
+
+        RefreshTraxTile();
+    }
+
+    // ── the TRAX tile lifecycle (first-meeting revamp, 2026-08-30) ───────
+    //
+    // TRAX no longer ships with the shuttle. Handoff §6:
+    //   • not installed → the tile is ABSENT (not locked, not greyed) and the
+    //     remaining tiles re-centre so there's no hole;
+    //   • opening the computer with Tev's USB stick anywhere in the pack
+    //     consumes it, installs the app (world state, in TraxLibrary so it
+    //     saves and replicates for free) and starts ~6 s of DOWNLOADING
+    //     theatre — greyed tile, progress bar;
+    //   • then it's a normal tile.
+    //
+    // The install BIT flips at consumption; only the theatre is timed. That is
+    // what makes "save mid-download" snap to installed on load, and a scene
+    // change mid-download harmless — the static timer just keeps counting.
+    // (No grid-nav trap here: that's the PHONE's AppGridCols machinery. This
+    // grid is pointer-only and hand-positioned.)
+
+    const float HomeCell = 190f, HomeGap = 26f;
+    public const float DownloadSeconds = 6f;
+
+    /// Seconds of DOWNLOADING left. Static so the theatre survives this
+    /// instance dying with a scene change; cosmetic only, deliberately unsaved
+    /// (a load mid-download reads 0 → installed, per the handoff).
+    static float _downloadRemaining;
+
+    readonly System.Collections.Generic.List<RectTransform> _homeTileRects =
+        new System.Collections.Generic.List<RectTransform>();
+    GameObject _traxTile, _traxDim;
+    RectTransform _traxBarFill;
+    int _traxTileVersionShown = -1;
+
+    /// The DOWNLOADING veil: a dim overlay that eats the click while the bar
+    /// fills. Cheaper and safer than re-tinting every sprite the icon is
+    /// composed of.
+    void SetupTraxTile(Image frame)
+    {
+        _traxTile = frame.gameObject;
+
+        var dim = MakePanel(frame.rectTransform, "Downloading", Hex("0a1418ee"));
+        dim.raycastTarget = true;   // a downloading app is visibly dead, not silently clickable
+        var drt = dim.rectTransform;
+        drt.anchorMin = Vector2.zero;
+        drt.anchorMax = Vector2.one;
+        drt.offsetMin = Vector2.zero;
+        drt.offsetMax = Vector2.zero;
+
+        var lbl = MakeText(drt, "Label", "DOWNLOADING", 12, Locked, TextAlignmentOptions.Center);
+        var lrt = lbl.rectTransform;
+        lrt.anchorMin = new Vector2(0, 0.5f);
+        lrt.anchorMax = new Vector2(1, 0.5f);
+        lrt.pivot = new Vector2(0.5f, 0.5f);
+        lrt.sizeDelta = new Vector2(0, 20);
+        lrt.anchoredPosition = new Vector2(0, 6);
+        lbl.characterSpacing = 8;
+
+        var back = MakePanel(drt, "BarBack", Hex("141d21ff"));
+        var brt = back.rectTransform;
+        brt.anchorMin = new Vector2(0.5f, 0.5f);
+        brt.anchorMax = new Vector2(0.5f, 0.5f);
+        brt.pivot = new Vector2(0.5f, 0.5f);
+        brt.sizeDelta = new Vector2(140, 10);
+        brt.anchoredPosition = new Vector2(0, -16);
+        Outline(back.transform, Grid);
+
+        var fill = MakePanel(brt, "Fill", Accent);
+        _traxBarFill = fill.rectTransform;
+        _traxBarFill.anchorMin = new Vector2(0, 0);
+        _traxBarFill.anchorMax = new Vector2(0, 1);   // anchorMax.x driven by progress
+        _traxBarFill.offsetMin = Vector2.zero;
+        _traxBarFill.offsetMax = Vector2.zero;
+
+        _traxDim = dim.gameObject;
+        _traxDim.SetActive(false);
+    }
+
+    void RefreshTraxTile()
+    {
+        if (_traxTile == null) return;
+        bool installed = TraxLibrary.IsAppInstalled;
+        bool downloading = installed && _downloadRemaining > 0f;
+        if (_traxTile.activeSelf != installed) _traxTile.SetActive(installed);
+        if (_traxDim != null && _traxDim.activeSelf != downloading) _traxDim.SetActive(downloading);
+        LayoutHomeTiles();
+    }
+
+    /// Re-centre the row over the VISIBLE tiles, so an absent TRAX leaves no
+    /// hole. Same formula BuildHome laid them out with.
+    void LayoutHomeTiles()
+    {
+        int visible = 0;
+        for (int i = 0; i < _homeTileRects.Count; i++)
+            if (_homeTileRects[i] != null && _homeTileRects[i].gameObject.activeSelf) visible++;
+        if (visible == 0) return;
+
+        float total = visible * HomeCell + (visible - 1) * HomeGap;
+        int v = 0;
+        for (int i = 0; i < _homeTileRects.Count; i++)
+        {
+            var rt = _homeTileRects[i];
+            if (rt == null || !rt.gameObject.activeSelf) continue;
+            rt.anchoredPosition = new Vector2(-total * 0.5f + HomeCell * 0.5f + v * (HomeCell + HomeGap), -10);
+            v++;
+        }
+    }
+
+    /// Ticks in the always-running part of Update, like NavDrive: the download
+    /// keeps counting with the terminal closed (handoff: finish or resume,
+    /// never reset), and a partner's install lands via the Version watch.
+    void TickTraxDownload()
+    {
+        if (TraxLibrary.Version != _traxTileVersionShown)
+        {
+            _traxTileVersionShown = TraxLibrary.Version;
+            RefreshTraxTile();
+        }
+
+        if (_downloadRemaining <= 0f) return;
+        _downloadRemaining -= Time.deltaTime;
+
+        if (_traxBarFill != null)
+        {
+            var max = _traxBarFill.anchorMax;
+            max.x = Mathf.Clamp01(1f - _downloadRemaining / DownloadSeconds);
+            if (_traxBarFill.anchorMax != max) _traxBarFill.anchorMax = max;
+        }
+
+        if (_downloadRemaining <= 0f) RefreshTraxTile();   // done — tile goes live
     }
 
     // ── trax ─────────────────────────────────────────────────────────────

@@ -99,7 +99,10 @@ public class DayRecapDirector : MonoBehaviour
         for (int i = 0; i < BuyerLedger.DayBondUps.Count && i < 4; i++)
             bonds += (i == 0 ? "" : ", ") + AlienNames.For(BuyerLedger.DayBondUps[i]);
 
-        int rentOwed = MushroomQuest.RentSettled ? MushroomQuest.RentBalance : -1;
+        // -1 = "no rent arrangement" — Compose omits the line entirely. With
+        // rent vaulted that is always the case, and DayRecap.cs (Unity-free,
+        // suite-covered) never has to know the vault exists.
+        int rentOwed = FeatureVault.TevRent && MushroomQuest.RentSettled ? MushroomQuest.RentBalance : -1;
         int daysToLockout = Mathf.Max(0, MushroomQuest.LockoutDays - MushroomQuest.UnpaidDays);
         string text = DayRecap.Compose(endedDay,
                                        BuyerLedger.DayTapesSold, BuyerLedger.DayEarned,

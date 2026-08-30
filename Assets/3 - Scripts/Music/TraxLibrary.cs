@@ -68,6 +68,31 @@ public static class TraxLibrary
     public static IEnumerable<string> InstalledPlugins { get { return _installed; } }
 
     /// <summary>
+    /// Is the TRAX APP ITSELF on the computer? (First-meeting revamp,
+    /// 2026-08-30: the app no longer ships with the shuttle — Tev sells a USB
+    /// stick for $20, and opening the computer with it consumes the stick and
+    /// installs the app.) World state exactly like the plugin set: one install
+    /// serves every player, it rides TraxLibrarySave, and the Version bump
+    /// makes TraxSync replicate it for free.
+    ///
+    /// The ~6 s DOWNLOADING theatre is deliberately NOT here — it's cosmetic,
+    /// per-machine and needs Unity's clock, so it lives with the computer UI.
+    /// This bit flips at stick consumption, which is also what makes "save
+    /// mid-download" snap to installed on load with zero extra state.
+    /// </summary>
+    static bool _appInstalled;
+
+    public static bool IsAppInstalled { get { return _appInstalled; } }
+
+    public static bool InstallApp()
+    {
+        if (_appInstalled) return false;
+        _appInstalled = true;
+        Version++;
+        return true;
+    }
+
+    /// <summary>
     /// How many voices the computer can actually put on a tape right now.
     ///
     /// This is the honest ceiling on what the player can DELIVER, which is why
@@ -212,6 +237,7 @@ public static class TraxLibrary
         _installed.Clear();
         _installed.Add("THUMPER");
         _installed.Add("GLOWORM");
+        _appInstalled = false;   // a new world starts with no TRAX — Tev sells it
         Version++;
     }
 
@@ -254,6 +280,12 @@ public static class TraxLibrary
             save.projects.Add(row);
         }
         foreach (string m in _installed) save.installedPlugins.Add(m);
+        save.traxAppInstalled = _appInstalled;
+        // Era marker: every save written by this code says so, which is how
+        // Apply tells "bought and not installed" (false, era set) apart from
+        // "save predates the USB stick" (false, era unset → grandfathered in,
+        // because TRAX used to ship with the shuttle).
+        save.traxAppEra = true;
         TraxPrints.Capture(save);
         // The cassette machine's own two fields ride this same blob, but they
         // are filled in by SaveCollector rather than here: CassetteDeck talks to
@@ -298,6 +330,10 @@ public static class TraxLibrary
         Clear();
         TraxPrints.Apply(save);      // frozen pressings, restored before anything resolves a tape
         if (save == null) return;
+
+        // See Capture: pre-USB-stick saves are grandfathered installed. (Clear
+        // above already reset the bit, so Version needn't bump again here.)
+        _appInstalled = save.traxAppInstalled || !save.traxAppEra;
 
         // An old save with no plugin list keeps the starting two rather than
         // ending up with an empty rack.

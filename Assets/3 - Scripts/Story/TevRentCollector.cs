@@ -60,6 +60,10 @@ public class TevRentCollector : MonoBehaviour
 
     void HandleDayChanged(int day)
     {
+        // Rent is vaulted (first-meeting revamp, 2026-08-30): no accrual, no
+        // notices. Gated here rather than at AutoCreate so it also covers the
+        // EnsureGameplaySingletons seeding path in builds.
+        if (!FeatureVault.TevRent) return;
         if (!MushroomQuest.RentSettled) return;
 
         // ⚠️ CO-OP: ONE household, ONE bill. The clock is synced, so this fires

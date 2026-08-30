@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2 }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick }
 
     public struct Slot
     {
@@ -522,6 +522,9 @@ public class Hotbar : MonoBehaviour
             ItemId.BlankTapeFullT1 => 20,
             ItemId.BlankTapeFullT2 => 20,
             ItemId.Cassette => 10,
+            // One TRAX install per stick and one install per world — a stack
+            // would just be money Tev shouldn't have taken.
+            ItemId.TraxUsbStick => 1,
             // Money is UNCAPPED — the stack count is the balance, so a cap here
             // would silently be a cap on how rich the player may be, and any
             // spill logic would need somewhere to spill to. There isn't one:
@@ -959,7 +962,7 @@ public class Hotbar : MonoBehaviour
                   or ItemId.BlankTapeT1 or ItemId.BlankTapeT2
                   or ItemId.BlankTapeHalfT1 or ItemId.BlankTapeHalfT2
                   or ItemId.BlankTapeFullT1 or ItemId.BlankTapeFullT2
-                  or ItemId.Cassette;
+                  or ItemId.Cassette or ItemId.TraxUsbStick;
     }
 
     // Slot-only items: selected via number key but have no controller to equip.
@@ -1047,6 +1050,7 @@ public class Hotbar : MonoBehaviour
     static readonly Color BlankFullT2Swatch    = new Color32(0xA8, 0x4F, 0x8A, 0xFF);   // violet shell
     static readonly Color CassetteT1Swatch     = new Color32(0x79, 0xFF, 0xD0, 0xFF);   // TRAX phosphor
     static readonly Color CassetteT2Swatch     = new Color32(0xFF, 0x4F, 0xD8, 0xFF);   // TRAX magenta
+    static readonly Color TraxUsbSwatchColor   = new Color32(0x79, 0xD0, 0xFF, 0xFF);   // USB cyan — TRAX family, not a tape
 
     /// A printed tape's colour comes from its tier. Null id falls back to T1.
     static Color CassetteSwatch(string cassetteId) =>
@@ -1081,6 +1085,7 @@ public class Hotbar : MonoBehaviour
             // A printed tape takes the colour of its TIER, so a shelf of them
             // reads at a glance even before you check the names.
             case ItemId.Cassette:  return CassetteSwatch(null);
+            case ItemId.TraxUsbStick: return TraxUsbSwatchColor;
             default: return Color.white;
         }
     }
@@ -1102,6 +1107,7 @@ public class Hotbar : MonoBehaviour
             case ItemId.BlankTapeFullT1: return "FULL TAPE";
             case ItemId.BlankTapeFullT2: return "FULL TAPE II";
             case ItemId.Cassette:  return "CASSETTE";
+            case ItemId.TraxUsbStick: return "TRAX USB";
             case ItemId.Money:     return "MONEY";
             default: return "—";
         }
@@ -1144,8 +1150,62 @@ public class Hotbar : MonoBehaviour
             // generic shell is the fallback for callers that only have the id
             // (a remote player's held item, a world drop).
             case ItemId.Cassette:  return CassetteSprite(CassetteT1Swatch);
+            case ItemId.TraxUsbStick: return TraxUsbIcon();
             default: return null;
         }
+    }
+
+    // TRAX USB stick — placeholder drawn in code, same deal as MoneyIcon: drop
+    // a real sprite at Resources/HotbarIcons/TransparentTraxUsb and it wins
+    // automatically, no code change. (Flagged for Sam's art pass.)
+    static Sprite _traxUsbIcon;
+    static bool _traxUsbIconTried;
+    static Sprite TraxUsbIcon()
+    {
+        if (_traxUsbIconTried) return _traxUsbIcon;
+        _traxUsbIconTried = true;
+
+        _traxUsbIcon = Resources.Load<Sprite>("HotbarIcons/TransparentTraxUsb");
+        if (_traxUsbIcon != null) return _traxUsbIcon;
+
+        const int size = 96;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color32[size * size];   // starts fully transparent
+
+        var body   = new Color32(0x2A, 0x38, 0x4A, 0xFF);   // dark shell
+        var edge   = new Color32(0x16, 0x1E, 0x28, 0xFF);
+        var stripe = new Color32(0x79, 0xD0, 0xFF, 0xFF);   // matches the swatch
+        var metal  = new Color32(0xB8, 0xC2, 0xCC, 0xFF);   // connector
+        var slotCo = new Color32(0x6E, 0x78, 0x82, 0xFF);   // connector holes
+
+        // Upright stick: connector on top, shell below, phosphor stripe = label.
+        const int bodyX = 33, bodyW = 30, bodyY = 14, bodyH = 46;
+        const int connW = 22, connH = 18;
+        int connX = bodyX + (bodyW - connW) / 2, connY = bodyY + bodyH;
+
+        for (int y = 0; y < bodyH; y++)
+            for (int x = 0; x < bodyW; x++)
+            {
+                bool e = x < 2 || x >= bodyW - 2 || y < 2 || y >= bodyH - 2;
+                bool label = !e && y >= 10 && y < 22 && x >= 6 && x < bodyW - 6;
+                px[(bodyY + y) * size + bodyX + x] = e ? edge : label ? stripe : body;
+            }
+        for (int y = 0; y < connH; y++)
+            for (int x = 0; x < connW; x++)
+            {
+                bool hole = y >= connH - 8 && y < connH - 3 &&
+                            ((x >= 4 && x < 8) || (x >= connW - 8 && x < connW - 4));
+                px[(connY + y) * size + connX + x] = hole ? slotCo : metal;
+            }
+
+        tex.SetPixels32(px);
+        tex.Apply();
+        _traxUsbIcon = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        return _traxUsbIcon;
     }
 
     // Cash-stack icon. Drawn in code rather than shipped as a PNG because the

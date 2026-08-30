@@ -227,6 +227,12 @@ public class TevMushroomOnboarding : MonoBehaviour
     bool ShouldBeVisible()
     {
         if (MushroomQuest.CurrentStage != MushroomQuest.Stage.NotMet) return true;
+        // New-flow equivalent of the stage check above: the revamped tree never
+        // advances MushroomQuest.Stage, so without this a mid-game scene reload
+        // (backrooms trip, warm reload) would hide a Tev the player has already
+        // met for another fallbackSeconds.
+        if (!FeatureVault.TevRent && StoryDirector.Instance != null
+            && StoryDirector.Instance.GetFlag("tevMet")) return true;
         // Loading a save means the arrival is long over — the only save station
         // is the stasis pod, which is past the ramp. Re-hiding him for two
         // minutes on every load is just a player wondering where Tev went.
@@ -422,6 +428,18 @@ public class TevMushroomOnboarding : MonoBehaviour
     /// </summary>
     IEnumerator PlaySequence()
     {
+        // First-meeting revamp (2026-08-30, FeatureVault.TevRent vaulted): Tev
+        // is a music-store owner, not a landlord. Two states only — the
+        // first-meeting tree, then the hub. The whole rent-era flow below is
+        // kept intact behind the flag, same as the fronting vault before it.
+        if (!FeatureVault.TevRent)
+        {
+            if (!TevMet) yield return RunFirstMeeting();
+            else         yield return RunMeetingHub();
+            StopConversation();
+            yield break;
+        }
+
         if (MushroomQuest.CurrentStage == MushroomQuest.Stage.NotMet)
         {
             if (FeatureVault.TevLawnWorkOff) yield return RunFirstTalkWorkOff();
@@ -439,6 +457,180 @@ public class TevMushroomOnboarding : MonoBehaviour
             yield return RunLandlordTalk();
         }
         StopConversation();
+    }
+
+    // ── The first-meeting tree (2026-08-30 revamp) ────────────────────────
+    //
+    // Tev the music-store owner. Two states only: TevMet=false → the tree
+    // (identical on any day), TevMet=true → the hub. Every branch converges on
+    // THE PITCH. Lines live in the meet* fields at the END of this class —
+    // they are NEW serialized keys, so the handoff's verbatim copy actually
+    // ships (the older arrays are scene-serialized and the Inspector wins).
+
+    /// <summary>Met flag, world-scoped via StoryDirector so it saves and syncs
+    /// like every other story bit. Legacy saves — anyone who already met the
+    /// rent-era Tev — read as met, so they land in the hub rather than
+    /// replaying a first meeting that contradicts what their Tev already said.
+    /// (Under the new flow MushroomQuest.Stage is never advanced, so the
+    /// legacy clause can never trip on a fresh save.)</summary>
+    static bool TevMet
+    {
+        get => (StoryDirector.Instance != null && StoryDirector.Instance.GetFlag("tevMet"))
+               || MushroomQuest.CurrentStage != MushroomQuest.Stage.NotMet;
+        set { StoryDirector.Instance?.SetFlag("tevMet", value); }
+    }
+
+    /// "TRAX owned" for the hub guard (handoff §5/§6): installed on the shared
+    /// computer — world state, so a co-op partner's install counts — or this
+    /// player is already carrying an unspent stick. Guards the re-pitch so Tev
+    /// never sells a second stick that could do nothing.
+    static bool TraxOwned =>
+        TraxLibrary.IsAppInstalled
+        || (Hotbar.Instance != null && Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.TraxUsbStick) > 0);
+
+    /// §7 stub: one optional prefix line keyed on the (never-set) radio
+    /// impression. None = silence, which is every player today.
+    IEnumerator SpeakRadioPrefix()
+    {
+        string line;
+        switch (RadioImpression.Current)
+        {
+            case RadioImpression.Kind.Star:    line = meetPrefixStar; break;
+            case RadioImpression.Kind.Fool:    line = meetPrefixFool; break;
+            case RadioImpression.Kind.Mystery: line = meetPrefixMystery; break;
+            default: line = null; break;
+        }
+        if (!string.IsNullOrEmpty(line)) yield return SpeakOne(line);
+    }
+
+    IEnumerator RunFirstMeeting()
+    {
+        yield return SpeakRadioPrefix();
+        if (!_playerInRange) yield break;
+
+        yield return SpeakOne(meetGreetingLine);
+        if (!_playerInRange) yield break;
+
+        yield return AskChoice(
+            new PostGreetingChoicePanel.Row(meetOptionA, true),
+            new PostGreetingChoicePanel.Row(meetOptionB, true),
+            new PostGreetingChoicePanel.Row(meetOptionC, true));
+        if (!_playerInRange) yield break;
+
+        switch (_choice)
+        {
+            case 0:   // "I'm not lost..."
+                yield return SpeakOne(meetDeepReply);
+                if (!_playerInRange) yield break;
+                yield return AskChoice(
+                    new PostGreetingChoicePanel.Row(meetOptionA1, true),
+                    new PostGreetingChoicePanel.Row(meetOptionA2, true),
+                    new PostGreetingChoicePanel.Row(meetOptionA3, true));
+                if (!_playerInRange) yield break;
+
+                if (_choice == 0)
+                {
+                    yield return SpeakOne(meetHomeAskLine);
+                    if (!_playerInRange) yield break;
+                    // §4 A1: "..." is deliberately the ONLY reply on offer.
+                    yield return AskChoice(new PostGreetingChoicePanel.Row(meetHomeForcedReply, true));
+                    if (!_playerInRange) yield break;
+                    yield return SpeakOne(meetHomeLostLine);
+                }
+                else if (_choice == 1)
+                {
+                    yield return SpeakOne(meetMusicReplyLine);
+                }
+                else
+                {
+                    yield return SpeakLines(meetDontKnowLines);
+                }
+                break;
+
+            case 1:   // "So what do you sell?"
+                yield return SpeakOne(meetSellReplyLine);
+                break;
+
+            default:  // "Where am I?" — also the -1 fallback if the panel is missing.
+                yield return SpeakOne(meetWhereReplyLine);
+                break;
+        }
+        if (!_playerInRange) yield break;
+
+        yield return RunPitchChoice();
+    }
+
+    /// <summary>
+    /// THE PITCH. Every branch line already ends on a version of "interested?",
+    /// so this is just the YES/NO and its outcomes. TevMet is set the moment an
+    /// answer lands — §4 says any exit counts, and walking off mid-tree before
+    /// answering replays the tree, which is the kinder reading.
+    /// </summary>
+    IEnumerator RunPitchChoice()
+    {
+        yield return AskChoice(
+            new PostGreetingChoicePanel.Row("Yes", true),
+            new PostGreetingChoicePanel.Row("No", true));
+        if (!_playerInRange || _choice < 0) yield break;
+
+        TevMet = true;
+
+        if (_choice != 0)
+        {
+            yield return SpeakOne(meetPitchNoLine);
+            yield break;
+        }
+
+        int money = PlayerWallet.Instance != null ? PlayerWallet.Instance.Money : 0;
+        if (money < TraxPrice || PlayerWallet.Instance == null
+            || !PlayerWallet.Instance.SpendMoney(TraxPrice))
+        {
+            yield return SpeakOne(meetPitchBrokeLine);
+            yield break;
+        }
+
+        // Paid. The stick must actually land in the pack — a stick he pocketed
+        // $20 for and couldn't hand over would be theft, so a full pack refunds.
+        int leftover = Hotbar.Instance != null
+            ? Hotbar.Instance.AddResource(Hotbar.ItemId.TraxUsbStick, 1) : 1;
+        if (leftover > 0)
+        {
+            PlayerWallet.Instance.AddMoney(TraxPrice);
+            yield return SpeakLines(packFullLines);
+            yield break;
+        }
+
+        // The three gift blanks reuse the rent-era grant (handoff §3). Best
+        // effort: the stick is the purchase, the blanks are a gift, and a gift
+        // that doesn't fit is not worth failing the sale over.
+        GrantStarterBlanks();
+        yield return SpeakOne(meetPitchYesLine);
+    }
+
+    /// <summary>
+    /// §5, minimal v1. TRAX not owned → re-pitch into the same outcomes;
+    /// owned → shop row / leave row, nothing else. The festival thread hangs
+    /// off this later.
+    /// </summary>
+    IEnumerator RunMeetingHub()
+    {
+        yield return SpeakRadioPrefix();
+        if (!_playerInRange) yield break;
+
+        if (!TraxOwned)
+        {
+            yield return SpeakOne(hubRePitchLine);
+            if (!_playerInRange) yield break;
+            yield return RunPitchChoice();
+            yield break;
+        }
+
+        yield return AskChoice(
+            new PostGreetingChoicePanel.Row("Let me see the shop", true),
+            new PostGreetingChoicePanel.Row("Later, Tev", true));
+        if (!_playerInRange) yield break;
+
+        if (_choice == 0) yield return RunShop();
     }
 
     /// <summary>
@@ -1486,4 +1678,87 @@ public class TevMushroomOnboarding : MonoBehaviour
     [TextArea(2, 5)]
     public string rentRefusedLine =
         "It keeps counting either way, friend.";
+
+    // ── FIRST-MEETING TREE COPY (2026-08-30) — §4 lines are LOCKED VERBATIM ──
+    //
+    // NEW serialized keys, so these C# values are what ships until they're
+    // edited on the scene's TEV object — after that the Inspector wins, same
+    // trap as every batch above. Everything except hubRePitchLine and the
+    // three prefix stubs is Sam's copy from the handoff, word for word: do not
+    // paraphrase.
+
+    /// TRAX engine price, in credits. §4: twenty bucks.
+    public const int TraxPrice = 20;
+
+    [Header("First meeting — greeting + options")]
+    [TextArea(2, 5)]
+    public string meetGreetingLine = "Salutations, lost traveller!";
+
+    public string meetOptionA = "I'm not lost. I just haven't found what I'm looking for.";
+    public string meetOptionB = "So what do you sell?";
+    public string meetOptionC = "Where am I?";
+
+    [Header("First meeting — branch A")]
+    [TextArea(2, 5)]
+    public string meetDeepReply = "Ohhh, *deep*. Okay. So what is it you're looking for?";
+
+    public string meetOptionA1 = "A way back home.";
+    public string meetOptionA2 = "I'm interested in making music.";
+    public string meetOptionA3 = "I don't know.";
+
+    [TextArea(2, 5)]
+    public string meetHomeAskLine = "Sure, easy. Where's home?";
+
+    [Tooltip("§4 A1: the forced reply — deliberately the ONLY option at that node.")]
+    public string meetHomeForcedReply = "...";
+
+    [TextArea(2, 5)]
+    public string meetHomeLostLine =
+        "Ahhh. See, that right there? That's what lost sounds like. Lucky for you — lost folks make the *best* music. Interested?";
+
+    [TextArea(2, 5)]
+    public string meetMusicReplyLine =
+        "Now we're talkin'! You're standing in the only music shop this side of the event horizon. TRAX engine, blank tapes, plugins when you've earned 'em. Interested in gettin' set up?";
+
+    [Tooltip("A3, split at the handoff's (beat).")]
+    [TextArea(2, 5)]
+    public string[] meetDontKnowLines = new[]
+    {
+        "...Yeah. Honestly? Me neither. That's kinda why I'm throwin' the festival — last day, big send-off, everybody dancin' while the sky eats itself. Give folks somethin' good to hold. Between you and me though... I got no clue how it's gonna go.",
+        "Anyway! Enough of that. You look like a music-maker to me. Interested?",
+    };
+
+    [Header("First meeting — branches B and C")]
+    [TextArea(2, 5)]
+    public string meetSellReplyLine =
+        "Isn't it obvious? Anything music, baby! With that big hungry nothin' loomin' over us, music's the only business still turnin' a profit. ...Like that matters anyways. S'why I'm throwin' the festival. — You interested in gettin' set up?";
+
+    [TextArea(2, 5)]
+    public string meetWhereReplyLine =
+        "You're on Humble Abode! Third planet from the sun, home to 'the aliens.' Yes, that's really what we call ourselves. No, we're not changin' it. — You interested in making music?";
+
+    [Header("First meeting — the pitch outcomes")]
+    [TextArea(2, 5)]
+    public string meetPitchYesLine =
+        "That's what I like to hear! TRAX music engine, twenty bucks. And 'cause I like your face — three blank demo tapes, on the house. Go make somethin' ugly.";
+
+    [TextArea(2, 5)]
+    public string meetPitchBrokeLine =
+        "Twenty bucks, traveller. ...You don't *have* twenty bucks. Okay. Planet provides — check your locker, shake some pockets, hell, the fish out here practically pay you. Come back when you're rich.";
+
+    [TextArea(2, 5)]
+    public string meetPitchNoLine =
+        "Ah. A shame. Well — you know where to find me. Everybody does. It's the only shop with a roof.";
+
+    [Header("Hub — DRAFT, for Sam to rewrite")]
+    [Tooltip("Spoken when TevMet but TRAX isn't owned yet, right before the same YES/NO pitch. DRAFT — the handoff specifies only 'short re-pitch'.")]
+    [TextArea(2, 5)]
+    public string hubRePitchLine =
+        "Still here, still sellin'. TRAX engine, twenty bucks, and your career starts today. Interested?";
+
+    [Header("Radio impression prefixes — §7 STUB, leave empty")]
+    [Tooltip("Optional prefix line before Tev's greeting per radio impression. Empty = no line. Nothing sets the impression yet.")]
+    [TextArea(2, 5)] public string meetPrefixStar = "";
+    [TextArea(2, 5)] public string meetPrefixFool = "";
+    [TextArea(2, 5)] public string meetPrefixMystery = "";
 }
