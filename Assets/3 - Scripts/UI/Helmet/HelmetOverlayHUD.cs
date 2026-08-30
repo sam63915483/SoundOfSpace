@@ -166,7 +166,15 @@ public class HelmetOverlayHUD : MonoBehaviour
     /// scale about centre (there's overscan AND aspect correction), so 340 px
     /// looked reasonable on paper and actually pushed the pods 1% off both
     /// edges. Measure the warp quad, don't trust the arithmetic.
-    const float PodOutwardPx = 170f;
+    const float PodOutwardPx = 240f;
+
+    /// Downward push on the same two pods (texture px, 2 px = 1 ref unit).
+    /// Added 2026-08-30 with the PHOSPHOR dialogue plate: the plate is 90% of
+    /// the screen wide, so the pods also duck DOWN to clear its lower band
+    /// (Sam: "push the boost ui left, the vitals right, and push them down a
+    /// little"). Outward went 170 → 240 in the same pass — still well inside
+    /// the 340 that clipped the edges (see the warning above).
+    const float PodDownwardPx = 50f;
 
     /// Extra scale on the compass strip, on top of HelmetHudConfig.browContentScale.
     /// Code-side for the same reason as PodOutwardPx: browContentScale is
@@ -193,15 +201,18 @@ public class HelmetOverlayHUD : MonoBehaviour
             // Every corner of a pod moves by the same amount, so the quad's
             // SHAPE — which is what produces the perspective taper — is
             // untouched and each still reads as an angled panel.
-            Vector2 outR = new Vector2(PodOutwardPx, 0f);
-            Vector2 outL = new Vector2(-PodOutwardPx, 0f);
+            Vector2 outR = new Vector2(PodOutwardPx, -PodDownwardPx);
+            Vector2 outL = new Vector2(-PodOutwardPx, -PodDownwardPx);
             VitalsHUD.Instance.SeatOnArtScreen(ToQuad(c, c.brQuadTL + outR, c.brQuadTR + outR, c.brQuadBL + outR, c.brQuadBR + outR, S, c.brContentOffset, c.brContentBoost));
             GForceHUD.Instance.SeatOnArtScreen(ToQuad(c, c.blQuadTL + outL, c.blQuadTR + outL, c.blQuadBL + outL, c.blQuadBR + outL, S, c.blContentOffset, c.blContentBoost));
         }
         else
         {
-            VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, c.brScreenPx, S, c.brScreenTiltDeg, c.brScreenTilt3D, c.brContentOffset));
-            GForceHUD.Instance.SeatInArtHousing(ToScreen(c, c.blScreenPx, S, c.blScreenTiltDeg, c.blScreenTilt3D, c.blContentOffset));
+            // Same outward+down shift as the perspective path, so toggling
+            // perspectiveScreens doesn't teleport the pods.
+            Rect Shift(Rect r, Vector2 d) => new Rect(r.x + d.x, r.y + d.y, r.width, r.height);
+            VitalsHUD.Instance.SeatInArtHousing(ToScreen(c, Shift(c.brScreenPx, new Vector2(PodOutwardPx, -PodDownwardPx)), S, c.brScreenTiltDeg, c.brScreenTilt3D, c.brContentOffset));
+            GForceHUD.Instance.SeatInArtHousing(ToScreen(c, Shift(c.blScreenPx, new Vector2(-PodOutwardPx, -PodDownwardPx)), S, c.blScreenTiltDeg, c.blScreenTilt3D, c.blContentOffset));
         }
         CompassHUD.Instance.SeatInArtHousing(ToScreen(c, c.browScreenPx, S, 0f, Vector2.zero, c.browContentOffset, c.browContentScale * CompassScaleMul));
         return true;

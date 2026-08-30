@@ -2134,7 +2134,10 @@ public class Hotbar : MonoBehaviour
         // Sized to sit between the helmet's corner pods: 1.2× smaller than
         // the slots' native layout, raised off the bottom span art. Scale
         // (not layout constants) so the slot-grow animations stay untouched.
-        bar.anchoredPosition = new Vector2(0f, BottomMargin + 76f);
+        // 2026-08-30: dropped 40 units (was +76) so the PHOSPHOR dialogue
+        // plate above it has clear air — the pods ducked down in the same
+        // pass (HelmetOverlayHUD.PodDownwardPx).
+        bar.anchoredPosition = new Vector2(0f, BottomMargin + 36f);
         bar.sizeDelta = new Vector2(totalWidth + 32f, ActiveSize + ActiveLift + 32f);
         bar.localScale = new Vector3(1f / 1.2f, 1f / 1.2f, 1f);
 
