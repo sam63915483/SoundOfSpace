@@ -219,19 +219,35 @@ public partial class ShuttleComputerUI : MonoBehaviour
     /// </summary>
     System.Collections.IEnumerator CaptureMirrorThenHide()
     {
-        yield return new WaitForEndOfFrame();
-        // Reopened in the same frame (F closes and the terminal reopens)?
-        // Then the canvas must stay — and the capture would be right anyway.
-        if (_open) yield break;
-        if (TraxSessionSync.RemoteOpen) yield break;   // they're still on it; live render owns the mesh
+        // ⚠️ _capturePending (set by Close before starting this) holds
+        // DriveMachine's "nobody is using it" teardown off until the capture
+        // is done. Without it the teardown won the race EVERY close — it
+        // disabled the private camera and deactivated the canvas on the next
+        // Update, always before the camera's render, so the mirror silently
+        // kept its last LIVE frame instead of the just-closed screen. After a
+        // flight that last live frame was the NAV landing feed, which is why
+        // the cockpit monitor stayed "stuck on the landing camera" no matter
+        // what screen you closed the terminal on (Sam's 2026-08-30 bug).
+        try
+        {
+            yield return new WaitForEndOfFrame();
+            // Reopened in the same frame (F closes and the terminal reopens)?
+            // Then the canvas must stay — and the capture would be right anyway.
+            if (_open) yield break;
+            if (TraxSessionSync.RemoteOpen) yield break;   // they're still on it; live render owns the mesh
 
-        yield return RenderMirrorOnce();
+            yield return RenderMirrorOnce();
 
-        // Re-check: a whole frame passed inside that, and it is long enough for
-        // the terminal to be reopened or a partner to sit down.
-        if (_open || TraxSessionSync.RemoteOpen) yield break;
-        if (_canvas != null && _canvas.gameObject.activeSelf)
-            _canvas.gameObject.SetActive(false);
+            // Re-check: a whole frame passed inside that, and it is long enough for
+            // the terminal to be reopened or a partner to sit down.
+            if (_open || TraxSessionSync.RemoteOpen) yield break;
+            if (_canvas != null && _canvas.gameObject.activeSelf)
+                _canvas.gameObject.SetActive(false);
+        }
+        finally
+        {
+            _capturePending = false;
+        }
     }
 
     // ── open / close ─────────────────────────────────────────────────────
@@ -342,10 +358,12 @@ public partial class ShuttleComputerUI : MonoBehaviour
         SyncPlayButton();
         ClearPlayhead();
         ClosePrint();
-        // The canvas stays up ONE more frame: at end of frame the backbuffer
-        // — which IS the computer UI, pixel for pixel — is copied onto the
-        // world screen's mirror texture, then the canvas hides. An exact
-        // freeze-frame of what the player was just looking at.
+        // The canvas stays up ONE more frame: at end of frame the private
+        // camera photographs the just-closed screen into the mirror, then the
+        // canvas hides. An exact freeze-frame of what the player was just
+        // looking at. The flag keeps DriveMachine's teardown out of the way
+        // until the photo is taken — see CaptureMirrorThenHide.
+        _capturePending = true;
         StartCoroutine(CaptureMirrorThenHide());
 
         // Restore rather than force-clear: another modal UI may have been up

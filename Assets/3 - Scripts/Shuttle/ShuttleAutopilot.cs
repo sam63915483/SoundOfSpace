@@ -204,6 +204,15 @@ public class ShuttleAutopilot : MonoBehaviour
         : (_phase == Phase.Transit && _transitDuration > 0f ? Mathf.Clamp01(_phaseT / _transitDuration) : 0f);
     public bool LandingValid => _sensor != null && _sensor.Valid;
     public string LandingFailReason => _sensor != null ? _sensor.FailReason : "";
+    /// Seconds until touchdown while LANDING; effectively infinite otherwise
+    /// (including on a ClientDriven guest with no local duration, where the
+    /// cutoff below simply never fires and the feed behaves as before). The
+    /// NAV screen cuts the camera feed on the last stretch — at touchdown the
+    /// lens ends up in or under the terrain, which reads as broken (Sam,
+    /// 2026-08-30).
+    public float LandingSecondsRemaining =>
+        _phase == Phase.Landing && _landDuration > 0f
+            ? Mathf.Max(0f, _landDuration - _phaseT) : float.MaxValue;
     /// Held altitude above ground during HOVER (the NAV feed's readout).
     public float CurrentGroundAltitude => _hoverAlt;
     /// Seconds into the current phase (ShuttleSync's heartbeat payload).

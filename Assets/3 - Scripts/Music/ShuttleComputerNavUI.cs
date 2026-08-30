@@ -48,6 +48,10 @@ public partial class ShuttleComputerUI
     // hover pane
     RawImage _navFeed;
     Image _navFeedBorder;
+
+    /// Seconds before touchdown at which the landing feed goes dark — the
+    /// last stretch is the lens ploughing into the terrain. Sam's number.
+    const float FeedCutoffSeconds = 2f;
     TextMeshProUGUI _navHoverPrompt, _navAltReadout;
     float _navRedFlashUntil;
 
@@ -362,9 +366,19 @@ public partial class ShuttleComputerUI
             case ShuttleAutopilot.Phase.Hover:
             case ShuttleAutopilot.Phase.Landing:
             {
-                if (pilot.LandingCamera != null && _navFeed.texture != pilot.LandingCamera.Texture)
-                    _navFeed.texture = pilot.LandingCamera.Texture;
                 bool landing = phase == ShuttleAutopilot.Phase.Landing;
+                // Cut the camera feed for the final stretch of the descent
+                // (Sam, 2026-08-30): at touchdown the lens ends up in or under
+                // the terrain, and a live shot of the inside of a planet reads
+                // as broken. The feed goes dark, the prompt says TOUCHDOWN, and
+                // — because the mirror freezes on the last live frame once the
+                // phase hits Parked — the cockpit monitor is left holding this
+                // clean screen instead of an underground one.
+                bool feedCut = landing && pilot.LandingSecondsRemaining <= FeedCutoffSeconds;
+                if (_navFeed.gameObject.activeSelf == feedCut)
+                    _navFeed.gameObject.SetActive(!feedCut);
+                if (!feedCut && pilot.LandingCamera != null && _navFeed.texture != pilot.LandingCamera.Texture)
+                    _navFeed.texture = pilot.LandingCamera.Texture;
                 Color green = new Color(0.2f, 1f, 0.35f), red = new Color(1f, 0.2f, 0.15f);
                 Color border = landing ? Warn : (pilot.LandingValid ? green : red);
                 if (Time.unscaledTime < _navRedFlashUntil) border = Color.red;
@@ -374,7 +388,8 @@ public partial class ShuttleComputerUI
                 // CLEAR" when the validity check passes, red guidance when not.
                 string prompt;
                 Color promptColor = Ink;
-                if (landing) prompt = "LANDING…";
+                if (feedCut) prompt = "TOUCHDOWN…";
+                else if (landing) prompt = "LANDING…";
                 else if (Time.unscaledTime < _navRedFlashUntil) { prompt = "● NO CLEAR GROUND"; promptColor = red; }
                 else if (!ShuttleSync.LocalCanSteer) prompt = "PILOT: " + ShuttleSync.PilotName;
                 else if (pilot.LandingValid) { prompt = "● LANDING ZONE CLEAR · SPACE TO LAND"; promptColor = green; }

@@ -51,6 +51,10 @@ public partial class ShuttleComputerUI
     ShuttleComputerTerminal _terminal;
     float _nextTerminalScan;
 
+    /// A close-frame mirror capture is in flight — DriveMachine must keep its
+    /// hands off the canvas/camera until it lands. See CaptureMirrorThenHide.
+    bool _capturePending;
+
     /// Far enough that nothing in the solar system is near it, close enough that
     /// UI floats keep their precision. Mirrors AstronautPreview's parking trick.
     static readonly Vector3 ParkPosition = new Vector3(0f, -10000f, 0f);
@@ -162,6 +166,11 @@ public partial class ShuttleComputerUI
 
         if (!live)
         {
+            // A close-frame capture is still photographing the screen — tearing
+            // the camera/canvas down now is exactly the race that left the
+            // mirror stuck on the landing feed. One or two frames of patience.
+            if (_capturePending) return;
+
             // Nobody is using it. The mirror keeps whatever it last showed,
             // which is exactly right — a screen with nobody at it is not
             // changing.
