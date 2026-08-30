@@ -236,11 +236,8 @@ public partial class ShuttleComputerUI : MonoBehaviour
             if (_open) yield break;
             if (TraxSessionSync.RemoteOpen) yield break;   // they're still on it; live render owns the mesh
 
-            yield return RenderMirrorOnce();
+            RenderMirrorNow();   // synchronous — see its summary for why
 
-            // Re-check: a whole frame passed inside that, and it is long enough for
-            // the terminal to be reopened or a partner to sit down.
-            if (_open || TraxSessionSync.RemoteOpen) yield break;
             if (_canvas != null && _canvas.gameObject.activeSelf)
                 _canvas.gameObject.SetActive(false);
         }

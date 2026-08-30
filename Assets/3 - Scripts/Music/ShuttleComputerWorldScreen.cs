@@ -55,6 +55,10 @@ public partial class ShuttleComputerUI
     /// hands off the canvas/camera until it lands. See CaptureMirrorThenHide.
     bool _capturePending;
 
+    /// The one-frame grace after a flight ends with nobody at the machine —
+    /// see the parting-shot note in DriveMachine.
+    bool _partingShotDone;
+
     /// Far enough that nothing in the solar system is near it, close enough that
     /// UI floats keep their precision. Mirrors AstronautPreview's parking trick.
     static readonly Vector3 ParkPosition = new Vector3(0f, -10000f, 0f);
@@ -171,6 +175,14 @@ public partial class ShuttleComputerUI
             // mirror stuck on the landing feed. One or two frames of patience.
             if (_capturePending) return;
 
+            // PARTING SHOT: still in RT mode with nobody at the machine means
+            // a flight just ended. Hold RT for exactly one more frame —
+            // NavDrive, which runs AFTER this in Update, redraws the NAV
+            // screen for the Parked phase, the still-enabled camera renders
+            // it, and the mirror freezes on the screen the terminal will
+            // actually resume to instead of the last mid-flight frame.
+            if (_rtMode && !_partingShotDone) { _partingShotDone = true; return; }
+
             // Nobody is using it. The mirror keeps whatever it last showed,
             // which is exactly right — a screen with nobody at it is not
             // changing.
@@ -192,6 +204,8 @@ public partial class ShuttleComputerUI
             if (_inst != null) _inst.Stop();
             return;
         }
+
+        _partingShotDone = false;   // any live period re-arms the parting shot
 
         if (_open) { if (_rtMode) LeaveRtMode(); }
         else
@@ -268,21 +282,30 @@ public partial class ShuttleComputerUI
     /// One last render into the mirror as the computer closes, so the mesh shows
     /// the screen as it was left rather than as it was several navigations ago.
     ///
-    /// ⚠️ IT HAS TO COST A WHOLE FRAME. Flipping into render-to-texture mode and
-    /// calling Render() immediately photographs empty space: Unity lays the
-    /// canvas out in front of its camera during the canvas update, which has
-    /// already happened for this frame, so the geometry is still sitting where
-    /// the overlay left it and the parked camera sees nothing. Yielding once
-    /// lets the ordinary canvas update and the ordinary camera render do it
-    /// properly — the difference between a picture and a black screen.
+    /// ⚠️ SYNCHRONOUS ON PURPOSE — the yielding version of this never worked
+    /// solo. It enabled the camera after frame N's render (WaitForEndOfFrame)
+    /// and disabled it right after frame N+1's Update — and BOTH of those
+    /// moments are outside the render phase, so the enabled-camera render it
+    /// was waiting for never happened; the mirror silently kept its old
+    /// picture on every solo close (it only looked fine in co-op, where
+    /// DriveMachine kept the camera alive for the partner anyway). That is
+    /// the real "monitor stuck on the landing feed" bug.
+    ///
+    /// Calling Render() straight after flipping modes photographs empty space
+    /// (the canvas is still laid out for the overlay), so the layout is
+    /// forced by hand first — ForceUpdateCanvases runs the canvas update,
+    /// including TMP mesh rebuilds, for the new camera-space placement. Then
+    /// a manual Render() works regardless of the enabled flag or the frame
+    /// loop, and there is nothing left to race.
     /// </summary>
-    System.Collections.IEnumerator RenderMirrorOnce()
+    void RenderMirrorNow()
     {
-        if (_screenCam == null || _canvas == null) yield break;
+        if (_screenCam == null || _canvas == null) return;
 
         bool wasRt = _rtMode;
-        EnterRtMode();
-        yield return null;                 // canvas lays out, camera renders
+        if (!wasRt) EnterRtMode();
+        Canvas.ForceUpdateCanvases();
+        _screenCam.Render();
         if (!wasRt) LeaveRtMode();
     }
 
