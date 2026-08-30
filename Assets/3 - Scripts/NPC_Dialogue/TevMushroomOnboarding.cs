@@ -36,16 +36,16 @@ public class TevMushroomOnboarding : MonoBehaviour
     public TextMeshProUGUI talkPromptText;
 
     [Header("Timing")]
-    [Tooltip("Seconds after the shuttle's exit ramp deploys before Tev appears outside his cabin. Handoff §2.1 = 120. He appears whether or not the player has left the shuttle.")]
-    public float hiddenSeconds = 120f;
+    [Tooltip("Seconds after the shuttle's exit ramp deploys before Tev appears outside his cabin. 0 since 2026-08-30 (Sam: no delay) — the old 120 s 'quiet looting window' was a rent-era beat. Scene-serialized: the Inspector value wins over this default.")]
+    public float hiddenSeconds = 0f;
     [Tooltip("Metres the player must be within to get the talk prompt. Set explicitly rather than derived from the trigger — Tev is the first NPC in the game and his talk range should not be an accident of how his collider was scaled. 0 falls back to deriving it from the SphereCollider.")]
     public float talkRadius = 8f;
     [Tooltip("Log one line a second describing every gate between 'player nearby' and 'prompt shown', whenever the player is within debugRadius. OFF now that the onboarding is play-verified — flip it back on if talking to him ever breaks again; it names the failing gate in one line and it is how the last three regressions were found.")]
     public bool debugLogging = false;
     [Tooltip("Metres within which debugLogging reports.")]
     public float debugRadius = 25f;
-    [Tooltip("Hard backstop: seconds after this component wakes at which Tev appears regardless of the exit ramp. Covers boots where the arrival sequence never runs (Play straight into the gameplay scene, dev spawns) — without it he'd stay hidden forever there.")]
-    public float fallbackSeconds = 180f;
+    [Tooltip("Hard backstop: seconds after this component wakes at which Tev appears regardless of the exit ramp. 0 = immediately, which with hiddenSeconds 0 means he is simply always present.")]
+    public float fallbackSeconds = 0f;
 
     [Header("Deprecated behaviour")]
     [Tooltip("Disable Tev's wave/idle animation while the onboarding is live. OFF: switching it off turns him into a frozen statue that doesn't even look at you, which reads as broken rather than as 'the old waving beat is deprecated'. The handoff wanted the on-LANDING wave gone, and the 120s hidden window already achieves that — he isn't there to wave.")]
