@@ -33,6 +33,19 @@ public class MenuShotDirector : MonoBehaviour
     Shot shot;
     float shotEndsAt;
     Transform landmark;
+    CelestialBody sunBody;
+
+    public string CurrentShotName => shot.ToString();
+
+    // The Planet money shot only plays while the shuttle is over the SUNLIT
+    // hemisphere — the dark side reads wrong from up close (Sam's review).
+    bool ShuttleOverDaylight()
+    {
+        if (sunBody == null || tour.FocusBody == null) return true;
+        Vector3 sunDir = (sunBody.Position - tour.FocusBody.Position).normalized;
+        Vector3 shDir = (tour.transform.position - tour.FocusBody.Position).normalized;
+        return Vector3.Dot(sunDir, shDir) > -0.05f;
+    }
 
     float azimuth, seed;
 
@@ -41,6 +54,13 @@ public class MenuShotDirector : MonoBehaviour
     float elevation = 10f, distance = 40f, lookWeight, fov = 58f;
     float targetElevation, targetDistance, targetLookWeight, targetFov, lookCap;
     Transform lookTarget;
+
+    // Thirds framing (Sam's spec): the shuttle lives in the LEFT or RIGHT
+    // vertical third of the screen — the middle third belongs to the menu
+    // buttons — and only drifts through the middle while the eased offset
+    // crosses sides between shots.
+    float frameOffsetDeg, targetFrameOffsetDeg;
+    int frameSide = 1;
 
     void Start()
     {
@@ -59,6 +79,9 @@ public class MenuShotDirector : MonoBehaviour
         maxDistance = Mathf.Max(maxDistance, minDistance * 2.2f);
         Debug.Log($"[MenuShotDirector] shuttleRadius={shuttleRadius:0.0} camera range {minDistance:0.0}..{maxDistance:0.0}");
 
+        foreach (var b in NBodySimulation.Bodies)
+            if (b != null && b.bodyType == CelestialBody.BodyType.Sun) sunBody = b;
+
         seed = Random.Range(0f, 100f);
         azimuth = Random.Range(0f, 360f);
         StartShot((Shot)Random.Range(0, 3));
@@ -72,13 +95,17 @@ public class MenuShotDirector : MonoBehaviour
     {
         shot = s;
         shotEndsAt = Time.time + Random.Range(9f, 15f);
+        // Alternate the screen side most of the time so the shuttle spends its
+        // life in the outer thirds, crossing the button column only in passing.
+        if (Random.value < 0.75f) frameSide = -frameSide;
+        targetFrameOffsetDeg = frameSide * Random.Range(15f, 21f);
         switch (s)
         {
             case Shot.Planet:   // the money shot: top-down over the orbited planet
-                targetElevation = Random.Range(58f, 75f);
+                targetElevation = Random.Range(66f, 80f);   // truly overhead → planet directly beyond the shuttle
                 targetDistance = maxDistance * planetShotDistanceMult;
                 lookTarget = tour.FocusBody != null ? tour.FocusBody.transform : null;
-                targetLookWeight = 1f; lookCap = 22f;
+                targetLookWeight = 1f; lookCap = 30f;
                 targetFov = 58f;
                 break;
             case Shot.Shuttle:  // the ship against space / whatever drifts by
@@ -115,9 +142,13 @@ public class MenuShotDirector : MonoBehaviour
 
     void NextShot()
     {
-        // Rotate through all three with a shuffle-ish pick: never repeat.
+        // Rotate through all three with a shuffle-ish pick: never repeat, and
+        // don't start a Planet shot over the night side.
         Shot next;
-        do { next = (Shot)Random.Range(0, 3); } while (next == shot);
+        int guard = 0;
+        do { next = (Shot)Random.Range(0, 3); }
+        while ((next == shot || (next == Shot.Planet && !ShuttleOverDaylight())) && ++guard < 12);
+        if (next == Shot.Planet && !ShuttleOverDaylight()) next = Shot.Shuttle;
         StartShot(next);
     }
 
@@ -131,8 +162,12 @@ public class MenuShotDirector : MonoBehaviour
 
         float t = Time.time;
         if (!instant && t >= shotEndsAt) NextShot();
-        // Refresh the planet shot's target if the tour moved on mid-shot.
+        // Refresh the planet shot's target if the tour moved on mid-shot, and
+        // bail out of it the moment the shuttle crosses into night — the
+        // start-only gate left 81% of planet-shot frames over the dark side
+        // (tracker data): a 45s orbit outruns a 9-15s shot.
         if (shot == Shot.Planet && tour.FocusBody != null) lookTarget = tour.FocusBody.transform;
+        if (!instant && shot == Shot.Planet && !ShuttleOverDaylight()) StartShot(Shot.Shuttle);
 
         float dt = instant ? 0f : Time.deltaTime;
         // Glide every parameter — shot changes are camera MOVES, not cuts.
@@ -166,6 +201,15 @@ public class MenuShotDirector : MonoBehaviour
             var lookAtTarget = Quaternion.LookRotation((lookTarget.position - pos).normalized, up);
             desired = Quaternion.RotateTowards(lookAtShuttle, lookAtTarget, lookCap * lookWeight);
         }
+
+        // Thirds framing: yaw the final look so the shuttle rides an outer
+        // third. Eases between sides (briefly crossing the middle), and backs
+        // off while glancing so the combined offset can't push the shuttle out
+        // of frame.
+        frameOffsetDeg = Mathf.MoveTowards(frameOffsetDeg, targetFrameOffsetDeg, 5f * dt);
+        float effOffset = frameOffsetDeg * (1f - 0.7f * lookWeight);
+        desired = Quaternion.AngleAxis(effOffset, desired * Vector3.up) * desired;
+
         cam.fieldOfView = fov;
 
         if (instant)

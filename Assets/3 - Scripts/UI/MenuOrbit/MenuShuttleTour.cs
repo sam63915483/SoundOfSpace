@@ -20,10 +20,18 @@ public class MenuShuttleTour : MonoBehaviour
 {
     [Tooltip("Seconds for one full lap around each planet.")]
     public float orbitPeriod = 45f;
-    [Tooltip("Orbit radius = planet radius * this.")]
-    public float orbitAltitudeMult = 2.1f;
-    [Tooltip("Seconds for a planet-to-planet transfer leg.")]
-    public float transferDuration = 18f;
+    // Per-stop orbit altitude (radius multiplier), chosen so NO orbit ever
+    // intersects any body's clearance bubble — that intersection was the "UFO
+    // jerk": at a uniform 2.1x, the orbit around Fiery passed inside Icey's
+    // bubble every lap, and Humble Abode's orbit sat in Constant Companion's
+    // crossing zone, so the hard clamp shoved the shuttle sideways at every
+    // conjunction. HA 1.7x (340: inside CC's 472-orbit minus its 115 bubble),
+    // twins 1.6x (480: partner at 1000 minus its 490 bubble), Cyclops 2.1x
+    // (1050: clear of both moons).
+    static readonly float[] StopAltMult = { 1.7f, 1.6f, 1.6f, 2.1f };
+    [Tooltip("Cruise speed between planets, units/second. Leg duration = distance / this (clamped 12-55s) — constant TIME made the long Cyclops leg scream along at 1600 u/s, and at that speed every moon-skirt graze was a violent yank.")]
+    public float cruiseSpeed = 350f;
+    float transferDuration = 18f;   // derived per leg from cruiseSpeed
     [Tooltip("Max attitude turn rate, degrees per second.")]
     public float maxTurnRate = 12f;
 
@@ -32,6 +40,7 @@ public class MenuShuttleTour : MonoBehaviour
     Rigidbody rb;
     CelestialBody[] stops;
     CelestialBody[] allBodies;
+    CelestialBody sun;
     int stopIndex;
 
     enum Mode { Orbit, Transfer }
@@ -46,6 +55,7 @@ public class MenuShuttleTour : MonoBehaviour
 
     Vector3 lastPos;
     Vector3 smoothedUp = Vector3.up;    // exposed to the camera — never snaps
+    float _lastSpikeLog;
 
     public CelestialBody FocusBody { get; private set; }
     public CelestialBody NextBody => stops[(stopIndex + 1) % stops.Length];
@@ -64,6 +74,8 @@ public class MenuShuttleTour : MonoBehaviour
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
         allBodies = NBodySimulation.Bodies;
+        foreach (var b in allBodies)
+            if (b != null && b.bodyType == CelestialBody.BodyType.Sun) sun = b;
         stops = new CelestialBody[TourStops.Length];
         foreach (var b in allBodies)
             for (int i = 0; i < TourStops.Length; i++)
@@ -73,7 +85,7 @@ public class MenuShuttleTour : MonoBehaviour
 
         stopIndex = 0;
         FocusBody = stops[0];
-        orbitRadius = FocusBody.radius * orbitAltitudeMult;
+        orbitRadius = FocusBody.radius * StopAltMult[0];
         Vector3 off = transform.position - FocusBody.Position;
         orbitPhase = Mathf.Atan2(off.y, off.x);
         orbitStartPhase = orbitPhase;
@@ -99,7 +111,7 @@ public class MenuShuttleTour : MonoBehaviour
         _thrustFx.Initialize(transform);
         _thrustFx.Ignite();
         _thrustFx.SetAltitude(150f);
-        Debug.Log("[MenuShuttleTour] ShuttleThrustFX ignited (game's own plume rig)");
+        Debug.Log("[MenuShuttleTour] v7 (cruise-speed + post-avoidance arrival + high twin arc) — ShuttleThrustFX ignited");
     }
 
     ShuttleThrustFX _thrustFx;
@@ -126,10 +138,13 @@ public class MenuShuttleTour : MonoBehaviour
         Vector3 target;
         Vector3 radialUp;
         Vector3 faceHint;
+        bool arriving = false;
 
         if (mode == Mode.Orbit)
         {
             orbitPhase += 2f * Mathf.PI / orbitPeriod * dt;
+            // Glide the inherited arrival radius onto the designed one.
+            orbitRadius = Mathf.MoveTowards(orbitRadius, FocusBody.radius * StopAltMult[stopIndex], 25f * dt);
             target = OrbitPoint(FocusBody, orbitPhase, orbitRadius);
             radialUp = (target - FocusBody.Position).normalized;
             faceHint = -radialUp;   // front face turned toward the planet
@@ -147,8 +162,15 @@ public class MenuShuttleTour : MonoBehaviour
                     toBody = NextBody;
                     stopIndex = (stopIndex + 1) % stops.Length;
                     fromOffset = target - fromBody.Position;
+                    // Entry point biased toward the SUNLIT side of the target,
+                    // so each new orbit begins over daylight (dark sides read
+                    // wrong from up close — Sam's review).
                     Vector3 approach = (fromBody.Position - toBody.Position).normalized;
-                    toOffset = approach * toBody.radius * orbitAltitudeMult;
+                    Vector3 sunward = sun != null ? (sun.Position - toBody.Position).normalized : approach;
+                    Vector3 entryDir = Vector3.Slerp(approach, sunward, 0.5f).normalized;
+                    toOffset = entryDir * toBody.radius * StopAltMult[stopIndex];
+                    transferDuration = Mathf.Clamp(
+                        Vector3.Distance(target, toBody.Position + toOffset) / cruiseSpeed, 12f, 55f);
                     transferT = 0f;
                     lapDone = false;
                     mode = Mode.Transfer;
@@ -161,7 +183,15 @@ public class MenuShuttleTour : MonoBehaviour
             float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(transferT));
             Vector3 a = fromBody.Position + fromOffset;
             Vector3 b = toBody.Position + toOffset;
-            float arc = Mathf.Sin(u * Mathf.PI) * Vector3.Distance(a, b) * 0.06f;
+            // Short hops arc well OUT of the orbital plane: the twins sit 1000
+            // apart with ~490-unit bubbles each — a flat path threads a 20-unit
+            // gap. Long cruises stay nearly flat.
+            float dist = Vector3.Distance(a, b);
+            // 0.35 on the shortest hops: the twin-to-twin leg at that fraction
+            // clears BOTH 490-unit bubbles in z entirely (594u closest 3D
+            // approach), so avoidance never engages and the leg is push-free.
+            float arcFrac = Mathf.Lerp(0.35f, 0.06f, Mathf.Clamp01(dist / 5000f));
+            float arc = Mathf.Sin(u * Mathf.PI) * dist * arcFrac;
             target = Vector3.Lerp(a, b, u) + Vector3.forward * arc;
 
             Vector3 upFrom = (target - fromBody.Position).normalized;
@@ -169,27 +199,53 @@ public class MenuShuttleTour : MonoBehaviour
             radialUp = Vector3.Slerp(upFrom, upTo, u).normalized;
             faceHint = Vector3.Slerp(-upFrom, -upTo, u).normalized;
 
-            if (transferT >= 1f)
+            arriving = transferT >= 1f;   // finalized AFTER the avoidance pass
+        }
+
+        // SOFT clearance around EVERY body — moons, planets and the sun. The
+        // exclusion is ORBIT-ONLY: during a transfer even the (still-focused)
+        // departed planet must repel, because the moving twins can drag the
+        // path back across it — the tracker caught the shuttle sinking to
+        // clearance 0.61 inside Icey exactly this way. The push ramps in
+        // progressively from the outer skirt (v1 "soft" math saturated to a
+        // hard clamp the moment the bubble was crossed).
+        foreach (var body in allBodies)
+        {
+            if (body == null || body.radius <= 0f) continue;
+            if (mode == Mode.Orbit && body == FocusBody) continue;   // engineered-safe circle
+            Vector3 rel = target - body.Position;
+            float clearance = body.radius * 1.5f + 40f;
+            float soft = clearance * 1.35f;
+            float d = rel.magnitude;
+            if (d < soft && d > 0.01f)
             {
-                FocusBody = toBody;
-                orbitRadius = FocusBody.radius * orbitAltitudeMult;
-                Vector3 off = target - FocusBody.Position;
-                orbitPhase = Mathf.Atan2(off.y, off.x);
-                orbitStartPhase = orbitPhase;
-                mode = Mode.Orbit;
+                // 0 at the skirt edge → 1 well inside the bubble; minD rises
+                // continuously toward full clearance as the path presses in.
+                float k = 1f - Mathf.Clamp01((d - clearance * 0.8f) / (soft - clearance * 0.8f));
+                float minD = Mathf.Lerp(d, clearance, Mathf.SmoothStep(0f, 1f, k));
+                // The DEPARTED planet's repulsion fades in over the first 30%
+                // of the transfer: the exit orbit (480) sits just inside its
+                // own bubble (490), and switching its exclusion off instantly
+                // shoved the shuttle 7.4 units in one step (tracker: 75k u/s2).
+                float w = (mode == Mode.Transfer && body == fromBody)
+                    ? Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(transferT / 0.3f)) : 1f;
+                if (minD > d) target = body.Position + rel / d * (d + (minD - d) * w);
             }
         }
 
-        // Clearance bubble around EVERY body — moons, planets and the sun —
-        // in both modes. The path bows around anything it would clip.
-        foreach (var body in allBodies)
+        // Arrival is finalized from the POST-avoidance target: the entry point
+        // sits just inside the new planet's bubble, so the push holds the real
+        // position a few units out — inheriting the pre-push radius snapped the
+        // shuttle ~7.5u on the arrival frame (tracker: the deterministic
+        // 75287 u/s2 spike, to the decimal, every twin arrival).
+        if (arriving)
         {
-            if (body == null || body.radius <= 0f || body == FocusBody) continue;
-            Vector3 rel = target - body.Position;
-            float clearance = body.radius * 1.5f + 40f;
-            float d = rel.magnitude;
-            if (d < clearance && d > 0.01f)
-                target = body.Position + rel / d * clearance;
+            FocusBody = toBody;
+            Vector3 arrOff = target - FocusBody.Position;
+            orbitRadius = arrOff.magnitude;
+            orbitPhase = Mathf.Atan2(arrOff.y, arrOff.x);
+            orbitStartPhase = orbitPhase;
+            mode = Mode.Orbit;
         }
 
         smoothedUp = Vector3.Slerp(smoothedUp, radialUp, 2f * dt).normalized;
@@ -200,6 +256,20 @@ public class MenuShuttleTour : MonoBehaviour
             var look = HeadFirst(vel.normalized, faceHint);
             rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, look, maxTurnRate * dt));
         }
+        // Spike forensics: any single-step displacement far beyond cruise speed
+        // gets logged with full context (throttled). Cruise ≈ 65 u/s ≈ 0.65/step.
+        float stepLen = (target - lastPos).magnitude;
+        if (stepLen > 2f && Time.time - _lastSpikeLog > 1f)
+        {
+            _lastSpikeLog = Time.time;
+            var sb = new System.Text.StringBuilder();
+            sb.Append($"[MenuTour SPIKE] step={stepLen:0.00}u mode={mode} transferT={transferT:0.000} orbitR={orbitRadius:0.0} focus={FocusBody.bodyName}");
+            foreach (var b in allBodies)
+                if (b != null && b.radius > 0f && Vector3.Distance(target, b.Position) < b.radius * 3f)
+                    sb.Append($" | {b.bodyName} d={Vector3.Distance(target, b.Position):0.0}");
+            Debug.LogWarning(sb.ToString());
+        }
+
         rb.MovePosition(target);
         lastPos = target;
 

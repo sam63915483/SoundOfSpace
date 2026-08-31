@@ -133,11 +133,34 @@ public class MenuOrbitBootstrap : MonoBehaviour
         foreach (var r in player.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
         foreach (var a in player.GetComponentsInChildren<Animator>(true)) a.enabled = false;
 
+        // The lens flare (and every fx toggle) is gated on InputSettings.Active,
+        // which only exists after Begin() — normally called by the (disabled)
+        // player controller path. Call Begin() on the still-disabled component:
+        // Active + Sam's saved fx prefs go live, its per-frame hotkey Update
+        // never runs.
+        var input = FindObjectOfType<InputSettings>(true);
+        if (input != null) input.Begin();
+
+        // AstronautReflectLight is a directional FILL light for the astronaut —
+        // in the menu it floodlights the NIGHT side of every planet ("dark
+        // sides appear brighter than they should", Sam's review). The avatar is
+        // hidden here anyway; kill the light, keep the managers underneath it.
+        var reflect = GameObject.Find("AstronautReflectLight");
+        if (reflect != null)
+        {
+            var l = reflect.GetComponent<Light>();
+            if (l != null) l.enabled = false;
+        }
+
         var tour = shuttleT.gameObject.AddComponent<MenuShuttleTour>();
         var director = cam.gameObject.AddComponent<MenuShotDirector>();
         director.tour = tour;
         director.cam = cam;
-        Debug.Log("[MenuOrbitBootstrap] menu background armed: shuttle tour + shot director running");
+        var tracker = shuttleT.gameObject.AddComponent<MenuTourTracker>();
+        tracker.tour = tour;
+        tracker.director = director;
+        tracker.cam = cam;
+        Debug.Log("[MenuOrbitBootstrap] menu background armed: tour + director + tracker running");
     }
 
     Transform FindShuttle()
