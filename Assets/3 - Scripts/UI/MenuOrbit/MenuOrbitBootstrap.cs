@@ -160,7 +160,31 @@ public class MenuOrbitBootstrap : MonoBehaviour
         tracker.tour = tour;
         tracker.director = director;
         tracker.cam = cam;
+        StartCoroutine(FixSunAim(cam));
         Debug.Log("[MenuOrbitBootstrap] menu background armed: tour + director + tracker running");
+    }
+
+    // SunShadowCaster caches Camera.main in ITS Start and forever aims the
+    // sun's directional light at that camera. During the additive menu load,
+    // Camera.main is still MAINMENU's (soon-disabled) camera near the world
+    // origin — inside the sun — so sunlight beamed off in a degenerate
+    // direction and washed every planet's NIGHT SIDE gray (Sam: "gray, I can
+    // make out all the features"; the atmosphere post uses the true sun
+    // position, so its terminator ring disagreed too = "atmospheres look
+    // weird"). Third instance of the additive-load Camera.main trap. Re-point
+    // it AFTER its Start has run.
+    System.Collections.IEnumerator FixSunAim(Camera cam)
+    {
+        yield return null;
+        yield return null;
+        yield return null;
+        var field = typeof(SunShadowCaster).GetField("track",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        foreach (var caster in FindObjectsOfType<SunShadowCaster>())
+        {
+            field?.SetValue(caster, cam.transform);
+            Debug.Log($"[MenuOrbitBootstrap] SunShadowCaster '{caster.name}' re-aimed at the menu camera");
+        }
     }
 
     Transform FindShuttle()
