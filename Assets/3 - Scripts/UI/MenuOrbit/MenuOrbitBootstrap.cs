@@ -140,6 +140,11 @@ public class MenuOrbitBootstrap : MonoBehaviour
         // never runs.
         var input = FindObjectOfType<InputSettings>(true);
         if (input != null) input.Begin();
+        // Begin() applies GAMEPLAY cursor state (locked/hidden) — which killed
+        // the menu mouse entirely (Sam: "my mouse doesn't even work"). This is
+        // a menu; the cursor stays free and visible.
+        Cursor.lockState = CursorLockMode.None;
+        Cursor.visible = true;
 
         // AstronautReflectLight is a directional FILL light for the astronaut —
         // in the menu it floodlights the NIGHT side of every planet ("dark
@@ -160,31 +165,18 @@ public class MenuOrbitBootstrap : MonoBehaviour
         tracker.tour = tour;
         tracker.director = director;
         tracker.cam = cam;
-        StartCoroutine(FixSunAim(cam));
-        Debug.Log("[MenuOrbitBootstrap] menu background armed: tour + director + tracker running");
-    }
-
-    // SunShadowCaster caches Camera.main in ITS Start and forever aims the
-    // sun's directional light at that camera. During the additive menu load,
-    // Camera.main is still MAINMENU's (soon-disabled) camera near the world
-    // origin — inside the sun — so sunlight beamed off in a degenerate
-    // direction and washed every planet's NIGHT SIDE gray (Sam: "gray, I can
-    // make out all the features"; the atmosphere post uses the true sun
-    // position, so its terminator ring disagreed too = "atmospheres look
-    // weird"). Third instance of the additive-load Camera.main trap. Re-point
-    // it AFTER its Start has run.
-    System.Collections.IEnumerator FixSunAim(Camera cam)
-    {
-        yield return null;
-        yield return null;
-        yield return null;
-        var field = typeof(SunShadowCaster).GetField("track",
-            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        // Sun aiming, menu edition: disable gameplay's camera-tracking caster
+        // and aim at the DOMINANT VIEWED planet instead (see MenuSunAim's
+        // header). The one-shot re-aim at the menu camera fixed only the
+        // planet the camera was near; every backdrop planet stayed gray.
         foreach (var caster in FindObjectsOfType<SunShadowCaster>())
         {
-            field?.SetValue(caster, cam.transform);
-            Debug.Log($"[MenuOrbitBootstrap] SunShadowCaster '{caster.name}' re-aimed at the menu camera");
+            caster.enabled = false;
+            var aim = caster.gameObject.AddComponent<MenuSunAim>();
+            aim.Init(cam);
+            Debug.Log($"[MenuOrbitBootstrap] MenuSunAim driving '{caster.name}' (SunShadowCaster off)");
         }
+        Debug.Log("[MenuOrbitBootstrap] menu background armed: tour + director + tracker running");
     }
 
     Transform FindShuttle()

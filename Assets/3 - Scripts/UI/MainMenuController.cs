@@ -265,22 +265,6 @@ public class MainMenuController : MonoBehaviour
         // it. Sits between the accent strip and the button column.
         BuildCharacterChip();
 
-        // Translucent backdrop behind the button column: the 3D menu background
-        // flies the shuttle (and planets) through this part of the screen, and
-        // white button text over a bright hull was hard to read (Sam's review).
-        // Sized to cover the chip + all six rows with margin.
-        var backdrop = NewUI("ButtonsBackdrop", transform);
-        backdrop.anchorMin = new Vector2(0.5f, 0.5f);
-        backdrop.anchorMax = new Vector2(0.5f, 0.5f);
-        backdrop.pivot     = new Vector2(0.5f, 0.5f);
-        backdrop.anchoredPosition = new Vector2(0f, -130f);
-        backdrop.sizeDelta = new Vector2(560f, 620f);
-        var backdropImg = backdrop.gameObject.AddComponent<Image>();
-        backdropImg.sprite = GetRoundedSprite();
-        backdropImg.type = Image.Type.Sliced;
-        backdropImg.color = new Color32(0x07, 0x05, 0x1C, 0xB4);   // void black, ~70% opacity
-        backdropImg.raycastTarget = false;
-
         // Button column. Stored on `mainMenuButtonsRoot` for OnCredits/HideCredits
         // to deactivate while the credits modal is open.
         var buttonsRT = NewUI("Buttons", transform);
@@ -466,10 +450,15 @@ public class MainMenuController : MonoBehaviour
     /// Replaces the old centred pill (rounded background + top accent strip).
     void BuildButtonContent(RectTransform btnRT, string label, System.Action onClick)
     {
-        // Transparent hit target — the row has no fill of its own now, but a
-        // Button still needs a raycastable graphic to be clickable at all.
+        // Per-row translucent plate (doubles as the Button's raycast target).
+        // Was fully transparent; with the live 3D background flying the bright
+        // shuttle behind the column, each row now carries its own dark glass
+        // so the text stays readable (Sam: one big box looked clunky —
+        // individual boxes per button instead).
         var hit = btnRT.gameObject.AddComponent<Image>();
-        hit.color = new Color(0f, 0f, 0f, 0f);
+        hit.sprite = GetRoundedSprite();
+        hit.type = Image.Type.Sliced;
+        hit.color = new Color32(0x07, 0x05, 0x1C, 0xB4);
         hit.raycastTarget = true;
 
         var btn = btnRT.gameObject.AddComponent<Button>();

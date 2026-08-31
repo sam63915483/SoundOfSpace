@@ -66,6 +66,13 @@ public class MenuShotDirector : MonoBehaviour
     float frameOffsetDeg, targetFrameOffsetDeg;
     int frameSide = 1;
 
+    // 0→1 while the Planet shot runs: eases the camera onto the line through
+    // the shuttle FROM the planet, so looking at the shuttle GUARANTEES the
+    // planet fills the frame behind it. The elevation/look-bias version only
+    // showed the planet if the orbit happened to cooperate (Sam: "the camera
+    // points opposite from it and doesn't show it once").
+    float planetAlign;
+
     void Start()
     {
         if (cam == null) cam = GetComponent<Camera>();
@@ -88,7 +95,10 @@ public class MenuShotDirector : MonoBehaviour
 
         seed = Random.Range(0f, 100f);
         azimuth = Random.Range(0f, 360f);
-        StartShot((Shot)Random.Range(0, 3));
+        // The menu always OPENS on the money shot: the tour starts over Humble
+        // Abode's sunlit side, so the first thing seen is shuttle + planet.
+        StartShot(Shot.Planet);
+        planetAlign = 1f;
         // Open ON the shot's pose (screen is still black behind the menu fade).
         elevation = targetElevation; distance = targetDistance;
         lookWeight = targetLookWeight; fov = targetFov;
@@ -200,6 +210,17 @@ public class MenuShotDirector : MonoBehaviour
         Quaternion swing = Quaternion.AngleAxis(azimuth, up)
                          * Quaternion.AngleAxis(elevation + elevWobble, Vector3.Cross(refFwd, up));
         Vector3 pos = sh.position + swing * refFwd * distance;
+
+        // Planet shot: ease onto the guaranteed-framing position — camera on
+        // the anti-planet side of the shuttle (slight lateral drift for life).
+        planetAlign = Mathf.MoveTowards(planetAlign, shot == Shot.Planet ? 1f : 0f, 0.4f * dt);
+        if (planetAlign > 0.001f && body != null)
+        {
+            float drift = Mathf.Sin(t * 0.35f + seed);
+            Vector3 lateral = Vector3.Cross(up, Vector3.forward).normalized * (10f * drift);
+            Vector3 alignedPos = sh.position + up * distance + lateral;
+            pos = Vector3.Lerp(pos, alignedPos, Mathf.SmoothStep(0f, 1f, planetAlign));
+        }
 
         var lookAtShuttle = Quaternion.LookRotation((sh.position - pos).normalized, up);
         var desired = lookAtShuttle;
