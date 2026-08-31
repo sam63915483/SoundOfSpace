@@ -69,6 +69,7 @@ public class MainMenuController : MonoBehaviour
             : PlayerPrefs.GetFloat("masterVolume", InputSettings.defaultMasterVolume);
 
         BuildCanvas();
+        BuildFadeOverlay();
         StartMenuAmbience();
     }
 
@@ -94,38 +95,56 @@ public class MainMenuController : MonoBehaviour
     // auto-singleton still early-returns (trap #1 in CLAUDE.md). Starting the
     // game loads 1.6.7.7.7 single-mode, which unloads the background
     // automatically.
-    GameObject menuBgRoot;   // nebula image + stars, faded out once 3D is live
+    GameObject menuBgRoot;   // nebula image + stars, swapped out once 3D is live
+    Image fadeOverlay;       // full-screen black; the menu fades in through it
+
+    // Built at the END of Awake so it sits above everything drawn so far. The
+    // menu opens BLACK: the 3D background loads and the director takes its
+    // first frame behind the cover, then the whole menu fades in — no flash of
+    // the old nebula, no twitching setup frames (Sam's review, 2026-08-31).
+    void BuildFadeOverlay()
+    {
+        var rt = NewUI("FadeOverlay", transform);
+        Stretch(rt, 0f, 0f, 0f, 0f);
+        fadeOverlay = rt.gameObject.AddComponent<Image>();
+        fadeOverlay.color = Color.black;
+        fadeOverlay.raycastTarget = false;
+        rt.SetAsLastSibling();
+    }
 
     IEnumerator LoadOrbitBackground()
     {
         var op = SceneManager.LoadSceneAsync("MenuOrbit", LoadSceneMode.Additive);
-        if (op == null) yield break;   // scene missing from build — keep the nebula
-        yield return op;
-
-        // The background scene brings the gameplay camera (with the atmosphere
-        // post stack) and its own AudioListener — retire this scene's.
-        foreach (var cam in FindObjectsOfType<Camera>())
-            if (cam.gameObject.scene.name == "MainMenu") cam.enabled = false;
-        foreach (var lis in FindObjectsOfType<AudioListener>())
-            if (lis.gameObject.scene.name == "MainMenu") lis.enabled = false;
-
-        // Fade the flat nebula out to reveal the live solar system.
-        if (menuBgRoot != null)
+        if (op != null)
         {
-            var images = menuBgRoot.GetComponentsInChildren<Image>(true);
+            yield return op;
+
+            // The background scene brings the gameplay camera (with the
+            // atmosphere post stack) and its own AudioListener — retire this
+            // scene's, and drop the flat nebula while the screen is still black.
+            foreach (var cam in FindObjectsOfType<Camera>())
+                if (cam.gameObject.scene.name == "MainMenu") cam.enabled = false;
+            foreach (var lis in FindObjectsOfType<AudioListener>())
+                if (lis.gameObject.scene.name == "MainMenu") lis.enabled = false;
+            if (menuBgRoot != null) menuBgRoot.SetActive(false);
+
+            // Let the shot director take its first exact frame behind the cover.
+            yield return null;
+            yield return null;
+        }
+        // Scene missing → the nebula simply stays; either way, fade the menu in.
+        if (fadeOverlay != null)
+        {
             float t = 0f;
             while (t < 1f)
             {
-                t += Time.deltaTime / 1.5f;
-                foreach (var img in images)
-                {
-                    var c = img.color;
-                    c.a = Mathf.Lerp(c.a, 0f, t);
-                    img.color = c;
-                }
+                t += Time.deltaTime / 1.2f;
+                var c = fadeOverlay.color;
+                c.a = 1f - Mathf.Clamp01(t);
+                fadeOverlay.color = c;
                 yield return null;
             }
-            menuBgRoot.SetActive(false);
+            fadeOverlay.gameObject.SetActive(false);
         }
     }
 

@@ -109,6 +109,12 @@ public class MenuOrbitBootstrap : MonoBehaviour
         foreach (var src in player.GetComponentsInChildren<AudioSource>(true)) { src.Stop(); src.enabled = false; }
         foreach (var src in shuttleT.GetComponentsInChildren<AudioSource>(true)) { src.Stop(); src.enabled = false; }
 
+        // The astronaut avatar must never appear on screen — the pod is shut.
+        // Renderers and Animators are NOT MonoBehaviours, so the sweep above
+        // misses them (the avatar visibly trailed the camera in v2).
+        foreach (var r in player.GetComponentsInChildren<Renderer>(true)) r.enabled = false;
+        foreach (var a in player.GetComponentsInChildren<Animator>(true)) a.enabled = false;
+
         var tour = shuttleT.gameObject.AddComponent<MenuShuttleTour>();
         var director = cam.gameObject.AddComponent<MenuShotDirector>();
         director.tour = tour;
