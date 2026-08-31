@@ -20,9 +20,9 @@ public class MenuShotDirector : MonoBehaviour
     public MenuShuttleTour tour;
     public Camera cam;
 
-    [Tooltip("Closest approach; raised automatically to 1.8x the shuttle's bounds radius.")]
-    public float minDistance = 45f;
-    public float maxDistance = 140f;
+    [Tooltip("Closest approach; raised automatically to 1.5x the shuttle's bounds radius.")]
+    public float minDistance = 26f;
+    public float maxDistance = 65f;
     [Tooltip("Base orbit speed around the shuttle, degrees/second.")]
     public float orbitSpeed = 6f;
     [Tooltip("How far the glance may pan off the shuttle (degrees). Kept small enough that the shuttle stays in frame at the widened glance FOV.")]
@@ -32,7 +32,10 @@ public class MenuShotDirector : MonoBehaviour
 
     float azimuth;
     float seed;
-    float baseFov = 50f, glanceFov = 62f;
+    // Menu-scene-only lens: wider than gameplay so the world feels big while
+    // the shuttle stays close and readable (Sam's zoom-in request). This
+    // director only ever exists in MenuOrbit — gameplay FOV is untouched.
+    float baseFov = 58f, glanceFov = 68f;
 
     Transform glanceTarget;
     float glanceClock, glanceDuration, nextGlanceAt;
@@ -47,8 +50,8 @@ public class MenuShotDirector : MonoBehaviour
         foreach (var r in tour.GetComponentsInChildren<Renderer>())
             if (r.enabled) bounds.Encapsulate(r.bounds);
         float shuttleRadius = bounds.extents.magnitude;
-        minDistance = Mathf.Max(minDistance, shuttleRadius * 1.8f);
-        maxDistance = Mathf.Max(maxDistance, minDistance * 2.5f);
+        minDistance = Mathf.Max(minDistance, shuttleRadius * 1.5f);
+        maxDistance = Mathf.Max(maxDistance, minDistance * 2.2f);
 
         seed = Random.Range(0f, 100f);
         azimuth = Random.Range(0f, 360f);
@@ -108,7 +111,7 @@ public class MenuShotDirector : MonoBehaviour
         // planet below, shuttle above it: the money shot.
         float elevation = Mathf.Lerp(-6f, 72f, Mathf.PerlinNoise(t * 0.025f, seed + 31f));
         float distance = Mathf.Lerp(minDistance, maxDistance, Mathf.PerlinNoise(t * 0.02f, seed + 62f));
-        distance *= 1f + 0.4f * glanceW;   // pull back while glancing so both fit
+        distance *= 1f + 0.25f * glanceW;   // slight pull-back while glancing so both fit
 
         // Horizon from the tour's smoothed up — continuous across planet
         // handoffs, so the camera can never roll-snap.
