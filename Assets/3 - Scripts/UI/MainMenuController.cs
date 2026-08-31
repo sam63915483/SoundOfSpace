@@ -86,8 +86,52 @@ public class MainMenuController : MonoBehaviour
         _ambienceSource.Play();
     }
 
+    // ── MenuOrbit 3D background ────────────────────────────────────────────
+    // The stripped copy of the gameplay scene (Assets/4 - Scenes/MenuOrbit)
+    // loads ADDITIVELY behind this overlay canvas: the shuttle tours the
+    // planets while a shot director cuts between camera angles. Additive keeps
+    // the active scene named "MainMenu", so every MainMenu-skipping
+    // auto-singleton still early-returns (trap #1 in CLAUDE.md). Starting the
+    // game loads 1.6.7.7.7 single-mode, which unloads the background
+    // automatically.
+    GameObject menuBgRoot;   // nebula image + stars, faded out once 3D is live
+
+    IEnumerator LoadOrbitBackground()
+    {
+        var op = SceneManager.LoadSceneAsync("MenuOrbit", LoadSceneMode.Additive);
+        if (op == null) yield break;   // scene missing from build — keep the nebula
+        yield return op;
+
+        // The background scene brings the gameplay camera (with the atmosphere
+        // post stack) and its own AudioListener — retire this scene's.
+        foreach (var cam in FindObjectsOfType<Camera>())
+            if (cam.gameObject.scene.name == "MainMenu") cam.enabled = false;
+        foreach (var lis in FindObjectsOfType<AudioListener>())
+            if (lis.gameObject.scene.name == "MainMenu") lis.enabled = false;
+
+        // Fade the flat nebula out to reveal the live solar system.
+        if (menuBgRoot != null)
+        {
+            var images = menuBgRoot.GetComponentsInChildren<Image>(true);
+            float t = 0f;
+            while (t < 1f)
+            {
+                t += Time.deltaTime / 1.5f;
+                foreach (var img in images)
+                {
+                    var c = img.color;
+                    c.a = Mathf.Lerp(c.a, 0f, t);
+                    img.color = c;
+                }
+                yield return null;
+            }
+            menuBgRoot.SetActive(false);
+        }
+    }
+
     void Start()
     {
+        StartCoroutine(LoadOrbitBackground());
         StartCoroutine(TitlePulse());
 
         // BuildCanvas ran in Awake, which can beat CharacterStore's
@@ -134,13 +178,17 @@ public class MainMenuController : MonoBehaviour
 
         gameObject.AddComponent<GraphicRaycaster>();
 
-        // Background nebula — full-screen
+        // Background nebula — full-screen. Cached so the MenuOrbit 3D background
+        // (loaded additively in Start) can fade it out once the live solar
+        // system is rendering behind the canvas; if that scene ever fails to
+        // load, the nebula simply stays — graceful either way.
         var bg = NewUI("Background", transform);
         Stretch(bg, 0f, 0f, 0f, 0f);
         var bgImage = bg.gameObject.AddComponent<Image>();
         bgImage.sprite = GetNebulaSprite();
         bgImage.color = Color.white;
         bgImage.raycastTarget = false;
+        menuBgRoot = bg.gameObject;
 
         // Star field — scattered across the whole screen
         AddStars(bg);

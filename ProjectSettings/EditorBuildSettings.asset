@@ -86,4 +86,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/4 - Scenes/Dimensions/D25_CandleSea.unity
     guid: 550f7f1a3ed8eec4ebc655d9effc31ad
+  - enabled: 1
+    path: Assets/4 - Scenes/MenuOrbit.unity
+    guid: fe30e6739dbc1394c96ba2e4baefb8d5
   m_configObjects: {}
