@@ -9,7 +9,7 @@ using UnityEngine;
 /// </summary>
 public static class BloodFountainTune
 {
-    const string PrefabPath = "Assets/Piloto Studio/Blood VFX Essentials/Bloody Fountains/Blood_Fountain_2.prefab";
+    const string PrefabPath = "Assets/5 - External Imports/VFX & Flares/Piloto Studio/Blood VFX Essentials/Bloody Fountains/Blood_Fountain_2.prefab";
 
     public static void Inspect()
     {

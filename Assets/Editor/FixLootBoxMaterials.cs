@@ -29,9 +29,9 @@ public static class FixLootBoxMaterials
 {
     static readonly string[] MaterialPaths =
     {
-        "Assets/DuNguyn/Loot Box/Materials/LootBox_v01_M.mat",
-        "Assets/DuNguyn/Loot Box/Materials/LootBox_v02_M.mat",
-        "Assets/DuNguyn/Loot Box/Materials/LootBox_v03_M.mat",
+        "Assets/5 - External Imports/Props & Misc/DuNguyn/Loot Box/Materials/LootBox_v01_M.mat",
+        "Assets/5 - External Imports/Props & Misc/DuNguyn/Loot Box/Materials/LootBox_v02_M.mat",
+        "Assets/5 - External Imports/Props & Misc/DuNguyn/Loot Box/Materials/LootBox_v03_M.mat",
     };
 
     [MenuItem("Tools/Fix/Rebuild LootBox Materials")]
@@ -158,10 +158,10 @@ public static class FixLootBoxMaterials
     // user wanted a variant whose colours match the ship interior instead
     // of the warm wooden look of the base loot box.
 
-    const string SrcPrefab   = "Assets/DuNguyn/Loot Box/Prefabs/SM_LootBox_03.prefab";
-    const string SrcMaterial = "Assets/DuNguyn/Loot Box/Materials/LootBox_v03_M.mat";
-    const string DstPrefab   = "Assets/DuNguyn/Loot Box/Prefabs/SM_LootBox_ReactorBlue.prefab";
-    const string DstMaterial = "Assets/DuNguyn/Loot Box/Materials/LootBox_ReactorBlue_M.mat";
+    const string SrcPrefab   = "Assets/5 - External Imports/Props & Misc/DuNguyn/Loot Box/Prefabs/SM_LootBox_03.prefab";
+    const string SrcMaterial = "Assets/5 - External Imports/Props & Misc/DuNguyn/Loot Box/Materials/LootBox_v03_M.mat";
+    const string DstPrefab   = "Assets/5 - External Imports/Props & Misc/DuNguyn/Loot Box/Prefabs/SM_LootBox_ReactorBlue.prefab";
+    const string DstMaterial = "Assets/5 - External Imports/Props & Misc/DuNguyn/Loot Box/Materials/LootBox_ReactorBlue_M.mat";
 
     // Reactor-blue palette for the loot box variant.
     //

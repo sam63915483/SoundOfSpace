@@ -17,7 +17,7 @@ public static class BloodFXWire
         var so = new SerializedObject(bloodFX);
 
         string[] guids = AssetDatabase.FindAssets("t:Prefab",
-            new[] { "Assets/Piloto Studio/Blood VFX Essentials/Blood Splashes" });
+            new[] { "Assets/5 - External Imports/VFX & Flares/Piloto Studio/Blood VFX Essentials/Blood Splashes" });
         var arr = so.FindProperty("damageSplashPrefabs");
         arr.arraySize = guids.Length;
         for (int i = 0; i < guids.Length; i++)

@@ -18,7 +18,7 @@ public static class PilotoSoftParticleFix
     public static void Execute()
     {
         int scanned = 0, changed = 0;
-        string[] guids = AssetDatabase.FindAssets("t:Material", new[] { "Assets/Piloto Studio" });
+        string[] guids = AssetDatabase.FindAssets("t:Material", new[] { "Assets/5 - External Imports/VFX & Flares/Piloto Studio" });
         foreach (var guid in guids)
         {
             string path = AssetDatabase.GUIDToAssetPath(guid);
@@ -39,6 +39,6 @@ public static class PilotoSoftParticleFix
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
         Debug.Log($"[PilotoSoftParticleFix] Soft particles disabled on {changed} material(s) " +
-                  $"({scanned} had the toggle, {guids.Length} materials scanned under Assets/Piloto Studio).");
+                  $"({scanned} had the toggle, {guids.Length} materials scanned under Assets/5 - External Imports/VFX & Flares/Piloto Studio).");
     }
 }
