@@ -73,6 +73,11 @@ public class MenuShotDirector : MonoBehaviour
     // points opposite from it and doesn't show it once").
     float planetAlign;
 
+    // Opening reveal (Sam's spec): the camera starts gazing at empty night
+    // sky, then swings — rate-capped, so perfectly smooth — around to the
+    // shuttle over Humble Abode. Until this time the turn rate is gentler.
+    float introSlowUntil;
+
     void Start()
     {
         if (cam == null) cam = GetComponent<Camera>();
@@ -98,11 +103,18 @@ public class MenuShotDirector : MonoBehaviour
         // The menu always OPENS on the money shot: the tour starts over Humble
         // Abode's sunlit side, so the first thing seen is shuttle + planet.
         StartShot(Shot.Planet);
+        shotEndsAt = Time.time + 22f;   // hold the opening reveal longer
         planetAlign = 1f;
-        // Open ON the shot's pose (screen is still black behind the menu fade).
+        introSlowUntil = Time.time + 11f;
+        // Open ON the shot's POSITION (screen is still black behind the menu
+        // fade) — but the ROTATION starts aimed at empty sky, away from the
+        // planet, so the rate-capped follow performs the opening reveal:
+        // stars first, then Humble Abode swings into frame.
         elevation = targetElevation; distance = targetDistance;
         lookWeight = targetLookWeight; fov = targetFov;
         Apply(true);
+        Vector3 skyward = (tour.CurrentUp + Vector3.forward * 0.4f).normalized;
+        transform.rotation = Quaternion.LookRotation(skyward, tour.CurrentUp);
     }
 
     void StartShot(Shot s)
@@ -247,7 +259,9 @@ public class MenuShotDirector : MonoBehaviour
         else
         {
             transform.position = pos;   // exact — see header
-            transform.rotation = Quaternion.RotateTowards(transform.rotation, desired, maxCamTurnRate * Time.deltaTime);
+            // Gentler swing during the opening reveal (stars → planet).
+            float turnRate = Time.time < introSlowUntil ? 16f : maxCamTurnRate;
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, desired, turnRate * Time.deltaTime);
         }
     }
 }

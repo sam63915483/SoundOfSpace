@@ -128,6 +128,24 @@ public class MainMenuController : MonoBehaviour
                 if (lis.gameObject.scene.name == "MainMenu") lis.enabled = false;
             if (menuBgRoot != null) menuBgRoot.SetActive(false);
 
+            // The additive load leaves the EventSystem knocked out of
+            // `current` with no input module bound (probed live:
+            // EventSystem.current == null → every hover/click dead, "my mouse
+            // doesn't even work"). An off/on cycle re-registers it; the module
+            // and this canvas's raycaster are re-ensured for good measure.
+            var es = FindObjectOfType<UnityEngine.EventSystems.EventSystem>(true);
+            if (es != null)
+            {
+                es.gameObject.SetActive(false);
+                es.gameObject.SetActive(true);
+                if (es.GetComponent<UnityEngine.EventSystems.StandaloneInputModule>() == null)
+                    es.gameObject.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+            }
+            if (GetComponent<GraphicRaycaster>() == null)
+                gameObject.AddComponent<GraphicRaycaster>();
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
+
             // Let the shot director take its first exact frame behind the cover.
             yield return null;
             yield return null;

@@ -104,6 +104,16 @@ public class MenuTourTracker : MonoBehaviour
 
     void LateUpdate()
     {
+        // Evidence hotkey (Sam): F10 the instant something looks wrong — the
+        // exact frame lands in the scratchpad with full context, no need to
+        // describe times or angles.
+        if (Input.GetKeyDown(KeyCode.F10))
+        {
+            string p = @"C:\Users\Sammc\AppData\Local\Temp\claude\C--Users-Sammc-Desktop-1ass-1aughhh1\832cb4ec-8638-4eb9-b2cb-36e2a3211295\scratchpad\sam_F10_" + System.DateTime.Now.ToString("HHmmss") + ".png";
+            ScreenCapture.CaptureScreenshot(p);
+            Debug.Log($"[MenuTracker] F10 capture -> {p} | shot={director?.CurrentShotName} focus={tour?.FocusBody?.bodyName}");
+        }
+
         if (cam == null || director == null || tour == null) return;
         float dt = Time.deltaTime;
         if (!camPrimed) { camPrimed = true; prevCamRot = cam.transform.rotation; return; }
