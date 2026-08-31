@@ -403,6 +403,10 @@ public static class MeshCombineTool
         // component — see VillageDoorSetup.
         if (t.GetComponent<VillageDoor>() != null) return;
         if (t.name.StartsWith("DoorPart")) return;
+        // Script-rotated parts (mill fans etc.) — same ghost trap as doors: baking
+        // one welds a frozen copy into the combined mesh while the real part spins
+        // its disabled renderer. Skip the whole subtree so blades keep their hub.
+        if (t.GetComponent<SpinPart>() != null) return;
         // Generated planet surface — forbidden to touch and pointless to combine.
         if (t.name.Contains("Mesh Holder") || t.name.Contains("Terrain Mesh")) return;
 
