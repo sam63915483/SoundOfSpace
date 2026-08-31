@@ -220,6 +220,13 @@ public class PlayerController : GravityObject
 	public float SmoothYaw => smoothYaw;
 	public float SmoothPitch => smoothPitch;
 
+	/// The canonical camera base (authored eye height + the forward push from
+	/// Start). Vector3.zero until Start has run. CameraTransformFX sources its
+	/// base from here instead of snapshotting cam.localPosition at whatever
+	/// moment it first wakes — that snapshot raced the intro/menu flows and
+	/// could capture a cinematic-displaced pose (the kneecap-camera bug).
+	public Vector3 CameraBaseLocalPos => cameraLocalPos;
+
 	float yawSmoothV;
 	float pitchSmoothV;
 

@@ -114,7 +114,12 @@ public class MenuOrbitBootstrap : MonoBehaviour
         // EnsureGameplaySingletons null-checks before creating its own.
         if (CameraEffectsManager.Instance == null)
         {
-            var fx = new GameObject("CameraEffectsManager");
+            // Named so MainMenuController.EnterGameplay can DESTROY this one
+            // before loading the game: its persistent modules cache base camera
+            // poses ONCE (CameraTransformFX._camBaseLocalPos), and a base
+            // captured from the MENU camera put the gameplay camera at the
+            // astronaut's kneecaps. Gameplay must seed its own fresh manager.
+            var fx = new GameObject("CameraEffectsManager (menu)");
             DontDestroyOnLoad(fx);
             fx.AddComponent<CameraEffectsManager>();
         }

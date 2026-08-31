@@ -685,6 +685,16 @@ public class MainMenuController : MonoBehaviour
     /// multiplayer prompt has exactly one place to interpose.
     void EnterGameplay()
     {
+        // The MENU-seeded CameraEffectsManager must not survive into gameplay:
+        // its persistent modules cache base camera poses once (e.g.
+        // CameraTransformFX._camBaseLocalPos), and a base captured from the
+        // menu camera left the gameplay camera at the astronaut's KNEECAPS.
+        // DestroyImmediate (not Destroy) so the singleton's Instance is already
+        // cleared when EnsureGameplaySingletons runs synchronously below and
+        // seeds a fresh one, exactly like the pre-menu-background flow.
+        var menuFx = GameObject.Find("CameraEffectsManager (menu)");
+        if (menuFx != null) DestroyImmediate(menuFx);
+
         if (LoadingScreen.Instance != null)
             LoadingScreen.Instance.LoadSceneAndShow("1.6.7.7.7", preSceneSetup: EnsureGameplaySingletonsAsync);
         else { EnsureGameplaySingletons(); SceneManager.LoadScene("1.6.7.7.7"); }

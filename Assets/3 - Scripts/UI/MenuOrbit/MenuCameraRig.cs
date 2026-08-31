@@ -43,6 +43,10 @@ public class MenuCameraRig : MonoBehaviour
     // velocity eases toward it, params integrate velocity — release = coast.
     float azVel, elVel, dollyVel, slideVel;
 
+    [Tooltip("PLAYBACK only: degrees of gentle camera sway following the mouse position — just enough to prove it's live 3D, not a video (Sam's spec).")]
+    public float parallaxDegrees = 2.5f;
+    float parallaxX, parallaxY;   // eased
+
     // Recording
     [System.Serializable] class Sample { public float t, az, el, d, off; }
     [System.Serializable] class Take { public List<Sample> samples = new List<Sample>(); }
@@ -148,6 +152,14 @@ public class MenuCameraRig : MonoBehaviour
             elevation = Mathf.MoveTowards(elevation, Mathf.Lerp(a.el, b.el, u), 90f * Time.deltaTime);
             distance = Mathf.MoveTowards(distance, Mathf.Lerp(a.d, b.d, u), 80f * Time.deltaTime);
             frameOffset = Mathf.MoveTowards(frameOffset, Mathf.Lerp(a.off, b.off, u), 40f * Time.deltaTime);
+
+            // Live-3D proof: the camera leans a couple of degrees toward the
+            // mouse, eased so it drifts rather than tracks.
+            float nx = Mathf.Clamp((Input.mousePosition.x / Mathf.Max(1, Screen.width) - 0.5f) * 2f, -1f, 1f);
+            float ny = Mathf.Clamp((Input.mousePosition.y / Mathf.Max(1, Screen.height) - 0.5f) * 2f, -1f, 1f);
+            float pEase = 1f - Mathf.Exp(-2f * Time.deltaTime);
+            parallaxX = Mathf.Lerp(parallaxX, nx * parallaxDegrees, pEase);
+            parallaxY = Mathf.Lerp(parallaxY, -ny * parallaxDegrees * 0.6f, pEase);
         }
     }
 
@@ -170,6 +182,11 @@ public class MenuCameraRig : MonoBehaviour
 
         var rot = Quaternion.LookRotation((sh.position - pos).normalized, up);
         rot = Quaternion.AngleAxis(frameOffset, rot * Vector3.up) * rot;
+        if (!manual)
+        {
+            rot = Quaternion.AngleAxis(parallaxX, rot * Vector3.up)
+                * Quaternion.AngleAxis(parallaxY, rot * Vector3.right) * rot;
+        }
         transform.SetPositionAndRotation(pos, rot);
     }
 

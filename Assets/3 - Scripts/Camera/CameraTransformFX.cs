@@ -199,7 +199,15 @@ public class CameraTransformFX : MonoBehaviour
         if (_cam == null) return false;
         if (!_cached)
         {
-            _camBaseLocalPos = _cam.localPosition;
+            // Base from the PLAYER'S canonical value, not a snapshot of
+            // cam.localPosition: the snapshot raced the intro/menu-background
+            // flows and could capture a cinematic-displaced pose — composing
+            // every later frame from it left the camera at the astronaut's
+            // kneecaps. Zero means PlayerController.Start hasn't run yet
+            // (inactive player on some load paths) — try again next frame.
+            Vector3 basePos = _player.CameraBaseLocalPos;
+            if (basePos == Vector3.zero) return false;
+            _camBaseLocalPos = basePos;
             // Seed rotation snapshots so the first slerp has sane endpoints.
             _currPlayerRot = _playerTransform.rotation;
             _prevPlayerRot = _currPlayerRot;
