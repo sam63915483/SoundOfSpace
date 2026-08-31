@@ -46,12 +46,18 @@ public class MenuShotDirector : MonoBehaviour
         if (tour == null) tour = FindObjectOfType<MenuShuttleTour>();
         if (cam == null || tour == null) { enabled = false; return; }
 
+        // MESH renderers only. A world-space ParticleSystemRenderer reports its
+        // initial bounds at the WORLD ORIGIN — 12k units from the shuttle — and
+        // one measurement with the engine flames included blew the "shuttle
+        // radius" up to ~6000, parking the camera 15,000 units away. The cap is
+        // belt-and-braces against any future stray renderer.
         var bounds = new Bounds(tour.transform.position, Vector3.zero);
         foreach (var r in tour.GetComponentsInChildren<Renderer>())
-            if (r.enabled) bounds.Encapsulate(r.bounds);
-        float shuttleRadius = bounds.extents.magnitude;
+            if (r.enabled && (r is MeshRenderer || r is SkinnedMeshRenderer)) bounds.Encapsulate(r.bounds);
+        float shuttleRadius = Mathf.Min(bounds.extents.magnitude, 25f);
         minDistance = Mathf.Max(minDistance, shuttleRadius * 1.5f);
         maxDistance = Mathf.Max(maxDistance, minDistance * 2.2f);
+        Debug.Log($"[MenuShotDirector] shuttleRadius={shuttleRadius:0.0} camera range {minDistance:0.0}..{maxDistance:0.0}");
 
         seed = Random.Range(0f, 100f);
         azimuth = Random.Range(0f, 360f);
