@@ -12,11 +12,22 @@ using UnityEngine;
 /// </summary>
 public class MenuOrbitBootstrap : MonoBehaviour
 {
+    [Tooltip("The gameplay scene's skybox (ESO Milky Way). Additive scenes don't " +
+             "contribute RenderSettings — only the ACTIVE scene's lighting applies, " +
+             "and in the menu flow that's MainMenu's Default-Skybox — so the " +
+             "bootstrap applies the real sky by hand.")]
+    [SerializeField] Material skyboxMaterial;
+
     void Awake()
     {
         var playerPC = FindObjectOfType<PlayerController>(true);
         var shuttleT = FindShuttle();
-        var cam = Camera.main;
+        // NOT Camera.main: during the additive load MainMenu's camera is still
+        // enabled and wins that lookup — v1 grabbed it, which both put the
+        // director on a camera the menu controller then disables AND let the
+        // mute sweep disable the real camera's atmosphere/ocean post stack.
+        // The camera this scene owns lives under the player.
+        var cam = playerPC != null ? playerPC.GetComponentInChildren<Camera>(true) : null;
         var endless = FindObjectOfType<EndlessManager>();
         if (playerPC == null || shuttleT == null || cam == null)
         {
@@ -66,6 +77,37 @@ public class MenuOrbitBootstrap : MonoBehaviour
         // the controller's running coroutines) down with it.
         foreach (var canvas in FindObjectsOfType<Canvas>(true))
             if (canvas.gameObject.scene == gameObject.scene) canvas.gameObject.SetActive(false);
+
+        // ── Lighting parity with the gameplay scene ────────────────────────
+        // Only the ACTIVE scene's RenderSettings apply (MainMenu's, in the
+        // additive menu flow), so the real sky must be set by hand: Milky Way
+        // skybox, flat black ambient, and the Sun Shadow Caster as the sun.
+        if (skyboxMaterial != null) RenderSettings.skybox = skyboxMaterial;
+        RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+        RenderSettings.ambientSkyColor = Color.black;
+        RenderSettings.ambientIntensity = 0f;
+        RenderSettings.fog = false;
+        foreach (var l in FindObjectsOfType<Light>())
+            if (l.name == "Sun Shadow Caster") { RenderSettings.sun = l; break; }
+
+        // The lens flare and the rest of the camera FX belong to
+        // CameraEffectsManager — a gameplay singleton seeded on PLAY, which the
+        // menu flow never creates. Seeding it here is idempotent:
+        // EnsureGameplaySingletons null-checks before creating its own.
+        if (CameraEffectsManager.Instance == null)
+        {
+            var fx = new GameObject("CameraEffectsManager");
+            DontDestroyOnLoad(fx);
+            fx.AddComponent<CameraEffectsManager>();
+        }
+
+        // Silence the sleeping passenger: no breathing/suit audio in the menu.
+        // Everything on the player except the camera object itself goes quiet
+        // (the camera keeps its post stack + AudioListener).
+        foreach (var mb in player.GetComponentsInChildren<MonoBehaviour>(true))
+            if (mb != null && mb.gameObject != cam.gameObject) mb.enabled = false;
+        foreach (var src in player.GetComponentsInChildren<AudioSource>(true)) { src.Stop(); src.enabled = false; }
+        foreach (var src in shuttleT.GetComponentsInChildren<AudioSource>(true)) { src.Stop(); src.enabled = false; }
 
         var tour = shuttleT.gameObject.AddComponent<MenuShuttleTour>();
         var director = cam.gameObject.AddComponent<MenuShotDirector>();

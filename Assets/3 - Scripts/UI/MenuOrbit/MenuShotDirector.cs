@@ -1,112 +1,76 @@
 using UnityEngine;
 
 /// <summary>
-/// MENU-ONLY (MenuOrbit scene): drives the main camera like a lazy documentary
-/// director — hard cuts every few seconds between shuttle-relative shots
-/// (chase, side flyby, wide planet frame, close orbit, front reveal), each with
-/// its own FOV and a slow drift/zoom inside the shot. Everything is computed
-/// relative to the shuttle each LateUpdate, so floating-origin shifts are
-/// invisible. Added at runtime by MenuOrbitBootstrap.
+/// MENU-ONLY (MenuOrbit scene): one continuous orbiting camera around the
+/// shuttle — Sam's spec (2026-08-31): the camera's only moves are orbiting the
+/// shuttle and dollying further out / closer in. It never cuts, never enters
+/// the shuttle (hard minimum distance), and always keeps the shuttle in view.
+/// Everything is shuttle-relative, so floating-origin shifts are invisible.
+/// Added at runtime by MenuOrbitBootstrap.
 /// </summary>
 public class MenuShotDirector : MonoBehaviour
 {
     public MenuShuttleTour tour;
     public Camera cam;
 
-    enum Shot { Chase, SideFlyby, WidePlanet, CloseOrbit, FrontReveal }
-    Shot shot;
-    Shot lastShot;
-    float shotClock, shotDuration;
-    float fovFrom, fovTo;
-    float side = 1f;
-    float seed;
+    [Tooltip("Closest the camera may ever get to the shuttle.")]
+    public float minDistance = 30f;
+    public float maxDistance = 95f;
+    [Tooltip("Base orbit speed around the shuttle, degrees/second.")]
+    public float orbitSpeed = 7f;
 
-    System.Random rng = new System.Random();
+    float azimuth;          // degrees around the shuttle
+    float seed;
 
     void Start()
     {
         if (cam == null) cam = Camera.main;
         if (tour == null) tour = FindObjectOfType<MenuShuttleTour>();
         if (cam == null || tour == null) { enabled = false; return; }
-        NextShot();
-        // First frame: snap straight to the shot pose (no lerp from wherever
-        // the camera happened to be).
-        Apply(1f, true);
+        seed = Random.Range(0f, 100f);
+        azimuth = Random.Range(0f, 360f);
+        cam.fieldOfView = 50f;
+        Snap(true);
     }
 
-    void NextShot()
-    {
-        Shot pick;
-        do { pick = (Shot)rng.Next(0, 5); } while (pick == lastShot);
-        lastShot = shot = pick;
-        shotClock = 0f;
-        shotDuration = Mathf.Lerp(6f, 12f, (float)rng.NextDouble());
-        side = rng.Next(0, 2) == 0 ? -1f : 1f;
-        seed = (float)rng.NextDouble() * 10f;
+    void LateUpdate() => Snap(false);
 
-        switch (shot)
-        {
-            case Shot.Chase:       fovFrom = 62f; fovTo = 55f; break;
-            case Shot.SideFlyby:   fovFrom = 42f; fovTo = 36f; break;
-            case Shot.WidePlanet:  fovFrom = 48f; fovTo = 56f; break;
-            case Shot.CloseOrbit:  fovFrom = 34f; fovTo = 30f; break;
-            case Shot.FrontReveal: fovFrom = 50f; fovTo = 44f; break;
-        }
-    }
-
-    void LateUpdate()
-    {
-        shotClock += Time.deltaTime;
-        if (shotClock >= shotDuration) { NextShot(); Apply(1f, true); return; }
-        Apply(Time.deltaTime * 3f, false);
-        cam.fieldOfView = Mathf.Lerp(fovFrom, fovTo, shotClock / shotDuration);
-    }
-
-    void Apply(float lerp, bool snap)
+    void Snap(bool instant)
     {
         Transform sh = tour.transform;
         var body = tour.FocusBody;
         if (body == null) return;
 
-        Vector3 up = (sh.position - body.Position).normalized;      // radial out
-        Vector3 fwd = sh.forward;
-        Vector3 right = Vector3.Cross(up, fwd).normalized;
-        float drift = Mathf.Sin(Time.time * 0.35f + seed);          // slow sway
+        // Slowly breathing orbit: speed sways a little, elevation rolls
+        // gently above/below the shuttle's horizon, distance dollies between
+        // the limits on a slow noise curve. No cuts, ever.
+        float t = Time.time;
+        azimuth += orbitSpeed * (0.7f + 0.6f * Mathf.PerlinNoise(t * 0.05f, seed)) * Time.deltaTime;
+        float elevation = Mathf.Lerp(-8f, 32f, Mathf.PerlinNoise(t * 0.03f, seed + 31f));
+        float distance = Mathf.Lerp(minDistance, maxDistance, Mathf.PerlinNoise(t * 0.02f, seed + 62f));
+        distance = Mathf.Max(distance, minDistance);   // hard floor — never inside
 
-        Vector3 pos;
-        Vector3 lookTarget = sh.position;
+        // Stable frame: "up" is away from the planet the shuttle is touring,
+        // so the horizon reads level while everything orbits.
+        Vector3 up = (sh.position - body.Position).normalized;
+        Vector3 refFwd = Vector3.Cross(up, Vector3.forward);
+        if (refFwd.sqrMagnitude < 0.01f) refFwd = Vector3.Cross(up, Vector3.right);
+        refFwd.Normalize();
 
-        switch (shot)
-        {
-            case Shot.Chase:
-                pos = sh.position - fwd * 26f + up * 9f + right * (4f * drift);
-                break;
-            case Shot.SideFlyby:
-                pos = sh.position + right * side * 55f + up * (6f + 3f * drift) + fwd * (shotClock - shotDuration * 0.5f) * -2.5f;
-                break;
-            case Shot.WidePlanet:
-                // Stand off so the planet fills the background behind the shuttle.
-                pos = sh.position + (sh.position - body.Position).normalized * (body.radius * 0.9f) + right * side * 30f;
-                lookTarget = Vector3.Lerp(sh.position, body.Position, 0.15f);
-                break;
-            case Shot.CloseOrbit:
-                float ang = Time.time * 0.25f + seed;
-                pos = sh.position + (right * Mathf.Cos(ang) + up * Mathf.Sin(ang) * 0.4f) * 14f + fwd * 6f * drift;
-                break;
-            default: // FrontReveal
-                pos = sh.position + fwd * 30f + up * (5f + 2f * drift) + right * side * 8f;
-                break;
-        }
+        Quaternion swing = Quaternion.AngleAxis(azimuth, up) * Quaternion.AngleAxis(elevation, Vector3.Cross(up, refFwd));
+        Vector3 pos = sh.position + swing * refFwd * distance;
 
-        var rot = Quaternion.LookRotation((lookTarget - pos).normalized, up);
-        if (snap)
+        var rot = Quaternion.LookRotation((sh.position - pos).normalized, up);
+        if (instant)
         {
             transform.SetPositionAndRotation(pos, rot);
         }
         else
         {
-            transform.position = Vector3.Lerp(transform.position, pos, lerp);
-            transform.rotation = Quaternion.Slerp(transform.rotation, rot, lerp);
+            // Critically damped-ish follow keeps micro-jitter out without lag
+            // big enough to lose the shuttle from frame.
+            transform.position = Vector3.Lerp(transform.position, pos, 1f - Mathf.Exp(-6f * Time.deltaTime));
+            transform.rotation = Quaternion.Slerp(transform.rotation, rot, 1f - Mathf.Exp(-8f * Time.deltaTime));
         }
     }
 }
