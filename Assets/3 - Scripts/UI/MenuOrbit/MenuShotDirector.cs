@@ -149,8 +149,14 @@ public class MenuShotDirector : MonoBehaviour
         if (refFwd.sqrMagnitude < 0.01f) refFwd = Vector3.Cross(up, Vector3.right);
         refFwd.Normalize();
 
+        // Axis is Cross(refFwd, up), NOT Cross(up, refFwd): with the flipped
+        // axis, positive elevation pushed the camera BELOW the shuttle (planet
+        // side, looking up at it with empty space behind) — the exact mirror of
+        // the top-down money shot, which is what Sam kept seeing. With this
+        // axis, +elevation genuinely climbs radially ABOVE the shuttle so the
+        // orbited planet fills the frame beyond it.
         Quaternion swing = Quaternion.AngleAxis(azimuth, up)
-                         * Quaternion.AngleAxis(elevation + elevWobble, Vector3.Cross(up, refFwd));
+                         * Quaternion.AngleAxis(elevation + elevWobble, Vector3.Cross(refFwd, up));
         Vector3 pos = sh.position + swing * refFwd * distance;
 
         var lookAtShuttle = Quaternion.LookRotation((sh.position - pos).normalized, up);
