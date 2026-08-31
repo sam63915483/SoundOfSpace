@@ -111,21 +111,22 @@ public class MenuTourTracker : MonoBehaviour
         {
             string p = @"C:\Users\Sammc\AppData\Local\Temp\claude\C--Users-Sammc-Desktop-1ass-1aughhh1\832cb4ec-8638-4eb9-b2cb-36e2a3211295\scratchpad\sam_F10_" + System.DateTime.Now.ToString("HHmmss") + ".png";
             ScreenCapture.CaptureScreenshot(p);
-            Debug.Log($"[MenuTracker] F10 capture -> {p} | shot={director?.CurrentShotName} focus={tour?.FocusBody?.bodyName}");
+            Debug.Log($"[MenuTracker] F10 capture -> {p} | focus={(tour != null && tour.FocusBody != null ? tour.FocusBody.bodyName : "?")}");
         }
 
-        if (cam == null || director == null || tour == null) return;
+        if (cam == null || tour == null) return;
         float dt = Time.deltaTime;
         if (!camPrimed) { camPrimed = true; prevCamRot = cam.transform.rotation; return; }
         if (dt > 0.0001f)
         {
             float camSpin = Quaternion.Angle(prevCamRot, cam.transform.rotation) / dt;
             if (camSpin > worstCamSpin) worstCamSpin = camSpin;
-            if (camSpin > director.maxCamTurnRate * 1.5f) { camSpins++; Warn($"camera spin {camSpin:0} deg/s exceeds 1.5x cap {director.maxCamTurnRate}"); }
+            // Sam-directed rig has no formal cap; only scream at true snaps.
+            if (camSpin > 400f) { camSpins++; Warn($"camera snap {camSpin:0} deg/s"); }
         }
         prevCamRot = cam.transform.rotation;
 
-        if (director.CurrentShotName == "Planet" && tour.FocusBody != null)
+        if (director != null && director.CurrentShotName == "Planet" && tour.FocusBody != null)
         {
             planetShotFrames++;
             Vector3 vp = cam.WorldToViewportPoint(tour.FocusBody.Position);
@@ -145,7 +146,7 @@ public class MenuTourTracker : MonoBehaviour
             float litPct = planetShotFrames > 0 ? 100f * planetLitFrames / planetShotFrames : -1f;
             Debug.Log($"[MenuTracker] 30s window: steps={steps} | accelSpikes={accelSpikes} (worst {worstAccel:0.0}) | " +
                       $"turnViol={turnViolations} (worst {worstTurn:0.0}) | bubbleHits={clearanceHits} (closest {worstClearance:0.00}) | " +
-                      $"camSpins={camSpins} (worst {worstCamSpin:0.0}) | planetShot: inFrame {visPct:0}% lit {litPct:0}% | mode={director.CurrentShotName} focus={tour.FocusBody.bodyName}");
+                      $"camSpins={camSpins} (worst {worstCamSpin:0.0}) | planetShot: inFrame {visPct:0}% lit {litPct:0}% | mode={(director != null ? director.CurrentShotName : "SamCam")} focus={tour.FocusBody.bodyName}");
             steps = accelSpikes = turnViolations = clearanceHits = camSpins = 0;
             planetShotFrames = planetVisibleFrames = planetLitFrames = 0;
             worstAccel = worstTurn = worstCamSpin = 0f;

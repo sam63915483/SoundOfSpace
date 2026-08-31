@@ -157,13 +157,14 @@ public class MenuOrbitBootstrap : MonoBehaviour
             if (l != null) l.enabled = false;
         }
 
+        // Sam directs the camera now (records takes; players get the baked
+        // playback) — the automated shot director is retired.
         var tour = shuttleT.gameObject.AddComponent<MenuShuttleTour>();
-        var director = cam.gameObject.AddComponent<MenuShotDirector>();
-        director.tour = tour;
-        director.cam = cam;
+        var rig = cam.gameObject.AddComponent<MenuCameraRig>();
+        rig.tour = tour;
+        rig.cam = cam;
         var tracker = shuttleT.gameObject.AddComponent<MenuTourTracker>();
         tracker.tour = tour;
-        tracker.director = director;
         tracker.cam = cam;
         // Sun aiming, menu edition: disable gameplay's camera-tracking caster
         // and aim at the DOMINANT VIEWED planet instead (see MenuSunAim's

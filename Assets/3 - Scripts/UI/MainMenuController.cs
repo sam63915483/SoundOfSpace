@@ -473,10 +473,10 @@ public class MainMenuController : MonoBehaviour
         // shuttle behind the column, each row now carries its own dark glass
         // so the text stays readable (Sam: one big box looked clunky —
         // individual boxes per button instead).
+        // Square-edged, lightly-tinted glass (Sam: no rounded corners, more
+        // translucent). A sprite-less Image is a plain quad = crisp edges.
         var hit = btnRT.gameObject.AddComponent<Image>();
-        hit.sprite = GetRoundedSprite();
-        hit.type = Image.Type.Sliced;
-        hit.color = new Color32(0x07, 0x05, 0x1C, 0xB4);
+        hit.color = new Color32(0x07, 0x05, 0x1C, 0x64);   // ~40% opacity
         hit.raycastTarget = true;
 
         var btn = btnRT.gameObject.AddComponent<Button>();
