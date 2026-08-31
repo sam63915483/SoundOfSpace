@@ -60,8 +60,13 @@ then re-verified after the double-precision rails):
 - **`CelestialBody.isPinned`** — the Sun: never integrated, still a full
   gravity source. Kills the rails-follower momentum pumping (sun used to
   wander ~600k units in hours).
-- **`CelestialBody.railPeriod`** — Fiery Twin (276.6s), Humble Abode (802.9s),
-  Cyclops (2328.3s): exact circular orbit around the pinned sun, placed
+- **`CelestialBody.railPeriod`** — Sam's chosen day lengths (retuned same day,
+  verified 600.00/900.00/1200.00 ±0.05s live): **twins 600s (10 min), Humble
+  Abode 900s (15 min), Cyclops 1200s (20 min)**. Loop math: the countdown runs
+  on HA days — **10 HA days = 2h30m = the loop length**; per loop that's 15
+  twin days and 7.5 Cyclops days (1 Cyclops day = 2 twin days; 3 HA days =
+  2 Cyclops days). v0 magnitudes rescaled to the new tangential speeds. Exact
+  circular orbit around the pinned sun, placed
   analytically each step via the play-proven `ApplyPlacedState` sweep. Phase
   advances in DOUBLE from a fixed orthonormal basis (the first incremental
   quaternion version crept +1.6% radius over 7h — float accumulation).
