@@ -34,9 +34,14 @@ public class MenuCameraRig : MonoBehaviour
     public float frameSlideSpeed = 30f;
     public float minDistance = 24f;
     public float maxDistance = 220f;
+    [Tooltip("Inertia: how quickly the camera picks up / bleeds off velocity. Lower = floatier, more cinematic glide (Sam's spec: inputs slide to a stop, never snap).")]
+    public float glide = 2.2f;
 
     // Rig state — everything shuttle-relative.
     float azimuth, elevation = 18f, distance = 60f, frameOffset;
+    // Velocities for the glide model: input drives target velocity, actual
+    // velocity eases toward it, params integrate velocity — release = coast.
+    float azVel, elVel, dollyVel, slideVel;
 
     // Recording
     [System.Serializable] class Sample { public float t, az, el, d, off; }
@@ -96,14 +101,24 @@ public class MenuCameraRig : MonoBehaviour
 
         if (manual)
         {
-            azimuth += Input.GetAxis("Mouse X") * mouseSensitivity;
-            elevation = Mathf.Clamp(elevation - Input.GetAxis("Mouse Y") * mouseSensitivity, -70f, 82f);
-            if (Input.GetKey(KeyCode.W)) distance -= dollySpeed * Time.deltaTime;
-            if (Input.GetKey(KeyCode.S)) distance += dollySpeed * Time.deltaTime;
-            distance = Mathf.Clamp(distance, minDistance, maxDistance);
-            if (Input.GetKey(KeyCode.A)) frameOffset -= frameSlideSpeed * Time.deltaTime;
-            if (Input.GetKey(KeyCode.D)) frameOffset += frameSlideSpeed * Time.deltaTime;
-            frameOffset = Mathf.Clamp(frameOffset, -26f, 26f);
+            // Floaty glide model: input sets a TARGET velocity, the actual
+            // velocity eases toward it, and the parameters integrate the
+            // velocity — so releasing an input coasts smoothly to a stop.
+            float dt = Time.deltaTime;
+            float ease = 1f - Mathf.Exp(-glide * dt);
+
+            azVel = Mathf.Lerp(azVel, Input.GetAxis("Mouse X") * mouseSensitivity * 60f, ease);
+            elVel = Mathf.Lerp(elVel, -Input.GetAxis("Mouse Y") * mouseSensitivity * 60f, ease);
+            azimuth += azVel * dt;
+            elevation = Mathf.Clamp(elevation + elVel * dt, -70f, 82f);
+
+            float dollyIn = (Input.GetKey(KeyCode.W) ? -1f : 0f) + (Input.GetKey(KeyCode.S) ? 1f : 0f);
+            dollyVel = Mathf.Lerp(dollyVel, dollyIn * dollySpeed, ease);
+            distance = Mathf.Clamp(distance + dollyVel * dt, minDistance, maxDistance);
+
+            float slideIn = (Input.GetKey(KeyCode.A) ? -1f : 0f) + (Input.GetKey(KeyCode.D) ? 1f : 0f);
+            slideVel = Mathf.Lerp(slideVel, slideIn * frameSlideSpeed, ease);
+            frameOffset = Mathf.Clamp(frameOffset + slideVel * dt, -26f, 26f);
 
             if (clock >= nextSampleAt)
             {
