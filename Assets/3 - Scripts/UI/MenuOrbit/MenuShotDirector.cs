@@ -1,19 +1,18 @@
 using UnityEngine;
 
 /// <summary>
-/// MENU-ONLY (MenuOrbit scene): one continuous orbiting camera around the
-/// shuttle. Its only moves are orbiting the shuttle and dollying in/out; the
-/// shuttle NEVER leaves the frame. Position is written exactly each frame
-/// (lerping a child of a moving rig loses a tug-of-war with its parent — the
-/// v2 cabin-twitch bug); rotation is rate-capped so nothing can ever snap.
+/// MENU-ONLY (MenuOrbit scene): one continuous camera orbiting the shuttle.
+/// Position is written exactly each frame (lerping a child of a moving rig
+/// loses the parent tug-of-war — the old cabin-twitch bug); rotation is
+/// rate-capped, and shot changes GLIDE by easing the orbit parameters —
+/// cuts and snaps are impossible by construction.
 ///
-/// v4 (Sam's spec):
-///  • glances pan toward a landmark but keep the shuttle IN FRAME — the pan is
-///    angle-capped and the camera dollies out + widens FOV while glancing,
-///  • the camera's horizon uses the tour's smoothed up (no roll flips at
-///    planet handoffs),
-///  • elevation occasionally climbs to a TOP-DOWN view over the shuttle so
-///    the orbited planet fills the frame below — the money shot.
+/// v5 (Sam's spec) — a rotating three-way program, roughly equal thirds:
+///  • PLANET shot: zoomed out, high elevation — the top-down money shot of the
+///    shuttle tracing its orbit over the planet's face, look biased toward the
+///    planet (capped so the shuttle stays in frame),
+///  • SHUTTLE shot: close and low — the ship against space/whatever's there,
+///  • LANDMARK shot: look biased toward the sun or the black hole.
 /// </summary>
 public class MenuShotDirector : MonoBehaviour
 {
@@ -23,22 +22,25 @@ public class MenuShotDirector : MonoBehaviour
     [Tooltip("Closest approach; raised automatically to 1.5x the shuttle's bounds radius.")]
     public float minDistance = 26f;
     public float maxDistance = 65f;
+    [Tooltip("Extra distance multiplier for the zoomed-out planet money shot.")]
+    public float planetShotDistanceMult = 2.2f;
     [Tooltip("Base orbit speed around the shuttle, degrees/second.")]
     public float orbitSpeed = 6f;
-    [Tooltip("How far the glance may pan off the shuttle (degrees). Kept small enough that the shuttle stays in frame at the widened glance FOV.")]
-    public float maxGlanceAngle = 30f;
     [Tooltip("Hard cap on how fast the camera may rotate, degrees/second.")]
     public float maxCamTurnRate = 40f;
 
-    float azimuth;
-    float seed;
-    // Menu-scene-only lens: wider than gameplay so the world feels big while
-    // the shuttle stays close and readable (Sam's zoom-in request). This
-    // director only ever exists in MenuOrbit — gameplay FOV is untouched.
-    float baseFov = 58f, glanceFov = 68f;
+    enum Shot { Planet, Shuttle, Landmark }
+    Shot shot;
+    float shotEndsAt;
+    Transform landmark;
 
-    Transform glanceTarget;
-    float glanceClock, glanceDuration, nextGlanceAt;
+    float azimuth, seed;
+
+    // Eased state — these glide toward each shot's targets, so a shot change
+    // is a slow camera move, never a cut.
+    float elevation = 10f, distance = 40f, lookWeight, fov = 58f;
+    float targetElevation, targetDistance, targetLookWeight, targetFov, lookCap;
+    Transform lookTarget;
 
     void Start()
     {
@@ -46,11 +48,9 @@ public class MenuShotDirector : MonoBehaviour
         if (tour == null) tour = FindObjectOfType<MenuShuttleTour>();
         if (cam == null || tour == null) { enabled = false; return; }
 
-        // MESH renderers only. A world-space ParticleSystemRenderer reports its
-        // initial bounds at the WORLD ORIGIN — 12k units from the shuttle — and
-        // one measurement with the engine flames included blew the "shuttle
-        // radius" up to ~6000, parking the camera 15,000 units away. The cap is
-        // belt-and-braces against any future stray renderer.
+        // MESH renderers only: a world-space ParticleSystemRenderer reports its
+        // initial bounds at the world origin (12k away) and once measured the
+        // "shuttle radius" as ~6000. Cap is belt-and-braces.
         var bounds = new Bounds(tour.transform.position, Vector3.zero);
         foreach (var r in tour.GetComponentsInChildren<Renderer>())
             if (r.enabled && (r is MeshRenderer || r is SkinnedMeshRenderer)) bounds.Encapsulate(r.bounds);
@@ -61,34 +61,67 @@ public class MenuShotDirector : MonoBehaviour
 
         seed = Random.Range(0f, 100f);
         azimuth = Random.Range(0f, 360f);
-        cam.fieldOfView = baseFov;
-        nextGlanceAt = Time.time + Random.Range(6f, 12f);
+        StartShot((Shot)Random.Range(0, 3));
+        // Open ON the shot's pose (screen is still black behind the menu fade).
+        elevation = targetElevation; distance = targetDistance;
+        lookWeight = targetLookWeight; fov = targetFov;
         Apply(true);
     }
 
-    void LateUpdate() => Apply(false);
-
-    void PickGlance()
+    void StartShot(Shot s)
     {
-        Transform best = null;
-        float bestScore = -1f;
+        shot = s;
+        shotEndsAt = Time.time + Random.Range(9f, 15f);
+        switch (s)
+        {
+            case Shot.Planet:   // the money shot: top-down over the orbited planet
+                targetElevation = Random.Range(58f, 75f);
+                targetDistance = maxDistance * planetShotDistanceMult;
+                lookTarget = tour.FocusBody != null ? tour.FocusBody.transform : null;
+                targetLookWeight = 1f; lookCap = 22f;
+                targetFov = 58f;
+                break;
+            case Shot.Shuttle:  // the ship against space / whatever drifts by
+                targetElevation = Random.Range(-10f, 25f);
+                targetDistance = Random.Range(minDistance, minDistance * 1.6f);
+                lookTarget = null;
+                targetLookWeight = 0f; lookCap = 0f;
+                targetFov = 58f;
+                break;
+            default:            // Landmark: sun or black hole
+                landmark = PickLandmark();
+                targetElevation = Random.Range(0f, 30f);
+                targetDistance = Random.Range(minDistance * 1.3f, maxDistance);
+                lookTarget = landmark;
+                targetLookWeight = 1f; lookCap = 30f;
+                targetFov = 66f;
+                break;
+        }
+    }
+
+    Transform PickLandmark()
+    {
+        Transform sun = null, hole = null;
         foreach (var b in NBodySimulation.Bodies)
         {
             if (b == null) continue;
-            bool landmark = b.bodyType == CelestialBody.BodyType.Sun || b.isStaticAttractor
-                            || b == tour.FocusBody || b == tour.TransferTarget;
-            if (!landmark) continue;
-            Vector3 toB = (b.Position - transform.position).normalized;
-            Vector3 toSh = (tour.transform.position - transform.position).normalized;
-            float away = 1f - Vector3.Dot(toB, toSh);
-            float size = Mathf.Clamp01(b.radius / Vector3.Distance(transform.position, b.Position) * 8f);
-            float score = away * 0.6f + size + Random.value * 0.3f;
-            if (score > bestScore) { bestScore = score; best = b.transform; }
+            if (b.bodyType == CelestialBody.BodyType.Sun) sun = b.transform;
+            if (b.isStaticAttractor) hole = b.transform;
         }
-        glanceTarget = best;
-        glanceDuration = Random.Range(5f, 9f);
-        glanceClock = 0f;
+        if (sun == null) return hole;
+        if (hole == null) return sun;
+        return Random.value < 0.5f ? sun : hole;
     }
+
+    void NextShot()
+    {
+        // Rotate through all three with a shuffle-ish pick: never repeat.
+        Shot next;
+        do { next = (Shot)Random.Range(0, 3); } while (next == shot);
+        StartShot(next);
+    }
+
+    void LateUpdate() => Apply(false);
 
     void Apply(bool instant)
     {
@@ -97,50 +130,37 @@ public class MenuShotDirector : MonoBehaviour
         if (body == null) return;
 
         float t = Time.time;
+        if (!instant && t >= shotEndsAt) NextShot();
+        // Refresh the planet shot's target if the tour moved on mid-shot.
+        if (shot == Shot.Planet && tour.FocusBody != null) lookTarget = tour.FocusBody.transform;
 
-        // Glance envelope first — it also drives dolly-out and FOV.
-        float glanceW = 0f;
-        if (glanceTarget == null && t >= nextGlanceAt) PickGlance();
-        if (glanceTarget != null)
-        {
-            glanceClock += Time.deltaTime;
-            glanceW = Mathf.Sin(Mathf.Clamp01(glanceClock / glanceDuration) * Mathf.PI); // 0→1→0
-            if (glanceClock >= glanceDuration)
-            {
-                glanceTarget = null;
-                nextGlanceAt = t + Random.Range(8f, 16f);
-            }
-        }
+        float dt = instant ? 0f : Time.deltaTime;
+        // Glide every parameter — shot changes are camera MOVES, not cuts.
+        elevation = Mathf.MoveTowards(elevation, targetElevation, 9f * dt);
+        distance = Mathf.MoveTowards(distance, targetDistance, 18f * dt);
+        lookWeight = Mathf.MoveTowards(lookWeight, targetLookWeight, 0.35f * dt);
+        fov = Mathf.MoveTowards(fov, targetFov, 5f * dt);
 
-        azimuth += orbitSpeed * (0.7f + 0.6f * Mathf.PerlinNoise(t * 0.05f, seed)) * Time.deltaTime;
-        // Elevation occasionally climbs toward top-down over the shuttle —
-        // planet below, shuttle above it: the money shot.
-        float elevation = Mathf.Lerp(-6f, 72f, Mathf.PerlinNoise(t * 0.025f, seed + 31f));
-        float distance = Mathf.Lerp(minDistance, maxDistance, Mathf.PerlinNoise(t * 0.02f, seed + 62f));
-        distance *= 1f + 0.25f * glanceW;   // slight pull-back while glancing so both fit
+        azimuth += orbitSpeed * (0.7f + 0.6f * Mathf.PerlinNoise(t * 0.05f, seed)) * dt;
+        float elevWobble = (Mathf.PerlinNoise(t * 0.06f, seed + 47f) - 0.5f) * 6f;
 
-        // Horizon from the tour's smoothed up — continuous across planet
-        // handoffs, so the camera can never roll-snap.
-        Vector3 up = tour.CurrentUp;
+        Vector3 up = tour.CurrentUp;   // smoothed by the tour — never snaps
         Vector3 refFwd = Vector3.Cross(up, Vector3.forward);
         if (refFwd.sqrMagnitude < 0.01f) refFwd = Vector3.Cross(up, Vector3.right);
         refFwd.Normalize();
 
         Quaternion swing = Quaternion.AngleAxis(azimuth, up)
-                         * Quaternion.AngleAxis(elevation, Vector3.Cross(up, refFwd));
+                         * Quaternion.AngleAxis(elevation + elevWobble, Vector3.Cross(up, refFwd));
         Vector3 pos = sh.position + swing * refFwd * distance;
 
         var lookAtShuttle = Quaternion.LookRotation((sh.position - pos).normalized, up);
         var desired = lookAtShuttle;
-        if (glanceTarget != null)
+        if (lookTarget != null && lookWeight > 0.001f)
         {
-            var lookAtTarget = Quaternion.LookRotation((glanceTarget.position - pos).normalized, up);
-            // Angle-capped pan: at the widened glance FOV (~62° vertical,
-            // ~90° horizontal at 16:9) a 30° offset keeps the shuttle safely
-            // inside the frame.
-            desired = Quaternion.RotateTowards(lookAtShuttle, lookAtTarget, maxGlanceAngle * glanceW);
+            var lookAtTarget = Quaternion.LookRotation((lookTarget.position - pos).normalized, up);
+            desired = Quaternion.RotateTowards(lookAtShuttle, lookAtTarget, lookCap * lookWeight);
         }
-        cam.fieldOfView = Mathf.Lerp(baseFov, glanceFov, glanceW);
+        cam.fieldOfView = fov;
 
         if (instant)
         {
@@ -148,8 +168,7 @@ public class MenuShotDirector : MonoBehaviour
         }
         else
         {
-            // Position exact (see header); rotation rate-capped: no snaps, ever.
-            transform.position = pos;
+            transform.position = pos;   // exact — see header
             transform.rotation = Quaternion.RotateTowards(transform.rotation, desired, maxCamTurnRate * Time.deltaTime);
         }
     }

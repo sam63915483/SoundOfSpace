@@ -47,8 +47,6 @@ public class MenuShuttleTour : MonoBehaviour
     Vector3 lastPos;
     Vector3 smoothedUp = Vector3.up;    // exposed to the camera — never snaps
 
-    readonly List<ParticleSystem> thrusters = new List<ParticleSystem>();
-
     public CelestialBody FocusBody { get; private set; }
     public CelestialBody NextBody => stops[(stopIndex + 1) % stops.Length];
     public float TransferBlend => mode == Mode.Transfer ? Mathf.Clamp01(transferT) : 0f;
@@ -90,85 +88,22 @@ public class MenuShuttleTour : MonoBehaviour
         transform.rotation = rb.rotation;
         Physics.SyncTransforms();
 
-        // The Shuttle_Lander prefab ships with NO particle systems at all, so
-        // the engine fire is built here: cone emitters on the belly (local -Y,
-        // which points BACKWARD in head-first flight) with additive orange
-        // flames that trail in world space behind the moving ship.
-        BuildProceduralThrusters();
-        Debug.Log($"[MenuShuttleTour] burning {thrusters.Count} thruster flame(s)");
+        // Engine fire: the game's own runtime-built plume rig (same system the
+        // landing/liftoff uses — Sam: "in 1.6.7.7.7 the thruster fire looks
+        // very good"). It anchors to the prefab's real nozzle transforms; the
+        // engine bell fires along the belly, which is straight backward in
+        // head-first flight. Added AFTER the bootstrap's behaviour sweep, so it
+        // stays enabled. SetAltitude(150) each step = steady cruise plume
+        // (no fireball ramp, no ground lights).
+        _thrustFx = gameObject.AddComponent<ShuttleThrustFX>();
+        _thrustFx.Initialize(transform);
+        _thrustFx.Ignite();
+        _thrustFx.SetAltitude(150f);
+        Debug.Log("[MenuShuttleTour] ShuttleThrustFX ignited (game's own plume rig)");
     }
 
-    void BuildProceduralThrusters()
-    {
-        // Belly center from the render bounds, in local space.
-        var bounds = new Bounds(transform.position, Vector3.zero);
-        foreach (var r in GetComponentsInChildren<Renderer>())
-            if (r.enabled) bounds.Encapsulate(r.bounds);
-        Vector3 bellyWorld = bounds.center - transform.up * bounds.extents.y * 0.9f;
-        Vector3 bellyLocal = transform.InverseTransformPoint(bellyWorld);
+    ShuttleThrustFX _thrustFx;
 
-        Material mat = null;
-        foreach (var shaderName in new[] { "Legacy Shaders/Particles/Additive", "Particles/Additive", "Sprites/Default" })
-        {
-            var sh = Shader.Find(shaderName);
-            if (sh != null) { mat = new Material(sh); break; }
-        }
-
-        Vector3[] offsets = { new Vector3(-2.2f, 0f, 0f), new Vector3(2.2f, 0f, 0f), new Vector3(0f, 0f, 2.2f) };
-        foreach (var off in offsets)
-        {
-            var go = new GameObject("MenuThrusterFlame");
-            go.transform.SetParent(transform, false);
-            go.transform.localPosition = bellyLocal + off;
-            go.transform.localRotation = Quaternion.LookRotation(Vector3.down); // fire along local -Y = backward
-            var ps = go.AddComponent<ParticleSystem>();
-
-            var main = ps.main;
-            main.loop = true;
-            main.startLifetime = 0.7f;
-            main.startSpeed = new ParticleSystem.MinMaxCurve(22f, 32f);
-            main.startSize = new ParticleSystem.MinMaxCurve(1.2f, 2.4f);
-            main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.75f, 0.25f), new Color(1f, 0.45f, 0.1f));
-            main.simulationSpace = ParticleSystemSimulationSpace.World;   // trails behind (origin shifts are off in the menu)
-            main.maxParticles = 400;
-
-            var emission = ps.emission;
-            emission.rateOverTime = 140f;
-
-            var shape = ps.shape;
-            shape.shapeType = ParticleSystemShapeType.Cone;
-            shape.angle = 7f;
-            shape.radius = 0.35f;
-
-            var col = ps.colorOverLifetime;
-            col.enabled = true;
-            var grad = new Gradient();
-            grad.SetKeys(
-                new[] { new GradientColorKey(new Color(1f, 0.9f, 0.5f), 0f), new GradientColorKey(new Color(1f, 0.35f, 0.05f), 0.4f), new GradientColorKey(new Color(0.4f, 0.1f, 0.02f), 1f) },
-                new[] { new GradientAlphaKey(0.9f, 0f), new GradientAlphaKey(0.5f, 0.5f), new GradientAlphaKey(0f, 1f) });
-            col.color = grad;
-
-            var sizeOl = ps.sizeOverLifetime;
-            sizeOl.enabled = true;
-            sizeOl.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 1f, 1f, 0.2f));
-
-            var rend = go.GetComponent<ParticleSystemRenderer>();
-            if (mat != null) rend.material = mat;
-
-            ps.Play();
-            thrusters.Add(ps);
-        }
-
-        // Engine glow.
-        var glowGo = new GameObject("MenuThrusterGlow");
-        glowGo.transform.SetParent(transform, false);
-        glowGo.transform.localPosition = bellyLocal + Vector3.down * 2f;
-        var glow = glowGo.AddComponent<Light>();
-        glow.type = LightType.Point;
-        glow.color = new Color(1f, 0.55f, 0.2f);
-        glow.intensity = 2.2f;
-        glow.range = 18f;
-    }
 
     static Vector3 OrbitPoint(CelestialBody body, float phase, float radius)
     {
@@ -267,5 +202,7 @@ public class MenuShuttleTour : MonoBehaviour
         }
         rb.MovePosition(target);
         lastPos = target;
+
+        if (_thrustFx != null) _thrustFx.SetAltitude(150f);   // steady cruise plume
     }
 }
