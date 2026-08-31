@@ -50,7 +50,50 @@ Also note: saves capture live body state, so decay **accumulates across
 sessions** — the shipped game's "day lengths" slowly change the longer a save
 is played. NPC schedules cannot hang off the current free sim.
 
-## Recommendation for the loop game (not yet implemented)
+## ✅ IMPLEMENTED 2026-08-31: the clockwork solar system
+
+Sam approved the fix the same day (target: 2h30 loop, orbits solid 3–4h+).
+What shipped (all in `NBodySimulation.cs` / `CelestialBody.cs`, verified by
+live 20× god-mode soaks — 7.3 game-hours zero anomalies pre-precision-pass,
+then re-verified after the double-precision rails):
+
+- **`CelestialBody.isPinned`** — the Sun: never integrated, still a full
+  gravity source. Kills the rails-follower momentum pumping (sun used to
+  wander ~600k units in hours).
+- **`CelestialBody.railPeriod`** — Fiery Twin (276.6s), Humble Abode (802.9s),
+  Cyclops (2328.3s): exact circular orbit around the pinned sun, placed
+  analytically each step via the play-proven `ApplyPlacedState` sweep. Phase
+  advances in DOUBLE from a fixed orthonormal basis (the first incremental
+  quaternion version crept +1.6% radius over 7h — float accumulation).
+  **`railPeriod` in the inspector IS the planet's local day length** — the
+  design knob. Rails rebase automatically after an external teleport
+  (save-load); rebases compare SUN-RELATIVE so floating-origin shifts don't
+  false-trigger.
+- **All three moons satellite-locked** (Constant Companion→HA r=472.5/114.1s,
+  Tumbling Bean→Cyclops r=821/79s, Watchful Eye→Cyclops r=1695.5/234.5s).
+  Constant Companion was the free moon in HA's marginal Hill zone.
+- Planet `initialVelocity` circularized (defines the rail plane + first-frame
+  sweep). Player/ship still feel every body's full gravity — nothing about
+  flying/walking changes. No simulated celestial bodies remain.
+
+Verified radii are flat to the decimal over 4-hour soaks; lap times measure
+their designed constants (early soak "drift" was ALL measurement error — see
+the float-precision trap below).
+
+**Old saves:** bodies restore at saved (possibly decayed) positions; rails
+resume a circle from wherever the body loads (radius preserved, period
+exact). A save from the broken era keeps its weird radius — recommend New
+Game for real playthroughs.
+
+**⚠ Float-precision measurement trap (cost ~2h of ghost-chasing):** in this
+world's coordinate/time magnitudes, float accumulators LIE. The probe's
+`elapsed += 0.01` clock read 2.3% slow past t=8192 (0.01 rounds to 10 ulp =
+0.00977) producing perfectly flat FAKE "drift plateaus" that switch at
+power-of-two boundaries; its float `cumAngle` overcounted laps ~1.5%. Any
+long-run accumulator here (time, angle, phase) must be double. The bodies
+were exact all along; the ruler wasn't.
+
+## Original design recommendation (2026-08-31, pre-implementation)
 
 The loop design (one countdown, hand-authored NPC schedules, per-planet endings,
 loops that repeat identically so knowledge is the reward) needs **deterministic

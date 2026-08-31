@@ -72,6 +72,39 @@ public class CelestialBody : GravityObject {
     /// Seconds for one lap around the leader. Kept from the moon's real orbital
     /// period at the time of the rescale, so it doesn't visibly change speed.
     public float satellitePeriod = 0f;
+
+    /// PINNED: not integrated by the n-body sim (never moves on its own) but
+    /// still a full gravity source for the player/ship. Used by the SUN in the
+    /// clockwork solar system (2026-08-31): a free sun gets momentum pumped into
+    /// it by rails-placed bodies (they pull with no reaction force) and wanders
+    /// hundreds of thousands of units within hours, dragging every orbit into
+    /// chaos — measured, see docs/DAY_NIGHT_CLOCKS.md. Unlike isStaticAttractor
+    /// it DOES act on other celestial bodies (moot once everything is on rails,
+    /// but correct if a free body is ever added back).
+    public bool isPinned = false;
+
+    /// > 0 puts this body on a CLOCKWORK RAIL: an exact circular orbit around
+    /// the pinned sun, one lap per this many seconds, placed analytically each
+    /// step (same play-proven MovePosition sweep as satellite moons). This is
+    /// the planet day-length DESIGN KNOB — planets don't spin, so local solar
+    /// day == this period exactly. The free n-body version of this system
+    /// destabilized measurably within the hour and catastrophically within 3.5
+    /// (twins spiralled INTO the sun; see docs/DAY_NIGHT_CLOCKS.md), which a
+    /// 2.5-hour Majora-style loop can't live with. The orbit plane and
+    /// direction come from the body's current sun-relative position and
+    /// velocity, so a loaded save resumes cleanly from wherever it was.
+    public float railPeriod = 0f;
+
+    // Rail runtime state (owned by NBodySimulation). The phase advances in
+    // DOUBLE and the position is computed analytically from a fixed basis each
+    // step, so neither radius nor period can drift by float accumulation —
+    // measured, the incremental rotate-by-quaternion version crept +1.6% radius
+    // over 7 hours. railLastRel is SUN-RELATIVE so floating-origin shifts don't
+    // false-trigger the rebase; an external teleport (save load) rebases the
+    // rail from wherever the body now is.
+    [System.NonSerialized] public bool railInit;
+    [System.NonSerialized] public double railPhase, railRadius, railOmega;
+    [System.NonSerialized] public Vector3 railU, railW, railLastRel;
     [System.NonSerialized] public float satellitePhase;
 
     Transform meshHolder;

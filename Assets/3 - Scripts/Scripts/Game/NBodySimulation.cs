@@ -24,6 +24,8 @@ public class NBodySimulation : MonoBehaviour {
         for (int i = 0; i < bodies.Length; i++) {
             // Static attractors (the black hole) are fixed and never integrated.
             if (bodies[i].isStaticAttractor) continue;
+            if (bodies[i].isPinned) continue;                   // pinned (the sun): never moves
+            if (bodies[i].railPeriod > 0f) continue;            // clockwork rail: placed below
             if (bodies[i].coOrbitLeader != null) continue;      // follower: placed, not simulated
             // ...and they must not pull other bodies, so exclude them as a source here.
             Vector3 acceleration = CalculateAcceleration (bodies[i].Position, bodies[i], includeStaticAttractors: false);
@@ -33,8 +35,51 @@ public class NBodySimulation : MonoBehaviour {
 
         for (int i = 0; i < bodies.Length; i++) {
             if (bodies[i].isStaticAttractor) continue;
+            if (bodies[i].isPinned) continue;
+            if (bodies[i].railPeriod > 0f) continue;            // placed below instead
             if (bodies[i].coOrbitLeader != null) continue;      // placed below instead
             bodies[i].UpdatePosition (Universe.physicsTimeStep);
+        }
+
+        // Clockwork rails (2026-08-31): planets ride exact circular orbits around
+        // the pinned sun — one lap per railPeriod seconds, which IS the planet's
+        // local solar day (planets don't spin). Placed BEFORE the follower loop so
+        // co-orbit twins / satellite moons read their leader's updated pose. The
+        // free n-body version of this system measurably destabilized within the
+        // hour and lost the twins into the sun by 3.5h (docs/DAY_NIGHT_CLOCKS.md);
+        // the loop game needs day lengths that are exact constants.
+        for (int i = 0; i < bodies.Length; i++) {
+            var b = bodies[i];
+            if (b == null || b.railPeriod <= 0f) continue;
+            var sun = FindSun ();
+            if (sun == null) continue;
+            Vector3 rel = b.Position - sun.Position;
+
+            // (Re)base the rail from the body's current state: on first step, or
+            // after an external teleport (save load / editor move). The compare
+            // is sun-relative, so floating-origin shifts don't false-trigger it;
+            // rebasing is glitch-free anyway (position is continuous).
+            if (!b.railInit || (rel - b.railLastRel).sqrMagnitude > 50f * 50f) {
+                if (rel.sqrMagnitude < 1e-6f) continue;
+                Vector3 axis = Vector3.Cross (rel, b.velocity);
+                if (axis.sqrMagnitude < 1e-6f) axis = Vector3.forward;
+                axis.Normalize ();
+                b.railU = rel.normalized;
+                b.railW = Vector3.Cross (axis, b.railU);   // points along the motion
+                b.railRadius = rel.magnitude;
+                b.railOmega = 2.0 * System.Math.PI / b.railPeriod;
+                b.railPhase = 0.0;
+                b.railInit = true;
+            }
+
+            b.railPhase += b.railOmega * Universe.physicsTimeStep;
+            float c = (float) System.Math.Cos (b.railPhase);
+            float s = (float) System.Math.Sin (b.railPhase);
+            float rad = (float) b.railRadius;
+            Vector3 newRel = (b.railU * c + b.railW * s) * rad;
+            Vector3 tangent = (b.railW * c - b.railU * s) * (rad * (float) b.railOmega);
+            b.railLastRel = newRel;
+            b.ApplyPlacedState (sun.Position + newRel, tangent);
         }
 
         // Co-orbital followers: not integrated, placed. See CelestialBody

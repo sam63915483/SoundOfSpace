@@ -31,8 +31,14 @@ public class OrbitClockProbe : MonoBehaviour
     {
         public CelestialBody body;
         public Vector3 planeU, planeW;
-        public float r0, lastAngle, cumAngle, lastR;
-        public float firstLap = -1f, prevLapTime;
+        public float r0, lastR;
+        // Angle accumulators are DOUBLE on purpose: cumAngle grows to hundreds
+        // of radians while each 0.05s sample adds ~1e-3 rad, and float rounding
+        // at that magnitude overcounted laps by ~1.5% (measured 53 laps in a
+        // window that fit 51.4). The bodies were exact; the ruler wasn't.
+        public double lastAngle, cumAngle;
+        public double prevLapTime;
+        public float firstLap = -1f;
         public int laps;
         public bool anomalyLogged;
     }
@@ -40,7 +46,11 @@ public class OrbitClockProbe : MonoBehaviour
     readonly List<Track> tracks = new List<Track>();
     CelestialBody sun;
     int stepCounter;
-    float elapsed;
+    // DOUBLE, like the angle accumulators: a float clock summing +0.01 rounds
+    // to +0.00977 once elapsed passes 8192 (ulp 0.001), reading 2.3% slow —
+    // every "day length drift" plateau in early soaks was this stopwatch, not
+    // the orbits.
+    double elapsed;
     StreamWriter csv;
 
     void Start()
@@ -82,8 +92,8 @@ public class OrbitClockProbe : MonoBehaviour
         t.planeW = Vector3.Cross(n.normalized, t.planeU);
         t.r0 = r.magnitude;
         t.lastR = t.r0;
-        t.lastAngle = 0f;
-        t.cumAngle = 0f;
+        t.lastAngle = 0.0;
+        t.cumAngle = 0.0;
         t.anomalyLogged = false;
     }
 
@@ -110,16 +120,18 @@ public class OrbitClockProbe : MonoBehaviour
             }
             t.lastR = rm;
 
-            float ang = Mathf.Atan2(Vector3.Dot(r, t.planeW), Vector3.Dot(r, t.planeU));
-            float d = Mathf.DeltaAngle(t.lastAngle * Mathf.Rad2Deg, ang * Mathf.Rad2Deg) * Mathf.Deg2Rad;
+            double ang = System.Math.Atan2(Vector3.Dot(r, t.planeW), Vector3.Dot(r, t.planeU));
+            double d = ang - t.lastAngle;
+            while (d > System.Math.PI) d -= 2.0 * System.Math.PI;
+            while (d < -System.Math.PI) d += 2.0 * System.Math.PI;
             t.lastAngle = ang;
-            float before = Mathf.Abs(t.cumAngle);
+            double before = System.Math.Abs(t.cumAngle);
             t.cumAngle += d;
 
-            if ((int)(Mathf.Abs(t.cumAngle) / (2f * Mathf.PI)) > (int)(before / (2f * Mathf.PI)))
+            if ((int)(System.Math.Abs(t.cumAngle) / (2.0 * System.Math.PI)) > (int)(before / (2.0 * System.Math.PI)))
             {
                 t.laps++;
-                float lapLen = t.laps == 1 ? elapsed : elapsed - t.prevLapTime;
+                float lapLen = (float)(t.laps == 1 ? elapsed : elapsed - t.prevLapTime);
                 t.prevLapTime = elapsed;
                 if (t.firstLap < 0f) t.firstLap = lapLen;
                 float drift = (lapLen - t.firstLap) / t.firstLap * 100f;
