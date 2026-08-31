@@ -2,37 +2,44 @@ using UnityEngine;
 
 /// <summary>
 /// MENU-ONLY (MenuOrbit scene): flies the Shuttle_Lander on an endless
-/// sightseeing tour — one orbit of Humble Abode, transfer to Icey Twin, orbit,
-/// Fiery Twin, orbit, Cyclops, orbit, back to Humble Abode, repeat. Kinematic
-/// rb.MovePosition sweeps. ALL positions are computed body-relative each step,
-/// so floating-origin shifts and the planets' own rail motion can't strand the
-/// path. Added at runtime by MenuOrbitBootstrap — never present in gameplay.
+/// sightseeing tour — orbit Humble Abode, cruise to Icey Twin, Fiery Twin,
+/// Cyclops, home again. Kinematic rb.MovePosition sweeps; ALL positions are
+/// body-relative each step so rails motion and floating-origin shifts can't
+/// bend the path. Added at runtime by MenuOrbitBootstrap.
+///
+/// v3 (Sam's review): the shuttle is a vehicle, not a UFO —
+///  • departs an orbit only when its travel direction already points at the
+///    next planet (no right-angle exits),
+///  • nose turn rate hard-capped (slow, ship-like),
+///  • "up" blends smoothly between planets during a transfer (no flips),
+///  • transfers steer AROUND every celestial body (clearance bubble), so it
+///    never flies through a planet or the sun.
 /// </summary>
 public class MenuShuttleTour : MonoBehaviour
 {
     [Tooltip("Seconds for one full lap around each planet.")]
-    public float orbitPeriod = 38f;
+    public float orbitPeriod = 45f;
     [Tooltip("Orbit radius = planet radius * this.")]
     public float orbitAltitudeMult = 2.1f;
     [Tooltip("Seconds for a planet-to-planet transfer leg.")]
-    public float transferDuration = 16f;
+    public float transferDuration = 18f;
+    [Tooltip("Max nose turn rate, degrees per second.")]
+    public float maxTurnRate = 9f;
 
     static readonly string[] TourStops = { "Humble Abode", "Icey Twin", "Fiery Twin", "Cyclops" };
 
     Rigidbody rb;
     CelestialBody[] stops;
+    CelestialBody[] allBodies;
     int stopIndex;
 
     enum Mode { Orbit, Transfer }
     Mode mode = Mode.Orbit;
 
-    // Orbit state (relative to the current body; plane = ecliptic, normal ±Z)
-    float orbitPhase;          // radians
-    float orbitStartPhase;
-    float orbitRadius;
+    float orbitPhase, orbitStartPhase, orbitRadius;
+    bool lapDone;                       // full lap complete, waiting for alignment
 
-    // Transfer state — endpoints stored BODY-RELATIVE (origin-shift proof)
-    Vector3 fromOffset, toOffset;
+    Vector3 fromOffset, toOffset;       // BODY-RELATIVE endpoints (shift-proof)
     CelestialBody fromBody, toBody;
     float transferT;
 
@@ -40,7 +47,9 @@ public class MenuShuttleTour : MonoBehaviour
 
     public CelestialBody FocusBody { get; private set; }
     public CelestialBody NextBody => stops[(stopIndex + 1) % stops.Length];
-    public float OrbitRadius => orbitRadius;
+    /// 0→1 while transferring (used by the camera to blend its horizon).
+    public float TransferBlend => mode == Mode.Transfer ? Mathf.Clamp01(transferT) : 0f;
+    public CelestialBody TransferTarget => mode == Mode.Transfer ? toBody : FocusBody;
 
     void Start()
     {
@@ -50,8 +59,9 @@ public class MenuShuttleTour : MonoBehaviour
         rb.useGravity = false;
         rb.interpolation = RigidbodyInterpolation.Interpolate;
 
+        allBodies = NBodySimulation.Bodies;
         stops = new CelestialBody[TourStops.Length];
-        foreach (var b in NBodySimulation.Bodies)
+        foreach (var b in allBodies)
             for (int i = 0; i < TourStops.Length; i++)
                 if (b != null && b.bodyName == TourStops[i]) stops[i] = b;
         for (int i = 0; i < stops.Length; i++)
@@ -60,7 +70,6 @@ public class MenuShuttleTour : MonoBehaviour
         stopIndex = 0;
         FocusBody = stops[0];
         orbitRadius = FocusBody.radius * orbitAltitudeMult;
-        // Enter the orbit wherever we are relative to the planet right now.
         Vector3 off = transform.position - FocusBody.Position;
         orbitPhase = Mathf.Atan2(off.y, off.x);
         orbitStartPhase = orbitPhase;
@@ -72,7 +81,6 @@ public class MenuShuttleTour : MonoBehaviour
 
     static Vector3 OrbitPoint(CelestialBody body, float phase, float radius)
     {
-        // Ecliptic plane (all planets orbit in XY): basis X/Y around the body.
         return body.Position + new Vector3(Mathf.Cos(phase), Mathf.Sin(phase), 0f) * radius;
     }
 
@@ -80,25 +88,35 @@ public class MenuShuttleTour : MonoBehaviour
     {
         float dt = Time.fixedDeltaTime;
         Vector3 target;
+        Vector3 up;
 
         if (mode == Mode.Orbit)
         {
             orbitPhase += 2f * Mathf.PI / orbitPeriod * dt;
             target = OrbitPoint(FocusBody, orbitPhase, orbitRadius);
+            up = (target - FocusBody.Position).normalized;
 
-            if (orbitPhase - orbitStartPhase >= 2f * Mathf.PI)
+            if (!lapDone && orbitPhase - orbitStartPhase >= 2f * Mathf.PI)
+                lapDone = true;
+
+            if (lapDone)
             {
-                // One lap done — set up transfer to the next stop.
-                fromBody = FocusBody;
-                toBody = NextBody;
-                stopIndex = (stopIndex + 1) % stops.Length;
-                fromOffset = target - fromBody.Position;
-                // Enter the next orbit on the side facing our current planet.
-                Vector3 approach = (fromBody.Position - toBody.Position).normalized;
-                float nextRadius = toBody.radius * orbitAltitudeMult;
-                toOffset = approach * nextRadius;
-                transferT = 0f;
-                mode = Mode.Transfer;
+                // Depart only when already travelling toward the next stop —
+                // the exit is a gentle peel-off, not a right-angle yank.
+                Vector3 tangent = new Vector3(-Mathf.Sin(orbitPhase), Mathf.Cos(orbitPhase), 0f);
+                Vector3 toNext = (NextBody.Position - target).normalized;
+                if (Vector3.Dot(tangent, toNext) > 0.85f)
+                {
+                    fromBody = FocusBody;
+                    toBody = NextBody;
+                    stopIndex = (stopIndex + 1) % stops.Length;
+                    fromOffset = target - fromBody.Position;
+                    Vector3 approach = (fromBody.Position - toBody.Position).normalized;
+                    toOffset = approach * toBody.radius * orbitAltitudeMult;
+                    transferT = 0f;
+                    lapDone = false;
+                    mode = Mode.Transfer;
+                }
             }
         }
         else
@@ -107,10 +125,24 @@ public class MenuShuttleTour : MonoBehaviour
             float u = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(transferT));
             Vector3 a = fromBody.Position + fromOffset;
             Vector3 b = toBody.Position + toOffset;
-            // Arc the path gently out of the ecliptic so transfers read as flight,
-            // not a straight slide.
-            float arc = Mathf.Sin(u * Mathf.PI) * Vector3.Distance(a, b) * 0.08f;
+            float arc = Mathf.Sin(u * Mathf.PI) * Vector3.Distance(a, b) * 0.06f;
             target = Vector3.Lerp(a, b, u) + Vector3.forward * arc;
+
+            // Clearance bubble: never inside 1.5x any body's radius (+margin).
+            foreach (var body in allBodies)
+            {
+                if (body == null || body.radius <= 0f) continue;
+                Vector3 rel = target - body.Position;
+                float clearance = body.radius * 1.5f + 40f;
+                float d = rel.magnitude;
+                if (d < clearance && d > 0.01f)
+                    target = body.Position + rel / d * clearance;
+            }
+
+            // Horizon rolls smoothly from the old planet's up to the new one's.
+            Vector3 upFrom = (target - fromBody.Position).normalized;
+            Vector3 upTo = (target - toBody.Position).normalized;
+            up = Vector3.Slerp(upFrom, upTo, u).normalized;
 
             if (transferT >= 1f)
             {
@@ -123,13 +155,12 @@ public class MenuShuttleTour : MonoBehaviour
             }
         }
 
-        // Nose along the motion, belly toward the planet.
         Vector3 vel = (target - lastPos) / dt;
         if (vel.sqrMagnitude > 0.01f)
         {
-            Vector3 up = (target - FocusBody.Position).normalized;
             var look = Quaternion.LookRotation(vel.normalized, up);
-            rb.MoveRotation(Quaternion.Slerp(rb.rotation, look, 2f * dt));
+            // Hard cap on turn rate: ship-like, never UFO-flippy.
+            rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, look, maxTurnRate * dt));
         }
         rb.MovePosition(target);
         lastPos = target;

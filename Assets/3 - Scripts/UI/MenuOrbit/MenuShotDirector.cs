@@ -24,8 +24,16 @@ public class MenuShotDirector : MonoBehaviour
     [Tooltip("Base orbit speed around the shuttle, degrees/second.")]
     public float orbitSpeed = 6f;
 
+    [Tooltip("How far off the shuttle the camera may glance (degrees).")]
+    public float maxGlanceAngle = 40f;
+
     float azimuth;
     float seed;
+
+    // Occasional glance: the camera pans part-way toward a landmark (the sun,
+    // the black hole, the planet being toured or approached), then eases back.
+    Transform glanceTarget;
+    float glanceClock, glanceDuration, nextGlanceAt;
 
     void Start()
     {
@@ -44,7 +52,33 @@ public class MenuShotDirector : MonoBehaviour
         seed = Random.Range(0f, 100f);
         azimuth = Random.Range(0f, 360f);
         cam.fieldOfView = 50f;
+        nextGlanceAt = Time.time + Random.Range(6f, 12f);
         LateUpdate();
+    }
+
+    void PickGlance()
+    {
+        // Landmarks worth a look: sun, black hole, the planet under tour or
+        // the one being approached. Prefer whichever is NOT where the shuttle
+        // already is on screen.
+        Transform best = null;
+        float bestScore = -1f;
+        foreach (var b in NBodySimulation.Bodies)
+        {
+            if (b == null) continue;
+            bool landmark = b.bodyType == CelestialBody.BodyType.Sun || b.isStaticAttractor
+                            || b == tour.FocusBody || b == tour.TransferTarget;
+            if (!landmark) continue;
+            Vector3 toB = (b.Position - transform.position).normalized;
+            Vector3 toSh = (tour.transform.position - transform.position).normalized;
+            float away = 1f - Vector3.Dot(toB, toSh);           // reward off-axis targets
+            float size = Mathf.Clamp01(b.radius / Vector3.Distance(transform.position, b.Position) * 8f);
+            float score = away * 0.6f + size + Random.value * 0.3f;
+            if (score > bestScore) { bestScore = score; best = b.transform; }
+        }
+        glanceTarget = best;
+        glanceDuration = Random.Range(5f, 9f);
+        glanceClock = 0f;
     }
 
     void LateUpdate()
@@ -68,7 +102,25 @@ public class MenuShotDirector : MonoBehaviour
                          * Quaternion.AngleAxis(elevation, Vector3.Cross(up, refFwd));
         Vector3 pos = sh.position + swing * refFwd * distance;
 
-        transform.SetPositionAndRotation(pos,
-            Quaternion.LookRotation((sh.position - pos).normalized, up));
+        var lookAtShuttle = Quaternion.LookRotation((sh.position - pos).normalized, up);
+
+        // Glances: every so often, pan up to maxGlanceAngle toward a landmark
+        // (sun / black hole / a planet), ease there and back, then resume.
+        if (glanceTarget == null && t >= nextGlanceAt) PickGlance();
+        var rot = lookAtShuttle;
+        if (glanceTarget != null)
+        {
+            glanceClock += Time.deltaTime;
+            float w = Mathf.Sin(Mathf.Clamp01(glanceClock / glanceDuration) * Mathf.PI); // 0→1→0
+            var lookAtTarget = Quaternion.LookRotation((glanceTarget.position - pos).normalized, up);
+            rot = Quaternion.RotateTowards(lookAtShuttle, lookAtTarget, maxGlanceAngle * w);
+            if (glanceClock >= glanceDuration)
+            {
+                glanceTarget = null;
+                nextGlanceAt = t + Random.Range(8f, 16f);
+            }
+        }
+
+        transform.SetPositionAndRotation(pos, rot);
     }
 }

@@ -69,6 +69,24 @@ public class MenuOrbitBootstrap : MonoBehaviour
         {
             endless.UnregisterPhysicsObject(player);
             endless.RegisterPhysicsObject(shuttleT);
+            // The tour never leaves a ~27k-unit sphere, where float precision is
+            // still sub-centimeter — origin shifts buy nothing here and each one
+            // costs a visible 2-frame interpolation hitch every ~20s of flight
+            // (Sam's "occasional hitches"). Push the threshold beyond the tour.
+            endless.distanceThreshold = 60000f;
+        }
+
+        // LODHandler lazily caches Camera.main on its first LOD pass — during
+        // the additive load that can still be MAINMENU's (about-to-be-disabled)
+        // camera, which then feeds it garbage screen heights forever. Hand it
+        // the real camera up front.
+        var lod = FindObjectOfType<LODHandler>();
+        if (lod != null)
+        {
+            var f = typeof(LODHandler);
+            const System.Reflection.BindingFlags F = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+            f.GetField("cam", F)?.SetValue(lod, cam);
+            f.GetField("camT", F)?.SetValue(lod, cam.transform);
         }
 
         // No stray UI in the background scene. OWN SCENE ONLY — FindObjectsOfType
