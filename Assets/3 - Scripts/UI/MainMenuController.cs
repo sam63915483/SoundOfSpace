@@ -265,6 +265,22 @@ public class MainMenuController : MonoBehaviour
         // it. Sits between the accent strip and the button column.
         BuildCharacterChip();
 
+        // Translucent backdrop behind the button column: the 3D menu background
+        // flies the shuttle (and planets) through this part of the screen, and
+        // white button text over a bright hull was hard to read (Sam's review).
+        // Sized to cover the chip + all six rows with margin.
+        var backdrop = NewUI("ButtonsBackdrop", transform);
+        backdrop.anchorMin = new Vector2(0.5f, 0.5f);
+        backdrop.anchorMax = new Vector2(0.5f, 0.5f);
+        backdrop.pivot     = new Vector2(0.5f, 0.5f);
+        backdrop.anchoredPosition = new Vector2(0f, -130f);
+        backdrop.sizeDelta = new Vector2(560f, 620f);
+        var backdropImg = backdrop.gameObject.AddComponent<Image>();
+        backdropImg.sprite = GetRoundedSprite();
+        backdropImg.type = Image.Type.Sliced;
+        backdropImg.color = new Color32(0x07, 0x05, 0x1C, 0xB4);   // void black, ~70% opacity
+        backdropImg.raycastTarget = false;
+
         // Button column. Stored on `mainMenuButtonsRoot` for OnCredits/HideCredits
         // to deactivate while the credits modal is open.
         var buttonsRT = NewUI("Buttons", transform);
