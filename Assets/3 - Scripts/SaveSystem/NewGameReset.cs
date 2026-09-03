@@ -86,7 +86,18 @@ public static class NewGameReset
         // A world this character has never played in means a blank board — the
         // mask is world progress now, not a character trophy.
         OrientationObjectives.ResetForNewWorld();
-        if (Hotbar.Instance != null) Hotbar.Instance.ResetForNewGame();
+        if (Hotbar.Instance != null)
+        {
+            Hotbar.Instance.ResetForNewGame();
+            // [OPEN] 1 starter bait. DEVIATION FROM THE HANDOFF'S DEFAULT, which
+            // said "10 Grubs in the shuttle locker": they go in the HOTBAR
+            // instead. Without bait you cannot cast at all, so bait that the
+            // player fails to find is not a slow start, it is the whole fishing
+            // feature silently missing -- and which loot box is "the shuttle
+            // locker" is a scene fact this pass could not verify in the Editor.
+            // Moving them to a locker later is one line here; ask Sam which box.
+            Hotbar.Instance.AddResource(Hotbar.ItemId.BaitGrubs, 10);
+        }
         if (PlayerWallet.Instance != null) PlayerWallet.Instance.SetMoney(0);
         if (WoodInventory.Instance != null) WoodInventory.Instance.SetWood(0);
         if (CrystalInventory.Instance != null) CrystalInventory.Instance.SetCount(0);

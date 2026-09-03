@@ -239,6 +239,13 @@ public class FishMarketNPC : MonoBehaviour
         new System.Collections.Generic.List<NPCSellRows.SellAction>();
     const int SellHeadRows = 1;   // "Sell fish" sits above the sell block
 
+    // Where the bait rows sit in the assembled menu. Recomputed every time the
+    // menu is built rather than hard-indexed, because NPCSellRows.Append adds a
+    // build-configurable number of rows above them (mushrooms live, space dust
+    // vaulted) -- a hard index here would silently sell the wrong thing the next
+    // time a sell row is vaulted.
+    int _baitRowStart = -1;
+
     void ShowPostGreetingChoice()
     {
         var rows = new System.Collections.Generic.List<PostGreetingChoicePanel.Row>
@@ -246,8 +253,54 @@ public class FishMarketNPC : MonoBehaviour
             new PostGreetingChoicePanel.Row("Sell fish", true),
         };
         NPCSellRows.Append(rows, _sellActions, this);
+
+        // [BUILD] 3: bait, in the vendor's existing row style. No new screen.
+        // Rows are clamped on affordability the way Tev's shop clamps -- an
+        // unaffordable row is visible and disabled, never hidden, so the player
+        // can see what they are saving toward.
+        _baitRowStart = rows.Count;
+        int money = PlayerWallet.Instance != null ? PlayerWallet.Instance.Money : 0;
+        for (int i = 0; i < FishingBait.All.Length; i++)
+        {
+            var def = FishingBait.All[i];
+            bool afford = money >= def.price;
+            rows.Add(new PostGreetingChoicePanel.Row($"Buy {def.displayName}  (${def.price})", afford));
+        }
+
         rows.Add(new PostGreetingChoicePanel.Row("Leave", true));
         PostGreetingChoicePanel.Instance.Show(rows, HandleChoice);
+    }
+
+    /// <summary>
+    /// Buy one unit of bait. Deliberately one at a time through the existing row
+    /// list -- the handoff's "no new screen" -- and the menu reopens so the
+    /// player can buy again and watch the affordability clamp bite.
+    /// </summary>
+    void BuyBait(int baitIndex)
+    {
+        if (baitIndex < 0 || baitIndex >= FishingBait.All.Length) { ShowPostGreetingChoice(); return; }
+        var def = FishingBait.All[baitIndex];
+
+        if (PlayerWallet.Instance == null || PlayerWallet.Instance.Money < def.price)
+        {
+            ShowEarningsMessage("Not enough money.");
+            ShowPostGreetingChoice();
+            return;
+        }
+        if (Hotbar.Instance == null) { ShowPostGreetingChoice(); return; }
+
+        // Take the money only if the bait actually fits, so a full hotbar can
+        // never eat a payment.
+        int leftover = Hotbar.Instance.AddResource(def.item, 1);
+        if (leftover > 0)
+        {
+            InventoryFullPopup.Show();
+            ShowPostGreetingChoice();
+            return;
+        }
+        PlayerWallet.Instance.SpendMoney(def.price);
+        ShowEarningsMessage($"Bought 1 {def.displayName}.");
+        ShowPostGreetingChoice();
     }
 
     void HandleChoice(int index)
@@ -256,6 +309,12 @@ public class FishMarketNPC : MonoBehaviour
         if (NPCSellRows.ActionAt(_sellActions, SellHeadRows, index, out var action))
         {
             NPCSellRows.Open(action, this, "Fish Vendor", _sellDustOption, ShowPostGreetingChoice);
+            return;
+        }
+        if (_baitRowStart >= 0 && index >= _baitRowStart
+                               && index < _baitRowStart + FishingBait.All.Length)
+        {
+            BuyBait(index - _baitRowStart);
             return;
         }
         StopConversation();
@@ -417,12 +476,14 @@ public class FishMarketNPC : MonoBehaviour
         foreach (var (f, rt, _) in stagedFish)
         {
             var captured = f;
-            Color32 dot  = f.fishType == "Rare"     ? C_Rare
-                         : f.fishType == "Uncommon" ? C_Uncommon
-                         : C_Common;
-            string detail = $"{f.weightLbs} lbs  |  ${f.GetValue()} value";
+            // Phase 1: the card is titled with the SPECIES and wears the
+            // species tint, so four species in a tier are told apart at a
+            // glance. The tier still reads in the detail line -- it's what
+            // sets the price bracket.
+            Color32 dot = FishSpeciesVisuals.TintOf(f);
+            string detail = $"{f.fishType}  |  {f.weightLbs} lbs  |  ${f.GetValue()} value";
 
-            MkFishCard(uiListContent, f.fishType, detail, dot, rt, () => OnRemoveFish(captured));
+            MkFishCard(uiListContent, f.DisplayName, detail, dot, rt, () => OnRemoveFish(captured));
         }
     }
 

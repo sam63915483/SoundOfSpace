@@ -7,12 +7,19 @@ public class FishEntry
     public string fishType;
     public int weightLbs;
     public Color fishColor;
+    // Phase 1 fishing revamp: which of the 12 species this is. Empty on fish
+    // caught before the revamp -- ResolveSpecies() migrates those to species 0
+    // of their tier on first read, per the handoff's [INTEGRATE] note, so old
+    // saves load without a schema bump.
+    public string speciesId;
     // Phase 2: cached preview texture for hotbar/storage slot rendering.
     // Rendered on first display via FishingdexManager.RenderFish(this, w, h),
     // re-used for the rest of the session. NonSerialized — re-rendered
     // on load. Null until the first paint.
     [System.NonSerialized] public RenderTexture cachedHotbarPreview;
 
+    /// Legacy constructor (tier + weight, random colour). Still used by any
+    /// caller that hasn't got a species; the species resolves lazily.
     public FishEntry(string type, int weight)
     {
         fishType  = type;
@@ -20,14 +27,43 @@ public class FishEntry
         fishColor = Random.ColorHSV(0f, 1f, 0.6f, 1f, 0.6f, 1f);
     }
 
+    /// Phase 1: the real constructor. Tier, colour and price all come from the
+    /// species row, so nothing about a caught fish is random except the roll
+    /// that chose it.
+    public FishEntry(int speciesIndex, int weight)
+    {
+        var sp = FishingRules.Species[speciesIndex];
+        speciesId = sp.id;
+        fishType  = sp.tier.ToString();
+        weightLbs = weight;
+        fishColor = FishSpeciesVisuals.TintOf(speciesIndex);
+    }
+
+    /// <summary>
+    /// Index into <see cref="FishingRules.Species"/>. Fish saved before the
+    /// revamp carry no speciesId; they resolve to species 0 of their recorded
+    /// tier and the id is written back so the migration happens once.
+    /// </summary>
+    public int ResolveSpecies()
+    {
+        int i = string.IsNullOrEmpty(speciesId) ? -1 : FishingRules.IndexOfId(speciesId);
+        if (i < 0)
+        {
+            i = FishingRules.MigrateLegacyTier(fishType);
+            speciesId = FishingRules.Species[i].id;
+        }
+        return i;
+    }
+
+    public string DisplayName => FishingRules.Species[ResolveSpecies()].displayName;
+
     public int GetValue()
     {
-        // Cut to a third on 2026-08-14. At the old rate a 50 lb rare was $150,
-        // more than DOUBLE the best tape in the game - the side activity paid
-        // better than the loop everything else was rebuilt around. The same
-        // fish is now $50, still a good haul, roughly one maxed Type 2 tape.
-        int pricePerLb = fishType == "Rare" ? 3 : fishType == "Uncommon" ? 2 : 1;
-        return Mathf.Max(1, Mathf.RoundToInt(weightLbs * pricePerLb / 3f));
+        // Phase 1: price is pricePerLb x weight off the species row, replacing
+        // the flat per-tier rate. The 2026-08-14 "cut to a third" rebalance is
+        // baked into the species table's $/lb rather than applied here -- one
+        // place computing the money, per the promise/grade trap class.
+        return FishingRules.PriceOf(ResolveSpecies(), weightLbs);
     }
 
     public static float GetXScaleFromWeight(int weightLbs)
@@ -77,6 +113,16 @@ public class FishInventory : MonoBehaviour
         var entry = new FishEntry(fishType, weightLbs);
         fish.Add(entry);
         Debug.Log($"[FishInventory] Added {weightLbs}lb {fishType}. Total fish: {fish.Count}");
+        return entry;
+    }
+
+    /// Phase 1: the species-aware add. The lifetime dex records every fish,
+    /// caught or kept, so this is called before the hotbar routing.
+    public FishEntry AddFish(int speciesIndex, int weightLbs)
+    {
+        var entry = new FishEntry(speciesIndex, weightLbs);
+        fish.Add(entry);
+        Debug.Log($"[FishInventory] Added {weightLbs}lb {entry.DisplayName} ({entry.fishType}). Total fish: {fish.Count}");
         return entry;
     }
 

@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots }
 
     public struct Slot
     {
@@ -218,8 +218,6 @@ public class Hotbar : MonoBehaviour
     SlotVisuals[] slotViews = new SlotVisuals[TotalSlots];
 
     RectTransform _namePlateRT;
-    Image _namePlateBg;
-    Image _namePlateBorder;
     TextMeshProUGUI _namePlateText;
     CanvasGroup _namePlateGroup;
 
@@ -522,6 +520,12 @@ public class Hotbar : MonoBehaviour
             ItemId.BlankTapeFullT1 => 20,
             ItemId.BlankTapeFullT2 => 20,
             ItemId.Cassette => 10,
+            // Bait is bulk consumable — one per bite, so a session's worth has
+            // to fit in a slot or the player is walking back to the vendor
+            // mid-loop for the wrong reason.
+            ItemId.BaitGrubs => 50,
+            ItemId.BaitGlowworms => 50,
+            ItemId.BaitVoidmaggots => 50,
             // One TRAX install per stick and one install per world — a stack
             // would just be money Tev shouldn't have taken.
             ItemId.TraxUsbStick => 1,
@@ -962,7 +966,8 @@ public class Hotbar : MonoBehaviour
                   or ItemId.BlankTapeT1 or ItemId.BlankTapeT2
                   or ItemId.BlankTapeHalfT1 or ItemId.BlankTapeHalfT2
                   or ItemId.BlankTapeFullT1 or ItemId.BlankTapeFullT2
-                  or ItemId.Cassette or ItemId.TraxUsbStick;
+                  or ItemId.Cassette or ItemId.TraxUsbStick
+                  or ItemId.BaitGrubs or ItemId.BaitGlowworms or ItemId.BaitVoidmaggots;
     }
 
     // Slot-only items: selected via number key but have no controller to equip.
@@ -1063,6 +1068,10 @@ public class Hotbar : MonoBehaviour
     public static Color SwatchFor(ItemId id) => ResourceSwatchColor(id);
     public static Color CassetteSwatchFor(string cassetteId) => CassetteSwatch(cassetteId);
 
+    static readonly Color BaitGrubSwatch = new Color32(0xD8, 0xC4, 0x9A, 0xFF);   // grub cream
+    static readonly Color BaitGlowSwatch = new Color32(0x8E, 0xE8, 0x5C, 0xFF);   // glowworm green
+    static readonly Color BaitVoidSwatch = new Color32(0x9B, 0x6C, 0xE0, 0xFF);   // voidmaggot violet
+
     static readonly Color MushroomSwatchColor  = new Color32(0xE0, 0x6C, 0x75, 0xFF);   // cap red
     static readonly Color MushSaplingSwatchCol = new Color32(0xC8, 0x9B, 0xE6, 0xFF);   // spore violet
 
@@ -1086,6 +1095,11 @@ public class Hotbar : MonoBehaviour
             // reads at a glance even before you check the names.
             case ItemId.Cassette:  return CassetteSwatch(null);
             case ItemId.TraxUsbStick: return TraxUsbSwatchColor;
+            // Bait swatches read as what they are at a glance: grub cream,
+            // glowworm green, voidmaggot violet.
+            case ItemId.BaitGrubs:       return BaitGrubSwatch;
+            case ItemId.BaitGlowworms:   return BaitGlowSwatch;
+            case ItemId.BaitVoidmaggots: return BaitVoidSwatch;
             default: return Color.white;
         }
     }
@@ -1109,6 +1123,9 @@ public class Hotbar : MonoBehaviour
             case ItemId.Cassette:  return "CASSETTE";
             case ItemId.TraxUsbStick: return "TRAX USB";
             case ItemId.Money:     return "MONEY";
+            case ItemId.BaitGrubs:       return "GRUBS";
+            case ItemId.BaitGlowworms:   return "GLOWWORMS";
+            case ItemId.BaitVoidmaggots: return "VOIDMAGGOTS";
             default: return "—";
         }
     }
@@ -1679,6 +1696,12 @@ public class Hotbar : MonoBehaviour
         for (int i = 0; i < TotalSlots; i++)
         {
             var v = slotViews[i];
+            // Refresh() runs from Update, so it can land on a frame where the
+            // slot widgets have not been built yet (or were torn down by a
+            // scene change). Every v.itemIcon / v.<widget> write below then
+            // threw a NullReferenceException once per slot per frame.
+            if (v == null || v.itemIcon == null) continue;
+
             ItemId id = slots[i].id;
             bool empty = id == ItemId.None;
             // Phase 3 fix: active = exact-slot match, not id match. id-based

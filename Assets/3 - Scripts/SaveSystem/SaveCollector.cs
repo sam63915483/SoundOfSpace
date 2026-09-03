@@ -620,6 +620,7 @@ public static class SaveCollector
                     ? new FishEntrySave
                       {
                           fishType  = slot.fishData.fishType,
+                          speciesId = slot.fishData.speciesId,
                           weightLbs = slot.fishData.weightLbs,
                           fishColor = slot.fishData.fishColor,
                       }
@@ -653,6 +654,7 @@ public static class SaveCollector
                     ? new FishEntrySave
                       {
                           fishType  = s.fishData.fishType,
+                          speciesId = s.fishData.speciesId,
                           weightLbs = s.fishData.weightLbs,
                           fishColor = s.fishData.fishColor,
                       }
@@ -686,6 +688,7 @@ public static class SaveCollector
             {
                 if (e.fishData == null) continue;
                 fish = new FishEntry(e.fishData.fishType, e.fishData.weightLbs);
+                fish.speciesId = e.fishData.speciesId;
                 fish.fishColor = e.fishData.fishColor;
             }
             arr[k] = new Hotbar.Slot
@@ -715,6 +718,7 @@ public static class SaveCollector
                 ? new FishEntrySave
                   {
                       fishType  = slot.fishData.fishType,
+                      speciesId = slot.fishData.speciesId,
                       weightLbs = slot.fishData.weightLbs,
                       fishColor = slot.fishData.fishColor,
                   }
@@ -764,6 +768,7 @@ public static class SaveCollector
                         ? new FishEntrySave
                           {
                               fishType  = slot.fishData.fishType,
+                              speciesId = slot.fishData.speciesId,
                               weightLbs = slot.fishData.weightLbs,
                               fishColor = slot.fishData.fishColor,
                           }
@@ -787,6 +792,7 @@ public static class SaveCollector
             s.fish.Add(new FishInventorySave.Entry
             {
                 fishType = f.fishType,
+                speciesId = f.speciesId,
                 weightLbs = f.weightLbs,
                 fishColor = f.fishColor,
             });
@@ -1698,6 +1704,7 @@ public static class SaveCollector
                 {
                     if (e.fishData == null) { slots[k] = default; continue; }
                     fish = new FishEntry(e.fishData.fishType, e.fishData.weightLbs);
+                fish.speciesId = e.fishData.speciesId;
                     fish.fishColor = e.fishData.fishColor;
                 }
                 else if (id == Hotbar.ItemId.FishBag)
@@ -1724,6 +1731,7 @@ public static class SaveCollector
         foreach (var e in s.fish)
         {
             var fe = new FishEntry(e.fishType, e.weightLbs);
+            fe.speciesId = e.speciesId;
             fe.fishColor = e.fishColor;
             list.Add(fe);
         }

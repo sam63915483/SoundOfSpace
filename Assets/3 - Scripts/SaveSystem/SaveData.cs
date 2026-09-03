@@ -329,6 +329,11 @@ public class FishEntrySave
     public string fishType;          // "Common" | "Uncommon" | "Rare"
     public int weightLbs;
     public Color fishColor;
+    // Phase 1 fishing revamp: which of the 12 species. EMPTY on every save
+    // written before the revamp -- FishEntry.ResolveSpecies() migrates those to
+    // species 0 of their recorded tier on first read, so old saves load with no
+    // schema bump and no migration pass.
+    public string speciesId;
 }
 
 [Serializable]
@@ -505,6 +510,9 @@ public class FishInventorySave
         public string fishType;
         public int weightLbs;
         public Color fishColor;
+        // Phase 1 fishing revamp. Empty on pre-revamp saves; FishEntry
+        // .ResolveSpecies() migrates those to species 0 of their tier.
+        public string speciesId;
     }
     public List<Entry> fish = new List<Entry>();
     // Phase 2: true once existing FishInventory entries have been pushed

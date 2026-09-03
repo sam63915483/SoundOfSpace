@@ -24,7 +24,17 @@ using UnityEngine;
 /// Everything is computed in camera-local space (the rig is a descendant of the
 /// camera) and all velocity inputs come from PlayerController's surface-relative
 /// accessors, so it's floating-origin safe. No Rigidbody, no colliders.
+///
+/// <para><b>Execution order 150 — after the camera is finalised.</b> This used to
+/// run at the default 0, which put it AHEAD of CameraTransformFX (order 100),
+/// the script that applies the strafe head-tilt to the camera's local rotation.
+/// The motor's whole angular-velocity input is <c>cam.rotation</c> deltas, so at
+/// order 0 it was reacting to the camera's rotation from the PREVIOUS frame —
+/// the sway lagged the head tilt by a frame, and every reversal of a strafe
+/// (flicking A↔D, which flips the tilt target's sign) fed the springs a stale
+/// input. Same reasoning as PlayerFlashlight (150) and LensFlareRegistry (300).</para>
 /// </summary>
+[DefaultExecutionOrder(150)]
 public class ViewmodelMotor : MonoBehaviour
 {
     [Header("Master")]

@@ -47,7 +47,6 @@ public class FishingdexManager : MonoBehaviour
     // Preview rig (runtime built — no scene refs)
     Camera previewCamera;
     Transform previewStage;
-    Ship _shipCached;
 
     bool isOpen;
     FishingdexMode currentMode = FishingdexMode.Browse;
@@ -261,7 +260,7 @@ public class FishingdexManager : MonoBehaviour
             previewImage.texture = detailRenderTexture;
             previewImage.color = Color.white;
         }
-        if (specType   != null) specType.text   = entry.fishType.ToUpper();
+        if (specType   != null) specType.text   = entry.DisplayName.ToUpper();
         if (specMass   != null) specMass.text   = entry.weightLbs + " LB";
         if (specClass  != null) specClass.text  = GetRarityLabel(entry.fishType);
         if (specValue  != null) specValue.text  = "$" + entry.GetValue();
@@ -366,6 +365,16 @@ public class FishingdexManager : MonoBehaviour
         "Rare"     => rareFishPrefab,
         "Uncommon" => uncommonFishPrefab,
         _          => commonFishPrefab,
+    };
+
+    /// Phase 1 fishing revamp: the tier -> model lookup, exposed so
+    /// FishSpeciesVisuals can resolve a species to a prefab without every
+    /// caller knowing there is only one model per tier.
+    public GameObject PrefabForTier(FishTier tier) => tier switch
+    {
+        FishTier.Rare     => rareFishPrefab,
+        FishTier.Uncommon => uncommonFishPrefab,
+        _                 => commonFishPrefab,
     };
 
     public string GetRarityLabel(string fishType) => fishType switch
@@ -673,7 +682,7 @@ public class FishingdexManager : MonoBehaviour
 
     GameObject AddListRow(FishEntry entry, RenderTexture rt)
     {
-        var row = NewUIObject("Row_" + entry.fishType + "_" + entry.weightLbs, listContent);
+        var row = NewUIObject("Row_" + entry.DisplayName + "_" + entry.weightLbs, listContent);
         var le = row.AddComponent<LayoutElement>();
         le.preferredHeight = 48;
         var rowBg = row.AddComponent<Image>();
@@ -695,7 +704,9 @@ public class FishingdexManager : MonoBehaviour
         srt.sizeDelta = new Vector2(3, 0);
         srt.anchoredPosition = Vector2.zero;
         var stripeImg = stripe.AddComponent<Image>();
-        stripeImg.color = GetStripeColorForType(entry.fishType);
+        // Phase 1: the stripe is the SPECIES tint, which is the only thing that
+        // tells four same-model species in a tier apart at a glance.
+        stripeImg.color = FishSpeciesVisuals.TintOf(entry);
         stripeImg.raycastTarget = false;
 
         var iconGo = NewUIObject("Thumb", row.transform);
@@ -719,7 +730,7 @@ public class FishingdexManager : MonoBehaviour
         if (rt != null) thumb.texture = rt;
 
         var name = NewText("Name", row.transform,
-            entry.fishType.ToUpper() + "." + entry.weightLbs.ToString("D2"), 13,
+            entry.DisplayName.ToUpper() + "." + entry.weightLbs.ToString("D2"), 13,
             CyanScannerPalette.AccentDim, FontStyles.Bold, TextAlignmentOptions.MidlineLeft);
         name.characterSpacing = 1;
         var nrt = name.rectTransform;

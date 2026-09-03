@@ -325,18 +325,30 @@ public class HeldItemViewmodel : MonoBehaviour
         // the dex is what guarantees the fish in your hand is the fish in the
         // hotbar. The instanced materials go with the GameObject on Clear().
         if (entry != null)
-        {
-            go.transform.localScale = new Vector3(FishEntry.GetXScaleFromWeight(entry.weightLbs), 1f, 1f);
             foreach (var r in go.GetComponentsInChildren<Renderer>(true))
                 r.material.color = entry.fishColor;
-        }
 
-        // Normalise to a sane held size regardless of how the prefab is authored.
+        // Normalise to a WEIGHT-DRIVEN length, not a constant. The old flow
+        // stretched X by weight and then normalised the longest edge to
+        // fishWorldSize -- and a fish's length IS its longest edge, so the
+        // normalise cancelled the weight scaling exactly and every fish in
+        // hand came out the same size. Sam, 2026-09-02: "a 50 lb rare looks
+        // the same weight as a 5 pound common." Same cube-root law as the
+        // fish on the line, scaled down for the hand.
+        float targetLen = entry != null
+            ? FishingRules.BodyLengthForWeight(entry.weightLbs) * heldFishScale
+            : fishWorldSize;
         float longest = LongestRendererEdge(go);
         if (longest > 0.0001f)
+            go.transform.localScale = Vector3.Scale(go.transform.localScale,
+                                                    Vector3.one * (targetLen / longest));
+        // The SAME girth law the fish on the line uses (models face -Z: X =
+        // width full factor, Y = belly 60%) -- one shape, everywhere, always.
+        if (entry != null)
         {
-            float k = fishWorldSize / longest;
-            go.transform.localScale = Vector3.Scale(go.transform.localScale, Vector3.one * k);
+            float girth = FishingRules.GirthFactorForWeight(entry.weightLbs);
+            go.transform.localScale = Vector3.Scale(go.transform.localScale,
+                new Vector3(girth, 1f + (girth - 1f) * 0.6f, 1f));
         }
 
         _baseContentRot = Quaternion.Euler(fishRotationOffset);
@@ -391,4 +403,8 @@ public class HeldItemViewmodel : MonoBehaviour
     public float mushroomWorldSize = 0.26f;
     [Tooltip("Extra rotation applied to a held mushroom so the cap presents to the camera rather than pointing away.")]
     public Vector3 mushroomRotationOffset = new Vector3(-12f, 160f, 0f);
+
+    [Header("Fish Size (weight-driven)")]
+    [Tooltip("Fraction of the fish's true body length (FishingRules.BodyLengthForWeight) used for the in-hand display. 1 = life size; smaller keeps a 50 lb beast from blocking the whole camera. At 0.75, 1 lb ~ 0.26 m and 50 lb ~ 0.94 m in hand.")]
+    [Range(0.25f, 1f)] public float heldFishScale = 0.75f;
 }

@@ -257,25 +257,39 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   shootSpeed: 15
-  bobAmplitude: 0.15
+  bobAmplitude: 0.015
   bobFrequency: 1.5
   minStrikeWaitTime: 1
   maxStrikeWaitTime: 10
   strikeBobFrequency: 8
-  strikeBobAmplitude: 1
+  strikeBobAmplitude: 0.02
+  maxSwimLateral: 1
+  swimLateralSpeed: 0.5
+  retrieveSpeed: 3.3
+  hangLeash: 0.75
+  waterRetrieveSpeed: 3.3
+  retrieveBiteBonus: 1.2
+  lostBiteBonus: 1.3
+  emptyLureRodLoad: 0.16
+  tipReelStartDistance: 0.4
+  shoreTouchRadius: 0.45
+  shoreProbeAhead: 0.35
+  shoreProbeRadius: 0.2
+  tugIntervalMin: 0.35
+  tugIntervalMax: 1.1
+  tugDepth: 0.09
+  fightJitter: 0.035
+  runJitterMultiplier: 1.8
+  fightFollowSpeed: 9
   commonFishStrikeDuration: 3
   uncommonFishStrikeDuration: 2
   rareFishStrikeDuration: 1
   waterSplashClip: {fileID: 8300000, guid: 6e787c272da292740bfee7bd05c046bb, type: 3}
-  catchClip: {fileID: 8300000, guid: b02789abd213dd841b35036a752847e8, type: 3}
-  spinCatchClip: {fileID: 8300000, guid: dcc546d9ebb5c644491a5621d9d1c0b4, type: 3}
   biteClip: {fileID: 8300000, guid: 69828db36a1ec754582aa93fdeea1e76, type: 3}
   waterSplashVolume: 0.5
-  catchVolume: 0.7
-  spinCatchVolume: 0.8
   biteVolume: 0.5
-  spinCatchPitchStep: 0.3
-  spinCatchPitchMax: 5
+  tuning: {fileID: 0}
+  flipHookedFish: 0
 --- !u!114 &-3239968296277068451
 MonoBehaviour:
   m_ObjectHideFlags: 0
