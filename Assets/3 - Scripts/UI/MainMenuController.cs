@@ -69,7 +69,6 @@ public class MainMenuController : MonoBehaviour
             : PlayerPrefs.GetFloat("masterVolume", InputSettings.defaultMasterVolume);
 
         BuildCanvas();
-        BuildFadeOverlay();
         StartMenuAmbience();
     }
 
@@ -96,21 +95,17 @@ public class MainMenuController : MonoBehaviour
     // game loads 1.6.7.7.7 single-mode, which unloads the background
     // automatically.
     GameObject menuBgRoot;   // nebula image + stars, swapped out once 3D is live
-    Image fadeOverlay;       // full-screen black; the menu fades in through it
+    CanvasGroup menuBgGroup; // fades the nebula (and its stars) out as one
 
-    // Built at the END of Awake so it sits above everything drawn so far. The
-    // menu opens BLACK: the 3D background loads and the director takes its
-    // first frame behind the cover, then the whole menu fades in — no flash of
-    // the old nebula, no twitching setup frames (Sam's review, 2026-08-31).
-    void BuildFadeOverlay()
-    {
-        var rt = NewUI("FadeOverlay", transform);
-        Stretch(rt, 0f, 0f, 0f, 0f);
-        fadeOverlay = rt.gameObject.AddComponent<Image>();
-        fadeOverlay.color = Color.black;
-        fadeOverlay.raycastTarget = false;
-        rt.SetAsLastSibling();
-    }
+    // No black fade-in. The menu appears INSTANTLY — title, buttons and the
+    // flat nebula — exactly like the pre-3D menu (Sam, 2026-09-03: "I liked
+    // the old menu how it would just appear"). The nebula is the cover: it
+    // sits behind the UI but above the 3D camera output, so the additive
+    // scene loads and the camera rig takes its first exact frame behind it,
+    // then only the nebula crossfades out to reveal the live solar system.
+    // (The 2026-08-31 black overlay existed to hide the retired shot
+    // director's twitchy setup frames; the baked-take rig has none.)
+    const float NebulaCrossfadeSeconds = 1.2f;
 
     IEnumerator LoadOrbitBackground()
     {
@@ -121,12 +116,12 @@ public class MainMenuController : MonoBehaviour
 
             // The background scene brings the gameplay camera (with the
             // atmosphere post stack) and its own AudioListener — retire this
-            // scene's, and drop the flat nebula while the screen is still black.
+            // scene's. The nebula stays up for now: it is the cover the 3D
+            // scene settles behind.
             foreach (var cam in FindObjectsOfType<Camera>())
                 if (cam.gameObject.scene.name == "MainMenu") cam.enabled = false;
             foreach (var lis in FindObjectsOfType<AudioListener>())
                 if (lis.gameObject.scene.name == "MainMenu") lis.enabled = false;
-            if (menuBgRoot != null) menuBgRoot.SetActive(false);
 
             // The additive load leaves the EventSystem knocked out of
             // `current` with no input module bound (probed live:
@@ -146,24 +141,25 @@ public class MainMenuController : MonoBehaviour
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            // Let the shot director take its first exact frame behind the cover.
+            // Let the camera rig take its first exact frame behind the nebula.
             yield return null;
             yield return null;
-        }
-        // Scene missing → the nebula simply stays; either way, fade the menu in.
-        if (fadeOverlay != null)
-        {
-            float t = 0f;
-            while (t < 1f)
+
+            // Crossfade the nebula out; the live solar system is already
+            // rendering underneath. UI above it is untouched throughout.
+            if (menuBgGroup != null)
             {
-                t += Time.deltaTime / 1.2f;
-                var c = fadeOverlay.color;
-                c.a = 1f - Mathf.Clamp01(t);
-                fadeOverlay.color = c;
-                yield return null;
+                float t = 0f;
+                while (t < 1f)
+                {
+                    t += Time.deltaTime / NebulaCrossfadeSeconds;
+                    menuBgGroup.alpha = 1f - Mathf.Clamp01(t);
+                    yield return null;
+                }
             }
-            fadeOverlay.gameObject.SetActive(false);
+            if (menuBgRoot != null) menuBgRoot.SetActive(false);
         }
+        // Scene missing → the nebula simply stays, as the old menu did.
     }
 
     void Start()
@@ -226,6 +222,12 @@ public class MainMenuController : MonoBehaviour
         bgImage.color = Color.white;
         bgImage.raycastTarget = false;
         menuBgRoot = bg.gameObject;
+        // One group so the nebula and its twinkling stars fade out together
+        // (a star's own per-frame alpha multiplies with the group's).
+        menuBgGroup = bg.gameObject.AddComponent<CanvasGroup>();
+        menuBgGroup.alpha = 1f;
+        menuBgGroup.blocksRaycasts = false;
+        menuBgGroup.interactable = false;
 
         // Star field — scattered across the whole screen
         AddStars(bg);
@@ -974,6 +976,9 @@ public class MainMenuController : MonoBehaviour
         if (NewspaperReaderUI.Instance == null) { var go = new GameObject("NewspaperReaderUI"); DontDestroyOnLoad(go); go.AddComponent<NewspaperReaderUI>(); }
         if (MonumentLinkPopupUI.Instance == null) { var go = new GameObject("MonumentLinkPopupUI"); DontDestroyOnLoad(go); go.AddComponent<MonumentLinkPopupUI>(); }
         if (VitalsHUD.Instance == null) { var go = new GameObject("VitalsHUD"); DontDestroyOnLoad(go); go.AddComponent<VitalsHUD>(); }
+        // Fishing fight bar. MainMenu-skipping auto-singleton, so it MUST be
+        // seeded here or it never exists in a build (CLAUDE.md trap #1).
+        if (FishingTensionHUD.Instance == null) { var go = new GameObject("FishingTensionHUD"); DontDestroyOnLoad(go); go.AddComponent<FishingTensionHUD>(); }
         tick("vitals HUD");       yield return null;
         if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
         tick("oxygen system");    yield return null;

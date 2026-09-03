@@ -18,6 +18,11 @@ using UnityEngine;
 /// </summary>
 public class MenuShuttleTour : MonoBehaviour
 {
+    // Diagnostic chatter switch. static readonly (never const) so the guarded
+    // bodies don't become CS0162 unreachable code — see FeatureVault.cs.
+    // Flip to true when investigating menu shuttle path spikes again.
+    static readonly bool Verbose = false;
+
     [Tooltip("Seconds for one full lap around each planet.")]
     public float orbitPeriod = 45f;
     // Per-stop orbit altitude (radius multiplier), chosen so NO orbit ever
@@ -93,8 +98,8 @@ public class MenuShuttleTour : MonoBehaviour
         rb.position = lastPos;
         transform.position = lastPos;
         smoothedUp = (lastPos - FocusBody.Position).normalized;
-        // First-frame attitude: head-first along the orbit (screen is still
-        // black behind the menu fade, so this never reads as a snap).
+        // First-frame attitude: head-first along the orbit (the menu's flat
+        // nebula still covers the 3D view here, so this never reads as a snap).
         Vector3 tangent0 = new Vector3(-Mathf.Sin(orbitPhase), Mathf.Cos(orbitPhase), 0f);
         rb.rotation = HeadFirst(tangent0, -smoothedUp);
         transform.rotation = rb.rotation;
@@ -267,7 +272,7 @@ public class MenuShuttleTour : MonoBehaviour
             foreach (var b in allBodies)
                 if (b != null && b.radius > 0f && Vector3.Distance(target, b.Position) < b.radius * 3f)
                     sb.Append($" | {b.bodyName} d={Vector3.Distance(target, b.Position):0.0}");
-            Debug.LogWarning(sb.ToString());
+            if (Verbose) Debug.LogWarning(sb.ToString());
         }
 
         rb.MovePosition(target);
