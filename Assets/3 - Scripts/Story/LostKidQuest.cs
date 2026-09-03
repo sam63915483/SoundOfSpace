@@ -46,10 +46,13 @@ public class LostKidQuest : MonoBehaviour
 
     [Header("Reunion")]
     [Tooltip("The following kid this close to the parent triggers the reunion.")]
-    public float reunionDistance = 5f;
+    public float reunionDistance = 15f;
     public float celebrateSeconds = 10f;
     public float hopHeight = 0.35f;
     public float hopsPerSecond = 2.2f;
+    [Tooltip("They circle each other while jumping: radius of the ring (m) and laps over the celebration.")]
+    public float celebrateRingRadius = 1.3f;
+    public float celebrateLaps = 2f;
     [Tooltip("After the celebration the parent's thank-you starts by itself if you are within this range; otherwise it plays when you next talk to him.")]
     public float thankYouAutoStartDistance = 16f;
 
@@ -261,6 +264,19 @@ public class LostKidQuest : MonoBehaviour
         }
     }
 
+    // One dancer: seated on the terrain under the ring point, lifted by the hop,
+    // turned to face the other. Planet-local throughout.
+    static void PlaceOnRing(Transform body, AlienWander w, Vector3 ringLocal, Vector3 otherLocal, float hop)
+    {
+        Vector3 seat = ringLocal;
+        if (w.TryGroundAt(ringLocal, out Vector3 g)) seat = g - g.normalized * w.SeatDepth;
+        Vector3 up = seat.normalized;
+        body.localPosition = seat + up * hop;
+        Vector3 face = Vector3.ProjectOnPlane(otherLocal - seat, up);
+        if (face.sqrMagnitude > 1e-6f)
+            body.localRotation = Quaternion.Slerp(body.localRotation, Quaternion.LookRotation(face.normalized, up), 10f * Time.deltaTime);
+    }
+
     IEnumerator Reunion()
     {
         if (_reunionRunning) yield break;
@@ -291,13 +307,30 @@ public class LostKidQuest : MonoBehaviour
         kw.EndApproach(); pw.EndApproach();
         kw.SpeedMultiplier = 1f; pw.SpeedMultiplier = 1f;
 
-        // Jump for joy: both hop on their local radial for celebrateSeconds
-        // (the walker's own bounce, so the seat stays exact underneath).
+        // Jump for joy: both circle their midpoint on opposite sides, hopping,
+        // facing each other, feet seated on the terrain every frame.
         kw.Hold = true; pw.Hold = true;
-        kw.BounceHeight = hopHeight; kw.BounceHz = hopsPerSecond;
-        pw.BounceHeight = hopHeight * 0.8f; pw.BounceHz = hopsPerSecond;
-        yield return new WaitForSeconds(celebrateSeconds);
         kw.BounceHeight = 0f; pw.BounceHeight = 0f;
+        Vector3 mid = (kid.localPosition + par.localPosition) * 0.5f;
+        Vector3 up = mid.normalized;
+        Vector3 t1 = Vector3.ProjectOnPlane(kid.localPosition - par.localPosition, up);
+        if (t1.sqrMagnitude < 1e-4f) t1 = Vector3.ProjectOnPlane(Vector3.right, up);
+        t1.Normalize();
+        Vector3 t2 = Vector3.Cross(up, t1).normalized;
+        float t0 = Time.time;
+        while (Time.time - t0 < celebrateSeconds)
+        {
+            float t = Time.time - t0;
+            float ang = t / celebrateSeconds * celebrateLaps * Mathf.PI * 2f;
+            float hop = Mathf.Abs(Mathf.Sin(t * Mathf.PI * hopsPerSecond)) * hopHeight;
+            Vector3 ring = t1 * Mathf.Cos(ang) + t2 * Mathf.Sin(ang);
+            PlaceOnRing(kid, kw, mid + ring * celebrateRingRadius, mid - ring * celebrateRingRadius, hop);
+            PlaceOnRing(par, pw, mid - ring * celebrateRingRadius, mid + ring * celebrateRingRadius, hop * 0.8f);
+            yield return null;
+        }
+        // Land exactly where each stands (walker state follows).
+        if (kw.TryGroundAt(kid.localPosition, out Vector3 kg)) kw.TeleportLocal(kg - kg.normalized * kw.SeatDepth);
+        if (pw.TryGroundAt(par.localPosition, out Vector3 pg)) pw.TeleportLocal(pg - pg.normalized * pw.SeatDepth);
         kw.Hold = false; pw.Hold = false;
 
         // Then they chill: the kid lives here now.

@@ -13,19 +13,22 @@ using UnityEngine;
 /// buried the ones whose AABB happened to be right. Per-model error, either
 /// direction -- exactly the mix Sam saw.
 ///
-/// This measures the INSTANCE: skinned meshes are baked (readable regardless
-/// of import settings), plain meshes use vertices when readable and bounds
-/// otherwise, everything in the root's unscaled local space (so SpawnFade's
-/// 5% start scale cancels), and the body is re-seated so that lowest point
-/// lands on the terrain hit under it -- the same planet-local probe the walker
-/// uses. Call once right after spawn and hand the result to AlienWander so
-/// every later step keeps the same depth.
+/// This measures the INSTANCE from real vertices: skinned meshes are baked
+/// (readable regardless of import settings), plain meshes use vertices when
+/// readable. Everything lands in the root's unscaled local space (so the
+/// SpawnFade's 5% start scale cancels), and the body is re-seated so that
+/// lowest point meets the terrain hit under it -- the same planet-local probe
+/// the walker uses. Call once right after spawn and hand the result to
+/// AlienWander so every later step keeps the same depth.
+///
+/// Renderer/skinned BOUNDS are never used for the feet: authored skinned
+/// bounds are loose (a first version fell back to them and floated every
+/// alien by the slack in those boxes).
 /// </summary>
 public static class NPCSeating
 {
     static Mesh _bake;
     static readonly List<Vector3> _verts = new List<Vector3>(4096);
-    static readonly Vector3[] _corners = new Vector3[8];
 
     /// Lowest point of the model along the root's local +Y, in root-local
     /// UNSCALED units (multiply by the root scale for metres).
@@ -39,25 +42,21 @@ public static class NPCSeating
         {
             if (smr.sharedMesh == null) continue;
             if (_bake == null) _bake = new Mesh();
-            // Baked without the renderer's scale, then pushed through its full
-            // transform (which applies that scale once) into root space.
             smr.BakeMesh(_bake, false);
             _bake.GetVertices(_verts);
-            float localMin = float.MaxValue, localMax = float.MinValue;
+            if (_verts.Count == 0) continue;
+
+            // BakeMesh's scale semantics differ between Unity versions/overloads.
+            // Decide per renderer by comparing the baked size to the bind-pose
+            // mesh's own bounds: a bake the size of the mesh is unscaled (push
+            // it through the full transform); a bake scaled by the transform's
+            // scale must go through rotation + position only.
+            Matrix4x4 toWorld = BakeToWorld(smr);
             for (int i = 0; i < _verts.Count; i++)
             {
-                float y = root.InverseTransformPoint(smr.transform.TransformPoint(_verts[i])).y;
-                if (y < localMin) localMin = y;
-                if (y > localMax) localMax = y;
+                float y = root.InverseTransformPoint(toWorld.MultiplyPoint3x4(_verts[i])).y;
+                if (y < min) min = y;
             }
-            if (_verts.Count == 0) continue;
-            // Sanity: the vertex height must agree with the renderer's world
-            // bounds (which are definitely scaled). If BakeMesh's scale
-            // semantics ever differ, fall back to the bounds for this part.
-            float boundsH = BoundsHeightLocal(root, smr.bounds, out float boundsMin);
-            float vertH = localMax - localMin;
-            if (boundsH > 1e-4f && (vertH > boundsH * 2f || vertH < boundsH * 0.5f)) localMin = boundsMin;
-            if (localMin < min) min = localMin;
             any = true;
         }
 
@@ -65,25 +64,14 @@ public static class NPCSeating
         {
             var mf = mr.GetComponent<MeshFilter>();
             Mesh mesh = mf != null ? mf.sharedMesh : null;
-            if (mesh == null) continue;
-            float localMin;
-            if (mesh.isReadable)
+            if (mesh == null || !mesh.isReadable) continue;   // unreadable: no guess from loose bounds
+            mesh.GetVertices(_verts);
+            for (int i = 0; i < _verts.Count; i++)
             {
-                mesh.GetVertices(_verts);
-                localMin = float.MaxValue;
-                for (int i = 0; i < _verts.Count; i++)
-                {
-                    float y = root.InverseTransformPoint(mr.transform.TransformPoint(_verts[i])).y;
-                    if (y < localMin) localMin = y;
-                }
-                if (_verts.Count == 0) continue;
+                float y = root.InverseTransformPoint(mr.transform.TransformPoint(_verts[i])).y;
+                if (y < min) min = y;
             }
-            else
-            {
-                BoundsHeightLocal(root, mr.bounds, out localMin);
-            }
-            if (localMin < min) min = localMin;
-            any = true;
+            if (_verts.Count > 0) any = true;
         }
 
         if (!any) return false;
@@ -91,22 +79,21 @@ public static class NPCSeating
         return true;
     }
 
-    // Height (and lowest y) of a WORLD bounds in the root's unscaled local space.
-    static float BoundsHeightLocal(Transform root, Bounds b, out float minY)
+    static Matrix4x4 BakeToWorld(SkinnedMeshRenderer smr)
     {
-        Vector3 mn = b.min, mx = b.max;
-        _corners[0] = new Vector3(mn.x, mn.y, mn.z); _corners[1] = new Vector3(mx.x, mn.y, mn.z);
-        _corners[2] = new Vector3(mn.x, mx.y, mn.z); _corners[3] = new Vector3(mx.x, mx.y, mn.z);
-        _corners[4] = new Vector3(mn.x, mn.y, mx.z); _corners[5] = new Vector3(mx.x, mn.y, mx.z);
-        _corners[6] = new Vector3(mn.x, mx.y, mx.z); _corners[7] = new Vector3(mx.x, mx.y, mx.z);
-        minY = float.MaxValue; float maxY = float.MinValue;
-        for (int i = 0; i < 8; i++)
-        {
-            float y = root.InverseTransformPoint(_corners[i]).y;
-            if (y < minY) minY = y;
-            if (y > maxY) maxY = y;
-        }
-        return maxY - minY;
+        Transform t = smr.transform;
+        float meshSize = smr.sharedMesh.bounds.size.magnitude;
+        _bake.RecalculateBounds();
+        float bakeSize = _bake.bounds.size.magnitude;
+        Vector3 ls = t.lossyScale;
+        float scaleAvg = (Mathf.Abs(ls.x) + Mathf.Abs(ls.y) + Mathf.Abs(ls.z)) / 3f;
+        if (meshSize < 1e-6f || bakeSize < 1e-6f || Mathf.Abs(scaleAvg - 1f) < 1e-3f)
+            return t.localToWorldMatrix;   // no scale to argue about
+        float ratio = bakeSize / meshSize;
+        bool bakeIsScaled = Mathf.Abs(ratio - scaleAvg) < Mathf.Abs(ratio - 1f);
+        return bakeIsScaled
+            ? Matrix4x4.TRS(t.position, t.rotation, Vector3.one)
+            : t.localToWorldMatrix;
     }
 
     /// <summary>
@@ -131,6 +118,7 @@ public static class NPCSeating
         Vector3 groundLocal = Quaternion.Inverse(rb.rotation) * (hit.point - rb.position);
         seatDepth = feetY * scale + embed;
         root.localPosition = groundLocal - groundLocal.normalized * seatDepth;
+        Debug.Log($"[NPCSeating] {root.name}: feetY={feetY:F3} x scale {scale:F2} -> seat {seatDepth:F3} m (embed {embed:F3}).");
         return true;
     }
 }

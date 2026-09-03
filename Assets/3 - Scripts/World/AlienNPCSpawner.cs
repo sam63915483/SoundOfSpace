@@ -530,7 +530,7 @@ public class AlienNPCSpawner : MonoBehaviour
         // groundOffset left some aliens buried and others floating, per
         // prefab. Measure the real lowest vertex of THIS instance and seat it
         // on the terrain under it; the wander keeps that depth from here.
-        if (NPCSeating.Reseat(alien.transform, entry.body, groundMask, scale, groundEmbedPerScale * scale, out float exactSeat)
+        if (NPCSeating.Reseat(alien.transform, entry.body, groundMask, scale, 0.01f, out float exactSeat)
             && wander != null && wander.enabled)
             wander.SetSeatDepth(exactSeat);
     }

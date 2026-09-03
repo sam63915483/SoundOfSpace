@@ -65,6 +65,12 @@ public class AlienWander : MonoBehaviour
     public float SpeedMultiplier = 1f;
     /// Re-centre the stroll leash on wherever the body stands now.
     public void ReHome() { _homeLocal = _seatValid ? _seatLocal : transform.localPosition; _walkingState = false; }
+    /// Terrain under a planet-local point (quest choreography); same probe the steps use.
+    public bool TryGroundAt(Vector3 local, out Vector3 groundLocal)
+    {
+        return ProbeGround(local, out groundLocal, out _, out _);
+    }
+    public float SeatDepth => _seatDepth;
     /// Exact feet depth from NPCSeating (feet offset x scale + embed): every
     /// later step seats the body at this depth below the probe hit.
     public void SetSeatDepth(float depth) { _seatDepth = depth; _seatLocal = transform.localPosition; }

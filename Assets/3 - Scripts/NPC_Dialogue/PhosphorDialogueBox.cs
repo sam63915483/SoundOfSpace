@@ -31,7 +31,7 @@ public class PhosphorDialogueBox : MonoBehaviour
     public static PhosphorDialogueBox Instance { get; private set; }
 
     const float PanelWidth = 720f;   // on the 800×600 reference canvas ≈ 90% of screen
-    const float PanelBottom = 150f;
+    const float PanelBottom = 205f;   // was 150: sat on / overlapped the hotbar (Sam, 2026-09-03)
     const float PadX = 24f, PadTop = 44f, PadBottom = 16f;
     const float BodyFontSize = 26f;
 

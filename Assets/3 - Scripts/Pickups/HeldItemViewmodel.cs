@@ -324,7 +324,7 @@ public class HeldItemViewmodel : MonoBehaviour
         // it's named) while a property block has to guess at "_Color". Matching
         // the dex is what guarantees the fish in your hand is the fish in the
         // hotbar. The instanced materials go with the GameObject on Clear().
-        if (entry != null) FishSpeciesVisuals.Tint(go, entry.fishColor);
+        if (entry != null) FishSpeciesVisuals.ApplySpeciesLook(go, entry.ResolveSpecies(), worldLight: true);
 
         // Normalise to a WEIGHT-DRIVEN length, not a constant. The old flow
         // stretched X by weight and then normalised the longest edge to

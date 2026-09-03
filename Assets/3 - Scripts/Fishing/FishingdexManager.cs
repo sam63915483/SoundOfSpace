@@ -460,7 +460,7 @@ public class FishingdexManager : MonoBehaviour
         GameObject fishGO = Instantiate(prefab, previewStage.position, Quaternion.identity);
         fishGO.transform.localScale = new Vector3(FishEntry.GetXScaleFromWeight(entry.weightLbs), 1f, 1f);
         SetLayerRecursive(fishGO, fishPreviewLayer);
-        FishSpeciesVisuals.Tint(fishGO, entry.fishColor);
+        FishSpeciesVisuals.ApplySpeciesLook(fishGO, entry.ResolveSpecies(), worldLight: false);
 
         RenderTexture rt = new RenderTexture(width, height, 16, RenderTextureFormat.ARGB32);
         rt.Create();

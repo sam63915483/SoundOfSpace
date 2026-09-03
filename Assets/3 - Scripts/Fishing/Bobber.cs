@@ -1844,7 +1844,7 @@ public class Bobber : MonoBehaviour
             _hookedFish.transform.localScale,
             new Vector3(girth, 1f + (girth - 1f) * 0.6f, 1f));
 
-        FishSpeciesVisuals.Tint(_hookedFish, FishSpeciesVisuals.TintOf(pendingSpecies));
+        FishSpeciesVisuals.ApplySpeciesLook(_hookedFish, pendingSpecies, worldLight: true);
         foreach (var r in _hookedFish.GetComponentsInChildren<Renderer>())
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
 
