@@ -1844,12 +1844,9 @@ public class Bobber : MonoBehaviour
             _hookedFish.transform.localScale,
             new Vector3(girth, 1f + (girth - 1f) * 0.6f, 1f));
 
-        Color tint = FishSpeciesVisuals.TintOf(pendingSpecies);
+        FishSpeciesVisuals.Tint(_hookedFish, FishSpeciesVisuals.TintOf(pendingSpecies));
         foreach (var r in _hookedFish.GetComponentsInChildren<Renderer>())
-        {
-            r.material.color = tint;
             r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        }
 
         // The dex previews these prefabs on a dedicated layer; make sure OUR
         // copy is on a layer the main camera actually draws.
@@ -2511,7 +2508,7 @@ public class Bobber : MonoBehaviour
         }
         OrientationObjectives.Complete(OrientationObjectives.Objective.CatchFish);
         if (FishCatchUI.Instance != null)
-            FishCatchUI.Instance.ShowFishCaught(_landedTier, _landedWeight, bankedSpin, bankedCombo);
+            FishCatchUI.Instance.ShowFishCaught(FishingRules.Species[_landedSpecies].displayName, _landedWeight, bankedSpin, bankedCombo);
 
         OnFishLanded?.Invoke(bankedSpin, bankedCombo);
         _landedSpecies = -1;

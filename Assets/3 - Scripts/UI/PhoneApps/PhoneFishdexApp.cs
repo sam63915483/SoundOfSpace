@@ -82,7 +82,7 @@ public class PhoneFishdexApp : PhoneAppBase
         {
             var f = fish;   // capture
             Button row = null;
-            row = AddRow(f.fishType.ToUpper(), f.weightLbs + " LB", LabelDim, () => Select(f, row), out _, out _);
+            row = AddRow(f.DisplayName.ToUpper(), f.weightLbs + " LB", LabelDim, () => Select(f, row), out _, out _);
             if (first == null) first = f;
         }
         Select(first, ListContent.childCount > 0 ? ListContent.GetChild(0).GetComponent<Button>() : null);
@@ -110,7 +110,7 @@ public class PhoneFishdexApp : PhoneAppBase
         _preview.texture = _detailRT;
         _preview.color = _detailRT != null ? Color.white : new Color(1f, 1f, 1f, 0f);
 
-        _name.text = entry.fishType.ToUpper();
+        _name.text = entry.DisplayName.ToUpper();
         _classVal.text = dex.GetRarityLabel(entry.fishType);
         _massVal.text = entry.weightLbs + " LB";
         _valueVal.text = "$" + entry.GetValue();

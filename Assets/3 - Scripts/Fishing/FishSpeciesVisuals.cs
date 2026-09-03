@@ -28,6 +28,38 @@ public static class FishSpeciesVisuals
     public static Color TintOf(FishEntry entry) =>
         entry == null ? Color.white : TintOf(entry.ResolveSpecies());
 
+    static Shader _standard;
+
+    /// <summary>
+    /// Tint every renderer of a fish instance. The Floreswa fish material
+    /// points at the URP "Lit" shader and this project is Built-in RP, so the
+    /// shader is MISSING: every fish rendered with the error shader, which
+    /// ignores material.color -- the reason all species (and the red
+    /// GRULABU) looked identical (Sam, 2026-09-03). Any unsupported/missing
+    /// shader is swapped for Standard here before the colour is applied, on
+    /// every submesh material.
+    /// </summary>
+    public static void Tint(GameObject fish, Color tint)
+    {
+        if (fish == null) return;
+        foreach (var r in fish.GetComponentsInChildren<Renderer>(true))
+        {
+            var mats = r.materials;   // instanced copies, all submeshes
+            for (int i = 0; i < mats.Length; i++)
+            {
+                var m = mats[i];
+                if (m == null) continue;
+                var sh = m.shader;
+                if (sh == null || !sh.isSupported || sh.name.Contains("InternalError"))
+                {
+                    if (_standard == null) _standard = Shader.Find("Standard");
+                    if (_standard != null) m.shader = _standard;
+                }
+                m.color = tint;
+            }
+        }
+    }
+
     /// <summary>
     /// The prefab for a species. Falls back to the tier model whenever the
     /// requested modelIndex has no asset behind it — which today is every index

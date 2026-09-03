@@ -437,7 +437,7 @@ public class BonfireInteraction : MonoBehaviour
                          : C_Common;
             string detail = $"+{hunger:F0} hunger  |  {f.weightLbs} lbs";
 
-            MkFishCard(uiListContent, f.fishType, detail, dot, rt,
+            MkFishCard(uiListContent, f.DisplayName, detail, dot, rt,
                        canRemove ? () => OnRemoveFish(captured) : (System.Action)null);
         }
     }

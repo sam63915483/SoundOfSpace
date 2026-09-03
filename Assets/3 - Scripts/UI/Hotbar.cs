@@ -1983,8 +1983,10 @@ public class Hotbar : MonoBehaviour
             string label;
             if (activeId == ItemId.Fish && slots[newActive].fishData != null)
             {
-                // "COMMON FISH" / "UNCOMMON FISH" / "RARE FISH" + weight.
-                label = $"{slots[newActive].fishData.fishType.ToUpper()} FISH · {slots[newActive].fishData.weightLbs} LB";
+                // Species name first (Phase 1: the four species in a tier are
+                // told apart by name and tint), then the tier, then the weight.
+                var fd = slots[newActive].fishData;
+                label = $"{fd.DisplayName.ToUpper()} · {fd.fishType.ToUpper()} · {fd.weightLbs} LB";
             }
             else if (activeId == ItemId.FishBag)
             {

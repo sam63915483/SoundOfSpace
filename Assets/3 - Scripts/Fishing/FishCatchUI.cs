@@ -50,7 +50,7 @@ public class FishCatchUI : MonoBehaviour
         if (currentDisplay != null)
             StopCoroutine(currentDisplay);
 
-        string msg = $"+1 {fishType} Fish! ({weightLbs} lbs)";
+        string msg = $"+1 {fishType}! ({weightLbs} lbs)";   // species name (Bobber passes it)
         bool isSpin = spinDegrees >= 10f;
         if (isSpin)
         {

@@ -193,6 +193,11 @@ public class AuthoredNPCSpawner : MonoBehaviour
                              0f, wanderSpeed, 9999f, 9999f, wanderPauseDistance + 2.5f * scale, scale);
         }
 
+        // Exact feet: measure the instance's lowest vertex and seat it on the
+        // terrain hit under it (NPCSeating). The wander keeps the same depth.
+        if (NPCSeating.Reseat(go.transform, Planet, groundMask, scale, groundEmbedPerScale * scale, out float exactSeat))
+            Wander.SetSeatDepth(exactSeat);
+
         var fade = go.AddComponent<SpawnFade>();
         fade.BeginFadeIn();
 

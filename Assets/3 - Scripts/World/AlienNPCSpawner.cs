@@ -525,6 +525,14 @@ public class AlienNPCSpawner : MonoBehaviour
         {
             wander.enabled = false;
         }
+
+        // Exact feet (2026-09-03): the AABB-based bottomY + hand-tuned
+        // groundOffset left some aliens buried and others floating, per
+        // prefab. Measure the real lowest vertex of THIS instance and seat it
+        // on the terrain under it; the wander keeps that depth from here.
+        if (NPCSeating.Reseat(alien.transform, entry.body, groundMask, scale, groundEmbedPerScale * scale, out float exactSeat)
+            && wander != null && wander.enabled)
+            wander.SetSeatDepth(exactSeat);
     }
 
     public void MarkCellKilled(int bodySlot, long cellId)

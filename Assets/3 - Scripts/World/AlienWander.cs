@@ -65,6 +65,9 @@ public class AlienWander : MonoBehaviour
     public float SpeedMultiplier = 1f;
     /// Re-centre the stroll leash on wherever the body stands now.
     public void ReHome() { _homeLocal = _seatValid ? _seatLocal : transform.localPosition; _walkingState = false; }
+    /// Exact feet depth from NPCSeating (feet offset x scale + embed): every
+    /// later step seats the body at this depth below the probe hit.
+    public void SetSeatDepth(float depth) { _seatDepth = depth; _seatLocal = transform.localPosition; }
     /// Planet-local re-seat (quest scripts only); drops any stroll in progress.
     public void TeleportLocal(Vector3 localPos) { transform.localPosition = localPos; _seatLocal = localPos; _walkingState = false; }
     /// Hopping: > 0 bounces the body on its radial in LateUpdate, on top of
@@ -386,11 +389,13 @@ public class AlienWander : MonoBehaviour
         float stepLen = Mathf.Min(_speed * 1.35f * SpeedMultiplier * Time.deltaTime, dist);   // a little urgency
         Vector3 cand = cur + stepDir * stepLen;
 
+        // No slope limit while approaching (Sam, 2026-09-03): a follower must
+        // go wherever the player can walk, and the player climbs hills the
+        // stroll would never pick. Only deep water and missing ground block.
         if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal)
-            || (_oceanRadius > 0f && groundR < _oceanRadius - _wadeDepth)
-            || Vector3.Angle(normalLocal, groundLocal.normalized) > _maxSurfaceAngle + WalkSlopeSlack)
+            || (_oceanRadius > 0f && groundR < _oceanRadius - _wadeDepth))
         {
-            // Water or a cliff between us — can't get there. Report it; the
+            // Deep water between us -- can't get there. Report it; the
             // director sends the hungry text instead.
             ApproachBlocked = true;
             return;
