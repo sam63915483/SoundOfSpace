@@ -230,6 +230,8 @@ The NPC roster lives in `Assets/3 - Scripts/NPC_Dialogue/`. Pre-placed NPCs are 
 | ORG / Interrogation | `ORGDialogue`, `InterrogationDialogue` | Story/cinematic NPCs |
 | Streamed aliens | `SpawnedAlienNPC` + `AlienNPCDamageable` | Ambient population spawned by `AlienNPCSpawner` (verified — `AlienNPCSpawner` GameObject found at line 31742 of scene) |
 
+**Authored NPCs (2026-09-03).** Place an EMPTY under a planet, add `World/AuthoredNPCSpawner` (name, prefab or `borrowPrefabIndex` into the streamed spawner's list, scale, wander) + `NPC_Dialogue/AuthoredNPCTalk` (or a subclass overriding `Conversation()` with `Speak`/`Choose`/`Flag`). At runtime the spawner seats an alien on the terrain under the empty by radial raycast (retries until the planet collider exists), parents it through the physics frame, adds NPCWaveAnimation + AlienWander (`Hold`, `SpeedMultiplier`, `ReHome`, `TeleportLocal` are the quest hooks) + a talk trigger + a solid capsule; `AuthoredNPCBody` on the body relays range/gaze. First users: Floorbin/Shllorbin (`Story/LostKidQuest.cs`, `FloorbinTalk`, `ShllorbinTalk`) on Humble Abode's PARENT/KID markers, with `Fishing/BountyZone` on GRULABUSPOT rolling the GRULABU bounty row. State = StoryDirector flags.
+
 Story-impactful NPCs are tagged via `AlienNPCDamageable.isStoryImpactful` — when killed, their GameObject name is recorded in `AlienKillsSave.killedPrePlacedNames` so save/load reflects the kill.
 
 **Shared dialogue infrastructure:**

@@ -53,6 +53,17 @@ public class AlienWander : MonoBehaviour
     float _idleUntil;
     bool _ready;
 
+    // -- External control (authored NPCs, 2026-09-03) ---------------------
+    /// While true nothing here moves the body: a scripted beat owns it
+    /// (a conversation, the reunion hop). Legs still animate off the last step.
+    public bool Hold;
+    /// Multiplies walk speed (1 = the configured stroll; a following kid runs at 2+).
+    public float SpeedMultiplier = 1f;
+    /// Re-centre the stroll leash on wherever the body stands now.
+    public void ReHome() { _homeLocal = transform.localPosition; _walkingState = false; }
+    /// Planet-local re-seat (quest scripts only); drops any stroll in progress.
+    public void TeleportLocal(Vector3 localPos) { transform.localPosition = localPos; _walkingState = false; }
+
     // ── Approach mode (craving ambush, loop-feel C) ──────────────────────
     // Overrides the leash: walk toward a live target (the player), stop at a
     // conversational distance, face them. Same water/slope rules — an alien
@@ -173,6 +184,8 @@ public class AlienWander : MonoBehaviour
         _stridePhase = 0f;
         _legBlend = 0f;
         _ready = false;
+        Hold = false;
+        SpeedMultiplier = 1f;
 
         if (_damageable == null) _damageable = GetComponent<AlienNPCDamageable>();
         StopAllCoroutines();
@@ -270,6 +283,7 @@ public class AlienWander : MonoBehaviour
         // (that is the rendering path, and it must keep running) but nothing
         // here decides where the alien goes.
         if (RemoteDriven) { _movedThisFrame = _remoteMoved; return; }
+        if (Hold) return;
 
         // Approach outranks everything — including the player-proximity
         // pause, which exists so shopkeepers don't stroll away; an ambusher
@@ -347,7 +361,7 @@ public class AlienWander : MonoBehaviour
         }
 
         Vector3 stepDir = flat / dist;
-        float stepLen = Mathf.Min(_speed * 1.35f * Time.deltaTime, dist);   // a little urgency
+        float stepLen = Mathf.Min(_speed * 1.35f * SpeedMultiplier * Time.deltaTime, dist);   // a little urgency
         Vector3 cand = cur + stepDir * stepLen;
 
         if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal)
@@ -429,7 +443,7 @@ public class AlienWander : MonoBehaviour
         if (dist < ArriveDistance) { Arrive(); return; }
 
         Vector3 stepDir = flat / dist;
-        float stepLen = Mathf.Min(_speed * Time.deltaTime, dist);
+        float stepLen = Mathf.Min(_speed * SpeedMultiplier * Time.deltaTime, dist);
         Vector3 cand = cur + stepDir * stepLen;
 
         if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal))

@@ -33,6 +33,10 @@ public struct FishSpecies
     /// Seconds of RUN the fish has in it. Not the win condition -- distance is
     /// (see FishFightSim). This is how long it keeps surging before it is spent.
     public float staminaMin, staminaMax;
+    /// A BOUNTY row (2026-09-03): never comes up in the ordinary tier roll;
+    /// only a BountyZone can produce it. Shares the tier's model, scaled by its
+    /// own (huge) weight range through the one size law.
+    public bool bounty;
 }
 
 public static class FishingRules
@@ -59,6 +63,13 @@ public static class FishingRules
         Sp("tarpune",    "Tarpune",    FishTier.Rare,     0, 0xD4, 0x6A, 0x9A, 15f, 40f, 2.2f),
         Sp("muskrellon", "Muskrellon", FishTier.Rare,     0, 0x3E, 0x6B, 0x2E, 25f, 50f, 2.0f),
         Sp("coelancer",  "Coelancer",  FishTier.Rare,     0, 0x2E, 0x5C, 0x8A, 18f, 45f, 2.4f),
+
+        // -- Bounty fish ------------------------------------------------
+        // GRULABU (docs/Handoff_BountyQuest_Grulabu_v1.md): the thing Floorbin saw
+        // north up the lake. Rare model, scaled by weight (140-260 lb -> ~1.8-2.2 m,
+        // girth clamped) and tinted blood-red. Only BountyZone water rolls it.
+        // 2.4 $/lb x ~200 lb is about the handoff's $500 bounty at the fish market.
+        Bt("grulabu",    "GRULABU",    FishTier.Rare,     0, 0xC8, 0x2A, 0x2A, 140f, 260f, 2.4f, 24f, 34f),
     };
 
     static FishSpecies Sp(string id, string name, FishTier tier, int model,
@@ -74,6 +85,20 @@ public static class FishingRules
             staminaMin = sMin, staminaMax = sMax,
         };
     }
+
+    static FishSpecies Bt(string id, string name, FishTier tier, int model,
+                          byte r, byte g, byte b, float wMin, float wMax, float perLb,
+                          float sMin, float sMax)
+    {
+        var s = Sp(id, name, tier, model, r, g, b, wMin, wMax, perLb);
+        s.bounty = true;
+        s.staminaMin = sMin;   // ~3x a rare: the longest fight in the game
+        s.staminaMax = sMax;
+        return s;
+    }
+
+    public static bool IsBounty(int speciesIndex) =>
+        speciesIndex >= 0 && speciesIndex < Species.Length && Species[speciesIndex].bounty;
 
     // ── Fight tuning ─────────────────────────────────────────────────────────
     // Handoff defaults. Mirrored onto FishingTuning (a ScriptableObject) so Sam
@@ -118,7 +143,8 @@ public static class FishingRules
         float span = s.weightMax - s.weightMin;
         float f = span > 0.0001f ? (weightLb - s.weightMin) / span : 0f;
         if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
-        float max = s.tier == FishTier.Rare ? 0.62f
+        float max = s.bounty ? 0.78f
+                  : s.tier == FishTier.Rare ? 0.62f
                   : s.tier == FishTier.Uncommon ? 0.42f
                   : 0.12f;
         return max * (0.45f + 0.55f * f);
@@ -537,9 +563,11 @@ public static class FishingRules
     public static int RollSpeciesInTier(FishTier tier, float rand01)
     {
         int first = -1, count = 0;
+        // Bounty rows are skipped: they are table entries (save/price/size) but
+        // never ordinary catches. The tier's rollable rows are contiguous.
         for (int i = 0; i < Species.Length; i++)
         {
-            if (Species[i].tier != tier) continue;
+            if (Species[i].tier != tier || Species[i].bounty) continue;
             if (first < 0) first = i;
             count++;
         }

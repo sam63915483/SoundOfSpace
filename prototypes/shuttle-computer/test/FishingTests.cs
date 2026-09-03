@@ -575,6 +575,19 @@ public static class FishingTests
             Check(uniform, tier + " species roll is uniform within +/-2%");
         }
 
+        // Bounty row: in the table, never in the ordinary roll (2026-09-03).
+        {
+            int gru = FishingRules.IndexOfId("grulabu");
+            Check(gru >= 0 && FishingRules.IsBounty(gru), "GRULABU is in the table as a bounty row");
+            bool leaked = false;
+            var brng = new Xs(777);
+            for (int i = 0; i < 20000; i++)
+                if (FishingRules.IsBounty(FishingRules.RollSpeciesInTier(FishTier.Rare, brng.Next01()))) leaked = true;
+            Check(!leaked, "the bounty never comes up in the ordinary rare roll");
+            Check(gru < 0 || FishingRules.PriceOf(gru, 200f) >= 400,
+                  "GRULABU at 200 lb is worth a bounty ($" + (gru < 0 ? 0 : FishingRules.PriceOf(gru, 200f)) + ")");
+        }
+
         // Legacy saves land on species 0 of their tier.
         Check(FishingRules.Species[FishingRules.MigrateLegacyTier("Common")].tier == FishTier.Common,
               "legacy 'Common' migrates to a common species");
@@ -636,6 +649,7 @@ public static class FishingTests
         // ...and it must land BIGGER fish, not just rarer ones.
         for (int si = 0; si < FishingRules.Species.Length; si += 4)
         {
+            if (FishingRules.Species[si].bounty) continue;
             float meanShort = 0f, meanLong = 0f;
             const int S = 4000;
             for (int k = 0; k < S; k++)
@@ -692,6 +706,7 @@ public static class FishingTests
             for (int i = 0; i < FishingRules.Species.Length; i++)
             {
                 var sp = FishingRules.Species[i];
+                if (sp.bounty) continue;   // never in the ordinary roll
                 float tierW = sp.tier == FishTier.Common ? c : sp.tier == FishTier.Uncommon ? u : r;
                 float pTier = tierW / total;
                 // Mean of the power-biased weight roll, sampled.

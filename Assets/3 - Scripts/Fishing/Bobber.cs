@@ -46,7 +46,7 @@ public class Bobber : MonoBehaviour
     // freshly built DLL sat on disk while the running game kept old code in
     // memory (launched before the build finished writing). The stamp in the
     // player log ends every "is the fix even in?" debate in one glance.
-    public const string BuildStamp = "2026-09-03-BA-physics-clock-birth";
+    public const string BuildStamp = "2026-09-03-BB-authored-npcs";
 
     public float hangLeash = 0.75f;
     [Tooltip("Metres per second an empty lure slides back through the WATER. Sam asked for 1.5x the tow speed here -- water gives no bumps to fight, so a slightly brisker glide reads right.")]
@@ -1651,6 +1651,16 @@ public class Bobber : MonoBehaviour
             pendingSpecies = FishingRules.RollSpeciesInTier(tier, Random.value);
             pendingWeight = Mathf.Max(1, Mathf.RoundToInt(
                 FishingRules.RollWeight(pendingSpecies, Random.value, castDist, pendingBait)));
+            // Bounty water: inside an armed BountyZone each bite has the zone's
+            // chance of being its bounty species instead (docs/Handoff_BountyQuest_Grulabu_v1.md).
+            if (BountyZone.TryRoll(transform.position, Random.value, out int bountySpecies))
+            {
+                pendingSpecies = bountySpecies;
+                tier = FishingRules.Species[bountySpecies].tier;
+                pendingWeight = Mathf.Max(1, Mathf.RoundToInt(
+                    FishingRules.RollWeight(bountySpecies, Random.value, castDist, pendingBait)));
+                Debug.Log("[Bobber] BOUNTY bite: " + FishingRules.Species[bountySpecies].displayName);
+            }
             currentFishType = tier.ToString();
 
             // The APPROACH: the rolled fish rises out of the deep, circles
@@ -2484,6 +2494,13 @@ public class Bobber : MonoBehaviour
         Debug.Log($"[Bobber] LANDED {FishingRules.Species[_landedSpecies].displayName} "
                 + $"{_landedWeight}lb. Spin: {bankedSpin:F0}deg Combo: {bankedCombo}");
 
+        if (FishingRules.IsBounty(_landedSpecies))
+        {
+            // One per world: the zone retires, the story knows.
+            BountyZone.NoteCaught(_landedSpecies);
+            if (HALCommentator.Instance != null)
+                HALCommentator.Instance.VolunteerExternal("That is not a fish. That is an event. The fish vendor will want to see it.");
+        }
         if (FishInventory.Instance != null)
         {
             var entry = FishInventory.Instance.AddFish(_landedSpecies, _landedWeight);
