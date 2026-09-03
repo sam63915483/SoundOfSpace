@@ -108,7 +108,7 @@ public class AuthoredNPCTalk : MonoBehaviour
                 _promptSource = src;
                 _promptCached = $"Press {PromptGlyphs.Interact} to talk to {NpcName}";
             }
-            InteractPromptUI.Show(this, _promptCached);
+            InteractPromptUI.Show(Spawner.Relay, _promptCached);
 
             if (InteractGaze.IsLookingAt(Spawner.Relay)
                 && TutorialGate.InteractPressed(TutorialAbility.TalkToNPC))
@@ -119,7 +119,7 @@ public class AuthoredNPCTalk : MonoBehaviour
         }
         else if (!inRange && !_active)
         {
-            InteractPromptUI.Clear(this);
+            InteractPromptUI.Clear(Spawner.Relay);
         }
 
         if (!_active) return;
@@ -145,10 +145,12 @@ public class AuthoredNPCTalk : MonoBehaviour
         if (_active) return;
         _active = true;
         _forced = forced;
-        InteractPromptUI.Clear(this);
+        InteractPromptUI.Clear(Spawner.Relay);
         if (dialogueText != null) dialogueText.gameObject.SetActive(true);
         PlayerController.isInDialogue = true;
-        NPCConversationTracker.NotifyStart(this);
+        // The BODY is the conversation's face: the dialogue box names it after
+        // the notifying object (the body carries npcName), not this empty.
+        NPCConversationTracker.NotifyStart(Spawner.Relay);
         if (Spawner.Wander != null) Spawner.Wander.Hold = true;
         _routine = StartCoroutine(Run());
     }
@@ -251,6 +253,6 @@ public class AuthoredNPCTalk : MonoBehaviour
     void OnDisable()
     {
         if (_active) StopConversation();
-        InteractPromptUI.Clear(this);
+        if (Spawner != null && Spawner.Relay != null) InteractPromptUI.Clear(Spawner.Relay);
     }
 }

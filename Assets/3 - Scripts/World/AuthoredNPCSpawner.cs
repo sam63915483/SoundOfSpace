@@ -62,9 +62,6 @@ public class AuthoredNPCSpawner : MonoBehaviour
     [Header("Talk trigger (prefab-local, multiplied by scale)")]
     public Vector3 triggerSize = new Vector3(2.5f, 4f, 2.5f);
     public Vector3 triggerCenter = new Vector3(0f, 2f, 0f);
-    [Tooltip("Solid capsule so the player bumps into the NPC and the crosshair can hit it. World metres.")]
-    public float bodyColliderHeight = 2.5f;
-    public float bodyColliderRadius = 0.6f;
 
     public GameObject Body { get; private set; }
     public AlienWander Wander { get; private set; }
@@ -157,13 +154,11 @@ public class AuthoredNPCSpawner : MonoBehaviour
         trigger.size = triggerSize;
         trigger.center = triggerCenter;
 
-        // Solid body: the player bumps into them, the crosshair cast hits them.
-        // Sized in world metres, counter-scaled like AlienNPCDamageable's live capsule.
-        var cap = go.AddComponent<CapsuleCollider>();
-        float lh = bodyColliderHeight / Mathf.Max(0.01f, scale);
-        cap.height = lh;
-        cap.radius = bodyColliderRadius / Mathf.Max(0.01f, scale);
-        cap.center = new Vector3(0f, lh * 0.5f, 0f);
+        // No solid collider, deliberately -- the pre-placed NPCs (Tev, Alien3)
+        // are trigger-only too. During dialogue the player is PINNED every
+        // physics tick, so overlapping a solid NPC collider became a push/pin
+        // fight (the slide-and-jitter Sam saw). The crosshair resolves the
+        // silhouette of a collider-less NPC on its own (InteractGaze).
 
         SpawnerCubeface.ParentToBodyPhysicsFrame(go.transform, Planet);
         SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);

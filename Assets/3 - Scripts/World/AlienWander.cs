@@ -33,7 +33,11 @@ public class AlienWander : MonoBehaviour
     float _idleMin, _idleMax;
     float _pauseDistance;      // player closer than this → hold still
 
-    const float WaterMargin = 0.5f;      // stay this far above the ocean radius
+    // Aliens WADE (Sam, 2026-09-03): a step is allowed while the water there is
+    // no deeper than half the body -- computed per alien from its own renderers
+    // at Configure, so a 5x adult wades further out than a 1.6x kid. The old rule
+    // was a flat 0.5 m dry margin, which stranded a follower at the first puddle.
+    float _wadeDepth;
     const float ArriveDistance = 0.5f;
     const float MinStroll = 6f;          // playtest: targets a metre away read as twitching, not walking
     const float ChainChance = 0.45f;     // odds of strolling again immediately instead of idling
@@ -174,6 +178,7 @@ public class AlienWander : MonoBehaviour
         _idleMax = idleMax;
         _pauseDistance = pauseDistance;
         _scaledStride = Mathf.Max(0.2f, strideLength * scale);
+        _wadeDepth = 0.5f * LocalBodyHeight() * scale;
 
         _homeLocal = transform.localPosition;
         _walkingState = false;
@@ -365,7 +370,7 @@ public class AlienWander : MonoBehaviour
         Vector3 cand = cur + stepDir * stepLen;
 
         if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal)
-            || (_oceanRadius > 0f && groundR < _oceanRadius + WaterMargin)
+            || (_oceanRadius > 0f && groundR < _oceanRadius - _wadeDepth)
             || Vector3.Angle(normalLocal, groundLocal.normalized) > _maxSurfaceAngle + WalkSlopeSlack)
         {
             // Water or a cliff between us — can't get there. Report it; the
@@ -407,7 +412,7 @@ public class AlienWander : MonoBehaviour
             Vector3 cand = (_homeLocal + t1 * r.x + t2 * r.y).normalized * homeR;
             if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal))
                 continue;
-            if (_oceanRadius > 0f && groundR < _oceanRadius + WaterMargin) continue;   // land-locked
+            if (_oceanRadius > 0f && groundR < _oceanRadius - _wadeDepth) continue;   // too deep
             if (Vector3.Angle(normalLocal, cand.normalized) > _maxSurfaceAngle + WalkSlopeSlack) continue;
             if (SpawnExclusionZone.IsExcluded(WorldOfLocal(groundLocal))) continue;
 
@@ -448,7 +453,7 @@ public class AlienWander : MonoBehaviour
 
         if (!ProbeGround(cand, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal))
         { Arrive(); return; }                                     // lost the ground — stop here
-        if (_oceanRadius > 0f && groundR < _oceanRadius + WaterMargin) { Arrive(); return; }
+        if (_oceanRadius > 0f && groundR < _oceanRadius - _wadeDepth) { Arrive(); return; }
         Vector3 candUp = groundLocal.normalized;
         if (Vector3.Angle(normalLocal, candUp) > _maxSurfaceAngle + WalkSlopeSlack) { Arrive(); return; }
 
@@ -515,6 +520,35 @@ public class AlienWander : MonoBehaviour
         }
         groundR = groundLocal.magnitude;
         return true;
+    }
+
+    /// Body height in the root's UNSCALED local units (prefab metres): every
+    /// renderer's mesh bounds run through its transform and back into root
+    /// space. Root-relative, so the SpawnFade's 5% start scale cancels out.
+    float LocalBodyHeight()
+    {
+        float minY = float.MaxValue, maxY = float.MinValue;
+        var corners = new Vector3[8];
+        foreach (var r in GetComponentsInChildren<Renderer>(true))
+        {
+            Mesh mesh = null;
+            if (r is SkinnedMeshRenderer smr) mesh = smr.sharedMesh;
+            else { var mf = r.GetComponent<MeshFilter>(); if (mf != null) mesh = mf.sharedMesh; }
+            if (mesh == null) continue;
+            Bounds b = mesh.bounds;
+            Vector3 mn = b.min, mx = b.max;
+            corners[0] = new Vector3(mn.x, mn.y, mn.z); corners[1] = new Vector3(mx.x, mn.y, mn.z);
+            corners[2] = new Vector3(mn.x, mx.y, mn.z); corners[3] = new Vector3(mx.x, mx.y, mn.z);
+            corners[4] = new Vector3(mn.x, mn.y, mx.z); corners[5] = new Vector3(mx.x, mn.y, mx.z);
+            corners[6] = new Vector3(mn.x, mx.y, mx.z); corners[7] = new Vector3(mx.x, mx.y, mx.z);
+            for (int i = 0; i < 8; i++)
+            {
+                float y = transform.InverseTransformPoint(r.transform.TransformPoint(corners[i])).y;
+                if (y < minY) minY = y;
+                if (y > maxY) maxY = y;
+            }
+        }
+        return maxY > minY ? maxY - minY : 1f;
     }
 
     Vector3 WorldOfLocal(Vector3 local)
