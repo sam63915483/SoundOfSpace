@@ -156,6 +156,15 @@ public class Bobber : MonoBehaviour
     Vector3 _fishMouthInRoot;  // mouth offset in root-local units, scaled -- a CONSTANT
     float _fishHalfLen;
     float _fishPhase;
+    // -- The dragged fish (shore tow, 2026-09-03) -----------------------------
+    // From the shore release to the pickup the landed fish is a real body:
+    // capsule along its length, slick, near-massless, pinned to the float by
+    // its mouth with a joint the float cannot feel. It slides over the bank
+    // instead of clipping through it. Back to the posed visual at the hang.
+    Rigidbody _fishRb;
+    ConfigurableJoint _fishJoint;
+    bool _fishPhysics;
+    static PhysicMaterial _fishSlick;
     // The fish step clamp's memory: the last pose actually written.
     // The pursuit follower's own state: the fish's actual planet-local
     // position and its integrated velocity. The ONLY authority on where the
@@ -496,6 +505,11 @@ public class Bobber : MonoBehaviour
 
         AttachPhysics(seed);
         _towLine = -1f;
+
+        // The landed catch comes over the bank as a body of its own, dragged
+        // by the mouth (Sam, 2026-09-03: "it clips through the ground").
+        if (_pendingLanding && _hookedFish != null && !_fishApproachActive && planetRb != null)
+            AttachFishPhysics(planetRb, planetTf, seed);
     }
 
     /// <summary>
@@ -589,6 +603,7 @@ public class Bobber : MonoBehaviour
     /// </summary>
     void BeginHang()
     {
+        DetachFishPhysics();
         _retrieving = false;
         _hanging = true;
         hasHitWater = false;
@@ -789,7 +804,7 @@ public class Bobber : MonoBehaviour
         // lifecycle only -- left to the parent transform the fish spins with
         // the rolling bobber. Gated off while an approach/retreat coroutine
         // owns the fish's pose: one fish, one writer.
-        if (_hookedFish != null && fight == null
+        if (_hookedFish != null && fight == null && !_fishPhysics
             && (isStriking || !_fishApproachActive)) PlaceHookedFish(1f);
 
     }
@@ -1352,6 +1367,7 @@ public class Bobber : MonoBehaviour
     void StopOnWater(Collider waterCollider)
     {
         Debug.Log("[Bobber] Hit water. Stopping and setting up...");
+        DetachFishPhysics();
 
         if (waterSplashClip != null && audioSource != null)
         {
@@ -2517,8 +2533,134 @@ public class Bobber : MonoBehaviour
         DespawnHookedFish();
     }
 
+    /// <summary>
+    /// Give the landed fish a body for the tow. Seeded on the PHYSICS clock
+    /// like the bobber (same planet-local conversion), collider along the
+    /// mouth axis, zero friction, tiny mass, planet gravity, and a joint that
+    /// locks its mouth to the float. The joint sees the float as 50x heavier
+    /// than it is, so the fish yields and the float's tow is untouched.
+    /// </summary>
+    void AttachFishPhysics(Rigidbody planetRb, Transform planetTf, Vector3 seedVel)
+    {
+        if (_fishPhysics || _hookedFish == null || rb == null) return;
+        Transform fish = _hookedFish.transform;
+
+        // Pose on the physics clock, then unparent and place BEFORE the body exists.
+        Vector3 localOff = Quaternion.Inverse(planetTf.rotation) * (fish.position - planetTf.position);
+        Vector3 phys = planetRb.position + planetRb.rotation * localOff;
+        fish.SetParent(null, true);
+        fish.position = phys;
+
+        // Mouth point and body axis in the fish root's own (unscaled) local space.
+        Vector3 mouthLocal = _fishMouth != null
+            ? fish.InverseTransformPoint(_fishMouth.position)
+            : _fishMouthDirLocal * (_fishHalfLen / Mathf.Max(0.001f, Mathf.Abs(Vector3.Dot(fish.lossyScale, _fishMouthDirLocal.normalized))));
+        Vector3 axis = _fishMouthDirLocal.sqrMagnitude > 1e-6f ? _fishMouthDirLocal : Vector3.back;
+        int dir = Mathf.Abs(axis.z) >= Mathf.Abs(axis.x) && Mathf.Abs(axis.z) >= Mathf.Abs(axis.y) ? 2
+                : Mathf.Abs(axis.y) >= Mathf.Abs(axis.x) ? 1 : 0;
+        Vector3 ls = fish.lossyScale;
+        float axisScale = Mathf.Max(0.001f, Mathf.Abs(dir == 2 ? ls.z : dir == 1 ? ls.y : ls.x));
+        float sideScale = Mathf.Max(0.001f, Mathf.Abs(dir == 0 ? ls.y : ls.x));
+
+        // Centre of the visible body in root space (the pivot sits mid-body on
+        // these models, but measure rather than assume).
+        Bounds fb = default; bool has = false;
+        foreach (var r in _hookedFish.GetComponentsInChildren<Renderer>())
+        {
+            if (r is ParticleSystemRenderer) continue;
+            if (!has) { fb = r.bounds; has = true; } else fb.Encapsulate(r.bounds);
+        }
+        Vector3 centreLocal = has ? fish.InverseTransformPoint(fb.center) : Vector3.zero;
+
+        if (_fishSlick == null)
+        {
+            _fishSlick = new PhysicMaterial("FishSlick")
+            {
+                dynamicFriction = 0f, staticFriction = 0f, bounciness = 0f,
+                frictionCombine = PhysicMaterialCombine.Minimum,
+                bounceCombine = PhysicMaterialCombine.Minimum,
+            };
+        }
+        var cap = _hookedFish.AddComponent<CapsuleCollider>();
+        cap.direction = dir;
+        cap.height = (2f * _fishHalfLen) / axisScale;
+        cap.radius = Mathf.Max(0.01f, (0.14f * 2f * _fishHalfLen) / sideScale);
+        cap.center = centreLocal;
+        cap.material = _fishSlick;
+
+        _fishRb = _hookedFish.AddComponent<Rigidbody>();
+        _fishRb.mass = 0.05f;
+        _fishRb.drag = 0.3f;
+        _fishRb.angularDrag = 1.5f;
+        _fishRb.useGravity = false;                       // planet gravity below
+        _fishRb.interpolation = RigidbodyInterpolation.Interpolate;
+        _fishRb.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+        _fishRb.maxDepenetrationVelocity = 3f;            // eases out of the bank, never launches
+        _fishRb.velocity = seedVel;
+        _hookedFish.AddComponent<GravityObjectSimple>();
+
+        // Never trips the player, never fights its own float.
+        if (rodOwner != null) rodOwner.IgnorePlayerCollisions(_hookedFish);
+        foreach (var mine in GetComponentsInChildren<Collider>(true))
+            if (mine != null && !mine.isTrigger) Physics.IgnoreCollision(cap, mine, true);
+
+        _fishJoint = _hookedFish.AddComponent<ConfigurableJoint>();
+        _fishJoint.connectedBody = rb;
+        _fishJoint.autoConfigureConnectedAnchor = false;
+        _fishJoint.anchor = mouthLocal;
+        _fishJoint.connectedAnchor = Vector3.zero;
+        _fishJoint.xMotion = ConfigurableJointMotion.Locked;
+        _fishJoint.yMotion = ConfigurableJointMotion.Locked;
+        _fishJoint.zMotion = ConfigurableJointMotion.Locked;
+        _fishJoint.angularXMotion = ConfigurableJointMotion.Free;
+        _fishJoint.angularYMotion = ConfigurableJointMotion.Free;
+        _fishJoint.angularZMotion = ConfigurableJointMotion.Free;
+        _fishJoint.enableCollision = false;
+        _fishJoint.enablePreprocessing = false;
+        _fishJoint.projectionMode = JointProjectionMode.PositionAndRotation;
+        _fishJoint.projectionDistance = 0.05f;
+        _fishJoint.massScale = 1f;
+        _fishJoint.connectedMassScale = 0.02f;            // the float feels a 50x heavier self: unmoved by the fish
+
+        var em = FindObjectOfType<EndlessManager>();
+        if (em != null) em.RegisterPhysicsObject(fish);
+
+        _fishPhysics = true;
+        Debug.Log($"[Bobber] Fish is a body for the tow: capsule h={cap.height * axisScale:F2}m r={cap.radius * sideScale:F2}m.");
+    }
+
+    /// <summary>The fish goes back to being the posed visual (hang, re-park, despawn).</summary>
+    void DetachFishPhysics()
+    {
+        if (!_fishPhysics) { _fishRb = null; _fishJoint = null; return; }
+        _fishPhysics = false;
+        if (_hookedFish == null) { _fishRb = null; _fishJoint = null; return; }
+        Transform fish = _hookedFish.transform;
+
+        var em = FindObjectOfType<EndlessManager>();
+        if (em != null) em.UnregisterPhysicsObject(fish);
+
+        if (_fishJoint != null) Destroy(_fishJoint);
+        var grav = _hookedFish.GetComponent<GravityObjectSimple>();
+        if (grav != null) Destroy(grav);
+        if (_fishRb != null)
+        {
+            _fishRb.collisionDetectionMode = CollisionDetectionMode.Discrete;
+            _fishRb.isKinematic = true;
+            Destroy(_fishRb);
+        }
+        foreach (var c in _hookedFish.GetComponentsInChildren<Collider>(true)) Destroy(c);
+        _fishRb = null;
+        _fishJoint = null;
+
+        // Back under the planet (scale 1) like every other fish state; the
+        // posed writer snaps it onto the float on its next frame.
+        fish.SetParent(planetBody != null ? planetBody : transform, true);
+    }
+
     void DespawnHookedFish()
     {
+        DetachFishPhysics();
         _fishApproachActive = false;
         if (_hookedFish == null) return;
         Destroy(_hookedFish);
