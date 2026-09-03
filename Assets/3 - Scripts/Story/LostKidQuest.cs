@@ -9,20 +9,24 @@ using UnityEngine;
 ///
 /// Put this on any object (the KID empty is fine) and assign both spawners and
 /// both talk components. It owns the kid's placement (lost spot / behind the
-/// player / home) from the save flags, the follow loop, and the reunion.
+/// player / home) from the save flags, the follow loop, the reunion, and the
+/// parent's FRANTIC behaviour while the kid is lost (paces fast, hops about,
+/// and the first time you come within greetDistance he runs up and asks).
 ///
 /// State = StoryDirector flags (world save, shared in co-op via the snapshot):
-///   floorbin_name_learned, shllorbin_following, shllorbin_returned,
-///   bounty_spot_known, grulabu_caught (BountyZone sets that one).
-/// No new save schema.
+///   floorbin_name_learned, floorbin_approached, shllorbin_following,
+///   shllorbin_returned, bounty_spot_known, grulabu_caught (BountyZone),
+///   grulabu_turned_in (FishMarketNPC). No new save schema.
 /// </summary>
 public class LostKidQuest : MonoBehaviour
 {
     public const string FlagNameLearned   = "floorbin_name_learned";
+    public const string FlagApproached    = "floorbin_approached";
     public const string FlagFollowing     = "shllorbin_following";
     public const string FlagReturned      = "shllorbin_returned";
     public const string FlagSpotKnown     = "bounty_spot_known";
     public const string FlagGrulabuCaught = "grulabu_caught";
+    public const string FlagGrulabuTurnedIn = "grulabu_turned_in";
 
     [Header("NPCs")]
     public AuthoredNPCSpawner parentSpawner;
@@ -49,8 +53,26 @@ public class LostKidQuest : MonoBehaviour
     [Tooltip("After the celebration the parent's thank-you starts by itself if you are within this range; otherwise it plays when you next talk to him.")]
     public float thankYouAutoStartDistance = 16f;
 
+    [Header("Frantic parent (while the kid is lost)")]
+    [Tooltip("Pacing speed multiplier while searching.")]
+    public float franticSpeedMultiplier = 1.9f;
+    [Tooltip("Idle time between strolls, as a fraction of the normal idle (0.35 = barely stands still).")]
+    public float franticIdleScale = 0.35f;
+    public float franticHopHeight = 0.28f;
+    public float franticHopsPerSecond = 2.6f;
+    [Tooltip("Seconds of a hopping burst.")]
+    public float franticHopBurstMin = 0.8f;
+    public float franticHopBurstMax = 1.6f;
+    [Tooltip("Seconds between hopping bursts.")]
+    public float franticHopGapMin = 2f;
+    public float franticHopGapMax = 5f;
+    [Tooltip("The first time you come within this many metres he runs up to you and asks about his kid. Once per world.")]
+    public float greetDistance = 15f;
+    public float greetStopDistance = 2.6f;
+
     Coroutine _follow;
     bool _reunionRunning;
+    bool _greeting;
 
     public bool IsFollowing => _follow != null;
 
@@ -74,6 +96,7 @@ public class LostKidQuest : MonoBehaviour
         // The parent seats first (his raycast waits for the terrain); by then the
         // save has long been applied, so the flags below are the loaded ones.
         yield return new WaitUntil(() => parentSpawner.Spawned);
+        StartCoroutine(ParentRoutine());
 
         Transform player = LocalPlayer();
         if (Flag(FlagReturned))
@@ -96,6 +119,81 @@ public class LostKidQuest : MonoBehaviour
         return go != null ? go.transform : null;
     }
 
+    // ── The frantic parent ─────────────────────────────────────────────────
+    // Paces fast with hardly any standing still, hops about in bursts, and
+    // runs up to the player the first time they come near. All of it stops
+    // the moment the kid is home.
+    IEnumerator ParentRoutine()
+    {
+        var pw = parentSpawner.Wander;
+        Transform par = parentSpawner.Body.transform;
+        float nextHopAt = Time.time + Random.Range(franticHopGapMin, franticHopGapMax);
+        float hopUntil = 0f;
+
+        while (!Flag(FlagReturned))
+        {
+            if (pw == null) { yield return null; continue; }
+
+            bool busy = _reunionRunning || _greeting || pw.Hold;
+            if (!busy)
+            {
+                pw.SpeedMultiplier = franticSpeedMultiplier;
+                pw.IdleScale = franticIdleScale;
+
+                if (Time.time >= nextHopAt && hopUntil <= 0f)
+                {
+                    pw.BounceHeight = franticHopHeight;
+                    pw.BounceHz = franticHopsPerSecond;
+                    hopUntil = Time.time + Random.Range(franticHopBurstMin, franticHopBurstMax);
+                }
+                if (hopUntil > 0f && Time.time >= hopUntil)
+                {
+                    pw.BounceHeight = 0f;
+                    hopUntil = 0f;
+                    nextHopAt = Time.time + Random.Range(franticHopGapMin, franticHopGapMax);
+                }
+
+                // First contact: he spots you and comes running. Once per world.
+                Transform player = LocalPlayer();
+                if (!Flag(FlagApproached) && player != null && parentTalk != null && !parentTalk.IsTalking
+                    && (player.position - par.position).sqrMagnitude <= greetDistance * greetDistance)
+                {
+                    Set(FlagApproached, true);
+                    pw.BounceHeight = 0f; hopUntil = 0f;
+                    yield return GreetRunUp(player);
+                    continue;
+                }
+            }
+            else if (hopUntil > 0f)
+            {
+                pw.BounceHeight = 0f;
+                hopUntil = 0f;
+            }
+            yield return null;
+        }
+
+        pw.BounceHeight = 0f;
+        pw.SpeedMultiplier = 1f;
+        pw.IdleScale = 1f;
+    }
+
+    IEnumerator GreetRunUp(Transform player)
+    {
+        _greeting = true;
+        var pw = parentSpawner.Wander;
+        pw.EndApproach();
+        pw.SpeedMultiplier = runSpeedMultiplier;
+        pw.BeginApproach(player, greetStopDistance, 12f);
+        float until = Time.time + 12f;
+        while (Time.time < until && !pw.ApproachArrived && !pw.ApproachBlocked) yield return null;
+        bool close = (player.position - parentSpawner.Body.transform.position).sqrMagnitude <= 7f * 7f;
+        pw.EndApproach();
+        pw.SpeedMultiplier = franticSpeedMultiplier;
+        _greeting = false;
+        if (close && parentTalk != null) parentTalk.ForceStart();
+    }
+
+    // ── The follower ───────────────────────────────────────────────────────
     public void BeginFollow()
     {
         if (_follow != null || kidSpawner == null || !kidSpawner.Spawned) return;
@@ -147,8 +245,8 @@ public class LostKidQuest : MonoBehaviour
 
             if (w.ApproachBlocked)
             {
-                // Water or a cliff between us: stand down, try again shortly
-                // (the player usually walks on and a path opens).
+                // Water too deep or a cliff between us: stand down, try again
+                // shortly (the player usually walks on and a path opens).
                 if (Time.time >= retryAt)
                 {
                     w.EndApproach();
@@ -176,6 +274,7 @@ public class LostKidQuest : MonoBehaviour
 
         // They run to each other.
         kw.EndApproach(); pw.EndApproach();
+        pw.BounceHeight = 0f;
         kw.SpeedMultiplier = runSpeedMultiplier;
         pw.SpeedMultiplier = runSpeedMultiplier;
         kw.BeginApproach(par, 1.4f, 8f);
@@ -192,25 +291,18 @@ public class LostKidQuest : MonoBehaviour
         kw.EndApproach(); pw.EndApproach();
         kw.SpeedMultiplier = 1f; pw.SpeedMultiplier = 1f;
 
-        // Jump for joy: both bodies hop on their local radial for celebrateSeconds.
+        // Jump for joy: both hop on their local radial for celebrateSeconds
+        // (the walker's own bounce, so the seat stays exact underneath).
         kw.Hold = true; pw.Hold = true;
-        Vector3 kidBase = kid.localPosition, parBase = par.localPosition;
-        Vector3 kidUp = kidBase.normalized, parUp = parBase.normalized;
-        float t0 = Time.time;
-        while (Time.time - t0 < celebrateSeconds)
-        {
-            float t = Time.time - t0;
-            float y = Mathf.Abs(Mathf.Sin(t * Mathf.PI * hopsPerSecond)) * hopHeight;
-            kid.localPosition = kidBase + kidUp * y;
-            par.localPosition = parBase + parUp * (y * 0.8f);
-            yield return null;
-        }
-        kid.localPosition = kidBase;
-        par.localPosition = parBase;
+        kw.BounceHeight = hopHeight; kw.BounceHz = hopsPerSecond;
+        pw.BounceHeight = hopHeight * 0.8f; pw.BounceHz = hopsPerSecond;
+        yield return new WaitForSeconds(celebrateSeconds);
+        kw.BounceHeight = 0f; pw.BounceHeight = 0f;
         kw.Hold = false; pw.Hold = false;
 
         // Then they chill: the kid lives here now.
         kw.ReHome(); pw.ReHome();
+        pw.IdleScale = 1f;
         Set(FlagReturned, true);
         _reunionRunning = false;
 

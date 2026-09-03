@@ -40,7 +40,7 @@ public class AuthoredNPCSpawner : MonoBehaviour
     public LayerMask groundMask = 0;
     public float surfaceRayHeight = 100f;
     [Tooltip("Push into the ground along the radial (metres). Positive = deeper.")]
-    public float groundOffset = 0f;
+    public float groundOffset = 0.37f;
     public float groundEmbedPerScale = 0.04f;
     [Tooltip("Seconds between seating retries while the planet's terrain collider is still generating.")]
     public float retryInterval = 0.5f;
@@ -84,6 +84,18 @@ public class AuthoredNPCSpawner : MonoBehaviour
         if (groundMask.value == 0) groundMask = LayerMask.GetMask("Body");
         // Never seat on other spawners' props or a parked ship.
         groundMask &= ~SpawnerCubeface.WorldSpawnExcludeMask;
+        // Seat exactly like the streamed aliens: the scene's spawner carries the
+        // hand-tuned embed (0.37 m at the time of writing) that puts feet on
+        // the ground; a default of 0 left Floorbin floating a few inches.
+        if (matchStreamedSeating)
+        {
+            var streamed = FindObjectOfType<AlienNPCSpawner>(true);
+            if (streamed != null)
+            {
+                groundOffset = streamed.groundOffset;
+                groundEmbedPerScale = streamed.groundEmbedPerScale;
+            }
+        }
     }
 
     void Start()
@@ -238,4 +250,7 @@ public class AuthoredNPCSpawner : MonoBehaviour
     {
         if (Body != null) Destroy(Body);
     }
+
+    [Tooltip("Copy groundOffset / groundEmbedPerScale from the scene's AlienNPCSpawner at startup, so authored NPCs seat exactly like the wandering ones. Turn off to hand-tune the two fields above.")]
+    public bool matchStreamedSeating = true;
 }

@@ -19,7 +19,7 @@ public class BountyZone : MonoBehaviour
 {
     [Tooltip("Species id from FishingRules.Species (a bounty row).")]
     public string speciesId = "grulabu";
-    [Range(0f, 1f)] public float chance = 0.2f;
+    [Range(0f, 1f)] public float chance = 0.28f;   // 0.2 x 1.4 (Sam, 2026-09-03: the fight is hard, more tries)
     [Tooltip("Story flag set when the bounty is landed; the zone is dead once it is true.")]
     public string caughtFlag = "grulabu_caught";
 

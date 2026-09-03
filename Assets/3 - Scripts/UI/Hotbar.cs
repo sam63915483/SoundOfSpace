@@ -733,6 +733,55 @@ public class Hotbar : MonoBehaviour
         return null;
     }
 
+    /// <summary>
+    /// Remove one specific fish wherever it sits on the player -- a hotbar
+    /// slot or inside the fish bag. The bounty turn-in uses this so the
+    /// exact fish handed over is the one that disappears.
+    /// </summary>
+    public bool RemoveFishEntry(FishEntry entry)
+    {
+        if (entry == null) return false;
+        for (int i = 0; i < NumSlots; i++)
+        {
+            var s = slots[i];
+            if (s.id == ItemId.Fish && s.fishData == entry)
+            {
+                slots[i] = default;
+                OnResourceChanged?.Invoke(ItemId.Fish);
+                return true;
+            }
+            if (s.id == ItemId.FishBag && s.bagContents != null)
+            {
+                var bag = s.bagContents;
+                for (int j = 0; j < bag.Length; j++)
+                {
+                    if (bag[j].id != ItemId.Fish || bag[j].fishData != entry) continue;
+                    bag[j] = default;
+                    OnResourceChanged?.Invoke(ItemId.Fish);
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /// <summary>First fish on the player (hotbar or bag) matching the predicate, or null.</summary>
+    public FishEntry FindFish(System.Func<FishEntry, bool> match)
+    {
+        for (int i = 0; i < NumSlots; i++)
+        {
+            var s = slots[i];
+            if (s.id == ItemId.Fish && s.fishData != null && match(s.fishData)) return s.fishData;
+            if (s.id == ItemId.FishBag && s.bagContents != null)
+                for (int j = 0; j < s.bagContents.Length; j++)
+                {
+                    var b = s.bagContents[j];
+                    if (b.id == ItemId.Fish && b.fishData != null && match(b.fishData)) return b.fishData;
+                }
+        }
+        return null;
+    }
+
     // ── Phase 3: Fish bag helpers ────────────────────────────────────
 
     // Used by Alien7Vendor.Purchase to refuse FishBag purchase when there's

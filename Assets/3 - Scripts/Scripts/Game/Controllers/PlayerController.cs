@@ -157,9 +157,11 @@ public class PlayerController : GravityObject
 	// DEAD — kept only so the scene/prefab serialization layout doesn't shift
 	// (CLAUDE.md: never remove a serialized field mid-class). The jump sound moved
 	// to PlayerSuitAudio.PlayJump(); see the note at the jump call site.
-#pragma warning disable 0414
+	// 0169 (never used), not 0414 — nothing assigns it in code either, so the
+	// old 0414-only pragma never actually silenced it.
+#pragma warning disable 0169
 	[SerializeField] AudioClip jumpClip;
-#pragma warning restore 0414
+#pragma warning restore 0169
 	[SerializeField] AudioClip landClip;
 	[SerializeField, Range(0, 1)] float footstepVolume = 0.5f;
 #pragma warning disable 0414
@@ -188,10 +190,14 @@ public class PlayerController : GravityObject
 	[Tooltip("Maximum total velocity (m/s) the player's rigidbody can have while in water (relative to the local planet). Velocity is clamped to this each FixedUpdate, so jumping into water decelerates immediately, sinking has a terminal speed, and swim-up tops out gently — all from a single cap.")]
 	public float waterMaxSpeed = 3.75f;
 
+	// Parked, on purpose: empty slots kept so the sounds can be dropped in from
+	// the Inspector later without editing code. CS0169 suppressed here only.
+#pragma warning disable 0169
 	[Header("Optional Sounds (slots only — not yet wired)")]
 	[SerializeField] AudioClip itemPickupClip;
 	[SerializeField] AudioClip deathClip;
 	[SerializeField] AudioClip eatDrinkClip;
+#pragma warning restore 0169
 
 	[Header("Flat-Gravity Fallback (interior scenes with no CelestialBody)")]
 	[Tooltip("When the scene has no NBodySimulation / CelestialBody (e.g. the Backrooms interior), apply a constant straight-down gravity and allow normal ground detection instead of the N-body gravity loop. Has NO effect in the real solar-system scenes, where a simulation always exists.")]
@@ -348,7 +354,6 @@ public class PlayerController : GravityObject
 	float _lastGravityMag = 9.81f;
 
 	Camera cam;
-	bool readyToFlyShip;
 	bool debug_playerFrozen;
 	public static bool isInDialogue;
 	public static bool isMapOpen;
@@ -1014,7 +1019,13 @@ public class PlayerController : GravityObject
 			_yawAppliedToTransform = smoothYaw;
 		}
 
-		if (isInDialogue) return;
+		// Dialogue used to RETURN here, skipping the rest of the tick (ground
+		// stick, slope projection, wall clamps). The body was left to raw
+		// physics: on a hill it slid, on flat ground it sank and got pushed
+		// back up -- only while talking (2026-09-03, the authored NPCs made it
+		// obvious). The map/modal paths never returned and never slid, because
+		// HandleInput already zeroes the inputs; dialogue now rides the same
+		// typing gate below, which masks every direct input read in here.
 
 		// Typing-active gate. The HandleInput early-return already zeros
 		// targetVelocity and skips queueing jump/jetpack, but HandleMovement
@@ -1022,7 +1033,7 @@ public class PlayerController : GravityObject
 		// fine-thrust WASD, etc). Compute this once and AND it into each
 		// input-read site below so a chat user pressing Ctrl/Shift/Space/
 		// W/A/S/D as text doesn't trigger thrust, FOV, or boost.
-		bool typing = AIChatScreen.IsTypingActive;
+		bool typing = AIChatScreen.IsTypingActive || isInDialogue;
 
 		// ── Ground ↔ air momentum handoff ─────────────────────────────────
 		// Walking moves via rb.MovePosition (displacement that never enters
@@ -1903,6 +1914,13 @@ public class PlayerController : GravityObject
 	// eventually pop the player out the far side.
 	void ClampVelocityAgainstWalls()
 	{
+		// Kinematic means someone else owns the pose (seated, riding the
+		// shuttle, cutscene). Writing rb.velocity then is silently ignored by
+		// PhysX and logs "Setting linear velocity of a kinematic body is not
+		// supported" every FixedUpdate — the single loudest thing in the
+		// console. The two SweepTests below were wasted work in that state too.
+		if (rb == null || rb.isKinematic) return;
+
 		Vector3 refVel = referenceBody != null ? referenceBody.velocity : Vector3.zero;
 		Vector3 relVel = rb.velocity - refVel;
 		float dt = Time.fixedDeltaTime;

@@ -1,5 +1,7 @@
 # Handoff: Floorbin/Shllorbin Quest + GRULABU Bounty Fish (v1)
 
+## STATUS (2026-09-03, later) — Phase C BUILT too: vendor "Ask about the bounty fish" (story, always), "Turn in GRULABU ($500)" row (only while the fish is on the player; exact fish removed via `Hotbar.RemoveFishEntry`, `$bountyReward` paid through PlayerWallet to the interacting player, `grulabu_turned_in` flag, done-state story), and the sell panel REFUSES the bounty fish with a line ([OPEN-3] default). Also: bounty bite chance 0.2 → 0.28 (Sam), Floorbin frantic (fast pacing, hop bursts, one-time 15 m run-up + auto-talk, flag `floorbin_approached`), aliens wade to half body height, player dialogue slide fixed in PlayerController.
+
 ## STATUS (2026-09-03) — Phases A + B built to Sam's revised spec; Phase C (vendor story / turn-in / $500) NOT built
 
 Sam's 2026-09-03 changes override §1.3: the kid is NOT despawned/teleported — he

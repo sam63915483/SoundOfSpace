@@ -64,9 +64,21 @@ public class AlienWander : MonoBehaviour
     /// Multiplies walk speed (1 = the configured stroll; a following kid runs at 2+).
     public float SpeedMultiplier = 1f;
     /// Re-centre the stroll leash on wherever the body stands now.
-    public void ReHome() { _homeLocal = transform.localPosition; _walkingState = false; }
+    public void ReHome() { _homeLocal = _seatValid ? _seatLocal : transform.localPosition; _walkingState = false; }
     /// Planet-local re-seat (quest scripts only); drops any stroll in progress.
-    public void TeleportLocal(Vector3 localPos) { transform.localPosition = localPos; _walkingState = false; }
+    public void TeleportLocal(Vector3 localPos) { transform.localPosition = localPos; _seatLocal = localPos; _walkingState = false; }
+    /// Hopping: > 0 bounces the body on its radial in LateUpdate, on top of
+    /// whatever the feet are doing (a frantic parent hops while pacing; the
+    /// reunion hops in place under Hold). 0 = off.
+    public float BounceHeight;
+    public float BounceHz = 2.2f;
+    /// Scales the idle between strolls (0.35 = hardly ever stands still).
+    public float IdleScale = 1f;
+    // Where the feet are seated (planet-local). Every seat write updates it so
+    // the bounce is always relative to solid ground, never to itself.
+    Vector3 _seatLocal;
+    bool _seatValid;
+    bool _bouncing;
 
     // ── Approach mode (craving ambush, loop-feel C) ──────────────────────
     // Overrides the leash: walk toward a live target (the player), stop at a
@@ -95,7 +107,7 @@ public class AlienWander : MonoBehaviour
         _approachTarget = null;
         ApproachArrived = false;
         ApproachBlocked = false;
-        _idleUntil = Time.time + Random.Range(_idleMin, _idleMax);
+        _idleUntil = Time.time + Random.Range(_idleMin, _idleMax) * IdleScale;
     }
 
     AlienNPCDamageable _damageable;
@@ -135,6 +147,7 @@ public class AlienWander : MonoBehaviour
     public void RemotePose(Vector3 localPos, Quaternion localRot, bool moved)
     {
         transform.localPosition = localPos;
+        _seatLocal = localPos;
         transform.localRotation = localRot;
         _remoteMoved = moved;
         _remoteUntil = Time.time + RemoteHoldSeconds;
@@ -191,6 +204,10 @@ public class AlienWander : MonoBehaviour
         _ready = false;
         Hold = false;
         SpeedMultiplier = 1f;
+        BounceHeight = 0f;
+        IdleScale = 1f;
+        _seatLocal = transform.localPosition;
+        _seatValid = true;
 
         if (_damageable == null) _damageable = GetComponent<AlienNPCDamageable>();
         StopAllCoroutines();
@@ -381,6 +398,7 @@ public class AlienWander : MonoBehaviour
 
         Vector3 candUp = groundLocal.normalized;
         transform.localPosition = groundLocal - candUp * _seatDepth;
+        _seatLocal = transform.localPosition;
         Vector3 fwd = Vector3.ProjectOnPlane(stepDir, candUp);
         if (fwd.sqrMagnitude > 1e-6f)
             transform.localRotation = Quaternion.Slerp(transform.localRotation,
@@ -436,7 +454,7 @@ public class AlienWander : MonoBehaviour
             return;
         }
         // Nowhere valid this round — sit tight and retry later.
-        _idleUntil = Time.time + Random.Range(_idleMin, _idleMax);
+        _idleUntil = Time.time + Random.Range(_idleMin, _idleMax) * IdleScale;
     }
 
     void StepTowardTarget()
@@ -460,6 +478,7 @@ public class AlienWander : MonoBehaviour
         // Seat the feet with the exact spawner formula so there's no height
         // pop between "just spawned" and "took one step".
         transform.localPosition = groundLocal - candUp * _seatDepth;
+        _seatLocal = transform.localPosition;
 
         // Face the walk direction, staying upright on the local radial.
         Vector3 fwd = Vector3.ProjectOnPlane(stepDir, candUp);
@@ -484,7 +503,7 @@ public class AlienWander : MonoBehaviour
             PickNewTarget();
             if (_walkingState) return;
         }
-        _idleUntil = Time.time + Random.Range(_idleMin, _idleMax);
+        _idleUntil = Time.time + Random.Range(_idleMin, _idleMax) * IdleScale;
     }
 
     bool ProbeGround(Vector3 local, out Vector3 groundLocal, out float groundR, out Vector3 normalLocal)
@@ -563,6 +582,20 @@ public class AlienWander : MonoBehaviour
     // between the two components doesn't matter.
     void LateUpdate()
     {
+        // Bounce rides on the seated position (Update seats the feet; this adds
+        // the hop). Runs even without leg bones, and under Hold.
+        if (_seatValid && BounceHeight > 0f)
+        {
+            float h = Mathf.Abs(Mathf.Sin(Time.time * Mathf.PI * BounceHz)) * BounceHeight;
+            transform.localPosition = _seatLocal + _seatLocal.normalized * h;
+            _bouncing = true;
+        }
+        else if (_bouncing)
+        {
+            _bouncing = false;
+            if (_seatValid) transform.localPosition = _seatLocal;
+        }
+
         if (!_ready || _thighR == null || _thighL == null) return;
         if (_damageable != null && _damageable.IsDying) return;   // never fight the ragdoll
 

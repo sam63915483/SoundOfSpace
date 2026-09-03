@@ -267,6 +267,20 @@ public class FishMarketNPC : MonoBehaviour
             rows.Add(new PostGreetingChoicePanel.Row($"Buy {def.displayName}  (${def.price})", afford));
         }
 
+        // The bounty (docs/Handoff_BountyQuest_Grulabu_v1.md, Phase C). The story
+        // is always on offer -- it is the WHY and the reward; Floorbin gives the
+        // WHERE, and neither gates the other. The turn-in row appears only while
+        // the bounty fish is actually on the player.
+        _bountyRowStart = rows.Count;
+        bool turnedIn = BountyFlag(bountyTurnedInFlag);
+        rows.Add(new PostGreetingChoicePanel.Row(turnedIn ? "About that fish..." : "Ask about the bounty fish", true));
+        _bountyTurnInRow = -1;
+        if (!turnedIn && FindBountyFishOnPlayer() != null)
+        {
+            _bountyTurnInRow = rows.Count;
+            rows.Add(new PostGreetingChoicePanel.Row($"Turn in GRULABU  (${bountyReward})", true));
+        }
+
         rows.Add(new PostGreetingChoicePanel.Row("Leave", true));
         PostGreetingChoicePanel.Instance.Show(rows, HandleChoice);
     }
@@ -315,6 +329,16 @@ public class FishMarketNPC : MonoBehaviour
                                && index < _baitRowStart + FishingBait.All.Length)
         {
             BuyBait(index - _baitRowStart);
+            return;
+        }
+        if (_bountyRowStart >= 0 && index == _bountyRowStart)
+        {
+            greetingCoroutine = StartCoroutine(TellBountyStory());
+            return;
+        }
+        if (_bountyTurnInRow >= 0 && index == _bountyTurnInRow)
+        {
+            TurnInBounty();
             return;
         }
         StopConversation();
@@ -385,8 +409,19 @@ public class FishMarketNPC : MonoBehaviour
         if (FishStagingUI.Instance == null) return;
         FishStagingUI.Instance.Open("SELL FISH", entries =>
         {
+            bool refused = false;
             foreach (var (fish, source) in entries)
+            {
+                // [OPEN-3] default: the bounty fish is not sold by the pound.
+                if (fish != null && FishingRules.IsBounty(fish.ResolveSpecies()))
+                {
+                    if (!FishStagingUI.TryReturnTo(fish, source)) InventoryFullPopup.Show();
+                    refused = true;
+                    continue;
+                }
                 stagedFish.Add((fish, null, source));
+            }
+            if (refused) ShowEarningsMessage(bountyRefuseSaleLine);
             RefreshUI();
         });
     }
@@ -772,5 +807,100 @@ public class FishMarketNPC : MonoBehaviour
         var rTMP = rLbl.AddComponent<TextMeshProUGUI>();
         rTMP.text = "X"; rTMP.fontSize = 14; rTMP.fontStyle = FontStyles.Bold;
         rTMP.color = Color.white; rTMP.alignment = TextAlignmentOptions.Center;
+    }
+
+    // ── The bounty (Phase C) ──────────────────────────────────────────────────
+    // Appended at the END so the scene's serialized field order is untouched.
+    [Header("Bounty fish (GRULABU)")]
+    [Tooltip("The vendor's story, told line by line on the greeting text. Always available.")]
+    [TextArea(2, 5)]
+    public string[] bountyStoryLines =
+    {
+        "The bounty fish? Sit down. Well -- stand there, but quietly.",
+        "Years back a kid was playing on the north shore of the lake. Big splash, little scream, and the water went flat like nothing happened. They found one shoe. Wet.",
+        "GRULABU, the old-timers call it. Red as a warning light, long as a shuttle, and it does not lose.",
+        "Bring me that fish, whole, and I pay five hundred. Not for the meat. For the peace of mind.",
+    };
+    [TextArea(2, 5)]
+    public string[] bountyDoneLines =
+    {
+        "The GRULABU is gone. The lake is quieter. I sleep now. You did that.",
+    };
+    [TextArea(2, 5)]
+    public string[] bountyTurnInLines =
+    {
+        "...That's it. That's the one. Look at the teeth on it.",
+        "Five hundred, as promised. Spend it somewhere far from the water.",
+    };
+    public string bountyRefuseSaleLine = "That's the bounty fish. Don't sell it by the pound like a truttle -- turn it in and I'll pay the bounty.";
+    [Tooltip("The one tunable ([OPEN-4]).")]
+    public int bountyReward = 500;
+    public string bountyTurnedInFlag = "grulabu_turned_in";
+
+    int _bountyRowStart = -1;
+    int _bountyTurnInRow = -1;
+
+    static bool BountyFlag(string flag) =>
+        StoryDirector.Instance != null && StoryDirector.Instance.GetFlag(flag);
+
+    static FishEntry FindBountyFishOnPlayer() =>
+        Hotbar.Instance != null
+            ? Hotbar.Instance.FindFish(f => FishingRules.IsBounty(f.ResolveSpecies()))
+            : null;
+
+    /// The story, or the done-state once the bounty is paid. Runs on the
+    /// greeting text with the same typewriter/click cadence as the greeting,
+    /// then the choice menu comes back.
+    IEnumerator TellBountyStory()
+    {
+        var ls = BountyFlag(bountyTurnedInFlag) ? bountyDoneLines : bountyStoryLines;
+        yield return SpeakOnGreeting(ls);
+        if (playerInRange) ShowPostGreetingChoice();
+        else PlayerController.isInDialogue = false;
+    }
+
+    IEnumerator SpeakOnGreeting(string[] ls)
+    {
+        if (PostGreetingChoicePanel.Instance != null && PostGreetingChoicePanel.Instance.IsVisible)
+            PostGreetingChoicePanel.Instance.Hide();
+        greetingActive = true;
+        PlayerController.isInDialogue = true;
+        InteractPromptUI.Clear(this);
+        if (greetingText != null) greetingText.gameObject.SetActive(true);
+        for (int i = 0; ls != null && i < ls.Length && playerInRange; i++)
+        {
+            yield return StartCoroutine(TypewriterLine(ls[i], greetingText));
+            _waitingForClick = true;
+            yield return new WaitUntil(() => !_waitingForClick || !playerInRange);
+        }
+        if (greetingText != null) greetingText.gameObject.SetActive(false);
+        greetingActive = false;
+        greetingCoroutine = null;
+    }
+
+    /// The exact fish leaves the player, the money lands on THIS player (money
+    /// is personal in co-op; the interacting machine is the payee), the flag
+    /// flips the story to its done state. Double-trigger safe: the row is
+    /// rebuilt from the flag and the fish's presence every time.
+    void TurnInBounty()
+    {
+        var fish = FindBountyFishOnPlayer();
+        if (fish == null || BountyFlag(bountyTurnedInFlag)) { ShowPostGreetingChoice(); return; }
+        if (Hotbar.Instance == null || !Hotbar.Instance.RemoveFishEntry(fish)) { ShowPostGreetingChoice(); return; }
+
+        if (PlayerWallet.Instance != null) PlayerWallet.Instance.AddMoney(bountyReward);
+        if (StoryDirector.Instance != null) StoryDirector.Instance.SetFlag(bountyTurnedInFlag, true);
+        if (saleClip != null && saleSource != null) saleSource.PlayOneShot(saleClip, saleVolume);
+        Debug.Log($"[FishMarket] Bounty turned in: {fish.DisplayName} {fish.weightLbs}lb -> ${bountyReward}.");
+
+        greetingCoroutine = StartCoroutine(TurnInRoutine());
+    }
+
+    IEnumerator TurnInRoutine()
+    {
+        yield return SpeakOnGreeting(bountyTurnInLines);
+        ShowEarningsMessage($"Bounty paid!  ${bountyReward}");
+        if (playerInRange) ShowPostGreetingChoice();
+        else PlayerController.isInDialogue = false;
     }
 }
