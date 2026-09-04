@@ -34,13 +34,11 @@ public class ShuttleArrivalSequence : MonoBehaviour
     [SerializeField] float finalSinkSpeed = 1.5f;   // crawl rate after the brake (soft-landing sink)
 
     [Header("Timing (seconds)")]
-    [SerializeField] float fadeInTime    = 2f;
     [SerializeField] float entryDuration = 70f;     // long spacefall; film ~45s, touchdown at entry+18 = 88s (~43s into the film)
     [SerializeField] float brakeDuration = 8f;      // 150m -> 12m, entrySpeed -> finalSinkSpeed
     [SerializeField] float finalDuration = 10f;     // 12m -> touchdown, easing to 0 m/s
     [SerializeField] float touchdownHold = 1.2f;    // beat on the ground before the door opens
     [SerializeField] float doorOpenTime  = 1.8f;
-    [SerializeField] float doorOpenAngle = 115f;    // stasis door flips up-and-out around the top-front pivot
 
     // Capsule is radius 0.5, pivot at CENTER: y 1.02 (pod-local, ×1.2 instance
     // scale) puts the feet ~3cm above the plinth top, z 0 clears the back glass
@@ -64,7 +62,6 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     [Header("Stasis-wake grogginess (clears fully by touchdown)")]
     [SerializeField] Material grogginessMaterial;
-    [SerializeField] float grogRecoverRate = 0.025f;    // full blur -> sharp across the descent
 
     // HAL briefing (2026-07 orientation-film rework). Text MUST byte-match
     // HALVoiceManifest.Lines or a line plays silent, so they live in code.
@@ -159,7 +156,7 @@ public class ShuttleArrivalSequence : MonoBehaviour
 
     // Flip on to log a per-FixedUpdate release report to the scratchpad —
     // this is how the one-frame orbital-lag seating bug was caught.
-    const bool ReleaseDiagnostics = false;
+    static readonly bool ReleaseDiagnostics = false;   // static readonly, not const — see FeatureVault.cs: a const false makes the whole guarded body CS0162.
 
     // -- fields below appended after initial release; keep order (serialization) --
 

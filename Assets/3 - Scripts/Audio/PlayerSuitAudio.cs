@@ -24,11 +24,9 @@ public class PlayerSuitAudio : MonoBehaviour
     [SerializeField, Range(0f, 1f)] private float unequipVolume = 0.6f;
     [SerializeField, Range(0f, 1f)] private float acquireVolume = 0.85f;
 
-    [Header("Breathing (every 15-25 s)")]
+    [Header("Breathing (every 10-15 s)")]
     [SerializeField] private AudioClip[] breathingClips;
     [SerializeField, Range(0f, 1f)] private float breathingVolume = 0.5f;
-    [SerializeField] private float breathMinInterval = 15f;
-    [SerializeField] private float breathMaxInterval = 25f;
 
     [Header("Atmosphere Wind")]
     [SerializeField] private AudioClip windLoopClip;
@@ -141,8 +139,10 @@ public class PlayerSuitAudio : MonoBehaviour
 
     void ScheduleNextBreath()
     {
-        // Fixed 10-15s cadence (per request). Overrides the serialized interval
-        // fields so the scene-stored value can't leave it at the old 15-25s.
+        // Fixed 10-15s cadence (per request). This used to sit alongside
+        // serialized breathMin/MaxInterval fields that it silently overrode, so
+        // the Inspector advertised a 15-25s knob that did nothing — those fields
+        // are gone now and this is the only cadence. Change it here.
         _nextBreathTime = Time.time + Random.Range(10f, 15f);
     }
 

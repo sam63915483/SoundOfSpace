@@ -63,9 +63,7 @@ public class TutorialUI : MonoBehaviour
 
     string _currentTipLine = "";
     bool _tipRevealing;
-    bool _swungIn;
     bool _isOffScreen;
-    bool _firstEntryDone;
     bool _useLeftSide;  // flipped by MapTutorial during map mode so the pill clears the legend
     AudioSource _audio;
 
@@ -281,7 +279,6 @@ public class TutorialUI : MonoBehaviour
         if (pillRoot != null) pillRoot.anchoredPosition = to;
         if (group != null) group.alpha = 1f;
         slideRoutine = null;
-        _swungIn = true;
         if (tipRevealRoutine == null && !string.IsNullOrEmpty(_currentTipLine))
             tipRevealRoutine = StartCoroutine(RevealTipRoutine());
     }
@@ -470,8 +467,6 @@ public class TutorialUI : MonoBehaviour
         pillRoot.localScale = restScale;
 
         slideRoutine = null;
-        _swungIn = true;
-        _firstEntryDone = true;
     }
 
     // ── Layout build ───────────────────────────────────────────────────────

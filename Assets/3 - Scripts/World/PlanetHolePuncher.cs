@@ -42,6 +42,11 @@ using UnityEngine;
 // Gravity inside the body is handled separately by Universe.GravityAcceleration.
 [RequireComponent (typeof (CelestialBody))]
 public class PlanetHolePuncher : MonoBehaviour {
+    // Diagnostic chatter switch. static readonly (never const) so the guarded
+    // bodies don't become CS0162 unreachable code — see FeatureVault.cs.
+    // Flip to true when investigating cave-hole cutting per mesh.
+    static readonly bool Verbose = false;
+
 
 	[Tooltip ("Also punch the BodyPlaceholder's collider (the invisible smooth sphere on 'Mesh Holder/Mesh'). Leave ON — with it off you'll hit an invisible wall where the hole should be.")]
 	public bool punchPlaceholderCollider = true;
@@ -186,7 +191,7 @@ public class PlanetHolePuncher : MonoBehaviour {
 			int removed = PunchMesh (t, holes);
 			totalRemoved += removed;
 			if (verboseLogging) {
-				Debug.Log ($"[PlanetHolePuncher] '{name}' / {t.label}: removed {removed} triangles.", this);
+				if (Verbose) Debug.Log ($"[PlanetHolePuncher] '{name}' / {t.label}: removed {removed} triangles.", this);
 			}
 		}
 
@@ -337,7 +342,7 @@ public class PlanetHolePuncher : MonoBehaviour {
 		// the generator's own normals.
 
 		if (verboseLogging && snapped > 0) {
-			Debug.Log ($"[PlanetHolePuncher] '{name}' / {target.label}: snapped {snapped} rim vertices to the hole wall.", this);
+			if (Verbose) Debug.Log ($"[PlanetHolePuncher] '{name}' / {target.label}: snapped {snapped} rim vertices to the hole wall.", this);
 		}
 
 		return removed;

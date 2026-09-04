@@ -8,8 +8,6 @@ public partial class WormholeDemo : MonoBehaviour{
 	public Renderer wormhole;
 	public Material SkyboxA;
 	public Material SkyboxB;
-	private Cubemap CubemapA;
-	private Cubemap CubemapB;
 
 	public void Start(){
 		RenderSettings.skybox = new Material(RenderSettings.skybox);

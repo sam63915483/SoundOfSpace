@@ -107,7 +107,6 @@ public class CelestialBody : GravityObject {
     [System.NonSerialized] public Vector3 railU, railW, railLastRel;
     [System.NonSerialized] public float satellitePhase;
 
-    Transform meshHolder;
 
     public Vector3 velocity { get; private set; }
     public float mass { get; private set; }

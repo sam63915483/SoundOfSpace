@@ -30,7 +30,6 @@ public class LightingDebugToolbox : MonoBehaviour
     bool _torchesOff;
     bool _flashlightOff;
 
-    GUIStyle _style;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()

@@ -1485,8 +1485,13 @@ public class TevMushroomOnboarding : MonoBehaviour
     };
 
     [Header("Rent-conditional offer line (2026-08-10)")]
+    // Read only by the rent-paid branch, which FeatureVault.TevRent currently
+    // gates off — so the compiler sees it as write-only (CS0414). Kept, not
+    // deleted: flipping TevRent back on must restore this exactly as it was.
+#pragma warning disable 0414
     [Tooltip("Index into firstTalkLines of the 'three shrooms, on the house' offer. When the player agreed to ANY rent, firstTalkOfferRentPaid is spoken instead of this line.")]
     [SerializeField] int rentPaidOfferLineIndex = 4;
+#pragma warning restore 0414
 
     [Tooltip("Replaces firstTalkLines[rentPaidOfferLineIndex] when the player agreed to pay rent. Leave empty to always use the normal line.")]
     [TextArea(2, 5)]

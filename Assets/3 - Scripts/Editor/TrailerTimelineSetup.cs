@@ -40,8 +40,14 @@ public static class TrailerTimelineSetup
         var movie = ScriptableObject.CreateInstance<MovieRecorderSettings>();
         movie.name = "Trailer 1440p";
         movie.Enabled = true;
+        // Recorder's OutputFormat / VideoBitRateMode were deprecated in favour of
+        // the per-encoder EncoderSettings API. Migrating is a behaviour change to
+        // trailer tooling that can only be verified with the Editor open, so it is
+        // suppressed rather than guessed at. TODO: move to EncoderSettings.
+#pragma warning disable 0618
         movie.OutputFormat = MovieRecorderSettings.VideoRecorderOutputFormat.MP4;
         movie.VideoBitRateMode = VideoBitrateMode.High;
+#pragma warning restore 0618
         movie.ImageInputSettings = new GameViewInputSettings { OutputWidth = 2560, OutputHeight = 1440 };
         movie.AudioInputSettings.PreserveAudio = true;
         movie.FrameRate = 60;

@@ -808,6 +808,12 @@ public class HALCommentator : MonoBehaviour
 
     void PollEarlyGameFlags()
     {
+        // A DUPLICATE instance bails out of Awake before the tracker table is
+        // built, but Destroy(gameObject) only takes effect at end of frame — so
+        // its Update still runs and this threw a NullReferenceException every
+        // frame until the object actually went away.
+        if (_flagTrackers == null) return;
+
         for (int i = 0; i < _flagTrackers.Length; i++)
         {
             var ft = _flagTrackers[i];

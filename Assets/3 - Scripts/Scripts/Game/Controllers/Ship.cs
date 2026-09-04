@@ -556,14 +556,26 @@ public class Ship : GravityObject
             // Watchdog — log if anything mutates the headlight's shadow state
             // away from what we set in Awake. If the shadows enum is flipping
             // at runtime, that's the cause of the on/off flicker.
+            // Each warning fires ONCE per session. It still repairs the state
+            // every frame; only the logging is latched. Whatever was flipping
+            // these did it continuously, so an unlatched LogWarning inside
+            // Update floods the console at frame rate and buries everything else.
             if (headlight.shadows != LightShadows.Soft)
             {
-                Debug.LogWarning($"[Ship.Update] Headlight shadows changed to {headlight.shadows}! Was Soft. enabled={headlight.enabled}");
+                if (!_warnedHeadlightShadows)
+                {
+                    _warnedHeadlightShadows = true;
+                    Debug.LogWarning($"[Ship.Update] Headlight shadows changed to {headlight.shadows}! Was Soft. enabled={headlight.enabled} (further occurrences silenced)");
+                }
                 headlight.shadows = LightShadows.Soft;
             }
             if (!headlight.enabled)
             {
-                Debug.LogWarning($"[Ship.Update] Headlight was disabled! Re-enabling.");
+                if (!_warnedHeadlightDisabled)
+                {
+                    _warnedHeadlightDisabled = true;
+                    Debug.LogWarning($"[Ship.Update] Headlight was disabled! Re-enabling. (further occurrences silenced)");
+                }
                 headlight.enabled = true;
             }
         }
@@ -1665,4 +1677,8 @@ public class Ship : GravityObject
     float _engineHoldT;        // current I-hold progress toward a toggle
     bool _engineKeyLatched;    // one toggle per press — must release I before the next
     float _pilotedAt;          // Time.time when the pilot sat down (drives the prompt delay)
+
+    // Latches for the headlight watchdog in Update — log once, repair always.
+    bool _warnedHeadlightShadows;
+    bool _warnedHeadlightDisabled;
 }

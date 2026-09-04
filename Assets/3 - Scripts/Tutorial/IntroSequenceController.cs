@@ -41,7 +41,6 @@ public class IntroSequenceController : MonoBehaviour
     [SerializeField, Range(0f, 1f)] float heartbeatTargetVolume = 0.7f;
     [SerializeField, Range(0f, 1f)] float roomToneVolume        = 0.25f;
     [SerializeField] float heartbeatFadeIn  = 3f;
-    [SerializeField] float heartbeatFadeOut = 2f;
 
     [Header("Grogginess (wake-up blur + double vision)")]
     [SerializeField] Material grogginessMaterial;     // uses the Hidden/Grogginess shader
@@ -72,9 +71,6 @@ public class IntroSequenceController : MonoBehaviour
     [SerializeField] float groggyMoveScale = 0.5f;    // walk speed after the first (post-Line03) unlock, before the final line
 
     [Header("Heartbeat spike (vitals irregular)")]
-    [SerializeField] float heartbeatFastPitch    = 1.4f; // elevated beat SPEED at the spike — we pitch up the SAME clip (no separate fast loop)
-    [SerializeField] float heartbeatSpeedUpTime  = 2.5f; // seconds to ramp from the calm beat up to the elevated rate
-    [SerializeField] float heartbeatEaseDelay    = 5f;   // seconds into the "returned home" line before it eases back
     [SerializeField] float heartbeatEaseTime     = 5f;   // seconds to ease back down to the calm beat
 
     [Header("Double-vision breathing")]
@@ -693,7 +689,4 @@ public class IntroSequenceController : MonoBehaviour
     [Header("Staged move-speed ramp")]
     [SerializeField] float moveScaleStart = 0.15f;     // walk speed at the first unlock, when cursor/look returns (post-Line03). groggyMoveScale (0.5) is the mid step after the reassurance line; 100% comes at the final handoff.
 
-    [Header("Heartbeat fade-out (after the final line)")]
-    [SerializeField] float heartbeatStopDelay = 15f;   // seconds after the last briefing line before the heartbeat fully fades out
-    [SerializeField] float heartbeatStopFade  = 4f;    // seconds to fade the faint heartbeat down to silence
 }

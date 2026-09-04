@@ -127,7 +127,13 @@ public class HelmetOverlayHUD : MonoBehaviour
 
         bool haveArt = _config != null && _config.helmetTexture != null;
         bool show = haveArt && FxEnabled() && !InMainMenu();
-        if (_frameCanvas != null && _frameCanvas.enabled != show && !InMainMenu())
+        // NB: no second !InMainMenu() guard here. It used to block the write
+        // entirely in the menu, which also blocked TURNING THE VISOR OFF -- the
+        // guard was meant to stop it being re-ENABLED, but it stopped every
+        // change, so a visor that arrived from gameplay could never be cleared.
+        // `show` already accounts for the menu, so the plain assignment is both
+        // correct and safe in every direction.
+        if (_frameCanvas != null && _frameCanvas.enabled != show)
             _frameCanvas.enabled = show;
 
         if (haveArt && _config.Version != _builtVersion)

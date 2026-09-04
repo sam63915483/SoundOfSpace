@@ -74,6 +74,10 @@ def main():
     if rc == 0:
         rc2, _ = build(data, "editor", "Assembly-CSharp-Editor")
         bad += rc2
+        # Same sources, UNITY_EDITOR undefined — what a player BUILD compiles.
+        # Catches warnings the editor compile structurally cannot see.
+        rc3, _ = build(data, "player", "Assembly-CSharp (player defines)")
+        bad += rc3
     else:
         print("Assembly-CSharp-Editor: SKIPPED (runtime assembly failed)")
 

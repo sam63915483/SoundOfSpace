@@ -519,6 +519,12 @@ public class SpaceDustField : MonoBehaviour
 
     void Flush(int count)
     {
+        // LateUpdate can reach here before the one-time buffer build has run
+        // (or after a reload that cleared it), and _mpb.Clear() on a null block
+        // threw a NullReferenceException EVERY FRAME once it happened.
+        if (_mpb == null || _mesh == null || _material == null
+            || _matrices == null || _colors == null) return;
+
         _mpb.Clear();
         _mpb.SetVectorArray(_ColorID, _colors);
         Graphics.DrawMeshInstanced(_mesh, 0, _material, _matrices, count, _mpb,

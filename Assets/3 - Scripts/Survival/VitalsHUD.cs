@@ -41,14 +41,11 @@ public class VitalsHUD : MonoBehaviour
     Canvas _canvas;
     RectTransform _cardRT;
     StatRow _health, _hunger, _thirst, _suitO2, _ambientO2, _shipPower, _shipFuel;
-    GameObject _chargingRow;
     TMP_Text _chargingText;
     SolarPanelCharger _solar;
     AudioSource _audio;
 
     bool _hungerWarned, _thirstWarned, _healthWarned, _shipPowerWarned, _shipFuelWarned;
-    bool _legacyHidden;
-    bool _chargingShown;
 
     class StatRow
     {
@@ -335,7 +332,6 @@ public class VitalsHUD : MonoBehaviour
         // can live on separate GameObjects that are individually active under an
         // inactive-at-this-instant parent; skipping here left them to pop back on
         // (the top-left legacy HUD reappearing). Always disable the elements.
-        _legacyHidden = true;
 
         // Disable each scene-bound element the legacy HUD drives. The bars,
         // labels, and charging indicator may live on separate GameObjects

@@ -184,14 +184,33 @@ public class InteractPromptUI : MonoBehaviour
 
     /// <summary>Legacy: 3 s self-clearing prompt. Used by GameUI.DisplayInteractionInfo.</summary>
     public static void ShowOneShot(string text, float seconds = 3f)
+        => ShowOneShot(text, seconds, true);
+
+    /// <summary>
+    /// One-shot prompt with control over whether it claims the RETICLE.
+    ///
+    /// <paramref name="claimsReticle"/> false is for messages about the item
+    /// already in your hands ("need bait", "reel [hold]") rather than about
+    /// something you are looking at. CrosshairReticle morphs the triangle into
+    /// the interactable square purely off <see cref="IsPromptVisible"/>, so a
+    /// held-item message routed through the normal path makes the crosshair
+    /// claim there is a door in front of you. Sam caught exactly that on
+    /// 2026-09-01 with the rod's "need bait" line.
+    /// </summary>
+    public static void ShowOneShot(string text, float seconds, bool claimsReticle)
     {
         if (Instance == null) return;
         Instance._owner = null;
         Instance._stickyOwner = false;
+        Instance._suppressReticle = !claimsReticle;
         Instance.ShowInternal(text);
         if (Instance._oneShotRoutine != null) Instance.StopCoroutine(Instance._oneShotRoutine);
         Instance._oneShotRoutine = Instance.StartCoroutine(Instance.OneShotRoutine(seconds));
     }
+
+    // True while the visible prompt is a held-item message that must not morph
+    // the crosshair. Cleared on hide, so it can never leak into the next prompt.
+    bool _suppressReticle;
 
     void ShowInternal(string text)
     {
@@ -211,7 +230,7 @@ public class InteractPromptUI : MonoBehaviour
 
         if (_shown) return;
         _shown = true;
-        IsPromptVisible = true;
+        IsPromptVisible = !_suppressReticle;
         if (_slideRoutine != null) StopCoroutine(_slideRoutine);
         _slideRoutine = StartCoroutine(SlideRoutine(true));
     }
@@ -220,6 +239,7 @@ public class InteractPromptUI : MonoBehaviour
     {
         if (!_shown) return;
         _shown = false;
+        _suppressReticle = false;
         IsPromptVisible = false;
         if (_slideRoutine != null) StopCoroutine(_slideRoutine);
         _slideRoutine = StartCoroutine(SlideRoutine(false));

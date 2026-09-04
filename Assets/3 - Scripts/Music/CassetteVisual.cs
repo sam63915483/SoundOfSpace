@@ -20,7 +20,7 @@ public static class CassetteVisual
 {
     /// Set true to print what each spawned tape measured and how it was
     /// rotated. See the call site in Spawn.
-    public const bool LogOrientation = false;
+    public static readonly bool LogOrientation = false;   // static readonly, not const — see FeatureVault.cs: a const false makes the whole guarded body CS0162.
 
     /// <summary>
     /// Instantiate the model under an unscaled anchor beneath

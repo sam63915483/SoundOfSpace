@@ -66,8 +66,6 @@ public class AudienceMember : MonoBehaviour
     [SerializeField] float danceCyclesPerBeat = 0.5f;
     [Tooltip("Side-to-side hip yaw during Dance1 (sway), degrees.")]
     [SerializeField] float swayHipAngle = 12f;
-    [Tooltip("Vertical bob amount during Dance2, world-space metres.")]
-    [SerializeField] float bobAmount = 0.10f;
     [Tooltip("Pelvis pitch (forward lean) during Dance2 bob, degrees.")]
     [SerializeField] float bobPelvisPitch = 8f;
     [Tooltip("Shoulder shimmy angle during Dance1, degrees.")]

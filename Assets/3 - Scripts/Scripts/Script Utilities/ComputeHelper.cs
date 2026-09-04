@@ -8,7 +8,15 @@ public static class ComputeHelper {
 
 	// Subscribe to this event to be notified when buffers created in edit mode should be released
 	// (i.e before script compilation occurs, and when exitting edit mode)
+	//
+	// The only code that RAISES it lives in the #if UNITY_EDITOR block below, but
+	// CelestialBodyGenerator subscribes without a preprocessor guard (it gates on
+	// InEditMode at runtime instead). So in a PLAYER compile the event is
+	// subscribed to and never invoked -> CS0067. That is correct and harmless
+	// here; the declaration stays outside the #if so the subscriber still builds.
+#pragma warning disable 0067
 	public static event System.Action shouldReleaseEditModeBuffers;
+#pragma warning restore 0067
 
 	// Convenience method for dispatching a compute shader.
 	// It calculates the number of thread groups based on the number of iterations needed.

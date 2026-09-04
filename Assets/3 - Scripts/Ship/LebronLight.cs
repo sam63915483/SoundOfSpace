@@ -74,7 +74,7 @@ public class LebronLight : MonoBehaviour
     [Range(0f, 1f)]
     public float atmosphereOpacity = 0.5f;
 
-    Light light;
+    Light _light;
     GameObject lightHost;
     SpriteRenderer sunRenderer;
     Transform sunTransform;
@@ -134,13 +134,13 @@ public class LebronLight : MonoBehaviour
         lightHost.transform.localPosition = Vector3.up * lightHeightAboveShip;
         lightHost.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
 
-        light = lightHost.AddComponent<Light>();
-        light.type = lightType;
-        light.color = lightColor;
-        light.intensity = lightIntensity;
-        light.range = protectionRadius;
-        light.shadows = LightShadows.Soft;
-        light.flare = lensFlare;
+        _light = lightHost.AddComponent<Light>();
+        _light.type = lightType;
+        _light.color = lightColor;
+        _light.intensity = lightIntensity;
+        _light.range = protectionRadius;
+        _light.shadows = LightShadows.Soft;
+        _light.flare = lensFlare;
         cachedFlare = lensFlare;
 
         GameObject haloObj = new GameObject("AtmosphereHalo");
@@ -193,14 +193,14 @@ public class LebronLight : MonoBehaviour
     {
         if (!isActive) return;
 
-        if (light != null)
+        if (_light != null)
         {
-            light.range = protectionRadius;
-            light.color = lightColor;
-            light.intensity = lightIntensity;
+            _light.range = protectionRadius;
+            _light.color = lightColor;
+            _light.intensity = lightIntensity;
             if (cachedFlare != lensFlare)
             {
-                light.flare = lensFlare;
+                _light.flare = lensFlare;
                 cachedFlare = lensFlare;
             }
         }

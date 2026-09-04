@@ -76,7 +76,6 @@ public class BuildMenuUI : MonoBehaviour
     int _placementEndedFrame = -1; // frame on which the active placement finished;
                                    // used to suppress the toggle-key re-opening the menu
                                    // on the same frame the user pressed it to exit placement
-    Ship _shipCached;
 
     // When set (by tutorial / scripted flow), the next placement's onFinished
     // re-opens the build menu instead of returning straight to gameplay.

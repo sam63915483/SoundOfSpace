@@ -22,12 +22,10 @@ public class SpawnFade : MonoBehaviour
 
     Coroutine _routine;
     Vector3 _targetScale;
-    bool _fadingOut;
 
     public void BeginFadeIn()
     {
         if (_routine != null) StopCoroutine(_routine);
-        _fadingOut = false;
         _targetScale = transform.localScale;
         transform.localScale = _targetScale * startMultiplier;
         if (!gameObject.activeInHierarchy) return;
@@ -37,7 +35,6 @@ public class SpawnFade : MonoBehaviour
     public void BeginFadeOut(System.Action onComplete)
     {
         if (_routine != null) StopCoroutine(_routine);
-        _fadingOut = true;
         // Capture current scale as the "from" — if BeginFadeIn was in flight,
         // current scale may be mid-fade and that's the right starting point.
         if (!gameObject.activeInHierarchy)

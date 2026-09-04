@@ -465,6 +465,13 @@ public static class ShuttleRiderFrame
 [DefaultExecutionOrder(300)]   // after CameraTransformFX (100) — final poses
 public class RiderReleaseBleed : MonoBehaviour
 {
+    // The landing MegaTracker / IntroWatch v5 forensic dumps. These are the rigs
+    // that solved the in-flight slide, so they are kept rather than ripped out —
+    // but they printed a multi-KB report to the console on every landing and
+    // every intro. Flip to true to get them back.
+    // static readonly (never const) so the guarded bodies stay reachable code.
+    static readonly bool Verbose = false;
+
     struct RSample { public float t, dtMs, holdCm; public Vector3 camCab, plyCab; public bool gnd, rider; public int gc; }
     struct FSample { public float t; public Vector3 rbCab; public float velDiffCm; public bool gnd, rider; }
 
@@ -719,7 +726,7 @@ public class RiderReleaseBleed : MonoBehaviour
               .Append(" d").Append(s.dlg ? "1" : "0")
               .AppendLine();
         }
-        Debug.Log(sb.ToString());
+        if (Verbose) Debug.Log(sb.ToString());
     }
 
     void Report()
@@ -766,7 +773,7 @@ public class RiderReleaseBleed : MonoBehaviour
             sb.AppendLine("RENDER frames around the worst player jump:");
             PrintRRange(sb, _r[worstI].t - 0.15f, _r[worstI].t + 0.15f);
         }
-        Debug.Log(sb.ToString());
+        if (Verbose) Debug.Log(sb.ToString());
     }
 
     void PrintRRange(System.Text.StringBuilder sb, float tMin, float tMax)

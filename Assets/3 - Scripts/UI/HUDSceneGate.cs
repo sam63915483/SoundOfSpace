@@ -34,7 +34,14 @@ public static class HUDSceneGate
 
     static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        bool hide = IsMainMenu(scene);
+        // Decide from the ACTIVE scene, never from the scene that happened to
+        // load. MainMenu pulls in MenuOrbit ADDITIVELY as its 3D background, and
+        // keying off the loaded scene meant that additive load reported "not the
+        // main menu" and re-enabled every gameplay HUD on top of the menu --
+        // helmet overlay included, which is a full-screen image, so the menu
+        // vanished behind it. On a Single load the active scene is already the
+        // new one, so this is correct in both cases.
+        bool hide = IsMainMenu(SceneManager.GetActiveScene());
         for (int i = _canvases.Count - 1; i >= 0; i--)
         {
             var c = _canvases[i];

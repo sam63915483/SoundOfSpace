@@ -156,7 +156,6 @@ public class ShuttleAutopilot : MonoBehaviour
     Vector2 _pilotMove;               // WASD, [-1,1] each axis
     float _pilotYaw;                  // Q/E, [-1,1]
     float _pilotInputStamp = -999f;
-    bool _landRequested;
 
     // Landing state
     Vector3 _landStartLocal;
@@ -777,7 +776,6 @@ public class ShuttleAutopilot : MonoBehaviour
                 _hoverVel = Vector2.zero;
                 _hoverAltVel = 0f;
                 _hoverAlt = HoverAltitude;
-                _landRequested = false;
                 // Hover: main engine off, stabiliser SPURTS keep firing (Sam:
                 // "little spurts so it looks like you're being held up").
                 if (_fx != null) { _fx.SetEngine(false); _fx.SetSpurts(true); }

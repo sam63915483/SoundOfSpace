@@ -18,9 +18,16 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 OUT_DIR = os.path.join(ROOT, "build")
 
-EDITOR = len(sys.argv) > 1 and sys.argv[1] == "editor"
+MODE = sys.argv[1] if len(sys.argv) > 1 else ""
+EDITOR = MODE == "editor"
+# "player" compiles Assembly-CSharp the way a BUILD does — same sources, but
+# with UNITY_EDITOR undefined. Unity does this compile too, and it produces
+# warnings the editor compile cannot: anything used only inside #if UNITY_EDITOR
+# looks unused once that block vanishes (e.g. CS0067 on ComputeHelper's
+# shouldReleaseEditModeBuffers). Checking only the editor variant misses them.
+PLAYER = MODE == "player"
 PROJ = "Assembly-CSharp-Editor.csproj" if EDITOR else "Assembly-CSharp.csproj"
-NAME = "asm-editor" if EDITOR else "asm"
+NAME = "asm-editor" if EDITOR else ("asm-player" if PLAYER else "asm")
 
 
 _cache = {}
@@ -42,6 +49,9 @@ def main():
     refs = re.findall(r"<HintPath>([^<]*)</HintPath>", proj)
     m = re.search(r"<DefineConstants>([^<]*)</DefineConstants>", proj)
     defines = m.group(1) if m else ""
+    if PLAYER:
+        defines = ";".join(d for d in defines.split(";")
+                           if not d.strip().startswith("UNITY_EDITOR"))
 
     sep = chr(92)  # backslash, kept out of literals so this file stays paste-safe
     srcs = []
@@ -67,6 +77,16 @@ def main():
         f.write("-langversion:9.0" + chr(10))
         f.write("-unsafe" + chr(10))
         f.write('-out:"' + os.path.join(OUT_DIR, NAME + ".dll") + '"' + chr(10))
+        # Unity applies Assets/csc.rsp to both predefined assemblies. Mirror it
+        # here or this checker reports warnings the Editor never shows (and,
+        # worse, could miss an option that changes whether something compiles).
+        # -noconfig is set above, so csc will not pick it up on its own.
+        user_rsp = os.path.join(ROOT, "Assets", "csc.rsp")
+        if os.path.isfile(user_rsp):
+            for line in io.open(user_rsp, encoding="utf-8-sig"):
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    f.write(line + chr(10))
         if defines:
             f.write("-define:" + defines + chr(10))
         # Everything Unity has already compiled for this project — Netcode,

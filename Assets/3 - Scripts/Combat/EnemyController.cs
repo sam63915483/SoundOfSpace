@@ -591,10 +591,17 @@ public class EnemyController : MonoBehaviour, IDamageable
             // Single player is unchanged: the only target there is always local.
             if (PlayerTreeContactTracker.IsActive && PlayerRoster.IsLocalPlayer(player))
             {
+                // Three bands, matching the spitStandoffMin/Max comment above.
+                // This used to be two: everything at or beyond min simply
+                // halted, so spitStandoffMax was never read (CS0414) and an
+                // enemy that spotted a treed player from 60 m would stop dead
+                // there and spit from far outside the intended band instead of
+                // closing to it.
                 if (horizDist < spitStandoffMin)
                     horizDir = -horizDir;              // too close — back up
-                else
-                    horizDist = stoppingDistance;      // anywhere ≥ min — halt
+                else if (horizDist <= spitStandoffMax)
+                    horizDist = stoppingDistance;      // inside the band — halt
+                // farther than max: leave horizDist alone and keep walking in
 
                 if (!_spitting
                     && Time.time >= _nextSpitTime

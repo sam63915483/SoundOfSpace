@@ -15,6 +15,11 @@ using System.Text;
 /// </summary>
 public class MenuTourTracker : MonoBehaviour
 {
+    // Diagnostic chatter switch. static readonly (never const) so the guarded
+    // bodies don't become CS0162 unreachable code — see FeatureVault.cs.
+    // Flip to true when investigating the menu camera/shuttle motion again.
+    static readonly bool Verbose = false;
+
     public MenuShuttleTour tour;
     public MenuShotDirector director;
     public Camera cam;
@@ -144,7 +149,7 @@ public class MenuTourTracker : MonoBehaviour
         {
             float visPct = planetShotFrames > 0 ? 100f * planetVisibleFrames / planetShotFrames : -1f;
             float litPct = planetShotFrames > 0 ? 100f * planetLitFrames / planetShotFrames : -1f;
-            Debug.Log($"[MenuTracker] 30s window: steps={steps} | accelSpikes={accelSpikes} (worst {worstAccel:0.0}) | " +
+            if (Verbose) Debug.Log($"[MenuTracker] 30s window: steps={steps} | accelSpikes={accelSpikes} (worst {worstAccel:0.0}) | " +
                       $"turnViol={turnViolations} (worst {worstTurn:0.0}) | bubbleHits={clearanceHits} (closest {worstClearance:0.00}) | " +
                       $"camSpins={camSpins} (worst {worstCamSpin:0.0}) | planetShot: inFrame {visPct:0}% lit {litPct:0}% | mode={(director != null ? director.CurrentShotName : "SamCam")} focus={tour.FocusBody.bodyName}");
             steps = accelSpikes = turnViolations = clearanceHits = camSpins = 0;
@@ -159,6 +164,6 @@ public class MenuTourTracker : MonoBehaviour
     {
         if (Time.time - lastWarnAt < 1f) return;
         lastWarnAt = Time.time;
-        Debug.LogWarning("[MenuTracker] " + msg);
+        if (Verbose) Debug.LogWarning("[MenuTracker] " + msg);
     }
 }

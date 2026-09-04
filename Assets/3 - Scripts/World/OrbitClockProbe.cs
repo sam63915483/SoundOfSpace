@@ -23,6 +23,11 @@ using UnityEngine;
 /// </summary>
 public class OrbitClockProbe : MonoBehaviour
 {
+    // Diagnostic chatter switch. static readonly (never const) so the guarded
+    // bodies don't become CS0162 unreachable code — see FeatureVault.cs.
+    // Flip to true when investigating planet day-length drift again (the CSV is still written either way).
+    static readonly bool Verbose = false;
+
     const int SampleEverySteps = 5;          // 20 Hz at the 100 Hz physics step
     const float AnomalyFrac = 0.25f;         // r departing r0 by this fraction = off the rails
     const float RebaselineFrac = 0.30f;      // per-sample jump = save-load teleport, re-anchor
@@ -135,7 +140,7 @@ public class OrbitClockProbe : MonoBehaviour
                 t.prevLapTime = elapsed;
                 if (t.firstLap < 0f) t.firstLap = lapLen;
                 float drift = (lapLen - t.firstLap) / t.firstLap * 100f;
-                Debug.Log($"[OrbitProbe] {t.body.bodyName}: day #{t.laps} = {lapLen:0.0}s ({lapLen / 60f:0.0} min), drift {drift:+0.0;-0.0}% vs first, distToSun {rm:0} (start {t.r0:0})");
+                if (Verbose) Debug.Log($"[OrbitProbe] {t.body.bodyName}: day #{t.laps} = {lapLen:0.0}s ({lapLen / 60f:0.0} min), drift {drift:+0.0;-0.0}% vs first, distToSun {rm:0} (start {t.r0:0})");
                 Log(t, "lap", lapLen, rm);
             }
 

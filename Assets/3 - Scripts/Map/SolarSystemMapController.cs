@@ -63,7 +63,6 @@ public class SolarSystemMapController : MonoBehaviour
     // LMB-on-planet or from clicking a body in the map's world view —
     // NOT from the legend, which is now pure navigation.
     CelestialBody pendingHighlight;
-    Ship pendingHighlightShip;          // mutually exclusive with `pendingHighlight`
 
     bool isOpen;
     int legendCursor = -1;          // controller D-pad highlight position
@@ -588,7 +587,6 @@ public class SolarSystemMapController : MonoBehaviour
     public void SetMarkedBody(CelestialBody body)
     {
         // Body and ship highlights are mutually exclusive.
-        pendingHighlightShip = null;
         followedShip = null;
         followedPlayer = null;
         pendingHighlight = body;

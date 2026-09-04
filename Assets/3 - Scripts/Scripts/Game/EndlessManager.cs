@@ -23,6 +23,10 @@ public class EndlessManager : MonoBehaviour
     // private fields would be null and LateUpdate would NRE every frame.
     // OnEnable's Bootstrap re-registers the scene-default entries instead.
     List<PhysicsEntry> physicsObjects = new List<PhysicsEntry>();
+
+    // Instance ids already reported for the double-shift mistake, so a caller in
+    // an Update loop cannot flood the console.
+    readonly HashSet<int> _doubleShiftWarned = new HashSet<int>();
     // Two-stage pipeline: interpolation is restored 2 LateUpdates after the shift so that
     // BOTH prevPhysicsPos and currentPhysicsPos in Unity's interpolation buffer are
     // post-shift values before rendering resumes with interpolation on.
@@ -283,8 +287,37 @@ public class EndlessManager : MonoBehaviour
         distanceThreshold = saved;
     }
 
+    /// <summary>
+    /// Registers a transform to be moved by origin shifts.
+    ///
+    /// <b>An object parented under a CelestialBody must NOT be registered.</b>
+    /// Every CelestialBody is registered at bootstrap, so a shifted planet
+    /// already carries its children; registering a child as well shifts it
+    /// TWICE. That has now bitten this project three separate times -- the
+    /// concert crowd teleporting away (AudienceSpawner), and the fishing bobber
+    /// jumping for one frame on every shift (Bobber, 2026-09-01). Rather than
+    /// leave it as tribal knowledge in two comments, the rule is enforced here:
+    /// such a registration is REPORTED once.
+    ///
+    /// <b>It warns rather than refuses, deliberately.</b> Refusing changes the
+    /// behaviour of a load-bearing system for every caller, including ones that
+    /// re-parent later (ShuttleRiderFrame seats the player under the shuttle;
+    /// MenuOrbitBootstrap seats it and hands shift duty over). A diagnostic must
+    /// not be able to break the thing it is diagnosing -- the real fix always
+    /// belongs at the call site.
+    /// </summary>
     public void RegisterPhysicsObject(Transform t)
     {
+        if (t != null && t.parent != null && t.GetComponent<CelestialBody>() == null
+            && t.GetComponentInParent<CelestialBody>() != null
+            && _doubleShiftWarned.Add(t.GetInstanceID()))
+        {
+            Debug.LogWarning(
+                $"[EndlessManager] '{t.name}' is parented under a CelestialBody, which is " +
+                "already shifted -- registering it too will DOUBLE-SHIFT it (one-frame jumps " +
+                "on every origin shift). Objects under a planet ride its shift for free. " +
+                "Unregister it, or unparent it if it really needs independent tracking.");
+        }
         if (t == null) return;
         foreach (var entry in physicsObjects)
         {

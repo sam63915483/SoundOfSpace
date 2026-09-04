@@ -39,13 +39,20 @@ public class BlackHoleCapture : MonoBehaviour
         // mid-dive. One blit with the gates on compiles the whole (single-variant) shader.
         if (vignetteMaterial != null && vignetteMaterial.shader != null)
         {
-            var tmp = RenderTexture.GetTemporary(16, 16, 0);
+            // Two textures, not one. Blitting a RenderTexture onto ITSELF is
+            // undefined behaviour and Unity logs it as an ERROR on every scene
+            // load ("A call to Blit with source and dest set to the same
+            // RenderTexture"). The pre-warm works exactly the same with a
+            // separate destination.
+            var src = RenderTexture.GetTemporary(16, 16, 0);
+            var dst = RenderTexture.GetTemporary(16, 16, 0);
             vignetteMaterial.SetFloat("_Intensity", 0.8f);
             vignetteMaterial.SetFloat("_KaleidoStrength", 0.5f);
-            Graphics.Blit(tmp, tmp, vignetteMaterial);
+            Graphics.Blit(src, dst, vignetteMaterial);
             vignetteMaterial.SetFloat("_Intensity", 0f);
             vignetteMaterial.SetFloat("_KaleidoStrength", 0f);
-            RenderTexture.ReleaseTemporary(tmp);
+            RenderTexture.ReleaseTemporary(dst);
+            RenderTexture.ReleaseTemporary(src);
         }
     }
 
@@ -337,10 +344,16 @@ public class BlackHoleCapture : MonoBehaviour
     [SerializeField, Range(0f, 1f)] float kaleidoMax = 0.8f;
     [Tooltip("Max wavy heat-haze shimmer strength at the core.")]
     [SerializeField, Range(0f, 1f)] float kaleidoWaveMax = 0.4f;
-    [Tooltip("Max woozy camera-sway (slow whole-frame roll + drift) at the core. Ramps in with proximity. 0 disables it.")]
+    // These three drive effects that are deliberately switched off (see the
+    // auto-spin note near the top and the `_vign.sway = 0f` line) but are kept
+    // as inspector knobs so re-enabling is a one-line change. CS0414 is
+    // suppressed for exactly that reason — they are parked, not dead.
+#pragma warning disable 0414
+    [Tooltip("Max woozy camera-sway (slow whole-frame roll + drift) at the core. Ramps in with proximity. 0 disables it. CURRENTLY NOT APPLIED — see _vign.sway.")]
     [SerializeField, Range(0f, 1f)] float swayMax = 1f;
-    [Tooltip("Auto-spin rate (radians/sec) at the core — turns the ON-FOOT astronaut (body + camera) RIGHT like an auto-mouse, ramping cubically to here. Never spins the ship. ~6.28 = one full turn/sec. 0 disables it.")]
+    [Tooltip("Auto-spin rate (radians/sec) at the core — turns the ON-FOOT astronaut (body + camera) RIGHT like an auto-mouse, ramping cubically to here. Never spins the ship. ~6.28 = one full turn/sec. 0 disables it. CURRENTLY NOT APPLIED.")]
     [SerializeField] float spinSpeedMax = 2.5f;
-    [Tooltip("Distance (world units) from the core where the on-foot spin STARTS. Smaller = kicks in later/closer. Keep it well inside the vignette radius so the spin only sweeps a darkened periphery (otherwise it flashes the bright sun/horizon past the view).")]
+    [Tooltip("Distance (world units) from the core where the on-foot spin STARTS. Smaller = kicks in later/closer. Keep it well inside the vignette radius so the spin only sweeps a darkened periphery (otherwise it flashes the bright sun/horizon past the view). CURRENTLY NOT APPLIED.")]
     [SerializeField] float spinStartRadius = 1000f;
+#pragma warning restore 0414
 }

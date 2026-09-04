@@ -18,7 +18,7 @@ public static class Universe {
     // A field rather than a const only so ApplyPhysicsRate can write it.
     public static float physicsTimeStep = 0.01f;
 
-    public const bool cheatsEnabled = true;
+    public static readonly bool cheatsEnabled = true;   // static readonly, not const: as a const the compiler folds every `if (!cheatsEnabled) return;` and reports the cheat body as CS0162 unreachable code.
 
     // Gravitational acceleration (m/s²) at `point` due to `body`.
     //

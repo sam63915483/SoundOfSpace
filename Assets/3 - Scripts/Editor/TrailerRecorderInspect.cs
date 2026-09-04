@@ -29,7 +29,13 @@ public static class TrailerRecorderInspect
                 var movie = r as MovieRecorderSettings;
                 if (movie != null)
                 {
+        // Recorder's OutputFormat / VideoBitRateMode were deprecated in favour of
+        // the per-encoder EncoderSettings API. Migrating is a behaviour change to
+        // trailer tooling that can only be verified with the Editor open, so it is
+        // suppressed rather than guessed at. TODO: move to EncoderSettings.
+#pragma warning disable 0618
                     sb.AppendLine($"     format={movie.OutputFormat}");
+#pragma warning restore 0618
                     var gv = movie.ImageInputSettings as UnityEditor.Recorder.Input.GameViewInputSettings;
                     if (gv != null) sb.AppendLine($"     gameView={gv.OutputWidth}x{gv.OutputHeight}");
                     else sb.AppendLine($"     inputSettings={movie.ImageInputSettings?.GetType().Name ?? "NULL"}");

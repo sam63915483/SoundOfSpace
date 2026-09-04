@@ -8,17 +8,25 @@
 ///
 /// Vaulted 2026-08-03 at Sam's request, to be unlocked for playtesting once the
 /// caves are done.
+///
+/// ⚠️ These are `static readonly`, NOT `const`, and must stay that way.
+/// With `const` the compiler folds every `if (!FeatureVault.X) return;` at
+/// compile time and reports the whole body as CS0162 "unreachable code" — that
+/// alone was 40 of the project's 177 build warnings, drowning out real ones.
+/// `static readonly` reads identically at every call site, is folded by the JIT
+/// so it costs nothing at runtime, and flipping a flag still works exactly the
+/// same. Do not "optimise" these back to `const`.
 /// </summary>
 public static class FeatureVault
 {
     /// OpeningDirector's six survival beats (locker → water → wood → fire →
     /// build → village). Built and compile-verified, never play-tested.
-    public const bool OpeningBeats = false;
+    public static readonly bool OpeningBeats = false;
 
     /// The three recruiter questions on the black screen at the very start
     /// ("Do you want your life to mean something?" …). "Open your eyes." is NOT
     /// part of this — that line stays.
-    public const bool ColdOpenQuestions = false;
+    public static readonly bool ColdOpenQuestions = false;
 
     /// HAL's five spoken lines during the descent (stasis cycle complete, three
     /// years in transit, heart rate elevated, the reassurance, the film lead-in).
@@ -26,7 +34,7 @@ public static class FeatureVault
     /// ON. Vaulting these was a misread of "vault the black screen and dialogue
     /// lines at the start" — that meant the cold-open QUESTIONS, not HAL's
     /// briefing on the way down. The briefing stays.
-    public const bool DescentBriefing = true;
+    public static readonly bool DescentBriefing = true;
 
     /// The tape-career SHOP GATE: Half/Full-Length blanks locked until 10/25
     /// total tapes sold, and fan orders clamped to the unlocked formats.
@@ -37,7 +45,7 @@ public static class FeatureVault
     /// (so flipping this back on later lands mid-career, not at zero), the
     /// locked-row UI, the "SELL N MORE" copy and Tev's restock text all come
     /// back exactly as built. Flip to true once the loop is verified.
-    public const bool TapeCareerGate = false;
+    public static readonly bool TapeCareerGate = false;
 
     /// SELLING space dust to NPCs. Vaulted 2026-08-04 at Sam's request while the
     /// mushroom economy is the focus — "vault space dust for right now, make it
@@ -49,7 +57,7 @@ public static class FeatureVault
     /// untouched and still work. SpaceDustSellUI and NPCSellDustOption are still
     /// compiled and still wired — flip this to true and the "Sell space dust"
     /// row comes back on every NPC exactly as it was.
-    public const bool SpaceDustSelling = false;
+    public static readonly bool SpaceDustSelling = false;
 
     /// The astronaut HELMET FRAME ART — the painted shell, its visor glass, and
     /// the settings toggle that used to switch them on. Vaulted 2026-08-06:
@@ -71,7 +79,7 @@ public static class FeatureVault
     ///
     /// Flip to true and the helmet comes back exactly as it was, except the
     /// quads have since been widened (clusters sit further out than the painting).
-    public const bool HelmetFrameArt = false;
+    public static readonly bool HelmetFrameArt = false;
 
     /// DROP-IN MULTIPLAYER — the menu MULTIPLAYER button, the "play together?"
     /// prompt after picking a save, the lobby (4-digit code + password over
@@ -87,7 +95,7 @@ public static class FeatureVault
     ///
     /// The old raw HOST/JOIN/IP overlay that used to sit on the NetworkManager
     /// is gone — this is the only way in now.
-    public const bool Multiplayer = true;
+    public static readonly bool Multiplayer = true;
 
     /// The CONCERT VENUE — the stage, both AudienceZones, Max Audience, the
     /// strobe rig, cone beams and the audience spawner.
@@ -101,16 +109,16 @@ public static class FeatureVault
     /// defeats vaulting something for performance. The hierarchy is preserved
     /// as a prefab in Assets/1 - samsPrefabs/_Vaulted/ — see
     /// docs/VAULTED_SYSTEMS.md for how to put it back.
-    public const bool ConcertVenue = false;
+    public static readonly bool ConcertVenue = false;
 
     /// Tev's ship parked outside his cabin and the ambush it triggers on entry.
     /// Vaulted 2026-08-09: a scripted jumpscare keyed to ONE player walking in
     /// is ill-defined in co-op, and not worth designing around yet.
-    public const bool TevCabinAmbush = false;
+    public static readonly bool TevCabinAmbush = false;
 
     /// The SHIP SCHOOL in the village (Combined_SHIPSCHOOL_0/1/2) and its
     /// instructor flow. Vaulted 2026-08-09 while the core co-op loop is built.
-    public const bool ShipSchool = false;
+    public static readonly bool ShipSchool = false;
 
     /// SELLING MUSHROOMS to NPCs. Vaulted 2026-08-14 for the cassette pivot,
     /// which is Sam's call from the Phase 6 plan: "aliens do not buy mushrooms
@@ -124,7 +132,7 @@ public static class FeatureVault
     /// It also frees the SELL PANEL, which now serves tapes: rebuilding that
     /// 1350-line screen for cassettes would have been the expensive way to get
     /// a worse version of something that already works.
-    public const bool MushroomSelling = false;
+    public static readonly bool MushroomSelling = false;
 
     /// THE FREEFORM BUILDING SYSTEM — the build menu, its catalogue of
     /// structures, and the phone's Build app. Vaulted 2026-08-14, the last item
@@ -144,7 +152,7 @@ public static class FeatureVault
     ///
     /// Kept working, per the plan: tree chopping, saplings, fishing, bonfire
     /// cooking, and mushroom planting.
-    public const bool FreeformBuilding = false;
+    public static readonly bool FreeformBuilding = false;
 
     /// THE LEVEL SYSTEM — the general level, Colonizer, Tree Killer, Tree Daddy,
     /// Gangsta Rep, their phone page, the level-up toast, the grand ceremony and
@@ -160,7 +168,7 @@ public static class FeatureVault
     ///
     /// The phone drops from two pages to one. PageCount is computed from this
     /// flag, so the dots, the wrap and the arrows all follow automatically.
-    public const bool LevelSystem = false;
+    public static readonly bool LevelSystem = false;
 
     /// TEV'S FRONTING ECONOMY — the repeatable 50/50 front, the skim quote, the
     /// per-player debt ledger, and the three demo tapes (SLUDJ / CHIRP / DRIFT)
@@ -175,7 +183,7 @@ public static class FeatureVault
     /// Gates the DIALOGUE PATH only. TevFronting.cs, TevDemoTapes.cs and every
     /// save field they use still compile and still round-trip; flip this true
     /// and RunFrontingTalk is reachable again exactly as it was.
-    public const bool TevFrontingEconomy = false;
+    public static readonly bool TevFrontingEconomy = false;
 
     /// THE LAWN WORK-OFF HAGGLE — "sell 10 / 8 / 5 / 3 of my tapes and we're
     /// square", the one-off debt it created, and MushroomQuest.SettleLawn.
@@ -186,14 +194,14 @@ public static class FeatureVault
     /// is the reactivated Aug 8 system rather than anything new. The lawn
     /// counters (tevLawnTapesOwed / tevLawnCleared) are left in the schema so a
     /// save written under either rule still loads.
-    public const bool TevLawnWorkOff = false;
+    public static readonly bool TevLawnWorkOff = false;
 
     /// Tev's presence IN THE VILLAGE. Vaulted 2026-08-09.
     ///
     /// ⚠️ Tev HIMSELF is not vaulted — he still lives at his cabin and still
     /// owns rent collection and the mushroom onboarding, both of which are core
     /// loop. This flag covers only his village appearance.
-    public const bool VillageTev = false;
+    public static readonly bool VillageTev = false;
 
     /// TEV'S RENT — the daily lawn rent: the first-talk haggle ($50 → $30 →
     /// $20 → $10), TevRentCollector's daily accrual, arrears, the rent nag,
@@ -207,7 +215,7 @@ public static class FeatureVault
     /// vaulted, which silences every TevShopUI lockout site at once) and
     /// TevRentCollector's accrual. The rent counters stay in the schema so a
     /// save written under either rule still loads.
-    public const bool TevRent = false;
+    public static readonly bool TevRent = false;
 
     /// CRAVING — the demand flywheel (loop-feel pass C, 2026-08-17, Sam GO'd
     /// the whole handoff). Per-buyer 0..100 hunger: feeds on good sales,
@@ -219,5 +227,5 @@ public static class FeatureVault
     /// loads with this off (it just never changes), so flipping the flag
     /// either way is safe mid-save. It must NEVER touch price or block a
     /// sale — demand, not a gate.
-    public const bool CravingSystem = true;
+    public static readonly bool CravingSystem = true;
 }
