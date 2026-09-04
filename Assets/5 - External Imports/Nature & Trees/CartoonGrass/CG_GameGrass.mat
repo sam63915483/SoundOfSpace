@@ -28,7 +28,7 @@ Material:
     - _AmbientBoost: 0
     - _ColorVarAmount: 0.12
     - _ColorVarScale: 6
-    - _FlashlightResponse: 0.5
+    - _FlashlightResponse: 1
     - _GradientPower: 1
     - _InvertGradient: 0
     - _LanternGrassRadius: 0.5

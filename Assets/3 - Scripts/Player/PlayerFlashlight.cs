@@ -65,6 +65,14 @@ public class PlayerFlashlight : MonoBehaviour
     [Tooltip("Speed at which walk factor reaches 1.0 (m/s).")]
     public float walkingTopSpeed = 4f;
 
+    // Appended at the END of the serialized fields (CLAUDE.md: never insert
+    // mid-class — it corrupts the scene's serialization of this component).
+    [Header("Aim lag")]
+    [Tooltip("How fast the beam catches up with where you're looking (per second). Lower = lazier torch that trails your turns. 0 = rigidly locked to the view (the old behaviour).")]
+    public float lagResponsiveness = 8f;
+    [Tooltip("Degrees the beam is allowed to trail the view during a fast turn. Beyond this it's dragged along, so a quick 180 never leaves the torch pointing behind you.")]
+    public float maxLagAngle = 14f;
+
     // 4-mode toggle (E cycles Off → Quarter → Half → Full → Off). Quarter = 25%,
     // Half = 50%, Full = 100% of minBrightness. enabled/disabled mirrors the mode.
     // Quarter is appended at the END (=3, not inserted between Off and Half) so
@@ -87,6 +95,9 @@ public class PlayerFlashlight : MonoBehaviour
     Quaternion _baseLocalRot;
     float _walkFactor;
     float _walkVel;
+    Quaternion _swayLocalRot = Quaternion.identity;   // rest pose * walk bob, computed in Update
+    Quaternion _lagRot;                                // smoothed WORLD rotation the beam actually has
+    bool _lagInit;
 
     void Start()
     {
@@ -130,6 +141,7 @@ public class PlayerFlashlight : MonoBehaviour
         // onto _baseLocalRot, so the small walk bob still oscillates around
         // this tilted resting pose instead of the scene-authored level pose.
         if (flashlight != null) _baseLocalRot = flashlight.transform.localRotation * Quaternion.Euler(10f, 0f, 0f);
+        _swayLocalRot = _baseLocalRot;
 
         SetVisualLayersVisible(false);
     }
@@ -190,13 +202,45 @@ public class PlayerFlashlight : MonoBehaviour
             _walkFactor = Mathf.SmoothDamp(_walkFactor, target, ref _walkVel, 0.15f);
             float pitch = Mathf.Sin(Time.time * walkBobFrequency) * walkBobAmplitude * _walkFactor;
             float yaw = Mathf.Sin(Time.time * walkBobFrequency * 0.5f) * walkBobAmplitude * 0.6f * _walkFactor;
-            flashlight.transform.localRotation = _baseLocalRot * Quaternion.Euler(pitch, yaw, 0f);
+            _swayLocalRot = _baseLocalRot * Quaternion.Euler(pitch, yaw, 0f);
         }
         else
         {
-            flashlight.transform.localRotation = _baseLocalRot;
+            _swayLocalRot = _baseLocalRot;
         }
+        // The rotation itself is applied in LateUpdate (ApplyAimLag) — after the
+        // camera's look for this frame is final — so the lag trails the VIEW,
+        // not last frame's view.
+    }
 
+    /// <summary>
+    /// The beam trails the view instead of being welded to it: each frame the
+    /// torch's world rotation eases toward "camera × rest pose × walk bob".
+    /// Exponential ease (frame-rate independent) plus a hard angular clamp so a
+    /// whip-turn drags the beam along rather than leaving it pointing behind
+    /// you. Snaps while the torch is off so switching it on never shows a
+    /// catch-up swing. World-space on purpose: floating-origin shifts move
+    /// positions only, and the planet's slow drift under the player is far
+    /// below the clamp, so nothing but the player's own turning registers.
+    /// </summary>
+    void ApplyAimLag()
+    {
+        Transform lt = flashlight.transform;
+        Quaternion target = (lt.parent != null ? lt.parent.rotation : Quaternion.identity) * _swayLocalRot;
+        if (!_lagInit || lagResponsiveness <= 0f || !flashlight.enabled)
+        {
+            _lagRot = target;
+            _lagInit = true;
+        }
+        else
+        {
+            float k = 1f - Mathf.Exp(-lagResponsiveness * Time.deltaTime);
+            _lagRot = Quaternion.Slerp(_lagRot, target, k);
+            // Clamp: at most maxLagAngle away from the target, measured FROM the
+            // target so the beam is pulled along on a fast spin.
+            _lagRot = Quaternion.RotateTowards(target, _lagRot, Mathf.Max(0f, maxLagAngle));
+        }
+        lt.rotation = _lagRot;
     }
 
     // Global shader uniforms read by CartoonGrass/SimpleGrass so the instanced
@@ -207,9 +251,12 @@ public class PlayerFlashlight : MonoBehaviour
     static readonly int _flashDirId    = Shader.PropertyToID("_FlashlightDir");
     static readonly int _flashColorId  = Shader.PropertyToID("_FlashlightColor");
     static readonly int _flashParamsId = Shader.PropertyToID("_FlashlightParams");
+    static readonly int _flashCookieId = Shader.PropertyToID("_FlashlightCookie");
 
     void LateUpdate()
     {
+        if (flashlight != null) ApplyAimLag();
+
         // Run unconditionally (Update has several early-returns) so the grass
         // globals always reflect the torch's final state for this frame.
         bool on = flashlight != null && flashlight.enabled && flashlight.intensity > 0f;
@@ -221,7 +268,17 @@ public class PlayerFlashlight : MonoBehaviour
             Shader.SetGlobalColor(_flashColorId, flashlight.color * (flashlight.intensity * grassLightStrength));
             float cosOuter = Mathf.Cos(flashlight.spotAngle * 0.5f * Mathf.Deg2Rad);
             float cosInner = Mathf.Cos(flashlight.innerSpotAngle * 0.5f * Mathf.Deg2Rad);
-            Shader.SetGlobalVector(_flashParamsId, new Vector4(flashlight.range, cosOuter, cosInner, 0f));
+            // The grass used to light the WHOLE cone flat (a smoothstep between
+            // the two angles) while the ground got the cookie — a tight Gaussian
+            // hotspot with most of the cone at ~15-20%. That's why blades in the
+            // beam read several times brighter than the dirt beside them. Hand
+            // the grass the same cookie and where its edge lands (w = tan of the
+            // outer half-angle → cookie radius 1), so both surfaces share one
+            // spatial profile. w = 0 → no cookie → the shader keeps the old cone.
+            Texture cookie = flashlight.cookie;
+            float tanOuter = cookie != null ? Mathf.Tan(flashlight.spotAngle * 0.5f * Mathf.Deg2Rad) : 0f;
+            Shader.SetGlobalVector(_flashParamsId, new Vector4(flashlight.range, cosOuter, cosInner, tanOuter));
+            Shader.SetGlobalTexture(_flashCookieId, cookie != null ? cookie : Texture2D.whiteTexture);
         }
         else
         {

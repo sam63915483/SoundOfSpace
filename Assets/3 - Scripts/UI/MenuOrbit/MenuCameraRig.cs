@@ -44,7 +44,7 @@ public class MenuCameraRig : MonoBehaviour
     float azVel, elVel, dollyVel, slideVel;
 
     [Tooltip("PLAYBACK only: degrees of gentle camera sway following the mouse position — just enough to prove it's live 3D, not a video (Sam's spec).")]
-    public float parallaxDegrees = 2.5f;
+    public float parallaxDegrees = 7.5f;
     float parallaxX, parallaxY;   // eased
 
     // Recording

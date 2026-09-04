@@ -25,7 +25,8 @@ Shader "CartoonGrass/SimpleGrass"
         _ColorVarScale ("Colour Variation Scale (m)", Float) = 6
         _ColorVarAmount ("Colour Variation Amount", Range(0, 0.5)) = 0.12
         _ShadowFill ("Shadow fill (eclipse/shade min sun)", Range(0, 0.5)) = 0.15
-        _FlashlightResponse ("Flashlight response on grass", Range(0, 1.5)) = 0.5
+        _FlashlightResponse ("Flashlight response on grass (1 = same as the ground)", Range(0, 1.5)) = 1.0
+        _FlashlightBladeLift ("Flashlight: blade catch floor (0 = pure ground N.L)", Range(0, 1)) = 0.12
         _PointLightBoost ("Lantern/torch brightness on grass", Range(0, 4)) = 2.0
         _SpotGrassReach ("Concert light reach on grass (m)", Range(5, 250)) = 50
         _LanternGrassRadius ("Lantern grass radius (x range)", Range(0.1, 1.5)) = 0.5
@@ -64,7 +65,7 @@ Shader "CartoonGrass/SimpleGrass"
         float _ColorVarScale;
         float _ColorVarAmount;
         float _ShadowFill;           // min sun light kept in the directional sun's shadow (eclipse/shade)
-        float _FlashlightResponse;   // scales the flashlight's effect on grass (1 = old look)
+        float _FlashlightResponse;   // scales the flashlight's effect on grass (1 = matches the ground under the beam)
         float _PointLightBoost;      // scales lantern/torch brightness on grass (compensates the 0.5 grassStrength + blade angle)
         float _SpotGrassReach;       // distance (m) from the concert centre at which spot lights fade off the grass
         float3 _GrassSpotCenter;     // centroid of the injected concert SPOT lights, set by InstancedGrassRenderer
@@ -98,7 +99,9 @@ Shader "CartoonGrass/SimpleGrass"
         float3 _FlashlightPos;
         float3 _FlashlightDir;       // light forward (world, unit)
         fixed4 _FlashlightColor;     // colour * intensity (black = off)
-        float4 _FlashlightParams;    // x=range, y=cosOuterHalfAngle, z=cosInnerHalfAngle
+        float4 _FlashlightParams;    // x=range, y=cosOuterHalfAngle, z=cosInnerHalfAngle, w=tan(outerHalfAngle) when a cookie is set (0 = no cookie → plain cone)
+        sampler2D _FlashlightCookie; // the SAME cookie the real spot light projects (global, set by PlayerFlashlight)
+        float _FlashlightBladeLift;  // floor on the terrain N·L so blades keep a hint of catch
 
         // World POINT lights (lanterns, etc.) that should reach the instanced
         // grass — same reason as the flashlight: DrawMeshInstanced grass never
@@ -281,15 +284,46 @@ Shader "CartoonGrass/SimpleGrass"
 
             // Flashlight (added as emission because the instanced grass can't
             // receive the real additive spot light — see the uniform block
-            // above). Cheap cone test + soft distance falloff, with the same
-            // half-Lambert wrap the sun uses so two-sided blades don't snap to
-            // black. Zero work-effect when the torch is off (_FlashlightColor
+            // above). Zero work-effect when the torch is off (_FlashlightColor
             // is black).
+            //
+            // GOAL: grass under the beam lights up LIKE THE GROUND under it —
+            // the same spatial profile and the same brightness, so a lawn in
+            // the torch never reads as glowing while the dirt beside it is
+            // dark. Two things used to break that (Sam, 2026-09-04: "the grass
+            // gets illuminated super bright while the ground barely does"):
+            //   1. The ground gets the light's COOKIE — a tight Gaussian
+            //      hotspot with most of the cone at ~15-20% — but the grass
+            //      used a flat smoothstep between the two cone angles, i.e.
+            //      full brightness across the whole inner cone.
+            //   2. The grass used a half-Lambert wrap on the BLADE normal
+            //      (floor 0.5, blades facing the player ≈ 1) where the ground
+            //      gets plain N·L on the terrain normal, which at torch height
+            //      is grazing (~0.2-0.3).
+            // Now: sample the same cookie at the same projected radius, and
+            // shade on the terrain normal (bladeUp, as the lantern loop does)
+            // with a small floor so blades keep a hint of catch.
             float3 toFrag = IN.worldPos - _FlashlightPos;
             float fdist   = length(toFrag);
             float3 fl     = toFrag / max(fdist, 1e-4);
             float cosA    = dot(fl, _FlashlightDir);
-            float spot    = smoothstep(_FlashlightParams.y, _FlashlightParams.z, cosA);
+            float spot;
+            if (_FlashlightParams.w > 0)
+            {
+                // Cookie path. Unity projects a spot cookie so its edge (uv
+                // radius 0.5) lands on the outer cone angle; w = tan(outer/2),
+                // so r = tan(angle)/w is 1 at the cone edge. The cookie is
+                // radially symmetric, so one axis is enough. Alpha = the
+                // channel Unity's own spot pass reads.
+                float sinA = sqrt(saturate(1.0 - cosA * cosA));
+                float r    = sinA / max(cosA, 1e-3) / _FlashlightParams.w;
+                float ck   = tex2D(_FlashlightCookie, float2(0.5 + 0.5 * saturate(r), 0.5)).a;
+                spot = (cosA > 0 && r < 1.0) ? ck : 0.0;
+            }
+            else
+            {
+                spot = smoothstep(_FlashlightParams.y, _FlashlightParams.z, cosA);
+            }
             // Distance falloff matched to Unity's built-in spot attenuation
             // (~1/(1+25(d/range)^2)) so grass dims with distance exactly like the
             // lit ground — flying up now dims the grass instead of lighting it
@@ -297,8 +331,8 @@ Shader "CartoonGrass/SimpleGrass"
             // 0 at the light's range.
             float dn      = fdist / max(_FlashlightParams.x, 0.001);
             float fatten  = saturate(1.0 - dn * dn) / (1.0 + 25.0 * dn * dn);
-            half fndl     = dot(normalize(IN.worldNormal), -fl);
-            half fwrap    = max(0, fndl * 0.5 + 0.5);
+            half fndl     = saturate(dot(IN.bladeUp, -fl));
+            half fwrap    = max(fndl, _FlashlightBladeLift);
             o.Emission   += c * _FlashlightColor.rgb * (spot * fatten * fwrap * _FlashlightResponse);
 
             // Lantern / world point lights. Omnidirectional version of the

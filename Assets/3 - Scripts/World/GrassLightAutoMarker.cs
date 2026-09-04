@@ -50,9 +50,16 @@ public class GrassLightAutoMarker : MonoBehaviour
     /// He wants the blades right around him to pick it up, so the player's
     /// lights get their own multiplier. It only scales the FAKED grass response
     /// — the real light is untouched, so held items, the world and stealth all
-    /// behave exactly as before. Turn it down if the pool of light around your
-    /// feet reads too strongly at night.</summary>
-    public static float PlayerLightGrassStrength = 1.5f;
+    /// behave exactly as before.
+    ///
+    /// 2026-09-04: was 1.5. The shader multiplies every injected light by the
+    /// material's _PointLightBoost, which is 4.5 on the live grass material (the
+    /// "2.0" the lantern note above assumes is the shader DEFAULT, not the
+    /// asset) — so 1.5 made the fill light ~6.75× stronger on grass than on the
+    /// ground beside it, which is a large part of "the grass glows while the
+    /// ground barely lights up". 0.35 × 4.5 ≈ 1.6× the real light: still
+    /// visible on the blades at your feet, no longer a glowing pool.</summary>
+    public static float PlayerLightGrassStrength = 0.35f;
 
     /// Lights appear late (the shuttle streams in, held items spawn, the
     /// thrust FX builds its own lights), so sweep on a slow clock forever
