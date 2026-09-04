@@ -228,4 +228,22 @@ public static class FeatureVault
     /// either way is safe mid-save. It must NEVER touch price or block a
     /// sale — demand, not a gate.
     public static readonly bool CravingSystem = true;
+
+    /// The RANDOM WANDERING NPCs — AlienNPCSpawner's seed-cell aliens that
+    /// stream in around the player on every planet. Vaulted 2026-09-04 at
+    /// Sam's request: "i plan to hand author every npc so having a bunch of
+    /// random ones devalues the actual ones i make, npcs need to be special."
+    ///
+    /// Gates the STREAMING ONLY. The spawner component stays alive and keeps
+    /// its prefab list, because the hand-authored NPCs (AuthoredNPCSpawner:
+    /// Floorbin, Shllorbin, GRULABU …) borrow their prefab and their seating
+    /// offsets from it — those keep spawning exactly as before. Pre-placed
+    /// village aliens are scene objects and are untouched. Killed-cell save
+    /// data still round-trips, so flipping this back on later restores the
+    /// same forest of aliens minus the ones the player already killed.
+    ///
+    /// Side effect while off: BuyerMessageDirector's craving "ambush" walk-up
+    /// picks from SpawnedAlienNPC.AllAliens, so with no wandering aliens it
+    /// simply never fires. Messages / orders / deliveries are unaffected.
+    public static readonly bool WanderingNPCs = false;
 }

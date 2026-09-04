@@ -155,12 +155,25 @@ public class AlienNPCSpawner : MonoBehaviour
 
     void Update()
     {
+        // VAULTED (FeatureVault.WanderingNPCs): no streaming while Sam hand-
+        // authors every NPC. Anything already out (a save applied before this
+        // ran, or the flag flipped live) is cleared once; the component itself
+        // stays alive because AuthoredNPCSpawner borrows prefabs + seating
+        // offsets from it.
+        if (!FeatureVault.WanderingNPCs)
+        {
+            if (!_vaultCleared) { ClearAllActiveAliens(); _vaultCleared = true; }
+            return;
+        }
+        _vaultCleared = false;
+
         if (!ResolveRefs()) return;
         tickTimer += Time.deltaTime;
         if (tickTimer < updateInterval) return;
         tickTimer = 0f;
         Tick();
     }
+    bool _vaultCleared;
 
     bool ResolveRefs()
     {
