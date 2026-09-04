@@ -10,10 +10,10 @@ using UnityEngine;
 /// (plus rank weights) into the scene's TreeSpawner.
 ///
 /// Why variants, not the pack prefabs directly:
-///   • Sam likes the TALL look, so each variant is authored at the gallery's
-///     "tall" scale (1.15, 1.9, 1.15). SpawnedTree / SaplingGrowth treat the
-///     prefab's authored scale as the mature size, so planted trees, pooled
-///     trees and the size-variety multiplier in TreeSpawner all agree.
+///   • Each variant carries its pack's authored scale (see ForestScale /
+///     ValleyScale). SpawnedTree / SaplingGrowth treat the prefab's authored
+///     scale as the mature size, so planted trees, pooled trees and the
+///     size-variety multiplier in TreeSpawner all agree.
 ///   • The pack LODGroups CULL the tree at ~5-8% screen height, i.e. roughly
 ///     100-150 m — well inside the spawner's view distance (350 m default, up
 ///     to 1000 m), so trees popped out of existence while still "spawned".
@@ -32,12 +32,18 @@ public static class HumbleAbodeTreeVariants
     const string ForestDir = "Assets/5 - External Imports/Nature & Trees/FantasyForest/Prefabs/Vegetation";
     const string ValleyDir = "Assets/5 - External Imports/Nature & Trees/FantasyValley/Prefabs/Vegetation";
 
-    /// The gallery's "tall" size — Sam's pick.
-    static readonly Vector3 TallScale = new Vector3(1.15f, 1.9f, 1.15f);
+    /// Per-pack authored scale (Sam, 2026-09-04, after seeing the first pass at
+    /// the gallery's 1.15/1.9/1.15 "tall"): everything was too tall and skinny.
+    /// FantasyForest keeps the height but gets real girth; FantasyValley trees
+    /// are built stockier, so they are NOT stretched as tall as the Forest ones
+    /// — the stretch made their proportions look wrong. TreeSpawner's per-cell
+    /// size/stretch variety still makes some of each pack taller than others.
+    static readonly Vector3 ForestScale = new Vector3(1.45f, 1.8f, 1.45f);
+    static readonly Vector3 ValleyScale = new Vector3(1.4f, 1.4f, 1.4f);
 
-    /// Sam's ranking, best first. (Valley 07 wasn't in his list and is left out.)
+    /// Sam's ranking, best first. Valley 07 was added at the bottom on request.
     static readonly string[] ForestOrder = { "05", "04", "01", "02", "03", "06", "07", "08" };
-    static readonly string[] ValleyOrder = { "03", "08", "06", "09", "01", "02", "04", "05", "10" };
+    static readonly string[] ValleyOrder = { "03", "08", "06", "09", "01", "02", "04", "05", "10", "07" };
 
     // LOD switch points as screen-height fractions (lodBias 1, 60° vertical
     // FOV). For a ~14 m tall variant: LOD0 to ≈60 m, LOD1 to ≈200 m, and the
@@ -46,6 +52,9 @@ public static class HumbleAbodeTreeVariants
     const float Lod0Height = 0.20f;
     const float Lod1Height = 0.06f;
     const float CullHeight = 0.01f;
+
+    const float SeedCellSize = 30f;
+    const float SeedChance = 0.8f;
 
     struct Entry { public string variantPath; public float weight; }
 
@@ -65,15 +74,15 @@ public static class HumbleAbodeTreeVariants
         var entries = new List<Entry>();
         // Linear rank weights: best-of-pack = pack size, worst = 1 (still spawns).
         for (int i = 0; i < ForestOrder.Length; i++)
-            entries.Add(BuildOne(ForestDir, "FF", ForestOrder[i], ForestOrder.Length - i));
+            entries.Add(BuildOne(ForestDir, "FF", ForestOrder[i], ForestOrder.Length - i, ForestScale));
         for (int i = 0; i < ValleyOrder.Length; i++)
-            entries.Add(BuildOne(ValleyDir, "FV", ValleyOrder[i], ValleyOrder.Length - i));
+            entries.Add(BuildOne(ValleyDir, "FV", ValleyOrder[i], ValleyOrder.Length - i, ValleyScale));
         AssetDatabase.SaveAssets();
         Debug.Log($"[HumbleAbodeTrees] Built {entries.Count} tree variants in {OutDir}.");
         return entries;
     }
 
-    static Entry BuildOne(string srcDir, string tag, string number, float weight)
+    static Entry BuildOne(string srcDir, string tag, string number, float weight, Vector3 authoredScale)
     {
         string srcPath = $"{srcDir}/Tree_{number}.prefab";
         string dstPath = $"{OutDir}/HA_{tag}_Tree_{number}.prefab";
@@ -83,7 +92,7 @@ public static class HumbleAbodeTreeVariants
         var inst = (GameObject)PrefabUtility.InstantiatePrefab(src);
         try
         {
-            inst.transform.localScale = Vector3.Scale(src.transform.localScale, TallScale);
+            inst.transform.localScale = Vector3.Scale(src.transform.localScale, authoredScale);
 
             var lg = inst.GetComponent<LODGroup>();
             if (lg != null)
@@ -152,6 +161,11 @@ public static class HumbleAbodeTreeVariants
         var so = new SerializedObject(spawner);
         var prefabs = so.FindProperty("treePrefabs");
         var weights = so.FindProperty("treeWeights");
+        // Seed density (2026-09-04, Sam: "not enough trees"): cell 40 m / 70% ->
+        // 30 m / 80%, x2.24 designated trees. PlanetOxygen.treesForFullO2PerMillionSqm
+        // was scaled by the same factor so the O2 curve did not move.
+        so.FindProperty("cellSize").floatValue = SeedCellSize;
+        so.FindProperty("treeSpawnChance").floatValue = SeedChance;
         var valid = entries.FindAll(e => e.variantPath != null);
         prefabs.arraySize = valid.Count;
         weights.arraySize = valid.Count;

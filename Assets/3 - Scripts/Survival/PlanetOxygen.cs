@@ -262,7 +262,11 @@ public class PlanetOxygen : MonoBehaviour
 
     [Header("Planet baseline O2 (from tree count)")]
     [Tooltip("Live trees needed to reach 100% surface O2 per 1,000,000 m² of planet surface. LOWER = planets breathe with fewer trees. Tune so Humble Abode lands where you want it (watch the [PlanetOxygen] console line for the real count). 1500 puts ~414 sparse Humble Abode trees near 55%.")]
-    [SerializeField] float treesForFullO2PerMillionSqm = 1500f;
+    // 2026-09-04: 1500 -> 3350. TreeSpawner's seed density went from cell 40 m /
+    // 70% to cell 30 m / 80% (x2.24 designated trees on Humble Abode: 100 -> 196
+    // cells per cube face, x0.8/0.7), so this scales by the same factor to keep
+    // the surface O2 curve where it was tuned (HA ~55%, wild-respawn gate 0.75).
+    [SerializeField] float treesForFullO2PerMillionSqm = 3350f;
     [Tooltip("Log each planet's true tree count + computed surface O2 once, to help tuning. Turn off for release.")]
     [SerializeField] bool logSurfaceO2 = true;
 

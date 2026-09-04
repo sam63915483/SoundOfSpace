@@ -981,8 +981,8 @@ public class TabbedPauseMenu : MonoBehaviour
                         set  = v  => { if (_input != null) { _input.viewDistance = Mathf.Clamp(v, 100f, 1000f); MarkCustomQuality(); } },
                     },
                     new SliderDef {
-                        label = "MAX TREES", min = 20f, max = 100f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? _input.maxTrees : 20f,
+                        label = "MAX TREES", min = 20f, max = 300f, wholeNumbers = true, format = "{0:F0}",
+                        get  = () => _input != null ? _input.maxTrees : 80f,
                         set  = v  => { if (_input != null) { _input.maxTrees = Mathf.RoundToInt(v); MarkCustomQuality(); } },
                     },
                     new SliderDef {

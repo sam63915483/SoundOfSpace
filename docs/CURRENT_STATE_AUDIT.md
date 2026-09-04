@@ -348,7 +348,7 @@ Three streaming spawners run from `--- Managers ---`:
 
 | Spawner | Per-cell prefab | Streaming radius | Cap (InputSettings) |
 |---|---|---|---|
-| `TreeSpawner` | one of 17 `HA_FF_/HA_FV_Tree_*` variants (`Assets/1 - samsPrefabs/Trees/`, built by `Tools ▸ Humble Abode Trees`), rank-WEIGHTED per cell (`treeWeights`) + per-cell size/stretch variety (`sizeRange`/`stretchRange`); variants are authored tall (1.15, 1.9, 1.15) with LOD cull pushed past view distance (2026-09-04) | varies per body | `inputSettings.maxTrees` |
+| `TreeSpawner` | one of 18 `HA_FF_/HA_FV_Tree_*` variants (`Assets/1 - samsPrefabs/Trees/`, built by `Tools ▸ Humble Abode Trees`), rank-WEIGHTED per cell (`treeWeights`) + per-cell size/stretch variety (`sizeRange`/`stretchRange`); Forest variants authored (1.45, 1.8, 1.45), Valley (1.4, 1.4, 1.4), LOD cull pushed past view distance; seed density cell 30 m / 80% (was 40 m / 70%, `PlanetOxygen.treesForFullO2PerMillionSqm` scaled 1500→3350 to match); default `maxTrees` 80 (pref key `maxTreesV2`, slider 20–300) (2026-09-04) | varies per body | `inputSettings.maxTrees` |
 | `MushroomSpawner` | one of `mushroomPrefabs[]` (deterministic per cell) | 300 m | `inputSettings.maxMushrooms` |
 | `AlienNPCSpawner` | one of `alienPrefabs[]` (deterministic per cell) | 300 m | `inputSettings.maxAlienNPCs` |
 

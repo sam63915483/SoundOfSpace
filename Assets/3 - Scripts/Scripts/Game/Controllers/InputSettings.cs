@@ -94,7 +94,11 @@ public class InputSettings : ScriptableObject {
 	// install at 1.0 clips hard and blasts first-time players. Public because
 	// MainMenuController needs the same default before Begin() has run.
 	public const float defaultMasterVolume = 0.5f;
-	const int defaultMaxTrees = 20;
+	// 2026-09-04: 20 -> 80. With the FantasyForest/Valley forest the cap, not the
+	// seed density, was what made Humble Abode read as sparse (20 x 350/150 = 47
+	// trees in a 350 m view). The pref key moved to maxTreesV2 so every existing
+	// install picks the new default up instead of keeping a stored 20.
+	const int defaultMaxTrees = 80;
 	const int defaultMaxAlienNPCs = 10;
 	const int defaultMaxMushrooms = 40;
 	const int defaultMaxCrystals = 20;
@@ -111,7 +115,7 @@ public class InputSettings : ScriptableObject {
 	public float mouseSensitivity;
 	public float mouseSmoothing;
 	[Range(0, 1)] public float masterVolume = defaultMasterVolume;
-	[Range(20, 100)] public int maxTrees = defaultMaxTrees;
+	[Range(20, 300)] public int maxTrees = defaultMaxTrees;
 	[Range(5, 20)] public int maxAlienNPCs = defaultMaxAlienNPCs;
 	[Range(0, 100)] public int maxMushrooms = defaultMaxMushrooms;
 	[Range(0, 60)] public int maxCrystals = defaultMaxCrystals;
@@ -314,7 +318,7 @@ public class InputSettings : ScriptableObject {
 		sfxVolume      = PlayerPrefs.GetFloat (nameof (sfxVolume),      1f);
 		ambienceVolume = PlayerPrefs.GetFloat (nameof (ambienceVolume), 1f);
 		uiVolume       = PlayerPrefs.GetFloat (nameof (uiVolume),       1f);
-		maxTrees = PlayerPrefs.GetInt (nameof (maxTrees), defaultMaxTrees);
+		maxTrees = PlayerPrefs.GetInt ("maxTreesV2", defaultMaxTrees);
 		maxAlienNPCs = PlayerPrefs.GetInt (nameof (maxAlienNPCs), defaultMaxAlienNPCs);
 		maxMushrooms = PlayerPrefs.GetInt (nameof (maxMushrooms), defaultMaxMushrooms);
 		maxCrystals = PlayerPrefs.GetInt (nameof (maxCrystals), defaultMaxCrystals);
@@ -431,7 +435,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetFloat (nameof (sfxVolume),      sfxVolume);
 		PlayerPrefs.SetFloat (nameof (ambienceVolume), ambienceVolume);
 		PlayerPrefs.SetFloat (nameof (uiVolume),       uiVolume);
-		PlayerPrefs.SetInt (nameof (maxTrees), maxTrees);
+		PlayerPrefs.SetInt ("maxTreesV2", maxTrees);
 		PlayerPrefs.SetInt (nameof (maxAlienNPCs), maxAlienNPCs);
 		PlayerPrefs.SetInt (nameof (maxMushrooms), maxMushrooms);
 		PlayerPrefs.SetInt (nameof (maxCrystals), maxCrystals);
@@ -527,7 +531,7 @@ public class InputSettings : ScriptableObject {
 			// LensDirt has been removed entirely.
 			case QualityPreset.Low:
 				viewDistance     = 200f;
-				maxTrees         = 30;
+				maxTrees         = 40;
 				maxAlienNPCs     = 6;
 				maxMushrooms     = 20;
 				maxCrystals      = 10;
@@ -547,7 +551,7 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.Medium:
 				viewDistance     = 350f;
-				maxTrees         = defaultMaxTrees;      // 20
+				maxTrees         = defaultMaxTrees;      // 80
 				maxAlienNPCs     = defaultMaxAlienNPCs;  // 10
 				maxMushrooms     = defaultMaxMushrooms;  // 40
 				maxCrystals      = defaultMaxCrystals;   // 20
@@ -567,7 +571,7 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.High:
 				viewDistance     = 500f;
-				maxTrees         = 70;
+				maxTrees         = 140;
 				maxAlienNPCs     = 14;
 				maxMushrooms     = 60;
 				maxCrystals      = 30;
@@ -587,7 +591,7 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.Ultra:
 				viewDistance     = 800f;
-				maxTrees         = 100;
+				maxTrees         = 200;
 				maxAlienNPCs     = 20;
 				maxMushrooms     = 100;
 				maxCrystals      = 50;
