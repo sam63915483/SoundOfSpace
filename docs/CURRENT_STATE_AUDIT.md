@@ -348,7 +348,7 @@ Three streaming spawners run from `--- Managers ---`:
 
 | Spawner | Per-cell prefab | Streaming radius | Cap (InputSettings) |
 |---|---|---|---|
-| `TreeSpawner` | tree prefab(s) | varies per body | `inputSettings.maxTrees` |
+| `TreeSpawner` | one of 17 `HA_FF_/HA_FV_Tree_*` variants (`Assets/1 - samsPrefabs/Trees/`, built by `Tools ▸ Humble Abode Trees`), rank-WEIGHTED per cell (`treeWeights`) + per-cell size/stretch variety (`sizeRange`/`stretchRange`); variants are authored tall (1.15, 1.9, 1.15) with LOD cull pushed past view distance (2026-09-04) | varies per body | `inputSettings.maxTrees` |
 | `MushroomSpawner` | one of `mushroomPrefabs[]` (deterministic per cell) | 300 m | `inputSettings.maxMushrooms` |
 | `AlienNPCSpawner` | one of `alienPrefabs[]` (deterministic per cell) | 300 m | `inputSettings.maxAlienNPCs` |
 

@@ -51,6 +51,17 @@ public class TreeSpawner : MonoBehaviour
     [Tooltip("Volume for the tree-break sound.")]
     public float treeBreakVolume = 0.7f;
 
+    // Appended at the END of the serialized fields (CLAUDE.md: never insert
+    // mid-class). The forest is Sam's hand-picked FantasyForest / FantasyValley
+    // set (HumbleAbodeTreeVariants builds the prefabs + wires this list).
+    [Header("Forest mix (2026-09-04)")]
+    [Tooltip("Relative spawn weight per treePrefabs entry, same order. Missing or non-positive entries count as 1; leave empty for an even mix. Sam's ranking: the trees he likes best spawn the most, the least-liked still spawn.")]
+    public float[] treeWeights;
+    [Tooltip("Per-tree uniform size multiplier, picked deterministically per cell (x = smallest, y = largest).")]
+    public Vector2 sizeRange = new Vector2(0.85f, 1.25f);
+    [Tooltip("Per-tree extra vertical stretch on top of the size multiplier. The variants are already authored tall (Sam likes the tall look); this only adds variety.")]
+    public Vector2 stretchRange = new Vector2(0.9f, 1.15f);
+
     class BodyState
     {
         public CelestialBody body;
@@ -235,9 +246,9 @@ public class TreeSpawner : MonoBehaviour
             var entry = bodies[c.bodySlot];
             float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
             if (!TryComputeTreePlacement(entry, c.face, c.cellU, c.cellV, faceUVPerCell, playerPos, effectiveRadius,
-                                          out Vector3 pos, out Quaternion rot, out int prefabIdx))
+                                          out Vector3 pos, out Quaternion rot, out int prefabIdx, out Vector3 sizeMul))
                 continue;
-            SpawnTree(entry, c.bodySlot, SpawnerCubeface.EncodeCell(c.face, c.cellU, c.cellV), prefabIdx, pos, rot);
+            SpawnTree(entry, c.bodySlot, SpawnerCubeface.EncodeCell(c.face, c.cellU, c.cellV), prefabIdx, pos, rot, sizeMul);
         }
 
         EnforceMaxTrees(playerPos, effectiveMax);
@@ -303,14 +314,16 @@ public class TreeSpawner : MonoBehaviour
 
     bool TryComputeTreePlacement(BodyState entry, int face, int cellU, int cellV, float faceUVPerCell,
                                   Vector3 playerPos, float effectiveRadius,
-                                  out Vector3 pos, out Quaternion rot, out int prefabIdx)
+                                  out Vector3 pos, out Quaternion rot, out int prefabIdx, out Vector3 sizeMul)
     {
-        pos = default; rot = default; prefabIdx = 0;
+        pos = default; rot = default; prefabIdx = 0; sizeMul = Vector3.one;
 
         uint hJU = SpawnerCubeface.Hash(seed, face, cellU, cellV, 2);
         uint hJV = SpawnerCubeface.Hash(seed, face, cellU, cellV, 3);
         uint hPI = SpawnerCubeface.Hash(seed, face, cellU, cellV, 4);
         uint hY  = SpawnerCubeface.Hash(seed, face, cellU, cellV, 5);
+        uint hS  = SpawnerCubeface.Hash(seed, face, cellU, cellV, 6);
+        uint hT  = SpawnerCubeface.Hash(seed, face, cellU, cellV, 7);
 
         float jitterU = ((hJU & 0xFFFFu) / 65535f - 0.5f) * faceUVPerCell * 0.9f;
         float jitterV = ((hJV & 0xFFFFu) / 65535f - 0.5f) * faceUVPerCell * 0.9f;
@@ -347,11 +360,50 @@ public class TreeSpawner : MonoBehaviour
         float yaw = (hY & 0xFFFFu) / 65535f * 360f;
         rot = Quaternion.AngleAxis(yaw, up) * Quaternion.FromToRotation(Vector3.up, up);
         pos = hit.point - up * groundOffset;
-        prefabIdx = (int)(hPI % (uint)treePrefabs.Length);
+        prefabIdx = PickPrefabIndex(hPI);
+        // Size variety, deterministic per cell like everything else here: a
+        // uniform multiplier plus a little extra vertical stretch.
+        float size    = Mathf.Lerp(sizeRange.x, sizeRange.y, (hS & 0xFFFFu) / 65535f);
+        float stretch = Mathf.Lerp(stretchRange.x, stretchRange.y, (hT & 0xFFFFu) / 65535f);
+        sizeMul = new Vector3(size, size * stretch, size);
         return true;
     }
 
-    void SpawnTree(BodyState entry, int bodySlot, long cellId, int prefabIdx, Vector3 pos, Quaternion rot)
+    // ── weighted prefab choice ──────────────────────────────────────────────
+    // Cumulative table over treeWeights, rebuilt whenever the array changes
+    // (so the inspector can be tuned live). Falls back to the old even modulo
+    // pick when no weights are set, keeping existing forests identical.
+    float[] _cumWeights;
+    float _totalWeight;
+    int _cumBuiltFor = -1;
+    float _cumWeightSum = float.NaN;
+
+    int PickPrefabIndex(uint h)
+    {
+        int n = treePrefabs.Length;
+        if (treeWeights == null || treeWeights.Length == 0) return (int)(h % (uint)n);
+
+        float sum = 0f;
+        for (int i = 0; i < treeWeights.Length; i++) sum += treeWeights[i];
+        if (_cumWeights == null || _cumBuiltFor != n || sum != _cumWeightSum)
+        {
+            _cumWeights = new float[n];
+            _totalWeight = 0f;
+            for (int i = 0; i < n; i++)
+            {
+                float w = i < treeWeights.Length && treeWeights[i] > 0f ? treeWeights[i] : 1f;
+                _totalWeight += w;
+                _cumWeights[i] = _totalWeight;
+            }
+            _cumBuiltFor = n;
+            _cumWeightSum = sum;
+        }
+        float u = (h & 0xFFFFFFu) / 16777216f * _totalWeight;
+        for (int i = 0; i < n; i++) if (u < _cumWeights[i]) return i;
+        return n - 1;
+    }
+
+    void SpawnTree(BodyState entry, int bodySlot, long cellId, int prefabIdx, Vector3 pos, Quaternion rot, Vector3 sizeMul)
     {
         if (prefabIdx < 0 || prefabIdx >= treePrefabs.Length) prefabIdx = 0;
         var prefab = treePrefabs[prefabIdx];
@@ -381,6 +433,9 @@ public class TreeSpawner : MonoBehaviour
         var st = tree.GetComponent<SpawnedTree>();
         if (st == null) st = tree.AddComponent<SpawnedTree>();
         st.Init(this, bodySlot, cellId, prefabIdx);
+        // AFTER Init (which resets to the prefab's authored scale) and BEFORE
+        // BeginFadeIn (which captures the current scale as its target).
+        tree.transform.localScale = Vector3.Scale(prefab.transform.localScale, sizeMul);
         entry.activeTrees[cellId] = tree;
 
         var fade = tree.GetComponent<SpawnFade>();
