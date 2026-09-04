@@ -982,7 +982,7 @@ public class TabbedPauseMenu : MonoBehaviour
                     },
                     new SliderDef {
                         label = "MAX TREES", min = 20f, max = 300f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? _input.maxTrees : 80f,
+                        get  = () => _input != null ? _input.maxTrees : 60f,
                         set  = v  => { if (_input != null) { _input.maxTrees = Mathf.RoundToInt(v); MarkCustomQuality(); } },
                     },
                     new SliderDef {

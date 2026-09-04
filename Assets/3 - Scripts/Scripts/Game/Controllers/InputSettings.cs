@@ -94,11 +94,11 @@ public class InputSettings : ScriptableObject {
 	// install at 1.0 clips hard and blasts first-time players. Public because
 	// MainMenuController needs the same default before Begin() has run.
 	public const float defaultMasterVolume = 0.5f;
-	// 2026-09-04: 20 -> 80. With the FantasyForest/Valley forest the cap, not the
+	// 2026-09-04: 20 -> 60. With the FantasyForest/Valley forest the cap, not the
 	// seed density, was what made Humble Abode read as sparse (20 x 350/150 = 47
 	// trees in a 350 m view). The pref key moved to maxTreesV2 so every existing
 	// install picks the new default up instead of keeping a stored 20.
-	const int defaultMaxTrees = 80;
+	const int defaultMaxTrees = 60;
 	const int defaultMaxAlienNPCs = 10;
 	const int defaultMaxMushrooms = 40;
 	const int defaultMaxCrystals = 20;
@@ -551,7 +551,7 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.Medium:
 				viewDistance     = 350f;
-				maxTrees         = defaultMaxTrees;      // 80
+				maxTrees         = defaultMaxTrees;      // 60
 				maxAlienNPCs     = defaultMaxAlienNPCs;  // 10
 				maxMushrooms     = defaultMaxMushrooms;  // 40
 				maxCrystals      = defaultMaxCrystals;   // 20
@@ -571,7 +571,7 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.High:
 				viewDistance     = 500f;
-				maxTrees         = 140;
+				maxTrees         = 110;
 				maxAlienNPCs     = 14;
 				maxMushrooms     = 60;
 				maxCrystals      = 30;
@@ -591,7 +591,7 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.Ultra:
 				viewDistance     = 800f;
-				maxTrees         = 200;
+				maxTrees         = 160;
 				maxAlienNPCs     = 20;
 				maxMushrooms     = 100;
 				maxCrystals      = 50;

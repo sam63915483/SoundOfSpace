@@ -26,7 +26,7 @@ Shader "CartoonGrass/SimpleGrass"
         _ColorVarAmount ("Colour Variation Amount", Range(0, 0.5)) = 0.12
         _ShadowFill ("Shadow fill (eclipse/shade min sun)", Range(0, 0.5)) = 0.15
         _FlashlightResponse ("Flashlight response on grass (1 = same as the ground)", Range(0, 1.5)) = 1.0
-        _FlashlightBladeLift ("Flashlight: blade catch floor (0 = pure ground N.L)", Range(0, 1)) = 0.12
+        _FlashlightBladeLift ("Flashlight: blade catch floor (0 = pure ground N.L)", Range(0, 1)) = 0.35
         _PointLightBoost ("Lantern/torch brightness on grass", Range(0, 4)) = 2.0
         _SpotGrassReach ("Concert light reach on grass (m)", Range(5, 250)) = 50
         _LanternGrassRadius ("Lantern grass radius (x range)", Range(0.1, 1.5)) = 0.5
@@ -302,7 +302,13 @@ Shader "CartoonGrass/SimpleGrass"
             //      is grazing (~0.2-0.3).
             // Now: sample the same cookie at the same projected radius, and
             // shade on the terrain normal (bladeUp, as the lantern loop does)
-            // with a small floor so blades keep a hint of catch.
+            // with a floor so blades keep some catch. The floor is deliberately
+            // NOT tiny: the ground is a Standard PBR surface and picks up a
+            // grazing-angle specular lobe from the torch on top of its N·L,
+            // which the blades never get — at a 0.12 floor the dirt out-shone
+            // the lawn (Sam, pass 2). 0.35 + response 1.3 puts the blades a
+            // little ABOVE the ground at the hotspot, which is how a real lawn
+            // reads under a torch (vertical blades catch it).
             float3 toFrag = IN.worldPos - _FlashlightPos;
             float fdist   = length(toFrag);
             float3 fl     = toFrag / max(fdist, 1e-4);

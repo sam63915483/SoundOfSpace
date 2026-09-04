@@ -53,8 +53,9 @@ public static class HumbleAbodeTreeVariants
     const float Lod1Height = 0.06f;
     const float CullHeight = 0.01f;
 
-    const float SeedCellSize = 30f;
-    const float SeedChance = 0.8f;
+    // Pass 3 (Sam: "a bit too dense"): 30 m / 80% -> 34 m / 75%.
+    const float SeedCellSize = 34f;
+    const float SeedChance = 0.75f;
 
     struct Entry { public string variantPath; public float weight; }
 
@@ -161,9 +162,10 @@ public static class HumbleAbodeTreeVariants
         var so = new SerializedObject(spawner);
         var prefabs = so.FindProperty("treePrefabs");
         var weights = so.FindProperty("treeWeights");
-        // Seed density (2026-09-04, Sam: "not enough trees"): cell 40 m / 70% ->
-        // 30 m / 80%, x2.24 designated trees. PlanetOxygen.treesForFullO2PerMillionSqm
-        // was scaled by the same factor so the O2 curve did not move.
+        // Seed density (2026-09-04): cell 40 m / 70% -> 34 m / 75% after two
+        // passes with Sam (x1.54 designated trees on Humble Abode: 100 -> 144
+        // cells per cube face, x0.75/0.7). PlanetOxygen.treesForFullO2PerMillionSqm
+        // is scaled by the same factor so the O2 curve does not move.
         so.FindProperty("cellSize").floatValue = SeedCellSize;
         so.FindProperty("treeSpawnChance").floatValue = SeedChance;
         var valid = entries.FindAll(e => e.variantPath != null);
