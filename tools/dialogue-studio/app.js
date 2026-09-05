@@ -6,6 +6,11 @@
  *   hiddenIfFlag / conditions) → none visible ⇒ nextNodeId ("" = end) →
  *   pick ⇒ effects + hint track ⇒ nextNodeId.
  * Keep the two in lockstep when either changes.
+ *
+ * The EDITOR is a "script" view: every node is a card you type into directly
+ * (what the NPC says, what the player can reply, where each reply goes).
+ * Routes / effects / conditions live under "Details" so the common job —
+ * write lines, add replies, branch — needs no extra clicks.
  */
 'use strict';
 
@@ -33,6 +38,8 @@ function h(tag, attrs, ...children) {
 const clone = o => JSON.parse(JSON.stringify(o));
 const esc = s => String(s ?? '');
 function trunc(s, n) { s = esc(s); return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+function lsGet(k, d) { try { const v = localStorage.getItem('ds.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }
+function lsSet(k, v) { try { localStorage.setItem('ds.' + k, JSON.stringify(v)); } catch { /* ignore */ } }
 
 function toast(msg, kind = 'ok', ms = 3800) {
   const t = h('div', { class: 'toast ' + (kind === 'ok' ? '' : kind) }, msg);
@@ -72,8 +79,10 @@ const S = {
   vocab: null, rosterData: null,
   file: null, graph: null, savedText: '', selected: null,
   undo: [], redo: [], preEdit: null,
-  view: { x: 30, y: 30, k: 1 },
+  view: { x: 20, y: 20, k: 0.8 },
   player: null,
+  ui: { showAdvanced: lsGet('showAdvanced', false), showMap: lsGet('showMap', true), sideTab: 'map', howtoClosed: lsGet('howtoClosed', false), openAdv: new Set(), openReply: new Set() },
+  scrollTo: null,
 };
 
 function isDirty() { return S.graph && serializeGraph(S.graph) !== S.savedText; }
@@ -134,6 +143,7 @@ const cleanCond = c => ({ kind: c.kind, arg: c.arg, num: c.num, negate: c.negate
 const cleanEff = e => ({ kind: e.kind, strArg: e.strArg, numArg: e.numArg, boolArg: e.boolArg });
 
 function startNode(g) { return g.nodes.find(n => n.id === 'start') || g.nodes[0] || null; }
+function findNode(g, id) { return g.nodes.find(n => n.id === id) || null; }
 /// Extra entry points the NPC's script starts at by name (roster.json "entryNodes",
 /// e.g. the fish vendor's "bounty"). They count as roots for reachability + layout.
 function entryNodeIds(g) {
@@ -142,7 +152,6 @@ function entryNodeIds(g) {
 }
 function rootIds(g) { const s = startNode(g); return [...new Set([s ? s.id : null, ...entryNodeIds(g)].filter(id => id && findNode(g, id)))]; }
 function reachableFromRoots(g, skipId = null) { const all = new Set(); for (const r of rootIds(g)) for (const id of reachableFrom(g, r, skipId)) all.add(id); return all; }
-function findNode(g, id) { return g.nodes.find(n => n.id === id) || null; }
 function nodeTargets(n) {
   const t = [];
   n.routes.forEach(r => t.push(r.nextNodeId));
@@ -160,6 +169,20 @@ function reachableFrom(g, fromId, skipId = null) {
     nodeTargets(n).forEach(t => q.push(t));
   }
   return seen;
+}
+/// Reading order for the script view: breadth-first from the roots, then anything unreachable.
+function walkOrder(g) {
+  const order = []; const seen = new Set();
+  const q = rootIds(g).slice();
+  while (q.length) {
+    const id = q.shift();
+    if (seen.has(id)) continue;
+    const n = findNode(g, id); if (!n) continue;
+    seen.add(id); order.push(n);
+    nodeTargets(n).forEach(t => { if (!seen.has(t)) q.push(t); });
+  }
+  const orphans = g.nodes.filter(n => !seen.has(n.id));
+  return { order, orphans };
 }
 function condSummary(c) {
   const v = S.vocab;
@@ -193,12 +216,14 @@ function effSummary(e) {
 window.addEventListener('hashchange', route);
 async function boot() {
   try { S.vocab = await api('/api/vocab'); } catch (e) { toast('vocab.json failed: ' + e.message, 'err'); S.vocab = { conditionKinds: {}, effectKinds: {}, flags: [], items: [], probes: {}, actions: {}, counters: [], objectives: [], hintTracks: [], storySteps: [] }; }
+  try { S.rosterData = await api('/api/roster'); } catch { /* roster view reports it */ }
   route();
 }
 async function route() {
   const hash = location.hash || '#/';
   const m = hash.match(/^#\/(edit|play)\/([^?]+)(?:\?(.*))?$/);
   if (S.player) { S.player.cancel(); S.player = null; }
+  document.onkeydown = null;
   if (!m) return showRoster();
   const file = decodeURIComponent(m[2]);
   const q = new URLSearchParams(m[3] || '');
@@ -207,7 +232,8 @@ async function route() {
       const raw = await api('/api/file/' + encodeURIComponent(file));
       S.graph = normalizeGraph(raw, file);
       S.file = file; S.savedText = serializeGraph(S.graph);
-      S.undo = []; S.redo = []; S.selected = null; S.view = { x: 30, y: 30, k: 1 };
+      S.undo = []; S.redo = []; S.selected = null; S.view = { x: 20, y: 20, k: 0.8 };
+      S.ui.openAdv = new Set(); S.ui.openReply = new Set();
     } catch (e) { toast('Could not open ' + file + ': ' + e.message, 'err'); location.hash = '#/'; return; }
   }
   if (m[1] === 'edit') showEditor(); else showPlayer(q.get('node') || null);
@@ -243,7 +269,7 @@ async function showRoster() {
 
   view.append(h('div', { class: 'roster' },
     h('h1', null, 'Who talks'),
-    h('div', { class: 'sub' }, 'Files live in ', h('span', { class: 'mono' }, data.storyDir), '. START plays a talk with pretend game state you control. EDIT changes the tree — Save and the game reads it on the next talk (in the Editor; a build needs rebuilding).'),
+    h('div', { class: 'sub' }, h('b', null, 'Edit'), ' opens the talk as a script you type into — lines, replies, and where each reply goes. ', h('b', null, 'Start'), ' plays it like the game would. Saving writes straight into the game; in the Unity Editor the change is live on the next talk.'),
     h('h2', null, 'World NPCs'), h('div', { class: 'cards' }, npcCards),
     h('h2', null, 'Phone / HAL conversations'), h('div', { class: 'cards' }, phoneCards)));
 
@@ -254,19 +280,15 @@ async function showRoster() {
       : hook === 'greeting' ? h('span', { class: 'badge greeting' }, 'spoken part only')
       : h('span', { class: 'badge none' }, 'no graph hook');
     const canOpen = !!file && !(info && info.error);
-    const probes = meta.probes && Object.keys(meta.probes).length ? h('div', { class: 'meta' }, 'Game checks: ', h('span', { class: 'mono' }, Object.keys(meta.probes).join(', '))) : null;
-    const actions = meta.actions && Object.keys(meta.actions).length ? h('div', { class: 'meta' }, 'Game actions: ', h('span', { class: 'mono' }, Object.keys(meta.actions).join(', '))) : null;
     return h('div', { class: 'card' + (canOpen ? '' : ' disabled') },
       h('div', { class: 'name' }, meta.name || id, badge),
       meta.where ? h('div', { class: 'where' }, meta.where) : null,
-      meta.script ? h('div', { class: 'meta mono' }, meta.script) : null,
-      info ? h('div', { class: 'meta' }, info.nodes + ' node' + (info.nodes === 1 ? '' : 's') + (info.presets ? ' · ' + info.presets + ' preset' + (info.presets === 1 ? '' : 's') : '') + ' · ' + info.file) : h('div', { class: 'meta' }, 'no file'),
+      info ? h('div', { class: 'meta' }, info.nodes + ' node' + (info.nodes === 1 ? '' : 's') + ' · ' + info.file) : h('div', { class: 'meta' }, 'no file'),
       info && info.error ? h('div', { class: 'err' }, 'File error: ' + info.error) : null,
-      probes, actions,
       meta.notes ? h('div', { class: 'notes' }, meta.notes) : null,
       h('div', { class: 'actions' },
-        h('button', { class: 'primary', disabled: !canOpen, onClick: () => location.hash = '#/play/' + encodeURIComponent(file) }, '▶ Start'),
-        h('button', { disabled: !canOpen, onClick: () => location.hash = '#/edit/' + encodeURIComponent(file) }, '✎ Edit')));
+        h('button', { class: 'primary', disabled: !canOpen, onClick: () => location.hash = '#/edit/' + encodeURIComponent(file) }, '✎ Edit'),
+        h('button', { disabled: !canOpen, onClick: () => location.hash = '#/play/' + encodeURIComponent(file) }, '▶ Start')));
   }
 }
 
@@ -288,23 +310,17 @@ async function newNpcDialog() {
   } catch (e) { toast(e.message, 'err'); }
 }
 
-// ───────────────────────── editor ─────────────────────────
+// ───────────────────────── editor (script view) ─────────────────────────
 function showEditor() {
-  const g = S.graph;
   const view = $('#view'); view.innerHTML = '';
-  view.append(h('div', { class: 'editor' },
-    h('div', { class: 'graph-pane', id: 'graph-pane' },
-      h('div', { class: 'graph-toolbar' },
-        h('button', { class: 'small', onClick: () => { addNode(); } }, '＋ Node'),
-        h('button', { class: 'small', onClick: fitGraph }, 'Fit'),
-        h('button', { class: 'small', onClick: () => { S.selected = null; renderInspector(); renderGraph(); } }, 'Graph settings')),
-      h('div', { class: 'graph-hint' }, 'Click a node to edit it · drag to pan · wheel to zoom · dashed blue = route (checked before the lines) · dotted = "then"'),
-      h('svg', { id: 'graph-svg', xmlns: 'http://www.w3.org/2000/svg' })),
-    h('div', { class: 'inspector', id: 'inspector' })));
+  view.append(h('div', { class: 'editor2' + (S.ui.showMap ? '' : ' nomap'), id: 'editor2' },
+    h('div', { class: 'script', id: 'script' }, h('div', { class: 'script-inner', id: 'script-inner' })),
+    h('div', { class: 'sidepane', id: 'sidepane' },
+      h('div', { class: 'sidetabs', id: 'sidetabs' }),
+      h('div', { class: 'sidebody', id: 'sidebody' }))));
   renderTopbarEditor();
-  renderGraph();
-  renderInspector();
-  installGraphInteraction();
+  renderScript();
+  renderSide();
   document.onkeydown = editorKeys;
 }
 function renderTopbarEditor() {
@@ -312,9 +328,10 @@ function renderTopbarEditor() {
   setTopbar([
     h('strong', null, g.displayName || g.id),
     h('span', { class: 'title-file mono' }, S.file),
-    h('span', { class: 'badge ' + (g.kind === 'phone' ? 'phone' : 'full') }, g.kind === 'phone' ? 'phone' : 'world NPC'),
     h('span', { id: 'dirty-mark', class: 'dirty' }, isDirty() ? '● unsaved' : ''),
   ], [
+    h('label', { class: 'inline', title: 'Show routes, effects, conditions and speaker fields on every card' }, h('input', { type: 'checkbox', checked: S.ui.showAdvanced, onChange: e => { S.ui.showAdvanced = e.target.checked; lsSet('showAdvanced', S.ui.showAdvanced); renderScript(); } }), 'details'),
+    h('label', { class: 'inline' }, h('input', { type: 'checkbox', checked: S.ui.showMap, onChange: e => { S.ui.showMap = e.target.checked; lsSet('showMap', S.ui.showMap); $('#editor2').classList.toggle('nomap', !S.ui.showMap); if (S.ui.showMap) renderSide(); } }), 'map'),
     h('button', { onClick: undo, disabled: !S.undo.length, title: 'Ctrl+Z' }, '↶ Undo'),
     h('button', { onClick: redo, disabled: !S.redo.length, title: 'Ctrl+Y' }, '↷ Redo'),
     h('button', { onClick: () => { if (isDirty()) { toast('Save first so the player runs what you see.', 'warn'); } location.hash = '#/play/' + encodeURIComponent(S.file); } }, '▶ Play'),
@@ -336,9 +353,9 @@ function restore(text) { S.graph = normalizeGraph(JSON.parse(text), S.file); if 
 function undo() { if (!S.undo.length) return; S.redo.push(snapshot()); restore(S.undo.pop()); }
 function redo() { if (!S.redo.length) return; S.undo.push(snapshot()); restore(S.redo.pop()); }
 function mutate(fn) { pushUndo(); fn(); renderAll(); }
-function renderAll() { renderTopbarEditor(); renderGraph(); renderInspector(); }
+function renderAll() { renderTopbarEditor(); renderScript(); renderSide(); }
 // text fields: remember the pre-edit state on focus, push it on change if anything changed
-function bindText(el, get, set, { rerenderGraph = true } = {}) {
+function bindText(el, get, set, { onChanged = null } = {}) {
   el.addEventListener('focus', () => { S.preEdit = snapshot(); });
   el.addEventListener('input', () => { set(el.value); refreshDirty(); });
   el.addEventListener('change', () => {
@@ -346,9 +363,16 @@ function bindText(el, get, set, { rerenderGraph = true } = {}) {
     const now = snapshot();
     if (S.preEdit && S.preEdit !== now) { S.undo.push(S.preEdit); S.redo = []; }
     S.preEdit = null;
-    renderTopbarEditor(); if (rerenderGraph) renderGraph();
+    renderTopbarEditor();
+    if (onChanged) onChanged(); else if (S.ui.sideTab === 'map') renderGraph();
   });
   return el;
+}
+function autosize(ta) {
+  const fit = () => { ta.style.height = 'auto'; ta.style.height = Math.max(40, ta.scrollHeight + 2) + 'px'; };
+  ta.addEventListener('input', fit);
+  requestAnimationFrame(fit);
+  return ta;
 }
 
 async function save() {
@@ -367,8 +391,313 @@ async function save() {
   } catch (e) { toast('Save failed: ' + e.message, 'err', 7000); }
 }
 
-// ── layout ──
-const NODE_W = 240, ROW_H = 17, COL_GAP = 110, ROW_GAP = 26, PAD = 8, TITLE_H = 24;
+// ── mutations ──
+function uniqueId(base) { let id = base, i = 2; while (findNode(S.graph, id) || id === 'end') id = base + '_' + (i++); return id; }
+function newNodeObj(id) { return normalizeNode({ id, speaker: S.graph.displayName, lines: [''], responses: [] }); }
+/// Insert a new node after `afterNode` (or at the end) and scroll to it once rendered.
+function insertNode(id, afterNode = null) {
+  const nid = uniqueId(id || 'node');
+  const created = newNodeObj(nid);
+  const idx = afterNode ? S.graph.nodes.indexOf(afterNode) : -1;
+  if (idx >= 0) S.graph.nodes.splice(idx + 1, 0, created); else S.graph.nodes.push(created);
+  S.scrollTo = nid; S.selected = nid;
+  return nid;
+}
+function renameNode(oldId, newId) {
+  newId = newId.trim().replace(/\s+/g, '_');
+  if (!newId || newId === 'end') { toast('Node id can\'t be empty or "end".', 'warn'); return false; }
+  if (newId !== oldId && findNode(S.graph, newId)) { toast('There is already a node called ' + newId, 'warn'); return false; }
+  if (newId === oldId) return true;
+  mutate(() => {
+    for (const n of S.graph.nodes) {
+      if (n.id === oldId) n.id = newId;
+      n.routes.forEach(r => { if (r.nextNodeId === oldId) r.nextNodeId = newId; });
+      n.responses.forEach(r => { if (r.nextNodeId === oldId) r.nextNodeId = newId; });
+      if (n.nextNodeId === oldId) n.nextNodeId = newId;
+    }
+    if (S.selected === oldId) S.selected = newId;
+    S.scrollTo = newId;
+  });
+  return true;
+}
+function relinkTo(ids, target) {
+  for (const n of S.graph.nodes) {
+    n.routes.forEach(r => { if (ids.has(r.nextNodeId)) r.nextNodeId = target; });
+    n.responses.forEach(r => { if (ids.has(r.nextNodeId)) r.nextNodeId = target; });
+    if (ids.has(n.nextNodeId)) n.nextNodeId = target === 'end' ? '' : target;
+  }
+}
+async function deleteNode(id) {
+  const refs = S.graph.nodes.filter(n => n.id !== id && nodeTargets(n).includes(id)).map(n => n.id);
+  const ok = await modal({ title: 'Delete "' + id + '"?', body: h('p', null, refs.length ? 'Replies pointing at it (from ' + refs.join(', ') + ') will end the conversation instead. Nodes after it stay.' : 'Nothing points at it.'), buttons: [{ label: 'Cancel', value: false }, { label: 'Delete', value: true, danger: true }] });
+  if (!ok) return;
+  mutate(() => { const ids = new Set([id]); relinkTo(ids, 'end'); S.graph.nodes = S.graph.nodes.filter(n => n.id !== id); if (S.selected === id) S.selected = null; });
+}
+async function deleteBranch(id) {
+  const g = S.graph;
+  const under = reachableFrom(g, id);
+  const stillReachable = reachableFromRoots(g, id);
+  const doomed = new Set([...under].filter(x => !stillReachable.has(x)));
+  doomed.add(id);
+  const list = [...doomed];
+  const ok = await modal({ title: 'Delete this whole branch?', body: h('div', null, h('p', null, 'This deletes "' + id + '" and everything that can only be reached through it — ' + list.length + ' node(s):'), h('pre', { class: 'code' }, list.join('\n')), h('p', { class: 'muted small' }, 'Anything else that pointed into the branch will end the conversation instead. Undo (Ctrl+Z) brings it back.')), buttons: [{ label: 'Cancel', value: false }, { label: 'Delete ' + list.length + ' node(s)', value: true, danger: true }] });
+  if (!ok) return;
+  mutate(() => { relinkTo(doomed, 'end'); g.nodes = g.nodes.filter(n => !doomed.has(n.id)); if (doomed.has(S.selected)) S.selected = null; });
+}
+function duplicateNode(id) {
+  const src = findNode(S.graph, id); if (!src) return;
+  mutate(() => { const c = normalizeNode(clone(src)); c.id = uniqueId(id + '_copy'); S.graph.nodes.splice(S.graph.nodes.indexOf(src) + 1, 0, c); S.selected = c.id; S.scrollTo = c.id; });
+}
+async function renameDialog(n) {
+  const inp = h('input', { value: n.id, class: 'mono' });
+  const ok = await modal({ title: 'Rename node', body: h('div', null, h('p', { class: 'help' }, 'The id is just a label for linking; the player never sees it. Every reply pointing here updates automatically.'), inp), buttons: [{ label: 'Cancel', value: null }, { label: 'Rename', value: true, primary: true }] });
+  if (ok) renameNode(n.id, inp.value);
+}
+async function nodeMenu(n) {
+  const v = await modal({ title: 'Box "' + n.id + '"', body: h('p', { class: 'help' }, 'Deleting only this box re-points replies that led here to the end of the talk. Deleting the whole branch also removes every box that can only be reached through it. Undo (Ctrl+Z) brings either back.'), buttons: [
+    { label: 'Cancel', value: null }, { label: 'Rename', value: 'rename' }, { label: 'Duplicate', value: 'dup' },
+    { label: 'Delete this node only', value: 'del', danger: true }, { label: 'Delete this whole branch', value: 'branch', danger: true }] });
+  if (v === 'rename') renameDialog(n);
+  else if (v === 'dup') duplicateNode(n.id);
+  else if (v === 'del') deleteNode(n.id);
+  else if (v === 'branch') deleteBranch(n.id);
+}
+
+// ── script rendering ──
+function scrollToCard(id, { flash = true, focus = false } = {}) {
+  const card = document.getElementById('card-' + id);
+  if (!card) return;
+  card.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  if (flash) { card.classList.add('flash'); setTimeout(() => card.classList.remove('flash'), 900); }
+  if (focus) { const ta = card.querySelector('textarea'); if (ta) setTimeout(() => ta.focus(), 250); }
+}
+function selectCard(id) {
+  if (S.selected === id) return;
+  S.selected = id;
+  if (S.ui.showMap && S.ui.sideTab === 'map') renderGraph();
+}
+function renderScript() {
+  const pane = $('#script'), inner = $('#script-inner');
+  if (!inner) return;
+  const keepScroll = pane.scrollTop;
+  inner.innerHTML = '';
+  const g = S.graph;
+  if (!S.ui.howtoClosed) {
+    inner.append(h('div', { class: 'howto' },
+      h('div', null, h('b', null, 'How this works.'), ' Each box is one thing ', g.displayName || 'the NPC', ' says, in order — first box at the top. Type the lines. Under it, add the replies the player can pick and choose where each reply goes: another box, the end, or ', h('b', null, '＋ new branch'), ' to write a fresh box for that reply.',
+        h('ul', null,
+          h('li', null, 'A box with no replies just continues to its "after that" box, or ends.'),
+          h('li', null, 'Delete a reply with ✕. The ⋯ button on a box can rename it, or delete the box or its whole branch.'),
+          h('li', null, 'Save (Ctrl+S) writes into the game. Talk to the NPC again in the Unity Editor and you hear it.'),
+          h('li', null, 'Turn on "details" (top right) for the game logic: which version of the talk plays (routes), flags, money, items.'))),
+      h('button', { class: 'small ghost close', onClick: () => { S.ui.howtoClosed = true; lsSet('howtoClosed', true); renderScript(); } }, '✕ got it')));
+  }
+  const { order, orphans } = walkOrder(g);
+  order.forEach(n => inner.append(nodeCard(n, false)));
+  if (orphans.length) {
+    inner.append(h('div', { class: 'orphan-note' }, 'Nothing leads to these boxes — the player can\'t reach them. Point a reply at them, or delete them.'));
+    orphans.forEach(n => inner.append(nodeCard(n, true)));
+  }
+  inner.append(h('div', { class: 'addbar', style: 'margin-top:8px' },
+    h('button', { onClick: () => mutate(() => { insertNode('node'); }) }, '＋ New box (unlinked — point a reply at it)')));
+  pane.scrollTop = keepScroll;
+  if (S.scrollTo) { const id = S.scrollTo; S.scrollTo = null; setTimeout(() => scrollToCard(id, { focus: true }), 30); }
+}
+
+function nodeCard(n, orphan) {
+  const g = S.graph;
+  const start = startNode(g);
+  const isStart = start && start.id === n.id;
+  const isEntry = entryNodeIds(g).includes(n.id);
+  const advOpen = S.ui.showAdvanced || S.ui.openAdv.has(n.id);
+  const card = h('div', { class: 'ncard' + (isStart ? ' start' : '') + (orphan ? ' orphan' : ''), id: 'card-' + n.id });
+  card.addEventListener('focusin', () => selectCard(n.id));
+  card.addEventListener('click', () => selectCard(n.id));
+
+  // header
+  const logicChips = [];
+  if (n.routes.length && !advOpen) logicChips.push(h('span', { class: 'chip', title: n.routes.map(r => 'if ' + condsSummary(r.conditions) + ' → ' + r.nextNodeId).join('\n'), onClick: () => { S.ui.openAdv.add(n.id); renderScript(); } }, '⇢ ' + n.routes.length + ' route' + (n.routes.length > 1 ? 's' : '') + ' first'));
+  if (n.onEnter.length && !advOpen) logicChips.push(h('span', { class: 'chip', title: n.onEnter.map(effSummary).join(', '), onClick: () => { S.ui.openAdv.add(n.id); renderScript(); } }, '⚡ ' + n.onEnter.map(effSummary).join(', ')));
+  card.append(h('div', { class: 'head' },
+    isStart ? h('span', { class: 'badge start' }, 'START') : (isEntry ? h('span', { class: 'badge switch' }, 'ENTRY') : (orphan ? h('span', { class: 'badge orphan' }, 'unreachable') : null)),
+    h('span', { class: 'nid', title: 'node id (click to rename)', onClick: () => renameDialog(n) }, n.id),
+    logicChips,
+    h('span', { class: 'spacer' }),
+    h('button', { class: 'ghost', title: 'Play from this box', onClick: () => location.hash = '#/play/' + encodeURIComponent(S.file) + '?node=' + encodeURIComponent(n.id) }, '▶'),
+    h('button', { class: 'ghost', title: 'Rename / duplicate / delete', onClick: () => nodeMenu(n) }, '⋯')));
+
+  // lines
+  const who = n.speaker || g.displayName;
+  card.append(h('div', { class: 'lbl' }, h('span', { class: 'who' }, who), ' says', n.pickRandomLine ? h('span', { class: 'badge random' }, 'one at random') : null));
+  n.lines.forEach((line, i) => {
+    const ta = autosize(h('textarea', { value: line, rows: 1, placeholder: 'Type what ' + who + ' says…' }));
+    bindText(ta, null, v => { n.lines[i] = v; });
+    card.append(h('div', { class: 'line-row' }, ta,
+      h('div', { class: 'btns' },
+        h('button', { onClick: () => mutate(() => moveItem(n.lines, i, -1)), title: 'move up' }, '↑'),
+        h('button', { onClick: () => mutate(() => moveItem(n.lines, i, 1)), title: 'move down' }, '↓'),
+        h('button', { onClick: () => mutate(() => { n.lines.splice(i, 1); }), title: 'remove this line' }, '✕'))));
+  });
+  card.append(h('div', { class: 'addbar' },
+    h('button', { onClick: () => mutate(() => { n.lines.push(''); S.scrollTo = null; }) }, '＋ line'),
+    n.lines.length > 1 ? h('label', { class: 'inline' }, h('input', { type: 'checkbox', checked: n.pickRandomLine, onChange: e => mutate(() => { n.pickRandomLine = e.target.checked; }) }), 'say only one of these, at random') : null));
+
+  // replies
+  card.append(h('div', { class: 'lbl' }, 'player can reply'));
+  if (!n.responses.length) card.append(h('div', { class: 'help' }, 'No replies — after the last line the talk continues to the box chosen below.'));
+  n.responses.forEach((r, i) => {
+    const key = n.id + '#' + i;
+    const has = r.conditions.length || r.effects.length || r.requiresFlag || r.hiddenIfFlag || r.startHintTrack;
+    const open = S.ui.showAdvanced || S.ui.openReply.has(key);
+    const txt = bindText(h('input', { class: 'txt', value: r.buttonText, placeholder: 'What the player says…' }), null, v => { r.buttonText = v; });
+    card.append(h('div', { class: 'reply' },
+      h('span', { class: 'tri' }, '▸'), txt,
+      h('span', { class: 'goto' }, 'then', targetSelect(r.nextNodeId, v => mutate(() => { r.nextNodeId = v; }), { forNode: n })),
+      h('button', { class: 'gear' + (has ? ' has' : ''), title: has ? 'This reply has conditions or effects: ' + [...r.conditions.map(condSummary), ...r.effects.map(effSummary)].join(', ') : 'Conditions (when is this reply shown?) and effects (what happens when picked?)', onClick: () => { if (S.ui.openReply.has(key)) S.ui.openReply.delete(key); else S.ui.openReply.add(key); renderScript(); } }, has ? '⚑ ' + [...r.conditions.map(condSummary), ...r.effects.map(effSummary)].join(', ') : '⚙'),
+      h('button', { class: 'x', title: 'remove this reply', onClick: () => mutate(() => { n.responses.splice(i, 1); }) }, '✕')));
+    if (open) card.append(h('div', { class: 'reply-adv' },
+      condList(r.conditions, 'show this reply only when'),
+      effList(r.effects, 'when picked, also'),
+      (g.kind === 'phone' || r.startHintTrack || r.requiresFlag || r.hiddenIfFlag) ? h('div', { class: 'row small', style: 'margin-top:6px' },
+        h('label', { class: 'inline' }, 'requires flag', bindText(h('input', { value: r.requiresFlag, list: datalistFor('flags'), style: 'width:120px' }), null, v => { r.requiresFlag = v; })),
+        h('label', { class: 'inline' }, 'hidden if flag', bindText(h('input', { value: r.hiddenIfFlag, list: datalistFor('flags'), style: 'width:120px' }), null, v => { r.hiddenIfFlag = v; })),
+        h('label', { class: 'inline' }, 'hint track', bindText(h('input', { value: r.startHintTrack, list: datalistFor('hintTracks'), style: 'width:90px' }), null, v => { r.startHintTrack = v; }))) : null));
+  });
+  card.append(h('div', { class: 'addbar' },
+    h('button', { onClick: () => mutate(() => { n.responses.push(normalizeResponse({ buttonText: '', nextNodeId: 'end' })); }) }, '＋ reply'),
+    h('button', { class: 'primary', onClick: () => mutate(() => {
+      const nid = insertNode(n.id + '_' + (n.responses.length + 1), n);
+      n.responses.push(normalizeResponse({ buttonText: '', nextNodeId: nid }));
+    }) }, '＋ reply → new branch')));
+
+  // then
+  if (!n.responses.length) card.append(h('div', { class: 'then' }, 'after that →', targetSelect(n.nextNodeId || 'end', v => mutate(() => { n.nextNodeId = v === 'end' ? '' : v; }), { forNode: n })));
+  else if (n.nextNodeId && n.nextNodeId !== 'end') card.append(h('div', { class: 'then' }, 'if no reply is visible →', targetSelect(n.nextNodeId, v => mutate(() => { n.nextNodeId = v === 'end' ? '' : v; }), { forNode: n })));
+
+  // advanced
+  if (!S.ui.showAdvanced) card.append(h('div', { class: 'advtoggle', onClick: () => { if (S.ui.openAdv.has(n.id)) S.ui.openAdv.delete(n.id); else S.ui.openAdv.add(n.id); renderScript(); } }, (advOpen ? '▾ ' : '▸ ') + 'details — routes, effects, speaker' + (n.routes.length || n.onEnter.length ? ' (' + (n.routes.length + n.onEnter.length) + ')' : '')));
+  if (advOpen) card.append(advancedBox(n));
+  return card;
+}
+
+function advancedBox(n) {
+  const g = S.graph;
+  const box = h('div', { class: 'advbox' });
+  box.append(h('div', { class: 'row' }, h('div', { class: 'field grow' }, h('span', null, 'Speaker plate (blank = ' + g.displayName + ')'), bindText(h('input', { value: n.speaker, placeholder: g.displayName }), null, v => { n.speaker = v; }, { onChanged: renderScript }))));
+  box.append(h('div', { class: 'subhead' }, h('span', null, 'ROUTES — checked before the lines; the first that matches jumps somewhere else and this box\'s lines are skipped. Use on START to pick which version of the talk plays.'),
+    h('button', { onClick: () => mutate(() => { n.routes.push({ conditions: [normalizeCond({})], nextNodeId: 'end' }); }) }, '＋ route')));
+  n.routes.forEach((r, i) => box.append(h('div', { class: 'resp' },
+    h('div', { class: 'head' }, h('span', { class: 'muted small' }, 'route ' + (i + 1)), h('span', { class: 'arrow' }, '→'), targetSelect(r.nextNodeId, v => mutate(() => { r.nextNodeId = v; }), { forNode: n }),
+      h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(n.routes, i, -1)) }, '↑'), h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(n.routes, i, 1)) }, '↓'),
+      h('button', { class: 'small ghost', onClick: () => mutate(() => { n.routes.splice(i, 1); }) }, '✕')),
+    condList(r.conditions, r.conditions.length ? 'when ALL of these are true' : 'when… (no conditions = always taken)'))));
+  box.append(effList(n.onEnter, 'WHEN THIS BOX STARTS — effects fired as the lines begin'));
+  return box;
+}
+
+function targetSelect(value, onPick, { forNode = null } = {}) {
+  const sel = h('select', null,
+    h('option', { value: 'end', selected: !value || value === 'end' }, '— end of talk —'),
+    S.graph.nodes.map(n => h('option', { value: n.id, selected: n.id === value }, n.id + (forNode && n.id === forNode.id ? ' (this box)' : ''))),
+    h('option', { value: '__new__' }, '＋ new branch…'));
+  sel.addEventListener('change', () => {
+    if (sel.value === '__new__') {
+      pushUndo();
+      const nid = insertNode(forNode ? forNode.id + '_next' : 'node', forNode);
+      onPick(nid);
+      return;
+    }
+    onPick(sel.value);
+  });
+  sel.addEventListener('click', e => e.stopPropagation());
+  return sel;
+}
+function datalistFor(listName) {
+  if (!listName) return null;
+  const v = S.vocab; let items = [];
+  if (listName === 'probes') items = Object.keys(v.probes || {});
+  else if (listName === 'actions') items = Object.keys(v.actions || {});
+  else items = v[listName] || [];
+  const used = S.graph ? collectRefs(S.graph) : null;
+  if (used) {
+    if (listName === 'flags') items = [...new Set([...items, ...used.flags])];
+    if (listName === 'probes') items = [...new Set([...items, ...used.probes])];
+    if (listName === 'actions') items = [...new Set([...items, ...used.actions])];
+    if (listName === 'items') items = [...new Set([...items, ...used.items])];
+  }
+  const id = 'dl_' + listName;
+  let dl = document.getElementById(id);
+  if (!dl) { dl = h('datalist', { id }); document.body.append(dl); }
+  dl.innerHTML = ''; items.forEach(x => dl.append(h('option', { value: x })));
+  return id;
+}
+function condRow(list, idx) {
+  const c = list[idx]; const kinds = S.vocab.conditionKinds;
+  const spec = kinds[c.kind] || { uses: ['arg', 'num'], argList: '' };
+  const kindSel = h('select', null, Object.entries(kinds).map(([k, s]) => h('option', { value: k, selected: k === c.kind }, s.label || k)), !kinds[c.kind] ? h('option', { value: c.kind, selected: true }, c.kind) : null);
+  kindSel.addEventListener('change', () => mutate(() => { c.kind = kindSel.value; }));
+  const argIn = h('input', { value: c.arg, placeholder: spec.argList ? spec.argList.replace(/s$/, '') : '', list: datalistFor(spec.argList), style: spec.uses.includes('arg') ? '' : 'visibility:hidden' });
+  bindText(argIn, null, v => { c.arg = v; });
+  const numIn = h('input', { type: 'number', value: c.num, style: spec.uses.includes('num') ? '' : 'visibility:hidden' });
+  bindText(numIn, null, v => { c.num = +v || 0; });
+  const neg = h('label', { class: 'not' }, h('input', { type: 'checkbox', checked: c.negate, onChange: e => mutate(() => { c.negate = e.target.checked; }) }), 'NOT');
+  const del = h('button', { class: 'small ghost', title: 'remove', onClick: () => mutate(() => { list.splice(idx, 1); }) }, '✕');
+  return h('div', { class: 'cond', title: spec.help || '' }, kindSel, argIn, numIn, neg, del);
+}
+function effRow(list, idx) {
+  const e = list[idx]; const kinds = S.vocab.effectKinds;
+  const spec = kinds[e.kind] || { uses: ['strArg', 'numArg'], argList: '' };
+  const kindSel = h('select', null, Object.entries(kinds).map(([k, s]) => h('option', { value: k, selected: k === e.kind }, s.label || k)), !kinds[e.kind] ? h('option', { value: e.kind, selected: true }, e.kind) : null);
+  kindSel.addEventListener('change', () => mutate(() => { e.kind = kindSel.value; if (e.kind === 'SetFlag') e.boolArg = true; }));
+  const argIn = h('input', { value: e.strArg, placeholder: spec.argList ? spec.argList.replace(/s$/, '') : (e.kind === 'HalSay' ? 'what HAL says' : ''), list: datalistFor(spec.argList), style: spec.uses.includes('strArg') ? '' : 'visibility:hidden' });
+  bindText(argIn, null, v => { e.strArg = v; });
+  let third;
+  if (spec.uses.includes('boolArg')) {
+    third = h('select', null, h('option', { value: 'true', selected: e.boolArg }, 'ON'), h('option', { value: 'false', selected: !e.boolArg }, 'OFF'));
+    third.addEventListener('change', () => mutate(() => { e.boolArg = third.value === 'true'; }));
+  } else {
+    third = h('input', { type: 'number', value: e.numArg, style: spec.uses.includes('numArg') ? '' : 'visibility:hidden' });
+    bindText(third, null, v => { e.numArg = +v || 0; });
+  }
+  const del = h('button', { class: 'small ghost', title: 'remove', onClick: () => mutate(() => { list.splice(idx, 1); }) }, '✕');
+  return h('div', { class: 'eff', title: spec.help || '' }, kindSel, argIn, third, h('span'), del);
+}
+function condList(list, label) {
+  return h('div', null,
+    h('div', { class: 'subhead' }, h('span', null, label), h('button', { onClick: () => mutate(() => { list.push(normalizeCond({})); }) }, '＋ condition')),
+    list.map((c, i) => condRow(list, i)));
+}
+function effList(list, label) {
+  return h('div', null,
+    h('div', { class: 'subhead' }, h('span', null, label), h('button', { onClick: () => mutate(() => { list.push(normalizeEff({ kind: 'SetFlag', boolArg: true })); }) }, '＋ effect')),
+    list.map((e, i) => effRow(list, i)));
+}
+function moveItem(arr, i, dir) { const j = i + dir; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; }
+
+// ── side pane: map / settings / checks ──
+function renderSide() {
+  const tabs = $('#sidetabs'), body = $('#sidebody');
+  if (!tabs || !body) return;
+  tabs.innerHTML = ''; body.innerHTML = '';
+  const issues = validate(S.graph); const errs = issues.filter(i => i.level === 'error').length;
+  [['map', 'Map'], ['settings', 'Settings'], ['checks', 'Checks' + (issues.length ? ' (' + issues.length + (errs ? '!' : '') + ')' : ' ✓')]].forEach(([k, label]) =>
+    tabs.append(h('button', { class: S.ui.sideTab === k ? 'on' : '', onClick: () => { S.ui.sideTab = k; renderSide(); } }, label)));
+  if (S.ui.sideTab === 'map') {
+    body.append(h('div', { class: 'graph-pane', id: 'graph-pane' },
+      h('div', { class: 'graph-toolbar' }, h('button', { class: 'small', onClick: fitGraph }, 'Fit')),
+      h('div', { class: 'graph-hint' }, 'click a box to jump to it · drag to pan · wheel to zoom'),
+      h('svg', { id: 'graph-svg', xmlns: 'http://www.w3.org/2000/svg' })));
+    renderGraph(); installGraphInteraction();
+    if (!S._fitDone) { S._fitDone = true; setTimeout(fitGraph, 0); }
+  } else if (S.ui.sideTab === 'settings') {
+    const box = h('div', { class: 'inspector' }); body.append(box); renderGraphSettings(box);
+  } else {
+    const box = h('div', { class: 'inspector' }); body.append(box); renderValidation(box);
+  }
+}
+
+// ── map (SVG graph) ──
+const NODE_W = 220, ROW_H = 16, COL_GAP = 70, ROW_GAP = 22, PAD = 8, TITLE_H = 22;
 function layoutGraph(g) {
   const depth = new Map();
   {
@@ -387,20 +716,19 @@ function layoutGraph(g) {
   for (const n of g.nodes) {
     const d = depth.has(n.id) ? depth.get(n.id) : maxD + 1;
     const rows = [];
-    n.routes.forEach((r, i) => rows.push({ kind: 'route', text: 'if ' + condsSummary(r.conditions) + ' →', target: r.nextNodeId, ref: r }));
-    if (n.onEnter.length) rows.push({ kind: 'fx', text: '⚡ ' + n.onEnter.map(effSummary).join(', ') });
-    if (n.lines.length) rows.push({ kind: 'snippet', text: (n.pickRandomLine ? '🎲 ' : '') + '“' + trunc(n.lines[0], 34) + '”' + (n.lines.length > 1 ? '  +' + (n.lines.length - 1) : '') });
-    n.responses.forEach(r => rows.push({ kind: 'resp', text: '▸ ' + trunc(r.buttonText || '(empty button)', 32) + (r.effects.length ? ' ⚡' : '') + (r.conditions.length || r.requiresFlag || r.hiddenIfFlag ? ' ⚑' : ''), target: r.nextNodeId, ref: r }));
-    if (!n.responses.length) rows.push({ kind: 'then', text: 'then → ' + (n.nextNodeId && n.nextNodeId !== 'end' ? n.nextNodeId : 'end'), target: n.nextNodeId || 'end' });
+    n.routes.forEach(r => rows.push({ kind: 'route', text: 'if ' + trunc(condsSummary(r.conditions), 26) + ' →', target: r.nextNodeId }));
+    if (n.lines.length) rows.push({ kind: 'snippet', text: (n.pickRandomLine ? '🎲 ' : '') + '“' + trunc(n.lines[0], 30) + '”' + (n.lines.length > 1 ? ' +' + (n.lines.length - 1) : '') });
+    n.responses.forEach(r => rows.push({ kind: 'resp', text: '▸ ' + trunc(r.buttonText || '(empty)', 28), target: r.nextNodeId }));
+    if (!n.responses.length) rows.push({ kind: 'then', text: '→ ' + (n.nextNodeId && n.nextNodeId !== 'end' ? n.nextNodeId : 'end'), target: n.nextNodeId || 'end' });
     const hgt = TITLE_H + PAD + rows.length * ROW_H + PAD;
-    const box = { n, d, rows, w: NODE_W, h: Math.max(hgt, 48), orphan: !depth.has(n.id) };
+    const box = { n, d, rows, w: NODE_W, h: Math.max(hgt, 44), orphan: !depth.has(n.id) };
     boxes.set(n.id, box);
     if (!cols.has(d)) cols.set(d, []);
     cols.get(d).push(box);
   }
   for (const [d, list] of cols) {
-    let y = 30;
-    for (const b of list) { b.x = 30 + d * (NODE_W + COL_GAP); b.y = y; y += b.h + ROW_GAP; }
+    let y = 20;
+    for (const b of list) { b.x = 20 + d * (NODE_W + COL_GAP); b.y = y; y += b.h + ROW_GAP; }
   }
   const edges = [];
   for (const b of boxes.values()) {
@@ -408,7 +736,7 @@ function layoutGraph(g) {
       if (!row.target || row.target === 'end') return;
       const tb = boxes.get(row.target); if (!tb) return;
       const sy = b.y + TITLE_H + PAD + i * ROW_H + ROW_H / 2;
-      edges.push({ kind: row.kind, x1: b.x + b.w, y1: sy, x2: tb.x, y2: tb.y + 14, from: b.n.id, to: tb.n.id });
+      edges.push({ kind: row.kind, x1: b.x + b.w, y1: sy, x2: tb.x, y2: tb.y + 12, from: b.n.id, to: tb.n.id });
     });
   }
   return { boxes: [...boxes.values()], edges };
@@ -427,9 +755,9 @@ function renderGraph() {
   svg.append(vp);
   for (const e of edges) {
     const back = e.x2 < e.x1;
-    const dx = Math.max(60, Math.abs(e.x2 - e.x1) * 0.4);
+    const dx = Math.max(50, Math.abs(e.x2 - e.x1) * 0.4);
     const d = back
-      ? `M${e.x1},${e.y1} C${e.x1 + 80},${e.y1} ${e.x2 - 80},${e.y2 - 30} ${e.x2},${e.y2}`
+      ? `M${e.x1},${e.y1} C${e.x1 + 70},${e.y1} ${e.x2 - 70},${e.y2 - 30} ${e.x2},${e.y2}`
       : `M${e.x1},${e.y1} C${e.x1 + dx},${e.y1} ${e.x2 - dx},${e.y2} ${e.x2},${e.y2}`;
     const hi = S.selected && (e.from === S.selected || e.to === S.selected);
     vp.append(el('path', { d, class: 'gedge ' + e.kind + (hi ? ' hi' : ''), 'marker-end': hi ? 'url(#arrhi)' : 'url(#arr)' }));
@@ -439,39 +767,37 @@ function renderGraph() {
     const n = b.n;
     const grp = el('g', { class: 'gnode' + (S.selected === n.id ? ' selected' : '') + (start && start.id === n.id ? ' start' : '') + (b.orphan ? ' orphan' : ''), transform: `translate(${b.x},${b.y})` });
     grp.append(el('rect', { class: 'box', width: b.w, height: b.h }));
-    const tag = start && start.id === n.id ? 'START' : (entryNodeIds(g).includes(n.id) ? 'ENTRY' : (n.routes.length && !n.lines.length && !n.responses.length ? 'SWITCH' : (b.orphan ? 'UNREACHABLE' : '')));
-    const title = el('text', { class: 'id', x: PAD, y: 16 }); title.textContent = trunc(n.id, tag ? 20 : 30); grp.append(title);
-    if (tag) { const t = el('text', { class: 'tag', x: b.w - PAD, y: 15, 'text-anchor': 'end' }); t.textContent = tag; grp.append(t); }
+    const tag = start && start.id === n.id ? 'START' : (entryNodeIds(g).includes(n.id) ? 'ENTRY' : (b.orphan ? 'UNREACHABLE' : ''));
+    const title = el('text', { class: 'id', x: PAD, y: 15 }); title.textContent = trunc(n.id, tag ? 18 : 28); grp.append(title);
+    if (tag) { const t = el('text', { class: 'tag', x: b.w - PAD, y: 14, 'text-anchor': 'end' }); t.textContent = tag; grp.append(t); }
     b.rows.forEach((row, i) => {
-      const t = el('text', { class: 'rowlabel ' + row.kind, x: PAD, y: TITLE_H + PAD + i * ROW_H + 12 });
+      const t = el('text', { class: row.kind === 'snippet' ? 'snippet' : 'rowlabel ' + row.kind, x: PAD, y: TITLE_H + PAD + i * ROW_H + 11 });
       t.textContent = row.text;
-      if (row.kind === 'snippet') t.setAttribute('class', 'snippet');
       grp.append(t);
     });
     const hit = el('rect', { class: 'hit', width: b.w, height: b.h });
-    hit.addEventListener('click', ev => { ev.stopPropagation(); S.selected = n.id; renderGraph(); renderInspector(); });
+    hit.addEventListener('click', ev => { ev.stopPropagation(); S.selected = n.id; renderGraph(); scrollToCard(n.id); });
     grp.append(hit);
     vp.append(grp);
   }
-  svg._bounds = boxes.length ? { x: 0, y: 0, w: Math.max(...boxes.map(b => b.x + b.w)) + 30, h: Math.max(...boxes.map(b => b.y + b.h)) + 30 } : { x: 0, y: 0, w: 400, h: 300 };
+  svg._bounds = boxes.length ? { x: 0, y: 0, w: Math.max(...boxes.map(b => b.x + b.w)) + 20, h: Math.max(...boxes.map(b => b.y + b.h)) + 20 } : { x: 0, y: 0, w: 400, h: 300 };
 }
 function installGraphInteraction() {
   const svg = $('#graph-svg'); if (!svg) return;
   let drag = null;
-  svg.addEventListener('mousedown', e => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, vx: S.view.x, vy: S.view.y, moved: false }; svg.classList.add('panning'); });
-  window.addEventListener('mousemove', e => {
+  svg.addEventListener('mousedown', e => { if (e.button !== 0) return; drag = { x: e.clientX, y: e.clientY, vx: S.view.x, vy: S.view.y }; svg.classList.add('panning'); });
+  const move = e => {
     if (!drag) return;
-    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
-    if (Math.abs(dx) + Math.abs(dy) > 3) drag.moved = true;
-    S.view.x = drag.vx + dx; S.view.y = drag.vy + dy;
+    S.view.x = drag.vx + (e.clientX - drag.x); S.view.y = drag.vy + (e.clientY - drag.y);
     const vp = $('#viewport'); if (vp) vp.setAttribute('transform', `translate(${S.view.x},${S.view.y}) scale(${S.view.k})`);
-  });
-  window.addEventListener('mouseup', () => { if (drag && !drag.moved) { /* click on empty space: keep selection */ } drag = null; svg.classList.remove('panning'); });
+  };
+  const up = () => { drag = null; svg.classList.remove('panning'); };
+  window.addEventListener('mousemove', move); window.addEventListener('mouseup', up);
   svg.addEventListener('wheel', e => {
     e.preventDefault();
     const rect = svg.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    const k0 = S.view.k, k1 = Math.min(2.5, Math.max(0.25, k0 * (e.deltaY < 0 ? 1.1 : 0.9)));
+    const k0 = S.view.k, k1 = Math.min(2.5, Math.max(0.2, k0 * (e.deltaY < 0 ? 1.1 : 0.9)));
     S.view.x = mx - (mx - S.view.x) * (k1 / k0); S.view.y = my - (my - S.view.y) * (k1 / k0); S.view.k = k1;
     const vp = $('#viewport'); if (vp) vp.setAttribute('transform', `translate(${S.view.x},${S.view.y}) scale(${S.view.k})`);
   }, { passive: false });
@@ -479,282 +805,47 @@ function installGraphInteraction() {
 function fitGraph() {
   const svg = $('#graph-svg'); if (!svg || !svg._bounds) return;
   const r = svg.getBoundingClientRect(); const b = svg._bounds;
-  const k = Math.min(1.2, Math.max(0.25, Math.min((r.width - 40) / b.w, (r.height - 40) / b.h)));
-  S.view = { x: 20, y: 20, k }; renderGraph();
+  if (!r.width) return;
+  const k = Math.min(1, Math.max(0.2, Math.min((r.width - 20) / b.w, (r.height - 20) / b.h)));
+  S.view = { x: 10, y: 10, k }; renderGraph();
 }
 
-// ── mutations ──
-function uniqueId(base) { let id = base, i = 2; while (findNode(S.graph, id) || id === 'end') id = base + '_' + (i++); return id; }
-function addNode(id = null, { select = true } = {}) {
-  const nid = uniqueId(id || 'node');
-  let created;
-  mutate(() => {
-    created = normalizeNode({ id: nid, speaker: S.graph.displayName, lines: [''], responses: [] });
-    S.graph.nodes.push(created);
-    if (select) S.selected = nid;
-  });
-  return nid;
-}
-function renameNode(oldId, newId) {
-  newId = newId.trim();
-  if (!newId || newId === 'end') { toast('Node id can\'t be empty or "end".', 'warn'); return false; }
-  if (newId !== oldId && findNode(S.graph, newId)) { toast('There is already a node called ' + newId, 'warn'); return false; }
-  mutate(() => {
-    for (const n of S.graph.nodes) {
-      if (n.id === oldId) n.id = newId;
-      n.routes.forEach(r => { if (r.nextNodeId === oldId) r.nextNodeId = newId; });
-      n.responses.forEach(r => { if (r.nextNodeId === oldId) r.nextNodeId = newId; });
-      if (n.nextNodeId === oldId) n.nextNodeId = newId;
-    }
-    if (S.selected === oldId) S.selected = newId;
-  });
-  return true;
-}
-function relinkTo(ids, target) {
-  for (const n of S.graph.nodes) {
-    n.routes.forEach(r => { if (ids.has(r.nextNodeId)) r.nextNodeId = target; });
-    n.responses.forEach(r => { if (ids.has(r.nextNodeId)) r.nextNodeId = target; });
-    if (ids.has(n.nextNodeId)) n.nextNodeId = target === 'end' ? '' : target;
-  }
-}
-async function deleteNode(id) {
-  const refs = S.graph.nodes.filter(n => n.id !== id && nodeTargets(n).includes(id)).map(n => n.id);
-  const ok = await modal({ title: 'Delete node "' + id + '"?', body: h('p', null, refs.length ? 'Replies and routes pointing at it (from ' + refs.join(', ') + ') will end the conversation instead.' : 'Nothing points at it.'), buttons: [{ label: 'Cancel', value: false }, { label: 'Delete', value: true, danger: true }] });
-  if (!ok) return;
-  mutate(() => { const ids = new Set([id]); relinkTo(ids, 'end'); S.graph.nodes = S.graph.nodes.filter(n => n.id !== id); if (S.selected === id) S.selected = null; });
-}
-async function deleteBranch(id) {
-  const g = S.graph;
-  const under = reachableFrom(g, id);
-  const stillReachable = reachableFromRoots(g, id);
-  const doomed = new Set([...under].filter(x => !stillReachable.has(x)));
-  doomed.add(id);
-  const list = [...doomed];
-  const ok = await modal({ title: 'Delete this branch?', body: h('div', null, h('p', null, 'These ' + list.length + ' node(s) are only reachable through "' + id + '" and will be deleted:'), h('pre', { class: 'code' }, list.join('\n')), h('p', { class: 'muted small' }, 'Anything else that pointed into the branch will end the conversation instead.')), buttons: [{ label: 'Cancel', value: false }, { label: 'Delete ' + list.length + ' node(s)', value: true, danger: true }] });
-  if (!ok) return;
-  mutate(() => { relinkTo(doomed, 'end'); g.nodes = g.nodes.filter(n => !doomed.has(n.id)); if (doomed.has(S.selected)) S.selected = null; });
-}
-function duplicateNode(id) {
-  const src = findNode(S.graph, id); if (!src) return;
-  mutate(() => { const c = normalizeNode(clone(src)); c.id = uniqueId(id + '_copy'); S.graph.nodes.splice(S.graph.nodes.indexOf(src) + 1, 0, c); S.selected = c.id; });
-}
-
-// ── inspector ──
-function renderInspector() {
-  const box = $('#inspector'); if (!box) return;
-  box.innerHTML = '';
-  const n = S.selected ? findNode(S.graph, S.selected) : null;
-  if (n) renderNodeInspector(box, n); else renderGraphSettings(box);
-  renderValidation(box);
-}
-function targetSelect(value, onPick, { forNode = null } = {}) {
-  const sel = h('select', null,
-    h('option', { value: 'end', selected: !value || value === 'end' }, '— end conversation —'),
-    S.graph.nodes.map(n => h('option', { value: n.id, selected: n.id === value }, n.id + (forNode && n.id === forNode ? ' (this node)' : ''))),
-    h('option', { value: '__new__' }, '＋ new node…'));
-  sel.addEventListener('change', () => {
-    if (sel.value === '__new__') {
-      const nid = uniqueId(forNode ? forNode + '_next' : 'node');
-      // create + link in one undo step
-      pushUndo();
-      const created = normalizeNode({ id: nid, speaker: S.graph.displayName, lines: [''], responses: [] });
-      S.graph.nodes.push(created);
-      onPick(nid, { silent: true });
-      S.selected = nid; renderAll();
-      return;
-    }
-    onPick(sel.value);
-  });
-  return sel;
-}
-function datalistFor(listName) {
-  if (!listName) return null;
-  const v = S.vocab; let items = [];
-  if (listName === 'probes') items = Object.keys(v.probes || {});
-  else if (listName === 'actions') items = Object.keys(v.actions || {});
-  else items = v[listName] || [];
-  // add anything this graph already uses
-  const used = collectRefs(S.graph);
-  if (listName === 'flags') items = [...new Set([...items, ...used.flags])];
-  if (listName === 'probes') items = [...new Set([...items, ...used.probes])];
-  if (listName === 'actions') items = [...new Set([...items, ...used.actions])];
-  if (listName === 'items') items = [...new Set([...items, ...used.items])];
-  const id = 'dl_' + listName;
-  let dl = document.getElementById(id);
-  if (!dl) { dl = h('datalist', { id }); document.body.append(dl); }
-  dl.innerHTML = ''; items.forEach(x => dl.append(h('option', { value: x })));
-  return id;
-}
-function condRow(list, idx, onStructure) {
-  const c = list[idx]; const kinds = S.vocab.conditionKinds;
-  const spec = kinds[c.kind] || { uses: ['arg', 'num'], argList: '' };
-  const kindSel = h('select', null, Object.entries(kinds).map(([k, s]) => h('option', { value: k, selected: k === c.kind }, s.label || k)), !kinds[c.kind] ? h('option', { value: c.kind, selected: true }, c.kind) : null);
-  kindSel.addEventListener('change', () => mutate(() => { c.kind = kindSel.value; }));
-  const argIn = h('input', { value: c.arg, placeholder: spec.argList ? spec.argList.replace(/s$/, '') : '', list: datalistFor(spec.argList), style: spec.uses.includes('arg') ? '' : 'visibility:hidden' });
-  bindText(argIn, () => c.arg, v => { c.arg = v; });
-  const numIn = h('input', { type: 'number', value: c.num, style: spec.uses.includes('num') ? '' : 'visibility:hidden' });
-  bindText(numIn, () => c.num, v => { c.num = +v || 0; });
-  const neg = h('label', { class: 'not' }, h('input', { type: 'checkbox', checked: c.negate, onChange: e => mutate(() => { c.negate = e.target.checked; }) }), 'NOT');
-  const del = h('button', { class: 'small ghost', title: 'remove', onClick: () => mutate(() => { list.splice(idx, 1); }) }, '✕');
-  const row = h('div', { class: 'cond', title: spec.help || '' }, kindSel, argIn, numIn, neg, del);
-  return row;
-}
-function effRow(list, idx) {
-  const e = list[idx]; const kinds = S.vocab.effectKinds;
-  const spec = kinds[e.kind] || { uses: ['strArg', 'numArg'], argList: '' };
-  const kindSel = h('select', null, Object.entries(kinds).map(([k, s]) => h('option', { value: k, selected: k === e.kind }, s.label || k)), !kinds[e.kind] ? h('option', { value: e.kind, selected: true }, e.kind) : null);
-  kindSel.addEventListener('change', () => mutate(() => { e.kind = kindSel.value; if (e.kind === 'SetFlag') e.boolArg = true; }));
-  const argIn = h('input', { value: e.strArg, placeholder: spec.argList ? spec.argList.replace(/s$/, '') : (e.kind === 'HalSay' ? 'what HAL says' : ''), list: datalistFor(spec.argList), style: spec.uses.includes('strArg') ? '' : 'visibility:hidden' });
-  bindText(argIn, () => e.strArg, v => { e.strArg = v; });
-  let third;
-  if (spec.uses.includes('boolArg')) {
-    third = h('select', null, h('option', { value: 'true', selected: e.boolArg }, 'ON'), h('option', { value: 'false', selected: !e.boolArg }, 'OFF'));
-    third.addEventListener('change', () => mutate(() => { e.boolArg = third.value === 'true'; }));
-  } else {
-    third = h('input', { type: 'number', value: e.numArg, style: spec.uses.includes('numArg') ? '' : 'visibility:hidden' });
-    bindText(third, () => e.numArg, v => { e.numArg = +v || 0; });
-  }
-  const del = h('button', { class: 'small ghost', title: 'remove', onClick: () => mutate(() => { list.splice(idx, 1); }) }, '✕');
-  return h('div', { class: 'eff', title: spec.help || '' }, kindSel, argIn, third, h('span'), del);
-}
-function condList(list, label) {
-  return h('div', null,
-    h('div', { class: 'subhead' }, h('span', null, label), h('button', { onClick: () => mutate(() => { list.push(normalizeCond({})); }) }, '＋ condition')),
-    list.map((c, i) => condRow(list, i)));
-}
-function effList(list, label) {
-  return h('div', null,
-    h('div', { class: 'subhead' }, h('span', null, label), h('button', { onClick: () => mutate(() => { list.push(normalizeEff({ kind: 'SetFlag', boolArg: true })); }) }, '＋ effect')),
-    list.map((e, i) => effRow(list, i)));
-}
-function moveItem(arr, i, dir) { const j = i + dir; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; }
-
-function renderNodeInspector(box, n) {
-  const g = S.graph; const start = startNode(g);
-  const isStart = start && start.id === n.id;
-  const idIn = h('input', { value: n.id, class: 'mono' });
-  idIn.addEventListener('change', () => { if (!renameNode(n.id, idIn.value)) idIn.value = n.id; });
-  const speakerIn = bindText(h('input', { value: n.speaker, placeholder: g.displayName }), () => n.speaker, v => { n.speaker = v; }, { rerenderGraph: false });
-
-  box.append(h('h3', null, 'Node ', isStart ? h('span', { class: 'badge start' }, 'start') : null),
-    h('div', { class: 'section' },
-      h('div', { class: 'row' },
-        h('div', { class: 'field grow' }, h('span', null, 'Id (used by links)'), idIn),
-        h('div', { class: 'field grow' }, h('span', null, 'Speaker plate'), speakerIn)),
-      h('div', { class: 'row' },
-        h('button', { class: 'small', onClick: () => duplicateNode(n.id) }, 'Duplicate'),
-        h('button', { class: 'small', onClick: () => location.hash = '#/play/' + encodeURIComponent(S.file) + '?node=' + encodeURIComponent(n.id) }, '▶ Play from here'),
-        h('span', { class: 'grow' }),
-        h('button', { class: 'small danger', onClick: () => deleteNode(n.id) }, 'Delete node'),
-        h('button', { class: 'small danger', onClick: () => deleteBranch(n.id) }, 'Delete branch'))));
-
-  // routes
-  box.append(h('h3', null, 'Routes — checked BEFORE the lines'),
-    h('div', { class: 'section' },
-      h('p', { class: 'help' }, 'First route whose conditions all pass jumps straight to its node (this node\'s lines are skipped). Use them on the start node to pick "which version of this talk" — met / not met, kid following, etc.'),
-      n.routes.map((r, i) => h('div', { class: 'resp' },
-        h('div', { class: 'head' }, h('span', { class: 'muted small' }, 'route ' + (i + 1)), h('span', { class: 'arrow' }, '→'), targetSelect(r.nextNodeId, v => mutate(() => { r.nextNodeId = v; }), { forNode: n.id }),
-          h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(n.routes, i, -1)) }, '↑'), h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(n.routes, i, 1)) }, '↓'),
-          h('button', { class: 'small ghost', onClick: () => mutate(() => { n.routes.splice(i, 1); }) }, '✕')),
-        condList(r.conditions, r.conditions.length ? 'when ALL of these are true' : 'when… (no conditions = always taken)'))),
-      h('button', { class: 'small', onClick: () => mutate(() => { n.routes.push({ conditions: [normalizeCond({})], nextNodeId: 'end' }); }) }, '＋ route')));
-
-  // on enter
-  box.append(h('h3', null, 'When this node starts'),
-    h('div', { class: 'section' }, effList(n.onEnter, 'effects fired as the lines begin')));
-
-  // lines
-  const linesSec = h('div', { class: 'section' });
-  n.lines.forEach((line, i) => {
-    const ta = h('textarea', { value: line, rows: Math.max(2, Math.ceil(line.length / 52)), placeholder: 'What ' + (n.speaker || g.displayName) + ' says…' });
-    bindText(ta, () => n.lines[i], v => { n.lines[i] = v; }, { rerenderGraph: false });
-    ta.addEventListener('change', renderGraph);
-    linesSec.append(h('div', { class: 'line-row' }, ta,
-      h('div', { class: 'btns' },
-        h('button', { onClick: () => mutate(() => moveItem(n.lines, i, -1)), title: 'move up' }, '↑'),
-        h('button', { onClick: () => mutate(() => moveItem(n.lines, i, 1)), title: 'move down' }, '↓'),
-        h('button', { onClick: () => mutate(() => { n.lines.splice(i, 1); }), title: 'remove line' }, '✕'))));
-  });
-  linesSec.append(h('div', { class: 'row' },
-    h('button', { class: 'small', onClick: () => mutate(() => { n.lines.push(''); }) }, '＋ line'),
-    h('label', { class: 'inline' }, h('input', { type: 'checkbox', checked: n.pickRandomLine, onChange: e => mutate(() => { n.pickRandomLine = e.target.checked; }) }), 'say ONE of these at random'),
-    h('span', { class: 'grow' }),
-    h('span', { class: 'help' }, '{TOKENS} like {PLAYER_NAME} resolve in-game')));
-  box.append(h('h3', null, 'Lines (click to advance, in order)'), linesSec);
-
-  // responses
-  const respSec = h('div', { class: 'section' });
-  n.responses.forEach((r, i) => {
-    const textIn = bindText(h('input', { value: r.buttonText, placeholder: 'Reply button text' }), () => r.buttonText, v => { r.buttonText = v; });
-    const adv = g.kind === 'phone' || r.startHintTrack || r.requiresFlag || r.hiddenIfFlag;
-    respSec.append(h('div', { class: 'resp' },
-      h('div', { class: 'head' }, textIn, h('span', { class: 'arrow' }, '→'), targetSelect(r.nextNodeId, v => mutate(() => { r.nextNodeId = v; }), { forNode: n.id }),
-        h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(n.responses, i, -1)) }, '↑'), h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(n.responses, i, 1)) }, '↓'),
-        h('button', { class: 'small ghost', title: 'remove reply', onClick: () => mutate(() => { n.responses.splice(i, 1); }) }, '✕')),
-      condList(r.conditions, 'show only when'),
-      effList(r.effects, 'when picked'),
-      adv ? h('div', { class: 'row small' },
-        h('label', { class: 'inline' }, 'requires flag', bindText(h('input', { value: r.requiresFlag, list: datalistFor('flags'), style: 'width:120px' }), () => r.requiresFlag, v => { r.requiresFlag = v; })),
-        h('label', { class: 'inline' }, 'hidden if flag', bindText(h('input', { value: r.hiddenIfFlag, list: datalistFor('flags'), style: 'width:120px' }), () => r.hiddenIfFlag, v => { r.hiddenIfFlag = v; })),
-        h('label', { class: 'inline' }, 'hint track', bindText(h('input', { value: r.startHintTrack, list: datalistFor('hintTracks'), style: 'width:90px' }), () => r.startHintTrack, v => { r.startHintTrack = v; }))) : null));
-  });
-  respSec.append(h('div', { class: 'row' },
-    h('button', { class: 'small', onClick: () => mutate(() => { n.responses.push(normalizeResponse({ buttonText: '', nextNodeId: 'end' })); }) }, '＋ reply'),
-    h('button', { class: 'small', onClick: () => {
-      pushUndo();
-      const nid = uniqueId(n.id + '_b' + (n.responses.length + 1));
-      S.graph.nodes.push(normalizeNode({ id: nid, speaker: g.displayName, lines: [''], responses: [] }));
-      n.responses.push(normalizeResponse({ buttonText: '', nextNodeId: nid }));
-      renderAll();
-    } }, '＋ reply → new branch')));
-  box.append(h('h3', null, 'Player replies'), respSec);
-
-  // then
-  box.append(h('h3', null, 'Then'),
-    h('div', { class: 'section' },
-      h('p', { class: 'help' }, n.responses.length ? 'This node has replies, so "then" only matters if none of them are visible.' : 'No replies: after the last line the talk continues here.'),
-      h('div', { class: 'row' }, h('span', { class: 'muted' }, 'after the lines →'), targetSelect(n.nextNodeId || 'end', v => mutate(() => { n.nextNodeId = v === 'end' ? '' : v; }), { forNode: n.id }))));
-}
-
+// ── settings tab ──
 function renderGraphSettings(box) {
   const g = S.graph;
-  box.append(h('h3', null, 'Graph'),
+  box.append(h('h3', null, 'This talk'),
     h('div', { class: 'section' },
-      h('div', { class: 'field' }, h('span', null, 'Speaker / card name'), bindText(h('input', { value: g.displayName }), () => g.displayName, v => { g.displayName = v; }, { rerenderGraph: false })),
-      h('div', { class: 'field' }, h('span', null, 'File'), h('span', { class: 'mono small' }, S.file, ' · id ', g.id, ' · ', g.kind)),
-      h('p', { class: 'help' }, 'Click a node in the graph to edit it. The start node is the one called "start" (else the first). Add a node with ＋ Node, or from a reply with "＋ reply → new branch".')));
+      h('div', { class: 'field' }, h('span', null, 'Name on the speaker plate / roster card'), bindText(h('input', { value: g.displayName }), null, v => { g.displayName = v; }, { onChanged: renderScript })),
+      h('div', { class: 'field' }, h('span', null, 'File'), h('span', { class: 'mono small' }, S.file, ' · ', g.kind))));
 
-  // presets
-  const sec = h('div', { class: 'section' }, h('p', { class: 'help' }, 'One-click pretend game states for ▶ Play. Flags: one per line or comma-separated, "name" or "name=false". Items: "ItemId:count". Probes: names that read TRUE.'));
+  const sec = h('div', { class: 'section' }, h('p', { class: 'help' }, 'One-click pretend game states for ▶ Play. Flags: comma-separated, "name" or "name=false". Items: "ItemId:count". Probes: game checks that read TRUE.'));
   g.testPresets.forEach((p, i) => {
     sec.append(h('div', { class: 'preset' },
-      h('div', { class: 'head' }, bindText(h('input', { value: p.name, placeholder: 'Preset name, e.g. Kid following you' }), () => p.name, v => { p.name = v; }, { rerenderGraph: false }),
+      h('div', { class: 'head' }, bindText(h('input', { value: p.name, placeholder: 'Preset name, e.g. Kid following you' }), null, v => { p.name = v; }, { onChanged: () => {} }),
         h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(g.testPresets, i, -1)) }, '↑'), h('button', { class: 'small ghost', onClick: () => mutate(() => moveItem(g.testPresets, i, 1)) }, '↓'),
         h('button', { class: 'small ghost', onClick: () => mutate(() => { g.testPresets.splice(i, 1); }) }, '✕')),
       h('div', { class: 'grid' },
-        'flags', bindText(h('input', { value: p.flags.join(', '), list: datalistFor('flags') }), null, v => { p.flags = v.split(/[,\n]/).map(s => s.trim()).filter(Boolean); }, { rerenderGraph: false }),
-        'money', bindText(h('input', { type: 'number', value: p.money, title: '-1 = leave as is' }), null, v => { p.money = v === '' ? -1 : +v; }, { rerenderGraph: false }),
-        'items', bindText(h('input', { value: p.items.join(', '), placeholder: 'TraxUsbStick:1, BlankTapeT1:3' }), null, v => { p.items = v.split(/[,\n]/).map(s => s.trim()).filter(Boolean); }, { rerenderGraph: false }),
-        'probes true', bindText(h('input', { value: p.probes.join(', '), list: datalistFor('probes') }), null, v => { p.probes = v.split(/[,\n]/).map(s => s.trim()).filter(Boolean); }, { rerenderGraph: false }))));
+        'flags', bindText(h('input', { value: p.flags.join(', '), list: datalistFor('flags') }), null, v => { p.flags = v.split(/[,\n]/).map(s => s.trim()).filter(Boolean); }, { onChanged: () => {} }),
+        'money', bindText(h('input', { type: 'number', value: p.money, title: '-1 = leave as is' }), null, v => { p.money = v === '' ? -1 : +v; }, { onChanged: () => {} }),
+        'items', bindText(h('input', { value: p.items.join(', '), placeholder: 'TraxUsbStick:1, BlankTapeT1:3' }), null, v => { p.items = v.split(/[,\n]/).map(s => s.trim()).filter(Boolean); }, { onChanged: () => {} }),
+        'probes true', bindText(h('input', { value: p.probes.join(', '), list: datalistFor('probes') }), null, v => { p.probes = v.split(/[,\n]/).map(s => s.trim()).filter(Boolean); }, { onChanged: () => {} }))));
   });
   sec.append(h('button', { class: 'small', onClick: () => mutate(() => { g.testPresets.push({ name: 'New preset', flags: [], money: -1, items: [], probes: [] }); }) }, '＋ preset'));
   box.append(h('h3', null, 'Test presets (for ▶ Play)'), sec);
 
-  // vocab for this npc
   const meta = S.rosterData && S.rosterData.roster.npcs && S.rosterData.roster.npcs[g.id];
   const probes = Object.entries(S.vocab.probes || {}).filter(([, p]) => p.npc === g.id);
   const actions = Object.entries(S.vocab.actions || {}).filter(([, a]) => a.npc === g.id);
-  if (probes.length || actions.length || meta) {
-    box.append(h('h3', null, 'What this NPC\'s script can do'),
-      h('div', { class: 'section small' },
-        probes.length ? h('div', null, h('div', { class: 'muted' }, 'Probes (use as condition "Game check"):'), h('ul', null, probes.map(([k, p]) => h('li', null, h('span', { class: 'mono' }, k), ' — ', p.desc)))) : null,
-        actions.length ? h('div', null, h('div', { class: 'muted' }, 'Actions (use as effect "Game action"):'), h('ul', null, actions.map(([k, a]) => h('li', null, h('span', { class: 'mono' }, k), ' — ', a.desc)))) : null,
-        !probes.length && !actions.length ? h('div', { class: 'muted' }, 'None — flags, money and items only. New probes/actions need a line of C# in the NPC\'s script (see the roster).') : null,
-        meta && meta.notes ? h('p', { class: 'muted' }, meta.notes) : null));
-  }
+  box.append(h('h3', null, 'What this NPC\'s script can do'),
+    h('div', { class: 'section small' },
+      probes.length ? h('div', null, h('div', { class: 'muted' }, 'Game checks (condition "Game check"):'), h('ul', null, probes.map(([k, p]) => h('li', null, h('span', { class: 'mono' }, k), ' — ', p.desc)))) : null,
+      actions.length ? h('div', null, h('div', { class: 'muted' }, 'Game actions (effect "Game action"):'), h('ul', null, actions.map(([k, a]) => h('li', null, h('span', { class: 'mono' }, k), ' — ', a.desc)))) : null,
+      !probes.length && !actions.length ? h('div', { class: 'muted' }, 'None — flags, money and items only. New probes/actions need a line of C# in the NPC\'s script (see the README).') : null,
+      meta && meta.notes ? h('p', { class: 'muted' }, meta.notes) : null,
+      meta && meta.script ? h('p', { class: 'muted mono' }, meta.script) : null));
 }
 
-// ── validation ──
+// ── checks ──
 function collectRefs(g) {
   const flags = new Set(), items = new Set(), probes = new Set(), counters = new Set(), objectives = new Set(), actions = new Set();
   const cond = c => { if (c.kind === 'Flag') flags.add(c.arg); else if (c.kind === 'HasItem') items.add(c.arg); else if (c.kind === 'Probe') probes.add(c.arg); else if (c.kind === 'CounterAtLeast') counters.add(c.arg); else if (c.kind === 'ObjectiveDone') objectives.add(c.arg); };
@@ -771,21 +862,21 @@ function collectRefs(g) {
 function validate(g) {
   const issues = [];
   const add = (level, msg, nodeId = null) => issues.push({ level, msg, nodeId });
-  if (!g.nodes.length) { add('error', 'No nodes — the NPC will fall back to the C# conversation.'); return issues; }
+  if (!g.nodes.length) { add('error', 'No boxes — the NPC will fall back to the C# conversation.'); return issues; }
   const ids = new Map();
-  g.nodes.forEach(n => { if (!n.id) add('error', 'A node has an empty id.'); ids.set(n.id, (ids.get(n.id) || 0) + 1); });
-  for (const [id, c] of ids) if (c > 1) add('error', `Two nodes share the id "${id}" — links will hit the first one.`, id);
+  g.nodes.forEach(n => { if (!n.id) add('error', 'A box has an empty id.'); ids.set(n.id, (ids.get(n.id) || 0) + 1); });
+  for (const [id, c] of ids) if (c > 1) add('error', `Two boxes share the id "${id}" — links will hit the first one.`, id);
   const reach = reachableFromRoots(g);
   for (const n of g.nodes) {
-    const check = (t, what) => { if (t && t !== 'end' && !findNode(g, t)) add('error', `${n.id}: ${what} points at missing node "${t}".`, n.id); };
+    const check = (t, what) => { if (t && t !== 'end' && !findNode(g, t)) add('error', `${n.id}: ${what} points at a missing box "${t}".`, n.id); };
     n.routes.forEach((r, i) => { check(r.nextNodeId, 'route ' + (i + 1)); if (!r.conditions.length && i < n.routes.length - 1) add('warn', `${n.id}: route ${i + 1} has no conditions, so the routes after it never run.`, n.id); });
-    n.responses.forEach((r, i) => { check(r.nextNodeId, 'reply ' + (i + 1)); if (!r.buttonText.trim()) add('warn', `${n.id}: reply ${i + 1} has no button text.`, n.id); });
-    check(n.nextNodeId, '"then"');
-    if (!reach.has(n.id)) add('warn', `${n.id}: nothing leads here (unreachable from start${entryNodeIds(g).length ? ' or ' + entryNodeIds(g).join('/') : ''}).`, n.id);
-    if (!n.lines.length && !n.routes.length && !n.responses.length && !n.onEnter.length && !n.nextNodeId) add('warn', `${n.id}: empty node — the talk just ends here silently.`, n.id);
-    if (n.lines.some(l => !l.trim()) ) add('warn', `${n.id}: has an empty line (skipped in-game).`, n.id);
+    n.responses.forEach((r, i) => { check(r.nextNodeId, 'reply ' + (i + 1)); if (!r.buttonText.trim()) add('warn', `${n.id}: reply ${i + 1} has no text.`, n.id); });
+    check(n.nextNodeId, '"after that"');
+    if (!reach.has(n.id)) add('warn', `${n.id}: nothing leads here — the player can't reach it.`, n.id);
+    if (!n.lines.length && !n.routes.length && !n.responses.length && !n.onEnter.length && !n.nextNodeId) add('warn', `${n.id}: empty box — the talk just ends here silently.`, n.id);
+    if (n.lines.some(l => !l.trim())) add('warn', `${n.id}: has an empty line (skipped in-game).`, n.id);
     const allConds = [...n.routes.flatMap(r => r.conditions), ...n.responses.flatMap(r => r.conditions)];
-    allConds.forEach(c => { if (!S.vocab.conditionKinds[c.kind]) add('error', `${n.id}: unknown condition kind "${c.kind}".`, n.id); if (c.kind === 'Probe' && c.arg) { const p = S.vocab.probes[c.arg]; if (!p || p.npc !== g.id) add('warn', `${n.id}: probe "${c.arg}" is not one this NPC's script answers (reads FALSE in-game).`, n.id); } });
+    allConds.forEach(c => { if (!S.vocab.conditionKinds[c.kind]) add('error', `${n.id}: unknown condition kind "${c.kind}".`, n.id); if (c.kind === 'Probe' && c.arg) { const p = S.vocab.probes[c.arg]; if (!p || p.npc !== g.id) add('warn', `${n.id}: game check "${c.arg}" is not one this NPC's script answers (reads FALSE in-game).`, n.id); } });
     const allEffs = [...n.onEnter, ...n.responses.flatMap(r => r.effects)];
     allEffs.forEach(e => { if (!S.vocab.effectKinds[e.kind]) add('error', `${n.id}: unknown effect kind "${e.kind}".`, n.id); if (e.kind === 'Custom' && e.strArg) { const a = S.vocab.actions[e.strArg]; if (!a || a.npc !== g.id) add('warn', `${n.id}: game action "${e.strArg}" is not one this NPC's script performs (does nothing in-game).`, n.id); } if ((e.kind === 'GiveItem' || e.kind === 'TakeItem') && e.strArg && !S.vocab.items.includes(e.strArg)) add('error', `${n.id}: "${e.strArg}" is not a Hotbar item id.`, n.id); });
   }
@@ -795,7 +886,7 @@ function renderValidation(box) {
   const issues = validate(S.graph);
   const errs = issues.filter(i => i.level === 'error').length;
   box.append(h('h3', null, 'Checks ', h('span', { class: 'badge ' + (errs ? 'none' : (issues.length ? 'greeting' : 'full')) }, errs ? errs + ' error' + (errs > 1 ? 's' : '') : (issues.length ? issues.length + ' note' + (issues.length > 1 ? 's' : '') : 'all good'))),
-    h('ul', { class: 'issues' }, issues.length ? issues.map(i => h('li', { class: i.level === 'error' ? 'error' : '', onClick: () => { if (i.nodeId && findNode(S.graph, i.nodeId)) { S.selected = i.nodeId; renderGraph(); renderInspector(); } } }, i.msg)) : h('li', { class: 'ok' }, 'No broken links, every node reachable.')));
+    h('ul', { class: 'issues' }, issues.length ? issues.map(i => h('li', { class: i.level === 'error' ? 'error' : '', onClick: () => { if (i.nodeId && findNode(S.graph, i.nodeId)) { S.selected = i.nodeId; scrollToCard(i.nodeId); } } }, i.msg)) : h('li', { class: 'ok' }, 'No broken links, every box reachable.')));
 }
 
 // ───────────────────────── player ─────────────────────────
@@ -808,7 +899,6 @@ function applyPreset(sim, p) {
   p.flags.forEach(f => { const [name, v] = f.split('='); sim.flags[name.trim()] = v === undefined ? true : v.trim() !== 'false'; });
   if (p.money >= 0) sim.money = p.money;
   p.items.forEach(s => { const [id, c] = s.split(':'); sim.items[id.trim()] = c === undefined ? 1 : +c; });
-  // probes: everything referenced becomes false, listed ones true
   collectRefs(S.graph).probes.forEach(pr => { sim.probes[pr] = false; });
   for (const [k, pp] of Object.entries(S.vocab.probes || {})) if (pp.defaultTrue && pp.npc === S.graph.id) sim.probes[k] = true;
   p.probes.forEach(pr => { sim.probes[pr] = true; });
@@ -836,7 +926,7 @@ function applyEffect(sim, e, log, refreshState) {
     case 'TakeItem': { const n = Math.max(1, e.numArg); if ((sim.items[e.strArg] || 0) >= n) { sim.items[e.strArg] -= n; log('fx', `−${n} ${e.strArg} → ${sim.items[e.strArg]}`); } else log('warn', `TakeItem ${e.strArg}: player doesn't have ${n}.`); break; }
     case 'AddCounter': sim.counters[e.strArg] = (sim.counters[e.strArg] || 0) + e.numArg; log('fx', `${e.strArg} += ${e.numArg} → ${sim.counters[e.strArg]}`); break;
     case 'SetCounter': sim.counters[e.strArg] = e.numArg; log('fx', `${e.strArg} = ${e.numArg}`); break;
-    case 'HalSay': log('note', 'HAL (after the talk): “' + e.strArg + '”'); break;
+    case 'HalSay': log('warn', 'HalSay “' + e.strArg + '” — HAL commentary is vaulted, so this does nothing in-game.'); break;
     case 'StartObjective': log('fx', 'objective started: ' + e.strArg); break;
     case 'CompleteObjective': sim.objectives[e.strArg] = true; log('fx', 'objective complete: ' + e.strArg); break;
     case 'Custom': {
@@ -872,13 +962,11 @@ class PlayerRun {
     while (node && tok === this.token) {
       if (++hops > 200) { log('warn', 'more than 200 hops — route loop? stopping.'); break; }
       ui.setNode(node.id);
-      // routes
       let taken = null;
       for (const r of node.routes) if (r.conditions.every(c => evalCond(sim, c, log))) { taken = r; break; }
       if (taken) { log('route', `${node.id}: route [${condsSummary(taken.conditions)}] → ${taken.nextNodeId}`); node = next(taken.nextNodeId); continue; }
       if (node.routes.length) log('route', `${node.id}: no route matched, continuing here`);
       node.onEnter.forEach(e => applyEffect(sim, e, log, ui.refreshState));
-      // lines
       const speaker = node.speaker || g.displayName;
       if (node.lines.length) {
         const lines = node.pickRandomLine ? [node.lines[Math.floor(Math.random() * node.lines.length)]] : node.lines;
@@ -889,7 +977,6 @@ class PlayerRun {
           if (tok !== this.token) return;
         }
       }
-      // responses
       const visible = node.responses.filter(r => (!r.requiresFlag || sim.flags[r.requiresFlag]) && (!r.hiddenIfFlag || !sim.flags[r.hiddenIfFlag]) && r.conditions.every(c => evalCond(sim, c, log)));
       const hidden = node.responses.length - visible.length;
       if (hidden) log('sys', `${hidden} repl${hidden > 1 ? 'ies' : 'y'} hidden by conditions`);
@@ -911,8 +998,8 @@ function showPlayer(startNodeId) {
   const g = S.graph;
   const view = $('#view'); view.innerHTML = '';
   const sim = S.playerSim && S.playerSim.graphId === g.id ? S.playerSim.sim : makeSim(g);
-  S.playerSim = { graphId: g.id, sim };
-  if (g.testPresets.length && !(S.playerSim.presetApplied)) { applyPreset(sim, g.testPresets[0]); S.playerSim.presetApplied = true; }
+  S.playerSim = S.playerSim && S.playerSim.graphId === g.id ? S.playerSim : { graphId: g.id, sim };
+  if (g.testPresets.length && !S.playerSim.presetApplied) { applyPreset(sim, g.testPresets[0]); S.playerSim.presetApplied = true; }
 
   const plate = h('div', { class: 'plate' }, (g.displayName || '').toUpperCase());
   const text = h('div', { class: 'text' });
@@ -933,7 +1020,7 @@ function showPlayer(startNodeId) {
   let typing = null;
   const ui = {
     log(kind, msg) { const t = h('div', { class: 't ' + kind }, msg); transcript.append(t); transcript.scrollTop = transcript.scrollHeight; },
-    begin() { choices.innerHTML = ''; text.textContent = ''; hint.textContent = ''; ui.log('sys', '— talk starts —'); },
+    begin() { choices.innerHTML = ''; text.textContent = ''; hint.textContent = ''; screen.querySelectorAll('.ended').forEach(e => e.remove()); ui.log('sys', '— talk starts —'); },
     setNode(id) { ui.currentNode = id; },
     end() { hint.textContent = ''; choices.innerHTML = ''; screen.classList.remove('clickable'); screen.append(h('div', { class: 'ended' }, '— end of talk —  ', h('button', { class: 'small', onClick: restart }, 'talk again'))); ui.log('sys', '— end —'); },
     async say(speaker, line, run) {
@@ -942,12 +1029,11 @@ function showPlayer(startNodeId) {
       hint.textContent = 'click / Space to continue';
       screen.classList.add('clickable');
       const t = h('div', { class: 't say' }, h('span', { class: 'who' }, speaker + ': '), line); transcript.append(t); transcript.scrollTop = transcript.scrollHeight;
-      // typewriter
       text.innerHTML = ''; const span = h('span'); const cur = h('span', { class: 'cursor' }); text.append(span, cur);
       let i = 0; let done = false;
       await new Promise(res => {
-        typing = setInterval(() => { i += 2; span.textContent = line.slice(0, i); if (i >= line.length) { finish(); } }, 14);
         const finish = () => { if (done) return; done = true; clearInterval(typing); typing = null; span.textContent = line; res(); };
+        typing = setInterval(() => { i += 2; span.textContent = line.slice(0, i); if (i >= line.length) finish(); }, 14);
         run.skip = finish;
       });
       run.skip = null;
@@ -979,26 +1065,20 @@ function showPlayer(startNodeId) {
     statePane.innerHTML = '';
     const refs = collectRefs(g);
     const meta = S.rosterData && S.rosterData.roster.npcs ? S.rosterData.roster.npcs[g.id] : null;
-    // presets
     statePane.append(h('h3', null, 'Presets — set the whole situation'),
-      g.testPresets.length ? h('div', { class: 'presets' }, g.testPresets.map(p => h('button', { onClick: () => { applyPreset(sim, p); ui.log('sys', 'preset: ' + p.name); renderStatePane(); restart(); } }, p.name))) : h('p', { class: 'help' }, 'No presets yet — add them in Edit → Graph settings. Or flip the switches below.'));
-    // flags
+      g.testPresets.length ? h('div', { class: 'presets' }, g.testPresets.map(p => h('button', { onClick: () => { applyPreset(sim, p); ui.log('sys', 'preset: ' + p.name); renderStatePane(); restart(); } }, p.name))) : h('p', { class: 'help' }, 'No presets yet — add them in Edit → Settings. Or flip the switches below.'));
     const flagNames = [...new Set([...refs.flags, ...Object.keys(sim.flags)])].sort();
     statePane.append(h('h3', null, 'Flags (saved story bits)'),
-      h('div', { class: 'flaglist' }, flagNames.length ? flagNames.map(f => h('label', null, h('input', { type: 'checkbox', checked: !!sim.flags[f], onChange: e => { sim.flags[f] = e.target.checked; ui.log('sys', `you set flag ${f} = ${e.target.checked}`); } }), h('span', { class: 'mono' }, f))) : h('p', { class: 'help' }, 'This graph uses no flags.')),
+      h('div', { class: 'flaglist' }, flagNames.length ? flagNames.map(f => h('label', null, h('input', { type: 'checkbox', checked: !!sim.flags[f], onChange: e => { sim.flags[f] = e.target.checked; ui.log('sys', `you set flag ${f} = ${e.target.checked}`); } }), h('span', { class: 'mono' }, f))) : h('p', { class: 'help' }, 'This talk uses no flags.')),
       addRow('add a flag…', datalistFor('flags'), v => { sim.flags[v] = true; renderStatePane(); }));
-    // probes
     const probeNames = [...new Set([...refs.probes, ...Object.keys(sim.probes), ...Object.keys(S.vocab.probes).filter(k => S.vocab.probes[k].npc === g.id)])].sort();
     if (probeNames.length) statePane.append(h('h3', null, 'Game checks (live state the script answers)'),
       h('div', { class: 'flaglist' }, probeNames.map(pn => { const info = S.vocab.probes[pn] || (meta && meta.probes && { desc: meta.probes[pn] }); return h('div', null, h('label', null, h('input', { type: 'checkbox', checked: !!sim.probes[pn], onChange: e => { sim.probes[pn] = e.target.checked; ui.log('sys', `you set ${pn} = ${e.target.checked}`); } }), h('span', { class: 'mono' }, pn), info && info.npc && info.npc !== g.id ? h('span', { class: 'badge none' }, 'not this NPC') : null), info && info.desc ? h('div', { class: 'desc' }, info.desc) : null); })));
-    // money
     statePane.append(h('h3', null, 'Money'), h('div', { class: 'money' }, '$', h('input', { type: 'number', value: sim.money, onChange: e => { sim.money = +e.target.value || 0; ui.log('sys', 'you set money to $' + sim.money); } })));
-    // items
     const itemNames = [...new Set([...refs.items, ...Object.keys(sim.items)])].sort();
     statePane.append(h('h3', null, 'Items in the hotbar'),
       h('div', null, itemNames.map(it => h('div', { class: 'itemrow' }, h('span', { class: 'mono small', style: 'align-self:center' }, it), h('input', { type: 'number', value: sim.items[it] || 0, onChange: e => { sim.items[it] = +e.target.value || 0; } }), h('button', { class: 'small ghost', onClick: () => { delete sim.items[it]; renderStatePane(); } }, '✕')))),
       addRow('add an item id…', datalistFor('items'), v => { sim.items[v] = (sim.items[v] || 0) + 1; renderStatePane(); }));
-    // counters / objectives
     if (refs.counters.size || Object.keys(sim.counters).length) {
       const names = [...new Set([...refs.counters, ...Object.keys(sim.counters)])];
       statePane.append(h('h3', null, 'Counters'), h('div', null, names.map(c => h('div', { class: 'itemrow' }, h('span', { class: 'mono small', style: 'align-self:center' }, c), h('input', { type: 'number', value: sim.counters[c] || 0, onChange: e => { sim.counters[c] = +e.target.value || 0; } }), h('span')))));

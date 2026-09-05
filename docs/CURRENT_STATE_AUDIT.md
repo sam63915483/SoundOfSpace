@@ -1252,6 +1252,7 @@ Flip a flag and the feature returns exactly as built. Prefab-and-delete vaults
 | `TevRent` | **off** | Daily lawn rent: haggle, `TevRentCollector` accrual, arrears, nag, `TevPaymentUI` rent entry, day-recap rent line, 5-day PLUGINS lockout. Five choke points; `MushroomQuest.PluginsLocked` hard false while vaulted. Tev is a music-store owner now (TRAX = $20 USB stick). | 2026-08-30 |
 | `CravingSystem` | on | Per-buyer 0..100 hunger: want-text cadence, guaranteed daily order at 90+, ambush walk-up at 60+ (dead while `WanderingNPCs` is off), contact-card ladder word. Behaviour only, never price. | 2026-08-17 |
 | `WanderingNPCs` | **off** | `AlienNPCSpawner` STREAMING only. Component + prefab list stay alive (authored NPCs borrow from it); pre-placed village aliens untouched; killed-cell save data round-trips. Sam: "npcs need to be special". | 2026-09-04 |
+| `HALCommentary` | **off** | `HALCommentator` + `HALVolunteeredLog` are never created (AutoCreate, both main-menu seeding sites, Awake backstop) → no volunteered HAL one-liners, no per-frame polling, `HalSay` dialogue effect inert. `HALLineHUD`/`HALVoicePlayer` stay for OxygenManager's hull prompts; phone conversations untouched. See `docs/VAULTED_SYSTEMS.md`. | 2026-09-05 |
 
 Three other gates are `static readonly` for the same CS0162 reason and must
 stay that way: `Universe.cheatsEnabled`, `CassetteVisual.LogOrientation`,

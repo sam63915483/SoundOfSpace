@@ -38,6 +38,7 @@ public class HALVolunteeredLog : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
+        if (!FeatureVault.HALCommentary) return;   // VAULTED 2026-09-05 with the commentator
         if (Instance != null) return;
         if (SceneManager.GetActiveScene().name == "MainMenu") return;
         var go = new GameObject("HALVolunteeredLog");
@@ -47,6 +48,7 @@ public class HALVolunteeredLog : MonoBehaviour
 
     void Awake()
     {
+        if (!FeatureVault.HALCommentary) { Destroy(gameObject); return; }
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
     }

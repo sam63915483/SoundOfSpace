@@ -1043,11 +1043,12 @@ public class MainMenuController : MonoBehaviour
         tick("held items");       yield return null;
         if (HALLineHUD.Instance == null) { var go = new GameObject("HALLineHUD"); DontDestroyOnLoad(go); go.AddComponent<HALLineHUD>(); }
         tick("HAL line HUD");     yield return null;
-        if (HALVolunteeredLog.Instance == null) { var go = new GameObject("HALVolunteeredLog"); DontDestroyOnLoad(go); go.AddComponent<HALVolunteeredLog>(); }
+        // HAL commentary VAULTED 2026-09-05 (FeatureVault.HALCommentary) — the log + commentator are not seeded while it's off.
+        if (FeatureVault.HALCommentary && HALVolunteeredLog.Instance == null) { var go = new GameObject("HALVolunteeredLog"); DontDestroyOnLoad(go); go.AddComponent<HALVolunteeredLog>(); }
         tick("HAL log");          yield return null;
         if (HALVoicePlayer.Instance == null) { var go = new GameObject("HALVoicePlayer"); DontDestroyOnLoad(go); go.AddComponent<HALVoicePlayer>(); }
         tick("HAL voice");        yield return null;
-        if (HALCommentator.Instance == null) { var go = new GameObject("HALCommentator"); DontDestroyOnLoad(go); go.AddComponent<HALCommentator>(); }
+        if (FeatureVault.HALCommentary && HALCommentator.Instance == null) { var go = new GameObject("HALCommentator"); DontDestroyOnLoad(go); go.AddComponent<HALCommentator>(); }
         tick("HAL commentator");  yield return null;
         if (GForceHUD.Instance == null) { var go = new GameObject("GForceHUD"); DontDestroyOnLoad(go); go.AddComponent<GForceHUD>(); }
         tick("G-force HUD");      yield return null;
@@ -1303,7 +1304,7 @@ public class MainMenuController : MonoBehaviour
             DontDestroyOnLoad(go);
             go.AddComponent<HALLineHUD>();
         }
-        if (HALVolunteeredLog.Instance == null)
+        if (FeatureVault.HALCommentary && HALVolunteeredLog.Instance == null)   // VAULTED 2026-09-05
         {
             // In-memory log of volunteered HAL lines. AIChatScreen reads it
             // on open so the player sees a transcript of HAL's notifications
@@ -1325,7 +1326,7 @@ public class MainMenuController : MonoBehaviour
             DontDestroyOnLoad(go);
             go.AddComponent<HALVoicePlayer>();
         }
-        if (HALCommentator.Instance == null)
+        if (FeatureVault.HALCommentary && HALCommentator.Instance == null)   // VAULTED 2026-09-05
         {
             // Event subscriber that triggers volunteered HAL lines on game
             // events (death, kill streaks, story phase shifts, first time

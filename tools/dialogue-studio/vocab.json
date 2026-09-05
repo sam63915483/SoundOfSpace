@@ -19,7 +19,7 @@
     "TakeItem":          { "label": "Take item",             "uses": ["strArg", "numArg"],  "argList": "items",      "help": "Gate with 'Carrying item' first." },
     "AddCounter":        { "label": "Add to counter",        "uses": ["strArg", "numArg"],  "argList": "counters",   "help": "" },
     "SetCounter":        { "label": "Set counter",           "uses": ["strArg", "numArg"],  "argList": "counters",   "help": "" },
-    "HalSay":            { "label": "HAL says (suit line)",  "uses": ["strArg"],            "argList": "",           "help": "HAL volunteers this line after the talk." },
+    "HalSay":            { "label": "HAL says (VAULTED — does nothing)", "uses": ["strArg"], "argList": "",         "help": "HAL commentary is vaulted (FeatureVault.HALCommentary = false), so in-game this fires nothing. Kept so old trees still load." },
     "Custom":            { "label": "Game action (custom)",  "uses": ["strArg"],            "argList": "actions",    "help": "Something only this NPC's script can do, e.g. kidFollow. Only the actions listed for THIS NPC work in-game." },
     "StartObjective":    { "label": "Start objective",       "uses": ["strArg"],            "argList": "objectives", "help": "Phone/HAL story system." },
     "CompleteObjective": { "label": "Complete objective",    "uses": ["strArg"],            "argList": "objectives", "help": "" },

@@ -246,4 +246,26 @@ public static class FeatureVault
     /// picks from SpawnedAlienNPC.AllAliens, so with no wandering aliens it
     /// simply never fires. Messages / orders / deliveries are unaffected.
     public static readonly bool WanderingNPCs = false;
+
+    /// HAL's COMMENTARY — every volunteered one-liner: the HALCommentator
+    /// auto-singleton (death / kill-streak / phase / first-visit / milestone /
+    /// enemy-proximity / idle observations, plus every `VolunteerExternal`
+    /// call from quests, the map, the pilot test, and the dialogue graphs'
+    /// HalSay effect) and the HALVolunteeredLog transcript behind it.
+    /// Vaulted 2026-09-05 at Sam's request: "vault all hal lines, make sure
+    /// that its completely ripped out of the game and doesnt draw any
+    /// performance. just make sure its saved if we ever want it back."
+    ///
+    /// Gated at CREATION: with this false neither object is ever made (the
+    /// AutoCreate bootstrap AND the MainMenuController seeding both early-out,
+    /// and Awake self-destructs as a backstop), so HALCommentator.Update — the
+    /// per-frame flag / location / enemy polling — simply does not run. Every
+    /// caller already null-checks `HALCommentator.Instance`, so they all become
+    /// no-ops. Nothing else in the HAL stack follows this flag:
+    ///   • HALLineHUD + HALVoicePlayer stay, because OxygenManager uses that
+    ///     strip for the hull-breach / hull-sealed survival prompts.
+    ///   • The phone's preset conversations (conv_*.json) and the chat screen
+    ///     are story content, not commentary — untouched.
+    /// Flip to true and every line comes back exactly as built.
+    public static readonly bool HALCommentary = false;
 }

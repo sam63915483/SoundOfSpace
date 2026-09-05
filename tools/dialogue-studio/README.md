@@ -13,9 +13,15 @@ Nothing to install — Python's standard library only.
 
 - **Roster** — every NPC / vendor / phone conversation that has a dialogue file,
   with **▶ Start** and **✎ Edit**. `＋ New NPC` creates a fresh file.
-- **Edit** — the whole tree as a graph (click a node), a form for the node's
-  lines / replies / routes / effects, delete a node or a whole branch, undo,
-  `Ctrl+S` saves. Checks panel lists broken links and unreachable nodes.
+- **Edit** — the talk as a script you type into. Each box is one thing the NPC
+  says; under it, the replies the player can pick and where each reply goes
+  (another box, the end, or **＋ new branch**, which writes a fresh box for that
+  reply). ⋯ on a box renames / duplicates / deletes it or its whole branch.
+  Undo, `Ctrl+S` saves. Turn on **details** (top right) for the game logic:
+  routes (which version of the talk plays), effects, conditions, speaker.
+  The right pane has a **Map** of the tree (click a box to jump to it),
+  **Settings** (name, test presets) and **Checks** (broken links, unreachable
+  boxes).
 - **Start** — plays the talk PHOSPHOR-style with pretend game state on the
   right: flags, money, items, and "game checks" (probes) you can flip. Presets
   set a whole situation in one click ("Kid is following you"). The log shows

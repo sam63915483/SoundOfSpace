@@ -156,6 +156,36 @@ purchase ($20, USB stick, installed at the shuttle computer; see
 Starting funds: $25 seeded into the shuttle locker (`LootBoxStarterItem` on
 `Locker_2`, patched into `Shuttle_Lander.prefab`).
 
+## Code-only vault (2026-09-05, HAL commentary)
+
+Sam: "vault all hal lines, make sure that its completely ripped out of the
+game and doesnt draw any performance. just make sure its saved if we ever want
+it back." **`FeatureVault.HALCommentary = false`.**
+
+| System | Gated at |
+|---|---|
+| `HALCommentator` — every volunteered one-liner (death, kill streaks, story phase, first visit to a body, `EarlyGameProgress` milestones, enemy proximity, idle observations, landing tracker) **and** every scripted `VolunteerExternal` call (quests, map boarding line, pilot test, the dialogue graphs' `HalSay` effect) | never created: `AutoCreate` early-outs, both `MainMenuController.EnsureGameplaySingletons` seeding sites skip it, `Awake` self-destructs as a backstop. Its `Update` polling therefore never runs. |
+| `HALVolunteeredLog` — the transcript the phone chat replays | same three gates |
+
+Every external caller already null-checks `HALCommentator.Instance` (verified
+2026-09-05: Bobber, SolarSystemMapController, ShipPilotTest, Discoverable,
+StoryDirector, FloorbinTalk, DialogueEffects, NewGameReset), so they all fall
+through silently. `HALToolDispatcher.TickProximity` was polled from the
+commentator's `Update`, so compass "Target reached" auto-removal is off too.
+
+Deliberately NOT following the flag:
+
+- `HALLineHUD` + `HALVoicePlayer` — `OxygenManager` uses that HUD strip for the
+  hull-breach / hull-sealed survival prompts. Vaulting HAL should not cost a
+  safety warning. (They idle when nothing shows.)
+- The phone's preset conversations (`conv_*.json`) and `AIChatScreen` — story
+  content, editable in Dialogue Studio, not commentary.
+- `FeatureVault.DescentBriefing` — the old intro's five descent lines; that
+  intro is already bypassed.
+
+Restore: flip the flag. Nothing else changed. Dialogue Studio marks the `HalSay`
+effect as vaulted in its dropdown; trees that use it still load.
+
 ## Explicitly NOT vaulted
 
 - **Tev himself**, at his cabin (`TEV`, 9 m away) — he carries
