@@ -1,0 +1,53 @@
+{
+  "id": "npc_alien3",
+  "kind": "npc",
+  "displayName": "Alien3 (rod trader)",
+  "testPresets": [
+    { "name": "Holding a cassette", "flags": [], "money": -1, "items": [], "probes": ["holdingCassette"] },
+    { "name": "Empty-handed", "flags": [], "money": -1, "items": [], "probes": [] }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Alien3",
+      "lines": [
+        "Hi how are you!",
+        "Looks like you had a pretty bad crash"
+      ],
+      "nextNodeId": "offer",
+      "responses": []
+    },
+    {
+      "id": "offer",
+      "speaker": "Alien3",
+      "lines": [ "Hey young buck, I heard you playing some tunes on that ship of yours, wanna trade some music for a fishing rod?" ],
+      "responses": [
+        { "buttonText": "Yes", "nextNodeId": "yes_check" },
+        { "buttonText": "No", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "yes_check",
+      "speaker": "Alien3",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Probe", "arg": "holdingCassette", "num": 0, "negate": false } ], "nextNodeId": "trade" }
+      ],
+      "nextNodeId": "no_cassette",
+      "responses": []
+    },
+    {
+      "id": "no_cassette",
+      "speaker": "Alien3",
+      "lines": [ "Fuckoff until you actually have some music to trade!" ],
+      "responses": []
+    },
+    {
+      "id": "trade",
+      "speaker": "Alien3",
+      "onEnter": [ { "kind": "Custom", "strArg": "tradeRod", "numArg": 0, "boolArg": false } ],
+      "lines": [ "Here you go young buck, take my trusty fishing rod!" ],
+      "responses": []
+    }
+  ]
+}

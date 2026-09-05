@@ -1,0 +1,171 @@
+{
+  "id": "npc_tev",
+  "kind": "npc",
+  "displayName": "Tev",
+  "testPresets": [
+    { "name": "First meeting, $25 in pocket", "flags": ["tevMet=false"], "money": 25, "items": [], "probes": ["canCarryStick"] },
+    { "name": "First meeting, broke", "flags": ["tevMet=false"], "money": 0, "items": [], "probes": ["canCarryStick"] },
+    { "name": "Met before, no TRAX yet", "flags": ["tevMet"], "money": 25, "items": [], "probes": ["canCarryStick"] },
+    { "name": "Met before, owns TRAX", "flags": ["tevMet"], "money": 40, "items": ["TraxUsbStick:1"], "probes": ["canCarryStick", "traxOwned"] }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Tev",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Flag", "arg": "tevMet", "num": 0, "negate": false } ], "nextNodeId": "hub" }
+      ],
+      "nextNodeId": "greet",
+      "responses": []
+    },
+    {
+      "id": "greet",
+      "speaker": "Tev",
+      "lines": [ "Salutations, lost traveller!" ],
+      "responses": [
+        { "buttonText": "I'm not lost. I just haven't found what I'm looking for.", "nextNodeId": "deep" },
+        { "buttonText": "So what do you sell?", "nextNodeId": "sell" },
+        { "buttonText": "Where am I?", "nextNodeId": "where" }
+      ]
+    },
+    {
+      "id": "deep",
+      "speaker": "Tev",
+      "lines": [ "Ohhh, *deep*. Okay. So what is it you're looking for?" ],
+      "responses": [
+        { "buttonText": "A way back home.", "nextNodeId": "home_ask" },
+        { "buttonText": "I'm interested in making music.", "nextNodeId": "music" },
+        { "buttonText": "I don't know.", "nextNodeId": "dontknow" }
+      ]
+    },
+    {
+      "id": "home_ask",
+      "speaker": "Tev",
+      "lines": [ "Sure, easy. Where's home?" ],
+      "responses": [
+        { "buttonText": "...", "nextNodeId": "home_lost" }
+      ]
+    },
+    {
+      "id": "home_lost",
+      "speaker": "Tev",
+      "lines": [ "Ahhh. See, that right there? That's what lost sounds like. Lucky for you — lost folks make the *best* music. Interested?" ],
+      "nextNodeId": "pitch",
+      "responses": []
+    },
+    {
+      "id": "music",
+      "speaker": "Tev",
+      "lines": [ "Now we're talkin'! You're standing in the only music shop this side of the event horizon. TRAX engine, blank tapes, plugins when you've earned 'em. Interested in gettin' set up?" ],
+      "nextNodeId": "pitch",
+      "responses": []
+    },
+    {
+      "id": "dontknow",
+      "speaker": "Tev",
+      "lines": [
+        "...Yeah. Honestly? Me neither. That's kinda why I'm throwin' the festival — last day, big send-off, everybody dancin' while the sky eats itself. Give folks somethin' good to hold. Between you and me though... I got no clue how it's gonna go.",
+        "Anyway! Enough of that. You look like a music-maker to me. Interested?"
+      ],
+      "nextNodeId": "pitch",
+      "responses": []
+    },
+    {
+      "id": "sell",
+      "speaker": "Tev",
+      "lines": [ "Isn't it obvious? Anything music, baby! With that big hungry nothin' loomin' over us, music's the only business still turnin' a profit. ...Like that matters anyways. S'why I'm throwin' the festival. — You interested in gettin' set up?" ],
+      "nextNodeId": "pitch",
+      "responses": []
+    },
+    {
+      "id": "where",
+      "speaker": "Tev",
+      "lines": [ "You're on Humble Abode! Third planet from the sun, home to 'the aliens.' Yes, that's really what we call ourselves. No, we're not changin' it. — You interested in making music?" ],
+      "nextNodeId": "pitch",
+      "responses": []
+    },
+    {
+      "id": "pitch",
+      "speaker": "Tev",
+      "lines": [],
+      "responses": [
+        { "buttonText": "Yes", "nextNodeId": "pitch_yes", "effects": [ { "kind": "SetFlag", "strArg": "tevMet", "numArg": 0, "boolArg": true } ] },
+        { "buttonText": "No", "nextNodeId": "pitch_no", "effects": [ { "kind": "SetFlag", "strArg": "tevMet", "numArg": 0, "boolArg": true } ] }
+      ]
+    },
+    {
+      "id": "pitch_yes",
+      "speaker": "Tev",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 20, "negate": false }, { "kind": "Probe", "arg": "canCarryStick", "num": 0, "negate": false } ], "nextNodeId": "buy" },
+        { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 20, "negate": false } ], "nextNodeId": "pack_full" }
+      ],
+      "nextNodeId": "broke",
+      "responses": []
+    },
+    {
+      "id": "buy",
+      "speaker": "Tev",
+      "onEnter": [
+        { "kind": "SpendMoney", "strArg": "", "numArg": 20, "boolArg": false },
+        { "kind": "GiveItem", "strArg": "TraxUsbStick", "numArg": 1, "boolArg": false },
+        { "kind": "Custom", "strArg": "grantStarterBlanks", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [ "That's what I like to hear! TRAX music engine, twenty bucks. And 'cause I like your face — three blank demo tapes, on the house. Go make somethin' ugly." ],
+      "responses": []
+    },
+    {
+      "id": "pack_full",
+      "speaker": "Tev",
+      "lines": [ "Your hands are full, friend. Make some room and come see me again." ],
+      "responses": []
+    },
+    {
+      "id": "broke",
+      "speaker": "Tev",
+      "lines": [ "Twenty bucks, traveller. ...You don't *have* twenty bucks. Okay. Planet provides — check your locker, shake some pockets, hell, the fish out here practically pay you. Come back when you're rich." ],
+      "responses": []
+    },
+    {
+      "id": "pitch_no",
+      "speaker": "Tev",
+      "lines": [ "Ah. A shame. Well — you know where to find me. Everybody does. It's the only shop with a roof." ],
+      "responses": []
+    },
+    {
+      "id": "hub",
+      "speaker": "Tev",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Probe", "arg": "traxOwned", "num": 0, "negate": false } ], "nextNodeId": "hub_owned" }
+      ],
+      "nextNodeId": "hub_repitch",
+      "responses": []
+    },
+    {
+      "id": "hub_repitch",
+      "speaker": "Tev",
+      "lines": [ "Still here, still sellin'. TRAX engine, twenty bucks, and your career starts today. Interested?" ],
+      "nextNodeId": "pitch",
+      "responses": []
+    },
+    {
+      "id": "hub_owned",
+      "speaker": "Tev",
+      "lines": [],
+      "responses": [
+        { "buttonText": "Let me see the shop", "nextNodeId": "shop" },
+        { "buttonText": "Later, Tev", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "shop",
+      "speaker": "Tev",
+      "onEnter": [ { "kind": "Custom", "strArg": "openShop", "numArg": 0, "boolArg": false } ],
+      "lines": [],
+      "responses": []
+    }
+  ]
+}

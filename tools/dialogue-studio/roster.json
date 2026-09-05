@@ -1,0 +1,117 @@
+{
+  "_comment": "Who is who. Keyed by graph id (= file name without .json). 'hook' says how much of the NPC's talk the graph controls: full = the whole conversation; greeting = only the spoken part before a C# shop/sell menu; none = no graph hook yet. 'entryNodes' = extra nodes the script starts at by name (count as roots). Entries without a file show up greyed out.",
+  "npcs": {
+    "npc_tev": {
+      "name": "Tev",
+      "where": "Humble Abode — outside his cabin (the music shop)",
+      "script": "NPC_Dialogue/TevMushroomOnboarding.cs",
+      "hook": "full",
+      "probes": { "traxOwned": "TRAX is installed on the shuttle computer, or the player carries an unspent stick", "canCarryStick": "the hotbar has room for one more USB stick" },
+      "actions": { "grantStarterBlanks": "3 blank demo tapes into the hotbar (best effort)", "openShop": "opens Tev's plugin shop when the talk ends" },
+      "notes": "Flag tevMet = has answered the pitch once. TRAX is $20 (MoneyAtLeast 20 / SpendMoney 20 in the graph)."
+    },
+    "npc_floorbin": {
+      "name": "Floorbin",
+      "where": "Humble Abode — the PARENT marker (authored NPC)",
+      "script": "NPC_Dialogue/FloorbinTalk.cs (AuthoredNPCTalk)",
+      "hook": "full",
+      "probes": {},
+      "actions": {},
+      "notes": "Lost-kid quest parent. Flags: floorbin_name_learned → shllorbin_following → shllorbin_returned → bounty_spot_known. The reunion celebration force-starts his talk (returned + not thanked)."
+    },
+    "npc_shllorbin": {
+      "name": "Shllorbin",
+      "where": "Humble Abode — the KID marker (authored NPC)",
+      "script": "NPC_Dialogue/ShllorbinTalk.cs (AuthoredNPCTalk)",
+      "hook": "full",
+      "probes": { "kidFollowing": "he is currently following the player (live quest state, not a saved flag)" },
+      "actions": { "kidFollow": "he starts following you", "kidStopFollow": "he stops and waits" },
+      "notes": "Only trusts you once floorbin_name_learned is set (Floorbin's first talk)."
+    },
+    "npc_bonfire": {
+      "name": "Bonfire Alien",
+      "where": "Cabin start — by the bonfire",
+      "script": "NPC_Dialogue/BonfireNPCDialogue.cs",
+      "hook": "full",
+      "probes": { "firstTimeDone": "the saved 'already met' flag" },
+      "actions": { "firstTimeReward": "marks first meeting done, unlocks axe + pistol, offers the axe tutorial after" },
+      "notes": ""
+    },
+    "npc_alien3": {
+      "name": "Alien3 (rod trader)",
+      "where": "Village",
+      "script": "NPC_Dialogue/NPCDialogue.cs",
+      "hook": "full",
+      "probes": { "holdingCassette": "the player is holding a cassette right now" },
+      "actions": { "tradeRod": "takes the cassette, gives the fishing rod, ends the talk for good" },
+      "notes": "Once tradeRod fires he never offers the talk prompt again (saved)."
+    },
+    "npc_guitarshop": {
+      "name": "Guitar Shop",
+      "where": "Village",
+      "script": "NPC_Dialogue/GuitarShopNPC.cs",
+      "hook": "full",
+      "probes": {},
+      "actions": { "giveGuitar": "equips the guitar; the shop is Done after this talk" },
+      "notes": "Money is in the graph: MoneyAtLeast + SpendMoney. The 50/50 haggle is a Chance route."
+    },
+    "npc_alien7": {
+      "name": "Goods Vendor",
+      "where": "Village — Alien7",
+      "script": "Vendor/Alien7Vendor.cs",
+      "hook": "greeting",
+      "probes": {},
+      "actions": {},
+      "notes": "Only the spoken greeting is in the graph. The Open shop / sell / Leave menu after it is C#."
+    },
+    "npc_shipmarket": {
+      "name": "Ship Vendor",
+      "where": "Village — Toy1 / ship market",
+      "script": "Vendor/ShipMarketNPC.cs",
+      "hook": "greeting",
+      "probes": {},
+      "actions": {},
+      "notes": "Only the spoken greeting is in the graph. The shop menu after it is C#."
+    },
+    "npc_fishmarket": {
+      "name": "Fish Vendor",
+      "where": "Village — Alien4, the fish market",
+      "script": "Fishing/FishMarketNPC.cs",
+      "hook": "greeting",
+      "entryNodes": ["bounty"],
+      "probes": { "bountyTurnedIn": "the GRULABU bounty has been paid" },
+      "actions": {},
+      "notes": "Two entry points: node 'start' = greeting before the sell menu; node 'bounty' = what he says when you pick 'Ask about the bounty'. The sell/bait/turn-in menu is C#."
+    },
+    "npc_alien6": {
+      "name": "Alien6 (random small-talk)",
+      "where": "NOT PLACED in the gameplay scene right now",
+      "script": "NPC_Dialogue/RandomAlienDialogue.cs",
+      "hook": "none",
+      "probes": {},
+      "actions": {},
+      "notes": "Script exists but no object in 1.6.7.7.7.unity uses it. Lines live in the Inspector."
+    },
+    "npc_shipinstructor": {
+      "name": "Ship Instructor",
+      "where": "VAULTED — only on the _Vaulted/SHIPSCHOOL prefab",
+      "script": "NPC_Dialogue/ShipInstructorDialogue.cs",
+      "hook": "none",
+      "probes": {},
+      "actions": {},
+      "notes": "Mission 1 pilot test; not in the live scene. Lines live in the Inspector."
+    }
+  },
+  "phone": {
+    "conv_first_contact": { "name": "First contact", "notes": "HAL's opening conversation on the phone." },
+    "conv_village_arrival": { "name": "Village arrival", "notes": "Queued when the player reaches the village." },
+    "conv_gates": { "name": "Story gates", "notes": "Started at a node id (e.g. gate_explore) by StoryDirector." },
+    "conv_cc_first_lie": { "name": "Cold Company — first lie", "notes": "Queued by ColdCompany." },
+    "conv_b1_offer": { "name": "Smuggling (B-1) — the offer", "notes": "Vaulted mission (TevSmugglingMission)." },
+    "conv_b1_stop": { "name": "Smuggling (B-1) — the stop", "notes": "Vaulted mission." },
+    "conv_b1_arrest": { "name": "Smuggling (B-1) — arrest", "notes": "Vaulted mission." },
+    "conv_b1_clean": { "name": "Smuggling (B-1) — clean", "notes": "Vaulted mission." },
+    "conv_b1_ticket": { "name": "Smuggling (B-1) — ticket", "notes": "Vaulted mission." },
+    "conv_menu": { "name": "Phone menu", "notes": "" }
+  }
+}

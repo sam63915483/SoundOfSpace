@@ -1598,3 +1598,66 @@ fresh scratchpad; they open `1.6.7.7.7` additively and close it again).
 - `StreamingAssets/LlamaLib-v2.0.5/` (3.96 GB) is still inert dead weight (§27) — safe to delete locally.
 - `TapeOffer.cs` vs `MushroomSellUI.MakeOffer` duplicate the listen gate (two call sites for any gate change).
 - The `_Archive/` (416 MB) and `transfer/` decisions from §B are still open.
+
+---
+
+## 2026-09-05 — Dialogue Studio: NPC dialogue moved to data
+
+**What changed for the game:** every NPC's spoken tree now lives in
+`Assets/StreamingAssets/Story/npc_<id>.json` and is walked by one generic runner.
+Editing dialogue is a browser job (`tools/dialogue-studio/`, launch via
+`Dialogue Studio.bat`, http://localhost:8765), not a C#/Inspector job. In the
+Editor the game re-reads the folder on every talk, so a Save is live in the
+running Play session. Builds need a rebuild (StreamingAssets is copied at build time).
+
+**Schema** (`Story/DialogueData.cs`, a superset of the phone `Conversation`; old
+`conv_*.json` load unchanged): `Conversation { id, kind "npc"|"phone",
+displayName, testPresets[], nodes[] }`. `DialogueNode` gained `routes[]`
+(conditional jumps evaluated BEFORE the lines — first match wins, lines skipped),
+`onEnter[]` effects, `pickRandomLine`, `nextNodeId` (auto-continue when no reply
+is visible). `PlayerResponse` gained `conditions[]`. New `Condition { kind, arg,
+num, negate }` kinds: Flag · MoneyAtLeast · HasItem · CounterAtLeast ·
+ObjectiveDone · Probe (per-NPC runtime check) · Chance. `DialogueEffects` gained
+AddMoney · SpendMoney · GiveItem · TakeItem · AddCounter · SetCounter · HalSay ·
+Custom (per-NPC action). Start node = `id == "start"` else `nodes[0]`.
+
+**Runtime:** `Story/NpcGraphWalker.cs` — takes `Speak` / `Choose` / `LastChoice` /
+`InRange` / `Probe` / `Action` delegates so every NPC script drives it with its
+own typewriter; `Choose == null` falls back to the shared `PostGreetingChoicePanel`.
+`StoryContent.GetNpcGraph(id)` returns null when there is no file → the caller runs
+its legacy coroutine (**the safety net: delete the JSON and the NPC is exactly as
+before**). `#if UNITY_EDITOR` it force-reloads the Story folder per call.
+
+**Hooks (graph first, legacy fallback):**
+
+| Graph | Script | Scope | Probes / actions |
+|---|---|---|---|
+| `npc_tev` | `TevMushroomOnboarding.PlaySequence` (non-rent branch) | whole talk | `tevMet`, `traxOwned`, `canCarryStick` / `grantStarterBlanks`, `openShop` (opens the plugin shop after the graph). Legacy-save carve-out: promotes `TevMet` to flag `tevMet` once. |
+| `npc_floorbin` / `npc_shllorbin` | `FloorbinTalk` / `ShllorbinTalk` via `AuthoredNPCTalk.RunGraph` | whole talk | Shllorbin: `kidFollowing` / `kidFollow`, `kidStopFollow` |
+| any `AuthoredNPCTalk` | default `Conversation()` | whole talk | `graphId` field (appended) or `npc_<npcName lower-cased>`; **zero-code NPC trees** |
+| `npc_bonfire` | `BonfireNPCDialogue` | whole talk | `firstTimeDone` / `firstTimeReward` |
+| `npc_alien3` | `NPCDialogue` | whole talk | `holdingCassette` / `tradeRod` (legacy trade block factored into `ConsumeHeldCassette` / `GiveRod` / `CompleteTrade`) |
+| `npc_guitarshop` | `GuitarShopNPC` | whole talk | `giveGuitar`; money via MoneyAtLeast/SpendMoney, 50/50 haggle via Chance |
+| `npc_alien7` / `npc_shipmarket` | `Alien7Vendor` / `ShipMarketNPC` | spoken greeting only | shop/sell menu unchanged |
+| `npc_fishmarket` | `FishMarketNPC` | greeting (`start`) + bounty story (`bounty` entry node) | `bountyTurnedIn`; sell/bait/turn-in menu unchanged |
+
+Not hooked: `RandomAlienDialogue` (Alien6 — not placed in the scene) and
+`ShipInstructorDialogue` (vaulted SHIPSCHOOL prefab). Seeds were exported from
+the scene-serialized field values (Inspector wins over C# defaults), so nothing
+the player hears changed.
+
+**Studio** (`tools/dialogue-studio/`): `serve.py` (stdlib only; API over the
+Story folder, timestamped backups in `backups/` — gitignored, 30 kept, `.meta`
+created for new files), `index.html` / `styles.css` / `app.js` (roster → editor
+with auto-laid-out SVG graph + node form + checks; player with PHOSPHOR screen,
+flag/money/item/probe panel, presets, effect log), `roster.json` (who/where/
+script/hook/entryNodes), `vocab.json` (dropdown lists + how the browser pretends
+each Custom action). The browser player mirrors `NpcGraphWalker` rule for rule —
+**keep the C# and JS in lockstep.** Design spec:
+`docs/superpowers/specs/2026-09-05-dialogue-studio-design.md`.
+
+**Verification:** compile-check PASS (0 warnings); headless Node run of the JS
+engine over all 19 graphs (round-trip, validation, every reply path) clean;
+server API smoke-tested (GET/PUT/POST, id-mismatch rejection, backup). **Not yet
+play-tested by Sam** — first check: talk to Tev / Floorbin / Shllorbin in the
+Editor, edit a line in the browser, Save, talk again.

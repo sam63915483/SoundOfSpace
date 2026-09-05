@@ -168,6 +168,10 @@ public class BonfireNPCDialogue : MonoBehaviour
 
     IEnumerator PlayDialogueSequence()
     {
+        // Dialogue Studio graph first (npc_bonfire.json); legacy below is the fallback.
+        var graph = StoryContent.GetNpcGraph("npc_bonfire");
+        if (graph != null) { yield return RunGraph(graph); yield break; }
+
         string line;
         bool isFirstTime = false;
         if (!_firstTimeDone)
@@ -225,5 +229,43 @@ public class BonfireNPCDialogue : MonoBehaviour
     {
         _waitingForClick = true;
         yield return new WaitUntil(() => !_waitingForClick || !_playerInRange);
+    }
+
+    // ── Dialogue Studio graph ──────────────────────────────────────────────
+    // Probe  firstTimeDone   → the saved first-meeting flag
+    // Action firstTimeReward → marks it done, unlocks axe + pistol, offers the axe tutorial after
+
+    bool _graphFirstTime;
+
+    IEnumerator RunGraph(Conversation graph)
+    {
+        _graphFirstTime = false;
+        var walker = new NpcGraphWalker
+        {
+            Speak   = SpeakOne,
+            InRange = () => _playerInRange,
+            Probe   = n => n == "firstTimeDone" && _firstTimeDone,
+            Action  = GraphAction,
+        };
+        yield return walker.Run(graph);
+        StopConversation();
+        if (_graphFirstTime) BonusTutorial.OfferAxeBuilding();
+    }
+
+    bool GraphAction(string name)
+    {
+        if (name != "firstTimeReward") return false;
+        if (_firstTimeDone) return true;
+        _firstTimeDone = true;
+        _graphFirstTime = true;
+        if (axeController != null) axeController.Unlock();
+        if (pistolController != null) pistolController.Unlock();
+        return true;
+    }
+
+    IEnumerator SpeakOne(string line)
+    {
+        yield return TypewriterLine(line);
+        yield return WaitForPlayerClick();
     }
 }

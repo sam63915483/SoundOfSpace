@@ -1,0 +1,97 @@
+{
+  "id": "npc_floorbin",
+  "kind": "npc",
+  "displayName": "Floorbin",
+  "testPresets": [
+    { "name": "First meeting (kid lost)", "flags": ["floorbin_name_learned=false", "shllorbin_following=false", "shllorbin_returned=false", "bounty_spot_known=false"], "money": -1, "items": [], "probes": [] },
+    { "name": "Name learned, still searching", "flags": ["floorbin_name_learned", "shllorbin_following=false", "shllorbin_returned=false", "bounty_spot_known=false"], "money": -1, "items": [], "probes": [] },
+    { "name": "Kid is following you", "flags": ["floorbin_name_learned", "shllorbin_following", "shllorbin_returned=false", "bounty_spot_known=false"], "money": -1, "items": [], "probes": [] },
+    { "name": "Kid returned — the thank-you", "flags": ["floorbin_name_learned", "shllorbin_following=false", "shllorbin_returned", "bounty_spot_known=false"], "money": -1, "items": [], "probes": [] },
+    { "name": "After the quest", "flags": ["floorbin_name_learned", "shllorbin_following=false", "shllorbin_returned", "bounty_spot_known"], "money": -1, "items": [], "probes": [] }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Floorbin",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Flag", "arg": "shllorbin_returned", "num": 0, "negate": false }, { "kind": "Flag", "arg": "bounty_spot_known", "num": 0, "negate": true } ], "nextNodeId": "thanks" },
+        { "conditions": [ { "kind": "Flag", "arg": "shllorbin_returned", "num": 0, "negate": false } ], "nextNodeId": "after" },
+        { "conditions": [ { "kind": "Flag", "arg": "shllorbin_following", "num": 0, "negate": false } ], "nextNodeId": "kid_behind" },
+        { "conditions": [ { "kind": "Flag", "arg": "floorbin_name_learned", "num": 0, "negate": true } ], "nextNodeId": "searching" }
+      ],
+      "nextNodeId": "waiting",
+      "responses": []
+    },
+    {
+      "id": "searching",
+      "speaker": "Floorbin",
+      "lines": [
+        "Have you seen a kid? About yea high, big eyes, won't stop humming? My kid. SHLLORBIN.",
+        "I turned around for ONE second. He wandered off toward the hills. Or the water. He wanders. That is the whole problem.",
+        "If you find him, say his name. Shllorbin. He won't go with a stranger, but he'll know you've talked to me.",
+        "Please. I'll make it worth your while. I know things about this lake that nobody else does."
+      ],
+      "nextNodeId": "searching_done",
+      "responses": []
+    },
+    {
+      "id": "searching_done",
+      "speaker": "Floorbin",
+      "onEnter": [ { "kind": "SetFlag", "strArg": "floorbin_name_learned", "numArg": 0, "boolArg": true } ],
+      "lines": [],
+      "responses": []
+    },
+    {
+      "id": "waiting",
+      "speaker": "Floorbin",
+      "pickRandomLine": true,
+      "lines": [
+        "Shllorbin! SHLLORBIN! ...Nothing. Any luck out there?",
+        "He likes high ground. And low ground. Honestly, he likes ground.",
+        "Every minute he's out there my antennae go a little greyer."
+      ],
+      "responses": []
+    },
+    {
+      "id": "kid_behind",
+      "speaker": "Floorbin",
+      "lines": [ "Is that... is he behind you? SHLLORBIN! Bring him here, bring him HERE!" ],
+      "responses": []
+    },
+    {
+      "id": "thanks",
+      "speaker": "Floorbin",
+      "lines": [
+        "You brought him back. You actually brought him back.",
+        "I owe you. And I pay my debts. With information, mostly, because that's what I've got.",
+        "North of here, up the shore of this lake, I saw a fish. Not a fish. A FISH. Big as a shuttle. Teeth like a rockfall.",
+        "I'm not saying it ate a kid once. I'm just saying nobody has seen little Grebnik since.",
+        "Cast a line up there. Land that thing and the fish vendor will pay a fortune for it. Just... don't let it land YOU."
+      ],
+      "nextNodeId": "thanks_done",
+      "responses": []
+    },
+    {
+      "id": "thanks_done",
+      "speaker": "Floorbin",
+      "onEnter": [
+        { "kind": "SetFlag", "strArg": "bounty_spot_known", "numArg": 0, "boolArg": true },
+        { "kind": "HalSay", "strArg": "Noted: a large fish, north along the lake shore.", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [],
+      "responses": []
+    },
+    {
+      "id": "after",
+      "speaker": "Floorbin",
+      "pickRandomLine": true,
+      "lines": [
+        "The big fish? North, up the lake shore. You can't miss the spot. The water goes quiet there.",
+        "Shllorbin is grounded. Forever. Probably.",
+        "Still can't believe you found him. Still can't believe he was on a planet the whole time."
+      ],
+      "responses": []
+    }
+  ]
+}

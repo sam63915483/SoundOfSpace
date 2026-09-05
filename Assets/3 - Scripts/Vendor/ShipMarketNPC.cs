@@ -238,12 +238,28 @@ public class ShipMarketNPC : MonoBehaviour
 
     IEnumerator PlayDialogueSequence()
     {
+        // Dialogue Studio graph first (npc_shipmarket.json) — the spoken
+        // greeting only; the shop / sell menu after it is unchanged.
+        var graph = StoryContent.GetNpcGraph("npc_shipmarket");
+        if (graph != null)
+        {
+            yield return new NpcGraphWalker { Speak = SpeakOne, InRange = () => _playerInRange }.Run(graph);
+            if (_playerInRange) ShowPostGreetingChoice(); else StopConversation();
+            yield break;
+        }
+
         if (!string.IsNullOrEmpty(greetingLine))
         {
             yield return StartCoroutine(TypewriterLine(greetingLine));
             yield return StartCoroutine(WaitForPlayerClick());
         }
         ShowPostGreetingChoice();
+    }
+
+    IEnumerator SpeakOne(string line)
+    {
+        yield return TypewriterLine(line);
+        yield return WaitForPlayerClick();
     }
 
     IEnumerator TypewriterLine(string line)

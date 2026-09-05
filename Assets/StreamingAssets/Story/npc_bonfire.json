@@ -1,0 +1,41 @@
+{
+  "id": "npc_bonfire",
+  "kind": "npc",
+  "displayName": "Bonfire Alien",
+  "testPresets": [
+    { "name": "First time", "flags": [], "money": -1, "items": [], "probes": [] },
+    { "name": "Met before", "flags": [], "money": -1, "items": [], "probes": ["firstTimeDone"] }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Bonfire Alien",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Probe", "arg": "firstTimeDone", "num": 0, "negate": true } ], "nextNodeId": "first" }
+      ],
+      "nextNodeId": "random",
+      "responses": []
+    },
+    {
+      "id": "first",
+      "speaker": "Bonfire Alien",
+      "onEnter": [ { "kind": "Custom", "strArg": "firstTimeReward", "numArg": 0, "boolArg": false } ],
+      "lines": [ "Watch out for the white orbs theyll rape ya!" ],
+      "responses": []
+    },
+    {
+      "id": "random",
+      "speaker": "Bonfire Alien",
+      "pickRandomLine": true,
+      "lines": [
+        "Howdy Doody!",
+        "You seen any thick latinas lately?",
+        "Yo too close bro back up",
+        "dayummmmmm watchu doin walkin round with all that ass babygirl!",
+        "Man im thinking about some crazy things right now..."
+      ],
+      "responses": []
+    }
+  ]
+}

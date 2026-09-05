@@ -1,0 +1,86 @@
+{
+  "_comment": "Dropdown vocabulary for the studio. Kinds MUST match DialogueConditions.cs / DialogueEffects.cs. 'uses' says which fields a kind reads; 'argList' names the list that fills the arg dropdown. 'actions[].sim' tells the browser player what a Custom action does to the pretend game state.",
+
+  "conditionKinds": {
+    "Flag":           { "label": "Flag is set",            "uses": ["arg"],        "argList": "flags",      "help": "A saved story flag (StoryDirector). Tick NOT to test for it being off." },
+    "MoneyAtLeast":   { "label": "Money is at least",      "uses": ["num"],        "argList": "",           "help": "Player wallet ≥ number." },
+    "HasItem":        { "label": "Carrying item (≥ count)", "uses": ["arg", "num"], "argList": "items",      "help": "Hotbar total of the item ≥ count (count 0 = 1)." },
+    "CounterAtLeast": { "label": "Counter is at least",    "uses": ["arg", "num"], "argList": "counters",   "help": "A StoryDirector counter." },
+    "ObjectiveDone":  { "label": "Objective completed",    "uses": ["arg"],        "argList": "objectives", "help": "StoryDirector objective is complete." },
+    "Probe":          { "label": "Game check (probe)",     "uses": ["arg"],        "argList": "probes",     "help": "A live check the NPC's own script answers, e.g. kidFollowing. Only the probes listed for THIS NPC work in-game." },
+    "Chance":         { "label": "Random chance %",        "uses": ["num"],        "argList": "",           "help": "Passes num % of the time." }
+  },
+
+  "effectKinds": {
+    "SetFlag":           { "label": "Set flag",              "uses": ["strArg", "boolArg"], "argList": "flags",      "help": "Turn a story flag on (true) or off (false)." },
+    "AddMoney":          { "label": "Give money",            "uses": ["numArg"],            "argList": "",           "help": "" },
+    "SpendMoney":        { "label": "Take money",            "uses": ["numArg"],            "argList": "",           "help": "Gate the reply with 'Money is at least' first — this warns if they can't pay." },
+    "GiveItem":          { "label": "Give item",             "uses": ["strArg", "numArg"],  "argList": "items",      "help": "Into the hotbar (count 0 = 1)." },
+    "TakeItem":          { "label": "Take item",             "uses": ["strArg", "numArg"],  "argList": "items",      "help": "Gate with 'Carrying item' first." },
+    "AddCounter":        { "label": "Add to counter",        "uses": ["strArg", "numArg"],  "argList": "counters",   "help": "" },
+    "SetCounter":        { "label": "Set counter",           "uses": ["strArg", "numArg"],  "argList": "counters",   "help": "" },
+    "HalSay":            { "label": "HAL says (suit line)",  "uses": ["strArg"],            "argList": "",           "help": "HAL volunteers this line after the talk." },
+    "Custom":            { "label": "Game action (custom)",  "uses": ["strArg"],            "argList": "actions",    "help": "Something only this NPC's script can do, e.g. kidFollow. Only the actions listed for THIS NPC work in-game." },
+    "StartObjective":    { "label": "Start objective",       "uses": ["strArg"],            "argList": "objectives", "help": "Phone/HAL story system." },
+    "CompleteObjective": { "label": "Complete objective",    "uses": ["strArg"],            "argList": "objectives", "help": "" },
+    "UnlockDialogue":    { "label": "Unlock phone question", "uses": ["strArg"],            "argList": "",           "help": "" },
+    "AddTrust":          { "label": "Add Tev trust",         "uses": ["numArg"],            "argList": "",           "help": "" },
+    "AdvanceStory":      { "label": "Advance story step",    "uses": ["strArg"],            "argList": "storySteps", "help": "" },
+    "TriggerEnding":     { "label": "Trigger ending",        "uses": ["strArg"],            "argList": "",           "help": "No-op in the current slice." }
+  },
+
+  "flags": [
+    "tevMet", "floorbin_name_learned", "floorbin_approached", "shllorbin_following", "shllorbin_returned",
+    "bounty_spot_known", "grulabu_caught", "grulabu_turned_in",
+    "m1_met_tev", "m1_explored", "m1_reported", "m1_branch_pilot", "m1_branch_build", "m1_branch_fish",
+    "m1_instructor_briefed", "m1_licensed", "m1_pilot_started", "m1_complete",
+    "cc_assigned", "cc_first_lie_done", "cc_fish_sold", "cc_ship_bought", "cc_got_route", "cc_arrived_moon",
+    "cc_entered_base", "cc_saw_photowall", "cc_saw_review", "cc_opened_podfile", "cc_reported", "cc_complete",
+    "hasFood", "hasWater", "villageReached", "ORG_Reveal", "Tev_LetterGiven"
+  ],
+
+  "items": [
+    "WaterBottle", "FishingRod", "Guitar", "Axe", "Pistol", "Wood", "Crystal", "SpaceDust", "Fish", "FishBag",
+    "Sapling", "Mushroom", "MushroomSapling", "Money", "BlankTapeT1", "BlankTapeT2", "Cassette",
+    "BlankTapeHalfT1", "BlankTapeHalfT2", "BlankTapeFullT1", "BlankTapeFullT2", "TraxUsbStick",
+    "BaitGrubs", "BaitGlowworms", "BaitVoidmaggots"
+  ],
+
+  "counters": [],
+
+  "objectives": [
+    "obj_water", "obj_food", "obj_village", "obj_explore", "obj_pilot_school",
+    "obj_cc_sellfish", "obj_cc_buyship", "obj_cc_flymoon", "obj_cc_investigate", "obj_cc_search"
+  ],
+
+  "hintTracks": ["water", "food", "flashlight", "map"],
+
+  "storySteps": ["ColdOpen", "FirstContact"],
+
+  "probes": {
+    "tevMet":          { "npc": "npc_tev",        "desc": "Tev has been answered once (legacy alias of flag tevMet)" },
+    "traxOwned":       { "npc": "npc_tev",        "desc": "TRAX installed on the computer, or a stick in the pack" },
+    "canCarryStick":   { "npc": "npc_tev",        "desc": "hotbar has room for a USB stick", "defaultTrue": true },
+    "kidFollowing":    { "npc": "npc_shllorbin",  "desc": "Shllorbin is following the player right now" },
+    "firstTimeDone":   { "npc": "npc_bonfire",    "desc": "the bonfire alien's first-meeting flag (saved)" },
+    "holdingCassette": { "npc": "npc_alien3",     "desc": "player is holding a cassette" },
+    "bountyTurnedIn":  { "npc": "npc_fishmarket", "desc": "GRULABU bounty already paid" }
+  },
+
+  "actions": {
+    "grantStarterBlanks": { "npc": "npc_tev",       "desc": "3 blank demo tapes into the hotbar",
+                            "sim": [ { "op": "addItem", "item": "BlankTapeT1", "count": 3 } ] },
+    "openShop":           { "npc": "npc_tev",       "desc": "opens Tev's plugin shop after the talk",
+                            "sim": [ { "op": "note", "text": "Tev's shop panel opens here." } ] },
+    "kidFollow":          { "npc": "npc_shllorbin", "desc": "Shllorbin starts following",
+                            "sim": [ { "op": "setProbe", "name": "kidFollowing", "value": true }, { "op": "note", "text": "Shllorbin falls in behind you." } ] },
+    "kidStopFollow":      { "npc": "npc_shllorbin", "desc": "Shllorbin stops and waits",
+                            "sim": [ { "op": "setProbe", "name": "kidFollowing", "value": false }, { "op": "note", "text": "Shllorbin stops walking." } ] },
+    "firstTimeReward":    { "npc": "npc_bonfire",   "desc": "unlocks axe + pistol, offers the axe tutorial",
+                            "sim": [ { "op": "setProbe", "name": "firstTimeDone", "value": true }, { "op": "note", "text": "Axe + pistol unlocked. Axe tutorial offered after the talk." } ] },
+    "tradeRod":           { "npc": "npc_alien3",    "desc": "takes the cassette, gives the rod, talk completes for good",
+                            "sim": [ { "op": "setProbe", "name": "holdingCassette", "value": false }, { "op": "addItem", "item": "FishingRod", "count": 1 }, { "op": "note", "text": "Cassette taken, fishing rod equipped. He won't offer to talk again." } ] },
+    "giveGuitar":         { "npc": "npc_guitarshop", "desc": "equips the guitar; shop is done",
+                            "sim": [ { "op": "addItem", "item": "Guitar", "count": 1 }, { "op": "note", "text": "Guitar equipped. Shop closed for good." } ] }
+  }
+}

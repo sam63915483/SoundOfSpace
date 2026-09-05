@@ -1,0 +1,98 @@
+{
+  "id": "npc_guitarshop",
+  "kind": "npc",
+  "displayName": "Guitar Shop",
+  "testPresets": [
+    { "name": "Rich ($250)", "flags": [], "money": 250, "items": [], "probes": [] },
+    { "name": "Can only afford 100", "flags": [], "money": 120, "items": [], "probes": [] },
+    { "name": "Broke", "flags": [], "money": 10, "items": [], "probes": [] }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Guitar Shop",
+      "lines": [ "Hey there want to buy a guitar?" ],
+      "responses": [
+        { "buttonText": "Yes", "nextNodeId": "price" },
+        { "buttonText": "No", "nextNodeId": "toodles" }
+      ]
+    },
+    {
+      "id": "toodles",
+      "speaker": "Guitar Shop",
+      "lines": [ "Toodles!" ],
+      "responses": []
+    },
+    {
+      "id": "price",
+      "speaker": "Guitar Shop",
+      "lines": [ "200 sounds fair whadda ya tink?" ],
+      "responses": [
+        { "buttonText": "Offer 100$", "nextNodeId": "haggle" },
+        { "buttonText": "Agree to 200$", "nextNodeId": "buy200" }
+      ]
+    },
+    {
+      "id": "haggle",
+      "speaker": "Guitar Shop",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Chance", "arg": "", "num": 50, "negate": false } ], "nextNodeId": "buy100" }
+      ],
+      "nextNodeId": "refuse",
+      "responses": []
+    },
+    {
+      "id": "refuse",
+      "speaker": "Guitar Shop",
+      "lines": [ "Hell nah man get outta here" ],
+      "responses": []
+    },
+    {
+      "id": "buy100",
+      "speaker": "Guitar Shop",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 100, "negate": true } ], "nextNodeId": "broke" }
+      ],
+      "nextNodeId": "buy100_do",
+      "responses": []
+    },
+    {
+      "id": "buy100_do",
+      "speaker": "Guitar Shop",
+      "onEnter": [
+        { "kind": "SpendMoney", "strArg": "", "numArg": 100, "boolArg": false },
+        { "kind": "Custom", "strArg": "giveGuitar", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [ "Here you go, may you take good care of her" ],
+      "responses": []
+    },
+    {
+      "id": "buy200",
+      "speaker": "Guitar Shop",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 200, "negate": true } ], "nextNodeId": "broke" }
+      ],
+      "nextNodeId": "buy200_do",
+      "responses": []
+    },
+    {
+      "id": "buy200_do",
+      "speaker": "Guitar Shop",
+      "onEnter": [
+        { "kind": "SpendMoney", "strArg": "", "numArg": 200, "boolArg": false },
+        { "kind": "Custom", "strArg": "giveGuitar", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [ "Here you go, may you take good care of her" ],
+      "responses": []
+    },
+    {
+      "id": "broke",
+      "speaker": "Guitar Shop",
+      "lines": [ "fuckoff broke bitch get ur money up" ],
+      "responses": []
+    }
+  ]
+}

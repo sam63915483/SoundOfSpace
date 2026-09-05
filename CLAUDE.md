@@ -96,6 +96,38 @@ as before, so every scene without a cave is unaffected. Revert with
 
 ---
 
+## NPC dialogue = data. Use Dialogue Studio (2026-09-05)
+
+**Whenever the task is "change / write / prototype what an NPC says", start here, not in C#.**
+Every NPC's talk is a JSON tree in `Assets/StreamingAssets/Story/npc_<id>.json`
+(phone/HAL talks are the `conv_*.json` next to them, same schema). The game reads
+the file on every talk in the Editor, so a Save is live without leaving Play mode.
+
+- **Launch:** double-click `tools/dialogue-studio/Dialogue Studio.bat` (or
+  `py -3 tools/dialogue-studio/serve.py`) → http://localhost:8765. Roster of every
+  NPC with **▶ Start** (play it with flags / money / items you can flip — presets
+  like "Kid is following you") and **✎ Edit** (graph + form, add/delete branches,
+  undo, Ctrl+S). `tools/dialogue-studio/README.md` has the full manual.
+- **Schema + rules:** `Story/DialogueData.cs` (fields), `DialogueConditions.cs`,
+  `DialogueEffects.cs`, `NpcGraphWalker.cs` (the walk order). The browser player
+  in `tools/dialogue-studio/app.js` + `vocab.json` mirror them — **change one, change
+  the other**, or a kind previews fine and does nothing in-game (or vice versa).
+- **Hooked NPCs** (graph first, old C# is the fallback if the file is missing):
+  Tev, Floorbin, Shllorbin, Bonfire alien, Alien3 rod trader, Guitar shop = whole
+  talk; Goods / Ship / Fish vendors = spoken part only (their shop menus stay C#).
+  Any `AuthoredNPCTalk` NPC gets a tree with zero code: name it, create
+  `npc_<lowercase name>.json`, done.
+- **Things only C# can know or do** (kid following? make him follow) are a
+  `Probe` condition / `Custom` effect answered in that NPC's `GraphProbe` /
+  `GraphAction` (or `Probe`/`Action` lambda). Adding one = one `case` line + a
+  `vocab.json` entry so the browser can pretend it. Roster cards list each NPC's.
+- **Don't** put new dialogue in Inspector string arrays or C# coroutines any more;
+  those are now the fallback only. Seeds were exported from the scene's saved values.
+- Builds copy StreamingAssets at build time — a rebuild is needed for a build to see
+  edits; the Editor never is.
+
+---
+
 ## Layout notes
 
 - User code: `Assets/3 - Scripts/` by feature (Building, Camera, Combat, Concert, Cutscenes, Editor, Effects, Fishing, Map, NPC_Dialogue, Physics, Pickups, Player, Portals, SaveSystem, Ship, Survival, Tutorial, UI, Vendor, World, AI, Audio).

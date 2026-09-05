@@ -1,0 +1,101 @@
+{
+  "id": "npc_shllorbin",
+  "kind": "npc",
+  "displayName": "Shllorbin",
+  "testPresets": [
+    { "name": "Stranger (don't know his name)", "flags": ["floorbin_name_learned=false", "shllorbin_returned=false"], "money": -1, "items": [], "probes": [] },
+    { "name": "You know his name", "flags": ["floorbin_name_learned", "shllorbin_returned=false"], "money": -1, "items": [], "probes": [] },
+    { "name": "He is following you", "flags": ["floorbin_name_learned", "shllorbin_following", "shllorbin_returned=false"], "money": -1, "items": [], "probes": ["kidFollowing"] },
+    { "name": "Back home", "flags": ["floorbin_name_learned", "shllorbin_returned"], "money": -1, "items": [], "probes": [] }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Shllorbin",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Flag", "arg": "shllorbin_returned", "num": 0, "negate": false } ], "nextNodeId": "home" },
+        { "conditions": [ { "kind": "Probe", "arg": "kidFollowing", "num": 0, "negate": false } ], "nextNodeId": "following" },
+        { "conditions": [ { "kind": "Flag", "arg": "floorbin_name_learned", "num": 0, "negate": true } ], "nextNodeId": "scared" }
+      ],
+      "nextNodeId": "tamed",
+      "responses": []
+    },
+    {
+      "id": "home",
+      "speaker": "Shllorbin",
+      "pickRandomLine": true,
+      "lines": [
+        "Dad says I'm grounded. Grounded on a PLANET. That's just... standing.",
+        "Thanks for finding me. Next time I'll get lost somewhere closer."
+      ],
+      "responses": []
+    },
+    {
+      "id": "following",
+      "speaker": "Shllorbin",
+      "pickRandomLine": true,
+      "lines": [
+        "Are we there yet?",
+        "Is it much further? I told you my legs were little.",
+        "If Dad asks, I was NEVER near the water."
+      ],
+      "responses": [
+        { "buttonText": "Keep following me.", "nextNodeId": "end" },
+        { "buttonText": "Wait here for a bit.", "nextNodeId": "wait", "effects": [ { "kind": "Custom", "strArg": "kidStopFollow", "numArg": 0, "boolArg": false } ] }
+      ]
+    },
+    {
+      "id": "wait",
+      "speaker": "Shllorbin",
+      "lines": [ "Fine. I'll wait here. I'm good at waiting. I'm not good at waiting." ],
+      "responses": []
+    },
+    {
+      "id": "scared",
+      "speaker": "Shllorbin",
+      "lines": [
+        "...Who are you? Dad says don't talk to strangers. ESPECIALLY tall ones.",
+        "I'm not lost. I'm exploring. Go away."
+      ],
+      "responses": [
+        { "buttonText": "Leave", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "tamed",
+      "speaker": "Shllorbin",
+      "lines": [],
+      "responses": [
+        { "buttonText": "Shllorbin? Your dad Floorbin sent me.", "nextNodeId": "recognise" },
+        { "buttonText": "Leave", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "recognise",
+      "speaker": "Shllorbin",
+      "lines": [
+        "How do you know my name?! ...Did Dad send you? Is he mad? He's mad, isn't he.",
+        "I only went to look at the sparkly rocks. Then the rocks were everywhere and none of them were home."
+      ],
+      "responses": [
+        { "buttonText": "Follow me. I'll take you home.", "nextNodeId": "follow" },
+        { "buttonText": "Not right now.", "nextNodeId": "end" }
+      ]
+    },
+    {
+      "id": "follow",
+      "speaker": "Shllorbin",
+      "lines": [ "Okay. Okay! Don't walk too fast. My legs are little." ],
+      "nextNodeId": "follow_go",
+      "responses": []
+    },
+    {
+      "id": "follow_go",
+      "speaker": "Shllorbin",
+      "onEnter": [ { "kind": "Custom", "strArg": "kidFollow", "numArg": 0, "boolArg": false } ],
+      "lines": [],
+      "responses": []
+    }
+  ]
+}

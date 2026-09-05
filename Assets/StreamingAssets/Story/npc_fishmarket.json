@@ -1,0 +1,44 @@
+{
+  "id": "npc_fishmarket",
+  "kind": "npc",
+  "displayName": "Fish Vendor",
+  "testPresets": [
+    { "name": "Bounty still open", "flags": [], "money": -1, "items": [], "probes": [] },
+    { "name": "Bounty already paid", "flags": [], "money": -1, "items": [], "probes": ["bountyTurnedIn"] }
+  ],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Fish Vendor",
+      "lines": [ "Welcome to my humble shop traveller!" ],
+      "responses": []
+    },
+    {
+      "id": "bounty",
+      "speaker": "Fish Vendor",
+      "lines": [],
+      "routes": [
+        { "conditions": [ { "kind": "Probe", "arg": "bountyTurnedIn", "num": 0, "negate": false } ], "nextNodeId": "bounty_done" }
+      ],
+      "nextNodeId": "bounty_story",
+      "responses": []
+    },
+    {
+      "id": "bounty_story",
+      "speaker": "Fish Vendor",
+      "lines": [
+        "The bounty fish? Sit down. Well -- stand there, but quietly.",
+        "Years back a kid was playing on the north shore of the lake. Big splash, little scream, and the water went flat like nothing happened. They found one shoe. Wet.",
+        "GRULABU, the old-timers call it. Red as a warning light, long as a shuttle, and it does not lose.",
+        "Bring me that fish, whole, and I pay five hundred. Not for the meat. For the peace of mind."
+      ],
+      "responses": []
+    },
+    {
+      "id": "bounty_done",
+      "speaker": "Fish Vendor",
+      "lines": [ "The GRULABU is gone. The lake is quieter. I sleep now. You did that." ],
+      "responses": []
+    }
+  ]
+}

@@ -434,6 +434,22 @@ public class TevMushroomOnboarding : MonoBehaviour
         // kept intact behind the flag, same as the fronting vault before it.
         if (!FeatureVault.TevRent)
         {
+            // Dialogue Studio graph first (StreamingAssets/Story/npc_tev.json,
+            // edited in tools/dialogue-studio). The C# tree below is the
+            // fallback when the file is missing or empty.
+            var graph = StoryContent.GetNpcGraph(string.IsNullOrEmpty(graphId) ? "npc_tev" : graphId);
+            if (graph != null)
+            {
+                // The graph routes on the plain flag "tevMet". Legacy saves
+                // (rent-era Tev, met via MushroomQuest.Stage) never set it, so
+                // promote them once — otherwise they'd replay the first meeting.
+                if (TevMet && StoryDirector.Instance != null && !StoryDirector.Instance.GetFlag("tevMet"))
+                    StoryDirector.Instance.SetFlag("tevMet", true);
+                yield return RunGraph(graph);
+                StopConversation();
+                yield break;
+            }
+
             if (!TevMet) yield return RunFirstMeeting();
             else         yield return RunMeetingHub();
             StopConversation();
@@ -457,6 +473,63 @@ public class TevMushroomOnboarding : MonoBehaviour
             yield return RunLandlordTalk();
         }
         StopConversation();
+    }
+
+    // ── Dialogue Studio graph (tools/dialogue-studio) ──────────────────────
+
+    bool _openShopAfterGraph;
+
+    /// Walk npc_tev.json with Tev's own typewriter + the shared choice panel.
+    /// Probes: tevMet, traxOwned, canCarryStick. Actions: grantStarterBlanks,
+    /// openShop (opens the plugin shop once the graph ends).
+    IEnumerator RunGraph(Conversation graph)
+    {
+        _openShopAfterGraph = false;
+        var walker = new NpcGraphWalker
+        {
+            Speak      = SpeakOne,
+            Choose     = ChooseLabels,
+            LastChoice = () => _choice,
+            InRange    = () => _playerInRange,
+            Probe      = GraphProbe,
+            Action     = GraphAction,
+        };
+        yield return walker.Run(graph);
+        if (_openShopAfterGraph && _playerInRange) yield return RunShop();
+    }
+
+    IEnumerator ChooseLabels(IList<string> labels)
+    {
+        var rows = new PostGreetingChoicePanel.Row[labels.Count];
+        for (int i = 0; i < rows.Length; i++) rows[i] = new PostGreetingChoicePanel.Row(labels[i], true);
+        yield return AskChoice(rows);
+    }
+
+    bool GraphProbe(string name)
+    {
+        switch (name)
+        {
+            case "tevMet":    return TevMet;
+            case "traxOwned": return TraxOwned;
+            case "canCarryStick":
+            {
+                if (Hotbar.Instance == null) return false;
+                if (Hotbar.Instance.HasEmptyHotbarSlot()) return true;
+                int have = Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.TraxUsbStick);
+                return have > 0 && have % Hotbar.StackMax(Hotbar.ItemId.TraxUsbStick) != 0;
+            }
+        }
+        return false;
+    }
+
+    bool GraphAction(string name)
+    {
+        switch (name)
+        {
+            case "grantStarterBlanks": GrantStarterBlanks(); return true;
+            case "openShop":           _openShopAfterGraph = true; return true;
+        }
+        return false;
     }
 
     // ── The first-meeting tree (2026-08-30 revamp) ────────────────────────
@@ -1766,4 +1839,8 @@ public class TevMushroomOnboarding : MonoBehaviour
     [TextArea(2, 5)] public string meetPrefixStar = "";
     [TextArea(2, 5)] public string meetPrefixFool = "";
     [TextArea(2, 5)] public string meetPrefixMystery = "";
+
+    [Header("Dialogue Studio")]
+    [Tooltip("Graph id in StreamingAssets/Story (file npc_<id>.json). Empty = npc_tev. Edit with tools/dialogue-studio; delete the file and the C# tree above runs instead.")]
+    public string graphId = "";
 }

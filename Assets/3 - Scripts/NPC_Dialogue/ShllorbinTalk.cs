@@ -76,8 +76,26 @@ public class ShllorbinTalk : AuthoredNPCTalk
         _quest = FindObjectOfType<LostKidQuest>(true);
     }
 
+    // Dialogue Studio graph hooks (npc_shllorbin.json): the kid's live
+    // follow state is a Probe, the follow verbs are Custom effects.
+    protected override bool GraphProbe(string name) =>
+        name == "kidFollowing" && _quest != null && _quest.IsFollowing;
+
+    protected override bool GraphAction(string name)
+    {
+        switch (name)
+        {
+            case "kidFollow":     if (_quest != null) _quest.BeginFollow(); return true;
+            case "kidStopFollow": if (_quest != null) _quest.StopFollow();  return true;
+        }
+        return false;
+    }
+
     protected override IEnumerator Conversation()
     {
+        var g = Graph;
+        if (g != null) { yield return RunGraph(g); yield break; }
+
         if (_quest == null) { yield return Speak(linesScared); yield break; }
 
         if (Flag(LostKidQuest.FlagReturned))

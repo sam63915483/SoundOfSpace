@@ -128,3 +128,6 @@ Assets/1 - sam3d/video.mp4.meta
 # Local prefab backups written by Tools > TRAX > Shuttle (outside Assets so Unity
 # never imports them as second copies of the prefab).
 backups/
+
+# Dialogue Studio (tools/dialogue-studio) — per-save backups of StreamingAssets/Story, local only
+/tools/dialogue-studio/backups/

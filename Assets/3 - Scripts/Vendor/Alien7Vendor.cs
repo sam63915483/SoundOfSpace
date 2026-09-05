@@ -201,12 +201,28 @@ public class Alien7Vendor : MonoBehaviour
 
     IEnumerator PlayDialogueSequence()
     {
+        // Dialogue Studio graph first (npc_alien7.json) — the spoken greeting
+        // only; the shop / sell menu after it is unchanged.
+        var graph = StoryContent.GetNpcGraph("npc_alien7");
+        if (graph != null)
+        {
+            yield return new NpcGraphWalker { Speak = SpeakOne, InRange = () => _playerInRange }.Run(graph);
+            if (_playerInRange) ShowPostGreetingChoice(); else StopConversation();
+            yield break;
+        }
+
         if (!string.IsNullOrEmpty(greetingLine))
         {
             yield return StartCoroutine(TypewriterLine(greetingLine));
             yield return StartCoroutine(WaitForPlayerClick());
         }
         ShowPostGreetingChoice();
+    }
+
+    IEnumerator SpeakOne(string line)
+    {
+        yield return TypewriterLine(line);
+        yield return WaitForPlayerClick();
     }
 
     IEnumerator TypewriterLine(string line)

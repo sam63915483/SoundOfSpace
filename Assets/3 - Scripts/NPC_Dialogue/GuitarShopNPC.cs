@@ -134,7 +134,51 @@ public class GuitarShopNPC : MonoBehaviour
             fishingRodController.ForceUnequipRod();
 
         if (dialogueText != null) dialogueText.gameObject.SetActive(true);
+
+        // Dialogue Studio graph first (npc_guitarshop.json); the hard-coded
+        // Yes/No haggle below is the fallback.
+        var graph = StoryContent.GetNpcGraph("npc_guitarshop");
+        if (graph != null) { _dialogueCoroutine = StartCoroutine(RunGraph(graph)); return; }
+
         _dialogueCoroutine = StartCoroutine(ShowLineWithChoices("Hey there want to buy a guitar?", "Yes", "No"));
+    }
+
+    // ── Dialogue Studio graph ──────────────────────────────────────────────
+    // Action giveGuitar → equips the guitar and marks the shop Done. Money is
+    // handled by the graph's own MoneyAtLeast / SpendMoney.
+
+    bool _graphBought;
+
+    IEnumerator RunGraph(Conversation graph)
+    {
+        _graphBought = false;
+        var walker = new NpcGraphWalker
+        {
+            Speak   = SpeakOne,
+            InRange = () => _playerInRange,
+            Action  = n =>
+            {
+                if (n != "giveGuitar") return false;
+                _graphBought = true;
+                if (guitarController != null) guitarController.ForceEquipGuitar();
+                return true;
+            },
+        };
+        yield return walker.Run(graph);
+
+        if (dialogueText != null) dialogueText.gameObject.SetActive(false);
+        PlayerController.isInDialogue = false;
+        _state = _graphBought ? State.Done : State.Idle;
+        if (_playerInRange && _state == State.Idle)
+            InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
+        _dialogueCoroutine = null;
+    }
+
+    IEnumerator SpeakOne(string line)
+    {
+        yield return StartCoroutine(TypewriterLine(line));
+        _waitingForClick = true;
+        yield return new WaitUntil(() => !_waitingForClick || !_playerInRange);
     }
 
     void OnLeftButtonClicked()

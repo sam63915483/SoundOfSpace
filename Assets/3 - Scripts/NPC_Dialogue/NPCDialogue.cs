@@ -222,6 +222,11 @@ public class NPCDialogue : MonoBehaviour
 
     IEnumerator PlayDialogueSequence()
     {
+        // Dialogue Studio graph first (npc_alien3.json); the hard-coded
+        // greeting → trade offer → Yes/No flow below is the fallback.
+        var graph = StoryContent.GetNpcGraph("npc_alien3");
+        if (graph != null) { yield return RunGraph(graph); yield break; }
+
         // ── Step 0: Greeting lines ───────────────────────────────
         if (greetingLines != null)
         {
@@ -274,7 +279,25 @@ public class NPCDialogue : MonoBehaviour
             yield break;
         }
 
-        // Destroy the cassette
+        ConsumeHeldCassette();
+
+        // ── Step 4: Give rod + final line ────────────────────────
+        if (!_playerInRange) { StopConversation(); yield break; }
+
+        GiveRod();
+
+        if (!string.IsNullOrEmpty(postTradeLine))
+        {
+            yield return StartCoroutine(TypewriterLine(postTradeLine));
+            yield return StartCoroutine(WaitForPlayerClick());
+            if (!_playerInRange) { StopConversation(); yield break; }
+        }
+
+        CompleteTrade();
+    }
+
+    void ConsumeHeldCassette()
+    {
         GameObject cassette = _playerPickup != null ? _playerPickup.GetHeldObject() : null;
         if (cassette == null)
         {
@@ -290,24 +313,17 @@ public class NPCDialogue : MonoBehaviour
             if (_playerPickup != null) _playerPickup.ClearHeldObject();
             Object.Destroy(cassette);
         }
+    }
 
-        // ── Step 4: Give rod + final line ────────────────────────
-        if (!_playerInRange) { StopConversation(); yield break; }
+    void GiveRod()
+    {
+        if (_rodEquipped) return;
+        _rodEquipped = true;
+        if (fishingRodController != null) fishingRodController.ForceEquipRod();
+    }
 
-        if (!_rodEquipped)
-        {
-            _rodEquipped = true;
-            if (fishingRodController != null)
-                fishingRodController.ForceEquipRod();
-        }
-
-        if (!string.IsNullOrEmpty(postTradeLine))
-        {
-            yield return StartCoroutine(TypewriterLine(postTradeLine));
-            yield return StartCoroutine(WaitForPlayerClick());
-            if (!_playerInRange) { StopConversation(); yield break; }
-        }
-
+    void CompleteTrade()
+    {
         _conversationCompleted = true;
         _conversationActive    = false;
         PlayerController.isInDialogue = false;
@@ -317,6 +333,41 @@ public class NPCDialogue : MonoBehaviour
         Debug.Log("Conversation complete. Fishing rod traded.");
 
         BonusTutorial.OfferFishing();
+    }
+
+    // ── Dialogue Studio graph ──────────────────────────────────────────────
+    // Probe  holdingCassette → the player is holding a cassette right now
+    // Action tradeRod        → takes the cassette, hands over the rod, and the
+    //                          talk ends as "completed" (no more prompt)
+
+    bool _graphTraded;
+
+    IEnumerator RunGraph(Conversation graph)
+    {
+        _graphTraded = false;
+        var walker = new NpcGraphWalker
+        {
+            Speak   = SpeakOne,
+            InRange = () => _playerInRange,
+            Probe   = n => n == "holdingCassette" && IsHoldingCassette(),
+            Action  = n =>
+            {
+                if (n != "tradeRod") return false;
+                ConsumeHeldCassette();
+                GiveRod();
+                _graphTraded = true;
+                return true;
+            },
+        };
+        yield return walker.Run(graph);
+        if (!_playerInRange) { StopConversation(); yield break; }
+        if (_graphTraded) CompleteTrade(); else ResetToIdle();
+    }
+
+    IEnumerator SpeakOne(string line)
+    {
+        yield return StartCoroutine(TypewriterLine(line));
+        yield return StartCoroutine(WaitForPlayerClick());
     }
 
     void ResetToIdle()

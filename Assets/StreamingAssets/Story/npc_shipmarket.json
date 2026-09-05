@@ -1,0 +1,14 @@
+{
+  "id": "npc_shipmarket",
+  "kind": "npc",
+  "displayName": "Ship Vendor",
+  "testPresets": [],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Ship Vendor",
+      "lines": [ "Need a new ride? Best hulls this side of the asteroid belt. Cash only." ],
+      "responses": []
+    }
+  ]
+}

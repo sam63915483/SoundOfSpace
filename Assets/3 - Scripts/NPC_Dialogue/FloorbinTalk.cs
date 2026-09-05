@@ -62,6 +62,11 @@ public class FloorbinTalk : AuthoredNPCTalk
 
     protected override IEnumerator Conversation()
     {
+        // Dialogue Studio graph first (StreamingAssets/Story/npc_floorbin.json);
+        // the C# tree below is the fallback when the file is missing.
+        var g = Graph;
+        if (g != null) { yield return RunGraph(g); yield break; }
+
         bool nameLearned = Flag(LostKidQuest.FlagNameLearned);
         bool following   = Flag(LostKidQuest.FlagFollowing);
         bool returned    = Flag(LostKidQuest.FlagReturned);

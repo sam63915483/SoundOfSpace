@@ -181,10 +181,64 @@ public class AuthoredNPCTalk : MonoBehaviour
     /// <summary>Hook for subclasses (fires on every end, including walk-aways).</summary>
     protected virtual void OnConversationEnded() { }
 
-    /// <summary>Override for quest NPCs. Default: speak <c>lines</c>.</summary>
+    /// <summary>
+    /// Override for quest NPCs. Default: run this NPC's Dialogue Studio graph
+    /// (StreamingAssets/Story/npc_&lt;id&gt;.json) if one exists, else speak
+    /// <c>lines</c>. So a plain AuthoredNPCTalk gets a full branching tree the
+    /// moment its JSON exists — no subclass needed.
+    /// </summary>
     protected virtual IEnumerator Conversation()
     {
-        yield return Speak(lines);
+        var g = Graph;
+        if (g != null) yield return RunGraph(g);
+        else yield return Speak(lines);
+    }
+
+    // -- Dialogue Studio graph (tools/dialogue-studio) --------------------
+
+    /// The graph file id: <see cref="graphId"/> if set, else "npc_" + the
+    /// NPC's name lower-cased (Floorbin → npc_floorbin).
+    public string EffectiveGraphId
+    {
+        get
+        {
+            if (!string.IsNullOrEmpty(graphId)) return graphId;
+            var n = NpcName ?? "";
+            var sb = new System.Text.StringBuilder("npc_");
+            foreach (char ch in n) sb.Append(char.IsLetterOrDigit(ch) ? char.ToLowerInvariant(ch) : '_');
+            return sb.ToString();
+        }
+    }
+
+    /// This NPC's graph, or null (→ legacy C# conversation).
+    protected Conversation Graph => StoryContent.GetNpcGraph(EffectiveGraphId);
+
+    /// <summary>Walk a graph with this NPC's typewriter + the shared choice panel.</summary>
+    protected IEnumerator RunGraph(Conversation graph, string startNodeId = null)
+    {
+        var walker = new NpcGraphWalker
+        {
+            Speak      = line => Speak(line),
+            Choose     = labels => ChooseList(labels),
+            LastChoice = () => _choice,
+            InRange    = () => InRange,
+            Probe      = GraphProbe,
+            Action     = GraphAction,
+        };
+        yield return walker.Run(graph, startNodeId);
+    }
+
+    /// <summary>Answer a "Probe" condition from the graph (e.g. kidFollowing). Unknown → false.</summary>
+    protected virtual bool GraphProbe(string name) => false;
+
+    /// <summary>Perform a "Custom" effect from the graph (e.g. kidFollow). Return false if unknown.</summary>
+    protected virtual bool GraphAction(string name) => false;
+
+    IEnumerator ChooseList(IList<string> labels)
+    {
+        var arr = new string[labels.Count];
+        for (int i = 0; i < arr.Length; i++) arr[i] = labels[i];
+        yield return Choose(arr);
     }
 
     // -- helpers for subclasses -------------------------------------------
@@ -255,4 +309,9 @@ public class AuthoredNPCTalk : MonoBehaviour
         if (_active) StopConversation();
         if (Spawner != null && Spawner.Relay != null) InteractPromptUI.Clear(Spawner.Relay);
     }
+
+    // -- appended 2026-09-05; keep new serialized fields at the END --
+    [Header("Dialogue Studio")]
+    [Tooltip("Id of this NPC's graph in StreamingAssets/Story (file npc_<id>.json, id inside the file). Empty = npc_<npcName lower-cased>. Edit with tools/dialogue-studio. No file = the C# conversation runs.")]
+    public string graphId = "";
 }

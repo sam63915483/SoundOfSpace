@@ -193,10 +193,20 @@ public class FishMarketNPC : MonoBehaviour
         bottleCtrl?.ForceUnequipBottle();
 
         if (greetingText != null) greetingText.gameObject.SetActive(true);
-        yield return StartCoroutine(TypewriterLine(greetingMessage, greetingText));
 
-        _waitingForClick = true;
-        yield return new WaitUntil(() => !_waitingForClick || !playerInRange);
+        // Dialogue Studio graph first (npc_fishmarket.json, node "start") —
+        // the spoken greeting only; the sell menu after it is unchanged.
+        var graph = StoryContent.GetNpcGraph("npc_fishmarket");
+        if (graph != null)
+        {
+            yield return GraphWalker(graph).Run(graph);
+        }
+        else
+        {
+            yield return StartCoroutine(TypewriterLine(greetingMessage, greetingText));
+            _waitingForClick = true;
+            yield return new WaitUntil(() => !_waitingForClick || !playerInRange);
+        }
 
         if (greetingText != null) greetingText.gameObject.SetActive(false);
         greetingActive   = false;
@@ -853,10 +863,50 @@ public class FishMarketNPC : MonoBehaviour
     /// then the choice menu comes back.
     IEnumerator TellBountyStory()
     {
-        var ls = BountyFlag(bountyTurnedInFlag) ? bountyDoneLines : bountyStoryLines;
-        yield return SpeakOnGreeting(ls);
+        // Dialogue Studio: node "bounty" of npc_fishmarket.json, when present
+        // (its routes pick story vs done via Probe bountyTurnedIn).
+        var graph = StoryContent.GetNpcGraph("npc_fishmarket");
+        if (graph != null && graph.FindNode("bounty") != null)
+        {
+            yield return SpeakGraphOnGreeting(graph, "bounty");
+        }
+        else
+        {
+            var ls = BountyFlag(bountyTurnedInFlag) ? bountyDoneLines : bountyStoryLines;
+            yield return SpeakOnGreeting(ls);
+        }
         if (playerInRange) ShowPostGreetingChoice();
         else PlayerController.isInDialogue = false;
+    }
+
+    // ── Dialogue Studio graph (greeting text as the typewriter surface) ────
+
+    NpcGraphWalker GraphWalker(Conversation graph) => new NpcGraphWalker
+    {
+        Speak   = SpeakOneOnGreetingText,
+        InRange = () => playerInRange,
+        Probe   = n => n == "bountyTurnedIn" && BountyFlag(bountyTurnedInFlag),
+    };
+
+    IEnumerator SpeakOneOnGreetingText(string line)
+    {
+        yield return StartCoroutine(TypewriterLine(line, greetingText));
+        _waitingForClick = true;
+        yield return new WaitUntil(() => !_waitingForClick || !playerInRange);
+    }
+
+    IEnumerator SpeakGraphOnGreeting(Conversation graph, string startNode)
+    {
+        if (PostGreetingChoicePanel.Instance != null && PostGreetingChoicePanel.Instance.IsVisible)
+            PostGreetingChoicePanel.Instance.Hide();
+        greetingActive = true;
+        PlayerController.isInDialogue = true;
+        InteractPromptUI.Clear(this);
+        if (greetingText != null) greetingText.gameObject.SetActive(true);
+        yield return GraphWalker(graph).Run(graph, startNode);
+        if (greetingText != null) greetingText.gameObject.SetActive(false);
+        greetingActive = false;
+        greetingCoroutine = null;
     }
 
     IEnumerator SpeakOnGreeting(string[] ls)

@@ -1,0 +1,16 @@
+{
+  "id": "npc_alien7",
+  "kind": "npc",
+  "displayName": "Goods Vendor",
+  "testPresets": [],
+  "nodes": [
+    {
+      "id": "start",
+      "speaker": "Goods Vendor",
+      "lines": [
+        "I hope you brought money...."
+      ],
+      "responses": []
+    }
+  ]
+}
