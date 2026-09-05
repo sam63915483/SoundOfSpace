@@ -1523,6 +1523,64 @@ laws they produced are recorded in §34 and the 2026-08-28 addendum; the approac
 only, versioned report stamps) is the template if a handover artifact ever comes
 back. `MenuTourTracker` in the menu scene is untouched.
 
+## 2026-09-05 — Editor-side hygiene audit (read-only, Coplay scripts; nothing changed)
+
+Run against `1.6.7.7.7.unity` opened additively (2186 GameObjects, 190 inactive,
+1036 renderers, 77 lights) plus every material, prefab and texture under `Assets/`.
+The scene-serialized values the morning refresh could not verify are now
+CONFIRMED: GRULABUSPOT is a trigger on the Body layer with `BountyZone` (chance
+0.28); PARENT/KID carry `AuthoredNPCSpawner` + `FloorbinTalk` / `ShllorbinTalk` +
+`LostKidQuest` and are saved (the null `parentTalk/kidTalk` refs are resolved from
+the spawners at runtime); `TreeSpawner` cell 34 m / chance 0.75 / 18 prefabs + 18
+weights; the flashlight spot is 35.75° / 11.7° / range 120.
+
+**Clean:** zero renderers in the scene on a null, missing-shader or SRP material;
+zero non-kinematic rigidbodies on non-convex mesh colliders; zero missing prefab
+instances; zero missing scripts in `samsPrefabs` / `Resources` / `3 - Scripts`
+prefabs; only two shadow-casting lights (the sun + the shuttle floodlight).
+
+**Findings (all low-severity, none touched):**
+- **One missing script** on `--- Managers ---/SolarSystemMap` (component 3 of 4;
+  GUID `c76a0a9e923d31f4a8a7d9efae18a70a`, no serialized fields, never existed in
+  git — a never-committed local script). Harmless; remove via the component's
+  context menu when convenient.
+- **26 materials on missing/URP/HDRP shaders**, ALL in third-party demo/HDRP
+  subfolders and referenced by nothing in the scene or `samsPrefabs` (Alien_Pack
+  `Materials/HDRP/*`, Low Poly Nature `BDStudios Water` shadergraphs, Modular
+  Building Kit `Urp/`, old `Graphics/Materials/Old/*`). Safe to ignore or delete.
+- **Null material slots in prefab ASSETS** (`MoonBaseINTER` switches/photos,
+  `Shuttle_Lander` OrientationObjectivesText + Strike0–6, `_Vaulted/STAGEGOOD*`
+  cone/strobe visuals, `F-Rod/default`, `Props/Torch (1)` particle renderers) —
+  every scene instance overrides them with a real material (nulls = 0), the
+  concert visuals get theirs at runtime, and `F-Rod` / `Torch (1)` are referenced
+  by nothing. Cosmetic prefab drift only.
+- **Textures:** 1042 textures / 1453 MB imported, but only 306 / 580 MB are
+  reachable from the enabled build scenes + `samsPrefabs` + `Resources`, and 158 /
+  435 MB from the main scenes. The worthwhile trims, all import-setting changes:
+  - Low-Poly Medieval Market `.tif`s import UNCOMPRESSED (`fish_market` 10.7 MB
+    RGBA32, `vegetables market` 10.7 MB, `Bakery` 8 MB RGB24, `Meat` 8 MB,
+    `Weapon market` 16 MB RGB24) — ~53 MB that would be ~9 MB at DXT1/DXT5.
+    Flat-shaded low-poly atlases compress with no visible loss.
+  - Alien_Pack `Textures/Shared/Alien{1..10}_Metallic/_Normal` at 2048² DXT5 =
+    20 × 5.3 MB ≈ 106 MB for toy-alien NPCs; `maxTextureSize` 1024 would quarter it.
+  - Piloto Studio `StickyFlipBooks/Sticky_Splash_1..11` at 2048² = 11 × 5.3 MB ≈
+    58 MB of blood-splash flipbooks reachable from the main prefabs.
+  - `Cursed_Toys_II/Toy1_NormalMap.png` 4096² = 21 MB (one enemy).
+  - `HelmetHUD/phone_arm.png` 896×1200 RGBA32 uncompressed 4 MB, no mips;
+    `helmet_frame.png` 3840×2160 BC7 7.9 MB stays assigned by design (§35
+    `HelmetFrameArt`).
+  - No reachable texture has Read/Write enabled (the 35 flagged are the tiny
+    `InputPrompts/src` sources). Six reachable Default-type textures ≥512 px have
+    no mipmaps; only `Crater Ejecta Ray.psd` (2 MB, planet shading — forbidden
+    zone, leave it) and the two HelmetHUD ones are bigger than 0.3 MB.
+- Scene-structure oddity worth knowing: every `--- Section ---` organizer is a
+  CHILD of the root object `AstronautReflectLight` (the second directional light,
+  intensity 1.3, no shadows) — which is why root-level greps for the organizers
+  never matched.
+
+Scripts used: `IdleAudit1..4.cs` in the session scratchpad (re-runnable from a
+fresh scratchpad; they open `1.6.7.7.7` additively and close it again).
+
 ## 2026-09-05 — Open items (supersedes §B for current work)
 
 **Built, NOT play-tested** (in the order Sam is likely to hit them):
