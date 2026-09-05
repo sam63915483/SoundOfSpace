@@ -106,6 +106,21 @@ as before, so every scene without a cave is unaffected. Revert with
 
 ---
 
+## Talking to Sam
+
+Sam is a solo first-time gamedev and the sole audience for everything written here.
+Explain things so he can decide, not so an engineer can audit:
+
+- **Lead with what it means for the game** (memory, stutter, load time, look, a
+  gameplay change), then the *why* in one or two plain sentences. Jargon comes
+  after the plain version, or only when he asks.
+- **Numbers only when they change the decision**, and give them a comparison
+  ("as much memory as ~200 normal textures"), not a raw figure.
+- **Say what it costs / what could look different**, and whether it's urgent or a
+  before-release thing.
+- Don't over-explain and don't dumb it down — clear and short, one idea per
+  sentence. He'll ask for depth when he wants it.
+
 ## Working notes
 
 - Match existing patterns rather than inventing new ones; guard scene-object references with null checks rather than redesigning.
