@@ -1,10 +1,12 @@
-# Current State Audit — 2026-06-13 refresh (base: 2026-05-27)
+# Current State Audit — 2026-09-05 refresh (base: 2026-05-27, prior refresh 2026-06-13)
 
-**Branch at time of refresh:** `feat/oxygen-atmosphere-system`
+**Branch at time of refresh:** `feat/helmet-hud` (the long-lived working branch; `master` is ~600 commits behind it)
 **Auditor:** Claude Code (Opus 4.8, 1M context); original base audit by Opus 4.7.
 **Method:** Direct filesystem inspection, scene-file grep, and parallel-agent exploration of `Assets/3 - Scripts/`, `Assets/3 - Scripts/Scripts/`, `Assets/1.6.7.7.7.unity`, `Assets/MainMenu.unity`, and every top-level `Assets/*` folder. Cross-referenced against the project's `CLAUDE.md`; deviations are flagged inline.
 
 > **⚠️ 2026-06-13 refresh delta — read this first.** The single biggest change since the base audit: **the local-LLM phone companion is gone.** It has been replaced by (1) a deterministic **preset branching-dialogue system** (`Assets/3 - Scripts/Story/` + `Assets/StreamingAssets/Story/conv_*.json`) and (2) the **HAL companion** — templated, event-driven one-liners + a deterministic `IntentRouter` for fact questions. `LLMService` still compiles and is still seeded, but its model path is hard-gated off and **no `.gguf` weights are needed or shipped.** Other notable additions since 2026-05-27: the **oxygen/atmosphere survival system** + pressurised-hatch eject (§6.1), **crystal harvesting** + the shared **cubeface spawner** + **GPU-instanced grass** (§16), and the **Mission 1 "Taken In" story fork** (§10.1). Sections §17, §23, §27 and the scrap list have been rewritten to match; the newer systems are documented in §6.1, §10.1, and §16. Sections not touched by this refresh reflect the 2026-05-27 state and remain accurate unless noted.
+
+> **⚠️ 2026-09-05 refresh delta — read this first.** Everything since mid-August, verified against the code on `feat/helmet-hud` at 59c3d767. The big movements: **(1) the shuttle IS the intro** — New Game wakes you in the stasis pod 4 km above Humble Abode mid-approach and you land the shuttle yourself (old HAL arrival film is bypassed, not deleted); **(2) the solar system is clockwork** — the sun is pinned, every planet rides an exact circular rail whose `railPeriod` IS its day length, orbits can no longer decay; **(3) the main menu has a live 3D background** (a stripped copy of the gameplay scene loaded additively, Sam-recorded camera take); **(4) fishing Phase 1** — 12 named species + GRULABU, a distance-based fight, bait, sun-angle bite rate; **(5) hand-authored NPCs** (Floorbin/Shllorbin lost-kid quest) and the **random wandering aliens are VAULTED**; **(6) the Humble Abode forest is 18 FantasyForest/FantasyValley variants**, torch-on-grass now matches the ground; **(7) zero C# warnings** is the baseline; **(8) every third-party pack lives under `Assets/5 - External Imports/<Category>/`.** §1, §2, §8, §9, §16, §23 and §34 were patched in place; the new **§35 FeatureVault master list** is the one place every vaulted feature is enumerated; the dated addenda at the end cover the rest. Sections not touched still reflect the 2026-06-13 state and remain accurate unless noted — a "(NEW …)" marker on a heading is historical.
 
 This document has **two parts**:
 
@@ -54,6 +56,10 @@ A short **Verification Notes** appendix at the bottom records what was and wasn'
 - §30 Photos App (local)
 - §31 Input & Controller Support (REVAMPED 2026-07-04)
 - §32 Black-Hole Observation Dimensions (NEW 2026-07-05)
+- §33 Messages App & Repeat Buyers (NEW 2026-08-07)
+- §34 Shuttle Autopilot Travel (NEW 2026-08-25; landing pop FIXED 2026-08-28; it is also the intro)
+- §35 FeatureVault — master list of vaulted features (NEW 2026-09-05)
+- Dated addenda, 2026-08-18 → 2026-09-05 (tape formats, village doors, water FX, Tev revamp, PHOSPHOR UI, economy/loop-feel, co-op TRAX, eclipse gate, shuttle wake intro, clockwork orbits, menu orbit background, warning-zero, pack reorg, fishing Phase 1, authored NPCs, forest swap, flashlight parity, open items)
 
 **Appendix**
 - §A Verification Notes (what was/wasn't checked)
@@ -84,6 +90,10 @@ Separately, the in-world **black hole** (`BlackHoleCapture` in `1.6.7.7.7`) now 
 
 The MainMenu scene is small — root contains `EventSystem`, `MenuRoot` (with `MainMenuPanel` + `SaveLoadPanel` children), `Cleanup` (carrying `MenuSceneCleanup`), and `Main Camera`. No gameplay content; no disabled GameObjects flagged.
 
+**Menu background (2026-08-31, Sam-confirmed).** `MainMenuController.Start` loads `Assets/4 - Scenes/MenuOrbit.unity` **additively** behind the menu — a stripped copy of the gameplay scene (planets, sun, black hole, water, the Shuttle_Lander, the player+camera, LOD, floating origin; every gameplay system deleted). The active scene stays `MainMenu`, so the singleton trap never fires; PLAY loads `1.6.7.7.7` single-mode, which unloads it for free; if the scene is missing the old nebula simply stays. Scripts in `UI/MenuOrbit/`: `MenuOrbitBootstrap` (applies the gameplay sky/ambient/sun by hand — additive scenes contribute NO RenderSettings — and finds the camera under the player subtree, never `Camera.main`), `MenuShuttleTour` (HA→Icey→Fiery→Cyclops loop, all math body-relative), `MenuSunAim` (aims the one directional light at whichever planet dominates the view — the only way one sun can light every planet's night side correctly), `MenuCameraRig` (Sam-DIRECTED: PLAYBACK of the baked take in `StreamingAssets/menu_camera_take.json`, shuttle-relative so it loops; F9 = manual re-record, newest `Logs/menu_take_*.json` is the take to bake), `MenuTourTracker` (diagnostics). `MenuShotDirector` is RETIRED — file exists, unused; do not resurrect it. Full trap list (three Camera.main-caching scripts, EventSystem death, kneecap camera after START GAME) in the 2026-08-31 addendum.
+
+**New Game boot (2026-08-28, Sam-confirmed).** NEW GAME → black screen + "OPEN YOUR EYES — LMB" → you are in the stasis pod of a shuttle already **4 km above Humble Abode, inbound** (`ShuttleAutopilot.PrepareIntroApproach` / `LaunchIntroApproach`); six clicks open the eyes, the pod door opens, you walk the flying cabin, ~30 s later the shuttle hovers at 100 m and you land it with the NAV app. Touchdown = normal play. The old `ShuttleArrivalSequence` HAL film + `PodArrivalSequence` + cabin wake-up are **bypassed unconditionally by `IntroSequenceController`, not deleted** (scene/prefab still reference them; removing them needs a scene pass with Sam). `IntroSequenceController.ShuttleWakeActive` gates the stasis-pod "sealed-within-3s-of-load ⇒ this is a save-load" ritual so the DOWNLOADING overlay doesn't fire on a new game. See the 2026-08-28 addendum.
+
 Cinematic scenes (`Cutscene`, `Flashback`, `Flashback1`) are disabled in build settings but **must not be deleted** — `CutsceneController.cs`, `InterrogationDialogue.cs`, and `FlashbackManager.cs` hard-reference them by name via `SceneManager.LoadScene()`.
 
 ## §2 The Solar System
@@ -101,7 +111,9 @@ Eight `CelestialBody` instances live under the `--- Celestial ---` section (veri
 | Tumbling Bean | Eccentric tumbling rock |
 | Watchful Eye | Outer planet |
 
-Bodies orbit each other under `NBodySimulation` at a fixed 100 Hz physics tick (`Universe.physicsTimeStep = 0.01f`). Both `PlayerController` and `Ship` extend `GravityObject` and apply gravity manually — Unity's built-in gravity is off (`rb.useGravity = false`). Orbital state is **deterministic given starting state**, and the save system snapshots/restores per-body position+rotation+velocity so day/night and orbital phase resume exactly.
+**The system is CLOCKWORK, not simulated (2026-08-31, `3c62515e` + `b98e959d`, Sam-tuned).** The free n-body integrator DID decay — the twins were measured orbiting inside the sun after ~3 game-hours; deaths reload the scene and reset orbits, which is why it went unnoticed for months. Now: the Sun is `isPinned` (never integrated, still a gravity source); every planet rides an **exact circular rail** (`CelestialBody.railPeriod`, double-precision phase + fixed basis); all three moons are satellite-locked. **Planets don't spin, so a planet's local day = its orbital period, and `railPeriod` in the inspector IS that planet's day length** — the design knob (rescale v0 to 2πr/T when changing it). Current clocks: twins 600 s (10 min), Humble Abode 900 s (15 min), Cyclops 1200 s (20 min); 10 HA days = 2h30 = the intended loop length. Humble Abode orbits **retrograde** (`d5960b5f`) for ~5× more eclipse conjunctions. Rails rebase sun-relative on save-load teleports and are floating-origin immune; old saves keep their decayed radii (rails resume circles from loaded positions) — recommend New Game. `GalaxyTime` (1 s = 1 min, the rent/messages clock) is **deliberately decoupled** from day/night — don't "fix" that. Dev harness: `OrbitClockProbe` (scene, `--- Managers ---`, logs laps/anomalies to `Logs/*.csv`) and `SoakGodMode` (scene-DISABLED; 20× + unkillable + muted for AFK soaks). Measurement trap: float accumulators lie at these magnitudes (2.3% slow past t=8192) — any long-run time/angle accumulator must be `double`, and verify against an analytic invariant before believing a measured "drift". Notes: `docs/DAY_NIGHT_CLOCKS.md`.
+
+Physics still ticks at 100 Hz (`Universe.physicsTimeStep = 0.01f` — **fixedDeltaTime is 10 ms in this project, not 20; halve every v·dt intuition**). Both `PlayerController` and `Ship` extend `GravityObject` and apply gravity manually — Unity's built-in gravity is off (`rb.useGravity = false`). The save system still snapshots/restores per-body position+rotation+velocity so day/night and orbital phase resume exactly. Co-orbit followers move by `MovePosition` sweep, not teleport (`810a640f`) — anything world-space near a follower still deserves suspicion (keep vehicle logic in the body's local frame).
 
 **Generation code lives in `Assets/3 - Scripts/Scripts/Celestial/`** — this is the procedural planet pipeline and is forbidden territory per CLAUDE.md (see §22).
 
@@ -198,20 +210,26 @@ Single-instance non-stackable hotbar item from `Alien7Vendor` (`ShopItemKind.Fis
 
 The picker snapshots cursor lockState at Open and restores on Close so the parent cook/sell panel keeps its unlocked cursor. The picker does NOT gate on `PlayerController.isInDialogue` (cook + sell both set it true) — only on map / phone / piloted state.
 
-## §8 Fishing Loop
+## §8 Fishing Loop — REWRITTEN 2026-09-05 (Phase 1 revamp shipped 2026-09-03, `78eb6242`; Sam-confirmed the shore snap fix)
 
-The full loop:
+Fishing is one of the game's **two core money loops** (with TRAX). Balance law from the handoff: fishing must earn LESS per real-time hour than selling tapes. Spec: `docs/Handoff_FishingRevamp_Phase1_v1.md` (STATUS block records every false `[EXISTS]` claim — the "9 fish models" one was false). Bounty fish / zones / the Floorbin quest were Phase 2 and are ALSO in (§9).
 
-1. Player trades a **cassette tape** (`CassettePickup` → `CassettePlayer`) to **Alien3** (`NPCDialogue` on Alien3) in exchange for the fishing rod.
-2. Post-trade dialogue plays, `NPCDialogue.ConversationCompleted` flips, and `FishingRodController.ForceEquipRod()` auto-equips the rod into `autoEquipRodAtIndex`.
-3. The rod (`F-Rod.prefab` / `fishing_rod.prefab`) spawns at the camera's `HoldPosAll` anchor and a casting `Bobber.prefab` is fired into water on click.
-4. `Bobber.cs` handles physics/buoyancy, then `OnCatch()` populates a `FishEntry` and routes through bag → hotbar fallback → InventoryFullPopup.
-5. Caught fish are logged in `FishInventory` (the **lifetime dex**, append-only via `AddFish`).
-6. `FishingdexManager` displays every fish ever caught (consumed, sold, destroyed). The dex's eat-raw button was removed in Phase 2 — `RawFishConsumption.Consume(tier)` in `FishInventory.cs` is the single source of truth.
-7. Fish are sold via `FishMarketNPC` (Common/Uncommon/Rare staged columns + total + sell button) using `FishStagingUI` to pick which fish to sell.
-8. Fish are cooked at any placed bonfire via `BonfireInteraction.cs`. Cook panel: three rarity rows, add-button per row (opens `FishStagingUI`), 10-second cook timer, eat button. Hunger restored: 20 (common) / 35 (uncommon) / 60 (rare).
+**Getting the rod:** unchanged — trade a cassette (`CassettePickup` → `CassettePlayer`) to **Alien3** (`NPCDialogue`) for the rod; `FishingRodController.ForceEquipRod()` auto-equips. Alien7's vendor also sells a rod.
 
-**Bonus tutorial.** `BonusTutorial.OfferFishing()` — invoked from the fishing flow; sequence CastBobber → CatchFish → SpinCatch → OpenFishingdex → FishingExtraInfo. A bonus tutorial pauses the main `TutorialManager`.
+**The loop (all in `Assets/3 - Scripts/Fishing/`):**
+1. **Bait is required.** Three vendor items at the fish market (`FishingBait.All`, cheapest first): GRUBS $1 (neutral), GLOWWORMS $2 (+uncommon), VOIDMAGGOTS $4 (+rare). Bait is **consumed on the bite, not the cast**, and lost if the hook window is missed or the line snaps — a botched fight costs money. No bait ⇒ cast refused ("need bait" gaze prompt). Hotbar ids `BaitGrubs/BaitGlowworms/BaitVoidmaggots` (personal, stackable, storable).
+2. **Cast** (`FishingRodController` + `Bobber`, ~2550 lines): the bobber is parented to the planet while parked. **Sun-angle bite rate** (`FishingSun`): `dot(surfaceNormal, toSun)` under the bobber → wait ×0.5 in the twilight band (|dot| ≤ 0.25), ×0.8 at night, ×1.6 by day, lerped at the band edges, re-evaluated per bite timer; twilight also shifts tier weights. Chasing the terminator is an intended meta.
+3. **Roll** (`FishingRules`, Unity-free): tier first (base 45/35/20 common/uncommon/rare, twilight 38/37/25 — Sam's revision from 70/25/5; bait shifts on top), then uniform species within the tier. **12 species, 3 tiers × 4**: Bassk/Truttle/Perchik/Smelk · Emberbass/Glimtrout/Nullpike/Sturgle · Marlorb/Tarpune/Muskrellon/Coelancer, each with tint, weight range, $/lb and stamina; plus the bounty row **GRULABU** (`bounty = true`, 140–260 lb, ~3× a rare's stamina, blood-red, only `BountyZone` water rolls it — `RollSpeciesInTier` skips bounty rows). `FishSpeciesVisuals.ApplySpeciesLook` tints each part with luminance restored + rarity emission (unc 0.55 / rare 1.8 / bounty 2.6) + a point light in the world. ⚠️ Fish were all one colour until 2026-09-03 because `Floreswa/Materials/Sea.mat` referenced the URP Lit shader GUID — fixed to Standard; `Tint()` swaps unsupported shaders at runtime.
+4. **The fight** (`FishFightSim`, Unity-free state machine; rewritten after Sam's playtest — v1's tension bar was "just keep the bar half full"): the win condition is **DISTANCE** — the fish is a real point in the water, reeling drags it to the bank, a run takes line back out, landed when it reaches the shore. Stamina = how much RUN the fish has left (uncommon/rare run; commons never). Tension (0–100) is only the punishment for greed — 100 = snap (fish + bait lost). Outcomes `Landed / Snapped / SlippedOff`. HUD = one thin arc near the reticle (`FishingTensionHUD`, auto-singleton) + `RodBend`. Tuning on the `FishingTuning` ScriptableObject. Headless suite: `verify-fishing.py` (138 checks) simulates thousands of fights.
+5. **Landing / the shore tow (the 2-day "shore snap" war, WON 2026-09-03):** the parked bobber renders at the planet's interpolated transform, up to vel×0.02 s behind `planetRb.position`; releasing it from `Update` at `transform.position` birthed the rigidbody that far behind the ground = a one-frame snap. Every draw-side "smoother" made it worse because **`autoSyncTransforms=false` only DEFERS transform writes to the next physics step** — each cosmetic hold was a physics teleport. The fix is physics-side only: `ReleaseFromWaterNow()` runs at the top of `FixedUpdate`, birth pose = `planetRb.position + planetRb.rotation·(planetTf⁻¹·rendered)` written BEFORE `AddComponent<Rigidbody>`, seed velocity = `CelestialBody.velocity` (the exact rail sweep, not a finite-differenced tip velocity), `ResolveBankOverlap` via `ComputePenetration`, and the hang seam seeded from the physics clock. **Do not reopen this; do not add smoothers.** The landed fish is then a real body during the tow (`AttachFishPhysics`: slick capsule, mass 0.05, `ConfigurableJoint` to the bobber with `connectedMassScale 0.02`, EM-registered; detached at hang/stop/despawn). Rule that won it: **re-seed every integrator at every ownership handoff**.
+6. **Catch → item** (`FishCatchUI` popup names the species; `FishEntry` carries `speciesId` + weight) → bag → hotbar fallback → InventoryFullPopup. Species names now show in the hotbar label, phone dex, catch popup and bonfire card (they used to print the TIER).
+7. `FishInventory` = lifetime dex (append-only `AddFish`); `FishingdexManager` displays it; `RawFishConsumption.Consume(tier)` is the single eat-raw path.
+8. **Sell** at `FishMarketNPC` (staged columns via `FishStagingUI`; $/lb × weight). The sell panel **refuses bounty fish** — GRULABU is turned in through the vendor's story rows (Phase C, appended fields at the END of `FishMarketNPC`; `Hotbar.RemoveFishEntry`/`FindFish`).
+9. **Cook** at any placed bonfire (`BonfireInteraction`): three rarity rows, 10 s timer; hunger 20/35/60.
+
+**Bonus tutorial** (`BonusTutorial.OfferFishing()`): CastBobber → CatchFish → SpinCatch → OpenFishingdex → FishingExtraInfo; pauses the main `TutorialManager`.
+
+**Co-op:** fish and bait are personal hotbar items; nothing new is synced.
 
 ## §9 NPCs and Dialogue
 
@@ -228,9 +246,9 @@ The NPC roster lives in `Assets/3 - Scripts/NPC_Dialogue/`. Pre-placed NPCs are 
 | ShipMarket / Toy1 | `ShipMarketNPC` | Sells whole ships and individual ship parts |
 | GuitarShopNPC | `GuitarShopNPC` | Sells the guitar |
 | ORG / Interrogation | `ORGDialogue`, `InterrogationDialogue` | Story/cinematic NPCs |
-| Streamed aliens | `SpawnedAlienNPC` + `AlienNPCDamageable` | Ambient population spawned by `AlienNPCSpawner` (verified — `AlienNPCSpawner` GameObject found at line 31742 of scene) |
+| Streamed aliens | `SpawnedAlienNPC` + `AlienNPCDamageable` | **VAULTED 2026-09-04** (`FeatureVault.WanderingNPCs = false`, §35): `AlienNPCSpawner` streams nothing. The component and its prefab list stay alive because `AuthoredNPCSpawner` borrows prefab + seating offsets from it. Pre-placed village aliens are scene objects and unaffected. Side effect: `BuyerMessageDirector`'s craving ambush walk-up picks from `SpawnedAlienNPC.AllAliens`, so it never fires while vaulted. |
 
-**Authored NPCs (2026-09-03).** Place an EMPTY under a planet, add `World/AuthoredNPCSpawner` (name, prefab or `borrowPrefabIndex` into the streamed spawner's list, scale, wander) + `NPC_Dialogue/AuthoredNPCTalk` (or a subclass overriding `Conversation()` with `Speak`/`Choose`/`Flag`). At runtime the spawner seats an alien on the terrain under the empty by radial raycast (retries until the planet collider exists), parents it through the physics frame, adds NPCWaveAnimation + AlienWander (`Hold`, `SpeedMultiplier`, `ReHome`, `TeleportLocal` are the quest hooks) + a talk trigger + a solid capsule; `AuthoredNPCBody` on the body relays range/gaze. First users: Floorbin/Shllorbin (`Story/LostKidQuest.cs`, `FloorbinTalk`, `ShllorbinTalk`) on Humble Abode's PARENT/KID markers, with `Fishing/BountyZone` on GRULABUSPOT rolling the GRULABU bounty row. State = StoryDirector flags.
+**Authored NPCs (2026-09-03).** Place an EMPTY under a planet, add `World/AuthoredNPCSpawner` (name, prefab or `borrowPrefabIndex` into the streamed spawner's list, scale, wander) + `NPC_Dialogue/AuthoredNPCTalk` (or a subclass overriding `Conversation()` with `Speak`/`Choose`/`Flag`). At runtime the spawner seats an alien on the terrain under the empty by radial raycast (retries until the planet collider exists), parents it through the physics frame, adds NPCWaveAnimation + AlienWander (`Hold`, `SpeedMultiplier`, `ReHome`, `TeleportLocal` are the quest hooks) + a **trigger-only** talk collider (⚠️ NO solid collider on NPCs you talk to: `PlayerController` pins the pose every tick during `isInDialogue`, so overlapping a solid NPC collider = push/pin fight = slide + jitter); `AuthoredNPCBody` on the body relays range/gaze — the BODY (named `npcName`) must own the prompt and the conversation, never the marker empty, or the outline/name-plate go missing. Feet: `World/NPCSeating` bakes the instance's skinned mesh (`BakeMesh`, never renderer `bounds` — they're authored-loose) → real lowest vertex → re-seat on a planet-local terrain probe → `AlienWander.SetSeatDepth`; both spawners call it (Sam-confirmed 2026-09-03: "the npcs now all sit perfectly on the ground"). It logs `[NPCSeating] name: feetY=…` per spawn — read that first if feet are wrong again. First users: Floorbin/Shllorbin (`Story/LostKidQuest.cs`, `FloorbinTalk`, `ShllorbinTalk`) on Humble Abode's PARENT/KID markers, with `Fishing/BountyZone` on GRULABUSPOT rolling the GRULABU bounty row (geometric `Contains()` at bite time, 28% chance, `NoteCaught` retires it; `Awake` forces trigger + Ignore Raycast because the scene object was saved SOLID on the Body layer). State = StoryDirector flags (`floorbin_name_learned / shllorbin_following / shllorbin_returned / bounty_spot_known / grulabu_caught`, world-saved, reset by `NewGameReset`). Quest beats: kid FOLLOWS you (walk 1.4×, run 2.6× beyond 14 m, re-seat beyond 90 m), reunion within 15 m = ring dance (`PlaceOnRing`, `BounceHeight/BounceHz` hop) then `parentTalk.ForceStart()`; Floorbin paces frantically (1.9×, hop bursts) and does a one-time run-up within 15 m. Turn-in = the fish market's story rows (§8). **Not built:** compass marker / picture for the spot; co-op live flag deltas + NPC walk sync; dialogue is a draft awaiting Sam's voice pass. ⚠️ `HandleMovement` used to `return` on `isInDialogue`, skipping ground-stick/slope/wall clamps for EVERY NPC talk (player slid on hills, sank) — fixed 2026-09-03; direct input reads are masked instead.
 
 Story-impactful NPCs are tagged via `AlienNPCDamageable.isStoryImpactful` — when killed, their GameObject name is recorded in `AlienKillsSave.killedPrePlacedNames` so save/load reflects the kill.
 
@@ -348,9 +366,9 @@ Three streaming spawners run from `--- Managers ---`:
 
 | Spawner | Per-cell prefab | Streaming radius | Cap (InputSettings) |
 |---|---|---|---|
-| `TreeSpawner` | one of 18 `HA_FF_/HA_FV_Tree_*` variants (`Assets/1 - samsPrefabs/Trees/`, built by `Tools ▸ Humble Abode Trees`), rank-WEIGHTED per cell (`treeWeights`) + per-cell size/stretch variety (`sizeRange`/`stretchRange`); Forest variants authored (1.45, 1.8, 1.45), Valley (1.4, 1.4, 1.4), LOD cull pushed past view distance; seed density cell 30 m / 80% (was 40 m / 70%, `PlanetOxygen.treesForFullO2PerMillionSqm` scaled 1500→3350 to match); default `maxTrees` 80 (pref key `maxTreesV2`, slider 20–300) (2026-09-04) | varies per body | `inputSettings.maxTrees` |
+| `TreeSpawner` | one of 18 `HA_FF_/HA_FV_Tree_*` variants (`Assets/1 - samsPrefabs/Trees/`, built by `Tools ▸ Humble Abode Trees ▸ Build Variants + Wire Spawner`, `Editor/HumbleAbodeTreeVariants.cs`), rank-WEIGHTED per cell (`treeWeights`, cumulative pick from hash channel 4; FF 8..1, FV 10..1 in Sam's gallery order) + per-cell `sizeRange` 0.85–1.25 / `stretchRange` 0.9–1.15 (hash channels 6/7, applied after `SpawnedTree.Init` and before `SpawnFade.BeginFadeIn`); Forest variants authored (1.45, 1.8, 1.45), Valley (1.4, 1.4, 1.4); LOD heights 0.20/0.06, cull 0.01 (the raw pack LODGroups culled at ~100–150 m, inside the 350–1000 m view distance — trees vanished while "spawned"); pass 3 (`65e02108`): seed cell ~34 m / 75% (tool-baked scene values; C# default `cellSize` is 40), `InputSettings.defaultMaxTrees` **60** (pref key `maxTreesV2` — the old key held Sam's stored 20; slider 20–300, presets 40/60/110/160), `PlanetOxygen.treesForFullO2PerMillionSqm` **2300** (was 1500 — **any density change must rescale this or the O2 tuning breaks**). `treePrefabs[0]` (HA_FF_Tree_05) is also what saplings mature into. Playtest pending. | varies per body | `inputSettings.maxTrees` |
 | `MushroomSpawner` | one of `mushroomPrefabs[]` (deterministic per cell) | 300 m | `inputSettings.maxMushrooms` |
-| `AlienNPCSpawner` | one of `alienPrefabs[]` (deterministic per cell) | 300 m | `inputSettings.maxAlienNPCs` |
+| `AlienNPCSpawner` | one of `alienPrefabs[]` (deterministic per cell) — **VAULTED 2026-09-04**, streams nothing while `FeatureVault.WanderingNPCs` is false (§9, §35) | 300 m | `inputSettings.maxAlienNPCs` |
 
 Per-cell deterministic seed reproduces world layout across runs. `consumedCells` tracks cells the player has destroyed/picked-up so they don't repopulate. The pause menu exposes a slider per cap; spawners poll `inputSettings.maxX` every tick so changes are live. `SpawnedTree` (chopping yields wood via `WoodInventory`) and `SpawnedAlienNPC` are the per-instance marker components. `WoodPopup` shows "+1" on chop.
 
@@ -371,8 +389,13 @@ Per-cell deterministic seed reproduces world layout across runs. `consumedCells`
 - **`World/SpawnExclusionZone.cs`** — spherical keep-out volume queried by all spawners before placing.
 - **`World/BakedPlanetShading.cs`** — re-applies non-serialized Earth-terrain shader uniforms (`heightMinMax`, `oceanLevel`, `bodyScale`) at runtime so baked terrain's height-remap doesn't collapse. *(Inspect-only — adjacent to the forbidden planet-shading zone; this script just re-pushes uniforms, it doesn't regenerate.)*
 
-### §16.3 Player flashlight (NEW 2026-06-13)
-`Player/PlayerFlashlight.cs` — equippable handheld light, 4-mode **E** cycle (Off → Quarter → Half → Full), procedural halo cookie, subtle flicker/sway, and registers as a `GrassPointLight` so it lights nearby grass.
+### §16.3 Player flashlight (NEW 2026-06-13; grass parity 2026-09-04)
+`Player/PlayerFlashlight.cs` — equippable handheld light, 4-mode **E** cycle (Off → Quarter → Half → Full), procedural Gaussian halo cookie (sigma 0.26), subtle flicker/sway, registers as a `GrassPointLight`. Runs at `[DefaultExecutionOrder(150)]` — **any script that writes world-space shader globals in LateUpdate must run after EndlessManager (0) and InstancedGrassRenderer (100)** or the grass lights from a ~1000 m-stale position for one frame per origin shift (the "black flash", solved `67a71685`). Scene-serialized cone (2026-09-04): `outerSpotAngle` 35.75, `innerSpotAngle` 11.7 — the C# defaults (150/8) are NOT what runs. Beam aim lag (`lagResponsiveness` 8, `maxLagAngle` 14, LateUpdate order 150, snaps while off).
+
+**Torch-on-grass parity (`fdea9f02`, playtest pending).** Sam: "flashlight illuminates the grass way more than the ground". Nothing in the torch path had changed since June — the mismatch was structural: the ground got the cookie + grazing terrain N·L (~0.2), the grass lit the whole inner cone flat on a half-Lambert blade normal (floor 0.5), and since 2026-08-22 `GrassLightAutoMarker` injected the viewmodel fill light at 1.5 × material `_PointLightBoost` (4.5) = 6.75× the real light. Fix: `CG_SimpleGrass.shader` samples the same cookie via global `_FlashlightCookie` (`_FlashlightParams.w` = tan(outer/2); 0 = old cone), shades on `IN.bladeUp` with a `_FlashlightBladeLift` floor (0.35), `CG_GameGrass.mat` `_FlashlightResponse` 1.3, `PlayerLightGrassStrength` 0.35. Target = blades a little ABOVE the ground at the hotspot with the same cookie shape (the ground is Standard PBR and gets a grazing specular lobe blades never get). **If grass/ground torch brightness diverges again, compare the shader block against the cookie + N·L math first, not intensities.** Knobs: `_FlashlightBladeLift`, `_FlashlightResponse`, `PlayerLightGrassStrength`, `lagResponsiveness`.
+
+### §16.4 Tree Gallery scene (NEW 2026-09-04)
+`Tools ▸ Tree Gallery ▸ Build Scene` (`Editor/TreeGalleryBuilder.cs`) → `Assets/4 - Scenes/TreeGallery.unity`: all 99 tree prefabs from the imported packs in rows per pack at regular/tall/super sizes, `TreeGalleryFlyCam`, built ADDITIVELY so the open scene is untouched. This is how Sam picked the Humble Abode roster. Doc: `docs/TREE_GALLERY.md`. Not in build settings.
 
 ## §17 AI Companion (Phone Chat) & Preset Dialogue — REWRITTEN 2026-06-13
 
@@ -514,42 +537,31 @@ Per CLAUDE.md, `Planet Effects/` subfolder is forbidden (couples to the planet p
 
 Per CLAUDE.md, the following all auto-spawn via `RuntimeInitializeOnLoadMethod(AfterSceneLoad)` and `DontDestroyOnLoad` themselves. Most skip creation when the active scene is `MainMenu` — and **every one of those must also be seeded in `MainMenuController.EnsureGameplaySingletons()`** or it'll be missing in builds (the MainMenu singleton trap).
 
-| Singleton | File |
+**Regenerated 2026-09-05 from the `if (X.Instance == null)` seed lines in `MainMenuController.EnsureGameplaySingletons` (68 entries) — this list IS what a build gets.** Grouped; paths relative to `Assets/3 - Scripts/`.
+
+| Group | Singletons (file) |
 |---|---|
-| `PlayerWallet` | `Player/PlayerWallet.cs` |
-| `WoodInventory` | `Player/WoodInventory.cs` |
-| `SpaceDustInventory` | `Player/SpaceDustInventory.cs` |
-| `CrystalInventory` | `Player/CrystalInventory.cs` (new on this branch) |
-| `ResourceManager` | `Survival/ResourceManager.cs` |
-| `Hotbar` | `UI/Hotbar.cs` |
-| `FishStagingUI` | `UI/FishStagingUI.cs` |
-| `TutorialUI` | `Tutorial/TutorialUI.cs` |
-| `BonusTutorial` | `Tutorial/BonusTutorial.cs` |
-| `CompassHUD` | `UI/CompassHUD.cs` |
-| `CameraEffectsManager` | `Camera/CameraEffectsManager.cs` |
-| `KillstreakManager` | `Combat/KillstreakManager.cs` |
-| `PlayerTreeContactTracker` | `Combat/PlayerTreeContactTracker.cs` |
-| `ConcertStageHub` | `Concert/ConcertStageHub.cs` |
-| `RawFishTripController` | `Effects/RawFishTripController.cs` |
-| `AutosaveManager` | `SaveSystem/AutosaveManager.cs` |
-| `NoteCollection` | `Player/NoteCollection.cs` |
-| `OxygenManager` | `Survival/OxygenManager.cs` (new — §6.1) |
-| `GameKnowledgeBase` | `AI/GameKnowledgeBase.cs` |
-| `AIStoryController` | `AI/AIStoryController.cs` |
-| `AIMemoryStore` | `AI/AIMemoryStore.cs` |
-| `LLMService` | `AI/LLMService.cs` — **still seeded, but inference is gated OFF (§17C); no model loads** |
-| `StoryDirector` | `Story/StoryDirector.cs` (new — story flags/objectives, §17A) |
-| `HintTrackRunner` | `Story/HintTrackRunner.cs` (new — HUD tip tracks, §17A) |
-| `HALCommentator` | `AI/HALCommentator.cs` (new — volunteered one-liners, §17B) |
-| `HALVolunteeredLog` | `AI/HALVolunteeredLog.cs` (new — transcript, §17B) |
-| `HALVoicePlayer` | `AI/HALVoicePlayer.cs` (new — voice clips, §17B) |
-| `HALLineHUD` | `AI/` (new — red-eye HAL notification HUD, §17B) |
-| `DimensionDevLoader` | `Dimensions/DimensionDevLoader.cs` (new — Shift+D dev warp to any dimension, §32) |
-| `VelocityMarkersHUD` | `Ship/VelocityMarkersHUD.cs` (prograde/retrograde markers — seeded 2026-07-05; was missing from the seed list, i.e. broken in builds) |
+| Economy / story | `PlayerWallet` (Player/), `TevPaymentUI` (Vendor/), `TevTextDirector` (Story/), `DayRecapDirector` (Vendor/), `TevRentCollector` (Story/ — inert while `FeatureVault.TevRent` is false) |
+| Inventory / hotbar | `Hotbar` (UI/), `WoodInventory`, `CrystalInventory`, `SpaceDustInventory` (Player/), `SpaceDustField` (World/), `StorageUI`, `FishStagingUI` (UI/), `PickupUIManager`, `HeldItemViewmodel` (Pickups/) |
+| Survival | `OxygenManager`, `PlanetOxygen`, `OxygenHUD`, `WaterFillHUD`, `VitalsHUD`, `SaplingPlanter`, `MushroomPlanter`, `DomeBuildRegistrar`, `GrowPotRegistrar`, `DomeAudio` (all Survival/) |
+| World / lighting | `GalaxyTime` (World/), `GalaxyTimeHUD` (UI/), `EclipseShadowGate`, `GrassLightAutoMarker`, `CaveOceanCutout`, `MonumentLinkPopupUI` (World/), `NewspaperReaderUI` (World/Newspaper/), `PixelLightLimitFix` (Scripts/Game/Lighting/ — the torch-flicker canonical bug), `PlayerLightToggle` (Player/ — `/` toggles player lights, Sam's test rig) |
+| Camera / HUD | `CameraEffectsManager`, `ViewmodelFillLight`, `TrailerFreeCam`, `TrailerBlackHoleGrow` (Camera/), `HelmetOverlayHUD` (UI/Helmet/), `CompassHUD`, `InteractPromptUI`, `GazeHighlight`, `NoteReadUI`, `TabbedPauseMenu`, `KillstreakHUD` (UI/), `PhosphorDialogueBox` (NPC_Dialogue/), `FishingTensionHUD` (Fishing/) |
+| Ship | `GForceHUD`, `FlightAssistStatusHUD`, `ShipNameHUD`, `VelocityMarkersHUD` (Ship/) |
+| Combat | `KillstreakManager` (Combat/) |
+| Tutorial / opening | `TutorialUI`, `BonusTutorial`, `TutorialPerformanceReview`, `OpeningDirector` (Tutorial/ — beats gated by `FeatureVault.OpeningBeats`), `MapTutorial` (Map/) |
+| Progression | `PlayerProgress`, `ProgressToastUI`, `ProgressHooks`, `LevelUpCeremonyUI` (Progression/ — all score nothing while `FeatureVault.LevelSystem` is false) |
+| HAL / AI | `HALCommentator`, `HALVolunteeredLog`, `HALVoicePlayer`, `AIMemoryStore`, `GameKnowledgeBase` (AI/), `HALLineHUD` (UI/) |
+| Save / dev | `AutosaveManager` (SaveSystem/ — the slot is the backrooms TRANSFER only), `DimensionDevLoader` (Dimensions/) |
 
-All of the "new" singletons above are seeded in `MainMenuController.EnsureGameplaySingletons()` (verified 2026-07-05) per the MainMenu trap. Known exception: `LightingDebugToolbox` (`Scripts/Game/Lighting/`) has the MainMenu skip but is NOT seeded — it's a dev diagnostic overlay, so it simply never appears in builds; seed it or `#if UNITY_EDITOR`-gate it if that ever matters.
+Seeded through their own `Ensure`-style calls rather than the `Instance == null` pattern (present in `MainMenuController`, verified by grep): `StoryDirector`, `HintTrackRunner`, `LLMService` (inference gated OFF, §17C), `AIStoryController`, `MultiplayerSession`, `BuyerMessageDirector`.
 
-**Scene-bound (not auto-spawned but live in `--- Managers ---`):** `NBodySimulation`, `EndlessManager`, `EnemySpawner`, `TreeSpawner`, `MushroomSpawner`, `AlienNPCSpawner`, `CrystalSpawner` (new — §16), `GrassSpawner` (new, decorative — §16), `FishingdexManager`, `PickupUIManager`, `SolarSystemMapController`, `MapTutorial`, `NPCConversationTracker`, `TutorialManager`.
+**Auto-singletons that deliberately do NOT skip MainMenu** (so they need no seed — the trap-#1 dodge): every `Multiplayer/*Sync` (`WorldSync`, `StorageSync`, `EnemySync`, `TraxSync`, `PersonalSync`, `AlienSync`, `TraxSessionSync`, `EconomySync`, `ShuttleSync`, `VillageDoorSync`) and `ConcertStageHub`.
+
+**Dropped from the old list because they are no longer `RuntimeInitializeOnLoadMethod` auto-singletons** (no such attribute in the file as of 2026-09-05 — scene-bound or lazily created; verify before relying on `Instance`): `ResourceManager`, `NoteCollection`, `PlayerTreeContactTracker`, `RawFishTripController`.
+
+Known exception: `LightingDebugToolbox` (`Scripts/Game/Lighting/`) has the MainMenu skip but is NOT seeded — it's a dev diagnostic overlay, so it simply never appears in builds; seed it or `#if UNITY_EDITOR`-gate it if that ever matters. Menu-only: `MenuOrbitBootstrap`/`MenuCameraRig`/`MenuSunAim` are scene-authored in `MenuOrbit.unity` and the bootstrap seeds `CameraEffectsManager` idempotently for the menu (named "CameraEffectsManager (menu)"; `EnterGameplay` destroys it so gameplay seeds a fresh one — a menu-poisoned module cache put the gameplay camera at the player's knees once).
+
+**Scene-bound (not auto-spawned but live in `--- Managers ---`):** `NBodySimulation`, `EndlessManager`, `EnemySpawner`, `TreeSpawner`, `MushroomSpawner`, `AlienNPCSpawner`, `CrystalSpawner` (new — §16), `GrassSpawner` (new, decorative — §16), `FishingdexManager`, `SolarSystemMapController`, `NPCConversationTracker`, `TutorialManager`, `OrbitClockProbe` (+ the scene-DISABLED `SoakGodMode` on it), `AuthoredNPCSpawner` instances (under Humble Abode: PARENT / KID markers), `BountyZone` (on GRULABUSPOT). `PickupUIManager` and `MapTutorial` are auto-singletons now (table above).
 
 ---
 
@@ -873,7 +885,7 @@ test 2026-08-07; UI eyeball pass pending.
 
 ---
 
-## §34 Shuttle Autopilot Travel — NEW 2026-08-25 (playtest pending)
+## §34 Shuttle Autopilot Travel — NEW 2026-08-25 (SHIPPED, Sam-confirmed 2026-08-28; also the intro since 2026-08-28)
 
 The parked shuttle flies between planets via a **NAV** app on the shuttle
 computer. PARKED→COUNTDOWN(10s)→LIFTOFF→TRANSIT→HOVER(100 m, WASD/QE, 9-ray
@@ -905,6 +917,51 @@ landing validity)→LANDING→PARKED. Spec + decisions:
 - **Editor**: `Tools → Shuttle Travel → Add Interior Volume + Landing Lamp To
   Prefab` (LoadPrefabContents patch; both objects optional at runtime).
 
+**STATUS 2026-09-05 — SHIPPED and Sam-confirmed (2026-08-28: "finally it works
+now thank god").** 41 playtest passes between 2026-08-25 and 08-28. What stays
+from that hunt, and the laws it produced (full saga in the 2026-08-28 addendum):
+
+- **The felt "snapped up a few inches" pop on ANY kinematic-parented → free
+  handover = PhysX's default `Rigidbody.maxDepenetrationVelocity` (10 m/s).**
+  `InitRigidbody` clamps it to 1 m/s on the player. Clamp it on every
+  player-like body.
+- **The release seat = the player's own RENDERED pose** (`pc.transform.position`,
+  zero visual snap by construction) + vertical-only foot trim vs the actual PhysX
+  floor (cap 25 cm — a bigger correction means the cast slipped through the open
+  doorway) + `velocity = bodyVel` carried forward. When a handover artifact
+  survives repeated "authoritative pose" fixes, anchor to the rendered pose and
+  let physics adapt.
+- **Rotate-then-release, never release-then-rotate** (`ReleaseSettleSeconds`
+  2.2 s); `ForceGroundedOnRelease` hands over grounded = true.
+- **Planets move by `rb.MovePosition`, which only advances `rb.position` AT the
+  physics step** — a pose composed through an interpolated parent mid-FixedUpdate
+  is a full v·dt (~1.4 m at 135 m/s) behind the colliders. Never write a
+  transform compose into a rigidbody; every pose consumer must agree on ONE
+  vintage. Execution-order matters: a pose composed at order −50 vs one written
+  at order 0 differ by a whole step.
+- **Never re-seed a clamp/guard from its own clamped output** — that ratchet
+  parked the rider rb kilometres from the cabin for a whole flight.
+- The whole shuttle prefab is on layer 10 = the terrain layer, so every ground
+  query from the shuttle must go through `ShuttleAutopilot.GroundRay()` (skips
+  `IsChildOf(self)`), or it hits its own hull (the "runaway hover" bug).
+- Icey Twin is a co-orbit FOLLOWER; hover is fully body-local for that reason.
+- Same-planet RELOCATION exists ("HERE · RELOCATE" tile: Liftoff → HOVER, land
+  elsewhere) — also the fastest test loop.
+- Cockpit monitor mirrors the NAV in flight and shows a live en-route camera
+  feed (`ShuttleLandingCamera.FeedMode.Up`, mount 9 m so the roof beacon is out
+  of frame; LEFT CLICK — SWITCH CAM); `ShuttleComputerUI.EnsureBuilt()` builds
+  the whole terminal without opening it, because a lazily-built UI is black on
+  a world-facing screen until someone presses F.
+- The flight recorder / self-test (`ShuttleTravelSelfTest`, `build/shuttle-selftest.flag`)
+  is the method for trajectory changes — never ship one without flying it.
+- **Forensic rigs**: the `IntroWatch` / `MegaTracker` instrumentation
+  (`RiderReleaseBleed` in `ShuttleRiderFrame.cs`, stage counters in
+  `PlayerController`) was retired 2026-09-05 — see that addendum. `MenuTourTracker`
+  (menu scene) is the surviving descendant of the idea.
+- Still open: the OLD intro pod release (`ShuttleArrivalSequence`) never got the
+  same foot-exact + grounded-continuity treatment — moot while that sequence is
+  bypassed by the wake intro (§1), relevant only if it is ever revived.
+
 ---
 
 # Appendix
@@ -928,6 +985,8 @@ What this audit verified directly (via Read/Glob/Grep):
 - ✅ `EnableFrameTimingStats.cs` is a real `[InitializeOnLoad]` tool, not dead code
 - ✅ `JitterDiagnostic.cs` has since been deleted (was self-marked deletable)
 - ✅ `PerfBootstrap.cs` is a real perf-optimization hook, not dead code
+
+**2026-09-05 pass** (no Editor; filesystem + grep only): every file named in the new sections exists; `FeatureVault` flags read from source; the §23 seed list regenerated from `MainMenuController`; species table read from `FishingRules.cs`; `TreeSpawner`/`InputSettings`/`PlanetOxygen` knobs read from source; `FeatureVault.WanderingNPCs` gate confirmed in `AlienNPCSpawner`; `PrepareIntroApproach`/`ShuttleWakeActive` confirmed. NOT verified this pass: scene-serialized values (tree cell size/chance, flashlight cone angles, GRULABUSPOT trigger flag, the PARENT/KID authored-NPC wiring being SAVED in the scene — Sam had to Ctrl+S), and everything marked "playtest pending".
 
 What this audit did NOT verify (don't fully trust):
 
@@ -1158,3 +1217,326 @@ label's activeSelf. Zero changes to the ten NPC scripts that speak through it.
 label-only "> " rows — no numbers, digit hotkeys still work unseen — hover
 light-up, staggered fade-in, CRT turn-on). Shared palette/builders:
 `PhosphorUI` in PhosphorDialogueBox.cs.
+
+---
+
+## §35 FeatureVault — master list of vaulted features (NEW 2026-09-05)
+
+`Assets/3 - Scripts/FeatureVault.cs` is the ONE place built-but-switched-off
+features are gated. Every flag is `static readonly bool` — **never `const`**
+(a `const` folds every `if (!FeatureVault.X) return;` into CS0162 "unreachable
+code"; that alone was 40 of the 177 warnings the 2026-08-31 cleanup removed).
+Flip a flag and the feature returns exactly as built. Prefab-and-delete vaults
+(objects removed from the scene for perf, preserved in
+`Assets/1 - samsPrefabs/_Vaulted/`) and their restore ritual live in
+`docs/VAULTED_SYSTEMS.md`.
+
+| Flag | State | What it gates (and what it deliberately does NOT) | Since |
+|---|---|---|---|
+| `OpeningBeats` | **off** | OpeningDirector's six survival beats (locker → water → wood → fire → build → village). Built, never play-tested. | 2026-08-03 |
+| `ColdOpenQuestions` | **off** | The three recruiter questions on the black screen. "Open your eyes." is NOT part of this. | 2026-08-03 |
+| `DescentBriefing` | on | HAL's five spoken lines on the way down. (Was mis-vaulted once; stays on.) | 2026-08-03 |
+| `TapeCareerGate` | **off** | The Half/Full-Length blank LOCK (10/25 tapes sold). `TapeCareer.TapesSold` still counts, so re-enabling lands mid-career. | 2026-08-18 |
+| `SpaceDustSelling` | **off** | The "Sell space dust" NPC row ONLY. Field, pickup, inventory, hotbar, save all live. | 2026-08-04 |
+| `HelmetFrameArt` | **off** | The painted helmet shell + visor + its settings toggle. The three HUD clusters, their quad seating, sway and idle sweep are untouched; `HelmetHudConfig` + texture must stay assigned (clusters read the quad corners from it). Low-O2 condensation was decoupled, not vaulted. | 2026-08-06 |
+| `Multiplayer` | on | The MULTIPLAYER menu button, the "play together?" prompt, the Relay lobby, the second pod arrival. False = no Unity Services connection is ever attempted. | 2026-08 |
+| `ConcertVenue` | **off** | Stage, both AudienceZones, Max Audience, strobe rig, cone beams, audience spawner — REMOVED from the scene (prefab in `_Vaulted/`), because an inactive object still loads its assets. | 2026-08-09 |
+| `TevCabinAmbush` | **off** | Tev's parked ship + the entry ambush (ill-defined in co-op). ⚠️ Vaulting `Tevsship` also vaulted the smuggling mission (see VAULTED_SYSTEMS). | 2026-08-09 |
+| `ShipSchool` | **off** | The village SHIP SCHOOL buildings + instructor flow. | 2026-08-09 |
+| `MushroomSelling` | **off** | The "sell mushrooms" NPC row ONLY. Finding/chopping/replanting/eating all live. Frees the SELL PANEL, which now serves tapes. | 2026-08-14 |
+| `FreeformBuilding` | **off** | The build MENU + its catalogue + the phone Build app — NOT the placement machinery (sapling/mushroom planters call `BuildMenuUI.StartPlacementFromPhone` directly; gate the ghost and you kill replanting). | 2026-08-14 |
+| `LevelSystem` | **off** | General level, Colonizer/Tree Killer/Tree Daddy/Gangsta Rep, phone page, toast, ceremony, every level-gated unlock. Gated at ONE choke point (`PlayerProgress.Add` scores nothing); save fields untouched. `BuildMenuLock` is dead and must stay dead (`NewGameReset` calls `LockAllExcept()` with no args). | 2026-08-14 |
+| `TevFrontingEconomy` | **off** | The 50/50 front, skim quote, debt ledger, SLUDJ/CHIRP/DRIFT demo tapes — dialogue path only; `TevFronting.cs`/`TevDemoTapes.cs` still compile and round-trip. | 2026-08-14 |
+| `TevLawnWorkOff` | **off** | "Sell N of my tapes and we're square" haggle + `MushroomQuest.SettleLawn`. Counters kept in the schema. | 2026-08-14 |
+| `VillageTev` | **off** | Tev's village APPEARANCE only — Tev himself lives at his cabin (a House_06 copy since `431f543e`). | 2026-08-09 |
+| `TevRent` | **off** | Daily lawn rent: haggle, `TevRentCollector` accrual, arrears, nag, `TevPaymentUI` rent entry, day-recap rent line, 5-day PLUGINS lockout. Five choke points; `MushroomQuest.PluginsLocked` hard false while vaulted. Tev is a music-store owner now (TRAX = $20 USB stick). | 2026-08-30 |
+| `CravingSystem` | on | Per-buyer 0..100 hunger: want-text cadence, guaranteed daily order at 90+, ambush walk-up at 60+ (dead while `WanderingNPCs` is off), contact-card ladder word. Behaviour only, never price. | 2026-08-17 |
+| `WanderingNPCs` | **off** | `AlienNPCSpawner` STREAMING only. Component + prefab list stay alive (authored NPCs borrow from it); pre-placed village aliens untouched; killed-cell save data round-trips. Sam: "npcs need to be special". | 2026-09-04 |
+
+Three other gates are `static readonly` for the same CS0162 reason and must
+stay that way: `Universe.cheatsEnabled`, `CassetteVisual.LogOrientation`,
+`ShuttleArrivalSequence.ReleaseDiagnostics`.
+
+---
+
+## 2026-08-16/17 — Taste economy rebalance + loop-feel "S1 flywheel" (playtest pending)
+
+Full system doc: `docs/SELLING_SYSTEM_HANDOFF.md` (§9 status block); handoff
+`docs/Handoff_LoopFeel_S1Flywheel_v1.md`. Headline facts every future economy
+change must respect:
+
+- **Tolerance and payout are inversely linked** (`AlienTaste.Falloff`,
+  `PayFactor` derived from it): ~55% of aliens broad-eared and cheap, ~19% fussy
+  and premium — the rare superfan IS the jackpot. Population skew is a `const`
+  in the pure files; no inspector overrides; `verify-taste.py` must stay green.
+- **HINT CONTRACT:** a tape whose classifier primary (or blend secondary) equals
+  the alien's favourite genre is NEVER refused (`AlienTaste.GateFor`) — hints
+  are guaranteed truthful. **Any new sale path must call `GateFor`, not
+  `Gate(sat)`.** CLANG and VOLT are both genres (6.56 apart) — the "hint lied"
+  anecdote was a vocabulary collision.
+- **Money is decided in exactly two places:** `TapeOffer` (walk-up rulebook:
+  ask ≤ ceiling(fair×patience) is PAID AT YOUR PRICE, over → counter, outrageous
+  → final offer; PushBack = one more Judge round) and `TapeDeal.Grade` (orders;
+  paid == agreed exactly for exact goods — `gratitudeMult` is GONE). Never
+  inline money math; keep `Music/DealTerms.cs` Unity-free. Parity test
+  `test/DealTests.cs` in verify-taste.
+- Tier preference (30% T2 snobs / 30% T1 cheapskates / 40% neutral) is a
+  contract term on appointments; T1-on-T2 pays exactly half.
+- `BuyerLedger.askTier` is a SAVED index into `TraxClassifier.Genres` — never
+  reorder/insert genres. Sold songs are written to `TapeMemory` (the infinite
+  re-sell exploit is closed).
+- Loop-feel: 5-word satisfaction ladder (`SatBand` 42/60/78/92), the walk-up
+  slider is stripped to the last-paid tick, `DayRecapDirector` posts a phone
+  recap the frame after rent bills, CRAVING (§35) drives want-texts
+  (5–8 min ÷ 1.0–2.5× craving — the "bond-scaled cadence" the old comments
+  described never existed before this), ~30% of eligible requests are NAMED
+  (`TapeMemory` lineage registry, saved; `requestTrackId` on the contract is
+  SAVED so a reload cannot loosen the promise). `EvType 12=DayRecap,
+  13=NamedRequest` — never renumber; every new Ev field rides `Ev.s`/`EvSave.s`
+  and the headless suite has its own `TapeMemorySave` stub in `test/SaveStubs.cs`.
+- Console screen mirror = end-of-frame backbuffer capture; `Interactable.strictGaze`
+  is `[NonSerialized]` (never add serialized fields to that base); `CassetteSlot`
+  force-enables `requireGazeToInteract` in Awake because the inspector flag
+  being unchecked dead-coded four rounds of fixes.
+
+## 2026-08-18 — Co-op TRAX loop + world-only saves (one big playtest pending)
+
+Spec `docs/superpowers/specs/2026-08-18-coop-trax-loop-and-world-save-design.md`;
+**checklist `docs/PLAYTEST_COOP_TRAX.md`.** `TraxSync` (shelf/rack/prints/deck/
+StoryDirector as version-watched whole snapshots), `PersonalSync` (co-op pod save
+handshake), `AlienSync` (walked-to poses only — the alien spawner was already a
+deterministic hash), `TraxSessionSync` + `ShuttleComputerCoopUI`. Sam's ruling
+after playtest 1: **the shuttle computer is ONE COMPUTER, not two synced
+copies** — the whole screen state replicates by polling the live UI every frame;
+only the two cursors and the volume slider are per-player. The world monitor
+shows the live screen (each machine re-renders the synced UI into the mirror RT
+through a private parked camera; a canvas must be laid out by Unity BEFORE a
+camera can photograph it — yield a frame). **Layer 31 is NOT free** (BuildMenuUI,
+FishingdexManager, DeathCutsceneController hard-code it; use 30).
+
+Save rework is a PRE-PASS: `SelectPersonalBlock` copies this character's
+`PlayerBlockSave` over the top-level fields before the documented apply order
+runs. **The pod is now the ONLY save point** (periodic autosave, pause-menu SAVE,
+cyclops checkpoint, legacy settings dialog all removed); the `autosave` slot
+survives ONLY as the backrooms transfer — never gate it host-only. ⚠️
+`SaveCollector.Capture` builds a FRESH SaveData, so a static `_knownBlocks`
+registry re-files every other character's block into each capture — **any
+future per-character save row has the same trap.** Two more "nearest player =
+only player" rules were fixed; audit every such rule. An adversarial review
+found 7 runtime bugs in code that compiled clean and passed 4 suites — always
+run one over a pass this size.
+
+## 2026-08-18/22 — Eclipse shadow gate (`World/EclipseShadowGate.cs`)
+
+The game's solar eclipses were never coded — they are free DIRECTIONAL shadow
+mapping, and a directional light has no position, so a planet 20 km BEHIND the
+sun eclipsed you exactly like a moon in front. The gate (auto-singleton, seeded)
+forces `shadowCastingMode = Off` every 0.5 s on any body that cannot physically
+block the player's sun (behind it, or farther from it than the player is);
+original modes are remembered and restored. **The nearest body is ALWAYS
+exempt** — its terrain self-shadowing is what makes sunsets (the grass tip-light
+pass exists because of it). Never remove the exemption. 2026-08-22: the gate
+itself caused a walk-triggered GLOBAL brightness pop — it measured distance from
+the CAMERA, so walking around a planet moved you across the iso-distance surface
+of a body at nearly your own solar radius (a moon always is) and toggled its
+casting. Now measured from the centre of the body underfoot + 2% hysteresis.
+Same family as the black-hole horizon and grass-light bugs: **right maths at the
+wrong reference point** — when a per-frame test gates a global rendering
+property, check what its inputs are measured FROM.
+
+## 2026-08-22 — Grass lighting pass (commits `fa8752d0` → `740633b5`)
+
+A ten-step bisect harness (F1 cycles it; every step must PROVE it did something)
+found the grass brightness pop: lanterns out-shone the sun in the grass shader's
+light channel. Result: the channel is physically incapable of snapping (every
+light near the cut fades, a slot is reserved for the fade), lanterns are capped
+below the sun, the player's fill light visibly reaches nearby blades and is
+ALWAYS on (the day/night switching was dropped — Sam liked the tint), and lamps
+have zero daytime influence. `GrassLightAutoMarker` (auto-singleton) injects the
+viewmodel fill light into the grass; its boost was later found to be 6.75× and
+was retuned in the 2026-09-04 flashlight pass (§16.3).
+
+## 2026-08-28 — The shuttle IS the intro (wake mid-approach) — SHIPPED, Sam-confirmed
+
+Design (Sam's): see §1. Ten intro playtests in one day; the "cabin slide" saga
+ended with a general law. What is in the code and why:
+
+- **Rider cage** (`ShuttleRiderFrame`, `PlayerController.RiderFixedTick`):
+  per-tick authority lives in LOCAL space. The stored local pose advances ONLY by
+  intended deltas (walk/wall rotated into the parent frame once, seat on local
+  Y) and the transform is written FROM it — the world pose is never read back
+  as truth. **The float ratchet:** at 4–15 km from origin each world↔local
+  conversion carries ~1 mm of ulp noise; a "write world pos, read back local"
+  loop compounds it at 100 Hz into a directed slide that goes through walls,
+  starts at eyes-open, grows in the burn, spikes at the flip, reverses under
+  retro and freezes at hover. Nine instrument iterations to name it. Rule:
+  **convert world→local once per intent, never per tick.**
+- Any early-return inside a per-tick authoritative-pose loop must still assert
+  the pose (the eyes-shut dialogue branch used to skip the pin → unpinned pod
+  slide). Any per-tick corrector fed by mm-scale noise ratchets (overlap
+  rescue, wall-slide projection, up-alignment all did) — gate correctors on
+  real signal magnitude and pin every pose component the cage owns. Rider
+  up-alignment pivots about the FEET, not the capsule centre.
+- Rocket attitude on every flight: thrust axis = ship up; rise radial → nose
+  onto destination → 180° flip over ease 0.45–0.60 → retro tail-first → settle
+  to arrival radial. `ShuttleThrustFX` (`SetEngine`/`SetSpurts`/`SetAltitude`)
+  is name-anchored to the prefab's Nozzle_*/EngineBell transforms; FX lights
+  cast Hard shadows with bias 0.01 (bias ≈ wall thickness leaked through walls).
+- Shuttle geometry: 7 wall panels, windows on walls 2/4/6, pod against −Z, floor
+  slab y 0.55–0.79, skirt 0.48–0.72; two SQUARE floor windows (recessed panes
+  inside 1.36×1.38 m holes sharing NO plane with anything — the only form that
+  didn't z-fight or outline); an 86-pair whole-ship z-fight sweep resolved by
+  3 mm proud-nudges (`ShuttleZFightAudit.cs` lives in a session scratchpad —
+  re-run after any shuttle geometry work). Mesh lessons: measure rim verts, not
+  a min-distance probe, to learn a hole's shape; compute triangle winding
+  against the intended normal; verify from BOTH sides; objects applied into the
+  prefab need `LoadPrefabContents` to remove.
+- Intro approach distance 15 km → 4 km (15 km forced a close sun flyby).
+- Watch-fors never playtested: guests on the intro path; save interactions
+  mid-intro (the pod is occupied, so no save is possible).
+
+## 2026-08-31 — Warning baseline is ZERO (`docs/CLEANUP_PASS_2026-08-31.md`, `c91af70a`)
+
+`python prototypes/shuttle-computer/test/compile-unity.py` reports **0 warnings**
+on Assembly-CSharp and Assembly-CSharp-Editor (was 177: 91 CS0649 serializer
+false positives, 40 CS0162 from `const` FeatureVault flags, two other causes).
+**Any new warning is real signal.** The checker builds THREE variants (editor,
+editor-assembly, player defines with `UNITY_EDITOR` stripped — the third caught
+a CS0067 the editor variant missed); never claim "0 warnings" off the editor
+variant alone; it covers C# only (shader warnings, missing-script refs and
+play-mode errors need the real console). `Assets/csc.rsp` suppresses ONLY
+CS0649 — don't add codes casually. Deliberately-parked serialized fields use
+scoped `#pragma warning disable` with a reason (`BlackHoleCapture`,
+`PlayerController`). The pass also fixed the real bugs the noise had hidden.
+
+## 2026-08-31 — Third-party packs reorganised (`d8e23a85`)
+
+Every third-party art pack now lives under `Assets/5 - External Imports/<Category>/`
+(Nature & Trees, Village & Buildings, Weapons & Tools, Characters & Creatures,
+Music & Concert, Props & Misc, VFX & Flares, SciFi & Space, Horror Levels,
+`_Pack Installers`). Moved via `AssetDatabase.MoveAsset` so GUID refs held.
+The $50 LowPolyFantasyBundle is now fully imported (was 2/10; FantasyForest,
+FantasyValley, LowPolyDungeons, FantasyArena 1+2, CartoonMedievalTown,
+LowPolyRPGWeapons, TropicalEnvironment) — raw imports, nothing placed except
+the HA forest variants (§16). `*.unitypackage` installers are gitignored and
+exist only locally — keep them. Editor fix-scripts with hardcoded pack paths were
+updated; **grep `"Assets/5 - External Imports` before moving anything again.**
+Aliases: Floreswa = fish models, iPoly3D = Concert Pack, Studio Nik = guitars,
+DuNguyn = loot boxes, CartoonMedievalTown = "LowPolyFantasyVillage2".
+
+## 2026-08-31 — Village mill fans spin (`93146bfe`, playtest pending)
+
+Both mills' `MillPart_02` spin via `Survival/SpinPart` (local Z, 15 and 12 °/s so
+they stay out of sync). `MeshCombineTool.CollectEligible` now skips any subtree
+with a `SpinPart` (alongside `VillageDoor`/`DoorPart*`/`_Placed`) — the ghost-door
+rule extended: **anything that moves must be excluded from the combine.** To make
+another baked part move: add `SpinPart`, then revert + re-bake the cluster
+(`MeshCombineTool.RevertUnder(go)` + `RecombineOne(go)` via reflection). The fan's
+non-convex MeshCollider spins with it — fine for two mills, don't copy to dozens.
+
+## 2026-08-31 → 09-03 — Main menu 3D orbit background — SHIPPED, Sam-confirmed
+
+Twenty commits (`9bfb10af` → `e2e91282`); the design that shipped is in §1.
+Traps, each of which cost a debug loop:
+
+- **Additive scenes contribute NO RenderSettings** — only the active scene's
+  lighting applies. The bootstrap applies the gameplay skybox/ambient/sun by hand.
+- **`Camera.main` during an additive load = the OLD scene's still-enabled
+  camera.** Three scripts cached it (`LODHandler`, the bootstrap, `SunShadowCaster`
+  — the latter aimed the sun at MainMenu's dead camera inside the sun → every
+  night side grey). Find the camera under the player subtree; `SunShadowCaster`
+  is disabled in the menu and `MenuSunAim` owns the light.
+- **Cross-scene `FindObjectsOfType` sees ALL loaded scenes** — a canvas sweep
+  deactivated the MainMenu canvas and killed `MainMenuController`'s coroutines
+  mid-yield. Filter on `obj.scene == gameObject.scene`.
+- **The dead menu mouse was the EventSystem** (current = null, no input module
+  after the additive load), not cursor lock — the controller cycles it off/on
+  post-load. `InputSettings.Begin()` applies gameplay cursor lock; always free
+  the cursor after it in menu code. Editor-thread probes can't test UI raycasts
+  (`Screen.width` in `execute_script` = the focused editor panel).
+- **Never LERP a camera that is a child of a moving rig toward a world target**
+  — the parent drags it between LateUpdates; write the pose exactly, put
+  smoothness in the orbit parameters. Renderers/Animators are not
+  MonoBehaviours — a `GetComponentsInChildren<MonoBehaviour>` disable sweep
+  misses them (the astronaut trailed the camera).
+- A world-space `ParticleSystemRenderer`'s initial bounds sit at the WORLD
+  ORIGIN — one `bounds.Encapsulate` sweep read "radius ~6000" and parked the
+  camera at 15 km. Measure Mesh/SkinnedMesh renderers only + sanity-cap.
+- "Spawner" (`SolarSystemSpawner`) is the PLANET TERRAIN FACTORY (adds
+  `CelestialBodyGenerator` to every body at runtime), not enemies — deleting it
+  gives placeholder spheres. Planet terrain is 100% runtime-generated.
+- Floating-origin shifts were the "occasional hitches" — the menu sets
+  `endless.distanceThreshold = 60000`, so the tour never shifts.
+- **Kneecap camera after menu → START GAME:** the menu-seeded, DontDestroyOnLoad
+  `CameraEffectsManager` persisted with poisoned module caches, AND
+  `CameraTransformFX.CacheRefs` one-shot-snapshotted a cinematic-displaced
+  `cam.localPosition`. Now sources `PlayerController.CameraBaseLocalPos`. **Any
+  DontDestroyOnLoad module that lazily caches scene state ONCE will poison
+  itself across the menu-background flow.**
+- Editing `.cs` then Coplay `play_game` WITHOUT `AssetDatabase.Refresh` runs
+  STALE assemblies (`check_compile_errors` does not refresh) — identical numbers
+  to the decimal across "different builds" is the tell.
+- Sam's standing rules: no auto shot director (he flies the camera; F9 re-record,
+  bake newest `Logs/menu_take_*.json`); no black fade-in (menu + nebula appear on
+  frame 1, nebula crossfades out 1.2 s once MenuOrbit is loaded + 2 frames — if a
+  first-frame snap ever shows, lengthen the wait, not the fade); screenshot-first
+  on any visual work (F10 in the menu = screenshot+context to the session
+  scratchpad, Sam's one-key bug report).
+- Loose end: DontDestroyOnLoad gameplay canvases (TevShopUI, MushroomSellUI,
+  SpaceDustSellUI, PostGreetingChoicePanel, LoadingScreen) exist in the menu
+  session — probably unguarded auto-singletons; `VignetteOverlay` canvas is
+  enabled in the menu. Audit if menu visuals/input misbehave again.
+
+## 2026-09-03 — Authored NPCs, lost-kid quest, GRULABU (BUILT, Sam-confirmed seating; quest playtest pending)
+
+Kit + quest + bounty are in §8/§9. Process facts: Sam is pivoting to a small
+playable DEMO with fully authored NPCs (hence the wandering-alien vault the next
+day). Handoff `docs/Handoff_BountyQuest_Grulabu_v1.md` with Sam's live changes
+(kid follows you; reunion = run together + celebration + parent thank-you naming
+the fish spot "north, up the lake shore"). Editor wiring was done via Coplay and
+**the scene was NOT saved by the agent — Sam had to Ctrl+S**; verify the
+PARENT/KID markers carry `AuthoredNPCSpawner` + `LostKidQuest` before debugging
+"the quest doesn't start". Alien wading depth is now `0.5 × body height` for ALL
+aliens (Sam asked). Harness trap: bash heredocs choke on some file contents —
+use the Write tool for new `.cs` files, python patch scripts for edits.
+
+## 2026-09-04 — Forest swap, flashlight parity, tree gallery, wandering NPCs vaulted (playtest pending)
+
+All four are in §16 / §9 / §35; commits `fdea9f02`, `668bf5e6`, `580e15f5`,
+`65e02108`, `dcf8efa4`, `59c3d767`. Tuning history Sam set by eye: forest pass 1
+"too tall and skinny" → per-pack girth scales; pass 2 "a bit too dense" → cap
+80→60, cell 30→34 m, chance 0.8→0.75; flashlight cone 55° → 27.5° → 35.75° outer.
+Sam asked whether to hand-place trees — answer: keep random (cell-keyed
+chop/save/MP/O2 all depend on it). Coplay `execute_script` cannot compile a file
+that defines a class already in the assembly — call the compiled class from a
+tiny scratchpad runner. `get_unity_editor_state.activeAssetPath` is the Project
+window selection, NOT the open scene — probe `SceneManager`.
+
+## 2026-09-05 — Forensic rigs retired (IntroWatch / MegaTracker)
+
+The landing-pop (`MegaTracker`) and cabin-slide (`IntroWatch` v1–v5)
+instrumentation from 2026-08-28 — `RiderReleaseBleed` in `ShuttleRiderFrame.cs`,
+the per-stage drift counters in `PlayerController`, the `BeginIntroWatch` call in
+`IntroSequenceController` — was removed once both fixes were Sam-confirmed. The
+laws they produced are recorded in §34 and the 2026-08-28 addendum; the approach
+(everything CABIN-relative, per render frame AND per physics tick, net vectors
+only, versioned report stamps) is the template if a handover artifact ever comes
+back. `MenuTourTracker` in the menu scene is untouched.
+
+## 2026-09-05 — Open items (supersedes §B for current work)
+
+**Built, NOT play-tested** (in the order Sam is likely to hit them):
+1. Fishing Phase 1 fight/bait/species feel (`docs/Handoff_FishingRevamp_Phase1_v1.md`) + the dragged-fish tow (`65c47f17`).
+2. Floorbin/Shllorbin quest end-to-end + GRULABU turn-in at the fish market.
+3. Humble Abode forest density/proportions (`65e02108`) and torch-on-grass parity (`fdea9f02`, `59c3d767`).
+4. Village mill fans; PHOSPHOR dialogue plate; Tev first-meeting (TRAX USB stick, $25 locker seed).
+5. Co-op TRAX loop (`docs/PLAYTEST_COOP_TRAX.md`) — nothing since 2026-08-18 has been verified in co-op, including the shuttle intro and authored NPCs.
+6. Eclipse gate + tape formats (2026-08-18).
+
+**Known gaps / follow-ups:**
+- Lost-kid quest: compass marker / picture for the spot; co-op flag deltas + NPC walk sync; Sam's dialogue voice pass.
+- `BuyerMessageDirector` ambush walk-up is dead while `WanderingNPCs` is vaulted — either pick from authored NPCs or accept it.
+- Old intro (`ShuttleArrivalSequence`/`PodArrivalSequence`) is bypassed, not deleted — needs a scene/prefab pass with Sam to remove.
+- `StreamingAssets/LlamaLib-v2.0.5/` (3.96 GB) is still inert dead weight (§27) — safe to delete locally.
+- `TapeOffer.cs` vs `MushroomSellUI.MakeOffer` duplicate the listen gate (two call sites for any gate change).
+- The `_Archive/` (416 MB) and `transfer/` decisions from §B are still open.
