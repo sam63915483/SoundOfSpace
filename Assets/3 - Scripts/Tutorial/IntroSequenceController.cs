@@ -369,10 +369,6 @@ public class IntroSequenceController : MonoBehaviour
         }
         pilot.CaptureIntroRiders();
         PlayerController.isInDialogue = true;   // eyes shut — look yes, walk no
-        // Pod-slide hunt (Sam's ask): cabin-relative drift watch from the
-        // very start of the intro — reports ~48 s in.
-        RiderReleaseBleed.BeginIntroWatch(_pc, pilot.CurrentBody, 45f);
-        RiderReleaseBleed.Mark("intro-start");
 
         // Click-to-wake on the classic eyelids. Pure black first; the prompt
         // fades up after 3 s ONLY if they haven't clicked yet (Sam's timing).
@@ -387,7 +383,6 @@ public class IntroSequenceController : MonoBehaviour
             yield return null;
         }
         pilot.LaunchIntroApproach(30f);         // first blink = engines light, HA approach begins
-        RiderReleaseBleed.Mark("first-click-launch");
         yield return new WaitUntil(() => _clicks >= clicksToWake);
         _clicksArmed = false;
         _opennessTarget = 1f;
@@ -400,10 +395,8 @@ public class IntroSequenceController : MonoBehaviour
         // first blink, the cockpit monitor is already on the landing screen,
         // and the player walks over, presses F, and sets it down.
         PlayerController.isInDialogue = false;
-        RiderReleaseBleed.Mark("eyes-open");
         yield return new WaitForSeconds(3f);
         if (podDoor != null) podDoor.OpenHold();
-        RiderReleaseBleed.Mark("pod-door-open");
         ShuttleWakeActive = false;   // pod systems resume once the door is open
         _running = false;
     }

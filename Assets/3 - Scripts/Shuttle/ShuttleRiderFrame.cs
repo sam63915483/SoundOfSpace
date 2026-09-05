@@ -417,7 +417,7 @@ public static class ShuttleRiderFrame
             // released with the override still parked on the shuttle itself.
             if (PlayerController.UpOverrideTransform == pilot.transform)
                 pilot.BlendRiderUpOut(1.5f);
-            RiderReleaseBleed.Mark("release");
+            RiderReleaseBleed.ArmHold();
             s_player = null;
         }
 
@@ -444,90 +444,34 @@ public static class ShuttleRiderFrame
     }
 }
 
-// MEGA-TRACKER (playtest 37, Sam's ask: "track the player relative to the
-// planet and relative to the shuttle and anything else"). The key design
-// realization after 10 probe logs: every earlier column was PLANET-relative
-// or absolute, but the player's EYES judge motion relative to the CABIN they
-// are standing in. This version records, per render frame AND per physics
-// tick, the camera / player transform / player rigidbody expressed in the
-// SHUTTLE'S OWN FRAME (render frame for rendered things, physics frame for
-// the rigidbody), plus grounded/rider flags. Standing still, every
-// cabin-relative delta must be ~0.0 cm; the pop is the row where a channel
-// is not, and WHICH channel names the culprit:
-//   dPly moves, dRb still  -> render-side jump (interpolation/camera path)
-//   dRb moves too          -> a genuine physics kick on that tick
-//   g flips 1-0-1          -> grounded loss (airborne pose/branch)
-//   only dCam moves        -> camera pipeline (FX arm, hold, look)
-// Cabin-frame numbers are also intrinsically origin-shift-proof (player and
-// shuttle shift together). One summary log, 3 s AFTER the window closes.
-// The camera HOLD from playtests 31/32 still runs here (it is behavior, not
-// diagnostics). Editor/cheats gate the recording only.
+// Camera HOLD across the rider-release seam (playtests 31/32, 2026-08-28).
+// The one-frame view dip at the physical release is the render-path switch
+// itself (parent compose -> rigidbody interpolation) and survived every
+// bookkeeping fix, so the camera is held at its pre-release pose relative to
+// the RENDERED planet and bled out over HoldSeconds. Absolute lerp-to-target
+// (cannot compound), no rb/transform/interp writes, aborts if the held pose
+// is more than 5 m away, and is finished before walking is possible.
+//
+// This component used to carry the landing MegaTracker and the IntroWatch
+// forensic recorders that solved the landing pop and the cabin slide; they
+// were retired 2026-09-05 once both fixes were Sam-confirmed. The laws they
+// produced are recorded in docs/CURRENT_STATE_AUDIT.md (§34 + the 2026-08-28
+// addendum).
 [DefaultExecutionOrder(300)]   // after CameraTransformFX (100) — final poses
 public class RiderReleaseBleed : MonoBehaviour
 {
-    // The landing MegaTracker / IntroWatch v5 forensic dumps. These are the rigs
-    // that solved the in-flight slide, so they are kept rather than ripped out —
-    // but they printed a multi-KB report to the console on every landing and
-    // every intro. Flip to true to get them back.
-    // static readonly (never const) so the guarded bodies stay reachable code.
-    static readonly bool Verbose = false;
-
-    struct RSample { public float t, dtMs, holdCm; public Vector3 camCab, plyCab; public bool gnd, rider; public int gc; }
-    struct FSample { public float t; public Vector3 rbCab; public float velDiffCm; public bool gnd, rider; }
+    const float HoldSeconds = 1.2f;
 
     PlayerController _pc;
     CelestialBody _body;
     Transform _cam;
     float _t0, _window;
-    float _lastRealtime;
-    float _reportAt = -1f;
     float _releaseT = -1f;
-    int _lastGcCount, _gcTotal;
-    float _worstDt, _worstDtT;
-    readonly List<RSample> _r = new List<RSample>(700);
-    readonly List<FSample> _f = new List<FSample>(500);
-    static readonly List<string> s_marks = new List<string>(16);
-    static RiderReleaseBleed s_active;
-
-    Vector3 _seatPos;
-    int _walkMarked;
     Vector3 _heldCamLocal;
     bool _holdArmed;
-    float _lastHoldCm;
+    static RiderReleaseBleed s_active;
 
-    // ── Intro watch mode (2026-08-28, the pod slide hunt) ────────────────────
-    // Arms at intro start and samples the player's CABIN-relative position
-    // every 0.5 s for the whole window, reporting CUMULATIVE drift from the
-    // starting spot — a slow slide hides in per-frame deltas but is
-    // unmissable as accumulated drift. Rows carry phase + grounded/rider/
-    // dialogue flags; Marks timestamp the intro events.
-    struct DSample { public float t; public Vector3 plyCab, camCab, rbCab; public byte phase; public bool gnd, rider, dlg; public float alignCm, walkCm, moveCm, yawDeg; public Vector3 recCab, netTick, netOut; public Vector3 netAlign, netMove; public int upOwner; public float upDeg; }
-    bool _introMode;
-    float _nextDriftAt;
-    Vector3 _lastRbCab;
-    readonly List<DSample> _drift = new List<DSample>(120);
-
-    public static void BeginIntroWatch(PlayerController pc, CelestialBody body, float seconds)
-    {
-        BeginWindow(pc, body, seconds);
-        if (s_active != null)
-        {
-            s_active._introMode = true;
-            s_active._nextDriftAt = 0f;
-            s_active._drift.Clear();
-            // Zero the per-stage writer accumulators — each drift row carries
-            // their cumulative values, so slope-matching names the writer.
-            PlayerController.DbgRiderAlignCm = 0f;
-            PlayerController.DbgRiderWalkCm = 0f;
-            PlayerController.DbgRiderMoveCm = 0f;
-            PlayerController.DbgRiderYawDeg = 0f;
-            PlayerController.DbgRiderNetTick = Vector3.zero;
-            PlayerController.DbgRiderNetOut = Vector3.zero;
-            PlayerController.DbgRiderNetAlign = Vector3.zero;
-            PlayerController.DbgRiderNetMove = Vector3.zero;
-        }
-    }
-
+    /// Open a handover window at touchdown; the hold can only be armed inside it.
     public static void BeginWindow(PlayerController pc, CelestialBody body, float seconds)
     {
         if (pc == null) return;
@@ -538,286 +482,44 @@ public class RiderReleaseBleed : MonoBehaviour
         b._cam = pc.Camera != null ? pc.Camera.transform : null;
         b._t0 = Time.time;
         b._window = seconds;
-        b._lastRealtime = Time.realtimeSinceStartup;
-        b._reportAt = -1f;
         b._releaseT = -1f;
         b._holdArmed = false;
-        b._lastGcCount = System.GC.CollectionCount(0);
-        b._gcTotal = 0;
-        b._worstDt = 0f;
-        b._worstDtT = 0f;
-        b._r.Clear();
-        b._f.Clear();
-        b._introMode = false;
-        s_marks.Clear();
         s_active = b;
         b.enabled = true;
     }
 
-    /// Timestamp a discrete event into the current window (no-op without one).
-    public static void Mark(string label)
+    /// Called by ShuttleRiderFrame at the physical release: capture the camera
+    /// relative to the planet and start the hold. No-op outside a window.
+    public static void ArmHold()
     {
-        if (s_active == null || !s_active.enabled || s_active._reportAt >= 0f) return;
-        float t = Time.time - s_active._t0;
-        s_marks.Add("t+" + (t * 1000f).ToString("0") + "ms " + label);
-        if (label == "release")
+        var b = s_active;
+        if (b == null || !b.enabled) return;
+        b._releaseT = Time.time - b._t0;
+        if (b._cam != null && b._body != null)
         {
-            s_active._releaseT = t;
-            if (s_active._pc != null && s_active._body != null)
-                s_active._seatPos = s_active._pc.transform.position - s_active._body.transform.position;
-            if (s_active._cam != null && s_active._body != null)
-            {
-                s_active._heldCamLocal = s_active._body.transform.InverseTransformPoint(s_active._cam.position);
-                s_active._holdArmed = true;
-            }
-            s_active._walkMarked = 0;
+            b._heldCamLocal = b._body.transform.InverseTransformPoint(b._cam.position);
+            b._holdArmed = true;
         }
-    }
-
-    // Physics-tick channel: the rigidbody in the shuttle's PHYSICS frame.
-    // Order 300 puts this after the autopilot (-50), NBodySim (-10) and the
-    // player (0) — the settled state of the tick.
-    void FixedUpdate()
-    {
-        if (_reportAt >= 0f || _pc == null || _pc.Rigidbody == null) return;
-        float since = Time.time - _t0;
-        if (since > _window) return;
-        var ap = ShuttleAutopilot.Instance;
-        if (ap == null) return;
-        ap.GetWorldPose(out Vector3 sw, out Quaternion sr);
-        Vector3 bodyVel = _body != null ? _body.velocity : Vector3.zero;
-        Vector3 rbCab = Quaternion.Inverse(sr) * (_pc.Rigidbody.position - sw);
-        _lastRbCab = rbCab;
-        if (!_introMode && _f.Count < 480)
-            _f.Add(new FSample {
-                t = since,
-                rbCab = rbCab,
-                velDiffCm = (_pc.Rigidbody.velocity - bodyVel).magnitude * 100f,
-                gnd = _pc.GroundedNow,
-                rider = PlayerController.RiderMode,
-            });
     }
 
     void LateUpdate()
     {
-        if (_reportAt > 0f)
-        {
-            if (Time.time >= _reportAt) { Report(); enabled = false; }
-            return;
-        }
         float since = Time.time - _t0;
-        float dtMs = (Time.realtimeSinceStartup - _lastRealtime) * 1000f;
-        _lastRealtime = Time.realtimeSinceStartup;
-
-        // Camera hold across the release seam (playtests 31/32) — behavior.
-        _lastHoldCm = 0f;
         if (_holdArmed && _releaseT >= 0f && _cam != null && _body != null)
         {
-            float u = (since - _releaseT) / 1.2f;
+            float u = (since - _releaseT) / HoldSeconds;
             if (u >= 0f && u < 1f)
             {
                 Vector3 held = _body.transform.TransformPoint(_heldCamLocal);
                 if ((held - _cam.position).sqrMagnitude < 25f)
                 {
                     float w = 1f - Mathf.SmoothStep(0.5f, 1f, u);
-                    Vector3 before = _cam.position;
                     _cam.position = Vector3.Lerp(_cam.position, held, w);
-                    _lastHoldCm = (_cam.position - before).magnitude * 100f;
                 }
                 else _holdArmed = false;
             }
             else if (u >= 1f) _holdArmed = false;
         }
-
-        bool probe = Application.isEditor || Universe.cheatsEnabled;
-        if (probe)
-        {
-            // Walk-out breadcrumbs (planet-relative so orbit never counts).
-            if (_releaseT >= 0f && _walkMarked < 3 && _pc != null && _body != null)
-            {
-                float walked = ((_pc.transform.position - _body.transform.position) - _seatPos).magnitude;
-                if (_walkMarked == 0 && walked > 1.5f) { _walkMarked = 1; Mark("walked-1.5m"); }
-                else if (_walkMarked == 1 && walked > 5f) { _walkMarked = 2; Mark("walked-5m"); }
-                else if (_walkMarked == 2 && walked > 10f) { _walkMarked = 3; Mark("walked-10m"); }
-            }
-
-            int gcNow = System.GC.CollectionCount(0);
-            int gcD = gcNow - _lastGcCount;
-            _lastGcCount = gcNow;
-            _gcTotal += gcD;
-            if (dtMs > _worstDt) { _worstDt = dtMs; _worstDtT = since; }
-
-            var ap = ShuttleAutopilot.Instance;
-            if (ap != null && _pc != null && _cam != null)
-            {
-                Transform shT = ap.transform;
-                if (_introMode)
-                {
-                    if (since >= _nextDriftAt && _drift.Count < 110)
-                    {
-                        _nextDriftAt = since + 0.5f;
-                        _drift.Add(new DSample {
-                            t = since,
-                            plyCab = shT.InverseTransformPoint(_pc.transform.position),
-                            camCab = shT.InverseTransformPoint(_cam.position),
-                            rbCab = _lastRbCab,
-                            phase = (byte)ap.CurrentPhase,
-                            gnd = _pc.GroundedNow,
-                            rider = PlayerController.RiderMode,
-                            dlg = PlayerController.isInDialogue,
-                            alignCm = PlayerController.DbgRiderAlignCm,
-                            walkCm = PlayerController.DbgRiderWalkCm,
-                            moveCm = PlayerController.DbgRiderMoveCm,
-                            yawDeg = PlayerController.DbgRiderYawDeg,
-                            recCab = _pc.RiderRecordLocalPos,
-                            netTick = PlayerController.DbgRiderNetTick,
-                            netOut = PlayerController.DbgRiderNetOut,
-                            netAlign = PlayerController.DbgRiderNetAlign,
-                            netMove = PlayerController.DbgRiderNetMove,
-                            upOwner = PlayerController.DbgRiderUpOwner,
-                            upDeg = PlayerController.DbgRiderUpOffAxisDeg,
-                        });
-                    }
-                }
-                else if (_r.Count < 680)
-                {
-                    _r.Add(new RSample {
-                        t = since,
-                        dtMs = dtMs,
-                        holdCm = _lastHoldCm,
-                        camCab = shT.InverseTransformPoint(_cam.position),
-                        plyCab = shT.InverseTransformPoint(_pc.transform.position),
-                        gnd = _pc.GroundedNow,
-                        rider = PlayerController.RiderMode,
-                        gc = gcD,
-                    });
-                }
-            }
-        }
-
-        if (since >= _window) _reportAt = Time.time + 3f;   // report OUTSIDE the window
-    }
-
-    void ReportIntro()
-    {
-        if (_drift.Count < 2) return;
-        var b0 = _drift[0];
-        var sb = new System.Text.StringBuilder(8192);
-        sb.Append("[IntroWatch v5] ").Append(_drift.Count).Append(" samples / ").Append(_window)
-          .Append("s.  Events: ").Append(s_marks.Count > 0 ? string.Join(", ", s_marks) : "none").AppendLine();
-        sb.AppendLine("cumulative CABIN-relative drift from the start pose (cm);");
-        sb.AppendLine("ph 0=Parked 1=Countdown 2=Liftoff 3=Transit 4=Hover 5=Landing; g=grounded r=riding d=dialogue");
-        sb.AppendLine("nA/nM = NET cm written by the yaw+up-align stage / the move+wall+seat stage (nA+nM = the pipeline's whole output); ov = up owner (0 none, 1 shuttle/own proxy, 3 FOREIGN); ang = chosen-up angle off cabin-up (deg); wk = walk intent");
-        for (int i = 1; i < _drift.Count; i++)
-        {
-            var s = _drift[i];
-            Vector3 dp = s.plyCab - b0.plyCab;
-            sb.Append("  t+").Append(s.t.ToString("00.0"))
-              .Append("s ply ").Append((dp.magnitude * 100f).ToString("0.0"))
-              .Append(" (Y ").Append((dp.y * 100f).ToString("+0.0;-0.0"))
-              .Append(") nA ").Append((s.netAlign.magnitude * 100f).ToString("0.0"))
-              .Append(" nM ").Append((s.netMove.magnitude * 100f).ToString("0.0"))
-              .Append(" ot ").Append((s.netOut.magnitude * 100f).ToString("0.0"))
-              .Append(" ov").Append(s.upOwner)
-              .Append(" ang ").Append(s.upDeg.ToString("0.00"))
-              .Append(" wk ").Append(s.walkCm.ToString("0.0"))
-              .Append(" ph").Append(s.phase)
-              .Append(" g").Append(s.gnd ? "1" : "0")
-              .Append(" d").Append(s.dlg ? "1" : "0")
-              .AppendLine();
-        }
-        if (Verbose) Debug.Log(sb.ToString());
-    }
-
-    void Report()
-    {
-        if (!(Application.isEditor || Universe.cheatsEnabled)) return;
-        if (_introMode) { ReportIntro(); return; }
-        if (_r.Count < 5) return;
-        var sb = new System.Text.StringBuilder(8192);
-        sb.Append("[MegaTracker] ").Append(_r.Count).Append(" render frames / ")
-          .Append(_f.Count).Append(" physics ticks / ").Append(_window)
-          .Append("s from touchdown.  Events: ")
-          .Append(s_marks.Count > 0 ? string.Join(", ", s_marks) : "none").AppendLine();
-        sb.Append("worst frame time ").Append(_worstDt.ToString("0.0")).Append("ms at t+")
-          .Append((_worstDtT * 1000f).ToString("0")).Append("ms  GC in window: ")
-          .Append(_gcTotal).AppendLine();
-        sb.AppendLine("cols: cam/ply = CABIN-relative movement per frame in cm (~0 when standing still);");
-        sb.AppendLine("plyY = cabin-vertical part; hold = camera-hold applied; g=grounded r=riding");
-
-        // Worst cabin-relative player jump anywhere in the window.
-        int worstI = 1;
-        float worstD = 0f;
-        for (int i = 1; i < _r.Count; i++)
-        {
-            float d = (_r[i].plyCab - _r[i - 1].plyCab).magnitude;
-            if (d > worstD) { worstD = d; worstI = i; }
-        }
-        sb.Append("worst cabin-relative player jump ").Append((worstD * 100f).ToString("0.0"))
-          .Append("cm at t+").Append((_r[worstI].t * 1000f).ToString("0")).AppendLine("ms");
-
-        if (_releaseT >= 0f)
-        {
-            sb.AppendLine("RENDER frames, release-0.25s to release+1.0s:");
-            PrintRRange(sb, _releaseT - 0.25f, _releaseT + 1.0f);
-            if (_r[worstI].t < _releaseT - 0.3f || _r[worstI].t > _releaseT + 1.1f)
-            {
-                sb.AppendLine("RENDER frames around the worst player jump:");
-                PrintRRange(sb, _r[worstI].t - 0.12f, _r[worstI].t + 0.12f);
-            }
-            sb.AppendLine("PHYSICS ticks, release-0.2s to release+0.6s (dRbY = cabin-vertical rb step cm; vd = |rbVel-bodyVel| cm/s):");
-            PrintFRange(sb, _releaseT - 0.2f, _releaseT + 0.6f);
-        }
-        else
-        {
-            sb.AppendLine("RENDER frames around the worst player jump:");
-            PrintRRange(sb, _r[worstI].t - 0.15f, _r[worstI].t + 0.15f);
-        }
-        if (Verbose) Debug.Log(sb.ToString());
-    }
-
-    void PrintRRange(System.Text.StringBuilder sb, float tMin, float tMax)
-    {
-        for (int i = 1; i < _r.Count; i++)
-        {
-            var s = _r[i];
-            if (s.t < tMin || s.t > tMax) continue;
-            var p = _r[i - 1];
-            float dCam = (s.camCab - p.camCab).magnitude * 100f;
-            float dPly = (s.plyCab - p.plyCab).magnitude * 100f;
-            float dPlyY = (s.plyCab.y - p.plyCab.y) * 100f;
-            bool isRel = _releaseT >= 0f && p.t < _releaseT && s.t >= _releaseT;
-            sb.Append(isRel ? "> " : "  ")
-              .Append("t+").Append((s.t * 1000f).ToString("0000"))
-              .Append(" dt").Append(s.dtMs.ToString("00.0"))
-              .Append(" cam ").Append(dCam.ToString("0.0"))
-              .Append(" ply ").Append(dPly.ToString("0.0"))
-              .Append(" plyY ").Append(dPlyY.ToString("+0.0;-0.0"))
-              .Append(" hold ").Append(s.holdCm.ToString("0.0"))
-              .Append(" g").Append(s.gnd ? "1" : "0")
-              .Append(" r").Append(s.rider ? "1" : "0")
-              .AppendLine(s.gc > 0 ? "  <-- GC" : "");
-        }
-    }
-
-    void PrintFRange(System.Text.StringBuilder sb, float tMin, float tMax)
-    {
-        for (int i = 1; i < _f.Count; i++)
-        {
-            var s = _f[i];
-            if (s.t < tMin || s.t > tMax) continue;
-            var p = _f[i - 1];
-            float dRb = (s.rbCab - p.rbCab).magnitude * 100f;
-            float dRbY = (s.rbCab.y - p.rbCab.y) * 100f;
-            bool isRel = _releaseT >= 0f && p.t < _releaseT && s.t >= _releaseT;
-            sb.Append(isRel ? "> " : "  ")
-              .Append("T+").Append((s.t * 1000f).ToString("0000"))
-              .Append(" dRb ").Append(dRb.ToString("0.0"))
-              .Append(" dRbY ").Append(dRbY.ToString("+0.0;-0.0"))
-              .Append(" vd ").Append(s.velDiffCm.ToString("0"))
-              .Append(" g").Append(s.gnd ? "1" : "0")
-              .Append(" r").Append(s.rider ? "1" : "0")
-              .AppendLine();
-        }
+        if (since >= _window && !_holdArmed) enabled = false;
     }
 }

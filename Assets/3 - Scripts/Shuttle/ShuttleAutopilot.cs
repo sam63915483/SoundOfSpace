@@ -799,7 +799,6 @@ public class ShuttleAutopilot : MonoBehaviour
                 // the next natural shift is then ~26 s away, far past the
                 // walk-out, and fires while the player is moving normally.
                 if (_endless != null) _endless.ForceOriginShift();
-                RiderReleaseBleed.Mark("forced-rebase-at-descent");
                 // Pre-pay the release's contact-generation cost here too —
                 // the descent is the designated spend-it-under-motion moment.
                 ShuttleRiderFrame.PrewarmPhysicalRelease();
@@ -824,10 +823,8 @@ public class ShuttleAutopilot : MonoBehaviour
                     // if a new launch starts first — riders just keep riding.
                     _releaseRidersAt = Time.fixedTime + ReleaseSettleSeconds;
                     if (_door != null) _door.ReopenAfterFlight();
-                    // Handover window watcher: carries the camera-side
-                    // interpolation-warmup bridge at the release (all builds)
-                    // and the frame recorder (editor/cheats, reports 3 s
-                    // after the window closes).
+                    // Handover window: lets ShuttleRiderFrame arm the camera
+                    // hold across the release seam (RiderReleaseBleed).
                     RiderReleaseBleed.BeginWindow(_healPlayer, _body, 8f);
                     // Start the up re-orientation NOW (playtest 14): waiting
                     // for the physical release made the player visibly rotate
@@ -1583,7 +1580,6 @@ public class ShuttleAutopilot : MonoBehaviour
             PlayerController.UpOverrideTransform = (_phase != Phase.Parked && PlayerController.RiderMode)
                 ? transform : null;
         }
-        RiderReleaseBleed.Mark("upblend-end");
         Destroy(proxy.gameObject);
         _upBlendOut = null;
     }

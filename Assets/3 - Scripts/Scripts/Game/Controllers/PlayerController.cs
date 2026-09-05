@@ -850,12 +850,10 @@ public class PlayerController : GravityObject
 	// the 50 Hz stepping of the player's local movement).
 	Vector3 _riderPrevLocalPos, _riderCurrLocalPos;
 	// Local ROTATION pair, pinned exactly like position (2026-08-28, the
-	// in-flight slide): IntroWatch stage counters proved something external
-	// re-tilts the body off cabin-up every tick (al climbed ~8 cm/s on a
-	// PARKED shuttle with zero input), and the feet-pivot up-alignment then
-	// converted each per-tick correction into a lateral translation — ~half
-	// the flight slide, and the original unpinned pod slide. The cage owns
-	// BOTH components of the rider's local pose.
+	// in-flight slide hunt): the cage owns BOTH components of the rider's
+	// local pose, so nothing between ticks (animator root motion, FX, a
+	// stale up-override) can tilt the body and have the feet-pivot
+	// alignment turn that tilt into a lateral step.
 	Quaternion _riderPrevLocalRot, _riderCurrLocalRot;
 	bool _riderSmoothInit;
 	float _riderAirTime;   // seconds since the rider's feet left the cabin floor
@@ -888,32 +886,6 @@ public class PlayerController : GravityObject
 		_riderPrevLocalPos = _riderCurrLocalPos = transform.localPosition;
 		_riderPrevLocalRot = _riderCurrLocalRot = transform.localRotation;
 	}
-
-	// IntroWatch stage accumulators (2026-08-28, the in-flight slide hunt):
-	// cumulative cabin-LATERAL centimetres contributed by each rider-tick
-	// stage since the watch zeroed them. Align = the yaw/up-alignment block's
-	// translation (bypasses collision!); Walk = the walk intent
-	// (smoothVelocity·dt — catches input leaks); Move = lateral actually
-	// applied by the move/wall/seat write. YawDeg = cumulative look-yaw
-	// applied, to correlate drift with mouse look. Whichever counter tracks
-	// the ply drift slope names the writer.
-	[System.NonSerialized] public static float DbgRiderAlignCm, DbgRiderWalkCm, DbgRiderMoveCm, DbgRiderYawDeg;
-	// NET-vector accumulators (watch v4): the magnitude counters above are
-	// unusable at 15 km from origin — every world↔local conversion carries
-	// ~1 mm of float noise per tick, which integrates to a fat fake slope.
-	// Net vectors let noise cancel (random walk) while real directed drift
-	// survives. NetTick = Σ(tick record − restored base): what the rider
-	// pipeline itself wrote. NetOut = Σ(pre-restore local − last record):
-	// what external writers did between ticks (discarded by the restore).
-	[System.NonSerialized] public static Vector3 DbgRiderNetTick, DbgRiderNetOut;
-	// Watch v5: nt split by stage (component-wise nt == NetAlign + NetMove),
-	// plus the chosen up's provenance — owner 0=none 1=platform/own-proxy
-	// 3=FOREIGN (the thief), and its angle off the cabin's up.
-	[System.NonSerialized] public static Vector3 DbgRiderNetAlign, DbgRiderNetMove;
-	[System.NonSerialized] public static int DbgRiderUpOwner;
-	[System.NonSerialized] public static float DbgRiderUpOffAxisDeg;
-	/// The tick-authoritative pinned local pose, for the watch's rec channel.
-	public Vector3 RiderRecordLocalPos => _riderCurrLocalPos;
 
 	// Playtest telemetry, read by ShuttleAutopilot's cheats-only overlay so a
 	// "can't walk" report names its gate instead of needing a repro session.
@@ -2012,7 +1984,6 @@ public class PlayerController : GravityObject
 		{
 			// Watch v4: net external displacement since our last write — what
 			// the restore below is about to discard.
-			DbgRiderNetOut += transform.localPosition - _riderCurrLocalPos;
 			transform.localPosition = _riderCurrLocalPos;
 			// Rotation restore: whatever tilted the body since last tick is
 			// overwritten here, so the up-alignment below sees an already-
@@ -2021,11 +1992,6 @@ public class PlayerController : GravityObject
 			// after this and recorded into the pair at tick end.
 			transform.localRotation = _riderCurrLocalRot;
 		}
-
-		// IntroWatch stage bookkeeping: local pose after the restore, before
-		// any of this tick's writers touch it.
-		Vector3 dbgLp0 = transform.localPosition;
-		float dbgYaw0 = _yawAppliedToTransform;
 
 		// Look-apply (mirrors HandleMovement's first block — pitch to the
 		// camera, accumulated yaw to the body).
@@ -2056,8 +2022,6 @@ public class PlayerController : GravityObject
 			if (overOwned) up = over.up;
 			else if (RiderPlatform != null) up = RiderPlatform.up;
 			else up = over != null ? over.up : transform.up;
-			DbgRiderUpOwner = over == null ? 0 : (overOwned ? 1 : 3);
-			DbgRiderUpOffAxisDeg = RiderPlatform != null ? Vector3.Angle(RiderPlatform.up, up) : 0f;
 		}
 		// FEET-PIVOT alignment (2026-08-28 — Sam: "sliding slowly on the
 		// floor when the shuttle makes big turns or goes fast"): rotating
@@ -2082,14 +2046,10 @@ public class PlayerController : GravityObject
 			transform.position = upPivot + upDelta * (transform.position - upPivot);
 		}
 
-		// IntroWatch: lateral cm the yaw/align block just wrote (it bypasses
-		// collision, so any real signal here is the through-walls suspect).
-		Vector3 dbgLp1 = transform.localPosition;
-		{
-			Vector3 dbgA = dbgLp1 - dbgLp0; dbgA.y = 0f;
-			DbgRiderAlignCm += dbgA.magnitude * 100f;
-			DbgRiderYawDeg += Mathf.Abs(Mathf.DeltaAngle(dbgYaw0, _yawAppliedToTransform));
-		}
+		// Local pose after look + up-alignment: the base the move write below
+		// adds to (the move is composed in the parent frame, never read back
+		// from world space — see the float-ratchet note at the write).
+		Vector3 alignedLocalPos = transform.localPosition;
 
 		if (isInDialogue)
 		{
@@ -2156,9 +2116,6 @@ public class PlayerController : GravityObject
 		_riderAirTime = isGrounded ? 0f : _riderAirTime + dt;
 
 		Vector3 move = smoothVelocity * dt + up * (_riderVertVel * dt);
-		// IntroWatch: the walk INTENT — non-zero with no keys pressed means an
-		// input leak (stick drift / crosstalk), not a physics push.
-		DbgRiderWalkCm += smoothVelocity.magnitude * dt * 100f;
 		float wantedUpMove = _riderVertVel * dt;
 		move = ResolveWallSlide(move);
 		// Overlap rescue ONLY while actually walking (2026-08-28 — the pod
@@ -2231,12 +2188,7 @@ public class PlayerController : GravityObject
 			Vector3 pls = transform.parent != null ? transform.parent.lossyScale : Vector3.one;
 			moveLocal = new Vector3(moveLocal.x / pls.x, moveLocal.y / pls.y, moveLocal.z / pls.z);
 			moveLocal.y += seatCorr / pls.y;
-			transform.localPosition = dbgLp1 + moveLocal;
-		}
-		// IntroWatch: lateral cm the move/wall/seat write actually applied.
-		{
-			Vector3 dbgM = transform.localPosition - dbgLp1; dbgM.y = 0f;
-			DbgRiderMoveCm += dbgM.magnitude * 100f;
+			transform.localPosition = alignedLocalPos + moveLocal;
 		}
 		// ── THE landing-pop root cause (playtest 28, probe log 5) ────────────
 		// `pos` is composed through the parent chain's RENDER pose — the
@@ -2298,11 +2250,6 @@ public class PlayerController : GravityObject
 		_riderPrevLocalRot = _riderSmoothInit ? _riderCurrLocalRot : transform.localRotation;
 		_riderCurrLocalRot = transform.localRotation;
 		_riderSmoothInit = true;
-		// Watch v4: net displacement this tick's pipeline wrote (record minus
-		// the restored base it started from). v5 splits it by stage.
-		DbgRiderNetTick += _riderCurrLocalPos - dbgLp0;
-		DbgRiderNetAlign += dbgLp1 - dbgLp0;
-		DbgRiderNetMove += _riderCurrLocalPos - dbgLp1;
 		_wasGroundedPhys = isGrounded;
 
 		DbgRiderGrounded = isGrounded;
@@ -2330,9 +2277,6 @@ public class PlayerController : GravityObject
 	{
 		rb.velocity = velocity;
 	}
-
-	/// MegaTracker (playtest 37): read-only grounded state for the landing probe.
-	public bool GroundedNow => isGrounded;
 
 	/// Shuttle/pod release (playtest 35): the player WAS standing on the
 	/// cabin floor the whole ride — hand the grounded state over as GROUNDED
