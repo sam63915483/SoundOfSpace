@@ -189,6 +189,8 @@ main#view { height: calc(100vh - 48px); overflow: hidden; }
 .toast.err { border-left-color: var(--red); }
 .toast.warn { border-left-color: var(--yellow); }
 #modal-root { position: fixed; inset: 0; background: rgba(0,0,0,.55); display: flex; align-items: center; justify-content: center; z-index: 40; }
+#modal-root[hidden] { display: none; }
+[hidden] { display: none !important; }
 .modal { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 20px; width: 520px; max-width: 92vw; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
 .modal h2 { margin: 0 0 10px; font-size: 18px; }
 .modal .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
