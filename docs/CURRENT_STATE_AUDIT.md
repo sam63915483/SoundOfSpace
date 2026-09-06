@@ -1740,3 +1740,38 @@ velocity match (again = fly-to), click space = unmatch, R/RECENTER, G cursor loc
 and ORBIT LINES toggles (default on, fade in after arrival). Old map + MapTutorial are
 VAULTED: `FeatureVault.LegacySolarMap`, `FeatureVault.MapTutorial` (files kept; save
 schema untouched). Compile PASS 0 warnings; NOT yet play-tested.
+
+**Shuttle cabin light leaks (2026-09-06):** Sam: "outside lights go through the walls".
+Census of scene lights: the shadowed directional sun is fine (walls block it, windows
+pass it). The leakers are UNSHADOWED lights — "Point Light (Sun)" (point, range 40,000,
+no shadows; the sunrise/sunset ground fill) lights every sun-facing cabin wall through
+the hull whenever the shuttle is on the day side (≈0.3 intensity at HA, 0.64 at the
+twins), and village lanterns (range 22, no shadows) when parked nearby. Shuttle_Lander
+prefab patched (`Editor/ShuttleLightProbeSetup.cs`, LoadPrefabContents):
+`ShuttleInteriorVolume/LightProbe (cabin centre)` + `ShuttleLightProbe` (F1 readout +
+`[ShuttleLightProbe]` log: every light reaching the cabin centre, with reach, and whether
+it is behind the hull with/without shadows = LEAK), and `ShuttleInteriorLightGuard` on
+the root: while the camera is inside the volume, unshadowed non-shuttle non-player lights
+lose layers Default/Ship/Body from their culling mask (restored on exit; rescan 1 s).
+Playtest log showed the sun point light masked and the cabin still lit while thrusting:
+the shuttle's OWN runtime thrust lights (`ShuttleThrustFX`) — ThrustGlow anchored on
+EngineFlare ~0.5 m under the cabin floor inside the skirt, pod lights on the walls —
+bleed through despite Hard shadows. Round 3: ForcePixel (no vertex demotion), shadow
+near plane 0.1, normal bias 0.1, High resolution, and the glow dropped `glowDropUnits`
+(≈1.5 m) below the hull. Probe now names the blocking collider and checks the caster
+against the light's shadow near plane.
+ROOT CAUSE (playtest 3 log): `EclipseShadowGate.ApplyCasting` gated EVERY renderer under a
+planet (the shuttle is parented under its target during approach; village, trees, NPCs
+too). Whenever that planet was not the camera's nearest body — with the dwarfs, some
+dwarf is briefly nearest on every descent — the whole shuttle lost shadow casting and
+every light (even the shadowed sun) lit the cabin through the hull until the planet was
+nearest again (~60% of the landing). Gate now scoped to the CelestialBodyGenerator /
+BodyPlaceholder renderers only. Rule: planet-wide gates must never touch a planet's children.
+
+**Torch-on-grass, the actual cause (2026-09-06 evening):** `CG_SimpleGrass.shader` had no
+`noforwardadd`/`novertexlights`, so Unity's ForwardAdd pass (pixel-light cap 64) lit the
+instanced grass with every REAL point/spot light on the blade normal, ON TOP of the
+hand-built torch/lantern/point-sun terms that assumed "grass gets no real lights". Double
+lighting is invisible under the sun and glaring at night. Both pragmas added (grass draws
+once; sun + faked terms only), `_FlashlightResponse` 0.55 → 1.0, eye-light grass strength
+0.22. Lantern grassStrength values were tuned while double-lit; expect them dimmer on grass.

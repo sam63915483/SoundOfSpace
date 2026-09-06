@@ -51,7 +51,18 @@ Shader "CartoonGrass/SimpleGrass"
         //     any cast shadow goes dark instead of looking like it glows.
         // fullforwardshadows pulls in the shadow-sampling path; the renderer
         // must also have receiveShadows = true (InstancedGrassRenderer sets it).
-        #pragma surface surf GrassWrap vertex:vert fullforwardshadows
+        // noforwardadd + novertexlights (2026-09-06, Sam: "torch lights the grass
+        // way more than the ground at night"): this shader carries hand-built
+        // torch / lantern / point-sun terms (below) on the assumption that the
+        // instanced grass "can't receive additive lights". Without these two
+        // pragmas a surface shader still gets Unity's ForwardAdd pass (per-pixel
+        // additive lights — the pixel-light cap is 64 in this project) and, for
+        // the overflow, per-vertex lights in the base pass. So every real point
+        // or spot light lit the blades TWICE: once on the blade normal through
+        // Unity, once through the faked term — invisible by day under the sun,
+        // glaring at night. Now the faked terms are the ONLY non-sun light on
+        // grass, so their tuning is the truth (and the grass renders once).
+        #pragma surface surf GrassWrap vertex:vert fullforwardshadows noforwardadd novertexlights
         #pragma target 3.0
         #pragma multi_compile_instancing
 

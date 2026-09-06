@@ -856,6 +856,57 @@ MeshRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 0
   m_AdditionalVertexStreams: {fileID: 0}
+--- !u!1 &405055752640048645
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2943869207979334954}
+  - component: {fileID: 8922482482244921714}
+  m_Layer: 10
+  m_Name: LightProbe (cabin centre)
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2943869207979334954
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 405055752640048645}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 5128008928847357529}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &8922482482244921714
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 405055752640048645}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9a38f032205d3fe4c8b793dc1db2c5a7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  toggleKey: 282
+  interval: 0.5
+  minReach: 0.02
+  occlusionMaxDistance: 80
+  occluders:
+    serializedVersion: 2
+    m_Bits: 1545
 --- !u!1 &442203842831630220
 GameObject:
   m_ObjectHideFlags: 0
@@ -18896,7 +18947,8 @@ Transform:
   m_LocalPosition: {x: 0.061871607, y: 2.5699868, z: -0.050000347}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children: []
+  m_Children:
+  - {fileID: 2943869207979334954}
   m_Father: {fileID: 4421007967151122899}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!65 &7396638237227560010
@@ -23761,6 +23813,7 @@ GameObject:
   - component: {fileID: 4421007967151122899}
   - component: {fileID: 1483505330793110083}
   - component: {fileID: 1116818577685290352}
+  - component: {fileID: 7397868854565121111}
   m_Layer: 10
   m_Name: Shuttle_Lander
   m_TagString: Untagged
@@ -23810,13 +23863,11 @@ MonoBehaviour:
   hoverAltitude: 12
   entrySpeed: 35
   finalSinkSpeed: 1.5
-  fadeInTime: 2
   entryDuration: 70
   brakeDuration: 8
   finalDuration: 10
   touchdownHold: 1.2
   doorOpenTime: 1.8
-  doorOpenAngle: 115
   standOffset: {x: 0, y: 1.02, z: 0}
   approachShake: 0.03
   landingShake: 0.12
@@ -23828,7 +23879,6 @@ MonoBehaviour:
   touchdownVolume: 0.4
   thrusterLowPassHz: 1100
   grogginessMaterial: {fileID: 2100000, guid: 22e5ca827c024ee458571725b910fd32, type: 2}
-  grogRecoverRate: 0.025
   orientationFilm: {fileID: 32900000, guid: 4b88a2baf93706949a1c57aebf196249, type: 3}
   filmDelayAfterLeadIn: 8
   filmVolume: 0.85
@@ -23872,6 +23922,25 @@ MonoBehaviour:
   interiorRadius: 4.1
   interiorYMin: 0.4
   interiorYMax: 4.8
+--- !u!114 &7397868854565121111
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8799065548145837188}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa36a78308ff9ec4c86be3ab5cc69989, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  interiorVolume: {fileID: 7396638237227560010}
+  strippedLayers:
+    serializedVersion: 2
+    m_Bits: 1537
+  rescanInterval: 1
+  margin: 0.3
+  logChanges: 1
 --- !u!1 &8812311342787602616
 GameObject:
   m_ObjectHideFlags: 0

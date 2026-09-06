@@ -24,6 +24,9 @@ using UnityEngine.Rendering;
 /// (original modes remembered and restored — never blanket On, so a renderer
 /// authored Off stays Off).
 ///
+/// Only the body's TERRAIN mesh is gated — never the things parented under
+/// the planet (shuttle, village, trees). See ApplyCasting.
+///
 /// The body the player is nearest to is ALWAYS exempt: standing on the day
 /// side puts its centre farther from the sun than you, but its terrain
 /// self-shadowing is real and load-bearing (the whole sunset tip-light pass
@@ -176,8 +179,26 @@ public class EclipseShadowGate : MonoBehaviour
 
     void ApplyCasting(CelestialBody body, bool casting)
     {
+        // ONLY the planet's own terrain may be gated (2026-09-06, the shuttle
+        // light probe). This used to take every renderer under the body — and
+        // the shuttle, the village, the trees, the NPCs all live under their
+        // planet. Whenever this planet wasn't the nearest body to the camera
+        // (mid-descent another world is closer — since the dwarf planets went
+        // in, one of them briefly is on every approach), the whole shuttle lost
+        // shadow casting and every light, even the shadowed sun, lit the cabin
+        // straight through the hull until the planet became nearest again at
+        // ~60% of the landing. An eclipse is cast by the terrain sphere alone.
         _scratch.Clear();
-        body.GetComponentsInChildren(true, _scratch);   // planets are a handful of face meshes
+        Transform scope = null;
+        var gen = body.GetComponentInChildren<CelestialBodyGenerator>(true);
+        if (gen != null) scope = gen.transform;
+        else
+        {
+            var ph = body.GetComponentInChildren<BodyPlaceholder>(true);
+            if (ph != null) scope = ph.transform;
+        }
+        if (scope == null) return;                       // no terrain (the black hole): nothing to gate
+        scope.GetComponentsInChildren(true, _scratch);   // the terrain mesh (+ its preview placeholder)
         for (int i = 0; i < _scratch.Count; i++)
         {
             Renderer r = _scratch[i];

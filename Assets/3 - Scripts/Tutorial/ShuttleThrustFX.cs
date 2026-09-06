@@ -55,6 +55,8 @@ public class ShuttleThrustFX : MonoBehaviour
     public float groundLightAlt  = 90f;
     public float glowMaxIntensity = 6f;
     public float podLightIntensity = 4f;
+    [Tooltip("Extra drop of the engine GLOW light below its usual spot (0.5 units under the flare). 0 = the original placement. Was 1 for a day while chasing the cabin light leak; that turned out to be EclipseShadowGate stripping the hull's shadow casting, so the light went back home (Sam, 2026-09-06).")]
+    public float glowDropUnits = 0f;
 
     [Header("Shutdown")]
     public float dieOutTime = 0.8f;
@@ -256,7 +258,8 @@ public class ShuttleThrustFX : MonoBehaviour
             if (_glow != null)
             {
                 _glow.intensity = glowMaxIntensity * enginePower * flick;
-                _glow.transform.position = _engineAnchor.position + down * (0.5f * _unit);
+                // glowDropUnits (default 0 = original 0.5-unit placement; see the field).
+                _glow.transform.position = _engineAnchor.position + down * ((0.5f + glowDropUnits) * _unit);
             }
             if (_podLights != null)
             {
@@ -400,6 +403,7 @@ public class ShuttleThrustFX : MonoBehaviour
         _glow = NewLight("ThrustGlow", LightType.Point, _engineAnchor);
         _glow.range = 14f * _unit;
         _glow.color = new Color(1f, 0.55f, 0.2f);
+        // (position is set every LateUpdate — see glowDropUnits there)
 
         _podLights = new Light[_podLightAnchors.Length];
         for (int i = 0; i < _podLightAnchors.Length; i++)
@@ -428,6 +432,20 @@ public class ShuttleThrustFX : MonoBehaviour
         // through. Near-zero bias is safe here — these lights only touch
         // large flat hull/ground surfaces, no self-shadow acne risk.
         l.shadowBias = 0.01f;
+        // Round 3 (2026-09-06, the cabin-centre light probe): the cabin still lit
+        // up while thrusting. Two ways a SHADOWED light still passes through a
+        // wall, both closed here:
+        //   • Auto render mode lets Unity demote the light to a per-VERTEX light
+        //     when several lights hit the same wall — vertex lights have no
+        //     shadows at all. Force per-pixel.
+        //   • A shadow caster closer to the light than its shadow near plane is
+        //     not in the shadow map. The engine glow sits ~2 m under the cabin
+        //     floor; shrink the near plane so the floor/hull always casts.
+        //   Normal bias tightened as well: the hull panels are ~7 cm thick.
+        l.renderMode = LightRenderMode.ForcePixel;
+        l.shadowNearPlane = 0.1f;
+        l.shadowNormalBias = 0.1f;
+        l.shadowResolution = UnityEngine.Rendering.LightShadowResolution.High;
         return l;
     }
 

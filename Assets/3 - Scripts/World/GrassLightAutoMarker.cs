@@ -65,7 +65,11 @@ public class GrassLightAutoMarker : MonoBehaviour
     /// path applies the full colour, so by day (wrap on, lampDay 0) it was fine
     /// and at night grass lit ~2x harder than the ground beside it.
     /// 0.13 x _PointLightBoost 4.5 = 0.59 -- the sun path's gain.
-    public static float PlayerLightGrassStrength = 0.13f;
+    /// 2026-09-06 (later): the real cause was the grass receiving the REAL
+    /// light on top of this faked one (shader lacked noforwardadd /
+    /// novertexlights). With the real path gone, parity with the ground is
+    /// 1 / _PointLightBoost = 0.22.
+    public static float PlayerLightGrassStrength = 0.22f;
 
     /// Lights appear late (the shuttle streams in, held items spawn, the
     /// thrust FX builds its own lights), so sweep on a slow clock forever
