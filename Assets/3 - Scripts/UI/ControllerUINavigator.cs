@@ -98,7 +98,11 @@ public class ControllerUINavigator : MonoBehaviour
             panel.AddComponent<GraphicRaycaster>();
     }
 
-    static void EnsureEventSystem()
+    // Public (2026-09-06): the four scripts that used to spawn their own
+    // EventSystem + legacy StandaloneInputModule now call this instead, so a
+    // stray legacy module can never sit next to the Input System one and
+    // silently win in a build (it would not see the virtual mouse).
+    public static void EnsureEventSystem()
     {
         var es = EventSystem.current;
         if (es == null)
@@ -131,6 +135,10 @@ public class ControllerUINavigator : MonoBehaviour
             // across keyboard, mouse, and every gamepad brand.
             module.AssignDefaultActions();
         }
+        // All mice (hardware + PadCursor's virtual one) unify into ONE
+        // pointer; whichever moved last drives it. This is the default,
+        // stated explicitly because PadCursor depends on it.
+        module.pointerBehavior = UIPointerBehavior.SingleMouseOrPenButMultiTouchAndTrack;
     }
 
     void BuildBorderUI()
@@ -345,6 +353,18 @@ public class ControllerUINavigator : MonoBehaviour
         // they can navigate freely between buttons in the active panel.
         var topmost = _cachedTopmost;
         var current = es.currentSelectedGameObject;
+
+        // Dialogue option lists own their focus (ControllerFocusOwner): never
+        // migrate away from, or clear, a row they selected — including during
+        // the row's fade-in, when IsValidSelection would call it invisible and
+        // the old code set the selection to null every quarter second.
+        if (current != null && ControllerFocusOwner.Owns(current))
+        {
+            if (TutorialGate.LastSource == TutorialGate.InputSource.Controller) UpdateBorder(current);
+            else HideBorder();
+            return;
+        }
+
         bool needsMigration = false;
 
         if (!IsValidSelection(current))
