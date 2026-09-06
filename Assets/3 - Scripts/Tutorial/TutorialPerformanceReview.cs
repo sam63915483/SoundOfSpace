@@ -181,13 +181,7 @@ public class TutorialPerformanceReview : MonoBehaviour
         // hands clicks to the Continue button, the dim image swallows all
         // input, and the modal is effectively invisible / stuck. Spawn one
         // on demand if the scene is missing one.
-        if (UnityEngine.EventSystems.EventSystem.current == null)
-        {
-            var es = new GameObject("ReviewEventSystem");
-            es.AddComponent<UnityEngine.EventSystems.EventSystem>();
-            es.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
-            DontDestroyOnLoad(es);
-        }
+        ControllerUINavigator.EnsureEventSystem();
         if (canvas != null) canvas.enabled = true;
 
         PopulateRows(entries);

@@ -319,13 +319,9 @@ public class BuildMenuUI : MonoBehaviour
 
     // ───────────────────────── UI Construction ─────────────────────────
 
-    void EnsureEventSystem()
-    {
-        if (EventSystem.current != null) return;
-        var go = new GameObject("EventSystem");
-        go.AddComponent<EventSystem>();
-        go.AddComponent<StandaloneInputModule>();
-    }
+    // The navigator's version installs the Input System module (the one that
+    // sees PadCursor's virtual mouse) and evicts any legacy StandaloneInputModule.
+    void EnsureEventSystem() => ControllerUINavigator.EnsureEventSystem();
 
     void BuildUI()
     {

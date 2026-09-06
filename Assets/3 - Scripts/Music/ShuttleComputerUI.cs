@@ -576,13 +576,9 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _canvas.gameObject.SetActive(false);
     }
 
-    static void EnsureEventSystem()
-    {
-        if (EventSystem.current != null) return;
-        var es = new GameObject("EventSystem");
-        es.AddComponent<EventSystem>();
-        es.AddComponent<StandaloneInputModule>();
-    }
+    // Routed through the navigator so a legacy StandaloneInputModule can never
+    // sit beside the Input System one (it would not see PadCursor's virtual mouse).
+    static void EnsureEventSystem() => ControllerUINavigator.EnsureEventSystem();
 
     void BuildCrtOverlay(RectTransform parent)
     {

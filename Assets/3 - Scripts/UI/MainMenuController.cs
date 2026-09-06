@@ -133,8 +133,10 @@ public class MainMenuController : MonoBehaviour
             {
                 es.gameObject.SetActive(false);
                 es.gameObject.SetActive(true);
-                if (es.GetComponent<UnityEngine.EventSystems.StandaloneInputModule>() == null)
-                    es.gameObject.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
+                // Re-ensure the INPUT SYSTEM module (never the legacy one — a
+                // StandaloneInputModule beside it can win in a build and it
+                // cannot see PadCursor's virtual mouse).
+                ControllerUINavigator.EnsureEventSystem();
             }
             if (GetComponent<GraphicRaycaster>() == null)
                 gameObject.AddComponent<GraphicRaycaster>();
