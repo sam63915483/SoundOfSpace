@@ -247,8 +247,10 @@ public class FishStagingUI : MonoBehaviour
         if (_cursorRoot != null && _cursorRoot.gameObject.activeSelf && _canvas != null)
         {
             float scale = _canvas.scaleFactor > 0f ? _canvas.scaleFactor : 1f;
-            Vector2 screen = Input.mousePosition;
-            if (TutorialGate.LastSource == TutorialGate.InputSource.Controller)
+            Vector2 screen = PadCursor.PointerPosition;
+            // Old pad path (snap the ghost to the FOCUSED slot) only when the
+            // cursor is not the pointer — with the cursor up there is no focus.
+            if (TutorialGate.LastSource == TutorialGate.InputSource.Controller && !PadCursor.IsActive)
             {
                 var es = UnityEngine.EventSystems.EventSystem.current;
                 var go = es != null ? es.currentSelectedGameObject : null;

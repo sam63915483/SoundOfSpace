@@ -426,7 +426,7 @@ public partial class ShuttleComputerUI
         if (_navEnRouteFeed.texture != cam.Texture) _navEnRouteFeed.texture = cam.Texture;
         // Only while THIS player has the terminal open — mirror viewers on
         // the cockpit screen just watch whatever the pilot picked.
-        if (ShuttleComputerUI.IsOpen && Input.GetMouseButtonDown(0))
+        if (ShuttleComputerUI.IsOpen && PadCursor.PrimaryDown)
             pilot.ToggleTransitFeed();
     }
 

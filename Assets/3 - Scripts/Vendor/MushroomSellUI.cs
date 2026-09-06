@@ -331,7 +331,7 @@ public class MushroomSellUI : MonoBehaviour
         if (_cursorRT != null && _cursorRT.gameObject.activeSelf && _canvas != null)
         {
             float scale = _canvas.scaleFactor > 0f ? _canvas.scaleFactor : 1f;
-            _cursorRT.anchoredPosition = (Vector2)Input.mousePosition / scale;
+            _cursorRT.anchoredPosition = PadCursor.PointerPosition / scale;
         }
 
         // Live countdown while barred.

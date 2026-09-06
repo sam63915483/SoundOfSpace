@@ -371,12 +371,12 @@ public partial class ShuttleComputerUI
         // The canvas is ScreenSpaceOverlay, so the camera argument is null —
         // passing one would offset the result by the camera's rect.
         if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(
-                _screenRT, Input.mousePosition, null, out Vector2 local)) return;
+                _screenRT, PadCursor.PointerPosition, null, out Vector2 local)) return;
 
         Rect r = _screenRT.rect;
         if (r.width <= 0f || r.height <= 0f) return;
         var normalized = new Vector2((local.x - r.xMin) / r.width, (local.y - r.yMin) / r.height);
-        TraxSessionSync.PublishCursor(normalized, view, Input.GetMouseButton(0));
+        TraxSessionSync.PublishCursor(normalized, view, PadCursor.PrimaryHeld);
     }
 
     void ApplyIncoming()
