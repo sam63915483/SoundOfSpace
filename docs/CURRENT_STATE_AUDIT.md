@@ -802,6 +802,29 @@ layout. `activeInputHandler: 2` ("Both") is required — do not flip it.
 
 ---
 
+**2026-09-06 addendum — controller pass 2 (virtual cursor).** `UI/PadCursor.cs`
+(component on the `[ControllerUINavigator]` object, created in its Awake) wraps
+Input System `VirtualMouseInput`: a virtual Mouse device driven by left stick /
+A (LMB) / X (RMB) / right stick (scroll) that `InputSystemUIInputModule` treats
+as a real pointer, so every UGUI screen is pad-usable with no per-screen code.
+Activation rule (`PadCursor.Wanted`): pad enabled ∧ `Cursor.lockState == None`
+∧ `LastSource == Controller` ∧ no `ControllerFocusOwner` active ∧ no suppress
+token. While active: `TutorialGate` mutes A/X (`MutedByCursor`), left stick
+(`MoveStick`), right stick (`RightStickX/Y`, `LookDelta`), `HotbarCycleStep`,
+and `MovementInputSuppressed` is true; the navigator clears selection and draws
+no border; `EventSystem.sendNavigationEvents` is off. Legacy readers use
+`PadCursor.PointerPosition / PrimaryDown / PrimaryHeld / ScrollDelta`.
+`ControllerFocusOwner` (on `PostGreetingChoicePanel`'s panel and
+`WorldDialogueUI`) keeps dialogue option lists on the highlight-box path and
+stops the navigator from touching their selection. `PadCursor.Suppress/Release`
+tokens: `"nav-hover"` (ShuttleComputerNavUI while the autopilot hovers — left
+stick flies, LB/RB yaw, A lands). Map: Y toggles `SetCursorLocked`. Speed:
+`InputSettings.padCursorSpeed` → `PadCursor.SpeedMultiplier` (pause menu
+CONTROLLER tab). Pad A never jumps while `GhostPlacement.IsPlacing`. All
+EventSystem spawns go through `ControllerUINavigator.EnsureEventSystem` (public).
+Spec: `docs/superpowers/specs/2026-09-06-controller-virtual-cursor-design.md`.
+Playtest: `docs/PLAYTEST_CONTROLLER_CURSOR.md`.
+
 ## §32 Black-Hole Observation Dimensions — NEW 2026-07-05
 
 Self-contained "observation dimensions" reached through the in-world black hole
