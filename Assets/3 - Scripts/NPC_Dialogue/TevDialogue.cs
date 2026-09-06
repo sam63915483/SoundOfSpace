@@ -449,7 +449,7 @@ public class TevDialogue : MonoBehaviour
             new PostGreetingChoicePanel.Row("Go on a fishing trip", true),
             new PostGreetingChoicePanel.Row("Give me a minute to think.", true),
         };
-        PostGreetingChoicePanel.Instance.Show(rows, i => _forkChoice = i);
+        PostGreetingChoicePanel.Instance.Show(rows, i => _forkChoice = i, cancellable: false);   // scripted beat: walk-away only
 
         yield return new WaitUntil(() => _forkChoice >= 0 || !_playerInRange);
         if (!_playerInRange) yield break;

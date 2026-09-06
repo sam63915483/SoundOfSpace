@@ -61,7 +61,8 @@ public class NpcGraphWalker
         var rows = new List<PostGreetingChoicePanel.Row>(labels.Count);
         for (int i = 0; i < labels.Count; i++) rows.Add(new PostGreetingChoicePanel.Row(labels[i], true));
         panel.Show(rows, i => box.Value = i);
-        yield return new WaitUntil(() => box.Value >= 0 || (inRange != null && !inRange()));
+        // != -1: a pick is >= 0, pad B reports PostGreetingChoicePanel.Cancelled (-2); Run treats any negative as walked away.
+        yield return new WaitUntil(() => box.Value != -1 || (inRange != null && !inRange()));
         if (panel.IsVisible) panel.Hide();
     }
 

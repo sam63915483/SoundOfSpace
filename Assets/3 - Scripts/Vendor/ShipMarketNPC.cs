@@ -205,6 +205,7 @@ public class ShipMarketNPC : MonoBehaviour
 
     void HandleChoice(int index)
     {
+        if (index < 0) { StopConversation(); return; }   // pad B on the option list = Leave
         if (index == 0) { OpenShop(); return; }
         if (NPCSellRows.ActionAt(_sellActions, SellHeadRows, index, out var action))
         {

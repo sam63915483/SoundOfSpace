@@ -40,6 +40,16 @@ public class PostGreetingChoicePanel : MonoBehaviour
 
     public bool IsVisible => _visible;
 
+    /// Passed to onSelect when the player backs out with pad B. Every waiter
+    /// treats it like walking away (negative = no pick). Distinct from -1 so
+    /// coroutines waiting on "choice != -1" wake up.
+    public const int Cancelled = -2;
+
+    readonly List<Button> _rowButtons = new List<Button>();
+    bool _cancellable = true;
+    int _focusIndex = -1;          // row the pad last had focused; restored if the EventSystem loses it
+    int _focusArmFrame;            // pad focus is forced only from this frame on (WorldDialogueUI's one-frame deferral)
+
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
@@ -67,7 +77,7 @@ public class PostGreetingChoicePanel : MonoBehaviour
     {
         _canvas = gameObject.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 900;
+        _canvas.sortingOrder = 905;   // above toasts/storage (900), below FishStagingUI (910) which stacks on top
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);
@@ -84,6 +94,9 @@ public class PostGreetingChoicePanel : MonoBehaviour
         _panelRT.pivot     = new Vector2(0.5f, 0f);
         _panelRT.anchoredPosition = new Vector2(0f, 150f);
         _panelRT.sizeDelta = new Vector2(720f, 200f);
+        // Owns pad focus: the navigator never migrates/clears our selection and
+        // PadCursor stays off — option lists keep the highlight box (spec §4).
+        panel.AddComponent<ControllerFocusOwner>();
         var bg = panel.AddComponent<Image>();
         bg.color = PhosphorUI.Plate;
         bg.raycastTarget = true;
@@ -108,16 +121,20 @@ public class PostGreetingChoicePanel : MonoBehaviour
         _panelRT.gameObject.SetActive(false);
     }
 
-    public void Show(IList<Row> rows, Action<int> onSelect)
+    public void Show(IList<Row> rows, Action<int> onSelect, bool cancellable = true)
     {
         ClearRows();
         _currentRows.Clear();
         for (int i = 0; i < rows.Count; i++) _currentRows.Add(rows[i]);
         _onSelect = onSelect;
+        _cancellable = cancellable;
         for (int i = 0; i < rows.Count; i++)
         {
             BuildRow(i, rows[i]);
         }
+        WireNavigation();
+        _focusIndex = FirstEnabledRow();
+        _focusArmFrame = Time.frameCount + 1;   // the A that advanced the greeting must not also Submit row 0
         _panelRT.gameObject.SetActive(true);
         _visible = true;
         _crtT = 0f;                 // CRT turn-on, mirrors PhosphorDialogueBox
@@ -129,6 +146,35 @@ public class PostGreetingChoicePanel : MonoBehaviour
         // pattern SpaceDustSellUI uses while open.
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible   = true;
+    }
+
+    int FirstEnabledRow()
+    {
+        for (int i = 0; i < _currentRows.Count; i++) if (_currentRows[i].enabled) return i;
+        return -1;
+    }
+
+    // Explicit up/down between ENABLED rows, wrapping. Unity's automatic mode
+    // was skipping rows during the fade-in and could wander to other canvases.
+    void WireNavigation()
+    {
+        var live = new List<Button>();
+        for (int i = 0; i < _rowButtons.Count; i++)
+            if (_rowButtons[i] != null && _rowButtons[i].interactable) live.Add(_rowButtons[i]);
+        for (int i = 0; i < live.Count; i++)
+        {
+            var nav = new Navigation { mode = Navigation.Mode.Explicit };
+            nav.selectOnUp   = live[(i - 1 + live.Count) % live.Count];
+            nav.selectOnDown = live[(i + 1) % live.Count];
+            live[i].navigation = nav;
+        }
+    }
+
+    int IndexOfRow(GameObject go)
+    {
+        if (go == null) return -1;
+        for (int i = 0; i < _rowGOs.Count; i++) if (_rowGOs[i] == go) return i;
+        return -1;
     }
 
     // The NPC's spoken line and this choice list are both full-width and both
@@ -184,6 +230,7 @@ public class PostGreetingChoicePanel : MonoBehaviour
         for (int i = 0; i < _rowGOs.Count; i++)
             if (_rowGOs[i] != null) Destroy(_rowGOs[i]);
         _rowGOs.Clear();
+        _rowButtons.Clear();
     }
 
     void BuildRow(int index, Row row)
@@ -204,6 +251,7 @@ public class PostGreetingChoicePanel : MonoBehaviour
         btn.interactable = row.enabled;
         int captured = index;
         btn.onClick.AddListener(() => HandleSelect(captured));
+        _rowButtons.Add(btn);
 
         // Left accent bar, lit on hover only.
         var barGO = new GameObject("Accent", typeof(RectTransform));
@@ -243,15 +291,19 @@ public class PostGreetingChoicePanel : MonoBehaviour
     }
 
     /// <summary>
-    /// One choice row's look: staggered fade-in on birth, phosphor light-up on
-    /// hover. Owns every visual state so the Button's tint machinery (which
-    /// can't touch children) stays off.
+    /// One choice row's look: staggered fade-in on birth, phosphor light-up
+    /// while hovered OR focused (stick/D-pad selection). Owns every visual
+    /// state so the Button's tint machinery (which can't touch children)
+    /// stays off. Hover also moves the EventSystem selection so keyboard
+    /// Enter / pad A act on the row under the mouse.
     /// </summary>
-    class PhosphorRow : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    class PhosphorRow : MonoBehaviour,
+        IPointerEnterHandler, IPointerExitHandler, ISelectHandler, IDeselectHandler
     {
         Image _bg, _bar;
         TextMeshProUGUI _pre, _label;
         bool _rowEnabled;
+        bool _hover, _selected;
         float _delay, _born;
         CanvasGroup _cg;
 
@@ -274,23 +326,27 @@ public class PostGreetingChoicePanel : MonoBehaviour
             if (t >= 1f) enabled = false;   // settled; nothing left to animate
         }
 
-        public void OnPointerEnter(PointerEventData e)
+        void Repaint()
         {
             if (!_rowEnabled) return;
-            _bg.color = PhosphorUI.RowHoverBg;
-            _bar.enabled = true;
-            _pre.color = PhosphorUI.Phosphor;
-            _label.color = PhosphorUI.RowHot;
+            bool lit = _hover || _selected;
+            _bg.color = lit ? PhosphorUI.RowHoverBg : Color.clear;
+            _bar.enabled = lit;
+            _pre.color = lit ? PhosphorUI.Phosphor : PhosphorUI.Border;
+            _label.color = lit ? PhosphorUI.RowHot : PhosphorUI.RowText;
         }
 
-        public void OnPointerExit(PointerEventData e)
+        public void OnPointerEnter(PointerEventData e)
         {
-            if (!_rowEnabled) return;
-            _bg.color = Color.clear;
-            _bar.enabled = false;
-            _pre.color = PhosphorUI.Border;
-            _label.color = PhosphorUI.RowText;
+            _hover = true;
+            Repaint();
+            if (_rowEnabled && EventSystem.current != null)
+                EventSystem.current.SetSelectedGameObject(gameObject);
         }
+
+        public void OnPointerExit(PointerEventData e) { _hover = false; Repaint(); }
+        public void OnSelect(BaseEventData e)         { _selected = true;  Repaint(); }
+        public void OnDeselect(BaseEventData e)       { _selected = false; Repaint(); }
     }
 
     UnityEngine.UI.RawImage _scan;
@@ -320,15 +376,51 @@ public class PostGreetingChoicePanel : MonoBehaviour
         // Re-assert cursor unlock every frame while visible — NPC dialogue
         // scripts can re-lock the cursor when their typewriter completes or
         // their typewriter coroutine ticks, so a one-shot unlock in Show
-        // gets clobbered. Cheap to keep enforcing.
+        // gets clobbered. Cheap to keep enforcing. Visibility is only forced
+        // for mouse users: the navigator hides the OS cursor for pad users,
+        // and forcing it back on every frame was flipping LastSource to KBM
+        // on the slightest mouse jitter (which killed the pad highlight).
         if (Cursor.lockState != CursorLockMode.None) Cursor.lockState = CursorLockMode.None;
-        if (!Cursor.visible) Cursor.visible = true;
+        if (!Cursor.visible && TutorialGate.LastSource == TutorialGate.InputSource.KeyboardMouse) Cursor.visible = true;
+
+        // Pad focus. We own it (ControllerFocusOwner on the panel): remember
+        // where the stick moved it, and put it back if anything else dropped
+        // it (the fade-in makes rows "invalid" to the navigator for 0.2 s).
+        if (TutorialGate.ControllerEnabled
+            && TutorialGate.LastSource == TutorialGate.InputSource.Controller
+            && Time.frameCount >= _focusArmFrame)
+        {
+            var es = EventSystem.current;
+            if (es != null)
+            {
+                int idx = IndexOfRow(es.currentSelectedGameObject);
+                if (idx >= 0) _focusIndex = idx;
+                else if (_focusIndex >= 0 && _focusIndex < _rowGOs.Count && _rowGOs[_focusIndex] != null)
+                    es.SetSelectedGameObject(_rowGOs[_focusIndex]);
+            }
+        }
+
+        // Pad B backs out of the conversation — exactly like walking away.
+        if (_cancellable && TutorialGate.PadPressed(TutorialGate.PadButton.B))
+        {
+            Cancel();
+            return;
+        }
 
         for (int i = 0; i < _currentRows.Count && i < 9; i++)
         {
             KeyCode key = (KeyCode)((int)KeyCode.Alpha1 + i);
             if (Input.GetKeyDown(key)) HandleSelect(i);
         }
+    }
+
+    /// Back out: hides the panel and reports Cancelled (-2) to the caller.
+    public void Cancel()
+    {
+        if (!_visible) return;
+        var cb = _onSelect;
+        Hide();
+        cb?.Invoke(Cancelled);
     }
 
     void HandleSelect(int index)

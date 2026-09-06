@@ -281,7 +281,9 @@ public class AuthoredNPCTalk : MonoBehaviour
 
     /// <summary>
     /// Show the shared choice panel with these labels. Yields until the player
-    /// picks (result in <see cref="LastChoice"/>) or walks away (-1).
+    /// picks (result in <see cref="LastChoice"/>), walks away (-1) or backs out
+    /// with pad B (PostGreetingChoicePanel.Cancelled, -2) — treat any negative
+    /// as "no pick".
     /// </summary>
     protected IEnumerator Choose(params string[] labels)
     {
@@ -290,7 +292,7 @@ public class AuthoredNPCTalk : MonoBehaviour
         var rows = new List<PostGreetingChoicePanel.Row>(labels.Length);
         for (int i = 0; i < labels.Length; i++) rows.Add(new PostGreetingChoicePanel.Row(labels[i], true));
         PostGreetingChoicePanel.Instance.Show(rows, i => _choice = i);
-        yield return new WaitUntil(() => _choice >= 0 || !InRange);
+        yield return new WaitUntil(() => _choice != -1 || !InRange);
         if (PostGreetingChoicePanel.Instance.IsVisible) PostGreetingChoicePanel.Instance.Hide();
     }
 

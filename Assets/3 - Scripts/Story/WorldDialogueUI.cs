@@ -174,6 +174,9 @@ public class WorldDialogueUI : MonoBehaviour, DialoguePresenter
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
         gameObject.AddComponent<GraphicRaycaster>();
+        // Preset story conversations keep the highlight-box pad path (spec §4);
+        // PadCursor stays off while this is up.
+        gameObject.AddComponent<ControllerFocusOwner>();
 
         // Bottom panel.
         var panel = MakeRect("Panel", transform);

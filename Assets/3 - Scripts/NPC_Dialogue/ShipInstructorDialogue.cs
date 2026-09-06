@@ -204,7 +204,7 @@ public class ShipInstructorDialogue : MonoBehaviour
                 new PostGreetingChoicePanel.Row("Leave", true),
             };
             int choice = -1;
-            PostGreetingChoicePanel.Instance.Show(rows, i => choice = i);
+            PostGreetingChoicePanel.Instance.Show(rows, i => choice = i, cancellable: false);   // scripted beat: walk-away only
             yield return new WaitUntil(() => choice >= 0 || !_playerInRange);
             if (!_playerInRange) { StopConversation(); yield break; }
 
@@ -216,7 +216,7 @@ public class ShipInstructorDialogue : MonoBehaviour
                     new PostGreetingChoicePanel.Row($"Yes - take the test (-${testCost})", true),
                     new PostGreetingChoicePanel.Row("No, not yet", true),
                 };
-                PostGreetingChoicePanel.Instance.Show(confirmRows, i => confirm = i);
+                PostGreetingChoicePanel.Instance.Show(confirmRows, i => confirm = i, cancellable: false);
                 yield return new WaitUntil(() => confirm >= 0 || !_playerInRange);
                 if (!_playerInRange) { StopConversation(); yield break; }
 

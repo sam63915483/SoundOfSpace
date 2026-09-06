@@ -253,6 +253,7 @@ public class RandomAlienDialogue : MonoBehaviour
 
     void HandleChoice(int index)
     {
+        if (index < 0) { StopConversation(); return; }   // pad B on the option list = Leave
         if (NPCSellRows.ActionAt(_sellActions, 0, index, out var action))
         {
             // Tapes go through the SELL PANEL now — the drag-a-stack-onto-the

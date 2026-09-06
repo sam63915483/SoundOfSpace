@@ -1415,7 +1415,7 @@ public class TevMushroomOnboarding : MonoBehaviour
         if (PostGreetingChoicePanel.Instance == null) yield break;
         _choice = -1;
         var list = new List<PostGreetingChoicePanel.Row>(rows);
-        PostGreetingChoicePanel.Instance.Show(list, i => _choice = i);
+        PostGreetingChoicePanel.Instance.Show(list, i => _choice = i, cancellable: false);   // scripted beats: walk-away only
         yield return new WaitUntil(() => _choice >= 0 || !_playerInRange);
     }
 
