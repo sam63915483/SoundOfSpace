@@ -75,8 +75,13 @@ public class PlayerPickup : MonoBehaviour
         }
         else
         {
-            // Configurable keyboard drop key OR controller B button.
-            if ((TutorialGate.GetKeyDown(dropKey, TutorialAbility.Pickup) ||
+            // Configurable keyboard drop key OR controller B button. Pad B is
+            // also "back out" for dialogue option lists, vendors, storage and
+            // every cursor screen (2026-09-06) — that press must never ALSO
+            // drop what you're holding.
+            bool uiOwnsB = PlayerController.isInDialogue || PlayerController.isInModalSlotUI || PadCursor.IsActive;
+            if (!uiOwnsB &&
+                (TutorialGate.GetKeyDown(dropKey, TutorialAbility.Pickup) ||
                  TutorialGate.DropPressed(TutorialAbility.Pickup)) && !canPlaceRightNow)
                 DropObject();
 
