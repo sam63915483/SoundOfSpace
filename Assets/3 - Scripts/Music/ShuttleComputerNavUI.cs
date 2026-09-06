@@ -60,6 +60,21 @@ public partial class ShuttleComputerUI
 
     public bool NavOpen { get { return _navView != null && _navView.activeSelf; } }
 
+    // While the autopilot hovers and this player is fullscreen on NAV, the pad
+    // flies the shuttle: the virtual cursor is suppressed so the left stick
+    // positions instead of pointing. Released on any other phase, when NAV or
+    // the computer closes, and on destroy — it can never leak.
+    const string HoverCursorToken = "nav-hover";
+    bool _hoverTokenHeld;
+
+    void SetHoverCursorSuppressed(bool on)
+    {
+        if (on == _hoverTokenHeld) return;
+        _hoverTokenHeld = on;
+        if (on) PadCursor.Suppress(HoverCursorToken);
+        else    PadCursor.Release(HoverCursorToken);
+    }
+
     // ── construction ─────────────────────────────────────────────────────
 
     void BuildNav(RectTransform parent)
@@ -392,8 +407,10 @@ public partial class ShuttleComputerUI
                 else if (landing) prompt = "LANDING…";
                 else if (Time.unscaledTime < _navRedFlashUntil) { prompt = "● NO CLEAR GROUND"; promptColor = red; }
                 else if (!ShuttleSync.LocalCanSteer) prompt = "PILOT: " + ShuttleSync.PilotName;
-                else if (pilot.LandingValid) { prompt = "● LANDING ZONE CLEAR · SPACE TO LAND"; promptColor = green; }
-                else { prompt = "● NO LANDING ZONE · WASD POSITION · Q/E YAW"; promptColor = red; }
+                // PromptGlyphs picks per input source: keyboard text, or the
+                // pad's sprite glyphs (A / left stick / LB / RB).
+                else if (pilot.LandingValid) { prompt = "● LANDING ZONE CLEAR · " + PromptGlyphs.Jump + " TO LAND"; promptColor = green; }
+                else { prompt = "● NO LANDING ZONE · " + PromptGlyphs.Move + " POSITION · " + PromptGlyphs.RollLeft + "/" + PromptGlyphs.RollRight + " YAW"; promptColor = red; }
                 SetTextIfChanged(_navHoverPrompt, prompt);
                 if (_navHoverPrompt != null && _navHoverPrompt.color != promptColor)
                     _navHoverPrompt.color = promptColor;
@@ -440,24 +457,31 @@ public partial class ShuttleComputerUI
 
     // Hover steering — only while THIS player has the NAV app open fullscreen
     // (the modal flag already keeps these keys away from the player's feet).
+    // Pad (Sam's picks, 2026-09-06): left stick = position, LB/RB = yaw (the
+    // ship's roll bumpers), A = land. Raw reads on purpose: the cursor mute in
+    // TutorialGate would otherwise zero the stick, and no tutorial ability
+    // gates the shuttle.
     void NavInput()
     {
         var pilot = ShuttleAutopilot.Instance;
-        if (pilot == null) return;
-        if (pilot.CurrentPhase != ShuttleAutopilot.Phase.Hover) return;
+        bool hover = pilot != null && pilot.CurrentPhase == ShuttleAutopilot.Phase.Hover;
+        SetHoverCursorSuppressed(hover);
+        if (!hover) return;
 
         // D-3: first NAV user during HOVER owns the stick; everyone else
         // watches the same feed with a "PILOT:" chip instead of the prompt.
         ShuttleSync.TryClaimPilot();
         if (!ShuttleSync.LocalCanSteer) return;
 
+        Vector2 stick = TutorialGate.LeftStickRaw();
         Vector2 move = new Vector2(
-            (Input.GetKey(KeyCode.D) ? 1f : 0f) - (Input.GetKey(KeyCode.A) ? 1f : 0f),
-            (Input.GetKey(KeyCode.W) ? 1f : 0f) - (Input.GetKey(KeyCode.S) ? 1f : 0f));
-        float yaw = (Input.GetKey(KeyCode.E) ? 1f : 0f) - (Input.GetKey(KeyCode.Q) ? 1f : 0f);
+            Mathf.Clamp((Input.GetKey(KeyCode.D) ? 1f : 0f) - (Input.GetKey(KeyCode.A) ? 1f : 0f) + stick.x, -1f, 1f),
+            Mathf.Clamp((Input.GetKey(KeyCode.W) ? 1f : 0f) - (Input.GetKey(KeyCode.S) ? 1f : 0f) + stick.y, -1f, 1f));
+        float yaw = ((Input.GetKey(KeyCode.E) || TutorialGate.PadHeld(TutorialGate.PadButton.RB)) ? 1f : 0f)
+                  - ((Input.GetKey(KeyCode.Q) || TutorialGate.PadHeld(TutorialGate.PadButton.LB)) ? 1f : 0f);
         pilot.SetPilotInput(move, yaw);
 
-        if (Input.GetKeyDown(KeyCode.Space))
+        if (Input.GetKeyDown(KeyCode.Space) || TutorialGate.PadPressed(TutorialGate.PadButton.A))
         {
             if (!pilot.RequestLand())
                 _navRedFlashUntil = Time.unscaledTime + 0.8f;   // red flash + "NO CLEAR GROUND"

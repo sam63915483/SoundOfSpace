@@ -336,6 +336,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
     public void Close()
     {
+        SetHoverCursorSuppressed(false);   // the virtual cursor comes back the moment NAV's flight isn't ours
         if (!_open) return;
         _open = false;
 
@@ -372,6 +373,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
 
     void OnDestroy()
     {
+        SetHoverCursorSuppressed(false);
         // Never leave the player locked out because the scene changed mid-session.
         if (_open)
         {
@@ -474,6 +476,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // NAV hover steering — WASD/QE/SPACE go to the shuttle while this
         // player is fullscreen on the app (movement is already modal-blocked).
         if (NavOpen) NavInput();
+        else SetHoverCursorSuppressed(false);
 
         // The shelf is world state a co-op partner can change while you are
         // looking at it, so it rebuilds off the library's version counter
