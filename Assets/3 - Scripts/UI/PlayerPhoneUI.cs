@@ -337,6 +337,7 @@ public class PlayerPhoneUI : MonoBehaviour
 
     void ForceCloseNoAnim()
     {
+        PadCursor.ClearBounds();
         if (IsCameraMode) ExitCameraMode();
         ClosePhoneApp();
         if (_animCoroutine != null) { StopCoroutine(_animCoroutine); _animCoroutine = null; }
@@ -1668,6 +1669,9 @@ public class PlayerPhoneUI : MonoBehaviour
             _phoneGroup.blocksRaycasts = true;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible   = true;
+            // Virtual cursor stays on the tablet: it can't wander off into the
+            // dark part of the screen where nothing is clickable.
+            PadCursor.SetBounds(_screenRT);
             // Navigation events stay ENABLED â€” controller players drive the
             // phone with D-pad/stick + A, which needs them. The old
             // sendNavigationEvents=false guard existed because the legacy
@@ -1766,6 +1770,7 @@ public class PlayerPhoneUI : MonoBehaviour
             _phoneGroup.blocksRaycasts = false;
             Cursor.lockState = CursorLockMode.Locked;
             Cursor.visible   = false;
+            PadCursor.ClearBounds();
             // Restore navigation events for the rest of the game's UI.
             var es = UnityEngine.EventSystems.EventSystem.current;
             if (es != null) es.sendNavigationEvents = true;
