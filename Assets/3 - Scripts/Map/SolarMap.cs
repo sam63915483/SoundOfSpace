@@ -186,6 +186,9 @@ public class SolarMap : MonoBehaviour
         if (Input.GetKeyDown(cursorLockKey)) SetCursorLocked(!_cursorLocked);
         if (TutorialGate.ControllerEnabled)
         {
+            // Pad = always locked. Covers the arrival default, a mouse user
+            // who picks up the pad mid-map, and anything that unlocked it.
+            if (!_cursorLocked && TutorialGate.LastSource == TutorialGate.InputSource.Controller) SetCursorLocked(true);
             if (TutorialGate.PadPressed(TutorialGate.PadButton.Y)) Recenter();
             if (TutorialGate.DPadDirectionPressed(0) && _overlay != null) _overlay.LegendMove(-1);
             if (TutorialGate.DPadDirectionPressed(2) && _overlay != null) _overlay.LegendMove(+1);
@@ -381,7 +384,9 @@ public class SolarMap : MonoBehaviour
         LODHandler.CameraOverride = _cam;
         if (_rig == null) _rig = _camT.gameObject.AddComponent<MapCameraRig>();
         _rig.Activate();
-        SetCursorLocked(false);
+        // Mouse users land in cursor mode; pad users land LOCKED (one mode on
+        // pad — Sam, 2026-09-06). Update also re-locks if the pad is touched later.
+        SetCursorLocked(TutorialGate.LastSource == TutorialGate.InputSource.Controller);
         if (_overlay != null) { _overlay.SetInteractive(true); _overlay.SetFollowed(null); }
         if (_pendingFocus != null) { var b = _pendingFocus; _pendingFocus = null; FocusOn(b); }
     }

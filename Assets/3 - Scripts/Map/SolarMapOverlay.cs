@@ -147,10 +147,17 @@ public class SolarMapOverlay : MonoBehaviour
             bool sel = r.body == _followed;
             bool cur = i == _legendCursor;
             if (cur)
-                r.bg.color = new Color(GalaxyHudKit.BorderCool.r * 1.4f, GalaxyHudKit.BorderCool.g * 1.4f, GalaxyHudKit.BorderCool.b * 1.4f, 1f);   // same as mouse hover
+            {
+                // Bright yellow plate + dark text: unmistakable next to the
+                // "followed" copper row (Sam: the cool tint was barely visible).
+                r.bg.color = new Color(1f, 0.92f, 0.30f, 1f);
+                r.label.color = new Color(0.06f, 0.06f, 0.09f, 1f);
+            }
             else
+            {
                 r.bg.color = sel ? new Color(GalaxyHudKit.BorderHot.r, GalaxyHudKit.BorderHot.g, GalaxyHudKit.BorderHot.b, 0.9f) : new Color(1f, 1f, 1f, 0.9f);
-            r.label.color = (sel || cur) ? Color.white : GalaxyHudKit.LabelColor;
+                r.label.color = sel ? Color.white : GalaxyHudKit.LabelColor;
+            }
         }
     }
 
