@@ -87,23 +87,70 @@ public class SolarMapOverlay : MonoBehaviour
     public void SetCursorHint(bool locked)
     {
         if (_cursorHint == null) return;
-        // Legacy UI Text here — no TMP sprite glyphs, so the key is spelled out.
+        // Legacy UI Text here — no TMP sprite glyphs, so buttons are spelled out.
+        // On the pad the map has one mode, so this line carries the whole scheme.
         bool pad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
-        string key = pad ? (TutorialGate.IsPlayStation ? "Triangle" : "Y") : "G";
+        var le = _cursorHint.GetComponent<LayoutElement>();
         if (pad)
-            _cursorHint.text = locked ? key + "  ·  cursor (left stick moves it)" : key + "  ·  back to stick flight";
+        {
+            bool ps = TutorialGate.IsPlayStation;
+            string a = ps ? "Cross" : "A", y = ps ? "Triangle" : "Y", b = ps ? "Circle" : "B";
+            string lb = ps ? "L1" : "LB", rb = ps ? "R1" : "RB";
+            _cursorHint.text =
+                "LEFT STICK · fly   L3 · fast   RIGHT STICK · look\n" +
+                lb + " · up   " + rb + " · down   " + a + " · match what you look at\n" +
+                "D-PAD · legend   " + a + " · fly there   " + y + " · recenter   " + b + " · close";
+            if (le != null) { le.minHeight = 44f; le.preferredHeight = 44f; }
+        }
         else
+        {
             _cursorHint.text = locked ? "G  ·  unlock cursor (mouse look on)" : "G  ·  lock cursor for mouse look";
+            if (le != null) { le.minHeight = 16f; le.preferredHeight = 16f; }
+        }
     }
 
     public void SetFollowed(CelestialBody body)
     {
         _followed = body;
-        foreach (var r in _rows)
+        RepaintRows();
+    }
+
+    // ── pad legend cursor (D-pad up/down, A = fly there) ─────────────────────
+    int _legendCursor = -1;
+
+    public void LegendMove(int dir)
+    {
+        if (_rows.Count == 0) return;
+        _legendCursor = _legendCursor < 0
+            ? (dir > 0 ? 0 : _rows.Count - 1)
+            : (_legendCursor + dir + _rows.Count) % _rows.Count;
+        RepaintRows();
+    }
+
+    /// Fly to the highlighted legend row. False when nothing is highlighted
+    /// (the caller then treats A as a crosshair click instead).
+    public bool LegendActivate()
+    {
+        if (_legendCursor < 0 || _legendCursor >= _rows.Count) return false;
+        var body = _rows[_legendCursor].body;
+        _legendCursor = -1;
+        RepaintRows();
+        if (_map != null && body != null) _map.FocusAndFollow(body);
+        return true;
+    }
+
+    void RepaintRows()
+    {
+        for (int i = 0; i < _rows.Count; i++)
         {
-            bool sel = r.body == body;
-            r.bg.color = sel ? new Color(GalaxyHudKit.BorderHot.r, GalaxyHudKit.BorderHot.g, GalaxyHudKit.BorderHot.b, 0.9f) : new Color(1f, 1f, 1f, 0.9f);
-            r.label.color = sel ? Color.white : GalaxyHudKit.LabelColor;
+            var r = _rows[i];
+            bool sel = r.body == _followed;
+            bool cur = i == _legendCursor;
+            if (cur)
+                r.bg.color = new Color(GalaxyHudKit.BorderCool.r * 1.4f, GalaxyHudKit.BorderCool.g * 1.4f, GalaxyHudKit.BorderCool.b * 1.4f, 1f);   // same as mouse hover
+            else
+                r.bg.color = sel ? new Color(GalaxyHudKit.BorderHot.r, GalaxyHudKit.BorderHot.g, GalaxyHudKit.BorderHot.b, 0.9f) : new Color(1f, 1f, 1f, 0.9f);
+            r.label.color = (sel || cur) ? Color.white : GalaxyHudKit.LabelColor;
         }
     }
 
@@ -233,6 +280,7 @@ public class SolarMapOverlay : MonoBehaviour
         if (_player != null && _player.root != null) Destroy(_player.root.gameObject);
         foreach (var r in _rows) if (r.bg != null) Destroy(r.bg.gameObject);
         _rows.Clear();
+        _legendCursor = -1;
         foreach (Transform c in _legendRowsRoot) Destroy(c.gameObject);
 
         _sun = null;

@@ -31,7 +31,7 @@ Plug in the pad before launching. Expected behaviour per line; tick or note what
 - [ ] Camera app: ring gone, you can walk and look, RT shoots, LT toggles photo/video, B back to the phone.
 
 ## Solar map
-- [ ] Back/View opens the map locked: sticks fly/look. Y → ring appears, legend hint says so; stick moves it, right stick zooms, A clicks a planet / legend row. Y again → locked. B closes from either mode.
+- [ ] Back/View opens the map. No ring on pad, ever. Left stick flies, L3 fast, right stick looks, LB up, RB down. Look at a planet + A → match its velocity (A on empty space → unmatch). D-pad up/down highlights a legend row, A flies there. Y recenters. B closes. Legend hint lists all of this.
 
 ## Save / load, galleries, misc
 - [ ] Save/load slots, photo gallery, newspaper, note reader: cursor works where a mouse would; B closes.

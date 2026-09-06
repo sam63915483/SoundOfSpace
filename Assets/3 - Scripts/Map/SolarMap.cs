@@ -177,9 +177,29 @@ public class SolarMap : MonoBehaviour
         if (_state != State.Open) return;
 
         if (Input.GetKeyDown(recenterKey)) Recenter();
-        // G (keyboard) or Y (pad, Sam's pick) flips cursor mode. Unlocked → the
-        // OS cursor is free → PadCursor appears and the left stick moves it.
-        if (Input.GetKeyDown(cursorLockKey) || TutorialGate.PadPressed(TutorialGate.PadButton.Y)) SetCursorLocked(!_cursorLocked);
+        // G flips cursor mode for MOUSE users only. On the pad the map has ONE
+        // mode (Sam, 2026-09-06 after playtest): cursor always locked, sticks
+        // fly/look, so PadCursor never appears here. Pad scheme:
+        //   left stick fly · L3 fast · right stick look · LB up · RB down
+        //   A = match velocity of the body under the crosshair (space = unmatch)
+        //   D-pad up/down = legend row · A = fly there + match · Y = recenter · B = close
+        if (Input.GetKeyDown(cursorLockKey)) SetCursorLocked(!_cursorLocked);
+        if (TutorialGate.ControllerEnabled)
+        {
+            if (TutorialGate.PadPressed(TutorialGate.PadButton.Y)) Recenter();
+            if (TutorialGate.DPadDirectionPressed(0) && _overlay != null) _overlay.LegendMove(-1);
+            if (TutorialGate.DPadDirectionPressed(2) && _overlay != null) _overlay.LegendMove(+1);
+            if (TutorialGate.PadPressed(TutorialGate.PadButton.A))
+            {
+                // A legend row highlighted by the D-pad wins; otherwise A is a
+                // "click" at the screen centre — whatever the crosshair is on.
+                if (_overlay == null || !_overlay.LegendActivate())
+                {
+                    _pendingClick = true;
+                    _pendingClickPos = new Vector3(Screen.width * 0.5f, Screen.height * 0.5f, 0f);
+                }
+            }
+        }
 
         // Click a PLANET (its real terrain) = match its velocity; click empty
         // space = unmatch. Name tags and legend rows arrive through the UI

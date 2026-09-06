@@ -72,13 +72,14 @@ public class MapCameraRig : MonoBehaviour
         if (Mathf.Abs(v) > 0.001f) dir += transform.forward * v;
         if (Mathf.Abs(h) > 0.001f) dir += transform.right * h;
 
-        // Up: Space / A button.
+        // Up: Space / LB.  Down: LeftCtrl / RB.  (Pad binds are Sam's,
+        // 2026-09-06 — A is now "match what you look at", so it left the
+        // flight controls.)
         bool up = Input.GetKey(KeyCode.Space) ||
-                  TutorialGate.PadHeld(TutorialGate.PadButton.A);
+                  TutorialGate.PadHeld(TutorialGate.PadButton.LB);
         if (up) dir += transform.up;
-        // Down: LeftCtrl / LT pull.
         bool down = Input.GetKey(KeyCode.LeftControl) ||
-                    (TutorialGate.ControllerEnabled && !PadCursor.IsActive && TutorialGate.LTValue() > TutorialGate.TriggerThreshold);
+                    TutorialGate.PadHeld(TutorialGate.PadButton.RB);
         if (down) dir -= transform.up;
 
         if (dir.sqrMagnitude > 0.0001f)
