@@ -126,9 +126,12 @@ public class NoteReadUI : MonoBehaviour
         // from advancing a tutorial tip when they walk up to the note).
         if (Time.frameCount <= _openedFrame) return;
 
+        // PadCursor.PrimaryDown = LMB, or pad A read straight off the device
+        // while the virtual cursor is up (the note unlocks the OS cursor, so
+        // TutorialGate's A is muted here and would never advance the page).
         bool advance = Input.GetKeyDown(KeyCode.Tab) ||
                        TutorialGate.PadPressed(TutorialGate.PadButton.A) ||
-                       Input.GetMouseButtonDown(0);
+                       PadCursor.PrimaryDown;
 
         if (advance)
         {
