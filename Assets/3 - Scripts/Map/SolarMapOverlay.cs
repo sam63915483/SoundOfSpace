@@ -84,7 +84,17 @@ public class SolarMapOverlay : MonoBehaviour
 
     public void SetInteractive(bool on) { _interactive = on; SetAlpha(_alpha); }
     public void SetNamesVisible(bool on) { _namesVisible = on; RefreshToggleLabels(); }
-    public void SetCursorHint(bool locked) { if (_cursorHint != null) _cursorHint.text = locked ? "G  ·  unlock cursor (mouse look on)" : "G  ·  lock cursor for mouse look"; }
+    public void SetCursorHint(bool locked)
+    {
+        if (_cursorHint == null) return;
+        // Legacy UI Text here — no TMP sprite glyphs, so the key is spelled out.
+        bool pad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
+        string key = pad ? (TutorialGate.IsPlayStation ? "Triangle" : "Y") : "G";
+        if (pad)
+            _cursorHint.text = locked ? key + "  ·  cursor (left stick moves it)" : key + "  ·  back to stick flight";
+        else
+            _cursorHint.text = locked ? "G  ·  unlock cursor (mouse look on)" : "G  ·  lock cursor for mouse look";
+    }
 
     public void SetFollowed(CelestialBody body)
     {

@@ -78,7 +78,7 @@ public class MapCameraRig : MonoBehaviour
         if (up) dir += transform.up;
         // Down: LeftCtrl / LT pull.
         bool down = Input.GetKey(KeyCode.LeftControl) ||
-                    (TutorialGate.ControllerEnabled && TutorialGate.LTValue() > TutorialGate.TriggerThreshold);
+                    (TutorialGate.ControllerEnabled && !PadCursor.IsActive && TutorialGate.LTValue() > TutorialGate.TriggerThreshold);
         if (down) dir -= transform.up;
 
         if (dir.sqrMagnitude > 0.0001f)
@@ -86,7 +86,7 @@ public class MapCameraRig : MonoBehaviour
             float speed = SpeedAtPosition(transform.position);
             // Sprint: LeftShift / L-stick click.
             bool sprint = Input.GetKey(KeyCode.LeftShift) ||
-                          TutorialGate.PadHeld(TutorialGate.PadButton.L3);
+                          (!PadCursor.IsActive && TutorialGate.PadHeld(TutorialGate.PadButton.L3));
             if (sprint) speed *= sprintMultiplier;
             transform.position += dir.normalized * speed * Time.deltaTime;
         }

@@ -177,7 +177,9 @@ public class SolarMap : MonoBehaviour
         if (_state != State.Open) return;
 
         if (Input.GetKeyDown(recenterKey)) Recenter();
-        if (Input.GetKeyDown(cursorLockKey)) SetCursorLocked(!_cursorLocked);
+        // G (keyboard) or Y (pad, Sam's pick) flips cursor mode. Unlocked → the
+        // OS cursor is free → PadCursor appears and the left stick moves it.
+        if (Input.GetKeyDown(cursorLockKey) || TutorialGate.PadPressed(TutorialGate.PadButton.Y)) SetCursorLocked(!_cursorLocked);
 
         // Click a PLANET (its real terrain) = match its velocity; click empty
         // space = unmatch. Name tags and legend rows arrive through the UI
@@ -185,13 +187,13 @@ public class SolarMap : MonoBehaviour
         // The raycast itself runs in LateUpdate AFTER the camera is re-pinned
         // to the map pose — during Update other scripts may have parked it
         // back on the helmet, and a ray from there hits nothing useful.
-        if (Input.GetMouseButtonDown(0) && !_cursorLocked && _cam != null)
+        if (PadCursor.PrimaryDown && !_cursorLocked && _cam != null)
         {
             var es = EventSystem.current;
-            if (es == null || !es.IsPointerOverGameObject()) { _pendingClick = true; _pendingClickPos = Input.mousePosition; }
+            if (es == null || !es.IsPointerOverGameObject()) { _pendingClick = true; _pendingClickPos = PadCursor.PointerPosition; }
         }
 
-        float scroll = Input.mouseScrollDelta.y;
+        float scroll = PadCursor.ScrollDelta;   // wheel notches, or right-stick Y while the cursor is up
         if (Mathf.Abs(scroll) > 0.001f && !_glide.active && _camT != null && _anchor != null)
         {
             // Zoom along the view direction by a fraction of the distance to the anchor.
