@@ -416,9 +416,14 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // The save dialog is modal AND has a text field: ESC dismisses it, and
         // every other key belongs to the field. F must not close the computer
         // and SPACE must reach the name as a space, not as PLAY.
+        // Pad B walks exactly the Escape ladder below: dialog → view → menu →
+        // closed, one level per press (mirrors the phone). ConsumeEscape() is
+        // harmless for B — the pause menu opens on Start, not B.
+        bool back = Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B);
+
         if (SaveOpen)
         {
-            if (Input.GetKeyDown(KeyCode.Escape)) { ConsumeEscape(); CloseSaveDialog(); }
+            if (back) { ConsumeEscape(); CloseSaveDialog(); }
             return;
         }
 
@@ -426,14 +431,14 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // computer, and the transport shortcut is suppressed while it is up.
         if (PrintOpen)
         {
-            if (Input.GetKeyDown(KeyCode.Escape)) { ConsumeEscape(); ClosePrint(); }
+            if (back) { ConsumeEscape(); ClosePrint(); }
             return;
         }
 
         // ESC steps back one screen at a time — shelf to menu, instrument to
         // menu — and only leaves the computer from the menu or the desktop.
         // F always leaves outright, because F is what opened it.
-        if (Time.frameCount > _openedFrame && Input.GetKeyDown(KeyCode.Escape))
+        if (Time.frameCount > _openedFrame && back)
         {
             // Every one of these SPENDS the Escape — without saying so, the same
             // press pops the pause menu on top of the screen you just went back to.
@@ -449,7 +454,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // order between it and this component is undefined — without the guard
         // the same keypress could open and immediately close the screen.
         if (Time.frameCount > _openedFrame &&
-            (Input.GetKeyDown(KeyCode.Escape) || Input.GetKeyDown(KeyCode.F)))
+            (back || Input.GetKeyDown(KeyCode.F)))
         {
             // Tell the terminal this F is spent so its own handler can't
             // reopen us in the same frame. Mirrors StorageUI/LootBox.

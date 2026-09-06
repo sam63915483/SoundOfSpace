@@ -145,7 +145,7 @@ public class TevPaymentUI : MonoBehaviour
             SetGive(_give + step);
         }
 
-        if (Input.GetKeyDown(KeyCode.Escape)) Close(0);
+        if (Input.GetKeyDown(KeyCode.Escape) || TutorialGate.PadPressed(TutorialGate.PadButton.B)) Close(0);
         if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)) Commit();
     }
 
