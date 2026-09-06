@@ -22,8 +22,8 @@ public enum ProgressTrack
 /// its own max level; the "general level" shown on the phone is the mean of the
 /// five tracks' PERCENT completion, not the mean of their level numbers.
 ///
-/// Why percent and not levels: Explorer can only ever have 9 levels (there are
-/// 9 worlds), while the others have 10. Averaging raw level numbers would make
+/// Why percent and not levels: Explorer can only ever have as many levels as
+/// there are worlds (17 since the dwarf planets, 2026-09-06), while the others have 10. Averaging raw level numbers would make
 /// a maxed Explorer look permanently worse than a maxed Tree Killer. Averaging
 /// percent means every track contributes 0..100% regardless of how many levels
 /// it has — so re-scaling a track later (e.g. Tree Daddy becoming "100% oxygen
@@ -75,13 +75,15 @@ public class PlayerProgress : MonoBehaviour
     };
 
     // Explorer is discrete: one level per world reached, so its curve is just
-    // 1..WorldCount. Nine worlds — the four planets, the three moons, the Sun
-    // ("touching" it) and the Black Hole (entering it).
+    // 1..WorldCount. Seventeen worlds — the four planets, the three moons, the
+    // Sun ("touching" it), the Black Hole (entering it) and the eight dwarf
+    // planets (2026-09-06, DwarfPlanetInstaller).
     public static readonly string[] WorldNames =
     {
         "Cyclops", "Fiery Twin", "Icey Twin", "Humble Abode",
         "Watchful Eye", "Constant Companion", "Tumbling Bean",
         "Sun", "Black Hole",
+        "Puddle", "Hearth", "Anvil", "Ember", "Slag", "Shard", "Pebble", "Bruise",
     };
 
     // Resolved once — thresholds[track][level-1] = cumulative score for that level.

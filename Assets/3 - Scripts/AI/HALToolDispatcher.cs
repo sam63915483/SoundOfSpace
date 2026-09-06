@@ -176,21 +176,17 @@ public static class HALToolDispatcher
 
     static void HandleMap(string arg)
     {
-        if (SolarSystemMapController.Instance == null)
+        if (SolarMap.Instance == null)
         {
-            Debug.LogWarning("[HALToolDispatcher] map: SolarSystemMapController not available.");
+            Debug.LogWarning("[HALToolDispatcher] map: SolarMap not available.");
             return;
         }
 
-        SolarSystemMapController.Instance.OpenMap();
-
         // If an arg was provided, try to find a matching celestial body and
-        // focus the map on it. Silent if no match (the map still opens).
-        if (!string.IsNullOrEmpty(arg))
-        {
-            var body = ResolveCelestialBody(arg);
-            if (body != null) SolarSystemMapController.Instance.FocusOn(body);
-        }
+        // fly the map to it (FocusOn opens the map first). Silent if no match.
+        CelestialBody target = string.IsNullOrEmpty(arg) ? null : ResolveCelestialBody(arg);
+        if (target != null) SolarMap.Instance.FocusOn(target);
+        else SolarMap.Instance.Open();
     }
 
     // ── Target resolution ────────────────────────────────────────────────

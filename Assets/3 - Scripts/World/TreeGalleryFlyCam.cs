@@ -42,7 +42,7 @@ public class TreeGalleryFlyCam : MonoBehaviour
         }
 
         float scroll = Input.GetAxis("Mouse ScrollWheel");
-        if (scroll != 0f) moveSpeed = Mathf.Clamp(moveSpeed * (1f + scroll), 2f, 400f);
+        if (scroll != 0f) moveSpeed = Mathf.Clamp(moveSpeed * (1f + scroll), minSpeed, maxSpeed);
 
         Vector3 d = new Vector3(Input.GetAxisRaw("Horizontal"), 0f, Input.GetAxisRaw("Vertical"));
         if (Input.GetKey(KeyCode.E)) d.y += 1f;
@@ -51,4 +51,10 @@ public class TreeGalleryFlyCam : MonoBehaviour
         float s = moveSpeed * (Input.GetKey(KeyCode.LeftShift) ? fastMultiplier : 1f);
         transform.position += transform.TransformDirection(d.normalized) * (s * Time.unscaledDeltaTime);
     }
+
+    // Wheel-speed clamp. Appended (serialized-field order): the Tree Gallery
+    // keeps its old 2..400 range by default; the Planet Gallery sets these to
+    // thousands because its planets are kilometres apart.
+    public float minSpeed = 2f;
+    public float maxSpeed = 400f;
 }

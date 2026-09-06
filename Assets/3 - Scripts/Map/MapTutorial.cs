@@ -35,6 +35,8 @@ public class MapTutorial : MonoBehaviour
 
     void Awake()
     {
+        // VAULTED 2026-09-06 (FeatureVault.MapTutorial) with the old map it taught.
+        if (!FeatureVault.MapTutorial) { Destroy(gameObject); return; }
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
     }

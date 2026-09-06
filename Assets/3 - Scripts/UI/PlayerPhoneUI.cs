@@ -1526,8 +1526,8 @@ public class PlayerPhoneUI : MonoBehaviour
                     FishingdexManager.Instance.CloseFishingdex();
                 else if (BuildMenuUI.IsOpen && BuildMenuUI.Instance != null)
                     BuildMenuUI.Instance.Close();
-                else if (SolarSystemMapController.IsOpen && SolarSystemMapController.Instance != null)
-                    SolarSystemMapController.Instance.CloseMap();
+                else if (SolarMap.IsOpen && SolarMap.Instance != null)
+                    SolarMap.Instance.Close();
 
                 if (!IsOpen) Open();
                 EnterCameraMode();
@@ -1545,7 +1545,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // including the camera app).
         if (!IsOpen && !Ship.AnyShipPiloted && TutorialGate.DPadDirectionPressed(0)
             && !GhostPlacement.IsPlacing   // D-pad up adjusts ghost distance there
-            && !FishingdexManager.IsOpen && !BuildMenuUI.IsOpen && !SolarSystemMapController.IsOpen
+            && !FishingdexManager.IsOpen && !BuildMenuUI.IsOpen && !SolarMap.IsOpen
             && !PlayerController.isInDialogue
             && (TabbedPauseMenu.Instance == null || !TabbedPauseMenu.Instance.IsOpen))
         {
@@ -1556,7 +1556,7 @@ public class PlayerPhoneUI : MonoBehaviour
         // Pad B only acts as "back out of a sub-menu" here â€” never as the
         // open/close toggle, since B on foot is Drop (X keyboard keeps both roles).
         bool padSubMenuBack = TutorialGate.PadPressed(TutorialGate.PadButton.B)
-            && (FishingdexManager.IsOpen || BuildMenuUI.IsOpen || SolarSystemMapController.IsOpen);
+            && (FishingdexManager.IsOpen || BuildMenuUI.IsOpen || SolarMap.IsOpen);
         if (Input.GetKeyDown(KeyCode.X) || padSubMenuBack)
         {
             if (FishingdexManager.IsOpen && FishingdexManager.Instance != null)
@@ -1571,9 +1571,9 @@ public class PlayerPhoneUI : MonoBehaviour
                 Open();
                 return;
             }
-            if (SolarSystemMapController.IsOpen && SolarSystemMapController.Instance != null)
+            if (SolarMap.IsOpen && SolarMap.Instance != null)
             {
-                SolarSystemMapController.Instance.CloseMap();
+                SolarMap.Instance.Close();
                 Open();
                 return;
             }
@@ -3186,8 +3186,8 @@ public class PlayerPhoneUI : MonoBehaviour
                 else Debug.LogWarning("[PlayerPhoneUI] TabbedPauseMenu.Instance is null");
                 break;
             case AppKind.Map:
-                if (SolarSystemMapController.Instance != null) SolarSystemMapController.Instance.OpenMap();
-                else Debug.LogWarning("[PlayerPhoneUI] SolarSystemMapController.Instance is null");
+                if (SolarMap.Instance != null) SolarMap.Instance.Open();
+                else Debug.LogWarning("[PlayerPhoneUI] SolarMap.Instance is null");
                 break;
         }
     }

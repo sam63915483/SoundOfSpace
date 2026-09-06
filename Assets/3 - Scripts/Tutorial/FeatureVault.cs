@@ -268,4 +268,21 @@ public static class FeatureVault
     ///     are story content, not commentary — untouched.
     /// Flip to true and every line comes back exactly as built.
     public static readonly bool HALCommentary = false;
+
+    /// The ORIGINAL solar-system map (SolarSystemMapController + MapBootstrapReal
+    /// + MapLegendUI + MapOrbitLines + MapTeleportToPilotButton + MapHighlightRing).
+    /// Replaced 2026-09-06 by SolarMap (Map/SolarMap*.cs): the real camera flies
+    /// seamlessly from the helmet to a top-down view and back, analytic orbit
+    /// rings, labelled diagram, same fly controls + velocity match. Sam: "the old
+    /// one was so bad I never used it." With this false the old scene object's
+    /// bootstrap never builds and its controller never listens for M; every
+    /// external caller null-checks SolarSystemMapController.Instance. Flip to
+    /// true (and SolarMap will fight it for M) only to compare.
+    public static readonly bool LegacySolarMap = false;
+
+    /// The six-step map tutorial that rode on the old map. Vaulted with it
+    /// (Sam: "kinda bad"). Its save fields stay in the schema; with the flag
+    /// off the singleton destroys itself on Awake so every Instance check is a
+    /// no-op and HintTrackRunner's OnOpened subscription simply never fires.
+    public static readonly bool MapTutorial = false;
 }

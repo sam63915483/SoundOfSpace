@@ -79,6 +79,8 @@ public class SolarSystemMapController : MonoBehaviour
 
     void Awake()
     {
+        // VAULTED 2026-09-06 (FeatureVault.LegacySolarMap): SolarMap owns M now.
+        if (!FeatureVault.LegacySolarMap) { enabled = false; return; }
         if (Instance != null && Instance != this) { Destroy(this); return; }
         Instance = this;
     }

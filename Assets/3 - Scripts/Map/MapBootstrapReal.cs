@@ -5,7 +5,7 @@ public class MapBootstrapReal : MonoBehaviour
 {
     bool built;
 
-    void Start() { Build(); }
+    void Start() { if (!FeatureVault.LegacySolarMap) return; Build(); }   // VAULTED 2026-09-06 — see FeatureVault.LegacySolarMap / SolarMap
 
     void Build()
     {

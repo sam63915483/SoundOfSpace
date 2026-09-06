@@ -59,7 +59,13 @@ public class GrassLightAutoMarker : MonoBehaviour
     /// ground beside it, which is a large part of "the grass glows while the
     /// ground barely lights up". 0.35 × 4.5 ≈ 1.6× the real light: still
     /// visible on the blades at your feet, no longer a glowing pool.</summary>
-    public static float PlayerLightGrassStrength = 0.35f;
+    /// 2026-09-06: 0.35 -> 0.13. Same root cause as the torch (see the grass
+    /// shader's flashlight block): the SUN reaches grass through a half-Lambert
+    /// wrap that effectively halves the blade colour, but the lantern/eye-light
+    /// path applies the full colour, so by day (wrap on, lampDay 0) it was fine
+    /// and at night grass lit ~2x harder than the ground beside it.
+    /// 0.13 x _PointLightBoost 4.5 = 0.59 -- the sun path's gain.
+    public static float PlayerLightGrassStrength = 0.13f;
 
     /// Lights appear late (the shuttle streams in, held items spawn, the
     /// thrust FX builds its own lights), so sweep on a slow clock forever

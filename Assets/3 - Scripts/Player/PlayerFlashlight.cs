@@ -172,6 +172,24 @@ public class PlayerFlashlight : MonoBehaviour
             CycleMode();
         }
 
+        // LIVE TUNING of how hard the torch lights GRASS (2026-09-06). The
+        // 09-04 rebalance (blade floor 0.12→0.35, response 1.0→1.3) was never
+        // play-tested and Sam reports the lawn glowing under the torch at
+        // night, which is a taste call nobody but Sam can make in a build.
+        // [ and ] scale grassLightStrength (the one multiplier the grass
+        // shader already applies to the torch term) by 15% per press; the
+        // value persists in PlayerPrefs and shows on the F3 overlay, so Sam
+        // dials it at night, reads the number, and it gets baked in later.
+        if (Universe.cheatsEnabled)
+        {
+            bool down = Input.GetKeyDown(KeyCode.LeftBracket), up = Input.GetKeyDown(KeyCode.RightBracket);
+            if (down || up)
+            {
+                grassLightStrength = Mathf.Clamp(grassLightStrength * (up ? 1.15f : 1f / 1.15f), 0.05f, 4f);
+                PlayerPrefs.SetFloat(GrassStrengthPref, grassLightStrength);
+            }
+        }
+
         if (!flashlight.enabled) return;
 
         // Brightness is fixed. Resync each tick so an inspector change to
@@ -253,12 +271,24 @@ public class PlayerFlashlight : MonoBehaviour
     static readonly int _flashParamsId = Shader.PropertyToID("_FlashlightParams");
     static readonly int _flashCookieId = Shader.PropertyToID("_FlashlightCookie");
 
+    // Live torch→grass tuning (see Update). Read by FPSOverlay; persisted so a
+    // value dialled in one session survives the next launch.
+    const string GrassStrengthPref = "TorchGrassStrength";
+    public static float CurrentGrassStrength = -1f;   // -1 = no torch alive
+    bool _grassPrefLoaded;
+
     void LateUpdate()
     {
         if (flashlight != null) ApplyAimLag();
 
         // Run unconditionally (Update has several early-returns) so the grass
         // globals always reflect the torch's final state for this frame.
+        if (!_grassPrefLoaded)
+        {
+            _grassPrefLoaded = true;
+            if (PlayerPrefs.HasKey(GrassStrengthPref)) grassLightStrength = PlayerPrefs.GetFloat(GrassStrengthPref, grassLightStrength);
+        }
+        CurrentGrassStrength = grassLightStrength;
         bool on = flashlight != null && flashlight.enabled && flashlight.intensity > 0f;
         if (on)
         {

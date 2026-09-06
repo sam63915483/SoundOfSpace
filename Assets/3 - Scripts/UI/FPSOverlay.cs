@@ -121,6 +121,7 @@ public class FPSOverlay : MonoBehaviour
     readonly List<Behaviour> _frozenAI       = new List<Behaviour>();
 
     int _objCount;
+    int _lastFxDrawn, _lastFxCulled;
     float _objCountTimer = ObjCountIntervalSec;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -269,13 +270,15 @@ public class FPSOverlay : MonoBehaviour
             && cpuMs10 == _lastCpuMs10 && gpuMs10 == _lastGpuMs10 && drawsInt == _lastDraws
             && gcKb == _lastGcKb && _objCount == _lastObj
             && _atmoDisabled == _lastAtmoState && _physicsHalved == _lastPhysState
-            && concertFrozen == _lastConcertState && worldFrozen == _lastWorldState)
+            && concertFrozen == _lastConcertState && worldFrozen == _lastWorldState
+            && PlanetEffects.LastRendered == _lastFxDrawn && PlanetEffects.LastCulled == _lastFxCulled)
             return;
         _lastFps = fps; _lastMin = minFps; _lastMs10 = ms10;
         _lastCpuMs10 = cpuMs10; _lastGpuMs10 = gpuMs10; _lastDraws = drawsInt;
         _lastGcKb = gcKb; _lastObj = _objCount;
         _lastAtmoState = _atmoDisabled; _lastPhysState = _physicsHalved;
         _lastConcertState = concertFrozen; _lastWorldState = worldFrozen;
+        _lastFxDrawn = PlanetEffects.LastRendered; _lastFxCulled = PlanetEffects.LastCulled;
 
         _sb.Length = 0;
         _sb.Append("FPS  ").Append(fps).Append('\n');
@@ -287,6 +290,11 @@ public class FPSOverlay : MonoBehaviour
         if (drawsInt >= 0) _sb.Append("draw ").Append(drawsInt).Append('\n');
         if (gcKb >= 0)     _sb.Append("gc   ").Append(gcKb).Append("kb\n");
         _sb.Append("obj  ").Append(_objCount).Append('\n');
+        // Sky/sea full-screen passes drawn this frame vs planets that have them (PlanetEffects culling, 2026-09-06).
+        _sb.Append("fx   ").Append(_lastFxDrawn).Append('/').Append(_lastFxDrawn + _lastFxCulled).Append('\n');
+        // Torch-on-grass multiplier, live-tuned with [ and ] (PlayerFlashlight, 2026-09-06).
+        if (PlayerFlashlight.CurrentGrassStrength >= 0f)
+            _sb.Append("torch→grass ").Append(PlayerFlashlight.CurrentGrassStrength.ToString("0.00")).Append("  ([ ] to tune)\n");
         _sb.Append("min  ").Append(minFps);
         if (_atmoDisabled) _sb.Append("\n[atmo OFF]");
         if (_physicsHalved) _sb.Append("\n[phys halved]");

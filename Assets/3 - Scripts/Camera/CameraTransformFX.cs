@@ -96,6 +96,14 @@ public class CameraTransformFX : MonoBehaviour
         // would snap to wherever the player was standing. Bail out so the
         // ship can own the camera.
         if (_playerTransform == null || !_playerTransform.gameObject.activeInHierarchy) return;
+        // The solar map BORROWS the real camera and flies it across the system
+        // (SolarMap, 2026-09-06). Disabling this component is not enough: the
+        // manager re-gates .enabled from the fx flag every frame, so this
+        // LateUpdate (order 100) kept snapping the camera back onto the head
+        // and SolarMap (order 210) re-pinned it — visually fine, but everything
+        // that read the camera in between (LODHandler, click raycasts) saw the
+        // helmet pose. Bail without resetting; SolarMap restores the head pose.
+        if (SolarMap.IsOpen) return;
 
         float dt = Time.deltaTime;
 

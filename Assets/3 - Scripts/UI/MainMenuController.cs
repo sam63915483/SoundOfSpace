@@ -1013,6 +1013,8 @@ public class MainMenuController : MonoBehaviour
         tick("helmet HUD");       yield return null;
         if (TrailerFreeCam.Instance == null) { var go = new GameObject("TrailerFreeCam"); DontDestroyOnLoad(go); go.AddComponent<TrailerFreeCam>(); }
         tick("trailer free-cam"); yield return null;
+        if (SolarMap.Instance == null) { var go = new GameObject("SolarMap"); DontDestroyOnLoad(go); go.AddComponent<SolarMap>(); }
+        tick("solar map"); yield return null;
         if (TrailerBlackHoleGrow.Instance == null) { var go = new GameObject("TrailerBlackHoleGrow"); DontDestroyOnLoad(go); go.AddComponent<TrailerBlackHoleGrow>(); }
         tick("trailer BH grow"); yield return null;
         // Progression quartet. PlayerProgress MUST come first — the other three
@@ -1152,6 +1154,12 @@ public class MainMenuController : MonoBehaviour
             var go = new GameObject("BonusTutorial");
             DontDestroyOnLoad(go);
             go.AddComponent<BonusTutorial>();
+        }
+        if (SolarMap.Instance == null)
+        {
+            var go = new GameObject("SolarMap");
+            DontDestroyOnLoad(go);
+            go.AddComponent<SolarMap>();
         }
         if (MapTutorial.Instance == null)
         {

@@ -1662,3 +1662,81 @@ engine over all 19 graphs (round-trip, validation, every reply path) clean;
 server API smoke-tested (GET/PUT/POST, id-mismatch rejection, backup). **Not yet
 play-tested by Sam** — first check: talk to Tev / Floorbin / Shllorbin in the
 Editor, edit a line in the browser, Save, talk again.
+
+
+---
+
+## Addendum 2026-09-06 — Dwarf planets + Planet Gallery
+
+**Eight dwarf planets are now in `1.6.7.7.7`** (`Tools ▸ Solar System ▸ Add Dwarf
+Planets`, `Editor/DwarfPlanetInstaller.cs`; `Remove Dwarf Planets` undoes it).
+Clones of the Cyclops GameObject under `Body Simulation` with their own settings
+assets from `Solar System/Dwarf Planets/<name>/`, each on a clockwork rail
+(`railPeriod` = day length), XY plane, same direction as Cyclops. All eight sit in the twins→Humble Abode gap (Sam, later 2026-09-06: denser inner system, Cyclops stays far); `Re-place Dwarf Planets` applies the installer table to bodies already in the scene:
+
+| Name | r | g | orbit | day | ocean/atmo | recipe |
+|---|---|---|---|---|---|---|
+| Puddle | 50 | 3 | 6,900 | 640 s | yes | Earth (HA clone, archipelago) |
+| Hearth | 45 | 3 | 7,450 | 670 s | yes | Earth, HA's own colours |
+| Anvil | 70 | 4 | 8,000 | 695 s | yes | Earth, big ranges |
+| Ember | 60 | 3.5 | 8,550 | 720 s | yes | Alien (Cyclops clone), red sky |
+| Slag | 55 | 3.5 | 9,100 | 750 s | yes | Moat (Fiery clone) |
+| Shard | 40 | 2.5 | 9,650 | 775 s | yes | Shattered (Icey clone) |
+| Pebble | 30 | 2 | 10,200 | 800 s | no | Moon, 1400 small craters |
+| Bruise | 42 | 2.5 | 10,750 | 830 s | no | Moon, few huge craters |
+
+Nothing else needed code: NAV app lists `bodyType == Planet`, saves match by name,
+spawners/LOD/post/eclipse/flares/map/MP all iterate `NBodySimulation.Bodies`.
+`TreeSpawner.excludeBodyNames` (scene-serialized) gained Pebble + Bruise;
+`PlayerProgress.WorldNames` gained all eight (Explorer max 9 → 17; track is vaulted).
+**Not done:** `MenuOrbit.unity` (menu background copy) still has the original 9
+bodies. Old saves: dwarfs start at scene pose (rails rebase). Dwarfs <150 radius
+use the coarse 200-res collider, not the visual mesh (generator constant).
+
+**Planet Gallery** (`Tools ▸ Planet Gallery`, `Editor/PlanetGalleryBuilder.cs`,
+`4 - Scenes/PlanetGallery.unity`, `docs/PLANET_GALLERY.md`): fly-around test scene,
+4 in-game planets + 16 dwarf recipes in a line; assets are per-planet clones
+(AtmosphereSettings caches per asset — never share one between planets).
+`World/GallerySceneQuiet.cs` hides auto-created HUD canvases in test scenes.
+
+**Sky/sea culling (2026-09-06, Sam's call — the sanctioned exception #2 in the
+forbidden zone, like the cave cutouts):** `PlanetEffects.GetMaterials` now skips a
+planet's atmosphere + ocean full-screen passes when its effect sphere is off
+screen, shorter than `minScreenPixels` (8) on screen, or wholly hidden behind a
+nearer planet's ground (below the horizon). Measured cause: F4 (all sky/sea off)
+gave back ~50 fps in a build with 12 planets = 21 screen-sized blits a frame.
+Strictly additive; `cullInvisible = false` on the Planet Effects asset restores the
+old loop, `git checkout` of the file reverts. `FPSOverlay` shows `fx drawn/total`.
+
+**Torch-on-grass live knob (2026-09-06):** Sam reports the lawn glowing under the
+torch at night in a build. Root-cause trail: nothing in the torch/grass path changed
+since fdea9f02; the only lights under the player are the torch and the runtime eye
+light; the 09-04 pass-3 values (blade floor 0.35, response 1.3) were never
+play-tested — an over-correction of pass 2. `[` / `]` now scale
+`PlayerFlashlight.grassLightStrength` live (cheats on), persisted in PlayerPrefs
+`TorchGrassStrength`, shown on the F3 overlay as `torch→grass`. Bake the chosen value
+into the scene field once Sam reports it.
+
+**Torch-on-grass ROOT CAUSE + fix (2026-09-06, later):** Sam confirmed it only shows at
+night. `CG_SimpleGrass.shader`: the SUN reaches grass through `LightingGrassWrap`
+(half-Lambert, floor 0.5 × day factor → blades show ~0.5–0.65 of their albedo), but the
+TORCH/lantern emission paths apply the FULL albedo, so relative to the ground grass took
+the torch ~2× harder than it takes the sun; by day the sun hides it. Fix (data only):
+`CG_GameGrass.mat` `_FlashlightResponse` 1.3 → 0.55; `GrassLightAutoMarker.
+PlayerLightGrassStrength` 0.35 → 0.13 (eye light, ×4.5 boost = 0.59). `[`/`]` live knob
+stays for fine-tuning.
+
+**SOLAR MAP v2 (2026-09-06):** `Map/SolarMap.cs` (auto-singleton, seeded in
+EnsureGameplaySingletons), `SolarMapOverlay.cs` (markers + leader-line name tags +
+legend), `SolarMapOrbits.cs` (analytic rail/satellite circles). M / phone MAP app / HAL
+`map` open it; M / Esc / pad B close it (TabbedPauseMenu gates on `SolarMap.IsOpen`).
+The REAL camera detaches and flies a cubic Bézier from the live head pose (parent-local,
+rides the planet) to a top-down spot over the sun (height fits the widest orbit), looking
+back at the astronaut on the way; the astronaut body is shown, `PlayerController.isMapOpen`
+blocks input, physics keeps the player planted; HUD canvases hidden; black-hole renderers
+hidden; camera registered with EndlessManager and kept anchor-relative (sun or followed
+body). Open view: `MapCameraRig` (old fly controls) + wheel zoom, click marker/legend =
+velocity match (again = fly-to), click space = unmatch, R/RECENTER, G cursor lock, NAMES
+and ORBIT LINES toggles (default on, fade in after arrival). Old map + MapTutorial are
+VAULTED: `FeatureVault.LegacySolarMap`, `FeatureVault.MapTutorial` (files kept; save
+schema untouched). Compile PASS 0 warnings; NOT yet play-tested.

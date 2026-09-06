@@ -260,6 +260,7 @@ public class TabbedPauseMenu : MonoBehaviour
             // immediately pop the pause menu on top of the same frame.
             else if (!BuildMenuUI.IsOpen && !FishingdexManager.IsOpen
                   && !SolarSystemMapController.IsOpen
+                  && !SolarMap.IsOpen && !SolarMap.ConsumedEscapeThisFrame   // the v2 map closes on Esc itself
                   && !NewspaperReaderUI.IsOpen && !NewspaperReaderUI.ConsumedEscapeThisFrame
                   && !MonumentLinkPopupUI.IsOpen && !MonumentLinkPopupUI.ConsumedEscapeThisFrame
                   && !PlayerPhoneUI.IsOpen && !PlayerPhoneUI.ConsumedEscapeThisFrame
