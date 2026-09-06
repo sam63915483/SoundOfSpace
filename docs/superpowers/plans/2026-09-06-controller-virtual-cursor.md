@@ -380,7 +380,7 @@ public class PadCursor : MonoBehaviour
 
         float screenScale = Screen.height / 1080f;
         _vm.cursorSpeed = BaseSpeedPxPerSec * screenScale * Mathf.Clamp(SpeedMultiplier, 0.25f, 4f);
-        _cursorRT.localScale = Vector3.one * (screenScale * (RingDiameterPx / 64f) * 2f);
+        _cursorRT.localScale = Vector3.one * (screenScale * RingDiameterPx / 48f);   // 48 = ring outer diameter in the 64 px sprite
 
         var g = Gamepad.current;
         float ry = g != null ? g.rightStick.ReadValue().y : 0f;
@@ -482,7 +482,7 @@ public class PadCursor : MonoBehaviour
 Notes for the implementer:
 - `Instance._vm.virtualMouse.position.ReadValue()` is safe while `IsActive` (the device is added in `VirtualMouseInput.OnEnable`, removed in `OnDisable`).
 - The sprite colour math: pixels inside the white shape are `(1,1,1,1)`; the 1.5 px halo outside is `(0,0,0,0.5)` premultiplied into the alpha channel as `rgb=0, a=0.5`. That is what `new Color(white, white, white, white + dark)` produces when `white==0`.
-- Ring visual size: sprite radius 22 px in a 64 px texture, `localScale = screenScale × (26/64) × 2` → ~18 px radius on screen at 1080p, i.e. roughly a 36 px outer diameter; the dot is ~7 px. If Sam finds it small/large the two constants at the top are the knobs.
+- Ring visual size: the ring's outer edge is 48 px across in the 64 px sprite (radius 22 + half the 4 px stroke); `localScale = screenScale × 26/48` puts a 26 px ring on a 1080p screen, dot ≈ 10 px. If Sam finds it small/large, `RingDiameterPx` is the knob.
 
 - [ ] **Step 2: Compile check**
 
@@ -734,6 +734,8 @@ to:
                 && !PadCursor.IsActive                  // the stick is the cursor; B puts the phone away
 ```
 
+**Deliberate deviations from spec §2 (report them, don't "fix" them):** triggers (RT/LT = Fire/SecondaryFire) and B (`DropPressed`) are NOT muted. Neither doubles as a pointer button, every consumer already gates on `PlayerPhoneUI.IsOpen` / `isInDialogue` / modal flags, and B closing a screen while dropping a held item is pre-existing behaviour shared with every B-close in the game.
+
 - [ ] **Step 7: Compile check**
 
 Run: `py -3 prototypes/shuttle-computer/test/compile-unity.py`
@@ -869,6 +871,8 @@ and
 ```csharp
         TraxSessionSync.PublishCursor(normalized, view, PadCursor.PrimaryHeld);
 ```
+
+`UI/NoteReadUI.cs` (spec table) needs no edit: its advance already reads pad A alongside LMB, and A is exactly what the cursor sends.
 
 - [ ] **Step 6: Compile check**
 
@@ -1405,6 +1409,8 @@ And in `ForceCloseNoAnim()`, as its first statement:
 ```csharp
         PadCursor.ClearBounds();
 ```
+
+**Leave the existing pad forced-selection of `_appButtons[0]` (open ~line 1693, app-close ~line 3010) in place.** Spec §7 said to remove it for the cursor path; it is harmless instead: the navigator clears any selection every frame while the cursor is active (Task 3), and it still protects mouse-with-a-pad-plugged-in players (cursor inactive, old path). Fewer edits in a 3,600-line file.
 
 - [ ] **Step 3: Static verification of camera mode on pad (no code change expected)**
 
