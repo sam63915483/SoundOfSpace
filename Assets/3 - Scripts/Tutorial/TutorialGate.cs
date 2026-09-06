@@ -118,6 +118,8 @@ public static class TutorialGate
         // The pause menu no longer stops the clock in multiplayer, so it has to
         // announce itself here instead of relying on timeScale to do it.
         PauseState.MenuOpen ||
+        // Virtual cursor (controller pass 2): the sticks belong to the cursor.
+        PadCursor.IsActive ||
         UISelectionActive() || WasUIFocusedThisFrameStart();
 
     // ── Controller hardware (Unity Input System) ──────────────────────────
@@ -152,9 +154,19 @@ public static class TutorialGate
         return null;
     }
 
-    public static bool PadHeld(PadButton b)     { var g = ActivePad; return g != null && Resolve(g, b).isPressed; }
-    public static bool PadPressed(PadButton b)  { var g = ActivePad; return g != null && Resolve(g, b).wasPressedThisFrame; }
-    public static bool PadReleased(PadButton b) { var g = ActivePad; return g != null && Resolve(g, b).wasReleasedThisFrame; }
+    // While the virtual cursor is up, A and X ARE the mouse buttons (left /
+    // right click) and must reach gameplay through nothing else. Every
+    // composite (Jump, Interact, Reload, PrimaryAction, swim-up, map fly-up …)
+    // funnels through these three, so the mute lives here — one place, not
+    // thirty. B / Y / bumpers / triggers / Start are untouched (B closes
+    // screens; the rest never double as pointer buttons). PadCursor itself
+    // reads A straight off the device for its PrimaryDown shim.
+    static bool MutedByCursor(PadButton b) =>
+        (b == PadButton.A || b == PadButton.X) && PadCursor.IsActive;
+
+    public static bool PadHeld(PadButton b)     { var g = ActivePad; return g != null && !MutedByCursor(b) && Resolve(g, b).isPressed; }
+    public static bool PadPressed(PadButton b)  { var g = ActivePad; return g != null && !MutedByCursor(b) && Resolve(g, b).wasPressedThisFrame; }
+    public static bool PadReleased(PadButton b) { var g = ActivePad; return g != null && !MutedByCursor(b) && Resolve(g, b).wasReleasedThisFrame; }
 
     // Ability-gated variants for tutorial progression.
     // Ability-gated => gameplay action => dead while the pause menu is up.
@@ -166,8 +178,9 @@ public static class TutorialGate
     // default stick deadzone processor — the pause-menu STICK DEADZONE slider
     // drives InputSystem.settings.defaultDeadzoneMin (see InputSettings.
     // PushControllerSettingsToGate), so the stored deadzone finally applies.
-    public static float RightStickX() { var g = ActivePad; return g != null ? g.rightStick.ReadValue().x : 0f; }
-    public static float RightStickY() { var g = ActivePad; return g != null ? g.rightStick.ReadValue().y : 0f; }
+    // Right stick is the scroll wheel while the virtual cursor is up.
+    public static float RightStickX() { var g = ActivePad; return (g != null && !PadCursor.IsActive) ? g.rightStick.ReadValue().x : 0f; }
+    public static float RightStickY() { var g = ActivePad; return (g != null && !PadCursor.IsActive) ? g.rightStick.ReadValue().y : 0f; }
 
     static void RefreshControllerType(Gamepad g)
     {
@@ -337,6 +350,7 @@ public static class TutorialGate
     public static int HotbarCycleStep()
     {
         if (!ControllerEnabled) return 0;
+        if (PadCursor.IsActive) return 0;   // LB/RB page vendor tabs, not the hotbar, while a cursor screen is up
         if (UISelectionActive() || _uiFocusedAtFrameStart) return 0;
         if (PauseState.MenuOpen) return 0;   // clock still runs here in co-op
         if (Ship.AnyShipPiloted) return 0;
@@ -383,7 +397,12 @@ public static class TutorialGate
     // read as exactly zero instead of a slow drift. Both are driven by the
     // existing pause-menu STICK DEADZONE slider, so a pad that leaks harder
     // can be tuned without a recompile.
-    static Vector2 MoveStick()
+    static Vector2 MoveStick() => PadCursor.IsActive ? Vector2.zero : LeftStickRaw();
+
+    // Left stick with the radial deadzone below, NO cursor mute and NO ability
+    // gate. Only for readers that fly something while a mouse screen is open
+    // and the cursor is deliberately suppressed (ShuttleComputerNavUI hover).
+    public static Vector2 LeftStickRaw()
     {
         var g = ActivePad;
         if (g == null) return Vector2.zero;
@@ -404,7 +423,7 @@ public static class TutorialGate
         float my = Input.GetAxisRaw("Mouse Y");
 
         var g = ActivePad;
-        if (g != null)
+        if (g != null && !PadCursor.IsActive)
         {
             // Right-stick value is steady (-1..1), so scale by deltaTime to
             // get per-frame "movement" comparable to mouse delta. The x60

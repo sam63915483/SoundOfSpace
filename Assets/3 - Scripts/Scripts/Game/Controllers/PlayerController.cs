@@ -755,8 +755,13 @@ public class PlayerController : GravityObject
 		// (Jump while on the ground, Boost while airborne). Suppressed while
 		// half-submerged in water — Space is reclaimed by the swim-up logic
 		// in HandleMovement so neither jump nor jetpack should fire.
+		// Pad A is also the ghost-placement confirm (GhostPlacement reads
+		// PrimaryActionPressed). While any placement is up — sapling, mushroom,
+		// building — A places and must NOT also jump (Sam, 2026-09-06). Keyboard
+		// is unaffected: Space jumps, LMB places. Once the last sapling is
+		// placed the ghost ends and A jumps again.
 		bool jumpButtonDown = Input.GetKeyDown(KeyCode.Space) ||
-			TutorialGate.PadPressed(TutorialGate.PadButton.A);
+			(!GhostPlacement.IsPlacing && TutorialGate.PadPressed(TutorialGate.PadButton.A));
 		if (jumpButtonDown && !IsHalfSubmerged())
 		{
 			if (isGrounded)

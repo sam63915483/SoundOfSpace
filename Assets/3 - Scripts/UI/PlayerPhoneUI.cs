@@ -1604,6 +1604,7 @@ public class PlayerPhoneUI : MonoBehaviour
             // below; pad players put the phone away with B.
             bool padMoving = !TutorialGate.UISelectionActive()
                 && !TutorialGate.WasUIFocusedThisFrameStart()
+                && !PadCursor.IsActive                  // the stick is the cursor; B puts the phone away
                 && (Mathf.Abs(TutorialGate.MoveAxisHorizontal(TutorialAbility.Move)) > 0.2f ||
                     Mathf.Abs(TutorialGate.MoveAxisVertical(TutorialAbility.Move)) > 0.2f ||
                     TutorialGate.DownThrustHeld(TutorialAbility.DownThrust));
