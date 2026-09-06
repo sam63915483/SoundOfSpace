@@ -328,6 +328,7 @@ public class InputSettings : ScriptableObject {
 		cameraFov = PlayerPrefs.GetFloat (nameof (cameraFov), 0f);   // 0 = seed from authored FOV in CameraFOVFX
 
 		stickLookSensitivity = PlayerPrefs.GetFloat (nameof (stickLookSensitivity), defaultStickLookSensitivity);
+		padCursorSpeed       = PlayerPrefs.GetFloat (nameof (padCursorSpeed),       1f);
 		shipStickSensitivity = PlayerPrefs.GetFloat (nameof (shipStickSensitivity), defaultShipStickSensitivity);
 		stickDeadzone        = PlayerPrefs.GetFloat (nameof (stickDeadzone),        defaultStickDeadzone);
 		axeMouseSensitivity  = PlayerPrefs.GetFloat (nameof (axeMouseSensitivity),  1f);
@@ -445,6 +446,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetFloat (nameof (cameraFov), cameraFov);
 
 		PlayerPrefs.SetFloat (nameof (stickLookSensitivity), stickLookSensitivity);
+		PlayerPrefs.SetFloat (nameof (padCursorSpeed),       padCursorSpeed);
 		PlayerPrefs.SetFloat (nameof (shipStickSensitivity), shipStickSensitivity);
 		PlayerPrefs.SetFloat (nameof (stickDeadzone),        stickDeadzone);
 		PlayerPrefs.SetFloat (nameof (axeMouseSensitivity),  axeMouseSensitivity);
@@ -680,6 +682,7 @@ public class InputSettings : ScriptableObject {
 		TutorialGate.StickDeadzone            = stickDeadzone;
 		TutorialGate.InvertLookY              = invertLookY;
 		GamepadRumble.Enabled                 = vibrationEnabled;
+		PadCursor.SpeedMultiplier             = padCursorSpeed;
 		// Deadzone finally applies: the Input System's default stick processor
 		// reads this project-wide setting on every stick ReadValue().
 		UnityEngine.InputSystem.InputSystem.settings.defaultDeadzoneMin =
@@ -700,5 +703,9 @@ public class InputSettings : ScriptableObject {
 
 	[Header("Ship Screens")]
 	public bool mirror60Hz = false;           // rear-view screen refresh: off = 30 Hz, on = 60 Hz (costs an extra camera render per frame)
+
+	// ── Pad cursor (APPEND-ONLY: serialized fields stay at class end) ──
+	[Header("Pad Cursor")]
+	[Range(0.5f, 2f)] public float padCursorSpeed = 1f;   // virtual-cursor speed multiplier (pause menu CONTROLLER tab)
 
 }

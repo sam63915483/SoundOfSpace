@@ -592,6 +592,11 @@ public class TabbedPauseMenu : MonoBehaviour
                         set  = v  => { if (_input == null) return; _input.stickDeadzone = v; _input.PushControllerSettingsToGate(); },
                     },
                     new SliderDef {
+                        label = "CURSOR SPEED (PAD)", min = 0.5f, max = 2f, wholeNumbers = false, format = "{0:F2}",
+                        get  = () => _input != null ? _input.padCursorSpeed : 1f,
+                        set  = v  => { if (_input == null) return; _input.padCursorSpeed = v; _input.PushControllerSettingsToGate(); },
+                    },
+                    new SliderDef {
                         label = "AXE SENSITIVITY (MOUSE)", min = 0.2f, max = 3f, wholeNumbers = false, format = "{0:F2}",
                         get  = () => _input != null ? _input.axeMouseSensitivity : 1f,
                         set  = v  => { if (_input != null) _input.axeMouseSensitivity = v; },
