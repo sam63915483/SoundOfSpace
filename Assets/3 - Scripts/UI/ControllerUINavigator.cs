@@ -54,6 +54,10 @@ public class ControllerUINavigator : MonoBehaviour
         Instance = this;
         EnsureEventSystem();
         BuildBorderUI();
+        // The virtual cursor lives on this same DontDestroyOnLoad object so it
+        // exists in MainMenu and gameplay alike (no EnsureGameplaySingletons
+        // seeding needed — trap #1 is avoided by construction).
+        PadCursor.Create(gameObject);
     }
 
     void OnDestroy()
@@ -333,6 +337,19 @@ public class ControllerUINavigator : MonoBehaviour
         // Selectable is focused. Keep the selection empty until the player
         // leaves camera mode.
         if (PlayerPhoneUI.IsCameraMode)
+        {
+            if (es.currentSelectedGameObject != null && !IsTextInputSelected(es))
+                es.SetSelectedGameObject(null);
+            HideBorder();
+            return;
+        }
+
+        // Virtual cursor owns the pad: no auto-focus, no yellow box. A pointer
+        // click selects the Button it hit, so clear that stray selection every
+        // frame — otherwise a later stick move could Navigate it and A could
+        // Submit it as well as click. Same InputField exception as KBM mode.
+        // Modal raycaster suppression above still runs (it protects clicks).
+        if (PadCursor.IsActive)
         {
             if (es.currentSelectedGameObject != null && !IsTextInputSelected(es))
                 es.SetSelectedGameObject(null);
