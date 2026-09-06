@@ -109,6 +109,7 @@ public class PadCursor : MonoBehaviour
     {
         if (Instance == this) Instance = null;
         if (_navEventsOff && EventSystem.current != null) EventSystem.current.sendNavigationEvents = true;
+        if (_canvas != null) Destroy(_canvas.gameObject);   // root object — not torn down with us automatically
     }
 
     void BuildGraphic()
@@ -117,8 +118,14 @@ public class PadCursor : MonoBehaviour
         // ConstantPixelSize so anchoredPosition == screen pixels, which is what
         // VirtualMouseInput reads/writes. NO GraphicRaycaster — the cursor
         // must never be something the cursor can hit.
+        // ROOT object on purpose. The navigator's own GameObject already holds a
+        // Canvas (the yellow border), so a child canvas here would be NESTED:
+        // it inherits the parent rect (a 100×100 box at screen centre) instead
+        // of the screen, and anchoredPosition — which VirtualMouseInput writes
+        // in screen pixels — lands offset by half a screen. Symptom Sam hit:
+        // ring confined to the top-right quadrant, clicks landing elsewhere.
         var canvasGO = new GameObject("PadCursorCanvas", typeof(RectTransform));
-        canvasGO.transform.SetParent(transform, false);
+        DontDestroyOnLoad(canvasGO);
         _canvas = canvasGO.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         _canvas.sortingOrder = 32001;
