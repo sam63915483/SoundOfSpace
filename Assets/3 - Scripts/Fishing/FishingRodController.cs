@@ -520,10 +520,10 @@ public class FishingRodController : MonoBehaviour
         _motorRig = ViewmodelMotor.CreateRig(rodHoldPosition, "RodMotorRig", rodMotorRestOffset, holdPositionOffset);
         currentRodInstance = Instantiate(fishingRodPrefab, _motorRig.transform);
         currentRodInstance.transform.localPosition = holdPositionOffset;
-        // Held viewmodels never cast shadows — otherwise the sun throws the rod's
-        // silhouette onto the ground ahead as a blob pinned to your view.
+        // Held viewmodels cast shadows (Sam, 2026-09-07 — reversed from the old
+        // "never" rule): the rod throws its shadow on the ground like the bobber.
         foreach (var r in currentRodInstance.GetComponentsInChildren<Renderer>(true))
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
         originalRodRotation = Quaternion.Euler(holdRotationOffset);
 
         Quaternion startRot = originalRodRotation * Quaternion.AngleAxis(equipStartAngle, castRotationAxis);

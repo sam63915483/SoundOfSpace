@@ -235,7 +235,7 @@ public class AxeController : MonoBehaviour
         // The axe rides even further from the camera (AxeMotor.restOffset z=1.05),
         // so its sun silhouette lands well out in front of the player.
         foreach (var r in _currentAxeInstance.GetComponentsInChildren<Renderer>(true))
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;    // Sam, 2026-09-07: held items DO cast shadows now.
 
         var sweep = GetComponent<BladeSweep>();
         if (sweep == null) sweep = gameObject.AddComponent<BladeSweep>();

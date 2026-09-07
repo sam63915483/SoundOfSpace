@@ -443,7 +443,7 @@ public class PistolController : MonoBehaviour
         // jittering with every bit of carry sway. Standard first-person practice
         // is to exclude the viewmodel from shadow casting entirely.
         foreach (var r in _currentPistolInstance.GetComponentsInChildren<Renderer>(true))
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;    // Sam, 2026-09-07: held items DO cast shadows now. Tracer head/line below stay Off: a laser has no shadow.
 
         _resolvedMuzzle = null;
         if (!string.IsNullOrEmpty(muzzleChildName))

@@ -279,7 +279,10 @@ public class FishMarketNPC : MonoBehaviour
     //   this market pays for, per lb, right now, with a BACK button.
     static class Ui
     {
-        public static bool built => bagContent != null;   // Unity-null on scene reload
+        // Built means FULLY built: the earnings toast is the last thing BuildUI
+        // makes, so a build that threw halfway (or a scene reload, which
+        // Unity-nulls everything) reads as not built and is redone from scratch.
+        public static bool built => bagContent != null && earningsCG != null;
         public static FishMarketNPC owner;
         public static GameObject shelvesPage, indexPage;
         public static TextMeshProUGUI planetText, walletText, bagHeader, counterHeader, totalText, indexSub;
@@ -292,7 +295,24 @@ public class FishMarketNPC : MonoBehaviour
     void EnsureBuiltUI()
     {
         if (sellPanel == null) return;
-        if (!Ui.built) { HideOldChildren(); BuildUI(); }
+        if (!Ui.built)
+        {
+            // Sweep any half-built remains before building again, so a failed
+            // build cannot stack a second set of widgets on top of the first.
+            for (int i = sellPanel.transform.childCount - 1; i >= 0; i--)
+            {
+                var c = sellPanel.transform.GetChild(i);
+                if (c.name == "Shelves" || c.name == "Index") Destroy(c.gameObject);
+            }
+            HideOldChildren();
+            try { BuildUI(); }
+            catch (System.Exception e)
+            {
+                Debug.LogError("[FishMarketNPC] sell panel failed to build: " + e);
+                Ui.earningsCG = null;    // stays "not built" → retried on the next open
+                return;
+            }
+        }
 
         uiEarningsMsg = Ui.earningsMsg;
         uiEarningsCG  = Ui.earningsCG;
@@ -794,8 +814,9 @@ public class FishMarketNPC : MonoBehaviour
         if (ids == null || ids.Count == 0) return;
         var head = MkHRow(Ui.indexBody, 24);
         var t = MkText(head, title, 12, color, 24, FontStyles.Bold);
-        t.GetComponent<LayoutElement>().preferredWidth = 110;
-        MkText(head, descriptor, 11, C_Sub, 24);
+        LE(t).preferredWidth = 110;
+        var d = MkText(head, descriptor, 11, C_Sub, 24);
+        LE(d).flexibleWidth = 1;
 
         foreach (var id in ids)
         {
@@ -875,9 +896,11 @@ public class FishMarketNPC : MonoBehaviour
         var head = MkHRow(Ui.shelvesPage.transform, 34);
         var title = MkText(head, "FISH MARKET", 20, C_Title, 34, FontStyles.Bold);
         title.characterSpacing = 6;
-        title.GetComponent<LayoutElement>().preferredWidth = 190;
+        LE(title).preferredWidth = 190;
         Ui.planetText = MkText(head, "", 13, C_Sub, 34);
+        LE(Ui.planetText).flexibleWidth = 1;
         Ui.walletText = MkText(head, "", 13, C_Sub, 34, FontStyles.Normal, TextAlignmentOptions.MidlineRight);
+        LE(Ui.walletText).preferredWidth = 150;
         MkDivider(Ui.shelvesPage.transform);
 
         var shelves = MkHRow(Ui.shelvesPage.transform, 400);
@@ -886,7 +909,7 @@ public class FishMarketNPC : MonoBehaviour
         var bagShelf = MkShelf(shelves, out Ui.bagHeader, out Ui.bagContent,
                                "Nothing in your bag.\nGo fish.", false);
         var arrows = MkText(shelves, "⇄", 22, C_Hint, 400, FontStyles.Normal, TextAlignmentOptions.Center);
-        arrows.GetComponent<LayoutElement>().preferredWidth = 36;
+        LE(arrows).preferredWidth = 36; LE(arrows).flexibleWidth = 0;
         var counterShelf = MkShelf(shelves, out Ui.counterHeader, out Ui.counterContent,
                                    "Click a fish on the left\nto put it on the counter.", true);
         MkDivider(Ui.shelvesPage.transform);
@@ -894,20 +917,22 @@ public class FishMarketNPC : MonoBehaviour
         var foot = MkHRow(Ui.shelvesPage.transform, 46);
         Ui.totalText = MkText(foot, "COUNTER  $0", 16, C_Label, 46, FontStyles.Bold);
         Ui.totalText.richText = true;
+        LE(Ui.totalText).flexibleWidth = 1;
         Ui.btnIndex = MkButton(foot, "FISH PRICE INDEX", C_BtnIndex, 13);
-        Ui.btnIndex.GetComponent<LayoutElement>().preferredWidth = 190;
+        LE(Ui.btnIndex).preferredWidth = 190;
         Ui.btnSell  = MkButton(foot, "Sell the counter", C_BtnSell, 14);
-        Ui.btnSell.GetComponent<LayoutElement>().preferredWidth = 200;
+        LE(Ui.btnSell).preferredWidth = 200;
 
         // ── Page 2: the index ────────────────────────────────────────────────
         Ui.indexPage = MkPage(sellPanel.transform, "Index");
         var ihead = MkHRow(Ui.indexPage.transform, 34);
         var ititle = MkText(ihead, "FISH PRICE INDEX", 20, C_Title, 34, FontStyles.Bold);
         ititle.characterSpacing = 6;
-        ititle.GetComponent<LayoutElement>().preferredWidth = 250;
+        LE(ititle).preferredWidth = 250;
         Ui.indexSub = MkText(ihead, "", 12, C_Sub, 34);
+        LE(Ui.indexSub).flexibleWidth = 1;
         Ui.btnBack = MkButton(ihead, "‹  BACK", C_PanelBtnPrices, 13);
-        Ui.btnBack.GetComponent<LayoutElement>().preferredWidth = 110;
+        LE(Ui.btnBack).preferredWidth = 110;
         MkDivider(Ui.indexPage.transform);
         Ui.indexBody = MkScrollArea(Ui.indexPage.transform, 470);
         var ihint = Ui.indexBody.Find("EmptyHint"); if (ihint != null) ihint.gameObject.SetActive(false);
@@ -998,8 +1023,10 @@ public class FishMarketNPC : MonoBehaviour
         RenderTexture preview = f.cachedHotbarPreview;
         if (preview == null && FishingdexManager.Instance != null)
         {
-            preview = FishingdexManager.Instance.RenderFish(f, 116, 84);
-            f.cachedHotbarPreview = preview;
+            // A thumbnail is decoration; a fish must never be unsellable because
+            // its picture failed to render.
+            try { preview = FishingdexManager.Instance.RenderFish(f, 116, 84); f.cachedHotbarPreview = preview; }
+            catch (System.Exception e) { Debug.LogWarning("[FishMarketNPC] fish thumbnail failed: " + e.Message); preview = null; }
         }
         if (preview != null)
         {
@@ -1035,7 +1062,7 @@ public class FishMarketNPC : MonoBehaviour
         det.richText = true; det.raycastTarget = false;
 
         var price = MkText(card.transform, $"${PriceAt(f)}", 15, C_Gold, 50, FontStyles.Bold, TextAlignmentOptions.MidlineRight);
-        price.GetComponent<LayoutElement>().preferredWidth = 74;
+        LE(price).preferredWidth = 74;
         price.raycastTarget = false;
     }
 
@@ -1061,18 +1088,28 @@ public class FishMarketNPC : MonoBehaviour
         dot.AddComponent<Image>().color = idx >= 0 ? new Color32(sp.tintR, sp.tintG, sp.tintB, 255) : (Color32)C_Hint;
 
         var name = MkText(row.transform, PlanetEconomy.DisplayName(speciesId), 13, C_Label, 26, FontStyles.Bold);
-        name.GetComponent<LayoutElement>().preferredWidth = 170;
+        LE(name).preferredWidth = 170;
 
         string note = !showAppetite ? "" : (fullness <= 0 ? "fresh · full price" : $"cooling · −{fullness * 15}%");
         var noteT = MkText(row.transform, note, 11, C_Sub, 26);
-        noteT.GetComponent<LayoutElement>().flexibleWidth = 1;
+        LE(noteT).flexibleWidth = 1;
 
         var bagT = MkText(row.transform, inBag > 0 ? $"{inBag} IN YOUR BAG" : "", 10, C_Title, 26, FontStyles.Bold, TextAlignmentOptions.MidlineRight);
         bagT.characterSpacing = 3;
-        bagT.GetComponent<LayoutElement>().preferredWidth = 120;
+        LE(bagT).preferredWidth = 120;
 
         var priceT = MkText(row.transform, $"${perLb:0.00}/lb", 14, C_Gold, 26, FontStyles.Bold, TextAlignmentOptions.MidlineRight);
-        priceT.GetComponent<LayoutElement>().preferredWidth = 90;
+        LE(priceT).preferredWidth = 90;
+    }
+
+    /// <summary>The LayoutElement on a widget, added if the helper that made it
+    /// did not. MkButton does not add one — setting preferredWidth on its result
+    /// was the NullReferenceException that left the first build of this panel
+    /// half-made (Player.log, 2026-09-07 18:13).</summary>
+    static LayoutElement LE(Component c)
+    {
+        var le = c.GetComponent<LayoutElement>();
+        return le != null ? le : c.gameObject.AddComponent<LayoutElement>();
     }
 
     static string BucketHex(string word)
@@ -1166,7 +1203,12 @@ public class FishMarketNPC : MonoBehaviour
         var hlg = go.AddComponent<HorizontalLayoutGroup>();
         hlg.spacing = 8;
         hlg.childControlWidth = true; hlg.childControlHeight = true;
-        hlg.childForceExpandWidth = true; hlg.childForceExpandHeight = true;
+        // NOT force-expanded: with it on, Unity hands every child an equal share
+        // of the spare width whatever its preferredWidth says — measured in the
+        // Editor, the 36-px "⇄" column came out 265 px wide and the BACK button
+        // 233. Children that should grow ask for it with flexibleWidth = 1.
+        hlg.childForceExpandWidth = false; hlg.childForceExpandHeight = true;
+        hlg.childAlignment = TextAnchor.MiddleLeft;
         return go.transform;
     }
 

@@ -121,7 +121,7 @@ public static class SpriteSlab
         mf.sharedMesh = GetMesh(icon);
         var mr = go.AddComponent<MeshRenderer>();
         mr.sharedMaterial = GetMaterial(icon.texture);
-        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;    // Sam, 2026-09-07: held items DO cast shadows now.
         mr.receiveShadows = false;
         mr.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
         mr.reflectionProbeUsage = UnityEngine.Rendering.ReflectionProbeUsage.Off;

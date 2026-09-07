@@ -365,9 +365,9 @@ public class ViewmodelMotor : MonoBehaviour
 
     /// <summary>
     /// Held viewmodels sit centimetres from the camera, so the sun throws their
-    /// silhouette onto the ground ahead as a dark blob pinned to your view that
-    /// you can never walk up to. Strip shadow casting (plus physics, which a
-    /// world prefab often carries) from anything spawned into a rig.
+    /// silhouette onto the ground ahead. That was stripped for years; since
+    /// 2026-09-07 held items cast shadows on purpose (Sam's call) and only
+    /// physics is stripped from anything spawned into a rig.
     /// </summary>
     public static void MakeViewmodel(GameObject instance)
     {
@@ -376,7 +376,13 @@ public class ViewmodelMotor : MonoBehaviour
         foreach (var col in instance.GetComponentsInChildren<Collider>(true)) col.enabled = false;
         foreach (var r in instance.GetComponentsInChildren<Renderer>(true))
         {
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            // CAST on, RECEIVE off (Sam, 2026-09-07). This used to strip casting
+            // too, to avoid the held item's silhouette on the ground ahead — Sam
+            // now wants exactly that: the astronaut and whatever they hold throw
+            // real shadows. Receiving stays off so the sun's shadow of your own
+            // body can't darken the thing in your hand, and the viewmodel fill
+            // light (which casts no shadows) is unaffected either way.
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             r.receiveShadows = false;
         }
     }

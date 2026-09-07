@@ -24,6 +24,15 @@ economy wiring are in it.
 
 ## 2. The new sell panel — Two Shelves (5 min)
 
+> **Re-test note (2026-09-07 evening):** your first run hit a crash inside the
+> panel builder (`NullReferenceException in BuildUI` — Player.log line 1884),
+> which left a half-built panel: default "no fish" hint, blank index. That's
+> fixed, the build now retries instead of leaving a corpse, and the whole panel
+> was built and measured in the Editor before this commit (both pages 780×580,
+> two 354-px shelves, cards 330×62, index rows with all five columns). The row
+> widths were also wrong (the ⇄ column was 265 px wide) — fixed.
+
+
 The old sell UI is gone. Talking to any fish vendor opens the panel you picked
 from the mockups: **YOUR BAG on the left, ON THE COUNTER on the right.**
 
@@ -106,3 +115,18 @@ other's fish.**
   seconds stale. Single-player is unaffected.
 - Goods vendors / buying crystals: still deferred, as you chose.
 - Still 3 fish meshes. New species differ by colour and name only.
+
+---
+
+## 7. Shadows (2 min)
+
+- [ ] Stand in sunlight, look down: **your astronaut casts a shadow** on the
+      ground (a shadow-only copy of the body on the Default layer — the sun
+      couldn't see the real body because it lives on the PlayerReflect layer
+      with its own light, and that light is untouched).
+- [ ] Equip the **rod, axe, pistol, water bottle, a fish, wood/crystal** — each
+      casts a shadow now. The pistol's tracer/laser does not (on purpose).
+- [ ] The little viewmodel fill light that brightens the ground and your held
+      item still behaves as before — it casts no shadows, so nothing changed for it.
+- [ ] Watch for: the held item's shadow "blob" on the ground ahead of you. That
+      is the thing the old code avoided; you asked for it, but say if it's ugly.

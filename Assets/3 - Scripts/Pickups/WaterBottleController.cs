@@ -299,7 +299,7 @@ public class WaterBottleController : MonoBehaviour
         foreach (var col in currentBottleInstance.GetComponentsInChildren<Collider>())   Object.Destroy(col);
         // Held viewmodels never cast shadows.
         foreach (var r in currentBottleInstance.GetComponentsInChildren<Renderer>(true))
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;    // Sam, 2026-09-07: held items DO cast shadows now.
         // The prefab is a world-sized bottle; held 30cm from the eye that fills
         // the screen. Normalise it like the held resources and fish are.
         ViewmodelMotor.NormalizeSize(currentBottleInstance, bottleWorldSize);
