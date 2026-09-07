@@ -1,23 +1,31 @@
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Installs the fuel system into the shuttle
-/// (docs/Handoff_PlanetEconomy_Fuel_Fishing_v2.md, Phase 2): the tank itself, and
-/// a reactor you can walk up to and feed crystals into, exactly like the manual
-/// ship's.
+/// (docs/Handoff_PlanetEconomy_Fuel_Fishing_v2.md, Phase 2): the tank, and a real
+/// reactor — the SHIP44 one, mesh, glow and all — that you walk up to holding
+/// crystals and press F on.
 ///
-/// ⚠ <b>Shuttle_Lander.prefab is hand-maintained and must never be regenerated.</b>
-/// This patches it in place through <c>LoadPrefabContents</c> / <c>SaveAsPrefabAsset</c>,
-/// touching only the two things it owns, and is safe to re-run — a second run
-/// finds both already there and changes nothing.
+/// <b>Sam's workflow (2026-09-07), which is why this is split in two:</b>
+/// the reactor is added to the shuttle IN THE SCENE, not to the prefab, so Sam
+/// can drag it exactly where he wants it inside the cabin. Only when he says he
+/// is happy does <see cref="ApplyToPrefab"/> push it into
+/// <c>Shuttle_Lander.prefab</c>. Doing it the other way round — prefab first —
+/// would mean the prefab could later overwrite the position he chose.
 ///
-/// The reactor's settings are COPIED from the manual ship's reactor rather than
-/// authored here, so both vehicles take crystals at the same rate, with the same
-/// prompt and the same sound. One crystal = 5 fuel; a 100-unit tank is 20
-/// crystals; 20 crystals is one 15 km jump.
+/// The reactor is a straight duplicate of the manual ship's, so it keeps
+/// everything: the <c>Retro_laboratory_Reactor_Core_Tube</c> mesh, both
+/// materials, the solid collider you bump into, the larger trigger that notices
+/// you, <c>ShipReactor</c> and <c>ReactorGlow</c> — the breathing blue emission,
+/// the red out-of-control flickers, the point light and the refuel ping flash.
+/// Its <c>ship</c> reference is cleared so both scripts fall through to the
+/// shuttle's <c>ShuttleFuel</c> tank instead of a Ship it does not have.
 ///
-/// Menu: <b>Tools ▸ Shuttle ▸ Install Fuel System</b>.
+/// Menu: <b>Tools ▸ Shuttle ▸ 1. Add Reactor To Scene Shuttle</b>, then, once
+/// placed, <b>Tools ▸ Shuttle ▸ 2. Save Reactor Into Prefab</b>.
 /// </summary>
 public static class ShuttleFuelInstaller
 {
@@ -26,74 +34,112 @@ public static class ShuttleFuelInstaller
     const string ReactorName   = "Reactor";
     const string CabinAnchor   = "LightProbe (cabin centre)";
 
-    [MenuItem("Tools/Shuttle/Install Fuel System")]
-    public static void Install()
+    // ── Step 1: put a real reactor in the scene, for Sam to place ─────────────
+
+    [MenuItem("Tools/Shuttle/1. Add Reactor To Scene Shuttle")]
+    public static void AddToScene()
     {
+        var shuttle = FindSceneShuttle();
+        if (shuttle == null)
+        {
+            Debug.LogError("[ShuttleFuel] No Shuttle_Lander in the open scene. " +
+                           "Open Assets/1.6.7.7.7.unity first.");
+            return;
+        }
+
+        // The tank lives on the prefab (it has no position, so nothing to place).
+        EnsureTankOnPrefab();
+
+        var existing = FindDeep(shuttle.transform, ReactorName);
+        if (existing != null)
+        {
+            Selection.activeGameObject = existing.gameObject;
+            EditorGUIUtility.PingObject(existing.gameObject);
+            Debug.Log($"[ShuttleFuel] The shuttle already has a '{ReactorName}' at local " +
+                      $"{existing.localPosition}. Selected and pinged it — move it where you want, " +
+                      "then run Tools ▸ Shuttle ▸ 2. Save Reactor Into Prefab.");
+            return;
+        }
+
+        var src = LoadShipReactorSource();
+        if (src == null)
+        {
+            Debug.LogError("[ShuttleFuel] Could not find the reactor on " + ShipPrefab);
+            return;
+        }
+
+        // Straight duplicate — mesh, both materials, both colliders, ShipReactor,
+        // ReactorGlow, and every tuning value Sam has already dialled in on the ship.
+        var go = Object.Instantiate(src, shuttle.transform);
+        go.name = ReactorName;
+        go.transform.localPosition = ProposeSpot(shuttle);
+        go.transform.localRotation = Quaternion.identity;
+        go.transform.localScale    = src.transform.localScale;
+
+        RetargetToShuttle(go);
+
+        Undo.RegisterCreatedObjectUndo(go, "Add Shuttle Reactor");
+        EditorSceneManager.MarkSceneDirty(shuttle.scene);
+        Selection.activeGameObject = go;
+        EditorGUIUtility.PingObject(go);
+        SceneView.FrameLastActiveSceneView();
+
+        var glow = go.GetComponent<ReactorGlow>();
+        Debug.Log(
+            $"[ShuttleFuel] Reactor added to the SCENE shuttle at local {go.transform.localPosition}.\n" +
+            $"  It is selected and framed in the Scene view — MOVE IT where you want it.\n" +
+            $"  Kept from the ship: mesh + both materials, solid collider, the bigger trigger " +
+            $"that notices you, ShipReactor (F to insert) and ReactorGlow " +
+            $"({(glow != null ? "present" : "MISSING")}) — breathing blue, red flickers, point " +
+            $"light, refuel ping.\n" +
+            $"  When you are happy: Tools ▸ Shuttle ▸ 2. Save Reactor Into Prefab.");
+    }
+
+    // ── Step 2: once Sam is happy, bake it into the prefab ────────────────────
+
+    [MenuItem("Tools/Shuttle/2. Save Reactor Into Prefab")]
+    public static void ApplyToPrefab()
+    {
+        var shuttle = FindSceneShuttle();
+        if (shuttle == null) { Debug.LogError("[ShuttleFuel] No Shuttle_Lander in the open scene."); return; }
+
+        var reactor = FindDeep(shuttle.transform, ReactorName);
+        if (reactor == null)
+        {
+            Debug.LogError("[ShuttleFuel] No 'Reactor' under the scene shuttle — run step 1 first.");
+            return;
+        }
+
+        Vector3 pos = reactor.localPosition;
+        Quaternion rot = reactor.localRotation;
+        Vector3 scale = reactor.localScale;
+
+        // Patch the hand-maintained prefab in place. Shuttle_Lander is never
+        // regenerated — see the prefab's own note and CLAUDE.md.
         var root = PrefabUtility.LoadPrefabContents(ShuttlePrefab);
         if (root == null) { Debug.LogError("[ShuttleFuel] could not open " + ShuttlePrefab); return; }
-
         try
         {
-            bool changed = false;
+            if (root.GetComponent<ShuttleFuel>() == null) root.AddComponent<ShuttleFuel>();
 
-            // 1. The tank.
-            var tank = root.GetComponent<ShuttleFuel>();
-            if (tank == null) { tank = root.AddComponent<ShuttleFuel>(); changed = true; }
+            var old = FindDeep(root.transform, ReactorName);
+            if (old != null) Object.DestroyImmediate(old.gameObject);
 
-            // 2. The reactor you insert crystals into.
-            var existing = FindDeep(root.transform, ReactorName);
-            GameObject reactorGo;
-            if (existing != null)
-            {
-                reactorGo = existing.gameObject;
-            }
-            else
-            {
-                reactorGo = new GameObject(ReactorName);
-                reactorGo.transform.SetParent(root.transform, false);
-                reactorGo.transform.localPosition = ProposeSpot(root);
-                changed = true;
-            }
+            var src = LoadShipReactorSource();
+            if (src == null) { Debug.LogError("[ShuttleFuel] reactor source missing"); return; }
 
-            var box = reactorGo.GetComponent<BoxCollider>();
-            if (box == null) { box = reactorGo.AddComponent<BoxCollider>(); changed = true; }
-            box.isTrigger = true;
-            if (box.size == Vector3.one) box.size = new Vector3(1.4f, 2f, 1.4f);
+            var copy = Object.Instantiate(src, root.transform);
+            copy.name = ReactorName;
+            copy.transform.localPosition = pos;
+            copy.transform.localRotation = rot;
+            copy.transform.localScale    = scale;
+            RetargetToShuttle(copy);
 
-            var reactor = reactorGo.GetComponent<ShipReactor>();
-            if (reactor == null) { reactor = reactorGo.AddComponent<ShipReactor>(); changed = true; }
-
-            // Match the manual ship's reactor exactly — rate, prompt, sound.
-            var shipSrc = AssetDatabase.LoadAssetAtPath<GameObject>(ShipPrefab);
-            if (shipSrc != null)
-            {
-                var srcReactor = shipSrc.GetComponentInChildren<ShipReactor>(true);
-                if (srcReactor != null) EditorUtility.CopySerialized(srcReactor, reactor);
-            }
-            // ...but the shuttle has no Ship. Cleared so ShipReactor falls through
-            // to the ShuttleFuel tank on this same prefab.
-            reactor.ship = null;
-            reactor.glow = null;
-
-            if (changed)
-            {
-                PrefabUtility.SaveAsPrefabAsset(root, ShuttlePrefab);
-                AssetDatabase.SaveAssets();
-            }
-
-            float perJump = tank.fuelMax;
-            int crystalsForFull = Mathf.CeilToInt(tank.fuelMax / Mathf.Max(0.01f, reactor.fuelPerCrystal));
-            Debug.Log(
-                $"[ShuttleFuel] {(changed ? "INSTALLED" : "already installed — nothing changed")}.\n" +
-                $"  Tank      : ShuttleFuel on '{root.name}' — {tank.fuelMax:F0} units, " +
-                $"max jump {tank.maxJumpKm:F0} km, launch+land {tank.launchLandCost:F0}.\n" +
-                $"  Reactor   : '{ReactorName}' at local {reactorGo.transform.localPosition} " +
-                $"(trigger {box.size}) — MOVE THIS wherever it looks right, Sam.\n" +
-                $"  Economy   : {reactor.fuelPerCrystal:F0} fuel per crystal → " +
-                $"{crystalsForFull} crystals fills the tank = one {tank.maxJumpKm:F0} km jump ({perJump:F0} units).\n" +
-                $"  New game  : starts at {tank.newGameFuel:F0}, intro burns {tank.introApproachBurn:F0} → " +
-                $"lands with about {tank.newGameFuel - tank.introApproachBurn:F0} " +
-                $"(range ~{Mathf.Max(0f, (tank.newGameFuel - tank.introApproachBurn - tank.launchLandCost) / ((tank.fuelMax - tank.launchLandCost) / tank.maxJumpKm)):F1} km).");
+            PrefabUtility.SaveAsPrefabAsset(root, ShuttlePrefab);
+            AssetDatabase.SaveAssets();
+            Debug.Log($"[ShuttleFuel] Saved the reactor into {ShuttlePrefab} at local {pos}, " +
+                      $"rotation {rot.eulerAngles}, scale {scale}.\n" +
+                      "  The prefab and your scene copy now agree, so nothing will overwrite your placement.");
         }
         finally
         {
@@ -101,14 +147,65 @@ public static class ShuttleFuelInstaller
         }
     }
 
-    /// <summary>A sane first home for the reactor: beside the cabin-centre marker,
-    /// down at floor height. Sam moves it; this only has to not be inside a wall.</summary>
-    static Vector3 ProposeSpot(GameObject root)
+    // ── helpers ───────────────────────────────────────────────────────────────
+
+    /// <summary>Clear the Ship links so both reactor scripts fall through to the
+    /// shuttle's own tank. Leaving them set would point the shuttle's gauge and
+    /// glow at the manual ship's fuel.</summary>
+    static void RetargetToShuttle(GameObject go)
     {
-        var anchor = FindDeep(root.transform, CabinAnchor);
+        var r = go.GetComponent<ShipReactor>();
+        if (r != null) { r.ship = null; r.glow = go.GetComponent<ReactorGlow>(); }
+        var g = go.GetComponent<ReactorGlow>();
+        if (g != null) g.ship = null;
+    }
+
+    static GameObject LoadShipReactorSource()
+    {
+        var ship = AssetDatabase.LoadAssetAtPath<GameObject>(ShipPrefab);
+        if (ship == null) return null;
+        var r = ship.GetComponentInChildren<ShipReactor>(true);
+        return r != null ? r.gameObject : null;
+    }
+
+    /// <summary>The Shuttle_Lander instance in whichever scene is open.</summary>
+    static GameObject FindSceneShuttle()
+    {
+        for (int i = 0; i < SceneManager.sceneCount; i++)
+        {
+            var sc = SceneManager.GetSceneAt(i);
+            if (!sc.isLoaded) continue;
+            foreach (var root in sc.GetRootGameObjects())
+            {
+                var hit = FindDeep(root.transform, "Shuttle_Lander");
+                if (hit != null) return hit.gameObject;
+            }
+        }
+        return null;
+    }
+
+    static void EnsureTankOnPrefab()
+    {
+        var root = PrefabUtility.LoadPrefabContents(ShuttlePrefab);
+        if (root == null) return;
+        try
+        {
+            if (root.GetComponent<ShuttleFuel>() != null) return;
+            root.AddComponent<ShuttleFuel>();
+            PrefabUtility.SaveAsPrefabAsset(root, ShuttlePrefab);
+            AssetDatabase.SaveAssets();
+        }
+        finally { PrefabUtility.UnloadPrefabContents(root); }
+    }
+
+    /// <summary>A sane first home: beside the cabin-centre marker at floor height.
+    /// Sam moves it; this only has to not be inside a wall.</summary>
+    static Vector3 ProposeSpot(GameObject shuttle)
+    {
+        var anchor = FindDeep(shuttle.transform, CabinAnchor);
         if (anchor == null) return new Vector3(0f, 1f, 0f);
-        var p = root.transform.InverseTransformPoint(anchor.position);
-        return new Vector3(p.x + 1.2f, p.y - 0.9f, p.z);
+        var p = shuttle.transform.InverseTransformPoint(anchor.position);
+        return new Vector3(p.x + 1.2f, p.y - 1.6f, p.z);
     }
 
     static Transform FindDeep(Transform root, string name)

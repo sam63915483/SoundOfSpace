@@ -123,9 +123,17 @@ Humble Abode already has both vendors, so that's **9 fish markets** to place.
   Ones that can never be reached at your current range say `OUT OF RANGE`.
 - The TRAVEL button reads **NOT ENOUGH FUEL** on a dimmed planet, and tells you the
   shortfall if you click it anyway.
-- The **Reactor** is inside the shuttle at local `(1.26, 1.67, -0.05)`. Walk up
-  holding crystals, look at it, press F / pad X — same prompt as the ship's.
-  **Move it wherever it looks right** — it's a bare trigger with no model yet.
+- The **Reactor** is the real SHIP44 reactor, duplicated into the shuttle: the same
+  `Retro_laboratory_Reactor_Core_Tube` mesh, both materials, the solid collider you
+  bump into, the wider trigger that notices you, and **ReactorGlow** — breathing blue
+  emission that tracks the tank, the red out-of-control flickers, the point light, and
+  the flash when you feed it. Walk up holding crystals, look at it, press F / pad X.
+
+  It sits in the **scene** shuttle at local `(1.26, 0.97, -0.05)`, deliberately NOT in
+  the prefab, so you can drag it exactly where you want it. Two menu items:
+  **Tools ▸ Shuttle ▸ 1. Add Reactor To Scene Shuttle** (already run) and, once you
+  are happy with the spot, **2. Save Reactor Into Prefab**. Doing it in that order
+  means the prefab can never overwrite your placement.
 
 ## New game
 

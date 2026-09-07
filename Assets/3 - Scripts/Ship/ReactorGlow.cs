@@ -21,8 +21,15 @@ using UnityEngine;
 // unaffected.
 public class ReactorGlow : MonoBehaviour
 {
-    [Tooltip("Auto-resolved via GetComponentInParent<Ship>() if null.")]
+    [Tooltip("Auto-resolved via GetComponentInParent<Ship>() if null. Leave EMPTY on " +
+             "the shuttle's reactor — it has no Ship, and the glow reads the shuttle's " +
+             "ShuttleFuel tank instead.")]
     public Ship ship;
+
+    // The tank whose fill drives the glow. Either the owning Ship or, on the
+    // shuttle, its ShuttleFuel — so the reactor breathes, flickers and dims on
+    // both vehicles from the same code.
+    IReactorFuel _tank;
 
     [Tooltip("Index into the renderer's materials array that drives the glowing tube. The retro-lab reactor has 2 materials; index 1 is the Opacity variant covering the tube.")]
     public int targetMaterialIndex = 1;
@@ -100,6 +107,7 @@ public class ReactorGlow : MonoBehaviour
     void Awake()
     {
         if (ship == null) ship = GetComponentInParent<Ship>();
+        ResolveTank();
         _flickerSeed = Random.value * 1000f;
 
         var mr = GetComponent<MeshRenderer>();
@@ -149,11 +157,25 @@ public class ReactorGlow : MonoBehaviour
         }));
     }
 
+    /// <summary>Which tank's fill this glow reflects. Concrete types only —
+    /// GetComponentInParent with an INTERFACE returns null here even when the
+    /// component is sitting on the parent, which would leave the shuttle's
+    /// reactor permanently dark with no error.</summary>
+    void ResolveTank()
+    {
+        if (_tank != null && !_tank.Equals(null)) return;
+        if (ship != null) { _tank = ship; return; }
+        var shuttleTank = GetComponentInParent<ShuttleFuel>(true);
+        if (shuttleTank != null) { _tank = shuttleTank; return; }
+        _tank = ShuttleFuel.Instance;
+    }
+
     void Update()
     {
-        if (ship == null) return;
+        ResolveTank();
+        if (_tank == null) return;
 
-        float fuel = Mathf.Clamp01(ship.FuelPercent);
+        float fuel = Mathf.Clamp01(_tank.FuelPercent);
 
         // ── Red event scheduling ────────────────────────────────────────
         if (_nextRedTime < 0f) ScheduleNextRedEvent(fuel);
