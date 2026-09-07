@@ -1,0 +1,210 @@
+{
+    "version": 1,
+    "note": "Drafted by Tools > Economy > Draft Planet Tables. Hand-tune freely; run Validate afterwards. Words on the boards come from the bucket a species lands in, never from these lists' order.",
+    "multipliers": {
+        "local": 1.0,
+        "imported": 1.75,
+        "delicacy": 3.0,
+        "unlisted": 0.5
+    },
+    "appetite": {
+        "stepPerSale": 0.15000000596046449,
+        "recoverPerDay": 1
+    },
+    "planets": [
+        {
+            "body": "Icey Twin",
+            "catchable": [
+                "wallop",
+                "bassk",
+                "nullpike",
+                "flubb",
+                "zibbet",
+                "muskrellon"
+            ],
+            "imports": [
+                "perchik",
+                "coelancer",
+                "murkfin",
+                "smelk",
+                "sturgle"
+            ],
+            "delicacies": [
+                "marlorb",
+                "snagg",
+                "tarpune"
+            ]
+        },
+        {
+            "body": "Fiery Twin",
+            "catchable": [
+                "smelk",
+                "skrout",
+                "tarnish",
+                "sturgle",
+                "marlorb",
+                "snagg"
+            ],
+            "imports": [
+                "perchik",
+                "coelancer",
+                "murkfin",
+                "bassk",
+                "nullpike"
+            ],
+            "delicacies": [
+                "muskrellon",
+                "flubb",
+                "zibbet"
+            ]
+        },
+        {
+            "body": "Puddle",
+            "catchable": [
+                "perchik",
+                "murkfin",
+                "coelancer"
+            ],
+            "imports": [
+                "grubbler",
+                "emberbass",
+                "vorm"
+            ],
+            "delicacies": [
+                "glimtrout",
+                "purchlet"
+            ]
+        },
+        {
+            "body": "Hearth",
+            "catchable": [
+                "grubbler",
+                "emberbass",
+                "vorm"
+            ],
+            "imports": [
+                "perchik",
+                "murkfin",
+                "coelancer"
+            ],
+            "delicacies": [
+                "knurl",
+                "ossum"
+            ]
+        },
+        {
+            "body": "Anvil",
+            "catchable": [
+                "wallop",
+                "knurl",
+                "zibbet"
+            ],
+            "imports": [
+                "ossum",
+                "murkfin",
+                "purchlet"
+            ],
+            "delicacies": [
+                "grubbler",
+                "skrout"
+            ]
+        },
+        {
+            "body": "Ember",
+            "catchable": [
+                "purchlet",
+                "murkfin",
+                "ossum"
+            ],
+            "imports": [
+                "zibbet",
+                "knurl",
+                "wallop"
+            ],
+            "delicacies": [
+                "tarnish",
+                "sturgle"
+            ]
+        },
+        {
+            "body": "Slag",
+            "catchable": [
+                "truttle",
+                "glimtrout",
+                "muskrellon"
+            ],
+            "imports": [
+                "purchlet",
+                "ossum",
+                "flubb"
+            ],
+            "delicacies": [
+                "smelk",
+                "coelancer"
+            ]
+        },
+        {
+            "body": "Shard",
+            "catchable": [
+                "grubbler",
+                "flubb",
+                "marlorb"
+            ],
+            "imports": [
+                "truttle",
+                "glimtrout",
+                "muskrellon"
+            ],
+            "delicacies": [
+                "perchik",
+                "nullpike"
+            ]
+        },
+        {
+            "body": "Humble Abode",
+            "catchable": [
+                "skrout",
+                "truttle",
+                "knurl",
+                "emberbass",
+                "coelancer",
+                "snagg"
+            ],
+            "imports": [
+                "marlorb",
+                "grubbler",
+                "flubb",
+                "glimtrout",
+                "muskrellon"
+            ],
+            "delicacies": [
+                "vorm",
+                "murkfin",
+                "bassk"
+            ]
+        },
+        {
+            "body": "Cyclops",
+            "catchable": [
+                "smelk",
+                "purchlet",
+                "sturgle",
+                "glimtrout",
+                "tarpune",
+                "vorm"
+            ],
+            "imports": [
+                "coelancer",
+                "skrout",
+                "knurl",
+                "snagg",
+                "marlorb"
+            ],
+            "delicacies": [
+                "emberbass",
+                "wallop",
+                "truttle"
+            ]
+        }
+    ]
+}

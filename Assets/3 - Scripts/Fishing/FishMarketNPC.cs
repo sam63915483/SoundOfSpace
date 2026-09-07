@@ -118,6 +118,40 @@ public class FishMarketNPC : MonoBehaviour
             child.gameObject.SetActive(false);
     }
 
+    // ── Planet-economy pricing (2026-09-07) ───────────────────────────────────
+    //
+    // ONE function decides what a fish is worth at THIS market, and it is used
+    // for the card the player reads, the running total, and the money actually
+    // paid — so displayed always equals paid (the promise/grade trap class).
+    // The bucket and appetite live in PlanetEconomy / FishAppetite; this only
+    // asks "what does my planet pay for this species right now".
+
+    /// <summary>What this market pays for the fish right now: base value ×
+    /// bucket rate × this vendor's current appetite.</summary>
+    int PriceAt(FishEntry f)
+    {
+        int baseValue = f.GetValue();
+        string body = BodyName;
+        if (string.IsNullOrEmpty(body) || !PlanetEconomy.HasTable(body)) return baseValue;
+        float mult = PlanetEconomy.MultiplierNow(body, SpeciesIdOf(f));
+        int v = Mathf.RoundToInt(baseValue * mult);
+        return v < 1 ? 1 : v;
+    }
+
+    /// <summary>The word on the card: Local / Imported / Delicacy / Unlisted.</summary>
+    string BucketWordFor(FishEntry f)
+    {
+        string body = BodyName;
+        if (string.IsNullOrEmpty(body) || !PlanetEconomy.HasTable(body)) return "";
+        return PlanetEconomy.Word(PlanetEconomy.BucketFor(body, SpeciesIdOf(f)));
+    }
+
+    static string SpeciesIdOf(FishEntry f)
+    {
+        int i = f.ResolveSpecies();
+        return i >= 0 && i < FishingRules.Species.Length ? FishingRules.Species[i].id : "";
+    }
+
     // ── Vendor stays visible on every planet (2026-09-07 playtest) ─────────────
     //
     // Sam's report: fly to any of the new markets and the STAND is there but the
@@ -617,7 +651,21 @@ public class FishMarketNPC : MonoBehaviour
         if (stagedFish.Count == 0) return;
 
         int total = 0;
-        foreach (var (f, rt, _) in stagedFish) { total += f.GetValue(); ReleaseRT(rt); }
+        string sellBody = BodyName;
+        foreach (var (f, rt, _) in stagedFish)
+        {
+            // Price FIRST, then note the sale: the fish you are selling is paid
+            // at the appetite that existed before it, and cools the market for
+            // the next one.
+            total += PriceAt(f);
+            if (!string.IsNullOrEmpty(sellBody) && PlanetEconomy.HasTable(sellBody))
+            {
+                var bucket = PlanetEconomy.BucketFor(sellBody, SpeciesIdOf(f));
+                if (bucket == PlanetEconomy.Bucket.Imported || bucket == PlanetEconomy.Bucket.Delicacy)
+                    FishAppetite.NoteSale(sellBody, SpeciesIdOf(f));
+            }
+            ReleaseRT(rt);
+        }
 
         // Fish already removed from inventory when staged
         stagedFish.Clear();
@@ -646,7 +694,7 @@ public class FishMarketNPC : MonoBehaviour
         Canvas.ForceUpdateCanvases();
 
         int totalVal = 0;
-        foreach (var (f, _, _) in stagedFish) totalVal += f.GetValue();
+        foreach (var (f, _, _) in stagedFish) totalVal += PriceAt(f);
 
         if (uiTotalText != null)
             uiTotalText.text = stagedFish.Count > 0 ? $"Total Value:  ${totalVal}" : "";
@@ -690,7 +738,12 @@ public class FishMarketNPC : MonoBehaviour
             // glance. The tier still reads in the detail line -- it's what
             // sets the price bracket.
             Color32 dot = FishSpeciesVisuals.TintOf(f);
-            string detail = $"{f.fishType}  |  {f.weightLbs} lbs  |  ${f.GetValue()} value";
+            // Planet economy: the bucket word is what teaches the trade route,
+            // and the price shown is PriceAt — the same number the sale pays.
+            string word = BucketWordFor(f);
+            string detail = string.IsNullOrEmpty(word)
+                ? $"{f.fishType}  |  {f.weightLbs} lbs  |  ${PriceAt(f)} value"
+                : $"{word}  |  {f.weightLbs} lbs  |  ${PriceAt(f)} value";
 
             MkFishCard(uiListContent, f.DisplayName, detail, dot, rt, () => OnRemoveFish(captured));
         }

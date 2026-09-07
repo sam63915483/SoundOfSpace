@@ -191,3 +191,92 @@ by the next sync. Guests see the same greyed-out planets the host does.
 - "IN RANGE ~N MIN" should count down and be right. If a planet un-greys before or
   after it says it will, that's the orbit maths and I want to know.
 - Crystal regrowth is on a 24-real-minute timer, so you won't see it in a short test.
+
+---
+
+# Phase 3 + 4 — Species tables and planet economies (built 2026-09-07)
+
+**Status: built, compiles clean (0 warnings), table drafted and validated. Not playtested.**
+Checklist: `docs/PLAYTEST_PLANET_ECONOMY.md`.
+
+## The one file that is the whole economy
+
+`Assets/StreamingAssets/Economy/planet_economy.json` — edit it in any text editor,
+no recompile. In the Editor it reloads live, so you can change a planet's list
+mid-Play. A build needs rebuilding to see edits (same as the dialogue files).
+
+Per planet: `catchable` (what bites there), `imports` (off-world fish it pays
+extra for), `delicacies` (off-world fish it pays top for). Multipliers and the
+appetite rule are at the top of the file.
+
+- **Tools ▸ Economy ▸ Draft Planet Tables** — writes a fresh draft under all the
+  rules and stops. It never overwrites an existing table: it writes
+  `planet_economy.draft.json` beside it instead, so a stray click can't clobber
+  your hand edits.
+- **Tools ▸ Economy ▸ Validate Planet Tables** — checks the live file against the
+  rules and lists every violation. Run it after hand-editing.
+
+## What a market pays
+
+One function decides the price on the card AND the money paid, so they can never
+disagree: `base value × bucket × appetite`.
+
+| Bucket | Meaning | Pays |
+|---|---|---|
+| Local | in this planet's own `catchable` list | ×1 |
+| Imported | in its `imports` list | ×1.75 |
+| Delicacy | in its `delicacies` list | ×3 |
+| Unlisted | anything else | ×0.5 (never refused) |
+
+**Appetite:** every Imported/Delicacy fish you sell makes that market 15% less
+keen on that species (`×3 → ×2.55 → ×2.10 …`), floored at ×1, recovering one
+step per in-game day (24 real minutes). Local never decays. It's world state —
+saved, reset on New Game.
+
+## Species: 12 → 24
+
+Twelve new rows appended to `FishingRules.Species` (names are placeholders off
+the handoff list — rename in place, ids stay): Grubbler, Skrout, Purchlet,
+Wallop · Murkfin, Flubb, Knurl, Tarnish · Zibbet, Ossum, Snagg, Vorm.
+Still **3 fish meshes** — new species are tints and names.
+
+## The drafted routes (every species → its delicacy buyer)
+
+The twins are fully distinct and each craves the other's catch — Icey↔Fiery is
+the tutorial trade route. Six fish exist on exactly one planet.
+
+| Fish | Caught at | Delicacy at |
+|---|---|---|
+| Bassk | Icey Twin | Humble Abode |
+| Nullpike | Icey Twin | Shard |
+| Tarpune | Cyclops | Icey Twin |
+| Tarnish | Fiery Twin | Ember |
+| Perchik | Puddle | Shard |
+| Ossum | Ember | Hearth |
+| Truttle | Slag, Humble Abode | Cyclops |
+| Emberbass | Hearth, Humble Abode | Cyclops |
+| Marlorb | Fiery Twin, Shard | Icey Twin |
+| Snagg | Fiery Twin, Humble Abode | Icey Twin |
+| Muskrellon | Icey Twin, Slag | Fiery Twin |
+| Zibbet | Icey Twin, Anvil | Fiery Twin |
+| Flubb | Icey Twin, Shard | Fiery Twin |
+| (full list in the JSON) | | |
+
+## Deviations from the handoff, and why
+
+- **Dwarfs list 2 delicacies, not 1.** 24 species each need one delicacy buyer;
+  4 mains × 3 + 6 dwarfs × 1 = 18 slots. Dwarfs at 2 makes exactly 24.
+- Import lists are drawn from the *nearest* planets' catch, delicacies from the
+  *farthest*, using the same orbit maths as the distance table.
+
+## Phone: MARKETS
+
+New tile (`$`) on the phone. One row per planet with a fish market; a planet
+shows its board's words only once you've stood within reading range of that
+board — otherwise `??`. Per player in co-op (saved beside the fish bag).
+
+## Not built
+
+- Co-op appetite sync: host-authoritative, not replicated to guests yet. A guest's
+  sell card may show a stale multiplier for a few seconds.
+- Goods vendors / crystals for sale — still deferred (you chose the stockpile).

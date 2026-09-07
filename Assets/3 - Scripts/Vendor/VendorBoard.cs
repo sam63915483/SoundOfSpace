@@ -7,10 +7,12 @@ using UnityEngine;
 /// remembering them, so the board shows words — "Local", "Imported", "Delicacy" —
 /// never multipliers or dollar figures. Same rule as the tape word-ladder.
 ///
-/// Phase 1 ships the board with placeholder copy so the stands can be placed.
-/// Phase 4 fills <see cref="SetLines"/> from the planet's real buy list, and the
-/// phone MARKETS page mirrors exactly what a board the player has stood in front
-/// of said — never anything they have not seen.
+/// A fish market's board lists that planet's real buy list from
+/// <see cref="PlanetEconomy"/>; standing close enough to read it is what puts
+/// the planet on the phone's MARKETS page (<see cref="MarketKnowledge"/>). A
+/// goods vendor's board just names the shop. With no table on disk yet the
+/// board shows placeholder copy, so stands can be placed before the economy
+/// exists.
 ///
 /// World-space <see cref="TextMeshPro"/> (not the UGUI flavour) so no canvas is
 /// involved: ten of these across the system cost ten draw calls, not ten
@@ -35,10 +37,12 @@ public class VendorBoard : MonoBehaviour
     Transform   _player;
     string      _shown = null;
     float       _nextPlayerScan;
+    float       _nextRefresh;
 
     // Board palette — matches the sell panel so the words read as one system.
-    static readonly Color32 C_Head = new Color32(60,  220, 190, 255);
-    static readonly Color32 C_Body = new Color32(220, 230, 255, 255);
+    static readonly Color32 C_Head  = new Color32(60,  220, 190, 255);
+    static readonly Color32 C_Body  = new Color32(220, 230, 255, 255);
+    const string HexLocal = "#8CAFFF", HexImport = "#3CDCBE", HexDelic = "#FFD232";
 
     void Awake()
     {
@@ -54,7 +58,7 @@ public class VendorBoard : MonoBehaviour
         _tmp.enableWordWrapping = true;
 
         var rt = _tmp.rectTransform;
-        rt.sizeDelta = new Vector2(2.4f, 1.8f);
+        rt.sizeDelta = new Vector2(2.6f, 2.2f);
 
         Refresh();
     }
@@ -76,19 +80,56 @@ public class VendorBoard : MonoBehaviour
         float sqr = (_player.position - transform.position).sqrMagnitude;
         bool near = sqr <= readableRange * readableRange;
         if (_tmp.enabled != near) _tmp.enabled = near;
+        if (!near) return;
+
+        // Reading the board is what teaches the route. Fish markets only — a
+        // goods vendor's sign has nothing to remember.
+        if (_site != null && _site.kind == VendorSite.VendorKind.FishMarket && _site.IsResolved)
+            MarketKnowledge.NoteSeen(_site.BodyName);
+
+        // The table can change under us (Sam editing the JSON in Play mode, or
+        // the site resolving its planet a frame late), so re-derive on a slow
+        // tick; SetText is change-gated so this costs nothing when unchanged.
+        if (Time.time >= _nextRefresh) { _nextRefresh = Time.time + 1f; Refresh(); }
     }
 
-    /// <summary>Rebuild the board from the vendor's current buy list. Phase 1 shows
-    /// the placeholder; Phase 4 calls <see cref="SetLines"/> instead.</summary>
+    /// <summary>Rebuild the board from the vendor's buy list, or the placeholder
+    /// when this planet has no table yet.</summary>
     public void Refresh()
     {
         string planet = _site != null ? _site.BodyName : string.Empty;
         string head   = string.IsNullOrEmpty(planet) ? heading : $"{heading}\n<size=70%>{planet}</size>";
-        SetText($"<color=#{ColorUtility.ToHtmlStringRGB(C_Head)}><b>{head}</b></color>\n\n{placeholderBody}");
+        string headTag = $"<color=#{ColorUtility.ToHtmlStringRGB(C_Head)}><b>{head}</b></color>";
+
+        bool isMarket = _site != null && _site.kind == VendorSite.VendorKind.FishMarket;
+        var entry = isMarket ? PlanetEconomy.EntryFor(planet) : null;
+        if (entry == null)
+        {
+            SetText($"{headTag}\n\n{placeholderBody}");
+            return;
+        }
+
+        var sb = new System.Text.StringBuilder(256);
+        sb.Append(headTag).Append("\n\n");
+        Group(sb, HexLocal,  "Local",              entry.catchable);
+        Group(sb, HexImport, "Imported — pays well", entry.imports);
+        Group(sb, HexDelic,  "Delicacy — pays top",  entry.delicacies);
+        SetText(sb.ToString());
     }
 
-    /// <summary>Phase 4 entry point: the vendor hands over its buy list already
-    /// grouped into words, and the board prints it.</summary>
+    static void Group(System.Text.StringBuilder sb, string hex, string title, System.Collections.Generic.List<string> ids)
+    {
+        if (ids == null || ids.Count == 0) return;
+        sb.Append("<color=").Append(hex).Append("><b>").Append(title).Append("</b></color>\n<size=85%>");
+        for (int i = 0; i < ids.Count; i++)
+        {
+            if (i > 0) sb.Append(" · ");
+            sb.Append(PlanetEconomy.DisplayName(ids[i]));
+        }
+        sb.Append("</size>\n");
+    }
+
+    /// <summary>Kept for callers that hand the board pre-built copy.</summary>
     public void SetLines(string title, string body)
     {
         if (!string.IsNullOrEmpty(title)) heading = title;

@@ -145,6 +145,11 @@ public static class NewGameReset
         // threads) — statics leak across the main menu and New Game runs no
         // Apply, so a fresh run would inherit the old run's regulars.
         BuyerLedger.ResetAll();
+        // Planet-economy vendor appetite is a static too: a New Game after a run
+        // that flooded Cyclops with Bassk would otherwise start with that market
+        // already sick of them.
+        FishAppetite.ResetAll();
+        MarketKnowledge.ResetAll();   // boards read are a static too
         TevFronting.ResetAll();   // a debt must not survive into a New Game
         // Static shelf + installed plugins: New Game runs no Apply, so without
         // this the last world's projects and bought modules leak into the next.

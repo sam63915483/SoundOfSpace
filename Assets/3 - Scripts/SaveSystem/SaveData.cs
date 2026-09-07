@@ -17,6 +17,7 @@ public class SaveData
     public WoodSave wood = new WoodSave();
     public CrystalSave crystal = new CrystalSave();
     public FishInventorySave fishInventory = new FishInventorySave();
+    public MarketKnowledgeSave marketKnowledge = new MarketKnowledgeSave();   // planet economy: boards read
     public TutorialSave tutorial = new TutorialSave();
     public List<NPCSave> npcs = new List<NPCSave>();
     public List<PlacedBuildingSave> buildings = new List<PlacedBuildingSave>();
@@ -105,6 +106,9 @@ public class SaveData
     /// fields" — the old behaviour exactly.
     /// </summary>
     public List<PlayerBlockSave> playerBlocks = new List<PlayerBlockSave>();
+    /// Fish-market appetite counters (planet economy, 2026-09-07). World state.
+    public FishAppetiteSave fishAppetite = new FishAppetiteSave();
+
 }
 
 /// <summary>
@@ -135,6 +139,7 @@ public class PlayerBlockSave
     public WoodSave wood = new WoodSave();
     public CrystalSave crystal = new CrystalSave();
     public FishInventorySave fishInventory = new FishInventorySave();
+    public MarketKnowledgeSave marketKnowledge = new MarketKnowledgeSave();   // planet economy: boards read
     public EquipmentSave equipment = new EquipmentSave();
     public HotbarSave hotbar = new HotbarSave();
 
@@ -914,4 +919,32 @@ public class StoryDirectorSave
     // fronted). Parallel lists, JsonUtility-safe; empty on pre-feature saves.
     public List<string> counterNames = new List<string>();
     public List<int> counterValues = new List<int>();
+}
+
+/// <summary>
+/// Fish-vendor APPETITE (planet economy, 2026-09-07): how many off-world fish of
+/// each species a given planet's market has bought lately. Every Import or
+/// Delicacy sale adds one; one comes off per in-game day. World state -- it is
+/// the vendor that fills up, not the player. Parallel lists, JsonUtility-style.
+/// </summary>
+[Serializable]
+public class FishAppetiteSave
+{
+    public List<string> bodies   = new List<string>();
+    public List<string> species  = new List<string>();
+    public List<int>    fullness = new List<int>();
+    /// GalaxyTime day the counter was last decayed to, so a reload does not
+    /// hand the vendor a free recovery.
+    public List<double> dayStamp = new List<double>();
+}
+
+/// <summary>
+/// Which market boards THIS player has read (planet economy, 2026-09-07). Player
+/// state — rides the per-player block beside the fish bag in co-op, so a route
+/// one player scouted is theirs. The phone MARKETS page shows only these.
+/// </summary>
+[Serializable]
+public class MarketKnowledgeSave
+{
+    public List<string> bodiesSeen = new List<string>();
 }

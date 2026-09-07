@@ -70,6 +70,29 @@ public static class FishingRules
         // girth clamped) and tinted blood-red. Only BountyZone water rolls it.
         // 2.4 $/lb x ~200 lb is about the handoff's $500 bounty at the fish market.
         Bt("grulabu",    "GRULABU",    FishTier.Rare,     0, 0xC8, 0x2A, 0x2A, 140f, 260f, 2.4f, 24f, 34f),
+
+        // -- Planet economy, 2026-09-07: the pool grows 12 -> 24 --------------
+        // Four more per tier so every fishable planet can have its own table
+        // (2 per tier on the four mains, 1 per tier on the six dwarfs = 42
+        // slots) with each species on at most two worlds and six on exactly
+        // one. Names are placeholders off the handoff's list -- Sam renames in
+        // place. APPENDED, never inserted: rows are referenced by id string in
+        // saves and by index only at runtime, and the tier rolls below no
+        // longer assume a tier's rows sit together.
+        Sp("grubbler",   "Grubbler",   FishTier.Common,   0, 0x8A, 0x6E, 0x3C,  1f,  7f, 1.0f),
+        Sp("skrout",     "Skrout",     FishTier.Common,   0, 0x5E, 0x8C, 0x5A,  1f,  6f, 1.1f),
+        Sp("purchlet",   "Purchlet",   FishTier.Common,   0, 0xC9, 0x9A, 0x5E,  1f,  4f, 1.2f),
+        Sp("wallop",     "Wallop",     FishTier.Common,   0, 0x7A, 0x7A, 0xA8,  2f,  8f, 1.0f),
+
+        Sp("murkfin",    "Murkfin",    FishTier.Uncommon, 0, 0x3F, 0x4A, 0x3A,  6f, 20f, 1.5f),
+        Sp("flubb",      "Flubb",      FishTier.Uncommon, 0, 0xC4, 0x7A, 0xB8,  5f, 14f, 1.7f),
+        Sp("knurl",      "Knurl",      FishTier.Uncommon, 0, 0x9A, 0x5C, 0x2E,  9f, 24f, 1.5f),
+        Sp("tarnish",    "Tarnish",    FishTier.Uncommon, 0, 0x6E, 0x6A, 0x50,  7f, 18f, 1.6f),
+
+        Sp("zibbet",     "Zibbet",     FishTier.Rare,     0, 0xE0, 0xC0, 0x30, 18f, 44f, 2.2f),
+        Sp("ossum",      "Ossum",      FishTier.Rare,     0, 0xD8, 0xD8, 0xE8, 22f, 50f, 2.0f),
+        Sp("snagg",      "Snagg",      FishTier.Rare,     0, 0x2E, 0x8A, 0x6A, 15f, 40f, 2.3f),
+        Sp("vorm",       "Vorm",       FishTier.Rare,     0, 0x6A, 0x2E, 0x8A, 20f, 48f, 2.1f),
     };
 
     static FishSpecies Sp(string id, string name, FishTier tier, int model,
@@ -559,24 +582,44 @@ public static class FishingRules
     public static FishTier RollTier(float dot, BaitKind bait, float rand01)
         => RollTier(dot, bait, Lerp(ShortCast, LongCast, 0.5f), rand01);
 
-    /// <summary>Uniform species roll inside a tier. Returns an index into Species.</summary>
+    /// <summary>Uniform species roll inside a tier. Returns an index into Species.
+    /// Bounty rows are skipped: they are table entries (save/price/size) but
+    /// never ordinary catches. Rows of a tier are NOT assumed to sit together --
+    /// the 2026-09-07 species were appended after GRULABU, so a tier's rollable
+    /// rows come in two runs.</summary>
     public static int RollSpeciesInTier(FishTier tier, float rand01)
+        => RollSpeciesInTier(tier, rand01, null);
+
+    /// <summary>
+    /// Species roll inside a tier, restricted to <paramref name="allowed"/> (the
+    /// planet's own table, as Species indices). Null or empty falls back to the
+    /// whole pool, so a world with no table fishes exactly as it did before the
+    /// planet economy.
+    /// </summary>
+    public static int RollSpeciesInTier(FishTier tier, float rand01, System.Collections.Generic.IList<int> allowed)
     {
-        int first = -1, count = 0;
-        // Bounty rows are skipped: they are table entries (save/price/size) but
-        // never ordinary catches. The tier's rollable rows are contiguous.
-        for (int i = 0; i < Species.Length; i++)
-        {
-            if (Species[i].tier != tier || Species[i].bounty) continue;
-            if (first < 0) first = i;
-            count++;
-        }
-        if (first < 0) return 0;
-        int k = (int)(rand01 * count);
-        if (k >= count) k = count - 1;
+        _rollScratch.Clear();
+        if (allowed != null)
+            for (int a = 0; a < allowed.Count; a++)
+            {
+                int i = allowed[a];
+                if (i < 0 || i >= Species.Length) continue;
+                if (Species[i].tier != tier || Species[i].bounty) continue;
+                _rollScratch.Add(i);
+            }
+        if (_rollScratch.Count == 0)
+            for (int i = 0; i < Species.Length; i++)
+                if (Species[i].tier == tier && !Species[i].bounty) _rollScratch.Add(i);
+        if (_rollScratch.Count == 0) return 0;
+
+        int k = (int)(rand01 * _rollScratch.Count);
+        if (k >= _rollScratch.Count) k = _rollScratch.Count - 1;
         if (k < 0) k = 0;
-        return first + k;
+        return _rollScratch[k];
     }
+
+    // Reused by every roll so a bite never allocates.
+    static readonly System.Collections.Generic.List<int> _rollScratch = new System.Collections.Generic.List<int>(16);
 
     public static int IndexOfId(string id)
     {

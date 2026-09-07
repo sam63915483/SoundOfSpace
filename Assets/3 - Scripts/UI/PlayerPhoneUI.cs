@@ -93,7 +93,7 @@ public class PlayerPhoneUI : MonoBehaviour
     static readonly Color TileBg        = new Color32(0x0F, 0x19, 0x2A, 0xD9);
     static readonly Color ButtonGrey    = new Color32(0x2A, 0x40, 0x60, 0xFF);
 
-    public enum AppKind { Fishingdex, Build, Settings, Map, Photos }
+    public enum AppKind { Fishingdex, Build, Settings, Map, Photos, Markets }
 
     // â”€â”€ Runtime UI refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     Canvas        _canvas;
@@ -2360,6 +2360,8 @@ public class PlayerPhoneUI : MonoBehaviour
         var tiles = new System.Collections.Generic.List<Button>(6)
         {
             BuildAppTile(AppKind.Fishingdex, "F", "Fishingdex"),
+            // Planet economy: the player's notebook of market boards they have read.
+            BuildAppTile(AppKind.Markets,    "$", "Markets"),
         };
         // VAULTED with the freeform building system.
         if (FeatureVault.FreeformBuilding)
@@ -2964,7 +2966,7 @@ public class PlayerPhoneUI : MonoBehaviour
         if (kind == AppKind.Photos) { OpenPhotosApp(); return; }
         // Build + Fishingdex run INSIDE the tablet screen (the AI-chat
         // model) â€” no more separate fullscreen panels.
-        if (kind == AppKind.Build || kind == AppKind.Fishingdex) { OpenPhoneApp(kind); return; }
+        if (kind == AppKind.Build || kind == AppKind.Fishingdex || kind == AppKind.Markets) { OpenPhoneApp(kind); return; }
         // Everything else (Settings / Map): slide the phone out, THEN open
         // the target UI â€” like tapping an app on a real phone.
         StartCoroutine(CloseThenOpen(kind));
@@ -2975,6 +2977,7 @@ public class PlayerPhoneUI : MonoBehaviour
     PhoneAppBase _activeApp;
     PhoneBuildApp _buildApp;
     PhoneFishdexApp _fishdexApp;
+    PhoneMarketsApp _marketsApp;
 
     /// True while an in-phone app (Build / Fishingdex) covers the home screen.
     public bool AppViewOpen => _activeApp != null;
@@ -2993,6 +2996,10 @@ public class PlayerPhoneUI : MonoBehaviour
             case AppKind.Fishingdex:
                 if (_fishdexApp == null) _fishdexApp = _appHostRT.gameObject.AddComponent<PhoneFishdexApp>();
                 _activeApp = _fishdexApp;
+                break;
+            case AppKind.Markets:
+                if (_marketsApp == null) _marketsApp = _appHostRT.gameObject.AddComponent<PhoneMarketsApp>();
+                _activeApp = _marketsApp;
                 break;
             default:
                 _appHostRT.gameObject.SetActive(false);

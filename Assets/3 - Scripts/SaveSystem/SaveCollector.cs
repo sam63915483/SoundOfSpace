@@ -31,6 +31,7 @@ public static class SaveCollector
         CaptureHotbar(data.hotbar);
         CaptureStorages(data.storages);
         CaptureFishInventory(data.fishInventory);
+        MarketKnowledge.FillSave(data.marketKnowledge);
         CaptureTutorial(data.tutorial);
         CaptureNPCs(data.npcs);
         CaptureBuildings(data.buildings);
@@ -59,6 +60,7 @@ public static class SaveCollector
         CaptureEnemies(data);
         CaptureSpaceDust(data);
         BuyerLedger.FillSave(data.buyerLedger);
+        FishAppetite.FillSave(data.fishAppetite);   // planet economy: vendor appetite
         TevFronting.FillSave(data.tevFronting);
         data.traxLibrary = TraxLibrary.Capture();
         // The computer's cassette machine rides the same blob. Filled in here
@@ -160,6 +162,7 @@ public static class SaveCollector
         CaptureWood(b.wood);
         CaptureCrystals(b.crystal);
         CaptureFishInventory(b.fishInventory);
+        MarketKnowledge.FillSave(b.marketKnowledge);
         CaptureEquipment(b.equipment);
         CaptureHotbar(b.hotbar);
         b.spaceDust  = SpaceDustInventory.Instance != null ? SpaceDustInventory.Instance.Count : 0;
@@ -281,6 +284,7 @@ public static class SaveCollector
         data.wood          = block.wood;
         data.crystal       = block.crystal;
         data.fishInventory = block.fishInventory;
+        data.marketKnowledge = block.marketKnowledge;
         data.equipment     = block.equipment;
         data.hotbar        = block.hotbar;
 
@@ -334,6 +338,7 @@ public static class SaveCollector
         ApplyWood(b.wood);
         ApplyCrystals(b.crystal);
         ApplyFishInventory(b.fishInventory);
+        MarketKnowledge.ApplySave(b.marketKnowledge);
         ApplyEquipment(b.equipment);
 
         if (SpaceDustInventory.Instance != null)
@@ -1351,6 +1356,7 @@ public static class SaveCollector
 
         // Singleton world state first — the object restores below read it.
         BuyerLedger.ApplySave(data.buyerLedger);
+        FishAppetite.ApplySave(data.fishAppetite);
         TevFronting.ApplySave(data.tevFronting);
         // The TRAX shelf + installed plugins are world state on the shuttle
         // computer, shared by both players. Pure static state, restored with
@@ -1459,6 +1465,7 @@ public static class SaveCollector
         // else reads it during apply. Deadlines re-anchor to this session's
         // unscaledTime inside ApplySave.
         BuyerLedger.ApplySave(data.buyerLedger);
+        FishAppetite.ApplySave(data.fishAppetite);
         TevFronting.ApplySave(data.tevFronting);
         // The TRAX shelf + installed plugins are world state on the shuttle
         // computer, shared by both players. Pure static state, restored with
@@ -1479,6 +1486,7 @@ public static class SaveCollector
         ApplyWood(data.wood);
         ApplyCrystals(data.crystal);
         ApplyFishInventory(data.fishInventory);
+        MarketKnowledge.ApplySave(data.marketKnowledge);
         ApplyEquipment(data.equipment);
         ApplyWorldFlags(data.worldFlags);
         ApplyStoryDirector(data.storyDirector);

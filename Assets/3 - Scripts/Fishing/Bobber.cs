@@ -1364,6 +1364,17 @@ public class Bobber : MonoBehaviour
         Destroy(gameObject);
     }
 
+    /// <summary>Name of the planet this bobber is fishing on -- the body it is
+    /// parented to -- for the planet-economy species table. Empty while it is
+    /// still in the air, which the table lookup treats as "whole pool".</summary>
+    string FishingBodyName()
+    {
+        if (planetBody == null) return null;
+        var cb = planetBody.GetComponent<CelestialBody>();
+        if (cb == null) cb = planetBody.GetComponentInParent<CelestialBody>();
+        return cb != null ? cb.bodyName : null;
+    }
+
     void StopOnWater(Collider waterCollider)
     {
         Debug.Log("[Bobber] Hit water. Stopping and setting up...");
@@ -1664,7 +1675,11 @@ public class Bobber : MonoBehaviour
             // and the weight roll, so distance buys rarity and size together.
             float castDist = CastDistance();
             FishTier tier = FishingRules.RollTier(dot, pendingBait, castDist, Random.value);
-            pendingSpecies = FishingRules.RollSpeciesInTier(tier, Random.value);
+            // Planet economy: the species comes from THIS planet's table. Cast
+            // distance still picks the tier; a world with no table fishes the
+            // whole pool exactly as before.
+            pendingSpecies = FishingRules.RollSpeciesInTier(tier, Random.value,
+                PlanetEconomy.CatchableIndices(FishingBodyName()));
             pendingWeight = Mathf.Max(1, Mathf.RoundToInt(
                 FishingRules.RollWeight(pendingSpecies, Random.value, castDist, pendingBait)));
             // Bounty water: inside an armed BountyZone each bite has the zone's
