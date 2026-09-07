@@ -52,7 +52,7 @@ public class FishMarketNPC : MonoBehaviour
     readonly List<(FishEntry fish, RenderTexture rt, FishSource source)> stagedFish = new List<(FishEntry, RenderTexture, FishSource)>();
 
     // ── Built UI refs ──────────────────────────────────────────────────────────
-    Button          uiAddBtn, uiSellBtn;
+    Button          uiAddBtn, uiSellBtn, uiPricesBtn;
     TextMeshProUGUI uiListHeader, uiTotalText, uiEarningsMsg;
     CanvasGroup     uiEarningsCG;
     Transform       uiListContent;
@@ -79,6 +79,7 @@ public class FishMarketNPC : MonoBehaviour
     static readonly Color32 C_BtnAdd   = new Color32(40,  95,  200, 255);
     static readonly Color32 C_BtnSell  = new Color32(35,  165, 80,  255);
     static readonly Color32 C_BtnRem   = new Color32(170, 32,  32,  255);
+    static readonly Color32 C_PanelBtnPrices = new Color32(60, 70, 110, 255);
 
     // ── Unity lifecycle ────────────────────────────────────────────────────────
     void Start()
@@ -262,7 +263,7 @@ public class FishMarketNPC : MonoBehaviour
     // that has to happen exactly once, with the buttons re-pointed at whichever
     // vendor the player is standing in front of.
     static FishMarketNPC s_uiOwner;
-    static Button          s_uiAddBtn, s_uiSellBtn;
+    static Button          s_uiAddBtn, s_uiSellBtn, s_uiPricesBtn;
     static TextMeshProUGUI s_uiListHeader, s_uiTotalText, s_uiEarningsMsg;
     static CanvasGroup     s_uiEarningsCG;
     static Transform       s_uiListContent;
@@ -277,7 +278,7 @@ public class FishMarketNPC : MonoBehaviour
         {
             HideOldChildren();
             BuildUI();
-            s_uiAddBtn      = uiAddBtn;      s_uiSellBtn     = uiSellBtn;
+            s_uiAddBtn      = uiAddBtn;      s_uiSellBtn     = uiSellBtn;   s_uiPricesBtn = uiPricesBtn;
             s_uiListHeader  = uiListHeader;  s_uiTotalText   = uiTotalText;
             s_uiEarningsMsg = uiEarningsMsg; s_uiEarningsCG  = uiEarningsCG;
             s_uiListContent = uiListContent;
@@ -286,7 +287,7 @@ public class FishMarketNPC : MonoBehaviour
         }
 
         // Adopt the widgets someone else built.
-        uiAddBtn      = s_uiAddBtn;      uiSellBtn     = s_uiSellBtn;
+        uiAddBtn      = s_uiAddBtn;      uiSellBtn     = s_uiSellBtn;   uiPricesBtn = s_uiPricesBtn;
         uiListHeader  = s_uiListHeader;  uiTotalText   = s_uiTotalText;
         uiEarningsMsg = s_uiEarningsMsg; uiEarningsCG  = s_uiEarningsCG;
         uiListContent = s_uiListContent;
@@ -304,6 +305,11 @@ public class FishMarketNPC : MonoBehaviour
         {
             uiSellBtn.onClick.RemoveAllListeners();
             uiSellBtn.onClick.AddListener(OnConfirmSale);
+        }
+        if (uiPricesBtn != null)
+        {
+            uiPricesBtn.onClick.RemoveAllListeners();
+            uiPricesBtn.onClick.AddListener(OnPricesToggled);
         }
         s_uiOwner = this;
     }
@@ -573,6 +579,7 @@ public class FishMarketNPC : MonoBehaviour
         stagedFish.Clear();
 
         panelOpen = true;
+        _showPrices = false;
         InteractPromptUI.Clear(this);
         EnsureBuiltUI();
         if (sellPanel != null)
@@ -683,12 +690,38 @@ public class FishMarketNPC : MonoBehaviour
     }
 
     // ── UI Refresh ─────────────────────────────────────────────────────────────
+    // Sam, 2026-09-07 playtest: "how do I see what fish the vendors buy and at
+    // what prices? I'd just have to sell blind." The PRICES button swaps the
+    // staged-fish list for this market's whole buy list with what it pays per
+    // pound RIGHT NOW (appetite included), so the trip can be judged before a
+    // single fish leaves the bag.
+    bool _showPrices;
+
+    void OnPricesToggled()
+    {
+        _showPrices = !_showPrices;
+        RefreshUI();
+    }
+
     void RefreshUI()
     {
-        if (uiListHeader != null)
-            uiListHeader.text = $"Added to Sale  ({stagedFish.Count})";
+        if (uiPricesBtn != null)
+        {
+            var lbl = uiPricesBtn.transform.Find("Label")?.GetComponent<TextMeshProUGUI>();
+            if (lbl != null) lbl.text = _showPrices ? "Your Fish" : "Prices";
+        }
 
-        RebuildFishCards();
+        if (_showPrices)
+        {
+            if (uiListHeader != null) uiListHeader.text = "What we buy  (per lb, right now)";
+            RebuildPriceRows();
+        }
+        else
+        {
+            if (uiListHeader != null)
+                uiListHeader.text = $"Added to Sale  ({stagedFish.Count})";
+            RebuildFishCards();
+        }
         if (uiListContent != null)
             LayoutRebuilder.ForceRebuildLayoutImmediate(uiListContent.GetComponent<RectTransform>());
         Canvas.ForceUpdateCanvases();
@@ -709,6 +742,40 @@ public class FishMarketNPC : MonoBehaviour
             if (lbl != null)
                 lbl.text = stagedFish.Count > 0 ? $"Confirm Sale  ({stagedFish.Count})" : "Confirm Sale";
         }
+    }
+
+    void RebuildPriceRows()
+    {
+        if (uiListContent == null) return;
+        for (int i = uiListContent.childCount - 1; i >= 0; i--)
+        {
+            var child = uiListContent.GetChild(i);
+            if (child.name == "EmptyHint") continue;
+            child.gameObject.SetActive(false);
+            Destroy(child.gameObject);
+        }
+        var emptyHint = uiListContent.Find("EmptyHint");
+        if (emptyHint != null) emptyHint.gameObject.SetActive(false);
+
+        string body = BodyName;
+        var entry = PlanetEconomy.EntryFor(body);
+        if (entry == null)
+        {
+            MkText(uiListContent, "This market buys every fish at its base price.", 13, C_Sub, 24);
+            return;
+        }
+        PriceGroup(body, "LOCAL",    C_Common,   entry.catchable);
+        PriceGroup(body, "IMPORTED", C_Uncommon, entry.imports);
+        PriceGroup(body, "DELICACY", C_Rare,     entry.delicacies);
+        MkText(uiListContent, $"Anything else: {PlanetEconomy.BaseMultiplier(PlanetEconomy.Bucket.Unlisted):0.00}× its base price", 12, C_Hint, 22);
+    }
+
+    void PriceGroup(string body, string title, Color32 color, List<string> ids)
+    {
+        if (ids == null || ids.Count == 0) return;
+        MkText(uiListContent, title, 13, color, 22, FontStyles.Bold);
+        foreach (var id in ids)
+            MkText(uiListContent, "   " + PlanetEconomy.PriceLine(body, id), 13, C_Label, 20);
     }
 
     void RebuildFishCards()
@@ -814,8 +881,10 @@ public class FishMarketNPC : MonoBehaviour
 
         // Button row
         var row = MkHRow(sellPanel.transform, 48);
-        uiAddBtn  = MkButton(row, "Add Fish",     C_BtnAdd);
-        uiSellBtn = MkButton(row, "Confirm Sale", C_BtnSell);
+        uiPricesBtn = MkButton(row, "Prices",       C_PanelBtnPrices, 13);
+        uiAddBtn    = MkButton(row, "Add Fish",     C_BtnAdd);
+        uiSellBtn   = MkButton(row, "Confirm Sale", C_BtnSell);
+        uiPricesBtn.onClick.AddListener(OnPricesToggled);
         uiAddBtn.onClick.AddListener(OnAddFishClicked);
         uiSellBtn.onClick.AddListener(OnConfirmSale);
 

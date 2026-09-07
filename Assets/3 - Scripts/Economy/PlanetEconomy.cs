@@ -205,6 +205,22 @@ public static class PlanetEconomy
         }
     }
 
+    /// <summary>What this market pays per pound for a species RIGHT NOW, appetite
+    /// included. Sam's call (2026-09-07 playtest): the boards, the phone and the
+    /// sell panel all show real prices, not just the bucket word — you should
+    /// know what you will get before you sell.</summary>
+    public static float PricePerLbNow(string body, string speciesId)
+    {
+        int i = FishingRules.IndexOfId(speciesId);
+        if (i < 0) return 0f;
+        float basePerLb = FishingRules.Species[i].pricePerLb;
+        return basePerLb * (HasTable(body) ? MultiplierNow(body, speciesId) : 1f);
+    }
+
+    /// <summary>"Marlorb  $6.60/lb" — the line every price list uses.</summary>
+    public static string PriceLine(string body, string speciesId)
+        => $"{DisplayName(speciesId)}  ${PricePerLbNow(body, speciesId):0.00}/lb";
+
     public static string DisplayName(string speciesId)
     {
         int i = FishingRules.IndexOfId(speciesId);

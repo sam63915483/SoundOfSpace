@@ -25,8 +25,12 @@ economy wiring are in it.
 ## 2. The vendor pays by the words on the board (5 min)
 
 - [ ] Walk up to Humble Abode's market. The **board** above the stand should now
-      show three groups: *Local*, *Imported — pays well*, *Delicacy — pays top*,
-      with fish names under each. (Not the old "Buying today" placeholder.)
+      show three groups — *Local*, *Imported*, *Delicacy* — with **each fish and
+      the $/lb it pays right now** under them. (Not the old "Buying today"
+      placeholder. HA had no board at all on your first run — fixed.)
+- [ ] Talk to the vendor and press the new **PRICES** button in the sell panel.
+      The list swaps to everything this market buys with $/lb, right now. Press
+      it again (**YOUR FISH**) to go back. You should never have to sell blind.
 - [ ] Open the sell panel with a **local** fish staged. The card reads
       `Local | 12 lbs | $X value` and the total matches.
 - [ ] **Confirm a sale**. The money you get must equal the total shown.
@@ -56,7 +60,7 @@ other's fish.**
       show **`??`** — you should have Humble Abode and whichever twin(s) you visited,
       nothing else.
 - [ ] Pick a visited planet: the right pane shows the same three groups the board
-      did, plus *Sells crystals: yes/no*.
+      did, each fish with its current $/lb, plus *Sells crystals: yes/no*.
 - [ ] Top-right reads e.g. **2/10 VISITED**.
 - [ ] Walk within ~20 m of a new market's board, open the phone: that planet's `??`
       is gone and its list is there.

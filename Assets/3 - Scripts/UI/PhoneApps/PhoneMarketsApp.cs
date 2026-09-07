@@ -10,8 +10,9 @@ using UnityEngine.UI;
 ///
 /// The game remembers what you have SEEN; it never tells you what you have not.
 /// That is the whole design: the trade routes are something the player learns
-/// by flying out and reading signs, and this page is their notebook. Words
-/// only (Local / Imported / Delicacy), never multipliers — same as the boards.
+/// by flying out and reading signs, and this page is their notebook. Each
+/// species shows its bucket word and the current price per pound — same as the
+/// boards (Sam's call: prices visible before you sell).
 ///
 /// Built on <see cref="PhoneAppBase"/> like the Fishingdex: rows on the left,
 /// the chosen planet's board on the right.
@@ -130,28 +131,31 @@ public class PhoneMarketsApp : PhoneAppBase
         }
 
         var sb = new System.Text.StringBuilder(256);
-        Group(sb, HexLocal,  "LOCAL",                 e.catchable);
-        Group(sb, HexImport, "IMPORTED — pays well",  e.imports);
-        Group(sb, HexDelic,  "DELICACY — pays top",   e.delicacies);
+        Group(sb, body, HexLocal,  "LOCAL",    e.catchable);
+        Group(sb, body, HexImport, "IMPORTED", e.imports);
+        Group(sb, body, HexDelic,  "DELICACY", e.delicacies);
 
         bool crystals = VendorSite.Find(body, VendorSite.VendorKind.GoodsVendor) != null;
         sb.Append("\n<color=").Append(LabelDimHex).Append(">Sells crystals: ")
           .Append(crystals ? "yes" : "no").Append("</color>");
 
         _body.text = sb.ToString();
-        _hint.text = "Anything not listed sells at a dump price.";
+        _hint.text = "Anything not listed sells at half its base price.";
     }
 
     static string LabelDimHex => "#A8D2EB";
 
-    static void Group(System.Text.StringBuilder sb, string hex, string title, List<string> ids)
+    // Prices are CURRENT, not a snapshot from the visit: the page is a notebook
+    // of which planets you have read, and the live number is more useful than a
+    // stale one once you know a market exists.
+    static void Group(System.Text.StringBuilder sb, string body, string hex, string title, List<string> ids)
     {
         if (ids == null || ids.Count == 0) return;
         sb.Append("<color=").Append(hex).Append("><b>").Append(title).Append("</b></color>\n");
         for (int i = 0; i < ids.Count; i++)
         {
-            if (i > 0) sb.Append(" · ");
-            sb.Append(PlanetEconomy.DisplayName(ids[i]));
+            if (i > 0) sb.Append('\n');
+            sb.Append(PlanetEconomy.PriceLine(body, ids[i]));
         }
         sb.Append("\n\n");
     }

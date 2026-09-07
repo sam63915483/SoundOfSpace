@@ -201,12 +201,27 @@ public static class VendorPrefabBuilder
         var go = new GameObject("Board");
         go.transform.SetParent(root.transform, false);
 
-        // Sit it just above the STALL, measured from the single biggest renderer
-        // rather than the whole stand: these market props include a fishing rod
-        // stood on end, and measuring everything hangs the sign in the air above
-        // it. Sam nudges from here; the prefab only owes him a sane start.
-        var b = StallBounds(root);
-        go.transform.localPosition = new Vector3(b.center.x, b.max.y + 0.45f, b.center.z);
+        // Where the sign goes. Preferred: straight above the vendor NPC, who
+        // stands at the counter by construction — that survives a MESH-COMBINED
+        // stand, whose "largest renderer" is the whole village chunk and put the
+        // Humble Abode sign 65 m away (2026-09-07). Fallback for a stand with no
+        // NPC yet: just above the biggest renderer, which on the untouched pack
+        // prefab is the stall itself. Sam nudges from here either way.
+        Transform npc = null;
+        var fish = root.GetComponentInChildren<FishMarketNPC>(true);
+        if (fish != null) npc = fish.transform;
+        else { var goods = root.GetComponentInChildren<Alien7Vendor>(true); if (goods != null) npc = goods.transform; }
+
+        if (npc != null)
+        {
+            var p = root.transform.InverseTransformPoint(npc.position);
+            go.transform.localPosition = new Vector3(p.x, p.y + 4.1f, p.z);
+        }
+        else
+        {
+            var b = StallBounds(root);
+            go.transform.localPosition = new Vector3(b.center.x, b.max.y + 0.45f, b.center.z);
+        }
         go.transform.localRotation = Quaternion.identity;
 
         var board = go.AddComponent<VendorBoard>();
@@ -254,7 +269,20 @@ public static class VendorPrefabBuilder
 
         var site = host.AddComponent<VendorSite>();
         site.kind = kind;
+        EnsureBoard(host, kind == VendorSite.VendorKind.FishMarket ? "FISH MARKET" : "GENERAL GOODS");
         EditorUtility.SetDirty(host);
+        return true;
+    }
+
+    /// <summary>Give a stand a Board child if it has none. The prefab instances
+    /// carry one; the ORIGINAL Humble Abode stands are loose scene objects and
+    /// were only tagged, so the one market every player sees first had no sign
+    /// at all (2026-09-07 playtest).</summary>
+    public static bool EnsureBoard(GameObject standRoot, string heading)
+    {
+        if (standRoot.GetComponentInChildren<VendorBoard>(true) != null) return false;
+        AddBoard(standRoot, heading);
+        EditorUtility.SetDirty(standRoot);
         return true;
     }
 

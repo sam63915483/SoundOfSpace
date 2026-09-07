@@ -4,8 +4,9 @@ using UnityEngine;
 /// <summary>
 /// The sign hanging on a vendor's stand. This is the whole knowledge half of the
 /// planet economy: a player learns a trade route by READING boards and
-/// remembering them, so the board shows words — "Local", "Imported", "Delicacy" —
-/// never multipliers or dollar figures. Same rule as the tape word-ladder.
+/// remembering them. It shows the bucket word — "Local", "Imported", "Delicacy" —
+/// AND what the market pays per pound right now (Sam, 2026-09-07 playtest: you
+/// should know what you will get before you sell, not sell blind).
 ///
 /// A fish market's board lists that planet's real buy list from
 /// <see cref="PlanetEconomy"/>; standing close enough to read it is what puts
@@ -50,7 +51,7 @@ public class VendorBoard : MonoBehaviour
 
         _tmp = GetComponent<TextMeshPro>();
         if (_tmp == null) _tmp = gameObject.AddComponent<TextMeshPro>();
-        _tmp.fontSize     = 1.4f;
+        _tmp.fontSize     = 1.15f;
         _tmp.color        = C_Body;
         _tmp.alignment    = TextAlignmentOptions.Top;
         _tmp.outlineWidth = 0.18f;
@@ -58,7 +59,7 @@ public class VendorBoard : MonoBehaviour
         _tmp.enableWordWrapping = true;
 
         var rt = _tmp.rectTransform;
-        rt.sizeDelta = new Vector2(2.6f, 2.2f);
+        rt.sizeDelta = new Vector2(3.0f, 3.4f);
 
         Refresh();
     }
@@ -111,20 +112,25 @@ public class VendorBoard : MonoBehaviour
 
         var sb = new System.Text.StringBuilder(256);
         sb.Append(headTag).Append("\n\n");
-        Group(sb, HexLocal,  "Local",              entry.catchable);
-        Group(sb, HexImport, "Imported — pays well", entry.imports);
-        Group(sb, HexDelic,  "Delicacy — pays top",  entry.delicacies);
+        Group(sb, planet, HexLocal,  "Local",    entry.catchable);
+        Group(sb, planet, HexImport, "Imported", entry.imports);
+        Group(sb, planet, HexDelic,  "Delicacy", entry.delicacies);
+        sb.Append("<size=70%>Anything else: ")
+          .Append(PlanetEconomy.BaseMultiplier(PlanetEconomy.Bucket.Unlisted).ToString("0.00"))
+          .Append("× its base price</size>");
         SetText(sb.ToString());
     }
 
-    static void Group(System.Text.StringBuilder sb, string hex, string title, System.Collections.Generic.List<string> ids)
+    // One species per line WITH its price: the sign is what you read before you
+    // decide whether the trip was worth it, so it has to say what you will get.
+    static void Group(System.Text.StringBuilder sb, string body, string hex, string title, System.Collections.Generic.List<string> ids)
     {
         if (ids == null || ids.Count == 0) return;
-        sb.Append("<color=").Append(hex).Append("><b>").Append(title).Append("</b></color>\n<size=85%>");
+        sb.Append("<color=").Append(hex).Append("><b>").Append(title).Append("</b></color>\n<size=80%>");
         for (int i = 0; i < ids.Count; i++)
         {
-            if (i > 0) sb.Append(" · ");
-            sb.Append(PlanetEconomy.DisplayName(ids[i]));
+            if (i > 0) sb.Append('\n');
+            sb.Append(PlanetEconomy.PriceLine(body, ids[i]));
         }
         sb.Append("</size>\n");
     }
