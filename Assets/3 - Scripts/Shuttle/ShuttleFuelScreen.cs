@@ -77,27 +77,47 @@ public class ShuttleFuelScreen : MonoBehaviour
         var go = new GameObject("Readout");
         go.transform.SetParent(transform, false);
 
-        // Undo the panel's non-uniform scale so glyphs aren't stretched, then sit
-        // just proud of the +Z face. A unit cube's face is at z = +0.5.
+        // Two problems here, and the first attempt only solved one of them.
+        //
+        //  (a) The panel is a flat cube, so it is NON-UNIFORMLY scaled. Text
+        //      parented to it inherits that and comes out stretched.
+        //  (b) TextMeshPro font sizes are NOT world units. Setting fontSize to a
+        //      fraction of a 0.19-unit-tall panel asks for glyphs far smaller
+        //      than the panel - which is why the readout stayed microscopic even
+        //      with auto-sizing on: the ceiling I gave it was itself tiny.
+        //
+        // So build the text at a COMFORTABLE size in its own space - a 100-unit
+        // wide rect at a normal font size - then shrink the whole object until
+        // that rect exactly covers the panel face. Font units never have to line
+        // up with world units, and the text fills the screen at any panel size.
         var s = transform.localScale;
-        var inv = new Vector3(1f / Safe(s.x), 1f / Safe(s.y), 1f / Safe(s.z));
-        go.transform.localScale    = inv;
+        float faceW = Safe(s.x) * fillFraction;       // panel face, in reactor space
+        float faceH = Safe(s.y) * fillFraction;
+
+        const float RectW = 100f;                     // author space
+        float rectH = RectW * (faceH / Mathf.Max(0.0001f, faceW));
+        float k     = faceW / RectW;                  // author units -> reactor units
+
+        // Cancel the panel's own non-uniform scale, then one uniform shrink.
+        go.transform.localScale    = new Vector3(k / Safe(s.x), k / Safe(s.y), k / Safe(s.z));
         go.transform.localRotation = Quaternion.identity;
         go.transform.localPosition = new Vector3(0f, 0f, 0.5f + lift * 0.5f);
-
-        // In that corrected space the face measures s.x by s.y.
-        float w = Safe(s.x) * fillFraction;
-        float h = Safe(s.y) * fillFraction;
 
         _tmp = go.AddComponent<TextMeshPro>();
         _tmp.alignment          = TextAlignmentOptions.Center;
         _tmp.enableWordWrapping = false;
         _tmp.richText           = true;
         _tmp.color              = inkFull;
-        _tmp.fontSize           = h * 0.30f;     // four short lines inside the face
-        _tmp.lineSpacing        = -8f;
-        _tmp.characterSpacing   = 4f;
-        _tmp.rectTransform.sizeDelta = new Vector2(w, h);
+        _tmp.characterSpacing   = 0f;
+        _tmp.lineSpacing        = -10f;
+        _tmp.margin             = Vector4.zero;
+        _tmp.rectTransform.sizeDelta = new Vector2(RectW, rectH);
+
+        // Auto-size inside that generous author space: TMP grows the text until
+        // the longest line touches the edges, so the panel is always full.
+        _tmp.enableAutoSizing = true;
+        _tmp.fontSizeMin      = 1f;
+        _tmp.fontSizeMax      = rectH;
 
         Refresh(true);
     }

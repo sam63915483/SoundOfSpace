@@ -156,10 +156,39 @@ public static class VendorPrefabBuilder
             if (c is Animator) continue;
 
             var type = c.GetType();
+            if (IsSingleton(type))
+            {
+                Debug.Log($"[Vendors] skipped {type.Name} - it is a singleton, and a second " +
+                          "instance destroys its own GameObject on Awake.");
+                continue;
+            }
             var dst  = to.GetComponent(type);
             if (dst == null) dst = to.AddComponent(type);
             if (dst != null) EditorUtility.CopySerialized(c, dst);
         }
+    }
+
+    /// <summary>A component that keeps a static Instance is one-per-scene by
+    /// construction, so a copy of it is a self-destruct.
+    ///
+    /// This is the bug that made every new vendor vanish the moment the game ran.
+    /// The Humble Abode vendor carries FishInventory - the PLAYER'S global fish
+    /// bag, reached everywhere through FishInventory.Instance and never touched
+    /// by FishMarketNPC. Copying it onto ten more vendors meant ten singletons
+    /// waking up, losing the Instance race and running the standard guard:
+    ///     if (Instance != null and Instance != this) { Destroy(gameObject); return; }
+    /// Destroy(gameObject) deletes the ALIEN, not just the component - so every
+    /// stand kept its counter and lost its vendor, and Humble Abode's survived
+    /// only by winning the race.
+    ///
+    /// Detected by reflection, not a hand-written list, so a singleton added to
+    /// the Humble Abode vendor later is caught too.</summary>
+    static bool IsSingleton(System.Type type)
+    {
+        const System.Reflection.BindingFlags F =
+            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static |
+            System.Reflection.BindingFlags.FlattenHierarchy;
+        return type.GetProperty("Instance", F) != null || type.GetField("Instance", F) != null;
     }
 
     /// <summary>Add the look-at board to the stand, positioned above the counter.
