@@ -405,6 +405,11 @@ public class WorldPropConsumedSave
     // Parallel array of bodyName per cell. Empty on legacy saves (load path
     // treats those as Humble Abode).
     public List<string> bodyNames = new List<string>();
+    // Parallel array of the GalaxyTime day the cell was consumed, for props
+    // that GROW BACK (crystals — planet economy, 2026-09-07). Empty for trees
+    // and mushrooms, which stay consumed forever; empty on legacy saves, and
+    // the load path then treats those cells as consumed just now.
+    public List<double> consumedOnDay = new List<double>();
 }
 
 [Serializable]
@@ -468,6 +473,11 @@ public class ShuttleSave
     public string bodyName = "";
     public Vector3 localPos;
     public Quaternion localRot = Quaternion.identity;
+
+    // Reactor fuel (planet economy, 2026-09-07). -1 means "this save predates
+    // fuel" so ApplyShuttle leaves the tank at its New Game value instead of
+    // loading an old game with a dead shuttle.
+    public float fuel = -1f;
 }
 
 [Serializable]

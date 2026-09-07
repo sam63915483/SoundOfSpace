@@ -7,6 +7,13 @@ public class CrystalSpawner : MonoBehaviour
     [Tooltip("Body names to skip (case-sensitive, matched against CelestialBody.bodyName). Crystals grow on every other body in NBodySimulation.Bodies.")]
     public string[] excludeBodyNames = { "Sun" };
 
+    [Header("Regrowth (planet economy, 2026-09-07)")]
+    [Tooltip("In-game days before a mined crystal cell grows back. Crystals are the " +
+             "shuttle's fuel, so without regrowth every planet you harvest stays barren " +
+             "for the rest of that save and travel eventually dead-ends. One GalaxyTime " +
+             "day is 24 real minutes. Set to 0 to go back to mined-forever.")]
+    public float respawnGameDays = 1f;
+
     [Header("Crystal Prefab")]
     [Tooltip("Single crystal prefab — assign crystal_17_2 here.")]
     public GameObject crystalPrefab;
@@ -64,7 +71,13 @@ public class CrystalSpawner : MonoBehaviour
         public CelestialBodyGenerator gen;
         public readonly Dictionary<long, GameObject> activeCrystals = new Dictionary<long, GameObject>();
         public readonly HashSet<long> consumedCells = new HashSet<long>();
+        // GalaxyTime day each cell was mined, so it can grow back. A cell with
+        // no stamp (legacy save) is treated as mined at load time.
+        public readonly Dictionary<long, double> consumedOnDay = new Dictionary<long, double>();
     }
+
+    // Scratch for the regrowth sweep — reused so the streaming loop never allocs.
+    readonly List<long> _regrown = new List<long>();
 
     readonly List<BodyState> bodies = new List<BodyState>();
     // Pre-applied consumed cells keyed by bodyName, populated by
@@ -72,6 +85,9 @@ public class CrystalSpawner : MonoBehaviour
     // BodyState.consumedCells at resolve. Mirrors AlienNPCSpawner's
     // pendingKilledCellsByBody pattern so save/load is symmetric.
     readonly Dictionary<string, HashSet<long>> pendingConsumedCellsByBody = new Dictionary<string, HashSet<long>>();
+    // Parallel to the above: the day each queued cell was mined, so regrowth
+    // timers survive a load that lands before the planets have resolved.
+    readonly Dictionary<string, Dictionary<long, double>> pendingConsumedDayByBody = new Dictionary<string, Dictionary<long, double>>();
     PlayerController player;
     Stack<GameObject> pool;
     // Lowest Y of the prefab's renderer hierarchy in prefab-root local space.
@@ -162,8 +178,15 @@ public class CrystalSpawner : MonoBehaviour
                 // that were queued before this body resolved.
                 if (pendingConsumedCellsByBody.TryGetValue(b.bodyName, out var pending))
                 {
-                    foreach (var c in pending) entry.consumedCells.Add(c);
+                    pendingConsumedDayByBody.TryGetValue(b.bodyName, out var pendingDays);
+                    foreach (var c in pending)
+                    {
+                        entry.consumedCells.Add(c);
+                        entry.consumedOnDay[c] = (pendingDays != null && pendingDays.TryGetValue(c, out double d))
+                                               ? d : NowDay();
+                    }
                     pendingConsumedCellsByBody.Remove(b.bodyName);
+                    pendingConsumedDayByBody.Remove(b.bodyName);
                 }
                 bodies.Add(entry);
             }
@@ -226,6 +249,9 @@ public class CrystalSpawner : MonoBehaviour
         {
             var entry = bodies[s];
             if (entry.body == null) continue;
+            // Crystals grow back: retire any mined cell that has served its time
+            // before this pass decides what may spawn.
+            TickRegrowth(entry);
             float bodyDistSq = (entry.body.Position - playerPos).sqrMagnitude;
             float bodyOuter = spawnRadius + entry.body.radius + cellSize;
             if (bodyDistSq > bodyOuter * bodyOuter) continue;
@@ -507,7 +533,38 @@ public class CrystalSpawner : MonoBehaviour
         if (bodySlot < 0 || bodySlot >= bodies.Count) return;
         var entry = bodies[bodySlot];
         entry.consumedCells.Add(cellId);
+        entry.consumedOnDay[cellId] = NowDay();
         entry.activeCrystals.Remove(cellId);
+    }
+
+    // ─── Regrowth ────────────────────────────────────────────────────────
+
+    /// <summary>Current galactic day as a fraction. Falls back to a clock-free
+    /// 0 when GalaxyTime has not spun up, which simply means nothing regrows yet.</summary>
+    static double NowDay() => GalaxyTime.Instance != null ? GalaxyTime.Instance.TotalDays : 0.0;
+
+    /// <summary>Let any cell that has served its time grow back. Called once per body
+    /// per streaming pass — a dictionary walk over the mined cells of ONE planet,
+    /// which is a handful of entries, not a scan of the world.</summary>
+    void TickRegrowth(BodyState entry)
+    {
+        if (respawnGameDays <= 0f || entry.consumedCells.Count == 0) return;
+
+        double now = NowDay();
+        if (now <= 0.0) return;                       // no clock yet — nothing ages
+
+        _regrown.Clear();
+        foreach (var kv in entry.consumedOnDay)
+            if (now - kv.Value >= respawnGameDays) _regrown.Add(kv.Key);
+
+        for (int i = 0; i < _regrown.Count; i++)
+        {
+            entry.consumedCells.Remove(_regrown[i]);
+            entry.consumedOnDay.Remove(_regrown[i]);
+        }
+        if (_regrown.Count > 0)
+            Debug.Log($"[CrystalSpawner] {_regrown.Count} crystal cell(s) grew back on " +
+                      $"{(entry.body != null ? entry.body.bodyName : "?")}.");
     }
 
     // ─── Save integration ────────────────────────────────────────────────
@@ -515,6 +572,19 @@ public class CrystalSpawner : MonoBehaviour
     // Streamed iterator: yields (bodyName, cellId) for every mined crystal cell.
     // Includes both already-resolved entries and the pending queue (for the
     // case where Capture runs before bodies have resolved).
+    /// <summary>Mined day for a cell on a body, for the save. Returns the current
+    /// day when the stamp is missing (a cell restored from a pre-regrowth save).</summary>
+    public double ConsumedDayFor(string bodyName, long cellId)
+    {
+        for (int s = 0; s < bodies.Count; s++)
+        {
+            var e = bodies[s];
+            if (e.body == null || e.body.bodyName != bodyName) continue;
+            if (e.consumedOnDay.TryGetValue(cellId, out double d)) return d;
+        }
+        return NowDay();
+    }
+
     public System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<string, long>> GetConsumedCellsWithBody()
     {
         for (int s = 0; s < bodies.Count; s++)
@@ -533,9 +603,19 @@ public class CrystalSpawner : MonoBehaviour
     // resolved get queued in pendingConsumedCellsByBody for ResolveRefs to
     // drain on first tick.
     public void RestoreConsumedCells(System.Collections.Generic.IList<long> cells, System.Collections.Generic.IList<string> bodyNames)
+        => RestoreConsumedCells(cells, bodyNames, null);
+
+    /// <summary>Restore mined cells, with the day each was mined so regrowth timers
+    /// survive a reload. A null or short <paramref name="consumedOnDay"/> (a save
+    /// from before crystals grew back) stamps those cells as mined right now, so
+    /// they regrow a full day after the load rather than instantly.</summary>
+    public void RestoreConsumedCells(System.Collections.Generic.IList<long> cells,
+                                     System.Collections.Generic.IList<string> bodyNames,
+                                     System.Collections.Generic.IList<double> consumedOnDay)
     {
-        for (int s = 0; s < bodies.Count; s++) bodies[s].consumedCells.Clear();
+        for (int s = 0; s < bodies.Count; s++) { bodies[s].consumedCells.Clear(); bodies[s].consumedOnDay.Clear(); }
         pendingConsumedCellsByBody.Clear();
+        pendingConsumedDayByBody.Clear();
         if (cells == null || cells.Count == 0) return;
 
         for (int i = 0; i < cells.Count; i++)
@@ -549,9 +629,11 @@ public class CrystalSpawner : MonoBehaviour
             {
                 if (bodies[s].body != null && bodies[s].body.bodyName == name) { match = bodies[s]; break; }
             }
+            double day = (consumedOnDay != null && i < consumedOnDay.Count) ? consumedOnDay[i] : NowDay();
             if (match != null)
             {
                 match.consumedCells.Add(cells[i]);
+                match.consumedOnDay[cells[i]] = day;
             }
             else
             {
@@ -561,6 +643,12 @@ public class CrystalSpawner : MonoBehaviour
                     pendingConsumedCellsByBody[name] = set;
                 }
                 set.Add(cells[i]);
+                if (!pendingConsumedDayByBody.TryGetValue(name, out var dayMap))
+                {
+                    dayMap = new Dictionary<long, double>();
+                    pendingConsumedDayByBody[name] = dayMap;
+                }
+                dayMap[cells[i]] = day;
             }
         }
     }

@@ -131,6 +131,11 @@ public static class NewGameReset
         // (The shuttle's own pose is scene-authored, so a fresh scene load
         // already parks it on Humble Abode; no pose reset needed.)
         ShuttleRiderFrame.ResetStatics();
+        // Reactor fuel is a live tank, not scene-authored, so a New Game started
+        // after a run that ended stranded would otherwise inherit an empty
+        // shuttle. Half a tank, then the intro approach burns some off.
+        var tank = ShuttleFuel.EnsureAttached();
+        if (tank != null) tank.ResetForNewGame();
 
         // Same class of leak: buyer bans and remembered counter-offers are pure
         // statics, so a New Game would otherwise start with an alien still

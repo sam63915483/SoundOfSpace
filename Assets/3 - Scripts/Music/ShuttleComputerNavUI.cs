@@ -28,6 +28,9 @@ public partial class ShuttleComputerUI
     {
         public string body; public Image frame; public TextMeshProUGUI label; public bool here;
         public TextMeshProUGUI dist; public CelestialBody bodyRef; public int lastKm10;
+        // Fuel (planet economy): whether this hop is affordable right now, so the
+        // tile can grey out and the sub-label can say when it opens instead.
+        public bool reachable = true; public string lastSub = null;
     }
     readonly List<NavTile> _navTiles = new List<NavTile>();
     RectTransform _navTileRow;
@@ -35,6 +38,8 @@ public partial class ShuttleComputerUI
     string _navSelected = "";
     Image _navTravelBg;
     TextMeshProUGUI _navTravelLabel;
+    TextMeshProUGUI _navFuelLabel;      // "FUEL 62%  ·  RANGE 8.6 KM"
+    string _navFuelShown = null;
     TextMeshProUGUI _navToastLabel;
     float _navToastUntil2;
 
@@ -112,8 +117,18 @@ public partial class ShuttleComputerUI
         hrt.anchoredPosition = new Vector2(0, -6);
         hint.characterSpacing = 16;
 
+        // Fuel gauge. The one number that decides where you can go, so it sits
+        // above the planet list rather than buried on another screen.
+        _navFuelLabel = MakeText(pane, "Fuel", "", 15, Accent, TextAlignmentOptions.Center);
+        var frt2 = _navFuelLabel.rectTransform;
+        frt2.anchorMin = new Vector2(0, 1); frt2.anchorMax = new Vector2(1, 1);
+        frt2.pivot = new Vector2(0.5f, 1);
+        frt2.sizeDelta = new Vector2(0, 22);
+        frt2.anchoredPosition = new Vector2(0, -28);
+        _navFuelLabel.characterSpacing = 10;
+
         _navTileRow = MakeRect(pane, "Tiles");
-        Stretch(_navTileRow, 0, 0, 40, 120);
+        Stretch(_navTileRow, 0, 0, 62, 120);
 
         // TRAVEL — enabled only with a non-current planet selected.
         var btn = MakePanel(pane, "TravelBtn", Panel);
@@ -499,22 +514,74 @@ public partial class ShuttleComputerUI
             NavRebuildTiles(pilot, here);
         }
 
-        bool canTravel = !string.IsNullOrEmpty(_navSelected);   // here included — relocation
+        // A destination you cannot pay for is not travel-able. Selecting it is
+        // still allowed — you want to be able to click a far planet and read
+        // when it opens up.
+        var tankNow = ShuttleFuel.Instance;
+        bool selReachable = true;
+        if (tankNow != null && !string.IsNullOrEmpty(_navSelected))
+            foreach (var t in _navTiles)
+                if (t.body == _navSelected) { selReachable = t.reachable; break; }
+
+        bool canTravel = !string.IsNullOrEmpty(_navSelected) && selReachable;
+        _navTravelLabel.text  = canTravel || string.IsNullOrEmpty(_navSelected) ? "TRAVEL" : "NOT ENOUGH FUEL";
         _navTravelLabel.color = canTravel ? Ink : Locked;
         _navTravelBg.color = canTravel ? PanelHi : Panel;
 
-        // Live distance refresh (change-gated — no per-frame string garbage).
+        // Live distance + reachability refresh (change-gated — no per-frame
+        // string garbage; this runs twice a second, not every frame).
         if (Time.unscaledTime >= _navNextDistAt && pilot.CurrentBody != null)
         {
             _navNextDistAt = Time.unscaledTime + 0.5f;
             Vector3 hereP = pilot.CurrentBody.Position;
+            var hereBody = pilot.CurrentBody;
+
+            if (_navFuelLabel != null)
+            {
+                string fuelLine = tankNow == null
+                    ? ""
+                    : $"FUEL {Mathf.RoundToInt(tankNow.FuelPercent * 100f)}%   ·   RANGE {tankNow.RangeKm:0.0} KM";
+                if (fuelLine != _navFuelShown) { _navFuelShown = fuelLine; _navFuelLabel.text = fuelLine; }
+            }
+
             foreach (var t in _navTiles)
             {
                 if (t.dist == null || t.bodyRef == null) continue;
-                int km10 = Mathf.RoundToInt(Vector3.Distance(t.bodyRef.Position, hereP) / 100f);
-                if (km10 == t.lastKm10) continue;
-                t.lastKm10 = km10;
-                t.dist.text = (km10 / 10f).ToString("0.0") + " KM";
+
+                float metres = Vector3.Distance(t.bodyRef.Position, hereP);
+                int km10 = Mathf.RoundToInt(metres / 100f);
+
+                // Can we afford it right now?
+                bool afford = tankNow == null || tankNow.CanAfford(metres);
+                string sub;
+                if (afford)
+                {
+                    sub = (km10 / 10f).ToString("0.0") + " KM";
+                }
+                else
+                {
+                    // Out of reach — say WHEN, computed exactly off the rails.
+                    // This is what turns waiting into a plan instead of a guess.
+                    float rangeM = tankNow.RangeKm * 1000f;
+                    var status = OrbitRange.Evaluate(hereBody, t.bodyRef, rangeM, out float wait);
+                    sub = (km10 / 10f).ToString("0.0") + " KM  ·  " +
+                          (status == OrbitRange.Status.Waiting ? "IN RANGE " + OrbitRange.DescribeWait(wait)
+                                                               : "OUT OF RANGE");
+                }
+
+                if (afford != t.reachable)
+                {
+                    t.reachable  = afford;
+                    t.label.color = afford ? Ink : Locked;
+                    t.frame.color = t.body == _navSelected ? PanelHi : Panel;
+                }
+                if (km10 != t.lastKm10 || sub != t.lastSub)
+                {
+                    t.lastKm10 = km10;
+                    t.lastSub  = sub;
+                    t.dist.text  = sub;
+                    t.dist.color = afford ? Locked : Warn;
+                }
             }
         }
     }
@@ -606,7 +673,10 @@ public partial class ShuttleComputerUI
         {
             bool sel = t.body == _navSelected;
             t.frame.color = sel ? PanelHi : Panel;
-            t.label.color = sel ? Accent : Ink;
+            // An unaffordable destination stays dimmed even while selected —
+            // you can click it to read when it opens, but it must never look
+            // like a live option.
+            t.label.color = !t.reachable ? Locked : (sel ? Accent : Ink);
         }
     }
 
@@ -614,6 +684,25 @@ public partial class ShuttleComputerUI
     {
         var pilot = ShuttleAutopilot.Instance;
         if (pilot == null || string.IsNullOrEmpty(_navSelected)) return;
+
+        // Say WHY, when the reason is fuel. "TRAVEL UNAVAILABLE" on a planet you
+        // simply cannot afford reads like a bug.
+        var tank = ShuttleFuel.Instance;
+        if (tank != null && pilot.CurrentBody != null)
+        {
+            foreach (var t in _navTiles)
+            {
+                if (t.body != _navSelected || t.bodyRef == null) continue;
+                float metres = pilot.JumpMetresTo(t.bodyRef);
+                if (!tank.CanAfford(metres))
+                {
+                    NavToast($"NEED {tank.CostForMetres(metres):0} FUEL · HAVE {tank.Fuel:0}");
+                    return;
+                }
+                break;
+            }
+        }
+
         if (!pilot.RequestTravelByName(_navSelected))
             NavToast("TRAVEL UNAVAILABLE");
     }

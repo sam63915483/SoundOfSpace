@@ -35,6 +35,16 @@ public class ShuttleSync : MonoBehaviour
     const byte KindPilotInput   = 5;   // client -> host
     const byte KindLand         = 6;   // client -> host
     const byte KindPilotClaim   = 7;   // client -> host
+    // Fuel is SHARED world state (planet economy, 2026-09-07): one tank, either
+    // player can feed it crystals, the host owns the number. Guests need it so
+    // their NAV app greys out the same planets the host's does — a guest who
+    // could select a hop the host will refuse reads as a broken button.
+    const byte KindFuel         = 8;   // host -> clients
+    // A guest feeding the reactor spends ITS OWN crystals (the hotbar is
+    // personal) but the tank is the host's number, so the credit has to travel.
+    // Without this the guest's crystals vanish and the next heartbeat wipes the
+    // fuel they just paid for.
+    const byte KindAddFuel      = 9;   // client -> host
 
     const float PhaseHeartbeat = 2f;
     const float PoseInterval = 0.1f;
@@ -150,6 +160,15 @@ public class ShuttleSync : MonoBehaviour
         }
     }
 
+    /// <summary>Guest-side: ask the host to credit fuel we just paid crystals for.
+    /// Reliable — a dropped refuel is not self-correcting.</summary>
+    public static void SendAddFuel(float amount)
+    {
+        if (Instance == null || amount <= 0f) return;
+        Instance.Send(w => { w.WriteValueSafe(KindAddFuel); w.WriteValueSafe(amount); },
+                      NetworkManager.ServerClientId, NetworkDelivery.ReliableSequenced, 12);
+    }
+
     public static void SendTravelRequest(string bodyName)
     {
         if (Instance == null || !SessionLive) return;
@@ -258,7 +277,25 @@ public class ShuttleSync : MonoBehaviour
             SendToAll(w => { w.WriteValueSafe(KindValid); w.WriteValueSafe((byte)(valid ? 1 : 0)); },
                       NetworkDelivery.ReliableSequenced, 8);
         }
+
+        var tank = ShuttleFuel.Instance;
+        if (tank != null)
+        {
+            float fuel = tank.Fuel;
+            // Whole units is plenty — the gauge shows a percentage and the range
+            // readout one decimal, so sub-unit changes are invisible.
+            if (Mathf.Abs(fuel - _lastSentFuel) >= 0.5f || Time.unscaledTime >= _nextFuelBeatAt)
+            {
+                _lastSentFuel = fuel;
+                _nextFuelBeatAt = Time.unscaledTime + PhaseHeartbeat;
+                SendToAll(w => { w.WriteValueSafe(KindFuel); w.WriteValueSafe(fuel); },
+                          NetworkDelivery.ReliableSequenced, 12);
+            }
+        }
     }
+
+    float _lastSentFuel = float.NaN;
+    float _nextFuelBeatAt;
 
     void OnHostPhaseChanged(ShuttleAutopilot.Phase phase)
     {
@@ -318,6 +355,13 @@ public class ShuttleSync : MonoBehaviour
             w.WriteValueSafe(elapsed);
             w.WriteValueSafe(pilotId);
         }, clientId, NetworkDelivery.ReliableSequenced, target.Length * 4 + 32);
+        var tankNow = ShuttleFuel.Instance;
+        if (tankNow != null)
+        {
+            float fuel = tankNow.Fuel;
+            Send(w => { w.WriteValueSafe(KindFuel); w.WriteValueSafe(fuel); },
+                 clientId, NetworkDelivery.ReliableSequenced, 12);
+        }
         pilot.GetPoseForSync(out string body, out Vector3 lp, out Quaternion lr);
         if (!string.IsNullOrEmpty(body))
         {
@@ -356,6 +400,14 @@ public class ShuttleSync : MonoBehaviour
                 {
                     reader.ReadValueSafe(out string body);
                     if (pilot != null) pilot.RequestTravelByName(body);
+                    break;
+                }
+
+                case KindAddFuel:
+                {
+                    reader.ReadValueSafe(out float amount);
+                    var tank = ShuttleFuel.EnsureAttached();
+                    if (tank != null) tank.RestoreFuel(amount);   // heartbeat echoes it back
                     break;
                 }
 
@@ -419,6 +471,14 @@ public class ShuttleSync : MonoBehaviour
             {
                 reader.ReadValueSafe(out byte v);
                 if (pilot != null) pilot.ApplyRemoteValid(v != 0);
+                break;
+            }
+
+            case KindFuel:
+            {
+                reader.ReadValueSafe(out float fuel);
+                var tank = ShuttleFuel.EnsureAttached();
+                if (tank != null) tank.SetFuel(fuel);
                 break;
             }
         }

@@ -405,12 +405,16 @@ public static class SaveCollector
     {
         s.cells.Clear();
         s.bodyNames.Clear();
+        s.consumedOnDay.Clear();
         var spawner = Object.FindObjectOfType<CrystalSpawner>();
         if (spawner == null) return;
         foreach (var kv in spawner.GetConsumedCellsWithBody())
         {
             s.cells.Add(kv.Value);
             s.bodyNames.Add(kv.Key);
+            // Crystals grow back, so WHEN a cell was mined is part of the save —
+            // without it a reload would restart every regrowth timer.
+            s.consumedOnDay.Add(spawner.ConsumedDayFor(kv.Key, kv.Value));
         }
     }
 
@@ -495,11 +499,28 @@ public static class SaveCollector
         var pilot = ShuttleAutopilot.Instance;
         if (pilot == null) return;   // bodyName stays "" = leave scene pose on load
         pilot.GetParkedPose(out s.bodyName, out s.localPos, out s.localRot);
+
+        // Fuel is shuttle world state — how much is in the tank is exactly as
+        // load-bearing as where the shuttle is parked. Saved even when the pose
+        // capture bails, so a stranded player reloads still stranded.
+        var tank = ShuttleFuel.Instance;
+        s.fuel = tank != null ? tank.Fuel : -1f;
     }
 
     static void ApplyShuttle(ShuttleSave s)
     {
-        if (s == null || string.IsNullOrEmpty(s.bodyName)) return;
+        if (s == null) return;
+
+        // Fuel applies independently of the pose: a save from before this
+        // feature has fuel = -1 and must keep its New Game tank rather than
+        // loading empty.
+        if (s.fuel >= 0f)
+        {
+            var tank = ShuttleFuel.EnsureAttached();
+            if (tank != null) tank.SetFuel(s.fuel);
+        }
+
+        if (string.IsNullOrEmpty(s.bodyName)) return;
         var pilot = ShuttleAutopilot.EnsureAttached();
         if (pilot != null) pilot.ApplyParkedPose(s.bodyName, s.localPos, s.localRot);
     }
@@ -1529,7 +1550,7 @@ public static class SaveCollector
     {
         if (s == null) return;
         var spawner = Object.FindObjectOfType<CrystalSpawner>();
-        if (spawner != null) spawner.RestoreConsumedCells(s.cells, s.bodyNames);
+        if (spawner != null) spawner.RestoreConsumedCells(s.cells, s.bodyNames, s.consumedOnDay);
     }
 
     // Restore which alien NPCs (streamed + pre-placed) were killed in the

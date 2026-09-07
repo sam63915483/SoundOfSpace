@@ -498,9 +498,38 @@ public class ShuttleAutopilot : MonoBehaviour
         // relocation — countdown, rise to hover altitude, fly to a new spot,
         // land. Same crew/door/capture flow; just no transit leg.
         if (!CanLandOn(target)) return false;
+
+        // Fuel (planet economy, 2026-09-07). Billed ONCE here, from the gap as
+        // it stands at this instant. The planets keep moving during the flight
+        // and the shuttle is never re-billed — a jump that starts always
+        // finishes, and there is no running dry in transit. A refused jump
+        // costs nothing; the NAV app greys out anything unaffordable so this
+        // should already be unreachable from the UI.
+        var tank = ShuttleFuel.EnsureAttached();
+        if (tank != null)
+        {
+            float metres = JumpMetresTo(target);
+            if (!tank.TryCharge(metres))
+            {
+                Debug.Log($"[ShuttleAutopilot] TRAVEL refused to {target.bodyName}: " +
+                          $"needs {tank.CostForMetres(metres):F1} fuel, tank has {tank.Fuel:F1}.");
+                return false;
+            }
+        }
+
         _targetBody = target;
         SetPhase(Phase.Countdown);
         return true;
+    }
+
+    /// <summary>Distance the fuel bill is computed from. Zero for a same-planet
+    /// relocation — you launched and landed but crossed nothing, so it pays the
+    /// flat launch charge only.</summary>
+    public float JumpMetresTo(CelestialBody target)
+    {
+        if (target == null || _body == null) return 0f;
+        if (target == _body) return 0f;
+        return Vector3.Distance(target.Position, _body.Position);
     }
 
     // ── Thruster fire ────────────────────────────────────────────────────────
@@ -564,6 +593,31 @@ public class ShuttleAutopilot : MonoBehaviour
         SetPhase(Phase.Transit);
         _transitDuration = Mathf.Max(5f, seconds);
         if (_fx != null) _fx.SetEngine(true);
+
+        // Fuel (planet economy): the scripted arrival burns real fuel, spread
+        // across the descent, so the very first thing the player ever sees the
+        // gauge do is fall. Teaching fuel exists before anyone explains it beats
+        // any tooltip — and it is why you land on Humble Abode with barely
+        // enough range to reach a neighbour.
+        var tank = ShuttleFuel.EnsureAttached();
+        if (tank != null)
+        {
+            _introBurnRemaining = tank.introApproachBurn;
+            _introBurnPerSecond = _introBurnRemaining / Mathf.Max(1f, _transitDuration);
+        }
+    }
+
+    // Intro-approach fuel drain, metered out over the descent.
+    float _introBurnRemaining, _introBurnPerSecond;
+
+    void TickIntroFuelBurn(float dt)
+    {
+        if (_introBurnRemaining <= 0f || _introBurnPerSecond <= 0f) return;
+        var tank = ShuttleFuel.Instance;
+        if (tank == null) { _introBurnRemaining = 0f; return; }
+        float step = Mathf.Min(_introBurnRemaining, _introBurnPerSecond * dt);
+        tank.Drain(step);
+        _introBurnRemaining -= step;
     }
 
     /// NAV's SKIP button (playtest 35): jump the countdown to zero — the
@@ -844,6 +898,14 @@ public class ShuttleAutopilot : MonoBehaviour
                 // really scheduling a visible catch-up event into the
                 // post-touchdown stillness. Threshold stays 3.5 km; the one
                 // pending shift was spent at descent start, masked by motion.
+                // Whatever the approach did not have time to burn is spent now,
+                // so a short or skipped descent still lands on the intended
+                // starting fuel rather than an accidental full tank.
+                if (_introBurnRemaining > 0f)
+                {
+                    ShuttleFuel.Instance?.Drain(_introBurnRemaining);
+                    _introBurnRemaining = 0f;
+                }
                 _introApproach = false;
                 if (_fx != null) _fx.Shutdown();   // engines collapse at touchdown
                 _targetBody = null;
@@ -1108,6 +1170,9 @@ public class ShuttleAutopilot : MonoBehaviour
 
     void TickTransit()
     {
+        // Intro only: meter the scripted arrival's fuel out across the descent.
+        TickIntroFuelBurn(Time.fixedDeltaTime);
+
         float u = Mathf.Clamp01(_phaseT / _transitDuration);
         // Smootherstep: one velocity bell — accelerate to the midpoint,
         // decelerate to rest at the anchor — zero accel at both endpoints.

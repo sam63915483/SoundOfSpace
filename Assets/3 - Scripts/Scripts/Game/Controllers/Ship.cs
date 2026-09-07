@@ -10,7 +10,7 @@ using UnityEngine;
 // is one of the things that made the previous (reverted) carry-player attempt
 // unreliable.
 [DefaultExecutionOrder(-50)]
-public class Ship : GravityObject
+public class Ship : GravityObject, IReactorFuel
 {
     public InputSettings inputSettings;
     public Transform hatch;
@@ -51,6 +51,9 @@ public class Ship : GravityObject
     public float fuelBoostDrainPerSec   = 1.346f;   // Shift + thrust = 2x thrust rate
     float fuelCurrent;
     public float FuelPercent => fuelMax > 0f ? fuelCurrent / fuelMax : 0f;
+    // IReactorFuel: the shared reactor prop talks to a tank through this, so the
+    // shuttle can take crystals through the exact same prompt. Field -> property.
+    public float FuelMax => fuelMax;
     public bool HasFuel      => fuelCurrent > 0f;
     public bool CanThrust    => HasPower && HasFuel;
 

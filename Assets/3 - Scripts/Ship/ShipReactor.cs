@@ -7,8 +7,15 @@ using UnityEngine;
 // player has up to the topup amount) and restores the ship's fuel.
 public class ShipReactor : MonoBehaviour
 {
-    [Tooltip("Owning ship. Auto-resolved via GetComponentInParent<Ship>() if null.")]
+    [Tooltip("Owning ship. Auto-resolved via GetComponentInParent<Ship>() if null. " +
+             "Leave empty on the SHUTTLE's reactor — it has no Ship, and Awake falls " +
+             "back to the shuttle's ShuttleFuel tank instead.")]
     public Ship ship;
+
+    // The tank this reactor actually fills. Either the owning Ship or, on the
+    // shuttle, its ShuttleFuel. Resolved in Awake and re-tried lazily, because
+    // the shuttle's tank may be attached after this component wakes.
+    IReactorFuel _tank;
 
     [Tooltip("Fuel units added per crystal. With Ship.fuelMax=100 and this=5, 20 crystals fill a full tank, 10 fill half.")]
     public float fuelPerCrystal = 5f;
@@ -28,10 +35,26 @@ public class ShipReactor : MonoBehaviour
     void Awake()
     {
         if (ship == null) ship = GetComponentInParent<Ship>();
+        ResolveTank();
         if (glow == null) glow = GetComponent<ReactorGlow>();
         _audio = GetComponent<AudioSource>();
         if (_audio == null) _audio = gameObject.AddComponent<AudioSource>();
         _audio.playOnAwake = false;
+    }
+
+    /// <summary>Which tank this prop feeds: the ship it is bolted to, or — when it
+    /// is the one inside the shuttle — the shuttle's own tank.</summary>
+    void ResolveTank()
+    {
+        if (_tank != null && !_tank.Equals(null)) return;
+        if (ship != null) { _tank = ship; return; }
+        // Concrete type, deliberately: GetComponentInParent<T>() with an
+        // INTERFACE does not find the tank here (verified — it returns null even
+        // with ShuttleFuel sitting on the prefab root), so resolving through
+        // IReactorFuel would leave the shuttle's reactor permanently dead.
+        var shuttleTank = GetComponentInParent<ShuttleFuel>(true);
+        if (shuttleTank != null) { _tank = shuttleTank; return; }
+        _tank = ShuttleFuel.Instance;      // last resort: the live shuttle's tank
     }
 
     void OnTriggerEnter(Collider other)
@@ -51,9 +74,11 @@ public class ShipReactor : MonoBehaviour
 
     void Update()
     {
-        if (ship == null || !_playerInZone) { HidePrompt(); return; }
+        if (!_playerInZone) { HidePrompt(); return; }
+        ResolveTank();
+        if (_tank == null) { HidePrompt(); return; }
 
-        bool eligible = ship.FuelPercent < 1f && IsPlayerHoldingCrystals();
+        bool eligible = _tank.FuelPercent < 1f && IsPlayerHoldingCrystals();
         if (eligible)
         {
             ShowPrompt();
@@ -77,8 +102,9 @@ public class ShipReactor : MonoBehaviour
 
     void Refuel()
     {
-        if (ship == null) return;
-        float deficit = ship.fuelMax - ship.FuelPercent * ship.fuelMax;
+        ResolveTank();
+        if (_tank == null) return;
+        float deficit = _tank.FuelMax - _tank.FuelPercent * _tank.FuelMax;
         if (deficit <= 0f) return;
         int crystalsNeeded = Mathf.CeilToInt(deficit / fuelPerCrystal);
         if (crystalsNeeded <= 0) return;
@@ -90,7 +116,14 @@ public class ShipReactor : MonoBehaviour
         if (!hb.SpendResource(Hotbar.ItemId.Crystal, take)) return;
         if (feedClip != null && _audio != null) _audio.PlayOneShot(feedClip, feedVolume);
         float fuelAdded = take * fuelPerCrystal;
-        ship.RestoreFuel(fuelAdded);
+        // Co-op: the shuttle's tank is ONE shared number owned by the host, but
+        // the crystals just spent were this player's own. A guest sends the
+        // credit upstream instead of writing locally — a local write would be
+        // wiped by the host's next heartbeat, eating the crystals.
+        if (_tank is ShuttleFuel && ShuttleAutopilot.ClientDriven)
+            ShuttleSync.SendAddFuel(fuelAdded);
+        else
+            _tank.RestoreFuel(fuelAdded);
         ReactorPopup.Spawn(transform.position + transform.up * 0.5f, fuelAdded);
         if (glow != null) glow.PingFlash();
     }
