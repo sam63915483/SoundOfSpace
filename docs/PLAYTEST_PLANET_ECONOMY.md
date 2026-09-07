@@ -22,22 +22,31 @@ economy wiring are in it.
 - [ ] Cast distance should still decide rarity — short casts common, long casts
       rare — within the planet's list.
 
-## 2. The vendor pays by the words on the board (5 min)
+## 2. The new sell panel — Two Shelves (5 min)
 
-- [ ] Walk up to Humble Abode's market. The **board** above the stand should now
-      show three groups — *Local*, *Imported*, *Delicacy* — with **each fish and
-      the $/lb it pays right now** under them. (Not the old "Buying today"
-      placeholder. HA had no board at all on your first run — fixed.)
-- [ ] Talk to the vendor and press the new **PRICES** button in the sell panel.
-      The list swaps to everything this market buys with $/lb, right now. Press
-      it again (**YOUR FISH**) to go back. You should never have to sell blind.
-- [ ] Open the sell panel with a **local** fish staged. The card reads
-      `Local | 12 lbs | $X value` and the total matches.
-- [ ] **Confirm a sale**. The money you get must equal the total shown.
-      This is the single most important check — if displayed ≠ paid, stop and
-      tell me.
-- [ ] Bring a fish the board *doesn't* list at all. Card should say **Unlisted**
-      and pay half.
+The old sell UI is gone. Talking to any fish vendor opens the panel you picked
+from the mockups: **YOUR BAG on the left, ON THE COUNTER on the right.**
+
+- [ ] Every fish you're carrying (hotbar slots and fish bags) shows on the left
+      with its weight, the bucket word (LOCAL / IMPORTED / DELICACY / UNLISTED)
+      in colour, the $/lb this market pays, and the price it'd get, in gold.
+- [ ] **Click a fish** — it moves to the counter. **Click it on the counter** — it
+      goes back to the exact slot it came from. Try both a few times.
+- [ ] The COUNTER total at the bottom updates live; **Sell the counter** greys
+      out with nothing staged and shows the count when there is.
+- [ ] **Confirm a sale.** Money received must equal the COUNTER total. This is the
+      single most important check — if displayed ≠ paid, stop and tell me.
+- [ ] Press **FISH PRICE INDEX** — the whole panel swaps to a page listing what
+      this vendor pays for, per lb right now, grouped Delicacy → Imported →
+      Local, with "N IN YOUR BAG" beside anything you're carrying and a
+      "fresh / cooling −15%" note on off-world fish. **BACK** (or B / Esc)
+      returns to the shelves with the counter untouched.
+- [ ] Close the panel with fish still on the counter — they must return to your
+      bag, nothing lost.
+- [ ] Try the GRULABU (if you have it): clicking it should refuse with the
+      bounty line, not stage it.
+- [ ] Controller: the cards are buttons — stick moves between them, A clicks,
+      B backs out (index first, then the panel).
 
 ## 3. A real trade route (10 min) — the point of the whole thing
 
