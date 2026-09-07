@@ -137,15 +137,47 @@ public static class ShuttleFuelInstaller
 
             PrefabUtility.SaveAsPrefabAsset(root, ShuttlePrefab);
             AssetDatabase.SaveAssets();
+
+            // The scene now has TWO: the loose object Sam positioned (an added-
+            // object override) and the one the prefab has just started supplying,
+            // stacked at the same pose. Drop the override and keep the
+            // prefab-driven one, which leaves a clean instance with no overrides.
+            int dropped = RemoveAddedReactorOverride(shuttle);
+
             Debug.Log($"[ShuttleFuel] Saved the reactor into {ShuttlePrefab} at local {pos}, " +
                       $"rotation {rot.eulerAngles}, scale {scale}.\n" +
-                      "  The prefab and your scene copy now agree, so nothing will overwrite your placement.");
+                      $"  Removed {dropped} duplicate scene copy (the prefab supplies it now), " +
+                      $"leaving {CountReactors(shuttle)} in the shuttle.\n" +
+                      "  Prefab and scene agree — nothing will overwrite your placement. Save the scene.");
         }
         finally
         {
             PrefabUtility.UnloadPrefabContents(root);
         }
     }
+
+    /// <summary>Delete the scene-added reactor left over once the prefab supplies
+    /// its own, so the shuttle does not end up with two stacked on each other.
+    /// Only ever removes an ADDED override — never the prefab's own copy.</summary>
+    static int RemoveAddedReactorOverride(GameObject shuttle)
+    {
+        var all = shuttle.GetComponentsInChildren<ShipReactor>(true);
+        if (all.Length <= 1) return 0;
+        for (int i = 0; i < all.Length; i++)
+        {
+            var go = all[i].gameObject;
+            if (!PrefabUtility.IsAddedGameObjectOverride(go)) continue;
+            Undo.DestroyObjectImmediate(go);
+            EditorSceneManager.MarkSceneDirty(shuttle.scene);
+            return 1;
+        }
+        Debug.LogWarning("[ShuttleFuel] The shuttle has more than one reactor but none is an " +
+                         "added override — leaving them alone rather than guessing. Check the Hierarchy.");
+        return 0;
+    }
+
+    static int CountReactors(GameObject shuttle) =>
+        shuttle.GetComponentsInChildren<ShipReactor>(true).Length;
 
     // ── helpers ───────────────────────────────────────────────────────────────
 
