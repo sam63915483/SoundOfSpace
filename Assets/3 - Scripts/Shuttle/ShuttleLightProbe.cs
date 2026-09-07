@@ -38,7 +38,7 @@ public class ShuttleLightProbe : MonoBehaviour
     [Tooltip("How far the occlusion ray looks for hull geometry (directional lights use the whole distance).")]
     public float occlusionMaxDistance = 80f;
     [Tooltip("Layers that count as hull for the occlusion ray (the shuttle is on Body; Default/WorldProp/Ship for props).")]
-    public LayerMask occluders = (1 << 0) | (1 << 3) | (1 << 9) | (1 << 10);
+    public LayerMask occluders = (1 << 0) | (1 << 3) | (1 << 9) | (1 << 10) | (1 << 15);   // 15 = ShuttleInterior (the cabin walls, since 2026-09-07)
 
     class Entry { public string line; public bool leak; public float reach; }
 

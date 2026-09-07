@@ -2,7 +2,8 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Stops outside lights from lighting the shuttle cabin THROUGH the hull.
+/// Stops outside lights from lighting the shuttle cabin THROUGH the hull —
+/// without changing anything outside.
 ///
 /// Why lights get in: a Unity light with shadows off has nothing that can
 /// block it — walls don't exist for it. The gameplay scene has two kinds of
@@ -13,79 +14,74 @@ using UnityEngine;
 /// directional sun is NOT the problem: walls block it and it comes through the
 /// windows, which is the intended look.
 ///
-/// What this does: while the main camera is inside the ShuttleInteriorVolume,
-/// every enabled light that (a) casts no shadows, (b) is not one of the
-/// shuttle's own and (c) is not the player's (torch, eye light) gets the hull
-/// and player layers removed from its culling mask. Restored the moment you
-/// step out (and on disable). Rescans every second while inside, so lanterns
-/// that stream in later are caught. Cost: one FindObjectsOfType per second
-/// while inside, nothing per frame.
+/// <b>How it used to work, and why it was replaced (2026-09-07).</b> The first
+/// version waited until the camera was inside the cabin, then stripped the
+/// Default / Ship / Body layers from those lights, and restored them on the
+/// way out. But <c>Body</c> is the PLANET, so every time you crossed the
+/// doorway the whole landscape lost or regained its sunset fill in one frame —
+/// Sam: "whenever I'm in the shuttle or within a foot of it the lighting
+/// changes, and it's very noticeable every time I leave."
 ///
-/// Side effect to know about: while you are inside, those lights also stop
-/// lighting the same layers OUTSIDE (the ground you see through a window
-/// loses the sunset warm fill; a lantern's pool on the dirt beside the
-/// shuttle goes out). Only while inside; the shadowed sun still lights it all.
+/// <b>Now:</b> the cabin's own renderers live on the <c>ShuttleInterior</c>
+/// layer (15), and that one layer is the only thing removed from unshadowed
+/// outside lights — permanently, whether you are inside or not. Nothing outside
+/// is on that layer, so nothing outside changes, and there is no doorway to
+/// snap at. The shadowed sun and the shuttle's own lights keep the layer, so
+/// the cabin is lit exactly as before. Lanterns that stream in later are
+/// caught by a slow rescan while the shuttle is near the player.
 /// </summary>
 public class ShuttleInteriorLightGuard : MonoBehaviour
 {
-    [Tooltip("The cabin trigger box (ShuttleInteriorVolume). Inside = camera within it.")]
+    [Tooltip("Kept for scene compatibility; no longer used to decide anything. The guard is always on.")]
     public BoxCollider interiorVolume;
-    [Tooltip("Layers removed from unshadowed outside lights while inside: Default (astronaut, props), Ship, Body (the hull).")]
-    public LayerMask strippedLayers = (1 << 0) | (1 << 9) | (1 << 10);
-    public float rescanInterval = 1f;
-    [Tooltip("Extra metres of slack around the volume so the guard doesn't flicker at the door.")]
+
+    [Tooltip("The cabin layer. Removed from every unshadowed outside light, always. " +
+             "Nothing outside the shuttle should be on it.")]
+    public LayerMask strippedLayers = 1 << 15;   // ShuttleInterior
+
+    [Tooltip("Seconds between scans for new lights (lanterns stream in and out).")]
+    public float rescanInterval = 2f;
+
+    [Tooltip("Only bother scanning while the player is within this many metres of the shuttle. " +
+             "The mask edit is harmless anywhere; this just bounds the FindObjectsOfType cost.")]
+    public float activeRange = 120f;
+
+    [Tooltip("Ignored — retained so old scene values don't break on load.")]
     public float margin = 0.3f;
-    public bool logChanges = true;
+
+    public bool logChanges = false;
 
     readonly Dictionary<Light, int> _stripped = new Dictionary<Light, int>();
-    bool _inside;
-    float _nextScan, _nextCamSearch;
-    Camera _cam;
+    float _nextScan, _nextPlayerSearch;
     Transform _playerRoot;
 
     void Update()
     {
-        if (_cam == null && Time.unscaledTime >= _nextCamSearch)
-        {
-            _nextCamSearch = Time.unscaledTime + 0.5f;
-            var mgr = CameraEffectsManager.Instance;
-            _cam = (mgr != null && mgr.PlayerCamera != null) ? mgr.PlayerCamera : Camera.main;
-        }
-        if (_cam == null || interiorVolume == null) return;
+        if (Time.unscaledTime < _nextScan) return;
+        _nextScan = Time.unscaledTime + Mathf.Max(0.5f, rescanInterval);
 
-        bool inside = IsInside(_cam.transform.position);
-        if (inside != _inside)
+        if (_playerRoot == null && Time.unscaledTime >= _nextPlayerSearch)
         {
-            _inside = inside;
-            if (inside) Apply(); else RestoreAll();
+            _nextPlayerSearch = Time.unscaledTime + 1f;
+            var p = GameObject.FindWithTag("Player");
+            if (p != null) _playerRoot = p.transform;
         }
-        else if (inside && Time.unscaledTime >= _nextScan) Apply();
-    }
+        if (_playerRoot != null &&
+            (_playerRoot.position - transform.position).sqrMagnitude > activeRange * activeRange) return;
 
-    bool IsInside(Vector3 world)
-    {
-        Vector3 local = interiorVolume.transform.InverseTransformPoint(world) - interiorVolume.center;
-        Vector3 h = interiorVolume.size * 0.5f;
-        Vector3 s = interiorVolume.transform.lossyScale;
-        float mx = margin / Mathf.Max(0.01f, Mathf.Abs(s.x)), my = margin / Mathf.Max(0.01f, Mathf.Abs(s.y)), mz = margin / Mathf.Max(0.01f, Mathf.Abs(s.z));
-        return Mathf.Abs(local.x) <= h.x + mx && Mathf.Abs(local.y) <= h.y + my && Mathf.Abs(local.z) <= h.z + mz;
+        Apply();
     }
 
     void Apply()
     {
-        _nextScan = Time.unscaledTime + Mathf.Max(0.2f, rescanInterval);
-        if (_playerRoot == null)
-        {
-            var p = GameObject.FindWithTag("Player");
-            if (p != null) _playerRoot = p.transform;
-        }
         int strip = strippedLayers.value;
+        if (strip == 0) return;
         int changed = 0;
         foreach (var l in FindObjectsOfType<Light>())
         {
             if (l == null || !l.enabled || l.shadows != LightShadows.None) continue;   // shadowed lights are blocked by the hull already
-            if (l.transform.IsChildOf(transform)) continue;                             // the shuttle's own lights
-            if (_playerRoot != null && l.transform.IsChildOf(_playerRoot)) continue;    // torch / eye light
+            if (l.transform.IsChildOf(transform)) continue;                             // the shuttle's own lights must light the cabin
+            if (_playerRoot != null && l.transform.IsChildOf(_playerRoot)) continue;    // torch / eye light / viewmodel fill
             if (_stripped.ContainsKey(l)) continue;
             if ((l.cullingMask & strip) == 0) continue;
             _stripped[l] = l.cullingMask;
@@ -93,17 +89,15 @@ public class ShuttleInteriorLightGuard : MonoBehaviour
             changed++;
         }
         if (logChanges && changed > 0)
-            Debug.Log($"[ShuttleInteriorLightGuard] inside the cabin: masked {changed} unshadowed outside light(s) off the hull ({_stripped.Count} total).");
+            Debug.Log($"[ShuttleInteriorLightGuard] masked {changed} unshadowed outside light(s) off the cabin layer ({_stripped.Count} total).");
     }
 
     void RestoreAll()
     {
-        int n = 0;
         foreach (var kv in _stripped)
-            if (kv.Key != null) { kv.Key.cullingMask = kv.Value; n++; }
+            if (kv.Key != null) kv.Key.cullingMask = kv.Value;
         _stripped.Clear();
-        if (logChanges && n > 0) Debug.Log($"[ShuttleInteriorLightGuard] left the cabin: restored {n} light mask(s).");
     }
 
-    void OnDisable() { if (_inside) { _inside = false; RestoreAll(); } }
+    void OnDisable() { RestoreAll(); }
 }

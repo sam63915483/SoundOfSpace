@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 6034646566391954879}
   - component: {fileID: 7046777295728827961}
   - component: {fileID: 6510772073419675909}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TrimStripe_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -117,7 +117,7 @@ GameObject:
   - component: {fileID: 4002811068233939455}
   - component: {fileID: 8186215655689906669}
   - component: {fileID: 7333310875400527909}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: BunkPillow
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -221,7 +221,7 @@ GameObject:
   - component: {fileID: 505465254507317926}
   - component: {fileID: 3859221769080130801}
   - component: {fileID: 7407553751479922598}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Strike3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -305,7 +305,7 @@ GameObject:
   - component: {fileID: 3185869060275878430}
   - component: {fileID: 6643981611632233921}
   - component: {fileID: 7485004415562422478}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ConsoleNeck
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -763,7 +763,7 @@ GameObject:
   - component: {fileID: 7701777203823104592}
   - component: {fileID: 6616657992211867418}
   - component: {fileID: 5853731295964068028}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TrimStripe_4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -921,7 +921,7 @@ GameObject:
   - component: {fileID: 1431375614398709665}
   - component: {fileID: 3167954806457825690}
   - component: {fileID: 6838743463497608633}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_2_SideA
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1026,7 +1026,7 @@ GameObject:
   - component: {fileID: 2398131309795323246}
   - component: {fileID: 7579926664845325233}
   - component: {fileID: 1068427691318376133}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: GrabHandleLeg_A1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1332,7 +1332,7 @@ GameObject:
   - component: {fileID: 2439417141142793309}
   - component: {fileID: 4195589857962253281}
   - component: {fileID: 3159105900617872557}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Hose_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1438,7 +1438,7 @@ GameObject:
   - component: {fileID: 8441618866193015686}
   - component: {fileID: 9147834558717812246}
   - component: {fileID: 1743307633378680349}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodGlass_Back
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1543,7 +1543,7 @@ GameObject:
   - component: {fileID: 5460385960914225020}
   - component: {fileID: 2877263638983235250}
   - component: {fileID: 8362033888445757726}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_6_SideA
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -1648,7 +1648,7 @@ GameObject:
   - component: {fileID: 1411128455714105835}
   - component: {fileID: 8226315535880704875}
   - component: {fileID: 2878062921532787806}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WalkwayGrate
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2085,7 +2085,7 @@ GameObject:
   - component: {fileID: 2570930517862272904}
   - component: {fileID: 6016247584164170048}
   - component: {fileID: 3113511872466024556}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: AntennaTip_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2296,7 +2296,7 @@ GameObject:
   - component: {fileID: 1063984508161867236}
   - component: {fileID: 6239334327812515880}
   - component: {fileID: 5544385087712286643}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Hose_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2402,7 +2402,7 @@ GameObject:
   - component: {fileID: 1338810749646513204}
   - component: {fileID: 4005606385849927075}
   - component: {fileID: 4319219847085549279}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ConsoleStand
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2509,7 +2509,7 @@ GameObject:
   - component: {fileID: 7318420223537164501}
   - component: {fileID: 7748879407215405183}
   - component: {fileID: 5999933939824814234}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRung_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2615,7 +2615,7 @@ GameObject:
   - component: {fileID: 8235193147841865668}
   - component: {fileID: 4359055656141042552}
   - component: {fileID: 2072986784846317668}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_6_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2720,7 +2720,7 @@ GameObject:
   - component: {fileID: 1581240759223095153}
   - component: {fileID: 7187153636429650554}
   - component: {fileID: 3274882012905472526}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorBorder_L
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2824,7 +2824,7 @@ GameObject:
   - component: {fileID: 3672046555728996194}
   - component: {fileID: 905353260364679447}
   - component: {fileID: 5150642833854982820}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVBracket
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -2908,7 +2908,7 @@ GameObject:
   - component: {fileID: 1048726099667406141}
   - component: {fileID: 3404134768128689216}
   - component: {fileID: 4982504414431471201}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_4_Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3119,7 +3119,7 @@ GameObject:
   - component: {fileID: 6502807941547013485}
   - component: {fileID: 2466058778932817555}
   - component: {fileID: 7962065360748508233}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Conduit_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3273,7 +3273,7 @@ GameObject:
   - component: {fileID: 7674219027245568330}
   - component: {fileID: 2450775839433538799}
   - component: {fileID: 6703445353585899730}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DomeCapTop
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3378,7 +3378,7 @@ GameObject:
   - component: {fileID: 8264844186921644776}
   - component: {fileID: 4185500689663289824}
   - component: {fileID: 8116420740157685927}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVArm_Wrist
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3462,7 +3462,7 @@ GameObject:
   - component: {fileID: 3333710452676033599}
   - component: {fileID: 6114021130767331443}
   - component: {fileID: 1826761783319317646}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: BunkLeg_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3568,7 +3568,7 @@ GameObject:
   - component: {fileID: 3586406194123160817}
   - component: {fileID: 866539868695743832}
   - component: {fileID: 8883005109236720312}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Plinth
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3673,7 +3673,7 @@ GameObject:
   - component: {fileID: 2879034414783444397}
   - component: {fileID: 2454284376420675730}
   - component: {fileID: 6959144571928332398}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Pipe_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3779,7 +3779,7 @@ GameObject:
   - component: {fileID: 2822923991386452738}
   - component: {fileID: 5079132830043534482}
   - component: {fileID: 5365414437965311534}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_4_SideA
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -3990,7 +3990,7 @@ GameObject:
   - component: {fileID: 1264261910872430322}
   - component: {fileID: 5232139903142425826}
   - component: {fileID: 1785983196468162476}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodPost_FR
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4095,7 +4095,7 @@ GameObject:
   - component: {fileID: 7107098548675575822}
   - component: {fileID: 6110883971177458565}
   - component: {fileID: 2630899318543851667}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CornerRib_5
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4200,7 +4200,7 @@ GameObject:
   - component: {fileID: 1513003667011681657}
   - component: {fileID: 1651717300822691389}
   - component: {fileID: 2760796990366699642}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: MarkerLight_Red
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4305,7 +4305,7 @@ GameObject:
   - component: {fileID: 492768312379030866}
   - component: {fileID: 1835554289059429772}
   - component: {fileID: 2765380591958078028}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Beacon
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4410,7 +4410,7 @@ GameObject:
   - component: {fileID: 3478241671813436565}
   - component: {fileID: 603290797748062500}
   - component: {fileID: 6433124544227768625}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: FloodlightBox
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4515,7 +4515,7 @@ GameObject:
   - component: {fileID: 3894401439857026531}
   - component: {fileID: 6236660694442807598}
   - component: {fileID: 6272528786204886285}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_4_Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4620,7 +4620,7 @@ GameObject:
   - component: {fileID: 1423037402927831795}
   - component: {fileID: 3425914521141830236}
   - component: {fileID: 7058283155942497773}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ConsoleScreen
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4726,7 +4726,7 @@ GameObject:
   - component: {fileID: 5353104904284102596}
   - component: {fileID: 1952232305604632731}
   - component: {fileID: 6642645248402239894}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: FloorWindowGlass_E
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -4937,7 +4937,7 @@ GameObject:
   - component: {fileID: 4080598514152327287}
   - component: {fileID: 4839729778806333045}
   - component: {fileID: 2396130591261091456}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DomeCap
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5043,7 +5043,7 @@ GameObject:
   - component: {fileID: 1749324215333545812}
   - component: {fileID: 8367466583379193311}
   - component: {fileID: 8242758630800341778}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5253,7 +5253,7 @@ GameObject:
   - component: {fileID: 5495042424539055939}
   - component: {fileID: 469756209936598200}
   - component: {fileID: 7362718840448467551}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_6_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5358,7 +5358,7 @@ GameObject:
   - component: {fileID: 3514688508272560330}
   - component: {fileID: 9031042157258655409}
   - component: {fileID: 6002533915388094448}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: FloorWindowGlass_W
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5463,7 +5463,7 @@ GameObject:
   - component: {fileID: 6598959007690563952}
   - component: {fileID: 2943260355091512859}
   - component: {fileID: 1217162892496650622}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LandingLamp
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5559,7 +5559,7 @@ GameObject:
   - component: {fileID: 8911591593784642051}
   - component: {fileID: 8138770443091081543}
   - component: {fileID: 5330996318576656326}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodPost_BL
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5736,7 +5736,7 @@ GameObject:
   - component: {fileID: 4799692849445404180}
   - component: {fileID: 7960142592617956911}
   - component: {fileID: 8614539469284799162}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodRail_BackTop
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -5841,7 +5841,7 @@ GameObject:
   - component: {fileID: 8724661438627147894}
   - component: {fileID: 9131169991146372435}
   - component: {fileID: 106469968037800262}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: UtilityBox_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6143,7 +6143,7 @@ GameObject:
   - component: {fileID: 3154494669902475633}
   - component: {fileID: 8039817406791319669}
   - component: {fileID: 4411828996388615223}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Strike4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6334,7 +6334,7 @@ GameObject:
   - component: {fileID: 6167455686832372466}
   - component: {fileID: 2445176164041232840}
   - component: {fileID: 8230112043507106642}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorMat
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6439,7 +6439,7 @@ GameObject:
   - component: {fileID: 8073224241016447837}
   - component: {fileID: 8845856496971052769}
   - component: {fileID: 7090930218387475757}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CornerRib_6
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6544,7 +6544,7 @@ GameObject:
   - component: {fileID: 5797999732932192428}
   - component: {fileID: 7152335128391220410}
   - component: {fileID: 8596775824539470493}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: AntennaTip_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6648,7 +6648,7 @@ GameObject:
   - component: {fileID: 2723529488629792865}
   - component: {fileID: 2973943628593039541}
   - component: {fileID: 5097910329184484689}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Strike5
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6731,7 +6731,7 @@ GameObject:
   - component: {fileID: 5804177077503427779}
   - component: {fileID: 4752216085059662993}
   - component: {fileID: 7600446238629072101}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVArm_Main
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -6862,7 +6862,7 @@ GameObject:
   - component: {fileID: 4264402992217015073}
   - component: {fileID: 630669670123805917}
   - component: {fileID: 8118988617479624798}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LockerHandle_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7005,7 +7005,7 @@ GameObject:
   - component: {fileID: 8911897292376168259}
   - component: {fileID: 7465228577768520250}
   - component: {fileID: 6348896664387680623}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_4_Bot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7110,7 +7110,7 @@ GameObject:
   - component: {fileID: 1943248525143778741}
   - component: {fileID: 8364419308379342784}
   - component: {fileID: 8681854150129280110}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TrimStripe_7
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7215,7 +7215,7 @@ GameObject:
   - component: {fileID: 924957815717200370}
   - component: {fileID: 1372399176762131202}
   - component: {fileID: 1223260988685935263}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CornerRib_4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7320,7 +7320,7 @@ GameObject:
   - component: {fileID: 7329761021408269105}
   - component: {fileID: 1773070984294348350}
   - component: {fileID: 2712647371692220215}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_2_Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7425,7 +7425,7 @@ GameObject:
   - component: {fileID: 4614822126526449525}
   - component: {fileID: 7378667748288687862}
   - component: {fileID: 4418267805183687832}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorBorder_Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7530,7 +7530,7 @@ GameObject:
   - component: {fileID: 3509458244252547212}
   - component: {fileID: 237885008017035930}
   - component: {fileID: 1298383489341038546}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: VentBar_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7636,7 +7636,7 @@ GameObject:
   - component: {fileID: 251913208047839084}
   - component: {fileID: 5687002967403531711}
   - component: {fileID: 2912030953171553823}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: HatchStripe
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7741,7 +7741,7 @@ GameObject:
   - component: {fileID: 2395242903930620667}
   - component: {fileID: 6764315888045967310}
   - component: {fileID: 6491756074007402730}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: FloodlightLens
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7846,7 +7846,7 @@ GameObject:
   - component: {fileID: 6753841370269787726}
   - component: {fileID: 2344495401376987059}
   - component: {fileID: 6241795221926766052}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanelBox
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -7951,7 +7951,7 @@ GameObject:
   - component: {fileID: 7328699090282498544}
   - component: {fileID: 544430195761273551}
   - component: {fileID: 2596432861355042646}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorFrame_L
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8056,7 +8056,7 @@ GameObject:
   - component: {fileID: 5725219626345370446}
   - component: {fileID: 2147169894144066608}
   - component: {fileID: 801830878406417998}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRung_5
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8162,7 +8162,7 @@ GameObject:
   - component: {fileID: 4515130752737503390}
   - component: {fileID: 7294456153237437742}
   - component: {fileID: 4218510770925190757}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: O2Tank_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8269,7 +8269,7 @@ GameObject:
   - component: {fileID: 8754187884838981390}
   - component: {fileID: 5644505393243934362}
   - component: {fileID: 4612729594491724113}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodRail_RBot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8374,7 +8374,7 @@ GameObject:
   - component: {fileID: 5641908134293489311}
   - component: {fileID: 2989237935974180133}
   - component: {fileID: 329455008944229414}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorFrame_R
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8479,7 +8479,7 @@ GameObject:
   - component: {fileID: 7105970352529609464}
   - component: {fileID: 8398726674409764801}
   - component: {fileID: 8110311060297231307}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: KickBand_4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8584,7 +8584,7 @@ GameObject:
   - component: {fileID: 8768887727266389760}
   - component: {fileID: 3638065052728907490}
   - component: {fileID: 1309997780016879504}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowGlass_6
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8689,7 +8689,7 @@ GameObject:
   - component: {fileID: 5071530365640512676}
   - component: {fileID: 1094164312714651420}
   - component: {fileID: 8818477439579559006}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_4_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -8794,7 +8794,7 @@ GameObject:
   - component: {fileID: 1461401802966382527}
   - component: {fileID: 6219434269799568769}
   - component: {fileID: 1778636783399755998}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Extinguisher
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9007,7 +9007,7 @@ GameObject:
   - component: {fileID: 7662081650426342577}
   - component: {fileID: 142193031294032292}
   - component: {fileID: 1733277236636356545}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRung_6
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9150,7 +9150,7 @@ GameObject:
   - component: {fileID: 8832661256665200984}
   - component: {fileID: 1563114656537173800}
   - component: {fileID: 2692345821746866644}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodFloorRing
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9256,7 +9256,7 @@ GameObject:
   - component: {fileID: 9001564432149830053}
   - component: {fileID: 6716168372565405143}
   - component: {fileID: 3596377240431417442}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LockerHandle_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9361,7 +9361,7 @@ GameObject:
   - component: {fileID: 3111497946870293144}
   - component: {fileID: 4662435894775488553}
   - component: {fileID: 4179340065348718944}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_4_SideB
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9677,7 +9677,7 @@ GameObject:
   - component: {fileID: 840888926722017997}
   - component: {fileID: 2115376129287616275}
   - component: {fileID: 1187829098373685669}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Strike0
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9761,7 +9761,7 @@ GameObject:
   - component: {fileID: 6700860821031581944}
   - component: {fileID: 7488256543031441691}
   - component: {fileID: 3724295818837458327}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: BunkLeg_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -9974,7 +9974,7 @@ GameObject:
   - component: {fileID: 6192240941497195307}
   - component: {fileID: 7873697934063106893}
   - component: {fileID: 3184758130865851267}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TankValve_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -10080,7 +10080,7 @@ GameObject:
   - component: {fileID: 7957909867715301199}
   - component: {fileID: 8152345484742038748}
   - component: {fileID: 8013837527673237787}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: KickBand_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -10185,7 +10185,7 @@ GameObject:
   - component: {fileID: 456462124792730888}
   - component: {fileID: 5375846607041818599}
   - component: {fileID: 1776387265093263431}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PipeValve
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -10396,7 +10396,7 @@ GameObject:
   - component: {fileID: 6859001952647940381}
   - component: {fileID: 2542778466435769502}
   - component: {fileID: 5852641621226828302}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CeilingFixture
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -10502,7 +10502,7 @@ GameObject:
   - component: {fileID: 2159722658622164968}
   - component: {fileID: 8820782555688901310}
   - component: {fileID: 2480392229523878461}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TankStrap_B1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -10712,7 +10712,7 @@ GameObject:
   - component: {fileID: 5343244118289690491}
   - component: {fileID: 1227168010132813617}
   - component: {fileID: 6468533336753476984}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVBody
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -10817,7 +10817,7 @@ GameObject:
   - component: {fileID: 3460305140721371786}
   - component: {fileID: 6643190191770426377}
   - component: {fileID: 6377916980571675571}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_6_Bot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -11133,7 +11133,7 @@ GameObject:
   - component: {fileID: 3526862213771249038}
   - component: {fileID: 7039625972193378264}
   - component: {fileID: 1084995563517260013}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: KickBand_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -11238,7 +11238,7 @@ GameObject:
   - component: {fileID: 751569750158144421}
   - component: {fileID: 3352207004411234659}
   - component: {fileID: 428740935548763483}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: KickBand_7
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -11343,7 +11343,7 @@ GameObject:
   - component: {fileID: 5719943867161038319}
   - component: {fileID: 6003527770037444226}
   - component: {fileID: 2145576525953615161}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: VentBar_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -11449,7 +11449,7 @@ GameObject:
   - component: {fileID: 7841674013750159377}
   - component: {fileID: 3480973627201572223}
   - component: {fileID: 6646147790048893509}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: BunkMattress
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -11765,7 +11765,7 @@ GameObject:
   - component: {fileID: 79005435126506509}
   - component: {fileID: 2652950748708021952}
   - component: {fileID: 2557435124439644124}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_4_Bottom
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -11870,7 +11870,7 @@ GameObject:
   - component: {fileID: 532093790802896302}
   - component: {fileID: 5783656363959155282}
   - component: {fileID: 8125548192715597476}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: GlowStrip_R
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -12081,7 +12081,7 @@ GameObject:
   - component: {fileID: 5557725678027679961}
   - component: {fileID: 2733396803953927021}
   - component: {fileID: 9015771591390824454}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Crown
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -12187,7 +12187,7 @@ GameObject:
   - component: {fileID: 5869576214963605070}
   - component: {fileID: 4147771520254983119}
   - component: {fileID: 4370349623161958071}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowGlass_4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -12292,7 +12292,7 @@ GameObject:
   - component: {fileID: 3615136595893713771}
   - component: {fileID: 3571727752104256320}
   - component: {fileID: 1480963743004444788}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DishFeed
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -12713,7 +12713,7 @@ GameObject:
   - component: {fileID: 6549610698478710353}
   - component: {fileID: 8405296913190202916}
   - component: {fileID: 1971261510806585274}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_6_Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -12818,7 +12818,7 @@ GameObject:
   - component: {fileID: 1780316881208269208}
   - component: {fileID: 5543399492545182691}
   - component: {fileID: 6814414479525903246}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_2_Bottom
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -12923,7 +12923,7 @@ GameObject:
   - component: {fileID: 2574993470155712321}
   - component: {fileID: 956566269157455858}
   - component: {fileID: 3098202054758186167}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Dish
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13029,7 +13029,7 @@ GameObject:
   - component: {fileID: 4586664340095157436}
   - component: {fileID: 3512715106551141935}
   - component: {fileID: 4383739578523086825}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13133,7 +13133,7 @@ GameObject:
   - component: {fileID: 1508894941778586963}
   - component: {fileID: 2202031429616851038}
   - component: {fileID: 806285003377293808}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ConsoleScreen_Interact
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13207,7 +13207,7 @@ GameObject:
   - component: {fileID: 2844363417158052798}
   - component: {fileID: 6803120985930156894}
   - component: {fileID: 7846120463918701892}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Strike6
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13291,7 +13291,7 @@ GameObject:
   - component: {fileID: 469535195568105444}
   - component: {fileID: 4763341877077927215}
   - component: {fileID: 586784076887532965}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodGlass_L
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13396,7 +13396,7 @@ GameObject:
   - component: {fileID: 3451062355014721389}
   - component: {fileID: 573889359136803866}
   - component: {fileID: 6143172446266792056}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorBorder_Bot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13501,7 +13501,7 @@ GameObject:
   - component: {fileID: 7906148724108948834}
   - component: {fileID: 6088664709146008537}
   - component: {fileID: 1607345067034466460}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_5
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13606,7 +13606,7 @@ GameObject:
   - component: {fileID: 2623903836794794937}
   - component: {fileID: 4199340130737036435}
   - component: {fileID: 9032898097734915246}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: GrabHandleLeg_B1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13711,7 +13711,7 @@ GameObject:
   - component: {fileID: 4429073248623319134}
   - component: {fileID: 9013636841951534378}
   - component: {fileID: 1604319216614455149}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: OrientationObjectivesText
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -13904,7 +13904,7 @@ GameObject:
   - component: {fileID: 8775149653042143435}
   - component: {fileID: 2404394411531848852}
   - component: {fileID: 3028730191944300002}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorFrame_Header
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14115,7 +14115,7 @@ GameObject:
   - component: {fileID: 8746213869595504604}
   - component: {fileID: 7230617865038882074}
   - component: {fileID: 8645475984062418166}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: GlowStrip_L
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14325,7 +14325,7 @@ GameObject:
   - component: {fileID: 4495899871132945716}
   - component: {fileID: 4273821348942320088}
   - component: {fileID: 1326039230472570354}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: KickBand_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14429,7 +14429,7 @@ GameObject:
   - component: {fileID: 5332991758334391763}
   - component: {fileID: 3576389204424533845}
   - component: {fileID: 3649598008287962215}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Strike1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14513,7 +14513,7 @@ GameObject:
   - component: {fileID: 6058143065722609226}
   - component: {fileID: 9179353140561021604}
   - component: {fileID: 4711508868911853424}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Ceiling
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14619,7 +14619,7 @@ GameObject:
   - component: {fileID: 1931056962359545630}
   - component: {fileID: 1319421412545610731}
   - component: {fileID: 4798179014668332439}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_6_Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14724,7 +14724,7 @@ GameObject:
   - component: {fileID: 6863079645356845938}
   - component: {fileID: 3117992941802650977}
   - component: {fileID: 2824654641540641025}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodRail_BackBot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -14934,7 +14934,7 @@ GameObject:
   - component: {fileID: 5539461407638444751}
   - component: {fileID: 7942283237782656940}
   - component: {fileID: 2412801177393966328}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: VentBar_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -15040,7 +15040,7 @@ GameObject:
   - component: {fileID: 578277028142688990}
   - component: {fileID: 7422671052572756096}
   - component: {fileID: 8542866229817737159}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorLight
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -15145,7 +15145,7 @@ GameObject:
   - component: {fileID: 7562410584386428335}
   - component: {fileID: 4412220795237532891}
   - component: {fileID: 4798602012617498178}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_2_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -15393,7 +15393,7 @@ GameObject:
   - component: {fileID: 694328059286696537}
   - component: {fileID: 8752891737407922569}
   - component: {fileID: 1289648739437212845}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ExtinguisherBracket
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -15592,7 +15592,7 @@ GameObject:
   - component: {fileID: 5597068661500896514}
   - component: {fileID: 305806281585512643}
   - component: {fileID: 8410936191309438215}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodRail_LTop
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -15697,7 +15697,7 @@ GameObject:
   - component: {fileID: 4745959455856053603}
   - component: {fileID: 995894085415427479}
   - component: {fileID: 4803655073778307125}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_7
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -15802,7 +15802,7 @@ GameObject:
   - component: {fileID: 1425702003748826549}
   - component: {fileID: 4177733795551924937}
   - component: {fileID: 8751946148039368056}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TrimStripe_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -15908,7 +15908,7 @@ GameObject:
   - component: {fileID: 3227453503584867922}
   - component: {fileID: 3120017391729918882}
   - component: {fileID: 8832667498057797580}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: cassette insert
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16045,7 +16045,7 @@ GameObject:
   - component: {fileID: 6285579440829768221}
   - component: {fileID: 852085602290477883}
   - component: {fileID: 4318162675044898745}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodPost_BR
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16150,7 +16150,7 @@ GameObject:
   - component: {fileID: 1219344358431275968}
   - component: {fileID: 1577238140303559086}
   - component: {fileID: 2990623702290012322}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LockerHandle_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16255,7 +16255,7 @@ GameObject:
   - component: {fileID: 1477050616128835664}
   - component: {fileID: 1741434916056560104}
   - component: {fileID: 817805876816469047}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: O2Tank_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16362,7 +16362,7 @@ GameObject:
   - component: {fileID: 3052586147338534202}
   - component: {fileID: 7555482757023576533}
   - component: {fileID: 2548133012802809285}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_2_Bot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16467,7 +16467,7 @@ GameObject:
   - component: {fileID: 7334134994287868285}
   - component: {fileID: 3758864909758446746}
   - component: {fileID: 9015947140808203048}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodPost_FL
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16572,7 +16572,7 @@ GameObject:
   - component: {fileID: 2680142140315148102}
   - component: {fileID: 7236550126195421500}
   - component: {fileID: 2021537431373757821}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodRail_RTop
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16677,7 +16677,7 @@ GameObject:
   - component: {fileID: 467735698124023987}
   - component: {fileID: 6045242957821974671}
   - component: {fileID: 6770650919750628479}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CeilingLightPanel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16838,7 +16838,7 @@ GameObject:
   - component: {fileID: 7685927626160591459}
   - component: {fileID: 7998304525948030422}
   - component: {fileID: 5744284928695416298}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Locker_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -16942,7 +16942,7 @@ GameObject:
   - component: {fileID: 8859708030287119308}
   - component: {fileID: 1244501413975484913}
   - component: {fileID: 7266575198612360720}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVArm_Elbow
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17025,7 +17025,7 @@ GameObject:
   - component: {fileID: 8386184407264177845}
   - component: {fileID: 8850437540491702789}
   - component: {fileID: 5935773768869840180}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVArm_Drop
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17109,7 +17109,7 @@ GameObject:
   - component: {fileID: 8529814496442691072}
   - component: {fileID: 7371605778829130469}
   - component: {fileID: 3957906911853405742}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TrimStripe_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17215,7 +17215,7 @@ GameObject:
   - component: {fileID: 6998042864472172638}
   - component: {fileID: 5784359552108543235}
   - component: {fileID: 5001057135591524138}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ValveWheel
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17337,7 +17337,7 @@ GameObject:
   - component: {fileID: 1791935181355340492}
   - component: {fileID: 8383784768458633295}
   - component: {fileID: 875384121893977538}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: BunkFrame
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17442,7 +17442,7 @@ GameObject:
   - component: {fileID: 5673622836540661228}
   - component: {fileID: 8738495031765678328}
   - component: {fileID: 7490492701072638403}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ExtTank_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17549,7 +17549,7 @@ GameObject:
   - component: {fileID: 8800988705483015911}
   - component: {fileID: 7921918615992766300}
   - component: {fileID: 3795178583762332636}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: KickBand_6
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17654,7 +17654,7 @@ GameObject:
   - component: {fileID: 7103337979038805613}
   - component: {fileID: 3233884224397499493}
   - component: {fileID: 3757810729038805341}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TankStrap_A1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17759,7 +17759,7 @@ GameObject:
   - component: {fileID: 1507564458381694210}
   - component: {fileID: 6564464953743149012}
   - component: {fileID: 2842623855027042044}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_6_SideB
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -17970,7 +17970,7 @@ GameObject:
   - component: {fileID: 4417219642516846649}
   - component: {fileID: 5649841340883093165}
   - component: {fileID: 2724966501106723819}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorForceField
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -18088,7 +18088,7 @@ GameObject:
   - component: {fileID: 4043539131904299711}
   - component: {fileID: 1083386734664991945}
   - component: {fileID: 1626172443902124735}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_2_Top
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -18299,7 +18299,7 @@ GameObject:
   - component: {fileID: 5189415598744348096}
   - component: {fileID: 1296094486982015435}
   - component: {fileID: 6486989101215177827}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRail_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -18405,7 +18405,7 @@ GameObject:
   - component: {fileID: 8254247404714074750}
   - component: {fileID: 5796677388399188413}
   - component: {fileID: 8131655867324531290}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodGlass_R
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -18510,7 +18510,7 @@ GameObject:
   - component: {fileID: 1898503171757621931}
   - component: {fileID: 7366065867312825879}
   - component: {fileID: 5267692044708320800}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRung_4
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -18616,7 +18616,7 @@ GameObject:
   - component: {fileID: 9148747337538865926}
   - component: {fileID: 7898235223858534971}
   - component: {fileID: 3433432776953145378}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_2_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -18905,7 +18905,7 @@ GameObject:
   - component: {fileID: 7794150152838789275}
   - component: {fileID: 7182142376366034998}
   - component: {fileID: 8256403798731819691}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_6_Bottom
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19010,7 +19010,7 @@ GameObject:
   - component: {fileID: 7838615203056548994}
   - component: {fileID: 7791423208857734730}
   - component: {fileID: 1207417051005329324}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRail_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19170,7 +19170,7 @@ GameObject:
   - component: {fileID: 528300371777202536}
   - component: {fileID: 7102563108189486501}
   - component: {fileID: 3614743936169606833}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodRail_LBot
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19275,7 +19275,7 @@ GameObject:
   - component: {fileID: 7563260459937579082}
   - component: {fileID: 7637725957945687708}
   - component: {fileID: 1136395538810342426}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: HatchParked
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19486,7 +19486,7 @@ GameObject:
   - component: {fileID: 4672866005710926559}
   - component: {fileID: 5555719584528692455}
   - component: {fileID: 6415030131828142367}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: O2Tank_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19593,7 +19593,7 @@ GameObject:
   - component: {fileID: 5467608882526157654}
   - component: {fileID: 7260438112560510881}
   - component: {fileID: 4145531378073786878}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TrimStripe_5
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19698,7 +19698,7 @@ GameObject:
   - component: {fileID: 2646712519577076565}
   - component: {fileID: 1634606649702809884}
   - component: {fileID: 2546982282003050481}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TankStrap_A2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -19803,7 +19803,7 @@ GameObject:
   - component: {fileID: 6086641286825624881}
   - component: {fileID: 7538180860973740514}
   - component: {fileID: 6082340439991896419}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Antenna_B
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -20120,7 +20120,7 @@ GameObject:
   - component: {fileID: 4750822667644412834}
   - component: {fileID: 8767981322610688170}
   - component: {fileID: 8682323713708593795}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: BeaconPost
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -20225,7 +20225,7 @@ GameObject:
   - component: {fileID: 3617598843867583632}
   - component: {fileID: 7584207373682786363}
   - component: {fileID: 8876942562711360536}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVScreen
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -20416,7 +20416,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   fillFraction: 0.88
-  lift: 0.62
+  surfaceGapMetres: 0.002
+  faceTheOtherWay: 1
   barCells: 12
   darkenPanel: 1
   screenTint: {r: 0.02, g: 0.05, b: 0.07, a: 1}
@@ -20434,7 +20435,7 @@ GameObject:
   - component: {fileID: 3937881310902024607}
   - component: {fileID: 3506615396989888180}
   - component: {fileID: 7642369431967699038}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Strike2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -20518,7 +20519,7 @@ GameObject:
   - component: {fileID: 4796891940735149446}
   - component: {fileID: 1248157673377871491}
   - component: {fileID: 3809902267478761765}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TankStrap_B2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -20708,7 +20709,7 @@ GameObject:
   - component: {fileID: 7284386502157636860}
   - component: {fileID: 3298554375135811210}
   - component: {fileID: 6089201086391437202}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRung_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -20850,7 +20851,7 @@ GameObject:
   - component: {fileID: 6238590709847189913}
   - component: {fileID: 2522122268528011151}
   - component: {fileID: 4103002185309491925}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DishArm
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -21061,7 +21062,7 @@ GameObject:
   - component: {fileID: 6607565280871032745}
   - component: {fileID: 3720907784274858888}
   - component: {fileID: 3351663572261454548}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowGlass_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -21166,7 +21167,7 @@ GameObject:
   - component: {fileID: 248276932382912977}
   - component: {fileID: 1782300966068561102}
   - component: {fileID: 1031121515665009263}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: ExtTank_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -21273,7 +21274,7 @@ GameObject:
   - component: {fileID: 1013230378846126592}
   - component: {fileID: 1150532694887446900}
   - component: {fileID: 1656313686634572376}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CornerRib_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -21484,7 +21485,7 @@ GameObject:
   - component: {fileID: 1753059281296487126}
   - component: {fileID: 6361942040029264919}
   - component: {fileID: 2993984574149551294}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: UtilityBox_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -21801,7 +21802,7 @@ GameObject:
   - component: {fileID: 7304596884320983997}
   - component: {fileID: 4634558734031510629}
   - component: {fileID: 307323600481749865}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: StasisDoor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -22118,7 +22119,7 @@ GameObject:
   - component: {fileID: 6853310335958098941}
   - component: {fileID: 4825287044245632928}
   - component: {fileID: 5971690608723013909}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TrimStripe_6
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -22223,7 +22224,7 @@ GameObject:
   - component: {fileID: 9084890984818336398}
   - component: {fileID: 414231198070939071}
   - component: {fileID: 6819520123148391341}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Pipe_Drop
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -22329,7 +22330,7 @@ GameObject:
   - component: {fileID: 4825647258799625456}
   - component: {fileID: 6347337111620624577}
   - component: {fileID: 3211688210610898271}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CornerRib_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -22540,7 +22541,7 @@ GameObject:
   - component: {fileID: 1501519707358778530}
   - component: {fileID: 5274187624411831155}
   - component: {fileID: 2006603473805209875}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Conduit_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -22646,7 +22647,7 @@ GameObject:
   - component: {fileID: 72926879420886743}
   - component: {fileID: 2374613253723280371}
   - component: {fileID: 793508927973924748}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TankValve_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -22752,7 +22753,7 @@ GameObject:
   - component: {fileID: 2396486967199188935}
   - component: {fileID: 4704362261235846044}
   - component: {fileID: 637455941887901814}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Floor
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -22965,7 +22966,7 @@ GameObject:
   - component: {fileID: 2878035482727599168}
   - component: {fileID: 8607498996175583449}
   - component: {fileID: 4000181966025250470}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: GrabHandleBar_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -23071,7 +23072,7 @@ GameObject:
   - component: {fileID: 336646192890911458}
   - component: {fileID: 1683345842437494935}
   - component: {fileID: 1754659481054626659}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WindowFrame_4_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -23388,7 +23389,7 @@ GameObject:
   - component: {fileID: 2676870204992696140}
   - component: {fileID: 4287843500527563303}
   - component: {fileID: 712037996675359862}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorBorder_R
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -23493,7 +23494,7 @@ GameObject:
   - component: {fileID: 789713293868404793}
   - component: {fileID: 6681220267907356754}
   - component: {fileID: 8723532214937849495}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: door
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -23598,7 +23599,7 @@ GameObject:
   - component: {fileID: 8234689006344214620}
   - component: {fileID: 4475891423991514350}
   - component: {fileID: 214732580191643278}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Hose_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -23704,7 +23705,7 @@ GameObject:
   - component: {fileID: 2312787138890133171}
   - component: {fileID: 556698947194382860}
   - component: {fileID: 9092749633089111551}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: LadderRung_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -23916,7 +23917,7 @@ GameObject:
   - component: {fileID: 3128369214365751501}
   - component: {fileID: 3146948173666296715}
   - component: {fileID: 3132448666061462373}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: CornerRib_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24021,7 +24022,7 @@ GameObject:
   - component: {fileID: 1262702231291411304}
   - component: {fileID: 5438788926952660810}
   - component: {fileID: 3339141710990479848}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanelScreen
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24251,10 +24252,11 @@ MonoBehaviour:
   interiorVolume: {fileID: 7396638237227560010}
   strippedLayers:
     serializedVersion: 2
-    m_Bits: 1537
-  rescanInterval: 1
+    m_Bits: 32768
+  rescanInterval: 2
+  activeRange: 120
   margin: 0.3
-  logChanges: 1
+  logChanges: 0
 --- !u!114 &1473189405283231358
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -24284,7 +24286,7 @@ GameObject:
   - component: {fileID: 8926255878020123713}
   - component: {fileID: 2979730395942254204}
   - component: {fileID: 8681219367512042383}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PipeElbow_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24394,7 +24396,7 @@ GameObject:
   - component: {fileID: 6951750730696039558}
   - component: {fileID: 1155347297228244739}
   - component: {fileID: 458202928178130770}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Locker_2
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24577,7 +24579,7 @@ GameObject:
   - component: {fileID: 7312065672982445712}
   - component: {fileID: 4353408615581225280}
   - component: {fileID: 2697174874713843393}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TankRack
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24681,7 +24683,7 @@ GameObject:
   - component: {fileID: 8256792337429720021}
   - component: {fileID: 8821513170839056228}
   - component: {fileID: 6032880371311195610}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: TVMount
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24765,7 +24767,7 @@ GameObject:
   - component: {fileID: 3013788020046139996}
   - component: {fileID: 5304898165687035415}
   - component: {fileID: 6847645199101816777}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: PodScreen
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24870,7 +24872,7 @@ GameObject:
   - component: {fileID: 5447375335102299613}
   - component: {fileID: 4781497651261441668}
   - component: {fileID: 5371752251473281501}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Antenna_A
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -24976,7 +24978,7 @@ GameObject:
   - component: {fileID: 2390258605920298205}
   - component: {fileID: 1752682940619409073}
   - component: {fileID: 5866074201245595739}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: KickBand_5
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25081,7 +25083,7 @@ GameObject:
   - component: {fileID: 2206406599904059304}
   - component: {fileID: 9025211615768203171}
   - component: {fileID: 8627420752893961910}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: Locker_1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25292,7 +25294,7 @@ GameObject:
   - component: {fileID: 6703647865474479819}
   - component: {fileID: 1535168978645842086}
   - component: {fileID: 8563524605725880190}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_3
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25397,7 +25399,7 @@ GameObject:
   - component: {fileID: 5052399178640451083}
   - component: {fileID: 6132243348958683510}
   - component: {fileID: 5839774096326969613}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: WallPanel_2_SideB
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25608,7 +25610,7 @@ GameObject:
   - component: {fileID: 3279972624769981432}
   - component: {fileID: 543928595736572206}
   - component: {fileID: 535044433131873117}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: MarkerLight_Green
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25818,7 +25820,7 @@ GameObject:
   - component: {fileID: 5049188919473682933}
   - component: {fileID: 6822712195986606525}
   - component: {fileID: 6544728878706448387}
-  m_Layer: 10
+  m_Layer: 15
   m_Name: DoorHandle
   m_TagString: Untagged
   m_Icon: {fileID: 0}
@@ -25989,10 +25991,30 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 10.173996
       objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000011, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000021, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000031, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
     - target: {fileID: 810000000000000034, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}
       propertyPath: m_CastShadows
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000061, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 810000000000000062, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}
@@ -26008,6 +26030,11 @@ PrefabInstance:
         type: 3}
       propertyPath: m_LocalPosition.z
       value: -5.4146023
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000081, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 810000000000000082, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}
@@ -26113,10 +26140,30 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: -12.921
       objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000011, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000021, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000031, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
     - target: {fileID: 810000000000000034, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}
       propertyPath: m_CastShadows
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000061, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 810000000000000062, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}
@@ -26132,6 +26179,11 @@ PrefabInstance:
         type: 3}
       propertyPath: m_LocalPosition.z
       value: -5.4033504
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000081, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
@@ -26222,10 +26274,30 @@ PrefabInstance:
       propertyPath: m_LocalEulerAnglesHint.z
       value: 36.906998
       objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000011, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000021, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000031, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
+      objectReference: {fileID: 0}
     - target: {fileID: 810000000000000034, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}
       propertyPath: m_CastShadows
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000061, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 810000000000000062, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}
@@ -26241,6 +26313,11 @@ PrefabInstance:
         type: 3}
       propertyPath: m_LocalPosition.z
       value: -5.41678
+      objectReference: {fileID: 0}
+    - target: {fileID: 810000000000000081, guid: 4250aac5956c465abeadc4db971f8229,
+        type: 3}
+      propertyPath: m_Layer
+      value: 15
       objectReference: {fileID: 0}
     - target: {fileID: 810000000000000082, guid: 4250aac5956c465abeadc4db971f8229,
         type: 3}

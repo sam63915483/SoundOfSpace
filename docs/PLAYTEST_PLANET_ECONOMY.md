@@ -130,3 +130,26 @@ other's fish.**
       item still behaves as before — it casts no shadows, so nothing changed for it.
 - [ ] Watch for: the held item's shadow "blob" on the ground ahead of you. That
       is the thing the old code avoided; you asked for it, but say if it's ugly.
+
+---
+
+## 8. Cabin lighting no longer snaps at the door (2 min)
+
+What it was: while you were inside (plus ~30 cm outside the door) a guard
+stripped the **Body layer** — i.e. the whole planet — from the sun's unshadowed
+fill light and from lanterns, then gave it back when you stepped out. So the
+landscape changed tone every time you crossed the threshold.
+
+Now the cabin's own parts (walls, floor, ceiling, windows, console, lockers,
+pod — 191 objects) live on a new **ShuttleInterior** layer, and only that layer
+is kept away from those lights — permanently, wherever you stand. Nothing
+outside is on it, so nothing outside changes.
+
+- [ ] Walk in and out of the shuttle at sunset and at midday: the ground and
+      the village should look **identical** from both sides of the door.
+- [ ] The cabin is still lit: its own lights, and the sun through the windows.
+- [ ] You can still **walk on the floor**, bump the walls, use the console, pod,
+      lockers and reactor (the walkable / pickup masks were widened to match).
+- [ ] The **outside of the hull** (skirt, dome, gear, thrusters) is unchanged.
+- [ ] Trade-off to notice: the cabin walls' OUTSIDE faces no longer get the
+      sunset fill or lantern glow — only the shadowed sun. Say if it bothers you.
