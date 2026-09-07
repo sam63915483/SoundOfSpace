@@ -90,16 +90,75 @@ public class ShuttleFuel : MonoBehaviour, IReactorFuel
 
     public bool CanAfford(float metres) => _fuel >= CostForMetres(metres) - 0.0001f;
 
-    /// <summary>Charge for a hop. Returns false and charges nothing if the tank is
-    /// short — callers must treat that as "the jump does not happen".</summary>
-    public bool TryCharge(float metres)
+    // ── Jump billing: reserve at GO, burn while you fly ──────────────────────
+    //
+    // The price is locked in the moment TRAVEL is pressed — from the gap as it
+    // stands right then, never re-billed as the planets move — but the tank does
+    // NOT empty at the press. It empties as the shuttle actually flies, which is
+    // what a fuel gauge is supposed to do (Sam, 2026-09-07: "it takes the fuel
+    // right away, before the 10 second timer even counts down... once the
+    // thrusters actually start firing then it should slowly start to deplete,
+    // and finish depleting as soon as you touchdown").
+    //
+    // Draining is driven by FLIGHT PROGRESS rather than a clock, so it lands
+    // exactly on touchdown however long the leg takes, and hovering — which the
+    // player controls and can hold indefinitely — costs nothing.
+
+    float _reserved;            // total cost of the jump in progress
+    float _reservedSpent;       // how much of it has been burned so far
+
+    /// <summary>Fuel committed to the jump in progress but not yet burned.</summary>
+    public float Reserved => Mathf.Max(0f, _reserved - _reservedSpent);
+
+    public bool JumpInProgress => _reserved > 0f;
+
+    /// <summary>Lock in the price of a hop. Returns false and reserves nothing if
+    /// the tank cannot cover it — callers must treat that as "the jump does not
+    /// happen". Nothing is deducted yet; see <see cref="BurnTo"/>.</summary>
+    public bool ReserveJump(float metres)
     {
         float cost = CostForMetres(metres);
         if (_fuel < cost - 0.0001f) return false;
-        _fuel = Mathf.Clamp(_fuel - cost, 0f, fuelMax);
-        Debug.Log($"[ShuttleFuel] charged {cost:F1} for {metres / 1000f:F2} km — {_fuel:F1}/{fuelMax:F0} left " +
-                  $"(range now {RangeKm:F1} km)");
+        _reserved      = cost;
+        _reservedSpent = 0f;
+        Debug.Log($"[ShuttleFuel] reserved {cost:F1} for {metres / 1000f:F2} km — " +
+                  $"tank stays at {_fuel:F1}/{fuelMax:F0} until the engines fire.");
         return true;
+    }
+
+    /// <summary>Burn the reserve up to <paramref name="fraction"/> of the way
+    /// through the jump (0–1). Monotonic: it never refunds if a phase reports a
+    /// lower progress than one already passed, so the gauge only ever falls.</summary>
+    public void BurnTo(float fraction)
+    {
+        if (_reserved <= 0f) return;
+        float target = _reserved * Mathf.Clamp01(fraction);
+        if (target <= _reservedSpent) return;
+        float step = target - _reservedSpent;
+        _reservedSpent = target;
+        _fuel = Mathf.Clamp(_fuel - step, 0f, fuelMax);
+    }
+
+    /// <summary>Touchdown: burn whatever is left of the reserve so the gauge
+    /// finishes exactly as the shuttle lands, and close the jump.</summary>
+    public void FinishJump()
+    {
+        if (_reserved <= 0f) return;
+        BurnTo(1f);
+        Debug.Log($"[ShuttleFuel] jump complete — burned {_reserved:F1}, " +
+                  $"{_fuel:F1}/{fuelMax:F0} left (range now {RangeKm:F1} km)");
+        _reserved = _reservedSpent = 0f;
+    }
+
+    /// <summary>Launch aborted during the countdown: hand back whatever was
+    /// burned (nothing, at that point) and cancel the reservation.</summary>
+    public void CancelJump()
+    {
+        if (_reserved <= 0f) return;
+        _fuel = Mathf.Clamp(_fuel + _reservedSpent, 0f, fuelMax);
+        Debug.Log($"[ShuttleFuel] jump cancelled — reservation of {_reserved:F1} dropped, " +
+                  $"{_fuel:F1}/{fuelMax:F0} left.");
+        _reserved = _reservedSpent = 0f;
     }
 
     // ── Filling it ───────────────────────────────────────────────────────────

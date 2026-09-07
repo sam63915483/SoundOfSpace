@@ -509,7 +509,13 @@ public class ShuttleAutopilot : MonoBehaviour
         if (tank != null)
         {
             float metres = JumpMetresTo(target);
-            if (!tank.TryCharge(metres))
+            // RESERVE, do not deduct. The price is locked in from the gap as it
+            // stands right now and is never re-billed as the planets move, but
+            // the tank empties while the shuttle actually flies - see
+            // BurnFuelForFlight below. Deducting here made the gauge drop to
+            // zero the instant TRAVEL was pressed, before the countdown had even
+            // started.
+            if (!tank.ReserveJump(metres))
             {
                 Debug.Log($"[ShuttleAutopilot] TRAVEL refused to {target.bodyName}: " +
                           $"needs {tank.CostForMetres(metres):F1} fuel, tank has {tank.Fuel:F1}.");
@@ -520,6 +526,50 @@ public class ShuttleAutopilot : MonoBehaviour
         _targetBody = target;
         SetPhase(Phase.Countdown);
         return true;
+    }
+
+    // ── Fuel burn across a flight ────────────────────────────────────────────
+    //
+    // Progress-driven, not clock-driven, so the burn finishes exactly on
+    // touchdown however long the leg takes. The bands are chosen so the gauge
+    // moves when the player can see a reason for it:
+    //
+    //   Liftoff  0 -> 12%   engines spool and hold; the first visible movement
+    //   Transit  12 -> 88%  the crossing itself, the bulk of the cost
+    //   Hover    held       player-controlled and open-ended, so it costs nothing
+    //   Landing  88 -> 100% the retro-burn down
+    //
+    // Hover deliberately does not burn: it can be held indefinitely while lining
+    // up a pad, and a fuel drain there would be an invisible timer on a moment
+    // the player thinks is free.
+    const float BurnAfterLiftoff = 0.12f;
+    const float BurnAfterTransit = 0.88f;
+
+    void BurnFuelForFlight()
+    {
+        var tank = ShuttleFuel.Instance;
+        if (tank == null || !tank.JumpInProgress) return;
+
+        switch (_phase)
+        {
+            case Phase.Liftoff:
+                tank.BurnTo(Mathf.Clamp01(_phaseT / LiftoffSeconds) * BurnAfterLiftoff);
+                break;
+
+            case Phase.Transit:
+                tank.BurnTo(BurnAfterLiftoff +
+                            TransitProgress * (BurnAfterTransit - BurnAfterLiftoff));
+                break;
+
+            case Phase.Hover:
+                tank.BurnTo(BurnAfterTransit);      // hold, no drain while hovering
+                break;
+
+            case Phase.Landing:
+                float u = _landDuration > 0f ? Mathf.Clamp01(_phaseT / _landDuration) : 0f;
+                tank.BurnTo(BurnAfterTransit + u * (1f - BurnAfterTransit));
+                break;
+        }
     }
 
     /// <summary>Distance the fuel bill is computed from. Zero for a same-planet
@@ -859,6 +909,13 @@ public class ShuttleAutopilot : MonoBehaviour
                 break;
 
             case Phase.Parked:
+                // Fuel: settle the jump. A real landing burns whatever is left
+                // of the reserve so the gauge finishes exactly on touchdown; an
+                // abort out of the countdown drops the reservation, because
+                // nothing was ever burned and the shuttle never left the pad.
+                if (prev == Phase.Countdown) ShuttleFuel.Instance?.CancelJump();
+                else                         ShuttleFuel.Instance?.FinishJump();
+
                 if (prev != Phase.Countdown)   // a real landing, not an abort
                 {
                     // Commit the authoritative pose into the transform + PhysX
@@ -979,6 +1036,9 @@ public class ShuttleAutopilot : MonoBehaviour
                 case Phase.Hover:     TickHover();     break;
                 case Phase.Landing:   TickLanding();   break;
             }
+            // Fuel drains with the flight, not on the TRAVEL press. Host only:
+            // a guest's tank is replicated from here by ShuttleSync.
+            BurnFuelForFlight();
         }
         else if (_hasRemoteTarget && _phase != Phase.Parked)
         {

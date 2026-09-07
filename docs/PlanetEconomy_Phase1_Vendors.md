@@ -110,9 +110,13 @@ Humble Abode already has both vendors, so that's **9 fish markets** to place.
 - Tank: 100 units. One crystal = 5 units, so **20 crystals is a full tank**, the same
   conversion the manual ship uses.
 - Every hop pays a flat **5 units to launch and land**, plus 6.33 per km.
-- You're charged **once**, when you press TRAVEL, from the gap at that moment.
-  Planets keep moving during the flight and you're never re-billed. A jump that
+- The **price is locked in** when you press TRAVEL, from the gap at that moment.
+  Planets keep moving during the flight and you are never re-billed. A jump that
   starts always finishes — you can't run dry in transit.
+- The tank **empties as you fly**, not on the button press: nothing moves during
+  the countdown, it starts draining when the engines fire, and it finishes
+  exactly as you touch down. Hovering costs nothing, so you can take as long as
+  you like picking a landing spot.
 - Picking the planet you're already on (relocating) costs the flat 5 only.
 
 ## What you'll see
