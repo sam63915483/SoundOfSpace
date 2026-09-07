@@ -153,8 +153,14 @@ public class ShuttleFuelScreen : MonoBehaviour
 
             // Range is the honest number — it already subtracts the launch charge,
             // so it reads a little under the tank percentage would suggest.
-            body = $"<b>REACTOR</b>\n<size=130%><b>{Mathf.RoundToInt(pct * 100f)}%</b></size>\n" +
-                   $"{bar}\n<size=90%>RANGE {range:0.0} KM</size>";
+            // Three SHORT lines. The auto-sizer fits the LONGEST one, so every
+            // extra word shrinks all of them - the REACTOR title was costing
+            // legibility for a label the panel position already makes obvious.
+            // Percentage first because it is the glanceable one; range under it
+            // because that is the number that decides where you can go.
+            body = $"<b>{Mathf.RoundToInt(pct * 100f)}%</b>\n" +
+                   $"<size=70%>{bar}</size>\n" +
+                   $"<size=85%>{range:0.0} KM</size>";
         }
 
         if (!force && body == _shown) return;
