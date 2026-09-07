@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FISH SELL UI — Two Shelves + Fish Price Index</title>
+<style>
+:root{
+  --bg:#080e1a; --card:#121a30; --divider:#2d3c5f; --title:#3cdcbe; --label:#dce6ff; --sub:#788cb9; --hint:#415073;
+  --gold:#ffd732; --common:#8cafff; --uncommon:#3cdcbe; --rare:#ffd232;
+  --btn-sell:#23a550; --btn-mute:#3c466e; --btn-index:#1f3b6e;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,'DejaVu Sans Mono',monospace; --sans:'Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#03060c;color:var(--label);font-family:var(--sans);padding:22px;display:flex;flex-direction:column;align-items:center;gap:16px}
+h1{font-family:var(--mono);font-size:14px;letter-spacing:.24em;color:var(--sub);font-weight:400}
+h1 a{color:var(--title);text-decoration:none;margin-left:14px;font-size:11px}
+.intro{max-width:920px;font-size:13px;line-height:1.6;color:var(--sub)} .intro b{color:var(--label)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.tab{font-family:var(--mono);font-size:12px;letter-spacing:.12em;padding:8px 16px;background:#0c1526;color:var(--sub);border:1px solid var(--divider);border-radius:5px;cursor:pointer}
+.tab.on{background:var(--title);color:#04120f;border-color:var(--title);font-weight:700}
+.about{max-width:920px;font-size:13px;line-height:1.6;color:var(--sub);background:#070c16;border:1px solid #14203a;border-radius:6px;padding:12px 14px}
+.about b{color:var(--title)}
+.mock{display:none;width:920px} .mock.on{display:block}
+.panel{background:var(--bg);border:1px solid #1e2c4c;border-radius:10px;overflow:hidden;box-shadow:0 0 0 1px #000,0 30px 80px rgba(0,0,0,.6);position:relative;min-height:520px;display:flex;flex-direction:column}
+.word{font-family:var(--mono);font-size:10px;letter-spacing:.14em;padding:2px 7px;border-radius:3px;border:1px solid currentColor;white-space:nowrap}
+.w-local{color:var(--common)} .w-imported{color:var(--uncommon)} .w-delicacy{color:var(--rare)} .w-unlisted{color:var(--hint)}
+.money{color:var(--gold);font-family:var(--mono)}
+button{font-family:var(--sans);border:0;border-radius:6px;color:#fff;cursor:pointer;font-weight:600}
+.thumb{width:54px;height:40px;border-radius:5px;background:linear-gradient(135deg,#0d1730,#1a2a50);position:relative;flex:none;overflow:hidden}
+.thumb:after{content:"";position:absolute;left:12px;top:14px;width:30px;height:12px;border-radius:50% 60% 60% 50%;background:var(--c,#6b7a3a);transform:rotate(-8deg)}
+.thumb:before{content:"";position:absolute;left:38px;top:11px;border:7px solid transparent;border-left-color:var(--c,#6b7a3a)}
+.fcard{background:var(--card);border-radius:8px;padding:8px;display:flex;gap:8px;align-items:center;cursor:pointer;border:1px solid transparent;transition:transform .12s,border-color .12s;user-select:none;margin-bottom:8px}
+.fcard:hover{border-color:#2b4a72;transform:translateY(-2px)}
+.fcard .i{flex:1;min-width:0} .fcard .i b{display:block;font-size:13px} .fcard .i span{font-size:11px;color:var(--sub)}
+.pop{animation:pop .18s ease-out} @keyframes pop{0%{transform:scale(.85);opacity:.4}100%{transform:scale(1);opacity:1}}
+
+/* shared two-shelves chrome */
+.hd{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--divider)}
+.hd .t{font-family:var(--mono);font-size:17px;letter-spacing:.16em;color:var(--title)} .hd .p{color:var(--sub);font-size:12px} .hd .r{margin-left:auto;font-size:12px;color:var(--sub)}
+.cols{display:grid;grid-template-columns:1fr 46px 1fr;flex:1}
+.shelf{padding:12px} .shelf .ch{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--sub);margin-bottom:8px;display:flex;justify-content:space-between}
+.arrows{display:flex;align-items:center;justify-content:center;color:var(--hint);font-size:20px;border-left:1px dashed #1f2d4d;border-right:1px dashed #1f2d4d}
+.counter{background:#0b1626} .counter .fcard{border-color:#1f4f5a;background:#0f2430}
+.empty{color:var(--hint);font-size:13px;padding:24px;text-align:center;border:1px dashed var(--divider);border-radius:8px}
+.foot{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--divider);background:#060b15}
+.foot .tot{font-family:var(--mono);font-size:16px;flex:1} .foot .tot b{color:var(--gold)}
+.btn-index{background:var(--btn-index);border:1px solid #3a63a8;padding:10px 16px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;display:inline-flex;align-items:center;gap:8px}
+.btn-index .ic{width:14px;height:14px;border:1.5px solid #9dc3ff;border-radius:2px;position:relative}
+.btn-index .ic:before,.btn-index .ic:after{content:"";position:absolute;left:3px;right:3px;height:1.5px;background:#9dc3ff;top:4px} .btn-index .ic:after{top:8px}
+
+/* the index page (shared bits) */
+.index{position:absolute;inset:0;background:var(--bg);display:none;flex-direction:column}
+.index.on{display:flex}
+.index .ih{display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--divider)}
+.index .ih .t{font-family:var(--mono);font-size:17px;letter-spacing:.16em;color:var(--title)} .index .ih .p{font-size:12px;color:var(--sub)}
+.index .back{margin-left:auto;background:var(--btn-mute);padding:8px 14px;font-family:var(--mono);font-size:12px;letter-spacing:.12em}
+.index .body{flex:1;overflow:auto;padding:14px 16px}
+.index .ifoot{padding:10px 16px;border-top:1px solid var(--divider);font-size:12px;color:var(--sub);display:flex;gap:16px;background:#060b15}
+.grp{margin-bottom:14px}
+.grp .gh{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+.grp .gh .n{font-family:var(--mono);font-size:12px;letter-spacing:.18em}
+.grp .gh .d{font-size:11px;color:var(--sub)}
+.irow{display:grid;grid-template-columns:54px 1fr auto auto;gap:10px;align-items:center;padding:6px 8px;border-radius:6px;background:var(--card);margin-bottom:5px}
+.irow .n b{font-size:13px;display:block} .irow .n span{font-size:11px;color:var(--sub)}
+.irow .bag{font-size:11px;color:var(--title);font-family:var(--mono);letter-spacing:.1em}
+.dots i{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--divider);margin-left:2px} .dots i.on{background:var(--rare)}
+
+/* 1 · full page swap */
+#P1 .index{animation:slidein .18s ease-out} @keyframes slidein{from{transform:translateX(18px);opacity:0}to{transform:none;opacity:1}}
+
+/* 2 · tabs on the panel */
+#P2 .ptabs{display:flex;border-bottom:1px solid var(--divider);background:#060b15}
+#P2 .ptab{padding:10px 18px;font-family:var(--mono);font-size:12px;letter-spacing:.14em;color:var(--sub);cursor:pointer;border-bottom:2px solid transparent}
+#P2 .ptab.on{color:var(--title);border-bottom-color:var(--title)}
+#P2 .page{display:none;flex:1;flex-direction:column} #P2 .page.on{display:flex}
+#P2 .index{position:static}
+
+/* 3 · index slides over the counter shelf */
+#P3 .cols{position:relative}
+#P3 .index{left:auto;width:calc(50% + 23px);border-left:1px solid var(--divider);box-shadow:-20px 0 40px rgba(0,0,0,.5);animation:slidein .18s ease-out}
+#P3 .bagline{font-size:11px;color:var(--sub);margin-top:-2px}
+
+/* 4 · catalogue grid */
+#P4 .cat{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+#P4 .ccard{background:var(--card);border-radius:8px;padding:8px;border-top:3px solid var(--divider)}
+#P4 .ccard.delicacy{border-top-color:var(--rare)} #P4 .ccard.imported{border-top-color:var(--uncommon)} #P4 .ccard.local{border-top-color:var(--common)}
+#P4 .ccard .thumb{width:100%;height:56px;margin-bottom:6px}
+#P4 .ccard b{font-size:13px;display:block} #P4 .ccard .m{font-size:14px} #P4 .ccard .s{font-size:10px;color:var(--sub);display:block;margin-top:2px}
+#P4 .legend{display:flex;gap:14px;font-size:11px;color:var(--sub);margin-bottom:12px;align-items:center}
+</style>
+</head>
+<body>
+<h1>TWO SHELVES + FISH PRICE INDEX <a href="counter.html">← the counter, four ways</a></h1>
+<div class="intro">Same Two Shelves panel in all four. The dotted "all rates" link is gone; it's a real <b>FISH PRICE INDEX</b> button that opens its own page listing everything this planet's vendor pays for. The variation is <b>how that page arrives and what it looks like</b>. Try the button in each.</div>
+<div class="tabs">
+  <div class="tab on" data-m="P1">1 · PAGE SWAP</div>
+  <div class="tab" data-m="P2">2 · TABS</div>
+  <div class="tab" data-m="P3">3 · SLIDE-OVER</div>
+  <div class="tab" data-m="P4">4 · CATALOGUE</div>
+</div>
+
+<!-- 1 -->
+<div class="mock on" id="P1">
+<div class="about"><b>Page swap.</b> The index replaces the whole panel — a clean second screen with a BACK button. Grouped Delicacy → Imported → Local, one line per fish, with a "× in your bag" note so you can see at a glance what you can cash in right now.</div>
+<div class="panel" id="P1-panel">
+  <div class="hd"><div class="t">FISH MARKET</div><div class="p">Icey Twin</div><div class="r">Wallet <span class="money">$412</span></div></div>
+  <div class="cols">
+    <div class="shelf"><div class="ch"><span>YOUR BAG</span><span data-bagn></span></div><div data-bag></div></div>
+    <div class="arrows">⇄</div>
+    <div class="shelf counter"><div class="ch"><span>ON THE COUNTER</span><span data-ctrn></span></div><div data-ctr></div></div>
+  </div>
+  <div class="foot"><div class="tot">COUNTER <b data-tot>$0</b></div>
+    <button class="btn-index" onclick="openIdx('P1')"><span class="ic"></span>FISH PRICE INDEX</button>
+    <button style="background:var(--btn-sell);padding:10px 18px" onclick="sell('P1')">Sell the counter</button></div>
+  <div class="index" data-index>
+    <div class="ih"><div class="t">FISH PRICE INDEX</div><div class="p">Icey Twin · what this vendor pays, per lb, right now</div><button class="back" onclick="closeIdx('P1')">‹ BACK</button></div>
+    <div class="body" data-ibody></div>
+    <div class="ifoot"><span>Anything not listed: <b>half</b> its base price.</span><span>Delicacy & Imported prices drop 15% each sale and recover a step per day.</span></div>
+  </div>
+</div>
+</div>
+
+<!-- 2 -->
+<div class="mock" id="P2">
+<div class="about"><b>Tabs.</b> The panel has two pages side by side at the top — COUNTER and FISH PRICE INDEX — like the phone's apps. Nothing is hidden behind a button; you flick between them. Best if you expect to check the index often while deciding.</div>
+<div class="panel">
+  <div class="hd"><div class="t">FISH MARKET</div><div class="p">Icey Twin</div><div class="r">Wallet <span class="money">$412</span></div></div>
+  <div class="ptabs"><div class="ptab on" onclick="P2tab(0)">COUNTER</div><div class="ptab" onclick="P2tab(1)">FISH PRICE INDEX</div></div>
+  <div class="page on" id="P2-a">
+    <div class="cols">
+      <div class="shelf"><div class="ch"><span>YOUR BAG</span><span data-bagn></span></div><div data-bag></div></div>
+      <div class="arrows">⇄</div>
+      <div class="shelf counter"><div class="ch"><span>ON THE COUNTER</span><span data-ctrn></span></div><div data-ctr></div></div>
+    </div>
+    <div class="foot"><div class="tot">COUNTER <b data-tot>$0</b></div><button style="background:var(--btn-sell);padding:10px 18px" onclick="sell('P2')">Sell the counter</button></div>
+  </div>
+  <div class="page index" id="P2-b" data-index>
+    <div class="body" data-ibody></div>
+    <div class="ifoot"><span>Anything not listed: <b>half</b> its base price.</span><span>Prices cool 15% per sale, recover a step per day.</span></div>
+  </div>
+</div>
+</div>
+
+<!-- 3 -->
+<div class="mock" id="P3">
+<div class="about"><b>Slide-over.</b> The index slides in over the counter shelf only — your bag stays visible on the left, so you can read a price and click the fish in the same breath. Close it and the counter is back where it was. Most useful while actually deciding.</div>
+<div class="panel">
+  <div class="hd"><div class="t">FISH MARKET</div><div class="p">Icey Twin</div><div class="r">Wallet <span class="money">$412</span></div></div>
+  <div class="cols">
+    <div class="shelf"><div class="ch"><span>YOUR BAG</span><span data-bagn></span></div><div data-bag></div></div>
+    <div class="arrows">⇄</div>
+    <div class="shelf counter"><div class="ch"><span>ON THE COUNTER</span><span data-ctrn></span></div><div data-ctr></div></div>
+    <div class="index" data-index>
+      <div class="ih"><div class="t" style="font-size:14px">PRICE INDEX</div><button class="back" onclick="closeIdx('P3')">✕</button></div>
+      <div class="body" data-ibody></div>
+      <div class="ifoot"><span>Unlisted: half base.</span></div>
+    </div>
+  </div>
+  <div class="foot"><div class="tot">COUNTER <b data-tot>$0</b></div>
+    <button class="btn-index" onclick="openIdx('P3')"><span class="ic"></span>FISH PRICE INDEX</button>
+    <button style="background:var(--btn-sell);padding:10px 18px" onclick="sell('P3')">Sell the counter</button></div>
+</div>
+</div>
+
+<!-- 4 -->
+<div class="mock" id="P4">
+<div class="about"><b>Catalogue.</b> The index is a picture grid — one card per fish with its thumbnail, price and appetite dots, colour-coded by bucket. Reads like a shop catalogue rather than a table. Best-looking, and it makes the 24 species feel like a collection. Slightly more to scroll on a main world.</div>
+<div class="panel">
+  <div class="hd"><div class="t">FISH MARKET</div><div class="p">Icey Twin</div><div class="r">Wallet <span class="money">$412</span></div></div>
+  <div class="cols">
+    <div class="shelf"><div class="ch"><span>YOUR BAG</span><span data-bagn></span></div><div data-bag></div></div>
+    <div class="arrows">⇄</div>
+    <div class="shelf counter"><div class="ch"><span>ON THE COUNTER</span><span data-ctrn></span></div><div data-ctr></div></div>
+  </div>
+  <div class="foot"><div class="tot">COUNTER <b data-tot>$0</b></div>
+    <button class="btn-index" onclick="openIdx('P4')"><span class="ic"></span>FISH PRICE INDEX</button>
+    <button style="background:var(--btn-sell);padding:10px 18px" onclick="sell('P4')">Sell the counter</button></div>
+  <div class="index" data-index>
+    <div class="ih"><div class="t">FISH PRICE INDEX</div><div class="p">Icey Twin</div><button class="back" onclick="closeIdx('P4')">‹ BACK</button></div>
+    <div class="body"><div class="legend"><span class="word w-delicacy">DELICACY ×3</span><span class="word w-imported">IMPORTED ×1.75</span><span class="word w-local">LOCAL ×1</span><span style="margin-left:auto">dots = how keen the market still is</span></div><div class="cat" data-ibody></div></div>
+    <div class="ifoot"><span>Anything not listed: <b>half</b> its base price.</span></div>
+  </div>
+</div>
+</div>
+
+<script>
+const TABLE={local:[['bassk','Bassk',1.0],['wallop','Wallop',1.0],['nullpike','Nullpike',1.5],['flubb','Flubb',1.7],['zibbet','Zibbet',2.2],['muskrellon','Muskrellon',2.0]],
+ imported:[['perchik','Perchik',1.0],['coelancer','Coelancer',2.4],['murkfin','Murkfin',1.5],['smelk','Smelk',1.2],['sturgle','Sturgle',1.5]],
+ delicacy:[['marlorb','Marlorb',2.0],['snagg','Snagg',2.3],['tarpune','Tarpune',2.2]]};
+const MULT={local:1,imported:1.75,delicacy:3,unlisted:0.5}, APPETITE={marlorb:1};
+const COLORS={bassk:'#6b7a3a',wallop:'#7a7aa8',marlorb:'#5a3c9e',snagg:'#2e8a6a',perchik:'#d8b83a',grubbler:'#8a6e3c',nullpike:'#2a2a30',flubb:'#c47ab8',zibbet:'#e0c030',muskrellon:'#3e6b2e',coelancer:'#2e5c8a',murkfin:'#3f4a3a',smelk:'#b8c2c8',sturgle:'#7c7f86',tarpune:'#d46a9a'};
+const BAG=[{id:'marlorb',n:'Marlorb',lb:31},{id:'marlorb',n:'Marlorb',lb:24},{id:'snagg',n:'Snagg',lb:19},{id:'bassk',n:'Bassk',lb:4},{id:'wallop',n:'Wallop',lb:6},{id:'perchik',n:'Perchik',lb:3},{id:'grubbler',n:'Grubbler',lb:5}];
+const WORD={local:'LOCAL',imported:'IMPORTED',delicacy:'DELICACY',unlisted:'UNLISTED'};
+const bucketOf=id=>{for(const k of['delicacy','imported','local'])if(TABLE[k].some(r=>r[0]===id))return k;return'unlisted'};
+const baseOf=id=>{for(const k in TABLE){const r=TABLE[k].find(r=>r[0]===id);if(r)return r[2]}return 1};
+const rateOf=id=>{const b=bucketOf(id);let m=MULT[b];if(b==='imported'||b==='delicacy')m=Math.max(1,m*(1-0.15*(APPETITE[id]||0)));return baseOf(id)*m};
+const priceOf=f=>Math.max(1,Math.round(rateOf(f.id)*f.lb));
+const fmt=n=>'$'+n.toLocaleString();
+const sel={P1:new Set(),P2:new Set(),P3:new Set(),P4:new Set()};
+const tot=m=>{let t=0;sel[m].forEach(i=>t+=priceOf(BAG[i]));return t};
+function sell(m){if(!sel[m].size)return alert('Nothing on the counter.');alert('Sale complete!  You earned  '+fmt(tot(m))+'\n\n(mockup)')}
+function tog(m,i){sel[m].has(i)?sel[m].delete(i):sel[m].add(i);render()}
+function openIdx(m){document.querySelector('#'+m+' [data-index]').classList.add('on')}
+function closeIdx(m){document.querySelector('#'+m+' [data-index]').classList.remove('on')}
+function P2tab(i){document.querySelectorAll('#P2 .ptab').forEach((t,k)=>t.classList.toggle('on',k===i));document.getElementById('P2-a').classList.toggle('on',i===0);document.getElementById('P2-b').classList.toggle('on',i===1)}
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));document.querySelectorAll('.mock').forEach(x=>x.classList.toggle('on',x.id===t.dataset.m))});
+const card=(m,i)=>{const f=BAG[i],b=bucketOf(f.id);return `<div class="fcard pop" onclick="tog('${m}',${i})"><div class="thumb" style="--c:${COLORS[f.id]||'#556'}"></div><div class="i"><b>${f.n}</b><span>${f.lb} lb · <span class="w-${b}" style="border:0;padding:0">${WORD[b]}</span> · $${rateOf(f.id).toFixed(2)}/lb</span></div><span class="money">${fmt(priceOf(f))}</span></div>`};
+const inBag=id=>BAG.filter(f=>f.id===id).length;
+const dots=id=>{const a=APPETITE[id]||0;return `<span class="dots">${[0,1,2,3].map(k=>`<i class="${a<=k?'on':''}"></i>`).join('')}</span>`};
+function listIndex(){return ['delicacy','imported','local'].map(k=>`<div class="grp"><div class="gh"><span class="n w-${k}">${WORD[k]}</span><span class="d">${k==='delicacy'?'pays top · ×3':k==='imported'?'pays well · ×1.75':'home catch · ×1'}</span></div>`+
+  TABLE[k].map(([id,n])=>`<div class="irow"><div class="thumb" style="--c:${COLORS[id]||'#556'}"></div><div class="n"><b>${n}</b><span>${k!=='local'?'appetite ':''}${k!=='local'?dots(id).replace('<span class="dots">','<span class="dots" style="vertical-align:middle">'):''}</span></div><span class="bag">${inBag(id)?inBag(id)+' IN YOUR BAG':''}</span><span class="money">$${rateOf(id).toFixed(2)}/lb</span></div>`).join('')+`</div>`).join('')}
+function catIndex(){return ['delicacy','imported','local'].map(k=>TABLE[k].map(([id,n])=>`<div class="ccard ${k}"><div class="thumb" style="--c:${COLORS[id]||'#556'}"></div><b>${n}</b><span class="money m">$${rateOf(id).toFixed(2)}/lb</span><span class="s">${WORD[k]}${k!=='local'?' '+dots(id):''}${inBag(id)?' · <span style="color:var(--title)">'+inBag(id)+' in bag</span>':''}</span></div>`).join('')).join('')}
+function render(){
+  for(const m of ['P1','P2','P3','P4']){
+    const r=document.getElementById(m);
+    r.querySelector('[data-bag]').innerHTML=BAG.map((f,i)=>sel[m].has(i)?'':card(m,i)).join('')||'<div class="empty">Bag is empty.</div>';
+    r.querySelector('[data-ctr]').innerHTML=[...sel[m]].map(i=>card(m,i)).join('')||'<div class="empty">Click a fish on the left.</div>';
+    r.querySelector('[data-bagn]').textContent=(BAG.length-sel[m].size)+' fish'; r.querySelector('[data-ctrn]').textContent=sel[m].size+' fish';
+    r.querySelector('[data-tot]').textContent=fmt(tot(m));
+    r.querySelector('[data-ibody]').innerHTML = m==='P4'?catIndex():listIndex();
+  }
+}
+render();
+</script>
+</body>
+</html>
