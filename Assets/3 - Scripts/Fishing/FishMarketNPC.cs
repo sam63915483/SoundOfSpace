@@ -87,7 +87,12 @@ public class FishMarketNPC : MonoBehaviour
         guitarCtrl = FindObjectOfType<GuitarController>();
         bottleCtrl = FindObjectOfType<WaterBottleController>();
 
-        if (sellPanel != null) { HideOldChildren(); BuildUI(); }
+        ResolveSharedHUD();
+
+        // The sell panel is ONE shared HUD_Canvas panel used by every fish
+        // market in the system, so it is built lazily by whoever opens it
+        // first (see EnsureBuiltUI) rather than by all of them in Start.
+        // Building here would stack one set of widgets per vendor in the scene.
         if (sellPanel       != null) sellPanel.SetActive(false);
         if (talkPromptText  != null) talkPromptText.gameObject.SetActive(false);
         InteractPromptUI.Clear(this);
@@ -110,6 +115,132 @@ public class FishMarketNPC : MonoBehaviour
     {
         foreach (Transform child in sellPanel.transform)
             child.gameObject.SetActive(false);
+    }
+
+    // ── Shared HUD wiring (planet economies, 2026-09-07) ───────────────────────
+    // Before per-planet fish markets there was exactly ONE vendor, so its three
+    // HUD references were dragged in by hand in the scene. A prefab cannot hold
+    // a reference to a scene object, so a vendor that is dropped onto a planet
+    // finds the shared canvas itself — the same auto-find contract Alien7Vendor
+    // already uses. Hand-wired scene instances keep whatever they were given.
+
+    /// <summary>Planet this market trades on, via the VendorSite on its stand.
+    /// Empty until the hierarchy resolves. Phase 4 keys the buy list off this.</summary>
+    public string BodyName => VendorSite.BodyNameFor(this);
+
+    void ResolveSharedHUD()
+    {
+        if (talkPromptText != null && greetingText != null && sellPanel != null) return;
+
+        // Borrow from any vendor that IS wired up — cheapest and keeps every
+        // market pointing at the identical panel.
+        var wired = FindObjectsOfType<FishMarketNPC>(true);
+        for (int i = 0; i < wired.Length; i++)
+        {
+            var o = wired[i];
+            if (o == this) continue;
+            if (talkPromptText == null) talkPromptText = o.talkPromptText;
+            if (greetingText   == null) greetingText   = o.greetingText;
+            if (sellPanel      == null) sellPanel      = o.sellPanel;
+        }
+        if (talkPromptText != null && greetingText != null && sellPanel != null) return;
+
+        // Otherwise find the canvas by name. Inactive objects are included:
+        // the sell panel spends nearly all of its life switched off.
+        var canvas = GameObject.Find("HUD_Canvas");
+        if (canvas == null)
+        {
+            var anyCanvas = FindObjectsOfType<Canvas>(true);
+            for (int i = 0; i < anyCanvas.Length; i++)
+                if (anyCanvas[i] != null && anyCanvas[i].name == "HUD_Canvas")
+                { canvas = anyCanvas[i].gameObject; break; }
+        }
+        if (canvas == null)
+        {
+            Debug.LogWarning("[FishMarketNPC] No HUD_Canvas found — this market " +
+                             "cannot show its prompt or sell panel.", this);
+            return;
+        }
+
+        if (sellPanel == null)
+        {
+            var t = FindDeep(canvas.transform, "SellPanel");
+            if (t != null) sellPanel = t.gameObject;
+        }
+        if (talkPromptText == null)
+        {
+            var t = FindDeep(canvas.transform, "TalkPrompt");
+            if (t != null) talkPromptText = t.GetComponent<TextMeshProUGUI>();
+        }
+        if (greetingText == null)
+        {
+            var t = FindDeep(canvas.transform, "DialogueText");
+            if (t != null) greetingText = t.GetComponent<TextMeshProUGUI>();
+        }
+    }
+
+    static Transform FindDeep(Transform root, string name)
+    {
+        if (root == null) return null;
+        if (root.name == name) return root;
+        for (int i = 0; i < root.childCount; i++)
+        {
+            var hit = FindDeep(root.GetChild(i), name);
+            if (hit != null) return hit;
+        }
+        return null;
+    }
+
+    // ── One shared sell panel, many markets ────────────────────────────────────
+    // BuildUI writes procedural widgets into the shared panel and binds the two
+    // buttons to the instance that built them. With a market on every planet
+    // that has to happen exactly once, with the buttons re-pointed at whichever
+    // vendor the player is standing in front of.
+    static FishMarketNPC s_uiOwner;
+    static Button          s_uiAddBtn, s_uiSellBtn;
+    static TextMeshProUGUI s_uiListHeader, s_uiTotalText, s_uiEarningsMsg;
+    static CanvasGroup     s_uiEarningsCG;
+    static Transform       s_uiListContent;
+
+    void EnsureBuiltUI()
+    {
+        if (sellPanel == null) return;
+
+        // s_uiListContent goes null on a scene reload (Unity's destroyed-object
+        // null), which is exactly when the panel needs rebuilding anyway.
+        if (s_uiListContent == null)
+        {
+            HideOldChildren();
+            BuildUI();
+            s_uiAddBtn      = uiAddBtn;      s_uiSellBtn     = uiSellBtn;
+            s_uiListHeader  = uiListHeader;  s_uiTotalText   = uiTotalText;
+            s_uiEarningsMsg = uiEarningsMsg; s_uiEarningsCG  = uiEarningsCG;
+            s_uiListContent = uiListContent;
+            s_uiOwner = this;
+            return;
+        }
+
+        // Adopt the widgets someone else built.
+        uiAddBtn      = s_uiAddBtn;      uiSellBtn     = s_uiSellBtn;
+        uiListHeader  = s_uiListHeader;  uiTotalText   = s_uiTotalText;
+        uiEarningsMsg = s_uiEarningsMsg; uiEarningsCG  = s_uiEarningsCG;
+        uiListContent = s_uiListContent;
+
+        if (s_uiOwner == this) return;
+
+        // Re-point the buttons at this market. Only fires when the player walks
+        // up to a different planet's vendor, so the alloc is a non-issue.
+        if (uiAddBtn != null)
+        {
+            uiAddBtn.onClick.RemoveAllListeners();
+            uiAddBtn.onClick.AddListener(OnAddFishClicked);
+        }
+        if (uiSellBtn != null)
+        {
+            uiSellBtn.onClick.RemoveAllListeners();
+            uiSellBtn.onClick.AddListener(OnConfirmSale);
+        }
+        s_uiOwner = this;
     }
 
     // ── Trigger ────────────────────────────────────────────────────────────────
@@ -378,6 +509,7 @@ public class FishMarketNPC : MonoBehaviour
 
         panelOpen = true;
         InteractPromptUI.Clear(this);
+        EnsureBuiltUI();
         if (sellPanel != null)
         {
             sellPanel.SetActive(true);
