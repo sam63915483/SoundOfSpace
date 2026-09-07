@@ -906,25 +906,141 @@ public class Hotbar : MonoBehaviour
     // methods are the ONLY way the count changes from gameplay code; the
     // drag/drop layer moves it as an item and is bounded by SlotAccepts.
 
-    /// The player's balance. Reading a slot count, not a mirrored field.
-    public int Money => slots[MoneySlotIndex].id == ItemId.Money
-        ? slots[MoneySlotIndex].count
-        : 0;
+    // Cash used to be pinned to slot 8 and nowhere else. Sam, 2026-09-07: it
+    // should sit in ANY slot, and split across several. So the balance is now
+    // the SUM of every money stack in the hotbar rather than one slot's count,
+    // and spending drains those stacks in order. MoneySlotIndex survives only as
+    // the preferred home for a fresh payment.
+    //
+    // Money that has nowhere to go (every slot full of other items) waits in
+    // _unplacedMoney rather than being lost, and drops into the first slot that
+    // frees up. It counts towards the balance the whole time, so the player can
+    // always spend it - it just has no icon until there is room. The save is
+    // untouched: SaveData.money still stores one total, and SetMoney lays it out
+    // again on load.
+    int _unplacedMoney;
 
-    /// Set the balance outright. Clamped at 0; a zero balance empties the slot
-    /// rather than leaving an ItemId.Money stack of count 0, so the slot renders
-    /// empty and the drag layer can't pick up nothing.
+    /// The player's balance: every money stack in the hotbar, plus anything that
+    /// could not be placed yet.
+    public int Money
+    {
+        get
+        {
+            int total = _unplacedMoney;
+            for (int i = 0; i < slots.Length; i++)
+                if (slots[i].id == ItemId.Money) total += slots[i].count;
+            return total;
+        }
+    }
+
+    /// Set the balance outright. Clears every money stack and re-lays the amount
+    /// out from scratch. A zero balance leaves no ItemId.Money stack of count 0
+    /// anywhere, so nothing renders and the drag layer can't pick up nothing.
     public void SetMoney(int amount)
     {
-        int v = Mathf.Max(0, amount);
-        slots[MoneySlotIndex] = v > 0
-            ? new Slot { id = ItemId.Money, count = v }
-            : default;
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i].id == ItemId.Money) slots[i] = default;
+        _unplacedMoney = 0;
+
+        PlaceMoney(Mathf.Max(0, amount));
         OnResourceChanged?.Invoke(ItemId.Money);
     }
 
-    /// Add (or, with a negative amount, subtract) — never below zero.
-    public void AddMoney(int delta) => SetMoney(Money + delta);
+    /// Add (or, with a negative amount, subtract) - never below zero. Adding
+    /// tops up a stack the player already has rather than rebuilding the layout,
+    /// so cash they deliberately split across slots stays split.
+    public void AddMoney(int delta)
+    {
+        if (delta == 0) { FlushUnplacedMoney(); return; }
+        if (delta > 0) PlaceMoney(delta);
+        else           TakeMoney(Mathf.Min(-delta, Money));
+        OnResourceChanged?.Invoke(ItemId.Money);
+    }
+
+    /// Put cash in: existing stacks first (preferring the traditional money slot),
+    /// then the first empty slot, then held aside until a slot frees up.
+    void PlaceMoney(int amount)
+    {
+        if (amount <= 0) { FlushUnplacedMoney(); return; }
+
+        if (slots[MoneySlotIndex].id == ItemId.Money)
+        {
+            slots[MoneySlotIndex].count += amount;
+            FlushUnplacedMoney();
+            return;
+        }
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i].id == ItemId.Money)
+            {
+                slots[i].count += amount;
+                FlushUnplacedMoney();
+                return;
+            }
+
+        int free = FirstFreeSlotForMoney();
+        if (free >= 0)
+        {
+            slots[free] = new Slot { id = ItemId.Money, count = amount };
+            FlushUnplacedMoney();
+            return;
+        }
+
+        // Hotbar is wall-to-wall items. Hold it rather than overwrite one of them.
+        _unplacedMoney += amount;
+    }
+
+    /// Take cash out: the waiting pile first, then stacks from the last slot back,
+    /// so the traditional money slot is the last one to empty.
+    void TakeMoney(int amount)
+    {
+        if (amount <= 0) return;
+
+        int fromHeld = Mathf.Min(_unplacedMoney, amount);
+        _unplacedMoney -= fromHeld;
+        amount -= fromHeld;
+
+        for (int i = slots.Length - 1; i >= 0 && amount > 0; i--)
+        {
+            if (slots[i].id != ItemId.Money) continue;
+            int take = Mathf.Min(slots[i].count, amount);
+            slots[i].count -= take;
+            amount -= take;
+            if (slots[i].count <= 0) slots[i] = default;
+        }
+    }
+
+    /// Drop any waiting cash into a slot the moment one is free.
+    void FlushUnplacedMoney()
+    {
+        if (_unplacedMoney <= 0) return;
+        if (slots[MoneySlotIndex].id == ItemId.Money)
+        {
+            slots[MoneySlotIndex].count += _unplacedMoney;
+            _unplacedMoney = 0;
+            return;
+        }
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i].id == ItemId.Money)
+            {
+                slots[i].count += _unplacedMoney;
+                _unplacedMoney = 0;
+                return;
+            }
+        int free = FirstFreeSlotForMoney();
+        if (free < 0) return;
+        slots[free] = new Slot { id = ItemId.Money, count = _unplacedMoney };
+        _unplacedMoney = 0;
+    }
+
+    /// Prefer the traditional money slot when it happens to be empty, so a normal
+    /// playthrough still finds cash where it has always been.
+    int FirstFreeSlotForMoney()
+    {
+        if (slots[MoneySlotIndex].id == ItemId.None) return MoneySlotIndex;
+        for (int i = 0; i < slots.Length; i++)
+            if (slots[i].id == ItemId.None) return i;
+        return -1;
+    }
 
     /// True when the slot can legally hold this id.
     ///
@@ -936,9 +1052,14 @@ public class Hotbar : MonoBehaviour
     public static bool SlotAccepts(Slot[] container, int idx, ItemId id)
     {
         if (container == null || idx < 0 || idx >= container.Length) return false;
-        // Only the hotbar's own array is restricted. Everything else is storage.
-        if (instance == null || !ReferenceEquals(container, instance.slots)) return true;
-        return idx == MoneySlotIndex ? id == ItemId.Money : id != ItemId.Money;
+        // Nothing is restricted any more (Sam, 2026-09-07): cash goes in any
+        // slot, several slots can hold it at once, and slot 8 is no longer
+        // reserved. The old rule - money slot takes only money, money goes
+        // nowhere else - existed to stop a dupe, and the balance being ONE
+        // slot's count was what made a dupe possible. The balance is now the SUM
+        // of every money stack, so moving a stack between slots can neither
+        // create nor destroy any: the total is recounted from what is there.
+        return true;
     }
 
     // ── Save / load access ───────────────────────────────────────────

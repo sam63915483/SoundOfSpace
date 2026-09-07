@@ -2,8 +2,8 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// The player's money — now a THIN VIEW over hotbar slot 8
-/// (<see cref="Hotbar.MoneySlotIndex"/>), not a number of its own.
+/// The player's money — now a THIN VIEW over the hotbar's money stacks
+/// (any slot, several at once since 2026-09-07), not a number of its own.
 ///
 /// Money became a real item (2026-08-10): the stack count in that slot IS the
 /// balance, so it can be dragged into a locker, split with the scroll wheel, and
@@ -77,7 +77,14 @@ public class PlayerWallet : MonoBehaviour
 
     public void AddMoney(int amount)
     {
-        SetMoney(Money + amount);
+        // A DELTA, not a recomputed total (2026-09-07). Cash can now live in
+        // several slots at once, and Hotbar.SetMoney rebuilds that layout from
+        // scratch - so routing every sale through SetMoney(Money + x) would
+        // silently sweep a deliberately split stack back into one pile. AddMoney
+        // tops up a stack in place instead.
+        var hb = Hotbar.Instance;
+        if (hb == null) { SetMoney(Money + amount); }
+        else            { hb.AddMoney(amount); _hasPending = false; }
         Debug.Log($"[PlayerWallet] +${amount}. Total: ${Money}");
     }
 
@@ -86,7 +93,9 @@ public class PlayerWallet : MonoBehaviour
     public bool SpendMoney(int amount)
     {
         if (amount < 0 || Money < amount) return false;
-        SetMoney(Money - amount);
+        var hb = Hotbar.Instance;
+        if (hb == null) SetMoney(Money - amount);
+        else          { hb.AddMoney(-amount); _hasPending = false; }
         return true;
     }
 

@@ -88,6 +88,7 @@ public class FishMarketNPC : MonoBehaviour
         bottleCtrl = FindObjectOfType<WaterBottleController>();
 
         ResolveSharedHUD();
+        KeepVendorVisible();
 
         // The sell panel is ONE shared HUD_Canvas panel used by every fish
         // market in the system, so it is built lazily by whoever opens it
@@ -115,6 +116,36 @@ public class FishMarketNPC : MonoBehaviour
     {
         foreach (Transform child in sellPanel.transform)
             child.gameObject.SetActive(false);
+    }
+
+    // ── Vendor stays visible on every planet (2026-09-07 playtest) ─────────────
+    //
+    // Sam's report: fly to any of the new markets and the STAND is there but the
+    // alien behind it is not. In the Editor all ten are present, active, renderers
+    // enabled, identical to the Humble Abode one that works — so nothing is being
+    // destroyed or disabled. They are being CULLED.
+    //
+    // The alien is the only SkinnedMeshRenderer in the stand, and it ships with
+    // updateWhenOffscreen = false. That means Unity culls it using bounds cached
+    // from the root bone rather than measuring the live pose. NPCWaveAnimation
+    // moves those bones every LateUpdate, and the vendor spends the whole session
+    // off-screen on a planet nobody has visited — so the cached bounds are never
+    // refreshed against reality, the renderer stays classified as off-screen, and
+    // it can be invisible even once you are standing in front of it. Humble
+    // Abode's vendor escapes it purely because you spawn looking at it, so its
+    // bounds are correct from the first frame.
+    //
+    // updateWhenOffscreen recomputes bounds from the actual bones each frame.
+    // That is a per-frame cost for ONE ~70-bone character per planet, which is
+    // nothing next to being unable to sell your fish. cullingMode is pinned too so
+    // an Animator can never stop updating the bones the bounds are measured from.
+    void KeepVendorVisible()
+    {
+        var smr = GetComponentInChildren<SkinnedMeshRenderer>(true);
+        if (smr != null && !smr.updateWhenOffscreen) smr.updateWhenOffscreen = true;
+
+        var anim = GetComponent<Animator>();
+        if (anim != null) anim.cullingMode = AnimatorCullingMode.AlwaysAnimate;
     }
 
     // ── Shared HUD wiring (planet economies, 2026-09-07) ───────────────────────

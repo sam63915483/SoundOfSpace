@@ -125,10 +125,13 @@ public static class ShuttleFuelInstaller
             var old = FindDeep(root.transform, ReactorName);
             if (old != null) Object.DestroyImmediate(old.gameObject);
 
-            var src = LoadShipReactorSource();
-            if (src == null) { Debug.LogError("[ShuttleFuel] reactor source missing"); return; }
-
-            var copy = Object.Instantiate(src, root.transform);
+            // Copy the SCENE reactor, not a fresh one from SHIP44.
+            //
+            // This used to re-instantiate the ship's reactor and just re-apply
+            // the pose, which silently destroyed anything Sam had built ONTO the
+            // reactor in the scene - the fuel screen panel being exactly that.
+            // Whatever is on the scene object is what gets saved.
+            var copy = Object.Instantiate(reactor.gameObject, root.transform);
             copy.name = ReactorName;
             copy.transform.localPosition = pos;
             copy.transform.localRotation = rot;

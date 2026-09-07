@@ -1131,8 +1131,18 @@ public class PlayerController : GravityObject
 			{
 				usingJetpack = true;
 			}
-			// Press (and hold) Ctrl OR Left-Trigger while above ground to engage downward thrust
-			if (!typing && TutorialGate.DownThrustPressed(TutorialAbility.DownThrust))
+			// Press (and hold) Ctrl OR Left-Trigger while above ground to engage downward thrust.
+			//
+			// HELD, not Pressed (2026-09-07 playtest): this whole branch only runs
+			// while airborne, so arming on the key-DOWN EDGE lost the input whenever
+			// the player pressed Ctrl a frame or two before leaving the ground — the
+			// edge fired on a grounded frame, nothing was listening, and down thrust
+			// then did nothing until they released and pressed again mid-air. That is
+			// exactly the "sometimes it doesn't work, I have to repress it" report.
+			// Reading the held state arms it on the first airborne frame instead. The
+			// apply path below already re-checks DownThrustHeld every frame, so this
+			// is purely about not dropping the arming input.
+			if (!typing && TutorialGate.DownThrustHeld(TutorialAbility.DownThrust))
 			{
 				usingDownThrust = true;
 			}

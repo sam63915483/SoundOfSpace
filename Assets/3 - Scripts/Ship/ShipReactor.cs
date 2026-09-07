@@ -130,7 +130,20 @@ public class ShipReactor : MonoBehaviour
 
     void ShowPrompt()
     {
-        if (_promptShown) return;
+        // Re-assert EVERY frame rather than latching on the first one
+        // (2026-09-07 playtest: look away from the reactor and back and the
+        // prompt never returned; swapping hotbar items fixed it).
+        //
+        // InteractPromptUI is a single shared prompt with one owner. Look away
+        // and any other candidate is allowed to take ownership — and once it
+        // does, a latched "_promptShown = true" meant this reactor never called
+        // Show again, so it could never win the prompt back. Switching items
+        // made the eligibility check fail, which called HidePrompt, which reset
+        // the latch — which is precisely why that worked around it.
+        //
+        // Show() is cheap (it just sets the owner + text; the gaze gating and
+        // the actual show/hide happen in InteractPromptUI.Update), and that
+        // class explicitly supports being re-asserted every frame.
         GameUI.ShowInteractionPrompt(this, $"Press {PromptGlyphs.Interact} to insert crystals");
         _promptShown = true;
     }

@@ -37,6 +37,13 @@ public class CrystalSpawner : MonoBehaviour
     public int seed = 11357;
     [Tooltip("Cell size in metres. Larger = crystals spaced further apart.")]
     public float cellSize = 60f;
+
+    [Tooltip("Upper bound on how coarse a body's crystal grid may get, as a fraction of a " +
+             "cube face. Humble Abode (radius 200) works out at exactly 0.3 with a 60 m " +
+             "cell, so this makes every SMALLER world use a proportionally smaller cell " +
+             "instead of one bigger than the planet. Leave it alone unless crystals feel " +
+             "too dense on the dwarfs.")]
+    public float maxFaceUVPerCell = 0.3f;
     [Range(0f, 1f)]
     [Tooltip("Probability that any given cell holds a crystal. Mid-range default — players who want them rarer can lower it.")]
     public float crystalSpawnChance = 0.35f;
@@ -256,7 +263,7 @@ public class CrystalSpawner : MonoBehaviour
             float bodyOuter = spawnRadius + entry.body.radius + cellSize;
             if (bodyDistSq > bodyOuter * bodyOuter) continue;
 
-            float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+            float faceUVPerCell = FaceUVPerCell(entry.body);
             int half = Mathf.CeilToInt(1f / Mathf.Max(0.0001f, faceUVPerCell)) + 1;
 
             for (int face = 0; face < 6; face++)
@@ -286,7 +293,7 @@ public class CrystalSpawner : MonoBehaviour
             if (CountActive() >= effectiveMax) break;
             var c = scratchCandidates[i];
             var entry = bodies[c.bodySlot];
-            float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+            float faceUVPerCell = FaceUVPerCell(entry.body);
             if (!TryComputeCrystalPlacement(entry, c.face, c.cellU, c.cellV, faceUVPerCell, playerPos, spawnRadius,
                                             out Vector3 pos, out Quaternion rot, out float scale))
                 continue;
@@ -346,6 +353,25 @@ public class CrystalSpawner : MonoBehaviour
             if (farthestEntry == null) break;
             DespawnInternal(farthestEntry, farthestId);
         }
+    }
+
+    /// <summary>How big one crystal cell is, as a fraction of a cube face, for this body.
+    ///
+    /// ⚠️ This is why crystals only ever appeared on Humble Abode. cellSize is an
+    /// absolute 60 m, so the grid is cellSize/radius across a face — fine for a
+    /// radius-200 planet (0.3, about 216 cells), but on a radius-40 dwarf that is
+    /// 1.5, i.e. a cell WIDER THAN THE PLANET. Only two cell indices per axis then
+    /// land inside the [-1,1] face at all, most of those get pushed out again by
+    /// the jitter, and what survives clusters at the cube corners — so a dwarf had
+    /// a handful of crystals in a couple of spots and usually looked barren.
+    ///
+    /// Capping the value keeps every large body exactly as it was (Humble Abode is
+    /// 0.3 already, the twins and Cyclops finer) while giving the small ones the
+    /// same relative grid density as Humble Abode.</summary>
+    float FaceUVPerCell(CelestialBody body)
+    {
+        float raw = cellSize / Mathf.Max(0.001f, body.radius);
+        return Mathf.Min(raw, Mathf.Max(0.01f, maxFaceUVPerCell));
     }
 
     bool CellHasCrystal(int face, int cellU, int cellV)
