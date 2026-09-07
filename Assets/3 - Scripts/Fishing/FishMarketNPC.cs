@@ -319,6 +319,10 @@ public class FishMarketNPC : MonoBehaviour
     {
         if (!other.CompareTag("Player")) return;
         playerInRange = true;
+        // Planet economy: reaching the counter is what puts this market on the
+        // phone's MARKETS page. (The floating sign used to do this; Sam cut the
+        // signs on 2026-09-07 — the PRICES tab in this panel is the price list.)
+        MarketKnowledge.NoteSeen(BodyName);
         _suppressPromptUntilExit = false;
         InteractPromptUI.Show(this, $"Press {PromptGlyphs.Interact} to talk");
     }

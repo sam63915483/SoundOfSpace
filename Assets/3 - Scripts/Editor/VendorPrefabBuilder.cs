@@ -56,13 +56,13 @@ public static class VendorPrefabBuilder
                                " to copy settings from — cannot build FishMarket.prefab.");
             else
                 log.Append(BuildOne(fishNpc.gameObject, FishStandPrefab, FishPrefabPath,
-                                    VendorSite.VendorKind.FishMarket, "FISH MARKET")).Append("  ");
+                                    VendorSite.VendorKind.FishMarket)).Append("  ");
 
             if (goodsNpc == null)
                 Debug.LogWarning("[Vendors] No Alien7Vendor in the scene — skipping GoodsVendor.prefab.");
             else
                 log.Append(BuildOne(goodsNpc.gameObject, GoodsStandPrefab, GoodsPrefabPath,
-                                    VendorSite.VendorKind.GoodsVendor, "GENERAL GOODS"));
+                                    VendorSite.VendorKind.GoodsVendor));
 
             // Tag the existing Humble Abode stands so they join the economy table
             // alongside the new prefab instances. The scene stand itself is left
@@ -91,10 +91,11 @@ public static class VendorPrefabBuilder
     /// <summary>
     /// Assemble one vendor prefab: a clean stand, the vendor alien parented to it
     /// at the same local pose it has in the scene, every gameplay component
-    /// copied verbatim, plus a VendorSite on the root and a readable board.
+    /// copied verbatim, plus a VendorSite on the root. No sign: Sam cut the
+    /// floating boards on 2026-09-07 — the sell panel's PRICES tab is the list.
     /// </summary>
     static string BuildOne(GameObject sceneNpc, string standPrefabPath, string outPath,
-                           VendorSite.VendorKind kind, string boardHeading)
+                           VendorSite.VendorKind kind)
     {
         var standSrc = AssetDatabase.LoadAssetAtPath<GameObject>(standPrefabPath);
         if (standSrc == null) return $"MISSING stand prefab {standPrefabPath}";
@@ -108,11 +109,6 @@ public static class VendorPrefabBuilder
 
         try
         {
-            // Board FIRST, while the stand is the only thing here: the vendor
-            // alien is scaled 3x and would drag the measured height up over its
-            // head, hanging the sign in mid air above the stall.
-            AddBoard(root, boardHeading);
-
             // Vendor alien, posed exactly as the working one is posed.
             var alien = (GameObject)PrefabUtility.InstantiatePrefab(alienSrc);
             alien.name = sceneNpc.name;
@@ -191,68 +187,6 @@ public static class VendorPrefabBuilder
         return type.GetProperty("Instance", F) != null || type.GetField("Instance", F) != null;
     }
 
-    /// <summary>Add the look-at board to the stand, positioned above the counter.
-    /// Sam moves it; the prefab only needs it to exist somewhere sane.</summary>
-    static void AddBoard(GameObject root, string heading)
-    {
-        var existing = root.transform.Find("Board");
-        if (existing != null) Object.DestroyImmediate(existing.gameObject);
-
-        var go = new GameObject("Board");
-        go.transform.SetParent(root.transform, false);
-
-        // Where the sign goes. Preferred: straight above the vendor NPC, who
-        // stands at the counter by construction — that survives a MESH-COMBINED
-        // stand, whose "largest renderer" is the whole village chunk and put the
-        // Humble Abode sign 65 m away (2026-09-07). Fallback for a stand with no
-        // NPC yet: just above the biggest renderer, which on the untouched pack
-        // prefab is the stall itself. Sam nudges from here either way.
-        Transform npc = null;
-        var fish = root.GetComponentInChildren<FishMarketNPC>(true);
-        if (fish != null) npc = fish.transform;
-        else { var goods = root.GetComponentInChildren<Alien7Vendor>(true); if (goods != null) npc = goods.transform; }
-
-        if (npc != null)
-        {
-            var p = root.transform.InverseTransformPoint(npc.position);
-            go.transform.localPosition = new Vector3(p.x, p.y + 4.1f, p.z);
-        }
-        else
-        {
-            var b = StallBounds(root);
-            go.transform.localPosition = new Vector3(b.center.x, b.max.y + 0.45f, b.center.z);
-        }
-        go.transform.localRotation = Quaternion.identity;
-
-        var board = go.AddComponent<VendorBoard>();
-        board.heading = heading;
-    }
-
-    /// <summary>Local-space bounds of the stall itself — the single largest
-    /// renderer in the stand. Props (fish, knives, a rod stood on end) are all
-    /// small next to the structure, so "biggest" reliably picks the building.</summary>
-    static Bounds StallBounds(GameObject root)
-    {
-        var rends = root.GetComponentsInChildren<Renderer>(true);
-        if (rends.Length == 0) return new Bounds(Vector3.zero, Vector3.one * 2f);
-
-        Renderer best = null;
-        float bestVol = -1f;
-        for (int i = 0; i < rends.Length; i++)
-        {
-            var s = rends[i].bounds.size;
-            float vol = s.x * s.y * s.z;
-            if (vol > bestVol) { bestVol = vol; best = rends[i]; }
-        }
-
-        var inv = root.transform.worldToLocalMatrix;
-        var wb  = best.bounds;
-        var b   = new Bounds(inv.MultiplyPoint3x4(wb.center), Vector3.zero);
-        b.Encapsulate(inv.MultiplyPoint3x4(wb.min));
-        b.Encapsulate(inv.MultiplyPoint3x4(wb.max));
-        return b;
-    }
-
     /// <summary>Give an existing hand-built scene vendor the VendorSite marker so it
     /// takes part in the economy exactly like a prefab instance. Returns true if
     /// something was added.</summary>
@@ -269,20 +203,7 @@ public static class VendorPrefabBuilder
 
         var site = host.AddComponent<VendorSite>();
         site.kind = kind;
-        EnsureBoard(host, kind == VendorSite.VendorKind.FishMarket ? "FISH MARKET" : "GENERAL GOODS");
         EditorUtility.SetDirty(host);
-        return true;
-    }
-
-    /// <summary>Give a stand a Board child if it has none. The prefab instances
-    /// carry one; the ORIGINAL Humble Abode stands are loose scene objects and
-    /// were only tagged, so the one market every player sees first had no sign
-    /// at all (2026-09-07 playtest).</summary>
-    public static bool EnsureBoard(GameObject standRoot, string heading)
-    {
-        if (standRoot.GetComponentInChildren<VendorBoard>(true) != null) return false;
-        AddBoard(standRoot, heading);
-        EditorUtility.SetDirty(standRoot);
         return true;
     }
 

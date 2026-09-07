@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FISH SELL UI — 4 mockups</title>
+<style>
+/* Palette lifted from FishMarketNPC's constants so these read as the game,
+   not as a web page about the game. */
+:root{
+  --bg:#080e1a; --card:#121a30; --divider:#2d3c5f; --scroll:#050812;
+  --title:#3cdcbe; --label:#dce6ff; --sub:#788cb9; --hint:#415073;
+  --gold:#ffd732; --common:#8cafff; --uncommon:#3cdcbe; --rare:#ffd232;
+  --btn-add:#285fc8; --btn-sell:#23a550; --btn-rem:#aa2020; --btn-mute:#3c466e;
+  --mono:ui-monospace,'Cascadia Mono',Consolas,'DejaVu Sans Mono',monospace;
+  --sans:'Segoe UI',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#03060c;color:var(--label);font-family:var(--sans);padding:22px;
+     display:flex;flex-direction:column;align-items:center;gap:16px}
+h1{font-family:var(--mono);font-size:14px;letter-spacing:.24em;color:var(--sub);font-weight:400}
+.intro{max-width:920px;font-size:13px;line-height:1.6;color:var(--sub)}
+.intro b{color:var(--label)}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.tab{font-family:var(--mono);font-size:12px;letter-spacing:.12em;padding:8px 16px;
+     background:#0c1526;color:var(--sub);border:1px solid var(--divider);border-radius:5px;cursor:pointer}
+.tab.on{background:var(--title);color:#04120f;border-color:var(--title);font-weight:700}
+.about{max-width:920px;font-size:13px;line-height:1.6;color:var(--sub);background:#070c16;
+       border:1px solid #14203a;border-radius:6px;padding:12px 14px}
+.about b{color:var(--title)}
+.mock{display:none;width:920px}
+.mock.on{display:block}
+.panel{background:var(--bg);border:1px solid #1e2c4c;border-radius:10px;overflow:hidden;
+       box-shadow:0 0 0 1px #000, 0 30px 80px rgba(0,0,0,.6)}
+.word{font-family:var(--mono);font-size:10px;letter-spacing:.14em;padding:2px 7px;border-radius:3px;
+      border:1px solid currentColor;white-space:nowrap}
+.w-local{color:var(--common)} .w-import{color:var(--uncommon)} .w-delic{color:var(--rare)} .w-unl{color:var(--hint)}
+.money{color:var(--gold);font-family:var(--mono)}
+.fish-dot{width:10px;height:10px;border-radius:50%;flex:none}
+button{font-family:var(--sans);border:0;border-radius:6px;color:#fff;cursor:pointer;font-weight:600}
+.thumb{width:54px;height:40px;border-radius:5px;background:linear-gradient(135deg,#0d1730,#1a2a50);
+       position:relative;flex:none;overflow:hidden}
+.thumb:after{content:"";position:absolute;left:12px;top:14px;width:30px;height:12px;border-radius:50% 60% 60% 50%;
+             background:var(--c,#6b7a3a);opacity:.95;transform:rotate(-8deg)}
+.thumb:before{content:"";position:absolute;left:38px;top:11px;border:7px solid transparent;border-left-color:var(--c,#6b7a3a);opacity:.95}
+.hidden{display:none!important}
+
+/* ── A · LEDGER ─────────────────────────────────────────────── */
+#A .head{display:flex;align-items:baseline;padding:14px 18px;border-bottom:1px solid var(--divider);gap:14px}
+#A .head .t{font-family:var(--mono);font-size:19px;letter-spacing:.18em;color:var(--title)}
+#A .head .p{font-size:12px;color:var(--sub)}
+#A .head .wallet{margin-left:auto;font-size:13px;color:var(--sub)}
+#A .cols{display:grid;grid-template-columns:1.25fr 1fr;gap:0}
+#A .col{padding:12px 16px;min-height:360px}
+#A .col+.col{border-left:1px solid var(--divider)}
+#A .ch{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--sub);margin-bottom:8px;display:flex;justify-content:space-between}
+#A .row{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:6px;background:var(--card);margin-bottom:6px;cursor:pointer;border:1px solid transparent}
+#A .row:hover{border-color:#26406a}
+#A .row.sel{border-color:var(--title);background:#132a34}
+#A .row .n{flex:1}
+#A .row .n b{font-size:14px;display:block}
+#A .row .n span{font-size:11px;color:var(--sub)}
+#A .row .cb{width:16px;height:16px;border:1px solid var(--divider);border-radius:3px;flex:none;display:grid;place-items:center;font-size:11px;color:#04120f}
+#A .row.sel .cb{background:var(--title);border-color:var(--title)}
+#A .prow{display:flex;align-items:center;gap:10px;padding:7px 8px;border-bottom:1px solid #111a2e;font-size:13px}
+#A .prow .n{flex:1}
+#A .foot{display:flex;align-items:center;gap:12px;padding:12px 18px;border-top:1px solid var(--divider);background:#060b15}
+#A .foot .tot{font-family:var(--mono);font-size:16px}
+#A .foot .tot b{color:var(--gold)}
+#A .foot .sp{flex:1}
+#A .foot button{padding:10px 18px}
+#A .ghost{background:transparent;border:1px solid var(--divider);color:var(--sub);font-weight:400}
+
+/* ── B · COUNTER ────────────────────────────────────────────── */
+#B .wants{padding:12px 16px;border-bottom:1px dashed #2a3a5f;background:#0a1222}
+#B .wants .ch{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--sub);margin-bottom:8px}
+#B .chips{display:flex;flex-wrap:wrap;gap:6px}
+#B .chip{display:flex;align-items:center;gap:7px;padding:5px 9px;border-radius:14px;background:var(--card);font-size:12px;border:1px solid #1d2b48}
+#B .chip .money{font-size:12px}
+#B .counter{position:relative;padding:14px 16px;min-height:120px;background:
+   repeating-linear-gradient(90deg,#0b1424 0 40px,#0d1728 40px 80px)}
+#B .counter .ch{position:absolute;left:16px;top:8px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--title)}
+#B .tray{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px;min-height:70px}
+#B .tray .empty{color:var(--hint);font-size:13px;align-self:center;padding:10px}
+#B .bag{padding:12px 16px}
+#B .bag .ch{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--sub);margin-bottom:8px}
+#B .grid{display:flex;gap:10px;flex-wrap:wrap}
+#B .fcard{width:200px;background:var(--card);border-radius:8px;padding:8px;display:flex;gap:8px;align-items:center;cursor:pointer;border:1px solid transparent;transition:transform .12s}
+#B .fcard:hover{border-color:#2b4a72;transform:translateY(-2px)}
+#B .fcard.up{border-color:var(--title)}
+#B .fcard .i b{display:block;font-size:13px}
+#B .fcard .i span{font-size:11px;color:var(--sub)}
+#B .foot{display:flex;align-items:center;gap:12px;padding:12px 16px;border-top:1px solid var(--divider);background:#060b15}
+#B .foot .tot{font-family:var(--mono);font-size:16px;flex:1}
+#B .foot .tot b{color:var(--gold)}
+#B .foot button{padding:10px 18px}
+
+/* ── C · PHOSPHOR RECEIPT ───────────────────────────────────── */
+#C .panel{background:#020806;border-color:#0f3a2a;font-family:var(--mono);color:#b9ffe0;
+   box-shadow:0 0 0 1px #000, inset 0 0 120px rgba(20,255,160,.06), 0 30px 80px rgba(0,0,0,.6)}
+#C .scan{position:relative}
+#C .scan:after{content:"";pointer-events:none;position:absolute;inset:0;
+   background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0 2px,transparent 2px 4px)}
+#C .hd{padding:12px 18px;border-bottom:1px solid #0f3a2a;display:flex;gap:16px;font-size:12px;letter-spacing:.12em;color:#5fd9a8}
+#C .hd b{color:#dcffef}
+#C .hd .r{margin-left:auto}
+#C table{width:100%;border-collapse:collapse;font-size:13px}
+#C th{text-align:left;font-weight:400;font-size:10px;letter-spacing:.18em;color:#3f9c78;padding:10px 18px 6px;border-bottom:1px solid #0f3a2a}
+#C td{padding:7px 18px;border-bottom:1px solid #06180f;vertical-align:middle}
+#C tr.f{cursor:pointer}
+#C tr.f:hover td{background:#052016}
+#C tr.f.sel td{background:#0a3a26;color:#eafff5}
+#C .k{color:#5fd9a8}
+#C .g{color:#ffe36a}
+#C .dim{color:#2f7a5d}
+#C .sect{padding:10px 18px 4px;font-size:10px;letter-spacing:.2em;color:#3f9c78}
+#C .sum{display:flex;gap:18px;padding:12px 18px;border-top:1px solid #0f3a2a;font-size:13px;align-items:center}
+#C .sum .sp{flex:1}
+#C .key{color:#3f9c78;font-size:11px}
+#C .key b{color:#dcffef;border:1px solid #2f7a5d;padding:1px 6px;border-radius:3px;margin-right:4px}
+#C .cur{display:inline-block;width:8px;height:14px;background:#5fd9a8;vertical-align:-2px;animation:blink 1s steps(2) infinite}
+@keyframes blink{50%{opacity:0}}
+
+/* ── D · FOCUS ──────────────────────────────────────────────── */
+#D .top{display:grid;grid-template-columns:1fr 1.1fr;min-height:300px}
+#D .stage{position:relative;background:radial-gradient(ellipse at 50% 60%,#14264a 0,#080e1a 65%);display:grid;place-items:center;border-right:1px solid var(--divider)}
+#D .bigfish{width:220px;height:110px;position:relative}
+#D .bigfish:after{content:"";position:absolute;left:30px;top:30px;width:130px;height:52px;border-radius:50% 60% 60% 50%;background:var(--c,#5a3c9e);box-shadow:0 12px 40px rgba(0,0,0,.6);transform:rotate(-6deg)}
+#D .bigfish:before{content:"";position:absolute;left:150px;top:20px;border:30px solid transparent;border-left-color:var(--c,#5a3c9e)}
+#D .stage .nav{position:absolute;bottom:12px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--sub)}
+#D .stage .nav b{color:var(--label);border:1px solid var(--divider);padding:1px 6px;border-radius:3px}
+#D .detail{padding:16px 18px;display:flex;flex-direction:column;gap:10px}
+#D .detail h2{font-size:22px;letter-spacing:.04em}
+#D .detail .meta{color:var(--sub);font-size:13px}
+#D .calc{background:var(--card);border-radius:8px;padding:10px 12px;font-family:var(--mono);font-size:13px;display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px}
+#D .calc .l{color:var(--sub)}
+#D .calc .t{border-top:1px solid var(--divider);padding-top:6px;margin-top:2px;font-size:15px}
+#D .calc .t.v{color:var(--gold)}
+#D .appet{font-size:12px;color:var(--sub)}
+#D .appet i{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--divider);margin-right:3px}
+#D .appet i.on{background:var(--rare)}
+#D .acts{display:flex;gap:10px;margin-top:auto}
+#D .acts button{padding:10px 16px;flex:1}
+#D .strip{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--divider);overflow-x:auto;background:#060b15}
+#D .mini{width:64px;flex:none;border-radius:6px;background:var(--card);padding:5px;cursor:pointer;border:1px solid transparent;text-align:center}
+#D .mini.cur{border-color:var(--title)}
+#D .mini.sold{opacity:.35}
+#D .mini .thumb{width:100%;height:36px}
+#D .mini span{font-size:10px;color:var(--sub);display:block;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#D .foot{display:flex;align-items:center;gap:12px;padding:10px 16px;border-top:1px solid var(--divider);font-family:var(--mono);font-size:13px;color:var(--sub)}
+#D .foot .sp{flex:1}
+#D .foot .money{font-size:15px}
+</style>
+</head>
+<body>
+
+<h1>FISH SELL UI — FOUR DIRECTIONS</h1>
+<div class="intro">
+  Click things — each one stages fish and totals live. Same data in all four: you're at <b>Icey Twin</b>
+  with seven fish in the bag, three of them worth a trip. The number the market pays is always
+  <b>base × bucket × appetite</b>, shown before you commit. The question each mockup answers
+  differently: <b>where does "what do they want" live, and how do you pick what to sell?</b>
+</div>
+
+<div class="tabs">
+  <div class="tab on" data-m="A">A · LEDGER</div>
+  <div class="tab" data-m="B">B · COUNTER</div>
+  <div class="tab" data-m="C">C · PHOSPHOR RECEIPT</div>
+  <div class="tab" data-m="D">D · FOCUS</div>
+</div>
+
+<!-- ═══════════════════════ A ═══════════════════════ -->
+<div class="mock on" id="A">
+<div class="about"><b>Ledger.</b> Two columns, no modes. Your bag on the left, what this market pays on the right, always both visible.
+Tick fish to sell them; the right column highlights the matching rate so you can see <i>why</i> a fish is worth what it is.
+Least change from today, most information on screen. Risk: dense on a controller.</div>
+<div class="panel">
+  <div class="head"><div class="t">FISH MARKET</div><div class="p">Icey Twin · Vendor: Alien4</div><div class="wallet">Wallet <span class="money">$412</span></div></div>
+  <div class="cols">
+    <div class="col">
+      <div class="ch"><span>YOUR BAG</span><span id="A-cnt">0 selected</span></div>
+      <div id="A-bag"></div>
+    </div>
+    <div class="col">
+      <div class="ch"><span>THIS MARKET PAYS</span><span>per lb · right now</span></div>
+      <div id="A-prices"></div>
+      <div style="font-size:11px;color:var(--hint);margin-top:8px">Anything not listed: 0.50× its base price</div>
+    </div>
+  </div>
+  <div class="foot">
+    <div class="tot">TOTAL <b id="A-tot">$0</b></div><div class="sp"></div>
+    <button class="ghost" onclick="A_all()">Select all worth it</button>
+    <button style="background:var(--btn-sell)" onclick="sell('A')">Sell selected</button>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════════════ B ═══════════════════════ -->
+<div class="mock" id="B">
+<div class="about"><b>Counter.</b> Physical metaphor: the market's wants are a strip of chips along the top, your fish are cards in the bag below,
+and clicking a card <i>puts it on the counter</i>. Whatever is on the counter is what gets sold. Reads at a glance, feels like handing fish over.
+Risk: the chip strip gets long on a main world with 14 listed species.</div>
+<div class="panel">
+  <div class="wants"><div class="ch">ICEY TWIN MARKET BUYS</div><div class="chips" id="B-chips"></div></div>
+  <div class="counter"><div class="ch">ON THE COUNTER</div><div class="tray" id="B-tray"><div class="empty">Click a fish below to put it on the counter.</div></div></div>
+  <div class="bag"><div class="ch">YOUR BAG</div><div class="grid" id="B-bag"></div></div>
+  <div class="foot"><div class="tot">Counter total <b id="B-tot">$0</b></div>
+    <button style="background:var(--btn-mute)" onclick="B_clear()">Take it all back</button>
+    <button style="background:var(--btn-sell)" onclick="sell('B')">Sell what's on the counter</button></div>
+</div>
+</div>
+
+<!-- ═══════════════════════ C ═══════════════════════ -->
+<div class="mock" id="C">
+<div class="about"><b>Phosphor receipt.</b> Same family as the PHOSPHOR dialogue UI: a terminal printing a receipt. One table — species, weight, the rate this market pays, what you'd get —
+and the "wanted" list is just the rows at the bottom you don't have yet. Best on keyboard/controller (up/down/space), cheapest to build, fits the game's other screens.
+Risk: less warm; no fish pictures.</div>
+<div class="panel scan">
+  <div class="hd"><span>ICEY TWIN <b>FISH MARKET</b></span><span>RATE = BASE × BUCKET × APPETITE</span><span class="r">WALLET <b class="g">$412</b></span></div>
+  <div class="sect">YOUR CATCH <span class="cur"></span></div>
+  <table><thead><tr><th style="width:26px"></th><th>SPECIES</th><th>LB</th><th>BUCKET</th><th>RATE</th><th style="text-align:right">PAYS</th></tr></thead><tbody id="C-bag"></tbody></table>
+  <div class="sect">ALSO WANTED HERE — NOT IN YOUR BAG</div>
+  <table><tbody id="C-wants"></tbody></table>
+  <div class="sum"><span class="key"><b>↑↓</b>move <b>SPACE</b>mark <b>ENTER</b>sell <b>ESC</b>leave</span><span class="sp"></span>
+    <span>MARKED <b id="C-cnt" class="k">0</b></span><span>TOTAL <b id="C-tot" class="g">$0</b></span>
+    <button style="background:#0f6b45;font-family:var(--mono)" onclick="sell('C')">PRINT &amp; SELL</button></div>
+</div>
+</div>
+
+<!-- ═══════════════════════ D ═══════════════════════ -->
+<div class="mock" id="D">
+<div class="about"><b>Focus.</b> One fish at a time, big, with the price worked out in front of you — base, the bucket word, the appetite dots — and a strip of the rest along the bottom.
+Sell this one, or add it to a batch. The most "game" of the four and the most controller-friendly (left/right, A). Risk: slow if you have twenty fish.</div>
+<div class="panel">
+  <div class="top">
+    <div class="stage"><div class="bigfish" id="D-fish"></div><div class="nav"><b>◀</b> browse <b>▶</b></div></div>
+    <div class="detail">
+      <h2 id="D-name">—</h2><div class="meta" id="D-meta"></div>
+      <div class="calc" id="D-calc"></div>
+      <div class="appet" id="D-appet"></div>
+      <div class="acts"><button style="background:var(--btn-add)" onclick="D_batch()">Add to batch</button><button style="background:var(--btn-sell)" onclick="D_sellOne()">Sell this one</button></div>
+    </div>
+  </div>
+  <div class="strip" id="D-strip"></div>
+  <div class="foot"><span>BATCH <b id="D-cnt">0</b> fish</span><span class="sp"></span><span>BATCH TOTAL <span class="money" id="D-tot">$0</span></span><button style="background:var(--btn-sell);padding:8px 14px" onclick="sell('D')">Sell batch</button></div>
+</div>
+</div>
+
+<script>
+/* ── shared data: Icey Twin's table + a bag ─────────────────── */
+const TABLE = {
+  local:    [['bassk','Bassk',1.0],['wallop','Wallop',1.0],['nullpike','Nullpike',1.5],['flubb','Flubb',1.7],['zibbet','Zibbet',2.2],['muskrellon','Muskrellon',2.0]],
+  imported: [['perchik','Perchik',1.0],['coelancer','Coelancer',2.4],['murkfin','Murkfin',1.5],['smelk','Smelk',1.2],['sturgle','Sturgle',1.5]],
+  delicacy: [['marlorb','Marlorb',2.0],['snagg','Snagg',2.3],['tarpune','Tarpune',2.2]],
+};
+const MULT = {local:1, imported:1.75, delicacy:3, unlisted:0.5};
+const APPETITE = {marlorb:1};          // already sold one marlorb here → 15% off
+const COLORS = {bassk:'#6b7a3a',wallop:'#7a7aa8',marlorb:'#5a3c9e',snagg:'#2e8a6a',perchik:'#d8b83a',grubbler:'#8a6e3c',flubb:'#c47ab8',truttle:'#b08d5a'};
+const BAG = [
+  {id:'marlorb',n:'Marlorb',lb:31}, {id:'marlorb',n:'Marlorb',lb:24}, {id:'snagg',n:'Snagg',lb:19},
+  {id:'bassk',n:'Bassk',lb:4}, {id:'wallop',n:'Wallop',lb:6}, {id:'perchik',n:'Perchik',lb:3}, {id:'grubbler',n:'Grubbler',lb:5},
+];
+const WORD = {local:'LOCAL',imported:'IMPORTED',delicacy:'DELICACY',unlisted:'UNLISTED'};
+const WCLS = {local:'w-local',imported:'w-import',delicacy:'w-delic',unlisted:'w-unl'};
+function bucketOf(id){ for(const k of ['delicacy','imported','local']) if(TABLE[k].some(r=>r[0]===id)) return k; return 'unlisted'; }
+function baseOf(id){ for(const k in TABLE){const r=TABLE[k].find(r=>r[0]===id); if(r) return r[2];} return 1.0; }
+function rateOf(id){ const b=bucketOf(id); let m=MULT[b]; if(b==='imported'||b==='delicacy'){ m=Math.max(1, m*(1-0.15*(APPETITE[id]||0))); } return baseOf(id)*m; }
+function priceOf(f){ return Math.max(1, Math.round(rateOf(f.id)*f.lb)); }
+const $ = s=>document.querySelector(s);
+const fmt = n=>'$'+n.toLocaleString();
+const sel = {A:new Set(),B:new Set(),C:new Set(),D:new Set()};
+function tot(m){ let t=0; sel[m].forEach(i=>t+=priceOf(BAG[i])); return t; }
+function sell(m){ if(!sel[m].size) return alert('Nothing selected.'); alert('Sale complete!  You earned  '+fmt(tot(m))+'\n\n(mockup — nothing changes)'); }
+
+/* tabs */
+document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x===t));
+  document.querySelectorAll('.mock').forEach(x=>x.classList.toggle('on',x.id===t.dataset.m));
+});
+
+/* ── A ── */
+function A_render(){
+  $('#A-bag').innerHTML = BAG.map((f,i)=>{const b=bucketOf(f.id);return `<div class="row ${sel.A.has(i)?'sel':''}" onclick="A_t(${i})">
+    <div class="cb">${sel.A.has(i)?'✓':''}</div><div class="thumb" style="--c:${COLORS[f.id]||'#556'}"></div>
+    <div class="n"><b>${f.n}</b><span>${f.lb} lb · $${rateOf(f.id).toFixed(2)}/lb</span></div>
+    <span class="word ${WCLS[b]}">${WORD[b]}</span><span class="money">${fmt(priceOf(f))}</span></div>`}).join('');
+  const inBag = new Set(BAG.map(f=>f.id)); const hi = new Set([...sel.A].map(i=>BAG[i].id));
+  $('#A-prices').innerHTML = ['delicacy','imported','local'].map(k=>TABLE[k].map(([id,n])=>
+    `<div class="prow" style="${hi.has(id)?'background:#132a34;border-radius:5px':''}"><span class="word ${WCLS[k]}">${WORD[k]}</span><span class="n">${n}${inBag.has(id)?' <span style="color:var(--sub);font-size:11px">· in bag</span>':''}</span><span class="money">$${rateOf(id).toFixed(2)}/lb</span></div>`).join('')).join('');
+  $('#A-cnt').textContent = sel.A.size+' selected'; $('#A-tot').textContent = fmt(tot('A'));
+}
+function A_t(i){ sel.A.has(i)?sel.A.delete(i):sel.A.add(i); A_render(); }
+function A_all(){ BAG.forEach((f,i)=>{ if(bucketOf(f.id)!=='unlisted') sel.A.add(i); }); A_render(); }
+
+/* ── B ── */
+function B_render(){
+  $('#B-chips').innerHTML = ['delicacy','imported','local'].map(k=>TABLE[k].map(([id,n])=>
+    `<div class="chip"><span class="word ${WCLS[k]}">${WORD[k]}</span>${n}<span class="money">$${rateOf(id).toFixed(2)}/lb</span></div>`).join('')).join('');
+  const tray = [...sel.B].map(i=>{const f=BAG[i];return `<div class="fcard up" onclick="B_t(${i})"><div class="thumb" style="--c:${COLORS[f.id]||'#556'}"></div><div class="i"><b>${f.n}</b><span>${f.lb} lb · ${WORD[bucketOf(f.id)]}</span></div><span class="money">${fmt(priceOf(f))}</span></div>`}).join('');
+  $('#B-tray').innerHTML = tray || '<div class="empty">Click a fish below to put it on the counter.</div>';
+  $('#B-bag').innerHTML = BAG.map((f,i)=>sel.B.has(i)?'':`<div class="fcard" onclick="B_t(${i})"><div class="thumb" style="--c:${COLORS[f.id]||'#556'}"></div><div class="i"><b>${f.n}</b><span>${f.lb} lb · <span class="${WCLS[bucketOf(f.id)]}">${WORD[bucketOf(f.id)]}</span></span></div><span class="money">${fmt(priceOf(f))}</span></div>`).join('');
+  $('#B-tot').textContent = fmt(tot('B'));
+}
+function B_t(i){ sel.B.has(i)?sel.B.delete(i):sel.B.add(i); B_render(); }
+function B_clear(){ sel.B.clear(); B_render(); }
+
+/* ── C ── */
+function C_render(){
+  $('#C-bag').innerHTML = BAG.map((f,i)=>{const b=bucketOf(f.id);return `<tr class="f ${sel.C.has(i)?'sel':''}" onclick="C_t(${i})"><td class="k">${sel.C.has(i)?'[x]':'[ ]'}</td><td>${f.n}</td><td>${f.lb}</td><td class="${b==='unlisted'?'dim':'k'}">${WORD[b]}</td><td>$${rateOf(f.id).toFixed(2)}/lb</td><td class="g" style="text-align:right">${fmt(priceOf(f))}</td></tr>`}).join('');
+  const inBag = new Set(BAG.map(f=>f.id));
+  $('#C-wants').innerHTML = ['delicacy','imported','local'].flatMap(k=>TABLE[k].filter(([id])=>!inBag.has(id)).map(([id,n])=>`<tr><td class="dim" style="width:26px">·</td><td class="dim">${n}</td><td class="dim">—</td><td class="dim">${WORD[k]}</td><td class="dim">$${rateOf(id).toFixed(2)}/lb</td><td></td></tr>`)).join('');
+  $('#C-cnt').textContent = sel.C.size; $('#C-tot').textContent = fmt(tot('C'));
+}
+function C_t(i){ sel.C.has(i)?sel.C.delete(i):sel.C.add(i); C_render(); }
+document.addEventListener('keydown',e=>{ if(!$('#C').classList.contains('on')) return;
+  if(e.key===' '){ e.preventDefault(); C_t(Ccur); } if(e.key==='ArrowDown'){Ccur=Math.min(BAG.length-1,Ccur+1);C_render();} if(e.key==='ArrowUp'){Ccur=Math.max(0,Ccur-1);C_render();} if(e.key==='Enter') sell('C'); });
+let Ccur=0;
+
+/* ── D ── */
+let Dcur=0; const Dsold=new Set();
+function D_render(){
+  const f=BAG[Dcur], b=bucketOf(f.id), base=baseOf(f.id), ap=APPETITE[f.id]||0, m=MULT[b], eff=(b==='imported'||b==='delicacy')?Math.max(1,m*(1-0.15*ap)):m;
+  $('#D-fish').style.setProperty('--c',COLORS[f.id]||'#556');
+  $('#D-name').textContent=f.n; $('#D-meta').innerHTML=`${f.lb} lb · <span class="word ${WCLS[b]}">${WORD[b]}</span> here at Icey Twin`;
+  $('#D-calc').innerHTML=`<span class="l">base</span><span>$${base.toFixed(2)}/lb × ${f.lb} lb</span><span>${fmt(Math.round(base*f.lb))}</span>
+    <span class="l">bucket</span><span>${WORD[b].toLowerCase()} × ${m.toFixed(2)}</span><span></span>
+    <span class="l">appetite</span><span>${ap?`sold ${ap} here lately · −${ap*15}%`:'fresh · full price'}</span><span></span>
+    <span class="t l">pays</span><span class="t"></span><span class="t v">${fmt(priceOf(f))}</span>`;
+  $('#D-appet').innerHTML = (b==='imported'||b==='delicacy') ? `market appetite <i class="${ap<1?'on':''}"></i><i class="${ap<2?'on':''}"></i><i class="${ap<3?'on':''}"></i><i class="${ap<4?'on':''}"></i> — each one you sell here cools it 15%; it recovers a step a day` : `local catch — never cools`;
+  $('#D-strip').innerHTML = BAG.map((g,i)=>`<div class="mini ${i===Dcur?'cur':''} ${sel.D.has(i)?'sold':''}" onclick="Dcur=${i};D_render()"><div class="thumb" style="--c:${COLORS[g.id]||'#556'}"></div><span>${g.n} ${g.lb}lb</span></div>`).join('');
+  $('#D-cnt').textContent=sel.D.size; $('#D-tot').textContent=fmt(tot('D'));
+}
+function D_batch(){ sel.D.has(Dcur)?sel.D.delete(Dcur):sel.D.add(Dcur); D_render(); }
+function D_sellOne(){ alert('Sold '+BAG[Dcur].n+' for '+fmt(priceOf(BAG[Dcur]))+'\n\n(mockup)'); }
+document.addEventListener('keydown',e=>{ if(!$('#D').classList.contains('on')) return; if(e.key==='ArrowRight'){Dcur=(Dcur+1)%BAG.length;D_render();} if(e.key==='ArrowLeft'){Dcur=(Dcur+BAG.length-1)%BAG.length;D_render();} });
+
+A_render(); B_render(); C_render(); D_render();
+</script>
+</body>
+</html>
