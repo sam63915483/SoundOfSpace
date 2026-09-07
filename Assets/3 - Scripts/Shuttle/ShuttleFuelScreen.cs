@@ -34,12 +34,15 @@ using UnityEngine;
 public class ShuttleFuelScreen : MonoBehaviour
 {
     [Header("Fit")]
-    [Tooltip("Fraction of the panel face the readout fills. 1 = right to the edges.")]
-    [Range(0.5f, 1f)] public float fillFraction = 0.94f;
+    [Tooltip("Fraction of the panel face the readout fills. 1 = right to the edges. " +
+             "0.78 leaves a margin so the text sits ON a screen rather than bursting " +
+             "out of it (Sam, 2026-09-07: 0.94 filled it a little too completely).")]
+    [Range(0.4f, 1f)] public float fillFraction = 0.78f;
 
-    [Tooltip("How far off the +Z face the text floats, as a fraction of the panel's " +
-             "thickness. Just enough to beat z-fighting with the panel itself.")]
-    public float lift = 0.62f;
+    [Tooltip("Gap between the text and the panel face, in METRES. Two millimetres is " +
+             "enough to beat z-fighting and reads as printed on the glass; anything " +
+             "much more and the readout visibly hovers off the screen.")]
+    public float surfaceGapMetres = 0.002f;
 
     [Tooltip("The readout faces the panel's +Z (blue arrow). Tick this if the text comes " +
              "out MIRRORED — that means you are seeing the BACK of it, and this turns it " +
@@ -160,10 +163,14 @@ public class ShuttleFuelScreen : MonoBehaviour
 
         go.transform.localScale = new Vector3(fit / Safe(s.x), fit / Safe(s.y), fit / Safe(s.z));
 
-        // Sit just proud of the face (a unit cube's face is at z = +0.5).
-        // TMP reads correctly from its own +Z side; if that points away from the
-        // player the text shows through mirrored, so this turns it round in place.
-        go.transform.localPosition = new Vector3(0f, 0f, 0.5f + lift * 0.5f);
+        // Sit just proud of the face. A unit cube's face is at z = +0.5, and one
+        // local Z unit is the panel's WORLD thickness — so converting a fixed
+        // gap in metres through that keeps the text the same hair's breadth off
+        // the glass whatever the panel's size. (Expressing the gap as a fraction
+        // of thickness, as this first did, floated it ~5 cm off a 20 cm-thick
+        // panel: it read as hovering in front of the screen rather than on it.)
+        float thicknessM = Mathf.Max(0.0001f, Mathf.Abs(transform.lossyScale.z));
+        go.transform.localPosition = new Vector3(0f, 0f, 0.5f + surfaceGapMetres / thicknessM);
         go.transform.localRotation = faceTheOtherWay
             ? Quaternion.Euler(0f, 180f, 0f)
             : Quaternion.identity;
