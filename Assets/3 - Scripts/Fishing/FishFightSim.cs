@@ -79,6 +79,11 @@ public class FishFightSim
     readonly float _runIntervalMin, _runIntervalMax;
     float _nextRunIn;
     float _runRemaining;
+    /// Seconds since this push started — drives its wind-up.
+    float _runElapsed;
+    /// Seconds since the last pull from either end — you reeling or the fish
+    /// running. Drives how long the fish keeps the line up on its own.
+    float _idleSeconds;
     uint  _rng;
 
     float _slackSeconds2;   // seconds of dead-slack line, for the escape hatch
@@ -153,8 +158,27 @@ public class FishFightSim
         _nextRunIn = _canRun ? RandRange(boltMin, boltMax) : float.MaxValue;
     }
 
-    /// <summary>Pull in force right now — doubled mid-run. Drives the rod bend.</summary>
-    public float CurrentPull => IsRunning ? basePull * FishingRules.RunPullMultiplier : basePull;
+    /// <summary>
+    /// Start the fight with the line already as tight as it really is.
+    ///
+    /// A fish hooked while you are WORKING the lure is hooked on a line that is
+    /// already bar-tight — but the fight used to begin at zero, so the line
+    /// visibly popped from tight to slack at the exact moment of the bite and
+    /// then had to be pulled tight again. One of the two "the line goes droopy
+    /// when it shouldn't" moments (the other was the end of the fight; see
+    /// Bobber).
+    /// </summary>
+    public void SeedLineTaut(float taut) => LineTaut = Clamp01(taut);
+
+    /// <summary>How far into its wind-up the current push is, 0-1. Zero when the
+    /// fish is not pushing.</summary>
+    public float RunRamp01 => IsRunning ? FishingRules.RunRamp(_runElapsed) : 0f;
+
+    /// <summary>Pull in force right now. A push winds UP to
+    /// RunPullMultiplier over RunRampSeconds rather than arriving at full
+    /// strength in one frame. Drives the rod bend, so the wind-up is visible.</summary>
+    public float CurrentPull
+        => basePull * (1f + (FishingRules.RunPullMultiplier - 1f) * RunRamp01);
 
     /// <summary>0-1 for the HUD bar. Above ~0.75 the bar shifts toward red.</summary>
     public float TensionFraction => Tension / FishingRules.TensionMax;
@@ -172,11 +196,21 @@ public class FishFightSim
     /// </summary>
     public float RodLoad(bool reeling)
     {
-        if (!LineIsTight) return 0f;
-        float load = 0f;
-        if (reeling)   load += 0.45f + 0.55f * TensionFraction;
-        if (IsRunning) load += 0.50f;
-        return load > 1f ? 1f : load;
+        // Fades in WITH the line rather than switching on at the tight
+        // threshold: "whenever you start reeling with the rod it bends a little
+        // bit as the line goes from slack to tight".
+        float taut = Clamp01(LineTaut);
+        if (taut <= 0.001f) return 0f;
+
+        // Everything above the fish's own weight IS the bar. No step for
+        // reeling, no step for a run — a run loads the rod because it spikes
+        // tension, which is the honest reason. The old version added 0.45 the
+        // instant you pressed the button and another 0.50 the instant a run
+        // started, so the rod jumped between three fixed poses; that is what
+        // "goes from a little bent to fully bent very fast" actually was.
+        float load = FishingRules.RodRestingLoad
+                   + (1f - FishingRules.RodRestingLoad) * TensionFraction;
+        return taut * Clamp01(load);
     }
 
     /// <summary>
@@ -193,10 +227,12 @@ public class FishFightSim
         {
             if (IsRunning)
             {
+                _runElapsed += dt;
                 _runRemaining -= dt;
                 if (_runRemaining <= 0f)
                 {
                     IsRunning = false;
+                    _runElapsed = 0f;
                     _nextRunIn = RandRange(_runIntervalMin, _runIntervalMax);
                 }
             }
@@ -206,6 +242,7 @@ public class FishFightSim
                 if (_nextRunIn <= 0f)
                 {
                     IsRunning = true;
+                    _runElapsed = 0f;
                     _runRemaining = RandRange(FishingRules.RunDurationMin,
                                               FishingRules.RunDurationMax);
                 }
@@ -216,7 +253,9 @@ public class FishFightSim
         // --- the fish takes line during a run, whatever the player does ---
         if (IsRunning)
         {
-            Distance += _runSpeed * dt;
+            // Winds up with the pull: the fish leans into it rather than
+            // teleporting to full speed.
+            Distance += _runSpeed * RunRamp01 * dt;
             if (Distance > StartDistance * FishingRules.MaxRunOutFactor)
                 Distance = StartDistance * FishingRules.MaxRunOutFactor;
             // Running costs the fish. This is what makes a fight finite even if
@@ -236,7 +275,20 @@ public class FishFightSim
         // you have to let go the instant a fish starts to move.
         if (holding && IsRunning) tautSeconds *= 0.35f;
         float tautRate = 1f / (anyPull ? tautSeconds : _slackSeconds);
-        LineTaut = MoveTowards(LineTaut, anyPull ? 1f : 0f, tautRate * dt);
+
+        // THE FISH HOLDS THE LINE. Releasing the reel used to send the line
+        // straight for fully slack, so it "gets droopy when it shouldn't" while
+        // there is still a fish on the end of it. It only really lets go once
+        // you have stopped reeling AND it has stopped fighting — so the floor
+        // is what fight it has left, fading out over a second of you doing
+        // nothing. That fade is also the visible warning that you are about to
+        // lose it: by the time the line is properly slack, the hook is coming
+        // out (see SlackEscapeSeconds).
+        if (anyPull) _idleSeconds = 0f; else _idleSeconds += dt;
+        float holdFade = 1f - Clamp01(_idleSeconds / FishingRules.FishHoldFadeSeconds);
+        float floorTaut = IsSpent ? 0f : Vigour * holdFade * FishingRules.FishHoldTaut;
+
+        LineTaut = MoveTowards(LineTaut, anyPull ? 1f : floorTaut, tautRate * dt);
 
         // ── 2. FORCE, but only down a TIGHT line ─────────────────────────
         if (holding && LineIsTight)
@@ -244,8 +296,11 @@ public class FishFightSim
             // Steady reeling is half rate; reeling INTO a run is full rate on
             // top of the doubled pull. And the whole thing eases off as the fish
             // tires, so the fight starts as a back-and-forth and ends as a haul.
-            float scale = (IsRunning ? FishingRules.RunTensionScale
-                                     : FishingRules.SteadyTensionScale)
+            // Lerped by the wind-up, not switched: the cost of reeling into a
+            // push climbs with the push instead of arriving with it.
+            float scale = (FishingRules.SteadyTensionScale
+                           + (FishingRules.RunTensionScale - FishingRules.SteadyTensionScale)
+                             * RunRamp01)
                         * FishingRules.TensionVigourScale(Vigour);
             Tension += _reelRate * CurrentPull * scale * dt;
             Stamina -= _drainRate * dt;

@@ -2121,3 +2121,115 @@ them, in `TabbedPauseMenu` and the legacy `SettingsMenu`.
 
 **Verification:** compile PASS (all three assemblies, 0 warnings); `verify-fishing.py`
 PASS 142 checks. **PLAYTEST PENDING** — `docs/PLAYTEST_FIXES_2026-09-08.md` §6-8.
+
+---
+
+## Addendum 2026-09-08c — The rod IS the bar; the cast is a charge; the push gets a wind-up
+
+Sam: *"the rod needs to be the same as the status bar, because eventually id like
+to remove the status bar and have it feeling so good you can just judge it from
+the rod"*, plus a playtest: *"commons dont fight at all ... rares were extremely
+hard to catch, i would be reeling and as soon as they start fighting and tugging
+it would snap off."*
+
+### 1. Rod bend = the fish's weight + the bar. Nothing else.
+
+`FishFightSim.RodLoad` was a **step function**: `+0.45` the instant you pressed
+reel, `+0.50` the instant a run began. Three fixed poses, jumped between. That is
+literally the reported "goes from a little bent to fully bent very fast". It is
+now `taut × (RodRestingLoad + (1 − RodRestingLoad) × TensionFraction)` — the rod
+fades in with the line and everything above the fish's weight is the bar.
+
+`BendCurve` softened with it (`BendAboveKnee` 2 → 1.5, knee 0.45/0.5, so it
+passes near the diagonal). And `rodBendResponse`/`rodReleaseResponse` were
+**inverted against their own tooltips** — load 12, release 7, i.e. the rod snapped
+INTO a bend and crawled out of one. Now 8 / 16.
+
+Measured contract, asserted in `[TEST] 7`: the bend never moves against the bar,
+never jumps more than **1.8% of full bow per frame cruising** or **4.1% mid-push**.
+The old stepped load could put 45% on in a single frame.
+
+`FishingTuning.showTensionBar` turns the bar off so the rod can be tried alone.
+
+### 2. The line stopped lying (two discontinuities)
+
+- **At the bite:** `Bobber.TryHookFish` built a fresh `FishFightSim` whose
+  `LineTaut` started at 0, so a fish hooked on a bar-tight retrieve popped the
+  line to slack. Now `SeedLineTaut(_retrieveTaut)`.
+- **At the end of the fight:** `Bobber.Update` returned early while `fight != null`,
+  so `_retrieveTaut` froze at its value from the moment of the bite — and
+  `LineTaut01` falls back to it the frame the fight ends. The line snapped to a
+  stale value every single catch. Now mirrored every frame.
+- **A hooked fish holds the line itself** (`FishHoldTaut` 0.85, fading over
+  `FishHoldFadeSeconds`). Releasing used to send the line straight for slack with a
+  fish still on. The fade doubles as the visible warning before a spat hook.
+
+### 3. The push wind-up — the important one
+
+Reeling into a run cost `ReelRate × basePull × RunPullMultiplier × RunTensionScale`.
+At the `ReelRate = 96` set earlier the same day that is **345/s on a rare: empty
+bar to snapped in 0.29 seconds.** Sam's "it snaps the moment they tug" was not
+reflexes, it was arithmetic.
+
+**Softening the push does not work, and this is worth remembering.** It was tried:
+strength low enough for a person to survive is also low enough to ignore, and the
+hold-forever bot went from losing every good fish to landing 47% of them. A person
+and a bot eat the same spike, so strength cannot separate skill from stubbornness.
+**Time can.** `RunRampSeconds = 0.25` smoothsteps the push in — pull, distance
+taken and tension scale all ramp together. React and you take a fraction; hold on
+and you take all of it. It is also visible in the rod, which is the cue Sam asked
+for.
+
+Everything else in the run model followed Sam's prescription — "less powerful and
+more short, but ... happen more often and ... for commons": duration 1–2s →
+0.35–0.7s, intervals tightened per tier, `TierRuns` now true for **every** tier,
+`RunPullMultiplier` 2 → 1.6, `ReelRate` 96 → 80, `RelaxRate` 90 → 95.
+
+### 4. The cast is a charge, and the cast is the fight
+
+`TapCastDistance` 3 m → `FullCastDistance` 13 m over `CastChargeSeconds` 2 s,
+interpolated in **speed squared** so the distance is linear in the charge. No
+meter: the rod draws back as you hold, and the fling continues from wherever it
+was drawn. `bobberShootSpeed` is now the full-charge speed;
+`bobberShootSpeedTap` is new.
+
+⚠️ **The maximum cast did NOT shrink much, deliberately.** Sam asked for casting
+to go less far and it does — a *click* went from ~12 m to ~3 m. But **the fight
+starts at the cast distance**, so the cast is the length of the fight. Capping the
+charge at 8.5 m was tried first: a rare fought for **two seconds**, and every other
+dial (resist, push strength, push frequency) was run to its limit trying to buy the
+time back. A 13 m/s reel crossing six metres of water cannot take eight seconds.
+So the charge buys the water, and the water is the fight — a rare lasts **1.2s on
+a tap and 6.5s on a full charge**.
+
+`LandDistance` 2 → 1.2, because the first draft had a 1.5 m tap landing INSIDE the
+landing radius — the fish would have been booked the instant it bit.
+
+⚠️ **There is a stalemate ceiling on resist.** Average push loss is ~1.2 m/s on a
+rare and you can only hold the reel ~60% of a fight, so resist past ~0.84 means the
+reel gains less than the pushes take and **the fight never ends**. Maxes are now
+0.50 / 0.66 / 0.74 / 0.82 with the light-fish floor raised 0.45 → 0.58.
+
+`ShortCast`/`LongCast` are now literally `TapCastDistance`/`FullCastDistance`, and
+the tier shift's top came down +12 → +5.5: it used to be scored against a 16 m
+bookend the rod could not reach, so the full bonus was theoretical. Leaving it
+would have made every charged cast far richer than the game has ever been.
+
+### 5. The tests grew a player
+
+Every bot in `[TEST] 1` read `IsRunning` in the frame it changed and acted on it in
+that same frame. **That is why every check passed while the game was unplayable.**
+`RunHumanBot` queues its inputs and plays them back a reaction-time late.
+
+| | lands |
+|---|---|
+| careful (releases at 70%, 0.20s reaction) | Common 100%, Uncommon 100%, Rare 100% |
+| greedy (holds to 85%, 0.28s reaction) | Rare **59%** |
+| hold-forever | loses ≥90% of the good fish |
+
+Also fixed: `[TEST] 1`'s `CastDistance` and `[TEST] 6`'s 3 m/20 m and the
+hold-forever fixture's 20 m were all hardcoded distances that the charged cast made
+meaningless. They derive from the rules now.
+
+**Verification:** compile PASS (three assemblies, 0 warnings); `verify-fishing.py`
+PASS **151 checks**. **PLAYTEST PENDING** — `docs/PLAYTEST_FIXES_2026-09-08.md` §9-12.

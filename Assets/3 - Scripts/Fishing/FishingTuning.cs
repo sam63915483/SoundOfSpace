@@ -67,14 +67,34 @@ public class FishingTuning : ScriptableObject
     // and the shape of the bend on FishingRules.BendCurve, so the rod, the line
     // and the snap all read the same number. Two places computing "how loaded is
     // this" is exactly how the promise/grade class of bug starts.
-    [Tooltip("How quickly the rod LOADS UP under strain. Higher = stiffer.")]
-    public float rodBendResponse = 12f;
-    [Tooltip("How quickly the rod springs BACK when the strain comes off. Faster than it loads, but NOT instant -- 30 looked like a glitch. It must finish well before the line has finished drooping.")]
-    public float rodReleaseResponse = 7f;
+    [Tooltip("How quickly the rod LOADS UP under strain. Higher = stiffer. " +
+             "12 -> 8 on 2026-09-08: the rod is standing in for the tension bar now, " +
+             "and it was arriving at its new pose faster than the bar could justify — " +
+             "part of why it read as 'a little bent to fully bent very fast'. Slower than " +
+             "the release, which is how a real blank behaves and what the tooltip below " +
+             "has always claimed.")]
+    public float rodBendResponse = 8f;
+    [Tooltip("How quickly the rod springs BACK when the strain comes off. FASTER than it " +
+             "loads -- which it now actually is. It was 7 against a load of 12, i.e. the " +
+             "exact opposite of this sentence and of a real rod: it snapped INTO a bend and " +
+             "crawled out of one. 16 springs back in about a fifth of a second without " +
+             "looking like a glitch (30 did), and still finishes well before the line has " +
+             "finished drooping.")]
+    public float rodReleaseResponse = 16f;
     [Tooltip("Load at which the bend stops being gentle and starts running away toward maximum.")]
     [Range(0.1f, 0.9f)] public float bendKnee = FishingRules.BendKnee;
     [Tooltip("Fraction of the full bend reached AT the knee. Raise for a rod that works visibly under light load; lower to save the bow for the breaking point.")]
     [Range(0f, 1f)] public float bendAtKnee = FishingRules.BendAtKnee;
+
+    // ── Appended 2026-09-08 (new serialized fields go at the END) ────────────
+
+    [Header("HUD")]
+    [Tooltip("Uncheck to fight by the ROD ALONE, with no tension bar on screen. " +
+             "The rod's bend is a faithful readout of the bar since 2026-09-08 — the " +
+             "fish's weight plus tension, nothing else, and it never jumps more than a " +
+             "few percent of full bow in a frame. This is the switch for finding out " +
+             "whether the bar is still earning its place.")]
+    public bool showTensionBar = true;
 
     // ── Built-in fallback ────────────────────────────────────────────────────
 

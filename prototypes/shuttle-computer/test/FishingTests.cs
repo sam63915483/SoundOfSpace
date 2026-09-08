@@ -31,9 +31,11 @@ public static class FishingTests
     // ALWAYS land. A "hold forever" bot must snap on every uncommon/rare and
     // land only commons.
 
-    // A representative cast. The Unity layer passes the REAL distance from the
-    // player to the bobber; 12 m is a typical one for the current shoot speed.
-    const float CastDistance = 12f;
+    // A representative cast: half a charge, which is what an ordinary throw is
+    // now that casting is a hold. Derived from the rules rather than typed — the
+    // old "12 m, a typical one for the current shoot speed" stopped being either
+    // typical or reachable the moment the cast became a charge.
+    static readonly float CastDistance = FishingRules.CastDistanceFor(0.5f);
 
     static FightOutcome RunBot(FishTier tier, float stamina, float resist, uint seed,
                                bool holdForever, out float wallClock, out float maxOut)
@@ -72,6 +74,48 @@ public static class FishingTests
             if (outcome != FightOutcome.Fighting) return outcome;
         }
         return FightOutcome.Fighting;   // timed out — a failure in itself
+    }
+
+    /// <summary>
+    /// A PLAYER, not an oracle.
+    ///
+    /// The bots above read IsRunning and TensionFraction in the frame they
+    /// change and act on them in that same frame. A person sees the rod move,
+    /// decides, and lets go about a fifth of a second later. That gap is where
+    /// Sam's playtest lived — "i would be reeling and as soon as they start
+    /// fighting and tugging it would snap off ... it was almost impossible to
+    /// catch a rare" — and a zero-latency bot cannot see it at all, which is why
+    /// every check passed while the game was unplayable.
+    ///
+    /// Inputs are queued and played back <paramref name="reactionSeconds"/>
+    /// late, so the fish gets that long to hurt you before your hand moves.
+    /// </summary>
+    static FightOutcome RunHumanBot(FishTier tier, float stamina, float resist, uint seed,
+                                    float reactionSeconds, out float wallClock)
+        => RunHumanBot(tier, stamina, resist, seed, reactionSeconds, 0.70f, CastDistance,
+                       out wallClock);
+
+    static FightOutcome RunHumanBot(FishTier tier, float stamina, float resist, uint seed,
+                                    float reactionSeconds, float releaseAt, float cast,
+                                    out float wallClock)
+    {
+        var f = new FishFightSim(tier, stamina, cast, resist, seed);
+        int lag = (int)(reactionSeconds / Dt + 0.5f);
+        if (lag < 1) lag = 1;
+        var queued = new bool[lag];
+        for (int i = 0; i < queued.Length; i++) queued[i] = true;   // starts reeling
+        int qi = 0;
+        wallClock = 0f;
+        for (int i = 0; i < 60 * 600; i++)
+        {
+            bool holding = queued[qi];
+            queued[qi] = !f.IsRunning && f.TensionFraction < releaseAt;  // decided NOW, acted on later
+            qi = (qi + 1) % queued.Length;
+            var outcome = f.Step(Dt, holding);
+            wallClock = f.Elapsed;
+            if (outcome != FightOutcome.Fighting) return outcome;
+        }
+        return FightOutcome.Fighting;
     }
 
     static void FightChecks()
@@ -116,6 +160,98 @@ public static class FishingTests
             }
         }
 
+        // ── Can a HUMAN land these? (2026-09-08) ────────────────────────────
+        {
+            const float Reaction = 0.20f;      // a fair reflex on a visible cue
+            var landed = new Dictionary<FishTier, int>();
+            var tried  = new Dictionary<FishTier, int>();
+            var snapped = new Dictionary<FishTier, int>();
+            foreach (FishTier tt in new[] { FishTier.Common, FishTier.Uncommon, FishTier.Rare })
+            { landed[tt] = 0; tried[tt] = 0; snapped[tt] = 0; }
+
+            for (int si = 0; si < FishingRules.Species.Length; si++)
+            {
+                var sp = FishingRules.Species[si];
+                for (int w = 0; w < 20; w++)
+                {
+                    float weight = sp.weightMin + (sp.weightMax - sp.weightMin) * (w / 19f);
+                    float t3;
+                    var o = RunHumanBot(sp.tier, FishingRules.StaminaFor(si, weight),
+                                        FishingRules.ResistFor(si, weight),
+                                        (uint)(si * 77 + w + 3), Reaction, out t3);
+                    tried[sp.tier]++;
+                    if (o == FightOutcome.Landed) landed[sp.tier]++;
+                    else if (o == FightOutcome.Snapped) snapped[sp.tier]++;
+                }
+            }
+            foreach (FishTier tt in new[] { FishTier.Common, FishTier.Uncommon, FishTier.Rare })
+            {
+                float rate = landed[tt] / (float)tried[tt];
+                Console.WriteLine("    a player with a 0.20s reaction lands " + tt + ": "
+                                  + (100f * rate).ToString("F0") + "%  (snapped "
+                                  + (100f * snapped[tt] / tried[tt]).ToString("F0") + "%)");
+            }
+            // Sam's complaint, as a contract. A rare is meant to be the hard
+            // fish, not a coin toss you lose on the first push.
+            Check(landed[FishTier.Rare] / (float)tried[FishTier.Rare] > 0.6f,
+                  "a player with ordinary reflexes lands most RARES");
+            Check(landed[FishTier.Common] / (float)tried[FishTier.Common] > 0.9f,
+                  "...and nearly every COMMON");
+
+            // ── Is there any skill in it? ───────────────────────────────────
+            // A careful player landing everything is only good news if a GREEDY
+            // one does not. This is the same bot pushing its luck: it holds on
+            // to 85% of the bar instead of 70%, and is slower off the mark.
+            // If these two numbers are the same, the fight has no gradient and
+            // "let go during a push" is not really a skill.
+            int greedyLanded = 0, greedyTried = 0;
+            for (int si = 0; si < FishingRules.Species.Length; si++)
+            {
+                var sp = FishingRules.Species[si];
+                if (sp.tier != FishTier.Rare) continue;
+                for (int w = 0; w < 20; w++)
+                {
+                    float weight = sp.weightMin + (sp.weightMax - sp.weightMin) * (w / 19f);
+                    float t4;
+                    var o = RunHumanBot(sp.tier, FishingRules.StaminaFor(si, weight),
+                                        FishingRules.ResistFor(si, weight),
+                                        (uint)(si * 91 + w + 5), 0.28f, 0.85f,
+                                        CastDistance, out t4);
+                    greedyTried++;
+                    if (o == FightOutcome.Landed) greedyLanded++;
+                }
+            }
+            Console.WriteLine("    a GREEDY player (holds to 85%, 0.28s reaction) lands Rare: "
+                              + (100f * greedyLanded / greedyTried).ToString("F0") + "%");
+            Check(greedyLanded / (float)greedyTried < 0.9f,
+                  "greed still costs you rares — the fight has a skill gradient");
+
+            // ── What does charging the cast buy? ────────────────────────────
+            float tapLen = 0f, fullLen = 0f; int tapN = 0, fullN = 0;
+            for (int si = 0; si < FishingRules.Species.Length; si++)
+            {
+                var sp = FishingRules.Species[si];
+                if (sp.tier != FishTier.Rare) continue;
+                for (int w = 0; w < 20; w++)
+                {
+                    float weight = sp.weightMin + (sp.weightMax - sp.weightMin) * (w / 19f);
+                    float ta, fu;
+                    RunHumanBot(sp.tier, FishingRules.StaminaFor(si, weight),
+                                FishingRules.ResistFor(si, weight), (uint)(si * 31 + w + 9),
+                                0.20f, 0.70f, FishingRules.TapCastDistance, out ta);
+                    RunHumanBot(sp.tier, FishingRules.StaminaFor(si, weight),
+                                FishingRules.ResistFor(si, weight), (uint)(si * 31 + w + 9),
+                                0.20f, 0.70f, FishingRules.FullCastDistance, out fu);
+                    tapLen += ta; tapN++; fullLen += fu; fullN++;
+                }
+            }
+            Console.WriteLine("    a RARE fight lasts " + (tapLen / tapN).ToString("F1")
+                              + "s on a tap and " + (fullLen / fullN).ToString("F1")
+                              + "s on a full charge");
+            Check(fullLen / fullN > (tapLen / tapN) * 1.5f,
+                  "charging the cast buys a meaningfully longer fight");
+        }
+
         Check(timeouts == 0, "no fight ran past the 10 minute guard");
         Check(perfectLandFails == 0,
               "a skilled bot lands every tier x weight (" + perfectLandFails + " failures)");
@@ -153,7 +289,8 @@ public static class FishingTests
             {
                 float weight = sp.weightMin + (sp.weightMax - sp.weightMin) * (w / 24f);
                 var sim = new FishFightSim(sp.tier, FishingRules.StaminaFor(si, weight),
-                                           20f, FishingRules.ResistFor(si, weight),
+                                           FishingRules.FullCastDistance,
+                                           FishingRules.ResistFor(si, weight),
                                            (uint)(si * 77 + w + 1));
                 FightOutcome o = FightOutcome.Fighting;
                 for (int i = 0; i < 60 * 600; i++)
@@ -172,7 +309,7 @@ public static class FishingTests
             }
         }
         Check(rareLongHoldLands == 0,
-              "hold-forever NEVER lands a rare on a 20 m cast (" + rareLongHoldLands
+              "hold-forever NEVER lands a rare on a full-charge cast (" + rareLongHoldLands
               + "/" + rareLongHoldTotal + " got through)");
         Check(longHoldLands / (float)longHoldTotal < 0.1f,
               "hold-forever loses at least 90% of the good fish on a long cast ("
@@ -265,7 +402,12 @@ public static class FishingTests
         Check(!f.LineIsTight, "...but it is not tight yet after one frame");
         Check(Math.Abs(f.Tension) < 0.0001f, "the BAR does not fill through a slack line");
         Check(Math.Abs(f.Distance - d0) < 0.0001f, "the FISH does not move through a slack line");
-        Check(Math.Abs(f.RodLoad(true)) < 0.0001f, "the ROD does not bend through a slack line");
+        // The rod now FADES IN with the line instead of switching on at the
+        // tight threshold (Sam, 2026-09-08: "whenever you start reeling with the
+        // rod it bends a little bit as the line goes from slack to tight"). One
+        // frame in, the line is a few percent tight, so the rod is a few percent
+        // loaded -- present in the maths, invisible on screen.
+        Check(f.RodLoad(true) < 0.02f, "an almost-slack line puts almost no bend in the rod");
 
         // Keep reeling until it comes tight, then everything downstream starts.
         int frames = 0;
@@ -279,7 +421,11 @@ public static class FishingTests
         f.Step(Dt, true);
         Check(f.Tension > tBefore, "once tight, the BAR starts filling");
         Check(f.Distance < dBefore, "once tight, the FISH starts coming in");
-        Check(f.RodLoad(true) > 0.3f, "once tight, the ROD starts bending");
+        // A tight line with a fish on it and an empty bar is the fish's WEIGHT,
+        // and nothing more. The rest of the rod's travel belongs to tension --
+        // that is what makes the bend readable as the bar.
+        Check(f.RodLoad(true) > 0.05f, "once tight, the ROD takes the fish's weight");
+        Check(f.RodLoad(true) < 0.35f, "...but an empty bar is nowhere near a full bow");
 
         // Reeling load must RISE with tension — that ramp is what lets the rod
         // itself warn you about the snap, so the bar is only a backup.
@@ -315,10 +461,63 @@ public static class FishingTests
         Check(!h.IsRunning, "settled onto a non-running frame to measure the rod");
 
         float tensionAtRelease = h.Tension;
+        float bendAtRelease = h.RodLoad(false);
         h.Step(Dt, false);
         Check(h.Tension < tensionAtRelease, "the BAR starts emptying the moment you let go");
-        Check(Math.Abs(h.RodLoad(false)) < 0.0001f, "the ROD unloads the moment you let go");
+        // The rod comes down WITH the bar, not instead of it. It used to drop to
+        // zero the instant the button came up, which is the one thing a rod that
+        // is standing in for the bar must never do -- there is still a fish on
+        // the end and the bar is still nearly full.
+        Check(h.RodLoad(false) < bendAtRelease, "the ROD starts unloading the moment you let go");
+        Check(h.RodLoad(false) > 0.2f, "...but does NOT snap straight while the bar is still loaded");
         Check(h.LineTaut > 0.9f, "...while the LINE is still nearly tight — it droops slowest");
+
+        // ── THE ROD IS THE BAR ──────────────────────────────────────────────
+        // Sam, 2026-09-08: "the rod needs to be the same as the status bar,
+        // because eventually id like to remove the status bar and have it
+        // feeling so good you can just judge it from the rod."
+        //
+        // Two things have to hold for that to be true. The bend has to MOVE WITH
+        // the bar, and it has to move slowly enough to read.
+        {
+            var probe = new FishFightSim(FishTier.Rare, 30f, FixtureCast, 0.4f, 2468u);
+            float prevBend = 0f, prevTension = 0f;
+            float worstJump = 0f, worstCruise = 0f;
+            bool tracksBar = true;
+            int seen = 0;
+            for (int i = 0; i < 60 * 60; i++)
+            {
+                var outcome = probe.Step(Dt, true);
+                float bend = FishingRules.BendCurve(probe.RodLoad(true));
+                if (probe.LineIsTight && seen > 0)
+                {
+                    // Same direction as the bar, every frame.
+                    float dB = bend - prevBend, dT = probe.TensionFraction - prevTension;
+                    if (dB * dT < -1e-6f) tracksBar = false;
+                    float jump = Math.Abs(dB);
+                    if (jump > worstJump) worstJump = jump;
+                    if (!probe.IsRunning && jump > worstCruise) worstCruise = jump;
+                }
+                prevBend = bend; prevTension = probe.TensionFraction;
+                seen++;
+                if (outcome != FightOutcome.Fighting) break;
+            }
+            Check(tracksBar, "the rod bend never moves against the bar");
+            // Two different speeds, deliberately. Cruising, the rod must crawl --
+            // that is the part you read and plan against. Mid-push it is allowed
+            // to move fast, because the BAR moves that fast during a push and the
+            // rod's whole job is to be the bar. What must never happen again is
+            // the old stepped load, which put 0.45 of the bow on in ONE frame
+            // ("goes from a little bent to fully bent very fast").
+            Check(worstCruise < 0.02f,
+                  "cruising, the bend crawls (worst " + worstCruise.ToString("F4") + ")");
+            Check(worstJump < 0.05f,
+                  "even mid-push the bend never jumps unreadably (worst "
+                  + worstJump.ToString("F4") + " of full bow)");
+            Console.WriteLine("    rod-as-bar: worst single-frame bend jump "
+                              + (worstJump * 100f).ToString("F2") + "% mid-push, "
+                              + (worstCruise * 100f).ToString("F2") + "% cruising");
+        }
 
         // The line must take visibly longer to droop than the bar takes to
         // notice: "the rod unbends first... then the line starts slowly drooping".
@@ -481,7 +680,8 @@ public static class FishingTests
                 // Explicit cast distance: the roll now includes a cast-distance
                 // shift, so the expectation has to carry the same shift or the
                 // test is comparing against a table nothing rolls against.
-                const float TestCast = 10f;
+                // A half charge — the typical throw. Derived, never typed.
+                float TestCast = FishingRules.CastDistanceFor(0.5f);
                 float c, u, r;
                 FishingRules.TierWeights(bands[b], baits[k], out c, out u, out r);
                 FishingRules.ApplyCastShift(TestCast, ref c, ref u, ref r);
@@ -560,7 +760,7 @@ public static class FishingTests
         {
             float bc, bu, br;
             FishingRules.TierWeights(band, BaitKind.None, out bc, out bu, out br);
-            FishingRules.ApplyCastShift(2f, ref bc, ref bu, ref br);
+            FishingRules.ApplyCastShift(FishingRules.TapCastDistance, ref bc, ref bu, ref br);
             float share = br / (bc + bu + br);
             Check(share > 0.02f,
                   "worst case (no bait, short cast, band " + band
@@ -570,11 +770,18 @@ public static class FishingTests
         // ── Sam's night spec, 2026-09-02, pinned ────────────────────────────
         // "using no bait and fishing at night should result in 1-2 rare fish,
         // 2-3 uncommon and around 4 common" -- i.e. roughly 18/31/51 out of 8.
-        // Measured at a typical 8 m cast so the pin matches what he plays.
+        //
+        // Measured at a TYPICAL cast, which is a half charge. It used to say
+        // "8 m", which stopped meaning "typical" the moment the cast became a
+        // charge that tops out at 8.5 -- an 8 m cast went from an ordinary throw
+        // to very nearly the longest one available, and this pin started
+        // reporting 29% rares. Asking the rules what a typical cast is keeps the
+        // spec pinned to the thing Sam described rather than to a number.
         {
             float nb_c, nb_u, nb_r;
             FishingRules.TierWeights(-1f, BaitKind.None, out nb_c, out nb_u, out nb_r);
-            FishingRules.ApplyCastShift(8f, ref nb_c, ref nb_u, ref nb_r);
+            FishingRules.ApplyCastShift(FishingRules.CastDistanceFor(0.5f),
+                                        ref nb_c, ref nb_u, ref nb_r);
             float tot = nb_c + nb_u + nb_r;
             float rShare = nb_r / tot, uShare = nb_u / tot, cShare = nb_c / tot;
             Check(rShare > 0.14f && rShare < 0.23f,
@@ -673,14 +880,15 @@ public static class FishingTests
               "a cast at your feet is factor 0");
         Check(Math.Abs(FishingRules.CastFactor(FishingRules.LongCast) - 1f) < 0.001f,
               "a full-length cast is factor 1");
-        Check(FishingRules.CastFactor(2f) == 0f && FishingRules.CastFactor(40f) == 1f,
+        Check(FishingRules.CastFactor(FishingRules.TapCastDistance * 0.5f) == 0f
+              && FishingRules.CastFactor(FishingRules.FullCastDistance * 4f) == 1f,
               "the cast factor clamps at both ends");
 
         // Rare rate must rise monotonically with distance, and a short cast must
         // be strictly worse than a long one.
         float prevRare = -1f;
         bool monotone = true;
-        for (float d = 2f; d <= 24f; d += 1f)
+        for (float d = FishingRules.TapCastDistance; d <= FishingRules.FullCastDistance + 0.001f; d += 0.25f)
         {
             float c, u, r;
             FishingRules.TierWeights(0f, BaitKind.Grubs, out c, out u, out r);
@@ -691,11 +899,14 @@ public static class FishingTests
         }
         Check(monotone, "rare share never falls as the cast gets longer");
 
+        // Tap versus a full two-second charge — the two casts a player can
+        // actually make. Typing 3 and 20 meant this was comparing a throw at
+        // your feet against one nobody could reach.
         float sc, su, sr, lc, lu, lr;
         FishingRules.TierWeights(0f, BaitKind.Grubs, out sc, out su, out sr);
-        FishingRules.ApplyCastShift(3f, ref sc, ref su, ref sr);
+        FishingRules.ApplyCastShift(FishingRules.TapCastDistance, ref sc, ref su, ref sr);
         FishingRules.TierWeights(0f, BaitKind.Grubs, out lc, out lu, out lr);
-        FishingRules.ApplyCastShift(20f, ref lc, ref lu, ref lr);
+        FishingRules.ApplyCastShift(FishingRules.FullCastDistance, ref lc, ref lu, ref lr);
 
         float shortShare = sr / (sc + su + sr);
         float longShare  = lr / (lc + lu + lr);

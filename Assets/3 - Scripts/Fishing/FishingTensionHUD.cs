@@ -68,10 +68,26 @@ public class FishingTensionHUD : MonoBehaviour
 
     // ── Public API ───────────────────────────────────────────────────────────
 
+    /// <summary>
+    /// Turn the bar off entirely and fight by the rod alone.
+    ///
+    /// Sam, 2026-09-08: "eventually id like to remove the status bar and have it
+    /// feeling so good you can just judge it from the rod." The rod is a faithful
+    /// readout of tension as of that day — bend is the fish's weight plus the bar,
+    /// and nothing else — so this is here to TRY that, without deleting anything
+    /// or committing to it. Flip it in FishingTuning.
+    ///
+    /// If the answer is yes, the whole of this file can go; if it is not-yet, the
+    /// rod is the thing to keep tuning, not the bar.
+    /// </summary>
+    public static bool Suppressed => FishingTuning.Active != null
+                                  && !FishingTuning.Active.showTensionBar;
+
     /// <summary>Show the bar and set tension, 0-1. Call every frame of the fight.</summary>
     public static void Set(float tension01, bool running)
     {
         if (Instance == null) return;
+        if (Suppressed) { Instance._active = false; return; }
         Instance._active = true;
         Instance._target = Mathf.Clamp01(tension01);
         if (running) Instance._shake = 1f;

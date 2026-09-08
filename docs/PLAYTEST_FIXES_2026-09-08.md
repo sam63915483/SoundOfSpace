@@ -162,3 +162,112 @@ in a venue rather than scattered over a planet.
 - [ ] If the old pre-tab settings panel is still reachable anywhere, its four count
       sliders should now be hidden rather than present-but-dead. Their GameObjects
       are still in the scene — safe to delete in the Editor whenever you like.
+
+---
+
+# Third pass, same day — the rod IS the bar, and the cast is a charge
+
+## 9. Casting is now hold-to-charge
+
+- **Tap** the button: the bobber plops out about **3 m**.
+- **Hold 1 second**: about **8 m** — halfway.
+- **Hold 2 seconds**: about **13 m**, roughly where a single click used to land.
+
+There is no charge meter on purpose — **the rod draws further back the longer you
+hold**, which is the same information without adding UI.
+
+- [ ] Tap, half-hold and full-hold. The rod should draw back progressively while
+      you hold and fling forward when you let go — one continuous motion, not a
+      yank backwards followed by a throw.
+- [ ] The cast should feel shorter *by default*, because the click-cast went from
+      ~12 m to ~3 m. The **maximum** did not shrink much, and that is deliberate:
+      the fish starts at the cast distance, so the cast IS the length of the
+      fight. I tried capping it at 8.5 m first and a rare was over in two seconds.
+- [ ] Charging should be worth it. **A rare fight lasts ~1.2s on a tap and ~6.5s
+      on a full charge**, and a full charge also rolls better fish.
+- [ ] If the distances are off, the knob is `bobberShootSpeed` on the rod in the
+      scene (full charge, currently 20) and `bobberShootSpeedTap` (tap, 10). Range
+      goes as speed *squared*.
+
+## 10. The rod is the tension bar
+
+Bend is now **the fish's weight plus the bar, and nothing else**. It used to be a
+step function — the moment you pressed reel it jumped to 45% load, and the moment
+a run started it added another 50% — so it snapped between three fixed poses.
+That was the "little bent to fully bent very fast".
+
+- [ ] Reel with **no fish on**. The line should tighten and the rod should take a
+      small, honest bend as it does — growing with the tightness, not popping on.
+- [ ] Reel with a fish on. The bend should climb **with the bar**, smoothly. Watch
+      the two together: they should agree at every moment.
+- [ ] **Let go mid-fight.** The rod should come down *with* the bar — not snap
+      straight. There is still a fish on the end.
+- [ ] The rod now springs back faster than it loads. It was the other way round
+      (load 12, release 7) which is backwards for a real rod and backwards from
+      what its own tooltip claimed.
+- [ ] **When you're ready to try it:** uncheck **`showTensionBar`** on the
+      FishingTuning asset and fight by the rod alone. That's the whole point of
+      this pass. Measured: the bend never moves more than **1.8% of full bow per
+      frame while cruising** and **4.1% mid-push**, so you always get ~half a
+      second of warning.
+
+## 11. The line stops lying
+
+Two places it jumped, both fixed:
+- **At the bite.** A fish that took a *moving* lure was hooked on a bar-tight
+  line, but the fight started its line at zero — so the line popped tight→slack
+  the instant you hooked up.
+- **At the end of the fight.** The bookkeeping was skipped entirely during a
+  fight, so the value froze at whatever it was when the fish bit, and the line
+  snapped to that the frame the fight ended.
+
+And a fish now **holds the line tight by itself**. Releasing the reel used to send
+the line straight for fully slack while there was still a fish on the end.
+
+- [ ] Hook a fish, then stop reeling for a second. The line should stay mostly
+      tight, then visibly droop over about a second as the fish gives up — and if
+      you let it droop all the way, that's when you lose the fish. **The droop is
+      now the warning.**
+- [ ] Start reeling again mid-droop; it should come straight back tight.
+
+## 12. Fish fights — your playtest notes
+
+> "commons dont fight at all and literally are just free to catch ... rares were
+> extremely hard to catch, i would be reeling and as soon as they start fighting
+> and tugging it would snap off"
+
+Both were arithmetic, not luck.
+
+**The snap.** Reeling into a run cost `ReelRate × pull × 2 × 1.0` — at the
+`ReelRate` of 96 I'd set that morning, **345 tension a second on a rare, so the
+bar went from empty to snapped in 0.29 seconds.** No reflex covers that.
+
+**The fix is time, not strength.** Softening the push far enough for a human to
+survive also made it soft enough to ignore — the hold-the-button bot went from
+losing everything to landing 47%. So each push now **winds up over a quarter
+second** instead of arriving at full strength in one frame. React and you take a
+fraction of it; hold on and you take all of it. And **commons push too** now.
+
+| | before | now |
+|---|---|---|
+| push length | 1–2s | **0.35–0.7s** |
+| push every | 1.1–2.8s | **0.8–2.4s** (rarer fish more often) |
+| commons push? | never | **yes** |
+| tension reeling into a push | 4× steady, instantly | 4× steady, **over 0.25s** |
+
+Measured with a bot that has a **0.20s reaction time** — the old bots reacted in
+the same frame, which is exactly why every check passed while the game was
+unplayable:
+
+| | lands |
+|---|---|
+| careful player (lets go at 70% of the bar) | Common 100%, Uncommon 100%, **Rare 100%** |
+| greedy player (holds to 85%, 0.28s reaction) | **Rare 59%** |
+| just holding the button | loses ~90% of the good fish |
+
+- [ ] **Commons should now fight** — a shove or two before they give up — but
+      still be easy.
+- [ ] **Rares should be catchable.** If one still snaps on its first push, tell me
+      and I'll lengthen `RunRampSeconds` (currently 0.25s).
+- [ ] Fights at a typical cast: common ~1.9s, uncommon ~2.3s, rare ~3.6s (a big
+      one up to ~18s). Full-charge casts are much longer.

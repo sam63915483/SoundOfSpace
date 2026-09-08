@@ -308,8 +308,12 @@ public class Bobber : MonoBehaviour
     public float RodLoad01(bool reeling)
     {
         if (fight != null) return fight.RodLoad(reeling);
-        if ((_retrieving || _pendingLanding) && _retrieveTaut >= FishFightSim.TautThreshold)
-            return emptyLureRodLoad;
+        // Proportional to how tight the line actually is, not gated behind the
+        // tight threshold. Sam, 2026-09-08: "whenever you start reeling with the
+        // rod it bends a little bit as the line goes from slack to tight." It
+        // used to pop on the frame the line crossed 0.985.
+        if (_retrieving || _pendingLanding)
+            return emptyLureRodLoad * Mathf.Clamp01(_retrieveTaut);
         return 0f;
     }
 
@@ -357,7 +361,19 @@ public class Bobber : MonoBehaviour
     {
         // The FIGHT is driven from TickFight, not here, so the order is always
         // sync-reality -> step-the-sim -> move-the-bobber.
-        if (fight != null) return;
+        if (fight != null)
+        {
+            // ⚠️ MIRROR, don't skip. LineTaut01 falls back to _retrieveTaut the
+            // instant `fight` goes null, and this method used to return before
+            // updating it — so _retrieveTaut sat frozen at whatever it happened
+            // to be when the fish bit, and the line SNAPPED to that value the
+            // frame the fight ended. Sometimes bar-tight over a landed fish,
+            // sometimes fully slack over one still being towed home. Half of
+            // "the line gets droopy when it shouldn't, or tight when it
+            // shouldn't" was this one line.
+            _retrieveTaut = fight.LineTaut;
+            return;
+        }
 
         // Line tautness bookkeeping, every phase: it drives the visible sag and
         // gates the tether (a slack line cannot pull).
@@ -1795,6 +1811,12 @@ public class Bobber : MonoBehaviour
                                  tune.reelRate, tune.relaxRate, tune.drainRate,
                                  tune.slackEscapeSeconds, tune.reelSpeed, tune.landDistance,
                                  tune.lineTautSeconds, tune.lineSlackSeconds);
+
+        // The other half: a fish that takes a MOVING lure is hooked on a line
+        // that is already bar-tight, but the fight used to start its own line at
+        // zero — so the bite popped the line from tight to slack and it had to
+        // be pulled tight all over again. Start where the line really is.
+        fight.SeedLineTaut(_retrieveTaut);
 
         // The drag assumes the player and the bobber are on the SAME sphere. If
         // the water collider resolved to a different CelestialBody than the one

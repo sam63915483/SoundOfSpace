@@ -21,7 +21,10 @@ public class FishingRodController : MonoBehaviour
     public GameObject bobberPrefab;
     public Transform castPoint;
     public string rodTipName = "RodTip";
-    public float bobberShootSpeed = 5f;
+    [Tooltip("Launch speed of a FULL two-second charge. The scene value is what runs. " +
+             "Range goes as speed SQUARED, so this and bobberShootSpeedTap below are " +
+             "converted to distances and back — see ChargedShootSpeed.")]
+    public float bobberShootSpeed = 21f;
     public Vector3 bobberRotationOffset = Vector3.zero;
 
     [Header("Fishing Line")]
@@ -189,7 +192,7 @@ public class FishingRodController : MonoBehaviour
             currentRodInstance.transform.localPosition = holdPositionOffset;
             originalRodRotation = Quaternion.Euler(holdRotationOffset);
             currentRodInstance.transform.localRotation =
-                originalRodRotation * ReelPullBack(liveBobber, reelingNow);
+                originalRodRotation * ReelPullBack(liveBobber, reelingNow) * CastChargePose();
         }
 
         // The mesh flex runs even mid-animation: a fish keeps pulling while the
@@ -228,11 +231,11 @@ public class FishingRodController : MonoBehaviour
             else if (bobberScript != null
                      && (bobberScript.IsHanging || bobberScript.IsReadyForLaunch))
             {
-                // Hanging off the tip on its foot of line: a click casts it back
-                // out, so the throw is the same bobber you reeled home and
-                // nothing appears out of thin air. (Winding/glued means a cast
-                // is already in progress — swallow input until it flies.)
-                if (bobberScript.IsHanging && TutorialGate.FirePressed()) CastBobber();
+                // Hanging off the tip on its foot of line: the throw is the same
+                // bobber you reeled home and nothing appears out of thin air.
+                // (Winding/glued means a cast is already in progress — swallow
+                // input until it flies.)
+                if (bobberScript.IsHanging) TickCastCharge();
             }
             else if (currentBobber != null && bobberScript != null)
             {
@@ -283,11 +286,11 @@ public class FishingRodController : MonoBehaviour
                     bobberScript.SetRetrieving(winding);
                 }
             }
-            else if (TutorialGate.FirePressed())
+            else
             {
                 // BAIT IS OPTIONAL. Casting bare-handed works -- bites are just
                 // slower and skew common, and a rare is still possible.
-                CastBobber();
+                TickCastCharge();
             }
         }
 
@@ -670,6 +673,84 @@ public class FishingRodController : MonoBehaviour
     // held button from casting and immediately winding back in.
     bool _awaitFireRelease;
 
+    // ── The charged cast (Sam, 2026-09-08) ──────────────────────────────────
+    //
+    // "clicking to cast does a small tiny cast, but you can hold the cast button
+    // for up to 2 seconds to charge your cast, and it will make it cast further,
+    // or if you only hold the cast for a second it will be between the far cast
+    // and short cast."
+    //
+    // There is no charge METER, deliberately: the rod draws further back the
+    // longer you hold, which is the same thing said with the object already in
+    // your hands. It is the same principle as the rod standing in for the
+    // tension bar.
+    bool  _charging;
+    float _chargeHeld;
+    /// 0 on a tap, 1 at a full hold. Read by the rod pose and the launch.
+    float Charge01 => Mathf.Clamp01(_chargeHeld / Mathf.Max(0.01f, FishingRules.CastChargeSeconds));
+
+    [Tooltip("Launch speed of a TAP — the shortest cast. Appended 2026-09-08.")]
+    public float bobberShootSpeedTap = 10f;
+
+    /// <summary>
+    /// Launch speed for the charge held so far.
+    ///
+    /// Interpolated in speed SQUARED, not in speed. A thrown object's range goes
+    /// as the square of how hard you throw it, so lerping the speed would put a
+    /// half-second hold at about a third of the distance rather than half of it —
+    /// and "if you only hold the cast for a second it will be between the far cast
+    /// and short cast" is a statement about where it lands, not about the launch.
+    /// </summary>
+    float ChargedShootSpeed()
+    {
+        float lo = bobberShootSpeedTap * bobberShootSpeedTap;
+        float hi = bobberShootSpeed    * bobberShootSpeed;
+        return Mathf.Sqrt(Mathf.Lerp(lo, hi, Charge01));
+    }
+
+    /// <summary>How far the rod is drawn back by the charge in progress. Same
+    /// axis and sign as the cast animation's own pull-back, so the release
+    /// continues the motion instead of restarting it.</summary>
+    Quaternion CastChargePose()
+    {
+        if (!_charging) return Quaternion.identity;
+        return Quaternion.AngleAxis(-pullBackAngle * Charge01, castRotationAxis);
+    }
+
+    /// <summary>
+    /// Hold to draw the rod back, let go to throw. Called every frame in the
+    /// states where a cast is possible; does nothing until the button goes down.
+    /// </summary>
+    void TickCastCharge()
+    {
+        if (castAnimationCoroutine != null) { _charging = false; return; }
+
+        if (!_charging)
+        {
+            if (!TutorialGate.FirePressed()) return;
+            _charging = true;
+            _chargeHeld = 0f;
+            return;
+        }
+
+        if (TutorialGate.FireHeld())
+        {
+            _chargeHeld += Time.deltaTime;
+            return;
+        }
+
+        // Let go: throw at whatever was wound up, and remember how far the rod
+        // was drawn so the fling starts from there rather than snapping back.
+        _launchSpeed = ChargedShootSpeed();
+        _launchDraw  = Charge01;
+        _charging = false;
+        _chargeHeld = 0f;
+        CastBobber();
+    }
+
+    /// How far the rod was drawn back when the button came up, 0-1.
+    float _launchDraw;
+
     void CastBobber()
     {
         if (bobberPrefab == null || castPoint == null) return;
@@ -690,7 +771,7 @@ public class FishingRodController : MonoBehaviour
 
         if (castAnimationCoroutine != null)
             StopCoroutine(castAnimationCoroutine);
-        castAnimationCoroutine = StartCoroutine(CastAnimation());
+        castAnimationCoroutine = StartCoroutine(CastAnimation(_launchSpeed));
         OnBobberCast?.Invoke();
     }
 
@@ -716,7 +797,10 @@ public class FishingRodController : MonoBehaviour
         audioSource.PlayOneShot(clip, vol);
     }
 
-    IEnumerator CastAnimation()
+    /// The speed this cast will throw at, locked in the frame the button came up.
+    float _launchSpeed;
+
+    IEnumerator CastAnimation(float launchSpeed)
     {
         if (castClip != null && audioSource != null)
             StartCoroutine(PlayCastSoundDelayed());
@@ -724,20 +808,17 @@ public class FishingRodController : MonoBehaviour
         Transform rodTransform = currentRodInstance.transform;
         Quaternion original = originalRodRotation;
 
+        // The draw-back already happened — the player did it, by holding the
+        // button. Starting from wherever the charge left the rod means the fling
+        // continues that motion instead of yanking the rod backwards again.
+        float drawn = Mathf.Clamp01(_launchDraw);
         Quaternion pulledBack = original * Quaternion.AngleAxis(-pullBackAngle, castRotationAxis);
-        float elapsed = 0f;
-        while (elapsed < pullBackDuration)
-        {
-            rodTransform.localRotation = Quaternion.Slerp(original, pulledBack, elapsed / pullBackDuration);
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-        rodTransform.localRotation = pulledBack;
-
-        yield return new WaitForSeconds(0.02f);
+        Quaternion from = Quaternion.Slerp(original, pulledBack, drawn);
+        rodTransform.localRotation = from;
+        pulledBack = from;
 
         Quaternion overshoot = original * Quaternion.AngleAxis(overshootAngle, castRotationAxis);
-        elapsed = 0f;
+        float elapsed = 0f;
         bool bobberSpawned = false;
 
         while (elapsed < snapForwardDuration)
@@ -748,7 +829,7 @@ public class FishingRodController : MonoBehaviour
             if (!bobberSpawned && t >= releasePoint)
             {
                 bobberSpawned = true;
-                SpawnBobber();
+                SpawnBobber(launchSpeed);
             }
 
             elapsed += Time.deltaTime;
@@ -757,7 +838,7 @@ public class FishingRodController : MonoBehaviour
         rodTransform.localRotation = overshoot;
 
         if (!bobberSpawned)
-            SpawnBobber();
+            SpawnBobber(launchSpeed);
 
         elapsed = 0f;
         float settleDuration = 0.1f;
@@ -778,7 +859,7 @@ public class FishingRodController : MonoBehaviour
     /// cast, flying and bouncing under GravityObjectSimple. It spawns at the
     /// rod tip so the throw visibly leaves the rod.
     /// </summary>
-    void SpawnBobber()
+    void SpawnBobber(float launchSpeed)
     {
         Vector3 camForward = Camera.main.transform.forward;
 
@@ -790,7 +871,7 @@ public class FishingRodController : MonoBehaviour
             Rigidbody ownerRb = GetComponent<Rigidbody>();
             parked.RelaunchFromTip(
                 ownerRb != null ? ownerRb.velocity : Vector3.zero,
-                camForward, bobberShootSpeed,
+                camForward, launchSpeed,
                 Quaternion.LookRotation(camForward) * Quaternion.Euler(bobberRotationOffset));
             if (lineRenderer != null) lineRenderer.enabled = true;
             Debug.Log("Bobber released (relaunch).");
@@ -815,7 +896,7 @@ public class FishingRodController : MonoBehaviour
             bobberRb.interpolation = RigidbodyInterpolation.Interpolate;
             bobberRb.useGravity = false;
 
-            bobberRb.AddForce(camForward * bobberShootSpeed, ForceMode.VelocityChange);
+            bobberRb.AddForce(camForward * launchSpeed, ForceMode.VelocityChange);
         }
 
         GravityObjectSimple grav = currentBobber.GetComponent<GravityObjectSimple>();

@@ -129,18 +129,27 @@ public static class FishingRules
     // assigned, and the numbers the headless tests run against.
 
     // Tension gained per second of holding, x the tier's pull.
-    // Raised 35 -> 48 alongside ReelSpeed on 2026-09-01, then 48 -> 96 on
-    // 2026-09-08 when the reel doubled again. It HAS to move with the reel: a
-    // faster reel closes the distance sooner, so a player could otherwise
-    // simply hold the button and brute-force a fish before the line ever
-    // snapped. The headless bot catches that immediately -- at 48 with the
-    // doubled reel, "hold forever" started landing rares on a 20 m cast, which
-    // is the one thing the fight must never allow.
-    public const float ReelRate  = 96f;
-    // Shed per second while released. Moves with ReelRate so the pump-and-let-go
-    // RHYTHM keeps its shape: the whole fight now runs at double speed rather
-    // than becoming a different fight.
-    public const float RelaxRate = 90f;
+    //
+    // 35 -> 48 (2026-09-01) -> 96 (2026-09-08, with the doubled reel) -> 44.
+    //
+    // 96 was arithmetic nobody could survive. Reeling into a run costs
+    // ReelRate x basePull x RunPullMultiplier x RunTensionScale; at 96 that was
+    // 96 x 1.8 x 2 x 1 = 345 a second on a rare, so the bar went from empty to
+    // snapped in 0.29 SECONDS. Sam, playtesting: "i would be reeling and as soon
+    // as they start fighting and tugging it would snap off ... it was almost
+    // impossible to catch a rare and they would break off the first time they
+    // started running." That was not bad luck, it was a number.
+    //
+    // 44 is picked so that steady reeling fills the bar in about 2.5s on a rare
+    // and reeling straight into a push takes about 1.2s -- long enough to see it
+    // coming and let go, which is the entire skill of the fight. Holding the
+    // button still loses: the pushes are frequent enough now that their spikes
+    // stack faster than the bar can be reeled away.
+    public const float ReelRate  = 80f;
+    // Shed per second while released. Sheds a full bar in ~1.8s against a ~2.5s
+    // fill, so pump-and-release is a rhythm you can actually keep rather than a
+    // race you lose.
+    public const float RelaxRate = 95f;
     public const float DrainRate = 1f;    // stamina spent per second of holding or running
     public const float TensionMax = 100f;
 
@@ -159,9 +168,17 @@ public static class FishingRules
     /// and Bobber.waterRetrieveSpeed doubled to match, so winding an empty lure
     /// home over land or across the water moved with it.
     public const float ReelSpeed = 13f;
+    /// <summary>
     /// Land the fish once it is this close. Measured against the bobber's REAL
     /// position, not a running total — see FishFightSim.SyncDistance.
-    public const float LandDistance = 2f;
+    ///
+    /// Cut 2 -> 1.2 on 2026-09-08 with the charged cast. Two metres was a
+    /// rounding error against a twelve metre throw and a sixth of a short one;
+    /// worse, the first draft of the charge had a tap landing at 1.5 m, INSIDE
+    /// the landing radius, so a tapped cast would have booked the fish the
+    /// instant it bit.
+    /// </summary>
+    public const float LandDistance = 1.2f;
     /// A run can never take the fish further out than this multiple of the
     /// original cast — without it, a long fight could drag on forever.
     public const float MaxRunOutFactor = 1.6f;
@@ -178,32 +195,54 @@ public static class FishingRules
         float span = s.weightMax - s.weightMin;
         float f = span > 0.0001f ? (weightLb - s.weightMin) / span : 0f;
         if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
-        // Raised across the board on 2026-09-08 with the doubled ReelSpeed.
-        // A fish that resisted 0.62 against a 6.5 reel gave up 2.5 m/s; against
-        // a 13 reel the same 0.62 would give up 4.9, and every rare would come
-        // in twice as fast. These numbers put the NET gain back to about 1.4x
-        // the old one -- reeling really is faster, just not double -- while the
-        // fish is pulling roughly twice as hard the whole time, which is what
-        // makes the tug-of-war readable instead of a steady creep.
-        float max = s.bounty ? 0.86f
-                  : s.tier == FishTier.Rare ? 0.73f
-                  : s.tier == FishTier.Uncommon ? 0.58f
-                  : 0.34f;
-        return max * (0.45f + 0.55f * f);
+        // Raised twice on 2026-09-08: once for the doubled ReelSpeed, and again
+        // when the cast became a charge that tops out at 10 m.
+        //
+        // A fight lasts, near enough, (cast distance) / (net reel speed). The
+        // cast roughly halved, so every fight halved with it — a rare was landed
+        // in two seconds and a common in under one, which is not a fight, it is
+        // a formality. The reel stays fast because that is what Sam asked for;
+        // what gives is how much of it the fish takes back.
+        //
+        // There is a hard ceiling here and it is worth writing down: if a fish
+        // resists so hard that the reel gains less ground than its pushes take,
+        // the fight NEVER ENDS. Average push loss is about 1.2 m/s on a rare, and
+        // you can only hold the reel for maybe 60% of a fight, so anything past
+        // about 0.84 is a stalemate. 0.78 leaves real margin.
+        float max = s.bounty ? 0.82f
+                  : s.tier == FishTier.Rare ? 0.74f
+                  : s.tier == FishTier.Uncommon ? 0.66f
+                  : 0.50f;
+        // The light-fish floor. At 0.45 the smallest fish of a tier resisted
+        // less than half what its biggest does, which made it a pushover you
+        // could land by holding the button before the bar could fill — that was
+        // most of what still got through the hold-forever bot. 0.58 keeps a
+        // clear weight spread while giving even a small fish enough to be a
+        // fight rather than a formality.
+        return max * (0.58f + 0.42f * f);
     }
 
-    /// Metres per second a running fish takes back. Commons never run.
-    /// Raised on 2026-09-01 with ReelSpeed, and DOUBLED again on 2026-09-08 for
-    /// the same reason: a run has to cost you a comparable share of the line to
-    /// what the reel just won, or the doubled reel simply outruns every fish and
-    /// the run stops being a thing you have to respect.
+    /// <summary>
+    /// Metres per second a fish takes back while it is pushing.
+    ///
+    /// Softened 2026-09-08 (rare 6.8 -> 4.6, uncommon 4.6 -> 3.2) and COMMONS
+    /// NOW PUSH TOO, at 2.0. Sam: "commons dont fight at all and literally are
+    /// just free to catch which is wrong, they should still fight but just be
+    /// easier to catch ... make the fishes pushes less powerful and more short,
+    /// but make them happen more often and make them happen for commons."
+    ///
+    /// Ground taken per push is speed x duration, and the duration more than
+    /// halved at the same time — so a single push now costs you around two
+    /// metres instead of ten. You lose the same water over a fight; you lose it
+    /// in a dozen small shoves you can read instead of two big ones you cannot.
+    /// </summary>
     public static float RunSpeedForTier(FishTier tier)
     {
         switch (tier)
         {
-            case FishTier.Rare:     return 6.8f;
-            case FishTier.Uncommon: return 4.6f;
-            default:                return 0f;
+            case FishTier.Rare:     return 4.6f;
+            case FishTier.Uncommon: return 3.2f;
+            default:                return 2.0f;
         }
     }
 
@@ -212,23 +251,60 @@ public static class FishingRules
     /// <summary>
     /// Maps raw load 0-1 onto how far the rod is actually bent.
     ///
-    /// Sam, 2026-09-01: "the rod should bend a tiny bit when the bar is less
-    /// than half full, then when half full or more reaching the breaking point
-    /// it should get to its max bend." So this is a KNEE, not a line: below the
-    /// knee the rod barely moves, above it the bend runs away toward maximum.
-    /// The payoff is that a deeply bent rod means something — it only ever
-    /// happens near the breaking point.
-    /// </summary>
-    public const float BendKnee = 0.5f;      // where the curve turns up
-    /// How bent the rod is AT the knee, as a fraction of the maximum.
+    /// <b>THE ROD IS THE BAR</b> (Sam, 2026-09-08: "the rod needs to be the same
+    /// as the status bar, because eventually id like to remove the status bar and
+    /// have it feeling so good you can just judge it from the rod"). Load is now a
+    /// near-straight readout of tension (see FishFightSim.RodLoad), so this curve
+    /// exists only to keep the top of the range dramatic — it must NOT be the
+    /// thing that decides what the rod is telling you.
     ///
-    /// Raised 0.15 -> 0.45 on 2026-09-01. At 0.15 the rod barely moved: simply
-    /// reeling is load 0.45, which sat just under the knee and produced ~5
-    /// degrees of bend on a 38 degree maximum. Sam: "it barely bends at all...
-    /// I just don't want it FULLY bending when the bar is less than 50% full, it
-    /// should still noticeably bend though." 0.45 is that: clearly working under
-    /// half load, and the full dramatic bow saved for the breaking point.
-    public const float BendAtKnee = 0.45f;
+    /// So it is now a gentle lean, not a cliff. It used to square the
+    /// above-knee term, which meant most of the visible travel happened in the
+    /// last fifth of the range: "the rod bending sometimes goes from a little
+    /// bent to fully bent very fast ... we just need to make it not like that, so
+    /// that tension builds with the rod and you can see when it starts bending
+    /// too much and actually have a chance to stop reeling and relieve the
+    /// tension." An exponent of 1.5 keeps a deep bow meaningful while leaving
+    /// real, readable travel through the middle where the decisions are made.
+    /// </summary>
+    public const float BendKnee = 0.45f;     // where the curve leans up
+    /// How bent the rod is AT the knee, as a fraction of the maximum. At 0.45/0.5
+    /// the curve passes almost exactly through the diagonal, so "half bent" means
+    /// "half way to snapping" — which is the whole point of the rod replacing the
+    /// bar.
+    public const float BendAtKnee = 0.5f;
+
+    /// Shape of the curve ABOVE the knee. 1 = perfectly linear, 2 = the old
+    /// cliff. 1.5 leans into the last third without hiding the middle.
+    public const float BendAboveKnee = 1.5f;
+
+    // ── What loads the rod ───────────────────────────────────────────────────
+
+    /// <summary>
+    /// Bend you get from simply having a fish on a tight line, before any
+    /// tension at all — its weight in the water. The rest of the range is
+    /// tension, so the rod reads as: a little bent = something is on, half bent
+    /// = half way to snapping, fully bowed = let go NOW.
+    /// </summary>
+    public const float RodRestingLoad = 0.18f;
+
+    /// <summary>
+    /// How tight a hooked fish holds the line ON ITS OWN, with you doing
+    /// nothing. Sam: "when fighting the fish the line should stay tight the
+    /// entire time, unless you stop reeling AND the fish stops fighting."
+    /// Before this the line headed for fully slack the instant you released,
+    /// which is why it "gets droopy when it shouldn't" — a fish on the end is
+    /// still a fish on the end.
+    /// </summary>
+    public const float FishHoldTaut = 0.85f;
+
+    /// <summary>
+    /// Seconds of you doing nothing before the fish gives up holding the line
+    /// and it goes properly slack — which is also the window in which it works
+    /// the hook loose (see SlackEscapeSeconds). Scaled by how much fight it has
+    /// left, so a spent fish lets go at once.
+    /// </summary>
+    public const float FishHoldFadeSeconds = 1f;
 
     public static float BendCurve(float load01) => BendCurve(load01, BendKnee, BendAtKnee);
 
@@ -240,7 +316,7 @@ public static class FishingRules
         if (load01 <= knee)
             return atKnee * (load01 / knee);
         float t = (load01 - knee) / (1f - knee);
-        return atKnee + (1f - atKnee) * t * t;
+        return atKnee + (1f - atKnee) * (float)Math.Pow(t, BendAboveKnee);
     }
 
     // ── Line tightness ───────────────────────────────────────────────────────
@@ -267,7 +343,11 @@ public static class FishingRules
 
     /// Applied while reeling a fish that is NOT running.
     public const float SteadyTensionScale = 0.5f;
-    /// Applied while reeling a fish that IS running — unchanged from before.
+    /// Applied while reeling a fish that IS pushing, at the TOP of its wind-up.
+    /// Reeling into a push at full strength really is four times the steady rate
+    /// and really will snap you — but RunRampSeconds means you get a quarter of
+    /// a second of it building first, which is the difference between a fight
+    /// and a coin toss.
     public const float RunTensionScale = 1f;
 
     /// <summary>
@@ -319,29 +399,81 @@ public static class FishingRules
             // length where it was and leaves the extra violence in place.
             case FishTier.Rare:     min = 5.4f; max = 8.4f; break;
             case FishTier.Uncommon: min = 2.8f; max = 4.2f; break;
-            default:                min = 1.6f; max = 2.6f; break;
+            // Commons push now, and stamina is what a push is spent from — so
+            // they need enough for two or three shoves before they give up. This
+            // is the dial that keeps them EASY rather than empty: raise it and a
+            // common starts feeling like an uncommon.
+            default:                min = 2.2f; max = 3.2f; break;
         }
     }
 
-    /// Commons never run. A run doubles pull for 1-2s — the whole skill of the
-    /// fight is letting go during one.
-    ///
-    /// Intervals tightened on 2026-09-08 (uncommon 2-4s -> 1.4-2.8s, rare
-    /// 1.5-3s -> 1.1-2.1s). This is the "more back and forth" half of Sam's ask:
-    /// the fight is the same number of seconds but you now get noticeably more
-    /// reel/release cycles inside it, so it reads as a struggle rather than one
-    /// long pull with the occasional interruption.
-    public static bool TierRuns(FishTier tier) => tier != FishTier.Common;
+    /// <summary>
+    /// EVERY tier pushes now, commons included (2026-09-08). A common that never
+    /// fought was, in Sam's words, "literally free to catch, which is wrong" —
+    /// it just pushes weakly and runs out of fight quickly, which is what makes
+    /// it the easy fish rather than the empty one.
+    /// </summary>
+    public static bool TierRuns(FishTier tier) => true;
 
+    /// <summary>
+    /// Seconds between pushes. Tightened hard on 2026-09-08 — a fight should be
+    /// a constant argument, not two dramatic interruptions in a long haul.
+    /// Rarer fish argue more often.
+    /// </summary>
     public static void RunIntervalForTier(FishTier tier, out float min, out float max)
     {
-        if (tier == FishTier.Rare) { min = 1.1f; max = 2.1f; }
-        else                       { min = 1.4f; max = 2.8f; }
+        switch (tier)
+        {
+            case FishTier.Rare:     min = 0.8f; max = 1.5f; break;
+            case FishTier.Uncommon: min = 1.0f; max = 1.9f; break;
+            default:                min = 1.3f; max = 2.4f; break;
+        }
     }
 
-    public const float RunDurationMin = 1f;
-    public const float RunDurationMax = 2f;
-    public const float RunPullMultiplier = 2f;
+    /// How long one push lasts. Cut from 1-2s on 2026-09-08: "make the fishes
+    /// pushes less powerful and more short". A short push is something you react
+    /// to; a two-second one is something you sit through.
+    public const float RunDurationMin = 0.35f;
+    public const float RunDurationMax = 0.7f;
+
+    /// How much harder the fish pulls at the top of a push. Was 2.
+    public const float RunPullMultiplier = 1.6f;
+
+    /// <summary>
+    /// Seconds a push takes to come on FULL STRENGTH. The single most important
+    /// number in the fight, and it did not exist before 2026-09-08.
+    ///
+    /// A push used to switch on between one frame and the next: full pull, full
+    /// tension rate, instantly. Sam: "i would be reeling and as soon as they
+    /// start fighting and tugging it would snap off ... they would break off the
+    /// first time they started running." Nothing about that is reflexes — the bar
+    /// went from 70% to snapped in under two tenths of a second, which is roughly
+    /// how long it takes to notice anything at all.
+    ///
+    /// Softening the push instead was tried and is worse: it makes it survivable
+    /// for a person AND ignorable for someone who just holds the button, and the
+    /// headless bot went from losing every good fish to landing 47% of them.
+    /// Strength cannot separate skill from stubbornness, because both eat the
+    /// same spike. TIME can. Over a quarter second you can see the rod start to
+    /// go, decide, and let go having taken a fraction of it; hold on and you take
+    /// all of it, every time.
+    /// </summary>
+    public const float RunRampSeconds = 0.25f;
+
+    /// <summary>How far into its wind-up a push is, 0-1, after
+    /// <paramref name="secondsIntoRun"/>. Smoothstepped so it eases in rather
+    /// than arriving on a corner.</summary>
+    public static float RunRamp(float secondsIntoRun)
+    {
+        // Divide-guarded without a branch: RunRampSeconds is a const, so an
+        // `if (RunRampSeconds <= 0)` early-out folds away and the compiler
+        // (correctly) calls the line after it unreachable. Warning baseline
+        // here is ZERO, so that matters.
+        float x = secondsIntoRun / Math.Max(0.0001f, RunRampSeconds);
+        if (x <= 0f) return 0f;
+        if (x >= 1f) return 1f;
+        return x * x * (3f - 2f * x);
+    }
 
     /// <summary>
     /// Seconds before a freshly hooked fish makes its FIRST run — the bolt.
@@ -360,8 +492,19 @@ public static class FishingRules
     /// </summary>
     public static void FirstRunDelayForTier(FishTier tier, out float min, out float max)
     {
-        if (tier == FishTier.Rare) { min = 0.3f; max = 0.6f; }
-        else                       { min = 0.45f; max = 0.9f; }
+        // Nudged out on 2026-09-08. At 0.3s a rare bolted before the player had
+        // finished registering the bite, so the first push landed on someone who
+        // was still reeling — and with the old numbers that was the whole fight
+        // over. You get a moment to settle now, then it goes.
+        switch (tier)
+        {
+            case FishTier.Rare:     min = 0.5f; max = 0.9f; break;
+            case FishTier.Uncommon: min = 0.5f; max = 1.0f; break;
+            // Commons are the SHORT fight, so their first push has to come early
+            // or the fish is landed before it ever shoves — the exact bug the
+            // bolt was invented to fix, one tier down.
+            default:                min = 0.4f; max = 0.8f; break;
+        }
     }
 
     // ── Fish size on screen ──────────────────────────────────────────────────
@@ -563,10 +706,60 @@ public static class FishingRules
     // is also a longer fight, because the fight starts at the real distance --
     // so distance buys you better fish AND charges you for them.
 
-    /// Casts at or below this are "right in front of you".
-    public const float ShortCast = 5f;
-    /// Casts at or beyond this get the full long-cast bonus.
-    public const float LongCast  = 16f;
+    // ── The charged cast (2026-09-08) ────────────────────────────────────
+    //
+    // Sam: "make casting cast less far, then make it so that clicking to cast
+    // does a small tiny cast, but you can hold the cast button for up to 2
+    // seconds to charge your cast, and it will make it cast further, or if you
+    // only hold the cast for a second it will be between the far cast and short
+    // cast."
+    //
+    // The distances live HERE rather than on the rod, for one reason: the tier
+    // shift below is scored against them, so they have to be the same numbers or
+    // the odds are keyed to a cast nobody can actually make. That is exactly what
+    // went wrong when the ramp said 5..16 m and the rod could throw 12.
+
+    /// <summary>
+    /// Metres a TAP puts the bobber out — a plop just off the bank.
+    ///
+    /// Not smaller than this, and the reason is LandDistance: a fish counts as
+    /// landed once it is that close, so a cast shorter than the landing radius
+    /// would be over before it began. Three metres leaves a short but real
+    /// fight, which is what a tap is meant to buy.
+    /// </summary>
+    public const float TapCastDistance = 3f;
+    /// <summary>
+    /// Metres a FULL two-second charge reaches.
+    ///
+    /// <b>This is about where a single click used to land, and that is
+    /// deliberate</b> — worth reading before "helpfully" shortening it. Sam asked
+    /// for casting to go less far, and it does: the ordinary cast, the click, went
+    /// from about twelve metres to three. What did not shrink is the ceiling,
+    /// because <b>the cast distance IS the length of the fight</b> — the fish
+    /// starts there and the fight is over when it arrives. Capping the charge at
+    /// 8.5 m was tried first and a rare fought for two seconds; every other dial
+    /// (resist, push strength, push frequency) was pushed to its limit trying to
+    /// buy that time back, and the arithmetic simply does not exist: a 13 m/s reel
+    /// crossing six metres of water cannot take eight seconds.
+    ///
+    /// So the charge buys the water, and the water is the fight. Tap for a quick
+    /// tiddler; hold the full two seconds when you want a real one.
+    /// </summary>
+    public const float FullCastDistance = 13f;
+    /// Seconds of holding to go from a tap to a full cast.
+    public const float CastChargeSeconds = 2f;
+
+    /// <summary>Where a charge held <paramref name="charge01"/> of the way lands.
+    /// Linear in DISTANCE, not in launch speed — "if you only hold the cast for a
+    /// second it will be between the far cast and short cast" means halfway along
+    /// the water, not halfway up the speed curve.</summary>
+    public static float CastDistanceFor(float charge01)
+        => Lerp(TapCastDistance, FullCastDistance, charge01 < 0f ? 0f : (charge01 > 1f ? 1f : charge01));
+
+    /// Casts at or below this are "right in front of you" — i.e. a tap.
+    public const float ShortCast = TapCastDistance;
+    /// Casts at or beyond this get the full long-cast bonus — i.e. a full charge.
+    public const float LongCast  = FullCastDistance;
 
     /// <summary>0 for a cast at your feet, 1 for a full-length one.</summary>
     public static float CastFactor(float castDistance)
@@ -581,8 +774,16 @@ public static class FishingRules
                                       ref float common, ref float uncommon, ref float rare)
     {
         float f = CastFactor(castDistance);
-        // -6 .. +12 on rare, half of that on uncommon.
-        float rareShift = Lerp(-6f, 12f, f);
+        // -6 .. +5.5 on rare, half of that on uncommon.
+        //
+        // The top used to be +12, but it was scored against a 16 m bookend that
+        // the rod could not reach: a typical 12 m cast scored 0.64 and collected
+        // about +5.4, and the full +12 was theoretical. Now that a full charge
+        // really is the top of the ramp, leaving it at +12 would have quietly
+        // made every charged cast far richer than the game has ever been. +5.5
+        // hands the same odds a good cast always gave, and hands them to the
+        // player for holding the button instead of for standing somewhere.
+        float rareShift = Lerp(-6f, 5.5f, f);
         float uncShift  = rareShift * 0.5f;
 
         if (rareShift >= 0f)
