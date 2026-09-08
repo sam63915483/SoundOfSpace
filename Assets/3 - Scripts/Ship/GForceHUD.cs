@@ -145,8 +145,11 @@ public class GForceHUD : MonoBehaviour
         // corner real estate.
         if (_player == null) _player = FindObjectOfType<PlayerController>(true);
         Ship pilotedForGate = FindPilotedShip();
+        // Never in the MAIN MENU: MenuOrbit's stripped player made "a player
+        // exists" true there, and this per-frame toggle re-enabled the boost
+        // meter over the menu right after HUDSceneGate hid it (2026-09-08).
         bool show = ((_player != null && _player.JetpackUnlocked) || pilotedForGate != null || DroneController.Active != null)
-                    && !PlayerController.isMapOpen;
+                    && !PlayerController.isMapOpen && !HUDSceneGate.InMainMenu;
         if (_canvas != null && _canvas.enabled != show) _canvas.enabled = show;
         if (_indicatorCam != null && _indicatorCam.enabled != show) _indicatorCam.enabled = show;
         // Helmet-screen power-on: flicker + scanline sweep whenever the boost

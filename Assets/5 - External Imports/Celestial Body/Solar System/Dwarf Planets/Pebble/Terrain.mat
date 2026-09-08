@@ -2,20 +2,25 @@
 %TAG !u! tag:unity3d.com,2011:
 --- !u!21 &2100000
 Material:
-  serializedVersion: 6
+  serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Terrain
   m_Shader: {fileID: 4800000, guid: ebd63f199114146ddacca96d32c18d9e, type: 3}
-  m_ShaderKeywords: _USEEJECTA_ON
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords:
+  - _USEEJECTA_ON
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
   stringTagMap: {}
   disabledShaderPasses: []
+  m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
@@ -64,7 +69,7 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _NormalMapSteep:
-        m_Texture: {fileID: 2800000, guid: fb5f32830e2c84487ababc395fd75b0e, type: 3}
+        m_Texture: {fileID: 2800000, guid: 8a3e8acfd7e3b4a528160cc9ec108fd8, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _OcclusionMap:
@@ -83,10 +88,11 @@ Material:
         m_Texture: {fileID: 2800000, guid: 56494c7daf00a41ecb4992bfa29b18be, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    m_Ints: []
     m_Floats:
-    - _BiomeBlendStrength: 1.37
+    - _BiomeBlendStrength: 9.513435
     - _BiomeDistortStrength: 0.33
-    - _BiomeWarpStrength: 6.08
+    - _BiomeWarpStrength: -1.8691707
     - _BiomeWeight: 0.85
     - _BumpScale: 1
     - _Cutoff: 0.5
@@ -103,7 +109,7 @@ Material:
     - _Glossiness: 0.6
     - _GlossyReflections: 1
     - _MainTexScale: 8
-    - _Metallic: 0.0163126
+    - _Metallic: 0.23077492
     - _MetallicA: 0.811
     - _MetallicB: 0
     - _Mode: 0
@@ -115,8 +121,8 @@ Material:
     - _Parallax: 0.02
     - _PolesStartLongitude: 0.8486198
     - _PolesVisibility: 1
-    - _SmoothnessA: 0.018220196
-    - _SmoothnessB: 0.18875508
+    - _SmoothnessA: 0.09725893
+    - _SmoothnessB: 0.0075443233
     - _SmoothnessEjecta: 0.037
     - _SmoothnessTextureChannel: 0
     - _SpecularHighlights: 1
@@ -136,13 +142,14 @@ Material:
     - _FresnelCol: {r: 1, g: 0.90105057, b: 0.6650944, a: 1}
     - _NormalMapScales: {r: 10, g: 10, b: 0, a: 0}
     - _Params: {r: 0.23, g: -1.27, b: 0.26, a: 0.52}
-    - _PrimaryColA: {r: 1, g: 1, b: 1, a: 0}
-    - _PrimaryColB: {r: 0.1792453, g: 0.1792453, b: 0.1792453, a: 1}
-    - _RandomBiomeValues: {r: -4.41, g: 0, b: -1.18, a: 5.65}
+    - _PrimaryColA: {r: 0.2938869, g: 0.20328979, b: 0.20328979, a: 1}
+    - _PrimaryColB: {r: 0.7381867, g: 0.52313, b: 0.24371195, a: 1}
+    - _RandomBiomeValues: {r: -0.98225546, g: -0.088549905, b: 0.11319988, a: -0.15341493}
     - _RandomPoleValues: {r: -0.14810935, g: -0.00710578, b: 0.08569491, a: 2.2706196}
     - _RandomValues: {r: -1, g: 0.19, b: 0.4, a: -0.28}
-    - _SecondaryColA: {r: 0.735849, g: 0.735849, b: 0.735849, a: 0}
-    - _SecondaryColB: {r: 0, g: 0, b: 0, a: 0}
+    - _SecondaryColA: {r: 0.2024936, g: 0.1398363, b: 0.10834005, a: 1}
+    - _SecondaryColB: {r: 0.8092703, g: 0.42432022, b: 0.17280523, a: 1}
     - _TestParams: {r: 0.07, g: 0.48, b: 0.18, a: 0}
     - _TextureMask: {r: 0, g: 0, b: 1, a: 0}
     - _TextureWeights: {r: 0, g: 0, b: 0, a: 1}
+  m_BuildTextureStacks: []

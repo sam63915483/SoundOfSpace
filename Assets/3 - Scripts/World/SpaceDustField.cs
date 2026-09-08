@@ -314,7 +314,13 @@ public class SpaceDustField : MonoBehaviour
             // black hole read as "gone" from Humble Abode. At 0.7 the dark
             // lensed body keeps ~30% presence through the haze while the
             // "through the limb from space" case (through) stays full-strength.
-            const float surfaceImmersionCap = 0.85f;
+            // 2026-09-08: raised 0.85 → 1.0. The cap existed because the shader
+            // used to dissolve the void too; now the void keeps full coverage on
+            // its own (1 - fringe), and any fade short of 1 leaves a slice of the
+            // dark private starfield replacing the sky = the "darker circle
+            // around the black hole" Sam saw. At 1 the periphery is purely
+            // additive and cannot darken the sky at all.
+            const float surfaceImmersionCap = 1.0f;
             float f = Mathf.Max(immersion * surfaceImmersionCap, through);
             if (f > fade) fade = f;
         }

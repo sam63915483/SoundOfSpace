@@ -17,6 +17,7 @@ Properties {
 	_LensFadeLo("Lens Far-Field Fade Start (rad)", Float) = 0.012
 	_LensFadeHi("Lens Full-Strength Bend (rad)", Float) = 0.06
 	_AtmoWash("Atmosphere Wash On Bright Content", Range(0, 1)) = 0.35
+	_VoidReach("Atmosphere: black void reach (impact-parameter units; the dark lensed band inside the disk)", Range(0, 3)) = 1.0
 	[HideInInspector] _AtmoFade("Atmosphere Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanFade("Ocean Fade (driven by SpaceDustField)", Range(0, 1)) = 0
 	[HideInInspector] _OceanCenter("Ocean Center (driven by SpaceDustField)", Vector) = (0, 0, 0, 0)
@@ -29,7 +30,12 @@ SubShader {
 		ZWrite Off
 		Lighting Off
 		Cull Back
-		Blend SrcAlpha OneMinusSrcAlpha
+		// PREMULTIPLIED (2026-09-08): the fragment multiplies rgb by its own
+		// alpha before returning. Identical result to SrcAlpha/OneMinusSrcAlpha
+		// everywhere — except that it lets the atmosphere path below keep a
+		// pixel's LIGHT while dropping its COVERAGE, i.e. add to the sky
+		// without ever darkening it. See the atmosphere block in frag.
+		Blend One OneMinusSrcAlpha
 		CGPROGRAM
 
 		#pragma target 3.0
@@ -55,6 +61,7 @@ SubShader {
 		uniform float _LensFadeLo;   // bend (radians) below which the lens is fully transparent — the REAL sky shows
 		uniform float _LensFadeHi;   // bend at which the lens reaches full strength
 		uniform half _AtmoWash;      // fraction of _AtmoFade applied to EVERYTHING incl. the bright disk — atmospheric haze dims the whole effect from a planet; 0 in space either way
+		uniform half _VoidReach;     // through an atmosphere, how far out (in impactParameter) the region is held BLACK — covers the dark photon-ring smear between the horizon and the disk's inner edge
 		uniform half _AtmoFade;   // 0 in clear space; ramps toward 1 when a planet's atmosphere is between the eye and the effect — EITHER the camera sits inside that atmosphere OR the black hole is viewed through/behind it from outside (set by SpaceDustField.UpdateBlackHoleAtmoFade). Dissolves the dark lensed periphery into the hazed sky so the effect doesn't cut a hard circle out of the atmosphere.
 		uniform half _OceanFade;  // SUBMERSION ramp (0 dry -> 1 a few metres underwater), driven by SpaceDustField. FULL fade — bright ring included.
 		uniform float3 _OceanCenter;  // nearest ocean sphere (world), driven by SpaceDustField — for the per-pixel ray-vs-water occlusion below
@@ -122,6 +129,7 @@ SubShader {
 			else	angle = 1 / impactParameter;	// Gravitational lens
 			half3 deflected = viewDirection;
 			half fringe = 1;
+			half diskA = 0;		// accretion-disk coverage at this pixel (atmosphere path keeps the disk solid)
 			if(abs(angle) > _Cutoff){
 				if(_Cutoff > 0 && abs(angle) < _Cutoff * 3)	result.a = saturate(angle / _Cutoff * 0.5 - 0.5);
 				if(result.a < 1)	angle *= result.a;
@@ -224,29 +232,54 @@ SubShader {
 
 						result.rgb = lerp(result.rgb, disk.rgb, disk.a);
 						result.a = max(result.a, disk.a);
+						diskA = max(diskA, disk.a);
 					}
 				}
 			}
 
-			// Atmosphere blend (driven by _AtmoFade from SpaceDustField): when the
-			// camera is deep inside a planet's atmosphere, let the hazed sky show
-			// through the DARK parts of the effect so the lensed galaxy stops cutting
-			// a hard-edged circle out of the atmosphere. Bright pixels (accretion disk,
-			// lens core) keep their alpha, so the black hole still reads through haze.
+			// ── Atmosphere (driven by _AtmoFade from SpaceDustField) ──────────
+			//
+			// This quad draws AFTER the atmosphere post and bends its own PRIVATE
+			// starfield cubemap, not the real sky. In space the two are the same
+			// picture, so it is invisible. Through a planet's atmosphere it is not:
+			// the dim starfield blended over the bright hazed sky read as a DARKER
+			// CIRCLE around the hole, and the previous pass here — dissolving dark
+			// pixels by their brightness (never reaches 0) and protecting only a
+			// thin `1 - ip*8` band of the horizon — left the outer void as sky
+			// with a small dark centre (Sam, 2026-09-08: "only the very middle is
+			// a black circle and then there's a ring of lighter atmosphere
+			// colouring", plus "a weird darker circle around the black hole").
+			//
+			// Now, in premultiplied terms (light vs coverage):
+			//   • VOID = the black of the horizon itself. `fringe` is exactly the
+			//     shader's own "how much starfield survives here" (0 inside the
+			//     horizon, ramping to 1 by ip = 0.25), so 1 - fringe IS the region
+			//     that reads black in space. It keeps FULL coverage and no light
+			//     → stays black through any atmosphere, edge to edge.
+			//   • ACCRETION DISK keeps its coverage (diskA) and is hazed by
+			//     _AtmoWash exactly as before (light AND coverage scaled, so the
+			//     sky shows through it a little — haze, not darkening).
+			//   • LENSED PERIPHERY (the bent private starfield) loses its coverage
+			//     entirely: it stops REPLACING the sky and only ADDS its light,
+			//     so it can never darken the sky. Bright stars / the galaxy band
+			//     still glow through as a faint lensed smear; black adds nothing.
+			// _AtmoFade = 0 (clear space) leaves every term untouched.
+			half3 premul = saturate(result.rgb) * saturate(result.a);	// light this pixel contributes
+			half  cov    = saturate(result.a);							// how much sky it replaces
 			if(_AtmoFade > 0){
-				half lum = max(result.r, max(result.g, result.b));
-				// Protect the VOID (at/inside the event horizon, impactParameter
-				// around/below 0) so the hole itself never dissolves into the
-				// sky. The dark compressed-starfield ring just OUTSIDE it (dark
-				// pixels, ip > 0) hazes out with the atmosphere like the rest of
-				// the sky — that ring was reading as a dirty dark halo.
-				half core = saturate(1 - impactParameter * 8);
-				result.a *= 1 - _AtmoFade * (1 - max(saturate(lum), core));
-				// Haze wash: unlike the dark-dissolve above, this dims the WHOLE
-				// effect — bright accretion disk included — when viewed from
-				// inside an atmosphere, so it reads hazed from a planet surface
-				// but full-strength from space.
-				result.a *= 1 - _AtmoFade * _AtmoWash;
+				// The void is wider than the horizon. Between the horizon (ip 0)
+				// and the disk's inner edge (ip ≈ 1) the bending is so strong the
+				// lensed starfield is a dark smear — in space that whole band
+				// reads black. `1 - fringe` only covered ip < 0.25, so through the
+				// atmosphere the rest of the band showed sky: a light ring inside
+				// the disk (Sam, 2026-09-08, second screenshot). Hold everything
+				// out to _VoidReach black, with a short ramp so the edge is soft.
+				half voidW = max(saturate(1 - fringe),
+				                 1 - smoothstep(_VoidReach * 0.8, _VoidReach, impactParameter));
+				half keep  = max(voidW, diskA);
+				half haze  = 1 - _AtmoFade * _AtmoWash * (1 - voidW);
+				cov    *= (1 - _AtmoFade * (1 - keep)) * haze;
+				premul *= haze;
 			}
 
 			// PER-PIXEL ocean occlusion: fade any pixel whose view ray passes
@@ -307,9 +340,10 @@ SubShader {
 			// Submersion ramp (camera depth below the water surface, driven by
 			// SpaceDustField): full fade — no luminance protection — so the
 			// whole effect dissolves smoothly as the player dives.
-			result.a *= 1 - _OceanFade;
+			premul *= 1 - _OceanFade;
+			cov    *= 1 - _OceanFade;
 
-			return saturate(result);
+			return saturate(half4(premul, cov));	// premultiplied — see the Blend line
 		}
 
 		ENDCG

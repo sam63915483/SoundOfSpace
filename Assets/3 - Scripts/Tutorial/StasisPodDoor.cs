@@ -65,18 +65,33 @@ public class StasisPodDoor : MonoBehaviour
     }
 
     /// Valve-wheel entry point: open now, close openSeconds later.
+    /// This is the ONLY open that arms a save: PressArmed = "a person pressed
+    /// the valve to get in", and only such an entry may seal + upload.
     public void OpenForSeconds(float openSeconds)
     {
         SetTarget(1f);
         _closeAt = Time.time + openSeconds;
+        _pressArmed = true;
     }
 
-    /// Ritual exit point: open and stay open — the exit rule closes it.
+    /// Ritual / wake exit point: open and stay open until the occupant has
+    /// LEFT — the "stepped fully out" edge closes it. Never times out on
+    /// someone still inside (Sam, 2026-09-08: "when the door opens it
+    /// shouldn't close until you leave the stasis pod, nor make a save if it
+    /// closes with you inside"). Clears the press arming: being let out is
+    /// not a request to be sealed in again.
     public void OpenHold()
     {
         SetTarget(1f);
         _closeAt = -1f;
+        _pressArmed = false;
     }
+
+    /// True from a valve press until the door is next opened by the game
+    /// (OpenHold) or times out with nobody inside. StasisPodSave requires it
+    /// for an UPLOAD: sealed-inside-without-a-press is only ever a wake.
+    bool _pressArmed;
+    public bool PressArmed => _pressArmed;
 
     /// ── Multiplayer: the HOST owns this door ─────────────────────────────
     ///
@@ -174,8 +189,10 @@ public class StasisPodDoor : MonoBehaviour
         // Host (or single player): decide on LOCAL + REMOTE together.
         Zone eff = EffectiveZone(CurrentZone);
 
-        // Entered the pod proper → the door seals behind you (save ritual).
-        if (eff == Zone.Deep && _prevEffective != Zone.Deep && IsOpen)
+        // Entered the pod proper THROUGH A VALVE-OPENED DOOR → it seals behind
+        // you (save ritual). Walking into a door the game held open for you
+        // (after a wake / load) seals nothing — press the valve to save.
+        if (eff == Zone.Deep && _prevEffective != Zone.Deep && IsOpen && _pressArmed)
             _closeAt = Time.time + autoCloseDelay;
         // Stepped fully out → close behind you.
         else if (eff == Zone.Outside && _prevEffective != Zone.Outside && IsOpen)
@@ -209,21 +226,32 @@ public class StasisPodDoor : MonoBehaviour
         // Doorway stays excluded so the leaf never lands on someone standing in
         // it, and the execute step below re-checks that at close time anyway.
         //
-        // Deep gets a LONGER grace than Outside. autoCloseDelay is 2s, which is
-        // right for "you already walked out, shut behind me" but nowhere near
-        // enough to cross the pod from a standstill — it would seal a waking
-        // guest back in. DeepExitCloseDelay matches the valve's own 5s, so
-        // being let out by OpenHold feels exactly like pressing the valve, which
-        // is the behaviour Sam asked for.
-        if (IsOpen && _closeAt <= 0f && eff != Zone.Doorway)
+        // ⚠️ REVISED 2026-09-08 (Sam): an OCCUPIED pod that the game opened
+        // (OpenHold after a wake or a load) must NOT time out — the door stays
+        // open until the occupant steps out, and the "stepped fully out" edge
+        // above closes it. The 5 s Deep grace used to seal a player who stood
+        // still after waking, then replayed the DOWNLOADING overlay over them
+        // (a fake save on a new game, and on every load). So Deep is covered
+        // by the net ONLY when the door was opened by a valve press
+        // (_pressArmed): that occupant asked to be sealed in, and
+        // DeepExitCloseDelay is just the backstop for a missed Deep edge.
+        // The 2026-08-08 co-op case (guest wakes Deep, no transition into
+        // Deep) is still handled — by the Outside edge when they walk out.
+        if (IsOpen && _closeAt <= 0f && eff != Zone.Doorway && (eff != Zone.Deep || _pressArmed))
             _closeAt = Time.time + (eff == Zone.Deep ? DeepExitCloseDelay : autoCloseDelay);
 
         // Execute a due close — but never while ANY player straddles the doorway
-        // plane, on either machine (the leaf would land on them).
-        if (IsOpen && _closeAt > 0f && Time.time >= _closeAt && eff != Zone.Doorway)
+        // plane, on either machine (the leaf would land on them), and never on
+        // an occupant who did not press the valve (a stale timer from before
+        // they stepped in must not seal them).
+        if (IsOpen && _closeAt > 0f && Time.time >= _closeAt && eff != Zone.Doorway
+            && (eff != Zone.Deep || _pressArmed))
         {
             _closeAt = -1f;
             SetTarget(0f);
+            // Valve press that nobody used (timed out with the pod empty): disarm,
+            // so a later walk-in through a game-opened door can't inherit it.
+            if (eff != Zone.Deep) _pressArmed = false;
         }
 
         AnimateToTarget();

@@ -251,7 +251,47 @@ public static class NewGameReset
         // and death respawn targets ActiveSlotName first. Sending the seed save
         // anywhere else would leave the pod slot empty until the first upload,
         // which is exactly the window this exists to cover.
-        SaveSystem.Save(StasisPodSave.ActiveSlotName);
+        //
+        // ⚠️ NOT WRITTEN HERE ANY MORE (2026-09-08). This runs two frames into
+        // the scene — BEFORE the intro has moved the player into the shuttle —
+        // so it captured the Player prefab at its scene-authored pose, which is
+        // standing on ICEY TWIN. Exit to the menu before the first pod upload,
+        // load that slot, and you woke on Icey Twin with the shuttle 6.5 km
+        // away on Humble Abode (Sam's report; the on-disk seed files all said
+        // bodyName "Icey Twin", introPlayed false). The seed is now written by
+        // NewGameResetRunner.SeedSaveWhenLanded — after the intro ride has
+        // ended and the player stands in the landed shuttle — so it is an
+        // honest snapshot of the real start. Until then the run has NO file:
+        // quitting mid-ride leaves nothing to load, which is the truth.
+    }
+
+    /// The deferred seed save (see the note at the end of Apply). Waits for
+    /// the intro shuttle ride to START (the player is rider-caged within a few
+    /// seconds of a new game) and then to END (touchdown releases the riders),
+    /// plus one physics tick so the released body has a real pose, then writes
+    /// this run's pod slot. If no ride ever starts — the intro is disabled, or
+    /// a dev Play straight into the scene — falls back to the old timing after
+    /// a short grace so death respawn still has a file to reload.
+    public static IEnumerator SeedSaveWhenLanded()
+    {
+        const float rideStartGrace = 12f;
+        float t0 = Time.unscaledTime;
+        while (!PlayerController.RiderMode && Time.unscaledTime - t0 < rideStartGrace)
+            yield return null;
+        if (PlayerController.RiderMode)
+        {
+            while (PlayerController.RiderMode) yield return null;
+            yield return new WaitForFixedUpdate();
+            yield return null;
+        }
+        // The slot may have been re-pointed or a real upload may already have
+        // happened (co-op guest, dev shortcuts); never clobber a real save.
+        string slot = StasisPodSave.ActiveSlotName;
+        if (string.IsNullOrEmpty(slot)) yield break;
+        foreach (var s in SaveSystem.ListSaves())
+            if (s.fileName == slot) yield break;
+        SaveSystem.Save(slot);
+        Debug.Log("[NewGameReset] Seed save written after landing → " + slot);
     }
 }
 
@@ -266,6 +306,9 @@ public class NewGameResetRunner : MonoBehaviour
         yield return new WaitForFixedUpdate();
         try { NewGameReset.Apply(); }
         catch (System.Exception e) { Debug.LogError($"[NewGameReset] Apply failed: {e}"); }
+        // The seed save is deferred to after the intro landing (see
+        // NewGameReset.SeedSaveWhenLanded); this runner lives until it's done.
+        yield return NewGameReset.SeedSaveWhenLanded();
         Destroy(gameObject);
     }
 }

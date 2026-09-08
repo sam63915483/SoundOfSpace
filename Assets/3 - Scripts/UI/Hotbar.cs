@@ -331,7 +331,10 @@ public class Hotbar : MonoBehaviour
         // hides all HUD canvases; without this check Update() would race
         // the map and immediately re-enable the hotbar). Same isMapOpen
         // gate other HUDs use.
-        bool hideHotbar = piloting || PlayerController.isMapOpen;
+        // …and in the MAIN MENU: this per-frame toggle used to win the race
+        // against HUDSceneGate (the menu's 3D background has a player), so the
+        // hotbar carried over into the menu (2026-09-08).
+        bool hideHotbar = piloting || PlayerController.isMapOpen || HUDSceneGate.InMainMenu;
         if (canvas != null && canvas.enabled == hideHotbar) canvas.enabled = !hideHotbar;
 
         if (!piloting && !inDialogue && !phoneOpen && !PlayerController.isMapOpen && !PlayerController.isInModalSlotUI)

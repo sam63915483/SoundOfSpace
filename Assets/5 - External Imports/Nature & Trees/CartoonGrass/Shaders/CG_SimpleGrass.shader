@@ -27,10 +27,9 @@ Shader "CartoonGrass/SimpleGrass"
         _ShadowFill ("Shadow fill (eclipse/shade min sun)", Range(0, 0.5)) = 0.15
         _FlashlightResponse ("Flashlight response on grass (1 = same as the ground)", Range(0, 1.5)) = 1.0
         _FlashlightBladeLift ("Flashlight: blade catch floor (0 = pure ground N.L)", Range(0, 1)) = 0.35
-        _PointLightBoost ("Lantern/torch brightness on grass", Range(0, 4)) = 2.0
+        _PointLightBoost ("Concert SPOT brightness on grass", Range(0, 8)) = 2.0
         _SpotGrassReach ("Concert light reach on grass (m)", Range(5, 250)) = 50
-        _LanternGrassRadius ("Lantern grass radius (x range)", Range(0.1, 1.5)) = 0.5
-        _LanternGrassTail ("Lantern grass far-reach tail", Range(0, 1)) = 0.35
+        _LanternGrassBoost ("Lantern/torch brightness on grass (2 = same as the ground at grassStrength 0.5)", Range(0, 8)) = 2.0
         _SunFillResponse ("Sunrise/sunset sun fill on grass", Range(0, 2)) = 1.0
         _TerminatorGlow ("Sunset backlight on grass", Range(0, 1)) = 0.5
         _TipSunlight ("Sunset tip shadow-lift (fights real shadows - keep low)", Range(0, 1)) = 0.35
@@ -77,11 +76,10 @@ Shader "CartoonGrass/SimpleGrass"
         float _ColorVarAmount;
         float _ShadowFill;           // min sun light kept in the directional sun's shadow (eclipse/shade)
         float _FlashlightResponse;   // scales the flashlight's effect on grass (1 = matches the ground under the beam)
-        float _PointLightBoost;      // scales lantern/torch brightness on grass (compensates the 0.5 grassStrength + blade angle)
+        float _PointLightBoost;      // scales concert SPOT brightness on grass (w=1 lights only)
         float _SpotGrassReach;       // distance (m) from the concert centre at which spot lights fade off the grass
         float3 _GrassSpotCenter;     // centroid of the injected concert SPOT lights, set by InstancedGrassRenderer
-        float _LanternGrassRadius;   // shrinks the lantern/torch grass falloff distance (x the light's range; 0.5 = half)
-        float _LanternGrassTail;     // brightness of the dim extended tail that carries lantern grass light out to ~full range (0 = old short cutoff)
+        float _LanternGrassBoost;    // scales lantern/torch (omni, w=0) brightness on grass; 1/grassStrength = exactly the ground's brightness
         float3 _GrassPlanetCenter;   // set globally by InstancedGrassRenderer (per-patch colour hash)
         float _SunFillResponse;      // scales the faked sun point-light fill (sunrise/sunset grass warm-up)
         float _TerminatorGlow;       // low-sun backlight: blades at the terminator read as translucent/side-lit instead of near-black Lambert
@@ -127,12 +125,30 @@ Shader "CartoonGrass/SimpleGrass"
         float4 _GrassPointLightDir[GRASS_MAX_POINT_LIGHTS];    // xyz = spot forward (unit), w = 1 for SPOT, 0 for omni point
         float _GrassPointLightCount;
 
+        // Custom surface output: SurfaceOutput plus a LAMP stash. The lantern /
+        // torch / concert glow is summed in surf (the only place with the world
+        // position) but must be GATED by the sunlight the blade actually
+        // receives, and the shadow term (atten) only exists in the lighting
+        // function — so surf hands the ungated sum across in Lamp and the
+        // lighting function applies the gate. Specular (= day factor) and Gloss
+        // (= sunset boost) are still the other two stashes; don't repurpose.
+        struct SurfaceOutputGrass
+        {
+            fixed3 Albedo;
+            fixed3 Normal;
+            fixed3 Emission;
+            half   Specular;
+            fixed  Gloss;
+            fixed  Alpha;
+            fixed3 Lamp;     // lantern/torch/concert light, albedo-tinted, UNGATED
+        };
+
         // Half-Lambert wrap × shadow/attenuation. The wrap keeps the two-sided
         // (Cull Off) backfaces from going pure black at glancing sun angles
         // without re-introducing a constant glow. Scene ambient is added
         // automatically by the forward base pass, so grass inherits the same
         // ambient floor as everything else (dark at night, lit by day).
-        half4 LightingGrassWrap(SurfaceOutput s, half3 lightDir, half atten)
+        half4 LightingGrassWrap(SurfaceOutputGrass s, half3 lightDir, half atten)
         {
             half ndl = dot(s.Normal, lightDir);
             // Wrap floor scales with the DAY factor that surf stashed in s.Specular
@@ -187,6 +203,31 @@ Shader "CartoonGrass/SimpleGrass"
             lit = max(lit, s.Gloss * _TipSunlight * tipWindow);
             half4 c;
             c.rgb = s.Albedo * _LightColor0.rgb * (wrapped * lit);
+            // ⚠️ LAMPS ARE GATED BY THE SUNLIGHT THE BLADE ACTUALLY RECEIVES,
+            // not by where the sun is in the sky.
+            //
+            // The lamp gate used to live in surf as lerp(1, _LampDaylightResponse,
+            // dayFactor) — dayFactor being purely GEOMETRIC (sun elevation). In
+            // a solar eclipse the sun is still overhead, so dayFactor stayed ~1
+            // and every lantern and torch was gated to NOTHING on grass while
+            // the ground beside it was plainly lantern-lit (Sam, 2026-09-08:
+            // "the ground looks lit up and bright because of the lantern, just
+            // the grass doesn't receive any illumination"). Same under a tree
+            // at noon: the ground gets the real lantern there, the grass got
+            // zero. It went unnoticed until 2026-09-06 because the REAL lights
+            // were also reaching the blades through Unity's ForwardAdd pass
+            // (see the noforwardadd note at the top); once that double-lighting
+            // was removed, this gate was the only lamp path left — and it was
+            // shut whenever the sun was up, blocked or not.
+            //
+            // atten is the directional sun's shadow term (0 in an eclipse or
+            // under a tree, 1 in open sun), so dayFactor × atten is "how much
+            // sun is this blade getting" — the thing the gate always meant.
+            // Night (dayFactor 0) and open noon (atten 1) are bit-identical to
+            // before; only sun-up-but-shadowed changes, and there the lamps now
+            // reach the grass exactly like they reach the ground.
+            half sunlit = s.Specular * atten;
+            c.rgb += s.Lamp * lerp(1.0, _LampDaylightResponse, sunlit);
             c.a = s.Alpha;
             return c;
         }
@@ -206,8 +247,9 @@ Shader "CartoonGrass/SimpleGrass"
             o.bladeUp = normalize(mul((float3x3)unity_ObjectToWorld, float3(0.0, 1.0, 0.0)));
         }
 
-        void surf(Input IN, inout SurfaceOutput o)
+        void surf(Input IN, inout SurfaceOutputGrass o)
         {
+            o.Lamp = 0;
             fixed3 c = lerp(_BottomColor.rgb, _TopColor.rgb, IN.gradT);
             // Per-patch brightness variation REMOVED (was: hashed ~_ColorVarScale-metre
             // patches to a lighter/darker green). All grass is now one uniform shade.
@@ -370,12 +412,9 @@ Shader "CartoonGrass/SimpleGrass"
             // above is gated by (1 - dayFactor); this was not, and that
             // asymmetry is the bug.
             //
-            // It matters because the falloff has a long TAIL. With the live
-            // material values (_LanternGrassRadius 0.5, _LanternGrassTail 0.28,
-            // _PointLightBoost 4.5) a 30 m lantern adds, on top of grass the sun
-            // has ALREADY fully lit:
-            //
-            //     15 m -> +17%      20 m -> +8.5%      25 m -> +3%
+            // It matters because the (old, hand-drawn) falloff had a long TAIL:
+            // a 30 m lantern added +17% at 15 m and +8.5% at 20 m on top of
+            // grass the sun had ALREADY fully lit.
             //
             // At night that reads as a soft, wanted glow. At noon it is a
             // brighter patch tens of metres across that should not exist -- and
@@ -384,19 +423,21 @@ Shader "CartoonGrass/SimpleGrass"
             // spots, only during the day" bug: the pop was the symptom, this
             // ungated daylight glow was the cause.
             //
-            // dayFactor is o.Specular (1 at local noon, 0 at the terminator), so
-            // night behaviour is EXACTLY unchanged -- lamps still own the grass
-            // when they are the only light around.
+            // DEFAULT IS 0, i.e. lamps do NOTHING to grass in open noon sun. That
+            // is deliberate and it is what Sam asked for: every remaining "walk
+            // in, grass brightens; walk out, it snaps back" was a lamp still
+            // being allowed a slice of daylight influence. At 0 there is no
+            // sunlit lamp contribution at all, so there is nothing to fade in or
+            // out -- the constant _GrassFillStrength lift below is the only
+            // daytime tint, and it depends on nothing but the sun.
             //
-            // DEFAULT IS 0, i.e. lamps do NOTHING to grass at local noon. That is
-            // deliberate and it is what Sam asked for: every remaining "walk in,
-            // grass brightens; walk out, it snaps back" was a lamp still being
-            // allowed a slice of daylight influence. At 0 there is no daytime
-            // lamp contribution at all, so there is nothing to fade in or out --
-            // the constant _GrassFillStrength lift below is the only daytime
-            // tint, and it depends on nothing but the sun. Raise this only if
-            // you want daytime lamps back, and accept the switching with it.
-            float lampDay = lerp(1.0, _LampDaylightResponse, o.Specular);
+            // THE GATE IS NOT APPLIED HERE ANY MORE (2026-09-08). It needs the
+            // sun's shadow term, which only the lighting function has, so this
+            // loop sums the UNGATED lamp light into o.Lamp and LightingGrassWrap
+            // gates it by (dayFactor × atten) — sunlight actually received. The
+            // old dayFactor-only gate here switched lanterns off the grass in a
+            // solar eclipse and under tree shade at noon, where the ground beside
+            // them stayed lantern-lit. Night is unchanged (dayFactor 0 → no gate).
             int gplCount = (int)_GrassPointLightCount;
             for (int li = 0; li < gplCount; li++)
             {
@@ -404,27 +445,26 @@ Shader "CartoonGrass/SimpleGrass"
                 float pdist  = length(toP);
                 float3 pl    = toP / max(pdist, 1e-4);
                 float pdn    = pdist / max(_GrassPointLightParams[li].x, 0.001);
-                // Distance falloff. Lanterns (omni point, w=0) keep the original harsh
-                // curve they were tuned with. SPOTS (concert, w=1) use a gentler curve
-                // matched to Unity's real point/spot attenuation (which lights the
-                // GROUND) — the old harsh window crushed the mid-range ~4x, so an
-                // intensity-382 cone blew the ground bright but left the grass dark.
-                // Lanterns get a shrunk radius (_LanternGrassRadius x the light's range)
-                // so their grass glow matches the smaller lit ground circle instead of
-                // reaching the light's full range. Spots use their own reach control.
-                // Tight bright CORE — the original tuned near-falloff, unchanged, so
-                // grass right next to the lantern looks exactly as it did before.
-                float pdnPt = pdn / max(_LanternGrassRadius, 0.05);
-                float core  = saturate(1.0 - pdnPt * pdnPt) / (1.0 + 25.0 * pdnPt * pdnPt);
-                // Dim extended TAIL — a gentle, low-amplitude glow reaching ~the light's
-                // full range (like the lit ground), filling the mid/far region where the
-                // steep core has dropped to black. max() lets the bright core win up close
-                // (near brightness preserved) while the tail only shows further out. The
-                // old behaviour is _LanternGrassTail = 0.
-                float tail  = saturate(1.0 - pdn * pdn) / (1.0 + 8.0 * pdn * pdn);
-                float pattenPoint = max(core, tail * _LanternGrassTail);
+                // Distance falloff.
+                //
+                // LANTERNS / TORCHES (omni, w=0) USE UNITY'S OWN POINT-LIGHT
+                // FALLOFF — the exact curve the real light paints on the ground:
+                // 1/(1+25(d/r)^2), windowed to 0 at the range. That circle of lit
+                // ground is the truth, and the grass must sit inside it. The
+                // previous hand-drawn core+tail curve (a tight core over half the
+                // range plus a dim tail to full range) was tuned by eye while the
+                // real light was ALSO reaching the blades (pre-noforwardadd), and
+                // once that went it lit grass up to ~2x further than the ground
+                // (Sam, 2026-09-08: "grass lit up around a lantern in areas where
+                // the ground is dark"). Same idea as the flashlight block above:
+                // mirror the ground's profile, then tune only the STRENGTH.
+                // SPOTS (concert, w=1) keep their own gentler curve + reach control.
+                float pattenPoint = saturate(1.0 - pdn * pdn) / (1.0 + 25.0 * pdn * pdn);
                 float pattenSpot  = (1.0 / (1.0 + 15.0 * pdn * pdn)) * smoothstep(1.0, 0.85, pdn);
                 float patten = lerp(pattenPoint, pattenSpot, _GrassPointLightDir[li].w);
+                // Strength: lanterns at _LanternGrassBoost (× the marker's 0.5
+                // grassStrength → 1.0 = exactly the ground), spots at _PointLightBoost.
+                float boost  = lerp(_LanternGrassBoost, _PointLightBoost, _GrassPointLightDir[li].w);
                 // Light response normal: the terrain-aligned blade up-axis for ALL
                 // injected lights (lanterns AND concert spots). Vertical blades barely
                 // face an overhead light by their own face-normal, and a fill floor on
@@ -445,7 +485,7 @@ Shader "CartoonGrass/SimpleGrass"
                 float spotF  = lerp(1.0, smoothstep(_GrassPointLightParams[li].y, _GrassPointLightParams[li].z, cosA), _GrassPointLightDir[li].w);
                 // Apply the concert-distance dimmer to spots only (w=1); lanterns (w=0) keep full reach.
                 float distFade = lerp(1.0, spotDistFade, _GrassPointLightDir[li].w);
-                o.Emission  += c * _GrassPointLightColor[li].rgb * (patten * pwrap * spotF * _PointLightBoost * distFade * lampDay);
+                o.Lamp      += c * _GrassPointLightColor[li].rgb * (patten * pwrap * spotF * boost * distFade);
             }
 
             o.Alpha = 1;

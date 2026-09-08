@@ -96,22 +96,92 @@ public class MainMenuController : MonoBehaviour
     // automatically.
     GameObject menuBgRoot;   // nebula image + stars, swapped out once 3D is live
     CanvasGroup menuBgGroup; // fades the nebula (and its stars) out as one
+    CanvasGroup menuGroup;   // the whole menu UI — hidden + dead until the boot reveal
+    GameObject bootCover;    // plain black screen shown from the first frame until the reveal
 
-    // No black fade-in. The menu appears INSTANTLY — title, buttons and the
-    // flat nebula — exactly like the pre-3D menu (Sam, 2026-09-03: "I liked
-    // the old menu how it would just appear"). The nebula is the cover: it
-    // sits behind the UI but above the 3D camera output, so the additive
-    // scene loads and the camera rig takes its first exact frame behind it,
-    // then only the nebula crossfades out to reveal the live solar system.
-    // (The 2026-08-31 black overlay existed to hide the retired shot
-    // director's twitchy setup frames; the baked-take rig has none.)
-    const float NebulaCrossfadeSeconds = 1.2f;
+    // ⚠️ BOOT REVEAL (2026-09-08) — this REVERSES the 2026-09-03 "menu appears
+    // instantly, the nebula is the cover" design, and here is why.
+    //
+    // MenuOrbit's planets are generated procedurally the instant that scene
+    // ACTIVATES: ~7 planets × 3 LOD meshes (~2.8 M vertices), GPU readbacks,
+    // normals, collider bakes — all in ONE main-thread frame. LoadSceneAsync
+    // only time-slices the deserialisation; activation is a single blocking
+    // frame, and nothing about it can be moved off the main thread without
+    // touching the forbidden generator code (CLAUDE.md trap #2). With the
+    // menu already on screen that frame read as: menu appears → the whole app
+    // FREEZES for ~a second (title pulse, stars, cursor, hover all dead) →
+    // the background snaps to the solar system → it unfreezes. Sam: "it's not
+    // a good look having your game hitch and freeze as soon as it starts. In
+    // an ideal world the entire screen would appear at once, with the solar
+    // system shuttle flying appearing right away, with all the buttons and
+    // cursor working properly."
+    //
+    // So: a plain black screen from frame 1 (a slightly longer boot, which is
+    // what every game looks like), the menu UI built but at alpha 0 and
+    // non-interactable, the orbit scene streamed with activation HELD until
+    // the cover has painted, activation (the hitch) behind the cover, the
+    // EventSystem repaired, the first frame of the live solar system rendered
+    // — and only then everything is revealed together in one short fade.
+    // The buttons go live at the same instant, never before (they used to be
+    // clickable during the freeze, into a knocked-out EventSystem). If the
+    // orbit scene is missing, the reveal simply shows the nebula.
+    const float BootRevealFadeSeconds = 0.25f;
+    const float BootRevealTimeoutSeconds = 20f;   // never leave the player on black
+
+    void BuildBootCover()
+    {
+        bootCover = new GameObject("BootCover");
+        bootCover.transform.SetParent(transform.parent, false);   // sibling: NOT under the alpha-0 menu group
+        var c = bootCover.AddComponent<Canvas>();
+        c.renderMode = RenderMode.ScreenSpaceOverlay;
+        c.sortingOrder = 31000;   // above the menu (100), its modals (200) and LoadingScreen (30000)
+        var img = NewUI("Black", bootCover.transform);
+        Stretch(img, 0f, 0f, 0f, 0f);
+        var image = img.gameObject.AddComponent<Image>();
+        image.color = Color.black;
+        image.raycastTarget = true;   // swallow clicks until the reveal
+        bootCoverImage = image;
+    }
+    Image bootCoverImage;
+
+    IEnumerator RevealMenu()
+    {
+        if (menuGroup != null)
+        {
+            menuGroup.alpha = 1f;
+            menuGroup.interactable = true;
+            menuGroup.blocksRaycasts = true;
+        }
+        if (bootCover != null)
+        {
+            float t = 0f;
+            while (t < 1f && bootCoverImage != null)
+            {
+                t += Time.unscaledDeltaTime / BootRevealFadeSeconds;
+                bootCoverImage.color = new Color(0f, 0f, 0f, 1f - Mathf.Clamp01(t));
+                yield return null;
+            }
+            Destroy(bootCover);
+            bootCover = null;
+        }
+    }
 
     IEnumerator LoadOrbitBackground()
     {
+        float bootStart = Time.unscaledTime;
         var op = SceneManager.LoadSceneAsync("MenuOrbit", LoadSceneMode.Additive);
         if (op != null)
         {
+            // Stream the scene but HOLD activation until the black cover has
+            // actually painted (two frames), so the blocking activation frame
+            // — the planet generation — happens behind it, never on a visible
+            // half-built menu.
+            op.allowSceneActivation = false;
+            while (op.progress < 0.9f && Time.unscaledTime - bootStart < BootRevealTimeoutSeconds)
+                yield return null;
+            yield return null;
+            yield return null;
+            op.allowSceneActivation = true;
             yield return op;
 
             // The background scene brings the gameplay camera (with the
@@ -143,25 +213,25 @@ public class MainMenuController : MonoBehaviour
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
 
-            // Let the camera rig take its first exact frame behind the nebula.
-            yield return null;
-            yield return null;
-
-            // Crossfade the nebula out; the live solar system is already
-            // rendering underneath. UI above it is untouched throughout.
-            if (menuBgGroup != null)
-            {
-                float t = 0f;
-                while (t < 1f)
-                {
-                    t += Time.deltaTime / NebulaCrossfadeSeconds;
-                    menuBgGroup.alpha = 1f - Mathf.Clamp01(t);
-                    yield return null;
-                }
-            }
+            // The nebula is no longer the cover — the black screen is. Drop it
+            // now so the live solar system is what the reveal shows.
+            if (menuBgGroup != null) menuBgGroup.alpha = 0f;
             if (menuBgRoot != null) menuBgRoot.SetActive(false);
+
+            // Let the camera rig take its first exact frame AND let the planet
+            // post stack (PlanetEffects builds its atmosphere/ocean materials +
+            // bakes optical depth on first render = shader-compile hitch) land
+            // behind the cover. Three frames + end-of-frame so a fully rendered
+            // solar system exists before anything is shown.
+            yield return null;
+            yield return null;
+            yield return null;
+            yield return new WaitForEndOfFrame();
         }
         // Scene missing → the nebula simply stays, as the old menu did.
+
+        // Everything at once: menu, background, cursor, buttons.
+        yield return RevealMenu();
     }
 
     void Start()
@@ -212,6 +282,15 @@ public class MainMenuController : MonoBehaviour
         scaler.matchWidthOrHeight = 1f;
 
         gameObject.AddComponent<GraphicRaycaster>();
+
+        // Boot reveal (2026-09-08): the whole menu stays INVISIBLE AND DEAD
+        // until the 3D background has loaded and drawn its first frame, then
+        // everything appears together — see LoadOrbitBackground.
+        menuGroup = gameObject.AddComponent<CanvasGroup>();
+        menuGroup.alpha = 0f;
+        menuGroup.interactable = false;
+        menuGroup.blocksRaycasts = false;
+        BuildBootCover();
 
         // Background nebula — full-screen. Cached so the MenuOrbit 3D background
         // (loaded additively in Start) can fade it out once the live solar

@@ -130,7 +130,13 @@ public class StasisPodSave : MonoBehaviour
         if (_armed && _door.CurrentZone == StasisPodDoor.Zone.Deep && _door.IsFullyClosed)
         {
             _armed = false;
-            StartCoroutine(Ritual(download: boot || !_leftPodSinceLoad));
+            // UPLOAD (a real save) ONLY when the player pressed the valve and
+            // walked in through the door it opened (door.PressArmed). Sealed
+            // inside any other way — a load, a wake, the intro — is DOWNLOADING:
+            // the playback of an existing consciousness, never a file write.
+            // (Sam, 2026-09-08: "the stasis pod should only be able to make a
+            // save after you press the button, and then enter".)
+            StartCoroutine(Ritual(download: boot || !_leftPodSinceLoad || !_door.PressArmed));
         }
     }
 

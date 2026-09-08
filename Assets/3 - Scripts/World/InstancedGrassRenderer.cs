@@ -362,6 +362,7 @@ public class InstancedGrassRenderer : MonoBehaviour
     {
         if (!Resolve()) return;
         ApplyRenderScale();
+        TuneLanternGrassStrength();
         InjectGrassPointLights(_player.transform.position);
         InjectGrassSunLight();
         if (spawnRadius <= 0.01f)            // grass turned all the way down → none
@@ -400,6 +401,37 @@ public class InstancedGrassRenderer : MonoBehaviour
     // we hand the shader the nearby ones as faked point lights — same trick the
     // flashlight uses. Count is 0 when none are near, so the shader loop is free.
     const int GrassMaxPointLights = 16;   // raised from 8 so a dense concert rig's flood/blinder lights reach the grass (the ground gets all real lights uncapped; grass only gets this many injected). Only costs GPU where this many lights are actually near.
+
+    // LIVE TUNING of how hard lanterns / placed torches light GRASS (2026-09-08).
+    // Mirrors the torch's [ ] knob in PlayerFlashlight. Until 2026-09-06 every
+    // real lantern ALSO lit the blades through Unity's ForwardAdd pass on top of
+    // this faked term (the grass shader lacked noforwardadd), so the material's
+    // lantern values were tuned while double-lit; removing the double-lighting
+    // left them about half as bright as Sam was used to, and only he can say
+    // where "right" is in a build. ; and ' scale every injected lamp by 15% per
+    // press (cheats on); persisted in PlayerPrefs, shown on the F3 overlay as
+    // lamp→grass. 1.00 = grass exactly as bright as the ground under the same
+    // lantern (material _LanternGrassBoost 2 × marker grassStrength 0.5). Once
+    // he reports the number, bake it into CG_GameGrass.mat (_LanternGrassBoost)
+    // and drop this back to 1.
+    const string LanternGrassStrengthPref = "LanternGrassStrength";
+    public static float LanternGrassStrength = 1f;
+    static bool _lanternPrefLoaded;
+
+    static void TuneLanternGrassStrength()
+    {
+        if (!_lanternPrefLoaded)
+        {
+            _lanternPrefLoaded = true;
+            if (PlayerPrefs.HasKey(LanternGrassStrengthPref))
+                LanternGrassStrength = PlayerPrefs.GetFloat(LanternGrassStrengthPref, LanternGrassStrength);
+        }
+        if (!Universe.cheatsEnabled) return;
+        bool down = Input.GetKeyDown(KeyCode.Semicolon), up = Input.GetKeyDown(KeyCode.Quote);
+        if (!down && !up) return;
+        LanternGrassStrength = Mathf.Clamp(LanternGrassStrength * (up ? 1.15f : 1f / 1.15f), 0.05f, 6f);
+        PlayerPrefs.SetFloat(LanternGrassStrengthPref, LanternGrassStrength);
+    }
     static readonly int _gplPosId    = Shader.PropertyToID("_GrassPointLightPos");
     static readonly int _gplColorId  = Shader.PropertyToID("_GrassPointLightColor");
     static readonly int _gplParamsId = Shader.PropertyToID("_GrassPointLightParams");
@@ -466,11 +498,8 @@ public class InstancedGrassRenderer : MonoBehaviour
     /// afford to wait a frame. Carried from the previous frame (the count is
     /// not known until selection has run), which is close enough at 0.35 s.
     int _fadeReserve;
-    /// Must mirror CG_SimpleGrass.shader's _LanternGrassRadius / _LanternGrassTail
-    /// defaults. Used only to ORDER the injection list, so a drift from the
-    /// material costs ranking nicety, never the continuity of the fade-in.
-    const float GrassLanternRadiusFrac = 0.5f;
-    const float GrassLanternTailAmount = 0.35f;
+    // (The lantern falloff used to have radius/tail constants mirrored here;
+    // since 2026-09-08 lanterns use Unity's own point-light curve, inline below.)
 
     void InjectGrassPointLights(Vector3 viewer)
     {
@@ -551,13 +580,12 @@ public class InstancedGrassRenderer : MonoBehaviour
             }
             else
             {
-                float pt = pdn / GrassLanternRadiusFrac;
-                float core = Mathf.Clamp01(1f - pt * pt) / (1f + 25f * pt * pt);
-                float tail = Mathf.Clamp01(1f - pdn * pdn) / (1f + 8f * pdn * pdn);
-                patten = Mathf.Max(core, tail * GrassLanternTailAmount);
+                // Unity's own point-light falloff — the same curve the shader
+                // now uses for lanterns (and the real light paints on the ground).
+                patten = Mathf.Clamp01(1f - pdn * pdn) / (1f + 25f * pdn * pdn);
             }
             Color lc = lt.color;
-            float vis = patten * lt.intensity * Mathf.Max(0f, gp.grassStrength)
+            float vis = patten * lt.intensity * Mathf.Max(0f, gp.grassStrength) * LanternGrassStrength
                         * (lc.r + lc.g + lc.b) * (1f / 3f);
             // Gate on the light's REAL visible effect. Below this it cannot be
             // seen on the grass, so it must not hold a slot — and membership
@@ -585,7 +613,7 @@ public class InstancedGrassRenderer : MonoBehaviour
             }
 
             _gplPos[slot] = lt.transform.position;
-            Color c = lt.color * (lt.intensity * Mathf.Max(0f, gp.grassStrength));
+            Color c = lt.color * (lt.intensity * Mathf.Max(0f, gp.grassStrength) * LanternGrassStrength);
             _gplColor[slot] = new Vector4(c.r, c.g, c.b, 1f);
             _gplW[slot] = w;
             _gplId[slot] = lt.GetInstanceID();

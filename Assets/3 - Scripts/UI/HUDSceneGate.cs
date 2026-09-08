@@ -51,4 +51,13 @@ public static class HUDSceneGate
     }
 
     static bool IsMainMenu(Scene scene) => scene.name == MainMenuSceneName;
+
+    /// True while the ACTIVE scene is the main menu. HUDs that toggle their
+    /// own canvas every frame (hotbar, compass, G-force/boost meter) MUST fold
+    /// this in, or they re-enable themselves right after this gate hid them:
+    /// the menu's 3D background (MenuOrbit, additive) carries a stripped
+    /// player + camera, so "a player exists" is true in the menu and every
+    /// per-frame `canvas.enabled = true` won the race (Sam, 2026-09-08: the
+    /// compass, boost UI and hotbar carried over into the main menu).
+    public static bool InMainMenu => IsMainMenu(SceneManager.GetActiveScene());
 }

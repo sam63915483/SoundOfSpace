@@ -186,8 +186,9 @@ public class MultiplayerDeathRespawn : MonoBehaviour
 
         PlayerController.isInDialogue = false;
         _handling = false;
-        // The door closes itself: StasisPodDoor's steady-state rule schedules a
-        // close for any open door with nobody in the doorway, and gives Deep
-        // (you, still in the pod) the longer 5s grace to walk out.
+        // The door closes itself once you STEP OUT: StasisPodDoor's "stepped
+        // fully out" edge schedules the close. Since 2026-09-08 a game-opened
+        // door no longer times out on an occupant — stay in the pod as long as
+        // you like, it stays open and never saves.
     }
 }

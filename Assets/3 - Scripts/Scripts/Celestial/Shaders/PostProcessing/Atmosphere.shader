@@ -212,7 +212,12 @@
 				float3 rayOrigin = _WorldSpaceCameraPos;
 				float3 rayDir = normalize(i.viewVector);
 				
-				float dstToOcean = raySphere(planetCentre, oceanRadius, rayOrigin, rayDir);
+				float2 oceanHit = raySphere(planetCentre, oceanRadius, rayOrigin, rayDir);
+				float dstToOcean = oceanHit.x;
+				// Where along the ray the AIR begins. 0 = the camera is already in
+				// air. Set by the under-water rule below to the point where the
+				// ray leaves the sea (second sanctioned exception, 2026-09-08).
+				float airStart = 0;
 
 				// ── Caves ───────────────────────────────────────────────────
 				// NOTHING HERE MAY DEPEND ON WHERE THE CAMERA IS. Testing the
@@ -240,11 +245,32 @@
 					if (InsideCaveCapsule(rayEnd)) return originalCol;
 				}
 
+				// ── Under water (Sam-approved edit, 2026-09-08) ─────────────
+				// With the camera inside the ocean sphere, dstToOcean is 0, so
+				// the clip below collapsed dstThroughAtmosphere to 0 and the sky
+				// went BLACK the instant the head dipped under (the space skybox,
+				// tinted by the water pass). The sea surface is not where the
+				// sky ends — it is where the AIR begins: start the scattering at
+				// the point the ray LEAVES the water (oceanHit.y, the exit
+				// distance when the origin is inside) and let the ocean pass,
+				// which composites after this one, tint that sky by water depth.
+				// Looking DOWN at the seabed the exit is beyond the terrain, the
+				// segment goes negative and nothing is added — as before.
+				// Strictly conditional: above water this branch never runs, so
+				// every existing scene is bit-identical. Caves keep priority —
+				// their rule above already set dstToOcean to 1e20, so the ray is
+				// treated as air from the camera exactly as it was.
+				if (dstToOcean < 1e19 && oceanHit.y > 0 &&
+				    dot(rayOrigin - planetCentre, rayOrigin - planetCentre) < oceanRadius * oceanRadius) {
+					airStart = oceanHit.y;
+					dstToOcean = 1e20;
+				}
+
 				float dstToSurface = min(sceneDepth, dstToOcean);
-				
+
 				float2 hitInfo = raySphere(planetCentre, atmosphereRadius, rayOrigin, rayDir);
-				float dstToAtmosphere = hitInfo.x;
-				float dstThroughAtmosphere = min(hitInfo.y, dstToSurface - dstToAtmosphere);
+				float dstToAtmosphere = max(hitInfo.x, airStart);
+				float dstThroughAtmosphere = min(hitInfo.x + hitInfo.y, dstToSurface) - dstToAtmosphere;
 				
 				if (dstThroughAtmosphere > 0) {
 					const float epsilon = 0.0001;

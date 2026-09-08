@@ -164,12 +164,16 @@ public class CameraTransformFX : MonoBehaviour
         //    old _capturedPitch was a FixedUpdate snapshot, so vertical look
         //    froze into ~7 Hz steps for the whole slow-mo.
         float livePitch = _player != null ? _player.SmoothPitch : _capturedPitch;
-        Quaternion camLocalRot = Quaternion.Euler(livePitch, 0f, _tiltZ + deathRoll);
+        // Swimming v2 (2026-09-08): stroke-rhythm roll + surface bob, computed
+        // by PlayerController (render rate, eased). Zero out of water.
+        float swimRoll = _player != null ? _player.SwimCameraRoll : 0f;
+        Vector3 swimBob = _player != null ? Vector3.up * _player.SwimCameraBob : Vector3.zero;
+        Quaternion camLocalRot = Quaternion.Euler(livePitch, 0f, _tiltZ + deathRoll + swimRoll);
         _cam.rotation = smoothPlayerRot * camLocalRot;
 
         // Player position is already interpolated by Unity (Rigidbody.Interpolate);
         // reading transform.position returns the smoothed visual value.
-        Vector3 desiredCamPos = _playerTransform.position + smoothPlayerRot * _camBaseLocalPos;
+        Vector3 desiredCamPos = _playerTransform.position + smoothPlayerRot * (_camBaseLocalPos + swimBob);
 
         _cam.position = desiredCamPos;
     }

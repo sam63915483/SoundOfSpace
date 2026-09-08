@@ -2,20 +2,24 @@
 %TAG !u! tag:unity3d.com,2011:
 --- !u!21 &2100000
 Material:
-  serializedVersion: 6
+  serializedVersion: 8
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: Terrain
   m_Shader: {fileID: 4800000, guid: fa2bee6d3f5064024b6434575359a23b, type: 3}
-  m_ShaderKeywords: 
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
   m_CustomRenderQueue: -1
   stringTagMap: {}
   disabledShaderPasses: []
+  m_LockedProperties: 
   m_SavedProperties:
     serializedVersion: 3
     m_TexEnvs:
@@ -71,6 +75,7 @@ Material:
         m_Texture: {fileID: 2800000, guid: 61560dd98bb354c1cb38f1dcd85723d4, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    m_Ints: []
     m_Floats:
     - _BiomeBlend: 0
     - _BlendNoiseScale: 0.05
@@ -153,10 +158,10 @@ Material:
     - _FlatColA: {r: 0, g: 0.65882355, b: 0.5419607, a: 0}
     - _FlatColB: {r: 0, g: 0.33468744, b: 0.38679248, a: 0}
     - _FlatColC: {r: 0.027450986, g: 0.5428885, b: 0.5568628, a: 1}
-    - _FlatHighA: {r: 0.19073083, g: 0.4627451, b: 0, a: 1}
-    - _FlatHighB: {r: 0.19215687, g: 0.4627451, b: 0, a: 1}
-    - _FlatLowA: {r: 0.7898985, g: 0.85882354, b: 0, a: 1}
-    - _FlatLowB: {r: 0.58431375, g: 0.85882354, b: 0, a: 1}
+    - _FlatHighA: {r: 0.50252485, g: 0.26955283, b: 0.46927848, a: 1}
+    - _FlatHighB: {r: 0.40645328, g: 0.54173994, b: 0.30137998, a: 1}
+    - _FlatLowA: {r: 0.35223323, g: 0.35790977, b: 0.72893006, a: 1}
+    - _FlatLowB: {r: 0.56892437, g: 0.75717056, b: 0.38999352, a: 1}
     - _FlatSpeckleA: {r: 0.101960786, g: 0.5372549, b: 0.54901963, a: 1}
     - _FlatSpeckleB: {r: 0.8018868, g: 0.45051646, b: 0.16264686, a: 1}
     - _FlatSpeckleCol: {r: 0.10065861, g: 0.5387706, b: 0.5471698, a: 1}
@@ -166,12 +171,13 @@ Material:
     - _PoleNoiseWeights: {r: 1.59, g: 0.69, b: 0.77, a: 0}
     - _SandCol: {r: 1, g: 1, b: 1, a: 1}
     - _ShoreCol: {r: 1, g: 0.93270934, b: 0.6084906, a: 0}
-    - _ShoreHigh: {r: 0.9528302, g: 0.90580887, b: 0.38203096, a: 1}
-    - _ShoreLow: {r: 0.98039216, g: 1, b: 0.6666667, a: 1}
+    - _ShoreHigh: {r: 0.7007015, g: 0.60035044, b: 0.6144182, a: 1}
+    - _ShoreLow: {r: 0.9593781, g: 0.7107732, b: 0.8354214, a: 1}
     - _ShoreSpeckleCol: {r: 0.9245283, g: 0.89279854, b: 0.63234246, a: 1}
     - _SnowCol: {r: 1, g: 1, b: 1, a: 1}
     - _SteepColA: {r: 0.5294118, g: 0.48880482, b: 0.1882353, a: 0}
     - _SteepColB: {r: 0.1509434, g: 0.0671594, b: 0, a: 1}
-    - _SteepHigh: {r: 0.14901961, g: 0.06666667, b: 0, a: 1}
-    - _SteepLow: {r: 0.5294118, g: 0.49019608, b: 0.1882353, a: 1}
+    - _SteepHigh: {r: 0.05646081, g: 0.04684843, b: 0.13185853, a: 1}
+    - _SteepLow: {r: 0.2630841, g: 0.21197827, b: 0.4326537, a: 1}
     - _TestParams: {r: -0.36, g: -0.05, b: 0.38, a: 0}
+  m_BuildTextureStacks: []

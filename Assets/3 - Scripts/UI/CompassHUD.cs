@@ -270,7 +270,11 @@ public class CompassHUD : MonoBehaviour
         // Hide the compass entirely when the map is open — the map UI is
         // the canonical "where am I?" view; the compass strip is redundant
         // there and visually conflicts with the legend.
-        if (PlayerController.isMapOpen)
+        // Same for the MAIN MENU: the re-enable below used to win the race
+        // against HUDSceneGate because the menu's 3D background (MenuOrbit)
+        // carries a stripped player + camera, so the compass rode into the
+        // menu (2026-09-08).
+        if (PlayerController.isMapOpen || HUDSceneGate.InMainMenu)
         {
             if (_canvas != null && _canvas.enabled) _canvas.enabled = false;
             return;

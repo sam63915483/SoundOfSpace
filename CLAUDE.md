@@ -47,6 +47,13 @@ Both are **strictly additive**: with zero capsules registered they behave exactl
 as before, so every scene without a cave is unaffected. Revert with
 `git checkout` on those two files if either ever misbehaves.
 
+**Second sanctioned exception (2026-09-08, Sam's explicit call) — UNDER-WATER SKY.**
+`Atmosphere.shader` only: with the camera inside the ocean sphere the ocean clip
+made the sky pass skip entirely (black sky the instant you dive). The new branch
+starts the scattering where the view ray LEAVES the water (`airStart`) instead of
+at the camera; above water and in caves it is bit-identical (the cave rule keeps
+priority). Same revert rule.
+
 **`CelestialBody.cs` is NOT forbidden** — it has gameplay accessors (`Position`, `Rigidbody`, `velocity`, `bodyName`) + the `ApplySavedState` save hook. The forbidden part is the *generation/shading* code, not runtime physics state.
 
 **Atmosphere-vanishes-on-warm-reload trap (fixed, don't re-break):** the blue atmosphere disappeared after returning from the backrooms — or any gameplay-scene reload within one process run. `AtmosphereSettings` (a persistent ScriptableObject) gates `SetProperties()` — which applies all scattering uniforms + the baked `_BakedOpticalDepth` texture — behind a non-serialized `settingsUpToDate` flag that's set `true` on first load and never reset at runtime. On a warm reload, `PlanetEffects` builds fresh atmosphere materials but `SetProperties` is skipped, so they render nothing. (A main-menu round-trip masked it: `LoadScene`'s `UnloadUnusedAssets` reclaimed the asset, resetting the flag.) Fix lives **outside** the forbidden zone: `Assets/3 - Scripts/Camera/AtmosphereReloadFix.cs` resets the flag on every non-MainMenu sceneLoaded via reflection. If atmosphere/ocean post-process ever vanishes after a scene transition again, suspect a persistent "baked/up-to-date" flag not being reset — not the camera/depth/generators.

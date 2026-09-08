@@ -295,6 +295,8 @@ public class FPSOverlay : MonoBehaviour
         // Torch-on-grass multiplier, live-tuned with [ and ] (PlayerFlashlight, 2026-09-06).
         if (PlayerFlashlight.CurrentGrassStrength >= 0f)
             _sb.Append("torch→grass ").Append(PlayerFlashlight.CurrentGrassStrength.ToString("0.00")).Append("  ([ ] to tune)\n");
+        // Lantern/placed-torch-on-grass multiplier, live-tuned with ; and ' (InstancedGrassRenderer, 2026-09-08).
+        _sb.Append("lamp→grass  ").Append(InstancedGrassRenderer.LanternGrassStrength.ToString("0.00")).Append("  (; ' to tune)\n");
         _sb.Append("min  ").Append(minFps);
         if (_atmoDisabled) _sb.Append("\n[atmo OFF]");
         if (_physicsHalved) _sb.Append("\n[phys halved]");
