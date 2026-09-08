@@ -167,27 +167,55 @@ in a venue rather than scattered over a planet.
 
 # Third pass, same day — the rod IS the bar, and the cast is a charge
 
-## 9. Casting is now hold-to-charge
+## 9. Casting is hold-to-charge — the wind-up ALWAYS plays
 
-- **Tap** the button: the bobber plops out about **3 m**.
-- **Hold 1 second**: about **8 m** — halfway.
-- **Hold 2 seconds**: about **13 m**, roughly where a single click used to land.
+**Corrected after Sam's first look.** My first version scaled the *draw angle* by
+the charge, so a click barely pulled the rod back at all — a different animation,
+not a shorter one. That was wrong. Now:
 
-There is no charge meter on purpose — **the rod draws further back the longer you
-hold**, which is the same information without adding UI.
+- **Press** → the rod pulls back over its usual 0.7 s, exactly as it always did.
+- **Keep holding** → it stays back, leaning a little further the longer you hold
+  (up to 18° extra) — that lean is the only readout of how charged you are.
+- **Let go** → it slings forward and casts, exactly as it always did.
 
-- [ ] Tap, half-hold and full-hold. The rod should draw back progressively while
-      you hold and fling forward when you let go — one continuous motion, not a
-      yank backwards followed by a throw.
-- [ ] The cast should feel shorter *by default*, because the click-cast went from
-      ~12 m to ~3 m. The **maximum** did not shrink much, and that is deliberate:
-      the fish starts at the cast distance, so the cast IS the length of the
-      fight. I tried capping it at 8.5 m first and a rare was over in two seconds.
-- [ ] Charging should be worth it. **A rare fight lasts ~1.2s on a tap and ~6.5s
-      on a full charge**, and a full charge also rolls better fish.
-- [ ] If the distances are off, the knob is `bobberShootSpeed` on the rod in the
-      scene (full charge, currently 20) and `bobberShootSpeedTap` (tap, 10). Range
-      goes as speed *squared*.
+So a **click looks identical to the old cast**: back, then forward. The bobber
+just doesn't go as far. Let go before the draw has finished and the animation
+completes the draw first rather than slinging from half way.
+
+| you hold | bobber goes | rod draws back |
+|---|---|---|
+| click (let go at once) | ~3 m | 80° |
+| 0.5 s | ~5 m | 84° |
+| 1 s | ~7.5 m | 89° |
+| 2 s (full) | ~12 m | 98° |
+
+- [ ] Click-cast a few times. The animation should feel **exactly like it used to**
+      — the only difference is the bobber lands much closer.
+- [ ] Hold two seconds. The rod should go back and *stay* back, leaning slightly
+      further as you hold, then sling when you release.
+- [ ] Half-second and one-second holds should land in between.
+- [ ] If the extra lean looks wrong, set `chargeExtraDrawAngle` to 0 on the rod —
+      the cast still works, you just lose the visual charge cue.
+
+**Calibrating the distances.** The distances above are predicted, not measured —
+real range depends on the planet's gravity and where you're aiming. Every cast now
+logs a line to Player.log:
+
+```
+[Cast] charge 100% reached 11.8 m (rules predict 13.0 m)
+```
+
+This matters more than it looks: `FishingRules.TapCastDistance` and
+`FullCastDistance` are what the **fish-rarity odds** are scored against. If the rod
+throws further or shorter than the rules think, the odds are keyed to a cast you
+can't make — which is exactly the bug that was already in there (the ramp said
+5–16 m while the rod threw 12).
+
+- [ ] Do a click cast and a full-charge cast, then send me those two `[Cast]`
+      lines from Player.log and I'll make the constants match reality.
+- [ ] The full-charge knob is `bobberShootSpeed` on the rod in the scene
+      (currently 20); the tap is `bobberShootSpeedTap` (10). **Range goes as speed
+      squared** — doubling the speed quadruples the distance.
 
 ## 10. The rod is the tension bar
 

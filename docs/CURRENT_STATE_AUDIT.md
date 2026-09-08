@@ -2233,3 +2233,42 @@ meaningless. They derive from the rules now.
 
 **Verification:** compile PASS (three assemblies, 0 warnings); `verify-fishing.py`
 PASS **151 checks**. **PLAYTEST PENDING** — `docs/PLAYTEST_FIXES_2026-09-08.md` §9-12.
+
+---
+
+## Addendum 2026-09-08d — the charge holds the rod BACK; it does not shrink the wind-up
+
+Correction to 2026-09-08c §4, from Sam's first look at it:
+
+> "clicking should still play the old animation of pulling the rod back and then
+> slinging it forward ... but if you hold it in then it will stay held back longer,
+> then when you release it will sling forward and cast."
+
+The first version scaled the draw ANGLE by the charge (`-pullBackAngle * Charge01`),
+so a click barely drew the rod back — **a different animation, not a shorter one.**
+
+The draw is now a fixed motion on its own clock (`_drawT`, advancing at
+`1/pullBackDuration`, which the scene sets to 0.7 s) that **always completes**.
+Holding parks the rod at the top of it and adds `chargeExtraDrawAngle` (18°) of
+extra lean as the only readout of charge — there is deliberately no meter.
+Releasing before the draw finishes does not sling from half way: `CastAnimation`
+completes the remaining draw first, so **a click is frame-for-frame the cast it
+always was**, just slower off the tip.
+
+Charge affects the LAUNCH SPEED only: `sqrt(lerp(tap², full², charge))`, so
+distance is linear in the hold. Click ~3 m, 1 s ~7.5 m, 2 s ~12 m, with the rod at
+80° → 98°.
+
+Also added:
+- The charge resets on equip/unequip — a half-wound cast used to survive putting
+  the rod away and would fire at that charge later.
+- **A calibration line in Player.log on every cast:**
+  `[Cast] charge 100% reached 11.8 m (rules predict 13.0 m)`. This is not
+  diagnostics for its own sake: `TapCastDistance`/`FullCastDistance` are what the
+  tier-shift odds are scored against, so if the rod's real throw disagrees with
+  them the fish odds are keyed to a cast nobody can make — the exact bug that was
+  already live (ramp 5–16 m, rod 12 m). Logged AFTER `planetBody`/`waterRadius`
+  resolve, because `HorizontalDistanceToAngler` silently returns a fallback
+  without them.
+
+Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**

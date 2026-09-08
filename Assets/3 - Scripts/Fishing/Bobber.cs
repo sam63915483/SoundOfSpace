@@ -1398,6 +1398,10 @@ public class Bobber : MonoBehaviour
         return cb != null ? cb.bodyName : null;
     }
 
+    /// Set by the rod at launch: how charged the throw was, 0-1. Display only —
+    /// it exists so the log below can report what a given charge really reached.
+    public float LaunchCharge01 { get; set; }
+
     void StopOnWater(Collider waterCollider)
     {
         Debug.Log("[Bobber] Hit water. Stopping and setting up...");
@@ -1514,6 +1518,21 @@ public class Bobber : MonoBehaviour
         Debug.Log($"[Bobber] Parked: trigger hit r={hitRadius:F1}, visible ocean r="
                 + (oceanR > 0.01f ? oceanR.ToString("F1") : "n/a")
                 + $", seated on waterRadius={waterRadius:F1} ({BuildStamp}).");
+
+        // CALIBRATION, logged AFTER planetBody and waterRadius are resolved --
+        // HorizontalDistanceToAngler needs both and quietly returns a fallback
+        // without them.
+        //
+        // FishingRules.TapCastDistance / FullCastDistance are what the tier-shift
+        // odds are scored against, and they are a PREDICTION of where a given
+        // charge lands; the real distance depends on the planet's gravity and
+        // where you were looking. If this line and those constants disagree, the
+        // odds are keyed to a cast nobody can make -- exactly what went wrong
+        // when the ramp said 5..16 m and the rod could throw 12. Read it in
+        // Player.log and move the constants (or bobberShootSpeed) to match.
+        Debug.Log($"[Cast] charge {LaunchCharge01 * 100f:F0}% reached "
+                + $"{HorizontalDistanceToAngler():F1} m (rules predict "
+                + $"{FishingRules.CastDistanceFor(LaunchCharge01):F1} m)");
         StartFishing();
     }
 

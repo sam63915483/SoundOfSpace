@@ -605,6 +605,11 @@ public class FishingRodController : MonoBehaviour
         lineAttachPoint = null;
         _rodBend = null;
         _meshBendAngle = 0f;
+        // A half-wound cast must not survive the rod being put away and taken
+        // out again — it would fire at whatever charge it had when you swapped.
+        _charging = false;
+        _chargeHeld = 0f;
+        _drawT = 0f;
         _pullBackAngle = 0f;
 
         equipCoroutine = StartCoroutine(AnimateUnequip(instance, rigGo, originalRodRotation, targetRot, equipDuration));
@@ -666,6 +671,11 @@ public class FishingRodController : MonoBehaviour
         FishingTensionHUD.Hide();
         _lineTaut = 0f;
         _meshBendAngle = 0f;
+        // A half-wound cast must not survive the rod being put away and taken
+        // out again — it would fire at whatever charge it had when you swapped.
+        _charging = false;
+        _chargeHeld = 0f;
+        _drawT = 0f;
         _pullBackAngle = 0f;
     }
 
@@ -686,11 +696,23 @@ public class FishingRodController : MonoBehaviour
     // tension bar.
     bool  _charging;
     float _chargeHeld;
-    /// 0 on a tap, 1 at a full hold. Read by the rod pose and the launch.
+    /// How far through the DRAW the rod has got, 0-1. This is a fixed motion on
+    /// its own clock (pullBackDuration) — it is NOT scaled by the charge. A click
+    /// and a two-second hold pull the rod back exactly the same way; the hold just
+    /// parks it there at the top.
+    float _drawT;
+    /// 0 on a tap, 1 at a full hold. Drives the LAUNCH SPEED, and nothing about
+    /// the shape of the animation.
     float Charge01 => Mathf.Clamp01(_chargeHeld / Mathf.Max(0.01f, FishingRules.CastChargeSeconds));
 
     [Tooltip("Launch speed of a TAP — the shortest cast. Appended 2026-09-08.")]
     public float bobberShootSpeedTap = 10f;
+
+    [Tooltip("Extra degrees the rod draws back BEYOND the normal wind-up as the charge " +
+             "builds, so a fully wound cast looks different from a click without being a " +
+             "different animation. This is the only readout of how charged you are — there " +
+             "is deliberately no meter. Set to 0 for a pure hold with no extra draw.")]
+    public float chargeExtraDrawAngle = 18f;
 
     /// <summary>
     /// Launch speed for the charge held so far.
@@ -708,14 +730,22 @@ public class FishingRodController : MonoBehaviour
         return Mathf.Sqrt(Mathf.Lerp(lo, hi, Charge01));
     }
 
-    /// <summary>How far the rod is drawn back by the charge in progress. Same
-    /// axis and sign as the cast animation's own pull-back, so the release
-    /// continues the motion instead of restarting it.</summary>
+    /// <summary>
+    /// The rod's pose while a cast is being wound up: the ordinary wind-up on its
+    /// own clock, plus a little extra lean the longer you hold.
+    ///
+    /// Same axis and sign as the cast animation's pull-back, so letting go
+    /// continues the motion instead of restarting it.
+    /// </summary>
     Quaternion CastChargePose()
     {
         if (!_charging) return Quaternion.identity;
-        return Quaternion.AngleAxis(-pullBackAngle * Charge01, castRotationAxis);
+        return Quaternion.AngleAxis(-ChargeDrawAngle(_drawT, Charge01), castRotationAxis);
     }
+
+    /// Degrees of draw for a given progress through the wind-up and charge.
+    float ChargeDrawAngle(float drawT, float charge01)
+        => pullBackAngle * Mathf.Clamp01(drawT) + chargeExtraDrawAngle * Mathf.Clamp01(charge01);
 
     /// <summary>
     /// Hold to draw the rod back, let go to throw. Called every frame in the
@@ -730,26 +760,41 @@ public class FishingRodController : MonoBehaviour
             if (!TutorialGate.FirePressed()) return;
             _charging = true;
             _chargeHeld = 0f;
+            _drawT = 0f;
             return;
         }
 
         if (TutorialGate.FireHeld())
         {
             _chargeHeld += Time.deltaTime;
+            // The wind-up runs on its OWN clock and always completes. Holding
+            // longer does not draw the rod back further or faster; it keeps it
+            // back (and adds chargeExtraDrawAngle on top).
+            _drawT = Mathf.Min(1f, _drawT + Time.deltaTime / Mathf.Max(0.01f, pullBackDuration));
             return;
         }
 
-        // Let go: throw at whatever was wound up, and remember how far the rod
-        // was drawn so the fling starts from there rather than snapping back.
-        _launchSpeed = ChargedShootSpeed();
-        _launchDraw  = Charge01;
+        // Let go. Remember how far the wind-up actually got — a quick click
+        // releases before it finishes, and CastAnimation completes it rather
+        // than slinging from half way, so a click looks exactly like it always
+        // did.
+        _launchSpeed  = ChargedShootSpeed();
+        _launchDraw   = _drawT;
+        _launchExtra  = chargeExtraDrawAngle * Charge01;
+        _launchCharge = Charge01;
         _charging = false;
         _chargeHeld = 0f;
+        _drawT = 0f;
         CastBobber();
     }
 
-    /// How far the rod was drawn back when the button came up, 0-1.
+    /// How far the wind-up had got when the button came up, 0-1.
     float _launchDraw;
+    /// The extra lean the charge had earned, in degrees, at that moment.
+    float _launchExtra;
+    /// How charged the throw was, 0-1 — handed to the bobber purely so the cast
+    /// calibration line in Player.log can say which charge produced which range.
+    float _launchCharge;
 
     void CastBobber()
     {
@@ -808,14 +853,34 @@ public class FishingRodController : MonoBehaviour
         Transform rodTransform = currentRodInstance.transform;
         Quaternion original = originalRodRotation;
 
-        // The draw-back already happened — the player did it, by holding the
-        // button. Starting from wherever the charge left the rod means the fling
-        // continues that motion instead of yanking the rod backwards again.
+        // FINISH THE WIND-UP, then sling. A click releases the button long
+        // before the draw is done, and it must still look like the cast it
+        // always was: rod back, then forward. A hold has already completed the
+        // draw, so this loop is skipped and letting go slings immediately —
+        // which is what holding the rod back is FOR.
         float drawn = Mathf.Clamp01(_launchDraw);
-        Quaternion pulledBack = original * Quaternion.AngleAxis(-pullBackAngle, castRotationAxis);
-        Quaternion from = Quaternion.Slerp(original, pulledBack, drawn);
+        Quaternion pulledBack =
+            original * Quaternion.AngleAxis(-(pullBackAngle + _launchExtra), castRotationAxis);
+        Quaternion from =
+            original * Quaternion.AngleAxis(-ChargeDrawAngle(drawn, 0f) - _launchExtra,
+                                            castRotationAxis);
         rodTransform.localRotation = from;
-        pulledBack = from;
+
+        float remainingDraw = pullBackDuration * (1f - drawn);
+        if (remainingDraw > 0.001f)
+        {
+            float drawElapsed = 0f;
+            while (drawElapsed < remainingDraw)
+            {
+                rodTransform.localRotation =
+                    Quaternion.Slerp(from, pulledBack, drawElapsed / remainingDraw);
+                drawElapsed += Time.deltaTime;
+                yield return null;
+            }
+        }
+        rodTransform.localRotation = pulledBack;
+
+        yield return new WaitForSeconds(0.02f);
 
         Quaternion overshoot = original * Quaternion.AngleAxis(overshootAngle, castRotationAxis);
         float elapsed = 0f;
@@ -869,6 +934,7 @@ public class FishingRodController : MonoBehaviour
             var parked = currentBobber.GetComponent<Bobber>();
             if (parked == null || !parked.IsReadyForLaunch) return;
             Rigidbody ownerRb = GetComponent<Rigidbody>();
+            parked.LaunchCharge01 = _launchCharge;
             parked.RelaunchFromTip(
                 ownerRb != null ? ownerRb.velocity : Vector3.zero,
                 camForward, launchSpeed,
@@ -883,6 +949,8 @@ public class FishingRodController : MonoBehaviour
                             * Quaternion.Euler(bobberRotationOffset);
 
         currentBobber = Instantiate(bobberPrefab, spawnPos, spawnRot);
+        var freshBobber = currentBobber.GetComponent<Bobber>();
+        if (freshBobber != null) freshBobber.LaunchCharge01 = _launchCharge;
 
         Rigidbody bobberRb = currentBobber.GetComponent<Rigidbody>();
         if (bobberRb != null)
