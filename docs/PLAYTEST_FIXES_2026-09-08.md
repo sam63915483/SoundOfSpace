@@ -490,3 +490,46 @@ never given one.
       the old instant behaviour), `reelHaulResponse` (4 — how fast it hauls back)
       and `reelHaulReleaseResponse` (8 — how fast it comes down, and the number
       that decides how fast pumping looks).
+
+---
+
+# Seventh pass — the hookset waits for the line too
+
+> "a fish bites, you click, and when you click the rod gets jerked up but it gets
+> jerked up while the line is going from droopy to taught which is wrong. when you
+> hookset a fish, you reel the line so that it goes from droopy to tight, then when
+> it gets tight you pull the rod back to set the hook and maintain the line
+> tightness so the fish doesnt get off."
+
+Same mistake as the reel haul had, in the one animation that most needs to look
+deliberate. Two halves, and it was getting both wrong.
+
+**1. It fired on the click.** The rod snapped up while the line was still visibly
+slack. It now holds the rod **dead still** until the line has actually come tight,
+and sets on that moment.
+
+**2. It bounced back to neutral.** The set was followed by a return to the resting
+pose — and then the reel haul immediately pulled the rod back up again. Two
+opposite motions in a third of a second, at the most dramatic moment in the loop.
+The set now **hands over**: it leaves the haul at the angle it finished on, so the
+rod settles from the set into holding pressure in one continuous move. That's your
+"maintain the line tightness".
+
+### The new sequence (scene values, holding the reel)
+
+| | |
+|---|---|
+| **0.00 s** | click — rod dead still, line starts coming tight |
+| **0.29 s** | line reaches tight — **the set begins** |
+| **0.47 s** | set complete, rod back 39.6° |
+| then | settles to ~18° of holding pressure (25° while the fish runs) — **no bounce** |
+
+- [ ] Let a bobber sit, wait for a bite, then click and hold. The rod should not
+      move at all while the line straightens, then set sharply, then stay loaded.
+- [ ] Hook a fish **while working the lure** (holding reel across the water). The
+      line is already tight there, so the set should fire straight away — that's
+      correct, not a regression.
+- [ ] The rod should never drop to neutral and re-lift right after a hookset.
+- [ ] If you tap instead of holding, nothing reels the line in — so there's no
+      hookset animation at all now, rather than a flick at a slack line. The fish
+      will spit the hook a few seconds later, which is the honest outcome.

@@ -54,6 +54,10 @@ public class FishingRodController : MonoBehaviour
     [Header("Catch Animation")]
     public float catchPullBackAngle = 25f;
     public float catchPullDuration = 0.1f;
+    [Tooltip("UNUSED since 2026-09-08. The hookset no longer returns the rod to its " +
+             "resting pose — it hands straight over to the reel haul at the angle it " +
+             "finished on, so the rod does not drop and re-lift at the moment the fish " +
+             "is hooked. Kept so the scene's serialized value is not orphaned.")]
     public float catchReturnDuration = 0.25f;
 
     [Header("NPC Reference")]
@@ -1043,13 +1047,67 @@ public class FishingRodController : MonoBehaviour
         if (b != null) b.SetupAttached(this);
     }
 
+    /// <summary>
+    /// THE HOOKSET. Reel the slack out first, THEN set.
+    ///
+    /// Sam, 2026-09-08: "a fish bites, you click, and when you click the rod gets
+    /// jerked up but it gets jerked up while the line is going from droopy to
+    /// taught which is wrong. when you hookset a fish, you reel the line so that
+    /// it goes from droopy to tight, then when it gets tight you pull the rod back
+    /// to set the hook and maintain the line tightness so the fish doesnt get off."
+    ///
+    /// Two halves to that, and this used to get both wrong:
+    ///
+    ///  1. <b>It fired on the click.</b> The rod snapped up while the line was
+    ///     still visibly slack — the cascade running backwards, the same mistake
+    ///     the reel haul had. It now holds the rod perfectly still until the line
+    ///     has actually come tight, and sets on that moment.
+    ///
+    ///  2. <b>It bounced back to neutral.</b> The set was followed by a return to
+    ///     the resting pose, and then the reel haul immediately pulled the rod
+    ///     back up again — two opposite motions in a third of a second, right at
+    ///     the most dramatic moment of the whole loop. Now the set HANDS OVER: it
+    ///     seeds the haul at the angle it finished on, so the rod settles from the
+    ///     set into holding pressure in one continuous move. That is the
+    ///     "maintain the line tightness" half.
+    ///
+    /// If the line never comes tight (the player tapped instead of holding, so
+    /// nothing is reeling it in) there is no hookset to animate, and the rod is
+    /// left alone rather than flicked at a slack line.
+    /// </summary>
     IEnumerator CatchAnimation()
     {
         if (currentRodInstance == null) yield break;
 
         Transform rodTransform = currentRodInstance.transform;
         Quaternion original = originalRodRotation;
+        rodTransform.localRotation = original;
 
+        var tune = FishingTuning.Active;
+        float gate = Mathf.Clamp(tune.reelHaulStartTaut, 0f, 0.95f);
+        var hooked = currentBobber != null ? currentBobber.GetComponent<Bobber>() : null;
+
+        // ── Wait for the line, holding the rod dead still ────────────────────
+        bool tight = false;
+        float waited = 0f;
+        while (hooked != null && waited < HooksetMaxWait)
+        {
+            if (hooked.LineTaut01 >= gate) { tight = true; break; }
+            rodTransform.localRotation = original;
+            waited += Time.deltaTime;
+            yield return null;
+        }
+
+        if (!tight)
+        {
+            // Nothing ever came tight. Setting the hook against slack line is
+            // exactly the thing being fixed here, so don't.
+            rodTransform.localRotation = original;
+            castAnimationCoroutine = null;
+            yield break;
+        }
+
+        // ── Set it ───────────────────────────────────────────────────────────
         Quaternion pulledBack = original * Quaternion.AngleAxis(-catchPullBackAngle, castRotationAxis);
         float elapsed = 0f;
         while (elapsed < catchPullDuration)
@@ -1060,17 +1118,19 @@ public class FishingRodController : MonoBehaviour
         }
         rodTransform.localRotation = pulledBack;
 
-        elapsed = 0f;
-        while (elapsed < catchReturnDuration)
-        {
-            rodTransform.localRotation = Quaternion.Slerp(pulledBack, original, elapsed / catchReturnDuration);
-            elapsed += Time.deltaTime;
-            yield return null;
-        }
-        rodTransform.localRotation = original;
-
+        // ── Hand over, do not bounce ─────────────────────────────────────────
+        // The haul picks up from the angle the set finished on and eases down to
+        // whatever holding pressure the fight calls for. No return-to-neutral, so
+        // the rod never drops and re-lifts at the moment the fish is hooked.
+        _pullBackAngle = catchPullBackAngle;
         castAnimationCoroutine = null;
     }
+
+    /// Seconds the hookset will wait for the line to come tight before giving up
+    /// on animating at all. Long enough for a slack line to be reeled in, short
+    /// enough that a player who tapped and let go is not left with a rod that
+    /// belongs to a coroutine.
+    const float HooksetMaxWait = 1.5f;
 
     // Smoothed pose values, so the rod loads and unloads instead of snapping
     // between frames.

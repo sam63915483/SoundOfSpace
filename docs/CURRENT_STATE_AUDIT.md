@@ -2456,3 +2456,42 @@ New tunables on `FishingTuning`: `reelHaulStartTaut`, `reelHaulResponse`,
 `reelHaulReleaseResponse` (appended at the end, per the serialization convention).
 
 Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
+
+---
+
+## Addendum 2026-09-08h - the hookset waits for the line, then hands over
+
+Sam: *"a fish bites, you click, and when you click the rod gets jerked up but it
+gets jerked up while the line is going from droopy to taught which is wrong ... you
+reel the line so that it goes from droopy to tight, then when it gets tight you pull
+the rod back to set the hook and maintain the line tightness."*
+
+The third and last place the cascade ran backwards. `CatchAnimation` fired on the
+frame `TryHookFish` succeeded and yanked 39.6 degrees (scene value) with the line
+still slack.
+
+**1. It now waits.** The coroutine holds the rod at its authored pose until
+`LineTaut01` crosses `reelHaulStartTaut` (0.65 — the same gate the reel haul got in
+09-08g), then sets. `TickFight` runs during the wait, so the line really is being
+reeled tight while the rod is still. On a bobber hooked from rest that is ~0.29s of
+stillness; on a fish that took a moving lure the line is already tight, seeded by
+`SeedLineTaut`, and the set fires immediately — which is correct.
+
+**2. It no longer bounces.** The old animation returned the rod to neutral over
+`catchReturnDuration`, and `ReelPullBack` then hauled it straight back up: two
+opposite motions in a third of a second, at the most dramatic moment in the loop.
+The set now seeds `_pullBackAngle` with the angle it finished on and ends, so the
+haul continues from 39.6 degrees and settles to ~18 (25 while the fish runs).
+`catchReturnDuration` is now unused; its tooltip says so and the field is kept so
+the scene's serialized value is not orphaned.
+
+**Timeout:** if the line never comes tight within `HooksetMaxWait` (1.5s) — the
+player tapped rather than held, so nothing is reeling — there is no hookset to
+animate and the rod is left alone rather than flicked at slack line. The fight is
+already running and will slip the hook a few seconds later, which is the honest
+outcome.
+
+All three rod-moving paths are now gated on the line: the mesh bend (always was),
+the reel haul (09-08g), and the hookset (here).
+
+Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
