@@ -536,7 +536,12 @@ public class InputSettings : ScriptableObject {
 				maxTrees         = 40;
 				maxAlienNPCs     = 6;
 				maxMushrooms     = 20;
-				maxCrystals      = 10;
+				// NOT thinned on Low. Crystals are the shuttle's fuel (planet
+				// economy, 2026-09-07), so halving how many are on the ground
+				// halves how fast you can refuel — a graphics setting must never
+				// change the economy. Twenty crystals is a full tank; a lower
+				// cap would make Low quality a harder game.
+				maxCrystals      = defaultMaxCrystals;   // 20
 				maxAudienceSize  = 15;
 				fxConcertShadows       = false;
 				fxChromaticAberration  = false;

@@ -8,8 +8,12 @@ using UnityEngine;
 /// <b>The rule, in one line:</b> a full tank buys exactly one 15 km jump and
 /// leaves you empty on arrival.
 ///
-/// Billing is per kilometre of the gap at the moment TRAVEL is pressed, plus a
-/// flat launch-and-land charge that every hop pays however short it is. It is
+/// Billing is a flat launch-and-land charge that every hop pays however short
+/// it is, plus a distance charge that rises FASTER than the distance does (see
+/// <see cref="jumpCostExponent"/>) — so a quick skip to a neighbour is cheap
+/// and crossing the system is frightening, while the headline "one full tank =
+/// one 15 km jump" stays exactly true. The price is read from the gap at the
+/// moment TRAVEL is pressed. It is
 /// charged ONCE, up front — the planets keep moving during the flight and the
 /// shuttle is never re-billed, and there is no such thing as running dry
 /// mid-transit. If you cannot afford a hop, the NAV app greys it out; a jump
@@ -38,9 +42,8 @@ public class ShuttleFuel : MonoBehaviour, IReactorFuel
     [Tooltip("The longest hop a FULL tank can pay for, in km. This is the headline number " +
              "of the whole travel design: everything further away has to wait for its orbit " +
              "to swing closer. See docs/DISTANCE_TABLE.md for what this range actually reaches. " +
-             "2026-09-07: 15 -> 22.5 (Sam's playtest: fuel drained too fast; per-km burn is " +
-             "now 1.5x slower). The Shuttle_Lander prefab carries the live value — change it there too.")]
-    public float maxJumpKm = 22.5f;
+             "The Shuttle_Lander prefab carries the live value — change it there too.")]
+    public float maxJumpKm = 15f;
 
     [Tooltip("Flat cost of getting off the ground and back down again, paid by every hop " +
              "no matter how short — including a same-planet relocation.")]
@@ -56,6 +59,15 @@ public class ShuttleFuel : MonoBehaviour, IReactorFuel
              "the player watches the gauge fall before anyone explains what it is.")]
     public float introApproachBurn = 12f;
 
+    // ── Appended 2026-09-08 (CLAUDE.md: new serialized fields go at the END) ──
+    [Tooltip("How sharply the distance charge climbs. 1 = a straight line (cost is simply " +
+             "proportional to km). Above 1, short hops get cheaper and long ones stay " +
+             "expensive, WITHOUT changing how far a full tank reaches — the curve is pinned " +
+             "at both ends. At 1.6 a 5 km hop is 21% of a tank instead of 37%, and a 2 km " +
+             "skip to a neighbour is 9% instead of 18%, so riding the orbits until a planet " +
+             "swings close is rewarded rather than merely permitted.")]
+    [Range(1f, 3f)] public float jumpCostExponent = 1.6f;
+
     // Current contents. Not serialized: the save owns it (SaveCollector), and a
     // scene-authored value would silently win over a loaded game.
     float _fuel;
@@ -67,28 +79,46 @@ public class ShuttleFuel : MonoBehaviour, IReactorFuel
     public float FuelMax => fuelMax;
     public float FuelPercent => fuelMax > 0f ? Mathf.Clamp01(_fuel / fuelMax) : 0f;
 
-    /// <summary>Units burned per km travelled. Derived, never authored: it is
-    /// whatever makes a full tank equal exactly one <see cref="maxJumpKm"/> hop
-    /// once the flat launch charge is paid.</summary>
-    public float UnitsPerKm =>
-        maxJumpKm > 0.01f ? Mathf.Max(0f, fuelMax - launchLandCost) / maxJumpKm : 0f;
+    /// <summary>Everything the distance charge has to spend across the whole
+    /// range: a full tank minus the flat launch charge. Derived, never authored,
+    /// so a full tank is always exactly one <see cref="maxJumpKm"/> hop.</summary>
+    float DistanceBudget => Mathf.Max(0f, fuelMax - launchLandCost);
 
-    /// <summary>How far the shuttle could jump right now, in km. This is the honest
-    /// number the NAV app shows — it already accounts for the launch charge, so it
-    /// reads slightly under 15 km even on a full tank's worth minus a sip.</summary>
+    /// <summary>Average units burned per km over a FULL-range jump. Display and
+    /// back-compat only — the real charge is <see cref="CostForMetres"/>, which
+    /// is a curve, not a straight line, whenever
+    /// <see cref="jumpCostExponent"/> is above 1.</summary>
+    public float UnitsPerKm => maxJumpKm > 0.01f ? DistanceBudget / maxJumpKm : 0f;
+
+    float Exponent => Mathf.Max(0.01f, jumpCostExponent);
+
+    /// <summary>Cost in fuel units of a hop across <paramref name="metres"/>:
+    /// the flat launch charge plus the distance charge, which is the budget
+    /// scaled by (distance / range) raised to <see cref="jumpCostExponent"/>.
+    /// At exactly <see cref="maxJumpKm"/> this returns <see cref="fuelMax"/>,
+    /// whatever the exponent is — the curve is pinned at both ends.</summary>
+    public float CostForMetres(float metres)
+    {
+        if (maxJumpKm <= 0.01f) return launchLandCost;
+        float frac = Mathf.Max(0f, metres) / 1000f / maxJumpKm;
+        return launchLandCost + DistanceBudget * Mathf.Pow(frac, Exponent);
+    }
+
+    /// <summary>How far the shuttle could jump right now, in km — the exact
+    /// inverse of <see cref="CostForMetres"/>, so the number the NAV app shows
+    /// is the number the GO button will honour. It already accounts for the
+    /// launch charge, so it reads slightly under <see cref="maxJumpKm"/> even on
+    /// a full tank's worth minus a sip.</summary>
     public float RangeKm
     {
         get
         {
-            float upk = UnitsPerKm;
-            if (upk <= 0.0001f) return 0f;
-            return Mathf.Max(0f, (_fuel - launchLandCost) / upk);
+            float budget = DistanceBudget;
+            if (budget <= 0.0001f || maxJumpKm <= 0.01f) return 0f;
+            float spendable = Mathf.Max(0f, _fuel - launchLandCost);
+            return maxJumpKm * Mathf.Pow(Mathf.Clamp01(spendable / budget), 1f / Exponent);
         }
     }
-
-    /// <summary>Cost in fuel units of a hop across <paramref name="metres"/>.</summary>
-    public float CostForMetres(float metres) =>
-        launchLandCost + Mathf.Max(0f, metres) / 1000f * UnitsPerKm;
 
     public bool CanAfford(float metres) => _fuel >= CostForMetres(metres) - 0.0001f;
 

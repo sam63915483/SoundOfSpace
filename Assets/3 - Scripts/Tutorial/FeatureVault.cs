@@ -207,7 +207,7 @@ public static class FeatureVault
     /// $20 → $10), TevRentCollector's daily accrual, arrears, the rent nag,
     /// TevPaymentUI's rent entry, the day-recap rent line and the 5-day
     /// PLUGINS-tab lockout. Vaulted 2026-08-30 per the first-meeting revamp
-    /// (docs/Handoff_TevDialogue_FirstMeeting_v1 (1).md): Tev is no longer a
+    /// (docs/Handoff_TevDialogue_FirstMeeting_v1.md): Tev is no longer a
     /// landlord — he's a music-store owner who sells TRAX for $20.
     ///
     /// Gates BEHAVIOR at the same choke points the fronting vault used:

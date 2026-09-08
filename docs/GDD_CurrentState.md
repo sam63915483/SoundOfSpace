@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Replaced by `docs/CURRENT_STATE_AUDIT.md`, which is kept up to date.
+
 # Game Design Document — Current State
 
 > **Purpose of this document:** A complete, accurate snapshot of everything that

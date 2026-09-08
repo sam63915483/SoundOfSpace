@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Written before the core loop became fishing → fly → sell. Tone still useful; pacing plan is not.
+
 # The next hour — a proposal
 
 Written 2026-08-04, after the mushroom slice shipped. This is my answer to

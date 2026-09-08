@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does.
+
 # Handoff — Loop Feel: the Schedule 1 Flywheel Pass (v1)
 
 **Date:** 2026-08-16 · **From:** external design review (Claude chat) · **For:** Claude Code

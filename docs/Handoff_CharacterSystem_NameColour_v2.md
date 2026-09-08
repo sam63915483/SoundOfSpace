@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does. A character is a name and a suit colour; everything else is world save.
+
 # Character System v2 — Name + Suit Colour (verified build plan)
 
 **Supersedes** `Handoff_CharacterSystem_NameColour_v1.md`. Same feature, same scope.

@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Written for the LLM phone. No model loads any more.
+
 # Phone AI — Game Knowledge & Personality System
 ## Implementation Plan for Claude Code
 

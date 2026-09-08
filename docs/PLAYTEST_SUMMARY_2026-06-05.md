@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 🗄 **HISTORICAL RECORD.** A snapshot of one day's findings, kept for the trail. Not a description of the game today — see `docs/CURRENT_STATE_AUDIT.md`.
+
 # Playtest Work Summary — 2026-06-05
 
 A single-session sweep that started from `docs/PLAYTEST_TASKS_2026-06-05.md` (the

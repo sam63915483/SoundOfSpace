@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does. TRAX is on the back burner as of 2026-09-08.
+
 # Build Plan — Cassette Loop Revamp
 
 **Source:** `Handoff_CassetteLoop_Revamp_v1.md` · **Branch:** `feat/helmet-hud` (stay on it)

@@ -24270,10 +24270,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   fuelMax: 100
-  maxJumpKm: 22.5
+  maxJumpKm: 15
   launchLandCost: 5
   newGameFuel: 50
   introApproachBurn: 12
+  jumpCostExponent: 1.6
 --- !u!1 &8812311342787602616
 GameObject:
   m_ObjectHideFlags: 0

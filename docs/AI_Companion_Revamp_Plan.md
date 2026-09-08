@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Same: no LLM companion. HAL's volunteered commentary is vaulted (`FeatureVault.HALCommentary`).
+
 # AI Companion App — Implementation Plan
 
 A revamp spec for the in-game smartphone AI. Hand this to Claude Code and work

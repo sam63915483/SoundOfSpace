@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Superseded by v2, which is itself built.
+
 # Handoff — Character System v1 (Name + Suit Colour)
 
 **Game:** Sound of Space · **Date:** Aug 9, 2026 · **Branch:** `feat/helmet-hud` (the real trunk — `main` is stale at Jul 14)

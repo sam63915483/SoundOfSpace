@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does.
+
 # Money & Prices Revamp — proposal v1
 
 **Status: BUILT 2026-08-14.** Sam approved all five decisions, choosing Type 2

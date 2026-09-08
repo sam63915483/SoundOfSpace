@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does. Still the best explanation of how the fishing minigame works.
+
 # Handoff — Fishing Revamp, Phase 1 (v1, Sep 1 2026)
 
 Fishing becomes one of the game's two core money loops (with TRAX music). This phase makes the catch itself deeper without adding clicks, replaces the bare common/uncommon/rare roll with 12 named species, adds vendor bait, and makes time of day matter. Bounty fish, bounty zones, and the Floorbin/Shlorbin quest are **Phase 2 — do not build them here.**

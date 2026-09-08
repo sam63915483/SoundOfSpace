@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Tev's fronting economy is vaulted (`FeatureVault.TevFrontingEconomy`).
+
 # Handoff — Early loop: Orientation whiteboard + Tev fronting (v2 FINAL, 2026-08-10)
 
 All open questions are resolved — this version is build-ready. The early game gets its shape: the player wakes, the stasis door opens, a whiteboard of optional orientation objectives teaches the survival systems without forcing anything, and Tev evolves from the one-off onboarding deal into a repeatable per-player 50/50 fronting loop — the player's first income source and first hustle. There is one **hard stop point** (Part 3): do not touch Tev's dialogue until you've reported the current conversation flow back to me and I've edited it.

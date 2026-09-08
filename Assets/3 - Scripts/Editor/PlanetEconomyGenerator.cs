@@ -46,12 +46,29 @@ public static class PlanetEconomyGenerator
     // The first draft used 4 mains x 3 + 6 dwarfs x 2 = 24 slots exactly (the
     // handoff said dwarfs 1, which covers only 18 species). 2026-09-07, Sam's
     // playtest: 7 fish flown to a neighbour and only 2 sold above base — the
-    // lists were too narrow to find a buyer. Widened so most foreign fish sell
-    // above base somewhere nearby: mains 5 + 9 (4 of 18 foreign species
-    // unlisted), dwarfs 4 + 10 (7 of 21). The live JSON was widened by hand to
-    // these same caps, round-robin so every species has a similar buyer count.
+    // lists were too narrow to find a buyer. Delicacies were widened to 5 / 4
+    // and IMPORTS to 9 / 10, which fixed the symptom the wrong way round.
+    //
+    // 2026-09-08. The reason a foreign fish so rarely found a buyer was never
+    // that the lists were short — it was that they were drawn round-robin from
+    // the whole pool, so a planet's imports had nothing to do with what its
+    // NEIGHBOURS actually catch. Widening was the only lever left, and it took
+    // the lists to 9-10 of the 18-21 foreign species: 65% of every possible
+    // (where you fished, where you flew, what you carried) combination paid a
+    // premium, and the 0.5x dump price almost never fired. Route knowledge was
+    // worth 88% next door versus 65% anywhere — barely a signal.
+    //
+    // AssignImports now draws from the neighbours' catch instead (see there),
+    // so a SIX-species list beats a ten-species one at the job it exists to do:
+    //     short hop  86% premium (was 88%)
+    //     long hop   35% premium (was 59%)
+    //     overall    47%         (was 65%)
+    // Measured over the shipped catch/delicacy tables; every ordered pair of
+    // neighbours still has at least one premium buyer. Delicacies are unchanged
+    // — 5 per main across 24 species is about two delicacy planets per fish,
+    // which is exactly the route knowledge worth learning.
     const int   DelicaciesMain = 5, DelicaciesDwarf = 4;
-    const int   ImportsMain    = 9, ImportsDwarf    = 10;
+    const int   ImportsMain    = 6, ImportsDwarf    = 6;
 
     class Planet
     {
@@ -60,6 +77,10 @@ public static class PlanetEconomyGenerator
         public float  orbitRadius;
         public int    rank;            // rail order from the sun; co-orbitals share a rank
         public Vector2 pos;
+        /// <summary>A goods vendor stands on this body — crystals can be BOUGHT here.</summary>
+        public bool   goodsVendor;
+        /// <summary>The crystal spawner runs on this body — crystals can be MINED here.</summary>
+        public bool   naturalCrystals;
         public List<string> catchable = new List<string>();
         public List<string> imports = new List<string>();
         public List<string> delicacies = new List<string>();
@@ -118,8 +139,29 @@ public static class PlanetEconomyGenerator
         foreach (var b in bodies) if (b.bodyName == "Sun") sun = b;
         if (sun == null) { err = "No Sun in the open scene — open Assets/1.6.7.7.7.unity."; return null; }
 
+        // Fuel sources, for the hard rule in §4.5 of the handoff: a fishable body
+        // you can land on with an empty tank must offer SOME way to fill it, or
+        // the run is over — the pod in the shuttle is the only save point, and
+        // dying respawns you on the same rock.
+        var sites = UnityEngine.Object.FindObjectsOfType<VendorSite>(true);
+        var goodsBodies = new HashSet<string>();
+        foreach (var s in sites)
+        {
+            if (s.kind != VendorSite.VendorKind.GoodsVendor) continue;
+            var b = s.GetComponentInParent<CelestialBody>();
+            if (b != null) goodsBodies.Add(b.bodyName);
+        }
+        // The crystal spawner grows crystals on EVERY body in the simulation
+        // except the ones it is told to skip, so "has natural crystals" is its
+        // exclusion list read backwards. A scene with no spawner at all has
+        // crystals nowhere, which the rule correctly flags on every planet.
+        var spawner = UnityEngine.Object.FindObjectOfType<CrystalSpawner>(true);
+        HashSet<string> noCrystals = spawner == null ? null : new HashSet<string>();
+        if (spawner != null && spawner.excludeBodyNames != null)
+            foreach (var n in spawner.excludeBodyNames) if (!string.IsNullOrEmpty(n)) noCrystals.Add(n);
+
         var list = new List<Planet>();
-        foreach (var site in UnityEngine.Object.FindObjectsOfType<VendorSite>(true))
+        foreach (var site in sites)
         {
             if (site.kind != VendorSite.VendorKind.FishMarket) continue;
             var body = site.GetComponentInParent<CelestialBody>();
@@ -132,6 +174,8 @@ public static class PlanetEconomyGenerator
                 main = body.radius >= MainRadius,
                 orbitRadius = new Vector2(rel.x, rel.y).magnitude,
                 pos = new Vector2(rel.x, rel.y),
+                goodsVendor     = goodsBodies.Contains(body.bodyName),
+                naturalCrystals = noCrystals != null && !noCrystals.Contains(body.bodyName),
             });
         }
         if (list.Count == 0) { err = "No FishMarket stands in the scene — place them first."; return null; }
@@ -295,19 +339,72 @@ public static class PlanetEconomyGenerator
     }
 
     /// <summary>Imports: off-world species the market pays extra for, drawn from
-    /// planets that are NEAR (early routes stay feasible). Never overlaps the
-    /// delicacy list.</summary>
+    /// what this planet's ORBITAL NEIGHBOURS actually catch. Never overlaps the
+    /// delicacy list.
+    ///
+    /// This is the whole point of the pass. A player who fishes at home and
+    /// takes the short hop next door should find a buyer paying over the odds
+    /// nearly every time — that is the loop, and it has to be reliable. A
+    /// player who picks a planet at random should mostly find a market with no
+    /// use for what they are carrying. Drawing the list from the neighbours'
+    /// catch gets both at once; drawing it from the whole pool (what this used
+    /// to do, sorted by distance) could only get the first by making the lists
+    /// so long that the second became impossible.
+    ///
+    /// <b>Round-robin across the neighbours, not one at a time.</b> Puddle sits
+    /// between the two co-orbital mains and Hearth, so its neighbours catch 15
+    /// species between them and it can only list six. Taking them in order
+    /// would give Hearth's three fish no buyer at all next door and quietly
+    /// break the shortest route in that part of the system. Dealing one card
+    /// per neighbour per pass gives every neighbour a share of a list that can
+    /// never hold all of them.
+    ///
+    /// The neighbour relation is the same <see cref="Neighbours"/> the
+    /// validator uses for the shared-species rule: adjacent rails, co-orbitals
+    /// counted as one rank. Falls back to the old nearest-first fill only if a
+    /// planet's neighbours cannot supply enough species — which no current
+    /// layout does, but a hand-moved stand could.</summary>
     static void AssignImports(List<Planet> planets, System.Random rng)
     {
-        var all = AllSpecies();
         foreach (var p in planets)
         {
-            var cands = new List<string>();
-            foreach (var s in all)
-                if (!p.catchable.Contains(s) && !p.delicacies.Contains(s)) cands.Add(s);
-            cands.Sort((x, y) => DistanceFromHomes(planets, p, x).CompareTo(DistanceFromHomes(planets, p, y)));
-            for (int i = 0; i < cands.Count && p.imports.Count < p.ImportCap; i++)
-                p.imports.Add(cands[i]);
+            // One queue per neighbour, shuffled so the draft does not always
+            // hand out the same species (still reproducible — seeded rng).
+            var queues = new List<List<string>>();
+            foreach (var q in planets)
+            {
+                if (!Neighbours(p, q)) continue;
+                var take = new List<string>();
+                foreach (var s in q.catchable)
+                    if (!p.catchable.Contains(s) && !p.delicacies.Contains(s) && !take.Contains(s))
+                        take.Add(s);
+                Shuffle(take, rng);
+                if (take.Count > 0) queues.Add(take);
+            }
+
+            int cursor = 0;
+            while (p.imports.Count < p.ImportCap && queues.Count > 0)
+            {
+                var q = queues[cursor % queues.Count];
+                string pick = q[q.Count - 1];
+                q.RemoveAt(q.Count - 1);
+                if (!p.imports.Contains(pick)) p.imports.Add(pick);
+                if (q.Count == 0) { queues.Remove(q); if (queues.Count == 0) break; }
+                else cursor++;
+            }
+
+            // Isolated planet (no neighbour with spare species): fall back to
+            // the old behaviour so a table is never left empty.
+            if (p.imports.Count < p.ImportCap)
+            {
+                var cands = new List<string>();
+                foreach (var s in AllSpecies())
+                    if (!p.catchable.Contains(s) && !p.delicacies.Contains(s) && !p.imports.Contains(s))
+                        cands.Add(s);
+                cands.Sort((x, y) => DistanceFromHomes(planets, p, x).CompareTo(DistanceFromHomes(planets, p, y)));
+                for (int i = 0; i < cands.Count && p.imports.Count < p.ImportCap; i++)
+                    p.imports.Add(cands[i]);
+            }
         }
     }
 
@@ -355,6 +452,21 @@ public static class PlanetEconomyGenerator
 
         foreach (var p in scenePlanets)
             if (!byName.ContainsKey(p.name)) problems.Add($"{p.name} has a fish market but no table");
+
+        // ── The one rule whose violation BRICKS A RUN ────────────────────────
+        // Handoff §4.5: every fishable body has natural crystals OR a goods
+        // vendor (or both). Land on one with neither and an empty tank and
+        // there is no way to leave, no way to refuel, and no earlier save to go
+        // back to — the stasis pod in the shuttle is the only save point, and
+        // dying puts you back on the same rock. Every other rule in this file
+        // costs the player a wasted trip; this one costs them the run. It was
+        // written down in the handoff and never checked until 2026-09-08.
+        foreach (var p in scenePlanets)
+            if (!p.naturalCrystals && !p.goodsVendor)
+                problems.Add($"⛔ {p.name} is fishable but has NO fuel source — no natural crystals " +
+                             "(it is in CrystalSpawner.excludeBodyNames, or the scene has no spawner) " +
+                             "and no goods vendor. Landing there with an empty tank is a permanent " +
+                             "softlock. Add a goods vendor stand, or take it off the exclusion list.");
 
         var tierOf = new Dictionary<string, FishTier>();
         for (int i = 0; i < FishingRules.Species.Length; i++)

@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 🟢 **ACTIVE — this is the current core loop.** Fish → fly → sell into another planet's economy → buy fuel → fly again. Phases 0–4 are built; see `docs/PLAYTEST_PLANET_ECONOMY.md` and `docs/PLAYTEST_FIXES_2026-09-07.md` for what is still awaiting playtest. Tuning revisited 2026-09-08 — jump range is 15 km (§5.2 as written); the burn curve, not the range, is what got softened.
+
 # Handoff — Planet Economy v2: fuel, per-planet species, fish markets
 
 Date: 2026-09-07 · From: Sam (via Claude chat) · For: Claude Code

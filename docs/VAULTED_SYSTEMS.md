@@ -123,7 +123,7 @@ the same schema and un-vaulting invalidates nobody's file.
 
 ## Code-only vault (2026-08-30, the first-meeting revamp)
 
-`Handoff_TevDialogue_FirstMeeting_v1 (1).md` retired Tev's landlord job: he is a
+`Handoff_TevDialogue_FirstMeeting_v1.md` retired Tev's landlord job: he is a
 music-store owner who sells the TRAX engine for $20 through the new
 first-meeting tree. **The entire rent system is vaulted behind
 `FeatureVault.TevRent`**, not deleted.

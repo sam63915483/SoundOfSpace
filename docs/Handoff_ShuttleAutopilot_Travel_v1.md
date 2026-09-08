@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does.
+
 # Handoff: Shuttle Autopilot Travel + Assisted Landing (v1, demo)
 
 **Date:** Aug 25, 2026

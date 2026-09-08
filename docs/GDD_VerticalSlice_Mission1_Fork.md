@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. The vertical slice it plans is not the game that got built.
+
 # Vertical Slice — Mission 1: "Taken In" (Three-Way Fork)
 
 > **What this is:** The full build spec for Mission 1 of the vertical slice — the

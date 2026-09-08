@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does. TRAX is on the back burner as of 2026-09-08 — mid-game money source, not the core loop.
+
 # Handoff — Cassette Loop Revamp v1
 **Date:** Aug 13, 2026 · **v1.1** — unified selling interaction replaces the free taste test; Tev fronting committed as a repeatable side job
 **Builds on:** Handoff_CassettePivot_ShuttleComputer_v2.md (TRAX is BUILT — browser prototype + Unity port, golden-verified). This handoff is everything AROUND the instrument: the vault pass, Tev's music store, printing, customers, and selling.

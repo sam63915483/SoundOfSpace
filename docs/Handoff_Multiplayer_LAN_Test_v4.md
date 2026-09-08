@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does. Multiplayer shipped and merged to main.
+
 # Handoff — Multiplayer LAN Test (Barebones Proof) v4
 
 **Read first — workflow rule:** State your full build plan before implementing anything and wait for Sam's explicit go-ahead. (This is standing project protocol; it also lives in GDD_StoryBible_v2.md §0 rule 4 — you do not need to open that file.)

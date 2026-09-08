@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 🗄 **HISTORICAL RECORD.** A snapshot of one day's findings, kept for the trail. Not a description of the game today — see `docs/CURRENT_STATE_AUDIT.md`.
+
 # Project Review — "Sound of Space" — 2026-06-05
 
 *A comprehensive snapshot of the project for an outside reviewer. Weighted toward

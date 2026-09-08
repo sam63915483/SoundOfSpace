@@ -5,8 +5,9 @@ traps**, the **non-negotiable conventions**, and **pointers** to the detailed do
 
 **For "how does system X work / what exists right now", read these first:**
 - `docs/CURRENT_STATE_AUDIT.md` — verified, system-by-system snapshot of the whole game + a scrap list (the single best map of the current state).
-- `docs/GAME_OVERVIEW.md` — short / medium / long technical write-ups.
+- `docs/README.md` — what in `docs/` is current and what is history. **Every superseded plan and handoff carries a stamp on line 1** (🟢 ACTIVE / ✅ BUILT / ⛔ SUPERSEDED / 🗄 RECORD / ⚠️ STALE). Check the stamp before designing from any doc in there.
 - `docs/architecture-diagram.html` — interactive Mermaid architecture view.
+- `docs/GAME_OVERVIEW.md` — short / medium / long write-ups, but **last touched 2026-06-01 and several pivots stale**. The audit wins wherever they disagree.
 - `docs/superpowers/_archive/` — historical per-feature specs + plans (why/how each feature was built; not the source of truth).
 - `documentation/INDEX.md` — one-time parallel bug/redundancy/perf audit (2026-07-15 snapshot). A triage backlog of *unverified* static-analysis leads, **not** source of truth — confirm any finding against live code before acting, and expect false positives. For "how does system X work", still use `CURRENT_STATE_AUDIT.md`.
 
@@ -55,6 +56,26 @@ as before, so every scene without a cave is unaffected. Revert with
 
 ---
 
+## What the game is, right now (Sam, 2026-09-08)
+
+**The core loop is fishing, then flying somewhere else to sell the catch**, because
+that planet's market pays differently for what you are carrying. That one loop is
+meant to supply all three motivations at once — a reason to fish, a reason to
+explore planet to planet, and a reason to want fuel — and to make story and dialogue
+easier to write, because the player is already everywhere for their own reasons. The
+best thing the game has is a full solar system you can fly around and fish in; the
+loop exists to make you use it.
+
+**Getting that loop fun and bug-free is the whole job.** Deliberately parked until
+it is:
+- **TRAX** — a mid-game money source later, not the core loop. Needs a lot more work first.
+- **The black hole eating the solar system at 2:30:00**, and the four endings, one on
+  each main planet (Humble Abode's gets built first).
+
+The loop's spec is `docs/Handoff_PlanetEconomy_Fuel_Fishing_v2.md` (🟢 ACTIVE).
+
+---
+
 ## Project facts
 
 - **Unity 2022.3, Built-in Render Pipeline (NOT URP).** URP-authored asset packs render magenta — convert their materials to Standard; never install URP.
@@ -62,9 +83,12 @@ as before, so every scene without a cave is unaffected. Revert with
 - **No CLI build/test** — all iteration is in the Editor; scripts compile on save, check the Console. Built exe is `Solar System 2.exe` (not used for dev).
 - **Save files:** `%AppData%\..\LocalLow\DefaultCompany\Solar System 2\saves\*.json`. One bounded `autosave` slot.
 - **No `.asmdef` files** — everything is `Assembly-CSharp`; moving scripts across folders never breaks compilation.
-- **No `Resources.Load` in user code** except the TMP font and `Resources/HotbarIcons/` + `Resources/Flares/`.
+- **`Resources.Load` is rare and deliberate** — the TMP font (`Fonts & Materials/LiberationSans SDF`), `Resources/HotbarIcons/`, `Resources/Flares/`, `Resources/DomeFX/`, `Resources/InputPrompts/` and the concert additive material. Don't add new ones without a reason; prefer a serialized reference.
+- **A save is a WORLD, not a character.** `characters.json` (beside `saves/`) holds only a name + suit-colour index. Everything earned — pockets, money, fish, equipment, hotbar, vitals, orientation board — lives in the world save. Inside the file it is stored as `playerBlocks` keyed by character id, but that exists ONLY so two people can share a co-op world: a world holding exactly one block hands it to whoever opens it and re-keys it (`SaveCollector.SelectPersonalBlock`). Never reintroduce anything that travels between worlds with a character.
+- **Fuel and reach are ONE system, and it has a trap.** `ShuttleFuel.UnitsPerKm` is *derived* so a full tank is exactly one `maxJumpKm` hop — so raising `maxJumpKm` to slow the burn also stretches the range, and lowering `launchLandCost` to make short hops cheap does almost nothing (the per-km rate rises to compensate). **The knob for how expensive a hop feels is `jumpCostExponent`; the knob for how far you can go is `maxJumpKm`. They are not interchangeable.** Range is 15 km — the design number, and the one `docs/DISTANCE_TABLE.md` and the whole staging progression are built around. After changing either, re-run `Tools ▸ Solar System ▸ Write Distance Table`.
 - **Phone AI is now preset dialogue, NOT an LLM.** Player-facing AI is the deterministic preset branching-dialogue system (`Assets/3 - Scripts/Story/` + `StreamingAssets/Story/conv_*.json`) plus the **HAL** companion (`AI/HALCommentator`, `AI/IntentRouter`) — templated lines + a hand-written intent router. **HAL's commentary is VAULTED (2026-09-05, `FeatureVault.HALCommentary = false`):** `HALCommentator` + `HALVolunteeredLog` are never created, so no volunteered one-liners, no per-frame polling; every caller null-checks `HALCommentator.Instance`. `HALLineHUD`/`HALVoicePlayer` stay for OxygenManager's hull prompts. `LLMService.cs` still compiles and is still seeded, but `BeginPreload()` early-returns and **no `.gguf` model loads**; the 3.96 GB `StreamingAssets/LlamaLib-v2.0.5/` bundle is now inert dead weight (gitignored; safe to delete locally). See audit §17. Edit the `conv_*.json` / `hinttracks.json` / `objectives.json` files to change what the AI says — no recompile.
 - **Big re-importable third-party packs are gitignored** (`Backrooms/`, `Poolrooms_Lvl37/`, LlamaLib, `*.gguf`). Re-import locally; don't commit them.
+- **Watch the scene file size.** `Assets/1.6.7.7.7.unity` is ~71 MB against GitHub's 100 MB hard per-file limit, and it grows every time something is placed. If it ever gets close, that is a real problem with no quick fix.
 - **Commit hygiene:** new files need `git add` — `git commit -a` skips untracked files (this repo accumulated a backlog of never-added feature files from exactly that). Add new `.cs` **and** its `.meta`.
 
 ---
@@ -130,8 +154,8 @@ the file on every talk in the Editor, so a Save is live without leaving Play mod
 
 ## Layout notes
 
-- User code: `Assets/3 - Scripts/` by feature (Building, Camera, Combat, Concert, Cutscenes, Editor, Effects, Fishing, Map, NPC_Dialogue, Physics, Pickups, Player, Portals, SaveSystem, Ship, Survival, Tutorial, UI, Vendor, World, AI, Audio).
-- Foundational layer: `Assets/3 - Scripts/Scripts/` — **do not reorganize.** Core gameplay (`PlayerController`, `Ship`, `InputSettings` are under `Game/Controllers/`; `NBodySimulation`, `EndlessManager`, `GravityObject`, `Universe`, `CelestialBody`, `GameSetUp` under `Game/`) plus the forbidden `Celestial/` + `Post Processing/Planet Effects/` (trap #2) and shared `Script Utilities/`.
+- User code: `Assets/3 - Scripts/` by feature — AI, Audio, Building, Camera, Character, Combat, Concert, Cutscenes, Dimensions, Economy, Editor, Effects, Fishing, Input, Map, Multiplayer, Music, NPC_Dialogue, Physics, Pickups, Player, Poolrooms, Portals, Progression, SaveSystem, Ship, Shuttle, Story, Survival, Tutorial, UI, Vendor, World.
+- Foundational layer: `Assets/3 - Scripts/Scripts/` — **do not reorganize.** It looks huge (552 files) and is not: 188 are `.cs`, and **103 of those are a vendored Triangle.NET mesh library** under `Game/Debug/Debug Viewer/Libaries/`, 36 are the forbidden `Celestial/` zone and 7 are planet post-processing. Only ~38 files are hand-written. There is nothing here worth consolidating. Core gameplay (`PlayerController`, `Ship`, `InputSettings` are under `Game/Controllers/`; `NBodySimulation`, `EndlessManager`, `GravityObject`, `Universe`, `CelestialBody`, `GameSetUp` under `Game/`) plus the forbidden `Celestial/` + `Post Processing/Planet Effects/` (trap #2) and shared `Script Utilities/`.
 - Other top-level `Assets/` paths and third-party packs have **sacred internal paths** (GUID-referenced) — moving an asset is fine only if its `.meta` moves with it.
 - Third-party art packs live under `Assets/5 - External Imports/<Category>/` (Nature & Trees, Village & Buildings, Weapons & Tools, Characters & Creatures, Music & Concert, Props & Misc, VFX & Flares, SciFi & Space, Horror Levels; reorganized 2026-08-31 via AssetDatabase so GUID refs held). The `.unitypackage` installers for the LowPolyFantasyBundle (10 packs, all now imported) sit in `_Pack Installers/` — gitignored, keep locally. Editor fix-scripts with hardcoded pack paths were updated; grep for `"Assets/5 - External Imports` before moving anything again. Still at top level on purpose: `ColdCompany` (story content), `transfer` (staging, hardcoded path in `WireShipMarketCatalog`), `BakedPlanets` (PlanetBakeTool output), `InputPrompts`, `Audio`, `Shaders`, `Resources`, `StreamingAssets`.
 - Active-scene hierarchy groups siblings under empty `--- Section ---` objects (`--- Managers ---`, `--- Celestial ---`, `--- Player & Ship ---`, etc.). Auto-singletons are `DontDestroyOnLoad` and live outside these at runtime. (Note: some section names in the audit didn't grep cleanly — verify in the Editor before relying on an exact organizer name.)

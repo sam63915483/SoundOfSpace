@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does. Built — see `Assets/3 - Scripts/World/Newspaper/`.
+
 # TASK — Readable Newspaper Pickup ("Press F to read" → page through articles → open real source)
 
 **Project:** Sound of Space (Unity 2022.3, Built-in Render Pipeline)

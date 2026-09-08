@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 📖 **CANON FOR TONE, CHARACTERS AND STORY BEATS — NOT FOR THE ROADMAP.** The world, the voices and the locked cold-open wording still hold. Everything it says about systems, economy or build order predates the fishing/planet-economy direction and is superseded.
+
 # SOUND OF SPACE — Story & Direction Bible v2.0
 *Last updated: July 23, 2026. Supersedes GDD_StoryBible v1.x and all prior narrative docs. Where any repo doc, code comment, or old mission draft conflicts with this file, THIS FILE WINS.*
 

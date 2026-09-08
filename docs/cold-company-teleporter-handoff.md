@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Design sketch only; two of its stated assumptions turned out to be wrong about the real code.
+
 # HANDOFF — Cold Company, Beat 3.5: The Teleporter
 
 **Repo:** github.com/sam63915483/SoundOfSpace

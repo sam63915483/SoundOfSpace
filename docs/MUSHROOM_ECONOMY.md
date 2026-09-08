@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. Mushroom selling is vaulted. The live economy is fish + planet markets — `docs/Handoff_PlanetEconomy_Fuel_Fishing_v2.md`.
+
 # Mushroom economy — implementation notes
 
 Built 2026-08-04 from `Handoff_CozyLoop_Switch_MushroomSlice_v1.md` plus Sam's

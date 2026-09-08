@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. The phone AI is no longer an LLM — it is preset branching dialogue (`Assets/StreamingAssets/Story/`) edited in Dialogue Studio.
+
 # AI Companion — Brain + Personality Profile 01
 
 Design doc for the smartphone AI. Three parts that matter for the handoff:

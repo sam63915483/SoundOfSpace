@@ -1055,15 +1055,18 @@ public class InstancedGrassRenderer : MonoBehaviour
     static readonly int _depthDilateId = Shader.PropertyToID("_DepthDilatePixels");
     bool _warnedNoDepthShader;   // gates the one-time "shader stripped" error
 
-    /// <summary>Bisect switch for GrassPopDiagnostic. False detaches the depth
+    /// <summary>Manual bisect switch (GrassPopDiagnostic, which used to flip it,
+    /// was deleted 2026-09-08). False detaches the depth
     /// pre-pass, so grass stops appearing in _CameraDepthTexture and the
     /// atmosphere washes it to sky colour — the known symptom of that pre-pass
     /// failing. Flipping this at a bug spot tells you instantly whether the
     /// pre-pass is involved.</summary>
     public static bool DepthPrePassEnabled = true;
 
-    /// <summary>Set true by GrassPopDiagnostic. Makes the injector publish WHICH
-    /// lights it chose, below.</summary>
+    /// <summary>Set true to make the injector publish WHICH lights it chose,
+    /// below. GrassPopDiagnostic used to set it; it was deleted 2026-09-08, so
+    /// nothing does now — flip it by hand if the light SET is ever in question
+    /// again (see the warning on DbgInjectedLights).</summary>
     public static bool DbgCollectInjected;
 
     /// <summary>Names of the lights actually injected this frame.

@@ -214,11 +214,15 @@ public static class SaveCollector
     ///                              top-level fields are somebody's real state
     ///                              and are left exactly as they are, which is
     ///                              the pre-feature behaviour.
-    ///   • blocks exist but none is mine → a NEW character walking into an
-    ///                              established world. Taking the top-level
-    ///                              fields would hand them the other player's
-    ///                              pockets, so they start fresh instead — the
-    ///                              same deal a joining guest already gets.
+    ///   • blocks exist but none is mine, and there is exactly ONE → a SOLO
+    ///                              world being opened by a different
+    ///                              character. See below: the block is adopted.
+    ///   • blocks exist but none is mine, and there are SEVERAL → a NEW
+    ///                              character walking into an established
+    ///                              co-op world. Taking the top-level fields
+    ///                              would hand them another player's pockets,
+    ///                              so they start fresh instead — the same deal
+    ///                              a joining guest already gets.
     ///
     /// Fields that describe the WORLD rather than a person are preserved out of
     /// the top-level copy even when a block wins: the ship's power reading and
@@ -246,6 +250,42 @@ public static class SaveCollector
         var profile = CharacterStore.ActiveProfile;
         string id = profile != null ? profile.id : null;
         var block = FindPersonalBlock(data, id);
+
+        // ── A SAVE IS A WORLD, NOT A CHARACTER (Sam, 2026-09-08) ─────────────
+        //
+        // Blocks exist so two people can share one save file without emptying
+        // each other's pockets. In a world only ONE person has ever played,
+        // that partitioning has nothing to partition — and it used to bite:
+        // open your own save with a different character selected (rename, a
+        // second character made to try a suit colour, a re-created character
+        // after clearing characters.json) and you arrived with no money, no
+        // fish, no equipment, a blank hotbar and a reset orientation board. The
+        // world was intact; your belongings were filed under an id nothing was
+        // looking for any more, invisible and unreachable.
+        //
+        // So: a world holding exactly one block hands it over to whoever opens
+        // it, and the block is re-keyed to them. Names and suit colours still
+        // travel with the character; belongings still live in the world — they
+        // just stop being locked to the character who happened to earn them.
+        //
+        // A world with SEVERAL blocks is a co-op world and keeps the strict
+        // id match, because there the ambiguity is real and guessing wrong
+        // means handing someone their partner's pockets. Joining guests never
+        // reach this code at all — they come in through ApplyWorldSubset and
+        // PendingPersonalBlock, which is still keyed by id.
+        if (block == null && data.playerBlocks.Count == 1 && data.playerBlocks[0] != null)
+        {
+            block = data.playerBlocks[0];
+            string wasName = block.characterName;
+            block.characterId   = id ?? "";
+            block.characterName = profile != null ? profile.name : block.characterName;
+            // Re-file it under the new id. The list holds this same object, so
+            // this both re-keys the entry and drops the stale one.
+            Remember(block);
+            Debug.Log($"[Save] Solo world: adopting the only personal block " +
+                      $"(was '{wasName}') as '{block.characterName}'. " +
+                      $"Belongings belong to the world, not the character.");
+        }
 
         if (block == null)
         {

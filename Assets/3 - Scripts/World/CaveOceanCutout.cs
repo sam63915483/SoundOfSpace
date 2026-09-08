@@ -37,7 +37,8 @@ public class CaveOceanCutout : MonoBehaviour
     /// Must match MAX_CAVE_CAPSULES in OceanEffect.shader.
     public const int MaxCapsules = 32;
 
-    /// <summary>Bisect switch for GrassPopDiagnostic. False publishes zero
+    /// <summary>Manual bisect switch (GrassPopDiagnostic, which used to flip it,
+    /// was deleted 2026-09-08 once the grass pulse was explained). False publishes zero
     /// capsules, which CLAUDE.md documents as making both cave-aware shaders
     /// behave EXACTLY as they did before the cave feature existed — so it is a
     /// complete, zero-risk test of "is the cave cutout involved?" without

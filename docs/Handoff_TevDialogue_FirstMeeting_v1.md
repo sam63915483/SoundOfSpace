@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ✅ **BUILT — historical build brief.** What this asked for exists in the game. The code and `docs/CURRENT_STATE_AUDIT.md` are the source of truth now; read this only for the *why*, never for what the game currently does. Tev's talk now lives in `StreamingAssets/Story/npc_tev.json`.
+
 # Handoff: Tev Dialogue Revamp — Rent Out, First-Meeting Tree In (v1)
 
 **Goal:** Remove the rent-era Tev dialogue and replace it with the new first-meeting

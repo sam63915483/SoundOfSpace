@@ -1183,7 +1183,7 @@ owns that, and the per-pixel test stays gated to camera-above-water.
 
 ## 2026-08-30 — Tev first-meeting revamp: rent OUT, TRAX-for-sale IN
 
-Per `docs/Handoff_TevDialogue_FirstMeeting_v1 (1).md`. Tev is a music-store
+Per `docs/Handoff_TevDialogue_FirstMeeting_v1.md`. Tev is a music-store
 owner now, not a landlord.
 
 **Rent is VAULTED, not deleted** — `FeatureVault.TevRent = false` gates it at
@@ -1856,3 +1856,159 @@ table is ever widened further.
 
 **7. Reactor screen** reads `BATTERY 62%` / `RANGE 8.6 KM` / bar, left-aligned, three
 lines. Width-bound fit on the 2.4:1 panel ⇒ type slightly larger than before.
+
+---
+
+## Addendum 2026-09-08 — Fuel/reach split, neighbour-drawn fish markets, world-scoped saves, docs hygiene
+
+Follow-up to the 2026-09-07 batch above. Items 5 and 6 of that batch were the right
+diagnosis and the wrong lever; this corrects both, and closes the one economy rule
+that was written down in the handoff and never checked.
+
+### 1. Fuel: the burn and the reach are now separate knobs
+
+`ShuttleFuel.maxJumpKm` is back to **15** (prefab + C# default), and the burn is shaped
+by a new **`jumpCostExponent` (1.6)** instead.
+
+**Why 22.5 had to go.** Range and burn rate were the same number: `UnitsPerKm` is
+derived as `(fuelMax - launchLandCost) / maxJumpKm`, so slowing the burn 1.5x also
+stretched the reach 1.5x. Measured against the rails: at 22.5 km **54 of the 66 planet
+pairs are permanently in range** — every combination of the eleven inner planets except
+Bruise-Humble Abode, no waiting, ever — and Cyclops went from *reachable only via
+Pebble (6%) / Bruise (10%) / Humble Abode (15%)* to **33% of its cycle straight off the
+starting Twins**. The orbital staging the whole travel design rests on was gone.
+
+**Why dropping `launchLandCost` would not have fixed it.** It is fungible with the
+per-km rate — take it out of the flat charge and it reappears in the slope. A 5 km hop
+at 15 km range costs 36.7 units at `launchLandCost` 5, 35.3 at 3, and 34.7 at 2. Two
+units of a hundred. Raising `fuelMax` does nothing either: cost *as a fraction of tank*
+is invariant to tank size in this formula. With a straight-line cost pinned at both
+ends, the middle is not tunable at all.
+
+**The exponent is what moves the middle.** `cost = launchLandCost + (fuelMax -
+launchLandCost) * (d / maxJumpKm)^jumpCostExponent`, which still returns exactly
+`fuelMax` at exactly `maxJumpKm` whatever the exponent — the curve is pinned at both
+ends, so **reach cannot drift when the feel is tuned**. At 1.6:
+
+| hop | before (linear) | now (p = 1.6) |
+|---|---|---|
+| 2 km | 18% of tank | **9%** |
+| 5 km | 37% | **21%** |
+| 10 km | 68% | **55%** |
+| 15 km | 100% | 100% |
+
+Side effect worth having: waiting for a planet to swing close is now *rewarded*, not
+merely permitted — a 2 km window costs a sixth of a 10 km one.
+
+`RangeKm` is the exact inverse of `CostForMetres`, so the NAV readout still equals what
+the GO button will honour. `UnitsPerKm` survives as the full-range average, display
+only. Nothing else touched: every caller already went through
+`CostForMetres` / `CanAfford` / `RangeKm`.
+
+`docs/DISTANCE_TABLE.md` is back to the 15 km generation (5 / 8 / 15 km tables, design
+range 15 km) — verified byte-identical in its 5 km and 15 km sections to the 22.5 km
+regeneration, which proves no orbit moved between them. `DistanceTableTool.Ranges` and
+`DesignRange` follow.
+
+### 2. Crystal supply is fine — but a graphics setting was changing it
+
+Checked, since "stranding must be recoverable" is the rule the fuel design leans on:
+`respawnGameDays = 1` (24 real minutes), `fuelPerCrystal = 5`, so a tank is 20 crystals;
+`maxCrystals = 20` is a **streaming** cap inside a 300 m bubble, not a planet total —
+mine one and the loop spawns another from a different cell — and `CaveCrystalSeeder`
+plants 70 per cave. Recovery is not the constraint.
+
+**But `maxCrystals` is driven by the GRAPHICS quality slider, and the Low preset set it
+to 10** — picking Low quality halved how fast you could refuel. Fixed: Low now uses the
+same 20 as every other preset. A graphics setting must never change the economy.
+
+### 3. Fish markets: imports are drawn from the NEIGHBOURS' catch
+
+The 2026-09-07 widening was directionally right — finding an Import/Delicacy buyer was
+genuinely too hard — but it fixed the symptom by making the lists enormous, because
+`BuildDraft` filled them round-robin from the whole pool and they had nothing to do
+with what nearby planets actually catch. Measured on the shipped tables:
+
+| | before | after |
+|---|---|---|
+| premium buyer, **short hop** (rail neighbour) | 88% | **86%** |
+| premium buyer, **long hop** | 59% | **35%** |
+| premium buyer, any hop | 65% | **47%** |
+| imports listed per planet | 9-10 | **4-6** |
+| ordered neighbour pairs with no premium buyer | 0 | **0** |
+
+`AssignImports` now builds one queue per rail-neighbour (the same `Neighbours()`
+relation the validator already uses for the shared-species rule) and deals round-robin.
+The round-robin is load-bearing, not tidiness: Puddle sits between the two co-orbital
+mains and Hearth, so its neighbours catch 15 species between them and it can list six —
+taking them in order would leave Hearth's three fish with no buyer next door and
+silently break the shortest route in that part of the system. Falls back to the old
+nearest-first fill if a planet's neighbours cannot supply enough, which no current
+layout needs.
+
+Caps `ImportsMain`/`ImportsDwarf` 9/10 -> **6/6**. Delicacies untouched at 5/4 — five per
+main across 24 species is about two delicacy planets per fish, which is exactly the
+route knowledge worth learning. `planet_economy.json` regenerated for imports only;
+catch and delicacy lists are exactly as shipped.
+
+### 4. The dead-save rule is finally checked
+
+Handoff §4.5 — *every fishable body has natural crystals OR a goods vendor* — existed
+only in prose. It is now a `Validate` rule: `ReadPlanetsFromScene` records whether each
+fish-market body has a `VendorKind.GoodsVendor` on it and whether it is absent from
+`CrystalSpawner.excludeBodyNames`, and `Validate` flags any planet with neither. It
+holds today by accident (the exclusion list is just `["Sun"]`), which is precisely why
+it needed a check — it is the only rule in the file whose violation costs the player
+the run rather than a wasted trip. The pod in the shuttle is the only save point, and
+dying puts you back on the same rock.
+
+### 5. A save is a world, not a character (solo)
+
+`characters.json` has held nothing but a name and a suit-colour index since 2026-08-18,
+and everything earned already lived in the world save. But inside the file it is stored
+as `playerBlocks` keyed by character id, and the lookup was a strict match — so opening
+your own solo save with a different character selected (a rename, a second character
+made to try a colour, a re-created character after clearing `characters.json`) dropped
+you into an intact world with **no money, no fish, no equipment, a blank hotbar and a
+reset orientation board**. The belongings were still in the file, filed under an id
+nothing was looking for.
+
+`SaveCollector.SelectPersonalBlock` now adopts the block when a world holds exactly
+**one**, re-keying it to whoever opened it. A world with several blocks is a co-op world
+and keeps the strict id match, because there the ambiguity is real. Joining guests never
+reach this code — they arrive via `ApplyWorldSubset` + `PendingPersonalBlock`, still
+keyed by id.
+
+### 6. Repo hygiene
+
+- **`World/GrassPopDiagnostic.cs` deleted.** 601 lines that auto-spawned in every build
+  via `[RuntimeInitializeOnLoadMethod]` with no editor guard — it shipped to players.
+  Its own header said to delete it once the grass pulse was explained, which happened.
+  Not referenced by the scene. The two bisect statics it used to flip
+  (`CaveOceanCutout.CutoutEnabled`, `InstancedGrassRenderer.DepthPrePassEnabled`) are
+  kept as manual escape hatches; their comments now say so.
+- **`World/GrassLightAutoMarker.cs` KEPT** — flagged in review as a leftover
+  investigation tool, but it is what gives the player's lights and the shuttle's lights
+  a say in the grass, and it is seeded in `EnsureGameplaySingletons`. Removing it breaks
+  lighting. **`World/SoakGodMode.cs` KEPT** — 58 lines, no auto-spawn, sits in the scene
+  with `m_Enabled: 0`, costs nothing.
+- **Duplicate `(1)` / `(2)` files.** Not duplicates: for every doc, *the base filename
+  did not exist* — only the download-suffixed copy did, and most other docs already
+  linked to the clean name. Renamed rather than deleted. `GDD_StoryBible_v2 (2).md` is a
+  strict superset of `(1)` (adds the locked Jul 23 wake-sequence stitching and the
+  chest-tablet line) so `(2)` became `GDD_StoryBible_v2.md` and `(1)` was dropped.
+  `Torch (1).prefab` and `hanger_with_meat (1).prefab` were referenced by no scene or
+  prefab GUID and are gone.
+- **`docs/` freshness.** 58 files now carry a status stamp on line 1 — ACTIVE / BUILT /
+  SUPERSEDED / HISTORICAL RECORD / STALE / CANON FOR TONE — and `docs/README.md` is a new
+  index explaining the legend and pointing at what is current. `GAME_OVERVIEW.md`, which
+  CLAUDE.md sends people to, is stamped STALE (last touched 2026-06-01).
+- **"552 files in `Scripts/Scripts/`" is not a real problem.** 188 are `.cs`, and **103
+  of those are a vendored Triangle.NET mesh library** under `Game/Debug/Debug Viewer/`;
+  36 more are the forbidden `Celestial/` zone and 7 are planet post-processing. ~38 files
+  are hand-written. No consolidation proposed — the `.meta` churn and GUID risk would buy
+  nothing. Noted in CLAUDE.md so the count stops being re-flagged.
+
+**Verification:** `py -3 prototypes/shuttle-computer/test/compile-unity.py` — Assembly-CSharp,
+Assembly-CSharp-Editor and Assembly-CSharp (player defines) all **OK, 0 warnings**.
+Everything here is **PLAYTEST PENDING**.

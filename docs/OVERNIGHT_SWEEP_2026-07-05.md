@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 🗄 **HISTORICAL RECORD.** A snapshot of one day's findings, kept for the trail. Not a description of the game today — see `docs/CURRENT_STATE_AUDIT.md`.
+
 # Overnight Sweep — 2026-07-05 (branch `chore/overnight-sweep`)
 
 Autonomous audit + safe-fix pass run overnight, no Unity open. Everything here

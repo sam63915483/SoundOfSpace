@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⚠️ **STALE (last touched 2026-06-01).** Three months and several pivots behind the game. For what exists right now, read `docs/CURRENT_STATE_AUDIT.md` instead. Kept because the short/medium/long framing is still a good way in for a newcomer.
+
 # Game Overview
 
 A third-person space-exploration / survival / soft-combat game built in Unity 2022.3, inspired by Outer Wilds. Three sections at three lengths — short elevator pitch, medium one-pager, long comprehensive reference.

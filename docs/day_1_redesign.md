@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> ⛔ **SUPERSEDED — historical only.** The direction described here is no longer the game. Do not design from it. Current state: `docs/CURRENT_STATE_AUDIT.md`; what has been switched off and why: `docs/VAULTED_SYSTEMS.md`. The day-1 flow was rebuilt twice since.
+
 # Day 1 Redesign — Slow-Paced, Story-Anchored Intro
 
 A redesign of the opening of the game (replacing the current Scene 1.6.7.7.7 boot-into-tutorial flow) into a single in-fiction "first day" that teaches every core mechanic through a guided fishing trip with a neighbor. Targets ~30–45 minutes of relaxed, low-stakes play instead of the current 12-minute mechanic firehose.

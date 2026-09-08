@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 🗄 **HISTORICAL RECORD.** A snapshot of one day's findings, kept for the trail. Not a description of the game today — see `docs/CURRENT_STATE_AUDIT.md`.
+
 # Cleanup / warning-zero pass — 2026-08-31
 
 > **Correction (same day).** The first version of this doc claimed 0 warnings on

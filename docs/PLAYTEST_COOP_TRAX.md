@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 🗄 **HISTORICAL RECORD.** A snapshot of one day's findings, kept for the trail. Not a description of the game today — see `docs/CURRENT_STATE_AUDIT.md`.
+
 # Co-op TRAX playtest checklist
 
 One session, two machines. Built 2026-08-18 across four commits on

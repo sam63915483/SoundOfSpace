@@ -36,9 +36,15 @@ public static class DistanceTableTool
     const string OutPath = "docs/DISTANCE_TABLE.md";
 
     /// <summary>Jump ranges to report on. The last one is the design target — keep it equal to
-    /// ShuttleFuel.maxJumpKm on the Shuttle_Lander prefab (15 km until 2026-09-07, 22.5 km since).</summary>
-    static readonly float[] Ranges = { 5000f, 15000f, 22500f };
-    const float DesignRange = 22500f;
+    /// ShuttleFuel.maxJumpKm on the Shuttle_Lander prefab.
+    ///
+    /// 2026-09-08: back to 15 km. It was briefly raised to 22.5 to slow the fuel burn, but
+    /// burn rate and reach were the same knob back then, so the range moved with it and
+    /// 54 of 66 planet pairs became permanently open — no waiting, no staging, Cyclops
+    /// reachable straight off the starting Twins. Burn is now shaped by
+    /// ShuttleFuel.jumpCostExponent instead, which leaves reach alone.</summary>
+    static readonly float[] Ranges = { 5000f, 8000f, 15000f };
+    const float DesignRange = 15000f;
 
     class Rail
     {

@@ -1,3 +1,6 @@
+<!-- doc-status: stamped 2026-09-08 -->
+> 🗄 **HISTORICAL RECORD.** A snapshot of one day's findings, kept for the trail. Not a description of the game today — see `docs/CURRENT_STATE_AUDIT.md`.
+
 # Playtest Tasks — Sound of Space — 2026-06-05
 
 *Organized from playtest notes for Claude Code. Each task includes desired behaviour,
