@@ -209,17 +209,24 @@ public static class FishingRules
         // the fight NEVER ENDS. Average push loss is about 1.2 m/s on a rare, and
         // you can only hold the reel for maybe 60% of a fight, so anything past
         // about 0.84 is a stalemate. 0.78 leaves real margin.
-        float max = s.bounty ? 0.82f
-                  : s.tier == FishTier.Rare ? 0.74f
-                  : s.tier == FishTier.Uncommon ? 0.66f
-                  : 0.50f;
-        // The light-fish floor. At 0.45 the smallest fish of a tier resisted
-        // less than half what its biggest does, which made it a pushover you
-        // could land by holding the button before the bar could fill — that was
-        // most of what still got through the hold-forever bot. 0.58 keeps a
-        // clear weight spread while giving even a small fish enough to be a
-        // fight rather than a formality.
-        return max * (0.58f + 0.42f * f);
+        // Raised again 2026-09-08 (0.50/0.66/0.74/0.82 -> 0.66/0.80/0.88/0.90).
+        // Sam: "its actually too easy to reel a fish in ... this is mostly
+        // because we increased reel in speed" — exactly right. At 13 m/s the reel
+        // crosses a whole typical cast in under a second, so a fight only exists
+        // at all if the fish holds against it. The stalemate ceiling still
+        // applies (see below); 0.88 leaves the reel gaining about 1.6 m/s on a
+        // heavy rare against the ~1.2 m/s its runs take back.
+        float max = s.bounty ? 0.90f
+                  : s.tier == FishTier.Rare ? 0.88f
+                  : s.tier == FishTier.Uncommon ? 0.80f
+                  : 0.66f;
+        // The light-fish floor, 0.45 -> 0.58 -> 0.80. Resist is now the main
+        // thing standing between the reel and the fish, so a light fish resisting
+        // half of what a heavy one does was a light fish that barely fought at
+        // all. Weight still tells, through stamina (how long it keeps running)
+        // and through the last fifth of this range — it just no longer decides
+        // whether there is a fight.
+        return max * (0.80f + 0.20f * f);
     }
 
     /// <summary>
@@ -240,9 +247,9 @@ public static class FishingRules
     {
         switch (tier)
         {
-            case FishTier.Rare:     return 4.6f;
-            case FishTier.Uncommon: return 3.2f;
-            default:                return 2.0f;
+            case FishTier.Rare:     return 5.5f;
+            case FishTier.Uncommon: return 3.9f;
+            default:                return 2.6f;
         }
     }
 
@@ -341,14 +348,22 @@ public static class FishingRules
     // 3. "the more tired the fish is, the slower the bar fills"
     //                                                      -> TensionVigourScale
 
-    /// Applied while reeling a fish that is NOT running.
-    public const float SteadyTensionScale = 0.5f;
-    /// Applied while reeling a fish that IS pushing, at the TOP of its wind-up.
-    /// Reeling into a push at full strength really is four times the steady rate
-    /// and really will snap you — but RunRampSeconds means you get a quarter of
-    /// a second of it building first, which is the difference between a fight
-    /// and a coin toss.
-    public const float RunTensionScale = 1f;
+    /// Applied while reeling a fish that is NOT running. 0.5 -> 0.38: with runs
+    /// interrupting so often, steady reeling had to get cheaper or there was
+    /// never a window long enough to make progress in.
+    public const float SteadyTensionScale = 0.38f;
+    /// <summary>
+    /// Applied while reeling a fish that IS running, at the top of its wind-up.
+    /// 1.0 -> 0.6 — "their runs should add less tension to the rod so that we can
+    /// have more frequent runs".
+    ///
+    /// It is still ~2.5x the steady rate once RunPullMultiplier is counted, which
+    /// is the number that matters: reeling into a run fills the bar in about
+    /// 0.9s while a run lasts 1-2s, so <b>reeling through a whole run snaps you
+    /// and letting go promptly does not</b>. That is the mechanic Sam described:
+    /// "you have to stop reeling or else the tension will break the rod".
+    /// </summary>
+    public const float RunTensionScale = 0.6f;
 
     /// <summary>
     /// Tension multiplier from how much fight the fish has left. A fresh fish
@@ -420,21 +435,40 @@ public static class FishingRules
     /// a constant argument, not two dramatic interruptions in a long haul.
     /// Rarer fish argue more often.
     /// </summary>
+    /// <summary>
+    /// Seconds between runs. Longer than the 0.8-2.4s of the previous pass, and
+    /// that is deliberate even though the ask was "more frequent": a run now
+    /// lasts 1-2s instead of half a second, so with the old gaps the fish spent
+    /// 60% of the fight running and the player spent the fight watching. These
+    /// gaps put the fish on the move about 40% of the time — enough that you are
+    /// constantly losing and re-winning ground, with real reeling windows in
+    /// between where the bar can actually become dangerous.
+    /// </summary>
     public static void RunIntervalForTier(FishTier tier, out float min, out float max)
     {
         switch (tier)
         {
-            case FishTier.Rare:     min = 0.8f; max = 1.5f; break;
-            case FishTier.Uncommon: min = 1.0f; max = 1.9f; break;
-            default:                min = 1.3f; max = 2.4f; break;
+            case FishTier.Rare:     min = 1.8f; max = 3.0f; break;
+            case FishTier.Uncommon: min = 2.3f; max = 3.9f; break;
+            default:                min = 3.0f; max = 5.1f; break;
         }
     }
 
-    /// How long one push lasts. Cut from 1-2s on 2026-09-08: "make the fishes
-    /// pushes less powerful and more short". A short push is something you react
-    /// to; a two-second one is something you sit through.
-    public const float RunDurationMin = 0.35f;
-    public const float RunDurationMax = 0.7f;
+    /// <summary>
+    /// How long one run lasts. 1-2s -> 0.35-0.7s -> back to 1-2s, and the round
+    /// trip is the lesson: SHORT runs and CHEAP runs are different knobs, and
+    /// only the second one was ever the problem.
+    ///
+    /// Shortening them (to stop rares snapping you) also deleted the fight —
+    /// nothing took any ground back, so a 13 m/s reel simply hauled everything
+    /// in. Sam: "its actually too easy to reel a fish in ... i want them to run
+    /// and pull line and for you to lose ground and wait for them to stop, then
+    /// try to gain it back." So the runs are long again, and what got cut
+    /// instead is <see cref="RunTensionScale"/> — the thing that was actually
+    /// hurting.
+    /// </summary>
+    public const float RunDurationMin = 1f;
+    public const float RunDurationMax = 2f;
 
     /// How much harder the fish pulls at the top of a push. Was 2.
     public const float RunPullMultiplier = 1.6f;
@@ -458,7 +492,7 @@ public static class FishingRules
     /// go, decide, and let go having taken a fraction of it; hold on and you take
     /// all of it, every time.
     /// </summary>
-    public const float RunRampSeconds = 0.25f;
+    public const float RunRampSeconds = 0.2f;
 
     /// <summary>How far into its wind-up a push is, 0-1, after
     /// <paramref name="secondsIntoRun"/>. Smoothstepped so it eases in rather

@@ -335,8 +335,16 @@ public static class FishingTests
               "a spent fish is genuinely forgiving to reel");
         // Reeling into a run must be much worse than reeling calmly -- that is
         // what makes "let go the instant it runs" the skill.
-        Check(FishingRules.RunTensionScale >= FishingRules.SteadyTensionScale * 2f,
-              "reeling into a run fills the bar at least twice as fast per unit pull");
+        // The EFFECTIVE ratio, which is what the player feels. Comparing the two
+        // scales alone stopped being the right measure once RunPullMultiplier
+        // existed — the fish also pulls harder during a run, and both terms
+        // multiply into the tension rate. Checking the scales in isolation would
+        // now fail on a fight that is 2.5x more dangerous mid-run.
+        float steadyRate = FishingRules.SteadyTensionScale;
+        float runRate    = FishingRules.RunTensionScale * FishingRules.RunPullMultiplier;
+        Check(runRate >= steadyRate * 2f,
+              "reeling into a run fills the bar at least twice as fast ("
+              + (runRate / steadyRate).ToString("F1") + "x)");
 
         // A spent fish stops running and comes in easier — the "it gives up" beat.
         // Built with ZERO stamina rather than a sliver: since the cascade landed,

@@ -299,3 +299,68 @@ unplayable:
       and I'll lengthen `RunRampSeconds` (currently 0.25s).
 - [ ] Fights at a typical cast: common ~1.9s, uncommon ~2.3s, rare ~3.6s (a big
       one up to ~18s). Full-charge casts are much longer.
+
+---
+
+# Fourth pass — long, run-driven fights
+
+> "its actually too easy to reel a fish in. the fish should do more runs and run
+> further, but their runs should add less tension to the rod ... i want them to
+> run and pull line and for you to lose ground and wait for them to stop, then try
+> to gain it back and battle with them to get them in ... this is mostly because
+> we increased reel in speed."
+
+You diagnosed the cause exactly. At 13 m/s the reel crosses a whole typical cast in
+under a second, so a fight only exists if the fish holds against it — and the
+previous pass had made runs *short*, which killed the only thing taking ground
+back.
+
+**Short runs and cheap runs were two different knobs, and only the second one was
+ever the problem.** Runs are long again; what got cut is the tension they cost.
+
+| | before | now |
+|---|---|---|
+| run lasts | 0.35-0.7s | **1-2s** |
+| run speed (rare) | 4.6 m/s | **5.5** |
+| ground per run (rare) | ~1.7 m | **~7 m** |
+| runs every | 0.8-1.5s | **1.8-3.0s** (fish on the move ~40% of the fight) |
+| tension reeling into a run | 4x steady | **2.5x steady** |
+| how hard a rare resists the reel | 0.74 | **0.88** |
+
+### The rhythm this creates (rare, fresh fish)
+
+- **Steady reeling** fills the bar in **1.83s** — that is your window.
+- **Reeling into a run** fills it in **0.72s**, and a run lasts 1-2s. So
+  **reeling through a run snaps you, and letting go promptly does not.**
+- Gaps between runs are 1.8-3.0s: about one full reeling window each.
+
+### What it measures out at
+
+| | fight | ground the fish took back (8 m cast) |
+|---|---|---|
+| Common | 1.9s -> **3.5s** | 0.8 m -> **3.7 m** |
+| Uncommon | 2.3s -> **4.5s** | 1.4 m -> **5.3 m** |
+| Rare | 3.6s -> **8.7s** | 3.8 m -> **11.6 m** |
+
+A rare now takes back **more water than the whole cast** over a fight — it wins the
+ground back about one and a half times, which is the "reel it halfway, then it runs"
+loop you described. A rare on a full charge lasts **12.4s**.
+
+- [ ] Does a rare feel like a battle now rather than a haul?
+- [ ] **Watch the heaviest rares.** The median is 8.7s but the biggest fish in the
+      sim took **37s**. If a big one ever feels like a stalemate rather than a
+      trophy, say so — the knob is `ResistFor`'s rare max (0.88), and there is a
+      hard ceiling near 0.90 where the reel stops out-gaining the runs and the
+      fight would never end at all.
+- [ ] Do commons still fight but stay easy? (3.5s, losing 3.7 m.)
+- [ ] Does letting go during a run feel *necessary*? It should be the whole skill.
+
+### Difficulty, honestly
+
+A careful player lands everything; a greedy one (holds to 85% of the bar, slow
+reaction) lands **82%** of rares; someone who never lets go loses **all** of them.
+So the fight punishes ignoring runs hard, and punishes greed only mildly.
+
+If you want it to bite harder, the knob is `SteadyTensionScale` (0.38) — raising it
+shortens your reeling windows so the bar becomes constant pressure rather than just
+a run penalty. Tell me which way it feels after a session.

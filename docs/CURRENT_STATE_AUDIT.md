@@ -2272,3 +2272,67 @@ Also added:
   without them.
 
 Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
+
+---
+
+## Addendum 2026-09-08e - long, run-driven fights (the reel was never the problem)
+
+Sam's third playtest note: *"its actually too easy to reel a fish in ... i want them
+to run and pull line and for you to lose ground and wait for them to stop, then try
+to gain it back ... this is mostly because we increased reel in speed."*
+
+**He is right about the cause, and the previous pass made it worse.** At
+`ReelSpeed` 13 the reel crosses a typical 8 m cast in under a second, so fight
+length is set almost entirely by how much the fish takes back. Addendum 09-08c had
+cut run duration to 0.35-0.7s (to stop rares snapping people), which removed the
+only mechanism that took ground back - hence 3.6s rare fights that were pure haul.
+
+**The lesson worth keeping: "short runs" and "cheap runs" are different knobs, and
+only the second was ever the problem.** The snap was `RunTensionScale`; the fight
+was `RunDuration`. Cutting the wrong one fixed the symptom and deleted the game.
+
+Runs are long again (1-2s), faster (rare 5.5 m/s), taking ~7 m of line each. What
+got cut instead is what they cost: `RunTensionScale` 1.0 -> 0.6, so reeling into a
+run is ~2.5x steady rather than 4x. `SteadyTensionScale` 0.5 -> 0.38 to open a
+reeling window between runs; intervals lengthened to 1.8-3.0s (rare) so the fish is
+on the move ~40% of the fight rather than 60% - at the old gaps with the new
+durations the player spent the fight watching.
+
+**`ResistFor` maxes 0.50/0.66/0.74/0.82 -> 0.66/0.80/0.88/0.90**, light-fish floor
+0.58 -> 0.80. Resist is now the main thing standing between a 13 m/s reel and the
+fish; weight still tells through stamina and the top fifth of the range.
+
+### The rhythm, as numbers (rare, fresh)
+- steady reeling: 55 tension/s -> bar full in **1.83s**
+- reeling into a run: 138 tension/s -> bar full in **0.72s**, and a run lasts 1-2s
+
+So **reeling through a run snaps you and letting go promptly does not** - the
+mechanic Sam described. Gaps of 1.8-3.0s are about one reeling window each.
+
+| | fight | ground taken back (8 m cast) |
+|---|---|---|
+| Common | 1.9 -> **3.5s** | 0.8 -> **3.7 m** |
+| Uncommon | 2.3 -> **4.5s** | 1.4 -> **5.3 m** |
+| Rare | 3.6 -> **8.7s** (max 37s) | 3.8 -> **11.6 m** |
+
+A rare takes back more than the whole cast - it wins the water back ~1.5x. Full
+charge: 12.4s. Careful play lands everything, greedy (85%, 0.28s reaction) lands 82%
+of rares, never-let-go loses all of them.
+
+WATCH: the heavy-rare tail (37s). The stalemate ceiling is near resist 0.90; 0.88
+leaves the reel gaining ~1.6 m/s against ~1.2 m/s of runs.
+
+Also corrected: `[TEST] 7`'s "reeling into a run fills the bar at least twice as
+fast **per unit pull**" compared the two tension SCALES in isolation. That stopped
+being the right measure once `RunPullMultiplier` existed - both terms multiply into
+the rate, so the check would have failed a fight that is genuinely 2.5x more
+dangerous mid-run. It now checks the effective ratio.
+
+**Method note:** this pass was tuned by porting `FishFightSim.Step` to Python and
+sweeping the knob space (~200 combinations) against targets for fight length, ground
+taken back, and land rates at four skill levels - then confirming the chosen set in
+the real headless suite. The port reproduced the shipped numbers to within ~0.2s
+before it was trusted. Hand-iterating one C# edit at a time had already cost several
+rounds of overshoot in both directions.
+
+Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
