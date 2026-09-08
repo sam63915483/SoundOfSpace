@@ -88,6 +88,24 @@ public class FishingTuning : ScriptableObject
 
     // ── Appended 2026-09-08 (new serialized fields go at the END) ────────────
 
+    [Header("Rod — hauling back, gated on the line")]
+    [Tooltip("How tight the line has to be before the rod starts hauling back at all. " +
+             "Below this the rod does not move: the LINE is what is happening, and the rod " +
+             "has nothing to pull against yet. Sam, 2026-09-08: 'the rod shouldnt move until " +
+             "the line goes from droopy to taught, then the rod can be pulled back a little " +
+             "bit.' Set to 0 to go back to the rod moving the instant you click.")]
+    [Range(0f, 0.95f)] public float reelHaulStartTaut = 0.65f;
+
+    [Tooltip("How quickly the rod hauls BACK once the line is tight. Half of rodBendResponse " +
+             "on purpose — this is the whole-rod heave, and at the bend's speed it read as a " +
+             "jerk ('its kinda jerky so make it 2x slower').")]
+    public float reelHaulResponse = 4f;
+
+    [Tooltip("How quickly the rod comes back DOWN when you stop reeling. Faster than the " +
+             "haul, like the bend, but still half of rodReleaseResponse — this is the number " +
+             "that decides how glitchy fast click-unclick-click looks during a fight.")]
+    public float reelHaulReleaseResponse = 8f;
+
     [Header("HUD")]
     [Tooltip("Uncheck to fight by the ROD ALONE, with no tension bar on screen. " +
              "The rod's bend is a faithful readout of the bar since 2026-09-08 — the " +

@@ -2409,3 +2409,50 @@ Fight length is now driven far more by stamina than by starting distance (rare:
 separately in `[TEST] 6`.
 
 Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
+
+---
+
+## Addendum 2026-09-08g - the rod waits for the line (the haul had no taut gate)
+
+Sam: *"when you then start left click to reel it in, it jerks the rod back and the
+line starts to go from drooping to taught ... the rod shouldnt move until the line
+goes from droopy to taught ... its kinda jerky so make it 2x slower ... when
+clicking and unclicking fast it makes the rod look glitchy."*
+
+Two causes, both in `FishingRodController`.
+
+### 1. `CatchAnimation` was firing on RETRIEVE START, not just the hookset
+
+Winding an empty lure in played a hard **25 degree yank over `catchPullDuration`
+(0.1s)** plus a 0.25s return, and while it ran it OWNED the rod - the per-frame pose
+block is skipped whenever `castAnimationCoroutine != null`. So the rod snapped
+backwards with the line still slack, which is precisely the "jerks the rod back and
+THEN the line goes taut" report. Removed; `CatchAnimation` now has exactly one call
+site, the hookset (`TryHookFish` success), where a sharp flick is correct.
+
+### 2. `ReelPullBack` had no tautness gate
+
+The mesh bend has been gated on the line since it was written (`RodLoad` is zero
+through slack line - the whole cascade). **The whole-rod haul never was**: `target`
+jumped to `reelPullBackAngle` the instant `reeling` went true. The rod was hauling
+on a line that had not come tight.
+
+Now `target` is scaled by `saturate((LineTaut01 - reelHaulStartTaut) / (1 -
+reelHaulStartTaut))` with the start at **0.65**, so the first two thirds of the line
+tightening move nothing and the rod arrives with the line. On an empty lure
+(`lineTautSeconds` 0.45) that is **0.29s of stillness** before the rod moves at all.
+
+Response rates halved into their own knobs - `reelHaulResponse` 4 (was sharing
+`rodBendResponse` 8) and `reelHaulReleaseResponse` 8 (was sharing
+`rodReleaseResponse` 16). Deliberately NOT shared with the bend: the bend is a
+readout of tension and must track it, while the haul is a slow heave of the whole
+rod and at the bend's speed it read as a jerk.
+
+**This is also the fix for the glitchy fast click-unclick.** A hooked fish holds the
+line at `FishHoldTaut` across the gaps, so the haul no longer restarts from zero on
+every press - it pumps instead of snapping.
+
+New tunables on `FishingTuning`: `reelHaulStartTaut`, `reelHaulResponse`,
+`reelHaulReleaseResponse` (appended at the end, per the serialization convention).
+
+Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**

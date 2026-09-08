@@ -436,3 +436,57 @@ started, so **charging the cast buys proportionally less fight than it did** (a
 rare: 14.4s on a tap, 23.2s on a full charge). Charging still buys **better fish**,
 which is the bigger reward. Say the word if you'd rather distance mattered more
 again.
+
+---
+
+# Sixth pass — the rod waits for the line
+
+> "when you then start left click to reel it in, it jerks the rod back and the line
+> starts to go from drooping to taught. thats not how it should go ... the rod
+> shouldnt move until the line goes from droopy to taught, then the rod can be
+> pulled back a little bit, but its kinda jerky so make it 2x slower ... when
+> clicking and unclicking fast it makes the rod look glitchy."
+
+**Two separate causes, and they needed different fixes.**
+
+### 1. A hidden animation was yanking the rod
+
+Starting to wind an empty lure in fired `CatchAnimation` — a hard **25° yank over
+0.1 s**, which then seizes the rod for another 0.25 s returning. It ignored the line
+completely. That is the "it jerks the rod back and *then* the line starts to go
+taut" you saw: the rod was reacting before there was anything to react to.
+
+That animation is the **hookset** now, and nothing else. Setting the hook should be
+a sharp flick; starting to wind should not.
+
+### 2. The haul never waited for the line
+
+The rod's pull-back swung to its full angle the instant the button went down, while
+the line was still visibly drooping — the cascade running backwards. **You can't
+haul on slack line.** It now waits:
+
+- The first **two thirds** of the line coming tight move the rod **not at all**.
+- The rod draws back over the last third, arriving exactly as the line does.
+- And it does it at **half the old speed**, as asked.
+
+For an empty lure that's: click → **0.29 s of the line tightening with the rod
+perfectly still** → the rod eases back over the next half second.
+
+This is also the fix for the glitchy rod during a fight. A hooked fish holds the
+line tight across the gaps when you let go, so the haul no longer restarts from
+zero on every click — it pumps smoothly instead of snapping.
+
+It's the same gate the rod's *bend* has always had. The whole-rod haul was simply
+never given one.
+
+- [ ] Cast, let it sit, then hold reel. **The rod should not twitch** until the
+      line has visibly straightened, then draw back smoothly.
+- [ ] Same on land, with the bobber being towed over the ground.
+- [ ] During a fight, tap the reel on and off quickly. It should look like pumping
+      a rod, not like a glitch.
+- [ ] Setting the hook should still be a sharp flick — that one is meant to snap.
+- [ ] Three knobs on the FishingTuning asset if the feel is off:
+      `reelHaulStartTaut` (0.65 — how tight before the rod moves at all; 0 restores
+      the old instant behaviour), `reelHaulResponse` (4 — how fast it hauls back)
+      and `reelHaulReleaseResponse` (8 — how fast it comes down, and the number
+      that decides how fast pumping looks).

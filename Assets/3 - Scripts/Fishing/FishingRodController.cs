@@ -277,12 +277,14 @@ public class FishingRodController : MonoBehaviour
                     // winding itself straight back in. Require the trigger to be
                     // let go once after the cast, the standard fresh-press guard.
                     bool winding = TutorialGate.FireHeld() && !_awaitFireRelease;
-                    if (winding && !bobberScript.IsRetrieving && TutorialGate.FirePressed())
-                    {
-                        if (castAnimationCoroutine != null)
-                            StopCoroutine(castAnimationCoroutine);
-                        castAnimationCoroutine = StartCoroutine(CatchAnimation());
-                    }
+                    // NO FLICK HERE. Starting to wind an empty lure in used to fire
+                    // CatchAnimation — a hard 25 degree yank over 0.1s that seizes the
+                    // rod for a third of a second and ignores the line completely. That
+                    // was the "it jerks the rod back and THEN the line starts to go from
+                    // drooping to taught" Sam reported: the rod was reacting before there
+                    // was anything to react to. CatchAnimation is the HOOKSET now, and
+                    // nothing else; winding in is handled by ReelPullBack, which waits
+                    // for the line.
                     bobberScript.SetRetrieving(winding);
                 }
             }
@@ -1126,11 +1128,34 @@ public class FishingRodController : MonoBehaviour
             target = b.IsFighting ? tune.reelPullBackAngle : tune.reelPullBackAngle * 0.4f;
             // Hauling against a running fish is the big heave.
             if (b.FightIsRunning) target += tune.runPullBackExtra;
+
+            // ── THE ROD WAITS FOR THE LINE (Sam, 2026-09-08) ─────────────────
+            //
+            // "when the bobber is casted and you left click to start reeling in,
+            // the rod shouldnt move until the line goes from droopy to taught,
+            // then the rod can be pulled back a little bit."
+            //
+            // You cannot haul on slack line. The rod used to swing to its full
+            // angle the instant the button went down, while the line was still
+            // visibly drooping — the cascade backwards. Now the first two thirds
+            // of the line coming tight move nothing, and the rod draws back over
+            // the last third, arriving exactly as the line does.
+            //
+            // This is also the fix for the glitchy rod during a fight: you let go
+            // and re-press constantly, and the line stays tight across those gaps
+            // (a hooked fish holds it), so the haul no longer restarts from zero
+            // every click. It is the SAME gate the mesh bend has always had —
+            // the whole-rod haul was simply never given one.
+            float taut = Mathf.Clamp01(b.LineTaut01);
+            float start = Mathf.Clamp(tune.reelHaulStartTaut, 0f, 0.95f);
+            target *= Mathf.Clamp01((taut - start) / Mathf.Max(0.01f, 1f - start));
         }
-        // Asymmetric: hauling back takes effort, letting go is instant. Sam:
-        // "once you release left click the rod should very quickly return to its
-        // normal position".
-        float rate = target > _pullBackAngle ? tune.rodBendResponse : tune.rodReleaseResponse;
+        // Asymmetric: hauling back takes effort, letting go is quicker. Both are
+        // half the mesh-bend rates — the bend is a readout of tension and has to
+        // track it, but the haul is a big slow heave of the whole rod and at the
+        // bend's speed it read as a jerk.
+        float rate = target > _pullBackAngle ? tune.reelHaulResponse
+                                             : tune.reelHaulReleaseResponse;
         _pullBackAngle = Mathf.Lerp(_pullBackAngle, target,
                                     1f - Mathf.Exp(-rate * Time.deltaTime));
         if (Mathf.Abs(_pullBackAngle) < 0.01f) return Quaternion.identity;
