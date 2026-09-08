@@ -2012,3 +2012,112 @@ keyed by id.
 **Verification:** `py -3 prototypes/shuttle-computer/test/compile-unity.py` — Assembly-CSharp,
 Assembly-CSharp-Editor and Assembly-CSharp (player defines) all **OK, 0 warnings**.
 Everything here is **PLAYTEST PENDING**.
+
+---
+
+## Addendum 2026-09-08b — Reel speed x2, the bolt, and the death of the count sliders
+
+Sam, same day: *"can you make the reel in speed 2x faster for all reeling ... and
+in return make fish fight harder and faster so it makes fights more back and
+forth"*, and *"[the spawn count sliders] really should matter on the distance you
+want to render at, not how many you want to be rendered."*
+
+### 1. Every kind of reeling doubled
+
+`FishingRules.ReelSpeed` 6.5 -> 13, `Bobber.retrieveSpeed` and
+`Bobber.waterRetrieveSpeed` 3.3 -> 6.6 (script default AND `Bobber.prefab`, which
+is the one that runs). There are three separate reel paths — the fight
+(`FishFightSim`), the water slide, and the land tow — and all three moved, because
+it is one reel handle to the player.
+
+### 2. The fish had to move with it, or the fight stops existing
+
+A bare 2x would have halved every fight. So, in the same pass:
+
+- **`ResistFor` maxes raised** — common 0.12 -> 0.34, uncommon 0.42 -> 0.58, rare
+  0.62 -> 0.73, bounty 0.78 -> 0.86. Net closing speed against a fish is therefore
+  ~1.4x, not 2x, while the fish pulls roughly twice as hard throughout. **This is
+  the deliberate gap between "the reel is twice as fast" and what a fish feels
+  like** — say so before anyone "fixes" it.
+- **`RunSpeedForTier` doubled** (uncommon 2.3 -> 4.6, rare 3.4 -> 6.8) and
+  **`RunIntervalForTier` tightened** (uncommon 2-4s -> 1.4-2.8s, rare 1.5-3s ->
+  1.1-2.1s), so a run costs you a comparable share of what the reel just won.
+- **`ReelRate` 48 -> 96, `RelaxRate` 45 -> 90.** Non-negotiable: tension is per
+  second of reeling, so a faster reel lands the fish before the bar can fill.
+  Left at 48, the headless bot started landing rares on a 20 m cast by just
+  holding the button — the one thing the fight must never allow.
+- **Stamina trimmed** (rare 7-11 -> 5.4-8.4, uncommon 4.2-6.5 -> 2.8-4.2). Faster,
+  more frequent runs mean the same stamina buys the fish more ground; without this
+  the rare median went 9.9s -> 11.5s, the opposite of asking for a faster reel.
+
+### 3. The bolt — new, and the most consequential bit
+
+`FishingRules.FirstRunDelayForTier` puts the FIRST run on its own short clock
+(rare 0.3-0.6s, uncommon 0.45-0.9s) instead of the ordinary interval.
+
+**Why it had to exist:** the sim's new tug-of-war readout showed the median
+uncommon fight giving back **0.0 metres**. Its first run was not due for 1.4-2.8s
+and the fight lasted about two seconds, so the entire mid tier — the fish you
+catch most of — never ran at all. It was a haul with a bar on it, and no amount of
+tuning run speed or interval would have shown up.
+
+### 4. Measured, not asserted
+
+`verify-fishing.py` now prints a **tug-of-war** figure per tier: every metre the
+fish took back over the fight, against the 12 m fixture cast. Fight *length* cannot
+tell a steady creep apart from a struggle — the two can take identical seconds.
+
+| tier | fight | tug-of-war |
+|---|---|---|
+| Common | 2.1s -> 1.5s | 0.0 -> 0.0 m (commons never run, by design) |
+| Uncommon | 2.8s -> **4.2s** | **0.0 -> 7.5 m** |
+| Rare | 9.9s -> 9.3s | 11.6 -> **19.4 m** |
+
+Uncommons are the one tier that got LONGER, and that is the trade: they now fight.
+
+### 5. Three stale test fixtures fixed (they were red before this pass)
+
+`verify-fishing.py` was reporting **6 failures before any of this started** —
+`[TEST] 3` asserted "exactly 4 species in the roll" and 0.25 uniformity, but the
+pool grew 12 -> 24 on 2026-09-07. It now derives both from
+`FishingRules.Species`, so it can never go stale that way again.
+
+`[TEST] 7`'s scripted fixtures hardcoded a 14 m cast and then reeled for a fixed
+number of frames; with the doubled reel the fish landed before the assertion it was
+testing, producing four failures that were not regressions. `FixtureCast` is now
+derived from `ReelSpeed`. One more (`the ROD unloads the moment you let go`) was
+being measured mid-run, which the bolt made possible for the first time — a run
+bends the rod by itself (`RodLoad` 0.50) and always did, so the fixture now settles
+onto a non-running frame first. **All 142 checks pass, under the old tuning as well
+as the new one** — which is how we know the fixtures were un-staled rather than
+merely bent to fit.
+
+### 6. Spawn-count sliders retired; view distance is the only world knob
+
+`InputSettings.maxTrees` / `maxAlienNPCs` / `maxMushrooms` / `maxCrystals` /
+`maxAudienceSize` are no longer fields. They are **read-only properties**, which
+made every UI that still set one a compile error rather than a survivor — 13 of
+them, in `TabbedPauseMenu` and the legacy `SettingsMenu`.
+
+- **Trees / NPCs / mushrooms are derived from `viewDistance`**, linearly from the
+  tuned 350 m reference. `TreeSpawner`, `MushroomSpawner` and `AlienNPCSpawner` all
+  stream inside a radius of exactly `viewDistance`, so tying the count to it is
+  what holds DENSITY still. The old arrangement was worse than no setting: push
+  view distance to 800 m without also pushing the tree count and you got the same
+  sixty trees smeared over five times the ground — the forest thinned out as a
+  reward for asking for more of it. Derived values land close to the old hand-set
+  presets (34/60/86/137 trees vs 40/60/110/160 at 200/350/500/800 m) and exact at
+  the default.
+- **Crystals are FIXED at 20** and deliberately not scaled: `CrystalSpawner` uses
+  its own 300 m radius, so scaling with view distance would change refuelling speed
+  without changing anything visible — the same bug as the Low-preset crystal cap
+  fixed in addendum 2026-09-08 §2.
+- **Audience is FIXED at 25** — a crowd in a venue, not planet scatter.
+- The five count PlayerPrefs are no longer read, so an existing install stops
+  carrying whatever it last had set. Quality presets now set distance only.
+- The legacy `SettingsMenu` panel's four count sliders are switched OFF in `Awake`
+  rather than left present-and-dead; their GameObjects are still in the scene and
+  can be deleted in the Editor whenever convenient.
+
+**Verification:** compile PASS (all three assemblies, 0 warnings); `verify-fishing.py`
+PASS 142 checks. **PLAYTEST PENDING** — `docs/PLAYTEST_FIXES_2026-09-08.md` §6-8.

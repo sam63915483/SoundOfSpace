@@ -115,12 +115,54 @@ public class InputSettings : ScriptableObject {
 	public float mouseSensitivity;
 	public float mouseSmoothing;
 	[Range(0, 1)] public float masterVolume = defaultMasterVolume;
-	[Range(20, 300)] public int maxTrees = defaultMaxTrees;
-	[Range(5, 20)] public int maxAlienNPCs = defaultMaxAlienNPCs;
-	[Range(0, 100)] public int maxMushrooms = defaultMaxMushrooms;
-	[Range(0, 60)] public int maxCrystals = defaultMaxCrystals;
-	[Range(10, 40)] public int maxAudienceSize = defaultMaxAudienceSize;
 	[Range(100, 1000)] public float viewDistance = defaultViewDistance;
+
+	// ── Streaming counts: DERIVED, not chosen (2026-09-08) ───────────────────
+	//
+	// These used to be five sliders of their own. Sam retired them: "it really
+	// should matter on the distance you want to render at, not how many you want
+	// to be rendered." He is right, and the old arrangement was actively worse
+	// than no setting at all — the count and the radius were independent, so a
+	// player who pushed view distance to 800 m without also pushing the tree
+	// count got the SAME sixty trees smeared over five times the ground, and the
+	// forest thinned out as a reward for asking for more of it.
+	//
+	// TreeSpawner, MushroomSpawner and AlienNPCSpawner all stream inside a radius
+	// of exactly viewDistance, so tying the count to it is what holds DENSITY
+	// still: the world looks the same at every setting, there is just more or
+	// less of it visible. Scaled linearly from the tuned reference at 350 m,
+	// which is close to what the old quality presets did by hand (they ran
+	// 40/60/110/160 trees against 200/350/500/800 m) and exact at the default.
+	//
+	// They are read-only ON PURPOSE. Making them properties means any UI still
+	// trying to set one is a compile error instead of a slider that silently
+	// still works.
+	const float DensityReferenceDistance = 350f;
+
+	static int ScaledByDistance (float reference, float distance, int min, int max) {
+		int n = Mathf.RoundToInt (reference * distance / DensityReferenceDistance);
+		return Mathf.Clamp (n, min, max);
+	}
+
+	public int maxTrees       => ScaledByDistance (defaultMaxTrees,      viewDistance,  20, 300);
+	public int maxAlienNPCs   => ScaledByDistance (defaultMaxAlienNPCs,  viewDistance,   3,  24);
+	public int maxMushrooms   => ScaledByDistance (defaultMaxMushrooms,  viewDistance,   0, 120);
+
+	/// <summary>
+	/// FIXED, and deliberately NOT scaled with view distance.
+	///
+	/// Crystals are the shuttle's fuel, and CrystalSpawner streams them inside
+	/// its own 300 m radius rather than the view distance — so scaling this
+	/// would change how fast you can refuel without changing what you can see.
+	/// That is the exact bug fixed the day before this (the Low quality preset
+	/// used to set it to 10 and halve your refuelling speed). A graphics setting
+	/// must never change the economy.
+	/// </summary>
+	public int maxCrystals => defaultMaxCrystals;
+
+	/// <summary>FIXED. The concert crowd stands in a venue, not scattered across
+	/// a planet, so view distance has nothing to say about how many there are.</summary>
+	public int maxAudienceSize => defaultMaxAudienceSize;
 	public bool lockCursor = true;
 
 	[Header("Controller")]
@@ -318,11 +360,11 @@ public class InputSettings : ScriptableObject {
 		sfxVolume      = PlayerPrefs.GetFloat (nameof (sfxVolume),      1f);
 		ambienceVolume = PlayerPrefs.GetFloat (nameof (ambienceVolume), 1f);
 		uiVolume       = PlayerPrefs.GetFloat (nameof (uiVolume),       1f);
-		maxTrees = PlayerPrefs.GetInt ("maxTreesV2", defaultMaxTrees);
-		maxAlienNPCs = PlayerPrefs.GetInt (nameof (maxAlienNPCs), defaultMaxAlienNPCs);
-		maxMushrooms = PlayerPrefs.GetInt (nameof (maxMushrooms), defaultMaxMushrooms);
-		maxCrystals = PlayerPrefs.GetInt (nameof (maxCrystals), defaultMaxCrystals);
-		maxAudienceSize = PlayerPrefs.GetInt (nameof (maxAudienceSize), defaultMaxAudienceSize);
+		// The five count prefs (maxTreesV2 / maxAlienNPCs / maxMushrooms /
+		// maxCrystals / maxAudienceSize) are no longer read — the counts are
+		// derived from viewDistance now. Any stored values are simply ignored,
+		// which is what an existing install needs: nobody keeps a hand-set 10
+		// crystals forever because of a slider that no longer exists.
 		viewDistance = PlayerPrefs.GetFloat (nameof (viewDistance), defaultViewDistance);
 		grassRenderScale = PlayerPrefs.GetFloat (nameof (grassRenderScale), 1f);
 		cameraFov = PlayerPrefs.GetFloat (nameof (cameraFov), 0f);   // 0 = seed from authored FOV in CameraFOVFX
@@ -436,11 +478,6 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetFloat (nameof (sfxVolume),      sfxVolume);
 		PlayerPrefs.SetFloat (nameof (ambienceVolume), ambienceVolume);
 		PlayerPrefs.SetFloat (nameof (uiVolume),       uiVolume);
-		PlayerPrefs.SetInt ("maxTreesV2", maxTrees);
-		PlayerPrefs.SetInt (nameof (maxAlienNPCs), maxAlienNPCs);
-		PlayerPrefs.SetInt (nameof (maxMushrooms), maxMushrooms);
-		PlayerPrefs.SetInt (nameof (maxCrystals), maxCrystals);
-		PlayerPrefs.SetInt (nameof (maxAudienceSize), maxAudienceSize);
 		PlayerPrefs.SetFloat (nameof (viewDistance), viewDistance);
 		PlayerPrefs.SetFloat (nameof (grassRenderScale), grassRenderScale);
 		PlayerPrefs.SetFloat (nameof (cameraFov), cameraFov);
@@ -532,17 +569,11 @@ public class InputSettings : ScriptableObject {
 			// unless the player explicitly enables it in CAMERA tab.
 			// LensDirt has been removed entirely.
 			case QualityPreset.Low:
+				// Distance is the only world knob now — the tree / NPC /
+				// mushroom counts follow it automatically, so this thins the
+				// world without thinning its DENSITY, and crystals (fuel) do
+				// not move at all. See the properties near the top.
 				viewDistance     = 200f;
-				maxTrees         = 40;
-				maxAlienNPCs     = 6;
-				maxMushrooms     = 20;
-				// NOT thinned on Low. Crystals are the shuttle's fuel (planet
-				// economy, 2026-09-07), so halving how many are on the ground
-				// halves how fast you can refuel — a graphics setting must never
-				// change the economy. Twenty crystals is a full tank; a lower
-				// cap would make Low quality a harder game.
-				maxCrystals      = defaultMaxCrystals;   // 20
-				maxAudienceSize  = 15;
 				fxConcertShadows       = false;
 				fxChromaticAberration  = false;
 				fxRadialMotionBlur     = false;
@@ -557,12 +588,7 @@ public class InputSettings : ScriptableObject {
 				anisotropicFiltering   = AnisotropicLevel.Disable;
 				break;
 			case QualityPreset.Medium:
-				viewDistance     = 350f;
-				maxTrees         = defaultMaxTrees;      // 60
-				maxAlienNPCs     = defaultMaxAlienNPCs;  // 10
-				maxMushrooms     = defaultMaxMushrooms;  // 40
-				maxCrystals      = defaultMaxCrystals;   // 20
-				maxAudienceSize  = defaultMaxAudienceSize; // 25
+				viewDistance     = 350f;   // the density reference
 				fxConcertShadows       = false;
 				fxChromaticAberration  = true;
 				fxRadialMotionBlur     = false;
@@ -578,11 +604,6 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.High:
 				viewDistance     = 500f;
-				maxTrees         = 110;
-				maxAlienNPCs     = 14;
-				maxMushrooms     = 60;
-				maxCrystals      = 30;
-				maxAudienceSize  = 32;
 				fxConcertShadows       = false;
 				fxChromaticAberration  = true;
 				fxRadialMotionBlur     = false;
@@ -598,11 +619,6 @@ public class InputSettings : ScriptableObject {
 				break;
 			case QualityPreset.Ultra:
 				viewDistance     = 800f;
-				maxTrees         = 160;
-				maxAlienNPCs     = 20;
-				maxMushrooms     = 100;
-				maxCrystals      = 50;
-				maxAudienceSize  = 40;
 				fxConcertShadows       = true;
 				fxChromaticAberration  = true;
 				fxRadialMotionBlur     = true;

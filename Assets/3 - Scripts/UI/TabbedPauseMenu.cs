@@ -976,40 +976,18 @@ public class TabbedPauseMenu : MonoBehaviour
                     // .ApplyPhysicsRate for why it can't be a player setting.)
 
                     // ── Streaming / world ─────────────────────────────
-                    // These five sliders ARE the spawn-amount knobs the player
-                    // wanted available in Custom mode. Editing any of them
-                    // snaps qualityPreset back to Custom via MarkCustomQuality
-                    // so the preset slider above doesn't lie about state.
+                    // ONE knob (Sam, 2026-09-08: "it really should matter on the
+                    // distance you want to render at, not how many you want to be
+                    // rendered"). The five MAX <THING> sliders that used to sit
+                    // here are gone: the tree / NPC / mushroom counts are derived
+                    // from this distance now so density holds steady as you drag
+                    // it, and crystals and the concert crowd are fixed because
+                    // neither is scenery. See InputSettings.
                     new HeaderDef { label = "WORLD" },
                     new SliderDef {
                         label = "VIEW DISTANCE", min = 100f, max = 1000f, wholeNumbers = false, format = "{0:F0}m",
                         get  = () => _input != null ? _input.viewDistance : 350f,
                         set  = v  => { if (_input != null) { _input.viewDistance = Mathf.Clamp(v, 100f, 1000f); MarkCustomQuality(); } },
-                    },
-                    new SliderDef {
-                        label = "MAX TREES", min = 20f, max = 300f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? _input.maxTrees : 60f,
-                        set  = v  => { if (_input != null) { _input.maxTrees = Mathf.RoundToInt(v); MarkCustomQuality(); } },
-                    },
-                    new SliderDef {
-                        label = "MAX ALIEN NPCS", min = 5f, max = 20f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? _input.maxAlienNPCs : 10f,
-                        set  = v  => { if (_input != null) { _input.maxAlienNPCs = Mathf.RoundToInt(v); MarkCustomQuality(); } },
-                    },
-                    new SliderDef {
-                        label = "MAX MUSHROOMS", min = 0f, max = 100f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? _input.maxMushrooms : 20f,
-                        set  = v  => { if (_input != null) { _input.maxMushrooms = Mathf.RoundToInt(v); MarkCustomQuality(); } },
-                    },
-                    new SliderDef {
-                        label = "MAX CRYSTALS", min = 0f, max = 60f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? _input.maxCrystals : 20f,
-                        set  = v  => { if (_input != null) { _input.maxCrystals = Mathf.RoundToInt(v); MarkCustomQuality(); } },
-                    },
-                    new SliderDef {
-                        label = "MAX AUDIENCE", min = 10f, max = 40f, wholeNumbers = true, format = "{0:F0}",
-                        get  = () => _input != null ? _input.maxAudienceSize : 25f,
-                        set  = v  => { if (_input != null) { _input.maxAudienceSize = Mathf.RoundToInt(v); MarkCustomQuality(); } },
                     },
 
                     // ── AI / VRAM ─────────────────────────────────────

@@ -16,7 +16,7 @@ public class AlienNPCSpawner : MonoBehaviour
     public float spawnRadius = 300f;
     [Tooltip("Fallback cap when InputSettings is not assigned. The pause-menu slider overrides this at runtime.")]
     public int maxAlienNPCs = 10;
-    [Tooltip("Optional. When assigned, the spawner reads maxAlienNPCs from this asset every tick — the slider drives it live.")]
+    [Tooltip("Optional. When assigned, the spawner reads maxAlienNPCs from this asset every tick. Since 2026-09-08 that number is DERIVED from the VIEW DISTANCE slider rather than set directly, so density holds steady at any view distance.")]
     public InputSettings inputSettings;
     [Tooltip("Layers the surface raycast should hit. Should include terrain, exclude water/ship/player.")]
     public LayerMask groundMask = ~0;

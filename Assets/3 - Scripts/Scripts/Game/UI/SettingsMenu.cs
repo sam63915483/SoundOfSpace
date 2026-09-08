@@ -12,6 +12,12 @@ public class SettingsMenu : MonoBehaviour {
 	public TMP_InputField mouseSensitivity;
 	public UnityEngine.UI.Slider mouseSmoothingSlider;
 	public UnityEngine.UI.Slider masterVolumeSlider;
+	// RETIRED 2026-09-08. The counts are derived from view distance now (see
+	// InputSettings), so these four sliders have nothing left to set. The FIELDS
+	// stay so the scene's existing references are not orphaned mid-flight — and
+	// so Awake can switch the slider objects OFF, which is what actually takes
+	// them out of this panel without an Editor pass. Delete the GameObjects (and
+	// then these four lines) whenever convenient.
 	public UnityEngine.UI.Slider maxTreesSlider;
 	public UnityEngine.UI.Slider maxAlienNPCsSlider;
 	public UnityEngine.UI.Slider maxMushroomsSlider;
@@ -22,14 +28,10 @@ public class SettingsMenu : MonoBehaviour {
 		menuPanel.SetActive (false);
 		if (masterVolumeSlider != null)
 			masterVolumeSlider.onValueChanged.AddListener (OnMasterVolumeChanged);
-		if (maxTreesSlider != null)
-			maxTreesSlider.onValueChanged.AddListener (OnMaxTreesChanged);
-		if (maxAlienNPCsSlider != null)
-			maxAlienNPCsSlider.onValueChanged.AddListener (OnMaxAlienNPCsChanged);
-		if (maxMushroomsSlider != null)
-			maxMushroomsSlider.onValueChanged.AddListener (OnMaxMushroomsChanged);
-		if (maxAudienceSlider != null)
-			maxAudienceSlider.onValueChanged.AddListener (OnMaxAudienceChanged);
+		HideRetiredSlider (maxTreesSlider);
+		HideRetiredSlider (maxAlienNPCsSlider);
+		HideRetiredSlider (maxMushroomsSlider);
+		HideRetiredSlider (maxAudienceSlider);
 		if (viewDistanceSlider != null)
 			viewDistanceSlider.onValueChanged.AddListener (OnViewDistanceChanged);
 	}
@@ -39,20 +41,13 @@ public class SettingsMenu : MonoBehaviour {
 		AudioListener.volume = value;
 	}
 
-	void OnMaxTreesChanged (float value) {
-		if (inputSettings != null) inputSettings.maxTrees = Mathf.RoundToInt (value);
-	}
-
-	void OnMaxAlienNPCsChanged (float value) {
-		if (inputSettings != null) inputSettings.maxAlienNPCs = Mathf.RoundToInt (value);
-	}
-
-	void OnMaxMushroomsChanged (float value) {
-		if (inputSettings != null) inputSettings.maxMushrooms = Mathf.RoundToInt (value);
-	}
-
-	void OnMaxAudienceChanged (float value) {
-		if (inputSettings != null) inputSettings.maxAudienceSize = Mathf.RoundToInt (value);
+	/// A slider whose setting no longer exists. Switching the whole row off is
+	/// better than leaving a control that moves and does nothing — and it takes
+	/// the label with it, since the label is a child of the row.
+	static void HideRetiredSlider (UnityEngine.UI.Slider s) {
+		if (s == null) return;
+		var row = s.transform.parent != null ? s.transform.parent.gameObject : s.gameObject;
+		row.SetActive (false);
 	}
 
 	void OnViewDistanceChanged (float value) {
@@ -79,14 +74,6 @@ public class SettingsMenu : MonoBehaviour {
 		mouseSmoothingSlider.value = inputSettings.mouseSmoothing;
 		if (masterVolumeSlider != null)
 			masterVolumeSlider.SetValueWithoutNotify (inputSettings.masterVolume);
-		if (maxTreesSlider != null)
-			maxTreesSlider.SetValueWithoutNotify (inputSettings.maxTrees);
-		if (maxAlienNPCsSlider != null)
-			maxAlienNPCsSlider.SetValueWithoutNotify (inputSettings.maxAlienNPCs);
-		if (maxMushroomsSlider != null)
-			maxMushroomsSlider.SetValueWithoutNotify (inputSettings.maxMushrooms);
-		if (maxAudienceSlider != null)
-			maxAudienceSlider.SetValueWithoutNotify (inputSettings.maxAudienceSize);
 		if (viewDistanceSlider != null)
 			viewDistanceSlider.SetValueWithoutNotify (inputSettings.viewDistance);
 
@@ -108,18 +95,6 @@ public class SettingsMenu : MonoBehaviour {
 
 		if (masterVolumeSlider != null)
 			inputSettings.masterVolume = masterVolumeSlider.value;
-
-		if (maxTreesSlider != null)
-			inputSettings.maxTrees = Mathf.RoundToInt (maxTreesSlider.value);
-
-		if (maxAlienNPCsSlider != null)
-			inputSettings.maxAlienNPCs = Mathf.RoundToInt (maxAlienNPCsSlider.value);
-
-		if (maxMushroomsSlider != null)
-			inputSettings.maxMushrooms = Mathf.RoundToInt (maxMushroomsSlider.value);
-
-		if (maxAudienceSlider != null)
-			inputSettings.maxAudienceSize = Mathf.RoundToInt (maxAudienceSlider.value);
 
 		if (viewDistanceSlider != null)
 			inputSettings.viewDistance = Mathf.Clamp (viewDistanceSlider.value, 100f, 1000f);

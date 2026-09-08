@@ -265,9 +265,9 @@ MonoBehaviour:
   strikeBobAmplitude: 0.02
   maxSwimLateral: 1
   swimLateralSpeed: 0.5
-  retrieveSpeed: 3.3
+  retrieveSpeed: 6.6
   hangLeash: 0.75
-  waterRetrieveSpeed: 3.3
+  waterRetrieveSpeed: 6.6
   retrieveBiteBonus: 1.2
   lostBiteBonus: 1.3
   emptyLureRodLoad: 0.16

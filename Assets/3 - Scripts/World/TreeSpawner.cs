@@ -20,7 +20,7 @@ public class TreeSpawner : MonoBehaviour
     public float spawnRadius = 150f;
     [Tooltip("Fallback cap when InputSettings is not assigned. The settings-menu slider overrides this at runtime.")]
     public int maxTrees = 20;
-    [Tooltip("Optional. When assigned, the spawner reads maxTrees from this asset every tick — the settings slider drives it live.")]
+    [Tooltip("Optional. When assigned, the spawner reads maxTrees from this asset every tick. Since 2026-09-08 that number is DERIVED from the VIEW DISTANCE slider rather than set directly, so the forest keeps the same density however far you can see.")]
     public InputSettings inputSettings;
     [Tooltip("Layers the surface raycast should hit. Should include terrain, exclude water/ship/player.")]
     public LayerMask groundMask = ~0;

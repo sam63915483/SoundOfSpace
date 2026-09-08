@@ -21,9 +21,9 @@ public class CrystalSpawner : MonoBehaviour
     [Header("Spawn")]
     [Tooltip("Crystals only exist within this distance of the player. Matches mushroom / alien NPC streaming radius.")]
     public float spawnRadius = 300f;
-    [Tooltip("Fallback cap when InputSettings is not assigned. The pause-menu slider overrides this at runtime via inputSettings.maxCrystals.")]
+    [Tooltip("Fallback cap when InputSettings is not assigned. InputSettings.maxCrystals overrides it at runtime — and since 2026-09-08 that is a FIXED 20, not a slider and not scaled by view distance: crystals are the shuttle's fuel, so no graphics setting is allowed to change how fast you can refuel.")]
     public int maxCrystals = 20;
-    [Tooltip("Optional. When assigned, the spawner reads maxCrystals from this asset every tick — the GRAPHICS-tab slider drives it live.")]
+    [Tooltip("Optional. When assigned, the spawner reads maxCrystals from this asset every tick. It is a constant now, not a slider — see above.")]
     public InputSettings inputSettings;
     [Tooltip("Layers the surface raycast should hit. Should include terrain, exclude water/ship/player.")]
     public LayerMask groundMask = ~0;

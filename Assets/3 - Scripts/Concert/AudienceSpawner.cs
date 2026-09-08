@@ -19,7 +19,7 @@ public class AudienceSpawner : MonoBehaviour
     public AudienceZone zone;
     [Tooltip("Drag the same alien prefabs AlienNPCSpawner uses.")]
     public GameObject[] alienPrefabs;
-    [Tooltip("Reads maxAudienceSize from this asset every tick — the slider drives it live.")]
+    [Tooltip("Reads maxAudienceSize from this asset every tick. It is a fixed 25 since 2026-09-08 — the crowd stands in a venue, not scattered over a planet, so view distance has nothing to say about how many there are.")]
     public InputSettings inputSettings;
 
     [Header("Spawn")]

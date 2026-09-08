@@ -38,9 +38,25 @@ public static class FishingTests
     static FightOutcome RunBot(FishTier tier, float stamina, float resist, uint seed,
                                bool holdForever, out float wallClock, out float maxOut)
     {
+        float lost;
+        return RunBot(tier, stamina, resist, seed, holdForever, out wallClock, out maxOut, out lost);
+    }
+
+    /// <paramref name="metresLost"/> is every metre the fish took BACK during the
+    /// fight, added up. Against the cast distance it is the honest measure of how
+    /// much of a tug of war the fight was: 0 means the reel simply hauled the fish
+    /// in, and a number near the cast means you had to win the same water twice.
+    /// Fight LENGTH cannot see this -- a slow steady creep and a violent
+    /// back-and-forth can take exactly the same number of seconds.
+    static FightOutcome RunBot(FishTier tier, float stamina, float resist, uint seed,
+                               bool holdForever, out float wallClock, out float maxOut,
+                               out float metresLost)
+    {
         var f = new FishFightSim(tier, stamina, CastDistance, resist, seed);
         wallClock = 0f;
         maxOut = CastDistance;
+        metresLost = 0f;
+        float prev = f.Distance;
         for (int i = 0; i < 60 * 600; i++)   // 10 minute guard
         {
             bool holding = holdForever
@@ -50,6 +66,8 @@ public static class FishingTests
                 : (!f.IsRunning && f.TensionFraction < 0.70f);
             var outcome = f.Step(Dt, holding);
             wallClock = f.Elapsed;
+            if (f.Distance > prev) metresLost += f.Distance - prev;
+            prev = f.Distance;
             if (f.Distance > maxOut) maxOut = f.Distance;
             if (outcome != FightOutcome.Fighting) return outcome;
         }
@@ -61,6 +79,12 @@ public static class FishingTests
         Console.WriteLine("[TEST] 1  the fight (distance model)");
 
         var medians = new Dictionary<FishTier, List<float>>
+        {
+            { FishTier.Common,   new List<float>() },
+            { FishTier.Uncommon, new List<float>() },
+            { FishTier.Rare,     new List<float>() },
+        };
+        var lostM = new Dictionary<FishTier, List<float>>
         {
             { FishTier.Common,   new List<float>() },
             { FishTier.Uncommon, new List<float>() },
@@ -79,11 +103,11 @@ public static class FishingTests
                 float resist  = FishingRules.ResistFor(si, weight);
                 uint seed = (uint)(si * 1000 + w + 1);
 
-                float t, mo;
-                var perfect = RunBot(sp.tier, stamina, resist, seed, false, out t, out mo);
+                float t, mo, lost;
+                var perfect = RunBot(sp.tier, stamina, resist, seed, false, out t, out mo, out lost);
                 if (perfect == FightOutcome.Fighting) timeouts++;
                 if (perfect != FightOutcome.Landed) perfectLandFails++;
-                else medians[sp.tier].Add(t);
+                else { medians[sp.tier].Add(t); lostM[sp.tier].Add(lost); }
                 if (mo > CastDistance * FishingRules.MaxRunOutFactor + 0.01f) runOutBreaches++;
 
                 float t2, mo2;
@@ -192,9 +216,14 @@ public static class FishingTests
             if (list.Count == 0) continue;
             list.Sort();
             float med = list[list.Count / 2];
+            var lost = lostM[kv.Key];
+            lost.Sort();
+            float medLost = lost.Count > 0 ? lost[lost.Count / 2] : 0f;
             Console.WriteLine("    median fight, " + kv.Key + ": " + med.ToString("F1") + "s"
                               + "  (min " + list[0].ToString("F1")
-                              + "s, max " + list[list.Count - 1].ToString("F1") + "s)");
+                              + "s, max " + list[list.Count - 1].ToString("F1") + "s)"
+                              + "   tug-of-war: " + medLost.ToString("F1") + " m taken back of a "
+                              + CastDistance.ToString("F0") + " m cast");
         }
     }
 
@@ -203,6 +232,20 @@ public static class FishingTests
     // been retuned three times; locking it here means the next tuning pass can
     // change the NUMBERS without silently breaking the SHAPE.
 
+    /// <summary>
+    /// Cast distance for the scripted fixtures below.
+    ///
+    /// It is DERIVED from ReelSpeed, not typed. Every scenario in this test
+    /// reels for a fixed number of frames and then asserts something about what
+    /// happened on the way -- so a tuning pass that speeds the reel up used to
+    /// silently turn "the rod reaches a full bow" and "abandoning the fight
+    /// loses the fish" into "it landed before we got there". That happened on
+    /// 2026-09-08 when the reel doubled; four checks failed and not one of them
+    /// was about a real regression. Scaling with the reel keeps the fixtures
+    /// measuring the SHAPE, which is what this test exists to lock.
+    /// </summary>
+    static readonly float FixtureCast = 14f * (FishingRules.ReelSpeed / 6.5f);
+
     static void LoadContractChecks()
     {
         Console.WriteLine("[TEST] 7  the cascade: line -> rod -> fish -> bar");
@@ -210,7 +253,7 @@ public static class FishingTests
         // ── Holding the reel: the LINE moves first, and NOTHING else moves
         //    until it is tight. This is the ordering Sam kept having to
         //    re-explain, so it is asserted step by step rather than trusted.
-        var f = new FishFightSim(FishTier.Rare, 10f, 14f, 0.4f, 4242u);
+        var f = new FishFightSim(FishTier.Rare, 10f, FixtureCast, 0.4f, 4242u);
         float d0 = f.Distance;
 
         Check(f.LineTaut < 0.001f, "a fresh hook starts with a slack line");
@@ -242,7 +285,7 @@ public static class FishingTests
         // itself warn you about the snap, so the bar is only a backup.
         float prev = -1f;
         bool monotone = true, everMax = false;
-        var g = new FishFightSim(FishTier.Uncommon, 6f, 14f, 0.3f, 99u);
+        var g = new FishFightSim(FishTier.Uncommon, 6f, FixtureCast, 0.3f, 99u);
         for (int i = 0; i < 60 * 10; i++)
         {
             if (g.Step(Dt, true) != FightOutcome.Fighting) break;
@@ -257,9 +300,19 @@ public static class FishingTests
 
         // ── Releasing: the BAR turns around at once, the rod unloads, and the
         //    line is the SLOWEST thing to let go.
-        var h = new FishFightSim(FishTier.Rare, 10f, 14f, 0.4f, 77u);
+        var h = new FishFightSim(FishTier.Rare, 10f, FixtureCast, 0.4f, 77u);
         for (int i = 0; i < 200; i++) h.Step(Dt, true);
         Check(h.LineIsTight && h.TensionFraction > 0.1f, "reeled up to real tension");
+
+        // Measured while the fish is NOT running. A run bends the rod on its own
+        // (RodLoad = 0.50 with no reeling at all) and always has, so "letting go
+        // unloads the rod" is a statement about the REELING share of the load.
+        // Before the bolt (2026-09-08) a fresh fish could not be running this
+        // early and the distinction never came up; now it can, so the fixture
+        // says which moment it means instead of relying on luck.
+        int settle = 0;
+        while (h.IsRunning && settle < 600) { h.Step(Dt, true); settle++; }
+        Check(!h.IsRunning, "settled onto a non-running frame to measure the rod");
 
         float tensionAtRelease = h.Tension;
         h.Step(Dt, false);
@@ -277,7 +330,7 @@ public static class FishingTests
 
         // ── A run: the fish moves the float first, the line comes tight, then
         //    the rod bends. And reeling INTO a run is punishing.
-        var r = new FishFightSim(FishTier.Rare, 12f, 14f, 0.4f, 31337u);
+        var r = new FishFightSim(FishTier.Rare, 12f, FixtureCast, 0.4f, 31337u);
         int guard = 0;
         while (!r.IsRunning && guard < 60 * 30) { r.Step(Dt, false); guard++; }
         Check(r.IsRunning, "a rare does run");
@@ -287,11 +340,11 @@ public static class FishingTests
 
         // Tightening while a fish runs and you reel must be much faster than
         // tightening on your own.
-        var slow = new FishFightSim(FishTier.Common, 5f, 14f, 0.1f, 11u);
+        var slow = new FishFightSim(FishTier.Common, 5f, FixtureCast, 0.1f, 11u);
         int slowFrames = 0;
         while (!slow.LineIsTight && slowFrames < 600) { slow.Step(Dt, true); slowFrames++; }
 
-        var fast = new FishFightSim(FishTier.Rare, 12f, 14f, 0.4f, 31337u);
+        var fast = new FishFightSim(FishTier.Rare, 12f, FixtureCast, 0.4f, 31337u);
         guard = 0;
         while (!fast.IsRunning && guard < 60 * 30) { fast.Step(Dt, false); guard++; }
         int fastFrames = 0;
@@ -301,7 +354,7 @@ public static class FishingTests
               + "s vs " + (slowFrames * Dt).ToString("F2") + "s) - which is why you must let go");
 
         // Vigour: full at the start, gone once the fish is spent.
-        var v = new FishFightSim(FishTier.Rare, 0.05f, 14f, 0.4f, 5u);
+        var v = new FishFightSim(FishTier.Rare, 0.05f, FixtureCast, 0.4f, 5u);
         Check(Math.Abs(v.Vigour - 1f) < 0.001f, "a fresh fish is at full vigour");
         for (int i = 0; i < 60 * 30 && !v.IsSpent; i++) v.Step(Dt, true);
         Check(v.IsSpent && v.Vigour < 0.001f, "a spent fish has no vigour left");
@@ -315,7 +368,7 @@ public static class FishingTests
         // water." SlippedOff and Snapped are handled differently by the rod, so
         // the sim must keep them genuinely distinct: leaving the line slack must
         // produce SlippedOff, never Snapped.
-        var slip = new FishFightSim(FishTier.Uncommon, 6f, 14f, 0.3f, 606u);
+        var slip = new FishFightSim(FishTier.Uncommon, 6f, FixtureCast, 0.3f, 606u);
         for (int i = 0; i < 120; i++) slip.Step(Dt, true);      // hook it and pull
         Check(slip.TensionFraction > 0.05f, "built some tension before letting go");
         FightOutcome slipOut = FightOutcome.Fighting;
@@ -330,7 +383,7 @@ public static class FishingTests
 
         // The escape must take a readable few seconds, not fire the instant you
         // pause -- a player catching their breath should not lose the fish.
-        var pause = new FishFightSim(FishTier.Uncommon, 6f, 14f, 0.3f, 909u);
+        var pause = new FishFightSim(FishTier.Uncommon, 6f, FixtureCast, 0.3f, 909u);
         for (int i = 0; i < 120; i++) pause.Step(Dt, true);
         bool survivedAPause = true;
         for (int i = 0; i < 90; i++)                            // 1.5 s of nothing
@@ -568,10 +621,20 @@ public static class FishingTests
                 counts.TryGetValue(si, out int had);
                 counts[si] = had + 1;
             }
-            Check(counts.Count == 4, tier + " has exactly 4 species in the roll");
+            // Derived, never typed. The pool grew 12 -> 24 species on
+            // 2026-09-07 (two per tier on each main world, one on each dwarf)
+            // and this test kept asserting the old four, so it sat red for a
+            // day while claiming the species roll was broken. It was not.
+            int expected = 0;
+            for (int s = 0; s < FishingRules.Species.Length; s++)
+                if (FishingRules.Species[s].tier == tier && !FishingRules.Species[s].bounty)
+                    expected++;
+            Check(counts.Count == expected,
+                  tier + " rolls all " + expected + " of its species (got " + counts.Count + ")");
+            float share = 1f / expected;
             bool uniform = true;
             foreach (var kv in counts)
-                if (Math.Abs(kv.Value / (float)N - 0.25f) > 0.02f) uniform = false;
+                if (Math.Abs(kv.Value / (float)N - share) > 0.02f) uniform = false;
             Check(uniform, tier + " species roll is uniform within +/-2%");
         }
 

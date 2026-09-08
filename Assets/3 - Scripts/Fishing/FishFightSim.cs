@@ -145,7 +145,12 @@ public class FishFightSim
 
         _canRun = FishingRules.TierRuns(tier);
         FishingRules.RunIntervalForTier(tier, out _runIntervalMin, out _runIntervalMax);
-        _nextRunIn = _canRun ? RandRange(_runIntervalMin, _runIntervalMax) : float.MaxValue;
+        // The BOLT: the first run is on its own, much shorter clock, so every
+        // fish that can run gets one before it can possibly be landed. The
+        // ordinary interval takes over from the second run onward.
+        float boltMin, boltMax;
+        FishingRules.FirstRunDelayForTier(tier, out boltMin, out boltMax);
+        _nextRunIn = _canRun ? RandRange(boltMin, boltMax) : float.MaxValue;
     }
 
     /// <summary>Pull in force right now — doubled mid-run. Drives the rod bend.</summary>

@@ -129,13 +129,18 @@ public static class FishingRules
     // assigned, and the numbers the headless tests run against.
 
     // Tension gained per second of holding, x the tier's pull.
-    // Raised 35 -> 48 alongside ReelSpeed on 2026-09-01. It HAS to move with the
-    // reel: a faster reel closes the distance sooner, so at 35 a player could
-    // simply hold the button and brute-force a light uncommon before the line
-    // ever snapped. The headless bot caught that immediately -- "hold forever"
-    // started landing 47 of the 600 fish it is supposed to lose.
-    public const float ReelRate  = 48f;
-    public const float RelaxRate = 45f;   // tension shed per second while released
+    // Raised 35 -> 48 alongside ReelSpeed on 2026-09-01, then 48 -> 96 on
+    // 2026-09-08 when the reel doubled again. It HAS to move with the reel: a
+    // faster reel closes the distance sooner, so a player could otherwise
+    // simply hold the button and brute-force a fish before the line ever
+    // snapped. The headless bot catches that immediately -- at 48 with the
+    // doubled reel, "hold forever" started landing rares on a 20 m cast, which
+    // is the one thing the fight must never allow.
+    public const float ReelRate  = 96f;
+    // Shed per second while released. Moves with ReelRate so the pump-and-let-go
+    // RHYTHM keeps its shape: the whole fight now runs at double speed rather
+    // than becoming a different fight.
+    public const float RelaxRate = 90f;
     public const float DrainRate = 1f;    // stamina spent per second of holding or running
     public const float TensionMax = 100f;
 
@@ -143,10 +148,17 @@ public static class FishingRules
     // The fight is won by bringing the fish IN, not by draining a hidden bar.
 
     /// Metres per second the reel gains on a fish that isn't resisting.
-    /// Raised 4.5 -> 6.5 on 2026-09-01: Sam asked for runs that take the fish
-    /// noticeably further out, so the reel has to pull harder to compensate or
-    /// every fight turns into a stalemate.
-    public const float ReelSpeed = 6.5f;
+    /// 4.5 -> 6.5 on 2026-09-01, then 6.5 -> 13 on 2026-09-08 (Sam: "make the
+    /// reel in speed 2x faster for all reeling ... and in return make fish
+    /// fight harder and faster so it makes fights more back and forth").
+    ///
+    /// This number alone would have halved every fight, so it does not travel
+    /// alone: ResistFor, RunSpeedForTier and RunIntervalForTier all rose with
+    /// it. The fight is the SAME LENGTH and twice as violent -- you gain ground
+    /// visibly fast, and a run takes it visibly fast back. Bobber.retrieveSpeed
+    /// and Bobber.waterRetrieveSpeed doubled to match, so winding an empty lure
+    /// home over land or across the water moved with it.
+    public const float ReelSpeed = 13f;
     /// Land the fish once it is this close. Measured against the bobber's REAL
     /// position, not a running total — see FishFightSim.SyncDistance.
     public const float LandDistance = 2f;
@@ -166,22 +178,31 @@ public static class FishingRules
         float span = s.weightMax - s.weightMin;
         float f = span > 0.0001f ? (weightLb - s.weightMin) / span : 0f;
         if (f < 0f) f = 0f; else if (f > 1f) f = 1f;
-        float max = s.bounty ? 0.78f
-                  : s.tier == FishTier.Rare ? 0.62f
-                  : s.tier == FishTier.Uncommon ? 0.42f
-                  : 0.12f;
+        // Raised across the board on 2026-09-08 with the doubled ReelSpeed.
+        // A fish that resisted 0.62 against a 6.5 reel gave up 2.5 m/s; against
+        // a 13 reel the same 0.62 would give up 4.9, and every rare would come
+        // in twice as fast. These numbers put the NET gain back to about 1.4x
+        // the old one -- reeling really is faster, just not double -- while the
+        // fish is pulling roughly twice as hard the whole time, which is what
+        // makes the tug-of-war readable instead of a steady creep.
+        float max = s.bounty ? 0.86f
+                  : s.tier == FishTier.Rare ? 0.73f
+                  : s.tier == FishTier.Uncommon ? 0.58f
+                  : 0.34f;
         return max * (0.45f + 0.55f * f);
     }
 
     /// Metres per second a running fish takes back. Commons never run.
-    /// Raised on 2026-09-01 with ReelSpeed: a run should visibly lose you
-    /// ground, not just slow you down.
+    /// Raised on 2026-09-01 with ReelSpeed, and DOUBLED again on 2026-09-08 for
+    /// the same reason: a run has to cost you a comparable share of the line to
+    /// what the reel just won, or the doubled reel simply outruns every fish and
+    /// the run stops being a thing you have to respect.
     public static float RunSpeedForTier(FishTier tier)
     {
         switch (tier)
         {
-            case FishTier.Rare:     return 3.4f;
-            case FishTier.Uncommon: return 2.3f;
+            case FishTier.Rare:     return 6.8f;
+            case FishTier.Uncommon: return 4.6f;
             default:                return 0f;
         }
     }
@@ -289,30 +310,59 @@ public static class FishingRules
     {
         switch (tier)
         {
-            // Trimmed on 2026-09-01 when runs got faster. Bigger runs cost the
-            // fish more ground per second, so the same stamina bought a LONGER
-            // fight (rare median went 17.5s -> 21.2s) -- the opposite of what
-            // asking for a faster reel was meant to achieve.
-            case FishTier.Rare:     min = 7f;  max = 11f;  break;
-            case FishTier.Uncommon: min = 4.2f; max = 6.5f; break;
+            // Trimmed on 2026-09-01 when runs got faster, and AGAIN on
+            // 2026-09-08 for the same reason. Stamina is seconds of surging, so
+            // faster and more frequent runs mean the same stamina buys the fish
+            // MORE ground -- the rare median went 9.9s -> 11.5s on the doubled
+            // reel alone, which is the exact opposite of what asking for a
+            // faster reel is meant to achieve. Cutting it back puts the fight
+            // length where it was and leaves the extra violence in place.
+            case FishTier.Rare:     min = 5.4f; max = 8.4f; break;
+            case FishTier.Uncommon: min = 2.8f; max = 4.2f; break;
             default:                min = 1.6f; max = 2.6f; break;
         }
     }
 
-    /// Commons never run. Uncommons run every 2-4s; rares more often, 1.5-3s.
-    /// A run doubles pull for 1-2s — the whole skill of the fight is letting go
-    /// during one.
+    /// Commons never run. A run doubles pull for 1-2s — the whole skill of the
+    /// fight is letting go during one.
+    ///
+    /// Intervals tightened on 2026-09-08 (uncommon 2-4s -> 1.4-2.8s, rare
+    /// 1.5-3s -> 1.1-2.1s). This is the "more back and forth" half of Sam's ask:
+    /// the fight is the same number of seconds but you now get noticeably more
+    /// reel/release cycles inside it, so it reads as a struggle rather than one
+    /// long pull with the occasional interruption.
     public static bool TierRuns(FishTier tier) => tier != FishTier.Common;
 
     public static void RunIntervalForTier(FishTier tier, out float min, out float max)
     {
-        if (tier == FishTier.Rare) { min = 1.5f; max = 3f; }
-        else                       { min = 2f;   max = 4f; }
+        if (tier == FishTier.Rare) { min = 1.1f; max = 2.1f; }
+        else                       { min = 1.4f; max = 2.8f; }
     }
 
     public const float RunDurationMin = 1f;
     public const float RunDurationMax = 2f;
     public const float RunPullMultiplier = 2f;
+
+    /// <summary>
+    /// Seconds before a freshly hooked fish makes its FIRST run — the bolt.
+    ///
+    /// Added 2026-09-08. Runs used to be scheduled on the ordinary interval
+    /// from the moment of the hook, which meant the first one was due in
+    /// 1.4-2.8s on an uncommon... and the median uncommon fight lasts about
+    /// two seconds. The headless sim measured the result plainly: **0.0 metres
+    /// of ground taken back** at the median. The whole mid tier — the fish you
+    /// catch most of — never fought at all. It was a haul with a bar on it.
+    ///
+    /// A real fish bolts the instant it feels the hook, so now so does this
+    /// one. Short enough that every uncommon gets at least one run, long enough
+    /// that the line has come tight and the player has registered the bite
+    /// before it happens (lineTautSeconds is ~0.4s).
+    /// </summary>
+    public static void FirstRunDelayForTier(FishTier tier, out float min, out float max)
+    {
+        if (tier == FishTier.Rare) { min = 0.3f; max = 0.6f; }
+        else                       { min = 0.45f; max = 0.9f; }
+    }
 
     // ── Fish size on screen ──────────────────────────────────────────────────
     // ONE law for how big a fish LOOKS, used by the hooked fish on the line and

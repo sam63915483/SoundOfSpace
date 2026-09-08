@@ -38,8 +38,11 @@ public class Bobber : MonoBehaviour
     public float swimLateralSpeed = 0.5f;
 
     [Header("Retrieve (reeling an empty lure)")]
-    [Tooltip("Metres per second the TOW winds a free physics bobber home over land.")]
-    public float retrieveSpeed = 3.3f;
+    [Tooltip("Metres per second the TOW winds a free physics bobber home over land. " +
+             "Doubled 3.3 -> 6.6 on 2026-09-08 with FishingRules.ReelSpeed — every kind " +
+             "of reeling got the same 2x, so winding in never feels slower than the reel " +
+             "you just used on a fish.")]
+    public float retrieveSpeed = 6.6f;
     [Tooltip("Metres of line the wound-in bobber HANGS on below the rod tip, still a physics object, until the next cast.")]
     // One unmissable line per session: WHICH code is actually running. The
     // whole late-night hang saga was Sam playtesting stale builds -- twice a
@@ -49,8 +52,12 @@ public class Bobber : MonoBehaviour
     public const string BuildStamp = "2026-09-03-BB-authored-npcs";
 
     public float hangLeash = 0.75f;
-    [Tooltip("Metres per second an empty lure slides back through the WATER. Sam asked for 1.5x the tow speed here -- water gives no bumps to fight, so a slightly brisker glide reads right.")]
-    public float waterRetrieveSpeed = 3.3f;
+    [Tooltip("Metres per second an empty lure slides back through the WATER. " +
+             "Doubled 3.3 -> 6.6 on 2026-09-08 alongside the tow and the fight reel. " +
+             "(The original note here said this should be 1.5x the tow speed; it never " +
+             "was — both shipped at 3.3 — and the two reading the same is what actually " +
+             "feels right, because it is one reel handle either way.)")]
+    public float waterRetrieveSpeed = 6.6f;
     [Tooltip("How much the bite countdown speeds up while you are working the lure across the water. 1.2 = 20% better odds, because a moving lure interests fish.")]
     public float retrieveBiteBonus = 1.2f;
     [Tooltip("Bite-odds multiplier for the REST of this cast after a fish has been and gone. Real fishing: a spot that just produced a bite is still a good spot. Resets when you wind in and cast again, and STACKS with the retrieve bonus.")]
