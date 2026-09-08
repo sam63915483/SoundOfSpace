@@ -152,6 +152,16 @@ public class ShuttleFuelScreen : MonoBehaviour
         Vector2 rendered = _tmp.GetRenderedValues(false);
         if (rendered.x < 0.0001f || rendered.y < 0.0001f) rendered = new Vector2(1f, 1f);
 
+        // Shrink the rectangle onto the measured block. The text is LEFT-aligned
+        // (a readout, labels lined up), and TMP aligns to the RECTANGLE: inside
+        // the 1000-unit measuring box the block's left edge sat 500 units left of
+        // the panel centre — metres off the screen once scaled, i.e. a blank
+        // display (Sam, 2026-09-07). With the rect hugging the widest reading the
+        // block is centred on the panel and shorter readings still line up left.
+        // Wrapping is off, so the tight rect never re-flows anything.
+        _tmp.rectTransform.sizeDelta = rendered * 1.02f;
+        _tmp.ForceMeshUpdate();
+
         // One uniform factor that makes the measured text fill the face, then the
         // panel's own non-uniform scale divided back out so nothing is stretched.
         // A unit cube's face is 1x1 in its local space, so the face is just
