@@ -44,6 +44,12 @@ public class PhoneMarketsApp : PhoneAppBase
         bRT.offsetMax = new Vector2(-4f, -26f);
         _body.enableWordWrapping = true;
         _body.richText = true;
+        // The wants lists grew (2026-09-07: mains 6+9+5 lines, dwarfs 3+10+4).
+        // They fit at 9 pt on this pane, but let TMP step the type down rather
+        // than spill past the hint if a table is ever hand-widened further.
+        _body.enableAutoSizing = true;
+        _body.fontSizeMax = 9f;
+        _body.fontSizeMin = 6.5f;
 
         _hint = MakeText(DetailPane, "", 8f, LabelDim, TextAlignmentOptions.BottomLeft);
         var hRT = _hint.rectTransform;

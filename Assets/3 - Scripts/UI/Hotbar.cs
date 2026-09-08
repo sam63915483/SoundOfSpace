@@ -75,13 +75,23 @@ public class Hotbar : MonoBehaviour
     // TotalSlots is what the player SEES and can select: seven item slots plus
     // the money slot. Rendering, hotkeys, cycling and the drag/drop layer use
     // this bound.
-    const int NumSlots = 7;
-    /// The money slot. Holds ItemId.Money and nothing else, and no other slot
-    /// may hold money — see <see cref="SlotAccepts"/>. Its count IS the
-    /// player's balance; PlayerWallet is a thin view over it.
+    //
+    // 2026-09-07: NumSlots is now the FULL eight. Money stopped being pinned to
+    // slot 8 (SlotAccepts lets a stack sit anywhere, Money sums every stack), so
+    // the "item range stops at 7" rule protected nothing any more — money is
+    // matched by id, never by position, in every loop below — while every add
+    // path (catching a fish, un-staging at a vendor, AddResource spill) still
+    // stopped at index 6. Playtest: 7/8 full, catch an 8th fish → "inventory
+    // full" and the catch was lost, yet the locker could drag a fish into the
+    // empty 8th cell. Save/load had the same bound, so anything dragged into
+    // cell 8 vanished on reload. One bound for everything now.
+    const int NumSlots = 8;
+    /// The slot money PREFERS when it is free (a normal playthrough finds cash
+    /// where it has always been). Not reserved: any slot may hold a money stack
+    /// and this one may hold an item — see <see cref="SlotAccepts"/>.
     public const int MoneySlotIndex = 7;
-    /// Item slots + the money slot. Array length, UI cell count, select range.
-    public const int TotalSlots = NumSlots + 1;
+    /// Array length, UI cell count, select range. Same as NumSlots since 2026-09-07.
+    public const int TotalSlots = NumSlots;
     const float SlotSize = 64f;
     const float ActiveSize = 80f;       // size when slot is the equipped/cursor active slot
 
@@ -1064,14 +1074,17 @@ public class Hotbar : MonoBehaviour
 
     // ── Save / load access ───────────────────────────────────────────
     //
-    // Only the ITEM slots round-trip through the slot list. The balance keeps
-    // its own long-standing SaveData.money field, applied via PlayerWallet — so
-    // the save schema is untouched, old saves load with no migration, and the
-    // money slot can't end up described twice in one file.
+    // Only ITEMS round-trip through the slot list; a money stack is written as
+    // an empty cell. The balance keeps its own long-standing SaveData.money
+    // field, applied via PlayerWallet — so the save schema is untouched, old
+    // saves load with no migration, and money can't end up described twice in
+    // one file. All eight cells are written (2026-09-07) so an item in the 8th
+    // survives a reload; older 7-entry saves still load.
     public IReadOnlyList<Slot> GetSlotsForSave()
     {
         var list = new List<Slot>(NumSlots);
-        for (int i = 0; i < NumSlots; i++) list.Add(slots[i]);
+        for (int i = 0; i < NumSlots; i++)
+            list.Add(slots[i].id == ItemId.Money ? default : slots[i]);
         return list;
     }
 
@@ -1082,15 +1095,22 @@ public class Hotbar : MonoBehaviour
 
     public void ApplySlotsFromSave(List<HotbarSlotSave> saved)
     {
+        // SaveCollector applies SaveData.money (PlayerWallet.SetMoney, the
+        // singletons step) BEFORE this (the player step), so a money stack is
+        // already sitting in the array. Lift it out, lay the items down, put the
+        // money back wherever is free — its slot preference is the usual one.
+        int moneyNow = Money;
         // Clear current.
         for (int i = 0; i < NumSlots; i++) slots[i] = default;
-        if (saved == null) return;
+        _unplacedMoney = 0;
+        if (saved == null) { PlaceMoney(moneyNow); return; }
         int max = Mathf.Min(saved.Count, NumSlots);
         for (int i = 0; i < max; i++)
         {
             var entry = saved[i];
             if (entry == null) continue;
             if (!System.Enum.TryParse<ItemId>(entry.itemId, out var id)) continue;
+            if (id == ItemId.Money) continue;   // never from the list — SaveData.money owns the balance
             int count = Mathf.Clamp(entry.count, 0, StackMax(id));
             if (id == ItemId.None || count <= 0) { slots[i] = default; continue; }
 
@@ -1116,6 +1136,8 @@ public class Hotbar : MonoBehaviour
                 cassetteId = id == ItemId.Cassette ? entry.cassetteId : null,
             };
         }
+        // Money goes back last so it never blocks an item's saved cell.
+        PlaceMoney(moneyNow);
         // Notify subscribers (facades) so their OnChanged fires once each.
         OnResourceChanged?.Invoke(ItemId.Wood);
         OnResourceChanged?.Invoke(ItemId.Crystal);

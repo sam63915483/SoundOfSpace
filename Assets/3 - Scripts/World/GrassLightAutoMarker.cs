@@ -105,25 +105,53 @@ public class GrassLightAutoMarker : MonoBehaviour
 
         // ── the player's own lights (fill light, viewmodel light, …) ──
         var player = GameObject.FindWithTag("Player");
+        Transform playerT = player != null ? player.transform : null;
+        Light torchLight = null;
         if (player != null)
         {
             // The flashlight's Light is excluded by REFERENCE — its grass
             // response already ships through PlayerFlashlight's _Flashlight*
             // globals, and a marker on top would light the beam twice.
             var torch = player.GetComponentInChildren<PlayerFlashlight>(true);
-            Light torchLight = torch != null ? torch.flashlight : null;
-            MarkLightsUnder(player.transform, torchLight, PlayerLightGrassStrength);
+            torchLight = torch != null ? torch.flashlight : null;
+            MarkLightsUnder(player.transform, torchLight, null, PlayerLightGrassStrength);
+
+            // Self-heal (2026-09-07): if the torch ever picked up a marker —
+            // builds before this fix did, the first time you rode the shuttle —
+            // take it off. A marked torch lights the grass TWICE: the tuned
+            // cookie'd _Flashlight* path plus a flat-topped 120 m spot at
+            // 0.5 × _PointLightBoost 4.5, i.e. ~3× too bright under the beam
+            // with none of the ground-parity profile. That was "the grass
+            // blows out, but only 5-10 minutes into a session".
+            if (torchLight != null)
+            {
+                var stray = torchLight.GetComponent<GrassPointLight>();
+                if (stray != null) Destroy(stray);
+            }
         }
 
         // ── the home shuttle's lights ──
         // Found via the computer terminal: the one component that uniquely
         // lives on the Shuttle_Lander, so a bought second ship or a random
         // lit prop can never be mistaken for it. Lazy, throttled refind.
+        //
+        // The sweep root is the shuttle's OWN root (ShuttleFuel sits on the
+        // Shuttle_Lander prefab root), NOT transform.root: the shuttle parks
+        // parented under a planet, so transform.root was `--- Celestial ---`
+        // — every planet, village and prop light in the system got marked at
+        // the shuttle's 0.5, and during a flight the PLAYER is parented under
+        // the pilot seat, so the flashlight itself was swept up (the bug above).
+        // The player's subtree is skipped outright as a second guard.
         if (_terminal == null) _terminal = FindObjectOfType<ShuttleComputerTerminal>();
-        if (_terminal != null) MarkLightsUnder(_terminal.transform.root, null, GrassStrength);
+        if (_terminal != null)
+        {
+            var tank = _terminal.GetComponentInParent<ShuttleFuel>(true);
+            Transform shuttleRoot = tank != null ? tank.transform : _terminal.transform;
+            MarkLightsUnder(shuttleRoot, torchLight, playerT, GrassStrength);
+        }
     }
 
-    static void MarkLightsUnder(Transform root, Light exclude, float strength)
+    static void MarkLightsUnder(Transform root, Light exclude, Transform skipSubtree, float strength)
     {
         _scratch.Clear();
         root.GetComponentsInChildren(true, _scratch);
@@ -132,6 +160,7 @@ public class GrassLightAutoMarker : MonoBehaviour
             Light l = _scratch[i];
             if (l == null || l == exclude) continue;
             if (l.type == LightType.Directional) continue;
+            if (skipSubtree != null && l.transform.IsChildOf(skipSubtree)) continue;
             if (l.GetComponent<GrassPointLight>() != null) continue;
 
             var marker = l.gameObject.AddComponent<GrassPointLight>();

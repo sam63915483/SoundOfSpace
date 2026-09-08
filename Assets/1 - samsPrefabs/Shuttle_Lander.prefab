@@ -24270,7 +24270,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   fuelMax: 100
-  maxJumpKm: 15
+  maxJumpKm: 22.5
   launchLandCost: 5
   newGameFuel: 50
   introApproachBurn: 12

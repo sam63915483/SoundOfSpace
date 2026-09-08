@@ -1798,3 +1798,61 @@ hand-built torch/lantern/point-sun terms that assumed "grass gets no real lights
 lighting is invisible under the sun and glaring at night. Both pragmas added (grass draws
 once; sun + faked terms only), `_FlashlightResponse` 0.55 → 1.0, eye-light grass strength
 0.22. Lantern grassStrength values were tuned while double-lit; expect them dimmer on grass.
+
+## Addendum 2026-09-07 — Playtest fix batch (dwarf jump drift, grass blow-out, crystals, 8th slot, fuel, fish wants, reactor screen)
+
+Seven findings from Sam's first planet-economy playtest, all root-caused before the fix.
+Compile PASS 0 warnings; **playtest pending** (`docs/PLAYTEST_FIXES_2026-09-07.md`).
+
+**1. Jump on a dwarf → the planet moves under you.** The player felt every body's REAL
+gravity (`Universe.GravityAcceleration` summed per body), but the planets ride clockwork
+rails whose `railPeriod` is a day-length knob, not a Keplerian period — so the acceleration
+a rail forces on a planet is not the Sun's real pull at that radius. Grounded, the grip
+rewrites velocity to the ground's every tick and hides it; airborne, you fall under the Sun
+while the ground follows its rail. Humble Abode is 93% balanced (0.15 m/s² residual, 0.18 m
+per jump — never noticed); the dwarfs sit on tight inner rails with g 2–4, where the
+residual reaches 57% of g (Puddle) and a jump lands up to 14 m off. The twins' sideways
+"slide" (the old `skipTwinForce` hack) was the same bug. Fix, physics-side: `CelestialBody
+.frameAcceleration` = finite difference of the velocity the body was actually given this
+step (zero on teleport / pinned), committed in `ApplyPlacedState`, `UpdatePosition`,
+`ApplySavedState`; `PlayerController` now elects the anchor first, then applies **anchor
+gravity + anchor.frameAcceleration** and nothing else (static attractors still pull;
+`BlackHoleCapture`'s cancel formula still matches). Relative to the anchor that leaves
+exactly the anchor's own gravity. `gravityOfNearestBody` (the up vector) is unchanged.
+
+**2. Grass blows out under the torch after ~5–10 min.** `GrassLightAutoMarker` swept the
+shuttle's lights from `_terminal.transform.root` — but the shuttle parks parented under a
+planet, so that root was `--- Celestial ---` (every light in the system got a 0.5 marker),
+and during a flight the player is parented under the pilot seat, so the flashlight itself
+was marked. A marked torch lights grass twice: the tuned cookie'd `_Flashlight*` path plus a
+flat-topped 120 m spot at 0.5 × `_PointLightBoost` 4.5 (~3× under the beam, no falloff
+profile). Onset = first shuttle ride. Fix: sweep root = the `ShuttleFuel` object (prefab
+root), skip the player's subtree, and self-heal by destroying any marker found on the torch.
+
+**3. Fuel crystals light like a switch.** `crystal_17_2.mat` used `Mobile/Diffuse`
+(`noforwardadd`: no additive pass, spot lights only reach it as one per-object SH term).
+Switched to Standard; `_Color` 0.5 grey → white because Mobile/Diffuse ignored it.
+Cave crystals share the prefab, same fix.
+
+**4. "Inventory full" at 7/8.** `Hotbar.NumSlots` was still 7 (the old money-slot
+reservation) while `TotalSlots` was 8 and money had been freed to sit anywhere; every add
+path (`TryAddFish`, `TryAddFishToBag`, `AddResource` spill, vendor un-staging) stopped at
+index 6, and so did the save (an item dragged into cell 8 vanished on reload). `NumSlots`
+= 8 now; `GetSlotsForSave` writes money stacks as empty cells (SaveData.money stays the
+one authority), `ApplySlotsFromSave` lifts the already-placed money out, lays items, puts
+money back in the first free cell (slot 8 preferred).
+
+**5. Fuel drains 1.5× slower:** `ShuttleFuel.maxJumpKm` 15 → 22.5 on the Shuttle_Lander
+prefab (the live value) and the C# default. Per-km burn 6.33 → 4.22; flat launch/land 5
+unchanged. **Design consequence:** Cyclops is now reachable from more than HA/Pebble/Bruise
+— re-run `Tools ▸ Solar System ▸ Write Distance Table` (tool now reports at 22.5 km);
+`docs/DISTANCE_TABLE.md` is stale until then.
+
+**6. Fish wants widened** (`StreamingAssets/Economy/planet_economy.json`, generator caps
+to match): mains 5 delicacies + 9 imports (4 of 18 foreign species unlisted), dwarfs 4 + 10
+(7 of 21). Filled round-robin so every species has 5–7 buyers. Rule kept: every species has
+a delicacy buyer where it is not caught. Phone MARKETS body auto-sizes 9 → 6.5 pt if a
+table is ever widened further.
+
+**7. Reactor screen** reads `BATTERY 62%` / `RANGE 8.6 KM` / bar, left-aligned, three
+lines. Width-bound fit on the 2.4:1 panel ⇒ type slightly larger than before.

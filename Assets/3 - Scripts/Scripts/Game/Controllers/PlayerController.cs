@@ -1585,31 +1585,14 @@ public class PlayerController : GravityObject
 		{
 			CelestialBody[] bodies = NBodySimulation.Bodies;
 
-			// Frozen LAST-step anchor for the twin exception below. ⚠️ Never
-			// use the live `referenceBody` inside this loop for skip decisions:
-			// it is reassigned mid-election, and (playtest 12) whenever the
-			// scan visited Fiery before Icey from a neutral anchor, Fiery
-			// latched as nearest-so-far and its sibling Icey got skipped
-			// BEFORE it could be considered — permanently anchoring a player
-			// standing on Icey to Fiery (weak floaty gravity, feet slowly
-			// turning toward the wrong twin).
-			CelestialBody prevAnchor = referenceBody;
-
-			// Gravity
+			// 1. Elect the anchor: the body whose SURFACE is nearest. Every body is
+			//    always considered (never gate this on the previous anchor — see
+			//    playtest 12: a skip-before-consider latched Icey players to Fiery).
+			CelestialBody anchor = null;
+			Vector3 anchorGravity = Vector3.zero;
 			foreach (CelestialBody body in bodies)
 			{
-				// Co-orbital twin exception (2026-08-27): the pair sits ~1 km
-				// apart ALONG the shared orbit, so standing on one member the
-				// sibling pulls >1 m/s² sideways — on Icey Twin's steep ground
-				// that read as a constant slide against the orbit. Skip ONLY
-				// the FORCE, whenever the player is ANCHORED to the sibling's
-				// partner (not gated on grounded — Icey's jagged ground makes
-				// grounded flicker every micro-hop and the pull snuck back in,
-				// playtest 13's residual slide). The nearest-body election
-				// below always sees every body.
-				bool skipTwinForce = prevAnchor != null && body != prevAnchor
-					&& !string.IsNullOrEmpty(body.orbitGroup)
-					&& body.orbitGroup == prevAnchor.orbitGroup;
+				if (body == null) continue;
 				// Shell-theorem-aware: inverse-square outside the body, but
 				// falling linearly to ZERO at its centre once you're inside.
 				// The old inline 1/r² diverged as sqrDst -> 0, so walking down a
@@ -1617,18 +1600,53 @@ public class PlayerController : GravityObject
 				// is also what makes gravity fade as you descend into a cave.
 				// See Universe.GravityAcceleration.
 				Vector3 acceleration = Universe.GravityAcceleration(rb.position, body);
-				if (!skipTwinForce) rb.AddForce(acceleration, ForceMode.Acceleration);
-
 				float dstToSurface = (body.Position - rb.position).magnitude - body.radius;
-
-				// Find body with strongest gravitational pull
 				if (dstToSurface < nearestSurfaceDst)
 				{
 					nearestSurfaceDst = dstToSurface;
-					gravityOfNearestBody = acceleration;
-					referenceBody = body;
+					anchorGravity = acceleration;
+					anchor = body;
 				}
 			}
+
+			// 2. Gravity in the ANCHOR'S FRAME (2026-09-07, the dwarf-planet
+			//    "planet turns under me when I jump" fix).
+			//
+			//    The planets ride clockwork rails (NBodySimulation): their
+			//    railPeriod is a day-length design knob, NOT the Keplerian period
+			//    for their radius, so the acceleration a rail forces on a planet
+			//    is not the Sun's real gravity there. The old loop summed every
+			//    body's real gravity onto the player — fine while grounded (the
+			//    grip rewrites velocity to the ground's every tick) but the moment
+			//    you jump you fall under the Sun's pull while the ground under you
+			//    follows its rail. On Humble Abode the two nearly cancel (0.15 m/s²)
+			//    so nobody noticed; the dwarfs sit on tight inner rails with weak
+			//    gravity, where the mismatch is up to 57% of g and a jump lands
+			//    metres away. The twin sibling's ~1 m/s² sideways pull was the
+			//    same bug (the old skipTwinForce hack) — subsumed here.
+			//
+			//    Rule: the player feels the anchor body's gravity PLUS whatever
+			//    acceleration the anchor's frame actually underwent this step
+			//    (CelestialBody.frameAcceleration — rail, satellite lock, or
+			//    free n-body, it is measured from the velocity the body was
+			//    given). Relative to the anchor that leaves exactly the anchor's
+			//    own gravity, which is what "standing on a planet" means. Other
+			//    bodies' pulls are dropped: they act on the player but not on the
+			//    railed ground, so they could only ever be a relative drift.
+			//    Static attractors (the black hole) keep pulling — that pull IS
+			//    the gameplay, and BlackHoleCapture cancels it by the same
+			//    formula — but never twice when the attractor is the anchor.
+			if (anchor != null)
+			{
+				rb.AddForce(anchorGravity + anchor.frameAcceleration, ForceMode.Acceleration);
+				foreach (CelestialBody body in bodies)
+				{
+					if (body == null || body == anchor || !body.isStaticAttractor) continue;
+					rb.AddForce(Universe.GravityAcceleration(rb.position, body), ForceMode.Acceleration);
+				}
+			}
+			gravityOfNearestBody = anchorGravity;
+			referenceBody = anchor;
 			_lastGravityMag = gravityOfNearestBody.magnitude;
 		}
 

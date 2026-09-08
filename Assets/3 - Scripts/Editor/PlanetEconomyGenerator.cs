@@ -43,11 +43,15 @@ public static class PlanetEconomyGenerator
     const float MainRadius    = 150f;     // bodies at least this big are "mains"
     const float SameRailTol   = 60f;      // orbit radii closer than this share a rail (the twins)
     // 24 species each need ONE delicacy buyer somewhere they are not caught.
-    // 4 mains x 3 + 6 dwarfs x 2 = 24 slots exactly. The handoff said dwarfs 1,
-    // but that only covers 18 of the 24 species Sam chose; 2 is the smallest
-    // number that gives every fish a guaranteed route.
-    const int   DelicaciesMain = 3, DelicaciesDwarf = 2;
-    const int   ImportsMain    = 5, ImportsDwarf    = 3;
+    // The first draft used 4 mains x 3 + 6 dwarfs x 2 = 24 slots exactly (the
+    // handoff said dwarfs 1, which covers only 18 species). 2026-09-07, Sam's
+    // playtest: 7 fish flown to a neighbour and only 2 sold above base — the
+    // lists were too narrow to find a buyer. Widened so most foreign fish sell
+    // above base somewhere nearby: mains 5 + 9 (4 of 18 foreign species
+    // unlisted), dwarfs 4 + 10 (7 of 21). The live JSON was widened by hand to
+    // these same caps, round-robin so every species has a similar buyer count.
+    const int   DelicaciesMain = 5, DelicaciesDwarf = 4;
+    const int   ImportsMain    = 9, ImportsDwarf    = 10;
 
     class Planet
     {

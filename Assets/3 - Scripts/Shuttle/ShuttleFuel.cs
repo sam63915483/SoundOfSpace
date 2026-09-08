@@ -37,8 +37,10 @@ public class ShuttleFuel : MonoBehaviour, IReactorFuel
     [Header("Jump cost")]
     [Tooltip("The longest hop a FULL tank can pay for, in km. This is the headline number " +
              "of the whole travel design: everything further away has to wait for its orbit " +
-             "to swing closer. See docs/DISTANCE_TABLE.md for what this range actually reaches.")]
-    public float maxJumpKm = 15f;
+             "to swing closer. See docs/DISTANCE_TABLE.md for what this range actually reaches. " +
+             "2026-09-07: 15 -> 22.5 (Sam's playtest: fuel drained too fast; per-km burn is " +
+             "now 1.5x slower). The Shuttle_Lander prefab carries the live value — change it there too.")]
+    public float maxJumpKm = 22.5f;
 
     [Tooltip("Flat cost of getting off the ground and back down again, paid by every hop " +
              "no matter how short — including a same-planet relocation.")]

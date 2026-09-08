@@ -100,7 +100,7 @@ public class ShuttleFuelScreen : MonoBehaviour
         go.transform.SetParent(transform, false);
 
         _tmp = go.AddComponent<TextMeshPro>();
-        _tmp.alignment          = TextAlignmentOptions.Center;
+        _tmp.alignment          = TextAlignmentOptions.Left;
         _tmp.enableWordWrapping = false;
         _tmp.richText           = true;
         _tmp.enableAutoSizing   = false;          // we do the fitting ourselves
@@ -233,14 +233,20 @@ public class ShuttleFuelScreen : MonoBehaviour
     /// match the panel's own shape, so the same fit covers far more of the face
     /// AND draws the glyphs about half again as large.
     ///
-    /// The reading and the range share the top line because they are the two
-    /// numbers you glance at; the bar sits under them as the wordless version of
-    /// the same thing.</summary>
+    /// One fact per line: the reading, the range, then the bar as the wordless
+    /// version of the same thing.
+    /// 2026-09-07 (Sam): the numbers need their names — "BATTERY 20%" and
+    /// "RANGE 2.6 KM", not a bare "20%  2.6 KM". Three lines, one fact each,
+    /// left-aligned like a readout. On this 2.4:1 panel the fit is WIDTH-bound
+    /// either way, and "RANGE 88.8 KM" (13 chars) is narrower than the old
+    /// "100%   88.8 KM" top line, so the type comes out slightly LARGER than
+    /// before, not smaller. The bar drops to 60% so it reads as the wordless
+    /// echo of the two lines above it rather than a third headline.</summary>
     string Compose(int pct, string bar, float rangeKm)
     {
         string top = pct < 0 ? "--%" : pct + "%";
         string bot = rangeKm < 0f ? "NO TANK" : rangeKm.ToString("0.0") + " KM";
-        return $"<b>{top}</b>   <size=80%>{bot}</size>\n<size=70%>{bar}</size>";
+        return $"<b>BATTERY {top}</b>\n<b>RANGE {bot}</b>\n<size=60%>{bar}</size>";
     }
 
     string Bar(float pct)

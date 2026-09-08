@@ -1,6 +1,6 @@
 {
     "version": 1,
-    "note": "Drafted by Tools > Economy > Draft Planet Tables. Hand-tune freely; run Validate afterwards. Words on the boards come from the bucket a species lands in, never from these lists' order.",
+    "note": "Drafted by Tools > Economy > Draft Planet Tables, then WIDENED 2026-09-07 (Sam's playtest: 7 fish flown to a neighbour, only 2 sold above base) — mains want 5 delicacies + 9 imports, dwarfs 4 + 10, filled round-robin so every species has about the same number of buyers. Hand-tune freely; run Validate afterwards. Words on the boards come from the bucket a species lands in, never from these lists' order.",
     "multipliers": {
         "local": 1.0,
         "imported": 1.75,
@@ -8,7 +8,7 @@
         "unlisted": 0.5
     },
     "appetite": {
-        "stepPerSale": 0.15000000596046449,
+        "stepPerSale": 0.15000000596046448,
         "recoverPerDay": 1
     },
     "planets": [
@@ -27,12 +27,18 @@
                 "coelancer",
                 "murkfin",
                 "smelk",
-                "sturgle"
+                "sturgle",
+                "skrout",
+                "vorm",
+                "grubbler",
+                "glimtrout"
             ],
             "delicacies": [
                 "marlorb",
                 "snagg",
-                "tarpune"
+                "tarpune",
+                "tarnish",
+                "emberbass"
             ]
         },
         {
@@ -50,12 +56,18 @@
                 "coelancer",
                 "murkfin",
                 "bassk",
-                "nullpike"
+                "nullpike",
+                "wallop",
+                "knurl",
+                "emberbass",
+                "grubbler"
             ],
             "delicacies": [
                 "muskrellon",
                 "flubb",
-                "zibbet"
+                "zibbet",
+                "tarpune",
+                "vorm"
             ]
         },
         {
@@ -68,11 +80,20 @@
             "imports": [
                 "grubbler",
                 "emberbass",
-                "vorm"
+                "vorm",
+                "flubb",
+                "marlorb",
+                "bassk",
+                "nullpike",
+                "muskrellon",
+                "skrout",
+                "smelk"
             ],
             "delicacies": [
                 "glimtrout",
-                "purchlet"
+                "purchlet",
+                "tarpune",
+                "snagg"
             ]
         },
         {
@@ -85,11 +106,20 @@
             "imports": [
                 "perchik",
                 "murkfin",
-                "coelancer"
+                "coelancer",
+                "purchlet",
+                "snagg",
+                "zibbet",
+                "skrout",
+                "bassk",
+                "flubb",
+                "nullpike"
             ],
             "delicacies": [
                 "knurl",
-                "ossum"
+                "ossum",
+                "truttle",
+                "wallop"
             ]
         },
         {
@@ -102,11 +132,20 @@
             "imports": [
                 "ossum",
                 "murkfin",
-                "purchlet"
+                "purchlet",
+                "emberbass",
+                "truttle",
+                "vorm",
+                "smelk",
+                "coelancer",
+                "glimtrout",
+                "perchik"
             ],
             "delicacies": [
                 "grubbler",
-                "skrout"
+                "skrout",
+                "bassk",
+                "tarpune"
             ]
         },
         {
@@ -119,11 +158,20 @@
             "imports": [
                 "zibbet",
                 "knurl",
-                "wallop"
+                "wallop",
+                "glimtrout",
+                "muskrellon",
+                "truttle",
+                "snagg",
+                "emberbass",
+                "marlorb",
+                "tarpune"
             ],
             "delicacies": [
                 "tarnish",
-                "sturgle"
+                "sturgle",
+                "nullpike",
+                "bassk"
             ]
         },
         {
@@ -136,11 +184,20 @@
             "imports": [
                 "purchlet",
                 "ossum",
-                "flubb"
+                "flubb",
+                "grubbler",
+                "tarnish",
+                "marlorb",
+                "sturgle",
+                "knurl",
+                "vorm",
+                "snagg"
             ],
             "delicacies": [
                 "smelk",
-                "coelancer"
+                "coelancer",
+                "skrout",
+                "zibbet"
             ]
         },
         {
@@ -153,11 +210,20 @@
             "imports": [
                 "truttle",
                 "glimtrout",
-                "muskrellon"
+                "muskrellon",
+                "ossum",
+                "purchlet",
+                "knurl",
+                "tarnish",
+                "wallop",
+                "zibbet",
+                "murkfin"
             ],
             "delicacies": [
                 "perchik",
-                "nullpike"
+                "nullpike",
+                "smelk",
+                "sturgle"
             ]
         },
         {
@@ -175,12 +241,18 @@
                 "grubbler",
                 "flubb",
                 "glimtrout",
-                "muskrellon"
+                "muskrellon",
+                "smelk",
+                "ossum",
+                "wallop",
+                "tarpune"
             ],
             "delicacies": [
                 "vorm",
                 "murkfin",
-                "bassk"
+                "bassk",
+                "sturgle",
+                "nullpike"
             ]
         },
         {
@@ -198,12 +270,18 @@
                 "skrout",
                 "knurl",
                 "snagg",
-                "marlorb"
+                "marlorb",
+                "muskrellon",
+                "flubb",
+                "perchik",
+                "murkfin"
             ],
             "delicacies": [
                 "emberbass",
                 "wallop",
-                "truttle"
+                "truttle",
+                "tarnish",
+                "zibbet"
             ]
         }
     ]

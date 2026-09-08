@@ -112,6 +112,26 @@ public class CelestialBody : GravityObject {
     public float mass { get; private set; }
     Rigidbody rb;
 
+    // World-space acceleration this body's FRAME underwent on the current physics
+    // step (m/s²) — the finite difference of the velocity it was actually given.
+    // For a railed planet that is the rail's centripetal pull, which is NOT the
+    // Sun's real gravity at that radius (railPeriod is a day-length knob, not a
+    // Keplerian period). Anything standing on the body has to share this
+    // acceleration or it drifts relative to the ground the moment it leaves it —
+    // the dwarf-planet "planet turns under me when I jump" bug (2026-09-07).
+    // PlayerController adds it to the anchor body's gravity. Zero for pinned /
+    // static bodies and on the step of a teleport (no valid previous sample).
+    public Vector3 frameAcceleration { get; private set; }
+    Vector3 _prevStepVelocity;
+    bool _frameAccelInit;
+
+    void CommitStepVelocity (bool teleported) {
+        if (teleported || !_frameAccelInit) frameAcceleration = Vector3.zero;
+        else frameAcceleration = (velocity - _prevStepVelocity) / Universe.physicsTimeStep;
+        _prevStepVelocity = velocity;
+        _frameAccelInit = true;
+    }
+
     void Awake () {
 
         rb = GetComponent<Rigidbody> ();
@@ -136,6 +156,7 @@ public class CelestialBody : GravityObject {
     }
 
     public void UpdatePosition (float timeStep) {
+        CommitStepVelocity (false);
         rb.MovePosition (rb.position + velocity * timeStep);
 
     }
@@ -177,6 +198,7 @@ public class CelestialBody : GravityObject {
         transform.position = worldPos;
         transform.rotation = worldRot;
         velocity = worldVel;
+        CommitStepVelocity (true);
     }
 
     // Per-step placement for co-orbit/satellite FOLLOWERS (2026-08-27, Sam's
@@ -196,6 +218,7 @@ public class CelestialBody : GravityObject {
             rb.position = worldPos;
             transform.position = worldPos;
             velocity = worldVel;
+            CommitStepVelocity (true);
         } else {
             // velocity = the ACTUAL sweep this step will perform, not the
             // leader-derived estimate (2026-08-27, playtest 14): the estimate
@@ -204,6 +227,7 @@ public class CelestialBody : GravityObject {
             // ground — the player's grounded grip above all — inherited that
             // bias as a permanent visible slide on Icey Twin.
             velocity = (worldPos - rb.position) / Universe.physicsTimeStep;
+            CommitStepVelocity (false);
             rb.MovePosition (worldPos);
         }
     }

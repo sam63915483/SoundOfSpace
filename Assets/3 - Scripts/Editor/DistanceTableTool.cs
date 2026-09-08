@@ -35,8 +35,10 @@ public static class DistanceTableTool
 {
     const string OutPath = "docs/DISTANCE_TABLE.md";
 
-    /// <summary>Jump ranges to report on. The middle one is the design target.</summary>
-    static readonly float[] Ranges = { 5000f, 8000f, 15000f };
+    /// <summary>Jump ranges to report on. The last one is the design target — keep it equal to
+    /// ShuttleFuel.maxJumpKm on the Shuttle_Lander prefab (15 km until 2026-09-07, 22.5 km since).</summary>
+    static readonly float[] Ranges = { 5000f, 15000f, 22500f };
+    const float DesignRange = 22500f;
 
     class Rail
     {
@@ -244,7 +246,7 @@ public static class DistanceTableTool
     {
         sb.AppendLine("## Where you can get to, from each planet");
         sb.AppendLine();
-        sb.AppendLine("At the design range of 15 km. **always** = the hop is open whenever you want it;");
+        sb.AppendLine($"At the design range of {DesignRange / 1000f:0.#} km. **always** = the hop is open whenever you want it;");
         sb.AppendLine("a percentage = you have to wait for the window.");
         sb.AppendLine();
         foreach (var a in rails)
@@ -255,7 +257,7 @@ public static class DistanceTableTool
             foreach (var b in rails)
             {
                 if (b == a) continue;
-                double frac = InRangeFraction(a, b, 15000f);
+                double frac = InRangeFraction(a, b, DesignRange);
                 if (frac >= 1.0)    always.Add(b.name);
                 else if (frac <= 0) never.Add(b.name);
                 else                some.Add($"{b.name} ({frac * 100.0:F0}%)");
@@ -275,7 +277,7 @@ public static class DistanceTableTool
         sb.AppendLine("Every planet needs at least one neighbour it can actually reach, or landing there");
         sb.AppendLine("is a one-way trip. Worst neighbour = the closest planet it can ever get to.");
         sb.AppendLine();
-        sb.AppendLine("| Planet | Nearest reachable | Its closest approach | Reachable at 15 km? |");
+        sb.AppendLine($"| Planet | Nearest reachable | Its closest approach | Reachable at {DesignRange / 1000f:0.#} km? |");
         sb.AppendLine("|---|---|---:|---|");
         foreach (var a in rails)
         {
@@ -290,7 +292,7 @@ public static class DistanceTableTool
             foreach (var b in rails)
             {
                 if (b == a) continue;
-                double frac = InRangeFraction(a, b, 15000f);
+                double frac = InRangeFraction(a, b, DesignRange);
                 if (frac > 0.0) reach++;
             }
             sb.AppendLine($"| {a.name} | {best} | {bestMin:N0} | {(reach > 0 ? $"yes — {reach} planet(s)" : "**NO — DEAD END**")} |");
