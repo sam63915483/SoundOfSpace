@@ -243,8 +243,14 @@ public class FishFightSim
                 {
                     IsRunning = true;
                     _runElapsed = 0f;
+                    // A tiring fish still runs — it just cannot keep it up for as
+                    // long. Stamina used to be a cliff (full-length runs, then
+                    // none at all and a free haul home); this is the taper that
+                    // makes the end of a fight feel earned instead of switched off.
                     _runRemaining = RandRange(FishingRules.RunDurationMin,
-                                              FishingRules.RunDurationMax);
+                                              FishingRules.RunDurationMax)
+                                  * (FishingRules.RunTiredDurationFloor
+                                     + (1f - FishingRules.RunTiredDurationFloor) * Vigour);
                 }
             }
         }

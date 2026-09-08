@@ -136,6 +136,7 @@ public static class FishingTests
         };
 
         int perfectLandFails = 0, holdFailsCommon = 0, timeouts = 0, runOutBreaches = 0;
+        int commonHoldTotal = 0;
 
         for (int si = 0; si < FishingRules.Species.Length; si++)
         {
@@ -156,7 +157,11 @@ public static class FishingTests
 
                 float t2, mo2;
                 var greedy = RunBot(sp.tier, stamina, resist, seed, true, out t2, out mo2);
-                if (sp.tier == FishTier.Common && greedy != FightOutcome.Landed) holdFailsCommon++;
+                if (sp.tier == FishTier.Common)
+                {
+                    commonHoldTotal++;
+                    if (greedy != FightOutcome.Landed) holdFailsCommon++;
+                }
             }
         }
 
@@ -248,8 +253,13 @@ public static class FishingTests
             Console.WriteLine("    a RARE fight lasts " + (tapLen / tapN).ToString("F1")
                               + "s on a tap and " + (fullLen / fullN).ToString("F1")
                               + "s on a full charge");
-            Check(fullLen / fullN > (tapLen / tapN) * 1.5f,
-                  "charging the cast buys a meaningfully longer fight");
+            // Loosened 1.5x -> 1.2x on 2026-09-08. Fight length is now driven far
+            // more by the fish's stamina than by how far away it started, which is
+            // the whole point of that pass — so the cast buys proportionally less
+            // of the fight than it used to. It still buys BETTER FISH, which is
+            // the bigger reward and is checked in [TEST] 6.
+            Check(fullLen / fullN > (tapLen / tapN) * 1.2f,
+                  "charging the cast still buys a longer fight");
         }
 
         Check(timeouts == 0, "no fight ran past the 10 minute guard");
@@ -269,8 +279,16 @@ public static class FishingTests
         // Difficulty scales with reward automatically, with no difficulty
         // setting anywhere. So the contract is no longer "holding always fails";
         // it is "holding fails where the VALUABLE fish are".
-        Check(holdFailsCommon == 0,
-              "hold-forever still lands every common (the beginner's fish)");
+        // CHANGED 2026-09-08 on Sam's instruction: commons "still need to fight so
+        // that they arent just free to just hold down the reel and always land
+        // them". This used to demand that holding landed EVERY common. It must
+        // still land SOME — a new player who has not learned to let go should not
+        // be hard-walled out of the beginner's fish — but it can no longer be a
+        // free pass.
+        float commonHoldRate = 1f - holdFailsCommon / (float)commonHoldTotal;
+        Check(commonHoldRate > 0.15f && commonHoldRate < 0.75f,
+              "just holding the reel lands SOME commons but not all ("
+              + (commonHoldRate * 100f).ToString("F0") + "%)");
         Check(runOutBreaches == 0,
               "a run never drags the fish past the run-out cap (" + runOutBreaches + " breaches)");
 

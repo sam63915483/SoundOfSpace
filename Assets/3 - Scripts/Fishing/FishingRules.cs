@@ -209,17 +209,27 @@ public static class FishingRules
         // the fight NEVER ENDS. Average push loss is about 1.2 m/s on a rare, and
         // you can only hold the reel for maybe 60% of a fight, so anything past
         // about 0.84 is a stalemate. 0.78 leaves real margin.
-        // Raised again 2026-09-08 (0.50/0.66/0.74/0.82 -> 0.66/0.80/0.88/0.90).
-        // Sam: "its actually too easy to reel a fish in ... this is mostly
-        // because we increased reel in speed" — exactly right. At 13 m/s the reel
-        // crosses a whole typical cast in under a second, so a fight only exists
-        // at all if the fish holds against it. The stalemate ceiling still
-        // applies (see below); 0.88 leaves the reel gaining about 1.6 m/s on a
-        // heavy rare against the ~1.2 m/s its runs take back.
-        float max = s.bounty ? 0.90f
-                  : s.tier == FishTier.Rare ? 0.88f
-                  : s.tier == FishTier.Uncommon ? 0.80f
-                  : 0.66f;
+        // 0.50/0.66/0.74/0.82 -> 0.66/0.80/0.88/0.90 -> 0.70/0.85/0.93/0.95.
+        //
+        // At 13 m/s the reel crosses a whole typical cast in under a second, so a
+        // fight only exists at all if the fish holds against it. These numbers are
+        // what produce the exchange Sam asked for — measured per reel-window
+        // against per run, on a heavy fish:
+        //
+        //   Rare      a run takes 7.7 m, a reel window gains 3.9 m  -> it WINS
+        //   Uncommon  a run takes 5.4 m, a reel window gains 7.2 m  -> it dents
+        //   Common    a run takes 4.5 m, a reel window gains 15.8 m -> never
+        //
+        // "a rare will gain back much more ground than you reeled it in,
+        //  uncommons will do the same but gain back less, commons will never".
+        //
+        // The old stalemate worry (past ~0.90 the reel gains less than the runs
+        // take, and the fight never ends) is gone: RunTiredDurationFloor makes
+        // the runs fade toward nothing, so the reel always wins eventually.
+        float max = s.bounty ? 0.95f
+                  : s.tier == FishTier.Rare ? 0.93f
+                  : s.tier == FishTier.Uncommon ? 0.85f
+                  : 0.70f;
         // The light-fish floor, 0.45 -> 0.58 -> 0.80. Resist is now the main
         // thing standing between the reel and the fish, so a light fish resisting
         // half of what a heavy one does was a light fish that barely fought at
@@ -249,7 +259,7 @@ public static class FishingRules
         {
             case FishTier.Rare:     return 5.5f;
             case FishTier.Uncommon: return 3.9f;
-            default:                return 2.6f;
+            default:                return 3.2f;
         }
     }
 
@@ -412,13 +422,18 @@ public static class FishingRules
             // reel alone, which is the exact opposite of what asking for a
             // faster reel is meant to achieve. Cutting it back puts the fight
             // length where it was and leaves the extra violence in place.
-            case FishTier.Rare:     min = 5.4f; max = 8.4f; break;
-            case FishTier.Uncommon: min = 2.8f; max = 4.2f; break;
-            // Commons push now, and stamina is what a push is spent from — so
-            // they need enough for two or three shoves before they give up. This
-            // is the dial that keeps them EASY rather than empty: raise it and a
-            // common starts feeling like an uncommon.
-            default:                min = 2.2f; max = 3.2f; break;
+            // Roughly tripled on 2026-09-08. Stamina is spent both by running
+            // AND by being reeled against, so at the old numbers a rare had about
+            // two runs in it and a common had one — "they tire out too fast, and
+            // then you can just reel them in without them fighting back". A rare
+            // now has eight runs in it, an uncommon three, a common two.
+            //
+            // This is the dial for HOW LONG a fight is. Paired with
+            // RunTiredDurationFloor it is also the shape of it: the first half is
+            // a standoff and the second half is the fish handing itself over.
+            case FishTier.Rare:     min = 15f;  max = 23.5f; break;
+            case FishTier.Uncommon: min = 7.8f; max = 11.8f; break;
+            default:                min = 5f;   max = 7f;    break;
         }
     }
 
@@ -448,9 +463,9 @@ public static class FishingRules
     {
         switch (tier)
         {
-            case FishTier.Rare:     min = 1.8f; max = 3.0f; break;
-            case FishTier.Uncommon: min = 2.3f; max = 3.9f; break;
-            default:                min = 3.0f; max = 5.1f; break;
+            case FishTier.Rare:     min = 1.25f; max = 2.1f; break;
+            case FishTier.Uncommon: min = 1.6f;  max = 2.7f; break;
+            default:                min = 1.5f;  max = 2.6f; break;
         }
     }
 
@@ -493,6 +508,28 @@ public static class FishingRules
     /// all of it, every time.
     /// </summary>
     public const float RunRampSeconds = 0.2f;
+
+    /// <summary>
+    /// How long a run lasts when the fish is exhausted, as a fraction of a fresh
+    /// one. THE ENDGAME OF EVERY FIGHT.
+    ///
+    /// Sam, 2026-09-08: "instead of the fishes losing their energy after 1-3 runs
+    /// and just not fighting and getting reeled in it should be a slower fight for
+    /// gaining ground, then the longer the fight the less long they will run for
+    /// when they run making it easier to get them reeled in."
+    ///
+    /// Before this, stamina was a CLIFF: full-length runs right up to the moment
+    /// it hit zero, then no runs at all and a free haul to the bank. Now the runs
+    /// taper — a fresh rare bolts for two seconds, a beaten one manages a third of
+    /// that — so the fight hands itself over instead of switching off.
+    ///
+    /// It also quietly removed the stalemate ceiling that used to cap
+    /// <see cref="ResistFor"/> near 0.90: the fish's runs are guaranteed to fade
+    /// toward nothing, so the reel always wins in the end however hard it holds.
+    /// That is what let resist go to 0.93 on a rare, which is where the long
+    /// mid-fight standoff comes from.
+    /// </summary>
+    public const float RunTiredDurationFloor = 0.15f;
 
     /// <summary>How far into its wind-up a push is, 0-1, after
     /// <paramref name="secondsIntoRun"/>. Smoothstepped so it eases in rather

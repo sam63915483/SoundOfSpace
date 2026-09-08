@@ -364,3 +364,75 @@ So the fight punishes ignoring runs hard, and punishes greed only mildly.
 If you want it to bite harder, the knob is `SteadyTensionScale` (0.38) — raising it
 shortens your reeling windows so the bar becomes constant pressure rather than just
 a run penalty. Tell me which way it feels after a session.
+
+---
+
+# Fifth pass — the fish stops tiring after two runs
+
+> "i still feel like all fish tire out too fast, and then you can just reel them in
+> without them fighting back ... instead of the fishes losing their energy after
+> 1-3 runs ... it should be a slower fight for gaining ground, then the longer the
+> fight the less long they will run for when they run making it easier to get them
+> reeled in."
+
+You were being generous. The model says a common and an uncommon got **one run
+each** and a rare got **two**. So a fight was one exchange, then a haul.
+
+Two changes.
+
+**1. Stamina roughly tripled.** It is spent both by running *and* by being reeled
+against, so the old numbers ran out almost immediately.
+
+**2. Runs now TAPER instead of stopping dead.** Stamina used to be a cliff —
+full-length runs right up to zero, then no runs at all and a free pull to the bank.
+A tiring fish now still runs, just not for as long: a fresh rare bolts for two
+seconds, a beaten one manages a third of that. That is your "the longer the fight
+the less long they will run for", and it makes the end of a fight feel earned
+rather than switched off.
+
+| | fight | runs | ground the fish took back (8 m cast) |
+|---|---|---|---|
+| Common | 3.5s → **4.6s** | 1 → **2** | 3.7 → **5.0 m** |
+| Uncommon | 4.5s → **9.1s** | 1 → **3** | 5.3 → **10.3 m** |
+| Rare | 8.7s → **21.0s** | 2 → **8** | 11.6 → **23.0 m** |
+
+A rare now takes back **about three times the length of your cast** over a fight.
+
+### The exchange, per tier
+
+This is the bit you specified precisely, so here it is measured — what one run
+takes versus what one reeling window gains, on a heavy fish:
+
+| | a run takes | your reel window gains | |
+|---|---|---|---|
+| **Rare** | 7.7 m | 3.9 m | **the fish wins the exchange** |
+| **Uncommon** | 5.4 m | 7.2 m | it takes a real bite out of it |
+| **Common** | 4.5 m | 15.8 m | **never out-gains you** |
+
+### Commons are no longer free
+
+You said commons "still need to fight so that they arent just free to just hold
+down the reel and always land them." **Just holding the reel now lands about a
+third of commons** instead of all of them — enough that a brand-new player still
+catches something, not enough to be a strategy. Holding loses **every** uncommon
+and rare.
+
+I changed a locked test contract to do this — it used to *require* that holding
+landed every common. Flagging it because it was there on purpose (so a beginner
+isn't walled out of the starter fish) and you've now overridden it.
+
+- [ ] **Does a rare feel like a battle?** 21 seconds, eight runs, and it drags you
+      backwards further than you ever reel it forwards until it starts to tire.
+- [ ] **Does the ending feel right?** The runs should visibly get shorter as it
+      wears out, so you can feel yourself winning before you actually win.
+- [ ] Do commons still feel quick and easy while not being automatic?
+- [ ] **Is 21s too long for a rare?** The biggest one in the sim took 36s. Tell me
+      if that tips into tedious — the dial is stamina, and it's a one-line change.
+
+### One knock-on
+
+Fight length is now driven far more by the fish's stamina than by how far away it
+started, so **charging the cast buys proportionally less fight than it did** (a
+rare: 14.4s on a tap, 23.2s on a full charge). Charging still buys **better fish**,
+which is the bigger reward. Say the word if you'd rather distance mattered more
+again.

@@ -2336,3 +2336,76 @@ before it was trusted. Hand-iterating one C# edit at a time had already cost sev
 rounds of overshoot in both directions.
 
 Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
+
+---
+
+## Addendum 2026-09-08f - stamina was a cliff; now it is a taper
+
+Sam's fourth playtest note: *"i still feel like all fish tire out too fast, and
+then you can just reel them in without them fighting back ... instead of the fishes
+losing their energy after 1-3 runs ... the longer the fight the less long they will
+run for when they run."*
+
+The model was blunter than he was: **a common and an uncommon got ONE run each, a
+rare got TWO.** A fight was one exchange followed by a haul.
+
+### 1. `RunTiredDurationFloor` (new, 0.15) - the endgame of every fight
+
+Stamina was a **cliff**: full-length runs right up to the moment it hit zero, then
+`IsSpent` and no runs at all. Run length now scales with `Vigour` —
+`RandRange(min,max) * (floor + (1-floor)*Vigour)` — so a fresh rare bolts for two
+seconds and a beaten one manages a third of that. The fight hands itself over
+instead of switching off.
+
+**It also removed the stalemate ceiling.** The previous addendum warned that resist
+past ~0.90 meant the reel gained less than the runs took and the fight would never
+end. With the taper the runs are guaranteed to fade toward nothing, so the reel
+always wins eventually — which is what allowed rare resist to go to **0.93**, and
+that is where the long mid-fight standoff comes from.
+
+### 2. Stamina roughly tripled
+
+Common 2.2-3.2 -> **5-7**, uncommon 2.8-4.2 -> **7.8-11.8**, rare 5.4-8.4 ->
+**15-23.5**. Stamina is spent by running AND by being reeled against, so the old
+values were gone in seconds. Intervals also tightened (rare 1.25-2.1s) and common
+run speed 2.6 -> 3.2.
+
+`ResistFor` maxes 0.66/0.80/0.88/0.90 -> **0.70/0.85/0.93/0.95**.
+
+### The exchange, per tier - Sam specified this precisely
+
+Measured on a heavy fish: what one run takes vs what one reeling window gains.
+
+| | run takes | window gains | |
+|---|---|---|---|
+| Rare | 7.7 m | 3.9 m | **the fish wins the exchange** |
+| Uncommon | 5.4 m | 7.2 m | takes a real bite out of it |
+| Common | 4.5 m | 15.8 m | **never out-gains** |
+
+Which is exactly *"a rare will gain back much more ground than you reeled it in,
+uncommons will do the same but gain back less, commons will never be able to do
+that"*.
+
+| | fight | runs | ground taken back (8 m cast) |
+|---|---|---|---|
+| Common | 3.5 -> **4.6s** | 1 -> **2** | 3.7 -> **5.0 m** |
+| Uncommon | 4.5 -> **9.1s** | 1 -> **3** | 5.3 -> **10.3 m** |
+| Rare | 8.7 -> **21.0s** (max 36s) | 2 -> **8** | 11.6 -> **23.0 m** |
+
+Careful play still lands everything; greedy (85%, 0.28s) lands 70% of rares.
+
+### 3. A Sam-locked contract was deliberately overridden
+
+`[TEST] 1` required that hold-forever **lands every common** ("the beginner's
+fish"). Sam: commons "still need to fight so that they arent just free to just hold
+down the reel and always land them." It now checks that holding lands **some but
+not all** commons (15-75%; measured ~33%), so a new player is not hard-walled out
+of the starter fish but holding is no longer a strategy. Holding still loses every
+uncommon and rare.
+
+Also loosened: "charging the cast buys a meaningfully longer fight" 1.5x -> 1.2x.
+Fight length is now driven far more by stamina than by starting distance (rare:
+14.4s on a tap, 23.2s on a full charge). Charging still buys better FISH, checked
+separately in `[TEST] 6`.
+
+Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
