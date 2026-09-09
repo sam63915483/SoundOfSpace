@@ -149,3 +149,85 @@ per frame.
 | `Assets/Resources/AmbientFish.mat` | new — instancing-enabled Standard base |
 | `Assets/3 - Scripts/Fishing/Bobber.cs` | +2 lines: `Disturb` at splash and at approach start |
 | `Assets/3 - Scripts/UI/MainMenuController.cs` | +1 line: trap-#1 seeding |
+
+---
+
+# Pass 2 — motion rewrite (2026-09-09, after Sam's first playtest)
+
+Sam: *"sometimes the fish make jerky movements... when they tilt up and down to
+swim down the side of a bank"* and *"I can see fish swimming into the bank and
+going right through it in some areas."* Both were structural, not tuning.
+
+The motion model is pure maths, so it was ported to Python and **measured**
+rather than eyeballed (the same trick `FishingRules` uses via
+`verify-fishing.py`; the fishing notes record that hand-iterating this kind of
+multi-knob feel overshot twice).
+
+## Measured, before -> after
+
+| | pass 1 | pass 2 |
+|---|---|---|
+| Penetration into a bank (15-60 deg) | up to **2.19 m** | **0.00 m** |
+| Penetration into a boulder the grid cannot see | **0.99 m** | **0.00 m** |
+| Worst pitch change, one frame | **27.4 deg** | **0.0 deg** |
+| Sea-bed jump per cm travelled | **83.8 cm** | **0.22 cm** |
+| Sea-bed raycasts | 4/frame cap | unchanged, **+~2/frame** whisker |
+
+## Root causes
+
+**Jerk - three stacked causes.**
+
+1. Depth used `MoveTowards`: a bang-bang controller whose vertical speed is
+   either 0 or the full climb rate. It stepped 0 -> 0.7 m/s in one frame, so the
+   pitch snapped `atan(0.7/1.35)` = **27.4 deg** in that frame. On rolling ground
+   the 99th-percentile change was 0.0 deg - flat, then a snap. Exactly what Sam saw.
+2. The sea bed was a **step function**. `BedAt` read one patch raw. This spec's
+   pass-1 text said the bed would be "blended between neighbouring patches" and
+   the code never did it.
+3. The facing came from the **raw one-frame delta**. `Bobber.PoseFishLocal`
+   low-passes its velocity before facing with it and says why - that line was
+   not copied.
+
+**Through the bank.** The look-ahead asked *"is there water here at all"*
+(a global 1.2 m minimum) instead of *"is there water here for me, at my depth"*.
+A fish 5 m down read a bank with 2 m of water over it as clear and swam in; the
+depth clamp could then only lift it at 0.7 m/s against ground rising faster.
+
+## Fixes
+
+- **Cube-face patch grid + bilinear interpolation.** Pass 1 quantised in raw 3D,
+  where the four patches around a point are not neighbours. Cube-face keying
+  makes them neighbours, probes land on patch **centres**, and the bed becomes
+  continuous. Round-trip, continuity and key-collision all verified separately.
+- **Depth constraint = shallowest bed along the path AHEAD**, not underneath, so
+  a fish starts rising before the ground arrives and follows the bottom up.
+- **`Mathf.SmoothDamp` on the radius** - continuous vertical velocity.
+- **Low-passed velocity for the facing** (Bobber's line, `facingSmoothing`).
+- **Proportional steering**, ramped between `turnStartWater` and `minSwimWater`,
+  turning toward the **deeper side**, so fish follow the run of the shore.
+- **Speed eases** while turning or climbing.
+- **Land contributes the waterline** to the interpolated bed, so the shore is a
+  smooth ramp in the constraint rather than a cliff.
+
+## The whisker - Sam's "roomba" question, answered
+
+Sam asked whether the fish could just carry a sphere collider. The height field
+**structurally cannot** see a boulder, a spire between probe points, or a prop
+off the terrain layer - measured, a fish swam 0.99 m into one. So each fish casts
+one short ray along its heading, round-robin: **~2 rays/frame for the whole
+pool**, against 2,400/s for a ray per fish per frame, with no rigidbodies or
+contacts. Predictive, not reactive, so there is never a "fish shoving against a
+rock" look.
+
+**It steers only and must never touch the depth target.** Feeding sparse ray data
+into the continuous depth constraint spiked the pitch to **71-84 deg/frame** -
+worse than the bug being fixed. A fish goes *around* a rock, which is both smooth
+and what a fish does.
+
+## Bug caught in review, not by the harness
+
+`Mathf.Clamp` does **not** sort its bounds - given `min > max` it returns the min.
+Since land contributes the waterline to the bed, the floor could exceed the
+ceiling near a beach and the clamp would hand back a radius **above the water**,
+lifting a fish out of the sea for the frames before it turned away. The floor is
+now capped to the ceiling first.

@@ -22,19 +22,52 @@ using UnityEngine.SceneManagement;
 /// positions are converted to world only when the draw matrix is built, which
 /// also means EndlessManager origin rebases need no handling at all.
 ///
-/// <b>The swim look is the bite animation's.</b> Same mouth-anchored body yaw
-/// (these models have no bones, so the whole body sweeps about the nose), same
-/// speed-driven tail beat, same 45-degree pitch clamp. <c>Bobber</c> itself is
-/// not modified beyond two one-line <see cref="Disturb"/> calls.
-///
 /// <b>Species are the planet's own.</b> <c>PlanetEconomy.CatchableIndices</c> is
 /// the same list the bite roll uses, and tier odds come from the same
 /// <c>FishingRules.RollTier</c>, so rares are as rare to see as they are to
 /// catch and the water can never drift out of sync with what bites in it.
 ///
-/// <b>Water is found by a cached sea-bed probe.</b> See <see cref="BedAt"/> —
-/// one raycast per patch of sea floor, remembered forever, which is what keeps
-/// fish out of the terrain without costing a raycast per fish per frame.
+/// ── THE MOTION MODEL (rewritten 2026-09-09 pass 2) ────────────────────────
+/// Sam's first playtest found two faults, and both were structural rather than
+/// tuning. The rewrite is verified headlessly, not by eye: the model is pure
+/// maths, so it was ported to Python and measured against synthetic banks and a
+/// rolling sea bed the way FishingRules is swept by verify-fishing.py.
+///
+///   • <b>Jerky pitch.</b> Depth used <c>MoveTowards</c>, a bang-bang
+///     controller: vertical speed was either 0 or the full climb rate, so it
+///     stepped 0 → 0.7 m/s in ONE FRAME and the rendered pitch snapped
+///     <b>27.4 degrees</b> in that frame (exactly atan(0.7 / 1.35)). On rolling
+///     ground the 99th-percentile change was 0.0 deg — dead flat, then a snap,
+///     which is precisely "sometimes the fish make jerky movements". Two more
+///     causes stacked on it: the sea-bed value was a STEP function (a raw
+///     per-patch lookup — the design said it would be interpolated and it was
+///     not), and the facing was taken from the raw one-frame delta. Bobber
+///     low-passes its velocity before facing with it and says why; that line
+///     was not copied. Now: interpolated bed, a critically damped spring on the
+///     radius, and the low-pass. Worst case <b>0.0 deg</b> per frame.
+///
+///   • <b>Swimming through banks.</b> The look-ahead asked "is there water
+///     here at all" (a global 1.2 m minimum) instead of "is there water here
+///     FOR ME, at my depth". A fish 5 m down read a bank with 2 m of water over
+///     it as clear and swam straight in, and the depth clamp could only lift it
+///     at 0.7 m/s against ground rising faster than that. Measured penetration
+///     was up to <b>2.19 m</b>. Now the depth constraint is the SHALLOWEST BED
+///     ALONG THE PATH AHEAD, so a fish starts rising before the ground arrives
+///     and follows the bottom up — which is also what a fish looks like. Zero
+///     penetration at every slope tested, to 60 degrees.
+///
+///   • <b>The whisker.</b> Sam asked whether the fish could just have a sphere
+///     collider "like a roomba". The height field cannot represent a boulder,
+///     a spire between probe points, or a prop that is not on the terrain
+///     layer — measured, a fish swam <b>0.99 m</b> into one. So each fish casts
+///     ONE short ray along its heading, round-robin, about three times a
+///     second: ~2 rays a frame for the whole pool, versus 2,400/s for a ray per
+///     fish per frame, and no rigidbodies or contacts at all. It is predictive
+///     rather than reactive, so there is never a "fish shoving against a rock"
+///     look. <b>It steers only and never touches the depth target</b> — feeding
+///     sparse ray data into the continuous depth constraint spiked the pitch to
+///     71-84 deg/frame in testing, worse than the original bug. A fish goes
+///     AROUND a rock, which is both smooth and what a fish does.
 /// </summary>
 // DefaultExecutionOrder(300), for SpaceDustField's reason: the field must read
 // the camera AFTER it is finalised for the frame — after EndlessManager's origin
@@ -96,6 +129,8 @@ public class AmbientFishField : MonoBehaviour
         _dex = null;
         _tiers = null;
         _cam = null;
+        _level = 0;
+        _whiskerCursor = 0;
         if (_fish != null) for (int i = 0; i < _fish.Length; i++) _fish[i].alive = false;
 
         // Gallery / tree-test scenes: every auto-singleton in the project spawns
@@ -110,22 +145,26 @@ public class AmbientFishField : MonoBehaviour
     {
         public bool alive;
         public Vector3 noseL;      // planet-local mouth point — the anchor the body sweeps about
-        public Vector3 prevNoseL;
         public Vector3 dirL;       // planet-local heading, tangential to the water surface
+        public Vector3 velL;       // LOW-PASSED velocity; the facing is built from this, not
+                                   // from the raw frame delta. This is Bobber's line, and
+                                   // leaving it out is half of why pass 1 looked jerky.
+        public float radialVel;    // owned by the depth spring, so vertical speed is continuous
         public float speed;        // m/s, cruising
         public float phase;        // tail-beat phase
         public float wanderSeed;
         public float steerSign;    // which way this fish turns away from shallows
+        public float avoid;        // 0..1 whisker avoidance, decays. STEERING ONLY.
         public int species;        // index into FishingRules.Species
         public int slot;           // draw-batch slot for that species
         public float halfLen;
         public Vector3 meshScale;
-        public float bed;          // last known sea-bed radius under it
-        public float depth;        // metres under the surface it wants to sit at
+        public float depth;        // metres under the surface it would like to sit at
         public float scatter;      // 0..1, decays — the "something spooked me" boost
     }
 
     Fish[] _fish;
+    int _whiskerCursor;
 
     // ── the sea-bed cache ────────────────────────────────────────────────────
     //
@@ -133,9 +172,13 @@ public class AmbientFishField : MonoBehaviour
     // and must never swim through the terrain" (Sam, 2026-09-09), without
     // costing a raycast per fish per frame.
     //
-    // The sea floor is cut into patches. The first time a patch is needed, ONE
-    // ray answers it, cast from ABOVE THE HIGHEST TERRAIN straight down the
-    // radial:
+    // The sea floor is cut into patches on a CUBE-FACE grid, so the four patches
+    // around any point are real neighbours and can be interpolated between —
+    // which pass 1 got wrong by quantising in raw 3D and then reading a single
+    // patch, making the sea bed a step function.
+    //
+    // The first time a patch is needed, ONE ray answers it, cast from ABOVE THE
+    // HIGHEST TERRAIN straight down the radial at the patch CENTRE:
     //
     //   hits terrain ABOVE the waterline -> land, a cave roof or an overhang.
     //                                       Never fish. This is the "water
@@ -151,9 +194,7 @@ public class AmbientFishField : MonoBehaviour
     // forbidden Celestial/ zone is read.
     //
     // Because the first thing the ray meets from above is the cave ROOF, a fish
-    // is never placed in an air-filled cave below sea level either — and since
-    // every fish is clamped between bed+clearance and surface-0.4, it can never
-    // be inside rock.
+    // is never placed in an air-filled cave below sea level either.
     //
     // Terrain does not move, so an answer never goes stale: standing still costs
     // ZERO raycasts. Probes are hard-capped per frame, so arriving somewhere new
@@ -165,40 +206,100 @@ public class AmbientFishField : MonoBehaviour
     readonly HashSet<long> _queued = new HashSet<long>();
     readonly Queue<KeyValuePair<long, Vector3>> _probeQueue = new Queue<KeyValuePair<long, Vector3>>();
 
-    static long CellKey(Vector3 dirL, float oceanR, float cell, int level)
+    /// <summary>Which cube face a direction belongs to, and its grid coordinates
+    /// on that face. One grid unit is about one patch at the water's surface.</summary>
+    static void CubeCell(Vector3 dir, float scale, out int face, out float fu, out float fv)
     {
-        Vector3 p = dirL * (oceanR / cell);
-        // 20-bit fields: +-524288 cells, i.e. a planet radius of thousands of km
-        // at the fine cell size. Level occupies the top bits so the fine and
-        // coarse grids never collide.
-        long a = (Mathf.FloorToInt(p.x) + 524288) & 0xFFFFF;
-        long b = (Mathf.FloorToInt(p.y) + 524288) & 0xFFFFF;
-        long c = (Mathf.FloorToInt(p.z) + 524288) & 0xFFFFF;
-        return ((long)level << 60) | (a << 40) | (b << 20) | c;
+        float ax = Mathf.Abs(dir.x), ay = Mathf.Abs(dir.y), az = Mathf.Abs(dir.z);
+        float u, v, m;
+        if (ax >= ay && ax >= az) { face = dir.x >= 0f ? 0 : 1; m = ax; u = dir.y; v = dir.z; }
+        else if (ay >= az) { face = dir.y >= 0f ? 2 : 3; m = ay; u = dir.x; v = dir.z; }
+        else { face = dir.z >= 0f ? 4 : 5; m = az; u = dir.x; v = dir.y; }
+        if (m < 1e-6f) m = 1e-6f;
+        fu = (u / m) * scale;
+        fv = (v / m) * scale;
     }
 
-    /// <summary>
-    /// Sea-bed radius under a planet-local point. False means "no fish here":
-    /// land, a roof, or a patch not probed yet (which resolves within a frame or
-    /// two). Every uncertain case falls to false on purpose — the failure mode
-    /// is a fish that does not spawn, never a fish inside a rock.
-    /// </summary>
-    bool BedAt(Vector3 posL, int level, out float bed)
+    /// <summary>The direction of a patch CENTRE — where its probe is cast, which
+    /// is what makes interpolating between patches meaningful.</summary>
+    static Vector3 CubeDir(int face, float fu, float fv, float scale)
     {
-        bed = 0f;
-        if (posL.sqrMagnitude < 1e-6f) return false;
-        Vector3 dir = posL.normalized;
-        float cell = level == 0 ? fineCellMetres : coarseCellMetres;
-        long k = CellKey(dir, _oceanR, cell, level);
+        float u = fu / scale, v = fv / scale;
+        switch (face)
+        {
+            case 0: return new Vector3(1f, u, v).normalized;
+            case 1: return new Vector3(-1f, u, v).normalized;
+            case 2: return new Vector3(u, 1f, v).normalized;
+            case 3: return new Vector3(u, -1f, v).normalized;
+            case 4: return new Vector3(u, v, 1f).normalized;
+            default: return new Vector3(u, v, -1f).normalized;
+        }
+    }
+
+    static long CellKey(int face, int i, int j, int level)
+    {
+        long a = (i + 524288) & 0xFFFFF;
+        long b = (j + 524288) & 0xFFFFF;
+        return ((long)level << 43) | ((long)face << 40) | (a << 20) | b;
+    }
+
+    float CellScale(int level) => _oceanR / (level == 0 ? fineCellMetres : coarseCellMetres);
+
+    /// <summary>
+    /// One patch's bed radius. <c>NotWater</c> is returned as the WATERLINE
+    /// rather than as a failure: that way land pulls the interpolated sea bed
+    /// smoothly up toward the surface as a fish approaches the shore — the fish
+    /// rises, then the turn test fires — instead of the bed vanishing at the
+    /// boundary and leaving a cliff in the constraint.
+    /// </summary>
+    bool PatchBed(int face, int i, int j, int level, float scale, out float bed)
+    {
+        long k = CellKey(face, i, j, level);
         if (_bed.TryGetValue(k, out float v))
         {
-            if (v <= NotWater) return false;
-            bed = v;
+            bed = v <= NotWater ? _oceanR : v;
             return true;
         }
         if (_queued.Count < maxQueuedProbes && _queued.Add(k))
-            _probeQueue.Enqueue(new KeyValuePair<long, Vector3>(k, dir));
+            _probeQueue.Enqueue(new KeyValuePair<long, Vector3>(
+                k, CubeDir(face, i + 0.5f, j + 0.5f, scale)));
+        bed = 0f;
         return false;
+    }
+
+    /// <summary>
+    /// Sea-bed radius under a planet-local point, BILINEARLY INTERPOLATED
+    /// between the four surrounding patch centres. Continuous in position, which
+    /// is what stops the depth target stepping every time a fish crosses a patch
+    /// boundary — the direct cause of the 27-degree pitch snaps in pass 1.
+    ///
+    /// False means "nothing around here is probed yet"; the caller then holds
+    /// its depth rather than descending into ground it cannot see.
+    /// </summary>
+    bool BedSmooth(Vector3 posL, int level, out float bed)
+    {
+        bed = 0f;
+        if (posL.sqrMagnitude < 1e-6f) return false;
+        float scale = CellScale(level);
+        CubeCell(posL.normalized, scale, out int face, out float fu, out float fv);
+
+        float qu = fu - 0.5f, qv = fv - 0.5f;
+        int i0 = Mathf.FloorToInt(qu), j0 = Mathf.FloorToInt(qv);
+        float tu = qu - i0, tv = qv - j0;
+
+        float sum = 0f, wsum = 0f;
+        for (int di = 0; di <= 1; di++)
+            for (int dj = 0; dj <= 1; dj++)
+            {
+                float w = (di == 0 ? 1f - tu : tu) * (dj == 0 ? 1f - tv : tv);
+                if (w <= 0f) continue;
+                if (!PatchBed(face, i0 + di, j0 + dj, level, scale, out float b)) continue;
+                sum += b * w;
+                wsum += w;
+            }
+        if (wsum <= 1e-4f) return false;
+        bed = sum / wsum;
+        return true;
     }
 
     void DrainProbes()
@@ -228,7 +329,7 @@ public class AmbientFishField : MonoBehaviour
             return _oceanR - probeDepthMetres;                 // open water, deeper than we care
 
         float r = (hit.point - _planetT.position).magnitude;
-        if (r > _oceanR - minWaterDepth) return NotWater;      // land / roof / too shallow
+        if (r > _oceanR - minSwimWater) return NotWater;        // land / roof / too thin to swim in
         return r;
     }
 
@@ -254,6 +355,7 @@ public class AmbientFishField : MonoBehaviour
     float _oceanR;
     float _probeStartRadius;
     string _planetName;
+    int _level;
 
     float _nextBodyScan;
     bool _quiet;
@@ -585,8 +687,11 @@ public class AmbientFishField : MonoBehaviour
 
         // Coarser patches high up: flying sweeps across a lot of new sea floor,
         // and at a handful of probes a frame the fine grid cannot keep up. From
-        // 200 m you cannot see the difference.
-        int level = alt > coarseAltitude ? 1 : 0;
+        // 200 m you cannot see the difference. Hysteresis so hovering at the
+        // threshold cannot flip the whole sea bed back and forth every frame.
+        if (_level == 0 && alt > coarseAltitude) _level = 1;
+        else if (_level == 1 && alt < coarseAltitude * 0.75f) _level = 0;
+        int level = _level;
         float ring = Mathf.Lerp(nearRing, farRing, Mathf.InverseLerp(0f, 200f, Mathf.Max(alt, 0f)));
 
         DrainProbes();
@@ -600,6 +705,8 @@ public class AmbientFishField : MonoBehaviour
         float dt = Mathf.Min(Time.deltaTime, 0.1f);
         int spawnBudget = maxSpawnsPerFrame;
         int spawnTries = maxSpawnsPerFrame * 4;   // a failed try is a dict lookup, but bound it anyway
+
+        CastWhiskers();
 
         for (int i = 0; i < _fish.Length; i++)
         {
@@ -617,6 +724,39 @@ public class AmbientFishField : MonoBehaviour
         Draw();
     }
 
+    /// <summary>
+    /// The backstop Sam asked about — his "sphere collider, like a roomba", done
+    /// predictively instead of reactively. The patch grid is a height field: it
+    /// cannot see a boulder, a spire that fell between probe points, or a prop
+    /// that is not on the terrain layer, and a fish measurably swam a metre into
+    /// one. So each fish casts ONE short ray along its heading, round-robin —
+    /// about two rays a frame for the whole pool, against 2,400 a second for the
+    /// naive "ray per fish per frame", and with no rigidbodies or contacts.
+    ///
+    /// A hit only raises <c>avoid</c>, which only steers. It must NEVER reach
+    /// the depth target: sparse, chunky ray data driving the continuous depth
+    /// constraint spiked the rendered pitch to 71-84 degrees per frame in
+    /// testing — worse than the bug this pass exists to fix.
+    /// </summary>
+    void CastWhiskers()
+    {
+        if (_fish == null || _fish.Length == 0 || whiskerRaysPerFrame <= 0) return;
+        int mask = GroundMask;
+        if (mask == 0) return;
+        for (int n = 0; n < whiskerRaysPerFrame; n++)
+        {
+            _whiskerCursor = (_whiskerCursor + 1) % _fish.Length;
+            int i = _whiskerCursor;
+            if (!_fish[i].alive) continue;
+            Vector3 originW = _planetT.TransformPoint(_fish[i].noseL);
+            Vector3 dirW = _planetT.TransformDirection(_fish[i].dirL);
+            if (dirW.sqrMagnitude < 1e-6f) continue;
+            if (Physics.Raycast(originW, dirW.normalized, whiskerLength, mask,
+                                QueryTriggerInteraction.Ignore))
+                _fish[i].avoid = 1f;
+        }
+    }
+
     bool TrySpawn(ref Fish f, Vector3 camL, float ring, int level)
     {
         Vector3 up = camL.normalized;
@@ -631,16 +771,17 @@ public class AmbientFishField : MonoBehaviour
         float a = Random.value * Mathf.PI * 2f;
         Vector3 dir = (up * _oceanR + (t1 * Mathf.Cos(a) + t2 * Mathf.Sin(a)) * d).normalized;
 
-        if (!BedAt(dir * _oceanR, level, out float bed)) return false;   // land, roof, or not probed yet
+        if (!BedSmooth(dir * _oceanR, level, out float bed)) return false;   // nothing probed here yet
         float water = _oceanR - bed;
-        if (water < minWaterDepth) return false;
+        if (water < minSwimWater + 0.4f) return false;
 
-        float depth = Random.Range(0.7f, Mathf.Min(maxSwimDepth, water - 0.6f));
+        float depth = Random.Range(0.7f, Mathf.Min(maxSwimDepth, water - bedClearance - 0.2f));
         if (depth <= 0.5f) return false;
 
         Vector3 nose = dir * (_oceanR - depth);
         Vector3 heading = Vector3.ProjectOnPlane(t1 * Mathf.Cos(a * 1.7f) + t2 * Mathf.Sin(a * 1.7f), dir);
         if (heading.sqrMagnitude < 1e-4f) heading = Vector3.ProjectOnPlane(t1, dir);
+        heading.Normalize();
 
         int sp = RollSpecies(nose);
         if (sp < 0) return false;
@@ -653,12 +794,14 @@ public class AmbientFishField : MonoBehaviour
 
         f.alive = true;
         f.noseL = nose;
-        f.prevNoseL = nose;
-        f.dirL = heading.normalized;
+        f.dirL = heading;
         f.speed = Random.Range(cruiseSpeedMin, cruiseSpeedMax);
+        f.velL = heading * f.speed;      // so the very first frame's facing is already right
+        f.radialVel = 0f;
         f.phase = Random.value * 10f;
         f.wanderSeed = Random.value * 100f;
         f.steerSign = Random.value < 0.5f ? -1f : 1f;
+        f.avoid = 0f;
         f.species = sp;
         f.slot = _speciesSlot.TryGetValue(sp, out int s) ? s : 0;
         f.halfLen = bodyLen * 0.5f;
@@ -667,7 +810,6 @@ public class AmbientFishField : MonoBehaviour
         f.meshScale = new Vector3(baseScale * girth,
                                   baseScale * (1f + (girth - 1f) * 0.6f),
                                   baseScale);
-        f.bed = bed;
         f.depth = depth;
         f.scatter = 0f;
         return true;
@@ -686,6 +828,27 @@ public class AmbientFishField : MonoBehaviour
         return sp;
     }
 
+    /// <summary>
+    /// The SHALLOWEST sea bed along the next few metres of a fish's path — the
+    /// heart of the fix for swimming through banks. Pass 1 constrained depth by
+    /// the bed UNDERNEATH, which meant a fish only reacted to ground it was
+    /// already in, and could climb at just 0.7 m/s against ground rising faster
+    /// than that. Reading ahead means the fish starts lifting before the bottom
+    /// arrives and follows the contour up, which is also what a fish looks like.
+    /// </summary>
+    float ShallowestAhead(Vector3 noseL, Vector3 dirL, int level, out bool known)
+    {
+        known = false;
+        float shallow = 0f;
+        for (int k = 0; k <= depthLookSteps; k++)
+        {
+            Vector3 p = noseL + dirL * (depthLookAhead * k / depthLookSteps);
+            if (!BedSmooth(p, level, out float b)) continue;
+            if (!known || b > shallow) { shallow = b; known = true; }
+        }
+        return shallow;
+    }
+
     bool Step(ref Fish f, Vector3 camL, float ring, int level, float dt,
               bool hasDisturb, Vector3 disturbL)
     {
@@ -699,9 +862,10 @@ public class AmbientFishField : MonoBehaviour
         // You, and the bobber's splash. Two distance checks. Nothing about the
         // fishing changes — they just get out of the way.
         if (f.scatter > 0f) f.scatter = Mathf.Max(0f, f.scatter - dt / scatterSeconds);
+        if (f.avoid > 0f) f.avoid = Mathf.Max(0f, f.avoid - dt * avoidDecay);
         Vector3 flee = Vector3.zero;
-        float camDist2 = (f.noseL - camL).sqrMagnitude;
-        if (camDist2 < playerScatterRadius * playerScatterRadius) flee = f.noseL - camL;
+        if ((f.noseL - camL).sqrMagnitude < playerScatterRadius * playerScatterRadius)
+            flee = f.noseL - camL;
         else if (hasDisturb && (f.noseL - disturbL).sqrMagnitude < _disturbR * _disturbR)
             flee = f.noseL - disturbL;
         if (flee.sqrMagnitude > 1e-4f)
@@ -719,25 +883,68 @@ public class AmbientFishField : MonoBehaviour
         if (f.dirL.sqrMagnitude < 1e-4f) f.dirL = Vector3.ProjectOnPlane(Vector3.forward, up);
         f.dirL.Normalize();
 
-        // ── look ahead, turn away from the shallows ──────────────────────────
-        // A dictionary lookup, not a raycast. Unknown counts as blocked, so a
-        // fish waits rather than swimming into a patch nobody has probed.
-        Vector3 ahead = f.noseL + f.dirL * lookAheadMetres;
-        bool clear = BedAt(ahead, level, out float bedAhead) && (_oceanR - bedAhead) > minWaterDepth;
-        if (!clear)
-            f.dirL = (Quaternion.AngleAxis(f.steerSign * steerRate * dt, up) * f.dirL).normalized;
+        // ── veer off the shallows, PROPORTIONALLY ────────────────────────────
+        // Pass 1 flipped a hard 150 deg/s on and off as the fish crossed patch
+        // boundaries, which is a yaw snap in its own right. Now it ramps in over
+        // the last stretch of deepening water, so a fish curves away from a
+        // bank instead of flinching off it.
+        Vector3 aheadTurn = f.noseL + f.dirL * turnLookAhead;
+        float blocked;
+        if (BedSmooth(aheadTurn, level, out float bedTurn))
+        {
+            float waterAhead = _oceanR - bedTurn;
+            blocked = Mathf.Clamp01(Mathf.InverseLerp(turnStartWater, minSwimWater, waterAhead));
+        }
+        else blocked = 1f;   // unprobed: treat as blocked and hold, never swim on blind
 
-        float speed = f.speed * (1f + f.scatter * scatterSpeedBoost);
-        f.prevNoseL = f.noseL;
+        float steer = Mathf.Max(blocked, f.avoid);
+        if (steer > 0.01f)
+        {
+            // Turn toward the DEEPER side rather than always the same way, so a
+            // fish follows the run of the shore instead of pinballing off it.
+            Vector3 side = Vector3.Cross(up, f.dirL);
+            bool okR = BedSmooth(f.noseL + (f.dirL * 0.7f + side) * turnLookAhead, level, out float bedR);
+            bool okL = BedSmooth(f.noseL + (f.dirL * 0.7f - side) * turnLookAhead, level, out float bedL);
+            if (okR && okL) f.steerSign = bedR < bedL ? 1f : -1f;
+            f.dirL = (Quaternion.AngleAxis(f.steerSign * steerRate * steer * dt, up) * f.dirL).normalized;
+        }
+
+        // Ease off while turning away or climbing — a fish nosing up a bank
+        // slows down, and it also lets the climb keep up with the ground.
+        float speed = f.speed * (1f + f.scatter * scatterSpeedBoost) * (1f - 0.5f * steer);
+
+        Vector3 prevNose = f.noseL;
         f.noseL += f.dirL * speed * dt;
 
-        // ── depth: ride the sea bed, never through it ────────────────────────
-        if (BedAt(f.noseL, level, out float bedHere)) f.bed = bedHere;
+        // ── depth: a SPRING, not a step ──────────────────────────────────────
+        // Mathf.SmoothDamp gives a continuous vertical velocity. MoveTowards
+        // (pass 1) was bang-bang: full climb rate or nothing, so the rendered
+        // pitch snapped 27.4 degrees in a single frame when it arrived.
+        float shallowest = ShallowestAhead(f.noseL, f.dirL, level, out bool bedKnown);
         float breathe = Mathf.Sin(Time.time * 0.3f + f.wanderSeed) * 0.4f;
         float wantR = _oceanR - Mathf.Max(0.4f, f.depth + breathe);
-        float targetR = Mathf.Clamp(wantR, f.bed + bedClearance, _oceanR - surfaceClearance);
-        float r = Mathf.MoveTowards(f.noseL.magnitude, targetR, climbSpeed * dt);
+        float ceilR = _oceanR - surfaceClearance;
+        // Mathf.Clamp does NOT sort its bounds: called with min > max it returns
+        // the MIN. Land contributes the waterline itself to the interpolated bed
+        // (that is what makes the shore a smooth ramp rather than a cliff), so
+        // approaching a beach the floor would exceed the ceiling and the clamp
+        // would hand back a radius ABOVE THE WATER — a fish rising out of the
+        // sea for the frames before it turned away. The floor is capped first.
+        float floorR = Mathf.Min(shallowest + bedClearance, ceilR);
+        float targetR = bedKnown
+            ? Mathf.Clamp(wantR, floorR, ceilR)
+            : f.noseL.magnitude;      // nothing probed: hold this depth, do not dive blind
+        float r = Mathf.SmoothDamp(f.noseL.magnitude, targetR, ref f.radialVel,
+                                   depthSmoothTime, maxClimbSpeed, dt);
         f.noseL = f.noseL.normalized * r;
+
+        // ── the facing velocity, LOW-PASSED ──────────────────────────────────
+        // Bobber does exactly this and says why: "facing comes from the
+        // follower's own integrated velocity, smooth by construction". Pass 1
+        // used the raw one-frame delta, so every hitch in the path became a
+        // visible snap in the fish.
+        Vector3 instVel = (f.noseL - prevNose) / Mathf.Max(dt, 1e-4f);
+        f.velL = Vector3.Lerp(f.velL, instVel, 1f - Mathf.Exp(-facingSmoothing * dt));
 
         f.phase += (3.5f + speed * 1.8f) * dt;
         return true;
@@ -752,15 +959,13 @@ public class AmbientFishField : MonoBehaviour
 
         Vector3 up = f.noseL.normalized;
 
-        // Facing from the ACTUAL planet-local delta, exactly as the bite
-        // animation does — that is what makes the tail beat and the pitch read
-        // as swimming rather than as a transform being written.
-        Vector3 swim = f.noseL - f.prevNoseL;
-        if (swim.sqrMagnitude < 1e-8f) swim = f.dirL;
+        Vector3 swim = f.velL;
+        if (swim.sqrMagnitude < 1e-6f) swim = f.dirL;
         swim.Normalize();
 
         // Sam's 45-degree law: a fish never points steeper than 45 degrees off
-        // horizontal, climbing or diving.
+        // horizontal, climbing or diving. With the spring bounding the vertical
+        // speed this almost never binds now, so it no longer reads as a kink.
         Vector3 horiz = Vector3.ProjectOnPlane(swim, up);
         if (horiz.sqrMagnitude > 1e-6f)
         {
@@ -839,20 +1044,44 @@ public class AmbientFishField : MonoBehaviour
     [SerializeField] float cruiseSpeedMax = 1.35f;
     [Tooltip("Degrees per second of lazy wander.")]
     [SerializeField] float wanderTurnRate = 55f;
-    [Tooltip("Degrees per second a fish turns when the water ahead is too shallow.")]
+    [Tooltip("Degrees per second a fish turns at FULL avoidance. It ramps in, so this is not a snap.")]
     [SerializeField] float steerRate = 150f;
-    [Tooltip("How far ahead a fish checks the sea bed, in metres.")]
-    [SerializeField] float lookAheadMetres = 3f;
     [Tooltip("Deepest a fish will sit below the surface. Deeper than this and the ocean has swallowed it anyway.")]
     [SerializeField] float maxSwimDepth = 6.5f;
     [Tooltip("Metres of water a fish keeps between itself and the sea bed.")]
     [SerializeField] float bedClearance = 0.55f;
     [Tooltip("Metres a fish keeps below the surface, so it never breaks through.")]
     [SerializeField] float surfaceClearance = 0.4f;
-    [Tooltip("How fast a fish rises or dives to follow the bed, in m/s.")]
-    [SerializeField] float climbSpeed = 0.7f;
     [Tooltip("Degrees the body sweeps either side of its heading — the tail beat.")]
     [SerializeField] float tailSweepDegrees = 12f;
+
+    [Header("Following the bottom")]
+    [Tooltip("How far along its own path a fish reads the sea bed to decide its depth. THIS is what stops it swimming into banks — it starts rising before the ground arrives.")]
+    [SerializeField] float depthLookAhead = 5f;
+    [Tooltip("How many points along that path are sampled.")]
+    [SerializeField] int depthLookSteps = 3;
+    [Tooltip("Spring response for depth changes, in seconds. Larger = lazier, smaller = twitchier. This being a spring rather than a fixed climb rate is what removed the pitch snapping.")]
+    [SerializeField] float depthSmoothTime = 0.55f;
+    [Tooltip("Ceiling on how fast a fish rises or dives, m/s.")]
+    [SerializeField] float maxClimbSpeed = 1.6f;
+    [Tooltip("How hard the rendered facing is smoothed. Higher = snappier, lower = floatier. Bobber uses 12 for the fish on the line.")]
+    [SerializeField] float facingSmoothing = 8f;
+
+    [Header("Turning away from the shore")]
+    [Tooltip("How far ahead a fish looks when deciding to veer off, in metres.")]
+    [SerializeField] float turnLookAhead = 5f;
+    [Tooltip("Water this thin is unswimmable — full avoidance.")]
+    [SerializeField] float minSwimWater = 1.5f;
+    [Tooltip("Water this thin starts the fish curving away. Between this and the minimum, avoidance ramps in.")]
+    [SerializeField] float turnStartWater = 3f;
+
+    [Header("Whisker (the roomba backstop)")]
+    [Tooltip("Raycasts per frame shared across the whole pool, round-robin. 2 gives each of 40 fish a look roughly 3 times a second. Steering only — it never touches depth.")]
+    [SerializeField] int whiskerRaysPerFrame = 2;
+    [Tooltip("How far ahead the whisker ray reaches, in metres.")]
+    [SerializeField] float whiskerLength = 2.6f;
+    [Tooltip("How fast whisker avoidance fades once the way is clear, per second.")]
+    [SerializeField] float avoidDecay = 2.2f;
 
     [Header("Reacting to you")]
     [Tooltip("Metres. Swim closer than this and they break away.")]
@@ -875,9 +1104,7 @@ public class AmbientFishField : MonoBehaviour
     [SerializeField] float coarseAltitude = 40f;
     [Tooltip("How deep a probe looks before calling it open water.")]
     [SerializeField] float probeDepthMetres = 30f;
-    [Tooltip("Metres of water a patch needs before a fish may swim there.")]
-    [SerializeField] float minWaterDepth = 1.2f;
-    [Tooltip("Hard cap on raycasts per frame. This is what stops arriving somewhere new from spiking.")]
+    [Tooltip("Hard cap on sea-bed raycasts per frame. This is what stops arriving somewhere new from spiking.")]
     [SerializeField] int maxProbesPerFrame = 4;
     [Tooltip("Cap on the probe backlog. Extra patches are simply retried later.")]
     [SerializeField] int maxQueuedProbes = 256;
