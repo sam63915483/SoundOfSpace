@@ -180,8 +180,10 @@ missing in build).
 - Precedent exists: `Resources/DomeFX/dome_hum` and `dome_enter` are already
   loaded this way.
 
-**This is the one genuinely risky step in the plan** — a bulk asset move, ~60
-files. It requires the cross-session announce-and-ack protocol (§7) and a Sam
+**This is the one genuinely risky step in the plan** — a bulk asset move. The
+exact count is not known until the scanner runs (63 clips sit under
+`Assets/Audio`, but in-scope clips also live in other folders; 364 audio files
+exist project-wide excluding third-party packs). It requires the cross-session announce-and-ack protocol (§7) and a Sam
 save. CLAUDE.md's "don't add new `Resources.Load` without a reason" is
 acknowledged and overridden here with reason stated.
 
