@@ -393,9 +393,6 @@ public class PlayerController : GravityObject
 		spaceship = FindObjectOfType<Ship>();
 		_hasGravitySim = FindObjectOfType<NBodySimulation>() != null;
 		capsuleCollider = GetComponent<CapsuleCollider>();
-		// Deferred: at this point the suit model is not attached yet, which is why
-		// the first run of this logged a mesh bottom of NaN.
-		Invoke(nameof(LogFootClearanceOnce), 3f);
 		InitRigidbody();
 
 		animator = GetComponentInChildren<Animator>();
@@ -1551,58 +1548,6 @@ public class PlayerController : GravityObject
 		UpdateLoopAudio(upBoostSource,   upBoostClip,   upBoostActive,   upBoostVolume);
 		UpdateLoopAudio(downBoostSource, downBoostClip, downBoostActive, downBoostVolume);
 		UpdateLoopAudio(dirBoostSource,  dirBoostClip,  dirBoostActive,  dirBoostVolume);
-	}
-
-	// One line, once, to end the "is the astronaut still floating" guessing.
-	// Sam has reported a visible gap under his feet twice, and both times the
-	// only honest way to size it was to measure rather than eyeball a shadow.
-	// This prints where the CAPSULE bottoms out versus where the visible MESH
-	// bottoms out, in the player's own local space. The difference IS the hover:
-	// the capsule rests on the ground, so anything the mesh sits above that is
-	// air. Zero means the boots touch.
-	public void LogFootClearanceOnce()
-	{
-		if (capsuleCollider == null) return;
-		float capsuleBottom = capsuleCollider.center.y - capsuleCollider.height * 0.5f;
-
-		// Renderer.bounds is a WORLD-AXIS-ALIGNED box. On a planet the player is
-		// rotated to the surface, so its min CORNER is not the model's lowest
-		// point in our own frame -- converting it straight across gave -1.490,
-		// nearly half a metre of nonsense. Walk the eight corners of each mesh's
-		// LOCAL bounds into our frame instead and take the true minimum.
-		float meshBottom = float.NaN;
-		var rends = GetComponentsInChildren<Renderer>(true);
-		for (int i = 0; i < rends.Length; i++)
-		{
-			var r = rends[i];
-			if (r == null || !r.enabled) continue;
-			if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer) continue;
-
-			Bounds lb;
-			if (r is SkinnedMeshRenderer smr && smr.sharedMesh != null) lb = smr.sharedMesh.bounds;
-			else
-			{
-				var mf = r.GetComponent<MeshFilter>();
-				if (mf == null || mf.sharedMesh == null) continue;
-				lb = mf.sharedMesh.bounds;
-			}
-
-			Vector3 c = lb.center, e = lb.extents;
-			for (int k = 0; k < 8; k++)
-			{
-				Vector3 corner = c + new Vector3(
-					((k & 1) == 0 ? -e.x : e.x),
-					((k & 2) == 0 ? -e.y : e.y),
-					((k & 4) == 0 ? -e.z : e.z));
-				float y = transform.InverseTransformPoint(r.transform.TransformPoint(corner)).y;
-				if (float.IsNaN(meshBottom) || y < meshBottom) meshBottom = y;
-			}
-		}
-
-		float feetY = feet != null ? transform.InverseTransformPoint(feet.position).y : float.NaN;
-		Debug.Log($"[FootClearance] capsule bottom {capsuleBottom:F3}, visible mesh bottom "
-				+ $"{meshBottom:F3}, Feet marker {feetY:F3} -> hover "
-				+ $"{(meshBottom - capsuleBottom) * 100f:F1} cm (0 = boots on the ground)");
 	}
 
 	bool IsGrounded()

@@ -149,27 +149,6 @@ public class TreeSpawner : MonoBehaviour
                 bodies.Add(entry);
             }
             if (bodies.Count == 0) return false;
-            // One line, once: which planets this spawner will ever consider, and
-            // where each one's waterline sits. The body list is built ONCE, and
-            // a planet whose land is all below its own ocean level can never be
-            // planted -- both are invisible without this. Sam, 2026-09-09:
-            // "hearth seems to have no trees or mushrooms at all, why?" while
-            // other planets were fine.
-            var names = new System.Text.StringBuilder();
-            for (int i = 0; i < bodies.Count; i++)
-            {
-                if (i > 0) names.Append(", ");
-                var b = bodies[i];
-                names.Append(b.body != null ? b.body.bodyName : "?");
-                if (b.gen == null) { names.Append("(NO GENERATOR)"); continue; }
-                // Deliberately NO ocean radius here. This runs during ResolveRefs,
-                // which can be before terrain generation settles, and the reading
-                // is then a placeholder -- it printed ocean == radius for 8 of 10
-                // bodies including ones covered in forest, and I nearly chased it.
-                // The census below reports the waterline once it is real.
-                names.Append($"(r={(b.body != null ? b.body.radius : 0f):F0})");
-            }
-            Debug.Log($"[TreeSpawner] tracking {bodies.Count} bodies: {names}");
         }
         if (player == null)
         {
@@ -269,11 +248,8 @@ public class TreeSpawner : MonoBehaviour
             if (!TryComputeTreePlacement(entry, c.face, c.cellU, c.cellV, faceUVPerCell, playerPos, effectiveRadius,
                                           out Vector3 pos, out Quaternion rot, out int prefabIdx, out Vector3 sizeMul))
                 continue;
-            _cPlaced++;
             SpawnTree(entry, c.bodySlot, SpawnerCubeface.EncodeCell(c.face, c.cellU, c.cellV), prefabIdx, pos, rot, sizeMul);
         }
-        _cCand += scratchCandidates.Count;
-        MaybeLogCensus(bodies.Count > 0 && bodies[0].body != null ? NearestBodyName(playerPos) : "?");
 
         EnforceMaxTrees(playerPos, effectiveMax);
     }
@@ -292,19 +268,6 @@ public class TreeSpawner : MonoBehaviour
         if (dir.sqrMagnitude < 0.0001f) return false;
         spherePos = body.Position + dir * body.radius;
         return true;
-    }
-
-    string NearestBodyName(Vector3 playerPos)
-    {
-        string best = "?";
-        float bestD = float.MaxValue;
-        for (int i = 0; i < bodies.Count; i++)
-        {
-            if (bodies[i].body == null) continue;
-            float d = (bodies[i].body.Position - playerPos).sqrMagnitude;
-            if (d < bestD) { bestD = d; best = bodies[i].body.bodyName; }
-        }
-        return best;
     }
 
     void DespawnOutOfRange(BodyState entry, Vector3 playerPos, float effectiveRadius)
@@ -349,62 +312,6 @@ public class TreeSpawner : MonoBehaviour
         return (h & 0xFFFFu) / 65535f < treeSpawnChance;
     }
 
-    // -- placement census -------------------------------------------------
-    // Sam, 2026-09-09, after the cell-grid fix still left Hearth bare: knowing
-    // that nothing spawns is useless, knowing WHICH TEST throws it away is the
-    // whole answer. One line, once, naming the stage that eats the candidates.
-    static int _cCand, _cRayMiss, _cUnderwater, _cOutOfRange, _cExcluded, _cPlaced;
-    // PER BODY. The first version logged once for the whole session, fired on
-    // Humble Abode, and so never said a word about the planet Sam was actually
-    // asking about. A one-shot diagnostic has to be one-shot per THING.
-    static readonly System.Collections.Generic.HashSet<string> _censusDone
-        = new System.Collections.Generic.HashSet<string>();
-    static string _censusBody;
-
-    void MaybeLogCensus(string nearestBody)
-    {
-        // Counters are per-body: crossing to a new planet starts a fresh count,
-        // otherwise Humble Abode's tally would be blamed on wherever you flew.
-        if (nearestBody != _censusBody)
-        {
-            _censusBody = nearestBody;
-            _cCand = _cRayMiss = _cUnderwater = _cOutOfRange = _cExcluded = _cPlaced = 0;
-            return;
-        }
-        if (_cCand < 150 || _censusDone.Contains(nearestBody)) return;
-        _censusDone.Add(nearestBody);
-
-        // The waterline against the REAL terrain. Terrain rises above the
-        // nominal body radius (Humble Abode is r=200 and peaks past 206), so
-        // comparing the ocean to the radius says nothing -- a planet is only
-        // drowned if its waterline is above its highest ground.
-        string shore = "";
-        for (int i = 0; i < bodies.Count; i++)
-        {
-            var b = bodies[i];
-            if (b.body == null || b.gen == null || b.body.bodyName != nearestBody) continue;
-            float oceanR = 0f;
-            try { oceanR = b.gen.GetOceanRadius(); } catch { }
-            var col = b.gen.GetComponentInChildren<MeshCollider>();
-            float peak = 0f;
-            if (col != null)
-            {
-                Vector3 e = col.bounds.extents;
-                peak = Mathf.Max(e.x, Mathf.Max(e.y, e.z));
-            }
-            shore = oceanR > 0f
-                ? $" waterline {oceanR:F1} vs highest ground {peak:F1}"
-                  + (peak > 0f && oceanR >= peak ? " (NO LAND AT ALL)" : "")
-                : " no ocean";
-            break;
-        }
-
-        Debug.Log($"[TreeSpawner] census near '{nearestBody}':{shore} | {_cCand} candidate cells -> "
-                + $"{_cRayMiss} no ground, {_cUnderwater} under the waterline, "
-                + $"{_cOutOfRange} out of range, {_cExcluded} in an exclusion zone, "
-                + $"{_cPlaced} PLANTED.");
-    }
-
     bool TryComputeTreePlacement(BodyState entry, int face, int cellU, int cellV, float faceUVPerCell,
                                   Vector3 playerPos, float effectiveRadius,
                                   out Vector3 pos, out Quaternion rot, out int prefabIdx, out Vector3 sizeMul)
@@ -445,20 +352,18 @@ public class TreeSpawner : MonoBehaviour
         // and the prop was left floating when it moved away (Sam, 2026-09-09).
         if (!SpawnerCubeface.RaycastPlanetSurface(entry.gen, rayOrigin, -dir,
                                                   planet.radius * 2f + surfaceRayHeight, groundMask, out RaycastHit hit))
-        { _cRayMiss++; return false; }
+            return false;
 
         if (entry.gen != null)
         {
             float oceanR = entry.gen.GetOceanRadius();
             if (oceanR > 0f && (hit.point - planet.Position).magnitude < oceanR)
-            { _cUnderwater++; return false; }
+                return false;
         }
 
-        if ((hit.point - playerPos).sqrMagnitude > effectiveRadius * effectiveRadius)
-        { _cOutOfRange++; return false; }
+        if ((hit.point - playerPos).sqrMagnitude > effectiveRadius * effectiveRadius) return false;
 
-        if (SpawnExclusionZone.IsExcluded(hit.point))
-        { _cExcluded++; return false; }   // keep clear of village buildings / ship school
+        if (SpawnExclusionZone.IsExcluded(hit.point)) return false;   // keep clear of village buildings / ship school
 
         Vector3 up = (hit.point - planet.Position).normalized;
         float yaw = (hY & 0xFFFFu) / 65535f * 360f;
