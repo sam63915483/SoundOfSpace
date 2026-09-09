@@ -64,17 +64,30 @@ public static class FishSpeciesVisuals
                     if (_standard != null) m.shader = _standard;
                 }
                 Color original = m.HasProperty("_Color") ? m.color : Color.white;
-                // Keep the part's brightness and pattern, take the tint's hue:
-                // blend toward the tint, then restore the original luminance so
-                // a dark belly stays dark and a pale fin stays pale.
-                Color mixed = Color.Lerp(original, tint, blend);
-                float lumO = 0.299f * original.r + 0.587f * original.g + 0.114f * original.b;
-                float lumM = 0.299f * mixed.r + 0.587f * mixed.g + 0.114f * mixed.b;
-                if (lumM > 1e-4f) mixed *= Mathf.Clamp(lumO / lumM, 0.55f, 1.8f);
-                mixed.a = original.a;
-                m.color = mixed;
+                m.color = BlendPartColour(original, tint, blend);
             }
         }
+    }
+
+    /// <summary>
+    /// One model part's colour shifted toward the species tint. Keeps the
+    /// part's brightness and pattern and takes only the tint's hue — blend
+    /// toward the tint, then restore the original luminance so a dark belly
+    /// stays dark and a pale fin stays pale.
+    ///
+    /// Pulled out of <see cref="Tint(GameObject, Color, float)"/> so
+    /// AmbientFishField, which has no GameObject to tint and colours materials
+    /// directly, shades its fish by the exact same rule. One implementation:
+    /// the fish in the water and the fish on the line cannot drift apart.
+    /// </summary>
+    public static Color BlendPartColour(Color original, Color tint, float blend)
+    {
+        Color mixed = Color.Lerp(original, tint, blend);
+        float lumO = 0.299f * original.r + 0.587f * original.g + 0.114f * original.b;
+        float lumM = 0.299f * mixed.r + 0.587f * mixed.g + 0.114f * mixed.b;
+        if (lumM > 1e-4f) mixed *= Mathf.Clamp(lumO / lumM, 0.55f, 1.8f);
+        mixed.a = original.a;
+        return mixed;
     }
 
     // ── Rarity glow ───────────────────────────────────────────────────────

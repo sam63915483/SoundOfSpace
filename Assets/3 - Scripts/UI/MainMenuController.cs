@@ -1060,6 +1060,9 @@ public class MainMenuController : MonoBehaviour
         // Fishing fight bar. MainMenu-skipping auto-singleton, so it MUST be
         // seeded here or it never exists in a build (CLAUDE.md trap #1).
         if (FishingTensionHUD.Instance == null) { var go = new GameObject("FishingTensionHUD"); DontDestroyOnLoad(go); go.AddComponent<FishingTensionHUD>(); }
+        // Ambient fish in planet water. Same trap #1: its AutoCreate skips
+        // MainMenu, so without this line the water is empty in every build.
+        if (AmbientFishField.Instance == null) { var go = new GameObject("AmbientFishField"); DontDestroyOnLoad(go); go.AddComponent<AmbientFishField>(); }
         tick("vitals HUD");       yield return null;
         if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
         tick("oxygen system");    yield return null;

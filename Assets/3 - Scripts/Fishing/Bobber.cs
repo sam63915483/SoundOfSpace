@@ -1,4 +1,4 @@
-﻿using UnityEngine;
+using UnityEngine;
 using System.Collections;
 
 // Order 250: the pre-cast wind/glue positions the bobber at the rod tip in
@@ -1533,6 +1533,10 @@ public class Bobber : MonoBehaviour
         Debug.Log($"[Cast] charge {LaunchCharge01 * 100f:F0}% reached "
                 + $"{HorizontalDistanceToAngler():F1} m (rules predict "
                 + $"{FishingRules.CastDistanceFor(LaunchCharge01):F1} m)");
+        // Ambient fish scatter from the splash. No-op when the field does not
+        // exist; nothing about the bite roll changes.
+        AmbientFishField.Disturb(transform.position, 5f);
+
         StartFishing();
     }
 
@@ -2093,6 +2097,10 @@ public class Bobber : MonoBehaviour
         if (_hookedFish != null) DespawnHookedFish();
         if (planetBody == null || !SpawnFishVisual()) yield break;
         _fishApproachActive = true;
+
+        // Clear the ambient fish out of the way so the one that is actually
+        // biting rises through open water instead of through a stranger.
+        AmbientFishField.Disturb(transform.position, 6f);
 
         // Basis around the float, planet-local, so a worked lure carries its
         // suitor with it and origin shifts are irrelevant.
