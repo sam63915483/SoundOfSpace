@@ -19,6 +19,25 @@
 /// </summary>
 public static class FeatureVault
 {
+    /// PLANET CLOUDS — the cloud layer over worlds with an atmosphere, and
+    /// their shadows. Built and working; vaulted 2026-09-09 at Sam's request
+    /// after three passes that never got the look right ("they just seem like a
+    /// hassle and a gimmick"). Nothing is deleted, and this is the only switch:
+    /// flipping it back to true restores the clouds exactly as they were.
+    ///
+    /// Three passes' worth of findings live in PlanetClouds.cs and its shader,
+    /// so picking this back up does not start from zero. The short version of
+    /// where it got to: real geometry beats a painted shell, transparency at the
+    /// puff rims is what turns solid lumps into volume, and placement must be a
+    /// deterministic hash of the sky cell or formations reshuffle whenever the
+    /// camera goes somewhere else.
+    ///
+    /// If you re-enable it, also put the "CLOUDS" row back in TabbedPauseMenu's
+    /// LENS CHARACTER block — it was taken out so the menu could not offer a
+    /// switch with nothing behind it. InputSettings.fxClouds is deliberately
+    /// still there, so old PlayerPrefs keep loading cleanly.
+    public static readonly bool PlanetClouds = false;
+
     /// OpeningDirector's six survival beats (locker → water → wood → fire →
     /// build → village). Built and compile-verified, never play-tested.
     public static readonly bool OpeningBeats = false;

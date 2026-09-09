@@ -69,6 +69,7 @@ public class PlanetClouds : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
+        if (!FeatureVault.PlanetClouds) return;   // vaulted 2026-09-09, Sam's call
         if (Instance != null) return;
         if (SceneManager.GetActiveScene().name == "MainMenu") return;
         var go = new GameObject("PlanetClouds");
@@ -170,6 +171,9 @@ public class PlanetClouds : MonoBehaviour
     {
         get
         {
+            // Belt and braces: the vault also stops a hand-placed component in a
+            // scene from drawing anything.
+            if (!FeatureVault.PlanetClouds) return false;
             if (_quiet || !enableClouds) return false;
             if (_input == null && Time.time >= _nextInputSearch)
             {

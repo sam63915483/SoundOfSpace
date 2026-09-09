@@ -1065,7 +1065,9 @@ public class MainMenuController : MonoBehaviour
         if (AmbientFishField.Instance == null) { var go = new GameObject("AmbientFishField"); DontDestroyOnLoad(go); go.AddComponent<AmbientFishField>(); }
         // Planet clouds. Trap #1 again: its AutoCreate skips MainMenu, so without
         // this line every sky in a BUILD is clear no matter what the setting says.
-        if (PlanetClouds.Instance == null) { var go = new GameObject("PlanetClouds"); DontDestroyOnLoad(go); go.AddComponent<PlanetClouds>(); }
+        // Vaulted 2026-09-09 (FeatureVault.PlanetClouds) — the guard keeps this
+        // line correct for the day it is switched back on.
+        if (FeatureVault.PlanetClouds && PlanetClouds.Instance == null) { var go = new GameObject("PlanetClouds"); DontDestroyOnLoad(go); go.AddComponent<PlanetClouds>(); }
         tick("vitals HUD");       yield return null;
         if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
         tick("oxygen system");    yield return null;

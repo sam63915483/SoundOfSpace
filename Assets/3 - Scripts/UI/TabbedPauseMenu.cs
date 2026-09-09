@@ -727,7 +727,11 @@ public class TabbedPauseMenu : MonoBehaviour
                         get = () => _input != null ? _input.fxChromaticAberrationIntensity : 0.35f,
                         set = v => { if (_input != null) _input.fxChromaticAberrationIntensity = v; } },
                     new ToggleDef { label = "LENS FLARES",        get = () => _input != null && _input.fxLensFlares,        set = v => { if (_input != null) _input.fxLensFlares = v; } },
-                    new ToggleDef { label = "CLOUDS",             get = () => _input != null && _input.fxClouds,            set = v => { if (_input != null) _input.fxClouds = v; } },
+                    // "CLOUDS" row removed 2026-09-09 — planet clouds are vaulted
+                    // (FeatureVault.PlanetClouds), so the toggle had nothing left to
+                    // switch. fxClouds itself is kept in InputSettings so old
+                    // PlayerPrefs still load cleanly. Put this row back if the
+                    // clouds are ever un-vaulted.
                     new ToggleDef { label = "RADIAL MOTION BLUR", get = () => _input != null && _input.fxRadialMotionBlur, set = v => { if (_input != null) _input.fxRadialMotionBlur = v; } },
 
                     new HeaderDef { label = "HUD" },
