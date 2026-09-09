@@ -27,47 +27,40 @@ using UnityEngine.SceneManagement;
 /// <c>FishingRules.RollTier</c>, so rares are as rare to see as they are to
 /// catch and the water can never drift out of sync with what bites in it.
 ///
-/// ── THE MOTION MODEL (rewritten 2026-09-09 pass 2) ────────────────────────
-/// Sam's first playtest found two faults, and both were structural rather than
-/// tuning. The rewrite is verified headlessly, not by eye: the model is pure
-/// maths, so it was ported to Python and measured against synthetic banks and a
-/// rolling sea bed the way FishingRules is swept by verify-fishing.py.
+/// ── MOTION (pass 2) ───────────────────────────────────────────────────────
+/// Verified headlessly rather than by eye: the model is pure maths, so it was
+/// ported to Python and measured against synthetic banks, a rolling sea bed and
+/// an obstacle the probe grid cannot see, the way FishingRules is swept by
+/// verify-fishing.py. Depth is a critically damped spring (<c>MoveTowards</c>
+/// was bang-bang and snapped the pitch 27.4 deg in a single frame); the sea bed
+/// is bilinearly interpolated on a cube-face grid (a raw per-patch read jumped
+/// 83.8 cm within a centimetre of travel); the facing comes from a LOW-PASSED
+/// velocity, which is Bobber's line and the half that was missed first time;
+/// and the depth constraint is the shallowest bed ALONG THE PATH AHEAD, so a
+/// fish rises before the ground arrives instead of ploughing into a bank.
 ///
-///   • <b>Jerky pitch.</b> Depth used <c>MoveTowards</c>, a bang-bang
-///     controller: vertical speed was either 0 or the full climb rate, so it
-///     stepped 0 → 0.7 m/s in ONE FRAME and the rendered pitch snapped
-///     <b>27.4 degrees</b> in that frame (exactly atan(0.7 / 1.35)). On rolling
-///     ground the 99th-percentile change was 0.0 deg — dead flat, then a snap,
-///     which is precisely "sometimes the fish make jerky movements". Two more
-///     causes stacked on it: the sea-bed value was a STEP function (a raw
-///     per-patch lookup — the design said it would be interpolated and it was
-///     not), and the facing was taken from the raw one-frame delta. Bobber
-///     low-passes its velocity before facing with it and says why; that line
-///     was not copied. Now: interpolated bed, a critically damped spring on the
-///     radius, and the low-pass. Worst case <b>0.0 deg</b> per frame.
+/// ── LOOK AND DENSITY (pass 3) ─────────────────────────────────────────────
+/// Sam's second playtest:
 ///
-///   • <b>Swimming through banks.</b> The look-ahead asked "is there water
-///     here at all" (a global 1.2 m minimum) instead of "is there water here
-///     FOR ME, at my depth". A fish 5 m down read a bank with 2 m of water over
-///     it as clear and swam straight in, and the depth clamp could only lift it
-///     at 0.7 m/s against ground rising faster than that. Measured penetration
-///     was up to <b>2.19 m</b>. Now the depth constraint is the SHALLOWEST BED
-///     ALONG THE PATH AHEAD, so a fish starts rising before the ground arrives
-///     and follows the bottom up — which is also what a fish looks like. Zero
-///     penetration at every slope tested, to 60 degrees.
+///   • <b>"They don't get less visible the deeper they are."</b> Pass 1 leaned
+///     on the ocean post-effect to fade them and that was simply wrong — the
+///     fish are drawn with shadow casting off, which in this pipeline is the
+///     same list the camera depth texture is built from, so the ocean effect
+///     never even knows they are there. The fade is now done in the fish's own
+///     shader (<c>Custom/AmbientFish</c>), per fish, from how much water sits
+///     between the camera and it. The rarity glow fades on the SAME curve,
+///     which is the half Sam actually noticed.
 ///
-///   • <b>The whisker.</b> Sam asked whether the fish could just have a sphere
-///     collider "like a roomba". The height field cannot represent a boulder,
-///     a spire between probe points, or a prop that is not on the terrain
-///     layer — measured, a fish swam <b>0.99 m</b> into one. So each fish casts
-///     ONE short ray along its heading, round-robin, about three times a
-///     second: ~2 rays a frame for the whole pool, versus 2,400/s for a ray per
-///     fish per frame, and no rigidbodies or contacts at all. It is predictive
-///     rather than reactive, so there is never a "fish shoving against a rock"
-///     look. <b>It steers only and never touches the depth target</b> — feeding
-///     sparse ray data into the continuous depth constraint spiked the pitch to
-///     71-84 deg/frame in testing, worse than the original bug. A fish goes
-///     AROUND a rock, which is both smooth and what a fish does.
+///   • <b>Too dense, and denser still in small water.</b> Two causes. The
+///     spawn radius was uniform in RADIUS, which piles fish toward the middle
+///     of a disc — it needs a square root to be uniform in AREA. And the count
+///     was fixed, so a pond and an open ocean got the same number of fish; the
+///     population is now driven by how much of the ring actually IS water,
+///     which the patch cache already knows.
+///
+///   • <b>"I shouldn't be able to see new fish spawning in."</b> Fish now fade
+///     up from invisible and fade out again at the edge of the field, using the
+///     same per-instance fade the depth uses — so recycling is free of pops.
 /// </summary>
 // DefaultExecutionOrder(300), for SpaceDustField's reason: the field must read
 // the camera AFTER it is finalised for the frame — after EndlessManager's origin
@@ -131,6 +124,8 @@ public class AmbientFishField : MonoBehaviour
         _cam = null;
         _level = 0;
         _whiskerCursor = 0;
+        _waterFrac = 1f;
+        _nextWaterScan = 0f;
         if (_fish != null) for (int i = 0; i < _fish.Length; i++) _fish[i].alive = false;
 
         // Gallery / tree-test scenes: every auto-singleton in the project spawns
@@ -155,8 +150,10 @@ public class AmbientFishField : MonoBehaviour
         public float wanderSeed;
         public float steerSign;    // which way this fish turns away from shallows
         public float avoid;        // 0..1 whisker avoidance, decays. STEERING ONLY.
+        public float born;         // 0..1 fade-up since spawning, so nothing ever pops in
         public int species;        // index into FishingRules.Species
-        public int slot;           // draw-batch slot for that species
+        public int tier;           // draw batch — every species of a tier shares one mesh
+        public float bodyLen;
         public float halfLen;
         public Vector3 meshScale;
         public float depth;        // metres under the surface it would like to sit at
@@ -165,6 +162,8 @@ public class AmbientFishField : MonoBehaviour
 
     Fish[] _fish;
     int _whiskerCursor;
+    float _waterFrac = 1f;
+    float _nextWaterScan;
 
     // ── the sea-bed cache ────────────────────────────────────────────────────
     //
@@ -173,9 +172,7 @@ public class AmbientFishField : MonoBehaviour
     // costing a raycast per fish per frame.
     //
     // The sea floor is cut into patches on a CUBE-FACE grid, so the four patches
-    // around any point are real neighbours and can be interpolated between —
-    // which pass 1 got wrong by quantising in raw 3D and then reading a single
-    // patch, making the sea bed a step function.
+    // around any point are real neighbours and can be interpolated between.
     //
     // The first time a patch is needed, ONE ray answers it, cast from ABOVE THE
     // HIGHEST TERRAIN straight down the radial at the patch CENTRE:
@@ -437,15 +434,17 @@ public class AmbientFishField : MonoBehaviour
         if (chosen != _planet)
         {
             // A new planet invalidates the bed cache (keys are in the old
-            // planet's local frame), the species slots and the materials.
+            // planet's local frame) and the species list.
             _planet = chosen;
             _planetT = chosen.transform;
             _planetName = chosen.bodyName;
             _bed.Clear();
             _queued.Clear();
             _probeQueue.Clear();
+            _waterFrac = 1f;
+            _nextWaterScan = 0f;
             if (_fish != null) for (int i = 0; i < _fish.Length; i++) _fish[i].alive = false;
-            BuildSpeciesSlots();
+            BuildSpeciesList();
         }
         _oceanR = _oceanRadii[best];
         _probeStartRadius = _oceanProbeStart[best];
@@ -467,13 +466,25 @@ public class AmbientFishField : MonoBehaviour
     TierMesh[] _tiers;              // indexed by FishTier
     float _nextDexSearch;
 
-    readonly List<int> _slotSpecies = new List<int>();   // slot -> species index
-    readonly Dictionary<int, int> _speciesSlot = new Dictionary<int, int>();
     readonly List<int> _allowed = new List<int>();       // this planet's catch list, bounty removed
-    Material[][] _slotMats;         // [slot][submesh]
-    Matrix4x4[][] _slotMatrices;    // [slot][fish]
-    int[] _slotCount;
+
+    // Batching is by TIER, not by species: the species tint and the fade are now
+    // per-INSTANCE (Custom/AmbientFish), so every fish sharing a tier's mesh goes
+    // out in one call per submesh however many species are on screen. Pass 1/2
+    // needed the stock Standard shader, which has no per-instance colour, so it
+    // needed a material and a draw call per species.
+    Material[][] _tierMats;         // [tier][submesh]
+    Matrix4x4[][] _tierMatrices;    // [tier][fish]
+    Vector4[][] _tierTints;         // [tier][fish]  rgb = species tint
+    Vector4[][] _tierFades;         // [tier][fish]  x = fade, y = glow
+    MaterialPropertyBlock[] _tierMpb;
+    int[] _tierCount;
     Material _baseMat;
+
+    static readonly int _SpeciesTintID = Shader.PropertyToID("_SpeciesTint");
+    static readonly int _FadeGlowID = Shader.PropertyToID("_FadeGlow");
+    static readonly int _PartColorID = Shader.PropertyToID("_PartColor");
+    static readonly int _DeepColorID = Shader.PropertyToID("_DeepColor");
 
     bool ResolveMeshes()
     {
@@ -530,16 +541,31 @@ public class AmbientFishField : MonoBehaviour
             built[t] = tm;
         }
         _tiers = built;
+        AllocateBatches();
         return true;
     }
 
-    void BuildSpeciesSlots()
+    void AllocateBatches()
     {
         ReleaseMaterials();
-        _slotSpecies.Clear();
-        _speciesSlot.Clear();
-        _allowed.Clear();
+        _tierMats = new Material[3][];
+        _tierMatrices = new Matrix4x4[3][];
+        _tierTints = new Vector4[3][];
+        _tierFades = new Vector4[3][];
+        _tierMpb = new MaterialPropertyBlock[3];
+        _tierCount = new int[3];
+        for (int t = 0; t < 3; t++)
+        {
+            _tierMatrices[t] = new Matrix4x4[maxFish];
+            _tierTints[t] = new Vector4[maxFish];
+            _tierFades[t] = new Vector4[maxFish];
+            _tierMpb[t] = new MaterialPropertyBlock();
+        }
+    }
 
+    void BuildSpeciesList()
+    {
+        _allowed.Clear();
         var catchable = PlanetEconomy.CatchableIndices(_planetName);
         if (catchable != null)
         {
@@ -555,18 +581,6 @@ public class AmbientFishField : MonoBehaviour
         if (_allowed.Count == 0)
             for (int i = 0; i < FishingRules.Species.Length; i++)
                 if (!FishingRules.IsBounty(i)) _allowed.Add(i);   // no table: the whole pool, as elsewhere
-
-        for (int i = 0; i < _allowed.Count; i++)
-        {
-            _speciesSlot[_allowed[i]] = _slotSpecies.Count;
-            _slotSpecies.Add(_allowed[i]);
-        }
-
-        int slots = _slotSpecies.Count;
-        _slotMats = new Material[slots][];
-        _slotMatrices = new Matrix4x4[slots][];
-        _slotCount = new int[slots];
-        for (int i = 0; i < slots; i++) _slotMatrices[i] = new Matrix4x4[maxFish];
     }
 
     Material BaseMaterial()
@@ -580,63 +594,53 @@ public class AmbientFishField : MonoBehaviour
         _baseMat = Resources.Load<Material>("AmbientFish");
         if (_baseMat == null)
         {
-            var sh = Shader.Find("Standard");
+            var sh = Shader.Find("Custom/AmbientFish");
             if (sh == null) return null;
             _baseMat = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
             _baseMat.enableInstancing = true;
             Debug.LogWarning("[AmbientFishField] Resources/AmbientFish.mat missing — "
-                           + "falling back to a runtime Standard material, which may draw "
-                           + "nothing in a BUILD. Restore the asset.");
+                           + "falling back to a runtime material, which may draw nothing "
+                           + "in a BUILD. Restore the asset.");
         }
         return _baseMat;
     }
 
-    Material[] MaterialsForSlot(int slot)
+    Material[] MaterialsForTier(int tier)
     {
-        if (_slotMats[slot] != null) return _slotMats[slot];
+        if (_tierMats[tier] != null) return _tierMats[tier];
         var baseMat = BaseMaterial();
         if (baseMat == null) return null;
 
-        int sp = _slotSpecies[slot];
-        var tm = _tiers[(int)FishingRules.Species[sp].tier];
-        Color tint = FishSpeciesVisuals.TintOf(sp);
-        float glow = FishSpeciesVisuals.EmissionFor(sp) * ambientGlowScale;
-
+        var tm = _tiers[tier];
         var mats = new Material[tm.subCount];
         for (int s = 0; s < tm.subCount; s++)
         {
             var m = new Material(baseMat) { hideFlags = HideFlags.HideAndDontSave };
-            m.color = FishSpeciesVisuals.BlendPartColour(tm.partColours[s], tint, 0.55f);
-            if (glow > 0f)
-            {
-                m.EnableKeyword("_EMISSION");
-                m.globalIlluminationFlags = MaterialGlobalIlluminationFlags.RealtimeEmissive;
-                m.SetColor("_EmissionColor", tint * glow);
-            }
-            else
-            {
-                m.DisableKeyword("_EMISSION");
-                m.SetColor("_EmissionColor", Color.black);
-            }
+            m.enableInstancing = true;
+            m.SetColor(_PartColorID, tm.partColours[s]);
+            m.SetColor(_DeepColorID, deepWaterColour);
             mats[s] = m;
         }
-        _slotMats[slot] = mats;
+        _tierMats[tier] = mats;
         return mats;
     }
 
     void ReleaseMaterials()
     {
-        if (_slotMats != null)
-            for (int i = 0; i < _slotMats.Length; i++)
+        if (_tierMats != null)
+            for (int i = 0; i < _tierMats.Length; i++)
             {
-                if (_slotMats[i] == null) continue;
-                for (int s = 0; s < _slotMats[i].Length; s++)
-                    if (_slotMats[i][s] != null) Destroy(_slotMats[i][s]);
-                _slotMats[i] = null;
+                if (_tierMats[i] == null) continue;
+                for (int s = 0; s < _tierMats[i].Length; s++)
+                    if (_tierMats[i][s] != null) Destroy(_tierMats[i][s]);
+                _tierMats[i] = null;
             }
-        _slotMats = null;
-        _slotMatrices = null;
-        _slotCount = null;
+        _tierMats = null;
+        _tierMatrices = null;
+        _tierTints = null;
+        _tierFades = null;
+        _tierMpb = null;
+        _tierCount = null;
     }
 
     // ── disturbance ──────────────────────────────────────────────────────────
@@ -669,7 +673,7 @@ public class AmbientFishField : MonoBehaviour
         Vector3 camW = cam.transform.position;
         if (!ResolvePlanet(camW)) return;
         if (!ResolveMeshes()) return;
-        if (_slotMatrices == null || _slotMatrices.Length == 0) return;
+        if (_tierMatrices == null) return;
 
         Vector3 camL = _planetT.InverseTransformPoint(camW);
         float camR = camL.magnitude;
@@ -696,32 +700,80 @@ public class AmbientFishField : MonoBehaviour
 
         DrainProbes();
 
-        if (_fish == null || _fish.Length != maxFish) _fish = new Fish[maxFish];
-        for (int i = 0; i < _slotCount.Length; i++) _slotCount[i] = 0;
+        if (_fish == null || _fish.Length != maxFish)
+        {
+            _fish = new Fish[maxFish];
+            AllocateBatches();
+        }
+        for (int i = 0; i < _tierCount.Length; i++) _tierCount[i] = 0;
+
+        // How much of the ring is actually water. THIS is what stops a pond
+        // getting an ocean's worth of fish crammed into it (Sam, playtest 2:
+        // "if I'm in a spot with very little water it gets super dense").
+        UpdateWaterFraction(camL, ring, level);
+        int target = Mathf.Clamp(Mathf.RoundToInt(maxFish * _waterFrac), 0, maxFish);
 
         bool hasDisturb = Time.time < _disturbUntil;
         Vector3 disturbL = hasDisturb ? _planetT.InverseTransformPoint(_disturbW) : Vector3.zero;
+        bool camUnder = alt < 0f;
 
         float dt = Mathf.Min(Time.deltaTime, 0.1f);
         int spawnBudget = maxSpawnsPerFrame;
-        int spawnTries = maxSpawnsPerFrame * 4;   // a failed try is a dict lookup, but bound it anyway
+        int spawnTries = maxSpawnsPerFrame * 4;
 
         CastWhiskers();
+
+        int aliveNow = 0;
+        for (int i = 0; i < _fish.Length; i++) if (_fish[i].alive) aliveNow++;
 
         for (int i = 0; i < _fish.Length; i++)
         {
             if (!_fish[i].alive)
             {
-                if (spawnBudget <= 0 || spawnTries <= 0) continue;
+                if (aliveNow >= target || spawnBudget <= 0 || spawnTries <= 0) continue;
                 spawnTries--;
-                if (TrySpawn(ref _fish[i], camL, ring, level)) spawnBudget--;
+                if (TrySpawn(ref _fish[i], camL, ring, level)) { spawnBudget--; aliveNow++; }
                 else continue;
             }
             if (!Step(ref _fish[i], camL, ring, level, dt, hasDisturb, disturbL)) continue;
-            Accumulate(ref _fish[i]);
+            Accumulate(ref _fish[i], camL, ring, camUnder);
         }
 
         Draw();
+    }
+
+    /// <summary>
+    /// The fraction of the ring around you that is swimmable water, from the
+    /// patch cache — no extra raycasts, just lookups. The live population is
+    /// scaled by it, so a small pond holds a few fish and open sea holds the
+    /// full pool, instead of both holding the same number.
+    /// </summary>
+    void UpdateWaterFraction(Vector3 camL, float ring, int level)
+    {
+        if (Time.time < _nextWaterScan) return;
+        _nextWaterScan = Time.time + 0.5f;
+
+        Vector3 up = camL.normalized;
+        Vector3 t1 = Vector3.Cross(up, Vector3.up);
+        if (t1.sqrMagnitude < 1e-4f) t1 = Vector3.Cross(up, Vector3.right);
+        t1.Normalize();
+        Vector3 t2 = Vector3.Cross(up, t1);
+
+        const int N = 24;
+        const float Golden = 2.39996323f;   // golden angle: an even spiral, no clumping
+        int water = 0, known = 0;
+        for (int i = 0; i < N; i++)
+        {
+            float d = ring * Mathf.Sqrt((i + 0.5f) / N);   // sqrt => uniform in AREA
+            float a = i * Golden;
+            Vector3 dir = (up * _oceanR + (t1 * Mathf.Cos(a) + t2 * Mathf.Sin(a)) * d).normalized;
+            if (!BedSmooth(dir * _oceanR, level, out float bed)) continue;
+            known++;
+            if (_oceanR - bed >= minSwimWater + 0.4f) water++;
+        }
+        if (known == 0) return;
+        // Eased, so walking past a headland does not visibly cull the shoal.
+        _waterFrac = Mathf.Lerp(_waterFrac, (float)water / known, 0.35f);
     }
 
     /// <summary>
@@ -730,13 +782,13 @@ public class AmbientFishField : MonoBehaviour
     /// cannot see a boulder, a spire that fell between probe points, or a prop
     /// that is not on the terrain layer, and a fish measurably swam a metre into
     /// one. So each fish casts ONE short ray along its heading, round-robin —
-    /// about two rays a frame for the whole pool, against 2,400 a second for the
-    /// naive "ray per fish per frame", and with no rigidbodies or contacts.
+    /// a couple of rays a frame for the whole pool, against 2,400 a second for
+    /// the naive "ray per fish per frame", and with no rigidbodies or contacts.
     ///
     /// A hit only raises <c>avoid</c>, which only steers. It must NEVER reach
     /// the depth target: sparse, chunky ray data driving the continuous depth
     /// constraint spiked the rendered pitch to 71-84 degrees per frame in
-    /// testing — worse than the bug this pass exists to fix.
+    /// testing — worse than the bug pass 2 existed to fix.
     /// </summary>
     void CastWhiskers()
     {
@@ -765,9 +817,13 @@ public class AmbientFishField : MonoBehaviour
         t1.Normalize();
         Vector3 t2 = Vector3.Cross(up, t1);
 
-        // Out in the ring, never right on top of you — a fish that pops into
-        // existence at arm's length is the thing you notice.
-        float d = Random.Range(0.45f, 1f) * ring;
+        // SQUARE ROOT, not a straight random radius. A disc has more area near
+        // its rim, so a uniform random radius piles fish toward the middle —
+        // which is exactly Sam's "very dense around me". sqrt spreads them
+        // evenly over the area instead. They also start well out and fade up,
+        // so recycling is never something you catch happening.
+        float u = Random.Range(spawnInnerFrac * spawnInnerFrac, 1f);
+        float d = ring * Mathf.Sqrt(u);
         float a = Random.value * Mathf.PI * 2f;
         Vector3 dir = (up * _oceanR + (t1 * Mathf.Cos(a) + t2 * Mathf.Sin(a)) * d).normalized;
 
@@ -786,7 +842,8 @@ public class AmbientFishField : MonoBehaviour
         int sp = RollSpecies(nose);
         if (sp < 0) return false;
 
-        var tm = _tiers[(int)FishingRules.Species[sp].tier];
+        int tier = (int)FishingRules.Species[sp].tier;
+        var tm = _tiers[tier];
         float weight = FishingRules.RollWeight(sp, Random.value);
         float bodyLen = FishingRules.BodyLengthForWeight(weight);
         float girth = FishingRules.GirthFactorForWeight(weight);
@@ -802,8 +859,10 @@ public class AmbientFishField : MonoBehaviour
         f.wanderSeed = Random.value * 100f;
         f.steerSign = Random.value < 0.5f ? -1f : 1f;
         f.avoid = 0f;
+        f.born = 0f;
         f.species = sp;
-        f.slot = _speciesSlot.TryGetValue(sp, out int s) ? s : 0;
+        f.tier = tier;
+        f.bodyLen = bodyLen;
         f.halfLen = bodyLen * 0.5f;
         // Models are authored facing -Z, so local X is width, Y is belly depth
         // and Z is length — the same axis split the held/hooked fish uses.
@@ -824,26 +883,25 @@ public class AmbientFishField : MonoBehaviour
         float dot = FishingSun.SunDot(_planetT.TransformPoint(noseL), _planetT);
         FishTier tier = FishingRules.RollTier(dot, BaitKind.None, Random.value);
         int sp = FishingRules.RollSpeciesInTier(tier, Random.value, _allowed);
-        if (sp < 0 || !_speciesSlot.ContainsKey(sp)) sp = _allowed[Random.Range(0, _allowed.Count)];
+        if (sp < 0) sp = _allowed[Random.Range(0, _allowed.Count)];
         return sp;
     }
 
     /// <summary>
-    /// The SHALLOWEST sea bed along the next few metres of a fish's path — the
-    /// heart of the fix for swimming through banks. Pass 1 constrained depth by
-    /// the bed UNDERNEATH, which meant a fish only reacted to ground it was
-    /// already in, and could climb at just 0.7 m/s against ground rising faster
-    /// than that. Reading ahead means the fish starts lifting before the bottom
-    /// arrives and follows the contour up, which is also what a fish looks like.
+    /// The SHALLOWEST sea bed along a fish's path — ahead of it, under it, and
+    /// one body length BEHIND it (the tail is what clips a ridge the nose has
+    /// already cleared). The heart of the fix for swimming through banks: pass 1
+    /// constrained depth by the bed underneath only, so a fish reacted to ground
+    /// it was already inside.
     /// </summary>
-    float ShallowestAhead(Vector3 noseL, Vector3 dirL, int level, out bool known)
+    float ShallowestAround(Vector3 noseL, Vector3 dirL, float bodyLen, int level, out bool known)
     {
         known = false;
         float shallow = 0f;
-        for (int k = 0; k <= depthLookSteps; k++)
+        for (int k = -1; k <= depthLookSteps; k++)
         {
-            Vector3 p = noseL + dirL * (depthLookAhead * k / depthLookSteps);
-            if (!BedSmooth(p, level, out float b)) continue;
+            float t = k < 0 ? -bodyLen : depthLookAhead * k / depthLookSteps;
+            if (!BedSmooth(noseL + dirL * t, level, out float b)) continue;
             if (!known || b > shallow) { shallow = b; known = true; }
         }
         return shallow;
@@ -854,9 +912,11 @@ public class AmbientFishField : MonoBehaviour
     {
         Vector3 up = f.noseL.normalized;
 
-        // Leave when the field moves off them. Checked BEFORE the move so a
-        // recycled fish is never drawn at a stale pose.
+        // Leave when the field moves off them. The fade at the rim means they
+        // are already invisible by the time this fires.
         if ((f.noseL - camL).sqrMagnitude > ring * ring * 1.45f) { f.alive = false; return false; }
+
+        f.born = Mathf.Min(1f, f.born + dt / Mathf.Max(0.05f, fadeInSeconds));
 
         // ── scatter ──────────────────────────────────────────────────────────
         // You, and the bobber's splash. Two distance checks. Nothing about the
@@ -884,10 +944,6 @@ public class AmbientFishField : MonoBehaviour
         f.dirL.Normalize();
 
         // ── veer off the shallows, PROPORTIONALLY ────────────────────────────
-        // Pass 1 flipped a hard 150 deg/s on and off as the fish crossed patch
-        // boundaries, which is a yaw snap in its own right. Now it ramps in over
-        // the last stretch of deepening water, so a fish curves away from a
-        // bank instead of flinching off it.
         Vector3 aheadTurn = f.noseL + f.dirL * turnLookAhead;
         float blocked;
         if (BedSmooth(aheadTurn, level, out float bedTurn))
@@ -917,10 +973,14 @@ public class AmbientFishField : MonoBehaviour
         f.noseL += f.dirL * speed * dt;
 
         // ── depth: a SPRING, not a step ──────────────────────────────────────
-        // Mathf.SmoothDamp gives a continuous vertical velocity. MoveTowards
-        // (pass 1) was bang-bang: full climb rate or nothing, so the rendered
-        // pitch snapped 27.4 degrees in a single frame when it arrived.
-        float shallowest = ShallowestAhead(f.noseL, f.dirL, level, out bool bedKnown);
+        float shallowest = ShallowestAround(f.noseL, f.dirL, f.bodyLen, level, out bool bedKnown);
+
+        // No "extra clearance on steep ground" here on purpose: it was tried and
+        // MEASURED, and it bought almost nothing (1.07 m -> 0.99 m of
+        // penetration) while making the motion notably less smooth (worst pitch
+        // change 7.9 -> 15.5 deg/frame). Finer patches did the job instead.
+        float clearance = bedClearance;
+
         float breathe = Mathf.Sin(Time.time * 0.3f + f.wanderSeed) * 0.4f;
         float wantR = _oceanR - Mathf.Max(0.4f, f.depth + breathe);
         float ceilR = _oceanR - surfaceClearance;
@@ -930,7 +990,7 @@ public class AmbientFishField : MonoBehaviour
         // approaching a beach the floor would exceed the ceiling and the clamp
         // would hand back a radius ABOVE THE WATER — a fish rising out of the
         // sea for the frames before it turned away. The floor is capped first.
-        float floorR = Mathf.Min(shallowest + bedClearance, ceilR);
+        float floorR = Mathf.Min(shallowest + clearance, ceilR);
         float targetR = bedKnown
             ? Mathf.Clamp(wantR, floorR, ceilR)
             : f.noseL.magnitude;      // nothing probed: hold this depth, do not dive blind
@@ -950,12 +1010,43 @@ public class AmbientFishField : MonoBehaviour
         return true;
     }
 
-    void Accumulate(ref Fish f)
+    /// <summary>
+    /// How lost in the water a fish is, 0..1. Sam, playtest 2: "they don't seem
+    /// to get less visible the deeper they are ... a foot underwater or 10 feet
+    /// underwater they look the same."
+    ///
+    /// Pass 1 relied on the ocean post-effect for this and it never applied: the
+    /// fish are drawn with shadow casting off, which in this pipeline is the
+    /// same list the camera depth texture is built from, so the ocean effect
+    /// does not know they exist. Owning the fade outright is both correct and
+    /// predictable — and it is the only way the rarity GLOW can fade too, which
+    /// is the part that stood out most.
+    ///
+    /// Above the surface it is the fish's depth that buries it (plus a little
+    /// for the slant of a long look across the water); underwater it is plain
+    /// distance. The spawn ramp and the rim fade ride the same value, so fish
+    /// never pop in or out.
+    /// </summary>
+    float FadeFor(ref Fish f, Vector3 camL, float ring, bool camUnder)
     {
-        int slot = f.slot;
-        if (_slotCount == null || slot >= _slotCount.Length) return;
-        int n = _slotCount[slot];
-        if (n >= _slotMatrices[slot].Length) return;
+        float depth = Mathf.Max(0f, _oceanR - f.noseL.magnitude);
+        float dist = Vector3.Distance(f.noseL, camL);
+        float water = camUnder ? dist : depth + dist * slantFade;
+        float depthFade = 1f - Mathf.Exp(-water / Mathf.Max(0.5f, fadeDistance));
+
+        // Fade out again at the rim of the field, so a recycled fish leaves as
+        // quietly as it arrived.
+        float edge = Mathf.Clamp01(Mathf.InverseLerp(ring * 1.15f, ring * 0.9f, dist));
+        float visible = Mathf.Clamp01(f.born) * edge * (1f - depthFade);
+        return Mathf.Clamp01(1f - visible);
+    }
+
+    void Accumulate(ref Fish f, Vector3 camL, float ring, bool camUnder)
+    {
+        int tier = f.tier;
+        if (_tierCount == null || tier < 0 || tier >= _tierCount.Length) return;
+        int n = _tierCount[tier];
+        if (n >= _tierMatrices[tier].Length) return;
 
         Vector3 up = f.noseL.normalized;
 
@@ -991,32 +1082,42 @@ public class AmbientFishField : MonoBehaviour
         // sitting at local z = -1.201.
         Quaternion rot = Quaternion.LookRotation(-noseDirW, upW);
 
-        var tm = _tiers[(int)FishingRules.Species[f.species].tier];
+        var tm = _tiers[tier];
         Vector3 centreW = noseW - noseDirW * f.halfLen;
         Vector3 pos = centreW - rot * Vector3.Scale(f.meshScale, tm.centre);
 
-        _slotMatrices[slot][n] = Matrix4x4.TRS(pos, rot, f.meshScale);
-        _slotCount[slot] = n + 1;
+        Color tint = FishSpeciesVisuals.TintOf(f.species);
+        float glow = FishSpeciesVisuals.EmissionFor(f.species) * ambientGlowScale;
+
+        _tierMatrices[tier][n] = Matrix4x4.TRS(pos, rot, f.meshScale);
+        _tierTints[tier][n] = new Vector4(tint.r, tint.g, tint.b, 1f);
+        _tierFades[tier][n] = new Vector4(FadeFor(ref f, camL, ring, camUnder), glow, 0f, 0f);
+        _tierCount[tier] = n + 1;
     }
 
     void Draw()
     {
-        for (int slot = 0; slot < _slotCount.Length; slot++)
+        for (int tier = 0; tier < _tierCount.Length; tier++)
         {
-            int n = _slotCount[slot];
+            int n = _tierCount[tier];
             if (n == 0) continue;
-            var mats = MaterialsForSlot(slot);
+            var mats = MaterialsForTier(tier);
             if (mats == null) continue;
-            var tm = _tiers[(int)FishingRules.Species[_slotSpecies[slot]].tier];
+            var tm = _tiers[tier];
+
+            var mpb = _tierMpb[tier];
+            mpb.Clear();
+            mpb.SetVectorArray(_SpeciesTintID, _tierTints[tier]);
+            mpb.SetVectorArray(_FadeGlowID, _tierFades[tier]);
+
             for (int s = 0; s < tm.subCount && s < mats.Length; s++)
             {
                 if (mats[s] == null) continue;
                 // Shadows and probes off: a fish under water casting a sun
                 // shadow is wrong anyway, and both are per-instance cost we do
-                // not need. Opaque queue (2000) is what lets the ocean post tint
-                // and swallow them with depth — above 2500 they would float
-                // visibly on top of the water.
-                Graphics.DrawMeshInstanced(tm.mesh, s, mats[s], _slotMatrices[slot], n, null,
+                // not need. Opaque queue (2000) keeps them out of the
+                // transparent queue and its sorting.
+                Graphics.DrawMeshInstanced(tm.mesh, s, mats[s], _tierMatrices[tier], n, mpb,
                                            ShadowCastingMode.Off, false, 0, null,
                                            LightProbeUsage.Off);
             }
@@ -1028,16 +1129,30 @@ public class AmbientFishField : MonoBehaviour
     [Header("Field")]
     [Tooltip("Master switch. Off = the water is empty, exactly as before this existed.")]
     [SerializeField] bool enableField = true;
-    [Tooltip("How many fish exist at once. Fixed on purpose — fish are not streamed at view distance, so they get no quality slider (crystals and the concert audience are fixed for the same reason).")]
-    [SerializeField] int maxFish = 40;
+    [Tooltip("Most fish that can exist at once, on wide open water. In smaller water the live count is scaled down by how much of the area around you actually IS water, so a pond never gets crammed.")]
+    [SerializeField] int maxFish = 22;
     [Tooltip("Radius of the bubble of fish around you at the water's surface, in metres.")]
-    [SerializeField] float nearRing = 30f;
+    [SerializeField] float nearRing = 45f;
     [Tooltip("Radius of that bubble at 200 m altitude — wider so they spread out under you instead of clumping.")]
-    [SerializeField] float farRing = 130f;
+    [SerializeField] float farRing = 150f;
+    [Tooltip("Fish never spawn closer than this fraction of the ring, so they arrive well out and fade up rather than appearing beside you.")]
+    [SerializeField] float spawnInnerFrac = 0.6f;
     [Tooltip("Metres above the water past which fish are switched off. A half-metre fish is under two pixels up here.")]
     [SerializeField] float maxAltitude = 250f;
-    [Tooltip("Metres below the water past which fish are switched off — deeper than the ocean post lets you see anyway.")]
+    [Tooltip("Metres below the water past which fish are switched off.")]
     [SerializeField] float maxDepthBelow = 60f;
+
+    [Header("Visibility in water")]
+    [Tooltip("Metres of water that hides a fish by about two thirds. Lower = murkier water, fish disappear sooner with depth.")]
+    [SerializeField] float fadeDistance = 5f;
+    [Tooltip("How much horizontal distance counts as water when you are above the surface — a long flat look across a lake passes through more water than the depth alone.")]
+    [SerializeField] float slantFade = 0.18f;
+    [Tooltip("The colour fish fade into. Should read as this planet's deep water.")]
+    [SerializeField] Color deepWaterColour = new Color(0.05f, 0.14f, 0.20f, 1f);
+    [Tooltip("Seconds a newly placed fish takes to fade up. Stops you ever seeing one appear.")]
+    [SerializeField] float fadeInSeconds = 2.5f;
+    [Tooltip("Rarity glow, as a fraction of the glow a caught fish has. It fades with depth on the same curve as the body.")]
+    [SerializeField] float ambientGlowScale = 0.7f;
 
     [Header("Swimming")]
     [SerializeField] float cruiseSpeedMin = 0.55f;
@@ -1046,7 +1161,7 @@ public class AmbientFishField : MonoBehaviour
     [SerializeField] float wanderTurnRate = 55f;
     [Tooltip("Degrees per second a fish turns at FULL avoidance. It ramps in, so this is not a snap.")]
     [SerializeField] float steerRate = 150f;
-    [Tooltip("Deepest a fish will sit below the surface. Deeper than this and the ocean has swallowed it anyway.")]
+    [Tooltip("Deepest a fish will sit below the surface.")]
     [SerializeField] float maxSwimDepth = 6.5f;
     [Tooltip("Metres of water a fish keeps between itself and the sea bed.")]
     [SerializeField] float bedClearance = 0.55f;
@@ -1060,11 +1175,11 @@ public class AmbientFishField : MonoBehaviour
     [SerializeField] float depthLookAhead = 5f;
     [Tooltip("How many points along that path are sampled.")]
     [SerializeField] int depthLookSteps = 3;
-    [Tooltip("Spring response for depth changes, in seconds. Larger = lazier, smaller = twitchier. This being a spring rather than a fixed climb rate is what removed the pitch snapping.")]
+    [Tooltip("Spring response for depth changes, in seconds. Larger = lazier. This being a spring rather than a fixed climb rate is what removed the pitch snapping.")]
     [SerializeField] float depthSmoothTime = 0.55f;
     [Tooltip("Ceiling on how fast a fish rises or dives, m/s.")]
     [SerializeField] float maxClimbSpeed = 1.6f;
-    [Tooltip("How hard the rendered facing is smoothed. Higher = snappier, lower = floatier. Bobber uses 12 for the fish on the line.")]
+    [Tooltip("How hard the rendered facing is smoothed. Higher = snappier, lower = floatier.")]
     [SerializeField] float facingSmoothing = 8f;
 
     [Header("Turning away from the shore")]
@@ -1076,8 +1191,8 @@ public class AmbientFishField : MonoBehaviour
     [SerializeField] float turnStartWater = 3f;
 
     [Header("Whisker (the roomba backstop)")]
-    [Tooltip("Raycasts per frame shared across the whole pool, round-robin. 2 gives each of 40 fish a look roughly 3 times a second. Steering only — it never touches depth.")]
-    [SerializeField] int whiskerRaysPerFrame = 2;
+    [Tooltip("Raycasts per frame shared across the whole pool, round-robin. Steering only — it never touches depth.")]
+    [SerializeField] int whiskerRaysPerFrame = 3;
     [Tooltip("How far ahead the whisker ray reaches, in metres.")]
     [SerializeField] float whiskerLength = 2.6f;
     [Tooltip("How fast whisker avoidance fades once the way is clear, per second.")]
@@ -1091,13 +1206,9 @@ public class AmbientFishField : MonoBehaviour
     [Tooltip("Extra speed while fleeing, as a multiple of cruise.")]
     [SerializeField] float scatterSpeedBoost = 2.2f;
 
-    [Header("Look")]
-    [Tooltip("Rarity glow, as a fraction of the glow a caught fish has. Below 1 so a rare in the water reads as a glow, not a lamp.")]
-    [SerializeField] float ambientGlowScale = 0.7f;
-
     [Header("Sea-bed probing")]
-    [Tooltip("Patch size near the surface, in metres.")]
-    [SerializeField] float fineCellMetres = 4f;
+    [Tooltip("Patch size near the surface, in metres. THE number for fish clipping terrain: 4 m measured 0.20 m of penetration on realistic ground, 2.5 m measured zero. Smaller costs more probes when you move.")]
+    [SerializeField] float fineCellMetres = 2.5f;
     [Tooltip("Patch size high above the water, in metres.")]
     [SerializeField] float coarseCellMetres = 16f;
     [Tooltip("Altitude at which the coarse patches take over.")]
@@ -1105,11 +1216,11 @@ public class AmbientFishField : MonoBehaviour
     [Tooltip("How deep a probe looks before calling it open water.")]
     [SerializeField] float probeDepthMetres = 30f;
     [Tooltip("Hard cap on sea-bed raycasts per frame. This is what stops arriving somewhere new from spiking.")]
-    [SerializeField] int maxProbesPerFrame = 4;
+    [SerializeField] int maxProbesPerFrame = 6;
     [Tooltip("Cap on the probe backlog. Extra patches are simply retried later.")]
     [SerializeField] int maxQueuedProbes = 256;
     [Tooltip("Ceiling on remembered sea-floor patches. Reached only by walking a very long coastline; the cache then rebuilds as you go.")]
     [SerializeField] int maxCachedPatches = 200000;
     [Tooltip("Cap on new fish per frame, so a fresh patch of sea fills in over a moment rather than all at once.")]
-    [SerializeField] int maxSpawnsPerFrame = 3;
+    [SerializeField] int maxSpawnsPerFrame = 2;
 }
