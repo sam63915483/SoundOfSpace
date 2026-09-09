@@ -69,8 +69,36 @@ public static class SpawnerCubeface
     /// split lands in the same place the renderer already puts it.</summary>
     const float SmallBodyRadius = 150f;
 
-    /// <summary>Twelve cells across a face, for small bodies only.</summary>
-    const float MaxFaceUVPerCellSmall = 1f / 6f;
+    /// <summary>
+    /// Twenty-four cells across a face, for small bodies only (a face spans
+    /// -1..1, so the cap is half the count).
+    ///
+    /// Why so many. Sam, 2026-09-09, correcting me after I guessed Hearth was
+    /// underwater: "hearth has water, but there is land above that water i can
+    /// walk on." Both are true at once, and that is the whole problem. Hearth's
+    /// oceanLevel is 1, which puts the sea at the TOP of its own terrain range,
+    /// so its dry land is the highest ridges only -- walkable, visible, and a
+    /// sliver of the surface area.
+    ///
+    /// Nothing rejects those ridges. The grid just never lands on them: at 6
+    /// cells a face a whole dwarf has 216 candidate spots spread over every
+    /// square metre of it, sea included, and a few percent of dry ground wins
+    /// almost none of them. At 24 a face it has 3,456 -- sixteen times as many --
+    /// so even a thin ribbon of ridge collects a useful share.
+    ///
+    /// SIZED AGAINST THE FRAME BUDGET, not just against the symptom. The scan is
+    /// integer work per cell, the spawners tick every 0.25 s, and there are four
+    /// of them: 24 a face costs about 4,400 iterations per spawner per tick,
+    /// roughly a third of a millisecond, so under 1.5 ms across all four four
+    /// times a second. 48 a face was tried first and rejected -- 13,824 spots
+    /// would have been ~1.2 ms EACH, a ~5 ms hitch four times a second, which is
+    /// a stutter you can see. Finding trees is not worth costing Sam frames.
+    ///
+    /// The per-cell hash still decides what exists and each spawner's own cap
+    /// still governs how much is placed, so this raises the CHANCE of finding
+    /// land, never the amount of stuff.
+    /// </summary>
+    const float MaxFaceUVPerCellSmall = 1f / 12f;
 
     /// <summary>
     /// How wide one spawn cell is in face-UV, for a body of this radius.
