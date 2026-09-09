@@ -70,8 +70,13 @@ public static class SpawnerCubeface
     const float SmallBodyRadius = 150f;
 
     /// <summary>
-    /// Twenty-four cells across a face, for small bodies only (a face spans
-    /// -1..1, so the cap is half the count).
+    /// Twelve cells across a face, for small bodies only (a face spans -1..1,
+    /// so the cap is half the count).
+    ///
+    /// NOTE: this was NOT what starved Hearth. The real cause was the surface
+    /// raycast stopping in mid-air on any body under ~50 m radius (see the
+    /// spawners). This cap is still worth having -- a 45 m world does not want
+    /// 40 m cells -- but it is a density improvement, not the fix.
     ///
     /// Why so many. Sam, 2026-09-09, correcting me after I guessed Hearth was
     /// underwater: "hearth has water, but there is land above that water i can
@@ -98,7 +103,7 @@ public static class SpawnerCubeface
     /// still governs how much is placed, so this raises the CHANCE of finding
     /// land, never the amount of stuff.
     /// </summary>
-    const float MaxFaceUVPerCellSmall = 1f / 12f;
+    const float MaxFaceUVPerCellSmall = 1f / 6f;
 
     /// <summary>
     /// How wide one spawn cell is in face-UV, for a body of this radius.

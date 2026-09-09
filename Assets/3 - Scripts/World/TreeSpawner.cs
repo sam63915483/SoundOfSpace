@@ -434,11 +434,17 @@ public class TreeSpawner : MonoBehaviour
         if ((spherePos - playerPos).sqrMagnitude > prefilterMax * prefilterMax) return false;
 
         Vector3 rayOrigin = planet.Position + dir * (planet.radius + surfaceRayHeight);
+        // Length is 2*radius PLUS surfaceRayHeight. The ray starts
+        // surfaceRayHeight ABOVE the surface, so a plain 2*radius stops at
+        // radius (100 - R) and never reaches the ground on a small body:
+        // Hearth (r=45) stopped 10 m up, Shard (r=40) 20 m up, so those
+        // planets could never grow ANYTHING. Sam spent two hours telling me
+        // Hearth had plenty of land while I invented reasons it did not.
         // Terrain ONLY. Anything else in the 100 m column above the surface —
         // the player, an enemy, a dropped item — used to be treated as ground,
         // and the prop was left floating when it moved away (Sam, 2026-09-09).
         if (!SpawnerCubeface.RaycastPlanetSurface(entry.gen, rayOrigin, -dir,
-                                                  planet.radius * 2f, groundMask, out RaycastHit hit))
+                                                  planet.radius * 2f + surfaceRayHeight, groundMask, out RaycastHit hit))
         { _cRayMiss++; return false; }
 
         if (entry.gen != null)
