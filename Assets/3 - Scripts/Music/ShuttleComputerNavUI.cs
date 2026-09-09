@@ -23,18 +23,9 @@ public partial class ShuttleComputerUI
     GameObject _navView;
     GameObject _navListPane, _navStatusPane, _navHoverPane;
 
-    // list pane
-    class NavTile
-    {
-        public string body; public Image frame; public TextMeshProUGUI label; public bool here;
-        public TextMeshProUGUI dist; public CelestialBody bodyRef; public int lastKm10;
-        // Fuel (planet economy): whether this hop is affordable right now, so the
-        // tile can grey out and the sub-label can say when it opens instead.
-        public bool reachable = true; public string lastSub = null;
-    }
-    readonly List<NavTile> _navTiles = new List<NavTile>();
-    RectTransform _navTileRow;
-    string _navListBuiltFor = null;
+    // List pane — since 2026-09-09 this is the solar MAP plus a destination
+    // list; everything it contains is built and driven in the partial file
+    // ShuttleComputerNavMapUI.cs. The old grid of planet tiles is gone.
     string _navSelected = "";
     Image _navTravelBg;
     TextMeshProUGUI _navTravelLabel;
@@ -48,7 +39,6 @@ public partial class ShuttleComputerUI
     Image _navProgressFill;
     RawImage _navEnRouteFeed;      // live cam behind the EN ROUTE status
     Image _navEnRouteScrim;
-    TextMeshProUGUI _navCamHint;
 
     // hover pane
     RawImage _navFeed;
@@ -96,68 +86,11 @@ public partial class ShuttleComputerUI
         trt.anchoredPosition = Vector2.zero;
         title.characterSpacing = 18;
 
-        BuildNavListPane(view);
+        BuildNavMapPane(view);          // partial: ShuttleComputerNavMapUI
         BuildNavStatusPane(view);
         BuildNavHoverPane(view);
 
         _navView.SetActive(false);
-    }
-
-    void BuildNavListPane(RectTransform parent)
-    {
-        var pane = MakeRect(parent, "NavListPane");
-        Stretch(pane, 0, 0, 34, 0);
-        _navListPane = pane.gameObject;
-
-        var hint = MakeText(pane, "Hint", "SELECT DESTINATION", 14, InkDim, TextAlignmentOptions.Center);
-        var hrt = hint.rectTransform;
-        hrt.anchorMin = new Vector2(0, 1); hrt.anchorMax = new Vector2(1, 1);
-        hrt.pivot = new Vector2(0.5f, 1);
-        hrt.sizeDelta = new Vector2(0, 24);
-        hrt.anchoredPosition = new Vector2(0, -6);
-        hint.characterSpacing = 16;
-
-        // Fuel gauge. The one number that decides where you can go, so it sits
-        // above the planet list rather than buried on another screen.
-        _navFuelLabel = MakeText(pane, "Fuel", "", 15, Accent, TextAlignmentOptions.Center);
-        var frt2 = _navFuelLabel.rectTransform;
-        frt2.anchorMin = new Vector2(0, 1); frt2.anchorMax = new Vector2(1, 1);
-        frt2.pivot = new Vector2(0.5f, 1);
-        frt2.sizeDelta = new Vector2(0, 22);
-        frt2.anchoredPosition = new Vector2(0, -28);
-        _navFuelLabel.characterSpacing = 10;
-
-        _navTileRow = MakeRect(pane, "Tiles");
-        Stretch(_navTileRow, 0, 0, 62, 120);
-
-        // TRAVEL — enabled only with a non-current planet selected.
-        var btn = MakePanel(pane, "TravelBtn", Panel);
-        btn.raycastTarget = true;   // MakePanel defaults raycasts OFF — every clickable re-enables
-        _navTravelBg = btn;
-        var brt = btn.rectTransform;
-        brt.anchorMin = new Vector2(0.5f, 0); brt.anchorMax = new Vector2(0.5f, 0);
-        brt.pivot = new Vector2(0.5f, 0);
-        brt.sizeDelta = new Vector2(420, 64);
-        brt.anchoredPosition = new Vector2(0, 30);
-        Outline(btn.transform, Grid);
-        _navTravelLabel = MakeText(brt, "Label", "TRAVEL", 24, Locked, TextAlignmentOptions.Center);
-        Stretch(_navTravelLabel.rectTransform, 0, 0, 0, 0);
-        _navTravelLabel.characterSpacing = 24;
-        var b = btn.gameObject.AddComponent<Button>();
-        b.targetGraphic = btn;
-        var cb = b.colors;
-        cb.normalColor = Color.white;
-        cb.highlightedColor = new Color(1.6f, 1.6f, 1.6f, 1f);
-        cb.pressedColor = new Color(2f, 2f, 2f, 1f);
-        b.colors = cb;
-        b.onClick.AddListener(OnNavTravelClicked);
-
-        _navToastLabel = MakeText(pane, "Toast", "", 16, Warn, TextAlignmentOptions.Center);
-        var tort = _navToastLabel.rectTransform;
-        tort.anchorMin = new Vector2(0, 0); tort.anchorMax = new Vector2(1, 0);
-        tort.pivot = new Vector2(0.5f, 0);
-        tort.sizeDelta = new Vector2(0, 24);
-        tort.anchoredPosition = new Vector2(0, 100);
     }
 
     void BuildNavStatusPane(RectTransform parent)
@@ -239,16 +172,6 @@ public partial class ShuttleComputerUI
         skb.colors = skc;
         skb.onClick.AddListener(() => { ShuttleAutopilot.Instance?.SkipCountdown(); });
         skip.gameObject.SetActive(false);
-
-        // Cam-switch hint, en-route only.
-        _navCamHint = MakeText(pane, "CamHint", "LEFT CLICK — SWITCH CAM", 16, InkDim, TextAlignmentOptions.Center);
-        var chrt = _navCamHint.rectTransform;
-        chrt.anchorMin = new Vector2(0, 0); chrt.anchorMax = new Vector2(1, 0);
-        chrt.pivot = new Vector2(0.5f, 0);
-        chrt.sizeDelta = new Vector2(0, 24);
-        chrt.anchoredPosition = new Vector2(0, 22);
-        _navCamHint.characterSpacing = 16;
-        _navCamHint.gameObject.SetActive(false);
     }
 
     void BuildNavHoverPane(RectTransform parent)
@@ -339,7 +262,7 @@ public partial class ShuttleComputerUI
             _navListPane.SetActive(list);
             _navStatusPane.SetActive(status);
             _navHoverPane.SetActive(hover);
-            if (list) { _navListBuiltFor = null; }   // "YOU ARE HERE" may have moved
+            if (list) _navNextTextAt = 0f;          // "YOU ARE HERE" may have moved
         }
 
         if (pilot == null) return;
@@ -351,7 +274,7 @@ public partial class ShuttleComputerUI
         switch (phase)
         {
             case ShuttleAutopilot.Phase.Parked:
-                NavRefreshList(pilot);
+                NavMapDrive(pilot);                // partial: ShuttleComputerNavMapUI
                 if (_navToastLabel != null)
                     _navToastLabel.text = Time.unscaledTime < _navToastUntil2 ? _navToastLabel.text : "";
                 break;
@@ -440,9 +363,10 @@ public partial class ShuttleComputerUI
         }
     }
 
-    // En-route live feed (2026-08-28, Sam's ask): the status pane background
-    // is the transit camera — top cam by default (what you're flying at),
-    // left click flips to the bottom cam looking back.
+    // En-route live feed (2026-08-28, Sam's ask): the status pane background is
+    // the transit camera, under the belly. It used to have a second camera on
+    // the roof with a left click to switch — removed 2026-09-09 at Sam's
+    // request; one feed, no switch.
     void DriveEnRouteFeed(ShuttleAutopilot pilot)
     {
         var cam = pilot.TransitCamera;
@@ -452,14 +376,9 @@ public partial class ShuttleComputerUI
         {
             _navEnRouteFeed.gameObject.SetActive(show);
             _navEnRouteScrim.gameObject.SetActive(show);
-            _navCamHint.gameObject.SetActive(show);
         }
         if (!show) return;
         if (_navEnRouteFeed.texture != cam.Texture) _navEnRouteFeed.texture = cam.Texture;
-        // Only while THIS player has the terminal open — mirror viewers on
-        // the cockpit screen just watch whatever the pilot picked.
-        if (ShuttleComputerUI.IsOpen && PadCursor.PrimaryDown)
-            pilot.ToggleTransitFeed();
     }
 
     void HideEnRouteFeed()
@@ -467,7 +386,6 @@ public partial class ShuttleComputerUI
         if (_navEnRouteFeed == null || !_navEnRouteFeed.gameObject.activeSelf) return;
         _navEnRouteFeed.gameObject.SetActive(false);
         _navEnRouteScrim.gameObject.SetActive(false);
-        _navCamHint.gameObject.SetActive(false);
     }
 
     // Hover steering — only while THIS player has the NAV app open fullscreen
@@ -479,6 +397,7 @@ public partial class ShuttleComputerUI
     void NavInput()
     {
         var pilot = ShuttleAutopilot.Instance;
+        NavMapInput();               // zoom / pan / pick, PARKED only — partial: NavMapUI
         bool hover = pilot != null && pilot.CurrentPhase == ShuttleAutopilot.Phase.Hover;
         SetHoverCursorSuppressed(hover);
         if (!hover) return;
@@ -503,183 +422,6 @@ public partial class ShuttleComputerUI
         }
     }
 
-    // ── list pane ────────────────────────────────────────────────────────
-
-    void NavRefreshList(ShuttleAutopilot pilot)
-    {
-        string here = pilot.CurrentBody != null ? pilot.CurrentBody.bodyName : "";
-        if (_navListBuiltFor != here)
-        {
-            _navListBuiltFor = here;
-            NavRebuildTiles(pilot, here);
-        }
-
-        // A destination you cannot pay for is not travel-able. Selecting it is
-        // still allowed — you want to be able to click a far planet and read
-        // when it opens up.
-        var tankNow = ShuttleFuel.Instance;
-        bool selReachable = true;
-        if (tankNow != null && !string.IsNullOrEmpty(_navSelected))
-            foreach (var t in _navTiles)
-                if (t.body == _navSelected) { selReachable = t.reachable; break; }
-
-        bool canTravel = !string.IsNullOrEmpty(_navSelected) && selReachable;
-        _navTravelLabel.text  = canTravel || string.IsNullOrEmpty(_navSelected) ? "TRAVEL" : "NOT ENOUGH FUEL";
-        _navTravelLabel.color = canTravel ? Ink : Locked;
-        _navTravelBg.color = canTravel ? PanelHi : Panel;
-
-        // Live distance + reachability refresh (change-gated — no per-frame
-        // string garbage; this runs twice a second, not every frame).
-        if (Time.unscaledTime >= _navNextDistAt && pilot.CurrentBody != null)
-        {
-            _navNextDistAt = Time.unscaledTime + 0.5f;
-            Vector3 hereP = pilot.CurrentBody.Position;
-            var hereBody = pilot.CurrentBody;
-
-            if (_navFuelLabel != null)
-            {
-                string fuelLine = tankNow == null
-                    ? ""
-                    : $"FUEL {Mathf.RoundToInt(tankNow.FuelPercent * 100f)}%   ·   RANGE {tankNow.RangeKm:0.0} KM";
-                if (fuelLine != _navFuelShown) { _navFuelShown = fuelLine; _navFuelLabel.text = fuelLine; }
-            }
-
-            foreach (var t in _navTiles)
-            {
-                if (t.dist == null || t.bodyRef == null) continue;
-
-                float metres = Vector3.Distance(t.bodyRef.Position, hereP);
-                int km10 = Mathf.RoundToInt(metres / 100f);
-
-                // Can we afford it right now?
-                bool afford = tankNow == null || tankNow.CanAfford(metres);
-                string sub;
-                if (afford)
-                {
-                    sub = (km10 / 10f).ToString("0.0") + " KM";
-                }
-                else
-                {
-                    // Out of reach — say WHEN, computed exactly off the rails.
-                    // This is what turns waiting into a plan instead of a guess.
-                    float rangeM = tankNow.RangeKm * 1000f;
-                    var status = OrbitRange.Evaluate(hereBody, t.bodyRef, rangeM, out float wait);
-                    sub = (km10 / 10f).ToString("0.0") + " KM  ·  " +
-                          (status == OrbitRange.Status.Waiting ? "IN RANGE " + OrbitRange.DescribeWait(wait)
-                                                               : "OUT OF RANGE");
-                }
-
-                if (afford != t.reachable)
-                {
-                    t.reachable  = afford;
-                    t.label.color = afford ? Ink : Locked;
-                    t.frame.color = t.body == _navSelected ? PanelHi : Panel;
-                }
-                if (km10 != t.lastKm10 || sub != t.lastSub)
-                {
-                    t.lastKm10 = km10;
-                    t.lastSub  = sub;
-                    t.dist.text  = sub;
-                    t.dist.color = afford ? Locked : Warn;
-                }
-            }
-        }
-    }
-
-    void NavRebuildTiles(ShuttleAutopilot pilot, string here)
-    {
-        foreach (Transform child in _navTileRow) Destroy(child.gameObject);
-        _navTiles.Clear();
-
-        var planets = ShuttleAutopilot.LandablePlanets();
-        if (planets.Count == 0) return;
-        if (!string.IsNullOrEmpty(_navSelected))
-        {
-            bool stillThere = false;
-            foreach (var p in planets) if (p.bodyName == _navSelected) { stillThere = true; break; }
-            if (!stillThere) _navSelected = "";   // selecting `here` is valid now — relocation
-        }
-
-        // Grid: up to 4 per row, centred — same hand-packed style as the home row.
-        const float cell = 250f, cellH = 120f, gap = 22f;
-        int perRow = Mathf.Min(4, planets.Count);
-        for (int i = 0; i < planets.Count; i++)
-        {
-            var body = planets[i];
-            bool isHere = body.bodyName == here;
-            int row = i / perRow, col = i % perRow;
-            int inThisRow = Mathf.Min(perRow, planets.Count - row * perRow);
-            float rowW = inThisRow * cell + (inThisRow - 1) * gap;
-
-            var frame = MakePanel(_navTileRow, "Planet_" + body.bodyName, isHere ? Hex("0a1418ff") : Panel);
-            // ⚠️ MakePanel creates images with raycastTarget = FALSE (so the CRT
-            // overlay never blocks) — a Button on one is dead until this line.
-            // Missing it is why no planet was clickable in playtests 1–3.
-            // The here-tile is clickable too now (playtest 33): selecting your
-            // current planet relocates — rise to hover, fly, land elsewhere.
-            frame.raycastTarget = true;
-            var rt = frame.rectTransform;
-            rt.anchorMin = new Vector2(0.5f, 1); rt.anchorMax = new Vector2(0.5f, 1);
-            rt.pivot = new Vector2(0.5f, 1);
-            rt.sizeDelta = new Vector2(cell, cellH);
-            rt.anchoredPosition = new Vector2(-rowW * 0.5f + cell * 0.5f + col * (cell + gap),
-                                              -row * (cellH + gap));
-            Outline(frame.transform, isHere ? Hex("141d21ff") : Grid);
-
-            var label = MakeText(rt, "Name", body.bodyName.ToUpperInvariant(), 20,
-                                 isHere ? Locked : Ink, TextAlignmentOptions.Center);
-            var lrt = label.rectTransform;
-            lrt.anchorMin = new Vector2(0, 0.5f); lrt.anchorMax = new Vector2(1, 0.5f);
-            lrt.pivot = new Vector2(0.5f, 0.5f);
-            lrt.sizeDelta = new Vector2(0, 30);
-            lrt.anchoredPosition = new Vector2(0, 14);   // name high, distance/'here' below
-            label.characterSpacing = 10;
-
-            // Sub-label: distance for other planets, RELOCATE for the current
-            // one (playtest 33 — same-planet travel to find a new pad).
-            var distLbl = MakeText(rt, "Dist", isHere ? "HERE · RELOCATE" : "", 13, Locked, TextAlignmentOptions.Center);
-            var drt = distLbl.rectTransform;
-            drt.anchorMin = new Vector2(0, 0.5f); drt.anchorMax = new Vector2(1, 0.5f);
-            drt.pivot = new Vector2(0.5f, 0.5f);
-            drt.sizeDelta = new Vector2(0, 20);
-            drt.anchoredPosition = new Vector2(0, -16);
-            distLbl.characterSpacing = isHere ? 16 : 12;
-
-            var tile = new NavTile { body = body.bodyName, frame = frame, label = label, here = isHere,
-                                     dist = isHere ? null : distLbl, bodyRef = body };
-            _navTiles.Add(tile);
-            var btn = frame.gameObject.AddComponent<Button>();
-            btn.targetGraphic = frame;
-            var cb = btn.colors;
-            cb.normalColor = Color.white;
-            cb.highlightedColor = new Color(1.6f, 1.6f, 1.6f, 1f);
-            cb.pressedColor = new Color(2f, 2f, 2f, 1f);
-            btn.colors = cb;
-            string captured = body.bodyName;
-            btn.onClick.AddListener(() => OnNavPlanetClicked(captured));
-        }
-        NavApplySelection();
-    }
-
-    void OnNavPlanetClicked(string bodyName)
-    {
-        _navSelected = bodyName;
-        NavApplySelection();
-    }
-
-    void NavApplySelection()
-    {
-        foreach (var t in _navTiles)
-        {
-            bool sel = t.body == _navSelected;
-            t.frame.color = sel ? PanelHi : Panel;
-            // An unaffordable destination stays dimmed even while selected —
-            // you can click it to read when it opens, but it must never look
-            // like a live option.
-            t.label.color = !t.reachable ? Locked : (sel ? Accent : Ink);
-        }
-    }
-
     void OnNavTravelClicked()
     {
         var pilot = ShuttleAutopilot.Instance;
@@ -690,16 +432,15 @@ public partial class ShuttleComputerUI
         var tank = ShuttleFuel.Instance;
         if (tank != null && pilot.CurrentBody != null)
         {
-            foreach (var t in _navTiles)
+            var target = NavBodyByName(_navSelected);       // partial: NavMapUI
+            if (target != null)
             {
-                if (t.body != _navSelected || t.bodyRef == null) continue;
-                float metres = pilot.JumpMetresTo(t.bodyRef);
+                float metres = pilot.JumpMetresTo(target);
                 if (!tank.CanAfford(metres))
                 {
                     NavToast($"NEED {tank.CostForMetres(metres):0} FUEL · HAVE {tank.Fuel:0}");
                     return;
                 }
-                break;
             }
         }
 
@@ -739,6 +480,5 @@ public partial class ShuttleComputerUI
     // appended at the end per house serialization convention.
     int _lastVelShown = int.MinValue;
     int _lastAltShown = int.MinValue;
-    float _navNextDistAt;
     Image _navSkipBg;
 }

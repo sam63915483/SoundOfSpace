@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NAV — Solar Map prototype</title>
+<style>
+/* ─────────────────────────────────────────────────────────────────────────
+   Palette lifted straight from ShuttleComputerUI.cs so this prototype and the
+   game screen match.
+   ───────────────────────────────────────────────────────────────────────── */
+:root{
+  --bg:#04070a; --panel:#071014; --panelHi:#0c1c22; --grid:#12303a;
+  --ink:#79ffd0; --inkDim:#3d8f78; --inkGhost:#1d4a3f;
+  --accent:#ff4fd8; --locked:#2a3a40; --warn:#ffc94f;
+  --sans:"Segoe UI",system-ui,ui-sans-serif,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#000}
+body{min-height:100vh;background:#000;font-family:var(--sans);color:var(--ink);
+     display:flex;flex-direction:column}
+
+/* The shuttle computer screen is 1500 x 940 (ShuttleComputerUI.ScreenW/H).
+   #fit is sized in JS to the SCALED size so the page never overflows and
+   nothing is ever cut off, whatever the window is. */
+#stage{flex:1;display:flex;align-items:center;justify-content:center;padding:14px}
+#fit{position:relative}
+#screen{
+  position:absolute;left:0;top:0;width:1500px;height:940px;
+  background:var(--bg);overflow:hidden;transform-origin:top left;
+  box-shadow:0 0 0 12px #0d1418, 0 0 0 13px #1b2a30, 0 24px 70px rgba(0,0,0,.9),
+             inset 0 0 140px rgba(0,0,0,.75);
+  border-radius:10px;
+}
+#screen::after{     /* CRT dressing — the game screen has its own overlay */
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:60;
+  background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.2) 2px 3px);
+  mix-blend-mode:multiply;opacity:.5;
+}
+#screen::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:59;
+  background:radial-gradient(120% 100% at 50% 50%,rgba(0,0,0,0) 58%,rgba(0,0,0,.5) 100%);
+}
+
+/* ── header ─────────────────────────────────────────────────────────────── */
+#head{position:absolute;left:22px;right:22px;top:12px;height:44px;display:flex;
+      align-items:center;justify-content:space-between}
+#title{font-size:18px;letter-spacing:.34em;color:var(--inkGhost)}
+#fuelWrap{display:flex;align-items:center;gap:14px}
+#fuelBar{width:240px;height:14px;background:#050d10;border:1px solid var(--grid);position:relative}
+#fuelFill{position:absolute;inset:1px;width:50%;background:var(--ink);transition:width .25s linear}
+#fuelFill.low{background:var(--warn)}
+#fuelFill.crit{background:#ff5b5b}
+#fuelTxt{font-family:var(--mono);font-size:15px;letter-spacing:.1em;min-width:250px;text-align:right}
+
+/* ── map ────────────────────────────────────────────────────────────────── */
+#mapWrap{position:absolute;left:22px;top:62px;width:1030px;bottom:16px;
+         border:1px solid var(--grid);overflow:hidden}
+#map{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+#mapTools{position:absolute;right:12px;top:12px;display:flex;gap:6px;z-index:5}
+.tool{font-family:var(--mono);font-size:11px;letter-spacing:.14em;padding:6px 10px;
+      background:rgba(7,16,20,.8);border:1px solid var(--grid);color:var(--inkGhost);
+      cursor:pointer;user-select:none}
+.tool:hover{border-color:var(--inkDim);color:var(--ink)}
+.tool.on{border-color:var(--inkDim);color:var(--inkDim)}
+
+/* ── right column ───────────────────────────────────────────────────────── */
+#side{position:absolute;right:22px;top:62px;width:404px;bottom:16px;display:flex;
+      flex-direction:column;gap:10px}
+.pane{background:var(--panel);border:1px solid var(--grid)}
+.paneHd{font-size:12px;letter-spacing:.26em;color:var(--inkGhost);padding:11px 14px 9px}
+
+#list{flex:1;overflow:auto;padding:0 8px 8px}
+#list::-webkit-scrollbar{width:6px}
+#list::-webkit-scrollbar-thumb{background:var(--grid)}
+.chip{display:flex;align-items:center;gap:11px;padding:8px;cursor:pointer;
+      border:1px solid transparent}
+.chip:hover{background:var(--panelHi)}
+.chip.sel{background:var(--panelHi);border-color:var(--accent)}
+.chip .dot{width:9px;height:9px;border-radius:50%;flex:none;box-shadow:0 0 8px currentColor}
+.chip .nm{flex:1;font-size:15px;letter-spacing:.1em}
+.chip .km{font-family:var(--mono);font-size:13px;color:var(--inkDim)}
+.chip.out .nm{color:var(--locked)}
+.chip.out .dot{opacity:.35;box-shadow:none}
+.chip.out .km{color:var(--warn);font-size:12px}
+.chip.here .nm{color:var(--inkDim)}
+.chip.here .km{color:var(--inkGhost);font-size:11px;letter-spacing:.14em}
+
+/* the one destination block — name, status, two numbers, GO */
+#pick{flex:none;padding:14px 16px 16px}
+#pName{font-size:26px;letter-spacing:.1em;display:flex;align-items:center;gap:11px;
+       color:var(--locked)}
+#pName .dot{width:13px;height:13px;border-radius:50%;background:#132025;box-shadow:none}
+#pStat{font-family:var(--mono);font-size:14px;letter-spacing:.09em;margin-top:10px;color:var(--inkGhost)}
+#pStat.ok{color:var(--ink)} #pStat.wait{color:var(--warn)} #pStat.never{color:#ff6b6b}
+#pNums{display:flex;gap:26px;margin-top:12px;font-family:var(--mono);font-size:17px}
+#pNums div span{display:block;font-family:var(--sans);font-size:10px;letter-spacing:.2em;
+                color:var(--inkGhost);margin-bottom:3px}
+#pNums .warn{color:var(--warn)}
+
+#travel{height:68px;flex:none;background:var(--panel);border:1px solid var(--grid);
+        display:grid;place-items:center;font-size:23px;letter-spacing:.32em;
+        color:var(--locked);cursor:default;user-select:none;text-align:center}
+#travel.live{background:var(--panelHi);border-color:var(--accent);color:var(--ink);cursor:pointer}
+#travel.live:hover{box-shadow:inset 0 0 34px rgba(255,79,216,.16)}
+#travel small{display:block;font-size:11px;letter-spacing:.2em;color:var(--inkDim);margin-top:5px}
+
+/* ── flight overlay (map only, so the destination block stays readable) ──── */
+#flight{position:absolute;inset:0;z-index:40;display:none;place-items:center;
+        background:rgba(4,7,10,.74)}
+#flight.on{display:grid}
+#fBox{text-align:center;width:880px}
+#fBig{font-size:48px;letter-spacing:.1em;color:var(--accent);text-shadow:0 0 40px rgba(255,79,216,.35)}
+#fSub{font-size:18px;letter-spacing:.2em;color:var(--inkDim);margin-top:12px}
+#fBarBack{height:14px;background:#050d10;border:1px solid var(--grid);margin-top:24px}
+#fBar{height:100%;width:0;background:var(--accent);transition:width .12s linear}
+#fSkip{margin-top:24px;display:inline-block;padding:11px 32px;border:1px solid var(--grid);
+       background:var(--panel);color:var(--ink);font-size:16px;letter-spacing:.24em;cursor:pointer}
+#fSkip:hover{border-color:var(--accent)}
+
+#toast{position:absolute;left:50%;transform:translateX(-50%);bottom:40px;z-index:45;
+       font-size:15px;letter-spacing:.14em;color:var(--warn);background:rgba(4,10,12,.96);
+       border:1px solid #4a3d17;padding:10px 20px;opacity:0;transition:opacity .2s}
+#toast.on{opacity:1}
+
+/* ── prototype strip — NOT part of the game screen ──────────────────────── */
+#dev{flex:none;background:#080a0c;border-top:1px solid #161b1f;display:flex;
+     align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;
+     font-family:var(--mono);font-size:11px;color:#4a5a60;letter-spacing:.1em}
+#dev b{color:#7a8a90;font-weight:400}
+#dev input[type=range]{width:130px;accent-color:#3d8f78;vertical-align:middle}
+#dev .btn{padding:3px 9px;border:1px solid #202a2f;cursor:pointer}
+#dev .btn:hover{color:#9ab;border-color:#3a4a50}
+#dev .btn.on{color:var(--ink);border-color:var(--inkGhost)}
+</style>
+</head>
+<body>
+
+<div id="stage"><div id="fit"><div id="screen">
+
+  <div id="head">
+    <div id="title">NAV — PLANETARY TRAVEL</div>
+    <div id="fuelWrap">
+      <div id="fuelBar"><div id="fuelFill"></div></div>
+      <div id="fuelTxt">FUEL 50%  ·  RANGE 10.4 KM</div>
+    </div>
+  </div>
+
+  <div id="mapWrap">
+    <canvas id="map"></canvas>
+    <div id="mapTools">
+      <div class="tool" data-fit="range">MY RANGE</div>
+      <div class="tool" data-fit="all">WHOLE SYSTEM</div>
+    </div>
+
+    <!-- Countdown / transit. Covers the map only: the destination block stays
+         readable, the way the real app swaps its list pane and leaves the rest
+         of the screen alone. -->
+    <div id="flight"><div id="fBox">
+      <div id="fBig">TAKING OFF IN 10</div>
+      <div id="fSub">DESTINATION: —</div>
+      <div id="fBarBack"><div id="fBar"></div></div>
+      <div id="fSkip">SKIP ▸</div>
+    </div></div>
+  </div>
+
+  <div id="side">
+    <div class="pane" style="flex:0 1 auto;display:flex;flex-direction:column;min-height:0">
+      <div class="paneHd" id="listHd">DESTINATIONS</div>
+      <div id="list"></div>
+    </div>
+
+    <div style="flex:1"></div>
+
+    <div class="pane" id="pick">
+      <div id="pName"><span class="dot"></span><span class="t">—</span></div>
+      <div id="pStat">SELECT A DESTINATION</div>
+      <div id="pNums">
+        <div><span>DISTANCE</span><i id="pDist">—</i></div>
+        <div><span>FUEL</span><i id="pCost">—</i></div>
+      </div>
+    </div>
+
+    <div id="travel">TRAVEL</div>
+  </div>
+
+  <div id="toast"></div>
+</div></div></div>
+
+<div id="dev">
+  <b>PROTOTYPE CONTROLS</b> — not part of the game screen
+  <span>· TANK <input id="devFuel" type="range" min="0" max="100" step="1" value="50"> <i id="devFuelV">50</i></span>
+  <span>· CLOCK
+    <span class="btn on" data-rate="1">×1 live</span>
+    <span class="btn" data-rate="10">×10</span>
+    <span class="btn" data-rate="60">×60</span>
+  </span>
+  <span>· <span class="btn" id="devHere">MOVE SHUTTLE</span></span>
+  <span>· <span class="btn" id="devFill">FILL TANK</span></span>
+  <span id="devClock"></span>
+</div>
+
+<script src="nav.js"></script>
+</body>
+</html>

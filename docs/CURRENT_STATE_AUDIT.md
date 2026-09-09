@@ -929,8 +929,23 @@ landing validity)→LANDING→PARKED. Spec + decisions:
 - **PlayerController** grew a self-contained rider block (`RiderMode` static,
   `RiderFixedTick` local walk reusing the sweep helpers) — existing movement
   math untouched.
-- **NAV app**: `ShuttleComputerNavUI.cs` partial; home tiles now dispatch
-  per-app (was hardcoded to TRAX). Debug: F6 leg, Alt+WASD/Space hover.
+- **NAV app**: `ShuttleComputerNavUI.cs` partial (phases + countdown/transit/
+  hover panes); home tiles now dispatch per-app (was hardcoded to TRAX).
+  Debug: F6 leg, Alt+WASD/Space hover.
+  **PARKED is a live 2D SOLAR MAP since 2026-09-09** — `ShuttleComputerNavMapUI.cs`
+  (build + drive) drawing through `NavMapGraphic.cs`, a single `MaskableGraphic`
+  that emits arcs/discs/dashes as one mesh (UGUI has no line primitive, and an
+  Image per orbit would be dozens of draw calls on a screen the cockpit also
+  mirrors). Left: sun, orbit rings, planets, and a magenta dashed circle whose
+  radius IS `ShuttleFuel.RangeKm` — inside it you can fly now. Right: the old
+  planet list as one column (km, or `opens m:ss`) plus a destination block
+  (name, status, distance, fuel) and TRAVEL. Selecting an out-of-reach world
+  lights the stretch of ITS orbit that sits inside range, amber, with a ghost
+  of both worlds at window-open. Positions come from live `CelestialBody`
+  state; the windows come from `OrbitRange` (which gained `TryRail`,
+  `WindowHalfAngle` and `SecondsUntilOutOfRange` for the map). Mesh redraws at
+  30 Hz, text at 4 Hz; wheel zooms, drag pans, a press that barely moves picks.
+  Browser original + design notes: `prototypes/nav-map/`.
 - **Save**: `ShuttleSave` (bodyName+local pose, empty ⇒ scene-authored) at
   apply step 8.5; stasis valve refuses mid-flight so saves are always PARKED.
 - **MP**: `ShuttleSync` (host phase/pose/valid, pilot lease D-3, guest input
@@ -971,8 +986,10 @@ from that hunt, and the laws it produced (full saga in the 2026-08-28 addendum):
 - Same-planet RELOCATION exists ("HERE · RELOCATE" tile: Liftoff → HOVER, land
   elsewhere) — also the fastest test loop.
 - Cockpit monitor mirrors the NAV in flight and shows a live en-route camera
-  feed (`ShuttleLandingCamera.FeedMode.Up`, mount 9 m so the roof beacon is out
-  of frame; LEFT CLICK — SWITCH CAM); `ShuttleComputerUI.EnsureBuilt()` builds
+  feed. **One camera, under the belly, no switching** (2026-09-09, Sam): the
+  roof mount (`FeedMode.Up`, 9 m up, looking where you fly) and the LEFT CLICK —
+  SWITCH CAM toggle are gone, and `ShuttleLandingCamera` no longer has modes at
+  all. `ShuttleComputerUI.EnsureBuilt()` builds
   the whole terminal without opening it, because a lazily-built UI is black on
   a world-facing screen until someone presses F.
 - The flight recorder / self-test (`ShuttleTravelSelfTest`, `build/shuttle-selftest.flag`)

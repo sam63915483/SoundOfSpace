@@ -330,7 +330,7 @@ public partial class ShuttleComputerUI
         if (s.view == TraxSessionSync.ViewNav && (s.navTarget ?? "") != _navSelected)
         {
             _navSelected = s.navTarget ?? "";
-            NavApplySelection();
+            NavSelectionChanged();
         }
 
         // ── the section, one at a time by design ──

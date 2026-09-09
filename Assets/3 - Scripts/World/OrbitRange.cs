@@ -139,6 +139,67 @@ public static class OrbitRange
         return Status.Waiting;
     }
 
+    /// <summary>
+    /// Seconds until a pair that is in range NOW drifts out of it again, or
+    /// <see cref="float.PositiveInfinity"/> if the window never shuts (they are
+    /// co-orbital, or the range covers their whole orbit). The map uses this to
+    /// warn you that a hop you can make right now is about to stop being
+    /// possible — the one piece of the picture that argues for going at once.
+    /// </summary>
+    public static float SecondsUntilOutOfRange(CelestialBody a, CelestialBody b, float rangeMetres)
+    {
+        if (a == null || b == null || a == b) return float.PositiveInfinity;
+        if (!Rail(a, out double r1, out double w1, out double t1) ||
+            !Rail(b, out double r2, out double w2, out double t2)) return float.PositiveInfinity;
+
+        double w = w1 - w2;
+        if (Math.Abs(w) < Eps) return float.PositiveInfinity;      // co-orbital
+        if (rangeMetres >= r1 + r2) return float.PositiveInfinity; // never far enough apart
+
+        double cos = (r1 * r1 + r2 * r2 - (double)rangeMetres * rangeMetres) / (2.0 * r1 * r2);
+        if (cos <= -1.0) return float.PositiveInfinity;
+        double dMax = Math.Acos(Math.Max(-1.0, Math.Min(1.0, cos)));
+
+        double d0 = WrapPi(t1 - t2);
+        if (w < 0.0) { w = -w; d0 = -d0; }                         // forward-turning gap
+        if (Math.Abs(d0) > dMax) return 0f;                        // already out
+
+        double t = (dMax - d0) / w;
+        return t < 0.0 ? 0f : (float)t;
+    }
+
+    /// <summary>
+    /// The rail a body rides: distance from the sun, signed angular rate (the
+    /// sign is the orbit direction) and where it is on the circle right now.
+    /// Exposed for the NAV map, which has to DRAW these orbits — everything
+    /// else here only needs the answers, not the circle.
+    /// </summary>
+    public static bool TryRail(CelestialBody b, out float radius, out float omega, out float angle)
+    {
+        bool ok = Rail(b, out double r, out double w, out double a);
+        radius = (float)r; omega = (float)w; angle = (float)a;
+        return ok;
+    }
+
+    /// <summary>
+    /// Half the angular width of the window: the pair is within
+    /// <paramref name="rangeMetres"/> exactly while the angle between them is
+    /// inside ±this. Returns 0 when they never make it and π when they always
+    /// are — which is what lets the map light up the stretch of an orbit a
+    /// planet has to reach before you can fly to it.
+    /// </summary>
+    public static float WindowHalfAngle(CelestialBody a, CelestialBody b, float rangeMetres)
+    {
+        if (!Rail(a, out double r1, out double w1, out _) ||
+            !Rail(b, out double r2, out double w2, out _)) return 0f;
+        if (Math.Abs(w1 - w2) < Eps)                       // co-orbital: always or never
+            return Vector3.Distance(a.Position, b.Position) <= rangeMetres ? (float)Math.PI : 0f;
+        if (rangeMetres >= r1 + r2) return (float)Math.PI;
+        if (rangeMetres <= Math.Abs(r1 - r2)) return 0f;
+        double cos = (r1 * r1 + r2 * r2 - (double)rangeMetres * rangeMetres) / (2.0 * r1 * r2);
+        return (float)Math.Acos(Math.Max(-1.0, Math.Min(1.0, cos)));
+    }
+
     /// <summary>Short human phrasing of a wait: "~4 MIN", "&lt;1 MIN".</summary>
     public static string DescribeWait(float seconds)
     {

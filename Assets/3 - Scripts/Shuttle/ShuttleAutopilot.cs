@@ -232,14 +232,9 @@ public class ShuttleAutopilot : MonoBehaviour
     public ShuttleLandingCamera LandingCamera => _landingCamera;
     public ShuttleLandingCamera TransitCamera => _transitCamera;
 
-    /// En-route screen cam switch (left click): top cam looking where you fly
-    /// vs bottom cam looking back.
-    public void ToggleTransitFeed()
-    {
-        if (_transitCamera == null) return;
-        _transitCamera.SetMode(_transitCamera.Mode == ShuttleLandingCamera.FeedMode.Up
-            ? ShuttleLandingCamera.FeedMode.Down : ShuttleLandingCamera.FeedMode.Up);
-    }
+    // The en-route feed used to have a second camera on top of the dome and a
+    // left click to switch between them. Removed 2026-09-09 (Sam): one camera,
+    // under the belly, no switch.
 
     /// True in any phase where the shuttle is off the ground (riders captured,
     /// door sealed, pod save unavailable).
@@ -823,7 +818,7 @@ public class ShuttleAutopilot : MonoBehaviour
                 // En-route feed (2026-08-28): top cam looking where we fly;
                 // the NAV screen draws it behind the EN ROUTE status.
                 if (_transitCamera == null)
-                    _transitCamera = ShuttleLandingCamera.Create(this, ShuttleLandingCamera.FeedMode.Up);
+                    _transitCamera = ShuttleLandingCamera.Create(this, "TravelTransitCam");
                 // Origin rebases cost a 1-2 frame global stutter (the
                 // interpolation strip/restore machinery), and at cruise the
                 // rider crosses the 1000 m threshold every couple of seconds —
@@ -867,7 +862,7 @@ public class ShuttleAutopilot : MonoBehaviour
                 // en-route feed camera must also be created here — the
                 // normal path already has one and this is a no-op.
                 if (_transitCamera == null)
-                    _transitCamera = ShuttleLandingCamera.Create(this, ShuttleLandingCamera.FeedMode.Up);
+                    _transitCamera = ShuttleLandingCamera.Create(this, "TravelTransitCam");
                 Vector3 aW = FrameWorldPos(_departBody, _departAnchorLocal);
                 Vector3 bW = FrameWorldPos(_targetBody, _arriveAnchorLocal);
                 float arcLen = BezierLength(aW, BendControl(aW, bW), bW);

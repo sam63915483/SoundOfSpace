@@ -1,7 +1,8 @@
 using UnityEngine;
 
-// Downward camera feed for the NAV app's HOVER/LANDING views. Runtime-created
-// (the hand-maintained prefab carries no camera), torn down on PARKED.
+// The shuttle's belly camera — the feed behind the NAV app's EN ROUTE screen
+// and its HOVER/LANDING view. Runtime-created (the hand-maintained prefab
+// carries no camera), torn down on PARKED.
 //
 // Second-camera gotchas inherited from ShuttleArrivalSequence.StartLandingCam:
 //  • Space dust is Graphics.DrawMeshInstanced — manual Render() calls MISS
@@ -14,14 +15,10 @@ public class ShuttleLandingCamera : MonoBehaviour
 {
     const float FeedFps = 15f;
 
-    // Feed direction (2026-08-28, Sam's en-route screen): Down is the classic
-    // landing view; Up mounts the camera above the dome looking along the
-    // thrust axis — during a burn that is the direction of travel, so the
-    // en-route screen shows what you are flying at. "Bottom camera looking
-    // back" is exactly Down.
-    public enum FeedMode { Down, Up }
-    public FeedMode Mode { get; private set; } = FeedMode.Down;
-
+    // There is ONE camera and it looks down, under the belly. A second mount
+    // above the dome (looking along the thrust axis, i.e. where you are flying)
+    // used to exist for the en-route screen, with a click to switch between the
+    // two — removed 2026-09-09 at Sam's request. One feed, no switching.
     Camera _cam;
     RenderTexture _rt;
     Transform _shuttle;
@@ -31,27 +28,20 @@ public class ShuttleLandingCamera : MonoBehaviour
 
     public static ShuttleLandingCamera Create(ShuttleAutopilot pilot)
     {
-        return Create(pilot, FeedMode.Down);
+        return Create(pilot, "TravelLandingCam");
     }
 
-    public static ShuttleLandingCamera Create(ShuttleAutopilot pilot, FeedMode mode)
+    /// <summary>The name is only so the transit feed and the landing feed can be
+    /// told apart in the hierarchy — they are the same camera in the same
+    /// place, created and torn down at different phases.</summary>
+    public static ShuttleLandingCamera Create(ShuttleAutopilot pilot, string objectName)
     {
-        var go = new GameObject(mode == FeedMode.Up ? "TravelTransitCam" : "TravelLandingCam");
+        var go = new GameObject(objectName);
         go.transform.SetParent(pilot.transform, false);
         var feed = go.AddComponent<ShuttleLandingCamera>();
         feed.Build(pilot.transform);
-        feed.SetMode(mode);
+        go.transform.localPosition = Vector3.down * 0.5f;   // just under the belly
         return feed;
-    }
-
-    public void SetMode(FeedMode mode)
-    {
-        Mode = mode;
-        // Up: above the WHOLE roof mast — the red Beacon sits dead-centre at
-        // y 7.8 and the antenna tips reach 8.45; a 7 m mount stared straight
-        // at the beacon (Sam's "red circle" in the feed). Down: just under
-        // the belly (the original landing-cam mount).
-        transform.localPosition = mode == FeedMode.Up ? Vector3.up * 9f : Vector3.down * 0.5f;
     }
 
     void Build(Transform shuttle)
@@ -75,8 +65,8 @@ public class ShuttleLandingCamera : MonoBehaviour
         }
 
         // Inherit the flight horizon: the main camera's far plane was raised
-        // for transit (planets stay visible from 15 km out) — the en-route
-        // Up feed needs the same reach or the destination pops in late.
+        // for transit (planets stay visible from 15 km out) — the en-route feed
+        // needs the same reach or the world pops in late.
         if (mainCam != null && mainCam.farClipPlane > _cam.farClipPlane)
             _cam.farClipPlane = mainCam.farClipPlane;
 
@@ -103,9 +93,7 @@ public class ShuttleLandingCamera : MonoBehaviour
     void LateUpdate()
     {
         if (_cam == null || _shuttle == null) return;
-        transform.rotation = Mode == FeedMode.Up
-            ? Quaternion.LookRotation(_shuttle.up, -_shuttle.forward)
-            : Quaternion.LookRotation(-_shuttle.up, _shuttle.forward);
+        transform.rotation = Quaternion.LookRotation(-_shuttle.up, _shuttle.forward);
         bool due = Time.unscaledTime >= _nextFrameAt;
         if (due) _nextFrameAt = Time.unscaledTime + 1f / FeedFps;
         _cam.enabled = due;
