@@ -12,6 +12,7 @@ public class PlayerController : MonoBehaviour
     public AudioClip landClip;
     [SerializeField] AudioClip jumpClip;
     [SerializeField] float footstepVolume = 0.35f;
+    AudioClip _cachedHum;              // private, no attribute: NOT serialized
     AudioSource sfxSource;
 
     void Start()
@@ -60,9 +61,17 @@ class ClipFieldTest(unittest.TestCase):
         self.fields = {f.name: f for f in cs_parser.find_clip_fields(SAMPLE)}
 
     def test_finds_every_audioclip_field(self):
+        # Runtime caches are found too, and flagged via `serialized` rather
+        # than dropped here -- scan.py decides what becomes a mixer row.
         self.assertEqual(
             sorted(self.fields),
-            ["footstepWalkClipA", "footstepWalkClipB", "jumpClip", "landClip"],
+            [
+                "_cachedHum",
+                "footstepWalkClipA",
+                "footstepWalkClipB",
+                "jumpClip",
+                "landClip",
+            ],
         )
 
     def test_does_not_mistake_a_float_for_a_clip(self):
@@ -81,6 +90,18 @@ class ClipFieldTest(unittest.TestCase):
     def test_dead_marker_is_found_anywhere_in_the_file(self):
         # PlayerController's real marker sits ~960 lines below the declaration.
         self.assertTrue(self.fields["jumpClip"].dead)
+
+    def test_public_field_is_serialized(self):
+        self.assertTrue(self.fields["landClip"].serialized)
+
+    def test_serializefield_attribute_is_serialized(self):
+        self.assertTrue(self.fields["footstepWalkClipA"].serialized)
+
+    def test_plain_private_field_is_not_serialized(self):
+        # Unity does not serialize a private field without [SerializeField],
+        # so it is a runtime cache, not a slot anyone can mix.
+        self.assertIn("_cachedHum", self.fields)
+        self.assertFalse(self.fields["_cachedHum"].serialized)
 
 
 class NamespacedClassTest(unittest.TestCase):

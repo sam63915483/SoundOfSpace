@@ -6,12 +6,17 @@ and a handful of call shapes, and this has to run over ~800 files quickly.
 import re
 
 CLIP_FIELD_RE = re.compile(
-    r"^\s*(?:\[[^\]]*\]\s*)*"          # attributes, e.g. [SerializeField]
+    r"^(\s*(?:\[[^\]]*\]\s*)*"         # group 1: attributes + modifiers
     r"(?:public|private|protected|internal)?\s*"
-    r"(?:static\s+)?(?:readonly\s+)?"
+    r"(?:static\s+)?(?:readonly\s+)?)"
     r"AudioClip\s+([A-Za-z_]\w*)\s*[;=]",
     re.MULTILINE,
 )
+
+# Unity serializes a field when it is public or carries [SerializeField].
+# A plain private AudioClip is a runtime cache the code fills itself -- it is
+# not a slot anyone can point at a different file, so it is not a mixer row.
+SERIALIZED_RE = re.compile(r"\bpublic\b|\[\s*SerializeField")
 
 RESOURCE_LOAD_RE = re.compile(r"Resources\.Load<AudioClip>\(\s*\"([^\"]+)\"")
 CLASS_RE = re.compile(r"\bclass\s+([A-Za-z_]\w*)")
@@ -26,20 +31,22 @@ DEAD_HINTS = ("no longer read", "is dead", "deliberately not read", "never read"
 class ClipField:
     """One `AudioClip` field declared in a script."""
 
-    __slots__ = ("name", "dead")
+    __slots__ = ("name", "dead", "serialized")
 
-    def __init__(self, name, dead=False):
+    def __init__(self, name, dead=False, serialized=True):
         self.name = name
         self.dead = dead
+        self.serialized = serialized
 
     def __repr__(self):
-        return "ClipField(%r, dead=%r)" % (self.name, self.dead)
+        return "ClipField(%r, dead=%r, serialized=%r)" % (
+            self.name, self.dead, self.serialized,
+        )
 
     def __eq__(self, other):
-        return isinstance(other, ClipField) and (self.name, self.dead) == (
-            other.name,
-            other.dead,
-        )
+        return isinstance(other, ClipField) and (
+            self.name, self.dead, self.serialized,
+        ) == (other.name, other.dead, other.serialized)
 
 
 COMMENT_RE = re.compile(r"^\s*(?://|/\*|\*)")
@@ -92,7 +99,14 @@ def find_clip_fields(text):
         if depth == want:
             m = CLIP_FIELD_RE.match(line)
             if m:
-                out.append(ClipField(m.group(1), dead=_is_dead(text, m.group(1))))
+                name = m.group(2)
+                out.append(
+                    ClipField(
+                        name,
+                        dead=_is_dead(text, name),
+                        serialized=bool(SERIALIZED_RE.search(m.group(1))),
+                    )
+                )
         depth += line.count("{") - line.count("}")
     return out
 
