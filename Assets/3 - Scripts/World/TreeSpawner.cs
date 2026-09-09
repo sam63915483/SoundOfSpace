@@ -162,12 +162,12 @@ public class TreeSpawner : MonoBehaviour
                 var b = bodies[i];
                 names.Append(b.body != null ? b.body.bodyName : "?");
                 if (b.gen == null) { names.Append("(NO GENERATOR)"); continue; }
-                float oceanR = 0f;
-                try { oceanR = b.gen.GetOceanRadius(); } catch { }
-                float r = b.body != null ? b.body.radius : 0f;
-                names.Append(oceanR > 0f
-                    ? $"(r={r:F0} ocean={oceanR:F0}{(oceanR >= r ? " ALL UNDERWATER" : "")})"
-                    : $"(r={r:F0} no ocean)");
+                // Deliberately NO ocean radius here. This runs during ResolveRefs,
+                // which can be before terrain generation settles, and the reading
+                // is then a placeholder -- it printed ocean == radius for 8 of 10
+                // bodies including ones covered in forest, and I nearly chased it.
+                // The census below reports the waterline once it is real.
+                names.Append($"(r={(b.body != null ? b.body.radius : 0f):F0})");
             }
             Debug.Log($"[TreeSpawner] tracking {bodies.Count} bodies: {names}");
         }
@@ -360,7 +360,33 @@ public class TreeSpawner : MonoBehaviour
     {
         if (_censusLogged || _cCand < 150) return;
         _censusLogged = true;
-        Debug.Log($"[TreeSpawner] census near '{nearestBody}': {_cCand} candidate cells -> "
+
+        // The waterline against the REAL terrain. Terrain rises above the
+        // nominal body radius (Humble Abode is r=200 and peaks past 206), so
+        // comparing the ocean to the radius says nothing -- a planet is only
+        // drowned if its waterline is above its highest ground.
+        string shore = "";
+        for (int i = 0; i < bodies.Count; i++)
+        {
+            var b = bodies[i];
+            if (b.body == null || b.gen == null || b.body.bodyName != nearestBody) continue;
+            float oceanR = 0f;
+            try { oceanR = b.gen.GetOceanRadius(); } catch { }
+            var col = b.gen.GetComponentInChildren<MeshCollider>();
+            float peak = 0f;
+            if (col != null)
+            {
+                Vector3 e = col.bounds.extents;
+                peak = Mathf.Max(e.x, Mathf.Max(e.y, e.z));
+            }
+            shore = oceanR > 0f
+                ? $" waterline {oceanR:F1} vs highest ground {peak:F1}"
+                  + (peak > 0f && oceanR >= peak ? " (NO LAND AT ALL)" : "")
+                : " no ocean";
+            break;
+        }
+
+        Debug.Log($"[TreeSpawner] census near '{nearestBody}':{shore} | {_cCand} candidate cells -> "
                 + $"{_cRayMiss} no ground, {_cUnderwater} under the waterline, "
                 + $"{_cOutOfRange} out of range, {_cExcluded} in an exclusion zone, "
                 + $"{_cPlaced} PLANTED.");
