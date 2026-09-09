@@ -79,9 +79,18 @@ public static class SpawnerCubeface
     ///
     /// Twenty-four candidate spots on an entire world, before the per-cell hash,
     /// the waterline and the slope test reject most of them. That is why Sam
-    /// found Ember "very sparse" and Hearth completely bare of trees, mushrooms
-    /// AND crystals on 2026-09-09 — crystals and mushrooms use even larger cells
-    /// (60 m and 50 m), so they starve sooner than trees do.
+    /// found Ember "very sparse" and Hearth bare on 2026-09-09.
+    ///
+    /// CORRECTION, and it matters if you are ever chasing something similar:
+    /// CRYSTALS WERE NEVER AFFECTED. CrystalSpawner had already hit this and
+    /// fixed it locally, with a public maxFaceUVPerCell (0.3 in the scene)
+    /// applied in its own FaceUVPerCell helper, and its doc comment describes
+    /// the same "barren small planet" symptom. So crystals were already getting
+    /// 6x6 cells a face while trees, mushrooms and alien NPCs were on 2x2. I
+    /// claimed all three were starved when I first wrote this; only the other
+    /// three were. The clamp here is a no-op for crystals (0.3 is tighter than
+    /// 1/3, so theirs still wins) - what it really does is give the other three
+    /// spawners the fix crystals already had, in one shared place.
     ///
     /// Clamping the UV width fixes the small bodies and leaves the large ones
     /// untouched: it only binds below a radius of about three times the cell

@@ -393,7 +393,9 @@ public class PlayerController : GravityObject
 		spaceship = FindObjectOfType<Ship>();
 		_hasGravitySim = FindObjectOfType<NBodySimulation>() != null;
 		capsuleCollider = GetComponent<CapsuleCollider>();
-		LogFootClearanceOnce();
+		// Deferred: at this point the suit model is not attached yet, which is why
+		// the first run of this logged a mesh bottom of NaN.
+		Invoke(nameof(LogFootClearanceOnce), 3f);
 		InitRigidbody();
 
 		animator = GetComponentInChildren<Animator>();
@@ -1558,20 +1560,43 @@ public class PlayerController : GravityObject
 	// bottoms out, in the player's own local space. The difference IS the hover:
 	// the capsule rests on the ground, so anything the mesh sits above that is
 	// air. Zero means the boots touch.
-	void LogFootClearanceOnce()
+	public void LogFootClearanceOnce()
 	{
 		if (capsuleCollider == null) return;
 		float capsuleBottom = capsuleCollider.center.y - capsuleCollider.height * 0.5f;
 
+		// Renderer.bounds is a WORLD-AXIS-ALIGNED box. On a planet the player is
+		// rotated to the surface, so its min CORNER is not the model's lowest
+		// point in our own frame -- converting it straight across gave -1.490,
+		// nearly half a metre of nonsense. Walk the eight corners of each mesh's
+		// LOCAL bounds into our frame instead and take the true minimum.
 		float meshBottom = float.NaN;
 		var rends = GetComponentsInChildren<Renderer>(true);
 		for (int i = 0; i < rends.Length; i++)
 		{
-			if (rends[i] == null || !rends[i].enabled) continue;
-			// World-space bounds converted into our own local frame, so the number
-			// is directly comparable with the capsule's.
-			float b = transform.InverseTransformPoint(rends[i].bounds.min).y;
-			if (float.IsNaN(meshBottom) || b < meshBottom) meshBottom = b;
+			var r = rends[i];
+			if (r == null || !r.enabled) continue;
+			if (r is ParticleSystemRenderer || r is TrailRenderer || r is LineRenderer) continue;
+
+			Bounds lb;
+			if (r is SkinnedMeshRenderer smr && smr.sharedMesh != null) lb = smr.sharedMesh.bounds;
+			else
+			{
+				var mf = r.GetComponent<MeshFilter>();
+				if (mf == null || mf.sharedMesh == null) continue;
+				lb = mf.sharedMesh.bounds;
+			}
+
+			Vector3 c = lb.center, e = lb.extents;
+			for (int k = 0; k < 8; k++)
+			{
+				Vector3 corner = c + new Vector3(
+					((k & 1) == 0 ? -e.x : e.x),
+					((k & 2) == 0 ? -e.y : e.y),
+					((k & 4) == 0 ? -e.z : e.z));
+				float y = transform.InverseTransformPoint(r.transform.TransformPoint(corner)).y;
+				if (float.IsNaN(meshBottom) || y < meshBottom) meshBottom = y;
+			}
 		}
 
 		float feetY = feet != null ? transform.InverseTransformPoint(feet.position).y : float.NaN;

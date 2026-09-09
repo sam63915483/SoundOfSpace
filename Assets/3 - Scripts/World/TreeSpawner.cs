@@ -269,8 +269,11 @@ public class TreeSpawner : MonoBehaviour
             if (!TryComputeTreePlacement(entry, c.face, c.cellU, c.cellV, faceUVPerCell, playerPos, effectiveRadius,
                                           out Vector3 pos, out Quaternion rot, out int prefabIdx, out Vector3 sizeMul))
                 continue;
+            _cPlaced++;
             SpawnTree(entry, c.bodySlot, SpawnerCubeface.EncodeCell(c.face, c.cellU, c.cellV), prefabIdx, pos, rot, sizeMul);
         }
+        _cCand += scratchCandidates.Count;
+        MaybeLogCensus(bodies.Count > 0 && bodies[0].body != null ? NearestBodyName(playerPos) : "?");
 
         EnforceMaxTrees(playerPos, effectiveMax);
     }
@@ -289,6 +292,19 @@ public class TreeSpawner : MonoBehaviour
         if (dir.sqrMagnitude < 0.0001f) return false;
         spherePos = body.Position + dir * body.radius;
         return true;
+    }
+
+    string NearestBodyName(Vector3 playerPos)
+    {
+        string best = "?";
+        float bestD = float.MaxValue;
+        for (int i = 0; i < bodies.Count; i++)
+        {
+            if (bodies[i].body == null) continue;
+            float d = (bodies[i].body.Position - playerPos).sqrMagnitude;
+            if (d < bestD) { bestD = d; best = bodies[i].body.bodyName; }
+        }
+        return best;
     }
 
     void DespawnOutOfRange(BodyState entry, Vector3 playerPos, float effectiveRadius)
@@ -333,6 +349,23 @@ public class TreeSpawner : MonoBehaviour
         return (h & 0xFFFFu) / 65535f < treeSpawnChance;
     }
 
+    // -- placement census -------------------------------------------------
+    // Sam, 2026-09-09, after the cell-grid fix still left Hearth bare: knowing
+    // that nothing spawns is useless, knowing WHICH TEST throws it away is the
+    // whole answer. One line, once, naming the stage that eats the candidates.
+    static int _cCand, _cRayMiss, _cUnderwater, _cOutOfRange, _cExcluded, _cPlaced;
+    static bool _censusLogged;
+
+    void MaybeLogCensus(string nearestBody)
+    {
+        if (_censusLogged || _cCand < 150) return;
+        _censusLogged = true;
+        Debug.Log($"[TreeSpawner] census near '{nearestBody}': {_cCand} candidate cells -> "
+                + $"{_cRayMiss} no ground, {_cUnderwater} under the waterline, "
+                + $"{_cOutOfRange} out of range, {_cExcluded} in an exclusion zone, "
+                + $"{_cPlaced} PLANTED.");
+    }
+
     bool TryComputeTreePlacement(BodyState entry, int face, int cellU, int cellV, float faceUVPerCell,
                                   Vector3 playerPos, float effectiveRadius,
                                   out Vector3 pos, out Quaternion rot, out int prefabIdx, out Vector3 sizeMul)
@@ -367,18 +400,20 @@ public class TreeSpawner : MonoBehaviour
         // and the prop was left floating when it moved away (Sam, 2026-09-09).
         if (!SpawnerCubeface.RaycastPlanetSurface(entry.gen, rayOrigin, -dir,
                                                   planet.radius * 2f, groundMask, out RaycastHit hit))
-            return false;
+        { _cRayMiss++; return false; }
 
         if (entry.gen != null)
         {
             float oceanR = entry.gen.GetOceanRadius();
             if (oceanR > 0f && (hit.point - planet.Position).magnitude < oceanR)
-                return false;
+            { _cUnderwater++; return false; }
         }
 
-        if ((hit.point - playerPos).sqrMagnitude > effectiveRadius * effectiveRadius) return false;
+        if ((hit.point - playerPos).sqrMagnitude > effectiveRadius * effectiveRadius)
+        { _cOutOfRange++; return false; }
 
-        if (SpawnExclusionZone.IsExcluded(hit.point)) return false;   // keep clear of village buildings / ship school
+        if (SpawnExclusionZone.IsExcluded(hit.point))
+        { _cExcluded++; return false; }   // keep clear of village buildings / ship school
 
         Vector3 up = (hit.point - planet.Position).normalized;
         float yaw = (hY & 0xFFFFu) / 65535f * 360f;
