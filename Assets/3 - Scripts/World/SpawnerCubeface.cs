@@ -70,13 +70,27 @@ public static class SpawnerCubeface
     const float SmallBodyRadius = 150f;
 
     /// <summary>
-    /// Twelve cells across a face, for small bodies only (a face spans -1..1,
-    /// so the cap is half the count).
+    /// Six cells across a face, for small bodies only (a face spans -1..1, so
+    /// the cap is half the count).
     ///
-    /// NOTE: this was NOT what starved Hearth. The real cause was the surface
-    /// raycast stopping in mid-air on any body under ~50 m radius (see the
-    /// spawners). This cap is still worth having -- a 45 m world does not want
-    /// 40 m cells -- but it is a density improvement, not the fix.
+    /// This was NOT what starved Hearth -- that was the surface raycast ending
+    /// in mid-air on any body under ~50 m radius (see the spawners). This cap
+    /// exists because a 45 m world should not have 40 m cells.
+    ///
+    /// SIX, not twelve, and the reason is the CAP AT THE OTHER END. Every
+    /// spawner keeps only its nearest N props and despawns the farthest
+    /// (EnforceMaxTrees). On a big planet the far side is out of range anyway,
+    /// so you never see that rule work. On a 45 m planet the WHOLE SURFACE is in
+    /// range, so if the grid offers more candidates than the cap, the cap culls
+    /// by distance and leaves one hemisphere bare -- Sam, 2026-09-09: "theres a
+    /// shit ton of trees and crystals and mushrooms but they are only on one
+    /// side of hearth, the other side is empty."
+    ///
+    ///     12 a face -> 864 cells -> ~300 on land vs a cap of 140 -> ONE SIDE
+    ///      6 a face -> 216 cells -> ~76 on land, under the cap  -> ALL of it
+    ///
+    /// So the grid must offer FEWER candidates than the cap on a small body,
+    /// not more. Roughly one tree per 340 m2 on Hearth, spread everywhere.
     ///
     /// Why so many. Sam, 2026-09-09, correcting me after I guessed Hearth was
     /// underwater: "hearth has water, but there is land above that water i can
@@ -103,7 +117,7 @@ public static class SpawnerCubeface
     /// still governs how much is placed, so this raises the CHANCE of finding
     /// land, never the amount of stuff.
     /// </summary>
-    const float MaxFaceUVPerCellSmall = 1f / 6f;
+    const float MaxFaceUVPerCellSmall = 1f / 3f;
 
     /// <summary>
     /// How wide one spawn cell is in face-UV, for a body of this radius.
