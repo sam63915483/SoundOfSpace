@@ -235,7 +235,7 @@ public class TreeSpawner : MonoBehaviour
             float bodyOuter = effectiveRadius + entry.body.radius + cellSize;
             if (bodyDistSq > bodyOuter * bodyOuter) continue;
 
-            float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+            float faceUVPerCell = SpawnerCubeface.FaceUVPerCell(cellSize, entry.body.radius);
             int half = Mathf.CeilToInt(1f / Mathf.Max(0.0001f, faceUVPerCell)) + 1;
 
             for (int face = 0; face < 6; face++)
@@ -265,7 +265,7 @@ public class TreeSpawner : MonoBehaviour
             if (CountActive() >= effectiveMax) break;
             var c = scratchCandidates[i];
             var entry = bodies[c.bodySlot];
-            float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+            float faceUVPerCell = SpawnerCubeface.FaceUVPerCell(cellSize, entry.body.radius);
             if (!TryComputeTreePlacement(entry, c.face, c.cellU, c.cellV, faceUVPerCell, playerPos, effectiveRadius,
                                           out Vector3 pos, out Quaternion rot, out int prefabIdx, out Vector3 sizeMul))
                 continue;
@@ -623,7 +623,7 @@ public class TreeSpawner : MonoBehaviour
 
     int ComputeDesignatedCount(CelestialBody body)
     {
-        float faceUVPerCell = cellSize / Mathf.Max(0.001f, body.radius);
+        float faceUVPerCell = SpawnerCubeface.FaceUVPerCell(cellSize, body.radius);
         int half = Mathf.CeilToInt(1f / Mathf.Max(0.0001f, faceUVPerCell)) + 1;
         int count = 0;
         for (int face = 0; face < 6; face++)

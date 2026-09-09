@@ -56,6 +56,46 @@ public static class SpawnerCubeface
     public const int WorldSpawnExcludeMask = WorldPropLayerMask | ShipLayerMask
         | (1 << WaterLayer) | (1 << SunLayer) | (1 << FishPreviewLayer);
 
+    // -- Cell grid ---------------------------------------------------------
+
+    /// <summary>
+    /// Widest a cell may be in face-UV terms. A cube face spans -1..1, so this
+    /// guarantees at least six cells across every face of every body.
+    /// </summary>
+    const float MaxFaceUVPerCell = 1f / 3f;
+
+    /// <summary>
+    /// How wide one spawn cell is in face-UV, for a body of this radius.
+    ///
+    /// The spawners size their grid as <c>cellSize / bodyRadius</c>, which is
+    /// right for a big planet and DEGENERATE for a small one: the cell is
+    /// measured in metres, the face is measured in radii, so as the body
+    /// shrinks the cells swallow the face. Cell centres outside -1..1 are
+    /// discarded, so the number of usable cells collapses:
+    ///
+    ///     Humble Abode  r=200, cellSize 40  ->  10 cells across a face (~600)
+    ///     Anvil         r=70                ->   4 cells (~96)
+    ///     Hearth        r=45                ->   2 cells (~24 for the WHOLE planet)
+    ///
+    /// Twenty-four candidate spots on an entire world, before the per-cell hash,
+    /// the waterline and the slope test reject most of them. That is why Sam
+    /// found Ember "very sparse" and Hearth completely bare of trees, mushrooms
+    /// AND crystals on 2026-09-09 — crystals and mushrooms use even larger cells
+    /// (60 m and 50 m), so they starve sooner than trees do.
+    ///
+    /// Clamping the UV width fixes the small bodies and leaves the large ones
+    /// untouched: it only binds below a radius of about three times the cell
+    /// size, so Humble Abode, the twins and Cyclops keep exactly the grid they
+    /// have today. On a small body the cells simply become smaller in metres,
+    /// which is what they should have been — a 45 m world does not want 40 m
+    /// cells. Total counts stay governed by each spawner's own cap.
+    /// </summary>
+    public static float FaceUVPerCell(float cellSize, float bodyRadius)
+    {
+        float uv = cellSize / Mathf.Max(0.001f, bodyRadius);
+        return Mathf.Min(uv, MaxFaceUVPerCell);
+    }
+
     // ── Surface raycast ───────────────────────────────────────────────────
 
     static readonly System.Collections.Generic.Dictionary<int, Collider> _terrain

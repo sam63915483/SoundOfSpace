@@ -393,6 +393,7 @@ public class PlayerController : GravityObject
 		spaceship = FindObjectOfType<Ship>();
 		_hasGravitySim = FindObjectOfType<NBodySimulation>() != null;
 		capsuleCollider = GetComponent<CapsuleCollider>();
+		LogFootClearanceOnce();
 		InitRigidbody();
 
 		animator = GetComponentInChildren<Animator>();
@@ -1548,6 +1549,35 @@ public class PlayerController : GravityObject
 		UpdateLoopAudio(upBoostSource,   upBoostClip,   upBoostActive,   upBoostVolume);
 		UpdateLoopAudio(downBoostSource, downBoostClip, downBoostActive, downBoostVolume);
 		UpdateLoopAudio(dirBoostSource,  dirBoostClip,  dirBoostActive,  dirBoostVolume);
+	}
+
+	// One line, once, to end the "is the astronaut still floating" guessing.
+	// Sam has reported a visible gap under his feet twice, and both times the
+	// only honest way to size it was to measure rather than eyeball a shadow.
+	// This prints where the CAPSULE bottoms out versus where the visible MESH
+	// bottoms out, in the player's own local space. The difference IS the hover:
+	// the capsule rests on the ground, so anything the mesh sits above that is
+	// air. Zero means the boots touch.
+	void LogFootClearanceOnce()
+	{
+		if (capsuleCollider == null) return;
+		float capsuleBottom = capsuleCollider.center.y - capsuleCollider.height * 0.5f;
+
+		float meshBottom = float.NaN;
+		var rends = GetComponentsInChildren<Renderer>(true);
+		for (int i = 0; i < rends.Length; i++)
+		{
+			if (rends[i] == null || !rends[i].enabled) continue;
+			// World-space bounds converted into our own local frame, so the number
+			// is directly comparable with the capsule's.
+			float b = transform.InverseTransformPoint(rends[i].bounds.min).y;
+			if (float.IsNaN(meshBottom) || b < meshBottom) meshBottom = b;
+		}
+
+		float feetY = feet != null ? transform.InverseTransformPoint(feet.position).y : float.NaN;
+		Debug.Log($"[FootClearance] capsule bottom {capsuleBottom:F3}, visible mesh bottom "
+				+ $"{meshBottom:F3}, Feet marker {feetY:F3} -> hover "
+				+ $"{(meshBottom - capsuleBottom) * 100f:F1} cm (0 = boots on the ground)");
 	}
 
 	bool IsGrounded()

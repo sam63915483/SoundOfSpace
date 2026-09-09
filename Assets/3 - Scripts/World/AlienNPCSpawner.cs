@@ -266,7 +266,7 @@ public class AlienNPCSpawner : MonoBehaviour
             float bodyOuter = effectiveRadius + entry.body.radius + cellSize;
             if (bodyDistSq > bodyOuter * bodyOuter) continue;
 
-            float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+            float faceUVPerCell = SpawnerCubeface.FaceUVPerCell(cellSize, entry.body.radius);
             int half = Mathf.CeilToInt(1f / Mathf.Max(0.0001f, faceUVPerCell)) + 1;
 
             for (int face = 0; face < 6; face++)
@@ -296,7 +296,7 @@ public class AlienNPCSpawner : MonoBehaviour
             if (CountActive() >= effectiveMax) break;
             var c = scratchCandidates[i];
             var entry = bodies[c.bodySlot];
-            float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+            float faceUVPerCell = SpawnerCubeface.FaceUVPerCell(cellSize, entry.body.radius);
             if (!TryComputeAlienPlacement(entry, c.face, c.cellU, c.cellV, faceUVPerCell, playerPos, effectiveRadius,
                                           out Vector3 pos, out Quaternion rot, out int prefabIdx, out float scale))
                 continue;
@@ -580,7 +580,7 @@ public class AlienNPCSpawner : MonoBehaviour
         var entry = bodies[bodySlot];
         if (entry.body == null) return false;
         SpawnerCubeface.DecodeCell(cellId, out int face, out int cu, out int cv);
-        float faceUVPerCell = cellSize / Mathf.Max(0.001f, entry.body.radius);
+        float faceUVPerCell = SpawnerCubeface.FaceUVPerCell(cellSize, entry.body.radius);
         return TryComputeCellApproxPos(entry.body, face, cu, cv, faceUVPerCell, out pos);
     }
 

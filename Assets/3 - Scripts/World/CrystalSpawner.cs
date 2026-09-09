@@ -370,7 +370,7 @@ public class CrystalSpawner : MonoBehaviour
     /// same relative grid density as Humble Abode.</summary>
     float FaceUVPerCell(CelestialBody body)
     {
-        float raw = cellSize / Mathf.Max(0.001f, body.radius);
+        float raw = SpawnerCubeface.FaceUVPerCell(cellSize, body.radius);
         return Mathf.Min(raw, Mathf.Max(0.01f, maxFaceUVPerCell));
     }
 
