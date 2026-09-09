@@ -122,6 +122,30 @@ class OtherSignalsTest(unittest.TestCase):
     def test_finds_the_class_name(self):
         self.assertEqual(cs_parser.class_name(SAMPLE), "PlayerController")
 
+    def test_the_word_class_in_a_doc_comment_is_not_the_class_name(self):
+        # Real case: VillageDoor.cs says "/// This class only adds the swing."
+        # six lines above its declaration, and a plain search returns "only".
+        text = (
+            "/// Interactable. This class only adds the swing.\n"
+            "public class VillageDoor : Interactable\n"
+            "{\n"
+            "    public AudioClip openClip;\n"
+            "}\n"
+        )
+        self.assertEqual(cs_parser.class_name(text), "VillageDoor")
+
+    def test_a_field_is_still_found_when_a_comment_mentions_class(self):
+        text = (
+            "// this class only adds the swing\n"
+            "public class VillageDoor : Interactable\n"
+            "{\n"
+            "    public AudioClip openClip;\n"
+            "}\n"
+        )
+        self.assertEqual(
+            [f.name for f in cs_parser.find_clip_fields(text)], ["openClip"]
+        )
+
     def test_counts_sources_created_in_code(self):
         self.assertEqual(cs_parser.count_code_sources(SAMPLE), 1)
 

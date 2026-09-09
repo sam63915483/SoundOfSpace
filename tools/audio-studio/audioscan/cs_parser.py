@@ -79,7 +79,9 @@ def _class_body_depth(text):
     """
     depth = 0
     for line in text.splitlines():
-        if re.search(r"\b(class|struct)\s+[A-Za-z_]\w*", line):
+        if not COMMENT_RE.match(line) and re.search(
+            r"\b(class|struct)\s+[A-Za-z_]\w*", line
+        ):
             return depth + 1
         depth += line.count("{") - line.count("}")
     return 1
@@ -116,8 +118,20 @@ def find_resource_loads(text):
 
 
 def class_name(text):
-    m = CLASS_RE.search(text)
-    return m.group(1) if m else ""
+    """The declared type name, ignoring the word "class" inside comments.
+
+    VillageDoor.cs has the doc comment "/// This class only adds the swing."
+    six lines above its declaration, which a plain search matches first and
+    reports the class as `only`. That corrupts the manifest key, and keys are
+    permanent -- so comment lines are skipped explicitly.
+    """
+    for line in text.splitlines():
+        if COMMENT_RE.match(line):
+            continue
+        m = CLASS_RE.search(line)
+        if m:
+            return m.group(1)
+    return ""
 
 
 def count_code_sources(text):

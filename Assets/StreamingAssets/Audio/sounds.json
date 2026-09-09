@@ -3,7 +3,7 @@
   "sounds": [
     {
       "key": "ship_wind_audio.wind_loop_clip",
-      "label": "ShipWindAudio.windLoopClip",
+      "label": "Ship wind (loop)",
       "group": "Ambience",
       "clip": "1 - sam3d/audio/wind.mp3",
       "scanned_clip": "1 - sam3d/audio/wind.mp3",
@@ -17,7 +17,7 @@
     },
     {
       "key": "alien_npc_damageable.death_sound",
-      "label": "AlienNPCDamageable.deathSound",
+      "label": "Alien NPC damageable - death",
       "group": "Combat",
       "clip": "1 - sam3d/death.mp3",
       "scanned_clip": "1 - sam3d/death.mp3",
@@ -31,7 +31,7 @@
     },
     {
       "key": "alien_npc_damageable.hit_sound",
-      "label": "AlienNPCDamageable.hitSound",
+      "label": "Alien NPC damageable - hit",
       "group": "Combat",
       "clip": "1 - sam3d/homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3",
       "scanned_clip": "1 - sam3d/homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3",
@@ -45,7 +45,7 @@
     },
     {
       "key": "enemy_controller.attack_clip",
-      "label": "EnemyController.attackClip",
+      "label": "Enemy attacks",
       "group": "Combat",
       "clip": "1 - samsPrefabs/Combat/freesound_community-zombie-bite-96528.mp3",
       "scanned_clip": "1 - samsPrefabs/Combat/freesound_community-zombie-bite-96528.mp3",
@@ -59,7 +59,7 @@
     },
     {
       "key": "enemy_controller.charge_start_clip",
-      "label": "EnemyController.chargeStartClip",
+      "label": "Enemy controller - charge start",
       "group": "Combat",
       "clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-screech-sound-effect-312865.mp3",
       "scanned_clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-screech-sound-effect-312865.mp3",
@@ -73,7 +73,7 @@
     },
     {
       "key": "enemy_controller.death_clip",
-      "label": "EnemyController.deathClip",
+      "label": "Enemy dies",
       "group": "Combat",
       "clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-dying-sound-357974.mp3",
       "scanned_clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-dying-sound-357974.mp3",
@@ -87,7 +87,7 @@
     },
     {
       "key": "enemy_controller.run_grunt_clip",
-      "label": "EnemyController.runGruntClip",
+      "label": "Enemy controller - run grunt",
       "group": "Combat",
       "clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-sound-2-357976.mp3",
       "scanned_clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-sound-2-357976.mp3",
@@ -101,7 +101,7 @@
     },
     {
       "key": "enemy_controller.sniff_clip",
-      "label": "EnemyController.sniffClip",
+      "label": "Enemy sniffing for you",
       "group": "Combat",
       "clip": "Audio/Enemy/enemy_sniff_regular.wav",
       "scanned_clip": "Audio/Enemy/enemy_sniff_regular.wav",
@@ -115,7 +115,7 @@
     },
     {
       "key": "enemy_controller.spawn_loop_clip",
-      "label": "EnemyController.spawnLoopClip",
+      "label": "Enemy spawning (loop)",
       "group": "Combat",
       "clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-screech-sound-effect-312865.mp3",
       "scanned_clip": "1 - samsPrefabs/Combat/dragon-studio-zombie-screech-sound-effect-312865.mp3",
@@ -129,7 +129,7 @@
     },
     {
       "key": "enemy_controller.spit_clip",
-      "label": "EnemyController.spitClip",
+      "label": "Enemy controller - spit",
       "group": "Combat",
       "clip": "1 - samsPrefabs/Combat/freesound_community-spit-81294.mp3",
       "scanned_clip": "1 - samsPrefabs/Combat/freesound_community-spit-81294.mp3",
@@ -143,7 +143,7 @@
     },
     {
       "key": "bobber.bite_clip",
-      "label": "Bobber.biteClip",
+      "label": "Bobber - bite",
       "group": "Fishing",
       "clip": "transfer/audio/bite.mp3",
       "scanned_clip": "transfer/audio/bite.mp3",
@@ -157,7 +157,7 @@
     },
     {
       "key": "bobber.water_splash_clip",
-      "label": "Bobber.waterSplashClip",
+      "label": "Bobber - water splash",
       "group": "Fishing",
       "clip": "transfer/audio/splash.mp3",
       "scanned_clip": "transfer/audio/splash.mp3",
@@ -171,7 +171,7 @@
     },
     {
       "key": "fish_market_npc.sale_clip",
-      "label": "FishMarketNPC.saleClip",
+      "label": "Fish market NPC - sale",
       "group": "Fishing",
       "clip": "1 - sam3d/audio/moneyyay.mp3",
       "scanned_clip": "1 - sam3d/audio/moneyyay.mp3",
@@ -185,7 +185,7 @@
     },
     {
       "key": "fish_market_npc.typewriter_loop_clip",
-      "label": "FishMarketNPC.typewriterLoopClip",
+      "label": "Fish market NPC - typewriter loop",
       "group": "Fishing",
       "clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
       "scanned_clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
@@ -199,7 +199,7 @@
     },
     {
       "key": "fishing_rod_controller.cast_clip",
-      "label": "FishingRodController.castClip",
+      "label": "Fishing rod controller - cast",
       "group": "Fishing",
       "clip": "transfer/audio/spinopel-fishing-rod-whoosh-411640.mp3",
       "scanned_clip": "transfer/audio/spinopel-fishing-rod-whoosh-411640.mp3",
@@ -213,7 +213,7 @@
     },
     {
       "key": "fishing_rod_controller.catch_clip",
-      "label": "FishingRodController.catchClip",
+      "label": "Fishing rod controller - catch",
       "group": "Fishing",
       "clip": "transfer/audio/YAY.mp3",
       "scanned_clip": "transfer/audio/YAY.mp3",
@@ -227,7 +227,7 @@
     },
     {
       "key": "fishing_rod_controller.snap_clip",
-      "label": "FishingRodController.snapClip",
+      "label": "Fishing rod controller - snap",
       "group": "Fishing",
       "clip": "",
       "scanned_clip": "",
@@ -241,7 +241,7 @@
     },
     {
       "key": "fishing_rod_controller.spin_catch_clip",
-      "label": "FishingRodController.spinCatchClip",
+      "label": "Fishing rod controller - spin catch",
       "group": "Fishing",
       "clip": "transfer/audio/didd.mp3",
       "scanned_clip": "transfer/audio/didd.mp3",
@@ -255,7 +255,7 @@
     },
     {
       "key": "axe_controller.hit_clip",
-      "label": "AxeController.hitClip",
+      "label": "Axe - hit",
       "group": "Items",
       "clip": "transfer/audio/thump.mp3",
       "scanned_clip": "transfer/audio/thump.mp3",
@@ -269,7 +269,7 @@
     },
     {
       "key": "axe_controller.swing_clip",
-      "label": "AxeController.swingClip",
+      "label": "Axe - swing",
       "group": "Items",
       "clip": "transfer/audio/spinopel-fishing-rod-whoosh-411640.mp3",
       "scanned_clip": "transfer/audio/spinopel-fishing-rod-whoosh-411640.mp3",
@@ -283,7 +283,7 @@
     },
     {
       "key": "cassette_player.music_clip",
-      "label": "CassettePlayer.musicClip",
+      "label": "Cassette player - music",
       "group": "Items",
       "clip": "Audio/8th level of consciousness-003.wav",
       "scanned_clip": "Audio/8th level of consciousness-003.wav",
@@ -297,7 +297,7 @@
     },
     {
       "key": "pistol_controller.kill_impact_clip",
-      "label": "PistolController.killImpactClip",
+      "label": "Pistol controller - kill impact",
       "group": "Items",
       "clip": "1 - sam3d/audio/new/wetsquelchy impact.mp3",
       "scanned_clip": "1 - sam3d/audio/new/wetsquelchy impact.mp3",
@@ -311,7 +311,7 @@
     },
     {
       "key": "pistol_controller.reload_clip",
-      "label": "PistolController.reloadClip",
+      "label": "Pistol - reload",
       "group": "Items",
       "clip": "1 - sam3d/freesound_community-pistol-gun-cock-89523.mp3",
       "scanned_clip": "1 - sam3d/freesound_community-pistol-gun-cock-89523.mp3",
@@ -325,7 +325,7 @@
     },
     {
       "key": "pistol_controller.shoot_clip",
-      "label": "PistolController.shootClip",
+      "label": "Pistol - shot",
       "group": "Items",
       "clip": "1 - sam3d/freesound_community-9mm-pistol-shoot-short-reverb-7152.mp3",
       "scanned_clip": "1 - sam3d/freesound_community-9mm-pistol-shoot-short-reverb-7152.mp3",
@@ -339,7 +339,7 @@
     },
     {
       "key": "player_pickup.pickup_clip",
-      "label": "PlayerPickup.pickupClip",
+      "label": "Player pickup - pickup",
       "group": "Items",
       "clip": "transfer/audio/pickup.mp3",
       "scanned_clip": "transfer/audio/pickup.mp3",
@@ -353,7 +353,7 @@
     },
     {
       "key": "water_bottle_controller.drink_loop_clip",
-      "label": "WaterBottleController.drinkLoopClip",
+      "label": "Water bottle controller - drink loop",
       "group": "Items",
       "clip": "transfer/audio/drink.mp3",
       "scanned_clip": "transfer/audio/drink.mp3",
@@ -367,7 +367,7 @@
     },
     {
       "key": "player_controller.death_clip",
-      "label": "PlayerController.deathClip",
+      "label": "Player dies",
       "group": "Movement",
       "clip": "transfer/audio/augh.mp3",
       "scanned_clip": "transfer/audio/augh.mp3",
@@ -381,7 +381,7 @@
     },
     {
       "key": "player_controller.dir_boost_clip",
-      "label": "PlayerController.dirBoostClip",
+      "label": "Jetpack - sideways boost",
       "group": "Movement",
       "clip": "transfer/audio/jetpack.mp3",
       "scanned_clip": "transfer/audio/jetpack.mp3",
@@ -395,7 +395,7 @@
     },
     {
       "key": "player_controller.down_boost_clip",
-      "label": "PlayerController.downBoostClip",
+      "label": "Jetpack - boost down",
       "group": "Movement",
       "clip": "transfer/audio/jetpack.mp3",
       "scanned_clip": "transfer/audio/jetpack.mp3",
@@ -409,7 +409,7 @@
     },
     {
       "key": "player_controller.eat_drink_clip",
-      "label": "PlayerController.eatDrinkClip",
+      "label": "Eating or drinking",
       "group": "Movement",
       "clip": "transfer/audio/augh.mp3",
       "scanned_clip": "transfer/audio/augh.mp3",
@@ -423,7 +423,7 @@
     },
     {
       "key": "player_controller.footstep_walk_clip_a",
-      "label": "PlayerController.footstepWalkClipA",
+      "label": "Walking - step A",
       "group": "Movement",
       "clip": "transfer/audio/walk.mp3",
       "scanned_clip": "transfer/audio/walk.mp3",
@@ -437,7 +437,7 @@
     },
     {
       "key": "player_controller.footstep_walk_clip_b",
-      "label": "PlayerController.footstepWalkClipB",
+      "label": "Walking - step B",
       "group": "Movement",
       "clip": "transfer/audio/walkk.mp3",
       "scanned_clip": "transfer/audio/walkk.mp3",
@@ -451,7 +451,7 @@
     },
     {
       "key": "player_controller.item_pickup_clip",
-      "label": "PlayerController.itemPickupClip",
+      "label": "Picking an item up",
       "group": "Movement",
       "clip": "transfer/audio/pickup.mp3",
       "scanned_clip": "transfer/audio/pickup.mp3",
@@ -465,7 +465,7 @@
     },
     {
       "key": "player_controller.jump_clip",
-      "label": "PlayerController.jumpClip",
+      "label": "Jump (dead - suit breath is used)",
       "group": "Movement",
       "clip": "transfer/audio/dsadasdasd-[AudioTrimmer.com].mp3",
       "scanned_clip": "transfer/audio/dsadasdasd-[AudioTrimmer.com].mp3",
@@ -479,7 +479,7 @@
     },
     {
       "key": "player_controller.land_clip",
-      "label": "PlayerController.landClip",
+      "label": "Landing on the ground",
       "group": "Movement",
       "clip": "transfer/audio/land human.mp3",
       "scanned_clip": "transfer/audio/land human.mp3",
@@ -493,7 +493,7 @@
     },
     {
       "key": "player_controller.up_boost_clip",
-      "label": "PlayerController.upBoostClip",
+      "label": "Jetpack - boost up",
       "group": "Movement",
       "clip": "transfer/audio/jetpack.mp3",
       "scanned_clip": "transfer/audio/jetpack.mp3",
@@ -507,7 +507,7 @@
     },
     {
       "key": "player_controller.water_move_clip",
-      "label": "PlayerController.waterMoveClip",
+      "label": "Moving through water",
       "group": "Movement",
       "clip": "transfer/audio/water.mp3",
       "scanned_clip": "transfer/audio/water.mp3",
@@ -521,7 +521,7 @@
     },
     {
       "key": "player_suit_audio.acquire_clip",
-      "label": "PlayerSuitAudio.acquireClip",
+      "label": "Acquiring something new",
       "group": "Movement",
       "clip": "1 - sam3d/audio/pinging.mp3",
       "scanned_clip": "1 - sam3d/audio/pinging.mp3",
@@ -535,7 +535,7 @@
     },
     {
       "key": "player_suit_audio.eat_loop_clip",
-      "label": "PlayerSuitAudio.eatLoopClip",
+      "label": "Eating (loop)",
       "group": "Movement",
       "clip": "Audio/Eating/eat_raw_fish_loop.wav",
       "scanned_clip": "Audio/Eating/eat_raw_fish_loop.wav",
@@ -549,7 +549,7 @@
     },
     {
       "key": "player_suit_audio.equip_clip",
-      "label": "PlayerSuitAudio.equipClip",
+      "label": "Equipping an item",
       "group": "Movement",
       "clip": "1 - sam3d/audio/itep equip.mp3",
       "scanned_clip": "1 - sam3d/audio/itep equip.mp3",
@@ -563,7 +563,7 @@
     },
     {
       "key": "player_suit_audio.jump_effort_clip",
-      "label": "PlayerSuitAudio.jumpEffortClip",
+      "label": "Jump - effort grunt",
       "group": "Movement",
       "clip": "",
       "scanned_clip": "",
@@ -577,7 +577,7 @@
     },
     {
       "key": "player_suit_audio.unequip_clip",
-      "label": "PlayerSuitAudio.unequipClip",
+      "label": "Putting an item away",
       "group": "Movement",
       "clip": "1 - sam3d/audio/unequip.mp3",
       "scanned_clip": "1 - sam3d/audio/unequip.mp3",
@@ -591,7 +591,7 @@
     },
     {
       "key": "player_suit_audio.wind_loop_clip",
-      "label": "PlayerSuitAudio.windLoopClip",
+      "label": "Suit wind (loop)",
       "group": "Movement",
       "clip": "1 - sam3d/audio/wind.mp3",
       "scanned_clip": "1 - sam3d/audio/wind.mp3",
@@ -605,7 +605,7 @@
     },
     {
       "key": "audience_spawner.death_sound",
-      "label": "AudienceSpawner.deathSound",
+      "label": "Audience spawner - death",
       "group": "Music",
       "clip": "1 - sam3d/death.mp3",
       "scanned_clip": "1 - sam3d/death.mp3",
@@ -619,7 +619,7 @@
     },
     {
       "key": "audience_spawner.hit_sound",
-      "label": "AudienceSpawner.hitSound",
+      "label": "Audience spawner - hit",
       "group": "Music",
       "clip": "1 - sam3d/homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3",
       "scanned_clip": "1 - sam3d/homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3",
@@ -633,7 +633,7 @@
     },
     {
       "key": "speaker_source.clip",
-      "label": "SpeakerSource.clip",
+      "label": "Speaker - clip",
       "group": "Music",
       "clip": "Audio/8th level of consciousness-003.wav",
       "scanned_clip": "Audio/8th level of consciousness-003.wav",
@@ -647,7 +647,7 @@
     },
     {
       "key": "back_hatch_button.toggle_clip",
-      "label": "BackHatchButton.toggleClip",
+      "label": "Back hatch button - toggle",
       "group": "Ship",
       "clip": "transfer/audio/hatch.mp3",
       "scanned_clip": "transfer/audio/hatch.mp3",
@@ -661,7 +661,7 @@
     },
     {
       "key": "lebron_light.light_loop_clip",
-      "label": "LebronLight.lightLoopClip",
+      "label": "Lebron light - light loop",
       "group": "Ship",
       "clip": "5 - External Imports/SciFi & Space/sFuture Modules Pro/Lebron James You Are My Sunshine full song - Pancake Nova (128k).mp3",
       "scanned_clip": "5 - External Imports/SciFi & Space/sFuture Modules Pro/Lebron James You Are My Sunshine full song - Pancake Nova (128k).mp3",
@@ -675,7 +675,7 @@
     },
     {
       "key": "ship.crash_hard_clip",
-      "label": "Ship.crashHardClip",
+      "label": "Ship - crash hard",
       "group": "Ship",
       "clip": "transfer/audio/loud crash.mp3",
       "scanned_clip": "transfer/audio/loud crash.mp3",
@@ -689,7 +689,7 @@
     },
     {
       "key": "ship.crash_light_clip",
-      "label": "Ship.crashLightClip",
+      "label": "Ship - crash light",
       "group": "Ship",
       "clip": "transfer/audio/thump.mp3",
       "scanned_clip": "transfer/audio/thump.mp3",
@@ -703,7 +703,7 @@
     },
     {
       "key": "ship.crash_medium_clip",
-      "label": "Ship.crashMediumClip",
+      "label": "Ship - crash medium",
       "group": "Ship",
       "clip": "transfer/audio/crash.mp3",
       "scanned_clip": "transfer/audio/crash.mp3",
@@ -717,7 +717,7 @@
     },
     {
       "key": "ship.engine_loop_clip",
-      "label": "Ship.engineLoopClip",
+      "label": "Ship engine (loop)",
       "group": "Ship",
       "clip": "transfer/audio/dih.mp3",
       "scanned_clip": "transfer/audio/dih.mp3",
@@ -731,7 +731,7 @@
     },
     {
       "key": "ship.hatch_clip",
-      "label": "Ship.hatchClip",
+      "label": "Ship hatch",
       "group": "Ship",
       "clip": "transfer/audio/hatch.mp3",
       "scanned_clip": "transfer/audio/hatch.mp3",
@@ -745,7 +745,7 @@
     },
     {
       "key": "ship.thrust_loop_clip",
-      "label": "Ship.thrustLoopClip",
+      "label": "Ship thrusters (loop)",
       "group": "Ship",
       "clip": "transfer/audio/freesound_community-014614_rocket_thrust_01wav-57071.mp3",
       "scanned_clip": "transfer/audio/freesound_community-014614_rocket_thrust_01wav-57071.mp3",
@@ -759,7 +759,7 @@
     },
     {
       "key": "ship_reactor.feed_clip",
-      "label": "ShipReactor.feedClip",
+      "label": "Ship reactor - feed",
       "group": "Ship",
       "clip": "1 - sam3d/audio/reactor.mp3",
       "scanned_clip": "1 - sam3d/audio/reactor.mp3",
@@ -773,7 +773,7 @@
     },
     {
       "key": "space_net_mount.reattach_clip",
-      "label": "SpaceNetMount.reattachClip",
+      "label": "Space net mount - reattach",
       "group": "Ship",
       "clip": "",
       "scanned_clip": "",
@@ -787,7 +787,7 @@
     },
     {
       "key": "thruster_detach_on_impact.detach_clip",
-      "label": "ThrusterDetachOnImpact.detachClip",
+      "label": "Thruster detach on impact - detach",
       "group": "Ship",
       "clip": "transfer/audio/pop off.mp3",
       "scanned_clip": "transfer/audio/pop off.mp3",
@@ -801,7 +801,7 @@
     },
     {
       "key": "thruster_mount.reattach_clip",
-      "label": "ThrusterMount.reattachClip",
+      "label": "Thruster mount - reattach",
       "group": "Ship",
       "clip": "transfer/audio/building.mp3",
       "scanned_clip": "transfer/audio/building.mp3",
@@ -815,7 +815,7 @@
     },
     {
       "key": "bubble_dome.res.domefx_dome_hum",
-      "label": "BubbleDome -> DomeFX/dome_hum",
+      "label": "Dome - dome hum",
       "group": "Survival",
       "clip": "Resources/DomeFX/dome_hum.wav",
       "scanned_clip": "Resources/DomeFX/dome_hum.wav",
@@ -829,7 +829,7 @@
     },
     {
       "key": "dome_audio.res.domefx_dome_enter",
-      "label": "DomeAudio -> DomeFX/dome_enter",
+      "label": "Dome - dome enter",
       "group": "Survival",
       "clip": "Resources/DomeFX/dome_enter.wav",
       "scanned_clip": "Resources/DomeFX/dome_enter.wav",
@@ -843,7 +843,7 @@
     },
     {
       "key": "dome_refuel.feed_clip",
-      "label": "DomeRefuel.feedClip",
+      "label": "Dome refuel - feed",
       "group": "Survival",
       "clip": "",
       "scanned_clip": "",
@@ -857,7 +857,7 @@
     },
     {
       "key": "fall_damage.impact_hard",
-      "label": "FallDamage.impactHard",
+      "label": "Fall impact - hard",
       "group": "Survival",
       "clip": "1 - sam3d/audio/new/wetsquelchy impact.mp3",
       "scanned_clip": "1 - sam3d/audio/new/wetsquelchy impact.mp3",
@@ -871,7 +871,7 @@
     },
     {
       "key": "fall_damage.impact_light",
-      "label": "FallDamage.impactLight",
+      "label": "Fall impact - light",
       "group": "Survival",
       "clip": "1 - sam3d/audio/new/lightimpact.mp3",
       "scanned_clip": "1 - sam3d/audio/new/lightimpact.mp3",
@@ -885,7 +885,7 @@
     },
     {
       "key": "fall_damage.impact_medium",
-      "label": "FallDamage.impactMedium",
+      "label": "Fall impact - medium",
       "group": "Survival",
       "clip": "1 - sam3d/audio/new/medium impact.mp3",
       "scanned_clip": "1 - sam3d/audio/new/medium impact.mp3",
@@ -899,7 +899,7 @@
     },
     {
       "key": "fall_damage.pain_hard",
-      "label": "FallDamage.painHard",
+      "label": "Fall damage - hard",
       "group": "Survival",
       "clip": "1 - sam3d/audio/new/DEATHSCREAM.mp3",
       "scanned_clip": "1 - sam3d/audio/new/DEATHSCREAM.mp3",
@@ -913,7 +913,7 @@
     },
     {
       "key": "fall_damage.pain_light",
-      "label": "FallDamage.painLight",
+      "label": "Fall damage - light",
       "group": "Survival",
       "clip": "1 - sam3d/audio/new/ow.mp3",
       "scanned_clip": "1 - sam3d/audio/new/ow.mp3",
@@ -927,7 +927,7 @@
     },
     {
       "key": "fall_damage.pain_medium",
-      "label": "FallDamage.painMedium",
+      "label": "Fall damage - medium",
       "group": "Survival",
       "clip": "1 - sam3d/audio/new/OWW.mp3",
       "scanned_clip": "1 - sam3d/audio/new/OWW.mp3",
@@ -941,7 +941,7 @@
     },
     {
       "key": "resource_hud.warning_clip",
-      "label": "ResourceHUD.warningClip",
+      "label": "Resource HUD - warning",
       "group": "Survival",
       "clip": "",
       "scanned_clip": "",
@@ -955,7 +955,7 @@
     },
     {
       "key": "resource_manager.damage_clip",
-      "label": "ResourceManager.damageClip",
+      "label": "Resource manager - damage",
       "group": "Survival",
       "clip": "1 - sam3d/frosted_52-ow-480197.mp3",
       "scanned_clip": "1 - sam3d/frosted_52-ow-480197.mp3",
@@ -969,7 +969,7 @@
     },
     {
       "key": "intro_sequence_controller.heartbeat_clip",
-      "label": "IntroSequenceController.heartbeatClip",
+      "label": "Intro sequence controller - heartbeat",
       "group": "Tutorial",
       "clip": "Audio/Intro/heartbeat_loop.wav",
       "scanned_clip": "Audio/Intro/heartbeat_loop.wav",
@@ -983,7 +983,7 @@
     },
     {
       "key": "intro_sequence_controller.room_tone_clip",
-      "label": "IntroSequenceController.roomToneClip",
+      "label": "Intro sequence controller - room tone",
       "group": "Tutorial",
       "clip": "Audio/Intro/cabin_roomtone_loop.wav",
       "scanned_clip": "Audio/Intro/cabin_roomtone_loop.wav",
@@ -996,8 +996,92 @@
       "source": "1.6.7.7.7.unity"
     },
     {
+      "key": "pod_arrival_sequence.alarm_beep_clip",
+      "label": "Pod arrival sequence - alarm beep",
+      "group": "Tutorial",
+      "clip": "Audio/Intro/pod_alarm_beep.wav",
+      "scanned_clip": "Audio/Intro/pod_alarm_beep.wav",
+      "volume": 1.0,
+      "bus": "SFX",
+      "note": "",
+      "dead": false,
+      "missing": false,
+      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
+      "source": "1.6.7.7.7.unity"
+    },
+    {
+      "key": "pod_arrival_sequence.ambient_hum_clip",
+      "label": "Pod arrival sequence - ambient hum",
+      "group": "Tutorial",
+      "clip": "Audio/Intro/pod_hum.wav",
+      "scanned_clip": "Audio/Intro/pod_hum.wav",
+      "volume": 1.0,
+      "bus": "SFX",
+      "note": "",
+      "dead": false,
+      "missing": false,
+      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
+      "source": "1.6.7.7.7.unity"
+    },
+    {
+      "key": "pod_arrival_sequence.heartbeat_clip",
+      "label": "Pod arrival sequence - heartbeat",
+      "group": "Tutorial",
+      "clip": "Audio/Intro/heartbeat_loop.wav",
+      "scanned_clip": "Audio/Intro/heartbeat_loop.wav",
+      "volume": 1.0,
+      "bus": "SFX",
+      "note": "",
+      "dead": false,
+      "missing": false,
+      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
+      "source": "1.6.7.7.7.unity"
+    },
+    {
+      "key": "pod_arrival_sequence.impact_boom_clip",
+      "label": "Pod arrival sequence - impact boom",
+      "group": "Tutorial",
+      "clip": "Audio/Intro/pod_crash.wav",
+      "scanned_clip": "Audio/Intro/pod_crash.wav",
+      "volume": 1.0,
+      "bus": "SFX",
+      "note": "",
+      "dead": false,
+      "missing": false,
+      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
+      "source": "1.6.7.7.7.unity"
+    },
+    {
+      "key": "pod_arrival_sequence.rumble_clip",
+      "label": "Pod arrival sequence - rumble",
+      "group": "Tutorial",
+      "clip": "Audio/Intro/pod_rumble.wav",
+      "scanned_clip": "Audio/Intro/pod_rumble.wav",
+      "volume": 1.0,
+      "bus": "SFX",
+      "note": "",
+      "dead": false,
+      "missing": false,
+      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
+      "source": "1.6.7.7.7.unity"
+    },
+    {
+      "key": "pod_arrival_sequence.thruster_clip",
+      "label": "Pod arrival sequence - thruster",
+      "group": "Tutorial",
+      "clip": "Audio/Intro/pod_thrusters.wav",
+      "scanned_clip": "Audio/Intro/pod_thrusters.wav",
+      "volume": 1.0,
+      "bus": "SFX",
+      "note": "",
+      "dead": false,
+      "missing": false,
+      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
+      "source": "1.6.7.7.7.unity"
+    },
+    {
       "key": "shuttle_arrival_sequence.ambient_hum_clip",
-      "label": "ShuttleArrivalSequence.ambientHumClip",
+      "label": "Shuttle arrival sequence - ambient hum",
       "group": "Tutorial",
       "clip": "Audio/Intro/pod_hum.wav",
       "scanned_clip": "Audio/Intro/pod_hum.wav",
@@ -1011,7 +1095,7 @@
     },
     {
       "key": "shuttle_arrival_sequence.heartbeat_clip",
-      "label": "ShuttleArrivalSequence.heartbeatClip",
+      "label": "Shuttle arrival sequence - heartbeat",
       "group": "Tutorial",
       "clip": "1 - sam3d/audio/anxious_heartbeat.wav",
       "scanned_clip": "1 - sam3d/audio/anxious_heartbeat.wav",
@@ -1025,7 +1109,7 @@
     },
     {
       "key": "shuttle_arrival_sequence.stasis_door_clip",
-      "label": "ShuttleArrivalSequence.stasisDoorClip",
+      "label": "Shuttle arrival sequence - stasis door",
       "group": "Tutorial",
       "clip": "1 - sam3d/audio/stasis_door_open.wav",
       "scanned_clip": "1 - sam3d/audio/stasis_door_open.wav",
@@ -1039,7 +1123,7 @@
     },
     {
       "key": "shuttle_arrival_sequence.thruster_clip",
-      "label": "ShuttleArrivalSequence.thrusterClip",
+      "label": "Shuttle arrival sequence - thruster",
       "group": "Tutorial",
       "clip": "Audio/Intro/pod_thrusters.wav",
       "scanned_clip": "Audio/Intro/pod_thrusters.wav",
@@ -1053,7 +1137,7 @@
     },
     {
       "key": "shuttle_arrival_sequence.touchdown_clip",
-      "label": "ShuttleArrivalSequence.touchdownClip",
+      "label": "Shuttle arrival sequence - touchdown",
       "group": "Tutorial",
       "clip": "",
       "scanned_clip": "",
@@ -1067,7 +1151,7 @@
     },
     {
       "key": "shuttle_arrival_sequence.wind_clip",
-      "label": "ShuttleArrivalSequence.windClip",
+      "label": "Shuttle arrival sequence - wind",
       "group": "Tutorial",
       "clip": "1 - sam3d/audio/wind.mp3",
       "scanned_clip": "1 - sam3d/audio/wind.mp3",
@@ -1081,7 +1165,7 @@
     },
     {
       "key": "shuttle_door_field.res.domefx_dome_enter",
-      "label": "ShuttleDoorField -> DomeFX/dome_enter",
+      "label": "Shuttle door - dome enter",
       "group": "Tutorial",
       "clip": "Resources/DomeFX/dome_enter.wav",
       "scanned_clip": "Resources/DomeFX/dome_enter.wav",
@@ -1095,7 +1179,7 @@
     },
     {
       "key": "shuttle_exit_door.open_sound",
-      "label": "ShuttleExitDoor.openSound",
+      "label": "Shuttle exit door - open",
       "group": "Tutorial",
       "clip": "1 - sam3d/audio/ramp_deploy.wav",
       "scanned_clip": "1 - sam3d/audio/ramp_deploy.wav",
@@ -1109,7 +1193,7 @@
     },
     {
       "key": "tutorial_ui.step_complete_clip",
-      "label": "TutorialUI.stepCompleteClip",
+      "label": "Tutorial UI - step complete",
       "group": "Tutorial",
       "clip": "transfer/audio/YAY.mp3",
       "scanned_clip": "transfer/audio/YAY.mp3",
@@ -1122,92 +1206,8 @@
       "source": "1.6.7.7.7.unity"
     },
     {
-      "key": "of.alarm_beep_clip",
-      "label": "of.alarmBeepClip",
-      "group": "Tutorial",
-      "clip": "Audio/Intro/pod_alarm_beep.wav",
-      "scanned_clip": "Audio/Intro/pod_alarm_beep.wav",
-      "volume": 1.0,
-      "bus": "SFX",
-      "note": "",
-      "dead": false,
-      "missing": false,
-      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
-      "source": "1.6.7.7.7.unity"
-    },
-    {
-      "key": "of.ambient_hum_clip",
-      "label": "of.ambientHumClip",
-      "group": "Tutorial",
-      "clip": "Audio/Intro/pod_hum.wav",
-      "scanned_clip": "Audio/Intro/pod_hum.wav",
-      "volume": 1.0,
-      "bus": "SFX",
-      "note": "",
-      "dead": false,
-      "missing": false,
-      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
-      "source": "1.6.7.7.7.unity"
-    },
-    {
-      "key": "of.heartbeat_clip",
-      "label": "of.heartbeatClip",
-      "group": "Tutorial",
-      "clip": "Audio/Intro/heartbeat_loop.wav",
-      "scanned_clip": "Audio/Intro/heartbeat_loop.wav",
-      "volume": 1.0,
-      "bus": "SFX",
-      "note": "",
-      "dead": false,
-      "missing": false,
-      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
-      "source": "1.6.7.7.7.unity"
-    },
-    {
-      "key": "of.impact_boom_clip",
-      "label": "of.impactBoomClip",
-      "group": "Tutorial",
-      "clip": "Audio/Intro/pod_crash.wav",
-      "scanned_clip": "Audio/Intro/pod_crash.wav",
-      "volume": 1.0,
-      "bus": "SFX",
-      "note": "",
-      "dead": false,
-      "missing": false,
-      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
-      "source": "1.6.7.7.7.unity"
-    },
-    {
-      "key": "of.rumble_clip",
-      "label": "of.rumbleClip",
-      "group": "Tutorial",
-      "clip": "Audio/Intro/pod_rumble.wav",
-      "scanned_clip": "Audio/Intro/pod_rumble.wav",
-      "volume": 1.0,
-      "bus": "SFX",
-      "note": "",
-      "dead": false,
-      "missing": false,
-      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
-      "source": "1.6.7.7.7.unity"
-    },
-    {
-      "key": "of.thruster_clip",
-      "label": "of.thrusterClip",
-      "group": "Tutorial",
-      "clip": "Audio/Intro/pod_thrusters.wav",
-      "scanned_clip": "Audio/Intro/pod_thrusters.wav",
-      "volume": 1.0,
-      "bus": "SFX",
-      "note": "",
-      "dead": false,
-      "missing": false,
-      "script": "3 - Scripts/Tutorial/PodArrivalSequence.cs",
-      "source": "1.6.7.7.7.unity"
-    },
-    {
       "key": "alien7_vendor.purchase_clip",
-      "label": "Alien7Vendor.purchaseClip",
+      "label": "Alien7 vendor - purchase",
       "group": "Vendor",
       "clip": "1 - sam3d/audio/sale.mp3",
       "scanned_clip": "1 - sam3d/audio/sale.mp3",
@@ -1221,7 +1221,7 @@
     },
     {
       "key": "alien7_vendor.typewriter_loop_clip",
-      "label": "Alien7Vendor.typewriterLoopClip",
+      "label": "Alien7 vendor - typewriter loop",
       "group": "Vendor",
       "clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
       "scanned_clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
@@ -1235,7 +1235,7 @@
     },
     {
       "key": "ship_market_npc.purchase_clip",
-      "label": "ShipMarketNPC.purchaseClip",
+      "label": "Ship market NPC - purchase",
       "group": "Vendor",
       "clip": "1 - sam3d/audio/sale.mp3",
       "scanned_clip": "1 - sam3d/audio/sale.mp3",
@@ -1249,7 +1249,7 @@
     },
     {
       "key": "ship_market_npc.typewriter_loop_clip",
-      "label": "ShipMarketNPC.typewriterLoopClip",
+      "label": "Ship market NPC - typewriter loop",
       "group": "Vendor",
       "clip": "transfer/audio/amagiaz-character_speaking-416691.mp3",
       "scanned_clip": "transfer/audio/amagiaz-character_speaking-416691.mp3",
@@ -1263,7 +1263,7 @@
     },
     {
       "key": "bonfire_interaction.eat_clip",
-      "label": "BonfireInteraction.eatClip",
+      "label": "Bonfire interaction - eat",
       "group": "Voice",
       "clip": "transfer/audio/eat.mp3",
       "scanned_clip": "transfer/audio/eat.mp3",
@@ -1277,7 +1277,7 @@
     },
     {
       "key": "bonfire_interaction.fire_loop_clip",
-      "label": "BonfireInteraction.fireLoopClip",
+      "label": "Bonfire interaction - fire loop",
       "group": "Voice",
       "clip": "transfer/audio/fire.mp3",
       "scanned_clip": "transfer/audio/fire.mp3",
@@ -1291,7 +1291,7 @@
     },
     {
       "key": "bonfire_npc_dialogue.typewriter_loop_clip",
-      "label": "BonfireNPCDialogue.typewriterLoopClip",
+      "label": "Bonfire NPC dialogue - typewriter loop",
       "group": "Voice",
       "clip": "transfer/audio/amagiaz-character_speaking-416691.mp3",
       "scanned_clip": "transfer/audio/amagiaz-character_speaking-416691.mp3",
@@ -1305,7 +1305,7 @@
     },
     {
       "key": "guitar_controller.music_clip",
-      "label": "GuitarController.musicClip",
+      "label": "Guitar controller - music",
       "group": "Voice",
       "clip": "Audio/gameacousticdesolation.wav",
       "scanned_clip": "Audio/gameacousticdesolation.wav",
@@ -1319,7 +1319,7 @@
     },
     {
       "key": "guitar_shop_npc.typewriter_loop_clip",
-      "label": "GuitarShopNPC.typewriterLoopClip",
+      "label": "Guitar shop NPC - typewriter loop",
       "group": "Voice",
       "clip": "transfer/audio/amagiaz-character_speaking-416691.mp3",
       "scanned_clip": "transfer/audio/amagiaz-character_speaking-416691.mp3",
@@ -1333,7 +1333,7 @@
     },
     {
       "key": "npc_dialogue.typewriter_loop_clip",
-      "label": "NPCDialogue.typewriterLoopClip",
+      "label": "NPC dialogue - typewriter loop",
       "group": "Voice",
       "clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
       "scanned_clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
@@ -1347,7 +1347,7 @@
     },
     {
       "key": "ship_instructor_dialogue.typewriter_loop_clip",
-      "label": "ShipInstructorDialogue.typewriterLoopClip",
+      "label": "Ship instructor - typewriter loop",
       "group": "Voice",
       "clip": "",
       "scanned_clip": "",
@@ -1361,7 +1361,7 @@
     },
     {
       "key": "tev_dialogue.typewriter_loop_clip",
-      "label": "TevDialogue.typewriterLoopClip",
+      "label": "Tev dialogue - typewriter loop",
       "group": "Voice",
       "clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
       "scanned_clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
@@ -1375,7 +1375,7 @@
     },
     {
       "key": "tev_dialogue.whistle_clip",
-      "label": "TevDialogue.whistleClip",
+      "label": "Tev dialogue - whistle",
       "group": "Voice",
       "clip": "1 - sam3d/audio/new/whistling.mp3",
       "scanned_clip": "1 - sam3d/audio/new/whistling.mp3",
@@ -1389,7 +1389,7 @@
     },
     {
       "key": "tev_mushroom_onboarding.typewriter_loop_clip",
-      "label": "TevMushroomOnboarding.typewriterLoopClip",
+      "label": "Tev mushroom onboarding - typewriter loop",
       "group": "Voice",
       "clip": "",
       "scanned_clip": "",
@@ -1403,7 +1403,7 @@
     },
     {
       "key": "tev_smuggling_mission.cop_chase1_clip",
-      "label": "TevSmugglingMission.copChase1Clip",
+      "label": "Radio - cop chase1",
       "group": "Voice",
       "clip": "transfer/audio/b1_cop_chase_1.mp3",
       "scanned_clip": "transfer/audio/b1_cop_chase_1.mp3",
@@ -1417,7 +1417,7 @@
     },
     {
       "key": "tev_smuggling_mission.cop_chase2_clip",
-      "label": "TevSmugglingMission.copChase2Clip",
+      "label": "Radio - cop chase2",
       "group": "Voice",
       "clip": "transfer/audio/b1_cop_chase_2.mp3",
       "scanned_clip": "transfer/audio/b1_cop_chase_2.mp3",
@@ -1431,7 +1431,7 @@
     },
     {
       "key": "tev_smuggling_mission.cop_lethal_force_clip",
-      "label": "TevSmugglingMission.copLethalForceClip",
+      "label": "Radio - cop lethal force",
       "group": "Voice",
       "clip": "transfer/audio/b1_cop_lethalforce.mp3",
       "scanned_clip": "transfer/audio/b1_cop_lethalforce.mp3",
@@ -1445,7 +1445,7 @@
     },
     {
       "key": "tev_smuggling_mission.cop_runner_clip",
-      "label": "TevSmugglingMission.copRunnerClip",
+      "label": "Radio - cop runner",
       "group": "Voice",
       "clip": "transfer/audio/b1_cop_runner.mp3",
       "scanned_clip": "transfer/audio/b1_cop_runner.mp3",
@@ -1459,7 +1459,7 @@
     },
     {
       "key": "tev_smuggling_mission.explosion_clip",
-      "label": "TevSmugglingMission.explosionClip",
+      "label": "Radio - explosion",
       "group": "Voice",
       "clip": "transfer/audio/b1_corvette_explosion.wav",
       "scanned_clip": "transfer/audio/b1_corvette_explosion.wav",
@@ -1473,7 +1473,7 @@
     },
     {
       "key": "tev_smuggling_mission.radar_ping_clip",
-      "label": "TevSmugglingMission.radarPingClip",
+      "label": "Radio - radar ping",
       "group": "Voice",
       "clip": "transfer/audio/b1_radar_ping.wav",
       "scanned_clip": "transfer/audio/b1_radar_ping.wav",
@@ -1487,7 +1487,7 @@
     },
     {
       "key": "tev_smuggling_mission.rocket_fire_clip",
-      "label": "TevSmugglingMission.rocketFireClip",
+      "label": "Radio - rocket fire",
       "group": "Voice",
       "clip": "transfer/audio/b1_rocket_fire.wav",
       "scanned_clip": "transfer/audio/b1_rocket_fire.wav",
@@ -1501,7 +1501,7 @@
     },
     {
       "key": "tev_smuggling_mission.scare_clip",
-      "label": "TevSmugglingMission.scareClip",
+      "label": "Radio - scare",
       "group": "Voice",
       "clip": "transfer/audio/b1_tev_scare_scream.wav",
       "scanned_clip": "transfer/audio/b1_tev_scare_scream.wav",
@@ -1515,7 +1515,7 @@
     },
     {
       "key": "tev_smuggling_mission.siren_clip",
-      "label": "TevSmugglingMission.sirenClip",
+      "label": "Radio - siren",
       "group": "Voice",
       "clip": "transfer/audio/b1_patrol_siren.wav",
       "scanned_clip": "transfer/audio/b1_patrol_siren.wav",
@@ -1529,7 +1529,7 @@
     },
     {
       "key": "tev_smuggling_mission.stop_engine_clip",
-      "label": "TevSmugglingMission.stopEngineClip",
+      "label": "Radio - stop engine",
       "group": "Voice",
       "clip": "transfer/audio/b1_cop_stop_engine.mp3",
       "scanned_clip": "transfer/audio/b1_cop_stop_engine.mp3",
@@ -1543,7 +1543,7 @@
     },
     {
       "key": "tev_smuggling_mission.taser_zap_clip",
-      "label": "TevSmugglingMission.taserZapClip",
+      "label": "Radio - taser zap",
       "group": "Voice",
       "clip": "transfer/audio/b1_taser_zap.wav",
       "scanned_clip": "transfer/audio/b1_taser_zap.wav",
@@ -1557,7 +1557,7 @@
     },
     {
       "key": "tev_smuggling_mission.tev_speech_loop_clip",
-      "label": "TevSmugglingMission.tevSpeechLoopClip",
+      "label": "Radio - tev speech loop",
       "group": "Voice",
       "clip": "transfer/audio/b1_tev_babble_loud.mp3",
       "scanned_clip": "transfer/audio/b1_tev_babble_loud.mp3",
@@ -1571,7 +1571,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr20_sec_clip",
-      "label": "TevSmugglingMission.tr20SecClip",
+      "label": "Radio - tr20 sec",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_20sec.mp3",
       "scanned_clip": "transfer/audio/b1_tr_20sec.mp3",
@@ -1585,7 +1585,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_bombs_away_clip",
-      "label": "TevSmugglingMission.trBombsAwayClip",
+      "label": "Radio - tr bombs away",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_bombsaway.mp3",
       "scanned_clip": "transfer/audio/b1_tr_bombsaway.mp3",
@@ -1599,7 +1599,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_direct_hit_clip",
-      "label": "TevSmugglingMission.trDirectHitClip",
+      "label": "Radio - tr direct hit",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_directhit.mp3",
       "scanned_clip": "transfer/audio/b1_tr_directhit.mp3",
@@ -1613,7 +1613,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_do_what_he_says_clip",
-      "label": "TevSmugglingMission.trDoWhatHeSaysClip",
+      "label": "Radio - tr do what he says",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_dowhathesays.mp3",
       "scanned_clip": "transfer/audio/b1_tr_dowhathesays.mp3",
@@ -1627,7 +1627,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_fuel_top_up_clip",
-      "label": "TevSmugglingMission.trFuelTopUpClip",
+      "label": "Radio - tr fuel top up",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_fueltopup.mp3",
       "scanned_clip": "transfer/audio/b1_tr_fueltopup.mp3",
@@ -1641,7 +1641,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_head_for_twin_clip",
-      "label": "TevSmugglingMission.trHeadForTwinClip",
+      "label": "Radio - tr head for twin",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_headfortwin.mp3",
       "scanned_clip": "transfer/audio/b1_tr_headfortwin.mp3",
@@ -1655,7 +1655,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_hold_steady_clip",
-      "label": "TevSmugglingMission.trHoldSteadyClip",
+      "label": "Radio - tr hold steady",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_holdsteady.mp3",
       "scanned_clip": "transfer/audio/b1_tr_holdsteady.mp3",
@@ -1669,7 +1669,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_idea_clip",
-      "label": "TevSmugglingMission.trIdeaClip",
+      "label": "Radio - tr idea",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_idea.mp3",
       "scanned_clip": "transfer/audio/b1_tr_idea.mp3",
@@ -1683,7 +1683,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_launcher_clip",
-      "label": "TevSmugglingMission.trLauncherClip",
+      "label": "Radio - tr launcher",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_launcher.mp3",
       "scanned_clip": "transfer/audio/b1_tr_launcher.mp3",
@@ -1697,7 +1697,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_lay_low_clip",
-      "label": "TevSmugglingMission.trLayLowClip",
+      "label": "Radio - tr lay low",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_laylow.mp3",
       "scanned_clip": "transfer/audio/b1_tr_laylow.mp3",
@@ -1711,7 +1711,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_not_so_fast_clip",
-      "label": "TevSmugglingMission.trNotSoFastClip",
+      "label": "Radio - tr not so fast",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_notsofast.mp3",
       "scanned_clip": "transfer/audio/b1_tr_notsofast.mp3",
@@ -1725,7 +1725,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_one_clip",
-      "label": "TevSmugglingMission.trOneClip",
+      "label": "Radio - tr one",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_one.mp3",
       "scanned_clip": "transfer/audio/b1_tr_one.mp3",
@@ -1739,7 +1739,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_open_hatch_clip",
-      "label": "TevSmugglingMission.trOpenHatchClip",
+      "label": "Radio - tr open hatch",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_openhatch.mp3",
       "scanned_clip": "transfer/audio/b1_tr_openhatch.mp3",
@@ -1753,7 +1753,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_spirit_clip",
-      "label": "TevSmugglingMission.trSpiritClip",
+      "label": "Radio - tr spirit",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_spirit.mp3",
       "scanned_clip": "transfer/audio/b1_tr_spirit.mp3",
@@ -1767,7 +1767,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_three_clip",
-      "label": "TevSmugglingMission.trThreeClip",
+      "label": "Radio - tr three",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_three.mp3",
       "scanned_clip": "transfer/audio/b1_tr_three.mp3",
@@ -1781,7 +1781,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_too_slow_clip",
-      "label": "TevSmugglingMission.trTooSlowClip",
+      "label": "Radio - tr too slow",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_tooslow.mp3",
       "scanned_clip": "transfer/audio/b1_tr_tooslow.mp3",
@@ -1795,7 +1795,7 @@
     },
     {
       "key": "tev_smuggling_mission.tr_two_clip",
-      "label": "TevSmugglingMission.trTwoClip",
+      "label": "Radio - tr two",
       "group": "Voice",
       "clip": "transfer/audio/b1_tr_two.mp3",
       "scanned_clip": "transfer/audio/b1_tr_two.mp3",
@@ -1809,7 +1809,7 @@
     },
     {
       "key": "airlock_controller.door_sound",
-      "label": "AirlockController.doorSound",
+      "label": "Airlock controller - door",
       "group": "World",
       "clip": "ColdCompany/Audio/airlock_door.wav",
       "scanned_clip": "ColdCompany/Audio/airlock_door.wav",
@@ -1823,7 +1823,7 @@
     },
     {
       "key": "alien_npc_spawner.death_sound",
-      "label": "AlienNPCSpawner.deathSound",
+      "label": "Alien NPC spawner - death",
       "group": "World",
       "clip": "1 - sam3d/death.mp3",
       "scanned_clip": "1 - sam3d/death.mp3",
@@ -1837,7 +1837,7 @@
     },
     {
       "key": "alien_npc_spawner.hit_sound",
-      "label": "AlienNPCSpawner.hitSound",
+      "label": "Alien NPC spawner - hit",
       "group": "World",
       "clip": "1 - sam3d/homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3",
       "scanned_clip": "1 - sam3d/homemade_sfx-slap-hurt-pain-sound-effect-262618.mp3",
@@ -1851,7 +1851,7 @@
     },
     {
       "key": "alien_npc_spawner.voice_clip",
-      "label": "AlienNPCSpawner.voiceClip",
+      "label": "Alien NPC spawner - voice",
       "group": "World",
       "clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
       "scanned_clip": "transfer/audio/artificiallyinspired-alien-talking-312011.mp3",
@@ -1865,7 +1865,7 @@
     },
     {
       "key": "crystal_spawner.crystal_break_clip",
-      "label": "CrystalSpawner.crystalBreakClip",
+      "label": "Crystal spawner - crystal break",
       "group": "World",
       "clip": "",
       "scanned_clip": "",
@@ -1879,7 +1879,7 @@
     },
     {
       "key": "moon_base_door.close_sound",
-      "label": "MoonBaseDoor.closeSound",
+      "label": "Moon base door - close",
       "group": "World",
       "clip": "ColdCompany/Audio/airlock_door.wav",
       "scanned_clip": "ColdCompany/Audio/airlock_door.wav",
@@ -1893,7 +1893,7 @@
     },
     {
       "key": "moon_base_door.open_sound",
-      "label": "MoonBaseDoor.openSound",
+      "label": "Moon base door - open",
       "group": "World",
       "clip": "ColdCompany/Audio/airlock_door.wav",
       "scanned_clip": "ColdCompany/Audio/airlock_door.wav",
@@ -1907,7 +1907,7 @@
     },
     {
       "key": "moon_base_power_switch.flip_sound",
-      "label": "MoonBasePowerSwitch.flipSound",
+      "label": "Moon base power switch - flip",
       "group": "World",
       "clip": "",
       "scanned_clip": "",
@@ -1921,7 +1921,7 @@
     },
     {
       "key": "mushroom_spawner.break_squish_clip",
-      "label": "MushroomSpawner.breakSquishClip",
+      "label": "Mushroom spawner - break squish",
       "group": "World",
       "clip": "Audio/Mushroom/mushroom_break.wav",
       "scanned_clip": "Audio/Mushroom/mushroom_break.wav",
@@ -1935,7 +1935,7 @@
     },
     {
       "key": "tree_spawner.tree_break_clip",
-      "label": "TreeSpawner.treeBreakClip",
+      "label": "Tree spawner - tree break",
       "group": "World",
       "clip": "transfer/audio/YAY.mp3",
       "scanned_clip": "transfer/audio/YAY.mp3",
@@ -1948,8 +1948,8 @@
       "source": "1.6.7.7.7.unity"
     },
     {
-      "key": "only.close_clip",
-      "label": "only.closeClip",
+      "key": "village_door.close_clip",
+      "label": "Village door - close",
       "group": "World",
       "clip": "",
       "scanned_clip": "",
@@ -1962,8 +1962,8 @@
       "source": "5 - External Imports/Village & Buildings/LowPolyFantasyVillage/Prefabs/HouseParts/DoorPart_01.prefab"
     },
     {
-      "key": "only.open_clip",
-      "label": "only.openClip",
+      "key": "village_door.open_clip",
+      "label": "Village door - open",
       "group": "World",
       "clip": "",
       "scanned_clip": "",
