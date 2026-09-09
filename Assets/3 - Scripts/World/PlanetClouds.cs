@@ -88,6 +88,7 @@ public class PlanetClouds : MonoBehaviour
         Teardown();
         _quiet = scene.name != "MainMenu" && FindObjectOfType<GallerySceneQuiet>() != null;
         _nextScan = 0f;
+        _reported = false;
     }
 
     void Teardown()
@@ -208,16 +209,31 @@ public class PlanetClouds : MonoBehaviour
             }
 
         var bodies = NBodySimulation.Bodies;   // null-safe off the solar scene
+        int withAir = 0;
         for (int i = 0; i < bodies.Length; i++)
         {
             var b = bodies[i];
-            if (b == null || _shellBodies.Contains(b)) continue;
+            if (b == null) continue;
             var gen = b.GetComponentInChildren<CelestialBodyGenerator>();
             if (gen == null) continue;
             if (!HasAtmosphere(gen)) continue;
+            withAir++;
+            if (_shellBodies.Contains(b)) continue;
             CreateShell(b, gen);
         }
+
+        // One line in Player.log that settles "why are there no clouds" without
+        // another build: how many bodies have air, and how many actually got a
+        // shell. They should match.
+        if (!_reported)
+        {
+            _reported = true;
+            Debug.Log($"[PlanetClouds] {bodies.Length} bodies, {withAir} with an atmosphere, "
+                    + $"{_shells.Count} cloud shells built.");
+        }
     }
+
+    bool _reported;
 
     /// <summary>Read-only inspection of the generator's settings — allowed in
     /// the forbidden zone, unlike modification. A body with no atmosphere
@@ -273,13 +289,30 @@ public class PlanetClouds : MonoBehaviour
         if (_noiseTex == null) BuildNoise();
         if (_material == null)
         {
-            var sh = Shader.Find("Custom/PlanetClouds");
-            if (sh == null)
+            // A REAL MATERIAL ASSET IN RESOURCES, not Shader.Find. This is the
+            // bug that made the first build cloudless (Sam: "I just built and
+            // ran it and didn't see any clouds"): a shader referenced ONLY from
+            // code is not referenced by any asset, so the build strips it and
+            // Shader.Find returns null in the player while working perfectly in
+            // the Editor. SpaceDustField documents this exact trap and the fish
+            // material already followed it — the clouds did not.
+            var baseMat = Resources.Load<Material>("PlanetClouds");
+            if (baseMat == null)
             {
-                Debug.LogWarning("[PlanetClouds] Custom/PlanetClouds shader not found — no clouds.");
-                return false;
+                var sh = Shader.Find("Custom/PlanetClouds");
+                if (sh == null)
+                {
+                    Debug.LogWarning("[PlanetClouds] Resources/PlanetClouds.mat is missing AND "
+                                   + "Custom/PlanetClouds could not be found — no clouds. "
+                                   + "Restore the material asset.");
+                    return false;
+                }
+                Debug.LogWarning("[PlanetClouds] Resources/PlanetClouds.mat missing — using a "
+                               + "runtime material. This works in the Editor and will draw "
+                               + "NOTHING in a build.");
+                _material = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
             }
-            _material = new Material(sh) { hideFlags = HideFlags.HideAndDontSave };
+            else _material = new Material(baseMat) { hideFlags = HideFlags.HideAndDontSave };
             _material.SetTexture("_NoiseTex", _noiseTex);
             _material.SetColor("_SunColor", sunlitColour);
             _material.SetColor("_ShadowColor", shadedColour);
