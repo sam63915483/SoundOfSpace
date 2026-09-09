@@ -354,12 +354,25 @@ public class TreeSpawner : MonoBehaviour
     // that nothing spawns is useless, knowing WHICH TEST throws it away is the
     // whole answer. One line, once, naming the stage that eats the candidates.
     static int _cCand, _cRayMiss, _cUnderwater, _cOutOfRange, _cExcluded, _cPlaced;
-    static bool _censusLogged;
+    // PER BODY. The first version logged once for the whole session, fired on
+    // Humble Abode, and so never said a word about the planet Sam was actually
+    // asking about. A one-shot diagnostic has to be one-shot per THING.
+    static readonly System.Collections.Generic.HashSet<string> _censusDone
+        = new System.Collections.Generic.HashSet<string>();
+    static string _censusBody;
 
     void MaybeLogCensus(string nearestBody)
     {
-        if (_censusLogged || _cCand < 150) return;
-        _censusLogged = true;
+        // Counters are per-body: crossing to a new planet starts a fresh count,
+        // otherwise Humble Abode's tally would be blamed on wherever you flew.
+        if (nearestBody != _censusBody)
+        {
+            _censusBody = nearestBody;
+            _cCand = _cRayMiss = _cUnderwater = _cOutOfRange = _cExcluded = _cPlaced = 0;
+            return;
+        }
+        if (_cCand < 150 || _censusDone.Contains(nearestBody)) return;
+        _censusDone.Add(nearestBody);
 
         // The waterline against the REAL terrain. Terrain rises above the
         // nominal body radius (Humble Abode is r=200 and peaks past 206), so

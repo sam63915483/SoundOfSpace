@@ -1611,6 +1611,10 @@ public class PlayerController : GravityObject
 		// so rayRadius should not be larger than controller's capsule collider radius
 		const float rayRadius = .3f;
 		const float groundedRayDst = .2f;
+		// How far ABOVE the capsule's contact point the cast sphere starts. Must
+		// stay positive: at zero the sphere touches the ground at its origin and
+		// Unity reports no hit.
+		const float groundedRayClearance = .05f;
 		bool grounded = false;
 		_groundNormal = transform.up;   // default: flat relative to gravity-up (no slope)
 		_groundIsSlick = false;         // recomputed per cast; never carries over
@@ -1627,8 +1631,30 @@ public class PlayerController : GravityObject
 			if (Vector3.Dot(relativeVelocity, transform.up) <= jumpForce * .5f)
 			{
 				RaycastHit hit;
-				Vector3 offsetToFeet = (feet.position - transform.position);
-				Vector3 rayOrigin = rb.position + offsetToFeet + transform.up * rayRadius;
+				// ORIGIN COMES FROM THE CAPSULE, NOT THE FEET MARKER.
+				//
+				// This cast is what tells the animator you are standing up. It
+				// only works if the sphere does NOT already overlap the ground at
+				// its start -- see the comment above; an overlapping SphereCast
+				// reports nothing at all.
+				//
+				// It used to start at the "Feet" marker (-0.965) while the capsule
+				// bottomed out at -1.000, so the sphere began 35 mm clear of the
+				// ground and everything was fine. On 2026-09-09 I raised the
+				// capsule to -0.950 to stop the astronaut floating -- which put
+				// the marker 15 mm BELOW the contact point, so the sphere started
+				// inside the terrain and grounding died. Sam: "it puts me into the
+				// jump/mid air pose ... it goes back and forth", flickering with
+				// every bump in the ground.
+				//
+				// Deriving the origin from the capsule's own bottom plus a
+				// clearance means the two can never drift apart again: change the
+				// capsule however you like and this still starts above the floor.
+				float bottomLocal = capsuleCollider != null
+					? capsuleCollider.center.y - capsuleCollider.height * 0.5f
+					: transform.InverseTransformPoint(feet.position).y;
+				Vector3 rayOrigin = rb.position
+					+ transform.up * (bottomLocal + rayRadius + groundedRayClearance);
 				Vector3 rayDir = -transform.up;
 
 				// QueryTriggerInteraction.Ignore is NOT optional. Physics.queriesHitTriggers

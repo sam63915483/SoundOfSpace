@@ -64,6 +64,14 @@ public static class SpawnerCubeface
     /// </summary>
     const float MaxFaceUVPerCell = 1f / 3f;
 
+    /// <summary>Bodies under this radius are "small" and get the finer cap
+    /// below. Matches CelestialBodyGenerator's own large-body threshold, so the
+    /// split lands in the same place the renderer already puts it.</summary>
+    const float SmallBodyRadius = 150f;
+
+    /// <summary>Twelve cells across a face, for small bodies only.</summary>
+    const float MaxFaceUVPerCellSmall = 1f / 6f;
+
     /// <summary>
     /// How wide one spawn cell is in face-UV, for a body of this radius.
     ///
@@ -102,7 +110,18 @@ public static class SpawnerCubeface
     public static float FaceUVPerCell(float cellSize, float bodyRadius)
     {
         float uv = cellSize / Mathf.Max(0.001f, bodyRadius);
-        return Mathf.Min(uv, MaxFaceUVPerCell);
+        // Small bodies get a FINER cap than large ones. Six cells a face rescued
+        // the dwarfs from 24 spots to 216, and on a mostly-ocean world like
+        // Hearth that is still not many once the waterline takes its share --
+        // only the cells that happen to land on the islands can hold anything.
+        // Twelve a face gives 864, four times the chances, and costs nothing
+        // that matters: the scan is a couple of thousand cheap iterations and
+        // the totals are still governed by each spawner's own cap.
+        //
+        // The threshold is the same 150 m the generator uses to decide a body is
+        // "large", so every main planet keeps exactly the grid it has today.
+        float cap = bodyRadius < SmallBodyRadius ? MaxFaceUVPerCellSmall : MaxFaceUVPerCell;
+        return Mathf.Min(uv, cap);
     }
 
     // ── Surface raycast ───────────────────────────────────────────────────
