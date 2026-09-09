@@ -111,8 +111,15 @@ public static class SpawnerCubeface
                              QueryTriggerInteraction.Ignore))
             return false;
         var terrain = TerrainColliderOf(gen);
-        if (terrain == null) return true;
-        return hit.collider == terrain;
+        if (terrain == null || hit.collider == null) return true;
+        if (hit.collider == terrain) return true;
+        // Not the exact collider we cached -- but a planet is allowed more than
+        // one, and demanding reference equality would silently strip EVERY prop
+        // from a planet whose generator happens to hold another collider first.
+        // Anything parented under the GENERATOR is still that planet's own
+        // surface (props are parented to the CelestialBody, one level up, so
+        // they cannot sneak in this way).
+        return hit.collider.transform.IsChildOf(gen.transform);
     }
 
     // ── Physics-frame parenting ───────────────────────────────────────────

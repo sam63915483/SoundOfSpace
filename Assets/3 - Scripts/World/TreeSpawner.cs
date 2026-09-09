@@ -149,6 +149,27 @@ public class TreeSpawner : MonoBehaviour
                 bodies.Add(entry);
             }
             if (bodies.Count == 0) return false;
+            // One line, once: which planets this spawner will ever consider, and
+            // where each one's waterline sits. The body list is built ONCE, and
+            // a planet whose land is all below its own ocean level can never be
+            // planted -- both are invisible without this. Sam, 2026-09-09:
+            // "hearth seems to have no trees or mushrooms at all, why?" while
+            // other planets were fine.
+            var names = new System.Text.StringBuilder();
+            for (int i = 0; i < bodies.Count; i++)
+            {
+                if (i > 0) names.Append(", ");
+                var b = bodies[i];
+                names.Append(b.body != null ? b.body.bodyName : "?");
+                if (b.gen == null) { names.Append("(NO GENERATOR)"); continue; }
+                float oceanR = 0f;
+                try { oceanR = b.gen.GetOceanRadius(); } catch { }
+                float r = b.body != null ? b.body.radius : 0f;
+                names.Append(oceanR > 0f
+                    ? $"(r={r:F0} ocean={oceanR:F0}{(oceanR >= r ? " ALL UNDERWATER" : "")})"
+                    : $"(r={r:F0} no ocean)");
+            }
+            Debug.Log($"[TreeSpawner] tracking {bodies.Count} bodies: {names}");
         }
         if (player == null)
         {

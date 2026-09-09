@@ -302,9 +302,8 @@ public class AmbientFishField : MonoBehaviour
         return true;
     }
 
-    void DrainProbes()
+    void DrainProbes(int budget)
     {
-        int budget = maxProbesPerFrame;
         while (budget-- > 0 && _probeQueue.Count > 0)
         {
             var job = _probeQueue.Dequeue();
@@ -719,8 +718,6 @@ public class AmbientFishField : MonoBehaviour
         int level = _level;
         float ring = Mathf.Lerp(nearRing, farRing, Mathf.InverseLerp(0f, 200f, Mathf.Max(alt, 0f)));
 
-        DrainProbes();
-
         // One line per planet in Player.log. Settles "why are there no fish
         // here" without another build: if water is 0 the sea-bed probes are
         // calling everything land, and if species is 0 the planet's catch list
@@ -757,14 +754,39 @@ public class AmbientFishField : MonoBehaviour
         Vector3 disturbL = hasDisturb ? _planetT.InverseTransformPoint(_disturbW) : Vector3.zero;
         bool camUnder = alt < 0f;
 
-        float dt = Mathf.Min(Time.deltaTime, 0.1f);
-        int spawnBudget = maxSpawnsPerFrame;
-        int spawnTries = maxSpawnsPerFrame * 4;
-
-        CastWhiskers();
-
         int aliveNow = 0;
         for (int i = 0; i < _fish.Length; i++) if (_fish[i].alive) aliveNow++;
+
+        // -- PRIMING ---------------------------------------------------------
+        // Sam, 2026-09-09: "when you go to the other side of the planet, you'll
+        // find barely any fish but then slowly more will start to appear ... i
+        // want them to already be there so that players don't fly around a
+        // planet looking for fish and not see any, then realize oh its just a
+        // shitty coded game and i have to stand by the lake and wait for them
+        // to spawn."
+        //
+        // Right, and the cause was throttles meant for the STEADY STATE being
+        // applied to ARRIVAL. A fish cannot spawn until the sea-bed patch under
+        // it has been probed, and probes were capped at a handful a frame --
+        // roughly a thousand patches for one ring, so several seconds of water
+        // visibly filling up while you watch. Each fish then faded in over
+        // another 2.5 s on top.
+        //
+        // So when the population is well under target, the field primes: probe
+        // and spawn budgets jump, and fish arrive ALREADY faded in. You were not
+        // looking at that water a moment ago, so there is nothing to hide -- the
+        // fade exists to cover ONE fish recycling while you watch, and that
+        // still happens. Steady state is untouched; only arrival changes.
+        bool priming = aliveNow < Mathf.RoundToInt(target * 0.6f);
+
+        DrainProbes(priming ? primeProbesPerFrame : maxProbesPerFrame);
+
+        float dt = Mathf.Min(Time.deltaTime, 0.1f);
+        int perFrame = priming ? primeSpawnsPerFrame : maxSpawnsPerFrame;
+        int spawnBudget = perFrame;
+        int spawnTries = perFrame * 6;
+
+        CastWhiskers();
 
         for (int i = 0; i < _fish.Length; i++)
         {
@@ -772,7 +794,12 @@ public class AmbientFishField : MonoBehaviour
             {
                 if (aliveNow >= target || spawnBudget <= 0 || spawnTries <= 0) continue;
                 spawnTries--;
-                if (TrySpawn(ref _fish[i], camL, ring, level)) { spawnBudget--; aliveNow++; }
+                if (TrySpawn(ref _fish[i], camL, ring, level))
+                {
+                    spawnBudget--; aliveNow++;
+                    // Arriving: already there, not fading up in front of you.
+                    if (priming) _fish[i].born = 1f;
+                }
                 else continue;
             }
             if (!Step(ref _fish[i], camL, ring, level, dt, hasDisturb, disturbL)) continue;
@@ -1257,8 +1284,12 @@ public class AmbientFishField : MonoBehaviour
     [SerializeField] float coarseAltitude = 40f;
     [Tooltip("How deep a probe looks before calling it open water.")]
     [SerializeField] float probeDepthMetres = 30f;
-    [Tooltip("Hard cap on sea-bed raycasts per frame. This is what stops arriving somewhere new from spiking.")]
-    [SerializeField] int maxProbesPerFrame = 6;
+    [Tooltip("Sea-bed raycasts per frame once the water around you is already stocked.")]
+    [SerializeField] int maxProbesPerFrame = 8;
+    [Tooltip("Sea-bed raycasts per frame while ARRIVING somewhere new, so the water is populated by the time you look at it instead of filling up while you watch. Lasts only the moment it takes to stock it.")]
+    [SerializeField] int primeProbesPerFrame = 48;
+    [Tooltip("New fish per frame while arriving somewhere new.")]
+    [SerializeField] int primeSpawnsPerFrame = 8;
     [Tooltip("Cap on the probe backlog. Extra patches are simply retried later.")]
     [SerializeField] int maxQueuedProbes = 256;
     [Tooltip("Ceiling on remembered sea-floor patches. Reached only by walking a very long coastline; the cache then rebuilds as you go.")]
