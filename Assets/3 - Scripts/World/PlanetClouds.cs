@@ -4,42 +4,59 @@ using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 
 /// <summary>
-/// Puffy 3D clouds overhead on planets that have an atmosphere, and their
-/// shadows on the ground. Purely visual, toggleable in the pause menu.
+/// Puffy 3D clouds over planets that have an atmosphere. Purely visual,
+/// toggleable in the pause menu.
 ///
-/// ── Pass 2: real geometry (Sam, 2026-09-09) ───────────────────────────────
-/// The first attempt was a texture painted on a sphere shell, and Sam's verdict
-/// was blunt and correct: "the clouds are flat ... i was hoping for actual 3d
-/// puffy looking white clouds that are overhead ... i would not use them in my
-/// game." A shell can never fix that — a picture on a sphere has no parallax,
-/// no silhouette against itself and no volume.
+/// ── How this got here (Sam, 2026-09-09) ───────────────────────────────────
+/// v1 was a texture painted on a sphere shell: "the clouds are flat ... i would
+/// not use them in my game." A picture on a sphere has no parallax and no
+/// volume, and no tuning fixes that.
 ///
-/// So a cloud is now a CLUSTER OF ACTUAL LUMPS OF MESH, built at runtime by
-/// merging a handful of low-poly spheres into a flat-bottomed blob. It looks
-/// three-dimensional because it is: fly around one and its far side passes
-/// behind its near side.
+/// v2 made each cloud a cluster of low-poly spheres — real geometry, real
+/// parallax. "Those are better", but "completely solid looking ... should be
+/// see through and fluffy", too low, and "if i open the map then close the map
+/// the clouds disappear and appear in different formations."
 ///
-/// This is also the CHEAPER answer, which is the easy thing to miss.
-/// Volumetric raymarching is unaffordable; stacked see-through billboards drown
-/// in overdraw, which is the thing Sam was right to worry about from the start.
-/// Opaque low-poly lumps are just meshes — a few hundred triangles each,
-/// instanced, one draw call per shape, no transparency, no sorting, no
-/// overdraw.
+/// v3 keeps the geometry and fixes the three real faults:
 ///
-/// ── The shadows, and the grass regression that killed the first version ───
-/// Version one lit the ground with a COOKIE on the sun: a texture multiplying
-/// the sunlight everywhere. It worked, and it also wrecked the grass. The grass
-/// has a hand-written lighting function that uses the sun's shadow term
-/// (<c>atten</c>) TWICE — once to shade the blade, and once as the gate
-/// deciding how lamps and torches light it (<c>dayFactor × atten</c>, tuned
-/// over days). A cookie multiplies straight into <c>atten</c>, so it did not
-/// merely darken the grass, it corrupted the lamp system. Sam: "all of the
-/// grass looks dark and messed up now."
+///   • <b>SOFT, not solid.</b> The shading is where a cloud stops being an
+///     object and becomes a volume, so the work moved into the shader: alpha
+///     falls away at the rim of every puff, and the 9-14 overlapping puffs
+///     accumulate without depth writing, so a cloud is sheer at its fringes and
+///     dense in its middle. See PlanetClouds.shader.
 ///
-/// The cookie is gone. These clouds cast ORDINARY shadows through the ordinary
-/// shadow map, which is both correct and self-limiting: <c>atten</c> only drops
-/// where a cloud actually is, exactly as it already does under a tree — a case
-/// the grass shader was written for.
+///   • <b>THE MAP BUG, which was two mistakes.</b> The field followed
+///     <c>Camera.main</c>, and the solar map flies the REAL camera far above the
+///     planet — so the altitude cut-off read that as "left the planet" and
+///     deleted every cloud. Worse, cloud positions were random and stored, so
+///     rebuilding gave a different sky. Both are gone: the field now follows the
+///     PLAYER, and cloud placement is DETERMINISTIC.
+///
+///   • <b>Twice as high</b>, at Sam's request.
+///
+/// ── Deterministic placement ───────────────────────────────────────────────
+/// There is no cloud pool and no per-cloud state at all. The sky is a fixed
+/// lattice of cells; a hash of a cell's integer coordinates decides whether it
+/// holds a cloud and, if so, its offset, size, spin and shape. Wind is one
+/// global rotation of the whole lattice, a pure function of time. So the same
+/// patch of sky always holds the same clouds — walk away and come back, open
+/// and close the map, reload the scene, and the weather is where you left it.
+/// Nothing to save, nothing to reshuffle, nothing to lose.
+///
+/// ── Why this is still cheap ───────────────────────────────────────────────
+/// Roughly thirty clouds of ~1,400 triangles, instanced into one draw call per
+/// shape. Clouds barely overlap each OTHER, so this is one or two layers of
+/// transparency over part of the sky — not the dozens that make billboard cloud
+/// systems expensive. Volumetric raymarching was never affordable here.
+///
+/// ── Do NOT put a cookie on the sun ────────────────────────────────────────
+/// v1 drew ground shadows with a cookie on the directional light, and it wrecked
+/// the grass. The grass has a hand-written lighting function that uses the sun's
+/// shadow term <c>atten</c> TWICE — to shade the blade, and as the gate for how
+/// lamps and torches light it — so a cookie, which multiplies straight into
+/// <c>atten</c>, silently rewrote tuned lighting everywhere. Clouds cast
+/// ordinary shadow-map shadows instead: <c>atten</c> then only drops where a
+/// cloud actually is, exactly as it already does under a tree.
 /// </summary>
 [DefaultExecutionOrder(250)]
 public class PlanetClouds : MonoBehaviour
@@ -78,35 +95,30 @@ public class PlanetClouds : MonoBehaviour
     {
         _planet = null;
         _planetT = null;
+        _player = null;
+        _cam = null;
         _reported = false;
         _nextScan = 0f;
-        KillAll();
         _quiet = scene.name != "MainMenu" && FindObjectOfType<GallerySceneQuiet>() != null;
     }
 
     void ReleaseAssets()
     {
-        if (_shapes != null)
-            for (int i = 0; i < _shapes.Length; i++)
-                if (_shapes[i] != null) Destroy(_shapes[i]);
-        _shapes = null;
+        ReleaseShapes();
         if (_material != null) Destroy(_material);
         _material = null;
     }
 
-    // ── a cloud ──────────────────────────────────────────────────────────────
-
-    struct Cloud
+    void ReleaseShapes()
     {
-        public bool alive;
-        public Vector3 posL;      // planet-local centre
-        public Quaternion rotL;   // planet-local orientation, upright on the sphere
-        public float size;        // world size, metres across
-        public float grow;        // 0..1 scale-in, so nothing snaps into existence
-        public int shape;         // which generated blob
+        if (_shapes == null) return;
+        for (int i = 0; i < _shapes.Length; i++)
+            if (_shapes[i] != null) Destroy(_shapes[i]);
+        _shapes = null;
     }
 
-    Cloud[] _clouds;
+    // ── state (there is no cloud state — placement is a pure function) ───────
+
     Mesh[] _shapes;
     Material _material;
     Matrix4x4[][] _batch;
@@ -119,6 +131,8 @@ public class PlanetClouds : MonoBehaviour
     bool _reported;
     bool _quiet;
 
+    Transform _player;
+    float _nextPlayerSearch;
     Camera _cam;
     float _nextCamSearch;
     InputSettings _input;
@@ -126,16 +140,30 @@ public class PlanetClouds : MonoBehaviour
 
     static readonly int _CentreID = Shader.PropertyToID("_CloudPlanetCentre");
 
-    Camera Cam
+    /// <summary>
+    /// The field follows the PLAYER, never the camera. The solar map, the
+    /// trailer free-cam and every cutscene move the real camera somewhere else
+    /// entirely; anchoring to it is what made the clouds vanish when Sam opened
+    /// the map. The camera is only a fallback for scenes with no player.
+    /// </summary>
+    Vector3 AnchorPosition(out bool ok)
     {
-        get
+        if (_player == null && Time.time >= _nextPlayerSearch)
         {
-            if (_cam != null) return _cam;
-            if (Time.time < _nextCamSearch) return null;
+            _nextPlayerSearch = Time.time + 1f;
+            var pc = FindObjectOfType<PlayerController>();
+            if (pc != null) _player = pc.transform;
+        }
+        if (_player != null) { ok = true; return _player.position; }
+
+        if (_cam == null && Time.time >= _nextCamSearch)
+        {
             _nextCamSearch = Time.time + 0.5f;
             _cam = Camera.main;
-            return _cam;
         }
+        if (_cam != null) { ok = true; return _cam.transform.position; }
+        ok = false;
+        return Vector3.zero;
     }
 
     bool CloudsWanted
@@ -157,66 +185,32 @@ public class PlanetClouds : MonoBehaviour
     void LateUpdate()
     {
         if (!CloudsWanted) return;
-        var cam = Cam;
-        if (cam == null) return;
         if (!EnsureAssets()) return;
 
-        Vector3 camW = cam.transform.position;
-        if (Time.time >= _nextScan) { _nextScan = Time.time + 2f; ResolvePlanet(camW); }
+        Vector3 anchorW = AnchorPosition(out bool haveAnchor);
+        if (!haveAnchor) return;
+
+        if (Time.time >= _nextScan) { _nextScan = Time.time + 2f; ResolvePlanet(anchorW); }
         if (_planetT == null || _bodyScale <= 0.01f) return;
 
-        Vector3 camL = _planetT.InverseTransformPoint(camW);
-        float camR = camL.magnitude;
-        if (camR < 1e-3f) return;
+        Vector3 anchorL = _planetT.InverseTransformPoint(anchorW);
+        float anchorR = anchorL.magnitude;
+        if (anchorR < 1e-3f) return;
 
         float shellR = _bodyScale * (1f + cloudAltitude);
+        // A near-planet effect: the lattice is enumerated around wherever you
+        // are on the shell, which stops meaning anything once the planet is a
+        // ball in the distance rather than a floor under you.
+        if (anchorR > shellR + visibleAbove) return;
 
-        // Clouds are a NEAR-PLANET effect: the ring is centred on wherever you
-        // are, projected down onto the layer, which stops making sense once the
-        // planet is a ball in the distance rather than a floor under you.
-        //
-        // (An earlier worry that opaque clouds would spoil the atmosphere seen
-        // from orbit does NOT hold up: they sit ~30 m above a 300 m planet, so
-        // from any distance where you can see the whole planet they move the
-        // scattering endpoint by well under one percent.)
-        if (camR > shellR + visibleAbove) { KillAll(); return; }
-
-        if (_clouds == null || _clouds.Length != maxClouds) _clouds = new Cloud[maxClouds];
         for (int i = 0; i < _batchCount.Length; i++) _batchCount[i] = 0;
-
-        float dt = Mathf.Min(Time.deltaTime, 0.1f);
-        // Wind: a slow rotation about one axis, shared by the whole layer, so
-        // the sky moves as one weather system rather than as loose confetti.
-        Vector3 up = camL.normalized;
-        Vector3 windAxis = Vector3.Cross(up, Vector3.up);
-        if (windAxis.sqrMagnitude < 1e-4f) windAxis = Vector3.Cross(up, Vector3.right);
-        windAxis.Normalize();
-
-        int spawnBudget = 2;
-        for (int i = 0; i < _clouds.Length; i++)
-        {
-            if (!_clouds[i].alive)
-            {
-                if (spawnBudget <= 0) continue;
-                Spawn(ref _clouds[i], camL, shellR);
-                spawnBudget--;
-                continue;
-            }
-            Step(ref _clouds[i], camL, windAxis, dt);
-            if (_clouds[i].alive) Accumulate(ref _clouds[i]);
-        }
+        Gather(anchorL, shellR);
 
         _material.SetVector(_CentreID, _planetT.position);
         Draw();
     }
 
-    void KillAll()
-    {
-        if (_clouds == null) return;
-        for (int i = 0; i < _clouds.Length; i++) _clouds[i].alive = false;
-    }
-
-    void ResolvePlanet(Vector3 camW)
+    void ResolvePlanet(Vector3 anchorW)
     {
         var bodies = NBodySimulation.Bodies;   // null-safe off the solar scene
         CelestialBody best = null;
@@ -232,16 +226,12 @@ public class PlanetClouds : MonoBehaviour
             float scale;
             try { scale = gen.BodyScale; } catch { continue; }
             if (scale <= 0.01f) continue;
-            float d = (b.transform.position - camW).sqrMagnitude;
+            float d = (b.transform.position - anchorW).sqrMagnitude;
             if (d < bestD) { bestD = d; best = b; bestScale = scale; }
         }
 
-        if (best != _planet)
-        {
-            _planet = best;
-            _planetT = best != null ? best.transform : null;
-            KillAll();
-        }
+        _planet = best;
+        _planetT = best != null ? best.transform : null;
         _bodyScale = bestScale;
 
         if (!_reported)
@@ -267,64 +257,92 @@ public class PlanetClouds : MonoBehaviour
         catch { return false; }
     }
 
-    // ── movement ─────────────────────────────────────────────────────────────
+    // ── the sky lattice ──────────────────────────────────────────────────────
 
-    void Spawn(ref Cloud c, Vector3 camL, float shellR)
+    /// <summary>
+    /// Walk the cells of the sky near the player and emit whatever clouds their
+    /// hashes say are there. Nothing is stored between frames, so there is
+    /// nothing that can be lost, reshuffled or fall out of sync — which is the
+    /// actual fix for clouds changing formation across a map screen.
+    /// </summary>
+    void Gather(Vector3 anchorL, float shellR)
     {
-        Vector3 up = camL.normalized;
-        Vector3 t1 = Vector3.Cross(up, Vector3.up);
-        if (t1.sqrMagnitude < 1e-4f) t1 = Vector3.Cross(up, Vector3.right);
-        t1.Normalize();
-        Vector3 t2 = Vector3.Cross(up, t1);
+        // Wind is ONE rotation of the whole lattice about the planet's own axis,
+        // and it is a pure function of time — so it is identical on any frame,
+        // in any session, and never needs to be remembered.
+        float windAngle = Mathf.Repeat(windSpeed * Time.time, 360f);
+        Quaternion wind = Quaternion.AngleAxis(windAngle, Vector3.up);
+        Quaternion windInv = Quaternion.AngleAxis(-windAngle, Vector3.up);
 
-        // sqrt for a distribution that is uniform in AREA — a straight random
-        // radius crowds a disc's middle, the same mistake the fish field made.
-        // Weighted outward so new clouds arrive far off, where growing in is
-        // invisible.
-        float d = ring * Mathf.Sqrt(Random.Range(0.35f, 1f));
-        float a = Random.value * Mathf.PI * 2f;
-        Vector3 dir = (up * shellR + (t1 * Mathf.Cos(a) + t2 * Mathf.Sin(a)) * d).normalized;
+        // Work in "weather space", where the lattice is fixed.
+        Vector3 anchorWeather = windInv * anchorL;
 
-        float jitter = Random.Range(-layerThickness, layerThickness);
-        c.posL = dir * (shellR + jitter);
-        // Upright on the sphere, spun randomly about its own vertical so a
-        // handful of shapes never reads as repeats.
-        c.rotL = Quaternion.AngleAxis(Random.value * 360f, dir)
-               * Quaternion.FromToRotation(Vector3.up, dir);
-        c.size = Random.Range(sizeMin, sizeMax);
-        c.grow = 0f;
-        c.shape = Random.Range(0, _shapes.Length);
-        c.alive = true;
+        float cell = Mathf.Max(8f, cellMetres);
+        int R = Mathf.Clamp(Mathf.CeilToInt(ring / cell) + 1, 1, 10);
+        Vector3 ac = anchorWeather / cell;
+        int ax = Mathf.FloorToInt(ac.x), ay = Mathf.FloorToInt(ac.y), az = Mathf.FloorToInt(ac.z);
+        float ringSq = ring * ring;
+        // Half a cell, not more: a thicker band picks cells at several radii that
+        // project to the SAME patch of sky, which measured 448 shell cells where
+        // there are only about a hundred places to put a cloud — and stacked them
+        // on top of each other.
+        float shellBand = cell * 0.5f;
+
+        for (int dx = -R; dx <= R; dx++)
+            for (int dy = -R; dy <= R; dy++)
+                for (int dz = -R; dz <= R; dz++)
+                {
+                    int cx = ax + dx, cy = ay + dy, cz = az + dz;
+                    Vector3 c = new Vector3(cx + 0.5f, cy + 0.5f, cz + 0.5f) * cell;
+                    float rr = c.magnitude;
+                    // Only cells the cloud shell actually passes through.
+                    if (rr < 1e-3f || Mathf.Abs(rr - shellR) > shellBand) continue;
+
+                    uint h = Hash3(cx, cy, cz);
+                    if (R01(h) > cloudChance) continue;
+
+                    Vector3 dir = c / rr;
+                    Vector3 t1 = Vector3.Cross(dir, Vector3.up);
+                    if (t1.sqrMagnitude < 1e-4f) t1 = Vector3.Cross(dir, Vector3.right);
+                    t1.Normalize();
+                    Vector3 t2 = Vector3.Cross(dir, t1);
+
+                    h = Next(h); float ju = (R01(h) - 0.5f) * cell * 0.85f;
+                    h = Next(h); float jv = (R01(h) - 0.5f) * cell * 0.85f;
+                    h = Next(h); float jh = (R01(h) - 0.5f) * 2f * layerThickness;
+                    h = Next(h); float size = Mathf.Lerp(sizeMin, sizeMax, R01(h));
+                    h = Next(h); float spin = R01(h) * 360f;
+                    h = Next(h); int shape = (int)(h % (uint)_shapes.Length);
+
+                    Vector3 posWeather = dir * (shellR + jh) + t1 * ju + t2 * jv;
+
+                    float distSq = (posWeather - anchorWeather).sqrMagnitude;
+                    if (distSq > ringSq) continue;
+
+                    // Grow in over the last stretch of the ring rather than
+                    // popping. That edge is past the horizon on a planet this
+                    // size, so it is never actually seen happening.
+                    float fade = Mathf.InverseLerp(ring, ring * 0.78f, Mathf.Sqrt(distSq));
+                    float k = size * Mathf.SmoothStep(0f, 1f, fade);
+                    if (k < 0.05f) continue;
+
+                    Vector3 posL = wind * posWeather;
+                    Vector3 upL = wind * dir;
+                    Quaternion rotL = Quaternion.AngleAxis(spin, upL)
+                                    * Quaternion.FromToRotation(Vector3.up, upL);
+
+                    Emit(shape, _planetT.TransformPoint(posL), _planetT.rotation * rotL,
+                         new Vector3(k, k * flatten, k));
+                }
     }
 
-    void Step(ref Cloud c, Vector3 camL, Vector3 windAxis, float dt)
+    void Emit(int shape, Vector3 pos, Quaternion rot, Vector3 scale)
     {
-        // Drift as a rotation about the planet, so the layer stays on its shell
-        // however far it travels.
-        Quaternion spin = Quaternion.AngleAxis(windSpeed * dt, windAxis);
-        c.posL = spin * c.posL;
-        c.rotL = spin * c.rotL;
-
-        c.grow = Mathf.Min(1f, c.grow + dt / Mathf.Max(0.1f, growSeconds));
-
-        float cull = ring * 1.35f;
-        if ((c.posL - camL).sqrMagnitude > cull * cull) c.alive = false;
-    }
-
-    void Accumulate(ref Cloud c)
-    {
-        int s = c.shape;
-        if (s < 0 || s >= _batchCount.Length) return;
-        int n = _batchCount[s];
-        if (n >= _batch[s].Length) return;
-
-        Vector3 posW = _planetT.TransformPoint(c.posL);
-        Quaternion rotW = _planetT.rotation * c.rotL;
-        // Grow in rather than pop in. At the distance they arrive this is
-        // imperceptible, and it costs one multiply.
-        float k = c.size * Mathf.SmoothStep(0.15f, 1f, c.grow);
-        _batch[s][n] = Matrix4x4.TRS(posW, rotW, new Vector3(k, k * flatten, k));
-        _batchCount[s] = n + 1;
+        if (shape < 0 || shape >= _batchCount.Length) return;
+        int n = _batchCount[shape];
+        if (n >= _batch[shape].Length) return;
+        _batch[shape][n] = Matrix4x4.TRS(pos, rot, scale);
+        _batchCount[shape] = n + 1;
     }
 
     void Draw()
@@ -333,16 +351,34 @@ public class PlanetClouds : MonoBehaviour
         {
             int n = _batchCount[s];
             if (n == 0 || _shapes[s] == null) continue;
-            // Shadows ON: this is the whole point of using real geometry. The
-            // shadow is cast by the actual cloud through the ordinary shadow
-            // map, so it lands exactly where the cloud is — unlike the sun
-            // cookie in version one, which multiplied the light everywhere and
-            // broke the grass.
+            // Shadows ON: the shadow is cast by the cloud's own geometry through
+            // the ordinary shadow map, so it lands exactly where the cloud is.
+            // This is the safe way to shade the ground — unlike a sun cookie,
+            // which multiplies the light everywhere and broke the grass.
             Graphics.DrawMeshInstanced(_shapes[s], 0, _material, _batch[s], n, null,
-                                       ShadowCastingMode.On, true, 0, null,
+                                       ShadowCastingMode.On, false, 0, null,
                                        LightProbeUsage.Off);
         }
     }
+
+    // ── hashing ──────────────────────────────────────────────────────────────
+
+    static uint Hash3(int x, int y, int z)
+    {
+        unchecked
+        {
+            uint h = (uint)(x * 73856093) ^ (uint)(y * 19349663) ^ (uint)(z * 83492791);
+            h ^= h >> 13; h *= 1274126177u; h ^= h >> 16;
+            return h;
+        }
+    }
+
+    static uint Next(uint h)
+    {
+        unchecked { h ^= h << 13; h ^= h >> 17; h ^= h << 5; return h; }
+    }
+
+    static float R01(uint h) => (h & 0xFFFFFF) / (float)0x1000000;
 
     // ── the cloud shapes ─────────────────────────────────────────────────────
 
@@ -383,63 +419,53 @@ public class PlanetClouds : MonoBehaviour
             for (int i = 0; i < want; i++)
             {
                 _shapes[i] = BuildCloudMesh(i * 7919 + 13);
-                _batch[i] = new Matrix4x4[Mathf.Max(1, maxClouds)];
+                _batch[i] = new Matrix4x4[Mathf.Max(8, batchCapacity)];
             }
         }
         return true;
     }
 
-    void ReleaseShapes()
-    {
-        if (_shapes == null) return;
-        for (int i = 0; i < _shapes.Length; i++)
-            if (_shapes[i] != null) Destroy(_shapes[i]);
-        _shapes = null;
-    }
-
     /// <summary>
-    /// One cloud: a handful of low-poly spheres merged into a flat-bottomed
-    /// blob. Deliberately NOT one smooth surface — the lumpy intersections
-    /// between spheres ARE the cauliflower silhouette of a cumulus, and they
-    /// come free with the geometry.
+    /// One cloud: 9-14 low-poly spheres merged into a flat-bottomed blob.
+    /// Deliberately NOT one smooth surface — the lumpy intersections between
+    /// spheres ARE the cauliflower silhouette of a cumulus, and the shader turns
+    /// their overlaps into density.
     ///
-    /// Two rules keep it from looking like a bag of marbles. Puffs get smaller
-    /// the further they sit from the middle, so the shape has a core and a
-    /// crumbling edge rather than being uniform. And none of them may hang below
-    /// the base, because a real cumulus has a hard flat bottom where the rising
-    /// air hits its condensation level, and a billowing top — that contrast is
-    /// most of what makes a shape read as "cloud" instead of "rock".
+    /// Three rules keep it from looking like a bag of marbles. Puffs shrink the
+    /// further they sit from the middle, so a cloud has a core and a crumbling
+    /// edge. None may hang below the base, because a real cumulus has a hard
+    /// flat bottom where rising air hits its condensation level and a billowing
+    /// top — that contrast is most of what reads as "cloud" instead of "rock".
+    /// And the whole thing is stretched along one axis, because clouds are
+    /// almost never as deep as they are wide.
     /// </summary>
     static Mesh BuildCloudMesh(int seed)
     {
         var rnd = new System.Random(seed);
         float Rand(float a, float b) => a + (float)rnd.NextDouble() * (b - a);
 
-        int puffs = 7 + (int)(rnd.NextDouble() * 5);   // 7..11
+        int puffs = 9 + (int)(rnd.NextDouble() * 6);   // 9..14
+        float stretch = Rand(1.15f, 1.75f);            // longer than it is deep
         var verts = new List<Vector3>();
         var norms = new List<Vector3>();
         var tris = new List<int>();
 
         for (int p = 0; p < puffs; p++)
         {
-            // The first puff is the core; the rest ring it and climb a little.
-            float t = p == 0 ? 0f : Rand(0.25f, 1f);
+            float t = p == 0 ? 0f : Rand(0.2f, 1f);
             float ang = Rand(0f, Mathf.PI * 2f);
-            Vector3 centre = new Vector3(Mathf.Cos(ang) * t * 0.85f,
-                                         Rand(0f, 0.55f) * (1f - t * 0.5f),
-                                         Mathf.Sin(ang) * t * 0.85f);
-            // Smaller toward the edges — this is what stops it reading as a pile
-            // of equal balls.
-            float r = Mathf.Lerp(0.55f, 0.24f, t) * Rand(0.85f, 1.15f);
-            centre.y = Mathf.Max(centre.y, r * 0.35f);   // the flat base
+            Vector3 centre = new Vector3(Mathf.Cos(ang) * t * 0.9f * stretch,
+                                         Rand(0f, 0.6f) * (1f - t * 0.45f),
+                                         Mathf.Sin(ang) * t * 0.9f);
+            float r = Mathf.Lerp(0.58f, 0.20f, t) * Rand(0.8f, 1.2f);
+            centre.y = Mathf.Max(centre.y, r * 0.3f);   // the flat base
             AppendSphere(verts, norms, tris, centre, r, 2);
         }
 
-        // NORMALISE: the raw blob spans roughly 2.8 units across, so without
-        // this "size in metres" would build clouds about three times the
-        // requested width. Rescale so the mesh is exactly 1 unit wide, recentre
-        // it horizontally, and drop its flat base onto y = 0 so a cloud placed
-        // at the layer radius SITS on the layer.
+        // NORMALISE: the raw blob spans several units, so without this "size in
+        // metres" would build clouds far larger than asked for. Rescale to
+        // exactly 1 unit wide, recentre horizontally, and drop the flat base to
+        // y = 0 so a cloud placed at the layer radius SITS on the layer.
         float minX = float.MaxValue, maxX = float.MinValue;
         float minZ = float.MaxValue, maxZ = float.MinValue, minY = float.MaxValue;
         for (int i = 0; i < verts.Count; i++)
@@ -451,8 +477,8 @@ public class PlanetClouds : MonoBehaviour
         }
         float width = Mathf.Max(maxX - minX, maxZ - minZ);
         if (width < 1e-4f) width = 1f;
-        Vector3 centreXZ = new Vector3((minX + maxX) * 0.5f, minY, (minZ + maxZ) * 0.5f);
-        for (int i = 0; i < verts.Count; i++) verts[i] = (verts[i] - centreXZ) / width;
+        Vector3 origin = new Vector3((minX + maxX) * 0.5f, minY, (minZ + maxZ) * 0.5f);
+        for (int i = 0; i < verts.Count; i++) verts[i] = (verts[i] - origin) / width;
 
         var m = new Mesh { name = "Cloud" + seed, indexFormat = IndexFormat.UInt32 };
         m.SetVertices(verts);
@@ -508,30 +534,34 @@ public class PlanetClouds : MonoBehaviour
     [Header("Clouds")]
     [Tooltip("Master switch, independent of the player's settings toggle.")]
     [SerializeField] bool enableClouds = true;
-    [Tooltip("How many clouds exist around you at once.")]
-    [SerializeField] int maxClouds = 26;
-    [Tooltip("How far out clouds are kept, in metres.")]
-    [SerializeField] float ring = 500f;
-    [Tooltip("Height of the cloud layer as a fraction of the planet's radius. 0.10 on a 300 m planet is about 30 m up — low enough to fly through.")]
-    [SerializeField] float cloudAltitude = 0.10f;
-    [Tooltip("Metres of random height variation within the layer, so it is not a perfect ceiling.")]
-    [SerializeField] float layerThickness = 8f;
-    [Tooltip("Metres above the cloud layer past which clouds stop being drawn. They are a near-planet effect; you keep them all the way up through the layer and well beyond it.")]
+    [Tooltip("Height of the cloud layer as a fraction of the planet's radius. 0.20 on a 300 m planet is about 60 m up.")]
+    [SerializeField] float cloudAltitude = 0.20f;
+    [Tooltip("How far out clouds are drawn, in metres. On a 300 m planet the layer drops below the horizon at about 225 m, so there is nothing to gain past roughly this.")]
+    [SerializeField] float ring = 280f;
+    [Tooltip("Metres of random height variation within the layer, so it is not a flat ceiling.")]
+    [SerializeField] float layerThickness = 14f;
+    [Tooltip("Metres above the layer past which clouds stop being drawn.")]
     [SerializeField] float visibleAbove = 400f;
+
+    [Header("How many")]
+    [Tooltip("Size of one cell of sky, in metres. One cell holds at most one cloud.")]
+    [SerializeField] float cellMetres = 70f;
+    [Tooltip("Chance that any given cell of sky holds a cloud. THE OVERCAST DIAL: 0 is a clear sky, 1 is packed. 0.55 measures at roughly 22-30 clouds in view.")]
+    [SerializeField] float cloudChance = 0.55f;
+    [Tooltip("Most clouds of any ONE shape that can be drawn at once. Only a safety cap.")]
+    [SerializeField] int batchCapacity = 64;
 
     [Header("Shape")]
     [Tooltip("Smallest cloud, in metres across.")]
-    [SerializeField] float sizeMin = 22f;
+    [SerializeField] float sizeMin = 26f;
     [Tooltip("Largest cloud, in metres across.")]
-    [SerializeField] float sizeMax = 55f;
+    [SerializeField] float sizeMax = 70f;
     [Tooltip("Vertical squash. Below 1 gives wide, flat-bottomed clouds rather than balls.")]
-    [SerializeField] float flatten = 0.55f;
+    [SerializeField] float flatten = 0.5f;
     [Tooltip("How many different cloud shapes are generated. Each is one draw call.")]
     [SerializeField] int shapeVariants = 5;
 
     [Header("Movement")]
-    [Tooltip("Degrees per second the whole layer drifts around the planet.")]
-    [SerializeField] float windSpeed = 0.15f;
-    [Tooltip("Seconds a new cloud takes to grow to full size, so none of them pop in.")]
-    [SerializeField] float growSeconds = 2.5f;
+    [Tooltip("Degrees per second the whole sky drifts around the planet. It is a pure function of time, so it never jumps.")]
+    [SerializeField] float windSpeed = 0.12f;
 }

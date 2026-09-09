@@ -25,12 +25,16 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
+    - _Break: 0.35
+    - _BreakScale: 0.9
+    - _EdgeSoftness: 2.2
+    - _Opacity: 0.72
     - _RimPower: 5
-    - _RimStrength: 1
-    - _UnderStrength: 0.8
+    - _RimStrength: 1.1
+    - _UnderStrength: 0.7
     - _Wrap: 0.6
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
-    - _ShadowColor: {r: 0.58, g: 0.63, b: 0.74, a: 1}
-    - _UnderColor: {r: 0.42, g: 0.47, b: 0.6, a: 1}
+    - _ShadowColor: {r: 0.62, g: 0.67, b: 0.78, a: 1}
+    - _UnderColor: {r: 0.48, g: 0.53, b: 0.66, a: 1}
   m_BuildTextureStacks: []
