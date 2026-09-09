@@ -189,6 +189,30 @@ acknowledged and overridden here with reason stated.
 
 ---
 
+## 4b. Two traps carried into Part 2
+
+Raised by the parallel session 2026-09-09; both are build-time/Editor-time
+divergences, the same shape as the footstep-override trap in §2.
+
+**`Assets/transfer/` has hardcoded consumers.** The player's own walk clips
+(`walk.mp3`, `walkk.mp3`) live in this staging folder, and at least one other
+system reaches into it by literal path (`WireShipMarketCatalog`). Moving an
+audio file is safe (its `.meta` travels with it, GUID references hold); moving
+one that something addresses by *string* is not.
+
+**Checked 2026-09-09 — this one is clear.** `grep -rn "Assets/transfer"
+--include=*.cs Assets/` returns exactly one hit:
+`Assets/Editor/WireShipMarketCatalog.cs:19`, a `SolarPanelPickup.prefab` path.
+**No C# addresses any audio file under `transfer/` by string**, so the clip move
+in §4 is unblocked. Re-run the grep before the move in case that changes.
+
+**StreamingAssets is copied into a build at build time.** The manifest is read
+live in the Editor, so mixing needs no rebuild — but an **already-built exe does
+not see later manifest edits** until it is rebuilt. State this in any handover,
+so a stale build is never mistaken for the manifest not working. (This does not
+weaken §1's choice: the promise is "no recompile *while working in the Editor*",
+which is where all mixing happens.)
+
 ## 5. Migration waves
 
 Call sites move to `GameAudio` in waves. Fallback (§3.2) means each wave ships on
