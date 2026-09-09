@@ -136,3 +136,4 @@ backups/
 tools/audio-studio/sounds.scan.json
 tools/audio-studio/backups/
 tools/audio-studio/incoming/
+tools/audio-studio/**/__pycache__/
