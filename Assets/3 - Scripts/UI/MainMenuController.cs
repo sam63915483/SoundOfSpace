@@ -1063,6 +1063,9 @@ public class MainMenuController : MonoBehaviour
         // Ambient fish in planet water. Same trap #1: its AutoCreate skips
         // MainMenu, so without this line the water is empty in every build.
         if (AmbientFishField.Instance == null) { var go = new GameObject("AmbientFishField"); DontDestroyOnLoad(go); go.AddComponent<AmbientFishField>(); }
+        // Planet clouds. Trap #1 again: its AutoCreate skips MainMenu, so without
+        // this line every sky in a BUILD is clear no matter what the setting says.
+        if (PlanetClouds.Instance == null) { var go = new GameObject("PlanetClouds"); DontDestroyOnLoad(go); go.AddComponent<PlanetClouds>(); }
         tick("vitals HUD");       yield return null;
         if (OxygenManager.Instance == null) { var go = new GameObject("OxygenManager"); DontDestroyOnLoad(go); go.AddComponent<OxygenManager>(); }
         tick("oxygen system");    yield return null;

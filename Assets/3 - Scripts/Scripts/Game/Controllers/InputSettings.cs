@@ -221,6 +221,10 @@ public class InputSettings : ScriptableObject {
 	public bool fxFilmGrain = false; // first-run default: OFF (shipped-build preference)
 	public bool fxChromaticAberration = true;
 	public bool fxLensFlares = true;
+	// Cloud layer on planets with atmospheres (PlanetClouds). A shell plus a
+	// sun cookie, so it is cheap — but it is still a whole extra look, and Sam
+	// asked for it to be switchable.
+	public bool fxClouds = true;
 	public bool fxRadialMotionBlur = false; // default OFF — opt-in via pause menu
 	// Skips the BloomEffect step in CustomPostProcessing when false. Diagnostic
 	// switch for the "ground brightness changes when I look around" bug — bloom
@@ -402,6 +406,7 @@ public class InputSettings : ScriptableObject {
 		fxFilmGrain                 = PlayerPrefs.GetInt   (nameof (fxFilmGrain),                 0) != 0;
 		fxChromaticAberration       = PlayerPrefs.GetInt   (nameof (fxChromaticAberration),       1) != 0;
 		fxLensFlares                = PlayerPrefs.GetInt   (nameof (fxLensFlares),                1) != 0;
+		fxClouds                    = PlayerPrefs.GetInt   (nameof (fxClouds),                    1) != 0;
 		fxBloom                     = PlayerPrefs.GetInt   (nameof (fxBloom),                     1) != 0;
 		fxSpaceDust                 = PlayerPrefs.GetInt   (nameof (fxSpaceDust),                 1) != 0;
 		fxPerfOverlay               = PlayerPrefs.GetInt   (nameof (fxPerfOverlay),               1) != 0;
@@ -512,6 +517,7 @@ public class InputSettings : ScriptableObject {
 		PlayerPrefs.SetInt   (nameof (fxFilmGrain),                 fxFilmGrain                 ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxChromaticAberration),       fxChromaticAberration       ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxLensFlares),                fxLensFlares                ? 1 : 0);
+		PlayerPrefs.SetInt   (nameof (fxClouds),                    fxClouds                    ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxBloom),                     fxBloom                     ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxSpaceDust),                 fxSpaceDust                 ? 1 : 0);
 		PlayerPrefs.SetInt   (nameof (fxPerfOverlay),               fxPerfOverlay               ? 1 : 0);
@@ -578,6 +584,7 @@ public class InputSettings : ScriptableObject {
 				fxChromaticAberration  = false;
 				fxRadialMotionBlur     = false;
 				fxLensFlares           = false;
+				fxClouds               = false;
 				fxSubtleVignette       = true;
 				phoneResolutionScale   = PhoneResolutionScale.Quarter;
 				antiAliasing           = AntiAliasingLevel.Off;
@@ -593,6 +600,7 @@ public class InputSettings : ScriptableObject {
 				fxChromaticAberration  = true;
 				fxRadialMotionBlur     = false;
 				fxLensFlares           = true;
+				fxClouds               = true;
 				fxSubtleVignette       = true;
 				phoneResolutionScale   = PhoneResolutionScale.Half;
 				antiAliasing           = AntiAliasingLevel.MSAA2x;
@@ -608,6 +616,7 @@ public class InputSettings : ScriptableObject {
 				fxChromaticAberration  = true;
 				fxRadialMotionBlur     = false;
 				fxLensFlares           = true;
+				fxClouds               = true;
 				fxSubtleVignette       = true;
 				phoneResolutionScale   = PhoneResolutionScale.ThreeQuarter;
 				antiAliasing           = AntiAliasingLevel.MSAA4x;
@@ -623,6 +632,7 @@ public class InputSettings : ScriptableObject {
 				fxChromaticAberration  = true;
 				fxRadialMotionBlur     = true;
 				fxLensFlares           = true;
+				fxClouds               = true;
 				fxSubtleVignette       = true;
 				phoneResolutionScale   = PhoneResolutionScale.Full;
 				antiAliasing           = AntiAliasingLevel.MSAA8x;
