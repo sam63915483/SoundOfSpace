@@ -122,6 +122,8 @@ public class AmbientFishField : MonoBehaviour
         _dex = null;
         _tiers = null;
         _cam = null;
+        _player = null;
+        _reported = false;
         _level = 0;
         _whiskerCursor = 0;
         _waterFrac = 1f;
@@ -164,6 +166,7 @@ public class AmbientFishField : MonoBehaviour
     int _whiskerCursor;
     float _waterFrac = 1f;
     float _nextWaterScan;
+    bool _reported;
 
     // ── the sea-bed cache ────────────────────────────────────────────────────
     //
@@ -359,17 +362,35 @@ public class AmbientFishField : MonoBehaviour
 
     Camera _cam;
     float _nextCamSearch;
+    Transform _player;
+    float _nextPlayerSearch;
 
-    Camera Cam
+    /// <summary>
+    /// The field follows the PLAYER, not the camera. The solar map flies the
+    /// REAL camera far above the planet, and the free-cam and cutscenes move it
+    /// elsewhere entirely — anchored to the camera, the altitude cut-off reads
+    /// that as "left the planet" and every fish is killed, then respawns
+    /// somewhere else on the way back. Exactly the bug Sam hit with the clouds
+    /// on 2026-09-09; the fish had it too. The camera is only a fallback.
+    /// </summary>
+    Vector3 Anchor(out bool ok)
     {
-        get
+        if (_player == null && Time.time >= _nextPlayerSearch)
         {
-            if (_cam != null) return _cam;
-            if (Time.time < _nextCamSearch) return null;
+            _nextPlayerSearch = Time.time + 1f;
+            var pc = FindObjectOfType<PlayerController>();
+            if (pc != null) _player = pc.transform;
+        }
+        if (_player != null) { ok = true; return _player.position; }
+
+        if (_cam == null && Time.time >= _nextCamSearch)
+        {
             _nextCamSearch = Time.time + 0.5f;
             _cam = Camera.main;
-            return _cam;
         }
+        if (_cam != null) { ok = true; return _cam.transform.position; }
+        ok = false;
+        return Vector3.zero;
     }
 
     void RebuildBodyCache()
@@ -445,6 +466,7 @@ public class AmbientFishField : MonoBehaviour
             _nextWaterScan = 0f;
             if (_fish != null) for (int i = 0; i < _fish.Length; i++) _fish[i].alive = false;
             BuildSpeciesList();
+            _reported = false;
         }
         _oceanR = _oceanRadii[best];
         _probeStartRadius = _oceanProbeStart[best];
@@ -668,9 +690,8 @@ public class AmbientFishField : MonoBehaviour
     void LateUpdate()
     {
         if (_quiet || !enableField) return;
-        var cam = Cam;
-        if (cam == null) return;
-        Vector3 camW = cam.transform.position;
+        Vector3 camW = Anchor(out bool haveAnchor);
+        if (!haveAnchor) return;
         if (!ResolvePlanet(camW)) return;
         if (!ResolveMeshes()) return;
         if (_tierMatrices == null) return;
@@ -700,6 +721,17 @@ public class AmbientFishField : MonoBehaviour
 
         DrainProbes();
 
+        // One line per planet in Player.log. Settles "why are there no fish
+        // here" without another build: if water is 0 the sea-bed probes are
+        // calling everything land, and if species is 0 the planet's catch list
+        // resolved to nothing.
+        if (!_reported && _bed.Count > 24)
+        {
+            _reported = true;
+            Debug.Log($"[AmbientFish] '{_planetName}' oceanR={_oceanR:F0} alt={alt:F0} "
+                    + $"species={_allowed.Count} patches={_bed.Count} water={_waterFrac:P0}");
+        }
+
         if (_fish == null || _fish.Length != maxFish)
         {
             _fish = new Fish[maxFish];
@@ -711,7 +743,15 @@ public class AmbientFishField : MonoBehaviour
         // getting an ocean's worth of fish crammed into it (Sam, playtest 2:
         // "if I'm in a spot with very little water it gets super dense").
         UpdateWaterFraction(camL, ring, level);
-        int target = Mathf.Clamp(Mathf.RoundToInt(maxFish * _waterFrac), 0, maxFish);
+        // Scaled by how much water is around you — but with a FLOOR, which pass
+        // 3 was missing. Plain multiplication meant a small pond (a low water
+        // fraction over a 45 m ring) rounded to almost nothing, so the water Sam
+        // was standing next to came out empty. Fixing the crowding must not
+        // empty the small water instead.
+        int target = _waterFrac <= 0.001f
+            ? 0
+            : Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(minFishInWater, maxFish, _waterFrac)),
+                          1, maxFish);
 
         bool hasDisturb = Time.time < _disturbUntil;
         Vector3 disturbL = hasDisturb ? _planetT.InverseTransformPoint(_disturbW) : Vector3.zero;
@@ -1135,8 +1175,10 @@ public class AmbientFishField : MonoBehaviour
     [SerializeField] float nearRing = 45f;
     [Tooltip("Radius of that bubble at 200 m altitude — wider so they spread out under you instead of clumping.")]
     [SerializeField] float farRing = 150f;
-    [Tooltip("Fish never spawn closer than this fraction of the ring, so they arrive well out and fade up rather than appearing beside you.")]
-    [SerializeField] float spawnInnerFrac = 0.6f;
+    [Tooltip("Fish never spawn closer than this fraction of the ring. Kept modest on purpose: it is the FADE-IN that hides a fish arriving, not the distance, and a large hole here means a pond at your feet can never be stocked at all.")]
+    [SerializeField] float spawnInnerFrac = 0.35f;
+    [Tooltip("Fewest fish in water that IS in range, however small the pool. Stops the density scaling from emptying a small pond.")]
+    [SerializeField] int minFishInWater = 5;
     [Tooltip("Metres above the water past which fish are switched off. A half-metre fish is under two pixels up here.")]
     [SerializeField] float maxAltitude = 250f;
     [Tooltip("Metres below the water past which fish are switched off.")]

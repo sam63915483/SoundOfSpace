@@ -438,8 +438,11 @@ public class MushroomSpawner : MonoBehaviour
         if ((spherePos - playerPos).sqrMagnitude > prefilterMax * prefilterMax) return false;
 
         Vector3 rayOrigin = planet.Position + dir * (planet.radius + surfaceRayHeight);
-        if (!Physics.Raycast(rayOrigin, -dir, out RaycastHit hit,
-                             planet.radius * 2f, groundMask, QueryTriggerInteraction.Ignore))
+        // Terrain ONLY. Anything else in the 100 m column above the surface —
+        // the player, an enemy, a dropped item — used to be treated as ground,
+        // and the prop was left floating when it moved away (Sam, 2026-09-09).
+        if (!SpawnerCubeface.RaycastPlanetSurface(entry.gen, rayOrigin, -dir,
+                                                  planet.radius * 2f, groundMask, out RaycastHit hit))
             return false;
 
         if (entry.gen != null)

@@ -56,6 +56,65 @@ public static class SpawnerCubeface
     public const int WorldSpawnExcludeMask = WorldPropLayerMask | ShipLayerMask
         | (1 << WaterLayer) | (1 << SunLayer) | (1 << FishPreviewLayer);
 
+    // ── Surface raycast ───────────────────────────────────────────────────
+
+    static readonly System.Collections.Generic.Dictionary<int, Collider> _terrain
+        = new System.Collections.Generic.Dictionary<int, Collider>();
+
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    static void ResetTerrainCache() { _terrain.Clear(); }
+
+    /// <summary>The planet's own terrain collider, cached. Never called per
+    /// spawn attempt without the cache — GetComponentInChildren on a planet is
+    /// not something to do in a streaming loop.</summary>
+    static Collider TerrainColliderOf(CelestialBodyGenerator gen)
+    {
+        if (gen == null) return null;
+        int id = gen.GetInstanceID();
+        if (_terrain.TryGetValue(id, out var c) && c != null) return c;
+        c = gen.GetComponentInChildren<MeshCollider>();
+        if (c != null) _terrain[id] = c;
+        return c;
+    }
+
+    /// <summary>
+    /// A surface raycast that can only ever land on the PLANET'S OWN TERRAIN.
+    ///
+    /// Sam, 2026-09-09: "trees spawning in the air very far off of the dwarf
+    /// planets ... i think this happens when my character or shuttle or other
+    /// items interfere with that raycast". Exactly right. The spawners cast
+    /// down from <c>surfaceRayHeight</c> (100 m) above the surface, so anything
+    /// standing in that column is hit first and the prop is seated on top of
+    /// it. Then the blocker walks away and the tree is left hanging.
+    ///
+    /// <see cref="WorldSpawnExcludeMask"/> already blacklists props, ships,
+    /// water and the sun — but it deliberately CANNOT exclude Default or Body,
+    /// which is where the player, enemies, dropped items and everything
+    /// walkable live. A blacklist was always going to leak: every new kind of
+    /// object is a new way to break it.
+    ///
+    /// So this whitelists instead, down to a single collider. Anything that is
+    /// not this planet's terrain means "no ground here" and the spawn is
+    /// refused — which is also the behaviour you want anyway: no tree grows
+    /// where you are standing, and none inside the parked shuttle. A refused
+    /// cell is simply retried the next time it streams in.
+    ///
+    /// Falls back to accepting the raw hit when the terrain collider cannot be
+    /// resolved, so a planet built some other way keeps its old behaviour
+    /// rather than losing all its props.
+    /// </summary>
+    public static bool RaycastPlanetSurface(CelestialBodyGenerator gen, Vector3 origin,
+                                            Vector3 dir, float maxDistance, int mask,
+                                            out RaycastHit hit)
+    {
+        if (!Physics.Raycast(origin, dir, out hit, maxDistance, mask,
+                             QueryTriggerInteraction.Ignore))
+            return false;
+        var terrain = TerrainColliderOf(gen);
+        if (terrain == null) return true;
+        return hit.collider == terrain;
+    }
+
     // ── Physics-frame parenting ───────────────────────────────────────────
 
     /// Parent a freshly placed prop to its planet using the planet's PHYSICS
