@@ -3260,7 +3260,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   openAngle: 115
   openTime: 2.5
-  openSound: {fileID: 8300000, guid: 358f66700a326a446af2157738d83024, type: 3}
+  openSound: {fileID: 8300000, guid: eb1f1f0432565b54c937161f76957348, type: 3}
 --- !u!1 &1031164260619243529
 GameObject:
   m_ObjectHideFlags: 0

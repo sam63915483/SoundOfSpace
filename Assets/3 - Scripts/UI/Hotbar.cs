@@ -194,6 +194,7 @@ public class Hotbar : MonoBehaviour
     Ship ship;
     bool _wasInDialogue;
     bool _wasPhoneOpen;
+    bool _wasComputerOpen;
 
     int _animatedActiveIdx = -1;
     Coroutine[] _slotAnimRoutines = new Coroutine[TotalSlots];
@@ -316,6 +317,10 @@ public class Hotbar : MonoBehaviour
         bool piloting = Ship.PilotedInstance != null && Ship.PilotedInstance.IsPiloted;
         bool inDialogue = PlayerController.isInDialogue;
         bool phoneOpen  = PlayerPhoneUI.IsOpen;
+        // The ship computer is a screen you operate with your hands, exactly
+        // like the phone. Sam, 2026-09-10: "if i have the rod equipped and i
+        // open the computer and start clicking stuff, it casts the rod."
+        bool computerOpen = ShuttleComputerUI.IsOpen;
 
         if (inDialogue && !_wasInDialogue) UnequipAll();
         _wasInDialogue = inDialogue;
@@ -326,6 +331,12 @@ public class Hotbar : MonoBehaviour
         // dialogue rule above.
         if (phoneOpen && !_wasPhoneOpen) UnequipAll();
         _wasPhoneOpen = phoneOpen;
+
+        // Same rising-edge rule as dialogue and the phone: sitting down at the
+        // computer puts whatever you were holding away, so a click on the NAV
+        // screen cannot also be a cast.
+        if (computerOpen && !_wasComputerOpen) UnequipAll();
+        _wasComputerOpen = computerOpen;
 
         // Hide the hotbar entirely while piloting (no inventory swaps in
         // the cockpit) and while the system map is open (the map screen
@@ -338,7 +349,14 @@ public class Hotbar : MonoBehaviour
         bool hideHotbar = piloting || PlayerController.isMapOpen || HUDSceneGate.InMainMenu;
         if (canvas != null && canvas.enabled == hideHotbar) canvas.enabled = !hideHotbar;
 
-        if (!piloting && !inDialogue && !phoneOpen && !PlayerController.isMapOpen && !PlayerController.isInModalSlotUI)
+        // PauseState.MenuOpen is in here for the wheel (Sam, 2026-09-10: "when
+        // opening the pause menu if i scroll then it still controls what im
+        // holding in the hotbar"). Deliberately NOT an UnequipAll above — pausing
+        // is not putting your tools away, and unpausing should hand them back
+        // exactly as they were.
+        if (!piloting && !inDialogue && !phoneOpen && !computerOpen
+            && !PauseState.MenuOpen
+            && !PlayerController.isMapOpen && !PlayerController.isInModalSlotUI)
         {
             HandleInput();
             TickEatHold();

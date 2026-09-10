@@ -204,6 +204,8 @@ public class FishingRodController : MonoBehaviour
         ApplyMeshBend(liveBobber, reelingNow);
         UpdateLineTaut(liveBobber, reelingNow);
 
+        UpdateFightAudio(liveBobber);
+
 
         // LMB or right-trigger pull (controller). Gated on TutorialAbility.Cast
         // so the player can't cast/reel before the CastBobberStep tutorial step
@@ -1381,6 +1383,144 @@ public class FishingRodController : MonoBehaviour
         castAnimationCoroutine = null;
     }
 
+    // ── Fight audio (2026-09-10) ─────────────────────────────────────────────
+    //
+    // Three loops and a one-shot, all driven off state the fight sim already
+    // publishes. They are built at runtime rather than authored, because they
+    // are LOOPS with live pitch/volume and a PlayOneShot source cannot do that.
+    //
+    // Levels are deliberately unequal and that is the point: the reel is a bed
+    // you hear for the whole cast so it sits low, the splash is a moment so it
+    // sits high. Everything was loudness-matched as a FILE first (see
+    // tools/audio-studio/wired_levels.json), so these numbers are balance
+    // decisions, not corrections for a quiet recording.
+    AudioSource _tensionSrc, _dragSrc, _reelSrc, _splashSrc;
+    bool _wasRunning;
+
+    void EnsureFightAudio()
+    {
+        if (_tensionSrc != null) return;
+        _tensionSrc = MakeLoop("RodTensionLoop");
+        _dragSrc    = MakeLoop("RodDragLoop");
+        _reelSrc    = MakeLoop("RodReelLoop");
+
+        // The splash is the ONE fight sound that happens somewhere other than in
+        // your hands - it happens wherever the fish is (Sam, 2026-09-10: "the
+        // further away the fish is from you when they run the quieter it should
+        // be"). So it gets a 3D source that is moved onto the bobber before each
+        // shot, while the rod loops stay 2D.
+        var sp = new GameObject("RodSplashSource");
+        sp.transform.SetParent(transform, false);
+        _splashSrc = sp.AddComponent<AudioSource>();
+        _splashSrc.playOnAwake = false;
+        _splashSrc.loop = false;
+        _splashSrc.spatialBlend = 1f;
+        // Linear, not logarithmic: a cast tops out around 40 m, and log rolloff
+        // spends almost all of its range in the first few metres - the whole
+        // audible span would be gone by the time the bobber cleared the bank.
+        _splashSrc.rolloffMode = AudioRolloffMode.Linear;
+        _splashSrc.minDistance = splashNearDistance;
+        _splashSrc.maxDistance = splashFarDistance;
+        _splashSrc.dopplerLevel = 0f;
+    }
+
+    AudioSource MakeLoop(string childName)
+    {
+        var go = new GameObject(childName);
+        go.transform.SetParent(transform, false);
+        var a = go.AddComponent<AudioSource>();
+        a.playOnAwake = false;
+        a.loop = true;
+        a.volume = 0f;
+        a.spatialBlend = 0f;   // 2D: the rod is in your hands
+        return a;
+    }
+
+    /// <summary>
+    /// Called once a frame with whatever bobber is live (or null between casts).
+    ///
+    /// TENSION is the one that carries the fight. It never stops and never
+    /// restarts — it plays from the moment a fish is on, and tension moves its
+    /// SPEED and volume: near-silent and slow at slack, loud and racing at 2.5x
+    /// when the line is about to part. Sam picked that behaviour off the Sound
+    /// Lab's slider, so the numbers below are the slider's numbers.
+    ///
+    /// A RUN is two layers on purpose: the fish kicking (a one-shot on the
+    /// rising edge) and the reel giving up line (a loop for as long as the run
+    /// lasts). One without the other reads as half the event.
+    /// </summary>
+    void UpdateFightAudio(Bobber b)
+    {
+        EnsureFightAudio();
+        float dt = Time.deltaTime;
+
+        bool fighting = b != null && b.IsFighting;
+        float tension = fighting ? b.FightTension01 : 0f;
+        bool running = fighting && b.FightIsRunning;
+
+        // ── Tension bed ──
+        if (tensionLoopClip != null)
+        {
+            if (_tensionSrc.clip == null) _tensionSrc.clip = tensionLoopClip;
+            // The floor is 0.28, not 0.05 (Sam, 2026-09-10: "i can barely hear
+            // the tension sound"). At 0.05 the bed only became audible in the
+            // top third of the gauge, so for most of a fight — which is where
+            // the decision to keep reeling or not is actually made — there was
+            // nothing to hear. It still starts near-silent at true slack.
+            float target = fighting ? tensionVolume * Mathf.Lerp(0.28f, 1f, tension) : 0f;
+            _tensionSrc.pitch = Mathf.Lerp(tensionPitchRange.x, tensionPitchRange.y, tension);
+            DriveLoop(_tensionSrc, target, dt, 0.12f);
+        }
+
+        // ── The reel screaming during a run ──
+        if (runDragLoopClip != null)
+        {
+            if (_dragSrc.clip == null) _dragSrc.clip = runDragLoopClip;
+            // Runs ramp in rather than arriving at full, so the drag follows the
+            // same ramp the pull does instead of slamming on.
+            float ramp = running ? Mathf.Lerp(0.55f, 1f, Mathf.Clamp01(tension + 0.35f)) : 0f;
+            DriveLoop(_dragSrc, running ? runDragVolume * ramp : 0f, dt, 0.07f);
+        }
+
+        // ── The fish itself, once, as the run starts ──
+        // Placed AT the fish, so a fish that bolts at the end of a long cast is
+        // a distant boil and one that runs at your feet is right there.
+        if (running && !_wasRunning && runSplashClip != null && _splashSrc != null)
+        {
+            _splashSrc.transform.position = b.transform.position;
+            _splashSrc.PlayOneShot(runSplashClip, runSplashVolume);
+        }
+        _wasRunning = running;
+
+        // ── Winding in, whatever is on the end ──
+        // Both cases Sam asked for: dragging a fish home (IsFighting) and
+        // winding an empty lure back off land or water (IsRetrieving).
+        if (reelLoopClip != null)
+        {
+            if (_reelSrc.clip == null) _reelSrc.clip = reelLoopClip;
+            bool winding = b != null && TutorialGate.FireHeld()
+                           && (b.IsFighting || b.IsRetrieving);
+            // A fish fighting back slows the handle; that reads as effort.
+            _reelSrc.pitch = Mathf.Lerp(1f, 0.82f, fighting ? tension : 0f);
+            DriveLoop(_reelSrc, winding ? reelVolume : 0f, dt, 0.06f);
+        }
+    }
+
+    /// Move a loop toward a level, starting and stopping it at the ends so a
+    /// silent source is not left spinning for the whole session.
+    static void DriveLoop(AudioSource a, float target, float dt, float fadeSeconds)
+    {
+        if (a == null || a.clip == null) return;
+        float k = 1f - Mathf.Exp(-dt / Mathf.Max(0.01f, fadeSeconds));
+        a.volume = Mathf.Lerp(a.volume, target, k);
+        if (a.volume <= 0.002f)
+        {
+            a.volume = 0f;
+            if (a.isPlaying) a.Stop();
+        }
+        else if (!a.isPlaying) a.Play();
+    }
+
     // (Appended at the END per the serialization convention in CLAUDE.md.)
     [Header("Floaty Carry (ViewmodelMotor)")]
     [Tooltip("Camera-space offset of the whole rod chain from rodHoldPosition — the 'hold it further out' dial. X pushes right, Z pushes away from you. Tune the sway itself on the RodMotorRig in Play mode.")]
@@ -1396,4 +1536,28 @@ public class FishingRodController : MonoBehaviour
     [Header("Line Attach Trim")]
     [Tooltip("Metres of extra offset for the line's start point, in the RodTip marker's own local axes. The marker in fishing_rod.prefab is hand-placed, so it can sit slightly short of the mesh's real tip. Tunable in Play mode — cast, then nudge until the line meets the rod.")]
     public Vector3 lineTipOffset = Vector3.zero;
+
+    [Header("Fight audio (2026-09-10)")]
+    [Tooltip("Constant loop while a fish is on. Tension drives its speed and volume - it is meant to sound like nothing at slack and like it is about to go at full.")]
+    public AudioClip tensionLoopClip;
+    [Range(0f, 1f)] public float tensionVolume = 0.90f;
+    [Tooltip("Playback speed at zero tension -> at full tension. 2.5x at the top is Sam's call off the Sound Lab slider.")]
+    public Vector2 tensionPitchRange = new Vector2(0.62f, 2.5f);
+
+    [Tooltip("The fish kicking away - one shot on the frame a run starts.")]
+    public AudioClip runSplashClip;
+    [Range(0f, 1f)] public float runSplashVolume = 0.28f;
+    [Tooltip("Inside this many metres the splash is at full volume - the fish is basically at the bank.")]
+    public float splashNearDistance = 5f;
+    [Tooltip("Metres at which a running fish can no longer be heard. A long cast is around 40 m.")]
+    public float splashFarDistance = 55f;
+
+    [Tooltip("Line tearing off the reel - loops for as long as the run does. Sits UNDER the splash; together they are one event.")]
+    public AudioClip runDragLoopClip;
+    [Range(0f, 1f)] public float runDragVolume = 0.7f;
+
+    [Tooltip("Winding in, fish or no fish, water or land. Quiet on purpose - it is audible for most of every cast.")]
+    public AudioClip reelLoopClip;
+    [Range(0f, 1f)] public float reelVolume = 0.4f;
+
 }

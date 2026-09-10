@@ -318,18 +318,53 @@ public class PostGreetingChoicePanel : MonoBehaviour
             _cg.alpha = 0f;
         }
 
+        bool _settled;
+
         void Update()
         {
-            if (_cg == null) return;
+            if (_settled || _cg == null) return;
             float t = (Time.unscaledTime - _born - _delay) / 0.22f;
             _cg.alpha = Mathf.Clamp01(t);
-            if (t >= 1f) enabled = false;   // settled; nothing left to animate
+            // ⚠️ This used to be `enabled = false` — "settled; nothing left to
+            // animate". It is the bug Sam reported on 2026-09-10: "the first
+            // option always appears highlighted, but if i move my cursor down
+            // over the other ones it doesnt change which one is highlighted".
+            //
+            // A DISABLED MonoBehaviour RECEIVES NO POINTER EVENTS. ExecuteEvents
+            // skips any handler whose IsActive() is false, and for a Behaviour
+            // that means `enabled`. So 0.22 s after the panel appeared, every
+            // row stopped hearing OnPointerEnter / OnSelect / OnDeselect — which
+            // is why the first row stayed lit forever (it was painted before the
+            // component switched itself off), why the mouse did nothing, and why
+            // the hover SFX never fired. On a pad the EventSystem selection still
+            // moved, so the outline box travelled down the list while the paint
+            // underneath it never changed — exactly what Sam described.
+            //
+            // Stay enabled; just stop doing work. An early-out costs a branch.
+            if (t >= 1f) _settled = true;
         }
+
+        bool _wasLit;
 
         void Repaint()
         {
             if (!_rowEnabled) return;
             bool lit = _hover || _selected;
+
+            // Hover SFX, on the TRANSITION into lit rather than in the pointer
+            // handler. OnPointerEnter moves the EventSystem selection here (so
+            // pad A acts on the row under the mouse), which fires OnSelect as
+            // well — hooking the handlers directly would play the click twice
+            // for one mouse move. This also means the pad gets the sound for
+            // free, with no second code path.
+            //
+            // Muted for the row's first quarter-second: the panel selects a row
+            // the instant it appears, and a burst of hovers on open is not a
+            // hover, it is noise. A disabled row is silent too — it early-outs
+            // above — which is correct: nothing happens when you point at it.
+            if (lit && !_wasLit && Time.unscaledTime - _born > 0.25f) UiSfxPlayer.Hover();
+            _wasLit = lit;
+
             _bg.color = lit ? PhosphorUI.RowHoverBg : Color.clear;
             _bar.enabled = lit;
             _pre.color = lit ? PhosphorUI.Phosphor : PhosphorUI.Border;

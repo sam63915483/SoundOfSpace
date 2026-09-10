@@ -1753,7 +1753,11 @@ public class TabbedPauseMenu : MonoBehaviour
         btn.targetGraphic = bg;
         var refs = new SettingRowRefs_Toggle { bg = bg, valueText = stateText, def = def };
         _toggleRows.Add(refs);
-        UiSfxPlayer.Attach(btn);
+        // Click only. This is a SETTINGS row, and settings tabs are long lists -
+        // a hover tone for every row the cursor crosses on the way down is the
+        // exact annoyance Sam asked to avoid. The main pause buttons and the tab
+        // headers keep their full hover + click (BuildMenuButton / BuildTabButton).
+        UiSfxPlayer.AttachClickOnly(btn);
 
         btn.onClick.AddListener(() =>
         {

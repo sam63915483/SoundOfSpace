@@ -711,6 +711,24 @@ MonoBehaviour:
   spinCatchVolume: 0.8
   spinCatchPitchStep: 0.3
   spinCatchPitchMax: 9
+  bobberShootSpeedTap: 10
+  chargeExtraDrawAngle: 18
+  rodMotorRestOffset: {x: 0.03, y: 0, z: 0.18}
+  snapClip: {fileID: 0}
+  snapVolume: 0.75
+  snapRecoilAngle: 42
+  lineTipOffset: {x: 0, y: 0, z: 0}
+  tensionLoopClip: {fileID: 0}
+  tensionVolume: 0.55
+  tensionPitchRange: {x: 0.62, y: 2.5}
+  runSplashClip: {fileID: 0}
+  runSplashVolume: 0.28
+  splashNearDistance: 5
+  splashFarDistance: 55
+  runDragLoopClip: {fileID: 0}
+  runDragVolume: 0.7
+  reelLoopClip: {fileID: 0}
+  reelVolume: 0.4
 --- !u!114 &7314446121112300822
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -733,6 +751,7 @@ MonoBehaviour:
   equipStartAngle: -120
   equipRotationAxis: {x: 1, y: 0, z: 0}
   musicClip: {fileID: 8300000, guid: 9a7c39de907cf6b48b9b13611770406a, type: 3}
+  guitarMotorRestOffset: {x: 0, y: 0, z: 0.12}
 --- !u!114 &4069175944268038840
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -761,6 +780,14 @@ MonoBehaviour:
   consumeRate: 15
   drinkLoopClip: {fileID: 8300000, guid: 2e98377c068a72e40a7ef35ef751ea6f, type: 3}
   drinkVolume: 0.6
+  bottleMotorRestOffset: {x: 0, y: 0, z: 0}
+  bottleWorldSize: 0.22
+  useArmAnimation: 0
+  drinkRaiseOffset: {x: -0.055, y: 0.085, z: -0.1}
+  drinkTiltEuler: {x: -42, y: 0, z: -12}
+  drinkRaiseSeconds: 0.28
+  drinkBobAmount: 0.014
+  drinkBobSpeed: 2.6
 --- !u!114 &5354807728685417539
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -797,6 +824,10 @@ MonoBehaviour:
   swingVolume: 0.454
   hitClip: {fileID: 8300000, guid: 23f4c205a8b98dc4fa7d6e4fe1900705, type: 3}
   hitVolume: 0.652
+  useClassicSwing: 0
+  axeScale: 1
+  crystalHitClip: {fileID: 0}
+  crystalHitVolume: 0.7
 --- !u!114 &6927729201657941823
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -831,6 +862,8 @@ MonoBehaviour:
   walkBobAmplitude: 2
   walkBobFrequency: 7
   walkingTopSpeed: 4
+  lagResponsiveness: 8
+  maxLagAngle: 14
 --- !u!114 &6826505861942342881
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -898,6 +931,21 @@ MonoBehaviour:
   reloadClip: {fileID: 8300000, guid: ed3d1713249ff464682d67acd09fd3c0, type: 3}
   reloadVolume: 0.7
   reloadSoundDelay: 0.3
+  killImpactClip: {fileID: 0}
+  useFloatyMotor: 1
+  recoilKickbackDistance: 0.0525
+  recoilKickbackAxis: {x: 0, y: 0, z: -1}
+  useAimDownSights: 1
+  adsForwardDistance: 0.42
+  adsHorizontalOffset: 0
+  adsVerticalOffset: -0.075
+  adsRotationOffset: {x: 0, y: 0, z: 0}
+  adsTransitionDuration: 0.14
+  adsRecoilScale: 0.5
+  adsSwayScale: 0.35
+  hipSpreadDegrees: 2.5
+  adsSpreadDegrees: 0
+  adsCrosshairAlpha: 0
 --- !u!114 &9204260409683306284
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -916,11 +964,8 @@ MonoBehaviour:
   equipVolume: 0.458
   unequipVolume: 0.665
   acquireVolume: 0.85
-  breathingClips:
-  - {fileID: 8300000, guid: c8cbfbf697feb854692c508775737f40, type: 3}
-  breathingVolume: 0.374
-  breathMinInterval: 15
-  breathMaxInterval: 25
+  breathingClips: []
+  breathingVolume: 0.45
   windLoopClip: {fileID: 8300000, guid: 1f887a642fcd13a4ea9fe627ba08f009, type: 3}
   windMaxVolume: 0.419
   windFullSpeed: 40
@@ -929,6 +974,17 @@ MonoBehaviour:
   atmosphereHeightFraction: 0.5
   windStartSpeed: 15
   lifeSupportVolume: 0.22
+  eatLoopClip: {fileID: 0}
+  eatVolume: 0.75
+  burpClips: []
+  burpVolume: 0.8
+  burpDelayMin: 1
+  burpDelayMax: 3
+  jumpEffortClip: {fileID: 8300000, guid: 71181d9abb1948028eb298bbe26752be, type: 3}
+  jumpEffortVolume: 0
+  jumpEffortPitch: {x: 1.25, y: 1.45}
+  jumpEffortCooldown: 1.75
+  jumpEffortPitchCeiling: 1.18
 --- !u!1 &888087996036368278 stripped
 GameObject:
   m_CorrespondingSourceObject: {fileID: 5406502976396438921, guid: 30d1ef01b1bfd4cce849c5888b9c1de4,

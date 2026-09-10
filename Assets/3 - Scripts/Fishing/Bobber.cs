@@ -631,6 +631,7 @@ public class Bobber : MonoBehaviour
         _hanging = true;
         hasHitWater = false;
         _hangSimInit = false;
+        DetachFromPhysicsWorld();
 
         // Single writer: no rigidbody while hanging. Kinematic-first before the
         // deferred Destroy, as everywhere else.
@@ -670,6 +671,50 @@ public class Bobber : MonoBehaviour
             ? Mathf.Max(hangLeash, (transform.position - rodOwner.LineOriginWorld).magnitude)
             : hangLeash;
         Debug.Log($"[Bobber] Wound in - hanging off the rod tip (leash={hangLeash:F2}m, code {BuildStamp}).");
+    }
+
+    /// <summary>
+    /// Take the bobber out of the physics world for as long as it is ON THE ROD.
+    ///
+    /// ── The bug this fixes (Sam, 2026-09-10) ───────────────────────────────
+    /// "when i wind up the rod and keep it wound up, then walk around in certain
+    /// spots ill glitch and fall through the ground... but at those same spots
+    /// if i dont have my rod pulled back ready to cast i wont fall through."
+    ///
+    /// Three things had to line up, and they only line up in that exact state:
+    ///
+    ///   1. A bobber that has been CAST has live colliders (AttachPhysics turns
+    ///      them on). Reeling all the way home did not turn them back off — only
+    ///      SetupAttached, the freshly-equipped path, ever did. That path already
+    ///      carries the warning: "A prop on the rod tip must not collide with
+    ///      anything". The wound-in path was missing the same guard.
+    ///
+    ///   2. BeginHang and WindToTip both DESTROY the Rigidbody. A collider with
+    ///      no Rigidbody is a STATIC collider, and re-homing a collider onto the
+    ///      static actor drops the Physics.IgnoreCollision pairs that
+    ///      IgnorePlayerCollisions set up — the same "silently CLEARED" hazard
+    ///      AttachPhysics documents for disabled colliders. So the bobber stops
+    ///      ignoring the player exactly when it becomes a static prop.
+    ///
+    ///   3. WINDING THE ROD UP DRAWS THE TIP BACK — that is the whole point of
+    ///      the charge pose — which sweeps the bobber back INTO the player's
+    ///      capsule. Held forward it never overlaps, which is precisely why Sam
+    ///      could stand in the same spot safely without the rod drawn.
+    ///
+    /// The result is a static collider parked inside the player and moving with
+    /// them, so the overlap can never resolve. PlayerController caps
+    /// maxDepenetrationVelocity at 1 m/s, so this does not launch you — it
+    /// presses, every frame, forever, in whatever direction the solver picks.
+    /// Somewhere with thin ground under you, that press is straight through it.
+    ///
+    /// Invariant from here on: colliders are ON only while the bobber is flying
+    /// or floating free. AttachPhysics is the single place that turns them back
+    /// on, and it re-asserts the player-ignore pairs on the way.
+    /// </summary>
+    void DetachFromPhysicsWorld()
+    {
+        foreach (var c in GetComponentsInChildren<Collider>(true))
+            if (c != null) c.enabled = false;
     }
 
     /// <summary>
@@ -745,6 +790,7 @@ public class Bobber : MonoBehaviour
         _hanging = false;
         _windingToTip = true;
         _towLine = -1f;
+        DetachFromPhysicsWorld();
 
         _windT = 0f;
         _windOffset = rodOwner != null

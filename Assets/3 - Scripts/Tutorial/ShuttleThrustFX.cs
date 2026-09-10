@@ -84,6 +84,9 @@ public class ShuttleThrustFX : MonoBehaviour
     float[] _stabTimer; bool[] _stabFiring;
     float[] _podTimer;  bool[] _podFiring;
 
+    AudioSource _thrustSrc;
+    float _thrustLevel;
+
     enum PlumeKind { Engine, Stab, Pod }
 
     public void Initialize(Transform shuttleRoot)
@@ -133,6 +136,7 @@ public class ShuttleThrustFX : MonoBehaviour
         }
 
         BuildLights();
+        BuildThrustAudio();
         SetAllDark();
         _stabOn = true;   // stabilizing thrust runs the whole way down
     }
@@ -198,7 +202,9 @@ public class ShuttleThrustFX : MonoBehaviour
             _podPS[i].transform.rotation = aim;
         }
 
-        if (!_stabOn && !_ignited) return;
+        // Audio is updated on BOTH sides of this early-out, or a shutdown would
+        // leave the rumble hanging at whatever level it had when the plumes died.
+        if (!_stabOn && !_ignited) { UpdateThrustAudio(0f, 0f); return; }
 
         float dt = Mathf.Min(Time.unscaledDeltaTime, 0.25f);
         float power = 1f;
@@ -208,6 +214,11 @@ public class ShuttleThrustFX : MonoBehaviour
             power = 1f - Mathf.Clamp01(_dieT);
             if (_dieT >= 1f) { StopImmediate(); return; }
         }
+
+        // Level follows what is actually burning: the big engine is the loud
+        // one, the stabilizer spurts are a quieter idle mutter underneath.
+        float audioLevel = 0f;
+        float audioProximity = 0f;
 
         // ── Stabilizers: long random spurts, whole descent ──
         if (_stabOn)
@@ -223,6 +234,7 @@ public class ShuttleThrustFX : MonoBehaviour
                         : Random.Range(stabGapSeconds.x, stabGapSeconds.y);
                 }
                 SetPlume(_stabPS[i], _stabFiring[i] ? power * Random.Range(0.9f, 1.1f) : 0f, PlumeKind.Stab);
+                if (_stabFiring[i]) audioLevel = Mathf.Max(audioLevel, thrustSpurtLevel);
             }
         }
 
@@ -233,6 +245,11 @@ public class ShuttleThrustFX : MonoBehaviour
             float enginePower = power * Mathf.Lerp(1f, fireballBoost, proximity * proximity);
             float surge = 0.88f + 0.24f * Mathf.PerlinNoise(Time.unscaledTime * 2.3f, 0.37f);
             SetPlume(_enginePS, enginePower * surge, PlumeKind.Engine);
+
+            // The engine overrides the spurt level rather than stacking on it —
+            // two sources of the same rumble just reads as "louder", not "more".
+            audioLevel = Mathf.Clamp01(power) * Mathf.Lerp(0.8f, 1f, proximity);
+            audioProximity = proximity;
 
             // ── Pod correction nozzles: quick hard bursts, out of sync ──
             for (int i = 0; i < _podPS.Length; i++)
@@ -274,6 +291,97 @@ public class ShuttleThrustFX : MonoBehaviour
                 }
             }
         }
+
+        UpdateThrustAudio(audioLevel, audioProximity);
+    }
+
+    // ── Engine audio ─────────────────────────────────────────────────────────
+    // The shuttle used to fire silently: the good rocket rumble was wired only to
+    // Ship (the ship44 prefab), and this rig is built at RUNTIME so there was no
+    // Inspector slot to drop a clip into. Rather than author one onto the
+    // hand-maintained Shuttle_Lander prefab, the clip is borrowed from the scene's
+    // Ship, so both craft stay on the same sound and re-pointing Ship's slot moves
+    // both. thrustLoopClip below overrides the borrow if it is ever set.
+    void BuildThrustAudio()
+    {
+        if (!engineAudio) return;
+
+        var go = new GameObject("ThrustAudio");
+        go.transform.SetParent(_engineAnchor != null ? _engineAnchor : _root, false);
+        _thrustSrc = go.AddComponent<AudioSource>();
+        _thrustSrc.loop = true;
+        _thrustSrc.playOnAwake = false;
+        _thrustSrc.volume = 0f;
+        // 3D so it belongs to the shuttle: full inside the cabin (the pilot is
+        // well within minDistance), rolling off for anything watching it land
+        // from the ground.
+        _thrustSrc.spatialBlend = 1f;
+        _thrustSrc.rolloffMode = AudioRolloffMode.Linear;
+        _thrustSrc.minDistance = thrustNearDistance;
+        _thrustSrc.maxDistance = thrustFarDistance;
+        _thrustSrc.dopplerLevel = 0f;   // a 15 km hop would otherwise pitch-bend wildly
+
+        // ── Getting the clip, in order of preference ────────────────────────
+        // The shuttle launched silently on the first playtest (Sam, 2026-09-10:
+        // "i also didnt hear the thruster sounds either"). The original version
+        // ONLY borrowed the clip off the scene's Ship, which is a single point
+        // of failure with no diagnostic: if that lookup returned nothing the
+        // method just returned and nothing was ever built or logged.
+        //
+        // Now there are two routes and it says which one it took:
+        //   1. thrustLoopClip, if anything ever assigns it;
+        //   2. the scene's Ship — keeps both craft on literally the same clip;
+        //   3. StreamingAssets, which cannot fail for lack of a scene object.
+        // 3 is the same trick UiSfxPlayer and PlayerSuitAudio already use for
+        // runtime-created objects that have no Inspector to wire.
+        if (thrustLoopClip != null)
+        {
+            _thrustSrc.clip = thrustLoopClip;
+            Debug.Log("[ShuttleThrustFX] Thruster loop: serialized clip.");
+            return;
+        }
+
+        var ship = FindObjectOfType<Ship>(true);   // once, at build time
+        if (ship != null && ship.ThrustLoopClip != null)
+        {
+            _thrustSrc.clip = ship.ThrustLoopClip;
+            Debug.Log("[ShuttleThrustFX] Thruster loop: borrowed from Ship (" +
+                      ship.ThrustLoopClip.name + ").");
+            return;
+        }
+
+        Debug.Log("[ShuttleThrustFX] No Ship clip to borrow (ship=" +
+                  (ship == null ? "not found" : "found, clip empty") +
+                  ") — loading Audio/ShuttleThrust.mp3 from StreamingAssets.");
+        StartCoroutine(StreamingAudio.Load("Audio/ShuttleThrust.mp3", AudioType.MPEG, c =>
+        {
+            if (c == null) { Debug.LogWarning("[ShuttleThrustFX] Thruster loop failed to load — shuttle stays silent."); return; }
+            if (_thrustSrc != null) _thrustSrc.clip = c;
+        }));
+    }
+
+    void UpdateThrustAudio(float targetLevel, float proximity)
+    {
+        // The StreamingAssets route resolves a frame or two late, so a null clip
+        // here is "not yet", not "never".
+        if (_thrustSrc == null || _thrustSrc.clip == null) return;
+
+        // Follow rather than jump. The stabilizer spurts toggle several times a
+        // second, and a hard cut on a rumble this heavy reads as a click.
+        float dt = Mathf.Min(Time.unscaledDeltaTime, 0.25f);
+        float k = 1f - Mathf.Exp(-dt / Mathf.Max(0.01f, thrustFadeSeconds));
+        _thrustLevel = Mathf.Lerp(_thrustLevel, targetLevel * thrustVolume, k);
+
+        if (_thrustLevel <= 0.002f)
+        {
+            _thrustLevel = 0f;
+            if (_thrustSrc.isPlaying) _thrustSrc.Stop();
+            return;
+        }
+
+        if (!_thrustSrc.isPlaying) _thrustSrc.Play();
+        _thrustSrc.volume = _thrustLevel;
+        _thrustSrc.pitch = Mathf.Lerp(thrustPitchRange.x, thrustPitchRange.y, proximity);
     }
 
     void SetPlume(ParticleSystem ps, float power, PlumeKind kind)
@@ -457,7 +565,24 @@ public class ShuttleThrustFX : MonoBehaviour
         if (_spot != null) Destroy(_spot.gameObject);
         if (_glow != null) Destroy(_glow.gameObject);
         if (_podLights != null) foreach (var l in _podLights) if (l != null) Destroy(l.gameObject);
+        if (_thrustSrc != null) Destroy(_thrustSrc.gameObject);
         if (_mat != null) Destroy(_mat);
         if (_tex != null) Destroy(_tex);
     }
+
+    // ── Serialized fields APPENDED HERE (CLAUDE.md: never insert mid-class) ──
+    [Header("Engine audio (2026-09-10)")]
+    [Tooltip("Set false for a shuttle that must stay silent - the main-menu orbit background does this.")]
+    public bool engineAudio = true;
+    [Tooltip("Leave empty and it borrows the scene Ship's thruster loop, so both craft share one sound with no authoring.")]
+    public AudioClip thrustLoopClip;
+    [Range(0f, 1f)] public float thrustVolume = 0.6f;
+    [Tooltip("Level while only the stabilizer nozzles are puffing, as a fraction of a full engine burn.")]
+    [Range(0f, 1f)] public float thrustSpurtLevel = 0.35f;
+    [Tooltip("Seconds to fade toward a new level. Small enough to feel instant, big enough to kill spurt clicking.")]
+    public float thrustFadeSeconds = 0.18f;
+    [Tooltip("Pitch at altitude -> pitch at touchdown. The burn tightens as the ground fireball builds.")]
+    public Vector2 thrustPitchRange = new Vector2(0.92f, 1.06f);
+    public float thrustNearDistance = 12f;
+    public float thrustFarDistance  = 260f;
 }

@@ -58,13 +58,20 @@ public class PlayerSuitAudio : MonoBehaviour
     // normalized on load. Any of these the user deletes from StreamingAssets just
     // won't load (StreamingAudio logs a warning and skips it) — safe to prune the
     // .wav files to taste without touching code.
-    // Final curated pool — all live in the Breaths/ subfolder.
+    // REPLACED 2026-09-10. The 13 clips that used to be here were a mixed bag —
+    // Sam: "they arent the best… should really sound like an astronaut with a
+    // helmet on" — and they varied by more than 20 dB between each other, which
+    // no amount of runtime normalizing fully hides.
+    //
+    // These three are one brief (close-miked, inside a sealed visor, calm) cut
+    // three ways, and all three are level-matched to -20 dBFS as FILES. Three
+    // rather than one because a single clip every 10-15 s is audibly the same
+    // event over and over.
+    //
+    // The old pool is not deleted — it is parked in Breaths/_retired/. Putting
+    // it back is a matter of moving the files and listing them here again.
     static readonly string[] ExtraBreathFiles =
-        { "Breaths/Breath01.wav", "Breaths/Breath02.wav", "Breaths/Breath04.wav",
-          "Breaths/Breath05.wav", "Breaths/Breath06.wav", "Breaths/Breath07.wav",
-          "Breaths/Breath09.wav",
-          "Breaths/SuitBreath2.wav", "Breaths/SuitBreath3.wav", "Breaths/SuitBreath4.wav",
-          "Breaths/SuitBreath5.wav", "Breaths/SuitBreath6.wav", "Breaths/SuitBreath8.wav" };
+        { "Breaths/SuitHelmet1.wav", "Breaths/SuitHelmet2.wav", "Breaths/SuitHelmet3.wav" };
     readonly List<AudioClip> _loadedBreaths = new List<AudioClip>();
     readonly List<float> _loadedGains = new List<float>();   // per-clip loudness-normalize gain
 
@@ -153,7 +160,9 @@ public class PlayerSuitAudio : MonoBehaviour
         {
             int serialized = breathingClips != null ? breathingClips.Length : 0;
             int total = serialized + _loadedBreaths.Count;
-            if (total > 0)
+            // Never lay a breath on top of one that is still sounding — two
+            // overlapping breaths are what "sped up breathing" actually is.
+            if (total > 0 && !_breathSrc.isPlaying)
             {
                 int idx = Random.Range(0, total);
                 AudioClip clip;
@@ -166,8 +175,11 @@ public class PlayerSuitAudio : MonoBehaviour
                     gain = li < _loadedGains.Count ? _loadedGains[li] : 1f;
                 }
                 if (clip != null) _breathSrc.PlayOneShot(clip, breathingVolume * gain);
-                ScheduleNextBreath();
             }
+            // Reschedule unconditionally. It used to only reschedule when a clip
+            // was actually available, so before the StreamingAssets breaths
+            // finished loading this branch re-tested every single frame.
+            ScheduleNextBreath();
         }
 
         // Atmosphere wind: speed (relative to the planet) × atmosphere density.
@@ -230,8 +242,8 @@ public class PlayerSuitAudio : MonoBehaviour
     [Header("Jump Effort")]
     [Tooltip("Optional dedicated jump sound. LEAVE EMPTY to use the fallback: a random suit breath, pitched up and played quietly as an exertion grunt. The old PlayerController.jumpClip is dead — it was wired to a flatulence mp3.")]
     [SerializeField] private AudioClip jumpEffortClip;
-    [Tooltip("Volume of the jump effort sound. Deliberately quiet — a jump should be felt through the LANDING, not announced. 0 mutes it entirely.")]
-    [SerializeField, Range(0f, 1f)] private float jumpEffortVolume = 0.28f;
+    [Tooltip("Volume of the jump effort sound. 0 = SILENT, which is the shipped answer (Sam, 2026-09-10: \"i liked it better when there was no jump sound effect because you dont make a sound when you jump\"). PlayJump early-outs at 0, so this costs nothing. Raise it to bring the exhale back.")]
+    [SerializeField, Range(0f, 1f)] private float jumpEffortVolume = 0f;
     [Tooltip("Random pitch range for the jump effort. Above 1 shortens a breath into a sharper exhale, which reads as effort rather than idle breathing.")]
     [SerializeField] private Vector2 jumpEffortPitch = new Vector2(1.25f, 1.45f);
 
@@ -249,9 +261,17 @@ public class PlayerSuitAudio : MonoBehaviour
     public void PlayJump()
     {
         if (jumpEffortVolume <= 0.001f) return;
-        // Rate-limit: bunny-hopping must not stack a dozen exhales on top of each other.
-        if (Time.time - _lastJumpSfxTime < 0.25f) return;
+        // Rate-limit. This used to be 0.25 s, which is FOUR exhales a second —
+        // and since the fallback borrows a full idle BREATH and pitches it up,
+        // moving around while hopping produced exactly what Sam described:
+        // "constant sped-up breathing sounds" (2026-09-10). A person who just
+        // exhaled does not do it again a quarter-second later.
+        if (Time.time - _lastJumpSfxTime < jumpEffortCooldown) return;
         _lastJumpSfxTime = Time.time;
+
+        // You just breathed. Push the idle cycle out so an ambient breath does
+        // not land on top of the exertion one a moment later.
+        _nextBreathTime = Mathf.Max(_nextBreathTime, Time.time + 5f);
 
         AudioClip clip = jumpEffortClip;
         float gain = 1f;
@@ -277,7 +297,22 @@ public class PlayerSuitAudio : MonoBehaviour
         // rather than borrowing _oneShot: setting the pitch there and restoring it on
         // the next line would just play the clip at the restored pitch, and leaving it
         // set would detune every equip/burp one-shot after it.
-        _jumpSrc.pitch = Random.Range(jumpEffortPitch.x, jumpEffortPitch.y);
+        // Clamped, not just randomised. jumpEffortPitch is already serialized on
+        // the Player prefab at 1.25-1.45, so changing its C# default would do
+        // nothing (a saved scene value always wins). At 1.4x a breath stops
+        // sounding like a person and starts sounding like a tape running fast,
+        // which is the other half of the "sped up" complaint. The ceiling is a
+        // NEW field, so its default does apply.
+        float lo = Mathf.Clamp(jumpEffortPitch.x, 1f, jumpEffortPitchCeiling);
+        float hi = Mathf.Clamp(jumpEffortPitch.y, lo, jumpEffortPitchCeiling);
+        _jumpSrc.pitch = Random.Range(lo, hi);
         _jumpSrc.PlayOneShot(clip, jumpEffortVolume * gain);
     }
+
+    // ── Serialized fields APPENDED HERE (CLAUDE.md: never insert mid-class) ──
+    [Header("Breathing rework (2026-09-10)")]
+    [Tooltip("Seconds before another jump exhale may play. Was a hard-coded 0.25 - four a second while hopping, which is what made moving around sound like panic breathing.")]
+    public float jumpEffortCooldown = 1.75f;
+    [Tooltip("Hard ceiling on the jump exhale's pitch, whatever jumpEffortPitch says. Above roughly 1.2 a borrowed breath reads as sped-up tape rather than effort.")]
+    public float jumpEffortPitchCeiling = 1.18f;
 }

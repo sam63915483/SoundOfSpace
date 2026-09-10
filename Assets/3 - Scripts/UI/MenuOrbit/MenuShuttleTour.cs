@@ -113,6 +113,10 @@ public class MenuShuttleTour : MonoBehaviour
         // stays enabled. SetAltitude(150) each step = steady cruise plume
         // (no fireball ramp, no ground lights).
         _thrustFx = gameObject.AddComponent<ShuttleThrustFX>();
+        // Fire, no roar: the menu is a silent backdrop and there is no Ship in
+        // MainMenu to borrow the loop from anyway. Must be set BEFORE Initialize,
+        // which is where the AudioSource would be built.
+        _thrustFx.engineAudio = false;
         _thrustFx.Initialize(transform);
         _thrustFx.Ignite();
         _thrustFx.SetAltitude(150f);

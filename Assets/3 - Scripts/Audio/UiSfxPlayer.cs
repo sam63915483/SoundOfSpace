@@ -88,6 +88,21 @@ public class UiSfxPlayer : MonoBehaviour
         trigger.triggers.Add(entry);
     }
 
+    /// <summary>
+    /// Click SFX only - no hover.
+    ///
+    /// For dense list screens, where a hover tone on every row you sweep past
+    /// stops being feedback and becomes noise. Sam, 2026-09-10, on the pause
+    /// menu: "not in settings because theres alot of stuff there and the sound
+    /// would get annoying." The CLICK stays, because that one is deliberate -
+    /// you meant to change that setting and should hear that you did.
+    /// </summary>
+    public static void AttachClickOnly(Button btn)
+    {
+        if (btn == null) return;
+        btn.onClick.AddListener(Click);
+    }
+
     /// <summary>Start the looping menu ambience (called when the pause menu opens).</summary>
     public static void StartPauseAmbience()
     {

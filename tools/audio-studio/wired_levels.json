@@ -1,0 +1,93 @@
+{
+  "rod_snap": {
+    "clip": "Audio/Fishing/rod_snap.wav",
+    "was_dbfs": -21.7,
+    "now_dbfs": -22.7,
+    "gain": 0.89,
+    "peak": 0.891
+  },
+  "tension": {
+    "clip": "Audio/Fishing/line_tension_loop.wav",
+    "was_dbfs": -32.0,
+    "now_dbfs": -29.2,
+    "gain": 1.38,
+    "peak": 0.891
+  },
+  "fish_run_fish": {
+    "clip": "Audio/Fishing/fish_run_splash.wav",
+    "was_dbfs": -22.0,
+    "now_dbfs": -23.0,
+    "gain": 0.89,
+    "peak": 0.891
+  },
+  "fish_run_reel": {
+    "clip": "Audio/Fishing/fish_run_drag_loop.wav",
+    "was_dbfs": -23.1,
+    "now_dbfs": -20.0,
+    "gain": 1.43,
+    "peak": 0.813
+  },
+  "reel_generic": {
+    "clip": "Audio/Fishing/reel_loop.wav",
+    "was_dbfs": -28.9,
+    "now_dbfs": -25.6,
+    "gain": 1.46,
+    "peak": 0.891
+  },
+  "fish_landed": {
+    "clip": "Audio/Fishing/fish_landed.wav",
+    "was_dbfs": -16.4,
+    "now_dbfs": -20.0,
+    "gain": 0.66,
+    "peak": 0.66
+  },
+  "crystal_hit": {
+    "clip": "Audio/Crystal/crystal_hit.wav",
+    "was_dbfs": -34.5,
+    "now_dbfs": -20.9,
+    "gain": 4.76,
+    "peak": 0.891
+  },
+  "crystal_break": {
+    "clip": "Audio/Crystal/crystal_break.wav",
+    "was_dbfs": -18.6,
+    "now_dbfs": -20.0,
+    "gain": 0.85,
+    "peak": 0.847
+  },
+  "moon_lever": {
+    "clip": "Audio/MoonBase/lever_flip.wav",
+    "was_dbfs": -25.4,
+    "now_dbfs": -26.3,
+    "gain": 0.9,
+    "peak": 0.891
+  },
+  "village_door_open": {
+    "clip": "Audio/Village/door_open.wav",
+    "was_dbfs": -21.6,
+    "now_dbfs": -22.6,
+    "gain": 0.89,
+    "peak": 0.891
+  },
+  "village_door_close": {
+    "clip": "Audio/Village/door_close.wav",
+    "was_dbfs": -21.6,
+    "now_dbfs": -22.6,
+    "gain": 0.89,
+    "peak": 0.891
+  },
+  "breathing_idle": {
+    "clip": "Audio/Suit/breath_helmet.wav",
+    "was_dbfs": -40.0,
+    "now_dbfs": -20.0,
+    "gain": 9.98,
+    "peak": 0.497
+  },
+  "jump_exhale": {
+    "clip": "Audio/Suit/jump_exhale.wav",
+    "was_dbfs": -40.6,
+    "now_dbfs": -22.7,
+    "gain": 7.81,
+    "peak": 0.891
+  }
+}

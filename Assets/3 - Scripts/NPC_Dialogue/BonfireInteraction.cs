@@ -104,7 +104,22 @@ public class BonfireInteraction : MonoBehaviour
         fireSource = gameObject.AddComponent<AudioSource>();
         fireSource.playOnAwake = false;
         fireSource.loop = true;
-        fireSource.volume = fireVolume;
+        // The crackle used to be a 2D source that only ran WHILE COOKING, so a
+        // lit bonfire you were standing next to was silent and most players
+        // never heard it at all (Sam, 2026-09-10). It is now positional and
+        // always on: it fades up as you walk toward the fire, and cooking just
+        // pushes it louder.
+        fireSource.spatialBlend = 1f;
+        fireSource.rolloffMode = AudioRolloffMode.Linear;
+        fireSource.minDistance = fireNearDistance;
+        fireSource.maxDistance = fireHearingRange;
+        fireSource.dopplerLevel = 0f;
+        fireSource.volume = ambientFireVolume;
+        if (fireLoopClip != null)
+        {
+            fireSource.clip = fireLoopClip;
+            fireSource.Play();
+        }
     }
 
     void HideOldChildren()
@@ -272,7 +287,8 @@ public class BonfireInteraction : MonoBehaviour
             // Mid-flight close keeps the coroutine alive (the fire keeps crackling
             // — that's the audible "cooking is still happening" cue).
             if (cookCoroutine != null) { StopCoroutine(cookCoroutine); cookCoroutine = null; }
-            if (fireSource != null && fireSource.isPlaying) fireSource.Stop();
+            // Back to idle crackle, never silence - the fire is still burning.
+            if (fireSource != null) fireSource.volume = ambientFireVolume;
             isCooking = false;
             foodReady = false;
         }
@@ -342,9 +358,12 @@ public class BonfireInteraction : MonoBehaviour
 
         if (fireLoopClip != null && fireSource != null)
         {
-            fireSource.clip = fireLoopClip;
+            // Already crackling since Start; cooking just leans on it. Kept as a
+            // volume step rather than a second source so the two can never
+            // phase against each other.
+            if (fireSource.clip == null) fireSource.clip = fireLoopClip;
             fireSource.volume = fireVolume;
-            fireSource.Play();
+            if (!fireSource.isPlaying) fireSource.Play();
         }
 
         float elapsed = 0f;
@@ -356,8 +375,8 @@ public class BonfireInteraction : MonoBehaviour
             yield return null;
         }
 
-        if (fireSource != null && fireSource.isPlaying)
-            fireSource.Stop();
+        if (fireSource != null)
+            fireSource.volume = ambientFireVolume;
 
         isCooking     = false;
         foodReady     = true;
@@ -710,4 +729,14 @@ public class BonfireInteraction : MonoBehaviour
             rTMP.alignment = TextAlignmentOptions.Center;
         }
     }
+
+    // ── Serialized fields APPENDED HERE (CLAUDE.md: never insert mid-class) ──
+    [Header("Ambient fire (2026-09-10)")]
+    [Tooltip("Metres at which the crackle has faded to nothing.")]
+    public float fireHearingRange = 26f;
+    [Tooltip("Inside this many metres the fire is at full idle volume - standing at the fire.")]
+    public float fireNearDistance = 2.5f;
+    [Tooltip("Idle crackle level. fireVolume above is the louder level used while something is cooking.")]
+    [Range(0f, 1f)] public float ambientFireVolume = 0.45f;
+
 }

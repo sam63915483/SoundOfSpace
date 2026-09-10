@@ -69,6 +69,7 @@ public partial class ShuttleComputerUI
     float _navMapK = 0.03f;
     bool _navMapFramed;
     CelestialBody _navMapHover;
+    CelestialBody _navMapHoverSfx;   // last body the hover SFX fired for
     CelestialBody _navSun;
 
     // Drag state for pan-vs-click. A press that barely moves is a selection; a
@@ -309,6 +310,7 @@ public partial class ShuttleComputerUI
         cb2.pressedColor = new Color(2f, 2f, 2f, 1f);
         b.colors = cb2;
         b.onClick.AddListener(OnNavTravelClicked);
+        UiSfxPlayer.Attach(b);   // shared hover + click SFX
     }
 
     void MakePickCaption(RectTransform parent, string text, float x)
@@ -1018,6 +1020,16 @@ public partial class ShuttleComputerUI
             _navMapHover = NavHitTest(local);
         }
         else if (!_navMapDragging) _navMapHover = null;
+
+        // Hover SFX on a CHANGE of body, not on being over one - otherwise this
+        // is a per-frame tone generator. Dragging the map is exempt: sweeping
+        // the whole system past a parked cursor is a camera move, not a series
+        // of deliberate hovers, and it would machine-gun.
+        if (_navMapHover != _navMapHoverSfx)
+        {
+            if (_navMapHover != null && !_navMapDragging) UiSfxPlayer.Hover();
+            _navMapHoverSfx = _navMapHover;
+        }
 
         if (PadCursor.PrimaryDown && inside)
         {

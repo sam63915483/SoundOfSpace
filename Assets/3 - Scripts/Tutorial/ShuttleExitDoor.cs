@@ -72,7 +72,7 @@ public class ShuttleExitDoor : MonoBehaviour
         _opening = true;
         _t = 0f;
         MarkOpened();
-        if (openSound != null) AudioSource.PlayClipAtPoint(openSound, transform.position, 0.9f);
+        PlayDoorSound();
     }
 
     public void OpenInstant()
@@ -116,7 +116,7 @@ public class ShuttleExitDoor : MonoBehaviour
         _open = false;
         _closing = true;
         _closeT = 0f;
-        if (openSound != null) AudioSource.PlayClipAtPoint(openSound, transform.position, 0.9f);
+        PlayDoorSound();
     }
 
     public void ReopenAfterFlight()
@@ -126,6 +126,43 @@ public class ShuttleExitDoor : MonoBehaviour
     }
 
     // -- appended after initial release; keep order (serialization) --
+
+    /// <summary>
+    /// The ramp's sound, opening or closing.
+    ///
+    /// This used to be AudioSource.PlayClipAtPoint, and that is why the door
+    /// sealing for launch was inaudible (Sam, 2026-09-10: "i didnt hear the
+    /// sound play for the door to the shuttle to close"). PlayClipAtPoint gives
+    /// you a LOGARITHMIC source with minDistance 1 — half volume at 2 m, a tenth
+    /// at 10 m. The ramp is at the back of the shuttle and you are up front, so
+    /// by the time it reached you there was almost nothing left.
+    ///
+    /// A real source with LINEAR rolloff instead: full inside the cabin, gone by
+    /// 70 m. The source is built on demand and reused, so nothing is allocated
+    /// per open/close the way PlayClipAtPoint was spawning a GameObject each time.
+    /// </summary>
+    void PlayDoorSound()
+    {
+        if (openSound == null) return;
+        if (_doorSrc == null)
+        {
+            var go = new GameObject("DoorAudio");
+            go.transform.SetParent(transform, false);
+            _doorSrc = go.AddComponent<AudioSource>();
+            _doorSrc.playOnAwake = false;
+            _doorSrc.spatialBlend = 1f;
+            _doorSrc.rolloffMode = AudioRolloffMode.Linear;
+            _doorSrc.minDistance = 10f;   // the whole cabin is "right there"
+            _doorSrc.maxDistance = 70f;
+            _doorSrc.dopplerLevel = 0f;
+        }
+        _doorSrc.PlayOneShot(openSound, doorVolume);
+    }
+
+    AudioSource _doorSrc;
+
+    [Tooltip("Volume of the ramp opening / closing. It is the hatch sound and you are usually standing inside the shuttle when it fires.")]
+    [Range(0f, 1f)] public float doorVolume = 0.85f;
 
     [Tooltip("Hydraulic ramp-deploy sound played when the door starts folding open.")]
     public AudioClip openSound;

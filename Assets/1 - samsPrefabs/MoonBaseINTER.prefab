@@ -54,7 +54,8 @@ MonoBehaviour:
   leverFlipTime: 0.35
   onIndicator: {fileID: 0}
   offIndicator: {fileID: 0}
-  flipSound: {fileID: 0}
+  flipSound: {fileID: 8300000, guid: d409d42ba550447bb2eb520be856607f, type: 3}
+  flipVolume: 0.7
 --- !u!135 &1639319144392945517
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -620,6 +621,7 @@ MonoBehaviour:
   ventSeconds: 3
   pauseSeconds: 1
   doorSound: {fileID: 8300000, guid: 93354cfcfa4e802459aa6cf021208015, type: 3}
+  doorVolume: 0.7
 --- !u!1 &2528761981740748952
 GameObject:
   m_ObjectHideFlags: 0
@@ -674,7 +676,8 @@ MonoBehaviour:
   leverFlipTime: 0.35
   onIndicator: {fileID: 0}
   offIndicator: {fileID: 0}
-  flipSound: {fileID: 0}
+  flipSound: {fileID: 8300000, guid: d409d42ba550447bb2eb520be856607f, type: 3}
+  flipVolume: 0.7
 --- !u!135 &488353680050462685
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -916,7 +919,8 @@ MonoBehaviour:
   leverFlipTime: 0.35
   onIndicator: {fileID: 0}
   offIndicator: {fileID: 0}
-  flipSound: {fileID: 0}
+  flipSound: {fileID: 8300000, guid: d409d42ba550447bb2eb520be856607f, type: 3}
+  flipVolume: 0.7
 --- !u!135 &7213953194317395519
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -1283,7 +1287,8 @@ MonoBehaviour:
   leverFlipTime: 0.35
   onIndicator: {fileID: 0}
   offIndicator: {fileID: 0}
-  flipSound: {fileID: 0}
+  flipSound: {fileID: 8300000, guid: d409d42ba550447bb2eb520be856607f, type: 3}
+  flipVolume: 0.7
 --- !u!135 &4867864889552103405
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -1520,7 +1525,8 @@ MonoBehaviour:
   leverFlipTime: 0.35
   onIndicator: {fileID: 0}
   offIndicator: {fileID: 0}
-  flipSound: {fileID: 0}
+  flipSound: {fileID: 8300000, guid: d409d42ba550447bb2eb520be856607f, type: 3}
+  flipVolume: 0.7
 --- !u!135 &2672587960144455392
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -2334,7 +2340,8 @@ MonoBehaviour:
   leverFlipTime: 0.35
   onIndicator: {fileID: 0}
   offIndicator: {fileID: 0}
-  flipSound: {fileID: 0}
+  flipSound: {fileID: 8300000, guid: d409d42ba550447bb2eb520be856607f, type: 3}
+  flipVolume: 0.7
 --- !u!135 &1412027195954160029
 SphereCollider:
   m_ObjectHideFlags: 0
@@ -6651,6 +6658,7 @@ MonoBehaviour:
   startOpen: 1
   openSound: {fileID: 8300000, guid: 93354cfcfa4e802459aa6cf021208015, type: 3}
   closeSound: {fileID: 8300000, guid: 93354cfcfa4e802459aa6cf021208015, type: 3}
+  doorVolume: 0.7
 --- !u!4 &3917924061640244285 stripped
 Transform:
   m_CorrespondingSourceObject: {fileID: 4276670892500526, guid: 3b317e8276e0b6e49b4a75f3643394a5,
@@ -10258,6 +10266,7 @@ MonoBehaviour:
   startOpen: 0
   openSound: {fileID: 8300000, guid: 93354cfcfa4e802459aa6cf021208015, type: 3}
   closeSound: {fileID: 8300000, guid: 93354cfcfa4e802459aa6cf021208015, type: 3}
+  doorVolume: 0.7
 --- !u!1001 &7930922582500333745
 PrefabInstance:
   m_ObjectHideFlags: 0

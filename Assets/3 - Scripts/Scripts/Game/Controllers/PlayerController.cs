@@ -1696,12 +1696,90 @@ public class PlayerController : GravityObject
 		&& _cachedNearestShipInRange != null
 		&& !_cachedNearestShipInRange.IsLanded;
 
+	// ── Fling watch (2026-09-10) ─────────────────────────────────────────────
+	//
+	// Sam reports a rare "sent off the face of the planet into space really fast"
+	// bug that nobody has been able to reproduce on demand. maxDepenetrationVelocity
+	// is already clamped to 1 m/s above, which kills the usual PhysX ejection route,
+	// so whatever is left is something else — and a bug you only hear about
+	// afterwards is a bug you cannot fix.
+	//
+	// So: notice it happening and say so, once. This is a detector, not a guard —
+	// it deliberately does NOT clamp anything, because silently correcting a fling
+	// would hide the very thing we need to see. Cost is one sqrMagnitude and a
+	// compare per physics step.
+	//
+	// The threshold is planet-RELATIVE, so orbital speed and riding a moving planet
+	// do not trip it; only the player moving absurdly fast through their own local
+	// frame does. Jetpack top speed is far below this.
+	const float FlingSpeed = 220f;      // m/s — well above jetpack top speed
+	const float TeleportStep = 120f;    // metres in one step = a rebase, not a fling
+	float _lastFlingLogAt = -99f;
+	Vector3 _flingPrevPos;
+	bool _flingPrevValid;
+
+	void FlingWatch()
+	{
+		if (rb == null) return;
+
+		// Measured from POSITION, not rb.velocity: a teleport (floating origin
+		// rebase, a scene load, a cutscene move) does not change velocity, and a
+		// solver ejection may not show up in velocity either.
+		Vector3 now = rb.position;
+		if (!_flingPrevValid) { _flingPrevPos = now; _flingPrevValid = true; return; }
+		Vector3 step = now - _flingPrevPos;
+		_flingPrevPos = now;
+
+		float dt = Time.fixedDeltaTime;
+		if (dt <= 0f) return;
+		float dist = step.magnitude;
+
+		// A floating-origin rebase moves the player by ~distanceThreshold (1 km) in
+		// a single step, and so does a scene load or a cutscene placement. Those are
+		// teleports, not flings, and they are an ORDER OF MAGNITUDE bigger than any
+		// real fling — so the band between the two is unambiguous, and no reference
+		// to EndlessManager is needed to tell them apart.
+		if (dist > TeleportStep) return;
+
+		float speed = dist / dt;
+		if (speed < FlingSpeed) return;
+		if (Time.unscaledTime - _lastFlingLogAt < 5f) return;
+		_lastFlingLogAt = Time.unscaledTime;
+
+		string where = "unknown body";
+		var near = NearestBodyForFling(now);
+		if (near != null)
+			where = near.bodyName + ", alt " +
+			        (Vector3.Distance(now, near.Position) - near.radius).ToString("F0") + " m";
+
+		Debug.LogWarning("[FlingWatch] Player moved " + speed.ToString("F0") +
+			" m/s in one physics step (" + where + "), grounded=" + IsOnGround +
+			". If you were just flung into space, THIS is the frame — say what you " +
+			"were doing and this line is the evidence.");
+	}
+
+	static CelestialBody NearestBodyForFling(Vector3 pos)
+	{
+		CelestialBody best = null;
+		float bestSqr = float.MaxValue;
+		var bodies = NBodySimulation.Bodies;
+		for (int i = 0; i < bodies.Length; i++)
+		{
+			if (bodies[i] == null) continue;
+			float d = (bodies[i].Position - pos).sqrMagnitude;
+			if (d < bestSqr) { bestSqr = d; best = bodies[i]; }
+		}
+		return best;
+	}
+
 	void FixedUpdate()
 	{
 		if (Time.timeScale == 0)
 		{
 			return;
 		}
+
+		FlingWatch();
 
 		// Shuttle-travel ride: the rider tick fully replaces movement/gravity —
 		// the kinematic rb ignores forces anyway, and MovePosition/grip would

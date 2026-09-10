@@ -58,6 +58,25 @@ public static class DwarfPlanetInstaller
     // them round the sun instead of the -X line the big four sit on. Day
     // lengths interpolate between the twins' 600 s and HA's 900 s and are the
     // knob to change if a dwarf's day feels wrong.
+    // ⚠️ GRAVITY RAISED 2026-09-10 (Sam). These were 2.0-4.0 and every dwarf
+    // felt like "almost no gravity" — running forward and jumping was enough to
+    // leave Pebble for good (run 9.23 + jump 6.15 = 11.09 m/s against an escape
+    // velocity of 10.95).
+    //
+    // The cause was RADIUS, not gravity: at 30-90 m across, orbital velocity is
+    // only 8-20 m/s, which is running speed. Both orbital and escape velocity are
+    // sqrt(g*r) and the radius is fixed (it is how big the world looks), so
+    // gravity was the only lever.
+    //
+    // Values are solved backwards from a target JUMP HEIGHT of 4.0 m — call it a
+    // moon: two-thirds higher than Humble Abode's 2.4 m, but a jump you clearly
+    // come back down from. That lands run+jump at 37-62% of escape on every one
+    // of them, with room to spare. Solved with g = v²(r+A) / (2rA), which is why
+    // they are not round numbers.
+    //
+    // Safe for orbits: every dwarf is on a clockwork RAIL, so its path is scripted
+    // and mass is not an input. What this does change is anything that FLIES or is
+    // DROPPED near one — ship approach, landing, and the shuttle's autopilot.
     static readonly Def[] Dwarfs =
     {
         // 2026-09-06 (Sam): all eight in the twins → Humble Abode gap so the
@@ -65,14 +84,14 @@ public static class DwarfPlanetInstaller
         // concentric circles never meet, and with different periods the
         // dwarfs lap each other with 550 m between orbits — close flybys,
         // never a collision, never a gravity problem (rails ignore it).
-        new Def("Puddle", 50f, 3f,   6900f,  35f,  640f, true),
-        new Def("Hearth", 45f, 3f,   7450f, 150f,  670f, true),
-        new Def("Anvil",  70f, 4f,   8000f, 250f,  695f, true),
-        new Def("Ember",  60f, 3.5f, 8550f,  80f,  720f, true),
-        new Def("Slag",   55f, 3.5f, 9100f, 200f,  750f, true),
-        new Def("Shard",  40f, 2.5f, 9650f, 320f,  775f, true),
-        new Def("Pebble", 30f, 2f,  10200f, 120f,  800f, false),
-        new Def("Bruise", 42f, 2.5f,10750f,  20f,  830f, false),
+        new Def("Puddle", 50f, 5.1f, 6900f,  35f,  640f, true),
+        new Def("Hearth", 45f, 5.1f, 7450f, 150f,  670f, true),
+        new Def("Anvil",  70f, 5.0f, 8000f, 250f,  695f, true),
+        new Def("Ember",  60f, 5.0f, 8550f,  80f,  720f, true),
+        new Def("Slag",   55f, 5.1f, 9100f, 200f,  750f, true),
+        new Def("Shard",  40f, 5.2f, 9650f, 320f,  775f, true),
+        new Def("Pebble", 30f, 5.4f,10200f, 120f,  800f, false),
+        new Def("Bruise", 42f, 5.2f,10750f,  20f,  830f, false),
     };
 
     // Airless rocks get no trees (same rule as the three moons).

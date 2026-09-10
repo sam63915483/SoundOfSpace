@@ -294,7 +294,7 @@ public class BladeSweep : MonoBehaviour
                     }
                 }
                 // Mushrooms bring their own squish — suppress the wooden thunk.
-                HitFeedback(speed, playClip: mushroom == null);
+                HitFeedback(speed, playClip: mushroom == null, crystal: crystal != null);
                 OnHitLanded?.Invoke();
                 return true;
             }
@@ -310,7 +310,7 @@ public class BladeSweep : MonoBehaviour
                 continue;
             }
 
-            Scrape(id);
+            Scrape(id, crystal != null);
         }
         return false;
     }
@@ -415,22 +415,24 @@ public class BladeSweep : MonoBehaviour
         // no hit-stop, no camera shake. Mushrooms carry their own squish (played
         // by SpawnedMushroom.TakeDamage) so the wooden knock is skipped for them
         // — a cap should never sound like a trunk.
-        if (mushroom == null && _audio != null && _axe != null && _axe.HitClip != null)
+        bool isCrystal = crystal != null;
+        if (mushroom == null && _audio != null && _axe != null
+            && _axe.HitClipFor(isCrystal) != null)
         {
-            _audio.pitch = 0.8f;
-            _audio.PlayOneShot(_axe.HitClip, _axe.HitVolume * 0.45f);
+            _audio.pitch = AxeController.HitPitchFor(isCrystal, 0.8f);
+            _audio.PlayOneShot(_axe.HitClipFor(isCrystal), _axe.HitVolumeFor(isCrystal) * 0.45f);
         }
         GamepadRumble.Pulse(0.25f, 0.12f, 0.1f);
     }
 
-    void HitFeedback(float speed, bool playClip = true)
+    void HitFeedback(float speed, bool playClip = true, bool crystal = false)
     {
         float t = Mathf.Clamp01(speed / Mathf.Max(0.01f, maxFeedbackSpeed));
 
-        if (playClip && _audio != null && _axe != null && _axe.HitClip != null)
+        if (playClip && _audio != null && _axe != null && _axe.HitClipFor(crystal) != null)
         {
-            _audio.pitch = Mathf.Lerp(0.9f, 1.3f, t);
-            _audio.PlayOneShot(_axe.HitClip, _axe.HitVolume);
+            _audio.pitch = AxeController.HitPitchFor(crystal, Mathf.Lerp(0.9f, 1.3f, t));
+            _audio.PlayOneShot(_axe.HitClipFor(crystal), _axe.HitVolumeFor(crystal));
         }
 
         GamepadRumble.Pulse(0.6f * t + 0.2f, 0.35f * t + 0.1f, 0.15f);
@@ -452,15 +454,15 @@ public class BladeSweep : MonoBehaviour
         _hitStop = null;
     }
 
-    void Scrape(int targetId)
+    void Scrape(int targetId, bool crystal = false)
     {
-        if (_audio == null || _axe == null || _axe.HitClip == null) return;
+        if (_audio == null || _axe == null || _axe.HitClipFor(crystal) == null) return;
         float now = Time.time;
         if (_lastScrapeTime.TryGetValue(targetId, out float last) && now - last < scrapeCooldown) return;
         _lastScrapeTime[targetId] = now;
         // Placeholder scrape: the hit clip, slow and quiet. Swap in a real
         // scrape clip on AxeController later if the spike graduates.
-        _audio.pitch = 0.55f;
-        _audio.PlayOneShot(_axe.HitClip, _axe.HitVolume * 0.25f);
+        _audio.pitch = AxeController.HitPitchFor(crystal, 0.55f);
+        _audio.PlayOneShot(_axe.HitClipFor(crystal), _axe.HitVolumeFor(crystal) * 0.25f);
     }
 }

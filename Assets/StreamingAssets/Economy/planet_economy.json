@@ -1,11 +1,15 @@
 {
     "version": 1,
-    "note": "Drafted by Tools > Economy > Draft Planet Tables. Imports are drawn from what a planet's ORBITAL NEIGHBOURS catch (2026-09-08), round-robin so each neighbour gets a share — so the short hop next door nearly always finds a buyer paying over the odds, and a badly chosen planet nearly always does not. Delicacies are the far payday and are unchanged. Hand-tune freely; run Validate afterwards. Words on the boards come from the bucket a species lands in, never from these lists' order.",
+    "note": "Drafted by Tools > Economy > Draft Planet Tables. Imports are drawn from what a planet's ORBITAL NEIGHBOURS catch (2026-09-08), round-robin so each neighbour gets a share \u2014 so the short hop next door nearly always finds a buyer paying over the odds, and a badly chosen planet nearly always does not. Delicacies are the far payday and are unchanged. Hand-tune freely; run Validate afterwards. Words on the boards come from the bucket a species lands in, never from these lists' order. 2026-09-10: imported and delicacy are now BANDS, not flat rates - each body sits at its own point between importedMin/Max and delicacyMin/Max, picked from a hash of its name so it never moves. The old flat `imported`/`delicacy` fields are ignored and kept only so older files still parse.",
     "multipliers": {
         "local": 1.0,
         "imported": 1.75,
         "delicacy": 3.0,
-        "unlisted": 0.5
+        "unlisted": 0.5,
+        "importedMin": 2.0,
+        "importedMax": 4.0,
+        "delicacyMin": 5.0,
+        "delicacyMax": 7.0
     },
     "appetite": {
         "stepPerSale": 0.15000000596046448,

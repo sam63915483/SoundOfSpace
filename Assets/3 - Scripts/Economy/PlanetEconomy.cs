@@ -43,9 +43,28 @@ public static class PlanetEconomy
     public class Multipliers
     {
         public float local    = 1.0f;
+        public float unlisted = 0.5f;
+
+        // ── Per-planet RANGES, not flat rates (Sam, 2026-09-10: "make fish
+        // vendors pay 2-4x for imports, then 5-7x for delicacy") ─────────────
+        //
+        // A flat 1.75x meant every market off-world paid the same, so once you
+        // knew a fish was "imported" there was no reason to prefer one planet
+        // over another — which is the opposite of the loop the game is built
+        // around. Each body now sits at its OWN point in the band, so a route
+        // is worth learning.
+        //
+        // The value is a deterministic hash of the body name: stable forever,
+        // identical on both machines in co-op, and needs no save field.
+        public float importedMin = 2.0f;
+        public float importedMax = 4.0f;
+        public float delicacyMin = 5.0f;
+        public float delicacyMax = 7.0f;
+
+        // Kept so an older planet_economy.json still parses. No longer read —
+        // see the ranges above.
         public float imported = 1.75f;
         public float delicacy = 3.0f;
-        public float unlisted = 0.5f;
     }
 
     [Serializable]
@@ -169,14 +188,26 @@ public static class PlanetEconomy
         return Bucket.Unlisted;
     }
 
-    /// <summary>Raw bucket multiplier, before appetite.</summary>
-    public static float BaseMultiplier(Bucket b)
+    /// <summary>Raw bucket multiplier, before appetite. Body-agnostic overload
+    /// for the Local/Unlisted rates, which are the same everywhere.</summary>
+    public static float BaseMultiplier(Bucket b) => BaseMultiplier(b, null);
+
+    /// <summary>
+    /// Raw bucket multiplier for a specific market, before appetite.
+    ///
+    /// Imported and Delicacy vary PER PLANET inside their band. Where a body
+    /// lands is a hash of its name, so it never moves: the price you learn on
+    /// Cyclops is the price Cyclops pays, this session and every session, and
+    /// on the other player's machine too. Quantised to 0.25 so the boards show
+    /// round-ish numbers (3.25x) rather than 3.1847x.
+    /// </summary>
+    public static float BaseMultiplier(Bucket b, string body)
     {
         var m = Data.multipliers;
         switch (b)
         {
-            case Bucket.Imported: return m.imported;
-            case Bucket.Delicacy: return m.delicacy;
+            case Bucket.Imported: return BandFor(body, m.importedMin, m.importedMax);
+            case Bucket.Delicacy: return BandFor(body, m.delicacyMin, m.delicacyMax);
             case Bucket.Unlisted: return m.unlisted;
             default:              return m.local;
         }
@@ -188,9 +219,32 @@ public static class PlanetEconomy
     public static float MultiplierNow(string body, string speciesId)
     {
         var b = BucketFor(body, speciesId);
-        float baseMult = BaseMultiplier(b);
+        float baseMult = BaseMultiplier(b, body);
         if (b != Bucket.Imported && b != Bucket.Delicacy) return baseMult;   // Local and Unlisted never decay
         return FishAppetite.Apply(body, speciesId, baseMult, Data.appetite.stepPerSale);
+    }
+
+    /// <summary>
+    /// Where a body sits inside a multiplier band, 0..1, from its name.
+    ///
+    /// FNV-1a rather than string.GetHashCode: .NET randomises string hashing per
+    /// process, so GetHashCode would hand a planet a different price every time
+    /// the game launched — and a different one to each player in co-op.
+    /// </summary>
+    static float BandFor(string body, float lo, float hi)
+    {
+        if (hi < lo) { float t2 = lo; lo = hi; hi = t2; }
+        if (string.IsNullOrEmpty(body)) return lo;
+
+        uint h = 2166136261u;
+        for (int i = 0; i < body.Length; i++)
+        {
+            h ^= char.ToLowerInvariant(body[i]);
+            h *= 16777619u;
+        }
+        float t = (h % 1000u) / 999f;
+        float v = Mathf.Lerp(lo, hi, t);
+        return Mathf.Round(v * 4f) / 4f;   // 0.25 steps
     }
 
     /// <summary>The word the boards and sell cards use for a bucket.</summary>

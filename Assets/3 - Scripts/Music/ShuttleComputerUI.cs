@@ -769,6 +769,7 @@ public partial class ShuttleComputerUI : MonoBehaviour
                 // every future tile to the TRAX projects screen (the NAV bug).
                 string appName = app.name;
                 btn.onClick.AddListener(() => OnAppTileClicked(appName));
+                UiSfxPlayer.Attach(btn);   // shared hover + click SFX
             }
 
             if (app.name == "TRAX") SetupTraxTile(frame);

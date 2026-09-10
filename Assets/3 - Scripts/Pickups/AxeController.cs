@@ -94,6 +94,25 @@ public class AxeController : MonoBehaviour
     // Physics-axe spike accessors.
     public AudioClip HitClip => hitClip;
     public float HitVolume => hitVolume;
+
+    /// The impact sound for what was actually struck.
+    ///
+    /// ⚠️ There are TWO swing paths and only one of them runs. `useClassicSwing`
+    /// is false, so the live path is the PHYSICS swing in BladeSweep — the
+    /// raycast ApplyHit(SpawnedCrystal) below is dead code today. Anything that
+    /// changes how a hit sounds has to go through here, or it changes nothing
+    /// (which is exactly how the crystal ching shipped inaudible on 2026-09-10).
+    public AudioClip HitClipFor(bool crystal)
+        => crystal && crystalHitClip != null ? crystalHitClip : hitClip;
+
+    public float HitVolumeFor(bool crystal)
+        => crystal && crystalHitClip != null ? crystalHitVolume : hitVolume;
+
+    /// Crystal rings, wood thuds. The wooden knock is pitched down to 0.8 to
+    /// sell mass; doing that to a ching just makes it sound broken, so a crystal
+    /// stays near its recorded pitch.
+    public static float HitPitchFor(bool crystal, float woodPitch)
+        => crystal ? Mathf.Lerp(woodPitch, 1f, 0.75f) : woodPitch;
     public AudioClip SwingClip => swingClip;
     public float SwingVolume => swingVolume;
     /// True while the mouse-driven swing layer may consume LMB — same guards
@@ -419,7 +438,12 @@ public class AxeController : MonoBehaviour
     {
         if (crystal == null || crystal.IsDead) return;
         crystal.TakeDamage(damagePerSwing);
-        if (hitClip != null && _audioSource != null) _audioSource.PlayOneShot(hitClip, hitVolume);
+        // Crystal gets its own ring rather than the wood thump every other
+        // target uses (Sam, 2026-09-10). Falls back to the ordinary hit sound
+        // when nothing is assigned, so this is safe before the clip exists.
+        AudioClip clip = crystalHitClip != null ? crystalHitClip : hitClip;
+        float vol = crystalHitClip != null ? crystalHitVolume : hitVolume;
+        if (clip != null && _audioSource != null) _audioSource.PlayOneShot(clip, vol);
         GamepadRumble.Pulse(0.6f, 0.35f, 0.15f);
     }
 
@@ -503,4 +527,11 @@ public class AxeController : MonoBehaviour
     {
         _axeUnlocked = true;
     }
+
+    // ── Serialized fields APPENDED HERE (CLAUDE.md: never insert mid-class) ──
+    [Header("Crystal mining (2026-09-10)")]
+    [Tooltip("Struck-crystal ring, played instead of hitClip when the swing lands on a crystal. Empty = fall back to hitClip.")]
+    public AudioClip crystalHitClip;
+    [Range(0f, 1f)] public float crystalHitVolume = 0.7f;
+
 }

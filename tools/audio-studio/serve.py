@@ -29,6 +29,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 ASSETS = os.path.join(ROOT, "Assets")
 MANIFEST = os.path.join(ASSETS, "StreamingAssets", "Audio", "sounds.json")
+# The Sound Lab's audition sheet. Deliberately NOT in StreamingAssets: these are
+# candidate clips that no game object references yet, so the sheet is a tool file,
+# not shipped data. Winners get copied into the manifest by hand once picked.
+CANDIDATES = os.path.join(HERE, "candidates.json")
 BACKUP_DIR = os.path.join(HERE, "backups")
 INCOMING = os.path.join(HERE, "incoming")
 PORT = int(os.environ.get("AUDIO_STUDIO_PORT", "8766"))
@@ -101,13 +105,51 @@ def audio_library():
     return sorted(out)
 
 
+def read_candidates():
+    """The audition sheet, with each take stamped with whether its file is
+    actually on disk yet. Generation happens outside this tool, so a take can
+    sit here fully described and ungenerated for as long as it takes."""
+    if not os.path.isfile(CANDIDATES):
+        return {"version": 1, "sets": []}
+    with io.open(CANDIDATES, encoding="utf-8") as f:
+        data = json.load(f)
+    made = 0
+    total = 0
+    for st in data.get("sets") or []:
+        for tk in st.get("takes") or []:
+            total += 1
+            full = safe_asset_path(tk.get("file") or "")
+            tk["exists"] = bool(full)
+            tk["bytes"] = os.path.getsize(full) if full else 0
+            if full:
+                made += 1
+    data["generated"] = made
+    data["total"] = total
+    return data
+
+
+def write_candidates(data):
+    with io.open(CANDIDATES, "w", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=HERE, **kw)
 
     def log_message(self, fmt, *args):
-        if "/api/" in (args[0] if args else ""):
-            sys.stdout.write("%s %s\n" % (time.strftime("%H:%M:%S"), fmt % args))
+        # args[0] is the request line for a normal access log, but log_error
+        # passes an HTTPStatus first (a favicon 404 is enough to hit it), and
+        # `"/api/" in <HTTPStatus>` raises inside the request thread. Stringify
+        # first, and swallow a bad format rather than printing a traceback.
+        first = str(args[0]) if args else ""
+        if "/api/" not in first:
+            return
+        try:
+            line = fmt % args
+        except Exception:
+            line = "%s %r" % (fmt, args)
+        sys.stdout.write("%s %s" % (time.strftime("%H:%M:%S"), line) + chr(10))
 
     def send_json(self, obj, code=200):
         body = json.dumps(obj, ensure_ascii=False).encode("utf-8")
@@ -127,6 +169,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self.send_json(manifest_mod.read_manifest(MANIFEST))
         if u.path == "/api/library":
             return self.send_json({"files": audio_library()})
+        if u.path == "/api/candidates":
+            return self.send_json(read_candidates())
         if u.path == "/api/audio":
             rel = (parse_qs(u.query).get("path") or [""])[0]
             full = safe_asset_path(unquote(rel))
@@ -150,7 +194,25 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_PUT(self):
-        if urlparse(self.path).path != "/api/manifest":
+        path = urlparse(self.path).path
+        if path == "/api/candidates":
+            n = int(self.headers.get("Content-Length") or 0)
+            try:
+                data = json.loads(self.rfile.read(n).decode("utf-8"))
+            except Exception as e:  # noqa: BLE001
+                return self.send_json({"error": "not valid JSON: %s" % e}, 400)
+            if not isinstance(data, dict) or not isinstance(data.get("sets"), list):
+                return self.send_json({"error": "candidates need a sets list"}, 400)
+            # `exists` is computed fresh on every read, so it must never be
+            # written back - a stale true would show a play button for a file
+            # that is not there.
+            for st in data["sets"]:
+                for tk in st.get("takes") or []:
+                    tk.pop("exists", None)
+                    tk.pop("bytes", None)
+            write_candidates(data)
+            return self.send_json({"ok": True})
+        if path != "/api/manifest":
             return self.send_json({"error": "unknown api"}, 404)
         n = int(self.headers.get("Content-Length") or 0)
         try:

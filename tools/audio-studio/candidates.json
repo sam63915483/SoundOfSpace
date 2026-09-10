@@ -1,0 +1,536 @@
+{
+  "version": 1,
+  "note": "Audition sheet for sounds the game does not have yet. Each set is one moment; each set holds three takes of it. Play them against each other, pick a winner per set, and only the winner gets wired in. Files live under Assets/Audio/Studio/_Candidates/ and nothing in the game references them. WIRED 2026-09-10: every set has a winner in the game - see docs/PLAYTEST_AUDIO_PASS.md. Losing takes kept until the playtest passes.",
+  "sets": [
+    {
+      "id": "rod_snap",
+      "title": "Rod snaps",
+      "when": "Tension hits 100. The fish is gone, the bait is gone. One shot, and it has to feel like a mistake you made.",
+      "target": "fishing_rod_controller.snap_clip",
+      "targetState": "The slot exists in code and is EMPTY today — the rod already snaps in silence.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Clean wood snap",
+          "file": "Audio/Studio/_Candidates/Fishing/snap_A_crack.wav",
+          "blurb": "One thin piece of wood breaking. Sharp, over instantly, nothing after it.",
+          "prompt": "One dry wooden snap: a thin piece of wood breaking cleanly in a single sharp crack. Extremely short and immediate, no debris afterwards, no rattle, no reverb tail, no music.",
+          "duration": 0.5,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Branch crack",
+          "file": "Audio/Studio/_Candidates/Fishing/snap_B_zing.wav",
+          "blurb": "Higher and splintery — a dry branch going in one motion.",
+          "prompt": "A dry branch snapping in one quick motion: a tight high wooden CRACK with a small splintering edge to it, over instantly. Very short, close, dry, no tail, no music.",
+          "duration": 0.5,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Thick snap",
+          "file": "Audio/Studio/_Candidates/Fishing/snap_C_heavy.wav",
+          "blurb": "Same speed, more weight under it — reads as a heavier rod.",
+          "prompt": "A thick wooden pole snapping: one short deep SNAP with low body and weight, a single clean break, nothing after it. Very short, dry, close, no reverb, no music.",
+          "duration": 0.6,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Fishing/rod_snap.wav"
+    },
+    {
+      "id": "tension",
+      "title": "Tension builds",
+      "when": "Runs the whole fight as one never-ending loop. Tension drives its SPEED and volume: near-silent and slow when the line is slack, loud and racing when it is about to go. Drag the TENSION slider below while a take is playing - that is exactly what the game will do.",
+      "target": "(new — no slot in code yet)",
+      "targetState": "Nothing exists yet. One looping AudioSource, always playing, with pitch and volume driven off FishFightSim.TensionFraction (0..1) every frame.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Creaking bed",
+          "file": "Audio/Studio/_Candidates/Fishing/tension_A_creak.wav",
+          "blurb": "Dense unbroken creak of rope and timber under load. The safest loop - no events to hear repeat.",
+          "prompt": "Seamless loop, constant texture: rope and timber creaking under steady heavy load. A dense unbroken creaking bed with no gaps, no silence, no single cracks or impacts and no change in character from start to finish, so it repeats invisibly. Recorded close and dry. No music.",
+          "duration": 3,
+          "loop": true,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Straining pulse",
+          "file": "Audio/Studio/_Candidates/Fishing/tension_B_whine.wav",
+          "blurb": "A steady repeating creak-pulse. Speeds up most obviously of the three - you hear the rate itself climb.",
+          "prompt": "Seamless loop, constant texture: a taut rope straining, creaking in a steady even repeating pulse at a slow regular rate, the same pulse over and over with no variation and no silence between. Dry, close, no impacts, no music.",
+          "duration": 3,
+          "loop": true,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Stretching fibres",
+          "file": "Audio/Studio/_Candidates/Fishing/tension_C_sing.wav",
+          "blurb": "Drier and finer - the fibres themselves under stress. Least musical, most 'material'.",
+          "prompt": "Seamless loop, constant texture: the fibres of a rope stretching under tension, a continuous dry fibrous straining and stressing sound, completely even in level and character throughout, no cracks, no gaps, no music.",
+          "duration": 3,
+          "loop": true,
+          "note": ""
+        }
+      ],
+      "rateDemo": {
+        "label": "TENSION",
+        "rate": [
+          0.62,
+          2.5
+        ],
+        "volume": [
+          0.05,
+          1
+        ],
+        "lowHint": "slack",
+        "highHint": "about to snap"
+      },
+      "wired": "Audio/Fishing/line_tension_loop.wav"
+    },
+    {
+      "id": "fish_run_fish",
+      "title": "Fish runs — the fish",
+      "when": "Layer 1 of a run. The fish itself: it turns and kicks to get away. Plays TOGETHER with the reel layer below.",
+      "target": "(new — no slot in code yet)",
+      "targetState": "Nothing exists. FishFightSim exposes IsRunning + RunRamp01, so a one-shot on the rising edge is enough.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Surface thrash",
+          "file": "Audio/Studio/_Candidates/Fishing/run_A_splash.wav",
+          "blurb": "Right at the top — a violent splash and a tail slapping water.",
+          "prompt": "A large fish thrashing at the surface of a lake: a sudden violent splash, a heavy tail slapping the water twice, spray falling back. Close, wet, punchy, no music, no reverb tail.",
+          "duration": 2.5,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Underwater surge",
+          "file": "Audio/Studio/_Candidates/Fishing/run_C_boil.wav",
+          "blurb": "Below the surface — a muffled heavy kick and a swirling boil of water.",
+          "prompt": "A big fish kicking hard just below the surface: a muffled heavy thump of a body turning, a deep swirling boil of displaced water rising and rolling, a little spray breaking the top at the end. Low, wet, powerful, no music.",
+          "duration": 2.5,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Tail kick and bolt",
+          "file": "Audio/Studio/_Candidates/Fishing/run_D_tailkick.wav",
+          "blurb": "Most 'it decided to leave' — two hard tail beats and a rush of water away from you.",
+          "prompt": "A hooked fish bolting: two hard powerful tail beats against water in quick succession, then a rushing surge of water moving away at speed, spray breaking the surface between the beats. Urgent, wet, close, no music.",
+          "duration": 2.5,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Fishing/fish_run_splash.wav"
+    },
+    {
+      "id": "fish_run_reel",
+      "title": "Fish runs — the reel",
+      "when": "Layer 2 of the same moment. You hear the fish pull drag: line being torn off the reel against the clutch. Plays TOGETHER with the fish layer above.",
+      "target": "(new — no slot in code yet)",
+      "targetState": "Nothing exists. Best as a short loop started on the run's rising edge and stopped when IsRunning goes false, so a long run keeps screaming.",
+      "pick": "B",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Zip",
+          "file": "Audio/Studio/_Candidates/Fishing/run_B_drag.wav",
+          "blurb": "Fast and smooth — line tearing off in a rising zip, water surging behind it.",
+          "prompt": "A hooked fish making a run: line ripping off a fishing reel in a fast rising zip with a rapid mechanical clicking drag, and a surge of water underneath as the fish powers away. Urgent, accelerating, no music.",
+          "duration": 2.5,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Ratchet clicker",
+          "file": "Audio/Studio/_Candidates/Fishing/drag_B_clicker.wav",
+          "blurb": "The classic ratchet — a dense mechanical clatter of the drag clicker, no water at all.",
+          "prompt": "The drag clicker of a fishing reel running fast as line is pulled out: a dense rapid mechanical ratcheting clatter, metallic and dry, speeding up slightly and holding. No water, no music, no voices.",
+          "duration": 3,
+          "loop": true,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Screaming drag",
+          "file": "Audio/Studio/_Candidates/Fishing/drag_C_scream.wav",
+          "blurb": "The big-fish sound — the ratchet with a high strained whine on top of it.",
+          "prompt": "A fishing reel drag screaming under a heavy fish: a fast metallic ratcheting clatter with a high strained whine of the clutch riding over the top of it, tense and continuous. No water, no music.",
+          "duration": 3,
+          "loop": true,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Fishing/fish_run_drag_loop.wav"
+    },
+    {
+      "id": "reel_generic",
+      "title": "Reeling in",
+      "when": "Any time you hold reel and the bobber is coming back — onto land or through water, fish or no fish. There is no reeling sound at all today.",
+      "target": "(new — no slot in code yet)",
+      "targetState": "Nothing exists. Bobber already exposes IsFighting and IsRetrieving, so a loop gated on 'reel held AND (fighting OR retrieving)' covers both cases.",
+      "pick": "C",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Steady wind",
+          "file": "Audio/Studio/_Candidates/Fishing/reel_A_wind.wav",
+          "blurb": "Plain and honest — the handle turning at a steady speed, gears and a soft clicking.",
+          "prompt": "Seamless loop: a fishing reel handle being wound at a steady moderate speed, the soft regular clicking of the mechanism and a light gear whirr, close and dry. Even and unbroken so it can loop forever. No water, no music.",
+          "duration": 4,
+          "loop": true,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Clicky spinning reel",
+          "file": "Audio/Studio/_Candidates/Fishing/reel_B_clicky.wav",
+          "blurb": "More character — a brighter, more mechanical tick-tick-tick with each turn audible.",
+          "prompt": "Seamless loop: winding a spinning reel, a bright rhythmic mechanical ticking with each rotation clearly audible over a light metallic whirr. Crisp, dry, close. Even and unbroken so it can loop forever. No water, no music.",
+          "duration": 4,
+          "loop": true,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Wind with line hiss",
+          "file": "Audio/Studio/_Candidates/Fishing/reel_C_line.wav",
+          "blurb": "Adds the line — the handle turning plus wet line being drawn in over the guides.",
+          "prompt": "Seamless loop: reeling in fishing line, the handle turning with a soft gear whirr and clicking, plus the fine hiss of wet line drawing through the rod guides and water dripping lightly. Even and unbroken so it can loop forever. No music.",
+          "duration": 4,
+          "loop": true,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Fishing/reel_loop.wav"
+    },
+    {
+      "id": "fish_landed",
+      "title": "You land it",
+      "when": "The payoff. The fish reaches the bank and the catch screen takes over.",
+      "target": "fishing_rod_controller.catch_clip",
+      "targetState": "Currently YAY.mp3 — which also plays for a finished tutorial step AND for chopping a tree, so landing a fish sounds like everything else.",
+      "pick": "C",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Out and flopping",
+          "file": "Audio/Studio/_Candidates/Fishing/land_A_flop.wav",
+          "blurb": "Pure physical — it breaks the surface, lands wet, flaps.",
+          "prompt": "Landing a fish: it breaks the surface with a splash, water pours off it, then it lands on wet ground with a heavy slap and flaps twice. Wet, physical, satisfying, close-miked, no music.",
+          "duration": 3,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Lifted clear",
+          "file": "Audio/Studio/_Candidates/Fishing/land_B_lift.wav",
+          "blurb": "Cleaner and calmer — a sweep of water off the fish as it comes up, one wriggle.",
+          "prompt": "A fish being lifted clear of the water: a smooth sweep of water draining and dripping off its body as it rises, then a single wet wriggle. Clean, calm, close, no music, no splashing chaos.",
+          "duration": 3,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Catch with a lift",
+          "file": "Audio/Studio/_Candidates/Fishing/land_C_chime.wav",
+          "blurb": "A reward sound — the wet catch, then a short bright shimmer over the top.",
+          "prompt": "A fish caught and lifted from the water — a wet splash and drips — with a short bright warm shimmer rising over the top of it, like a small reward chime, fading quickly. Mostly the real water sound, the shimmer only a tail.",
+          "duration": 3,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Fishing/fish_landed.wav"
+    },
+    {
+      "id": "crystal_hit",
+      "title": "Axe hits a crystal",
+      "when": "Every swing that lands on a crystal but does not break it. Should ring, not thud - you can hear it is the wrong tool and the thing is hard.",
+      "target": "axe_controller.crystal_hit_clip",
+      "targetState": "NEW slot, added 2026-09-10. While empty it falls back to the old thump, so nothing is broken before this is decided.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Bright ching",
+          "file": "Audio/Studio/_Candidates/Crystal/crystal_hit_A_ching.wav",
+          "blurb": "Metal on quartz - a short high ching with a fast shimmer off it.",
+          "prompt": "A steel pick striking a large quartz crystal: a bright high-pitched metallic CHING with a short glassy shimmering ring decaying fast, and a small gritty chip of stone underneath. Close, dry, no music, no long reverb.",
+          "duration": 1.5,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Glass chink",
+          "file": "Audio/Studio/_Candidates/Crystal/crystal_hit_B_chink.wav",
+          "blurb": "Glassier and thinner - like tapping a thick glass rod. Less metal.",
+          "prompt": "Striking a thick glass or crystal rod with a hard tool: a clean high chink with a pure glassy tone, a hint of cracking, a very short bright ring. Delicate but hard. No music, no reverb tail.",
+          "duration": 1.5,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Ringing stone",
+          "file": "Audio/Studio/_Candidates/Crystal/crystal_hit_C_ring.wav",
+          "blurb": "Heavier - a deeper struck-stone clang with a bell-like tail. Reads as a big crystal.",
+          "prompt": "A heavy pick striking a huge crystal formation: a solid struck-stone impact with a deep bell-like ring blooming after it and a scatter of small fragments. Weighty, resonant, close-miked. No music.",
+          "duration": 1.5,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Crystal/crystal_hit.wav"
+    },
+    {
+      "id": "crystal_break",
+      "title": "Crystal breaks",
+      "when": "The last hit. The crystal shatters and you get the fuel.",
+      "target": "crystal_spawner.crystal_break_clip",
+      "targetState": "The slot exists in code and is EMPTY today - crystals shatter in silence.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Shatter and scatter",
+          "file": "Audio/Studio/_Candidates/Crystal/crystal_break_A_shatter.wav",
+          "blurb": "The classic - a sharp crystalline burst then shards raining down.",
+          "prompt": "A large crystal shattering: a sharp crystalline CRACK bursting into a spray of glassy shards, which then scatter and tumble across rock for a moment. Bright, detailed, close, no music, no long reverb.",
+          "duration": 2.5,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Deep crack, bright dust",
+          "file": "Audio/Studio/_Candidates/Crystal/crystal_break_B_crack.wav",
+          "blurb": "Starts heavy - a low structural crack - then dissolves into fine bright tinkling.",
+          "prompt": "A massive crystal splitting apart: a deep low structural CRACK with real weight, immediately dissolving into fine high tinkling fragments falling and settling. Two-part, heavy then delicate. No music.",
+          "duration": 2.5,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Magic shatter",
+          "file": "Audio/Studio/_Candidates/Crystal/crystal_break_C_magic.wav",
+          "blurb": "Slightly unreal - the shatter with a faint energy shimmer released after it.",
+          "prompt": "A glowing crystal breaking: a crystalline shatter and falling shards with a faint airy energy shimmer released underneath and rising away as it settles. Mostly real glass, only a hint of the unreal. No music, no melody.",
+          "duration": 2.5,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Crystal/crystal_break.wav"
+    },
+    {
+      "id": "moon_lever",
+      "title": "Moon base lever",
+      "when": "Flipping the power switch in the moon base. Completely silent today.",
+      "target": "moon_base_power_switch.flip_sound",
+      "targetState": "The slot exists in code and is EMPTY today.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Heavy industrial",
+          "file": "Audio/Studio/_Candidates/MoonBase/lever_A_industrial.wav",
+          "blurb": "A big breaker handle - a solid mechanical CLACK with weight and a little ring of metal.",
+          "prompt": "A large industrial electrical breaker lever being thrown: a solid heavy mechanical CLACK of a metal handle, a spring snapping over centre, a faint metallic ring in a hard-walled room. Close, punchy. No music.",
+          "duration": 1.5,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Clean light switch",
+          "file": "Audio/Studio/_Candidates/MoonBase/lever_B_switch.wav",
+          "blurb": "Small and precise - the plastic click of a wall switch, exactly what you asked for.",
+          "prompt": "A wall light switch being flipped: a single crisp plastic click with a tiny spring snap, dry and close, nothing else in the room. No music, no reverb.",
+          "duration": 1,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Sci-fi toggle",
+          "file": "Audio/Studio/_Candidates/MoonBase/lever_C_scifi.wav",
+          "blurb": "A real switch with a short electrical power-up hum coming in behind it.",
+          "prompt": "A spacecraft toggle switch being flipped: a firm mechanical click, followed immediately by a short low electrical hum powering up and settling. Clean, functional, no melody, no music.",
+          "duration": 2,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/MoonBase/lever_flip.wav"
+    },
+    {
+      "id": "village_door_open",
+      "title": "Village door opens",
+      "when": "Pushing open a house door in the village. Silent today.",
+      "target": "village_door.open_clip",
+      "targetState": "The slot exists in code and is EMPTY today.",
+      "pick": "",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Old creak",
+          "file": "Audio/Studio/_Candidates/Village/door_open_A_creak.wav",
+          "blurb": "Rustic - a long dry wooden creak as it swings, ending with a small knock.",
+          "prompt": "An old wooden door swinging open: a dry creaking groan of timber and hinges rising and slowing, ending with a soft wooden knock as it comes to rest. Rustic, close, no music, no reverb tail.",
+          "duration": 2.5,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Latch and swing",
+          "file": "Audio/Studio/_Candidates/Village/door_open_B_latch.wav",
+          "blurb": "A metal latch lifting, then a short clean swing. Less creak, more mechanism.",
+          "prompt": "Opening a wooden cottage door: a metal thumb latch lifting with a small clack, then the door swinging open on hinges with a brief low creak and a whisper of air. Clean and short. No music.",
+          "duration": 2,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Heavy timber",
+          "file": "Audio/Studio/_Candidates/Village/door_open_C_heavy.wav",
+          "blurb": "A thick, solid door - low groan and real mass, no squeak.",
+          "prompt": "A heavy solid timber door being pushed open: a low woody groan with real mass behind it, a deep hinge rub, no high squeak, settling with a dull thud. Close, thick, no music.",
+          "duration": 2.5,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Village/door_open.wav"
+    },
+    {
+      "id": "village_door_close",
+      "title": "Village door closes",
+      "when": "The same door swinging shut. Should be the partner of whichever open take you pick.",
+      "target": "village_door.close_clip",
+      "targetState": "The slot exists in code and is EMPTY today.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Creak and clunk",
+          "file": "Audio/Studio/_Candidates/Village/door_close_A_creak.wav",
+          "blurb": "Partner to the old creak - swings back with a groan and shuts with a wooden clunk.",
+          "prompt": "An old wooden door swinging closed: a dry creaking groan of timber and hinges, ending in a firm wooden CLUNK as it shuts into its frame. Rustic, close, no music, no reverb tail.",
+          "duration": 2.5,
+          "note": "use for opening sound aswell"
+        },
+        {
+          "id": "B",
+          "label": "Shut and latch",
+          "file": "Audio/Studio/_Candidates/Village/door_close_B_latch.wav",
+          "blurb": "Partner to the latch take - a short swing, the door meets the frame, latch drops.",
+          "prompt": "Closing a wooden cottage door: a brief swing through air, the door meeting its frame with a solid wooden knock, then a metal thumb latch dropping into place with a small clack. Clean and short. No music.",
+          "duration": 2,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Heavy thud",
+          "file": "Audio/Studio/_Candidates/Village/door_close_C_heavy.wav",
+          "blurb": "Partner to the heavy timber - a low swing and a weighty boom as it seats.",
+          "prompt": "A heavy solid timber door swinging shut: a low woody groan of mass moving, then a deep weighty thud as it seats into the frame, with a faint rattle of the frame after. Close, thick, no music.",
+          "duration": 2.5,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Village/door_close.wav"
+    },
+    {
+      "id": "breathing_idle",
+      "title": "Astronaut breathing (idle)",
+      "when": "One breath every 10-15 seconds, the whole time you are on foot. Should sound like a person sealed inside a helmet — close, a bit boxy, air moving past a mic.",
+      "target": "player_suit_audio.breathing_clips",
+      "targetState": "13 clips today, loaded from StreamingAssets/Audio/Breaths/. Sam: 'they arent the best'. Whichever take wins replaces the pool rather than joining it.",
+      "pick": "A",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Helmet close",
+          "file": "Audio/Studio/_Candidates/Suit/breath_A_helmet.wav",
+          "blurb": "Tight and intimate — one calm in-and-out, clearly inside a small sealed space.",
+          "prompt": "A calm astronaut breathing inside a sealed space helmet: one slow relaxed inhale and exhale, very close to the microphone, with the boxy confined resonance of a helmet visor and a faint hiss of regulated air. Steady, not distressed. No music, no voice.",
+          "duration": 4,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Regulator",
+          "file": "Audio/Studio/_Candidates/Suit/breath_B_regulator.wav",
+          "blurb": "More equipment in it — you hear the valve open and close around the breath.",
+          "prompt": "A single breath through a space suit air regulator: a soft mechanical valve opening, a measured inhale drawn through it, a pause, then a controlled exhale with the valve closing. Close, sealed, slightly boxy. Calm and mechanical. No music, no voice.",
+          "duration": 4,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Slightly tired",
+          "file": "Audio/Studio/_Candidates/Suit/breath_C_tired.wav",
+          "blurb": "A touch of effort — deeper and heavier, but still calm. Reads as 'been walking a while'.",
+          "prompt": "An astronaut breathing inside a helmet after mild exertion: one deeper heavier inhale and a longer exhale, close-miked with helmet resonance and a faint air hiss. Tired but composed, never panicked or gasping. No music, no voice.",
+          "duration": 4,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Suit/breath_helmet.wav"
+    },
+    {
+      "id": "jump_exhale",
+      "title": "Jump exhale",
+      "when": "The push-off when you jump. Today it borrows a full idle BREATH and pitches it up 1.25-1.45x, which is why moving around sounded like sped-up breathing. It needs its own short clip.",
+      "target": "player_suit_audio.jump_effort_clip",
+      "targetState": "Slot exists and is EMPTY. Empty means the pitched-up-breath fallback — now rate-limited to 1.75 s and pitch-capped at 1.18x, but the real fix is a dedicated clip here.",
+      "pick": "B",
+      "note": "",
+      "takes": [
+        {
+          "id": "A",
+          "label": "Short grunt",
+          "file": "Audio/Studio/_Candidates/Suit/jump_A_grunt.wav",
+          "blurb": "A quick involuntary hff — effort, no words.",
+          "prompt": "A short involuntary exhale of effort from a person pushing off to jump: a quick sharp huff of air, no vocal tone, no words, recorded close inside a helmet with a slight boxy resonance. Under one second. No music.",
+          "duration": 1,
+          "note": ""
+        },
+        {
+          "id": "B",
+          "label": "Suit exhale",
+          "file": "Audio/Studio/_Candidates/Suit/jump_B_suit.wav",
+          "blurb": "Mostly the suit — a puff of air through the regulator with fabric and gear movement.",
+          "prompt": "A space suit exhale on exertion: a short puff of air pushed through a regulator valve, with a soft rustle of suit fabric and a small clink of gear moving. Close, sealed, under one second. No voice, no music.",
+          "duration": 1,
+          "note": ""
+        },
+        {
+          "id": "C",
+          "label": "Almost nothing",
+          "file": "Audio/Studio/_Candidates/Suit/jump_C_quiet.wav",
+          "blurb": "The restrained option — barely a breath, mostly the suit shifting. Easy to live with at high jump counts.",
+          "prompt": "A very quiet exertion sound inside a space suit: the faintest catch of breath and a soft shift of padded fabric and webbing, subtle and understated, well under one second. No voice, no music, nothing dramatic.",
+          "duration": 1,
+          "note": ""
+        }
+      ],
+      "wired": "Audio/Suit/jump_exhale.wav"
+    }
+  ],
+  "generated": 39,
+  "total": 39
+}

@@ -198,6 +198,13 @@ public class Ship : GravityObject, IReactorFuel
     [SerializeField] float crashMediumThreshold = 15f;
     [SerializeField] float crashHardThreshold   = 25f;
 
+    /// The ship's thruster rumble, exposed read-only so the SHUTTLE can play the
+    /// same loop (Sam, 2026-09-10: "the ship thrusters loop is a really good
+    /// sound, but it only plays in our ship44 prefab and not our shuttle").
+    /// ShuttleThrustFX borrows it at Initialize rather than duplicating the
+    /// assignment, so re-pointing this one Inspector slot moves both.
+    public AudioClip ThrustLoopClip => thrustLoopClip;
+
     AudioSource engineSource;
     AudioSource thrustSource;
     AudioSource crashSource;

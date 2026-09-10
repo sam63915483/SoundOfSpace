@@ -138,3 +138,11 @@ tools/audio-studio/backups/
 tools/audio-studio/incoming/
 tools/audio-studio/**/__pycache__/
 tools/audio-studio/server.log
+
+# Sound Lab losing takes (tools/audio-studio Sound Lab). ~19 MB of candidate
+# clips that no longer feed the game — the winners live in Assets/Audio/<System>/
+# and StreamingAssets. candidates.json IS tracked and carries every prompt, so
+# any of these can be regenerated for a few cents; the audio itself does not
+# belong in history forever (the gameplay scene is already 73 of GitHub's 100 MB).
+Assets/Audio/Studio/_Candidates/
+Assets/Audio/Studio/_Candidates.meta
