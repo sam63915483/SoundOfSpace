@@ -11,7 +11,8 @@ using UnityEngine;
 ///                          ray found, riding that object (planet, shuttle,
 ///                          tree…). A miss flies out to `range` in the nearest
 ///                          planet's frame (inheriting your speed) and resets.
-///   LEFT CLICK  (any time) reset — ball removed, rope gone.
+///   LEFT CLICK  (any time) reel the hook back into the muzzle over
+///                          `retractDuration`; firing is locked until it seats.
 ///   RIGHT CLICK (held)     the WINCH. The player's velocity along the rope is
 ///                          set to `reelSpeed` toward the anchor; the sideways
 ///                          share is kept (gravity swings you) with light
@@ -63,7 +64,7 @@ public class GrappleGunController : MonoBehaviour
     [Tooltip("How far the hook can reach (metres). A miss flies out this far (in the nearest planet's frame, inheriting your speed) and then the gun resets itself.")]
     public float range = 1000f;
     [Tooltip("Hook flight speed (m/s).")]
-    public float ballSpeed = 120f;
+    public float ballSpeed = 200f;
     [Tooltip("Optional projectile prefab. Leave empty for the built-in grapnel (GrappleGunModel.BuildHook).")]
     public GameObject ballPrefab;
     [Tooltip("Unused since the built-in grapnel replaced the placeholder sphere (kept so the scene serialization stays put).")]
@@ -98,7 +99,7 @@ public class GrappleGunController : MonoBehaviour
     [SerializeField] AudioClip latchClip;
     [SerializeField, Range(0, 1)] float sfxVolume = 0.7f;
 
-    enum GrappleState { Idle, Flying, Anchored }
+    enum GrappleState { Idle, Flying, Anchored, Retracting }
 
     GameObject _currentGunInstance;
     GameObject _rigRoot;
@@ -120,6 +121,8 @@ public class GrappleGunController : MonoBehaviour
     Vector3 _missVel;              // miss shot: velocity relative to the frame it is parented to
     float _missTravelled;          // miss shot: metres flown so far
     Transform _hookHead;           // the grapnel seated in the barrel (hidden while a shot is out)
+    float _retractElapsed;         // seconds into the reel-back
+    Vector3 _retractStartLocal;    // where the reel-back began, in the hook's parent space (world if none)
     Vector3 _anchorPrevPos;
     Vector3 _anchorVel;
     bool _anchorVelInit;
@@ -171,8 +174,16 @@ public class GrappleGunController : MonoBehaviour
             gameObject.AddComponent<PistolMotor>();
     }
 
+    // The rope is drawn immediately before the frame renders, after every
+    // LateUpdate. CameraTransformFX (order 100) and ViewmodelMotor (150) both
+    // move the gun AFTER this script's LateUpdate would run, so a rope drawn
+    // there started a frame behind the muzzle — the fishing rod hit the same
+    // thing and uses the same fix (FishingRodController.OnBeforeRenderLine).
+    void OnEnable()  { Application.onBeforeRender += UpdateRope; }
+
     void OnDisable()
     {
+        Application.onBeforeRender -= UpdateRope;
         ResetGrapple();
     }
 
@@ -205,23 +216,20 @@ public class GrappleGunController : MonoBehaviour
         if (!uiBusy && TutorialGate.FirePressed())
         {
             if (_state == GrappleState.Idle) Fire();
-            else ResetGrapple();
+            else if (_state != GrappleState.Retracting) BeginRetract();
+            // Retracting: the half-second reel-back doubles as the cooldown.
         }
 
         _reelHeld = _state == GrappleState.Anchored && !uiBusy && TutorialGate.SecondaryFireHeld();
 
+        if (_anchorHadParent && _anchorParent == null) { ResetGrapple(); return; }   // stuck-to thing destroyed
         if (_state == GrappleState.Flying) UpdateFlight();
-        else if (_state == GrappleState.Anchored && _anchorHadParent && _anchorParent == null)
-            ResetGrapple();   // the thing we were stuck to was destroyed
+        else if (_state == GrappleState.Retracting) UpdateRetract();
 
-        // Taut the instant you reel; eases back to a droop when you let go.
-        if (_reelHeld) _sagBlend = 0f;
+        // Taut the instant you reel (and while the hook is reeled back);
+        // eases back to a droop when you let go.
+        if (_reelHeld || _state == GrappleState.Retracting) _sagBlend = 0f;
         else _sagBlend = Mathf.MoveTowards(_sagBlend, 1f, Time.deltaTime / 0.35f);
-    }
-
-    void LateUpdate()
-    {
-        UpdateRope();
     }
 
     void FixedUpdate()
@@ -332,7 +340,7 @@ public class GrappleGunController : MonoBehaviour
             Vector3 stepV = _missVel * dt;
             _ball.transform.position = pos + stepV;
             _missTravelled += stepV.magnitude;
-            if (_missTravelled >= range) ResetGrapple();
+            if (_missTravelled >= range) BeginRetract();
             return;
         }
 
@@ -361,7 +369,39 @@ public class GrappleGunController : MonoBehaviour
         GamepadRumble.Pulse(0.3f, 0.3f, 0.06f);
     }
 
-    /// <summary>Drop the ball and the rope. Safe to call from any state.</summary>
+    /// <summary>Reel the hook back into the muzzle over retractDuration. Firing is locked until it seats.</summary>
+    void BeginRetract()
+    {
+        if (_ball == null) { ResetGrapple(); return; }
+        _state = GrappleState.Retracting;
+        _reelHeld = false;
+        IsReeling = false;
+        _retractElapsed = 0f;
+        Transform parent = _ball.transform.parent;
+        _retractStartLocal = parent != null ? parent.InverseTransformPoint(_ball.transform.position) : _ball.transform.position;
+        _sagBlend = 0f;
+    }
+
+    void UpdateRetract()
+    {
+        if (_ball == null) { ResetGrapple(); return; }
+        _retractElapsed += Time.deltaTime;
+        float u = retractDuration > 0.0001f ? Mathf.Clamp01(_retractElapsed / retractDuration) : 1f;
+        u = u * u * (3f - 2f * u);   // ease in-out: the spool takes up slack then snaps it home
+
+        Transform parent = _ball.transform.parent;
+        Vector3 startWorld = parent != null ? parent.TransformPoint(_retractStartLocal) : _retractStartLocal;
+        Vector3 muzzle = MuzzleWorld(transform.position);
+        Vector3 pos = Vector3.Lerp(startWorld, muzzle, u);
+        Vector3 back = muzzle - pos;
+        if (back.sqrMagnitude > 0.0001f)
+            _ball.transform.rotation = Quaternion.LookRotation(-back.normalized, _ball.transform.up);   // comes home tail-first
+        _ball.transform.position = pos;
+
+        if (u >= 1f) ResetGrapple();   // seats the hook head, unlocks the trigger
+    }
+
+    /// <summary>Drop the hook and the rope instantly. Safe to call from any state.</summary>
     public void ResetGrapple()
     {
         _state = GrappleState.Idle;
@@ -611,4 +651,9 @@ public class GrappleGunController : MonoBehaviour
         }
         return null;
     }
+
+    // (Appended at the END per the serialization convention in CLAUDE.md.)
+    [Header("Reel-back")]
+    [Tooltip("Seconds the hook takes to reel back into the muzzle after a left-click reset or a miss. Also the firing cooldown.")]
+    public float retractDuration = 0.5f;
 }

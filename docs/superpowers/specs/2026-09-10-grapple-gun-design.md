@@ -4,6 +4,8 @@
 
 **Pass 2 (after playtest 1):** rope snaps taut the instant you reel; range 1 km; a miss flies in the nearest planet's frame and inherits the shooter's speed (a fixed world target veered off at random in space — floating origin + orbital speed); built-in low-poly gun + detachable grapnel + drawn hotbar icon (`GrappleGunModel`); rope brown and 6 mm.
 
+**Pass 3:** rope is drawn in `Application.onBeforeRender` (the rod's fix) — `CameraTransformFX` (100) and `ViewmodelMotor` (150) move the gun after any LateUpdate here, so the rope started a frame behind the muzzle. Left click reels the hook back over 0.5 s with a firing lock; hook speed 200 m/s.
+
 ## What it is
 
 A hotbar equippable cloned from the pistol's viewmodel/equip rig with every gun
@@ -13,7 +15,7 @@ right click winches you along the rope to it.
 | Input | State | Effect |
 |---|---|---|
 | Left click | idle | Fire. Ray along the crosshair up to `range` (1 km). The grapnel flies muzzle → hit point at `ballSpeed` (120 m/s) and latches, parented to the collider it hit (planets, shuttle, trees, anything solid). A miss flies out to 1 km in the nearest planet's frame, inheriting your speed, then the gun resets itself. |
-| Left click | any other | Reset: ball destroyed, rope hidden. |
+| Left click | flying / anchored | Reel-back: the hook flies tail-first back into the muzzle over `retractDuration` (0.5 s), rope taut. Firing is locked until it seats, so this doubles as the cooldown. A miss at max range reels back the same way. |
 | Right click (held) | anchored | Winch. Velocity along the rope is set to `reelSpeed` (8 m/s) toward the anchor, easing to a stop inside `holdDistance` (1.5 m) and holding you there. Sideways velocity is kept (pendulum swing) with `swingDamping`; away-from-anchor velocity is cancelled, so the rope never stretches. |
 | Right click released | anchored | Slack: you fall, the ball stays put, rope droops. Hold again to resume. |
 | Unequip / ship piloted / component disabled | any | Reset. You can never be tethered invisibly. |
