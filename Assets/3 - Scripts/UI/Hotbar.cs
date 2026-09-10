@@ -2027,7 +2027,6 @@ public class Hotbar : MonoBehaviour
             {
                 if (id == ItemId.Crystal) iconScale = 1.385f; // (1.8 / 1.3)
                 else if (id == ItemId.Pistol) iconScale = 1.3f;
-                else if (id == ItemId.GrappleGun) iconScale = 1.3f;
                 else if (id == ItemId.FishBag) iconScale = 1.3f;
             }
             var iconRT = v.itemIcon.rectTransform;

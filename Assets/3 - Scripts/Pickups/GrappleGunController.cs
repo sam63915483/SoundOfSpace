@@ -6,10 +6,11 @@ using UnityEngine;
 /// PistolController's viewmodel / equip rig with every gun part stripped
 /// (no ammo, reload, ADS, damage, tracer, alert). What is left:
 ///
-///   LEFT CLICK  (idle)     fire the ball along the crosshair, up to `range`.
+///   LEFT CLICK  (idle)     fire the grapnel along the crosshair, up to `range`.
 ///                          It flies at `ballSpeed` and LATCHES to whatever the
 ///                          ray found, riding that object (planet, shuttle,
-///                          tree…). A miss flies out to `range` and resets.
+///                          tree…). A miss flies out to `range` in the nearest
+///                          planet's frame (inheriting your speed) and resets.
 ///   LEFT CLICK  (any time) reset — ball removed, rope gone.
 ///   RIGHT CLICK (held)     the WINCH. The player's velocity along the rope is
 ///                          set to `reelSpeed` toward the anchor; the sideways
@@ -36,7 +37,7 @@ public class GrappleGunController : MonoBehaviour
     public Sprite hotbarIcon;
 
     [Header("Gun Model")]
-    [Tooltip("Viewmodel prefab. The prototype borrows the pistol mesh — swap here for real grapple art.")]
+    [Tooltip("Optional viewmodel prefab. Leave EMPTY to use the built-in low-poly grapple gun (GrappleGunModel). A prefab should carry children named \"Muzzle\" and, optionally, \"HookHead\" (hidden while a shot is out).")]
     public GameObject gunPrefab;
     public Transform gunHoldPosition;
 
@@ -59,16 +60,17 @@ public class GrappleGunController : MonoBehaviour
     public string muzzleChildName = "Muzzle";
 
     [Header("Ball")]
-    [Tooltip("How far the ball can reach (metres). Beyond this a shot is a miss and the gun resets itself.")]
-    public float range = 40f;
-    [Tooltip("Ball flight speed (m/s). 60 crosses the full range in well under a second.")]
-    public float ballSpeed = 60f;
-    [Tooltip("Optional ball prefab. Leave empty for a plain sphere.")]
+    [Tooltip("How far the hook can reach (metres). A miss flies out this far (in the nearest planet's frame, inheriting your speed) and then the gun resets itself.")]
+    public float range = 1000f;
+    [Tooltip("Hook flight speed (m/s).")]
+    public float ballSpeed = 120f;
+    [Tooltip("Optional projectile prefab. Leave empty for the built-in grapnel (GrappleGunModel.BuildHook).")]
     public GameObject ballPrefab;
-    [Tooltip("Diameter (metres) of the plain sphere when no ballPrefab is set.")]
+    [Tooltip("Unused since the built-in grapnel replaced the placeholder sphere (kept so the scene serialization stays put).")]
     public float ballDiameter = 0.12f;
-    [Tooltip("Optional material for the plain sphere. Leave empty for a Standard material tinted ballColor.")]
+    [Tooltip("Unused — see ballDiameter.")]
     public Material ballMaterial;
+    [Tooltip("Unused — see ballDiameter.")]
     public Color ballColor = new Color(0.9f, 0.3f, 0.15f, 1f);
 
     [Header("Winch (hold right click)")]
@@ -85,10 +87,10 @@ public class GrappleGunController : MonoBehaviour
 
     [Header("Rope")]
     public Material lineMaterial;
-    public float lineWidth = 0.02f;
-    public Color lineColor = new Color(0.85f, 0.85f, 0.8f, 0.9f);
+    public float lineWidth = 0.006f;
+    public Color lineColor = new Color(0.45f, 0.30f, 0.14f, 1f);
     [Range(2, 30)] public int lineSegments = 15;
-    [Tooltip("Droop of the slack rope as a fraction of its length. Goes to 0 while reeling.")]
+    [Tooltip("Droop of the slack rope as a fraction of its length (capped at a few metres). Snaps to 0 the instant you reel.")]
     public float slackSag = 0.2f;
 
     [Header("Sound Effects")]
@@ -115,7 +117,9 @@ public class GrappleGunController : MonoBehaviour
     Transform _anchorParent;       // what the ball rides; null for a miss shot
     bool _anchorHadParent;         // parent destroyed under us ⇒ reset
     Vector3 _anchorLocal;          // target in _anchorParent's local space
-    Vector3 _anchorWorld;          // miss target (world)
+    Vector3 _missVel;              // miss shot: velocity relative to the frame it is parented to
+    float _missTravelled;          // miss shot: metres flown so far
+    Transform _hookHead;           // the grapnel seated in the barrel (hidden while a shot is out)
     Vector3 _anchorPrevPos;
     Vector3 _anchorVel;
     bool _anchorVelInit;
@@ -141,6 +145,13 @@ public class GrappleGunController : MonoBehaviour
     public bool IsAnchored => _state == GrappleState.Anchored;
     /// True while the winch is actually pulling this physics step.
     public bool IsReeling { get; private set; }
+
+    void Awake()
+    {
+        // The hotbar reads hotbarIcon when it builds its registry; give it the
+        // built-in side-view sprite if nothing is assigned in the Inspector.
+        if (hotbarIcon == null) hotbarIcon = GrappleGunModel.BuildIcon();
+    }
 
     void Start()
     {
@@ -203,8 +214,9 @@ public class GrappleGunController : MonoBehaviour
         else if (_state == GrappleState.Anchored && _anchorHadParent && _anchorParent == null)
             ResetGrapple();   // the thing we were stuck to was destroyed
 
-        float sagTarget = _reelHeld ? 0f : 1f;
-        _sagBlend = Mathf.MoveTowards(_sagBlend, sagTarget, Time.deltaTime / 0.2f);
+        // Taut the instant you reel; eases back to a droop when you let go.
+        if (_reelHeld) _sagBlend = 0f;
+        else _sagBlend = Mathf.MoveTowards(_sagBlend, 1f, Time.deltaTime / 0.35f);
     }
 
     void LateUpdate()
@@ -267,22 +279,38 @@ public class GrappleGunController : MonoBehaviour
 
         _anchorParent = null;
         _anchorHadParent = false;
+        Transform frame = null;
         if (Physics.Raycast(origin, forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore)
             && !hit.collider.transform.IsChildOf(transform))
         {
             _anchorParent = hit.collider.transform;
             _anchorHadParent = true;
-            _anchorLocal = _anchorParent.InverseTransformPoint(hit.point);
+            // Bury the prongs: the hook's origin (rope end) sits a little short of the surface.
+            _anchorLocal = _anchorParent.InverseTransformPoint(hit.point - forward * (GrappleGunModel.HookLength * 0.6f));
+            frame = _anchorParent;
         }
         else
         {
-            _anchorWorld = origin + forward * range;
+            // A miss flies in the NEAREST PLANET'S frame and inherits the
+            // shooter's speed relative to it. A fixed world-space target was
+            // wrong twice over: the floating origin shifts the world under it,
+            // and in orbit the player is moving at tens of m/s, so the hook
+            // appeared to veer off at random.
+            CelestialBody body = NearestBody(origin);
+            Vector3 shooterVel = Vector3.zero;
+            if (_playerController != null && _playerController.Rigidbody != null)
+                shooterVel = _playerController.Rigidbody.velocity;
+            if (body != null) { frame = body.transform; shooterVel -= body.velocity; }
+            _missVel = forward * ballSpeed + shooterVel;
+            _missTravelled = 0f;
         }
 
         Vector3 start = MuzzleWorld(origin + forward * 0.5f);
         _ball = CreateBall();
         _ball.transform.position = start;
-        if (_anchorParent != null) _ball.transform.SetParent(_anchorParent, true);
+        _ball.transform.rotation = Quaternion.LookRotation(forward, cam.transform.up);
+        if (frame != null) _ball.transform.SetParent(frame, true);
+        if (_hookHead != null) _hookHead.gameObject.SetActive(false);
 
         _state = GrappleState.Flying;
         _sagBlend = 0f;   // the rope pays out straight behind the ball
@@ -295,16 +323,29 @@ public class GrappleGunController : MonoBehaviour
         if (_ball == null) { ResetGrapple(); return; }
         if (_anchorHadParent && _anchorParent == null) { ResetGrapple(); return; }
 
-        Vector3 target = _anchorParent != null ? _anchorParent.TransformPoint(_anchorLocal) : _anchorWorld;
         Vector3 pos = _ball.transform.position;
-        float step = ballSpeed * Time.deltaTime;
-        float remaining = Vector3.Distance(pos, target);
+        float dt = Time.deltaTime;
+
+        if (_anchorParent == null)
+        {
+            // Miss: straight flight in the frame it is parented to, out to range.
+            Vector3 stepV = _missVel * dt;
+            _ball.transform.position = pos + stepV;
+            _missTravelled += stepV.magnitude;
+            if (_missTravelled >= range) ResetGrapple();
+            return;
+        }
+
+        Vector3 target = _anchorParent.TransformPoint(_anchorLocal);
+        float step = ballSpeed * dt;
+        Vector3 to = target - pos;
+        float remaining = to.magnitude;
+        if (remaining > 0.001f) _ball.transform.rotation = Quaternion.LookRotation(to / remaining, _ball.transform.up);
 
         if (remaining <= step)
         {
             _ball.transform.position = target;
-            if (_anchorParent != null) Latch();
-            else ResetGrapple();   // a miss: reached max range, nothing to hold
+            Latch();
             return;
         }
         _ball.transform.position = Vector3.MoveTowards(pos, target, step);
@@ -332,6 +373,23 @@ public class GrappleGunController : MonoBehaviour
         if (_ball != null) Destroy(_ball);
         _ball = null;
         if (_line != null) _line.enabled = false;
+        if (_hookHead != null) _hookHead.gameObject.SetActive(true);
+    }
+
+    static CelestialBody NearestBody(Vector3 p)
+    {
+        var bodies = NBodySimulation.Bodies;
+        CelestialBody nearest = null;
+        float best = float.PositiveInfinity;
+        if (bodies == null) return null;
+        for (int i = 0; i < bodies.Length; i++)
+        {
+            var b = bodies[i];
+            if (b == null) continue;
+            float d = (b.transform.position - p).sqrMagnitude;
+            if (d < best) { best = d; nearest = b; }
+        }
+        return nearest;
     }
 
     GameObject CreateBall()
@@ -346,20 +404,9 @@ public class GrappleGunController : MonoBehaviour
         }
         else
         {
-            go = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            var col = go.GetComponent<Collider>();
-            if (col != null) Destroy(col);
-            go.transform.localScale = Vector3.one * ballDiameter;
-            var r = go.GetComponent<Renderer>();
-            if (r != null)
-            {
-                if (ballMaterial != null) r.sharedMaterial = ballMaterial;
-                else r.material.color = ballColor;
-            }
+            go = GrappleGunModel.BuildHook(null);
         }
-        go.name = "GrappleBall";
-        foreach (var r in go.GetComponentsInChildren<Renderer>(true))
-            r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        go.name = "GrappleHook";
         return go;
     }
 
@@ -410,7 +457,10 @@ public class GrappleGunController : MonoBehaviour
         Vector3 end = _ball.transform.position;
         Vector3 droopDir = -transform.up;   // the player is aligned to local gravity
         float distance = Vector3.Distance(start, end);
-        Vector3 control = (start + end) * 0.5f + droopDir * (distance * slackSag * _sagBlend);
+        // Droop as a fraction of length, but never more than a few metres —
+        // a kilometre of rope would otherwise sag a hundred metres.
+        float droop = Mathf.Min(distance * slackSag, 2.5f) * _sagBlend;
+        Vector3 control = (start + end) * 0.5f + droopDir * droop;
 
         for (int i = 0; i < lineSegments; i++)
         {
@@ -425,7 +475,7 @@ public class GrappleGunController : MonoBehaviour
 
     void EquipGun()
     {
-        if (gunPrefab == null || gunHoldPosition == null) return;
+        if (gunHoldPosition == null) return;
         if (_axeController          != null && _axeController.IsEquipped) return;
         if (_fishingRodController   != null && _fishingRodController.IsEquipped) return;
         if (_waterBottleController  != null && _waterBottleController.IsEquipped) return;
@@ -460,7 +510,7 @@ public class GrappleGunController : MonoBehaviour
         pivotGo.transform.SetParent(rigGo.transform, false);
         _pivot = pivotGo.transform;
 
-        _currentGunInstance = Instantiate(gunPrefab, _pivot);
+        _currentGunInstance = gunPrefab != null ? Instantiate(gunPrefab, _pivot) : GrappleGunModel.BuildGun(_pivot);
         _currentGunInstance.transform.localPosition = gripOffset;
         _currentGunInstance.transform.localRotation = Quaternion.identity;
 
@@ -471,6 +521,7 @@ public class GrappleGunController : MonoBehaviour
         _resolvedMuzzle = null;
         if (!string.IsNullOrEmpty(muzzleChildName))
             _resolvedMuzzle = FindChildByName(_currentGunInstance.transform, muzzleChildName);
+        _hookHead = FindChildByName(_currentGunInstance.transform, "HookHead");
 
         Quaternion rest     = Quaternion.Euler(holdRotationOffset);
         Quaternion startRot = rest * Quaternion.AngleAxis(-equipStartAngle, equipRotationAxis);
@@ -502,6 +553,7 @@ public class GrappleGunController : MonoBehaviour
         _currentGunInstance = null;
         _pivot = null;
         _resolvedMuzzle = null;
+        _hookHead = null;
         _equipCoroutine = StartCoroutine(AnimateEquipPoseOn(pivot, startPos, endPos, startRot, endRot, equipDuration, () =>
         {
             if (pivotGo != null) Destroy(pivotGo);
