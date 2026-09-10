@@ -57,6 +57,7 @@ public class LootBoxStarterItem : MonoBehaviour
         {
             case Hotbar.ItemId.Axe:         { var c = Object.FindObjectOfType<AxeController>(true);         if (c != null) c.Unlock(); break; }
             case Hotbar.ItemId.Pistol:      { var c = Object.FindObjectOfType<PistolController>(true);      if (c != null) c.Unlock(); break; }
+            case Hotbar.ItemId.GrappleGun:  { var c = Object.FindObjectOfType<GrappleGunController>(true);  if (c != null) c.Unlock(); break; }
             case Hotbar.ItemId.FishingRod:  { var c = Object.FindObjectOfType<FishingRodController>(true);  if (c != null) c.Unlock(); break; }
             case Hotbar.ItemId.Guitar:      { var c = Object.FindObjectOfType<GuitarController>(true);      if (c != null) c.SetUnlocked(true); break; }
             case Hotbar.ItemId.WaterBottle: { var c = Object.FindObjectOfType<WaterBottleController>(true); if (c != null) c.Unlock(); break; }

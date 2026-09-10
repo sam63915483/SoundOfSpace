@@ -727,6 +727,9 @@ public class EquipmentSave
     // close enough to the relevant NPC / pickup.
     public bool fishingRodUnlocked = true;
     public bool waterBottleUnlocked = true;
+    // Grapple gun prototype (2026-09-10). Live rope state is deliberately not saved.
+    public bool grappleEquipped;
+    public bool grappleUnlocked;
 }
 
 [Serializable]

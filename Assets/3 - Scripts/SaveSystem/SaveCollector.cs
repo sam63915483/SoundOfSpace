@@ -1113,6 +1113,12 @@ public static class SaveCollector
             s.pistolUnlocked = pistol.IsUnlocked;
             s.pistolAmmo     = pistol.CurrentAmmo;
         }
+        var grapple = Object.FindObjectOfType<GrappleGunController>();
+        if (grapple != null)
+        {
+            s.grappleEquipped = grapple.IsEquipped;
+            s.grappleUnlocked = grapple.IsUnlocked;
+        }
         var pcForJetpack = Object.FindObjectOfType<PlayerController>(true);
         if (pcForJetpack != null) s.jetpackUnlocked = pcForJetpack.JetpackUnlocked;
     }
@@ -1905,6 +1911,13 @@ public static class SaveCollector
             if (s.pistolEquipped && !pistol.IsEquipped) pistol.ForceEquipPistol();
             else if (!s.pistolEquipped && pistol.IsEquipped) pistol.ForceUnequipPistol();
             pistol.SetAmmo(s.pistolAmmo);
+        }
+        var grapple = Object.FindObjectOfType<GrappleGunController>();
+        if (grapple != null)
+        {
+            if (s.grappleUnlocked) grapple.Unlock();
+            if (s.grappleEquipped && !grapple.IsEquipped) grapple.ForceEquipGrapple();
+            else if (!s.grappleEquipped && grapple.IsEquipped) grapple.ForceUnequipGrapple();
         }
         var pcApplyJetpack = Object.FindObjectOfType<PlayerController>(true);
         if (pcApplyJetpack != null && s.jetpackUnlocked) pcApplyJetpack.UnlockJetpack();

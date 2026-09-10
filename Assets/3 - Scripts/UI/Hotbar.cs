@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun }
 
     public struct Slot
     {
@@ -190,6 +190,7 @@ public class Hotbar : MonoBehaviour
     GuitarController guitar;
     AxeController axe;
     PistolController pistol;
+    GrappleGunController grapple;
     Ship ship;
     bool _wasInDialogue;
     bool _wasPhoneOpen;
@@ -476,6 +477,7 @@ public class Hotbar : MonoBehaviour
                 if (guitar == null) guitar = FindObjectOfType<GuitarController>(true);
                 if (axe == null) axe = FindObjectOfType<AxeController>(true);
                 if (pistol == null) pistol = FindObjectOfType<PistolController>(true);
+                if (grapple == null) grapple = FindObjectOfType<GrappleGunController>(true);
                 if (ship == null) ship = FindObjectOfType<Ship>(true);
 
                 // (Re)build registry whenever a previously-missing controller
@@ -507,6 +509,7 @@ public class Hotbar : MonoBehaviour
                 case ItemId.Guitar:      if (_registry[i].Controller != (MonoBehaviour)guitar) return true; break;
                 case ItemId.Axe:         if (_registry[i].Controller != (MonoBehaviour)axe) return true; break;
                 case ItemId.Pistol:      if (_registry[i].Controller != (MonoBehaviour)pistol) return true; break;
+                case ItemId.GrappleGun:  if (_registry[i].Controller != (MonoBehaviour)grapple) return true; break;
             }
         }
         return false;
@@ -1627,6 +1630,12 @@ public class Hotbar : MonoBehaviour
                         IsEquipped   = () => pistol != null && pistol.IsEquipped,
                         ForceEquip   = () => { if (pistol != null) pistol.ForceEquipPistol(); },
                         ForceUnequip = () => { if (pistol != null) pistol.ForceUnequipPistol(); } },
+            new Entry { Id = ItemId.GrappleGun,  DisplayName = "GRAPPLE", Controller = grapple,
+                        Icon = grapple != null ? grapple.hotbarIcon : null,
+                        IsUnlocked   = () => grapple != null && grapple.IsUnlocked,
+                        IsEquipped   = () => grapple != null && grapple.IsEquipped,
+                        ForceEquip   = () => { if (grapple != null) grapple.ForceEquipGrapple(); },
+                        ForceUnequip = () => { if (grapple != null) grapple.ForceUnequipGrapple(); } },
         };
     }
 
@@ -2018,6 +2027,7 @@ public class Hotbar : MonoBehaviour
             {
                 if (id == ItemId.Crystal) iconScale = 1.385f; // (1.8 / 1.3)
                 else if (id == ItemId.Pistol) iconScale = 1.3f;
+                else if (id == ItemId.GrappleGun) iconScale = 1.3f;
                 else if (id == ItemId.FishBag) iconScale = 1.3f;
             }
             var iconRT = v.itemIcon.rectTransform;
