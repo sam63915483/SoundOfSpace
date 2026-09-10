@@ -12,6 +12,8 @@ A hotbar equippable cloned from the pistol's viewmodel/equip rig with every gun
 part removed. It fires a ball that sticks to what you aimed at, then a held
 right click winches you along the rope to it.
 
+**Pass 4 — ONE BUTTON.** Press and hold left click: the hook fires; the moment it lands the winch runs at 1.5× (`reelSpeed × pullSpeedMultiplier`); keep holding to hang at the anchor. Release at any point (in flight, pulling, hanging) and the hook frees and reels home over 0.5 s (cooldown). Right click does nothing. The table below is the original two-button spec kept for the mechanics; the input column is superseded.
+
 | Input | State | Effect |
 |---|---|---|
 | Left click | idle | Fire. Ray along the crosshair up to `range` (1 km). The grapnel flies muzzle → hit point at `ballSpeed` (120 m/s) and latches, parented to the collider it hit (planets, shuttle, trees, anything solid). A miss flies out to 1 km in the nearest planet's frame, inheriting your speed, then the gun resets itself. |

@@ -6,20 +6,22 @@ using UnityEngine;
 /// PistolController's viewmodel / equip rig with every gun part stripped
 /// (no ammo, reload, ADS, damage, tracer, alert). What is left:
 ///
-///   LEFT CLICK  (idle)     fire the grapnel along the crosshair, up to `range`.
+/// ONE BUTTON (Sam, 2026-09-10 pass 4):
+///   LEFT CLICK  press      fire the grapnel along the crosshair, up to `range`.
 ///                          It flies at `ballSpeed` and LATCHES to whatever the
 ///                          ray found, riding that object (planet, shuttle,
 ///                          tree…). A miss flies out to `range` in the nearest
-///                          planet's frame (inheriting your speed) and resets.
-///   LEFT CLICK  (any time) reel the hook back into the muzzle over
-///                          `retractDuration`; firing is locked until it seats.
-///   RIGHT CLICK (held)     the WINCH. The player's velocity along the rope is
-///                          set to `reelSpeed` toward the anchor; the sideways
+///                          planet's frame (inheriting your speed) and reels back.
+///   LEFT CLICK  held       once latched, the WINCH runs at once: the player's
+///                          velocity along the rope is set to `reelSpeed ×
+///                          pullSpeedMultiplier` toward the anchor; the sideways
 ///                          share is kept (gravity swings you) with light
 ///                          damping; velocity AWAY from the anchor is cancelled
 ///                          so the rope never stretches. Within `holdDistance`
-///                          you stop and hang there, pinned, until you release.
-///                          Release = slack: you fall, the ball stays put.
+///                          you stop and hang there, pinned, as long as you hold.
+///   LEFT CLICK  release    at any point (in flight, pulling, hanging): the hook
+///                          frees and reels tail-first back into the muzzle over
+///                          `retractDuration`. Firing is locked until it seats.
 ///
 /// The winch is the fishing bobber's velocity-level line constraint turned
 /// around (Bobber.cs ~line 976): it never writes a position, so PhysX
@@ -74,8 +76,8 @@ public class GrappleGunController : MonoBehaviour
     [Tooltip("Unused — see ballDiameter.")]
     public Color ballColor = new Color(0.9f, 0.3f, 0.15f, 1f);
 
-    [Header("Winch (hold right click)")]
-    [Tooltip("Reel-in speed along the rope (m/s).")]
+    [Header("Winch (hold left click after the hook lands)")]
+    [Tooltip("Base winch speed along the rope (m/s). The actual pull is this × pullSpeedMultiplier.")]
     public float reelSpeed = 8f;
     [Tooltip("Distance from the anchor (metres) where you stop and hang.")]
     public float holdDistance = 1.5f;
@@ -213,14 +215,20 @@ public class GrappleGunController : MonoBehaviour
 
         bool uiBusy = PlayerPhoneUI.IsOpen || AIChatScreen.IsTypingActive || TutorialGate.UISelectionActive();
 
-        if (!uiBusy && TutorialGate.FirePressed())
+        bool fireHeld = !uiBusy && TutorialGate.FireHeld();
+        if (_state == GrappleState.Idle)
         {
-            if (_state == GrappleState.Idle) Fire();
-            else if (_state != GrappleState.Retracting) BeginRetract();
-            // Retracting: the half-second reel-back doubles as the cooldown.
+            if (!uiBusy && TutorialGate.FirePressed()) Fire();
         }
+        else if (_state == GrappleState.Flying || _state == GrappleState.Anchored)
+        {
+            // Letting go frees the hook wherever it is — mid-flight, pulling or hanging.
+            if (!fireHeld) BeginRetract();
+        }
+        // Retracting: the half-second reel-back doubles as the cooldown; a
+        // press during it does nothing, and the next fire needs a fresh press.
 
-        _reelHeld = _state == GrappleState.Anchored && !uiBusy && TutorialGate.SecondaryFireHeld();
+        _reelHeld = _state == GrappleState.Anchored && fireHeld;
 
         if (_anchorHadParent && _anchorParent == null) { ResetGrapple(); return; }   // stuck-to thing destroyed
         if (_state == GrappleState.Flying) UpdateFlight();
@@ -267,7 +275,8 @@ public class GrappleGunController : MonoBehaviour
         // Reel at full speed until the hold band, then ease to a stop. Never
         // negative: velocity away from the anchor is simply removed, so the
         // rope never stretches and gravity can't drag you back out.
-        float want = Mathf.Clamp((dist - holdDistance) * holdSnap, 0f, reelSpeed);
+        float pull = reelSpeed * pullSpeedMultiplier;
+        float want = Mathf.Clamp((dist - holdDistance) * holdSnap, 0f, pull);
         bool held = dist <= holdDistance + 0.25f;
         float damping = swingDamping + (held ? heldSwingDamping : 0f);
         lateral *= Mathf.Exp(-damping * Time.fixedDeltaTime);
@@ -654,6 +663,8 @@ public class GrappleGunController : MonoBehaviour
 
     // (Appended at the END per the serialization convention in CLAUDE.md.)
     [Header("Reel-back")]
-    [Tooltip("Seconds the hook takes to reel back into the muzzle after a left-click reset or a miss. Also the firing cooldown.")]
+    [Tooltip("Seconds the hook takes to reel back into the muzzle after you release, or after a miss. Also the firing cooldown.")]
     public float retractDuration = 0.5f;
+    [Tooltip("The pull while you hold the button runs at reelSpeed × this. Sam: 1.5× the winch speed.")]
+    public float pullSpeedMultiplier = 1.5f;
 }
