@@ -63,9 +63,9 @@ public class GrappleGunController : MonoBehaviour
     public string muzzleChildName = "Muzzle";
 
     [Header("Ball")]
-    [Tooltip("How far the hook can reach (metres). A miss flies out this far (in the nearest planet's frame, inheriting your speed) and then the gun resets itself.")]
-    public float range = 1000f;
-    [Tooltip("Hook flight speed (m/s).")]
+    [Tooltip("How far the hook can reach (metres). 30 km reaches the next planet. A miss flies out this far (in the nearest planet's frame, inheriting your speed) and then reels back.")]
+    public float range = 30000f;
+    [Tooltip("Minimum hook flight speed (m/s). Long shots go faster so they land within maxFlightSeconds.")]
     public float ballSpeed = 200f;
     [Tooltip("Optional projectile prefab. Leave empty for the built-in grapnel (GrappleGunModel.BuildHook).")]
     public GameObject ballPrefab;
@@ -122,6 +122,7 @@ public class GrappleGunController : MonoBehaviour
     Vector3 _anchorLocal;          // target in _anchorParent's local space
     Vector3 _missVel;              // miss shot: velocity relative to the frame it is parented to
     float _missTravelled;          // miss shot: metres flown so far
+    float _flightSpeed;            // this shot's speed (ballSpeed, or faster for a long shot)
     Transform _hookHead;           // the grapnel seated in the barrel (hidden while a shot is out)
     float _retractElapsed;         // seconds into the reel-back
     Vector3 _retractStartLocal;    // where the reel-back began, in the hook's parent space (world if none)
@@ -247,13 +248,16 @@ public class GrappleGunController : MonoBehaviour
 
         Vector3 anchor = _ball.transform.position;
 
-        // Anchor velocity by finite difference (same rule as the bobber's rod
-        // tip): a jump of metres in one step is an origin shift or teleport,
-        // not motion — keep the previous estimate rather than spiking.
+        // Anchor velocity by finite difference (the bobber's rod-tip rule): a
+        // jump far beyond what last step's velocity predicts is an origin shift
+        // or teleport, not motion — keep the previous estimate rather than
+        // spiking. Measured against the PREDICTED step, not zero, so a planet
+        // moving at orbital speed (metres per step) still tracks.
         if (_anchorVelInit)
         {
             Vector3 d = anchor - _anchorPrevPos;
-            if (d.sqrMagnitude < 25f) _anchorVel = d / Time.fixedDeltaTime;
+            Vector3 surprise = d - _anchorVel * Time.fixedDeltaTime;
+            if (surprise.sqrMagnitude < 25f) _anchorVel = d / Time.fixedDeltaTime;
         }
         _anchorPrevPos = anchor;
         _anchorVelInit = true;
@@ -305,6 +309,7 @@ public class GrappleGunController : MonoBehaviour
             // Bury the prongs: the hook's origin (rope end) sits a little short of the surface.
             _anchorLocal = _anchorParent.InverseTransformPoint(hit.point - forward * (GrappleGunModel.HookLength * 0.6f));
             frame = _anchorParent;
+            _flightSpeed = FlightSpeedFor(hit.distance);
         }
         else
         {
@@ -318,7 +323,8 @@ public class GrappleGunController : MonoBehaviour
             if (_playerController != null && _playerController.Rigidbody != null)
                 shooterVel = _playerController.Rigidbody.velocity;
             if (body != null) { frame = body.transform; shooterVel -= body.velocity; }
-            _missVel = forward * ballSpeed + shooterVel;
+            _flightSpeed = FlightSpeedFor(range);
+            _missVel = forward * _flightSpeed + shooterVel;
             _missTravelled = 0f;
         }
 
@@ -354,7 +360,7 @@ public class GrappleGunController : MonoBehaviour
         }
 
         Vector3 target = _anchorParent.TransformPoint(_anchorLocal);
-        float step = ballSpeed * dt;
+        float step = _flightSpeed * dt;
         Vector3 to = target - pos;
         float remaining = to.magnitude;
         if (remaining > 0.001f) _ball.transform.rotation = Quaternion.LookRotation(to / remaining, _ball.transform.up);
@@ -423,6 +429,14 @@ public class GrappleGunController : MonoBehaviour
         _ball = null;
         if (_line != null) _line.enabled = false;
         if (_hookHead != null) _hookHead.gameObject.SetActive(true);
+    }
+
+    /// <summary>A short shot flies at ballSpeed; a long one goes as fast as it must to land within maxFlightSeconds.</summary>
+    float FlightSpeedFor(float distance)
+    {
+        float floor = ballSpeed;
+        if (maxFlightSeconds > 0.01f) floor = Mathf.Max(floor, distance / maxFlightSeconds);
+        return floor;
     }
 
     static CelestialBody NearestBody(Vector3 p)
@@ -667,4 +681,6 @@ public class GrappleGunController : MonoBehaviour
     public float retractDuration = 0.5f;
     [Tooltip("The pull while you hold the button runs at reelSpeed × this. Sam: 1.5× the winch speed.")]
     public float pullSpeedMultiplier = 1.5f;
+    [Tooltip("Longest a shot may take to land. Shots farther than ballSpeed × this fly faster so a 30 km shot still lands in this many seconds.")]
+    public float maxFlightSeconds = 3f;
 }
