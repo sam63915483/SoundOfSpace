@@ -325,6 +325,17 @@ Sells the guitar with a choice panel.
 
 ## §13 Combat
 
+> **🔒 VAULTED 2026-09-10 — `FeatureVault.Enemies = false`.** Everything in this
+> section is built and intact but switched OFF: no enemies spawn (live, from a
+> save, or as a multiplayer puppet), `EnemyController` self-destructs as a
+> backstop, and `EnemyDetectionHUD`, `KillstreakManager`, `KillstreakHUD` and
+> `EnemySync` are never created — so none of their `Update`s run. Sam's call:
+> "they arent that good", parked until he has time to make them better. The
+> weapons, the ragdoll builders, `TorchAura`, `VillageWard` and the whole save
+> schema deliberately do NOT follow the flag. Full gate list and restore steps:
+> `docs/VAULTED_SYSTEMS.md`. Read the rest of this section as "how it works when
+> the flag is true".
+
 `EnemyController` (per-enemy) + `EnemySpawner` (singleton) + `EnemyHealthBar` UI. Damage sources:
 - `AxeController.ApplyHit(EnemyController, Vector3)` — melee, 34 dmg, 3 hits to kill.
 - `PistolController.TriggerShot()` — hitscan, 50 dmg, 2 shots to kill.

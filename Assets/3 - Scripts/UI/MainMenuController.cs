@@ -1152,9 +1152,11 @@ public class MainMenuController : MonoBehaviour
         // spawn in builds (trap #1).
         if (VelocityMarkersHUD.Instance == null) { var go = new GameObject("VelocityMarkersHUD"); DontDestroyOnLoad(go); go.AddComponent<VelocityMarkersHUD>(); }
         tick("velocity markers"); yield return null;
-        if (KillstreakManager.Instance == null) { var go = new GameObject("KillstreakManager"); DontDestroyOnLoad(go); go.AddComponent<KillstreakManager>(); }
+        // Enemies VAULTED 2026-09-10 (FeatureVault.Enemies) - the killstreak pair
+        // and the threat-arrow HUD below are not seeded while it's off.
+        if (FeatureVault.Enemies && KillstreakManager.Instance == null) { var go = new GameObject("KillstreakManager"); DontDestroyOnLoad(go); go.AddComponent<KillstreakManager>(); }
         tick("killstreak mgr");   yield return null;
-        if (KillstreakHUD.Instance == null) { var go = new GameObject("KillstreakHUD"); DontDestroyOnLoad(go); go.AddComponent<KillstreakHUD>(); }
+        if (FeatureVault.Enemies && KillstreakHUD.Instance == null) { var go = new GameObject("KillstreakHUD"); DontDestroyOnLoad(go); go.AddComponent<KillstreakHUD>(); }
         tick("killstreak HUD");   yield return null;
         if (PickupUIManager.Instance == null) { var go = new GameObject("PickupUIManager"); DontDestroyOnLoad(go); go.AddComponent<PickupUIManager>(); }
         tick("pickup UI");        yield return null;
@@ -1188,7 +1190,7 @@ public class MainMenuController : MonoBehaviour
         tick("photo library");    yield return null;
         if (PhotoGalleryUI.Instance == null) { var go = new GameObject("PhotoGalleryUI"); DontDestroyOnLoad(go); go.AddComponent<PhotoGalleryUI>(); }
         tick("photo gallery");    yield return null;
-        if (EnemyDetectionHUD.Instance == null) { var go = new GameObject("EnemyDetectionHUD"); DontDestroyOnLoad(go); go.AddComponent<EnemyDetectionHUD>(); }
+        if (FeatureVault.Enemies && EnemyDetectionHUD.Instance == null) { var go = new GameObject("EnemyDetectionHUD"); DontDestroyOnLoad(go); go.AddComponent<EnemyDetectionHUD>(); }   // VAULTED 2026-09-10
         tick("threat indicator"); yield return null;
     }
 
@@ -1467,13 +1469,13 @@ public class MainMenuController : MonoBehaviour
             DontDestroyOnLoad(go);
             go.AddComponent<ShipNameHUD>();
         }
-        if (KillstreakManager.Instance == null)
+        if (FeatureVault.Enemies && KillstreakManager.Instance == null)   // VAULTED 2026-09-10
         {
             var go = new GameObject("KillstreakManager");
             DontDestroyOnLoad(go);
             go.AddComponent<KillstreakManager>();
         }
-        if (KillstreakHUD.Instance == null)
+        if (FeatureVault.Enemies && KillstreakHUD.Instance == null)   // VAULTED 2026-09-10
         {
             var go = new GameObject("KillstreakHUD");
             DontDestroyOnLoad(go);

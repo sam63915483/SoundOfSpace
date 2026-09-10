@@ -110,6 +110,9 @@ public class EnemySync : MonoBehaviour
     static void AutoCreate()
     {
         if (!FeatureVault.Multiplayer) return;
+        // VAULTED 2026-09-10 - with no enemies on the host there is nothing to
+        // mirror, so the whole channel (and its per-frame tick) stays off.
+        if (!FeatureVault.Enemies) return;
         if (Instance != null) return;
         // Deliberately does NOT skip MainMenu, so it never needs seeding in
         // EnsureGameplaySingletons — the same dodge WorldSync and StorageSync use
@@ -121,6 +124,7 @@ public class EnemySync : MonoBehaviour
 
     void Awake()
     {
+        if (!FeatureVault.Enemies) { Destroy(gameObject); return; }   // VAULTED
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         SceneManager.sceneLoaded += OnSceneLoaded;

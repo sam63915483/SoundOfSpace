@@ -299,6 +299,51 @@ public static class FeatureVault
     /// true (and SolarMap will fight it for M) only to compare.
     public static readonly bool LegacySolarMap = false;
 
+    /// THE ENEMIES — the whole hostile-alien layer: the standing night field
+    /// EnemySpawner maintains around the player, every EnemyController that
+    /// walks out of it (stealth AI, vision cones, spit attack, sunburn,
+    /// ragdolls, contact damage to NPCs), the threat-arrow HUD, the killstreak
+    /// banner, and the multiplayer enemy sync that mirrors the field to a guest.
+    ///
+    /// Vaulted 2026-09-10 at Sam's request: "i just dont wanna deal with them
+    /// right now and they arent that good... until i have enough time to
+    /// actually make them better." Nothing failed and nothing is deleted.
+    ///
+    /// Gated at CREATION, the same way HALCommentary is, so there is no
+    /// per-frame cost left to pay:
+    ///   - EnemySpawner keeps its Instance (the save still reads its timers)
+    ///     but disables itself in Awake, so the population fill loop never
+    ///     ticks. SpawnFromSave and SpawnNetworkPuppet - the other two ways an
+    ///     enemy can come into being - early-out too, so an old save full of
+    ///     aliens loads into a quiet world instead of repopulating it.
+    ///   - EnemyController self-destructs in Awake as a backstop, so a stray
+    ///     prefab dropped in a scene can't reintroduce one.
+    ///   - EnemyDetectionHUD, KillstreakManager and KillstreakHUD are never
+    ///     created (AutoCreate + both MainMenuController seeding paths + an
+    ///     Awake backstop each), which removes two canvases and three Updates.
+    ///   - EnemySync is never created, so no enemy traffic on the wire.
+    ///
+    /// Deliberately NOT following this flag - all of it still works:
+    ///   - Weapons. The axe, the pistol and the blade sweep still swing, still
+    ///     fire, and still hurt alien NPCs; they simply have nothing hostile to
+    ///     hit. Same for BloodFX and the ragdoll builders.
+    ///   - TorchAura and VillageWard's no-enemy zones. They only ever answer
+    ///     "is this point safe", which is trivially yes with an empty field.
+    ///   - The save schema. `enemies`, `enemySpawnTimer` and
+    ///     `enemyRegularsSinceElite` all still round-trip, so a save written
+    ///     while vaulted loads fine either way - a vaulted save just writes an
+    ///     empty field, which the spawner refills on its own once this is true.
+    ///
+    /// One thing this canNOT do from code: the scene's EnemySpawner still holds
+    /// references to the two Cursed_Toys prefabs, so Unity still loads their
+    /// meshes and textures with the scene (one of them is a 4096 normal map).
+    /// Vaulting stops the CPU cost, not that memory. Clearing those two fields
+    /// in the Inspector would reclaim it - but then flipping this flag back on
+    /// wouldn't be enough on its own, so it's left wired.
+    ///
+    /// Flip to true and the aliens come back exactly as they were.
+    public static readonly bool Enemies = false;
+
     /// The six-step map tutorial that rode on the old map. Vaulted with it
     /// (Sam: "kinda bad"). Its save fields stay in the schema; with the flag
     /// off the singleton destroys itself on Awake so every Instance check is a

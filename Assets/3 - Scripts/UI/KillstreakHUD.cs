@@ -39,6 +39,7 @@ public class KillstreakHUD : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
+        if (!FeatureVault.Enemies) return;   // VAULTED 2026-09-10 - see FeatureVault.Enemies
         if (Instance != null) return;
         if (SceneManager.GetActiveScene().name == "MainMenu") return;
         var go = new GameObject("KillstreakHUD");
@@ -48,6 +49,8 @@ public class KillstreakHUD : MonoBehaviour
 
     void Awake()
     {
+        // Backstop for the vault: no banner canvas, no Update, no subscriptions.
+        if (!FeatureVault.Enemies) { Destroy(gameObject); return; }
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         BuildCanvas();

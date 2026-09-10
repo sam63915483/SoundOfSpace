@@ -186,6 +186,46 @@ Deliberately NOT following the flag:
 Restore: flip the flag. Nothing else changed. Dialogue Studio marks the `HalSay`
 effect as vaulted in its dropdown; trees that use it still load.
 
+## Code-only vault (2026-09-10, the enemies)
+
+Flag: `FeatureVault.Enemies`. Sam: *"i just dont wanna deal with them right now
+and they arent that good... until i have enough time to actually make them
+better."* Nothing failed, nothing deleted, no scene edit — the gameplay scene
+never held a hand-placed enemy, the field was always spawned at runtime.
+
+| System | Gated at |
+|---|---|
+| The standing night field — `EnemySpawner`'s population fill loop, the day ramp, dark-side placement | `Awake` sets `enabled = false`, so `Update` never ticks. `Instance` deliberately stays non-null: `SaveCollector` reads `TimerForSave` / `RestoreTimerState` off it on every capture and apply. |
+| Restoring a saved field on load | `EnemySpawner.SpawnFromSave` early-outs — an old save's aliens are dropped rather than repopulating a quiet world |
+| Guest-side enemy puppets | `EnemySpawner.SpawnNetworkPuppet` early-outs |
+| Every `EnemyController` — stealth AI, `EnemyVision` cones + LOS raycasts, spit standoff, sunburn, contact damage to alien NPCs, ragdoll on death | `Awake` self-destructs as a backstop, before it registers in `ActiveEnemies` or touches its rigidbody |
+| `EnemyDetectionHUD` — the threat arrows + the K debug-cone toggle | never created: `AutoCreate` early-outs, the `EnsureGameplaySingletons` seed skips it, `Awake` self-destructs. One canvas and one `LateUpdate` gone. |
+| `KillstreakManager` + `KillstreakHUD` — the DOUBLE / TRIPLE / WICKED SICK banner and its decay bar | same three gates each (both `MainMenuController` seeding paths covered). Streaks only ever counted `EnemyController` deaths, so they could never move again. |
+| `EnemySync` — the whole multiplayer enemy channel | `AutoCreate` early-outs (on top of its existing `Multiplayer` gate) + `Awake` backstop. Its statics (`AnyPuppets`, `SweepHitsPuppet`, `ReportHitToHost`, `DamageRemotePlayer`, `LocalClientId`) were already null-safe, so every caller keeps compiling and no-ops. |
+
+Deliberately NOT following the flag:
+
+- **The weapons.** Axe, pistol, `BladeSweep`, `KillShotCam`, `SlowmoOnKill`,
+  `BloodFX` and both ragdoll builders all still work; they just have nothing
+  hostile to swing at. Alien NPCs are a separate damage path
+  (`AlienNPCDamageable`) and still take hits.
+- **`TorchAura` and `VillageWard`.** Both only ever answer "is this point safe
+  for an enemy" — trivially yes against an empty field.
+- **`PlayerTreeContactTracker`.** Auto-created by the first `EnemyController.Start`,
+  so with no enemies it is simply never made.
+- **The save schema.** `enemies`, `enemySpawnTimer` and `enemyRegularsSinceElite`
+  all still round-trip. A save written while vaulted just carries an empty
+  field, which the spawner refills on its own once the flag is back on.
+
+⚠️ **What the flag cannot do:** the scene's `EnemySpawner` still holds
+references to the two Cursed_Toys prefabs, so Unity loads their meshes and
+textures with the scene either way (one is a 4096² normal map, ~21 MB). This
+vault buys back the CPU, not that memory. Clearing those two Inspector fields
+would reclaim it, at the cost of making the flag alone no longer enough to
+restore — so they were left wired.
+
+Restore: flip the flag to `true`. Nothing else changed.
+
 ## Explicitly NOT vaulted
 
 - **Tev himself**, at his cabin (`TEV`, 9 m away) — he carries

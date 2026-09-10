@@ -68,6 +68,16 @@ public class EnemySpawner : MonoBehaviour
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
+
+        // VAULTED 2026-09-10 (FeatureVault.Enemies). The component stays alive and
+        // Instance stays non-null on purpose - SaveCollector reads TimerForSave /
+        // RestoreTimerState off it every capture and apply - but the population
+        // fill loop must never tick, so Update is switched off entirely rather
+        // than early-returning per frame. The prefab validation below is skipped
+        // too, so clearing the prefab slots to reclaim their memory doesn't spam
+        // an error every load.
+        if (!FeatureVault.Enemies) { enabled = false; return; }
+
         if (enemyPrefab == null || enemyPrefab.GetComponent<EnemyController>() == null)
         {
             Debug.LogError("[EnemySpawner] enemyPrefab is missing or has no EnemyController.");
@@ -341,6 +351,7 @@ public class EnemySpawner : MonoBehaviour
     public EnemyController SpawnNetworkPuppet(EnemyKind kind, CelestialBody planet,
                                               Vector3 worldPos, Quaternion worldRot, uint netId)
     {
+        if (!FeatureVault.Enemies) return null;   // VAULTED - see FeatureVault.Enemies
         GameObject prefab = PrefabForKind(kind);
         if (prefab == null || planet == null) return null;
 
@@ -368,6 +379,11 @@ public class EnemySpawner : MonoBehaviour
 
     public void SpawnFromSave(EnemySave save)
     {
+        // VAULTED - a save written before the vault still carries its field of
+        // aliens; loading it drops them rather than repopulating a quiet world.
+        // The save DATA is untouched either way, so unvaulting restores the
+        // field from the next natural fill.
+        if (!FeatureVault.Enemies) return;
         if (save == null) return;
         GameObject prefab = save.kind == "elite" && enemy2Prefab != null ? enemy2Prefab : enemyPrefab;
         if (prefab == null) return;

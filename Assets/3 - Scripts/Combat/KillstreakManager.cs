@@ -58,6 +58,9 @@ public class KillstreakManager : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
+        // VAULTED 2026-09-10 - streaks only ever counted EnemyController deaths,
+        // so with the enemies vaulted this can never move. See FeatureVault.Enemies.
+        if (!FeatureVault.Enemies) return;
         if (Instance != null) return;
         if (SceneManager.GetActiveScene().name == "MainMenu") return;
         var go = new GameObject("KillstreakManager");
@@ -67,6 +70,7 @@ public class KillstreakManager : MonoBehaviour
 
     void Awake()
     {
+        if (!FeatureVault.Enemies) { Destroy(gameObject); return; }   // VAULTED
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
     }

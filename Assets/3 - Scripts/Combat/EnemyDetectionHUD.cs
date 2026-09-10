@@ -96,6 +96,7 @@ public class EnemyDetectionHUD : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
+        if (!FeatureVault.Enemies) return;   // VAULTED 2026-09-10 - see FeatureVault.Enemies
         if (Instance != null) return;
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name == "MainMenu") return;
         var go = new GameObject("EnemyDetectionHUD");
@@ -105,6 +106,8 @@ public class EnemyDetectionHUD : MonoBehaviour
 
     void Awake()
     {
+        // Backstop for the vault: no threat arrows, no canvas, no LateUpdate.
+        if (!FeatureVault.Enemies) { Destroy(gameObject); return; }
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         BuildCanvas();

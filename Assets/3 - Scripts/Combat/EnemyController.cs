@@ -239,6 +239,12 @@ public class EnemyController : MonoBehaviour, IDamageable
 
     void Awake()
     {
+        // VAULTED 2026-09-10 (FeatureVault.Enemies). Backstop: every spawn path
+        // is already gated, so nothing should reach here - but a prefab dropped
+        // into a scene by hand would otherwise walk around with full AI. Removed
+        // before it registers in ActiveEnemies or touches the rigidbody.
+        if (!FeatureVault.Enemies) { Destroy(gameObject); return; }
+
         rb = GetComponent<Rigidbody>();
         ownCollider = GetComponent<Collider>();
         _vision = GetComponent<EnemyVision>();
