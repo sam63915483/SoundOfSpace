@@ -1,4 +1,4 @@
-🟢 ACTIVE — written 2026-09-11 for the FPS hunt. Run 1 done the same evening (findings in §7); §4 is now the RUN 2 script.
+🟢 ACTIVE — written 2026-09-11 for the FPS hunt. Runs 1 and 2 done the same evening (findings in §7/§8). §4b is the RUN 3 check.
 
 # Perf run: the FPS hunt
 
@@ -57,6 +57,16 @@ Stand still at each station; look, don't walk, while a toggle is on.
 
 Tell me "1 field, 2 village, 3 moon, 4 night".
 
+## 4b. RUN 3 — check the fixes (no toggles needed)
+
+Same dev build settings, rebuild. Play the same three spots: field, village, moon,
+and at night if you can. **Num+** at each. No numbered keys (Num8 would fight the
+new light gate). Then tell me the marks and whether anything LOOKS wrong:
+lantern glow on the ground when you stand next to one (should be unchanged),
+lantern glow on the ground seen from far away (now gone past ~33 m), firefly
+glow on the ground (now vertex-lit: softer, and only the 4 nearest bugs light
+the ground), moon-base interior lighting (unchanged).
+
 ## 5. Where the files are
 
 `%AppData%\..\LocalLow\DefaultCompany\Solar System 2\perf\`
@@ -95,3 +105,21 @@ pixel-light cap 64** (your saved prefs; the code defaults are the same maxed pre
   3.6 (helmet-HUD rig camera + thrust indicator camera render every frame),
   canvases 1.5, Update 1.1, physics 0.8, skinned-mesh finalize ~1.0 (the cats).
 - Snapshot .raw files were 300–400 MB each at 600 frames → now 300 frames.
+
+## 8. Run 2 (19:47, same settings) — what each lever is worth, measured
+
+| Lever | Field, day (100 fps) | In the village (57 fps) | Looking at moon base (65 fps) | Night field (50 fps) |
+|---|---|---|---|---|
+| all point lights OFF | 0 | −2.3 ms → 68 fps | −4.4 ms → 102 fps | −0.2 (no lights in view) |
+| lights vertex-lit | — | **−4.3 ms → 75 fps** | −4.2 ms → 98 fps | **−5.3 ms → 69 fps** |
+| lights skip planet mesh | 0 | −2.2 ms → 65 fps | −4.2 ms → 85 fps | −1.9 ms → 63 fps |
+| pixel-light cap 64→8 | 0 | +0.3 (worse) | −2.4 ms → 83 fps | — |
+| MSAA off | **0** | **0** | — | — |
+| cascades 2 + shadow dist 100 | 0 | −1.6 ms → 66 fps | — | — |
+| shadows off | −0.4 | — | — | — |
+| grass off | −1.3 ms → 118 fps | — | — | — |
+
+Read: the GPU cost is the point lights re-drawing the planet mesh; MSAA is free
+on this GPU; the day field is CPU-bound (~9.7 ms) with grass the biggest single
+script. Applied after run 2: `PlanetLightGate` (far lights skip the planet mesh),
+tunnel cage lights never touch the moon mesh (prefab mask), fireflies vertex-lit.
