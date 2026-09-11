@@ -131,7 +131,13 @@ public class CrosshairReticle : MonoBehaviour
 
         // The chest tablet occupies screen centre while open — hide the whole
         // reticle (pip included) so it never draws over the phone screen.
-        bool phoneUp = Application.isPlaying && PlayerPhoneUI.IsOpen;
+        //
+        // Same treatment for ANY dialogue (Sam, 2026-09-11): a crosshair over a
+        // conversation reads as a weapon sight over someone's face. Every
+        // dialogue owner in the game sets isInDialogue -- Tev, the market, the
+        // bonfire, the cats -- so this one flag covers all of them, and it is
+        // cleared the moment they hand control back.
+        bool phoneUp = Application.isPlaying && (PlayerPhoneUI.IsOpen || PlayerController.isInDialogue);
         if (phoneUp != _hiddenForPhone)
         {
             _hiddenForPhone = phoneUp;

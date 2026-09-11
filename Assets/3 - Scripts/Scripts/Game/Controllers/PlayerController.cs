@@ -1556,6 +1556,26 @@ public class PlayerController : GravityObject
 		// so rayRadius should not be larger than controller's capsule collider radius
 		const float rayRadius = .3f;
 		const float groundedRayDst = .2f;
+		// HYSTERESIS (2026-09-11). Becoming grounded still needs the ground
+		// within groundedRayDst, but STAYING grounded tolerates a bigger gap.
+		//
+		// With a single 0.2 m cast the sphere only sees ground within ~15 cm
+		// below the capsule's contact point. Every bump, root or terrain seam
+		// that lifted the capsule past that for ONE frame flipped isGrounded
+		// off, which released the grounded grip, put the animator in the
+		// airborne pose and let gravity drop the player a few inches before it
+		// re-detected -- Sam: "goes from the standing position to the midair
+		// position and drops a few inches ... like the feet cant find the
+		// ground". The same flicker was found and fixed for the shuttle cabin
+		// (RiderFixedTick, see the comment above the IsGrounded call) but the
+		// planet-surface path was never given the same tolerance.
+		//
+		// The grip only cancels along-slope velocity and leaves the vertical to
+		// gravity, so a wider stay-grounded window is safe: a small gap is
+		// closed by gravity as before, it just no longer counts as a fall.
+		// Walking off a real ledge still breaks contact -- the gap opens far
+		// past this within a couple of frames.
+		const float groundedStayDst = .38f;
 		// How far ABOVE the capsule's contact point the cast sphere starts. Must
 		// stay positive: at zero the sphere touches the ground at its origin and
 		// Unity reports no hit.
@@ -1613,7 +1633,8 @@ public class PlayerController : GravityObject
 				//     frame before OnTriggerEnter bumped waterTouches off 0 and armed the
 				//     splash / suppressed the landing.
 				// A grounded check must only ever be satisfied by a SOLID collider.
-				grounded = Physics.SphereCast(rayOrigin, rayRadius, rayDir, out hit, groundedRayDst,
+				float castDst = isGrounded ? groundedStayDst : groundedRayDst;
+				grounded = Physics.SphereCast(rayOrigin, rayRadius, rayDir, out hit, castDst,
 					walkableMask, QueryTriggerInteraction.Ignore);
 				// Reject ground-hits on ships that aren't themselves landed.
 				// The ship hull's collider sits on the walkable layer so the

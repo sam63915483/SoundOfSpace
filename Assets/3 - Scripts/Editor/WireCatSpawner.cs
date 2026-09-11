@@ -84,16 +84,39 @@ public static class WireCatSpawner
         spawner.clipLieTo    = Get("Lie_to");
         spawner.clipSleepTo  = Get("Sleep_to");
 
+        // A_Cat_Action — the file whose clips are not split in the .meta, so a
+        // grep never saw them. Unity imports them fine.
+        spawner.clipLick     = Get("Licking_sit");
+        spawner.clipSharpen  = Get("SharpensClaws");
+        spawner.clipDig      = Get("Digging");
+        spawner.clipShake    = Get("Shaking");
+        spawner.clipPet      = Get("Pet");
+        spawner.clipPetSit   = Get("Pet_sit");
+        spawner.clipPetLie   = Get("Pet_lie");
+        spawner.clipEat      = Get("Eat_D");
+
+        // The AI-generated purr if it exists, else the synthesised fallback. The
+        // generator (Coplay generate_sfx) always reports a timeout but the clip
+        // lands anyway a minute or so later -- Sam, 2026-09-11 -- so this may
+        // resolve differently on a re-run.
+        spawner.purrClip = AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Cats/cat_purr_generated.wav")
+                        ?? AssetDatabase.LoadAssetAtPath<AudioClip>("Assets/Audio/Cats/cat_purr_loop.wav");
+
         // ── report ──
         var missing = new List<string>();
         if (spawner.catPrefabs == null || spawner.catPrefabs.Length == 0) missing.Add("cat prefabs");
         if (spawner.catAvatar == null) missing.Add("Cat_L avatar (clips will not play!)");
+        if (spawner.purrClip == null) missing.Add("purr clip (Assets/Audio/Cats/cat_purr_loop.wav)");
         foreach (var pair in new (string name, AnimationClip clip)[]
         {
             ("Base", spawner.clipIdle), ("Look", spawner.clipLook), ("Stretching", spawner.clipStretch),
             ("Sit_Idle", spawner.clipSit), ("Lie_idle", spawner.clipLie), ("Sleep_idle", spawner.clipSleep),
             ("Walk_F", spawner.clipWalk), ("Trot_F", spawner.clipTrot),
             ("Swim_F", spawner.clipSwim), ("Swim_idle", spawner.clipSwimIdle),
+            ("Licking_sit", spawner.clipLick), ("SharpensClaws", spawner.clipSharpen),
+            ("Digging", spawner.clipDig), ("Shaking", spawner.clipShake),
+            ("Pet", spawner.clipPet), ("Pet_sit", spawner.clipPetSit), ("Pet_lie", spawner.clipPetLie),
+            ("Eat_D", spawner.clipEat),
         })
         {
             if (pair.clip == null) missing.Add("clip " + pair.name);

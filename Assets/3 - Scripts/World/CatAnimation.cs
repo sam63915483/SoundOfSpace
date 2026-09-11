@@ -31,8 +31,23 @@ public class CatAnimation : MonoBehaviour
         Sit, Lie, Sleep,
         Walk, Trot,
         Swim, SwimIdle,
+        // -- 2026-09-11: the clips the pack turned out to have --
+        Lick,       // A_Cat_Action : Licking_sit   (6.7s) - washing, sitting
+        Sharpen,    // A_Cat_Action : SharpensClaws (4.3s)
+        Dig,        // A_Cat_Action : Digging       (2.7s)
+        Shake,      // A_Cat_Action : Shaking       (2.3s)
+        Pet,        // A_Cat_Action : Pet           (2.7s) - standing
+        PetSit,     // A_Cat_Action : Pet_sit       (2.7s)
+        PetLie,     // A_Cat_Action : Pet_lie       (2.7s)
+        Eat,        // A_Cat_Action : Eat_D         (3.0s) - head down
         Count
     }
+
+    /// One-shots play through once and hand back to whatever pose is asked
+    /// for; everything else loops. They are ordinary permanent mixer inputs -
+    /// NOTHING is connected or destroyed at runtime, which is the rule that
+    /// came out of the one-frame screen glitch.
+    public static bool IsOneShot(Pose p) => p >= Pose.Lick;
 
     AnimationClip[] _loop;
     // Kept only so CatSpawner's call signature does not have to change. The
@@ -111,6 +126,7 @@ public class CatAnimation : MonoBehaviour
 
         _pose = pose;
         _fadeRate = 1f / Mathf.Max(0.02f, fadeSeconds);
+        _oneShotActive = false;
 
         for (int i = 0; i < _target.Length; i++) _target[i] = 0f;
         _target[idx] = 1f;
@@ -119,6 +135,48 @@ public class CatAnimation : MonoBehaviour
         // rather than wherever it was left when it last faded out.
         _players[idx].SetTime(0d);
 
+    }
+
+    // -- one-shots ----------------------------------------------------------
+    //
+    // Play a clip through once, then crossfade back to `returnTo`. The clip is
+    // a permanent input on the mixer like every other pose; "once" is purely a
+    // matter of not wrapping its time and watching for its end. No graph
+    // mutation, ever.
+    bool _oneShotActive;
+    Pose _oneShotReturn;
+    float _oneShotFade;
+
+    /// True while a one-shot is playing (the brain waits on this).
+    public bool OneShotPlaying => _oneShotActive;
+
+    public bool PlayOnce(Pose oneShot, Pose returnTo, float fadeIn = 0.2f, float fadeOut = 0.35f)
+    {
+        if (!_built || !IsOneShot(oneShot)) return false;
+        int idx = (int)oneShot;
+        if (idx < 0 || idx >= _players.Length || !_players[idx].IsValid()) return false;
+        if (returnTo == oneShot) returnTo = Pose.Idle;
+        Play(oneShot, fadeIn);
+        _oneShotActive = true;
+        _oneShotReturn = returnTo;
+        _oneShotFade = fadeOut;
+        return true;
+    }
+
+    void TickOneShot()
+    {
+        if (!_oneShotActive) return;
+        int idx = (int)_pose;
+        if (!IsOneShot(_pose) || !_players[idx].IsValid()) { _oneShotActive = false; return; }
+        var clip = _loop[idx];
+        if (clip == null) { _oneShotActive = false; return; }
+        // Start the crossfade back so that it finishes as the clip ends, rather
+        // than letting the clip freeze on its last frame first.
+        if (_players[idx].GetTime() >= clip.length - _oneShotFade)
+        {
+            _oneShotActive = false;
+            Play(_oneShotReturn, _oneShotFade);
+        }
     }
 
     // ── the Root bone pin ────────────────────────────────────────────────
@@ -338,21 +396,34 @@ public class CatAnimation : MonoBehaviour
     {
         if (!_built) return;
 
+        // PERF: once a crossfade has settled, every weight already equals its
+        // target and there is nothing to write. Skipping ApplyWeights then
+        // removes ~10 native SetInputWeight calls per cat per frame -- and cats
+        // are settled the vast majority of the time. The loop-wrap below still
+        // runs, because a looping clip still needs wrapping.
         float step = _fadeRate * Time.deltaTime;
+        bool changed = false;
         for (int i = 0; i < _weight.Length; i++)
-            _weight[i] = Mathf.MoveTowards(_weight[i], _target[i], step);
+        {
+            float w = Mathf.MoveTowards(_weight[i], _target[i], step);
+            if (w != _weight[i]) { _weight[i] = w; changed = true; }
+        }
 
         // Loop by hand so a clip with Loop Time unchecked still loops.
+        // One-shots are exempt: they run to the end and hand back instead.
         for (int i = 0; i < _players.Length; i++)
         {
             if (_weight[i] <= 0.001f || !_players[i].IsValid()) continue;
+            if (IsOneShot((Pose)i)) continue;
             var clip = _loop[i];
             if (clip == null || clip.length <= 0.01f) continue;
             double t = _players[i].GetTime();
             if (t >= clip.length) _players[i].SetTime(t % clip.length);
         }
 
-        ApplyWeights();
+        TickOneShot();
+
+        if (changed) ApplyWeights();
     }
 
     void ApplyWeights()

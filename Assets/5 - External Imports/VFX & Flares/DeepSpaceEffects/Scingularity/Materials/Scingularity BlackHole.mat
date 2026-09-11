@@ -99,9 +99,10 @@ Material:
     - _Temperature: 1
     - _Twist: 10
     - _UVSec: 0
+    - _VoidReach: 1
     - _ZWrite: 1
     m_Colors:
     - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _OceanCenter: {r: 291.24832, g: 2551.7192, b: 77.06061, a: 0}
+    - _OceanCenter: {r: 3711.267, g: -203.55447, b: 82.139885, a: 0}
   m_BuildTextureStacks: []

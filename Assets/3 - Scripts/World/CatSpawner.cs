@@ -112,9 +112,25 @@ public class CatSpawner : MonoBehaviour
     static readonly string[] BisectNames =
         { "NORMAL", "NO ANIMATION", "NO INTERACTION (no outline)", "NO CATS" };
 
+    // ── Appended 2026-09-11 (new serialized fields go at the END) ────────
+    [Header("Action clips (A_Cat_Action) — found 2026-09-11")]
+    public AnimationClip clipLick;      // Licking_sit   — the washing Sam asked for
+    public AnimationClip clipSharpen;   // SharpensClaws
+    public AnimationClip clipDig;       // Digging
+    public AnimationClip clipShake;     // Shaking
+    public AnimationClip clipPet;       // Pet      (standing)
+    public AnimationClip clipPetSit;    // Pet_sit
+    public AnimationClip clipPetLie;    // Pet_lie
+    public AnimationClip clipEat;       // Eat_D    (head down — eating the fish)
+
+    [Header("Purr")]
+    [Tooltip("Seamless purr loop, played FROM the cat (3D) for ~15 s after a pet or a fish. Assets/Audio/Cats/cat_purr_loop.wav; the wiring tool assigns it.")]
+    public AudioClip purrClip;
+    [Range(0f, 1f)] public float purrVolume = 0.5f;
+
     [Header("Diagnostics")]
     [Tooltip("Logs once every few seconds saying how many cells were considered and WHY each one was rejected. Turn off once cats are reliably appearing.")]
-    public bool debugLogging = true;
+    public bool debugLogging = false;
     public float debugInterval = 3f;
 
     // Rejection tallies, reset each debug window.
@@ -185,6 +201,15 @@ public class CatSpawner : MonoBehaviour
         _loopClips[(int)CatAnimation.Pose.Trot]     = clipTrot;
         _loopClips[(int)CatAnimation.Pose.Swim]     = clipSwim;
         _loopClips[(int)CatAnimation.Pose.SwimIdle] = clipSwimIdle;
+
+        _loopClips[(int)CatAnimation.Pose.Lick]    = clipLick;
+        _loopClips[(int)CatAnimation.Pose.Sharpen] = clipSharpen;
+        _loopClips[(int)CatAnimation.Pose.Dig]     = clipDig;
+        _loopClips[(int)CatAnimation.Pose.Shake]   = clipShake;
+        _loopClips[(int)CatAnimation.Pose.Pet]     = clipPet;
+        _loopClips[(int)CatAnimation.Pose.PetSit]  = clipPetSit;
+        _loopClips[(int)CatAnimation.Pose.PetLie]  = clipPetLie;
+        _loopClips[(int)CatAnimation.Pose.Eat]     = clipEat;
 
         _introClips = new AnimationClip[n];
         _introClips[(int)CatAnimation.Pose.Sit]   = clipSitTo;
@@ -314,6 +339,14 @@ public class CatSpawner : MonoBehaviour
         int effectiveMax = Mathf.Max(baseCap, Mathf.RoundToInt(baseCap * (effectiveRadius / BaselineRadius)));
 
         for (int s = 0; s < bodies.Count; s++) DespawnOutOfRange(bodies[s], playerPos, effectiveRadius);
+
+        // PERF: the cap is saturated almost all the time (the build log read
+        // active=44 spawned=0 on every single tick). Every one of those ticks
+        // was still sweeping ~1,000 cells -- a hash and a dictionary lookup each
+        // -- to build a candidate list it then threw away on the first line of
+        // the spawn loop. Nothing can spawn until something despawns, so when
+        // we are full, do nothing.
+        if (CountActive() >= effectiveMax) return;
 
         scratchCandidates.Clear();
         float prefilterMax = effectiveRadius + cellSize;
@@ -487,26 +520,19 @@ public class CatSpawner : MonoBehaviour
             // Generic rig: without the avatar the clips animate nothing at all.
             if (catAvatar != null) animator.avatar = catAvatar;
             animator.applyRootMotion = false;
-            // ⚠️ AlwaysAnimate, NOT CullUpdateTransforms — this is the fix for the
-            // "cat flies across the screen for one frame" bug (Sam, 2026-09-10).
+            // CullUpdateTransforms: off-screen cats keep their state but stop
+            // writing bones. With 44 cats and 55 bones each, that is the single
+            // biggest CPU saving available on them.
             //
-            // CullUpdateTransforms stops writing bone transforms while the
-            // renderer is off-screen. But AlienWander keeps walking the cat's
-            // OBJECT the whole time it is culled. So the moment it comes back
-            // into view, the first frame draws the skinned mesh from bones still
-            // posed at the position the cat left view from — a one-frame streak
-            // from the old spot to the new one, which is exactly what a cat
-            // "flying across the screen and getting in front of the camera"
-            // looks like. It happens whether the player is near or not, because
-            // it is about VISIBILITY, not proximity.
-            //
-            // The wandering aliens never did this because they have no Animator
-            // at all — they are posed procedurally in LateUpdate every frame and
-            // so can never go stale.
-            //
-            // Cost of AlwaysAnimate: a handful of low-poly rigs evaluate while
-            // off-screen. That is far cheaper than the bug.
-            animator.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            // History, because this flipped twice: it was set to AlwaysAnimate
+            // on 2026-09-10 on the theory that culling caused the one-frame
+            // "cat flies across the screen" glitch. That theory was WRONG -- the
+            // F10 bisect proved the glitch was the animation graph mutating
+            // itself (see CatAnimation), which is fixed at the root. Bones are
+            // local to the object, so a culled cat re-entering view shows a
+            // slightly stale POSE at its correct position for one frame, which
+            // is invisible; it cannot streak.
+            animator.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
 
             if (cat.GetComponent<CatAnimation>() == null) cat.AddComponent<CatAnimation>();
 
@@ -544,10 +570,22 @@ public class CatSpawner : MonoBehaviour
         var anim0 = BisectMode == 1 ? null : cat.GetComponent<Animator>();
         if (anim0 != null)
         {
-            anim0.cullingMode = AnimatorCullingMode.AlwaysAnimate;
+            anim0.cullingMode = AnimatorCullingMode.CullUpdateTransforms;
             anim0.applyRootMotion = false;
             if (catAvatar != null && anim0.avatar != catAvatar) anim0.avatar = catAvatar;
         }
+        // PERF, shadows kept: a cat is THREE skinned renderers -- the body and
+        // two separate eye meshes. The eyes sit inside the head, so their shadow
+        // casters draw nothing you can see, yet they cost two extra shadow-map
+        // draws per cat per light. Off for the eyes only; the body still casts,
+        // so the cat's shadow on the ground is exactly what it was.
+        var rends = cat.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+        for (int i = 0; i < rends.Length; i++)
+        {
+            if (rends[i].name.IndexOf("Eye", System.StringComparison.OrdinalIgnoreCase) >= 0)
+                rends[i].shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        }
+
         // NOTE: updateWhenOffscreen is deliberately NOT set here any more.
         // It was added for the culling theory that turned out to be wrong (the
         // glitch was in the animation graph), it recomputes bounds from actual
@@ -596,7 +634,7 @@ public class CatSpawner : MonoBehaviour
         if (anim != null) anim.Build(_loopClips, _introClips);
 
         var brain = BisectMode == 2 ? null : cat.GetComponent<SpaceCat>();
-        if (brain != null) brain.Bind(wander, anim);
+        if (brain != null) brain.Bind(wander, anim, purrClip, purrVolume);
 
         // Exact feet: seat the real lowest vertex of THIS instance on the
         // terrain under it, and hand that depth to the wander so every later

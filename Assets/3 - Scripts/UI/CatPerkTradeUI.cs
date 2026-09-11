@@ -283,7 +283,18 @@ public class CatPerkTradeUI : MonoBehaviour
     IEnumerator Flow()
     {
         yield return Say("Meow! Spare a fish?");
-        yield return Choose("Yes.", "No.");
+        yield return Choose("Spare a fish.", "Pet the cat.", "No.");
+
+        if (_choice == 1)
+        {
+            // Pet: the cat's reaction clip for however it is sitting, and a
+            // purr from the cat itself. The panel closes straight away so you
+            // watch the cat, not a text box.
+            var cat = _cat;
+            CloseInternal();
+            if (cat != null) cat.Pet();
+            yield break;
+        }
 
         // Any negative is a back-out (walked away, pad B, right-click).
         if (_choice != 0)
@@ -367,6 +378,9 @@ public class CatPerkTradeUI : MonoBehaviour
         if (!took) { CloseInternal(); return; }
         // Keep the parallel list in step so anything still reading it agrees.
         if (FishInventory.Instance != null) FishInventory.Instance.RemoveSpecificFish(entry);
+
+        // Head down and eat it while the reel spins; purr after.
+        if (_cat != null) _cat.FedFish();
 
         if (_shared != null) _shared.gameObject.SetActive(false);
 

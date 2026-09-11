@@ -51,7 +51,6 @@ public class SpaceCat : Interactable
     float _stateUntil;
     float _noticeUntil;
     bool _noticing;
-    float _refindPlayerAt;
     bool _travelFast;
     bool _heldByUI;
 
@@ -62,14 +61,24 @@ public class SpaceCat : Interactable
     float _stepUntil;
     // Smoothed planet-local speed in m/s, which drives the walk pose.
     float _speed;
+    // Set by Pet()/FedFish(): once the reaction clip and the panel are done,
+    // run the contented sequence instead of a normal beat.
+    bool _pendingContented;
+    bool _contented;
+    // When the cat last came to rest mid-travel (-1 = it is moving).
+    float _stillSince = -1f;
 
     enum Mood { Travel, Settle }
     Mood _mood = Mood.Settle;
 
-    public void Bind(AlienWander wander, CatAnimation anim)
+    public void Bind(AlienWander wander, CatAnimation anim, AudioClip purr, float purrVolume)
     {
         _wander = wander;
         _anim = anim;
+        _purrClip = purr;
+        _purrVolume = purrVolume;
+        _purrUntil = 0f;
+        if (_purr != null && _purr.isPlaying) _purr.Stop();
         _noticing = false;
         _noticeUntil = 0f;
         // Stagger the herd: without this every cat spawned in the same frame
@@ -90,7 +99,13 @@ public class SpaceCat : Interactable
         if (CatPerkTradeUI.IsOpen && CatPerkTradeUI.Target == this)
         {
             if (_wander != null) _wander.Hold = true;
-            _anim.Play(CatAnimation.Pose.Sit, 0.3f);
+            // The purr must keep ticking here, and a one-shot (eating the fish
+            // it was just handed, the pet reaction) must NOT be stomped by the
+            // "sit up and look interested" default.
+            TickPurr();
+            ResolvePlayer();
+            FacePlayer();
+            if (!_anim.OneShotPlaying) _anim.Play(CatAnimation.Pose.Sit, 0.3f);
             _heldByUI = true;
             return;
         }
@@ -100,6 +115,26 @@ public class SpaceCat : Interactable
             // than leaving it frozen until the next one happens to come round.
             _heldByUI = false;
             _stateUntil = 0f;
+        }
+
+        TickPurr();
+
+        // A one-shot (being petted, eating, washing) owns the body until it
+        // finishes. Nothing below may start a beat over the top of it.
+        if (_anim.OneShotPlaying)
+        {
+            if (_wander != null) _wander.Hold = true;
+            return;
+        }
+
+        // Just petted or fed and the reaction clip has finished: go straight
+        // into wash-then-loaf, ahead of the notice/glance logic below, which
+        // would otherwise hold the cat staring at you for five seconds first.
+        if (_pendingContented)
+        {
+            _pendingContented = false;
+            EnterContented();
+            return;
         }
 
         ResolvePlayer();
@@ -137,19 +172,49 @@ public class SpaceCat : Interactable
         if (_noticing && _mood == Mood.Travel) return;
 
         if (Time.time >= _stateUntil)
-            EnterMood(_mood == Mood.Travel ? Mood.Settle : Mood.Travel);
+        {
+            // Don't sit down with your head in a tree. If a travel beat is
+            // ending next to something solid, keep walking a few more seconds
+            // and let the wander carry the cat somewhere clearer. Capped so a
+            // cat boxed in on all sides still settles eventually rather than
+            // pacing forever.
+            if (_mood == Mood.Travel && _settleRetries < 3 && ObstacleNearby())
+            {
+                _settleRetries++;
+                _stateUntil = Time.time + Random.Range(2.5f, 4.5f);
+            }
+            else
+            {
+                _settleRetries = 0;
+                EnterMood(_mood == Mood.Travel ? Mood.Settle : Mood.Travel);
+            }
+        }
 
         if (_mood == Mood.Travel)
         {
-            // Keyed off MEASURED SPEED, not AlienWander.IsMoving. IsMoving is a
-            // per-frame flag that flickers -- the walker does not step on every
-            // single frame, and its Update order against this one is undefined --
-            // so the pose flickered between Walk and Idle through a 0.22s
-            // crossfade, which is why Sam saw a cat "standing straight then just
-            // slid foward". Smoothed displacement cannot flicker.
-            bool moving = _speed > 0.35f;
-            _anim.Play(moving ? (_travelFast ? CatAnimation.Pose.Trot : CatAnimation.Pose.Walk)
-                              : CatAnimation.Pose.Idle, 0.25f);
+            // THE POSE LEADS THE MOVEMENT. Sam: "whenever they move to walk
+            // they should always do the walk animation."
+            //
+            // Two earlier versions both lagged it. IsMoving flickered per frame.
+            // Then measured speed was better, but EnterMood(Travel) played Walk
+            // and the VERY NEXT frame saw speed ~0 (the cat had not moved yet)
+            // and faded back to Idle -- then faded to Walk again once it was
+            // already moving. Every leg started Walk->Idle->Walk through two
+            // crossfades, with the cat sliding through the Idle part. That is
+            // the "standing position then just slides forward" he still saw.
+            //
+            // So: in a travel beat the cat WALKS by default. It drops to Idle
+            // only once it has genuinely been still for half a second (the
+            // wander's own pause between legs), and the moment speed comes
+            // back it walks again. Intent first, measurement as a slow veto.
+            bool fast = _speed > 0.2f;
+            if (fast) _stillSince = -1f;
+            else if (_stillSince < 0f) _stillSince = Time.time;
+            bool stoppedForAWhile = _stillSince >= 0f && Time.time - _stillSince > 0.5f;
+
+            var want = stoppedForAWhile ? CatAnimation.Pose.Idle
+                     : (_travelFast ? CatAnimation.Pose.Trot : CatAnimation.Pose.Walk);
+            _anim.Play(want, 0.25f);
             return;
         }
 
@@ -188,10 +253,21 @@ public class SpaceCat : Interactable
             float k = Random.value;
             CatAnimation.Pose pose;
             float hold;
-            if (k < 0.40f)      { pose = CatAnimation.Pose.Sit;  hold = Random.Range(7f, 13f); }
-            else if (k < 0.62f) { pose = CatAnimation.Pose.Look; hold = Random.Range(5f, 9f);  }
-            else if (k < 0.85f) { pose = CatAnimation.Pose.Lie;  hold = Random.Range(11f, 20f); }
-            else                { pose = CatAnimation.Pose.Sleep; hold = Random.Range(14f, 24f); }
+            // The Action clips found on 2026-09-11 are ONE-SHOTS: they play
+            // through once and hand back to Sit by themselves, so their hold is
+            // "until the clip ends" (see AdvanceSettlePlan), not a number here.
+            // SharpensClaws is deliberately NOT here. It is authored against a
+            // scratching post -- the cat rears up on two legs and rakes at
+            // something in front of it -- and with nothing there it scratches
+            // the air (Sam, 2026-09-11). Still wired, so it could be used
+            // properly one day next to a tree. Its share went to Look and Lick.
+            if (k < 0.26f)      { pose = CatAnimation.Pose.Sit;     hold = Random.Range(7f, 13f); }
+            else if (k < 0.44f) { pose = CatAnimation.Pose.Look;    hold = Random.Range(5f, 9f);  }
+            else if (k < 0.65f) { pose = CatAnimation.Pose.Lick;    hold = 0f; }   // washing
+            else if (k < 0.72f) { pose = CatAnimation.Pose.Dig;     hold = 0f; }
+            else if (k < 0.78f) { pose = CatAnimation.Pose.Shake;   hold = 0f; }
+            else if (k < 0.91f) { pose = CatAnimation.Pose.Lie;     hold = Random.Range(11f, 20f); }
+            else                { pose = CatAnimation.Pose.Sleep;   hold = Random.Range(14f, 24f); }
 
             // Never the same pose twice in a row -- that is the flicker he saw.
             if (i > 0 && pose == _plan[0]) { pose = CatAnimation.Pose.Look; hold = Random.Range(5f, 9f); }
@@ -203,11 +279,44 @@ public class SpaceCat : Interactable
         _planStep = -1;
     }
 
+    /// After being petted or fed (Sam, 2026-09-11): wash, then loaf while the
+    /// purr fades, then get up and carry on. "after you pet the cat they should
+    /// pur for 10-15 seconds and do the cleaning and loafing before doing
+    /// something else". The loaf's length is not a number here -- it lasts
+    /// exactly until the purr has faded to silence, so the two end together.
+    void EnterContented()
+    {
+        _mood = Mood.Settle;
+        _contented = true;
+        if (_wander != null) _wander.Hold = true;
+        _plan.Clear(); _planHold.Clear();
+        _plan.Add(CatAnimation.Pose.Lick);    _planHold.Add(0f);   // one-shot, waits for the clip
+        _plan.Add(CatAnimation.Pose.Lie);     _planHold.Add(0f);   // filled in below from the purr
+        _plan.Add(CatAnimation.Pose.Stretch); _planHold.Add(2.4f); // and get up
+        _planStep = -1;
+        _stateUntil = Time.time + 999f;
+        AdvanceSettlePlan();
+    }
+
     void AdvanceSettlePlan()
     {
         _planStep++;
-        if (_planStep >= _plan.Count) { EnterMood(Mood.Travel); return; }
+        if (_planStep >= _plan.Count) { _contented = false; EnterMood(Mood.Travel); return; }
         var pose = _plan[_planStep];
+        if (_contented && pose == CatAnimation.Pose.Lie)
+        {
+            // Loaf until the purr is gone -- never less than a few seconds, so
+            // a cat petted with the purr already mostly spent still settles.
+            _planHold[_planStep] = Mathf.Max(5f, _purrUntil - Time.time);
+        }
+        if (CatAnimation.IsOneShot(pose))
+        {
+            // Plays once and hands back to Sit on its own; the Update loop
+            // holds the beat while OneShotPlaying is true. If the clip was not
+            // wired, fall through to a plain sit so the plan never stalls.
+            if (_anim.PlayOnce(pose, CatAnimation.Pose.Sit)) { _stepUntil = Time.time + 0.5f; return; }
+            pose = CatAnimation.Pose.Sit;
+        }
         bool lounging = pose == CatAnimation.Pose.Lie || pose == CatAnimation.Pose.Sleep;
         _anim.Play(pose, lounging ? 0.45f : 0.3f);
         _stepUntil = Time.time + _planHold[_planStep];
@@ -216,6 +325,7 @@ public class SpaceCat : Interactable
     void EnterMood(Mood m)
     {
         _mood = m;
+        _contented = false;
         if (_anim == null) return;
 
         if (m == Mood.Travel)
@@ -229,7 +339,8 @@ public class SpaceCat : Interactable
                 _travelFast = Random.value < 0.25f;
                 _wander.SpeedMultiplier = _travelFast ? 1.8f : 1f;
             }
-            _anim.Play(CatAnimation.Pose.Walk, 0.25f);
+            _stillSince = -1f;      // a fresh leg always starts in the walk
+            _anim.Play(_travelFast ? CatAnimation.Pose.Trot : CatAnimation.Pose.Walk, 0.25f);
             _stateUntil = Time.time + Random.Range(TravelMin, TravelMax);
         }
         else
@@ -243,15 +354,69 @@ public class SpaceCat : Interactable
         }
     }
 
+    // PERF: one lookup shared by every cat, not one per cat. Forty-four cats
+    // each calling FindGameObjectWithTag on their own timer was ~30 scene
+    // searches a second while the player did not exist yet.
+    static Transform s_player;
+    static float s_refindAt;
+
+    // -- turning to face the player while talked to ---------------------------
+
+    /// Swing the body round to face the player, about the cat's OWN up so it
+    /// stays flat on the ground wherever it is on the planet. Only ever called
+    /// while the wander is Held, so nothing else is writing the rotation.
+    /// Sam, 2026-09-11: "whenever you press the interact button on a cat to
+    /// start dialogue, they turn to face you".
+    void FacePlayer()
+    {
+        if (_player == null) return;
+        Vector3 up = transform.up;
+        Vector3 to = Vector3.ProjectOnPlane(_player.position - transform.position, up);
+        if (to.sqrMagnitude < 0.01f) return;
+        Quaternion want = Quaternion.LookRotation(to.normalized, up);
+        // Frame-rate independent ease; about a third of a second to come round.
+        transform.rotation = Quaternion.Slerp(transform.rotation, want,
+                                              1f - Mathf.Exp(-8f * Time.deltaTime));
+    }
+
+    // -- obstacle check for settling ------------------------------------------
+
+    static readonly Collider[] s_overlap = new Collider[8];
+    int _settleRetries;
+
+    /// Anything SOLID within the cat's own body radius: a tree trunk, a crystal,
+    /// a building. Triggers are ignored (every cat's interact volume is one),
+    /// and so is the cat itself. Sam, 2026-09-11: a cat "walked up to a tree and
+    /// then sat and kept its head in the tree".
+    bool ObstacleNearby()
+    {
+        float sc = Mathf.Max(0.5f, transform.localScale.x);
+        Vector3 centre = transform.position + transform.up * (0.3f * sc);
+        float radius = 0.5f * sc;
+        // World props (trees, crystals, mushrooms), the ship, and Default
+        // (buildings). Terrain is on Body and is deliberately NOT here.
+        int mask = SpawnerCubeface.WorldSpawnExcludeMask | (1 << 0);
+        int n = Physics.OverlapSphereNonAlloc(centre, radius, s_overlap, mask, QueryTriggerInteraction.Ignore);
+        for (int i = 0; i < n; i++)
+        {
+            var col = s_overlap[i];
+            if (col == null || col.transform.IsChildOf(transform)) continue;
+            return true;
+        }
+        return false;
+    }
+
     void ResolvePlayer()
     {
         if (_player != null) return;
-        // Throttled — a cat that spawns before the player exists must not call
-        // Find every frame forever (LightLookAt's rule).
-        if (Time.time < _refindPlayerAt) return;
-        _refindPlayerAt = Time.time + 1.5f;
-        var go = GameObject.FindGameObjectWithTag("Player");
-        if (go != null) _player = go.transform;
+        if (s_player == null)
+        {
+            if (Time.time < s_refindAt) return;
+            s_refindAt = Time.time + 1.5f;
+            var go = GameObject.FindGameObjectWithTag("Player");
+            if (go != null) s_player = go.transform;
+        }
+        _player = s_player;
     }
 
     // ── teleport watchdog ────────────────────────────────────────────────
@@ -379,6 +544,81 @@ public class SpaceCat : Interactable
         }
     }
 
+    // -- being petted, being fed, purring -----------------------------------
+
+    AudioClip _purrClip;
+    float _purrVolume = 0.55f;
+    AudioSource _purr;
+    float _purrUntil;
+    // Sam: "pur for 10-15 seconds". The pet clip (2.7 s) and the wash (6.7 s)
+    // come first, so 15 s leaves a ~5-6 s loaf with the fade running across it.
+    const float PurrSeconds = 15f;
+    const float PurrFadeOut = 4.5f;   // the fade IS the loaf winding down
+
+    /// Pet the cat: the pet reaction that matches how it is sitting right now,
+    /// then a purr from the cat itself.
+    public void Pet()
+    {
+        if (_anim == null) return;
+        var now = _anim.Current;
+        CatAnimation.Pose react, back;
+        if (now == CatAnimation.Pose.Lie || now == CatAnimation.Pose.Sleep)
+        { react = CatAnimation.Pose.PetLie; back = CatAnimation.Pose.Lie; }
+        else if (now == CatAnimation.Pose.Sit || now == CatAnimation.Pose.Lick)
+        { react = CatAnimation.Pose.PetSit; back = CatAnimation.Pose.Sit; }
+        else
+        { react = CatAnimation.Pose.Pet;    back = CatAnimation.Pose.Sit; }
+
+        if (_wander != null) _wander.Hold = true;
+        if (!_anim.PlayOnce(react, back, 0.2f, 0.4f)) _anim.Play(back, 0.3f);
+        StartPurr();
+        _pendingContented = true;
+    }
+
+    /// Fed a fish: head down and eat it, then purr.
+    public void FedFish()
+    {
+        if (_anim == null) return;
+        if (_wander != null) _wander.Hold = true;
+        if (!_anim.PlayOnce(CatAnimation.Pose.Eat, CatAnimation.Pose.Sit, 0.2f, 0.4f))
+            _anim.Play(CatAnimation.Pose.Sit, 0.3f);
+        StartPurr();
+        _pendingContented = true;
+    }
+
+    void StartPurr()
+    {
+        if (_purrClip == null) return;
+        if (_purr == null)
+        {
+            // Built lazily: most cats are never touched, so most never carry an
+            // AudioSource at all.
+            _purr = gameObject.AddComponent<AudioSource>();
+            _purr.playOnAwake = false;
+            _purr.loop = true;
+            _purr.spatialBlend = 1f;              // FROM the cat
+            _purr.rolloffMode = AudioRolloffMode.Logarithmic;
+            _purr.minDistance = 2.6f;             // full volume when you are on it
+            _purr.maxDistance = 26f;              // gone by here -- "walk away, it gets quieter"
+            _purr.dopplerLevel = 0f;              // planets move fast; Doppler would warble
+            _purr.spread = 40f;
+        }
+        _purr.clip = _purrClip;
+        _purrUntil = Time.time + PurrSeconds;
+        if (!_purr.isPlaying) { _purr.volume = 0f; _purr.Play(); }
+    }
+
+    void TickPurr()
+    {
+        if (_purr == null || !_purr.isPlaying) return;
+        float left = _purrUntil - Time.time;
+        if (left <= 0f) { _purr.Stop(); return; }
+        // Half a second in, three seconds out.
+        float inW  = Mathf.Clamp01((PurrSeconds - left) / 0.5f);
+        float outW = Mathf.Clamp01(left / PurrFadeOut);
+        _purr.volume = _purrVolume * Mathf.Min(inW, outW);
+    }
+
     // ── interaction ──────────────────────────────────────────────────────
 
     void Awake()
@@ -413,5 +653,6 @@ public class SpaceCat : Interactable
         playerInInteractionZone = false;
         InteractPromptUI.ClearIfOwnedBy(gameObject);
         _noticing = false;
+        if (_purr != null && _purr.isPlaying) _purr.Stop();
     }
 }

@@ -27,15 +27,49 @@ public class GazeHighlight : MonoBehaviour
     [Tooltip("Rim color. Defaults to the helmet-HUD amber so the outline and the [F] prompt read as one system.")]
     public Color outlineColor = new Color32(0xFF, 0xC4, 0x6B, 0xFF);
     [Tooltip("Outline thickness in world metres.")]
-    public float outlineWidth = 0.018f;
+    public float outlineWidth = 0.031f;     // 1.7x the original 0.018 (Sam, 2026-09-11)
     [Tooltip("Renderers whose bounds diagonal exceeds this (metres) are skipped — a prompt owned by something huge (the ship) should not slather the whole hull.")]
     public float maxRendererSize = 12f;
+    [Tooltip("Renderers SMALLER than this (world metres, bounds diagonal) are not outlined. A cat is three skinned renderers - the body and two separate eye meshes - and a green ring around each eye reads as noise, not as an outline. Anything under this is a detail, not a thing.")]
+    public float minRendererSize = 0.25f;
     [Tooltip("At most this many renderers get outlined per target.")]
     public int maxRenderers = 12;
 
     Object _owner;
     Material _mat;
+    // Same shader with the OUTLINE pass switched off: contributes to the
+    // stencil silhouette without drawing a rim. For the parts of an object too
+    // small to outline (a cat's separate eyeball meshes) that still sit INSIDE
+    // its outline -- without this, the body's socket holes are unmasked and
+    // the body's own inflated rim draws a green ring inside each eye.
+    Material _maskMat;
     readonly List<GameObject> _outlines = new List<GameObject>();
+    readonly List<Renderer> _outlineRenderers = new List<Renderer>();
+
+    // -- the wipe (Sam, 2026-09-11) ------------------------------------------
+    //
+    // "Instead of just getting the green outline instantly, make it go from
+    // the bottom up to the top and reveal itself, then when you look away it
+    // will do the opposite" -- and if you look back mid-fade, "it will just
+    // refill back to the top from where it was so that it doesn't fully
+    // restart."
+    //
+    // So the outline has a reveal level, 0..1, driven toward 1 while gazed
+    // and toward 0 when not, with MoveTowards -- which is what gives the
+    // resume-from-wherever-it-is for free. The clones are NOT destroyed the
+    // moment gaze is lost any more; they stay while the level falls and go
+    // only once it reaches 0. A DIFFERENT target appearing snaps the old one
+    // away and starts the new one from 0.
+    [Tooltip("Seconds for the outline to fill bottom-to-top when you look at something.")]
+    public float revealInSeconds = 0.64f;   // 2x slower than the first cut (Sam, 2026-09-11)
+    [Tooltip("Seconds for it to empty top-to-bottom after you look away. Slightly slower than the fill, so a glance away and back reads as a hesitation rather than a flicker.")]
+    public float revealOutSeconds = 0.55f;
+    float _reveal;
+    bool _fadingOut;
+    static readonly int RevealId    = Shader.PropertyToID("_Reveal");
+    static readonly int RevealUpId  = Shader.PropertyToID("_RevealUp");
+    static readonly int RevealMinId = Shader.PropertyToID("_RevealMin");
+    static readonly int RevealMaxId = Shader.PropertyToID("_RevealMax");
     static readonly List<Renderer> _rendBuf = new List<Renderer>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -59,20 +93,87 @@ public class GazeHighlight : MonoBehaviour
         if (Instance == this) Instance = null;
         ClearOutlines();
         if (_mat != null) Destroy(_mat);
+        if (_maskMat != null) Destroy(_maskMat);
     }
 
     void LateUpdate()
     {
         Object owner = InteractPromptUI.CurrentOwner;
-        if (ReferenceEquals(owner, _owner))
+
+        if (!ReferenceEquals(owner, _owner))
         {
-            // Target (or an outlined child) may have been destroyed under us.
-            if (_owner is Component c && c == null) { ClearOutlines(); _owner = null; }
+            if (owner != null)
+            {
+                // A different target: the old rim snaps away, the new one
+                // starts filling from the bottom.
+                ClearOutlines();
+                _owner = owner;
+                _reveal = 0f;
+                _fadingOut = false;
+                Apply(owner);
+            }
+            else
+            {
+                // Lost the target: keep the rim and let it drain. _owner is
+                // kept so that re-acquiring the SAME target resumes upward
+                // from wherever the level has fallen to.
+                _fadingOut = true;
+            }
+        }
+        else if (owner != null)
+        {
+            _fadingOut = false;     // still on it, or back on it mid-fade
+        }
+
+        // Target (or an outlined child) may have been destroyed under us.
+        if (_owner is Component c && c == null)
+        {
+            ClearOutlines(); _owner = null; _reveal = 0f; _fadingOut = false;
             return;
         }
-        ClearOutlines();
-        _owner = owner;
-        if (owner != null) Apply(owner);
+        if (_owner == null) return;
+
+        float target = _fadingOut ? 0f : 1f;
+        float secs = target > _reveal ? revealInSeconds : revealOutSeconds;
+        _reveal = Mathf.MoveTowards(_reveal, target, Time.unscaledDeltaTime / Mathf.Max(0.02f, secs));
+
+        if (_fadingOut && _reveal <= 0f)
+        {
+            ClearOutlines(); _owner = null; _fadingOut = false;
+            return;
+        }
+
+        PushReveal();
+    }
+
+    /// Feed the shader the current level and the object's extent along its
+    /// OWN up -- not world Y. A cat on the underside of a planet still wipes
+    /// from its paws to its ears. Recomputed every frame because the target
+    /// can be an animating skinned mesh, and bounds are cheap.
+    void PushReveal()
+    {
+        if (_mat == null || _outlineRenderers.Count == 0) return;
+        var comp = _owner as Component;
+        Vector3 up = comp != null ? comp.transform.up : Vector3.up;
+
+        float lo = float.PositiveInfinity, hi = float.NegativeInfinity;
+        for (int i = 0; i < _outlineRenderers.Count; i++)
+        {
+            var r = _outlineRenderers[i];
+            if (r == null) continue;
+            var b = r.bounds;
+            // Extent of an axis-aligned box along an arbitrary direction.
+            float c = Vector3.Dot(b.center, up);
+            float e = Mathf.Abs(up.x) * b.extents.x + Mathf.Abs(up.y) * b.extents.y + Mathf.Abs(up.z) * b.extents.z;
+            if (c - e < lo) lo = c - e;
+            if (c + e > hi) hi = c + e;
+        }
+        if (float.IsInfinity(lo)) return;
+
+        _mat.SetFloat(RevealId, _reveal);
+        _mat.SetVector(RevealUpId, up);
+        _mat.SetFloat(RevealMinId, lo);
+        _mat.SetFloat(RevealMaxId, hi);
     }
 
     void Apply(Object owner)
@@ -102,17 +203,30 @@ public class GazeHighlight : MonoBehaviour
             if (r == null || !r.enabled) continue;
             if (r is ParticleSystemRenderer || r is LineRenderer || r is TrailRenderer) continue;
             if (r.gameObject.name == "GazeOutline") continue;   // never outline an outline
-            if (r.bounds.size.magnitude > maxRendererSize) continue;
+            float size = r.bounds.size.magnitude;
+            if (size > maxRendererSize) continue;
+            // Too small to outline, but it still has to MASK, or the hole it
+            // fills in a bigger renderer (an eye socket) is left open for that
+            // renderer's rim to draw through.
+            bool maskOnly = size < minRendererSize;
 
             if (r is SkinnedMeshRenderer smr && smr.sharedMesh != null)
             {
                 var go = NewOutlineChild(smr.transform, smr.sharedMesh.subMeshCount);
                 var clone = go.AddComponent<SkinnedMeshRenderer>();
-                clone.sharedMesh = smr.sharedMesh;
+                // Smoothed normals for SKINNED meshes too. This path used the
+                // raw mesh, so on a low-poly rig with hard edges (the cats)
+                // the inflation ran along split normals and the outline tore
+                // apart at every edge - it looked like it was outlining the
+                // cat's parts rather than the cat. Instantiate(Mesh) is a deep
+                // copy, so bone weights and bind poses come along and skinning
+                // still works. Needs Read/Write on the model; unreadable meshes
+                // fall back to the raw one inside SmoothedOutlineMesh.
+                clone.sharedMesh = SmoothedOutlineMesh(smr.sharedMesh);
                 clone.bones = smr.bones;
                 clone.rootBone = smr.rootBone;
                 clone.localBounds = smr.localBounds;
-                Configure(clone, smr.sharedMesh.subMeshCount);
+                Configure(clone, smr.sharedMesh.subMeshCount, maskOnly);
                 made++;
             }
             else if (r is MeshRenderer)
@@ -126,7 +240,7 @@ public class GazeHighlight : MonoBehaviour
                 // the outline's corners never meet (Sam's screenshot).
                 // Averaging normals across position-duplicates closes them.
                 go.AddComponent<MeshFilter>().sharedMesh = SmoothedOutlineMesh(mf.sharedMesh);
-                Configure(go.AddComponent<MeshRenderer>(), mf.sharedMesh.subMeshCount);
+                Configure(go.AddComponent<MeshRenderer>(), mf.sharedMesh.subMeshCount, maskOnly);
                 made++;
             }
         }
@@ -142,11 +256,13 @@ public class GazeHighlight : MonoBehaviour
         return go;
     }
 
-    void Configure(Renderer clone, int subMeshes)
+    void Configure(Renderer clone, int subMeshes, bool maskOnly)
     {
         var mats = new Material[Mathf.Max(1, subMeshes)];
-        for (int i = 0; i < mats.Length; i++) mats[i] = _mat;
+        var use = maskOnly ? _maskMat : _mat;
+        for (int i = 0; i < mats.Length; i++) mats[i] = use;
         clone.sharedMaterials = mats;
+        _outlineRenderers.Add(clone);
         clone.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         clone.receiveShadows = false;
         clone.lightProbeUsage = UnityEngine.Rendering.LightProbeUsage.Off;
@@ -174,6 +290,15 @@ public class GazeHighlight : MonoBehaviour
         _mat = new Material(shader);
         _mat.SetColor("_OutlineColor", outlineColor);
         _mat.SetFloat("_OutlineWidth", outlineWidth);
+        _mat.SetFloat(RevealId, 0f);    // a new target starts hidden, then fills
+
+        // Mask-only twin. One queue EARLIER than the outline material, so every
+        // mask-only piece has stamped the stencil before any rim is drawn --
+        // Unity draws opaques by queue first, and the eye must already be
+        // masked when the body's OUTLINE pass reaches the socket.
+        _maskMat = new Material(shader);
+        _maskMat.SetShaderPassEnabled("OUTLINE", false);
+        _maskMat.renderQueue = _mat.renderQueue - 1;
         return true;
     }
 
@@ -182,6 +307,7 @@ public class GazeHighlight : MonoBehaviour
         for (int i = 0; i < _outlines.Count; i++)
             if (_outlines[i] != null) Destroy(_outlines[i]);
         _outlines.Clear();
+        _outlineRenderers.Clear();
     }
 
     // ── smoothed-normal outline meshes, cached per source mesh ───────────
