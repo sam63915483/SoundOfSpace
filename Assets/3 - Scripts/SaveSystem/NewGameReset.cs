@@ -236,6 +236,9 @@ public static class NewGameReset
         // save file (a perk lasts three minutes at most), so without this a buff
         // rolled in the previous run is still ticking in the new one.
         if (CatPerkManager.Instance != null) CatPerkManager.Instance.ClearPerk();
+        // Same story for the firefly glow: a one-minute status in a persistent
+        // singleton, never saved, so it must not leak into a new game.
+        if (FireflyGlow.Instance != null) FireflyGlow.Instance.Clear();
         // null key → Idle (no bonus tutorial running).
         if (BonusTutorial.Instance != null) BonusTutorial.Instance.ApplySaveState(null, 0, null, false);
 

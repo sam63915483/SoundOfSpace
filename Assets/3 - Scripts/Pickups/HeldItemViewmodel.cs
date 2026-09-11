@@ -138,7 +138,8 @@ public class HeldItemViewmodel : MonoBehaviour
     void UpdateEating(Hotbar hb)
     {
         bool eating = hb.IsEatingHeldItem
-                      && (_shownId == Hotbar.ItemId.Fish || _shownId == Hotbar.ItemId.Mushroom);
+                      && (_shownId == Hotbar.ItemId.Fish || _shownId == Hotbar.ItemId.Mushroom
+                          || _shownId == Hotbar.ItemId.Firefly);
 
         float step = eatTransitionDuration > 0.0001f ? Time.deltaTime / eatTransitionDuration : 1f;
         _eatBlend = Mathf.MoveTowards(_eatBlend, eating ? 1f : 0f, step);
@@ -238,9 +239,11 @@ public class HeldItemViewmodel : MonoBehaviour
 
         GameObject content = slot.id == Hotbar.ItemId.Fish
             ? BuildFish(slot.fishData)
-            : Hotbar.IsMushroomItem(slot.id)
-                ? BuildMushroom(slot)
-                : BuildIcon(slot);
+            : slot.id == Hotbar.ItemId.Firefly
+                ? BuildFirefly()
+                : Hotbar.IsMushroomItem(slot.id)
+                    ? BuildMushroom(slot)
+                    : BuildIcon(slot);
 
         if (content == null)
         {
@@ -274,6 +277,58 @@ public class HeldItemViewmodel : MonoBehaviour
         var go = MushroomRegistry.BuildModel(slot.mushroomSpecies, "Held_Mushroom", size);
         if (go == null) return null;
         _baseContentRot = Quaternion.Euler(mushroomRotationOffset);
+        return go;
+    }
+
+    /// The caught bug in your hand: the same procedural body the swarm uses,
+    /// held at a steady glow, with a real warm light so it works as a torch
+    /// and lights the grass at torch parity (Sam: "it will emit a glow and be
+    /// like a torch, so it will also have to light up grass properly").
+    GameObject BuildFirefly()
+    {
+        var go = BuildHeldFireflyVisual("Held_Firefly");
+        if (go == null) return null;
+        _baseContentRot = Quaternion.Euler(heldFireflyRotation);
+        return go;
+    }
+
+    /// <summary>
+    /// Shared with HeldItemResolver so a co-op partner sees exactly what the
+    /// holder does — bug, glow and light. Unparented, at the held scale.
+    /// </summary>
+    public static GameObject BuildHeldFireflyVisual(string name)
+    {
+        var vm = Instance;
+        float haloSize   = vm != null ? vm.heldHaloSize : 0.14f;
+        float scale      = vm != null ? vm.heldFireflyScale : 1.15f;
+        float glowFloor  = vm != null ? vm.heldGlowFloor : 0.8f;
+        float intensity  = vm != null ? vm.heldLightIntensity : 1.6f;
+        float range      = vm != null ? vm.heldLightRange : 7f;
+        float grass      = vm != null ? vm.heldGrassStrength : 0.5f;
+
+        var go = FireflyVisual.Build(name, haloSize, out MeshRenderer body, out MeshRenderer halo);
+        if (go == null) return null;
+        go.transform.localScale = Vector3.one * scale;
+
+        // Steady, slow breathing rather than the wild bug's blink: a torch that
+        // kept going dark would be a bad torch.
+        var block = new MaterialPropertyBlock();
+        FireflyVisual.Apply(body, halo, block, Random.value, 2.8f, glowFloor, 0f, 1f);
+
+        var lampGo = new GameObject("Lamp");
+        lampGo.transform.SetParent(go.transform, false);
+        var lamp = lampGo.AddComponent<Light>();
+        lamp.type = LightType.Point;
+        lamp.shadows = LightShadows.None;
+        lamp.color = FireflyVisual.GlowColor;
+        lamp.intensity = intensity;
+        lamp.range = range;
+        // Grass never receives real additive lights: the marker feeds this one
+        // into the grass shader's faked-light pool. Marked HERE, at the torch
+        // value, rather than left to GrassLightAutoMarker's 3 s sweep (which
+        // would use the tiny fill-light strength and light the blades late).
+        var marker = lampGo.AddComponent<GrassPointLight>();
+        marker.grassStrength = grass;
         return go;
     }
 
@@ -405,4 +460,20 @@ public class HeldItemViewmodel : MonoBehaviour
     [Header("Fish Size (weight-driven)")]
     [Tooltip("Fraction of the fish's true body length (FishingRules.BodyLengthForWeight) used for the in-hand display. 1 = life size; smaller keeps a 50 lb beast from blocking the whole camera. At 0.75, 1 lb ~ 0.26 m and 50 lb ~ 0.94 m in hand.")]
     [Range(0.25f, 1f)] public float heldFishScale = 0.75f;
+
+    [Header("Firefly (held)")]
+    [Tooltip("Scale on the 0.2 m bug in the hand. A little over life size so it has presence next to the hand.")]
+    public float heldFireflyScale = 1.15f;
+    [Tooltip("Halo quad edge in metres. The wild bug uses 0.5 m so it reads from afar; in the hand that would fill the view.")]
+    public float heldHaloSize = 0.14f;
+    [Range(0f, 1f)]
+    [Tooltip("How dim the held bug gets at the bottom of its slow breath. High so it works as a torch.")]
+    public float heldGlowFloor = 0.8f;
+    [Tooltip("The real point light in the hand. For scale: a placed torch is 3 over 10 m.")]
+    public float heldLightIntensity = 1.6f;
+    public float heldLightRange = 7f;
+    [Tooltip("Grass response of the hand light. 0.5 = the lantern/torch value = exactly the ground's brightness.")]
+    public float heldGrassStrength = 0.5f;
+    [Tooltip("Rotation applied to the held bug so it presents side-on. The bug's head is +Z.")]
+    public Vector3 heldFireflyRotation = new Vector3(-10f, 115f, 0f);
 }

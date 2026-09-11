@@ -77,6 +77,53 @@ public static class SuitTinter
         }
     }
 
+    // ── Emission (the firefly glow, 2026-09-11) ───────────────────────────
+    //
+    // Same per-slot property-block rule as the tint: `_EmissionColor` is written
+    // into the SAME block `_Color` lives in (GetPropertyBlock first), so tint and
+    // glow never overwrite each other. Suit.mat has the `_EMISSION` keyword
+    // switched on with a black colour — no visible change until something
+    // writes a colour here, and the Standard shader ignores the property
+    // entirely without that keyword.
+
+    static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
+
+    /// One tintable suit slot on one renderer.
+    public struct SuitSlot
+    {
+        public Renderer renderer;
+        public int slot;
+    }
+
+    /// Every suit slot under `root`, for callers that write per frame and must
+    /// not re-scan the hierarchy each time (GetComponentsInChildren allocates).
+    public static void CollectSuitSlots(Transform root, System.Collections.Generic.List<SuitSlot> into)
+    {
+        if (into == null) return;
+        into.Clear();
+        if (root == null) return;
+        var renderers = root.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            var r = renderers[i];
+            if (r == null) continue;
+            var mats = r.sharedMaterials;
+            for (int slot = 0; slot < mats.Length; slot++)
+                if (IsSuitMaterial(mats[slot]))
+                    into.Add(new SuitSlot { renderer = r, slot = slot });
+        }
+    }
+
+    /// Write an emission colour (HDR is fine) into one suit slot. Black = off.
+    public static void SetEmission(SuitSlot s, Color emission)
+    {
+        if (s.renderer == null) return;
+        if (_block == null) _block = new MaterialPropertyBlock();
+        s.renderer.GetPropertyBlock(_block, s.slot);
+        _block.SetColor(EmissionId, emission);
+        s.renderer.SetPropertyBlock(_block, s.slot);
+    }
+
     /// True for the suit shell, false for the visor and for anything else
     /// (the nametag's font material, for one — it lives under the same root).
     static bool IsSuitMaterial(Material m)

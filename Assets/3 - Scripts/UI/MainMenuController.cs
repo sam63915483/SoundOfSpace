@@ -1062,6 +1062,13 @@ public class MainMenuController : MonoBehaviour
         if (CatPerkTradeUI.Instance == null) { var go = new GameObject("[CatPerkTradeUI]"); DontDestroyOnLoad(go); go.AddComponent<CatPerkTradeUI>(); }
         if (CatPerkHUD.Instance == null) { var go = new GameObject("[CatPerkHUD]"); DontDestroyOnLoad(go); go.AddComponent<CatPerkHUD>(); }
         tick("cat perks");        yield return null;
+        // Fireflies (2026-09-11). Same trap #1: all three skip MainMenu in their
+        // own AutoCreate, so without these lines a build has no night-side
+        // swarms, no glow after eating one, and no countdown chip.
+        if (FireflySpawner.Instance == null) { var go = new GameObject("[FireflySpawner]"); DontDestroyOnLoad(go); go.AddComponent<FireflySpawner>(); }
+        if (FireflyGlow.Instance == null) { var go = new GameObject("[FireflyGlow]"); DontDestroyOnLoad(go); go.AddComponent<FireflyGlow>(); }
+        if (FireflyGlowHUD.Instance == null) { var go = new GameObject("[FireflyGlowHUD]"); DontDestroyOnLoad(go); go.AddComponent<FireflyGlowHUD>(); }
+        tick("fireflies");        yield return null;
         if (NewspaperReaderUI.Instance == null) { var go = new GameObject("NewspaperReaderUI"); DontDestroyOnLoad(go); go.AddComponent<NewspaperReaderUI>(); }
         if (MonumentLinkPopupUI.Instance == null) { var go = new GameObject("MonumentLinkPopupUI"); DontDestroyOnLoad(go); go.AddComponent<MonumentLinkPopupUI>(); }
         if (VitalsHUD.Instance == null) { var go = new GameObject("VitalsHUD"); DontDestroyOnLoad(go); go.AddComponent<VitalsHUD>(); }

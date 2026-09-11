@@ -366,4 +366,11 @@ public static class FeatureVault
     /// not disturb the save, the singletons or the fishing hooks — the fishing
     /// multipliers all read 1.0 with no perk running, exactly as they do now.
     public static readonly bool SpaceCats = true;
+
+    /// FIREFLIES — night-side swarms you can catch, hold as a torch and eat for
+    /// a one-minute body glow (Sam, 2026-09-11). Same A/B shape as SpaceCats:
+    /// only the SPAWNER is gated. The hotbar item, the held visual, the eat
+    /// path and the FireflyGlow status all stay alive and cost nothing with no
+    /// bug to catch, so flipping this never disturbs a save.
+    public static readonly bool Fireflies = true;
 }

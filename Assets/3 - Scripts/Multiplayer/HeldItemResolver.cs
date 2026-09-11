@@ -138,6 +138,11 @@ public static class HeldItemResolver
             return fp != null ? Object.Instantiate(fp) : null;
         }
 
+        // A firefly — the same glowing bug, light included, that the holder
+        // sees (HeldItemViewmodel owns the recipe so the two cannot drift).
+        if (id == Hotbar.ItemId.Firefly)
+            return HeldItemViewmodel.BuildHeldFireflyVisual("RemoteHeld_Firefly");
+
         // Everything else select-only (wood, crystal, dust, saplings, fish bag)
         // is a flat icon presented as a thick slab — exactly what the holder is
         // looking at.
@@ -194,6 +199,7 @@ public static class HeldItemResolver
             case Hotbar.ItemId.Mushroom:    return vm != null ? vm.mushroomWorldSize : 0.26f;
             case Hotbar.ItemId.MushroomSapling:
                                             return (vm != null ? vm.mushroomWorldSize : 0.26f) * 0.55f;
+            case Hotbar.ItemId.Firefly:     return FireflyVisual.BodyLength * (vm != null ? vm.heldFireflyScale : 1.15f);
 
             default:                        return vm != null ? vm.iconWorldSize : 0.24f;
         }
@@ -233,6 +239,9 @@ public static class HeldItemResolver
             case Hotbar.ItemId.Mushroom:
             case Hotbar.ItemId.MushroomSapling:
                 return vm != null ? vm.mushroomRotationOffset : new Vector3(-12f, 160f, 0f);
+
+            case Hotbar.ItemId.Firefly:
+                return vm != null ? vm.heldFireflyRotation : new Vector3(-10f, 115f, 0f);
 
             default:
                 return new Vector3(0f, 180f, 0f);   // slab faces the onlooker

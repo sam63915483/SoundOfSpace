@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun, Firefly }
 
     public struct Slot
     {
@@ -389,8 +389,13 @@ public class Hotbar : MonoBehaviour
                           && slots[eq].id == ItemId.Cassette
                           && slots[eq].count > 0
                           && !string.IsNullOrEmpty(slots[eq].cassetteId);
+        // A firefly is food too (Sam, 2026-09-11): same ring, same raise-to-
+        // the-mouth, and what it does is light the astronaut up for a minute.
+        bool fireflyEquipped = eq >= 0 && eq < TotalSlots
+                            && slots[eq].id == ItemId.Firefly
+                            && slots[eq].count > 0;
 
-        if ((!fishEquipped && !mushroomEquipped && !tapeEquipped) || !TutorialGate.FireHeld())
+        if ((!fishEquipped && !mushroomEquipped && !tapeEquipped && !fireflyEquipped) || !TutorialGate.FireHeld())
         {
             if (_eatProgressSlot != -1) { _eatProgressSlot = -1; _eatHeldSeconds = 0f; }
             return;
@@ -409,6 +414,7 @@ public class Hotbar : MonoBehaviour
         {
             if (tapeEquipped) ToggleEquippedTape();
             else if (fishEquipped) ConsumeEquippedFish();
+            else if (fireflyEquipped) ConsumeEquippedFirefly();
             else ConsumeEquippedMushroom();
             _eatProgressSlot = -1;
             _eatHeldSeconds = 0f;
@@ -451,6 +457,22 @@ public class Hotbar : MonoBehaviour
         slots[eq].count--;
         if (slots[eq].count <= 0) slots[eq] = default;
         OnResourceChanged?.Invoke(ItemId.Mushroom);
+    }
+
+    void ConsumeEquippedFirefly()
+    {
+        int eq = _equippedSlot;
+        if (eq < 0 || eq >= TotalSlots) return;
+        var slot = slots[eq];
+        if (slot.id != ItemId.Firefly || slot.count <= 0) return;
+
+        // The whole payoff: one minute of glowing suit + a light around you.
+        if (FireflyGlow.Instance != null) FireflyGlow.Instance.Grant();
+        PlayerSuitAudio.Instance?.PlayBurpAfterDelay();
+
+        slots[eq].count--;
+        if (slots[eq].count <= 0) slots[eq] = default;
+        OnResourceChanged?.Invoke(ItemId.Firefly);
     }
 
     void ConsumeEquippedFish()
@@ -560,6 +582,9 @@ public class Hotbar : MonoBehaviour
             ItemId.BaitGrubs => 50,
             ItemId.BaitGlowworms => 50,
             ItemId.BaitVoidmaggots => 50,
+            // Fireflies stack (Sam's night-side bugs, 2026-09-11): eight slots
+            // of single bugs would be miserable, and a swarm is 6-10 of them.
+            ItemId.Firefly => 10,
             // One TRAX install per stick and one install per world — a stack
             // would just be money Tev shouldn't have taken.
             ItemId.TraxUsbStick => 1,
@@ -1209,7 +1234,8 @@ public class Hotbar : MonoBehaviour
                   or ItemId.BlankTapeHalfT1 or ItemId.BlankTapeHalfT2
                   or ItemId.BlankTapeFullT1 or ItemId.BlankTapeFullT2
                   or ItemId.Cassette or ItemId.TraxUsbStick
-                  or ItemId.BaitGrubs or ItemId.BaitGlowworms or ItemId.BaitVoidmaggots;
+                  or ItemId.BaitGrubs or ItemId.BaitGlowworms or ItemId.BaitVoidmaggots
+                  or ItemId.Firefly;
     }
 
     // Slot-only items: selected via number key but have no controller to equip.
@@ -1314,6 +1340,7 @@ public class Hotbar : MonoBehaviour
     static readonly Color BaitGlowSwatch = new Color32(0x8E, 0xE8, 0x5C, 0xFF);   // glowworm green
     static readonly Color BaitVoidSwatch = new Color32(0x9B, 0x6C, 0xE0, 0xFF);   // voidmaggot violet
 
+    static readonly Color FireflySwatchColor   = new Color32(0xFF, 0xC0, 0x4A, 0xFF);   // firefly amber
     static readonly Color MushroomSwatchColor  = new Color32(0xE0, 0x6C, 0x75, 0xFF);   // cap red
     static readonly Color MushSaplingSwatchCol = new Color32(0xC8, 0x9B, 0xE6, 0xFF);   // spore violet
 
@@ -1342,6 +1369,7 @@ public class Hotbar : MonoBehaviour
             case ItemId.BaitGrubs:       return BaitGrubSwatch;
             case ItemId.BaitGlowworms:   return BaitGlowSwatch;
             case ItemId.BaitVoidmaggots: return BaitVoidSwatch;
+            case ItemId.Firefly:         return FireflySwatchColor;
             default: return Color.white;
         }
     }
@@ -1368,6 +1396,7 @@ public class Hotbar : MonoBehaviour
             case ItemId.BaitGrubs:       return "GRUBS";
             case ItemId.BaitGlowworms:   return "GLOWWORMS";
             case ItemId.BaitVoidmaggots: return "VOIDMAGGOTS";
+            case ItemId.Firefly:         return "FIREFLY";
             default: return "—";
         }
     }
@@ -1410,8 +1439,88 @@ public class Hotbar : MonoBehaviour
             // (a remote player's held item, a world drop).
             case ItemId.Cassette:  return CassetteSprite(CassetteT1Swatch);
             case ItemId.TraxUsbStick: return TraxUsbIcon();
+            case ItemId.Firefly:      return FireflyIcon();
             default: return null;
         }
+    }
+
+    // Firefly icon — a glowing tail on a dark bug, drawn in code like the USB
+    // stick and the money stack (the Hotbar auto-creates with no inspector).
+    // Drop a sprite at Resources/HotbarIcons/TransparentFirefly and it wins
+    // automatically, no code change.
+    static Sprite _fireflyIcon;
+    static bool _fireflyIconTried;
+    static Sprite FireflyIcon()
+    {
+        if (_fireflyIconTried) return _fireflyIcon;
+        _fireflyIconTried = true;
+
+        _fireflyIcon = Resources.Load<Sprite>("HotbarIcons/TransparentFirefly");
+        if (_fireflyIcon != null) return _fireflyIcon;
+
+        const int size = 96;
+        var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+        };
+        var px = new Color[size * size];   // starts fully transparent
+
+        // Bug flies left-to-right: head on the right, glowing tail on the left,
+        // two wing lobes over the back. Everything is soft-edged distance
+        // fields so it reads at 64 px.
+        Color glow = FireflyVisual.GlowColor;
+        var head  = new Color(0.16f, 0.12f, 0.08f, 1f);
+        var wing  = new Color(0.32f, 0.27f, 0.18f, 0.9f);
+        Vector2 tailC = new Vector2(36f, 46f);
+        Vector2 headC = new Vector2(62f, 46f);
+        Vector2 wingL = new Vector2(44f, 60f);
+        Vector2 wingR = new Vector2(58f, 62f);
+
+        for (int y = 0; y < size; y++)
+            for (int x = 0; x < size; x++)
+            {
+                var p = new Vector2(x + 0.5f, y + 0.5f);
+
+                // Halo: wide soft disc around the tail.
+                float halo = Mathf.Clamp01(1f - Vector2.Distance(p, tailC) / 34f);
+                halo = halo * halo * halo;
+                Color c = new Color(glow.r, glow.g, glow.b, halo * 0.85f);
+
+                // Wings (behind the body, slightly translucent).
+                float wl = Mathf.Clamp01(1f - EllipseDist(p, wingL, 13f, 8f, -0.55f));
+                float wr = Mathf.Clamp01(1f - EllipseDist(p, wingR, 12f, 7f, -0.35f));
+                float w = Mathf.Max(Mathf.Min(wl * 6f, 1f), Mathf.Min(wr * 6f, 1f));
+                c = Color.Lerp(c, wing, w * wing.a);
+
+                // Body: tail lobe (bright) + head lobe (dark), joined.
+                float tail = Mathf.Min(Mathf.Clamp01(1f - EllipseDist(p, tailC, 14f, 9f, 0f)) * 6f, 1f);
+                float hd   = Mathf.Min(Mathf.Clamp01(1f - EllipseDist(p, headC, 13f, 10f, 0f)) * 6f, 1f);
+                var tailCol = new Color(Mathf.Min(1f, glow.r * 1.15f), Mathf.Min(1f, glow.g * 1.05f), glow.b, 1f);
+                c = Color.Lerp(c, tailCol, tail);
+                c = Color.Lerp(c, head, hd);
+                // Eye glint.
+                float eye = Mathf.Clamp01(1f - Vector2.Distance(p, new Vector2(67f, 49f)) / 2.2f);
+                c = Color.Lerp(c, Color.white, Mathf.Min(eye * 2f, 1f) * hd);
+
+                px[y * size + x] = c;
+            }
+
+        tex.SetPixels(px);
+        tex.Apply();
+        _fireflyIcon = Sprite.Create(tex, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f));
+        _fireflyIcon.hideFlags = HideFlags.DontUnloadUnusedAsset;
+        return _fireflyIcon;
+    }
+
+    /// Normalised distance (1 = on the rim) from a point to a rotated ellipse.
+    static float EllipseDist(Vector2 p, Vector2 c, float rx, float ry, float angle)
+    {
+        Vector2 d = p - c;
+        float cs = Mathf.Cos(angle), sn = Mathf.Sin(angle);
+        float lx = d.x * cs + d.y * sn;
+        float ly = -d.x * sn + d.y * cs;
+        return Mathf.Sqrt((lx * lx) / (rx * rx) + (ly * ly) / (ry * ry));
     }
 
     // TRAX USB stick — placeholder drawn in code, same deal as MoneyIcon: drop
