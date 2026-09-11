@@ -887,11 +887,25 @@ public static class FishingRules
     /// Tier roll, including the cast-distance shift. <paramref name="rand01"/>
     /// is a uniform [0,1).
     /// </summary>
-    public static FishTier RollTier(float dot, BaitKind bait, float castDistance, float rand01)
+    /// <param name="luckBonus">
+    /// Cat-perk luck (CatPerkManager.TierLuckBonus). 0 = exactly the old
+    /// behaviour, which is what every caller that omits it gets. Above 0 it
+    /// multiplies the uncommon and rare weights and lets the existing
+    /// normalise-by-total below do the rest, so no tier can ever be closed off
+    /// and no weight can ever go negative -- the same shape as a bait shift.
+    /// </param>
+    public static FishTier RollTier(float dot, BaitKind bait, float castDistance, float rand01,
+                                    float luckBonus = 0f)
     {
         float c, u, r;
         TierWeights(dot, bait, out c, out u, out r);
         ApplyCastShift(castDistance, ref c, ref u, ref r);
+        if (luckBonus > 0f)
+        {
+            float lift = 1f + luckBonus;
+            u *= lift;
+            r *= lift;
+        }
         float total = c + u + r;
         if (total <= 0f) return FishTier.Common;
         float pick = rand01 * total;
@@ -999,11 +1013,19 @@ public static class FishingRules
         => RollWeight(speciesIndex, rand01, castDistance, BaitKind.Grubs);
 
     /// <summary>Weight roll with the bait's size bonus folded in.</summary>
+    /// <param name="perkExponentMul">
+    /// Cat-perk size bonus (CatPerkManager.WeightExponentMultiplier). 1 = exactly
+    /// the old behaviour, which is what every caller that omits it gets. It rides
+    /// the same exponent bait already bends -- below 1 skews heavy -- so Weight
+    /// Gain stacks with bait instead of replacing it.
+    /// </param>
     public static float RollWeight(int speciesIndex, float rand01, float castDistance,
-                                   BaitKind bait)
+                                   BaitKind bait, float perkExponentMul = 1f)
     {
         var s = Species[speciesIndex];
-        float exponent = Lerp(2.2f, 0.9f, CastFactor(castDistance)) * BaitWeightFactor(bait);
+        float exponent = Lerp(2.2f, 0.9f, CastFactor(castDistance))
+                       * BaitWeightFactor(bait)
+                       * (perkExponentMul > 0.0001f ? perkExponentMul : 1f);
         float t = (float)Math.Pow(rand01, exponent);
         return s.weightMin + (s.weightMax - s.weightMin) * t;
     }

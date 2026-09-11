@@ -349,4 +349,21 @@ public static class FeatureVault
     /// off the singleton destroys itself on Awake so every Instance check is a
     /// no-op and HintTrackRunner's OnOpened subscription simply never fires.
     public static readonly bool MapTutorial = false;
+
+    /// SPACE CATS — the wandering cats and the fish-for-a-fishing-perk trade.
+    ///
+    /// This is an A/B SWITCH, not a burial. Sam is chasing a one-frame visual
+    /// glitch that started when the cats went in, and three confident diagnoses
+    /// have failed to kill it. Rather than guess a fourth time, this makes the
+    /// cats a single variable he can turn off and on between builds:
+    ///
+    ///   false → no cats spawn at all. If the glitch STILL happens, the cats
+    ///           were never the cause and the hunt moves elsewhere.
+    ///   true  → cats come back exactly as they were.
+    ///
+    /// Only the SPAWNER is gated. CatPerkManager, the trade UI and the HUD chip
+    /// stay alive and cost nothing with no cat to talk to, so flipping this does
+    /// not disturb the save, the singletons or the fishing hooks — the fishing
+    /// multipliers all read 1.0 with no perk running, exactly as they do now.
+    public static readonly bool SpaceCats = true;
 }

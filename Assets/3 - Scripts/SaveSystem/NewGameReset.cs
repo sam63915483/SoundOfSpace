@@ -232,6 +232,10 @@ public static class NewGameReset
         if (CompassHUD.Instance != null) CompassHUD.Instance.ClearAll();
         // idx = -1 → NotStarted, so the map tutorial fires again on first open.
         if (MapTutorial.Instance != null) MapTutorial.Instance.ApplySaveState(false, -1, null);
+        // Cat perks live in a DontDestroyOnLoad singleton and are not in the
+        // save file (a perk lasts three minutes at most), so without this a buff
+        // rolled in the previous run is still ticking in the new one.
+        if (CatPerkManager.Instance != null) CatPerkManager.Instance.ClearPerk();
         // null key → Idle (no bonus tutorial running).
         if (BonusTutorial.Instance != null) BonusTutorial.Instance.ApplySaveState(null, 0, null, false);
 

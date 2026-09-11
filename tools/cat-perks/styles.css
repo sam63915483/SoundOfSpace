@@ -1,0 +1,204 @@
+/* Cat Perks mockup — PHOSPHOR palette lifted from PhosphorUI (PhosphorDialogueBox.cs)
+   so what you see here is what the in-game plate already looks like. */
+:root{
+  --plate:#05120D; --border:#1D4D38; --phos:#39E08B; --body:#C9FFE6;
+  --row:#7DDBA9; --rowhot:#EAFFF3; --rowdim:#4A6E59; --hover:#0D2A1E;
+  --t1:#8CAFFF;  /* 1 min  — game's Common blue   */
+  --t2:#3CDCBE;  /* 2 min  — game's Uncommon teal */
+  --t3:#FFD232;  /* 3 min  — game's Rare gold     */
+  --ink:#020906;
+}
+*{box-sizing:border-box}
+/* Must outrank the class rules below. `el.hidden` only sets an attribute the UA
+   styles as display:none at NORMAL specificity, so any `.thing{display:grid}`
+   quietly beats it — which is exactly how the fish picker ended up visible
+   under the yes/no. */
+[hidden]{display:none !important}
+html,body{margin:0;height:100%}
+body{
+  background:#020906; color:var(--body);
+  font:13px/1.5 "Consolas","DejaVu Sans Mono",ui-monospace,monospace;
+  display:flex; flex-direction:column; overflow:hidden;
+}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+h1,h2,h3{margin:0;font-weight:600;letter-spacing:.12em}
+
+/* ── chrome ──────────────────────────────────────────────────────────── */
+header{
+  display:flex;align-items:center;gap:18px;padding:9px 16px;
+  border-bottom:1px solid var(--border);background:#04100B;flex:0 0 auto;
+}
+header h1{font-size:13px;color:var(--phos)}
+header .sub{color:var(--rowdim);font-size:11px;letter-spacing:.06em}
+.seg{display:flex;gap:0;margin-left:auto;border:1px solid var(--border)}
+.seg button{padding:5px 14px;color:var(--rowdim);letter-spacing:.1em;font-size:11px}
+.seg button+button{border-left:1px solid var(--border)}
+.seg button.on{background:var(--phos);color:var(--ink);font-weight:700}
+.seg button:not(.on):hover{background:var(--hover);color:var(--row)}
+.tools{display:flex;gap:10px;align-items:center;color:var(--rowdim);font-size:11px}
+.tools label{cursor:pointer;user-select:none}
+
+main{flex:1;display:grid;grid-template-columns:1fr 348px;min-height:0}
+
+/* ── viewport ────────────────────────────────────────────────────────── */
+#stage{position:relative;overflow:hidden;background:
+  radial-gradient(120% 90% at 50% 108%, #0d2b20 0%, #071710 45%, #020806 100%);}
+#stars{position:absolute;inset:0}
+#world{position:absolute;inset:0;display:grid;place-items:center}
+.cat-wrap{position:relative;transform:translateY(30px)}
+.cat-wrap svg{display:block;filter:drop-shadow(0 8px 22px rgba(0,0,0,.7))}
+.cat-wrap.outlined svg .outline{stroke:var(--phos);stroke-width:2.4;
+  filter:drop-shadow(0 0 7px rgba(57,224,139,.9))}
+.prompt{
+  position:absolute;left:50%;top:-56px;transform:translateX(-50%);
+  white-space:nowrap;color:var(--phos);font-size:12px;letter-spacing:.14em;
+  background:rgba(2,9,6,.75);border:1px solid var(--border);padding:4px 10px;
+  opacity:0;transition:opacity .18s;
+}
+.prompt.on{opacity:1}
+.prompt b{display:inline-block;border:1px solid var(--phos);padding:0 5px;margin-right:7px}
+
+/* ── phosphor plate (the real in-game dialogue box) ──────────────────── */
+.plate{
+  position:absolute;left:50%;bottom:30px;transform:translateX(-50%);
+  width:min(660px,88%);background:rgba(5,18,13,.933);
+  border:1.5px solid var(--border);padding:12px 16px 14px;
+  opacity:0;pointer-events:none;transition:opacity .16s;
+}
+.plate.on{opacity:1;pointer-events:auto}
+.plate .who{color:var(--phos);font-size:11px;letter-spacing:.2em;margin-bottom:6px}
+.plate .who .blk{display:inline-block;width:7px;height:11px;background:var(--phos);
+  vertical-align:-1px;margin-left:6px;animation:blink 1s steps(1) infinite}
+@keyframes blink{50%{opacity:.15}}
+.plate .line{color:var(--body);font-size:16px;min-height:24px}
+.choices{margin-top:11px;border-top:1px solid var(--border);padding-top:9px;
+  display:flex;flex-direction:column;gap:2px}
+.choices button{text-align:left;padding:4px 8px;color:var(--row);letter-spacing:.04em}
+.choices button:hover{background:var(--hover);color:var(--rowhot)}
+.choices button::before{content:"\203A  ";color:var(--rowdim)}
+
+/* fish picker */
+.fishgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px;
+  border-top:1px solid var(--border);padding-top:10px;max-height:186px;overflow:auto}
+.fishcard{border:1px solid var(--border);padding:6px 7px;text-align:left;line-height:1.35}
+.fishcard:hover{background:var(--hover);border-color:var(--phos)}
+.fishcard .nm{color:var(--rowhot);font-size:12px}
+.fishcard .wt{color:var(--rowdim);font-size:10.5px}
+.fishcard .pip{display:inline-block;width:6px;height:6px;margin-right:5px;vertical-align:1px}
+
+/* ── case overlay ────────────────────────────────────────────────────── */
+#case{position:absolute;inset:0;background:rgba(2,7,5,.90);display:none;
+  flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:5}
+#case.on{display:flex}
+#case .caption{color:var(--rowdim);font-size:11px;letter-spacing:.22em}
+
+/* A — horizontal reel */
+.reelbox{position:relative;width:min(760px,92%);height:132px;
+  border:1px solid var(--border);background:#04100B;overflow:hidden}
+.reelbox .fadeL,.reelbox .fadeR{position:absolute;top:0;bottom:0;width:90px;z-index:3;pointer-events:none}
+.reelbox .fadeL{left:0;background:linear-gradient(90deg,#04100B,transparent)}
+.reelbox .fadeR{right:0;background:linear-gradient(-90deg,#04100B,transparent)}
+.marker{position:absolute;left:50%;top:0;bottom:0;width:2px;margin-left:-1px;z-index:4;
+  background:var(--phos);box-shadow:0 0 12px var(--phos)}
+.marker i{position:absolute;left:50%;width:0;height:0;transform:translateX(-50%);
+  border-left:6px solid transparent;border-right:6px solid transparent}
+.marker .up{top:0;border-top:8px solid var(--phos)}
+.marker .dn{bottom:0;border-bottom:8px solid var(--phos)}
+.strip{position:absolute;top:12px;height:108px;display:flex;gap:8px;will-change:transform}
+
+/* B — vertical tag drop */
+.slotbox{position:relative;width:264px;height:300px;border:1px solid var(--border);
+  background:#04100B;overflow:hidden}
+.slotbox .fadeT,.slotbox .fadeB{position:absolute;left:0;right:0;height:86px;z-index:3;pointer-events:none}
+.slotbox .fadeT{top:0;background:linear-gradient(180deg,#04100B,transparent)}
+.slotbox .fadeB{bottom:0;background:linear-gradient(0deg,#04100B,transparent)}
+.slotwin{position:absolute;left:5px;right:5px;top:50%;height:84px;margin-top:-42px;z-index:4;
+  border-top:1px solid var(--phos);border-bottom:1px solid var(--phos);pointer-events:none;
+  box-shadow:0 0 22px rgba(57,224,139,.25) inset}
+.vstrip{position:absolute;left:12px;right:12px;top:0;display:flex;flex-direction:column;gap:6px;will-change:transform}
+
+/* shared card */
+.card{flex:0 0 auto;border:1px solid;background:#071B13;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;gap:3px;text-align:center;padding:6px}
+.card .ic{font-size:22px;line-height:1}
+.card .nm{font-size:9.5px;letter-spacing:.06em}
+.card .du{font-size:15px;font-weight:700}
+.h .card{width:96px;height:108px}
+.v .card{height:78px;width:100%;flex-direction:row;gap:11px;padding:0 13px;justify-content:flex-start}
+.v .card .ic{font-size:26px}
+.v .card .txt{text-align:left}
+.card.dim{opacity:.4}
+
+/* C — perk first, tier last */
+.climb{display:flex;flex-direction:column;align-items:center;gap:20px}
+.shufbox{width:340px;height:124px;border:1px solid var(--border);background:#04100B;
+  position:relative;overflow:hidden}
+.shufcard{position:absolute;inset:8px;border:1px solid;background:#071B13;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:5px}
+.shufcard .ic{font-size:34px;line-height:1}
+.shufcard .nm{font-size:13px;letter-spacing:.14em}
+.pips{display:flex;gap:14px}
+.pip3{width:78px;height:56px;border:1px solid var(--border);color:var(--rowdim);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;
+  font-size:10px;letter-spacing:.1em;background:#050f0b;transition:background .15s,color .15s,border-color .15s}
+.pip3 .big{font-size:19px;font-weight:700;line-height:1.1}
+.pip3.armed{animation:armed .4s ease-in-out infinite alternate}
+@keyframes armed{from{border-color:var(--border);background:#050f0b}
+                 to{border-color:var(--rowhot);background:#0d2a1e}}
+.pip3.lit{color:var(--ink);font-weight:700}
+.pip3.dud{border-color:#8a2f2f;color:#8a2f2f;background:#160707;animation:none}
+
+/* result */
+.result{display:flex;flex-direction:column;align-items:center;gap:9px;text-align:center}
+.result .big{font-size:27px;letter-spacing:.05em;font-weight:700}
+.result .eff{color:var(--row);font-size:12.5px;max-width:540px;line-height:1.6}
+.result .odds{color:var(--rowdim);font-size:11px;letter-spacing:.08em}
+.result button{margin-top:6px;border:1px solid var(--phos);color:var(--phos);
+  padding:6px 22px;letter-spacing:.16em;font-size:11px}
+.result button:hover{background:var(--phos);color:var(--ink)}
+.pop{animation:pop .5s cubic-bezier(.2,1.6,.4,1)}
+@keyframes pop{from{transform:scale(.55);opacity:0}to{transform:scale(1);opacity:1}}
+
+/* active-perk HUD chips */
+#hud{position:absolute;left:14px;top:14px;display:flex;flex-direction:column;gap:5px;z-index:6}
+.chip{display:flex;align-items:center;gap:9px;border:1px solid;background:rgba(4,16,11,.86);
+  padding:4px 9px;font-size:11px;letter-spacing:.08em}
+.chip .bar{width:62px;height:3px;background:#0d2a1e;position:relative;overflow:hidden}
+.chip .bar i{position:absolute;inset:0;transform-origin:left}
+
+/* ── right panel ─────────────────────────────────────────────────────── */
+aside{border-left:1px solid var(--border);background:#04100B;overflow:auto;padding:12px 14px 40px}
+aside h2{font-size:11px;color:var(--phos);letter-spacing:.2em;margin:18px 0 8px}
+aside h2:first-child{margin-top:0}
+.hint{color:var(--rowdim);font-size:11px;line-height:1.55;margin:0 0 8px}
+.hint b{color:var(--row);font-weight:600}
+.slider{display:flex;align-items:center;gap:9px;margin:8px 0 4px}
+.slider input{flex:1;accent-color:var(--phos)}
+.slider .val{color:var(--t3);font-weight:700;min-width:36px;text-align:right}
+table{width:100%;border-collapse:collapse;font-size:11px}
+th{color:var(--rowdim);text-align:right;font-weight:400;padding:3px 0;letter-spacing:.08em}
+th:first-child{text-align:left}
+td{padding:2px 0;text-align:right;color:var(--row)}
+td:first-child{text-align:left}
+td .pip{display:inline-block;width:7px;height:7px;margin-right:6px}
+tr.sep td,tr.sep th{border-top:1px solid var(--border);padding-top:5px}
+.simbtn{border:1px solid var(--border);color:var(--row);padding:5px 0;width:100%;
+  letter-spacing:.12em;font-size:11px;margin-top:8px}
+.simbtn:hover{background:var(--hover);color:var(--rowhot);border-color:var(--phos)}
+#log{font-size:11px;color:var(--rowdim);max-height:158px;overflow:auto;line-height:1.75}
+#log span{display:inline-block;width:8px;height:8px;margin-right:6px}
+.q{border-left:2px solid var(--t3);padding:2px 0 2px 9px;margin:0 0 10px;
+  color:var(--row);font-size:11px;line-height:1.55}
+.q b{color:var(--t3);letter-spacing:.06em}
+.q.done{border-left-color:var(--phos);color:var(--rowdim)}
+.q.done b{color:var(--phos)}
+
+/* the "you already have one" banner above the fish grid */
+.standing{grid-column:1/-1;border:1px solid #6a5a1e;background:#17130a;
+  padding:6px 9px;font-size:11px;line-height:1.5;color:var(--rowdim)}
+.standing b{color:var(--rowhot)}
+
+/* the "this roll threw away X" line on the result screen */
+.result .swap{font-size:11.5px;letter-spacing:.06em;border-top:1px solid var(--border);
+  border-bottom:1px solid var(--border);padding:6px 14px;margin:2px 0}
+.result .swap b{color:var(--rowhot)}

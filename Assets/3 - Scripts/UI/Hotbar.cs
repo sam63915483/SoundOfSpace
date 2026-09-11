@@ -799,6 +799,32 @@ public class Hotbar : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Every fish on the player — hotbar slots AND fish bags — appended to
+    /// <paramref name="into"/> in slot order. Caller supplies the list so a
+    /// per-frame UI can reuse one and allocate nothing.
+    ///
+    /// Added for the cat trade picker. Anything that shows the player their
+    /// fish must read them from HERE: FishInventory keeps a parallel list that
+    /// nothing else removes from, so listing one and removing from the other
+    /// silently leaves the fish in the hotbar (which is exactly what happened).
+    /// </summary>
+    public void CollectFish(List<FishEntry> into)
+    {
+        if (into == null) return;
+        for (int i = 0; i < NumSlots; i++)
+        {
+            var s = slots[i];
+            if (s.id == ItemId.Fish && s.fishData != null) into.Add(s.fishData);
+            else if (s.id == ItemId.FishBag && s.bagContents != null)
+                for (int j = 0; j < s.bagContents.Length; j++)
+                {
+                    var b = s.bagContents[j];
+                    if (b.id == ItemId.Fish && b.fishData != null) into.Add(b.fishData);
+                }
+        }
+    }
+
     /// <summary>First fish on the player (hotbar or bag) matching the predicate, or null.</summary>
     public FishEntry FindFish(System.Func<FishEntry, bool> match)
     {

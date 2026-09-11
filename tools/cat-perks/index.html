@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cat Perks — case-opening mockup</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header>
+  <h1>CAT PERKS</h1>
+  <span class="sub">spare a fish &rarr; roll a fishing buff &nbsp;·&nbsp; mockup, no game code touched</span>
+  <div class="seg" id="opts">
+    <button data-opt="A" class="on">A · REEL</button>
+    <button data-opt="B">B · TAG DROP</button>
+    <button data-opt="C">C · STAR CLIMB</button>
+  </div>
+  <div class="tools">
+    <label><input type="checkbox" id="snd" checked> sound</label>
+  </div>
+</header>
+
+<main>
+  <section id="stage">
+    <canvas id="stars"></canvas>
+
+    <div id="hud"></div>
+
+    <div id="world">
+      <div class="cat-wrap" id="cat">
+        <div class="prompt" id="prompt"><b>F</b>PET / TALK</div>
+        <!-- low-poly stand-in for the real cat model -->
+        <svg width="230" height="200" viewBox="0 0 230 200">
+          <g class="outline" fill="none" stroke="transparent" stroke-linejoin="round">
+            <path d="M115 26 L92 66 L138 66 Z"/>
+            <path d="M92 66 L74 40 L86 72 Z"/>
+            <path d="M138 66 L156 40 L144 72 Z"/>
+            <path d="M86 72 L74 104 L115 122 L156 104 L144 72 L115 58 Z"/>
+            <path d="M83 108 L70 178 L160 178 L147 108 L115 124 Z"/>
+            <path d="M160 178 L196 172 L200 128 L184 140 L172 168 Z"/>
+          </g>
+          <g stroke="#0b2318" stroke-width="1" stroke-linejoin="round">
+            <!-- tail -->
+            <path d="M160 178 L196 172 L200 128 L184 140 L172 168 Z" fill="#5b6a86"/>
+            <!-- body -->
+            <path d="M83 108 L70 178 L160 178 L147 108 L115 124 Z" fill="#6f7f9c"/>
+            <path d="M100 132 L115 178 L138 178 L136 130 L115 142 Z" fill="#93a4c0"/>
+            <!-- ears -->
+            <path d="M92 66 L74 40 L86 72 Z" fill="#5b6a86"/>
+            <path d="M138 66 L156 40 L144 72 Z" fill="#5b6a86"/>
+            <path d="M91 64 L81 48 L88 68 Z" fill="#c98aa0"/>
+            <path d="M139 64 L149 48 L142 68 Z" fill="#c98aa0"/>
+            <!-- head -->
+            <path d="M86 72 L74 104 L115 122 L156 104 L144 72 L115 58 Z" fill="#7d8ea9"/>
+            <path d="M115 58 L86 72 L115 92 Z" fill="#8d9eb9"/>
+            <!-- muzzle -->
+            <path d="M99 98 L115 122 L131 98 L115 90 Z" fill="#c3cede"/>
+            <path d="M110 96 L115 104 L120 96 Z" fill="#c98aa0"/>
+            <!-- eyes -->
+            <path d="M92 84 L102 79 L102 90 Z" fill="#39E08B"/>
+            <path d="M138 84 L128 79 L128 90 Z" fill="#39E08B"/>
+            <!-- whiskers -->
+            <path d="M99 101 L72 95 M99 105 L74 108 M131 101 L158 95 M131 105 L156 108"
+                  stroke="#c3cede" stroke-width="1.1" fill="none" opacity=".65"/>
+          </g>
+        </svg>
+      </div>
+    </div>
+
+    <div class="plate" id="plate">
+      <div class="who" id="who">SPACE CAT<span class="blk"></span></div>
+      <div class="line" id="line"></div>
+      <div class="choices" id="choices"></div>
+      <div class="fishgrid" id="fishgrid" hidden></div>
+    </div>
+
+    <div id="case"></div>
+  </section>
+
+  <aside>
+    <h2>ODDS</h2>
+    <p class="hint">Every roll picks one of <b>9 outcomes</b> — 3 perks &times; 3 durations.
+      The perk itself is a coin-flip; the <b>duration</b> is the prize.</p>
+    <div class="slider">
+      <span style="color:var(--rowdim)">3&nbsp;MIN&nbsp;RARITY</span>
+      <input type="range" id="hard" min="1" max="12" step="0.5" value="3">
+      <span class="val" id="hardv">3&times;</span>
+    </div>
+    <p class="hint" id="hardnote"></p>
+    <table id="oddstable"></table>
+    <button class="simbtn" id="sim">SIMULATE 10,000 ROLLS</button>
+    <table id="simtable"></table>
+
+    <h2>SHOULD I RE-ROLL?</h2>
+    <p class="hint">One slot. A new roll <b>replaces</b> what you have and resets the
+      timer to the new tier's length. So the real question is what a re-roll does
+      to the perk you are already holding:</p>
+    <table id="rerolltable"></table>
+    <p class="hint" id="rerollnote"></p>
+
+    <h2>CAT NAP</h2>
+    <p class="hint">Your spec has no cooldown, so this is <b>off</b> by default.
+      Slide it up to feel what a cat that sleeps after eating does to re-roll spam.</p>
+    <div class="slider">
+      <span style="color:var(--rowdim)">NAP</span>
+      <input type="range" id="nap" min="0" max="120" step="5" value="0">
+      <span class="val" id="napv">OFF</span>
+    </div>
+
+    <h2>ROLL LOG</h2>
+    <div id="log"></div>
+
+    <h2>THE THREE PERKS</h2>
+    <div id="perkdocs"></div>
+
+    <h2>OPEN QUESTIONS</h2>
+    <div id="questions"></div>
+  </aside>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>

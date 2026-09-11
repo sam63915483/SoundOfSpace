@@ -1753,9 +1753,13 @@ public class Bobber : MonoBehaviour
                 // The two bonuses STACK: working the lure, on water that has
                 // already produced a bite, is the best fishing there is
                 // (1.2 x 1.3 = 1.56x).
+                // Cat perks ride this same countdown rate: Frenzy is 2.2x (the
+                // whole perk), Luck a milder 1.15x on top of its tier and size
+                // bonuses. Exactly 1x with no perk running.
                 remaining -= Time.deltaTime
                            * (_retrieving ? retrieveBiteBonus : 1f)
-                           * _biteOddsBonus;
+                           * _biteOddsBonus
+                           * CatPerkManager.BiteRateMultiplier();
                 yield return null;
             }
 
@@ -1766,14 +1770,16 @@ public class Bobber : MonoBehaviour
             // How far out this cast actually landed. Feeds BOTH the tier roll
             // and the weight roll, so distance buys rarity and size together.
             float castDist = CastDistance();
-            FishTier tier = FishingRules.RollTier(dot, pendingBait, castDist, Random.value);
+            FishTier tier = FishingRules.RollTier(dot, pendingBait, castDist, Random.value,
+                                                  CatPerkManager.TierLuckBonus());
             // Planet economy: the species comes from THIS planet's table. Cast
             // distance still picks the tier; a world with no table fishes the
             // whole pool exactly as before.
             pendingSpecies = FishingRules.RollSpeciesInTier(tier, Random.value,
                 PlanetEconomy.CatchableIndices(FishingBodyName()));
             pendingWeight = Mathf.Max(1, Mathf.RoundToInt(
-                FishingRules.RollWeight(pendingSpecies, Random.value, castDist, pendingBait)));
+                FishingRules.RollWeight(pendingSpecies, Random.value, castDist, pendingBait,
+                                        CatPerkManager.WeightExponentMultiplier())));
             // Bounty water: inside an armed BountyZone each bite has the zone's
             // chance of being its bounty species instead (docs/Handoff_BountyQuest_Grulabu_v1.md).
             if (BountyZone.TryRoll(transform.position, Random.value, out int bountySpecies))
@@ -1781,7 +1787,8 @@ public class Bobber : MonoBehaviour
                 pendingSpecies = bountySpecies;
                 tier = FishingRules.Species[bountySpecies].tier;
                 pendingWeight = Mathf.Max(1, Mathf.RoundToInt(
-                    FishingRules.RollWeight(bountySpecies, Random.value, castDist, pendingBait)));
+                    FishingRules.RollWeight(bountySpecies, Random.value, castDist, pendingBait,
+                                            CatPerkManager.WeightExponentMultiplier())));
                 Debug.Log("[Bobber] BOUNTY bite: " + FishingRules.Species[bountySpecies].displayName);
             }
             currentFishType = tier.ToString();

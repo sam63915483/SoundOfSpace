@@ -228,8 +228,22 @@ public class AlienWander : MonoBehaviour
         // Mirror NPCWaveAnimation's init timing: let the first frame(s) settle
         // (SpawnFade starts at a tiny scale; bone-derived directions are
         // noisier there) before deriving axes from skeleton geometry.
+        //
+        // ⚠️ This settle is NOT only about bones — `_ready` gates ALL movement in
+        // Update. The spawners call Configure() and then keep going: re-seating
+        // the body on the exact terrain (NPCSeating.Reseat) happens AFTER, and
+        // SpawnFade still has the object at 5% scale. Letting the walker step on
+        // frame 0 means it steps from a pose that is about to be overwritten.
+        // An earlier version of the ProceduralLegs opt-out below skipped these
+        // two yields, which handed cats a frame-0 step the aliens never had.
         yield return new WaitForEndOfFrame();
         yield return null;
+
+        // Rigs that animate themselves (the IndieCat cats have real clips driven
+        // by CatAnimation) opt out of the procedural leg swing — but only after
+        // the settle above. Without this the bone hunt below fails on every cat
+        // and logs a warning per spawn, and the warning baseline here is zero.
+        if (!ProceduralLegs) { _ready = true; yield break; }
 
         if (_thighR == null)
         {
@@ -652,4 +666,25 @@ public class AlienWander : MonoBehaviour
                 if (t.name == n) return t;
         return null;
     }
+
+    // ── Appended 2026-09-10 for the space cats ───────────────────────────
+    // Both default to exactly the pre-existing behaviour, so every alien is
+    // untouched; only CatSpawner turns the first one off.
+
+    /// <summary>
+    /// Animate thighs/calves procedurally in LateUpdate (the alien rigs have no
+    /// Animator). Set false for a rig that plays real clips — the cats — so the
+    /// bone hunt in InitBones is skipped entirely instead of failing and warning
+    /// once per spawn.
+    /// </summary>
+    public bool ProceduralLegs = true;
+
+    /// <summary>
+    /// True on any frame this component actually moved the body. This is the
+    /// same signal the procedural leg blend reads, so a clip-driven rig that
+    /// keys its walk animation off it stays in lockstep with the legs it is
+    /// replacing — including while approaching, being remote-driven in co-op,
+    /// and during the pauses near the player.
+    /// </summary>
+    public bool IsMoving => _movedThisFrame;
 }

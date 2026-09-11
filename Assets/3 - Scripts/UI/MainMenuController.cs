@@ -1054,6 +1054,14 @@ public class MainMenuController : MonoBehaviour
         if (InteractPromptUI.Instance == null) { var go = new GameObject("InteractPromptUI"); DontDestroyOnLoad(go); go.AddComponent<InteractPromptUI>(); }
         if (GazeHighlight.Instance == null) { var go = new GameObject("GazeHighlight"); DontDestroyOnLoad(go); go.AddComponent<GazeHighlight>(); }
         tick("interact prompt");  yield return null;
+        // Cat perks. All three skip MainMenu in their own AutoCreate, which in a
+        // BUILD means they never auto-create at all (the build boots here) —
+        // trap #1. Without these three lines the cats would work in the Editor
+        // and do nothing in the shipped game.
+        if (CatPerkManager.Instance == null) { var go = new GameObject("[CatPerkManager]"); DontDestroyOnLoad(go); go.AddComponent<CatPerkManager>(); }
+        if (CatPerkTradeUI.Instance == null) { var go = new GameObject("[CatPerkTradeUI]"); DontDestroyOnLoad(go); go.AddComponent<CatPerkTradeUI>(); }
+        if (CatPerkHUD.Instance == null) { var go = new GameObject("[CatPerkHUD]"); DontDestroyOnLoad(go); go.AddComponent<CatPerkHUD>(); }
+        tick("cat perks");        yield return null;
         if (NewspaperReaderUI.Instance == null) { var go = new GameObject("NewspaperReaderUI"); DontDestroyOnLoad(go); go.AddComponent<NewspaperReaderUI>(); }
         if (MonumentLinkPopupUI.Instance == null) { var go = new GameObject("MonumentLinkPopupUI"); DontDestroyOnLoad(go); go.AddComponent<MonumentLinkPopupUI>(); }
         if (VitalsHUD.Instance == null) { var go = new GameObject("VitalsHUD"); DontDestroyOnLoad(go); go.AddComponent<VitalsHUD>(); }
