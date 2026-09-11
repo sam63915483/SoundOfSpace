@@ -26,26 +26,27 @@ using TMPro;
 /// DefaultCompany\Solar System 2\perf\ ). Analyse with
 /// tools/perf/analyze_perf_trace.py.
 ///
-/// HOTKEYS (numpad; Home/End/PgUp/PgDn/Delete work without a numpad).
+/// HOTKEYS (numpad, Num Lock ON; PgUp/PgDn/Delete work without a numpad).
 /// Every toggle is an A/B bisect: it removes ONE suspect while the trace keeps
 /// running, and the row records which toggles were active so the analyser can
 /// diff "with" vs "without" automatically. Press it again to restore.
 ///   Keypad1  all point + spot lights OFF
-///   Keypad2  moon base renderers OFF   (Constant Companion: Tunnel Rig + MoonBaseINTER)
-///   Keypad3  village renderers OFF     (TOWN-VILLAGE)
-///   Keypad4  shuttle renderers OFF     (Shuttle_Lander)
-///   Keypad5  shadows OFF               (QualitySettings.shadows)
-///   Keypad6  grass OFF                 (InstancedGrassRenderer)
-///   Keypad7  space dust OFF            (SpaceDustField)
-///   Keypad8  UI canvases OFF           (every root Canvas except the perf overlays)
-///   Keypad9  pixel light cap 64 → 4    (QualitySettings.pixelLightCount)
-///   Home / KeypadPlus      MARK — stamps a numbered marker into the trace (say what
+///   Keypad2  all point + spot lights → vertex-lit (ForceVertex)
+///   Keypad3  village renderers OFF          (TOWN-VILLAGE)
+///   Keypad4  MSAA OFF                       (QualitySettings.antiAliasing = 0)
+///   Keypad5  shadows OFF                    (QualitySettings.shadows)
+///   Keypad6  grass OFF                      (InstancedGrassRenderer)
+///   Keypad7  shadow cascades → 2, distance → 100 m
+///   Keypad8  point/spot lights stop touching planet meshes (cullingMask minus the Body layer)
+///   Keypad9  pixel light cap 64 → 8         (QualitySettings.pixelLightCount)
+///   KeypadPlus             MARK — stamps a numbered marker into the trace (say what
 ///                          you were looking at afterwards; the analyser prints
 ///                          the 3 s before/after each mark)
-///   End  / KeypadMinus     SNAPSHOT — writes the next 600 frames as a Unity
+///   KeypadMinus            SNAPSHOT — writes the next 300 frames as a Unity
 ///                          Profiler .raw (full hierarchy) next to the CSV.
-///                          Load with Tools ▸ Solar System ▸ Perf ▸ Dump Profiler
-///                          Snapshots, or Window ▸ Analysis ▸ Profiler ▸ Load.
+///                          Tools ▸ Solar System ▸ Perf ▸ Dump Profiler Snapshots
+///                          turns them into text; Window ▸ Analysis ▸ Profiler ▸ Load
+///                          opens one in the window.
 ///   PgUp / PgDn + Delete   select a toggle in the legend and flip it (no numpad)
 ///   KeypadDivide           hide/show the legend
 ///
@@ -56,21 +57,30 @@ using TMPro;
 /// Deliberately NOT a MainMenu-skipping singleton (trap #1): it creates itself in
 /// whatever scene boots first and simply waits for a non-menu scene, so it needs
 /// no seeding in MainMenuController.
+///
+/// v2 (after run 1, 2026-09-11): CSV rows were written with the newline and the
+/// header commas sanitised away (one giant line); the village angle was measured
+/// to TOWN-VILLAGE's pivot, which sits at the planet centre, not at the houses —
+/// landmarks now get an anchor at their renderer-bounds centre; script markers
+/// that did not exist yet when the recorder started are retried; and the toggle
+/// set was swapped to the levers run 1 pointed at (lights × planet mesh, MSAA,
+/// cascades) instead of the ones it ruled out (moon base = CPU only, dust, UI).
 /// </summary>
 public class PerfTrace : MonoBehaviour
 {
     public static PerfTrace Instance { get; private set; }
 
-    const int SnapshotFrames = 600;
+    const int SnapshotFrames = 300;
     const float FlushIntervalSec = 2f;
     const float ContextRefindSec = 2f;
+    const int BodyLayer = 10;      // "Body" — the layer every planet's Mesh Holder is on (TagManager)
 
     // ---- toggles --------------------------------------------------------------
-    enum Toggle { Lights, MoonBase, Village, Shuttle, Shadows, Grass, Dust, UI, PixelLights, Count }
+    enum Toggle { Lights, LightsVertex, Village, MsaaOff, Shadows, Grass, Cascades2, LightsSkipPlanet, PixelLights8, Count }
     static readonly string[] ToggleNames =
     {
-        "point/spot lights OFF", "moon base OFF", "village OFF", "shuttle OFF", "shadows OFF",
-        "grass OFF", "space dust OFF", "UI canvases OFF", "pixel lights 64→4",
+        "point/spot lights OFF", "lights → vertex-lit", "village OFF", "MSAA OFF", "shadows OFF",
+        "grass OFF", "cascades 2 + dist 100", "lights skip planet mesh", "pixel lights 64→8",
     };
     static readonly KeyCode[] ToggleKeys =
     {
@@ -81,16 +91,17 @@ public class PerfTrace : MonoBehaviour
     int _selected;
     bool _legendVisible = true;
 
-    // what each toggle switched off, so restore only touches those
+    // what each toggle changed, so restore only touches those
     readonly List<Light> _lightsOff = new List<Light>();
-    readonly List<Renderer> _moonOff = new List<Renderer>();
+    readonly List<Light> _lightsVertex = new List<Light>();
+    readonly List<LightRenderMode> _lightsVertexMode = new List<LightRenderMode>();
+    readonly List<Light> _lightsMasked = new List<Light>();
+    readonly List<int> _lightsMaskBefore = new List<int>();
     readonly List<Renderer> _villageOff = new List<Renderer>();
-    readonly List<Renderer> _shuttleOff = new List<Renderer>();
     readonly List<InstancedGrassRenderer> _grassOff = new List<InstancedGrassRenderer>();
-    readonly List<Canvas> _uiOff = new List<Canvas>();
     ShadowQuality _shadowsBefore;
-    int _pixelLightsBefore;
-    bool _dustWasEnabled;
+    int _msaaBefore, _cascadesBefore, _pixelLightsBefore;
+    float _shadowDistBefore;
 
     // ---- recorders ------------------------------------------------------------
     struct Rec
@@ -102,6 +113,7 @@ public class PerfTrace : MonoBehaviour
         public ProfilerRecorder recorder;
     }
     Rec[] _recs;
+    float _recRetryTimer;
 
     // ---- csv -------------------------------------------------------------------
     StreamWriter _writer;
@@ -116,7 +128,7 @@ public class PerfTrace : MonoBehaviour
     // ---- context ---------------------------------------------------------------
     Camera _cam;
     float _refindTimer;
-    Transform _village, _moonBase, _shuttle;
+    Transform _village, _villageAnchor, _moonBase, _shuttle;
     CelestialBody _moon, _villageBody, _moonBaseBody;
     int _mark, _pendingMark;
     int _snapshotLeft, _snapshotIndex;
@@ -149,9 +161,8 @@ public class PerfTrace : MonoBehaviour
         // Marker timings are only collected while the profiler is on. In a dev
         // build with no Editor attached this just fills a ring buffer — no disk,
         // no network — and it is the same for every frame of the run, so the
-        // A/B deltas are unaffected.
-        // In the Editor the Profiler window owns that switch (and its overhead), so
-        // only force it in a player.
+        // A/B deltas are unaffected. In the Editor the Profiler window owns that
+        // switch (and its overhead), so only force it in a player.
         if (!Application.isEditor)
         {
             Profiler.maxUsedMemory = 256 * 1024 * 1024;
@@ -162,8 +173,8 @@ public class PerfTrace : MonoBehaviour
         {
             // whole-frame
             T("main_ms",        ProfilerCategory.Internal, "Main Thread"),
-            T("render_ms",      ProfilerCategory.Internal, "Render Thread"),
             T("gpu_ms",         ProfilerCategory.Render,   "GPU Frame Time"),
+            T("waitgpu_ms",     ProfilerCategory.Render,   "DXGI.WaitOnSwapChain"),
             // where the main thread goes
             T("update_ms",      ProfilerCategory.Scripts,  "Update.ScriptRunBehaviourUpdate"),
             T("lateupdate_ms",  ProfilerCategory.Scripts,  "PreLateUpdate.ScriptRunBehaviourLateUpdate"),
@@ -171,13 +182,13 @@ public class PerfTrace : MonoBehaviour
             T("canvas_ms",      ProfilerCategory.Gui,      "PostLateUpdate.PlayerUpdateCanvases"),
             T("camrender_ms",   ProfilerCategory.Render,   "Camera.Render"),
             T("culling_ms",     ProfilerCategory.Render,   "Culling"),
+            T("skinfinal_ms",   ProfilerCategory.Render,   "SkinnedMeshFinalizeUpdate"),
             T("shadowmap_ms",   ProfilerCategory.Render,   "Shadows.RenderShadowMap"),
             T("opaque_ms",      ProfilerCategory.Render,   "Render.OpaqueGeometry"),
             T("transparent_ms", ProfilerCategory.Render,   "Render.TransparentGeometry"),
             T("imagefx_ms",     ProfilerCategory.Render,   "Camera.ImageEffects"),
             T("finishrender_ms",ProfilerCategory.Render,   "PostLateUpdate.FinishFrameRendering"),
-            T("waitpresent_ms", ProfilerCategory.Render,   "Gfx.WaitForPresentOnGfxThread"),
-            T("waitrender_ms",  ProfilerCategory.Render,   "Gfx.WaitForRenderThread"),
+            T("renderers_ms",   ProfilerCategory.Render,   "PostLateUpdate.UpdateAllRenderers"),
             // the usual script suspects (dev-build script markers are "Class.Method()")
             T("grass_ms",       ProfilerCategory.Scripts,  "InstancedGrassRenderer.LateUpdate()"),
             T("dust_ms",        ProfilerCategory.Scripts,  "SpaceDustField.LateUpdate()"),
@@ -186,8 +197,7 @@ public class PerfTrace : MonoBehaviour
             T("fish_ms",        ProfilerCategory.Scripts,  "AmbientFishField.LateUpdate()"),
             T("fireflies_ms",   ProfilerCategory.Scripts,  "FireflySpawner.Update()"),
             T("cats_ms",        ProfilerCategory.Scripts,  "CatSpawner.Update()"),
-            T("lod_ms",         ProfilerCategory.Scripts,  "LODHandler.Update()"),
-            T("nbody_ms",       ProfilerCategory.Scripts,  "NBodySimulation.FixedUpdate()"),
+            T("uinav_ms",       ProfilerCategory.Scripts,  "ControllerUINavigator.Update()"),
             // render counters
             C("draws",          ProfilerCategory.Render,   "Draw Calls Count"),
             C("setpass",        ProfilerCategory.Render,   "SetPass Calls Count"),
@@ -197,11 +207,9 @@ public class PerfTrace : MonoBehaviour
             C("shadowcasters",  ProfilerCategory.Render,   "Shadow Casters Count"),
             C("skinned",        ProfilerCategory.Render,   "Visible Skinned Meshes Count"),
             C("instanced_draws",ProfilerCategory.Render,   "Instanced Batched Draw Calls Count"),
-            C("dyn_batched",    ProfilerCategory.Render,   "Dynamic Batched Draw Calls Count"),
             C("gc_bytes",       ProfilerCategory.Memory,   "GC Allocated In Frame"),
         };
-        for (int i = 0; i < _recs.Length; i++)
-            _recs[i].recorder = ProfilerRecorder.StartNew(_recs[i].category, _recs[i].marker, 1);
+        StartRecorders();
 
         BuildUI();
         _t0 = Time.realtimeSinceStartup;
@@ -209,6 +217,19 @@ public class PerfTrace : MonoBehaviour
 
     static Rec T(string col, ProfilerCategory cat, string marker) => new Rec { column = col, category = cat, marker = marker, isTime = true };
     static Rec C(string col, ProfilerCategory cat, string marker) => new Rec { column = col, category = cat, marker = marker, isTime = false };
+
+    /// <summary>Script markers ("X.LateUpdate()") only exist once that method has
+    /// run with the profiler on, so a recorder started too early stays invalid.
+    /// Retry the invalid ones every couple of seconds until they bind.</summary>
+    void StartRecorders()
+    {
+        for (int i = 0; i < _recs.Length; i++)
+        {
+            if (_recs[i].recorder.Valid) continue;
+            try { _recs[i].recorder = ProfilerRecorder.StartNew(_recs[i].category, _recs[i].marker, 1); }
+            catch (Exception) { }
+        }
+    }
 
     void OnDestroy()
     {
@@ -235,6 +256,9 @@ public class PerfTrace : MonoBehaviour
         if (scene.name == "MainMenu") return;
 
         RefindContext();
+        _recRetryTimer -= Time.unscaledDeltaTime;
+        if (_recRetryTimer <= 0f) { _recRetryTimer = 2f; StartRecorders(); }
+
         WriteRow(scene.name);
 
         if (_snapshotLeft > 0 && --_snapshotLeft == 0) EndSnapshot();
@@ -255,13 +279,13 @@ public class PerfTrace : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.PageDown)) _selected = (_selected + 1) % (int)Toggle.Count;
         if (Input.GetKeyDown(KeyCode.Delete))   Flip((Toggle)_selected);
 
-        if (Input.GetKeyDown(KeyCode.Home) || Input.GetKeyDown(KeyCode.KeypadPlus))
+        if (Input.GetKeyDown(KeyCode.KeypadPlus) || Input.GetKeyDown(KeyCode.Home))
         {
             _mark++;
             _pendingMark = _mark;
             Debug.Log("[PerfTrace] MARK " + _mark + " at t=" + (Time.realtimeSinceStartup - _t0).ToString("0.0") + "s");
         }
-        if (Input.GetKeyDown(KeyCode.End) || Input.GetKeyDown(KeyCode.KeypadMinus))
+        if (Input.GetKeyDown(KeyCode.KeypadMinus) || Input.GetKeyDown(KeyCode.End))
             BeginSnapshot();
         if (Input.GetKeyDown(KeyCode.KeypadDivide))
         {
@@ -279,25 +303,29 @@ public class PerfTrace : MonoBehaviour
         {
             switch (t)
             {
-                case Toggle.Lights:      if (on) LightsOff(); else RestoreLights(); break;
-                case Toggle.MoonBase:    if (on) RenderersOff(_moonOff, FindMoonBaseRoots()); else RestoreRenderers(_moonOff); break;
-                case Toggle.Village:     if (on) RenderersOff(_villageOff, new[] { _village }); else RestoreRenderers(_villageOff); break;
-                case Toggle.Shuttle:     if (on) RenderersOff(_shuttleOff, new[] { _shuttle }); else RestoreRenderers(_shuttleOff); break;
+                case Toggle.Lights:       if (on) LightsOff(); else RestoreLights(); break;
+                case Toggle.LightsVertex: if (on) LightsVertex(); else RestoreLightsVertex(); break;
+                case Toggle.Village:      if (on) RenderersOff(_villageOff, _village); else RestoreRenderers(_villageOff); break;
+                case Toggle.MsaaOff:
+                    if (on) { _msaaBefore = QualitySettings.antiAliasing; QualitySettings.antiAliasing = 0; }
+                    else QualitySettings.antiAliasing = _msaaBefore;
+                    break;
                 case Toggle.Shadows:
                     if (on) { _shadowsBefore = QualitySettings.shadows; QualitySettings.shadows = ShadowQuality.Disable; }
                     else QualitySettings.shadows = _shadowsBefore;
                     break;
-                case Toggle.Grass:       if (on) GrassOff(); else RestoreGrass(); break;
-                case Toggle.Dust:
-                    if (SpaceDustField.Instance != null)
+                case Toggle.Grass:        if (on) GrassOff(); else RestoreGrass(); break;
+                case Toggle.Cascades2:
+                    if (on)
                     {
-                        if (on) { _dustWasEnabled = SpaceDustField.Instance.enabled; SpaceDustField.Instance.enabled = false; }
-                        else SpaceDustField.Instance.enabled = _dustWasEnabled;
+                        _cascadesBefore = QualitySettings.shadowCascades; _shadowDistBefore = QualitySettings.shadowDistance;
+                        QualitySettings.shadowCascades = 2; QualitySettings.shadowDistance = 100f;
                     }
+                    else { QualitySettings.shadowCascades = _cascadesBefore; QualitySettings.shadowDistance = _shadowDistBefore; }
                     break;
-                case Toggle.UI:          if (on) UiOff(); else RestoreUi(); break;
-                case Toggle.PixelLights:
-                    if (on) { _pixelLightsBefore = QualitySettings.pixelLightCount; QualitySettings.pixelLightCount = 4; }
+                case Toggle.LightsSkipPlanet: if (on) LightsSkipPlanet(); else RestoreLightsMask(); break;
+                case Toggle.PixelLights8:
+                    if (on) { _pixelLightsBefore = QualitySettings.pixelLightCount; QualitySettings.pixelLightCount = 8; }
                     else QualitySettings.pixelLightCount = _pixelLightsBefore;
                     break;
             }
@@ -314,14 +342,14 @@ public class PerfTrace : MonoBehaviour
         return m;
     }
 
+    static bool IsPointOrSpot(Light l) => l != null && l.enabled && (l.type == LightType.Point || l.type == LightType.Spot);
+
     void LightsOff()
     {
         _lightsOff.Clear();
-        var all = FindObjectsOfType<Light>(false);
-        foreach (var l in all)
+        foreach (var l in FindObjectsOfType<Light>(false))
         {
-            if (l == null || !l.enabled) continue;
-            if (l.type != LightType.Point && l.type != LightType.Spot) continue;
+            if (!IsPointOrSpot(l)) continue;
             l.enabled = false;
             _lightsOff.Add(l);
         }
@@ -334,36 +362,60 @@ public class PerfTrace : MonoBehaviour
         _lightsOff.Clear();
     }
 
-    static void RenderersOff(List<Renderer> store, IList<Transform> roots)
+    void LightsVertex()
+    {
+        _lightsVertex.Clear(); _lightsVertexMode.Clear();
+        foreach (var l in FindObjectsOfType<Light>(false))
+        {
+            if (!IsPointOrSpot(l)) continue;
+            _lightsVertex.Add(l); _lightsVertexMode.Add(l.renderMode);
+            l.renderMode = LightRenderMode.ForceVertex;
+        }
+        Debug.Log("[PerfTrace] " + _lightsVertex.Count + " point/spot lights → vertex");
+    }
+
+    void RestoreLightsVertex()
+    {
+        for (int i = 0; i < _lightsVertex.Count; i++) if (_lightsVertex[i] != null) _lightsVertex[i].renderMode = _lightsVertexMode[i];
+        _lightsVertex.Clear(); _lightsVertexMode.Clear();
+    }
+
+    void LightsSkipPlanet()
+    {
+        _lightsMasked.Clear(); _lightsMaskBefore.Clear();
+        int bit = 1 << BodyLayer;
+        foreach (var l in FindObjectsOfType<Light>(false))
+        {
+            if (!IsPointOrSpot(l) || (l.cullingMask & bit) == 0) continue;
+            _lightsMasked.Add(l); _lightsMaskBefore.Add(l.cullingMask);
+            l.cullingMask &= ~bit;
+        }
+        Debug.Log("[PerfTrace] " + _lightsMasked.Count + " point/spot lights no longer touch the Body layer");
+    }
+
+    void RestoreLightsMask()
+    {
+        for (int i = 0; i < _lightsMasked.Count; i++) if (_lightsMasked[i] != null) _lightsMasked[i].cullingMask = _lightsMaskBefore[i];
+        _lightsMasked.Clear(); _lightsMaskBefore.Clear();
+    }
+
+    static void RenderersOff(List<Renderer> store, Transform root)
     {
         store.Clear();
-        if (roots == null) return;
-        foreach (var root in roots)
+        if (root == null) return;
+        foreach (var r in root.GetComponentsInChildren<Renderer>(false))
         {
-            if (root == null) continue;
-            foreach (var r in root.GetComponentsInChildren<Renderer>(false))
-            {
-                if (r == null || !r.enabled) continue;
-                r.enabled = false;
-                store.Add(r);
-            }
+            if (r == null || !r.enabled) continue;
+            r.enabled = false;
+            store.Add(r);
         }
-        Debug.Log("[PerfTrace] switched off " + store.Count + " renderers");
+        Debug.Log("[PerfTrace] switched off " + store.Count + " renderers under " + root.name);
     }
 
     static void RestoreRenderers(List<Renderer> store)
     {
         foreach (var r in store) if (r != null) r.enabled = true;
         store.Clear();
-    }
-
-    Transform[] FindMoonBaseRoots()
-    {
-        if (_moon == null) return null;
-        var list = new List<Transform>();
-        foreach (Transform c in _moon.transform)
-            if (c.name == "Tunnel Rig" || c.name == "MoonBaseINTER") list.Add(c);
-        return list.ToArray();
     }
 
     void GrassOff()
@@ -381,25 +433,6 @@ public class PerfTrace : MonoBehaviour
     {
         foreach (var g in _grassOff) if (g != null) g.enabled = true;
         _grassOff.Clear();
-    }
-
-    void UiOff()
-    {
-        _uiOff.Clear();
-        foreach (var c in FindObjectsOfType<Canvas>(false))
-        {
-            if (c == null || !c.enabled || !c.isRootCanvas) continue;
-            var root = c.transform.root;
-            if (root == transform || root.name == "FPSOverlay") continue;   // keep the perf overlays
-            c.enabled = false;
-            _uiOff.Add(c);
-        }
-    }
-
-    void RestoreUi()
-    {
-        foreach (var c in _uiOff) if (c != null) c.enabled = true;
-        _uiOff.Clear();
     }
 
     void RestoreAll()
@@ -456,19 +489,34 @@ public class PerfTrace : MonoBehaviour
             foreach (var b in bodies) if (b != null && b.bodyName == "Constant Companion") { _moon = b; break; }
         if (_moon != null && _moonBase == null)
         {
-            foreach (Transform c in _moon.transform) if (c.name == "Tunnel Rig") { _moonBase = c; break; }
+            foreach (Transform c in _moon.transform) if (c.name == "Tunnel Rig") { _moonBase = Anchor(c); break; }
             _moonBaseBody = _moon;
         }
         if (_village == null)
         {
             var go = GameObject.Find("TOWN-VILLAGE");
-            if (go != null) { _village = go.transform; _villageBody = _village.GetComponentInParent<CelestialBody>(); }
+            if (go != null) { _village = go.transform; _villageBody = _village.GetComponentInParent<CelestialBody>(); _villageAnchor = Anchor(_village); }
         }
         if (_shuttle == null)
         {
             var go = GameObject.Find("Shuttle_Lander");
             if (go != null) _shuttle = go.transform;
         }
+    }
+
+    /// <summary>A pivot can sit anywhere (TOWN-VILLAGE's is at the planet centre),
+    /// so measure landmarks from the centre of their renderers instead: an empty
+    /// child parked there, which then moves with the planet for free.</summary>
+    static Transform Anchor(Transform root)
+    {
+        var rends = root.GetComponentsInChildren<Renderer>(false);
+        if (rends.Length == 0) return root;
+        Bounds b = rends[0].bounds;
+        for (int i = 1; i < rends.Length; i++) b.Encapsulate(rends[i].bounds);
+        var a = new GameObject("[PerfTrace anchor]");
+        a.transform.SetParent(root, true);
+        a.transform.position = b.center;
+        return a.transform;
     }
 
     static CelestialBody Nearest(Vector3 p, out float altitude)
@@ -539,6 +587,10 @@ public class PerfTrace : MonoBehaviour
     string RunStamp() => _runStamp ?? (_runStamp = DateTime.Now.ToString("yyyyMMdd_HHmmss"));
     string _runStamp;
 
+    const string Columns =
+        "t,frame,scene,dt_ms,mask,mark,snap,body,alt_m,piloting,cx,cy,cz,fx,fy,fz,"
+      + "village_ang,village_dist,village_hidden,moon_ang,moon_dist,moon_hidden,moonbase_ang,moonbase_dist,moonbase_hidden,shuttle_ang,shuttle_dist";
+
     void OpenCsv()
     {
         _csvPath = Path.Combine(_dir, "trace_" + RunStamp() + ".csv");
@@ -559,18 +611,22 @@ public class PerfTrace : MonoBehaviour
 
     void WriteHeader()
     {
+        var s = InputSettings.Active;
+        string meta = "# PerfTrace v2 " + (Application.isEditor ? "EDITOR" : "BUILD")
+            + " unity=" + Application.unityVersion
+            + " gpu=" + (SystemInfo.graphicsDeviceName ?? "?").Replace(',', ' ')
+            + " res=" + Screen.width + "x" + Screen.height
+            + " vsync=" + QualitySettings.vSyncCount + " targetfps=" + Application.targetFrameRate
+            + " shadows=" + QualitySettings.shadows + " shadowDist=" + QualitySettings.shadowDistance.ToString("0")
+            + " cascades=" + QualitySettings.shadowCascades + " pixelLights=" + QualitySettings.pixelLightCount
+            + " msaa=" + QualitySettings.antiAliasing + " lodBias=" + QualitySettings.lodBias.ToString("0.00")
+            + " grassScale=" + (s != null ? s.grassRenderScale.ToString("0.00") : "?")
+            + "\n";
         _len = 0;
-        Str("# PerfTrace v1 "); Str(Application.isEditor ? "EDITOR" : "BUILD"); Str(" unity="); Str(Application.unityVersion);
-        Str(" gpu="); Str(SystemInfo.graphicsDeviceName); Str(" res="); Int(Screen.width); Str("x"); Int(Screen.height);
-        Str(" vsync="); Int(QualitySettings.vSyncCount); Str(" targetfps="); Int(Application.targetFrameRate);
-        Str(" shadows="); Str(QualitySettings.shadows.ToString()); Str(" shadowDist="); Fixed(QualitySettings.shadowDistance, 0);
-        Str(" cascades="); Int(QualitySettings.shadowCascades); Str(" pixelLights="); Int(QualitySettings.pixelLightCount);
-        Str(" msaa="); Int(QualitySettings.antiAliasing); Str(" lodBias="); Fixed(QualitySettings.lodBias, 2);
-        Str("\n");
-        Str("t,frame,scene,dt_ms,mask,mark,snap,body,alt_m,piloting,cx,cy,cz,fx,fy,fz,"
-          + "village_ang,village_dist,village_hidden,moon_ang,moon_dist,moon_hidden,moonbase_ang,moonbase_dist,moonbase_hidden,shuttle_ang,shuttle_dist");
-        for (int i = 0; i < _recs.Length; i++) { Str(","); Str(_recs[i].column); }
-        Str("\n");
+        Raw(meta);
+        Raw(Columns);
+        for (int i = 0; i < _recs.Length; i++) { Sep(); Raw(_recs[i].column); }
+        Nl();
         Emit();
         _headerWritten = true;
     }
@@ -589,7 +645,7 @@ public class PerfTrace : MonoBehaviour
         Vector3 rel = body != null ? cpos - body.Position : cpos;
 
         float vAng, vDist, mAng, mDist, bAng, bDist, sAng, sDist; bool vHid, mHid, bHid, sHid;
-        Look(_cam, _village, _villageBody, out vAng, out vDist, out vHid);
+        Look(_cam, _villageAnchor != null ? _villageAnchor : _village, _villageBody, out vAng, out vDist, out vHid);
         Look(_cam, _moon != null ? _moon.transform : null, _moon, out mAng, out mDist, out mHid);
         Look(_cam, _moonBase, _moonBaseBody, out bAng, out bDist, out bHid);
         Look(_cam, _shuttle, null, out sAng, out sDist, out sHid);
@@ -616,13 +672,13 @@ public class PerfTrace : MonoBehaviour
         {
             Sep();
             var r = _recs[i].recorder;
-            if (!r.Valid) { Str("-"); continue; }
+            if (!r.Valid) { Raw("-"); continue; }
             long v = r.LastValue;
             if (_recs[i].isTime) Fixed(v * 1e-6f, 3);                      // ns → ms
             else if (_recs[i].column == "tris_k" || _recs[i].column == "verts_k") Int(v / 1000);
             else Int(v);
         }
-        Str("\n");
+        Nl();
         Emit();
     }
 
@@ -633,6 +689,15 @@ public class PerfTrace : MonoBehaviour
         _len = 0;
     }
     void Sep() { if (_len < _buf.Length) _buf[_len++] = ','; }
+    void Nl()  { if (_len < _buf.Length) _buf[_len++] = '\n'; }
+    /// <summary>Verbatim (header text, column names).</summary>
+    void Raw(string s)
+    {
+        if (s == null) return;
+        for (int i = 0; i < s.Length && _len < _buf.Length; i++) _buf[_len++] = s[i];
+    }
+    /// <summary>A field value: commas and line breaks become spaces so a name can
+    /// never break the row.</summary>
     void Str(string s)
     {
         if (s == null) return;
@@ -651,7 +716,7 @@ public class PerfTrace : MonoBehaviour
     }
     void Fixed(float f, int decimals)
     {
-        if (float.IsNaN(f) || float.IsInfinity(f)) { Str("nan"); return; }
+        if (float.IsNaN(f) || float.IsInfinity(f)) { Raw("nan"); return; }
         if (f < 0f) { if (_len < _buf.Length) _buf[_len++] = '-'; f = -f; }
         long scale = 1;
         for (int i = 0; i < decimals; i++) scale *= 10;
@@ -725,7 +790,7 @@ public class PerfTrace : MonoBehaviour
             _sb.Append(_on[i] ? "[ON ] " : "[   ] ");
             _sb.Append(ToggleNames[i]).Append('\n');
         }
-        _sb.Append("Home=mark  End=snapshot(600f)\nPgUp/PgDn+Del=toggle  Num/=hide");
+        _sb.Append("Num+ = mark   Num- = snapshot\nPgUp/PgDn+Del = toggle   Num/ = hide");
         string s = _sb.ToString();
         if (s != _lastLegend) { _lastLegend = s; _text.SetText(s); }
     }

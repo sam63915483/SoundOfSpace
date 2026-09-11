@@ -1,10 +1,10 @@
-🟢 ACTIVE — written 2026-09-11 for the FPS hunt (≈50 fps; worse looking at Constant Companion and at the village, even through the planet).
+🟢 ACTIVE — written 2026-09-11 for the FPS hunt. Run 1 done the same evening (findings in §7); §4 is now the RUN 2 script.
 
 # Perf run: the FPS hunt
 
-One ~12-minute run in a **Development Build**. The game records every frame to
-a file the whole time (no 2000-frame profiler cap), and you press keys to
-switch suspects off one at a time while you look at the bad spots. Afterwards
+A short run in a **Development Build**. The game records every frame to a file
+the whole time (no 2000-frame profiler cap), and you press number-pad keys to
+switch one suspect off at a time while you look at the bad spots. Afterwards
 Claude reads the files; you don't need to read anything.
 
 ## 1. Build settings (File ▸ Build Settings)
@@ -16,51 +16,46 @@ Claude reads the files; you don't need to read anything.
 | Deep Profiling Support | **OFF** | distorts everything and shrinks the capture window |
 | Script Debugging | OFF | |
 
-Build, then run the exe. Use your normal save (Humble Abode, near the cabin).
-Set graphics as you normally play (that's the fps we're chasing).
+Build, then run the exe. Use your normal save. Graphics as you normally play.
 
 ## 2. What you see
 
 Top-right there is an orange **PERF TRACE** box: `recording`, a mark counter,
-and the toggle list. Leave the F3 overlay on too. **Do not use F-keys during
-this run** — F6–F9 currently fire two debug tools at once (FPSOverlay and
-LightingDebugToolbox share them), which would muddy the trace.
+and the toggle list. **Do not use F-keys during the run** — F6–F9 currently
+fire two debug tools at once (FPSOverlay and LightingDebugToolbox share them).
 
-## 3. The keys
+## 3. The keys (number pad, **Num Lock ON**)
 
-Numpad. (No numpad: PgUp/PgDn moves the `>` in the box, Delete flips it; Home = mark, End = snapshot.)
-
-| Key | Removes | Restore |
+| Key | Does | Restore |
 |---|---|---|
-| Num1 | every point + spot light (lanterns, tunnel cage lights, torches) | press again |
-| Num2 | the moon base (Tunnel Rig + MoonBaseINTER on Constant Companion) | press again |
-| Num3 | the village (TOWN-VILLAGE) | press again |
-| Num4 | the shuttle's 248 renderers | press again |
-| Num5 | all shadows | press again |
-| Num6 | grass | press again |
-| Num7 | space dust | press again |
-| Num8 | UI canvases | press again |
-| Num9 | pixel-light cap 64 → 4 | press again |
-| **Home** | — stamps MARK n into the file | say afterwards what mark n was ("mark 3 = looking at the moon from the cabin") |
-| **End** | — writes a 600-frame Profiler snapshot (`.raw`) of the next ~10 s | one per bad spot is plenty |
+| **Num +** | MARK — a bookmark in the file ("mark 2 = village") | — |
+| **Num -** | SNAPSHOT — a 300-frame Profiler capture of the next ~5 s | — |
+| Num1 | every point + spot light OFF | press again |
+| Num2 | every point + spot light → cheap vertex lighting | press again |
+| Num3 | the village OFF | press again |
+| Num4 | MSAA OFF | press again |
+| Num5 | all shadows OFF | press again |
+| Num6 | grass OFF | press again |
+| Num7 | shadow cascades 4 → 2 and shadow distance → 100 m | press again |
+| Num8 | point/spot lights stop lighting the planet mesh | press again |
+| Num9 | pixel-light cap 64 → 8 | press again |
+
+No number pad: PgUp/PgDn moves the `>` in the box, Delete flips it; Home = mark, End = snapshot.
 
 Rule for a clean A/B: **one toggle at a time**, hold it ~5 s while keeping the
-same view, then press it again to restore before trying the next.
+same view, then press it again to restore before the next.
 
-## 4. The run (≈12 min)
+## 4. RUN 2 (≈8 min) — the levers run 1 pointed at
 
-Stand still for each station; look, don't walk, while a toggle is on.
+Stand still at each station; look, don't walk, while a toggle is on.
 
-1. **Cabin, looking away from everything** (sky/sea, no village, no moon): Home. 5 s. This is the baseline.
-2. **Cabin, looking toward the village through the planet** (the direction that tanks fps even though the village is over the horizon): Home. End (snapshot). Then Num3 5 s, restore; Num1 5 s, restore; Num5 5 s, restore; Num9 5 s, restore.
-3. **Walk into the village, look at the worst direction**: Home. End. Then Num3, Num1, Num5, Num9, Num4 — each 5 s, restore between.
-4. **From the ground, look at Constant Companion in the sky**: Home. End. Then Num2 5 s, restore; Num1 5 s, restore; Num5 5 s, restore.
-5. **Same spot, look at the ground / horizon 90° away from the moon**: Home, 5 s (moon off-screen control).
-6. **Still on the ground, general walking around the cabin**: Num6 5 s, restore; Num7 5 s, restore; Num8 5 s, restore.
-7. If you have time: **fly to the moon**, look at the base from orbit: Home, End, Num2, Num1. Then land at the base: Home, End.
-8. Quit normally (Alt+F4 is fine — the file flushes every 2 s).
+1. **Field.** Cabin area, daytime if you can, nothing special in view: **Num+**. Then each of these for 5 s, restoring between: **Num4**, **Num7**, **Num5**, **Num6**, **Num8**, **Num9**.
+2. **Village.** Stand in it, worst view: **Num+**, **Num-**, hold 5 s. Then each for 5 s, restoring between: **Num1**, **Num2**, **Num8**, **Num9**, **Num4**, **Num7**.
+3. **Moon.** Constant Companion in the sky: **Num+**, **Num-**, hold 5 s. Then: **Num1**, **Num2**, **Num8**, **Num9**, **Num4**.
+4. **Night** if the day allows: same field spot at night with fireflies about: **Num+**, then **Num1**, **Num8**, **Num2**.
+5. Quit (Alt+F4 fine).
 
-Tell me afterwards what each mark number was (one line each).
+Tell me "1 field, 2 village, 3 moon, 4 night".
 
 ## 5. Where the files are
 
@@ -68,17 +63,35 @@ Tell me afterwards what each mark number was (one line each).
 (Tools ▸ Solar System ▸ Perf ▸ Open Perf Folder opens it from the Editor.)
 
 - `trace_<date>.csv` — the whole run, one row per frame.
-- `<date>_snapNN_markM.raw` — the Profiler snapshots. Claude turns them into
-  `.txt` with Tools ▸ Solar System ▸ Perf ▸ Dump Profiler Snapshots (or you
-  can load one in Window ▸ Analysis ▸ Profiler ▸ Load).
+- `<date>_snapNN_markM.raw` — Profiler snapshots (~150 MB each). Claude turns
+  them into `.txt` with Tools ▸ Solar System ▸ Perf ▸ Dump Profiler Snapshots.
 
-Analysis: `py -3 tools/perf/analyze_perf_trace.py` (newest trace) — prints fps
-by situation (village visible / hidden / moon / elsewhere), what each toggle
-saved, and the 3 s around every mark.
+Analysis: `py -3 tools/perf/analyze_perf_trace.py` (newest trace).
 
 ## 6. Note on the Editor profiler
 
 Preferences ▸ Analysis ▸ Profiler ▸ Frame Count is now forced to 2000, which is
-Unity's hard maximum (~40 s at 50 fps). That is why the trace file exists: it
-has no limit. If we ever do a live Editor-attached capture again, 2000 is as
-big as it gets.
+Unity's hard maximum (~40 s at 50 fps). That is why the trace file exists.
+
+## 7. Run 1 findings (2026-09-11 19:12, laptop RTX 4060, 1080p, 12 min)
+
+Settings the build ran with: **MSAA 4×, 4 shadow cascades, shadow distance 193 m,
+pixel-light cap 64** (your saved prefs; the code defaults are the same maxed preset).
+
+- **Both the CPU and the GPU are at the wall, and they are about the same height.**
+  Field: main thread 15–20 ms, GPU 14–20 ms. The main thread spends ~3 ms of that
+  waiting for the GPU (`DXGI.WaitOnSwapChain`); the render thread is idle 13 ms
+  waiting for the main thread. Sea/sky view: GPU 4.9 ms, main 9.8 ms → the CPU floor
+  is ~10 ms (≈100 fps) even with nothing to draw.
+- **Point lights re-draw the whole planet mesh.** Lights OFF while looking at the
+  moon: 41 M → 15 M triangles, −1.8 ms; in the village −2.0 ms. Every point light
+  whose range touches a planet mesh re-renders that entire 2 M-triangle mesh (14
+  lanterns, 33 tunnel lights, up to 12 firefly lights). Standing still in the field
+  fps fell 65 → 50 as night came (fireflies + lanterns).
+- **The moon base is CPU-only:** moon base OFF cut draws 3441 → 964 and 2.5 ms of
+  main-thread render work, but the GPU didn't move and fps barely did — it's hidden
+  behind the GPU wall today, and will show once the GPU is fixed.
+- **CPU floor, per frame:** grass 2.3, space dust 1.4, Camera.Render ×4 cameras
+  3.6 (helmet-HUD rig camera + thrust indicator camera render every frame),
+  canvases 1.5, Update 1.1, physics 0.8, skinned-mesh finalize ~1.0 (the cats).
+- Snapshot .raw files were 300–400 MB each at 600 frames → now 300 frames.
