@@ -258,9 +258,17 @@ public class GForceHUD : MonoBehaviour
         Vector3 camOffset = new Vector3(1.0f, 1.3f, -3.2f);
         _indicatorCam.transform.position = widgetPos + camOffset;
         _indicatorCam.transform.LookAt(widgetPos, Vector3.up);
+        if (Time.unscaledTime >= _nextLayerFix)
+        {
+            _nextLayerFix = Time.unscaledTime + 0.5f;
+            PrivateLayer.SetLayerRecursive(_widgetRoot.transform, _layer);
+            PrivateLayer.Exclude(_layer);
+        }
         if (_renderIndicator && (Time.frameCount & 1) == 1) _indicatorCam.Render();
     }
     bool _renderIndicator;
+    float _nextLayerFix;
+    int _layer = -1;
 
     static readonly bool[] _activeScratch = new bool[6];
     bool[] ReadThrustKeys()
@@ -473,6 +481,11 @@ public class GForceHUD : MonoBehaviour
         _indicatorCam.allowHDR = false;
         _indicatorCam.allowMSAA = true;
         _indicatorCam.useOcclusionCulling = false;
+        // Private stage: cull ONLY the widget (it used to cull and draw the whole
+        // scene into the gauge texture — 2.5 ms/frame, 2026-09-11).
+        _layer = PrivateLayer.Claim("ThrustIndicator3D");
+        _indicatorCam.cullingMask = 1 << _layer;
+        if (_widgetRoot != null) PrivateLayer.SetLayerRecursive(_widgetRoot.transform, _layer);
     }
 
     void BuildRing(string name, Quaternion localRot)

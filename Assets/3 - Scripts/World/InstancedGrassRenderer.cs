@@ -1226,6 +1226,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         float tx = rot.m03, ty = rot.m13, tz = rot.m23;
         rot.m03 = 0f; rot.m13 = 0f; rot.m23 = 0f;
         if (!_rotCacheValid || rot != _rotCache) { _rotCache = rot; _rotCacheValid = true; _rotStamp++; }
+        bool useCache = _rotStamp < 16;      // a body that keeps re-orienting gets the direct path (never rebuild every frame)
 
         // Planet centre for the shader's per-patch colour variation (keeps the
         // hash input small instead of using raw world coords at ~±24000).
@@ -1274,7 +1275,7 @@ public class InstancedGrassRenderer : MonoBehaviour
                 f = Mathf.Max(f, densityFadeFloor);                     // never thin to see-through
                 n = Mathf.Min(n, Mathf.CeilToInt(n * f));
             }
-            if (cell.worldStamp != _rotStamp || cell.world.Count != cell.local.Count)
+            if (useCache && (cell.worldStamp != _rotStamp || cell.world.Count != cell.local.Count))
             {
                 cell.world.Clear();
                 for (int k = 0; k < cell.local.Count; k++) { Matrix4x4 bl = cell.local[k]; cell.world.Add(MulAffine(ref rot, ref bl)); }
@@ -1284,8 +1285,9 @@ public class InstancedGrassRenderer : MonoBehaviour
             for (int k = 0; k < n; k++)
             {
                 int m = cell.mesh[k];
-                Matrix4x4 w = world[k];
-                w.m03 += tx; w.m13 += ty; w.m23 += tz;
+                Matrix4x4 w;
+                if (useCache) { w = world[k]; w.m03 += tx; w.m13 += ty; w.m23 += tz; }
+                else { Matrix4x4 bl = cell.local[k]; w = MulAffine(ref l2w, ref bl); }
                 _batches[m][_counts[m]++] = w;
                 if (_counts[m] == 1023)
                 {

@@ -75,6 +75,11 @@ public class HudScreenProjector : MonoBehaviour
         _cam.allowHDR = false;
         _cam.allowMSAA = false;
         _cam.useOcclusionCulling = false;
+        // Private stage: this camera culls ONLY the rig (it used to cull and draw
+        // the entire scene into the HUD texture — 3.4 ms/frame, 2026-09-11).
+        _layer = PrivateLayer.Claim(label + "_ScreenRig");
+        _cam.cullingMask = 1 << _layer;
+        PrivateLayer.SetLayerRecursive(_rig.transform, _layer);
 
         SetLogicalSize(logicalSize);
     }
@@ -150,11 +155,20 @@ public class HudScreenProjector : MonoBehaviour
         if (_cam != null)
         {
             if (_cam.enabled) _cam.enabled = false;
+            if (Time.unscaledTime >= _nextLayerFix)
+            {
+                // anything parented into the rig later must live on the private layer too
+                _nextLayerFix = Time.unscaledTime + 0.5f;
+                PrivateLayer.SetLayerRecursive(_rig.transform, _layer);
+                PrivateLayer.Exclude(_layer);
+            }
             if (show && (Time.frameCount & 1) == 0) _cam.Render();
         }
     }
 
     float _nextCamFind;
+    float _nextLayerFix;
+    int _layer = -1;
 
     void OnDestroy()
     {
