@@ -84,14 +84,26 @@ static class PerfProfilerTools
 
     class Acc { public double total, self, calls; public int frames; }
 
+    /// <summary>The frames currently in the Profiler window (a live or just-stopped
+    /// capture from an attached build) → text report in the perf folder. No saving
+    /// or loading needed: stop recording, click this.</summary>
+    [MenuItem("Tools/Solar System/Perf/Dump CURRENT Profiler Frames To Text")]
+    static void DumpCurrent()
+    {
+        Directory.CreateDirectory(PerfDir);
+        string txt = Path.Combine(PerfDir, "profiler_live_" + DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".txt");
+        try { Dump(null, txt); EditorUtility.RevealInFinder(txt); }
+        catch (Exception e) { Debug.LogWarning("[PerfProfilerTools] live dump: " + e.Message); }
+    }
+
     static void Dump(string raw, string txt)
     {
-        if (!ProfilerDriver.LoadProfile(raw, false)) throw new Exception("LoadProfile failed");
+        if (raw != null && !ProfilerDriver.LoadProfile(raw, false)) throw new Exception("LoadProfile failed");
         int first = ProfilerDriver.firstFrameIndex, last = ProfilerDriver.lastFrameIndex;
         if (first < 0 || last < first) throw new Exception("no frames");
 
         var sb = new StringBuilder(1 << 16);
-        sb.AppendLine("PerfTrace snapshot: " + Path.GetFileName(raw));
+        sb.AppendLine("PerfTrace snapshot: " + (raw != null ? Path.GetFileName(raw) : "(live Profiler window frames)"));
         sb.AppendLine("frames " + first + ".." + last + " (" + (last - first + 1) + ")");
 
         // main-thread frame times
