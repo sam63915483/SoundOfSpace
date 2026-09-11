@@ -1,4 +1,4 @@
-🟢 ACTIVE — designed and built 2026-09-11 (Sam's idea), playtest pending. Checklist: `docs/PLAYTEST_FIREFLIES.md`.
+🟢 ACTIVE — designed and built 2026-09-11 (Sam's idea); round 2 the same day after his first playtest (wings flap, spread-out coverage instead of clumps, popup fix, more lights). Checklist: `docs/PLAYTEST_FIREFLIES.md`.
 
 # Fireflies — catch, hold, eat, glow
 
@@ -39,18 +39,25 @@ with no save state. Differences:
 
 - Auto-singleton (DDOL, seeded in `EnsureGameplaySingletons`) rather than a
   scene component — nothing to wire, nothing for Sam to save.
-- A cell holds a **swarm**, not one bug. Cell 60 m, chance 0.6, radius 140 m,
-  cap 14 swarms → roughly a swarm every 70 m on open night ground. Density is
-  what binds, not the cap (the cat lesson).
+- A cell holds a **swarm**, not one bug. Round 2 (Sam: "my goal wasn't small
+  clumps, it was spaced out good coverage"): cell 40 m, chance 0.75, radius
+  140 m, cap 36 swarms of 3–5 bugs over a 16 m patch. Each bug owns a home
+  point on a sunflower spiral across the patch and wanders ≤ 3.5 m from it, so
+  the bugs stay ~8–10 m apart. Density is what binds, not the cap.
 - A cell whose swarm has been fully caught is **depleted** for 8 minutes
   (session memory only), then refills.
-- Real lights: the **6 nearest** bugs within 30 m get a `Light` (0.9 / 4 m) +
+- Real lights: the **12 nearest** bugs within 60 m get a `Light` (1.1 / 5 m) +
   grass marker. Everything else glows by emission + halo only. Knob `maxLitBugs`
-  (0 = none).
+  (0 = none). Why capped at all: the planet is one mesh and every real light is
+  one more draw of it (Built-in forward ForwardAdd), whatever the bug looks
+  like. The grass faked-light pool was widened 16 → 32 slots so a dozen
+  fireflies and the village lanterns fit together.
 
 ## The bug
 
-Procedural — no art pack. A stretched sphere 0.20 m long (bobber-sized): the
+Procedural — no art pack. A stretched sphere 0.20 m long (bobber-sized) with
+two wing quads that **flap in the vertex shader** (18 beats/s, ±38° about the
+wing root, per-bug phase): the
 head half is dark, the tail glows an HDR yellow-orange (about 4× over white so
 the atmosphere post's HDR exemption keeps it bright at night and bloom picks it
 up). A 0.5 m additive billboard halo makes it a twinkle from 100 m. One shader,

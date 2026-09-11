@@ -1,4 +1,4 @@
-🟢 ACTIVE — built 2026-09-11, never play-tested.
+🟢 ACTIVE — built 2026-09-11; round 2 (wings, spacing, popup, lights) after Sam's first playtest the same day.
 
 # Playtest: fireflies
 
@@ -15,7 +15,7 @@ the glow and its HUD chip create themselves (and are seeded for builds).
 | | |
 |---|---|
 | Where | Any planet except the Sun / black hole, wherever the sun is **below the horizon**. Swarms fade out at sunrise. |
-| How many | Up to 14 swarms within 140 m, 6–10 bugs each, about one swarm per 70 m of open night ground. Never over water, never within 12 m of you. |
+| How many | Up to 36 swarms within 140 m, 3–5 bugs each on evenly spaced home points over a 16 m patch — roughly a bug every 8–10 m of open night ground (round 2: spread out, not clumps). Never over water, never within 12 m of you. |
 | Stack | **10 per slot.** |
 | Eat again while glowing | **Refreshes to a full 60 s.** Never adds. |
 | Saved? | Caught fireflies in the hotbar: yes (generic). The glow: **no** (cleared on New Game, like cat perks). |
@@ -29,8 +29,10 @@ the glow and its HUD chip create themselves (and are seeded for builds).
 - Find the night side (fly to it, or wait — Humble Abode's day is 15 min).
   Expect drifting clusters of yellow-orange sparks 0.5–2.5 m over the ground,
   each blinking on its own rhythm, with a soft halo so they twinkle from far off.
-- Walk toward one: the nearest few should light the **ground and the grass**
-  under them as they pass (real lights on the 6 nearest only).
+- Wings flap fast (18 beats a second, each bug on its own beat).
+- The **12 nearest** bugs within 60 m carry a real light and light the ground
+  and grass under them; the rest glow but light nothing. See "Why not all of
+  them" below before cranking `maxLitBugs`.
 - Walk across the terminator into daylight: they fade out over ~1.5 s, no pop.
 - Nothing should spawn in your face, over the ocean, or in the shuttle's landing zone.
 - **Look for:** bugs flying into hillsides / underground, popping, or a swarm
@@ -68,12 +70,23 @@ the glow and its HUD chip create themselves (and are seeded for builds).
 
 ---
 
+## Why not every firefly is a real light
+
+The cost has nothing to do with how detailed the bug is. A planet is ONE mesh,
+and in this renderer every real light makes everything it can reach get drawn
+one more time — so each firefly light is one extra draw of the whole planet.
+Twelve lights ≈ twelve extra planet draws, on top of the village lanterns. The
+knob is `maxLitBugs` on `[FireflySpawner]`: try 24 or 36 and watch the FPS
+counter — if your machine eats it, keep it. If FPS drops, the next step is a
+faked ground-glow under every bug (cheap, no real light), which I can build.
+
 ## Knobs (live, in the Inspector on the runtime objects)
 
 - `[FireflySpawner]` — `maxSwarms`, `cellSize` / `swarmChance` (density),
-  `spawnRadius`, `bugsMin/Max`, `swarmRadius`, `heightMin/Max`, `glowFloor`
-  (how dark a bug goes between flashes), `haloSize`, `maxLitBugs`,
-  `litIntensity`, `nightDotOn/Off`, `catchRange`. `debugLogging` prints
+  `spawnRadius`, `bugsMin/Max`, `swarmRadius` + `wanderRadius` (spacing),
+  `heightMin/Max`, `glowFloor` (how dark a bug goes between flashes),
+  `haloSize`, `maxLitBugs` / `litRange` / `litIntensity` / `litLightRange`,
+  `nightDotOn/Off`, `catchRange`. `debugLogging` prints
   swarms / candidates / why cells were rejected every 4 s — **read the build's
   `Player.log`** if you play a build.
 - `HeldItemViewmodel` — `heldLightIntensity` (1.6), `heldLightRange` (7 m),
@@ -82,7 +95,8 @@ the glow and its HUD chip create themselves (and are seeded for builds).
 - `[FireflyGlow]` — `glowIntensity` (2.2), `breatheMin`, `lightIntensity`
   (1.4), `lightRange` (9 m), `fadeOutSeconds`.
 - Shader look: `Resources/FireflyBody.mat` / `FireflyHalo.mat` — `_Intensity`
-  (HDR glow), `_TailStart`, `_HaloAlpha`, `_HaloPower`.
+  (HDR glow), `_TailStart`, `_HaloAlpha`, `_HaloPower`, `_FlapHz` (18),
+  `_FlapAngle` (38°).
 - Kill switch: `FeatureVault.Fireflies` (spawner only).
 
 If nothing ever spawns: turn on `debugLogging` and look for `sun=MISSING`

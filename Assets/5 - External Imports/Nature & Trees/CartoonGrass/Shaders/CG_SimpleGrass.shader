@@ -118,7 +118,7 @@ Shader "CartoonGrass/SimpleGrass"
         // leaves it dark. InstancedGrassRenderer injects the nearby ones (from
         // GrassPointLight markers) into these globals each frame; _GrassPointLightCount
         // is 0 when none are near, so the loop below is skipped entirely.
-        #define GRASS_MAX_POINT_LIGHTS 16
+        #define GRASS_MAX_POINT_LIGHTS 32   // must match InstancedGrassRenderer.GrassMaxPointLights
         float4 _GrassPointLightPos[GRASS_MAX_POINT_LIGHTS];    // xyz = world position
         float4 _GrassPointLightColor[GRASS_MAX_POINT_LIGHTS];  // rgb = colour * intensity * strength
         float4 _GrassPointLightParams[GRASS_MAX_POINT_LIGHTS]; // x = range, y = cosOuterHalfAngle, z = cosInnerHalfAngle

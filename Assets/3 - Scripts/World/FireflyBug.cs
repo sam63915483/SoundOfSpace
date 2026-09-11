@@ -44,6 +44,8 @@ public class FireflyBug : Interactable
     MaterialPropertyBlock _block;
 
     // flight
+    Vector3 _home;        // swarm-local; this bug's own patch of the swarm
+    float _wander;        // how far from home a target may be
     Vector3 _target;      // swarm-local
     Vector3 _vel;         // swarm-local, m/s
     float _speed;
@@ -73,10 +75,12 @@ public class FireflyBug : Interactable
 
     /// <summary>(Re)start this bug inside <paramref name="swarm"/>. Everything
     /// per-spawn is reset here so a pooled object cannot carry its last life.</summary>
-    public void Spawn(FireflySwarm swarm, Vector3 localPos, float phase, float period,
-                      float floor, float speed, int rayMask)
+    public void Spawn(FireflySwarm swarm, Vector3 localPos, Vector3 home, float wanderRadius,
+                      float phase, float period, float floor, float speed, int rayMask)
     {
         Swarm = swarm;
+        _home = home;
+        _wander = Mathf.Max(0.5f, wanderRadius);
         Caught = false;
         playerInInteractionZone = false;
         _phase = phase; _period = period; _floor = floor;
@@ -147,11 +151,14 @@ public class FireflyBug : Interactable
 
     void PickTarget(FireflySwarm swarm, float time)
     {
-        // Uniform in AREA over the swarm disc (sqrt), like the ambient fish —
-        // a plain radius roll piles bugs into the middle.
-        float r = swarm.Radius * Mathf.Sqrt(Random.value);
+        // Around this bug's OWN home point, not anywhere in the swarm. Homes
+        // are laid out evenly across the swarm disc by the spawner, so the bugs
+        // stay spread apart instead of bunching (Sam, 2026-09-11: the goal is
+        // spaced-out coverage, not small clumps). Uniform in AREA (sqrt) so a
+        // bug is not forever hovering over its own doorstep.
+        float r = _wander * Mathf.Sqrt(Random.value);
         float a = Random.value * Mathf.PI * 2f;
-        Vector3 t = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
+        Vector3 t = new Vector3(_home.x + Mathf.Cos(a) * r, 0f, _home.z + Mathf.Sin(a) * r);
         float h = Random.Range(swarm.HeightMin, swarm.HeightMax);
 
         // Ground under the target: one raycast per re-pick, so the swarm

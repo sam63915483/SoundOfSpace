@@ -34,6 +34,7 @@ public class WoodPopup : MonoBehaviour
         var planet = ClosestPlanet();
         if (planet != null)
             transform.SetParent(planet.transform, worldPositionStays: true);
+        FaceCamera();
     }
 
     Vector3 ComputeUpDirection()
@@ -58,6 +59,21 @@ public class WoodPopup : MonoBehaviour
         return closest;
     }
 
+    // Face the camera NOW, not on the first Update. A freshly created label
+    // renders its first frame with whatever rotation it was born with —
+    // world-aligned, which on a planet surface is a random tilt — and only
+    // Update straightens it, so the popup flashed diagonal for one frame
+    // before snapping upright (Sam, 2026-09-11: "it glitches ... diagonal and
+    // then corrects itself").
+    void FaceCamera()
+    {
+        if (_cam == null) _cam = Camera.main;
+        if (_cam == null) return;
+        Vector3 toCam = transform.position - _cam.transform.position;
+        if (toCam.sqrMagnitude > 0.0001f)
+            transform.rotation = Quaternion.LookRotation(toCam.normalized, upDir);
+    }
+
     void Update()
     {
         age += Time.deltaTime;
@@ -65,13 +81,7 @@ public class WoodPopup : MonoBehaviour
 
         transform.position += upDir * FloatSpeed * Time.deltaTime;
 
-        if (_cam == null) _cam = Camera.main;
-        if (_cam != null)
-        {
-            Vector3 toCam = transform.position - _cam.transform.position;
-            if (toCam.sqrMagnitude > 0.0001f)
-                transform.rotation = Quaternion.LookRotation(toCam.normalized, upDir);
-        }
+        FaceCamera();
 
         float t = age / lifetime;
         var c = tmp.color;

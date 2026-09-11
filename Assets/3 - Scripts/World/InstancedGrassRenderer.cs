@@ -400,7 +400,7 @@ public class InstancedGrassRenderer : MonoBehaviour
     // lanterns (and any GrassPointLight) over the grass leave it dark. Each frame
     // we hand the shader the nearby ones as faked point lights — same trick the
     // flashlight uses. Count is 0 when none are near, so the shader loop is free.
-    const int GrassMaxPointLights = 16;   // raised from 8 so a dense concert rig's flood/blinder lights reach the grass (the ground gets all real lights uncapped; grass only gets this many injected). Only costs GPU where this many lights are actually near.
+    const int GrassMaxPointLights = 32;   // 8 → 16 for the concert rig; 16 → 32 (2026-09-11) so a dozen firefly lights and the village lanterns fit at once (the ground gets all real lights uncapped; grass only gets this many injected). Must match GRASS_MAX_POINT_LIGHTS in CG_SimpleGrass.shader. Only costs GPU where this many lights are actually near — the shader loops _GrassPointLightCount, not the cap.
 
     // LIVE TUNING of how hard lanterns / placed torches light GRASS (2026-09-08).
     // Mirrors the torch's [ ] knob in PlayerFlashlight. Until 2026-09-06 every

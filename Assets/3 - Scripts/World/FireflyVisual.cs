@@ -191,12 +191,14 @@ public static class FireflyVisual
         // Wings: two flat quads from the mid-back, swept out and back like a
         // beetle's opened cases. Cull is off in the shader, so one side each.
         int w = sphereVerts;
+        // The root line (x = ±0.010, y = 0.045) is the hinge the shader flaps
+        // them about — change one, change the other.
         Vector3[] right =
         {
             new Vector3(0.010f, 0.045f,  0.030f),
-            new Vector3(0.080f, 0.078f, -0.015f),
-            new Vector3(0.062f, 0.070f, -0.105f),
-            new Vector3(0.006f, 0.050f, -0.070f),
+            new Vector3(0.092f, 0.080f, -0.012f),
+            new Vector3(0.074f, 0.072f, -0.110f),
+            new Vector3(0.006f, 0.050f, -0.075f),
         };
         for (int k = 0; k < 4; k++)
         {
@@ -215,6 +217,13 @@ public static class FireflyVisual
         _bodyMesh.SetTriangles(tris, 0);
         _bodyMesh.RecalculateNormals();
         _bodyMesh.RecalculateBounds();
+        // The shader flaps the wings, so a wing tip can rise well past the
+        // rest-pose bounds. Grow them so a bug is never culled mid-beat (and
+        // the gaze box, which reads these bounds, stays a touch forgiving).
+        var grown = _bodyMesh.bounds;
+        grown.Encapsulate(new Vector3( 0.10f, 0.13f,  0.04f));
+        grown.Encapsulate(new Vector3(-0.10f, 0.13f, -0.12f));
+        _bodyMesh.bounds = grown;
         _bodyMesh.hideFlags = HideFlags.HideAndDontSave;
         return _bodyMesh;
     }

@@ -17,7 +17,10 @@ using UnityEngine.SceneManagement;
 ///     the bite roll already uses (+1 noon, 0 horizon, −1 midnight). On below
 ///     <see cref="nightDotOn"/>, off above <see cref="nightDotOff"/>: two
 ///     thresholds so the terminator can never flicker a swarm.
-///   • <b>A cell is a SWARM</b>, 6–10 bugs over a 6 m patch, not one prop.
+///   • <b>A cell is a SWARM</b> — 3–5 bugs spread over a 16 m patch on evenly
+///     spaced home points (a sunflower spiral), each drifting only a few metres
+///     from its own home. That is what gives spaced-out coverage rather than
+///     clumps (Sam's correction, 2026-09-11).
 ///   • <b>Depletion.</b> Catch every bug in a swarm and that cell stays empty
 ///     for <see cref="depletedMinutes"/> (session memory only).
 ///   • <b>Real lights on the nearest few only.</b> Every bug glows by emission
@@ -51,7 +54,7 @@ public class FireflySpawner : MonoBehaviour
     [Tooltip("Swarms only exist within this distance of the player. Small bugs — 140 m is already a faint twinkle at the edge.")]
     public float spawnRadius = 140f;
     [Tooltip("Never more than this many swarms alive at once. Density (cell size + chance) should bind before this does.")]
-    public int maxSwarms = 14;
+    public int maxSwarms = 36;
     [Tooltip("Never spawn a swarm closer than this to the camera, so one cannot pop in around your head.")]
     public float minSpawnDistance = 12f;
     [Tooltip("Layers the surface raycast may hit. Water/ship/props/player are removed automatically.")]
@@ -63,16 +66,21 @@ public class FireflySpawner : MonoBehaviour
     [Tooltip("Change to reroll the whole layout. Distinct from the tree/alien/cat seeds.")]
     public int seed = 7171;
     [Tooltip("Cell size in metres. One swarm per cell at most.")]
-    public float cellSize = 60f;
+    public float cellSize = 40f;
     [Range(0f, 1f)]
     [Tooltip("Probability a cell holds a swarm.")]
-    public float swarmChance = 0.6f;
+    public float swarmChance = 0.75f;
 
     [Header("Swarm")]
-    public int bugsMin = 6;
-    public int bugsMax = 10;
-    [Tooltip("Radius of the patch a swarm drifts over (metres).")]
-    public float swarmRadius = 6f;
+    // Spread-out coverage, not clumps (Sam, 2026-09-11): a few bugs per swarm
+    // over a WIDE patch, each with its own evenly-spaced home point, and more
+    // swarms. Same ~110 bugs in range as before, now ~8-10 m apart.
+    public int bugsMin = 3;
+    public int bugsMax = 5;
+    [Tooltip("Radius of the patch a swarm covers (metres). Bugs get evenly spaced home points across it.")]
+    public float swarmRadius = 16f;
+    [Tooltip("How far a bug drifts from its own home point. Keep well under the spacing between homes or they bunch up again.")]
+    public float wanderRadius = 3.5f;
     [Tooltip("Flight height above the ground, metres.")]
     public float heightMin = 0.4f;
     public float heightMax = 2.6f;
@@ -92,12 +100,12 @@ public class FireflySpawner : MonoBehaviour
     public float depletedMinutes = 8f;
 
     [Header("Real lights (the nearest few bugs)")]
-    [Tooltip("How many bugs carry a real point light. 0 = none, glow only.")]
-    public int maxLitBugs = 6;
-    [Tooltip("Only bugs within this distance of the camera are candidates for a light.")]
-    public float litRange = 30f;
-    public float litIntensity = 0.9f;
-    public float litLightRange = 4f;
+    [Tooltip("How many bugs carry a REAL point light (the rest glow but light nothing). WHY THERE IS A CAP: a planet is ONE mesh, and in this renderer every real light makes everything it can reach get drawn once more — so each firefly light is one extra draw of the whole planet, whatever the bug looks like. 12 is the compromise; raise it and watch the FPS counter.")]
+    public int maxLitBugs = 12;
+    [Tooltip("Only bugs within this distance of the camera are candidates for a light. Past ~60 m a 5 m pool of light is a few pixels anyway.")]
+    public float litRange = 60f;
+    public float litIntensity = 1.1f;
+    public float litLightRange = 5f;
     [Tooltip("Grass response of those lights. 0.5 = the lantern/torch value = same as the ground.")]
     public float litGrassStrength = 0.5f;
 
@@ -142,8 +150,8 @@ public class FireflySpawner : MonoBehaviour
     readonly List<CellCandidate> _candidates = new List<CellCandidate>();
     readonly List<long> _scratchIds = new List<long>();
     readonly List<FireflySwarm> _scratchSwarms = new List<FireflySwarm>();
-    readonly FireflyBug[] _litPick = new FireflyBug[16];
-    readonly float[] _litDist = new float[16];
+    readonly FireflyBug[] _litPick = new FireflyBug[48];
+    readonly float[] _litDist = new float[48];
     static readonly System.Comparison<CellCandidate> ByDistance = (a, b) => a.distSq.CompareTo(b.distSq);
 
     PlayerController _player;
@@ -490,15 +498,22 @@ public class FireflySpawner : MonoBehaviour
         int hi = Mathf.Max(lo, Mathf.Max(bugsMin, bugsMax));
         int count = lo + (int)(hN % (uint)(hi - lo + 1));
 
+        // Home points on a sunflower spiral (golden angle, sqrt radius) — the
+        // simplest layout that spaces N points evenly over a disc. Each bug
+        // then wanders only wanderRadius from its own home, so the spacing
+        // survives the flight.
+        float spiralYaw = Random.value * Mathf.PI * 2f;
+        const float GoldenAngle = 2.39996323f;
         for (int i = 0; i < count; i++)
         {
             var bug = GetBug();
             if (bug == null) break;
             bug.transform.SetParent(root.transform, false);
-            float r = swarmRadius * Mathf.Sqrt(Random.value);
-            float a = Random.value * Mathf.PI * 2f;
-            var local = new Vector3(Mathf.Cos(a) * r, Random.Range(heightMin, heightMax), Mathf.Sin(a) * r);
-            bug.Spawn(swarm, local,
+            float r = swarmRadius * Mathf.Sqrt((i + 0.5f) / count);
+            float a = spiralYaw + i * GoldenAngle;
+            var home = new Vector3(Mathf.Cos(a) * r, 0f, Mathf.Sin(a) * r);
+            var local = home + new Vector3(0f, Random.Range(heightMin, heightMax), 0f);
+            bug.Spawn(swarm, local, home, wanderRadius,
                       Random.value,
                       Random.Range(blinkPeriodMin, blinkPeriodMax),
                       glowFloor,

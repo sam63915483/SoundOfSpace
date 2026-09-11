@@ -27,6 +27,12 @@
 //   _Blink.z  floor   (0..1 — how dim the "off" half is; held bug uses ~0.8)
 //   _Blink.w  gaze    (0/1 — the focused bug is held at full glow)
 //   _Fade     0..1    swarm fade in/out + catch shrink
+//
+// WINGS FLAP in the vertex shader (Sam, 2026-09-11: "real fireflies flap their
+// wings very fast"). Wing verts (uv.y >= 1.5) rotate about a hinge along the
+// body at the wing root, _FlapHz times a second, offset per bug by the blink
+// phase so a swarm never beats in unison. Pure vertex maths — no animator, no
+// per-frame CPU, and it batches like everything else.
 Shader "SoundOfSpace/Firefly"
 {
     Properties
@@ -40,6 +46,8 @@ Shader "SoundOfSpace/Firefly"
         _HaloPower ("Halo falloff power", Float) = 2.6
         _HaloAlpha ("Halo strength", Float) = 0.55
         _HaloLift  ("Halo push toward the camera (m)", Float) = 0.12
+        _FlapHz    ("Wing beats per second", Float) = 18
+        _FlapAngle ("Wing flap half-angle (degrees)", Float) = 38
         [Enum(UnityEngine.Rendering.BlendMode)] _SrcBlend ("Src blend", Float) = 1
         [Enum(UnityEngine.Rendering.BlendMode)] _DstBlend ("Dst blend", Float) = 0
         [Enum(Off, 0, On, 1)] _ZWrite ("ZWrite", Float) = 1
@@ -75,6 +83,8 @@ Shader "SoundOfSpace/Firefly"
             float  _HaloPower;
             float  _HaloAlpha;
             float  _HaloLift;
+            float  _FlapHz;
+            float  _FlapAngle;
 
             UNITY_INSTANCING_BUFFER_START(Props)
                 UNITY_DEFINE_INSTANCED_PROP(float4, _Blink)
@@ -132,7 +142,26 @@ Shader "SoundOfSpace/Firefly"
                 }
                 else
                 {
-                    o.pos = UnityObjectToClipPos(v.vertex);
+                    float4 pos = v.vertex;
+                    if (v.uv.y >= 1.5)
+                    {
+                        // Hinge = the wing root line (x = ±0.010, y = 0.045 in
+                        // FireflyVisual.BodyMesh), parallel to the body axis.
+                        // Rotate (x, y) about it; the sign makes the two wings
+                        // mirror each other so both tips rise together.
+                        float4 blink = UNITY_ACCESS_INSTANCED_PROP(Props, _Blink);
+                        float side  = v.vertex.x < 0 ? -1.0 : 1.0;
+                        float rootX = side * 0.010;
+                        float rootY = 0.045;
+                        float a  = sin(_Time.y * _FlapHz * 6.2831853 + blink.x * 6.2831853)
+                                 * radians(_FlapAngle) * side;
+                        float ca = cos(a), sa = sin(a);
+                        float dx = v.vertex.x - rootX;
+                        float dy = v.vertex.y - rootY;
+                        pos.x = rootX + dx * ca - dy * sa;
+                        pos.y = rootY + dx * sa + dy * ca;
+                    }
+                    o.pos = UnityObjectToClipPos(pos);
                 }
                 return o;
             }
