@@ -1,4 +1,4 @@
-🟢 ACTIVE — built 2026-09-11; round 2 (wings, spacing, popup, lights) after Sam's first playtest the same day.
+🟢 ACTIVE — built 2026-09-11; round 2 (wings, spacing, popup, lights) and round 3 (the body glow actually glows now — it is a shell, see §4) after Sam's playtests the same day.
 
 # Playtest: fireflies
 
@@ -55,9 +55,13 @@ the glow and its HUD chip create themselves (and are seeded for builds).
 ### 4. Eating
 - Hold left click on it: the eat ring fills (1 s), the bug rises to your mouth
   and chews, then a burp — exactly the fish's motion.
-- Then: your suit glows firefly-orange (look down at your arms / legs), gently
-  breathing; a light around you; a chip top-left `FIREFLY GLOW 0:59` counting
-  down. If a cat perk is running, the firefly chip sits **under** the cat chip.
+- Then: your whole suit glows firefly-orange — look down at your arms / legs,
+  or at a mirror: an orange surface glow with brighter rims along the edges,
+  gently breathing, the visor still dark; a light around you; a chip top-left
+  `FIREFLY GLOW 0:59` counting down. If a cat perk is running, the firefly chip
+  sits **under** the cat chip. (Round 3: the first version wrote emission into
+  the suit material, which turned out to be embedded in the FBX and cannot glow —
+  it is a separate glow shell over the body now.)
 - Last 3 seconds: the glow dies down rather than snapping off.
 - Eat another mid-glow: timer resets to 1:00.
 
@@ -92,8 +96,10 @@ faked ground-glow under every bug (cheap, no real light), which I can build.
 - `HeldItemViewmodel` — `heldLightIntensity` (1.6), `heldLightRange` (7 m),
   `heldGrassStrength` (0.5 = ground parity), `heldGlowFloor`, `heldHaloSize`,
   `heldFireflyRotation`.
-- `[FireflyGlow]` — `glowIntensity` (2.2), `breatheMin`, `lightIntensity`
-  (1.4), `lightRange` (9 m), `fadeOutSeconds`.
+- `[FireflyGlow]` — `breatheMin`, `darkPartsStrength` (0.7), `lightIntensity`
+  (1.4), `lightRange` (9 m), `fadeOutSeconds`. How hard the body glows lives on
+  `Resources/FireflyGlowShell.mat`: `_Intensity` (1.6, HDR), `_Base` (0.35 —
+  how much of the surface glows vs. rim only), `_RimPower` (2.2).
 - Shader look: `Resources/FireflyBody.mat` / `FireflyHalo.mat` — `_Intensity`
   (HDR glow), `_TailStart`, `_HaloAlpha`, `_HaloPower`, `_FlapHz` (18),
   `_FlapAngle` (38°).

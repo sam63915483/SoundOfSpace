@@ -21,7 +21,7 @@ minute as a status effect like the cat perks."*
 | **Catch** | Within 3.5 m, look at one → `Press F to catch firefly` → `+1 firefly`, hotbar stack (10 per slot). Inventory full → the usual popup, bug stays. | `FireflyBug` (an `Interactable`), `World/FireflyPopup.cs`, `Hotbar.ItemId.Firefly` |
 | **Hold** | Select the slot: the bug sits in the right hand on the shared viewmodel rig, glowing steadily, with a warm point light (range 7 m) and a `GrassPointLight` marker at torch parity (0.5). Co-op partners see it too. | `HeldItemViewmodel.BuildFirefly`, `HeldItemResolver` |
 | **Eat** | Hold fire → the existing 1 s eat ring → bug raised to the mouth + chew loop → burp → `FireflyGlow.Grant()` (60 s). | `Hotbar.TickEatHold/ConsumeEquippedFirefly`, `HeldItemViewmodel.UpdateEating` |
-| **Glow** | Suit emission in firefly orange (HDR, gentle breathing), a point light on the player (range 9 m, grass parity), HUD chip `FIREFLY GLOW 0:59` under the cat-perk chip. Fades in 0.6 s, out over the last 3 s. | `Player/FireflyGlow.cs`, `UI/FireflyGlowHUD.cs`, `SuitTinter.ApplyEmission` |
+| **Glow** | A glow SHELL over the astronaut — a clone of each body renderer (same mesh, same bones, the PlayerShadowProxy trick) drawn additive + fresnel-rimmed in firefly orange (HDR, gentle breathing; visor stays dark) — plus a point light on the player (range 9 m, grass parity), HUD chip `FIREFLY GLOW 0:59` under the cat-perk chip. Fades in 0.6 s, out over the last 3 s. | `Player/FireflyGlow.cs`, `Player/FireflyGlowShell.shader` + `Resources/FireflyGlowShell.mat`, `UI/FireflyGlowHUD.cs` |
 
 ## Night test
 
@@ -85,10 +85,13 @@ Promise/grade rule: the bug whose prompt is on screen is the bug you catch.
 - **Glow is not saved**, cleared in `NewGameReset` (cat-perk precedent). Caught
   fireflies in the hotbar are saved for free (generic slot save).
 - **All planets except the Sun / static attractors.** `FeatureVault.Fireflies`.
-- **`Suit.mat` gets `_EMISSION` switched on** (black emission = no visible
-  change) so per-renderer property blocks can add glow without instancing
-  materials. `m_LightmapFlags` 4 → 0 so the Standard inspector never strips the
-  keyword again.
+- **The body glow is a shell, not emission — and this was round 3.** The
+  first build wrote `_EmissionColor` into the suit's property blocks and
+  switched `_EMISSION` on in `Astronaut Mat/Suit.mat`. It glowed for nobody:
+  the astronaut's materials are EMBEDDED in `Astronaut.fbx` (`materialLocation
+  = InPrefab`), the on-disk `Suit.mat` is not what the model uses, and an
+  embedded material cannot have a keyword switched on. `Suit.mat` is back to
+  its original state. The shell depends on no material but its own.
 - No new audio: catch is silent like every other resource pickup; eating uses
   the existing chew loop + burp.
 - Co-op: partners see the held bug; the body glow is local-only (v1 gap).

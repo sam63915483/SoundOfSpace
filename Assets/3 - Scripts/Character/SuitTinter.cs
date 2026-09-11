@@ -5,10 +5,15 @@ using UnityEngine;
 /// menu preview — without ever touching a material asset.
 ///
 /// ── Why MaterialPropertyBlock ────────────────────────────────────────────
-/// Astronaut.fbx resolves its materials by legacy name-search
-/// (`materialLocation: 1`, `externalObjects: {}`), so every astronaut in the
-/// game shares the SAME two material assets on disk: `Suit.mat` and
-/// `Suit Dark.mat`. Two consequences:
+/// Astronaut.fbx keeps its materials EMBEDDED in the model
+/// (`materialLocation: 1` = InPrefab, `externalObjects: {}`) — verified
+/// 2026-09-11: the runtime `Suit` / `Suit Dark` / `Visor` / `Thruster` are
+/// sub-assets of the .fbx, and the `Suit.mat` / `Suit Dark.mat` files in
+/// `Astronaut Mat/` are NOT what the model uses. Every astronaut in the game
+/// still shares those same embedded materials, and an embedded material can
+/// neither be edited nor have a shader keyword switched on (which is why the
+/// firefly glow is a separate shell renderer, not `_EmissionColor`). Two
+/// consequences:
 ///
 ///   1. Writing `renderer.sharedMaterial.color` would edit the asset itself —
 ///      permanently, on disk, for every astronaut, and in the Editor it survives
@@ -75,53 +80,6 @@ public static class SuitTinter
                 r.SetPropertyBlock(_block, slot);
             }
         }
-    }
-
-    // ── Emission (the firefly glow, 2026-09-11) ───────────────────────────
-    //
-    // Same per-slot property-block rule as the tint: `_EmissionColor` is written
-    // into the SAME block `_Color` lives in (GetPropertyBlock first), so tint and
-    // glow never overwrite each other. Suit.mat has the `_EMISSION` keyword
-    // switched on with a black colour — no visible change until something
-    // writes a colour here, and the Standard shader ignores the property
-    // entirely without that keyword.
-
-    static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
-
-    /// One tintable suit slot on one renderer.
-    public struct SuitSlot
-    {
-        public Renderer renderer;
-        public int slot;
-    }
-
-    /// Every suit slot under `root`, for callers that write per frame and must
-    /// not re-scan the hierarchy each time (GetComponentsInChildren allocates).
-    public static void CollectSuitSlots(Transform root, System.Collections.Generic.List<SuitSlot> into)
-    {
-        if (into == null) return;
-        into.Clear();
-        if (root == null) return;
-        var renderers = root.GetComponentsInChildren<Renderer>(true);
-        for (int i = 0; i < renderers.Length; i++)
-        {
-            var r = renderers[i];
-            if (r == null) continue;
-            var mats = r.sharedMaterials;
-            for (int slot = 0; slot < mats.Length; slot++)
-                if (IsSuitMaterial(mats[slot]))
-                    into.Add(new SuitSlot { renderer = r, slot = slot });
-        }
-    }
-
-    /// Write an emission colour (HDR is fine) into one suit slot. Black = off.
-    public static void SetEmission(SuitSlot s, Color emission)
-    {
-        if (s.renderer == null) return;
-        if (_block == null) _block = new MaterialPropertyBlock();
-        s.renderer.GetPropertyBlock(_block, s.slot);
-        _block.SetColor(EmissionId, emission);
-        s.renderer.SetPropertyBlock(_block, s.slot);
     }
 
     /// True for the suit shell, false for the visor and for anything else
