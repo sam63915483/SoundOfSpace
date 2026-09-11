@@ -201,10 +201,6 @@ public class FireflyBug : Interactable
             _lamp = gameObject.AddComponent<Light>();
             _lamp.type = LightType.Point;
             _lamp.shadows = LightShadows.None;
-            // Vertex-lit on purpose: a pixel point light re-draws the ENTIRE 2M-tri
-            // planet mesh once per bug (12 lit bugs = 12 planet passes). Measured
-            // 2026-09-11: all lights vertex at night = 30M -> 9.7M tris, 50 -> 69 fps.
-            _lamp.renderMode = LightRenderMode.ForceVertex;
             _lamp.color = FireflyVisual.GlowColor;
             // Grass never receives real additive lights; the marker feeds
             // this one into the grass shader's faked-light pool. 0.5 is the
