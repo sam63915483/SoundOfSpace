@@ -40,7 +40,13 @@ def build(data, which, label):
         sys.stderr.write(gen.stderr or "")
         return 1, 0
 
-    rsp = os.path.join(ROOT, "build", ("asm-editor" if which else "asm") + ".rsp")
+    # Must mirror make-rsp.py's NAME logic exactly. This used to read
+    # ("asm-editor" if which else "asm"), so the "player" pass — which IS
+    # truthy — recompiled the EDITOR rsp a second time and could never fail on
+    # anything build-specific. That is how a UnityEditor reference in the
+    # runtime assembly reached a real build with the checker reporting PASS.
+    rsp_name = "asm-editor" if which == "editor" else ("asm-player" if which == "player" else "asm")
+    rsp = os.path.join(ROOT, "build", rsp_name + ".rsp")
     dotnet = os.path.join(data, "NetCoreRuntime", "dotnet.exe")
     csc = os.path.join(data, "DotNetSdkRoslyn", "csc.dll")
 

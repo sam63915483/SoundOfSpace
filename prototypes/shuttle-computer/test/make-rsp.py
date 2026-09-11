@@ -92,6 +92,18 @@ def main():
         # Everything Unity has already compiled for this project — Netcode,
         # Services, TMP and friends. The csproj can be missing these entirely
         # if it was generated before a package was added.
+        # A player build has no UnityEditor assemblies at all. Referencing them
+        # in the PLAYER pass is what let `using UnityEditor;` in a runtime script
+        # compile clean here and then fail the real build (the IndieCat pack's
+        # QuickAnimSetting.cs, 2026-09-10). Dropping them is the whole point of
+        # this pass: same sources, honest reference set.
+        def is_editor_ref(name):
+            n = name.lower()
+            return (n.startswith("unityeditor")
+                    or n == "unityeditor.dll"
+                    or ".editor." in n
+                    or n.endswith(".editor.dll"))
+
         seen = set()
         for p in glob.glob(os.path.join(ROOT, "Library", "ScriptAssemblies", "*.dll")):
             name = os.path.basename(p)
@@ -99,12 +111,17 @@ def main():
             # and referencing both makes every type ambiguous.
             if name.startswith("Assembly-CSharp"):
                 continue
+            if PLAYER and is_editor_ref(name):
+                seen.add(name)   # mark as handled so the csproj loop skips it too
+                continue
             seen.add(name)
             f.write('-r:"' + p + '"' + chr(10))
 
         missing = []
         for r in refs:
             if os.path.basename(r) in seen:
+                continue
+            if PLAYER and is_editor_ref(os.path.basename(r)):
                 continue
             # Package references are project-relative in the csproj; Unity DLLs
             # are absolute. Resolve the relative ones or csc can't find them.
