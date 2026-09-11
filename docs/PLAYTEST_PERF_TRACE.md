@@ -67,6 +67,16 @@ lantern glow on the ground seen from far away (now gone past ~33 m), firefly
 glow on the ground (now vertex-lit: softer, and only the 4 nearest bugs light
 the ground), moon-base interior lighting (unchanged).
 
+## 4c. RUN 4 — planet chunking (the light workaround is reverted; the look is meant to be IDENTICAL)
+
+Rebuild (dev build fine, PerfTrace still records). Play field, village, moon, night.
+Watch fps and watch for anything that looks different from before: the ground
+itself (seams, holes, missing patches, wrong colours), lanterns/fireflies/torches
+lighting the ground at night (should be exactly as before), shadows on the ground,
+the moon tunnel. The Player.log will show lines like
+`[PlanetChunker] Humble Abode: 2097152 tris → 96 chunks (K=4) in NNN ms`.
+Kill switch if anything is wrong: `FeatureVault.PlanetChunks = false`.
+
 ## 5. Where the files are
 
 `%AppData%\..\LocalLow\DefaultCompany\Solar System 2\perf\`

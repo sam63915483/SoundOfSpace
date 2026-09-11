@@ -38,6 +38,13 @@ public static class FeatureVault
     /// still there, so old PlayerPrefs keep loading cleanly.
     public static readonly bool PlanetClouds = false;
 
+    /// Planet terrain meshes split into cube-face chunks at runtime
+    /// (PlanetChunker, 2026-09-11). Each planet is ONE ~2M-triangle renderer;
+    /// frustum culling can't drop the far side of it and every point light
+    /// touching it re-draws all of it. Chunks fix both. Flip to false to get
+    /// the single mesh back instantly (nothing else changes).
+    public static readonly bool PlanetChunks = true;
+
     /// OpeningDirector's six survival beats (locker → water → wood → fire →
     /// build → village). Built and compile-verified, never play-tested.
     public static readonly bool OpeningBeats = false;
