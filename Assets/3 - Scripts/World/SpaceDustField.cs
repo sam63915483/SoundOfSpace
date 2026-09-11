@@ -124,6 +124,8 @@ public class SpaceDustField : MonoBehaviour
     // ---- render buffers ----
     Matrix4x4[] _matrices;
     Vector4[] _colors;
+    float[] _cacheB;        // per-speck cached brightness (amortised update)
+    Vector4[] _cacheCol;
     MaterialPropertyBlock _mpb;
     Mesh _mesh;
     Material _material;
@@ -444,79 +446,81 @@ public class SpaceDustField : MonoBehaviour
         BuildRelevantPlanets(camPos, half * 1.7320508f);
 
         int m = 0;
+        // Amortised (2026-09-11): the density noise, black-hole drift, fade /
+        // twinkle and the ocean-occlusion test run for HALF the specks each frame
+        // (with 2x dt for the drift), and each speck draws from its cached result
+        // on the off frame. The camera-relative bookkeeping (co-move, genuine
+        // camera delta, wrap) still runs for every speck every frame, so nothing
+        // slides. Was 1.4-1.5 ms/frame for 5000 specks; the visual difference at
+        // 60+ fps is a twinkle updated at half rate.
+        if (_cacheB == null || _cacheB.Length != _local.Length)
+        {
+            _cacheB = new float[_local.Length];
+            _cacheCol = new Vector4[_local.Length];
+        }
+        int parity = Time.frameCount & 1;
+        float dt2 = dt * 2f;
         for (int i = 0; i < _local.Length; i++)
         {
             Vector3 lp = _local[i];
-            Vector3 wp = camPos + lp;
-
-            // speck -> BH: one sqrt, reused for drift direction, infall accel, and density
-            Vector3 toBH = bhPos - wp;
-            float bhDist = toBH.magnitude;
-            float d = DensityAt(wp, bhDist);
-
-            // Drift straight toward the BH (accelerating as it gets closer) — the
-            // "dust getting sucked into the black hole" stream. toBH is camera-relative
-            // so it's origin-rebase invariant. Applied in BOTH modes.
-            if (bhDist > 0.001f)
+            if ((i & 1) == parity)
             {
-                float fbhDrift = 1f - Mathf.Clamp01((bhDist - bhInnerRadius) * _bhRampInv);
-                float effDrift = driftSpeed * (1f + driftBHAccel * fbhDrift);
-                lp += (toBH / bhDist) * (effDrift * dt);
+                Vector3 wp = camPos + lp;
+                Vector3 toBH = bhPos - wp;
+                float bhDist = toBH.magnitude;
+                float d = DensityAt(wp, bhDist);
+                if (bhDist > 0.001f)
+                {
+                    float fbhDrift = 1f - Mathf.Clamp01((bhDist - bhInnerRadius) * _bhRampInv);
+                    float effDrift = driftSpeed * (1f + driftBHAccel * fbhDrift);
+                    lp += (toBH / bhDist) * (effDrift * dt2);
+                }
+                float b = 0f;
+                Color col = amberWarm;
+                if (d > _threshold[i])
+                {
+                    float lpMag = lp.magnitude;
+                    if (lpMag < half)
+                    {
+                        float edge = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStart, half, lpMag));
+                        if (edge > 0.001f)
+                        {
+                            float vis = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(_threshold[i], Mathf.Min(1f, _threshold[i] + 0.15f), d));
+                            float tw = 1f - twinkleAmount + twinkleAmount * (0.5f + 0.5f * Mathf.Sin(t * twinkleSpeed + _phase[i]));
+                            b = brightness * vis * edge * tw * washMul * _dustUnderwaterMul;
+                            if (b > 0.004f)
+                            {
+                                for (int k = 0; k < _relOceanCount; k++)
+                                {
+                                    Vector3 toC = _relOceanPos[k] - camPos;
+                                    float tSeg = Mathf.Clamp01(Vector3.Dot(toC, lp) / Mathf.Max(0.0001f, lpMag * lpMag));
+                                    Vector3 closest = lp * tSeg - toC;
+                                    if (closest.sqrMagnitude < _relOceanR2[k]) { b = 0f; break; }
+                                }
+                                if (b > 0f) col = Color.Lerp(amberWarm, amberBright, d);
+                            }
+                        }
+                    }
+                }
+                _cacheB[i] = b;
+                _cacheCol[i] = new Vector4(col.r, col.g, col.b, b);
             }
-            // Camera-relative parallax + planet co-move only in normal play. For the
-            // detached free-cam these can't be kept in phase with a separately-rebased
-            // camera (the left-behind/snap), and the box is kept locked to the camera
-            // instead — so the dust just streams toward the BH all around you.
             if (!freeCam)
             {
                 lp += coMoveStep;      // co-move with home planet so its orbital parallax cancels there
                 lp -= genuineDelta;
             }
-
-            // toroidal wrap into [-half, half]
             lp.x -= L * Mathf.Round(lp.x / L);
             lp.y -= L * Mathf.Round(lp.y / L);
             lp.z -= L * Mathf.Round(lp.z / L);
             _local[i] = lp;
-
-            if (d <= _threshold[i]) continue;
-
-            // spherical edge fade (hides cube corners + wrap pops)
-            float lpMag = lp.magnitude;
-            if (lpMag >= half) continue;
-            float edge = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(fadeStart, half, lpMag));
-            if (edge <= 0.001f) continue;
-
-            float vis = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(_threshold[i], Mathf.Min(1f, _threshold[i] + 0.15f), d));
-            float tw = 1f - twinkleAmount + twinkleAmount * (0.5f + 0.5f * Mathf.Sin(t * twinkleSpeed + _phase[i]));
-            float b = brightness * vis * edge * tw * washMul * _dustUnderwaterMul;
-            if (b <= 0.004f) continue;
-
-            // Ocean occlusion: kill specks BEHIND a planet's water surface. The dust is a
-            // queue-3000 additive draw AFTER the [ImageEffectOpaque] ocean composite (which
-            // writes no depth), so a speck past the water would otherwise punch through it.
-            // Analytic segment(camera → speck)-vs-sphere; specks IN FRONT of the water pass
-            // naturally (segment ends before the sphere).
-            bool behindOcean = false;
-            for (int k = 0; k < _relOceanCount; k++)
-            {
-                Vector3 toC = _relOceanPos[k] - camPos;
-                float tSeg = Mathf.Clamp01(Vector3.Dot(toC, lp) / Mathf.Max(0.0001f, lpMag * lpMag));
-                Vector3 closest = lp * tSeg - toC;
-                if (closest.sqrMagnitude < _relOceanR2[k]) { behindOcean = true; break; }
-            }
-            if (behindOcean) continue;
-
+            if (_cacheB[i] <= 0.004f) continue;
             float size = glowSize * _sizeRand[i];
-            // Translation + uniform scale matrix built directly (cheaper than Matrix4x4.TRS,
-            // which does quaternion->matrix work for a rotation we don't use).
             Matrix4x4 mtx = Matrix4x4.identity;
             mtx.m00 = size; mtx.m11 = size; mtx.m22 = size;
             mtx.m03 = camPos.x + lp.x; mtx.m13 = camPos.y + lp.y; mtx.m23 = camPos.z + lp.z;
             _matrices[m] = mtx;
-            Color col = Color.Lerp(amberWarm, amberBright, d);
-            _colors[m] = new Vector4(col.r, col.g, col.b, b);
-
+            _colors[m] = _cacheCol[i];
             m++;
             if (m == 1023) { Flush(m); m = 0; }
         }

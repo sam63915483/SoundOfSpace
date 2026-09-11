@@ -151,7 +151,12 @@ public class GForceHUD : MonoBehaviour
         bool show = ((_player != null && _player.JetpackUnlocked) || pilotedForGate != null || DroneController.Active != null)
                     && !PlayerController.isMapOpen && !HUDSceneGate.InMainMenu;
         if (_canvas != null && _canvas.enabled != show) _canvas.enabled = show;
-        if (_indicatorCam != null && _indicatorCam.enabled != show) _indicatorCam.enabled = show;
+        // The indicator camera is rendered by hand in LateUpdate on ODD frames
+        // (HudScreenProjector takes the even ones) instead of every frame: a
+        // 3D gauge at half refresh is invisible at 60+ fps and it halves this
+        // camera's main-thread cost (2026-09-11: 4 Camera.Render calls = 3.2 ms).
+        if (_indicatorCam != null && _indicatorCam.enabled) _indicatorCam.enabled = false;
+        _renderIndicator = show;
         // Helmet-screen power-on: flicker + scanline sweep whenever the boost
         // cluster comes back on (jetpack equip / boarding a ship / drone).
         if (show && !_wasShown) HudBootFX.Play(GetComponent<CanvasGroup>(), _cardRT);
@@ -253,7 +258,9 @@ public class GForceHUD : MonoBehaviour
         Vector3 camOffset = new Vector3(1.0f, 1.3f, -3.2f);
         _indicatorCam.transform.position = widgetPos + camOffset;
         _indicatorCam.transform.LookAt(widgetPos, Vector3.up);
+        if (_renderIndicator && (Time.frameCount & 1) == 1) _indicatorCam.Render();
     }
+    bool _renderIndicator;
 
     static readonly bool[] _activeScratch = new bool[6];
     bool[] ReadThrustKeys()

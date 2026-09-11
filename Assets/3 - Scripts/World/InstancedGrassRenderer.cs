@@ -128,7 +128,13 @@ public class InstancedGrassRenderer : MonoBehaviour
         public readonly List<int> mesh = new List<int>();
         public readonly List<Matrix4x4> local = new List<Matrix4x4>();
         public Vector3 localAnchor;
+        // local x the planet's ROTATION (no translation), cached - see Draw().
+        public readonly List<Matrix4x4> world = new List<Matrix4x4>();
+        public int worldStamp = -1;
     }
+    Matrix4x4 _rotCache;
+    bool _rotCacheValid;
+    int _rotStamp;
 
     readonly Dictionary<long, Cell> _active = new Dictionary<long, Cell>(2048);
     // Reuse Cell objects (and their Lists) instead of allocating one per
@@ -936,6 +942,8 @@ public class InstancedGrassRenderer : MonoBehaviour
         Cell c = _cellPool.Count > 0 ? _cellPool.Pop() : new Cell();
         c.mesh.Clear();
         c.local.Clear();
+        c.world.Clear();
+        c.worldStamp = -1;
         c.localAnchor = localAnchor;
         return c;
     }
@@ -1207,6 +1215,17 @@ public class InstancedGrassRenderer : MonoBehaviour
     {
         if (grassMaterial == null || grassMeshes.Length == 0 || _body == null) return;
         Matrix4x4 l2w = _body.transform.localToWorldMatrix;
+        // The planet never spins: l2w's rotation part is the same every frame and
+        // only its translation moves (orbit rails + floating-origin shifts). So
+        // each blade's `rotation x local` is cached per cell and per frame we
+        // only add the translation column - 3 adds instead of a 4x4 multiply
+        // per blade (measured 2026-09-11: this loop was 1.8-2.3 ms/frame). If the
+        // rotation ever does change the stamp bumps and every cell rebuilds,
+        // so the result is bit-identical to the old MulAffine path.
+        Matrix4x4 rot = l2w;
+        float tx = rot.m03, ty = rot.m13, tz = rot.m23;
+        rot.m03 = 0f; rot.m13 = 0f; rot.m23 = 0f;
+        if (!_rotCacheValid || rot != _rotCache) { _rotCache = rot; _rotCacheValid = true; _rotStamp++; }
 
         // Planet centre for the shader's per-patch colour variation (keeps the
         // hash input small instead of using raw world coords at ~±24000).
@@ -1255,11 +1274,19 @@ public class InstancedGrassRenderer : MonoBehaviour
                 f = Mathf.Max(f, densityFadeFloor);                     // never thin to see-through
                 n = Mathf.Min(n, Mathf.CeilToInt(n * f));
             }
+            if (cell.worldStamp != _rotStamp || cell.world.Count != cell.local.Count)
+            {
+                cell.world.Clear();
+                for (int k = 0; k < cell.local.Count; k++) { Matrix4x4 bl = cell.local[k]; cell.world.Add(MulAffine(ref rot, ref bl)); }
+                cell.worldStamp = _rotStamp;
+            }
+            var world = cell.world;
             for (int k = 0; k < n; k++)
             {
                 int m = cell.mesh[k];
-                Matrix4x4 bl = cell.local[k];
-                _batches[m][_counts[m]++] = MulAffine(ref l2w, ref bl);
+                Matrix4x4 w = world[k];
+                w.m03 += tx; w.m13 += ty; w.m23 += tz;
+                _batches[m][_counts[m]++] = w;
                 if (_counts[m] == 1023)
                 {
                     Graphics.DrawMeshInstanced(grassMeshes[m], 0, grassMaterial, _batches[m], 1023, null,

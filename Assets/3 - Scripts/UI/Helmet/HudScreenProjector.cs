@@ -143,7 +143,15 @@ public class HudScreenProjector : MonoBehaviour
         // menu, HUD hidden) — the warp graphic lives on the host canvas, so
         // its visibility gate is the canvas itself.
         bool show = _hostCanvas != null && _hostCanvas.enabled && _hostCanvas.gameObject.activeInHierarchy;
-        if (_cam != null && _cam.enabled != show) _cam.enabled = show;
+        // Rendered by hand on EVEN frames only (GForceHUD's thrust widget takes the
+        // odd ones). The texture is a flat UI cluster, so a half-rate refresh is
+        // invisible at 60+ fps, and it halves this camera's share of the main
+        // thread (2026-09-11: 4 Camera.Render calls cost 3.2 ms/frame together).
+        if (_cam != null)
+        {
+            if (_cam.enabled) _cam.enabled = false;
+            if (show && (Time.frameCount & 1) == 0) _cam.Render();
+        }
     }
 
     float _nextCamFind;
