@@ -1698,7 +1698,7 @@ before**). `#if UNITY_EDITOR` it force-reloads the Story folder per call.
 | `npc_bonfire` | `BonfireNPCDialogue` | whole talk | `firstTimeDone` / `firstTimeReward` |
 | `npc_alien3` | `NPCDialogue` | whole talk | `holdingCassette` / `tradeRod` (legacy trade block factored into `ConsumeHeldCassette` / `GiveRod` / `CompleteTrade`) |
 | `npc_guitarshop` | `GuitarShopNPC` | whole talk | `giveGuitar`; money via MoneyAtLeast/SpendMoney, 50/50 haggle via Chance |
-| `npc_bartender` | `BartenderTalk` (AuthoredNPCTalk) | whole talk | probes `cupOnCounter` / `holdingCup` / `cupEmptyInHand`; action `pourBeer` → `BarCounter.PourBeer()`; $10 via MoneyAtLeast/SpendMoney (2026-09-12) |
+| `npc_shlawg` | `BartenderTalk` (AuthoredNPCTalk, pre-placed Alien1 body) | whole talk | probes `cupOnCounter` / `holdingCup` / `cupEmptyInHand`; action `pourBeer` → `BarCounter.PourBeer()`; $10 via MoneyAtLeast/SpendMoney (2026-09-12) |
 | `npc_alien7` / `npc_shipmarket` | `Alien7Vendor` / `ShipMarketNPC` | spoken greeting only | shop/sell menu unchanged |
 | `npc_fishmarket` | `FishMarketNPC` | greeting (`start`) + bounty story (`bounty` entry node) | `bountyTurnedIn`; sell/bait/turn-in menu unchanged |
 
@@ -2571,3 +2571,30 @@ grapple); no drunk effect (Grogginess is the ready-made one if wanted).
 Compile PASS, 0 warnings, both assemblies. **PLAYTEST PENDING** — Sam still has
 to place the counter + NPC marker and save the scene (the un-bake and the
 Player's new component are unsaved Editor changes from this session).
+
+## Addendum 2026-09-12b — the bar, pass 2: Shlawg pre-placed, many cups, ghost placement
+
+Sam placed `House_03/counter` (a scaled cube) and a `BARTENDER` empty behind it
+and asked for the NPC to be a real Editor object he can nudge, not a runtime spawn.
+
+- **`AuthoredNPCSpawner.prePlacedBody`** (appended field): adopt a hand-placed
+  alien instance — trigger, `AuthoredNPCBody`, `NPCWaveAnimation`, WorldProp
+  layer — with no spawn/seating/`AlienWander`. `Wander` is null in this mode;
+  callers already null-check. `BARTENDER/Shlawg` = Alien1.prefab at world 3.5.
+- **BEER slot holds a list.** `BeerCupController` keeps `List<float>` fills
+  ([0] in hand); `IsUnlocked` = any cups; `Hotbar.DetectAcquisitions` mirrors
+  `CupCount` onto the slot count (badge shows when > 1). Setting an empty down
+  pops the next beer into the hand. Save: `EquipmentSave.beerCups` float[].
+- **`BarCounter`** reads the middle and the top face off its own mesh bounds
+  (no CupSpot). Holding an EMPTY cup with the crosshair on the counter: green
+  `_Color` property-block tint + a translucent ghost CupGOOD snapped to the top
+  face; F places the empty there; **`BeerCupFadeAway`** fades it (Standard
+  FADE material asset `2 - Materials/Bar/BeerCupFade.mat`, alpha over 1 s
+  after 5 s) and destroys it. Cups parent to the counter's PARENT because the
+  counter is a non-uniform cube (children would squash).
+- Shlawg only refuses while a full beer waits in the middle (`cupOnCounter`);
+  `npc_bartender.json` → `npc_shlawg.json` (id follows npcName).
+- `Cup.prefab` was renamed `CupGOOD.prefab` by Sam (same guid).
+
+Compile PASS, 0 warnings. Scene wiring done in the open Editor, **unsaved** —
+Sam fine-tunes Shlawg's placement and saves. **PLAYTEST PENDING.**
