@@ -158,8 +158,15 @@ public class PlanetOcclusionCuller : MonoBehaviour
             float R = b.radius;
             if (b == home)
             {
+                // A cluster that reaches into the body (the moon tube runs THROUGH
+                // Constant Companion, so its bounds centre sits near the moon's
+                // centre) has no meaningful horizon: the central angle is noise and
+                // it was being hidden while you stood next to it (2026-09-12).
+                // Such clusters are only ever occluded by OTHER bodies.
+                float off = (centre - bc).magnitude;
+                if (off < R * 0.6f || radius > R * 0.5f) continue;
                 float dc = (cam - bc).magnitude;
-                float dp = (centre - bc).magnitude + radius;          // the cluster's highest point
+                float dp = off + radius;                              // the cluster's highest point
                 if (dc <= R || dp <= R) continue;
                 float limit = Mathf.Acos(Mathf.Clamp(R / dc, -1f, 1f)) + Mathf.Acos(Mathf.Clamp(R / dp, -1f, 1f));
                 float central = Vector3.Angle(cam - bc, centre - bc) * Mathf.Deg2Rad;
