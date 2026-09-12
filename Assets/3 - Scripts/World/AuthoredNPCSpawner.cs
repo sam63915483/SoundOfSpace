@@ -100,7 +100,38 @@ public class AuthoredNPCSpawner : MonoBehaviour
 
     void Start()
     {
+        if (prePlacedBody != null) { AdoptPrePlaced(); return; }
         if (autoSpawn) SpawnAtWorld(transform.position);
+    }
+
+    /// <summary>
+    /// Pre-placed mode: the alien already stands in the scene exactly where Sam
+    /// put it (a bartender behind a counter, inside a house). No spawn, no
+    /// ground raycast, no seating, no wander — just the talk wiring: trigger,
+    /// relay, wave/head-track, layer. <see cref="Wander"/> stays null; every
+    /// caller already null-checks it.
+    /// </summary>
+    void AdoptPrePlaced()
+    {
+        var go = prePlacedBody;
+        if (Planet == null) return;
+        if (go.GetComponent<AuthoredNPCBody>() != null) return;   // already adopted
+
+        if (wave && go.GetComponent<NPCWaveAnimation>() == null) go.AddComponent<NPCWaveAnimation>();
+
+        var trigger = go.AddComponent<BoxCollider>();
+        trigger.isTrigger = true;
+        trigger.size = triggerSize;
+        trigger.center = triggerCenter;
+
+        SpawnerCubeface.SetLayerRecursively(go, SpawnerCubeface.WorldPropLayer);
+
+        Relay = go.AddComponent<AuthoredNPCBody>();
+        Relay.Owner = this;
+
+        Body = go;
+        Debug.Log($"[AuthoredNPC:{npcName}] adopted pre-placed body '{go.name}' on {Planet.bodyName}.");
+        OnSpawned?.Invoke(this);
     }
 
     GameObject ResolvePrefab()
@@ -271,4 +302,7 @@ public class AuthoredNPCSpawner : MonoBehaviour
 
     [Tooltip("Face the way this marker empty's blue (Z) arrow points instead of a random direction. Turn on for an NPC that must face something, e.g. the bartender across the counter.")]
     public bool faceMarker = false;
+
+    [Tooltip("PRE-PLACED mode: an alien prefab instance already standing in the scene (placed and scaled by hand in the Editor). When set, nothing is spawned or seated — this body just gets the talk trigger, relay and wave. Its position is yours to fine-tune.")]
+    public GameObject prePlacedBody;
 }

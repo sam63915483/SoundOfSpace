@@ -73,14 +73,14 @@
       "actions": {},
       "notes": "Only the spoken greeting is in the graph. The shop menu after it is C#."
     },
-    "npc_bartender": {
-      "name": "Bartender",
-      "where": "Village — the pub house, behind the bar counter (authored NPC)",
-      "script": "NPC_Dialogue/BartenderTalk.cs (AuthoredNPCTalk)",
+    "npc_shlawg": {
+      "name": "Shlawg",
+      "where": "Village — House_03 (the pub), behind the counter; body pre-placed in the Editor",
+      "script": "NPC_Dialogue/BartenderTalk.cs (AuthoredNPCTalk) — pre-placed Alien1 body",
       "hook": "full",
       "probes": { "cupOnCounter": "a full beer is already on the bar", "holdingCup": "the player owns a cup (any fill)", "cupEmptyInHand": "the player's cup is empty" },
-      "actions": { "pourBeer": "a full cup appears on the BarCounter's CupSpot" },
-      "notes": "Beer is $10 (MoneyAtLeast 10 / SpendMoney 10 in the graph). One cup at a time: the routes at 'start' send you to waiting / sipping / empty before the greeting. F on the counter sets an empty cup down."
+      "actions": { "pourBeer": "a full cup appears in the middle of the counter" },
+      "notes": "Beer is $10 (MoneyAtLeast 10 / SpendMoney 10 in the graph). He only refuses while a full beer is still standing in the middle of the counter (probe cupOnCounter). You can carry several. Holding an empty cup + looking at the counter = green highlight + ghost; F sets it down, it fades after 5 s."
     },
     "npc_fishmarket": {
       "name": "Fish Vendor",

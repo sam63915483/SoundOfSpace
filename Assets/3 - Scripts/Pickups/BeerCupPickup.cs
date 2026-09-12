@@ -4,9 +4,9 @@ using UnityEngine;
 /// "Press F to pick up the beer" on a cup the bartender poured. Added at
 /// runtime by <see cref="BarCounter.PourBeer"/> — never placed by hand.
 ///
-/// On F: the player's <see cref="BeerCupController"/> is unlocked (the Hotbar
-/// adds the slot next frame), set to this cup's fill, equipped, and the world
-/// cup is destroyed. Mirrors WaterBottlePickup.
+/// On F: the cup joins the player's <see cref="BeerCupController"/> (the
+/// Hotbar shows the BEER slot / count next frame), goes into the hand if the
+/// hand was free, and the world cup is destroyed. Mirrors WaterBottlePickup.
 /// </summary>
 public class BeerCupPickup : Interactable
 {
@@ -28,12 +28,8 @@ public class BeerCupPickup : Interactable
         }
     }
 
-    protected override bool CanInteract()
-    {
-        if (!TutorialGate.IsUnlocked(TutorialAbility.Pickup)) return false;
-        var cup = Object.FindObjectOfType<BeerCupController>();
-        return cup != null && !cup.IsUnlocked;   // one cup at a time
-    }
+    protected override bool CanInteract() =>
+        TutorialGate.IsUnlocked(TutorialAbility.Pickup);
 
     protected override string BuildInteractMessage() =>
         $"Press {PromptGlyphs.Interact} to pick up the beer";
@@ -53,9 +49,8 @@ public class BeerCupPickup : Interactable
         var liquid = GetComponentInChildren<BeerLiquid>(true);
         if (liquid != null) fill = liquid.Fill * 100f;
 
-        cup.Unlock();
-        cup.SetFill(fill);
-        cup.ForceEquipCup();
+        cup.AddCup(fill);
+        cup.ForceEquipCup();   // no-op if a cup (or another tool) is already in hand
 
         if (counter != null) counter.NotifyCupTaken(this);
         GameUI.ClearInteractionPrompt(this);   // clear BEFORE Destroy or a stale prompt lingers

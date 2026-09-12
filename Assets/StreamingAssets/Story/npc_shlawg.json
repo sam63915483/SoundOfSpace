@@ -1,30 +1,27 @@
 {
-  "id": "npc_bartender",
+  "id": "npc_shlawg",
   "kind": "npc",
-  "displayName": "Bartender",
+  "displayName": "Shlawg",
   "testPresets": [
     { "name": "Has money ($50)", "flags": [], "money": 50, "items": [], "probes": [] },
     { "name": "Broke ($3)", "flags": [], "money": 3, "items": [], "probes": [] },
     { "name": "Beer already on the bar", "flags": [], "money": 50, "items": [], "probes": ["cupOnCounter"] },
-    { "name": "Holding an empty cup", "flags": [], "money": 50, "items": [], "probes": ["holdingCup", "cupEmptyInHand"] },
-    { "name": "Still drinking one", "flags": [], "money": 50, "items": [], "probes": ["holdingCup"] }
+    { "name": "Holding an empty cup", "flags": [], "money": 50, "items": [], "probes": ["holdingCup", "cupEmptyInHand"] }
   ],
   "nodes": [
     {
       "id": "start",
-      "speaker": "Bartender",
+      "speaker": "Shlawg",
       "lines": [],
       "routes": [
-        { "conditions": [ { "kind": "Probe", "arg": "cupOnCounter", "num": 0, "negate": false } ], "nextNodeId": "waiting" },
-        { "conditions": [ { "kind": "Probe", "arg": "cupEmptyInHand", "num": 0, "negate": false } ], "nextNodeId": "empty" },
-        { "conditions": [ { "kind": "Probe", "arg": "holdingCup", "num": 0, "negate": false } ], "nextNodeId": "sipping" }
+        { "conditions": [ { "kind": "Probe", "arg": "cupOnCounter", "num": 0, "negate": false } ], "nextNodeId": "waiting" }
       ],
       "nextNodeId": "greet",
       "responses": []
     },
     {
       "id": "greet",
-      "speaker": "Bartender",
+      "speaker": "Shlawg",
       "lines": [ "What'll it be?" ],
       "responses": [
         { "buttonText": "A beer. ($10)", "nextNodeId": "buy" },
@@ -33,13 +30,13 @@
     },
     {
       "id": "bye",
-      "speaker": "Bartender",
+      "speaker": "Shlawg",
       "lines": [ "Suit yourself." ],
       "responses": []
     },
     {
       "id": "buy",
-      "speaker": "Bartender",
+      "speaker": "Shlawg",
       "lines": [],
       "routes": [
         { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 10, "negate": true } ], "nextNodeId": "broke" }
@@ -49,7 +46,7 @@
     },
     {
       "id": "buy_do",
-      "speaker": "Bartender",
+      "speaker": "Shlawg",
       "onEnter": [
         { "kind": "SpendMoney", "strArg": "", "numArg": 10, "boolArg": false },
         { "kind": "Custom", "strArg": "pourBeer", "numArg": 0, "boolArg": false }
@@ -59,26 +56,14 @@
     },
     {
       "id": "broke",
-      "speaker": "Bartender",
+      "speaker": "Shlawg",
       "lines": [ "Ten. You don't have ten.", "Come back when you've sold some fish." ],
       "responses": []
     },
     {
       "id": "waiting",
-      "speaker": "Bartender",
-      "lines": [ "Your beer's right there on the bar. Grab it." ],
-      "responses": []
-    },
-    {
-      "id": "sipping",
-      "speaker": "Bartender",
-      "lines": [ "Finish that one first." ],
-      "responses": []
-    },
-    {
-      "id": "empty",
-      "speaker": "Bartender",
-      "lines": [ "Done with that? Set it down on the bar and I'll pour you another." ],
+      "speaker": "Shlawg",
+      "lines": [ "Your beer's right there on the bar. Grab it first." ],
       "responses": []
     }
   ]

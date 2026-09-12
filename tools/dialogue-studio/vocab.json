@@ -65,9 +65,9 @@
     "firstTimeDone":   { "npc": "npc_bonfire",    "desc": "the bonfire alien's first-meeting flag (saved)" },
     "holdingCassette": { "npc": "npc_alien3",     "desc": "player is holding a cassette" },
     "bountyTurnedIn":  { "npc": "npc_fishmarket", "desc": "GRULABU bounty already paid" },
-    "cupOnCounter":    { "npc": "npc_bartender",  "desc": "a full beer is already standing on the bar" },
-    "holdingCup":      { "npc": "npc_bartender",  "desc": "the player owns a cup right now (any fill)" },
-    "cupEmptyInHand":  { "npc": "npc_bartender",  "desc": "the player's cup is empty" }
+    "cupOnCounter":    { "npc": "npc_shlawg",  "desc": "a full beer is already standing on the bar" },
+    "holdingCup":      { "npc": "npc_shlawg",  "desc": "the player owns a cup right now (any fill)" },
+    "cupEmptyInHand":  { "npc": "npc_shlawg",  "desc": "the player's cup is empty" }
   },
 
   "actions": {
@@ -85,7 +85,7 @@
                             "sim": [ { "op": "setProbe", "name": "holdingCassette", "value": false }, { "op": "addItem", "item": "FishingRod", "count": 1 }, { "op": "note", "text": "Cassette taken, fishing rod equipped. He won't offer to talk again." } ] },
     "giveGuitar":         { "npc": "npc_guitarshop", "desc": "equips the guitar; shop is done",
                             "sim": [ { "op": "addItem", "item": "Guitar", "count": 1 }, { "op": "note", "text": "Guitar equipped. Shop closed for good." } ] },
-    "pourBeer":           { "npc": "npc_bartender",  "desc": "a full beer appears on the bar counter",
+    "pourBeer":           { "npc": "npc_shlawg",  "desc": "a full beer appears on the bar counter",
                             "sim": [ { "op": "setProbe", "name": "cupOnCounter", "value": true }, { "op": "note", "text": "A full cup of beer is set on the bar. Look at it and press F to pick it up." } ] }
   }
 }

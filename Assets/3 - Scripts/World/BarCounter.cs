@@ -3,42 +3,77 @@ using UnityEngine;
 
 /// <summary>
 /// The bar counter in the village pub. Put this on the counter object (under
-/// the planet, inside the house) and give it a child empty called CupSpot
-/// where a cup should stand — or leave <see cref="cupSpot"/> empty and it
-/// uses the counter's own pivot.
+/// the planet, inside the house). No child markers needed: the "middle of the
+/// counter" and the placeable top face are read off the counter's own mesh.
 ///
-/// Two jobs:
+/// Three jobs:
 ///   • <see cref="PourBeer"/> — called by the bartender's dialogue (Custom
 ///     effect "pourBeer") after the money is taken: a full cup with a
-///     <see cref="BeerCupPickup"/> appears on the spot. Any cup already there
-///     (an empty one you set down) is cleared first.
-///   • It is itself an Interactable: while you hold an EMPTY cup, looking at
-///     the counter shows "Press F to set the empty cup down" — the cup leaves
-///     the hotbar and an empty cup prop stands on the spot until the next pour.
+///     <see cref="BeerCupPickup"/> appears in the middle of the top face. The
+///     bartender refuses while one is still standing there (<see cref="HasFullCup"/>).
+///   • While the player holds an EMPTY cup and looks at the counter, the
+///     counter tints green and a translucent ghost cup follows the crosshair
+///     across the top face. F sets the empty cup down right there.
+///   • A set-down empty cup fades out after <see cref="emptyCupLifetime"/> s
+///     (<see cref="BeerCupFadeAway"/>).
 ///
-/// Not saved: on reload the counter is bare and the player keeps whatever cup
-/// state EquipmentSave restored. One counter per bar; the bartender finds it
-/// by reference or by nearest.
+/// Cups are parented to the counter's PARENT (the counter itself may be a
+/// non-uniformly scaled cube) and sized in world metres. Not saved: on reload
+/// the counter is bare; the player's cups live in EquipmentSave.
 /// </summary>
 public class BarCounter : Interactable
 {
     public static readonly List<BarCounter> All = new List<BarCounter>();
 
-    [Tooltip("Where a cup stands. Leave empty to use this object's pivot.")]
-    public Transform cupSpot;
-    [Tooltip("Cup mesh to spawn. Leave empty to borrow the Player's BeerCupController.cupPrefab.")]
+    [Tooltip("Cup mesh to spawn (FantasyVillage CupGOOD.prefab). Empty = borrow the Player's BeerCupController.cupPrefab.")]
     public GameObject cupPrefab;
+    [Tooltip("World size multiplier for cups on the counter (1 = the prefab's own metres).")]
+    public float cupWorldScale = 1f;
+    [Tooltip("A Standard-shader material in FADE mode. Used for the green ghost cup and for fading empties out. Must be a real asset so the transparent shader variant is in the build.")]
+    public Material fadeMaterial;
+    [Tooltip("Colour of the placement ghost.")]
+    public Color ghostColor = new Color(0.35f, 1f, 0.45f, 0.5f);
+    [Tooltip("Tint multiplied onto the counter while a cup can be set down on it.")]
+    public Color highlightTint = new Color(0.45f, 1f, 0.5f, 1f);
+    [Tooltip("Seconds a set-down empty cup stays before fading.")]
+    public float emptyCupLifetime = 5f;
+    [Tooltip("Seconds the fade-out takes.")]
+    public float fadeSeconds = 1f;
+    [Tooltip("Keep the ghost this far (metres) inside the counter's edges.")]
+    public float edgeMargin = 0.12f;
     [Tooltip("How far from the counter the set-down prompt works (a trigger this size is added if the counter has no trigger collider).")]
     public float triggerRadius = 3.5f;
 
-    GameObject _cup;        // the cup currently standing on the spot (full or empty)
-    bool _cupIsFull;
+    GameObject _fullCup;             // the beer waiting in the middle (null = none)
+    GameObject _ghost;
+    Material _ghostMat;
+    Renderer[] _ownRenderers;        // the counter's own renderers, captured before any cup exists
+    MaterialPropertyBlock _tintBlock;
+    bool _tinted;
+    bool _ghostValid;
+    Vector3 _ghostWorld;
+    Camera _cam;
+    float _nextCamRetry;
+    Bounds _meshBounds;              // counter-local
+    static readonly RaycastHit[] s_hits = new RaycastHit[16];
 
-    public bool HasFullCup  => _cup != null && _cupIsFull;
-    public bool HasEmptyCup => _cup != null && !_cupIsFull;
+    public bool HasFullCup => _fullCup != null;
 
     void Awake()
     {
+        _ownRenderers = GetComponentsInChildren<Renderer>(true);
+        _tintBlock = new MaterialPropertyBlock();
+
+        var mf = GetComponent<MeshFilter>();
+        if (mf != null && mf.sharedMesh != null) _meshBounds = mf.sharedMesh.bounds;
+        else
+        {
+            var col = GetComponent<Collider>();
+            _meshBounds = col != null
+                ? new Bounds(transform.InverseTransformPoint(col.bounds.center), Vector3.one)
+                : new Bounds(Vector3.zero, Vector3.one);
+        }
+
         bool hasTrigger = false;
         foreach (var c in GetComponentsInChildren<Collider>(true))
             if (c.isTrigger) { hasTrigger = true; break; }
@@ -51,13 +86,47 @@ public class BarCounter : Interactable
     }
 
     void OnEnable()  { if (!All.Contains(this)) All.Add(this); }
-    void OnDisable() { All.Remove(this); }
+    void OnDisable()
+    {
+        All.Remove(this);
+        SetTint(false);
+        if (_ghost != null) _ghost.SetActive(false);
+    }
+
+    void OnDestroy()
+    {
+        if (_ghostMat != null) Destroy(_ghostMat);
+    }
 
     static BeerCupController Controller() => Object.FindObjectOfType<BeerCupController>();
 
+    // ── geometry ──────────────────────────────────────────────────
+
+    /// World point in the middle of the top face.
+    Vector3 TopCenterWorld()
+    {
+        var c = _meshBounds.center;
+        return transform.TransformPoint(new Vector3(c.x, _meshBounds.max.y, c.z));
+    }
+
+    /// Snap a world point onto the top face (counter-local clamp, kept inside the edges).
+    Vector3 SnapToTop(Vector3 world)
+    {
+        Vector3 l = transform.InverseTransformPoint(world);
+        Vector3 s = transform.lossyScale;
+        float mx = edgeMargin / Mathf.Max(0.0001f, Mathf.Abs(s.x));
+        float mz = edgeMargin / Mathf.Max(0.0001f, Mathf.Abs(s.z));
+        l.x = Mathf.Clamp(l.x, _meshBounds.min.x + mx, _meshBounds.max.x - mx);
+        l.z = Mathf.Clamp(l.z, _meshBounds.min.z + mz, _meshBounds.max.z - mz);
+        l.y = _meshBounds.max.y;
+        return transform.TransformPoint(l);
+    }
+
+    Quaternion CupRotation() => Quaternion.LookRotation(transform.forward, transform.up);
+
     // ── pouring ───────────────────────────────────────────────────
 
-    /// <summary>A fresh full beer on the spot. Returns false if there is no cup prefab to spawn.</summary>
+    /// <summary>A fresh full beer in the middle of the counter. False if there is no cup prefab.</summary>
     public bool PourBeer()
     {
         var ctrl = Controller();
@@ -68,46 +137,41 @@ public class BarCounter : Interactable
             return false;
         }
 
-        ClearCup();
-        _cup = SpawnCup(prefab);
-        _cup.name = "BeerCup(Full)";
-        _cupIsFull = true;
+        if (_fullCup != null) Destroy(_fullCup);
+        _fullCup = SpawnCup(prefab, TopCenterWorld(), true);
+        _fullCup.name = "BeerCup(Full)";
 
         if (ctrl != null)
-            BeerCupArt.AttachLiquid(_cup, ctrl.liquidAxis, ctrl.liquidRadius,
+            BeerCupArt.AttachLiquid(_fullCup, ctrl.liquidAxis, ctrl.liquidRadius,
                                     ctrl.liquidFloorY, ctrl.liquidFullY, ctrl.foamThickness, 1f);
         else
-            BeerCupArt.AttachLiquid(_cup, new Vector3(0.005f, 0f, -0.001f), 0.07f, 0.035f, 0.19f, 0.02f, 1f);
+            BeerCupArt.AttachLiquid(_fullCup, new Vector3(0.005f, 0f, -0.001f), 0.07f, 0.035f, 0.19f, 0.02f, 1f);
 
-        var pickup = _cup.AddComponent<BeerCupPickup>();
+        var pickup = _fullCup.AddComponent<BeerCupPickup>();
         pickup.counter = this;
         return true;
     }
 
-    /// <summary>The pickup took the cup off the counter.</summary>
+    /// <summary>The pickup took the beer off the counter.</summary>
     public void NotifyCupTaken(BeerCupPickup p)
     {
-        if (_cup != null && p != null && p.gameObject == _cup) { _cup = null; _cupIsFull = false; }
+        if (_fullCup != null && p != null && p.gameObject == _fullCup) _fullCup = null;
     }
 
-    GameObject SpawnCup(GameObject prefab)
+    GameObject SpawnCup(GameObject prefab, Vector3 worldPos, bool keepColliders)
     {
-        Transform spot = cupSpot != null ? cupSpot : transform;
-        var go = Instantiate(prefab, spot.position, spot.rotation, spot);
-        go.transform.localPosition = Vector3.zero;
-        go.transform.localRotation = Quaternion.identity;
+        Transform parent = transform.parent != null ? transform.parent : transform;
+        var go = Instantiate(prefab, worldPos, CupRotation(), parent);
+        Vector3 ps = parent.lossyScale;
+        float inv = cupWorldScale / Mathf.Max(0.0001f, ps.x);
+        go.transform.localScale = Vector3.one * inv;
         SetLayerRecursively(go, gameObject.layer);
-        // A prop on a counter, not a physics object: no rigidbody, colliders stay
-        // solid so the crosshair can pick it. It rides the planet through its parent.
+        // A prop on a counter, not a physics object. The full cup keeps its solid
+        // collider so the crosshair can pick it; empties are decorative.
         foreach (var rb in go.GetComponentsInChildren<Rigidbody>(true)) Destroy(rb);
+        if (!keepColliders)
+            foreach (var c in go.GetComponentsInChildren<Collider>(true)) Destroy(c);
         return go;
-    }
-
-    void ClearCup()
-    {
-        if (_cup != null) Destroy(_cup);
-        _cup = null;
-        _cupIsFull = false;
     }
 
     static void SetLayerRecursively(GameObject go, int layer)
@@ -117,14 +181,128 @@ public class BarCounter : Interactable
             SetLayerRecursively(go.transform.GetChild(i).gameObject, layer);
     }
 
+    // ── placement ghost + green tint ──────────────────────────────
+
+    bool HoldingEmptyCup()
+    {
+        var ctrl = Controller();
+        return ctrl != null && ctrl.IsUnlocked && ctrl.IsEmpty && ctrl.IsEquipped;
+    }
+
+    protected override void Update()
+    {
+        base.Update();
+        if (this == null) return;
+
+        bool want = playerInInteractionZone && !PlayerController.isInDialogue && HoldingEmptyCup();
+        _ghostValid = false;
+        if (want && TryCrosshairHit(out Vector3 hit))
+        {
+            _ghostValid = true;
+            _ghostWorld = SnapToTop(hit);
+        }
+
+        SetTint(_ghostValid);
+        ShowGhost(_ghostValid);
+    }
+
+    Camera Cam()
+    {
+        if (_cam != null && _cam.isActiveAndEnabled) return _cam;
+        if (Time.unscaledTime < _nextCamRetry) return null;
+        _nextCamRetry = Time.unscaledTime + 1f;
+        _cam = Camera.main;
+        return _cam;
+    }
+
+    /// The crosshair ray hitting THIS counter's colliders (the beer standing on
+    /// it and the ghost are ignored). True with the world hit point.
+    bool TryCrosshairHit(out Vector3 point)
+    {
+        point = default;
+        var cam = Cam();
+        if (cam == null) return false;
+        Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        int n = Physics.RaycastNonAlloc(ray, s_hits, 6f, ~0, QueryTriggerInteraction.Ignore);
+        float best = float.MaxValue; bool found = false;
+        for (int i = 0; i < n; i++)
+        {
+            var t = s_hits[i].collider.transform;
+            if (t != transform && !t.IsChildOf(transform)) continue;
+            if (s_hits[i].distance < best) { best = s_hits[i].distance; point = s_hits[i].point; found = true; }
+        }
+        return found;
+    }
+
+    void SetTint(bool on)
+    {
+        if (on == _tinted || _ownRenderers == null) return;
+        _tinted = on;
+        for (int i = 0; i < _ownRenderers.Length; i++)
+        {
+            var r = _ownRenderers[i];
+            if (r == null) continue;
+            if (on)
+            {
+                r.GetPropertyBlock(_tintBlock);
+                _tintBlock.SetColor("_Color", highlightTint);
+                r.SetPropertyBlock(_tintBlock);
+            }
+            else r.SetPropertyBlock(null);
+        }
+    }
+
+    void ShowGhost(bool on)
+    {
+        if (!on) { if (_ghost != null && _ghost.activeSelf) _ghost.SetActive(false); return; }
+
+        if (_ghost == null)
+        {
+            var ctrl = Controller();
+            var prefab = cupPrefab != null ? cupPrefab : (ctrl != null ? ctrl.cupPrefab : null);
+            if (prefab == null) return;
+            _ghost = SpawnCup(prefab, _ghostWorld, false);
+            _ghost.name = "BeerCup(Ghost)";
+            foreach (var p in _ghost.GetComponentsInChildren<BeerCupPickup>(true)) Destroy(p);
+            _ghostMat = MakeGhostMaterial();
+            foreach (var r in _ghost.GetComponentsInChildren<Renderer>(true))
+            {
+                r.sharedMaterial = _ghostMat;
+                r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                r.receiveShadows = false;
+            }
+        }
+        if (!_ghost.activeSelf) _ghost.SetActive(true);
+        _ghost.transform.SetPositionAndRotation(_ghostWorld, CupRotation());
+    }
+
+    Material MakeGhostMaterial()
+    {
+        Material m;
+        if (fadeMaterial != null) m = new Material(fadeMaterial);
+        else
+        {
+            // Editor-only fallback: a build strips Standard's Fade variant unless
+            // a material asset carries it. Assign fadeMaterial.
+            m = new Material(Shader.Find("Standard"));
+            m.SetFloat("_Mode", 2f);
+            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            m.SetInt("_ZWrite", 0);
+            m.EnableKeyword("_ALPHABLEND_ON");
+            m.renderQueue = 3000;
+        }
+        m.mainTexture = null;
+        m.color = ghostColor;
+        return m;
+    }
+
     // ── setting the empty cup down (Interactable) ─────────────────
 
     protected override bool CanInteract()
     {
         if (!TutorialGate.IsUnlocked(TutorialAbility.Pickup)) return false;
-        if (HasFullCup) return false;                       // your beer is still waiting there
-        var ctrl = Controller();
-        return ctrl != null && ctrl.IsUnlocked && ctrl.IsEmpty;
+        return HoldingEmptyCup();
     }
 
     protected override string BuildInteractMessage() =>
@@ -137,15 +315,19 @@ public class BarCounter : Interactable
         if (ctrl == null) return;
 
         var prefab = cupPrefab != null ? cupPrefab : ctrl.cupPrefab;
-        ctrl.Lock();                        // unequips, hotbar drops the slot next frame
+        Vector3 where = _ghostValid ? _ghostWorld : SnapToTop(TopCenterWorld());
+
+        ctrl.RemoveCurrentCup();            // next beer pops into the hand, or the slot goes
 
         if (prefab != null)
         {
-            ClearCup();
-            _cup = SpawnCup(prefab);
-            _cup.name = "BeerCup(Empty)";
-            _cupIsFull = false;
+            var empty = SpawnCup(prefab, where, false);
+            empty.name = "BeerCup(Empty)";
+            foreach (var p in empty.GetComponentsInChildren<BeerCupPickup>(true)) Destroy(p);
+            empty.AddComponent<BeerCupFadeAway>().Begin(emptyCupLifetime, fadeSeconds, fadeMaterial);
         }
+        SetTint(false);
+        ShowGhost(false);
         GameUI.ClearInteractionPrompt(this);
     }
 }

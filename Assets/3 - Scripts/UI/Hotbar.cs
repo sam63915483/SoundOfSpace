@@ -1818,6 +1818,12 @@ public class Hotbar : MonoBehaviour
         for (int i = 0; i < _registry.Length; i++)
             if (_registry[i].IsUnlocked() && TryAddItem(_registry[i].Id) && acquireArmed)
                 PlayerSuitAudio.Instance?.PlayAcquire();
+        // The beer slot is one equippable that can hold several cups; keep its
+        // count badge honest (the controller owns the real list).
+        if (beer != null)
+            for (int i = 0; i < NumSlots; i++)
+                if (slots[i].id == ItemId.BeerCup && slots[i].count != beer.CupCount)
+                    slots[i].count = Mathf.Max(1, beer.CupCount);
         // Evict anything that's NO LONGER unlocked — the hotbar is a
         // DontDestroyOnLoad singleton, so its slots survive scene reloads.
         // Without this, loading an older save (where a pistol/guitar/etc.
@@ -2200,7 +2206,7 @@ public class Hotbar : MonoBehaviour
             // number in a 14 px corner label is unreadable at a glance).
             if (v.countText != null)
             {
-                if ((isRes || id == ItemId.Money) && !empty)
+                if ((isRes || id == ItemId.Money || (id == ItemId.BeerCup && slots[i].count > 1)) && !empty)
                 {
                     string countStr = id == ItemId.Money
                         ? "$" + slots[i].count.ToString("N0")

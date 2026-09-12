@@ -1,21 +1,25 @@
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// The bar's beer cup as a hotbar equippable. Cloned from
-/// <see cref="WaterBottleController"/> with the water-refill half removed:
+/// The bar's beer cups as ONE hotbar equippable that can hold several cups.
+/// Cloned from <see cref="WaterBottleController"/> with the water-refill half
+/// removed:
 ///
 ///   • <see cref="BarCounter"/> spawns a full cup on the bar; its
-///     <see cref="BeerCupPickup"/> calls <see cref="Unlock"/> + <see cref="SetFill"/>
-///     and the Hotbar adds the cup on the next frame (registry-driven).
+///     <see cref="BeerCupPickup"/> calls <see cref="AddCup"/>. The Hotbar
+///     adds the BEER slot on the next frame (registry-driven) and shows the
+///     cup count on it. Cup 0 of the list is the one in your hand; the rest
+///     wait in the pack.
 ///   • Hold left click: the cup floats up to the mouth, tips, and the beer
 ///     inside (<see cref="BeerLiquid"/>) drains over ~3 s. Thirst gets a little.
-///   • Empty: left click just reminds you. Look at the bar and press F to set
-///     the cup down — the counter calls <see cref="Lock"/>, the Hotbar evicts
-///     the slot, and an empty cup appears on the bar.
+///   • Empty: left click just reminds you. Look at the bar and press F — the
+///     counter calls <see cref="RemoveCurrentCup"/>, the next full cup (if
+///     any) pops into your hand, otherwise the slot goes away.
 ///
 /// Lives on the SCENE Player object next to the other controllers (they are
 /// added components on the prefab instance, not on Player.prefab). The cup
-/// mesh is FantasyVillage's Cup.prefab; the liquid is built from primitives
+/// mesh is FantasyVillage's CupGOOD.prefab; the liquid is built from primitives
 /// at the interior numbers measured from that mesh (knobs below).
 /// </summary>
 public class BeerCupController : MonoBehaviour
@@ -25,7 +29,7 @@ public class BeerCupController : MonoBehaviour
     public Sprite hotbarIcon;
 
     [Header("Cup")]
-    [Tooltip("The empty cup mesh (FantasyVillage Cup.prefab). The beer inside is built by code.")]
+    [Tooltip("The empty cup mesh (FantasyVillage CupGOOD.prefab). The beer inside is built by code.")]
     public GameObject cupPrefab;
     [Tooltip("Held size in metres (longest edge), like the bottle's 0.22.")]
     public float cupHeldSize = 0.20f;
@@ -67,7 +71,7 @@ public class BeerCupController : MonoBehaviour
     [SerializeField, Range(0, 1)] float drinkVolume = 0.6f;
 
     // ── state ──────────────────────────────────────────────────────
-    float fillPercent;               // 0-100
+    readonly List<float> _cups = new List<float>();   // fill 0-100 each; [0] is in hand
     GameObject _cupInstance;
     BeerLiquid _liquid;
     ViewmodelMotor _motorRig;
@@ -86,11 +90,13 @@ public class BeerCupController : MonoBehaviour
     Ship _ship;
 
     public bool IsEquipped => _cupInstance != null;
-    /// True while the player owns a cup (full, half, or empty). The Hotbar
-    /// shows the slot while this is true and evicts it when it goes false.
-    public bool IsUnlocked { get; private set; }
-    public float FillPercent => fillPercent;
-    public bool IsEmpty => fillPercent <= 0.01f;
+    /// True while the player owns at least one cup. The Hotbar shows the slot
+    /// while this is true and evicts it when it goes false.
+    public bool IsUnlocked => _cups.Count > 0;
+    public int CupCount => _cups.Count;
+    /// Fill of the cup in hand (0-100), 0 when there is none.
+    public float FillPercent => _cups.Count > 0 ? _cups[0] : 0f;
+    public bool IsEmpty => _cups.Count > 0 && _cups[0] <= 0.01f;
 
     /// <summary>Fired once each time a cup is drunk to the bottom.</summary>
     public static event System.Action OnCupEmptied;
@@ -114,26 +120,48 @@ public class BeerCupController : MonoBehaviour
         _drinkSource.volume = drinkVolume;
     }
 
-    // ── ownership ─────────────────────────────────────────────────
+    // ── the cups ──────────────────────────────────────────────────
 
-    /// <summary>The player now owns a cup (picked one up off the bar).</summary>
-    public void Unlock() { IsUnlocked = true; }
-
-    /// <summary>The cup left the player's hands (set down on the bar). Unequips and drops the hotbar slot.</summary>
-    public void Lock()
+    /// <summary>Another cup into the pack (from the bar). Becomes the one in hand if there was none.</summary>
+    public void AddCup(float fillPercent)
     {
-        ForceUnequipCup();
-        IsUnlocked = false;
-        fillPercent = 0f;
+        _cups.Add(Mathf.Clamp(fillPercent, 0f, 100f));
     }
 
+    /// <summary>
+    /// The cup in hand leaves the player (set down on the bar). The next cup, if
+    /// any, takes its place in the hand; with none left the Hotbar evicts the slot.
+    /// </summary>
+    public void RemoveCurrentCup()
+    {
+        if (_cups.Count == 0) return;
+        bool wasEquipped = IsEquipped;
+        _cups.RemoveAt(0);
+        ForceUnequipCup();
+        if (wasEquipped && _cups.Count > 0) Equip();
+    }
+
+    /// <summary>Set the fill of the cup in hand (0-100).</summary>
     public void SetFill(float percent)
     {
-        fillPercent = Mathf.Clamp(percent, 0f, 100f);
-        if (_liquid != null) _liquid.SetFill(fillPercent / 100f);
+        if (_cups.Count == 0) return;
+        _cups[0] = Mathf.Clamp(percent, 0f, 100f);
+        if (_liquid != null) _liquid.SetFill(_cups[0] / 100f);
     }
 
-    public void ForceEquipCup()   { if (_cupInstance == null) Equip(); }
+    /// <summary>All cups, in order (save).</summary>
+    public float[] CupFills => _cups.ToArray();
+
+    /// <summary>Replace every cup (load). Null/empty = no cups.</summary>
+    public void RestoreCups(float[] fills)
+    {
+        ForceUnequipCup();
+        _cups.Clear();
+        if (fills != null)
+            for (int i = 0; i < fills.Length; i++) _cups.Add(Mathf.Clamp(fills[i], 0f, 100f));
+    }
+
+    public void ForceEquipCup()   { if (_cupInstance == null && _cups.Count > 0) Equip(); }
     public void ForceUnequipCup() { if (_cupInstance != null) Unequip(); }
 
     // ── per frame ─────────────────────────────────────────────────
@@ -141,22 +169,22 @@ public class BeerCupController : MonoBehaviour
     void Update()
     {
         if (_ship != null && _ship.IsPiloted) return;
-        if (_cupInstance == null) return;
+        if (_cupInstance == null || _cups.Count == 0) return;
 
         bool wantDrink = TutorialGate.FireHeld() && !PlayerController.isInDialogue;
-        bool drinking = wantDrink && fillPercent > 0f;
+        bool drinking = wantDrink && _cups[0] > 0f;
         DriveDrinkPose(drinking);
 
         if (drinking)
         {
-            float consumed = Mathf.Min(consumeRate * Time.deltaTime, fillPercent);
-            fillPercent -= consumed;
-            if (_liquid != null) _liquid.SetFill(fillPercent / 100f);
+            float consumed = Mathf.Min(consumeRate * Time.deltaTime, _cups[0]);
+            _cups[0] -= consumed;
+            if (_liquid != null) _liquid.SetFill(_cups[0] / 100f);
             ResourceManager.Instance?.DrinkWater((consumed / 100f) * thirstPerCup);
 
-            if (fillPercent <= 0.01f)
+            if (_cups[0] <= 0.01f)
             {
-                fillPercent = 0f;
+                _cups[0] = 0f;
                 PlayerSuitAudio.Instance?.PlayBurpAfterDelay();
                 OnCupEmptied?.Invoke();
                 _nextEmptyHint = 0f;
@@ -166,8 +194,8 @@ public class BeerCupController : MonoBehaviour
         {
             // Left click on an empty cup: say where it goes, don't spam it.
             _nextEmptyHint = Time.unscaledTime + 3f;
-            InteractPromptUI.ShowOneShot("Empty. Set it back on the bar (look at the bar, press "
-                                         + PromptGlyphs.Interact + ")", 2.5f, false);
+            InteractPromptUI.ShowOneShot("Empty. Look at the bar and press "
+                                         + PromptGlyphs.Interact + " to set it down", 2.5f, false);
         }
 
         if (_drinkSource != null)
@@ -213,6 +241,7 @@ public class BeerCupController : MonoBehaviour
 
     void Equip()
     {
+        if (_cups.Count == 0) return;
         if (_rod     != null && _rod.IsEquipped)     return;
         if (_guitar  != null && _guitar.IsEquipped)  return;
         if (_axe     != null && _axe.IsEquipped)     return;
@@ -222,7 +251,7 @@ public class BeerCupController : MonoBehaviour
         if (_playerPickup != null && _playerPickup.IsHoldingObject) return;
         if (cupPrefab == null)
         {
-            Debug.LogWarning("[BeerCupController] no cupPrefab assigned (FantasyVillage Cup.prefab).", this);
+            Debug.LogWarning("[BeerCupController] no cupPrefab assigned (FantasyVillage CupGOOD.prefab).", this);
             return;
         }
 
@@ -241,7 +270,7 @@ public class BeerCupController : MonoBehaviour
 
         // Build the beer BEFORE normalising so the liquid scales with the cup.
         _liquid = BeerCupArt.AttachLiquid(_cupInstance, liquidAxis, liquidRadius,
-                                          liquidFloorY, liquidFullY, foamThickness, fillPercent / 100f);
+                                          liquidFloorY, liquidFullY, foamThickness, _cups[0] / 100f);
 
         ViewmodelMotor.MakeViewmodel(_cupInstance);
         ViewmodelMotor.NormalizeSize(_cupInstance, cupHeldSize);
