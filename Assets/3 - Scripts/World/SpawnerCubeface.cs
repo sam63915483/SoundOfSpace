@@ -227,7 +227,13 @@ public static class SpawnerCubeface
             return false;
         var terrain = TerrainColliderOf(gen);
         if (terrain == null || hit.collider == null) return true;
-        if (hit.collider == terrain) return true;
+        if (hit.collider == terrain)
+        {
+            // Small bodies collide with a coarse sphere, not the terrain you see:
+            // re-aim the hit onto the visible mesh so props seat on it exactly.
+            PlanetChunker.RefineSurfaceHit(gen, origin, dir, maxDistance, ref hit);
+            return true;
+        }
         // Not the exact collider we cached -- but a planet is allowed more than
         // one, and demanding reference equality would silently strip EVERY prop
         // from a planet whose generator happens to hold another collider first.

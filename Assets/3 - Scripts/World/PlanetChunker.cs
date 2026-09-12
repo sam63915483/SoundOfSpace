@@ -49,6 +49,13 @@ public class PlanetChunker : MonoBehaviour
         public GameObject root;
         public readonly List<Mesh> meshes = new List<Mesh>();
         public bool ready, failed;
+        // CPU copy of the geometry (terrain-local space) so spawners can hit the
+        // terrain you SEE: bodies under 150 m radius use a coarse, unperturbed
+        // collision mesh, so a physics raycast lands up to a metre off the
+        // visible surface and props sink or float (Sam, 2026-09-12).
+        public Vector3[] positions;
+        public readonly List<int[]> chunkTris = new List<int[]>();     // original-mesh indices per chunk
+        public readonly List<Bounds> chunkBounds = new List<Bounds>();
     }
 
     class Tracked
@@ -215,6 +222,7 @@ public class PlanetChunker : MonoBehaviour
 
         // ---- read everything once
         var verts = new List<Vector3>(); mesh.GetVertices(verts);
+        set.positions = verts.ToArray();
         var normals = new List<Vector3>(); if (mesh.HasVertexAttribute(VertexAttribute.Normal)) mesh.GetNormals(normals);
         var tangents = new List<Vector4>(); if (mesh.HasVertexAttribute(VertexAttribute.Tangent)) mesh.GetTangents(tangents);
         var colors = new List<Color>(); if (mesh.HasVertexAttribute(VertexAttribute.Color)) mesh.GetColors(colors);
@@ -337,6 +345,14 @@ public class PlanetChunker : MonoBehaviour
             cm.RecalculateBounds();
             cm.UploadMeshData(true);
             set.meshes.Add(cm);
+            {
+                int totalIdx = 0;
+                for (int sm = 0; sm < subCount; sm++) { var bl = bucket[chunk * subCount + sm]; if (bl != null) totalIdx += bl.Count; }
+                var orig = new int[totalIdx]; int oi = 0;
+                for (int sm = 0; sm < subCount; sm++) { var bl = bucket[chunk * subCount + sm]; if (bl == null) continue; bl.CopyTo(orig, oi); oi += bl.Count; }
+                set.chunkTris.Add(orig);
+                set.chunkBounds.Add(cm.bounds);
+            }
 
             var go = new GameObject("Terrain Mesh Chunk " + chunk);
             go.transform.SetParent(root.transform, false);
@@ -365,6 +381,61 @@ public class PlanetChunker : MonoBehaviour
         set.ready = true;
         t.building = false;
         Debug.Log("[PlanetChunker] " + t.body.bodyName + ": " + triTotal + " tris → " + made + " chunks (K=" + K + ") in " + sw.ElapsedMilliseconds + " ms");
+    }
+
+    // ------------------------------------------------------------------ visual-surface raycast
+    /// <summary>Re-aims a physics hit onto the VISIBLE terrain mesh of the body owned
+    /// by <paramref name="gen"/>. Returns false (hit untouched) when that body has no
+    /// chunk data yet or the ray misses it. Cost: one or two chunks' triangles
+    /// (~20-30 k) per call — fine for spawners, not for per-frame use.</summary>
+    public static bool RefineSurfaceHit(CelestialBodyGenerator gen, Vector3 origin, Vector3 dir, float maxDistance, ref RaycastHit hit)
+    {
+        if (Instance == null || gen == null) return false;
+        Tracked tr = null;
+        var list = Instance._tracked;
+        for (int i = 0; i < list.Count; i++)
+            if (list[i].terrain != null && list[i].terrain.parent == gen.transform) { tr = list[i]; break; }
+        if (tr == null) return false;
+        ChunkSet set = null;
+        if (tr.active != null && tr.active.ready && tr.active.positions != null) set = tr.active;
+        else
+            foreach (var kv in tr.sets)
+                if (kv.Value.ready && kv.Value.positions != null && (set == null || kv.Value.indexCount > set.indexCount)) set = kv.Value;
+        if (set == null || set.chunkTris.Count == 0) return false;
+
+        Matrix4x4 w2l = tr.terrain.worldToLocalMatrix;
+        Vector3 o = w2l.MultiplyPoint3x4(origin);
+        Vector3 d = w2l.MultiplyVector(dir);              // same parameter t as the world ray
+        var ray = new Ray(o, d);
+        float bestT = float.MaxValue; Vector3 bestN = Vector3.zero;
+        var P = set.positions;
+        for (int c = 0; c < set.chunkTris.Count; c++)
+        {
+            if (!set.chunkBounds[c].IntersectRay(ray)) continue;
+            var idx = set.chunkTris[c];
+            for (int i = 0; i + 2 < idx.Length; i += 3)
+            {
+                Vector3 v0 = P[idx[i]], v1 = P[idx[i + 1]], v2 = P[idx[i + 2]];
+                Vector3 e1 = v1 - v0, e2 = v2 - v0;
+                Vector3 p = Vector3.Cross(d, e2);
+                float det = Vector3.Dot(e1, p);
+                if (det > -1e-9f && det < 1e-9f) continue;
+                float inv = 1f / det;
+                Vector3 tv = o - v0;
+                float u = Vector3.Dot(tv, p) * inv; if (u < 0f || u > 1f) continue;
+                Vector3 q = Vector3.Cross(tv, e1);
+                float v = Vector3.Dot(d, q) * inv; if (v < 0f || u + v > 1f) continue;
+                float t = Vector3.Dot(e2, q) * inv;
+                if (t > 0f && t <= maxDistance && t < bestT) { bestT = t; bestN = Vector3.Cross(e1, e2); }
+            }
+        }
+        if (bestT == float.MaxValue) return false;
+        Matrix4x4 l2w = tr.terrain.localToWorldMatrix;
+        Vector3 wp = l2w.MultiplyPoint3x4(o + d * bestT);
+        Vector3 wn = l2w.MultiplyVector(bestN).normalized;
+        if (Vector3.Dot(wn, dir) > 0f) wn = -wn;          // face the ray
+        hit.point = wp; hit.normal = wn; hit.distance = bestT;
+        return true;
     }
 
     static void CopyRendererSettings(MeshRenderer from, MeshRenderer to)

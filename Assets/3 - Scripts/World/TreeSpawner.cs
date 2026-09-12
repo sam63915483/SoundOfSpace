@@ -445,6 +445,7 @@ public class TreeSpawner : MonoBehaviour
         // AFTER Init (which resets to the prefab's authored scale) and BEFORE
         // BeginFadeIn (which captures the current scale as its target).
         tree.transform.localScale = Vector3.Scale(prefab.transform.localScale, sizeMul);
+        NPCSeating.Reseat(tree.transform, entry.body, groundMask, tree.transform.localScale.y, 0.005f, out _);   // exact feet on the visible terrain (2026-09-12)
         entry.activeTrees[cellId] = tree;
 
         var fade = tree.GetComponent<SpawnFade>();

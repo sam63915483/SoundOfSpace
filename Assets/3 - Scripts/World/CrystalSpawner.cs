@@ -509,6 +509,7 @@ public class CrystalSpawner : MonoBehaviour
         }
 
         SpawnerCubeface.ParentToBodyPhysicsFrame(crystal.transform, entry.body);
+        NPCSeating.Reseat(crystal.transform, entry.body, groundMask, crystal.transform.localScale.y, 0.005f, out _);   // exact feet on the visible terrain (2026-09-12)
         entry.activeCrystals[cellId] = crystal;
 
         // Set the whole hierarchy to the WorldProp layer so other spawners'

@@ -532,6 +532,10 @@ public class MushroomSpawner : MonoBehaviour
         }
 
         SpawnerCubeface.ParentToBodyPhysicsFrame(mushroom.transform, entry.body);
+        // Exact feet (2026-09-12): measure this instance's real lowest vertex and seat
+        // it on the visible terrain, like the cats and NPCs. Falls back to the
+        // prefab-bounds estimate above if the model isn't CPU-readable.
+        NPCSeating.Reseat(mushroom.transform, entry.body, groundMask, mushroom.transform.localScale.y, 0.005f, out _);
         SpawnerCubeface.SetLayerRecursively(mushroom, SpawnerCubeface.WorldPropLayer);
         entry.activeMushrooms[cellId] = mushroom;
         entry.cellPrefabIdx[cellId] = prefabIdx;

@@ -114,11 +114,13 @@ public static class NPCSeating
         Vector3 originW = rb.rotation * (local + up * 3f) + rb.position;
         if (!Physics.Raycast(originW, rb.rotation * -up, out RaycastHit hit, 12f, mask, QueryTriggerInteraction.Ignore))
             return false;
+        var gen = body.GetComponentInChildren<CelestialBodyGenerator>();
+        if (gen != null) PlanetChunker.RefineSurfaceHit(gen, originW, rb.rotation * -up, 12f, ref hit);   // the visible surface, not the coarse collider
 
         Vector3 groundLocal = Quaternion.Inverse(rb.rotation) * (hit.point - rb.position);
         seatDepth = feetY * scale + embed;
         root.localPosition = groundLocal - groundLocal.normalized * seatDepth;
-        Debug.Log($"[NPCSeating] {root.name}: feetY={feetY:F3} x scale {scale:F2} -> seat {seatDepth:F3} m (embed {embed:F3}).");
+        if (Debug.isDebugBuild) Debug.Log($"[NPCSeating] {root.name}: feetY={feetY:F3} x scale {scale:F2} -> seat {seatDepth:F3} m (embed {embed:F3}).");   // dev only: mushrooms/crystals/trees now call this too
         return true;
     }
 }
