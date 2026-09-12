@@ -50,7 +50,11 @@ public static class FeatureVault
     /// per frame (2.4 ms on the laptop). Requires the _GrassInstanceOffset
     /// support in CG_SimpleGrass / CG_GrassDepth. Flip to false for the old
     /// per-frame path.
-    public static readonly bool GrassGpuBatches = true;
+    // OFF (2026-09-11 night): Sam's build showed grass flipping to a see-through
+    // "glassy" look when turning — the depth pre-pass and the colour pass
+    // disagreed. Shaders reverted to the milestone; the C# path stays dormant
+    // until it can be debugged with a build in hand.
+    public static readonly bool GrassGpuBatches = false;
 
     /// OpeningDirector's six survival beats (locker → water → wood → fire →
     /// build → village). Built and compile-verified, never play-tested.
