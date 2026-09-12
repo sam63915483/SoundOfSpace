@@ -279,7 +279,7 @@ public class GForceHUD : MonoBehaviour
         while (true)
         {
             yield return wait;
-            if (_renderIndicator && _indicatorCam != null && (Time.frameCount & 1) == 1) _indicatorCam.Render();
+            if (_renderIndicator && _indicatorCam != null && (Time.frameCount % 3) == 1) _indicatorCam.Render();
         }
     }
     float _nextLayerFix;

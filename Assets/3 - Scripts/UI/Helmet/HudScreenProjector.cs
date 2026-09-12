@@ -168,7 +168,7 @@ public class HudScreenProjector : MonoBehaviour
             // + 0.8 ms per render). At end-of-frame both are already done for the
             // main camera, so the same Render() costs a fraction. The texture is
             // one frame behind, which a HUD never shows.
-            _renderThisFrame = show && (Time.frameCount & 1) == 0;
+            _renderThisFrame = show && (Time.frameCount % 3) == 0;   // every 3rd frame (2026-09-12: each render = ~0.5 ms of UI rebuild)
             if (_eof == null) _eof = StartCoroutine(EndOfFrameRender());
         }
     }

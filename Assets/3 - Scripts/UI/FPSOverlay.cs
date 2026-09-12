@@ -106,6 +106,7 @@ public class FPSOverlay : MonoBehaviour
     bool _lastAtmoState, _lastPhysState, _lastConcertState, _lastWorldState;
 
     bool _visible = true;
+    float _textTimer;
     readonly StringBuilder _sb = new StringBuilder(384);
 
     PlanetEffects _planetFx;
@@ -266,6 +267,9 @@ public class FPSOverlay : MonoBehaviour
         bool cameraFxFrozen = _frozenCameraFx.Count > 0;
         bool aiFrozen = _frozenAI.Count > 0;
 
+        _textTimer += Time.unscaledDeltaTime;
+        if (_textTimer < 0.25f) return;          // TMP regenerates the mesh on every SetText: 4 Hz is plenty for a readout
+        _textTimer = 0f;
         if (fps == _lastFps && minFps == _lastMin && ms10 == _lastMs10
             && cpuMs10 == _lastCpuMs10 && gpuMs10 == _lastGpuMs10 && drawsInt == _lastDraws
             && gcKb == _lastGcKb && _objCount == _lastObj

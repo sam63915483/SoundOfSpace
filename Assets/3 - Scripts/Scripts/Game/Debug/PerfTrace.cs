@@ -258,6 +258,7 @@ public class PerfTrace : MonoBehaviour
         RefindContext();
         _recRetryTimer -= Time.unscaledDeltaTime;
         if (_recRetryTimer <= 0f) { _recRetryTimer = 2f; StartRecorders(); }
+        if (!_uiProbeHooked) { _uiProbeHooked = true; Canvas.preWillRenderCanvases += ProbeUi; }
 
         WriteRow(scene.name);
 
@@ -581,6 +582,49 @@ public class PerfTrace : MonoBehaviour
                 if (tHit > 0f && tHit < dist) { hidden = true; return; }
             }
         }
+    }
+
+    // ------------------------------------------------------------------ UI probe
+    // Which graphics/layouts are queued for a rebuild right before the canvases
+    // render. Run 7 (2026-09-12): PlayerUpdateCanvases 1.6 ms + 0.5 ms more per
+    // HUD-camera render, 4-5 TMP texts regenerated and 15 canvases rebatched
+    // EVERY frame — this names them. Logged every 2 s to Player.log.
+    bool _uiProbeHooked;
+    float _uiProbeNext;
+    void ProbeUi()
+    {
+        if (Time.unscaledTime < _uiProbeNext) return;
+        _uiProbeNext = Time.unscaledTime + 2f;
+        try
+        {
+            var t = typeof(CanvasUpdateRegistry);
+            var inst = t.GetProperty("instance", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static).GetValue(null, null);
+            var sb = new System.Text.StringBuilder(512);
+            sb.Append("[PerfTrace UI] ");
+            foreach (var field in new[] { "m_GraphicRebuildQueue", "m_LayoutRebuildQueue" })
+            {
+                var f = t.GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var q = f != null ? f.GetValue(inst) as System.Collections.IEnumerable : null;
+                int n = 0;
+                sb.Append(field == "m_GraphicRebuildQueue" ? "graphics: " : " | layouts: ");
+                if (q != null)
+                    foreach (var o in q)
+                    {
+                        var el = o as ICanvasElement;
+                        if (el == null || el.transform == null) continue;
+                        n++;
+                        if (n > 24) continue;
+                        var canvas = el.transform.GetComponentInParent<Canvas>();
+                        sb.Append(el.transform.name).Append('@').Append(canvas != null ? canvas.rootCanvas.name : "?").Append(", ");
+                    }
+                sb.Append("(").Append(n).Append(")");
+            }
+            int masks = 0; var mnames = new System.Text.StringBuilder();
+            foreach (var m in FindObjectsOfType<RectMask2D>(false)) { masks++; if (masks <= 12) mnames.Append(m.name).Append(", "); }
+            sb.Append(" | active RectMask2D: ").Append(masks).Append(" [").Append(mnames).Append("]");
+            Debug.Log(sb.ToString());
+        }
+        catch (Exception e) { Debug.LogWarning("[PerfTrace UI] probe failed: " + e.Message); }
     }
 
     // ------------------------------------------------------------------ csv
