@@ -1123,7 +1123,9 @@ public static class SaveCollector
         if (beer != null)
         {
             s.beerCupEquipped = beer.IsEquipped;
-            s.beerCups        = beer.CupFills;
+            s.beerCups        = beer.BeerFills;
+            s.emptyCups       = beer.EmptyCount;
+            s.beerHeld        = (int)beer.HeldKind;
         }
         var pcForJetpack = Object.FindObjectOfType<PlayerController>(true);
         if (pcForJetpack != null) s.jetpackUnlocked = pcForJetpack.JetpackUnlocked;
@@ -1928,8 +1930,9 @@ public static class SaveCollector
         var beer = Object.FindObjectOfType<BeerCupController>();
         if (beer != null)
         {
-            beer.RestoreCups(s.beerCups);
-            if (s.beerCupEquipped && beer.IsUnlocked) beer.ForceEquipCup();
+            var held = (BeerCupController.Held)Mathf.Clamp(s.beerHeld, 0, 2);
+            if (held == BeerCupController.Held.None && s.beerCupEquipped) held = BeerCupController.Held.Beer;
+            beer.Restore(s.beerCups, s.emptyCups, held);
         }
         var pcApplyJetpack = Object.FindObjectOfType<PlayerController>(true);
         if (pcApplyJetpack != null && s.jetpackUnlocked) pcApplyJetpack.UnlockJetpack();

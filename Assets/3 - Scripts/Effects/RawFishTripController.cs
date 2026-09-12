@@ -31,6 +31,55 @@ public class RawFishTripController : MonoBehaviour
     const float FadeOut       = 3f;
     const float PhaseCrossfade = 1.5f;
 
+    // ── Sustained dials (the beer buzz) ──────────────────────────────────
+    // A caller that wants a STEADY level rather than a timed trip refreshes
+    // these every frame. They expire two frames after the last refresh, so a
+    // caller that dies never leaves the screen swimming. A running trip and
+    // the sustain take the MAX per dial.
+    float _sustainColour, _sustainWave, _sustainKaleido;
+    int _sustainFrame = -10;
+
+    /// <summary>Hold the effect at these levels this frame (0-1 each). Call every frame.</summary>
+    public static void Sustain(float colour, float wave, float kaleido)
+    {
+        if (Instance == null)
+        {
+            if (colour <= 0f && wave <= 0f && kaleido <= 0f) return;
+            var go = new GameObject("RawFishTripController");
+            DontDestroyOnLoad(go);
+            Instance = go.AddComponent<RawFishTripController>();
+        }
+        Instance._sustainColour  = Mathf.Clamp01(colour);
+        Instance._sustainWave    = Mathf.Clamp01(wave);
+        Instance._sustainKaleido = Mathf.Clamp01(kaleido);
+        Instance._sustainFrame   = Time.frameCount;
+        if (colour > 0f || wave > 0f || kaleido > 0f) Instance.EnsureEffectRegistered();
+    }
+
+    bool SustainLive => Time.frameCount - _sustainFrame <= 2;
+
+    void Update()
+    {
+        // While a trip routine runs it folds the sustain in itself.
+        if (_activeRoutine != null || _effect == null) return;
+        if (SustainLive)
+        {
+            _effect.intensity       = _sustainColour;
+            _effect.kaleidoStrength = _sustainKaleido;
+            _effect.waveStrength    = _sustainWave;
+            _effect.tripTime        = Time.unscaledTime;
+            _sustainApplied = true;
+        }
+        else if (_sustainApplied)
+        {
+            _sustainApplied = false;
+            _effect.intensity = 0f;
+            _effect.kaleidoStrength = 0f;
+            _effect.waveStrength = 0f;
+        }
+    }
+    bool _sustainApplied;
+
     public static void StartTrip(
         float durationSeconds,
         float earlyKaleidoStrength, float earlyWaveStrength,
@@ -150,9 +199,10 @@ public class RawFishTripController : MonoBehaviour
 
             if (_effect != null)
             {
-                _effect.intensity       = envelope * _colourScale;   // colour shift, scaled per-call (default 1)
-                _effect.kaleidoStrength = envelope * kaleidoMax;
-                _effect.waveStrength    = envelope * waveMax;
+                bool live = SustainLive;
+                _effect.intensity       = Mathf.Max(envelope * _colourScale, live ? _sustainColour : 0f);   // colour shift, scaled per-call (default 1)
+                _effect.kaleidoStrength = Mathf.Max(envelope * kaleidoMax,   live ? _sustainKaleido : 0f);
+                _effect.waveStrength    = Mathf.Max(envelope * waveMax,      live ? _sustainWave : 0f);
                 _effect.tripTime        = now;
             }
             yield return null;
@@ -164,6 +214,7 @@ public class RawFishTripController : MonoBehaviour
             _effect.kaleidoStrength = 0f;
             _effect.waveStrength    = 0f;
             _effect.tripTime        = Time.unscaledTime;
+            _sustainApplied = false;   // Update takes the sustain back over next frame
         }
         _activeRoutine = null;
     }

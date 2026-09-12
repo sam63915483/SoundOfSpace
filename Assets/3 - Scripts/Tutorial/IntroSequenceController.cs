@@ -44,6 +44,9 @@ public class IntroSequenceController : MonoBehaviour
 
     [Header("Grogginess (wake-up blur + double vision)")]
     [SerializeField] Material grogginessMaterial;     // uses the Hidden/Grogginess shader
+    /// The blur + double-vision material, shared with anything else that wants
+    /// a woozy camera (BeerBuzz). The asset reference lives here so it is in the build.
+    public Material GrogginessMaterial => grogginessMaterial;
     [SerializeField] float grogRecoverRate = 0.07f;   // intensity units/sec (~14s from 1 to 0)
 
     [Header("Phone")]

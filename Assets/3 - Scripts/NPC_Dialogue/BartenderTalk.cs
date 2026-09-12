@@ -45,8 +45,8 @@ public class BartenderTalk : AuthoredNPCTalk
         switch (name)
         {
             case "cupOnCounter":   { var c = Counter; return c != null && c.HasFullCup; }
-            case "holdingCup":     { var k = Cup();   return k != null && k.IsUnlocked; }
-            case "cupEmptyInHand": { var k = Cup();   return k != null && k.IsUnlocked && k.IsEmpty; }
+            case "holdingCup":     { var k = Cup();   return k != null && (k.HasBeers || k.HasEmpties); }
+            case "cupEmptyInHand": { var k = Cup();   return k != null && k.HoldingEmpty; }
         }
         return false;
     }

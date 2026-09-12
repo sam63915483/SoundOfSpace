@@ -14,7 +14,7 @@ public static class BeerCupArt
     static readonly Color Cream = new Color(0.97f, 0.93f, 0.80f);
 
     static Material s_beer, s_foam;
-    static Sprite s_icon;
+    static Sprite s_icon, s_iconEmpty;
 
     public static Material BeerMat => Mat(ref s_beer, Amber, 0.0f, 0.75f);
     public static Material FoamMat => Mat(ref s_foam, Cream, 0.0f, 0.25f);
@@ -50,10 +50,11 @@ public static class BeerCupArt
         return liquid;
     }
 
-    /// <summary>128×128 side-view tankard for the hotbar slot.</summary>
-    public static Sprite BuildIcon()
+    /// <summary>128×128 side-view tankard for the hotbar slot — with beer (BEER) or without (CUP).</summary>
+    public static Sprite BuildIcon(bool withBeer)
     {
-        if (s_icon != null) return s_icon;
+        if (withBeer && s_icon != null) return s_icon;
+        if (!withBeer && s_iconEmpty != null) return s_iconEmpty;
         const int S = 128;
         var px = new Color32[S * S];
         var clear = new Color32(0, 0, 0, 0);
@@ -96,16 +97,27 @@ public static class BeerCupArt
         Rect(28, 30, 80, 35, band);
         Rect(28, 86, 80, 91, band);
 
-        // Beer showing above the rim + foam head spilling over.
-        Rect(32, 100, 76, 106, Amber);
-        Rect(30, 104, 78, 114, Cream);
-        Circle(38, 114, 7, Cream);
-        Circle(52, 117, 8, Cream);
-        Circle(66, 115, 7, Cream);
-        Circle(76, 111, 6, Cream);
-        // A drip down the left side.
-        Rect(31, 92, 34, 104, Cream);
-        Circle(32, 90, 3, Cream);
+        if (withBeer)
+        {
+            // Beer showing above the rim + foam head spilling over.
+            Rect(32, 100, 76, 106, Amber);
+            Rect(30, 104, 78, 114, Cream);
+            Circle(38, 114, 7, Cream);
+            Circle(52, 117, 8, Cream);
+            Circle(66, 115, 7, Cream);
+            Circle(76, 111, 6, Cream);
+            // A drip down the left side.
+            Rect(31, 92, 34, 104, Cream);
+            Circle(32, 90, 3, Cream);
+        }
+        else
+        {
+            // Open rim: a dark ellipse so it reads as hollow.
+            var inside = new Color(0.20f, 0.12f, 0.05f);
+            Rect(34, 100, 74, 106, inside);
+            Rect(38, 106, 70, 108, inside);
+            Rect(38, 98, 70, 100, inside);
+        }
 
         var tex = new Texture2D(S, S, TextureFormat.RGBA32, false)
         {
@@ -115,8 +127,9 @@ public static class BeerCupArt
         };
         tex.SetPixels32(px);
         tex.Apply(false, true);
-        s_icon = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 128f);
-        s_icon.hideFlags = HideFlags.HideAndDontSave;
-        return s_icon;
+        var sprite = Sprite.Create(tex, new Rect(0, 0, S, S), new Vector2(0.5f, 0.5f), 128f);
+        sprite.hideFlags = HideFlags.HideAndDontSave;
+        if (withBeer) s_icon = sprite; else s_iconEmpty = sprite;
+        return sprite;
     }
 }

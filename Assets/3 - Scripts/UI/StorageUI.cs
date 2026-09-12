@@ -577,6 +577,7 @@ public class StorageUI : MonoBehaviour
             case Hotbar.ItemId.Pistol:      { var c = Object.FindObjectOfType<PistolController>(true);      return c != null ? c.hotbarIcon : null; }
             case Hotbar.ItemId.GrappleGun:  { var c = Object.FindObjectOfType<GrappleGunController>(true);  return c != null ? c.hotbarIcon : null; }
             case Hotbar.ItemId.BeerCup:     { var c = Object.FindObjectOfType<BeerCupController>(true);     return c != null ? c.hotbarIcon : null; }
+            case Hotbar.ItemId.EmptyCup:    { var c = Object.FindObjectOfType<BeerCupController>(true);     return c != null ? c.emptyCupIcon : null; }
         }
         return null;
     }

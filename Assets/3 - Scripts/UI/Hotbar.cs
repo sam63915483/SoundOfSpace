@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun, Firefly, BeerCup }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun, Firefly, BeerCup, EmptyCup }
 
     public struct Slot
     {
@@ -553,6 +553,7 @@ public class Hotbar : MonoBehaviour
                 case ItemId.Pistol:      if (_registry[i].Controller != (MonoBehaviour)pistol) return true; break;
                 case ItemId.GrappleGun:  if (_registry[i].Controller != (MonoBehaviour)grapple) return true; break;
                 case ItemId.BeerCup:     if (_registry[i].Controller != (MonoBehaviour)beer) return true; break;
+                case ItemId.EmptyCup:    if (_registry[i].Controller != (MonoBehaviour)beer) return true; break;
             }
         }
         return false;
@@ -1792,12 +1793,19 @@ public class Hotbar : MonoBehaviour
                         IsEquipped   = () => grapple != null && grapple.IsEquipped,
                         ForceEquip   = () => { if (grapple != null) grapple.ForceEquipGrapple(); },
                         ForceUnequip = () => { if (grapple != null) grapple.ForceUnequipGrapple(); } },
+            // One controller, two items: full beers and the empties they turn into.
             new Entry { Id = ItemId.BeerCup,     DisplayName = "BEER",   Controller = beer,
                         Icon = beer != null ? beer.hotbarIcon : null,
-                        IsUnlocked   = () => beer != null && beer.IsUnlocked,
-                        IsEquipped   = () => beer != null && beer.IsEquipped,
-                        ForceEquip   = () => { if (beer != null) beer.ForceEquipCup(); },
-                        ForceUnequip = () => { if (beer != null) beer.ForceUnequipCup(); } },
+                        IsUnlocked   = () => beer != null && beer.HasBeers,
+                        IsEquipped   = () => beer != null && beer.HoldingBeer,
+                        ForceEquip   = () => { if (beer != null) beer.EquipBeer(); },
+                        ForceUnequip = () => { if (beer != null) beer.ForceUnequipBeer(); } },
+            new Entry { Id = ItemId.EmptyCup,    DisplayName = "CUP",    Controller = beer,
+                        Icon = beer != null ? beer.emptyCupIcon : null,
+                        IsUnlocked   = () => beer != null && beer.HasEmpties,
+                        IsEquipped   = () => beer != null && beer.HoldingEmpty,
+                        ForceEquip   = () => { if (beer != null) beer.EquipEmpty(); },
+                        ForceUnequip = () => { if (beer != null) beer.ForceUnequipEmpty(); } },
         };
     }
 
@@ -1822,8 +1830,12 @@ public class Hotbar : MonoBehaviour
         // count badge honest (the controller owns the real list).
         if (beer != null)
             for (int i = 0; i < NumSlots; i++)
-                if (slots[i].id == ItemId.BeerCup && slots[i].count != beer.CupCount)
-                    slots[i].count = Mathf.Max(1, beer.CupCount);
+            {
+                if (slots[i].id == ItemId.BeerCup && slots[i].count != beer.BeerCount)
+                    slots[i].count = Mathf.Max(1, beer.BeerCount);
+                else if (slots[i].id == ItemId.EmptyCup && slots[i].count != beer.EmptyCount)
+                    slots[i].count = Mathf.Max(1, beer.EmptyCount);
+            }
         // Evict anything that's NO LONGER unlocked — the hotbar is a
         // DontDestroyOnLoad singleton, so its slots survive scene reloads.
         // Without this, loading an older save (where a pistol/guitar/etc.
@@ -2206,7 +2218,7 @@ public class Hotbar : MonoBehaviour
             // number in a 14 px corner label is unreadable at a glance).
             if (v.countText != null)
             {
-                if ((isRes || id == ItemId.Money || (id == ItemId.BeerCup && slots[i].count > 1)) && !empty)
+                if ((isRes || id == ItemId.Money || ((id == ItemId.BeerCup || id == ItemId.EmptyCup) && slots[i].count > 1)) && !empty)
                 {
                     string countStr = id == ItemId.Money
                         ? "$" + slots[i].count.ToString("N0")

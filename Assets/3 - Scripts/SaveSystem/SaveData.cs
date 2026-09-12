@@ -732,8 +732,10 @@ public class EquipmentSave
     public bool grappleUnlocked;
     // Village bar beer cups (2026-09-12): every cup the player carries, fill
     // 0-100 each, [0] = the one in hand. Empty/null = none.
-    public bool beerCupEquipped;
+    public bool beerCupEquipped;      // legacy (pass 2); beerHeld wins when present
     public float[] beerCups;
+    public int emptyCups;
+    public int beerHeld;              // BeerCupController.Held: 0 none, 1 beer, 2 empty cup
 }
 
 [Serializable]

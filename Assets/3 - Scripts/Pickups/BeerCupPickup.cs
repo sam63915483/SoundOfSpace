@@ -49,8 +49,8 @@ public class BeerCupPickup : Interactable
         var liquid = GetComponentInChildren<BeerLiquid>(true);
         if (liquid != null) fill = liquid.Fill * 100f;
 
-        cup.AddCup(fill);
-        cup.ForceEquipCup();   // no-op if a cup (or another tool) is already in hand
+        cup.AddBeer(fill);
+        if (!cup.IsEquipped) cup.EquipBeer();   // stays a no-op if another tool is in hand
 
         if (counter != null) counter.NotifyCupTaken(this);
         GameUI.ClearInteractionPrompt(this);   // clear BEFORE Destroy or a stale prompt lingers

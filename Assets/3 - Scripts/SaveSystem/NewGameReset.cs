@@ -239,6 +239,8 @@ public static class NewGameReset
         // Same story for the firefly glow: a one-minute status in a persistent
         // singleton, never saved, so it must not leak into a new game.
         if (FireflyGlow.Instance != null) FireflyGlow.Instance.Clear();
+        // And the beer buzz — minutes of woozy camera in a persistent singleton.
+        if (BeerBuzz.Instance != null) BeerBuzz.Instance.Clear();
         // null key → Idle (no bonus tutorial running).
         if (BonusTutorial.Instance != null) BonusTutorial.Instance.ApplySaveState(null, 0, null, false);
 

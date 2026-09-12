@@ -17,7 +17,19 @@ using UnityEngine;
 ///   • A set-down empty cup fades out after <see cref="emptyCupLifetime"/> s
 ///     (<see cref="BeerCupFadeAway"/>).
 ///
-/// Cups are parented to the counter's PARENT (the counter itself may be a
+/// ── Why the ghost is NOT a Physics.Raycast ──────────────────────────────
+/// Colliders live at the planet's PHYSICS pose; the counter's transform (and
+/// the camera) are at the interpolated RENDER pose. On an orbiting planet the
+/// two differ by up to a physics step of travel every frame, so a raycast hit
+/// point converted through the render transform jittered — and the cup got
+/// placed inside / above the counter. The crosshair ray is intersected with
+/// the counter's own local mesh box analytically instead: camera and counter
+/// are on the same clock, so the ghost sits still and F puts the cup exactly
+/// where the ghost is. The same reason the Interactable gaze gate is bypassed
+/// (<c>requireGazeToInteract = false</c>) and <see cref="CanInteract"/> uses
+/// the analytic hit.
+///
+/// Cups are parented to the counter's PARENT (the counter may be a
 /// non-uniformly scaled cube) and sized in world metres. Not saved: on reload
 /// the counter is bare; the player's cups live in EquipmentSave.
 /// </summary>
@@ -43,6 +55,8 @@ public class BarCounter : Interactable
     public float edgeMargin = 0.12f;
     [Tooltip("How far from the counter the set-down prompt works (a trigger this size is added if the counter has no trigger collider).")]
     public float triggerRadius = 3.5f;
+    [Tooltip("Furthest the crosshair reaches the counter top from (metres).")]
+    public float reach = 5f;
 
     GameObject _fullCup;             // the beer waiting in the middle (null = none)
     GameObject _ghost;
@@ -55,7 +69,6 @@ public class BarCounter : Interactable
     Camera _cam;
     float _nextCamRetry;
     Bounds _meshBounds;              // counter-local
-    static readonly RaycastHit[] s_hits = new RaycastHit[16];
 
     public bool HasFullCup => _fullCup != null;
 
@@ -68,10 +81,8 @@ public class BarCounter : Interactable
         if (mf != null && mf.sharedMesh != null) _meshBounds = mf.sharedMesh.bounds;
         else
         {
-            var col = GetComponent<Collider>();
-            _meshBounds = col != null
-                ? new Bounds(transform.InverseTransformPoint(col.bounds.center), Vector3.one)
-                : new Bounds(Vector3.zero, Vector3.one);
+            var box = GetComponent<BoxCollider>();
+            _meshBounds = box != null ? new Bounds(box.center, box.size) : new Bounds(Vector3.zero, Vector3.one);
         }
 
         bool hasTrigger = false;
@@ -83,6 +94,9 @@ public class BarCounter : Interactable
             sc.isTrigger = true;
             sc.radius = triggerRadius;
         }
+
+        // The analytic crosshair test below is the gaze gate (see the class doc).
+        requireGazeToInteract = false;
     }
 
     void OnEnable()  { if (!All.Contains(this)) All.Add(this); }
@@ -100,7 +114,7 @@ public class BarCounter : Interactable
 
     static BeerCupController Controller() => Object.FindObjectOfType<BeerCupController>();
 
-    // ── geometry ──────────────────────────────────────────────────
+    // ── geometry (all in the counter's RENDER-clock frame) ────────
 
     /// World point in the middle of the top face.
     Vector3 TopCenterWorld()
@@ -109,20 +123,64 @@ public class BarCounter : Interactable
         return transform.TransformPoint(new Vector3(c.x, _meshBounds.max.y, c.z));
     }
 
-    /// Snap a world point onto the top face (counter-local clamp, kept inside the edges).
-    Vector3 SnapToTop(Vector3 world)
+    /// Snap a counter-LOCAL point onto the top face, kept inside the edges. Returns world.
+    Vector3 SnapLocalToTop(Vector3 l)
     {
-        Vector3 l = transform.InverseTransformPoint(world);
         Vector3 s = transform.lossyScale;
         float mx = edgeMargin / Mathf.Max(0.0001f, Mathf.Abs(s.x));
         float mz = edgeMargin / Mathf.Max(0.0001f, Mathf.Abs(s.z));
-        l.x = Mathf.Clamp(l.x, _meshBounds.min.x + mx, _meshBounds.max.x - mx);
-        l.z = Mathf.Clamp(l.z, _meshBounds.min.z + mz, _meshBounds.max.z - mz);
+        float minX = _meshBounds.min.x + mx, maxX = _meshBounds.max.x - mx;
+        float minZ = _meshBounds.min.z + mz, maxZ = _meshBounds.max.z - mz;
+        if (minX > maxX) minX = maxX = _meshBounds.center.x;
+        if (minZ > maxZ) minZ = maxZ = _meshBounds.center.z;
+        l.x = Mathf.Clamp(l.x, minX, maxX);
+        l.z = Mathf.Clamp(l.z, minZ, maxZ);
         l.y = _meshBounds.max.y;
         return transform.TransformPoint(l);
     }
 
     Quaternion CupRotation() => Quaternion.LookRotation(transform.forward, transform.up);
+
+    Camera Cam()
+    {
+        if (_cam != null && _cam.isActiveAndEnabled) return _cam;
+        if (Time.unscaledTime < _nextCamRetry) return null;
+        _nextCamRetry = Time.unscaledTime + 1f;
+        _cam = Camera.main;
+        return _cam;
+    }
+
+    /// The crosshair ray against the counter's local mesh box — no physics, no
+    /// clock mismatch. Gives the entry point in counter-local space.
+    bool TryCrosshairHitLocal(out Vector3 local)
+    {
+        local = default;
+        var cam = Cam();
+        if (cam == null) return false;
+
+        Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        Vector3 o = transform.InverseTransformPoint(ray.origin);
+        Vector3 d = transform.InverseTransformVector(ray.direction);   // scale-aware, NOT normalised on purpose:
+                                                                       // t stays in world metres along the ray
+        Vector3 mn = _meshBounds.min, mx = _meshBounds.max;
+        float tmin = 0f, tmax = reach;
+        for (int a = 0; a < 3; a++)
+        {
+            float da = d[a], oa = o[a];
+            if (Mathf.Abs(da) < 1e-6f)
+            {
+                if (oa < mn[a] || oa > mx[a]) return false;
+                continue;
+            }
+            float t1 = (mn[a] - oa) / da, t2 = (mx[a] - oa) / da;
+            if (t1 > t2) { float tmp = t1; t1 = t2; t2 = tmp; }
+            if (t1 > tmin) tmin = t1;
+            if (t2 < tmax) tmax = t2;
+            if (tmin > tmax) return false;
+        }
+        local = o + d * tmin;
+        return true;
+    }
 
     // ── pouring ───────────────────────────────────────────────────
 
@@ -186,52 +244,24 @@ public class BarCounter : Interactable
     bool HoldingEmptyCup()
     {
         var ctrl = Controller();
-        return ctrl != null && ctrl.IsUnlocked && ctrl.IsEmpty && ctrl.IsEquipped;
+        return ctrl != null && ctrl.HoldingEmpty;
     }
 
     protected override void Update()
     {
-        base.Update();
-        if (this == null) return;
-
+        // Resolve the ghost FIRST so CanInteract/BuildInteractMessage (called by
+        // the base) see this frame's answer.
         bool want = playerInInteractionZone && !PlayerController.isInDialogue && HoldingEmptyCup();
         _ghostValid = false;
-        if (want && TryCrosshairHit(out Vector3 hit))
+        if (want && TryCrosshairHitLocal(out Vector3 local))
         {
             _ghostValid = true;
-            _ghostWorld = SnapToTop(hit);
+            _ghostWorld = SnapLocalToTop(local);
         }
-
         SetTint(_ghostValid);
         ShowGhost(_ghostValid);
-    }
 
-    Camera Cam()
-    {
-        if (_cam != null && _cam.isActiveAndEnabled) return _cam;
-        if (Time.unscaledTime < _nextCamRetry) return null;
-        _nextCamRetry = Time.unscaledTime + 1f;
-        _cam = Camera.main;
-        return _cam;
-    }
-
-    /// The crosshair ray hitting THIS counter's colliders (the beer standing on
-    /// it and the ghost are ignored). True with the world hit point.
-    bool TryCrosshairHit(out Vector3 point)
-    {
-        point = default;
-        var cam = Cam();
-        if (cam == null) return false;
-        Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
-        int n = Physics.RaycastNonAlloc(ray, s_hits, 6f, ~0, QueryTriggerInteraction.Ignore);
-        float best = float.MaxValue; bool found = false;
-        for (int i = 0; i < n; i++)
-        {
-            var t = s_hits[i].collider.transform;
-            if (t != transform && !t.IsChildOf(transform)) continue;
-            if (s_hits[i].distance < best) { best = s_hits[i].distance; point = s_hits[i].point; found = true; }
-        }
-        return found;
+        base.Update();
     }
 
     void SetTint(bool on)
@@ -302,7 +332,7 @@ public class BarCounter : Interactable
     protected override bool CanInteract()
     {
         if (!TutorialGate.IsUnlocked(TutorialAbility.Pickup)) return false;
-        return HoldingEmptyCup();
+        return _ghostValid;
     }
 
     protected override string BuildInteractMessage() =>
@@ -312,12 +342,12 @@ public class BarCounter : Interactable
     {
         base.Interact();
         var ctrl = Controller();
-        if (ctrl == null) return;
+        if (ctrl == null || !ctrl.HoldingEmpty) return;
 
         var prefab = cupPrefab != null ? cupPrefab : ctrl.cupPrefab;
-        Vector3 where = _ghostValid ? _ghostWorld : SnapToTop(TopCenterWorld());
+        Vector3 where = _ghostValid ? _ghostWorld : TopCenterWorld();
 
-        ctrl.RemoveCurrentCup();            // next beer pops into the hand, or the slot goes
+        ctrl.RemoveEmptyCup();              // keeps holding an empty if more remain
 
         if (prefab != null)
         {
@@ -326,6 +356,7 @@ public class BarCounter : Interactable
             foreach (var p in empty.GetComponentsInChildren<BeerCupPickup>(true)) Destroy(p);
             empty.AddComponent<BeerCupFadeAway>().Begin(emptyCupLifetime, fadeSeconds, fadeMaterial);
         }
+        _ghostValid = false;
         SetTint(false);
         ShowGhost(false);
         GameUI.ClearInteractionPrompt(this);

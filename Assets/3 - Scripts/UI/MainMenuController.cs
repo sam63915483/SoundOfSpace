@@ -1068,6 +1068,8 @@ public class MainMenuController : MonoBehaviour
         if (FireflySpawner.Instance == null) { var go = new GameObject("[FireflySpawner]"); DontDestroyOnLoad(go); go.AddComponent<FireflySpawner>(); }
         if (FireflyGlow.Instance == null) { var go = new GameObject("[FireflyGlow]"); DontDestroyOnLoad(go); go.AddComponent<FireflyGlow>(); }
         if (FireflyGlowHUD.Instance == null) { var go = new GameObject("[FireflyGlowHUD]"); DontDestroyOnLoad(go); go.AddComponent<FireflyGlowHUD>(); }
+        // The beer buzz (village bar) — same MainMenu early-return in its AutoCreate.
+        if (BeerBuzz.Instance == null) { var go = new GameObject("[BeerBuzz]"); DontDestroyOnLoad(go); go.AddComponent<BeerBuzz>(); }
         tick("fireflies");        yield return null;
         if (NewspaperReaderUI.Instance == null) { var go = new GameObject("NewspaperReaderUI"); DontDestroyOnLoad(go); go.AddComponent<NewspaperReaderUI>(); }
         if (MonumentLinkPopupUI.Instance == null) { var go = new GameObject("MonumentLinkPopupUI"); DontDestroyOnLoad(go); go.AddComponent<MonumentLinkPopupUI>(); }
