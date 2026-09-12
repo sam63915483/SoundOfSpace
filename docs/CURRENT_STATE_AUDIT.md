@@ -2598,3 +2598,37 @@ and asked for the NPC to be a real Editor object he can nudge, not a runtime spa
 
 Compile PASS, 0 warnings. Scene wiring done in the open Editor, **unsaved** —
 Sam fine-tunes Shlawg's placement and saves. **PLAYTEST PENDING.**
+
+## Addendum 2026-09-12c — the bar, pass 3: jitter root cause, beer≠cup, BeerBuzz, drink pose
+
+Sam's playtest: the ghost cup "glitches and won't sit still", places inside/above the
+counter; a drunk beer must become a separate empty-cup item; beers need stacking drunk
+effects; the drink pose stayed bottom-right.
+
+- **🔥 GHOST JITTER ROOT CAUSE (a recurring class — remember it):** `Physics.Raycast`
+  hits colliders at the planet's PHYSICS pose; the counter transform and the camera
+  are on the interpolated RENDER pose. On an orbiting planet they differ by up to a
+  physics step of travel every frame, so a hit point converted through the render
+  transform jitters, and anything placed from it lands off the surface. Fix in
+  `BarCounter.TryCrosshairHitLocal`: intersect the crosshair ray with the counter's
+  LOCAL mesh box analytically (same clock as the camera) — no physics at all — and
+  bypass `InteractGaze` (`requireGazeToInteract = false`, `CanInteract` = the
+  analytic hit). Same family as the ocean cut / landing pop / drop-teleport fixes.
+- **Two items, one controller.** `ItemId.BeerCup` (BEER, stack of full/partial beers)
+  and `ItemId.EmptyCup` (= 29, CUP, stack of empties) both point at
+  `BeerCupController` with different IsUnlocked/IsEquipped/ForceEquip lambdas.
+  Finishing a beer removes it from the beer list, bumps the empties and flips the cup
+  in hand to `Held.Empty` — the Hotbar's `GetEquipped` fallback re-syncs the highlight
+  to the CUP slot by itself. Save: `beerCups[]`, `emptyCups`, `beerHeld`.
+- **`Player/BeerBuzz`** auto-singleton (seeded in `EnsureGameplaySingletons`, cleared
+  in `NewGameReset`, not saved): +1 per finished beer, −1 per minute, cap 10. Drives
+  `GrogginessImageEffect` (blur, material via new `IntroSequenceController.
+  GrogginessMaterial`), `RawFishTripController.Sustain` (new steady-level API,
+  max'd with a running mushroom trip), `Camera/BeerCameraWobble` (order 120 Perlin
+  sway over the final pose), `PlayerController.SwingCameraKick` for real self-turning
+  past 4 beers, and a burp timer (28 s → 4 s). All knobs on the component.
+- **Drink pose** now targets a CAMERA-space point (`drinkCamPoint`, like
+  `HeldItemViewmodel.UpdateEating`) converted into the hold frame, plus a −75° tilt —
+  the bottle's small fixed offset could never leave the bottom-right corner.
+
+Compile PASS, 0 warnings. **PLAYTEST PENDING.**

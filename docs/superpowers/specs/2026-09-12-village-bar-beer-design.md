@@ -1,6 +1,6 @@
 # Village bar: Shlawg, beer, cups — design
 
-🟢 ACTIVE — built 2026-09-12 (two passes), **playtest pending**. Sam's ask: House_03
+🟢 ACTIVE — built 2026-09-12 (three passes; pass 3 = jitter root cause, beer≠cup items, BeerBuzz, camera-space drink pose — see audit addendum 2026-09-12c), **playtest pending**. Sam's ask: House_03
 becomes a bar. Shlawg (Alien1) stands behind a counter, sells a beer for $10,
 puts it in the middle of the counter, you F it into the hotbar, hold left click
 to drink it, and set the empty cup down anywhere on the counter top, where it
@@ -36,15 +36,28 @@ The random-yaw / `faceMarker` path is only for spawned bodies.
 | Pour | `BartenderTalk.GraphAction("pourBeer")` → `BarCounter.PourBeer()` | CupGOOD spawned at the top-face centre with a full `BeerLiquid` and a `BeerCupPickup`. Parented to the counter's PARENT (the counter is a non-uniform cube) and sized in world metres. |
 | Pick up | `BeerCupPickup` | F: `BeerCupController.AddCup(100)`; equips if the hand is free. The Hotbar's BEER slot appears (or its count goes up). |
 | Drink | `BeerCupController.Update` | Hold left click: cup floats up and tips (bottle's pose channel), beer drains at 35 %/s, thirst +30 per cup, burp at the bottom. |
-| Set down | `BarCounter.Update` / `Interact` | Holding an EMPTY cup and the crosshair hits the counter: counter tints green (`MaterialPropertyBlock _Color`), a translucent green ghost cup follows the hit point snapped onto the top face (kept 12 cm inside the edges). F: `RemoveCurrentCup()` — the next beer pops into the hand, or the slot goes — and an empty CupGOOD is placed there. |
+| Set down | `BarCounter.Update` / `Interact` | Holding an EMPTY cup and the crosshair is on the counter: counter tints green (`MaterialPropertyBlock _Color`), a translucent green ghost cup follows the analytic hit point snapped onto the top face (kept 12 cm inside the edges). F: `RemoveEmptyCup()` and an empty CupGOOD is placed exactly where the ghost was. |
 | Fade | `BeerCupFadeAway` | 5 s later the empty cup swaps to an instance of the Fade material carrying its own texture, alpha → 0 over 1 s, destroyed. |
 
-## Multi-cup model
+## Beer ≠ cup (pass 3)
 
-`BeerCupController` keeps `List<float>` fills; index 0 is the cup in hand.
-`IsUnlocked` = count > 0 (registry adds/evicts the slot), `CupCount` is
-mirrored onto the slot's count badge by `Hotbar.DetectAcquisitions`, and the
-count text shows when > 1. Saved as `EquipmentSave.beerCups` (+ `beerCupEquipped`).
+`BeerCupController` backs TWO hotbar items: `ItemId.BeerCup` (BEER — the
+list of full/partial beers, [0] in hand) and `ItemId.EmptyCup` (CUP — a count
+of empties). Finishing a beer moves it from one to the other and the cup in the
+hand becomes the empty; the hotbar highlight follows. Counts mirror onto the
+slot badges. Saved as `beerCups[]`, `emptyCups`, `beerHeld`.
+
+## Drunk (pass 3)
+
+`BeerBuzz`: +1 per beer, −1/min, cap 10. Blur (Grogginess), colour/shimmer
+(mushroom trip, sustained), camera sway (`BeerCameraWobble`), self-turning past
+4 beers (`SwingCameraKick`), burps 28 s → 4 s. Not saved; cleared on New Game.
+
+## Ghost placement (pass 3)
+
+The crosshair ray is intersected with the counter's LOCAL mesh box on the
+render clock — never a `Physics.Raycast` (physics pose ≠ render pose on an
+orbiting planet = jitter).
 
 ## Decisions taken (change any)
 
