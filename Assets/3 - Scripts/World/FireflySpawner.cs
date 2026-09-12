@@ -458,7 +458,9 @@ public class FireflySpawner : MonoBehaviour
         if (entry.gen != null)
         {
             float oceanR = entry.gen.GetOceanRadius();
-            if (oceanR > 0f && (hit.point - planet.Position).magnitude < oceanR) { _dbgRejOcean++; return false; }
+            // 1.5 m shore margin (2026-09-12): a swarm's bugs wander up to swarmRadius + wanderRadius
+            // sideways from the hit point, so a swarm seated right at the waterline put bugs over water.
+            if (oceanR > 0f && (hit.point - planet.Position).magnitude < oceanR + 1.5f) { _dbgRejOcean++; return false; }
         }
 
         float dSq = (hit.point - viewer).sqrMagnitude;
@@ -489,6 +491,9 @@ public class FireflySpawner : MonoBehaviour
 
         var swarm = root.AddComponent<FireflySwarm>();
         swarm.Init(this, bodySlot, cellId, swarmRadius, heightMin, heightMax, fadeSeconds);
+        swarm.Body = entry.body;
+        float oceanFloor = entry.gen != null ? entry.gen.GetOceanRadius() : 0f;
+        swarm.MinRadial = oceanFloor > 0f ? oceanFloor + 0.5f : 0f;   // bugs never dip below the water surface
 
         // Head-count from the cell hash so the same cell is always the same
         // size swarm; everything else about a bug is rolled live — nobody can

@@ -127,6 +127,17 @@ public class FireflyBug : Interactable
         float w2 = Mathf.Sin(time * 4.3f + _wobbleSeed * 1.7f) * 0.14f;
         Vector3 step = (_vel + side * w1 + Vector3.up * w2) * dt;
         pos += step;
+        // Never below the water: clamp the bug's distance from the planet centre to the
+        // swarm's ocean floor (surface + 0.5 m). Cheap: one TransformPoint per bug per frame.
+        if (Swarm != null && Swarm.MinRadial > 0f && Swarm.Body != null && transform.parent != null)
+        {
+            Vector3 w = transform.parent.TransformPoint(pos);
+            Vector3 c = Swarm.Body.Position;
+            Vector3 rel = w - c;
+            float d = rel.magnitude;
+            if (d > 0.001f && d < Swarm.MinRadial)
+                pos = transform.parent.InverseTransformPoint(c + rel * (Swarm.MinRadial / d));
+        }
         transform.localPosition = pos;
 
         // Face the way it flies (tail glows behind), gently.

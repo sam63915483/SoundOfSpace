@@ -24,6 +24,10 @@ public class FireflySwarm : MonoBehaviour
 
     /// 0..1 glow multiplier for every bug in the swarm.
     public float Fade { get; private set; }
+    /// The body this swarm sits on and the radius below which no bug may go
+    /// (ocean surface + margin; 0 = no ocean). Set by FireflySpawner.SpawnSwarm.
+    public CelestialBody Body { get; set; }
+    public float MinRadial { get; set; }
 
     public readonly List<FireflyBug> Bugs = new List<FireflyBug>();
 
