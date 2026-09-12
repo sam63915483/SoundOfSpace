@@ -91,6 +91,7 @@ public class DimensionDevLoader : MonoBehaviour
 
     void OnGUI()
     {
+        if (useGUILayout) useGUILayout = false;   // no GUILayout calls here: skip IMGUI's layout pass and its per-frame allocation
         if (_fireAt < 0f || _buffer.Length == 0) return;
         if (_style == null)
             _style = new GUIStyle(GUI.skin.label)

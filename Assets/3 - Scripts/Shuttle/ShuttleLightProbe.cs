@@ -58,6 +58,8 @@ public class ShuttleLightProbe : MonoBehaviour
 
     void Awake()
     {
+        // Diagnostic only — never in a real build (it ran Update + OnGUI every frame there).
+        if (!Application.isEditor && !Debug.isDebugBuild) { enabled = false; return; }
         // The shuttle is parented under a planet when landed, so transform.root
         // would be the whole celestial tree (the first playtest log listed the
         // SUN as "shuttle's own light"). The guard sits on the shuttle's root.

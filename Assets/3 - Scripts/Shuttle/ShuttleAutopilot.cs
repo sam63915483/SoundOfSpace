@@ -1777,6 +1777,7 @@ public class ShuttleAutopilot : MonoBehaviour
 
     void OnGUI()
     {
+        if (useGUILayout) useGUILayout = false;   // no GUILayout calls here: skip IMGUI's layout pass and its per-frame allocation
         if (!Application.isEditor && !Universe.cheatsEnabled) return;
         if (_phase == Phase.Parked && !PlayerController.RiderMode) return;
 

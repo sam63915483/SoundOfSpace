@@ -598,6 +598,7 @@ public class AxeSwing : MonoBehaviour
 
     void OnGUI()
     {
+        if (useGUILayout) useGUILayout = false;   // no GUILayout calls here: skip IMGUI's layout pass and its per-frame allocation
         // Charge bar under the crosshair — visible whenever the axe is at a
         // wind-up. Fills through the pause, then the charge ramp; full green
         // means the next swing hits for maximum damage.

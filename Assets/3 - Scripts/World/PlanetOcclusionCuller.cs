@@ -208,22 +208,33 @@ public class PlanetOcclusionCuller : MonoBehaviour
         }
     }
 
+    // scratch lists so the periodic rescan allocates nothing (a GetComponentsInChildren<T>()
+    // over a whole planet every 2 s was exactly the kind of GC spike this pass is hunting)
+    static readonly List<Transform> _tScratch = new List<Transform>(2048);
+    static readonly List<Renderer> _rScratch = new List<Renderer>(512);
+    static readonly List<Light> _lScratch = new List<Light>(64);
+    readonly HashSet<CelestialBody> _scannedBodies = new HashSet<CelestialBody>();
+
     void Rescan()
     {
-        // new clusters
+        // new clusters: each body is walked ONCE (clusters are scene objects, not spawned)
         foreach (var body in NBodySimulation.Bodies)
         {
-            if (body == null) continue;
-            foreach (Transform t in body.GetComponentsInChildren<Transform>(true))
+            if (body == null || _scannedBodies.Contains(body)) continue;
+            _scannedBodies.Add(body);
+            _tScratch.Clear();
+            body.GetComponentsInChildren(true, _tScratch);
+            for (int j = 0; j < _tScratch.Count; j++)
             {
-                if (_known.Contains(t)) continue;
+                var t = _tScratch[j];
+                if (t == null || _known.Contains(t)) continue;
                 bool wanted = false;
                 for (int i = 0; i < ClusterNames.Length; i++) if (t.name == ClusterNames[i]) { wanted = true; break; }
                 if (!wanted) continue;
                 _known.Add(t);
-                var cl = new Cluster { root = t, home = body };
-                _clusters.Add(cl);
+                _clusters.Add(new Cluster { root = t, home = body });
             }
+            _tScratch.Clear();
         }
         // refresh membership + bounds (spawned NPCs, combined meshes, etc.)
         foreach (var cl in _clusters)
@@ -232,18 +243,27 @@ public class PlanetOcclusionCuller : MonoBehaviour
             bool wasHidden = cl.hidden;
             if (wasHidden) Restore(cl, true, false);          // measure with everything on, then re-hide below
             cl.renderers.Clear(); cl.lights.Clear();
-            var rends = cl.root.GetComponentsInChildren<Renderer>(false);
+            _rScratch.Clear();
+            cl.root.GetComponentsInChildren(false, _rScratch);
             Bounds b = new Bounds(cl.root.position, Vector3.zero);
             bool any = false;
-            foreach (var r in rends)
+            for (int j = 0; j < _rScratch.Count; j++)
             {
+                var r = _rScratch[j];
                 if (r == null) continue;
                 cl.renderers.Add(r);
                 if (!r.enabled) continue;
                 if (!any) { b = r.bounds; any = true; } else b.Encapsulate(r.bounds);
             }
-            foreach (var l in cl.root.GetComponentsInChildren<Light>(false))
+            _rScratch.Clear();
+            _lScratch.Clear();
+            cl.root.GetComponentsInChildren(false, _lScratch);
+            for (int j = 0; j < _lScratch.Count; j++)
+            {
+                var l = _lScratch[j];
                 if (l != null && (l.type == LightType.Point || l.type == LightType.Spot)) cl.lights.Add(l);
+            }
+            _lScratch.Clear();
             if (any)
             {
                 cl.localCentre = cl.home.transform.InverseTransformPoint(b.center);
