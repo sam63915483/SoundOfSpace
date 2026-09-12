@@ -60,6 +60,8 @@ public class OrbitClockProbe : MonoBehaviour
 
     void Start()
     {
+        // Diagnostic only: never in a real build (it wrote a CSV all session long).
+        if (!Application.isEditor && !Debug.isDebugBuild) { enabled = false; return; }
         foreach (var b in NBodySimulation.Bodies)
         {
             if (b == null || b.isStaticAttractor) continue;

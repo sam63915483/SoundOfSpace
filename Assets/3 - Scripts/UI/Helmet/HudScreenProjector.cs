@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -162,13 +163,32 @@ public class HudScreenProjector : MonoBehaviour
                 PrivateLayer.SetLayerRecursive(_rig.transform, _layer);
                 PrivateLayer.Exclude(_layer);
             }
-            if (show && (Time.frameCount & 1) == 0) _cam.Render();
+            // Rendering here, mid-LateUpdate, forced Unity to rebuild every dirty
+            // canvas and finalize all renderer bounds early (run 6 profiler: 1.5 ms
+            // + 0.8 ms per render). At end-of-frame both are already done for the
+            // main camera, so the same Render() costs a fraction. The texture is
+            // one frame behind, which a HUD never shows.
+            _renderThisFrame = show && (Time.frameCount & 1) == 0;
+            if (_eof == null) _eof = StartCoroutine(EndOfFrameRender());
         }
     }
 
     float _nextCamFind;
     float _nextLayerFix;
     int _layer = -1;
+    bool _renderThisFrame;
+    Coroutine _eof;
+    void OnDisable() { _eof = null; }
+
+    IEnumerator EndOfFrameRender()
+    {
+        var wait = new WaitForEndOfFrame();
+        while (true)
+        {
+            yield return wait;
+            if (_renderThisFrame && _cam != null) { _renderThisFrame = false; _cam.Render(); }
+        }
+    }
 
     void OnDestroy()
     {

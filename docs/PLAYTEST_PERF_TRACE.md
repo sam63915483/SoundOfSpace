@@ -133,3 +133,30 @@ Read: the GPU cost is the point lights re-drawing the planet mesh; MSAA is free
 on this GPU; the day field is CPU-bound (~9.7 ms) with grass the biggest single
 script. Applied after run 2: `PlanetLightGate` (far lights skip the planet mesh),
 tunnel cage lights never touch the moon mesh (prefab mask), fireflies vertex-lit.
+
+## 9. Runs 5-6 (20:40 / 20:50) and the final pass — what actually shipped
+
+Run 5 (after grass cache + dust + HUD half-rate): no change (75 fps). The profiler
+showed why: the two HUD render-texture cameras cost 3.4 + 2.5 ms **per render**.
+Run 6 (after giving them private layers): still 3.1 + 2.4 ms — culling was only 0.1 ms
+of it; the rest was Unity rebuilding every dirty canvas (1.5 ms) and finalizing all
+renderer bounds (0.8 ms) *inside* each mid-LateUpdate `Camera.Render()`.
+
+Shipped after run 6, all look-neutral:
+- **HUD cameras render at end of frame** (after the main camera): the rebuild and the
+  bounds work are already done by then, so the same render costs a fraction. One frame
+  of latency on the helmet HUD / thrust gauge textures.
+- **PlanetOcclusionCuller**: the moon base, tunnel rig and village are switched off
+  while a planet is between them and the camera or they are below the horizon (Sam's
+  "moon dipped behind the horizon but fps stayed low"). Their lights also go off
+  beyond 20× range (min 150 m), where they cannot reach a pixel anyway.
+- OrbitClockProbe no longer writes a CSV in real builds.
+
+Measured per-frame CPU after run 6 (dev build, profiler attached, 14.4 ms): grass 2.4,
+HUD cameras 2.8, main camera 2.8, dust 0.9, Update scripts 0.9, physics 0.7,
+canvases 0.6, profiler 0.6. Expected release build: ~10 ms in the field.
+
+**Two menu settings worth more than any remaining code change** (both measured):
+- Shadow cascades 4 → 2 and shadow distance 193 → 100: −1.6 ms in the village.
+- Grass distance 1.81× → 1.25×: ~2× fewer blades; the grass loop (2.4 ms CPU) and the
+  village's GPU cost (13 ms looking at the ground) scale with it.
