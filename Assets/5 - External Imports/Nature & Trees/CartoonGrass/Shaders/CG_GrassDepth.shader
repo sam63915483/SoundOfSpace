@@ -41,6 +41,7 @@ Shader "CartoonGrass/GrassDepth"
             #include "UnityCG.cginc"
 
             float _DepthDilatePixels;
+            float3 _GrassInstanceOffset;   // see CG_SimpleGrass.shader — planet-relative instances
 
             struct appdata
             {
@@ -53,6 +54,9 @@ Shader "CartoonGrass/GrassDepth"
             {
                 UNITY_SETUP_INSTANCE_ID(v);
                 v2f o;
+                float sideSign = sign(v.vertex.x);        // read BEFORE the offset moves x
+                float3 off = mul((float3x3)unity_WorldToObject, _GrassInstanceOffset);
+                v.vertex.xyz += off;
                 o.pos = UnityObjectToClipPos(v.vertex);
 
                 // Fatten the silhouette along the blade's screen-space WIDTH by a
@@ -66,8 +70,8 @@ Shader "CartoonGrass/GrassDepth"
                     // blade is edge-on/sub-pixel — the exact case that washes out —
                     // unlike a screen-space side test, which collapses to ~0 there
                     // (the bug in the previous version: thin blades got no widening).
-                    float4 baseClip  = UnityObjectToClipPos(float4(0.0, 0.0, 0.0, 1.0));
-                    float4 widthClip = UnityObjectToClipPos(float4(1.0, 0.0, 0.0, 1.0));
+                    float4 baseClip  = UnityObjectToClipPos(float4(off, 1.0));
+                    float4 widthClip = UnityObjectToClipPos(float4(off + float3(1.0, 0.0, 0.0), 1.0));
                     float2 wdir = widthClip.xy / max(1e-5, widthClip.w)
                                 - baseClip.xy  / max(1e-5, baseClip.w);
                     float wlen = length(wdir);
@@ -77,7 +81,7 @@ Shader "CartoonGrass/GrassDepth"
                         // 2/_ScreenParams = NDC per pixel; * o.pos.w keeps it a
                         // constant pixel amount after the perspective divide.
                         float2 ndcPerPix = 2.0 / _ScreenParams.xy;
-                        o.pos.xy += wdir * sign(v.vertex.x)
+                        o.pos.xy += wdir * sideSign
                                   * (_DepthDilatePixels * ndcPerPix) * o.pos.w;
                     }
                 }

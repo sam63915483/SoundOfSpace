@@ -81,6 +81,11 @@ Shader "CartoonGrass/SimpleGrass"
         float3 _GrassSpotCenter;     // centroid of the injected concert SPOT lights, set by InstancedGrassRenderer
         float _LanternGrassBoost;    // scales lantern/torch (omni, w=0) brightness on grass; 1/grassStrength = exactly the ground's brightness
         float3 _GrassPlanetCenter;   // set globally by InstancedGrassRenderer (per-patch colour hash)
+        // World-space offset added to every instance (InstancedGrassRenderer sets it
+        // per draw = the planet's position, and keeps its blade matrices PLANET-
+        // RELATIVE on the GPU across frames instead of rebuilding them every frame).
+        // Zero when the renderer passes full world matrices (legacy path).
+        float3 _GrassInstanceOffset;
         float _SunFillResponse;      // scales the faked sun point-light fill (sunrise/sunset grass warm-up)
         float _TerminatorGlow;       // low-sun backlight: blades at the terminator read as translucent/side-lit instead of near-black Lambert
         float _LampDaylightResponse; // how much of a lantern's grass glow survives at local noon (1 = old behaviour: full strength in daylight)
@@ -235,6 +240,10 @@ Shader "CartoonGrass/SimpleGrass"
         void vert(inout appdata_full v, out Input o)
         {
             UNITY_INITIALIZE_OUTPUT(Input, o);
+            // Planet-relative instancing: shift by the planet position in OBJECT space
+            // (R^-1 * offset) so the surface shader's worldPos, clip position and
+            // shadow receive all see the true world position. Zero in legacy mode.
+            v.vertex.xyz += mul((float3x3)unity_WorldToObject, _GrassInstanceOffset);
             float r = saturate(v.color.r);
             if (_InvertGradient > 0.5) r = 1.0 - r;
             o.gradT = saturate(pow(r, _GradientPower));

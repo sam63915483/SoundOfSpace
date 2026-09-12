@@ -399,6 +399,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         if (_active.Count == 0) return;
         foreach (var c in _active.Values) ReturnCell(c);   // no-op in baked mode; pools in live mode
         _active.Clear();
+        _pdirty = true;
     }
 
     // ── grass point-light injection ─────────────────────────────────────────
@@ -933,6 +934,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         // leftover cells still need placing on later ticks, so stay unsettled and
         // keep scanning until the area is full; otherwise the steady-state skip
         // above can engage next tick.
+        if (_scratchRemove.Count > 0 || added > 0) _pdirty = true;
         _streamSettled = _cand.Count <= maxCellsPerUpdate;
     }
 
@@ -1189,6 +1191,119 @@ public class InstancedGrassRenderer : MonoBehaviour
     // result on affine input.
     //
     // Taken by ref purely to avoid copying two 64-byte structs per call.
+    // ------------------------------------------------------------------------
+    // Persistent planet-relative batches (FeatureVault.GrassGpuBatches).
+    //
+    // The old path rebuilt every blade's world matrix and re-copied it into the
+    // 1023-blade batch arrays EVERY frame (2.4 ms/frame at grass 1.81x on the
+    // laptop). The planet never spins, so a blade's rotation x local matrix never
+    // changes; only the planet's position does. So the batches hold rotation x
+    // local (translation = 0, i.e. positions relative to the planet centre) and
+    // are rebuilt only when the active cell set changes (streaming, ~10 Hz while
+    // walking, never while standing) or the viewer moved a cell (density fade).
+    // The planet position goes to the shader per draw as _GrassInstanceOffset,
+    // which CG_SimpleGrass / CG_GrassDepth add back in object space. Frustum
+    // culling is per batch (cells are sorted by id, so batches are spatial
+    // strips) with bounds from the actual blade positions.
+    class PBatch { public Matrix4x4[] mats = new Matrix4x4[1023]; public int count; public int mesh; public Vector3 bmin, bmax; }
+    readonly List<PBatch> _pbatches = new List<PBatch>();
+    readonly Stack<PBatch> _pbatchPool = new Stack<PBatch>();
+    readonly List<long> _pkeys = new List<long>(4096);
+    PBatch[] _pcur;
+    bool _pdirty = true;
+    Vector3 _pBuildViewer;
+    int _pBuildRotStamp = -1;
+    MaterialPropertyBlock _pmpb;
+    static readonly int _grassInstanceOffsetId = Shader.PropertyToID("_GrassInstanceOffset");
+
+    void EnsureCellWorld(Cell cell, ref Matrix4x4 rot)
+    {
+        if (cell.worldStamp == _rotStamp && cell.world.Count == cell.local.Count) return;
+        cell.world.Clear();
+        for (int k = 0; k < cell.local.Count; k++) { Matrix4x4 bl = cell.local[k]; cell.world.Add(MulAffine(ref rot, ref bl)); }
+        cell.worldStamp = _rotStamp;
+    }
+
+    PBatch RentBatch(int mesh)
+    {
+        PBatch b = _pbatchPool.Count > 0 ? _pbatchPool.Pop() : new PBatch();
+        b.count = 0; b.mesh = mesh;
+        b.bmin = new Vector3(float.MaxValue, float.MaxValue, float.MaxValue);
+        b.bmax = new Vector3(float.MinValue, float.MinValue, float.MinValue);
+        return b;
+    }
+
+    void RebuildPersistent(ref Matrix4x4 rot, Vector3 vLocal, bool haveViewer, float fadeStart, float fadeRange)
+    {
+        for (int i = 0; i < _pbatches.Count; i++) _pbatchPool.Push(_pbatches[i]);
+        _pbatches.Clear();
+        if (_pcur == null || _pcur.Length != grassMeshes.Length) _pcur = new PBatch[grassMeshes.Length];
+        for (int m = 0; m < _pcur.Length; m++) _pcur[m] = null;
+
+        _pkeys.Clear();
+        foreach (var kv in _active) _pkeys.Add(kv.Key);
+        _pkeys.Sort();
+        float margin = Mathf.Max(1f, maxScale * 3f);
+        for (int i = 0; i < _pkeys.Count; i++)
+        {
+            var cell = _active[_pkeys[i]];
+            EnsureCellWorld(cell, ref rot);
+            int n = cell.local.Count;
+            if (densityFade && n > 0 && haveViewer)
+            {
+                float d = (cell.localAnchor - vLocal).magnitude;
+                float f = Mathf.Clamp01((spawnRadius - d) / fadeRange);
+                f = Mathf.Max(f, densityFadeFloor);
+                n = Mathf.Min(n, Mathf.CeilToInt(n * f));
+            }
+            var world = cell.world;
+            for (int k = 0; k < n; k++)
+            {
+                int m = cell.mesh[k];
+                if (m < 0 || m >= _pcur.Length) continue;
+                var b = _pcur[m];
+                if (b == null) { b = RentBatch(m); _pcur[m] = b; }
+                Matrix4x4 w = world[k];
+                b.mats[b.count++] = w;
+                float px = w.m03, py = w.m13, pz = w.m23;
+                if (px - margin < b.bmin.x) b.bmin.x = px - margin; if (px + margin > b.bmax.x) b.bmax.x = px + margin;
+                if (py - margin < b.bmin.y) b.bmin.y = py - margin; if (py + margin > b.bmax.y) b.bmax.y = py + margin;
+                if (pz - margin < b.bmin.z) b.bmin.z = pz - margin; if (pz + margin > b.bmax.z) b.bmax.z = pz + margin;
+                if (b.count == 1023) { _pbatches.Add(b); _pcur[m] = null; }
+            }
+        }
+        for (int m = 0; m < _pcur.Length; m++)
+            if (_pcur[m] != null) { if (_pcur[m].count > 0) _pbatches.Add(_pcur[m]); else _pbatchPool.Push(_pcur[m]); _pcur[m] = null; }
+        _pdirty = false;
+        _pBuildViewer = vLocal;
+        _pBuildRotStamp = _rotStamp;
+    }
+
+    void DrawPersistent(ref Matrix4x4 rot, Vector3 t, bool cull, CommandBuffer depthCB, Vector3 vLocal, bool haveViewer, float fadeStart, float fadeRange)
+    {
+        if (_pdirty || _pBuildRotStamp != _rotStamp
+            || (haveViewer && densityFade && (vLocal - _pBuildViewer).sqrMagnitude > cellSize * cellSize))
+            RebuildPersistent(ref rot, vLocal, haveViewer, fadeStart, fadeRange);
+
+        if (_pmpb == null) _pmpb = new MaterialPropertyBlock();
+        _pmpb.SetVector(_grassInstanceOffsetId, t);
+        _pmpb.SetVector(_grassPlanetCenterId, _body.transform.position);
+        Bounds wb = new Bounds();
+        for (int i = 0; i < _pbatches.Count; i++)
+        {
+            var b = _pbatches[i];
+            if (b.count == 0) continue;
+            if (cull)
+            {
+                wb.SetMinMax(b.bmin + t, b.bmax + t);
+                if (!GeometryUtility.TestPlanesAABB(_planes, wb)) continue;
+            }
+            Graphics.DrawMeshInstanced(grassMeshes[b.mesh], 0, grassMaterial, b.mats, b.count, _pmpb,
+                                       ShadowCastingMode.Off, receiveShadows);
+            if (depthCB != null) depthCB.DrawMeshInstanced(grassMeshes[b.mesh], 0, _depthMat, 0, b.mats, b.count, _pmpb);
+        }
+    }
+
     static Matrix4x4 MulAffine(ref Matrix4x4 a, ref Matrix4x4 b)
     {
         Matrix4x4 r;
@@ -1255,6 +1370,11 @@ public class InstancedGrassRenderer : MonoBehaviour
         float fadeRange = Mathf.Max(0.01f, spawnRadius - fadeStart);
         float noCullSq = noCullRadius * noCullRadius;
 
+        if (FeatureVault.GrassGpuBatches && useCache)
+        {
+            DrawPersistent(ref rot, new Vector3(tx, ty, tz), cull, depthCB, vLocal, haveViewer, fadeStart, fadeRange);
+            return;
+        }
         for (int i = 0; i < _counts.Length; i++) _counts[i] = 0;
 
         foreach (var cell in _active.Values)
@@ -1275,12 +1395,7 @@ public class InstancedGrassRenderer : MonoBehaviour
                 f = Mathf.Max(f, densityFadeFloor);                     // never thin to see-through
                 n = Mathf.Min(n, Mathf.CeilToInt(n * f));
             }
-            if (useCache && (cell.worldStamp != _rotStamp || cell.world.Count != cell.local.Count))
-            {
-                cell.world.Clear();
-                for (int k = 0; k < cell.local.Count; k++) { Matrix4x4 bl = cell.local[k]; cell.world.Add(MulAffine(ref rot, ref bl)); }
-                cell.worldStamp = _rotStamp;
-            }
+            if (useCache) EnsureCellWorld(cell, ref rot);
             var world = cell.world;
             for (int k = 0; k < n; k++)
             {

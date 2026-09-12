@@ -45,6 +45,13 @@ public static class FeatureVault
     /// the single mesh back instantly (nothing else changes).
     public static readonly bool PlanetChunks = true;
 
+    /// Grass blade matrices kept planet-relative and reused across frames
+    /// (InstancedGrassRenderer, 2026-09-11) instead of being rebuilt per blade
+    /// per frame (2.4 ms on the laptop). Requires the _GrassInstanceOffset
+    /// support in CG_SimpleGrass / CG_GrassDepth. Flip to false for the old
+    /// per-frame path.
+    public static readonly bool GrassGpuBatches = true;
+
     /// OpeningDirector's six survival beats (locker → water → wood → fire →
     /// build → village). Built and compile-verified, never play-tested.
     public static readonly bool OpeningBeats = false;
