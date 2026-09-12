@@ -8,10 +8,13 @@ using UnityEngine.SceneManagement;
 /// ten back to back is ten minutes of trouble tapering off. Everything below
 /// is a smooth function of the live level, so it ramps, never steps:
 ///
-///   level  | woozy blur | colour shift | sway | burps      | self-turning
-///   1-2    | light      | a little     | mild | every ~25s | none
-///   5      | strong     | clear        | big  | every ~14s | starts (tiny)
-///   10     | full       | peak         | max  | every ~4s  | worst
+///   level  | woozy blur | colour shift | sway | extra burps | self-turning
+///   1-2    | light      | a little     | mild | none        | none
+///   5      | strong     | clear        | big  | every ~20s  | starts (tiny)
+///   10     | full       | peak         | max  | every ~4s   | worst
+///
+/// (Every finished beer burps once by itself — BeerCupController does that.
+/// The timer here is the EXTRA burping, and only past burpFrom beers.)
 ///
 /// The pieces, all borrowed from effects the game already has:
 ///   • blur + double vision — <see cref="GrogginessImageEffect"/> (the pod
@@ -56,8 +59,9 @@ public class BeerBuzz : MonoBehaviour
     [Header("Self-turning (degrees per second at 10 beers; starts at driftFrom beers)")]
     public float driftFrom = 4f;
     public float driftDegPerSecAtMax = 8f;
-    [Header("Burps (seconds between, at 1 beer and at 10)")]
-    public float burpEveryAtOne = 28f;
+    [Header("Extra burps (only from burpFrom beers up; seconds between at burpFrom and at 10)")]
+    public float burpFrom = 5f;
+    public float burpEveryAtStart = 20f;
     public float burpEveryAtMax = 4f;
 
     // runtime
@@ -108,7 +112,6 @@ public class BeerBuzz : MonoBehaviour
     public void AddBeer()
     {
         Beers = Mathf.Min(MaxBeers, Beers + 1f);
-        if (_nextBurp <= 0f) _nextBurp = Time.time + 2f;
         OnChanged?.Invoke();
     }
 
@@ -192,7 +195,8 @@ public class BeerBuzz : MonoBehaviour
             }
         }
 
-        // ── burps
+        // ── extra burps, only once properly drunk
+        if (level < burpFrom) { _nextBurp = 0f; return; }
         if (_nextBurp <= 0f) _nextBurp = Time.time + BurpInterval(level);
         if (Time.time >= _nextBurp)
         {
@@ -203,8 +207,8 @@ public class BeerBuzz : MonoBehaviour
 
     float BurpInterval(float level)
     {
-        float t = Mathf.InverseLerp(1f, MaxBeers, Mathf.Max(1f, level));
-        float every = Mathf.Lerp(burpEveryAtOne, burpEveryAtMax, t);
+        float t = Mathf.InverseLerp(burpFrom, MaxBeers, level);
+        float every = Mathf.Lerp(burpEveryAtStart, burpEveryAtMax, t);
         return every * UnityEngine.Random.Range(0.7f, 1.3f);
     }
 

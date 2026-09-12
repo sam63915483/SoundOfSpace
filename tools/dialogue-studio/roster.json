@@ -78,9 +78,9 @@
       "where": "Village — House_03 (the pub), behind the counter; body pre-placed in the Editor",
       "script": "NPC_Dialogue/BartenderTalk.cs (AuthoredNPCTalk) — pre-placed Alien1 body",
       "hook": "full",
-      "probes": { "cupOnCounter": "a full beer is already on the bar", "holdingCup": "the player owns a cup (any fill)", "cupEmptyInHand": "the player's cup is empty" },
-      "actions": { "pourBeer": "a full cup appears in the middle of the counter" },
-      "notes": "Beer is $10 (MoneyAtLeast 10 / SpendMoney 10 in the graph). He only refuses while a full beer is still standing in the middle of the counter (probe cupOnCounter). You can carry several. Holding an empty cup + looking at the counter = green highlight + ghost; F sets it down, it fades after 5 s."
+      "probes": { "counterFull": "no free beer slot on the bar", "roomFor2..5": "at least N free slots (gates the buy-N buttons)", "cupOnCounter": "any full beer on the bar", "holdingCup": "the player carries a beer or an empty", "cupEmptyInHand": "the cup in hand is empty" },
+      "actions": { "pourBeer": "one beer onto the bar, middle first", "pourBeer2..5": "that many beers" },
+      "notes": "Beer is $10 each (MoneyAtLeast 10N / SpendMoney 10N per buy node). The bar is a grid of slots (BarCounter.slotSpacing); he only refuses when it is full. Buy buttons for 2-5 show only while there is room. Holding an empty cup + looking at the counter = green highlight + ghost; F sets it down, it fades after 5 s."
     },
     "npc_fishmarket": {
       "name": "Fish Vendor",

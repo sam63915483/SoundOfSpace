@@ -65,7 +65,12 @@
     "firstTimeDone":   { "npc": "npc_bonfire",    "desc": "the bonfire alien's first-meeting flag (saved)" },
     "holdingCassette": { "npc": "npc_alien3",     "desc": "player is holding a cassette" },
     "bountyTurnedIn":  { "npc": "npc_fishmarket", "desc": "GRULABU bounty already paid" },
-    "cupOnCounter":    { "npc": "npc_shlawg",  "desc": "a full beer is already standing on the bar" },
+    "cupOnCounter":    { "npc": "npc_shlawg",  "desc": "at least one full beer is standing on the bar" },
+    "counterFull":     { "npc": "npc_shlawg",  "desc": "no free beer slot left on the bar" },
+    "roomFor2":        { "npc": "npc_shlawg",  "desc": "at least 2 free slots on the bar", "defaultTrue": true },
+    "roomFor3":        { "npc": "npc_shlawg",  "desc": "at least 3 free slots on the bar", "defaultTrue": true },
+    "roomFor4":        { "npc": "npc_shlawg",  "desc": "at least 4 free slots on the bar", "defaultTrue": true },
+    "roomFor5":        { "npc": "npc_shlawg",  "desc": "at least 5 free slots on the bar", "defaultTrue": true },
     "holdingCup":      { "npc": "npc_shlawg",  "desc": "the player owns a cup right now (any fill)" },
     "cupEmptyInHand":  { "npc": "npc_shlawg",  "desc": "the player's cup is empty" }
   },
@@ -85,7 +90,15 @@
                             "sim": [ { "op": "setProbe", "name": "holdingCassette", "value": false }, { "op": "addItem", "item": "FishingRod", "count": 1 }, { "op": "note", "text": "Cassette taken, fishing rod equipped. He won't offer to talk again." } ] },
     "giveGuitar":         { "npc": "npc_guitarshop", "desc": "equips the guitar; shop is done",
                             "sim": [ { "op": "addItem", "item": "Guitar", "count": 1 }, { "op": "note", "text": "Guitar equipped. Shop closed for good." } ] },
-    "pourBeer":           { "npc": "npc_shlawg",  "desc": "a full beer appears on the bar counter",
-                            "sim": [ { "op": "setProbe", "name": "cupOnCounter", "value": true }, { "op": "note", "text": "A full cup of beer is set on the bar. Look at it and press F to pick it up." } ] }
+    "pourBeer":           { "npc": "npc_shlawg",  "desc": "one beer onto the bar (middle first)",
+                            "sim": [ { "op": "setProbe", "name": "cupOnCounter", "value": true }, { "op": "note", "text": "A beer is set on the bar. Look at it and press F." } ] },
+    "pourBeer2":          { "npc": "npc_shlawg",  "desc": "two beers onto the bar",
+                            "sim": [ { "op": "setProbe", "name": "cupOnCounter", "value": true }, { "op": "note", "text": "Two beers on the bar." } ] },
+    "pourBeer3":          { "npc": "npc_shlawg",  "desc": "three beers onto the bar",
+                            "sim": [ { "op": "setProbe", "name": "cupOnCounter", "value": true }, { "op": "note", "text": "Three beers on the bar." } ] },
+    "pourBeer4":          { "npc": "npc_shlawg",  "desc": "four beers onto the bar",
+                            "sim": [ { "op": "setProbe", "name": "cupOnCounter", "value": true }, { "op": "note", "text": "Four beers on the bar." } ] },
+    "pourBeer5":          { "npc": "npc_shlawg",  "desc": "five beers onto the bar",
+                            "sim": [ { "op": "setProbe", "name": "cupOnCounter", "value": true }, { "op": "note", "text": "Five beers on the bar." } ] }
   }
 }

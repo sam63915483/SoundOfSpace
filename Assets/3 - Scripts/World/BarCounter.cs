@@ -8,9 +8,11 @@ using UnityEngine;
 ///
 /// Three jobs:
 ///   • <see cref="PourBeer"/> — called by the bartender's dialogue (Custom
-///     effect "pourBeer") after the money is taken: a full cup with a
-///     <see cref="BeerCupPickup"/> appears in the middle of the top face. The
-///     bartender refuses while one is still standing there (<see cref="HasFullCup"/>).
+///     effects "pourBeer" … "pourBeer5") after the money is taken: full cups
+///     with a <see cref="BeerCupPickup"/> each appear on a grid of SLOTS across
+///     the top face, middle first, working outward. The bartender only refuses
+///     when every slot is taken (<see cref="IsFull"/>); reply buttons for N
+///     beers show only while <see cref="FreeSlots"/> ≥ N.
 ///   • While the player holds an EMPTY cup and looks at the counter, the
 ///     counter tints green and a translucent ghost cup follows the crosshair
 ///     across the top face. F sets the empty cup down right there.
@@ -57,8 +59,13 @@ public class BarCounter : Interactable
     public float triggerRadius = 3.5f;
     [Tooltip("Furthest the crosshair reaches the counter top from (metres).")]
     public float reach = 5f;
+    [Tooltip("Distance between beer slots on the counter top (metres). The cup is ~0.27 m across.")]
+    public float slotSpacing = 0.45f;
+    [Tooltip("Hard cap on how many beers the counter can hold at once.")]
+    public int maxSlots = 30;
 
-    GameObject _fullCup;             // the beer waiting in the middle (null = none)
+    Vector3[] _slotLocal;            // counter-local slot centres on the top face, middle first
+    GameObject[] _slotCup;           // the full beer standing in each slot (null = free)
     GameObject _ghost;
     Material _ghostMat;
     Renderer[] _ownRenderers;        // the counter's own renderers, captured before any cup exists
@@ -70,7 +77,11 @@ public class BarCounter : Interactable
     float _nextCamRetry;
     Bounds _meshBounds;              // counter-local
 
-    public bool HasFullCup => _fullCup != null;
+    /// Any full beer standing on the counter.
+    public bool HasFullCup { get { for (int i = 0; i < SlotCount; i++) if (_slotCup[i] != null) return true; return false; } }
+    public int SlotCount => _slotLocal != null ? _slotLocal.Length : 0;
+    public int FreeSlots { get { int n = 0; for (int i = 0; i < SlotCount; i++) if (_slotCup[i] == null) n++; return n; } }
+    public bool IsFull => SlotCount > 0 && FreeSlots == 0;
 
     void Awake()
     {
@@ -85,6 +96,8 @@ public class BarCounter : Interactable
             _meshBounds = box != null ? new Bounds(box.center, box.size) : new Bounds(Vector3.zero, Vector3.one);
         }
 
+        BuildSlots();
+
         bool hasTrigger = false;
         foreach (var c in GetComponentsInChildren<Collider>(true))
             if (c.isTrigger) { hasTrigger = true; break; }
@@ -97,6 +110,41 @@ public class BarCounter : Interactable
 
         // The analytic crosshair test below is the gaze gate (see the class doc).
         requireGazeToInteract = false;
+    }
+
+    /// A grid of cup positions across the top face, spaced slotSpacing metres
+    /// apart in WORLD terms and sorted middle-first, so the first beer lands
+    /// dead centre and the bar fills outward.
+    void BuildSlots()
+    {
+        Vector3 s = transform.lossyScale;
+        float mx = edgeMargin / Mathf.Max(0.0001f, Mathf.Abs(s.x));
+        float mz = edgeMargin / Mathf.Max(0.0001f, Mathf.Abs(s.z));
+        float sx = slotSpacing / Mathf.Max(0.0001f, Mathf.Abs(s.x));
+        float sz = slotSpacing / Mathf.Max(0.0001f, Mathf.Abs(s.z));
+        float minX = _meshBounds.min.x + mx, maxX = _meshBounds.max.x - mx;
+        float minZ = _meshBounds.min.z + mz, maxZ = _meshBounds.max.z - mz;
+        int nx = Mathf.Max(1, Mathf.FloorToInt((maxX - minX) / sx) + 1);
+        int nz = Mathf.Max(1, Mathf.FloorToInt((maxZ - minZ) / sz) + 1);
+        var c = _meshBounds.center;
+        var list = new List<Vector3>(nx * nz);
+        for (int ix = 0; ix < nx; ix++)
+            for (int iz = 0; iz < nz; iz++)
+            {
+                float x = nx == 1 ? c.x : c.x + (ix - (nx - 1) * 0.5f) * sx;
+                float z = nz == 1 ? c.z : c.z + (iz - (nz - 1) * 0.5f) * sz;
+                list.Add(new Vector3(x, _meshBounds.max.y, z));
+            }
+        // Middle first (world distances so a long thin bar still fills sensibly).
+        list.Sort((a, b) =>
+        {
+            float da = (transform.TransformPoint(a) - TopCenterWorld()).sqrMagnitude;
+            float db = (transform.TransformPoint(b) - TopCenterWorld()).sqrMagnitude;
+            return da.CompareTo(db);
+        });
+        if (list.Count > Mathf.Max(1, maxSlots)) list.RemoveRange(maxSlots, list.Count - maxSlots);
+        _slotLocal = list.ToArray();
+        _slotCup = new GameObject[_slotLocal.Length];
     }
 
     void OnEnable()  { if (!All.Contains(this)) All.Add(this); }
@@ -184,36 +232,43 @@ public class BarCounter : Interactable
 
     // ── pouring ───────────────────────────────────────────────────
 
-    /// <summary>A fresh full beer in the middle of the counter. False if there is no cup prefab.</summary>
-    public bool PourBeer()
+    /// <summary>Pour <paramref name="count"/> beers into free slots, middle first. Returns how many were poured.</summary>
+    public int PourBeer(int count = 1)
     {
         var ctrl = Controller();
         var prefab = cupPrefab != null ? cupPrefab : (ctrl != null ? ctrl.cupPrefab : null);
         if (prefab == null)
         {
             Debug.LogWarning("[BarCounter] no cup prefab (assign cupPrefab here or on BeerCupController).", this);
-            return false;
+            return 0;
         }
+        if (_slotLocal == null) BuildSlots();
 
-        if (_fullCup != null) Destroy(_fullCup);
-        _fullCup = SpawnCup(prefab, TopCenterWorld(), true);
-        _fullCup.name = "BeerCup(Full)";
-
-        if (ctrl != null)
-            BeerCupArt.AttachLiquid(_fullCup, ctrl.liquidAxis, ctrl.liquidRadius,
-                                    ctrl.liquidFloorY, ctrl.liquidFullY, ctrl.foamThickness, 1f);
-        else
-            BeerCupArt.AttachLiquid(_fullCup, new Vector3(0.005f, 0f, -0.001f), 0.07f, 0.035f, 0.19f, 0.02f, 1f);
-
-        var pickup = _fullCup.AddComponent<BeerCupPickup>();
-        pickup.counter = this;
-        return true;
+        int poured = 0;
+        for (int i = 0; i < SlotCount && poured < count; i++)
+        {
+            if (_slotCup[i] != null) continue;
+            var cup = SpawnCup(prefab, transform.TransformPoint(_slotLocal[i]), true);
+            cup.name = "BeerCup(Full)";
+            if (ctrl != null)
+                BeerCupArt.AttachLiquid(cup, ctrl.liquidAxis, ctrl.liquidRadius,
+                                        ctrl.liquidFloorY, ctrl.liquidFullY, ctrl.foamThickness, 1f);
+            else
+                BeerCupArt.AttachLiquid(cup, new Vector3(0.005f, 0f, -0.001f), 0.07f, 0.035f, 0.19f, 0.02f, 1f);
+            var pickup = cup.AddComponent<BeerCupPickup>();
+            pickup.counter = this;
+            _slotCup[i] = cup;
+            poured++;
+        }
+        return poured;
     }
 
-    /// <summary>The pickup took the beer off the counter.</summary>
+    /// <summary>The pickup took a beer off the counter; its slot is free again.</summary>
     public void NotifyCupTaken(BeerCupPickup p)
     {
-        if (_fullCup != null && p != null && p.gameObject == _fullCup) _fullCup = null;
+        if (p == null) return;
+        for (int i = 0; i < SlotCount; i++)
+            if (_slotCup[i] == p.gameObject) { _slotCup[i] = null; return; }
     }
 
     GameObject SpawnCup(GameObject prefab, Vector3 worldPos, bool keepColliders)

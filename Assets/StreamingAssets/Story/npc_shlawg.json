@@ -3,10 +3,10 @@
   "kind": "npc",
   "displayName": "Shlawg",
   "testPresets": [
-    { "name": "Has money ($50)", "flags": [], "money": 50, "items": [], "probes": [] },
-    { "name": "Broke ($3)", "flags": [], "money": 3, "items": [], "probes": [] },
-    { "name": "Beer already on the bar", "flags": [], "money": 50, "items": [], "probes": ["cupOnCounter"] },
-    { "name": "Holding an empty cup", "flags": [], "money": 50, "items": [], "probes": ["holdingCup", "cupEmptyInHand"] }
+    { "name": "Has money ($50), bar empty", "flags": [], "money": 50, "items": [], "probes": ["roomFor2", "roomFor3", "roomFor4", "roomFor5"] },
+    { "name": "Broke ($3)", "flags": [], "money": 3, "items": [], "probes": ["roomFor2", "roomFor3", "roomFor4", "roomFor5"] },
+    { "name": "Only room for 2", "flags": [], "money": 50, "items": [], "probes": ["roomFor2", "cupOnCounter"] },
+    { "name": "Bar is full", "flags": [], "money": 50, "items": [], "probes": ["counterFull", "cupOnCounter"] }
   ],
   "nodes": [
     {
@@ -14,7 +14,7 @@
       "speaker": "Shlawg",
       "lines": [],
       "routes": [
-        { "conditions": [ { "kind": "Probe", "arg": "cupOnCounter", "num": 0, "negate": false } ], "nextNodeId": "waiting" }
+        { "conditions": [ { "kind": "Probe", "arg": "counterFull", "num": 0, "negate": false } ], "nextNodeId": "full" }
       ],
       "nextNodeId": "greet",
       "responses": []
@@ -24,7 +24,15 @@
       "speaker": "Shlawg",
       "lines": [ "What'll it be?" ],
       "responses": [
-        { "buttonText": "A beer. ($10)", "nextNodeId": "buy" },
+        { "buttonText": "One beer. ($10)", "nextNodeId": "buy1" },
+        { "buttonText": "Two beers. ($20)", "nextNodeId": "buy2",
+          "conditions": [ { "kind": "Probe", "arg": "roomFor2", "num": 0, "negate": false } ] },
+        { "buttonText": "Three beers. ($30)", "nextNodeId": "buy3",
+          "conditions": [ { "kind": "Probe", "arg": "roomFor3", "num": 0, "negate": false } ] },
+        { "buttonText": "Four beers. ($40)", "nextNodeId": "buy4",
+          "conditions": [ { "kind": "Probe", "arg": "roomFor4", "num": 0, "negate": false } ] },
+        { "buttonText": "Five beers. ($50)", "nextNodeId": "buy5",
+          "conditions": [ { "kind": "Probe", "arg": "roomFor5", "num": 0, "negate": false } ] },
         { "buttonText": "Nothing, just looking.", "nextNodeId": "bye" }
       ]
     },
@@ -35,35 +43,105 @@
       "responses": []
     },
     {
-      "id": "buy",
+      "id": "buy1",
       "speaker": "Shlawg",
       "lines": [],
-      "routes": [
-        { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 10, "negate": true } ], "nextNodeId": "broke" }
-      ],
-      "nextNodeId": "buy_do",
+      "routes": [ { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 10, "negate": true } ], "nextNodeId": "broke" } ],
+      "nextNodeId": "pour1",
       "responses": []
     },
     {
-      "id": "buy_do",
+      "id": "pour1",
       "speaker": "Shlawg",
       "onEnter": [
         { "kind": "SpendMoney", "strArg": "", "numArg": 10, "boolArg": false },
         { "kind": "Custom", "strArg": "pourBeer", "numArg": 0, "boolArg": false }
       ],
-      "lines": [ "Coming right up.", "There you go. It's on the bar." ],
+      "lines": [ "Coming right up." ],
+      "responses": []
+    },
+    {
+      "id": "buy2",
+      "speaker": "Shlawg",
+      "lines": [],
+      "routes": [ { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 20, "negate": true } ], "nextNodeId": "broke" } ],
+      "nextNodeId": "pour2",
+      "responses": []
+    },
+    {
+      "id": "pour2",
+      "speaker": "Shlawg",
+      "onEnter": [
+        { "kind": "SpendMoney", "strArg": "", "numArg": 20, "boolArg": false },
+        { "kind": "Custom", "strArg": "pourBeer2", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [ "Two. Coming up." ],
+      "responses": []
+    },
+    {
+      "id": "buy3",
+      "speaker": "Shlawg",
+      "lines": [],
+      "routes": [ { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 30, "negate": true } ], "nextNodeId": "broke" } ],
+      "nextNodeId": "pour3",
+      "responses": []
+    },
+    {
+      "id": "pour3",
+      "speaker": "Shlawg",
+      "onEnter": [
+        { "kind": "SpendMoney", "strArg": "", "numArg": 30, "boolArg": false },
+        { "kind": "Custom", "strArg": "pourBeer3", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [ "Three. Big night." ],
+      "responses": []
+    },
+    {
+      "id": "buy4",
+      "speaker": "Shlawg",
+      "lines": [],
+      "routes": [ { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 40, "negate": true } ], "nextNodeId": "broke" } ],
+      "nextNodeId": "pour4",
+      "responses": []
+    },
+    {
+      "id": "pour4",
+      "speaker": "Shlawg",
+      "onEnter": [
+        { "kind": "SpendMoney", "strArg": "", "numArg": 40, "boolArg": false },
+        { "kind": "Custom", "strArg": "pourBeer4", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [ "Four. Don't fly anywhere." ],
+      "responses": []
+    },
+    {
+      "id": "buy5",
+      "speaker": "Shlawg",
+      "lines": [],
+      "routes": [ { "conditions": [ { "kind": "MoneyAtLeast", "arg": "", "num": 50, "negate": true } ], "nextNodeId": "broke" } ],
+      "nextNodeId": "pour5",
+      "responses": []
+    },
+    {
+      "id": "pour5",
+      "speaker": "Shlawg",
+      "onEnter": [
+        { "kind": "SpendMoney", "strArg": "", "numArg": 50, "boolArg": false },
+        { "kind": "Custom", "strArg": "pourBeer5", "numArg": 0, "boolArg": false }
+      ],
+      "lines": [ "Five. Your funeral." ],
       "responses": []
     },
     {
       "id": "broke",
       "speaker": "Shlawg",
-      "lines": [ "Ten. You don't have ten.", "Come back when you've sold some fish." ],
+      "lines": [ "You don't have that kind of money.", "Come back when you've sold some fish." ],
       "responses": []
     },
     {
-      "id": "waiting",
+      "id": "full",
       "speaker": "Shlawg",
-      "lines": [ "Your beer's right there on the bar. Grab it first." ],
+      "lines": [ "No room on the bar. Drink what you've got first." ],
       "responses": []
     }
   ]
