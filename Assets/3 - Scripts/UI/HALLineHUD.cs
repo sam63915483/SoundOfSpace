@@ -492,6 +492,7 @@ public class HALLineHUD : MonoBehaviour
         }
 
         if (_eye == null) return;
+        if (IsIdle && (_group == null || _group.alpha <= 0f)) return;   // hidden: don't re-batch the canvas for an invisible pulse
         float phase = Time.unscaledTime * 0.8f;
         float coreA = 0.7f + 0.3f * (Mathf.Sin(phase) * 0.5f + 0.5f);
         var c = _eye.color; c.a = coreA; _eye.color = c;

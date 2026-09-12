@@ -57,6 +57,7 @@ public class GalaxyTimeHUD : MonoBehaviour
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     static void AutoCreate()
     {
+        if (!FeatureVault.GalaxyClockHUD) return;
         if (Instance != null) return;
         // Trap #1: never fires in a build (first scene is MainMenu), so this is
         // ALSO seeded from MainMenuController.EnsureGameplaySingletons.

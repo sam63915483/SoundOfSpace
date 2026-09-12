@@ -63,6 +63,12 @@ public static class FeatureVault
     /// off on sub-35 cm renderers. Flip to false to get every original back.
     public static readonly bool ClusterCombine = true;
 
+    /// The galaxy clock HUD (GalaxyTimeHUD). VAULTED 2026-09-12 (Sam): each planet
+    /// has its own day clock now and Humble Abode's is the one the game runs on,
+    /// so the galactic readout is redundant. GalaxyTime itself keeps ticking —
+    /// Tev's rent and the day recap still read it. Only the on-screen card is gone.
+    public static readonly bool GalaxyClockHUD = false;
+
     /// OpeningDirector's six survival beats (locker → water → wood → fire →
     /// build → village). Built and compile-verified, never play-tested.
     public static readonly bool OpeningBeats = false;

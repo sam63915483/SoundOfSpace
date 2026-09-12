@@ -185,7 +185,8 @@ public class ControllerUINavigator : MonoBehaviour
         // a glance the panel is awaiting your input rather than frozen).
         while (this != null)
         {
-            if (borderImage != null && borderImage.gameObject.activeInHierarchy)
+            if (borderImage != null && borderImage.gameObject.activeInHierarchy
+                && borderImage.canvas != null && borderImage.canvas.enabled)     // a disabled canvas still re-batches on every colour write
             {
                 float t = (Mathf.Sin(Time.unscaledTime * 4f) + 1f) * 0.5f;
                 var c = borderImage.color;

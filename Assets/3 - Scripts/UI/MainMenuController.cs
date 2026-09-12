@@ -1090,7 +1090,7 @@ public class MainMenuController : MonoBehaviour
         tick("planet oxygen");    yield return null;
         if (GalaxyTime.Instance == null) { var go = new GameObject("GalaxyTime"); DontDestroyOnLoad(go); go.AddComponent<GalaxyTime>(); }
         tick("galactic time");    yield return null;
-        if (GalaxyTimeHUD.Instance == null) { var go = new GameObject("GalaxyTimeHUD"); DontDestroyOnLoad(go); go.AddComponent<GalaxyTimeHUD>(); }
+        if (FeatureVault.GalaxyClockHUD && GalaxyTimeHUD.Instance == null) { var go = new GameObject("GalaxyTimeHUD"); DontDestroyOnLoad(go); go.AddComponent<GalaxyTimeHUD>(); }
         tick("clock HUD");        yield return null;
         if (TevRentCollector.Instance == null) { var go = new GameObject("TevRentCollector"); DontDestroyOnLoad(go); go.AddComponent<TevRentCollector>(); }
         tick("rent collector");   yield return null;
