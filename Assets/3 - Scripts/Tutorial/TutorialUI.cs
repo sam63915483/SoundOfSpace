@@ -525,6 +525,7 @@ public class TutorialUI : MonoBehaviour
         // vertical inset. Pulse animation in BorderPulse() keeps the cyan
         // gently breathing so the active-tutorial pill reads as "alive".
         var accentRT = NewUI("AccentBar", pillRect);
+        UiIsolate.Nest(accentRT); // animated every frame
         accentRT.anchorMin = new Vector2(0f, 0f);
         accentRT.anchorMax = new Vector2(0f, 1f);
         accentRT.pivot = new Vector2(0f, 0.5f);

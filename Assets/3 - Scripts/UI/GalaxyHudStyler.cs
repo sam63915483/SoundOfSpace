@@ -184,6 +184,7 @@ public class GalaxyHudStyler : MonoBehaviour
         // hide the original so it doesn't fight with the nebula background.
         var panelImg = panel.GetComponent<Image>();
         if (panelImg != null) panelImg.color = new Color(0f, 0f, 0f, 0f);
+        UiIsolate.Nest(panel);   // twinkling stars + border animate every frame: keep the rebuild off HUD_Canvas
 
         // Layer 1 — Outer cosmic glow (extends ~28px past the panel).
         var glow = NewDecor("__GalaxyGlow", panel);

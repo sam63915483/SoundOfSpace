@@ -98,6 +98,7 @@ public class HudScreenProjector : MonoBehaviour
         _warp.color = Color.white;
         _warp.raycastTarget = false;
         _warp.SetTexture(_rt);
+        UiIsolate.Nest(_warp.rectTransform);   // the warp re-meshes on every shade/reveal step
         // Gain 1.0 — must match the frame art's sway exactly, or the content
         // slides off the painted screens (cards used 0.85 for parallax back
         // when they floated on their own).

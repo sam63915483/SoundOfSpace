@@ -127,6 +127,7 @@ public class GalaxyTimeHUD : MonoBehaviour
         scanRT.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
 
         var border = NewUI("Border", card);
+        UiIsolate.Nest(border);   // animated every frame
         Stretch(border);
         var borderImg = border.gameObject.AddComponent<Image>();
         borderImg.sprite = UIPanelSprites.GetBeveledOutline();
@@ -143,6 +144,7 @@ public class GalaxyTimeHUD : MonoBehaviour
         led.sizeDelta = new Vector2(3f, -14f);
         led.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
         _led = led.gameObject.AddComponent<Image>();
+        UiIsolate.Nest(led);      // blinks every frame
         _led.color = HelmetHudPalette.Accent;
         _led.raycastTarget = false;
 

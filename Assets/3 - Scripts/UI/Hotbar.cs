@@ -2614,6 +2614,7 @@ public class Hotbar : MonoBehaviour
         float x = -totalWidth * 0.5f + index * (SlotSize + SlotSpacing) + SlotSize * 0.5f;
 
         var slotRT = NewRT("Slot" + (index + 1), parent);
+        UiIsolate.Nest(slotRT);   // brackets / index / sweep animate per frame: rebuild this slot only
         slotRT.anchorMin = new Vector2(0.5f, 0f);
         slotRT.anchorMax = new Vector2(0.5f, 0f);
         slotRT.pivot = new Vector2(0.5f, 0f);

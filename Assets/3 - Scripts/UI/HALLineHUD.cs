@@ -392,6 +392,7 @@ public class HALLineHUD : MonoBehaviour
         eyeRT.anchoredPosition = new Vector2(24f, 0f);
         eyeRT.sizeDelta = new Vector2(16f, 16f);
         _eye = eyeRT.gameObject.AddComponent<Image>();
+        UiIsolate.Nest(eyeRT); UiIsolate.Nest(glowRT);   // the eye pulses every frame
         _eye.sprite = HALVisuals.Disc();
         _eye.color = HALVisuals.EyeRed;
         _eye.raycastTarget = false;

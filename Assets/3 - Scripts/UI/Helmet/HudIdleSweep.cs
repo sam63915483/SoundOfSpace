@@ -120,6 +120,7 @@ public class HudIdleSweep : MonoBehaviour
         var img = barGo.AddComponent<Image>();
         img.raycastTarget = false;
         barGo.AddComponent<LayoutElement>().ignoreLayout = true;
+        UiIsolate.Nest(barRt);    // sweeps every frame
         Color c = HelmetHudPalette.Accent;
 
         float h = rt.rect.height;
