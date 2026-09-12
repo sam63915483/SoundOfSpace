@@ -412,6 +412,9 @@ public static class MeshCombineTool
         // drop — the letters would come out as blank boxes. Skip both subtrees.
         if (t.GetComponent<HangingSignSway>() != null) return;
         if (t.GetComponent<TMPro.TMP_Text>() != null) return;
+        // The bar counter tints ITS OWN renderer green (MaterialPropertyBlock)
+        // while you can set a cup down on it — baked, the welded copy never tints.
+        if (t.GetComponent<BarCounter>() != null) return;
         // Generated planet surface — forbidden to touch and pointless to combine.
         if (t.name.Contains("Mesh Holder") || t.name.Contains("Terrain Mesh")) return;
 
