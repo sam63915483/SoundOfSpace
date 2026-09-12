@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun, Firefly }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun, Firefly, BeerCup }
 
     public struct Slot
     {
@@ -191,6 +191,7 @@ public class Hotbar : MonoBehaviour
     AxeController axe;
     PistolController pistol;
     GrappleGunController grapple;
+    BeerCupController beer;
     Ship ship;
     bool _wasInDialogue;
     bool _wasPhoneOpen;
@@ -518,6 +519,7 @@ public class Hotbar : MonoBehaviour
                 if (axe == null) axe = FindObjectOfType<AxeController>(true);
                 if (pistol == null) pistol = FindObjectOfType<PistolController>(true);
                 if (grapple == null) grapple = FindObjectOfType<GrappleGunController>(true);
+                if (beer == null) beer = FindObjectOfType<BeerCupController>(true);
                 if (ship == null) ship = FindObjectOfType<Ship>(true);
 
                 // (Re)build registry whenever a previously-missing controller
@@ -550,6 +552,7 @@ public class Hotbar : MonoBehaviour
                 case ItemId.Axe:         if (_registry[i].Controller != (MonoBehaviour)axe) return true; break;
                 case ItemId.Pistol:      if (_registry[i].Controller != (MonoBehaviour)pistol) return true; break;
                 case ItemId.GrappleGun:  if (_registry[i].Controller != (MonoBehaviour)grapple) return true; break;
+                case ItemId.BeerCup:     if (_registry[i].Controller != (MonoBehaviour)beer) return true; break;
             }
         }
         return false;
@@ -1789,6 +1792,12 @@ public class Hotbar : MonoBehaviour
                         IsEquipped   = () => grapple != null && grapple.IsEquipped,
                         ForceEquip   = () => { if (grapple != null) grapple.ForceEquipGrapple(); },
                         ForceUnequip = () => { if (grapple != null) grapple.ForceUnequipGrapple(); } },
+            new Entry { Id = ItemId.BeerCup,     DisplayName = "BEER",   Controller = beer,
+                        Icon = beer != null ? beer.hotbarIcon : null,
+                        IsUnlocked   = () => beer != null && beer.IsUnlocked,
+                        IsEquipped   = () => beer != null && beer.IsEquipped,
+                        ForceEquip   = () => { if (beer != null) beer.ForceEquipCup(); },
+                        ForceUnequip = () => { if (beer != null) beer.ForceUnequipCup(); } },
         };
     }
 

@@ -591,6 +591,7 @@ public class FishStagingUI : MonoBehaviour
             case Hotbar.ItemId.Axe:         { var c = Object.FindObjectOfType<AxeController>(true);         return c != null ? c.hotbarIcon : null; }
             case Hotbar.ItemId.Pistol:      { var c = Object.FindObjectOfType<PistolController>(true);      return c != null ? c.hotbarIcon : null; }
             case Hotbar.ItemId.GrappleGun:  { var c = Object.FindObjectOfType<GrappleGunController>(true);  return c != null ? c.hotbarIcon : null; }
+            case Hotbar.ItemId.BeerCup:     { var c = Object.FindObjectOfType<BeerCupController>(true);     return c != null ? c.hotbarIcon : null; }
         }
         return null;
     }

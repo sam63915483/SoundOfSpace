@@ -1119,6 +1119,13 @@ public static class SaveCollector
             s.grappleEquipped = grapple.IsEquipped;
             s.grappleUnlocked = grapple.IsUnlocked;
         }
+        var beer = Object.FindObjectOfType<BeerCupController>();
+        if (beer != null)
+        {
+            s.beerCupEquipped = beer.IsEquipped;
+            s.beerCupUnlocked = beer.IsUnlocked;
+            s.beerCupFill     = beer.FillPercent;
+        }
         var pcForJetpack = Object.FindObjectOfType<PlayerController>(true);
         if (pcForJetpack != null) s.jetpackUnlocked = pcForJetpack.JetpackUnlocked;
     }
@@ -1918,6 +1925,14 @@ public static class SaveCollector
             if (s.grappleUnlocked) grapple.Unlock();
             if (s.grappleEquipped && !grapple.IsEquipped) grapple.ForceEquipGrapple();
             else if (!s.grappleEquipped && grapple.IsEquipped) grapple.ForceUnequipGrapple();
+        }
+        var beer = Object.FindObjectOfType<BeerCupController>();
+        if (beer != null)
+        {
+            if (s.beerCupUnlocked) { beer.Unlock(); beer.SetFill(s.beerCupFill); }
+            else beer.Lock();
+            if (s.beerCupUnlocked && s.beerCupEquipped && !beer.IsEquipped) beer.ForceEquipCup();
+            else if (!s.beerCupEquipped && beer.IsEquipped) beer.ForceUnequipCup();
         }
         var pcApplyJetpack = Object.FindObjectOfType<PlayerController>(true);
         if (pcApplyJetpack != null && s.jetpackUnlocked) pcApplyJetpack.UnlockJetpack();

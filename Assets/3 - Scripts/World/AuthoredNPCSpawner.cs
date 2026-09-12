@@ -153,8 +153,18 @@ public class AuthoredNPCSpawner : MonoBehaviour
             yield return new WaitForSeconds(retryInterval);
         }
 
-        float yaw = UnityEngine.Random.Range(0f, 360f);
-        Quaternion rot = Quaternion.AngleAxis(yaw, up) * Quaternion.FromToRotation(Vector3.up, up);
+        Quaternion rot;
+        Vector3 markerFwd = Vector3.ProjectOnPlane(transform.forward, up);
+        if (faceMarker && markerFwd.sqrMagnitude > 1e-4f)
+        {
+            // Stand the way the marker empty points (a bartender behind a counter).
+            rot = Quaternion.LookRotation(markerFwd.normalized, up);
+        }
+        else
+        {
+            float yaw = UnityEngine.Random.Range(0f, 360f);
+            rot = Quaternion.AngleAxis(yaw, up) * Quaternion.FromToRotation(Vector3.up, up);
+        }
         var go = Instantiate(pf, pos, rot);
         go.name = npcName;
         go.transform.localScale = Vector3.one * scale;
@@ -258,4 +268,7 @@ public class AuthoredNPCSpawner : MonoBehaviour
 
     [Tooltip("Copy groundOffset / groundEmbedPerScale from the scene's AlienNPCSpawner at startup, so authored NPCs seat exactly like the wandering ones. Turn off to hand-tune the two fields above.")]
     public bool matchStreamedSeating = true;
+
+    [Tooltip("Face the way this marker empty's blue (Z) arrow points instead of a random direction. Turn on for an NPC that must face something, e.g. the bartender across the counter.")]
+    public bool faceMarker = false;
 }

@@ -730,6 +730,10 @@ public class EquipmentSave
     // Grapple gun prototype (2026-09-10). Live rope state is deliberately not saved.
     public bool grappleEquipped;
     public bool grappleUnlocked;
+    // Village bar beer cup (2026-09-12). Unlocked = the player owns a cup; fill 0-100.
+    public bool beerCupEquipped;
+    public bool beerCupUnlocked;
+    public float beerCupFill;
 }
 
 [Serializable]

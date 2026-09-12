@@ -1698,6 +1698,7 @@ before**). `#if UNITY_EDITOR` it force-reloads the Story folder per call.
 | `npc_bonfire` | `BonfireNPCDialogue` | whole talk | `firstTimeDone` / `firstTimeReward` |
 | `npc_alien3` | `NPCDialogue` | whole talk | `holdingCassette` / `tradeRod` (legacy trade block factored into `ConsumeHeldCassette` / `GiveRod` / `CompleteTrade`) |
 | `npc_guitarshop` | `GuitarShopNPC` | whole talk | `giveGuitar`; money via MoneyAtLeast/SpendMoney, 50/50 haggle via Chance |
+| `npc_bartender` | `BartenderTalk` (AuthoredNPCTalk) | whole talk | probes `cupOnCounter` / `holdingCup` / `cupEmptyInHand`; action `pourBeer` → `BarCounter.PourBeer()`; $10 via MoneyAtLeast/SpendMoney (2026-09-12) |
 | `npc_alien7` / `npc_shipmarket` | `Alien7Vendor` / `ShipMarketNPC` | spoken greeting only | shop/sell menu unchanged |
 | `npc_fishmarket` | `FishMarketNPC` | greeting (`start`) + bounty story (`bounty` entry node) | `bountyTurnedIn`; sell/bait/turn-in menu unchanged |
 
@@ -2531,3 +2532,42 @@ All three rod-moving paths are now gated on the line: the mesh bend (always was)
 the reel haul (09-08g), and the hookset (here).
 
 Compile PASS, 0 warnings. `verify-fishing.py` PASS 151. **PLAYTEST PENDING.**
+
+---
+
+## Addendum 2026-09-12 — village bar: bartender, beer cup, counter (built, playtest pending)
+
+Sam is turning one village house into a bar. Spec:
+`docs/superpowers/specs/2026-09-12-village-bar-beer-design.md`.
+
+**Village un-baked.** `Tools ▸ Village ▸ Un-bake Village (edit houses)` /
+`Re-bake Village (after editing)` (`Editor/VillageBakeMenu.cs`) wrap
+`MeshCombineTool.RevertUnder` / `RecombineOne` on `TOWN-VILLAGE`. Run the
+un-bake before moving or scaling any house (the welded copy would stay put —
+the ghost-door trap), re-bake when done, then refresh the exclusion zones.
+
+**New equippable `ItemId.BeerCup` (= 28).** `Pickups/BeerCupController` on the
+scene Player, a `WaterBottleController` clone without the water refill: hold
+left click → the cup floats to the mouth, tips, and a code-built beer
+(`BeerLiquid`: amber column + foam disc inside FantasyVillage `Cup.prefab`,
+interior measured from the mesh) drains at 35 %/s; thirst +30 per cup; burp on
+empty. `Unlock()` = the player owns a cup (Hotbar registry adds the slot),
+`Lock()` = it left their hands (slot evicted). Fill is saved
+(`EquipmentSave.beerCupFill`), unlike the water bottle's.
+
+**`World/BarCounter` (Interactable)** on the counter prop: `PourBeer()` spawns
+a full cup + `BeerCupPickup` on its `CupSpot`; while the player holds an EMPTY
+cup, F on the counter sets it down (empty cup prop stays until the next pour).
+Counter contents are NOT saved.
+
+**`NPC_Dialogue/BartenderTalk`** answers the graph's probes/action; everything
+else (price, refusals, one-cup-at-a-time routing) is in
+`StreamingAssets/Story/npc_bartender.json`. `AuthoredNPCSpawner.faceMarker`
+(new, appended) makes a spawned NPC face the marker's forward instead of a
+random yaw — needed for anyone standing behind a counter.
+
+Not done: co-op `HeldItemResolver` case (partners see empty hands, same as the
+grapple); no drunk effect (Grogginess is the ready-made one if wanted).
+Compile PASS, 0 warnings, both assemblies. **PLAYTEST PENDING** — Sam still has
+to place the counter + NPC marker and save the scene (the un-bake and the
+Player's new component are unsaved Editor changes from this session).
