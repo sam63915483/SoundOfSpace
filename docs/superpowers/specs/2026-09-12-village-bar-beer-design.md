@@ -34,8 +34,8 @@ The random-yaw / `faceMarker` path is only for spawned bodies.
 |---|---|---|
 | Talk | `npc_shlawg.json` | `start` routes to `waiting` if `cupOnCounter`, else "What'll it be?" → "A beer. ($10)". `MoneyAtLeast 10` → `SpendMoney 10` + `Custom pourBeer`. |
 | Pour | `BartenderTalk.GraphAction("pourBeer")` → `BarCounter.PourBeer()` | CupGOOD spawned at the top-face centre with a full `BeerLiquid` and a `BeerCupPickup`. Parented to the counter's PARENT (the counter is a non-uniform cube) and sized in world metres. |
-| Pick up | `BeerCupPickup` | F: `BeerCupController.AddCup(100)`; equips if the hand is free. The Hotbar's BEER slot appears (or its count goes up). |
-| Drink | `BeerCupController.Update` | Hold left click: cup floats up and tips (bottle's pose channel), beer drains at 35 %/s, thirst +30 per cup, burp at the bottom. |
+| Pick up | `BeerCupPickup` | F: `BeerCupController.AddBeer(100)`; equips if the hand is free. The Hotbar's BEER slot appears (or its count goes up). |
+| Drink | `BeerCupController.Update` | Hold left click: the cup rises to a camera-space point (`drinkCamPoint`) and tips −75°, beer drains at 35 %/s, thirst +30 per cup, burp + one BeerBuzz level at the bottom; the cup in hand becomes an EMPTY CUP. |
 | Set down | `BarCounter.Update` / `Interact` | Holding an EMPTY cup and the crosshair is on the counter: counter tints green (`MaterialPropertyBlock _Color`), a translucent green ghost cup follows the analytic hit point snapped onto the top face (kept 12 cm inside the edges). F: `RemoveEmptyCup()` and an empty CupGOOD is placed exactly where the ghost was. |
 | Fade | `BeerCupFadeAway` | 5 s later the empty cup swaps to an instance of the Fade material carrying its own texture, alpha → 0 over 1 s, destroyed. |
 
@@ -62,7 +62,7 @@ orbiting planet = jitter).
 ## Decisions taken (change any)
 
 - $10, +30 thirst, ~3 s drink, 5 s before fade, 1 s fade, 12 cm edge margin.
-- No buff / drunk effect (Grogginess is the ready-made camera if wanted).
+- Drunk effect = `BeerBuzz` (see above); all curves are Inspector knobs on the singleton.
 - The Fade material is a real asset so Standard's `_ALPHABLEND_ON` variant is
   in the build (a `Shader.Find` fallback exists for the Editor only).
 - Empties placed on the counter have no colliders (decorative); the full cup
