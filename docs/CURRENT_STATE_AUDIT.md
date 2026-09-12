@@ -2647,3 +2647,20 @@ Compile PASS, 0 warnings. **PLAYTEST PENDING.**
   what the game uses).
 
 Compile PASS, 0 warnings. **PLAYTEST PENDING.**
+
+## Addendum 2026-09-12e — bar signs, village re-baked, merged to main
+
+- `Assets/1 - samsPrefabs/Bar/ShlawgsBarSign_Hanging.prefab` (bracket + chains +
+  swinging board, `World/HangingSignSway`) and `ShlawgsBarSign_Wall.prefab`: built from
+  primitives + 7 stacked TextMeshPro layers (raised 3D text), procedural wood PNG, font
+  `Fonts/PirataOne SDF` (Pirata One, OFL, TTF in the project). Placed by Sam on House_03.
+  🔥 TMP text reads correctly for a camera whose forward matches the text's forward — a
+  face read from +Z needs a 180° Y turn. Check text with a temp-camera PNG render.
+- `MeshCombineTool` now skips `HangingSignSway`, `TMPro.TMP_Text` and `BarCounter`
+  subtrees (moving part / vertex streams a bake drops / self-tinting renderer).
+- Village re-baked after Sam's edits: TOWN-VILLAGE = 5 draw groups (was 2; the signs'
+  three materials + the counter's neighbours). Exclusion zones refreshed. Scene saved
+  by script at Sam's request; **scene is 77 MB** (was 73) — the 100 MB GitHub limit is
+  getting closer with every placement.
+- Pushed `feat/helmet-hud` and fast-forwarded `soundofspace/main` to it (local `main`
+  moved with `git branch -f`, no checkout with Unity open).
