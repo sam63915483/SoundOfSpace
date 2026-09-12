@@ -160,3 +160,16 @@ canvases 0.6, profiler 0.6. Expected release build: ~10 ms in the field.
 - Shadow cascades 4 → 2 and shadow distance 193 → 100: −1.6 ms in the village.
 - Grass distance 1.81× → 1.25×: ~2× fewer blades; the grass loop (2.4 ms CPU) and the
   village's GPU cost (13 ms looking at the ground) scale with it.
+
+## 10. Milestone `perf-milestone-2026-09-11` (release build: 100-120 fps with grass, 130-150 without)
+
+Tag on SoundOfSpace. Everything up to GPU skinning / IMGUI / horizon culler / HUD
+end-of-frame. Sam's A/B in that build: grass 0 → 130-150 fps, grass on → 100-120.
+
+Shipped after the milestone (untested, `FeatureVault.GrassGpuBatches` to revert):
+**grass batches kept on the GPU** — blade matrices are planet-relative and reused
+across frames; only streaming or moving a cell rebuilds them. Shader change in
+CG_SimpleGrass / CG_GrassDepth (`_GrassInstanceOffset`). What to look for: grass
+seated exactly as before (no float / sink / drift as the planet moves), no popping
+at the screen edges when turning, depth silhouette against the sky unchanged in a
+BUILD, and the fps gap between grass on/off shrinking to the GPU share only.
