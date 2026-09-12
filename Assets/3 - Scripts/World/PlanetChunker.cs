@@ -370,7 +370,14 @@ public class PlanetChunker : MonoBehaviour
     static void CopyRendererSettings(MeshRenderer from, MeshRenderer to)
     {
         to.sharedMaterials = from.sharedMaterials;
-        to.shadowCastingMode = from.shadowCastingMode;
+        // Always ON, never copied: EclipseShadowGate forces a body's terrain
+        // shadows Off whenever that body cannot be blocking the player's sun and
+        // remembers the first mode it sees on a renderer as its "original". Chunks
+        // built during such a moment inherited Off — and the moon then never cast
+        // its eclipse again (2026-09-12: only the base and the tube shadowed
+        // Humble Abode). Planet terrain is authored to cast; the gate will see the
+        // chunks as On and gate them correctly from there.
+        to.shadowCastingMode = ShadowCastingMode.On;
         to.receiveShadows = from.receiveShadows;
         to.lightProbeUsage = from.lightProbeUsage;
         to.reflectionProbeUsage = from.reflectionProbeUsage;
