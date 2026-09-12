@@ -23,67 +23,67 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/1.8.unity
     guid: 91438ed4ccd05f245b58d9f488d4638c
-  - enabled: 1
+  - enabled: 0
     path: Assets/5 - External Imports/Horror Levels/Backrooms/Scenes/R1_Backrooms.unity
     guid: 12e3b8fe29d4a3548b04eabde5be7ce2
-  - enabled: 1
+  - enabled: 0
     path: Assets/5 - External Imports/Horror Levels/Poolrooms_Lvl37/Scenes/PoolroomsDemo.unity
     guid: 9c539d17946e0254c930c97dafe24608
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D1_ShiftingHalls.unity
     guid: 25599c66853831d47a437179d511d5bc
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D2_DuneSea.unity
     guid: 00ec36cbc5de13a4886c2f6eba75e8da
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D3_LongDark.unity
     guid: 854645c627cd10948be5b96330dec86d
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D4_WaitingField.unity
     guid: fbb2e0a4017de924f94d1edd70bf353c
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D5_Archive.unity
     guid: 799aabdff7d1ff34aa5ec419cc91e6a7
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D6_FrozenSea.unity
     guid: 831acd8f4d94a33409d07bdb17255057
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D7_HallOfDoors.unity
     guid: 99d27ade13a5f464288726ee6530c4d9
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D8_Procession.unity
     guid: 5d4d668021fad11438b75e0f34b39671
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D9_RedForest.unity
     guid: 0b6c8d1f307829f4d889f3b9169cbaeb
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D11_Shelves.unity
     guid: e0316153ec8e263418b67050335d00c8
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D12_MirrorLake.unity
     guid: ea0a2dd2d8f377843b853fc1723c11eb
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D13_Orchard.unity
     guid: 28eae686c540b8b4c84fd6793323f6a3
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D15_Congregation.unity
     guid: 6fe8dbef4e05d74419ceff9a8757d292
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D16_NeonGrid.unity
     guid: fe39caa7eafa70d44846a133ed06f8c7
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D18_StaticField.unity
     guid: 04d9d4e792cf1864889da7145af2a5d4
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D22_RustSea.unity
     guid: 5709b7151d2d3894eb743c6e42cb20ca
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D23_WheatAtDusk.unity
     guid: 0077a2227858b9247a4e07b99c431127
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D24_WaitingRoom.unity
     guid: 35f4bbaa2f6e6164b9d163e197856174
-  - enabled: 1
+  - enabled: 0
     path: Assets/4 - Scenes/Dimensions/D25_CandleSea.unity
     guid: 550f7f1a3ed8eec4ebc655d9effc31ad
   - enabled: 1
