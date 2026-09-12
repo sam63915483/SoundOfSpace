@@ -407,11 +407,20 @@ public class PlanetChunker : MonoBehaviour
         Vector3 o = w2l.MultiplyPoint3x4(origin);
         Vector3 d = w2l.MultiplyVector(dir);              // same parameter t as the world ray
         var ray = new Ray(o, d);
+        float dLen = d.magnitude;                            // Ray normalises: bounds distances are in |d| units
         float bestT = float.MaxValue; Vector3 bestN = Vector3.zero;
         var P = set.positions;
+        // chunks the ray enters, nearest first; a ray through a planet crosses ~2, and
+        // the far one is skipped as soon as the near one hits
+        _order.Clear();
         for (int c = 0; c < set.chunkTris.Count; c++)
+            if (set.chunkBounds[c].IntersectRay(ray, out float entry) && entry <= maxDistance * dLen)
+                _order.Add(new KeyValuePair<float, int>(entry, c));
+        _order.Sort((a, b) => a.Key.CompareTo(b.Key));
+        for (int oi = 0; oi < _order.Count; oi++)
         {
-            if (!set.chunkBounds[c].IntersectRay(ray)) continue;
+            if (_order[oi].Key > bestT * dLen) break;
+            int c = _order[oi].Value;
             var idx = set.chunkTris[c];
             for (int i = 0; i + 2 < idx.Length; i += 3)
             {
@@ -437,6 +446,8 @@ public class PlanetChunker : MonoBehaviour
         hit.point = wp; hit.normal = wn; hit.distance = bestT;
         return true;
     }
+
+    static readonly List<KeyValuePair<float, int>> _order = new List<KeyValuePair<float, int>>(128);
 
     static void CopyRendererSettings(MeshRenderer from, MeshRenderer to)
     {

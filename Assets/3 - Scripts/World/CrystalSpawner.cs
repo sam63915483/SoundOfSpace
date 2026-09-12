@@ -451,6 +451,7 @@ public class CrystalSpawner : MonoBehaviour
         // mesh-bottom into world metres correctly. Without this factor the
         // crystals sit 1/17th of their visible size deep in the ground.
         float effectiveBottomY = _prefabLocalBottomY * _prefabBaseScale.y;
+        PlanetChunker.RefineSurfaceHit(entry.gen, hit.point + up * 3f, -up, 12f, ref hit);   // visible terrain, not the coarse collider (accepted spawns only — this costs ~1 ms)
         pos = hit.point - up * (effectiveBottomY * scale + groundOffset + groundEmbedPerScale * scale);
         if (SpawnExclusionZone.IsExcluded(pos)) return false;   // keep clear of the ship school etc.
         return true;

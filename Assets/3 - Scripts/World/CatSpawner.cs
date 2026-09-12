@@ -477,6 +477,7 @@ public class CatSpawner : MonoBehaviour
 
         float bottomY = (_prefabLocalBottomY != null && prefabIdx < _prefabLocalBottomY.Length)
             ? _prefabLocalBottomY[prefabIdx] : 0f;
+        PlanetChunker.RefineSurfaceHit(entry.gen, hit.point + up * 3f, -up, 12f, ref hit);   // visible terrain, not the coarse collider (accepted spawns only — this costs ~1 ms)
         pos = hit.point - up * (bottomY * scale + groundOffset + groundEmbedPerScale * scale);
         if (SpawnExclusionZone.IsExcluded(pos)) { _dbgRejExcluded++; return false; }
         return true;

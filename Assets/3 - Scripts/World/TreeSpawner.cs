@@ -368,6 +368,7 @@ public class TreeSpawner : MonoBehaviour
         Vector3 up = (hit.point - planet.Position).normalized;
         float yaw = (hY & 0xFFFFu) / 65535f * 360f;
         rot = Quaternion.AngleAxis(yaw, up) * Quaternion.FromToRotation(Vector3.up, up);
+        PlanetChunker.RefineSurfaceHit(entry.gen, hit.point + up * 3f, -up, 12f, ref hit);   // visible terrain, not the coarse collider (accepted spawns only — this costs ~1 ms)
         pos = hit.point - up * groundOffset;
         prefabIdx = PickPrefabIndex(hPI);
         // Size variety, deterministic per cell like everything else here: a
