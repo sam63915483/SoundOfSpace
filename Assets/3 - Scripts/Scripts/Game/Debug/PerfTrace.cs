@@ -604,13 +604,14 @@ public class PerfTrace : MonoBehaviour
             foreach (var field in new[] { "m_GraphicRebuildQueue", "m_LayoutRebuildQueue" })
             {
                 var f = t.GetField(field, System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                var q = f != null ? f.GetValue(inst) as System.Collections.IEnumerable : null;
+                // IndexedSet<T>'s enumerator is not implemented (NotImplementedException); index it as IList<T>
+                var q = f != null ? f.GetValue(inst) as IList<ICanvasElement> : null;
                 int n = 0;
                 sb.Append(field == "m_GraphicRebuildQueue" ? "graphics: " : " | layouts: ");
                 if (q != null)
-                    foreach (var o in q)
+                    for (int i = 0; i < q.Count; i++)
                     {
-                        var el = o as ICanvasElement;
+                        var el = q[i];
                         if (el == null || el.transform == null) continue;
                         n++;
                         if (n > 24) continue;
