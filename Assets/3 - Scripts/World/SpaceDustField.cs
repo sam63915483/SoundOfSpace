@@ -458,12 +458,12 @@ public class SpaceDustField : MonoBehaviour
             _cacheB = new float[_local.Length];
             _cacheCol = new Vector4[_local.Length];
         }
-        int parity = Time.frameCount & 1;
-        float dt2 = dt * 2f;
+        int parity = Time.frameCount & 3;      // quarter rate (2026-09-12): was every other frame
+        float dt2 = dt * 4f;
         for (int i = 0; i < _local.Length; i++)
         {
             Vector3 lp = _local[i];
-            if ((i & 1) == parity)
+            if ((i & 3) == parity)
             {
                 Vector3 wp = camPos + lp;
                 Vector3 toBH = bhPos - wp;

@@ -56,6 +56,13 @@ public static class FeatureVault
     // until it can be debugged with a build in hand.
     public static readonly bool GrassGpuBatches = false;
 
+    /// StaticClusterCombiner (2026-09-12): the shuttle, moon base, fish market and
+    /// cabin get their static pieces merged into a few meshes at load so the CPU
+    /// submits one draw per material-and-area instead of one per bolt. Doors,
+    /// screens, levers and anything scripted stay separate. Also turns shadows
+    /// off on sub-35 cm renderers. Flip to false to get every original back.
+    public static readonly bool ClusterCombine = true;
+
     /// OpeningDirector's six survival beats (locker → water → wood → fire →
     /// build → village). Built and compile-verified, never play-tested.
     public static readonly bool OpeningBeats = false;
