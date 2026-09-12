@@ -2632,3 +2632,18 @@ effects; the drink pose stayed bottom-right.
   the bottle's small fixed offset could never leave the bottom-right corner.
 
 Compile PASS, 0 warnings. **PLAYTEST PENDING.**
+
+## Addendum 2026-09-12d — the bar, pass 4: slot grid, buy 1-5, burps past 5, breathing −50 %
+
+- `BarCounter` top face is now a **grid of beer slots** (`slotSpacing` 0.45 m, `maxSlots`
+  30) sorted middle-first; `PourBeer(n)` fills free slots. Shlawg refuses only when
+  `IsFull`; the "buy 2..5" replies carry `Probe roomForN` conditions so they hide when
+  there is no room. Actions `pourBeer`, `pourBeer2..5` (name suffix parsed). The
+  "There you go, it's on the bar" line is gone.
+- `BeerBuzz` extra-burp timer only from `burpFrom` (5) beers, 20 s → 4 s at 10. The one
+  burp per finished beer (BeerCupController.FinishBeer) is unchanged.
+- Breathing 50 % quieter: `PlayerSuitAudio.breathingVolume` 0.45 → 0.225 on the SCENE
+  Player (set live in the Editor, unsaved until Sam's Ctrl+S; the C# default 0.5 is not
+  what the game uses).
+
+Compile PASS, 0 warnings. **PLAYTEST PENDING.**
