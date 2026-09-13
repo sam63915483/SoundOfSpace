@@ -353,6 +353,12 @@ public class PlayerController : GravityObject
 	bool debug_playerFrozen;
 	public static bool isInDialogue;
 	public static bool isMapOpen;
+	// True while something else owns the real camera (solar map, pool shot). The
+	// camera is UNPARENTED then, so every cam.transform.local* write below would be a
+	// WORLD write — the pool session's grass vanished because the per-frame pitch
+	// write pointed the camera down world +Z between Update and the borrower's
+	// LateUpdate, and the grass frustum cull ran in that window (2026-09-13).
+	static bool CameraBorrowed => SolarMap.IsOpen || PoolShotSession.IsActive;
 	public static bool isInModalSlotUI;
 	Animator animator;
 
@@ -507,7 +513,7 @@ public class PlayerController : GravityObject
 	void UpdateWaterState()
 	{
 		_waterDepth = WaterDepthAt(rb.position);
-		float eyeUp = cam != null ? cam.transform.localPosition.y : 0.7f;
+		float eyeUp = cam != null ? (CameraBorrowed ? cameraLocalPos.y : cam.transform.localPosition.y) : 0.7f;
 		_eyeDepth   = WaterDepthAt(rb.position + transform.up * eyeUp);
 		_immersed   = Mathf.Clamp01((_waterDepth + kBodyHalfHeight) / (2f * kBodyHalfHeight));
 		_wadeT      = Mathf.Clamp01((_waterDepth + kBodyHalfHeight) / (kBodyHalfHeight + Mathf.Max(0.05f, standDepth)));
@@ -767,7 +773,7 @@ public class PlayerController : GravityObject
 		// normally overrides the camera pose in LateUpdate anyway; this keeps the
 		// fallback path (camera effects disabled) smooth too.
 		if (!debug_playerFrozen && Time.timeScale > 0 && cam != null)
-			cam.transform.localEulerAngles = Vector3.right * smoothPitch;
+			if (!CameraBorrowed) cam.transform.localEulerAngles = Vector3.right * smoothPitch;
 
 		// Movement input — blocked during dialogue.
 		// Shuttle ride: grounding is owned by RiderFixedTick, which casts at
@@ -1043,7 +1049,7 @@ public class PlayerController : GravityObject
 	{
 		if (!debug_playerFrozen && Time.timeScale > 0)
 		{
-			cam.transform.localEulerAngles = Vector3.right * smoothPitch;
+			if (!CameraBorrowed) cam.transform.localEulerAngles = Vector3.right * smoothPitch;
 			// Apply every degree of yaw accumulated since the LAST FIXED STEP,
 			// not just the last render frame's slice.
 			//
@@ -2280,7 +2286,7 @@ public class PlayerController : GravityObject
 		// camera, accumulated yaw to the body).
 		if (!debug_playerFrozen && Time.timeScale > 0)
 		{
-			cam.transform.localEulerAngles = Vector3.right * smoothPitch;
+			if (!CameraBorrowed) cam.transform.localEulerAngles = Vector3.right * smoothPitch;
 			transform.Rotate(Vector3.up * Mathf.DeltaAngle(_yawAppliedToTransform, smoothYaw), Space.Self);
 			_yawAppliedToTransform = smoothYaw;
 		}

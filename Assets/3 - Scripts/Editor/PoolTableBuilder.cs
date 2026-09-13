@@ -67,7 +67,10 @@ public static class PoolTableBuilder
         // materials
         var mFelt = StdMat("PoolFelt", Felt, 0.05f);
         var mWood = StdMat("PoolWood", Wood, 0.32f);
-        var mCup = StdMat("PoolPocket", CupBlack, 0.18f);
+        // Dead matte, no highlight, no reflections: a smooth near-black dielectric turns
+        // WHITE at grazing angles (Fresnel) — Sam saw the corner pockets "glow" as he
+        // walked round the table (2026-09-13).
+        var mCup = StdMat("PoolPocket", CupBlack, 0f, specular: false);
         var mIvory = StdMat("PoolIvory", Ivory, 0.35f);
         var mMaple = StdMat("CueMaple", Maple, 0.45f);
         var mWrap = StdMat("CueWrap", Wrap, 0.25f);
@@ -623,7 +626,7 @@ public static class PoolTableBuilder
         return mat;
     }
 
-    static Material StdMat(string name, Color color, float smoothness)
+    static Material StdMat(string name, Color color, float smoothness, bool specular = true)
     {
         string path = $"{MatDir}/{name}.mat";
         var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
@@ -632,6 +635,11 @@ public static class PoolTableBuilder
         mat.color = color;
         mat.SetFloat("_Glossiness", smoothness);
         mat.SetFloat("_Metallic", 0f);
+        // Standard's highlight/reflection toggles are keyword-driven; the float alone does nothing.
+        mat.SetFloat("_SpecularHighlights", specular ? 1f : 0f);
+        mat.SetFloat("_GlossyReflections", specular ? 1f : 0f);
+        if (specular) { mat.DisableKeyword("_SPECULARHIGHLIGHTS_OFF"); mat.DisableKeyword("_GLOSSYREFLECTIONS_OFF"); }
+        else { mat.EnableKeyword("_SPECULARHIGHLIGHTS_OFF"); mat.EnableKeyword("_GLOSSYREFLECTIONS_OFF"); }
         EditorUtility.SetDirty(mat);
         return mat;
     }

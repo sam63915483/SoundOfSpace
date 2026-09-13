@@ -169,7 +169,7 @@ public class PlayerFlashlight : MonoBehaviour
         // Not while the solar map is up: there Y toggles cursor mode and E
         // rolls the map camera (2026-09-06) — the same press must not also
         // cycle the torch.
-        if (!SolarMap.IsOpen &&
+        if (!SolarMap.IsOpen && !PoolShotSession.IsActive &&   // pool: pad Y re-racks, must not cycle the torch
             (TutorialGate.GetKeyDown(toggleKey, TutorialAbility.Flashlight) ||
              TutorialGate.FlashlightPressed(TutorialAbility.Flashlight)))
         {

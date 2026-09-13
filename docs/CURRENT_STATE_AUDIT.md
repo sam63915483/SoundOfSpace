@@ -2731,3 +2731,33 @@ lit by the real sun only), FPS down. Cleaned by script (strays deleted, sky colo
 to black), Sam re-saved. Rule from now on: scratch editor scripts wrap scene edits in
 try/finally, and the scene `git diff` is checked for `__`-named objects and RenderSettings
 changes before Sam is told to save.
+
+### Addendum 2026-09-13c — pool playtest fixes: grass vanishing, glowing corners; lanterns off by day
+
+- **Grass vanished beyond ~15 m while at the pool table — ROOT CAUSE:** `PlayerController`
+  writes `cam.transform.localEulerAngles = pitch` every Update AND FixedUpdate (3 sites),
+  ungated. A camera borrower (`PoolShotSession`, and latently `SolarMap`) UNPARENTS the
+  camera, so that local write is a WORLD write: between Update and the borrower's
+  LateUpdate(210) the camera points down world +Z. `InstancedGrassRenderer` (order 100)
+  builds its frustum planes in that window → everything outside `noCullRadius` of the
+  body is culled against the wrong cone, and the depth pre-pass goes with it. Fix (both
+  halves): `PlayerController.CameraBorrowed` (= `SolarMap.IsOpen || PoolShotSession.IsActive`)
+  gates the three pitch writes + the swim `eyeUp` read (`cameraLocalPos.y` instead of the
+  live local y), and `PoolShotSession` now applies its pose in **Update** (210, after the
+  player) as well as LateUpdate, so every order-0..100 reader (grass cull, HelmetSway,
+  InteractGaze) sees the real pose. `PlayerFlashlight` also bails on `PoolShotSession.IsActive`
+  (pad Y = re-rack, was also cycling the torch).
+- **White glow orbs on the 4 corners:** Fresnel on the smooth near-black pocket cups —
+  a dark dielectric goes white at grazing angles. `PoolPocket.mat` is now smoothness 0
+  with `_SPECULARHIGHLIGHTS_OFF` + `_GLOSSYREFLECTIONS_OFF` (`StdMat(..., specular:false)`).
+- **Village lanterns off by day (Sam's call):** new `World/DayNightLight.cs` — geometric
+  day/night from `FishingSun.SunDot` at the lamp (never GalaxyTime), fully OFF above
+  dot 0.08, fully ON below −0.04, 2 s fade, sampled 4×/s. `TorchLightSteady` multiplies
+  by its `Scale`, scales the `GrassPointLight` strength with it and DISABLES the Light at 0
+  (14 fewer pixel lights in the village by day). Applied to the 14 `LanternLight`s via
+  `Tools ▸ Village ▸ Lanterns off by day` (`Editor/DayNightLightSetup.cs`; a second item
+  does the market torches if wanted). Scene change — Sam saves.
+- Not found: any FPS regression from the table itself (scene lights/settings/embedded
+  meshes identical to the 2026-09-12 baseline; the earlier drop was the stray preview sun).
+
+Compile PASS, 0 warnings. **PLAYTEST PENDING.**

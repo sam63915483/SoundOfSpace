@@ -192,6 +192,11 @@ public class PoolShotSession : MonoBehaviour
                 }
                 break;
         }
+        // Pose the camera HERE too (Update, order 210 — after PlayerController's own
+        // camera writes), not only in LateUpdate: the grass frustum cull, HelmetSway,
+        // InteractGaze and friends read the camera before LateUpdate 210 and were
+        // seeing a stale/wrong pose (grass beyond 15 m vanished, 2026-09-13).
+        if (_state != State.Closed && _camT != null && _table != null) ApplyPose();
     }
 
     void LateUpdate()

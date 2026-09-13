@@ -27,10 +27,13 @@ public class TorchLightSteady : MonoBehaviour
     Light _light;
     float _baseIntensity;
     float _phaseOffset;
+    DayNightLight _dayNight;   // optional: lamps that are off by day (village lanterns)
+    GrassPointLight _grass;
 
     void Awake()
     {
         _light = GetComponent<Light>();
+        _dayNight = GetComponent<DayNightLight>();
         _baseIntensity = targetIntensity > 0f ? targetIntensity : _light.intensity;
         // Per-instance phase so multiple torches don't pulse in lockstep.
         _phaseOffset = Random.Range(0f, Mathf.PI * 2f);
@@ -44,6 +47,7 @@ public class TorchLightSteady : MonoBehaviour
             var gpl = GetComponent<GrassPointLight>();
             if (gpl == null) gpl = gameObject.AddComponent<GrassPointLight>();
             gpl.grassStrength = grassStrength;
+            _grass = gpl;
         }
     }
 
@@ -51,12 +55,23 @@ public class TorchLightSteady : MonoBehaviour
     {
         if (_light == null) return;
 
+        // Day/night: DayNightLight scales us 1 (night) → 0 (day). At 0 the Light is
+        // DISABLED outright — a dark point light still costs a pixel-light pass.
+        float dayScale = 1f;
+        if (_dayNight == null) _dayNight = GetComponent<DayNightLight>();
+        if (_dayNight != null)
+        {
+            dayScale = _dayNight.Scale;
+            if (_grass != null) _grass.grassStrength = grassStrength * dayScale;
+            if (dayScale <= 0.001f) { if (_light.enabled) _light.enabled = false; return; }
+        }
+
         // Make sure the light stays on — anything that disabled it gets undone.
         if (!_light.enabled) _light.enabled = true;
 
         if (flickerAmplitude <= 0f)
         {
-            _light.intensity = _baseIntensity;
+            _light.intensity = _baseIntensity * dayScale;
             return;
         }
 
@@ -64,6 +79,6 @@ public class TorchLightSteady : MonoBehaviour
         // more organic, less "obvious sine" feel than a single oscillator.
         float t = Time.time * flickerSpeed + _phaseOffset;
         float wobble = (Mathf.Sin(t) + Mathf.Sin(t * 1.7f + 0.6f)) * 0.5f;
-        _light.intensity = _baseIntensity * (1f + flickerAmplitude * wobble);
+        _light.intensity = _baseIntensity * dayScale * (1f + flickerAmplitude * wobble);
     }
 }
