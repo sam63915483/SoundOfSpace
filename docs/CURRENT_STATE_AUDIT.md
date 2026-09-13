@@ -2719,3 +2719,15 @@ minigame; single player, no rules, nothing saved.
 
 Compile PASS (runtime + editor + player), 0 warnings. **PLAYTEST PENDING** — checklist at
 the end of the spec.
+
+### Addendum 2026-09-13b — playtest: the table works; the scene had my preview leftovers
+
+Sam: the pool table "actually works really good". But the saved scene also contained a
+`__previewLight` (second shadow-casting sun), a `__previewCam` and a rootless `PoolTable`
+at (4000,4000,4000), and `RenderSettings.ambientSkyColor` was flat grey-blue instead of
+black: my first prefab-preview script crashed after creating them and before its cleanup,
+and I asked Sam to save. Symptoms: ground far too bright, grass dark by contrast (grass is
+lit by the real sun only), FPS down. Cleaned by script (strays deleted, sky colour back
+to black), Sam re-saved. Rule from now on: scratch editor scripts wrap scene edits in
+try/finally, and the scene `git diff` is checked for `__`-named objects and RenderSettings
+changes before Sam is told to save.
