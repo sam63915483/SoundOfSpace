@@ -104,6 +104,8 @@ public class CameraTransformFX : MonoBehaviour
         // that read the camera in between (LODHandler, click raycasts) saw the
         // helmet pose. Bail without resetting; SolarMap restores the head pose.
         if (SolarMap.IsOpen) return;
+        // Same borrow, same bail: the pool table's shot camera (PoolShotSession, order 210).
+        if (PoolShotSession.IsActive) return;
 
         float dt = Time.deltaTime;
 

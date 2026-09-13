@@ -407,6 +407,8 @@ public static class MeshCombineTool
         // one welds a frozen copy into the combined mesh while the real part spins
         // its disabled renderer. Skip the whole subtree so blades keep their hub.
         if (t.GetComponent<SpinPart>() != null) return;
+        // The pool table: its balls and cue move every frame (same ghost trap).
+        if (t.GetComponent<PoolTable>() != null) return;
         // Hanging signs swing (same ghost trap), and 3D text is a TextMeshPro mesh
         // whose extra vertex streams (UV1 fields, vertex colour) a combine would
         // drop — the letters would come out as blank boxes. Skip both subtrees.

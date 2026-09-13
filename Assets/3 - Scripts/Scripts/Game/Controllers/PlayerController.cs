@@ -723,7 +723,7 @@ public class PlayerController : GravityObject
 
 		// Look input — blocked during dialogue or map so camera stays still while UI panels are open.
 		// Mouse and right-stick are accumulated separately because each has its own sensitivity slider.
-		if (!isInDialogue && !isMapOpen && !isInModalSlotUI && !uiHasFocus && !phoneBlocksLook)
+		if (!isInDialogue && !isMapOpen && !isInModalSlotUI && !uiHasFocus && !phoneBlocksLook && !PoolShotSession.IsActive)
 		{
 			yaw   += TutorialGate.GetAxisRaw("Mouse X", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.x;
 			pitch -= TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.y;
@@ -804,7 +804,7 @@ public class PlayerController : GravityObject
 		// as a literal space. Gate every input read in this method on the
 		// typing flag so the player doesn't walk, jetpack, sprint, or
 		// fire while composing a message.
-		if (isInDialogue || isMapOpen || isInModalSlotUI || uiHasFocus || AIChatScreen.IsTypingActive || TutorialGate.WasUIFocusedThisFrameStart())
+		if (isInDialogue || isMapOpen || isInModalSlotUI || uiHasFocus || AIChatScreen.IsTypingActive || TutorialGate.WasUIFocusedThisFrameStart() || PoolShotSession.IsActive)
 		{
 			targetVelocity = Vector3.zero;
 			smoothVelocity = Vector3.zero;
