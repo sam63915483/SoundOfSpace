@@ -69,8 +69,59 @@ public class DayNightLight : MonoBehaviour
             if (_light.enabled != on) _light.enabled = on;
             if (on) _light.intensity = _baseIntensity * Scale;
         }
+
+        DriveGlow();
     }
 
     float _baseIntensity = -1f;
     void Start() { if (_light != null && _baseIntensity < 0f) _baseIntensity = _light.intensity; }
+
+    // ── the visible flame ───────────────────────────────────────────────────
+    // A lantern's glow is a little emissive "FlameGlow" sphere under the light —
+    // and, once the village is baked, a per-lantern "Combined_Lantern_FlameGlow_*"
+    // renderer next to it. Both are found by name under the lamp's root (the
+    // light's parent) and go OFF with the light; the emission is dimmed through
+    // the fade with a property block, so the shared material is never touched.
+    static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
+    Renderer[] _glow;
+    Color[] _glowEmission;
+    MaterialPropertyBlock _mpb;
+    float _glowApplied = -1f;
+
+    void FindGlow()
+    {
+        Transform root = transform.parent != null ? transform.parent : transform;
+        var list = new System.Collections.Generic.List<Renderer>();
+        foreach (var r in root.GetComponentsInChildren<Renderer>(true))
+            if (r != null && r.name.Contains("FlameGlow")) list.Add(r);
+        _glow = list.ToArray();
+        _glowEmission = new Color[_glow.Length];
+        _glowWasOn = new bool[_glow.Length];
+        for (int i = 0; i < _glow.Length; i++)
+        {
+            var m = _glow[i].sharedMaterial;
+            _glowEmission[i] = (m != null && m.HasProperty(EmissionId)) ? m.GetColor(EmissionId) : Color.black;
+            _glowWasOn[i] = _glow[i].enabled;      // the bake leaves the original sphere disabled; never wake that one
+        }
+        if (_mpb == null) _mpb = new MaterialPropertyBlock();
+    }
+
+    void DriveGlow()
+    {
+        if (_glow == null) FindGlow();
+        if (_glow.Length == 0 || Mathf.Approximately(_glowApplied, Scale)) return;
+        _glowApplied = Scale;
+        bool on = Scale > 0.001f;
+        for (int i = 0; i < _glow.Length; i++)
+        {
+            var r = _glow[i];
+            if (r == null || !_glowWasOn[i]) continue;
+            if (r.enabled != on) r.enabled = on;
+            if (!on) continue;
+            r.GetPropertyBlock(_mpb);
+            _mpb.SetColor(EmissionId, _glowEmission[i] * Scale);
+            r.SetPropertyBlock(_mpb);
+        }
+    }
+    bool[] _glowWasOn;
 }
