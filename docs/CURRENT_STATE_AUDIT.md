@@ -2664,3 +2664,58 @@ Compile PASS, 0 warnings. **PLAYTEST PENDING.**
   getting closer with every placement.
 - Pushed `feat/helmet-hud` and fast-forwarded `soundofspace/main` to it (local `main`
   moved with `git branch -f`, no checkout with Unity open).
+
+## Addendum 2026-09-13 — pool table at Shlawg's Bar (built, playtest pending)
+
+Spec `docs/superpowers/specs/2026-09-13-pool-table-design.md`, plan
+`docs/superpowers/plans/2026-09-13-pool-table.md`. A feasibility test of a pool
+minigame; single player, no rules, nothing saved.
+
+- **Balls are NOT Unity physics.** `Pool/PoolPhysics2D.cs` is our own 2D sim in the
+  table's local metres (16 discs, ball/cushion restitution, rolling decel 0.16 m/s²,
+  pocket capture circles with jaw gaps, 240 Hz fixed substeps, deterministic). Reason:
+  Humble Abode is swept along its rail at ~85 m/s by `MovePosition`; every precise loose
+  prop (beer cups, parked bobber) already had to stop being a rigidbody. Zero UnityEngine
+  references → `py -3 prototypes/pool/test/verify-pool.py` compiles and runs 24 checks
+  (rack, 9 m/s break settles ~7 s with nothing off-table or overlapping, head-on transfer,
+  corner/side pocketing, rail-rolling past the side pocket, cast, respawn, determinism).
+- `Pool/PoolTable.cs` (Interactable on the prefab root) steps the sim every frame whether
+  or not anyone plays, copies X/Y to ball `localPosition`, rolls the meshes, animates
+  pocket drops, respawns a sunk cue ball on the head spot, auto re-racks when only the cue
+  is left. Trigger sphere r 3.5 added in Awake; the solid `BoxCollider` is the gaze target.
+- `Pool/PoolShotSession.cs` (order 210) = the F-mode. Borrows the REAL camera exactly like
+  `SolarMap` (head pose cached relative to its parent, `SetParent(null)` + EndlessManager
+  registration, `CameraTransformFX.enabled=false` **and** a static bail in its LateUpdate
+  next to the SolarMap one, HUD force-hidden, astronaut body shown). Pose every LateUpdate
+  from live anchors in table-local space (cue ball + orbit yaw/pitch/dist), 0.9 s
+  smoothstep glide in and out, F mid-glide reverses. `PlayerController` look + move gates
+  got `|| PoolShotSession.IsActive`. Input: A/D turn, W/S tilt, Shift/LT fine (×0.25),
+  wheel/D-pad zoom, hold LMB/RT 2 s = power (speed = lerp(0.6, 9, charge²)), release
+  strikes (cue lunges 0.07 s), RMB/B cancels, R/Y re-rack, F/X leave. Cue stick lives in
+  TABLE space (not parented to the camera) so tilting never lifts it off the cloth. Guide =
+  `CastCueBall` → line to first contact + ghost ring + object-ball stub (LineRenderers,
+  local space, Sprites/Default). `Pool/PoolShotHUD.cs` = power bar in the tension-bar style
+  + a hint line.
+- **Prefab is generated, and the generator is in the repo this time:** `Editor/
+  PoolTableBuilder.cs`, `Tools ▸ Pool ▸ Build Pool Table Prefab` → `Assets/1 - samsPrefabs/
+  Pool/PoolTable.prefab` (+ Meshes/, Textures/Ball_NN.png, `2 - Materials/Pool/`). Flat-
+  shaded meshes: notched cloth, 6 jaw-cut cushions with a nose bevel, chamfered rail ring
+  with 18 sights, hollow pocket cups, apron, tapered legs; UV-sphere balls with generated
+  number textures (3×5 bitmap digits); lathe cue in 4 materials. Rebuilding replaces assets
+  in place (same GUIDs). 🔥 Sphere UV `u` runs WITH the longitude angle — Unity is left-
+  handed; the "mirrored" version reads backwards. 🔥 Editor previews of anything placed
+  in the scene must disable the scene's other directional lights or everything washes out.
+- **Placement:** `Tools ▸ Pool ▸ Place Pool Table near Shlawg's Bar` → instance
+  `…/Humble Abode/TOWN-VILLAGE/PoolTable`, 7.5 m from House_03 on the door side, long
+  side facing the house. 🔥 In the Editor the planet is only a placeholder sphere
+  (radius ≈ 200) — the raycast lands 4 m under the village. The tool takes the ground level
+  from the nearest village objects' mesh-tight lowest corners instead (House_03 base =
+  radius 203.90; the village spans 201–208). Placed 2026-09-13 by script, **unsaved until
+  Sam saves**; Sam fine-tunes position/scale (scaling the root scales the whole game).
+- `MeshCombineTool` skips `PoolTable` subtrees. Nothing is saved to the world save.
+- Known gaps for the test: other canvases (hotbar, phone) are not hidden the way SolarMap
+  hides them; held items follow whatever they follow; no sound; the table may feel small
+  next to the 1.5×-scaled village (scale the root).
+
+Compile PASS (runtime + editor + player), 0 warnings. **PLAYTEST PENDING** — checklist at
+the end of the spec.
