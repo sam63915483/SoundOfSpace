@@ -65,23 +65,27 @@ public static class PoolTableBuilder
         EnsureDir(PrefabDir); EnsureDir(PrefabDir + "/Meshes"); EnsureDir(PrefabDir + "/Textures"); EnsureDir(MatDir);
 
         // materials
-        var mFelt = StdMat("PoolFelt", Felt, 0.05f);
-        var mWood = StdMat("PoolWood", Wood, 0.32f);
+        // Smoothness 0 everywhere on the table, like the village pack: the scene has
+        // environment reflections OFF, so the only shine is the SUN'S specular, and on a
+        // flat-shaded mesh a whole facet flashes white when it lines up — Sam saw the
+        // corners "glow" as he orbited (2026-09-13). Balls and cue keep a little.
+        var mFelt = StdMat("PoolFelt", Felt, 0f);
+        var mWood = StdMat("PoolWood", Wood, 0f);
         // Dead matte, no highlight, no reflections: a smooth near-black dielectric turns
         // WHITE at grazing angles (Fresnel) — Sam saw the corner pockets "glow" as he
         // walked round the table (2026-09-13).
         var mCup = StdMat("PoolPocket", CupBlack, 0f, specular: false);
-        var mIvory = StdMat("PoolIvory", Ivory, 0.35f);
-        var mMaple = StdMat("CueMaple", Maple, 0.45f);
-        var mWrap = StdMat("CueWrap", Wrap, 0.25f);
-        var mTip = StdMat("CueTip", TipBlue, 0.15f);
+        var mIvory = StdMat("PoolIvory", Ivory, 0f);
+        var mMaple = StdMat("CueMaple", Maple, 0.15f);
+        var mWrap = StdMat("CueWrap", Wrap, 0.05f);
+        var mTip = StdMat("CueTip", TipBlue, 0.05f);
         var mGuide = GuideMat();
 
         var root = new GameObject("PoolTable");
         try
         {
             Piece(root, "Felt", BuildFelt(), mFelt);
-            Piece(root, "Wood", BuildWood(), mWood);
+            var wood = Piece(root, "Wood", BuildWood(), mWood);
             Piece(root, "Pockets", BuildCups(), mCup);
             Piece(root, "Sights", BuildSights(), mIvory);
 
@@ -125,8 +129,13 @@ public static class PoolTableBuilder
             var ring = Line(root, "ContactRing", mGuide, 0.004f, true);
             var stub = Line(root, "ObjectStub", mGuide, 0.004f, false);
 
-            // collider + components
-            var box = root.AddComponent<BoxCollider>();
+            // Solid collider on the WOOD child, not the root, and the wood is the
+            // Interactable's gazeTarget: the crosshair test hits it, and GazeHighlight
+            // outlines only ITS renderer. Outlining the whole table put an inflated copy
+            // of each hollow pocket cup into the hole, where nothing masks it — a glowing
+            // ring on every corner whenever the prompt was up (Sam, 2026-09-13). The
+            // root keeps only the runtime trigger sphere (PoolTable.Awake).
+            var box = wood.AddComponent<BoxCollider>();
             box.center = new Vector3(0f, RailTop * 0.5f, 0f);
             box.size = new Vector3(OuterX * 2f, RailTop, OuterZ * 2f);
 
@@ -138,6 +147,7 @@ public static class PoolTableBuilder
             table.guideLine = guide; table.contactRing = ring; table.objectStub = stub;
             table.halfLength = HL; table.halfWidth = HW; table.ballRadius = R;
             table.interactMessage = "";
+            table.gazeTarget = wood.transform;
             var session = root.AddComponent<PoolShotSession>();
             session.guideColor = new Color(1f, 0.77f, 0.42f, 0.45f);
 
@@ -354,12 +364,22 @@ public static class PoolTableBuilder
             if (w0 >= wOut - 1e-4f && w1 >= wOut - 1e-4f) continue;
             w0 = Mathf.Min(w0, wOut); w1 = Mathf.Min(w1, wOut);
             float wc = wOut - RailChamfer, yc = RailTop - RailChamfer;
-            m.Face(Vector3.up, P(t0, RailTop, w0), P(t0, RailTop, wc), P(t1, RailTop, wc), P(t1, RailTop, w1));           // top
-            m.Face(outward + Vector3.up, P(t0, RailTop, wc), P(t0, yc, wOut), P(t1, yc, wOut), P(t1, RailTop, wc));    // chamfer
+            // Height of the rail's upper surface across it: flat top, then the chamfer slope.
+            float YAt(float w) => w <= wc ? RailTop : Mathf.Lerp(RailTop, yc, (w - wc) / RailChamfer);
+            // Top: only the part of this column inside the chamfer line (at the mitred
+            // corners the inner edge crosses it — never fold a quad past that line).
+            if (w0 < wc || w1 < wc)
+                m.Face(Vector3.up, P(t0, RailTop, Mathf.Min(w0, wc)), P(t0, RailTop, wc), P(t1, RailTop, wc), P(t1, RailTop, Mathf.Min(w1, wc)));
+            // Chamfer: from wherever this column's inner edge sits within the band (or its inner line) out to the edge.
+            float c0 = Mathf.Max(w0, wc), c1 = Mathf.Max(w1, wc);
+            if (c0 < wOut - 1e-5f || c1 < wOut - 1e-5f)
+                m.Face(outward + Vector3.up, P(t0, YAt(c0), c0), P(t0, yc, wOut), P(t1, yc, wOut), P(t1, YAt(c1), c1));
             m.Face(outward, P(t0, yc, wOut), P(t0, RailBottom, wOut), P(t1, RailBottom, wOut), P(t1, yc, wOut));        // outer side
             m.Face(Vector3.down, P(t0, RailBottom, w0), P(t1, RailBottom, w1), P(t1, RailBottom, wOut), P(t0, RailBottom, wOut)); // underside
-            // Inner face: the sliver above the cushion. Not inside a pocket hole — the cup lines that.
-            if (!cut0 && !cut1)
+            // Inner face: the sliver above the cushion. Not inside a pocket hole (the cup
+            // lines that) and not along the mitre (buried inside the neighbouring rail).
+            float limit = alongX ? HL + CushW : HW + CushW;
+            if (!cut0 && !cut1 && Mathf.Abs(t0) <= limit && Mathf.Abs(t1) <= limit)
                 m.Face(-outward, P(t0, RailBottom, w0), P(t0, RailTop, w0), P(t1, RailTop, w1), P(t1, RailBottom, w1));
         }
     }
@@ -620,7 +640,7 @@ public static class PoolTableBuilder
             imp.wrapMode = TextureWrapMode.Repeat; imp.mipmapEnabled = true; imp.SaveAndReimport();
         }
         var texAsset = AssetDatabase.LoadAssetAtPath<Texture2D>(texPath);
-        var mat = StdMat($"Ball_{n:00}", Color.white, 0.72f);
+        var mat = StdMat($"Ball_{n:00}", Color.white, 0.6f);
         mat.mainTexture = texAsset;
         EditorUtility.SetDirty(mat);
         return mat;
