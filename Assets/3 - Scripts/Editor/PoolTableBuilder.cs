@@ -175,12 +175,60 @@ public static class PoolTableBuilder
         go.transform.SetParent(village.transform, true);
         go.transform.position = place;
         SnapToGround(go, body);
+        // In the Editor the planet is only a placeholder sphere (the real terrain is
+        // built on load), so the raycast lands too low. The village objects were
+        // stood on the real ground: use the bases of the nearest few as the level.
+        float neighbourGround = NeighbourGroundRadius(village.transform, go.transform, body, 3);
+        float hitRadius = (go.transform.position - body.transform.position).magnitude;
+        if (neighbourGround > 0f && neighbourGround > hitRadius + 0.05f)
+        {
+            Vector3 dir = (go.transform.position - body.transform.position).normalized;
+            go.transform.position = body.transform.position + dir * neighbourGround;
+            Debug.Log($"[Pool] raised from radius {hitRadius:0.00} (Editor placeholder sphere) to {neighbourGround:0.00} (village neighbours' ground).");
+        }
         // Long side faces the house.
         Vector3 toHouse = Vector3.ProjectOnPlane(house.position - go.transform.position, up).normalized;
         go.transform.rotation = Quaternion.LookRotation(toHouse, up);
         Undo.RegisterCreatedObjectUndo(go, "Place Pool Table");
         Selection.activeGameObject = go;
         Debug.Log("[Pool] placed PoolTable beside House_03 — nudge it, then SAVE the scene.", go);
+    }
+
+    // Median radial height of the lowest renderer corner of the `count` nearest direct
+    // children of `village` (excluding `self`) — i.e. where the neighbours' feet are.
+    static float NeighbourGroundRadius(Transform village, Transform self, CelestialBody body, int count)
+    {
+        Vector3 centre = body.transform.position;
+        var found = new List<(float dist, float ground)>();
+        foreach (Transform child in village)
+        {
+            if (child == self || child.name.StartsWith("__")) continue;
+            var mfs = child.GetComponentsInChildren<MeshFilter>();
+            if (mfs.Length == 0) continue;
+            Vector3 up = (child.position - centre).normalized;
+            float lowest = float.MaxValue;
+            foreach (var mf in mfs)
+            {
+                if (mf.sharedMesh == null) continue;
+                var b = mf.sharedMesh.bounds;                       // tight local box, not the world AABB
+                for (int i = 0; i < 8; i++)
+                {
+                    Vector3 c = mf.transform.TransformPoint(new Vector3((i & 1) == 0 ? b.min.x : b.max.x, (i & 2) == 0 ? b.min.y : b.max.y, (i & 4) == 0 ? b.min.z : b.max.z));
+                    float h = Vector3.Dot(c - centre, up);
+                    if (h < lowest) lowest = h;
+                }
+            }
+            if (lowest == float.MaxValue) continue;
+            found.Add((Vector3.Distance(child.position, self.position), lowest));
+            if (found.Count <= 12) Debug.Log($"[Pool] neighbour {child.name}: base radius {lowest:0.00}, {found[found.Count - 1].dist:0.0} m away");
+        }
+        if (found.Count == 0) return -1f;
+        found.Sort((a, b) => a.dist.CompareTo(b.dist));
+        int n = Mathf.Min(count, found.Count);
+        var grounds = new List<float>();
+        for (int i = 0; i < n; i++) grounds.Add(found[i].ground);
+        grounds.Sort();
+        return grounds[n / 2];
     }
 
     // VendorPlacement's recipe: fire down at the core from well above, stand on the hit.
