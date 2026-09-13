@@ -35,6 +35,8 @@ public static class PoolTableBuilder
     const float CornerCupR = 0.075f, SideCupR = 0.070f, CupWall = 0.008f, CupDepth = 0.075f, CupLip = 0.006f;
     const float CornerPocketInset = 0.012f, SidePocketInset = 0.035f;
     const float SightW = 0.016f, SightL = 0.032f;
+    /// The cloth/rail hole is this much smaller than the cup, so the cup wall always sits just behind the hole's edge (no slivers).
+    const float HoleUnderlap = 0.003f;
 
     static readonly float OuterX = HL + CushW + RailW;
     static readonly float OuterZ = HW + CushW + RailW;
@@ -281,7 +283,7 @@ public static class PoolTableBuilder
         {
             PocketCentre(p, out float px, out float pz);
             if (pz < 0f) continue;                                   // symmetric: use the +z pockets
-            float r = p < 4 ? CornerCupR : SideCupR;
+            float r = (p < 4 ? CornerCupR : SideCupR) - HoleUnderlap;
             float dx = x - px;
             if (Mathf.Abs(dx) >= r) continue;
             float z = pz - Mathf.Sqrt(r * r - dx * dx);
@@ -309,15 +311,10 @@ public static class PoolTableBuilder
     static Mesh BuildWood()
     {
         var m = new FlatMesh();
-        float ix = HL + CushW, iz = HW + CushW;      // rail inner edge
-        // +z rail
-        RailPiece(m, new Vector3(-ix, 0, iz), new Vector3(ix, 0, iz), new Vector3(OuterX, 0, OuterZ), new Vector3(-OuterX, 0, OuterZ), Vector3.forward);
-        // −z rail
-        RailPiece(m, new Vector3(ix, 0, -iz), new Vector3(-ix, 0, -iz), new Vector3(-OuterX, 0, -OuterZ), new Vector3(OuterX, 0, -OuterZ), Vector3.back);
-        // +x rail
-        RailPiece(m, new Vector3(ix, 0, iz), new Vector3(ix, 0, -iz), new Vector3(OuterX, 0, -OuterZ), new Vector3(OuterX, 0, OuterZ), Vector3.right);
-        // −x rail
-        RailPiece(m, new Vector3(-ix, 0, -iz), new Vector3(-ix, 0, iz), new Vector3(-OuterX, 0, OuterZ), new Vector3(-OuterX, 0, -OuterZ), Vector3.left);
+        // Four rails, each built as strips along its length so the pocket holes are cut
+        // straight through the wood (a ball rolls into a real hole, not up to a wall).
+        RailStrips(m, true, 1f); RailStrips(m, true, -1f);
+        RailStrips(m, false, 1f); RailStrips(m, false, -1f);
 
         // apron
         float ax = OuterX - ApronInset, az = OuterZ - ApronInset;
@@ -336,24 +333,53 @@ public static class PoolTableBuilder
         return m.Build("PoolWood");
     }
 
-    // A rail: inner edge innerA→innerB (at the cushion back), outer edge outerB→outerA,
-    // `inward` = toward the table centre. Top gets a chamfer on the outer edge.
-    static void RailPiece(FlatMesh m, Vector3 innerA, Vector3 innerB, Vector3 outerB, Vector3 outerA, Vector3 outward)
+    // One rail as column strips. `alongX`: the rail runs along x (a long rail at z = ±OuterZ);
+    // otherwise along z (a short rail at x = ±OuterX). `sign` picks the side. In rail
+    // coordinates t runs along the rail and w across it (w > 0 outward); the inner edge
+    // w = RailWIn(t) is the cushion back, the 45° mitre near the ends, and the pocket holes.
+    static void RailStrips(FlatMesh m, bool alongX, float sign)
     {
-        Vector3 inward = -outward;
-        Vector3 iA0 = At(innerA, RailBottom), iA1 = At(innerA, RailTop);
-        Vector3 iB0 = At(innerB, RailBottom), iB1 = At(innerB, RailTop);
-        Vector3 oA0 = At(outerA, RailBottom), oA1 = At(outerA, RailTop - RailChamfer), oAc = At(outerA + inward * RailChamfer, RailTop);
-        Vector3 oB0 = At(outerB, RailBottom), oB1 = At(outerB, RailTop - RailChamfer), oBc = At(outerB + inward * RailChamfer, RailTop);
-        m.Face(Vector3.up, iA1, iB1, oBc, oAc);                       // top
-        m.Face(outward + Vector3.up, oAc, oBc, oB1, oA1);             // chamfer
-        m.Face(outward, oA1, oB1, oB0, oA0);                          // outer side
-        m.Face(inward, iA0, iB0, iB1, iA1);                           // inner sliver above the cushion
-        m.Face(Vector3.down, iA0, oA0, oB0, iB0);                     // underside
-        // mitre ends
-        Vector3 along = (innerB - innerA).normalized;
-        m.Face(along, iB0, iB1, oBc, oB1, oB0);
-        m.Face(-along, iA0, oA0, oA1, oAc, iA1);
+        float L = alongX ? OuterX : OuterZ;
+        float wOut = alongX ? OuterZ : OuterX;
+        Vector3 outward = alongX ? new Vector3(0f, 0f, sign) : new Vector3(sign, 0f, 0f);
+        Vector3 P(float t, float y, float w) => alongX ? new Vector3(t, y, sign * w) : new Vector3(sign * w, y, t);
+        const int cols = 240;
+        for (int c = 0; c < cols; c++)
+        {
+            float t0 = Mathf.Lerp(-L, L, c / (float)cols), t1 = Mathf.Lerp(-L, L, (c + 1) / (float)cols);
+            float w0 = RailWIn(alongX, sign, t0, out bool cut0), w1 = RailWIn(alongX, sign, t1, out bool cut1);
+            if (w0 >= wOut - 1e-4f && w1 >= wOut - 1e-4f) continue;
+            w0 = Mathf.Min(w0, wOut); w1 = Mathf.Min(w1, wOut);
+            float wc = wOut - RailChamfer, yc = RailTop - RailChamfer;
+            m.Face(Vector3.up, P(t0, RailTop, w0), P(t0, RailTop, wc), P(t1, RailTop, wc), P(t1, RailTop, w1));           // top
+            m.Face(outward + Vector3.up, P(t0, RailTop, wc), P(t0, yc, wOut), P(t1, yc, wOut), P(t1, RailTop, wc));    // chamfer
+            m.Face(outward, P(t0, yc, wOut), P(t0, RailBottom, wOut), P(t1, RailBottom, wOut), P(t1, yc, wOut));        // outer side
+            m.Face(Vector3.down, P(t0, RailBottom, w0), P(t1, RailBottom, w1), P(t1, RailBottom, wOut), P(t0, RailBottom, wOut)); // underside
+            // Inner face: the sliver above the cushion. Not inside a pocket hole — the cup lines that.
+            if (!cut0 && !cut1)
+                m.Face(-outward, P(t0, RailBottom, w0), P(t0, RailTop, w0), P(t1, RailTop, w1), P(t1, RailBottom, w1));
+        }
+    }
+
+    // Inner edge of a rail at length coordinate t (see RailStrips). `cut` = inside a pocket hole.
+    static float RailWIn(bool alongX, float sign, float t, out bool cut)
+    {
+        float baseW = alongX ? HW + CushW : HL + CushW;
+        float limit = alongX ? HL + CushW : HW + CushW;
+        float w = Mathf.Abs(t) > limit ? baseW + (Mathf.Abs(t) - limit) : baseW;    // 45° mitre at the corners
+        cut = false;
+        for (int p = 0; p < 6; p++)
+        {
+            PocketCentre(p, out float px, out float pz);
+            float pt = alongX ? px : pz, pw = alongX ? sign * pz : sign * px;
+            if (pw < 0f) continue;                                                    // the other side's pockets
+            float r = (p < 4 ? CornerCupR : SideCupR) - HoleUnderlap;
+            float dt = t - pt;
+            if (Mathf.Abs(dt) >= r) continue;
+            float edge = pw + Mathf.Sqrt(r * r - dt * dt);
+            if (edge > w) { w = edge; cut = true; }
+        }
+        return w;
     }
 
     static Vector3 At(Vector3 p, float y) => new Vector3(p.x, y, p.z);
@@ -400,19 +426,45 @@ public static class PoolTableBuilder
     }
 
     // Pocket cups: hollow 12-sided cylinders through the rail with a floor.
+    // Pocket cups. Below the cloth: a full bowl the ball drops into. Above it: only the
+    // arc that sits out under the rail rises as a liner — on the table side there is
+    // NO wall, so a ball rolls straight into the hole (Sam, 2026-09-13: the old full ring
+    // "looked like it blocked the ball, but the ball just goes through it").
     static Mesh BuildCups()
     {
         var m = new FlatMesh();
+        const int sides = 24;
         for (int p = 0; p < 6; p++)
         {
             PocketCentre(p, out float px, out float pz);
-            float r = p < 4 ? CornerCupR : SideCupR;
+            float r = p < 4 ? CornerCupR : SideCupR, ri = r - CupWall;
             Vector3 c = new Vector3(px, 0f, pz);
-            float top = RailTop + CupLip, bot = FeltY - CupDepth;
-            m.Tube(c, r, bot, top, 12, true);                 // outer wall, normals out
-            m.Tube(c, r - CupWall, bot, top, 12, false);      // inner wall, normals in
-            m.Annulus(c, r - CupWall, r, top, 12);            // lip
-            m.Disc(c, r - CupWall, bot + 0.002f, 12, true);   // floor
+            float bot = FeltY - CupDepth, lowTop = FeltY - 0.001f, highTop = RailTop + CupLip;
+            bool[] high = new bool[sides];
+            for (int i = 0; i < sides; i++)
+            {
+                float am = (i + 0.5f) / sides * Mathf.PI * 2f;
+                Vector3 mid = c + new Vector3(Mathf.Cos(am), 0f, Mathf.Sin(am)) * r;
+                high[i] = Mathf.Abs(mid.x) > HL + CushW || Mathf.Abs(mid.z) > HW + CushW;
+            }
+            for (int i = 0; i < sides; i++)
+            {
+                float a0 = i / (float)sides * Mathf.PI * 2f, a1 = (i + 1) / (float)sides * Mathf.PI * 2f;
+                Vector3 d0 = new Vector3(Mathf.Cos(a0), 0f, Mathf.Sin(a0)), d1 = new Vector3(Mathf.Cos(a1), 0f, Mathf.Sin(a1));
+                float top = high[i] ? highTop : lowTop;
+                Vector3 hint = d0 + d1;
+                m.Face(hint, c + d0 * r + Vector3.up * bot, c + d1 * r + Vector3.up * bot, c + d1 * r + Vector3.up * top, c + d0 * r + Vector3.up * top);      // outer
+                m.Face(-hint, c + d0 * ri + Vector3.up * bot, c + d1 * ri + Vector3.up * bot, c + d1 * ri + Vector3.up * top, c + d0 * ri + Vector3.up * top);  // inner
+                m.Face(Vector3.up, c + d0 * ri + Vector3.up * top, c + d0 * r + Vector3.up * top, c + d1 * r + Vector3.up * top, c + d1 * ri + Vector3.up * top); // rim
+                // Close the step where the liner starts/ends.
+                int prev = (i + sides - 1) % sides;
+                if (high[i] != high[prev])
+                {
+                    Vector3 tangent = new Vector3(-d0.z, 0f, d0.x) * (high[i] ? -1f : 1f);
+                    m.Face(tangent, c + d0 * ri + Vector3.up * lowTop, c + d0 * r + Vector3.up * lowTop, c + d0 * r + Vector3.up * highTop, c + d0 * ri + Vector3.up * highTop);
+                }
+            }
+            m.Disc(c, ri, bot + 0.002f, sides, true);   // floor
         }
         return m.Build("PoolPockets");
     }
