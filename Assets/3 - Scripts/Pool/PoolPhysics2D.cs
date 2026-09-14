@@ -231,6 +231,16 @@ public sealed class PoolPhysics2D
         while (_accum >= StepDt) { Step(StepDt); _accum -= StepDt; }
     }
 
+    /// Run the table to rest RIGHT NOW (the same fixed substeps as Advance, so the
+    /// balls end exactly where waiting would have put them). Capped so a bad
+    /// state can't hang the frame.
+    public void SettleNow(float maxSeconds = 60f)
+    {
+        int steps = (int)(maxSeconds / StepDt);
+        while (!AllStopped && steps-- > 0) Step(StepDt);
+        _accum = 0f;
+    }
+
     void Step(float dt)
     {
         // 1. integrate + friction

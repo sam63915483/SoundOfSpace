@@ -97,8 +97,9 @@ public class PoolShotSession : MonoBehaviour
     Renderer[] _shownBody;
     PoolShotHUD _hud;
     string _hintKb, _hintPad;
-    string _hintHandKb, _hintHandPad;
+    string _hintHandKb, _hintHandPad, _hintScratchKb, _hintScratchPad;
     bool _subscribed;
+    bool _fireLatch;               // the click that skipped the roll must be released before it can charge a shot
 
     public State Current => _state;
 
@@ -172,11 +173,9 @@ public class PoolShotSession : MonoBehaviour
                 if (menu) break;
                 if (LeavePressed()) { Close(); break; }
                 if (RerackPressed()) { _table.ReRack(); _viewTarget = _table.CueBallLocal; _charge = 0f; _state = State.Aiming; break; }
-                if (_state == State.Aiming && HandPressed() && _table.BeginBallInHand())
+                if (_state == State.Aiming && (_table.CueRespawnPending || HandPressed()) && _table.BeginBallInHand())
                 {
-                    _state = State.BallInHand;
-                    SetGuideVisible(false);
-                    if (_hud != null) _hud.SetHint(TutorialGate.LastSource == TutorialGate.InputSource.Controller ? _hintHandPad : _hintHandKb);
+                    EnterHand();
                     break;
                 }
                 TickAim(dt);
@@ -201,8 +200,9 @@ public class PoolShotSession : MonoBehaviour
             case State.Rolling:
                 if (!menu && LeavePressed()) { Close(); break; }
                 if (!menu && RerackPressed()) { _table.ReRack(); _viewTarget = _table.CueBallLocal; _cueSlide = 0f; _state = State.Aiming; break; }
+                if (!menu && SkipPressed()) { _table.SettleNow(); _fireLatch = true; }     // fast-forward the roll-out (Sam, 2026-09-14)
                 if (!menu) TickAim(dt);      // you can already swing the view while the balls roll
-                if (_table.Sim.AllStopped && !_table.CueRespawnPending)
+                if (_table.Sim.AllStopped)   // a scratched cue ball is handed over from Aiming
                 {
                     _state = State.Aiming;
                     _cueSlide = 0f;
@@ -262,6 +262,15 @@ public class PoolShotSession : MonoBehaviour
     bool RerackPressed() => Input.GetKeyDown(KeyCode.R) || TutorialGate.PadPressed(TutorialGate.PadButton.Y);
     bool HandPressed() => Input.GetKeyDown(KeyCode.G) || TutorialGate.DPadDirectionPressed(2);
     static bool PlacePressed() => Input.GetKeyDown(KeyCode.Space) || TutorialGate.PadPressed(TutorialGate.PadButton.A);
+    static bool SkipPressed() => Input.GetMouseButtonDown(0) || TutorialGate.PadPressed(TutorialGate.PadButton.A);
+
+    void EnterHand()
+    {
+        _state = State.BallInHand;
+        SetGuideVisible(false);
+        bool pad = TutorialGate.LastSource == TutorialGate.InputSource.Controller;
+        if (_hud != null) _hud.SetHint(_table.BallInHandFromScratch ? (pad ? _hintScratchPad : _hintScratchKb) : (pad ? _hintHandPad : _hintHandKb));
+    }
 
     void LeaveHand()
     {
@@ -371,7 +380,8 @@ public class PoolShotSession : MonoBehaviour
     {
         if (_state == State.Aiming)
         {
-            if (FireHeld() && !_table.CueRespawnPending)
+            if (_fireLatch && !FireHeld()) _fireLatch = false;
+            if (FireHeld() && !_fireLatch && !_table.CueRespawnPending)
             {
                 _state = State.Charging;
                 _chargeHeld = 0f;
@@ -435,7 +445,7 @@ public class PoolShotSession : MonoBehaviour
     {
         var cue = _table.cue;
         if (cue == null) return;
-        bool inPlay = _state == State.Aiming || _state == State.Charging || _state == State.Striking;
+        bool inPlay = (_state == State.Aiming || _state == State.Charging || _state == State.Striking) && !_table.CueRespawnPending;
         float slideWant = inPlay ? 0f : 1f;
         _cueSlide = Mathf.MoveTowards(_cueSlide, slideWant, dt / Mathf.Max(0.02f, cueHideSeconds));
         bool visible = _cueSlide < 1f && _state != State.Closed && (_state != State.Entering || _t > 0.35f);
@@ -466,7 +476,7 @@ public class PoolShotSession : MonoBehaviour
 
     void DriveGuide()
     {
-        bool show = _state == State.Aiming || _state == State.Charging;
+        bool show = (_state == State.Aiming || _state == State.Charging) && !_table.CueRespawnPending;
         SetGuideVisible(show);
         if (!show) return;
         var sim = _table.Sim;
@@ -543,10 +553,12 @@ public class PoolShotSession : MonoBehaviour
         if (_hud == null) _hud = PoolShotHUD.Create(transform);
         if (_hintKb == null)
         {
-            _hintKb = "A D turn   W S tilt   Shift fine   hold LMB power   G ball in hand   R re-rack   F leave";
-            _hintPad = "Stick aim   LT fine   hold RT power   D-pad↓ ball in hand   Y re-rack   X leave";
+            _hintKb = "A D turn   W S tilt   Shift fine   hold LMB power   LMB skip the roll   G ball in hand   R re-rack   F leave";
+            _hintPad = "Stick aim   LT fine   hold RT power   A skip the roll   D-pad↓ ball in hand   Y re-rack   X leave";
             _hintHandKb = "W A S D move the cue ball   Space place   G cancel   F leave";
             _hintHandPad = "Stick move the cue ball   A place   D-pad↓ cancel   X leave";
+            _hintScratchKb = "Scratch!   W A S D place the cue ball   Space set it   G head spot   F leave";
+            _hintScratchPad = "Scratch!   Stick place the cue ball   A set it   D-pad↓ head spot   X leave";
         }
         _hud.SetHint(TutorialGate.LastSource == TutorialGate.InputSource.Controller ? _hintPad : _hintKb);
         return true;

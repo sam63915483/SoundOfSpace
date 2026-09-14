@@ -255,6 +255,14 @@ public static class PoolSimTests
         Check(!s.PlaceCue(s.X[1], s.Y[1]), "hand: placing on a ball is refused");
         Check(Math.Abs(s.KitchenMaxX - s.HeadSpotX) < 1e-6f, "hand: kitchen ends at the head string");
 
+        // 25. SettleNow lands exactly where waiting would
+        var f1 = new PoolPhysics2D(); var f2 = new PoolPhysics2D();
+        f1.Strike(1f, 0.013f, 8f); f2.Strike(1f, 0.013f, 8f);
+        RunUntilStopped(f1, 60f); f2.SettleNow();
+        bool sameFF = f2.AllStopped;
+        for (int i = 0; i < 16; i++) if (f1.X[i] != f2.X[i] || f1.Y[i] != f2.Y[i] || f1.Active[i] != f2.Active[i]) sameFF = false;
+        Check(sameFF, "settle: SettleNow == waiting it out");
+
         Console.WriteLine(_failures == 0 ? $"PASS  {_checks} checks" : $"FAIL  {_failures} of {_checks} checks");
         return _failures == 0 ? 0 : 1;
     }

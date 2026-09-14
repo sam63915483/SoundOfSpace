@@ -49,7 +49,7 @@ public class PoolTable : Interactable
     public float pocketDropSeconds = 0.35f;
     [Tooltip("How far below the cloth a pocketed ball sinks before it disappears.")]
     public float pocketDropDepth = 0.06f;
-    [Tooltip("Pause after the table settles before a sunk cue ball comes back.")]
+    [Tooltip("Pause after the table settles before a scratched cue ball is handed to the shooter (ball in hand).")]
     public float cueRespawnDelay = 0.6f;
     [Tooltip("Pause after the last object ball drops before the table re-racks itself.")]
     public float autoRerackDelay = 1.5f;
@@ -65,10 +65,12 @@ public class PoolTable : Interactable
     public PoolGameState Game { get; private set; }
     /// True from a rack until the first strike — the first shot faces the rack.
     public bool FreshRack { get; private set; } = true;
-    /// True while the cue ball is off the table (pocketed) and not yet back.
+    /// True while the cue ball is off the table (scratched) and not yet placed by hand.
     public bool CueRespawnPending => _cueRespawnPending;
     /// True while the cue ball is lifted for ball in hand.
     public bool BallInHand => _inHand;
+    /// True while the ball in hand came from a scratch (G drops it on the head spot instead of "back where it was").
+    public bool BallInHandFromScratch { get; private set; }
     /// While in hand: would putting it down here overlap another ball?
     public bool BallInHandBlocked { get; private set; }
     /// Cue ball position while in hand (table-local metres, on the cloth).
@@ -150,16 +152,10 @@ public class PoolTable : Interactable
         Sim.Advance(dt);
         DriveBalls(dt);
 
-        if (_cueRespawnPending && Sim.AllStopped)
-        {
-            _respawnTimer += dt;
-            if (_respawnTimer >= cueRespawnDelay && Sim.RespawnCue())
-            {
-                _cueRespawnPending = false;
-                ShowBall(PoolPhysics2D.Cue);
-                SnapBall(PoolPhysics2D.Cue);
-            }
-        }
+        // A scratched cue ball is NOT put back by the table any more (2026-09-14, Sam):
+        // it is handed to the shooter — PoolShotSession.BeginBallInHand once this delay
+        // has passed. No session open → the next player to press F gets it in hand.
+        if (_cueRespawnPending && Sim.AllStopped) _respawnTimer += dt;
 
         // The 8 dropped before anyone had a group: back on the foot spot once the table is still.
         if (_spot8Pending && Sim.AllStopped && _dropT[8] < 0f)
@@ -233,21 +229,27 @@ public class PoolTable : Interactable
         _spot8Pending = false;
         _gameOverTimer = -1f;
         _shotWasBreak = false;
-        if (_inHand) { _inHand = false; SetCueTint(false); }
+        if (_inHand) { _inHand = false; BallInHandFromScratch = false; SetCueTint(false); }
         for (int i = 0; i < PoolPhysics2D.BallCount; i++) { _dropT[i] = -1f; _roll[i] = Quaternion.identity; ShowBall(i); }
         SnapVisuals();
     }
 
     // ── Ball in hand ────────────────────────────────────────────────────────
 
-    public bool CanBeginBallInHand() =>
-        !_inHand && Sim != null && Sim.AllStopped && !_cueRespawnPending && Sim.Active[PoolPhysics2D.Cue]
-        && Game != null && !Game.GameOver && !_spot8Pending;
+    public bool CanBeginBallInHand()
+    {
+        if (_inHand || Sim == null || !Sim.AllStopped || Game == null || Game.GameOver || _spot8Pending) return false;
+        if (_dropT[PoolPhysics2D.Cue] >= 0f) return false;                       // still dropping into the pocket
+        if (Sim.Active[PoolPhysics2D.Cue]) return true;                           // on the table: a voluntary G
+        return _cueRespawnPending && _respawnTimer >= cueRespawnDelay;            // scratched: handed over after a beat
+    }
 
     public bool BeginBallInHand()
     {
         if (!CanBeginBallInHand()) return false;
-        _handFromX = Sim.X[PoolPhysics2D.Cue]; _handFromY = Sim.Y[PoolPhysics2D.Cue];
+        BallInHandFromScratch = !Sim.Active[PoolPhysics2D.Cue];
+        if (BallInHandFromScratch) { _handFromX = Sim.HeadSpotX; _handFromY = 0f; }
+        else { _handFromX = Sim.X[PoolPhysics2D.Cue]; _handFromY = Sim.Y[PoolPhysics2D.Cue]; }
         // Start inside the kitchen even if the ball was elsewhere.
         _handX = Mathf.Min(_handFromX, Sim.KitchenMaxX); _handY = _handFromY;
         ClampHand();
@@ -255,6 +257,13 @@ public class PoolTable : Interactable
         _inHand = true;
         DriveHand();
         return true;
+    }
+
+    /// Fast-forward: run the balls to rest now (LMB while they roll). Same end state as waiting.
+    public void SettleNow()
+    {
+        if (Sim == null) return;
+        Sim.SettleNow();
     }
 
     /// dx/dy in table-local metres (already scaled by dt by the caller).
@@ -269,17 +278,24 @@ public class PoolTable : Interactable
     {
         if (!_inHand) return false;
         if (!Sim.PlaceCue(_handX, _handY)) return false;
-        _inHand = false;
-        SetCueTint(false);
-        SnapBall(PoolPhysics2D.Cue);
+        EndHand();
         return true;
     }
 
+    /// Put it back where it was picked up — or, after a scratch, on the head spot.
     public void CancelBallInHand()
     {
         if (!_inHand) return;
-        if (!Sim.PlaceCue(_handFromX, _handFromY)) Sim.RespawnCue();     // it came from a legal spot; belt and braces
+        if (!Sim.PlaceCue(_handFromX, _handFromY)) Sim.RespawnCue();     // head spot taken → nudged, like a respawn
+        EndHand();
+    }
+
+    void EndHand()
+    {
         _inHand = false;
+        _cueRespawnPending = false;
+        _respawnTimer = 0f;
+        BallInHandFromScratch = false;
         SetCueTint(false);
         SnapBall(PoolPhysics2D.Cue);
     }
