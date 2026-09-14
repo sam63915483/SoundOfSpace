@@ -27,7 +27,8 @@ DEFAULT_DIR = os.path.expandvars(r"%USERPROFILE%\AppData\LocalLow\DefaultCompany
 # v2 toggle bits (PerfTrace.cs). Run 1 (2026-09-11 19:12) used the v1 set:
 # lights OFF, moon base OFF, village OFF, shuttle OFF, shadows OFF, grass OFF, dust OFF, UI OFF, pixel lights 4
 TOGGLES = ["lights OFF", "lights vertex", "village OFF", "MSAA OFF", "shadows OFF",
-           "grass OFF", "cascades2+dist100", "lights skip planet", "pixel lights 8"]
+           "grass OFF", "cascades2+dist100", "lights skip planet", "pixel lights 8",
+           "UNCOMBINED (originals)"]
 TIME_COLS = ["main_ms", "gpu_ms", "waitgpu_ms", "update_ms", "lateupdate_ms", "fixed_ms", "canvas_ms",
              "camrender_ms", "culling_ms", "skinfinal_ms", "shadowmap_ms", "opaque_ms", "transparent_ms", "imagefx_ms",
              "finishrender_ms", "renderers_ms", "grass_ms", "dust_ms", "endless_ms",

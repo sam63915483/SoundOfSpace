@@ -39,6 +39,13 @@ using TMPro;
 ///   Keypad7  shadow cascades → 2, distance → 100 m
 ///   Keypad8  point/spot lights stop touching planet meshes (cullingMask minus the Body layer)
 ///   Keypad9  pixel light cap 64 → 8         (QualitySettings.pixelLightCount)
+///   Keypad0  UNCOMBINE — every MeshCombineTool bake in the scene (village,
+///            lanterns, markets, …) stops drawing its __CombinedMeshes and draws
+///            the original per-object renderers instead. Sam's 2026-09-14 hunch:
+///            uncombined felt FASTER (per-object frustum/horizon/shadow culling
+///            beats fewer draw calls on this GPU). Press again to go back.
+///            Uses Renderer.forceRenderingOff as ITS switch so it never fights
+///            PlanetOcclusionCuller, which owns Renderer.enabled.
 ///   KeypadPlus             MARK — stamps a numbered marker into the trace (say what
 ///                          you were looking at afterwards; the analyser prints
 ///                          the 3 s before/after each mark)
@@ -76,17 +83,19 @@ public class PerfTrace : MonoBehaviour
     const int BodyLayer = 10;      // "Body" — the layer every planet's Mesh Holder is on (TagManager)
 
     // ---- toggles --------------------------------------------------------------
-    enum Toggle { Lights, LightsVertex, Village, MsaaOff, Shadows, Grass, Cascades2, LightsSkipPlanet, PixelLights8, Count }
+    enum Toggle { Lights, LightsVertex, Village, MsaaOff, Shadows, Grass, Cascades2, LightsSkipPlanet, PixelLights8, Uncombine, Count }
     static readonly string[] ToggleNames =
     {
         "point/spot lights OFF", "lights → vertex-lit", "village OFF", "MSAA OFF", "shadows OFF",
         "grass OFF", "cascades 2 + dist 100", "lights skip planet mesh", "pixel lights 64→8",
+        "UNCOMBINED (originals, not bakes)",
     };
     static readonly KeyCode[] ToggleKeys =
     {
         KeyCode.Keypad1, KeyCode.Keypad2, KeyCode.Keypad3, KeyCode.Keypad4, KeyCode.Keypad5,
-        KeyCode.Keypad6, KeyCode.Keypad7, KeyCode.Keypad8, KeyCode.Keypad9,
+        KeyCode.Keypad6, KeyCode.Keypad7, KeyCode.Keypad8, KeyCode.Keypad9, KeyCode.Keypad0,
     };
+    static readonly string[] ToggleKeyLabels = { "Num1", "Num2", "Num3", "Num4", "Num5", "Num6", "Num7", "Num8", "Num9", "Num0" };
     readonly bool[] _on = new bool[(int)Toggle.Count];
     int _selected;
     bool _legendVisible = true;
@@ -99,6 +108,11 @@ public class PerfTrace : MonoBehaviour
     readonly List<int> _lightsMaskBefore = new List<int>();
     readonly List<Renderer> _villageOff = new List<Renderer>();
     readonly List<InstancedGrassRenderer> _grassOff = new List<InstancedGrassRenderer>();
+    // Uncombine: snapshotted at scene load, BEFORE PlanetOcclusionCuller's first tick,
+    // so "a disabled MeshRenderer under a baked cluster" can only mean "eaten by the bake".
+    readonly List<Renderer> _bakeOutputs = new List<Renderer>();     // children of every __CombinedMeshes
+    readonly List<Renderer> _bakeOriginals = new List<Renderer>();   // what those bakes replaced
+    string _bakeScene;
     ShadowQuality _shadowsBefore;
     int _msaaBefore, _cascadesBefore, _pixelLightsBefore;
     float _shadowDistBefore;
@@ -213,6 +227,36 @@ public class PerfTrace : MonoBehaviour
 
         BuildUI();
         _t0 = Time.realtimeSinceStartup;
+
+        // Editor: Play in the gameplay scene → sceneLoaded already fired; snapshot now (still before any Update).
+        SceneManager.sceneLoaded += OnSceneLoaded;
+        SnapshotBakes(SceneManager.GetActiveScene());
+    }
+
+    void OnSceneLoaded(Scene scene, LoadSceneMode mode) => SnapshotBakes(scene);
+
+    /// <summary>Find every MeshCombineTool bake in the scene and the originals it
+    /// disabled. Runs at scene load (before any Update) so nothing else has had
+    /// a chance to disable a renderer for its own reasons.</summary>
+    void SnapshotBakes(Scene scene)
+    {
+        if (scene.name == "MainMenu" || scene.name == _bakeScene) return;
+        _bakeScene = scene.name;
+        _bakeOutputs.Clear(); _bakeOriginals.Clear();
+        if (_on[(int)Toggle.Uncombine]) _on[(int)Toggle.Uncombine] = false;    // fresh scene = combined again
+        foreach (var t in FindObjectsOfType<Transform>(true))
+        {
+            if (t.name != "__CombinedMeshes" || t.parent == null) continue;
+            foreach (var r in t.GetComponentsInChildren<MeshRenderer>(true)) _bakeOutputs.Add(r);
+            foreach (var r in t.parent.GetComponentsInChildren<MeshRenderer>(true))
+            {
+                if (r.enabled || r.transform.IsChildOf(t)) continue;
+                if (_bakeOriginals.Contains(r)) continue;       // nested clusters
+                _bakeOriginals.Add(r);
+            }
+        }
+        if (_bakeOutputs.Count > 0)
+            Debug.Log("[PerfTrace] bakes in " + scene.name + ": " + _bakeOutputs.Count + " combined meshes standing in for " + _bakeOriginals.Count + " renderers (Num0 swaps them)");
     }
 
     static Rec T(string col, ProfilerCategory cat, string marker) => new Rec { column = col, category = cat, marker = marker, isTime = true };
@@ -234,6 +278,7 @@ public class PerfTrace : MonoBehaviour
     void OnDestroy()
     {
         if (Instance == this) Instance = null;
+        SceneManager.sceneLoaded -= OnSceneLoaded;
         RestoreAll();
         CloseCsv();
         if (_recs != null)
@@ -329,6 +374,7 @@ public class PerfTrace : MonoBehaviour
                     if (on) { _pixelLightsBefore = QualitySettings.pixelLightCount; QualitySettings.pixelLightCount = 8; }
                     else QualitySettings.pixelLightCount = _pixelLightsBefore;
                     break;
+                case Toggle.Uncombine:    SetUncombined(on); break;
             }
         }
         catch (Exception e) { Debug.LogWarning("[PerfTrace] toggle " + t + " failed: " + e.Message); }
@@ -417,6 +463,24 @@ public class PerfTrace : MonoBehaviour
     {
         foreach (var r in store) if (r != null) r.enabled = true;
         store.Clear();
+    }
+
+    /// <summary>Swap every bake for its originals (or back). forceRenderingOff is
+    /// OUR flag; Renderer.enabled stays whatever the occlusion culler wants, so the
+    /// two never double-draw or fight. The originals are left enabled=true once
+    /// touched (culled by the culler like anything else) and hidden by our flag.</summary>
+    void SetUncombined(bool uncombined)
+    {
+        int outs = 0, origs = 0;
+        foreach (var r in _bakeOutputs) { if (r == null) continue; r.forceRenderingOff = uncombined; outs++; }
+        foreach (var r in _bakeOriginals)
+        {
+            if (r == null) continue;
+            if (uncombined) { r.enabled = true; r.forceRenderingOff = false; }
+            else r.forceRenderingOff = true;
+            origs++;
+        }
+        Debug.Log("[PerfTrace] " + (uncombined ? "UNCOMBINED: " : "COMBINED: ") + outs + " bake meshes " + (uncombined ? "hidden, " : "shown, ") + origs + " originals " + (uncombined ? "shown" : "hidden"));
     }
 
     void GrassOff()
@@ -831,7 +895,7 @@ public class PerfTrace : MonoBehaviour
         for (int i = 0; i < (int)Toggle.Count; i++)
         {
             _sb.Append(i == _selected ? '>' : ' ').Append(' ');
-            _sb.Append("Num").Append(i + 1).Append(' ');
+            _sb.Append(ToggleKeyLabels[i]).Append(' ');
             _sb.Append(_on[i] ? "[ON ] " : "[   ] ");
             _sb.Append(ToggleNames[i]).Append('\n');
         }
