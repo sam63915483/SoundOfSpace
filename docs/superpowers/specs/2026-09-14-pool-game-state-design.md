@@ -1,4 +1,4 @@
-🟢 ACTIVE — 2026-09-14 — Pool: game state, stripes/solids reveal, sunk-ball tray, one-occupant table (Sam approved the design in chat)
+🟢 ACTIVE — 2026-09-14 — Pool: game state, stripes/solids reveal, sunk-ball tray, 8-ball win/lose, ball in hand, one-occupant table (Sam approved the design in chat)
 
 # Pool: from free play to "a pool table people can play pool on" — design
 
@@ -23,8 +23,25 @@ The game only gives them the *information* pool players want:
   this game.
 - **One person on the table at a time.** In co-op the table refuses F while
   someone else is shooting; the prompt says so. Solo this is invisible.
-- **Re-rack (R, or the auto re-rack when the last object ball drops) wipes
-  everything** — all trays, all groups, the break flag.
+- **The 8 ball ends the game — the only rule the table enforces.** Sink it
+  with any ball of your group still on the table → **YOU LOSE**. Sink it with
+  your group gone → **YOU WIN**. Sink it before any group has been decided
+  (on the break, or later with nothing decided) → it is spotted back on the
+  foot spot and play goes on. A win/lose banner holds ~2.5 s, then the table
+  auto re-racks (trays clear, next game).
+- **Ball in hand (scratch).** Fouls are never judged by the game — hit nothing,
+  hit the wrong ball first, whatever: the players decide. So there is a button
+  for it: **G** (pad: D-pad down) while the balls are still picks the cue ball
+  up; WASD / left stick slides it inside the **kitchen** (the quarter of the
+  table behind the head string, on the breaking end); it shows red where it
+  would overlap another ball; **Space / A** puts it down. Then aim and shoot as
+  usual. A sunk cue ball still comes back to the head spot by itself (nobody is
+  ever stuck without a ball); G is how the next shooter moves it.
+- **The controls line at the bottom of the shot view always lists every key**,
+  G included, so a player never has to guess.
+- **Re-rack (R, or the auto re-rack when the last object ball drops, or the
+  one after a win/lose banner) wipes everything** — all trays, all groups, the
+  break flag.
 
 Decisions made in chat (2026-09-14):
 
@@ -37,6 +54,11 @@ Decisions made in chat (2026-09-14):
   claim/release/strike, host broadcasts ball state + occupant + game state.
 - Nothing is saved to the world save. A reload already re-racks the table, so
   the tray clearing with it is consistent.
+- Win/lose banner style = mockup **A** ("bracketed headline"): big YOU WIN /
+  YOU LOSE in the upper third framed by the power bar's corner brackets, a
+  reason line under it (`SOLIDS CLEARED · 8 BALL DOWN` / `8 BALL DOWN · 3
+  SOLIDS LEFT`), a thin line draining down to the re-rack. Accent colour for a
+  win, the power bar's "hot" red for a loss. The tray stays visible below.
 
 ## Architecture
 
@@ -73,13 +95,19 @@ class PoolGameState
     bool TryClaim(ulong id)               // CanClaim + claims; players become "known" here
     void Release(ulong id)                // only the holder can release
     void OnStrike(ulong shooter)          // marks the break taken (call BEFORE the balls roll)
-    void OnPocketed(ulong shooter, int ball, bool duringBreak)
-        // ball 0 → ignored. Otherwise append to shooter's list. If !duringBreak and
-        // shooter's group is None: shooter = IsSolid(ball) ? Solids : Stripes and every
-        // OTHER known player with None gets the opposite. Players become "known" on
-        // TryClaim or OnPocketed.
-    static bool IsSolid(int ball) => ball >= 1 && ball <= 7   // 8 is neither; sinking it decides nothing
+    enum Verdict { None, Win, Lose, Spot8 }
+    Verdict OnPocketed(ulong shooter, int ball, bool duringBreak, bool[] stillOnTable)
+        // ball 0 → ignored, None. Ball 8: if shooter's group is None → Spot8 (not listed,
+        // the table re-spots it); else listed and Win if no ball of the shooter's group
+        // is left in `stillOnTable` (indices 1..15, the sim's Active[] AFTER this
+        // pocket), Lose otherwise. Any other ball: append to shooter's list; if
+        // !duringBreak and shooter's group is None: shooter = IsSolid(ball) ? Solids :
+        // Stripes and every OTHER known player with None gets the opposite. Players
+        // become "known" on TryClaim or OnPocketed.
+    bool GameOver                         // set by a Win/Lose verdict; cleared by Reset
+    static bool IsSolid(int ball) => ball >= 1 && ball <= 7
     static bool IsStripe(int ball) => ball >= 9 && ball <= 15
+    static int GroupBallsLeft(Group g, bool[] stillOnTable)
 
     event Action Changed                  // fires after any mutation (HUD refresh hook)
 }
@@ -89,7 +117,9 @@ class PoolGameState
 captures `duringBreak` at strike time and holds it until the balls stop, so a
 break-sink that rolls in late is still a break-sink.
 
-The 8 ball: listed in the tray, decides nothing, no rule attached (free play).
+The 8 ball is the ONLY rule. Once `GameOver` is set every further `OnPocketed`
+is ignored (balls still rolling after the 8 dropped don't change the verdict);
+the table re-racks after the banner.
 
 ### `PoolTable` edits
 
@@ -100,6 +130,23 @@ The 8 ball: listed in the tray, decides nothing, no rule attached (free play).
 - `ReRack()` → `Game.Reset()` **except the occupant**: R mid-game re-racks and
   the shooter is still on the table. (`Reset()` clears trays/groups/break;
   `ReRack` re-claims for the current occupant after it.)
+- `OnPocketed` handles the verdict: `Spot8` → `Sim.Respot(8)` (new sim method:
+  put a ball back on the foot spot, nudged toward the foot rail if blocked —
+  the mirror of `RespawnCue`) once the table settles, with the same drop
+  animation the cue ball gets; `Win`/`Lose` → `GameResult` event for the
+  session/HUD + `_gameOverTimer`; when it passes `bannerSeconds` (2.5 s) AND
+  `Sim.AllStopped` → `ReRack()`. The existing auto re-rack (object balls == 0)
+  is unchanged and now only triggers if the 8 was spotted rather than sunk —
+  in practice the 8 verdict always fires first.
+- **Ball in hand:** `BeginBallInHand()` / `MoveBallInHand(dx, dy)` /
+  `bool TryPlaceBallInHand()` / `CancelBallInHand()`. While in hand the sim's
+  cue ball is `Active = false` (so nothing collides with it) and the table
+  drives the visual from `_handX/_handY`, clamped to the kitchen (`x ∈
+  [-HalfLength + BallRadius, HeadSpotX]`, `|y| ≤ HalfWidth - BallRadius`) and
+  raised `ballRadius * 0.6` off the cloth. `Blocked` = any active ball within
+  `2 * BallRadius + 1 mm`. `TryPlace` refuses while blocked, otherwise writes
+  X/Y, re-activates, snaps the visual. Allowed only when `Sim.AllStopped`, not
+  `GameOver`, cue ball on the table (not respawn-pending).
 - `LocalPlayerId` static helper: `PlayerRoster`-derived client id when a
   `MultiplayerSession` is live, `0` otherwise. Lives in `PoolTable` for now;
   `PoolSync` can move it.
@@ -115,7 +162,22 @@ The 8 ball: listed in the tray, decides nothing, no rule attached (free play).
 - Subscribes to `Game.Changed` while open and pushes `SunkBy(me)` +
   `GroupOf(me)` to the HUD; unsubscribes in `Teardown`. Also pushes once on
   `Open` so a returning player sees their earlier balls immediately.
-- The hint line gains nothing (R re-rack is already listed).
+- New state **`BallInHand`**: entered from `Aiming` on G / D-pad down when the
+  table allows it. WASD / stick move the ball in CAMERA-relative table
+  directions (W = away from the camera along the aim yaw, D = right) at
+  `handMoveSpeed` 0.5 m/s; Space / A → `TryPlaceBallInHand()` → back to
+  `Aiming`; G again or B/right-click → `CancelBallInHand()` (ball returns to
+  where it was picked up). F leaves as usual (cancels the hand first). The cue
+  stick and aim guide hide while in hand; the view target follows the ball.
+- New state **`GameOver`**: entered on the table's `GameResult` event from any
+  state; input is dead except F (leave); the HUD shows the banner; the table
+  re-racks itself and the session returns to `Aiming` (view re-targets the
+  cue ball) when `Game.GameOver` flips back to false.
+- Hint line now: keyboard `A D turn   W S tilt   Shift fine   hold LMB power
+  G ball in hand   R re-rack   F leave`; pad `Stick aim   LT fine   hold RT
+  power   D-pad↓ ball in hand   Y re-rack   X leave`. While in hand it swaps
+  to `W A S D move   Space place   G cancel   F leave` / `Stick move   A place
+  D-pad↓ cancel   X leave`.
 
 ### `PoolShotHUD` edits
 
@@ -138,14 +200,26 @@ The 8 ball: listed in the tray, decides nothing, no rule attached (free play).
   changes from None the label pops in with the power-bar bracket flash (corner
   brackets appear at `AccentGlow`, scale 1.15 → 1 over 0.35 s) and the label
   glows for ~1 s before settling.
+- **Win/lose banner** (mockup A): a centred block at 30 % from the top —
+  "YOU WIN" / "YOU LOSE" 64 pt bold letter-spaced with the four corner
+  brackets (`BracketArm`/`BracketThick` of the power bar, scaled ×2), the
+  reason line 16 pt under it, and a 120 px drain line below that shrinks from
+  full to nothing over `bannerSeconds`. Accent for a win; the power bar's hot
+  red (`0.94, 0.26, 0.18`) for a loss. Pops in over 0.25 s (scale 1.15 → 1,
+  alpha 0 → 1), fades out over 0.2 s at the end.
+- **Ball-in-hand feedback:** the hint line swap (above) and the ball itself
+  turning red when blocked (a property block tint on the cue ball renderer —
+  restored on place/cancel). No extra UI.
 - New public API: `SetTray(IReadOnlyList<int> balls)`, `SetGroup(Group g, bool
-  animate)`. Both change-detected (rebuild icons only when the list length or
+  animate)`, `ShowResult(bool win, string reason, float seconds)`, `HideResult()`.
+  Tray/group change-detected (rebuild icons only when the list length or
   contents differ).
 
 ### Not done here
 
-- Network sync (`PoolSync`) — tomorrow's MP pass.
-- Any rule enforcement (turns, fouls, 8-ball loss).
+- Network sync (`PoolSync`) — tomorrow's MP pass. (The other player's screen
+  showing "<name> wins" is part of that.)
+- Turn order, fouls, "hit your own ball first", "call the pocket" — never.
 - Saving a game in progress.
 
 ## Testing
@@ -158,12 +232,19 @@ The 8 ball: listed in the tray, decides nothing, no rule attached (free play).
 3. Break sink (`duringBreak = true`) of ball 3 → listed for shooter, group stays None.
 4. Post-break sink of 3 → shooter Solids; a second known player → Stripes.
 5. Post-break sink of 12 first → shooter Stripes, other Solids.
-6. Post-break sink of 8 → listed, group stays None; next sink of 5 → Solids.
+6. 8 with no group → `Spot8`, not listed, no GameOver; next sink of 5 → Solids.
 7. Group never changes after being set (sink a stripe as Solids → listed, still Solids).
 8. Claim: A claims → B claim fails, A re-claim ok, B release does nothing,
    A release → B claim ok.
-9. Reset clears trays, groups, break flag and occupant.
-10. Order preserved: sink 3, 11, 8 → tray reads [3, 11, 8].
+9. Reset clears trays, groups, break flag, occupant and GameOver.
+10. Order preserved: sink 3, 11, 5 → tray reads [3, 11, 5].
+11. 8 as Solids with a solid left → `Lose`, listed, GameOver; later pockets ignored.
+12. 8 as Solids with all 7 solids gone → `Win`.
+13. 8 as Stripes with all solids gone but a stripe left → `Lose` (it is YOUR group that counts).
+14. Sim: `Respot(8)` puts the 8 on the foot spot; when the foot spot is blocked it
+    lands nudged toward the foot rail, overlapping nothing.
+15. Sim: ball in hand — `Active[0] = false` while lifted; placing on top of ball 3 is
+    refused; placing on a clear kitchen spot re-activates at that spot.
 
 Editor/playtest (Sam): break, sink one → tray shows it, no label; sink one on
 the next shot → SOLIDS/STRIPES flash; leave and return → tray intact; R → all
