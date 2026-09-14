@@ -51,6 +51,7 @@ public class SpaceDustField : MonoBehaviour
 
     void OnDestroy()
     {
+        GpuRelease();
         if (Instance == this) Instance = null;
         SceneManager.sceneLoaded -= OnSceneLoaded;
         if (_glowTex != null) Destroy(_glowTex);
@@ -96,6 +97,7 @@ public class SpaceDustField : MonoBehaviour
             for (int i = 0; i < _local.Length; i++)
                 _local[i] = new Vector3(Random.Range(-half, half), Random.Range(-half, half), Random.Range(-half, half));
         }
+        _gpuUpload = true;          // the GPU copy re-seeds from these on the next frame
     }
 
     // ---- runtime refs ----
@@ -458,6 +460,12 @@ public class SpaceDustField : MonoBehaviour
             _cacheB = new float[_local.Length];
             _cacheCol = new Vector4[_local.Length];
         }
+        GpuSync();
+        if (_gpuOn)
+        {
+            StepGpu(camPos, bhPos, freeCam, coMoveStep, genuineDelta, dt, t, half, fadeStart, washMul);
+            return;
+        }
         int parity = Time.frameCount & 3;      // quarter rate (2026-09-12): was every other frame
         float dt2 = dt * 4f;
         for (int i = 0; i < _local.Length; i++)
@@ -790,6 +798,205 @@ public class SpaceDustField : MonoBehaviour
         _material.hideFlags = HideFlags.HideAndDontSave;
         _material.enableInstancing = true;
         _material.mainTexture = _glowTex;
+    }
+
+
+    // ═══ GPU-resident path (2026-09-14) ═══════════════════════════════════════
+    //
+    // The per-speck loop below (drift, density, fade, twinkle, ocean test,
+    // co-move / parallax bookkeeping, wrap, matrix + colour copy, 1023-batch
+    // flushes) was ~0.9 ms/frame even at quarter rate. Nothing on the CPU ever
+    // reads a speck (collection is the ship's net, not these motes), and the
+    // blend is additive (order-free), so the whole thing moves to
+    // Resources/SpaceDustStep.compute: the specks live in a StructuredBuffer,
+    // the compute integrates + colours + appends visible ids, and one
+    // DrawMeshInstancedIndirect draws them. The CPU keeps only the scalars
+    // (planet shortlist, wash, deltas) it already computed. Look-identical by
+    // construction (same maths, same seed, same queue); the only difference is
+    // full-rate updates instead of quarter-rate (set QuarterRate to compare).
+    //
+    // F2 (cheats) flips GpuPath for an A/B; the speck state is copied across so
+    // the field doesn't jump.
+    public static bool GpuPath = true;
+    public static bool QuarterRate = false;     // reproduce the CPU path's quarter-rate refresh exactly
+    public static bool FrustumCull = false;     // off by default: the CPU path never culled, secondary cameras see the same field
+    public bool GpuPathActive => _gpuOn;
+
+    struct GpuDust { public Vector3 local; public float threshold, sizeRand, phase; public Vector2 pad; }   // 32 B
+    const int GpuDustStride = 32;
+    bool _gpuOn;
+    ComputeShader _step;
+    bool _stepSearched;
+    int _stepKernel = -1;
+    ComputeBuffer _gpuDust, _gpuCol, _gpuVis, _gpuArgs;
+    bool _gpuUpload;
+    readonly Vector4[] _uRelPos = new Vector4[8], _uRelR = new Vector4[8], _uRelOcean = new Vector4[8], _uPlanes = new Vector4[6];
+    readonly Plane[] _frustum = new Plane[6];
+    readonly uint[] _argsTmp = new uint[5];
+    static readonly int _idDust = Shader.PropertyToID("_Dust"), _idDustColor = Shader.PropertyToID("_DustColor"), _idVis = Shader.PropertyToID("_Vis");
+    static readonly int _idDustVisIdx = Shader.PropertyToID("_DustVisIdx"), _idDustCamPos = Shader.PropertyToID("_DustCamPos"), _idDustGlowSize = Shader.PropertyToID("_DustGlowSize");
+
+    bool GpuWanted()
+    {
+        if (!GpuPath || !SystemInfo.supportsComputeShaders) return false;
+        if (_step == null && !_stepSearched)
+        {
+            _stepSearched = true;
+            _step = Resources.Load<ComputeShader>("SpaceDustStep");
+            if (_step == null) Debug.LogWarning("[SpaceDustField] Resources/SpaceDustStep.compute not found — dust stays on the CPU path.");
+            else _stepKernel = _step.FindKernel("Step");
+        }
+        return _step != null;
+    }
+
+    /// Switch paths (also the F2 A/B). Speck state is carried across both ways so
+    /// the field doesn't jump: CPU → GPU uploads the arrays, GPU → CPU reads them back.
+    void GpuSync()
+    {
+        if (Universe.cheatsEnabled && Input.GetKeyDown(KeyCode.F2))
+        {
+            GpuPath = !GpuPath;
+            Debug.Log("[SpaceDustField] F2 → space dust path: " + (GpuPath ? "GPU-resident" : "CPU (legacy)"));
+        }
+        bool want = GpuWanted();
+        if (want == _gpuOn) return;
+        _gpuOn = want;
+        if (_gpuOn) _gpuUpload = true;
+        else if (_gpuDust != null)
+        {
+            // Read the live state back so the CPU loop continues from the same field.
+            var tmp = new GpuDust[_local.Length];
+            _gpuDust.GetData(tmp);
+            for (int i = 0; i < _local.Length; i++) _local[i] = tmp[i].local;
+            if (_cacheCol != null && _cacheB != null && _gpuCol != null)
+            {
+                _gpuCol.GetData(_cacheCol);
+                for (int i = 0; i < _cacheB.Length; i++) _cacheB[i] = _cacheCol[i].w;
+            }
+        }
+    }
+
+    void GpuEnsureBuffers()
+    {
+        int n = _local.Length;
+        if (_gpuDust != null && _gpuDust.IsValid() && _gpuDust.count == n) return;
+        GpuRelease();
+        _gpuDust = new ComputeBuffer(n, GpuDustStride, ComputeBufferType.Structured);
+        _gpuCol  = new ComputeBuffer(n, 16, ComputeBufferType.Structured);
+        _gpuVis  = new ComputeBuffer(n, sizeof(uint), ComputeBufferType.Append);
+        _gpuArgs = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+        _argsTmp[0] = _mesh != null ? _mesh.GetIndexCount(0) : 6u; _argsTmp[1] = 0; _argsTmp[2] = 0; _argsTmp[3] = 0; _argsTmp[4] = 0;
+        _gpuArgs.SetData(_argsTmp);
+        _gpuUpload = true;
+    }
+
+    void GpuUpload()
+    {
+        int n = _local.Length;
+        var tmp = new GpuDust[n];
+        for (int i = 0; i < n; i++)
+            tmp[i] = new GpuDust { local = _local[i], threshold = _threshold[i], sizeRand = _sizeRand[i], phase = _phase[i] };
+        _gpuDust.SetData(tmp);
+        if (_cacheCol != null && _cacheCol.Length == n) _gpuCol.SetData(_cacheCol);
+        else _gpuCol.SetData(new Vector4[n]);
+        _gpuUpload = false;
+    }
+
+    void GpuRelease()
+    {
+        _gpuDust?.Release(); _gpuDust = null;
+        _gpuCol?.Release();  _gpuCol = null;
+        _gpuVis?.Release();  _gpuVis = null;
+        _gpuArgs?.Release(); _gpuArgs = null;
+    }
+
+    /// One frame of the GPU path. Everything the kernel needs is a scalar the
+    /// CPU already had in hand; the planet / ocean shortlists are re-based to
+    /// the camera so the kernel works in the specks' own frame.
+    void StepGpu(Vector3 camPos, Vector3 bhPos, bool freeCam, Vector3 coMoveStep, Vector3 genuineDelta,
+                 float dt, float t, float half, float fadeStart, float washMul)
+    {
+        GpuEnsureBuffers();
+        if (_gpuUpload) GpuUpload();
+        if (_mpb == null) _mpb = new MaterialPropertyBlock();
+        int n = _local.Length;
+
+        for (int i = 0; i < 8; i++)
+        {
+            if (i < _relCount)
+            {
+                Vector3 rp = _relPos[i] - camPos;
+                _uRelPos[i] = new Vector4(rp.x, rp.y, rp.z, _relCull[i]);
+                _uRelR[i] = new Vector4(_relCull2[i], _relOuter2[i], 0f, 0f);
+            }
+            else { _uRelPos[i] = Vector4.zero; _uRelR[i] = Vector4.zero; }
+            if (i < _relOceanCount)
+            {
+                Vector3 oc = _relOceanPos[i] - camPos;
+                _uRelOcean[i] = new Vector4(oc.x, oc.y, oc.z, _relOceanR2[i]);
+            }
+            else _uRelOcean[i] = Vector4.zero;
+        }
+        if (FrustumCull && _cam != null)
+        {
+            GeometryUtility.CalculateFrustumPlanes(_cam, _frustum);
+            for (int i = 0; i < 6; i++) _uPlanes[i] = new Vector4(_frustum[i].normal.x, _frustum[i].normal.y, _frustum[i].normal.z, _frustum[i].distance);
+        }
+        Vector3 bhRel = bhPos - camPos;
+
+        var cs = _step; int k = _stepKernel;
+        _gpuVis.SetCounterValue(0);
+        cs.SetBuffer(k, _idDust, _gpuDust);
+        cs.SetBuffer(k, _idDustColor, _gpuCol);
+        cs.SetBuffer(k, _idVis, _gpuVis);
+        cs.SetVector("_CamPos", camPos);
+        cs.SetVector("_BhRel", bhRel);
+        cs.SetVector("_CoMoveStep", coMoveStep);
+        cs.SetVector("_GenuineDelta", genuineDelta);
+        cs.SetFloat("_Dt", dt);
+        cs.SetFloat("_Time", t);
+        cs.SetFloat("_L", boxSize);
+        cs.SetFloat("_Half", half);
+        cs.SetFloat("_FadeStart", fadeStart);
+        cs.SetFloat("_WashMul", washMul);
+        cs.SetFloat("_UnderwaterMul", _dustUnderwaterMul);
+        cs.SetFloat("_Brightness", brightness);
+        cs.SetFloat("_TwinkleAmount", twinkleAmount);
+        cs.SetFloat("_TwinkleSpeed", twinkleSpeed);
+        cs.SetFloat("_GlowSize", glowSize);
+        cs.SetFloat("_DriftSpeed", driftSpeed);
+        cs.SetFloat("_DriftBHAccel", driftBHAccel);
+        cs.SetFloat("_BhInner", bhInnerRadius);
+        cs.SetFloat("_BhRampInv", _bhRampInv);
+        cs.SetFloat("_BaseDensity", baseDensity);
+        cs.SetFloat("_BhBoost", bhBoost);
+        cs.SetFloat("_PlanetFalloffInv", _planetFalloffInv);
+        cs.SetFloat("_UniformDensity", uniformDensity);
+        cs.SetVector("_AmberWarm", amberWarm);
+        cs.SetVector("_AmberBright", amberBright);
+        cs.SetVectorArray("_RelPos", _uRelPos);
+        cs.SetVectorArray("_RelR", _uRelR);
+        cs.SetVectorArray("_RelOcean", _uRelOcean);
+        cs.SetVectorArray("_Planes", _uPlanes);
+        cs.SetInt("_RelCount", _relCount);
+        cs.SetInt("_RelOceanCount", _relOceanCount);
+        cs.SetInt("_FreeCam", freeCam ? 1 : 0);
+        cs.SetInt("_FrustumCull", FrustumCull ? 1 : 0);
+        cs.SetInt("_Parity", Time.frameCount & 3);
+        cs.SetInt("_QuarterRate", QuarterRate ? 1 : 0);
+        cs.SetInt("_Count", n);
+        cs.Dispatch(k, Mathf.Max(1, (n + 63) / 64), 1, 1);
+        ComputeBuffer.CopyCount(_gpuVis, _gpuArgs, 4);
+
+        _mpb.Clear();
+        _mpb.SetBuffer(_idDust, _gpuDust);
+        _mpb.SetBuffer(_idDustColor, _gpuCol);
+        _mpb.SetBuffer(_idDustVisIdx, _gpuVis);
+        _mpb.SetVector(_idDustCamPos, camPos);
+        _mpb.SetFloat(_idDustGlowSize, glowSize);
+        var bounds = new Bounds(camPos, Vector3.one * (boxSize * 1.2f));
+        Graphics.DrawMeshInstancedIndirect(_mesh, 0, _material, bounds, _gpuArgs, 0, _mpb,
+                                           ShadowCastingMode.Off, false);
     }
 
     // ================= tuning (appended at END per conventions) =================

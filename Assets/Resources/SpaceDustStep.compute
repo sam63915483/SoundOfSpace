@@ -1,0 +1,155 @@
+// Space dust, GPU-resident (SpaceDustField.GpuPath, 2026-09-14).
+//
+// A line-for-line port of SpaceDustField.LateUpdate's per-speck loop. Every
+// speck lives here as a camera-relative offset (the same torus-wrapped field the
+// CPU kept in _local); per frame this kernel does the drift toward the black
+// hole, the density / edge / twinkle / atmosphere-wash brightness, the ocean
+// occlusion test, the co-move + parallax bookkeeping and the wrap, writes the
+// colour, and appends the visible ids for one DrawMeshInstancedIndirect.
+// The CPU only computes the ~20 scalars this needs. Nothing reads a speck back.
+//
+// Lives in Resources/ because SpaceDustField is an auto-created singleton with
+// no inspector to hold a reference (same reason SpaceDust.mat is there).
+#pragma kernel Step
+
+struct Dust
+{
+    float3 local;      // camera-relative offset (mutable)
+    float  threshold;  // density cutoff, Random.value
+    float  sizeRand;   // size multiplier
+    float  phase;      // twinkle phase
+    float2 pad;
+};
+
+RWStructuredBuffer<Dust>   _Dust;
+RWStructuredBuffer<float4> _DustColor;   // rgb = amber tint, a = brightness (per speck, persists between frames)
+AppendStructuredBuffer<uint> _Vis;
+
+float3 _CamPos;          // world camera position (frustum test only)
+float3 _BhRel;           // black hole position - camera position
+float3 _CoMoveStep;
+float3 _GenuineDelta;
+float  _Dt;
+float  _Time;
+float  _L;
+float  _Half;
+float  _FadeStart;
+float  _WashMul;
+float  _UnderwaterMul;
+float  _Brightness;
+float  _TwinkleAmount;
+float  _TwinkleSpeed;
+float  _GlowSize;
+float  _DriftSpeed;
+float  _DriftBHAccel;
+float  _BhInner;
+float  _BhRampInv;
+float  _BaseDensity;
+float  _BhBoost;
+float  _PlanetFalloffInv;
+float  _UniformDensity;
+float4 _AmberWarm;
+float4 _AmberBright;
+float4 _RelPos[8];       // xyz = planet position - camera position, w = cull radius
+float4 _RelR[8];         // x = cull², y = outer², z, w unused
+float4 _RelOcean[8];     // xyz = ocean centre - camera position, w = ocean radius²
+float4 _Planes[6];       // camera frustum (xyz normal, w distance)
+uint   _RelCount;
+uint   _RelOceanCount;
+uint   _FreeCam;
+uint   _FrustumCull;
+uint   _Parity;          // quarter-rate reproduction: only ids with (id & 3) == _Parity refresh their cache
+uint   _QuarterRate;     // 0 = every speck every frame (dt), 1 = the CPU path's quarter rate (dt*4)
+uint   _Count;
+
+float DensityAt(float3 lp, float bhDist)
+{
+    if (_FreeCam != 0) return _UniformDensity;
+    float fPlanet = 1.0;
+    for (uint i = 0; i < _RelCount; i++)
+    {
+        float3 dv = lp - _RelPos[i].xyz;
+        float sq = dot(dv, dv);
+        if (sq <= _RelR[i].x) return 0.0;        // inside the lower atmosphere → no dust
+        if (sq >= _RelR[i].y) continue;          // past the fade band → contributes 1
+        float f = (sqrt(sq) - _RelPos[i].w) * _PlanetFalloffInv;
+        if (f < fPlanet) fPlanet = f;
+    }
+    float fbh = 1.0 - saturate((bhDist - _BhInner) * _BhRampInv);
+    float d = fPlanet * saturate(_BaseDensity + _BhBoost * fbh);
+    return saturate(d);
+}
+
+[numthreads(64, 1, 1)]
+void Step(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count) return;
+    Dust p = _Dust[id.x];
+    float3 lp = p.local;
+    float4 cc = _DustColor[id.x];
+
+    bool refresh = (_QuarterRate == 0) || ((id.x & 3) == _Parity);
+    float dtU = (_QuarterRate == 0) ? _Dt : _Dt * 4.0;
+    if (refresh)
+    {
+        float3 toBH = _BhRel - lp;
+        float bhDist = length(toBH);
+        float d = DensityAt(lp, bhDist);
+        if (bhDist > 0.001)
+        {
+            float fbhDrift = 1.0 - saturate((bhDist - _BhInner) * _BhRampInv);
+            float effDrift = _DriftSpeed * (1.0 + _DriftBHAccel * fbhDrift);
+            lp += (toBH / bhDist) * (effDrift * dtU);
+        }
+        float b = 0.0;
+        float3 col = _AmberWarm.rgb;
+        if (d > p.threshold)
+        {
+            float lpMag = length(lp);
+            if (lpMag < _Half)
+            {
+                float edge = 1.0 - smoothstep(0.0, 1.0, saturate((lpMag - _FadeStart) / max(1e-5, _Half - _FadeStart)));
+                if (edge > 0.001)
+                {
+                    float hiT = min(1.0, p.threshold + 0.15);
+                    float vis = smoothstep(0.0, 1.0, saturate((d - p.threshold) / max(1e-5, hiT - p.threshold)));
+                    float tw = 1.0 - _TwinkleAmount + _TwinkleAmount * (0.5 + 0.5 * sin(_Time * _TwinkleSpeed + p.phase));
+                    b = _Brightness * vis * edge * tw * _WashMul * _UnderwaterMul;
+                    if (b > 0.004)
+                    {
+                        for (uint k = 0; k < _RelOceanCount; k++)
+                        {
+                            float3 toC = _RelOcean[k].xyz;
+                            float tSeg = saturate(dot(toC, lp) / max(0.0001, lpMag * lpMag));
+                            float3 closest = lp * tSeg - toC;
+                            if (dot(closest, closest) < _RelOcean[k].w) { b = 0.0; break; }
+                        }
+                        if (b > 0.0) col = lerp(_AmberWarm.rgb, _AmberBright.rgb, d);
+                    }
+                }
+            }
+        }
+        cc = float4(col, b);
+        _DustColor[id.x] = cc;
+    }
+
+    if (_FreeCam == 0)
+    {
+        lp += _CoMoveStep;
+        lp -= _GenuineDelta;
+    }
+    lp -= _L * round(lp / _L);
+    p.local = lp;
+    _Dust[id.x] = p;
+
+    if (cc.a <= 0.004) return;
+    if (_FrustumCull != 0)
+    {
+        float3 wp = _CamPos + lp;
+        float rad = _GlowSize * p.sizeRand;
+        [unroll]
+        for (int q = 0; q < 6; q++)
+            if (dot(_Planes[q].xyz, wp) + _Planes[q].w < -rad) return;
+    }
+    _Vis.Append(id.x);
+}
