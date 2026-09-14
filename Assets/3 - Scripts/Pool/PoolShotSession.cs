@@ -16,6 +16,11 @@ using UnityEngine;
 ///
 /// Every distance here is in TABLE-LOCAL metres and converted with
 /// TransformPoint, so scaling the table scales the camera orbit with it.
+///
+/// Game layer (2026-09-14): opening claims the table (one shooter at a time —
+/// PoolTable.Game), the HUD shows the balls YOU sank + SOLIDS/STRIPES, G lifts
+/// the cue ball for ball in hand (kitchen only, Space places), and the 8 ball
+/// ends the game with a banner before the table re-racks itself.
 /// </summary>
 [DefaultExecutionOrder(210)]   // after EndlessManager (0) and CameraTransformFX (100)
 public class PoolShotSession : MonoBehaviour
@@ -23,7 +28,7 @@ public class PoolShotSession : MonoBehaviour
     public static PoolShotSession Active { get; private set; }
     public static bool IsActive => Active != null;
 
-    public enum State { Closed, Entering, Aiming, Charging, Striking, Rolling, Exiting }
+    public enum State { Closed, Entering, Aiming, Charging, Striking, Rolling, BallInHand, GameOver, Exiting }
 
     [Header("Camera")]
     [Tooltip("Seconds for the glide helmet → behind the cue ball (and back).")]
@@ -92,6 +97,8 @@ public class PoolShotSession : MonoBehaviour
     Renderer[] _shownBody;
     PoolShotHUD _hud;
     string _hintKb, _hintPad;
+    string _hintHandKb, _hintHandPad;
+    bool _subscribed;
 
     public State Current => _state;
 
@@ -121,6 +128,9 @@ public class PoolShotSession : MonoBehaviour
         }
         ApplyPose();
         if (_hud != null) { _hud.SetVisible(true); _hud.SetCharge(0f, false); }
+        Subscribe();
+        PushGameToHud(false);
+        if (_table.Game.GameOver) EnterGameOver();     // walked up during a banner
     }
 
     public void Close()
@@ -162,6 +172,13 @@ public class PoolShotSession : MonoBehaviour
                 if (menu) break;
                 if (LeavePressed()) { Close(); break; }
                 if (RerackPressed()) { _table.ReRack(); _viewTarget = _table.CueBallLocal; _charge = 0f; _state = State.Aiming; break; }
+                if (_state == State.Aiming && HandPressed() && _table.BeginBallInHand())
+                {
+                    _state = State.BallInHand;
+                    SetGuideVisible(false);
+                    if (_hud != null) _hud.SetHint(TutorialGate.LastSource == TutorialGate.InputSource.Controller ? _hintHandPad : _hintHandKb);
+                    break;
+                }
                 TickAim(dt);
                 TickCharge(dt);
                 break;
@@ -191,6 +208,25 @@ public class PoolShotSession : MonoBehaviour
                     _cueSlide = 0f;
                 }
                 break;
+
+            case State.BallInHand:
+                if (menu) break;
+                if (LeavePressed()) { _table.CancelBallInHand(); Close(); break; }
+                if (HandPressed() || CancelPressed()) { _table.CancelBallInHand(); LeaveHand(); break; }
+                if (PlacePressed()) { if (_table.TryPlaceBallInHand()) LeaveHand(); break; }
+                TickHand(dt);
+                break;
+
+            case State.GameOver:
+                if (!menu && LeavePressed()) { Close(); break; }
+                if (!menu) TickAim(dt);                    // you can still look around
+                if (!_table.Game.GameOver)                 // the table re-racked itself
+                {
+                    _viewTarget = _table.CueBallLocal;
+                    _cueSlide = 0f;
+                    _state = State.Aiming;
+                }
+                break;
         }
         // Pose the camera HERE too (Update, order 210 — after PlayerController's own
         // camera writes), not only in LateUpdate: the grass frustum cull, HelmetSway,
@@ -206,7 +242,7 @@ public class PoolShotSession : MonoBehaviour
         // The view glides to the cue ball except while balls are rolling (watch the shot from where you took it).
         if (_state != State.Rolling && _state != State.Striking)
         {
-            Vector3 want = _table.CueBallLocal;
+            Vector3 want = _state == State.BallInHand ? _table.BallInHandLocal : _table.CueBallLocal;
             _viewTarget = Vector3.Lerp(_viewTarget, want, 1f - Mathf.Exp(-retargetSharpness * dt));
         }
         ApplyPose();
@@ -223,6 +259,81 @@ public class PoolShotSession : MonoBehaviour
     }
 
     bool RerackPressed() => Input.GetKeyDown(KeyCode.R) || TutorialGate.PadPressed(TutorialGate.PadButton.Y);
+    bool HandPressed() => Input.GetKeyDown(KeyCode.G) || TutorialGate.DPadDirectionPressed(2);
+    static bool PlacePressed() => Input.GetKeyDown(KeyCode.Space) || TutorialGate.PadPressed(TutorialGate.PadButton.A);
+
+    void LeaveHand()
+    {
+        _state = State.Aiming;
+        _viewTarget = _table.CueBallLocal;
+        if (_hud != null) _hud.SetHint(TutorialGate.LastSource == TutorialGate.InputSource.Controller ? _hintPad : _hintKb);
+    }
+
+    // Slide the lifted cue ball in CAMERA-relative table directions: W = away from the camera, D = right.
+    void TickHand(float dt)
+    {
+        float fwd = 0f, right = 0f;
+        if (Input.GetKey(KeyCode.W)) fwd += 1f;
+        if (Input.GetKey(KeyCode.S)) fwd -= 1f;
+        if (Input.GetKey(KeyCode.D)) right += 1f;
+        if (Input.GetKey(KeyCode.A)) right -= 1f;
+        Vector2 stick = TutorialGate.LeftStickRaw();
+        if (Mathf.Abs(stick.x) > 0.01f) right = stick.x;
+        if (Mathf.Abs(stick.y) > 0.01f) fwd = stick.y;
+        if (fwd == 0f && right == 0f) return;
+        Vector2 a = AimDir2D();                               // away from the camera, table-local (x, z)
+        Vector2 r = new Vector2(a.y, -a.x);                   // camera right = Cross(up, forward) → (fz, -fx)
+        Vector2 move = a * fwd + r * right;
+        if (move.sqrMagnitude > 1f) move.Normalize();
+        move *= _table.handMoveSpeed * dt;
+        _table.MoveBallInHand(move.x, move.y);
+    }
+
+    // ── game (tray / group / result) ────────────────────────────────────────
+
+    void Subscribe()
+    {
+        if (_subscribed || _table == null) return;
+        _table.Game.Changed += OnGameChanged;
+        _table.GameResult += OnGameResult;
+        _subscribed = true;
+    }
+
+    void Unsubscribe()
+    {
+        if (_subscribed && _table != null)
+        {
+            _table.Game.Changed -= OnGameChanged;
+            _table.GameResult -= OnGameResult;
+        }
+        _subscribed = false;
+    }
+
+    void OnGameChanged() => PushGameToHud(true);
+
+    void PushGameToHud(bool animate)
+    {
+        if (_hud == null || _table == null) return;
+        ulong me = PoolTable.LocalPlayerId;
+        _hud.SetTray(_table.Game.SunkBy(me));
+        _hud.SetGroup(_table.Game.GroupOf(me), animate);
+    }
+
+    void OnGameResult(bool win, string reason)
+    {
+        if (_hud != null) _hud.ShowResult(win, reason, _table.bannerSeconds);
+        EnterGameOver();
+    }
+
+    void EnterGameOver()
+    {
+        if (_state == State.Closed || _state == State.Exiting || _state == State.GameOver) return;
+        if (_state == State.BallInHand) _table.CancelBallInHand();
+        _charge = 0f;
+        if (_hud != null) _hud.SetCharge(0f, false);
+        SetGuideVisible(false);
+        _state = State.GameOver;
+    }
 
     static bool FireHeld() => Input.GetMouseButton(0) || TutorialGate.RTValue() > 0.5f;
     static bool CancelPressed() => Input.GetMouseButtonDown(1) || TutorialGate.PadPressed(TutorialGate.PadButton.B);
@@ -431,8 +542,10 @@ public class PoolShotSession : MonoBehaviour
         if (_hud == null) _hud = PoolShotHUD.Create(transform);
         if (_hintKb == null)
         {
-            _hintKb = "A D turn   W S tilt   Shift fine   hold LMB power   R re-rack   F leave";
-            _hintPad = "Stick aim   LT fine   hold RT power   Y re-rack   X leave";
+            _hintKb = "A D turn   W S tilt   Shift fine   hold LMB power   G ball in hand   R re-rack   F leave";
+            _hintPad = "Stick aim   LT fine   hold RT power   D-pad↓ ball in hand   Y re-rack   X leave";
+            _hintHandKb = "W A S D move the cue ball   Space place   G cancel   F leave";
+            _hintHandPad = "Stick move the cue ball   A place   D-pad↓ cancel   X leave";
         }
         _hud.SetHint(TutorialGate.LastSource == TutorialGate.InputSource.Controller ? _hintPad : _hintKb);
         return true;
@@ -440,6 +553,12 @@ public class PoolShotSession : MonoBehaviour
 
     void Teardown(bool abort)
     {
+        if (_table != null)
+        {
+            if (_state == State.BallInHand) _table.CancelBallInHand();
+            Unsubscribe();
+            _table.Game.Release(PoolTable.LocalPlayerId);
+        }
         _state = State.Closed;
         if (Active == this) Active = null;
         if (_endless != null && _camT != null) _endless.UnregisterPhysicsObject(_camT);
