@@ -376,11 +376,14 @@ public class MainMenuController : MonoBehaviour
         // Dropped from -120 to -160 to clear the character chip above it.
         // At the 1080 reference height this puts the column's top edge at -456
         // from the canvas top (540 - 160 + 244), i.e. 26 px below the chip.
-        buttonsRT.anchoredPosition = new Vector2(0f, -160f);
-        // 6 rows x 68 + 5 x 16 gaps = 488. Was 404 for five rows; adding
-        // CHARACTERS without growing it would clip the last row (the same bug
-        // MULTIPLAYER caused when it was added).
-        buttonsRT.sizeDelta = new Vector2(460f, 488f);
+        // TUTORIAL (2026-09-14) added a 7th row: the column grew 84 px and is
+        // shifted down by half of that (-160 → -202) so its TOP edge stays at
+        // -456 and clear of the chip; the extra height goes toward the footer.
+        buttonsRT.anchoredPosition = new Vector2(0f, -202f);
+        // 7 rows x 68 + 6 x 16 gaps = 572. Was 488 for six rows; adding a row
+        // without growing it would clip the last row (the same bug MULTIPLAYER
+        // and CHARACTERS each caused when they were added).
+        buttonsRT.sizeDelta = new Vector2(460f, 572f);
         var vlg = buttonsRT.gameObject.AddComponent<VerticalLayoutGroup>();
         vlg.childAlignment = TextAnchor.MiddleCenter;
         vlg.childControlWidth = true;
@@ -392,7 +395,11 @@ public class MainMenuController : MonoBehaviour
         BuildButton(buttonsRT, "PlayButton", "START GAME", OnPlay);
         if (FeatureVault.Multiplayer)
             BuildButton(buttonsRT, "MultiplayerButton", "MULTIPLAYER", OnMultiplayer);
-        // Directly below MULTIPLAYER. Not gated by FeatureVault.Multiplayer —
+        // The tutorial box (Sam, 2026-09-14): a standalone scene, not the solar
+        // system. Not gated on a character — you should be able to learn the
+        // game before you name yourself.
+        BuildButton(buttonsRT, "TutorialButton", "TUTORIAL", OnTutorial);
+        // Directly below TUTORIAL. Not gated by FeatureVault.Multiplayer —
         // your character is your name and suit in single player too.
         BuildButton(buttonsRT, "CharactersButton", "CHARACTERS", OnCharacters);
         BuildButton(buttonsRT, "CreditsButton", "CREDITS", OnCredits);
@@ -781,6 +788,27 @@ public class MainMenuController : MonoBehaviour
         if (LoadingScreen.Instance != null)
             LoadingScreen.Instance.LoadSceneAndShow("1.6.7.7.7", preSceneSetup: EnsureGameplaySingletonsAsync);
         else { EnsureGameplaySingletons(); SceneManager.LoadScene("1.6.7.7.7"); }
+    }
+
+    /// TUTORIAL: the same waist as EnterGameplay but into the tutorial box
+    /// (docs/superpowers/specs/2026-09-14-tutorial-box-design.md). Seeds the
+    /// full gameplay singleton stack so the tutorial looks and plays like the
+    /// game in a BUILD too (trap #1); nothing is scheduled (no PendingLoad, no
+    /// NewGameReset runner) — TutorialDirector runs its own fresh reset and
+    /// the tutorial never writes a save.
+    public void OnTutorial()
+    {
+        var menuFx = GameObject.Find("CameraEffectsManager (menu)");
+        if (menuFx != null) DestroyImmediate(menuFx);
+
+        if (!Application.CanStreamedLevelBeLoaded(TutorialSession.SceneName))
+        {
+            Debug.LogError("[MainMenu] Tutorial scene is not in Build Settings — run Tools ▸ Solar System ▸ Build Tutorial Scene.");
+            return;
+        }
+        if (LoadingScreen.Instance != null)
+            LoadingScreen.Instance.LoadSceneAndShow(TutorialSession.SceneName, preSceneSetup: EnsureGameplaySingletonsAsync);
+        else { EnsureGameplaySingletons(); SceneManager.LoadScene(TutorialSession.SceneName); }
     }
 
     /// Offers "play together?" and runs `solo` if they decline. With multiplayer

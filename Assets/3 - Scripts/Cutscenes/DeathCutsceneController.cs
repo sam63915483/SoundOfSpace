@@ -227,6 +227,13 @@ public class DeathCutsceneController : MonoBehaviour
         var nm = Unity.Netcode.NetworkManager.Singleton;
         if (nm != null && nm.IsListening) return;
 
+        // The tutorial box has no save to reload and must never load the solar
+        // system: same in-place respawn as the no-save case.
+        if (TutorialSession.IsActive)
+        {
+            Debug.Log("[DeathCutscene] Tutorial — in-place respawn.");
+            return;
+        }
         if (SaveSystem.ListSaves().Count == 0)
         {
             Debug.LogWarning("[DeathCutscene] No save on disk — falling back to in-place respawn.");

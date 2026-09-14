@@ -174,6 +174,7 @@ public class ShuttleAutopilot : MonoBehaviour
     // the authored pad's hover point — avoidance and the depart-floor are
     // meaningless for an inbound leg and are skipped while this is set.
     bool _introApproach;
+    bool _introStraight;   // tutorial box: straight radial descent (BendControl → midpoint), else it arcs out through a wall
     // Thruster fire (Sam: engines on liftoff/landing/hover spurts — reuses the
     // intro's runtime-built ShuttleThrustFX plumes).
     ShuttleThrustFX _fx;
@@ -594,9 +595,15 @@ public class ShuttleAutopilot : MonoBehaviour
     // eyelid wake, then this flies a 30 s approach into the normal HOVER →
     // player-lands flow. Prepare places the shuttle 4 km above its authored
     // pad UNDER the intro's blackout; Launch fires on the player's first click.
-    public void PrepareIntroApproach()
+    ///
+    /// departAltitude: metres above the parked pose where the descent starts
+    /// (the real intro's 4 km). straightIn: no bezier lean — the tutorial box is
+    /// 200 m wide and the default 300 m lean would carry the shuttle through a
+    /// wall. Defaults reproduce the real intro bit-for-bit.
+    public void PrepareIntroApproach(float departAltitude = 4000f, bool straightIn = false)
     {
         if (_body == null) return;
+        _introStraight = straightIn;
         _targetBody = _body;
         _departBody = _body;
         Vector3 upL = _localPos.sqrMagnitude > 1f ? _localPos.normalized : Vector3.up;
@@ -605,7 +612,7 @@ public class ShuttleAutopilot : MonoBehaviour
         // player right past the sun — "i dont wanna force them to fly so
         // close to the sun right away"). Same 30 s flight over a quarter of
         // the distance = a slower, closer, planet-local approach.
-        _departAnchorLocal = upL * (_localPos.magnitude + 4000f);
+        _departAnchorLocal = upL * (_localPos.magnitude + departAltitude);
         _introApproach = true;
         _localPos = _departAnchorLocal;
         _prevLocalPos = _localPos;
@@ -959,6 +966,7 @@ public class ShuttleAutopilot : MonoBehaviour
                     _introBurnRemaining = 0f;
                 }
                 _introApproach = false;
+                _introStraight = false;
                 if (_fx != null) _fx.Shutdown();   // engines collapse at touchdown
                 _targetBody = null;
                 break;
@@ -1144,6 +1152,8 @@ public class ShuttleAutopilot : MonoBehaviour
     // arrival anchor. See the flight-profile constants for why.
     Vector3 BendControl(Vector3 aWorld, Vector3 bWorld)
     {
+        // Tutorial box: a straight line (control point on the chord).
+        if (_introStraight) return (aWorld + bWorld) * 0.5f;
         Vector3 upA = (aWorld - _departBody.Position).normalized;
         Vector3 dirT = (bWorld - aWorld).normalized;
         float bend = Mathf.Clamp(0.15f * Vector3.Distance(aWorld, bWorld), TransitBendMin, TransitBendMax);

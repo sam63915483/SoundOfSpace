@@ -136,7 +136,9 @@ public class StasisPodSave : MonoBehaviour
             // the playback of an existing consciousness, never a file write.
             // (Sam, 2026-09-08: "the stasis pod should only be able to make a
             // save after you press the button, and then enter".)
-            StartCoroutine(Ritual(download: boot || !_leftPodSinceLoad || !_door.PressArmed));
+            // The tutorial box never writes a file: the ritual plays as
+            // DOWNLOADING there no matter how you got sealed in.
+            StartCoroutine(Ritual(download: boot || !_leftPodSinceLoad || !_door.PressArmed || TutorialSession.IsActive));
         }
     }
 

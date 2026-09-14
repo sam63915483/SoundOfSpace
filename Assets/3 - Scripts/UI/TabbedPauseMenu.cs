@@ -346,6 +346,9 @@ public class TabbedPauseMenu : MonoBehaviour
     void SetMenuVisible(bool visible, bool immediate)
     {
         if (_canvas != null) _canvas.enabled = visible;
+        // The tutorial box is single-player: no hosting / joining from inside it.
+        if (visible && _multiplayerBtn != null)
+            _multiplayerBtn.gameObject.SetActive(!TutorialSession.IsActive);
         if (visible) RefreshAllRows();
     }
 

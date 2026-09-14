@@ -89,4 +89,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/4 - Scenes/MenuOrbit.unity
     guid: fe30e6739dbc1394c96ba2e4baefb8d5
+  - enabled: 1
+    path: Assets/4 - Scenes/Tutorial.unity
+    guid: 8bd840f977a9af245baee96e12694aa4
   m_configObjects: {}

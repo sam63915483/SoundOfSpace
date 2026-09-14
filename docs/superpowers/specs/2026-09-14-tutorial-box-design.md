@@ -1,0 +1,219 @@
+🟢 ACTIVE — 2026-09-14 — Tutorial box, phase 1 (button → load → land the shuttle → walk)
+
+# Tutorial box — phase 1 design
+
+## What Sam asked for (2026-09-14)
+
+A **TUTORIAL** button on the main menu, under START GAME and MULTIPLAYER. It loads a
+small standalone scene, not the solar system: a 200 m × 200 m × 200 m box you are
+constrained in, Milky Way skybox outside, the walls see-through with 0s and 1s raining
+down them, and a flat green slab for a floor.
+
+You load in standing in the shuttle's stasis pod. No black screen, no "wake up" text.
+The pod door opens about a second later. The shuttle flies in from the top of the box,
+stops 100 m above the floor, and — exactly like the real game — the cockpit computer
+shows the landing camera and waits for you to land it. Then you walk around the box.
+ESC opens the pause menu; MAIN MENU takes you back to the menu.
+
+That is the whole of phase 1. Lessons after landing come later.
+
+Decisions taken with Sam's OK (defaults he approved):
+- The shuttle starts **just under the box ceiling** (~190 m up) and takes ~12 s to
+  descend to the 100 m hover. Nothing passes through the walls.
+- Once hovering, the existing tip pill shows **one hint line**: walk to the computer,
+  press F, land it.
+- **Everything is live** in the tutorial exactly as in the game — hotbar, oxygen,
+  phone, pause menu, fuel gauge. (Not the helmet overlay: Sam, "that's old and not
+  used".) Saving is disabled.
+- Digits rain on **all four walls and the ceiling**; the floor is a solid green slab.
+  Colour, speed and density are material sliders.
+
+## What it means for the game
+
+- One new scene (`Assets/4 - Scenes/Tutorial.unity`), built by an Editor menu item so
+  it can be regenerated. It never touches `1.6.7.7.7.unity`.
+- The shuttle intro, hover, landing camera and manual landing are the **real game's
+  code, unchanged**, running against a fake planet. If the landing feels right in the
+  game it feels right here, and any later fix to the real landing lands here too.
+- **The tutorial never writes a save file.** Not the stasis pod, not death, not the
+  backrooms transfer slot. Nothing you do in the tutorial can touch a real world.
+- Entering the tutorial resets all the carried-over state (money, pockets, fuel,
+  story flags) exactly as a New Game does, so it always starts clean. Leaving it and
+  starting a New Game or loading a save is unaffected: those already reset or restore
+  everything.
+
+## How it works
+
+### The fake planet (the one trick)
+
+The shuttle autopilot refuses to fly unless it is parented to a `CelestialBody`, and
+its hover and landing measure "up" as the direction away from that body's centre. So
+the tutorial scene has an empty object called **`Tutorial Ground`** at world
+(0, −10000, 0) carrying a kinematic `Rigidbody` and a `CelestialBody`
+(`bodyType = Planet`, `radius = 10000`, no generator, no terrain). The box, the floor
+and the shuttle are its children. Over a 200 m box the "radial up" differs from
+straight up by at most 0.6°, which is invisible.
+
+There is **no `NBodySimulation`** in the scene. That matters: the player controller
+switches to its built-in flat-floor gravity only when no simulation component exists.
+A simulation with zero bodies would leave the player in zero-g, unable to walk.
+`NBodySimulation.Bodies` returns an empty array, so every HUD and spawner that scans
+bodies sees none and idles. Only the shuttle knows about the fake planet, because it
+finds its parent directly.
+
+### The box
+
+All children of `Tutorial Ground`, all on **layer 10 (Body)** so both the player's
+ground check and the shuttle's ground rays hit them:
+
+| Part | Shape | Material |
+|---|---|---|
+| Floor | cube 200 × 1 × 200, top face at world y = 0 | `Green.mat` (the existing flat green) |
+| 4 walls | quads 200 × 200 at x = ±100, z = ±100, with BoxColliders | `TutorialDigitRain.mat` |
+| Ceiling | quad 200 × 200 at y = 200, BoxCollider | `TutorialDigitRain.mat` |
+
+`Custom/TutorialDigitRain` is a new unlit, transparent, double-sided shader. Each
+wall is a grid of cells; every column has its own speed and phase; a bright "head"
+falls down the column with a fading trail; each cell draws a procedural 0 or 1 that
+re-rolls now and then. Properties: `_Color`, `_Cells` (columns across a wall),
+`_Speed`, `_TrailLength`, `_Flicker`, `_Alpha`. Queue = Transparent. There is no
+atmosphere post-effect in this scene, so the ≤2500 / >2500 queue rules don't apply.
+
+Lighting: `RenderSettings.skybox` = the ESO Milky Way material the gameplay scene
+uses (GUID `e3d301707e23ccd4e84049a21e148e54`), fog off, one directional light angled
+down with shadows, plus a dim flat ambient so the shuttle's shadow side isn't pure
+black (there is no atmosphere post to light it).
+
+### The shuttle
+
+`Shuttle_Lander.prefab` instance, **named exactly `Shuttle_Lander`** (the autopilot
+finds it by name), child of `Tutorial Ground`, parked pose = sitting on the floor
+near the centre of the box. Its authored pose is the landing target: the autopilot
+hovers 100 m above it and lands back onto the floor from there.
+
+Two small, additive changes in `ShuttleAutopilot.cs`:
+
+1. `PrepareIntroApproach(float departAltitude = 4000f, bool straightIn = false)`.
+   The real intro passes nothing and is bit-identical. The tutorial passes
+   `departAltitude ≈ 190 − parkedHeight` so the start sits just under the ceiling.
+2. When `straightIn` is set, the transit bezier's control point is the straight
+   midpoint. Without it, the flight path leans 300 m sideways on purpose (to avoid
+   hairpins on real approaches) and the shuttle would leave the box.
+
+### The player
+
+`Player.prefab` instance with the same overrides the gameplay scene uses:
+`walkableMask = 34304` (Ship | Body | ShuttleInterior) and the camera's clear flags =
+Skybox. `Planet Effects.asset` is removed from the camera's post-effect list (no
+planets, and an empty effect list allocates a material every frame); Bloom and FXAA
+stay. The player is placed in the pod by the director, so no spawn point is needed.
+
+### The director (scene object: `TutorialDirector`)
+
+A plain `MonoBehaviour` on a `Tutorial Director` object in the scene. Serialized
+knobs, all with defaults: `doorOpenDelay = 1`, `descentSeconds = 12`,
+`departAltitude = 190`, `landingHint` text.
+
+Start-up sequence (one coroutine):
+
+1. `TutorialSession.IsActive = true` (also set by the scene-loaded hook, see below).
+2. `Time.fixedDeltaTime = 0.01` (normally `NBodySimulation.Awake` does this).
+3. Wait one frame + one FixedUpdate, then `NewGameReset.Apply()` — the same reset a
+   New Game runs, minus the deferred seed save (that lives in the runner the menu's
+   New Game button spawns, which the tutorial never creates).
+4. `pilot = ShuttleAutopilot.EnsureAttached()`;
+   `pilot.PrepareIntroApproach(departAltitude, straightIn: true)`.
+5. Put the player in the pod: rigidbody pose = `StasisPod.TransformPoint(0, 1.02, 0)`,
+   facing the pod's forward, `Physics.SyncTransforms()`. `pilot.CaptureIntroRiders()`.
+6. `IntroSequenceController.ShuttleWakeActive = true` and
+   `PlayerController.isInDialogue = true` while the door is shut (the pod-save
+   watcher and the drift-through-closed-door pin both key off these).
+7. `pilot.LaunchIntroApproach(descentSeconds)` — engines light, descent starts.
+8. Wait `doorOpenDelay`, then `StasisPodDoor.OpenHold()`, `isInDialogue = false`,
+   `ShuttleWakeActive = false`.
+9. Wait for `pilot.CurrentPhase == Hover` → `TutorialUI.Instance.ShowStep(hint)`.
+10. Wait for `Parked` → `TutorialUI.Instance.HideAll()`. Done. The ramp opens by
+    itself (real touchdown code) and the player walks out onto the slab.
+
+### `TutorialSession` (static, one file)
+
+```
+public static class TutorialSession {
+    public const string SceneName = "Tutorial";
+    public static bool IsActive { get; }      // active scene name == SceneName
+    public static void Enter();               // main-menu entry
+}
+```
+
+`Enter()` mirrors `MainMenuController.EnterGameplay`: destroys the menu-seeded
+`CameraEffectsManager (menu)`, then
+`LoadingScreen.Instance.LoadSceneAndShow("Tutorial", preSceneSetup: EnsureGameplaySingletonsAsync)`
+(fallback: seed sync + `SceneManager.LoadScene`). The singleton seeding is what makes
+everything live in a build, same as PLAY (CLAUDE.md trap #1). In the Editor, pressing
+Play directly in the Tutorial scene works too: the auto-singletons create themselves
+because the active scene isn't MainMenu.
+
+### Fences (the codebase treats "not MainMenu" as the real game)
+
+Verified: there is **no periodic autosave** and **no SAVE GAME pause button** any more
+(both removed 2026-08-18). The only file writers left are gated:
+
+| Writer | Gate |
+|---|---|
+| `StasisPodSave.Update` — valve press then seal = UPLOAD | force `download: true` when `TutorialSession.IsActive` — the ritual animation plays, no file is written |
+| `DeathCutsceneController` — reloads the newest save into `1.6.7.7.7` | when `TutorialSession.IsActive`, take the existing "no save on disk" branch: in-place respawn, no scene load |
+| `NewGameReset.SeedSaveWhenLanded` | never runs: only the menu's New Game button spawns its runner |
+| `PortalManager` transfer slot | unreachable: no portals in the scene |
+
+Other fences:
+- `TabbedPauseMenu`: hide the MULTIPLAYER row while `TutorialSession.IsActive`
+  (single-player only). RESUME / SETTINGS / MAIN MENU work as-is. MAIN MENU is a
+  plain `LoadScene("MainMenu")`; `MenuSceneCleanup` then clears the surviving HUDs
+  exactly as after a normal game.
+- `MainMenuController`: TUTORIAL row between MULTIPLAYER and CHARACTERS; the button
+  column grows by one row (68 + 16 px) and shifts down by half of that so the top
+  edge stays clear of the character chip.
+- Build settings: `Assets/4 - Scenes/Tutorial.unity` added, enabled. The builder does
+  this via `EditorBuildSettings.scenes`.
+
+### The scene builder (Editor only)
+
+`Tools ▸ Solar System ▸ Build Tutorial Scene` (`Assets/3 - Scripts/Editor/TutorialSceneBuilder.cs`),
+modelled on `PlanetGalleryBuilder`: creates the scene **additively**, populates it,
+saves it, closes it, restores the previously active scene. The open gameplay scene is
+never touched. Rebuilding wipes and re-creates the scene; hand-placed extras will be
+lost, so later tutorial content should be added either through the builder or after
+we stop regenerating. Creates `TutorialDigitRain.mat` next to the scene if missing.
+
+## Files
+
+New:
+- `Assets/3 - Scripts/Tutorial/TutorialSession.cs`
+- `Assets/3 - Scripts/Tutorial/TutorialDirector.cs`
+- `Assets/3 - Scripts/Editor/TutorialSceneBuilder.cs`
+- `Assets/Shaders/TutorialDigitRain.shader`
+- `Assets/4 - Scenes/Tutorial.unity` + `TutorialDigitRain.mat` (generated)
+
+Edited (all small, additive):
+- `Shuttle/ShuttleAutopilot.cs` — optional intro parameters + straight-in bend
+- `UI/MainMenuController.cs` — TUTORIAL row
+- `UI/TabbedPauseMenu.cs` — hide MULTIPLAYER in the tutorial
+- `Tutorial/StasisPodSave.cs` — force download in the tutorial
+- `Cutscenes/DeathCutsceneController.cs` — in-place respawn in the tutorial
+- `ProjectSettings/EditorBuildSettings.asset` — via the builder
+
+## Testing (Sam runs the playtests)
+
+1. Editor: run the builder, open the Tutorial scene, press Play. Expect: in the pod,
+   shuttle already descending, door opens after ~1 s, hover at 100 m with the NAV feed
+   on the console and the hint pill, F → WASD/Q/E → SPACE lands it, ramp opens, walk
+   on the green slab, walls rain digits, can't leave the box. ESC → MAIN MENU works.
+2. Main menu: TUTORIAL button → loading screen → same as above.
+3. Then START GAME → New Game and a Load: both behave exactly as before.
+4. Check `saves/` has no new file after a tutorial run that used the pod valve.
+5. Build sanity: TUTORIAL from the built exe (trap #1).
+
+## Out of scope (phase 2+)
+
+Lessons after landing, guided prompts beyond the one hint, a "restart tutorial"
+option, controller glyph review, anything about the digit look beyond the sliders.
