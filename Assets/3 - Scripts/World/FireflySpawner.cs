@@ -208,7 +208,12 @@ public class FireflySpawner : MonoBehaviour
         _nextPlayerSearch = 0f;
         _tickTimer = 0f;
         FireflyBug.Focused = null;
-        _quiet = scene.name == "MainMenu" || FindObjectOfType<GallerySceneQuiet>() != null;
+        // The tutorial box (2026-09-14): its fake planet is 10 km across and the
+        // sun never sets there. The cubeface scan below is (radius / cellSize)²
+        // × 6 per tick — 1.5 MILLION cells three times a second on that body,
+        // and Sam measured 5 fps. Quiet, like the galleries.
+        _quiet = scene.name == "MainMenu" || scene.name == TutorialSession.SceneName
+              || FindObjectOfType<GallerySceneQuiet>() != null;
         // Same rule as every world spawner: never seat a swarm on another
         // spawner's props, the water, the ship or the player.
         _rayMask = groundMask & ~SpawnerCubeface.WorldSpawnExcludeMask;

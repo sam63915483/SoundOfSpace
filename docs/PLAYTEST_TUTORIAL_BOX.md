@@ -35,6 +35,18 @@ Two ways in. Both should behave the same.
   harvest / pet should all work. The landing spot at the centre is kept clear (22 m).
 - Digits ~3× smaller. Top-left shuttle text gone (F12 in a flight brings it back).
 
+## Round 3 (2026-09-14) — after the 5 fps run
+
+- **5 fps root cause:** the firefly spawner. It idles in a scene with no planets (round 1)
+  but with the fake 10 km planet present it scanned 1.5 million cells three times a second
+  looking for night-time spots. It is now quiet in the tutorial (the sun never sets there).
+- **Crosshair size** is now a knob: `--- UI --- ▸ Overlay Canvas ▸ Dot ▸ Crosshair Reticle ▸
+  Scale`. Set to 4 (was 12, the gameplay scene's value). Tell me the number that looks right
+  and I'll bake it into the builder.
+- **Loading transition:** the bar reaches 100 %, the black screen holds for 0.5 s over the
+  live scene, then fades out over 1 s. The shuttle's engines light as the fade starts, so the
+  first thing you see is a shuttle already flying. Same behaviour for START GAME.
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle

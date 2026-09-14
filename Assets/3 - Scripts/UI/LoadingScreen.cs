@@ -30,6 +30,8 @@ public class LoadingScreen : MonoBehaviour
     public static LoadingScreen Instance { get; private set; }
 
     Canvas _canvas;
+    CanvasGroup _group;         // whole-screen alpha for the fade-out
+    bool _fading;
     Image  _backdrop;
     RectTransform _barFillRT;
     TextMeshProUGUI _statusText;
@@ -78,9 +80,24 @@ public class LoadingScreen : MonoBehaviour
 
     // ── Public API ──────────────────────────────────────────────────
 
+    /// True while the cover is on screen at all (including the fade-out).
+    public bool IsShowing => _canvas != null && _canvas.enabled;
+    /// True while the cover is fully opaque — from Show() until the fade-out
+    /// starts. Scene directors stage their first frame under this (the
+    /// tutorial box lights the shuttle's engines the moment it drops).
+    public bool IsHolding => IsShowing && !_fading;
+
+    // After the bar reaches 100 % over the LIVE scene: hold, then fade. Sam,
+    // 2026-09-14: "instead of hitting 100 % and being dropped into the shuttle
+    // with everything glitching for the first second, seamlessly transition."
+    public const float HoldSeconds = 0.5f;
+    public const float FadeSeconds = 1.0f;
+
     public void Show(string status = "Loading...")
     {
         if (_canvas != null) _canvas.enabled = true;
+        if (_group != null) _group.alpha = 1f;
+        _fading = false;
         SetStatus(status);
         _targetProgress = 0f;
         _shownProgress  = 0f;
@@ -91,6 +108,8 @@ public class LoadingScreen : MonoBehaviour
     public void Hide()
     {
         if (_canvas != null) _canvas.enabled = false;
+        if (_group != null) _group.alpha = 1f;
+        _fading = false;
     }
 
     public void SetProgress(float p) { _targetProgress = Mathf.Clamp01(p); }
@@ -203,8 +222,19 @@ public class LoadingScreen : MonoBehaviour
 
         SetProgress(1f);
         SetStatus("Ready");
-        // Brief hold so the bar visibly fills to 100 before we cut.
-        yield return new WaitForSecondsRealtime(0.15f);
+        // Let the smoothed bar actually reach 100 (it eases at 1.5/s), then
+        // HOLD the finished screen over the already-running scene so every
+        // first-frame pop (teleports, HUD builds, shader warmup) happens
+        // behind black, then fade the whole cover out.
+        float t0 = Time.unscaledTime;
+        while (_shownProgress < 0.999f && Time.unscaledTime - t0 < 1f) yield return null;
+        yield return new WaitForSecondsRealtime(HoldSeconds);
+        _fading = true;
+        for (float t = 0f; t < FadeSeconds; t += Time.unscaledDeltaTime)
+        {
+            if (_group != null) _group.alpha = 1f - t / FadeSeconds;
+            yield return null;
+        }
 
         Hide();
         _routineRunning = false;
@@ -237,6 +267,8 @@ public class LoadingScreen : MonoBehaviour
         _canvas = gameObject.AddComponent<Canvas>();
         _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
         _canvas.sortingOrder = 30000;
+        _group = gameObject.AddComponent<CanvasGroup>();
+        _group.alpha = 1f;
         var scaler = gameObject.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920, 1080);

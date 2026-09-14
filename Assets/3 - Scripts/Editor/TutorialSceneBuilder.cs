@@ -88,6 +88,10 @@ public static class TutorialSceneBuilder
     const int   SunLayer      = 11;      // "Sun" — excluded from the sun's own light masks
     const int   UILayer       = 5;
     const int   WalkableMask  = 34304;   // Ship | Body | ShuttleInterior — the gameplay scene's override
+    // CrosshairReticle.scale. The gameplay Dot carries 12 and nothing in code
+    // shrinks it, yet Sam's round-2 build read as "huge" — a third of that as
+    // the starting point; tune on Dot ▸ CrosshairReticle ▸ Scale and mirror here.
+    const float ReticleScale  = 4f;
 
     // The sun: 25 km out along the gameplay light's authored direction
     // (Euler 55, -35, 0 → forward (-0.329, -0.819, 0.470)). 55° elevation, so
@@ -402,7 +406,7 @@ public static class TutorialSceneBuilder
         img.raycastTarget = false;
         var reticle = dot.AddComponent<CrosshairReticle>();
         reticle.color = new Color(0.749f, 0.914f, 1f, 1f);
-        reticle.scale = 12f;
+        reticle.scale = ReticleScale;
         reticle.thickness = 2f;
         reticle.morphSeconds = 0.2f;
         reticle.showPip = true;

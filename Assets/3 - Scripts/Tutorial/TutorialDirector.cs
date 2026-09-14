@@ -112,6 +112,11 @@ public class TutorialDirector : MonoBehaviour
         IntroSequenceController.ShuttleWakeActive = true;
         PlayerController.isInDialogue = true;
 
+        // Everything above is staged while the loading screen holds at 100 %.
+        // The engines light the moment the cover starts to fade, so the first
+        // thing you see is a shuttle already under way (no first-second pops).
+        yield return new WaitUntil(() => LoadingScreen.Instance == null || !LoadingScreen.Instance.IsHolding);
+
         pilot.LaunchIntroApproach(descentSeconds);   // engines light, descent begins
 
         yield return new WaitForSeconds(doorOpenDelay);
