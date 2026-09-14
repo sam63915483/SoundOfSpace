@@ -165,7 +165,10 @@ public partial class ShuttleComputerUI
         clip.gameObject.AddComponent<RectMask2D>();
         _navMapClip = clip;
 
-        var gfxGo = new GameObject("MapMesh", typeof(RectTransform));
+        // CanvasRenderer explicitly: RectMask2D.OnEnable/OnDisable reach the graphic's
+        // canvasRenderer before RequireComponent has added one (MissingComponentException
+        // on every NAV view switch, 2026-09-14).
+        var gfxGo = new GameObject("MapMesh", typeof(RectTransform), typeof(CanvasRenderer));
         gfxGo.transform.SetParent(clip, false);
         _navMapGfx = gfxGo.AddComponent<NavMapGraphic>();
         Stretch((RectTransform)gfxGo.transform, 0, 0, 0, 0);

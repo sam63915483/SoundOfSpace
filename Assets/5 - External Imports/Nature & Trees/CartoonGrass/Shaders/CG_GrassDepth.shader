@@ -74,8 +74,8 @@ Shader "CartoonGrass/GrassDepth"
                 float3 c0 = float3(m._m00, m._m10, m._m20);
                 float invS2 = 1.0 / max(1e-8, dot(c0, c0));
                 float3x3 ri = transpose((float3x3)m) * invS2;
-                float3 t = float3(m._m03, m._m13, m._m23);
-                float3 it = -mul(ri, t);
+                float3 tr = float3(m._m03, m._m13, m._m23);
+                float3 it = -mul(ri, tr);
                 unity_WorldToObject = float4x4(
                     ri._m00, ri._m01, ri._m02, it.x,
                     ri._m10, ri._m11, ri._m12, it.y,
