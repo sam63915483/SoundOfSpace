@@ -52,11 +52,23 @@ Shader "CartoonGrass/GrassDepth"
             StructuredBuffer<GrassBladeData> _GrassBlades;
             StructuredBuffer<uint> _GrassVisIdx;
             float4x4 _GrassL2W;
+            float4 _GrassViewerLocal;   // viewer in the planet's local frame
+            float4 _GrassGrow;          // near radius, far radius, falloff exponent, grow band
 #endif
             void setupGrassDepth()
             {
 #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-                float4x4 m = mul(_GrassL2W, _GrassBlades[_GrassVisIdx[unity_InstanceID]].m);
+                GrassBladeData bd = _GrassBlades[_GrassVisIdx[unity_InstanceID]];
+                // Grow-in: the same density curve GrassCull.compute culled with. A blade
+                // scales from nothing over the last _GrassGrow.w of density as you approach,
+                // on its own random (meta.z), so grass never pops into existence.
+                float3 pl = float3(bd.m._m03, bd.m._m13, bd.m._m23);
+                float d = distance(pl, _GrassViewerLocal.xyz);
+                float t = saturate((d - _GrassGrow.x) / max(0.01, _GrassGrow.y - _GrassGrow.x));
+                float density = pow(1.0 - t, _GrassGrow.z);
+                float g = max(0.001, saturate((density - bd.meta.z) / max(0.001, _GrassGrow.w)));
+                float4x4 m = mul(_GrassL2W, bd.m);
+                m._m00_m01_m02 *= g; m._m10_m11_m12 *= g; m._m20_m21_m22 *= g;
                 unity_ObjectToWorld = m;
                 // Affine inverse for rotation × UNIFORM scale + translation: (R S)^-1 = Rᵀ / s².
                 float3 c0 = float3(m._m00, m._m10, m._m20);

@@ -28,9 +28,16 @@ AppendStructuredBuffer<uint> _Vis2;
 float4x4 _L2W;            // planet localToWorld this frame
 float4   _Planes[6];      // camera frustum planes, xyz = normal, w = distance (inside: dot + w >= 0)
 float3   _ViewerLocal;    // viewer position in the planet's local frame
-float    _SpawnRadius;    // blades beyond this are never drawn
-float    _FadeStart;      // distance where thinning starts
-float    _FadeFloor;      // never thin below this fraction
+// Density curve (shared with the shaders' setup, which grows each blade by it):
+//   d <= _NearRadius            → density 1
+//   _NearRadius .. _FarRadius   → (1 - t)^_Falloff, t = (d - near) / (far - near)
+//   d >= _FarRadius             → 0
+// A blade with random r is drawn when density > r; it GROWS in over the last
+// _GrowBand of density so nothing pops (grow = saturate((density - r) / band)).
+float    _NearRadius;
+float    _FarRadius;
+float    _Falloff;
+float    _GrowBand;
 float    _CullRadius;     // mesh bounding radius at scale 1 (+ a margin), metres
 uint     _Count;          // slots
 
@@ -43,14 +50,10 @@ void Cull(uint3 id : SV_DispatchThreadID)
 
     float3 pl = float3(b.m._m03, b.m._m13, b.m._m23);
     float d = distance(pl, _ViewerLocal);
-    if (d > _SpawnRadius + 2.0) return;
-
-    // Distance thinning (matches the CPU densityFade: full near, fades to the
-    // floor at the edge). A fixed per-blade random keeps the SAME blades as you
-    // move, so nothing flickers.
-    float f = saturate((_SpawnRadius - d) / max(0.01, _SpawnRadius - _FadeStart));
-    f = max(f, _FadeFloor);
-    if (b.meta.z > f) return;
+    if (d >= _FarRadius) return;
+    float t = saturate((d - _NearRadius) / max(0.01, _FarRadius - _NearRadius));
+    float density = pow(1.0 - t, _Falloff);
+    if (density - b.meta.z <= 0.0) return;   // fully shrunk — the shader would draw a zero-size blade
 
     float3 wp = mul(_L2W, float4(pl, 1.0)).xyz;
     float scale = length(float3(b.m._m00, b.m._m10, b.m._m20));   // uniform scale

@@ -269,14 +269,14 @@ public class InstancedGrassRenderer : MonoBehaviour
     // Rather than force a re-bake every time a cave moves, drop the blades that
     // fall inside a hole (or an explicit NoGrassVolume, which also covers the
     // rock collar sitting on top of the ground) once, at load.
-    void PruneBakedForHoles()
+    int PruneBakedForHoles()
     {
-        if (!_baked || _bakedCells == null || _body == null) return;
+        if (!_baked || _bakedCells == null || _body == null) return 0;
 
         int volumeCount = NoGrassVolume.All.Count + TerrainHole.All.Count;
-        if (volumeCount == _prunedVolumeCount) return;
+        if (volumeCount == _prunedVolumeCount) return 0;
         _prunedVolumeCount = volumeCount;
-        if (volumeCount == 0) return;
+        if (volumeCount == 0) return 0;
 
         Matrix4x4 l2w = _body.transform.localToWorldMatrix;
         int removed = 0;
@@ -297,6 +297,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         if (removed > 0)
             Debug.Log($"[InstancedGrassRenderer] Removed {removed} baked blades inside " +
                       $"{volumeCount} no-grass volume(s) — cave mouths / punched holes.");
+        return removed;
     }
 
     /// Diagnostics: how many grass cells are live around the viewer right now.
@@ -381,6 +382,18 @@ public class InstancedGrassRenderer : MonoBehaviour
             if (_depthCB != null) _depthCB.Clear();   // don't leave stale grass in the depth prepass
             return;
         }
+        // Whole-planet resident mode: every baked blade is on the GPU, the compute
+        // decides what is near enough to draw, and nothing streams on the CPU.
+        _resident = _gpuOn && residentWholePlanet && _baked && _bakedCells != null;
+        if (_resident)
+        {
+            if (PruneBakedForHoles() > 0) _residentLoaded = false;
+            if (!_residentLoaded) GpuUploadWholePlanet();
+            if (_active.Count > 0) ClearActive();
+            Draw();
+            return;
+        }
+        if (_residentLoaded) { GpuReleaseBuffers(); _residentLoaded = false; }   // back to streaming (F11 / setting)
         _tick += Time.deltaTime;
         if (_tick >= updateInterval) { _tick = 0f; Stream(); }
         Draw();
@@ -403,7 +416,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         if (_active.Count == 0) return;
         foreach (var c in _active.Values) ReturnCell(c);   // no-op in baked mode; pools in live mode
         _active.Clear();
-        if (_gpuOn) GpuReleaseAll();
+        if (_gpuOn && !_resident) GpuReleaseAll();
         _pdirty = true;
     }
 
@@ -1476,9 +1489,15 @@ public class InstancedGrassRenderer : MonoBehaviour
     static readonly int _csL2WId     = Shader.PropertyToID("_L2W");
     static readonly int _csPlanesId  = Shader.PropertyToID("_Planes");
     static readonly int _csViewerId  = Shader.PropertyToID("_ViewerLocal");
-    static readonly int _csSpawnId   = Shader.PropertyToID("_SpawnRadius");
-    static readonly int _csFadeStartId = Shader.PropertyToID("_FadeStart");
-    static readonly int _csFadeFloorId = Shader.PropertyToID("_FadeFloor");
+    static readonly int _csNearId    = Shader.PropertyToID("_NearRadius");
+    static readonly int _csFarId     = Shader.PropertyToID("_FarRadius");
+    static readonly int _csFalloffId = Shader.PropertyToID("_Falloff");
+    static readonly int _csBandId    = Shader.PropertyToID("_GrowBand");
+    static readonly int _gpuViewerId = Shader.PropertyToID("_GrassViewerLocal");
+    static readonly int _gpuGrowId   = Shader.PropertyToID("_GrassGrow");
+    bool _resident, _residentLoaded;
+    int _residentCount;
+    public int ResidentBlades => _resident ? _residentCount : 0;
     static readonly int _csCullRId   = Shader.PropertyToID("_CullRadius");
     static readonly int _csCountId   = Shader.PropertyToID("_Count");
 
@@ -1502,12 +1521,17 @@ public class InstancedGrassRenderer : MonoBehaviour
         _gpuOn = want;
         if (_gpuOn)
         {
-            GpuEnsure(Mathf.Max(_active.Count, 64));
-            foreach (var kv in _active) GpuActivate(kv.Key, kv.Value);
+            _residentLoaded = false;             // resident mode (if wanted) re-uploads on the next LateUpdate
+            if (!(residentWholePlanet && _baked && _bakedCells != null))
+            {
+                GpuEnsure(Mathf.Max(_active.Count, 64));
+                foreach (var kv in _active) GpuActivate(kv.Key, kv.Value);
+            }
         }
         else
         {
-            GpuReleaseAll();
+            if (_resident) { GpuReleaseBuffers(); _resident = false; _residentLoaded = false; }
+            else GpuReleaseAll();
             _pdirty = true;
         }
     }
@@ -1598,6 +1622,51 @@ public class InstancedGrassRenderer : MonoBehaviour
         _gpuFree.Push(slot);
     }
 
+    /// Whole-planet upload for resident mode: every baked cell's blades, packed
+    /// contiguously (a cell → range map isn't needed: pruning re-uploads). ~150 k
+    /// blades / 12 MB for Humble Abode. The slot allocator is not used here.
+    void GpuUploadWholePlanet()
+    {
+        GpuReleaseBuffers();
+        _gpuMirror = null; _gpuSlots = 0; _gpuFree.Clear(); _gpuCellSlot.Clear(); _gpuDirty.Clear();
+        int total = 0;
+        foreach (var kv in _bakedCells) total += kv.Value.local.Count;
+        _residentCount = total;
+        _residentLoaded = true;
+        if (total == 0) return;
+        var tmp = new GpuBlade[total];
+        int i = 0;
+        foreach (var kv in _bakedCells)
+        {
+            var cell = kv.Value;
+            for (int k = 0; k < cell.local.Count; k++, i++)
+            {
+                tmp[i].m = cell.local[k];
+                tmp[i].meta = new Vector4(cell.mesh[k], 1f, GpuRand(i), 0f);
+            }
+        }
+        _gpuBlades = new ComputeBuffer(total, GpuBladeStride, ComputeBufferType.Structured);
+        _gpuBlades.SetData(tmp);
+        _gpuVis  = new ComputeBuffer[GpuMeshSlots];
+        _gpuArgs = new ComputeBuffer[GpuMeshSlots];
+        if (_gpuMpb == null) { _gpuMpb = new MaterialPropertyBlock[GpuMeshSlots]; for (int m = 0; m < GpuMeshSlots; m++) _gpuMpb[m] = new MaterialPropertyBlock(); }
+        for (int m = 0; m < GpuMeshSlots; m++)
+        {
+            _gpuVis[m]  = new ComputeBuffer(total, sizeof(uint), ComputeBufferType.Append);
+            _gpuArgs[m] = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+            var mesh = m < grassMeshes.Length ? grassMeshes[m] : null;
+            _gpuArgsTmp[0] = mesh != null ? mesh.GetIndexCount(0) : 0u;
+            _gpuArgsTmp[1] = 0u;
+            _gpuArgsTmp[2] = mesh != null ? mesh.GetIndexStart(0) : 0u;
+            _gpuArgsTmp[3] = mesh != null ? mesh.GetBaseVertex(0) : 0u;
+            _gpuArgsTmp[4] = 0u;
+            _gpuArgs[m].SetData(_gpuArgsTmp);
+        }
+        _gpuMeshRadius = 0.5f;
+        for (int m = 0; m < grassMeshes.Length; m++) _gpuMeshRadius = Mathf.Max(_gpuMeshRadius, grassMeshes[m].bounds.extents.magnitude);
+        Debug.Log($"[InstancedGrassRenderer] Resident grass: {total} blades for '{_body.bodyName}' on the GPU ({total * GpuBladeStride / 1048576f:0.0} MB); no CPU streaming.");
+    }
+
     void GpuReleaseAll()
     {
         if (_gpuMirror != null) for (int i = 0; i < _gpuMirror.Length; i++) _gpuMirror[i].meta = Vector4.zero;
@@ -1636,9 +1705,34 @@ public class InstancedGrassRenderer : MonoBehaviour
 
     void DrawGpu(Camera cam, bool cull, CommandBuffer depthCB, ref Matrix4x4 l2w)
     {
-        if (_gpuBlades == null) GpuEnsure(64);
-        GpuFlush();
+        if (_resident)
+        {
+            if (_gpuBlades == null || _residentCount == 0) return;
+        }
+        else
+        {
+            if (_gpuBlades == null) GpuEnsure(64);
+            GpuFlush();
+        }
         if (_gpuKernel < 0) _gpuKernel = cullCompute.FindKernel("Cull");
+        // Density curve. Streaming: the old fade (full to fadeStart, thinning to the
+        // edge). Resident: the authored radii × the GRASS DISTANCE setting.
+        float settingScale = _baseSpawnRadius > 0.01f ? spawnRadius / _baseSpawnRadius : 1f;
+        float near, far, falloff, band;
+        if (_resident)
+        {
+            near = residentNearRadius * settingScale;
+            far = Mathf.Max(near + 1f, residentFarRadius * settingScale);
+            falloff = Mathf.Max(0.1f, residentFalloff);
+            band = Mathf.Max(0.005f, residentGrowBand);
+        }
+        else
+        {
+            near = densityFade ? spawnRadius * densityFadeStartFrac : spawnRadius;
+            far = spawnRadius * 1.15f;          // cells live to 1.2× before eviction
+            falloff = 1f;
+            band = 0.05f;
+        }
 
         Vector3 viewerWorld = _player != null ? _player.transform.position : (cam != null ? cam.transform.position : _body.transform.position);
         Vector3 vLocal = _body.transform.InverseTransformPoint(viewerWorld);
@@ -1646,21 +1740,23 @@ public class InstancedGrassRenderer : MonoBehaviour
             _gpuPlanes[p] = cull ? new Vector4(_planes[p].normal.x, _planes[p].normal.y, _planes[p].normal.z, _planes[p].distance)
                                  : new Vector4(0f, 0f, 0f, 1e9f);   // no camera: accept everything
 
-        int count = _gpuSlots * _gpuSlotBlades;
+        int count = _resident ? _residentCount : _gpuSlots * _gpuSlotBlades;
         for (int m = 0; m < GpuMeshSlots; m++) _gpuVis[m].SetCounterValue(0);
         cullCompute.SetBuffer(_gpuKernel, _csBladesId, _gpuBlades);
         for (int m = 0; m < GpuMeshSlots; m++) cullCompute.SetBuffer(_gpuKernel, _csVisIds[m], _gpuVis[m]);
         cullCompute.SetMatrix(_csL2WId, l2w);
         cullCompute.SetVectorArray(_csPlanesId, _gpuPlanes);
         cullCompute.SetVector(_csViewerId, vLocal);
-        cullCompute.SetFloat(_csSpawnId, spawnRadius);
-        cullCompute.SetFloat(_csFadeStartId, densityFade ? spawnRadius * densityFadeStartFrac : spawnRadius);
-        cullCompute.SetFloat(_csFadeFloorId, densityFade ? densityFadeFloor : 1f);
+        cullCompute.SetFloat(_csNearId, near);
+        cullCompute.SetFloat(_csFarId, far);
+        cullCompute.SetFloat(_csFalloffId, falloff);
+        cullCompute.SetFloat(_csBandId, band);
+        Vector4 grow = new Vector4(near, far, falloff, band);
         cullCompute.SetFloat(_csCullRId, _gpuMeshRadius + 0.5f);
         cullCompute.SetInt(_csCountId, count);
         cullCompute.Dispatch(_gpuKernel, Mathf.Max(1, (count + 63) / 64), 1, 1);
 
-        var bounds = new Bounds(viewerWorld, Vector3.one * (spawnRadius * 2f + 60f));
+        var bounds = new Bounds(viewerWorld, Vector3.one * (far * 2f + 60f));
         for (int m = 0; m < grassMeshes.Length && m < GpuMeshSlots; m++)
         {
             ComputeBuffer.CopyCount(_gpuVis[m], _gpuArgs[m], 4);
@@ -1668,6 +1764,8 @@ public class InstancedGrassRenderer : MonoBehaviour
             mpb.SetBuffer(_gpuBladesId, _gpuBlades);
             mpb.SetBuffer(_gpuVisIdxId, _gpuVis[m]);
             mpb.SetMatrix(_gpuL2WId, l2w);
+            mpb.SetVector(_gpuViewerId, vLocal);
+            mpb.SetVector(_gpuGrowId, grow);
             mpb.SetVector(_grassPlanetCenterId, _body.transform.position);
             Graphics.DrawMeshInstancedIndirect(grassMeshes[m], 0, grassMaterial, bounds, _gpuArgs[m], 0, mpb,
                                                ShadowCastingMode.Off, receiveShadows);
@@ -1681,6 +1779,17 @@ public class InstancedGrassRenderer : MonoBehaviour
     public bool gpuResident = false;
     [Tooltip("Assets/3 - Scripts/World/GrassCull.compute")]
     public ComputeShader cullCompute;
+    [Header("Whole-planet resident grass (needs gpuResident + a bakedGrass blob)")]
+    [Tooltip("Upload EVERY baked blade to the GPU at load and let the compute pick what to draw — no CPU streaming, no pop-in: blades grow in with distance on their own random schedule.")]
+    public bool residentWholePlanet = true;
+    [Tooltip("Full density out to this many metres (× the GRASS DISTANCE setting).")]
+    public float residentNearRadius = 60f;
+    [Tooltip("Density reaches zero here (× the GRASS DISTANCE setting). GPU cost scales with the area between near and far.")]
+    public float residentFarRadius = 350f;
+    [Tooltip("Density curve between near and far: (1 - t)^falloff. 1 = linear, 2 = thins quickly then tails off.")]
+    public float residentFalloff = 2f;
+    [Tooltip("How much of the density range a blade takes to grow from nothing to full. Bigger = softer, slower grow-in.")]
+    [Range(0.01f, 0.5f)] public float residentGrowBand = 0.08f;
 
 #if UNITY_EDITOR
     // ── editor bake ───────────────────────────────────────────────────────────
