@@ -229,6 +229,32 @@ public static class PoolSimTests
         Check(g.OnPocketed(0, 8, false, Table(9, 1, 2, 3, 4, 5, 6, 7, 8)) == PoolGameState.Verdict.Lose, "game: Stripes sinks 8 with stripes left → Lose even with all solids gone");
         Check(PoolGameState.GroupBallsLeft(PoolGameState.Group.Stripes, Table(9, 1, 2, 3, 4, 5, 6, 7, 8)) == 6, "game: GroupBallsLeft counts 6 stripes");
 
+        // ── respot + ball in hand ───────────────────────────────────────────
+        // 22. respot the 8 on a clear foot spot
+        s = new PoolPhysics2D();
+        for (int i = 1; i < 16; i++) s.Active[i] = false;
+        Check(s.Respot(8), "respot: finds the foot spot");
+        Check(s.Active[8] && Math.Abs(s.X[8] - s.FootSpotX) < 1e-6f && Math.Abs(s.Y[8]) < 1e-6f, "respot: 8 sits on the foot spot");
+
+        // 23. respot with the foot spot blocked → nudged, no overlap
+        s = new PoolPhysics2D();
+        for (int i = 1; i < 16; i++) s.Active[i] = false;
+        s.Active[1] = true; s.X[1] = s.FootSpotX; s.Y[1] = 0f;
+        Check(s.Respot(8), "respot: finds a spot when blocked");
+        Check(s.X[8] > s.FootSpotX + s.BallRadius * 1.9f || Math.Abs(s.Y[8]) > s.BallRadius * 1.9f, "respot: moved off the blocked spot");
+        Check(NoOverlaps(s, 0f, out w), "respot: no overlap (" + w + ")");
+
+        // 24. ball in hand: lift deactivates, blocked spot refused, clear spot placed
+        s = new PoolPhysics2D();
+        s.LiftCue();
+        Check(!s.Active[0], "hand: cue inactive while lifted");
+        Check(!s.CanPlaceCue(s.X[1], s.Y[1]), "hand: refuses a spot on top of ball 1");
+        float kx = s.KitchenMaxX - 0.1f, ky = 0.1f;
+        Check(s.CanPlaceCue(kx, ky), "hand: accepts a clear kitchen spot");
+        Check(s.PlaceCue(kx, ky) && s.Active[0] && Math.Abs(s.X[0] - kx) < 1e-6f && Math.Abs(s.Y[0] - ky) < 1e-6f, "hand: placed and active");
+        Check(!s.PlaceCue(s.X[1], s.Y[1]), "hand: placing on a ball is refused");
+        Check(Math.Abs(s.KitchenMaxX - s.HeadSpotX) < 1e-6f, "hand: kitchen ends at the head string");
+
         Console.WriteLine(_failures == 0 ? $"PASS  {_checks} checks" : $"FAIL  {_failures} of {_checks} checks");
         return _failures == 0 ? 0 : 1;
     }

@@ -167,6 +167,49 @@ public sealed class PoolPhysics2D
         return false;
     }
 
+    /// Put an object ball back on the foot spot (the 8 after a "nobody's 8 yet"
+    /// pocket). Nudged along the long axis toward the foot rail, then sideways,
+    /// if something is in the way — the mirror of RespawnCue. False if no room.
+    public bool Respot(int ball)
+    {
+        if (ball <= 0 || ball >= BallCount) return false;
+        float d = BallRadius * 2f + 0.001f;
+        bool wasActive = Active[ball];
+        Active[ball] = false;                      // don't collide with itself in SpotFree
+        for (int fwd = 0; fwd < 6; fwd++)
+        {
+            float x = FootSpotX + fwd * d;
+            if (x > HalfLength - BallRadius) break;
+            for (int k = 0; k < 15; k++)
+            {
+                float y = (k == 0) ? 0f : ((k % 2 == 1) ? 1f : -1f) * ((k + 1) / 2) * d;
+                if (Math.Abs(y) > HalfWidth - BallRadius) continue;
+                if (SpotFree(x, y, d)) { X[ball] = x; Y[ball] = y; VX[ball] = 0f; VY[ball] = 0f; Active[ball] = true; return true; }
+            }
+        }
+        Active[ball] = wasActive;
+        return false;
+    }
+
+    // ── Ball in hand ────────────────────────────────────────────────────────
+
+    /// The kitchen (where a ball-in-hand cue ball may go) runs from the head rail to the head string.
+    public float KitchenMaxX => HeadSpotX;
+
+    /// Take the cue ball off the table (it stops colliding). Pair with PlaceCue.
+    public void LiftCue() { Active[Cue] = false; VX[Cue] = 0f; VY[Cue] = 0f; }
+
+    /// True if the cue ball could sit at (x, y) without touching another ball.
+    public bool CanPlaceCue(float x, float y) => SpotFree(x, y, BallRadius * 2f + 0.001f);
+
+    /// Put the lifted cue ball down at (x, y). False (and nothing changes) if blocked.
+    public bool PlaceCue(float x, float y)
+    {
+        if (!CanPlaceCue(x, y)) return false;
+        X[Cue] = x; Y[Cue] = y; VX[Cue] = 0f; VY[Cue] = 0f; Active[Cue] = true;
+        return true;
+    }
+
     bool SpotFree(float x, float y, float minDist)
     {
         for (int i = 1; i < BallCount; i++)
