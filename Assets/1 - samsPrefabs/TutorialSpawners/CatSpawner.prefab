@@ -1,0 +1,131 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &6204889655046759742
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3173948154931252144}
+  - component: {fileID: 7031963052759655226}
+  m_Layer: 0
+  m_Name: CatSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &3173948154931252144
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6204889655046759742}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &7031963052759655226
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6204889655046759742}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 084538a5d8ab1b94287ec8a0a3b6ff14, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  excludeBodyNames:
+  - Sun
+  catPrefabs:
+  - {fileID: 5080291477522553048, guid: 842c650e107c0c842bd63593a83fdcc9, type: 3}
+  - {fileID: 4294215601378947049, guid: bfade04e713a89447ae08bf45ba0986b, type: 3}
+  - {fileID: 5903305360035744495, guid: 354cccbf87a5b1545a99c3ea94d47605, type: 3}
+  - {fileID: 8972451701940912605, guid: 07ae253812001d1449078334ffba4e5b, type: 3}
+  - {fileID: 7348536701773563117, guid: 8fbf32aff4ed6d04f80276d853941210, type: 3}
+  - {fileID: 4755581741841230011, guid: 70a416eed029eca489c487f28a269631, type: 3}
+  - {fileID: 1596102306981513432, guid: f89496472e195c54e91b3da1b9f0ef89, type: 3}
+  - {fileID: 8701727805165997762, guid: 074fa5bd3877db74ba90c3849f30207e, type: 3}
+  - {fileID: 1478106952154305835, guid: 69de1a76296a1da4f888415aa1e15484, type: 3}
+  - {fileID: 2157460984912013273, guid: d2a1124825ca45e488c85da8b7fb53f0, type: 3}
+  - {fileID: 8145199188017877356, guid: ddafad54d64873f47a0ab37dd9b7f3f7, type: 3}
+  catAvatar: {fileID: 9000000, guid: 2e05a747a6709c347be39ce67225f341, type: 3}
+  clipIdle: {fileID: -4274949523914843036, guid: e463835e238bf974dba85d1be792af7d,
+    type: 3}
+  clipLook: {fileID: 6827390808339496647, guid: e463835e238bf974dba85d1be792af7d,
+    type: 3}
+  clipStretch: {fileID: 5307713826580999831, guid: e463835e238bf974dba85d1be792af7d,
+    type: 3}
+  clipSit: {fileID: 3115932231673396499, guid: 4fb06a67ac5df574dab096f3ad447378, type: 3}
+  clipLie: {fileID: -8063506458605314483, guid: 4fb06a67ac5df574dab096f3ad447378,
+    type: 3}
+  clipSleep: {fileID: -5878996654554545991, guid: 4fb06a67ac5df574dab096f3ad447378,
+    type: 3}
+  clipWalk: {fileID: -2092370153548828221, guid: 1200b65109d345745888f1a6ce574b07,
+    type: 3}
+  clipTrot: {fileID: 1444414959603825254, guid: 1200b65109d345745888f1a6ce574b07,
+    type: 3}
+  clipSwim: {fileID: -6384548723145882646, guid: 1200b65109d345745888f1a6ce574b07,
+    type: 3}
+  clipSwimIdle: {fileID: 1848899675895838607, guid: 1200b65109d345745888f1a6ce574b07,
+    type: 3}
+  clipSitTo: {fileID: -1908592489228207080, guid: 4fb06a67ac5df574dab096f3ad447378,
+    type: 3}
+  clipLieTo: {fileID: -4364605966053575971, guid: 4fb06a67ac5df574dab096f3ad447378,
+    type: 3}
+  clipSleepTo: {fileID: -7410603691571903617, guid: 4fb06a67ac5df574dab096f3ad447378,
+    type: 3}
+  spawnRadius: 300
+  maxCats: 44
+  inputSettings: {fileID: 0}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  groundOffset: 0
+  groundEmbedPerScale: 0.02
+  seed: 4242
+  cellSize: 60
+  catSpawnChance: 0.65
+  maxSurfaceAngle: 40
+  minScale: 2.56
+  maxScale: 3.76
+  triggerSize: {x: 2, y: 1.8, z: 2.6}
+  triggerCenter: {x: 0, y: 0.5, z: 0}
+  wanderEnabled: 1
+  wanderRadius: 26
+  wanderSpeed: 1.6
+  wanderIdleMin: 3
+  wanderIdleMax: 9
+  wanderPauseDistance: 2.5
+  updateInterval: 0.35
+  surfaceRayHeight: 100
+  minSpawnDistance: 14
+  bisectKey: 291
+  clipLick: {fileID: -7689000177743076963, guid: 075608c0607e7d7448b0e96cca2e642e,
+    type: 3}
+  clipSharpen: {fileID: -7171608799279407697, guid: 075608c0607e7d7448b0e96cca2e642e,
+    type: 3}
+  clipDig: {fileID: -1457069560952101480, guid: 075608c0607e7d7448b0e96cca2e642e,
+    type: 3}
+  clipShake: {fileID: 1326196915339435125, guid: 075608c0607e7d7448b0e96cca2e642e,
+    type: 3}
+  clipPet: {fileID: 8527525960701127228, guid: 075608c0607e7d7448b0e96cca2e642e, type: 3}
+  clipPetSit: {fileID: 7264769121684474156, guid: 075608c0607e7d7448b0e96cca2e642e,
+    type: 3}
+  clipPetLie: {fileID: 7729931716421494841, guid: 075608c0607e7d7448b0e96cca2e642e,
+    type: 3}
+  clipEat: {fileID: -8381195027042652517, guid: 075608c0607e7d7448b0e96cca2e642e,
+    type: 3}
+  purrClip: {fileID: 8300000, guid: 68de37f3f1da61b49828d67d1f8e8ea1, type: 3}
+  purrVolume: 0.5
+  debugLogging: 0
+  debugInterval: 3

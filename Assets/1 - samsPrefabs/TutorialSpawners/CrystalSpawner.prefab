@@ -1,0 +1,71 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7224215556695689940
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 2047826385659259766}
+  - component: {fileID: 2216637255723175664}
+  m_Layer: 0
+  m_Name: CrystalSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &2047826385659259766
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7224215556695689940}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2216637255723175664
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7224215556695689940}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4fe12b45c08e54943a0c1783304dcf30, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  excludeBodyNames:
+  - Sun
+  respawnGameDays: 1
+  crystalPrefab: {fileID: 1000012006197310, guid: 465c505844950da499dcf096a6da4409,
+    type: 3}
+  spawnRadius: 300
+  maxCrystals: 20
+  inputSettings: {fileID: 11400000, guid: 0e5a06a1eafad4497a5df01f7f393c80, type: 2}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  groundOffset: 0.06
+  groundEmbedPerScale: 0.04
+  seed: 11357
+  cellSize: 60
+  maxFaceUVPerCell: 0.3
+  crystalSpawnChance: 0.35
+  maxSurfaceAngle: 35
+  minScale: 1
+  maxScale: 3
+  scaleBiasExponent: 2
+  updateInterval: 0.25
+  surfaceRayHeight: 100
+  crystalBreakClip: {fileID: 8300000, guid: ce028155ed174cec967975d108b8735b, type: 3}
+  crystalBreakVolume: 0.85

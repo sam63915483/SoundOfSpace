@@ -61,6 +61,19 @@ Two ways in. Both should behave the same.
   isn't, tell me — that's a real bug then.
 - **Digits:** 640 columns per wall, long trails — green lines from afar, 0s and 1s up close.
 
+## Round 4 (2026-09-14) — real planet
+
+- The slab is gone. You are on a Humble Abode clone 7.5× the size (radius 1500 m), static,
+  with the atmosphere and ocean, on the flattest dry patch the builder could find. Blue sky,
+  sun up at 55°, real terrain shading. Box is 350 m; descent from 330 m over 14 s.
+- Trees / crystals / mushrooms / cats / grass are the gameplay spawners with your tuning.
+  Grass streams live (no bake). 15 s after touchdown the console logs the grass cell count —
+  if you still see none, send me that line.
+- Black bars during the fade are gone (tutorial and new game).
+- Expect: terrain is 7.8 m per triangle (HA is 1 m) so it reads chunkier underfoot; hills are
+  7.5× taller in metres but the same steepness. Say if you want a flatter noise copy.
+- Loading: one planet generates on the activation frame, under the loading screen.
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle
@@ -69,10 +82,8 @@ Two ways in. Both should behave the same.
   ceiling at the start?
 - Digit walls: colour, speed, density, brightness are sliders on
   `Assets/4 - Scenes/TutorialDigitRain.mat`. Say what you want changed.
-- Lighting: there is no atmosphere post here, so shadow sides are lit only by a dim
-  ambient. Too dark / too flat? Sun angle is a constant in the builder (55° up).
-- Prop density / clearing size are fields on `Tutorial Ground ▸ Tutorial Props`; cat
-  count on `--- Managers --- ▸ CatSpawner ▸ Max Cats`.
+- Sun angle is a constant in the builder (55° up). Spawner tuning lives on the prefabs in
+  `Assets/1 - samsPrefabs/TutorialSpawners/` (cat cap is a scene override, 8).
 
 ## Known limits
 

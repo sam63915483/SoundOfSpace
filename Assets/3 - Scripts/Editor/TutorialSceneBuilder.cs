@@ -8,90 +8,77 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Builds Assets/4 - Scenes/Tutorial.unity — the tutorial box
-/// (docs/superpowers/specs/2026-09-14-tutorial-box-design.md).
+/// (docs/superpowers/specs/2026-09-14-tutorial-box-design.md, round 4).
 ///
 /// Tools ▸ Solar System ▸ Build Tutorial Scene. Modelled on PlanetGalleryBuilder:
-/// the scene is created ADDITIVELY, populated, saved and closed, and the
-/// previously active scene is restored — the open gameplay scene is never
-/// touched. Re-running WIPES and rebuilds the scene (hand-placed extras are
-/// lost), so add tutorial content here until we stop regenerating.
+/// the scene is created ADDITIVELY (or rebuilt in place if it is the open
+/// scene), populated, saved; the previously active scene is restored. The
+/// gameplay scene is never touched. Re-running WIPES and rebuilds the scene.
 ///
-/// What's in the box (round 2, 2026-09-14):
-///   Body Simulation   — NBodySimulation. Needed so the lens flare, the grass,
-///                       the cats and the player's gravity find the bodies
-///                       (they all read NBodySimulation.Bodies). Both bodies are
-///                       PINNED so nothing orbits or falls into the sun.
-///   Sun               — a real sun 25 km up and off to the side: CelestialBody
-///                       (Sun, pinned), the directional light + SunShadowCaster
-///                       exactly like the gameplay scene, the warm point light
-///                       the grass shader reads, and an emissive ball (Sun.mat).
-///   Tutorial Ground   — the fake planet: kinematic Rigidbody + CelestialBody
-///                       (radius 10 km, centre 10 km below the floor, no
-///                       generator, surfaceGravity = Humble Abode's 8). The
-///                       shuttle autopilot needs a parent CelestialBody to fly;
-///                       over a 200 m box its "radial up" is within 0.6° of
-///                       straight up. Gravity now comes from the sim like on a
-///                       real planet, so the feel matches Humble Abode.
-///     Terrain Mesh    — the floor: 200×1×200 cube, top at y = 0, Green.mat,
-///                       layer Body, MESH collider named the way the grass
-///                       renderer looks for a planet's terrain.
-///     Wall ±X / ±Z, Ceiling — quads with the digit-rain material + box
-///                       colliders, marked LensFlarePassThrough (glass).
-///     Shuttle_Lander  — prefab instance, feet on the floor at the centre
-///     Tutorial Props  — TutorialPropField: trees / crystals / mushrooms placed
-///                       once at load (the live spawners would scan a 10 km
-///                       sphere every tick).
-///   Grass             — InstancedGrassRenderer, the gameplay values, pointed at
-///                       Tutorial Ground, no baked blob (streams live; cheap).
-///   CatSpawner        — the real one, wired like the gameplay scene, small cap.
-///   HUD Canvas / Dot  — the crosshair (CrosshairReticle is scene-placed in the
-///                       gameplay scene, never seeded).
-///   HelmetHudConfig   — prefab snapshot of the gameplay scene's config; without
-///                       it the compass / boost / vitals clusters fall back to
-///                       their old floating-card look.
-///   Player            — Player.prefab with the gameplay scene's overrides,
-///                       standing in the stasis pod
-///   Tutorial Director — runs the fly-in (TutorialDirector)
-///   EventSystem
+/// Round 4 (Sam): the green slab is replaced by a REAL generated planet — a
+/// Humble Abode clone at radius 1500 m (three Cyclops), static, with its
+/// atmosphere and ocean, so the sky is blue and the sun is up. The player is
+/// confined to a 350 m box on the flattest patch of land the builder can find.
+/// Everything that made the slab a special case (fake gravity body, baked
+/// props, vented oxygen) is gone: the spawners, grass, oxygen, atmosphere and
+/// landing all run the gameplay code on a gameplay-style planet.
+///
+/// What's in the scene:
+///   --- Celestial ---   NBodySimulation (both bodies PINNED), SolarSystemSpawner
+///                       (300/100/50 like the gameplay scene) + LODHandler — the
+///                       pair that turns the placeholder into a generated planet
+///                       at load and keeps the mesh assigned.
+///   Sun                 CelestialBody(Sun) 25 km out at 55° with the gameplay
+///                       directional light + SunShadowCaster (child), the warm
+///                       point light the grass shader reads, an emissive ball.
+///   Humble Abode        the planet: CelestialBody r=1500 g=8 pinned, 'Mesh
+///                       Holder' BodyPlaceholder → the cloned settings under
+///                       Solar System/Tutorial Earth/, 'waterline' trigger. Named
+///                       Humble Abode on purpose: grass onlyBodyName, the suit's
+///                       O2 refill zone and more are keyed on that name. Rotated
+///                       so the flattest dry spot faces +Y; placed so that spot's
+///                       surface is world y = 0.
+///     Shuttle_Lander    prefab instance, feet at y = 0 (its authored pose is the
+///                       landing target; the hover is 100 m above it)
+///   Tutorial Box        4 walls (350 × 450, y −100…350) + ceiling at 350, digit
+///                       rain panes, box colliders, LensFlarePassThrough.
+///   --- Managers ---    snapshot prefabs of the gameplay spawners (trees,
+///                       crystals, mushrooms, cats, grass) with Sam's tuning.
+///   --- UI ---          Overlay Canvas ▸ Dot (crosshair), HelmetHudConfig prefab.
+///   Player              TutorialPlayer.prefab (snapshot of the gameplay player)
+///   Tutorial Director, EventSystem
 /// </summary>
 public static class TutorialSceneBuilder
 {
-    const string SceneDir   = "Assets/4 - Scenes";
-    const string ScenePath  = TutorialSession.ScenePath;
+    const string SceneDir    = "Assets/4 - Scenes";
+    const string ScenePath   = TutorialSession.ScenePath;
     const string RainMatPath = SceneDir + "/TutorialDigitRain.mat";
-    const string RainShader = "Custom/TutorialDigitRain";
+    const string RainWallMatPath = SceneDir + "/TutorialDigitRainWall.mat";
+    const string RainShader  = "Custom/TutorialDigitRain";
 
     // Same GUIDs the gameplay scene / PlanetGalleryBuilder use, so this file
     // has no path into packs that might move.
     const string SkyboxMatGuid     = "e3d301707e23ccd4e84049a21e148e54"; // ESO Milky Way
-    const string GreenMatGuid      = "ac038ee5893cf4c648f7a602051dfc36"; // Green.mat
+    const string GreenMatGuid      = "ac038ee5893cf4c648f7a602051dfc36"; // Green.mat — the edit-mode placeholder sphere
     const string SunMatGuid        = "cec4db5828ab9439e899c191ec38b27a"; // Sun.mat (emissive Standard)
     const string ShuttlePrefabGuid = "407ee2e645e2e124a8729ec234a84f8e"; // Shuttle_Lander.prefab
-    const string PlayerPrefabGuid  = "30d1ef01b1bfd4cce849c5888b9c1de4"; // Player.prefab (the gameplay scene's player)
-    const string PlanetEffectsGuid = "2a0830d1f8e1c4c019b5757c93f3297a"; // Planet Effects.asset — stripped (no planets)
-    const string CrystalPrefabGuid = "465c505844950da499dcf096a6da4409"; // crystal_17_2.prefab
-    const string GrassMatGuid      = "87b4eb48bceaa104f95d1e5547d74e26"; // CG_GameGrass.mat
-    const string GrassDepthMatGuid = "edd9f91ec9ce32e4289de3f8cb66de29"; // CG_GrassDepth.mat (must be the real asset — build variant stripping)
-    static readonly string[] GrassMeshGuids =
-    {
-        "fd5189d1aefffec41b3b48de8f67673b", // CartoonGrass/Models/Grass_01.fbx
-        "8923950d79ad0da4ebf6771f2a89c6d8", // Grass_02.fbx
-        "88be1953c715bea428fdf814f87aabe1", // Grass_03.fbx
-    };
-    const string TreeDir     = "Assets/1 - samsPrefabs/Trees";
-    const string MushroomDir = "Assets/5 - External Imports/Nature & Trees/Low Poly Mushrooms Pack/Prefabs/Mushrooms";
+    const string PlayerPrefabGuid  = "30d1ef01b1bfd4cce849c5888b9c1de4"; // Player.prefab (fallback if no snapshot)
+    // Humble Abode's generation assets (data, not the forbidden code): cloned, never shared.
+    const string HAShapeGuid       = "a286a17239e1e4ac2a580c2e9dc9c041";
+    const string HAShadingGuid     = "14d46b34a29044212ba2b6855e8e2fdd";
+    const string HAAtmosphereGuid  = "828f0f31423494b5d9315f79af16274d";
+    const string HAOceanGuid       = "2dda04ece1bc5461c9c060d959433048";
+    const string TutorialEarthDir  = "Assets/5 - External Imports/Celestial Body/Solar System/Tutorial Earth";
 
-    const float BoxSize       = 200f;
-    const float FakeRadius    = 10000f;
-    const float FakeGravity   = 8f;      // Humble Abode's surfaceGravity (1.6.7.7.7.unity)
-    const int   BodyLayer     = 10;      // "Body" — the terrain layer (player + shuttle ground casts)
-    const int   SunLayer      = 11;      // "Sun" — excluded from the sun's own light masks
+    const float BoxSize       = 350f;    // Sam, round 4: 200 → 350
+    const float WallBelow     = 100f;    // panes reach this far below y = 0 (terrain dips)
+    const float PlanetRadius  = 1500f;   // ~3× Cyclops (500)
+    const float PlanetGravity = 8f;      // Humble Abode's surfaceGravity
+    const string PlanetName   = "Humble Abode";
+    const int   BodyLayer     = 10;      // "Body"
+    const int   SunLayer      = 11;      // "Sun"
     const int   UILayer       = 5;
-    const int   WalkableMask  = 34304;   // Ship | Body | ShuttleInterior — the gameplay scene's override
-    // CrosshairReticle.scale. The gameplay Dot carries 12 and nothing in code
-    // shrinks it, yet Sam's round-2 build read as "huge" — a third of that as
-    // the starting point; tune on Dot ▸ CrosshairReticle ▸ Scale and mirror here.
-    const float ReticleScale  = 1f;      // Sam, round 3: "reduce it by 4x" (was 4)
+    const float ReticleScale  = 1f;      // CrosshairReticle.scale (Sam: 12 → 4 → 1)
 
     // The sun: 25 km out along the gameplay light's authored direction
     // (Euler 55, -35, 0 → forward (-0.329, -0.819, 0.470)). 55° elevation, so
@@ -118,7 +105,10 @@ public static class TutorialSceneBuilder
             return;
         }
         if (!AssetDatabase.IsValidFolder(SceneDir)) AssetDatabase.CreateFolder("Assets", "4 - Scenes");
-        var rainMat = LoadOrCreateRainMaterial();
+        var settings = GetOrCreateTutorialEarth();
+        if (settings == null) return;
+        var rainMat = LoadOrCreateRainMaterial(RainMatPath, 1.6f);
+        var rainWallMat = LoadOrCreateRainMaterial(RainWallMatPath, 1.6f * BoxSize / (BoxSize + WallBelow));   // same glyph proportions on the taller pane
 
         var prevActive = SceneManager.GetActiveScene();
         var alreadyOpen = SceneManager.GetSceneByPath(ScenePath);
@@ -129,7 +119,7 @@ public static class TutorialSceneBuilder
             try
             {
                 foreach (var go in alreadyOpen.GetRootGameObjects()) Object.DestroyImmediate(go);
-                Populate(alreadyOpen, shuttlePrefab, playerPrefab, rainMat);
+                Populate(alreadyOpen, shuttlePrefab, playerPrefab, settings, rainMat, rainWallMat);
                 EditorSceneManager.MarkSceneDirty(alreadyOpen);
                 if (!EditorSceneManager.SaveScene(alreadyOpen))
                     Debug.LogError("[TutorialScene] SaveScene failed for " + ScenePath);
@@ -145,7 +135,7 @@ public static class TutorialSceneBuilder
             SceneManager.SetActiveScene(scene);
             try
             {
-                Populate(scene, shuttlePrefab, playerPrefab, rainMat);
+                Populate(scene, shuttlePrefab, playerPrefab, settings, rainMat, rainWallMat);
                 EditorSceneManager.MarkSceneDirty(scene);
                 if (!EditorSceneManager.SaveScene(scene, ScenePath))
                     Debug.LogError("[TutorialScene] SaveScene failed for " + ScenePath);
@@ -173,21 +163,28 @@ public static class TutorialSceneBuilder
 
     // ── population ──────────────────────────────────────────────────────────
 
-    static void Populate(Scene scene, GameObject shuttlePrefab, GameObject playerPrefab, Material rainMat)
+    static void Populate(Scene scene, GameObject shuttlePrefab, GameObject playerPrefab,
+                         CelestialBodySettings settings, Material rainMat, Material rainWallMat)
     {
-        // Lighting like the gameplay scene: Milky Way skybox, no fog. A dim flat
-        // ambient (the gameplay scene uses none — its night sides are lit by the
-        // atmosphere post, which doesn't exist here) so shadow sides aren't black.
+        // Lighting like the gameplay scene: Milky Way skybox, no fog, NO ambient
+        // — the atmosphere post lights the night side, and any flat ambient
+        // washes a real planet out (PlanetGalleryBuilder's note).
         var skybox = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(SkyboxMatGuid));
         if (skybox != null) RenderSettings.skybox = skybox;
         else Debug.LogWarning("[TutorialScene] ESO Milky Way skybox material not found — sky will be black.");
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
-        RenderSettings.ambientLight = new Color(0.10f, 0.11f, 0.13f);
+        RenderSettings.ambientLight = Color.black;
         RenderSettings.fog = false;
 
-        // The simulation (both bodies pinned — it exists so NBodySimulation.Bodies
-        // has something in it, not to move anything).
-        new GameObject("Body Simulation").AddComponent<NBodySimulation>();
+        // The celestial managers: the sim (pinned bodies — it exists so
+        // NBodySimulation.Bodies has something in it), the spawner that turns the
+        // placeholder into a generated planet at load, and the LOD handler that
+        // assigns the mesh (without it the planet is invisible).
+        var celestial = new GameObject("--- Celestial ---");
+        celestial.AddComponent<NBodySimulation>();
+        var spawner = celestial.AddComponent<SolarSystemSpawner>();
+        spawner.resolutionSettings = new CelestialBodyGenerator.ResolutionSettings { lod0 = 300, lod1 = 100, lod2 = 50, collider = 200 };
+        celestial.AddComponent<LODHandler>();
 
         // The Sun.
         var sun = MakeBody("Sun", CelestialBody.BodyType.Sun, SunRadius, 0.0001f, SunDir * SunDistance, SunLayer);
@@ -202,7 +199,7 @@ public static class TutorialSceneBuilder
         dirLight.shadows = LightShadows.Soft;
         dirLight.shadowStrength = 1f;
         dirLight.shadowResolution = UnityEngine.Rendering.LightShadowResolution.VeryHigh;
-        dirLight.shadowBias = 0.05f;                      // Unity defaults — the gameplay 0.16/0.1/10 are tuned for km-scale terrain
+        dirLight.shadowBias = 0.05f;
         dirLight.shadowNormalBias = 0.4f;
         dirLight.shadowNearPlane = 0.2f;
         dirLight.cullingMask = ~(1 << SunLayer);
@@ -232,79 +229,75 @@ public static class TutorialSceneBuilder
         ballMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         ballMr.receiveShadows = false;
 
-        // The fake planet.
-        var ground = MakeBody("Tutorial Ground", CelestialBody.BodyType.Planet, FakeRadius, FakeGravity,
-                              new Vector3(0f, -FakeRadius, 0f), BodyLayer);
-
-        // Floor: solid green slab, top face at y = 0. Named "Terrain Mesh" with a
-        // MeshCollider because InstancedGrassRenderer seats grass ONLY on a
-        // collider by that name under the body (else it rescans every frame).
-        var floor = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        floor.name = "Terrain Mesh";
-        floor.layer = BodyLayer;
-        floor.transform.SetParent(ground.transform, false);
-        floor.transform.position = new Vector3(0f, -0.5f, 0f);
-        floor.transform.localScale = new Vector3(BoxSize, 1f, BoxSize);
-        Object.DestroyImmediate(floor.GetComponent<Collider>());
-        floor.AddComponent<MeshCollider>().sharedMesh = floor.GetComponent<MeshFilter>().sharedMesh;
-        var green = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(GreenMatGuid));
-        if (green != null) floor.GetComponent<MeshRenderer>().sharedMaterial = green;
-
-        // Walls + ceiling: each quad's local +Z points OUT of the box; the box
-        // collider sits just outside the pane so the visible surface is the
-        // limit you can walk / fly to.
-        float h = BoxSize * 0.5f;
-        MakePane(ground.transform, rainMat, "Wall +X",  new Vector3( h, h, 0f), Quaternion.Euler(0f,  90f, 0f));
-        MakePane(ground.transform, rainMat, "Wall -X",  new Vector3(-h, h, 0f), Quaternion.Euler(0f, -90f, 0f));
-        MakePane(ground.transform, rainMat, "Wall +Z",  new Vector3(0f, h,  h), Quaternion.identity);
-        MakePane(ground.transform, rainMat, "Wall -Z",  new Vector3(0f, h, -h), Quaternion.Euler(0f, 180f, 0f));
-        MakePane(ground.transform, rainMat, "Ceiling",  new Vector3(0f, BoxSize, 0f), Quaternion.Euler(-90f, 0f, 0f));
+        // The planet. Find the flattest dry patch under the box, then rotate the
+        // planet so that direction points +Y and place it so the surface there
+        // is y = 0 — the box stays axis-aligned at the origin.
+        Quaternion planetRot = FindFlatSpot(settings.shape, PlanetRadius, BoxSize * 0.5f, out float hCentre);
+        var planet = MakeBody(PlanetName, CelestialBody.BodyType.Planet, PlanetRadius, PlanetGravity,
+                              new Vector3(0f, -hCentre * PlanetRadius, 0f), BodyLayer);
+        planet.transform.rotation = planetRot;
+        var holder = new GameObject("Mesh Holder");        // the terrain seed: SolarSystemSpawner replaces it at load
+        holder.layer = BodyLayer;
+        holder.transform.SetParent(planet.transform, false);
+        holder.transform.localScale = Vector3.one * PlanetRadius;   // edit-mode cosmetic only
+        var bp = holder.AddComponent<BodyPlaceholder>();
+        bp.terrainResolution = 50;
+        bp.material = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(GreenMatGuid));
+        bp.useBodySettings = true;
+        bp.bodySettings = settings;
+        bp.generateCollider = false;
+        var water = new GameObject("waterline");           // oceanLevel = 1 → sea level == radius
+        water.layer = BodyLayer;
+        water.tag = "Water";
+        water.transform.SetParent(planet.transform, false);
+        var wc = water.AddComponent<SphereCollider>();
+        wc.isTrigger = true;
+        wc.radius = PlanetRadius;
 
         // The shuttle: named exactly Shuttle_Lander (ShuttleAutopilot attaches by
-        // name), child of the fake planet, feet on the floor at the centre. Its
+        // name), child of the planet, feet at y = 0 at the box centre. Its
         // authored pose here IS the landing target — the hover is 100 m above it.
         var shuttle = (GameObject)PrefabUtility.InstantiatePrefab(shuttlePrefab, scene);
         shuttle.name = "Shuttle_Lander";
-        shuttle.transform.SetParent(ground.transform, false);
+        shuttle.transform.SetParent(planet.transform, true);
         shuttle.transform.rotation = Quaternion.identity;
         shuttle.transform.position = Vector3.zero;
         float lift = FeetLift(shuttle);
         shuttle.transform.position = new Vector3(0f, lift, 0f);
 
-        // Props: trees / crystals / mushrooms, placed once at load.
-        var props = new GameObject("Tutorial Props");
-        props.transform.SetParent(ground.transform, false);
-        var field = props.AddComponent<TutorialPropField>();
-        WireProps(field);
+        // The box: walls reach WallBelow under y = 0 (terrain dips), ceiling at
+        // BoxSize. Each quad's local +Z points OUT; the box collider sits just
+        // outside the pane so the visible surface is the limit.
+        var box = new GameObject("Tutorial Box");
+        float h = BoxSize * 0.5f, wallH = BoxSize + WallBelow, wallY = (BoxSize - WallBelow) * 0.5f;
+        MakePane(box.transform, rainWallMat, "Wall +X", new Vector3( h, wallY, 0f), Quaternion.Euler(0f,  90f, 0f), BoxSize, wallH);
+        MakePane(box.transform, rainWallMat, "Wall -X", new Vector3(-h, wallY, 0f), Quaternion.Euler(0f, -90f, 0f), BoxSize, wallH);
+        MakePane(box.transform, rainWallMat, "Wall +Z", new Vector3(0f, wallY,  h), Quaternion.identity,          BoxSize, wallH);
+        MakePane(box.transform, rainWallMat, "Wall -Z", new Vector3(0f, wallY, -h), Quaternion.Euler(0f, 180f, 0f), BoxSize, wallH);
+        MakePane(box.transform, rainMat,     "Ceiling", new Vector3(0f, BoxSize, 0f), Quaternion.Euler(-90f, 0f, 0f), BoxSize, BoxSize);
 
-        // Managers: grass (live, streams around the player) + cats (live, small cap).
+        // Managers: the gameplay scene's spawners, with Sam's tuning, from prefab snapshots.
         var managers = new GameObject("--- Managers ---");
-        var grassGo = new GameObject("Grass");
-        grassGo.transform.SetParent(managers.transform, false);
-        WireGrass(grassGo.AddComponent<InstancedGrassRenderer>());
-        var catsGo = new GameObject("CatSpawner");
-        catsGo.transform.SetParent(managers.transform, false);
-        var cats = catsGo.AddComponent<CatSpawner>();
-        WireCatSpawner.WireInto(cats);
-        cats.inputSettings = null;      // use spawnRadius, not the view-distance setting
-        cats.spawnRadius = 300f;        // > the box: nothing ever despawns
-        cats.maxCats = 5;               // the scan stops for good once the cap is met
-        cats.cellSize = 45f;            // ~13 candidate cells in the box → the cap fills on the first tick
-        cats.seed = 4242;
-        // The gameplay scene's tuning (1.6.7.7.7.unity CatSpawner) — the code
-        // defaults are a third of the size Sam chose.
-        cats.minScale = 2.56f;
-        cats.maxScale = 3.76f;
-        cats.triggerSize = new Vector3(2f, 1.8f, 2.6f);
-        cats.wanderRadius = 26f;
-        cats.wanderSpeed = 1.6f;
-        cats.wanderPauseDistance = 2.5f;
-        cats.catSpawnChance = 0.65f;
-        cats.maxSurfaceAngle = 40f;
-        cats.groundEmbedPerScale = 0.02f;
-        cats.updateInterval = 0.35f;
-        cats.surfaceRayHeight = 100f;
-        cats.minSpawnDistance = 14f;
+        foreach (var (name, _) in TutorialSnapshots.Spawners)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.SpawnerPrefabPath(name));
+            if (prefab == null)
+            {
+                Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.SpawnerPrefabPath(name) + " missing — run Tools ▸ Solar System ▸ Snapshot Tutorial Spawner Prefabs. Skipping " + name + ".");
+                continue;
+            }
+            var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            inst.transform.SetParent(managers.transform, false);
+            inst.SetActive(true);
+            var grass = inst.GetComponent<InstancedGrassRenderer>();
+            if (grass != null)
+            {
+                grass.onlyBodyName = PlanetName;
+                grass.bakedGrass = null;        // Humble Abode's blob is body-local at r = 200; stream live here
+            }
+            var cats = inst.GetComponent<CatSpawner>();
+            if (cats != null) cats.maxCats = 8;  // 44 never fills inside a 350 m box → it would scan forever
+        }
 
         // HUD pieces that are scene objects in the gameplay scene (never seeded).
         var uiRoot = new GameObject("--- UI ---");
@@ -315,42 +308,26 @@ public static class TutorialSceneBuilder
             var cfg = (GameObject)PrefabUtility.InstantiatePrefab(helmetCfg, scene);
             cfg.transform.SetParent(uiRoot.transform, false);
         }
-        else Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.HelmetPrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot HelmetHudConfig Prefab with the gameplay scene open, or the compass / boost / vitals clusters fall back to their old look.");
+        else Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.HelmetPrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot HelmetHudConfig Prefab, or the compass / boost / vitals clusters fall back to their old look.");
 
-        // The player: Player.prefab + the gameplay scene's overrides. Placed in
-        // the pod at the PARKED pose so the very first frames already show the
-        // pod interior (the director re-seats it once the shuttle jumps up).
-        // Prefer the snapshot of the GAMEPLAY SCENE's player (Tools ▸ Solar System ▸
-        // Snapshot Tutorial Player Prefab): it carries the audio clips (footsteps,
-        // jump / land, thrust), PlayerSuitAudio (breathing, wind), FallDamage and
-        // every equippable as scene overrides that the bare Player.prefab lacks.
+        // The player: the snapshot of the gameplay scene's player (audio clips,
+        // PlayerSuitAudio, every equippable), in the pod at the parked pose so the
+        // first frames already show the pod interior. Post stack kept as-is —
+        // Planet Effects is what draws the atmosphere and ocean.
         var snapshot = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.PlayerPrefabPath);
         if (snapshot == null)
-            Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.PlayerPrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot Tutorial Player Prefab with the gameplay scene open. Using the bare Player.prefab (no footstep / jetpack / breathing audio, no equippables).");
+            Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.PlayerPrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot Tutorial Player Prefab. Using the bare Player.prefab (no audio, no equippables).");
         var player = (GameObject)PrefabUtility.InstantiatePrefab(snapshot != null ? snapshot : playerPrefab, scene);
         player.name = "Player";
         player.SetActive(true);         // the gameplay scene keeps it inactive until GameSetUp
-        var pc = player.GetComponent<PlayerController>();
-        if (pc != null) pc.walkableMask = WalkableMask;
         var cam = player.GetComponentInChildren<Camera>(true);
-        if (cam != null)
-        {
-            cam.clearFlags = CameraClearFlags.Skybox;
-            var post = cam.GetComponent<CustomPostProcessing>();
-            if (post != null && post.effects != null)
-            {
-                var planetFx = AssetDatabase.LoadAssetAtPath<PostProcessingEffect>(AssetDatabase.GUIDToAssetPath(PlanetEffectsGuid));
-                post.effects = post.effects.Where(e => e != null && e != planetFx).ToArray();
-            }
-        }
+        if (cam != null) cam.clearFlags = CameraClearFlags.Skybox;
         Transform pod = null;
         foreach (var t in shuttle.GetComponentsInChildren<Transform>(true))
             if (t.name == "StasisPod") { pod = t; break; }
         if (pod != null)
-        {
             player.transform.SetPositionAndRotation(pod.TransformPoint(new Vector3(0f, 1.02f, 0f)),
                                                     Quaternion.LookRotation(pod.forward, pod.up));
-        }
         else
         {
             Debug.LogWarning("[TutorialScene] StasisPod not found under the shuttle — player placed beside it.");
@@ -364,6 +341,147 @@ public static class TutorialSceneBuilder
         es.AddComponent<UnityEngine.EventSystems.EventSystem>();
         es.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
     }
+
+    // ── the planet's assets: Humble Abode's set, cloned (never shared) ──────
+
+    /// Clones Humble Abode's Shape / Shading / Atmosphere / Ocean / terrain
+    /// material into TutorialEarthDir the way PlanetGalleryBuilder.GetOrCreateDwarf
+    /// does. Same seed (EarthShape uses only the seed) → Humble Abode's exact
+    /// terrain, just 7.5× larger. Idempotent: an existing holder wins.
+    static CelestialBodySettings GetOrCreateTutorialEarth()
+    {
+        string holderPath = TutorialEarthDir + "/Tutorial Earth.asset";
+        var existing = AssetDatabase.LoadAssetAtPath<CelestialBodySettings>(holderPath);
+        if (existing != null) return existing;
+
+        var shape = AssetDatabase.LoadAssetAtPath<CelestialBodyShape>(AssetDatabase.GUIDToAssetPath(HAShapeGuid));
+        var shading = AssetDatabase.LoadAssetAtPath<CelestialBodyShading>(AssetDatabase.GUIDToAssetPath(HAShadingGuid));
+        var atmo = AssetDatabase.LoadAssetAtPath<AtmosphereSettings>(AssetDatabase.GUIDToAssetPath(HAAtmosphereGuid));
+        var ocean = AssetDatabase.LoadAssetAtPath<OceanSettings>(AssetDatabase.GUIDToAssetPath(HAOceanGuid));
+        if (shape == null || shading == null || atmo == null || ocean == null)
+        {
+            Debug.LogError("[TutorialScene] Humble Abode's Shape / Shading / Atmosphere / Ocean assets not found by GUID — nothing built.");
+            return null;
+        }
+        EnsureFolder(TutorialEarthDir);
+
+        var shapeClone = Object.Instantiate(shape);
+        shapeClone.name = "Shape";
+        shapeClone.randomize = false;          // EarthShape reads only the seed anyway
+        AssetDatabase.CreateAsset(shapeClone, TutorialEarthDir + "/Shape.asset");
+
+        var shadingClone = Object.Instantiate(shading);
+        shadingClone.name = "Shading";
+        if (shading.terrainMaterial != null)
+        {
+            string dstMat = TutorialEarthDir + "/Terrain.mat";
+            if (AssetDatabase.CopyAsset(AssetDatabase.GetAssetPath(shading.terrainMaterial), dstMat))
+                shadingClone.terrainMaterial = AssetDatabase.LoadAssetAtPath<Material>(dstMat);
+            else Debug.LogWarning("[TutorialScene] could not copy the terrain material; sharing Humble Abode's (edit-mode preview colours will fight).");
+        }
+        var atmoClone = Object.Instantiate(atmo);   // AtmosphereSettings caches per asset — a shared one configures only the first planet
+        atmoClone.name = "Atmosphere";
+        AssetDatabase.CreateAsset(atmoClone, TutorialEarthDir + "/Atmosphere.asset");
+        shadingClone.hasAtmosphere = true;
+        shadingClone.atmosphereSettings = atmoClone;
+        var oceanClone = Object.Instantiate(ocean);
+        oceanClone.name = "Ocean";
+        AssetDatabase.CreateAsset(oceanClone, TutorialEarthDir + "/Ocean.asset");
+        shadingClone.hasOcean = true;
+        shadingClone.oceanSettings = oceanClone;
+        AssetDatabase.CreateAsset(shadingClone, TutorialEarthDir + "/Shading.asset");
+
+        var holder = ScriptableObject.CreateInstance<CelestialBodySettings>();
+        holder.shape = shapeClone;
+        holder.shading = shadingClone;
+        AssetDatabase.CreateAsset(holder, holderPath);
+        AssetDatabase.SaveAssets();
+        Debug.Log("[TutorialScene] Created " + holderPath + " (Humble Abode's generation set, cloned).");
+        return holder;
+    }
+
+    static void EnsureFolder(string path)
+    {
+        if (AssetDatabase.IsValidFolder(path)) return;
+        string parent = System.IO.Path.GetDirectoryName(path).Replace('\\', '/');
+        EnsureFolder(parent);
+        AssetDatabase.CreateFolder(parent, System.IO.Path.GetFileName(path));
+    }
+
+    // ── flat-spot search (read-only use of the shape's height compute) ──────
+
+    /// Samples the shape's heights (the same compute the generator runs) over a
+    /// 5×5 grid across the box footprint for a few thousand candidate spots, and
+    /// returns the rotation that brings the flattest DRY one to +Y. hCentre is
+    /// the height multiplier at that spot (≈1). Falls back to +Y if compute
+    /// can't run in edit mode.
+    static Quaternion FindFlatSpot(CelestialBodyShape shape, float R, float halfBox, out float hCentre)
+    {
+        hCentre = 1f;
+        if (shape == null || !ComputeHelper.CanRunEditModeCompute)
+        {
+            Debug.LogWarning("[TutorialScene] Edit-mode compute unavailable — planet left unrotated (box on +Y, terrain unknown).");
+            return Quaternion.identity;
+        }
+        const int N = 3000, G = 5;
+        var cands = new Vector3[N];
+        var dirs = new Vector3[N * G * G];
+        float golden = Mathf.PI * (3f - Mathf.Sqrt(5f));
+        for (int i = 0; i < N; i++)
+        {
+            float y = 1f - 2f * (i + 0.5f) / N;
+            float rr = Mathf.Sqrt(Mathf.Max(0f, 1f - y * y));
+            float a = golden * i;
+            var c = new Vector3(Mathf.Cos(a) * rr, y, Mathf.Sin(a) * rr);
+            cands[i] = c;
+            var t1 = Vector3.Cross(c, Mathf.Abs(c.y) < 0.9f ? Vector3.up : Vector3.right).normalized;
+            var t2 = Vector3.Cross(c, t1);
+            for (int gx = 0; gx < G; gx++)
+            for (int gy = 0; gy < G; gy++)
+            {
+                float ox = (gx / (G - 1f) * 2f - 1f) * halfBox, oy = (gy / (G - 1f) * 2f - 1f) * halfBox;
+                dirs[(i * G + gx) * G + gy] = (c * R + t1 * ox + t2 * oy).normalized;
+            }
+        }
+
+        float[] h = null;
+        ComputeBuffer vb = null;
+        try
+        {
+            ComputeHelper.CreateStructuredBuffer<Vector3>(ref vb, new[] { Vector3.zero });   // CelestialBodyGenerator.Dummy(): first dispatch can read zeros
+            shape.CalculateHeights(vb);
+            ComputeHelper.CreateStructuredBuffer<Vector3>(ref vb, dirs);
+            h = shape.CalculateHeights(vb);
+        }
+        catch (System.Exception e) { Debug.LogWarning("[TutorialScene] Height sampling failed (" + e.Message + ") — planet left unrotated."); }
+        finally
+        {
+            shape.ReleaseBuffers();
+            ComputeHelper.Release(vb);
+        }
+        if (h == null || h.Length != dirs.Length) return Quaternion.identity;
+
+        int best = -1;
+        float bestScore = float.MaxValue, seaMargin = 1f + 8f / R;   // ≥ 8 m above sea level everywhere in the box
+        for (int i = 0; i < N; i++)
+        {
+            float min = float.MaxValue, max = float.MinValue;
+            for (int k = 0; k < G * G; k++) { float v = h[i * G * G + k]; if (v < min) min = v; if (v > max) max = v; }
+            if (min < seaMargin) continue;
+            float score = max - min;
+            if (score < bestScore) { bestScore = score; best = i; }
+        }
+        if (best < 0)
+        {
+            Debug.LogWarning("[TutorialScene] No dry flat spot found — planet left unrotated.");
+            return Quaternion.identity;
+        }
+        hCentre = h[best * G * G + (G / 2) * G + G / 2];
+        Debug.Log($"[TutorialScene] Flat spot: candidate {best}, height spread {bestScore * R:0.0} m across the box, centre {(hCentre - 1f) * R:0.0} m above sea level.");
+        return Quaternion.FromToRotation(cands[best], Vector3.up);
+    }
+
+    // ── pieces ──────────────────────────────────────────────────────────────
 
     static GameObject MakeBody(string name, CelestialBody.BodyType type, float radius, float gravity, Vector3 pos, int layer)
     {
@@ -379,19 +497,21 @@ public static class TutorialSceneBuilder
         cb.radius = radius;
         cb.surfaceGravity = gravity;
         cb.isPinned = true;              // NBodySimulation never moves it
+        cb.railPeriod = 0f;
         cb.bodyName = name;              // CelestialBody.OnValidate names the GameObject after bodyName
         go.name = name;                  // AddComponent fired OnValidate with the default name; set it again
+        cb.RecalculateMass();
         return go;
     }
 
-    static void MakePane(Transform parent, Material mat, string name, Vector3 worldPos, Quaternion worldRot)
+    static void MakePane(Transform parent, Material mat, string name, Vector3 worldPos, Quaternion worldRot, float width, float height)
     {
         var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
         go.name = name;
         go.layer = BodyLayer;
         go.transform.SetParent(parent, false);
         go.transform.SetPositionAndRotation(worldPos, worldRot);
-        go.transform.localScale = new Vector3(BoxSize, BoxSize, 1f);
+        go.transform.localScale = new Vector3(width, height, 1f);
         var mr = go.GetComponent<MeshRenderer>();
         mr.sharedMaterial = mat;
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -438,95 +558,6 @@ public static class TutorialSceneBuilder
         reticle.forgiveDepth = 0.5f;
     }
 
-    static void WireProps(TutorialPropField field)
-    {
-        // Same 18 Humble Abode variants and rank weights the gameplay TreeSpawner
-        // carries (HumbleAbodeTreeVariants: Forest 05,04,01,02,03,06,07,08 → 8..1;
-        // Valley 03,08,06,09,01,02,04,05,10,07 → 10..1).
-        string[] forest = { "05", "04", "01", "02", "03", "06", "07", "08" };
-        string[] valley = { "03", "08", "06", "09", "01", "02", "04", "05", "10", "07" };
-        var prefabs = new List<GameObject>();
-        var weights = new List<float>();
-        for (int i = 0; i < forest.Length; i++) AddTree(prefabs, weights, TreeDir + "/HA_FF_Tree_" + forest[i] + ".prefab", forest.Length - i);
-        for (int i = 0; i < valley.Length; i++) AddTree(prefabs, weights, TreeDir + "/HA_FV_Tree_" + valley[i] + ".prefab", valley.Length - i);
-        field.treePrefabs = prefabs.ToArray();
-        field.treeWeights = weights.ToArray();
-        if (prefabs.Count == 0) Debug.LogWarning("[TutorialScene] No HA tree prefabs found under " + TreeDir);
-
-        field.crystalPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(CrystalPrefabGuid));
-        if (field.crystalPrefab == null) Debug.LogWarning("[TutorialScene] crystal_17_2.prefab not found by GUID");
-
-        var shrooms = new List<GameObject>();
-        foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { MushroomDir }))
-        {
-            var go = AssetDatabase.LoadAssetAtPath<GameObject>(AssetDatabase.GUIDToAssetPath(guid));
-            if (go != null) shrooms.Add(go);
-        }
-        shrooms.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
-        field.mushroomPrefabs = shrooms.ToArray();
-        if (shrooms.Count == 0) Debug.LogWarning("[TutorialScene] No mushroom prefabs found under " + MushroomDir);
-
-        field.halfExtent = BoxSize * 0.5f;
-        field.groundMask = 1 << BodyLayer;
-    }
-
-    static void AddTree(List<GameObject> prefabs, List<float> weights, string path, float weight)
-    {
-        var go = AssetDatabase.LoadAssetAtPath<GameObject>(path);
-        if (go == null) { Debug.LogWarning("[TutorialScene] missing tree prefab " + path); return; }
-        prefabs.Add(go);
-        weights.Add(weight);
-    }
-
-    /// The gameplay scene's InstancedGrassRenderer values verbatim (1.6.7.7.7.unity,
-    /// GrassSpawner object), minus the Humble Abode baked blob.
-    static void WireGrass(InstancedGrassRenderer g)
-    {
-        g.onlyBodyName = "Tutorial Ground";
-        var meshes = new List<Mesh>();
-        foreach (var guid in GrassMeshGuids)
-        {
-            var path = AssetDatabase.GUIDToAssetPath(guid);
-            Mesh mesh = null;
-            foreach (var o in AssetDatabase.LoadAllAssetsAtPath(path)) if (o is Mesh m) { mesh = m; break; }
-            if (mesh != null) meshes.Add(mesh); else Debug.LogWarning("[TutorialScene] grass mesh missing: " + path);
-        }
-        g.grassMeshes = meshes.ToArray();
-        g.grassMaterial = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(GrassMatGuid));
-        g.depthMaterial = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(GrassDepthMatGuid));
-        g.bakedGrass = null;
-        g.seed = 45678;
-        g.spawnRadius = 60f;
-        g.cellSize = 1.5f;
-        g.cellCoverage = 1f;
-        g.bladesPerCell = 6;
-        g.minScale = 0.77f;
-        g.maxScale = 2f;
-        g.maxSurfaceAngle = 30f;
-        g.waterMargin = 1f;
-        g.surfaceLift = -0.05f;
-        g.surfaceRayHeight = 100f;
-        g.updateInterval = 0.1f;
-        g.maxCellsPerUpdate = 200;
-        g.groundMask = ~0;
-        g.receiveShadows = true;
-        g.frustumCull = true;
-        g.maxHeightAboveWater = 15f;
-        g.patchCells = 12;
-        g.patchDensity = 0.35f;
-        g.slopeBladeFloor = 0.35f;
-        g.slopeScaleFloor = 0.7f;
-        g.slopeConform = 0.8f;
-        g.densityFade = true;
-        g.densityFadeStartFrac = 0.45f;
-        g.noCullRadius = 15f;
-        g.densityFadeFloor = 0.6f;
-        g.miniPatchCells = 3;
-        g.miniPatchDensity = 0.2f;
-        g.perBladeReseat = true;
-        g.depthDilatePixels = 0f;
-    }
-
     /// Height to lift the shuttle so its lowest mesh point touches y = 0.
     /// From MeshFilter geometry through each transform's matrix — Collider /
     /// Renderer .bounds are stale in edit mode right after an instantiate +
@@ -551,12 +582,16 @@ public static class TutorialSceneBuilder
         return float.IsInfinity(minY) ? 0f : -minY + 0.02f;
     }
 
-    static Material LoadOrCreateRainMaterial()
+    static Material LoadOrCreateRainMaterial(string path, float aspect)
     {
-        var mat = AssetDatabase.LoadAssetAtPath<Material>(RainMatPath);
-        if (mat != null) return mat;
-        mat = new Material(Shader.Find(RainShader)) { name = "TutorialDigitRain" };
-        AssetDatabase.CreateAsset(mat, RainMatPath);
+        var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (mat == null)
+        {
+            mat = new Material(Shader.Find(RainShader)) { name = System.IO.Path.GetFileNameWithoutExtension(path) };
+            AssetDatabase.CreateAsset(mat, path);
+        }
+        mat.SetFloat("_Aspect", aspect);
+        EditorUtility.SetDirty(mat);
         AssetDatabase.SaveAssets();
         return mat;
     }

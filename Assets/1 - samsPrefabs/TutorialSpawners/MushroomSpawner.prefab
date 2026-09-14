@@ -1,0 +1,98 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &4130553510191746831
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 7666037979917016607}
+  - component: {fileID: 1081286158021551696}
+  m_Layer: 0
+  m_Name: MushroomSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &7666037979917016607
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4130553510191746831}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1081286158021551696
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4130553510191746831}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e211603e540d8d143a398f1caf81586d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  excludeBodyNames:
+  - Sun
+  mushroomPrefabs:
+  - {fileID: 8329419154611042494, guid: 6cebf4f664776204cba0517a9eda191e, type: 3}
+  - {fileID: 8205935708373625186, guid: fb9d22b8adf542b4cba85fb2f0df92bd, type: 3}
+  - {fileID: 8705851813328207802, guid: c09214adef16a7b499172c4a8f1708db, type: 3}
+  - {fileID: 7124296475447799015, guid: 500b9f8d5c2a76044af4aee3c8b65e8e, type: 3}
+  - {fileID: 1197006836730729220, guid: b41ef6b0fcdee1c4b9e62aa1102626d7, type: 3}
+  - {fileID: 11203093863891372, guid: 7693fa37909ce3e47bc812b3eff2328d, type: 3}
+  - {fileID: 6904791752684956332, guid: 274150b4a05bdb341a0750e256824f7d, type: 3}
+  - {fileID: 9039575399983493640, guid: e65b6555167c5334a9849fc6d3199d7d, type: 3}
+  - {fileID: 2668870538550391993, guid: 9fab22c395957814791cd1cacde48073, type: 3}
+  - {fileID: 5305857041247356502, guid: 4d2f030d88f2a6f4a813c81f3c0118fd, type: 3}
+  - {fileID: 8418925426741186775, guid: e4c1bd7921f16ef46ac4a02bb2c52d5f, type: 3}
+  - {fileID: 4682583824345623580, guid: 3e50b2b0d6d67a24c9c2e6c4efd2f697, type: 3}
+  - {fileID: 6269126246933848770, guid: d37a7f6a99ee5a943aa25bc09ef8eede, type: 3}
+  - {fileID: 4786360398957470091, guid: d57bb6fb2ffc3ce449e9902e05ee4e9d, type: 3}
+  - {fileID: 5488916167195416812, guid: 56758fd6b7855bc45b42b48688354602, type: 3}
+  - {fileID: 597368218412838333, guid: 79d3087a51c9d3848a1c0c95e0e34f51, type: 3}
+  - {fileID: 1260077056813043717, guid: 6c9ba943fe7ffc94795de4f53b25f6b8, type: 3}
+  - {fileID: 44259163428046256, guid: d93fc46b09aa3494a8f07f348d483b68, type: 3}
+  - {fileID: 7031075963905413233, guid: 17846783f35c2f5498be7d9619fcc9db, type: 3}
+  - {fileID: 8478516578253066499, guid: 6afab76f99cd4294294d8f4bc56a3ae5, type: 3}
+  - {fileID: 5191916235633354637, guid: bdde2e3dbcb56fc47b268dd8a475315c, type: 3}
+  - {fileID: 6453341367981636896, guid: 7e634f608c8df244d8cd1b7b376d5bd1, type: 3}
+  - {fileID: 6438287034465343201, guid: 174aa4f7200c7bb41be55fc06d4a1ace, type: 3}
+  spawnRadius: 300
+  maxMushrooms: 10
+  inputSettings: {fileID: 11400000, guid: 0e5a06a1eafad4497a5df01f7f393c80, type: 2}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  groundOffset: 0.37
+  groundEmbedPerScale: 0.04
+  seed: 24680
+  cellSize: 50
+  mushroomSpawnChance: 0.7
+  maxSurfaceAngle: 35
+  minScale: 1
+  maxScale: 5
+  updateInterval: 0.25
+  surfaceRayHeight: 100
+  hitSquishClips:
+  - {fileID: 8300000, guid: 9d42dd66d877b82498f3137aafe25549, type: 3}
+  - {fileID: 8300000, guid: 041fd4c6d25c83d42a55cbbd04cfdff0, type: 3}
+  - {fileID: 8300000, guid: 03b785770a3b7344e9e2c87ba8579d97, type: 3}
+  breakSquishClip: {fileID: 8300000, guid: ab8f98aa3675378458a15723b2dd0bf4, type: 3}
+  squishVolume: 0.85
+  wildRespawnEnabled: 1
+  wildRespawnThreshold: 0.75
+  wildRespawnTickSeconds: 60
+  cellRespawnChanceAt100: 0.01

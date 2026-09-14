@@ -1,0 +1,107 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &7436539740891248626
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 193858113530037628}
+  - component: {fileID: 2425473372091660942}
+  m_Layer: 0
+  m_Name: TreeSpawner
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &193858113530037628
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7436539740891248626}
+  serializedVersion: 2
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &2425473372091660942
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7436539740891248626}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 720f7b7956fbb1446ad917a7dd7b2980, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  excludeBodyNames:
+  - Sun
+  - Constant Companion
+  - Watchful Eye
+  - Tumbling Bean
+  - Pebble
+  - Bruise
+  treePrefabs:
+  - {fileID: 6224828637415830364, guid: 5474ab2f0ccd8bf4cae71739a3dd9e26, type: 3}
+  - {fileID: 3648020491133496291, guid: bd002b2ea43071949bceaf3dc126a5b3, type: 3}
+  - {fileID: 5326930840556742446, guid: 47a8c39dabc4b284aa72f815ded6267d, type: 3}
+  - {fileID: 431733728866572687, guid: 5a7ef7f1b3c5a144293ab8dd9ec15d11, type: 3}
+  - {fileID: 4483261053121903357, guid: c8460537bdc6a6f4688046c0f04a4694, type: 3}
+  - {fileID: 5324318827366523365, guid: a0cd45c54a3fc624187d9b17d950a2b6, type: 3}
+  - {fileID: 7761263115056872979, guid: 44926ba51f6b5844eb99e8db473cff06, type: 3}
+  - {fileID: 5105168913960362377, guid: e855897d507a1e0429177f21ab2ca616, type: 3}
+  - {fileID: 3571953383393166029, guid: 85e0a5ff473489a48b1d2415818d035f, type: 3}
+  - {fileID: 5905944369510352491, guid: 102f4abdda3164e4f8d06d1c9354da88, type: 3}
+  - {fileID: 6175488811887584015, guid: c324ba5b2a5b3e7409d5617fcca8481f, type: 3}
+  - {fileID: 889767233868656719, guid: b71698a628aa77649b64260cb0c5b7bc, type: 3}
+  - {fileID: 8935115240331943972, guid: d22c298cc55219b4596565d92673aa5c, type: 3}
+  - {fileID: 8682745072294269080, guid: 541360ee371cb5542832be4e59bc0aff, type: 3}
+  - {fileID: 315585517573815486, guid: 1a038a7283cda7a469c72360955d74a9, type: 3}
+  - {fileID: 8478256900931889137, guid: fb8c849592317fe4795e3076c9f0e1e6, type: 3}
+  - {fileID: 547169927945450846, guid: b3d3ad2a33370784e8b91a023c96a548, type: 3}
+  - {fileID: 8923434280185847266, guid: e63b2e3db9ddc844d826b9fd65473cc4, type: 3}
+  spawnRadius: 150
+  maxTrees: 20
+  inputSettings: {fileID: 11400000, guid: 0e5a06a1eafad4497a5df01f7f393c80, type: 2}
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 1024
+  groundOffset: 0.63
+  seed: 12345
+  cellSize: 34
+  treeSpawnChance: 0.75
+  updateInterval: 0.25
+  surfaceRayHeight: 100
+  treeBreakClip: {fileID: 8300000, guid: b02789abd213dd841b35036a752847e8, type: 3}
+  treeBreakVolume: 0.286
+  treeWeights:
+  - 8
+  - 7
+  - 6
+  - 5
+  - 4
+  - 3
+  - 2
+  - 1
+  - 10
+  - 9
+  - 8
+  - 7
+  - 6
+  - 5
+  - 4
+  - 3
+  - 2
+  - 1
+  sizeRange: {x: 0.85, y: 1.25}
+  stretchRange: {x: 0.9, y: 1.15}

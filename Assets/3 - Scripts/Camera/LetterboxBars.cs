@@ -17,7 +17,12 @@ public class LetterboxBars : MonoBehaviour
         var mgr = CameraEffectsManager.Instance;
         bool active = mgr != null && mgr.MasterEnabled
                       && mgr.Input != null && mgr.Input.fxLetterboxBars
-                      && PlayerController.isInDialogue;
+                      && PlayerController.isInDialogue
+                      // The shuttle wake (new game) and the tutorial box pin the player
+                      // with isInDialogue while the pod is shut — a movement lock, not
+                      // a conversation. Sam, 2026-09-14: no bars sliding in over the
+                      // first second of either.
+                      && !IntroSequenceController.ShuttleWakeActive;
         _t = Mathf.MoveTowards(_t, active ? 1f : 0f, Time.unscaledDeltaTime * Speed / TargetHeight);
         float h = _t * TargetHeight;
         _top.sizeDelta = new Vector2(0f, h);

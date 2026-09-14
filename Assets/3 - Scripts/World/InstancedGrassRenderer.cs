@@ -299,6 +299,9 @@ public class InstancedGrassRenderer : MonoBehaviour
                       $"{volumeCount} no-grass volume(s) — cave mouths / punched holes.");
     }
 
+    /// Diagnostics: how many grass cells are live around the viewer right now.
+    public int ActiveCellCount => _active != null ? _active.Count : 0;
+
     bool Resolve()
     {
         if (grassMeshes == null || grassMeshes.Length == 0 || grassMaterial == null) return false;

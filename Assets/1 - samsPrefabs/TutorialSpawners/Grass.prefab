@@ -1,0 +1,132 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8403762026970406566
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1141292380278111596}
+  - component: {fileID: 777921992442437119}
+  - component: {fileID: 930028751207252372}
+  m_Layer: 0
+  m_Name: Grass
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &1141292380278111596
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8403762026970406566}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &777921992442437119
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8403762026970406566}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8349de641426bf2478db8371145a0e3b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  onlyBodyName: Humble Abode
+  excludeBodyNames:
+  - Sun
+  grassPrefabs: []
+  plantPrefabs: []
+  flowerPrefabs: []
+  grassWeight: 1
+  plantWeight: 0
+  flowerWeight: 0
+  spawnRadius: 70
+  maxGrass: 4500
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  updateInterval: 0.25
+  surfaceRayHeight: 100
+  seed: 45678
+  cellSize: 5
+  patchChance: 0.85
+  scatterChance: 0.13
+  minBladesPerPatch: 14
+  maxBladesPerPatch: 26
+  patchRadius: 4.5
+  maxSurfaceAngle: 40
+  minScale: 1
+  maxScale: 2
+  groundOffset: -0.03
+  groundEmbedPerScale: 0
+  overrideTint: 0
+  topColor: {r: 0.64, g: 0.81, b: 0.17, a: 1}
+  bottomColor: {r: 0.32, g: 0.45, b: 0.17, a: 1}
+  maxSpawnsPerTick: 300
+  grassMaterialOverride: {fileID: 0}
+--- !u!114 &930028751207252372
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8403762026970406566}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c0a24d08e9987244cbbfd24a26fa533b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  onlyBodyName: Humble Abode
+  grassMeshes:
+  - {fileID: 8006143500595724689, guid: fd5189d1aefffec41b3b48de8f67673b, type: 3}
+  - {fileID: -5360216713068180800, guid: 8923950d79ad0da4ebf6771f2a89c6d8, type: 3}
+  - {fileID: 6145065663396867988, guid: 88be1953c715bea428fdf814f87aabe1, type: 3}
+  grassMaterial: {fileID: 2100000, guid: 87b4eb48bceaa104f95d1e5547d74e26, type: 2}
+  seed: 45678
+  spawnRadius: 60
+  cellSize: 1.5
+  cellCoverage: 1
+  bladesPerCell: 6
+  minScale: 0.77
+  maxScale: 2
+  maxSurfaceAngle: 30
+  waterMargin: 1
+  surfaceLift: -0.05
+  surfaceRayHeight: 100
+  updateInterval: 0.1
+  maxCellsPerUpdate: 200
+  groundMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  receiveShadows: 1
+  frustumCull: 1
+  maxHeightAboveWater: 15
+  patchCells: 12
+  patchDensity: 0.35
+  slopeBladeFloor: 0.35
+  slopeScaleFloor: 0.7
+  slopeConform: 0.8
+  densityFade: 1
+  densityFadeStartFrac: 0.45
+  noCullRadius: 15
+  densityFadeFloor: 0.6
+  miniPatchCells: 3
+  miniPatchDensity: 0.2
+  perBladeReseat: 1
+  bakedGrass: {fileID: 4900000, guid: 20abacef9dc271541a36b6d96a26658b, type: 3}
+  depthDilatePixels: 0
+  depthMaterial: {fileID: 2100000, guid: edd9f91ec9ce32e4289de3f8cb66de29, type: 2}

@@ -25,23 +25,16 @@ using UnityEngine;
 public class TutorialDirector : MonoBehaviour
 {
     [Header("Fly-in")]
-    [Tooltip("Metres ABOVE the shuttle's parked pose where the descent starts. The box ceiling is 200 m up and the parked shuttle sits ~3 m up, so ~185 keeps the whole hull under the ceiling.")]
-    public float departAltitude = 185f;
-    [Tooltip("Seconds from the start of the descent to the 100 m hover. The real intro uses 30 s over 4 km; the box is 90 m, so shorter.")]
-    public float descentSeconds = 12f;
+    [Tooltip("Metres ABOVE the shuttle's parked pose where the descent starts. The box ceiling is 350 m up and the parked shuttle sits ~3 m up, so ~330 keeps the whole hull under the ceiling.")]
+    public float departAltitude = 330f;
+    [Tooltip("Seconds from the start of the descent to the 100 m hover. The real intro uses 30 s over 4 km; the box is 230 m, so shorter.")]
+    public float descentSeconds = 14f;
     [Tooltip("Seconds after load before the stasis pod door opens.")]
     public float doorOpenDelay = 1f;
 
-    [Header("World")]
-    [Tooltip("Planet-baseline O2 (%) on the slab. Humble Abode starts around 55.")]
-    [Range(0f, 100f)] public float surfaceOxygenPercent = 55f;
-
-    static CelestialBody FindTutorialGround()
-    {
-        foreach (var b in NBodySimulation.Bodies)
-            if (b != null && b.bodyType == CelestialBody.BodyType.Planet) return b;
-        return null;
-    }
+    [Header("Diagnostics")]
+    [Tooltip("Seconds after touchdown to log how many grass cells are streaming (Sam: grass never showed on the slab).")]
+    public float grassReportDelay = 15f;
 
     IEnumerator Start()
     {
@@ -59,15 +52,6 @@ public class TutorialDirector : MonoBehaviour
         // writes it (StasisPodSave is fenced), but leave nothing pointing at a
         // slot name all the same.
         StasisPodSave.ActiveSlotName = null;
-
-        // Planet oxygen comes from the tree count over the planet's whole area;
-        // a 10 km fake planet with ~25 trees is a dead world and the suit would
-        // drain the moment you step off the ramp. Vent a reserve so the slab
-        // breathes like Humble Abode does at the start (~55 %). Apply() cleared
-        // the reserves just above, so this is the only source.
-        var ground = FindTutorialGround();
-        if (ground != null && PlanetOxygen.Instance != null)
-            PlanetOxygen.Instance.AddVentedReserve(ground, surfaceOxygenPercent);
 
         var pilot = ShuttleAutopilot.EnsureAttached();
         if (pilot == null)
@@ -120,6 +104,12 @@ public class TutorialDirector : MonoBehaviour
 
         // From here it is the real travel flow: hover, the console's landing
         // feed, F / WASD / Q E / SPACE, touchdown, ramp. No hint (Sam, round 3).
+        yield return new WaitUntil(() => pilot == null || pilot.CurrentPhase == ShuttleAutopilot.Phase.Parked);
+        yield return new WaitForSeconds(grassReportDelay);
+        var grass = FindObjectOfType<InstancedGrassRenderer>();
+        Debug.Log("[Tutorial] " + grassReportDelay + " s after touchdown: grass cells streaming = "
+                  + (grass != null ? grass.ActiveCellCount.ToString() : "no InstancedGrassRenderer")
+                  + ", player at " + (pc != null ? pc.transform.position.ToString("F0") : "?"));
     }
 
     void OnDestroy()

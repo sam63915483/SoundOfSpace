@@ -1,4 +1,4 @@
-🟢 ACTIVE — 2026-09-14 — Tutorial box, phase 1 (button → load → land the shuttle → walk)
+🟢 ACTIVE — 2026-09-14 — Tutorial box (round 4: real generated planet, 350 m box)
 
 # Tutorial box — phase 1 design
 
@@ -257,3 +257,45 @@ What changed and why:
   stops scanning at its cap of 5) run live. The floor is now a MeshCollider named
   `Terrain Mesh`, which is what the grass seats on.
 - **Digits**: 320 columns per wall (~0.6 m cells), longer trail.
+
+## Round 4 (2026-09-14) — a real planet instead of the slab
+
+Sam: "the green slab is earth … I want an atmosphere because the sky looks like nighttime
+yet the sun is shining right at me … take Humble Abode's planet generation and blow it up
+to 3× Cyclops … expand the box to 350 m … one big planet that's static and the user is
+confined within a box on top of it."
+
+**What changed**
+- The fake 10 km body, the green slab, `TutorialPropField` and the vented oxygen are gone.
+- The planet is a **Humble Abode clone at radius 1500 m** (Cyclops is 500): the builder
+  clones HA's Shape / Shading / Atmosphere / Ocean / terrain material into
+  `Assets/5 - External Imports/Celestial Body/Solar System/Tutorial Earth/` exactly the way
+  `PlanetGalleryBuilder` makes dwarf planets (data copies; the generation CODE is untouched).
+  Same seed → HA's exact terrain, 7.5× larger; scaling is uniform so slopes are identical,
+  features are 7.5× bigger, and the mesh is 7.8 m per triangle instead of 1 m.
+- The scene carries what the gameplay scene carries for a generated body: `SolarSystemSpawner`
+  (300/100/50; collider = LOD0 for bodies ≥150 m) + `LODHandler` (without it the mesh is never
+  assigned), `NBodySimulation` (both bodies pinned), the Sun with `SunShadowCaster`, a
+  `waterline` trigger at r = 1500 (ocean level 1 → sea level = radius), and the player camera's
+  full post stack (Planet Effects = atmosphere + ocean). Ambient is black like the game.
+- **Named "Humble Abode"** on purpose: the grass renderer, the suit's O2 refill zone and a few
+  other systems are keyed on that name, so everything behaves as on the real planet.
+- **Flat spot**: at build time the builder samples the shape's height compute (read-only) on a
+  5×5 grid across the box footprint for 3000 candidate directions, keeps the flattest one that
+  is ≥8 m above sea level everywhere, rotates the planet so that spot faces +Y and places the
+  planet so the spot's surface is world y = 0. The box stays axis-aligned at the origin.
+  First build: 30 m height spread across the box, centre 17 m above sea level.
+- **Box 350 m**: walls 350 × 450 (y −100…350) with a second digit material whose `_Aspect`
+  keeps the glyph proportions; ceiling at 350. Descent starts at 330 m, 14 s.
+- **Spawners = the gameplay scene's, snapshotted** (`Tools ▸ Solar System ▸ Snapshot Tutorial
+  Spawner Prefabs` → `Assets/1 - samsPrefabs/TutorialSpawners/`): TreeSpawner, CrystalSpawner,
+  MushroomSpawner, CatSpawner (cap 8 in the box), and the GrassSpawner object with the live
+  `InstancedGrassRenderer` (baked blob cleared; it streams). On a 1500 m body the spawners'
+  whole-sphere scans are ~50 k cells per tick — fine. Fireflies stay quiet (no night).
+- Oxygen: trees are seeded by density, so the planet-baseline O2 comes out ~54 % like HA
+  without any reserve.
+- `Tools ▸ Solar System ▸ Snapshot ALL Tutorial Prefabs` refreshes helmet config + player +
+  spawners in one go (opens the gameplay scene additively, never saves it).
+- Grass diagnostic: 15 s after touchdown the director logs how many grass cells are streaming.
+- `LetterboxBars` no longer fires during the pod phase of the intro / tutorial (the movement
+  pin reused the dialogue flag): no black bars over the fade-in, in either.
