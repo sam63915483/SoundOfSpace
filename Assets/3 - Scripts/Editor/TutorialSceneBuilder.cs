@@ -303,6 +303,10 @@ public static class TutorialSceneBuilder
                 float k = PlanetRadius / HARadius;
                 grass.maxHeightAboveWater *= k;
                 grass.waterMargin *= k;
+                // The GPU-resident draw path, on trial here first (F11 = A/B against the CPU path).
+                grass.gpuResident = true;
+                grass.cullCompute = AssetDatabase.LoadAssetAtPath<ComputeShader>("Assets/3 - Scripts/World/GrassCull.compute");
+                if (grass.cullCompute == null) Debug.LogWarning("[TutorialScene] GrassCull.compute not found — grass falls back to the CPU draw.");
             }
             var cats = inst.GetComponent<CatSpawner>();
             if (cats != null) cats.maxCats = 8;  // 44 never fills inside a 350 m box → it would scan forever

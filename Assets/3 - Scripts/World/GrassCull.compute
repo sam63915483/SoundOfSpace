@@ -1,0 +1,66 @@
+// GPU-resident grass: per-frame cull + distance thinning
+// (InstancedGrassRenderer.gpuResident — see the notes in that file).
+//
+// Blades live in _Blades in the planet's LOCAL frame (uploaded only when a cell
+// streams in or out). Every frame this kernel walks every slot, rebases the blade
+// to world space through _L2W (so floating-origin shifts and any planet motion
+// are free), thins with distance the same way the CPU path did (a per-blade
+// random against the fade curve, floored so it never goes see-through), tests
+// the blade's sphere against the camera frustum, and appends the SLOT INDEX to
+// the visible list of that blade's mesh. Both the colour pass and the depth
+// pre-pass then draw from the same lists (Graphics.DrawMeshInstancedIndirect and
+// CommandBuffer.DrawMeshInstancedIndirect with the same args buffers), which is
+// what makes it impossible for the two passes to disagree — the failure mode of
+// the 2026-09-11 attempt ("glassy" grass when turning).
+#pragma kernel Cull
+
+struct Blade
+{
+    float4x4 m;      // planet-local TRS
+    float4   meta;   // x = mesh index, y = valid (1) / free slot (0), z = per-blade random 0..1, w = unused
+};
+
+StructuredBuffer<Blade> _Blades;
+AppendStructuredBuffer<uint> _Vis0;
+AppendStructuredBuffer<uint> _Vis1;
+AppendStructuredBuffer<uint> _Vis2;
+
+float4x4 _L2W;            // planet localToWorld this frame
+float4   _Planes[6];      // camera frustum planes, xyz = normal, w = distance (inside: dot + w >= 0)
+float3   _ViewerLocal;    // viewer position in the planet's local frame
+float    _SpawnRadius;    // blades beyond this are never drawn
+float    _FadeStart;      // distance where thinning starts
+float    _FadeFloor;      // never thin below this fraction
+float    _CullRadius;     // mesh bounding radius at scale 1 (+ a margin), metres
+uint     _Count;          // slots
+
+[numthreads(64, 1, 1)]
+void Cull(uint3 id : SV_DispatchThreadID)
+{
+    if (id.x >= _Count) return;
+    Blade b = _Blades[id.x];
+    if (b.meta.y < 0.5) return;
+
+    float3 pl = float3(b.m._m03, b.m._m13, b.m._m23);
+    float d = distance(pl, _ViewerLocal);
+    if (d > _SpawnRadius + 2.0) return;
+
+    // Distance thinning (matches the CPU densityFade: full near, fades to the
+    // floor at the edge). A fixed per-blade random keeps the SAME blades as you
+    // move, so nothing flickers.
+    float f = saturate((_SpawnRadius - d) / max(0.01, _SpawnRadius - _FadeStart));
+    f = max(f, _FadeFloor);
+    if (b.meta.z > f) return;
+
+    float3 wp = mul(_L2W, float4(pl, 1.0)).xyz;
+    float scale = length(float3(b.m._m00, b.m._m10, b.m._m20));   // uniform scale
+    float rad = _CullRadius * scale;
+    [unroll]
+    for (int p = 0; p < 6; p++)
+        if (dot(_Planes[p].xyz, wp) + _Planes[p].w < -rad) return;
+
+    uint mesh = (uint)(b.meta.x + 0.5);
+    if (mesh == 0) _Vis0.Append(id.x);
+    else if (mesh == 1) _Vis1.Append(id.x);
+    else _Vis2.Append(id.x);
+}

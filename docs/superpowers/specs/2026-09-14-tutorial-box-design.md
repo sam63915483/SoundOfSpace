@@ -315,3 +315,34 @@ confined within a box on top of it."
   needs the same thought on a bigger planet.
 - **Ceiling digits** stream out from the centre: `_Radial` toggle in the shader (polar mapping;
   columns run around the middle, the fall runs outward). Walls unchanged.
+
+## GPU-resident grass (2026-09-14 evening, Sam: "let's try the better way again")
+
+Sam measured grass costing ~70 fps at 200 fps (= ~2 ms/frame: 5 → 7 ms) and asked why "a fully
+GPU thing" is CPU-bound. It wasn't GPU: `InstancedGrassRenderer.Draw()` walked every live cell
+every frame, multiplied each blade into a world matrix on the CPU, copied it into 1023-blade
+batches, and submitted them twice (colour + the depth pre-pass the atmosphere post needs).
+
+**New path (`gpuResident`, per instance; on in the tutorial, off in the gameplay scene):**
+- Blades stay on the GPU in the planet's LOCAL frame in one `StructuredBuffer` (80 B: matrix +
+  mesh index / valid / random). A slot per cell (`bladesPerCell` wide); slots are allocated when a
+  cell streams in and freed when it streams out; only dirty slots are re-uploaded (sorted, merged
+  into runs). Streaming and the raycasts are unchanged — only the per-frame draw moved.
+- `Assets/3 - Scripts/World/GrassCull.compute` each frame: rebase through the planet's
+  localToWorld (floating origin is free), thin by distance with a fixed per-blade random (same
+  curve and floor as the CPU `densityFade`), frustum-cull, append the slot index to one of three
+  per-mesh append buffers. `CopyCount` → indirect args.
+- `Graphics.DrawMeshInstancedIndirect` per mesh for colour and `CommandBuffer.DrawMeshInstancedIndirect`
+  per mesh on the existing AfterDepthTexture depth pre-pass — both from the SAME visible lists and
+  args, so the two passes cannot disagree. That disagreement is the most likely cause of the
+  2026-09-11 attempt's "glassy" grass (that path also used planet-relative matrices with
+  `Graphics.DrawMeshInstanced`, whose own bounds were 24 km wrong, so it culled per draw while the
+  depth command buffer drew unconditionally).
+- Shaders: `CG_SimpleGrass` / `CG_GrassDepth` get `#pragma instancing_options procedural:setup…`
+  (target 4.5). The setup rebuilds `unity_ObjectToWorld` = `_GrassL2W × _GrassBlades[_GrassVisIdx[id]].m`
+  and `unity_WorldToObject` (affine inverse, uniform scale). Legacy DrawMeshInstanced variants are
+  untouched. `CG_SimpleGrass` added to Always Included Shaders so the procedural variant ships.
+- F11 (cheats) = `InstancedGrassRenderer.ForceCpuPath` toggle for an A/B.
+- Not done yet: the streaming scan and per-cell raycasts still scale with the window, so a much
+  bigger GRASS DISTANCE will cost CPU while walking; if the GPU draw holds up, the next step is a
+  cheaper far tier (baked whole-planet cells or terrain-height sampling on the GPU).

@@ -370,6 +370,7 @@ public class InstancedGrassRenderer : MonoBehaviour
     void LateUpdate()
     {
         if (!Resolve()) return;
+        GpuSync();
         ApplyRenderScale();
         TuneLanternGrassStrength();
         InjectGrassPointLights(_player.transform.position);
@@ -402,6 +403,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         if (_active.Count == 0) return;
         foreach (var c in _active.Values) ReturnCell(c);   // no-op in baked mode; pools in live mode
         _active.Clear();
+        if (_gpuOn) GpuReleaseAll();
         _pdirty = true;
     }
 
@@ -827,6 +829,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         {
             if (_active.TryGetValue(_scratchRemove[i], out var oldCell)) ReturnCell(oldCell);
             _active.Remove(_scratchRemove[i]);
+            if (_gpuOn) GpuRelease(_scratchRemove[i]);
         }
 
         Vector3 vDir = vLocal.normalized;
@@ -923,11 +926,13 @@ public class InstancedGrassRenderer : MonoBehaviour
             {
                 // Frozen cell — just reference it (shared, immutable). No raycast,
                 // so it can never seat against the placeholder sphere.
-                if (_bakedCells.TryGetValue(nc.id, out var bakedCell)) _active[nc.id] = bakedCell;
+                if (_bakedCells.TryGetValue(nc.id, out var bakedCell)) { _active[nc.id] = bakedCell; if (_gpuOn) GpuActivate(nc.id, bakedCell); }
             }
             else
             {
-                _active[nc.id] = BuildCell(nc.face, nc.cu, nc.cv, faceUVPerCell, center, r, oceanR, w2l, nc.localAnchor);
+                var built = BuildCell(nc.face, nc.cu, nc.cv, faceUVPerCell, center, r, oceanR, w2l, nc.localAnchor);
+                _active[nc.id] = built;
+                if (_gpuOn) GpuActivate(nc.id, built);
             }
             added++;
         }
@@ -1178,6 +1183,7 @@ public class InstancedGrassRenderer : MonoBehaviour
     void OnDestroy()
     {
         RemoveDepthCB();
+        GpuReleaseBuffers();
         if (_depthCB != null) { _depthCB.Release(); _depthCB = null; }
         if (_depthMat != null) { Destroy(_depthMat); _depthMat = null; }
     }
@@ -1359,6 +1365,7 @@ public class InstancedGrassRenderer : MonoBehaviour
         CommandBuffer depthCB = EnsureDepthCB(cam);
         if (depthCB != null) depthCB.Clear();
         if (_depthMat != null) _depthMat.SetFloat(_depthDilateId, depthDilatePixels);   // live-tunable screen-space fatten
+        if (_gpuOn) { DrawGpu(cam, cull, depthCB, ref l2w); return; }
         // Cull box must cover the cell's blades, which sit on the terrain — up to
         // ~maxHeightAboveWater above the sphere-surface anchor — so the box
         // doesn't fall off-screen while hilltop blades are still visible.
@@ -1425,6 +1432,255 @@ public class InstancedGrassRenderer : MonoBehaviour
                 if (depthCB != null) depthCB.DrawMeshInstanced(grassMeshes[m], 0, _depthMat, 0, _batches[m], _counts[m]);
             }
     }
+
+
+    // ═══ GPU-resident path (2026-09-14, Sam: "let's try the better way again") ═══
+    //
+    // The CPU path above walks every live cell every frame, multiplies each blade
+    // into a world matrix and copies it into 1023-blade batch arrays — twice,
+    // once for the colour pass and once for the depth pre-pass (~2 ms/frame at
+    // 1× grass distance; the frame-rate third Sam measured). Here the blades stay
+    // on the GPU in the planet's LOCAL frame, uploaded only when a cell streams
+    // in or out (a slot per cell, bladesPerCell blades wide). Every frame
+    // GrassCull.compute rebases them through the planet's localToWorld, thins by
+    // distance and frustum-culls, appending visible SLOT INDICES per mesh; then
+    // one DrawMeshInstancedIndirect per mesh for colour and one per mesh on the
+    // depth command buffer — both fed by the SAME visible lists and args buffers,
+    // so the two passes cannot disagree (the 2026-09-11 attempt's "glassy" grass).
+    // The shaders (CG_SimpleGrass / CG_GrassDepth, `procedural:setupGrass`)
+    // rebuild unity_ObjectToWorld from _GrassL2W × the slot's local matrix.
+    //
+    // Streaming (Stream / BuildCell, the raycasts) is unchanged: the CPU still
+    // decides WHICH cells exist; only the per-frame draw moved to the GPU.
+    struct GpuBlade { public Matrix4x4 m; public Vector4 meta; }   // 80 B — mirrors GrassCull.compute's Blade
+    const int GpuBladeStride = 80;
+    const int GpuMeshSlots = 3;                                      // the compute has three append lists
+    bool _gpuOn;
+    ComputeBuffer _gpuBlades;
+    ComputeBuffer[] _gpuVis, _gpuArgs;
+    MaterialPropertyBlock[] _gpuMpb;
+    GpuBlade[] _gpuMirror;
+    int _gpuSlots, _gpuSlotBlades, _gpuKernel = -1;
+    readonly Stack<int> _gpuFree = new Stack<int>();
+    readonly Dictionary<long, int> _gpuCellSlot = new Dictionary<long, int>(4096);
+    readonly List<int> _gpuDirty = new List<int>(1024);
+    bool _gpuFullUpload;
+    float _gpuMeshRadius;
+    readonly Vector4[] _gpuPlanes = new Vector4[6];
+    readonly uint[] _gpuArgsTmp = new uint[5];
+    static readonly int _gpuBladesId = Shader.PropertyToID("_GrassBlades");
+    static readonly int _gpuVisIdxId = Shader.PropertyToID("_GrassVisIdx");
+    static readonly int _gpuL2WId    = Shader.PropertyToID("_GrassL2W");
+    static readonly int _csBladesId  = Shader.PropertyToID("_Blades");
+    static readonly int[] _csVisIds  = { Shader.PropertyToID("_Vis0"), Shader.PropertyToID("_Vis1"), Shader.PropertyToID("_Vis2") };
+    static readonly int _csL2WId     = Shader.PropertyToID("_L2W");
+    static readonly int _csPlanesId  = Shader.PropertyToID("_Planes");
+    static readonly int _csViewerId  = Shader.PropertyToID("_ViewerLocal");
+    static readonly int _csSpawnId   = Shader.PropertyToID("_SpawnRadius");
+    static readonly int _csFadeStartId = Shader.PropertyToID("_FadeStart");
+    static readonly int _csFadeFloorId = Shader.PropertyToID("_FadeFloor");
+    static readonly int _csCullRId   = Shader.PropertyToID("_CullRadius");
+    static readonly int _csCountId   = Shader.PropertyToID("_Count");
+
+    /// Cheats: F11 flips every grass renderer back to the CPU draw for an A/B.
+    public static bool ForceCpuPath;
+    /// Diagnostics: live GPU slot count (cells) and the per-frame path in use.
+    public int GpuSlotsInUse => _gpuCellSlot.Count;
+    public bool GpuPathActive => _gpuOn;
+
+    bool GpuWanted => gpuResident && !ForceCpuPath && cullCompute != null && SystemInfo.supportsComputeShaders;
+
+    void GpuSync()
+    {
+        if (Universe.cheatsEnabled && Input.GetKeyDown(KeyCode.F11))
+        {
+            ForceCpuPath = !ForceCpuPath;
+            Debug.Log("[InstancedGrassRenderer] F11 → grass draw path: " + (ForceCpuPath ? "CPU (legacy)" : "GPU-resident"));
+        }
+        bool want = GpuWanted;
+        if (want == _gpuOn) return;
+        _gpuOn = want;
+        if (_gpuOn)
+        {
+            GpuEnsure(Mathf.Max(_active.Count, 64));
+            foreach (var kv in _active) GpuActivate(kv.Key, kv.Value);
+        }
+        else
+        {
+            GpuReleaseAll();
+            _pdirty = true;
+        }
+    }
+
+    /// (Re)allocate for at least minCells slots, keeping the mirror's contents.
+    void GpuEnsure(int minCells)
+    {
+        if (_gpuSlotBlades == 0) _gpuSlotBlades = Mathf.Max(1, bladesPerCell);
+        int wantSlots = _gpuSlots;
+        if (wantSlots < minCells) wantSlots = Mathf.NextPowerOfTwo(Mathf.Max(minCells, 4096));
+        if (_gpuBlades != null && _gpuBlades.IsValid() && wantSlots == _gpuSlots) return;
+
+        int oldSlots = _gpuSlots;
+        int newCap = wantSlots * _gpuSlotBlades;
+        var mirror = new GpuBlade[newCap];
+        if (_gpuMirror != null) System.Array.Copy(_gpuMirror, mirror, Mathf.Min(_gpuMirror.Length, newCap));
+        _gpuMirror = mirror;
+        for (int s = wantSlots - 1; s >= oldSlots; s--) _gpuFree.Push(s);   // low slots pop first
+
+        GpuReleaseBuffers();
+        _gpuBlades = new ComputeBuffer(newCap, GpuBladeStride, ComputeBufferType.Structured);
+        _gpuVis  = new ComputeBuffer[GpuMeshSlots];
+        _gpuArgs = new ComputeBuffer[GpuMeshSlots];
+        if (_gpuMpb == null) { _gpuMpb = new MaterialPropertyBlock[GpuMeshSlots]; for (int m = 0; m < GpuMeshSlots; m++) _gpuMpb[m] = new MaterialPropertyBlock(); }
+        for (int m = 0; m < GpuMeshSlots; m++)
+        {
+            _gpuVis[m]  = new ComputeBuffer(newCap, sizeof(uint), ComputeBufferType.Append);
+            _gpuArgs[m] = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+            var mesh = m < grassMeshes.Length ? grassMeshes[m] : null;
+            _gpuArgsTmp[0] = mesh != null ? mesh.GetIndexCount(0) : 0u;
+            _gpuArgsTmp[1] = 0u;
+            _gpuArgsTmp[2] = mesh != null ? mesh.GetIndexStart(0) : 0u;
+            _gpuArgsTmp[3] = mesh != null ? mesh.GetBaseVertex(0) : 0u;
+            _gpuArgsTmp[4] = 0u;
+            _gpuArgs[m].SetData(_gpuArgsTmp);
+        }
+        _gpuMeshRadius = 0.5f;
+        for (int m = 0; m < grassMeshes.Length; m++) _gpuMeshRadius = Mathf.Max(_gpuMeshRadius, grassMeshes[m].bounds.extents.magnitude);
+        _gpuSlots = wantSlots;
+        _gpuFullUpload = true;
+        _gpuDirty.Clear();
+    }
+
+    void GpuReleaseBuffers()
+    {
+        if (_gpuBlades != null) { _gpuBlades.Release(); _gpuBlades = null; }
+        if (_gpuVis != null)  { foreach (var b in _gpuVis)  b?.Release(); _gpuVis = null; }
+        if (_gpuArgs != null) { foreach (var b in _gpuArgs) b?.Release(); _gpuArgs = null; }
+    }
+
+    static float GpuRand(int i)
+    {
+        uint h = (uint)i * 2654435761u;
+        h ^= h >> 15; h *= 2246822519u; h ^= h >> 13;
+        return (h & 0xFFFFFFu) / 16777216f;
+    }
+
+    void GpuActivate(long id, Cell cell)
+    {
+        if (cell == null || cell.local.Count == 0) return;      // rejected cells hold no blades: no slot
+        if (!_gpuCellSlot.TryGetValue(id, out int slot))
+        {
+            if (_gpuFree.Count == 0) GpuEnsure(_gpuSlots * 2);
+            slot = _gpuFree.Pop();
+            _gpuCellSlot[id] = slot;
+        }
+        int b = slot * _gpuSlotBlades;
+        int n = Mathf.Min(cell.local.Count, _gpuSlotBlades);
+        for (int k = 0; k < _gpuSlotBlades; k++)
+        {
+            if (k < n)
+            {
+                _gpuMirror[b + k].m = cell.local[k];
+                _gpuMirror[b + k].meta = new Vector4(cell.mesh[k], 1f, GpuRand(b + k), 0f);
+            }
+            else _gpuMirror[b + k].meta = Vector4.zero;
+        }
+        _gpuDirty.Add(slot);
+    }
+
+    void GpuRelease(long id)
+    {
+        if (!_gpuCellSlot.TryGetValue(id, out int slot)) return;
+        _gpuCellSlot.Remove(id);
+        int b = slot * _gpuSlotBlades;
+        for (int k = 0; k < _gpuSlotBlades; k++) _gpuMirror[b + k].meta = Vector4.zero;
+        _gpuDirty.Add(slot);
+        _gpuFree.Push(slot);
+    }
+
+    void GpuReleaseAll()
+    {
+        if (_gpuMirror != null) for (int i = 0; i < _gpuMirror.Length; i++) _gpuMirror[i].meta = Vector4.zero;
+        _gpuCellSlot.Clear();
+        _gpuFree.Clear();
+        for (int s = _gpuSlots - 1; s >= 0; s--) _gpuFree.Push(s);
+        _gpuDirty.Clear();
+        _gpuFullUpload = _gpuBlades != null;
+    }
+
+    /// Push this tick's changed slots. Dirty slots are sorted and merged into
+    /// runs (a gap of up to 16 slots is cheaper to include than a second call).
+    void GpuFlush()
+    {
+        if (_gpuBlades == null) return;
+        if (_gpuFullUpload)
+        {
+            _gpuBlades.SetData(_gpuMirror);
+            _gpuFullUpload = false;
+            _gpuDirty.Clear();
+            return;
+        }
+        if (_gpuDirty.Count == 0) return;
+        _gpuDirty.Sort();
+        int runStart = _gpuDirty[0], runEnd = _gpuDirty[0];
+        for (int i = 1; i <= _gpuDirty.Count; i++)
+        {
+            int s = i < _gpuDirty.Count ? _gpuDirty[i] : int.MaxValue;
+            if (s <= runEnd + 16 && i < _gpuDirty.Count) { runEnd = s; continue; }
+            int first = runStart * _gpuSlotBlades, count = (runEnd - runStart + 1) * _gpuSlotBlades;
+            _gpuBlades.SetData(_gpuMirror, first, first, count);
+            runStart = runEnd = s;
+        }
+        _gpuDirty.Clear();
+    }
+
+    void DrawGpu(Camera cam, bool cull, CommandBuffer depthCB, ref Matrix4x4 l2w)
+    {
+        if (_gpuBlades == null) GpuEnsure(64);
+        GpuFlush();
+        if (_gpuKernel < 0) _gpuKernel = cullCompute.FindKernel("Cull");
+
+        Vector3 viewerWorld = _player != null ? _player.transform.position : (cam != null ? cam.transform.position : _body.transform.position);
+        Vector3 vLocal = _body.transform.InverseTransformPoint(viewerWorld);
+        for (int p = 0; p < 6; p++)
+            _gpuPlanes[p] = cull ? new Vector4(_planes[p].normal.x, _planes[p].normal.y, _planes[p].normal.z, _planes[p].distance)
+                                 : new Vector4(0f, 0f, 0f, 1e9f);   // no camera: accept everything
+
+        int count = _gpuSlots * _gpuSlotBlades;
+        for (int m = 0; m < GpuMeshSlots; m++) _gpuVis[m].SetCounterValue(0);
+        cullCompute.SetBuffer(_gpuKernel, _csBladesId, _gpuBlades);
+        for (int m = 0; m < GpuMeshSlots; m++) cullCompute.SetBuffer(_gpuKernel, _csVisIds[m], _gpuVis[m]);
+        cullCompute.SetMatrix(_csL2WId, l2w);
+        cullCompute.SetVectorArray(_csPlanesId, _gpuPlanes);
+        cullCompute.SetVector(_csViewerId, vLocal);
+        cullCompute.SetFloat(_csSpawnId, spawnRadius);
+        cullCompute.SetFloat(_csFadeStartId, densityFade ? spawnRadius * densityFadeStartFrac : spawnRadius);
+        cullCompute.SetFloat(_csFadeFloorId, densityFade ? densityFadeFloor : 1f);
+        cullCompute.SetFloat(_csCullRId, _gpuMeshRadius + 0.5f);
+        cullCompute.SetInt(_csCountId, count);
+        cullCompute.Dispatch(_gpuKernel, Mathf.Max(1, (count + 63) / 64), 1, 1);
+
+        var bounds = new Bounds(viewerWorld, Vector3.one * (spawnRadius * 2f + 60f));
+        for (int m = 0; m < grassMeshes.Length && m < GpuMeshSlots; m++)
+        {
+            ComputeBuffer.CopyCount(_gpuVis[m], _gpuArgs[m], 4);
+            var mpb = _gpuMpb[m];
+            mpb.SetBuffer(_gpuBladesId, _gpuBlades);
+            mpb.SetBuffer(_gpuVisIdxId, _gpuVis[m]);
+            mpb.SetMatrix(_gpuL2WId, l2w);
+            mpb.SetVector(_grassPlanetCenterId, _body.transform.position);
+            Graphics.DrawMeshInstancedIndirect(grassMeshes[m], 0, grassMaterial, bounds, _gpuArgs[m], 0, mpb,
+                                               ShadowCastingMode.Off, receiveShadows);
+            if (depthCB != null) depthCB.DrawMeshInstancedIndirect(grassMeshes[m], 0, _depthMat, 0, _gpuArgs[m], 0, mpb);
+        }
+    }
+
+    // ── serialized (appended at END — CLAUDE.md serialization convention) ──
+    [Header("GPU-resident draw (2026-09-14)")]
+    [Tooltip("Keep the blades on the GPU and cull/draw them with a compute shader + DrawMeshInstancedIndirect instead of rebuilding every blade matrix on the CPU each frame. Needs cullCompute. F11 (cheats) flips back to the CPU path for an A/B.")]
+    public bool gpuResident = false;
+    [Tooltip("Assets/3 - Scripts/World/GrassCull.compute")]
+    public ComputeShader cullCompute;
 
 #if UNITY_EDITOR
     // ── editor bake ───────────────────────────────────────────────────────────

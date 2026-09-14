@@ -36,9 +36,41 @@ Shader "CartoonGrass/GrassDepth"
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
-            #pragma target 3.0
+            #pragma target 4.5
             #pragma multi_compile_instancing
+            #pragma instancing_options procedural:setupGrassDepth
             #include "UnityCG.cginc"
+
+            // ── GPU-resident grass (InstancedGrassRenderer.gpuResident) ─────────
+            // Graphics.DrawMeshInstancedIndirect path: the instance matrix is not in
+            // Unity's instance array — it is rebuilt here from the planet's frame and
+            // a planet-local blade matrix, both handed over in buffers. The compute
+            // cull (GrassCull.compute) wrote which slots are visible this frame.
+            // Guarded so the legacy DrawMeshInstanced path compiles exactly as before.
+#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+            struct GrassBladeData { float4x4 m; float4 meta; };
+            StructuredBuffer<GrassBladeData> _GrassBlades;
+            StructuredBuffer<uint> _GrassVisIdx;
+            float4x4 _GrassL2W;
+#endif
+            void setupGrassDepth()
+            {
+#ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+                float4x4 m = mul(_GrassL2W, _GrassBlades[_GrassVisIdx[unity_InstanceID]].m);
+                unity_ObjectToWorld = m;
+                // Affine inverse for rotation × UNIFORM scale + translation: (R S)^-1 = Rᵀ / s².
+                float3 c0 = float3(m._m00, m._m10, m._m20);
+                float invS2 = 1.0 / max(1e-8, dot(c0, c0));
+                float3x3 ri = transpose((float3x3)m) * invS2;
+                float3 t = float3(m._m03, m._m13, m._m23);
+                float3 it = -mul(ri, t);
+                unity_WorldToObject = float4x4(
+                    ri._m00, ri._m01, ri._m02, it.x,
+                    ri._m10, ri._m11, ri._m12, it.y,
+                    ri._m20, ri._m21, ri._m22, it.z,
+                    0.0, 0.0, 0.0, 1.0);
+#endif
+            }
 
             float _DepthDilatePixels;
 

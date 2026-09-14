@@ -84,6 +84,21 @@ Two ways in. Both should behave the same.
   the hill line.
 - Ceiling: the 1s and 0s stream out from the middle to the walls.
 
+## GPU-resident grass trial (2026-09-14 evening) — tutorial scene only
+
+The tutorial's grass now draws through the new GPU path (`InstancedGrassRenderer.gpuResident`).
+The gameplay scene still uses the old CPU path until you've seen this one work.
+
+- **F11** (cheats on) flips ALL grass between the GPU path and the old CPU path — use it for
+  a live A/B on fps. Console logs which path is active.
+- What to check: (1) fps with grass on vs off, at 1× and at 3× GRASS DISTANCE; (2) turn the
+  camera — no see-through / glassy blades, no blades against the sky washing to sky colour;
+  (3) walk — blades should not flicker or swap as you move (the thinning is per blade, fixed);
+  (4) the shuttle's landing feed and the pause/solar map still look right; (5) a BUILD — the
+  procedural instancing variant is the thing most likely to be stripped in a build, and the
+  symptom is NO grass at all in the exe while the Editor is fine.
+- If it misbehaves, F11 back to the CPU path and tell me what you saw.
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle
