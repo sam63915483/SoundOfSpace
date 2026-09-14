@@ -112,6 +112,19 @@ Check: jetpack fast across the field — no patches appearing; grass visible far
 smoothly; frame time; the console line "[InstancedGrassRenderer] Resident grass: N blades".
 F11 still drops back to the CPU path.
 
+## Space dust on the GPU (2026-09-14, late) — everywhere
+
+The dust motes (5000) now live on the GPU: a compute shader does the drift, density, fade,
+twinkle, ocean test and wrap every frame and one indirect draw renders them. Same maths, same
+seed, same queue. The one difference: every mote updates every frame instead of a quarter of
+them per frame, so the twinkle is smoother (that was the pre-September-12 look).
+
+- **F2** (cheats) flips dust between the GPU path and the old CPU path. The field is carried
+  across the switch so it doesn't jump. Console logs which is active.
+- Check: dust looks the same near the black hole, in orbit, at the planet surface (hazed),
+  underwater (dimmed), through the free-cam; F2 A/B for frame time.
+- If it misbehaves, F2 to the CPU path and tell me what you saw.
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle
