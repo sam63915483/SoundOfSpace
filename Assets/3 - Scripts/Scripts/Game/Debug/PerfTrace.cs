@@ -112,7 +112,7 @@ public class PerfTrace : MonoBehaviour
     // so "a disabled MeshRenderer under a baked cluster" can only mean "eaten by the bake".
     readonly List<Renderer> _bakeOutputs = new List<Renderer>();     // children of every __CombinedMeshes
     readonly List<Renderer> _bakeOriginals = new List<Renderer>();   // what those bakes replaced
-    string _bakeScene;
+    int _bakeFrame = -1;
     ShadowQuality _shadowsBefore;
     int _msaaBefore, _cascadesBefore, _pixelLightsBefore;
     float _shadowDistBefore;
@@ -237,11 +237,18 @@ public class PerfTrace : MonoBehaviour
 
     /// <summary>Find every MeshCombineTool bake in the scene and the originals it
     /// disabled. Runs at scene load (before any Update) so nothing else has had
-    /// a chance to disable a renderer for its own reasons.</summary>
+    /// a chance to disable a renderer for its own reasons.
+    ///
+    /// The originals are switched to enabled=true + forceRenderingOff=true RIGHT
+    /// HERE, frame 0: from then on every other system (DayNightLight's glow
+    /// dimming, PlanetOcclusionCuller, LOD scripts) sees them as ordinary live
+    /// renderers and drives them exactly like the bakes — they just aren't drawn
+    /// until Num0. Without this the lantern glow spheres came up at full
+    /// brightness by day when uncombined (Sam, 2026-09-14).</summary>
     void SnapshotBakes(Scene scene)
     {
-        if (scene.name == "MainMenu" || scene.name == _bakeScene) return;
-        _bakeScene = scene.name;
+        if (scene.name == "MainMenu" || _bakeFrame == Time.frameCount) return;
+        _bakeFrame = Time.frameCount;
         _bakeOutputs.Clear(); _bakeOriginals.Clear();
         if (_on[(int)Toggle.Uncombine]) _on[(int)Toggle.Uncombine] = false;    // fresh scene = combined again
         foreach (var t in FindObjectsOfType<Transform>(true))
@@ -253,6 +260,8 @@ public class PerfTrace : MonoBehaviour
                 if (r.enabled || r.transform.IsChildOf(t)) continue;
                 if (_bakeOriginals.Contains(r)) continue;       // nested clusters
                 _bakeOriginals.Add(r);
+                r.enabled = true;
+                r.forceRenderingOff = true;
             }
         }
         if (_bakeOutputs.Count > 0)
@@ -466,20 +475,13 @@ public class PerfTrace : MonoBehaviour
     }
 
     /// <summary>Swap every bake for its originals (or back). forceRenderingOff is
-    /// OUR flag; Renderer.enabled stays whatever the occlusion culler wants, so the
-    /// two never double-draw or fight. The originals are left enabled=true once
-    /// touched (culled by the culler like anything else) and hidden by our flag.</summary>
+    /// OUR flag; Renderer.enabled stays whatever the occlusion culler / DayNightLight
+    /// want, so nothing double-draws or fights.</summary>
     void SetUncombined(bool uncombined)
     {
         int outs = 0, origs = 0;
         foreach (var r in _bakeOutputs) { if (r == null) continue; r.forceRenderingOff = uncombined; outs++; }
-        foreach (var r in _bakeOriginals)
-        {
-            if (r == null) continue;
-            if (uncombined) { r.enabled = true; r.forceRenderingOff = false; }
-            else r.forceRenderingOff = true;
-            origs++;
-        }
+        foreach (var r in _bakeOriginals) { if (r == null) continue; r.forceRenderingOff = !uncombined; origs++; }
         Debug.Log("[PerfTrace] " + (uncombined ? "UNCOMBINED: " : "COMBINED: ") + outs + " bake meshes " + (uncombined ? "hidden, " : "shown, ") + origs + " originals " + (uncombined ? "shown" : "hidden"));
     }
 
