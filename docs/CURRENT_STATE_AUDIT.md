@@ -2795,3 +2795,16 @@ PLAY (no turns/fouls — the players decide); it now only KNOWS things:
   line, draining timer; accent for win, hot red for loss).
 - Not saved; not networked yet — `PoolSync` (StasisDoorSync-shaped: host owns
   the sim + game, clients send claim/release/strike/hand) is the next MP pass.
+
+### Addendum 2026-09-14b — PerfTrace Num0 (uncombine A/B); combining is not a lever
+
+`PerfTrace` gained **Keypad0 = UNCOMBINED**: at scene load it finds every
+`__CombinedMeshes` bake and the originals the bake disabled, makes the originals
+live-but-hidden (`enabled = true`, `forceRenderingOff = true`) so DayNightLight /
+PlanetOcclusionCuller drive both copies identically, and Num0 flips
+`forceRenderingOff` between the two sets. CSV toggle bit 9; analyser updated.
+**Result (Sam, dev build, same spot):** no noticeable FPS difference between ~45
+combined draws and ~190 per-object renderers. The village is no longer where the
+frame goes; **leave it combined, don't optimise it further.** Shlawg's Bar was
+resized and the 20 Humble Abode clusters (village, 14 lanterns, fish/ship/bakery
+markets, bonfire, table_02) re-baked via `MeshCombineTool.RecombineOne`.
