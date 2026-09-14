@@ -19,6 +19,7 @@ Shader "Custom/TutorialDigitRain"
         _Flicker ("Digit re-roll rate (Hz)", Float) = 3
         _Alpha   ("Digit alpha", Range(0, 1)) = 0.9
         _Base    ("Pane tint alpha", Range(0, 0.3)) = 0.03
+        [Toggle] _Radial ("Radial (ceiling: out from the centre)", Float) = 0
     }
     SubShader
     {
@@ -35,7 +36,7 @@ Shader "Custom/TutorialDigitRain"
             #include "UnityCG.cginc"
 
             fixed4 _Color, _HeadColor;
-            float _Cells, _Aspect, _Speed, _Trail, _Flicker, _Alpha, _Base;
+            float _Cells, _Aspect, _Speed, _Trail, _Flicker, _Alpha, _Base, _Radial;
 
             struct appdata { float4 vertex : POSITION; float2 uv : TEXCOORD0; };
             struct v2f { float4 pos : SV_POSITION; float2 uv : TEXCOORD0; };
@@ -82,7 +83,18 @@ Shader "Custom/TutorialDigitRain"
             fixed4 frag(v2f i) : SV_Target
             {
                 float rows = _Cells / max(0.01, _Aspect);
-                float2 g = i.uv * float2(_Cells, rows);
+                float2 uv = i.uv;
+                if (_Radial > 0.5)
+                {
+                    // Ceiling: polar map. Columns run around the centre, the
+                    // "fall" runs outward - every stream starts at the middle
+                    // and races to the walls.
+                    float2 d = i.uv - 0.5;
+                    float ang = atan2(d.y, d.x) / 6.2831853 + 0.5;   // 0..1 around
+                    float rad = length(d) * 1.4142136;              // 0 centre .. 1 corner
+                    uv = float2(ang, 1.0 - rad);                     // uv.y decreasing = outward
+                }
+                float2 g = uv * float2(_Cells, rows);
                 float col = floor(g.x);
                 float row = floor(g.y);
                 float2 cell = frac(g);

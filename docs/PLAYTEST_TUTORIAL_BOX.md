@@ -74,6 +74,16 @@ Two ways in. Both should behave the same.
   7.5× taller in metres but the same steepness. Say if you want a flatter noise copy.
 - Loading: one planet generates on the activation frame, under the loading screen.
 
+## Round 5 (2026-09-14)
+
+- Planet is now 750 m radius. The box has a lake (water on ~26 % of it), a flat dry landing
+  patch at the centre (12 m above sea), and a hill 66 m above the landing patch.
+- Grass: found the real cause — it only grows in a band of metres above sea level (1–15 on
+  Humble Abode), and that band was a shoreline strip on the big planet. It's scaled now
+  (3.75–56 m). Turn GRASS DISTANCE on in settings; you should see patches everywhere below
+  the hill line.
+- Ceiling: the 1s and 0s stream out from the middle to the walls.
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle

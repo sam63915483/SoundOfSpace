@@ -299,3 +299,19 @@ confined within a box on top of it."
 - Grass diagnostic: 15 s after touchdown the director logs how many grass cells are streaming.
 - `LetterboxBars` no longer fires during the pod phase of the intro / tutorial (the movement
   pin reused the dialogue flag): no black bars over the fade-in, in either.
+
+## Round 5 (2026-09-14) — half the planet, water + hill in the box, radial ceiling
+
+- **Planet radius 750 m** (1.5× Cyclops). Everything scales uniformly; mesh is 3.9 m per triangle.
+- **Spot search** now wants three things inside the 350 m box: a flat DRY landing patch at the
+  centre (±30 m, ≥6 m above sea, ≤8 m spread), water (≥3 m under sea level) on 10–45 % of a 9×9
+  grid across the box, preferring ~25 %, and a hill ≥45 m above the centre. Requirements relax
+  in order (hill, then water) if nothing satisfies all three. First 750 m build, pass 0:
+  centre 12 m above sea, water on 26 % of the box, highest point +66 m, lowest −54 m.
+- **The grass mystery, solved.** `InstancedGrassRenderer` only seats blades between
+  `waterMargin` and `maxHeightAboveWater` ABOVE SEA LEVEL, in metres (1…15 on Humble Abode). On a
+  planet k× bigger that band is a shoreline strip — Sam's "one small patch". The tutorial's grass
+  instance scales both by k = radius / 200 (3.75 → 3.75…56 m). Any metre-valued spawner knob
+  needs the same thought on a bigger planet.
+- **Ceiling digits** stream out from the centre: `_Radial` toggle in the shader (polar mapping;
+  columns run around the middle, the fall runs outward). Walls unchanged.

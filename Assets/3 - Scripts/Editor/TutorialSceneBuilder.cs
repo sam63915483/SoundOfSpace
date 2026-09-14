@@ -16,7 +16,7 @@ using UnityEngine.UI;
 /// gameplay scene is never touched. Re-running WIPES and rebuilds the scene.
 ///
 /// Round 4 (Sam): the green slab is replaced by a REAL generated planet — a
-/// Humble Abode clone at radius 1500 m (three Cyclops), static, with its
+/// Humble Abode clone at radius 750 m (1.5× Cyclops), static, with its
 /// atmosphere and ocean, so the sky is blue and the sun is up. The player is
 /// confined to a 350 m box on the flattest patch of land the builder can find.
 /// Everything that made the slab a special case (fake gravity body, baked
@@ -31,13 +31,13 @@ using UnityEngine.UI;
 ///   Sun                 CelestialBody(Sun) 25 km out at 55° with the gameplay
 ///                       directional light + SunShadowCaster (child), the warm
 ///                       point light the grass shader reads, an emissive ball.
-///   Humble Abode        the planet: CelestialBody r=1500 g=8 pinned, 'Mesh
+///   Humble Abode        the planet: CelestialBody r=750 g=8 pinned, 'Mesh
 ///                       Holder' BodyPlaceholder → the cloned settings under
 ///                       Solar System/Tutorial Earth/, 'waterline' trigger. Named
 ///                       Humble Abode on purpose: grass onlyBodyName, the suit's
 ///                       O2 refill zone and more are keyed on that name. Rotated
-///                       so the flattest dry spot faces +Y; placed so that spot's
-///                       surface is world y = 0.
+///                       so a spot with water + a flat dry centre + a hill faces
+///                       +Y; placed so the centre's surface is world y = 0.
 ///     Shuttle_Lander    prefab instance, feet at y = 0 (its authored pose is the
 ///                       landing target; the hover is 100 m above it)
 ///   Tutorial Box        4 walls (350 × 450, y −100…350) + ceiling at 350, digit
@@ -72,7 +72,8 @@ public static class TutorialSceneBuilder
 
     const float BoxSize       = 350f;    // Sam, round 4: 200 → 350
     const float WallBelow     = 100f;    // panes reach this far below y = 0 (terrain dips)
-    const float PlanetRadius  = 1500f;   // ~3× Cyclops (500)
+    const float PlanetRadius  = 750f;    // Sam, round 5: half of 1500 (1.5× Cyclops)
+    const float HARadius      = 200f;    // Humble Abode's radius — metre-valued spawner knobs scale by PlanetRadius / HARadius
     const float PlanetGravity = 8f;      // Humble Abode's surfaceGravity
     const string PlanetName   = "Humble Abode";
     const int   BodyLayer     = 10;      // "Body"
@@ -107,8 +108,8 @@ public static class TutorialSceneBuilder
         if (!AssetDatabase.IsValidFolder(SceneDir)) AssetDatabase.CreateFolder("Assets", "4 - Scenes");
         var settings = GetOrCreateTutorialEarth();
         if (settings == null) return;
-        var rainMat = LoadOrCreateRainMaterial(RainMatPath, 1.6f);
-        var rainWallMat = LoadOrCreateRainMaterial(RainWallMatPath, 1.6f * BoxSize / (BoxSize + WallBelow));   // same glyph proportions on the taller pane
+        var rainMat = LoadOrCreateRainMaterial(RainMatPath, 1.6f, radial: true);   // ceiling: streams out from the centre
+        var rainWallMat = LoadOrCreateRainMaterial(RainWallMatPath, 1.6f * BoxSize / (BoxSize + WallBelow), radial: false);   // same glyph proportions on the taller pane
 
         var prevActive = SceneManager.GetActiveScene();
         var alreadyOpen = SceneManager.GetSceneByPath(ScenePath);
@@ -229,10 +230,11 @@ public static class TutorialSceneBuilder
         ballMr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         ballMr.receiveShadows = false;
 
-        // The planet. Find the flattest dry patch under the box, then rotate the
-        // planet so that direction points +Y and place it so the surface there
-        // is y = 0 — the box stays axis-aligned at the origin.
-        Quaternion planetRot = FindFlatSpot(settings.shape, PlanetRadius, BoxSize * 0.5f, out float hCentre);
+        // The planet. Find the patch under the box that has water, a flat dry
+        // centre and a hill, then rotate the planet so that direction points +Y
+        // and place it so the surface at the centre is y = 0 — the box stays
+        // axis-aligned at the origin.
+        Quaternion planetRot = FindTutorialSpot(settings.shape, PlanetRadius, BoxSize * 0.5f, out float hCentre);
         var planet = MakeBody(PlanetName, CelestialBody.BodyType.Planet, PlanetRadius, PlanetGravity,
                               new Vector3(0f, -hCentre * PlanetRadius, 0f), BodyLayer);
         planet.transform.rotation = planetRot;
@@ -294,6 +296,13 @@ public static class TutorialSceneBuilder
             {
                 grass.onlyBodyName = PlanetName;
                 grass.bakedGrass = null;        // Humble Abode's blob is body-local at r = 200; stream live here
+                // Grass only seats between waterMargin and maxHeightAboveWater ABOVE SEA
+                // LEVEL, in metres. Humble Abode's 1…15 m covers its lowlands; on a
+                // planet PlanetRadius/HARadius× bigger the same band is a shoreline
+                // strip (Sam, round 4: "only a small patch of grass"). Scale it.
+                float k = PlanetRadius / HARadius;
+                grass.maxHeightAboveWater *= k;
+                grass.waterMargin *= k;
             }
             var cats = inst.GetComponent<CatSpawner>();
             if (cats != null) cats.maxCats = 8;  // 44 never fills inside a 350 m box → it would scan forever
@@ -408,14 +417,17 @@ public static class TutorialSceneBuilder
         AssetDatabase.CreateFolder(parent, System.IO.Path.GetFileName(path));
     }
 
-    // ── flat-spot search (read-only use of the shape's height compute) ──────
+    // ── spot search (read-only use of the shape's height compute) ───────────
 
     /// Samples the shape's heights (the same compute the generator runs) over a
-    /// 5×5 grid across the box footprint for a few thousand candidate spots, and
-    /// returns the rotation that brings the flattest DRY one to +Y. hCentre is
-    /// the height multiplier at that spot (≈1). Falls back to +Y if compute
-    /// can't run in edit mode.
-    static Quaternion FindFlatSpot(CelestialBodyShape shape, float R, float halfBox, out float hCentre)
+    /// 9×9 grid across the box footprint plus a fine 3×3 patch at the centre,
+    /// for a few thousand candidate directions, and returns the rotation that
+    /// brings the best one to +Y. "Best" (Sam, round 5): a flat DRY centre to
+    /// land on, water somewhere in the box (fishing), and a proper hill. If no
+    /// candidate has all three, the requirements relax in order: hill, then
+    /// water. hCentre is the height multiplier at the centre (≈1). Falls back
+    /// to +Y if compute can't run in edit mode.
+    static Quaternion FindTutorialSpot(CelestialBodyShape shape, float R, float halfBox, out float hCentre)
     {
         hCentre = 1f;
         if (shape == null || !ComputeHelper.CanRunEditModeCompute)
@@ -423,9 +435,11 @@ public static class TutorialSceneBuilder
             Debug.LogWarning("[TutorialScene] Edit-mode compute unavailable — planet left unrotated (box on +Y, terrain unknown).");
             return Quaternion.identity;
         }
-        const int N = 3000, G = 5;
+        const int N = 4000, G = 9, C = 3;          // box grid, centre patch grid
+        const float CentreHalf = 30f;              // the landing patch: ±30 m
+        int per = G * G + C * C;
         var cands = new Vector3[N];
-        var dirs = new Vector3[N * G * G];
+        var dirs = new Vector3[N * per];
         float golden = Mathf.PI * (3f - Mathf.Sqrt(5f));
         for (int i = 0; i < N; i++)
         {
@@ -436,11 +450,18 @@ public static class TutorialSceneBuilder
             cands[i] = c;
             var t1 = Vector3.Cross(c, Mathf.Abs(c.y) < 0.9f ? Vector3.up : Vector3.right).normalized;
             var t2 = Vector3.Cross(c, t1);
+            int k = 0;
             for (int gx = 0; gx < G; gx++)
             for (int gy = 0; gy < G; gy++)
             {
                 float ox = (gx / (G - 1f) * 2f - 1f) * halfBox, oy = (gy / (G - 1f) * 2f - 1f) * halfBox;
-                dirs[(i * G + gx) * G + gy] = (c * R + t1 * ox + t2 * oy).normalized;
+                dirs[i * per + k++] = (c * R + t1 * ox + t2 * oy).normalized;
+            }
+            for (int gx = 0; gx < C; gx++)
+            for (int gy = 0; gy < C; gy++)
+            {
+                float ox = (gx / (C - 1f) * 2f - 1f) * CentreHalf, oy = (gy / (C - 1f) * 2f - 1f) * CentreHalf;
+                dirs[i * per + k++] = (c * R + t1 * ox + t2 * oy).normalized;
             }
         }
 
@@ -461,24 +482,42 @@ public static class TutorialSceneBuilder
         }
         if (h == null || h.Length != dirs.Length) return Quaternion.identity;
 
-        int best = -1;
-        float bestScore = float.MaxValue, seaMargin = 1f + 8f / R;   // ≥ 8 m above sea level everywhere in the box
-        for (int i = 0; i < N; i++)
+        // Thresholds in metres, as height multipliers.
+        float dry = 1f + 6f / R;            // landing patch ≥ 6 m above sea everywhere
+        float flatMax = 8f / R;             // landing patch height spread ≤ 8 m
+        float wet = 1f - 3f / R;            // "water": ≥ 3 m under sea level
+        float hillMin = 45f / R;            // "hill": ≥ 45 m above the centre somewhere in the box
+        for (int pass = 0; pass < 3; pass++)   // 0: water + hill, 1: water only, 2: flat centre only
         {
-            float min = float.MaxValue, max = float.MinValue;
-            for (int k = 0; k < G * G; k++) { float v = h[i * G * G + k]; if (v < min) min = v; if (v > max) max = v; }
-            if (min < seaMargin) continue;
-            float score = max - min;
-            if (score < bestScore) { bestScore = score; best = i; }
+            int best = -1; float bestScore = float.MinValue;
+            for (int i = 0; i < N; i++)
+            {
+                int b = i * per;
+                float cMin = float.MaxValue, cMax = float.MinValue;
+                for (int k = G * G; k < per; k++) { float v = h[b + k]; if (v < cMin) cMin = v; if (v > cMax) cMax = v; }
+                if (cMin < dry || cMax - cMin > flatMax) continue;
+                float hc = h[b + G * G + (C * C) / 2];
+                int wetCount = 0; float max = float.MinValue;
+                for (int k = 0; k < G * G; k++) { float v = h[b + k]; if (v < wet) wetCount++; if (v > max) max = v; }
+                float wetFrac = wetCount / (float)(G * G);
+                float hill = max - hc;
+                if (pass <= 1 && (wetFrac < 0.10f || wetFrac > 0.45f)) continue;   // some water, not a drowned box
+                if (pass == 0 && hill < hillMin) continue;
+                // Prefer ~25 % water and the taller hill; the centre flatness is a tiebreak.
+                float score = -Mathf.Abs(wetFrac - 0.25f) * 4f + Mathf.Min(hill * R, 120f) / 120f - (cMax - cMin) * R * 0.02f;
+                if (score > bestScore) { bestScore = score; best = i; }
+            }
+            if (best < 0) continue;
+            int bb = best * per;
+            hCentre = h[bb + G * G + (C * C) / 2];
+            int wc = 0; float mx = float.MinValue, mn = float.MaxValue;
+            for (int k = 0; k < G * G; k++) { float v = h[bb + k]; if (v < wet) wc++; if (v > mx) mx = v; if (v < mn) mn = v; }
+            Debug.Log($"[TutorialScene] Spot (pass {pass}): candidate {best}; centre {(hCentre - 1f) * R:0.0} m above sea; " +
+                      $"water on {100f * wc / (G * G):0}% of the box; highest point {(mx - hCentre) * R:0.0} m above the centre, lowest {(mn - hCentre) * R:0.0} m.");
+            return Quaternion.FromToRotation(cands[best], Vector3.up);
         }
-        if (best < 0)
-        {
-            Debug.LogWarning("[TutorialScene] No dry flat spot found — planet left unrotated.");
-            return Quaternion.identity;
-        }
-        hCentre = h[best * G * G + (G / 2) * G + G / 2];
-        Debug.Log($"[TutorialScene] Flat spot: candidate {best}, height spread {bestScore * R:0.0} m across the box, centre {(hCentre - 1f) * R:0.0} m above sea level.");
-        return Quaternion.FromToRotation(cands[best], Vector3.up);
+        Debug.LogWarning("[TutorialScene] No spot with a flat dry centre found — planet left unrotated.");
+        return Quaternion.identity;
     }
 
     // ── pieces ──────────────────────────────────────────────────────────────
@@ -582,7 +621,7 @@ public static class TutorialSceneBuilder
         return float.IsInfinity(minY) ? 0f : -minY + 0.02f;
     }
 
-    static Material LoadOrCreateRainMaterial(string path, float aspect)
+    static Material LoadOrCreateRainMaterial(string path, float aspect, bool radial)
     {
         var mat = AssetDatabase.LoadAssetAtPath<Material>(path);
         if (mat == null)
@@ -591,6 +630,7 @@ public static class TutorialSceneBuilder
             AssetDatabase.CreateAsset(mat, path);
         }
         mat.SetFloat("_Aspect", aspect);
+        mat.SetFloat("_Radial", radial ? 1f : 0f);
         EditorUtility.SetDirty(mat);
         AssetDatabase.SaveAssets();
         return mat;

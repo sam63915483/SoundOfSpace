@@ -30,6 +30,7 @@ Material:
     - _Base: 0.03
     - _Cells: 640
     - _Flicker: 3
+    - _Radial: 1
     - _Speed: 20
     - _Trail: 70
     m_Colors:
