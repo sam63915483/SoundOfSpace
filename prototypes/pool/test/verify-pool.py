@@ -18,6 +18,7 @@ BUILD = os.path.join(ROOT, "build", "pool")
 
 SOURCES = [
     os.path.join(ROOT, "Assets", "3 - Scripts", "Pool", "PoolPhysics2D.cs"),
+    os.path.join(ROOT, "Assets", "3 - Scripts", "Pool", "PoolGameState.cs"),
     os.path.join(HERE, "PoolSimTests.cs"),
 ]
 
@@ -67,7 +68,7 @@ def main():
         for s in SOURCES:
             f.write('"' + s + '"\n')
 
-    print("compiling PoolPhysics2D standalone (no Unity references)...")
+    print("compiling PoolPhysics2D + PoolGameState standalone (no Unity references)...")
     r = subprocess.run([dotnet, csc, "@" + rsp], capture_output=True, text=True)
     out = (r.stdout or "") + (r.stderr or "")
     errors = [l for l in out.splitlines() if "error CS" in l]
@@ -76,7 +77,7 @@ def main():
         for l in errors[:20]:
             print("  " + l)
         return 1
-    print("  ok - PoolPhysics2D compiles with zero Unity dependencies")
+    print("  ok - PoolPhysics2D + PoolGameState compile with zero Unity dependencies")
 
     cfg = os.path.join(BUILD, "PoolSimTests.runtimeconfig.json")
     ver = os.path.basename(refdir)

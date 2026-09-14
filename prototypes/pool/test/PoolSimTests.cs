@@ -141,6 +141,94 @@ public static class PoolSimTests
         for (int i = 0; i < 16; i++) if (a1.X[i] != a2.X[i] || a1.Y[i] != a2.Y[i] || a1.Active[i] != a2.Active[i]) same = false;
         Check(same, "determinism: identical shots give identical tables");
 
+        // ── game state (PoolGameState) ──────────────────────────────────────
+        // stillOnTable helper: everything up except the listed balls
+        bool[] Table(params int[] gone)
+        {
+            var on = new bool[PoolPhysics2D.BallCount];
+            for (int i = 0; i < on.Length; i++) on[i] = true;
+            foreach (int gb in gone) on[gb] = false;
+            return on;
+        }
+
+        // 9. fresh state
+        var g = new PoolGameState();
+        Check(!g.HasOccupant && !g.BreakTaken && !g.GameOver, "game: fresh = nobody, no break, not over");
+        Check(g.SunkBy(0).Count == 0 && g.GroupOf(0) == PoolGameState.Group.None, "game: fresh = empty tray, no group");
+
+        // 10. cue ball never listed, never decides
+        g.TryClaim(0); g.OnStrike(0);
+        Check(g.OnPocketed(0, 0, false, Table(0)) == PoolGameState.Verdict.None, "game: cue ball → None");
+        Check(g.SunkBy(0).Count == 0 && g.GroupOf(0) == PoolGameState.Group.None, "game: cue ball not listed, no group");
+
+        // 11. break sink is listed but decides nothing
+        g = new PoolGameState(); g.TryClaim(0);
+        Check(!g.BreakTaken, "game: break not taken before first strike");
+        g.OnStrike(0);
+        Check(g.BreakTaken, "game: break taken after first strike");
+        g.OnPocketed(0, 3, true, Table(3));
+        Check(g.SunkBy(0).Count == 1 && g.SunkBy(0)[0] == 3, "game: break sink listed");
+        Check(g.GroupOf(0) == PoolGameState.Group.None, "game: break sink decides nothing");
+
+        // 12. first post-break sink assigns; second player gets the opposite
+        g = new PoolGameState(); g.TryClaim(0); g.Release(0); g.TryClaim(7); g.Release(7); g.TryClaim(0); g.OnStrike(0);
+        g.OnPocketed(0, 3, false, Table(3));
+        Check(g.GroupOf(0) == PoolGameState.Group.Solids, "game: post-break solid → shooter Solids");
+        Check(g.GroupOf(7) == PoolGameState.Group.Stripes, "game: other known player → Stripes");
+
+        // 13. stripe first
+        g = new PoolGameState(); g.TryClaim(0); g.Release(0); g.TryClaim(7); g.OnStrike(7);
+        g.OnPocketed(7, 12, false, Table(12));
+        Check(g.GroupOf(7) == PoolGameState.Group.Stripes && g.GroupOf(0) == PoolGameState.Group.Solids, "game: post-break stripe → shooter Stripes, other Solids");
+
+        // 14. 8 with no group → spot it, not listed, not over; next sink assigns
+        g = new PoolGameState(); g.TryClaim(0); g.OnStrike(0);
+        Check(g.OnPocketed(0, 8, false, Table(8)) == PoolGameState.Verdict.Spot8, "game: 8 with no group → Spot8");
+        Check(g.SunkBy(0).Count == 0 && !g.GameOver, "game: spotted 8 not listed, game goes on");
+        g.OnPocketed(0, 5, false, Table(5));
+        Check(g.GroupOf(0) == PoolGameState.Group.Solids, "game: sink after a spotted 8 still assigns");
+
+        // 15. group never changes once set
+        g.OnPocketed(0, 11, false, Table(5, 11));
+        Check(g.GroupOf(0) == PoolGameState.Group.Solids && g.SunkBy(0).Count == 2 && g.SunkBy(0)[1] == 11, "game: wrong-group ball listed, group unchanged");
+
+        // 16. claims
+        g = new PoolGameState();
+        Check(g.TryClaim(1), "claim: A claims an empty table");
+        Check(!g.CanClaim(2) && !g.TryClaim(2), "claim: B refused while A holds it");
+        Check(g.TryClaim(1), "claim: A re-claims fine");
+        g.Release(2);
+        Check(g.HasOccupant && g.Occupant == 1, "claim: B's release does nothing");
+        g.Release(1);
+        Check(!g.HasOccupant && g.TryClaim(2), "claim: after A releases, B claims");
+
+        // 17. reset clears everything
+        g = new PoolGameState(); g.TryClaim(0); g.OnStrike(0); g.OnPocketed(0, 3, false, Table(3));
+        g.Reset();
+        Check(!g.HasOccupant && !g.BreakTaken && !g.GameOver && g.SunkBy(0).Count == 0 && g.GroupOf(0) == PoolGameState.Group.None, "game: reset clears all");
+
+        // 18. order preserved
+        g = new PoolGameState(); g.TryClaim(0); g.OnStrike(0);
+        g.OnPocketed(0, 3, false, Table(3)); g.OnPocketed(0, 11, false, Table(3, 11)); g.OnPocketed(0, 5, false, Table(3, 11, 5));
+        Check(g.SunkBy(0).Count == 3 && g.SunkBy(0)[0] == 3 && g.SunkBy(0)[1] == 11 && g.SunkBy(0)[2] == 5, "game: tray order preserved");
+
+        // 19. 8 as Solids with a solid left → Lose; later pockets ignored
+        g = new PoolGameState(); g.TryClaim(0); g.OnStrike(0); g.OnPocketed(0, 3, false, Table(3));
+        Check(g.OnPocketed(0, 8, false, Table(3, 8)) == PoolGameState.Verdict.Lose, "game: 8 with solids left → Lose");
+        Check(g.GameOver && g.SunkBy(0).Count == 2 && g.SunkBy(0)[1] == 8, "game: lose = over, 8 listed");
+        Check(g.OnPocketed(0, 4, false, Table(3, 8, 4)) == PoolGameState.Verdict.None && g.SunkBy(0).Count == 2, "game: pockets after game over ignored");
+
+        // 20. 8 as Solids with all solids gone → Win
+        g = new PoolGameState(); g.TryClaim(0); g.OnStrike(0);
+        for (int b = 1; b <= 7; b++) g.OnPocketed(0, b, false, Table(1, 2, 3, 4, 5, 6, 7));
+        Check(g.OnPocketed(0, 8, false, Table(1, 2, 3, 4, 5, 6, 7, 8)) == PoolGameState.Verdict.Win, "game: 8 with solids cleared → Win");
+
+        // 21. it is YOUR group that counts
+        g = new PoolGameState(); g.TryClaim(0); g.OnStrike(0); g.OnPocketed(0, 9, false, Table(9));
+        Check(g.GroupOf(0) == PoolGameState.Group.Stripes, "game: stripes shooter");
+        Check(g.OnPocketed(0, 8, false, Table(9, 1, 2, 3, 4, 5, 6, 7, 8)) == PoolGameState.Verdict.Lose, "game: Stripes sinks 8 with stripes left → Lose even with all solids gone");
+        Check(PoolGameState.GroupBallsLeft(PoolGameState.Group.Stripes, Table(9, 1, 2, 3, 4, 5, 6, 7, 8)) == 6, "game: GroupBallsLeft counts 6 stripes");
+
         Console.WriteLine(_failures == 0 ? $"PASS  {_checks} checks" : $"FAIL  {_failures} of {_checks} checks");
         return _failures == 0 ? 0 : 1;
     }
