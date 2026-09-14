@@ -34,7 +34,13 @@ public static class WireCatSpawner
         }
 
         Undo.RecordObject(spawner, "Wire Cat Spawner");
+        WireInto(spawner);
+    }
 
+    /// Fill a specific CatSpawner (the tutorial scene builder passes its own, so
+    /// FindObjectOfType can't pick up the gameplay scene's spawner when both are open).
+    public static void WireInto(CatSpawner spawner)
+    {
         // ── prefabs ──
         var prefabs = new List<GameObject>();
         foreach (var guid in AssetDatabase.FindAssets("t:Prefab", new[] { PrefabDir }))

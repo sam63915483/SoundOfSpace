@@ -242,6 +242,13 @@ public class LensFlareRegistry : MonoBehaviour
         UpdateSun(cam);
     }
 
+    // The canvas is its own DontDestroyOnLoad root, so CameraEffectsManager's
+    // GateOverlayCanvas can't reach it: disabling this component used to leave
+    // the last frame's images enabled at their last screen position — a flare
+    // frozen on screen (seen entering the tutorial box from the main menu,
+    // whose orbit background has a real sun).
+    void OnDisable() { HideFlare(); }
+
     void OnDestroy()
     {
         if (_canvas != null) Destroy(_canvas.gameObject);
@@ -603,6 +610,9 @@ public class LensFlareRegistry : MonoBehaviour
             if (go == null) continue;
             if (go.CompareTag("Player")) continue;
             if (go.GetComponentInParent<PlayerController>() != null) continue;
+            // See-through panes (the tutorial box's glass walls): solid to walk
+            // against, transparent to the flare.
+            if (go.GetComponentInParent<LensFlarePassThrough>() != null) continue;
             // Ship: ignore only when the hit is close enough that the
             // depth-occlusion already covers it (cockpit hull when
             // piloting, ship's own bulk when standing right next to it).

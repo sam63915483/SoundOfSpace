@@ -38,10 +38,21 @@ public class TutorialDirector : MonoBehaviour
     [TextArea(2, 4)]
     public string landingHint = "Walk to the cockpit computer and press F. WASD moves the shuttle, Q / E turns it, and SPACE sets it down when the landing zone reads CLEAR.";
 
+    [Header("World")]
+    [Tooltip("Planet-baseline O2 (%) on the slab. Humble Abode starts around 55.")]
+    [Range(0f, 100f)] public float surfaceOxygenPercent = 55f;
+
+    static CelestialBody FindTutorialGround()
+    {
+        foreach (var b in NBodySimulation.Bodies)
+            if (b != null && b.bodyType == CelestialBody.BodyType.Planet) return b;
+        return null;
+    }
+
     IEnumerator Start()
     {
-        // NBodySimulation.Awake normally pins the physics rate; there is no
-        // simulation in this scene (on purpose — see the spec) so pin it here.
+        // The scene's NBodySimulation pins the physics rate in its Awake (both
+        // bodies are pinned, so it never moves anything); re-assert it anyway.
         Time.fixedDeltaTime = Universe.physicsTimeStep;
 
         // Same timing as NewGameResetRunner: one frame + one physics tick so
@@ -54,6 +65,15 @@ public class TutorialDirector : MonoBehaviour
         // writes it (StasisPodSave is fenced), but leave nothing pointing at a
         // slot name all the same.
         StasisPodSave.ActiveSlotName = null;
+
+        // Planet oxygen comes from the tree count over the planet's whole area;
+        // a 10 km fake planet with ~25 trees is a dead world and the suit would
+        // drain the moment you step off the ramp. Vent a reserve so the slab
+        // breathes like Humble Abode does at the start (~55 %). Apply() cleared
+        // the reserves just above, so this is the only source.
+        var ground = FindTutorialGround();
+        if (ground != null && PlanetOxygen.Instance != null)
+            PlanetOxygen.Instance.AddVentedReserve(ground, surfaceOxygenPercent);
 
         var pilot = ShuttleAutopilot.EnsureAttached();
         if (pilot == null)

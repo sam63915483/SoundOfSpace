@@ -246,6 +246,10 @@ public class CameraEffectsManager : MonoBehaviour
         {
             var settingsMenu = FindObjectOfType<SettingsMenu>(true);
             if (settingsMenu != null) Input = settingsMenu.inputSettings;
+            // Scenes without the legacy SettingsMenu object (the tutorial box):
+            // the same asset, published by PlayerController/Ship.Begin(). Without
+            // this, MasterEnabled stayed false and EVERY camera effect was off there.
+            if (Input == null) Input = InputSettings.Active;
         }
     }
 }

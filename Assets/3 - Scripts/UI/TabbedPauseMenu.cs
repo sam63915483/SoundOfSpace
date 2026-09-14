@@ -211,6 +211,9 @@ public class TabbedPauseMenu : MonoBehaviour
         }
         var legacyStyler = FindObjectOfType<GalaxyPauseMenuStyler>(true);
         if (legacyStyler != null) legacyStyler.enabled = false;
+        // No legacy SettingsMenu in the scene (the tutorial box): the same asset
+        // is published by PlayerController/Ship.Begin().
+        if (_input == null) _input = InputSettings.Active;
     }
 
     void OnDestroy()

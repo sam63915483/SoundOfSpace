@@ -25,6 +25,16 @@ Two ways in. Both should behave the same.
    a tutorial run — even if you press the pod valve and seal yourself in (that plays
    the DOWNLOADING animation only).
 
+## Round 2 (2026-09-14) — what changed since your first run
+
+- Crosshair back; compass / boost / vitals in their helmet-pod layout; camera effects on.
+- Real sun 25 km up and off to the side (shadows + flare through the glass). The stuck
+  flare was a real bug (now fixed in the game too).
+- Gravity = Humble Abode's (8 m/s²) via the simulation; suit oxygen on the slab ~55 %.
+- Grass streams around you; ~25 trees, 6 crystals, 10 mushrooms, 5 cats. Chop / mine /
+  harvest / pet should all work. The landing spot at the centre is kept clear (22 m).
+- Digits ~3× smaller. Top-left shuttle text gone (F12 in a flight brings it back).
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle
@@ -33,8 +43,10 @@ Two ways in. Both should behave the same.
   ceiling at the start?
 - Digit walls: colour, speed, density, brightness are sliders on
   `Assets/4 - Scenes/TutorialDigitRain.mat`. Say what you want changed.
-- Lighting: there is no atmosphere post here, so the shadow side of the shuttle is lit
-  only by a dim ambient. Too dark / too flat?
+- Lighting: there is no atmosphere post here, so shadow sides are lit only by a dim
+  ambient. Too dark / too flat? Sun angle is a constant in the builder (55° up).
+- Prop density / clearing size are fields on `Tutorial Ground ▸ Tutorial Props`; cat
+  count on `--- Managers --- ▸ CatSpawner ▸ Max Cats`.
 - The tutorial player is the bare Player prefab: no rod, axe, pistol, grapple, or
   flashlight yet. That's phase 2 (needs a TutorialPlayer prefab).
 

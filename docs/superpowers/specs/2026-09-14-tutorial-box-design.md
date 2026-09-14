@@ -217,3 +217,43 @@ Edited (all small, additive):
 
 Lessons after landing, guided prompts beyond the one hint, a "restart tutorial"
 option, controller glyph review, anything about the digit look beyond the sliders.
+
+## Round 2 (2026-09-14, after Sam's first playtest)
+
+Sam's notes: no crosshair; a lens flare stuck on screen with no sun; the compass /
+boost / vitals were the old floating-card versions; digits too big; gravity too heavy;
+top-left shuttle text (in the real game too); wants a real sun above and off to the
+side, and grass / trees / crystals / cats / mushrooms on the slab.
+
+What changed and why:
+
+- **A real Sun + an n-body simulation.** The lens flare, the grass, the cats and the
+  player's gravity all find bodies through `NBodySimulation.Bodies`, so the scene now
+  has a `Body Simulation` with BOTH bodies **pinned** (nothing orbits or falls). The
+  Sun is a `CelestialBody` (Sun) 25 km up at 55° elevation with the gameplay scene's
+  directional light + `SunShadowCaster`, the warm point light the grass shader reads,
+  and an emissive ball. Gravity now comes from the fake planet like a real one
+  (`surfaceGravity = 8`, Humble Abode's number) instead of the 20 m/s² flat fallback.
+  Consequence: `PlanetOxygen` treats the slab as a real planet; the director vents a
+  55 % reserve so the slab breathes like Humble Abode at the start.
+- **Flare through glass.** The flare's occlusion raycast hits every collider; the
+  panes now carry `LensFlarePassThrough`, which `LensFlareRegistry.IsSampleBlocked`
+  skips. Two real bugs fixed on the way: `LensFlareRegistry` had no `OnDisable`, so
+  switching it off froze the last frame's images on screen (the stuck flare), and
+  `CameraEffectsManager` found no `SettingsMenu` in the tutorial so **every** camera
+  effect was off; both it and `TabbedPauseMenu` now fall back to `InputSettings.Active`.
+- **Crosshair + helmet layout.** `CrosshairReticle` lives on a scene object (`Dot`) in
+  the gameplay scene and is never seeded; the builder now creates it. The compass /
+  boost / vitals clusters seat onto the helmet art only when a scene `HelmetHudConfig`
+  exists; `Tools ▸ Solar System ▸ Snapshot HelmetHudConfig Prefab` copies the gameplay
+  scene's into `Assets/1 - samsPrefabs/HelmetHudConfig.prefab`, which the builder
+  instantiates. Re-run the snapshot after tuning the config in the gameplay scene.
+- **Top-left shuttle text** was `ShuttleAutopilot.OnGUI`, drawn whenever cheats are on
+  (always). Now opt-in: `ShuttleAutopilot.DebugOverlay`, F12 during a flight.
+- **Props.** Trees, crystals and mushrooms are placed once at load by
+  `TutorialPropField` (same prefabs, weights, scales and post-setup as the spawners,
+  null owner) because the live spawners scan the whole 10 km sphere every tick.
+  Grass (`InstancedGrassRenderer`, streams around the player) and cats (`CatSpawner`,
+  stops scanning at its cap of 5) run live. The floor is now a MeshCollider named
+  `Terrain Mesh`, which is what the grass seats on.
+- **Digits**: 320 columns per wall (~0.6 m cells), longer trail.

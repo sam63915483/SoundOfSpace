@@ -1755,6 +1755,9 @@ public class ShuttleAutopilot : MonoBehaviour
         if (ClientDriven) return;
         if (!Application.isEditor && !Universe.cheatsEnabled) return;
 
+        // F12: the SHUTTLE / RIDER / GATES diagnostic overlay (top-left).
+        if (Input.GetKeyDown(KeyCode.F12)) DebugOverlay = !DebugOverlay;
+
         // F6: full leg to the next landable planet (no NAV needed).
         if (Input.GetKeyDown(KeyCode.F6) && _phase == Phase.Parked)
         {
@@ -1785,9 +1788,15 @@ public class ShuttleAutopilot : MonoBehaviour
     float _nextOverlayBuildAt;
     string _overlayText = "";
 
+    /// Opt-in (Sam, 2026-09-14: the top-left SHUTTLE/RIDER/GATES text showed in
+    /// every flight, Editor and build alike, because Universe.cheatsEnabled is
+    /// true). F12 during a flight toggles it when cheats are on.
+    public static bool DebugOverlay = false;
+
     void OnGUI()
     {
         if (useGUILayout) useGUILayout = false;   // no GUILayout calls here: skip IMGUI's layout pass and its per-frame allocation
+        if (!DebugOverlay) return;
         if (!Application.isEditor && !Universe.cheatsEnabled) return;
         if (_phase == Phase.Parked && !PlayerController.RiderMode) return;
 
