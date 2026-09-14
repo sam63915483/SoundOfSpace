@@ -10,6 +10,12 @@ using UnityEngine;
 /// Interactable: look at the table, press F → PoolShotSession.Open() (the
 /// component next to this one) borrows the camera and runs the shot.
 ///
+/// Game record: `Game` (PoolGameState) — who is on the table, what each player
+/// sank, stripes/solids, the 8-ball verdict. Free play except the 8: the table
+/// spots it back if nobody has a group yet, otherwise fires GameResult and
+/// re-racks itself after the banner. Ball in hand (G): the cue ball is lifted
+/// out of the sim and hovers where the shooter slides it, kitchen only.
+///
 /// Everything visual is a CHILD of this transform positioned in local metres,
 /// so the table rides Humble Abode's orbit and the floating origin for free.
 /// Scale the root and the whole game scales with it.
@@ -47,12 +53,39 @@ public class PoolTable : Interactable
     public float cueRespawnDelay = 0.6f;
     [Tooltip("Pause after the last object ball drops before the table re-racks itself.")]
     public float autoRerackDelay = 1.5f;
+    [Tooltip("How long the YOU WIN / YOU LOSE banner stays before the table re-racks itself.")]
+    public float bannerSeconds = 2.5f;
+    [Tooltip("Ball-in-hand: how fast the cue ball slides (m/s, table-local).")]
+    public float handMoveSpeed = 0.5f;
+    [Tooltip("Ball-in-hand: how high the cue ball hovers, in ball radii.")]
+    public float handLiftRadii = 0.6f;
 
     public PoolPhysics2D Sim { get; private set; }
+    /// The running game on this table (who's on it, trays, groups, 8-ball verdict).
+    public PoolGameState Game { get; private set; }
     /// True from a rack until the first strike — the first shot faces the rack.
     public bool FreshRack { get; private set; } = true;
     /// True while the cue ball is off the table (pocketed) and not yet back.
     public bool CueRespawnPending => _cueRespawnPending;
+    /// True while the cue ball is lifted for ball in hand.
+    public bool BallInHand => _inHand;
+    /// While in hand: would putting it down here overlap another ball?
+    public bool BallInHandBlocked { get; private set; }
+    /// Cue ball position while in hand (table-local metres, on the cloth).
+    public Vector3 BallInHandLocal => SimToLocal(_handX, _handY);
+
+    /// (win, reason) — the 8 ball just ended the game. The banner lasts `bannerSeconds`, then the table re-racks.
+    public event System.Action<bool, string> GameResult;
+
+    /// The local player's id for the game record: the Netcode client id in co-op, 0 solo.
+    public static ulong LocalPlayerId
+    {
+        get
+        {
+            var nm = Unity.Netcode.NetworkManager.Singleton;
+            return nm != null && (nm.IsClient || nm.IsServer) ? nm.LocalClientId : 0UL;
+        }
+    }
 
     PoolShotSession _session;
     readonly Quaternion[] _roll = new Quaternion[PoolPhysics2D.BallCount];
@@ -65,6 +98,16 @@ public class PoolTable : Interactable
     bool _cueRespawnPending;
     float _respawnTimer;
     float _rerackTimer;
+    // game
+    bool _shotWasBreak;            // captured at strike time: pockets from this shot are break pockets
+    bool _spot8Pending;            // the 8 dropped with nobody's group decided → respot when settled
+    float _gameOverTimer = -1f;    // ≥0 while the win/lose banner runs
+    // ball in hand
+    bool _inHand;
+    float _handX, _handY, _handFromX, _handFromY;
+    MaterialPropertyBlock _cueTint;
+    Renderer _cueRenderer;
+    static readonly int ColorId = Shader.PropertyToID("_Color");
 
     void Awake()
     {
@@ -77,6 +120,10 @@ public class PoolTable : Interactable
         Sim.Configure();
         Sim.Rack();
         Sim.BallPocketed += OnPocketed;
+        Game = new PoolGameState();
+        _cueTint = new MaterialPropertyBlock();
+        if (balls != null && balls.Length > 0 && balls[PoolPhysics2D.Cue] != null)
+            _cueRenderer = balls[PoolPhysics2D.Cue].GetComponent<Renderer>();
         _session = GetComponent<PoolShotSession>();
 
         // Interact range: a trigger sphere, like BeerCupPickup. The root's solid
@@ -114,26 +161,50 @@ public class PoolTable : Interactable
             }
         }
 
+        // The 8 dropped before anyone had a group: back on the foot spot once the table is still.
+        if (_spot8Pending && Sim.AllStopped && _dropT[8] < 0f)
+        {
+            if (Sim.Respot(8)) { _spot8Pending = false; ShowBall(8); SnapBall(8); }
+        }
+
+        // Win / lose banner running: re-rack when it ends and the balls are still.
+        if (_gameOverTimer >= 0f)
+        {
+            _gameOverTimer += dt;
+            if (_gameOverTimer >= bannerSeconds && Sim.AllStopped) ReRack();
+            return;      // no auto re-rack race below
+        }
+
         // Only the cue ball left (or nothing): rack it again after a beat.
         int objectBalls = Sim.ActiveCount - (Sim.Active[PoolPhysics2D.Cue] ? 1 : 0);
-        if (objectBalls == 0 && Sim.AllStopped)
+        if (objectBalls == 0 && Sim.AllStopped && !_spot8Pending && !_inHand)
         {
             _rerackTimer += dt;
             if (_rerackTimer >= autoRerackDelay) ReRack();
         }
         else _rerackTimer = 0f;
+
+        if (_inHand) DriveHand();
     }
 
     // ── Interactable ────────────────────────────────────────────────────────
 
+    // Stays interactable while someone else holds the table so the prompt can SAY so
+    // (Interactable only shows a message while CanInteract is true); Interact refuses.
     protected override bool CanInteract() => Sim != null && _session != null && !PoolShotSession.IsActive;
 
     protected override void Interact()
     {
-        if (_session != null) _session.Open(this);
+        if (_session == null || Game == null) return;
+        if (!Game.TryClaim(LocalPlayerId)) return;
+        _session.Open(this);
     }
 
-    protected override string BuildInteractMessage() => $"Press {PromptGlyphs.Interact} to play pool";
+    protected override string BuildInteractMessage()
+    {
+        if (Game != null && Game.HasOccupant && Game.Occupant != LocalPlayerId) return "Someone's shooting";
+        return $"Press {PromptGlyphs.Interact} to play pool";
+    }
 
     // ── API for the shot session ────────────────────────────────────────────
 
@@ -142,19 +213,101 @@ public class PoolTable : Interactable
 
     public void Strike(Vector2 dir, float speed)
     {
+        if (_inHand) return;
+        _shotWasBreak = !Game.BreakTaken;
+        Game.OnStrike(Game.HasOccupant ? Game.Occupant : LocalPlayerId);
         Sim.Strike(dir.x, dir.y, speed);
         FreshRack = false;
     }
 
     public void ReRack()
     {
+        bool hadOcc = Game.HasOccupant; ulong occ = Game.Occupant;
+        Game.Reset();
+        if (hadOcc) Game.TryClaim(occ);          // R mid-game: the shooter stays on the table
         Sim.Rack();
         FreshRack = true;
         _cueRespawnPending = false;
         _respawnTimer = 0f;
         _rerackTimer = 0f;
+        _spot8Pending = false;
+        _gameOverTimer = -1f;
+        _shotWasBreak = false;
+        if (_inHand) { _inHand = false; SetCueTint(false); }
         for (int i = 0; i < PoolPhysics2D.BallCount; i++) { _dropT[i] = -1f; _roll[i] = Quaternion.identity; ShowBall(i); }
         SnapVisuals();
+    }
+
+    // ── Ball in hand ────────────────────────────────────────────────────────
+
+    public bool CanBeginBallInHand() =>
+        !_inHand && Sim != null && Sim.AllStopped && !_cueRespawnPending && Sim.Active[PoolPhysics2D.Cue]
+        && Game != null && !Game.GameOver && !_spot8Pending;
+
+    public bool BeginBallInHand()
+    {
+        if (!CanBeginBallInHand()) return false;
+        _handFromX = Sim.X[PoolPhysics2D.Cue]; _handFromY = Sim.Y[PoolPhysics2D.Cue];
+        // Start inside the kitchen even if the ball was elsewhere.
+        _handX = Mathf.Min(_handFromX, Sim.KitchenMaxX); _handY = _handFromY;
+        ClampHand();
+        Sim.LiftCue();
+        _inHand = true;
+        DriveHand();
+        return true;
+    }
+
+    /// dx/dy in table-local metres (already scaled by dt by the caller).
+    public void MoveBallInHand(float dx, float dy)
+    {
+        if (!_inHand) return;
+        _handX += dx; _handY += dy;
+        ClampHand();
+    }
+
+    public bool TryPlaceBallInHand()
+    {
+        if (!_inHand) return false;
+        if (!Sim.PlaceCue(_handX, _handY)) return false;
+        _inHand = false;
+        SetCueTint(false);
+        SnapBall(PoolPhysics2D.Cue);
+        return true;
+    }
+
+    public void CancelBallInHand()
+    {
+        if (!_inHand) return;
+        if (!Sim.PlaceCue(_handFromX, _handFromY)) Sim.RespawnCue();     // it came from a legal spot; belt and braces
+        _inHand = false;
+        SetCueTint(false);
+        SnapBall(PoolPhysics2D.Cue);
+    }
+
+    void ClampHand()
+    {
+        float r = ballRadius;
+        _handX = Mathf.Clamp(_handX, -halfLength + r, Sim.KitchenMaxX);
+        _handY = Mathf.Clamp(_handY, -halfWidth + r, halfWidth - r);
+    }
+
+    void DriveHand()
+    {
+        BallInHandBlocked = !Sim.CanPlaceCue(_handX, _handY);
+        var t = balls != null && balls.Length > 0 ? balls[PoolPhysics2D.Cue] : null;
+        if (t == null) return;
+        ShowBall(PoolPhysics2D.Cue);
+        t.localPosition = SimToLocal(_handX, _handY) + Vector3.up * (ballRadius * handLiftRadii);
+        SetCueTint(BallInHandBlocked);
+    }
+
+    void SetCueTint(bool red)
+    {
+        if (_cueRenderer == null) return;
+        _cueRenderer.GetPropertyBlock(_cueTint);
+        if (red) _cueTint.SetColor(ColorId, new Color(1f, 0.35f, 0.3f, 1f));
+        else _cueTint.Clear();
+        _cueRenderer.SetPropertyBlock(_cueTint);
     }
 
     // ── Visuals ─────────────────────────────────────────────────────────────
@@ -190,7 +343,7 @@ public class PoolTable : Interactable
                 if (k >= 1f) { _dropT[i] = -1f; t.gameObject.SetActive(false); t.localScale = Vector3.one; }
                 continue;
             }
-            if (!Sim.Active[i]) continue;
+            if (!Sim.Active[i] || (_inHand && i == PoolPhysics2D.Cue)) continue;
 
             float dx = Sim.X[i] - _prevX[i], dy = Sim.Y[i] - _prevY[i];
             _prevX[i] = Sim.X[i]; _prevY[i] = Sim.Y[i];
@@ -219,7 +372,27 @@ public class PoolTable : Interactable
             else to = new Vector3(Sim.PocketX[pocket], feltY - pocketDropDepth, Sim.PocketY[pocket]);
             _dropFrom[ball] = from; _dropTo[ball] = to; _dropT[ball] = 0f;
         }
-        if (ball == PoolPhysics2D.Cue) { _cueRespawnPending = true; _respawnTimer = 0f; }
+        if (ball == PoolPhysics2D.Cue) { _cueRespawnPending = true; _respawnTimer = 0f; return; }
+        if (Game == null) return;
+
+        ulong shooter = Game.HasOccupant ? Game.Occupant : LocalPlayerId;
+        var v = Game.OnPocketed(shooter, ball, _shotWasBreak, Sim.Active);   // Active[] is already false for this ball
+        switch (v)
+        {
+            case PoolGameState.Verdict.Spot8:
+                _spot8Pending = true;
+                break;
+            case PoolGameState.Verdict.Win:
+            case PoolGameState.Verdict.Lose:
+                bool win = v == PoolGameState.Verdict.Win;
+                var grp = Game.GroupOf(shooter);
+                string grpName = grp == PoolGameState.Group.Solids ? "SOLIDS" : "STRIPES";
+                int left = PoolGameState.GroupBallsLeft(grp, Sim.Active);
+                string reason = win ? $"{grpName} CLEARED · 8 BALL DOWN" : $"8 BALL DOWN · {left} {grpName} LEFT";
+                _gameOverTimer = 0f;
+                GameResult?.Invoke(win, reason);
+                break;
+        }
     }
 
     void ShowBall(int i)
