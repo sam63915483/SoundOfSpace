@@ -218,6 +218,7 @@ public class PoolShotSession : MonoBehaviour
                 break;
 
             case State.GameOver:
+                _t = Mathf.Min(1f, _t + dt / Mathf.Max(0.05f, transitionSeconds));   // finish the glide if we opened mid-banner
                 if (!menu && LeavePressed()) { Close(); break; }
                 if (!menu) TickAim(dt);                    // you can still look around
                 if (!_table.Game.GameOver)                 // the table re-racked itself

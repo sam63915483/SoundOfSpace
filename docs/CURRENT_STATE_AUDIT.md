@@ -2761,3 +2761,37 @@ changes before Sam is told to save.
   meshes identical to the 2026-09-12 baseline; the earlier drop was the stray preview sun).
 
 Compile PASS, 0 warnings. **PLAYTEST PENDING.**
+
+## Addendum 2026-09-14 — pool: game state, tray, 8-ball, ball in hand (built, playtest pending)
+
+Spec `docs/superpowers/specs/2026-09-14-pool-game-state-design.md`, plan
+`docs/superpowers/plans/2026-09-14-pool-game-state.md`. The table is still FREE
+PLAY (no turns/fouls — the players decide); it now only KNOWS things:
+
+- `Pool/PoolGameState.cs` (plain C#, headless-tested by `verify-pool.py`, 64
+  checks): per player (Netcode client id, 0 solo) the ordered balls they sank +
+  their group; `BreakTaken`; `HasOccupant/Occupant`; the 8-ball verdict.
+  Stripes/solids = first object ball sunk on a shot AFTER the break; other known
+  players get the opposite. The 8: no group yet → `Spot8` (table respots it on
+  the foot spot); group's balls all gone → `Win`; else `Lose`. `GameOver`
+  freezes the record until `Reset()`.
+- `PoolTable`: owns `Game`; F claims the table (`Interact` refuses while another
+  id holds it; the prompt reads "Someone's shooting" — `CanInteract` stays true
+  so the prompt can show at all); `Strike` captures "this shot is the break";
+  pockets → verdict; win/lose → `GameResult` event + `bannerSeconds` (2.5) →
+  `ReRack()` (wipes trays/groups, keeps the occupant); ball in hand
+  (`Begin/Move/TryPlace/CancelBallInHand`): the sim's cue ball is lifted
+  (`Active=false`), hovers `handLiftRadii` up, clamped to the kitchen
+  (`x ≤ HeadSpotX`), tinted red via a property block where it would overlap.
+  Sim gained `Respot(ball)`, `LiftCue/CanPlaceCue/PlaceCue`, `KitchenMaxX`.
+- `PoolShotSession`: states `BallInHand` (G / D-pad↓; WASD/stick camera-relative
+  at `handMoveSpeed`; Space/A places; G/B/RMB cancels) and `GameOver` (look
+  only, F leaves; returns to Aiming when the table re-racks). The controls line
+  always lists every key and swaps while in hand. Releases the claim in
+  `Teardown`.
+- `PoolShotHUD`: tray of code-drawn ball icons bottom-centre (`HALVisuals.Disc`
+  + the builder's colours copied), SOLIDS/STRIPES label with a 1 s reveal
+  flash, and the YOU WIN / YOU LOSE banner (mockup A: bracketed headline, reason
+  line, draining timer; accent for win, hot red for loss).
+- Not saved; not networked yet — `PoolSync` (StasisDoorSync-shaped: host owns
+  the sim + game, clients send claim/release/strike/hand) is the next MP pass.
