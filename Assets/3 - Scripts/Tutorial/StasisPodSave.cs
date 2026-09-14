@@ -190,6 +190,20 @@ public class StasisPodSave : MonoBehaviour
         _running = true;
         _labelBase = download ? "DOWNLOADING" : "UPLOADING";
 
+        // DOWNLOADING is gone (Sam, 2026-09-14: "remove the downloading overlay
+        // and animation when loading a save or loading into the tutorial — keep
+        // uploading when saving"). The wake-from-load, the tutorial and the
+        // co-op arrival now do only what the ritual did at its end: heal, unlock,
+        // open the pod. No overlay, no hold.
+        if (download)
+        {
+            RestoreVitalsToFull();
+            TutorialGate.UnlockAll();
+            if (_door != null) _door.OpenHold();
+            _running = false;
+            yield break;
+        }
+
         // Heal FIRST, and on both halves of the ritual. On an upload that order
         // matters: the save is written further down, so the file records the
         // healed state and loading it later puts you back on your feet too.

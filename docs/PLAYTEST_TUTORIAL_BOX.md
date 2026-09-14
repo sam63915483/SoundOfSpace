@@ -47,6 +47,20 @@ Two ways in. Both should behave the same.
   live scene, then fades out over 1 s. The shuttle's engines light as the fade starts, so the
   first thing you see is a shuttle already flying. Same behaviour for START GAME.
 
+## Round 3b (2026-09-14)
+
+- **Sounds:** the tutorial now uses `Assets/1 - samsPrefabs/TutorialPlayer.prefab`, a snapshot
+  of the gameplay scene's player (footsteps, jump/land, jetpack, breathing + wind, and every
+  equippable component). Re-snapshot after changing the real player:
+  `Tools ▸ Solar System ▸ Snapshot Tutorial Player Prefab`, then rebuild.
+- **Cats** at the gameplay size (2.56–3.76). **Crosshair** scale 1 (4× smaller again).
+- **DOWNLOADING** overlay is gone everywhere (load, tutorial, co-op wake): the pod just heals
+  and opens. UPLOADING on save is unchanged. Landing hint removed.
+- **Grass:** the code checks out; it streams only within 60 m of you, so nothing shows from
+  the 100 m hover (same as the real game). Land, walk out, and it should be there. If it
+  isn't, tell me — that's a real bug then.
+- **Digits:** 640 columns per wall, long trails — green lines from afar, 0s and 1s up close.
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle
@@ -59,8 +73,6 @@ Two ways in. Both should behave the same.
   ambient. Too dark / too flat? Sun angle is a constant in the builder (55° up).
 - Prop density / clearing size are fields on `Tutorial Ground ▸ Tutorial Props`; cat
   count on `--- Managers --- ▸ CatSpawner ▸ Max Cats`.
-- The tutorial player is the bare Player prefab: no rod, axe, pistol, grapple, or
-  flashlight yet. That's phase 2 (needs a TutorialPlayer prefab).
 
 ## Known limits
 

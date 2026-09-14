@@ -12,10 +12,10 @@ Shader "Custom/TutorialDigitRain"
     {
         _Color   ("Digit colour", Color) = (0.25, 1.0, 0.4, 1)
         _HeadColor ("Head colour", Color) = (0.85, 1.0, 0.9, 1)
-        _Cells   ("Columns across the pane", Float) = 320
+        _Cells   ("Columns across the pane", Float) = 640
         _Aspect  ("Cell height / width", Float) = 1.6
-        _Speed   ("Fall speed (cells per second)", Float) = 14
-        _Trail   ("Trail length (cells)", Float) = 28
+        _Speed   ("Fall speed (cells per second)", Float) = 20
+        _Trail   ("Trail length (cells)", Float) = 70
         _Flicker ("Digit re-roll rate (Hz)", Float) = 3
         _Alpha   ("Digit alpha", Range(0, 1)) = 0.9
         _Base    ("Pane tint alpha", Range(0, 0.3)) = 0.03

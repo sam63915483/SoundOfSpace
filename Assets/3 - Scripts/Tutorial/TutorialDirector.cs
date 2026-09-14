@@ -13,8 +13,7 @@ using UnityEngine;
 ///
 /// Everything after LaunchIntroApproach is the real travel code
 /// (ShuttleAutopilot → Hover → ShuttleComputerNavUI → BeginLanding → Parked →
-/// ramp opens, riders released). This script only stages the start and shows
-/// one hint line at the hover.
+/// ramp opens, riders released). This script only stages the start.
 ///
 /// What it deliberately does NOT do (compare IntroSequenceController):
 ///   - no eyelid overlay / click-to-wake / "OPEN YOUR EYES" prompt
@@ -32,11 +31,6 @@ public class TutorialDirector : MonoBehaviour
     public float descentSeconds = 12f;
     [Tooltip("Seconds after load before the stasis pod door opens.")]
     public float doorOpenDelay = 1f;
-
-    [Header("Hint (shown when the hover is reached, hidden on touchdown)")]
-    public string landingHeader = "TUTORIAL · LAND THE SHUTTLE";
-    [TextArea(2, 4)]
-    public string landingHint = "Walk to the cockpit computer and press F. WASD moves the shuttle, Q / E turns it, and SPACE sets it down when the landing zone reads CLEAR.";
 
     [Header("World")]
     [Tooltip("Planet-baseline O2 (%) on the slab. Humble Abode starts around 55.")]
@@ -124,15 +118,8 @@ public class TutorialDirector : MonoBehaviour
         if (podDoor != null) podDoor.OpenHold();
         IntroSequenceController.ShuttleWakeActive = false;
 
-        // Hover reached → the console is already on the landing feed. One hint.
-        yield return new WaitUntil(() => pilot == null || pilot.CurrentPhase == ShuttleAutopilot.Phase.Hover);
-        if (pilot == null) yield break;
-        if (TutorialUI.Instance != null && !string.IsNullOrEmpty(landingHint))
-            TutorialUI.Instance.ShowStep(landingHint, 0, 0, landingHeader);
-
-        // Touchdown → the real code opens the ramp and releases the riders.
-        yield return new WaitUntil(() => pilot == null || pilot.CurrentPhase == ShuttleAutopilot.Phase.Parked);
-        if (TutorialUI.Instance != null) TutorialUI.Instance.HideAll();
+        // From here it is the real travel flow: hover, the console's landing
+        // feed, F / WASD / Q E / SPACE, touchdown, ramp. No hint (Sam, round 3).
     }
 
     void OnDestroy()

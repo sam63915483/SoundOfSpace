@@ -91,7 +91,7 @@ public static class TutorialSceneBuilder
     // CrosshairReticle.scale. The gameplay Dot carries 12 and nothing in code
     // shrinks it, yet Sam's round-2 build read as "huge" — a third of that as
     // the starting point; tune on Dot ▸ CrosshairReticle ▸ Scale and mirror here.
-    const float ReticleScale  = 4f;
+    const float ReticleScale  = 1f;      // Sam, round 3: "reduce it by 4x" (was 4)
 
     // The sun: 25 km out along the gameplay light's authored direction
     // (Euler 55, -35, 0 → forward (-0.329, -0.819, 0.470)). 55° elevation, so
@@ -291,23 +291,45 @@ public static class TutorialSceneBuilder
         cats.maxCats = 5;               // the scan stops for good once the cap is met
         cats.cellSize = 45f;            // ~13 candidate cells in the box → the cap fills on the first tick
         cats.seed = 4242;
+        // The gameplay scene's tuning (1.6.7.7.7.unity CatSpawner) — the code
+        // defaults are a third of the size Sam chose.
+        cats.minScale = 2.56f;
+        cats.maxScale = 3.76f;
+        cats.triggerSize = new Vector3(2f, 1.8f, 2.6f);
+        cats.wanderRadius = 26f;
+        cats.wanderSpeed = 1.6f;
+        cats.wanderPauseDistance = 2.5f;
+        cats.catSpawnChance = 0.65f;
+        cats.maxSurfaceAngle = 40f;
+        cats.groundEmbedPerScale = 0.02f;
+        cats.updateInterval = 0.35f;
+        cats.surfaceRayHeight = 100f;
+        cats.minSpawnDistance = 14f;
 
         // HUD pieces that are scene objects in the gameplay scene (never seeded).
         var uiRoot = new GameObject("--- UI ---");
         BuildCrosshair(uiRoot.transform);
-        var helmetCfg = AssetDatabase.LoadAssetAtPath<GameObject>(HelmetHudConfigSnapshot.PrefabPath);
+        var helmetCfg = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.HelmetPrefabPath);
         if (helmetCfg != null)
         {
             var cfg = (GameObject)PrefabUtility.InstantiatePrefab(helmetCfg, scene);
             cfg.transform.SetParent(uiRoot.transform, false);
         }
-        else Debug.LogWarning("[TutorialScene] " + HelmetHudConfigSnapshot.PrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot HelmetHudConfig Prefab with the gameplay scene open, or the compass / boost / vitals clusters fall back to their old look.");
+        else Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.HelmetPrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot HelmetHudConfig Prefab with the gameplay scene open, or the compass / boost / vitals clusters fall back to their old look.");
 
         // The player: Player.prefab + the gameplay scene's overrides. Placed in
         // the pod at the PARKED pose so the very first frames already show the
         // pod interior (the director re-seats it once the shuttle jumps up).
-        var player = (GameObject)PrefabUtility.InstantiatePrefab(playerPrefab, scene);
+        // Prefer the snapshot of the GAMEPLAY SCENE's player (Tools ▸ Solar System ▸
+        // Snapshot Tutorial Player Prefab): it carries the audio clips (footsteps,
+        // jump / land, thrust), PlayerSuitAudio (breathing, wind), FallDamage and
+        // every equippable as scene overrides that the bare Player.prefab lacks.
+        var snapshot = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.PlayerPrefabPath);
+        if (snapshot == null)
+            Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.PlayerPrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot Tutorial Player Prefab with the gameplay scene open. Using the bare Player.prefab (no footstep / jetpack / breathing audio, no equippables).");
+        var player = (GameObject)PrefabUtility.InstantiatePrefab(snapshot != null ? snapshot : playerPrefab, scene);
         player.name = "Player";
+        player.SetActive(true);         // the gameplay scene keeps it inactive until GameSetUp
         var pc = player.GetComponent<PlayerController>();
         if (pc != null) pc.walkableMask = WalkableMask;
         var cam = player.GetComponentInChildren<Camera>(true);
