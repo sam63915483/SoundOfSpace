@@ -99,6 +99,19 @@ The gameplay scene still uses the old CPU path until you've seen this one work.
   symptom is NO grass at all in the exe while the Editor is fine.
 - If it misbehaves, F11 back to the CPU path and tell me what you saw.
 
+## Whole-planet resident grass (2026-09-14, late) — gameplay scene
+
+Humble Abode's baked grass (~150 k blades, 12 MB) is uploaded to the GPU once at load; nothing
+streams on the CPU any more; blades grow in from nothing as you approach instead of popping.
+Knobs on the gameplay scene's GrassSpawner object ▸ InstancedGrassRenderer: Resident Near
+Radius (60 m, full density), Resident Far Radius (350 m, zero), Resident Falloff (2), Resident
+Grow Band (0.08). All × the GRASS DISTANCE setting. The tutorial planet has no bake, so it
+keeps streaming (GPU-drawn) until it's baked.
+
+Check: jetpack fast across the field — no patches appearing; grass visible far off and thinning
+smoothly; frame time; the console line "[InstancedGrassRenderer] Resident grass: N blades".
+F11 still drops back to the CPU path.
+
 ## Things to look at / tell me
 
 - Does the 12 s descent feel right? (`Tutorial Director ▸ Descent Seconds`.) The shuttle
