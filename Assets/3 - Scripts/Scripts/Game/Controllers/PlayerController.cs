@@ -220,6 +220,8 @@ public class PlayerController : GravityObject
 	float freePitch, smoothFreePitch, freePitchSmoothV, _freePitchAppliedToTransform;
 	float freeRoll,  smoothFreeRoll,  freeRollSmoothV,  _freeRollAppliedToTransform;
 	bool  _wasFreeFloating;
+	// Re-entry ease (see the free-float block in FixedUpdate).
+	Vector3 _reentryFrom; float _reentryT, _reentryDuration; bool _reentryActive;
 	/// True while the up-lock is released (in space, off the ground, not in the
 	/// shuttle-proximity zone). Read by the flashlight toggles (E is roll here)
 	/// and by CameraTransformFX for the render-rate pitch/roll remainder.
@@ -1102,18 +1104,28 @@ public class PlayerController : GravityObject
 			// yaw (framerate-independent). Roll sign mirrors Ship (E = -forward).
 			if (FreeFloating)
 			{
-				transform.Rotate(Vector3.right   *  Mathf.DeltaAngle(_freePitchAppliedToTransform, smoothFreePitch), Space.Self);
-				transform.Rotate(Vector3.forward * -Mathf.DeltaAngle(_freeRollAppliedToTransform,  smoothFreeRoll),  Space.Self);
 				// Fold whatever camera pitch we crossed the line with into the
 				// body over spacePitchFoldSeconds, so the view never jumps and the
 				// camera ends up level with the body (the pitch clamp is gone).
+				//
+				// The fold is pushed through the free-pitch TARGETS rather than
+				// rotating the transform directly: CameraTransformFX draws the
+				// body's rotation interpolated a tick behind but reads the camera
+				// pitch live, so a direct rotate + instant camera drop disagreed by
+				// a few degrees every frame (the "jittery crossing while looking
+				// up/down", playtest 1). Moving the same degrees between the two
+				// look targets keeps their sum constant at render rate.
 				if (smoothPitch != 0f)
 				{
 					float folded = Mathf.MoveTowards(smoothPitch, 0f, (89f / Mathf.Max(0.05f, spacePitchFoldSeconds)) * Time.fixedDeltaTime);
-					transform.Rotate(Vector3.right * (smoothPitch - folded), Space.Self);
+					float d = smoothPitch - folded;
+					freePitch       += d;
+					smoothFreePitch += d;
 					smoothPitch = pitch = folded;
 					pitchSmoothV = 0f;
 				}
+				transform.Rotate(Vector3.right   *  Mathf.DeltaAngle(_freePitchAppliedToTransform, smoothFreePitch), Space.Self);
+				transform.Rotate(Vector3.forward * -Mathf.DeltaAngle(_freeRollAppliedToTransform,  smoothFreeRoll),  Space.Self);
 			}
 			_freePitchAppliedToTransform = smoothFreePitch;
 			_freeRollAppliedToTransform  = smoothFreeRoll;
@@ -1992,10 +2004,19 @@ public class PlayerController : GravityObject
 		bool freeFloat = _playerInSpace && !isGrounded && !_flatActive
 			&& !ShipProximityZoneActive && _shipUpBlend <= 0f
 			&& UpOverrideTransform == null && !RiderMode;
-		// Re-entry: ratchet the up from wherever the body ended up toward the
-		// planet over shipUpBlendSeconds — the same blend the planet-to-planet
-		// crossing uses. _smoothedGravityUp was held at transform.up while free.
-		if (_wasFreeFloating && !freeFloat && rawValid) _gravityUpBlending = true;
+		// Re-entry: ease the up from wherever the body ended up toward the
+		// planet. Started here, driven below (after the planet-to-planet block,
+		// which it overrides). Smoothstep in/out; duration scales with the
+		// angle so a small correction is quick and a full flip takes
+		// spaceReentrySeconds. The old 180°/s RotateTowards ratchet was "pretty
+		// aggressive" (playtest 1).
+		if (_wasFreeFloating && !freeFloat && rawValid)
+		{
+			_reentryFrom     = transform.up;
+			_reentryT        = 0f;
+			_reentryDuration = Mathf.Max(0.75f, Vector3.Angle(transform.up, rawGravityUp) / 180f * spaceReentrySeconds);
+			_reentryActive   = true;
+		}
 		if (!_smoothedGravityUpInit)
 		{
 			_smoothedGravityUp     = rawValid ? rawGravityUp : transform.up;
@@ -2033,6 +2054,16 @@ public class PlayerController : GravityObject
 		{
 			_smoothedGravityUp = transform.up;   // so re-entry blends from here, no snap
 			_gravityUpBlending = false;
+			_reentryActive     = false;
+		}
+		else if (_reentryActive && rawValid)
+		{
+			_reentryT += Time.fixedDeltaTime;
+			float s = Mathf.Clamp01(_reentryT / _reentryDuration);
+			s = s * s * (3f - 2f * s);
+			_smoothedGravityUp = Vector3.Slerp(_reentryFrom, rawGravityUp, s).normalized;
+			_gravityUpBlending = false;
+			if (_reentryT >= _reentryDuration) { _reentryActive = false; _smoothedGravityUp = rawGravityUp; }
 		}
 		_wasFreeFloating = freeFloat;
 		FreeFloating = freeFloat;
@@ -2798,7 +2829,7 @@ public class PlayerController : GravityObject
 	/// </summary>
 	public CelestialBody ReferenceBody => referenceBody;
 	public void UnlockJetpack() { jetpackUnlocked = true; }
-	void OnDisable() { FreeFloating = false; _wasFreeFloating = false; }
+	void OnDisable() { FreeFloating = false; _wasFreeFloating = false; _reentryActive = false; }
 
 	public void ApplyFuel(float jetpack, float downThrust, float dirThrust)
 	{
@@ -2849,4 +2880,6 @@ public class PlayerController : GravityObject
 	public float spaceRollDegreesPerSecond = 90f;
 	[Tooltip("Seconds to fold a full 89 deg camera pitch into the body after crossing the atmosphere line outward. The view doesn't move; the camera just ends up level with the body.")]
 	public float spacePitchFoldSeconds = 0.5f;
+	[Tooltip("Seconds for a full 180 deg flip back to feet-down when you come back inside a planet's atmosphere line (eased in and out). Smaller corrections take proportionally less, never under 0.75 s.")]
+	public float spaceReentrySeconds = 3f;
 }
