@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 
@@ -88,6 +88,9 @@ public static class AtmosphereBounds
     {
         float fallback = b.radius * NoAtmosphereMultiplier;
         _hasAtmo[b] = false;
+        // Per-body override (CelestialBody.atmosphereLineMultiplier, 2026-09-15):
+        // lets any planet's free-float line be tuned without the forbidden zone.
+        if (b.atmosphereLineMultiplier > 0f) return b.radius * b.atmosphereLineMultiplier;
 
         try
         {

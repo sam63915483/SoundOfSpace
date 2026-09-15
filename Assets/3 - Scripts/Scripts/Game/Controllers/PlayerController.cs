@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -214,6 +214,18 @@ public class PlayerController : GravityObject
 	float pitch;
 	float smoothYaw;
 	float smoothPitch;
+	// Space free-float (2026-09-15): body pitch / roll look targets, unbounded
+	// degrees, smoothed + consumed exactly like yaw. Only accumulate while
+	// FreeFloating; the "applied" markers drain every fixed step regardless.
+	float freePitch, smoothFreePitch, freePitchSmoothV, _freePitchAppliedToTransform;
+	float freeRoll,  smoothFreeRoll,  freeRollSmoothV,  _freeRollAppliedToTransform;
+	bool  _wasFreeFloating;
+	/// True while the up-lock is released (in space, off the ground, not in the
+	/// shuttle-proximity zone). Read by the flashlight toggles (E is roll here)
+	/// and by CameraTransformFX for the render-rate pitch/roll remainder.
+	public static bool FreeFloating { get; private set; }
+	public float SmoothFreePitch => smoothFreePitch;
+	public float SmoothFreeRoll  => smoothFreeRoll;
 
 	// How much of smoothYaw the player TRANSFORM has already been rotated by.
 	// HandleMovement advances this to smoothYaw each fixed step, so no input is
@@ -735,8 +747,13 @@ public class PlayerController : GravityObject
 		bool dialogueBlocksLook = isInDialogue && !IntroSequenceController.ShuttleWakeActive;
 		if (!dialogueBlocksLook && !isMapOpen && !isInModalSlotUI && !uiHasFocus && !phoneBlocksLook && !PoolShotSession.IsActive)
 		{
+			// Space free-float (2026-09-15): past the atmosphere line the up-lock
+			// is off, so vertical look pitches the whole BODY (freePitch, unclamped)
+			// instead of the camera, and Q/E (pad LB/RB) roll it. Same smoothing
+			// pipeline as yaw. See the free-float block in HandleMovement.
+			float lookDy = TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.y;
 			yaw   += TutorialGate.GetAxisRaw("Mouse X", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.x;
-			pitch -= TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.y;
+			if (FreeFloating) freePitch -= lookDy; else pitch -= lookDy;
 
 			if (TutorialGate.ControllerEnabled && TutorialGate.IsUnlocked(TutorialAbility.MouseLook))
 			{
@@ -751,7 +768,16 @@ public class PlayerController : GravityObject
 				// — per-axis, so a charging wind-up keeps free look on the aim axis.
 				float gain = TutorialGate.StickLookSensitivity * kStickDegreesPerSecond * Time.unscaledDeltaTime;
 				yaw   += TutorialGate.RightStickX() * gain * SwingLookScale.x;
-				pitch -= TutorialGate.RightStickY() * gain * (TutorialGate.InvertLookY ? -1f : 1f) * SwingLookScale.y;
+				float stickDy = TutorialGate.RightStickY() * gain * (TutorialGate.InvertLookY ? -1f : 1f) * SwingLookScale.y;
+				if (FreeFloating) freePitch -= stickDy; else pitch -= stickDy;
+			}
+			if (FreeFloating)
+			{
+				// Same keys and sign as the ship (Q/LB = left, E/RB = right).
+				int rollDir = 0;
+				if (TutorialGate.RollLeftHeld(TutorialAbility.Boost))  rollDir--;
+				if (TutorialGate.RollRightHeld(TutorialAbility.Boost)) rollDir++;
+				freeRoll += rollDir * spaceRollDegreesPerSecond * Time.unscaledDeltaTime;
 			}
 
 			// Swing camera kick — additive on top of the (scaled) look input.
@@ -769,6 +795,8 @@ public class PlayerController : GravityObject
 		float mouseSmoothTime = Mathf.Lerp(0.01f, maxMouseSmoothTime, inputSettings.mouseSmoothing);
 		smoothPitch = Mathf.SmoothDampAngle(smoothPitch, pitch, ref pitchSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
 		smoothYaw = Mathf.SmoothDampAngle(smoothYaw, yaw, ref yawSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
+		smoothFreePitch = Mathf.SmoothDampAngle(smoothFreePitch, freePitch, ref freePitchSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
+		smoothFreeRoll  = Mathf.SmoothDampAngle(smoothFreeRoll,  freeRoll,  ref freeRollSmoothV,  mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
 
 		// Camera pitch is written here as well as in HandleMovement so it tracks
 		// the RENDER rate. HandleMovement runs in FixedUpdate, and FixedUpdate's
@@ -1069,6 +1097,26 @@ public class PlayerController : GravityObject
 			// applied rotation exact and framerate-independent.
 			transform.Rotate(Vector3.up * Mathf.DeltaAngle(_yawAppliedToTransform, smoothYaw), Space.Self);
 			_yawAppliedToTransform = smoothYaw;
+
+			// Space free-float: body pitch + roll, consumed the same exact way as
+			// yaw (framerate-independent). Roll sign mirrors Ship (E = -forward).
+			if (FreeFloating)
+			{
+				transform.Rotate(Vector3.right   *  Mathf.DeltaAngle(_freePitchAppliedToTransform, smoothFreePitch), Space.Self);
+				transform.Rotate(Vector3.forward * -Mathf.DeltaAngle(_freeRollAppliedToTransform,  smoothFreeRoll),  Space.Self);
+				// Fold whatever camera pitch we crossed the line with into the
+				// body over spacePitchFoldSeconds, so the view never jumps and the
+				// camera ends up level with the body (the pitch clamp is gone).
+				if (smoothPitch != 0f)
+				{
+					float folded = Mathf.MoveTowards(smoothPitch, 0f, (89f / Mathf.Max(0.05f, spacePitchFoldSeconds)) * Time.fixedDeltaTime);
+					transform.Rotate(Vector3.right * (smoothPitch - folded), Space.Self);
+					smoothPitch = pitch = folded;
+					pitchSmoothV = 0f;
+				}
+			}
+			_freePitchAppliedToTransform = smoothFreePitch;
+			_freeRollAppliedToTransform  = smoothFreeRoll;
 		}
 
 		// Dialogue used to RETURN here, skipping the rest of the tick (ground
@@ -1933,6 +1981,21 @@ public class PlayerController : GravityObject
 		// out of envelope AND _shipUpBlend == 0.
 		Vector3 rawGravityUp = -gravityOfNearestBody.normalized;
 		bool rawValid        = rawGravityUp.sqrMagnitude > 0.001f;
+		// ── Space free-float (2026-09-15, Sam) ──────────────────────────────
+		// Past the atmosphere line (UpdateSpaceGate, with hysteresis) and off
+		// the ground, the "feet to the nearest planet" write below is SKIPPED:
+		// the body is a free 6DOF float driven by look pitch / yaw / Q-E roll.
+		// The shuttle-proximity zone keeps priority (boarding still aligns you
+		// to the shuttle), as do the intro's up override, rider mode and flat
+		// interiors (referenceBody is null there, which UpdateSpaceGate reads
+		// as deep space).
+		bool freeFloat = _playerInSpace && !isGrounded && !_flatActive
+			&& !ShipProximityZoneActive && _shipUpBlend <= 0f
+			&& UpOverrideTransform == null && !RiderMode;
+		// Re-entry: ratchet the up from wherever the body ended up toward the
+		// planet over shipUpBlendSeconds — the same blend the planet-to-planet
+		// crossing uses. _smoothedGravityUp was held at transform.up while free.
+		if (_wasFreeFloating && !freeFloat && rawValid) _gravityUpBlending = true;
 		if (!_smoothedGravityUpInit)
 		{
 			_smoothedGravityUp     = rawValid ? rawGravityUp : transform.up;
@@ -1966,6 +2029,13 @@ public class PlayerController : GravityObject
 			}
 		}
 		_lastReferenceBody = referenceBody;
+		if (freeFloat)
+		{
+			_smoothedGravityUp = transform.up;   // so re-entry blends from here, no snap
+			_gravityUpBlending = false;
+		}
+		_wasFreeFloating = freeFloat;
+		FreeFloating = freeFloat;
 		Vector3 gravityUp = _smoothedGravityUp.sqrMagnitude > 0.001f
 			? _smoothedGravityUp
 			: transform.up;
@@ -1991,7 +2061,8 @@ public class PlayerController : GravityObject
 		// Cinematic up override (shuttle-landing intro): the ride owns the up.
 		if (UpOverrideTransform != null)
 			chosenUp = UpOverrideTransform.up;
-		transform.rotation = Quaternion.FromToRotation(transform.up, chosenUp) * transform.rotation;
+		if (!freeFloat)
+			transform.rotation = Quaternion.FromToRotation(transform.up, chosenUp) * transform.rotation;
 		// Clear the rotation reference once the blend has fully decayed
 		// AND we're out of the zone. The damping cache nulls instantly
 		// when the player crosses the 25 m boundary; the rotation ref
@@ -2727,6 +2798,7 @@ public class PlayerController : GravityObject
 	/// </summary>
 	public CelestialBody ReferenceBody => referenceBody;
 	public void UnlockJetpack() { jetpackUnlocked = true; }
+	void OnDisable() { FreeFloating = false; _wasFreeFloating = false; }
 
 	public void ApplyFuel(float jetpack, float downThrust, float dirThrust)
 	{
@@ -2771,4 +2843,10 @@ public class PlayerController : GravityObject
 	public float swimCameraSway = 1f;
 	[Tooltip("Slow camera rise/fall (metres) while floating idle at the surface. 0 = off.")]
 	public float surfaceBobAmplitude = 0.04f;
+
+	[Header("Space free-float (2026-09-15)")]
+	[Tooltip("Roll speed on Q/E (pad LB/RB) while free-floating past the atmosphere line, degrees per second.")]
+	public float spaceRollDegreesPerSecond = 90f;
+	[Tooltip("Seconds to fold a full 89 deg camera pitch into the body after crossing the atmosphere line outward. The view doesn't move; the camera just ends up level with the body.")]
+	public float spacePitchFoldSeconds = 0.5f;
 }

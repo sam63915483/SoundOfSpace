@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 /// <summary>
 /// Camera-transform effects: strafe roll and death tilt.
@@ -53,6 +53,8 @@ public class CameraTransformFX : MonoBehaviour
     float _lastFixedTime = -1f;
     float _capturedPitch;
     float _prevAppliedYaw, _currAppliedYaw;
+    // Space free-float: same remainder trick for the body pitch / roll.
+    float _prevAppliedPitch, _currAppliedPitch, _prevAppliedRoll, _currAppliedRoll;
 
     // ── Effect state ───────────────────────────────────────────────
     float _tiltZ;
@@ -74,6 +76,9 @@ public class CameraTransformFX : MonoBehaviour
         // how much look input the transform hasn't consumed yet.
         _prevAppliedYaw = _currAppliedYaw;
         _currAppliedYaw = _player != null ? _player.SmoothYaw : _currAppliedYaw;
+        _prevAppliedPitch = _currAppliedPitch;
+        _prevAppliedRoll  = _currAppliedRoll;
+        if (_player != null) { _currAppliedPitch = _player.SmoothFreePitch; _currAppliedRoll = _player.SmoothFreeRoll; }
 
         // Capture PC's freshly-written pitch. PC writes
         // `cam.localEulerAngles = Vector3.right * smoothPitch` in its own
@@ -156,6 +161,12 @@ public class CameraTransformFX : MonoBehaviour
             // Right-multiply = rotate about the player's LOCAL up, matching
             // HandleMovement's transform.Rotate(..., Space.Self).
             smoothPlayerRot *= Quaternion.AngleAxis(pendingYaw, Vector3.up);
+            // Free-float body pitch / roll not yet consumed by the transform
+            // (zero unless PlayerController.FreeFloating — the targets only
+            // move while free). Order + sign mirror HandleMovement.
+            float pendingPitch = Mathf.DeltaAngle(Mathf.LerpAngle(_prevAppliedPitch, _currAppliedPitch, interpT), _player.SmoothFreePitch);
+            float pendingRoll  = Mathf.DeltaAngle(Mathf.LerpAngle(_prevAppliedRoll,  _currAppliedRoll,  interpT), _player.SmoothFreeRoll);
+            smoothPlayerRot *= Quaternion.AngleAxis(pendingPitch, Vector3.right) * Quaternion.AngleAxis(-pendingRoll, Vector3.forward);
         }
 
         // ── Compose final camera world pose. Setting world pose (rather
@@ -195,7 +206,12 @@ public class CameraTransformFX : MonoBehaviour
         _currPlayerRot = _playerTransform.rotation;
         _prevPlayerRot = _currPlayerRot;
         _lastFixedTime = Time.time;
-        if (_player != null) _prevAppliedYaw = _currAppliedYaw = _player.SmoothYaw;
+        if (_player != null)
+        {
+            _prevAppliedYaw   = _currAppliedYaw   = _player.SmoothYaw;
+            _prevAppliedPitch = _currAppliedPitch = _player.SmoothFreePitch;
+            _prevAppliedRoll  = _currAppliedRoll  = _player.SmoothFreeRoll;
+        }
     }
 
     static float EaseOutCubic(float x) => 1f - Mathf.Pow(1f - x, 3f);

@@ -1,4 +1,4 @@
-using UnityEngine;
+﻿using UnityEngine;
 
 [RequireComponent(typeof(Light))]
 public class LightToggle : MonoBehaviour
@@ -18,7 +18,8 @@ public class LightToggle : MonoBehaviour
         if (ship != null && ship.IsPiloted)
             return;
 
-        if (TutorialGate.GetKeyDown(KeyCode.E, TutorialAbility.Flashlight))
+        // E is ROLL while free-floating in space (2026-09-15).
+        if (!PlayerController.FreeFloating && TutorialGate.GetKeyDown(KeyCode.E, TutorialAbility.Flashlight))
         {
             lightComponent.enabled = !lightComponent.enabled;
         }

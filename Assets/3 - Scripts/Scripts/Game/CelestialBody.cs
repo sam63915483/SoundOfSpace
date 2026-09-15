@@ -231,4 +231,12 @@ public class CelestialBody : GravityObject {
             rb.MovePosition (worldPos);
         }
     }
+
+    /// Space free-float (2026-09-15): where THIS body's "you are in space" line
+    /// sits, as a multiple of its radius. 0 = default (the visual haze edge,
+    /// (1 + atmosphereScale) x radius; airless bodies 1.5 x radius) — see
+    /// AtmosphereBounds. Past the line the player's feet stop pointing at the
+    /// planet and look/roll spin the whole body. Tune per planet here.
+    [Tooltip("0 = default (visual atmosphere edge; 1.5x radius if airless). Otherwise the 'in space' line as a multiple of radius, e.g. 1.4 = 40% of the radius above the ground.")]
+    public float atmosphereLineMultiplier = 0f;
 }

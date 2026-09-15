@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using UnityEngine;
 
 // Execution order 150: the grass-lighting uniforms below (LateUpdate) must be
@@ -169,7 +169,8 @@ public class PlayerFlashlight : MonoBehaviour
         // Not while the solar map is up: there Y toggles cursor mode and E
         // rolls the map camera (2026-09-06) — the same press must not also
         // cycle the torch.
-        if (!SolarMap.IsOpen && !PoolShotSession.IsActive &&   // pool: pad Y re-racks, must not cycle the torch
+        // Free-float: E / RB roll the body in space (2026-09-15) — same press must not cycle the torch.
+        if (!SolarMap.IsOpen && !PoolShotSession.IsActive && !PlayerController.FreeFloating &&   // pool: pad Y re-racks, must not cycle the torch
             (TutorialGate.GetKeyDown(toggleKey, TutorialAbility.Flashlight) ||
              TutorialGate.FlashlightPressed(TutorialAbility.Flashlight)))
         {
