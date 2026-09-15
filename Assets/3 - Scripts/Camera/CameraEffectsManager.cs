@@ -177,7 +177,12 @@ public class CameraEffectsManager : MonoBehaviour
             }
 
             // Dialogue focus (soft black).
-            if (Input.fxDialogueVignette && Vignette != null && PlayerController.isInDialogue)
+            // Same exception LetterboxBars makes: the shuttle wake / tutorial pin
+            // the player with isInDialogue while the pod is shut — a movement
+            // lock, not a conversation (Sam, 2026-09-15: no vignette over the
+            // second between the fade-in and the door).
+            if (Input.fxDialogueVignette && Vignette != null && PlayerController.isInDialogue
+                && !IntroSequenceController.ShuttleWakeActive)
             {
                 Vignette.Push(new Color(0f, 0f, 0f, 1f), 0.4f);
             }

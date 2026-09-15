@@ -510,6 +510,18 @@ public class RiderReleaseBleed : MonoBehaviour
             float u = (since - _releaseT) / HoldSeconds;
             if (u >= 0f && u < 1f)
             {
+                // The held point moves WITH the player's own walking (Sam,
+                // 2026-09-15: "the astronaut walks out in front of the camera,
+                // then they merge back"). The release fires 1.2 s after touchdown
+                // while the exit door is still folding, and rider-mode walking is
+                // live, so a player already heading for the door hit a camera
+                // nailed to a fixed spot on the planet for 0.6 s + a 0.6 s bleed:
+                // body gone, head left behind. Only the deliberate walk vector is
+                // carried — the seam's physics side (interpolation seed, foot
+                // trim, orbit) stays cancelled exactly as before; standing still
+                // this adds nothing.
+                if (_pc != null)
+                    _heldCamLocal += _body.transform.InverseTransformVector(_pc.WalkVelocity * Time.deltaTime);
                 Vector3 held = _body.transform.TransformPoint(_heldCamLocal);
                 if ((held - _cam.position).sqrMagnitude < 25f)
                 {

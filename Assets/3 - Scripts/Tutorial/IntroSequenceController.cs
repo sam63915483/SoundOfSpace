@@ -376,6 +376,10 @@ public class IntroSequenceController : MonoBehaviour
         // Click-to-wake on the classic eyelids. Pure black first; the prompt
         // fades up after 3 s ONLY if they haven't clicked yet (Sam's timing).
         if (_prompt != null) _prompt.text = "OPEN YOUR EYES — " + PromptGlyphs.PrimaryAction;
+        // Clicks only count once the loading cover has fully faded (from the
+        // main menu it is still over the eyelids for the first second or so);
+        // a click under the cover would light the engines unseen.
+        yield return new WaitUntil(() => LoadingScreen.Instance == null || !LoadingScreen.Instance.IsShowing);
         _clicksArmed = true;
         float promptWait = 0f;
         while (_clicks < 1)
@@ -392,13 +396,14 @@ public class IntroSequenceController : MonoBehaviour
         if (_prompt != null) _prompt.gameObject.SetActive(false);
         yield return new WaitUntil(() => _openness >= 0.995f);
 
-        // Eyes fully open: a 3 s quiet beat inside the pod (Sam's timing),
-        // then it releases the player into the (flying) cabin. From here it
-        // is the normal travel flow — the hover arrives ~30 s after the
-        // first blink, the cockpit monitor is already on the landing screen,
-        // and the player walks over, presses F, and sets it down.
+        // Eyes fully open: a short quiet beat inside the pod (Sam, 2026-09-15:
+        // one second after the fade-in; it was 3 s), then it releases the
+        // player into the (flying) cabin. From here it is the normal travel
+        // flow — the hover arrives ~30 s after the first blink, the cockpit
+        // monitor is already on the landing screen, and the player walks
+        // over, presses F, and sets it down.
         PlayerController.isInDialogue = false;
-        yield return new WaitForSeconds(3f);
+        yield return new WaitForSeconds(podDoorDelayAfterEyesOpen);
         if (podDoor != null) podDoor.OpenHold();
         ShuttleWakeActive = false;   // pod systems resume once the door is open
         _running = false;
@@ -684,5 +689,9 @@ public class IntroSequenceController : MonoBehaviour
 
     [Header("Staged move-speed ramp")]
     [SerializeField] float moveScaleStart = 0.15f;     // walk speed at the first unlock, when cursor/look returns (post-Line03). groggyMoveScale (0.5) is the mid step after the reassurance line; 100% comes at the final handoff.
+
+    [Header("Shuttle wake intro")]
+    [Tooltip("Seconds after the eyes are fully open before the stasis pod door opens. Sam, 2026-09-15: one second after the fade-in (was a 3 s beat).")]
+    [SerializeField] float podDoorDelayAfterEyesOpen = 1f;
 
 }

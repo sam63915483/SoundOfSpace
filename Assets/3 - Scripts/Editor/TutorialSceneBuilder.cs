@@ -58,7 +58,7 @@ public static class TutorialSceneBuilder
 
     // Same GUIDs the gameplay scene / PlanetGalleryBuilder use, so this file
     // has no path into packs that might move.
-    const string SkyboxMatGuid     = "e3d301707e23ccd4e84049a21e148e54"; // ESO Milky Way
+    const string SkyboxMatGuid     = "e3d301707e23ccd4e84049a21e148e54"; // Starmap 2020 Skybox (NASA 8k panoramic; was the ESO Milky Way cubemap until 2026-09-15 — same asset, same GUID)
     const string GreenMatGuid      = "ac038ee5893cf4c648f7a602051dfc36"; // Green.mat — the edit-mode placeholder sphere
     const string SunMatGuid        = "cec4db5828ab9439e899c191ec38b27a"; // Sun.mat (emissive Standard)
     const string ShuttlePrefabGuid = "407ee2e645e2e124a8729ec234a84f8e"; // Shuttle_Lander.prefab
@@ -68,14 +68,14 @@ public static class TutorialSceneBuilder
     const string HAShadingGuid     = "14d46b34a29044212ba2b6855e8e2fdd";
     const string HAAtmosphereGuid  = "828f0f31423494b5d9315f79af16274d";
     const string HAOceanGuid       = "2dda04ece1bc5461c9c060d959433048";
-    const string TutorialEarthDir  = "Assets/5 - External Imports/Celestial Body/Solar System/Tutorial Earth";
+    public const string TutorialEarthDir  = "Assets/5 - External Imports/Celestial Body/Solar System/Tutorial Earth";
 
-    const float BoxSize       = 350f;    // Sam, round 4: 200 → 350
+    public const float BoxSize = 350f;   // Sam, round 4: 200 → 350
     const float WallBelow     = 100f;    // panes reach this far below y = 0 (terrain dips)
     const float PlanetRadius  = 750f;    // Sam, round 5: half of 1500 (1.5× Cyclops)
     const float HARadius      = 200f;    // Humble Abode's radius — metre-valued spawner knobs scale by PlanetRadius / HARadius
     const float PlanetGravity = 8f;      // Humble Abode's surfaceGravity
-    const string PlanetName   = "Humble Abode";
+    public const string PlanetName = "Humble Abode";
     const int   BodyLayer     = 10;      // "Body"
     const int   SunLayer      = 11;      // "Sun"
     const int   UILayer       = 5;
@@ -151,7 +151,8 @@ public static class TutorialSceneBuilder
         AddToBuildSettings();
         AssetDatabase.Refresh();
         Debug.Log("[TutorialScene] Built → " + ScenePath + " (added to Build Settings, enabled). " +
-                  "Open via Tools ▸ Solar System ▸ Open Tutorial Scene and press Play, or TUTORIAL on the main menu.");
+                  "Open via Tools ▸ Solar System ▸ Open Tutorial Scene and press Play, or TUTORIAL on the main menu. " +
+                  "If the planet spot, radius or the grass seed/band changed, re-run Tools ▸ Solar System ▸ Bake Tutorial Grass.");
     }
 
     [MenuItem("Tools/Solar System/Open Tutorial Scene")]
@@ -172,7 +173,7 @@ public static class TutorialSceneBuilder
         // washes a real planet out (PlanetGalleryBuilder's note).
         var skybox = AssetDatabase.LoadAssetAtPath<Material>(AssetDatabase.GUIDToAssetPath(SkyboxMatGuid));
         if (skybox != null) RenderSettings.skybox = skybox;
-        else Debug.LogWarning("[TutorialScene] ESO Milky Way skybox material not found — sky will be black.");
+        else Debug.LogWarning("[TutorialScene] Starmap 2020 skybox material not found — sky will be black.");
         RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
         RenderSettings.ambientLight = Color.black;
         RenderSettings.fog = false;
@@ -295,7 +296,13 @@ public static class TutorialSceneBuilder
             if (grass != null)
             {
                 grass.onlyBodyName = PlanetName;
-                grass.bakedGrass = null;        // Humble Abode's blob is body-local at r = 200; stream live here
+                // Humble Abode's blob is body-local at r = 200 and useless here. The
+                // tutorial planet gets its OWN blob (Tools ▸ Solar System ▸ Bake
+                // Tutorial Grass) so the grass runs resident like the real game —
+                // no streaming, no pop-in. Until it exists the grass streams live.
+                grass.bakedGrass = AssetDatabase.LoadAssetAtPath<TextAsset>(TutorialGrassBake.BlobPath);
+                if (grass.bakedGrass == null)
+                    Debug.LogWarning("[TutorialScene] " + TutorialGrassBake.BlobPath + " missing — the tutorial grass will STREAM (pop-in). Run Tools ▸ Solar System ▸ Bake Tutorial Grass.");
                 // Grass only seats between waterMargin and maxHeightAboveWater ABOVE SEA
                 // LEVEL, in metres. Humble Abode's 1…15 m covers its lowlands; on a
                 // planet PlanetRadius/HARadius× bigger the same band is a shoreline

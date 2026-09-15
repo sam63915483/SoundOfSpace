@@ -29,7 +29,7 @@ public class TutorialDirector : MonoBehaviour
     public float departAltitude = 330f;
     [Tooltip("Seconds from the start of the descent to the 100 m hover. The real intro uses 30 s over 4 km; the box is 230 m, so shorter.")]
     public float descentSeconds = 14f;
-    [Tooltip("Seconds after load before the stasis pod door opens.")]
+    [Tooltip("Seconds after the loading screen has fully faded out before the stasis pod door opens.")]
     public float doorOpenDelay = 1f;
 
     [Header("Diagnostics")]
@@ -97,6 +97,10 @@ public class TutorialDirector : MonoBehaviour
 
         pilot.LaunchIntroApproach(descentSeconds);   // engines light, descent begins
 
+        // The door waits for the cover to be GONE (the fade takes a second on
+        // its own), then doorOpenDelay more — Sam, 2026-09-15: "open a second
+        // after the fade in plays". Before this it opened as the fade ended.
+        yield return new WaitUntil(() => LoadingScreen.Instance == null || !LoadingScreen.Instance.IsShowing);
         yield return new WaitForSeconds(doorOpenDelay);
         PlayerController.isInDialogue = false;
         if (podDoor != null) podDoor.OpenHold();

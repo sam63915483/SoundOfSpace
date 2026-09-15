@@ -1756,7 +1756,19 @@ public class InstancedGrassRenderer : MonoBehaviour
         cullCompute.SetInt(_csCountId, count);
         cullCompute.Dispatch(_gpuKernel, Mathf.Max(1, (count + 63) / 64), 1, 1);
 
-        var bounds = new Bounds(viewerWorld, Vector3.one * (far * 2f + 60f));
+        // ⚠️ Centre the draw's bounds on the PLANET, never on the viewer (Sam,
+        // 2026-09-15: "translucent grass in the middle of my astronaut" — a blade
+        // cluster pinned to the player, world-aligned, flipped on the far side of
+        // the planet, gone on F11). Unity uses bounds.center as the object
+        // position for any pass that runs WITHOUT the procedural per-blade setup
+        // (a depth/shadow-style pass of the surface shader), so every blade in
+        // that pass collapsed onto the viewer; only its depth reached the screen,
+        // which the atmosphere post then tinted in blade shapes. With the centre
+        // at the planet's core the phantom sits underground where nothing can
+        // see it. Culling is unaffected: the box spans the whole planet plus the
+        // grass range, and the viewer is always inside it.
+        float bodyR = _body.radius;
+        var bounds = new Bounds(_body.transform.position, Vector3.one * ((bodyR + far) * 2f + 60f));
         for (int m = 0; m < grassMeshes.Length && m < GpuMeshSlots; m++)
         {
             ComputeBuffer.CopyCount(_gpuVis[m], _gpuArgs[m], 4);
@@ -1802,10 +1814,16 @@ public class InstancedGrassRenderer : MonoBehaviour
     //
     // Caller (PlanetBakeTool) supplies the body and a terrain collider (the preview
     // "Terrain Mesh" with a MeshCollider). Returns the blade count; `data` is the blob.
-    public int EditorBake(CelestialBody body, Collider terrainCollider, out byte[] data)
+    // keepRadius > 0 restricts the bake to cells whose anchor lies within that
+    // many metres (chord) of keepCentreLocal, a BODY-LOCAL point. The tutorial
+    // box uses it: its planet is r = 750 and only the 350 m box is ever seen,
+    // so a whole-sphere bake would be ~14x Humble Abode's blob for nothing.
+    public int EditorBake(CelestialBody body, Collider terrainCollider, out byte[] data,
+                          Vector3 keepCentreLocal = default, float keepRadius = 0f)
     {
         data = null;
         if (body == null || terrainCollider == null) return 0;
+        float keepRadiusSq = keepRadius > 0f ? keepRadius * keepRadius : -1f;
         EnsureMeshInit();
         if (grassMeshes.Length == 0) return 0;
 
@@ -1834,6 +1852,7 @@ public class InstancedGrassRenderer : MonoBehaviour
             if (!CellHasGrass(face, cu, cv, ccfu, ccfv, r)) continue;
 
             Vector3 localAnchor = SpawnerCubeface.FaceUVToDirection(face, ccfu, ccfv) * r;
+            if (keepRadiusSq > 0f && (localAnchor - keepCentreLocal).sqrMagnitude > keepRadiusSq) continue;
             Cell cell = BuildCell(face, cu, cv, faceUVPerCell, center, r, oceanR, w2l, localAnchor);
             if (cell.local.Count > 0)
             {

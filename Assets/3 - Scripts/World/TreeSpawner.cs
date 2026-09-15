@@ -62,6 +62,17 @@ public class TreeSpawner : MonoBehaviour
     [Tooltip("Per-tree extra vertical stretch on top of the size multiplier. The variants are already authored tall (Sam likes the tall look); this only adds variety.")]
     public Vector2 stretchRange = new Vector2(0.9f, 1.15f);
 
+    // Sam, 2026-09-15: "1.3x more trees". One knob that scales BOTH the seed's
+    // per-cell chance (so more cells hold a tree — every existing tree keeps its
+    // cell, the hash test only admits more) AND the streamed cap (so the extra
+    // trees actually appear when the cap was what limited the forest). Lives in
+    // code on purpose: the scene's serialized treeSpawnChance / maxTrees stay as
+    // Sam tuned them and this multiplies on top. PlanetOxygen's
+    // treesForFullO2PerMillionSqm is scaled by the same factor to keep O2 where it was.
+    [Header("Density (2026-09-15)")]
+    [Tooltip("Multiplies the per-cell tree chance and the tree cap. 1 = Sam's 2026-09-04 forest; 1.3 = 30% more trees.")]
+    public float densityMultiplier = 1.3f;
+
     class BodyState
     {
         public CelestialBody body;
@@ -198,6 +209,7 @@ public class TreeSpawner : MonoBehaviour
             ? Mathf.Clamp(inputSettings.viewDistance, 100f, 1000f)
             : spawnRadius;
         int baseCap = (inputSettings != null) ? Mathf.Clamp(inputSettings.maxTrees, 1, 1000) : maxTrees;
+        baseCap = Mathf.Max(1, Mathf.RoundToInt(baseCap * Mathf.Max(0f, densityMultiplier)));
         int effectiveMax = Mathf.Max(baseCap, Mathf.RoundToInt(baseCap * (effectiveRadius / BaselineRadius)));
 
         for (int s = 0; s < bodies.Count; s++) DespawnOutOfRange(bodies[s], playerPos, effectiveRadius);
@@ -309,7 +321,7 @@ public class TreeSpawner : MonoBehaviour
     bool CellHasTree(int face, int cellU, int cellV)
     {
         uint h = SpawnerCubeface.Hash(seed, face, cellU, cellV, 1);
-        return (h & 0xFFFFu) / 65535f < treeSpawnChance;
+        return (h & 0xFFFFu) / 65535f < Mathf.Clamp01(treeSpawnChance * densityMultiplier);
     }
 
     bool TryComputeTreePlacement(BodyState entry, int face, int cellU, int cellV, float faceUVPerCell,

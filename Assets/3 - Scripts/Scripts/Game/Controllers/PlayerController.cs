@@ -729,7 +729,11 @@ public class PlayerController : GravityObject
 
 		// Look input — blocked during dialogue or map so camera stays still while UI panels are open.
 		// Mouse and right-stick are accumulated separately because each has its own sensitivity slider.
-		if (!isInDialogue && !isMapOpen && !isInModalSlotUI && !uiHasFocus && !phoneBlocksLook && !PoolShotSession.IsActive)
+		// The shuttle wake / tutorial box hold isInDialogue while the pod door is
+		// shut purely as a movement pin (the rider pose lock in FixedUpdate); the
+		// player may still look around inside the pod (Sam, 2026-09-15).
+		bool dialogueBlocksLook = isInDialogue && !IntroSequenceController.ShuttleWakeActive;
+		if (!dialogueBlocksLook && !isMapOpen && !isInModalSlotUI && !uiHasFocus && !phoneBlocksLook && !PoolShotSession.IsActive)
 		{
 			yaw   += TutorialGate.GetAxisRaw("Mouse X", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.x;
 			pitch -= TutorialGate.GetAxisRaw("Mouse Y", TutorialAbility.MouseLook) * inputSettings.mouseSensitivity / 10 * mouseSensitivityMultiplier * SwingLookScale.y;
@@ -2706,6 +2710,15 @@ public class PlayerController : GravityObject
 			return rb.velocity + smoothVelocity;
 		}
 	}
+
+	/// <summary>
+	/// ONLY the walking-input vector (world space, gravity-horizontal): what the
+	/// player is deliberately doing with WASD/stick, applied via rb.MovePosition.
+	/// Nothing physics adds (orbit, gravity, depenetration nudges) is in here.
+	/// RiderReleaseBleed carries its camera hold along with this so a player who
+	/// walks out of the shuttle during the release seam keeps their head.
+	/// </summary>
+	public Vector3 WalkVelocity => smoothVelocity;
 
 	/// <summary>
 	/// The celestial body the player is currently gravity-aligned to (the

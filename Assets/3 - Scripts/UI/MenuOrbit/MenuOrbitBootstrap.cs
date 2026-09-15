@@ -12,7 +12,7 @@ using UnityEngine;
 /// </summary>
 public class MenuOrbitBootstrap : MonoBehaviour
 {
-    [Tooltip("The gameplay scene's skybox (ESO Milky Way). Additive scenes don't " +
+    [Tooltip("The gameplay scene's skybox (Starmap 2020 Skybox — NASA 8k panoramic since 2026-09-15). Additive scenes don't " +
              "contribute RenderSettings — only the ACTIVE scene's lighting applies, " +
              "and in the menu flow that's MainMenu's Default-Skybox — so the " +
              "bootstrap applies the real sky by hand.")]

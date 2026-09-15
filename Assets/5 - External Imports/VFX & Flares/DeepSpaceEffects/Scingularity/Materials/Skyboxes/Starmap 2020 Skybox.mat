@@ -1,0 +1,63 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Starmap 2020 Skybox
+  m_Shader: {fileID: 4800000, guid: 4313ba244d457384ca64fbc81aa759ce, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords:
+  - _MAPPING_LATITUDE_LONGITUDE_LAYOUT
+  - _STARS_ON
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: cff78d2dd43ce394bb4a109f65e801a2, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex:
+        m_Texture: {fileID: 8900000, guid: 2e29eeea216ff3d469445fa983f0d9b1, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Exposure: 1
+    - _ImageType: 0
+    - _Layout: 0
+    - _Mapping: 1
+    - _MirrorOnBack: 0
+    - _Rotation: 0
+    - _SpikeLength: 9
+    - _SpikePulse: 0.5
+    - _SpikeStrength: 1
+    - _SpikeThreshold: 0.5
+    - _SpikeThreshold8: 0.82
+    - _StarBrightness: 2
+    - _StarCap: 1
+    - _StarColorVariation: 0.5
+    - _StarDensity: 0.06
+    - _StarDensityDim: 0.05
+    - _StarGridBright: 40
+    - _StarGridDim: 110
+    - _StarSeed: 7
+    - _StarSize: 1.3
+    - _StarTwinkle: 0.45
+    - _StarTwinkleSpeed: 2
+    - _Stars: 1
+    m_Colors:
+    - _Tint: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}
+  m_BuildTextureStacks: []

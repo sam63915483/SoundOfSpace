@@ -267,7 +267,9 @@ public class PlanetOxygen : MonoBehaviour
     // cells per cube face, x0.75/0.7), so this scales by the same factor to keep
     // the surface O2 curve where it was tuned (HA ~55%, wild-respawn gate 0.75).
     // ANY future change to TreeSpawner.cellSize / treeSpawnChance must rescale this.
-    [SerializeField] float treesForFullO2PerMillionSqm = 2300f;
+    // 2026-09-15: 2300 -> 2990. TreeSpawner.densityMultiplier 1.3 (Sam: "1.3x more
+    // trees") admits 30% more seed cells, so the same x1.3 here keeps HA at ~55%.
+    [SerializeField] float treesForFullO2PerMillionSqm = 2990f;
     [Tooltip("Log each planet's true tree count + computed surface O2 once, to help tuning. Turn off for release.")]
     [SerializeField] bool logSurfaceO2 = true;
 

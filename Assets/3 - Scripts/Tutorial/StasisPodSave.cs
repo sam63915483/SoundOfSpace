@@ -113,6 +113,15 @@ public class StasisPodSave : MonoBehaviour
         // 3s of load" read as a save-load and fired the DOWNLOADING wake
         // ritual over the black eyelids (and opened the pod door early).
         if (IntroSequenceController.ShuttleWakeActive) return;
+        // Nothing is decided under the loading cover (Sam, 2026-09-15: the pod
+        // door was opening BEFORE the fade-in finished). The tutorial authors the
+        // player inside the sealed pod and the new game spawns them there, so
+        // this Update saw "Deep + closed" on frame 1 and fired the load-wake —
+        // which opens the door — before TutorialDirector / the wake intro had
+        // raised ShuttleWakeActive (both do so a frame or two later). Waiting
+        // for the cover to be GONE means those gates are up first, and a real
+        // load-wake (below) opens the door after the fade, not under it.
+        if (LoadingScreen.Instance != null && LoadingScreen.Instance.IsShowing) return;
 
         // Boot window: while the save restore is still settling, "Outside"
         // readings are untrusted (the player may simply not be teleported yet)
@@ -199,6 +208,10 @@ public class StasisPodSave : MonoBehaviour
         {
             RestoreVitalsToFull();
             TutorialGate.UnlockAll();
+            // Door: a beat after the fade-in has fully finished (Sam, 2026-09-15),
+            // same timing as the tutorial and the new game.
+            yield return new WaitUntil(() => LoadingScreen.Instance == null || !LoadingScreen.Instance.IsShowing);
+            yield return new WaitForSeconds(wakeDoorDelay);
             if (_door != null) _door.OpenHold();
             _running = false;
             yield break;
@@ -697,4 +710,8 @@ public class StasisPodSave : MonoBehaviour
         if (_running) TutorialGate.UnlockAll();
         DestroyOverlay();
     }
+
+    // Appended at the END (CLAUDE.md: never mid-class).
+    [Tooltip("Load-wake: seconds after the loading screen has fully faded before the pod door opens. Sam, 2026-09-15: one second, matching the tutorial and the new game.")]
+    public float wakeDoorDelay = 1f;
 }
