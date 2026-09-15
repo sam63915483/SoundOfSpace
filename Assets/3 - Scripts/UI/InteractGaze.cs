@@ -304,11 +304,13 @@ public static class InteractGaze
         _hitTf = null;
 
         Ray ray = cam.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f));
+        // PlayerAimCast, not Physics: in third person (V) the camera sits
+        // behind the astronaut and a plain cast lands on their back.
         bool hit = AimRadius > 0.001f
-            ? Physics.SphereCast(ray, AimRadius, out RaycastHit h, MaxDistance,
-                                 Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
-            : Physics.Raycast(ray, out h, MaxDistance,
-                              Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
+            ? PlayerAimCast.SphereCast(ray, AimRadius, out RaycastHit h, MaxDistance,
+                                       Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore)
+            : PlayerAimCast.Raycast(ray, out h, MaxDistance,
+                                    Physics.DefaultRaycastLayers, QueryTriggerInteraction.Ignore);
         if (hit && h.collider != null)
         {
             _hasHit = true;

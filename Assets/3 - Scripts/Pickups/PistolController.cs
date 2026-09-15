@@ -420,10 +420,10 @@ public class PistolController : MonoBehaviour
 
         // The camera pistolHoldPosition hangs under — the frame the aimed pose
         // is derived from. Cached at equip, never searched per-frame.
-        _holdCamera = null;
-        for (Transform t = pistolHoldPosition; t != null; t = t.parent)
-            if (t.GetComponent<Camera>() != null) { _holdCamera = t; break; }
-        if (_holdCamera == null && Camera.main != null) _holdCamera = Camera.main.transform;
+        // The first-person EYE, not the rendering camera: in third person (V)
+        // the camera is behind the astronaut and the aimed pose must stay on
+        // the head. Identical to the camera in first person.
+        _holdCamera = CameraTransformFX.ViewFrameOf(pistolHoldPosition);
 
         var pivotGo = new GameObject("PistolPivot");
         pivotGo.transform.SetParent(rigGo.transform, false);
@@ -586,7 +586,7 @@ public class PistolController : MonoBehaviour
 
         Vector3 endPoint = origin + forward * range;
         bool killCamTookShot = false;
-        if (Physics.Raycast(origin, forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore))
+        if (PlayerAimCast.Raycast(origin, forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore))
         {
             endPoint = hit.point;
             var damageable = hit.collider.GetComponentInParent<IDamageable>();

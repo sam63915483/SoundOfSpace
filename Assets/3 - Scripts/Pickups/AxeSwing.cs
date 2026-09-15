@@ -227,8 +227,7 @@ public class AxeSwing : MonoBehaviour
         _windupTimer = _armedTime = _shakePhase = _groundLift = _wallPull = _reachBlend = _slashBlendVelocity = _prevArcProgress = 0f;
         _cameraKickVelocity = Vector2.zero;
         _comboStreak = 0;
-        var cam = rig != null ? rig.GetComponentInParent<Camera>() : null;
-        _camT = cam != null ? cam.transform : null;
+        _camT = rig != null ? CameraTransformFX.ViewFrameOf(rig) : null;   // the eye, not the chase camera
         _holding = _slashMode = false;
         if (sweep != null) sweep.OnHitLanded = Disarm;
     }

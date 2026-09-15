@@ -118,7 +118,7 @@ public class PlayerPickup : MonoBehaviour
         // part under the crosshair doesn't demand pixel-perfect aim. Triggers
         // are hit too (the parts use "PickupHelper" trigger children).
         bool hitSomething = Physics.SphereCast(ray, PickupCastRadius, out RaycastHit hit,
-                                               pickupRange, pickupLayer, QueryTriggerInteraction.Collide);
+                                               pickupRange + PlayerAimCast.ExtraReach, pickupLayer, QueryTriggerInteraction.Collide);
         bool isLookingAtPickup = false;
 
         if (hitSomething)

@@ -281,7 +281,11 @@ public static class HeldItemResolver
         var cam = pc.GetComponentInChildren<Camera>(true);
         if (cam == null) return false;
 
-        camInRoot = pc.transform.InverseTransformPoint(cam.transform.position);
+        // Measure against the first-person EYE, not the rendering camera: in
+        // third person (V) the camera is metres behind the head while the hold
+        // points stay on the eye. Same transform as the camera in first person.
+        Transform eye = CameraTransformFX.Eye != null ? CameraTransformFX.Eye : cam.transform;
+        camInRoot = pc.transform.InverseTransformPoint(eye.position);
 
         // ResolveSharedHoldPoint deliberately avoids the water bottle's own hold
         // field, which points at a BONE and would park items down at the side —
@@ -290,7 +294,7 @@ public static class HeldItemResolver
         if (hold == null) return false;
 
         Vector3 world = hold.TransformPoint(ViewmodelMotor.ReferenceRestOffset(pc.gameObject));
-        itemInCam = cam.transform.InverseTransformPoint(world);
+        itemInCam = eye.InverseTransformPoint(world);
         return true;
     }
 

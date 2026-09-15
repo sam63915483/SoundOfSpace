@@ -217,12 +217,9 @@ public class HeldItemViewmodel : MonoBehaviour
         return null;
     }
 
-    static Transform ResolveCamera(Transform from)
-    {
-        for (Transform t = from; t != null; t = t.parent)
-            if (t.GetComponent<Camera>() != null) return t;
-        return Camera.main != null ? Camera.main.transform : null;
-    }
+    // The first-person eye (CameraTransformFX.Eye), which is the camera in
+    // first person and stays on the head in third person.
+    static Transform ResolveCamera(Transform from) => CameraTransformFX.ViewFrameOf(from);
 
     Quaternion _baseContentRot = Quaternion.identity;
     float _eatBlend;

@@ -301,7 +301,7 @@ public class GrappleGunController : MonoBehaviour
         _anchorParent = null;
         _anchorHadParent = false;
         Transform frame = null;
-        if (Physics.Raycast(origin, forward, out RaycastHit hit, range, ~0, QueryTriggerInteraction.Ignore)
+        if (PlayerAimCast.Raycast(origin, forward, out RaycastHit hit, range + PlayerAimCast.ExtraReach, ~0, QueryTriggerInteraction.Ignore)
             && !hit.collider.transform.IsChildOf(transform))
         {
             _anchorParent = hit.collider.transform;
@@ -564,10 +564,7 @@ public class GrappleGunController : MonoBehaviour
             _motor.Attach(rigGo.transform, holdPositionOffset);
         }
 
-        _holdCamera = null;
-        for (Transform t = gunHoldPosition; t != null; t = t.parent)
-            if (t.GetComponent<Camera>() != null) { _holdCamera = t; break; }
-        if (_holdCamera == null && Camera.main != null) _holdCamera = Camera.main.transform;
+        _holdCamera = CameraTransformFX.ViewFrameOf(gunHoldPosition);   // the eye, see PistolController
 
         var pivotGo = new GameObject("GrapplePivot");
         pivotGo.transform.SetParent(rigGo.transform, false);

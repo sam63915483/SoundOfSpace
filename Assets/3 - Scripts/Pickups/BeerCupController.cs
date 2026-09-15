@@ -85,7 +85,7 @@ public class BeerCupController : MonoBehaviour
     BeerLiquid _liquid;
     ViewmodelMotor _motorRig;
     AudioSource _drinkSource;
-    Camera _cam;
+    Transform _cam;   // the first-person eye (or the camera before it exists)
     float _nextCamRetry;
     float _drinkBlend, _drinkBobPhase;
     float _nextEmptyHint;
@@ -253,13 +253,13 @@ public class BeerCupController : MonoBehaviour
         OnCupEmptied?.Invoke();
     }
 
-    Camera Cam(Transform hold)
+    Transform Cam(Transform hold)
     {
-        if (_cam != null && _cam.isActiveAndEnabled) return _cam;
-        if (hold != null) { _cam = hold.GetComponentInParent<Camera>(); if (_cam != null) return _cam; }
+        if (_cam != null) return _cam;
+        if (hold != null) { _cam = CameraTransformFX.ViewFrameOf(hold); if (_cam != null) return _cam; }   // the eye
         if (Time.unscaledTime < _nextCamRetry) return null;
         _nextCamRetry = Time.unscaledTime + 1f;
-        _cam = Camera.main;
+        _cam = Camera.main != null ? Camera.main.transform : null;
         return _cam;
     }
 
@@ -288,7 +288,7 @@ public class BeerCupController : MonoBehaviour
         Transform hold = _motorRig.transform.parent;
         var cam = Cam(hold);
         if (cam != null && hold != null)
-            target = hold.InverseTransformPoint(cam.transform.TransformPoint(drinkCamPoint)) - _motorRig.restOffset;
+            target = hold.InverseTransformPoint(cam.TransformPoint(drinkCamPoint)) - _motorRig.restOffset;
 
         _drinkBobPhase += Time.deltaTime * drinkBobSpeed;
         float bob = Mathf.Sin(_drinkBobPhase * Mathf.PI * 2f) * drinkBobAmount * k;

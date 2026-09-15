@@ -232,7 +232,10 @@ public class NetworkAvatarDetail : NetworkBehaviour
         // localEulerAngles is 0..360; fold to a signed pitch. PlayerController
         // writes cam.localEulerAngles = right * smoothPitch, so POSITIVE is
         // looking DOWN — which is also the sign convention the remote applies.
-        float pitch = _ownerCam.localEulerAngles.x;
+        // The first-person eye when it exists: in third person (V) the camera's
+        // own local pitch includes the chase-view tilt, the eye's is the real look.
+        Transform look = CameraTransformFX.Eye != null ? CameraTransformFX.Eye : _ownerCam;
+        float pitch = look.localEulerAngles.x;
         if (pitch > 180f) pitch -= 360f;
         pitch = Mathf.Clamp(pitch, -HeadPitchClamp, HeadPitchClamp);
 

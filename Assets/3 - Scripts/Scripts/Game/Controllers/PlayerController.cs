@@ -229,6 +229,18 @@ public class PlayerController : GravityObject
 	public float SmoothFreePitch => smoothFreePitch;
 	public float SmoothFreeRoll  => smoothFreeRoll;
 
+	// Jetpack thruster telemetry (JetpackThrusters reads these, 2026-09-15).
+	/// <summary>Sum of the unit thrust directions applied this physics step, in
+	/// the player's local frame (+y up boost, -y down thrust, xz directional).
+	/// Zero when no boost is firing.</summary>
+	public Vector3 ThrustLocal { get; private set; }
+	/// <summary>Body turn rate, deg/s, as a right-handed angular velocity about
+	/// the player's local axes (x pitch nose-down, y yaw right, z roll). Yaw is
+	/// always live (the mouse always turns the body); pitch and roll only while
+	/// FreeFloating — on a planet vertical look moves the head, not the body.</summary>
+	public Vector3 FreeLookRateDeg { get; private set; }
+	float _prevRateYaw, _prevRatePitch, _prevRateRoll;
+
 	// How much of smoothYaw the player TRANSFORM has already been rotated by.
 	// HandleMovement advances this to smoothYaw each fixed step, so no input is
 	// dropped when render fps outruns the physics rate (see the note there).
@@ -527,7 +539,9 @@ public class PlayerController : GravityObject
 	void UpdateWaterState()
 	{
 		_waterDepth = WaterDepthAt(rb.position);
-		float eyeUp = cam != null ? (CameraBorrowed ? cameraLocalPos.y : cam.transform.localPosition.y) : 0.7f;
+		// Third person (V) parks the camera metres above the head — keep the
+		// swim "eye" at the astronaut's real eyes, not the chase camera.
+		float eyeUp = cam != null ? (CameraBorrowed || CameraTransformFX.ThirdPerson ? cameraLocalPos.y : cam.transform.localPosition.y) : 0.7f;
 		_eyeDepth   = WaterDepthAt(rb.position + transform.up * eyeUp);
 		_immersed   = Mathf.Clamp01((_waterDepth + kBodyHalfHeight) / (2f * kBodyHalfHeight));
 		_wadeT      = Mathf.Clamp01((_waterDepth + kBodyHalfHeight) / (kBodyHalfHeight + Mathf.Max(0.05f, standDepth)));
@@ -799,6 +813,19 @@ public class PlayerController : GravityObject
 		smoothYaw = Mathf.SmoothDampAngle(smoothYaw, yaw, ref yawSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
 		smoothFreePitch = Mathf.SmoothDampAngle(smoothFreePitch, freePitch, ref freePitchSmoothV, mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
 		smoothFreeRoll  = Mathf.SmoothDampAngle(smoothFreeRoll,  freeRoll,  ref freeRollSmoothV,  mouseSmoothTime, Mathf.Infinity, Time.unscaledDeltaTime);
+		// Body turn rate for the jetpack RCS flames — from the smoothed values so
+		// the flames ramp with the turn instead of flickering with the mouse.
+		// Sign convention matches how HandleMovement consumes them (pitch about
+		// +x, yaw about +y, roll is applied as -angle about +z).
+		{
+			float udt = Mathf.Max(Time.unscaledDeltaTime, 1e-4f);
+			Vector3 rate = new Vector3(
+				FreeFloating ? Mathf.DeltaAngle(_prevRatePitch, smoothFreePitch) : 0f,
+				Mathf.DeltaAngle(_prevRateYaw, smoothYaw),
+				FreeFloating ? -Mathf.DeltaAngle(_prevRateRoll, smoothFreeRoll) : 0f) / udt;
+			_prevRatePitch = smoothFreePitch; _prevRateYaw = smoothYaw; _prevRateRoll = smoothFreeRoll;
+			FreeLookRateDeg = rate;
+		}
 
 		// Camera pitch is written here as well as in HandleMovement so it tracks
 		// the RENDER rate. HandleMovement runs in FixedUpdate, and FixedUpdate's
@@ -1320,6 +1347,7 @@ public class PlayerController : GravityObject
 		bool upBoostActive = false;
 		bool downBoostActive = false;
 		bool dirBoostActive = false;
+		Vector3 thrustLocal = Vector3.zero;
 
 		// Upward Jetpack — gated by jetpackUnlocked (purchased from Alien7).
 		if (jetpackUnlocked && usingJetpack && !typing && TutorialGate.JumpHeld(TutorialAbility.Boost) && jetpackFuelPercent > 0)
@@ -1328,6 +1356,7 @@ public class PlayerController : GravityObject
 			jetpackFuelPercent -= Time.deltaTime / jetpackDuration;
 			rb.AddForce(transform.up * jetpackForce, ForceMode.Acceleration);
 			upBoostActive = true;
+			thrustLocal += Vector3.up;
 		}
 		else
 		{
@@ -1341,6 +1370,7 @@ public class PlayerController : GravityObject
 			downThrustFuelPercent -= Time.deltaTime / downThrustDuration;
 			rb.AddForce(-transform.up * downThrustForce, ForceMode.Acceleration);
 			downBoostActive = true;
+			thrustLocal += Vector3.down;
 		}
 		else
 		{
@@ -1364,6 +1394,7 @@ public class PlayerController : GravityObject
 				if (dirThrustFuelPercent <= 0f) { dirThrustFuelPercent = 0f; dirThrustExhausted = true; }
 				rb.AddForce(transform.TransformDirection(inputVec.normalized) * dirThrustForce, ForceMode.Acceleration);
 				dirBoostActive = true;
+				thrustLocal += inputVec.normalized;
 			}
 		}
 
@@ -1495,6 +1526,7 @@ public class PlayerController : GravityObject
 						if (plannedDV > needMag) force *= needMag / plannedDV;
 						rb.AddForce(force, ForceMode.Acceleration);
 						dirBoostActive = true;
+						thrustLocal += transform.InverseTransformDirection(force.normalized);
 					}
 
 					// In-range + holding O + jetpack unlocked = actively
@@ -1615,6 +1647,7 @@ public class PlayerController : GravityObject
 		_swimUpHeldNow   = swimUpHeld;
 		_swimDownHeldNow = swimDownHeld;
 
+		ThrustLocal = thrustLocal;
 		UpdateLoopAudio(upBoostSource,   upBoostClip,   upBoostActive,   upBoostVolume);
 		UpdateLoopAudio(downBoostSource, downBoostClip, downBoostActive, downBoostVolume);
 		UpdateLoopAudio(dirBoostSource,  dirBoostClip,  dirBoostActive,  dirBoostVolume);

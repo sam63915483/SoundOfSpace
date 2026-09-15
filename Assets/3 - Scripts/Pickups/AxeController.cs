@@ -318,7 +318,9 @@ public class AxeController : MonoBehaviour
         Vector3 origin = cam.transform.position;
         Vector3 forward = cam.transform.forward;
 
-        if (Physics.Raycast(origin, forward, out RaycastHit hit, swingRange, ~0, QueryTriggerInteraction.Ignore))
+        // Third person (V): the camera is behind the head, so skip the
+        // astronaut's own body and extend the reach by that distance.
+        if (PlayerAimCast.Raycast(origin, forward, out RaycastHit hit, swingRange + PlayerAimCast.ExtraReach, ~0, QueryTriggerInteraction.Ignore))
         {
             var damageable = hit.collider.GetComponentInParent<IDamageable>();
             if (damageable != null) { ApplyHit(damageable, forward); return; }

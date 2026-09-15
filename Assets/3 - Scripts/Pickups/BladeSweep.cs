@@ -101,8 +101,7 @@ public class BladeSweep : MonoBehaviour
     {
         _blade = bladeInstance;
         _axe = axe;
-        var cam = bladeInstance != null ? bladeInstance.GetComponentInParent<Camera>() : null;
-        _cam = cam != null ? cam.transform : null;
+        _cam = bladeInstance != null ? CameraTransformFX.ViewFrameOf(bladeInstance) : null;   // the eye, not the chase camera
 
         _samples = edgeLocalPoints;
         _radius = bladeRadius;
