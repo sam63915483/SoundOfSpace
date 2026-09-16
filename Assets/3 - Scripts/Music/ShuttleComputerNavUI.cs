@@ -218,13 +218,60 @@ public partial class ShuttleComputerUI
 
     // ── navigation ───────────────────────────────────────────────────────
 
+    bool _tutNavLogged;
+
     void ShowNav()
     {
+        // THE TUTORIAL BOX HAS ITS OWN NAV (ShuttleComputerTutorialNavUI): the
+        // seven-system deep-range map. The real map answers questions about a
+        // solar system the box does not contain - it holds exactly two bodies,
+        // both pinned, so it draws "the planet you are on and the sun", not
+        // orbiting. That is precisely what was on screen while this gate was
+        // failing.
+        //
+        // ONLY WHILE NOT FLYING. The real NAV view is also the LANDING FEED -
+        // the box opens by making the player fly the shuttle down on this same
+        // screen - so swapping it out mid-descent would replace the landing
+        // controls with a star map. FlightActive is the autopilot's own word for
+        // "in the air" (anything but Parked/Countdown), which is more honest
+        // than testing one phase.
+        if (TutorialNav)
+        {
+            EnsureTutorialNavBuilt();
+            var tutPilot = ShuttleAutopilot.Instance;
+            // ⚠️ NOT FlightActive - it is false during the COUNTDOWN, so this
+            // gate sent ShowNav() straight back into the tutorial map at the one
+            // moment the real NAV view needed to be up. PARKED is the only phase
+            // where no launch has been asked for. (Fixed in the handover first and
+            // missed here, which is why pressing TRAVEL still left the map up.)
+            bool flying = tutPilot != null &&
+                          tutPilot.CurrentPhase != ShuttleAutopilot.Phase.Parked;
+            if (_tutNavView != null && !flying)
+            {
+                if (!_tutNavLogged) { _tutNavLogged = true; Debug.Log("[TutNav] deep-range map shown."); }
+                ShowTutorialNav();
+                return;
+            }
+            if (!_tutNavLogged)
+            {
+                _tutNavLogged = true;
+                Debug.LogWarning($"[TutNav] falling back to the REAL nav map. " +
+                                 $"built={_tutNavView != null} pilot={(tutPilot != null)} flying={flying}");
+            }
+        }
+
         _homeView.SetActive(false);
         _traxView.SetActive(false);
         if (_projectsView != null) _projectsView.SetActive(false);
         if (_inst != null) _inst.Stop();
         SyncPlayButton();
+        // The tutorial box's deep-range map is a FIFTH view on this screen.
+        // Every Show* here hides the other four; this one was added later and
+        // never joined the list, so ShowNav() drew the countdown UNDERNEATH it
+        // ("i still see the same map, but i do see the countdown appear behind
+        // it") and the reverse handover, which waits for this view to go away,
+        // re-ran ShowNav EVERY FRAME - which is what the freeze was.
+        if (_tutNavView != null) _tutNavView.SetActive(false);
         _navView.SetActive(true);
         _navShownPhase = (ShuttleAutopilot.Phase)255;   // force a pane refresh
     }

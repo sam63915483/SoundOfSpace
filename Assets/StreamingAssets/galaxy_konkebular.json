@@ -1,0 +1,18 @@
+{
+  "_generated": "Tools ▸ Solar System ▸ Extract Konkebular for the Deep-Range Map, from Assets/1.6.7.7.7.unity",
+  "_note": "Orbit radii are the scene's RAIL radii normalised so the widest is 8 AU on the map. bodyRadius is CelestialBody.radius, which NavDotRadius sizes the dot from.",
+  "planets": [
+    { "name": "Fiery Twin", "orbitAU": 1.933, "bodyRadius": 300, "periodDays": 2903, "phase": 0, "colour": "#E0673A", "target": false },
+    { "name": "Icey Twin", "orbitAU": 1.933, "bodyRadius": 300, "periodDays": 2903, "phase": 0.382, "colour": "#A8DCEA", "target": false },
+    { "name": "Puddle", "orbitAU": 2.216, "bodyRadius": 50, "periodDays": 3564, "phase": 0.764, "colour": "#3F93AD", "target": false },
+    { "name": "Hearth", "orbitAU": 2.393, "bodyRadius": 45, "periodDays": 3998, "phase": 0.146, "colour": "#71AC5E", "target": false },
+    { "name": "Anvil", "orbitAU": 2.57, "bodyRadius": 70, "periodDays": 4449, "phase": 0.528, "colour": "#A68D6C", "target": false },
+    { "name": "Ember", "orbitAU": 2.746, "bodyRadius": 60, "periodDays": 4915, "phase": 0.91, "colour": "#C74B3C", "target": false },
+    { "name": "Slag", "orbitAU": 2.923, "bodyRadius": 55, "periodDays": 5397, "phase": 0.292, "colour": "#9D6039", "target": false },
+    { "name": "Shard", "orbitAU": 3.1, "bodyRadius": 40, "periodDays": 5894, "phase": 0.674, "colour": "#93A9DA", "target": false },
+    { "name": "Pebble", "orbitAU": 3.276, "bodyRadius": 30, "periodDays": 6405, "phase": 0.056, "colour": "#8D8D8D", "target": false },
+    { "name": "Bruise", "orbitAU": 3.453, "bodyRadius": 42, "periodDays": 6930, "phase": 0.438, "colour": "#7D6C89", "target": false },
+    { "name": "Humble Abode", "orbitAU": 3.934, "bodyRadius": 200, "periodDays": 8427, "phase": 0.82, "colour": "#5FAE82", "target": true },
+    { "name": "Cyclops", "orbitAU": 8, "bodyRadius": 500, "periodDays": 24438, "phase": 0.202, "colour": "#6AA197", "target": false }
+  ]
+}

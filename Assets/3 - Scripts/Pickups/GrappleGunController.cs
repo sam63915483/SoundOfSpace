@@ -295,21 +295,50 @@ public class GrappleGunController : MonoBehaviour
     {
         var cam = Camera.main;
         if (cam == null) return;
-        Vector3 origin = cam.transform.position;
-        Vector3 forward = cam.transform.forward;
+        Vector3 camPos = cam.transform.position;
+        Vector3 camFwd = cam.transform.forward;
+
+        // ── WHERE THE CROSSHAIR IS POINTING, and WHERE THE HOOK LEAVES FROM,
+        //    are two different places in third person (Sam, 2026-09-16: "when i
+        //    go to third person mode and try to use the grapple gun, it doesnt
+        //    shoot where my cursor is pointing").
+        //
+        // The crosshair is screen centre, so only the CAMERA ray can say what it
+        // is on. But the hook leaves the gun muzzle, which hangs off the EYE and
+        // so stays on the astronaut's head whatever the camera does. In first
+        // person those two are the same place and the difference never showed;
+        // in third person CameraTransformFX pushes the camera metres back and
+        // re-aims it at a point ahead of the head, so firing along the camera's
+        // forward FROM the muzzle sent the hook off at an angle.
+        //
+        // So: aim with the camera, fire from the muzzle, and take the direction
+        // from the muzzle TO the aimed point.
+        Vector3 muzzle = MuzzleWorld(camPos + camFwd * 0.5f);
+        float reach = range + PlayerAimCast.ExtraReach;
+
+        bool struck = PlayerAimCast.Raycast(camPos, camFwd, out RaycastHit hit, reach, ~0, QueryTriggerInteraction.Ignore)
+                      && !hit.collider.transform.IsChildOf(transform);
+        Vector3 aimPoint = struck ? hit.point : camPos + camFwd * reach;
+
+        Vector3 toAim = aimPoint - muzzle;
+        // Degenerate only if the muzzle is sitting on the aim point; keep the
+        // camera's answer rather than normalising a zero vector.
+        Vector3 forward = toAim.sqrMagnitude > 1e-6f ? toAim.normalized : camFwd;
 
         _anchorParent = null;
         _anchorHadParent = false;
         Transform frame = null;
-        if (PlayerAimCast.Raycast(origin, forward, out RaycastHit hit, range + PlayerAimCast.ExtraReach, ~0, QueryTriggerInteraction.Ignore)
-            && !hit.collider.transform.IsChildOf(transform))
+        if (struck)
         {
             _anchorParent = hit.collider.transform;
             _anchorHadParent = true;
             // Bury the prongs: the hook's origin (rope end) sits a little short of the surface.
             _anchorLocal = _anchorParent.InverseTransformPoint(hit.point - forward * (GrappleGunModel.HookLength * 0.6f));
             frame = _anchorParent;
-            _flightSpeed = FlightSpeedFor(hit.distance);
+            // Distance the HOOK actually travels, which is muzzle-to-anchor.
+            // hit.distance is measured from the camera and in third person that
+            // is metres longer, so the hook used to fly too fast for its trip.
+            _flightSpeed = FlightSpeedFor(toAim.magnitude);
         }
         else
         {
@@ -318,7 +347,7 @@ public class GrappleGunController : MonoBehaviour
             // wrong twice over: the floating origin shifts the world under it,
             // and in orbit the player is moving at tens of m/s, so the hook
             // appeared to veer off at random.
-            CelestialBody body = NearestBody(origin);
+            CelestialBody body = NearestBody(muzzle);
             Vector3 shooterVel = Vector3.zero;
             if (_playerController != null && _playerController.Rigidbody != null)
                 shooterVel = _playerController.Rigidbody.velocity;
@@ -328,7 +357,7 @@ public class GrappleGunController : MonoBehaviour
             _missTravelled = 0f;
         }
 
-        Vector3 start = MuzzleWorld(origin + forward * 0.5f);
+        Vector3 start = muzzle;
         _ball = CreateBall();
         _ball.transform.position = start;
         _ball.transform.rotation = Quaternion.LookRotation(forward, cam.transform.up);

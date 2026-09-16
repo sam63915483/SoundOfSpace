@@ -204,6 +204,42 @@ public static class FeatureVault
     /// cooking, and mushroom planting.
     public static readonly bool FreeformBuilding = false;
 
+    /// BASIC BUILDING - the build menu and the phone's Build app come back, but
+    /// the catalogue offers exactly two blueprints: TORCH and BONFIRE. Added
+    /// 2026-09-16 for the tutorial box, which asks the player to place a bonfire
+    /// and cook a fish on it; Sam's call was to make it the whole game's rule
+    /// rather than a tutorial special case, because cooking is core loop
+    /// everywhere.
+    ///
+    /// This is a SEPARATE TIER, not an unvaulting of the line above:
+    ///   FreeformBuilding false + BasicBuilding true  -> menu opens, 2 blueprints
+    ///   FreeformBuilding true                        -> the full catalogue, and
+    ///                                                   this flag stops mattering
+    /// So picking the freeform system back up later is still one flag flip with
+    /// no other edits, exactly as the vault promises.
+    ///
+    /// Rows outside BuildMenuUI.BasicBlueprints are NOT DRAWN while this tier is
+    /// active - not dimmed with a padlock, which is the normal Colonizer-lock
+    /// treatment. That treatment is wrong here: the level system is itself
+    /// vaulted, so those rows could never unlock and the menu would be forty
+    /// padlocks deep in things that are never coming.
+    ///
+    /// Torch and Bonfire are already BuildableUnlocks level 0 ("what you land
+    /// with - warmth and light, nothing structural"), so nothing in the lock
+    /// table needed to move. The Grow Pot and Bubble Dome registrars still test
+    /// FreeformBuilding, so neither injects its entry at this tier.
+    public static readonly bool BasicBuilding = true;
+
+    /// True when the build menu should open at all - either tier. Every guard
+    /// that used to read FreeformBuilding alone asks this instead, so there is
+    /// one place to reason about "can the player build".
+    public static bool BuildMenuAvailable => FreeformBuilding || BasicBuilding;
+
+    /// True when the catalogue must be trimmed to the two basics. False once the
+    /// freeform system is unvaulted, which is what makes that flip sufficient on
+    /// its own.
+    public static bool BuildCatalogueIsBasicsOnly => !FreeformBuilding && BasicBuilding;
+
     /// THE LEVEL SYSTEM — the general level, Colonizer, Tree Killer, Tree Daddy,
     /// Gangsta Rep, their phone page, the level-up toast, the grand ceremony and
     /// every level-gated unlock. Vaulted 2026-08-14 with the building system,

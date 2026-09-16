@@ -91,7 +91,7 @@ public static class HeldItemResolver
         if (!Hotbar.IsSelectOnlyItem(slot.id)) return Hotbar.ItemId.None;
         if (Ship.AnyShipPiloted) return Hotbar.ItemId.None;
 
-        if (Hotbar.IsMushroomItem(slot.id)) variant = slot.mushroomSpecies ?? "";
+        if (Hotbar.IsSpeciesItem(slot.id)) variant = slot.mushroomSpecies ?? "";
         // A cassette's variant is its PRINT id, which both machines can resolve
         // through TraxPrints — the shelf and its pressings are world state, so a
         // tape handed across is still the same song on the other screen.
@@ -116,13 +116,14 @@ public static class HeldItemResolver
         GameObject prefab = PrefabFor(id);
         if (prefab != null) return Object.Instantiate(prefab);
 
-        // Mushrooms and spores — the real species model, same as the holder sees.
-        if (Hotbar.IsMushroomItem(id))
+        // Species items — mushrooms, spores and tree saplings. The real species
+        // model, same as the holder sees, so a remote player carrying a birch
+        // sapling is visibly carrying a birch.
+        if (Hotbar.IsSpeciesItem(id))
         {
             // Size is applied by the caller's normaliser; 1 here just means
             // "don't pre-scale", since BuildModel takes a world size.
-            var m = MushroomRegistry.BuildModel(variant, "RemoteHeld_Mushroom", 1f);
-            return m;
+            return Hotbar.BuildSpeciesModel(id, variant, "RemoteHeld_Species", 1f);
         }
 
         // Fish — the rarity prefab. Per-catch colour and weight are NOT synced

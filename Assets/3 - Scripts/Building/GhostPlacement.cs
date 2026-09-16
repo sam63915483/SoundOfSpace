@@ -715,11 +715,16 @@ public class GhostPlacement : MonoBehaviour
         }
         else if (entry.isSapling)
         {
-            if (Hotbar.Instance == null || !Hotbar.Instance.SpendResource(Hotbar.ItemId.Sapling, 1))
+            // SPECIES-PURE (2026-09-16): spend from the stack of THIS tree, not
+            // whichever sapling stack happens to be leftmost. A null species
+            // means "any", which is what a pre-species save or an authored
+            // fallback entry hands over.
+            if (Hotbar.Instance == null ||
+                !Hotbar.Instance.SpendResource(Hotbar.ItemId.Sapling, 1, entry.mushroomSpecies))
             {
                 // Out of saplings: stay in placement mode so the player can chop a
                 // tree for more and come back. Just skip this click.
-                Debug.Log("[GhostPlacement] No saplings to plant; skipped this placement.");
+                Debug.Log("[GhostPlacement] No saplings of that species to plant; skipped this placement.");
                 return;
             }
         }
@@ -776,7 +781,11 @@ public class GhostPlacement : MonoBehaviour
             // back up over time based on the ambient O2 at its spot.
             var sg = real.GetComponent<SaplingGrowth>();
             if (sg == null) sg = real.AddComponent<SaplingGrowth>();
-            sg.Init(parentBody, 0);
+            // The prefab INDEX this species occupies in TreeSpawner.treePrefabs.
+            // This used to be a hardcoded 0 - the other half of why every planted
+            // sapling grew into the same tree. SaplingGrowth stores it, SaplingSave
+            // round-trips it, and the matured tree is spawned from it.
+            sg.Init(parentBody, TreeRegistry.PrefabIndexFor(entry.mushroomSpecies));
             // Tell the other players. This branch was missed when spores were
             // wired up, which is why planted mushrooms appeared for both players
             // and planted TREES did not.
@@ -791,6 +800,13 @@ public class GhostPlacement : MonoBehaviour
 
         if (entry.addBonfireInteractionOnPlace)
         {
+            // Orientation board: "Build a bonfire". This flag is what MAKES a
+            // blueprint a bonfire (it is what bolts the cook interaction on), so
+            // it is the honest test - a fire placed from any catalogue, in any
+            // scene, ticks the line. Complete() is idempotent and one-way, so
+            // placing a second one costs nothing.
+            OrientationObjectives.Complete(OrientationObjectives.Objective.PlaceBonfire);
+
             var bf = real.GetComponent<BonfireInteraction>();
             if (bf == null) bf = real.AddComponent<BonfireInteraction>();
 
@@ -848,6 +864,20 @@ public class GhostPlacement : MonoBehaviour
             s_finishAfterNextPlacement = false;
             Finish();
         }
+        // BONFIRES ARE ONE AT A TIME (Sam, 2026-09-16). Chaining suits walls and
+        // floors, where you are laying out a row; a bonfire is a thing you site
+        // once, and leaving the ghost up meant a careless second click dropped a
+        // second fire and spent another 15 wood. Wanting two is rare enough to be
+        // worth re-opening the menu for.
+        //
+        // Keyed on addBonfireInteractionOnPlace rather than a new field or a name
+        // match, because that flag is what MAKES a blueprint a bonfire - it is
+        // what bolts the cook interaction on - so this holds for a bonfire in any
+        // catalogue, exactly like the orientation objective above.
+        else if (entry.addBonfireInteractionOnPlace)
+        {
+            Finish();
+        }
         // Otherwise keep the ghost ONLY while the player can still afford another.
         // The moment a placement empties them below the cost, end placement so the
         // ghost vanishes instead of dangling as an un-placeable preview.
@@ -866,7 +896,8 @@ public class GhostPlacement : MonoBehaviour
             return Hotbar.Instance != null
                 && Hotbar.Instance.GetMushroomTotal(Hotbar.ItemId.MushroomSapling, e.mushroomSpecies) >= 1;
         if (e.isSapling)
-            return Hotbar.Instance != null && Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Sapling) >= 1;
+            return Hotbar.Instance != null
+                && Hotbar.Instance.GetMushroomTotal(Hotbar.ItemId.Sapling, e.mushroomSpecies) >= 1;
         if (e.woodCost > 0 || e.crystalCost > 0)
         {
             int wood = WoodInventory.Instance != null ? WoodInventory.Instance.Wood : 0;

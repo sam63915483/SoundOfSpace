@@ -63,6 +63,63 @@ priority). Same revert rule.
 
 ---
 
+## ⛔ RULE ZERO — use what exists. Do not rewrite it.
+
+**Sam has systems that work. Writing a second version of one is the most
+expensive mistake available in this repo**, because it looks like progress,
+compiles clean, and only fails in a playtest — his playtest, costing him a build
+and a full run each time.
+
+Written after 2026-09-16, where adding one TRAVEL button to the shuttle computer
+took **five rounds and most of a day**. Not one of those failures was a hard
+problem. Every single one was a hand-written substitute for something already in
+the project:
+
+| I wrote | It already existed | What Sam got |
+|---|---|---|
+| A climb that moved the shuttle + player by hand | `ShuttleAutopilot.RequestTravel` (countdown, door, rider cage, FX) | Letterbox bars, no movement, player falling through the floor |
+| `isInDialogue = true` to "hold the player still" | nothing — that flag RAISES THE LETTERBOX and removes control | A cutscene he never asked for |
+| A fade overlay | — | Main menu stuck black, buttons audible underneath |
+| A fifth computer view, not registered with the other four | `ShowNav/ShowHome/ShowTrax/ShowProjects` each hide the others | Countdown drawn *under* the map; `ShowNav()` called every frame |
+| My own planet list for Konkebular | the real bodies in `1.6.7.7.7.unity` | 4 planets instead of 12 — the dwarfs missing |
+
+### Before writing any sequence of steps, do this
+
+1. **Grep for the thing that already does it.** `RequestTravel`, `CloseForFlight`,
+   `CaptureRiders`, `ResourceDrop.Drop`, `BuildMenuUI.StartPlacementFromPhone`,
+   `OrientationObjectives.Complete` — the verb usually exists already.
+2. **Find the existing CALLER and read it.** The game's own TRAVEL handler
+   (`OnNavTravelClicked`) is four lines. Anything longer than the existing caller
+   is a rewrite wearing a disguise.
+3. **If adding a new case to a set** (a view, an item id, an objective, a
+   buildable), **grep every peer that switches on that set** and join all of
+   them. A new member that only half the switches know about is a latent bug.
+4. **When fixing a predicate, grep the predicate.** `FlightActive` was gated on
+   in two places; fixing one and missing the other cost a whole round.
+
+### If the existing system genuinely does not fit
+
+Say so, in one sentence, and ask. "`RequestTravel` needs a real CelestialBody and
+Konkebular is UI-only" is a fine thing to raise — and the answer was there anyway
+(same-planet relocation is explicitly supported). **Do not quietly build a
+parallel version.** A question costs a minute; a parallel system costs Sam a day
+and leaves him maintaining two things that do the same job.
+
+### Instrument instead of guessing
+
+When a symptom has several possible causes, **make the game print which one**
+before theorising. Two hunts on 2026-09-16 — the ambient fish and the frozen
+player — each survived multiple rounds of confident, wrong reasoning from correct
+readings of the code, and each ended the instant one log line named the failing
+gate (`MovementInputSuppressed` is seven flags OR'd together; the fish field has
+five reject paths). Build logs are at
+`%AppData%\..\LocalLow\DefaultCompany\Solar System 2\Player.log`.
+
+**A bug that costs a full playthrough to reach deserves a skip key shipped with
+the fix** (see `L` in `TutorialDirector`), not another round trip.
+
+---
+
 ## What the game is, right now (Sam, 2026-09-08)
 
 **The core loop is fishing, then flying somewhere else to sell the catch**, because

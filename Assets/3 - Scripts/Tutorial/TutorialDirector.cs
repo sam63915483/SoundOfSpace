@@ -36,8 +36,20 @@ public class TutorialDirector : MonoBehaviour
     [Tooltip("Seconds after touchdown to log how many grass cells are streaming (Sam: grass never showed on the slab).")]
     public float grassReportDelay = 15f;
 
+    /// Metres in from the wall that fish are kept. The box is 350 m across, so
+    /// the half-width is 175; 160 keeps a spawn from landing ON the pane, where
+    /// a fish would clip through the digit rain.
+    const float FishFenceRadius = 160f;
+
     IEnumerator Start()
     {
+        // Fence the ambient fish into the box. The ocean does not stop at the
+        // walls, and the field spawns in a ring around the PLAYER, so without
+        // this most of the fish end up in water the player can see through the
+        // cage and never reach (Sam's playtest). The box is built at the world
+        // origin, and nothing in this scene shifts the origin.
+        AmbientFishField.SetPlayArea(Vector3.zero, FishFenceRadius);
+
         // The scene's NBodySimulation pins the physics rate in its Awake (both
         // bodies are pinned, so it never moves anything); re-assert it anyway.
         Time.fixedDeltaTime = Universe.physicsTimeStep;
@@ -109,6 +121,26 @@ public class TutorialDirector : MonoBehaviour
         // From here it is the real travel flow: hover, the console's landing
         // feed, F / WASD / Q E / SPACE, touchdown, ramp. No hint (Sam, round 3).
         yield return new WaitUntil(() => pilot == null || pilot.CurrentPhase == ShuttleAutopilot.Phase.Parked);
+
+        // ── THE TANK IS DRY ON ARRIVAL (Sam, 2026-09-16) ──────────────────
+        //
+        // "once the shuttle lands in the tutorial, its out of fuel and cant
+        // launch again." That is what turns the box's second board into a real
+        // objective: the player has to go and find crystals before the computer
+        // will take them anywhere.
+        //
+        // Emptied AFTER touchdown, not at the start, because the descent itself
+        // is flown by the autopilot and a dry tank during it would fight the
+        // landing. Landing first and THEN running dry also reads as a reason -
+        // you used the last of it getting down.
+        var tank = FindObjectOfType<ShuttleFuel>();
+        if (tank != null)
+        {
+            tank.SetFuel(0f);
+            Debug.Log("[Tutorial] Shuttle tank emptied on touchdown - refuel via the reactor to leave.");
+        }
+        else Debug.LogWarning("[Tutorial] No ShuttleFuel found - the shuttle will still have fuel and the refuel objectives are skippable.");
+
         yield return new WaitForSeconds(grassReportDelay);
         var grass = FindObjectOfType<InstancedGrassRenderer>();
         Debug.Log("[Tutorial] " + grassReportDelay + " s after touchdown: grass cells streaming = "
@@ -116,8 +148,50 @@ public class TutorialDirector : MonoBehaviour
                   + ", player at " + (pc != null ? pc.transform.position.ToString("F0") : "?"));
     }
 
+    /// <summary>
+    /// L — SKIP TO THE END OF THE TUTORIAL.
+    ///
+    /// Sam, after walking the whole box twice only to find the TRAVEL button
+    /// dead: "make it so i can rebuild and then load the tutorial and then just
+    /// click a keyboard button thats not being used to skip the tutorial to the
+    /// pick a destination part and make the reactor full so that i can just go
+    /// straight to testing the button."
+    ///
+    /// Crosses off every objective except the last, which leaves the TV on the
+    /// DEPARTURE board, and fills the tank so the computer will actually let you
+    /// leave. Nothing else is touched: you still walk to the console and use the
+    /// real screen, because that is the thing being tested.
+    ///
+    /// L is unused everywhere else in the project, and this only exists in
+    /// Tutorial.unity — TutorialDirector is a scene object in the box and does
+    /// not exist in the gameplay scene, so there is no way to press this by
+    /// accident in the real game.
+    /// </summary>
+    void Update()
+    {
+        if (!Input.GetKeyDown(KeyCode.L)) return;
+
+        foreach (OrientationObjectives.Objective o in
+                 System.Enum.GetValues(typeof(OrientationObjectives.Objective)))
+        {
+            if (o == OrientationObjectives.Objective.SelectDestination) continue;
+            OrientationObjectives.Complete(o);
+        }
+
+        var tank = FindObjectOfType<ShuttleFuel>();
+        if (tank != null) tank.SetFuel(tank.FuelMax);
+
+        Debug.Log("[Tutorial] SKIP (L): objectives crossed off, tank filled to "
+                  + (tank != null ? (tank.FuelPercent * 100f).ToString("0") + "%" : "<no tank>")
+                  + ". Walk to the console and pick a destination.");
+    }
+
     void OnDestroy()
     {
+        // The field is a DontDestroyOnLoad singleton: leaving the fence set
+        // would follow the player into the real game and empty its oceans.
+        AmbientFishField.ClearPlayArea();
+
         // Leaving mid-sequence (pause → MAIN MENU during the descent) must not
         // strand these statics for the next run.
         IntroSequenceController.ShuttleWakeActive = false;

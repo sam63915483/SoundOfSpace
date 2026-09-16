@@ -369,6 +369,22 @@ public partial class ShuttleComputerUI : MonoBehaviour
         PlayerController.isInModalSlotUI = _prevModalFlag;
         Cursor.lockState = _prevCursorLock;
         Cursor.visible = _prevCursorVisible;
+
+        // Let go of the focused button on the way out.
+        //
+        // TutorialGate.MovementInputSuppressed counts UISelectionActive() - "the
+        // EventSystem has an interactable Selectable focused" - as a reason to
+        // take the player's movement away. A screen that closes while something
+        // on it is still focused therefore keeps them standing still until that
+        // object happens to be hidden by something else.
+        //
+        // Caught closing the computer during a launch countdown: the SKIP button
+        // is focused for the pad, the player presses F to get up, and stays
+        // frozen until NavDrive hides SKIP a second later. Nothing on a closed
+        // screen should be focused, so this is a cleanup that belongs next to
+        // the cursor and modal-flag restores above rather than a special case.
+        var es = UnityEngine.EventSystems.EventSystem.current;
+        if (es != null) es.SetSelectedGameObject(null);
     }
 
     void OnDestroy()
@@ -400,6 +416,11 @@ public partial class ShuttleComputerUI : MonoBehaviour
         // monitor mirrors this canvas, and a frozen countdown/feed on it is
         // the exact failure DriveMachine's playhead tick exists to prevent.
         NavDrive();
+        // The tutorial box's deep-range map (partial:
+        // ShuttleComputerTutorialNavUI). Self-gating: it returns immediately
+        // unless its own view is the one on screen, so the gameplay scene
+        // never pays for it.
+        GalDrive();
         // Same rule for the TRAX download: it finishes with the lid closed.
         TickTraxDownload();
 
@@ -549,11 +570,21 @@ public partial class ShuttleComputerUI : MonoBehaviour
         var screen = MakePanel(bezel.transform, "Screen", Bg);
         var srt = screen.rectTransform;
         Stretch(srt, BezelPad, BezelPad, BezelPad, BezelPad);
+        // Kept so the tutorial's NAV can be built LAZILY, on the first time it
+        // is actually wanted. Building it here instead meant asking "are we in
+        // the tutorial scene?" at whatever moment the computer happened to be
+        // constructed - and this machine is built lazily itself, from
+        // ShuttleAutopilot, during the approach. Get that timing wrong by one
+        // step and the view is never created, ShowNav silently falls through to
+        // the real map, and the tutorial shows the two-body solar system of the
+        // box instead. Which is exactly what Sam saw, twice.
+        _screenRoot = srt;
 
         BuildHome(srt);
         BuildTrax(srt);
         BuildProjects(srt);           // TRAX opens here, not on the dials
         BuildNav(srt);                // shuttle travel (partial: ShuttleComputerNavUI)
+        // The tutorial's deep-range NAV is NOT built here - see _screenRoot.
         BuildCrtOverlay(srt);         // over the content, under the dialogs
         BuildToast(srt);
         BuildPrintDialog(srt);
@@ -1579,6 +1610,13 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _traxView.SetActive(false);
         if (_projectsView != null) _projectsView.SetActive(false);
         if (_navView != null) _navView.SetActive(false);
+        // The tutorial box's deep-range map is a FIFTH view on this screen.
+        // Every Show* here hides the other four; this one was added later and
+        // never joined the list, so ShowNav() drew the countdown UNDERNEATH it
+        // ("i still see the same map, but i do see the countdown appear behind
+        // it") and the reverse handover, which waits for this view to go away,
+        // re-ran ShowNav EVERY FRAME - which is what the freeze was.
+        if (_tutNavView != null) _tutNavView.SetActive(false);
         if (_inst != null) _inst.Stop();
         SyncPlayButton();
     }
@@ -1588,6 +1626,13 @@ public partial class ShuttleComputerUI : MonoBehaviour
         _homeView.SetActive(false);
         if (_projectsView != null) _projectsView.SetActive(false);
         if (_navView != null) _navView.SetActive(false);
+        // The tutorial box's deep-range map is a FIFTH view on this screen.
+        // Every Show* here hides the other four; this one was added later and
+        // never joined the list, so ShowNav() drew the countdown UNDERNEATH it
+        // ("i still see the same map, but i do see the countdown appear behind
+        // it") and the reverse handover, which waits for this view to go away,
+        // re-ran ShowNav EVERY FRAME - which is what the freeze was.
+        if (_tutNavView != null) _tutNavView.SetActive(false);
         _traxView.SetActive(true);
         RefreshReadouts();
         RefreshRack();

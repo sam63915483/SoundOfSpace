@@ -41,9 +41,16 @@ public static class OrientationObjectives
         ChopTree         = 4,
         PlantSapling     = 5,
         SaveInStasisPod  = 6,
+        PlaceBonfire     = 7,
+        // The tutorial box's second and third boards (Sam, 2026-09-16): refuel
+        // the shuttle, then leave. Appended like everything else - these are bit
+        // positions in a persisted mask.
+        GatherCrystals     = 8,
+        InsertCrystals     = 9,
+        SelectDestination  = 10,
     }
 
-    public const int Count = 7;
+    public const int Count = 11;
 
     /// Fired when an objective flips to complete. The board listens; nothing
     /// else should need to.
@@ -68,6 +75,10 @@ public static class OrientationObjectives
             case Objective.ChopTree:         return "Chop down a tree";
             case Objective.PlantSapling:     return "Plant a sapling";
             case Objective.SaveInStasisPod:  return "Save your game in the stasis pod";
+            case Objective.PlaceBonfire:     return "Build a bonfire";
+            case Objective.GatherCrystals:    return "Gather fuel crystals";
+            case Objective.InsertCrystals:    return "Insert the crystals into the reactor";
+            case Objective.SelectDestination: return "Use the computer, pick a destination";
             default: return "";
         }
     }
@@ -113,6 +124,24 @@ public static class OrientationObjectives
             int all = (1 << Count) - 1;
             return (Mask & all) == all;
         }
+    }
+
+    /// <summary>
+    /// The same question asked of a SUBSET — the lines one particular board
+    /// shows. The tutorial's TV lists five of the eight, and it has to be able
+    /// to dim itself when those five are done rather than waiting on three
+    /// objectives (the axe, the bottle, the stasis pod) that the tutorial box
+    /// deliberately never asks for.
+    ///
+    /// A null or empty list means "the whole board", which is what the gameplay
+    /// shuttle passes.
+    /// </summary>
+    public static bool AllCompleteOf(System.Collections.Generic.IList<Objective> shown)
+    {
+        if (shown == null || shown.Count == 0) return AllComplete;
+        for (int i = 0; i < shown.Count; i++)
+            if (!IsComplete(shown[i])) return false;
+        return true;
     }
 
     /// Mark an objective done. Idempotent and one-way; safe to call from a hook

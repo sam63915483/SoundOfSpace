@@ -1,0 +1,101 @@
+{
+  "_comment": "Seven systems. Positions are in LIGHT YEARS about the galactic origin; orbitAU and sizes are in AU. Sol is where the tutorial starts (the player's planet is shown as Earth); Konkebular-7 is the real game's system and holds the only travel target.",
+  "_scaleNote": "lightYearInAU is DELIBERATELY COMPRESSED (a real one is 63241). At true scale the wheel takes ~97 turns to get from Earth out to the stars, which reads as a broken control rather than a big galaxy. At 475 the whole journey is ~15 turns and every view still resolves in the right order. It is a map, not an ephemeris.",
+  "lightYearInAU": 475,
+  "systems": [
+    {
+      "id": "sol",
+      "name": "Sol",
+      "pos": [-7.4, 3.1],
+      "sunColour": "#ffd86b",
+      "sunAU": 0.28,
+      "blurb": "Home. Or it was.",
+      "planets": [
+        { "name": "Mercury", "orbitAU": 0.39, "sizeAU": 0.030, "periodDays": 88,    "colour": "#9c9184", "phase": 0.12 },
+        { "name": "Venus",   "orbitAU": 0.72, "sizeAU": 0.050, "periodDays": 225,   "colour": "#d2a15e", "phase": 0.63 },
+        { "name": "Earth",   "orbitAU": 1.00, "sizeAU": 0.052, "periodDays": 365,   "colour": "#5aa9e8", "phase": 0.30, "here": true, "blurb": "You are here." },
+        { "name": "Mars",    "orbitAU": 1.52, "sizeAU": 0.040, "periodDays": 687,   "colour": "#c75b42", "phase": 0.80 },
+        { "name": "Jupiter", "orbitAU": 5.20, "sizeAU": 0.130, "periodDays": 4333,  "colour": "#c7b184", "phase": 0.45 },
+        { "name": "Saturn",  "orbitAU": 9.54, "sizeAU": 0.110, "periodDays": 10759, "colour": "#d8c48d", "phase": 0.05 },
+        { "name": "Uranus",  "orbitAU": 19.2, "sizeAU": 0.085, "periodDays": 30687, "colour": "#8ccdd8", "phase": 0.68 },
+        { "name": "Neptune", "orbitAU": 30.1, "sizeAU": 0.083, "periodDays": 60190, "colour": "#5a7fd8", "phase": 0.22 }
+      ]
+    },
+    {
+      "id": "konkebular7",
+      "name": "Konkebular-7",
+      "pos": [9.2, -4.6],
+      "sunColour": "#ffca5c",
+      "sunAU": 0.34,
+      "blurb": "Charted. Habitable. A long way from Sol.",
+      "planets": [
+        { "name": "Fiery Twin",   "orbitAU": 0.62, "sizeAU": 0.048, "periodDays": 140,  "colour": "#e0673a", "phase": 0.55 },
+        { "name": "Icey Twin",    "orbitAU": 0.74, "sizeAU": 0.048, "periodDays": 168,  "colour": "#a8dcea", "phase": 0.60 },
+        { "name": "Humble Abode", "orbitAU": 1.15, "sizeAU": 0.070, "periodDays": 300,  "colour": "#72d98b", "phase": 0.18, "target": true, "blurb": "Colony site. Breathable. Green." },
+        { "name": "Cyclops",      "orbitAU": 2.40, "sizeAU": 0.090, "periodDays": 760,  "colour": "#d9a05c", "phase": 0.72 },
+        { "name": "Scingularity", "orbitAU": 7.80, "sizeAU": 0.035, "periodDays": 5200, "colour": "#5b4f78", "phase": 0.40, "blurb": "Something is eating the light out here." }
+      ]
+    },
+    {
+      "id": "hab9",
+      "name": "Hab-9",
+      "pos": [-15.8, -10.4],
+      "sunColour": "#b8ccff",
+      "sunAU": 0.22,
+      "planets": [
+        { "name": "Hab-9 a", "orbitAU": 0.45, "sizeAU": 0.034, "periodDays": 96,   "colour": "#8d8478", "phase": 0.20 },
+        { "name": "Hab-9 b", "orbitAU": 1.30, "sizeAU": 0.060, "periodDays": 410,  "colour": "#6fa6c9", "phase": 0.71 },
+        { "name": "Hab-9 c", "orbitAU": 3.90, "sizeAU": 0.095, "periodDays": 2100, "colour": "#b6a077", "phase": 0.33 }
+      ]
+    },
+    {
+      "id": "ordal",
+      "name": "Ordal Reach",
+      "pos": [1.6, 13.2],
+      "sunColour": "#ffb894",
+      "sunAU": 0.40,
+      "planets": [
+        { "name": "Ordal I",   "orbitAU": 0.80, "sizeAU": 0.044, "periodDays": 190,  "colour": "#c98f6a", "phase": 0.08 },
+        { "name": "Ordal II",  "orbitAU": 2.10, "sizeAU": 0.075, "periodDays": 820,  "colour": "#e0c38f", "phase": 0.49 },
+        { "name": "Ordal III", "orbitAU": 6.40, "sizeAU": 0.120, "periodDays": 4400, "colour": "#a88f6d", "phase": 0.88 },
+        { "name": "Ordal IV",  "orbitAU": 14.0, "sizeAU": 0.070, "periodDays": 14000,"colour": "#7fa8b8", "phase": 0.27 }
+      ]
+    },
+    {
+      "id": "vess",
+      "name": "Vess",
+      "pos": [16.4, 9.8],
+      "sunColour": "#dbe8ff",
+      "sunAU": 0.19,
+      "planets": [
+        { "name": "Vess Minor", "orbitAU": 0.33, "sizeAU": 0.028, "periodDays": 62,  "colour": "#9aa4ad", "phase": 0.42 },
+        { "name": "Vess Major", "orbitAU": 1.70, "sizeAU": 0.088, "periodDays": 640, "colour": "#7b93b8", "phase": 0.15 }
+      ]
+    },
+    {
+      "id": "tharn",
+      "name": "Tharn Belt",
+      "pos": [-1.2, -15.6],
+      "sunColour": "#ffe0a8",
+      "sunAU": 0.31,
+      "planets": [
+        { "name": "Tharn I",   "orbitAU": 0.55, "sizeAU": 0.036, "periodDays": 120,  "colour": "#b39a72", "phase": 0.64 },
+        { "name": "Tharn II",  "orbitAU": 1.05, "sizeAU": 0.058, "periodDays": 330,  "colour": "#8fb36f", "phase": 0.31 },
+        { "name": "Tharn III", "orbitAU": 2.90, "sizeAU": 0.100, "periodDays": 1200, "colour": "#c2b58a", "phase": 0.77 },
+        { "name": "Tharn IV",  "orbitAU": 8.50, "sizeAU": 0.065, "periodDays": 6100, "colour": "#6f8ba0", "phase": 0.02 }
+      ]
+    },
+    {
+      "id": "brightfold",
+      "name": "Bright Fold",
+      "pos": [13.9, -14.2],
+      "sunColour": "#c9d8ff",
+      "sunAU": 0.16,
+      "planets": [
+        { "name": "Fold a", "orbitAU": 0.29, "sizeAU": 0.026, "periodDays": 50,  "colour": "#8e96a0", "phase": 0.90 },
+        { "name": "Fold b", "orbitAU": 0.88, "sizeAU": 0.046, "periodDays": 240, "colour": "#a7b6c4", "phase": 0.37 },
+        { "name": "Fold c", "orbitAU": 2.20, "sizeAU": 0.072, "periodDays": 900, "colour": "#7d8ea3", "phase": 0.58 }
+      ]
+    }
+  ]
+}

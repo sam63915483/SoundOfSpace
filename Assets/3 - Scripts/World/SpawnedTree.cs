@@ -237,7 +237,13 @@ public class SpawnedTree : MonoBehaviour
             int saplings = 1;
             if (Random.value < 0.25f) saplings++;
             if (Random.value < 0.10f) saplings++;
-            ResourceDrop.Drop(Hotbar.ItemId.Sapling, saplings, transform.position, bodyParent);
+            // SPECIES-CARRYING (Sam, 2026-09-16): the sapling is a mini version
+            // of THIS tree, drops on the ground to be picked up, and only stacks
+            // with saplings of the same species. prefabIndex is the tree's own
+            // slot in TreeSpawner.treePrefabs; TreeRegistry turns it into the
+            // stable name-key the hotbar and the save file store.
+            ResourceDrop.DropSaplings(TreeRegistry.KeyForPrefabIndex(prefabIndex),
+                                      saplings, transform.position, bodyParent);
         }
         PlayBreakSound();
         if (_shakeRoutine != null) { StopCoroutine(_shakeRoutine); _shakeRoutine = null; }
@@ -263,8 +269,11 @@ public class SpawnedTree : MonoBehaviour
         Transform bodyParent = transform.parent;
         if (awardLoot && wood > 0) ResourceDrop.Drop(Hotbar.ItemId.Wood, wood, transform.position, bodyParent);
         // EXACTLY one, never the 1–3 roll a felled tree gets. Uprooting a stick
-        // cannot multiply it.
-        if (awardLoot) ResourceDrop.Drop(Hotbar.ItemId.Sapling, 1, transform.position, bodyParent);
+        // cannot multiply it — and it comes back as the SAME SPECIES that was
+        // planted, or uprooting would launder a rare sapling into a common one.
+        if (awardLoot)
+            ResourceDrop.DropSaplings(TreeRegistry.KeyForPrefabIndex(prefabIndex),
+                                      1, transform.position, bodyParent);
 
         // Hand back the Tree Daddy point planting it awarded, so moving a
         // sapling around is progression-neutral. Guarded so a player who somehow

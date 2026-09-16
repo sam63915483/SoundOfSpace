@@ -46,6 +46,7 @@ public partial class ShuttleComputerUI
     int _screenLayer = -1;
     int _canvasLayer;                 // the canvas's own layer, restored on leaving RT mode
     bool _rtMode;                     // canvas currently rendering into the mirror
+    CanvasGroup _rtGroup;             // used to make the MIRROR non-interactable
     GraphicRaycaster _raycaster;
 
     ShuttleComputerTerminal _terminal;
@@ -257,6 +258,27 @@ public partial class ShuttleComputerUI
         if (_raycaster == null) _raycaster = _canvas.GetComponent<GraphicRaycaster>();
         if (_raycaster != null) _raycaster.enabled = false;
 
+        // ── AND NOTHING ON IT IS INTERACTABLE ────────────────────────────
+        //
+        // Disabling the raycaster stops the mirrored screen being CLICKED, but
+        // a Selectable on it can still be FOCUSED - and a focused Selectable is
+        // one of the things TutorialGate.MovementInputSuppressed counts, so it
+        // takes the player's movement away.
+        //
+        // That is the bug Sam kept hitting at the end of the tutorial: press
+        // TRAVEL, the countdown's SKIP button appears and gets focused for the
+        // pad, press F to get up - and the computer is closed and mirroring,
+        // but SKIP is still focused, so the player stands frozen. Clearing the
+        // selection on close was not enough; it was being re-focused.
+        //
+        // A mirror is a picture. Nothing on it should be clickable OR focusable,
+        // which is what this pair of lines now says together.
+        if (_rtGroup == null) _rtGroup = _canvas.GetComponent<CanvasGroup>()
+                                      ?? _canvas.gameObject.AddComponent<CanvasGroup>();
+        _rtGroup.interactable = false;
+        var esIn = UnityEngine.EventSystems.EventSystem.current;
+        if (esIn != null) esIn.SetSelectedGameObject(null);
+
         _canvas.gameObject.SetActive(true);
         _screenCam.enabled = true;
     }
@@ -276,6 +298,10 @@ public partial class ShuttleComputerUI
 
         if (_raycaster == null) _raycaster = _canvas.GetComponent<GraphicRaycaster>();
         if (_raycaster != null) _raycaster.enabled = true;
+
+        // Interactive again now the player is looking at it directly.
+        if (_rtGroup == null) _rtGroup = _canvas.GetComponent<CanvasGroup>();
+        if (_rtGroup != null) _rtGroup.interactable = true;
     }
 
     /// <summary>

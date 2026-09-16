@@ -85,6 +85,49 @@ public class AmbientFishField : MonoBehaviour
         go.AddComponent<AmbientFishField>();
     }
 
+    // ── PLAY AREA ────────────────────────────────────────────────────────
+    //
+    // Fish are spawned in a ring around the PLAYER, out to `ring` metres (45 on
+    // the ground, up to 150 from altitude). On an open planet that is exactly
+    // right. In the TUTORIAL BOX the player is fenced into a 350 m cube, and the
+    // ocean does not stop at the walls - so most of that ring is water the player
+    // can see but never reach, and the fish went there (Sam, 2026-09-16: "fish
+    // arent spawning within the cube, but i could see a bunch on the other side
+    // of the cube that encages the player").
+    //
+    // A play area clips spawning to a world-space cylinder: fish only appear
+    // inside it. Unset (radius <= 0) means the whole planet, which is every
+    // scene but the box.
+    static Vector3 _playAreaCentreW;
+    static float _playAreaRadius;        // 0 = unrestricted
+    static bool _playAreaSet;
+
+    /// <summary>
+    /// Confine spawning to a circle of `radius` metres about `centreW`
+    /// (horizontally - depth is never clipped, a fish may swim as deep as the
+    /// water goes). Called by the tutorial box; nothing else sets it.
+    /// </summary>
+    public static void SetPlayArea(Vector3 centreW, float radius)
+    {
+        _playAreaCentreW = centreW;
+        _playAreaRadius = Mathf.Max(0f, radius);
+        _playAreaSet = _playAreaRadius > 0.01f;
+    }
+
+    public static void ClearPlayArea() { _playAreaSet = false; _playAreaRadius = 0f; }
+
+    /// Is this planet-local point inside the play area? Measured across the
+    /// surface, not through it, so the test does not depend on depth.
+    bool InPlayArea(Vector3 localPoint)
+    {
+        if (!_playAreaSet || _planetT == null) return true;
+        Vector3 w = _planetT.TransformPoint(localPoint);
+        Vector3 up = (w - _planetT.position).normalized;
+        Vector3 d = w - _playAreaCentreW;
+        d -= up * Vector3.Dot(d, up);          // drop the vertical component
+        return d.sqrMagnitude <= _playAreaRadius * _playAreaRadius;
+    }
+
     void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -167,6 +210,34 @@ public class AmbientFishField : MonoBehaviour
     float _waterFrac = 1f;
     float _nextWaterScan;
     bool _reported;
+
+    // ── "why are there no fish here" ────────────────────────────────────────
+    //
+    // The existing _reported line only fires once the bed has 24 patches, i.e.
+    // once things are already half working. When the field is completely quiet
+    // it says nothing at all, which is exactly the case that needs explaining
+    // (Sam, 2026-09-16, tutorial box: "i still dont see fish swimming in the
+    // water, i only see a fish once it starts swimming up to the bobber").
+    //
+    // So: one line, a few seconds after the planet resolves, naming the FIRST
+    // gate that failed. Re-armed on every planet change, never per-frame.
+    float _diagAt = -1f;
+    bool _diagged;
+
+    // Why did a spawn attempt fail? One counter per `return false` in TrySpawn,
+    // plus what the water scan saw. Reading a single snapshot of "the state"
+    // twice sent this hunt after the wrong number; a histogram of REJECTIONS
+    // cannot be misread, because it names the line that is actually stopping
+    // every fish.
+    int _rjFence, _rjNoBed, _rjThin, _rjDepth, _rjSpecies, _rjOk;
+    int _wsKnown, _wsWater, _wsTotal;
+    int _diagCount;
+    float _nextDiagRepeat;
+
+    void ResetRejectCounters()
+    {
+        _rjFence = _rjNoBed = _rjThin = _rjDepth = _rjSpecies = _rjOk = 0;
+    }
 
     // ── the sea-bed cache ────────────────────────────────────────────────────
     //
@@ -317,18 +388,56 @@ public class AmbientFishField : MonoBehaviour
         }
     }
 
+    // Probe hits, reused. Small: the ray is one straight line from above the
+    // planet to just under the sea floor, and anything that stacks more than a
+    // handful of colliders on it is already pathological.
+    static readonly RaycastHit[] _probeHits = new RaycastHit[8];
+
     float Probe(Vector3 dirL)
     {
         if (_planetT == null) return NotWater;
         Vector3 startW = _planetT.TransformPoint(dirL * _probeStartRadius);
         Vector3 downW = _planetT.TransformDirection(-dirL);
         float len = _probeStartRadius - (_oceanR - probeDepthMetres);
-        if (!Physics.Raycast(startW, downW, out RaycastHit hit, len, GroundMask,
-                             QueryTriggerInteraction.Ignore))
-            return _oceanR - probeDepthMetres;                 // open water, deeper than we care
 
-        float r = (hit.point - _planetT.position).magnitude;
-        if (r > _oceanR - minSwimWater) return NotWater;        // land / roof / too thin to swim in
+        // ── TAKE THE DEEPEST HIT, NOT THE FIRST ──────────────────────────
+        //
+        // The ray starts far above the planet and ends just below the sea floor,
+        // so the FIRST thing it meets is not necessarily the ground: anything
+        // roofing the area is hit first, and a roof always reads as "land" (its
+        // radius is far above sea level). The whole area then looks dry and the
+        // field spawns nothing in it.
+        //
+        // That is exactly what the TUTORIAL BOX did (Sam, 2026-09-16: "only fish
+        // were outside of the box in the water, and the water inside the box has
+        // nothing in it"). Its four walls AND ITS CEILING are on the Body layer
+        // with box colliders - the same layer GroundMask casts against - so every
+        // probe inside the cage hit the ceiling 350 m up, returned NotWater, and
+        // the lake underneath was invisible to the field. Outside the cage there
+        // is no roof, so those probes worked, which is why fish appeared there
+        // and only there.
+        //
+        // The ground is the LAST thing the ray meets before it runs out, so the
+        // deepest hit is the right one. This costs one NonAlloc cast instead of a
+        // single-hit cast, on a throttled probe queue, and it makes the field
+        // immune to any roof - the box, a cave mouth, a bridge, a placed
+        // building - rather than to this one box.
+        int n = Physics.RaycastNonAlloc(new Ray(startW, downW), _probeHits, len, GroundMask,
+                                        QueryTriggerInteraction.Ignore);
+        if (n <= 0) return _oceanR - probeDepthMetres;          // open water, deeper than we care
+
+        float deepest = float.MaxValue;
+        for (int i = 0; i < n; i++)
+        {
+            var c = _probeHits[i].collider;
+            if (c == null) continue;
+            float rr = (_probeHits[i].point - _planetT.position).magnitude;
+            if (rr < deepest) deepest = rr;
+        }
+        if (deepest == float.MaxValue) return _oceanR - probeDepthMetres;
+
+        float r = deepest;
+        if (r > _oceanR - minSwimWater) return NotWater;        // land / too thin to swim in
         return r;
     }
 
@@ -466,6 +575,14 @@ public class AmbientFishField : MonoBehaviour
             if (_fish != null) for (int i = 0; i < _fish.Length; i++) _fish[i].alive = false;
             BuildSpeciesList();
             _reported = false;
+            _diagged = false;
+            // Long enough to be PAST the arrival. The box flies the player down
+            // for ~14 s, and a 5 s timer fired mid-descent: it reported alt=299
+            // (the shuttle, 300 m up) as though that were the player standing on
+            // the ground, and sent a whole round of debugging after the wrong
+            // number. Anything that samples "the steady state" has to outlast
+            // the thing that is still moving.
+            _diagAt = Time.time + 40f;
         }
         _oceanR = _oceanRadii[best];
         _probeStartRadius = _oceanProbeStart[best];
@@ -584,6 +701,14 @@ public class AmbientFishField : MonoBehaviour
         }
     }
 
+    /// One line, once per planet, saying why the field is quiet. Deliberately a
+    /// warning: it only ever fires when there are no fish to look at.
+    void Diag(string why)
+    {
+        _diagged = true;
+        Debug.LogWarning($"[AmbientFish] '{(_planetName ?? "<no planet>")}': {why}");
+    }
+
     void BuildSpeciesList()
     {
         _allowed.Clear();
@@ -688,26 +813,75 @@ public class AmbientFishField : MonoBehaviour
 
     void LateUpdate()
     {
-        if (_quiet || !enableField) return;
+        bool diagNow = !_diagged && _diagAt > 0f && Time.time >= _diagAt;
+
+        if (_quiet || !enableField)
+        {
+            if (diagNow) Diag(_quiet ? "the scene asked for quiet (GallerySceneQuiet)"
+                                     : "enableField is off");
+            return;
+        }
         Vector3 camW = Anchor(out bool haveAnchor);
-        if (!haveAnchor) return;
-        if (!ResolvePlanet(camW)) return;
-        if (!ResolveMeshes()) return;
-        if (_tierMatrices == null) return;
+        if (!haveAnchor) { if (diagNow) Diag("no anchor \u2014 no player or camera found yet"); return; }
+        if (!ResolvePlanet(camW))
+        {
+            if (diagNow) Diag("no ocean body. A body needs a CelestialBodyGenerator, " +
+                              "GetOceanRadius() > 0.01, AND a MeshCollider under the generator " +
+                              "\u2014 a planet built with no collider is skipped outright");
+            return;
+        }
+        if (!ResolveMeshes())
+        {
+            if (diagNow) Diag("no fish meshes \u2014 FishingdexManager missing, a tier prefab " +
+                              "slot empty, or a prefab with no MeshFilter");
+            return;
+        }
+        if (_tierMatrices == null) { if (diagNow) Diag("draw batches not allocated"); return; }
 
         Vector3 camL = _planetT.InverseTransformPoint(camW);
         float camR = camL.magnitude;
         if (camR < 1e-3f) return;
         float alt = camR - _oceanR;
 
+        // ── THE WINDOW SCALES WITH THE PLANET ────────────────────────────
+        //
+        // maxAltitude / maxDepthBelow are METRES, tuned against Humble Abode
+        // (ocean radius ~200). The tutorial box is an HA clone at radius 750,
+        // where the same terrain shape puts the land 299 m above sea level - so
+        // a player standing at the water's edge was 299 m "up" and the whole
+        // field switched itself off (Sam, 2026-09-16: "theres still no fish
+        // swimming in the water... it works in our main gameplay scene but not
+        // here"). The sea-bed probes had already found 48 patches of water right
+        // next to him; only this gate was stopping them.
+        //
+        // Same lesson as the grass band, which is measured in metres above sea
+        // level and had to be scaled by radius for this exact planet: ANY metre
+        // knob on a body that is not Humble Abode needs this treatment.
+        //
+        // Never below 1, so the gameplay scene's numbers are untouched.
+        float altScale = _oceanR > 0f ? Mathf.Max(1f, _oceanR / ReferenceOceanRadius) : 1f;
+        float altCeiling = maxAltitude * altScale;
+        float altFloor = -maxDepthBelow * altScale;
+
         // Above the ceiling a half-metre fish is under two pixels — not a budget
         // choice, just optics. Below the floor you are deeper than the ocean
         // post lets you see anything anyway.
-        if (alt > maxAltitude || alt < -maxDepthBelow)
+        if (alt > altCeiling || alt < altFloor)
         {
+            // ⚠️ maxAltitude / maxDepthBelow are METRES ABOVE SEA LEVEL, and so
+            // is `alt`. On a planet whose ocean radius does not line up with
+            // where the water actually is, this silently switches the whole
+            // field off while the player stands on a visible beach. Same failure
+            // class as the tutorial grass band (see the tutorial-box notes).
+            if (diagNow)
+                Diag($"altitude gate: alt={alt:F0}m is outside " +
+                     $"[{altFloor:F0}, {altCeiling:F0}] (x{altScale:F2} for a {_oceanR:F0}m ocean). " +
+                     $"camR={camR:F0} oceanR={_oceanR:F0}");
             if (_fish != null) for (int i = 0; i < _fish.Length; i++) _fish[i].alive = false;
             return;
         }
+
+        if (diagNow) _diagged = true;   // the gate chain is clean; the report below owns it now
 
         // Coarser patches high up: flying sweeps across a lot of new sea floor,
         // and at a handful of probes a frame the fine grid cannot keep up. From
@@ -717,6 +891,25 @@ public class AmbientFishField : MonoBehaviour
         else if (_level == 1 && alt < coarseAltitude * 0.75f) _level = 0;
         int level = _level;
         float ring = Mathf.Lerp(nearRing, farRing, Mathf.InverseLerp(0f, 200f, Mathf.Max(alt, 0f)));
+
+        // ── A FENCED PLAY AREA IS THE WORKING RADIUS ─────────────────────
+        //
+        // The ring is how far the field looks for water AND how far it spawns.
+        // On an open planet 45 m at ground level is right: you are usually on a
+        // coast, and fish belong where you can see them.
+        //
+        // In the tutorial box that number is the bug. The builder deliberately
+        // lands the shuttle on a DRY FLAT PATCH ("landing patch >= 6 m above sea
+        // everywhere"), and the lake is somewhere else in the 350 m cube. From
+        // the pad, 24 samples inside 45 m are all land, waterFrac eases to 0, and
+        // `target` is hard 0 - so the field spawns NOTHING ANYWHERE, which is
+        // exactly what Sam saw after the fence went in.
+        //
+        // When the play area is fenced, the fence IS the world: look across all
+        // of it, so the lake is in scope from wherever the player stands. The
+        // fence then keeps every spawn inside the walls, so a wider ring cannot
+        // put fish out of reach the way raw altitude did.
+        if (_playAreaSet) ring = Mathf.Max(ring, Mathf.Min(farRing, _playAreaRadius));
 
         // One line per planet in Player.log. Settles "why are there no fish
         // here" without another build: if water is 0 the sea-bed probes are
@@ -749,6 +942,39 @@ public class AmbientFishField : MonoBehaviour
             ? 0
             : Mathf.Clamp(Mathf.RoundToInt(Mathf.Lerp(minFishInWater, maxFish, _waterFrac)),
                           1, maxFish);
+
+        // ── THE EMPTY-WATER REPORT ───────────────────────────────────────
+        //
+        // Fires while NOTHING IS ALIVE, every few seconds, from wherever the
+        // player is standing. The one-shot version fired twice at the wrong
+        // moment - once mid-descent, once on the landing pad, which the builder
+        // deliberately places on dry flat ground - and each time I read a
+        // correct-but-irrelevant number as the answer. This cannot do that: it
+        // only speaks when there are no fish, so whatever it prints is the state
+        // that is actually failing, and the reject histogram names the line.
+        if (_diagCount < 8 && Time.unscaledTime >= _nextDiagRepeat)
+        {
+            int live = 0;
+            if (_fish != null) for (int i = 0; i < _fish.Length; i++) if (_fish[i].alive) live++;
+            if (live == 0)
+            {
+                _nextDiagRepeat = Time.unscaledTime + 12f;
+                _diagCount++;
+                Vector3 pw = _planetT != null ? _planetT.TransformPoint(camL) : camL;
+                Debug.LogWarning(
+                    $"[AmbientFish] NO FISH #{_diagCount}. you={pw.ToString("F0")} alt={alt:F0}m ring={ring:F0}m " +
+                    $"level={level} oceanR={_oceanR:F0}\n" +
+                    $"    waterScan: {_wsWater}/{_wsKnown} samples wet (of {_wsTotal} cast) -> waterFrac={_waterFrac:P0} " +
+                    $"=> target={target} fish\n" +
+                    $"    patches={_bed.Count}  species={_allowed.Count}  fence={(_playAreaSet ? _playAreaRadius.ToString("F0") + "m" : "off")}\n" +
+                    $"    spawn rejects: fence={_rjFence} noBed={_rjNoBed} tooThin={_rjThin} " +
+                    $"depth={_rjDepth} species={_rjSpecies} placed={_rjOk}\n" +
+                    "    READ: target=0 means the water scan found no water within `ring` of you - " +
+                    "walk to the shore. Any other line with a big number is the one rejecting every fish.");
+                ResetRejectCounters();
+            }
+            else _nextDiagRepeat = Time.unscaledTime + 12f;
+        }
 
         bool hasDisturb = Time.time < _disturbUntil;
         Vector3 disturbL = hasDisturb ? _planetT.InverseTransformPoint(_disturbW) : Vector3.zero;
@@ -838,6 +1064,7 @@ public class AmbientFishField : MonoBehaviour
             known++;
             if (_oceanR - bed >= minSwimWater + 0.4f) water++;
         }
+        _wsKnown = known; _wsWater = water; _wsTotal = N;
         if (known == 0) return;
         // Eased, so walking past a headland does not visibly cull the shoal.
         _waterFrac = Mathf.Lerp(_waterFrac, (float)water / known, 0.35f);
@@ -894,12 +1121,16 @@ public class AmbientFishField : MonoBehaviour
         float a = Random.value * Mathf.PI * 2f;
         Vector3 dir = (up * _oceanR + (t1 * Mathf.Cos(a) + t2 * Mathf.Sin(a)) * d).normalized;
 
-        if (!BedSmooth(dir * _oceanR, level, out float bed)) return false;   // nothing probed here yet
+        // Outside the fence (tutorial box): try somewhere else. Rejecting rather
+        // than clamping keeps the sqrt area distribution honest inside the box.
+        if (!InPlayArea(dir * _oceanR)) { _rjFence++; return false; }
+
+        if (!BedSmooth(dir * _oceanR, level, out float bed)) { _rjNoBed++; return false; }   // nothing probed here yet
         float water = _oceanR - bed;
-        if (water < minSwimWater + 0.4f) return false;
+        if (water < minSwimWater + 0.4f) { _rjThin++; return false; }
 
         float depth = Random.Range(0.7f, Mathf.Min(maxSwimDepth, water - bedClearance - 0.2f));
-        if (depth <= 0.5f) return false;
+        if (depth <= 0.5f) { _rjDepth++; return false; }
 
         Vector3 nose = dir * (_oceanR - depth);
         Vector3 heading = Vector3.ProjectOnPlane(t1 * Mathf.Cos(a * 1.7f) + t2 * Mathf.Sin(a * 1.7f), dir);
@@ -907,7 +1138,8 @@ public class AmbientFishField : MonoBehaviour
         heading.Normalize();
 
         int sp = RollSpecies(nose);
-        if (sp < 0) return false;
+        if (sp < 0) { _rjSpecies++; return false; }
+        _rjOk++;
 
         int tier = (int)FishingRules.Species[sp].tier;
         var tm = _tiers[tier];
@@ -1207,6 +1439,11 @@ public class AmbientFishField : MonoBehaviour
     [Tooltip("Fewest fish in water that IS in range, however small the pool. Stops the density scaling from emptying a small pond.")]
     [SerializeField] int minFishInWater = 5;
     [Tooltip("Metres above the water past which fish are switched off. A half-metre fish is under two pixels up here.")]
+    /// Humble Abode's ocean radius, the planet every metre knob in this file
+    /// was tuned against. The altitude window is scaled by
+    /// (this planet's ocean radius / this), so HA itself comes out x1.
+    const float ReferenceOceanRadius = 200f;
+
     [SerializeField] float maxAltitude = 250f;
     [Tooltip("Metres below the water past which fish are switched off.")]
     [SerializeField] float maxDepthBelow = 60f;

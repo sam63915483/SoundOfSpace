@@ -1910,6 +1910,25 @@ public class PlayerController : GravityObject
 		// fight the parented frame. Everything below stays untouched.
 		if (RiderMode)
 		{
+			// FREE-FLOAT MUST NOT SURVIVE INTO A RIDE (Sam, 2026-09-16: "as soon
+			// as i load into the tutorial and i wake up in the stasis pod, i cant
+			// look up or down, and then when the pod lands and the door opens it
+			// lets me look up and down").
+			//
+			// This early return skips UpdateSpaceGate and the freeFloat block
+			// below, so BOTH keep whatever value they had when the ride started.
+			// On the first frames of a load referenceBody is still null, which
+			// UpdateSpaceGate reads as deep space - so FreeFloating latched TRUE
+			// and stayed true for the whole descent. In free-float, look-pitch
+			// drives the BODY instead of the head (see the freePitch branch), and
+			// a rider's body is pinned to the pod, so pitch did nothing at all
+			// until the ride ended and the normal path cleared the flag.
+			//
+			// The freeFloat expression below already says `&& !RiderMode`; it
+			// simply never gets to run. Clearing here makes the state match what
+			// that line already promises.
+			FreeFloating = false;
+			_wasFreeFloating = false;
 			RiderFixedTick();
 			return;
 		}

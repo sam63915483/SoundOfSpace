@@ -177,12 +177,15 @@ public class BuildMenuUI : MonoBehaviour
 
     public void Open()
     {
-        // VAULTED (FeatureVault.FreeformBuilding). One guard here catches every
-        // route in — the N key, the phone's Build app, and anything that calls
-        // Open() directly. StartPlacementFromPhone is deliberately NOT gated:
-        // the sapling and mushroom planters drive placement through it without
-        // ever opening this menu, and the plan keeps replanting working.
-        if (!FeatureVault.FreeformBuilding) return;
+        // VAULTED (FeatureVault.FreeformBuilding / BasicBuilding). One guard here
+        // catches every route in — the N key, the phone's Build app, and anything
+        // that calls Open() directly. StartPlacementFromPhone is deliberately NOT
+        // gated: the sapling and mushroom planters drive placement through it
+        // without ever opening this menu, and the plan keeps replanting working.
+        //
+        // BuildMenuAvailable is true at EITHER tier. Which blueprints the player
+        // then sees is IsBlueprintOffered's job, not this guard's.
+        if (!FeatureVault.BuildMenuAvailable) return;
         if (isOpen || menuRoot == null) return;
         isOpen = true;
         prevLockMode = Cursor.lockState;
@@ -450,9 +453,12 @@ public class BuildMenuUI : MonoBehaviour
         _tabFilters.Clear();
         _tabButtons.Clear();
         _tabFilters.Add(null); // "All" tab
+        // Only categories that actually have a row. At the basics tier that is
+        // one tab's worth, and a FURNITURE tab filtering to an empty list would
+        // read as a bug.
         var present = new HashSet<BuildableCategory>();
         if (buildables != null)
-            foreach (var be in buildables) if (be != null) present.Add(be.category);
+            foreach (var be in buildables) if (IsBlueprintOffered(be)) present.Add(be.category);
         foreach (BuildableCategory c in System.Enum.GetValues(typeof(BuildableCategory)))
             if (present.Contains(c)) _tabFilters.Add(c);
 
@@ -745,6 +751,52 @@ public class BuildMenuUI : MonoBehaviour
         nrt2.offsetMax = new Vector2(-256, 0);   // clear of the 220px PLACE button
     }
 
+    // ─────────────────── The BASIC BUILDING catalogue ─────────────────────
+    // The only two blueprints offered while FeatureVault.BasicBuilding is the
+    // active tier. Warmth and light — the same pair BuildableUnlocks calls
+    // level 0, so the lock table already agrees and neither row ever draws a
+    // padlock.
+    //
+    // Matching is loose (case-insensitive, whitespace collapsed) for exactly the
+    // reason BuildableUnlocks matches loosely: several scene-authored names
+    // carry stray spaces. Write them naturally here.
+    public static readonly string[] BasicBlueprints = { "Torch", "Bonfire" };
+
+    /// Should this blueprint appear in the menu at all? At the freeform tier,
+    /// everything does — locked entries are drawn dimmed with a padlock, and
+    /// seeing the wall you can't build yet is the point. At the basics tier the
+    /// padlock treatment would be a lie (the Colonizer track that unlocks them
+    /// is itself vaulted), so anything off the list is simply not built.
+    public static bool IsBlueprintOffered(BuildableEntry e)
+    {
+        if (e == null) return false;
+        if (!FeatureVault.BuildCatalogueIsBasicsOnly) return true;
+        foreach (var n in BasicBlueprints)
+            if (NamesMatch(e.displayName, n)) return true;
+        return false;
+    }
+
+    /// Same normalisation BuildableUnlocks uses — trim, collapse runs of
+    /// whitespace, ignore case — so "Bonfire ", "bonfire" and "Bon  fire" all
+    /// have to agree the same way in both tables.
+    static bool NamesMatch(string a, string b)
+    {
+        return Normalize(a) == Normalize(b);
+    }
+
+    static string Normalize(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        var sb = new System.Text.StringBuilder(s.Length);
+        bool lastSpace = true;                 // true so leading space is dropped
+        foreach (char c in s)
+        {
+            if (char.IsWhiteSpace(c)) { if (!lastSpace) { sb.Append(' '); lastSpace = true; } }
+            else { sb.Append(char.ToLowerInvariant(c)); lastSpace = false; }
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     void RebuildVisibleRows()
     {
         if (listContent == null) return;
@@ -755,6 +807,7 @@ public class BuildMenuUI : MonoBehaviour
             foreach (var entry in buildables)
             {
                 if (entry == null) continue;
+                if (!IsBlueprintOffered(entry)) continue;   // basics tier — never built
                 _rowEntries.Add(AddListRow(listContent, entry));
             }
         }

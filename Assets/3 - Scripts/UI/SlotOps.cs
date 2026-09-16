@@ -51,7 +51,7 @@ public static class SlotOps
     /// the two sides of a drag agree on what makes two stacks incompatible.
     static string VariantOf(in CursorState c) =>
         c.id == Hotbar.ItemId.Cassette ? c.cassetteId
-        : Hotbar.IsMushroomItem(c.id) ? c.mushroomSpecies : null;
+        : Hotbar.IsSpeciesItem(c.id) ? c.mushroomSpecies : null;
 
     /// Can these two stack together? Same id, and for mushrooms the same
     /// species as well — the whole point of species-pure stacks.

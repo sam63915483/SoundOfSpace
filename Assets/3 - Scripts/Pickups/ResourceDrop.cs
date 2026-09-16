@@ -36,6 +36,10 @@ public class ResourceDrop : MonoBehaviour
     const float kFadeDuration    = 4f;     // fade out over the last N seconds
     const float kFullRetryDelay  = 2f;     // re-try interval while the inventory is full
     const float kMushroomDropSize = 0.42f; // world metres, longest edge of a dropped cap model
+    // A tree's longest edge is its HEIGHT, so a sapling at cap size reads as a
+    // twig in the grass. Roughly knee-high instead: big enough to recognise the
+    // species from standing, small enough to still read as a sapling.
+    const float kSaplingDropSize  = 0.85f;
 
     // ── Spawning ───────────────────────────────────────────────────────────
 
@@ -89,9 +93,36 @@ public class ResourceDrop : MonoBehaviour
     /// </summary>
     public static void DropMushrooms(Hotbar.ItemId id, string species, int amount,
                                      Vector3 worldPos, Transform bodyParent)
+        => DropSpecies(id, species, amount, worldPos, bodyParent, kMushroomDropSize);
+
+    /// <summary>
+    /// TREE SAPLINGS off a felled tree (Sam, 2026-09-16): "instead of the
+    /// sapling going straight to your inventory, make it fall on the ground like
+    /// the wood logs that you have to pick up, and make it a mini version of the
+    /// tree that you cut down."
+    ///
+    /// It used to go straight into the hotbar, and not by design — <see
+    /// cref="Drop"/> falls back to an instant award when an item has no hotbar
+    /// SPRITE, and saplings ship without one. The model path never needed a
+    /// sprite, so this fixes the invisibility and grants the wish at once.
+    ///
+    /// Bigger than a mushroom drop, because a tree's longest edge is its height:
+    /// at mushroom size a pine reads as a twig, and the whole point is being able
+    /// to tell from the ground which tree it came off.
+    /// </summary>
+    public static void DropSaplings(string species, int amount,
+                                    Vector3 worldPos, Transform bodyParent)
+        => DropSpecies(Hotbar.ItemId.Sapling, species, amount, worldPos, bodyParent, kSaplingDropSize);
+
+    /// The shared model-drop. One object per unit rather than the chunked split
+    /// the sprite logs use: a felled tree yields 1–3 saplings and a mushroom
+    /// 3–9, and a scatter of little models round the stump reads exactly right
+    /// where a single icon carrying "×3" would not.
+    static void DropSpecies(Hotbar.ItemId id, string species, int amount,
+                            Vector3 worldPos, Transform bodyParent, float modelSize)
     {
         if (amount <= 0) return;
-        if (Hotbar.Instance == null || bodyParent == null || !Hotbar.IsMushroomItem(id))
+        if (Hotbar.Instance == null || bodyParent == null || !Hotbar.IsSpeciesItem(id))
         {
             AwardDirect(id, amount, worldPos, species);
             return;
@@ -100,7 +131,7 @@ public class ResourceDrop : MonoBehaviour
         int spawned = 0;
         for (int i = 0; i < amount && i < 12; i++)
         {
-            var go = MushroomRegistry.BuildModel(species, $"ResourceDrop_{id}", kMushroomDropSize);
+            var go = Hotbar.BuildSpeciesModel(id, species, $"ResourceDrop_{id}", modelSize);
             if (go == null) break;
             var drop = go.AddComponent<ResourceDrop>();
             drop._species = species;
@@ -135,7 +166,7 @@ public class ResourceDrop : MonoBehaviour
 
     Hotbar.ItemId _id;
     int _amount;
-    string _species;             // mushroom drops only — the species this cap is
+    string _species;             // species drops only (mushroom / sapling) — which species this is
     MeshRenderer _renderer;
     Vector3 _baseScale;
     Transform _body;             // celestial body we're parented to (may be null)
@@ -295,6 +326,12 @@ public class ResourceDrop : MonoBehaviour
         else if (id == Hotbar.ItemId.Crystal) CrystalPopup.Spawn(worldPos, amount);
         else if (Hotbar.IsMushroomItem(id))
             MushroomPopup.Spawn(worldPos, amount, species, id == Hotbar.ItemId.MushroomSapling);
+        // Saplings reuse the mushroom popup's text card. It names the species
+        // through MushroomRegistry, which knows nothing about trees, so the name
+        // is passed as null and the card reads the generic "+N" — the model on
+        // the ground is already saying which tree it is.
+        else if (id == Hotbar.ItemId.Sapling)
+            MushroomPopup.Spawn(worldPos, amount, null, true);
     }
 
     // Cached player lookup, re-searched at most once a second while missing

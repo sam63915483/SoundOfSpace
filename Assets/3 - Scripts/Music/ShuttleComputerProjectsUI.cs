@@ -344,6 +344,13 @@ public partial class ShuttleComputerUI
         _homeView.SetActive(false);
         _traxView.SetActive(false);
         if (_navView != null) _navView.SetActive(false);
+        // The tutorial box's deep-range map is a FIFTH view on this screen.
+        // Every Show* here hides the other four; this one was added later and
+        // never joined the list, so ShowNav() drew the countdown UNDERNEATH it
+        // ("i still see the same map, but i do see the countdown appear behind
+        // it") and the reverse handover, which waits for this view to go away,
+        // re-ran ShowNav EVERY FRAME - which is what the freeze was.
+        if (_tutNavView != null) _tutNavView.SetActive(false);
         _projectsView.SetActive(true);
         CloseSaveDialog();
         ShowMenuPane();

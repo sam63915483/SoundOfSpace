@@ -107,7 +107,7 @@ public class HeldItemViewmodel : MonoBehaviour
         // slots has to rebuild, or you'd keep carrying the first one's model.
         // Same for mushroom SPECIES: two stacks share the id but not the model.
         bool fishChanged = id == Hotbar.ItemId.Fish && !ReferenceEquals(slot.fishData, _shownFish);
-        bool speciesChanged = Hotbar.IsMushroomItem(id) && slot.mushroomSpecies != _shownSpecies;
+        bool speciesChanged = Hotbar.IsSpeciesItem(id) && slot.mushroomSpecies != _shownSpecies;
         // And the same again for a cassette's SONG: two tapes share the id but
         // not the shell colour, so switching stacks has to rebuild the model.
         bool songChanged = id == Hotbar.ItemId.Cassette && slot.cassetteId != _shownCassette;
@@ -238,7 +238,7 @@ public class HeldItemViewmodel : MonoBehaviour
             ? BuildFish(slot.fishData)
             : slot.id == Hotbar.ItemId.Firefly
                 ? BuildFirefly()
-                : Hotbar.IsMushroomItem(slot.id)
+                : Hotbar.IsSpeciesItem(slot.id)
                     ? BuildMushroom(slot)
                     : BuildIcon(slot);
 
@@ -266,12 +266,20 @@ public class HeldItemViewmodel : MonoBehaviour
     /// mushroom it came off and the ground drop it was picked up from. Spores
     /// (mushroom saplings) present as a smaller cap so the two read apart at a
     /// glance without needing separate art.
+    /// The species model in the player's hand: a mushroom, a clump of spores,
+    /// or (2026-09-16) a tree sapling, which is the same little tree that was
+    /// lying on the ground and the same one rendered in the hotbar slot.
     GameObject BuildMushroom(Hotbar.Slot slot)
     {
         float size = slot.id == Hotbar.ItemId.MushroomSapling
             ? mushroomWorldSize * 0.55f
-            : mushroomWorldSize;
-        var go = MushroomRegistry.BuildModel(slot.mushroomSpecies, "Held_Mushroom", size);
+            : slot.id == Hotbar.ItemId.Sapling
+                // A sapling is a TREE, so its longest edge is its height, and at
+                // mushroom size it reads as a twig held at arm's length. Half
+                // again bigger is enough to see which tree it is.
+                ? mushroomWorldSize * 1.5f
+                : mushroomWorldSize;
+        var go = Hotbar.BuildSpeciesModel(slot.id, slot.mushroomSpecies, "Held_Species", size);
         if (go == null) return null;
         _baseContentRot = Quaternion.Euler(mushroomRotationOffset);
         return go;

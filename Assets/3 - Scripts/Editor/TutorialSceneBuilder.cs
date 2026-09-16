@@ -40,11 +40,16 @@ using UnityEngine.UI;
 ///                       +Y; placed so the centre's surface is world y = 0.
 ///     Shuttle_Lander    prefab instance, feet at y = 0 (its authored pose is the
 ///                       landing target; the hover is 100 m above it)
+///       FishingRod      TutorialFishingRod.prefab — look at it, press F. Its
+///                       pose is HAND-PLACED by Sam and SURVIVES A REBUILD
+///                       (see CaptureRodPose).
 ///   Tutorial Box        4 walls (350 × 450, y −100…350) + ceiling at 350, digit
 ///                       rain panes, box colliders, LensFlarePassThrough.
 ///   --- Managers ---    snapshot prefabs of the gameplay spawners (trees,
 ///                       crystals, mushrooms, cats, grass) with Sam's tuning.
-///   --- UI ---          Overlay Canvas ▸ Dot (crosshair), HelmetHudConfig prefab.
+///   --- UI ---          Overlay Canvas ▸ Dot (crosshair), HelmetHudConfig prefab,
+///                       HUD_Canvas (snapshot: build menu, cook panel, fish
+///                       catch, prompts) + Bonfire UI Owner.
 ///   Player              TutorialPlayer.prefab (snapshot of the gameplay player)
 ///   Tutorial Director, EventSystem
 /// </summary>
@@ -90,6 +95,338 @@ public static class TutorialSceneBuilder
     const float SunDistance = 25000f;
     const float SunRadius   = 1500f;     // the gameplay sun's radius
 
+    // ────────────────────── The fishing rod ─────────────────────────
+    //
+    // A rebuild WIPES the scene, and where the rod sits inside the shuttle is a
+    // hand-placed, eyeballed thing Sam does in the editor - exactly the kind of
+    // work a wipe must not eat. So the rod's pose is read off the existing scene
+    // BEFORE the wipe and written back after, expressed in the SHUTTLE's local
+    // space so it still lands right if the shuttle itself ever moves.
+    //
+    // Re-parenting the rod (onto the bunk, say) is fine: the capture converts
+    // through world space, so only the final world pose is preserved and the
+    // rebuilt rod hangs off the shuttle root wherever that pose was.
+    struct RodPose
+    {
+        public bool found;
+        public Vector3 localPos;
+        public Quaternion localRot;
+        /// WORLD scale, not local. The shuttle is scaled 1.2, so storing the
+        /// rod's localScale and setting it back under the shuttle multiplies the
+        /// rod by 1.2 on EVERY rebuild - it went 1.2 -> 1.44 -> 1.73 and so on.
+        /// World scale is the frame-independent quantity; SetWorldScale converts
+        /// it back through whatever parent the rod lands under.
+        public Vector3 worldScale;
+    }
+
+    static RodPose _rodPose;
+
+    /// Reads the rod's pose out of the tutorial scene as it stands on disk.
+    /// Opens the scene additively if it is not already open, and closes it again
+    /// WITHOUT SAVING. A missing scene, or a scene with no rod yet, returns
+    /// found = false and the builder uses its default spot.
+    static RodPose CaptureRodPose()
+    {
+        var pose = new RodPose();
+        var open = SceneManager.GetSceneByPath(ScenePath);
+        bool opened = false;
+        if (!(open.IsValid() && open.isLoaded))
+        {
+            if (System.IO.File.Exists(ScenePath))
+            {
+                open = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Additive);
+                opened = true;
+            }
+            else return pose;
+        }
+        try
+        {
+            if (!(open.IsValid() && open.isLoaded)) return pose;
+            FishingRodPickup rod = null;
+            Transform shuttle = null;
+            foreach (var root in open.GetRootGameObjects())
+            {
+                if (rod == null) rod = root.GetComponentInChildren<FishingRodPickup>(true);
+                if (shuttle == null)
+                    foreach (var t in root.GetComponentsInChildren<Transform>(true))
+                        if (t.name == "Shuttle_Lander") { shuttle = t; break; }
+            }
+            if (rod == null || shuttle == null) return pose;
+
+            pose.found      = true;
+            pose.localPos   = shuttle.InverseTransformPoint(rod.transform.position);
+            pose.localRot   = Quaternion.Inverse(shuttle.rotation) * rod.transform.rotation;
+            pose.worldScale = rod.transform.lossyScale;
+            Debug.Log("[TutorialScene] Kept the hand-placed fishing rod pose (shuttle-local " + pose.localPos.ToString("F2") + ").");
+            return pose;
+        }
+        finally
+        {
+            if (opened && open.IsValid() && open.isLoaded)
+                EditorSceneManager.CloseScene(open, true);   // discard, never save
+        }
+    }
+
+    /// Puts the rod in the shuttle: the pose Sam left it at, or - the first time
+    /// round - resting on the bunk, which is the one flat interior surface the
+    /// prefab is guaranteed to have.
+    static void PlaceFishingRod(Scene scene, Transform shuttle)
+    {
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.RodPrefabPath);
+        if (prefab == null)
+        {
+            Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.RodPrefabPath + " missing — run " +
+                             "Tools ▸ Solar System ▸ Snapshot Tutorial Fishing Rod Prefab. No rod in the shuttle.");
+            return;
+        }
+
+        var rod = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+        rod.name = "FishingRod";
+        rod.transform.SetParent(shuttle, false);
+
+        // The prefab root was written world-scaled by the snapshot, so its own
+        // localScale is the size the rod should end up at in the world.
+        SetWorldScale(rod.transform, _rodPose.found ? _rodPose.worldScale : prefab.transform.localScale);
+
+        if (_rodPose.found)
+        {
+            rod.transform.localPosition = _rodPose.localPos;
+            rod.transform.localRotation = _rodPose.localRot;
+            return;
+        }
+
+        // First build: rest it on the bunk. Measured from the mattress renderer
+        // rather than hardcoded, so re-posing the bunk in the prefab moves the
+        // rod with it.
+        Vector3 spot = new Vector3(0f, 1.0f, 0f);
+        foreach (var t in shuttle.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name != "BunkMattress") continue;
+            var mr = t.GetComponent<Renderer>();
+            spot = mr != null
+                ? shuttle.InverseTransformPoint(new Vector3(mr.bounds.center.x, mr.bounds.max.y + 0.08f, mr.bounds.center.z))
+                : shuttle.InverseTransformPoint(t.position);
+            break;
+        }
+        rod.transform.localPosition = spot;
+        rod.transform.localRotation = Quaternion.identity;
+        Debug.Log("[TutorialScene] No previous rod — placed it on the bunk. Move it where you want it and SAVE THE SCENE; " +
+                  "rebuilds keep it there from now on.");
+    }
+
+    /// <summary>
+    /// The managers the box needs that nothing auto-creates, plus FishInventory.
+    /// See TutorialSnapshots.Managers for what each one is and why it is missing.
+    ///
+    /// FishInventory is added as a BARE COMPONENT rather than a snapshot: in the
+    /// gameplay scene it rides on the fish-market alien, and it has no serialized
+    /// data, so a fresh one is identical and brings no vendor with it. Without it
+    /// a landed fish is counted (the objective ticks) and then dropped on the
+    /// floor - Bobber.LandFish only reaches the hotbar through this.
+    /// </summary>
+    static void BuildMissingManagers(Scene scene, Transform parent)
+    {
+        foreach (var (name, _) in TutorialSnapshots.Managers)
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.ManagerPrefabPath(name));
+            if (prefab == null)
+            {
+                Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.ManagerPrefabPath(name) + " missing \u2014 run " +
+                                 "Tools \u25b8 Solar System \u25b8 Snapshot Tutorial Manager Prefabs. Skipping " + name + ".");
+                continue;
+            }
+            var inst = (GameObject)PrefabUtility.InstantiatePrefab(prefab, scene);
+            inst.transform.SetParent(parent, false);
+            inst.SetActive(true);
+        }
+
+        var fishInv = new GameObject("FishInventory");
+        fishInv.transform.SetParent(parent, false);
+        fishInv.AddComponent<FishInventory>();
+    }
+
+    /// <summary>
+    /// The gameplay HUD, from a snapshot: the build menu (whose blueprint
+    /// catalogue is Inspector-authored and so cannot be created from code), the
+    /// bonfire cook panel, the fish-catch card, the pickup / place prompts and
+    /// the resource readout. Without it the box can show objectives it has no
+    /// way to let the player complete.
+    ///
+    /// Then the BONFIRE UI OWNER. The cook panel is SHARED: in the gameplay
+    /// scene the first BonfireInteraction with a cookPanel assigned builds the
+    /// panel's contents in its Start and publishes the refs through
+    /// BonfireUIRegistry, and every bonfire placed from the build menu reads
+    /// them from there - a placed one is handed its cookPanel after Start, so it
+    /// never builds anything itself.
+    ///
+    /// The box has no bonfire to be that first one, so it gets an owner with no
+    /// world presence: a bare GameObject on the UI root carrying the same
+    /// component, wired to the canvas's own panel and prompt. No collider, so it
+    /// never goes in range and never prompts - it exists to build the panel and
+    /// register it, which is exactly the job the gameplay scene's source bonfire
+    /// does. Nothing here is a tutorial-only code path; the arrangement is the
+    /// shipping one.
+    /// </summary>
+    static void BuildGameplayHud(Scene scene, Transform uiRoot)
+    {
+        var hudPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.HudPrefabPath);
+        if (hudPrefab == null)
+        {
+            Debug.LogWarning("[TutorialScene] " + TutorialSnapshots.HudPrefabPath + " missing — run " +
+                             "Tools ▸ Solar System ▸ Snapshot Tutorial HUD Canvas Prefab. " +
+                             "No build menu and no cook panel: 'place a bonfire' and 'cook a fish' cannot be completed.");
+            return;
+        }
+
+        var hud = (GameObject)PrefabUtility.InstantiatePrefab(hudPrefab, scene);
+        hud.name = TutorialSnapshots.HudCanvasName;
+        hud.transform.SetParent(uiRoot, false);
+        hud.SetActive(true);
+
+        StripOrphanedHudPanels(hud.transform);
+
+        GameObject cookPanel = null;
+        TMPro.TextMeshProUGUI prompt = null;
+        foreach (var t in hud.GetComponentsInChildren<Transform>(true))
+        {
+            if (cookPanel == null && t.name == "CookPanel") cookPanel = t.gameObject;
+            if (prompt == null && t.name == "BonfirePromptText") prompt = t.GetComponent<TMPro.TextMeshProUGUI>();
+        }
+        if (cookPanel == null)
+        {
+            Debug.LogWarning("[TutorialScene] No 'CookPanel' under the HUD snapshot — placed bonfires won't be cookable. " +
+                             "Re-run the HUD snapshot after checking the gameplay scene still has one.");
+            return;
+        }
+
+        var owner = new GameObject("Bonfire UI Owner");
+        owner.transform.SetParent(uiRoot, false);
+        var bf = owner.AddComponent<BonfireInteraction>();
+        bf.cookPanel  = cookPanel;
+        bf.promptText = prompt;
+    }
+
+    /// <summary>
+    /// Panels on the borrowed HUD that are LEFT ON SCREEN in the box.
+    ///
+    /// They are authored ACTIVE in the gameplay scene and switched off in the
+    /// Start() of whatever owns them - `FishMarketNPC.Start` hides SellPanel and
+    /// TalkPrompt, the NPC dialogue scripts hide DialogueText, and so on. The
+    /// box has no vendors, no NPCs and no TRAX, so nobody ever hides them and
+    /// they just sit there: a fish-vendor panel and a TMP placeholder reading
+    /// "New Text" across the screen from the moment the tutorial loads.
+    ///
+    /// Switched off here rather than in the gameplay scene, which must keep them
+    /// exactly as they are. Anything NOT listed here and left on is reported, so
+    /// the next panel that arrives this way shows up in the console instead of on
+    /// Sam's screen.
+    ///
+    /// Deliberately NOT in this list, because each one hides ITSELF in Start and
+    /// the box genuinely uses it: CrashWarningText (CrashWarningFader zeroes its
+    /// own alpha), FishCatch, ResourceHUD, BoostMeters, the two prompts,
+    /// WaterFillUI, FadeOverlay, and BuildMenu - which must also stay ACTIVE, or
+    /// BuildMenuUI.Awake never runs and the build menu has no Instance.
+    /// </summary>
+    static readonly string[] OrphanedHudPanels =
+    {
+        "SellPanel",        // FishMarketNPC.Start hides it - no fish market here
+        "EarningsText",     // the sell panel's takings line
+        "DialogueText",     // NPC dialogue - reads "New Text" with no NPC to drive it
+        "TalkPrompt",       // "Press F to talk" - nobody to talk to
+        "CassetteText",     // TRAX, which the box has none of
+    };
+
+    /// Switches the listed panels off and logs whatever else is left showing.
+    static void StripOrphanedHudPanels(Transform hud)
+    {
+        foreach (var name in OrphanedHudPanels)
+        {
+            var t = hud.Find(name);
+            if (t != null) t.gameObject.SetActive(false);
+        }
+
+        var stillOn = new System.Text.StringBuilder();
+        foreach (Transform c in hud)
+            if (c.gameObject.activeSelf) stillOn.Append(c.name).Append("  ");
+        Debug.Log("[TutorialScene] HUD panels left showing: " + stillOn +
+                  "\n(each of these either draws nothing until something happens or hides itself in Start. " +
+                  "If one of them is visibly sitting on screen in the box, add it to OrphanedHudPanels.)");
+    }
+
+    /// Sets a transform's WORLD scale by dividing out its parent's. Unity only
+    /// exposes localScale as a setter, so anything positioned under the shuttle
+    /// (which is scaled 1.2) has to do this or it inherits the shuttle's scale on
+    /// top of its own.
+    static void SetWorldScale(Transform t, Vector3 world)
+    {
+        Vector3 p = t.parent != null ? t.parent.lossyScale : Vector3.one;
+        t.localScale = new Vector3(
+            Mathf.Approximately(p.x, 0f) ? world.x : world.x / p.x,
+            Mathf.Approximately(p.y, 0f) ? world.y : world.y / p.y,
+            Mathf.Approximately(p.z, 0f) ? world.z : world.z / p.z);
+    }
+
+    /// <summary>
+    /// The tutorial box's THREE BOARDS, shown one after another (Sam,
+    /// 2026-09-16). Each stays up until every line on it is crossed off, then
+    /// the next replaces it:
+    ///
+    ///   1. SURVIVAL   - the things the planet teaches you.
+    ///   2. REFUEL     - the shuttle lands dry (TutorialDirector empties the
+    ///                   tank on touchdown), so leaving means finding crystals
+    ///                   and feeding the reactor.
+    ///   3. DEPARTURE  - the computer, and a destination.
+    ///
+    /// Order within a board is the reading order, not the enum order.
+    /// </summary>
+    static OrientationObjectivesScreen.BoardPhase[] TutorialPhases()
+    {
+        return new[]
+        {
+            new OrientationObjectivesScreen.BoardPhase
+            {
+                header = "Orientation Objectives",
+                lines = new[]
+                {
+                    OrientationObjectives.Objective.CatchFish,
+                    OrientationObjectives.Objective.DrinkWater,
+                    OrientationObjectives.Objective.ChopTree,
+                    OrientationObjectives.Objective.PlantSapling,
+                    OrientationObjectives.Objective.PlaceBonfire,
+                    OrientationObjectives.Objective.EatCookedFish,
+                },
+                // The fish line is overridden because the shared label ends
+                // "(rod's in Tev's cabin)" - true in the gameplay scene, a wild
+                // goose chase in a box that has no cabin.
+                overrides = new[]
+                {
+                    "Catch a fish",
+                    "Fill your bottle and drink",
+                    "",
+                    "",
+                    "",
+                    "Cook a fish on the bonfire and eat it",
+                },
+            },
+            new OrientationObjectivesScreen.BoardPhase
+            {
+                header = "Refuel",
+                lines = new[]
+                {
+                    OrientationObjectives.Objective.GatherCrystals,
+                    OrientationObjectives.Objective.InsertCrystals,
+                },
+                overrides = new[] { "Gather fuel crystals", "Insert them into the reactor" },
+            },
+            new OrientationObjectivesScreen.BoardPhase
+            {
+                header = "Departure",
+                lines = new[] { OrientationObjectives.Objective.SelectDestination },
+                overrides = new[] { "Use the computer, select a destination" },
+            },
+        };
+    }
+
     [MenuItem("Tools/Solar System/Build Tutorial Scene")]
     public static void Build()
     {
@@ -106,6 +443,8 @@ public static class TutorialSceneBuilder
             return;
         }
         if (!AssetDatabase.IsValidFolder(SceneDir)) AssetDatabase.CreateFolder("Assets", "4 - Scenes");
+        // BEFORE the wipe: keep where Sam put the rod.
+        _rodPose = CaptureRodPose();
         var settings = GetOrCreateTutorialEarth();
         if (settings == null) return;
         var rainMat = LoadOrCreateRainMaterial(RainMatPath, 1.6f, radial: true);   // ceiling: streams out from the centre
@@ -268,6 +607,19 @@ public static class TutorialSceneBuilder
         float lift = FeetLift(shuttle);
         shuttle.transform.position = new Vector3(0f, lift, 0f);
 
+        // The rod the player picks up, and the five objectives the TV lists.
+        PlaceFishingRod(scene, shuttle.transform);
+        var board = shuttle.GetComponentInChildren<OrientationObjectivesScreen>(true);
+        if (board != null)
+        {
+            board.phases = TutorialPhases();
+            // The flat list is what a board with no phases falls back to; clear
+            // it so there is exactly one source of truth on this screen.
+            board.shownObjectives = null;
+            board.lineOverrides   = null;
+        }
+        else Debug.LogWarning("[TutorialScene] No OrientationObjectivesScreen under the shuttle — the TV will list the full board.");
+
         // The box: walls reach WallBelow under y = 0 (terrain dips), ceiling at
         // BoxSize. Each quad's local +Z points OUT; the box collider sits just
         // outside the pane so the visible surface is the limit.
@@ -281,6 +633,7 @@ public static class TutorialSceneBuilder
 
         // Managers: the gameplay scene's spawners, with Sam's tuning, from prefab snapshots.
         var managers = new GameObject("--- Managers ---");
+        BuildMissingManagers(scene, managers.transform);
         foreach (var (name, _) in TutorialSnapshots.Spawners)
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.SpawnerPrefabPath(name));
@@ -322,6 +675,7 @@ public static class TutorialSceneBuilder
         // HUD pieces that are scene objects in the gameplay scene (never seeded).
         var uiRoot = new GameObject("--- UI ---");
         BuildCrosshair(uiRoot.transform);
+        BuildGameplayHud(scene, uiRoot.transform);
         var helmetCfg = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.HelmetPrefabPath);
         if (helmetCfg != null)
         {

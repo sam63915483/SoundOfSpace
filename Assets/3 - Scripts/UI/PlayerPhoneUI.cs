@@ -2363,8 +2363,9 @@ public class PlayerPhoneUI : MonoBehaviour
             // Planet economy: the player's notebook of market boards they have read.
             BuildAppTile(AppKind.Markets,    "$", "Markets"),
         };
-        // VAULTED with the freeform building system.
-        if (FeatureVault.FreeformBuilding)
+        // Present at EITHER building tier - the freeform catalogue, or the two
+        // basics (torch + bonfire). Vaulted only when both are off.
+        if (FeatureVault.BuildMenuAvailable)
             tiles.Add(BuildAppTile(AppKind.Build, "B", "Build"));
         tiles.Add(BuildAppTile(AppKind.Settings, "S", "Settings"));
         tiles.Add(BuildAppTile(AppKind.Map,      "M", "Map"));

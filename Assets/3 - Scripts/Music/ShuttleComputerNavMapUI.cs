@@ -102,10 +102,18 @@ public partial class ShuttleComputerUI
     };
 
     static Color SwatchFor(CelestialBody b)
+        => b == null ? Color.grey : MapSwatchFor(b.bodyName);
+
+    /// <summary>
+    /// The swatch for a body BY NAME. Public so the deep-range map's extractor
+    /// (Editor/GalaxyMapExtractor) can colour its planets out of this same
+    /// table rather than a second, drifting copy of it.
+    /// </summary>
+    public static Color MapSwatchFor(string bodyName)
     {
-        if (b == null) return Color.grey;
-        if (NavSwatch.TryGetValue(b.bodyName, out var c)) return c;
-        float h = Mathf.Abs(b.bodyName.GetHashCode() % 1000) / 1000f;
+        if (string.IsNullOrEmpty(bodyName)) return Color.grey;
+        if (NavSwatch.TryGetValue(bodyName, out var c)) return c;
+        float h = Mathf.Abs(bodyName.GetHashCode() % 1000) / 1000f;
         return Color.HSVToRGB(h, 0.35f, 0.72f);
     }
 

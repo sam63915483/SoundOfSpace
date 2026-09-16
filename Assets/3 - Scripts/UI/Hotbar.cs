@@ -27,10 +27,16 @@ public class Hotbar : MonoBehaviour
         // length 5 when populated. Each entry is a regular Hotbar.Slot —
         // typically Fish, but the data layer doesn't enforce content.
         public Hotbar.Slot[] bagContents;
-        // Populated only when id == Mushroom / MushroomSapling. The species KEY
-        // (the source prefab's name — see MushroomRegistry). Stacks are
-        // SPECIES-PURE: two different species never merge into one stack, so
-        // every add/spend path has to match on this as well as the id.
+        // Populated for every SPECIES item — Mushroom, MushroomSapling and (since
+        // 2026-09-16) Sapling. The species KEY is the source prefab's name; see
+        // MushroomRegistry / TreeRegistry. Stacks are SPECIES-PURE: two different
+        // species never merge into one stack, so every add/spend path has to
+        // match on this as well as the id.
+        //
+        // ⚠️ The FIELD NAME still says mushroom, and must. It is the serialized
+        // name in every save file, locker slot and network message written since
+        // the mushroom economy shipped; renaming it would silently empty the
+        // species off every existing save. Read it as "speciesKey".
         public string mushroomSpecies;
         // Populated only when id == Cassette. The PRINT id — see TraxPrints.
         // Like species, stacks are PURE: two different songs never merge, so
@@ -38,10 +44,58 @@ public class Hotbar : MonoBehaviour
         public string cassetteId;
     }
 
-    /// True for the two species-carrying item ids. Their stacks match on
-    /// <see cref="Slot.mushroomSpecies"/> as well as the id.
+    /// True for the two MUSHROOM ids specifically. Use this only where the
+    /// answer must be "is this actually a mushroom" — picking the mushroom
+    /// registry, eating one. For "does this carry a species key", which is the
+    /// question almost every caller means, use <see cref="IsSpeciesItem"/>.
     public static bool IsMushroomItem(ItemId id) =>
         id == ItemId.Mushroom || id == ItemId.MushroomSapling;
+
+    /// <summary>
+    /// True for every id that carries a SPECIES KEY in
+    /// <see cref="Slot.mushroomSpecies"/>: both mushroom ids and tree saplings.
+    ///
+    /// Tree saplings joined 2026-09-16 (Sam: a sapling should be "a mini version
+    /// of the tree it was so you can see what kind of sapling it is", and
+    /// therefore "we wont be able to stack saplings unless they are the same
+    /// species"). Riding the mushroom rail rather than adding a parallel one
+    /// means species-pure stacking, the ground model, the hotbar render, the
+    /// held model and the save round-trip all came for free.
+    /// </summary>
+    public static bool IsSpeciesItem(ItemId id) =>
+        IsMushroomItem(id) || id == ItemId.Sapling;
+
+    /// <summary>
+    /// The right registry's cached hotbar render for a species, or null if the
+    /// id carries no species or the registry has not found its spawner yet.
+    /// One place to branch, so a new species item never has to be chased
+    /// through every UI that draws a slot.
+    /// </summary>
+    public static RenderTexture SpeciesPreview(ItemId id, string key, int size = 96)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        if (id == ItemId.Sapling) return TreeRegistry.Preview(key, size);
+        if (IsMushroomItem(id)) return MushroomRegistry.Preview(key, size);
+        return null;
+    }
+
+    /// A render-only model of the species, normalised to `worldSize` metres —
+    /// the ground drop and the model in the player's hand.
+    public static GameObject BuildSpeciesModel(ItemId id, string key, string name, float worldSize)
+    {
+        if (string.IsNullOrEmpty(key)) return null;
+        if (id == ItemId.Sapling) return TreeRegistry.BuildModel(key, name, worldSize);
+        if (IsMushroomItem(id)) return MushroomRegistry.BuildModel(key, name, worldSize);
+        return null;
+    }
+
+    /// The species' player-facing name, for the hotbar's selected-item label.
+    public static string SpeciesDisplayName(ItemId id, string key)
+    {
+        if (id == ItemId.Sapling) return TreeRegistry.DisplayName(key);
+        if (IsMushroomItem(id)) return MushroomRegistry.DisplayName(key);
+        return "";
+    }
 
     /// <summary>
     /// True for every id whose stacks are keyed on more than the id itself.
@@ -49,17 +103,17 @@ public class Hotbar : MonoBehaviour
     /// "these two stacks are not interchangeable" rule, so the add/spend paths
     /// below talk about a VARIANT rather than about mushrooms specifically.
     /// </summary>
-    public static bool CarriesVariant(ItemId id) => IsMushroomItem(id) || id == ItemId.Cassette;
+    public static bool CarriesVariant(ItemId id) => IsSpeciesItem(id) || id == ItemId.Cassette;
 
     /// The variant a slot is carrying, or null if its id does not use one.
     public static string VariantOf(Slot s) =>
-        s.id == ItemId.Cassette ? s.cassetteId : IsMushroomItem(s.id) ? s.mushroomSpecies : null;
+        s.id == ItemId.Cassette ? s.cassetteId : IsSpeciesItem(s.id) ? s.mushroomSpecies : null;
 
     static Slot MakeSlot(ItemId id, int count, string variant)
     {
         var slot = new Slot { id = id, count = count };
         if (id == ItemId.Cassette) slot.cassetteId = variant;
-        else if (IsMushroomItem(id)) slot.mushroomSpecies = variant;
+        else if (IsSpeciesItem(id)) slot.mushroomSpecies = variant;
         return slot;
     }
 
@@ -651,7 +705,13 @@ public class Hotbar : MonoBehaviour
     {
         if (!IsResource(resource) || amount <= 0) return amount > 0 ? amount : 0;
         bool variant = CarriesVariant(resource);
-        if (IsMushroomItem(resource) && string.IsNullOrEmpty(species)) species = MushroomRegistry.AnyKey();
+        // A null species would make an unidentifiable stack, so resolve it to
+        // the registry's first species rather than trusting the caller.
+        if (string.IsNullOrEmpty(species))
+        {
+            if (IsMushroomItem(resource)) species = MushroomRegistry.AnyKey();
+            else if (resource == ItemId.Sapling) species = TreeRegistry.AnyKey();
+        }
         if (!variant) species = null;
 
         int cap = StackMax(resource);
@@ -1211,7 +1271,7 @@ public class Hotbar : MonoBehaviour
                 count = count,
                 fishData = fish,
                 bagContents = bag,
-                mushroomSpecies = IsMushroomItem(id) ? entry.mushroomSpecies : null,
+                mushroomSpecies = IsSpeciesItem(id) ? entry.mushroomSpecies : null,
                 cassetteId = id == ItemId.Cassette ? entry.cassetteId : null,
             };
         }
@@ -2106,9 +2166,9 @@ public class Hotbar : MonoBehaviour
             // of the species that was chopped, through the same RawImage the
             // fish preview uses. Null until the registry has resolved a spawner,
             // in which case the slot falls back to the tinted swatch.
-            bool isMushroom = IsMushroomItem(id);
+            bool isMushroom = IsSpeciesItem(id);
             RenderTexture mushPreview = (isMushroom && !empty)
-                ? MushroomRegistry.Preview(slots[i].mushroomSpecies)
+                ? SpeciesPreview(id, slots[i].mushroomSpecies)
                 : null;
             bool mushPreviewVisible = mushPreview != null;
             Sprite sprite = null;
@@ -2330,12 +2390,13 @@ public class Hotbar : MonoBehaviour
                 if (bag != null) for (int b = 0; b < bag.Length; b++) if (bag[b].id != ItemId.None) filled++;
                 label = $"FISH BAG · {filled}/5";
             }
-            else if (IsMushroomItem(activeId))
+            else if (IsSpeciesItem(activeId))
             {
                 // Name the SPECIES, not the category — the whole point of
                 // species-pure stacks is that the player can tell them apart.
-                string sp = MushroomRegistry.DisplayName(slots[newActive].mushroomSpecies).ToUpperInvariant();
-                string suffix = activeId == ItemId.MushroomSapling ? " SPORES" : "";
+                string sp = SpeciesDisplayName(activeId, slots[newActive].mushroomSpecies).ToUpperInvariant();
+                string suffix = activeId == ItemId.MushroomSapling ? " SPORES"
+                              : activeId == ItemId.Sapling ? " SAPLING" : "";
                 label = $"{sp}{suffix} ×{slots[newActive].count}";
             }
             else if (activeId == ItemId.Cassette)

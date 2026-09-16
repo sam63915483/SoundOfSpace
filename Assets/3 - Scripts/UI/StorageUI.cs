@@ -381,7 +381,7 @@ public class StorageUI : MonoBehaviour
         _cursorRoot.gameObject.SetActive(true);
 
         // Mushrooms show their species render in the cursor, same as in the slot.
-        RenderTexture cursorMush = Hotbar.IsMushroomItem(_cursor.id)
+        RenderTexture cursorMush = Hotbar.IsSpeciesItem(_cursor.id)
             ? MushroomRegistry.Preview(_cursor.mushroomSpecies)
             : null;
         if (cursorMush != null)
@@ -444,7 +444,7 @@ public class StorageUI : MonoBehaviour
         bool isFish = !empty && s.id == Hotbar.ItemId.Fish && s.fishData != null;
         // Species likeness in the locker too — a red cap in storage looks like
         // the red cap it is, through the same RawImage the fish preview uses.
-        RenderTexture mushPreview = (!empty && Hotbar.IsMushroomItem(s.id))
+        RenderTexture mushPreview = (!empty && Hotbar.IsSpeciesItem(s.id))
             ? MushroomRegistry.Preview(s.mushroomSpecies)
             : null;
         v.background.color = empty

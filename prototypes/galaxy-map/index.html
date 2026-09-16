@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GALAXY MAP — prototype</title>
+<style>
+/* Palette lifted from ShuttleComputerUI.cs so the prototype and the game screen
+   match, exactly as prototypes/nav-map does. */
+:root{
+  --bg:#04070a; --panel:#071014; --panelHi:#0c1c22; --grid:#12303a;
+  --ink:#79ffd0; --inkDim:#3d8f78; --inkGhost:#1d4a3f;
+  --accent:#ff4fd8; --locked:#2a3a40; --warn:#ffc94f;
+  --sans:"Segoe UI",system-ui,ui-sans-serif,sans-serif;
+  --mono:"Cascadia Mono",Consolas,ui-monospace,monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{background:#000}
+body{min-height:100vh;background:#000;font-family:var(--sans);color:var(--ink);
+     display:flex;flex-direction:column}
+
+#stage{flex:1;display:flex;align-items:center;justify-content:center;padding:14px}
+#fit{position:relative}
+#screen{
+  position:absolute;left:0;top:0;width:1500px;height:940px;
+  background:var(--bg);overflow:hidden;transform-origin:top left;
+  box-shadow:0 0 0 12px #0d1418, 0 0 0 13px #1b2a30, 0 24px 70px rgba(0,0,0,.9),
+             inset 0 0 140px rgba(0,0,0,.75);
+  border-radius:10px;
+}
+#screen::after{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:60;
+  background:repeating-linear-gradient(180deg,rgba(0,0,0,0) 0 2px,rgba(0,0,0,.2) 2px 3px);
+  mix-blend-mode:multiply;opacity:.5;
+}
+#screen::before{
+  content:"";position:absolute;inset:0;pointer-events:none;z-index:59;
+  background:radial-gradient(120% 100% at 50% 50%,rgba(0,0,0,0) 58%,rgba(0,0,0,.5) 100%);
+}
+
+#head{position:absolute;left:22px;right:22px;top:12px;height:44px;display:flex;
+      align-items:center;justify-content:space-between}
+#title{font-size:18px;letter-spacing:.34em;color:var(--inkGhost)}
+#zoomTxt{font-family:var(--mono);font-size:15px;letter-spacing:.14em;color:var(--inkDim)}
+
+#mapWrap{position:absolute;left:22px;top:62px;width:1030px;bottom:16px;
+         border:1px solid var(--grid);overflow:hidden}
+#map{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
+#mapTools{position:absolute;right:12px;top:12px;display:flex;gap:6px;z-index:5}
+.tool{font-family:var(--mono);font-size:11px;letter-spacing:.14em;padding:6px 10px;
+      background:rgba(7,16,20,.8);border:1px solid var(--grid);color:var(--inkGhost);
+      cursor:pointer;user-select:none}
+.tool:hover{border-color:var(--inkDim);color:var(--ink)}
+.tool.on{border-color:var(--inkDim);color:var(--ink)}
+
+#hint{position:absolute;left:12px;top:12px;z-index:5;font-family:var(--mono);
+      font-size:11px;letter-spacing:.1em;color:var(--inkGhost);line-height:1.7;
+      background:rgba(4,7,10,.72);padding:8px 10px;border:1px solid var(--grid)}
+
+#side{position:absolute;right:22px;top:62px;width:404px;bottom:16px;display:flex;
+      flex-direction:column;gap:10px}
+.pane{background:var(--panel);border:1px solid var(--grid);padding:14px}
+.paneTitle{font-family:var(--mono);font-size:11px;letter-spacing:.2em;color:var(--inkGhost);
+           margin-bottom:10px}
+#selName{font-size:26px;letter-spacing:.06em;color:var(--ink)}
+#selSys{font-family:var(--mono);font-size:12px;letter-spacing:.16em;color:var(--inkDim);margin-top:4px}
+#selBlurb{font-size:14px;color:var(--inkDim);margin-top:12px;line-height:1.55;min-height:62px}
+
+#go{margin-top:auto;padding:18px;text-align:center;font-family:var(--mono);
+    font-size:17px;letter-spacing:.24em;background:var(--panel);
+    border:1px solid var(--locked);color:var(--locked);cursor:not-allowed;user-select:none}
+#go.on{background:var(--panelHi);border-color:var(--accent);color:var(--accent);cursor:pointer}
+
+.row{display:flex;gap:8px;align-items:center}
+.row + .row{margin-top:10px}
+label.k{font-family:var(--mono);font-size:11px;letter-spacing:.16em;color:var(--inkGhost);width:74px}
+input[type=range]{flex:1;accent-color:#3d8f78}
+#speedTxt{font-family:var(--mono);font-size:11px;color:var(--inkDim);width:54px;text-align:right}
+
+#overlay{position:absolute;inset:0;z-index:70;background:rgba(0,0,0,.86);
+         display:flex;align-items:center;justify-content:center;opacity:0;
+         pointer-events:none;transition:opacity .45s ease}
+#overlay.show{opacity:1}
+#overlayTxt{font-family:var(--mono);font-size:24px;letter-spacing:.3em;color:var(--accent)}
+</style>
+</head>
+<body>
+<div id="stage"><div id="fit"><div id="screen">
+
+  <div id="head">
+    <div id="title">NAV — DEEP RANGE</div>
+    <div id="zoomTxt">—</div>
+  </div>
+
+  <div id="mapWrap">
+    <canvas id="map"></canvas>
+    <div id="hint">
+      WHEEL &nbsp;zoom (about the cursor)<br>
+      DRAG &nbsp;&nbsp;pan<br>
+      CLICK &nbsp;a planet to select · a sun to fly to it
+    </div>
+    <div id="mapTools">
+      <div class="tool" id="home">EARTH</div>
+      <div class="tool" id="out">ALL STARS</div>
+      <div class="tool" id="pause">PAUSE</div>
+    </div>
+  </div>
+
+  <div id="side">
+    <div class="pane" style="flex:1;display:flex;flex-direction:column">
+      <div class="paneTitle">DESTINATION</div>
+      <div id="selName">—</div>
+      <div id="selSys"></div>
+      <div id="selBlurb">Select a world.</div>
+      <div id="go">NO CLEARANCE</div>
+    </div>
+
+    <div class="pane">
+      <div class="paneTitle">PROTOTYPE CONTROLS &nbsp;(not in the game)</div>
+      <div class="row">
+        <label class="k">RULES</label>
+        <div class="tool on" id="modeT">TUTORIAL</div>
+        <div class="tool" id="modeG">GAMEPLAY</div>
+      </div>
+      <div class="row">
+        <label class="k">ORBITS</label>
+        <input type="range" id="speed" min="0" max="200" value="24">
+        <div id="speedTxt">24 d/s</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="overlay"><div id="overlayTxt"></div></div>
+
+</div></div></div>
+
+<script>
+// Scale the fixed 1500x940 screen to the window, like nav-map does, so nothing
+// is ever cut off whatever the browser size.
+function fit(){
+  const pad=28, s=Math.min((innerWidth-pad)/1500,(innerHeight-pad)/940);
+  const scr=document.getElementById('screen'), f=document.getElementById('fit');
+  scr.style.transform='scale('+s+')';
+  f.style.width=(1500*s)+'px'; f.style.height=(940*s)+'px';
+}
+addEventListener('resize',fit); fit();
+</script>
+<script src="galaxy.js"></script>
+</body>
+</html>

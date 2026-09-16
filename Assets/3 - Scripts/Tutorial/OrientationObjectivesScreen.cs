@@ -57,7 +57,158 @@ public class OrientationObjectivesScreen : MonoBehaviour
     [Tooltip("Leave empty to use the project HUD font.")]
     public TMP_FontAsset fontOverride;
 
+    // -- appended; keep new fields at the END (serialization) --
+
+    [Header("Which lines this board shows")]
+    [Tooltip("Leave EMPTY for the full board in enum order — that is what the gameplay shuttle wants. " +
+             "Fill it in to show a subset, IN THE ORDER GIVEN: the tutorial box's shuttle lists five " +
+             "(catch a fish / chop a tree / plant a sapling / place a bonfire / cook a fish) and leaves out " +
+             "the axe, the bottle and the stasis pod, none of which the box asks for.")]
+    public OrientationObjectives.Objective[] shownObjectives;
+
+    [Tooltip("Optional per-line wording, matched to shownObjectives BY POSITION. Leave an entry blank " +
+             "to use the shared label from OrientationObjectives.Label. This exists because a few of " +
+             "those labels carry a hint that is only true in the gameplay scene \u2014 \"rod's in Tev's cabin\" " +
+             "would send a tutorial player looking for a cabin the box hasn't got. Retyping a line here " +
+             "changes only this board.")]
+    public string[] lineOverrides;
+
+    /// <summary>
+    /// One screen's worth of objectives. The tutorial box runs three in
+    /// sequence (Sam, 2026-09-16): survive, then refuel, then leave.
+    ///
+    /// A phase is shown until every line on it is crossed off, then the board
+    /// waits <see cref="phaseHoldSeconds"/> - long enough for the player to SEE
+    /// the last line struck through - and switches to the next. There is no way
+    /// back: the objectives themselves are one-way, so a completed phase can
+    /// never un-complete.
+    /// </summary>
+    [System.Serializable]
+    public class BoardPhase
+    {
+        [Tooltip("Heading above the list. Leave blank for ORIENTATION OBJECTIVES.")]
+        public string header;
+        [Tooltip("The lines, in the order they should read.")]
+        public OrientationObjectives.Objective[] lines;
+        [Tooltip("Optional per-line wording, positional against 'lines'. Blank = the shared label.")]
+        public string[] overrides;
+    }
+
+    [Tooltip("Leave EMPTY to show one fixed board (shownObjectives above). Fill it in for a board that " +
+             "ADVANCES: each phase is shown until all of its lines are crossed off, then the next takes over.")]
+    public BoardPhase[] phases;
+
+    [Tooltip("Seconds the finished phase stays up after its last line is struck through, before the next " +
+             "one replaces it. Long enough to read what you just finished.")]
+    public float phaseHoldSeconds = 2.5f;
+
     const float TextScale = 0.001f;
+
+    /// <summary>
+    /// The lines this board draws, top to bottom.
+    ///
+    /// EVERYTHING below indexes by ROW, not by objective: the strike quads, the
+    /// TMP line numbers and the painted-mask cache. Keeping one ordered array as
+    /// the single source of that mapping is what lets the tutorial reorder its
+    /// five lines without the strike-through landing on the wrong one — the bug
+    /// you get for free if any of them goes back to assuming row == (int)enum.
+    ///
+    /// Rebuilt whenever the inspector array changes, which in [ExecuteAlways]
+    /// means while Sam is editing it.
+    /// </summary>
+    OrientationObjectives.Objective[] _rows;
+    string[] _rowOverrides;
+    int _builtPhase = -2;          // -1 = the flat board; >= 0 = that phase index
+
+    /// <summary>
+    /// Which phase the board is showing: the first one with an unfinished line.
+    /// Once every phase is done it stays on the last, which then reads as a
+    /// fully crossed-off list rather than vanishing.
+    ///
+    /// While a phase is being held (its last line was just struck) this stays on
+    /// the FINISHED phase, so the player watches the strike land instead of the
+    /// screen changing under them.
+    /// </summary>
+    int ActivePhase
+    {
+        get
+        {
+            if (phases == null || phases.Length == 0) return -1;
+            if (Application.isPlaying && _holdUntil > 0f && Time.unscaledTime < _holdUntil)
+                return Mathf.Clamp(_heldPhase, 0, phases.Length - 1);
+            for (int i = 0; i < phases.Length; i++)
+            {
+                var ph = phases[i];
+                if (ph == null || ph.lines == null || ph.lines.Length == 0) continue;
+                if (!OrientationObjectives.AllCompleteOf(ph.lines)) return i;
+            }
+            return phases.Length - 1;
+        }
+    }
+
+    float _holdUntil;
+    int _heldPhase = -1;
+
+    OrientationObjectives.Objective[] Rows
+    {
+        get
+        {
+            int phase = ActivePhase;
+            if (_rows == null || _builtPhase != phase) BuildRows(phase);
+            return _rows;
+        }
+    }
+
+    void BuildRows(int phase)
+    {
+        if (phase >= 0 && phases != null && phase < phases.Length && phases[phase] != null
+            && phases[phase].lines != null && phases[phase].lines.Length > 0)
+        {
+            var ph = phases[phase];
+            _rows = (OrientationObjectives.Objective[])ph.lines.Clone();
+            _rowOverrides = ph.overrides;
+        }
+        else if (shownObjectives != null && shownObjectives.Length > 0)
+        {
+            _rows = (OrientationObjectives.Objective[])shownObjectives.Clone();
+            _rowOverrides = lineOverrides;
+        }
+        else
+        {
+            _rows = new OrientationObjectives.Objective[OrientationObjectives.Count];
+            for (int i = 0; i < _rows.Length; i++) _rows[i] = (OrientationObjectives.Objective)i;
+            _rowOverrides = null;
+        }
+        _builtPhase = phase;
+        // The strike pool is sized to the row count, so it has to be rebuilt with
+        // it. Dropping the reference is enough: EnsureStrikePool reuses the quads
+        // it finds under "Strikes" and only adds what is missing.
+        _strikes = null;
+        _strikingIndex = -1;
+        _paintedMask = -1;         // force a repaint onto the new list
+    }
+
+    /// Which row draws this objective, or -1 if this board does not list it.
+    int RowOf(OrientationObjectives.Objective o)
+    {
+        var rows = Rows;
+        for (int i = 0; i < rows.Length; i++) if (rows[i] == o) return i;
+        return -1;
+    }
+
+    /// Does this board list it at all? The axe/bottle poll asks before running.
+    bool Shows(OrientationObjectives.Objective o) => RowOf(o) >= 0;
+
+    /// What row `r` actually reads. An override wins; otherwise the shared label.
+    /// Matched BY POSITION against shownObjectives, so a short overrides array is
+    /// fine \u2014 the rows past its end just use their normal wording.
+    string LineText(int r, OrientationObjectives.Objective o)
+    {
+        var ov = _rowOverrides;
+        if (ov != null && r < ov.Length && !string.IsNullOrWhiteSpace(ov[r]))
+            return ov[r];
+        return OrientationObjectives.Label(o);
+    }
 
     TextMeshPro _text;
     int _paintedMask = -1;
@@ -83,10 +234,27 @@ public class OrientationObjectivesScreen : MonoBehaviour
 
     void OnObjectiveCompleted(OrientationObjectives.Objective o)
     {
+        // A board that does not list this one has nothing to animate. The
+        // objective still completed and still saves - it just is not on this TV.
+        int row = RowOf(o);
+        if (row < 0) return;
+
         // Start the line drawing rather than snapping it on — the whole point of
         // the beat is that the player SEES it get crossed off.
-        _strikingIndex = (int)o;
+        _strikingIndex = row;
         _strikeT = 0f;
+
+        // If that was the last line of the phase, PIN the board to this phase
+        // for a beat. Without it ActivePhase would flip the instant the mask
+        // changed and the player would never see the strike they just earned.
+        int phase = _builtPhase;
+        if (phase >= 0 && phases != null && phase < phases.Length
+            && phases[phase] != null && OrientationObjectives.AllCompleteOf(phases[phase].lines))
+        {
+            _heldPhase = phase;
+            _holdUntil = Time.unscaledTime + Mathf.Max(strikeDrawSeconds, phaseHoldSeconds);
+        }
+
         Repaint(true);
     }
 
@@ -122,7 +290,25 @@ public class OrientationObjectivesScreen : MonoBehaviour
         if (Time.unscaledTime < _nextPoll) return;
         _nextPoll = Time.unscaledTime + PollInterval;
 
-        if (!OrientationObjectives.IsComplete(OrientationObjectives.Objective.TakeAxeAndBottle))
+        if (Shows(OrientationObjectives.Objective.GatherCrystals)
+            && !OrientationObjectives.IsComplete(OrientationObjectives.Objective.GatherCrystals))
+        {
+            // FOUR (Sam, 2026-09-16: "just make it so you need 4 and it will
+            // complete but gathering more will help, 4 should be enough to get
+            // them off the ground"). A flat number, not the tank's full deficit:
+            // filling the tank is ~20 crystals, and standing between the player
+            // and the rest of the tutorial for 20 is a chore, where 4 is a trip.
+            // More is still better - the reactor takes everything you carry and
+            // the fuel buys range - the line just stops nagging at 4.
+            const int CrystalsForLaunch = 4;
+            int have = Hotbar.Instance != null
+                ? Hotbar.Instance.GetResourceTotal(Hotbar.ItemId.Crystal) : 0;
+            if (have >= CrystalsForLaunch)
+                OrientationObjectives.Complete(OrientationObjectives.Objective.GatherCrystals);
+        }
+
+        if (Shows(OrientationObjectives.Objective.TakeAxeAndBottle)
+            && !OrientationObjectives.IsComplete(OrientationObjectives.Objective.TakeAxeAndBottle))
         {
             var hb = Hotbar.Instance;
             if (hb != null
@@ -253,20 +439,21 @@ public class OrientationObjectivesScreen : MonoBehaviour
         // on, so the header has to be relative to it.
         sb.Append("<size=").Append(headerScalePercent.ToString("0.#")).Append("%>")
           .Append("<b><color=#").Append(ColorUtility.ToHtmlStringRGB(headerColor)).Append('>')
-          .Append("ORIENTATION OBJECTIVES")
+          .Append(HeaderText())
           .Append("</color></b></size>\n\n");
 
-        for (int i = 0; i < OrientationObjectives.Count; i++)
+        var rows = Rows;
+        for (int r = 0; r < rows.Length; r++)
         {
-            var o = (OrientationObjectives.Objective)i;
-            bool done = (mask & (1 << i)) != 0;
-            bool striking = i == _strikingIndex;
+            var o = rows[r];
+            bool done = (mask & (1 << (int)o)) != 0;
+            bool striking = r == _strikingIndex;
             string col = ColorUtility.ToHtmlStringRGB(done && !striking ? doneColor : lineColor);
 
             sb.Append("<color=#").Append(col).Append('>');
-            sb.Append("- ").Append(OrientationObjectives.Label(o));
+            sb.Append("- ").Append(LineText(r, o));
             sb.Append("</color>");
-            if (i < OrientationObjectives.Count - 1) sb.Append('\n');
+            if (r < rows.Length - 1) sb.Append('\n');
         }
 
         _text.text = sb.ToString();
@@ -285,6 +472,15 @@ public class OrientationObjectivesScreen : MonoBehaviour
     // make the draw-on animation exact — the line's width IS the progress, rather
     // than a character count approximating it.
 
+    string HeaderText()
+    {
+        int phase = _builtPhase;
+        if (phase >= 0 && phases != null && phase < phases.Length
+            && phases[phase] != null && !string.IsNullOrWhiteSpace(phases[phase].header))
+            return phases[phase].header.ToUpperInvariant();
+        return "ORIENTATION OBJECTIVES";
+    }
+
     Transform _strikeRoot;
     Transform[] _strikes;
     Material _strikeMat;
@@ -299,18 +495,19 @@ public class OrientationObjectivesScreen : MonoBehaviour
         if (_strikes == null) return;
         if (_strikeMat != null) _strikeMat.color = doneColor;
 
-        for (int i = 0; i < OrientationObjectives.Count; i++)
+        var rows = Rows;
+        for (int r = 0; r < rows.Length && r < _strikes.Length; r++)
         {
-            var tr = _strikes[i];
+            var tr = _strikes[r];
             if (tr == null) continue;
 
-            bool done = OrientationObjectives.IsComplete((OrientationObjectives.Objective)i);
-            float progress = done ? (i == _strikingIndex ? Mathf.Clamp01(_strikeT) : 1f) : 0f;
+            bool done = OrientationObjectives.IsComplete(rows[r]);
+            float progress = done ? (r == _strikingIndex ? Mathf.Clamp01(_strikeT) : 1f) : 0f;
             if (progress <= 0f) { tr.gameObject.SetActive(false); continue; }
 
-            // Header, blank spacer, then one line per objective — word wrap is
-            // off, so that mapping can't drift.
-            int line = 2 + i;
+            // Header, blank spacer, then one line per ROW — word wrap is off, so
+            // that mapping can't drift.
+            int line = 2 + r;
             if (line >= info.lineCount) { tr.gameObject.SetActive(false); continue; }
             var li = info.lineInfo[line];
 
@@ -351,7 +548,18 @@ public class OrientationObjectivesScreen : MonoBehaviour
             _strikeMat.color = doneColor;
         }
 
-        _strikes = new Transform[OrientationObjectives.Count];
+        // Sized to the ROW COUNT. The quads live under "Strikes" and are reused
+        // by name, so a board that shrinks from eight lines to five leaves
+        // Strike5..7 parked in the hierarchy - hidden here so a stale rule from a
+        // previous row count can never be left drawn across the screen.
+        int rowCount = Rows.Length;
+        for (int i = rowCount; i < OrientationObjectives.Count; i++)
+        {
+            var stale = _strikeRoot.Find("Strike" + i);
+            if (stale != null) stale.gameObject.SetActive(false);
+        }
+
+        _strikes = new Transform[rowCount];
         for (int i = 0; i < _strikes.Length; i++)
         {
             var name = "Strike" + i;

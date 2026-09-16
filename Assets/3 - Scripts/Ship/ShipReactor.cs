@@ -100,6 +100,23 @@ public class ShipReactor : MonoBehaviour
         return hb.GetResourceTotal(Hotbar.ItemId.Crystal) > 0;
     }
 
+    /// <summary>
+    /// How many crystals it would take to fill this reactor's tank right now.
+    /// The orientation board's "gather fuel crystals" line reads it, so the
+    /// objective ticks when the player is actually carrying enough to refuel
+    /// rather than the instant they scoop up their first crystal.
+    ///
+    /// 0 when there is no tank or it is already full.
+    /// </summary>
+    public int CrystalsToFill()
+    {
+        ResolveTank();
+        if (_tank == null || fuelPerCrystal <= 0f) return 0;
+        float deficit = _tank.FuelMax - _tank.FuelPercent * _tank.FuelMax;
+        if (deficit <= 0f) return 0;
+        return Mathf.Max(0, Mathf.CeilToInt(deficit / fuelPerCrystal));
+    }
+
     void Refuel()
     {
         ResolveTank();
@@ -114,6 +131,9 @@ public class ShipReactor : MonoBehaviour
         int take = Mathf.Min(crystalsNeeded, available);
         if (take <= 0) return;
         if (!hb.SpendResource(Hotbar.ItemId.Crystal, take)) return;
+        // Orientation board: "Insert the crystals into the reactor". After the
+        // spend, so it only ticks on a feed that actually happened.
+        OrientationObjectives.Complete(OrientationObjectives.Objective.InsertCrystals);
         if (feedClip != null && _audio != null) _audio.PlayOneShot(feedClip, feedVolume);
         float fuelAdded = take * fuelPerCrystal;
         // Co-op: the shuttle's tank is ONE shared number owned by the host, but

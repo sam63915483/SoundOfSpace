@@ -1313,6 +1313,38 @@ Flip a flag and the feature returns exactly as built. Prefab-and-delete vaults
 | `TevCabinAmbush` | **off** | Tev's parked ship + the entry ambush (ill-defined in co-op). ⚠️ Vaulting `Tevsship` also vaulted the smuggling mission (see VAULTED_SYSTEMS). | 2026-08-09 |
 | `ShipSchool` | **off** | The village SHIP SCHOOL buildings + instructor flow. | 2026-08-09 |
 | `MushroomSelling` | **off** | The "sell mushrooms" NPC row ONLY. Finding/chopping/replanting/eating all live. Frees the SELL PANEL, which now serves tapes. | 2026-08-14 |
+
+### Tutorial box — content (2026-09-16)
+
+The box now teaches the loop rather than just existing. Spec:
+`docs/superpowers/specs/2026-09-16-tutorial-objectives-rod-building-design.md`.
+
+- **Three TV boards**, shown in sequence on the shuttle's orientation screen
+  (`OrientationObjectivesScreen.phases`): survival (catch a fish / drink / chop /
+  plant / bonfire / cook) → refuel (gather 4 crystals / feed the reactor) →
+  departure (pick a destination). Objectives are one-way bits in a saved mask;
+  `PlaceBonfire`, `GatherCrystals`, `InsertCrystals`, `SelectDestination` were
+  appended.
+- **The shuttle lands dry** (`TutorialDirector` empties the tank at touchdown), so
+  the refuel board is a real objective.
+- **A fishing rod** sits in the shuttle (`TutorialFishingRod.prefab`); its
+  hand-placed pose survives a scene rebuild.
+- **The box borrows the gameplay HUD** (`TutorialHUDCanvas.prefab`) plus
+  `FishingdexManager`, `ResourceManager` and a bare `FishInventory` — without
+  them the build menu, cook panel, fish models and fish-to-hotbar all silently
+  did nothing.
+- **Deep-range NAV map** (`ShuttleComputerTutorialNavUI`): seven solar systems on
+  one continuous zoom, drawn through `NavMapGraphic` (the real map's renderer).
+  Konkebular-7's twelve planets are EXTRACTED from `1.6.7.7.7.unity` by
+  `Tools ▸ Solar System ▸ Extract Konkebular for the Deep-Range Map` →
+  `StreamingAssets/galaxy_konkebular.json`. Travel rules live only in
+  `GalCanTravel`. Departure calls `ShuttleAutopilot.RequestTravel` — the real
+  launch — then fades to the main menu.
+- **`L` skips the tutorial** to the departure beat with a full tank
+  (Tutorial.unity only).
+- Prototype and sign-off: `prototypes/galaxy-map/` (localhost:8091).
+
+| `BasicBuilding` | **on** | The build menu + phone Build app are BACK, with the catalogue trimmed to two blueprints: **Torch and Bonfire**. Rows off `BuildMenuUI.BasicBlueprints` are not drawn (no padlocks — the Colonizer track that would unlock them is itself vaulted). A separate TIER, not an unvaulting: flipping `FreeformBuilding` true still restores the full catalogue with no other edits. | 2026-09-16 |
 | `FreeformBuilding` | **off** | The build MENU + its catalogue + the phone Build app — NOT the placement machinery (sapling/mushroom planters call `BuildMenuUI.StartPlacementFromPhone` directly; gate the ghost and you kill replanting). | 2026-08-14 |
 | `LevelSystem` | **off** | General level, Colonizer/Tree Killer/Tree Daddy/Gangsta Rep, phone page, toast, ceremony, every level-gated unlock. Gated at ONE choke point (`PlayerProgress.Add` scores nothing); save fields untouched. `BuildMenuLock` is dead and must stay dead (`NewGameReset` calls `LockAllExcept()` with no args). | 2026-08-14 |
 | `TevFrontingEconomy` | **off** | The 50/50 front, skim quote, debt ledger, SLUDJ/CHIRP/DRIFT demo tapes — dialogue path only; `TevFronting.cs`/`TevDemoTapes.cs` still compile and round-trip. | 2026-08-14 |

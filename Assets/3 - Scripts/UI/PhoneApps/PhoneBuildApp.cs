@@ -36,17 +36,25 @@ public class PhoneBuildApp : PhoneAppBase
     {
         // Category cycle button sits above the detail pane's preview,
         // top-right of the screen (the list keeps its full height).
-        _catBtn = MakeButton(Root, "ALL", new Vector2(96f, 18f), CycleCategory);
-        var catRT = (RectTransform)_catBtn.transform;
-        catRT.anchorMin = catRT.anchorMax = new Vector2(0f, 1f);
-        catRT.pivot = new Vector2(0f, 1f);
-        catRT.anchoredPosition = new Vector2(8f, -32f);
-        _catLabel = _catBtn.GetComponentInChildren<TMP_Text>();
+        //
+        // Skipped entirely at the BASIC BUILDING tier: the catalogue is two
+        // blueprints in one category, so every press but the first would filter
+        // the list down to nothing and read as a broken screen. The list then
+        // takes the strip back.
+        if (!FeatureVault.BuildCatalogueIsBasicsOnly)
+        {
+            _catBtn = MakeButton(Root, "ALL", new Vector2(96f, 18f), CycleCategory);
+            var catRT = (RectTransform)_catBtn.transform;
+            catRT.anchorMin = catRT.anchorMax = new Vector2(0f, 1f);
+            catRT.pivot = new Vector2(0f, 1f);
+            catRT.anchoredPosition = new Vector2(8f, -32f);
+            _catLabel = _catBtn.GetComponentInChildren<TMP_Text>();
 
-        // With the category button occupying the top strip, drop the list a
-        // little to clear it.
-        var listFrame = (RectTransform)ListContent.parent.parent;
-        listFrame.offsetMax = new Vector2(listFrame.offsetMax.x, -54f);
+            // With the category button occupying the top strip, drop the list a
+            // little to clear it.
+            var listFrame = (RectTransform)ListContent.parent.parent;
+            listFrame.offsetMax = new Vector2(listFrame.offsetMax.x, -54f);
+        }
 
         // Detail pane.
         _preview = NewUI("Preview", DetailPane).gameObject.AddComponent<RawImage>();
@@ -129,6 +137,7 @@ public class PhoneBuildApp : PhoneAppBase
         foreach (var entry in menu.Buildables)
         {
             if (entry == null) continue;
+            if (!BuildMenuUI.IsBlueprintOffered(entry)) continue;   // basics tier
             if (_catIndex != 0 && entry.category != Cats[_catIndex - 1]) continue;
             var e = entry;   // capture
             // Locked blueprints stay listed (same as the desktop panel) with the
