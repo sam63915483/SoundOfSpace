@@ -20,9 +20,11 @@ using TMPro;
 /// runs at full speed, drops to quarter speed a second before the key moment
 /// (the catch, the hurdle, the fumble, the tackle), and comes back up.
 ///
-/// Layers: live football bodies are on FootballPlayer.LiveLayer (29), ghosts
-/// on ReplayLayer (30). This camera shows one or the other; every other
-/// camera is told to ignore the ghosts. Both are spare, unnamed layers.
+/// No layers (the game's camera code owns the player camera's mask and
+/// resets it — a layer trick made the aliens flicker for Sam). Instead the
+/// ghosts' renderers are switched on only while THIS camera renders, and the
+/// live men's switched off during a replay, in Camera.onPreCull /
+/// onPostRender. No other camera ever sees a ghost or misses a live man.
 ///
 /// FootballMatch.Boot creates one of these under FieldRoot in play mode if
 /// the scene has none. Nothing here touches the sim.
@@ -117,7 +119,8 @@ public class FootballBroadcast : MonoBehaviour
         BuildScreens();
         _match.Stepped += OnStepped;
         _match.PlayEnded += OnPlayEnded;
-        HideGhostsFromOtherCameras();
+        Camera.onPreCull += OnCamPreCull;
+        Camera.onPostRender += OnCamPostRender;
         string flag = Path.Combine(Application.dataPath, "../build/football_dump.txt");
         if (File.Exists(flag))
         {
@@ -129,6 +132,8 @@ public class FootballBroadcast : MonoBehaviour
     void OnDestroy()
     {
         if (_match != null) { _match.Stepped -= OnStepped; _match.PlayEnded -= OnPlayEnded; }
+        Camera.onPreCull -= OnCamPreCull;
+        Camera.onPostRender -= OnCamPostRender;
         if (_rt != null) _rt.Release();
     }
 
@@ -144,7 +149,6 @@ public class FootballBroadcast : MonoBehaviour
         _cam.fieldOfView = fovWide;
         _cam.nearClipPlane = 0.5f; _cam.farClipPlane = 600f;
         _cam.depth = -20f;                                       // renders before the player's camera
-        _cam.cullingMask = ~(1 << FootballPlayer.ReplayLayer);
         var listener = go.GetComponent<AudioListener>();
         if (listener != null) Destroy(listener);
         _focus = Vector3.zero; _slideZ = 0f;
@@ -198,13 +202,40 @@ public class FootballBroadcast : MonoBehaviour
         _labels.Add(tmp);
     }
 
-    /// Every other camera: never the ghosts, always the live men. (The
-    /// player's camera has its own mask that didn't include the spare live
-    /// layer — Sam could see the aliens on the jumbotron but not on the field.)
-    void HideGhostsFromOtherCameras()
+    // ── who is drawn by which camera ───────────────────────────────────────
+
+    readonly List<Renderer> _liveRenderers = new List<Renderer>();
+    readonly List<Renderer> _ghostRenderers = new List<Renderer>();
+    int _liveCount = -1;
+
+    void CollectLive()
     {
-        foreach (var c in Camera.allCameras)
-            if (c != _cam) c.cullingMask = (c.cullingMask & ~(1 << FootballPlayer.ReplayLayer)) | (1 << FootballPlayer.LiveLayer);
+        var players = _match.Players;
+        if (_liveCount == players.Count) return;
+        _liveRenderers.Clear();
+        foreach (var p in players) _liveRenderers.AddRange(p.GetComponentsInChildren<Renderer>(true));
+        var play = _match.CurrentPlay;
+        if (play != null && play.view.ball != null) _liveRenderers.AddRange(play.view.ball.GetComponentsInChildren<Renderer>(true));
+        _liveCount = players.Count;
+    }
+
+    /// Only while the broadcast camera renders: ghosts on, and during a
+    /// replay the live men off.
+    void OnCamPreCull(Camera c)
+    {
+        if (c != _cam) return;
+        if (!_replaying) return;
+        CollectLive();
+        foreach (var r in _liveRenderers) if (r != null) r.enabled = false;
+        foreach (var r in _ghostRenderers) if (r != null) r.enabled = true;
+    }
+
+    void OnCamPostRender(Camera c)
+    {
+        if (c != _cam) return;
+        if (!_replaying) return;
+        foreach (var r in _liveRenderers) if (r != null) r.enabled = true;
+        foreach (var r in _ghostRenderers) if (r != null) r.enabled = false;
     }
 
     // ── per frame ──────────────────────────────────────────────────────────
@@ -214,7 +245,6 @@ public class FootballBroadcast : MonoBehaviour
         if (_match == null || _cam == null) return;
         float dt = Time.deltaTime;
         _clock += dt;
-        if ((_clock % 2f) < dt) HideGhostsFromOtherCameras();       // a late camera (pause cam, photo mode)
 
         if (_replaying) TickReplay(dt);
         else
@@ -454,8 +484,8 @@ public class FootballBroadcast : MonoBehaviour
 
     void SetReplayLook(bool on)
     {
-        _cam.cullingMask = on ? ~(1 << FootballPlayer.LiveLayer) : ~(1 << FootballPlayer.ReplayLayer);
         foreach (var l in _labels) if (l != null) l.enabled = on;
+        if (!on) foreach (var r in _ghostRenderers) if (r != null) r.enabled = false;
     }
 
     /// One ghost per live man (same alien, same tint), built on first use.
@@ -491,7 +521,7 @@ public class FootballBroadcast : MonoBehaviour
                 body.transform.localScale = new Vector3(0.7f, FootballPlayer.Height * 0.5f, 0.7f);
                 g.body = body.transform;
             }
-            foreach (var t in root.GetComponentsInChildren<Transform>(true)) t.gameObject.layer = FootballPlayer.ReplayLayer;
+            foreach (var r in root.GetComponentsInChildren<Renderer>(true)) { r.enabled = false; _ghostRenderers.Add(r); }
             _ghosts.Add(g);
         }
         foreach (var g in _ghosts) g.root.gameObject.SetActive(true);
@@ -503,8 +533,7 @@ public class FootballBroadcast : MonoBehaviour
             b.transform.SetParent(_fieldRoot, false);
             b.transform.localScale = new Vector3(0.2f, 0.2f, 0.34f);
             var m = new Material(Shader.Find("Standard")) { color = new Color(0.45f, 0.24f, 0.12f) };
-            b.GetComponent<Renderer>().sharedMaterial = m;
-            b.layer = FootballPlayer.ReplayLayer;
+            var br = b.GetComponent<Renderer>(); br.sharedMaterial = m; br.enabled = false; _ghostRenderers.Add(br);
             _ghostBall = b.transform;
         }
         _ghostBall.gameObject.SetActive(true);

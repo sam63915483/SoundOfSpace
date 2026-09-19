@@ -34,9 +34,6 @@ public class FootballPlayer : MonoBehaviour
     public const float HardFallSeconds = 0.7f;      // the tumble itself; he stays down longer
     /// Facing turns at a rate, never snaps (Sam: "the aliens turn unnaturally").
     public const float TurnRateRunning = 540f, TurnRateStanding = 300f;   // deg/s
-    /// Live football bodies live on this layer so the replay camera can hide
-    /// them (ghosts on ReplayLayer). Unnamed spare layers; see FootballBroadcast.
-    public const int LiveLayer = 29, ReplayLayer = 30;
 
     public FootballTeam team;
     /// The role for the CURRENT play — a team's seven play both ways (iron-man
@@ -153,7 +150,6 @@ public class FootballPlayer : MonoBehaviour
         _modelPrefab = modelPrefab;
         if (modelPrefab != null) BuildAlien(modelPrefab);
         else BuildCapsule(bodyMat);
-        foreach (var tr in GetComponentsInChildren<Transform>(true)) tr.gameObject.layer = LiveLayer;
 
         var lbl = new GameObject("Label");
         lbl.transform.SetParent(transform, false);
@@ -165,7 +161,6 @@ public class FootballPlayer : MonoBehaviour
         tmp.color = Color.Lerp(team.color, Color.white, 0.35f);
         tmp.enableWordWrapping = false;
         tmp.GetComponent<RectTransform>().sizeDelta = new Vector2(4f, 1f);
-        lbl.layer = LiveLayer;                     // hidden by the replay camera with the rest of him
         _label = lbl.transform;
         _labelText = tmp;
     }
