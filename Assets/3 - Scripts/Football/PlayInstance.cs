@@ -1537,7 +1537,7 @@ public class PlayInstance
             {
                 // The corner on the man it was thrown to: arms crossed. Every time (Sam).
                 var db = _breakupBy ?? (_target != null ? view.Nearest(_target.Pos, view.defense) : null);
-                if (db != null && !_thrownAway) E(db, EmoteKind.NoFlyZone, 2.2f);
+                if (db != null && !_thrownAway) E(db, EmoteKind.NoFlyZone, 2.8f);
                 if (_target != null && !_thrownAway && _rng.Next(2) == 0) E(_target, EmoteKind.Dejected, 1.4f);
                 break;
             }

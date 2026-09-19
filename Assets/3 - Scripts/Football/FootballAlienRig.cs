@@ -588,10 +588,21 @@ public class FootballAlienRig : MonoBehaviour
             }
             case EmoteKind.NoFlyZone:
             {
-                // Arms crossed over the chest, hands to the opposite shoulders. Clamps.
+                // The gesture, not a pose (Sam): cross the arms over the chest,
+                // hold a beat, sweep them out wide — DENIED — cross again, drop.
                 Vector3 shR = ShoulderR + f * 0.12f - u * 0.02f, shL = ShoulderL + f * 0.12f - u * 0.02f;
-                TwoBone(_upperR, _lowerR, _handR, Vector3.Lerp(HandR(hangR), shL + f * 0.06f, ease), (-u * 0.5f + r * 0.6f + f * 0.4f).normalized);
-                TwoBone(_upperL, _lowerL, _handL, Vector3.Lerp(HandL(hangL), shR + f * 0.10f, ease), (-u * 0.5f - r * 0.6f + f * 0.4f).normalized);
+                Vector3 crossR = shL + f * 0.06f, crossL = shR + f * 0.10f;
+                Vector3 wideR = HandR((r * 0.95f + u * 0.12f).normalized), wideL = HandL((-r * 0.95f + u * 0.12f).normalized);
+                Vector3 downR = HandR(hangR), downL = HandL(hangL);
+                Vector3 tR, tL;
+                if (p < 0.22f)      { float k = Mathf.SmoothStep(0f, 1f, p / 0.22f); tR = Vector3.Lerp(downR, crossR, k); tL = Vector3.Lerp(downL, crossL, k); }
+                else if (p < 0.42f) { tR = crossR; tL = crossL; }
+                else if (p < 0.58f) { float k = Mathf.SmoothStep(0f, 1f, (p - 0.42f) / 0.16f); tR = Vector3.Lerp(crossR, wideR, k); tL = Vector3.Lerp(crossL, wideL, k); }
+                else if (p < 0.68f) { tR = wideR; tL = wideL; }
+                else if (p < 0.84f) { float k = Mathf.SmoothStep(0f, 1f, (p - 0.68f) / 0.16f); tR = Vector3.Lerp(wideR, crossR, k); tL = Vector3.Lerp(wideL, crossL, k); }
+                else                { float k = Mathf.SmoothStep(0f, 1f, (p - 0.84f) / 0.16f); tR = Vector3.Lerp(crossR, downR, k); tL = Vector3.Lerp(crossL, downL, k); }
+                TwoBone(_upperR, _lowerR, _handR, tR, (-u * 0.5f + r * 0.6f + f * 0.4f).normalized);
+                TwoBone(_upperL, _lowerL, _handL, tL, (-u * 0.5f - r * 0.6f + f * 0.4f).normalized);
                 break;
             }
             case EmoteKind.Dance:
