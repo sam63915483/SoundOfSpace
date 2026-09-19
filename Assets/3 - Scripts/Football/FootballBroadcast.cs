@@ -403,18 +403,23 @@ public class FootballBroadcast : MonoBehaviour
 
     void OnStepped(float dt)
     {
-        var play = _match.CurrentPlay;
-        if (play == null) return;
-        if (play != _lastLivePlay && play.phase == PlayInstance.Phase.Setup && _recordingPlay != null && _recordingPlay != play) _endedPlay = _recordingPlay;
-        _lastLivePlay = play;
+        var cur = _match.CurrentPlay;
+        if (cur == null) return;
+        if (cur != _lastLivePlay && cur.phase == PlayInstance.Phase.Setup && _recordingPlay != null && _recordingPlay != cur) _endedPlay = _recordingPlay;
+        _lastLivePlay = cur;
         // A new play: start a fresh recording at its pre-snap.
-        if (play != _recordingPlay && play.phase != PlayInstance.Phase.Ended && (play.phase == PlayInstance.Phase.PreSnap || play.phase == PlayInstance.Phase.Live))
+        if (cur != _recordingPlay && (cur.phase == PlayInstance.Phase.PreSnap || cur.phase == PlayInstance.Phase.Live))
         {
-            _recordingPlay = play; _frames.Clear(); _recording = true; _recordAcc = 0f; _recT = 0f;
+            _recordingPlay = cur; _frames.Clear(); _recording = true; _recordAcc = 0f; _recT = 0f;
             _keyTime = -1f; _keyRank = 0; _postWhistle = -1f; _lastHolder = null; _wasAir = false; _throwTime = -1f; _catchTime = -1f; _airEndTime = -1f;
             _wasHurdling.Clear(); _wasSpinning.Clear(); _wasDown.Clear();
         }
-        if (!_recording || play != _recordingPlay) return;
+        // Keep following the play we started on — the match builds the NEXT
+        // play the instant this one ends, so "the current play" is no longer
+        // it; sampling only while they matched stopped every replay dead at
+        // the whistle. The men and the ball are the same objects either way.
+        var play = _recordingPlay;
+        if (!_recording || play == null) return;
         var v = play.view;
         // (Stamping frames with the last frame's time + one physics step
         // compressed the recording 2x: fast-forward replays, no slow-mo.)
