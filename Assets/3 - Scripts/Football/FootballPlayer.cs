@@ -250,10 +250,9 @@ public class FootballPlayer : MonoBehaviour
         }
         if (spine == null || pelvis == null || shR == null || shL == null) return;
         Vector3 shoulders = (shR.position + shL.position) * 0.5f;
-        // A shirt, not a ball: shoulders to hips, a little wider than the shoulders.
-        float width = Vector3.Distance(shR.position, shL.position) * 1.55f;
-        float height = Vector3.Distance(shoulders, pelvis.position) * 1.5f;
-        Vector3 centre = Vector3.Lerp(shoulders, pelvis.position, 0.5f) + transform.up * (height * 0.05f);
+        float width = Vector3.Distance(shR.position, shL.position) * 1.25f;
+        float height = Vector3.Distance(shoulders, pelvis.position) * 1.15f;
+        Vector3 centre = Vector3.Lerp(shoulders, pelvis.position, 0.45f);
         var vest = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         Kill(vest.GetComponent<Collider>());
         vest.name = "Jersey";
@@ -263,7 +262,7 @@ public class FootballPlayer : MonoBehaviour
         vest.transform.localScale = Vector3.one;
         // World-size the sphere whatever the bone's scale is.
         Vector3 ls = vest.transform.lossyScale;
-        vest.transform.localScale = new Vector3(width / Mathf.Max(0.001f, ls.x), height / Mathf.Max(0.001f, ls.y), width * 0.7f / Mathf.Max(0.001f, ls.z));
+        vest.transform.localScale = new Vector3(width / Mathf.Max(0.001f, ls.x), height / Mathf.Max(0.001f, ls.y), width * 0.85f / Mathf.Max(0.001f, ls.z));
         var mat = new Material(Shader.Find("Standard")) { color = team.color };
         mat.SetFloat("_Glossiness", 0.25f);
         vest.GetComponent<Renderer>().sharedMaterial = mat;
@@ -274,9 +273,9 @@ public class FootballPlayer : MonoBehaviour
             var tgo = new GameObject(i == 0 ? "NumberFront" : "NumberBack");
             tgo.transform.SetParent(vest.transform, false);
             tgo.transform.localPosition = new Vector3(0f, 0.05f, i == 0 ? 0.52f : -0.52f);
-            tgo.transform.localRotation = Quaternion.Euler(0f, i == 0 ? 180f : 0f, 0f);      // TMP reads from its −Z
+            tgo.transform.localRotation = Quaternion.Euler(0f, i == 0 ? 0f : 180f, 0f);
             var tmp = tgo.AddComponent<TextMeshPro>();
-            tmp.text = num; tmp.fontSize = 4.2f; tmp.fontStyle = FontStyles.Bold; tmp.color = Color.white;
+            tmp.text = num; tmp.fontSize = 3.2f; tmp.fontStyle = FontStyles.Bold; tmp.color = Color.white;
             tmp.alignment = TextAlignmentOptions.Center; tmp.enableWordWrapping = false;
             tmp.GetComponent<RectTransform>().sizeDelta = new Vector2(0.6f, 0.4f);
             // Counter the vest's non-uniform scale so the digits stay square.
