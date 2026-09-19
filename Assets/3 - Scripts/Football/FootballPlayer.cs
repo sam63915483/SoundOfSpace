@@ -249,11 +249,14 @@ public class FootballPlayer : MonoBehaviour
             else if (t.name == "pelvis") pelvis = t; else if (t.name == "upperarm_r") shR = t; else if (t.name == "upperarm_l") shL = t;
         }
         if (spine == null || pelvis == null || shR == null || shL == null) return;
+        // A shirt, not a ball. Sized from the BODY, not the bones: this
+        // skeleton's pelvis sits almost at the shoulders, so bone distances gave
+        // a ball at the belly. Hips at ~0.55 m, shoulders at ~1.15 m on a 2 m man.
+        float k = Height / 2f;
+        float width = 0.56f * k, height = 0.72f * k;
         Vector3 shoulders = (shR.position + shL.position) * 0.5f;
-        // A shirt, not a ball: shoulders to hips, a little wider than the shoulders.
-        float width = Vector3.Distance(shR.position, shL.position) * 1.55f;
-        float height = Vector3.Distance(shoulders, pelvis.position) * 1.5f;
-        Vector3 centre = Vector3.Lerp(shoulders, pelvis.position, 0.5f) + transform.up * (height * 0.05f);
+        Vector3 centre = transform.position + transform.up * (0.86f * k) + transform.forward * 0.02f;
+        centre.x = shoulders.x; centre.z = shoulders.z;      // over the torso, wherever the bones put it
         var vest = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         Kill(vest.GetComponent<Collider>());
         vest.name = "Jersey";
@@ -263,7 +266,7 @@ public class FootballPlayer : MonoBehaviour
         vest.transform.localScale = Vector3.one;
         // World-size the sphere whatever the bone's scale is.
         Vector3 ls = vest.transform.lossyScale;
-        vest.transform.localScale = new Vector3(width / Mathf.Max(0.001f, ls.x), height / Mathf.Max(0.001f, ls.y), width * 0.7f / Mathf.Max(0.001f, ls.z));
+        vest.transform.localScale = new Vector3(width / Mathf.Max(0.001f, ls.x), height / Mathf.Max(0.001f, ls.y), width * 0.72f / Mathf.Max(0.001f, ls.z));
         var mat = new Material(Shader.Find("Standard")) { color = team.color };
         mat.SetFloat("_Glossiness", 0.25f);
         vest.GetComponent<Renderer>().sharedMaterial = mat;
