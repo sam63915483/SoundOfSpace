@@ -429,6 +429,10 @@ public class WRBrain : IPlayerBrain
         var carrier = view.Carrier;
         self.settled = false;
 
+        var qbLook = view.FindRole(view.offense, FootballRole.QB);
+        if (view.BallAirborne && !ball.isSnap) o.look = ball.pos;
+        else if (carrier != null) o.look = carrier.Pos + Vector3.up;
+        else if (qbLook != null) o.look = qbLook.Pos + Vector3.up;
         if (view.BallAirborne && !ball.isSnap)
         {
             bool mine = ball.intendedReceiver == self;
@@ -619,6 +623,9 @@ public class DBBrain : IPlayerBrain
         if (!view.snapped) return;
         var ball = view.ball;
         var carrier = view.Carrier;
+        if (view.BallAirborne && !ball.isSnap) o.look = ball.pos;
+        else if (carrier != null && carrier.team != self.team && carrier.role != FootballRole.QB) o.look = carrier.Pos + Vector3.up;
+        else if (_man != null) o.look = _man.Pos + Vector3.up;
         if (view.BallAirborne && !ball.isSnap)
         {
             float left = ball.catchTime - ball.airTime;
@@ -700,6 +707,7 @@ public class SafetyBrain : IPlayerBrain
         if (!view.snapped) return;
         var ball = view.ball;
         var carrier = view.Carrier;
+        o.look = view.BallAirborne ? ball.pos : (carrier != null ? carrier.Pos + Vector3.up : o.look);
         if (view.BallAirborne && !ball.isSnap)
         {
             float left = ball.catchTime - ball.airTime;
@@ -993,6 +1001,7 @@ public class QBBrain_CPU : IPlayerBrain
             if (style == Style.Quick && !_escaping && margin > 0f) { best = wr; bestMargin = margin; bestLead = lead; break; }   // first open read wins
             if (score > bestScore) { best = wr; bestScore = score; bestMargin = margin; bestLead = lead; }
         }
+        if (best != null) o.look = bestLead + Vector3.up;
         float holdMax = _holdMax + (_scrambleDrill ? ScrambleExtension : 0f) + (_escaping && !_scrambleDrill ? 1.2f : 0f);
         bool outOfTime = t > holdMax;
         // On the run, a downfield man in a tight window is still a throw — the cannon.

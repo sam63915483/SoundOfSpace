@@ -97,13 +97,13 @@ public class FootballMatch : MonoBehaviour
     public class GameStats
     {
         public int plays, interceptions, turnoversOnDowns, sacks, completions, attempts, firstDowns, fumbles, fumblesLost;
-        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, officiated;
+        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, officiated, brokenTackles, contested, tips;
         public float yards, longest, setupSeconds; public string longestDesc = "";
         public float liveSeconds;
         public string Summary(int plays)
             => "moves: juke " + jukes + " spin " + spins + " hurdle " + hurdles + " (clipped " + hurdlesClipped + ") | dives " + dives + "/" + diveHits + " hit"
              + " | fumbles " + fumbles + " (lost " + fumblesLost + ") | snaps " + snapsCaught + " caught, " + wildSnaps + " wild"
-             + " | QB rollouts " + rollouts + " scrambles " + scrambleDrills + " | emotes " + emotes
+             + " | QB rollouts " + rollouts + " scrambles " + scrambleDrills + " | broke " + brokenTackles + " tackles | contested " + contested + " (tipped " + tips + ") | emotes " + emotes
              + " | dead-ball avg " + (plays > 0 ? (setupSeconds / plays).ToString("0.0") : "-") + " s" + (officiated > 0 ? " | OFFICIALS SPOTTED " + officiated : "");
     }
 
@@ -121,6 +121,7 @@ public class FootballMatch : MonoBehaviour
     FootballTeam _openingReceiver;
     bool _pendingKickoff;                     // a score with the quarter already over: kick off after the break
     bool _freshKickoff;                       // a new game: whatever kickoff was forming belongs to the old one
+    bool _puntNext;                           // 4th down: kick it away
     bool _benched;
     PlayInstance _play;
     FootballPlay _lastCall;
@@ -360,7 +361,7 @@ public class FootballMatch : MonoBehaviour
         home.attackDir = 1; away.attackDir = -1;
         _quarter = 1; _clock = quarterSeconds; _clockStopped = true;
         _stats = new GameStats();
-        _possession = null; _lastCall = null; _pendingKickoff = false; _freshKickoff = true;
+        _possession = null; _lastCall = null; _pendingKickoff = false; _freshKickoff = true; _puntNext = false;
         // _play is left alone: whatever lineup was forming keeps walking (TickHeld) until the kickoff replaces it.
         _log.Clear();
         if (!_benched) { Bench(); _benched = true; }     // only ever at boot — nobody teleports mid-session
@@ -392,15 +393,17 @@ public class FootballMatch : MonoBehaviour
                 break;
             }
             case State.DeadBall:
-                _status = DownText();
+                _status = _puntNext ? DownText() + " — punt" : DownText();
                 ShowFieldLines(true);
-                if (_play == null || _play.phase == PlayInstance.Phase.Ended || _play.view.isKickoff) PrepareScrimmage();
+                if (_puntNext) { if (_play == null || !_play.isPunt || _play.phase == PlayInstance.Phase.Ended) PreparePunt(); }
+                else if (_play == null || _play.phase == PlayInstance.Phase.Ended || _play.view.isKickoff) PrepareScrimmage();
                 break;
             case State.Play:
             {
-                if (_play == null || _play.phase == PlayInstance.Phase.Ended || _play.view.isKickoff) PrepareScrimmage();
+                if (_puntNext) { if (_play == null || !_play.isPunt || _play.phase == PlayInstance.Phase.Ended) PreparePunt(); }
+                else if (_play == null || _play.phase == PlayInstance.Phase.Ended || _play.view.isKickoff) PrepareScrimmage();
                 _play.holdSnap = false;
-                _status = DownText() + " — " + _play.view.play.name;
+                _status = DownText() + " — " + (_play.isPunt ? "punt" : _play.view.play.name);
                 break;
             }
             case State.Score:
@@ -515,17 +518,48 @@ public class FootballMatch : MonoBehaviour
         _play.Ended += OnKickoffEnded;
     }
 
+    /// 4th down: go for it, or punt? (No field goals.) Go when it's short,
+    /// when a punt would gain little, or when trailing late.
+    bool ShouldPunt()
+    {
+        if (_down != 4 || _forcedPlay != null) return false;
+        float ytg = YardsToGoal();
+        int diff = _possession.score - Other(_possession).score;
+        bool late = _quarter >= 4 && _clock < 240f;
+        if (late && diff < 0) return false;                       // trailing in the 4th: go
+        if (_toGo <= 2f) return false;
+        if (ytg <= 38f && _toGo <= 6f) return false;              // in range of a shot, no FG to fall back on
+        if (ytg <= 25f) return false;                             // too close to give it away
+        return true;
+    }
+
+    void PreparePunt()
+    {
+        SetSides(_possession);
+        _play = new PlayInstance(_players, _ball, _possession, Other(_possession), _rng, _losZ);
+        _play.log = Say;
+        _play.holdSnap = true;
+        _play.Ended += OnKickoffEnded;
+        Say(_possession.shortName + " punt");
+    }
+
     /// The next scrimmage play, built as soon as the last one ends so the
-    /// lineup (and the ball return) run through the dead-ball hold.
+    /// lineup (and the ball return) run through the dead-ball hold. The call
+    /// knows the situation: hurry-up when trailing late, the ground when
+    /// leading late, the deep shot when desperate.
     void PrepareScrimmage()
     {
         SetSides(_possession);
         float ytg = YardsToGoal();
         var play = _forcedPlay != null ? FootballPlay.ByName(_forcedPlay) : null;
-        if (play == null) play = FootballPlay.Pick(_down, _toGo, ytg, _rng, _lastCall);
+        int diff = _possession.score - Other(_possession).score;
+        bool late = _quarter >= 4 && _clock < 180f;
+        var mood = late && diff < 0 ? FootballPlay.Mood.Desperate : late && diff > 0 ? FootballPlay.Mood.KillClock : FootballPlay.Mood.Normal;
+        if (play == null) play = FootballPlay.Pick(_down, _toGo, ytg, _rng, _lastCall, mood);
         _lastCall = play;
         _play = new PlayInstance(_players, _ball, _possession, Other(_possession), _losZ, play,
                                  qbBrainOverride[_possession.index], _rng, _toGo);
+        _play.hurryUp = mood == FootballPlay.Mood.Desperate;          // no huddle: straight to the line
         _play.log = Say;
         _play.holdSnap = true;
         _play.Ended += OnPlayEnded;
@@ -543,6 +577,7 @@ public class FootballMatch : MonoBehaviour
         _stats.dives += s.dives; _stats.diveHits += s.diveHits; _stats.fumbles += s.fumbles; _stats.fumblesLost += s.fumblesLost;
         _stats.wildSnaps += s.wildSnaps; _stats.snapsCaught += s.snapsCaught; _stats.rollouts += s.rollouts; _stats.scrambleDrills += s.scrambleDrills;
         _stats.emotes += s.emotes; _stats.setupSeconds += s.setupSeconds;
+        _stats.brokenTackles += s.brokenTackles; _stats.contested += s.contested; _stats.tips += s.tips;
         if (s.officialsSpottedBall) _stats.officiated++;
         if (clockStoppages && r.clockStops) _clockStopped = true;
         _runoffLeft = _clockStopped ? 0f : playClockRunoff;
@@ -553,6 +588,8 @@ public class FootballMatch : MonoBehaviour
         _play.Ended -= OnKickoffEnded;
         PlayEnded?.Invoke(r);
         Absorb(r);
+        _puntNext = false;
+        if (r.isKickoff && _play.isPunt) _stats.plays++;
         Say(r.description);
         if (r.touchdown)
         {
@@ -623,6 +660,7 @@ public class FootballMatch : MonoBehaviour
                 FirstDown();
             }
         }
+        _puntNext = ShouldPunt();
         Enter(State.DeadBall);
     }
 

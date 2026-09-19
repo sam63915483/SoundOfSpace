@@ -61,6 +61,10 @@ public class FootballAlienRig : MonoBehaviour
     [System.NonSerialized] public Stance stance = Stance.None;
     [System.NonSerialized] public float idleTime;         // seconds standing still: breathing, weight shifts
     [System.NonSerialized] public bool blocking;          // arms out, hands up, holding a man off (or fighting one)
+    [System.NonSerialized] public bool looking;           // the head follows lookTargetWorld (the ball, his man, his read)
+    [System.NonSerialized] public Vector3 lookTargetWorld;
+    [System.NonSerialized] public bool wrapping;          // arms wrapped round the man he is tackling
+    [System.NonSerialized] public Vector3 wrapTargetWorld; // that man's waist
 
     public const float ThrowSeconds = 0.42f;
     public const float ThrowRelease = 0.58f;              // fraction of the motion where the ball leaves the hand
@@ -70,6 +74,7 @@ public class FootballAlienRig : MonoBehaviour
     Transform _thighL, _thighR, _calfL, _calfR, _footL, _footR;
     Transform _upperL, _upperR, _lowerL, _lowerR, _handL, _handR;
     float _upperLen, _lowerLen;
+    Vector3 _headFwdLocal = Vector3.forward;              // the head bone's own axis that faces the model's forward
     bool _ok;
     Transform _frame;                                      // the FootballPlayer transform: forward/right/up
 
@@ -94,6 +99,7 @@ public class FootballAlienRig : MonoBehaviour
         {
             _upperLen = Vector3.Distance(_upperR.position, _lowerR.position);
             _lowerLen = Vector3.Distance(_lowerR.position, _handR.position);
+            if (_head != null) _headFwdLocal = Quaternion.Inverse(_head.rotation) * frame.forward;
         }
         else Debug.LogWarning("[FootballAlienRig] bones missing on " + name + " — playing as a statue");
     }
@@ -240,6 +246,9 @@ public class FootballAlienRig : MonoBehaviour
         Aim(_calfR, _footR, Quaternion.AngleAxis(kneeR, r) * thighDirR);      // +angle about right = back = knee
         Aim(_calfL, _footL, Quaternion.AngleAxis(kneeL, r) * thighDirL);
 
+        // ── head: follows the ball / his man / his read ──
+        Head(f, u);
+
         // ── arms ──
         if (reaching)
         {
@@ -268,6 +277,15 @@ public class FootballAlienRig : MonoBehaviour
             return;
         }
         if (emote != EmoteKind.None) { Emote(f, r, u); return; }
+        if (wrapping)
+        {
+            // Both arms round the runner's waist — the wrap. Hands meet behind him.
+            Vector3 w = wrapTargetWorld;
+            TwoBone(_upperR, _lowerR, _handR, w + r * 0.28f, (r * 0.9f - u * 0.3f).normalized);
+            TwoBone(_upperL, _lowerL, _handL, w - r * 0.28f, (-r * 0.9f - u * 0.3f).normalized);
+            Head(f, u);
+            return;
+        }
         if (blocking && hold == HoldStyle.None)
         {
             // Arms out in front at chest height, elbows a little bent, a shove
@@ -374,6 +392,29 @@ public class FootballAlienRig : MonoBehaviour
         }
         ArmPump(_upperR, _lowerR, _handR, -swing, s, 1f, f, r, u);
         ArmPump(_upperL, _lowerL, _handL, swing, s, -1f, f, r, u);
+    }
+
+    /// Turn the head toward the look target, within a cone of the body's
+    /// forward (no owls). Receivers watch the ball in, corners watch their
+    /// man, the QB looks off his read.
+    void Head(Vector3 f, Vector3 u)
+    {
+        if (_head == null || !looking) return;
+        Vector3 dir = lookTargetWorld - _head.position;
+        if (dir.sqrMagnitude < 0.01f) return;
+        dir.Normalize();
+        // Clamp to 75° from the body's forward, 40° of pitch.
+        Vector3 flat = Vector3.ProjectOnPlane(dir, u);
+        if (flat.sqrMagnitude > 1e-4f)
+        {
+            float yaw = Vector3.SignedAngle(f, flat.normalized, u);
+            yaw = Mathf.Clamp(yaw, -75f, 75f);
+            float pitch = Mathf.Clamp(Vector3.SignedAngle(flat.normalized, dir, Vector3.Cross(u, flat.normalized)), -40f, 40f);
+            dir = Quaternion.AngleAxis(yaw, u) * f;
+            dir = Quaternion.AngleAxis(pitch, Vector3.Cross(u, dir)) * dir;
+        }
+        Vector3 cur = _head.rotation * _headFwdLocal;
+        _head.rotation = Quaternion.FromToRotation(cur, dir) * _head.rotation;
     }
 
     /// The celebrations. `emotePhase` runs 0..1 over the emote's length; the

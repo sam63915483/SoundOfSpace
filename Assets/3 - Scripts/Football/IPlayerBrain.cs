@@ -37,6 +37,8 @@ public struct BrainOutput
     public float power;
     /// Face this way when standing still (a settled receiver looks at the QB).
     public Vector3 face;
+    /// A point (field space) the head turns to: the ball, his man, his read.
+    public Vector3 look;
     /// A line for the play-by-play (optional).
     public string say;
 }

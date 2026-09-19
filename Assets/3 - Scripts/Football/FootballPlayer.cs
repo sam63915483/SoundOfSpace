@@ -52,6 +52,9 @@ public class FootballPlayer : MonoBehaviour
     [System.NonSerialized] public float speedScale = 1f;
     /// Set by PlayInstance each tick: he is blocking someone, or being blocked (arms out).
     [System.NonSerialized] public bool blocking;
+    /// Set by PlayInstance each tick: wrapped round this man (a tackle in progress).
+    [System.NonSerialized] public FootballPlayer wrapping;
+    Vector3 _lookField; bool _looking;
     /// A receiver standing at the end of a curl/hitch/comeback, looking at
     /// the QB: a legitimate target even though he isn't running.
     [System.NonSerialized] public bool settled;
@@ -432,6 +435,9 @@ public class FootballPlayer : MonoBehaviour
     {
         var o = new BrainOutput();
         if (brain != null && !IsDown) brain.Tick(this, view, dt, ref o);
+        _looking = o.look.sqrMagnitude > 0.01f && !IsDown;
+        if (_looking) _lookField = o.look;
+        if (_reachThisTick && _fieldRoot != null) { _looking = true; _lookField = _fieldRoot.InverseTransformPoint(_reachWorld); }
 
         // Timers: the hop, time on the ground, the throw, the kick, the moves.
         _throwReleasedTick = false; _kickReleasedTick = false;
@@ -564,6 +570,10 @@ public class FootballPlayer : MonoBehaviour
             _rig.stance = _stance;
             _rig.idleTime = _idleTime;
             _rig.blocking = blocking;
+            _rig.looking = _looking;
+            _rig.lookTargetWorld = _fieldRoot != null ? _fieldRoot.TransformPoint(_lookField) : _lookField;
+            _rig.wrapping = wrapping != null;
+            if (wrapping != null) _rig.wrapTargetWorld = _fieldRoot != null ? _fieldRoot.TransformPoint(wrapping.Pos + Vector3.up * 0.95f) : wrapping.Pos;
             _reachThisTick = false;
             return;
         }

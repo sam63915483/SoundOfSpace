@@ -58,7 +58,7 @@ public class PlayInstance
     /// Counters for the soak (every new behaviour shows up here).
     public struct PlayStats
     {
-        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, fumbles, fumblesLost, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes;
+        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, fumbles, fumblesLost, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, brokenTackles, contested, tips;
         public bool officialsSpottedBall;
         public float setupSeconds;
     }
@@ -161,6 +161,11 @@ public class PlayInstance
     FootballPlayer _interceptor;
     FootballPlayer _fumbler, _recoverer;
     FootballPlayer _pendingTackler; float _tackleEndAt = -1f;     // the fall: the play ends where the ball is when he is down
+    readonly List<FootballPlayer> _wrappers = new List<FootballPlayer>();   // everyone wrapped on the carrier (a gang tackle)
+    public bool isPunt;
+    public const float WrapSeconds = 0.55f;           // the drag before they go down
+    public const float BreakTackleChance = 0.14f;
+    public const float TipChance = 0.35f;              // the loser of a contested ball gets a hand on it: it pops up, live
     bool _qbTucked;
     // A throw (or kick) in motion: the ball leaves the hand when the arm gets there.
     bool _throwPending; Vector3 _throwTarget; FootballPlayer _throwTo;
@@ -183,6 +188,8 @@ public class PlayInstance
     /// The broadcast sets this while its replay plays: the huddle does not
     /// break until the replay is done (Sam: never cut a replay short).
     public bool holdBreak;
+    /// Trailing late: the huddle is a two-second breather, not nine.
+    public bool hurryUp;
     /// True while both sides are in their huddles (the replay window).
     public bool InHuddle => phase == Phase.Setup && !_broke && _huddleSince >= 0f;
     /// Seconds until the huddle breaks (an upper bound while men are still
@@ -216,13 +223,14 @@ public class PlayInstance
         BuildScrimmage(qbBrainOverride);
     }
 
-    /// A kickoff by `kicking` from its own 35.
-    public PlayInstance(List<FootballPlayer> players, FootballBall ball, FootballTeam kicking, FootballTeam receiving, System.Random rng)
+    /// A kickoff by `kicking` from its own 35 — or a punt from `puntFromZ`.
+    public PlayInstance(List<FootballPlayer> players, FootballBall ball, FootballTeam kicking, FootballTeam receiving, System.Random rng, float? puntFromZ = null)
     {
         _players = players; _ball = ball; _rng = rng; _toGo = 10f;
         view.players = players; view.ball = ball; view.offense = kicking; view.defense = receiving;
         view.attackDir = kicking.attackDir; view.isKickoff = true; view.play = null;
-        view.losZ = kicking.attackDir * (35f * FootballField.MetresPerYard - FootballField.GoalLineZ);
+        isPunt = puntFromZ.HasValue;
+        view.losZ = isPunt ? puntFromZ.Value : kicking.attackDir * (35f * FootballField.MetresPerYard - FootballField.GoalLineZ);
         view.timeSinceSnap = -1f;
         BuildKickoff();
     }
@@ -300,24 +308,27 @@ public class PlayInstance
     {
         var kick = view.offense; var recv = view.defense;
         _kicker = Find(kick, FootballRole.QB);
-        Spot(_kicker, F(0f, -6f));
+        Spot(_kicker, F(0f, isPunt ? -12f : -6f));
         float[] covX = { -22f, -14f, -6f, 6f, 14f, 22f };
         int c = 0;
         foreach (var p in _players)
         {
             if (p.team != kick || p == _kicker) continue;
-            Spot(p, F(covX[Mathf.Min(c, covX.Length - 1)], -2.5f)); c++;
+            Spot(p, F(covX[Mathf.Min(c, covX.Length - 1)] * (isPunt ? 0.5f : 1f), isPunt ? -1f : -2.5f)); c++;
             _live[p] = new CoverageBrain();
         }
-        // Lands around the 10: a return, not a touchback, most of the time.
-        _live[_kicker] = new KickerBrain(F(((float)_rng.NextDouble() - 0.5f) * 22f, 55f + ((float)_rng.NextDouble() - 0.5f) * 14f));
+        // Kickoffs land around the 10; a punt goes ~40 with hang time, never past the end line.
+        float kickDepth = isPunt ? 40f + ((float)_rng.NextDouble() - 0.5f) * 10f : 55f + ((float)_rng.NextDouble() - 0.5f) * 14f;
+        float maxDepth = FootballField.ToYards(FootballField.GoalLineZ - view.attackDir * view.losZ) + 4f;
+        kickDepth = Mathf.Min(kickDepth, maxDepth);
+        _live[_kicker] = new KickerBrain(F(((float)_rng.NextDouble() - 0.5f) * 22f, kickDepth));
 
         // Receiving team: returner deep (DB1), a wedge at the 35, two up front.
         var returner = Find(recv, FootballRole.DB, 0);
-        Spot(returner, F(0f, 60f));
+        Spot(returner, F(0f, Mathf.Min(isPunt ? 42f : 60f, maxDepth - 2f)));
         _live[returner] = new ReturnerBrain();
         float[] blkX = { -12f, -4f, 4f, 12f, -7f, 7f };
-        float[] blkD = { 32f, 32f, 32f, 32f, 44f, 44f };
+        float[] blkD = isPunt ? new[] { 2f, 1.5f, 1.5f, 2f, 12f, 12f } : new[] { 32f, 32f, 32f, 32f, 44f, 44f };
         int b = 0;
         foreach (var p in _players)
         {
@@ -406,7 +417,7 @@ public class PlayInstance
                 if (!_broke && !view.isKickoff)
                 {
                     if (all && _huddleSince < 0f) _huddleSince = _phaseTime;
-                    bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= HuddleHold && !holdBreak;
+                    bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= (hurryUp ? 2f : HuddleHold) && (!holdBreak || hurryUp);
                     if (held || _phaseTime > HuddleTimeout)
                     {
                         _broke = true; all = false; _phaseTime = 0f;
@@ -714,7 +725,8 @@ public class PlayInstance
                 // spotted where it IS (Sam: not where he was first touched).
                 if (_tackleEndAt >= 0f)
                 {
-                    if (view.timeSinceSnap >= _tackleEndAt) { FinishTackle(carrier); return; }
+                    TickWrap(carrier);
+                    if (_tackleEndAt >= 0f && view.timeSinceSnap >= _tackleEndAt) { FinishTackle(carrier); return; }
                 }
                 else if (TickTackles(carrier)) return;
             }
@@ -770,17 +782,17 @@ public class PlayInstance
                     EndTackle(carrier, d);
                     return true;
                 }
-                // A dive that connects.
+                // A dive that connects: he has him by the legs.
                 _stats.diveHits++;
-                d.FallDown(TackleDownSeconds);
                 if (_rng.NextDouble() < BigHitFumbleChance)
                 {
+                    d.FallDown(TackleDownSeconds);
                     carrier.FallDown(TackleDownSeconds);
                     log?.Invoke(d.team.shortName + " " + d.Label + " lays him out — the ball comes loose!");
                     Fumble(carrier, d);
                     return false;
                 }
-                carrier.FallDown(TackleDownSeconds);
+                d.FallDown(TackleDownSeconds);
                 EndTackle(carrier, d);
                 return true;
             }
@@ -822,34 +834,70 @@ public class PlayInstance
                     : d.team.shortName + " " + d.Label + " misses the tackle!");
                 continue;
             }
-            d.FallDown(TackleDownSeconds);
-            carrier.FallDown(TackleDownSeconds);
             // Hurdling into a standing man: a big hit, the ball can come out.
             if (carrier.IsHurdling || (fromBehind == false && carrier.Vel.magnitude > 6f && _rng.NextDouble() < BigHitFumbleChance * 0.6f))
             {
                 if (_rng.NextDouble() < BigHitFumbleChance * 2f)
                 {
+                    d.FallDown(TackleDownSeconds); carrier.FallDown(TackleDownSeconds);
                     log?.Invoke(d.team.shortName + " " + d.Label + " meets him in the air — the ball pops out!");
                     Fumble(carrier, d);
                     return false;
                 }
             }
+            // The wrap: arms round him, dragged for a stride, then down.
             EndTackle(carrier, d);
             return true;
         }
         return false;
     }
 
-    /// The hit: both go down now; the whistle comes when he has fallen.
+    /// The hit: the tackler wraps him, the two of them drag for a stride
+    /// (the runner driving, forward progress), anyone else arriving piles on,
+    /// and then they all go down — unless the runner breaks it.
     void EndTackle(FootballPlayer carrier, FootballPlayer d)
     {
         _pendingTackler = d;
-        _tackleEndAt = view.timeSinceSnap + 0.5f;
+        _wrappers.Clear(); _wrappers.Add(d);
+        d.wrapping = carrier;
+        _tackleEndAt = view.timeSinceSnap + WrapSeconds;
+    }
+
+    /// During the wrap: the carrier is slowed and the wrappers ride him;
+    /// a second man within reach joins; a strong runner may break it.
+    void TickWrap(FootballPlayer carrier)
+    {
+        carrier.speedScale = Mathf.Min(carrier.speedScale, 0.4f);
+        for (int i = 0; i < _players.Count; i++)
+        {
+            var d = _players[i];
+            if (d.team == carrier.team || d.IsDown || _wrappers.Contains(d)) continue;
+            if (Vector3.Distance(d.Pos, carrier.Pos) < 1.4f) { _wrappers.Add(d); d.wrapping = carrier; log?.Invoke(d.team.shortName + " " + d.Label + " piles on"); }
+        }
+        foreach (var w in _wrappers)
+        {
+            Vector3 behind = carrier.Pos - carrier.Facing * 0.85f;
+            w.Nudge(Vector3.Lerp(w.Pos, behind, 0.35f));
+            w.speedScale = 0f;
+        }
+        // Breaking it: one man on him, a strong runner, a roll of the dice.
+        if (_wrappers.Count == 1 && view.timeSinceSnap > _tackleEndAt - WrapSeconds * 0.5f && _rng.NextDouble() < BreakTackleChance * (0.6f + 0.8f * carrier.team.speed) / 20f)
+        {
+            var d = _wrappers[0];
+            d.wrapping = null; d.FallDown(MissDownSeconds);
+            _tackleRetry[d] = view.timeSinceSnap + TackleRetry;
+            _wrappers.Clear(); _pendingTackler = null; _tackleEndAt = -1f;
+            _stats.brokenTackles++;
+            log?.Invoke(carrier.team.shortName + " " + carrier.Label + " BREAKS THE TACKLE of " + d.Label + "!");
+        }
     }
 
     void FinishTackle(FootballPlayer carrier)
     {
         var d = _pendingTackler; _pendingTackler = null; _tackleEndAt = -1f;
+        carrier.FallDown(TackleDownSeconds);
+        foreach (var w in _wrappers) { w.wrapping = null; w.FallDown(TackleDownSeconds); }
+        _wrappers.Clear();
         float spotZ = _ball.holder == carrier ? _ball.pos.z : carrier.Pos.z;
         bool sack = !view.isKickoff && carrier.role == FootballRole.QB && carrier.team == view.offense
                     && (spotZ - view.losZ) * view.attackDir < 0f && !(view.play.kind == FootballPlay.Kind.QbDraw && view.timeSinceSnap > 1.5f)
@@ -867,6 +915,8 @@ public class PlayInstance
                 + new Vector3((float)_rng.NextDouble() - 0.5f, 0f, (float)_rng.NextDouble() - 0.5f) * 2.5f;
         carrier.SetHold(HoldStyle.None);
         carrier.SetHighlight(false);
+        foreach (var w in _wrappers) w.wrapping = null;
+        _wrappers.Clear(); _pendingTackler = null; _tackleEndAt = -1f;
         _ball.pos = carrier.BallHoldPoint();
         _ball.Fumble(carrier.Vel, knock);
         _looseSince = -1f;
@@ -1069,8 +1119,11 @@ public class PlayInstance
                 }
 
                 // The ball has to touch someone's arms (Sam). Whoever it
-                // came closest to, if it came within reach at all.
+                // came closest to, if it came within reach at all. Two men on
+                // it is a CONTESTED ball: the better position usually wins, and
+                // the loser may get a hand in and tip it up — live.
                 FootballPlayer best = null; float bd = 0f;
+                FootballPlayer second = null; float sd = 0f;
                 for (int i = 0; i < _players.Count; i++)
                 {
                     var p = _players[i];
@@ -1092,10 +1145,30 @@ public class PlayInstance
                         lowHands = p != _ball.intendedReceiver;
                     }
                     float gap = p.ArmGap(_ball, _prevBallPos, lowHands);
-                    if (gap <= 0f && gap < bd) { bd = gap; best = p; }
+                    if (gap <= 0f && gap < bd) { second = best; sd = bd; bd = gap; best = p; }
+                    else if (gap <= 0f && gap < sd) { sd = gap; second = p; }
                 }
                 if (best == null) return;
                 bool kick = _ball.isKick;
+                if (!kick && !_ball.isSnap && second != null && second.team != best.team)
+                {
+                    // Contested: position decides most of it, luck the rest.
+                    _stats.contested++;
+                    float edge = Mathf.Clamp01(0.62f + (sd - bd) * 0.5f);
+                    if (_rng.NextDouble() > edge) { var t = best; best = second; second = t; }
+                    if (_rng.NextDouble() < TipChance)
+                    {
+                        // The other man gets a hand in: the ball pops up, anyone's.
+                        _stats.tips++;
+                        Vector3 up = _ball.pos;
+                        Vector3 to = up + new Vector3(((float)_rng.NextDouble() - 0.5f) * 4f, 0f, ((float)_rng.NextDouble() - 0.5f) * 4f);
+                        _ball.Launch(to, 0.9f, null, false);
+                        _ball.thrower = null;
+                        log?.Invoke("Tipped by " + second.team.shortName + " " + second.Label + " — the ball is up for grabs!");
+                        return;
+                    }
+                    log?.Invoke(best.team.shortName + " " + best.Label + " wins the contested ball over " + second.Label);
+                }
                 var wasIntendedTeam = kick ? view.defense : view.offense;
 
                 if (_ball.isSnap)
@@ -1120,7 +1193,7 @@ public class PlayInstance
                 // Got a hand on it — does he hold it?
                 if (!kick)
                 {
-                    float dropChance = best == _ball.intendedReceiver ? ReceiverDropChance : DefenderDropChance;
+                    float dropChance = _ball.intendedReceiver == null ? 0.25f : best == _ball.intendedReceiver ? ReceiverDropChance : DefenderDropChance;
                     if (_rng.NextDouble() < dropChance)
                     {
                         Vector3 side = new Vector3((float)_rng.NextDouble() - 0.5f, 0f, (float)_rng.NextDouble() - 0.5f) * 3f;
@@ -1259,7 +1332,7 @@ public class PlayInstance
         _throwPending = false; _kickPending = false;
         foreach (var p in _players)
         {
-            p.SetHighlight(false); p.speedScale = 1f; p.brain = null; p.settled = false; p.SetStance(Stance.None);
+            p.SetHighlight(false); p.speedScale = 1f; p.brain = null; p.settled = false; p.SetStance(Stance.None); p.wrapping = null;
             if (p.IsThrowing) p.CancelThrow();
             if (p != _ball.holder) p.SetHold(HoldStyle.None);
         }
@@ -1290,7 +1363,8 @@ public class PlayInstance
             if (outcome == Outcome.Touchback)
             {
                 r.endSpotZ = view.defense.attackDir * (25f * FootballField.MetresPerYard - FootballField.GoalLineZ);
-                r.description = "Touchback — " + view.defense.shortName + " ball at the 25";
+                r.description = (isPunt ? "Punt touchback — " : "Touchback — ") + view.defense.shortName + " ball at the " + (isPunt ? "20" : "25");
+                if (isPunt) r.endSpotZ = view.defense.attackDir * (20f * FootballField.MetresPerYard - FootballField.GoalLineZ);
                 r.possession = view.defense;
             }
             else if (possession == view.offense)
@@ -1304,7 +1378,7 @@ public class PlayInstance
                 r.endSpotZ = spotZ;
                 float ret = FootballField.ToYards((spotZ - (_ball.landPoint.z)) * view.defense.attackDir);
                 r.returnYards = Mathf.Max(0f, ret);
-                r.description = "Kick returned to the " + YardLine(spotZ) + (tackler != null ? " (" + tackler.Label + " on the tackle)" : "");
+                r.description = (isPunt ? "Punt returned to the " : "Kick returned to the ") + YardLine(spotZ) + (tackler != null ? " (" + tackler.Label + " on the tackle)" : "");
             }
         }
         else if (outcome == Outcome.Fumble || (_fumbler != null && possession != view.offense))

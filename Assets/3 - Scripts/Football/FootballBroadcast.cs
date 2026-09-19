@@ -520,11 +520,16 @@ public class FootballBroadcast : MonoBehaviour
         string extra = "";
         if (r.stats.hurdlesClipped > 0) extra = "\nCLIPPED ON THE HURDLE";
         else if (r.stats.hurdles > 0) extra = "\nHURDLE!";
+        else if (r.stats.brokenTackles > 0) extra = "\nBROKE A TACKLE";
         else if (r.stats.spins > 0) extra = "\nSPIN MOVE";
         else if (r.stats.jukes > 0 && r.yards >= 8f) extra = "\nJUKED HIM";
         if (r.isKickoff)
         {
+            bool punt = r.description != null && r.description.StartsWith("Punt");
             if (r.touchdown && r.turnover) return "FUMBLE - RETURNED\nFOR A TOUCHDOWN!";
+            if (r.touchdown) return (punt ? "PUNT RETURN" : "KICK RETURN") + "\nTOUCHDOWN!";
+            if (punt && r.outcome == PlayInstance.Outcome.Touchback) return "PUNT\nTOUCHBACK";
+            if (punt) return "PUNT RETURNED\n" + Mathf.RoundToInt(r.returnYards) + " YARDS" + extra;
             if (r.touchdown) return "KICK RETURN\nTOUCHDOWN!";
             if (r.outcome == PlayInstance.Outcome.KickRecoveredByKickingTeam) return "FUMBLE!\n" + r.possession.shortName + " RECOVER THE KICK";
             if (r.outcome == PlayInstance.Outcome.Touchback) return "TOUCHBACK";

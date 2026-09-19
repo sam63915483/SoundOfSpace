@@ -115,7 +115,9 @@ public class FootballPlay
     static FootballPlay[] _all;
     public static IReadOnlyList<FootballPlay> All => _all ?? (_all = Build());
 
-    public static FootballPlay Pick(int down, float toGo, float yardsToGoal, System.Random rng, FootballPlay last = null)
+    public enum Mood { Normal, Desperate, KillClock }
+
+    public static FootballPlay Pick(int down, float toGo, float yardsToGoal, System.Random rng, FootballPlay last = null, Mood mood = Mood.Normal)
     {
         var list = All;
         float total = 0f;
@@ -131,6 +133,9 @@ public class FootballPlay
             if (down == 4 && toGo > 7f && p.kind != Kind.Pass && p.kind != Kind.Rollout && p.kind != Kind.Screen) x *= 0.3f;
             if (p.kind == Kind.FleaFlicker && yardsToGoal < 35f) x *= 0.4f;         // needs room for the deep shot
             if (p == last) x *= 0.15f;
+            // Trailing late: shots and passes, no slow stuff. Leading late: the ground and the clock.
+            if (mood == Mood.Desperate) { if (p.IsDeepShot) x *= 2.5f; if (p.kind == Kind.JetSweep || p.kind == Kind.QbDraw || p.kind == Kind.QbRun) x *= 0.2f; }
+            else if (mood == Mood.KillClock) { if (p.kind == Kind.JetSweep || p.kind == Kind.QbDraw || p.kind == Kind.QbRun) x *= 3.5f; if (p.IsDeepShot) x *= 0.3f; }
             w[i] = x; total += x;
         }
         float r = (float)rng.NextDouble() * total;
