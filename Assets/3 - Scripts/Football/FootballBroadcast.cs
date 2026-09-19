@@ -199,7 +199,14 @@ public class FootballBroadcast : MonoBehaviour
         {
             root = anchor.gameObject;
             var ph = anchor.Find("Placeholder");
-            if (ph != null) ph.gameObject.SetActive(false);
+            if (ph != null)
+            {
+                // Clicking the screen in the Scene view selects the slab, not the
+                // anchor — so wherever the slab was dragged is where the screen goes.
+                anchor.SetPositionAndRotation(ph.position, ph.rotation);
+                ph.localPosition = Vector3.zero; ph.localRotation = Quaternion.identity;
+                ph.gameObject.SetActive(false);
+            }
         }
         else
         {
