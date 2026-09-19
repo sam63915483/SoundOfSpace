@@ -6,7 +6,7 @@ using UnityEngine;
 public enum HoldStyle { None, TwoHands, Tucked, SnapStance, ReadyHands }
 
 /// A dead-ball celebration / reaction (Madden-style, Sam 2026-09-19).
-public enum EmoteKind { None, ArmsUp, FirstDown, Flex, ChestThump, IncompleteWave, Point, Dejected }
+public enum EmoteKind { None, ArmsUp, FirstDown, Flex, ChestThump, IncompleteWave, Point, Dejected, NoFlyZone, Dance, Bow }
 
 /// How a man stands when he is not running: the huddle lean, a lineman's
 /// three-point stance, a defender's crouch, a receiver's ready stance.
@@ -65,6 +65,9 @@ public class FootballAlienRig : MonoBehaviour
     [System.NonSerialized] public Vector3 lookTargetWorld;
     [System.NonSerialized] public bool wrapping;          // arms wrapped round the man he is tackling
     [System.NonSerialized] public Vector3 wrapTargetWorld; // that man's waist
+    [System.NonSerialized] public bool stiffArm;          // the off arm straight out into a tackler
+    [System.NonSerialized] public Vector3 stiffArmTargetWorld;
+    [System.NonSerialized] public float stumble;          // 0..1: caught a foot, pitching forward
 
     public const float ThrowSeconds = 0.42f;
     public const float ThrowRelease = 0.58f;              // fraction of the motion where the ball leaves the hand
@@ -75,6 +78,8 @@ public class FootballAlienRig : MonoBehaviour
     Transform _upperL, _upperR, _lowerL, _lowerR, _handL, _handR;
     float _upperLen, _lowerLen;
     Vector3 _headFwdLocal = Vector3.forward;              // the head bone's own axis that faces the model's forward
+    Vector3 _headDir;                                     // smoothed look direction (world)
+    readonly System.Collections.Generic.Dictionary<Transform, Quaternion> _rest = new System.Collections.Generic.Dictionary<Transform, Quaternion>();
     bool _ok;
     Transform _frame;                                      // the FootballPlayer transform: forward/right/up
 
@@ -100,6 +105,11 @@ public class FootballAlienRig : MonoBehaviour
             _upperLen = Vector3.Distance(_upperR.position, _lowerR.position);
             _lowerLen = Vector3.Distance(_lowerR.position, _handR.position);
             if (_head != null) _headFwdLocal = Quaternion.Inverse(_head.rotation) * frame.forward;
+            // The rest pose: every driven bone starts each frame from here, so a
+            // frame's aim is a clean rotation from rest — never a rotation on
+            // top of last frame's (which is how roll crept in and heads craned).
+            foreach (var b in new[] { _spine, _spine2, _head, _thighL, _thighR, _calfL, _calfR, _upperL, _upperR, _lowerL, _lowerR, _handL, _handR })
+                if (b != null) _rest[b] = b.localRotation;
         }
         else Debug.LogWarning("[FootballAlienRig] bones missing on " + name + " — playing as a statue");
     }
@@ -151,6 +161,7 @@ public class FootballAlienRig : MonoBehaviour
         Vector3 f = transform.forward, r = transform.right, u = transform.up;
         float s = speedFrac;
         float swing = Mathf.Sin(stridePhase);
+        foreach (var kv in _rest) kv.Key.localRotation = kv.Value;
 
         // ── torso ──
         Vector3 spineDir = Quaternion.AngleAxis(10f * s, r) * u;               // lean into the run
@@ -170,6 +181,9 @@ public class FootballAlienRig : MonoBehaviour
         else if (divePhase >= 0f) spineDir = (u * 0.8f + f * 0.4f).normalized;
         else if (emote == EmoteKind.ArmsUp || emote == EmoteKind.Point) spineDir = (u * 0.95f - f * 0.15f).normalized;
         else if (emote == EmoteKind.Dejected) spineDir = (u * 0.85f + f * 0.35f).normalized;
+        else if (emote == EmoteKind.Bow) spineDir = (u * 0.4f + f * 0.9f).normalized;
+        else if (emote == EmoteKind.Dance) spineDir = Quaternion.AngleAxis(Mathf.Sin(emotePhase * 25f) * 8f, f) * (u * 0.95f + f * 0.1f).normalized;
+        if (stumble > 0f) spineDir = Quaternion.AngleAxis(28f * Mathf.Sin(Mathf.PI * stumble), r) * spineDir;
         if (_spine != null) Aim(_spine, _spine2 != null ? _spine2 : _head, spineDir);
 
         // ── legs ──
@@ -228,6 +242,12 @@ public class FootballAlienRig : MonoBehaviour
             // One foot forward, weight on the balls of the feet.
             thighDirR = Quaternion.AngleAxis(-26f, r) * -u; thighDirL = Quaternion.AngleAxis(4f, r) * -u;
             kneeR = 40f; kneeL = 12f;
+        }
+        else if (emote == EmoteKind.Dance)
+        {
+            float bob = 0.5f + 0.5f * Mathf.Sin(emotePhase * 25f);
+            thighDirR = Quaternion.AngleAxis(-12f - 18f * bob, r) * -u; thighDirL = Quaternion.AngleAxis(-12f - 18f * (1f - bob), r) * -u;
+            kneeR = 24f + 30f * bob; kneeL = 24f + 30f * (1f - bob);
         }
         else if (still)
         {
@@ -309,6 +329,15 @@ public class FootballAlienRig : MonoBehaviour
         {
             Vector3 dR = (f * 0.7f + u * 0.5f + r * 0.4f).normalized, dL = (f * 0.7f + u * 0.5f - r * 0.4f).normalized;
             Aim(_upperR, _lowerR, dR); Aim(_lowerR, _handR, dR);
+            Aim(_upperL, _lowerL, dL); Aim(_lowerL, _handL, dL);
+            return;
+        }
+        if (stiffArm && hold == HoldStyle.Tucked)
+        {
+            // Ball tucked right; the LEFT arm straight into the man.
+            Vector3 ball = HoldPoint(HoldStyle.Tucked);
+            TwoBone(_upperR, _lowerR, _handR, ball + f * 0.16f - u * 0.02f, (-u * 0.9f - f * 0.3f).normalized);
+            Vector3 dL = (stiffArmTargetWorld - _upperL.position).normalized;
             Aim(_upperL, _lowerL, dL); Aim(_lowerL, _handL, dL);
             return;
         }
@@ -399,22 +428,30 @@ public class FootballAlienRig : MonoBehaviour
     /// man, the QB looks off his read.
     void Head(Vector3 f, Vector3 u)
     {
-        if (_head == null || !looking) return;
-        Vector3 dir = lookTargetWorld - _head.position;
-        if (dir.sqrMagnitude < 0.01f) return;
-        dir.Normalize();
-        // Clamp to 75° from the body's forward, 40° of pitch.
-        Vector3 flat = Vector3.ProjectOnPlane(dir, u);
-        if (flat.sqrMagnitude > 1e-4f)
+        if (_head == null) return;
+        // The head is at REST here (reset above): its forward is the body's.
+        Vector3 want = f;
+        if (looking)
         {
-            float yaw = Vector3.SignedAngle(f, flat.normalized, u);
-            yaw = Mathf.Clamp(yaw, -75f, 75f);
-            float pitch = Mathf.Clamp(Vector3.SignedAngle(flat.normalized, dir, Vector3.Cross(u, flat.normalized)), -40f, 40f);
-            dir = Quaternion.AngleAxis(yaw, u) * f;
-            dir = Quaternion.AngleAxis(pitch, Vector3.Cross(u, dir)) * dir;
+            Vector3 dir = lookTargetWorld - _head.position;
+            if (dir.sqrMagnitude > 0.01f)
+            {
+                dir.Normalize();
+                // Within 60° of the body's forward and 30° of pitch — a glance, not an owl.
+                Vector3 flat = Vector3.ProjectOnPlane(dir, u);
+                if (flat.sqrMagnitude > 1e-4f)
+                {
+                    float yaw = Mathf.Clamp(Vector3.SignedAngle(f, flat.normalized, u), -60f, 60f);
+                    float pitch = Mathf.Clamp(Vector3.SignedAngle(flat.normalized, dir, Vector3.Cross(u, flat.normalized)), -30f, 30f);
+                    want = Quaternion.AngleAxis(yaw, u) * f;
+                    want = Quaternion.AngleAxis(pitch, Vector3.Cross(u, want)) * want;
+                }
+            }
         }
+        if (_headDir.sqrMagnitude < 0.01f) _headDir = want;
+        _headDir = Vector3.Slerp(_headDir, want, 1f - Mathf.Exp(-10f * Time.deltaTime));
         Vector3 cur = _head.rotation * _headFwdLocal;
-        _head.rotation = Quaternion.FromToRotation(cur, dir) * _head.rotation;
+        _head.rotation = Quaternion.FromToRotation(cur, _headDir) * _head.rotation;
     }
 
     /// The celebrations. `emotePhase` runs 0..1 over the emote's length; the
@@ -496,6 +533,30 @@ public class FootballAlienRig : MonoBehaviour
                     TwoBone(_upperL, _lowerL, _handL, ball + f * 0.14f, (-u * 0.9f - f * 0.3f).normalized);
                 }
                 else Straight(_upperL, _lowerL, _handL, hangL);
+                break;
+            }
+            case EmoteKind.NoFlyZone:
+            {
+                // Arms crossed over the chest, hands to the opposite shoulders. Clamps.
+                Vector3 shR = ShoulderR + f * 0.12f - u * 0.02f, shL = ShoulderL + f * 0.12f - u * 0.02f;
+                TwoBone(_upperR, _lowerR, _handR, Vector3.Lerp(HandR(hangR), shL + f * 0.06f, ease), (-u * 0.5f + r * 0.6f + f * 0.4f).normalized);
+                TwoBone(_upperL, _lowerL, _handL, Vector3.Lerp(HandL(hangL), shR + f * 0.10f, ease), (-u * 0.5f - r * 0.6f + f * 0.4f).normalized);
+                break;
+            }
+            case EmoteKind.Dance:
+            {
+                // Arms alternate up and down with the knee bob; the whole line does it together.
+                float bob = Mathf.Sin(p * 25f);
+                Vector3 dR = Vector3.Slerp(hangR, (u * 0.9f + r * 0.35f + f * 0.1f).normalized, 0.5f + 0.5f * bob);
+                Vector3 dL = Vector3.Slerp(hangL, (u * 0.9f - r * 0.35f + f * 0.1f).normalized, 0.5f - 0.5f * bob);
+                Aim(_upperR, _lowerR, Vector3.Slerp(hangR, dR, ease)); Aim(_lowerR, _handR, Vector3.Slerp(hangR, Quaternion.AngleAxis(-35f, r) * dR, ease));
+                Aim(_upperL, _lowerL, Vector3.Slerp(hangL, dL, ease)); Aim(_lowerL, _handL, Vector3.Slerp(hangL, Quaternion.AngleAxis(-35f, r) * dL, ease));
+                break;
+            }
+            case EmoteKind.Bow:
+            {
+                Vector3 dR = (-u * 0.9f + f * 0.3f).normalized, dL = (-u * 0.9f + f * 0.3f).normalized;
+                Straight(_upperR, _lowerR, _handR, Vector3.Slerp(hangR, dR, ease)); Straight(_upperL, _lowerL, _handL, Vector3.Slerp(hangL, dL, ease));
                 break;
             }
             case EmoteKind.Dejected:

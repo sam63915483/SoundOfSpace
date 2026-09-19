@@ -21,7 +21,7 @@ public interface IPlayerBrain
 /// Seven a side, both ways: QB/LB, C/S, two OL/DL, three WR/DB.
 public enum FootballRole { QB, WR, OL, DL, DB, LB, C, S }
 
-public enum BrainAction { None, Throw, Handoff, Kick, Juke, Spin, Hurdle, Dive }
+public enum BrainAction { None, Throw, Handoff, Kick, Juke, Spin, Hurdle, Dive, StiffArm }
 
 public struct BrainOutput
 {
@@ -39,6 +39,8 @@ public struct BrainOutput
     public Vector3 face;
     /// A point (field space) the head turns to: the ball, his man, his read.
     public Vector3 look;
+    /// Keep `face` even while moving (a backpedal, a blocker squared up on his man).
+    public bool faceMoving;
     /// A line for the play-by-play (optional).
     public string say;
 }

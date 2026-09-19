@@ -93,6 +93,10 @@ public class FootballPlayer : MonoBehaviour
     float _hurdleT = -1f;
     float _diveT = -1f; Vector3 _diveDir; float _diveSpeed;
     float _hardT = -1f;
+    float _fallPitch = 90f, _fallRoll;            // how he goes down: forward / back / on a side
+    float _stiffT = -1f; Vector3 _stiffDirField;
+    float _stumbleT = -1f;
+    public const float StiffArmSeconds = 0.55f, StumbleSeconds = 0.45f;
     const float JumpSeconds = 0.55f, JumpHeight = 0.7f;
     public bool IsDown => _downLeft > 0f;
     public bool IsJumping => _jumpT >= 0f;
@@ -102,6 +106,9 @@ public class FootballPlayer : MonoBehaviour
     public bool IsSpinning => _spinT >= 0f;
     public bool IsHurdling => _hurdleT >= 0f;
     public bool IsDiving => _diveT >= 0f;
+    public bool IsStiffArming => _stiffT >= 0f;
+    public bool IsStumbling => _stumbleT >= 0f;
+    public Vector3 StiffArmDir => _stiffDirField;
     /// 0..1 through the hurdle / dive, −1 when not.
     public float HurdlePhase => IsHurdling ? Mathf.Clamp01(_hurdleT / HurdleSeconds) : -1f;
     public float DivePhase => IsDiving ? Mathf.Clamp01(_diveT / DiveSeconds) : -1f;
@@ -281,8 +288,26 @@ public class FootballPlayer : MonoBehaviour
     }
 
     /// Hit the deck for this long (a tackle, made or missed). Can't move meanwhile.
+    /// Down, knocked from `hitFromField` (a position): from the front he goes
+    /// over backwards, from a side he goes down on that side, from behind
+    /// (or a dive at his legs) forward.
+    public void FallDown(float seconds, Vector3 hitFromField)
+    {
+        Vector3 rel = hitFromField - _pos; rel.y = 0f;
+        if (rel.sqrMagnitude > 0.01f && !IsDiving)
+        {
+            rel.Normalize();
+            float front = Vector3.Dot(rel, _facing), side = Vector3.Dot(rel, Right);
+            if (Mathf.Abs(side) > 0.7f) { _fallPitch = 0f; _fallRoll = side > 0f ? -80f : 80f; }
+            else if (front > 0.3f) { _fallPitch = -85f; _fallRoll = 0f; }
+            else { _fallPitch = 90f; _fallRoll = 0f; }
+        }
+        FallDown(seconds);
+    }
+
     public void FallDown(float seconds)
     {
+        if (!IsDown) { if (IsDiving) { _fallPitch = 90f; _fallRoll = 0f; } }
         _downLeft = Mathf.Max(_downLeft, seconds);
         _jumpT = -1f; _throwT = -1f; _jukeT = -1f; _spinT = -1f; _hurdleT = -1f; _diveT = -1f;
         _emoteLeft = 0f; _emote = EmoteKind.None;
@@ -296,6 +321,25 @@ public class FootballPlayer : MonoBehaviour
     }
 
     public void StandUp() { _downLeft = 0f; }
+
+    /// Turn toward a direction while moving (a backpedal, a blocker facing his man).
+    public void FaceHint(Vector3 dirField)
+    {
+        dirField.y = 0f;
+        if (dirField.sqrMagnitude > 0.01f) _facingTarget = dirField.normalized;
+    }
+
+    /// The off arm out into a tackler on that side of him.
+    public void StartStiffArm(Vector3 dirField)
+    {
+        if (IsDown || IsStiffArming || IsSpinning || IsHurdling) return;
+        dirField.y = 0f;
+        if (dirField.sqrMagnitude < 0.01f) return;
+        _stiffT = 0f; _stiffDirField = dirField.normalized;
+    }
+
+    /// Caught a foot: a half-second of pitching forward at a stagger.
+    public void StartStumble() { if (!IsDown && !IsStumbling) _stumbleT = 0f; }
 
     /// A celebration or a reaction: stands still and plays it for `seconds`.
     public void Emote(EmoteKind kind, float seconds)
@@ -468,9 +512,12 @@ public class FootballPlayer : MonoBehaviour
             if (_diveT >= DiveSeconds) { _diveT = -1f; if (!IsDown) FallDown(0.9f); }
         }
         if (_hardT >= 0f) { _hardT += dt; if (_hardT >= HardFallSeconds) _hardT = -1f; }
+        if (_stiffT >= 0f) { _stiffT += dt; if (_stiffT >= StiffArmSeconds) _stiffT = -1f; }
+        if (_stumbleT >= 0f) { _stumbleT += dt; if (_stumbleT >= StumbleSeconds) _stumbleT = -1f; }
         if (_emoteLeft > 0f) { _emoteLeft -= dt; if (_emoteLeft <= 0f) { _emoteLeft = 0f; _emote = EmoteKind.None; } }
         if (_downLeft > 0f) { _downLeft -= dt; o.move = Vector3.zero; o.action = BrainAction.None; }
         _lie = Mathf.MoveTowards(_lie, IsDown ? 1f : 0f, dt / (IsDown ? 0.22f : 0.35f));
+        if (!IsDown && _lie <= 0f) { _fallPitch = 90f; _fallRoll = 0f; }
         if (_queuedEmote != EmoteKind.None && !IsDown && _lie < 0.15f)
         {
             _emote = _queuedEmote; _emoteLeft = _emoteTotal = Mathf.Max(0.3f, _queuedSeconds);
@@ -492,6 +539,7 @@ public class FootballPlayer : MonoBehaviour
         if (IsJuking) { want = (_jukeDir * 0.85f + _facing * 0.55f).normalized; }
         else if (IsHurdling) { want = _facing; moveScale = 0.95f; }
         else if (IsSpinning) { want = want.sqrMagnitude > 0.01f ? want : _facing; moveScale = 0.7f; }
+        if (IsStumbling) moveScale *= 0.6f;
         Vector3 targetVel = want * (_maxSpeed * speedScale * moveScale);
         // On the ground: skid to a stop.
         if (IsDown) targetVel = Vector3.zero;
@@ -514,6 +562,7 @@ public class FootballPlayer : MonoBehaviour
         }
         if (IsDiving) { }
         else if (IsSpinning || IsHurdling) { }                                        // heading locked through the move
+        else if (o.faceMoving && o.face.sqrMagnitude > 0.01f) { o.face.y = 0f; _facingTarget = o.face.normalized; }     // a backpedal: eyes on him, feet going the other way
         else if (_vel.sqrMagnitude > 0.25f && !IsThrowing && !IsJuking) _facingTarget = _vel.normalized;
         else if (_vel.sqrMagnitude <= 0.25f && o.face.sqrMagnitude > 0.01f) { o.face.y = 0f; _facingTarget = o.face.normalized; }
         // Turn toward it at a rate: quick on the run, a body turn when standing.
@@ -539,7 +588,9 @@ public class FootballPlayer : MonoBehaviour
         if (IsHurdling) hop += HurdleHeight * Mathf.Sin(Mathf.PI * HurdlePhase);
         if (_hardT >= 0f) hop += 0.55f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(_hardT / HardFallSeconds));
         if (IsDiving) hop += 0.3f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(DivePhase * 1.4f));
-        float tip = _lie * 90f;
+        float tip = _lie * _fallPitch;
+        float sideRoll = _lie * _fallRoll;
+        if (IsStumbling) tip += 18f * Mathf.Sin(Mathf.PI * _stumbleT / StumbleSeconds);
         if (IsDiving) tip = Mathf.Max(tip, 78f * Mathf.SmoothStep(0f, 1f, DivePhase * 1.15f));
         else if (IsHurdling) tip = Mathf.Max(tip, 14f * Mathf.Sin(Mathf.PI * HurdlePhase));
         float yaw = IsSpinning ? 360f * SpinPhase : 0f;
@@ -552,7 +603,7 @@ public class FootballPlayer : MonoBehaviour
         if (HasRig)
         {
             // The model's pivot is at the feet: tip about them, lift for the hop.
-            _bodyT.localRotation = Quaternion.Euler(tip, yaw, lean) * Quaternion.AngleAxis(_roll, Vector3.forward);
+            _bodyT.localRotation = Quaternion.Euler(tip, yaw, lean + sideRoll) * Quaternion.AngleAxis(_roll, Vector3.forward);
             _bodyT.localPosition = new Vector3(0f, hop + _lie * 0.15f, 0f);
             _rig.speedFrac = Mathf.Clamp01(_vel.magnitude / Mathf.Max(1f, _maxSpeed));
             _rig.stridePhase += _vel.magnitude * dt * (2f * Mathf.PI / StrideMetres);
@@ -573,6 +624,9 @@ public class FootballPlayer : MonoBehaviour
             _rig.looking = _looking;
             _rig.lookTargetWorld = _fieldRoot != null ? _fieldRoot.TransformPoint(_lookField) : _lookField;
             _rig.wrapping = wrapping != null;
+            _rig.stiffArm = IsStiffArming;
+            if (IsStiffArming) _rig.stiffArmTargetWorld = (_fieldRoot != null ? _fieldRoot.TransformPoint(_pos + _stiffDirField * 1.1f) : _pos) + (_fieldRoot != null ? _fieldRoot.up : Vector3.up) * 1.25f;
+            _rig.stumble = IsStumbling ? Mathf.Clamp01(_stumbleT / StumbleSeconds) : 0f;
             if (wrapping != null) _rig.wrapTargetWorld = _fieldRoot != null ? _fieldRoot.TransformPoint(wrapping.Pos + Vector3.up * 0.95f) : wrapping.Pos;
             _reachThisTick = false;
             return;

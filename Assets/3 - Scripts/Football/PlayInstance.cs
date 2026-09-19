@@ -58,7 +58,7 @@ public class PlayInstance
     /// Counters for the soak (every new behaviour shows up here).
     public struct PlayStats
     {
-        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, fumbles, fumblesLost, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, brokenTackles, contested, tips;
+        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, fumbles, fumblesLost, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, brokenTackles, contested, tips, stiffArms, stumbles;
         public bool officialsSpottedBall;
         public float setupSeconds;
     }
@@ -103,8 +103,8 @@ public class PlayInstance
     public const float DiveMinDist = 1.7f, DiveMaxDist = 2.7f, DiveReach = 1.6f;
     public const float HurdleClipChance = 0.22f;        // a clean-timed hurdle still gets caught sometimes
     public const float HurdleLateClipChance = 0.5f;     // left it too late
-    public const float ClipFumbleChance = 0.35f;
-    public const float BigHitFumbleChance = 0.05f;
+    public const float ClipFumbleChance = 0.3f;
+    public const float BigHitFumbleChance = 0.035f;
     public const float ScoopChance = 0.40f;              // a loose ball picked up on the run rather than fallen on
     public const float WildSnapChance = 0.02f;
     public const float SnapFlightSeconds = 0.38f;
@@ -166,6 +166,10 @@ public class PlayInstance
     public const float WrapSeconds = 0.55f;           // the drag before they go down
     public const float BreakTackleChance = 0.14f;
     public const float TipChance = 0.35f;              // the loser of a contested ball gets a hand on it: it pops up, live
+    public const float PartySeconds = 4.5f;            // the touchdown line-up dance before the kickoff walk
+    readonly Dictionary<FootballPlayer, float> _slowUntil = new Dictionary<FootballPlayer, float>();   // jammed at the line
+    bool _releasesDone;
+    List<FootballPlayer> _party; Vector3 _partyCentre; float _partyDir;
     bool _qbTucked;
     // A throw (or kick) in motion: the ball leaves the hand when the arm gets there.
     bool _throwPending; Vector3 _throwTarget; FootballPlayer _throwTo;
@@ -224,8 +228,9 @@ public class PlayInstance
     }
 
     /// A kickoff by `kicking` from its own 35 — or a punt from `puntFromZ`.
-    public PlayInstance(List<FootballPlayer> players, FootballBall ball, FootballTeam kicking, FootballTeam receiving, System.Random rng, float? puntFromZ = null)
+    public PlayInstance(List<FootballPlayer> players, FootballBall ball, FootballTeam kicking, FootballTeam receiving, System.Random rng, float? puntFromZ = null, List<FootballPlayer> party = null, Vector3 partyCentre = default)
     {
+        _party = party; _partyCentre = partyCentre;
         _players = players; _ball = ball; _rng = rng; _toGo = 10f;
         view.players = players; view.ball = ball; view.offense = kicking; view.defense = receiving;
         view.attackDir = kicking.attackDir; view.isKickoff = true; view.play = null;
@@ -338,6 +343,22 @@ public class PlayInstance
         }
         _ballReceiver = _kicker;
         _ballSpot = F(0f, -6f);
+        // The touchdown party (Sam): the scorer and his men line up shoulder to
+        // shoulder facing the near stands and dance before the long walk.
+        if (_party != null && _party.Count > 0)
+        {
+            _partyDir = _partyCentre.x >= 0f ? 1f : -1f;
+            float x = Mathf.Clamp(_partyCentre.x, -(FootballField.HalfWidth - 6f), FootballField.HalfWidth - 6f);
+            float z = Mathf.Clamp(_partyCentre.z, -(FootballField.EndLineZ - 3f), FootballField.EndLineZ - 3f);
+            for (int i = 0; i < _party.Count; i++)
+            {
+                var p = _party[i];
+                if (!_setup.TryGetValue(p, out var mv)) continue;
+                float off = (i - (_party.Count - 1) * 0.5f) * 1.3f;
+                mv.target = new Vector3(x, 0f, z + off);
+                mv.SetFace(mv.target + Vector3.right * (_partyDir * 20f));
+            }
+        }
     }
 
     FootballPlayer Find(FootballTeam t, FootballRole r, int idx = 0) => view.FindRole(t, r, idx);
@@ -402,6 +423,17 @@ public class PlayInstance
             case Phase.Setup:
             {
                 _setupSeconds += dt;
+                if (_party != null)
+                {
+                    bool over = _setupSeconds > PartySeconds;
+                    foreach (var p in _party)
+                    {
+                        if (!_setup.TryGetValue(p, out var mv)) continue;
+                        if (over) { mv.target = _formation[p]; mv.SetFace(LineFacePoint(p, _formation[p])); continue; }
+                        if (mv.Arrived(p) && !p.IsEmoting) p.Emote(EmoteKind.Dance, PartySeconds - _setupSeconds + 0.2f);
+                    }
+                    if (over) _party = null;
+                }
                 TickBallReturn(dt);
                 bool all = true;
                 foreach (var kv in _setup)
@@ -622,6 +654,8 @@ public class PlayInstance
 
         // While the snap is in the air the line still fires: block as if the QB had it.
         BlockSlowdown(carrier ?? (view.SnapInFlight ? _qb : null));
+        PressReleases();
+        foreach (var kv in _slowUntil) if (view.timeSinceSnap < kv.Value) kv.Key.speedScale = Mathf.Min(kv.Key.speedScale, 0.4f);
 
         // Hands up for a ball that's coming: the man it's for, and whoever is
         // closest to where it comes down. The arms point at it and the catch is
@@ -823,13 +857,17 @@ public class PlayInstance
             float miss = blocked ? MissedTackleBlocked : fromBehind ? MissedTackleBehind : MissedTackleChance;
             if (carrier.IsJuking && carrier.JukePhase < 0.7f) miss += MissedTackleJuked;
             if (carrier.IsSpinning) miss += MissedTackleSpun;
-            miss = Mathf.Min(miss, MaxMissChance);
+            bool stiff = carrier.IsStiffArming && Vector3.Dot(toD.normalized, carrier.StiffArmDir) > 0.5f;
+            if (stiff) { miss += 0.3f; d.Nudge(d.Pos + toD.normalized * 0.5f); }
+            miss = Mathf.Min(miss, stiff ? 0.7f : MaxMissChance);
             if (_rng.NextDouble() < miss)
             {
-                d.FallDown(MissDownSeconds);
+                d.FallDown(MissDownSeconds, carrier.Pos);
                 _tackleRetry[d] = ts + TackleRetry;
-                string how = carrier.IsSpinning ? " spins out of " : carrier.IsJuking ? " jukes past " : " misses the tackle by ";
-                log?.Invoke(carrier.IsSpinning || carrier.IsJuking
+                // He got a hand on him: a stumble sometimes.
+                if (!stiff && _rng.NextDouble() < 0.4) { carrier.StartStumble(); _stats.stumbles++; }
+                string how = stiff ? " stiff-arms " : carrier.IsSpinning ? " spins out of " : carrier.IsJuking ? " jukes past " : " misses the tackle by ";
+                log?.Invoke(stiff || carrier.IsSpinning || carrier.IsJuking
                     ? carrier.team.shortName + " " + carrier.Label + how + d.Label + "!"
                     : d.team.shortName + " " + d.Label + " misses the tackle!");
                 continue;
@@ -884,7 +922,7 @@ public class PlayInstance
         if (_wrappers.Count == 1 && view.timeSinceSnap > _tackleEndAt - WrapSeconds * 0.5f && _rng.NextDouble() < BreakTackleChance * (0.6f + 0.8f * carrier.team.speed) / 20f)
         {
             var d = _wrappers[0];
-            d.wrapping = null; d.FallDown(MissDownSeconds);
+            d.wrapping = null; d.FallDown(MissDownSeconds, carrier.Pos);
             _tackleRetry[d] = view.timeSinceSnap + TackleRetry;
             _wrappers.Clear(); _pendingTackler = null; _tackleEndAt = -1f;
             _stats.brokenTackles++;
@@ -895,8 +933,8 @@ public class PlayInstance
     void FinishTackle(FootballPlayer carrier)
     {
         var d = _pendingTackler; _pendingTackler = null; _tackleEndAt = -1f;
-        carrier.FallDown(TackleDownSeconds);
-        foreach (var w in _wrappers) { w.wrapping = null; w.FallDown(TackleDownSeconds); }
+        if (d != null) carrier.FallDown(TackleDownSeconds, d.Pos); else carrier.FallDown(TackleDownSeconds);
+        foreach (var w in _wrappers) { w.wrapping = null; w.FallDown(TackleDownSeconds, carrier.Pos); }
         _wrappers.Clear();
         float spotZ = _ball.holder == carrier ? _ball.pos.z : carrier.Pos.z;
         bool sack = !view.isKickoff && carrier.role == FootballRole.QB && carrier.team == view.offense
@@ -933,6 +971,36 @@ public class PlayInstance
         else End(Outcome.Incomplete, view.losZ, view.offense, null);
     }
 
+    /// A corner in his face at the snap: the receiver's release. He wins it
+    /// (a swim past him, the corner jammed for a beat) or loses it (jammed
+    /// himself, the route a step late). Decided once, in the first half second.
+    void PressReleases()
+    {
+        if (_releasesDone || view.isKickoff || view.timeSinceSnap < 0.15f) return;
+        _releasesDone = true;
+        for (int i = 0; i < 3; i++)
+        {
+            var wr = Find(view.offense, FootballRole.WR, i);
+            var db = Find(view.defense, FootballRole.DB, i);
+            if (wr == null || db == null) continue;
+            Vector3 rel = db.Pos - wr.Pos; rel.y = 0f;
+            if (rel.magnitude > 2.4f || view.Downfield(db.Pos) < view.Downfield(wr.Pos)) continue;
+            float win = 0.5f + 0.35f * (wr.team.speed - db.team.coverage);
+            if (_rng.NextDouble() < win)
+            {
+                float side = Vector3.Dot(rel, Vector3.right) > 0f ? -1f : 1f;
+                wr.StartJuke(Vector3.right * side);
+                _slowUntil[db] = view.timeSinceSnap + 0.4f;
+                log?.Invoke(wr.team.shortName + " " + wr.Label + " swims past the press");
+            }
+            else
+            {
+                _slowUntil[wr] = view.timeSinceSnap + 0.45f;
+                log?.Invoke(db.team.shortName + " " + db.Label + " jams " + wr.Label + " at the line");
+            }
+        }
+    }
+
     /// The whole blocking model (handoff §6), no contact: a defender who runs
     /// into a blocker is ENGAGED — held to a shove — until he sheds him, which
     /// takes 1–2 s depending on the blocking stat (longer for a lineman on a
@@ -967,6 +1035,7 @@ public class PlayInstance
                 if (dist < EngageKeep && ts < e.until && e.blocker != carrier && !e.blocker.IsDown && inFront)
                 {
                     d.speedScale = e.scale; d.blocking = true; e.blocker.blocking = true;
+                    e.blocker.FaceHint(d.Pos - e.blocker.Pos); d.FaceHint(e.blocker.Pos - d.Pos);
                     continue;
                 }
                 _shed.Add((d, e.blocker));
@@ -1006,6 +1075,7 @@ public class PlayInstance
 
     void DoAction(FootballPlayer p, BrainOutput o)
     {
+        if (o.action == BrainAction.Dive) { if (!p.IsDiving && !p.IsDown) { p.StartDive(o.target); _stats.dives++; } return; }
         if (_ball.holder != p) return;      // only the man with the ball acts on it
         switch (o.action)
         {
@@ -1055,6 +1125,9 @@ public class PlayInstance
                 break;
             case BrainAction.Hurdle:
                 if (!p.IsHurdling) { p.StartHurdle(); _stats.hurdles++; }
+                break;
+            case BrainAction.StiffArm:
+                if (!p.IsStiffArming) { p.StartStiffArm(o.target); _stats.stiffArms++; }
                 break;
         }
     }
@@ -1439,10 +1512,11 @@ public class PlayInstance
         if (r.touchdown && carrier != null)
         {
             // The scorer isn't down (he crossed the line running): arms up, or a point.
-            E(carrier, _rng.Next(3) == 0 ? EmoteKind.Point : EmoteKind.ArmsUp, 3.0f);
+            int pick = _rng.Next(4);
+            E(carrier, pick == 0 ? EmoteKind.Point : pick == 1 ? EmoteKind.Bow : pick == 2 ? EmoteKind.ChestThump : EmoteKind.ArmsUp, 2.6f);
             foreach (var p in _players)
                 if (p != carrier && p.team == carrier.team && Vector3.Distance(p.Pos, carrier.Pos) < 18f)
-                    E(p, _rng.Next(2) == 0 ? EmoteKind.ArmsUp : EmoteKind.Flex, 2.2f);
+                    E(p, _rng.Next(2) == 0 ? EmoteKind.ArmsUp : EmoteKind.Flex, 2.0f);
             return;
         }
         if (r.isKickoff) return;
@@ -1459,9 +1533,13 @@ public class PlayInstance
                 E(tackler, _rng.Next(2) == 0 ? EmoteKind.Flex : EmoteKind.ChestThump, 2.2f);
                 break;
             case Outcome.Incomplete:
-                if (_breakupBy != null) { E(_breakupBy, EmoteKind.IncompleteWave, 1.8f); E(_target, EmoteKind.Dejected, 1.6f); }
-                else if (_target != null && _rng.Next(2) == 0) E(_target, EmoteKind.Dejected, 1.4f);
+            {
+                // The corner on the man it was thrown to: arms crossed. Every time (Sam).
+                var db = _breakupBy ?? (_target != null ? view.Nearest(_target.Pos, view.defense) : null);
+                if (db != null && !_thrownAway) E(db, EmoteKind.NoFlyZone, 2.2f);
+                if (_target != null && !_thrownAway && _rng.Next(2) == 0) E(_target, EmoteKind.Dejected, 1.4f);
                 break;
+            }
             case Outcome.Complete:
             case Outcome.Run:
             case Outcome.OutOfBounds:

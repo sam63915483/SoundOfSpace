@@ -245,8 +245,11 @@ public class BallCarrierBrain : IPlayerBrain
         }
         else if (Mathf.Abs(sideOf) > 0.6f || ahead < -0.2f)
         {
-            // Coming from the side or behind: spin off him.
-            if (_rng.NextDouble() < 0.28 * agility) { o.action = BrainAction.Spin; _moveCooldown = 1.3f; }
+            // Coming from the side: the stiff arm (the off arm is the left, so
+            // it is best on a man to his left); or spin off him.
+            double r = _rng.NextDouble();
+            if (sideOf < -0.35f && ahead > -0.3f && r < 0.5 * agility) { o.action = BrainAction.StiffArm; o.target = dn; _moveCooldown = 0.9f; }
+            else if (r < 0.28 * agility) { o.action = BrainAction.Spin; _moveCooldown = 1.3f; }
             else _moveCooldown = 0.35f;
         }
     }
@@ -630,6 +633,14 @@ public class DBBrain : IPlayerBrain
         {
             float left = ball.catchTime - ball.airTime;
             bool mine = _man != null && ball.intendedReceiver == _man;
+            // Beaten by a step with the ball about to arrive: play the BALL —
+            // a dive at the catch point to get a hand in.
+            if (mine && left < 0.4f && !self.IsDiving && Vector3.Distance(self.Pos, ball.catchPoint) < 3.2f && Vector3.Distance(self.Pos, ball.catchPoint) > 1.2f)
+            {
+                o.action = BrainAction.Dive; o.target = ball.catchPoint - self.Pos;
+                o.say = self.team.shortName + " " + self.Label + " lays out for the ball";
+                return;
+            }
             if (mine || Steer.CanReach(self, ball.catchPoint, left, 0.2f))
             {
                 o.move = Steer.MeetBall(self, ball);
@@ -678,6 +689,7 @@ public class DBBrain : IPlayerBrain
             if (gap < 2.0f) spot += fwd * (2.0f - gap);
             if (view.Downfield(spot) < 1.0f) spot.z = view.losZ + view.attackDir * 1.0f;
             o.move = Vector3.ClampMagnitude(Steer.To(self.Pos, spot, 1.0f), 0.85f);
+            o.face = _man.Pos - self.Pos; o.faceMoving = true;                 // backpedalling, eyes on him
             return;
         }
         // He's past me: trail where he WAS a reaction ago, plus a cushion on
@@ -1262,7 +1274,14 @@ public class ReturnBlockerBrain : IPlayerBrain
                 float score = dc + dm * 0.5f;
                 if (score < best) { best = score; threat = d; }
             }
-            o.move = threat != null ? Steer.BlockMan(self, threat, c) : Steer.Block(self, view);
+            if (threat != null)
+            {
+                // Between him and the returner, backpedalling into his path, squared up.
+                Vector3 spot = threat.Pos + (c.Pos - threat.Pos).normalized * 1.6f;
+                o.move = Steer.To(self.Pos, spot, 0.8f);
+                o.face = threat.Pos - self.Pos; o.faceMoving = true;
+            }
+            else o.move = Steer.Block(self, view);
             return;
         }
         // Ball in the air: drift back toward where it'll land, at a jog.

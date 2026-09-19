@@ -97,11 +97,11 @@ public class FootballMatch : MonoBehaviour
     public class GameStats
     {
         public int plays, interceptions, turnoversOnDowns, sacks, completions, attempts, firstDowns, fumbles, fumblesLost;
-        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, officiated, brokenTackles, contested, tips;
+        public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, officiated, brokenTackles, contested, tips, stiffArms, stumbles;
         public float yards, longest, setupSeconds; public string longestDesc = "";
         public float liveSeconds;
         public string Summary(int plays)
-            => "moves: juke " + jukes + " spin " + spins + " hurdle " + hurdles + " (clipped " + hurdlesClipped + ") | dives " + dives + "/" + diveHits + " hit"
+            => "moves: juke " + jukes + " spin " + spins + " stiff-arm " + stiffArms + " stumble " + stumbles + " hurdle " + hurdles + " (clipped " + hurdlesClipped + ") | dives " + dives + "/" + diveHits + " hit"
              + " | fumbles " + fumbles + " (lost " + fumblesLost + ") | snaps " + snapsCaught + " caught, " + wildSnaps + " wild"
              + " | QB rollouts " + rollouts + " scrambles " + scrambleDrills + " | broke " + brokenTackles + " tackles | contested " + contested + " (tipped " + tips + ") | emotes " + emotes
              + " | dead-ball avg " + (plays > 0 ? (setupSeconds / plays).ToString("0.0") : "-") + " s" + (officiated > 0 ? " | OFFICIALS SPOTTED " + officiated : "");
@@ -508,11 +508,14 @@ public class FootballMatch : MonoBehaviour
     }
 
     /// The kickoff play: kicking team = whoever isn't in possession.
+    List<FootballPlayer> _party; Vector3 _partyCentre;
+
     void PrepareKickoff()
     {
         var kicking = Other(_possession);
         SetSides(kicking);
-        _play = new PlayInstance(_players, _ball, kicking, _possession, _rng);
+        _play = new PlayInstance(_players, _ball, kicking, _possession, _rng, null, _party, _partyCentre);
+        _party = null;
         _play.log = Say;
         _play.holdSnap = true;
         _play.Ended += OnKickoffEnded;
@@ -577,7 +580,7 @@ public class FootballMatch : MonoBehaviour
         _stats.dives += s.dives; _stats.diveHits += s.diveHits; _stats.fumbles += s.fumbles; _stats.fumblesLost += s.fumblesLost;
         _stats.wildSnaps += s.wildSnaps; _stats.snapsCaught += s.snapsCaught; _stats.rollouts += s.rollouts; _stats.scrambleDrills += s.scrambleDrills;
         _stats.emotes += s.emotes; _stats.setupSeconds += s.setupSeconds;
-        _stats.brokenTackles += s.brokenTackles; _stats.contested += s.contested; _stats.tips += s.tips;
+        _stats.brokenTackles += s.brokenTackles; _stats.contested += s.contested; _stats.tips += s.tips; _stats.stiffArms += s.stiffArms; _stats.stumbles += s.stumbles;
         if (s.officialsSpottedBall) _stats.officiated++;
         if (clockStoppages && r.clockStops) _clockStopped = true;
         _runoffLeft = _clockStopped ? 0f : playClockRunoff;
@@ -593,6 +596,7 @@ public class FootballMatch : MonoBehaviour
         Say(r.description);
         if (r.touchdown)
         {
+            Party(r);
             r.possession.score += touchdownPoints;
             _possession = r.possession;
             _pendingKickoff = true;
@@ -604,6 +608,18 @@ public class FootballMatch : MonoBehaviour
         _losZ = r.endSpotZ;
         FirstDown();
         Enter(State.DeadBall);
+    }
+
+    /// The scorer and the four nearest teammates line up and dance in the end zone.
+    void Party(PlayInstance.PlayResult r)
+    {
+        if (r.carrier == null) return;
+        var list = new List<FootballPlayer> { r.carrier };
+        var mates = new List<FootballPlayer>();
+        foreach (var p in _players) if (p != r.carrier && p.team == r.carrier.team) mates.Add(p);
+        mates.Sort((a, b) => Vector3.Distance(a.Pos, r.carrier.Pos).CompareTo(Vector3.Distance(b.Pos, r.carrier.Pos)));
+        for (int i = 0; i < mates.Count && i < 4; i++) list.Add(mates[i]);
+        _party = list; _partyCentre = r.carrier.Pos;
     }
 
     void OnPlayEnded(PlayInstance.PlayResult r)
@@ -622,6 +638,7 @@ public class FootballMatch : MonoBehaviour
         if (r.touchdown)
         {
             Say(prefix + r.description);
+            Party(r);
             r.possession.score += touchdownPoints;
             _possession = r.possession;
             _pendingKickoff = true;

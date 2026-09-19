@@ -521,6 +521,7 @@ public class FootballBroadcast : MonoBehaviour
         if (r.stats.hurdlesClipped > 0) extra = "\nCLIPPED ON THE HURDLE";
         else if (r.stats.hurdles > 0) extra = "\nHURDLE!";
         else if (r.stats.brokenTackles > 0) extra = "\nBROKE A TACKLE";
+        else if (r.stats.stiffArms > 0 && r.yards >= 5f) extra = "\nSTIFF ARM";
         else if (r.stats.spins > 0) extra = "\nSPIN MOVE";
         else if (r.stats.jukes > 0 && r.yards >= 8f) extra = "\nJUKED HIM";
         if (r.isKickoff)
