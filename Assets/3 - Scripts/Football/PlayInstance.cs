@@ -873,7 +873,7 @@ public class PlayInstance
     /// a blocker doesn't have to be geometrically perfect every frame.
     void BlockSlowdown(FootballPlayer carrier)
     {
-        for (int i = 0; i < _players.Count; i++) _players[i].speedScale = 1f;
+        for (int i = 0; i < _players.Count; i++) { _players[i].speedScale = 1f; _players[i].blocking = false; }
         if (carrier == null) return;
         float ts = view.timeSinceSnap;
         carrier.speedScale = carrier == _catcher && ts < _catchDipUntil ? CatchDipSpeed
@@ -883,19 +883,28 @@ public class PlayInstance
             var d = _players[i];
             if (d.team == carrier.team) continue;
             if (d.brain is DLBrain dl && dl.free) { _engaged.Remove(d); continue; }
+            Vector3 toCarrier = carrier.Pos - d.Pos; toCarrier.y = 0f;
+            if (toCarrier.sqrMagnitude < 0.01f) continue;
+            toCarrier.Normalize();
 
             // Still on his current blocker?
             if (_engaged.TryGetValue(d, out var e))
             {
                 float dist = Vector3.Distance(e.blocker.Pos, d.Pos);
-                if (dist < EngageKeep && ts < e.until && e.blocker != carrier && !e.blocker.IsDown) { d.speedScale = e.scale; continue; }
-                if (ts >= e.until) _shed.Add((d, e.blocker));
+                // Still held: close, not shed, and the blocker still BETWEEN
+                // him and the ball. Once he is round the man he is free (he
+                // used to crawl on for a stride after getting past).
+                Vector3 toBlk = e.blocker.Pos - d.Pos; toBlk.y = 0f;
+                bool inFront = toBlk.sqrMagnitude < 0.01f || Vector3.Dot(toBlk.normalized, toCarrier) > -0.15f;
+                if (dist < EngageKeep && ts < e.until && e.blocker != carrier && !e.blocker.IsDown && inFront)
+                {
+                    d.speedScale = e.scale; d.blocking = true; e.blocker.blocking = true;
+                    continue;
+                }
+                _shed.Add((d, e.blocker));
                 _engaged.Remove(d);
             }
             // A new blocker in his way?
-            Vector3 toCarrier = carrier.Pos - d.Pos; toCarrier.y = 0f;
-            if (toCarrier.sqrMagnitude < 0.01f) continue;
-            toCarrier.Normalize();
             for (int j = 0; j < _players.Count; j++)
             {
                 var b = _players[j];
@@ -912,7 +921,7 @@ public class PlayInstance
                                   : Mathf.Lerp(0.45f, 0.9f, b.team.blocking) + ((float)_rng.NextDouble() - 0.5f) * 0.2f;
                 var eng = new Engagement { blocker = b, until = ts + hold, scale = line ? _engagedScale : 0.5f };
                 _engaged[d] = eng;
-                d.speedScale = eng.scale;
+                d.speedScale = eng.scale; d.blocking = true; b.blocking = true;
                 break;
             }
         }

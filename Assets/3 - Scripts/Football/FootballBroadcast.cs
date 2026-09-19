@@ -177,19 +177,36 @@ public class FootballBroadcast : MonoBehaviour
         PlaceCamera();
     }
 
+    public const string AnchorA = "Jumbotron A", AnchorB = "Jumbotron B";
+
+    /// The screens are built on scene anchors if the scene has them
+    /// (Tools ▸ Football ▸ Add Jumbotron Anchors — empties under FieldRoot with a
+    /// placeholder slab, so Sam can see and drag them), else at the field
+    /// positions on this component.
     void BuildScreens()
     {
         var sh = Shader.Find("Unlit/Texture");
         _screenMat = new Material(sh != null ? sh : Shader.Find("Standard")) { name = "Jumbotron", mainTexture = _rt };
-        MakeScreen("Jumbotron A", screenAPos, screenAEuler);
-        MakeScreen("Jumbotron B", screenBPos, screenBEuler);
+        MakeScreen(AnchorA, screenAPos, screenAEuler);
+        MakeScreen(AnchorB, screenBPos, screenBEuler);
     }
 
     void MakeScreen(string name, Vector3 pos, Vector3 euler)
     {
-        var root = new GameObject(name);
-        root.transform.SetParent(_fieldRoot, false);
-        root.transform.localPosition = pos; root.transform.localRotation = Quaternion.Euler(euler);
+        var anchor = _fieldRoot.Find(name);
+        GameObject root;
+        if (anchor != null)
+        {
+            root = anchor.gameObject;
+            var ph = anchor.Find("Placeholder");
+            if (ph != null) ph.gameObject.SetActive(false);
+        }
+        else
+        {
+            root = new GameObject(name);
+            root.transform.SetParent(_fieldRoot, false);
+            root.transform.localPosition = pos; root.transform.localRotation = Quaternion.Euler(euler);
+        }
         // The bezel, then the picture just proud of it.
         var bezel = GameObject.CreatePrimitive(PrimitiveType.Cube);
         Destroy(bezel.GetComponent<Collider>());
@@ -496,7 +513,9 @@ public class FootballBroadcast : MonoBehaviour
         else if (r.stats.jukes > 0 && r.yards >= 8f) extra = "\nJUKED HIM";
         if (r.isKickoff)
         {
+            if (r.touchdown && r.turnover) return "FUMBLE - RETURNED\nFOR A TOUCHDOWN!";
             if (r.touchdown) return "KICK RETURN\nTOUCHDOWN!";
+            if (r.outcome == PlayInstance.Outcome.KickRecoveredByKickingTeam) return "FUMBLE!\n" + r.possession.shortName + " RECOVER THE KICK";
             if (r.outcome == PlayInstance.Outcome.Touchback) return "TOUCHBACK";
             return "KICK RETURNED\n" + Mathf.RoundToInt(r.returnYards) + " YARDS" + extra;
         }

@@ -60,6 +60,7 @@ public class FootballAlienRig : MonoBehaviour
     [System.NonSerialized] public float hardFall;         // 0..1: flailing while tumbling
     [System.NonSerialized] public Stance stance = Stance.None;
     [System.NonSerialized] public float idleTime;         // seconds standing still: breathing, weight shifts
+    [System.NonSerialized] public bool blocking;          // arms out, hands up, holding a man off (or fighting one)
 
     public const float ThrowSeconds = 0.42f;
     public const float ThrowRelease = 0.58f;              // fraction of the motion where the ball leaves the hand
@@ -267,6 +268,17 @@ public class FootballAlienRig : MonoBehaviour
             return;
         }
         if (emote != EmoteKind.None) { Emote(f, r, u); return; }
+        if (blocking && hold == HoldStyle.None)
+        {
+            // Arms out in front at chest height, elbows a little bent, a shove
+            // in them — the block (Sam: they should be extending their arms).
+            float shove = Mathf.Sin(stridePhase * 1.5f) * 0.04f;
+            Vector3 pR = ShoulderR + f * (ArmLength * (0.82f + shove)) + r * 0.14f - u * 0.05f;
+            Vector3 pL = ShoulderL + f * (ArmLength * (0.82f - shove)) - r * 0.14f - u * 0.05f;
+            TwoBone(_upperR, _lowerR, _handR, pR, (-u * 0.6f + r * 0.8f).normalized);
+            TwoBone(_upperL, _lowerL, _handL, pL, (-u * 0.6f - r * 0.8f).normalized);
+            return;
+        }
         if (divePhase >= 0f)
         {
             // Superman: both arms straight out ahead, a little apart.

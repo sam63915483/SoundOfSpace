@@ -66,6 +66,39 @@ public static class FootballProtoSceneBuilder
     const string AlienPackDir = "Assets/5 - External Imports/Alien_Toys/Alien_Pack/Prefab/Built-In";
 
     // Where Sam put the scoreboard: read before the wipe, written back after.
+    /// Two empties under FieldRoot with a dark placeholder slab the size of
+    /// the screen, so the jumbotrons exist in the editor to be dragged and
+    /// rotated (they are otherwise built at runtime). The broadcast builds the
+    /// real screens on them and hides the placeholders.
+    [MenuItem("Tools/Football/Add Jumbotron Anchors")]
+    public static void AddJumbotronAnchors()
+    {
+        var fieldRoot = GameObject.Find("FieldRoot");
+        if (fieldRoot == null) { Debug.LogError("[FootballProto] no FieldRoot in the open scene"); return; }
+        var bc = fieldRoot.GetComponentInChildren<FootballBroadcast>(true);
+        Vector2 size = bc != null ? bc.screenSize : new Vector2(40f, 22.5f);
+        Vector3[] pos = { bc != null ? bc.screenAPos : new Vector3(64f, 30f, 0f), bc != null ? bc.screenBPos : new Vector3(-64f, 30f, 0f) };
+        Vector3[] eul = { bc != null ? bc.screenAEuler : new Vector3(0f, 90f, 0f), bc != null ? bc.screenBEuler : new Vector3(0f, -90f, 0f) };
+        string[] names = { FootballBroadcast.AnchorA, FootballBroadcast.AnchorB };
+        for (int i = 0; i < 2; i++)
+        {
+            var t = fieldRoot.transform.Find(names[i]);
+            if (t != null) continue;
+            var go = new GameObject(names[i]);
+            Undo.RegisterCreatedObjectUndo(go, "jumbotron anchor");
+            go.transform.SetParent(fieldRoot.transform, false);
+            go.transform.localPosition = pos[i]; go.transform.localRotation = Quaternion.Euler(eul[i]);
+            var ph = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            ph.name = "Placeholder";
+            Object.DestroyImmediate(ph.GetComponent<Collider>());
+            ph.transform.SetParent(go.transform, false);
+            ph.transform.localScale = new Vector3(size.x + 1.2f, size.y + 1.2f, 0.8f);
+            ph.GetComponent<Renderer>().sharedMaterial = LoadOrCreateMat(GroundMatPath.Replace("Ground", "Jumbotron"), m => { m.color = new Color(0.08f, 0.08f, 0.1f); m.SetFloat("_Glossiness", 0.3f); });
+        }
+        EditorSceneManager.MarkSceneDirty(fieldRoot.scene);
+        Debug.Log("[FootballProto] jumbotron anchors under FieldRoot — drag them where you want the screens, then save the scene");
+    }
+
     struct BoardPose { public bool found; public Vector3 pos; public Quaternion rot; public Vector3 scale; }
     static BoardPose _boardPose;
 

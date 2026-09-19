@@ -50,6 +50,8 @@ public class FootballPlayer : MonoBehaviour
     public IPlayerBrain brain;
     /// Set by PlayInstance each tick: 1 = free, less = a blocker in the way.
     [System.NonSerialized] public float speedScale = 1f;
+    /// Set by PlayInstance each tick: he is blocking someone, or being blocked (arms out).
+    [System.NonSerialized] public bool blocking;
     /// A receiver standing at the end of a curl/hitch/comeback, looking at
     /// the QB: a legitimate target even though he isn't running.
     [System.NonSerialized] public bool settled;
@@ -70,6 +72,7 @@ public class FootballPlayer : MonoBehaviour
     FootballAlienRig _rig;
     Color _tint = Color.white;
     float _jumpT = -1f;          // seconds into the hop, −1 = not jumping
+    float _jumpScale = 1f;       // a throw hop is smaller than a catch jump
     float _downLeft;             // seconds left on the ground
     float _lie;                  // 0 standing … 1 flat
     float _roll;                 // degrees about the body's long axis (a tumble ends on the back)
@@ -105,7 +108,7 @@ public class FootballPlayer : MonoBehaviour
     public bool ThrowReleased => _throwReleasedTick;
     public bool KickReleased => _kickReleasedTick;
     /// Extra reach while airborne (hands up).
-    public float JumpReach => IsJumping ? JumpHeight * Mathf.Sin(Mathf.PI * _jumpT / JumpSeconds) : 0f;
+    public float JumpReach => IsJumping ? JumpHeight * _jumpScale * Mathf.Sin(Mathf.PI * _jumpT / JumpSeconds) : 0f;
     public bool HasRig => _rig != null && _rig.Ready;
     public HoldStyle Hold => _hold;
     public Stance CurrentStance => _stance;
@@ -271,7 +274,7 @@ public class FootballPlayer : MonoBehaviour
     public void Jump()
     {
         if (IsDown || IsJumping || IsHurdling || IsDiving) return;
-        _jumpT = 0f;
+        _jumpT = 0f; _jumpScale = 1f;
     }
 
     /// Hit the deck for this long (a tackle, made or missed). Can't move meanwhile.
@@ -346,6 +349,11 @@ public class FootballPlayer : MonoBehaviour
     {
         if (IsThrowing) return;
         _throwT = 0f;
+        // Square up to the target (fast), and a hop off the back foot if he
+        // is on the move — no throwing downfield while running backwards.
+        fieldDir.y = 0f;
+        if (fieldDir.sqrMagnitude > 0.01f) _facingTarget = fieldDir.normalized;
+        if (_vel.sqrMagnitude > 4f && !IsJumping) { _jumpT = 0f; _jumpScale = 0.45f; }
         if (_rig != null) _rig.throwDirWorld = _fieldRoot != null ? _fieldRoot.TransformDirection(fieldDir).normalized : fieldDir.normalized;
     }
 
@@ -503,7 +511,7 @@ public class FootballPlayer : MonoBehaviour
         else if (_vel.sqrMagnitude > 0.25f && !IsThrowing && !IsJuking) _facingTarget = _vel.normalized;
         else if (_vel.sqrMagnitude <= 0.25f && o.face.sqrMagnitude > 0.01f) { o.face.y = 0f; _facingTarget = o.face.normalized; }
         // Turn toward it at a rate: quick on the run, a body turn when standing.
-        float rate = _vel.sqrMagnitude > 4f ? TurnRateRunning : TurnRateStanding;
+        float rate = IsThrowing ? 900f : _vel.sqrMagnitude > 4f ? TurnRateRunning : TurnRateStanding;
         _facing = Vector3.RotateTowards(_facing, _facingTarget, rate * Mathf.Deg2Rad * dt, 0f);
         _facing.y = 0f; if (_facing.sqrMagnitude < 1e-4f) _facing = _facingTarget; _facing.Normalize();
         _idleTime = _vel.sqrMagnitude < 0.25f ? _idleTime + dt : 0f;
@@ -521,7 +529,7 @@ public class FootballPlayer : MonoBehaviour
         // Body root: hop for a catch, lift for a hurdle, a pop on a tumble;
         // tip forward onto the ground when down (or into a dive); yaw through
         // a spin; roll onto the back after a tumble; lean into a juke.
-        float hop = IsJumping ? JumpHeight * Mathf.Sin(Mathf.PI * _jumpT / JumpSeconds) : 0f;
+        float hop = IsJumping ? JumpHeight * _jumpScale * Mathf.Sin(Mathf.PI * _jumpT / JumpSeconds) : 0f;
         if (IsHurdling) hop += HurdleHeight * Mathf.Sin(Mathf.PI * HurdlePhase);
         if (_hardT >= 0f) hop += 0.55f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(_hardT / HardFallSeconds));
         if (IsDiving) hop += 0.3f * Mathf.Sin(Mathf.PI * Mathf.Clamp01(DivePhase * 1.4f));
@@ -555,6 +563,7 @@ public class FootballPlayer : MonoBehaviour
             _rig.hardFall = _hardT >= 0f ? Mathf.Clamp01(_hardT / HardFallSeconds) : 0f;
             _rig.stance = _stance;
             _rig.idleTime = _idleTime;
+            _rig.blocking = blocking;
             _reachThisTick = false;
             return;
         }
