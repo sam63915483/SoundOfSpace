@@ -57,7 +57,9 @@ public class FootballBroadcast : MonoBehaviour
     public bool replays = true;
     public float replayDelay = 1.6f;     // live celebration first, then the card, then the replay
     [Tooltip("Speed from the throw until a second after the catch (runs: around the key moment).")]
-    public float slowMoSpeed = 0.25f;
+    public float slowMoSpeed = 0.5f;
+    [Tooltip("Seconds to ease into and out of the slow-mo instead of snapping to it.")]
+    public float slowMoEase = 0.5f;
     public float slowMoBefore = 1.0f, slowMoAfter = 0.6f, slowMoAfterCatch = 1.0f;
     public float maxReplaySeconds = 13f;
     [Tooltip("Keep recording this long after the whistle: the hit, then the pile.")]
@@ -572,8 +574,15 @@ public class FootballBroadcast : MonoBehaviour
         // slower to fill the time, a touch faster if it wouldn't fit, gone
         // the moment the huddle breaks. After a score (a kickoff, no huddle)
         // the old fixed budget applies.
+        // Eased: full speed until the throw, down to slowMoSpeed over
+        // slowMoEase, back up the same way after the catch.
         bool slow = _replayT >= _slowStart && _replayT <= _slowEnd;
-        float speed = slow ? _slowSpeed : 1f;
+        float speed = 1f;
+        if (slow)
+        {
+            float k = Mathf.Min((_replayT - _slowStart) / slowMoEase, (_slowEnd - _replayT) / slowMoEase, 1f);
+            speed = Mathf.Lerp(1f, _slowSpeed, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(k)));
+        }
         var cur = _match.CurrentPlay;
         float untilBreak = cur != null ? cur.SecondsUntilBreak : -1f;
         if (untilBreak >= 0f && untilBreak <= 1.0f) { EndReplay(); return; }
@@ -605,7 +614,7 @@ public class FootballBroadcast : MonoBehaviour
         }
         Vector3 focus = Vector3.Lerp(a.focus, b.focus, k);
         float fov = Mathf.Lerp(a.fov, b.fov, k) * replayZoom;
-        if (slow) fov = Mathf.Min(fov, Mathf.Max(slowMoFov, fov * 0.85f));      // push in for the slow-mo
+        if (slow) fov = Mathf.Lerp(fov, Mathf.Min(fov, Mathf.Max(slowMoFov, fov * 0.85f)), Mathf.InverseLerp(1f, _slowSpeed, speed));      // push in with the slow-mo
         AimAt(focus, Mathf.Max(fov, 6f), dt);
     }
 
