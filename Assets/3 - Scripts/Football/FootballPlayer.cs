@@ -224,7 +224,7 @@ public class FootballPlayer : MonoBehaviour
         _bodyT = model.transform;
         _body = smr;
         // Team tint over the skin.
-        _tint = Color.Lerp(Color.white, team.color, 0.6f);
+        _tint = Color.Lerp(Color.white, team.color, 0.3f);   // the jersey carries the team; the skin only hints
         if (_body != null)
         {
             _mpb = new MaterialPropertyBlock();
@@ -233,6 +233,67 @@ public class FootballPlayer : MonoBehaviour
         }
         _rig = model.AddComponent<FootballAlienRig>();
         _rig.Init(transform);
+        BuildJersey(model.transform);
+    }
+
+    /// The jersey (Sam, 2026-09-19: "no way to tell who's on what team"): a
+    /// team-coloured vest round the torso, parented to the spine so it moves
+    /// with the body, with the number front and back. A tint on the skin
+    /// never read — it only multiplied a busy texture.
+    void BuildJersey(Transform model)
+    {
+        Transform spine = null, pelvis = null, shR = null, shL = null;
+        foreach (var t in model.GetComponentsInChildren<Transform>(true))
+        {
+            if (t.name == "spine_02") spine = t; else if (t.name == "spine_01" && spine == null) spine = t;
+            else if (t.name == "pelvis") pelvis = t; else if (t.name == "upperarm_r") shR = t; else if (t.name == "upperarm_l") shL = t;
+        }
+        if (spine == null || pelvis == null || shR == null || shL == null) return;
+        Vector3 shoulders = (shR.position + shL.position) * 0.5f;
+        float width = Vector3.Distance(shR.position, shL.position) * 1.25f;
+        float height = Vector3.Distance(shoulders, pelvis.position) * 1.15f;
+        Vector3 centre = Vector3.Lerp(shoulders, pelvis.position, 0.45f);
+        var vest = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        Kill(vest.GetComponent<Collider>());
+        vest.name = "Jersey";
+        vest.transform.SetParent(spine, true);
+        vest.transform.position = centre;
+        vest.transform.rotation = Quaternion.LookRotation(transform.forward, transform.up);
+        vest.transform.localScale = Vector3.one;
+        // World-size the sphere whatever the bone's scale is.
+        Vector3 ls = vest.transform.lossyScale;
+        vest.transform.localScale = new Vector3(width / Mathf.Max(0.001f, ls.x), height / Mathf.Max(0.001f, ls.y), width * 0.85f / Mathf.Max(0.001f, ls.z));
+        var mat = new Material(Shader.Find("Standard")) { color = team.color };
+        mat.SetFloat("_Glossiness", 0.25f);
+        vest.GetComponent<Renderer>().sharedMaterial = mat;
+        // Numbers, front and back.
+        string num = JerseyNumber();
+        for (int i = 0; i < 2; i++)
+        {
+            var tgo = new GameObject(i == 0 ? "NumberFront" : "NumberBack");
+            tgo.transform.SetParent(vest.transform, false);
+            tgo.transform.localPosition = new Vector3(0f, 0.05f, i == 0 ? 0.52f : -0.52f);
+            tgo.transform.localRotation = Quaternion.Euler(0f, i == 0 ? 0f : 180f, 0f);
+            var tmp = tgo.AddComponent<TextMeshPro>();
+            tmp.text = num; tmp.fontSize = 3.2f; tmp.fontStyle = FontStyles.Bold; tmp.color = Color.white;
+            tmp.alignment = TextAlignmentOptions.Center; tmp.enableWordWrapping = false;
+            tmp.GetComponent<RectTransform>().sizeDelta = new Vector2(0.6f, 0.4f);
+            // Counter the vest's non-uniform scale so the digits stay square.
+            Vector3 vs = vest.transform.localScale;
+            tgo.transform.localScale = new Vector3(0.9f / vs.x, 0.9f / vs.y, 1f / vs.z) * 0.6f;
+        }
+    }
+
+    string JerseyNumber()
+    {
+        switch (offRole)
+        {
+            case FootballRole.QB: return team.index == 0 ? "7" : "12";
+            case FootballRole.C:  return team.index == 0 ? "55" : "64";
+            case FootballRole.OL: return (team.index == 0 ? 70 : 75) + offIndex * 3 + "";
+            case FootballRole.WR: return (team.index == 0 ? new[] { "11", "18", "80" } : new[] { "13", "84", "19" })[offIndex];
+            default: return "1";
+        }
     }
 
     /// Offense or defense for the coming play.
