@@ -279,12 +279,14 @@ public class FleaFlickerBrain : IPlayerBrain
         if (_busted || view.Carrier != self) { if (view.Carrier == self) _run.Tick(self, view, dt, ref o); return; }
         _since += dt;
         var near = view.NearestStanding(self.Pos, view.defense);
-        if (near != null && Vector3.Distance(near.Pos, self.Pos) < 2.0f && _since < 1.1f)
+        Vector3 toMe = near != null ? self.Pos - near.Pos : Vector3.zero; toMe.y = 0f;
+        bool onHim = near != null && toMe.magnitude < 1.6f && Vector3.Dot(near.Vel, toMe.normalized) > 1.5f;
+        if (onHim && _since > 0.4f && _since < 0.9f)
         {
             _busted = true; o.say = self.team.shortName + " " + self.Label + " can't get the pitch off — keeps it";
             _run.Tick(self, view, dt, ref o); return;
         }
-        if (_since >= 1.1f && _qb != null && Vector3.Distance(_qb.Pos, self.Pos) < 16f)
+        if (_since >= 0.9f && _qb != null && Vector3.Distance(_qb.Pos, self.Pos) < 18f)
         {
             float flight = PlayInstance.PassFlightTime(Vector3.Distance(self.Pos, _qb.Pos));
             o.action = BrainAction.Throw; o.targetPlayer = _qb; o.target = _qb.Pos + _qb.Vel * flight; o.power = 0.1f;
@@ -314,7 +316,7 @@ public class OLBrain : IPlayerBrain
         if (carrier != null && carrier.team != self.team) { o.move = Steer.Pursue(self, carrier); return; }
         // The screen: let the rush through after a beat and get out in front
         // of the screen man.
-        if (view.play != null && view.play.kind == FootballPlay.Kind.Screen && view.timeSinceSnap > 1.0f)
+        if (view.play != null && view.play.kind == FootballPlay.Kind.Screen && view.timeSinceSnap > 0.6f)
         {
             var sm = view.FindRole(view.offense, FootballRole.WR, 2);
             if (sm != null)
@@ -364,6 +366,17 @@ public class CenterBrain : IPlayerBrain
             // Ball in the air / loose: drift toward it.
             o.move = Steer.To(self.Pos, view.ball.state == FootballBall.State.Loose ? view.ball.pos : view.ball.catchPoint, 6f) * 0.5f;
             return;
+        }
+        // The screen: out to the flat with the tackles.
+        if (view.play != null && view.play.kind == FootballPlay.Kind.Screen && view.timeSinceSnap > 0.6f)
+        {
+            var sm = view.FindRole(view.offense, FootballRole.WR, 2);
+            if (sm != null)
+            {
+                var st = view.NearestStanding(sm.Pos, view.defense);
+                o.move = st != null && Vector3.Distance(st.Pos, sm.Pos) < 12f ? Steer.BlockMan(self, st, sm) : Steer.To(self.Pos, sm.Pos + Vector3.forward * (view.attackDir * 3f), 1.5f);
+                return;
+            }
         }
         // Who is coming that nobody has? Nearest defender to the carrier who
         // isn't engaged, within reach of me.
@@ -799,7 +812,7 @@ public class QBBrain_CPU : IPlayerBrain
     public const float DeepYards = 18f;
     public const float EscapeSeconds = 3.4f;         // buying time before he gives up and runs
     public const float DesignedRollSeconds = 3.0f;
-    public const float ScrambleExtension = 2.0f;
+    public const float ScrambleExtension = 1.4f;
 
     /// The QB has left the pocket with the ball (receivers adjust).
     public bool Extending => _escaping;
@@ -818,8 +831,8 @@ public class QBBrain_CPU : IPlayerBrain
         }
         switch (style)
         {
-            case Style.Quick:    _dropTime = DropTime;  _holdMax = 2.8f + (float)rng.NextDouble() * 0.8f; break;
-            case Style.Patient:  _dropTime = 1.5f;      _holdMax = 3.6f + (float)rng.NextDouble() * 0.8f; break;
+            case Style.Quick:    _dropTime = DropTime;  _holdMax = 2.5f + (float)rng.NextDouble() * 0.7f; break;
+            case Style.Patient:  _dropTime = 1.5f;      _holdMax = 3.2f + (float)rng.NextDouble() * 0.7f; break;
             case Style.DeepShot: _dropTime = 1.7f;      _holdMax = (play != null && play.kind == FootballPlay.Kind.FleaFlicker ? 6.0f : 4.0f) + (float)rng.NextDouble() * 0.8f; break;
             default:             _dropTime = 1.4f;      _holdMax = 3.8f + (float)rng.NextDouble() * 0.9f; break;   // Rollout: routes need a beat before he reads on the move
         }
@@ -867,11 +880,12 @@ public class QBBrain_CPU : IPlayerBrain
         }
         if (play.kind == FootballPlay.Kind.Screen)
         {
-            // Set up, let the rush come, and get it out to the screen man
-            // behind his blockers — no openness read, he's behind the line.
-            o.move = Steer.To(self.Pos, _dropSpot, 1f);
+            // Set up DEEP, let the rush come, and get it out to the screen man
+            // once his blockers are out in front — no openness read, he's
+            // behind the line.
+            o.move = Steer.To(self.Pos, _dropSpot - Vector3.forward * (view.attackDir * 3f), 1f);
             var wr = _readOrder.Count > 0 ? _readOrder[0] : null;
-            if (wr != null && !_thrown && t > 1.5f)
+            if (wr != null && !_thrown && t > 2.0f)
             {
                 float flight = PlayInstance.PassFlightTime(Vector3.Distance(self.Pos, wr.Pos));
                 Vector3 lead = wr.Pos + wr.Vel * flight * 0.5f;
@@ -900,14 +914,14 @@ public class QBBrain_CPU : IPlayerBrain
         float threatDist = threat != null ? toMe.magnitude : 99f;
         Vector3 toMeN = threatDist > 0.01f ? toMe / threatDist : Vector3.zero;
         bool threatClosing = threat != null && Vector3.Dot(threat.Vel, toMeN) > 1.5f;
-        bool inTheFace = threatDist < 3.2f && threatClosing;
+        bool inTheFace = threatDist < 3.6f && threatClosing;
 
         if (style == Style.Rollout && !_escaping && t > 0.45f)
         {
             StartEscape(self, view, threat, t, _designedSide * view.attackDir, true);
             o.say = self.team.shortName + " QB rolls " + (_designedSide > 0f ? "right" : "left") + " by design";
         }
-        if (!_escaping && !_thrown && t > _dropTime * 0.8f && (view.pocketCollapsed || inTheFace))
+        if (!_escaping && !_thrown && t > 0.5f && (view.pocketCollapsed || inTheFace))
         {
             StartEscape(self, view, threat, t, 0f, false);
             o.say = self.team.shortName + " QB feels the rush and gets out of the pocket";
@@ -981,11 +995,18 @@ public class QBBrain_CPU : IPlayerBrain
         }
         if (_escaping)
         {
-            // Give up and run: out of time, cornered, or a lane opened up.
             float since = t - _escapeSince;
-            // (Cornered, he keeps trying to get away — tucking it with a man
-            // at arm's length was a sack every time.)
-            bool laneOpen = since > 1.4f && LaneAhead(self, view);
+            // Cornered with nothing there: get rid of it — a checkdown if any
+            // man has a sliver, else thrown away over the sideline (Sam: bad
+            // sacks standing still are the worst thing on the screen).
+            bool cornered = threatDist < 2.2f && threatClosing && since > 0.6f && t - _lastJuke > 0.4f;
+            if (cornered && best != null && !self.IsJuking)
+            {
+                if (bestMargin > -2.5f && view.Downfield(bestLead) > 0f) { Throw(self, best, bestLead, view, true, ref o); o.say = self.team.shortName + " QB, under the gun, gets it out to " + best.Label; return; }
+                ThrowAway(self, best, view, ref o);
+                return;
+            }
+            bool laneOpen = since > 0.9f && LaneAhead(self, view);
             float limit = _designed ? DesignedRollSeconds : EscapeSeconds;
             if (since > limit || laneOpen)
             {
@@ -999,6 +1020,18 @@ public class QBBrain_CPU : IPlayerBrain
             o.action = BrainAction.Handoff; o.targetPlayer = self;   // tuck it and run
             o.say = self.team.shortName + " QB tucks it and runs";
         }
+    }
+
+    /// Over the sideline, in the direction of a receiver so it reads as a
+    /// throw and not a fumble: incomplete, no sack.
+    void ThrowAway(FootballPlayer self, FootballPlayer wr, PlayView view, ref BrainOutput o)
+    {
+        float side = wr.Pos.x >= self.Pos.x ? 1f : -1f;
+        if (Mathf.Abs(self.Pos.x) > FootballField.HalfWidth - 8f) side = Mathf.Sign(self.Pos.x);
+        Vector3 target = new Vector3(side * (FootballField.HalfWidth + 5f), 0f, self.Pos.z + view.attackDir * 12f);
+        o.action = BrainAction.Throw; o.targetPlayer = wr; o.target = target; o.power = 0.6f;
+        o.say = self.team.shortName + " QB throws it away";
+        _thrown = true;
     }
 
     void StartEscape(FootballPlayer self, PlayView view, FootballPlayer threat, float t, float sideHint, bool designed)

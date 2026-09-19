@@ -57,7 +57,7 @@ public static class FootballRoutes
     /// The flea flicker's sweep man: a few strides toward the edge, then the pitch back.
     public static readonly FootballRoute FlickerPath = new FootballRoute("flicker", false, -6, -4, -11, -3, -14, -2);
     /// The screen: slip out to the flat behind the line and turn round.
-    public static readonly FootballRoute ScreenOut = new FootballRoute("screen", true, 3, -3, 6, -3.5f);
+    public static readonly FootballRoute ScreenOut = new FootballRoute("screen", true, 4, -3, 8, -3.5f);
 }
 
 /// Where the three receivers line up (attack-relative x in yards; + = right).
@@ -128,7 +128,7 @@ public class FootballPlay
             // 4th and long; never the same call twice running.
             if (p.IsDeepShot && yardsToGoal < 25f) x *= 0.2f;
             if (down == 4 && toGo > 7f && p.kind != Kind.Pass && p.kind != Kind.Rollout && p.kind != Kind.Screen) x *= 0.3f;
-            if (p.kind == Kind.FleaFlicker && yardsToGoal < 35f) x *= 0.15f;        // needs room for the deep shot
+            if (p.kind == Kind.FleaFlicker && yardsToGoal < 35f) x *= 0.4f;         // needs room for the deep shot
             if (p == last) x *= 0.15f;
             w[i] = x; total += x;
         }
@@ -196,7 +196,7 @@ public class FootballPlay
             P("QB Power",    Kind.QbRun,    FootballRoutes.Block,    FootballRoutes.Block,    FootballRoutes.Block,    new int[0], 4f, 2f, 0.5f, 1.5f),
             // ── trickery (Sam: end arounds, flea flickers, screens) ──
             Sweep("End Around", 0, 2f, 1.5f, 0.6f),
-            P("Flea Flicker", Kind.FleaFlicker, FootballRoutes.Go,      FootballRoutes.Post,     FootballRoutes.FlickerPath, new[] { 0, 1 }, 0.4f, 0.9f, 1.6f),
+            P("Flea Flicker", Kind.FleaFlicker, FootballRoutes.Go,      FootballRoutes.Post,     FootballRoutes.FlickerPath, new[] { 0, 1 }, 1.2f, 2f, 2.6f),
             P("Screen",      Kind.Screen,   FootballRoutes.ClearOut, FootballRoutes.ClearOut, FootballRoutes.ScreenOut, new[] { 2 }, 1.5f, 2f, 2f, 0.6f),
         };
     }

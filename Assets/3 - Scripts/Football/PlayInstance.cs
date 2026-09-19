@@ -1015,6 +1015,7 @@ public class PlayInstance
         float flight = PassFlightTime(dist);
         _ball.Launch(target, flight, to, false);
         _passer = p; _target = to;
+        if (Mathf.Abs(target.x) > FootballField.HalfWidth) _thrownAway = true;
         p.SetHighlight(false);
         p.SetHold(HoldStyle.None);
         log?.Invoke(p.team.shortName + " " + p.Label + " throws to " + to.Label);
@@ -1040,7 +1041,7 @@ public class PlayInstance
             return;
         }
         // A receiver's remaining route is for a sweep; a catch downfield just runs.
-        if (!(view.play != null && view.play.kind == FootballPlay.Kind.JetSweep && p.role == FootballRole.WR)) opening = null;
+        if (!(view.play != null && (view.play.kind == FootballPlay.Kind.JetSweep || view.play.kind == FootballPlay.Kind.Screen) && p.role == FootballRole.WR)) opening = null;
         p.brain = new BallCarrierBrain(opening, _rng, p.team.speed);
     }
 
@@ -1235,7 +1236,7 @@ public class PlayInstance
         End(Outcome.KickReturn, z40, view.defense, null);
         return true;
     }
-    bool _badSnap;
+    bool _badSnap, _thrownAway;
 
     /// After the whistle nobody freezes: bodies coast to a stop, the fallen
     /// get up, a ball in the air comes down. FootballMatch calls this if it
@@ -1334,7 +1335,7 @@ public class PlayInstance
             string yd = r.yards >= 0f ? "+" + r.yards.ToString("0") : r.yards.ToString("0");
             switch (outcome)
             {
-                case Outcome.Incomplete: r.description = "Incomplete" + (r.receiver != null ? " to " + r.receiver.Label : "") + (_breakupBy != null ? " (broken up by " + _breakupBy.Label + ")" : ""); break;
+                case Outcome.Incomplete: r.description = (_thrownAway ? "Thrown away" : "Incomplete" + (r.receiver != null ? " to " + r.receiver.Label : "")) + (_breakupBy != null ? " (broken up by " + _breakupBy.Label + ")" : ""); break;
                 case Outcome.Sack:       r.description = "SACKED for " + yd + (tackler != null ? " by " + tackler.Label : ""); break;
                 case Outcome.OutOfBounds: r.description = (carrier != null ? carrier.Label : "Runner") + " out of bounds, " + yd; break;
                 case Outcome.Whistle:    r.description = "Whistle — dead ball, " + yd; break;

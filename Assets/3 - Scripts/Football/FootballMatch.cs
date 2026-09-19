@@ -161,12 +161,12 @@ public class FootballMatch : MonoBehaviour
         if (_ball != null) return;
         home.index = 0; away.index = 1;
         BuildSquads();
-        // This scene is a stadium, not a spaceship: shed the auto-created ship /
-        // survival HUDs and the two debug overlays that every scene otherwise
-        // gets (the gameplay HUD comes from the scene's own HUD_Canvas snapshot).
+        // Shed the two debug overlays every scene otherwise gets. The HUD itself
+        // is the gameplay one: the auto-created VitalsHUD / CompassHUD / Hotbar
+        // (VitalsHUD switches the legacy ResourceHUD bars off) plus HUD_Canvas.
         if (Application.isPlaying)
         {
-            foreach (var t in new[] { "LightingDebugToolbox", "PerfTrace", "GForceHUD", "VitalsHUD" })
+            foreach (var t in new[] { "LightingDebugToolbox", "PerfTrace" })
             {
                 var type = System.Type.GetType(t);
                 if (type == null) continue;
@@ -235,6 +235,7 @@ public class FootballMatch : MonoBehaviour
 
     Transform _losLine, _firstLine;
     readonly Transform[] _downMarkers = new Transform[2];
+    public Transform DownMarker(int i) => _downMarkers[i];
     readonly TMPro.TextMeshPro[] _downDigits = new TMPro.TextMeshPro[4];
     public Transform LosLine => _losLine;
     public Transform FirstLine => _firstLine;

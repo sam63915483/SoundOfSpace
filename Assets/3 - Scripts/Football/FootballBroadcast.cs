@@ -126,6 +126,9 @@ public class FootballBroadcast : MonoBehaviour
     List<Frame> _replayFrames;
     readonly List<Ghost> _ghosts = new List<Ghost>();
     Transform _ghostBall, _ghostLos, _ghostFirst;
+    readonly Transform[] _ghostMarkers = new Transform[2];
+    readonly List<TextMeshPro> _ghostDigits = new List<TextMeshPro>();
+    int _recDown;
     float _recLosZ, _recFirstZ; bool _recFirst, _recLines;               // the lines as they were for the recorded play
     float _clock;
     string _dumpDir; float _dumpAcc; int _dumpN;
@@ -449,6 +452,7 @@ public class FootballBroadcast : MonoBehaviour
             float ytg = FootballField.ToYards(FootballField.GoalLineZ - rv.attackDir * rv.losZ);
             _recFirst = !rv.isKickoff && ytg > cur.ToGo + 0.01f;
             _recLines = !rv.isKickoff;
+            _recDown = _match.Down;
         }
         // Keep following the play we started on — the match builds the NEXT
         // play the instant this one ends, so "the current play" is no longer
@@ -538,7 +542,7 @@ public class FootballBroadcast : MonoBehaviour
             case PlayInstance.Outcome.Fumble: return r.turnover ? "FUMBLE!\n" + r.possession.shortName + " RECOVER" : "FUMBLE\nRECOVERED BY THE OFFENSE";
             case PlayInstance.Outcome.Sack: return "SACKED\n" + sign + yd + " YARDS";
             case PlayInstance.Outcome.Incomplete:
-                return (r.description != null && r.description.Contains("broken up") ? "PASS BROKEN UP" : "INCOMPLETE") + (down >= 4 ? "\nTURNOVER ON DOWNS" : "");
+                return (r.description != null && r.description.Contains("broken up") ? "PASS BROKEN UP" : r.description != null && r.description.Contains("thrown away") ? "THROWN AWAY" : "INCOMPLETE") + (down >= 4 ? "\nTURNOVER ON DOWNS" : "");
         }
         string what = sign + yd + " YARD " + (pass ? "CATCH" : "RUN");
         if (r.outcome == PlayInstance.Outcome.OutOfBounds) what += "\nOUT OF BOUNDS";
@@ -683,6 +687,7 @@ public class FootballBroadcast : MonoBehaviour
         foreach (var g in _ghosts) g.root.gameObject.SetActive(false);
         if (_ghostBall != null) _ghostBall.gameObject.SetActive(false);
         if (_ghostLos != null) { _ghostLos.gameObject.SetActive(false); _ghostFirst.gameObject.SetActive(false); }
+        for (int i = 0; i < 2; i++) if (_ghostMarkers[i] != null) _ghostMarkers[i].gameObject.SetActive(false);
         // Come back to the live picture from where it is now.
         Intent(out _focus, out _, out _, out _fov);
         _slideZ = _focus.z * cameraFollow; _focusVel = Vector3.zero; _fovVel = 0f; _slideVel = 0f;
@@ -750,6 +755,21 @@ public class FootballBroadcast : MonoBehaviour
             if (_match.LosLine != null) _liveExtra.Add(_match.LosLine.GetComponent<Renderer>());
             if (_match.FirstLine != null) _liveExtra.Add(_match.FirstLine.GetComponent<Renderer>());
         }
+        if (_ghostMarkers[0] == null)
+        {
+            for (int i = 0; i < 2; i++)
+            {
+                _ghostMarkers[i] = GhostMarker("Ghost DownMarker " + i);
+                var live = _match.DownMarker(i);
+                if (live != null) foreach (var r in live.GetComponentsInChildren<Renderer>(true)) _liveExtra.Add(r);
+            }
+        }
+        for (int i = 0; i < 2; i++)
+        {
+            _ghostMarkers[i].gameObject.SetActive(_recLines);
+            _ghostMarkers[i].localPosition = new Vector3((i == 0 ? -1f : 1f) * (FootballField.HalfWidth + 1.4f), 0f, _recLosZ);
+        }
+        foreach (var d in _ghostDigits) d.text = _recDown.ToString();
         _ghostLos.gameObject.SetActive(_recLines);
         _ghostFirst.gameObject.SetActive(_recLines && _recFirst);
         _ghostLos.localPosition = new Vector3(0f, 0.05f, _recLosZ);
@@ -758,6 +778,39 @@ public class FootballBroadcast : MonoBehaviour
 
     readonly List<Renderer> _liveExtra = new List<Renderer>();       // the real field lines: hidden while the replay renders
     readonly List<bool> _liveExtraWas = new List<bool>();
+
+    /// A copy of the down marker (pole, orange sign, a digit each side) for the replay.
+    Transform GhostMarker(string name)
+    {
+        var root = new GameObject(name);
+        root.transform.SetParent(_fieldRoot, false);
+        var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Destroy(pole.GetComponent<Collider>());
+        pole.transform.SetParent(root.transform, false);
+        pole.transform.localPosition = new Vector3(0f, 1.1f, 0f); pole.transform.localScale = new Vector3(0.07f, 1.1f, 0.07f);
+        var pr = pole.GetComponent<Renderer>(); pr.sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(0.9f, 0.9f, 0.9f) }; pr.enabled = false; _ghostRenderers.Add(pr);
+        var sign = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        Destroy(sign.GetComponent<Collider>());
+        sign.transform.SetParent(root.transform, false);
+        sign.transform.localPosition = new Vector3(0f, 2.6f, 0f); sign.transform.localScale = new Vector3(0.9f, 0.9f, 0.1f);
+        var sr = sign.GetComponent<Renderer>(); sr.sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(1f, 0.45f, 0.05f) }; sr.enabled = false; _ghostRenderers.Add(sr);
+        for (int f = 0; f < 2; f++)
+        {
+            var tgo = new GameObject("Digit");
+            tgo.transform.SetParent(sign.transform, false);
+            tgo.transform.localPosition = new Vector3(0f, 0f, f == 0 ? -0.6f : 0.6f);
+            tgo.transform.localRotation = Quaternion.Euler(0f, f == 0 ? 0f : 180f, 0f);
+            tgo.transform.localScale = new Vector3(1f / 0.9f, 1f / 0.9f, 1f / 0.1f);
+            var tmp = tgo.AddComponent<TextMeshPro>();
+            tmp.text = "1"; tmp.fontSize = 7f; tmp.fontStyle = FontStyles.Bold; tmp.color = Color.black;
+            tmp.alignment = TextAlignmentOptions.Center; tmp.enableWordWrapping = false;
+            tmp.GetComponent<RectTransform>().sizeDelta = new Vector2(1f, 1f);
+            _ghostDigits.Add(tmp);
+            var tr = tmp.GetComponent<Renderer>(); if (tr != null) { tr.enabled = false; _ghostRenderers.Add(tr); }
+        }
+        root.SetActive(false);
+        return root.transform;
+    }
 
     Transform GhostLine(string name, Color c)
     {
