@@ -580,8 +580,8 @@ public class FootballBroadcast : MonoBehaviour
         float speed = 1f;
         if (slow)
         {
-            float k = Mathf.Min((_replayT - _slowStart) / slowMoEase, (_slowEnd - _replayT) / slowMoEase, 1f);
-            speed = Mathf.Lerp(1f, _slowSpeed, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(k)));
+            float ease = Mathf.Min((_replayT - _slowStart) / slowMoEase, (_slowEnd - _replayT) / slowMoEase, 1f);
+            speed = Mathf.Lerp(1f, _slowSpeed, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(ease)));
         }
         var cur = _match.CurrentPlay;
         float untilBreak = cur != null ? cur.SecondsUntilBreak : -1f;
