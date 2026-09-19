@@ -68,6 +68,10 @@ public class FootballAlienRig : MonoBehaviour
     [System.NonSerialized] public bool stiffArm;          // the off arm straight out into a tackler
     [System.NonSerialized] public Vector3 stiffArmTargetWorld;
     [System.NonSerialized] public float stumble;          // 0..1: caught a foot, pitching forward
+    /// Where the ball is DRAWN while held, from the posed bones (on the right
+    /// forearm for a tuck, between the hands for two hands) — set every
+    /// LateUpdate, so the ball is on the arm whatever the arms managed.
+    [System.NonSerialized] public Vector3 heldBallWorld; [System.NonSerialized] public bool heldBallValid;
 
     public const float ThrowSeconds = 0.42f;
     public const float ThrowRelease = 0.58f;              // fraction of the motion where the ball leaves the hand
@@ -140,7 +144,7 @@ public class FootballAlienRig : MonoBehaviour
             // the shoulder bone sits ~0.17 m inside the chest, so anything in
             // arm-length multiples ended up inside the torso (the analyzer: 7 cm
             // in front of the chest plane).
-            case HoldStyle.TwoHands: return ShoulderMid + f * Mathf.Min(0.50f, a * 0.95f) - u * 0.15f;          // held out in front, arms nearly straight
+            case HoldStyle.TwoHands: return ShoulderMid + f * Mathf.Min(0.42f, a * 0.85f) - u * 0.16f;          // held out in front, elbows a little bent
             case HoldStyle.Tucked:   return ShoulderR + f * Mathf.Min(0.40f, a * 0.8f) - u * 0.28f - r * 0.05f;      // on the forearm, in front of the ribs
             default:                 return ShoulderR + f * (a * 0.5f) - r * (a * 0.25f) - u * (a * 0.35f);
         }
@@ -161,6 +165,12 @@ public class FootballAlienRig : MonoBehaviour
     void LateUpdate()
     {
         if (!_ok || _frame == null) return;
+        Pose();
+        PlaceHeldBall(transform.forward, transform.right, transform.up);
+    }
+
+    void Pose()
+    {
         // The MODEL's axes, not the player's: when FootballPlayer tips the
         // model over for a tackle, the legs and arms must tip with it. Posing
         // against world-up drove the legs straight down through the grass and
@@ -462,6 +472,28 @@ public class FootballAlienRig : MonoBehaviour
         _headDir = Vector3.Slerp(_headDir, want, 1f - Mathf.Exp(-10f * Time.deltaTime));
         Vector3 cur = _head.rotation * _headFwdLocal;
         _head.rotation = Quaternion.FromToRotation(cur, _headDir) * _head.rotation;
+    }
+
+    /// Called at the end of LateUpdate: the ball's drawn position from the
+    /// posed bones.
+    void PlaceHeldBall(Vector3 f, Vector3 r, Vector3 u)
+    {
+        heldBallValid = false;
+        if (hold == HoldStyle.Tucked)
+        {
+            // Along the right forearm, resting on top of it and against the ribs.
+            Vector3 elbow = _lowerR.position, hand = _handR.position;
+            Vector3 along = hand - elbow;
+            Vector3 mid = elbow + along * 0.55f;
+            Vector3 outward = Vector3.Cross(along.normalized, u); if (Vector3.Dot(outward, r) < 0f) outward = -outward;
+            heldBallWorld = mid + u * 0.09f - outward * 0.05f + f * 0.02f;
+            heldBallValid = true;
+        }
+        else if (hold == HoldStyle.TwoHands)
+        {
+            heldBallWorld = (_handR.position + _handL.position) * 0.5f + f * 0.06f;
+            heldBallValid = true;
+        }
     }
 
     /// The celebrations. `emotePhase` runs 0..1 over the emote's length; the

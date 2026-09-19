@@ -427,6 +427,14 @@ public class FootballPlayer : MonoBehaviour
         return p;
     }
 
+    /// Where the ball is DRAWN this frame (field space): on the posed bones
+    /// when he has a rig and a hold, else the sim's hold point.
+    public Vector3 BallDrawPoint()
+    {
+        if (HasRig && _rig.heldBallValid && !IsThrowing && _fieldRoot != null) return _fieldRoot.InverseTransformPoint(_rig.heldBallWorld);
+        return BallHoldPoint();
+    }
+
     /// How the ball lies in the hands (field space): along the forearm when
     /// tucked, across the body in two hands, along the throw otherwise.
     public Quaternion BallHoldRotation()
@@ -524,7 +532,7 @@ public class FootballPlayer : MonoBehaviour
             _queuedEmote = EmoteKind.None;
         }
         // A tumble rolls him onto his back; he rolls back over as he gets up.
-        float rollTarget = _hardT >= 0f ? 180f * Mathf.SmoothStep(0f, 1f, _hardT / HardFallSeconds) : (IsDown && _roll > 90f ? 180f : 0f);
+        float rollTarget = 0f;                                              // (the roll onto the back read as a second flip — gone)
         _roll = Mathf.MoveTowards(_roll, rollTarget, dt * (_hardT >= 0f ? 600f : 400f));
 
         Vector3 want = o.move;
@@ -565,8 +573,11 @@ public class FootballPlayer : MonoBehaviour
         else if (o.faceMoving && o.face.sqrMagnitude > 0.01f) { o.face.y = 0f; _facingTarget = o.face.normalized; }     // a backpedal: eyes on him, feet going the other way
         else if (_vel.sqrMagnitude > 0.25f && !IsThrowing && !IsJuking) _facingTarget = _vel.normalized;
         else if (_vel.sqrMagnitude <= 0.25f && o.face.sqrMagnitude > 0.01f) { o.face.y = 0f; _facingTarget = o.face.normalized; }
-        // Turn toward it at a rate: quick on the run, a body turn when standing.
+        // Turn toward it at a rate: quick on the run, a body turn when standing —
+        // and NOT while he is on the ground (a downed man used to pivot 180° on
+        // the spot as the next play's facing came in).
         float rate = IsThrowing ? 900f : _vel.sqrMagnitude > 4f ? TurnRateRunning : TurnRateStanding;
+        if (IsDown || _lie > 0.3f) rate = 0f;
         _facing = Vector3.RotateTowards(_facing, _facingTarget, rate * Mathf.Deg2Rad * dt, 0f);
         _facing.y = 0f; if (_facing.sqrMagnitude < 1e-4f) _facing = _facingTarget; _facing.Normalize();
         _idleTime = _vel.sqrMagnitude < 0.25f ? _idleTime + dt : 0f;

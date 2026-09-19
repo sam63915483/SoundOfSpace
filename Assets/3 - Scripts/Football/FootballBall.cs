@@ -196,7 +196,8 @@ public class FootballBall : MonoBehaviour
                 vel = Vector3.MoveTowards(vel, Vector3.zero, 4f * dt);
                 break;
         }
-        transform.localPosition = pos;
+        // Drawn on the holder's posed arm when held (the sim keeps its own hold point).
+        transform.localPosition = state == State.Held && holder != null ? holder.BallDrawPoint() : pos;
         if (state == State.Airborne && !isKick && !fumbled) _spin += 900f * dt;           // the spiral
         else if (state != State.Held) _spin += vel.magnitude * 300f * dt;                 // tumbling
         if (state == State.Held && holder != null)
