@@ -34,11 +34,11 @@ using TMPro;
 public class FootballBroadcast : MonoBehaviour
 {
     [Header("Screens (FieldRoot-local)")]
-    public Vector3 screenAPos = new Vector3(0f, 34f, 97f);      // over the +Z end zone, above the scoreboard
+    public Vector3 screenAPos = new Vector3(0f, 39f, 97f);      // over the +Z end zone, above the scoreboard
     public Vector3 screenAEuler = Vector3.zero;                  // a Quad's face is −Z: identity looks back down the field
-    public Vector3 screenBPos = new Vector3(0f, 26f, -97f);
+    public Vector3 screenBPos = new Vector3(0f, 30f, -97f);
     public Vector3 screenBEuler = new Vector3(0f, 180f, 0f);
-    public Vector2 screenSize = new Vector2(26f, 14.6f);
+    public Vector2 screenSize = new Vector2(40f, 22.5f);
     public int textureWidth = 960, textureHeight = 540;
 
     [Header("Camera (FieldRoot-local)")]
@@ -46,7 +46,7 @@ public class FootballBroadcast : MonoBehaviour
     public float cameraHeight = 26f;
     [Tooltip("How much the camera slides along the sideline with the ball (0 = fixed at the 50, 1 = always level with it).")]
     public float cameraFollow = 0.55f;
-    public float fovWide = 30f, fovPocket = 22f, fovRunner = 16f, fovDead = 18f;
+    public float fovWide = 24f, fovPocket = 16f, fovRunner = 11f, fovDead = 12f;
     public float focusSmooth = 0.25f, fovSmooth = 0.4f, slideSmooth = 0.7f;
 
     [Header("Replay")]
@@ -198,10 +198,13 @@ public class FootballBroadcast : MonoBehaviour
         _labels.Add(tmp);
     }
 
+    /// Every other camera: never the ghosts, always the live men. (The
+    /// player's camera has its own mask that didn't include the spare live
+    /// layer — Sam could see the aliens on the jumbotron but not on the field.)
     void HideGhostsFromOtherCameras()
     {
         foreach (var c in Camera.allCameras)
-            if (c != _cam) c.cullingMask &= ~(1 << FootballPlayer.ReplayLayer);
+            if (c != _cam) c.cullingMask = (c.cullingMask & ~(1 << FootballPlayer.ReplayLayer)) | (1 << FootballPlayer.LiveLayer);
     }
 
     // ── per frame ──────────────────────────────────────────────────────────
