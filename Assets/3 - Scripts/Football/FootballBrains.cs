@@ -806,7 +806,7 @@ public class QBBrain_CPU : IPlayerBrain
     // Extending the play.
     bool _escaping, _designed, _reversed, _scrambleDrill;
     float _escapeSince = -1f, _escapeSide, _lastJuke = -9f;
-    bool _runOnExpiry;
+    bool _runOnExpiry, _handedOff;
     float _designedSide;
     public const float DropTime = 1.1f;
     public const float ThrowSpeed = 21f;     // m/s along the ground — a 30 m throw is ~1.4 s in the air
@@ -873,11 +873,13 @@ public class QBBrain_CPU : IPlayerBrain
         float t = view.timeSinceSnap;
         var play = view.play;
 
-        if (play.kind == FootballPlay.Kind.JetSweep || play.kind == FootballPlay.Kind.FleaFlicker)
+        if (play.kind == FootballPlay.Kind.JetSweep || (play.kind == FootballPlay.Kind.FleaFlicker && !_handedOff))
         {
+            // (Once only on the flea flicker: with the pitch back in his hands
+            // this branch used to hand it off AGAIN.)
             var wr = view.FindRole(self.team, FootballRole.WR, play.sweep);
             if (wr != null && (Vector3.Distance(wr.Pos, self.Pos) < 2.6f || t > 2.4f))
-            { o.action = BrainAction.Handoff; o.targetPlayer = wr; }
+            { o.action = BrainAction.Handoff; o.targetPlayer = wr; _handedOff = true; }
             return;
         }
         if (play.kind == FootballPlay.Kind.Screen)
@@ -887,7 +889,7 @@ public class QBBrain_CPU : IPlayerBrain
             // behind the line.
             o.move = Steer.To(self.Pos, _dropSpot - Vector3.forward * (view.attackDir * 3f), 1f);
             var wr = _readOrder.Count > 0 ? _readOrder[0] : null;
-            if (wr != null && !_thrown && t > 1.7f)
+            if (wr != null && !_thrown && t > 1.9f)
             {
                 float flight = PlayInstance.PassFlightTime(Vector3.Distance(self.Pos, wr.Pos));
                 Vector3 lead = wr.Pos + wr.Vel * flight * 0.5f;

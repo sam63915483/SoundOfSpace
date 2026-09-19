@@ -78,8 +78,8 @@ public class FootballFormation
     /// Runs need the slot beside the QB; a sweep motion from a bunch looks wrong.
     public static FootballFormation Pick(FootballPlay play, System.Random rng)
     {
-        if (play.kind != FootballPlay.Kind.Pass && play.kind != FootballPlay.Kind.Rollout)
-            return play.kind == FootballPlay.Kind.QbRun ? Tight : rng.Next(2) == 0 ? Spread : SpreadLeft;
+        if (play.kind != FootballPlay.Kind.Pass && play.kind != FootballPlay.Kind.Rollout && play.kind != FootballPlay.Kind.FleaFlicker)
+            return play.kind == FootballPlay.Kind.QbRun || play.kind == FootballPlay.Kind.Screen ? Tight : rng.Next(2) == 0 ? Spread : SpreadLeft;
         double r = rng.NextDouble();
         if (r < 0.30) return Spread;
         if (r < 0.50) return SpreadLeft;

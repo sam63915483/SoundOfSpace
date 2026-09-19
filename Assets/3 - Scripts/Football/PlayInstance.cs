@@ -210,6 +210,8 @@ public class PlayInstance
         view.timeSinceSnap = -1f;
         view.readDelay = play.kind == FootballPlay.Kind.JetSweep || play.kind == FootballPlay.Kind.QbDraw || play.kind == FootballPlay.Kind.FleaFlicker ? 0.8f : play.kind == FootballPlay.Kind.QbRun ? 0.55f : 0.4f;
         defCall = PickDefense(toGo, rng);
+        // A screen against press or a blitz is dead on arrival; the offense calls it against a cushion.
+        if (play.kind == FootballPlay.Kind.Screen && (defCall == DefCall.Press || defCall == DefCall.Blitz)) defCall = rng.Next(2) == 0 ? DefCall.Normal : DefCall.Off;
         this.formation = formation ?? FootballFormation.Pick(play, rng);
         BuildScrimmage(qbBrainOverride);
     }
