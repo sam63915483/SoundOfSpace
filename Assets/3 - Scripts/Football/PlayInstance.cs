@@ -75,7 +75,7 @@ public class PlayInstance
     /// A man with the ball runs at this fraction of his top speed — pursuit
     /// closes from behind, which is what turns catches into 12-yard gains
     /// instead of touchdowns.
-    public const float CarrierSpeed = 0.88f;
+    public const float CarrierSpeed = 0.92f;
     /// Gathering the ball: the catcher's speed for a moment after the catch.
     public const float CatchDipSeconds = 0.45f;
     public const float CatchDipSpeed = 0.65f;
@@ -83,12 +83,12 @@ public class PlayInstance
     /// the man it was thrown to drops it 30% of the time, anyone else 50%. A
     /// drop tumbles off his hands to the grass — nobody can catch it after.
     public const float ReceiverDropChance = 0.30f;
-    public const float DefenderDropChance = 0.50f;
+    public const float DefenderDropChance = 0.60f;
     /// How long before the ball arrives the men near its landing spot go up for it.
     public const float JumpLead = 0.42f;
     /// Tackles: a lunge that misses puts the tackler on the ground and the
     /// runner keeps going; a hit puts both down.
-    public const float MissedTackleChance = 0.15f;
+    public const float MissedTackleChance = 0.2f;
     public const float MissedTackleBlocked = 0.45f;     // a man being blocked lunges worse
     public const float MissedTackleBehind = 0.22f;      // diving at a runner's heels
     public const float MissedTackleJuked = 0.22f;       // added while the runner is mid-juke
@@ -164,7 +164,7 @@ public class PlayInstance
     readonly List<FootballPlayer> _wrappers = new List<FootballPlayer>();   // everyone wrapped on the carrier (a gang tackle)
     public bool isPunt;
     public const float WrapSeconds = 0.55f;           // the drag before they go down
-    public const float BreakTackleChance = 0.14f;
+    public const float BreakTackleChance = 0.22f;
     public const float TipChance = 0.35f;              // the loser of a contested ball gets a hand on it: it pops up, live
     public const float PartySeconds = 4.5f;            // the touchdown line-up dance before the kickoff walk
     readonly Dictionary<FootballPlayer, float> _slowUntil = new Dictionary<FootballPlayer, float>();   // jammed at the line

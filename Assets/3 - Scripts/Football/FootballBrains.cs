@@ -621,9 +621,13 @@ public class DBBrain : IPlayerBrain
     public DBBrain(FootballPlayer man, FootballTeam team, System.Random rng)
     {
         _man = man;
-        float q = Mathf.Clamp01(team.coverage + ((float)rng.NextDouble() - 0.5f) * 0.6f);
-        _reaction = Mathf.Lerp(0.16f, 0.03f, q);
-        _cushion = Mathf.Lerp(1.6f, 0.4f, q);
+        // Wider variance, slower hands (Sam: "not enough separation"), and one
+        // snap in eight the corner just loses his man for a beat — the busted
+        // coverage that turns into the 60-yard bomb.
+        float q = Mathf.Clamp01(team.coverage + ((float)rng.NextDouble() - 0.5f) * 0.9f);
+        bool busted = rng.NextDouble() < 0.12;
+        _reaction = busted ? 0.55f : Mathf.Lerp(0.28f, 0.08f, q);
+        _cushion = busted ? 2.6f : Mathf.Lerp(1.9f, 0.5f, q);
         _turnAt = Mathf.Lerp(0.4f, 2.2f, q);      // how early he turns and runs with him
         _layoutRoll = (float)rng.NextDouble();
     }
@@ -719,7 +723,7 @@ public class SafetyBrain : IPlayerBrain
     public SafetyBrain(FootballTeam team, System.Random rng)
     {
         float q = Mathf.Clamp01(team.coverage + ((float)rng.NextDouble() - 0.5f) * 0.4f);
-        _depthPad = Mathf.Lerp(3.5f, 6.5f, q);
+        _depthPad = Mathf.Lerp(5f, 9f, q);
     }
     public bool KeepsControlWhenCarrying => false;
 
@@ -839,7 +843,7 @@ public class QBBrain_CPU : IPlayerBrain
     float _designedSide;
     public const float DropTime = 1.1f;
     public const float ThrowSpeed = 21f;     // m/s along the ground — a 30 m throw is ~1.4 s in the air
-    public const float OpenSeparation = 3.9f;   // ≈ 0.5 s of daylight at the catch: a corner one stride behind is NOT open
+    public const float OpenSeparation = 3.2f;   // ≈ 0.4 s of daylight at the catch (was 3.9: too careful for the game Sam wants)
     public const float DeepYards = 18f;
     public const float EscapeSeconds = 3.4f;         // buying time before he gives up and runs
     public const float DesignedRollSeconds = 3.0f;
@@ -858,7 +862,7 @@ public class QBBrain_CPU : IPlayerBrain
         else
         {
             double r = rng.NextDouble();
-            style = r < 0.32 ? Style.Quick : r < 0.63 ? Style.Patient : r < 0.85 ? Style.DeepShot : Style.Rollout;
+            style = r < 0.25 ? Style.Quick : r < 0.53 ? Style.Patient : r < 0.83 ? Style.DeepShot : Style.Rollout;
         }
         switch (style)
         {
@@ -1002,7 +1006,7 @@ public class QBBrain_CPU : IPlayerBrain
         bool deepOnly = style == Style.DeepShot && t < _holdMax - 0.8f;
         // Out of the pocket the deep men count for more; from deep in the
         // backfield it's the heave or nothing.
-        float depthWeight = _escaping ? (view.Downfield(self.Pos) < -9f ? 0.16f : 0.11f) : style == Style.Quick ? 0f : 0.06f;
+        float depthWeight = _escaping ? (view.Downfield(self.Pos) < -9f ? 0.16f : 0.11f) : style == Style.Quick ? 0.02f : 0.09f;
         FootballPlayer best = null; float bestScore = -99f, bestMargin = -99f; Vector3 bestLead = Vector3.zero;
         for (int i = 0; i < _readOrder.Count; i++)
         {
@@ -1144,9 +1148,9 @@ public class QBBrain_CPU : IPlayerBrain
             if (d.team != view.defense || d.IsDown) continue;
             Vector3 rel = d.Pos - self.Pos; rel.y = 0f;
             float along = Vector3.Dot(rel, fwd);
-            if (along < -1f || along > 7f) continue;
+            if (along < -1f || along > 6f) continue;
             float across = Mathf.Abs(Vector3.Dot(rel, Vector3.right));
-            if (across < 3f) return false;
+            if (across < 2.4f) return false;
         }
         return true;
     }

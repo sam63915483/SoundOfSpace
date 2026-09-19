@@ -583,7 +583,7 @@ public class FootballAlienRig : MonoBehaviour
         Aim(lower, hand, Quaternion.AngleAxis(-elbow, r) * dU);
     }
 
-    static void Straight(Transform upper, Transform lower, Transform hand, Vector3 dir)
+    void Straight(Transform upper, Transform lower, Transform hand, Vector3 dir)
     {
         Aim(upper, lower, dir); Aim(lower, hand, dir);
     }
@@ -612,12 +612,21 @@ public class FootballAlienRig : MonoBehaviour
         Aim(lower, hand, target - elbow);
     }
 
-    /// Rotate `bone` so its shaft (bone → child) points along `dir` (world).
-    static void Aim(Transform bone, Transform child, Vector3 dir)
+    /// Rotate `bone` so its shaft (bone → child) points along `dir` (world) —
+    /// at a limited rate, so a pose change (a reach, a block, a stance) is a
+    /// motion and not a snap between frames. Fast enough for a throw.
+    readonly System.Collections.Generic.Dictionary<Transform, Vector3> _lastDir = new System.Collections.Generic.Dictionary<Transform, Vector3>();
+    const float AimRateDeg = 1000f;
+
+    void Aim(Transform bone, Transform child, Vector3 dir)
     {
         if (bone == null || child == null) return;
         Vector3 cur = child.position - bone.position;
         if (cur.sqrMagnitude < 1e-8f || dir.sqrMagnitude < 1e-8f) return;
-        bone.rotation = Quaternion.FromToRotation(cur.normalized, dir.normalized) * bone.rotation;
+        dir.Normalize();
+        if (_lastDir.TryGetValue(bone, out var last) && last.sqrMagnitude > 0.5f && Application.isPlaying)
+            dir = Vector3.RotateTowards(last, dir, AimRateDeg * Mathf.Deg2Rad * Time.deltaTime, 0f);
+        _lastDir[bone] = dir;
+        bone.rotation = Quaternion.FromToRotation(cur.normalized, dir) * bone.rotation;
     }
 }

@@ -160,7 +160,8 @@ public class FootballBall : MonoBehaviour
         switch (state)
         {
             case State.Held:
-                if (holder != null) pos = holder.BallHoldPoint();
+                // Ease into the hand (a change of hold style used to teleport it).
+                if (holder != null) pos = Vector3.Lerp(pos, holder.BallHoldPoint(), 1f - Mathf.Exp(-22f * dt));
                 break;
             case State.Airborne:
                 airTime += dt;
