@@ -223,16 +223,110 @@ public class FootballPlayer : MonoBehaviour
         model.transform.localRotation = Quaternion.identity;
         _bodyT = model.transform;
         _body = smr;
-        // Team tint over the skin.
-        _tint = Color.Lerp(Color.white, team.color, 0.6f);
-        if (_body != null)
+        // Team colour on the skin: not a tint (that only multiplied a busy
+        // texture) but the texture itself re-hued to the team, once per
+        // texture per team, kept in a cache. The markings survive.
+        _tint = Color.white;
+        foreach (var r in model.GetComponentsInChildren<Renderer>(true))
         {
-            _mpb = new MaterialPropertyBlock();
-            _mpb.SetColor("_Color", _tint);
-            _body.SetPropertyBlock(_mpb);
+            var mats = r.sharedMaterials;
+            var block = new MaterialPropertyBlock();
+            r.GetPropertyBlock(block);
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] == null || !mats[i].HasProperty("_MainTex")) continue;
+                var src = mats[i].mainTexture as Texture2D;
+                if (src == null) continue;
+                var tex = TeamTexture(src, team);
+                if (tex != null) block.SetTexture("_MainTex", tex);
+            }
+            r.SetPropertyBlock(block);
         }
+        if (_body != null) { _mpb = new MaterialPropertyBlock(); _body.GetPropertyBlock(_mpb); }
+        BuildRing();
         _rig = model.AddComponent<FootballAlienRig>();
         _rig.Init(transform);
+    }
+
+    // ── the team-coloured skin ──────────────────────────────────────────────
+
+    static readonly System.Collections.Generic.Dictionary<(Texture2D, int), Texture2D> _teamTex = new System.Collections.Generic.Dictionary<(Texture2D, int), Texture2D>();
+
+    /// A copy of `src` with every pixel's hue swapped to the team's, its
+    /// saturation and brightness kept (so the shading and markings stay),
+    /// blended 80/20 with the original. Read back through a RenderTexture so
+    /// the source needn't be readable; downscaled to 1024 to keep the boot
+    /// under a second for ten textures.
+    static Texture2D TeamTexture(Texture2D src, FootballTeam team)
+    {
+        var key = (src, team.index);
+        if (_teamTex.TryGetValue(key, out var cached)) return cached;
+        try
+        {
+            int w = Mathf.Min(1024, src.width), h = Mathf.Min(1024, src.height);
+            var rt = RenderTexture.GetTemporary(w, h, 0, RenderTextureFormat.ARGB32);
+            var prev = RenderTexture.active;
+            Graphics.Blit(src, rt);
+            RenderTexture.active = rt;
+            var tex = new Texture2D(w, h, TextureFormat.RGBA32, true) { name = src.name + "_" + team.shortName };
+            tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+            var px = tex.GetPixels32();
+            Color.RGBToHSV(team.color, out float th, out float ts, out float tv);
+            for (int i = 0; i < px.Length; i++)
+            {
+                Color c = px[i];
+                Color.RGBToHSV(c, out float hh, out float ss, out float vv);
+                Color re = Color.HSVToRGB(th, Mathf.Lerp(ss, Mathf.Max(ts, 0.7f), 0.6f), vv);
+                Color o = Color.Lerp(c, re, 0.8f); o.a = c.a;
+                px[i] = o;
+            }
+            tex.SetPixels32(px);
+            tex.Apply(true, true);
+            _teamTex[key] = tex;
+            return tex;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning("[FootballPlayer] team texture failed for " + src.name + ": " + e.Message);
+            _teamTex[key] = null;
+            return null;
+        }
+    }
+
+    // ── the ring on the grass ───────────────────────────────────────────────
+
+    LineRenderer _ring;
+
+    /// A team-coloured ring under the skill players (Sam): QB, receivers,
+    /// corners, safety, linebacker — never the linemen. Follows the side he
+    /// is playing.
+    void BuildRing()
+    {
+        var go = new GameObject("Ring");
+        go.transform.SetParent(transform, false);
+        go.transform.localPosition = Vector3.up * 0.03f;
+        _ring = go.AddComponent<LineRenderer>();
+        _ring.useWorldSpace = false; _ring.loop = true;
+        _ring.widthMultiplier = 0.09f;
+        _ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        _ring.receiveShadows = false;
+        var sh = Shader.Find("Sprites/Default");
+        _ring.sharedMaterial = new Material(sh != null ? sh : Shader.Find("Unlit/Color")) { color = Color.white };
+        var col = Color.Lerp(team.color, Color.white, 0.15f);
+        _ring.startColor = _ring.endColor = col;
+        const int N = 40; const float R = 0.62f;
+        _ring.positionCount = N;
+        for (int i = 0; i < N; i++) { float a = i * Mathf.PI * 2f / N; _ring.SetPosition(i, new Vector3(Mathf.Cos(a) * R, 0f, Mathf.Sin(a) * R)); }
+        RefreshRing();
+    }
+
+    void RefreshRing()
+    {
+        if (_ring == null) return;
+        bool skill = role == FootballRole.QB || role == FootballRole.WR || role == FootballRole.DB || role == FootballRole.LB || role == FootballRole.S;
+        _ring.enabled = skill;
     }
 
     /// Offense or defense for the coming play.
@@ -240,6 +334,7 @@ public class FootballPlayer : MonoBehaviour
     {
         role = offense ? offRole : defRole;
         roleIndex = offense ? offIndex : defIndex;
+        RefreshRing();
         _maxSpeed = _baseMaxSpeed * (role == FootballRole.S ? 1.03f : 1f);
         if (_labelText != null) _labelText.text = Label;
     }
@@ -481,7 +576,7 @@ public class FootballPlayer : MonoBehaviour
     {
         if (_body == null) return;
         if (_mpb == null) _mpb = new MaterialPropertyBlock();
-        if (on) _mpb.SetColor("_Color", Color.Lerp(_tint, Color.white, 0.5f));
+        if (on) _mpb.SetColor("_Color", new Color(1.25f, 1.25f, 1.25f));
         else if (HasRig) _mpb.SetColor("_Color", _tint);
         if (on || HasRig) _body.SetPropertyBlock(_mpb);
         else _body.SetPropertyBlock(null);
