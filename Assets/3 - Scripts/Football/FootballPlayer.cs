@@ -83,7 +83,7 @@ public class FootballPlayer : MonoBehaviour
     bool _throwReleasedTick;
     float _kickT = -1f;
     bool _kickReleasedTick;
-    bool _reachThisTick;
+    bool _reachThisTick; float _reachUntil = -1f;
     Vector3 _reachWorld;
     HoldStyle _hold = HoldStyle.None;
     float _emoteLeft, _emoteTotal; EmoteKind _emote;
@@ -386,7 +386,7 @@ public class FootballPlayer : MonoBehaviour
     /// Point both arms at a spot (field space) for this tick — the ball coming in.
     public void ReachFor(Vector3 fieldPos)
     {
-        _reachThisTick = true;
+        _reachThisTick = true; _reachUntil = Time.time + 0.15f;
         _reachWorld = _fieldRoot != null ? _fieldRoot.TransformPoint(fieldPos) : fieldPos;
     }
 
@@ -607,7 +607,7 @@ public class FootballPlayer : MonoBehaviour
             _bodyT.localPosition = new Vector3(0f, hop + _lie * 0.15f, 0f);
             _rig.speedFrac = Mathf.Clamp01(_vel.magnitude / Mathf.Max(1f, _maxSpeed));
             _rig.stridePhase += _vel.magnitude * dt * (2f * Mathf.PI / StrideMetres);
-            _rig.reaching = _reachThisTick;
+            _rig.reaching = _reachThisTick || Time.time < _reachUntil;
             _rig.reachTargetWorld = _reachWorld;
             _rig.throwPhase = IsThrowing ? Mathf.Clamp01(_throwT / FootballAlienRig.ThrowSeconds) : -1f;
             _rig.kickPhase = _kickT >= 0f ? Mathf.Clamp01(_kickT / FootballAlienRig.KickSeconds) : -1f;

@@ -1,0 +1,178 @@
+using System.Collections.Generic;
+using System.Reflection;
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+
+// The watcher (Sam, 2026-09-19): "track all players on the field and the ball
+// and basically watch everything about the game and analyze it". A headless
+// game with every man and the ball sampled EVERY TICK, the animation rig
+// driven too (its LateUpdate by reflection, as the pose check does), and a
+// report of everything that looks wrong:
+//   • teleports (a body moving faster than it can), facing snaps
+//   • joint snaps (a bone turning > JointSnapDeg in one tick)
+//   • bodies overlapping for more than a beat, bodies off the field
+//   • a man frozen (not moving, not down, not emoting) mid-play
+//   • the ball far from its holder's hold point; a held ball's hold point far from the hand bone
+//   • a play that runs too long; setup that runs too long
+//   • every pass: depth, where the ball came down vs the receiver, the nearest defender, outcome and WHY
+// Copy to the scratchpad, replace <scratchpad>/, run with execute_script.
+public static class FootballAnalyzer
+{
+    const string Out = "<scratchpad>/analysis.txt";
+    const float JointSnapDeg = 45f;          // per 1/60 s tick
+    const float FaceSnapDeg = 25f;
+    const int Games = 1;
+
+    class Track { public Vector3 pos, facing; public bool init; public float stillFor; public Dictionary<Transform, Vector3> bones = new Dictionary<Transform, Vector3>(); }
+
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        var anomalies = new Dictionary<string, int>();
+        var examples = new Dictionary<string, string>();
+        void Flag(string kind, string detail) { anomalies[kind] = anomalies.TryGetValue(kind, out var c) ? c + 1 : 1; if (!examples.ContainsKey(kind)) examples[kind] = detail; }
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__FootballAnalyzer") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var mgo = new GameObject("Match"); mgo.transform.SetParent(root.transform, false);
+            var m = mgo.AddComponent<FootballMatch>();
+            m.autoStart = false; m.seed = 4242;
+            var aliens = new List<GameObject>();
+            for (int i = 1; i <= 10; i++) { var a = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/5 - External Imports/Alien_Toys/Alien_Pack/Prefab/Built-In/Alien" + i + ".prefab"); if (a != null) aliens.Add(a); }
+            m.alienPrefabs = aliens.ToArray();
+            m.Boot(); m.NewGame();
+            var lu = typeof(FootballAlienRig).GetMethod("LateUpdate", BindingFlags.NonPublic | BindingFlags.Instance);
+            var tracks = new Dictionary<FootballPlayer, Track>();
+            foreach (var p in m.Players) tracks[p] = new Track();
+            const float dt = 1f / 60f; float t = 0f;
+            PlayInstance last = null; float liveStart = -1f, setupStart = 0f;
+            bool wasAir = false; FootballPlayer intended = null; Vector3 catchPt = Vector3.zero; float throwDepth = 0f; string thrower = "";
+            int passes = 0, drops = 0, defended = 0, offTarget = 0, caught = 0, picked = 0;
+            var passLines = new List<string>();
+            int ticks = 0;
+            while (m.Current != FootballMatch.State.GameOver && t < 2600f)
+            {
+                m.Simulate(dt, dt); t += dt; ticks++;
+                var play = m.CurrentPlay;
+                if (play == null) continue;
+                var v = play.view;
+                if (play != last) { last = play; setupStart = t; liveStart = -1f; }
+                if (play.phase == PlayInstance.Phase.Live && liveStart < 0f) { liveStart = t; if (t - setupStart > 30f) Flag("setup > 30 s", "play at " + t.ToString("0") + " s took " + (t - setupStart).ToString("0") + " s to snap"); }
+                if (play.phase == PlayInstance.Phase.Live && t - liveStart > 16f) Flag("live > 16 s", "at " + t.ToString("0") + " s: " + (v.play != null ? v.play.name : "kickoff"));
+                bool live = play.phase == PlayInstance.Phase.Live;
+
+                // Drive the rigs so joints can be watched.
+                foreach (var p in m.Players)
+                {
+                    var rig = p.GetComponentInChildren<FootballAlienRig>();
+                    if (rig != null && lu != null) lu.Invoke(rig, null);
+                }
+
+                foreach (var p in m.Players)
+                {
+                    var tr = tracks[p];
+                    if (tr.init)
+                    {
+                        float moved = Vector3.Distance(p.Pos, tr.pos);
+                        float maxStep = (p.MaxSpeed * 1.5f + 2f) * dt;
+                        if (moved > maxStep + 0.6f) Flag("teleport", p.name + " moved " + moved.ToString("0.00") + " m in a tick at " + t.ToString("0.0") + " s (" + play.phase + ")");
+                        float turned = Vector3.Angle(p.Facing, tr.facing);
+                        if (turned > FaceSnapDeg && !p.IsDiving) Flag("facing snap > " + FaceSnapDeg + "°/tick", p.name + " turned " + turned.ToString("0") + "° at " + t.ToString("0.0") + " s (" + play.phase + ")");
+                        tr.stillFor = moved < 0.002f ? tr.stillFor + dt : 0f;
+                        if (live && tr.stillFor > 2.5f && !p.IsDown && !p.IsEmoting && p.CurrentStance == Stance.None) { Flag("frozen mid-play > 2.5 s", p.name + " (" + p.role + ") still at " + t.ToString("0.0") + " s in " + (v.play != null ? v.play.name : "kickoff")); tr.stillFor = 0f; }
+                    }
+                    tr.pos = p.Pos; tr.facing = p.Facing; tr.init = true;
+                    if (Mathf.Abs(p.Pos.x) > FootballField.HalfWidth + 0.5f || Mathf.Abs(p.Pos.z) > FootballField.EndLineZ + 0.5f)
+                        if (live) Flag("off the field (live)", p.name + " at " + p.Pos + " " + t.ToString("0.0") + " s");
+                    // Joints.
+                    var body = p.BodyRoot;
+                    if (body != null)
+                    {
+                        foreach (var bone in body.GetComponentsInChildren<Transform>())
+                        {
+                            string nm = bone.name;
+                            if (!(nm.StartsWith("upperarm") || nm.StartsWith("lowerarm") || nm.StartsWith("thigh") || nm.StartsWith("calf") || nm == "head" || nm == "spine_01")) continue;
+                            Vector3 fwd = bone.rotation * Vector3.forward;
+                            if (tr.bones.TryGetValue(bone, out var prev))
+                            {
+                                float a = Vector3.Angle(prev, fwd);
+                                if (a > JointSnapDeg && !p.IsDown && !p.IsDiving && !p.IsHurdling && !p.IsThrowing) Flag("joint snap (" + nm + ")", p.name + " " + nm + " turned " + a.ToString("0") + "° in a tick at " + t.ToString("0.0") + " s; hold=" + p.Hold + " stance=" + p.CurrentStance + " emote=" + p.IsEmoting + " reach=" + (p.GetComponentInChildren<FootballAlienRig>()?.reaching));
+                            }
+                            tr.bones[bone] = fwd;
+                        }
+                    }
+                }
+                // Overlaps.
+                var ps = m.Players;
+                for (int i = 0; i < ps.Count; i++) for (int j = i + 1; j < ps.Count; j++)
+                {
+                    if (ps[i].IsDown || ps[j].IsDown) continue;
+                    float d = Vector3.Distance(ps[i].Pos, ps[j].Pos);
+                    if (d < 0.35f && live && ticks % 30 == 0) Flag("bodies overlapping < 0.35 m", ps[i].name + " / " + ps[j].name + " " + d.ToString("0.00") + " m at " + t.ToString("0.0") + " s");
+                }
+                // The ball vs its holder.
+                var ball = v.ball;
+                if (ball.holder != null && ball.state == FootballBall.State.Held)
+                {
+                    float off = Vector3.Distance(ball.pos, ball.holder.BallHoldPoint());
+                    if (off > 0.6f && ticks % 10 == 0) Flag("ball far from holder's hand", ball.holder.name + " " + off.ToString("0.00") + " m hold=" + ball.holder.Hold + " at " + t.ToString("0.0") + " s");
+                    var rig = ball.holder.GetComponentInChildren<FootballAlienRig>();
+                    var body = ball.holder.BodyRoot;
+                    if (rig != null && body != null && ticks % 10 == 0)
+                    {
+                        Transform hand = null; foreach (var tr2 in body.GetComponentsInChildren<Transform>()) if (tr2.name == "hand_r") { hand = tr2; break; }
+                        if (hand != null)
+                        {
+                            float hd = Vector3.Distance(hand.position, root.transform.TransformPoint(ball.pos));
+                            if (hd > 0.45f) Flag("hand_r far from held ball (" + ball.holder.Hold + ")", ball.holder.name + " " + hd.ToString("0.00") + " m at " + t.ToString("0.0") + " s");
+                            // Is the ball inside the torso? Compare with the chest point.
+                            Vector3 chestW = root.transform.TransformPoint(ball.holder.Chest);
+                            Vector3 fwdW = root.transform.TransformDirection(ball.holder.Facing);
+                            float ahead = Vector3.Dot(root.transform.TransformPoint(ball.pos) - chestW, fwdW);
+                            if (ahead < 0.12f) Flag("held ball not in front of the chest (" + ball.holder.Hold + ")", ball.holder.name + " ahead=" + ahead.ToString("0.00") + " m at " + t.ToString("0.0") + " s");
+                        }
+                    }
+                }
+                // Passes: what happened and why.
+                bool air = v.BallAirborne && !ball.isSnap && !ball.fumbled && !ball.isKick;
+                if (air && !wasAir) { passes++; intended = ball.intendedReceiver; catchPt = ball.catchPoint; throwDepth = v.Downfield(ball.catchPoint); thrower = ball.thrower != null ? ball.thrower.team.shortName : "?"; }
+                if (wasAir && !air && intended != null)
+                {
+                    // Where was the receiver relative to where the ball came down?
+                    float miss = Vector3.Distance(new Vector3(intended.Pos.x, 0f, intended.Pos.z), new Vector3(catchPt.x, 0f, catchPt.z));
+                    var nd = v.Nearest(intended.Pos, v.defense);
+                    float cover = nd != null ? Vector3.Distance(nd.Pos, intended.Pos) : 99f;
+                    string outcome;
+                    if (ball.holder == intended) { outcome = "CAUGHT"; caught++; }
+                    else if (ball.holder != null && ball.holder.team != intended.team) { outcome = "PICKED"; picked++; }
+                    else if (ball.dropped && miss < 1.3f && cover > 1.6f) { outcome = "DROPPED"; drops++; }
+                    else if (ball.dropped) { outcome = "DEFENDED"; defended++; }
+                    else if (miss >= 1.3f) { outcome = "OFF TARGET"; offTarget++; }
+                    else outcome = "INCOMPLETE?";
+                    passLines.Add(outcome.PadRight(11) + " " + thrower + " depth " + throwDepth.ToString("0").PadLeft(3) + " yd | ball vs WR " + miss.ToString("0.0") + " m | cover " + cover.ToString("0.0") + " m | t=" + t.ToString("0"));
+                }
+                wasAir = air;
+            }
+            sb.AppendLine("=== " + m.StatusLine + " after " + t.ToString("0") + " sim-s, " + ticks + " ticks");
+            sb.AppendLine("=== PASSES " + passes + ": caught " + caught + ", dropped " + drops + ", defended " + defended + ", off target " + offTarget + ", picked " + picked);
+            var byDepth = new int[4, 5];
+            foreach (var l in passLines) { int d = int.Parse(l.Substring(l.IndexOf("depth") + 6, 4).Trim()); int b = d < 10 ? 0 : d < 20 ? 1 : d < 30 ? 2 : 3; int o = l.StartsWith("CAUGHT") ? 0 : l.StartsWith("DROPPED") ? 1 : l.StartsWith("DEFENDED") ? 2 : l.StartsWith("OFF") ? 3 : 4; byDepth[b, o]++; }
+            string[] dn = { "<10", "10-19", "20-29", "30+" };
+            for (int b = 0; b < 4; b++) sb.AppendLine("  depth " + dn[b].PadRight(6) + " caught " + byDepth[b, 0] + " dropped " + byDepth[b, 1] + " defended " + byDepth[b, 2] + " off-target " + byDepth[b, 3] + " picked/other " + byDepth[b, 4]);
+            sb.AppendLine("=== ANOMALIES");
+            foreach (var kv in anomalies) sb.AppendLine("  " + kv.Value.ToString().PadLeft(5) + "  " + kv.Key + "   e.g. " + examples[kv.Key]);
+            sb.AppendLine("=== PASS LOG");
+            foreach (var l in passLines) sb.AppendLine("  " + l);
+        }
+        catch (System.Exception e) { sb.AppendLine("!! " + e); }
+        finally
+        {
+            if (root != null) Object.DestroyImmediate(root);
+            System.IO.File.WriteAllText(Out, sb.ToString());
+            Debug.Log("[Analyzer] written " + Out);
+        }
+    }
+}

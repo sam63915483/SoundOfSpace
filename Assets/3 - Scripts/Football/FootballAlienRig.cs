@@ -79,6 +79,7 @@ public class FootballAlienRig : MonoBehaviour
     float _upperLen, _lowerLen;
     Vector3 _headFwdLocal = Vector3.forward;              // the head bone's own axis that faces the model's forward
     Vector3 _headDir;                                     // smoothed look direction (world)
+    bool _still = true;
     readonly System.Collections.Generic.Dictionary<Transform, Quaternion> _rest = new System.Collections.Generic.Dictionary<Transform, Quaternion>();
     bool _ok;
     Transform _frame;                                      // the FootballPlayer transform: forward/right/up
@@ -135,8 +136,12 @@ public class FootballAlienRig : MonoBehaviour
         {
             // (These bodies are thick: the shoulder bones sit inside the chest, so
             // anything less than ~0.4 arm-lengths forward was buried in the torso.)
-            case HoldStyle.TwoHands: return ShoulderMid + f * (a * 0.78f) - u * (a * 0.22f);          // held out in front, arms extended
-            case HoldStyle.Tucked:   return ShoulderR + f * (a * 0.46f) - u * (a * 0.40f) - r * (a * 0.06f);   // on the forearm, in front of the ribs
+            // Absolute metres (scaled by the body): these arms are only ~0.5 m and
+            // the shoulder bone sits ~0.17 m inside the chest, so anything in
+            // arm-length multiples ended up inside the torso (the analyzer: 7 cm
+            // in front of the chest plane).
+            case HoldStyle.TwoHands: return ShoulderMid + f * Mathf.Min(0.50f, a * 0.95f) - u * 0.15f;          // held out in front, arms nearly straight
+            case HoldStyle.Tucked:   return ShoulderR + f * Mathf.Min(0.40f, a * 0.8f) - u * 0.28f - r * 0.05f;      // on the forearm, in front of the ribs
             default:                 return ShoulderR + f * (a * 0.5f) - r * (a * 0.25f) - u * (a * 0.35f);
         }
     }
@@ -164,10 +169,13 @@ public class FootballAlienRig : MonoBehaviour
         float s = speedFrac;
         float swing = Mathf.Sin(stridePhase);
         foreach (var kv in _rest) kv.Key.localRotation = kv.Value;
+        // Standing vs running with hysteresis: a man hovering at the threshold
+        // used to flip poses every tick (the analyzer counted thousands).
+        if (_still && s > 0.16f) _still = false; else if (!_still && s < 0.06f) _still = true;
 
         // ── torso ──
         Vector3 spineDir = Quaternion.AngleAxis(10f * s, r) * u;               // lean into the run
-        bool still = s < 0.08f;
+        bool still = _still;
         if (still && stance == Stance.Huddle) spineDir = (u * 0.75f + f * 0.62f).normalized;           // leaning in, hands on knees
         else if (still && stance == Stance.Lineman) spineDir = (u * 0.5f + f * 0.85f).normalized;      // three-point
         else if (still && stance == Stance.Crouch) spineDir = (u * 0.88f + f * 0.32f).normalized;

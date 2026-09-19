@@ -868,7 +868,7 @@ public class QBBrain_CPU : IPlayerBrain
         {
             case Style.Quick:    _dropTime = DropTime;  _holdMax = 2.5f + (float)rng.NextDouble() * 0.7f; break;
             case Style.Patient:  _dropTime = 1.5f;      _holdMax = 3.2f + (float)rng.NextDouble() * 0.7f; break;
-            case Style.DeepShot: _dropTime = 1.7f;      _holdMax = (play != null && play.kind == FootballPlay.Kind.FleaFlicker ? 6.0f : 4.0f) + (float)rng.NextDouble() * 0.8f; break;
+            case Style.DeepShot: _dropTime = 1.7f;      _holdMax = (play != null && play.kind == FootballPlay.Kind.FleaFlicker ? 6.0f : 4.3f) + (float)rng.NextDouble() * 0.8f; break;
             default:             _dropTime = 1.4f;      _holdMax = 3.8f + (float)rng.NextDouble() * 0.9f; break;   // Rollout: routes need a beat before he reads on the move
         }
         _runOnExpiry = rng.NextDouble() < 0.65;
@@ -1036,6 +1036,21 @@ public class QBBrain_CPU : IPlayerBrain
             Throw(self, best, bestLead, view, inTheFace, ref o);
             return;
         }
+        // The deep shot: nobody open and the clock nearly out — let it fly to
+        // the deepest man anyway (the analyzer counted ZERO throws of 30+
+        // yards in a game; Sam wants bombs).
+        if (style == Style.DeepShot && !_thrown && t > _holdMax - 0.6f)
+        {
+            FootballPlayer deep = null; float deepest = 0f; Vector3 deepLead = Vector3.zero;
+            for (int i = 0; i < _readOrder.Count; i++)
+            {
+                var wr = _readOrder[i]; if (wr == null) continue;
+                Openness(self, wr, view, out Vector3 lead);
+                float d = view.Downfield(lead);
+                if (d > deepest && d >= 22f && Mathf.Abs(lead.x) < FootballField.HalfWidth - 1f) { deepest = d; deep = wr; deepLead = lead; }
+            }
+            if (deep != null) { Throw(self, deep, deepLead, view, inTheFace, ref o); o.say = self.team.shortName + " QB lets it fly deep to " + deep.Label + " — " + Mathf.RoundToInt(deepest) + " yards"; return; }
+        }
         // Clock nearly out and nobody open: leave the pocket and buy time
         // (the scramble drill) instead of standing there waiting to be hit.
         if (!_escaping && !_scrambleDrill && t > _holdMax - 0.55f && bestMargin < 0f)
@@ -1197,7 +1212,7 @@ public class QBBrain_CPU : IPlayerBrain
             if (away.sqrMagnitude > 0.01f) lead += away.normalized * 1.0f;
         }
         // Error scaled by accuracy, a rusher in the face, and throwing on the run (handoff §7).
-        float sigma = (0.3f + 1.1f * (1f - _team.qbAccuracy) + (pressure ? 0.9f : 0f) + (_escaping ? 0.25f : 0f)) * (0.6f + dist / 40f);
+        float sigma = (0.3f + 1.1f * (1f - _team.qbAccuracy) + (pressure ? 0.9f : 0f) + (_escaping ? 0.25f : 0f)) * (0.5f + dist / 60f);
         Vector3 err = new Vector3(Gauss() * sigma, 0f, Gauss() * sigma * 0.8f);
         o.action = BrainAction.Throw;
         o.targetPlayer = wr;
@@ -1228,7 +1243,7 @@ public class KickerBrain : IPlayerBrain
     {
         if (!view.snapped) return;
         if (!_kicked && view.timeSinceSnap > 0.6f) { o.action = BrainAction.Kick; o.target = _target; _kicked = true; return; }
-        if (_kicked) { var c = view.Carrier; if (c != null && c.team != self.team) o.move = Steer.Pursue(self, c) * 0.8f; }
+        if (_kicked) { var c = view.Carrier; o.move = c != null && c.team != self.team ? Steer.Pursue(self, c) * 0.8f : Vector3.forward * (view.attackDir * 0.35f); }
     }
 }
 
