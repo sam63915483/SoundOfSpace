@@ -58,12 +58,12 @@ public class FootballBroadcast : MonoBehaviour
     public float replayDelay = 1.6f;     // live celebration first, then the card, then the replay
     [Tooltip("Speed from the throw until a second after the catch (runs: around the key moment).")]
     public float slowMoSpeed = 0.5f;
+    public float slowMoBeforeCatch = 0.6f;
     [Tooltip("Seconds to ease into and out of the slow-mo instead of snapping to it.")]
-    public float slowMoEase = 0.5f;
-    public float slowMoBefore = 1.0f, slowMoAfter = 0.6f, slowMoAfterCatch = 1.0f;
-    public float maxReplaySeconds = 13f;
+    public float slowMoEase = 0.3f;
+    public float slowMoBefore = 0.8f, slowMoAfter = 0.6f, slowMoAfterCatch = 0.8f;
     [Tooltip("Keep recording this long after the whistle: the hit, then the pile.")]
-    public float postWhistleSeconds = 3f;
+    public float postWhistleSeconds = 2f;
     [Tooltip("Replay picture is this much tighter than the live one (1 = same).")]
     public float replayZoom = 0.8f;
     public float slowMoFov = 8f;
@@ -106,7 +106,8 @@ public class FootballBroadcast : MonoBehaviour
     PlayInstance _recordingPlay, _lastLivePlay, _endedPlay; float _endedAt = -1f;
     bool _recording;
     float _keyTime = -1f; int _keyRank;
-    float _throwTime = -1f, _catchTime = -1f;
+    float _throwTime = -1f, _catchTime = -1f, _airEndTime = -1f;
+    PlayInstance _heldPlay;
     float _postWhistle = -1f;
     FootballPlayer _lastHolder; bool _wasAir;
     readonly Dictionary<FootballPlayer, bool> _wasHurdling = new Dictionary<FootballPlayer, bool>();
@@ -410,7 +411,7 @@ public class FootballBroadcast : MonoBehaviour
         if (play != _recordingPlay && play.phase != PlayInstance.Phase.Ended && (play.phase == PlayInstance.Phase.PreSnap || play.phase == PlayInstance.Phase.Live))
         {
             _recordingPlay = play; _frames.Clear(); _recording = true; _recordAcc = 0f; _recT = 0f;
-            _keyTime = -1f; _keyRank = 0; _postWhistle = -1f; _lastHolder = null; _wasAir = false; _throwTime = -1f; _catchTime = -1f;
+            _keyTime = -1f; _keyRank = 0; _postWhistle = -1f; _lastHolder = null; _wasAir = false; _throwTime = -1f; _catchTime = -1f; _airEndTime = -1f;
             _wasHurdling.Clear(); _wasSpinning.Clear(); _wasDown.Clear();
         }
         if (!_recording || play != _recordingPlay) return;
@@ -424,6 +425,7 @@ public class FootballBroadcast : MonoBehaviour
         bool air = v.BallAirborne && !v.ball.isSnap;
         if (!_wasAir && air && !v.ball.fumbled && _throwTime < 0f) _throwTime = t;                 // the ball leaves the hand
         if (_wasAir && holder != null && holder != v.ball.thrower) { Key(t, 4); _catchTime = t; }
+        if (_wasAir && !air) _airEndTime = t;                                                    // caught, dropped or on the grass
         if (v.ball.fumbled && holder == null && _lastHolder != null) Key(t, 3);
         for (int i = 0; i < v.players.Count; i++)
         {
@@ -547,19 +549,19 @@ public class FootballBroadcast : MonoBehaviour
         _replayFrames = new List<Frame>(_frames);
         float end = _replayFrames[_replayFrames.Count - 1].t;
         float key = _keyTime >= 0f ? Mathf.Clamp(_keyTime, 0f, end) : end - 1.5f;
-        // The slow window: from the throw until a second after the catch (an
-        // incomplete: until it hits the grass); a run: around the key moment.
-        if (_throwTime >= 0f) { _slowStart = _throwTime; _slowEnd = _catchTime >= 0f ? _catchTime + slowMoAfterCatch : end; }
+        // The slow window: just the important part — round the catch, or
+        // where an incomplete ball comes down, or the tackle / hurdle on a
+        // run. Everything else at full speed, and the whole play is shown,
+        // snap to two seconds after the whistle. The huddle waits for it.
+        if (_catchTime >= 0f) { _slowStart = _catchTime - slowMoBeforeCatch; _slowEnd = _catchTime + slowMoAfterCatch; }
+        else if (_airEndTime >= 0f) { _slowStart = _airEndTime - slowMoBefore; _slowEnd = _airEndTime + slowMoAfter; }
         else { _slowStart = key - slowMoBefore; _slowEnd = key + slowMoAfter; }
         _slowStart = Mathf.Clamp(_slowStart, 0f, end); _slowEnd = Mathf.Clamp(_slowEnd, _slowStart, end);
-        // Fit into the huddle: start late if the play was long, and run the
-        // slow-mo a little faster if it still does not fit.
-        float start = Mathf.Max(0f, Mathf.Min(_slowStart - 2.5f, end - 4f));
-        float slowLen = _slowEnd - _slowStart, normalLen = (end - start) - slowLen;
         _slowSpeed = slowMoSpeed;
-        if (normalLen + slowLen / _slowSpeed > maxReplaySeconds)
-            _slowSpeed = Mathf.Clamp(slowLen / Mathf.Max(0.5f, maxReplaySeconds - normalLen), slowMoSpeed, 1f);
-        _replayStart = start; _replayEnd = end; _replayKey = key; _replayT = start; _replayStartedAt = _clock;
+        float start = 0f;
+        _replayStart = start; _replayEnd = end; _replayKey = key; _replayT = start;
+        _heldPlay = _match.CurrentPlay;
+        if (_heldPlay != null) _heldPlay.holdBreak = true; _replayStartedAt = _clock;
         EnsureGhosts();
         _replaying = true;
         SetReplayLook(true);
@@ -583,13 +585,7 @@ public class FootballBroadcast : MonoBehaviour
             float ease = Mathf.Min((_replayT - _slowStart) / slowMoEase, (_slowEnd - _replayT) / slowMoEase, 1f);
             speed = Mathf.Lerp(1f, _slowSpeed, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(ease)));
         }
-        var cur = _match.CurrentPlay;
-        float untilBreak = cur != null ? cur.SecondsUntilBreak : -1f;
-        if (untilBreak >= 0f && untilBreak <= 1.0f) { EndReplay(); return; }
-        float remainingReal = untilBreak >= 0f ? untilBreak - 1f : maxReplaySeconds - (_clock - _replayStartedAt);
-        float remainingPlayback = PlaybackSeconds(_replayT, _replayEnd);
-        float scale = remainingReal > 0.1f ? Mathf.Clamp(remainingPlayback / remainingReal, 0.5f, 3f) : 3f;
-        _replayT += dt * speed * scale;
+        _replayT += dt * speed;
         if (_replayT >= _replayEnd) { EndReplay(); return; }
         // Find the frame pair around _replayT and interpolate positions.
         int i = 0;
@@ -618,18 +614,10 @@ public class FootballBroadcast : MonoBehaviour
         AimAt(focus, Mathf.Max(fov, 6f), dt);
     }
 
-    /// Seconds of screen time the recording between `from` and `to` takes
-    /// at the base pace (slow window at _slowSpeed, the rest at 1×).
-    float PlaybackSeconds(float from, float to)
-    {
-        float slowA = Mathf.Max(from, _slowStart), slowB = Mathf.Min(to, _slowEnd);
-        float slowLen = Mathf.Max(0f, slowB - slowA);
-        return (to - from - slowLen) + slowLen / Mathf.Max(0.05f, _slowSpeed);
-    }
-
     void EndReplay()
     {
         _replaying = false;
+        if (_heldPlay != null) { _heldPlay.holdBreak = false; _heldPlay = null; }
         SetReplayLook(false);
         foreach (var g in _ghosts) g.root.gameObject.SetActive(false);
         if (_ghostBall != null) _ghostBall.gameObject.SetActive(false);

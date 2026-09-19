@@ -175,7 +175,10 @@ public class PlayInstance
     /// Once everyone is in the huddle it holds this long (Sam: "like 10
     /// seconds") - the replay on the big screens plays in that window.
     public const float HuddleHold = 9f;
-    public const float HuddleTimeout = 15f;
+    public const float HuddleTimeout = 24f;
+    /// The broadcast sets this while its replay plays: the huddle does not
+    /// break until the replay is done (Sam: never cut a replay short).
+    public bool holdBreak;
     /// True while both sides are in their huddles (the replay window).
     public bool InHuddle => phase == Phase.Setup && !_broke && _huddleSince >= 0f;
     /// Seconds until the huddle breaks (an upper bound while men are still
@@ -374,7 +377,7 @@ public class PlayInstance
                 if (!_broke && !view.isKickoff)
                 {
                     if (all && _huddleSince < 0f) _huddleSince = _phaseTime;
-                    bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= HuddleHold;
+                    bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= HuddleHold && !holdBreak;
                     if (held || _phaseTime > HuddleTimeout)
                     {
                         _broke = true; all = false; _phaseTime = 0f;
