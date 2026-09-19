@@ -113,6 +113,7 @@ public class FootballBroadcast : MonoBehaviour
     bool _replaying; float _replayT; float _replayStart, _replayEnd, _replayKey, _slowStart, _slowEnd, _slowSpeed; float _replayDueAt = -1f;
     string _cardText; float _cardT = -1f; bool _cardDone;
     readonly List<Transform> _cards = new List<Transform>();
+    readonly List<Transform> _cardSlabs = new List<Transform>();
     readonly List<TextMeshPro> _cardTexts = new List<TextMeshPro>();
     readonly List<Renderer> _screenParts = new List<Renderer>();
     List<Frame> _replayFrames;
@@ -205,18 +206,19 @@ public class FootballBroadcast : MonoBehaviour
         // the picture before the replay.
         var card = new GameObject("Card");
         card.transform.SetParent(root.transform, false);
-        card.transform.localPosition = new Vector3(screenSize.x * 1.1f, 0f, -0.6f);
+        card.transform.localPosition = new Vector3(0f, 0f, -0.6f);
         var slab = GameObject.CreatePrimitive(PrimitiveType.Quad);
         Destroy(slab.GetComponent<Collider>());
+        slab.name = "Slab";
         slab.transform.SetParent(card.transform, false);
         slab.transform.localScale = new Vector3(screenSize.x, screenSize.y, 1f);
+        _cardSlabs.Add(slab.transform);
         var sm = new Material(Shader.Find("Unlit/Color")) { color = new Color(0.03f, 0.03f, 0.05f) };
         var slabR = slab.GetComponent<Renderer>(); slabR.sharedMaterial = sm; slabR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _screenParts.Add(slabR);
         var ct = new GameObject("Text");
         ct.transform.SetParent(card.transform, false);
         ct.transform.localPosition = new Vector3(0f, 0f, -0.1f);
-        ct.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
         var ctm = ct.AddComponent<TextMeshPro>();
         ctm.text = ""; ctm.fontSize = screenSize.y * 1.6f; ctm.fontStyle = FontStyles.Bold;
         ctm.color = new Color(1f, 0.85f, 0.3f);
@@ -229,7 +231,7 @@ public class FootballBroadcast : MonoBehaviour
         lbl.transform.SetParent(root.transform, false);
         // Top right for the viewer (local −X is his right on a −Z face; the text is flipped to read).
         lbl.transform.localPosition = new Vector3(-screenSize.x * 0.5f + screenSize.x * 0.16f, screenSize.y * 0.5f - screenSize.y * 0.09f, -0.55f);
-        lbl.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);        // TMP faces +Z; the picture faces −Z
+        // TMP at identity reads from −Z, the picture's front (same as the scoreboard's labels).
         var tmp = lbl.AddComponent<TextMeshPro>();
         tmp.text = "REPLAY";
         tmp.fontSize = screenSize.y * 0.55f; tmp.color = new Color(1f, 0.25f, 0.2f); tmp.fontStyle = FontStyles.Bold;
@@ -504,16 +506,24 @@ public class FootballBroadcast : MonoBehaviour
         for (int i = 0; i < _cards.Count; i++) { _cards[i].gameObject.SetActive(true); _cardTexts[i].text = _cardText; }
     }
 
-    /// Slides in, holds, slides out; the replay starts as it leaves.
+    /// A wipe: the slab grows in from one edge of the picture, holds with
+    /// the text on it, shrinks out the other edge — never outside the screen
+    /// (a slab sliding past the bezel was a black box in the air). The
+    /// replay starts as it leaves.
     void TickCard(float dt)
     {
         _cardT += dt;
-        float w = screenSize.x * 1.1f;
-        float x;
-        if (_cardT < cardSlide) x = Mathf.Lerp(w, 0f, Mathf.SmoothStep(0f, 1f, _cardT / cardSlide));
-        else if (_cardT < cardSlide + cardHold) x = 0f;
-        else x = Mathf.Lerp(0f, -w, Mathf.SmoothStep(0f, 1f, (_cardT - cardSlide - cardHold) / cardSlide));
-        foreach (var c in _cards) c.localPosition = new Vector3(x, 0f, -0.6f);
+        float W = screenSize.x;
+        float width, centre; bool showText;
+        if (_cardT < cardSlide) { float k = Mathf.SmoothStep(0f, 1f, _cardT / cardSlide); width = W * k; centre = -(W - width) * 0.5f; showText = false; }
+        else if (_cardT < cardSlide + cardHold) { width = W; centre = 0f; showText = true; }
+        else { float k = Mathf.SmoothStep(0f, 1f, (_cardT - cardSlide - cardHold) / cardSlide); width = W * (1f - k); centre = (W - width) * 0.5f; showText = false; }
+        for (int i = 0; i < _cardSlabs.Count; i++)
+        {
+            _cardSlabs[i].localPosition = new Vector3(centre, 0f, 0f);
+            _cardSlabs[i].localScale = new Vector3(Mathf.Max(0.01f, width), screenSize.y, 1f);
+            _cardTexts[i].enabled = showText;
+        }
         if (!_cardDone && _cardT >= cardSlide + cardHold) { _cardDone = true; StartReplay(); }
         if (_cardT >= cardSlide * 2f + cardHold)
         {
