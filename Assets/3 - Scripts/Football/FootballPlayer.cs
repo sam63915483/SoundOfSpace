@@ -253,11 +253,11 @@ public class FootballPlayer : MonoBehaviour
         // skeleton's pelvis sits almost at the shoulders, so bone distances gave
         // a ball at the belly. Hips at ~0.55 m, shoulders at ~1.15 m on a 2 m man.
         float k = Height / 2f;
-        float width = 0.46f * k, height = 0.86f * k;
+        float width = 0.56f * k, height = 0.72f * k;
         Vector3 shoulders = (shR.position + shL.position) * 0.5f;
         Vector3 centre = transform.position + transform.up * (0.86f * k) + transform.forward * 0.02f;
         centre.x = shoulders.x; centre.z = shoulders.z;      // over the torso, wherever the bones put it
-        var vest = GameObject.CreatePrimitive(PrimitiveType.Capsule);      // a vest, not a ball
+        var vest = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         Kill(vest.GetComponent<Collider>());
         vest.name = "Jersey";
         vest.transform.SetParent(spine, true);
@@ -266,7 +266,7 @@ public class FootballPlayer : MonoBehaviour
         vest.transform.localScale = Vector3.one;
         // World-size the sphere whatever the bone's scale is.
         Vector3 ls = vest.transform.lossyScale;
-        vest.transform.localScale = new Vector3(width / Mathf.Max(0.001f, ls.x), height * 0.5f / Mathf.Max(0.001f, ls.y), width * 0.78f / Mathf.Max(0.001f, ls.z));
+        vest.transform.localScale = new Vector3(width / Mathf.Max(0.001f, ls.x), height / Mathf.Max(0.001f, ls.y), width * 0.72f / Mathf.Max(0.001f, ls.z));
         var mat = new Material(Shader.Find("Standard")) { color = team.color };
         mat.SetFloat("_Glossiness", 0.25f);
         vest.GetComponent<Renderer>().sharedMaterial = mat;
@@ -276,7 +276,7 @@ public class FootballPlayer : MonoBehaviour
         {
             var tgo = new GameObject(i == 0 ? "NumberFront" : "NumberBack");
             tgo.transform.SetParent(vest.transform, false);
-            tgo.transform.localPosition = new Vector3(0f, 0.12f, i == 0 ? 0.5f : -0.5f);
+            tgo.transform.localPosition = new Vector3(0f, 0.05f, i == 0 ? 0.52f : -0.52f);
             tgo.transform.localRotation = Quaternion.Euler(0f, i == 0 ? 180f : 0f, 0f);      // TMP reads from its −Z
             var tmp = tgo.AddComponent<TextMeshPro>();
             tmp.text = num; tmp.fontSize = 4.2f; tmp.fontStyle = FontStyles.Bold; tmp.color = Color.white;
