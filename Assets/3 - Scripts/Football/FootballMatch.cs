@@ -222,6 +222,8 @@ public class FootballMatch : MonoBehaviour
     // ── the TV lines ───────────────────────────────────────────────────────
 
     Transform _losLine, _firstLine;
+    public Transform LosLine => _losLine;
+    public Transform FirstLine => _firstLine;
 
     void BuildFieldLines(Transform fieldRoot)
     {

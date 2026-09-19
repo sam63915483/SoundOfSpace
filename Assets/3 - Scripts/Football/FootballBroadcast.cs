@@ -65,8 +65,8 @@ public class FootballBroadcast : MonoBehaviour
     [Tooltip("Keep recording this long after the whistle: the hit, then the pile.")]
     public float postWhistleSeconds = 4f;
     [Tooltip("Replay picture is this much tighter than the live one (1 = same).")]
-    public float replayZoom = 0.8f;
-    public float slowMoFov = 8f;
+    public float replayZoom = 0.7f;
+    public float slowMoFov = 6.5f;
     [Header("The card (what happened, slid across the screen before the replay)")]
     public float cardSlide = 0.35f, cardHold = 2.6f;
     [Tooltip("The LIVE card on the way back from the replay.")]
@@ -125,7 +125,8 @@ public class FootballBroadcast : MonoBehaviour
     readonly List<Renderer> _screenParts = new List<Renderer>();
     List<Frame> _replayFrames;
     readonly List<Ghost> _ghosts = new List<Ghost>();
-    Transform _ghostBall;
+    Transform _ghostBall, _ghostLos, _ghostFirst;
+    float _recLosZ, _recFirstZ; bool _recFirst, _recLines;               // the lines as they were for the recorded play
     float _clock;
     string _dumpDir; float _dumpAcc; int _dumpN;
 
@@ -275,7 +276,9 @@ public class FootballBroadcast : MonoBehaviour
         if (!_replaying) return;
         CollectLive();
         foreach (var r in _liveRenderers) if (r != null) r.enabled = false;
-        foreach (var r in _ghostRenderers) if (r != null) r.enabled = true;
+        _liveExtraWas.Clear();
+        foreach (var r in _liveExtra) { _liveExtraWas.Add(r != null && r.gameObject.activeSelf); if (r != null) r.gameObject.SetActive(false); }
+        foreach (var r in _ghostRenderers) if (r != null && r.gameObject.activeInHierarchy) r.enabled = true;
     }
 
     void OnCamPostRender(Camera c)
@@ -284,6 +287,7 @@ public class FootballBroadcast : MonoBehaviour
         foreach (var r in _screenParts) if (r != null) r.enabled = true;
         if (!_replaying) return;
         foreach (var r in _liveRenderers) if (r != null) r.enabled = true;
+        for (int i = 0; i < _liveExtra.Count && i < _liveExtraWas.Count; i++) if (_liveExtra[i] != null) _liveExtra[i].gameObject.SetActive(_liveExtraWas[i]);
         foreach (var r in _ghostRenderers) if (r != null) r.enabled = false;
     }
 
@@ -415,6 +419,12 @@ public class FootballBroadcast : MonoBehaviour
             _recordingPlay = cur; _frames.Clear(); _recording = true; _recordAcc = 0f; _recT = 0f;
             _keyTime = -1f; _keyRank = 0; _postWhistle = -1f; _lastHolder = null; _wasAir = false; _throwTime = -1f; _catchTime = -1f; _airEndTime = -1f;
             _wasHurdling.Clear(); _wasSpinning.Clear(); _wasDown.Clear();
+            var rv = cur.view;
+            _recLosZ = rv.losZ;
+            _recFirstZ = rv.losZ + rv.attackDir * FootballField.Yards(cur.ToGo);
+            float ytg = FootballField.ToYards(FootballField.GoalLineZ - rv.attackDir * rv.losZ);
+            _recFirst = !rv.isKickoff && ytg > cur.ToGo + 0.01f;
+            _recLines = !rv.isKickoff;
         }
         // Keep following the play we started on — the match builds the NEXT
         // play the instant this one ends, so "the current play" is no longer
@@ -600,7 +610,7 @@ public class FootballBroadcast : MonoBehaviour
         }
         _replayT += dt * speed;
         // The wipe back to live starts so it is fully across as the last frame plays.
-        if (!_outroShown && _replayT >= _replayEnd - cardSlide) { _outroShown = true; ShowCard("LIVE", liveCardHold, false); }
+        if (!_outroShown && _replayT >= _replayEnd - cardSlide) { _outroShown = true; ShowCard("", liveCardHold, false); }
         if (_replayT >= _replayEnd) { EndReplay(); return; }
         // Find the frame pair around _replayT and interpolate positions.
         int i = 0;
@@ -625,6 +635,16 @@ public class FootballBroadcast : MonoBehaviour
         }
         Vector3 focus = Vector3.Lerp(a.focus, b.focus, k);
         float fov = Mathf.Lerp(a.fov, b.fov, k) * replayZoom;
+        if (a.hasSecond)
+        {
+            // Ball in the air: follow the BALL, zooming in the closer it gets
+            // to where it comes down — the catch is the tightest shot.
+            Vector3 ball = Vector3.Lerp(a.ballPos, b.ballPos, k);
+            Vector3 target = Vector3.Lerp(a.second, b.second, k);
+            float near = Mathf.Clamp01(1f - Vector3.Distance(ball, target) / 25f);
+            focus = Vector3.Lerp(ball, target, 0.3f + 0.5f * near);
+            fov = Mathf.Lerp(FitFov(ball, target, 1.1f) * 0.8f, slowMoFov, near);
+        }
         if (slow) fov = Mathf.Lerp(fov, Mathf.Min(fov, Mathf.Max(slowMoFov, fov * 0.85f)), Mathf.InverseLerp(1f, _slowSpeed, speed));      // push in with the slow-mo
         AimAt(focus, Mathf.Max(fov, 6f), dt);
     }
@@ -636,6 +656,7 @@ public class FootballBroadcast : MonoBehaviour
         SetReplayLook(false);
         foreach (var g in _ghosts) g.root.gameObject.SetActive(false);
         if (_ghostBall != null) _ghostBall.gameObject.SetActive(false);
+        if (_ghostLos != null) { _ghostLos.gameObject.SetActive(false); _ghostFirst.gameObject.SetActive(false); }
         // Come back to the live picture from where it is now.
         Intent(out _focus, out _, out _, out _fov);
         _slideZ = _focus.z * cameraFollow; _focusVel = Vector3.zero; _fovVel = 0f; _slideVel = 0f;
@@ -696,6 +717,37 @@ public class FootballBroadcast : MonoBehaviour
             _ghostBall = b.transform;
         }
         _ghostBall.gameObject.SetActive(true);
+        if (_ghostLos == null)
+        {
+            _ghostLos = GhostLine("Ghost LOS", new Color(0.2f, 0.5f, 1f));
+            _ghostFirst = GhostLine("Ghost First Down", new Color(1f, 0.55f, 0.05f));
+            if (_match.LosLine != null) _liveExtra.Add(_match.LosLine.GetComponent<Renderer>());
+            if (_match.FirstLine != null) _liveExtra.Add(_match.FirstLine.GetComponent<Renderer>());
+        }
+        _ghostLos.gameObject.SetActive(_recLines);
+        _ghostFirst.gameObject.SetActive(_recLines && _recFirst);
+        _ghostLos.localPosition = new Vector3(0f, 0.05f, _recLosZ);
+        _ghostFirst.localPosition = new Vector3(0f, 0.05f, _recFirstZ);
+    }
+
+    readonly List<Renderer> _liveExtra = new List<Renderer>();       // the real field lines: hidden while the replay renders
+    readonly List<bool> _liveExtraWas = new List<bool>();
+
+    Transform GhostLine(string name, Color c)
+    {
+        var go = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        Destroy(go.GetComponent<Collider>());
+        go.name = name;
+        go.transform.SetParent(_fieldRoot, false);
+        go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+        go.transform.localScale = new Vector3(FootballField.Width + 1f, 0.28f, 1f);
+        var sh = Shader.Find("Unlit/Color");
+        var mr = go.GetComponent<MeshRenderer>();
+        mr.sharedMaterial = new Material(sh != null ? sh : Shader.Find("Standard")) { color = c };
+        mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        mr.enabled = false;
+        _ghostRenderers.Add(mr);
+        return go.transform;
     }
 
     // ── debug frame dump ───────────────────────────────────────────────────

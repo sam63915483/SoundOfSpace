@@ -138,6 +138,7 @@ public class PlayInstance
     /// kicker's hands): the snap can come as soon as the hold lifts.
     public bool BallReady => _ballReady;
     public float SetupSeconds => _setupSeconds;
+    public float ToGo => _toGo;
 
     readonly List<FootballPlayer> _players;
     readonly FootballBall _ball;
@@ -157,6 +158,7 @@ public class PlayInstance
     FootballPlayer _kicker, _centre, _qb;
     FootballPlayer _interceptor;
     FootballPlayer _fumbler, _recoverer;
+    FootballPlayer _pendingTackler; float _tackleEndAt = -1f;     // the fall: the play ends where the ball is when he is down
     bool _qbTucked;
     // A throw (or kick) in motion: the ball leaves the hand when the arm gets there.
     bool _throwPending; Vector3 _throwTarget; FootballPlayer _throwTo;
@@ -670,7 +672,13 @@ public class PlayInstance
             }
             if (view.snapped && (!view.isKickoff || carrier != _kicker))
             {
-                if (TickTackles(carrier)) return;
+                // Tackled: he falls forward for a moment, then the ball is
+                // spotted where it IS (Sam: not where he was first touched).
+                if (_tackleEndAt >= 0f)
+                {
+                    if (view.timeSinceSnap >= _tackleEndAt) { FinishTackle(carrier); return; }
+                }
+                else if (TickTackles(carrier)) return;
             }
         }
 
@@ -794,12 +802,21 @@ public class PlayInstance
         return false;
     }
 
+    /// The hit: both go down now; the whistle comes when he has fallen.
     void EndTackle(FootballPlayer carrier, FootballPlayer d)
     {
+        _pendingTackler = d;
+        _tackleEndAt = view.timeSinceSnap + 0.5f;
+    }
+
+    void FinishTackle(FootballPlayer carrier)
+    {
+        var d = _pendingTackler; _pendingTackler = null; _tackleEndAt = -1f;
+        float spotZ = _ball.holder == carrier ? _ball.pos.z : carrier.Pos.z;
         bool sack = !view.isKickoff && carrier.role == FootballRole.QB && carrier.team == view.offense
-                    && view.Downfield(carrier.Pos) < 0f && !(view.play.kind == FootballPlay.Kind.QbDraw && view.timeSinceSnap > 1.5f)
+                    && (spotZ - view.losZ) * view.attackDir < 0f && !(view.play.kind == FootballPlay.Kind.QbDraw && view.timeSinceSnap > 1.5f)
                     && view.play.kind != FootballPlay.Kind.QbRun;
-        End(sack ? Outcome.Sack : (view.isKickoff ? Outcome.KickReturn : Outcome.Run), carrier.Pos.z, carrier.team, carrier, d);
+        End(sack ? Outcome.Sack : (view.isKickoff ? Outcome.KickReturn : Outcome.Run), spotZ, carrier.team, carrier, d);
     }
 
     /// The ball comes out of `carrier`'s arms, knocked by `by`. Live on the ground.
