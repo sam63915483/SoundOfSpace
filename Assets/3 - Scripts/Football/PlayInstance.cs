@@ -960,7 +960,8 @@ public class PlayInstance
             case BrainAction.Throw:
             {
                 if (o.targetPlayer == null || _throwPending) return;
-                if (p.HasRig)
+                bool pitch = view.play != null && view.play.kind == FootballPlay.Kind.FleaFlicker && p.role == FootballRole.WR;
+                if (p.HasRig && !pitch)
                 {
                     // Wind up; ReleaseThrow fires when the arm comes through.
                     _throwPending = true; _throwTarget = o.target; _throwTo = o.targetPlayer;

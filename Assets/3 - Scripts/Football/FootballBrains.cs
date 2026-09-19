@@ -281,12 +281,14 @@ public class FleaFlickerBrain : IPlayerBrain
         var near = view.NearestStanding(self.Pos, view.defense);
         Vector3 toMe = near != null ? self.Pos - near.Pos : Vector3.zero; toMe.y = 0f;
         bool onHim = near != null && toMe.magnitude < 1.6f && Vector3.Dot(near.Vel, toMe.normalized) > 1.5f;
-        if (onHim && _since > 0.4f && _since < 0.9f)
+        bool manClose = near != null && toMe.magnitude < 3.2f && Vector3.Dot(near.Vel, toMe.normalized) > 1.0f;
+        if (onHim && _since > 0.25f && toMe.magnitude < 1.0f)
         {
             _busted = true; o.say = self.team.shortName + " " + self.Label + " can't get the pitch off — keeps it";
             _run.Tick(self, view, dt, ref o); return;
         }
-        if (_since >= 0.9f && _qb != null && Vector3.Distance(_qb.Pos, self.Pos) < 18f)
+        // The pitch: at the planned moment, or the instant a man closes in (a quick flip).
+        if ((_since >= 0.9f || (manClose && _since > 0.25f)) && _qb != null && Vector3.Distance(_qb.Pos, self.Pos) < 18f)
         {
             float flight = PlayInstance.PassFlightTime(Vector3.Distance(self.Pos, _qb.Pos));
             o.action = BrainAction.Throw; o.targetPlayer = _qb; o.target = _qb.Pos + _qb.Vel * flight; o.power = 0.1f;
@@ -885,7 +887,7 @@ public class QBBrain_CPU : IPlayerBrain
             // behind the line.
             o.move = Steer.To(self.Pos, _dropSpot - Vector3.forward * (view.attackDir * 3f), 1f);
             var wr = _readOrder.Count > 0 ? _readOrder[0] : null;
-            if (wr != null && !_thrown && t > 2.0f)
+            if (wr != null && !_thrown && t > 1.7f)
             {
                 float flight = PlayInstance.PassFlightTime(Vector3.Distance(self.Pos, wr.Pos));
                 Vector3 lead = wr.Pos + wr.Vel * flight * 0.5f;
@@ -931,7 +933,21 @@ public class QBBrain_CPU : IPlayerBrain
         if (_escaping) o.move = EscapeMove(self, view, threatDist, toMeN);
         else o.move = t < _dropTime ? Steer.To(self.Pos, _dropSpot, 1f) : Steer.To(self.Pos, _dropSpot, 1.5f) * 0.4f;
 
-        // A rusher on him out of the pocket: sidestep him (the deke).
+        // A rusher on him out of the pocket: sidestep him (the deke) — but
+        // after the first second of running for his life, getting rid of the
+        // ball beats a second juke (that second juke was the sack).
+        if (_escaping && threat != null && threatDist < 2.4f && threatClosing && t - _escapeSince > 1.0f && !self.IsJuking && !_thrown && t >= _dropTime)
+        {
+            FootballPlayer any = null; float anyMargin = -99f; Vector3 anyLead = Vector3.zero;
+            for (int i = 0; i < _readOrder.Count; i++)
+            {
+                var wr = _readOrder[i]; if (wr == null) continue;
+                float sep = Openness(self, wr, view, out Vector3 lead);
+                if (sep > anyMargin && view.Downfield(lead) > 0f) { anyMargin = sep; any = wr; anyLead = lead; }
+            }
+            if (any != null && anyMargin > 1.0f) { Throw(self, any, anyLead, view, true, ref o); o.say = self.team.shortName + " QB, under the gun, gets it out to " + any.Label; return; }
+            if (any != null) { ThrowAway(self, any, view, ref o); return; }
+        }
         if (_escaping && threat != null && threatDist < 2.4f && threatClosing && t - _lastJuke > 0.9f && !self.IsJuking)
         {
             Vector3 perp = Vector3.Cross(Vector3.up, toMeN);

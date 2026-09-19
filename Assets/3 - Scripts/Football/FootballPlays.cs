@@ -57,7 +57,8 @@ public static class FootballRoutes
     /// The flea flicker's sweep man: a few strides toward the edge, then the pitch back.
     public static readonly FootballRoute FlickerPath = new FootballRoute("flicker", false, -6, -4, -11, -3, -14, -2);
     /// The screen: slip out to the flat behind the line and turn round.
-    public static readonly FootballRoute ScreenOut = new FootballRoute("screen", true, 4, -3, 8, -3.5f);
+    // Not a settle route: a settled man is the cue for his corner to drive on him.
+    public static readonly FootballRoute ScreenOut = new FootballRoute("screen", false, 4, -3, 8, -3.5f, 12, -3f);
 }
 
 /// Where the three receivers line up (attack-relative x in yards; + = right).
