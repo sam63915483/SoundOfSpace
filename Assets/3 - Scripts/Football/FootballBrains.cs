@@ -228,6 +228,12 @@ public class BallCarrierBrain : IPlayerBrain
         }
         if (_moveCooldown > 0f || dist < 1.7f || dist > 3.6f || closing < 2f) return;
         float agility = 0.45f + 0.55f * _agility;
+        // A man coming at his free (left) side, front or flank: the stiff arm.
+        if (sideOf < -0.3f && ahead > -0.2f && dist < 2.4f && _rng.NextDouble() < 0.45 * agility)
+        {
+            o.action = BrainAction.StiffArm; o.target = dn; _moveCooldown = 0.9f;
+            return;
+        }
         if (ahead > 0.35f)
         {
             // Square in front of him: a hard step to the side he isn't.
@@ -608,6 +614,7 @@ public class DBBrain : IPlayerBrain
     readonly float _cushion;
     readonly float _turnAt;
     float _settledSeen = -1f;
+    readonly float _layoutRoll;              // this snap: does he lay out for a ball he's beaten on?
     /// Every snap a corner is a little better or worse: the cushion he
     /// gives and how soon he turns to run vary, so some routes are blanketed
     /// and some get a step — that variance is what makes the QB hold or fire.
@@ -618,6 +625,7 @@ public class DBBrain : IPlayerBrain
         _reaction = Mathf.Lerp(0.16f, 0.03f, q);
         _cushion = Mathf.Lerp(1.6f, 0.4f, q);
         _turnAt = Mathf.Lerp(0.4f, 2.2f, q);      // how early he turns and runs with him
+        _layoutRoll = (float)rng.NextDouble();
     }
     public bool KeepsControlWhenCarrying => false;
 
@@ -635,7 +643,8 @@ public class DBBrain : IPlayerBrain
             bool mine = _man != null && ball.intendedReceiver == _man;
             // Beaten by a step with the ball about to arrive: play the BALL —
             // a dive at the catch point to get a hand in.
-            if (mine && left < 0.4f && !self.IsDiving && Vector3.Distance(self.Pos, ball.catchPoint) < 3.2f && Vector3.Distance(self.Pos, ball.catchPoint) > 1.2f)
+            bool beaten = mine && view.Downfield(_man.Pos) > view.Downfield(self.Pos) + 0.8f;
+            if (beaten && left < 0.35f && !self.IsDiving && Vector3.Distance(self.Pos, ball.catchPoint) < 2.8f && Vector3.Distance(self.Pos, ball.catchPoint) > 1.4f && _layoutRoll < 0.45f)
             {
                 o.action = BrainAction.Dive; o.target = ball.catchPoint - self.Pos;
                 o.say = self.team.shortName + " " + self.Label + " lays out for the ball";

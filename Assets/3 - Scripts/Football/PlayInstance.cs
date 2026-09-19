@@ -1267,6 +1267,7 @@ public class PlayInstance
                 if (!kick)
                 {
                     float dropChance = _ball.intendedReceiver == null ? 0.25f : best == _ball.intendedReceiver ? ReceiverDropChance : DefenderDropChance;
+                    if (best.team != wasIntendedTeam && best.IsDiving) dropChance = 0.8f;      // laid out for it: a swat, rarely a pick
                     if (_rng.NextDouble() < dropChance)
                     {
                         Vector3 side = new Vector3((float)_rng.NextDouble() - 0.5f, 0f, (float)_rng.NextDouble() - 0.5f) * 3f;
