@@ -120,8 +120,32 @@ public static class FootballProtoSceneBuilder
         string[] off = { "SellPanel", "EarningsText", "DialogueText", "TalkPrompt", "CassetteText", "CookPanel", "BuildMenu", "FishCatch",
                          "PickupPromptText", "PlacePromptText", "BonfirePromptText", "GuitarChoicePanel", "GuitarDialogueText", "GuitarTalkPrompt", "CrashWarningText" };
         foreach (var name in off) { var t = hud.transform.Find(name); if (t != null) t.gameObject.SetActive(false); }
+        AddHelmetHudConfig(ui);
         EditorSceneManager.MarkSceneDirty(ui.scene);
         Debug.Log("[FootballProto] HUD_Canvas added under --- UI ---");
+    }
+
+    /// The HelmetHudConfig prefab restyles the auto-created compass / boost /
+    /// vitals clusters into the current look (the tutorial box has it too);
+    /// without it they fall back to their old look.
+    [MenuItem("Tools/Football/Add HUD Config")]
+    public static void AddHudConfig()
+    {
+        var ui = GameObject.Find("--- UI ---");
+        if (ui == null) { Debug.LogError("[FootballProto] no '--- UI ---' in the open scene"); return; }
+        AddHelmetHudConfig(ui);
+        EditorSceneManager.MarkSceneDirty(ui.scene);
+    }
+
+    static void AddHelmetHudConfig(GameObject ui)
+    {
+        var helmetCfg = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.HelmetPrefabPath);
+        if (helmetCfg == null) { Debug.LogWarning("[FootballProto] " + TutorialSnapshots.HelmetPrefabPath + " missing — run Tools ▸ Solar System ▸ Snapshot HelmetHudConfig Prefab"); return; }
+        if (ui.transform.Find(helmetCfg.name) != null) { Debug.Log("[FootballProto] HelmetHudConfig already here"); return; }
+        var cfg = (GameObject)PrefabUtility.InstantiatePrefab(helmetCfg, ui.scene);
+        Undo.RegisterCreatedObjectUndo(cfg, "hud config");
+        cfg.transform.SetParent(ui.transform, false);
+        Debug.Log("[FootballProto] HelmetHudConfig added under --- UI ---");
     }
 
     struct BoardPose { public bool found; public Vector3 pos; public Quaternion rot; public Vector3 scale; }
