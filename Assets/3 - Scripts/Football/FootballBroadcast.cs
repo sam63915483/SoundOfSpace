@@ -112,7 +112,7 @@ public class FootballBroadcast : MonoBehaviour
     readonly Dictionary<FootballPlayer, bool> _wasDown = new Dictionary<FootballPlayer, bool>();
 
     // Replay playback.
-    bool _replaying; float _replayT; float _replayStart, _replayEnd, _replayKey, _slowStart, _slowEnd, _slowSpeed; float _replayDueAt = -1f;
+    bool _replaying; float _replayT, _replayStartedAt; float _replayStart, _replayEnd, _replayKey, _slowStart, _slowEnd, _slowSpeed; float _replayDueAt = -1f;
     string _cardText; float _cardT = -1f; bool _cardDone;
     readonly List<Transform> _cards = new List<Transform>();
     readonly List<Transform> _cardSlabs = new List<Transform>();
@@ -557,7 +557,7 @@ public class FootballBroadcast : MonoBehaviour
         _slowSpeed = slowMoSpeed;
         if (normalLen + slowLen / _slowSpeed > maxReplaySeconds)
             _slowSpeed = Mathf.Clamp(slowLen / Mathf.Max(0.5f, maxReplaySeconds - normalLen), slowMoSpeed, 1f);
-        _replayStart = start; _replayEnd = end; _replayKey = key; _replayT = start;
+        _replayStart = start; _replayEnd = end; _replayKey = key; _replayT = start; _replayStartedAt = _clock;
         EnsureGhosts();
         _replaying = true;
         SetReplayLook(true);
@@ -568,9 +568,19 @@ public class FootballBroadcast : MonoBehaviour
 
     void TickReplay(float dt)
     {
+        // Pace it to the huddle (Sam): finish one second before the break —
+        // slower to fill the time, a touch faster if it wouldn't fit, gone
+        // the moment the huddle breaks. After a score (a kickoff, no huddle)
+        // the old fixed budget applies.
         bool slow = _replayT >= _slowStart && _replayT <= _slowEnd;
         float speed = slow ? _slowSpeed : 1f;
-        _replayT += dt * speed;
+        var cur = _match.CurrentPlay;
+        float untilBreak = cur != null ? cur.SecondsUntilBreak : -1f;
+        if (untilBreak >= 0f && untilBreak <= 1.0f) { EndReplay(); return; }
+        float remainingReal = untilBreak >= 0f ? untilBreak - 1f : maxReplaySeconds - (_clock - _replayStartedAt);
+        float remainingPlayback = PlaybackSeconds(_replayT, _replayEnd);
+        float scale = remainingReal > 0.1f ? Mathf.Clamp(remainingPlayback / remainingReal, 0.5f, 3f) : 3f;
+        _replayT += dt * speed * scale;
         if (_replayT >= _replayEnd) { EndReplay(); return; }
         // Find the frame pair around _replayT and interpolate positions.
         int i = 0;
@@ -597,6 +607,15 @@ public class FootballBroadcast : MonoBehaviour
         float fov = Mathf.Lerp(a.fov, b.fov, k) * replayZoom;
         if (slow) fov = Mathf.Min(fov, Mathf.Max(slowMoFov, fov * 0.85f));      // push in for the slow-mo
         AimAt(focus, Mathf.Max(fov, 6f), dt);
+    }
+
+    /// Seconds of screen time the recording between `from` and `to` takes
+    /// at the base pace (slow window at _slowSpeed, the rest at 1×).
+    float PlaybackSeconds(float from, float to)
+    {
+        float slowA = Mathf.Max(from, _slowStart), slowB = Mathf.Min(to, _slowEnd);
+        float slowLen = Mathf.Max(0f, slowB - slowA);
+        return (to - from - slowLen) + slowLen / Mathf.Max(0.05f, _slowSpeed);
     }
 
     void EndReplay()

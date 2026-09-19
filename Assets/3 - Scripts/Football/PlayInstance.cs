@@ -178,6 +178,18 @@ public class PlayInstance
     public const float HuddleTimeout = 15f;
     /// True while both sides are in their huddles (the replay window).
     public bool InHuddle => phase == Phase.Setup && !_broke && _huddleSince >= 0f;
+    /// Seconds until the huddle breaks (an upper bound while men are still
+    /// walking in); 0 once it has broken; −1 on a kickoff (no huddle).
+    public float SecondsUntilBreak
+    {
+        get
+        {
+            if (view.isKickoff) return -1f;
+            if (_broke || phase != Phase.Setup) return 0f;
+            if (_huddleSince >= 0f) return Mathf.Max(0f, HuddleHold - (_phaseTime - _huddleSince));
+            return Mathf.Max(0f, HuddleTimeout - _phaseTime);
+        }
+    }
 
     // ── construction ───────────────────────────────────────────────────────
 
@@ -330,8 +342,9 @@ public class PlayInstance
         }
         _huddle[p] = huddle;
         var mv = new MoveToBrain(huddle);
-        if (huddle != centre) mv.SetFace(centre);
-        else if (!view.isKickoff && huddles) mv.SetFace(fieldPos);           // the caller faces the line, men round him
+        if (view.isKickoff || !huddles) mv.SetFace(LineFacePoint(p, fieldPos));
+        else if (huddle != centre) mv.SetFace(centre);
+        else mv.SetFace(fieldPos);           // the caller faces the line, men round him
         p.brain = _setup[p] = mv;
     }
 
@@ -366,7 +379,7 @@ public class PlayInstance
                     {
                         _broke = true; all = false; _phaseTime = 0f;
                         foreach (var kv in _formation)
-                            if (_setup.TryGetValue(kv.Key, out var mv) && kv.Key != _ball.holder && kv.Key != _fetcher) { mv.target = kv.Value; mv.ClearFace(); }
+                            if (_setup.TryGetValue(kv.Key, out var mv) && kv.Key != _ball.holder && kv.Key != _fetcher) { mv.target = kv.Value; mv.SetFace(LineFacePoint(kv.Key, kv.Value)); }
                         log?.Invoke(view.offense.shortName + " break the huddle");
                     }
                 }
@@ -406,6 +419,15 @@ public class PlayInstance
                 TickLive(dt);
                 break;
         }
+    }
+
+    /// A point well past a lineup spot in the direction that man should face
+    /// there: offense at the defense, defense at the line, kick coverage
+    /// downfield, the return team at the kicker.
+    Vector3 LineFacePoint(FootballPlayer p, Vector3 spot)
+    {
+        float dir = p.team == view.offense ? view.attackDir : -view.attackDir;
+        return spot + Vector3.forward * (dir * 30f);
     }
 
     /// How a man waits: leaning in in the huddle, then his position's stance
@@ -456,6 +478,7 @@ public class PlayInstance
             var mv = _setup[holder];
             mv.target = _broke ? _formation[holder] : _huddle[holder]; mv.stopShort = 0f;
             holder.SetHold(HoldStyle.Tucked);
+            if (_broke) mv.SetFace(LineFacePoint(holder, _formation[holder]));
             if (_broke && Vector3.Distance(holder.Pos, _formation[holder]) < 0.9f)
             {
                 holder.SetHold(HoldStyle.None);
@@ -479,6 +502,7 @@ public class PlayInstance
                 _ballReceiver.SetHold(HoldStyle.Tucked);
                 mv.target = _broke || view.isKickoff ? _formation[holder] : _huddle[holder]; mv.stopShort = 0f; mv.hurry = false;
                 if (!_broke && !view.isKickoff) mv.SetFace(holder.team == view.offense ? F(0f, -7.5f) : F(0f, 6.5f));
+                else mv.SetFace(LineFacePoint(holder, _formation[holder]));
                 _fetcher = null;
             }
             return;
