@@ -371,17 +371,22 @@ public class FootballAlienRig : MonoBehaviour
             case HoldStyle.TwoHands:
             {
                 // Both hands on the ball at the chest, elbows out and down.
+                // Hands on the SIDES of the ball, forearms forward — the ball
+                // cam showed both hands sent to one point: arms folded, not a hold.
                 Vector3 ball = HoldPoint(HoldStyle.TwoHands);
-                TwoBone(_upperR, _lowerR, _handR, ball + r * 0.06f, (-u * 0.6f + r * 0.8f).normalized);
-                TwoBone(_upperL, _lowerL, _handL, ball - r * 0.06f, (-u * 0.6f - r * 0.8f).normalized);
+                TwoBone(_upperR, _lowerR, _handR, ball + r * 0.13f, (-u * 0.85f + r * 0.35f).normalized);
+                TwoBone(_upperL, _lowerL, _handL, ball - r * 0.13f, (-u * 0.85f - r * 0.35f).normalized);
                 return;
             }
             case HoldStyle.Tucked:
             {
-                // Right forearm wrapped over the ball against the ribs, hand on
-                // its front tip; the left arm pumps (or hugs in on a spin).
-                Vector3 ball = HoldPoint(HoldStyle.Tucked);
-                TwoBone(_upperR, _lowerR, _handR, ball + f * 0.14f - u * 0.04f, (-u * 0.9f - r * 0.4f).normalized);   // elbow down and out, forearm under the ball
+                // The tuck: upper arm hanging, elbow bent square, forearm
+                // horizontal across the belly, the ball resting in the crook on
+                // top of the forearm (the ball cam showed the forearm hanging and
+                // the ball at the armpit).
+                Vector3 dU = (-u * 0.92f + f * 0.25f + r * 0.1f).normalized;
+                Aim(_upperR, _lowerR, dU);
+                Aim(_lowerR, _handR, (f * 0.75f - r * 0.6f + u * 0.12f).normalized);
                 if (spinPhase >= 0f)
                 {
                     Vector3 dL = (-u * 0.6f + f * 0.5f + r * 0.3f).normalized;
@@ -486,12 +491,11 @@ public class FootballAlienRig : MonoBehaviour
         heldBallValid = false;
         if (hold == HoldStyle.Tucked)
         {
-            // Along the right forearm, resting on top of it and against the ribs.
+            // On top of the horizontal forearm, in the crook, against the body.
             Vector3 elbow = _lowerR.position, hand = _handR.position;
             Vector3 along = hand - elbow;
-            Vector3 mid = elbow + along * 0.55f;
-            Vector3 outward = Vector3.Cross(along.normalized, u); if (Vector3.Dot(outward, r) < 0f) outward = -outward;
-            heldBallWorld = mid + u * 0.09f - outward * 0.05f + f * 0.02f;
+            Vector3 mid = elbow + along * 0.5f;
+            heldBallWorld = mid + u * 0.10f - f * 0.03f;
             heldBallValid = true;
         }
         else if (hold == HoldStyle.TwoHands)
