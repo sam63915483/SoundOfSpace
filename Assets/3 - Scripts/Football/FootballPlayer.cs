@@ -33,7 +33,7 @@ public class FootballPlayer : MonoBehaviour
     public const float HurdleHeight = 0.95f;
     public const float HardFallSeconds = 0.7f;      // the tumble itself; he stays down longer
     /// The QB/WR1 tags over every head (Sam, 2026-09-19: not needed).
-    public const bool ShowLabels = false;
+    public static readonly bool ShowLabels = false;
     /// How far past the lines a live body can go — nobody runs out the back of the end zone.
     public const float FieldMargin = 0.4f;
     /// Facing turns at a rate, never snaps (Sam: "the aliens turn unnaturally").
