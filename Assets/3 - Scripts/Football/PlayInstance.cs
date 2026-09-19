@@ -862,7 +862,7 @@ public class PlayInstance
             miss = Mathf.Min(miss, stiff ? 0.7f : MaxMissChance);
             if (_rng.NextDouble() < miss)
             {
-                d.FallDown(MissDownSeconds, carrier.Pos);
+                d.FallDown(MissDownSeconds);                                                    // a missed lunge: forward, past him
                 _tackleRetry[d] = ts + TackleRetry;
                 // He got a hand on him: a stumble sometimes.
                 if (!stiff && _rng.NextDouble() < 0.4) { carrier.StartStumble(); _stats.stumbles++; }
@@ -922,7 +922,7 @@ public class PlayInstance
         if (_wrappers.Count == 1 && view.timeSinceSnap > _tackleEndAt - WrapSeconds * 0.5f && _rng.NextDouble() < BreakTackleChance * (0.6f + 0.8f * carrier.team.speed) / 20f)
         {
             var d = _wrappers[0];
-            d.wrapping = null; d.FallDown(MissDownSeconds, carrier.Pos);
+            d.wrapping = null; d.FallDown(MissDownSeconds);
             _tackleRetry[d] = view.timeSinceSnap + TackleRetry;
             _wrappers.Clear(); _pendingTackler = null; _tackleEndAt = -1f;
             _stats.brokenTackles++;
@@ -934,7 +934,7 @@ public class PlayInstance
     {
         var d = _pendingTackler; _pendingTackler = null; _tackleEndAt = -1f;
         if (d != null) carrier.FallDown(TackleDownSeconds, d.Pos); else carrier.FallDown(TackleDownSeconds);
-        foreach (var w in _wrappers) { w.wrapping = null; w.FallDown(TackleDownSeconds, carrier.Pos); }
+        foreach (var w in _wrappers) { w.wrapping = null; w.FallDown(TackleDownSeconds); }      // the tackler goes down forward, onto him
         _wrappers.Clear();
         float spotZ = _ball.holder == carrier ? _ball.pos.z : carrier.Pos.z;
         bool sack = !view.isKickoff && carrier.role == FootballRole.QB && carrier.team == view.offense
