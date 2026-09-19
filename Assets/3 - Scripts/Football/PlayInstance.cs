@@ -82,7 +82,7 @@ public class PlayInstance
     /// Whoever gets to the ball first has to hold on to it (Sam, 2026-09-18):
     /// the man it was thrown to drops it 30% of the time, anyone else 50%. A
     /// drop tumbles off his hands to the grass — nobody can catch it after.
-    public const float ReceiverDropChance = 0.30f;
+    public const float ReceiverDropChance = 0.12f;      // was 0.30 (Sam's first rule) — a third of every pass dying on a drop is where the incompletions were
     public const float DefenderDropChance = 0.60f;
     /// How long before the ball arrives the men near its landing spot go up for it.
     public const float JumpLead = 0.42f;

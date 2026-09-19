@@ -133,8 +133,10 @@ public class FootballAlienRig : MonoBehaviour
         float a = ArmLength;
         switch (style)
         {
-            case HoldStyle.TwoHands: return ShoulderMid + f * (a * 0.42f) - u * (a * 0.14f);
-            case HoldStyle.Tucked:   return ShoulderR + f * (a * 0.16f) - u * (a * 0.42f) - r * (a * 0.14f);
+            // (These bodies are thick: the shoulder bones sit inside the chest, so
+            // anything less than ~0.4 arm-lengths forward was buried in the torso.)
+            case HoldStyle.TwoHands: return ShoulderMid + f * (a * 0.78f) - u * (a * 0.22f);          // held out in front, arms extended
+            case HoldStyle.Tucked:   return ShoulderR + f * (a * 0.46f) - u * (a * 0.40f) - r * (a * 0.06f);   // on the forearm, in front of the ribs
             default:                 return ShoulderR + f * (a * 0.5f) - r * (a * 0.25f) - u * (a * 0.35f);
         }
     }
@@ -356,7 +358,7 @@ public class FootballAlienRig : MonoBehaviour
                 // Right forearm wrapped over the ball against the ribs, hand on
                 // its front tip; the left arm pumps (or hugs in on a spin).
                 Vector3 ball = HoldPoint(HoldStyle.Tucked);
-                TwoBone(_upperR, _lowerR, _handR, ball + f * 0.16f - u * 0.02f, (-u * 0.9f - f * 0.3f).normalized);
+                TwoBone(_upperR, _lowerR, _handR, ball + f * 0.14f - u * 0.04f, (-u * 0.9f - r * 0.4f).normalized);   // elbow down and out, forearm under the ball
                 if (spinPhase >= 0f)
                 {
                     Vector3 dL = (-u * 0.6f + f * 0.5f + r * 0.3f).normalized;

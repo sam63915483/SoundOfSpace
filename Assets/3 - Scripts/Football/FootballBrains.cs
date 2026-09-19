@@ -844,7 +844,7 @@ public class QBBrain_CPU : IPlayerBrain
     public const float DropTime = 1.1f;
     public const float ThrowSpeed = 21f;     // m/s along the ground — a 30 m throw is ~1.4 s in the air
     public const float OpenSeparation = 3.5f;   // ≈ 0.4 s of daylight at the catch (was 3.9: too careful for the game Sam wants)
-    public const float DeepYards = 18f;
+    public const float DeepYards = 22f;
     public const float EscapeSeconds = 3.4f;         // buying time before he gives up and runs
     public const float DesignedRollSeconds = 3.0f;
     public const float ScrambleExtension = 1.4f;
@@ -1017,8 +1017,8 @@ public class QBBrain_CPU : IPlayerBrain
             if (deepOnly && depth < DeepYards) continue;
             // A 40 m ball needs a wider window; a quick slant needs less — the
             // ball is out before the corner can undercut it.
-            float need = Mathf.Lerp(OpenSeparation * 0.55f, OpenSeparation, Mathf.Clamp01((depth - 6f) / 16f))
-                         + Vector3.Distance(self.Pos, lead) * 0.02f;
+            float need = Mathf.Lerp(OpenSeparation * 0.55f, OpenSeparation * 0.9f, Mathf.Clamp01((depth - 6f) / 16f))
+                         + Vector3.Distance(self.Pos, lead) * 0.01f;
             // On the run, throwing back across the body is a bad ball.
             if (_escaping && Mathf.Sign(lead.x - self.Pos.x) != Mathf.Sign(_escapeSide) && Mathf.Abs(lead.x - self.Pos.x) > 6f) need += 1.8f;
             float margin = sep - need;
@@ -1197,7 +1197,7 @@ public class QBBrain_CPU : IPlayerBrain
             if (away.sqrMagnitude > 0.01f) lead += away.normalized * 1.0f;
         }
         // Error scaled by accuracy, a rusher in the face, and throwing on the run (handoff §7).
-        float sigma = (0.5f + 1.8f * (1f - _team.qbAccuracy) + (pressure ? 1.2f : 0f) + (_escaping ? 0.3f : 0f)) * (0.6f + dist / 40f);
+        float sigma = (0.3f + 1.1f * (1f - _team.qbAccuracy) + (pressure ? 0.9f : 0f) + (_escaping ? 0.25f : 0f)) * (0.6f + dist / 40f);
         Vector3 err = new Vector3(Gauss() * sigma, 0f, Gauss() * sigma * 0.8f);
         o.action = BrainAction.Throw;
         o.targetPlayer = wr;
