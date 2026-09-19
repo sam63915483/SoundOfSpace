@@ -625,9 +625,9 @@ public class DBBrain : IPlayerBrain
         // snap in eight the corner just loses his man for a beat — the busted
         // coverage that turns into the 60-yard bomb.
         float q = Mathf.Clamp01(team.coverage + ((float)rng.NextDouble() - 0.5f) * 0.9f);
-        bool busted = rng.NextDouble() < 0.12;
-        _reaction = busted ? 0.55f : Mathf.Lerp(0.28f, 0.08f, q);
-        _cushion = busted ? 2.6f : Mathf.Lerp(1.9f, 0.5f, q);
+        bool busted = rng.NextDouble() < 0.08;
+        _reaction = busted ? 0.5f : Mathf.Lerp(0.23f, 0.06f, q);
+        _cushion = busted ? 2.4f : Mathf.Lerp(1.8f, 0.45f, q);
         _turnAt = Mathf.Lerp(0.4f, 2.2f, q);      // how early he turns and runs with him
         _layoutRoll = (float)rng.NextDouble();
     }
@@ -843,7 +843,7 @@ public class QBBrain_CPU : IPlayerBrain
     float _designedSide;
     public const float DropTime = 1.1f;
     public const float ThrowSpeed = 21f;     // m/s along the ground — a 30 m throw is ~1.4 s in the air
-    public const float OpenSeparation = 3.2f;   // ≈ 0.4 s of daylight at the catch (was 3.9: too careful for the game Sam wants)
+    public const float OpenSeparation = 3.5f;   // ≈ 0.4 s of daylight at the catch (was 3.9: too careful for the game Sam wants)
     public const float DeepYards = 18f;
     public const float EscapeSeconds = 3.4f;         // buying time before he gives up and runs
     public const float DesignedRollSeconds = 3.0f;

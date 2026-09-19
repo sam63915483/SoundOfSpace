@@ -75,7 +75,7 @@ public class PlayInstance
     /// A man with the ball runs at this fraction of his top speed — pursuit
     /// closes from behind, which is what turns catches into 12-yard gains
     /// instead of touchdowns.
-    public const float CarrierSpeed = 0.92f;
+    public const float CarrierSpeed = 0.9f;
     /// Gathering the ball: the catcher's speed for a moment after the catch.
     public const float CatchDipSeconds = 0.45f;
     public const float CatchDipSpeed = 0.65f;
@@ -88,7 +88,7 @@ public class PlayInstance
     public const float JumpLead = 0.42f;
     /// Tackles: a lunge that misses puts the tackler on the ground and the
     /// runner keeps going; a hit puts both down.
-    public const float MissedTackleChance = 0.2f;
+    public const float MissedTackleChance = 0.18f;
     public const float MissedTackleBlocked = 0.45f;     // a man being blocked lunges worse
     public const float MissedTackleBehind = 0.22f;      // diving at a runner's heels
     public const float MissedTackleJuked = 0.22f;       // added while the runner is mid-juke

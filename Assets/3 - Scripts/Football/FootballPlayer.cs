@@ -161,7 +161,7 @@ public class FootballPlayer : MonoBehaviour
         // hair faster so they run stride for stride.
         // The centre/safety slot is a big athlete, not a lineman: he has to be
         // able to run down a receiver from the deep middle.
-        float roleMul = off == FootballRole.OL ? 0.85f : off == FootballRole.C ? 0.95f : off == FootballRole.WR ? 1.04f : 1f;   // a mobile QB, receivers with a step on the corners
+        float roleMul = off == FootballRole.OL ? 0.85f : off == FootballRole.C ? 0.95f : off == FootballRole.WR ? 1.02f : 1f;   // a mobile QB, receivers with a step on the corners
         _baseMaxSpeed = _maxSpeed = BaseSpeed * (0.9f + 0.2f * team.speed) * roleMul;
 
         _modelPrefab = modelPrefab;
