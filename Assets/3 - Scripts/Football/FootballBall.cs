@@ -73,6 +73,7 @@ public class FootballBall : MonoBehaviour
             v.GetComponent<Renderer>().sharedMaterial = m;
             _visual = v.transform;
         }
+        gameObject.layer = FootballPlayer.LiveLayer; _visual.gameObject.layer = FootballPlayer.LiveLayer;   // the replay shows its own ball
     }
 
     public void Hold(FootballPlayer p)

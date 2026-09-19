@@ -38,12 +38,14 @@ public class FootballMatch : MonoBehaviour
     public FootballTeam away = FootballTeam.DefaultAway();
 
     [Header("Rules")]
-    public float quarterSeconds = 120f;
+    public float quarterSeconds = 300f;
     public int quarters = 4;
     public int touchdownPoints = 7;
     public float firstDownYards = 10f;
     [Tooltip("Stop the clock after incompletions, out of bounds, turnovers and scores (the real rule).")]
     public bool clockStoppages = true;
+    [Tooltip("Madden's accelerated clock: after a play where the clock keeps running, this much runs off during the huddle (instead of the real ~30 s).")]
+    public float playClockRunoff = 25f;
 
     [Header("Pacing (seconds)")]
     public float coinTossHold = 3f;
@@ -69,6 +71,8 @@ public class FootballMatch : MonoBehaviour
     [NonSerialized] public IPlayerBrain[] qbBrainOverride = new IPlayerBrain[2];
 
     public event Action<PlayInstance.PlayResult> PlayEnded;
+    /// Fired after every sim step (the broadcast recorder samples here).
+    public event Action<float> Stepped;
 
     // ── read API (scoreboard, HUD) ─────────────────────────────────────────
     public State Current => _state;
@@ -109,6 +113,7 @@ public class FootballMatch : MonoBehaviour
     int _quarter = 1;
     float _clock;
     bool _clockStopped;
+    float _runoffLeft;                        // accelerated-clock seconds still to burn during this dead ball
     FootballTeam _possession;
     int _down = 1;
     float _toGo = 10f;
@@ -156,6 +161,13 @@ public class FootballMatch : MonoBehaviour
         if (_ball != null) return;
         home.index = 0; away.index = 1;
         BuildSquads();
+        // The big screens + broadcast camera (play mode only; the soak has no cameras).
+        if (Application.isPlaying && FindObjectOfType<FootballBroadcast>() == null)
+        {
+            var go = new GameObject("Broadcast");
+            go.transform.SetParent(transform.parent != null ? transform.parent : transform, false);
+            go.AddComponent<FootballBroadcast>();
+        }
     }
 
     /// Run the game forward without rendering (the soak test, or a skip-ahead).
@@ -356,6 +368,12 @@ public class FootballMatch : MonoBehaviour
     void Step(float dt)
     {
         _stateTime += dt;
+        StepInner(dt);
+        Stepped?.Invoke(dt);
+    }
+
+    void StepInner(float dt)
+    {
         switch (_state)
         {
             case State.CoinToss:
@@ -376,8 +394,9 @@ public class FootballMatch : MonoBehaviour
                 break;
             case State.DeadBall:
                 // The next play's lineup and ball return are already running.
+                // The clock burns the accelerated runoff (fast) instead of real time.
                 _play.Tick(dt);
-                if (!_clockStopped) RunClock(dt);
+                if (!_clockStopped && _runoffLeft > 0f) { float burn = Mathf.Min(_runoffLeft, dt * 6f); _runoffLeft -= burn; RunClock(burn); }
                 if (_clock <= 0f) { EndQuarter(); break; }
                 if (_stateTime >= deadBallHold) Enter(State.Play);
                 break;
@@ -451,6 +470,7 @@ public class FootballMatch : MonoBehaviour
         _stats.emotes += s.emotes; _stats.setupSeconds += s.setupSeconds;
         if (s.officialsSpottedBall) _stats.officiated++;
         if (clockStoppages && r.clockStops) _clockStopped = true;
+        _runoffLeft = _clockStopped ? 0f : playClockRunoff;
     }
 
     void OnKickoffEnded(PlayInstance.PlayResult r)

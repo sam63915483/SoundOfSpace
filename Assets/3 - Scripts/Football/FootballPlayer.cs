@@ -32,6 +32,11 @@ public class FootballPlayer : MonoBehaviour
     public const float JukeSeconds = 0.42f, SpinSeconds = 0.55f, HurdleSeconds = 0.62f, DiveSeconds = 0.5f;
     public const float HurdleHeight = 0.95f;
     public const float HardFallSeconds = 0.7f;      // the tumble itself; he stays down longer
+    /// Facing turns at a rate, never snaps (Sam: "the aliens turn unnaturally").
+    public const float TurnRateRunning = 540f, TurnRateStanding = 300f;   // deg/s
+    /// Live football bodies live on this layer so the replay camera can hide
+    /// them (ghosts on ReplayLayer). Unnamed spare layers; see FootballBroadcast.
+    public const int LiveLayer = 29, ReplayLayer = 30;
 
     public FootballTeam team;
     /// The role for the CURRENT play — a team's seven play both ways (iron-man
@@ -48,7 +53,10 @@ public class FootballPlayer : MonoBehaviour
     /// the QB: a legitimate target even though he isn't running.
     [System.NonSerialized] public bool settled;
 
-    Vector3 _pos, _vel, _facing = Vector3.forward;
+    Vector3 _pos, _vel, _facing = Vector3.forward, _facingTarget = Vector3.forward;
+    Stance _stance = Stance.None;
+    float _idleTime;
+    GameObject _modelPrefab;
     float _maxSpeed, _baseMaxSpeed;
     Transform _label;
     Transform _cam;
@@ -99,6 +107,10 @@ public class FootballPlayer : MonoBehaviour
     public float JumpReach => IsJumping ? JumpHeight * Mathf.Sin(Mathf.PI * _jumpT / JumpSeconds) : 0f;
     public bool HasRig => _rig != null && _rig.Ready;
     public HoldStyle Hold => _hold;
+    public Stance CurrentStance => _stance;
+    public GameObject ModelPrefab => _modelPrefab;
+    public Color Tint => _tint;
+    public Transform BodyRoot => _bodyT;
 
     public Vector3 Pos => _pos;
     public Vector3 Vel => _vel;
@@ -138,8 +150,10 @@ public class FootballPlayer : MonoBehaviour
         float roleMul = off == FootballRole.OL ? 0.85f : off == FootballRole.QB || off == FootballRole.C ? 0.95f : 1f;
         _baseMaxSpeed = _maxSpeed = BaseSpeed * (0.9f + 0.2f * team.speed) * roleMul;
 
+        _modelPrefab = modelPrefab;
         if (modelPrefab != null) BuildAlien(modelPrefab);
         else BuildCapsule(bodyMat);
+        foreach (var tr in GetComponentsInChildren<Transform>(true)) tr.gameObject.layer = LiveLayer;
 
         var lbl = new GameObject("Label");
         lbl.transform.SetParent(transform, false);
@@ -151,6 +165,7 @@ public class FootballPlayer : MonoBehaviour
         tmp.color = Color.Lerp(team.color, Color.white, 0.35f);
         tmp.enableWordWrapping = false;
         tmp.GetComponent<RectTransform>().sizeDelta = new Vector2(4f, 1f);
+        lbl.layer = LiveLayer;                     // hidden by the replay camera with the rest of him
         _label = lbl.transform;
         _labelText = tmp;
     }
@@ -225,20 +240,24 @@ public class FootballPlayer : MonoBehaviour
     }
 
     /// Turn to face a direction without moving (lining up).
+    /// Turn to face a direction (at the turn rate) and stop.
     public void Face(Vector3 facing)
     {
-        if (facing.sqrMagnitude > 0.01f) _facing = facing.normalized;
+        facing.y = 0f;
+        if (facing.sqrMagnitude > 0.01f) _facingTarget = facing.normalized;
         _vel = Vector3.zero;
-        Apply();
     }
 
     public void Teleport(Vector3 fieldPos, Vector3 facing)
     {
         _pos = fieldPos; _pos.y = 0f;
         _vel = Vector3.zero;
-        if (facing.sqrMagnitude > 0.01f) _facing = facing.normalized;
+        if (facing.sqrMagnitude > 0.01f) _facing = _facingTarget = facing.normalized;
         Apply();
     }
+
+    /// How he stands when still (huddle lean, three-point, crouch, ready).
+    public void SetStance(Stance s) { _stance = s; }
 
     /// Go up for the ball (visual + a little extra reach).
     public void Jump()
@@ -301,7 +320,7 @@ public class FootballPlayer : MonoBehaviour
         if (IsDown || IsDiving) return;
         dirField.y = 0f;
         if (dirField.sqrMagnitude < 0.01f) dirField = _facing;
-        _diveDir = dirField.normalized; _facing = _diveDir;
+        _diveDir = dirField.normalized; _facing = _facingTarget = _diveDir;
         _diveSpeed = Mathf.Max(_vel.magnitude, _maxSpeed * 0.8f) * 1.35f;
         _diveT = 0f; _jukeT = -1f; _spinT = -1f; _hurdleT = -1f; _jumpT = -1f;
     }
@@ -464,8 +483,13 @@ public class FootballPlayer : MonoBehaviour
         _pos.y = 0f;
         if (IsDiving) { }
         else if (IsSpinning || IsHurdling) { }                                        // heading locked through the move
-        else if (_vel.sqrMagnitude > 0.25f && !IsThrowing && !IsJuking) _facing = _vel.normalized;
-        else if (_vel.sqrMagnitude <= 0.25f && o.face.sqrMagnitude > 0.01f) { o.face.y = 0f; _facing = o.face.normalized; }
+        else if (_vel.sqrMagnitude > 0.25f && !IsThrowing && !IsJuking) _facingTarget = _vel.normalized;
+        else if (_vel.sqrMagnitude <= 0.25f && o.face.sqrMagnitude > 0.01f) { o.face.y = 0f; _facingTarget = o.face.normalized; }
+        // Turn toward it at a rate: quick on the run, a body turn when standing.
+        float rate = _vel.sqrMagnitude > 4f ? TurnRateRunning : TurnRateStanding;
+        _facing = Vector3.RotateTowards(_facing, _facingTarget, rate * Mathf.Deg2Rad * dt, 0f);
+        _facing.y = 0f; if (_facing.sqrMagnitude < 1e-4f) _facing = _facingTarget; _facing.Normalize();
+        _idleTime = _vel.sqrMagnitude < 0.25f ? _idleTime + dt : 0f;
         Apply(dt);
         return o;
     }
@@ -512,6 +536,8 @@ public class FootballPlayer : MonoBehaviour
             _rig.divePhase = DivePhase;
             _rig.spinPhase = SpinPhase;
             _rig.hardFall = _hardT >= 0f ? Mathf.Clamp01(_hardT / HardFallSeconds) : 0f;
+            _rig.stance = _stance;
+            _rig.idleTime = _idleTime;
             _reachThisTick = false;
             return;
         }
@@ -522,6 +548,48 @@ public class FootballPlayer : MonoBehaviour
         _bodyT.localPosition = centre;
         _bodyT.localRotation = Quaternion.Euler(tip, yaw, lean);
         _reachThisTick = false;
+    }
+
+    /// Everything the replay needs to redraw this man on a ghost: where he is,
+    /// how the body root is posed, and the rig's inputs. Field space throughout.
+    public struct PoseFrame
+    {
+        public Vector3 pos, facing, bodyLocalPos; public Quaternion bodyLocalRot;
+        public float speedFrac, stridePhase, throwPhase, kickPhase, emotePhase, hurdlePhase, divePhase, spinPhase, hardFall, idleTime;
+        public bool reaching; public Vector3 reachField, throwDirField, ballField;
+        public HoldStyle hold; public EmoteKind emote; public Stance stance;
+    }
+
+    public PoseFrame CapturePose()
+    {
+        var f = new PoseFrame { pos = _pos, facing = _facing, hold = _hold, stance = _stance, idleTime = _idleTime };
+        if (_bodyT != null) { f.bodyLocalPos = _bodyT.localPosition; f.bodyLocalRot = _bodyT.localRotation; }
+        if (_rig != null)
+        {
+            f.speedFrac = _rig.speedFrac; f.stridePhase = _rig.stridePhase; f.reaching = _rig.reaching;
+            f.reachField = _fieldRoot != null ? _fieldRoot.InverseTransformPoint(_rig.reachTargetWorld) : _rig.reachTargetWorld;
+            f.throwPhase = _rig.throwPhase; f.throwDirField = _fieldRoot != null ? _fieldRoot.InverseTransformDirection(_rig.throwDirWorld) : _rig.throwDirWorld;
+            f.ballField = _fieldRoot != null ? _fieldRoot.InverseTransformPoint(_rig.ballWorld) : _rig.ballWorld;
+            f.kickPhase = _rig.kickPhase; f.emote = _rig.emote; f.emotePhase = _rig.emotePhase;
+            f.hurdlePhase = _rig.hurdlePhase; f.divePhase = _rig.divePhase; f.spinPhase = _rig.spinPhase; f.hardFall = _rig.hardFall;
+        }
+        return f;
+    }
+
+    /// Pose a ghost (a bare model + rig under `ghostRoot`, a child of FieldRoot) from a frame.
+    public static void ApplyPose(Transform ghostRoot, Transform body, FootballAlienRig rig, Transform fieldRoot, in PoseFrame f)
+    {
+        ghostRoot.localPosition = f.pos;
+        ghostRoot.localRotation = Quaternion.LookRotation(f.facing.sqrMagnitude > 0.01f ? f.facing : Vector3.forward, Vector3.up);
+        if (body != null) { body.localPosition = f.bodyLocalPos; body.localRotation = f.bodyLocalRot; }
+        if (rig == null) return;
+        rig.speedFrac = f.speedFrac; rig.stridePhase = f.stridePhase; rig.reaching = f.reaching;
+        rig.reachTargetWorld = fieldRoot.TransformPoint(f.reachField);
+        rig.throwPhase = f.throwPhase; rig.throwDirWorld = fieldRoot.TransformDirection(f.throwDirField);
+        rig.ballWorld = fieldRoot.TransformPoint(f.ballField);
+        rig.kickPhase = f.kickPhase; rig.hold = f.hold; rig.emote = f.emote; rig.emotePhase = f.emotePhase;
+        rig.hurdlePhase = f.hurdlePhase; rig.divePhase = f.divePhase; rig.spinPhase = f.spinPhase; rig.hardFall = f.hardFall;
+        rig.stance = f.stance; rig.idleTime = f.idleTime;
     }
 
     /// The ball on the grass in front of the centre (world) — his hands go to it.

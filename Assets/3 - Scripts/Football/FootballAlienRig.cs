@@ -8,6 +8,11 @@ public enum HoldStyle { None, TwoHands, Tucked, SnapStance, ReadyHands }
 /// A dead-ball celebration / reaction (Madden-style, Sam 2026-09-19).
 public enum EmoteKind { None, ArmsUp, FirstDown, Flex, ChestThump, IncompleteWave, Point, Dejected }
 
+/// How a man stands when he is not running: the huddle lean, a lineman's
+/// three-point stance, a defender's crouch, a receiver's ready stance.
+/// Standing bolt upright between plays was Sam's "they all just freeze".
+public enum Stance { None, Huddle, Lineman, Crouch, Ready }
+
 /// <summary>
 /// Procedural football animation for the Alien_Pack rigs (thigh/calf/foot,
 /// upperarm/lowerarm/hand, spine, head — a UE-style skeleton in a T-pose, no
@@ -53,6 +58,8 @@ public class FootballAlienRig : MonoBehaviour
     [System.NonSerialized] public float divePhase = -1f;
     [System.NonSerialized] public float spinPhase = -1f;
     [System.NonSerialized] public float hardFall;         // 0..1: flailing while tumbling
+    [System.NonSerialized] public Stance stance = Stance.None;
+    [System.NonSerialized] public float idleTime;         // seconds standing still: breathing, weight shifts
 
     public const float ThrowSeconds = 0.42f;
     public const float ThrowRelease = 0.58f;              // fraction of the motion where the ball leaves the hand
@@ -140,6 +147,17 @@ public class FootballAlienRig : MonoBehaviour
 
         // ── torso ──
         Vector3 spineDir = Quaternion.AngleAxis(10f * s, r) * u;               // lean into the run
+        bool still = s < 0.08f;
+        if (still && stance == Stance.Huddle) spineDir = (u * 0.75f + f * 0.62f).normalized;           // leaning in, hands on knees
+        else if (still && stance == Stance.Lineman) spineDir = (u * 0.5f + f * 0.85f).normalized;      // three-point
+        else if (still && stance == Stance.Crouch) spineDir = (u * 0.88f + f * 0.32f).normalized;
+        else if (still && stance == Stance.Ready) spineDir = (u * 0.92f + f * 0.22f).normalized;
+        if (still && hold == HoldStyle.None && emote == EmoteKind.None && throwPhase < 0f && !reaching && hardFall <= 0f)
+        {
+            // Breathing and a slow weight shift so nobody is a statue.
+            float breathe = Mathf.Sin(idleTime * 1.7f) * 1.5f, sway = Mathf.Sin(idleTime * 0.9f + 1f) * 1.2f;
+            spineDir = Quaternion.AngleAxis(breathe, r) * Quaternion.AngleAxis(sway, f) * spineDir;
+        }
         if (hold == HoldStyle.SnapStance) spineDir = (u * 0.45f + f * 0.9f).normalized;       // bent over the ball
         else if (hold == HoldStyle.ReadyHands) spineDir = (u * 0.9f + f * 0.25f).normalized;  // a slight crouch
         else if (divePhase >= 0f) spineDir = (u * 0.8f + f * 0.4f).normalized;
@@ -181,6 +199,34 @@ public class FootballAlienRig : MonoBehaviour
         {
             thighDirR = Quaternion.AngleAxis(-14f, r) * -u; thighDirL = Quaternion.AngleAxis(-14f, r) * -u;
             kneeR = kneeL = 26f;
+        }
+        else if (still && stance == Stance.Huddle)
+        {
+            thighDirR = Quaternion.AngleAxis(-22f, r) * -u; thighDirL = Quaternion.AngleAxis(-22f, r) * -u;
+            kneeR = kneeL = 38f;
+        }
+        else if (still && stance == Stance.Lineman)
+        {
+            // Deep squat, one leg staggered back.
+            thighDirR = Quaternion.AngleAxis(-55f, r) * -u; thighDirL = Quaternion.AngleAxis(-30f, r) * -u;
+            kneeR = 95f; kneeL = 60f;
+        }
+        else if (still && stance == Stance.Crouch)
+        {
+            thighDirR = Quaternion.AngleAxis(-24f, r) * -u; thighDirL = Quaternion.AngleAxis(-24f, r) * -u;
+            kneeR = kneeL = 44f;
+        }
+        else if (still && stance == Stance.Ready)
+        {
+            // One foot forward, weight on the balls of the feet.
+            thighDirR = Quaternion.AngleAxis(-26f, r) * -u; thighDirL = Quaternion.AngleAxis(4f, r) * -u;
+            kneeR = 40f; kneeL = 12f;
+        }
+        else if (still)
+        {
+            float shift = Mathf.Sin(idleTime * 0.9f + 1f) * 4f;
+            thighDirR = Quaternion.AngleAxis(-3f + shift, r) * -u; thighDirL = Quaternion.AngleAxis(-3f - shift, r) * -u;
+            kneeR = kneeL = 6f;
         }
         else if (hardFall > 0f)
         {
@@ -277,6 +323,42 @@ public class FootballAlienRig : MonoBehaviour
                 TwoBone(_upperL, _lowerL, _handL, p - r * 0.1f, (-u * 0.3f - r * 0.9f).normalized);
                 return;
             }
+        }
+        if (still && stance == Stance.Huddle)
+        {
+            // Hands on the knees.
+            Vector3 kR = _calfR.position + f * 0.05f, kL = _calfL.position + f * 0.05f;
+            TwoBone(_upperR, _lowerR, _handR, kR, (r * 0.8f - f * 0.3f).normalized);
+            TwoBone(_upperL, _lowerL, _handL, kL, (-r * 0.8f - f * 0.3f).normalized);
+            return;
+        }
+        if (still && stance == Stance.Lineman)
+        {
+            // Right hand on the grass, left forearm across the thigh.
+            Vector3 ground = _footR.position + f * 0.45f + r * 0.15f;
+            Vector3 dR = (ground - _upperR.position).normalized;
+            Aim(_upperR, _lowerR, dR); Aim(_lowerR, _handR, dR);
+            TwoBone(_upperL, _lowerL, _handL, _calfL.position + f * 0.1f - r * 0.05f, (-r * 0.7f - f * 0.4f).normalized);
+            return;
+        }
+        if (still && (stance == Stance.Crouch || stance == Stance.Ready))
+        {
+            // Arms bent, hands in front, a little bounce.
+            float b = Mathf.Sin(idleTime * 2.2f) * 0.03f;
+            Vector3 pR = ShoulderR + f * (ArmLength * 0.45f) - u * (ArmLength * 0.55f + b) + r * 0.12f;
+            Vector3 pL = ShoulderL + f * (ArmLength * 0.45f) - u * (ArmLength * 0.55f + b) - r * 0.12f;
+            TwoBone(_upperR, _lowerR, _handR, pR, (-u * 0.4f + r * 0.9f).normalized);
+            TwoBone(_upperL, _lowerL, _handL, pL, (-u * 0.4f - r * 0.9f).normalized);
+            return;
+        }
+        if (still)
+        {
+            // Hanging arms with a breath in them.
+            float sw = Mathf.Sin(idleTime * 1.7f) * 3f;
+            Vector3 dR = Quaternion.AngleAxis(sw, r) * (-u + r * 0.22f).normalized, dL = Quaternion.AngleAxis(sw, r) * (-u - r * 0.22f).normalized;
+            Aim(_upperR, _lowerR, dR); Aim(_lowerR, _handR, Quaternion.AngleAxis(-14f, r) * dR);
+            Aim(_upperL, _lowerL, dL); Aim(_lowerL, _handL, Quaternion.AngleAxis(-14f, r) * dL);
+            return;
         }
         ArmPump(_upperR, _lowerR, _handR, -swing, s, 1f, f, r, u);
         ArmPump(_upperL, _lowerL, _handL, swing, s, -1f, f, r, u);

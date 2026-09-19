@@ -71,7 +71,7 @@ public class PlayInstance
     /// The ball is carried back by a player. If it STILL isn't at the line
     /// after this long (something went wrong), the officials spot it — the
     /// one place code moves the ball, and it is logged.
-    public const float OfficialsSpotAfter = 30f;
+    public const float OfficialsSpotAfter = 45f;
     /// A man with the ball runs at this fraction of his top speed — pursuit
     /// closes from behind, which is what turns catches into 12-yard gains
     /// instead of touchdowns.
@@ -168,10 +168,16 @@ public class PlayInstance
     Vector3 _ballSpot;                       // where the ball is placed for the snap
     FootballPlayer _fetcher;
     bool _ballReady;
-    int _huddleCount;
+    int _huddleCount, _defHuddleCount;
     bool _broke;
+    float _huddleSince = -1f;
     PlayStats _stats;
-    public const float HuddleSeconds = 1.6f;
+    /// Once everyone is in the huddle it holds this long (Sam: "like 10
+    /// seconds") - the replay on the big screens plays in that window.
+    public const float HuddleHold = 9f;
+    public const float HuddleTimeout = 15f;
+    /// True while both sides are in their huddles (the replay window).
+    public bool InHuddle => phase == Phase.Setup && !_broke && _huddleSince >= 0f;
 
     // ── construction ───────────────────────────────────────────────────────
 
@@ -221,7 +227,7 @@ public class PlayInstance
         float[] wrX = formation.wrX;
         _ballSpot = F(0f, 0f);
         Spot(qb, F(0f, -4.5f));
-        Spot(c, F(0f, -0.5f), false);
+        Spot(c, F(0f, -0.5f));
         Spot(ol[0], F(-1.6f, -0.5f)); Spot(ol[1], F(1.6f, -0.5f));
         for (int i = 0; i < 3; i++) Spot(wr[i], F(wrX[i], i == 2 ? -1.2f : -0.8f));
         // Jet sweep: the slot is already in motion beside the QB at the snap.
@@ -243,7 +249,7 @@ public class PlayInstance
         foreach (int i in play.priority) readOrder.Add(wr[i]);
         _live[qb] = qbOverride ?? new QBBrain_CPU(off, readOrder, F(0f, -7f), _rng, play, wrX[2]);
         _live[c] = new CenterBrain();
-        for (int i = 0; i < 2; i++) _live[ol[i]] = new OLBrain(dl[i]);
+        for (int i = 0; i < 2; i++) _live[ol[i]] = new OLBrain(dl[i], F(i == 0 ? -2.6f : 2.6f, -3.0f));
         for (int i = 0; i < 3; i++)
         {
             var route = new List<Vector3>();
@@ -251,7 +257,7 @@ public class PlayInstance
             foreach (var wp in play.routes[i].points) route.Add(F(wrX[i] + wp.x * sideward, wp.y));
             _live[wr[i]] = new WRBrain(route, play.routes[i].settle);
         }
-        for (int i = 0; i < 2; i++) _live[dl[i]] = new DLBrain();
+        for (int i = 0; i < 2; i++) _live[dl[i]] = new DLBrain(F(i == 0 ? -4.3f : 4.3f, -1.8f));
         for (int i = 0; i < 3; i++) _live[db[i]] = new DBBrain(wr[i], def, _rng);
         _live[lb] = new LBBrain();
         _live[s] = new SafetyBrain(def, _rng);
@@ -305,19 +311,28 @@ public class PlayInstance
         p.speedScale = 1f;
         p.SetHighlight(false);
         p.settled = false;
-        // First the huddle (offense in a ring 7 yd behind the ball, defense
-        // loitering past the line), then the formation. The centre skips the
-        // huddle: he takes the ball to the line.
-        Vector3 huddle;
-        if (view.isKickoff || !huddles) huddle = fieldPos;
+        // First the huddle - both sides: a ring facing the man in the middle
+        // (the QB calling it; the LB for the defense), 7 yd behind the ball
+        // and 6 yd past it - then the formation.
+        Vector3 huddle, centre;
+        if (view.isKickoff || !huddles) { huddle = fieldPos; centre = fieldPos; }
         else if (p.team == view.offense)
         {
-            float ang = (_huddleCount++ * 60f) * Mathf.Deg2Rad;
-            huddle = F(Mathf.Sin(ang) * 1.6f, -7f + Mathf.Cos(ang) * 1.2f);
+            centre = F(0f, -7.5f);
+            if (p.role == FootballRole.QB) huddle = centre;
+            else { float ang = (_huddleCount++ * 60f + 30f) * Mathf.Deg2Rad; huddle = F(Mathf.Sin(ang) * 1.7f, -7.5f + Mathf.Cos(ang) * 1.4f); }
         }
-        else huddle = F(fieldPos.x / FootballField.MetresPerYard * view.attackDir * 0.6f, 3.5f + (_huddleCount % 3));
+        else
+        {
+            centre = F(0f, 6.5f);
+            if (p.role == FootballRole.LB) huddle = centre;
+            else { float ang = (_defHuddleCount++ * 60f) * Mathf.Deg2Rad; huddle = F(Mathf.Sin(ang) * 1.7f, 6.5f + Mathf.Cos(ang) * 1.4f); }
+        }
         _huddle[p] = huddle;
-        p.brain = _setup[p] = new MoveToBrain(huddle);
+        var mv = new MoveToBrain(huddle);
+        if (huddle != centre) mv.SetFace(centre);
+        else if (!view.isKickoff && huddles) mv.SetFace(fieldPos);           // the caller faces the line, men round him
+        p.brain = _setup[p] = mv;
     }
 
     // ── ticking ────────────────────────────────────────────────────────────
@@ -335,15 +350,25 @@ public class PlayInstance
                 bool all = true;
                 foreach (var kv in _setup)
                 {
-                    kv.Key.Tick(view, dt);
-                    if (!kv.Value.Arrived(kv.Key) || kv.Key.IsEmoting) all = false;
+                    var p = kv.Key;
+                    p.Tick(view, dt);
+                    bool here = kv.Value.Arrived(p);
+                    if (!here || p.IsEmoting) all = false;
+                    p.SetStance(here ? StanceFor(p) : Stance.None);
                 }
-                // Break the huddle once everyone's in it (or it's taken too long).
-                if (!_broke && !view.isKickoff && (all && _phaseTime > HuddleSeconds || _phaseTime > SetupTimeout * 0.5f))
+                // The huddle: once everyone is in it, it HOLDS (the play call, the
+                // replay on the screens), then breaks. Or it's taken too long.
+                if (!_broke && !view.isKickoff)
                 {
-                    _broke = true; all = false; _phaseTime = 0f;
-                    foreach (var kv in _formation)
-                        if (_setup.TryGetValue(kv.Key, out var mv) && kv.Key != _ball.holder && kv.Key != _fetcher) mv.target = kv.Value;
+                    if (all && _huddleSince < 0f) _huddleSince = _phaseTime;
+                    bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= HuddleHold;
+                    if (held || _phaseTime > HuddleTimeout)
+                    {
+                        _broke = true; all = false; _phaseTime = 0f;
+                        foreach (var kv in _formation)
+                            if (_setup.TryGetValue(kv.Key, out var mv) && kv.Key != _ball.holder && kv.Key != _fetcher) { mv.target = kv.Value; mv.ClearFace(); }
+                        log?.Invoke(view.offense.shortName + " break the huddle");
+                    }
                 }
                 if (view.isKickoff) _broke = true;
                 // Face the line once there. Never snapped into place: a
@@ -383,6 +408,22 @@ public class PlayInstance
         }
     }
 
+    /// How a man waits: leaning in in the huddle, then his position's stance
+    /// at the line (linemen down, defenders crouched, receivers ready).
+    Stance StanceFor(FootballPlayer p)
+    {
+        if (!_broke && !view.isKickoff)
+            return (p.role == FootballRole.QB && p.team == view.offense) || (p.role == FootballRole.LB && p.team == view.defense) ? Stance.None : Stance.Huddle;
+        if (view.isKickoff) return p.team == view.offense ? Stance.Ready : Stance.Crouch;
+        switch (p.role)
+        {
+            case FootballRole.OL: case FootballRole.DL: case FootballRole.C: return Stance.Lineman;
+            case FootballRole.DB: case FootballRole.LB: case FootballRole.S: return Stance.Crouch;
+            case FootballRole.WR: return Stance.Ready;
+            default: return Stance.None;
+        }
+    }
+
     /// The dead-ball choreography (Sam, 2026-09-19 — "like Madden"): whoever
     /// ended with the ball brings it to the centre; a ball on the grass is
     /// picked up by the nearest man of the offense and brought back; the
@@ -409,12 +450,13 @@ public class PlayInstance
 
         if (holder == _ballReceiver)
         {
-            // The centre has it: to the line, and set it down (the kicker keeps his).
+            // The centre has it: into the huddle with it, then to the line
+            // after the break, and set it down (the kicker keeps his).
             if (view.isKickoff) { _ballReady = true; return; }
             var mv = _setup[holder];
-            mv.target = _formation[holder]; mv.stopShort = 0f;
+            mv.target = _broke ? _formation[holder] : _huddle[holder]; mv.stopShort = 0f;
             holder.SetHold(HoldStyle.Tucked);
-            if (Vector3.Distance(holder.Pos, _formation[holder]) < 0.9f)
+            if (_broke && Vector3.Distance(holder.Pos, _formation[holder]) < 0.9f)
             {
                 holder.SetHold(HoldStyle.None);
                 _ball.Place(_ballSpot);
@@ -436,6 +478,7 @@ public class PlayInstance
                 _ball.Hold(_ballReceiver);
                 _ballReceiver.SetHold(HoldStyle.Tucked);
                 mv.target = _broke || view.isKickoff ? _formation[holder] : _huddle[holder]; mv.stopShort = 0f; mv.hurry = false;
+                if (!_broke && !view.isKickoff) mv.SetFace(holder.team == view.offense ? F(0f, -7.5f) : F(0f, 6.5f));
                 _fetcher = null;
             }
             return;
@@ -476,6 +519,7 @@ public class PlayInstance
     {
         phase = Phase.Live; _phaseTime = 0f;
         view.snapped = true; view.timeSinceSnap = 0f;
+        foreach (var p in _players) p.SetStance(Stance.None);
         if (view.isKickoff)
         {
             _lastCarrier = _ball.holder;
@@ -1081,7 +1125,7 @@ public class PlayInstance
         _throwPending = false; _kickPending = false;
         foreach (var p in _players)
         {
-            p.SetHighlight(false); p.speedScale = 1f; p.brain = null; p.settled = false;
+            p.SetHighlight(false); p.speedScale = 1f; p.brain = null; p.settled = false; p.SetStance(Stance.None);
             if (p.IsThrowing) p.CancelThrow();
             if (p != _ball.holder) p.SetHold(HoldStyle.None);
         }

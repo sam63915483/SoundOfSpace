@@ -356,10 +356,12 @@ MonoBehaviour:
     coverage: 0.6
     qbAccuracy: 0.5
     speed: 0.6
-  quarterSeconds: 150
+  quarterSeconds: 300
   quarters: 4
   touchdownPoints: 7
   firstDownYards: 10
+  clockStoppages: 1
+  playClockRunoff: 25
   coinTossHold: 3
   deadBallHold: 2.2
   scoreHold: 4

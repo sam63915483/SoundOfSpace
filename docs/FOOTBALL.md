@@ -1,4 +1,4 @@
-# Alien Football — how it works right now (2026-09-19, pass 2)
+# Alien Football — how it works right now (2026-09-19, pass 3)
 
 The live reference for the football prototype. The design briefs are
 `Handoff_AlienFootball_Phase1_v1.md` (✅ BUILT — the original *why*) and
@@ -175,7 +175,60 @@ meet it. Returns come out to the 20–30.
 registration and the planet's gravity direction; the field-space parabola needs
 neither.
 
-## Numbers from the last headless soak (3 games, seeds 1000–1002)
+## Pass 3 (2026-09-19 evening) — huddles, the big screens, the QB buying time
+
+Sam's second round of notes after watching pass 2. Built and looked at by me
+in play mode (Sam's exception for this test scene); Sam has not watched it yet.
+
+- **Huddles, both sides.** Offense in a ring 7.5 yd behind the ball facing
+  the QB in the middle; defense in a ring 6.5 yd past it facing the LB. Once
+  everyone is in, it HOLDS `PlayInstance.HuddleHold` (9 s), then breaks
+  ("break the huddle" in the log). The centre carries the ball into the
+  huddle and places it after the break. Dead ball is now ~19 s.
+- **Stances** (`Stance` on the rig): huddle lean with hands on knees, linemen
+  in a three-point, defenders crouched, receivers in a ready stance, and an
+  idle breathe / weight-shift for anyone standing — nobody is a statue.
+  **Facing turns at a rate** (`FootballPlayer.TurnRate*`), never snaps.
+- **Accelerated clock** (`FootballMatch.playClockRunoff`, 25 s): after a play
+  where the clock keeps running, 25 s burns fast during the huddle instead of
+  real time; the clock runs live only while the play is live. Quarters are
+  5:00 in the scene (`quarterSeconds`; a game is ~28 sim-minutes — lower it
+  for a shorter game).
+- **The pocket.** OL kick-slide to a pocket point (`OLBrain` ctor); DL take an
+  edge point round the tackle before turning up (`DLBrain` ctor) — the arc is
+  the cup. The pocket timer still frees one rusher.
+- **The QB escapes** (`QBBrain_CPU`, Sam: "rolling out and running back
+  further to lose yards and deke out the defense and buy time … then launch
+  a cannon"): on pressure, or with his clock nearly out and nobody open, he
+  leaves the pocket — away from the rusher, deeper while a man is on him (up
+  to ~15 yd), a juke on anyone who gets within 2.4 m, one reverse of field
+  if he runs out of room — and from deep in the backfield the deep men are
+  weighted up and the window he'll accept opens (`floor` −1.9). He runs only
+  when a lane opens or he's out of time (`EscapeSeconds` 3.4). Deep sacks are
+  the price and Sam wants them.
+- **Jumbotrons + replay** (`FootballBroadcast.cs`, created at runtime under
+  FieldRoot by `FootballMatch.Boot` if the scene has none): a broadcast
+  camera high on the home sideline renders to a texture on two big screens
+  (one over each end zone; positions are fields on the component). Live it
+  frames the ball — wide pre-snap, in on the huddle, on the QB in the pocket,
+  tight on a runner, and on a throw it fits ball + landing spot. After a play
+  worth seeing (score, first down, 8+ yd completion, INT, fumble, sack, a
+  hurdle or spin) it plays the REPLAY 2 s later: every pose was recorded at
+  30 Hz (`FootballPlayer.CapturePose`) and a second set of ghost aliens on
+  layer 30 re-enacts it; quarter speed from 1 s before the key moment (catch >
+  hurdle/spin/fumble > tackle) to 0.6 s after. Live bodies, labels and the
+  ball are on layer 29 so the replay camera can hide them; every other camera
+  is told to ignore layer 30. Both layers are unnamed spares.
+- **Debug:** a file `build/football_dump.txt` holding a folder path makes the
+  broadcast save its picture there every 2 s in play mode (and the player's
+  view every 8 s) — how I watch a run without eyes. Delete it after.
+
+Last soak (3 games): 14–21, 21–14, 28–7 · 67–78 plays · 5–9 sacks averaging
+an 11-yd loss · 5–7 INT (high — `DefenderDropChance` / `OpenSeparation` are
+the knobs) · ~30 throws on the run a game, 6 of them 30+ yards · dead ball
+19 s · huddle every play.
+
+## Numbers from the last headless soak (pass 2) (3 games, seeds 1000–1002)
 
 21–14, 28–0, 14–7 · 53–61 plays/game · 45–55% completions · 6–9 yds/play ·
 2–6 INT · 4–12 sacks · ~15 rollouts + ~10 scramble drills · ~10 jukes, ~4 spins,

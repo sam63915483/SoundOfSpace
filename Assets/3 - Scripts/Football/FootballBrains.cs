@@ -106,14 +106,19 @@ public class MoveToBrain : IPlayerBrain
     public float stopShort;
     /// Jog (true) rather than walk — a returner bringing the ball 60 m.
     public bool hurry;
+    Vector3 _face; bool _hasFace;
     public MoveToBrain(Vector3 t) { target = t; }
     public bool KeepsControlWhenCarrying => true;
     public bool Arrived(FootballPlayer self) => Vector3.Distance(self.Pos, target) < Steer.ArriveRadius + stopShort;
+    /// Once there, turn to look at this point (the man in the middle of the huddle).
+    public void SetFace(Vector3 point) { _face = point; _hasFace = true; }
+    public void ClearFace() { _hasFace = false; }
     public void Tick(FootballPlayer self, PlayView view, float dt, ref BrainOutput o)
     {
         // A jog for a short walk, quicker when the spot is far (the kickoff
         // lineup after a score is 60 m away).
         float dist = Vector3.Distance(self.Pos, target);
+        if (_hasFace && dist < 1.0f + stopShort) o.face = _face - self.Pos;
         if (dist < stopShort) { o.move = Vector3.zero; return; }
         float far = Mathf.Clamp01((dist - 15f) / 30f);
         float pace = hurry ? 0.92f : Mathf.Lerp(0.78f, 0.92f, far);
@@ -252,13 +257,15 @@ public class BallCarrierBrain : IPlayerBrain
 public class OLBrain : IPlayerBrain
 {
     readonly FootballPlayer _man;
-    public OLBrain(FootballPlayer pairedRusher) { _man = pairedRusher; }
+    readonly Vector3 _pocketSpot;
+    public OLBrain(FootballPlayer pairedRusher, Vector3 pocketSpot) { _man = pairedRusher; _pocketSpot = pocketSpot; }
     public bool KeepsControlWhenCarrying => false;
 
     public void Tick(FootballPlayer self, PlayView view, float dt, ref BrainOutput o)
     {
         if (!view.snapped) return;
         var carrier = view.Carrier;
+        if (view.SnapInFlight) carrier = view.FindRole(view.offense, FootballRole.QB);
         if (carrier != null && carrier.team != self.team) { o.move = Steer.Pursue(self, carrier); return; }
         // Stay on your man, between him and whoever has the ball (the QB in
         // the pocket, the sweep man, a receiver after the catch).
@@ -269,6 +276,11 @@ public class OLBrain : IPlayerBrain
             Vector3 spot = _man.speedScale < 0.5f
                 ? _man.Pos + (self.Pos - _man.Pos).normalized * 0.9f
                 : _man.Pos + (carrier.Pos - _man.Pos).normalized * 1.0f;
+            // Kick-slide: until he arrives, set up at the pocket point so the
+            // cup forms between the rusher's edge path and the QB.
+            bool qbInPocket = carrier.role == FootballRole.QB && view.Downfield(carrier.Pos) < 0f;
+            if (qbInPocket && _man.speedScale >= 0.5f && Vector3.Distance(_man.Pos, self.Pos) > 2.2f)
+                spot = Vector3.Lerp(spot, _pocketSpot, 0.65f);
             o.move = Steer.To(self.Pos, spot, 0.8f);
             return;
         }
@@ -465,7 +477,23 @@ public class WRBrain : IPlayerBrain
 public class DLBrain : IPlayerBrain
 {
     public bool free;
+    readonly Vector3 _edge;
+    bool _pastEdge;
+    /// `edgeSpot`: the point outside the tackle he bends round before turning
+    /// up at the QB — the rush takes the long way, the line slides with it,
+    /// and that arc IS the pocket.
+    public DLBrain(Vector3 edgeSpot) { _edge = edgeSpot; }
     public bool KeepsControlWhenCarrying => false;
+
+    Vector3 Rush(FootballPlayer self, PlayView view, FootballPlayer qb)
+    {
+        if (!free && !_pastEdge && qb != null && view.Downfield(qb.Pos) < 0f)
+        {
+            if (Vector3.Distance(self.Pos, _edge) < 1.0f || view.timeSinceSnap > 1.7f) _pastEdge = true;
+            else return Steer.To(self.Pos, _edge, 0f);
+        }
+        return qb != null ? Steer.Pursue(self, qb) : Vector3.zero;
+    }
 
     public void Tick(FootballPlayer self, PlayView view, float dt, ref BrainOutput o)
     {
@@ -475,7 +503,7 @@ public class DLBrain : IPlayerBrain
         if (view.SnapInFlight)
         {
             var qb = view.FindRole(view.offense, FootballRole.QB);
-            if (qb != null) { o.move = Steer.Pursue(self, qb); return; }
+            if (qb != null) { o.move = Rush(self, view, qb); return; }
         }
         if (view.BallAirborne) { o.move = Steer.To(self.Pos, ball.catchPoint, 0f) * 0.7f; return; }
         if (view.BallLoose) { o.move = Steer.To(self.Pos, ball.pos, 0f); return; }
@@ -484,8 +512,9 @@ public class DLBrain : IPlayerBrain
         if (view.DefenseStillReading && carrier.role != FootballRole.QB)
         {
             var qb = view.FindRole(view.offense, FootballRole.QB);
-            if (qb != null) { o.move = Steer.Pursue(self, qb); return; }
+            if (qb != null) { o.move = Rush(self, view, qb); return; }
         }
+        if (carrier.role == FootballRole.QB && view.Downfield(carrier.Pos) < 0f) { o.move = Rush(self, view, carrier); return; }
         o.move = Steer.Pursue(self, carrier);
     }
 }
@@ -647,7 +676,7 @@ public class SafetyBrain : IPlayerBrain
 /// go get him if he holds the ball too long or leaves the pocket.
 public class LBBrain : IPlayerBrain
 {
-    public float rushAfter = 4.0f;
+    public float rushAfter = 5.0f;
     public bool KeepsControlWhenCarrying => false;
 
     public void Tick(FootballPlayer self, PlayView view, float dt, ref BrainOutput o)
@@ -681,11 +710,14 @@ public class LBBrain : IPlayerBrain
 /// Sam (2026-09-18): "the QB throws fast and only 10–15 yards". So every snap
 /// he rolls a STYLE — a quick game, a patient read that waits for the deeper
 /// man, a deep shot that ignores the checkdowns until late, or a designed
-/// ROLLOUT — and when the pocket goes, or his clock is nearly out with nobody
-/// open, he leaves the pocket (the scramble drill: away from the rush, eyes
-/// downfield, receivers working back to him) before finally tucking it and
-/// running. Sam (2026-09-19): "the qb should be rolling out and extending the
-/// play and looking for shots downfield or potentially running it".
+/// ROLLOUT. Sam (2026-09-19): "nothing better than a qb rolling out and
+/// running back further to lose yards and deke out the defense and buy time
+/// for receivers to get open and then launch a cannon". So when the pocket
+/// goes — or his clock is nearly out with nobody open — he ESCAPES: away from
+/// the rusher, deeper while a man is on him, sidestepping (a juke) anyone who
+/// gets close, reversing field once if he runs out of room, eyes downfield
+/// the whole time with the deep men weighted up. He gives up and runs only
+/// when he's cornered, out of time, or a lane opens in front of him.
 /// </summary>
 public class QBBrain_CPU : IPlayerBrain
 {
@@ -698,20 +730,22 @@ public class QBBrain_CPU : IPlayerBrain
     float _holdMax, _dropTime;
     bool _thrown;
     public Style style;
-    bool _rolling; float _rollSide; float _rollSince = -1f;
-    bool _scrambleDrill;
+    // Extending the play.
+    bool _escaping, _designed, _reversed, _scrambleDrill;
+    float _escapeSince = -1f, _escapeSide, _lastJuke = -9f;
     bool _runOnExpiry;
     float _designedSide;
     public const float DropTime = 1.1f;
     public const float ThrowSpeed = 21f;     // m/s along the ground — a 30 m throw is ~1.4 s in the air
     public const float OpenSeparation = 3.9f;   // ≈ 0.5 s of daylight at the catch: a corner one stride behind is NOT open
     public const float DeepYards = 18f;
-    public const float RolloutSeconds = 2.0f;
-    public const float ScrambleExtension = 1.8f;
+    public const float EscapeSeconds = 3.4f;         // buying time before he gives up and runs
+    public const float DesignedRollSeconds = 3.0f;
+    public const float ScrambleExtension = 2.0f;
 
     /// The QB has left the pocket with the ball (receivers adjust).
-    public bool Extending => _rolling;
-    public float ExtendSide => _rollSide;
+    public bool Extending => _escaping;
+    public float ExtendSide => _escapeSide;
 
     public QBBrain_CPU(FootballTeam team, List<FootballPlayer> readOrder, Vector3 dropSpot, System.Random rng, FootballPlay play, float slotSide)
     {
@@ -777,47 +811,54 @@ public class QBBrain_CPU : IPlayerBrain
             return;
         }
 
-        // Pass. Drop, then read — not before the routes have had a second to develop.
-        var rusher = view.NearestStanding(self.Pos, view.defense);
-        float rusherDist = rusher != null ? Vector3.Distance(rusher.Pos, self.Pos) : 99f;
-        if (style == Style.Rollout && !_rolling && t > 0.45f)
+        // Pass. The nearest man on his feet is the threat.
+        var threat = view.NearestStanding(self.Pos, view.defense);
+        Vector3 toMe = threat != null ? self.Pos - threat.Pos : Vector3.zero; toMe.y = 0f;
+        float threatDist = threat != null ? toMe.magnitude : 99f;
+        Vector3 toMeN = threatDist > 0.01f ? toMe / threatDist : Vector3.zero;
+        bool threatClosing = threat != null && Vector3.Dot(threat.Vel, toMeN) > 1.5f;
+        bool inTheFace = threatDist < 3.2f && threatClosing;
+
+        if (style == Style.Rollout && !_escaping && t > 0.45f)
         {
-            // Designed: roll to the slot's side straight off the catch.
-            _rolling = true; _rollSince = t; _rollSide = _designedSide * view.attackDir;
+            StartEscape(self, view, threat, t, _designedSide * view.attackDir, true);
             o.say = self.team.shortName + " QB rolls " + (_designedSide > 0f ? "right" : "left") + " by design";
         }
-        if (!_rolling && view.pocketCollapsed && !_thrown && t > _dropTime)
+        if (!_escaping && !_thrown && t > _dropTime * 0.8f && (view.pocketCollapsed || inTheFace))
         {
-            // The pocket's gone: roll out, away from the man coming.
-            StartRoll(self, view, rusher, t);
-            o.say = self.team.shortName + " QB rolls out under pressure";
+            StartEscape(self, view, threat, t, 0f, false);
+            o.say = self.team.shortName + " QB feels the rush and gets out of the pocket";
         }
-        if (_rolling)
-        {
-            // Sideways and angling up toward the line, sprinting; eyes
-            // downfield. Near the numbers, bend it upfield instead of running
-            // out of room.
-            float room = FootballField.HalfWidth - 6f - Mathf.Abs(self.Pos.x);
-            float up = room < 4f ? 0.9f : 0.45f;
-            float across = room < 1.5f ? 0f : _rollSide;
-            Vector3 dir = new Vector3(across, 0f, up * view.attackDir).normalized;
-            o.move = Steer.InBounds(self.Pos, dir, 6f) * 0.95f;
-            // At the line with the ball still in his hands: he can't throw from
-            // past it, so it's a run now — tuck it (a standing QB at the line
-            // was a sack every time).
-            if (view.Downfield(self.Pos) > -1.0f)
-            {
-                o.action = BrainAction.Handoff; o.targetPlayer = self;
-                o.say = self.team.shortName + " QB reaches the line and takes off";
-                return;
-            }
-        }
+
+        // Movement: the drop, or the escape.
+        if (_escaping) o.move = EscapeMove(self, view, threatDist, toMeN);
         else o.move = t < _dropTime ? Steer.To(self.Pos, _dropSpot, 1f) : Steer.To(self.Pos, _dropSpot, 1.5f) * 0.4f;
+
+        // A rusher on him out of the pocket: sidestep him (the deke).
+        if (_escaping && threat != null && threatDist < 2.4f && threatClosing && t - _lastJuke > 0.9f && !self.IsJuking)
+        {
+            Vector3 perp = Vector3.Cross(Vector3.up, toMeN);
+            if (Vector3.Dot(perp, Vector3.right * _escapeSide) < 0f) perp = -perp;
+            o.action = BrainAction.Juke; o.target = perp; _lastJuke = t;
+            o.say = self.team.shortName + " QB sidesteps " + threat.Label;
+            return;
+        }
+        // Reached the line while extending: he can't throw from past it — run.
+        if (_escaping && view.Downfield(self.Pos) > -1.0f)
+        {
+            o.action = BrainAction.Handoff; o.targetPlayer = self;
+            o.say = self.team.shortName + " QB reaches the line and takes off";
+            return;
+        }
         if (t < _dropTime || _thrown) return;
 
         // Read. Quick: first open man in the play's order. Patient: the best
         // window, deeper preferred. Deep shot: only the deep men until late.
+        // Out of the pocket the deep men count for more — the shot is the point.
         bool deepOnly = style == Style.DeepShot && t < _holdMax - 0.8f;
+        // Out of the pocket the deep men count for more; from deep in the
+        // backfield it's the heave or nothing.
+        float depthWeight = _escaping ? (view.Downfield(self.Pos) < -9f ? 0.16f : 0.11f) : style == Style.Quick ? 0f : 0.06f;
         FootballPlayer best = null; float bestScore = -99f, bestMargin = -99f; Vector3 bestLead = Vector3.zero;
         for (int i = 0; i < _readOrder.Count; i++)
         {
@@ -831,46 +872,119 @@ public class QBBrain_CPU : IPlayerBrain
             float need = Mathf.Lerp(OpenSeparation * 0.55f, OpenSeparation, Mathf.Clamp01((depth - 6f) / 16f))
                          + Vector3.Distance(self.Pos, lead) * 0.02f;
             // On the run, throwing back across the body is a bad ball.
-            if (_rolling && Mathf.Sign(lead.x - self.Pos.x) != Mathf.Sign(_rollSide) && Mathf.Abs(lead.x - self.Pos.x) > 6f) need += 1.8f;
+            if (_escaping && Mathf.Sign(lead.x - self.Pos.x) != Mathf.Sign(_escapeSide) && Mathf.Abs(lead.x - self.Pos.x) > 6f) need += 1.8f;
             float margin = sep - need;
-            float score = margin + (style == Style.Quick ? 0f : Mathf.Clamp(depth, 0f, 30f) * 0.06f);
-            if (style == Style.Quick && margin > 0f) { best = wr; bestMargin = margin; bestLead = lead; break; }   // first open read wins
+            float score = margin + Mathf.Clamp(depth, 0f, 30f) * depthWeight;
+            if (style == Style.Quick && !_escaping && margin > 0f) { best = wr; bestMargin = margin; bestLead = lead; break; }   // first open read wins
             if (score > bestScore) { best = wr; bestScore = score; bestMargin = margin; bestLead = lead; }
         }
-        float holdMax = _holdMax + (_scrambleDrill ? ScrambleExtension : 0f);
-        bool pressure = rusherDist < (_rolling ? 2.6f : 3.0f) && (view.pocketCollapsed || rusherDist < 1.8f);
+        float holdMax = _holdMax + (_scrambleDrill ? ScrambleExtension : 0f) + (_escaping && !_scrambleDrill ? 1.2f : 0f);
         bool outOfTime = t > holdMax;
-        // On the run, a downfield man in a tight window is still a throw.
-        float floor = _rolling ? -1.2f : -0.6f;      // on the run he'll take a 50/50 ball downfield
-        if (best != null && (bestMargin > 0f || ((pressure || outOfTime || _rolling) && bestMargin > floor && view.Downfield(bestLead) > 10f)))
+        // On the run, a downfield man in a tight window is still a throw — the cannon.
+        float floor = _escaping ? (view.Downfield(self.Pos) < -9f ? -1.9f : -1.3f) : -0.6f;
+        if (best != null && (bestMargin > 0f || ((outOfTime || _escaping) && bestMargin > floor && view.Downfield(bestLead) > 10f)))
         {
-            Throw(self, best, bestLead, view, pressure, ref o);
+            Throw(self, best, bestLead, view, inTheFace, ref o);
             return;
         }
         // Clock nearly out and nobody open: leave the pocket and buy time
         // (the scramble drill) instead of standing there waiting to be hit.
-        if (!_rolling && !_scrambleDrill && t > _holdMax - 0.55f && bestMargin < 0f)
+        if (!_escaping && !_scrambleDrill && t > _holdMax - 0.55f && bestMargin < 0f)
         {
             _scrambleDrill = true;
-            StartRoll(self, view, rusher, t);
+            StartEscape(self, view, threat, t, 0f, false);
             o.say = self.team.shortName + " QB (" + style + ") escapes the pocket, buying time";
             return;
         }
-        float rollLimit = style == Style.Rollout ? RolloutSeconds * 1.4f : RolloutSeconds;
-        if (pressure || (_rolling && t - _rollSince > rollLimit) || (outOfTime && (_runOnExpiry || t > holdMax + 1.2f)))
+        if (_escaping)
+        {
+            // Give up and run: out of time, cornered, or a lane opened up.
+            float since = t - _escapeSince;
+            // (Cornered, he keeps trying to get away — tucking it with a man
+            // at arm's length was a sack every time.)
+            bool laneOpen = since > 1.4f && LaneAhead(self, view);
+            float limit = _designed ? DesignedRollSeconds : EscapeSeconds;
+            if (since > limit || laneOpen)
+            {
+                o.action = BrainAction.Handoff; o.targetPlayer = self;
+                o.say = self.team.shortName + " QB " + (laneOpen ? "sees a lane and takes off" : "runs out of time and tucks it");
+            }
+            return;
+        }
+        if (outOfTime && (_runOnExpiry || t > holdMax + 1.2f))
         {
             o.action = BrainAction.Handoff; o.targetPlayer = self;   // tuck it and run
             o.say = self.team.shortName + " QB tucks it and runs";
         }
     }
 
-    void StartRoll(FootballPlayer self, PlayView view, FootballPlayer rusher, float t)
+    void StartEscape(FootballPlayer self, PlayView view, FootballPlayer threat, float t, float sideHint, bool designed)
     {
-        _rolling = true; _rollSince = t;
-        // Away from the man coming; if he's dead ahead, to the side with more grass.
-        float side = rusher != null ? -Mathf.Sign(rusher.Pos.x - self.Pos.x) : 0f;
-        if (side == 0f || Mathf.Abs(rusher.Pos.x - self.Pos.x) < 0.8f) side = self.Pos.x >= 0f ? -1f : 1f;
-        _rollSide = side;
+        _escaping = true; _designed = designed; _escapeSince = t; _reversed = false;
+        float side = sideHint;
+        if (side == 0f)
+        {
+            // Away from the man coming; if he's dead ahead, to the side with
+            // fewer defenders near the line.
+            if (threat != null && Mathf.Abs(threat.Pos.x - self.Pos.x) > 0.8f) side = -Mathf.Sign(threat.Pos.x - self.Pos.x);
+            else side = FewerDefendersSide(self, view);
+        }
+        _escapeSide = side;
+    }
+
+    static float FewerDefendersSide(FootballPlayer self, PlayView view)
+    {
+        int left = 0, right = 0;
+        for (int i = 0; i < view.players.Count; i++)
+        {
+            var d = view.players[i];
+            if (d.team != view.defense || view.Downfield(d.Pos) > 4f) continue;
+            if (d.Pos.x < self.Pos.x) left++; else right++;
+        }
+        if (left == right) return self.Pos.x >= 0f ? -1f : 1f;
+        return left < right ? -1f : 1f;
+    }
+
+    /// Buying time: sideways, away from the rusher, deeper while he's on him,
+    /// back up once he has room. Near the sideline he reverses field once
+    /// (the deke) if nobody's close, otherwise bends upfield.
+    Vector3 EscapeMove(FootballPlayer self, PlayView view, float threatDist, Vector3 toMeN)
+    {
+        Vector3 fwd = Vector3.forward * view.attackDir;
+        Vector3 lateral = Vector3.right * _escapeSide;
+        float depth = view.Downfield(self.Pos);
+        float room = FootballField.HalfWidth - 5f - Mathf.Abs(self.Pos.x);
+        if (room < 2f && Mathf.Sign(self.Pos.x) == Mathf.Sign(_escapeSide))
+        {
+            if (!_reversed && threatDist > 3f) { _reversed = true; _escapeSide = -_escapeSide; lateral = -lateral; }
+            else lateral = Vector3.zero;
+        }
+        Vector3 dir = lateral * 0.8f;
+        if (threatDist < 6f) dir += toMeN * 0.9f;                                   // away from him
+        // Sam: "i want deep sacks that force deep throws" — he'll give a lot
+        // of ground to buy time, and from back there the deep shot is the play.
+        if (depth > -15f && threatDist < 5f) dir += -fwd * 0.45f;                    // give ground to buy time
+        else if (depth < -16f || threatDist > 6f) dir += fwd * 0.4f;                 // room, or too deep: work back up
+        if (dir.sqrMagnitude < 0.01f) dir = lateral.sqrMagnitude > 0f ? lateral : fwd;
+        return Steer.InBounds(self.Pos, dir.normalized, 4f);
+    }
+
+    /// Nobody in front of him for seven metres.
+    static bool LaneAhead(FootballPlayer self, PlayView view)
+    {
+        if (view.Downfield(self.Pos) < -9f) return false;
+        Vector3 fwd = Vector3.forward * view.attackDir;
+        for (int i = 0; i < view.players.Count; i++)
+        {
+            var d = view.players[i];
+            if (d.team != view.defense || d.IsDown) continue;
+            Vector3 rel = d.Pos - self.Pos; rel.y = 0f;
+            float along = Vector3.Dot(rel, fwd);
+            if (along < -1f || along > 7f) continue;
+            float across = Mathf.Abs(Vector3.Dot(rel, Vector3.right));
+            if (across < 3f) return false;
+        }
+        return true;
     }
 
     /// Yards of daylight the receiver will have when the ball gets there.
@@ -888,13 +1002,9 @@ public class QBBrain_CPU : IPlayerBrain
         // the top of a curl / comeback and is looking at me.
         if (wr.Vel.sqrMagnitude < 4f && !wr.settled) return 0f;
         if (wr.settled) lead = wr.Pos;
-        // Daylight at the catch: how far each defender is from the spot once
-        // he has had the flight time to run at it (after a beat to react).
-        // In TIME: the ball arrives at `flight`; a defender arrives at his
-        // distance over his speed plus a beat to react. The gap in seconds,
-        // as metres of daylight at running pace. A corner a stride behind on
-        // a go route is NOT open (he's there a tenth later); a man who has
-        // broken away on a cut is.
+        // Daylight at the catch, in TIME: the ball arrives at `flight`; a
+        // defender arrives at his distance over his speed plus a beat to
+        // react. The gap in seconds, as metres of daylight at running pace.
         float sep = float.MaxValue;
         for (int i = 0; i < view.players.Count; i++)
         {
@@ -919,14 +1029,14 @@ public class QBBrain_CPU : IPlayerBrain
             if (away.sqrMagnitude > 0.01f) lead += away.normalized * 1.0f;
         }
         // Error scaled by accuracy, a rusher in the face, and throwing on the run (handoff §7).
-        float sigma = (0.5f + 1.8f * (1f - _team.qbAccuracy) + (pressure ? 1.2f : 0f) + (_rolling ? 0.3f : 0f)) * (0.6f + dist / 40f);
+        float sigma = (0.5f + 1.8f * (1f - _team.qbAccuracy) + (pressure ? 1.2f : 0f) + (_escaping ? 0.3f : 0f)) * (0.6f + dist / 40f);
         Vector3 err = new Vector3(Gauss() * sigma, 0f, Gauss() * sigma * 0.8f);
         o.action = BrainAction.Throw;
         o.targetPlayer = wr;
         o.target = lead + err;
         o.power = Mathf.Clamp01(dist / 35f);
         var nd = view.Nearest(wr.Pos, view.defense);
-        o.say = self.team.shortName + " QB (" + style + (_rolling ? ", on the run" : "") + ") throws after " + view.timeSinceSnap.ToString("0.0") + " s, "
+        o.say = self.team.shortName + " QB (" + style + (_escaping ? ", on the run" : "") + ") throws after " + view.timeSinceSnap.ToString("0.0") + " s, "
                 + Mathf.RoundToInt(FootballField.ToYards(view.Downfield(lead))) + " yds downfield"
                 + " [cover " + (nd != null ? Vector3.Distance(nd.Pos, wr.Pos).ToString("0.0") + " m behind " + wr.Label : "-") + ", flight " + PlayInstance.PassFlightTime(dist).ToString("0.00") + "]";
         _thrown = true;
