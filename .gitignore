@@ -146,3 +146,8 @@ tools/audio-studio/server.log
 # belong in history forever (the gameplay scene is already 73 of GitHub's 100 MB).
 Assets/Audio/Studio/_Candidates/
 Assets/Audio/Studio/_Candidates.meta
+
+# Football stadium pack (596 MB soccer stadium, $50 store asset) — re-import
+# locally like Backrooms; far past GitHub's per-file limits.
+/Assets/LargeFootballStadium/
+/Assets/LargeFootballStadium.meta

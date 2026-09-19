@@ -1,0 +1,71 @@
+using UnityEditor;
+using UnityEngine;
+using System.Reflection;
+
+// Edit-mode pose check: build 5 aliens in a row under a temp root, each in a
+// different rig state (idle, run, reach, throw, carry), tick the rig's
+// LateUpdate by reflection, render to PNG, tear down.
+public static class PoseCheck
+{
+    const string Dir = "<scratchpad>/";
+
+    public static void Execute()
+    {
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/5 - External Imports/Alien_Toys/Alien_Pack/Prefab/Built-In/Alien1.prefab");
+        var root = new GameObject("__PoseCheck") { hideFlags = HideFlags.DontSave };
+        try
+        {
+            root.transform.position = new Vector3(0f, 0f, -20f);
+            string[] names = { "idle", "run", "reach", "throw", "carry", "kick", "twohands", "snap", "ready", "hurdle", "dive", "armsup", "flex", "firstdown" };
+            for (int i = 0; i < names.Length; i++)
+            {
+                var pgo = new GameObject("P" + i);
+                pgo.transform.SetParent(root.transform, false);
+                pgo.transform.localPosition = new Vector3(-19.5f + i * 3f, 0f, 0f);
+                var team = FootballTeam.DefaultHome();
+                var fp = pgo.AddComponent<FootballPlayer>();
+                fp.Init(root.transform, team, FootballRole.WR, 0, FootballRole.DB, 0, null, prefab);
+                fp.Teleport(new Vector3(-19.5f + i * 3f, 0f, 0f), Vector3.forward);
+                var rig = pgo.GetComponentInChildren<FootballAlienRig>();
+                switch (names[i])
+                {
+                    case "run": rig.speedFrac = 1f; rig.stridePhase = 1.2f; break;
+                    case "reach": rig.reaching = true; rig.reachTargetWorld = pgo.transform.position + new Vector3(0.3f, 2.6f, 0.8f); break;
+                    case "throw": rig.throwPhase = 0.5f; rig.throwDirWorld = (Vector3.forward + Vector3.up * 0.4f).normalized; break;
+                    case "carry": rig.hold = HoldStyle.Tucked; rig.speedFrac = 0.8f; rig.stridePhase = 4f; break;
+                    case "twohands": rig.hold = HoldStyle.TwoHands; break;
+                    case "snap": rig.hold = HoldStyle.SnapStance; rig.ballWorld = pgo.transform.position + new Vector3(0f, 0.11f, 0.5f); break;
+                    case "ready": rig.hold = HoldStyle.ReadyHands; break;
+                    case "hurdle": rig.hurdlePhase = 0.5f; rig.hold = HoldStyle.Tucked; break;
+                    case "dive": rig.divePhase = 0.6f; break;
+                    case "armsup": rig.emote = EmoteKind.ArmsUp; rig.emotePhase = 0.6f; break;
+                    case "flex": rig.emote = EmoteKind.Flex; rig.emotePhase = 0.6f; break;
+                    case "firstdown": rig.emote = EmoteKind.FirstDown; rig.emotePhase = 0.4f; rig.hold = HoldStyle.Tucked; break;
+                    case "kick": rig.kickPhase = 0.75f; break;
+                }
+                var lu = typeof(FootballAlienRig).GetMethod("LateUpdate", BindingFlags.NonPublic | BindingFlags.Instance);
+                lu.Invoke(rig, null);
+                var lbl = pgo.transform.Find("Label"); if (lbl != null) lbl.GetComponent<TMPro.TextMeshPro>().text = names[i];
+            }
+            Shot("poses_front.png", root.transform.position + new Vector3(0f, 1.6f, -9f), Quaternion.LookRotation(new Vector3(0f, -0.1f, 1f)), 55f);
+            Shot("poses_side.png", root.transform.position + new Vector3(5f, 1.5f, 5.5f), Quaternion.LookRotation(new Vector3(-0.5f, -0.12f, -0.6f)), 60f);
+        }
+        finally { Object.DestroyImmediate(root); }
+    }
+
+    static void Shot(string file, Vector3 pos, Quaternion rot, float fov)
+    {
+        var go = new GameObject("__shot");
+        var cam = go.AddComponent<Camera>();
+        go.transform.SetPositionAndRotation(pos, rot);
+        cam.fieldOfView = fov; cam.clearFlags = CameraClearFlags.Skybox; cam.nearClipPlane = 0.2f; cam.farClipPlane = 500f;
+        var rt = new RenderTexture(1920, 1080, 24);
+        cam.targetTexture = rt; cam.Render();
+        RenderTexture.active = rt;
+        var tex = new Texture2D(1920, 1080, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, 1920, 1080), 0, 0); tex.Apply();
+        System.IO.File.WriteAllBytes(Dir + file, tex.EncodeToPNG());
+        RenderTexture.active = null; cam.targetTexture = null;
+        Object.DestroyImmediate(rt); Object.DestroyImmediate(tex); Object.DestroyImmediate(go);
+    }
+}

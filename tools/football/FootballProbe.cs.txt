@@ -1,0 +1,83 @@
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+
+// Trace one kickoff and the first scrimmage plays tick by tick.
+public static class FootballProbe
+{
+    const string Out = "<scratchpad>/probe.txt";
+
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__FootballProbe") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var mgo = new GameObject("Match");
+            mgo.transform.SetParent(root.transform, false);
+            var m = mgo.AddComponent<FootballMatch>();
+            m.autoStart = false; m.seed = 1000;
+            m.Boot(); m.NewGame();
+            m.ForcedPlay = System.Environment.GetEnvironmentVariable("FOOTBALL_FORCE");
+            if (System.IO.File.Exists(Out + ".force")) m.ForcedPlay = System.IO.File.ReadAllText(Out + ".force").Trim();
+            const float dt = 1f / 60f;
+            float t = 0f, nextLog = 0f;
+            int playsSeen = 0;
+            PlayInstance last = null; bool wasAir = false; FootballPlayer lastIntended = null; float lastAir = 0f;
+            while (t < 600f && playsSeen < 40)
+            {
+                m.Simulate(dt, dt); t += dt;
+                var play = m.CurrentPlay;
+                if (play != last) { last = play; playsSeen++; if (play != null) sb.AppendLine("\n### play " + playsSeen + " kickoff=" + play.view.isKickoff + " los=" + play.view.losZ.ToString("0.0") + " off=" + play.view.offense.shortName + " dir=" + play.view.attackDir); }
+                if (play == null || play.phase == PlayInstance.Phase.Ended) { wasAir = false; continue; }
+                {
+                    var vv = play.view; var cc = vv.Carrier;
+                    if (wasAir && cc != null && !vv.isKickoff && cc.team == vv.defense)
+                    {
+                        sb.AppendLine("INT by " + cc.Label + " at " + P(cc.Pos) + " vel=" + P(cc.Vel) + " intended=" + (lastIntended != null ? lastIntended.Label + " " + P(lastIntended.Pos) + " vel=" + P(lastIntended.Vel) : "-")
+                                      + " catchPoint=" + P(vv.ball.catchPoint) + " ball=" + P(vv.ball.pos) + " airTime=" + lastAir.ToString("0.00") + "/" + vv.ball.catchTime.ToString("0.00") + " thrower=" + (vv.ball.thrower != null ? P(vv.ball.thrower.Pos) : "-"));
+                    }
+                    if (vv.BallAirborne) { lastIntended = vv.ball.intendedReceiver; lastAir = vv.ball.airTime; }
+                    if (wasAir && cc != null && !vv.isKickoff)
+                    {
+                        FootballPlayer nr = null; float nd = 999f;
+                        foreach (var p in vv.players) if (p.team != cc.team) { float d = Vector3.Distance(p.Pos, cc.Pos); if (d < nd) { nd = d; nr = p; } }
+                        sb.AppendLine("CATCH by " + cc.name + " at depth " + vv.Downfield(cc.Pos).ToString("0.0") + " nearest " + (nr != null ? nr.Label : "-") + " d=" + nd.ToString("0.0") + " ts=" + vv.timeSinceSnap.ToString("0.00"));
+                    }
+                    wasAir = vv.BallAirborne;
+                }
+                bool fine = false;
+                if (t < nextLog && !fine) continue;
+                nextLog = t + 0.25f;
+                var v = play.view;
+                var ball = v.ball;
+                var c = v.Carrier;
+                sb.Append("t=" + t.ToString("0.00") + " ph=" + play.phase + " ts=" + v.timeSinceSnap.ToString("0.00") + " ball=" + ball.state + " " + P(ball.pos));
+                if (c != null)
+                {
+                    FootballPlayer near = null; float nd = 999f;
+                    foreach (var p in v.players) if (p.team != c.team) { float d = Vector3.Distance(p.Pos, c.Pos); if (d < nd) { nd = d; near = p; } }
+                    sb.Append(" carrier=" + c.name + "/" + c.Label + " " + P(c.Pos) + " vel=" + c.Vel.magnitude.ToString("0.0") + " scale=" + c.speedScale.ToString("0.00")
+                              + " nearestOpp=" + (near != null ? near.name + "/" + near.Label + " " + P(near.Pos) + " d=" + nd.ToString("0.0") + " vel=" + near.Vel.magnitude.ToString("0.0") + " scale=" + near.speedScale.ToString("0.00") : "-"));
+                }
+                for (int di = 0; di < 2; di++)
+                {
+                    var dl = v.FindRole(v.defense, FootballRole.DL, di); var ol = v.FindRole(v.offense, FootballRole.OL, di);
+                    if (dl != null && ol != null && c != null) sb.Append(" | DL" + (di + 1) + " " + P(dl.Pos) + " sc=" + dl.speedScale.ToString("0.00") + " dC=" + Vector3.Distance(dl.Pos, c.Pos).ToString("0.00") + " OL" + (di + 1) + " " + P(ol.Pos) + " dOL=" + Vector3.Distance(dl.Pos, ol.Pos).ToString("0.00"));
+                }
+                sb.AppendLine();
+            }
+        }
+        catch (System.Exception e) { sb.AppendLine("!! " + e); }
+        finally
+        {
+            if (root != null) Object.DestroyImmediate(root);
+            System.IO.File.WriteAllText(Out, sb.ToString());
+            Debug.Log("[Probe] written");
+        }
+    }
+
+    static string P(Vector3 v) => "(" + v.x.ToString("0.0") + "," + v.y.ToString("0.0") + "," + v.z.ToString("0.0") + ")";
+}

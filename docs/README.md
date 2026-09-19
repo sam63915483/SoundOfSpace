@@ -28,6 +28,7 @@ the playtest checklists, the setup guides, the gallery/tuning notes.
 | how the fishing minigame actually works | `Handoff_FishingRevamp_Phase1_v1.md` |
 | tone, characters, the cold open | `GDD_StoryBible_v2.md` (tone only) |
 | how to change what an NPC says | `../tools/dialogue-studio/README.md` |
+| how the alien football prototype works (Proto_Football, the sim's rules, the soak) | `FOOTBALL.md` |
 
 ## Where the game is heading (2026-09-08, Sam)
 

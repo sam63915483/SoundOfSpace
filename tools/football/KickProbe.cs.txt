@@ -1,0 +1,37 @@
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+public static class KickProbe
+{
+    const string Out = "<scratchpad>/kick.txt";
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__KickProbe") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var mgo = new GameObject("Match"); mgo.transform.SetParent(root.transform, false);
+            var m = mgo.AddComponent<FootballMatch>();
+            m.autoStart = false; m.seed = 1000;
+            m.Boot(); m.NewGame();
+            const float dt = 1f / 60f; float t = 0f; float next = 0f;
+            while (t < 40f)
+            {
+                m.Simulate(dt, dt); t += dt;
+                var play = m.CurrentPlay;
+                if (play == null || !play.view.isKickoff) continue;
+                var v = play.view; var b = v.ball;
+                if (t < next) continue; next = t + 0.2f;
+                var ret = v.FindRole(v.defense, FootballRole.DB, 0);
+                sb.AppendLine("t=" + t.ToString("0.00") + " st=" + m.Current + " ph=" + play.phase + " ready=" + play.BallReady + " ts=" + v.timeSinceSnap.ToString("0.00") + " ball=" + b.state + " " + P(b.pos) + " holder=" + (b.holder != null ? b.holder.name : "-") + " catchPt=" + P(b.catchPoint) + " land=" + P(b.landPoint)
+                    + " returner=" + (ret != null ? P(ret.Pos) + " down=" + ret.IsDown : "-") + " los=" + v.losZ.ToString("0.0") + " dir=" + v.attackDir);
+                if (play.phase == PlayInstance.Phase.Ended) { sb.AppendLine("ENDED: " + play.result.description); if (m.Current != FootballMatch.State.Kickoff) break; }
+            }
+        }
+        catch (System.Exception e) { sb.AppendLine("!! " + e); }
+        finally { if (root != null) Object.DestroyImmediate(root); System.IO.File.WriteAllText(Out, sb.ToString()); }
+    }
+    static string P(Vector3 v) => "(" + v.x.ToString("0.0") + "," + v.y.ToString("0.0") + "," + v.z.ToString("0.0") + ")";
+}

@@ -9,6 +9,7 @@ traps**, the **non-negotiable conventions**, and **pointers** to the detailed do
 - `docs/architecture-diagram.html` — interactive Mermaid architecture view.
 - `docs/GAME_OVERVIEW.md` — short / medium / long write-ups, but **last touched 2026-06-01 and several pivots stale**. The audit wins wherever they disagree.
 - `docs/superpowers/_archive/` — historical per-feature specs + plans (why/how each feature was built; not the source of truth).
+- `docs/FOOTBALL.md` — the alien-football prototype (2026-09-19): `Proto_Football.unity`, `Assets/3 - Scripts/Football/`, the rules of the sim and the headless soak. Sam's next big feature; start there for anything football.
 - `documentation/INDEX.md` — one-time parallel bug/redundancy/perf audit (2026-07-15 snapshot). A triage backlog of *unverified* static-analysis leads, **not** source of truth — confirm any finding against live code before acting, and expect false positives. For "how does system X work", still use `CURRENT_STATE_AUDIT.md`.
 
 Don't duplicate those here. If you change a system materially, update the audit, not this file.

@@ -1,0 +1,66 @@
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+
+// Headless soak: builds a throwaway FieldRoot + FootballMatch in edit mode,
+// runs N full games with the sim's own Step (no play mode), captures the
+// play-by-play to a file, and tears everything down.
+public static class FootballSoak
+{
+    const string Out = "<scratchpad>/soak.txt";
+
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        Application.LogCallback cb = (msg, stack, type) =>
+        {
+            if (msg.StartsWith("[Football]")) sb.AppendLine(msg);
+            else if (type == LogType.Exception || type == LogType.Error) sb.AppendLine("!! " + type + ": " + msg + "\n" + stack);
+        };
+        Application.logMessageReceived += cb;
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__FootballSoak") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var mgo = new GameObject("Match");
+            mgo.transform.SetParent(root.transform, false);
+            var m = mgo.AddComponent<FootballMatch>();
+            m.autoStart = false;
+            var aliens = new System.Collections.Generic.List<GameObject>();
+            for (int i = 1; i <= 10; i++) { var a = AssetDatabase.LoadAssetAtPath<GameObject>("Assets/5 - External Imports/Alien_Toys/Alien_Pack/Prefab/Built-In/Alien" + i + ".prefab"); if (a != null) aliens.Add(a); }
+            m.alienPrefabs = aliens.ToArray();
+            sb.AppendLine("alien prefabs: " + aliens.Count);
+            string force = Out.Replace("soak.txt", "probe.txt.force");
+            int games = 3;
+            for (int g = 0; g < games; g++)
+            {
+                m.seed = 1000 + g;
+                sb.AppendLine("\n===== GAME " + (g + 1) + " (seed " + m.seed + ") =====");
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                m.Boot();
+                m.NewGame();
+                if (System.IO.File.Exists(force)) { m.ForcedPlay = System.IO.File.ReadAllText(force).Trim(); if (m.ForcedPlay == "") m.ForcedPlay = null; }
+                // Up to 40 game-minutes; a real game is ~10 + breaks.
+                float t = 0f; const float dt = 1f / 60f;
+                while (m.Current != FootballMatch.State.GameOver && t < 40f * 60f) { m.Simulate(dt, dt); t += dt; }
+                sb.AppendLine("-- reached " + m.Current + " after " + t.ToString("0") + " sim-seconds (" + sw.ElapsedMilliseconds + " ms wall); " + m.StatusLine);
+                if (m.Current != FootballMatch.State.GameOver)
+                    sb.AppendLine("!! DID NOT FINISH: state=" + m.Current + " Q" + m.Quarter + " clock=" + m.ClockText()
+                                  + " play=" + (m.CurrentPlay != null ? m.CurrentPlay.phase.ToString() : "none")
+                                  + " ball=" + (m.CurrentPlay != null && m.CurrentPlay.view.ball != null ? m.CurrentPlay.view.ball.state.ToString() : "?"));
+            }
+        }
+        catch (System.Exception e)
+        {
+            sb.AppendLine("!! EXCEPTION " + e);
+        }
+        finally
+        {
+            Application.logMessageReceived -= cb;
+            if (root != null) Object.DestroyImmediate(root);
+            System.IO.File.WriteAllText(Out, sb.ToString());
+            Debug.Log("[Soak] written " + Out);
+        }
+    }
+}

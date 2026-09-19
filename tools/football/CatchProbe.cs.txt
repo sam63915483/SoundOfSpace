@@ -1,0 +1,64 @@
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+// For every completed catch: nearest defender at the catch, then the gap to the nearest standing defender every 0.25 s until the play ends.
+public static class CatchProbe
+{
+    const string Out = "<scratchpad>/catch.txt";
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__CatchProbe") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var mgo = new GameObject("Match"); mgo.transform.SetParent(root.transform, false);
+            var m = mgo.AddComponent<FootballMatch>();
+            m.autoStart = false; m.seed = 1001;
+            m.Boot(); m.NewGame();
+            const float dt = 1f / 60f; float t = 0f; float next = 0f;
+            PlayInstance last = null; bool wasAir = false; FootballPlayer carrierAtCatch = null; float catchTs = 0f; int catches = 0;
+            while (t < 900f && catches < 25)
+            {
+                m.Simulate(dt, dt); t += dt;
+                var play = m.CurrentPlay;
+                if (play == null || play.view.isKickoff) { wasAir = false; continue; }
+                var v = play.view;
+                if (play != last) { last = play; wasAir = false; carrierAtCatch = null; }
+                if (play.phase == PlayInstance.Phase.Ended)
+                {
+                    if (carrierAtCatch != null) { sb.AppendLine("  END " + play.result.description + " at ts=" + v.timeSinceSnap.ToString("0.00")); carrierAtCatch = null; }
+                    continue;
+                }
+                var c = v.Carrier;
+                bool air = v.BallAirborne && !v.ball.isSnap;
+                if (wasAir && c != null && c.role == FootballRole.WR && c.team == v.offense)
+                {
+                    catches++; carrierAtCatch = c; catchTs = v.timeSinceSnap; next = t;
+                    sb.AppendLine("\nCATCH #" + catches + " " + v.play.name + " by " + c.Label + " depth=" + v.Downfield(c.Pos).ToString("0.0") + " x=" + c.Pos.x.ToString("0.0") + " ts=" + catchTs.ToString("0.00") + " carrierSpeed=" + c.MaxSpeed.ToString("0.0"));
+                }
+                wasAir = air;
+                if (carrierAtCatch == null || c != carrierAtCatch) continue;
+                if (t < next) continue; next = t + 0.25f;
+                // Nearest standing defender + nearest any, with speed scales.
+                FootballPlayer ns = null, na = null; float ds = 99f, da = 99f;
+                int down = 0, engaged = 0;
+                foreach (var p in v.players)
+                {
+                    if (p.team != v.defense) continue;
+                    float d = Vector3.Distance(p.Pos, c.Pos);
+                    if (d < da) { da = d; na = p; }
+                    if (p.IsDown) down++; else if (d < ds) { ds = d; ns = p; }
+                    if (p.speedScale < 0.5f) engaged++;
+                }
+                sb.AppendLine("  ts=" + v.timeSinceSnap.ToString("0.00") + " depth=" + v.Downfield(c.Pos).ToString("0.0") + " spd=" + c.Vel.magnitude.ToString("0.0") + " scale=" + c.speedScale.ToString("0.00")
+                    + " nearestStanding=" + (ns != null ? ns.Label + " d=" + ds.ToString("0.0") + " spd=" + ns.Vel.magnitude.ToString("0.0") + " sc=" + ns.speedScale.ToString("0.00") + (ns.IsDiving ? " DIVING" : "") : "-")
+                    + " nearestAny=" + (na != null ? na.Label + " d=" + da.ToString("0.0") : "-") + " down=" + down + " engaged=" + engaged
+                    + (c.IsJuking ? " JUKE" : "") + (c.IsSpinning ? " SPIN" : "") + (c.IsHurdling ? " HURDLE" : ""));
+            }
+        }
+        catch (System.Exception e) { sb.AppendLine("!! " + e); }
+        finally { if (root != null) Object.DestroyImmediate(root); System.IO.File.WriteAllText(Out, sb.ToString()); }
+    }
+}
