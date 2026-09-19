@@ -252,6 +252,51 @@ public class BallCarrierBrain : IPlayerBrain
     }
 }
 
+/// The flea flicker's sweep man: a few strides toward the edge selling the
+/// run, then the pitch back to the QB, then block. If somebody is on him
+/// before he can pitch, he keeps it and runs (a busted trick play).
+public class FleaFlickerBrain : IPlayerBrain
+{
+    readonly FootballPlayer _qb;
+    readonly List<Vector3> _path;
+    readonly BallCarrierBrain _run;
+    int _i; float _since; bool _pitched, _busted;
+    public FleaFlickerBrain(FootballPlayer qb, List<Vector3> path, System.Random rng, float agility)
+    {
+        _qb = qb; _path = path; _run = new BallCarrierBrain(null, rng, agility);
+    }
+    public bool KeepsControlWhenCarrying => true;
+
+    public void Tick(FootballPlayer self, PlayView view, float dt, ref BrainOutput o)
+    {
+        if (_pitched)
+        {
+            var c = view.Carrier;
+            if (c != null && c.team != self.team) { o.move = Steer.Pursue(self, c); return; }
+            o.move = Steer.Block(self, view);
+            return;
+        }
+        if (_busted || view.Carrier != self) { if (view.Carrier == self) _run.Tick(self, view, dt, ref o); return; }
+        _since += dt;
+        var near = view.NearestStanding(self.Pos, view.defense);
+        if (near != null && Vector3.Distance(near.Pos, self.Pos) < 2.0f && _since < 1.1f)
+        {
+            _busted = true; o.say = self.team.shortName + " " + self.Label + " can't get the pitch off — keeps it";
+            _run.Tick(self, view, dt, ref o); return;
+        }
+        if (_since >= 1.1f && _qb != null && Vector3.Distance(_qb.Pos, self.Pos) < 16f)
+        {
+            float flight = PlayInstance.PassFlightTime(Vector3.Distance(self.Pos, _qb.Pos));
+            o.action = BrainAction.Throw; o.targetPlayer = _qb; o.target = _qb.Pos + _qb.Vel * flight; o.power = 0.1f;
+            o.say = self.team.shortName + " " + self.Label + " pitches it back to the QB — FLEA FLICKER";
+            _pitched = true;
+            return;
+        }
+        while (_i < _path.Count && Vector3.Distance(self.Pos, _path[_i]) < 2.0f) _i++;
+        o.move = _i < _path.Count ? Steer.To(self.Pos, _path[_i], 0f) * 0.85f : Vector3.forward * (view.attackDir * 0.3f);
+    }
+}
+
 /// Offensive line: stand between your man and the quarterback. Once the ball
 /// is out (thrown, handed off, QB gone past the line) just block whoever's near.
 public class OLBrain : IPlayerBrain
@@ -267,6 +312,19 @@ public class OLBrain : IPlayerBrain
         var carrier = view.Carrier;
         if (view.SnapInFlight) carrier = view.FindRole(view.offense, FootballRole.QB);
         if (carrier != null && carrier.team != self.team) { o.move = Steer.Pursue(self, carrier); return; }
+        // The screen: let the rush through after a beat and get out in front
+        // of the screen man.
+        if (view.play != null && view.play.kind == FootballPlay.Kind.Screen && view.timeSinceSnap > 1.0f)
+        {
+            var sm = view.FindRole(view.offense, FootballRole.WR, 2);
+            if (sm != null)
+            {
+                var threat = view.NearestStanding(sm.Pos, view.defense);
+                if (threat != null && Vector3.Distance(threat.Pos, sm.Pos) < 12f) { o.move = Steer.BlockMan(self, threat, sm); return; }
+                o.move = Steer.To(self.Pos, sm.Pos + Vector3.forward * (view.attackDir * 3f), 1.5f);
+                return;
+            }
+        }
         // Stay on your man, between him and whoever has the ball (the QB in
         // the pocket, the sweep man, a receiver after the catch).
         if (carrier != null && _man != null && Vector3.Distance(_man.Pos, self.Pos) < 7f)
@@ -372,7 +430,7 @@ public class WRBrain : IPlayerBrain
         // blocks from the snap. While the QB holds it in the pocket on a pass,
         // run the route.
         bool designedRun = view.play != null && (view.play.kind == FootballPlay.Kind.JetSweep || view.play.kind == FootballPlay.Kind.QbDraw || view.play.kind == FootballPlay.Kind.QbRun)
-                           && !(view.play.kind == FootballPlay.Kind.JetSweep && self.roleIndex == 2);
+                           && !(view.play.kind == FootballPlay.Kind.JetSweep && self.roleIndex == view.play.sweep);
         if (carrier != null && carrier.team == self.team && carrier != self
             && (designedRun || carrier.role != FootballRole.QB || view.Downfield(carrier.Pos) > -0.5f))
         {
@@ -752,6 +810,7 @@ public class QBBrain_CPU : IPlayerBrain
         _team = team; _readOrder = readOrder; _dropSpot = dropSpot; _rng = rng;
         _designedSide = slotSide == 0f ? 1f : Mathf.Sign(slotSide);
         if (play != null && play.kind == FootballPlay.Kind.Rollout) style = Style.Rollout;
+        else if (play != null && play.kind == FootballPlay.Kind.FleaFlicker) style = Style.DeepShot;
         else
         {
             double r = rng.NextDouble();
@@ -761,7 +820,7 @@ public class QBBrain_CPU : IPlayerBrain
         {
             case Style.Quick:    _dropTime = DropTime;  _holdMax = 2.8f + (float)rng.NextDouble() * 0.8f; break;
             case Style.Patient:  _dropTime = 1.5f;      _holdMax = 3.6f + (float)rng.NextDouble() * 0.8f; break;
-            case Style.DeepShot: _dropTime = 1.7f;      _holdMax = 4.0f + (float)rng.NextDouble() * 0.8f; break;
+            case Style.DeepShot: _dropTime = 1.7f;      _holdMax = (play != null && play.kind == FootballPlay.Kind.FleaFlicker ? 6.0f : 4.0f) + (float)rng.NextDouble() * 0.8f; break;
             default:             _dropTime = 1.4f;      _holdMax = 3.8f + (float)rng.NextDouble() * 0.9f; break;   // Rollout: routes need a beat before he reads on the move
         }
         _runOnExpiry = rng.NextDouble() < 0.65;
@@ -783,6 +842,14 @@ public class QBBrain_CPU : IPlayerBrain
         }
         if (carrier != self)
         {
+            if (view.play != null && view.play.kind == FootballPlay.Kind.FleaFlicker && carrier != null && carrier.team == self.team && !_thrown)
+            {
+                // The flea flicker: back to the drop spot, eyes on the man about to pitch it.
+                o.move = Steer.To(self.Pos, _dropSpot, 1f);
+                o.face = carrier.Pos - self.Pos;
+                return;
+            }
+            if (view.BallAirborne && view.ball.intendedReceiver == self) { o.move = Steer.MeetBall(self, view.ball) * 0.7f; return; }
             // Ball is out. Jog toward the play so the QB isn't a statue.
             if (carrier != null) o.move = Steer.To(self.Pos, carrier.Pos, 6f) * 0.3f;
             else if (view.BallLoose) o.move = Steer.To(self.Pos, view.ball.pos, 0f);      // a fumbled snap: go get it
@@ -791,11 +858,27 @@ public class QBBrain_CPU : IPlayerBrain
         float t = view.timeSinceSnap;
         var play = view.play;
 
-        if (play.kind == FootballPlay.Kind.JetSweep)
+        if (play.kind == FootballPlay.Kind.JetSweep || play.kind == FootballPlay.Kind.FleaFlicker)
         {
-            var wr = view.FindRole(self.team, FootballRole.WR, 2);
+            var wr = view.FindRole(self.team, FootballRole.WR, play.sweep);
             if (wr != null && (Vector3.Distance(wr.Pos, self.Pos) < 2.6f || t > 2.4f))
             { o.action = BrainAction.Handoff; o.targetPlayer = wr; }
+            return;
+        }
+        if (play.kind == FootballPlay.Kind.Screen)
+        {
+            // Set up, let the rush come, and get it out to the screen man
+            // behind his blockers — no openness read, he's behind the line.
+            o.move = Steer.To(self.Pos, _dropSpot, 1f);
+            var wr = _readOrder.Count > 0 ? _readOrder[0] : null;
+            if (wr != null && !_thrown && t > 1.5f)
+            {
+                float flight = PlayInstance.PassFlightTime(Vector3.Distance(self.Pos, wr.Pos));
+                Vector3 lead = wr.Pos + wr.Vel * flight * 0.5f;
+                o.action = BrainAction.Throw; o.targetPlayer = wr; o.target = lead; o.power = 0.2f;
+                o.say = self.team.shortName + " QB dumps the screen to " + wr.Label;
+                _thrown = true;
+            }
             return;
         }
         if (play.kind == FootballPlay.Kind.QbDraw)

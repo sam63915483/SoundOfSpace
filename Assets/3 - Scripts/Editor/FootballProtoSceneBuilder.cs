@@ -99,6 +99,31 @@ public static class FootballProtoSceneBuilder
         Debug.Log("[FootballProto] jumbotron anchors under FieldRoot — drag them where you want the screens, then save the scene");
     }
 
+    /// The gameplay HUD, from the same snapshot the tutorial box uses
+    /// (Assets/1 - samsPrefabs/TutorialHUDCanvas.prefab — re-snapshot with
+    /// Tools ▸ Solar System ▸ Snapshot Tutorial HUD Canvas Prefab when the
+    /// gameplay HUD changes). Panels with nothing to drive them here are
+    /// switched off.
+    [MenuItem("Tools/Football/Add Gameplay HUD")]
+    public static void AddGameplayHud()
+    {
+        var ui = GameObject.Find("--- UI ---");
+        if (ui == null) { Debug.LogError("[FootballProto] no '--- UI ---' in the open scene"); return; }
+        if (ui.transform.Find(TutorialSnapshots.HudCanvasName) != null) { Debug.Log("[FootballProto] HUD_Canvas already here"); return; }
+        var hudPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TutorialSnapshots.HudPrefabPath);
+        if (hudPrefab == null) { Debug.LogError("[FootballProto] " + TutorialSnapshots.HudPrefabPath + " missing"); return; }
+        var hud = (GameObject)PrefabUtility.InstantiatePrefab(hudPrefab, ui.scene);
+        Undo.RegisterCreatedObjectUndo(hud, "gameplay HUD");
+        hud.name = TutorialSnapshots.HudCanvasName;
+        hud.transform.SetParent(ui.transform, false);
+        hud.SetActive(true);
+        string[] off = { "SellPanel", "EarningsText", "DialogueText", "TalkPrompt", "CassetteText", "CookPanel", "BuildMenu", "FishCatch",
+                         "PickupPromptText", "PlacePromptText", "BonfirePromptText", "GuitarChoicePanel", "GuitarDialogueText", "GuitarTalkPrompt", "CrashWarningText" };
+        foreach (var name in off) { var t = hud.transform.Find(name); if (t != null) t.gameObject.SetActive(false); }
+        EditorSceneManager.MarkSceneDirty(ui.scene);
+        Debug.Log("[FootballProto] HUD_Canvas added under --- UI ---");
+    }
+
     struct BoardPose { public bool found; public Vector3 pos; public Quaternion rot; public Vector3 scale; }
     static BoardPose _boardPose;
 

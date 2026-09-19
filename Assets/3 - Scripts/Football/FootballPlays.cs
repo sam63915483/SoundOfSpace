@@ -54,6 +54,10 @@ public static class FootballRoutes
     /// The slot is already in motion past the QB at the snap; takes it on the
     /// run and keeps going to the far edge.
     public static readonly FootballRoute SweepPath = new FootballRoute("sweep", false, -7, -4, -14, -1, -18, 6, -18, 30);
+    /// The flea flicker's sweep man: a few strides toward the edge, then the pitch back.
+    public static readonly FootballRoute FlickerPath = new FootballRoute("flicker", false, -6, -4, -11, -3, -14, -2);
+    /// The screen: slip out to the flat behind the line and turn round.
+    public static readonly FootballRoute ScreenOut = new FootballRoute("screen", true, 3, -3, 6, -3.5f);
 }
 
 /// Where the three receivers line up (attack-relative x in yards; + = right).
@@ -92,7 +96,7 @@ public class FootballFormation
 /// </summary>
 public class FootballPlay
 {
-    public enum Kind { Pass, Rollout, JetSweep, QbDraw, QbRun }
+    public enum Kind { Pass, Rollout, JetSweep, QbDraw, QbRun, FleaFlicker, Screen }
 
     public string name;
     public Kind kind;
@@ -104,6 +108,8 @@ public class FootballPlay
     public float wShort, wMedium, wLong;
     /// Red zone (inside the 12) multiplier.
     public float wRedZone = 1f;
+    /// JetSweep / FleaFlicker: which receiver takes the handoff (2 = the slot; 0 = the far wideout on an end around).
+    public int sweep = 2;
 
     static FootballPlay[] _all;
     public static IReadOnlyList<FootballPlay> All => _all ?? (_all = Build());
@@ -121,7 +127,8 @@ public class FootballPlay
             // No deep shots from the shadow of the goal line; nothing slow on
             // 4th and long; never the same call twice running.
             if (p.IsDeepShot && yardsToGoal < 25f) x *= 0.2f;
-            if (down == 4 && toGo > 7f && p.kind != Kind.Pass && p.kind != Kind.Rollout) x *= 0.3f;
+            if (down == 4 && toGo > 7f && p.kind != Kind.Pass && p.kind != Kind.Rollout && p.kind != Kind.Screen) x *= 0.3f;
+            if (p.kind == Kind.FleaFlicker && yardsToGoal < 35f) x *= 0.15f;        // needs room for the deep shot
             if (p == last) x *= 0.15f;
             w[i] = x; total += x;
         }
@@ -145,6 +152,13 @@ public class FootballPlay
     {
         foreach (var p in All) if (p.name == n) return p;
         return null;
+    }
+
+    static FootballPlay Sweep(string name, int who, float s, float m, float l)
+    {
+        var routes = new[] { FootballRoutes.Block, FootballRoutes.Block, FootballRoutes.Block };
+        routes[who] = FootballRoutes.SweepPath;
+        return new FootballPlay { name = name, kind = Kind.JetSweep, routes = routes, priority = new[] { who }, wShort = s, wMedium = m, wLong = l, sweep = who };
     }
 
     static FootballPlay P(string name, Kind kind, FootballRoute a, FootballRoute b, FootballRoute c, int[] prio, float s, float m, float l, float red = 1f)
@@ -177,9 +191,13 @@ public class FootballPlay
             P("Roll Flood",  Kind.Rollout, FootballRoutes.DeepCross, FootballRoutes.Go,     FootballRoutes.DeepOut,  new[] { 2, 1, 0 }, 1.5f, 2.5f, 2f),
             P("Boot",        Kind.Rollout, FootballRoutes.Post,     FootballRoutes.Comeback, FootballRoutes.Flat,    new[] { 2, 0, 1 }, 2f, 2f, 1.5f),
             // ── runs ──
-            P("Jet Sweep",   Kind.JetSweep, FootballRoutes.Block,   FootballRoutes.Block,    FootballRoutes.SweepPath, new[] { 2 }, 4.5f, 3f, 1f),
+            Sweep("Jet Sweep", 2, 4.5f, 3f, 1f),
             P("QB Draw",     Kind.QbDraw,   FootballRoutes.ClearOut, FootballRoutes.ClearOut, FootballRoutes.Seam,     new int[0], 3.5f, 2f, 0.6f),
             P("QB Power",    Kind.QbRun,    FootballRoutes.Block,    FootballRoutes.Block,    FootballRoutes.Block,    new int[0], 4f, 2f, 0.5f, 1.5f),
+            // ── trickery (Sam: end arounds, flea flickers, screens) ──
+            Sweep("End Around", 0, 2f, 1.5f, 0.6f),
+            P("Flea Flicker", Kind.FleaFlicker, FootballRoutes.Go,      FootballRoutes.Post,     FootballRoutes.FlickerPath, new[] { 0, 1 }, 0.4f, 0.9f, 1.6f),
+            P("Screen",      Kind.Screen,   FootballRoutes.ClearOut, FootballRoutes.ClearOut, FootballRoutes.ScreenOut, new[] { 2 }, 1.5f, 2f, 2f, 0.6f),
         };
     }
 }

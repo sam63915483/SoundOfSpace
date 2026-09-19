@@ -161,6 +161,18 @@ public class FootballMatch : MonoBehaviour
         if (_ball != null) return;
         home.index = 0; away.index = 1;
         BuildSquads();
+        // This scene is a stadium, not a spaceship: shed the auto-created ship /
+        // survival HUDs and the two debug overlays that every scene otherwise
+        // gets (the gameplay HUD comes from the scene's own HUD_Canvas snapshot).
+        if (Application.isPlaying)
+        {
+            foreach (var t in new[] { "LightingDebugToolbox", "PerfTrace", "GForceHUD", "VitalsHUD" })
+            {
+                var type = System.Type.GetType(t);
+                if (type == null) continue;
+                foreach (var c in FindObjectsOfType(type, true)) if (c is Component comp) Destroy(comp.gameObject);
+            }
+        }
         // The big screens + broadcast camera (play mode only; the soak has no cameras).
         if (Application.isPlaying && FindObjectOfType<FootballBroadcast>() == null)
         {
@@ -222,6 +234,8 @@ public class FootballMatch : MonoBehaviour
     // ── the TV lines ───────────────────────────────────────────────────────
 
     Transform _losLine, _firstLine;
+    readonly Transform[] _downMarkers = new Transform[2];
+    readonly TMPro.TextMeshPro[] _downDigits = new TMPro.TextMeshPro[4];
     public Transform LosLine => _losLine;
     public Transform FirstLine => _firstLine;
 
@@ -229,6 +243,7 @@ public class FootballMatch : MonoBehaviour
     {
         _losLine = MakeLine(fieldRoot, "LineOfScrimmage", new Color(0.2f, 0.5f, 1f));
         _firstLine = MakeLine(fieldRoot, "FirstDownLine", new Color(1f, 0.55f, 0.05f));
+        for (int i = 0; i < 2; i++) _downMarkers[i] = MakeDownMarker(fieldRoot, i);
         ShowFieldLines(false);
     }
 
@@ -249,12 +264,69 @@ public class FootballMatch : MonoBehaviour
         return go.transform;
     }
 
+    /// The down marker (Sam): a stick with a sign on each sideline at the
+    /// line of scrimmage, showing the down.
+    Transform MakeDownMarker(Transform fieldRoot, int side)
+    {
+        var root = new GameObject("DownMarker" + (side == 0 ? "Left" : "Right"));
+        root.transform.SetParent(fieldRoot, false);
+        var pole = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+        Kill(pole.GetComponent<Collider>());
+        pole.transform.SetParent(root.transform, false);
+        pole.transform.localPosition = new Vector3(0f, 1.1f, 0f);
+        pole.transform.localScale = new Vector3(0.07f, 1.1f, 0.07f);
+        var pm = new Material(Shader.Find("Standard")) { color = new Color(0.9f, 0.9f, 0.9f) };
+        pole.GetComponent<Renderer>().sharedMaterial = pm;
+        var sign = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        Kill(sign.GetComponent<Collider>());
+        sign.transform.SetParent(root.transform, false);
+        sign.transform.localPosition = new Vector3(0f, 2.6f, 0f);
+        sign.transform.localScale = new Vector3(0.9f, 0.9f, 0.1f);
+        var sm = new Material(Shader.Find("Standard")) { color = new Color(1f, 0.45f, 0.05f) };
+        sm.SetFloat("_Glossiness", 0.2f);
+        sign.GetComponent<Renderer>().sharedMaterial = sm;
+        // A digit on each face so it reads from either end of the field.
+        for (int f = 0; f < 2; f++)
+        {
+            var tgo = new GameObject("Digit");
+            tgo.transform.SetParent(sign.transform, false);
+            tgo.transform.localPosition = new Vector3(0f, 0f, f == 0 ? -0.6f : 0.6f);
+            tgo.transform.localRotation = Quaternion.Euler(0f, f == 0 ? 0f : 180f, 0f);
+            tgo.transform.localScale = new Vector3(1f / 0.9f, 1f / 0.9f, 1f / 0.1f);
+            var tmp = tgo.AddComponent<TMPro.TextMeshPro>();
+            tmp.text = "1"; tmp.fontSize = 7f; tmp.fontStyle = TMPro.FontStyles.Bold; tmp.color = Color.black;
+            tmp.alignment = TMPro.TextAlignmentOptions.Center; tmp.enableWordWrapping = false;
+            tmp.GetComponent<RectTransform>().sizeDelta = new Vector2(1f, 1f);
+            _downDigits[side * 2 + f] = tmp;
+        }
+        root.SetActive(false);
+        return root.transform;
+    }
+
+    static void Kill(UnityEngine.Object o)
+    {
+        if (o == null) return;
+        if (Application.isPlaying) Destroy(o); else DestroyImmediate(o);
+    }
+
     void ShowFieldLines(bool on)
     {
         if (_losLine == null) return;
         bool show = on && showFieldLines && _possession != null;
         _losLine.gameObject.SetActive(show);
         _firstLine.gameObject.SetActive(show);
+        for (int i = 0; i < 2; i++)
+        {
+            if (_downMarkers[i] == null) continue;
+            _downMarkers[i].gameObject.SetActive(show);
+            if (!show) continue;
+            float x = (i == 0 ? -1f : 1f) * (FootballField.HalfWidth + 1.4f);
+            _downMarkers[i].localPosition = new Vector3(x, 0f, _losZ);
+            // Signs face across the field toward the stands' far side: the pole's
+            // faces are along ±Z (down the field), which is how the stands read them.
+        }
+        string d = _down.ToString();
+        foreach (var t in _downDigits) if (t != null && t.text != d) t.text = d;
         if (!show) return;
         float y = 0.045f;
         _losLine.localPosition = new Vector3(0f, y, _losZ);

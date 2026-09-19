@@ -134,6 +134,8 @@ public class PlayInstance
     public event Action<PlayResult> Ended;
     public Action<string> log;
     public FootballFormation formation;
+    public enum DefCall { Press, Normal, Off, Blitz }
+    public DefCall defCall;
     /// True once the ball is at the line with the centre over it (or in the
     /// kicker's hands): the snap can come as soon as the hold lifts.
     public bool BallReady => _ballReady;
@@ -206,7 +208,8 @@ public class PlayInstance
         view.players = players; view.ball = ball; view.offense = offense; view.defense = defense;
         view.attackDir = offense.attackDir; view.losZ = losZ; view.play = play; view.isKickoff = false;
         view.timeSinceSnap = -1f;
-        view.readDelay = play.kind == FootballPlay.Kind.JetSweep || play.kind == FootballPlay.Kind.QbDraw ? 0.8f : play.kind == FootballPlay.Kind.QbRun ? 0.55f : 0.4f;
+        view.readDelay = play.kind == FootballPlay.Kind.JetSweep || play.kind == FootballPlay.Kind.QbDraw || play.kind == FootballPlay.Kind.FleaFlicker ? 0.8f : play.kind == FootballPlay.Kind.QbRun ? 0.55f : 0.4f;
+        defCall = PickDefense(toGo, rng);
         this.formation = formation ?? FootballFormation.Pick(play, rng);
         BuildScrimmage(qbBrainOverride);
     }
@@ -247,18 +250,23 @@ public class PlayInstance
         Spot(c, F(0f, -0.5f));
         Spot(ol[0], F(-1.6f, -0.5f)); Spot(ol[1], F(1.6f, -0.5f));
         for (int i = 0; i < 3; i++) Spot(wr[i], F(wrX[i], i == 2 ? -1.2f : -0.8f));
-        // Jet sweep: the slot is already in motion beside the QB at the snap.
-        if (view.play.kind == FootballPlay.Kind.JetSweep) Spot(wr[2], F(Mathf.Sign(wrX[2]) * 5f, -3f));
+        // Sweeps: the sweep man is already in motion beside the QB at the snap.
+        int sw = view.play.sweep;
+        if (view.play.kind == FootballPlay.Kind.JetSweep || view.play.kind == FootballPlay.Kind.FleaFlicker) Spot(wr[sw], F(Mathf.Sign(wrX[sw]) * 5f, -3f));
         Spot(dl[0], F(-1.6f, 1.0f)); Spot(dl[1], F(1.6f, 1.0f));
+        // The defensive call (Sam: they always lined up the same): press,
+        // normal, off, or a blitz with the corners up tight.
+        float dbDepth = defCall == DefCall.Press || defCall == DefCall.Blitz ? 1.3f : defCall == DefCall.Off ? 7f : 3.5f;
+        float sDepth = defCall == DefCall.Off ? 15f : defCall == DefCall.Normal ? 12f : 10f;
         float shade = 0f;
         for (int i = 0; i < 3; i++)
         {
             float x = Mathf.Clamp(wrX[i], -(FootballField.HalfWidth - 1.5f), FootballField.HalfWidth - 1.5f);
-            Spot(db[i], F(x, 2.5f + (i == 2 ? 1.5f : 0f)));
+            Spot(db[i], F(x, dbDepth + (i == 2 ? 1.2f : 0f)));
             shade += wrX[i];
         }
-        Spot(lb, F(0f, 4.5f));
-        Spot(s, F(shade / 3f * 0.3f, 12f));
+        Spot(lb, F(0f, defCall == DefCall.Blitz ? 2.5f : 4.5f));
+        Spot(s, F(shade / 3f * 0.3f, sDepth));
 
         // Live brains.
         var play = view.play;
@@ -276,7 +284,7 @@ public class PlayInstance
         }
         for (int i = 0; i < 2; i++) _live[dl[i]] = new DLBrain(F(i == 0 ? -4.3f : 4.3f, -1.8f));
         for (int i = 0; i < 3; i++) _live[db[i]] = new DBBrain(wr[i], def, _rng);
-        _live[lb] = new LBBrain();
+        _live[lb] = new LBBrain { rushAfter = defCall == DefCall.Blitz ? 0.05f : 5.0f };
         _live[s] = new SafetyBrain(def, _rng);
 
         // The pocket (handoff §6): 2–4 s from blocking vs pass rush.
@@ -320,6 +328,14 @@ public class PlayInstance
     }
 
     FootballPlayer Find(FootballTeam t, FootballRole r, int idx = 0) => view.FindRole(t, r, idx);
+
+    static DefCall PickDefense(float toGo, System.Random rng)
+    {
+        double r = rng.NextDouble();
+        if (toGo <= 3f) return r < 0.40 ? DefCall.Press : r < 0.70 ? DefCall.Normal : DefCall.Blitz;
+        if (toGo <= 7f) return r < 0.45 ? DefCall.Normal : r < 0.65 ? DefCall.Off : r < 0.85 ? DefCall.Press : DefCall.Blitz;
+        return r < 0.45 ? DefCall.Off : r < 0.75 ? DefCall.Normal : r < 0.85 ? DefCall.Press : DefCall.Blitz;
+    }
 
     /// Clamp a route point inside the field (a go route from the 10 used to
     /// run out the back of the end zone).
@@ -573,7 +589,7 @@ public class PlayInstance
         _ball.Snap(hands, SnapFlightSeconds, _qb, _centre);
         _centre.SetHold(HoldStyle.None);
         _lastCarrier = null;
-        log?.Invoke((view.play != null ? view.play.name : "Play") + " (" + formation.name + ") — snap" + (wild ? " — it's high and wide!" : ""));
+        log?.Invoke((view.play != null ? view.play.name : "Play") + " (" + formation.name + ") vs " + defCall.ToString().ToLower() + " — snap" + (wild ? " — it's high and wide!" : ""));
     }
 
     void TickLive(float dt)
@@ -1018,6 +1034,11 @@ public class PlayInstance
     {
         if (p.brain != null && p.brain.KeepsControlWhenCarrying) return;
         List<Vector3> opening = (p.brain as WRBrain)?.Remaining();
+        if (view.play != null && view.play.kind == FootballPlay.Kind.FleaFlicker && p.role == FootballRole.WR && p.roleIndex == view.play.sweep)
+        {
+            p.brain = new FleaFlickerBrain(_qb, opening ?? new List<Vector3>(), _rng, p.team.speed);
+            return;
+        }
         // A receiver's remaining route is for a sweep; a catch downfield just runs.
         if (!(view.play != null && view.play.kind == FootballPlay.Kind.JetSweep && p.role == FootballRole.WR)) opening = null;
         p.brain = new BallCarrierBrain(opening, _rng, p.team.speed);
@@ -1082,6 +1103,16 @@ public class PlayInstance
                     return;
                 }
 
+                // The pitch back on a flea flicker: the QB has it again, brain intact.
+                if (!kick && best == _qb && view.play != null && view.play.kind == FootballPlay.Kind.FleaFlicker)
+                {
+                    _ball.Hold(best);
+                    best.SetHold(HoldStyle.TwoHands);
+                    view.handoffTime = -10f;                              // the defense sees a pass again
+                    _passer = null; _target = null;
+                    log?.Invoke(best.team.shortName + " QB takes the pitch — looking deep");
+                    return;
+                }
                 // Got a hand on it — does he hold it?
                 if (!kick)
                 {
