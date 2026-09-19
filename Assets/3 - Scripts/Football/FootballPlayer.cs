@@ -32,6 +32,10 @@ public class FootballPlayer : MonoBehaviour
     public const float JukeSeconds = 0.42f, SpinSeconds = 0.55f, HurdleSeconds = 0.62f, DiveSeconds = 0.5f;
     public const float HurdleHeight = 0.95f;
     public const float HardFallSeconds = 0.7f;      // the tumble itself; he stays down longer
+    /// The QB/WR1 tags over every head (Sam, 2026-09-19: not needed).
+    public const bool ShowLabels = false;
+    /// How far past the lines a live body can go — nobody runs out the back of the end zone.
+    public const float FieldMargin = 0.4f;
     /// Facing turns at a rate, never snaps (Sam: "the aliens turn unnaturally").
     public const float TurnRateRunning = 540f, TurnRateStanding = 300f;   // deg/s
 
@@ -151,6 +155,7 @@ public class FootballPlayer : MonoBehaviour
         if (modelPrefab != null) BuildAlien(modelPrefab);
         else BuildCapsule(bodyMat);
 
+        if (!ShowLabels) return;
         var lbl = new GameObject("Label");
         lbl.transform.SetParent(transform, false);
         lbl.transform.localPosition = Vector3.up * (Height + 0.5f);
@@ -235,6 +240,14 @@ public class FootballPlayer : MonoBehaviour
     }
 
     /// Turn to face a direction without moving (lining up).
+    /// A small positional correction from contact (a blocker holding a
+    /// rusher off). Not a teleport: a few centimetres a tick.
+    public void Nudge(Vector3 fieldPos)
+    {
+        _pos = fieldPos; _pos.y = 0f;
+        transform.localPosition = _pos;
+    }
+
     /// Turn to face a direction (at the turn rate) and stop.
     public void Face(Vector3 facing)
     {
@@ -476,6 +489,15 @@ public class FootballPlayer : MonoBehaviour
         else _vel = Vector3.MoveTowards(_vel, targetVel, (IsDown ? Accel * 2.5f : Accel) * dt);
         _pos += _vel * dt;
         _pos.y = 0f;
+        // A soft wall while the play is live: the field ends at the lines.
+        if (view != null && view.snapped)
+        {
+            float hw = FootballField.HalfWidth + FieldMargin, el = FootballField.EndLineZ + FieldMargin;
+            if (_pos.x > hw) { _pos.x = hw; if (_vel.x > 0f) _vel.x = 0f; }
+            if (_pos.x < -hw) { _pos.x = -hw; if (_vel.x < 0f) _vel.x = 0f; }
+            if (_pos.z > el) { _pos.z = el; if (_vel.z > 0f) _vel.z = 0f; }
+            if (_pos.z < -el) { _pos.z = -el; if (_vel.z < 0f) _vel.z = 0f; }
+        }
         if (IsDiving) { }
         else if (IsSpinning || IsHurdling) { }                                        // heading locked through the move
         else if (_vel.sqrMagnitude > 0.25f && !IsThrowing && !IsJuking) _facingTarget = _vel.normalized;

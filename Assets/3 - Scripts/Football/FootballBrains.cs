@@ -1106,7 +1106,22 @@ public class ReturnBlockerBrain : IPlayerBrain
         if (!view.snapped) return;
         var c = view.Carrier;
         if (c != null && c.team != self.team) { o.move = Steer.Pursue(self, c); return; }
-        if (c != null) { o.move = Steer.Block(self, view); return; }
+        if (c != null)
+        {
+            // Block the coverage man who is closest to the RETURNER (not to me):
+            // get between him and the ball.
+            FootballPlayer threat = null; float best = float.MaxValue;
+            for (int i = 0; i < view.players.Count; i++)
+            {
+                var d = view.players[i];
+                if (d.team == self.team || d.IsDown) continue;
+                float dc = Vector3.Distance(d.Pos, c.Pos), dm = Vector3.Distance(d.Pos, self.Pos);
+                float score = dc + dm * 0.5f;
+                if (score < best) { best = score; threat = d; }
+            }
+            o.move = threat != null ? Steer.BlockMan(self, threat, c) : Steer.Block(self, view);
+            return;
+        }
         // Ball in the air: drift back toward where it'll land, at a jog.
         o.move = Steer.To(self.Pos, view.ball.landPoint, 8f) * 0.4f;
     }

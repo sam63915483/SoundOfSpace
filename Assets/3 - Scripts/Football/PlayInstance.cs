@@ -271,7 +271,7 @@ public class PlayInstance
         {
             var route = new List<Vector3>();
             float sideward = Mathf.Sign(wrX[i]);                 // + = toward this receiver's own sideline
-            foreach (var wp in play.routes[i].points) route.Add(F(wrX[i] + wp.x * sideward, wp.y));
+            foreach (var wp in play.routes[i].points) route.Add(OnField(F(wrX[i] + wp.x * sideward, wp.y)));
             _live[wr[i]] = new WRBrain(route, play.routes[i].settle);
         }
         for (int i = 0; i < 2; i++) _live[dl[i]] = new DLBrain(F(i == 0 ? -4.3f : 4.3f, -1.8f));
@@ -320,6 +320,15 @@ public class PlayInstance
     }
 
     FootballPlayer Find(FootballTeam t, FootballRole r, int idx = 0) => view.FindRole(t, r, idx);
+
+    /// Clamp a route point inside the field (a go route from the 10 used to
+    /// run out the back of the end zone).
+    static Vector3 OnField(Vector3 p)
+    {
+        p.x = Mathf.Clamp(p.x, -(FootballField.HalfWidth - 1.5f), FootballField.HalfWidth - 1.5f);
+        p.z = Mathf.Clamp(p.z, -(FootballField.EndLineZ - 1.5f), FootballField.EndLineZ - 1.5f);
+        return p;
+    }
 
     void Spot(FootballPlayer p, Vector3 fieldPos, bool huddles = true)
     {
@@ -626,6 +635,17 @@ public class PlayInstance
             if (o.say != null) log?.Invoke(o.say);
             if (o.action != BrainAction.None) DoAction(p, o);
         }
+        // Blocking is CONTACT (Sam: the rush was sliding through the line a
+        // foot at a time): an engaged rusher is held out at arm's length from
+        // his blocker, so he has to work round him or wait to shed.
+        foreach (var kv in _engaged)
+        {
+            var d = kv.Key; var b = kv.Value.blocker;
+            if (d.IsDown || b.IsDown) continue;
+            Vector3 sep = d.Pos - b.Pos; sep.y = 0f;
+            float dist = sep.magnitude;
+            if (dist < BlockContact && dist > 0.01f) d.Nudge(b.Pos + sep / dist * BlockContact);
+        }
         // The arm has come through: the ball leaves the hand now.
         var holder = _ball.holder;
         if (_throwPending && holder != null && holder.ThrowReleased)
@@ -899,7 +919,8 @@ public class PlayInstance
     }
 
     struct Engagement { public FootballPlayer blocker; public float until; public float scale; }
-    const float EngageStart = 1.2f, EngageKeep = 1.7f;
+    const float EngageStart = 1.6f, EngageKeep = 2.1f;
+    const float BlockContact = 1.0f;      // a blocker and his man never get closer than this while engaged
     readonly Dictionary<FootballPlayer, Engagement> _engaged = new Dictionary<FootballPlayer, Engagement>();
     readonly Dictionary<FootballPlayer, float> _tackleRetry = new Dictionary<FootballPlayer, float>();
     readonly Dictionary<FootballPlayer, float> _diveConsider = new Dictionary<FootballPlayer, float>();
@@ -999,6 +1020,7 @@ public class PlayInstance
         {
             case FootballBall.State.Airborne:
             {
+                if (_ball.fumbled && LooseBallOut(true)) return;
                 if (_ball.dropped || _ball.fumbled) return;     // falling to the grass; nobody can have it in the air
                 if (_ball.airTime < (_ball.isSnap ? 0.05f : 0.3f)) return;
                 // Go up for it: the intended man and the nearest defender to
@@ -1094,6 +1116,7 @@ public class PlayInstance
                 if (_looseSince < 0f) _looseSince = view.timeSinceSnap;
                 bool fumble = _ball.fumbled || (!_ball.isKick && !view.isKickoff);
                 if (_ball.isSnap) _badSnap = true;
+                if (LooseBallOut(fumble)) return;
                 // Rolling into the end zone = touchback (kicks) / dead (fumbles).
                 if (_ball.pos.z * view.defense.attackDir <= -FootballField.GoalLineZ && !fumble)
                 {
@@ -1149,6 +1172,29 @@ public class PlayInstance
         }
     }
     FootballPlayer _breakupBy;
+
+    /// A ball on the ground (or a fumble still bouncing) that crosses a
+    /// sideline or an end line is dead there — nobody can pick it up from
+    /// out of bounds (Sam saw the defense do exactly that). A fumble goes
+    /// back to the team that lost it at the spot; a kick out of bounds is
+    /// the receiving team's ball at their 40.
+    bool LooseBallOut(bool fumble)
+    {
+        bool outside = Mathf.Abs(_ball.pos.x) > FootballField.HalfWidth || Mathf.Abs(_ball.pos.z) > FootballField.EndLineZ;
+        if (!outside) return false;
+        if (fumble)
+        {
+            var team = _fumbler != null ? _fumbler.team : view.offense;
+            log?.Invoke("Ball out of bounds — " + team.shortName + " keep it");
+            End(Outcome.Fumble, _ball.pos.z, team, null);
+            return true;
+        }
+        float z40 = view.defense.attackDir * (40f * FootballField.MetresPerYard - FootballField.GoalLineZ);
+        log?.Invoke("Kickoff out of bounds — " + view.defense.shortName + " ball at the 40");
+        _ball.Place(new Vector3(0f, 0f, z40));
+        End(Outcome.KickReturn, z40, view.defense, null);
+        return true;
+    }
     bool _badSnap;
 
     /// After the whistle nobody freezes: bodies coast to a stop, the fallen
