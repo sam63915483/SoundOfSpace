@@ -427,6 +427,14 @@ public class FootballPlayer : MonoBehaviour
         return p;
     }
 
+    /// The rig moves the held ball itself, right after posing the arm.
+    public void AttachHeldBall(Transform ball, Quaternion worldRot)
+    {
+        if (_rig == null) return;
+        _rig.heldBall = ball; _rig.heldBallRot = worldRot;
+    }
+    public void DetachHeldBall() { if (_rig != null) _rig.heldBall = null; }
+
     /// Where the ball is DRAWN this frame (field space): on the posed bones
     /// when he has a rig and a hold, else the sim's hold point.
     public Vector3 BallDrawPoint()

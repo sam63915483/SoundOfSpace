@@ -72,6 +72,10 @@ public class FootballAlienRig : MonoBehaviour
     /// forearm for a tuck, between the hands for two hands) — set every
     /// LateUpdate, so the ball is on the arm whatever the arms managed.
     [System.NonSerialized] public Vector3 heldBallWorld; [System.NonSerialized] public bool heldBallValid;
+    /// The ball's transform while this man holds it: moved here, in the same
+    /// pass that poses the arm (moving it a frame later left it trailing the
+    /// forearm on a runner).
+    [System.NonSerialized] public Transform heldBall; [System.NonSerialized] public Quaternion heldBallRot;
 
     public const float ThrowSeconds = 0.42f;
     public const float ThrowRelease = 0.58f;              // fraction of the motion where the ball leaves the hand
@@ -167,6 +171,7 @@ public class FootballAlienRig : MonoBehaviour
         if (!_ok || _frame == null) return;
         Pose();
         PlaceHeldBall(transform.forward, transform.right, transform.up);
+        if (heldBall != null && heldBallValid) heldBall.SetPositionAndRotation(heldBallWorld, heldBallRot);
     }
 
     void Pose()

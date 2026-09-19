@@ -851,5 +851,27 @@ public class FootballBroadcast : MonoBehaviour
         Destroy(tex);
         // Every fourth one, the player's own view too.
         if (_dumpN % 4 == 0) ScreenCapture.CaptureScreenshot(Path.Combine(_dumpDir, "game" + _dumpN.ToString("000") + ".png"));
+        // And a close-up of whoever has the ball (the ball cam): 3 m off his
+        // right-front, at chest height.
+        var play = _match.CurrentPlay;
+        var holder = play != null && play.view.ball != null ? play.view.ball.holder : null;
+        if (holder != null)
+        {
+            var go = new GameObject("__ballcam");
+            var cam = go.AddComponent<Camera>();
+            Vector3 chest = _fieldRoot.TransformPoint(holder.Pos + Vector3.up * 1.1f);
+            Vector3 fwd = _fieldRoot.TransformDirection(holder.Facing), right = _fieldRoot.TransformDirection(holder.Right);
+            go.transform.position = chest + fwd * 2.2f + right * 2.0f + _fieldRoot.up * 0.3f;
+            go.transform.rotation = Quaternion.LookRotation(chest - go.transform.position, _fieldRoot.up);
+            cam.fieldOfView = 40f; cam.nearClipPlane = 0.1f;
+            var rt2 = new RenderTexture(960, 720, 24);
+            cam.targetTexture = rt2; cam.Render();
+            RenderTexture.active = rt2;
+            var t2 = new Texture2D(960, 720, TextureFormat.RGB24, false);
+            t2.ReadPixels(new Rect(0, 0, 960, 720), 0, 0); t2.Apply();
+            RenderTexture.active = prev;
+            File.WriteAllBytes(Path.Combine(_dumpDir, "ballcam" + _dumpN.ToString("000") + "_" + holder.Hold + ".png"), t2.EncodeToPNG());
+            Destroy(t2); Destroy(rt2); Destroy(go);
+        }
     }
 }

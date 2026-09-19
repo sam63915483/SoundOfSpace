@@ -56,6 +56,7 @@ public class FootballBall : MonoBehaviour
     Transform _visual;
     float _spin;
     System.Random _rng = new System.Random(7);
+    FootballPlayer _attached;
 
     public void Init(Transform fieldRoot)
     {
@@ -196,8 +197,21 @@ public class FootballBall : MonoBehaviour
                 vel = Vector3.MoveTowards(vel, Vector3.zero, 4f * dt);
                 break;
         }
-        // Drawn on the holder's posed arm when held (the sim keeps its own hold point).
-        transform.localPosition = state == State.Held && holder != null ? holder.BallDrawPoint() : pos;
+        // Drawn on the holder's posed arm when held (the sim keeps its own hold
+        // point): the rig moves the transform in its LateUpdate; here is the
+        // fallback for the first frame / no rig.
+        if (state == State.Held && holder != null)
+        {
+            transform.localPosition = holder.BallDrawPoint();
+            var fr = transform.parent;
+            holder.AttachHeldBall(transform, fr != null ? fr.rotation * holder.BallHoldRotation() : holder.BallHoldRotation());
+            _attached = holder;
+        }
+        else
+        {
+            if (_attached != null) { _attached.DetachHeldBall(); _attached = null; }
+            transform.localPosition = pos;
+        }
         if (state == State.Airborne && !isKick && !fumbled) _spin += 900f * dt;           // the spiral
         else if (state != State.Held) _spin += vel.magnitude * 300f * dt;                 // tumbling
         if (state == State.Held && holder != null)
