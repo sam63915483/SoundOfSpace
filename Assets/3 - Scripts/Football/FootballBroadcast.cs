@@ -63,12 +63,14 @@ public class FootballBroadcast : MonoBehaviour
     public float slowMoEase = 0.3f;
     public float slowMoBefore = 0.8f, slowMoAfter = 0.6f, slowMoAfterCatch = 0.8f;
     [Tooltip("Keep recording this long after the whistle: the hit, then the pile.")]
-    public float postWhistleSeconds = 2f;
+    public float postWhistleSeconds = 4f;
     [Tooltip("Replay picture is this much tighter than the live one (1 = same).")]
     public float replayZoom = 0.8f;
     public float slowMoFov = 8f;
     [Header("The card (what happened, slid across the screen before the replay)")]
-    public float cardSlide = 0.35f, cardHold = 1.5f;
+    public float cardSlide = 0.35f, cardHold = 2.6f;
+    [Tooltip("The LIVE card on the way back from the replay.")]
+    public float liveCardHold = 0.5f;
 
     [Header("Debug")]
     public float dumpEvery = 2f;
@@ -116,7 +118,7 @@ public class FootballBroadcast : MonoBehaviour
 
     // Replay playback.
     bool _replaying; float _replayT, _replayStartedAt; float _replayStart, _replayEnd, _replayKey, _slowStart, _slowEnd, _slowSpeed; float _replayDueAt = -1f;
-    string _cardText; float _cardT = -1f; bool _cardDone;
+    string _cardText; float _cardT = -1f, _cardHoldNow; bool _cardDone, _cardStartsReplay, _outroShown;
     readonly List<Transform> _cards = new List<Transform>();
     readonly List<Transform> _cardSlabs = new List<Transform>();
     readonly List<TextMeshPro> _cardTexts = new List<TextMeshPro>();
@@ -515,8 +517,13 @@ public class FootballBroadcast : MonoBehaviour
     void ShowCard()
     {
         if (_frames.Count < 10) { _cardT = -1f; return; }
-        _cardT = 0f; _cardDone = false;
-        for (int i = 0; i < _cards.Count; i++) { _cards[i].gameObject.SetActive(true); _cardTexts[i].text = _cardText; }
+        ShowCard(_cardText, cardHold, true);
+    }
+
+    void ShowCard(string text, float hold, bool startsReplay)
+    {
+        _cardT = 0f; _cardDone = false; _cardHoldNow = hold; _cardStartsReplay = startsReplay;
+        for (int i = 0; i < _cards.Count; i++) { _cards[i].gameObject.SetActive(true); _cardTexts[i].text = text; }
     }
 
     /// A wipe: the slab grows in from one edge of the picture, holds with
@@ -528,17 +535,18 @@ public class FootballBroadcast : MonoBehaviour
         _cardT += dt;
         float W = screenSize.x;
         float width, centre; bool showText;
+        float hold = _cardHoldNow;
         if (_cardT < cardSlide) { float k = Mathf.SmoothStep(0f, 1f, _cardT / cardSlide); width = W * k; centre = -(W - width) * 0.5f; showText = false; }
-        else if (_cardT < cardSlide + cardHold) { width = W; centre = 0f; showText = true; }
-        else { float k = Mathf.SmoothStep(0f, 1f, (_cardT - cardSlide - cardHold) / cardSlide); width = W * (1f - k); centre = (W - width) * 0.5f; showText = false; }
+        else if (_cardT < cardSlide + hold) { width = W; centre = 0f; showText = true; }
+        else { float k = Mathf.SmoothStep(0f, 1f, (_cardT - cardSlide - hold) / cardSlide); width = W * (1f - k); centre = (W - width) * 0.5f; showText = false; }
         for (int i = 0; i < _cardSlabs.Count; i++)
         {
             _cardSlabs[i].localPosition = new Vector3(centre, 0f, 0f);
             _cardSlabs[i].localScale = new Vector3(Mathf.Max(0.01f, width), screenSize.y, 1f);
             _cardTexts[i].enabled = showText;
         }
-        if (!_cardDone && _cardT >= cardSlide + cardHold) { _cardDone = true; StartReplay(); }
-        if (_cardT >= cardSlide * 2f + cardHold)
+        if (!_cardDone && _cardT >= cardSlide + hold) { _cardDone = true; if (_cardStartsReplay) StartReplay(); }
+        if (_cardT >= cardSlide * 2f + hold)
         {
             _cardT = -1f;
             foreach (var c in _cards) c.gameObject.SetActive(false);
@@ -568,7 +576,7 @@ public class FootballBroadcast : MonoBehaviour
         _heldPlay = _match.CurrentPlay;
         if (_heldPlay != null) _heldPlay.holdBreak = true; _replayStartedAt = _clock;
         EnsureGhosts();
-        _replaying = true;
+        _replaying = true; _outroShown = false;
         SetReplayLook(true);
         // The replay camera starts from where the play started.
         _focus = _replayFrames[0].focus; _fov = _replayFrames[0].fov; _slideZ = _focus.z * cameraFollow;
@@ -591,6 +599,8 @@ public class FootballBroadcast : MonoBehaviour
             speed = Mathf.Lerp(1f, _slowSpeed, Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(ease)));
         }
         _replayT += dt * speed;
+        // The wipe back to live starts so it is fully across as the last frame plays.
+        if (!_outroShown && _replayT >= _replayEnd - cardSlide) { _outroShown = true; ShowCard("LIVE", liveCardHold, false); }
         if (_replayT >= _replayEnd) { EndReplay(); return; }
         // Find the frame pair around _replayT and interpolate positions.
         int i = 0;
