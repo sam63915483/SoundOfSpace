@@ -57,9 +57,11 @@ public class FootballBroadcast : MonoBehaviour
     public bool replays = true;
     public float replayDelay = 1.6f;     // live celebration first, then the card, then the replay
     [Tooltip("Speed from the throw until a second after the catch (runs: around the key moment).")]
-    public float slowMoSpeed = 0.35f;
+    public float slowMoSpeed = 0.25f;
     public float slowMoBefore = 1.0f, slowMoAfter = 0.6f, slowMoAfterCatch = 1.0f;
-    public float maxReplaySeconds = 10f;
+    public float maxReplaySeconds = 13f;
+    [Tooltip("Keep recording this long after the whistle: the hit, then the pile.")]
+    public float postWhistleSeconds = 3f;
     [Tooltip("Replay picture is this much tighter than the live one (1 = same).")]
     public float replayZoom = 0.8f;
     public float slowMoFov = 8f;
@@ -98,7 +100,7 @@ public class FootballBroadcast : MonoBehaviour
 
     // Recording.
     readonly List<Frame> _frames = new List<Frame>();
-    float _recordAcc;
+    float _recordAcc, _recT;                  // _recT: the recording clock (sim seconds since it started)
     PlayInstance _recordingPlay, _lastLivePlay, _endedPlay; float _endedAt = -1f;
     bool _recording;
     float _keyTime = -1f; int _keyRank;
@@ -405,14 +407,16 @@ public class FootballBroadcast : MonoBehaviour
         // A new play: start a fresh recording at its pre-snap.
         if (play != _recordingPlay && play.phase != PlayInstance.Phase.Ended && (play.phase == PlayInstance.Phase.PreSnap || play.phase == PlayInstance.Phase.Live))
         {
-            _recordingPlay = play; _frames.Clear(); _recording = true; _recordAcc = 0f;
+            _recordingPlay = play; _frames.Clear(); _recording = true; _recordAcc = 0f; _recT = 0f;
             _keyTime = -1f; _keyRank = 0; _postWhistle = -1f; _lastHolder = null; _wasAir = false; _throwTime = -1f; _catchTime = -1f;
             _wasHurdling.Clear(); _wasSpinning.Clear(); _wasDown.Clear();
         }
         if (!_recording || play != _recordingPlay) return;
         var v = play.view;
-        float t = _frames.Count > 0 ? _frames[_frames.Count - 1].t + dt : 0f;
-        if (_frames.Count == 0) t = 0f;
+        // (Stamping frames with the last frame's time + one physics step
+        // compressed the recording 2x: fast-forward replays, no slow-mo.)
+        _recT += dt;
+        float t = _recT;
         // Events → the key moment (rank: catch 4, hurdle/spin 3, fumble 3, tackle 2).
         var holder = v.ball.holder;
         bool air = v.BallAirborne && !v.ball.isSnap;
@@ -433,11 +437,11 @@ public class FootballBroadcast : MonoBehaviour
         if (play.phase == PlayInstance.Phase.Ended)
         {
             if (_postWhistle < 0f) _postWhistle = t;
-            if (t - _postWhistle > 2.0f) { _recording = false; return; }
+            if (t - _postWhistle > postWhistleSeconds) { _recording = false; return; }
         }
         _recordAcc += dt;
         if (_recordAcc < 1f / RecordHz) return;
-        _recordAcc = 0f;
+        _recordAcc -= 1f / RecordHz;
         if (_frames.Count >= MaxFrames) return;
         var f = new Frame { t = t, ballPos = v.ball.pos, ballRot = v.ball.transform.localRotation, ballHeld = holder != null, poses = new FootballPlayer.PoseFrame[v.players.Count] };
         for (int i = 0; i < v.players.Count; i++) f.poses[i] = v.players[i].CapturePose();
@@ -567,7 +571,7 @@ public class FootballBroadcast : MonoBehaviour
         bool slow = _replayT >= _slowStart && _replayT <= _slowEnd;
         float speed = slow ? _slowSpeed : 1f;
         _replayT += dt * speed;
-        if (_replayT >= _replayEnd + 0.4f) { EndReplay(); return; }
+        if (_replayT >= _replayEnd) { EndReplay(); return; }
         // Find the frame pair around _replayT and interpolate positions.
         int i = 0;
         while (i < _replayFrames.Count - 2 && _replayFrames[i + 1].t < _replayT) i++;
