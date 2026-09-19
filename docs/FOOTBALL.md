@@ -228,6 +228,49 @@ an 11-yd loss · 5–7 INT (high — `DefenderDropChance` / `OpenSeparation` are
 the knobs) · ~30 throws on the run a game, 6 of them 30+ yards · dead ball
 19 s · huddle every play.
 
+## Pass 4 (2026-09-19 night) — the realism batch
+
+- **UI:** the stadium keeps every current auto-HUD (VitalsHUD switches the
+  legacy ResourceHUD bars off itself) and the scene has `HUD_Canvas` +
+  `HelmetHudConfig` like the tutorial box (that config is what gives the
+  compass / boost / vitals their current look). Only LightingDebugToolbox
+  and PerfTrace are destroyed (`FootballMatch.Boot`). Tools ▸ Football ▸ Add
+  Gameplay HUD / Add HUD Config / Add Jumbotron Anchors.
+- **Down markers** on both sidelines at the line (and in replays).
+- **Defensive calls** per snap: press / normal / off / blitz (`PickDefense`).
+- **Plays:** End Around, Flea Flicker (instant pitch back; the QB keeps it
+  once, looks deep), Screen (tight formation, only vs a cushion, line
+  releases at 0.6 s, thrown at 1.9 s). Punts on 4th down (`ShouldPunt`: go
+  on ≤2, in range ≤6, inside the 25, or trailing late). Moods: trailing in
+  the last 3 min = deep shots + a 2 s hurry-up huddle; leading = the ground.
+- **QB:** escape can start the instant he has the ball; cornered after a
+  second of scrambling he gets rid of it (checkdown or THROWN AWAY over the
+  sideline) instead of a second sidestep. Sacks ~5/game, throwaways ~5.
+- **Tackles:** a hit is a WRAP (`EndTackle`/`TickWrap`, 0.55 s): arms round
+  the waist, the runner drives at 0.4× (forward progress), anyone within
+  1.4 m piles on, and a lone wrap can be BROKEN (`BreakTackleChance` × the
+  team's speed). Then everyone falls where the ball is.
+- **Catches:** two men on the ball = CONTESTED: position decides ~60–90%,
+  the loser tips it up 35% of the time (a live 0.9 s pop-up anyone can
+  catch, 25% drop). ~9 contested a game, 2 tipped.
+- **Heads:** everyone looks at something (`BrainOutput.look`, `Head()` in
+  the rig): receivers and corners at the ball, the QB at his read.
+- **Blocking is contact** (`BlockContact` 1.0 m nudge) with arms out; an
+  engagement ends the moment the rusher is past his man.
+- Loose balls out of bounds are dead; routes and live bodies stay on the field.
+
+Soak: 14–21, 14–28, 14–21 · 67–76 plays · 4–7 sacks · 4–5 INT (still a bit
+high) · 13 punts / 3 games · 4–6 broken tackles, ~35 pile-ons, 8–10 contested
+balls a game · 3–4 fumbles (lost 3 — watch this).
+
+**Ideas not built yet, in the order they'd pay off:** press-release moves at
+the line (swim/rip vs a jam) · a stiff-arm as a third open-field move ·
+stumble-on-contact and a real fall pose per hit direction · speed vs sharp
+cuts and receivers looking back late on a comeback · DB ball skills (play the
+hands, not the man, when beaten) · a play sheet per team with tendencies the
+other side can read · celebrations with two men (chest bump) · a real
+run-cycle with hip sway and foot planting · crowd noise keyed to the card.
+
 ## Numbers from the last headless soak (pass 2) (3 games, seeds 1000–1002)
 
 21–14, 28–0, 14–7 · 53–61 plays/game · 45–55% completions · 6–9 yds/play ·
