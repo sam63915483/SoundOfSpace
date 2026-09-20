@@ -711,7 +711,15 @@ public class FootballPlayer : MonoBehaviour
         {
             _diveT += dt;
             // A dive ends on the ground whatever it hit.
-            if (_diveT >= DiveSeconds) { _diveT = -1f; if (!IsDown) FallDown(0.9f); }
+            if (_diveT >= DiveSeconds)
+            {
+                // A dive ends on the ground whatever it hit — and the fall
+                // CONTINUES from the dive's lean (78°), it doesn't restart from
+                // upright (Sam: "they fall flat, snap back up and fall flat again").
+                _diveT = -1f;
+                if (!IsDown) FallDown(0.9f);
+                _lie = Mathf.Max(_lie, 78f / 90f);
+            }
         }
         if (_hardT >= 0f) { _hardT += dt; if (_hardT >= HardFallSeconds) _hardT = -1f; }
         if (_stiffT >= 0f) { _stiffT += dt; if (_stiffT >= StiffArmSeconds) _stiffT = -1f; }
