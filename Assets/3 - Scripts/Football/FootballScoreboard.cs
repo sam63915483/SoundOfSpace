@@ -79,13 +79,13 @@ public class FootballScoreboard : MonoBehaviour
         slab.name = "Slab";
         slab.transform.SetParent(root.transform, false);
         slab.transform.localScale = new Vector3(width, height, depth);
-        var slabMat = new Material(Shader.Find("Standard")) { name = "Board", color = boardColor };
+        var slabMat = new Material(FootballShader.Standard) { name = "Board", color = boardColor };
         slabMat.SetFloat("_Glossiness", 0.2f);
         slab.GetComponent<Renderer>().sharedMaterial = slabMat;
         _owned.Add(slabMat);
 
-        var lampShader = Shader.Find("Sprites/Default");
-        if (lampShader == null) lampShader = Shader.Find("Unlit/Color");
+        var lampShader = FootballShader.Sprite;
+        if (lampShader == null) lampShader = FootballShader.Unlit;
         _lampMat = new Material(lampShader) { name = "Lamps", color = Color.white };
         _owned.Add(_lampMat);
 

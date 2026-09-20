@@ -69,7 +69,7 @@ public class FootballBall : MonoBehaviour
             v.name = "BallVisual";
             v.transform.SetParent(transform, false);
             v.transform.localScale = new Vector3(0.2f, 0.2f, 0.34f);
-            var m = new Material(Shader.Find("Standard")) { color = new Color(0.45f, 0.24f, 0.12f) };
+            var m = new Material(FootballShader.Standard) { color = new Color(0.45f, 0.24f, 0.12f) };
             m.SetFloat("_Glossiness", 0.35f);
             v.GetComponent<Renderer>().sharedMaterial = m;
             _visual = v.transform;

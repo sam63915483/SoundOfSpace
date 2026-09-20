@@ -140,13 +140,13 @@ public class FootballHumanQB : MonoBehaviour
         post.transform.SetParent(_button.transform, false);
         post.transform.localPosition = new Vector3(0f, 0.5f, 0f);
         post.transform.localScale = new Vector3(0.35f, 0.5f, 0.35f);
-        post.GetComponent<Renderer>().sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(0.25f, 0.25f, 0.28f) };
+        post.GetComponent<Renderer>().sharedMaterial = new Material(FootballShader.Standard) { color = new Color(0.25f, 0.25f, 0.28f) };
         var dome = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         dome.name = "Button";
         dome.transform.SetParent(_button.transform, false);
         dome.transform.localPosition = new Vector3(0f, 1.05f, 0f);
         dome.transform.localScale = new Vector3(0.45f, 0.3f, 0.45f);
-        var dm = new Material(Shader.Find("Standard")) { color = new Color(0.95f, 0.1f, 0.08f) };
+        var dm = new Material(FootballShader.Standard) { color = new Color(0.95f, 0.1f, 0.08f) };
         dm.EnableKeyword("_EMISSION"); dm.SetColor("_EmissionColor", new Color(0.6f, 0.02f, 0.02f));
         dome.GetComponent<Renderer>().sharedMaterial = dm;
         // The shipped interaction: a trigger zone for range, the dome as the gaze
@@ -507,7 +507,7 @@ public class FootballHumanQB : MonoBehaviour
         _cylinder.name = "SnapSpot";
         _cylinder.transform.SetParent(_fieldRoot, false);
         _cylinder.transform.localScale = new Vector3(2.2f, 1.25f, 2.2f);
-        var m = new Material(Shader.Find("Standard")) { color = new Color(0.2f, 1f, 0.3f, 0.35f) };
+        var m = new Material(FootballShader.Standard) { color = new Color(0.2f, 1f, 0.3f, 0.35f) };
         m.SetFloat("_Mode", 3f); m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha); m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
         m.SetInt("_ZWrite", 0); m.EnableKeyword("_ALPHABLEND_ON"); m.renderQueue = 3000;
         var mr = _cylinder.GetComponent<Renderer>(); mr.sharedMaterial = m; mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -525,8 +525,8 @@ public class FootballHumanQB : MonoBehaviour
         var lr = go.AddComponent<LineRenderer>();
         lr.useWorldSpace = false; lr.loop = loop; lr.widthMultiplier = width;
         lr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; lr.receiveShadows = false;
-        var sh = Shader.Find("Sprites/Default");
-        lr.sharedMaterial = new Material(sh != null ? sh : Shader.Find("Unlit/Color")) { color = Color.white };
+        var sh = FootballShader.Sprite;
+        lr.sharedMaterial = new Material(sh != null ? sh : FootballShader.Unlit) { color = Color.white };
         lr.startColor = lr.endColor = c;
         lr.enabled = false;
         return lr;

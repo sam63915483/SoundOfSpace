@@ -361,6 +361,16 @@ registry row (`Hotbar.ItemId.Football`) with a code-drawn icon.
 - Nothing waits on a timer for you: the play sits at `Setup` until you reach
   the cylinder. Walking away from the cylinder is how you stall the game.
 
+**🔥 BUILD trap (2026-09-20):** the first build had no jumbotrons. `Shader.Find`
+for a built-in shader returns null in a player unless some material in the
+build uses it or it is on Project Settings ▸ Graphics ▸ Always Included
+Shaders; `new Material(null)` throws and the whole screen builder died in
+`Start`. Every football material now goes through `FootballShader`
+(null-safe, with stand-ins), and Unlit/Color, Standard and
+UI/LensFlareAdditive were added to the always-included list. The build's log
+(`%AppData%\..\LocalLow\DefaultCompany\Solar System 2\Player.log`) named the
+line in one grep — read it before theorising about a build-only bug.
+
 **Not yet verified by a human hand:** the throw charge / arc feel, the hotbar
 icon, the ball's position in the hands, the knockdown, receivers catching your
 throws. All of it needs Sam's playtest.

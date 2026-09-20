@@ -191,8 +191,8 @@ public class FootballBroadcast : MonoBehaviour
     /// positions on this component.
     void BuildScreens()
     {
-        var sh = Shader.Find("Unlit/Texture");
-        _screenMat = new Material(sh != null ? sh : Shader.Find("Standard")) { name = "Jumbotron", mainTexture = _rt };
+        var sh = FootballShader.UnlitTexture;
+        _screenMat = new Material(sh != null ? sh : FootballShader.Standard) { name = "Jumbotron", mainTexture = _rt };
         MakeScreen(AnchorA, screenAPos, screenAEuler);
         MakeScreen(AnchorB, screenBPos, screenBEuler);
     }
@@ -226,7 +226,7 @@ public class FootballBroadcast : MonoBehaviour
         bezel.name = "Bezel";
         bezel.transform.SetParent(root.transform, false);
         bezel.transform.localScale = new Vector3(screenSize.x + 1.2f, screenSize.y + 1.2f, 0.8f);
-        var bm = new Material(Shader.Find("Standard")) { color = new Color(0.05f, 0.05f, 0.06f) };
+        var bm = new Material(FootballShader.Standard) { color = new Color(0.05f, 0.05f, 0.06f) };
         bm.SetFloat("_Glossiness", 0.2f);
         bezel.GetComponent<Renderer>().sharedMaterial = bm;
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
@@ -251,7 +251,7 @@ public class FootballBroadcast : MonoBehaviour
         slab.transform.SetParent(card.transform, false);
         slab.transform.localScale = new Vector3(screenSize.x, screenSize.y, 1f);
         _cardSlabs.Add(slab.transform);
-        var sm = new Material(Shader.Find("Unlit/Color")) { color = new Color(0.03f, 0.03f, 0.05f) };
+        var sm = new Material(FootballShader.Unlit) { color = new Color(0.03f, 0.03f, 0.05f) };
         var slabR = slab.GetComponent<Renderer>(); slabR.sharedMaterial = sm; slabR.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         _screenParts.Add(slabR);
         var ct = new GameObject("Text");
@@ -810,7 +810,7 @@ public class FootballBroadcast : MonoBehaviour
             b.name = "Ghost Ball";
             b.transform.SetParent(_fieldRoot, false);
             b.transform.localScale = new Vector3(0.2f, 0.2f, 0.34f);
-            var m = new Material(Shader.Find("Standard")) { color = new Color(0.45f, 0.24f, 0.12f) };
+            var m = new Material(FootballShader.Standard) { color = new Color(0.45f, 0.24f, 0.12f) };
             var br = b.GetComponent<Renderer>(); br.sharedMaterial = m; br.enabled = false; _ghostRenderers.Add(br);
             _ghostBall = b.transform;
         }
@@ -855,12 +855,12 @@ public class FootballBroadcast : MonoBehaviour
         Destroy(pole.GetComponent<Collider>());
         pole.transform.SetParent(root.transform, false);
         pole.transform.localPosition = new Vector3(0f, 1.1f, 0f); pole.transform.localScale = new Vector3(0.07f, 1.1f, 0.07f);
-        var pr = pole.GetComponent<Renderer>(); pr.sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(0.9f, 0.9f, 0.9f) }; pr.enabled = false; _ghostRenderers.Add(pr);
+        var pr = pole.GetComponent<Renderer>(); pr.sharedMaterial = new Material(FootballShader.Standard) { color = new Color(0.9f, 0.9f, 0.9f) }; pr.enabled = false; _ghostRenderers.Add(pr);
         var sign = GameObject.CreatePrimitive(PrimitiveType.Cube);
         Destroy(sign.GetComponent<Collider>());
         sign.transform.SetParent(root.transform, false);
         sign.transform.localPosition = new Vector3(0f, 2.6f, 0f); sign.transform.localScale = new Vector3(0.9f, 0.9f, 0.1f);
-        var sr = sign.GetComponent<Renderer>(); sr.sharedMaterial = new Material(Shader.Find("Standard")) { color = new Color(1f, 0.45f, 0.05f) }; sr.enabled = false; _ghostRenderers.Add(sr);
+        var sr = sign.GetComponent<Renderer>(); sr.sharedMaterial = new Material(FootballShader.Standard) { color = new Color(1f, 0.45f, 0.05f) }; sr.enabled = false; _ghostRenderers.Add(sr);
         for (int f = 0; f < 2; f++)
         {
             var tgo = new GameObject("Digit");
@@ -887,9 +887,9 @@ public class FootballBroadcast : MonoBehaviour
         go.transform.SetParent(_fieldRoot, false);
         go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
         go.transform.localScale = new Vector3(FootballField.Width + 1f, 0.28f, 1f);
-        var sh = Shader.Find("Unlit/Color");
+        var sh = FootballShader.Unlit;
         var mr = go.GetComponent<MeshRenderer>();
-        mr.sharedMaterial = new Material(sh != null ? sh : Shader.Find("Standard")) { color = c };
+        mr.sharedMaterial = new Material(sh != null ? sh : FootballShader.Standard) { color = c };
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         mr.enabled = false;
         _ghostRenderers.Add(mr);

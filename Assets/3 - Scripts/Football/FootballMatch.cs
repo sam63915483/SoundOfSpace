@@ -211,7 +211,7 @@ public class FootballMatch : MonoBehaviour
         _teamMats = new Material[2];
         foreach (var team in new[] { home, away })
         {
-            var mat = new Material(Shader.Find("Standard")) { name = team.shortName, color = team.color };
+            var mat = new Material(FootballShader.Standard) { name = team.shortName, color = team.color };
             mat.SetFloat("_Glossiness", 0.3f);
             _teamMats[team.index] = mat;
             // Seven a side, both ways: QB/LB, C/S, two OL/DL, three WR/DB.
@@ -268,8 +268,8 @@ public class FootballMatch : MonoBehaviour
         go.transform.SetParent(fieldRoot, false);
         go.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
         go.transform.localScale = new Vector3(FootballField.Width + 1f, 0.28f, 1f);
-        var sh = Shader.Find("Unlit/Color");
-        var mat = new Material(sh != null ? sh : Shader.Find("Standard")) { color = c };
+        var sh = FootballShader.Unlit;
+        var mat = new Material(sh != null ? sh : FootballShader.Standard) { color = c };
         var mr = go.GetComponent<MeshRenderer>();
         mr.sharedMaterial = mat;
         mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
@@ -287,14 +287,14 @@ public class FootballMatch : MonoBehaviour
         pole.transform.SetParent(root.transform, false);
         pole.transform.localPosition = new Vector3(0f, 1.1f, 0f);
         pole.transform.localScale = new Vector3(0.07f, 1.1f, 0.07f);
-        var pm = new Material(Shader.Find("Standard")) { color = new Color(0.9f, 0.9f, 0.9f) };
+        var pm = new Material(FootballShader.Standard) { color = new Color(0.9f, 0.9f, 0.9f) };
         pole.GetComponent<Renderer>().sharedMaterial = pm;
         var sign = GameObject.CreatePrimitive(PrimitiveType.Cube);
         Kill(sign.GetComponent<Collider>());
         sign.transform.SetParent(root.transform, false);
         sign.transform.localPosition = new Vector3(0f, 2.6f, 0f);
         sign.transform.localScale = new Vector3(0.9f, 0.9f, 0.1f);
-        var sm = new Material(Shader.Find("Standard")) { color = new Color(1f, 0.45f, 0.05f) };
+        var sm = new Material(FootballShader.Standard) { color = new Color(1f, 0.45f, 0.05f) };
         sm.SetFloat("_Glossiness", 0.2f);
         sign.GetComponent<Renderer>().sharedMaterial = sm;
         // A digit on each face so it reads from either end of the field.

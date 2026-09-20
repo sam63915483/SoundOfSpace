@@ -150,7 +150,7 @@ public class FootballFieldMarkings : MonoBehaviour
             }
         }
 
-        var mat = new Material(Shader.Find("Standard")) { name = "FieldLines", color = lineColor };
+        var mat = new Material(FootballShader.Standard) { name = "FieldLines", color = lineColor };
         mat.SetFloat("_Glossiness", 0.15f);
         _owned.Add(mat);
         MakeRenderer(parent, "Lines", mb.Build("FieldLines"), mat, paintHeight);
@@ -171,7 +171,7 @@ public class FootballFieldMarkings : MonoBehaviour
             float z0 = -gz + i * 5f * yd, z1 = z0 + 5f * yd;
             mb.Rect(-x, x, z0, z1);
         }
-        var mat = new Material(Shader.Find("Standard")) { name = "FieldStripes" };
+        var mat = new Material(FootballShader.Standard) { name = "FieldStripes" };
         SetFade(mat, new Color(0f, 0f, 0f, stripeDarkness));
         _owned.Add(mat);
         // Just under the lines: ZWrite is off in Fade mode, so line pixels
