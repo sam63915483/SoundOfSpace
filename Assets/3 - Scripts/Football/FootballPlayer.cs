@@ -227,23 +227,8 @@ public class FootballPlayer : MonoBehaviour
         // texture) but the texture itself re-hued to the team, once per
         // texture per team, kept in a cache. The markings survive.
         _tint = Color.white;
-        foreach (var r in model.GetComponentsInChildren<Renderer>(true))
-        {
-            var mats = r.sharedMaterials;
-            var block = new MaterialPropertyBlock();
-            r.GetPropertyBlock(block);
-            for (int i = 0; i < mats.Length; i++)
-            {
-                if (mats[i] == null || !mats[i].HasProperty("_MainTex")) continue;
-                var src = mats[i].mainTexture as Texture2D;
-                if (src == null) continue;
-                var tex = TeamTexture(src, team);
-                if (tex != null) block.SetTexture("_MainTex", tex);
-            }
-            r.SetPropertyBlock(block);
-        }
+        ApplyTeamSkin(model.transform, team);
         if (_body != null) { _mpb = new MaterialPropertyBlock(); _body.GetPropertyBlock(_mpb); }
-        BuildRing();
         _rig = model.AddComponent<FootballAlienRig>();
         _rig.Init(transform);
     }
@@ -257,7 +242,7 @@ public class FootballPlayer : MonoBehaviour
     /// blended 80/20 with the original. Read back through a RenderTexture so
     /// the source needn't be readable; downscaled to 1024 to keep the boot
     /// under a second for ten textures.
-    static Texture2D TeamTexture(Texture2D src, FootballTeam team)
+    public static Texture2D TeamTexture(Texture2D src, FootballTeam team)
     {
         var key = (src, team.index);
         if (_teamTex.TryGetValue(key, out var cached)) return cached;
@@ -295,38 +280,25 @@ public class FootballPlayer : MonoBehaviour
         }
     }
 
-    // ── the ring on the grass ───────────────────────────────────────────────
-
-    LineRenderer _ring;
-
-    /// A team-coloured ring under the skill players (Sam): QB, receivers,
-    /// corners, safety, linebacker — never the linemen. Follows the side he
-    /// is playing.
-    void BuildRing()
+    /// Re-hue every renderer under `model` to the team (the live men and the
+    /// replay ghosts both go through here).
+    public static void ApplyTeamSkin(Transform model, FootballTeam team)
     {
-        var go = new GameObject("Ring");
-        go.transform.SetParent(transform, false);
-        go.transform.localPosition = Vector3.up * 0.03f;
-        _ring = go.AddComponent<LineRenderer>();
-        _ring.useWorldSpace = false; _ring.loop = true;
-        _ring.widthMultiplier = 0.09f;
-        _ring.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        _ring.receiveShadows = false;
-        var sh = Shader.Find("Sprites/Default");
-        _ring.sharedMaterial = new Material(sh != null ? sh : Shader.Find("Unlit/Color")) { color = Color.white };
-        var col = Color.Lerp(team.color, Color.white, 0.15f);
-        _ring.startColor = _ring.endColor = col;
-        const int N = 40; const float R = 0.62f;
-        _ring.positionCount = N;
-        for (int i = 0; i < N; i++) { float a = i * Mathf.PI * 2f / N; _ring.SetPosition(i, new Vector3(Mathf.Cos(a) * R, 0f, Mathf.Sin(a) * R)); }
-        RefreshRing();
-    }
-
-    void RefreshRing()
-    {
-        if (_ring == null) return;
-        bool skill = role == FootballRole.QB || role == FootballRole.WR || role == FootballRole.DB || role == FootballRole.LB || role == FootballRole.S;
-        _ring.enabled = skill;
+        foreach (var r in model.GetComponentsInChildren<Renderer>(true))
+        {
+            var mats = r.sharedMaterials;
+            var block = new MaterialPropertyBlock();
+            r.GetPropertyBlock(block);
+            for (int i = 0; i < mats.Length; i++)
+            {
+                if (mats[i] == null || !mats[i].HasProperty("_MainTex")) continue;
+                var src = mats[i].mainTexture as Texture2D;
+                if (src == null) continue;
+                var tex = TeamTexture(src, team);
+                if (tex != null) block.SetTexture("_MainTex", tex);
+            }
+            r.SetPropertyBlock(block);
+        }
     }
 
     /// Offense or defense for the coming play.
@@ -334,7 +306,6 @@ public class FootballPlayer : MonoBehaviour
     {
         role = offense ? offRole : defRole;
         roleIndex = offense ? offIndex : defIndex;
-        RefreshRing();
         _maxSpeed = _baseMaxSpeed * (role == FootballRole.S ? 1.03f : 1f);
         if (_labelText != null) _labelText.text = Label;
     }

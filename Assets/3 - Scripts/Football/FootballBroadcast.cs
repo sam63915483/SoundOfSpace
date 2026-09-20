@@ -725,7 +725,7 @@ public class FootballBroadcast : MonoBehaviour
                 var smr = model.GetComponentInChildren<SkinnedMeshRenderer>();
                 float h = smr != null ? smr.bounds.size.y : 0.9f;
                 model.transform.localScale = Vector3.one * (FootballPlayer.Height / Mathf.Max(0.3f, h));
-                if (smr != null) { var mpb = new MaterialPropertyBlock(); mpb.SetColor("_Color", p.Tint); smr.SetPropertyBlock(mpb); }
+                FootballPlayer.ApplyTeamSkin(model.transform, p.team);      // the same re-hued skin as the live man
                 g.body = model.transform;
                 g.rig = model.AddComponent<FootballAlienRig>();
                 g.rig.Init(root.transform);
