@@ -12,7 +12,7 @@ public class Hotbar : MonoBehaviour
     // parses it back), so reordering wouldn't corrupt saves — but ItemId is
     // serialized by VALUE on scene/prefab components, so inserting mid-enum
     // silently rewires those. New ids go on the end.
-    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun, Firefly, BeerCup, EmptyCup }
+    public enum ItemId { None, WaterBottle, FishingRod, Guitar, Axe, Pistol, Wood, Crystal, SpaceDust, Fish, FishBag, Sapling, Mushroom, MushroomSapling, Money, BlankTapeT1, BlankTapeT2, Cassette, BlankTapeHalfT1, BlankTapeHalfT2, BlankTapeFullT1, BlankTapeFullT2, TraxUsbStick, BaitGrubs, BaitGlowworms, BaitVoidmaggots, GrappleGun, Firefly, BeerCup, EmptyCup, Football }
 
     public struct Slot
     {
@@ -246,6 +246,7 @@ public class Hotbar : MonoBehaviour
     PistolController pistol;
     GrappleGunController grapple;
     BeerCupController beer;
+    FootballHumanQB football;               // the ball while the player is QB (Proto_Football)
     Ship ship;
     bool _wasInDialogue;
     bool _wasPhoneOpen;
@@ -574,6 +575,7 @@ public class Hotbar : MonoBehaviour
                 if (pistol == null) pistol = FindObjectOfType<PistolController>(true);
                 if (grapple == null) grapple = FindObjectOfType<GrappleGunController>(true);
                 if (beer == null) beer = FindObjectOfType<BeerCupController>(true);
+                if (football == null) football = FindObjectOfType<FootballHumanQB>(true);
                 if (ship == null) ship = FindObjectOfType<Ship>(true);
 
                 // (Re)build registry whenever a previously-missing controller
@@ -608,6 +610,7 @@ public class Hotbar : MonoBehaviour
                 case ItemId.GrappleGun:  if (_registry[i].Controller != (MonoBehaviour)grapple) return true; break;
                 case ItemId.BeerCup:     if (_registry[i].Controller != (MonoBehaviour)beer) return true; break;
                 case ItemId.EmptyCup:    if (_registry[i].Controller != (MonoBehaviour)beer) return true; break;
+                case ItemId.Football:    if (_registry[i].Controller != (MonoBehaviour)football) return true; break;
             }
         }
         return false;
@@ -1853,6 +1856,13 @@ public class Hotbar : MonoBehaviour
                         IsEquipped   = () => grapple != null && grapple.IsEquipped,
                         ForceEquip   = () => { if (grapple != null) grapple.ForceEquipGrapple(); },
                         ForceUnequip = () => { if (grapple != null) grapple.ForceUnequipGrapple(); } },
+            // The football, while the player is quarterback (Proto_Football only).
+            new Entry { Id = ItemId.Football,    DisplayName = "FOOTBALL", Controller = football,
+                        Icon = football != null ? football.hotbarIcon : null,
+                        IsUnlocked   = () => football != null && football.IsUnlocked,
+                        IsEquipped   = () => football != null && football.IsEquipped,
+                        ForceEquip   = () => { if (football != null) football.ForceEquip(); },
+                        ForceUnequip = () => { if (football != null) football.ForceUnequip(); } },
             // One controller, two items: full beers and the empties they turn into.
             new Entry { Id = ItemId.BeerCup,     DisplayName = "BEER",   Controller = beer,
                         Icon = beer != null ? beer.hotbarIcon : null,
@@ -2109,6 +2119,9 @@ public class Hotbar : MonoBehaviour
         if (_equippedSlot >= 0 && _equippedSlot < TotalSlots && IsSelectOnly(slots[_equippedSlot].id))
             _equippedSlot = -1;
     }
+
+    /// Put down whatever is held and equip this item (the football arriving in the QB's hands).
+    public void EquipItem(ItemId id) { UnequipAll(); Equip(id); }
 
     void Equip(ItemId id)
     {

@@ -58,6 +58,10 @@ public class FootballPlayer : MonoBehaviour
     /// A receiver standing at the end of a curl/hitch/comeback, looking at
     /// the QB: a legitimate target even though he isn't running.
     [System.NonSerialized] public bool settled;
+    /// Phase 2: this slot's position and facing come from the real player
+    /// (FootballHumanQB.SyncSlot); the alien body is hidden.
+    [System.NonSerialized] public bool humanDriven;
+    Vector3 _humanHands;
 
     Vector3 _pos, _vel, _facing = Vector3.forward, _facingTarget = Vector3.forward;
     Stance _stance = Stance.None;
@@ -327,6 +331,29 @@ public class FootballPlayer : MonoBehaviour
         transform.localPosition = _pos;
     }
 
+    /// Hand the slot to the real player (hide the alien, he vanished at the
+    /// bench) or back to the CPU (he reappears where he vanished).
+    public void SetHumanDriven(bool on, Vector3 benchSpot)
+    {
+        if (humanDriven == on) return;
+        humanDriven = on;
+        foreach (var r in GetComponentsInChildren<Renderer>(true)) r.enabled = !on;
+        if (on) { DetachHeldBall(); _hold = HoldStyle.None; }
+        else Teleport(benchSpot, Vector3.right);
+    }
+
+    /// The real player's position / facing / hands, every sim step.
+    public void SyncHuman(Vector3 fieldPos, Vector3 facing, Vector3 hands, float dt)
+    {
+        fieldPos.y = 0f;
+        Vector3 v = dt > 1e-4f ? (fieldPos - _pos) / dt : Vector3.zero;
+        _vel = Vector3.ClampMagnitude(v, 16f);
+        _pos = fieldPos;
+        facing.y = 0f;
+        if (facing.sqrMagnitude > 0.01f) _facing = _facingTarget = facing.normalized;
+        _humanHands = hands;
+    }
+
     /// Turn to face a direction (at the turn rate) and stop.
     public void Face(Vector3 facing)
     {
@@ -481,6 +508,7 @@ public class FootballPlayer : MonoBehaviour
     /// for the current hold style, following the throwing arm during a throw.
     public Vector3 BallHoldPoint()
     {
+        if (humanDriven) return _humanHands;
         if (HasRig)
         {
             Vector3 w;
@@ -496,7 +524,7 @@ public class FootballPlayer : MonoBehaviour
     /// The rig moves the held ball itself, right after posing the arm.
     public void AttachHeldBall(Transform ball, Quaternion worldRot)
     {
-        if (_rig == null) return;
+        if (_rig == null || humanDriven) return;                 // the player's hands hold it (FootballHumanQB.LateUpdate)
         _rig.heldBall = ball; _rig.heldBallRot = worldRot;
     }
     public void DetachHeldBall() { if (_rig != null) _rig.heldBall = null; }
@@ -505,6 +533,7 @@ public class FootballPlayer : MonoBehaviour
     /// when he has a rig and a hold, else the sim's hold point.
     public Vector3 BallDrawPoint()
     {
+        if (humanDriven) return _humanHands;
         if (HasRig && _rig.heldBallValid && !IsThrowing && _fieldRoot != null) return _fieldRoot.InverseTransformPoint(_rig.heldBallWorld);
         return BallHoldPoint();
     }
@@ -609,6 +638,13 @@ public class FootballPlayer : MonoBehaviour
         float rollTarget = 0f;                                              // (the roll onto the back read as a second flip — gone)
         _roll = Mathf.MoveTowards(_roll, rollTarget, dt * (_hardT >= 0f ? 600f : 400f));
 
+        if (humanDriven)
+        {
+            // Position, velocity and facing came from the player this step.
+            _idleTime = _vel.sqrMagnitude < 0.25f ? _idleTime + dt : 0f;
+            Apply(dt);
+            return o;
+        }
         Vector3 want = o.move;
         want.y = 0f;
         if (want.sqrMagnitude > 1f) want.Normalize();

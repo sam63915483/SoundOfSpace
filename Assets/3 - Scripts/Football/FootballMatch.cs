@@ -69,6 +69,9 @@ public class FootballMatch : MonoBehaviour
 
     /// Phase 2: a brain to use for this team's QB slot instead of the CPU.
     [NonSerialized] public IPlayerBrain[] qbBrainOverride = new IPlayerBrain[2];
+    /// Phase 2: the player at QB (the red button on the sideline); null = all CPU.
+    [NonSerialized] public FootballHumanQB humanQb;
+    public FootballBall Ball => _ball;
 
     public event Action<PlayInstance.PlayResult> PlayEnded;
     /// Fired after every sim step (the broadcast recorder samples here).
@@ -180,6 +183,13 @@ public class FootballMatch : MonoBehaviour
             var go = new GameObject("Broadcast");
             go.transform.SetParent(transform.parent != null ? transform.parent : transform, false);
             go.AddComponent<FootballBroadcast>();
+        }
+        // The QB button (Phase 2), play mode only.
+        if (Application.isPlaying && FindObjectOfType<FootballHumanQB>() == null)
+        {
+            var go = new GameObject("HumanQB");
+            go.transform.SetParent(transform.parent != null ? transform.parent : transform, false);
+            go.AddComponent<FootballHumanQB>();
         }
     }
 
@@ -446,6 +456,7 @@ public class FootballMatch : MonoBehaviour
     void Step(float dt)
     {
         _stateTime += dt;
+        if (humanQb != null) humanQb.SyncSlot(dt);
         StepInner(dt);
         Stepped?.Invoke(dt);
     }
@@ -514,6 +525,7 @@ public class FootballMatch : MonoBehaviour
     {
         var kicking = Other(_possession);
         SetSides(kicking);
+        RestoreHumanSlot();
         _play = new PlayInstance(_players, _ball, kicking, _possession, _rng, null, _party, _partyCentre);
         _party = null;
         _play.log = Say;
@@ -536,9 +548,17 @@ public class FootballMatch : MonoBehaviour
         return true;
     }
 
+    /// The away QB slot back to its alien (kickoffs, punts, defense).
+    void RestoreHumanSlot()
+    {
+        foreach (var p in _players)
+            if (p.humanDriven) p.SetHumanDriven(false, humanQb != null ? humanQb.BenchSpot : p.Pos);
+    }
+
     void PreparePunt()
     {
         SetSides(_possession);
+        RestoreHumanSlot();
         _play = new PlayInstance(_players, _ball, _possession, Other(_possession), _rng, _losZ);
         _play.log = Say;
         _play.holdSnap = true;
@@ -560,8 +580,13 @@ public class FootballMatch : MonoBehaviour
         var mood = late && diff < 0 ? FootballPlay.Mood.Desperate : late && diff > 0 ? FootballPlay.Mood.KillClock : FootballPlay.Mood.Normal;
         if (play == null) play = FootballPlay.Pick(_down, _toGo, ytg, _rng, _lastCall, mood);
         _lastCall = play;
-        _play = new PlayInstance(_players, _ball, _possession, Other(_possession), _losZ, play,
-                                 qbBrainOverride[_possession.index], _rng, _toGo);
+        bool human = humanQb != null && humanQb.Active && _possession == away;
+        var brain = human ? humanQb.Brain : qbBrainOverride[_possession.index];
+        if (human) humanQb.Brain.Reset();
+        _play = new PlayInstance(_players, _ball, _possession, Other(_possession), _losZ, play, brain, _rng, _toGo);
+        var awayQb = _play.view.FindRole(away, away == _possession ? FootballRole.QB : FootballRole.LB);
+        if (human) _play.SetHuman(awayQb, humanQb.BenchSpot);
+        else if (awayQb != null && awayQb.humanDriven) awayQb.SetHumanDriven(false, humanQb != null ? humanQb.BenchSpot : awayQb.Pos);
         _play.hurryUp = mood == FootballPlay.Mood.Desperate;          // no huddle: straight to the line
         _play.log = Say;
         _play.holdSnap = true;

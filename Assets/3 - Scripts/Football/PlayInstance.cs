@@ -134,6 +134,27 @@ public class PlayInstance
     public event Action<PlayResult> Ended;
     public Action<string> log;
     public FootballFormation formation;
+    /// Phase 2: the QB slot the real player drives this play (null = all CPU).
+    public FootballPlayer humanSlot;
+    public bool HumanDriven => humanSlot != null;
+    /// The player has walked into the snap spot; the snap follows a second later.
+    public bool humanAtSpot;
+    /// Everyone else is lined up and the ball is down: show the player his spot.
+    public bool LinedUp => phase == Phase.Setup && _broke && _ballReady && _othersSet;
+    public Vector3 HumanSnapSpot => _qb != null && _formation.TryGetValue(_qb, out var s) ? s : Vector3.zero;
+    bool _othersSet;
+    Vector3 _benchSpot;
+
+    /// Hand this play's QB slot to the player. Called right after construction.
+    public void SetHuman(FootballPlayer slot, Vector3 benchSpot)
+    {
+        humanSlot = slot; _benchSpot = benchSpot;
+        if (_setup.TryGetValue(slot, out var mv))
+        {
+            // The alien jogs to the bench during the huddle; he vanishes at the break.
+            mv.target = benchSpot; mv.ClearFace(); mv.hurry = true;
+        }
+    }
     public enum DefCall { Press, Normal, Off, Blitz }
     public DefCall defCall;
     /// True once the ball is at the line with the centre over it (or in the
@@ -441,9 +462,17 @@ public class PlayInstance
                     var p = kv.Key;
                     p.Tick(view, dt);
                     bool here = kv.Value.Arrived(p);
+                    if (p == humanSlot)
+                    {
+                        // The alien QB walks out; once he is at the bench (or the
+                        // huddle breaks) the slot becomes the player.
+                        if (!p.humanDriven && (here || _broke)) p.SetHumanDriven(true, _benchSpot);
+                        continue;
+                    }
                     if (!here || p.IsEmoting) all = false;
                     p.SetStance(here ? StanceFor(p) : Stance.None);
                 }
+                _othersSet = all;
                 // The huddle: once everyone is in it, it HOLDS (the play call, the
                 // replay on the screens), then breaks. Or it's taken too long.
                 if (!_broke && !view.isKickoff)
@@ -462,11 +491,12 @@ public class PlayInstance
                 // Face the line once there. Never snapped into place: a
                 // straggler keeps running and joins the play late. The ball
                 // has to be there, though — no snap without a ball.
-                if (_broke && !holdSnap && _ballReady && (all || _phaseTime > SetupTimeout))
+                if (_broke && !holdSnap && _ballReady && (all || _phaseTime > SetupTimeout) && (!HumanDriven || humanAtSpot))
                 {
                     foreach (var p in _players)
                     {
                         bool onOffense = p.team == view.offense;
+                        if (p == humanSlot) { if (_live.TryGetValue(p, out var hb)) p.brain = hb; continue; }
                         if (_setup.TryGetValue(p, out var mv) && mv.Arrived(p))
                             p.Face(Vector3.forward * (onOffense ? view.attackDir : -view.attackDir));
                         if (_live.TryGetValue(p, out var brain)) p.brain = brain;
@@ -477,7 +507,7 @@ public class PlayInstance
                         _centre.SetHold(HoldStyle.SnapStance);
                         _centre.SetBallWorld(_ball.pos);
                         _centre.Face(Vector3.forward * view.attackDir);
-                        _qb.SetHold(HoldStyle.ReadyHands);
+                        if (!HumanDriven) _qb.SetHold(HoldStyle.ReadyHands);
                     }
                     else _kicker.SetHold(HoldStyle.TwoHands);
                     _stats.setupSeconds = _setupSeconds;
@@ -545,6 +575,13 @@ public class PlayInstance
             return;
         }
 
+        if (holder != null && holder.humanDriven)
+        {
+            // The player: set it down where he stands; the nearest man fetches it.
+            holder.SetHold(HoldStyle.None);
+            _ball.Place(holder.Pos + holder.Facing * 0.6f);
+            return;
+        }
         if (holder == _ballReceiver)
         {
             // The centre has it: into the huddle with it, then to the line
@@ -626,7 +663,7 @@ public class PlayInstance
             return;
         }
         // The centre fires it back to the QB's hands. A wild one every so often.
-        Vector3 hands = _qb.Pos + Vector3.up * 1.05f + _qb.Facing * 0.35f;
+        Vector3 hands = HumanDriven ? _qb.BallHoldPoint() : _qb.Pos + Vector3.up * 1.05f + _qb.Facing * 0.35f;
         bool wild = _rng.NextDouble() < WildSnapChance;
         float sigma = wild ? 1.3f : 0.10f;
         hands += new Vector3(Gauss() * sigma, Gauss() * sigma * 0.5f, Gauss() * sigma * 0.4f);
@@ -682,7 +719,7 @@ public class PlayInstance
         }
 
         // The QB's brain says whether he is extending the play (receivers adjust).
-        if (_qb != null && _qb.brain is QBBrain_CPU qbb)
+        if (!HumanDriven && _qb != null && _qb.brain is QBBrain_CPU qbb)
         {
             bool ext = qbb.Extending && carrier == _qb;
             if (ext && !view.qbExtending) { if (qbb.style == QBBrain_CPU.Style.Rollout) _stats.rollouts++; else _stats.scrambleDrills++; }
@@ -1083,7 +1120,7 @@ public class PlayInstance
             {
                 if (o.targetPlayer == null || _throwPending) return;
                 bool pitch = view.play != null && view.play.kind == FootballPlay.Kind.FleaFlicker && p.role == FootballRole.WR;
-                if (p.HasRig && !pitch)
+                if (p.HasRig && !pitch && !p.humanDriven)
                 {
                     // Wind up; ReleaseThrow fires when the arm comes through.
                     _throwPending = true; _throwTarget = o.target; _throwTo = o.targetPlayer;
@@ -1217,7 +1254,7 @@ public class PlayInstance
                         if (p.role == FootballRole.DL && _ball.airTime < 0.5f) continue;
                         lowHands = p != _ball.intendedReceiver;
                     }
-                    float gap = p.ArmGap(_ball, _prevBallPos, lowHands);
+                    float gap = p == humanSlot ? _ball.TouchDistance(p.BallHoldPoint(), _prevBallPos) - 1.6f : p.ArmGap(_ball, _prevBallPos, lowHands);
                     if (gap <= 0f && gap < bd) { second = best; sd = bd; bd = gap; best = p; }
                     else if (gap <= 0f && gap < sd) { sd = gap; second = p; }
                 }
