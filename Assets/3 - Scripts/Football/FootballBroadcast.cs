@@ -292,6 +292,7 @@ public class FootballBroadcast : MonoBehaviour
         if (_liveCount == players.Count) return;
         _liveRenderers.Clear();
         foreach (var p in players) { if (p.humanDriven) continue; _liveRenderers.AddRange(p.GetComponentsInChildren<Renderer>(true)); }   // the player's slot stays hidden (its alien popped back over the astronaut every replay)
+        if (_match.humanQb != null) _liveRenderers.AddRange(_match.humanQb.LiveRenderers());   // the real player's body + his markers: not in a replay
         var play = _match.CurrentPlay;
         if (play != null && play.view.ball != null) _liveRenderers.AddRange(play.view.ball.GetComponentsInChildren<Renderer>(true));
         _liveCount = players.Count;
@@ -731,6 +732,8 @@ public class FootballBroadcast : MonoBehaviour
         go.name = "Ghost Astronaut";
         foreach (var c in go.GetComponentsInChildren<Collider>(true)) Destroy(c);
         foreach (var mb in go.GetComponentsInChildren<MonoBehaviour>(true)) Destroy(mb);
+        foreach (var an in go.GetComponentsInChildren<Animator>(true)) Destroy(an);          // the recorded bones drive it, not the controller
+        foreach (var ps in go.GetComponentsInChildren<ParticleSystem>(true)) { var pr = ps.GetComponent<ParticleSystemRenderer>(); if (pr != null) Destroy(pr); Destroy(ps); }   // no jetpack puffs on a ghost
         foreach (var r in go.GetComponentsInChildren<Renderer>(true))
         {
             r.enabled = false; r.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;

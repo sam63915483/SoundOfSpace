@@ -300,10 +300,14 @@ click. The huddle breaks on your call with that play's formation and routes
 (`PlayInstance.ChoosePlay` re-lays the receivers and the men covering them);
 calling it fast cuts the replay on the screens. Then the snap-spot cylinder.
 Backspace with the other team on the ball throws the play away and gives your
-team a 1st & 10 at the 25 (`FootballMatch.SkipToHuman`). The charge is 4 s now.
+team a 1st & 10 at the 25 (`FootballMatch.SkipToHuman`).
 In replays your slot is an astronaut, not an alien: the recorder stores every
-bone rotation of the real body (`Player/Mesh`) per frame and a stripped clone
-under the field root re-enacts it.
+bone rotation of the real body (`Player/Astronaut`, the Animator's object) per
+frame and a stripped clone under the field root re-enacts it. 🔥 The player
+also has an INACTIVE placeholder capsule child literally named `Mesh` — cloning
+by that name gives a white capsule. Your live body and the green cylinder are
+in the replay camera's hide list (`FootballHumanQB.LiveRenderers`), otherwise
+the live you stands on the field inside the replay. The charge is 3 s.
 
 **Controls while you are QB:** move and sprint as normal (Shift), scaled to
 0.8 so the aliens can catch you. F is only the sideline button. LMB = charge /

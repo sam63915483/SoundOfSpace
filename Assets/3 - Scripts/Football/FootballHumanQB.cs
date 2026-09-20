@@ -26,7 +26,7 @@ using TMPro;
 public class FootballHumanQB : MonoBehaviour
 {
     public Sprite hotbarIcon;
-    public float chargeSeconds = 4f;                 // Sam: 2 s charged too fast
+    public float chargeSeconds = 3f;                 // Sam: 2 s too fast, 4 s too slow
     public float minThrow = 6f, maxThrow = 48f;      // metres, at 0 and full charge
     public float fieldMoveScale = 0.8f;              // the astronaut's stride on the field (walk 8 / run 14 would make him uncatchable)
     public float knockdownSeconds = 1.6f;
@@ -48,12 +48,33 @@ public class FootballHumanQB : MonoBehaviour
         get
         {
             if (_body != null || _player == null) return _body;
-            _body = _player.transform.Find("Mesh");
-            if (_body == null) { var smr = _player.GetComponentInChildren<SkinnedMeshRenderer>(true); if (smr != null) _body = smr.transform.parent != null ? smr.transform.parent : smr.transform; }
+            // The skinned astronaut, not the placeholder capsule child named "Mesh":
+            // the Animator's object (Player/Astronaut: Armature + Body), else the skin's parent.
+            var smr = _player.GetComponentInChildren<SkinnedMeshRenderer>(true);
+            if (smr != null)
+            {
+                var an = smr.GetComponentInParent<Animator>();
+                _body = an != null && an.transform != _player.transform ? an.transform : smr.transform.parent;
+            }
+            if (_body == null) _body = _player.transform.Find("Astronaut");
             return _body;
         }
     }
     Transform _body;
+    Renderer[] _liveRenderers;
+    /// Everything of the player's that the replay camera must not see: his body and the cylinder.
+    public Renderer[] LiveRenderers()
+    {
+        if (_liveRenderers == null || _liveRenderers.Length == 0)
+        {
+            var list = new List<Renderer>();
+            var body = BodyRoot; if (body != null) list.AddRange(body.GetComponentsInChildren<Renderer>(true));
+            if (_cylinder != null) list.AddRange(_cylinder.GetComponentsInChildren<Renderer>(true));
+            // (not the aim arc: the broadcast re-enables everything in this list after its render, and the arc is enabled only while charging)
+            _liveRenderers = list.ToArray();
+        }
+        return _liveRenderers;
+    }
     FootballBroadcast _broadcast;
     // The huddle: three cards, pick one.
     Canvas _menuCanvas; readonly RawImage[] _cards = new RawImage[3]; readonly Image[] _cardFrames = new Image[3]; readonly TextMeshProUGUI[] _cardTitles = new TextMeshProUGUI[3];
