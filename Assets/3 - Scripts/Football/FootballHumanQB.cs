@@ -29,7 +29,7 @@ public class FootballHumanQB : MonoBehaviour
     public float chargeSeconds = 3f;                 // Sam: 2 s too fast, 4 s too slow
     public float minThrowSpeed = 13f, maxThrowSpeed = 25f;   // m/s at a tap and at full charge (harder = faster, not further by itself)
     public float baseLoftDeg = 8f, maxLoftDeg = 50f;         // looking level throws a slight upward bullet; look up to loft it
-    public float fieldMoveScale = 0.8f;              // the astronaut's stride on the field (walk 8 / run 14 would make him uncatchable)
+    public float fieldMoveScale = 1f;                // the astronaut's stride on the field (Sam 2026-09-20: back to full speed; was 0.8 so the aliens could catch him)
     public float knockdownSeconds = 1.6f;
     [Tooltip("Where the ball sits in the hands, in camera space (right, up, forward).")]
     public Vector3 handOffset = new Vector3(0.16f, -0.26f, 0.55f);
@@ -167,7 +167,7 @@ public class FootballHumanQB : MonoBehaviour
         Active = !Active;
         var inter = _button.GetComponent<Interactable>();
         if (inter != null) inter.interactMessage = Active ? "Press F to sub out" : "Press F to play QB";
-        InteractPromptUI.ShowOneShot(Active ? "You're in at QB for the " + _match.away.name + " — you take the field when they have the ball" : "Back to the sideline", 4f);
+        InteractPromptUI.ShowOneShot(Active ? "You're in at QB" : "Back to the sideline", 4f);   // status lines: ≤ 28 chars, and never "hold … to …" (that reads as an F prompt)
         _match.humanQb = Active ? this : null;
     }
 
@@ -214,7 +214,7 @@ public class FootballHumanQB : MonoBehaviour
         if (_holding && !_wasHolding)
         {
             _equipRetry = 0.6f;
-            InteractPromptUI.ShowOneShot("Hold LMB to charge a throw, release to throw — or run it", 3f);
+            InteractPromptUI.ShowOneShot("LMB: charge & throw, or run", 3f);
         }
         if (!_holding) { _charging = false; _charge = 0f; if (_arc != null) _arc.enabled = false; if (_landing != null) _landing.enabled = false; }
         if (_equipRetry > 0f)
@@ -385,7 +385,7 @@ public class FootballHumanQB : MonoBehaviour
         }
         _menuCanvas.gameObject.SetActive(true);
         Highlight();
-        InteractPromptUI.ShowOneShot("Call it: 1 / 2 / 3, or arrows + Enter", 3f);
+        InteractPromptUI.ShowOneShot("Call it: 1 / 2 / 3 or Enter", 3f);
     }
 
     void CloseMenu()

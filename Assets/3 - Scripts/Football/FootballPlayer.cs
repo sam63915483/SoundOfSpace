@@ -36,6 +36,7 @@ public class FootballPlayer : MonoBehaviour
     public static readonly bool ShowLabels = false;
     /// How far past the lines a live body can go — nobody runs out the back of the end zone.
     public const float FieldMargin = 0.4f;
+    public const float PlayerWallFraction = 0.55f;   // the kinematic capsule's radius as a fraction of the disc: how far the real player can lean in and shove
     /// Facing turns at a rate, never snaps (Sam: "the aliens turn unnaturally").
     public const float TurnRateRunning = 540f, TurnRateStanding = 300f;   // deg/s
 
@@ -200,7 +201,12 @@ public class FootballPlayer : MonoBehaviour
         if (Application.isPlaying)
         {
             var cap = gameObject.AddComponent<CapsuleCollider>();
-            cap.center = Vector3.up * (Height * 0.5f); cap.height = Height; cap.radius = BodyRadius;
+            // The wall is SMALLER than the disc (Sam: "make it so the player is
+            // able to push the aliens a little bit"): the player can lean into the
+            // outer part of a man's disc, the contact pass sees the overlap and
+            // shoves the alien away (and the player back), but he can never
+            // walk through the middle of him.
+            cap.center = Vector3.up * (Height * 0.5f); cap.height = Height; cap.radius = BodyRadius * PlayerWallFraction;
             var kin = gameObject.AddComponent<Rigidbody>();
             kin.isKinematic = true; kin.useGravity = false;
             gameObject.layer = 10;

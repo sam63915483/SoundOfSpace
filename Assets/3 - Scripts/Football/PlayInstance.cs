@@ -891,6 +891,11 @@ public class PlayInstance
             if (stiff) { square = 0f; d.ShiftBody(toD.normalized * 0.5f); }
             float hit = FootballBodies.TackleHit(Mathf.Max(0f, c.closing), square, d.BodyMass) * (0.85f + 0.3f * (float)_rng.NextDouble()) * (reach && square < 0.75f ? ReachScale : 1f);   // a square grab (from behind, head-on) is a full drag-down
             if (view.IsEngaged(d)) hit = Mathf.Min(hit, FootballBodies.WrapThreshold - 0.01f);
+            // The real player running into the man who picked him off (Sam):
+            // that is a hit, and he goes down — no wrap, no angle test, just
+            // don't let a standing player floor a man by being touched.
+            bool humanHit = d.humanDriven && d.Vel.magnitude > HumanHitSpeed;
+            if (humanHit) hit = Mathf.Max(hit, FootballBodies.WrapThreshold + 1f);
             if (square >= 0.75f) _stats.hitSquare++; else if (square >= 0.35f) _stats.hitAngled++; else _stats.hitGlancing++;
 
             if (hit < FootballBodies.WrapThreshold)
@@ -915,6 +920,7 @@ public class PlayInstance
             }
             _stats.wraps++;
             EndTackle(carrier, d, hit);
+            if (humanHit) { _tackleEndAt = view.timeSinceSnap; log?.Invoke(d.team.shortName + " " + d.Label + " (you) levels " + carrier.Label + "!"); }   // down at once, not a drag
             return true;
         }
         return false;
@@ -934,6 +940,7 @@ public class PlayInstance
     float _wrapHit, _wrapCarrierSpeed; bool _breakRolled;
     public const float BreakScale = 3.8f;             // a runner's momentum has to beat the hit × this to break a wrap (2.6 let a full-speed man break every grab from behind)
     public const float DefenderReachPenalty = 0.35f;  // m: a reaching defender's arms vs the receiver's (full reach picked off 9-15 a game)
+    public const float HumanHitSpeed = 1.5f;          // m/s the real player must be moving to level a man by running into him
     public const float ArmReach = 0.55f;              // m beyond the discs a tackler can get a hand on the runner
     public const float ReachScale = 0.7f;             // a reach is a weaker hit than a body
     public const float DiveClosing = 0.4f;             // m/s the gap must be closing for a dive (was 2.5: a trailing man never dived; 0.5 had him diving every half second)
@@ -979,7 +986,7 @@ public class PlayInstance
     {
         var d = _pendingTackler; _pendingTackler = null; _tackleEndAt = -1f;
         if (d != null) carrier.FallDown(TackleDownSeconds, d.Pos); else carrier.FallDown(TackleDownSeconds);
-        foreach (var w in _wrappers) { w.wrapping = null; w.FallDown(TackleDownSeconds); }      // the tackler goes down forward, onto him
+        foreach (var w in _wrappers) { w.wrapping = null; if (!w.humanDriven) w.FallDown(TackleDownSeconds); }      // the tackler goes down forward, onto him (the real player stays on his feet)
         _wrappers.Clear();
         float spotZ = _ball.holder == carrier ? _ball.pos.z : carrier.Pos.z;
         bool sack = !view.isKickoff && carrier.role == FootballRole.QB && carrier.team == view.offense
