@@ -28,7 +28,10 @@ public static class FootballBodies
     // Blocking: two forces in an engagement (spec §2).
     public const float PushBase = 1.0f;
     public const float DriveGain = 2.4f;          // m/s per unit of (push − hold)
-    public const float MaxDrive = 1.2f;           // m/s, either way
+    public const float MaxDrive = 1.2f;           // m/s, the rusher driving the blocker back
+    public const float MinDriveBack = -0.15f;     // m/s, a winning blocker stands him up, he doesn't carry him upfield
+    public const float ContactSlop = 0.03f;       // a pair this close still counts as touching (a stable engagement)
+    public const float MaxShiftPerTick = 0.12f;   // separation is a few cm a tick, never a pop (a man standing up out of a pile)
     public const float NonLinemanHold = 0.6f;     // a receiver's hold is weak
     public const float SwimDriveScale = 0.5f;     // swimming, he pushes at half strength
 
@@ -50,7 +53,7 @@ public static class FootballBodies
     public static float Push(float stat, float mass, float swing) => PushBase * (0.6f + 0.8f * stat) * mass * swing;
     public static float Hold(float stat, float mass, float swing, bool lineman) => PushBase * (0.6f + 0.8f * stat) * mass * swing * (lineman ? 1f : NonLinemanHold);
     /// m/s the engaged pair moves along the rusher's line; + = the blocker is driven back.
-    public static float BlockDrive(float push, float hold) => Mathf.Clamp((push - hold) * DriveGain, -MaxDrive, MaxDrive);
+    public static float BlockDrive(float push, float hold) => Mathf.Clamp((push - hold) * DriveGain, MinDriveBack, MaxDrive);
 
     /// `closing` m/s along the contact normal, `square` 0..1 (1 = met head-on
     /// or from straight behind, 0 = glancing), `mass` the tackler's.
@@ -75,15 +78,16 @@ public static class FootballBodies
                 float ra = a.IsDown ? DownRadius : a.BodyRadius, rb = b.IsDown ? DownRadius : b.BodyRadius;
                 Vector3 d = b.Pos - a.Pos; d.y = 0f;
                 float dist = d.magnitude, minD = ra + rb;
-                if (dist >= minD) continue;
+                if (dist >= minD + ContactSlop) continue;
                 Vector3 normal = dist > 1e-4f ? d / dist : Vector3.right;
-                float overlap = minD - dist;
+                float overlap = Mathf.Max(0f, minD - dist);
                 float ia = a.IsDown ? 0f : 1f / a.BodyMass, ib = b.IsDown ? 0f : 1f / b.BodyMass;
                 float sum = ia + ib;
-                if (sum > 0f)
+                if (sum > 0f && overlap > 0f)
                 {
-                    a.ShiftBody(-normal * (overlap * ia / sum));
-                    b.ShiftBody(normal * (overlap * ib / sum));
+                    float step = Mathf.Min(overlap, MaxShiftPerTick);
+                    a.ShiftBody(-normal * (step * ia / sum));
+                    b.ShiftBody(normal * (step * ib / sum));
                 }
                 float va = Vector3.Dot(a.Vel, normal), vb = Vector3.Dot(b.Vel, normal);
                 float closing = va - vb;

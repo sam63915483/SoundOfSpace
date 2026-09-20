@@ -109,11 +109,11 @@ public static class FootballAnalyzer
                 var ps = m.Players;
                 for (int i = 0; i < ps.Count; i++) for (int j = i + 1; j < ps.Count; j++)
                 {
-                    if (ps[i].IsDown && ps[j].IsDown) continue;
+                    if (ps[i].IsDown || ps[j].IsDown) continue;                       // a pile resolves over a few ticks as men stand up
                     if (ps[i].humanDriven || ps[j].humanDriven) continue;
                     float d = Vector3.Distance(ps[i].Pos, ps[j].Pos);
-                    float minD = (ps[i].IsDown ? FootballBodies.DownRadius : ps[i].BodyRadius) + (ps[j].IsDown ? FootballBodies.DownRadius : ps[j].BodyRadius);
-                    if (d < minD - 0.05f) Flag("!! OVERLAP after the contact pass", ps[i].name + " / " + ps[j].name + " " + d.ToString("0.00") + " m (min " + minD.ToString("0.00") + ") at " + t.ToString("0.0") + " s");
+                    float minD = ps[i].BodyRadius + ps[j].BodyRadius;
+                    if (d < minD - FootballBodies.MaxShiftPerTick - 0.05f) Flag("!! OVERLAP after the contact pass", ps[i].name + " / " + ps[j].name + " " + d.ToString("0.00") + " m (min " + minD.ToString("0.00") + ") at " + t.ToString("0.0") + " s");
                 }
                 // The ball vs its holder.
                 var ball = v.ball;

@@ -64,6 +64,9 @@ public class PlayInstance
         // Solid bodies (2026-09-20).
         public int contacts, sidesteps, setupTimeouts;
         public float maxOverlap;
+        public int engagements, blocksWonRush, blocksWonHold;
+        public float pushbackMetres, pocketLife;   // pocketLife: seconds after the snap the pocket collapsed, -1 = never
+        public string maxOverlapDesc;
     }
 
     public const float TackleRadius = 1.5f;     // an arm's reach / a dive
@@ -175,12 +178,9 @@ public class PlayInstance
     readonly Dictionary<FootballPlayer, Vector3> _formation = new Dictionary<FootballPlayer, Vector3>();
     readonly Dictionary<FootballPlayer, Vector3> _huddle = new Dictionary<FootballPlayer, Vector3>();
     float _phaseTime, _setupSeconds;
-    float _pocketLife;
-    bool _pocketDone;
     float _looseSince = -1f;
     FootballPlayer _lastCarrier;
     Vector3 _prevBallPos;
-    float _engagedScale;
     FootballPlayer _kicker, _centre, _qb;
     FootballPlayer _interceptor;
     FootballPlayer _fumbler, _recoverer;
@@ -246,6 +246,7 @@ public class PlayInstance
                         float losZ, FootballPlay play, IPlayerBrain qbBrainOverride, System.Random rng, float toGo = 10f, FootballFormation formation = null)
     {
         _players = players; _ball = ball; _rng = rng; _toGo = toGo;
+        RollContact();
         view.players = players; view.ball = ball; view.offense = offense; view.defense = defense;
         view.attackDir = offense.attackDir; view.losZ = losZ; view.play = play; view.isKickoff = false;
         view.timeSinceSnap = -1f;
@@ -262,6 +263,7 @@ public class PlayInstance
     {
         _party = party; _partyCentre = partyCentre;
         _players = players; _ball = ball; _rng = rng; _toGo = 10f;
+        RollContact();
         view.players = players; view.ball = ball; view.offense = kicking; view.defense = receiving;
         view.attackDir = kicking.attackDir; view.isKickoff = true; view.play = null;
         isPunt = puntFromZ.HasValue;
@@ -327,15 +329,11 @@ public class PlayInstance
             foreach (var wp in play.routes[i].points) route.Add(OnField(F(wrX[i] + wp.x * sideward, wp.y)));
             _live[wr[i]] = new WRBrain(route, play.routes[i].settle);
         }
-        for (int i = 0; i < 2; i++) _live[dl[i]] = new DLBrain(F(i == 0 ? -4.3f : 4.3f, -1.8f));
+        for (int i = 0; i < 2; i++) _live[dl[i]] = new DLBrain(F(i == 0 ? -4.3f : 4.3f, -1.8f), def, _rng);
         for (int i = 0; i < 3; i++) _live[db[i]] = new DBBrain(wr[i], def, _rng);
         _live[lb] = new LBBrain { rushAfter = defCall == DefCall.Blitz ? 0.05f : 5.0f };
         _live[s] = new SafetyBrain(def, _rng);
 
-        // The pocket (handoff §6): 2–4 s from blocking vs pass rush.
-        float edge = Mathf.Clamp01(0.5f + def.passRush - off.blocking);
-        _pocketLife = Mathf.Lerp(3.6f, 1.8f, edge) + ((float)_rng.NextDouble() - 0.5f) * 0.8f;
-        _engagedScale = Mathf.Lerp(0.12f, 0.38f, edge);
         _ballReceiver = c;
     }
 
@@ -414,7 +412,7 @@ public class PlayInstance
     {
         if (p == null) return;
         _formation[p] = fieldPos;
-        p.speedScale = 1f;
+        p.speedScale = 1f; p.wantTangentOf = null; p.blocking = false;
         p.SetHighlight(false);
         p.settled = false;
         // First the huddle - both sides: a ring facing the man in the middle
@@ -522,7 +520,7 @@ public class PlayInstance
                     }
                     else _kicker.SetHold(HoldStyle.TwoHands);
                     _stats.setupSeconds = _setupSeconds;
-                    if (!all) _stats.setupTimeouts++;
+                    if (!all) { _stats.setupTimeouts++; log?.Invoke("Setup timeout: " + DebugSetupState()); }
                     foreach (var p in _players) { _stats.sidesteps += p.sidesteps; p.sidesteps = 0; }
                     phase = Phase.PreSnap; _phaseTime = 0f;
                 }
@@ -602,6 +600,7 @@ public class PlayInstance
             if (view.isKickoff) { _ballReady = true; return; }
             var mv = _setup[holder];
             mv.target = _broke ? _formation[holder] : _huddle[holder]; mv.stopShort = 0f;
+            mv.settleWhenBlocked = !_broke;                            // into the huddle a stride short is fine; the ball must reach the line
             holder.SetHold(HoldStyle.Tucked);
             if (_broke) mv.SetFace(LineFacePoint(holder, _formation[holder]));
             if (_broke && Vector3.Distance(holder.Pos, _formation[holder]) < 0.9f)
@@ -619,13 +618,14 @@ public class PlayInstance
             holder.SetHold(HoldStyle.Tucked);
             var mv = _setup[holder];
             mv.target = _ballReceiver.Pos; mv.stopShort = 0.9f; mv.hurry = Vector3.Distance(holder.Pos, _ballReceiver.Pos) > 20f;
+            mv.settleWhenBlocked = false;
             if (!holder.IsEmoting && Vector3.Distance(holder.Pos, _ballReceiver.Pos) < 1.6f)
             {
                 holder.SetHold(HoldStyle.None);
                 holder.ReachFor(_ballReceiver.Chest);
                 _ball.Hold(_ballReceiver);
                 _ballReceiver.SetHold(HoldStyle.Tucked);
-                mv.target = _broke || view.isKickoff ? _formation[holder] : _huddle[holder]; mv.stopShort = 0f; mv.hurry = false;
+                mv.target = _broke || view.isKickoff ? _formation[holder] : _huddle[holder]; mv.stopShort = 0f; mv.hurry = false; mv.settleWhenBlocked = true;
                 if (!_broke && !view.isKickoff) mv.SetFace(holder.team == view.offense ? F(0f, -7.5f) : F(0f, 6.5f));
                 else mv.SetFace(LineFacePoint(holder, _formation[holder]));
                 _fetcher = null;
@@ -653,7 +653,7 @@ public class PlayInstance
             _fetcher = best ?? _ballReceiver;
         }
         var fm = _setup[_fetcher];
-        fm.target = _ball.pos; fm.stopShort = 0f; fm.hurry = Vector3.Distance(_fetcher.Pos, _ball.pos) > 20f;
+        fm.target = _ball.pos; fm.stopShort = 0f; fm.hurry = Vector3.Distance(_fetcher.Pos, _ball.pos) > 20f; fm.settleWhenBlocked = false;
         float dist = Vector3.Distance(_fetcher.Pos, _ball.pos);
         if (dist < 2.2f) _fetcher.ReachFor(_ball.pos);
         if (dist < 0.9f && !_fetcher.IsEmoting)
@@ -692,18 +692,16 @@ public class PlayInstance
         view.timeSinceSnap += dt;
         var carrier = view.Carrier;
 
-        // Pocket clock: when it runs out, one rusher comes free.
-        if (!view.isKickoff && !_pocketDone && view.timeSinceSnap > _pocketLife
-            && (view.play.kind == FootballPlay.Kind.Pass || view.play.kind == FootballPlay.Kind.Rollout))
-        {
-            _pocketDone = true; view.pocketCollapsed = true;
-            var dl = Find(view.defense, FootballRole.DL, _rng.Next(2));
-            if (dl != null && dl.brain is DLBrain d) d.free = true;
-            if (view.Carrier != null && view.Carrier.role == FootballRole.QB) log?.Invoke("Pressure — " + (dl != null ? dl.Label : "a rusher") + " breaks free");
-        }
-
         // While the snap is in the air the line still fires: block as if the QB had it.
-        BlockSlowdown(carrier ?? (view.SnapInFlight ? _qb : null));
+        // Engagements come from LAST step's contacts (the pass runs after the
+        // brains move) so the speed scales are set before anyone moves.
+        ResolveEngagements(carrier ?? (view.SnapInFlight ? _qb : null), dt);
+        // The pocket: no clock. It collapses when a lineman loses (spec §2).
+        if (!view.isKickoff && !view.pocketCollapsed && _qb != null && carrier == _qb && view.Downfield(_qb.Pos) < 0f && PocketCollapsed())
+        {
+            view.pocketCollapsed = true; _stats.pocketLife = view.timeSinceSnap;
+            log?.Invoke("Pressure — the pocket collapses on " + _qb.team.shortName + " QB");
+        }
         PressReleases();
         foreach (var kv in _slowUntil) if (view.timeSinceSnap < kv.Value) kv.Key.speedScale = Mathf.Min(kv.Key.speedScale, 0.4f);
 
@@ -749,17 +747,6 @@ public class PlayInstance
             if (o.action != BrainAction.None) DoAction(p, o);
         }
         ResolveBodies();
-        // Blocking is CONTACT (Sam: the rush was sliding through the line a
-        // foot at a time): an engaged rusher is held out at arm's length from
-        // his blocker, so he has to work round him or wait to shed.
-        foreach (var kv in _engaged)
-        {
-            var d = kv.Key; var b = kv.Value.blocker;
-            if (d.IsDown || b.IsDown) continue;
-            Vector3 sep = d.Pos - b.Pos; sep.y = 0f;
-            float dist = sep.magnitude;
-            if (dist < BlockContact && dist > 0.01f) d.Nudge(b.Pos + sep / dist * BlockContact);
-        }
         // The arm has come through: the ball leaves the hand now.
         var holder = _ball.holder;
         if (_throwPending && holder != null && holder.ThrowReleased)
@@ -1052,85 +1039,177 @@ public class PlayInstance
         }
     }
 
+    /// Who has not reached his spot, how far off, and who is in his way (the
+    /// setup-timeout diagnostic; the soak prints it on a game that never ends).
+    public string DebugSetupState()
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.Append("phase=" + phase + " broke=" + _broke + " ballReady=" + _ballReady + " ball=" + _ball.state + (_ball.holder != null ? "/" + _ball.holder.Label : "") + " setup=" + _setupSeconds.ToString("0") + "s phaseTime=" + _phaseTime.ToString("0") + "s;");
+        foreach (var kv in _setup)
+        {
+            var p = kv.Key; var mv = kv.Value;
+            if (mv.Arrived(p)) continue;
+            string near = "";
+            for (int i = 0; i < view.contacts.Count; i++) if (view.contacts[i].a == p || view.contacts[i].b == p) { near = " touching " + view.contacts[i].Other(p).Label + (view.contacts[i].Other(p).IsDown ? "(down)" : ""); break; }
+            sb.Append(" " + p.team.shortName + " " + p.Label + " " + Vector3.Distance(p.Pos, mv.target).ToString("0.0") + "m from spot sc=" + p.speedScale.ToString("0.00") + " v=" + p.Vel.magnitude.ToString("0.0") + (p.wantTangentOf != null ? " tangentOf=" + p.wantTangentOf.Label : "") + (p.IsDown ? " DOWN" : "") + (p.IsEmoting ? " emoting" : "") + near + ";");
+        }
+        return sb.ToString();
+    }
+
     /// The contact pass: after everyone has moved, before anything is judged.
     void ResolveBodies()
     {
         for (int i = 0; i < _players.Count; i++) _players[i].inContact = false;
         FootballBodies.Resolve(_players, view.contacts);
-        for (int i = 0; i < view.contacts.Count; i++) { _stats.contacts++; _stats.maxOverlap = Mathf.Max(_stats.maxOverlap, view.contacts[i].overlap); }
-    }
-
-    /// The whole blocking model (handoff §6), no contact: a defender who runs
-    /// into a blocker is ENGAGED — held to a shove — until he sheds him, which
-    /// takes 1–2 s depending on the blocking stat (longer for a lineman on a
-    /// lineman). Once shed, that blocker can't hold him again this play. The
-    /// pocket timer's freed rusher ignores it all. Sticky, with hysteresis, so
-    /// a blocker doesn't have to be geometrically perfect every frame.
-    void BlockSlowdown(FootballPlayer carrier)
-    {
-        for (int i = 0; i < _players.Count; i++) { _players[i].speedScale = 1f; _players[i].blocking = false; }
-        if (carrier == null) return;
-        float ts = view.timeSinceSnap;
-        carrier.speedScale = carrier == _catcher && ts < _catchDipUntil ? CatchDipSpeed
-                           : carrier.role == FootballRole.QB ? 0.97f : CarrierSpeed;   // a scrambling QB isn't slowed by the ball
-        for (int i = 0; i < _players.Count; i++)
+        for (int i = 0; i < view.contacts.Count; i++)
         {
-            var d = _players[i];
-            if (d.team == carrier.team) continue;
-            if (d.brain is DLBrain dl && dl.free) { _engaged.Remove(d); continue; }
-            Vector3 toCarrier = carrier.Pos - d.Pos; toCarrier.y = 0f;
-            if (toCarrier.sqrMagnitude < 0.01f) continue;
-            toCarrier.Normalize();
-
-            // Still on his current blocker?
-            if (_engaged.TryGetValue(d, out var e))
+            _stats.contacts++;
+            var c = view.contacts[i];
+            if (c.overlap > _stats.maxOverlap)
             {
-                float dist = Vector3.Distance(e.blocker.Pos, d.Pos);
-                // Still held: close, not shed, and the blocker still BETWEEN
-                // him and the ball. Once he is round the man he is free (he
-                // used to crawl on for a stride after getting past).
-                Vector3 toBlk = e.blocker.Pos - d.Pos; toBlk.y = 0f;
-                bool inFront = toBlk.sqrMagnitude < 0.01f || Vector3.Dot(toBlk.normalized, toCarrier) > -0.15f;
-                if (dist < EngageKeep && ts < e.until && e.blocker != carrier && !e.blocker.IsDown && inFront)
-                {
-                    d.speedScale = e.scale; d.blocking = true; e.blocker.blocking = true;
-                    e.blocker.FaceHint(d.Pos - e.blocker.Pos); d.FaceHint(e.blocker.Pos - d.Pos);
-                    continue;
-                }
-                _shed.Add((d, e.blocker));
-                _engaged.Remove(d);
-            }
-            // A new blocker in his way?
-            for (int j = 0; j < _players.Count; j++)
-            {
-                var b = _players[j];
-                if (b.team != carrier.team || b == carrier || b.IsDown) continue;
-                if (_shed.Contains((d, b))) continue;
-                Vector3 toB = b.Pos - d.Pos; toB.y = 0f;
-                float dist = toB.magnitude;
-                if (dist > EngageStart || dist < 0.01f) continue;
-                if (Vector3.Dot(toB / dist, toCarrier) < 0.1f) continue;
-                bool line = d.role == FootballRole.DL && (b.role == FootballRole.OL || b.role == FootballRole.C);
-                // Linemen lock up for a couple of seconds; a receiver blocking
-                // downfield only gets a shove in — pursuit has to be able to close.
-                float hold = line ? Mathf.Lerp(0.9f, 2.0f, b.team.blocking) * 1.6f + ((float)_rng.NextDouble() - 0.5f) * 0.4f
-                                  : Mathf.Lerp(0.45f, 0.9f, b.team.blocking) + ((float)_rng.NextDouble() - 0.5f) * 0.2f;
-                var eng = new Engagement { blocker = b, until = ts + hold, scale = line ? _engagedScale : 0.5f };
-                _engaged[d] = eng;
-                d.speedScale = eng.scale; d.blocking = true; b.blocking = true;
-                break;
+                _stats.maxOverlap = c.overlap;
+                _stats.maxOverlapDesc = c.a.Label + "/" + c.b.Label + " " + c.overlap.ToString("0.00") + " in " + phase + (c.a.IsDown || c.b.IsDown ? " (one down)" : "") + (c.a.IsDiving || c.b.IsDiving ? " (diving)" : "") + (c.a.wrapping != null || c.b.wrapping != null ? " (wrap)" : "");
             }
         }
     }
 
-    struct Engagement { public FootballPlayer blocker; public float until; public float scale; }
-    const float EngageStart = 1.6f, EngageKeep = 2.1f;
-    const float BlockContact = 1.0f;      // a blocker and his man never get closer than this while engaged
-    readonly Dictionary<FootballPlayer, Engagement> _engaged = new Dictionary<FootballPlayer, Engagement>();
+    /// Blocking is contact (spec §2). A blocker and an opponent whose discs
+    /// touch, both standing, are engaged for this tick: the rusher drives
+    /// with his team's pass-rush stat, the blocker holds with blocking, and
+    /// the pair moves along the rusher's line at the difference. A rusher
+    /// who is past his man along that line is free by geometry. A short grace
+    /// keeps a one-tick separation from flickering the engagement off.
+    const float EngageGrace = 0.12f;
+    public const float PinnedSpeed = 0.05f;       // bull-rushing: the drive moves him, not his legs
+    public const float SwimSpeed = 0.75f;         // of max, sideways — over a lineman's shuffle (0.55): a quick man gets the edge, a slow one on a good tackle doesn't
+    readonly Dictionary<FootballPlayer, (FootballPlayer blocker, float until)> _engagedUntil = new Dictionary<FootballPlayer, (FootballPlayer, float)>();
+    readonly HashSet<FootballPlayer> _wasEngaged = new HashSet<FootballPlayer>();
+    readonly List<FootballPlayer> _expired = new List<FootballPlayer>();
+
+    /// How fast a man shuffles while engaged: linemen are slow sideways.
+    public static float LateralCap(FootballPlayer b)
+        => b.role == FootballRole.OL || b.role == FootballRole.DL ? 0.55f : b.role == FootballRole.C ? 0.75f : 0.85f;
+
+    /// Per snap: how strong every man is today (0.8–1.2). Both constructors.
+    void RollContact()
+    {
+        _stats.pocketLife = -1f;
+        foreach (var p in _players) p.contactSwing = 0.8f + 0.4f * (float)_rng.NextDouble();
+    }
+
+    void ResolveEngagements(FootballPlayer carrier, float dt)
+    {
+        view.ClearEngaged();
+        for (int i = 0; i < _players.Count; i++)
+        {
+            var p = _players[i];
+            p.speedScale = 1f; p.blocking = false; p.leanField = Vector3.zero; p.wantTangentOf = null;
+        }
+        if (carrier == null) { _engagedUntil.Clear(); _stats.blocksWonHold += _wasEngaged.Count; _wasEngaged.Clear(); return; }
+        float ts = view.timeSinceSnap;
+        carrier.speedScale = carrier == _catcher && ts < _catchDipUntil ? CatchDipSpeed
+                           : carrier.role == FootballRole.QB ? 0.97f : CarrierSpeed;   // a scrambling QB isn't slowed by the ball
+
+        // Fresh contacts: a defender touching a blocker who is between him and the ball.
+        for (int i = 0; i < view.contacts.Count; i++)
+        {
+            var c = view.contacts[i];
+            FootballPlayer d, b;
+            if (c.a.team == carrier.team) { b = c.a; d = c.b; } else { b = c.b; d = c.a; }
+            if (b.team == d.team || b == carrier || b.IsDown || d.IsDown || b.IsDiving || d.IsDiving) continue;
+            if (d.wrapping != null) continue;
+            Vector3 line = carrier.Pos - d.Pos; line.y = 0f;
+            if (line.sqrMagnitude < 0.01f) continue;
+            line.Normalize();
+            Vector3 toB = b.Pos - d.Pos; toB.y = 0f;
+            if (Vector3.Dot(toB.normalized, line) < 0.1f) continue;              // he is past him: free by geometry
+            // Who blocks: linemen always; anyone else only once the ball is
+            // past the line or in a runner's hands (a receiver running his
+            // route into his corner is NOT blocking him — that pinned every
+            // corner at the snap and turned each play into a bomb).
+            bool qbInPocket = carrier.role == FootballRole.QB && view.Downfield(carrier.Pos) < 0.5f;
+            if (!FootballBodies.IsLineman(b) && qbInPocket) continue;
+            // And it takes a collision to start one (two men brushing past
+            // each other, or standing shoulder to shoulder, are not engaged).
+            bool renewing = _engagedUntil.TryGetValue(d, out var cur) && cur.blocker == b;
+            if (!renewing && c.closing < 0.2f) continue;
+            _engagedUntil[d] = (b, ts + EngageGrace);
+        }
+        // Engaged this tick = fresh contact, or within the grace of the last one.
+        _expired.Clear();
+        foreach (var kv in _engagedUntil)
+        {
+            var d = kv.Key; var b = kv.Value.blocker;
+            if (ts > kv.Value.until || d.IsDown || b.IsDown || b == carrier || d.wrapping != null) { _expired.Add(d); continue; }
+            view.SetEngaged(d, b);
+            if (_wasEngaged.Add(d)) _stats.engagements++;
+            Vector3 line = carrier.Pos - d.Pos; line.y = 0f;
+            if (line.sqrMagnitude < 0.01f) continue;
+            line.Normalize();
+            bool swim = d.brain is DLBrain dl && dl.Swimming;
+            float pushStat = d.team == view.defense ? d.team.passRush : d.team.blocking;
+            float push = FootballBodies.Push(pushStat, d.BodyMass, d.contactSwing);
+            float hold = FootballBodies.Hold(b.team.blocking, b.BodyMass, b.contactSwing, FootballBodies.IsLineman(b));
+            float drive = FootballBodies.BlockDrive(push, hold) * (swim ? FootballBodies.SwimDriveScale : 1f);
+            Vector3 shift = line * (drive * dt);
+            d.ShiftBody(shift); b.ShiftBody(shift);
+            if (drive > 0f) _stats.pushbackMetres += drive * dt;
+            // The rusher is pinned on a bull; on a swim he works the tangent at speed.
+            // Speed on the tangent vs the blocker's shuffle: both scale with
+            // the man's stat and his swing today, so an even matchup is a coin
+            // flip and a quick rusher on a slow tackle gets the edge.
+            d.speedScale = swim ? SwimSpeed * d.contactSwing * (0.8f + 0.4f * d.team.speed) : PinnedSpeed;
+            d.wantTangentOf = swim ? b : null;
+            b.speedScale = LateralCap(b) * b.contactSwing * (0.8f + 0.4f * b.team.blocking);
+            d.blocking = b.blocking = true;
+            b.FaceHint(d.Pos - b.Pos); d.FaceHint(b.Pos - d.Pos);
+            d.leanField = line * Mathf.Clamp01(0.5f + drive); b.leanField = -line * Mathf.Clamp01(0.5f - drive);
+        }
+        foreach (var d in _expired)
+        {
+            _engagedUntil.Remove(d);
+            // Who won: the blocker put him on the ground → the hold; otherwise he is past → the rush.
+            if (_wasEngaged.Remove(d)) { if (d.IsDown || _engagedUntil.Count == 0 && carrier == null) _stats.blocksWonHold++; else _stats.blocksWonRush++; }
+        }
+    }
+
+    /// A rusher with a clear line inside 3.5 m, or a blocker driven back to within 1.5 m of the QB.
+    bool PocketCollapsed()
+    {
+        for (int i = 0; i < _players.Count; i++)
+        {
+            var d = _players[i];
+            if (d.team == _qb.team || d.IsDown) continue;
+            if (Vector3.Distance(d.Pos, _qb.Pos) < 4.5f && !view.IsEngaged(d) && ClearLine(d.Pos, _qb.Pos)) return true;
+        }
+        for (int i = 0; i < _players.Count; i++)
+        {
+            var b = _players[i];
+            if (b.team != _qb.team || b == _qb || !b.blocking) continue;
+            if (Vector3.Distance(b.Pos, _qb.Pos) < 1.5f) return true;
+        }
+        return false;
+    }
+
+    /// No standing offensive body (other than the QB) within 1.2 m of the segment.
+    bool ClearLine(Vector3 from, Vector3 to)
+    {
+        Vector3 seg = to - from; seg.y = 0f; float len = seg.magnitude; if (len < 0.01f) return true;
+        Vector3 dir = seg / len;
+        for (int i = 0; i < _players.Count; i++)
+        {
+            var o = _players[i];
+            if (o.team != _qb.team || o == _qb || o.IsDown) continue;
+            Vector3 rel = o.Pos - from; rel.y = 0f;
+            float t = Mathf.Clamp(Vector3.Dot(rel, dir), 0f, len);
+            if ((rel - dir * t).magnitude < 1.2f) return false;
+        }
+        return true;
+    }
+
     readonly Dictionary<FootballPlayer, float> _tackleRetry = new Dictionary<FootballPlayer, float>();
     readonly Dictionary<FootballPlayer, float> _diveConsider = new Dictionary<FootballPlayer, float>();
     readonly HashSet<FootballPlayer> _diveResolved = new HashSet<FootballPlayer>();
-    readonly HashSet<(FootballPlayer, FootballPlayer)> _shed = new HashSet<(FootballPlayer, FootballPlayer)>();
 
     void DoAction(FootballPlayer p, BrainOutput o)
     {
@@ -1541,6 +1620,8 @@ public class PlayInstance
     void End(Outcome outcome, float spotZ, FootballTeam possession, FootballPlayer carrier, FootballPlayer tackler = null)
     {
         phase = Phase.Ended;
+        _stats.blocksWonHold += _wasEngaged.Count; _wasEngaged.Clear();          // still held when it ended: the blocker won
+        foreach (var p in _players) { p.speedScale = 1f; p.blocking = false; p.leanField = Vector3.zero; p.wantTangentOf = null; }   // nothing from the line carries into the dead ball
         view.snapped = false;
         view.qbExtending = false;
         _throwPending = false; _kickPending = false;

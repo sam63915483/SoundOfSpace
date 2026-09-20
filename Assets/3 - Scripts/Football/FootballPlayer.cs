@@ -710,6 +710,26 @@ public class FootballPlayer : MonoBehaviour
             Vector3 nrm = wantTangentOf.Pos - _pos; nrm.y = 0f;
             if (nrm.sqrMagnitude > 1e-4f) { nrm.Normalize(); want -= nrm * Mathf.Max(0f, Vector3.Dot(want, nrm)); }
         }
+        // Bodies are solid: a man slides along one he runs into instead of
+        // pushing through it (a receiver round a backpedalling corner, anyone
+        // round a pile, the huddle). NOT a tackler on the carrier or the
+        // carrier on a tackler — there the hit is the point — and not a man
+        // engaged in a block, whose push is resolved by the engagement.
+        else if (view != null && view.contacts.Count > 0 && !view.IsEngaged(this))
+        {
+            var carrier = view.Carrier;
+            for (int ci = 0; ci < view.contacts.Count; ci++)
+            {
+                var c = view.contacts[ci];
+                if (c.a != this && c.b != this) continue;
+                var other = c.Other(this);
+                if (carrier != null && ((this == carrier && other.team != team) || (other == carrier && other.team != team))) continue;
+                if (view.EngagedWith(other) == this) continue;              // I'm his blocker: I hold my ground
+                Vector3 nrm = c.NormalFrom(this);
+                float into = Vector3.Dot(want, nrm);
+                if (into > 0f) want -= nrm * into;
+            }
+        }
         Vector3 targetVel = want * (_maxSpeed * speedScale * moveScale);
         // On the ground: skid to a stop.
         if (IsDown) targetVel = Vector3.zero;
@@ -794,6 +814,7 @@ public class FootballPlayer : MonoBehaviour
             _rig.stance = _stance;
             _rig.idleTime = _idleTime;
             _rig.blocking = blocking;
+            _rig.lean = _fieldRoot != null ? _fieldRoot.TransformDirection(leanField) : leanField;
             _rig.looking = _looking;
             _rig.lookTargetWorld = _fieldRoot != null ? _fieldRoot.TransformPoint(_lookField) : _lookField;
             _rig.wrapping = wrapping != null;

@@ -109,7 +109,14 @@ public class MoveToBrain : IPlayerBrain
     Vector3 _face; bool _hasFace;
     public MoveToBrain(Vector3 t) { target = t; }
     public bool KeepsControlWhenCarrying => true;
-    public bool Arrived(FootballPlayer self) => Vector3.Distance(self.Pos, target) < Steer.ArriveRadius + stopShort;
+    /// There, or as near as the bodies allow (a spot somebody is standing on;
+    /// the ring of a huddle) — a man kept walking into an occupied spot for ever.
+    public bool Arrived(FootballPlayer self) => Vector3.Distance(self.Pos, target) < Steer.ArriveRadius + stopShort || (_settledFor == target && _settled);
+    /// A spot (huddle, formation) can be taken by a man standing on it — then
+    /// stop a stride short. An errand (fetch the ball, carry it to the centre)
+    /// never settles: PlayInstance turns this off for those.
+    public bool settleWhenBlocked = true;
+    bool _settled; Vector3 _settledFor; FootballPlayer _settledBlocker; Vector3 _settledBlockerPos;
     /// Once there, turn to look at this point (the man in the middle of the huddle).
     public void SetFace(Vector3 point) { _face = point; _hasFace = true; }
     public void ClearFace() { _hasFace = false; }
@@ -139,13 +146,29 @@ public class MoveToBrain : IPlayerBrain
         }
         float before = _blockedFor;
         _blockedFor = blocked ? _blockedFor + dt : 0f;
-        if (blocked && _blockedFor > 0.3f)
+        if (_settledFor != target) _settled = false;
+        if (_settled)
+        {
+            // The man on my spot has moved on: walk again.
+            if (_settledBlocker == null || _settledBlocker.IsDown || Vector3.Distance(_settledBlocker.Pos, _settledBlockerPos) > 1.0f) _settled = false;
+            else { o.move = Vector3.zero; return; }
+        }
+        if (settleWhenBlocked && blocked && _blockedFor > 0.08f && dist < Steer.ArriveRadius + stopShort + 1.2f)
+        {
+            var other = block.Other(self);
+            if (!other.IsDown && other.Vel.sqrMagnitude < 0.25f)          // he is standing there: that spot is taken
+            {
+                _settled = true; _settledFor = target; _settledBlocker = other; _settledBlockerPos = other.Pos;
+                o.move = Vector3.zero; return;
+            }
+        }
+        if (blocked && _blockedFor > 0.08f)
         {
             Vector3 n = block.NormalFrom(self);
             Vector3 tangent = Vector3.Cross(Vector3.up, n);
             if (Vector3.Dot(tangent, target - self.Pos) < 0f) tangent = -tangent;
             move = (tangent * 0.8f + move.normalized * 0.3f).normalized * pace;
-            if (before <= 0.3f) self.sidesteps++;
+            if (before <= 0.08f) self.sidesteps++;
         }
         o.move = move;
     }
@@ -210,7 +233,7 @@ public class BallCarrierBrain : IPlayerBrain
                 if (along < -0.5f || along > 9f) continue;
                 float across = Mathf.Abs(Vector3.Dot(rel, Vector3.Cross(Vector3.up, c)));
                 float threat = Mathf.Max(0f, 1f - across / 3.2f) * (1f - along / 10f);
-                if (q.speedScale < 0.5f) threat *= 0.8f;            // he's being blocked — still has an arm
+                if (view.IsEngaged(q)) threat *= 0.8f;               // he's being blocked — still has an arm
                 score -= threat * 3.0f;
             }
             // Don't lane-pick into the sideline.
@@ -363,21 +386,22 @@ public class OLBrain : IPlayerBrain
                 return;
             }
         }
-        // Stay on your man, between him and whoever has the ball (the QB in
-        // the pocket, the sweep man, a receiver after the catch).
+        // The pass-set: mirror him. My spot is on his line to the ball, one
+        // body in front of him. Engaged, PlayInstance caps my shuffle
+        // (LateralCap) — a lineman is slow sideways, and that is what a swim
+        // beats. The kick-slide point shapes the cup for the first half second.
         if (carrier != null && _man != null && Vector3.Distance(_man.Pos, self.Pos) < 7f)
         {
-            // Engaged (he's slowed): hold the lock where it is — running round
-            // to the carrier's side as he passes would let go of him.
-            Vector3 spot = _man.speedScale < 0.5f
-                ? _man.Pos + (self.Pos - _man.Pos).normalized * 0.9f
-                : _man.Pos + (carrier.Pos - _man.Pos).normalized * 1.0f;
-            // Kick-slide: until he arrives, set up at the pocket point so the
-            // cup forms between the rusher's edge path and the QB.
+            Vector3 line = carrier.Pos - _man.Pos; line.y = 0f;
+            if (line.sqrMagnitude < 0.01f) { o.move = Vector3.zero; return; }
+            line.Normalize();
+            // Past me toward the ball by half a metre: turn and chase like anyone else.
+            if (Vector3.Dot(self.Pos - _man.Pos, line) > 0.5f) { o.move = Steer.Pursue(self, _man); return; }
+            Vector3 spot = _man.Pos + line * (self.BodyRadius + _man.BodyRadius + 0.05f);
             bool qbInPocket = carrier.role == FootballRole.QB && view.Downfield(carrier.Pos) < 0f;
-            if (qbInPocket && _man.speedScale >= 0.5f && Vector3.Distance(_man.Pos, self.Pos) > 2.2f)
-                spot = Vector3.Lerp(spot, _pocketSpot, 0.65f);
-            o.move = Steer.To(self.Pos, spot, 0.8f);
+            if (qbInPocket && view.timeSinceSnap < 0.5f && !view.IsEngaged(_man)) spot = Vector3.Lerp(spot, _pocketSpot, 0.65f);
+            o.move = Steer.To(self.Pos, spot, 0.25f);
+            o.face = _man.Pos - self.Pos; o.faceMoving = true;
             return;
         }
         o.move = Steer.Block(self, view);
@@ -421,13 +445,24 @@ public class CenterBrain : IPlayerBrain
         {
             var d = view.players[i];
             if (d.team == self.team || d.IsDown) continue;
-            if (d.speedScale < 0.5f) continue;                                // someone has him
+            if (view.IsEngaged(d)) continue;                                  // someone has him
             float toMe = Vector3.Distance(d.Pos, self.Pos);
             if (toMe > 8f) continue;
             float toCarrier = Vector3.Distance(d.Pos, carrier.Pos);
             if (toCarrier < best) { best = toCarrier; threat = d; }
         }
-        if (threat != null) { o.move = Steer.BlockMan(self, threat, carrier); return; }
+        if (threat != null)
+        {
+            // Square up on his line to the ball, one body in front (the pass-set).
+            Vector3 line = carrier.Pos - threat.Pos; line.y = 0f;
+            if (line.sqrMagnitude > 0.01f)
+            {
+                line.Normalize();
+                o.move = Steer.To(self.Pos, threat.Pos + line * (self.BodyRadius + threat.BodyRadius + 0.05f), 0.25f);
+                o.face = threat.Pos - self.Pos; o.faceMoving = true;
+                return;
+            }
+        }
         // Nobody loose: hold a spot a stride in front of the QB, or block downfield.
         if (carrier.role == FootballRole.QB && view.Downfield(carrier.Pos) < 0.5f)
             o.move = Steer.To(self.Pos, carrier.Pos + Vector3.forward * (view.attackDir * 2.2f), 1.2f) * 0.7f;
@@ -587,18 +622,62 @@ public class WRBrain : IPlayerBrain
 /// PlayInstance has set him free (the pocket collapsed). Then the carrier.
 public class DLBrain : IPlayerBrain
 {
-    public bool free;
+    public enum RushMove { Bull, Swim }
+    /// Rolled per snap: quick men swim, strong men bull. Engaged on a bull he
+    /// is pinned and the engagement's drive moves the pair; a bull that goes
+    /// nowhere for BullStall seconds tries a swim. A swim is a COMMITTED
+    /// lateral step (a fixed direction for SwimSeconds, at his swim speed)
+    /// to get the blocker's shoulder; the blocker mirrors at his shuffle cap,
+    /// and whoever is quicker today wins the edge. A swim that fails leaves
+    /// him pinned again; he tries once more after SwimRetry.
+    public RushMove move;
+    public const float BullStall = 0.7f, SwimSeconds = 0.8f, SwimRetry = 0.6f;
     readonly Vector3 _edge;
     bool _pastEdge;
-    /// `edgeSpot`: the point outside the tackle he bends round before turning
-    /// up at the QB — the rush takes the long way, the line slides with it,
-    /// and that arc IS the pocket.
-    public DLBrain(Vector3 edgeSpot) { _edge = edgeSpot; }
+    float _stalledFor, _swimT = -1f, _swimCooldown;
+    Vector3 _swimDir;
+    public bool Swimming => _swimT >= 0f;
+    public DLBrain(Vector3 edgeSpot, FootballTeam team, System.Random rng)
+    {
+        _edge = edgeSpot;
+        float swimChance = Mathf.Clamp(0.35f + 0.5f * (team.speed - team.passRush), 0.1f, 0.8f);
+        move = rng.NextDouble() < swimChance ? RushMove.Swim : RushMove.Bull;
+    }
     public bool KeepsControlWhenCarrying => false;
 
-    Vector3 Rush(FootballPlayer self, PlayView view, FootballPlayer qb)
+    Vector3 Rush(FootballPlayer self, PlayView view, FootballPlayer qb, float dt)
     {
-        if (!free && !_pastEdge && qb != null && view.Downfield(qb.Pos) < 0f)
+        var blocker = view.EngagedWith(self);
+        if (_swimCooldown > 0f) _swimCooldown -= dt;
+        if (blocker != null && qb != null)
+        {
+            if (_swimT >= 0f)
+            {
+                _swimT += dt;
+                if (_swimT < SwimSeconds) return _swimDir;
+                _swimT = -1f; _swimCooldown = SwimRetry;              // didn't clear him: pinned again
+            }
+            bool wantSwim = move == RushMove.Swim || _stalledFor > BullStall;
+            if (wantSwim && _swimCooldown <= 0f)
+            {
+                // The step: sideways off the blocker, to the side with the shorter line to the QB.
+                Vector3 n = blocker.Pos - self.Pos; n.y = 0f;
+                if (n.sqrMagnitude < 1e-4f) n = Vector3.forward; else n.Normalize();
+                _swimDir = Vector3.Cross(Vector3.up, n);
+                if (Vector3.Dot(_swimDir, qb.Pos - self.Pos) < 0f) _swimDir = -_swimDir;
+                // Sideways AND upfield: the component into the blocker is
+                // projected out while he is still in front (wantTangentOf),
+                // and drives him past once he has the shoulder.
+                Vector3 up = qb.Pos - self.Pos; up.y = 0f;
+                _swimDir = (_swimDir + up.normalized * 0.35f).normalized;
+                _swimT = 0f; _stalledFor = 0f;
+                return _swimDir;
+            }
+            _stalledFor += dt;
+            return Steer.To(self.Pos, qb.Pos, 0f);                    // pinned: the drive moves him
+        }
+        _swimT = -1f; _stalledFor = 0f;
+        if (!_pastEdge && qb != null && view.Downfield(qb.Pos) < 0f)
         {
             if (Vector3.Distance(self.Pos, _edge) < 1.0f || view.timeSinceSnap > 1.7f) _pastEdge = true;
             else return Steer.To(self.Pos, _edge, 0f);
@@ -614,7 +693,7 @@ public class DLBrain : IPlayerBrain
         if (view.SnapInFlight)
         {
             var qb = view.FindRole(view.offense, FootballRole.QB);
-            if (qb != null) { o.move = Rush(self, view, qb); return; }
+            if (qb != null) { o.move = Rush(self, view, qb, dt); return; }
         }
         if (view.BallAirborne) { o.move = Steer.To(self.Pos, ball.catchPoint, 0f) * 0.7f; return; }
         if (view.BallLoose) { o.move = Steer.To(self.Pos, ball.pos, 0f); return; }
@@ -623,9 +702,9 @@ public class DLBrain : IPlayerBrain
         if (view.DefenseStillReading && carrier.role != FootballRole.QB)
         {
             var qb = view.FindRole(view.offense, FootballRole.QB);
-            if (qb != null) { o.move = Rush(self, view, qb); return; }
+            if (qb != null) { o.move = Rush(self, view, qb, dt); return; }
         }
-        if (carrier.role == FootballRole.QB && view.Downfield(carrier.Pos) < 0f) { o.move = Rush(self, view, carrier); return; }
+        if (carrier.role == FootballRole.QB && view.Downfield(carrier.Pos) < 0f) { o.move = Rush(self, view, carrier, dt); return; }
         o.move = Steer.Pursue(self, carrier);
     }
 }

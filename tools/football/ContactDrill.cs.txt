@@ -38,8 +38,10 @@ public static class ContactDrill
             var players = new System.Collections.Generic.List<FootballPlayer> { ol, dl };
             var contacts = new System.Collections.Generic.List<BodyContact>();
             FootballBodies.Resolve(players, contacts);
+            sb.AppendLine("A: gap after one tick " + Vector3.Distance(ol.Pos, dl.Pos).ToString("0.000") + " (want 0.720: 0.12 m step)");
+            for (int k = 0; k < 6; k++) FootballBodies.Resolve(players, contacts);          // a few ticks, never a pop
             float gap = Vector3.Distance(ol.Pos, dl.Pos);
-            sb.AppendLine("A: gap after resolve " + gap.ToString("0.000") + " (want 1.000) contacts " + contacts.Count + " (want 1)");
+            sb.AppendLine("A: gap after seven " + gap.ToString("0.000") + " (want 1.000) contacts " + contacts.Count + " (want 1: touching within the slop)");
             sb.AppendLine("A: ol.z " + ol.Pos.z.ToString("0.000") + " dl.z " + dl.Pos.z.ToString("0.000") + " (equal masses: each moved 0.2)");
             sb.AppendLine("A: dl.vel.z " + dl.Vel.z.ToString("0.00") + " ol.vel.z " + ol.Vel.z.ToString("0.00") + " (inelastic: both -2.00)");
             sb.AppendLine("A: closing " + (contacts.Count > 0 ? contacts[0].closing.ToString("0.00") : "-") + " (want 4.00)");
@@ -48,7 +50,7 @@ public static class ContactDrill
             // A downed man is immovable: only the standing man moves.
             ol.Teleport(Vector3.zero, Vector3.forward); dl.Teleport(new Vector3(0f, 0f, 0.6f), Vector3.back);
             ol.FallDown(2f);
-            FootballBodies.Resolve(players, contacts);
+            for (int k = 0; k < 6; k++) FootballBodies.Resolve(players, contacts);
             sb.AppendLine("A2: downed ol.z " + ol.Pos.z.ToString("0.000") + " (want 0) dl.z " + dl.Pos.z.ToString("0.000") + " (want 1.05 = 0.55 + 0.5)");
             sb.AppendLine(Mathf.Abs(ol.Pos.z) < 0.001f && Mathf.Abs(dl.Pos.z - 1.05f) < 0.01f ? "A2: PASS" : "A2: FAIL");
 

@@ -60,6 +60,7 @@ public class FootballAlienRig : MonoBehaviour
     [System.NonSerialized] public float hardFall;         // 0..1: flailing while tumbling
     [System.NonSerialized] public Stance stance = Stance.None;
     [System.NonSerialized] public float idleTime;         // seconds standing still: breathing, weight shifts
+    [System.NonSerialized] public Vector3 lean;             // world: a shove — the spine tips into it
     [System.NonSerialized] public bool blocking;          // arms out, hands up, holding a man off (or fighting one)
     [System.NonSerialized] public bool looking;           // the head follows lookTargetWorld (the ball, his man, his read)
     [System.NonSerialized] public Vector3 lookTargetWorld;
@@ -208,6 +209,7 @@ public class FootballAlienRig : MonoBehaviour
         else if (emote == EmoteKind.Dejected) spineDir = (u * 0.85f + f * 0.35f).normalized;
         else if (emote == EmoteKind.Bow) spineDir = (u * 0.4f + f * 0.9f).normalized;
         else if (emote == EmoteKind.Dance) spineDir = Quaternion.AngleAxis(Mathf.Sin(emotePhase * 25f) * 8f, f) * (u * 0.95f + f * 0.1f).normalized;
+        if (lean.sqrMagnitude > 1e-4f) spineDir = (spineDir + lean * 0.35f).normalized;
         if (stumble > 0f) spineDir = Quaternion.AngleAxis(28f * Mathf.Sin(Mathf.PI * stumble), r) * spineDir;
         if (_spine != null) Aim(_spine, _spine2 != null ? _spine2 : _head, spineDir);
 

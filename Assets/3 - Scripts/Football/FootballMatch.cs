@@ -103,11 +103,18 @@ public class FootballMatch : MonoBehaviour
         public int jukes, spins, hurdles, hurdlesClipped, dives, diveHits, wildSnaps, snapsCaught, rollouts, scrambleDrills, emotes, officiated, brokenTackles, contested, tips, stiffArms, stumbles;
         public float yards, longest, setupSeconds; public string longestDesc = "";
         public float liveSeconds;
+        // Solid bodies (2026-09-20).
+        public int contacts, sidesteps, setupTimeouts, engagements, blocksWonRush, blocksWonHold, pocketSamples;
+        public float maxOverlap, pushbackMetres, pocketLifeSum;
+        public string maxOverlapDesc = "";
         public string Summary(int plays)
             => "moves: juke " + jukes + " spin " + spins + " stiff-arm " + stiffArms + " stumble " + stumbles + " hurdle " + hurdles + " (clipped " + hurdlesClipped + ") | dives " + dives + "/" + diveHits + " hit"
              + " | fumbles " + fumbles + " (lost " + fumblesLost + ") | snaps " + snapsCaught + " caught, " + wildSnaps + " wild"
              + " | QB rollouts " + rollouts + " scrambles " + scrambleDrills + " | broke " + brokenTackles + " tackles | contested " + contested + " (tipped " + tips + ") | emotes " + emotes
-             + " | dead-ball avg " + (plays > 0 ? (setupSeconds / plays).ToString("0.0") : "-") + " s" + (officiated > 0 ? " | OFFICIALS SPOTTED " + officiated : "");
+             + " | dead-ball avg " + (plays > 0 ? (setupSeconds / plays).ToString("0.0") : "-") + " s" + (officiated > 0 ? " | OFFICIALS SPOTTED " + officiated : "")
+             + " | contacts " + contacts + " engagements " + engagements + " (rush won " + blocksWonRush + ", hold won " + blocksWonHold + ") pushback " + pushbackMetres.ToString("0") + " m"
+             + " | pocket avg " + (pocketSamples > 0 ? (pocketLifeSum / pocketSamples).ToString("0.0") : "-") + " s (" + pocketSamples + " collapsed)"
+             + " | sidesteps " + sidesteps + " setup timeouts " + setupTimeouts + " max overlap " + maxOverlap.ToString("0.00") + " (" + maxOverlapDesc + ")";
     }
 
     // ── state ──────────────────────────────────────────────────────────────
@@ -641,6 +648,10 @@ public class FootballMatch : MonoBehaviour
         _stats.emotes += s.emotes; _stats.setupSeconds += s.setupSeconds;
         _stats.brokenTackles += s.brokenTackles; _stats.contested += s.contested; _stats.tips += s.tips; _stats.stiffArms += s.stiffArms; _stats.stumbles += s.stumbles;
         if (s.officialsSpottedBall) _stats.officiated++;
+        _stats.contacts += s.contacts; _stats.sidesteps += s.sidesteps; _stats.setupTimeouts += s.setupTimeouts;
+        _stats.engagements += s.engagements; _stats.blocksWonRush += s.blocksWonRush; _stats.blocksWonHold += s.blocksWonHold;
+        _stats.pushbackMetres += s.pushbackMetres; if (s.maxOverlap > _stats.maxOverlap) { _stats.maxOverlap = s.maxOverlap; _stats.maxOverlapDesc = s.maxOverlapDesc ?? ""; }
+        if (s.pocketLife >= 0f) { _stats.pocketSamples++; _stats.pocketLifeSum += s.pocketLife; }
         if (clockStoppages && r.clockStops) _clockStopped = true;
         _runoffLeft = _clockStopped ? 0f : playClockRunoff;
     }

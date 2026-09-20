@@ -1,0 +1,77 @@
+using System.Text;
+using UnityEditor;
+using UnityEngine;
+
+// The line, tick by tick (2026-09-20, solid bodies): for the first N
+// scrimmage plays, every 0.2 s of the first 4.5 s after the snap — where the
+// QB is, and for each rusher: his move (bull/swim), who has him, his speed
+// scale, his distance to the QB and to his blocker; when the pocket collapsed
+// and how the play ended. This is how "they get round the line too fast" is
+// SEEN instead of argued. Copy to the scratchpad, replace <scratchpad>/, run
+// with execute_script.
+public static class LineProbe
+{
+    const string Out = "<scratchpad>/line.txt";
+    const int Plays = 14;
+
+    static string P(Vector3 v) => "(" + v.x.ToString("0.0") + "," + v.z.ToString("0.0") + ")";
+
+    public static void Execute()
+    {
+        var sb = new StringBuilder();
+        GameObject root = null;
+        try
+        {
+            root = new GameObject("__LineProbe") { hideFlags = HideFlags.DontSave };
+            root.AddComponent<FootballField>();
+            var mgo = new GameObject("Match");
+            mgo.transform.SetParent(root.transform, false);
+            var m = mgo.AddComponent<FootballMatch>();
+            m.autoStart = false; m.seed = 1000;
+            m.Boot(); m.NewGame();
+            if (System.IO.File.Exists(Out + ".force")) m.ForcedPlay = System.IO.File.ReadAllText(Out + ".force").Trim();
+            const float dt = 1f / 60f;
+            float t = 0f, nextLog = -1f;
+            int plays = 0;
+            PlayInstance last = null;
+            bool collapsedLogged = false;
+            while (t < 1500f && plays <= Plays)
+            {
+                m.Simulate(dt, dt); t += dt;
+                var play = m.CurrentPlay;
+                if (play != last)
+                {
+                    if (last != null && !last.view.isKickoff) sb.AppendLine("  → " + (last.result != null ? last.result.outcome + " " + last.result.yards.ToString("+0;-0") + " yd (" + last.result.description + ")" : "?") + " pocketLife=" + (last.result != null ? last.result.stats.pocketLife.ToString("0.0") : "?"));
+                    last = play; collapsedLogged = false; nextLog = -1f;
+                    if (play != null && !play.view.isKickoff) { plays++; sb.AppendLine("\n### play " + plays + " " + (play.view.play != null ? play.view.play.name : "?") + " off=" + play.view.offense.shortName + " def=" + play.defCall); }
+                }
+                if (play == null || play.view.isKickoff || play.phase != PlayInstance.Phase.Live) continue;
+                var v = play.view;
+                if (v.pocketCollapsed && !collapsedLogged) { collapsedLogged = true; sb.AppendLine("  POCKET COLLAPSED at ts=" + v.timeSinceSnap.ToString("0.00")); }
+                if (v.timeSinceSnap > 4.5f || v.timeSinceSnap < nextLog) continue;
+                nextLog = v.timeSinceSnap + 0.2f;
+                var qb = v.FindRole(v.offense, FootballRole.QB);
+                var c = v.Carrier;
+                sb.Append("ts=" + v.timeSinceSnap.ToString("0.0") + " QB " + (qb != null ? P(qb.Pos) + " depth " + v.Downfield(qb.Pos).ToString("0.0") : "-") + " carrier=" + (c != null ? c.Label : (v.BallAirborne ? "AIR" : "-")));
+                for (int i = 0; i < 2; i++)
+                {
+                    var dl = v.FindRole(v.defense, FootballRole.DL, i);
+                    if (dl == null || qb == null) continue;
+                    var b = v.EngagedWith(dl);
+                    string mv = dl.brain is DLBrain d ? (d.Swimming ? "SWIM" : d.move == DLBrain.RushMove.Swim ? "swim" : "bull") : "?";
+                    sb.Append(" | DL" + (i + 1) + " " + mv + " " + P(dl.Pos) + " sc=" + dl.speedScale.ToString("0.00") + " v=" + dl.Vel.magnitude.ToString("0.0") + " dQB=" + Vector3.Distance(dl.Pos, qb.Pos).ToString("0.0") + (b != null ? " on " + b.Label + " d=" + Vector3.Distance(dl.Pos, b.Pos).ToString("0.00") : " FREE") + (dl.IsDown ? " DOWN" : ""));
+                }
+                var lb = v.FindRole(v.defense, FootballRole.LB);
+                if (lb != null && qb != null) sb.Append(" | LB " + P(lb.Pos) + " dQB=" + Vector3.Distance(lb.Pos, qb.Pos).ToString("0.0") + (v.IsEngaged(lb) ? " on " + v.EngagedWith(lb).Label : ""));
+                sb.AppendLine();
+            }
+        }
+        catch (System.Exception e) { sb.AppendLine("!! " + e); }
+        finally
+        {
+            if (root != null) Object.DestroyImmediate(root);
+            System.IO.File.WriteAllText(Out, sb.ToString());
+            Debug.Log("[LineProbe] written");
+        }
+    }
+}
