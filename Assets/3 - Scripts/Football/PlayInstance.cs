@@ -729,6 +729,18 @@ public class PlayInstance
             if (ext && !view.qbExtending) { if (qbb.style == QBBrain_CPU.Style.Rollout) _stats.rollouts++; else _stats.scrambleDrills++; }
             view.qbExtending = ext; view.qbExtendSide = qbb.ExtendSide;
         }
+        else if (HumanDriven && _qb != null && carrier == _qb && !view.isKickoff)
+        {
+            // The real player extending the play (Sam: "my receivers just stay
+            // still when I'm rolling out"): with the ball, three metres off the
+            // snap spot sideways — or simply holding it a long time — the
+            // scramble drill switches on exactly as it does for the CPU QB.
+            float off = _qb.Pos.x - _ballSpot.x;
+            bool ext = view.timeSinceSnap > HumanExtendAfter && (Mathf.Abs(off) > HumanExtendOffset || view.timeSinceSnap > HumanExtendHold);
+            if (ext && !view.qbExtending) _stats.scrambleDrills++;
+            view.qbExtending = ext;
+            if (ext) view.qbExtendSide = Mathf.Abs(off) > 0.5f ? Mathf.Sign(off) : (Mathf.Abs(_qb.Facing.x) > 0.2f ? Mathf.Sign(_qb.Facing.x) : 1f);
+        }
 
         // Brains → movement, actions collected.
         _prevBallPos = _ball.pos;
@@ -940,6 +952,7 @@ public class PlayInstance
     float _wrapHit, _wrapCarrierSpeed; bool _breakRolled;
     public const float BreakScale = 3.8f;             // a runner's momentum has to beat the hit × this to break a wrap (2.6 let a full-speed man break every grab from behind)
     public const float DefenderReachPenalty = 0.35f;  // m: a reaching defender's arms vs the receiver's (full reach picked off 9-15 a game)
+    public const float HumanExtendAfter = 1.2f, HumanExtendOffset = 3f, HumanExtendHold = 2.8f;   // the human QB: the scramble drill starts after 1.2 s once he is 3 m off the spot sideways, or at 2.8 s regardless
     public const float HumanHitSpeed = 1.5f;          // m/s the real player must be moving to level a man by running into him
     public const float ArmReach = 0.55f;              // m beyond the discs a tackler can get a hand on the runner
     public const float ReachScale = 0.7f;             // a reach is a weaker hit than a body
