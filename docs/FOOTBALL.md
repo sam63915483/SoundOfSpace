@@ -283,11 +283,16 @@ translucent cylinder marks the QB spot. Walk into it — it disappears, the line
 sets, and about a second later the centre snaps the ball to your hands. The ball
 lands in the hotbar (auto-equipped) and sits in front of the camera. Then:
 
-- **Hold LMB** up to 2 s to charge a throw (6 m at a tap → 48 m at full). The
-  arc and a landing ring are drawn on the field; the target is straight ahead
-  of the camera at that distance. **Release** to throw — the ball goes to the
-  receiver nearest the landing spot (the normal catch / contest / drop rules
-  apply, so a throw into a crowd is a throw into a crowd).
+- **Hold LMB** to charge the ARM (ball speed, 13 → 25 m/s over 3 s); the
+  camera's PITCH is the angle. Look level and it is a bullet that carries the
+  short routes (a tap ≈ 5 yd, full ≈ 20 yd); look up to loft it (full charge
+  at 35° ≈ 70 yd). `FootballHumanQB.Aim` solves the parabola down to catch
+  height and hands the sim that exact flight time (`BrainOutput.flight`), so
+  the drawn arc, the ball and the receivers agree. **Release** to throw — the
+  ball goes to the receiver nearest the landing spot (the normal catch /
+  contest / drop rules apply, so a throw into a crowd is a throw into a crowd).
+- The huddle breaks the moment you call the play (it used to also wait out the
+  CPU's huddle hold and the replay).
 - **Or run.** Cross the line of scrimmage with the ball and it is tucked; the
   defence tackles you the same way it tackles an alien. Getting tackled or
   sacked plants you for 1.6 s and ends the play; the ball is set at your feet

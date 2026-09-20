@@ -27,7 +27,8 @@ public class FootballHumanQB : MonoBehaviour
 {
     public Sprite hotbarIcon;
     public float chargeSeconds = 3f;                 // Sam: 2 s too fast, 4 s too slow
-    public float minThrow = 6f, maxThrow = 48f;      // metres, at 0 and full charge
+    public float minThrowSpeed = 13f, maxThrowSpeed = 25f;   // m/s at a tap and at full charge (harder = faster, not further by itself)
+    public float baseLoftDeg = 8f, maxLoftDeg = 50f;         // looking level throws a slight upward bullet; look up to loft it
     public float fieldMoveScale = 0.8f;              // the astronaut's stride on the field (walk 8 / run 14 would make him uncatchable)
     public float knockdownSeconds = 1.6f;
     [Tooltip("Where the ball sits in the hands, in camera space (right, up, forward).")]
@@ -92,7 +93,7 @@ public class FootballHumanQB : MonoBehaviour
     LineRenderer _arc, _landing;
     bool _holding, _equipped, _wasHolding, _charging;
     float _charge, _downUntil = -1f, _equipRetry = -1f;
-    bool _throwReady; Vector3 _throwTarget; FootballPlayer _throwTo;
+    bool _throwReady; Vector3 _throwTarget; FootballPlayer _throwTo; float _throwFlight;
     bool _scaled;
 
     void Start()
@@ -230,13 +231,13 @@ public class FootballHumanQB : MonoBehaviour
             if (_charging && Input.GetMouseButton(0))
             {
                 _charge = Mathf.Min(chargeSeconds, _charge + Time.deltaTime);
-                DrawAim(Aim());
+                DrawAim(Aim(out float f), f);
             }
             if (_charging && Input.GetMouseButtonUp(0))
             {
                 _charging = false;
-                Vector3 target = Aim();
-                _throwTarget = target;
+                Vector3 target = Aim(out float flight);
+                _throwTarget = target; _throwFlight = flight;
                 _throwTo = NearestReceiver(play, target);
                 _throwReady = _throwTo != null;
                 if (_arc != null) _arc.enabled = false; if (_landing != null) _landing.enabled = false;
@@ -270,13 +271,25 @@ public class FootballHumanQB : MonoBehaviour
 
     /// Where the throw comes down (field space): along the camera's flat
     /// forward, further the longer LMB was held, inside the field.
-    Vector3 Aim()
+    /// Where the throw comes down (field space) and how long it flies: the
+    /// charge is the ARM (ball speed), the camera's pitch is the ANGLE. Level =
+    /// a bullet that carries the short routes; look up to loft it deep (Sam).
+    Vector3 Aim(out float flight)
     {
         var cam = _player.Camera != null ? _player.Camera.transform : _player.transform;
-        Vector3 fwd = _fieldRoot.InverseTransformDirection(cam.forward); fwd.y = 0f;
+        Vector3 look = _fieldRoot.InverseTransformDirection(cam.forward);
+        Vector3 fwd = look; fwd.y = 0f;
         if (fwd.sqrMagnitude < 0.01f) fwd = Vector3.forward; fwd.Normalize();
         Vector3 me = _fieldRoot.InverseTransformPoint(_player.transform.position); me.y = 0f;
-        float dist = Mathf.Lerp(minThrow, maxThrow, _charge / chargeSeconds);
+        float pitchUp = Mathf.Asin(Mathf.Clamp(look.y, -1f, 1f)) * Mathf.Rad2Deg;
+        float loft = Mathf.Clamp(pitchUp, -6f, maxLoftDeg) + baseLoftDeg;
+        float speed = Mathf.Lerp(minThrowSpeed, maxThrowSpeed, _charge / chargeSeconds);
+        float h = _slot != null ? _slot.BallHoldPoint().y : 1.4f;
+        float vy = speed * Mathf.Sin(loft * Mathf.Deg2Rad), vh = speed * Mathf.Cos(loft * Mathf.Deg2Rad);
+        // Time to come back down to catch height, then how far it carried.
+        float disc = vy * vy + 2f * FootballBall.Gravity * (h - FootballBall.CatchHeight);
+        flight = Mathf.Max(0.3f, (vy + Mathf.Sqrt(Mathf.Max(0f, disc))) / FootballBall.Gravity);
+        float dist = vh * flight;
         Vector3 t = me + fwd * dist;
         t.x = Mathf.Clamp(t.x, -(FootballField.HalfWidth - 0.5f), FootballField.HalfWidth - 0.5f);
         t.z = Mathf.Clamp(t.z, -(FootballField.EndLineZ - 0.5f), FootballField.EndLineZ - 0.5f);
@@ -296,9 +309,9 @@ public class FootballHumanQB : MonoBehaviour
     }
 
     /// The brain asks once per tick: is there a throw to make?
-    public bool TakeThrow(out Vector3 target, out FootballPlayer to)
+    public bool TakeThrow(out Vector3 target, out FootballPlayer to, out float flight)
     {
-        target = _throwTarget; to = _throwTo;
+        target = _throwTarget; to = _throwTo; flight = _throwFlight;
         if (!_throwReady) return false;
         _throwReady = false;
         return true;
@@ -520,12 +533,11 @@ public class FootballHumanQB : MonoBehaviour
     }
 
     /// The parabola the ball will fly (same maths as FootballBall.Launch) and a ring where it lands.
-    void DrawAim(Vector3 target)
+    void DrawAim(Vector3 target, float flight)
     {
         if (_arc == null || _slot == null) return;
         Vector3 start = _slot.BallHoldPoint();
         Vector3 end = new Vector3(target.x, FootballBall.CatchHeight, target.z);
-        float flight = PlayInstance.PassFlightTime(Vector3.Distance(start, end));
         Vector3 v = (end - start) / flight + Vector3.up * (0.5f * FootballBall.Gravity * flight);
         const int N = 24;
         _arc.positionCount = N;
@@ -580,9 +592,9 @@ public class HumanQBBrain : IPlayerBrain
         o.move = Vector3.zero;
         o.look = _h.LookPoint();
         if (!view.snapped || view.Carrier != self) return;
-        if (_h.TakeThrow(out Vector3 target, out FootballPlayer to))
+        if (_h.TakeThrow(out Vector3 target, out FootballPlayer to, out float flight))
         {
-            o.action = BrainAction.Throw; o.target = target; o.targetPlayer = to; o.power = 0.5f;
+            o.action = BrainAction.Throw; o.target = target; o.targetPlayer = to; o.power = 0.5f; o.flight = flight;
             o.say = self.team.shortName + " QB (you) throws toward " + to.Label + ", " + Mathf.RoundToInt(FootballField.ToYards(view.Downfield(target))) + " yds downfield";
             return;
         }

@@ -35,6 +35,8 @@ public struct BrainOutput
     public FootballPlayer targetPlayer;
     /// Throw: 0 = lob, 1 = bullet (flight speed pick).
     public float power;
+    /// Throw: exact flight time in seconds (the human QB's pitch-and-power throw); 0 = the sim picks.
+    public float flight;
     /// Face this way when standing still (a settled receiver looks at the QB).
     public Vector3 face;
     /// A point (field space) the head turns to: the ball, his man, his read.

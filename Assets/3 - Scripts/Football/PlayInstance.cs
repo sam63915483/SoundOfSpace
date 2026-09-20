@@ -193,7 +193,7 @@ public class PlayInstance
     List<FootballPlayer> _party; Vector3 _partyCentre; float _partyDir;
     bool _qbTucked;
     // A throw (or kick) in motion: the ball leaves the hand when the arm gets there.
-    bool _throwPending; Vector3 _throwTarget; FootballPlayer _throwTo;
+    bool _throwPending; Vector3 _throwTarget; FootballPlayer _throwTo; float _throwFlight;
     bool _kickPending; Vector3 _kickTarget;
     FootballPlayer _passer, _target;         // recorded at the throw (the ball forgets them on the catch)
     FootballPlayer _catcher; float _catchDipUntil;
@@ -485,8 +485,8 @@ public class PlayInstance
                 {
                     if (all && _huddleSince < 0f) _huddleSince = _phaseTime;
                     bool held = _huddleSince >= 0f && _phaseTime - _huddleSince >= (hurryUp ? 2f : HuddleHold) && (!holdBreak || hurryUp);
-                    bool humanOk = !HumanDriven || humanPlayChosen;          // his huddle waits for his call
-                    if (humanOk && (held || _phaseTime > HuddleTimeout || skipHuddle))
+                    // The human's huddle waits for his call and breaks the moment he makes it.
+                    if (HumanDriven ? humanPlayChosen : (held || _phaseTime > HuddleTimeout || skipHuddle))
                     {
                         _broke = true; all = false; _phaseTime = 0f;
                         foreach (var kv in _formation)
@@ -758,7 +758,7 @@ public class PlayInstance
         if (_throwPending && holder != null && holder.ThrowReleased)
         {
             _throwPending = false;
-            if (_throwTo != null) ReleaseThrow(holder, _throwTarget, _throwTo);
+            if (_throwTo != null) ReleaseThrow(holder, _throwTarget, _throwTo, _throwFlight);
         }
         else if (_throwPending && (holder == null || !holder.IsThrowing)) _throwPending = false;   // sacked mid-motion
         if (_kickPending && holder != null && holder.KickReleased) { _kickPending = false; ReleaseKick(holder, _kickTarget); }
@@ -1130,12 +1130,12 @@ public class PlayInstance
                 if (p.HasRig && !pitch && !p.humanDriven)
                 {
                     // Wind up; ReleaseThrow fires when the arm comes through.
-                    _throwPending = true; _throwTarget = o.target; _throwTo = o.targetPlayer;
+                    _throwPending = true; _throwTarget = o.target; _throwTo = o.targetPlayer; _throwFlight = o.flight;
                     Vector3 dir = o.target - p.Pos; dir.y = 0f;
                     p.BeginThrow(dir);
                     return;
                 }
-                ReleaseThrow(p, o.target, o.targetPlayer);
+                ReleaseThrow(p, o.target, o.targetPlayer, o.flight);
                 break;
             }
             case BrainAction.Handoff:
@@ -1176,13 +1176,13 @@ public class PlayInstance
         }
     }
 
-    void ReleaseThrow(FootballPlayer p, Vector3 target, FootballPlayer to)
+    void ReleaseThrow(FootballPlayer p, Vector3 target, FootballPlayer to, float flightOverride = 0f)
     {
         // Flight time: never flatter than a 3 m apex, so the ball goes over
         // the men between the passer and the catch (1.2 s ≈ an NFL
         // 15-yarder); longer throws take dist / speed.
         float dist = Vector3.Distance(_ball.pos, target);
-        float flight = PassFlightTime(dist);
+        float flight = flightOverride > 0f ? flightOverride : PassFlightTime(dist);      // the human's throw comes with its own arc
         _ball.Launch(target, flight, to, false);
         _passer = p; _target = to;
         if (Mathf.Abs(target.x) > FootballField.HalfWidth) _thrownAway = true;
